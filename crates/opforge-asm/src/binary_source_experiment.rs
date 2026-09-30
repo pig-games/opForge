@@ -82,7 +82,26 @@ impl<'a> Programs<'a> {
     }
 }
 
-/// Prepare a self-contained BS10 block for one resolved package hierarchy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DictionaryRoleFlags(u8);
+
+impl DictionaryRoleFlags {
+    // Identity is contextual for statement heads and configured directive operands.
+    const CONTEXTUAL: Self = Self(0);
+    // Package-owned registers/named operands retain identity in ordinary operands.
+    const REGISTER_OR_NAMED: Self = Self(1);
+    // Member markers retain identity only after a non-head dot.
+    const MEMBER: Self = Self(2);
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DictionaryBinding {
+    id: u16,
+    qualifier: u8,
+    roles: DictionaryRoleFlags,
+}
+
+/// Prepare a self-contained BS11 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -108,6 +127,7 @@ pub fn prepare_package(
             spelling,
             alias.mnemonic,
             qualifier(alias.qualifier)?,
+            DictionaryRoleFlags::CONTEXTUAL,
         )?;
     }
     // The alias table does not enumerate every canonical qualified spelling
@@ -130,6 +150,7 @@ pub fn prepare_package(
                 spelling,
                 candidate.mnemonic,
                 qualifier(Some(q))?,
+                DictionaryRoleFlags::CONTEXTUAL,
             )?;
         }
     }
@@ -155,7 +176,13 @@ pub fn prepare_package(
     let mut registers = BTreeMap::new();
     for row in &package.registers {
         registers.entry(row.name).or_insert((row.class, row.index));
-        bind(&mut dictionary, name(&names, row.name)?.into(), row.name, 0)?;
+        bind(
+            &mut dictionary,
+            name(&names, row.name)?.into(),
+            row.name,
+            0,
+            DictionaryRoleFlags::REGISTER_OR_NAMED,
+        )?;
         for (class, qualifier_name) in &qualified_classes {
             if row.class != *class {
                 continue;
@@ -173,6 +200,7 @@ pub fn prepare_package(
                 format!("{}.{suffix}", name(&names, row.name)?),
                 row.name,
                 qualifier(Some(u8::try_from(index).map_err(|_| "qualifier overflow")?))?,
+                DictionaryRoleFlags::REGISTER_OR_NAMED,
             )?;
         }
     }
@@ -197,7 +225,13 @@ pub fn prepare_package(
         "cpu", "org", "byte", "word", "long", "end", "align", "res", "for", "endfor",
     ] {
         let id = intern(&mut names, directive)?;
-        bind(&mut dictionary, directive.into(), id, 0)?;
+        bind(
+            &mut dictionary,
+            directive.into(),
+            id,
+            0,
+            DictionaryRoleFlags::CONTEXTUAL,
+        )?;
         directive_ids.push(id);
     }
     let cpu_id = intern(&mut names, &resolved.cpu_id)?;
@@ -206,13 +240,20 @@ pub fn prepare_package(
         resolved.cpu_id.to_ascii_lowercase(),
         cpu_id,
         0,
+        DictionaryRoleFlags::CONTEXTUAL,
     )?;
     for (spelling, _, _) in core.supported_cpus() {
         if core
             .canonical_cpu_id_for_input(&spelling)
             .is_some_and(|id| id.eq_ignore_ascii_case(&resolved.cpu_id))
         {
-            bind(&mut dictionary, spelling.to_ascii_lowercase(), cpu_id, 0)?;
+            bind(
+                &mut dictionary,
+                spelling.to_ascii_lowercase(),
+                cpu_id,
+                0,
+                DictionaryRoleFlags::CONTEXTUAL,
+            )?;
         }
     }
     let properties = core
@@ -269,7 +310,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS10");
+    out[..4].copy_from_slice(b"BS11");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -326,10 +367,10 @@ pub fn prepare_package(
     align(&mut out);
     let runtime_bytes = long(out.len())?;
     let dictionary_offset = out.len();
-    for (spelling, (id, q)) in &dictionary {
+    for (spelling, binding) in &dictionary {
         push_word(&mut out, word(spelling.len())?);
-        push_word(&mut out, *id);
-        out.extend_from_slice(&[*q, 0]);
+        push_word(&mut out, binding.id);
+        out.extend_from_slice(&[binding.qualifier, binding.roles.0]);
         out.extend_from_slice(spelling.as_bytes());
         align(&mut out);
     }
@@ -1061,33 +1102,52 @@ fn collect_qualified_classes(projection: &Projection, classes: &mut BTreeSet<(u1
 fn bind_member(
     projection: &Projection,
     names: &[String],
-    dictionary: &mut BTreeMap<String, (u16, u8)>,
+    dictionary: &mut BTreeMap<String, DictionaryBinding>,
 ) -> Result<(), String> {
     match projection {
-        Projection::NamedRegister {
-            name: qualifier, ..
-        }
-        | Projection::Member { qualifier, .. }
+        Projection::NamedRegister { name, .. } => bind(
+            dictionary,
+            self::name(names, *name)?.into(),
+            *name,
+            0,
+            DictionaryRoleFlags::REGISTER_OR_NAMED,
+        ),
+        Projection::Member { qualifier, .. }
         | Projection::TargetMember { qualifier, .. }
-        | Projection::TupleQualifiedRegister { qualifier, .. } => {
-            bind(dictionary, name(names, *qualifier)?.into(), *qualifier, 0)
-        }
+        | Projection::TupleQualifiedRegister { qualifier, .. } => bind(
+            dictionary,
+            name(names, *qualifier)?.into(),
+            *qualifier,
+            0,
+            DictionaryRoleFlags::MEMBER,
+        ),
         Projection::ValueProgram { source, .. }
         | Projection::RequiredValueProgram { source, .. } => bind_member(source, names, dictionary),
         _ => Ok(()),
     }
 }
 fn bind(
-    dictionary: &mut BTreeMap<String, (u16, u8)>,
+    dictionary: &mut BTreeMap<String, DictionaryBinding>,
     spelling: String,
     id: u16,
     qualifier: u8,
+    roles: DictionaryRoleFlags,
 ) -> Result<(), String> {
     let spelling = spelling.to_ascii_lowercase();
-    if let Some(previous) = dictionary.insert(spelling.clone(), (id, qualifier)) {
-        if previous != (id, qualifier) {
+    if let Some(previous) = dictionary.get_mut(&spelling) {
+        if (previous.id, previous.qualifier) != (id, qualifier) {
             return Err(format!("conflicting binary lexical binding for {spelling}"));
         }
+        previous.roles.0 |= roles.0;
+    } else {
+        dictionary.insert(
+            spelling,
+            DictionaryBinding {
+                id,
+                qualifier,
+                roles,
+            },
+        );
     }
     Ok(())
 }
@@ -1096,6 +1156,37 @@ fn name(names: &[String], id: u16) -> Result<&str, String> {
         .get(usize::from(id))
         .map(String::as_str)
         .ok_or_else(|| "binary package name index out of bounds".into())
+}
+
+#[cfg(test)]
+mod dictionary_role_contract_tests {
+    use super::*;
+
+    #[test]
+    fn dictionary_roles_merge_only_the_same_canonical_identity() {
+        let mut dictionary = BTreeMap::new();
+        for roles in [
+            DictionaryRoleFlags::REGISTER_OR_NAMED,
+            DictionaryRoleFlags::MEMBER,
+            DictionaryRoleFlags::CONTEXTUAL,
+        ] {
+            bind(&mut dictionary, "Shared".into(), 7, 0, roles).unwrap();
+        }
+        assert_eq!(dictionary["shared"].roles.0, 3);
+        for (id, qualifier) in [(8, 0), (7, 1)] {
+            assert!(bind(
+                &mut dictionary,
+                "SHARED".into(),
+                id,
+                qualifier,
+                DictionaryRoleFlags::CONTEXTUAL,
+            )
+            .is_err());
+        }
+        assert_eq!(dictionary["shared"].id, 7);
+        assert_eq!(dictionary["shared"].qualifier, 0);
+        assert_eq!(dictionary["shared"].roles.0, 3);
+    }
 }
 fn intern(names: &mut Vec<String>, value: &str) -> Result<u16, String> {
     if let Some(index) = names

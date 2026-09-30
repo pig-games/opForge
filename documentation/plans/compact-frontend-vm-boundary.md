@@ -12,14 +12,18 @@ Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
 Current measured frontier: the frozen 61-file input rejects at native origin
-`0x09`, line `0x504` (1284), on 68020 / 10 MiB. The origin is a discovery/include
-ID, not an index into the sorted Rust manifest; its path still needs mapping.
+`0x11`, line 111, on 68020 / 10 MiB, after the package-role repair. Its scan
+position and source mapping still need diagnostic capture. Origin IDs are
+discovery/include IDs, not indices into the sorted Rust manifest. The preceding
+instrumented run reached pass 1, section sweep 2 of 4, at 47.963% of that scan;
+this is not overall completion. That run matched `binary_graph.asm` and its
+`bra.w reset`, which now passes a focused exact branch comparison.
 The entry-file BSS-to-struct transfers and immediate CODE/DATA/BSS callback
 addresses now pass focused exact Hunk comparison.
 The register-mask slice below advances beyond the previous restore rejection;
-the new origin-to-path mapping remains unverified. See its separate measurements
-and the callback-selection slice below. The full run still rejects during
-encoding; the smaller callback repair does not resolve that full-input gap.
+see its separate measurements and the callback-selection slice below. The full
+run still rejects during encoding; the smaller callback repair does not resolve
+that full-input gap.
 No native self-host Hunk exists. Older 59-file measurements below use a different
 input; the current frozen identity is recorded in
 [the scalar-root slice](#complete-scalar-roots-and-target-predicates).
@@ -2092,3 +2096,75 @@ instrumentation, proof, ownership, runtime-boundary and workflow guards pass.
 Independent GPT-6.1 Sol review found no concrete writer/binder ABI or bounds issue.
 The broader legacy runtime and Rust qualification limitations recorded above
 remain; this is not full repository qualification or completed self-hosting.
+
+The separately instrumented run confirms encoding/pass 1 at that new location,
+with priority 0, semantic-branch recipe 5 and scalar projection 0. The matched
+EOF count identifies `binary_graph.asm`; line 176 is `bra.w reset`. Record
+256,538 of 534,864 is 47.963% through the current section scan, not overall
+completion. No allocation failure occurs; peak owned memory stays 5,221,800
+bytes. Instrumented runner time is 311.863647541 seconds and is excluded from
+release timing.
+
+## Package statement and operand identities
+
+The next slice generalizes the binding repair beyond core directives. Hypothesis:
+statement-only names in the package dictionary must become scoped source operands
+when used outside statement heads, while package-owned operand names retain their
+identities. Derive that role from numeric package register/member metadata, carry
+it in the dictionary's existing reserved byte, and preserve the first `.cpu`
+operand and explicit reservation widths by statement context. Remove the
+superseded core-ID scan. Migrate producer and native reader together to the sole
+new contract; reject malformed roles and the superseded version.
+
+Compare backward/forward labels whose spellings are instruction names on two
+packages, plus ordinary instructions, registers, qualifiers, CPU names and
+reservation controls. Establish fresh failure evidence before changing production
+behavior, then require exact live Rust output after. Repeat the identical frozen
+full release run against 297.910580375 seconds, reporting its individual delta
+without a speed claim if the failure frontier changes. Stop for ambiguous package
+role ownership rather than inserting mnemonic-spelling exceptions.
+
+The sole BS11 contract uses the dictionary header's existing reserved byte as
+role flags: ordinary package register/named operands and member markers after
+a dot have separate bits. Statement-only names bind in source scope outside
+statement heads. Numeric `.cpu` names and decoded quoted CPU names share the
+configured name-operand role; ordinary strings remain data. Unknown flag bits
+and BS10 are rejected. No dictionary layout or runtime-package size increases.
+
+The original 30-byte comparison changes from a rejection at backward `reset`
+on line 6 to a rejection at `move.w (8).w,d0` on line 14. A separate 26-byte
+fixture without that instruction matches Rust exactly (0.759450208 start-to-done
+host seconds). Its instruction heads, numeric registers, qualified index and
+backward/forward labels exercise the role distinction. Separate native controls
+match Rust for 6502 mnemonic-named data (5 bytes, 0.507561916 s), quoted CPU
+names with ordinary string data (7 bytes, 0.759179208 s), bare `w` labels and
+constants (13 bytes, 1.011518959 s), and a module-root `Frame.w` field
+(3 bytes, 0.758733792 s). Tiny-run timing supplies no speed claim.
+
+The original positive 30-byte and combined member-context probes remain for
+convergence. The canonical MOVE.W member input exists, but its current native
+export is a closed recipe-6 row without executable inputs; dictionary roles
+do not change that exporter decision. This is a missing compact capability,
+not invalid source. The same 3-byte `Frame.w` probe inside a block fails during
+frontend completion and remains under investigation. Register-like names in
+shared value expressions also need separate contextual handling; this slice
+does not establish every package/source-name collision as resolved.
+
+The fresh telemetry-off frozen full run now rejects at origin `0x11`, line 111,
+in 325.717233125 native-runner seconds, compared with 297.910580375 previously
+(+27.806652750 s). Different rejection points prevent a performance claim.
+The ordinary CLI is 88,892 bytes with 99,920 linked reserved bytes (+48 each),
+and the runtime package stays 298,408 bytes. Source and Rust oracle identities
+are unchanged. No self-host Hunk is produced; this is completed negative
+protocol evidence. A separate diagnostic run must map the new encoding frontier.
+
+Qualification: 194 packed-source Rust tests and 14 VM package tests pass;
+fresh native keyword-label (42-byte), shared-data (9-byte), explicit BSS-width
+(76-byte Hunk) and module-root struct-extent (8-byte) regressions match Rust.
+Fresh superseded-contract, unused unknown-role and member-export rejection
+controls complete their expected protocols. Rust/native formatting, runtime
+boundary, instrumentation safety, contract assertions, proof, ownership and
+workflow-link checks pass. Independent GPT-6.1 Sol review found no concrete
+role/binder ABI or bounds issue. The scoped-field and member-export positive
+probes remain failing convergence cases; broad repository and self-host parity
+are not claimed.

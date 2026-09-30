@@ -25,6 +25,8 @@ FRAGMENT_FULL_LIST = 10
 FRAGMENT_NAMED = 11
 MACRO_PLAN = 42
 BIND_ROLE_WIDTH = 3
+BIND_ROLE_PACKAGE_NAME = 4
+BIND_ROLE_MEMBER_NAME = 5
 TOKEN_COMMA = 4
 
 Frame	.struct
@@ -68,6 +70,8 @@ Length	.long ?
 ; Result: [u8(total length-1), u8(flags), u16 source line], followed by
 ; Binder input D2 is 1 for the leading name token, 2 for a dotted
 ; statement head, BIND_ROLE_WIDTH for the first comma-separated WidthDirective operand,
+; BIND_ROLE_PACKAGE_NAME for the first NameDirective operand (including quoted names),
+; BIND_ROLE_MEMBER_NAME after a dot outside the statement head,
 ; otherwise 0. Width names retain package identity; value operands bind normally.
 ; The callback returns the existing D2 qualifier.
 ; TKVM kind bytes: kinds 0/1 have u16 ID,u8 qualifier; kind2 has u32 value;
@@ -214,6 +218,14 @@ recipeMapped
 	adda.l d4, a2
 	bra.w next
 compositeString
+	moveq #0, d2
+	move.w Frame.NameDirective(a5), d2
+	bsr.w nameOperand
+	tst.l d0
+	beq.w dataString
+	moveq #0, d3
+	bra.w tokenKindReady
+dataString
 	bsr.w literalString
 	tst.l d0
 	beq.w next
@@ -270,21 +282,31 @@ sizeReady
 	cmpi.l #9, d2
 	beq.w directiveName
 	cmpi.l #10, d2
-	bne.w operandName
+	bne.w memberName
 directiveName
 	moveq #2, d2
 	bra.w bindName
-operandName
-	moveq #0, d2
+memberName
+	moveq #BIND_ROLE_MEMBER_NAME, d2
+	bra.w bindName
 bindName
 	tst.l d2
 	bne.w callBinder
+	moveq #0, d2
+	move.w Frame.NameDirective(a5), d2
+	bsr.w nameOperand
+	moveq #0, d2
+	tst.l d0
+	beq.w widthOperand
+	moveq #BIND_ROLE_PACKAGE_NAME, d2
+	bra.w restoreLength
+widthOperand
 	; Only an explicit width followed by a comma has package identity.
 	; A single count expression must retain the normal lexical environment.
 	cmpi.l #2, d7
-	blo.w callBinder
+	blo.w restoreLength
 	cmpi.w #TOKEN_COMMA, Token.Kind+20(a2)
-	bne.w callBinder
+	bne.w restoreLength
 	moveq #0, d2
 	move.w Frame.WidthDirective(a5), d2
 	bsr.w nameOperand

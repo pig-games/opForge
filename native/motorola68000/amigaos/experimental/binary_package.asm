@@ -5,7 +5,20 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533130; BS10
+MAGIC = $42533131; BS11
+DICTIONARY_REGISTER_OR_NAMED = 1
+DICTIONARY_MEMBER = 2
+DICTIONARY_ROLE_ALLOWED = DICTIONARY_REGISTER_OR_NAMED+DICTIONARY_MEMBER
+DICTIONARY_REGISTER_OR_NAMED_BIT = 0
+DICTIONARY_MEMBER_BIT = 1
+
+DictionaryEntry	.struct
+Length	.word ?
+Name	.word ?
+Qualifier	.byte ?
+Roles	.byte ?
+.endstruct
+DICTIONARY_ENTRY_BYTES = DictionaryEntry.Roles+1
 
 Header	.struct
 Magic	.long ?

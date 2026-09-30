@@ -14,10 +14,12 @@ Measured preparation bottlenecks may be addressed to shorten convergence runs.
 Current measured frontier: the frozen 61-file input rejects at native origin
 `0x09`, line `0x504` (1284), on 68020 / 10 MiB. The origin is a discovery/include
 ID, not an index into the sorted Rust manifest; its path still needs mapping.
-The entry-file BSS-to-struct transfers now pass focused exact Hunk comparison.
+The entry-file BSS-to-struct transfers and immediate CODE/DATA/BSS callback
+addresses now pass focused exact Hunk comparison.
 The register-mask slice below advances beyond the previous restore rejection;
 the new origin-to-path mapping remains unverified. See its separate measurements
-and the retained immediate-address transfer probe.
+and the callback-selection slice below. The full run still rejects during
+encoding; the smaller callback repair does not resolve that full-input gap.
 No native self-host Hunk exists. Older 59-file measurements below use a different
 input; the current frozen identity is recorded in
 [the scalar-root slice](#complete-scalar-roots-and-target-predicates).
@@ -1906,3 +1908,58 @@ above; the Rust oracle remains 88,096 bytes with four Hunk segments. The differe
 failure frontier prevents a speed-regression claim. This fresh exit 20 produced
 no self-host Hunk. The callback-address transfer pattern is the next hypothesis
 to isolate, not a confirmed source-path mapping.
+
+## Callback candidate ordering
+
+Hypothesis: an earlier numeric-immediate candidate consumes an exact symbolic
+address before the package's relocation sequence can run. A focused imported
+frame fixture confirms this: native encodes the instruction, then rejects at
+Hunk relocation marking on pass 2. The canonical family now orders its existing
+exact-target tuple sequence before the scalar fallback (priority 111 before
+115). Native encoding, Hunk policy and BSP9 are unchanged. No section ownership
+or CPU behavior is added to generic native code.
+
+Fresh telemetry-off comparisons on 68020 / 10 MiB:
+
+| Case | Before | Result | Native start-to-done host seconds |
+|---|---|---|---:|
+| Immediate CODE/DATA/BSS addresses to imported frame fields | Fresh native exit 20 at first transfer | Exact Rust 144-byte Hunk | 0.772714458 |
+| Forward block callbacks and same-module frame | Not measured | Exact Rust 160-byte Hunk | 1.027047833 |
+| Absolute symbol, literal and compound scalar constants | Not measured | Exact Rust 100-byte Hunk, no relocations | 1.023188917 |
+| Compound address identity | Not measured | Fresh native rejection at the transfer | — |
+
+The ordinary CLI image remains 88,460 bytes with 99,504 linked reserved bytes;
+the package remains 298,408 bytes. A wire test verifies the actual atomic match
+projection and ordering, while the earlier unsupported member facts remain
+explicit. An existing projection test used an unsorted candidate index to read
+sorted wire rows; it now locates the serialized row by its identity before
+asserting projection 17.
+
+The identical frozen 61-file input still rejects at origin `0x09`, line 1284,
+after 273.785763458 runner seconds versus 273.213960291 before this change
+(+0.571803167 seconds). This is a separate single-run observation, not a speed
+claim. The Rust oracle remains the same 88,096-byte, four-segment Hunk; no native
+self-host output exists. The remaining full-input encoding rejection needs a
+closer scoped/imported-frame probe, rather than assuming the reduced case covers
+it.
+
+The separate instrumented baseline localizes that full-input rejection to
+encoding on pass 1, section sweep 2 of 4, section ID 3, record byte 181,924 of
+534,844 (34.014% through that scan). This is not overall completion percentage.
+It reports no allocation failure, peak owned memory 5,221,800 bytes and these
+instrumented preparation times: discovery 12.787 s, binding/raw records 67.620 s,
+tokenization 70.999 s, expression preparation 10.052 s, finalization 14.744 s,
+source I/O/other 27.800 s, package setup 0.095 s. Instrumented runner time was
+286.716886750 s; it is separate from release timing and supplies localization,
+not self-host parity.
+
+Qualification passes 183 packed-source Rust tests, fourteen VM package tests,
+102 family tests, eight fresh native checks, formatting and the relevant
+engineering guards. The existing immediate-BSS-to-struct probe now matches its
+104-byte Rust Hunk in 1.017356875 s; PC dispatch and matching unsupported-member
+and mixed-fixup controls remain valid. Regenerating the 370,723-byte committed
+hierarchy package changes only CMSE selector data, with no chunk-layout or size
+change. Broader qualification exposed a separate Rust fixture limitation:
+implicit module generation from the digit-leading `68010_delta.asm` filename
+creates an invalid module ID. This slice does not claim full repository
+qualification or completed self-hosting.

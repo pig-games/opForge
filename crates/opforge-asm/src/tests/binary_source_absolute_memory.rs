@@ -132,7 +132,7 @@ fn compact_bss_to_struct_controls_fs_uae() {
 }
 
 #[test]
-#[ignore = "known unsupported immediate BSS address to struct offset; native convergence probe"]
+#[ignore = "requires configured FS-UAE; immediate BSS address to imported struct offset"]
 fn compact_immediate_bss_to_struct_fs_uae() {
     hunk_sections::native_hunk_source(&bss_to_struct_source(IMMEDIATE_BSS_TO_STRUCT));
 }

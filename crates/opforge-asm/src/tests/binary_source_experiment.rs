@@ -72,6 +72,9 @@ mod movem_restore;
 #[path = "binary_source_absolute_memory.rs"]
 mod absolute_memory;
 
+#[path = "binary_source_callback.rs"]
+mod callback;
+
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;
 

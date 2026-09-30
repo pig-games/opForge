@@ -281,11 +281,12 @@ fn compact_hunk_immediate_data_package_projection() {
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let numeric =
         vm::binary_source_package::BinarySourcePackage::prepare(&core, &resolved).unwrap();
-    let index = numeric
+    let candidate = numeric
         .candidates
         .iter()
-        .position(|candidate| {
+        .find(|candidate| {
             numeric.names[usize::from(candidate.mnemonic)] == "move"
+                && numeric.names[usize::from(candidate.shape)] == "immediate_register"
                 && candidate
                     .qualifier
                     .is_some_and(|id| numeric.qualifiers[usize::from(id)] == "l")
@@ -295,7 +296,17 @@ fn compact_hunk_immediate_data_package_projection() {
     let wire = prepare_package(&core, &resolved).unwrap();
     let long =
         |offset: usize| u32::from_be_bytes(wire[offset..offset + 4].try_into().unwrap()) as usize;
-    let row = long(16) + index * 32;
+    let word = |offset: usize| u16::from_be_bytes(wire[offset..offset + 2].try_into().unwrap());
+    let rows = long(16);
+    let row = (0..long(20))
+        .map(|index| rows + index * 32)
+        .find(|&row| {
+            word(row) == candidate.mnemonic
+                && wire[row + 2] == candidate.qualifier.unwrap() as u8 + 1
+                && wire[row + 3] == 3 // immediate_register
+                && word(row + 6) == candidate.priority
+        })
+        .expect("serialized immediate target candidate");
     assert_eq!(wire[row + 5], 9);
     let match_stage = long(row + 12);
     let match_inputs = long(match_stage + 8);

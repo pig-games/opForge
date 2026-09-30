@@ -2025,3 +2025,21 @@ not a speed claim. Source/hash and 88,096-byte four-segment Rust oracle remain
 unchanged. The branch proof repair does not explain the full encoding rejection;
 the separately instrumented selection snapshot is the next discriminator. No
 self-host Hunk was produced.
+
+The fresh diagnostic run repeats the same encoding/pass/sweep/offset failure.
+Phase 29 reports priority 0, recipe 5 (semantic branch), scalar projection 0;
+package dictionary identity `0xb9` is `bra`. Frozen `binary_scopes.asm` has
+1,697 lines and its line 1284 is `bra.w word`, matching the EOF progress count
+of 1,698. The earlier `binary_app.asm` hypothesis had the wrong file mapping
+(it has 1,682 lines). The next convergence probe therefore targets backward
+local labels that share a spelling with package keywords, not callback transfer.
+The diagnostic runner took 286.866699584 s, with no allocation failure and the
+same 5,221,800-byte peak owned memory. It produced no self-host Hunk.
+
+A supplementary shared-VM branch control could not initially build the legacy
+CLI: six explicit short source branches were out of range. Widening those six
+to word branches restores fresh host assembly; identical instrumentation arms
+are consolidated. The subsequent native legacy control completed its protocol
+but exited 10 with no exact output, so it remains a separate runtime qualification
+failure. No legacy native parity is claimed, and that old engine is not used
+to replace the compact self-host proof.

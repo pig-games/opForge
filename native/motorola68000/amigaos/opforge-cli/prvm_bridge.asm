@@ -268,13 +268,13 @@ opforgeNativeCliServicePrvmExpressionRequest	.block
 	lea state.OpforgeNativeCliPrvmExprResultSlot, a1
 	move.w 0(a0), d0
 	cmpi.w #prvm_abi.PRVM_EXPR_REQUEST_VERSION_V2, d0
-	bne.s fail
+	bne.w fail
 	cmpi.w #prvm_abi.PRVM_EXPR_REQUEST_MODE_DYNAMIC, 2(a0)
-	bne.s fail
+	bne.w fail
 	clr.l d0
 	move.l 8(a0), d0
 	cmpi.l #constants.PRVM_ROUTE_EXPR_RESULT_CAPACITY, d0
-	bhs.s fail
+	bhs.w fail
 	move.l d0, d3
 	lsl.l #5, d3
 	lea state.OpforgeNativeCliPrvmExprResultSlot, a1

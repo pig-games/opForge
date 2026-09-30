@@ -35,6 +35,138 @@ fn compact_absolute_state_matrix_fs_uae() {
     hunk_sections::native_hunk_source(&source(STATE_ACCESSES));
 }
 
+fn bss_to_struct_source(body: &str) -> String {
+    format!(
+        ".module probe\n.cpu m68020\n.use app\n.section code,kind=code\nentry:\n{body} rts\n.align 4\n.endsection\n.section data,kind=data\npayload: .byte $aa,$bb,$cc\n.endsection\n.section bss,kind=bss\nmoduleCount: .res long,1\nincludeCount: .res long,1\nreserved: .res long,1\n.endsection\n.output \"build/sections.hunk\",format=hunk,sections=code,bss,data\n.endmodule\n.module app\n.cpu m68020\n.pub\nFrame .struct\nPad .long ?\nModuleCount .long ?\nIncludeCount .long ?\n.endstruct\n.endmodule\n"
+    )
+}
+
+const BSS_TO_STRUCT: &str =
+    " move.l moduleCount,app.Frame.ModuleCount(a0)\n move.l includeCount,app.Frame.IncludeCount(a0)\n";
+const BSS_TO_LITERAL_OFFSET: &str = " move.l moduleCount,4(a0)\n";
+const IMMEDIATE_BSS_TO_STRUCT: &str = " move.l #moduleCount,app.Frame.ModuleCount(a0)\n";
+
+#[test]
+fn compact_bss_to_struct_rust_hunk_oracle() {
+    let oracle = hunk_sections::rust_hunk_source(&bss_to_struct_source(BSS_TO_STRUCT));
+    assert_eq!(hunk::allocation(&oracle).unwrap().bss, 12);
+    assert!(
+        oracle
+            .windows(2)
+            .filter(|bytes| *bytes == [0x21, 0x79])
+            .count()
+            >= 2
+    );
+}
+
+#[test]
+fn compact_bss_to_struct_controls_rust_hunk_oracle() {
+    for (body, opcode) in [
+        (BSS_TO_LITERAL_OFFSET, [0x21, 0x79]),
+        (IMMEDIATE_BSS_TO_STRUCT, [0x21, 0x7c]),
+    ] {
+        let oracle = hunk_sections::rust_hunk_source(&bss_to_struct_source(body));
+        assert!(oracle.windows(2).any(|bytes| bytes == opcode));
+    }
+}
+
+#[test]
+fn compact_bss_to_struct_has_executable_package_sequence() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let numeric =
+        vm::binary_source_package::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    let move_id = numeric
+        .names
+        .iter()
+        .position(|name| name == "move")
+        .unwrap() as u16;
+    let qualifier = numeric
+        .qualifiers
+        .iter()
+        .position(|name| name == "l")
+        .unwrap() as u8
+        + 1;
+    let wire = prepare_package(&core, &resolved).unwrap();
+    let offset = u32::from_be_bytes(wire[16..20].try_into().unwrap()) as usize;
+    let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
+    let blocking_row = (0..count)
+        .map(|index| offset + index * 32)
+        .find(|&row| {
+            u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == move_id
+                && wire[row + 2] == qualifier
+                && wire[row + 3] == 10
+                && u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap()) == 75
+        })
+        .unwrap();
+    assert_eq!(wire[blocking_row + 5], 6); // still an unsupported recipe
+    assert_eq!(wire[blocking_row + 19] & 0x0f, 4); // source needs tuple root
+    assert_eq!(
+        u16::from_be_bytes(
+            wire[blocking_row + 22..blocking_row + 24]
+                .try_into()
+                .unwrap()
+        ),
+        0x0900
+    ); // PC base register class + 1
+    assert!((0..count).any(|index| {
+        let row = offset + index * 32;
+        u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == move_id
+            && wire[row + 2] == qualifier
+            && wire[row + 3] == 10 // direct_direct
+            && u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap()) == 160
+            && wire[row + 5] == 9 // semantic sequence
+    }));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; absolute BSS source to imported struct displacement"]
+fn compact_bss_to_struct_fs_uae() {
+    hunk_sections::native_hunk_source(&bss_to_struct_source(BSS_TO_STRUCT));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; absolute BSS source to literal offset"]
+fn compact_bss_to_struct_controls_fs_uae() {
+    hunk_sections::native_hunk_source(&bss_to_struct_source(BSS_TO_LITERAL_OFFSET));
+}
+
+#[test]
+#[ignore = "known unsupported immediate BSS address to struct offset; native convergence probe"]
+fn compact_immediate_bss_to_struct_fs_uae() {
+    hunk_sections::native_hunk_source(&bss_to_struct_source(IMMEDIATE_BSS_TO_STRUCT));
+}
+
+// This PC-tuple source really matches the earlier unsupported row. A scalar
+// source may skip that row, but a matching tuple must keep its barrier.
+const PC_TO_ABSOLUTE_MEMBER: &str =
+    ".cpu m68020\n.org $1000\nentry:\n move.l 6(pc),(reserved).l\nreserved: .long 0\n.end\n";
+
+#[test]
+fn compact_pc_to_absolute_member_rust_rejection() {
+    let (_, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &PC_TO_ABSOLUTE_MEMBER.lines().collect::<Vec<_>>(),
+        true,
+    )
+    .unwrap();
+    assert!(
+        diagnostics
+            .iter()
+            .any(|message| message.contains("unknown source 'target:member1.fieldl'")),
+        "{diagnostics:?}"
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; matching PC-tuple unsupported barrier"]
+fn compact_pc_to_absolute_member_barrier_fs_uae() {
+    assert_native_files_rejection(
+        &[("input.asm", PC_TO_ABSOLUTE_MEMBER)],
+        "m68020",
+        Some("[file 00000001, line 00000004]"),
+    );
+}
+
 // A real nested indirect root matches the unsupported package path. The
 // scalar proof must not turn it into a later absolute-address candidate.
 const NESTED_INDIRECT: &str = ".cpu m68020\n move.w ([a0,d1.l*4],8.w),d2\n.end\n";

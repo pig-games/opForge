@@ -612,15 +612,18 @@ fn write_candidate(
     out[row + 16] = candidate.width_rank;
     out[row + 17] = u8::from(candidate.unstable_widen);
     out[row + 18] = candidate.member_excluded;
-    out[row + 19] = match &candidate.recipe {
-        CandidateRecipe::Unsupported { plan } => required_operand_forms(name(names, *plan)?),
-        _ => 0,
+    let (required_forms, tuple_classes) = match &candidate.recipe {
+        CandidateRecipe::Unsupported { plan } => {
+            let plan = name(names, *plan)?;
+            (required_operand_forms(plan), required_tuple_classes(plan))
+        }
+        CandidateRecipe::SemanticSequence { stages } if recipe == 6 => {
+            necessary_sequence_match(stages)
+        }
+        _ => (0, 0),
     };
+    out[row + 19] = required_forms;
     set_word(out, row + 20, candidate.mode);
-    let tuple_classes = match &candidate.recipe {
-        CandidateRecipe::Unsupported { plan } => required_tuple_classes(name(names, *plan)?),
-        _ => 0,
-    };
     set_word(out, row + 22, tuple_classes);
     set_word(out, row + 28, if recipe == 7 { table } else { MISSING });
     Ok(())
@@ -749,6 +752,33 @@ fn required_tuple_classes(plan: &str) -> u16 {
         }
     }
     u16::from_be_bytes(classes)
+}
+
+// A sequence can be downgraded after a later executable stage fails native
+// transport. Its leading match-only stages still provide sound, typed facts
+// about the operand wrapper and base-register class. Unknown projections keep
+// the unsupported barrier; this never assumes a later stage is executable.
+fn necessary_sequence_match(stages: &[SemanticStage]) -> (u8, u16) {
+    let mut forms = [0u8; 2];
+    let mut classes = [0u8; 2];
+    for stage in stages
+        .iter()
+        .take_while(|stage| stage.program.is_none() && !stage.fixup)
+    {
+        for input in &stage.inputs {
+            if let Projection::TupleRegister { operand, class } = input {
+                let index = usize::from(*operand);
+                if index < 2 {
+                    forms[index] = 4;
+                    classes[index] = class
+                        .checked_add(1)
+                        .and_then(|value| u8::try_from(value).ok())
+                        .unwrap_or(0);
+                }
+            }
+        }
+    }
+    (forms[0] | forms[1] << 4, u16::from_be_bytes(classes))
 }
 
 fn necessary_scalar_root(predicate: &str) -> Option<usize> {
@@ -1236,6 +1266,48 @@ mod sequence_wire_tests {
             required_tuple_classes("semv.sequence.v1:encode:x@indirect_tuple_reg0.item1.class8"),
             0
         );
+    }
+
+    #[test]
+    fn downgraded_sequence_keeps_only_leading_typed_match_facts() {
+        let matched = SemanticStage {
+            program: None,
+            fixup: false,
+            inputs: vec![
+                Projection::TupleRegister {
+                    operand: 0,
+                    class: 8,
+                },
+                Projection::TupleArity { operand: 0 },
+            ],
+        };
+        let later = SemanticStage {
+            program: Some(1),
+            fixup: true,
+            inputs: vec![Projection::TargetMember {
+                operand: 1,
+                qualifier: 2,
+            }],
+        };
+        assert_eq!(
+            necessary_sequence_match(&[matched.clone(), later]),
+            (4, 0x0900)
+        );
+        let mut encode_only = matched.clone();
+        encode_only.program = Some(1);
+        assert_eq!(necessary_sequence_match(&[encode_only]), (0, 0));
+        let mut outside = matched.clone();
+        outside.inputs[0] = Projection::TupleRegister {
+            operand: 2,
+            class: 8,
+        };
+        assert_eq!(necessary_sequence_match(&[outside]), (0, 0));
+        let mut untransportable_class = matched;
+        untransportable_class.inputs[0] = Projection::TupleRegister {
+            operand: 0,
+            class: 255,
+        };
+        assert_eq!(necessary_sequence_match(&[untransportable_class]), (4, 0));
     }
 
     #[test]

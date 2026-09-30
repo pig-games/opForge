@@ -20,19 +20,34 @@ fn compact_memory_move_package_rows() {
         .iter()
         .position(|name| name == "move")
         .unwrap() as u16;
+    let qualifier = numeric
+        .qualifiers
+        .iter()
+        .position(|name| name == "l")
+        .unwrap() as u8
+        + 1;
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
     let mut barriers = 0;
     let mut sequences = 0;
+    let mut pc_sequences = 0;
     for row in wire[rows..rows + count * 32].chunks_exact(32) {
         if u16::from_be_bytes(row[..2].try_into().unwrap()) != move_id
-            || row[2] != 1
+            || row[2] != qualifier
             || row[3] != 10
         {
             continue;
         }
-        // Supported PC-tuple recipes now carry their bounded match and
-        // positional fixup in executable sequence rows.
+        let priority = u16::from_be_bytes(row[6..8].try_into().unwrap());
+        // The PC-to-absolute recipe is executable. The following PC-to-member
+        // recipe remains unsupported but carries enough match facts to reject
+        // scalar sources before it can block later transfer candidates.
+        if priority == 74 {
+            assert_eq!(row[5], 9);
+            pc_sequences += 1;
+        }
         if row[5] == 6 && row[22] == 9 {
+            assert_eq!(priority, 75);
+            assert_eq!(row[19] & 0x0f, 4);
             assert_eq!(row[23], 0);
             barriers += 1;
         }
@@ -41,7 +56,8 @@ fn compact_memory_move_package_rows() {
             sequences += 1;
         }
     }
-    assert_eq!(barriers, 0);
+    assert_eq!(barriers, 1);
+    assert_eq!(pc_sequences, 1);
     assert!(sequences > 0);
 }
 

@@ -11,13 +11,15 @@ alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slic
 Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
-Current measured frontier: the frozen 61-file input rejects at entry file 1,
-line `0x5a` (90), `move.l ModuleCount,app.Frame.ModuleCount(a0)`, on the expanded
-68020 / 10 MiB profile. PC-relative LEA now passes focused flat and exact Hunk
-comparison; the next transfer needs localization. No native self-host Hunk exists.
-See [PC-relative tuple fixups](#pc-relative-tuple-fixups) for separate change timing
-and [the scalar-root slice](#complete-scalar-roots-and-target-predicates) for input
-identity. Older 59-file measurements below use a different input.
+Current measured frontier: the frozen 61-file input rejects at native origin
+`0x35`, line `0x240` (576), on 68020 / 10 MiB. The origin is a discovery/include
+ID, not an index into the sorted Rust manifest; its path still needs mapping.
+The entry-file BSS-to-struct transfers now pass focused exact Hunk comparison.
+See [match facts after export rejection](#match-facts-after-native-export-rejection)
+for the separate change measurement and remaining immediate-transfer probe.
+No native self-host Hunk exists. Older 59-file measurements below use a different
+input; the current frozen identity is recorded in
+[the scalar-root slice](#complete-scalar-roots-and-target-predicates).
 
 Earlier convergence and memory observations: the compact native CLI accepts concrete code and
 data sections reopened by another module, with a focused 68020 / 2 MiB Hunk
@@ -1806,3 +1808,43 @@ native construction, emulator launch and capture; isolated full guest timing is
 unavailable. Different rejection frontiers and single-run variation prevent a
 speed claim. The Rust oracle remains 88,096 bytes/four Hunk segments, and the
 new native result is a fresh exit 20 with no self-host Hunk output.
+
+
+## Match facts after native export rejection
+
+The entry-file transfers of BSS values into imported struct displacements are
+now accepted through the existing package sequence. A canonical PC-to-member
+sequence was downgraded to an unsupported native recipe because a later fixup
+projection has no native transport. Export previously lost its leading tuple
+match facts during that downgrade, letting the unsupported row block scalar
+source operands. Export now retains bounded tuple-root and base-class facts
+from leading typed match-only stages; encoding and fixup stages provide no
+selection proof. Unknown or genuinely matching forms retain their barrier.
+No native code, storage, package layout or contract version changed.
+
+Fresh telemetry-off comparisons on 68020 / 10 MiB:
+
+| Case | Before | After | Native start-to-done host seconds |
+|---|---|---|---:|
+| Two BSS values to imported struct offsets | Native exit 20 at first transfer | Exact Rust 116-byte Hunk | 1.009166666 |
+| BSS value to literal offset | Native exit 20 at transfer | Exact Rust 104-byte Hunk | 0.768713375 |
+| PC tuple to absolute member | Unsupported Rust recipe | Fresh native exit 20 at the matching instruction | — |
+
+The ordinary native image remains 88,868 bytes with 99,836 linked reserved bytes.
+The temporary stage trace was removed. A macOS executable-assessment stall
+increased the combined test runner duration; it is excluded from performance
+claims. The independent immediate-BSS-address-to-struct-offset control still
+rejects natively while Rust accepts it. It is a convergence probe, not completed
+parity. The identical frozen 61-file / 696,570-byte full-input run now rejects at native
+origin `0x35`, line `0x240` (576), after 236.051206042 runner seconds, against
+219.819007583 before this change (+16.232198459 seconds). It reaches a different
+failure frontier, so this single comparison is not a speed claim. Runtime
+package size remains 295,656 bytes; the live Rust oracle for the frozen source
+remains an 88,096-byte, four-segment Hunk. No native self-host output was produced.
+
+Qualification: seven export-wire tests, affected packed-source Rust checks, fresh
+exact native transfers and the matching PC-to-member native rejection control.
+A formerly zero-count PC barrier assertion was corrected: the row was already
+unsupported, and now exports its necessary match facts. The executable ordinary
+PC transfer assertion remains explicit. Eight deterministic guards and seven CPU
+boundary guard unit tests pass. All changes remain experimental.

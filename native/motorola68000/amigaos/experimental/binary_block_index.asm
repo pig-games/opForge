@@ -23,7 +23,7 @@ Live	.word ?
 SPAN_BYTES = Span.Live+2
 STACK = LIMIT*SPAN_BYTES
 SCRATCH_BYTES = STACK+LIMIT*2
-QUEUE = STACK  ; the indexer's nesting stack is dead after index returns
+QUEUE = STACK; the indexer's nesting stack is dead after index returns
 	.section bss, kind=bss
 	.priv
 Base	.res long, 1

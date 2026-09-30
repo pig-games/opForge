@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_encoding
 	.cpu 68020
 	.include "telemetry_macros.i"
+	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_shapes as shapes
 	.use experimental.amigaos.binary_dependencies as dependencies
@@ -63,7 +64,7 @@ OperandShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
 Records	.res byte, 128
-Execution	.res byte, encoding.Context.PositionProofTarget+2
+Execution	.res byte, encoding.Context.InputTarget+2
 Output	.res byte, 4096
 FixupCount	.res word, 1
 FixupOffsets	.res long, 16
@@ -73,6 +74,16 @@ FixupTargets	.res word, 16
 PositionProofCount	.res word, 1
 PositionProofTarget	.res word, 1
 ProjectedTarget	.res word, 1
+ScalarTarget	.res word, 1
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	.pub
+Selection	.res byte, SelectionPosition.Projection+4
+	.priv
+.endif
+.endif
+.endif
 	.endsection
 
 	.section code, kind=code
@@ -83,6 +94,7 @@ ProjectedTarget	.res word, 1
 ; Returns D0=0 on success, D1=byte count, A1=output. A0 may change;
 ; D2-D7/A2-A6 are preserved. No source spelling is consulted.
 encode	.block
+	.SELECTION_POSITION_CLEAR Selection
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION
 	movem.l d2-d7/a2-a6, -(sp)
 	clr.w FixupCount
@@ -155,6 +167,7 @@ rowLoop
 	beq.w fail
 	tst.l d0
 	bne.w nextRow
+	.SELECTION_POSITION_CANDIDATE Selection, package.Row.Priority(a5), package.Row.Recipe(a5)
 	cmpi.b #RECIPE_UNSUPPORTED, package.Row.Recipe(a5)
 	beq.w fail
 	movem.l d3/d6-d7/a2/a5, -(sp)
@@ -759,6 +772,7 @@ bad
 
 tryRow	.block
 	clr.w Unresolved
+	move.w #$ffff, ScalarTarget
 	moveq #0, d0
 	move.b package.Row.Recipe(a5), d0
 	cmpi.b #RECIPE_NONE, d0
@@ -883,6 +897,8 @@ branchStateReady
 	jsr encoding.semantic
 	tst.l d0
 	bne.w bad
+	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
+	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
 	cmpi.b #RECIPE_SEMANTIC_TABLE, package.Row.Recipe(a5)
 	bne.w return
 	; Semantic inputs are dead. Reuse their storage so TABL output cannot
@@ -1196,6 +1212,7 @@ loop
 	beq.w recordReady
 	move.b #4, (a3)+
 recordReady
+	.SELECTION_POSITION_PROJECTION Selection, package.Projection.Kind(a4)
 	moveq #0, d0
 	move.b package.Projection.Kind(a4), d0
 	cmpi.b #0, d0
@@ -1236,6 +1253,22 @@ recordReady
 	beq.w registerMask
 	bra.w bad
 expressionValue
+	move.w package.ScalarProjection.Flags(a4), d0
+	beq.w plainExpression
+	cmpi.w #package.SCALAR_EXACT_IDENTITY, d0
+	bne.w bad
+	cmpi.b #RECIPE_SEMANTIC_BRANCH, package.Row.Recipe(a5)
+	bne.w bad
+	cmpi.w #1, d6
+	bne.w bad
+	tst.b package.Projection.Operand(a4)
+	bne.w bad
+	bsr.w projectionExpression
+	tst.l d0
+	bne.w bad
+	bsr.w scalarIdentity
+	bra.w valueReady
+plainExpression
 	bsr.w projectionExpression
 	bra.w valueReady
 targetExpression
@@ -1269,6 +1302,8 @@ tupleItem
 	bsr.w projectionTupleItem
 	bra.w valueReady
 constantValue
+	tst.w package.Projection.Reserved(a4)
+	bne.w bad  ; constants have no scalar identity metadata
 	move.l package.Projection.Literal(a4), d3
 	moveq #0, d0
 valueReady
@@ -1393,6 +1428,7 @@ nextFixupInput
 	beq.w inputReady
 	move.b #7, (a3)+
 inputReady
+	.SELECTION_POSITION_PROJECTION Selection, package.Projection.Kind(a4)
 	cmpi.b #15, package.Projection.Kind(a4)
 	beq.w scalarTarget
 	cmpi.b #6, package.Projection.Kind(a4)
@@ -1507,6 +1543,42 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; projectionExpression
+
+; Bind optional exact scalar identity after expression validation. Numeric and
+; compound values retain no identity; undefined and absolute names do likewise.
+; D0/CCR=status; all projected values and caller registers are retained.
+scalarIdentity	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	bsr.w operandSpan
+	tst.l d0
+	bne.w done
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w target
+	addq.l #1, a0
+target
+	bsr.w exactTarget
+	tst.l d0
+	bne.w absent
+	cmp.l package.Context.Count(a2), d1
+	bhs.w bad
+	movea.l package.Context.Defined(a2), a0
+	tst.b 0(a0, d1.l)
+	beq.w absent
+	cmpi.b #dependencies.ABSOLUTE, 0(a0, d1.l)
+	beq.w absent
+	move.w d1, ScalarTarget
+absent
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a1
+	tst.l d0
+	rts
+	.bend  ; scalarIdentity
 
 projectionRegister	.block
 	bsr.w operandSpan
@@ -2050,6 +2122,7 @@ prepareExecution	.block
 	move.l #FixupTargets, encoding.Context.FixupTargets(a6)
 	move.w PositionProofCount, encoding.Context.PositionProofCount(a6)
 	move.w PositionProofTarget, encoding.Context.PositionProofTarget(a6)
+	move.w ScalarTarget, encoding.Context.InputTarget(a6)
 	clr.w encoding.Context.MnemonicLength(a6)
 	rts
 	.bend  ; prepareExecution

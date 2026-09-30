@@ -32,6 +32,7 @@ FixupWidths	.long ?
 FixupTargets	.long ?
 PositionProofCount	.word ?
 PositionProofTarget	.word ?
+InputTarget	.word ?  ; optional exact scalar identity; $ffff means absent
 .endstruct
 
 MALFORMED_TEXT_LEN = 30
@@ -373,6 +374,19 @@ branchSuffixReady
 	sub.l a1, d1
 	cmp.w Context.WriteOffset(a6), d1
 	bls.w branchFail
+	; A resolved successful package branch cancels its source position.
+	; Exact target identity is caller-bound input, never inferred from bytes.
+	tst.w 34(sp)
+	bne.w branchProofReady
+	cmpi.w #$ffff, Context.InputTarget(a6)
+	beq.w branchProofReady
+	move.w Context.PositionProofCount(a6), d0
+	cmpi.w #2, d0
+	bhs.w branchProofReady
+	addq.w #1, d0
+	move.w d0, Context.PositionProofCount(a6)
+	move.w Context.InputTarget(a6), Context.PositionProofTarget(a6)
+branchProofReady
 	moveq #0, d0
 	bra.w branchReturn
 

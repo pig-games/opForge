@@ -35,7 +35,7 @@ EncodeTableMalformedText
 
 	.section bss, kind=bss
 	.priv
-Execution	.res byte, execution.Context.PositionProofTarget+2
+Execution	.res byte, execution.Context.InputTarget+2
 BindingId
 	.res word, 1
 BindingPending
@@ -938,6 +938,7 @@ prepareExecution	.block
 	move.l #buffers.SemanticOutputFixupTargetSymbolIndices, execution.Context.FixupTargets(a6)
 	clr.w execution.Context.PositionProofCount(a6)
 	move.w #$ffff, execution.Context.PositionProofTarget(a6)
+	move.w #$ffff, execution.Context.InputTarget(a6)
 	move.l #buffers.CompactSelectorMnemonicText, execution.Context.Mnemonic(a6)
 	move.l #buffers.LAST_ERROR_BUFFER_CAPACITY, execution.Context.Capacity(a6)
 	move.w #buffers.SEMANTIC_OUTPUT_FIXUP_CAPACITY, execution.Context.FixupCapacity(a6)

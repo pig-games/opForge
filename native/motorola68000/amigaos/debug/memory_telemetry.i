@@ -177,6 +177,79 @@ ASSEMBLY_POSITION	.macro capture, passValue, sweepValue, state, modeOffset, sect
 .endif
 .endmacro
 
+; One last attempted numeric selector row and projection, without event growth.
+; Owners gate their 12-byte storage identically. All-ones means not attempted.
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+SelectionPosition	.struct
+Priority	.long ?
+Recipe	.long ?
+Projection	.long ?
+.endstruct
+.endif
+.endif
+.endif
+SELECTION_POSITION_CLEAR	.macro capture
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0/a0, -(sp)
+	moveq #-1, d0
+	lea .capture, a0
+	move.l d0, SelectionPosition.Priority(a0)
+	move.l d0, SelectionPosition.Recipe(a0)
+	move.l d0, SelectionPosition.Projection(a0)
+	movem.l (sp)+, d0/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
+; Priority is a word memory operand, recipe a byte memory operand. Read both
+; before loading the relocated capture base, including for A0-based operands.
+SELECTION_POSITION_CANDIDATE	.macro capture, priorityValue, recipeValue
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0-d1/a0, -(sp)
+	moveq #0, d0
+	moveq #0, d1
+	move.w .priorityValue, d0
+	move.b .recipeValue, d1
+	lea .capture, a0
+	move.l d0, SelectionPosition.Priority(a0)
+	move.l d1, SelectionPosition.Recipe(a0)
+	moveq #-1, d0
+	move.l d0, SelectionPosition.Projection(a0)
+	movem.l (sp)+, d0-d1/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
+; Kind is a byte memory operand; only the projection field is replaced.
+SELECTION_POSITION_PROJECTION	.macro capture, kind
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0/a0, -(sp)
+	moveq #0, d0
+	move.b .kind, d0
+	lea .capture, a0
+	move.l d0, SelectionPosition.Projection(a0)
+	movem.l (sp)+, d0/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
 ; Report three long fields from one relocated base. Same passive progress ABI.
 MEMORY_PROGRESS_BLOCK	.macro dosbase, phase, base, firstOffset, secondOffset, thirdOffset
 .ifdef OPFORGE_DEBUG_CONTRACTS

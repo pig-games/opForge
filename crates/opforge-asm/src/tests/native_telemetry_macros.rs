@@ -528,3 +528,102 @@ fn native_input_macros_are_independently_gated() {
         assemble_memory_telemetry_case("input-enabled", &source, &enabled).len() > disabled.len()
     );
 }
+
+fn selection_position_source(sites: &str) -> String {
+    assembly_position_source(false)
+        .replace("    moveq #7, d0", &format!("    moveq #7, d0\n{sites}"))
+        .replace(
+            "Position .res byte, AssemblyPosition.Count+4",
+            "Position .res byte, SelectionPosition.Projection+4",
+        )
+        .replace(
+            "SectionWords .word 5, 2, 4",
+            "SectionWords .word $fedc\n    .byte $ab, $cd",
+        )
+}
+
+#[test]
+fn native_selection_position_is_triple_gated_and_preserves_setup_frame() {
+    let sites = r#"
+    .SELECTION_POSITION_CLEAR Position
+    .SELECTION_POSITION_CANDIDATE Position, (a0), 2(a0)
+    .SELECTION_POSITION_PROJECTION Position, 3(a0)
+"#;
+    let gates = [
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_PREPARATION_PROGRESS",
+    ];
+    for mask in 0..7 {
+        let defines = gates
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| mask & (1 << index) != 0)
+            .map(|(_, gate)| (*gate).to_string())
+            .collect::<Vec<_>>();
+        let disabled = assemble_memory_telemetry_case(
+            "selection-position-disabled",
+            &selection_position_source(sites),
+            &defines,
+        );
+        let omitted = assemble_memory_telemetry_case(
+            "selection-position-omitted",
+            &selection_position_source(""),
+            &defines,
+        );
+        assert_eq!(
+            disabled, omitted,
+            "incomplete gates must emit no snapshot bytes"
+        );
+    }
+
+    // Host assembly proof: every generated instruction matches a bounded,
+    // balanced preservation sequence, including CCR saved before argument setup.
+    // This does not execute the native code or qualify guest parity.
+    let expected = r#"
+    move.w ccr, -(sp)
+    movem.l d0/a0, -(sp)
+    moveq #-1, d0
+    lea Position, a0
+    move.l d0, 0(a0)
+    move.l d0, 4(a0)
+    move.l d0, 8(a0)
+    movem.l (sp)+, d0/a0
+    move.w (sp)+, ccr
+    move.w ccr, -(sp)
+    movem.l d0-d1/a0, -(sp)
+    moveq #0, d0
+    moveq #0, d1
+    move.w (a0), d0
+    move.b 2(a0), d1
+    lea Position, a0
+    move.l d0, 0(a0)
+    move.l d1, 4(a0)
+    moveq #-1, d0
+    move.l d0, 8(a0)
+    movem.l (sp)+, d0-d1/a0
+    move.w (sp)+, ccr
+    move.w ccr, -(sp)
+    movem.l d0/a0, -(sp)
+    moveq #0, d0
+    move.b 3(a0), d0
+    lea Position, a0
+    move.l d0, 8(a0)
+    movem.l (sp)+, d0/a0
+    move.w (sp)+, ccr
+"#;
+    let defines = gates.map(str::to_string);
+    assert_eq!(
+        assemble_memory_telemetry_case(
+            "selection-position-enabled",
+            &selection_position_source(sites),
+            &defines
+        ),
+        assemble_memory_telemetry_case(
+            "selection-position-preservation",
+            &selection_position_source(expected),
+            &defines
+        ),
+        "enabled snapshot must match the full passive frame and base-relative stores"
+    );
+}

@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42535039; BSP9
+MAGIC = $42533130; BS10
 
 Header	.struct
 Magic	.long ?
@@ -98,6 +98,18 @@ Class	.word ?
 Literal	.long ?
 ValueProgram	.word ?
 Reserved	.word ?
+.endstruct
+
+; Scalar projection kind 0 optionally transports one exact numeric target.
+; The flag is valid only for the canonical branch target input; other bits reject.
+SCALAR_EXACT_IDENTITY = 1
+ScalarProjection	.struct
+Kind	.byte ?
+Operand	.byte ?
+Class	.word ?
+Literal	.long ?
+ValueProgram	.word ?
+Flags	.word ?
 .endstruct
 
 ; Projection kind 18 uses the same 12-byte wire slot with a mask map.

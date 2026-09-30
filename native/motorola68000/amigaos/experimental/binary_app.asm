@@ -20,6 +20,7 @@
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
 	.use experimental.amigaos.binary_block_index as blocks
+	.use experimental.amigaos.binary_encoding as encoding
 .endif
 .endif
 .endif
@@ -53,6 +54,7 @@ PROGRESS_ASSEMBLY_NAME = 25
 PROGRESS_ASSEMBLY_POSITION = 26
 PROGRESS_ASSEMBLY_RECORDS = 27
 PROGRESS_ASSEMBLY_SECTIONS = 28
+PROGRESS_ASSEMBLY_SELECTION = 29
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -231,6 +233,7 @@ reportFailure	.block
 	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_POSITION, assembly.Position, AssemblyPosition.Pass, AssemblyPosition.Sweep, AssemblyPosition.Section
 	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_RECORDS, Work, assembly.Frame.RecordOffset, assembly.Frame.RecordBytes, assembly.Frame.Used
 	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_SECTIONS, assembly.Position, AssemblyPosition.Mode, AssemblyPosition.Count, AssemblyPosition.Pass
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_SELECTION, encoding.Selection, SelectionPosition.Priority, SelectionPosition.Recipe, SelectionPosition.Projection
 located
 	move.l SourceOrdinal, d0
 	lea FailureFile, a0

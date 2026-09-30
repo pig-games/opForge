@@ -1961,5 +1961,67 @@ and mixed-fixup controls remain valid. Regenerating the 370,723-byte committed
 hierarchy package changes only CMSE selector data, with no chunk-layout or size
 change. Broader qualification exposed a separate Rust fixture limitation:
 implicit module generation from the digit-leading `68010_delta.asm` filename
-creates an invalid module ID. This slice does not claim full repository
+creates an invalid module ID. After package refresh, the broader `m680` filter
+reports 198 passes, four failures and four ignored tests. The other failures
+are unchanged legacy source-text assertions in Items 26, 30 and 31 (compact
+table order, fixup helper order and AMMX spelling exclusion); they now run past
+the earlier stale-package assertions. This slice does not claim full repository
 qualification or completed self-hosting.
+
+## Exact branch identity and positional proof
+
+The closer private-block/imported-frame fixture exposed an independent gap:
+`bsr.w run` encoded successfully but failed Hunk marking on pass 2. The scalar
+branch input carried a value without the exact target identity needed to prove
+that the package VM had cancelled the source position. The same callbacks
+passed when a `.long run` entry bypassed that branch.
+
+BS10 now transports an optional exact target ID alongside the canonical branch
+target scalar. Its typed twelve-byte scalar overlay permits flag 1 only on
+branch input one, operand zero. Unknown flags and use in other slots reject.
+Native binds identity only for one defined nonabsolute name; numeric constants,
+undefined names and compound expressions retain the absent sentinel. The VM
+records positional proof only after successful resolved branch emission. Hunk
+policy still requires one matching reference in the same section, with no
+absolute fixup. CPU encoding and position adjustment remain package-owned.
+BS10 is the sole current contract; BSP9 is rejected rather than retained.
+
+Fresh telemetry-off controls on 68020 / 10 MiB:
+
+| Case | Previous result | Current result | Native start-to-done host seconds |
+|---|---|---|---:|
+| Private forward branch and callbacks through imported frame | Exit 20 at branch on pass 2 | Exact Rust 164-byte Hunk | 1.009820500 |
+| Identical callback isolation using `.long run` | Exact Rust 168-byte Hunk, 1.266480875 s | Exact Rust 168-byte Hunk | 1.010126792 |
+| Numeric branch target | Not separately measured | Exact Rust 164-byte Hunk | 1.015773875 |
+| Absolute-constant branch target | Not separately measured | Exact Rust 164-byte Hunk | 1.268588416 |
+
+The isolation control's observed delta is -0.256354083 seconds. Single-run
+variation and coarse polling prevent a speed claim. The ordinary CLI is now
+88,712 bytes (+252), with 99,740 linked reserved bytes (+236). Runtime package
+size is unchanged at 298,408 bytes. Compound/cross-section targets, malformed
+identity metadata and superseded magic have fresh completed rejection evidence.
+An initial malformed-metadata test expected hexadecimal line 13 instead of the
+actual offending MOVE at line 12; its exact diagnostic was corrected and rerun.
+
+A reusable triple-gated twelve-byte selection snapshot records attempted row
+priority, recipe and projection kind. It performs no per-instruction console I/O;
+terminal failure phase 29 reports it alongside the existing position fields.
+Missing any gate removes storage and calls. The instrumented branch control
+still matches the 164-byte Rust Hunk (1.264961292 s, 92,988-byte CLI / 105,660
+linked reserved bytes). This is separate from release timing.
+
+Qualification: 187 packed-source Rust tests, fourteen VM package tests, nine
+telemetry macro tests, eight fresh native checks and the separate instrumented
+control; affected assembly formatting (54 files), Rust formatting and engineering
+guards pass. Independent GPT-6.1 Sol review found no concrete bounds, ABI, stale
+identity/proof or layering issue. The locked-Mac run stopped before guest START
+and was discarded; it provides no native completion or timing evidence. The
+previous broader qualification limitations remain. Full self-hosting is pending.
+
+The identical frozen full-input release run still rejects at origin `0x09`,
+line 1284, after 273.627312542 runner seconds versus 273.785763458 before this
+slice (-0.158450916 seconds). This is the separate observation for this change,
+not a speed claim. Source/hash and 88,096-byte four-segment Rust oracle remain
+unchanged. The branch proof repair does not explain the full encoding rejection;
+the separately instrumented selection snapshot is the next discriminator. No
+self-host Hunk was produced.

@@ -75,6 +75,9 @@ mod absolute_memory;
 #[path = "binary_source_callback.rs"]
 mod callback;
 
+#[path = "binary_source_callback_scope.rs"]
+mod callback_scope;
+
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;
 
@@ -103,7 +106,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BSP9");
+        assert_eq!(&bytes[..4], b"BS10");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);

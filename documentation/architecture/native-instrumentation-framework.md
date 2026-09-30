@@ -160,6 +160,28 @@ section filtering, repeated passes and loop replay prevent that inference.
 An explicit failed guest completion remains a failed assembly; progress capture
 does not turn it into artifact parity or release timing.
 
+`SelectionPosition` is a separate 12-byte owner snapshot of the last attempted
+numeric package row: u32 `Priority`, `Recipe`, and `Projection`. Its type, storage
+and `SELECTION_POSITION_CLEAR/CANDIDATE/PROJECTION` calls require the same three
+progress gates. Clear initializes every field to `ffffffff` (no candidate yet).
+Candidate receives a word priority memory operand and a byte recipe memory
+operand, zero-extends each, and resets projection to `ffffffff` (no projection
+attempt yet for this row). Projection receives a byte kind memory operand and
+zero-extends it. Inputs must use stable memory addressing, not stack-relative
+or scratch D0/D1-indexed operands. Inputs are read before loading the capture
+base, so A0-based operands are supported. Every macro saves CCR before setup,
+preserves all registers and stack depth, and uses `lea` plus relative field
+stores. Missing any gate emits no calls or type; owners gate storage identically.
+
+Terminal failure phase 29 uses `MEMORY_PROGRESS_BLOCK` to report these fields
+in priority/recipe/projection order alongside the other terminal failure phases. Updates replace
+one bounded snapshot; they perform no console I/O or variable-length logging and
+do not enlarge the MEMD record, event buffer or production request storage.
+Numeric identities describe an attempted row and projection, not their semantic
+meaning or proof that the row completed. The host macro transparency test covers
+all incomplete gate combinations and compares enabled bytes to the explicit
+balanced preservation sequence; it does not execute the guest or establish parity.
+
 The compiler/evaluator counters describe actual calls, not a semantic redundancy
 proof. The previous telemetry record is superseded, with no compatibility decoder.
 

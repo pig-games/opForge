@@ -2043,3 +2043,52 @@ are consolidated. The subsequent native legacy control completed its protocol
 but exited 10 with no exact output, so it remains a separate runtime qualification
 failure. No legacy native parity is claimed, and that old engine is not used
 to replace the compact self-host proof.
+
+## Bare core-keyword symbol binding
+
+The backward `bra.w word` convergence probe confirmed that definitions acquired
+scoped source IDs while bare operands retained the package's core directive ID.
+Binding now treats core directive IDs as statement-head identities; bare operands
+use source scope. Dot-prefixed statements, package instruction/register identities
+and explicit `.res word,count` widths retain their existing responsibilities.
+The writer supplies a width role only for the first operand followed by a comma.
+It reuses the reserved frame word for the configured directive ID; the frame size
+and sole BS10 package contract are unchanged.
+
+The initial repair passed backward branches and data emission but introduced an
+implicit-count regression: `Stage .res MAX_RECORDS * RECORD_BYTES` in the frozen
+`prvm_macro_descriptors.asm` rejected during preparation. That intermediate full
+run took 154.564509334 runner seconds, versus 273.627312542 before this slice.
+It stopped earlier and supplies no performance gain. The corrected width role
+preserves ordinary count-expression binding, including the struct parent scope.
+
+A separate scoped-struct probe exposes an existing convergence gap:
+`imports.captureConstant` records only module-level assignments. Rust accepts
+block-local extent constants, but native preparation rejects their use. Keep both
+the positive Rust/native probe and an explicit fresh rejection readiness check
+until scoped constant capture is implemented; this binding slice does not claim
+that parity. A module-root fixture reproduces the actual self-host reservation
+with `MAX_RECORDS=64`, `RECORD_BYTES=32` and a preceding 32-byte field.
+
+Fresh telemetry-off 68020 / 10 MiB controls after correction match Rust: all
+six backward-label loops (42 bytes, 1.016046375 start-to-done host seconds),
+scoped 6502 data (9 bytes, 0.254020375 s), explicit BSS width/count expressions
+(76-byte Hunk, 12-byte BSS, 1.009661875 s) and the module-root struct extent
+(8 bytes, 1.015251958 s). Tiny-run timing and polling variation prevent speed
+claims. The ordinary CLI is 88,844 bytes with 99,872 linked reserved bytes
+(+132 each); the runtime package remains 298,408 bytes.
+
+The corrected full frozen-source release run completes its fresh negative
+protocol in 297.910580375 runner seconds and advances to origin `0x19`, line 176,
+with no self-host Hunk. The individual observed delta from 273.627312542 seconds
+is +24.283267833 seconds; the changed failure point prevents a performance claim.
+The 61-file, 696,570-byte source and 88,096-byte four-segment Rust oracle remain
+unchanged. A separate instrumented run will identify the new rejection.
+
+Qualification: 189 packed-source Rust tests and the focused oracle additions,
+four fresh positive native controls and the separately completed scoped-constant
+rejection control; 54-file native formatting, Rust formatting, staged CPU boundary,
+instrumentation, proof, ownership, runtime-boundary and workflow guards pass.
+Independent GPT-6.1 Sol review found no concrete writer/binder ABI or bounds issue.
+The broader legacy runtime and Rust qualification limitations recorded above
+remain; this is not full repository qualification or completed self-hosting.

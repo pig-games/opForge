@@ -77,6 +77,8 @@ mod callback;
 
 #[path = "binary_source_callback_scope.rs"]
 mod callback_scope;
+#[path = "binary_source_keyword_labels.rs"]
+mod keyword_labels;
 
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;

@@ -340,7 +340,7 @@ line	.block
 	move.l Frame.SourceBytes(a5), writer.Frame.SourceBytes(a0)
 	movea.l Frame.Package(a5), a1
 	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
-	clr.w writer.Frame.Reserved(a0)
+	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
 	lea PACKED_MAP(a6), a1
 	move.l a1, writer.Frame.PackedMap(a0)
 	.MEMORY_DETAIL_BEGIN #0
@@ -549,7 +549,7 @@ fragmentLine	.block
 	clr.l writer.Frame.SourceBytes(a0)
 	movea.l Frame.Package(a5), a3
 	move.w package.Header.CpuDirective(a3), writer.Frame.NameDirective(a0)
-	clr.w writer.Frame.Reserved(a0)
+	move.w package.Header.ResDirective(a3), writer.Frame.WidthDirective(a0)
 	lea PACKED_MAP(a6), a3
 	move.l a3, writer.Frame.PackedMap(a0)
 	jsr writer.writeLine
@@ -881,7 +881,7 @@ relexGeneratedCall	.block
 	clr.l writer.Frame.SourceBytes(a0)
 	movea.l Frame.Package(a5), a1
 	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
-	clr.w writer.Frame.Reserved(a0)
+	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
 	clr.l writer.Frame.PackedMap(a0)
 	jsr writer.writeLine
 	bne.w generatedRelexBad
@@ -1474,6 +1474,8 @@ bind	.block
 	beq.w packageName
 	cmpi.l #2, d2
 	beq.w packageName
+	cmpi.l #writer.BIND_ROLE_WIDTH, d2
+	beq.w packageName
 	; Column-one names are declarations even when their spelling also occurs
 	; in the package dictionary (for example, an `end` branch label).
 	movea.l LINE_FRAME+writer.Frame.Output(a6), a4
@@ -1512,12 +1514,13 @@ findPackage
 	bne.w advance
 	moveq #0, d1
 	move.w 2(a3), d1
-	; The shared `.end` ID is a directive only in statement-head position.
-	; A bare `end` operand can be a forward source-symbol reference.
+	; Core directive IDs classify statement heads, not bare operands.
+	; Their operand spellings bind in the same source scope as declarations.
 	tst.l d5
 	bne.w packageBound
 	movea.l PACKAGE_BASE(a6), a4
-	cmp.w package.Header.EndDirective(a4), d1
+	bsr.w coreDirectiveOperand
+	tst.l d0
 	beq.w findSymbol
 packageBound
 	moveq #0, d2
@@ -1557,6 +1560,32 @@ done
 	movem.l (sp)+, d3-d7/a2-a6
 	rts
 	.bend  ; bind
+; D1=package identity, A4=package header; D0=0 for a core directive.
+; Preserves the dictionary entry and all source-binding inputs.
+coreDirectiveOperand	.block
+	move.l a0, -(sp)
+	lea package.Header.CpuDirective(a4), a0
+	moveq #5, d0
+loop
+	cmp.w (a0)+, d1
+	beq.w found
+	dbf d0, loop
+	cmp.w package.Header.ForDirective(a4), d1
+	beq.w found
+	cmp.w package.Header.AlignDirective(a4), d1
+	beq.w found
+	cmp.w package.Header.ResDirective(a4), d1
+	beq.w found
+	cmp.w package.Header.EndforDirective(a4), d1
+	beq.w found
+	moveq #1, d0
+	bra.w done
+found
+	moveq #0, d0
+done
+	movea.l (sp)+, a0
+	rts
+	.bend  ; coreDirectiveOperand
 ; Case-insensitive ASCII hash shared by dictionary construction and binding.
 ; A0/D0=bytes/count; D0=8-bit bucket. Clobbers D1-D3/A0; other registers kept.
 hash	.block

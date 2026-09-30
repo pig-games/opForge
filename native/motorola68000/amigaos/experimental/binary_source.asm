@@ -24,6 +24,8 @@ FRAGMENT_LITERAL = 0
 FRAGMENT_FULL_LIST = 10
 FRAGMENT_NAMED = 11
 MACRO_PLAN = 42
+BIND_ROLE_WIDTH = 3
+TOKEN_COMMA = 4
 
 Frame	.struct
 Tokens	.long ?
@@ -40,7 +42,7 @@ Used	.word ?
 Source	.long ?
 SourceBytes	.long ?
 NameDirective	.word ?  ; package ID whose first operand uses the binder; 0 disables
-Reserved	.word ?
+WidthDirective	.word ?  ; package ID whose first comma-separated operand is a width; 0 disables
 PackedMap	.long ?  ; optional Count+1 u16 packed offsets
 	.endstruct
 FRAME_BYTES = Frame.PackedMap+4
@@ -65,7 +67,8 @@ Length	.long ?
 ; operands. Its first operand uses the same binder as identifier spellings.
 ; Result: [u8(total length-1), u8(flags), u16 source line], followed by
 ; Binder input D2 is 1 for the leading name token, 2 for a dotted
-; statement head, otherwise 0.
+; statement head, BIND_ROLE_WIDTH for the first comma-separated WidthDirective operand,
+; otherwise 0. Width names retain package identity; value operands bind normally.
 ; The callback returns the existing D2 qualifier.
 ; TKVM kind bytes: kinds 0/1 have u16 ID,u8 qualifier; kind2 has u32 value;
 ; kind 3 has [u8 decoded byte count, decoded bytes]. Kinds 4..40 have no
@@ -218,6 +221,8 @@ compositeString
 regularToken
 	cmpi.w #2, d3
 	bne.w tokenKindReady
+	moveq #0, d2
+	move.w Frame.NameDirective(a5), d2
 	bsr.w nameOperand
 	tst.l d0
 	beq.w tokenKindReady
@@ -272,6 +277,24 @@ directiveName
 operandName
 	moveq #0, d2
 bindName
+	tst.l d2
+	bne.w callBinder
+	; Only an explicit width followed by a comma has package identity.
+	; A single count expression must retain the normal lexical environment.
+	cmpi.l #2, d7
+	blo.w callBinder
+	cmpi.w #TOKEN_COMMA, Token.Kind+20(a2)
+	bne.w callBinder
+	moveq #0, d2
+	move.w Frame.WidthDirective(a5), d2
+	bsr.w nameOperand
+	moveq #0, d2
+	tst.l d0
+	beq.w restoreLength
+	moveq #BIND_ROLE_WIDTH, d2
+restoreLength
+	move.l d6, d0
+callBinder
 	jsr (a6)
 	tst.l d0
 	bne.w bindFailed
@@ -340,12 +363,12 @@ done
 	rts
 	.bend  ; writeLine
 
-; A3=current output,A5=Frame. D0=1 for the first operand of NameDirective,
-; otherwise zero. Preserve other registers and the numeric token's lexeme A0.
+; A3=current output,A5=Frame,D2=configured directive ID (zero disables).
+; D0=1 for its first operand, otherwise zero. Preserve other registers and A0.
 ; Recognize the emitted statement prefix, including an optional leading label.
 nameOperand	.block
-	movem.l d1/a1, -(sp)
-	tst.w Frame.NameDirective(a5)
+	movem.l d1-d2/a1, -(sp)
+	tst.w d2
 	beq.w no
 	movea.l Frame.Output(a5), a1
 	move.l a3, d0
@@ -353,7 +376,7 @@ nameOperand	.block
 	cmpi.l #9, d0
 	beq.w directive
 	cmpi.l #13, d0
-	beq.w implicitLabel
+	beq.w columnLabel
 	cmpi.l #14, d0
 	bne.w no
 	cmpi.b #1, 4(a1)
@@ -362,7 +385,7 @@ nameOperand	.block
 	bne.w no
 	addq.l #5, a1
 	bra.w directive
-implicitLabel
+columnLabel
 	; Column-one labels acquire their colon in shared scope normalization,
 	; after the writer has already bound this directive's numeric operand.
 	tst.b 1(a1)
@@ -381,14 +404,14 @@ directive
 	move.b 6(a1), d1
 	lsl.w #8, d1
 	move.b 7(a1), d1
-	cmp.w Frame.NameDirective(a5), d1
+	cmp.w d2, d1
 	bne.w no
 	moveq #1, d0
 	bra.w done
 no
 	moveq #0, d0
 done
-	movem.l (sp)+, d1/a1
+	movem.l (sp)+, d1-d2/a1
 	tst.l d0
 	rts
 	.bend  ; nameOperand

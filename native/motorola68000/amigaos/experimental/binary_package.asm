@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42535038; BSP8
+MAGIC = $42535039; BSP9
 
 Header	.struct
 Magic	.long ?
@@ -98,6 +98,18 @@ Class	.word ?
 Literal	.long ?
 ValueProgram	.word ?
 Reserved	.word ?
+.endstruct
+
+; Projection kind 18 uses the same 12-byte wire slot with a mask map.
+MaskProjection	.struct
+Kind	.byte ?
+Operand	.byte ?
+FirstClass	.word ?
+SecondClass	.word ?
+FirstShift	.byte ?
+SecondShift	.byte ?
+ValueProgram	.word ?
+Flags	.word ?
 .endstruct
 
 SequenceStage	.struct

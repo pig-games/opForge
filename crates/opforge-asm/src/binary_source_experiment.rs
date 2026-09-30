@@ -81,7 +81,7 @@ impl<'a> Programs<'a> {
     }
 }
 
-/// Prepare a self-contained BSP8 block for one resolved package hierarchy.
+/// Prepare a self-contained BSP9 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -268,7 +268,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BSP8");
+    out[..4].copy_from_slice(b"BSP9");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -458,7 +458,6 @@ fn write_candidate(
             inputs.as_slice(),
         ),
         CandidateRecipe::SemanticSequence { .. } => (9, MISSING, &[][..]),
-        CandidateRecipe::PackedMaskIndirect { .. } => (8, MISSING, &[][..]),
         CandidateRecipe::Unsupported { .. } => (6, MISSING, &[][..]),
     };
     // Only an exact identity TABL may be elided. A semantic program without
@@ -492,8 +491,7 @@ fn write_candidate(
         "direct_register" => 6,
         _ => 255,
     };
-    let shape = if recipe == 8 { 7 } else { shape };
-    if (program == MISSING && recipe != 8 && recipe != 9) || shape == 255 {
+    if (program == MISSING && recipe != 9) || shape == 255 {
         recipe = 6;
     }
     // Tuple arity is a match predicate, not a scalar input to the SEMV
@@ -527,37 +525,6 @@ fn write_candidate(
             }
         }
     }
-    let structured_offset = if let CandidateRecipe::PackedMaskIndirect {
-        opcode,
-        mask_operand,
-        indirect_operand,
-        indirect_token,
-        reverse_mask,
-        indirect_class,
-        first_class,
-        first_shift,
-        second_class,
-        second_shift,
-    } = &candidate.recipe
-    {
-        if recipe == 8 {
-            align(out);
-            let offset = long(out.len())?;
-            push_word(out, *opcode);
-            out.extend_from_slice(&[*mask_operand, *indirect_operand]);
-            push_word(out, *indirect_class);
-            push_word(out, *first_class);
-            out.extend_from_slice(&[*first_shift, *second_shift]);
-            push_word(out, *second_class);
-            push_word(out, u16::from(*reverse_mask));
-            push_word(out, u16::from(*indirect_token));
-            Some(offset)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
     let sequence_offset = if let CandidateRecipe::SemanticSequence { stages } = &candidate.recipe {
         let offset = write_sequence(out, stages, programs)?;
         if offset.is_none() {
@@ -601,13 +568,11 @@ fn write_candidate(
     set_long(
         out,
         row + 12,
-        sequence_offset.or(structured_offset).unwrap_or(
-            if recipe == 6 || execution_inputs.is_empty() {
-                0
-            } else {
-                long(projection_start)?
-            },
-        ),
+        sequence_offset.unwrap_or(if recipe == 6 || execution_inputs.is_empty() {
+            0
+        } else {
+            long(projection_start)?
+        }),
     );
     out[row + 16] = candidate.width_rank;
     out[row + 17] = u8::from(candidate.unstable_widen);
@@ -989,6 +954,26 @@ fn write_projection(
         }
         projection => (projection, MISSING),
     };
+    if let Projection::RegisterMask {
+        operand,
+        first_class,
+        first_shift,
+        second_class,
+        second_shift,
+        reverse,
+    } = projection
+    {
+        if value_program != MISSING {
+            return Ok(false);
+        }
+        out.extend_from_slice(&[18, *operand]);
+        push_word(out, *first_class);
+        push_word(out, *second_class);
+        out.extend_from_slice(&[*first_shift, *second_shift]);
+        push_word(out, MISSING);
+        push_word(out, u16::from(*reverse));
+        return Ok(true);
+    }
     let (kind, operand, field, literal) = match projection {
         Projection::Expression(operand) => (0, *operand, 0, 0),
         Projection::TargetExpression(operand) => (15, *operand, 0, 0),
@@ -1035,6 +1020,7 @@ fn write_projection(
         Projection::ValueProgram { .. } | Projection::RequiredValueProgram { .. } => {
             return Ok(false)
         }
+        Projection::RegisterMask { .. } => unreachable!(),
     };
     out.extend_from_slice(&[kind, operand]);
     push_word(out, field);

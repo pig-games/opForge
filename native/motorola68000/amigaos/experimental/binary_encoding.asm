@@ -8,7 +8,7 @@
 	.use experimental.amigaos.binary_shapes as shapes
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_hunk_references as references
-	.use experimental.amigaos.binary_mask_unary as mask_unary
+	.use experimental.amigaos.binary_register_mask as register_mask
 	.use opasm.amigaos.binary_expression as expression
 	.use exprvm.amigaos.runtime as exprvm
 	.use tkpkg.amigaos.encoding_execution as encoding
@@ -23,7 +23,6 @@ TOKEN_OPEN_PAREN = 14
 TOKEN_CLOSE_PAREN = 15
 TOKEN_PLUS = 18
 TOKEN_MINUS = 19
-TOKEN_DIVIDE = 22
 
 SHAPE_EMPTY = 0
 SHAPE_SINGLE = 1
@@ -32,11 +31,9 @@ SHAPE_PREFIXED_PAIR = 3
 SHAPE_PAIR = 4
 SHAPE_REGISTER_PAIR = 5
 SHAPE_VALUE_REGISTER = 6
-SHAPE_STRUCTURED_PAIR = 7
 SHAPE_PREFIXED_VALUE = 8
 SHAPE_REGISTER = 9
 SHAPE_VALUE_PAIR = 10
-SHAPE_UNSET = -1
 
 RECIPE_NONE = 0
 RECIPE_U8 = 1
@@ -46,7 +43,6 @@ RECIPE_SEMANTIC_INPUTS = 4
 RECIPE_SEMANTIC_BRANCH = 5
 RECIPE_UNSUPPORTED = 6
 RECIPE_SEMANTIC_TABLE = 7
-RECIPE_PACKED_MASK_UNARY = 8
 RECIPE_SEMANTIC_SEQUENCE = 9
 
 PROGRAM_TABLE = 1
@@ -64,7 +60,6 @@ OperandStart	.res long, 2
 OperandEnd	.res long, 2
 OperandCount	.res word, 1
 OperandShape	.res word, 1
-AlternativeShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
 Records	.res byte, 128
@@ -140,10 +135,7 @@ rowLoop
 	moveq #0, d0
 	move.b package.Row.Shape(a5), d0
 	cmp.w OperandShape, d0
-	beq.w shapeReady
-	cmp.w AlternativeShape, d0
 	bne.w nextRow
-shapeReady
 	moveq #0, d0
 	move.b package.Row.MemberExcluded(a5), d0
 	and.w MemberMask, d0
@@ -251,7 +243,6 @@ splitOperands	.block
 	move.l a1, OperandEnd
 	clr.w OperandCount
 	clr.w OperandShape
-	move.w #SHAPE_UNSET, AlternativeShape
 	cmpa.l a1, a0
 	beq.w emptyOperands
 	moveq #0, d2
@@ -316,60 +307,6 @@ secondValue
 	beq.w pairReady
 	move.w #SHAPE_VALUE_PAIR, OperandShape
 pairReady
-	; Recognize either operand order for the package-owned mask/indirect fragment.
-	movea.l OperandStart+4, a3
-	movea.l OperandEnd+4, a4
-	move.l a4, d0
-	sub.l a3, d0
-	cmpi.l #7, d0
-	bne.w firstWrapped
-	cmpi.b #TOKEN_MINUS, (a3)
-	bne.w firstWrapped
-	cmpi.b #TOKEN_OPEN_PAREN, 1(a3)
-	bne.w firstWrapped
-	cmpi.b #TOKEN_CLOSE_PAREN, 6(a3)
-	bne.w firstWrapped
-	movea.l OperandStart, a0
-	movea.l OperandEnd, a1
-	bra.w maskList
-firstWrapped
-	movea.l OperandStart, a3
-	movea.l OperandEnd, a4
-	move.l a4, d0
-	sub.l a3, d0
-	cmpi.l #7, d0
-	bne.w pairComplete
-	cmpi.b #TOKEN_OPEN_PAREN, (a3)
-	bne.w pairComplete
-	cmpi.b #TOKEN_CLOSE_PAREN, 5(a3)
-	bne.w pairComplete
-	cmpi.b #TOKEN_PLUS, 6(a3)
-	bne.w pairComplete
-	movea.l OperandStart+4, a0
-	movea.l OperandEnd+4, a1
-maskList
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #4, d0
-	blo.w pairComplete
-	cmpi.b #1, (a0)
-	bhi.w pairComplete
-	cmpi.l #4, d0
-	beq.w ambiguousPair
-	cmpi.l #9, d0
-	blo.w pairComplete
-	cmpi.b #TOKEN_MINUS, 4(a0)
-	beq.w structuredPair
-	cmpi.b #TOKEN_DIVIDE, 4(a0)
-	bne.w pairComplete
-structuredPair
-	move.w #SHAPE_STRUCTURED_PAIR, OperandShape
-	bra.w pairComplete
-ambiguousPair
-	; A single name also fits the one-element structured form. Retain its
-	; ordinary pair shape; only package recipes can resolve this ambiguity.
-	move.w #SHAPE_STRUCTURED_PAIR, AlternativeShape
-pairComplete
 	moveq #0, d0
 	rts
 step
@@ -612,6 +549,17 @@ otherStructuredRoot
 	jsr shapes.isScalar
 	tst.l d0
 	bne.w mismatch
+	cmpi.l #5, d4
+	bne.w notMemberForm
+	; A complete raw name/range list cannot satisfy a member root.
+	jsr shapes.isNameSequence
+	tst.l d0
+	bne.w mismatch
+	; A complete indirect/update wrapper also has no member tail.
+	jsr shapes.isWrappedName
+	tst.l d0
+	bne.w mismatch
+notMemberForm
 
 	cmpi.l #8, d4
 	blo.w scalarRoot
@@ -829,45 +777,6 @@ tryRow	.block
 	beq.w semantic
 	cmpi.b #RECIPE_SEMANTIC_SEQUENCE, d0
 	beq.w sequence
-	cmpi.b #RECIPE_PACKED_MASK_UNARY, d0
-	beq.w packedMaskUnary
-	bra.w bad
-packedMaskUnary
-	movea.l package.Context.Package(a2), a4
-	move.l package.Row.Inputs(a5), d0
-	move.l d0, d2
-	addi.l #16, d2
-	bcs.w bad
-	cmp.l package.Header.Bytes(a4), d2
-	bhi.w bad
-	adda.l d0, a4
-	movem.l a2/a5-a6, -(sp)
-	movea.l package.Context.Package(a2), a6
-	tst.b 2(a4)
-	beq.w maskFirst
-	cmpi.b #1, 2(a4)
-	bne.w packedBad
-	tst.b 3(a4)
-	bne.w packedBad
-	movea.l OperandStart+4, a0
-	movea.l OperandEnd+4, a1
-	movea.l OperandStart, a2
-	movea.l OperandEnd, a3
-	bra.w packedEncode
-maskFirst
-	cmpi.b #1, 3(a4)
-	bne.w packedBad
-	movea.l OperandStart, a0
-	movea.l OperandEnd, a1
-	movea.l OperandStart+4, a2
-	movea.l OperandEnd+4, a3
-packedEncode
-	movea.l a6, a5
-	jsr mask_unary.encode
-	movem.l (sp)+, a2/a5-a6
-	rts
-packedBad
-	movem.l (sp)+, a2/a5-a6
 	bra.w bad
 tableU8
 	bsr.w evaluateOperandZero
@@ -1323,6 +1232,8 @@ recordReady
 	beq.w memberValue
 	cmpi.b #17, d0
 	beq.w atomicTarget
+	cmpi.b #18, d0
+	beq.w registerMask
 	bra.w bad
 expressionValue
 	bsr.w projectionExpression
@@ -1332,6 +1243,9 @@ targetExpression
 	bra.w valueReady
 atomicTarget
 	bsr.w projectionAtomicTarget
+	bra.w valueReady
+registerMask
+	bsr.w projectionRegisterMask
 	bra.w valueReady
 registerValue
 	bsr.w projectionRegister
@@ -1945,6 +1859,20 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; projectionTupleValue
+
+; Project a package-mapped register mask through the reusable bounded list
+; parser. The map and reversal reside in this row's projection metadata.
+projectionRegisterMask	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	movem.l a4-a5, -(sp)
+	movea.l package.Context.Package(a2), a5
+	jsr register_mask.project
+	movem.l (sp)+, a4-a5
+return
+	rts
+	.bend  ; projectionRegisterMask
 
 operandSpan	.block
 	moveq #0, d0

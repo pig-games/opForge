@@ -12,11 +12,12 @@ Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
 Current measured frontier: the frozen 61-file input rejects at native origin
-`0x35`, line `0x240` (576), on 68020 / 10 MiB. The origin is a discovery/include
+`0x09`, line `0x504` (1284), on 68020 / 10 MiB. The origin is a discovery/include
 ID, not an index into the sorted Rust manifest; its path still needs mapping.
 The entry-file BSS-to-struct transfers now pass focused exact Hunk comparison.
-See [match facts after export rejection](#match-facts-after-native-export-rejection)
-for the separate change measurement and remaining immediate-transfer probe.
+The register-mask slice below advances beyond the previous restore rejection;
+the new origin-to-path mapping remains unverified. See its separate measurements
+and the retained immediate-address transfer probe.
 No native self-host Hunk exists. Older 59-file measurements below use a different
 input; the current frozen identity is recorded in
 [the scalar-root slice](#complete-scalar-roots-and-target-predicates).
@@ -75,9 +76,9 @@ cases match Rust exactly. The next full run reached a fresh guest exit after
 `00000061` (decimal 97, `move.l #UsageText,d1`). Rust emits a CODE-to-DATA
 relocation for that immediate address. The compact package now has a distinct
 atomic-target match projection, and native fixup identity binding strips the
-immediate marker before reading the symbol. BSP8 is the sole current package
-format; no earlier executor remains. Focused native exact-output cases pass for
-the immediate DATA address and a relocation-free numeric immediate. A renewed
+immediate marker before reading the symbol. That checkpoint used BSP8 with no
+earlier executor; the register-mask slice below migrates it to BSP9. Focused
+native exact-output cases pass for the immediate DATA address and a relocation-free numeric immediate. A renewed
 full self-host comparison is still required. Neither completed guest exit was
 a successful self-host performance measurement. The remaining repeated
 label-to-block search in `mark` is a deferred performance hypothesis, not a
@@ -1848,3 +1849,60 @@ A formerly zero-count PC barrier assertion was corrected: the row was already
 unsupported, and now exports its necessary match facts. The executable ordinary
 PC transfer assertion remains explicit. Eight deterministic guards and seven CPU
 boundary guard unit tests pass. All changes remain experimental.
+
+## Package-mapped register masks
+
+Displaced and plain-indirect register-list restores now execute through ordinary
+semantic VM stages. The canonical package owns the opcode, register classes,
+bit mapping and reversal; native projects a bounded numeric name/range/join list.
+The typed twelve-byte mask overlay is read directly from package memory, with no
+scratch descriptor or output buffer. The superseded recipe 8, special operand
+shape and unary encoder are removed. BSP9 is the sole supported format.
+
+Earlier member-only unsupported rows had also blocked these operands. Complete
+raw name sequences and indirect/update wrappers now disprove a required member
+root without interpreting register identity or encoding. Unknown forms retain
+the barrier. A genuine member target remains unsupported natively even though
+Rust accepts it; its fresh rejection is explicitly a boundary control, not parity.
+The accepted mask subset covers unqualified names, ascending ranges and slash
+joins; other canonical list/tuple forms are not claimed by this slice.
+
+Fresh telemetry-off comparisons on 68020 / 10 MiB:
+
+| Case | Before | Final result | Native start-to-done host seconds |
+|---|---|---|---:|
+| Displaced and plain-indirect restores | Native exit 20 | Exact Rust 10 bytes | 0.774912250 |
+| Mixed-class mask | Native exit 20 | Exact Rust 6 bytes | 1.012895291 |
+| Mixed stack forms in compact CLI sections | Native exit 20 | Exact Rust 92-byte Hunk | 0.759260125 |
+| Identical push/pop control | Exact Rust 8 bytes, 0.764328667 s | Exact Rust 8 bytes through generic VM stages | 0.765198292 |
+| Existing transfer matrix | Previously passing | Exact Rust 50 bytes | 1.014832292 |
+
+The control's separate observed delta is +0.000869625 seconds. Polling resolution
+and single-run variation prevent a gain or regression claim on this tiny case.
+Additional fresh comparisons cover word masks, single and duplicate registers,
+and both self-host register lists. Cross-class ranges, an overflowing package
+register ordinal, and the genuinely matching member target still reject.
+
+| Resource | Previous coherent slice | Register-mask slice | Change |
+|---|---:|---:|---:|
+| Compact CLI image bytes | 88,868 | 88,460 | -408 |
+| Compact CLI linked reserved bytes | 99,836 | 99,504 | -332 |
+| Runtime package bytes | 295,656 | 298,408 | +2,752 |
+
+Qualification passes 179 packed-source Rust tests, fourteen VM package tests,
+eleven real-native tests, host compact CLI assembly, affected assembly formatting
+(27 files), Rust formatting, disabled-telemetry byte transparency and relevant
+engineering guards. Scoped architecture enforcement passes; advisory findings
+outside enforced scope remain. Independent GPT-6.1 Sol review found no correctness
+issue in the requested projection, bounds, ABI and structural-proof scope.
+A temporary inline diagnostic trace was discarded because it did not follow the
+reusable instrumentation contract; it supplies no fix evidence and is removed.
+
+The unchanged 61-file / 696,570-byte full self-host input now rejects at origin
+`0x09`, line `0x504` (1284), after 273.213960291 runner seconds versus
+236.051206042 before this slice (+37.162754249 seconds). Its origin-to-path
+mapping is not yet verified. The frozen input hash remains the identity recorded
+above; the Rust oracle remains 88,096 bytes with four Hunk segments. The different
+failure frontier prevents a speed-regression claim. This fresh exit 20 produced
+no self-host Hunk. The callback-address transfer pattern is the next hypothesis
+to isolate, not a confirmed source-path mapping.

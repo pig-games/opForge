@@ -299,14 +299,14 @@ fn binary_selection_self_host_movea_short_native_parity_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; package-owned packed register-list fragment"]
+#[ignore = "requires configured FS-UAE; package-owned reverse register-mask projection"]
 fn binary_selection_self_host_movem_native_parity_fs_uae() {
     assert_eq!(oracle_bytes(SELF_HOST_MOVEM), [0x48, 0xe7, 0x3f, 0x3e]);
     assert_binary_source(SELF_HOST_MOVEM.into(), "m68020".into());
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; package-owned postincrement register-mask fragment"]
+#[ignore = "requires configured FS-UAE; package-owned postincrement register-mask projection"]
 fn binary_selection_self_host_movem_restore_native_parity_fs_uae() {
     assert_binary_source(SELF_HOST_MOVEM_RESTORE.into(), "m68020".into());
 }

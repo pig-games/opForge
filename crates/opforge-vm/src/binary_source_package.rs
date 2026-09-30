@@ -89,18 +89,6 @@ pub enum CandidateRecipe {
     SemanticSequence {
         stages: Vec<SemanticStage>,
     },
-    PackedMaskIndirect {
-        opcode: u16,
-        mask_operand: u8,
-        indirect_operand: u8,
-        indirect_token: u8,
-        reverse_mask: bool,
-        indirect_class: u16,
-        first_class: u16,
-        first_shift: u8,
-        second_class: u16,
-        second_shift: u8,
-    },
     Unsupported {
         plan: u16,
     },
@@ -167,6 +155,14 @@ pub enum Projection {
     },
     TupleArityThree {
         operand: u8,
+    },
+    RegisterMask {
+        operand: u8,
+        first_class: u16,
+        first_shift: u8,
+        second_class: u16,
+        second_shift: u8,
+        reverse: bool,
     },
     ValueProgram {
         program: u16,
@@ -562,9 +558,6 @@ fn non_member_operand(value: &str) -> Option<u8> {
 }
 
 fn parse_recipe(plan: &str, names: &mut NameTable) -> CandidateRecipe {
-    if let Some(recipe) = parse_packed_mask_indirect(plan) {
-        return recipe;
-    }
     match plan {
         "none" => CandidateRecipe::None,
         "u8" => CandidateRecipe::Scalar(ScalarPlan::U8),
@@ -581,60 +574,6 @@ fn parse_recipe(plan: &str, names: &mut NameTable) -> CandidateRecipe {
             plan: names.id(plan),
         },
     }
-}
-
-// A bounded native fragment for a package sequence that emits a literal-plus-
-// register field followed by a register-list mask. Operand order, wrapper,
-// mask order, opcode and register classes come from the selector plan.
-fn parse_packed_mask_indirect(plan: &str) -> Option<CandidateRecipe> {
-    let body = plan.strip_prefix("semv.sequence.v1:encode:enc.template.field-0@literal:")?;
-    let (opcode, rest, indirect_token) =
-        if let Some((opcode, rest)) = body.split_once(",unary_minus_indirect_reg") {
-            (opcode, rest, 19)
-        } else {
-            let (opcode, rest) = body.split_once(",unary_plus_indirect_reg")?;
-            (opcode, rest, 18)
-        };
-    let opcode = opcode.parse::<u16>().ok()?;
-    let (indirect, rest) = rest.split_once(";encode:enc.template.scalar-word@register_mask")?;
-    let (indirect_operand, indirect_class) = indirect.split_once(".class")?;
-    let indirect_operand = indirect_operand.parse::<u8>().ok()?;
-    let indirect_class = indirect_class.parse::<u16>().ok()?;
-    let (mask_operand, mapping) = rest.split_once(".map")?;
-    let mask_operand = mask_operand.parse::<u8>().ok()?;
-    let (mapping, reverse_mask) = if let Some(mapping) = mapping.strip_suffix(".reverse16") {
-        (mapping, true)
-    } else {
-        (mapping, false)
-    };
-    let (first, second) = mapping.split_once('+')?;
-    let (first_class, first_shift) = first.split_once('=')?;
-    let (second_class, second_shift) = second.split_once('=')?;
-    let first_class = first_class.parse::<u16>().ok()?;
-    let first_shift = first_shift.parse::<u8>().ok()?;
-    let second_class = second_class.parse::<u16>().ok()?;
-    let second_shift = second_shift.parse::<u8>().ok()?;
-    if mask_operand > 1
-        || indirect_operand != 1 - mask_operand
-        || first_class == second_class
-        || first_shift > 15
-        || second_shift > 15
-        || opcode & 7 != 0
-    {
-        return None;
-    }
-    Some(CandidateRecipe::PackedMaskIndirect {
-        opcode,
-        mask_operand,
-        indirect_operand,
-        indirect_token,
-        reverse_mask,
-        indirect_class,
-        first_class,
-        first_shift,
-        second_class,
-        second_shift,
-    })
 }
 
 // Only bounded match/encode/fixup sequences are executable. Unknown stages remain
@@ -778,6 +717,9 @@ fn parse_semantic(
 }
 
 fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
+    if let Some(mask) = parse_register_mask(value) {
+        return Some(mask);
+    }
     if let Some(rest) = value.strip_prefix("target_atom:expr") {
         return rest.parse().ok().map(Projection::AtomicTargetExpression);
     }
@@ -902,6 +844,35 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
     None
 }
 
+fn parse_register_mask(value: &str) -> Option<Projection> {
+    let rest = value.strip_prefix("register_mask")?;
+    let (operand, mapping) = rest.split_once(".map")?;
+    let operand = operand.parse::<u8>().ok()?;
+    let (mapping, reverse) = if let Some(mapping) = mapping.strip_suffix(".reverse16") {
+        (mapping, true)
+    } else {
+        (mapping, false)
+    };
+    let (first, second) = mapping.split_once('+')?;
+    let (first_class, first_shift) = first.split_once('=')?;
+    let (second_class, second_shift) = second.split_once('=')?;
+    let first_class = first_class.parse::<u16>().ok()?;
+    let first_shift = first_shift.parse::<u8>().ok()?;
+    let second_class = second_class.parse::<u16>().ok()?;
+    let second_shift = second_shift.parse::<u8>().ok()?;
+    if operand > 1 || first_class == second_class || first_shift > 15 || second_shift > 15 {
+        return None;
+    }
+    Some(Projection::RegisterMask {
+        operand,
+        first_class,
+        first_shift,
+        second_class,
+        second_shift,
+        reverse,
+    })
+}
+
 fn parse_member_projection(value: &str) -> Option<(u8, &str)> {
     let rest = value.strip_prefix("member")?;
     let (operand, qualifier) = rest.split_once(MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR)?;
@@ -1002,52 +973,45 @@ impl QualifierTable {
 #[cfg(test)]
 mod tests {
     use super::{
-        known_name_exclusions, member_excluded, parse_member_projection,
-        parse_packed_mask_indirect, parse_projection, BTreeMap, CandidateRecipe, NameTable,
-        NumericRegister, Projection,
+        known_name_exclusions, member_excluded, parse_member_projection, parse_projection,
+        parse_register_mask, BTreeMap, CandidateRecipe, NameTable, NumericRegister, Projection,
     };
 
     #[test]
-    fn packed_mask_fragment_requires_exact_package_sequence() {
-        let plan = "semv.sequence.v1:encode:enc.template.field-0@literal:18656,unary_minus_indirect_reg1.class1;encode:enc.template.scalar-word@register_mask0.map0=0+1=8.reverse16";
+    fn register_mask_projection_requires_bounded_unambiguous_map() {
         assert_eq!(
-            parse_packed_mask_indirect(plan),
-            Some(CandidateRecipe::PackedMaskIndirect {
-                opcode: 18656,
-                mask_operand: 0,
-                indirect_operand: 1,
-                indirect_token: 19,
-                reverse_mask: true,
-                indirect_class: 1,
+            parse_register_mask("register_mask1.map0=0+1=8"),
+            Some(Projection::RegisterMask {
+                operand: 1,
                 first_class: 0,
                 first_shift: 0,
                 second_class: 1,
                 second_shift: 8,
+                reverse: false,
             })
         );
-        let restore = "semv.sequence.v1:encode:enc.template.field-0@literal:19672,unary_plus_indirect_reg0.class1;encode:enc.template.scalar-word@register_mask1.map0=0+1=8";
         assert_eq!(
-            parse_packed_mask_indirect(restore),
-            Some(CandidateRecipe::PackedMaskIndirect {
-                opcode: 19672,
-                mask_operand: 1,
-                indirect_operand: 0,
-                indirect_token: 18,
-                reverse_mask: false,
-                indirect_class: 1,
+            parse_register_mask("register_mask0.map0=0+1=8.reverse16"),
+            Some(Projection::RegisterMask {
+                operand: 0,
                 first_class: 0,
                 first_shift: 0,
                 second_class: 1,
                 second_shift: 8,
+                reverse: true,
             })
         );
-        for unsupported in [
-            plan.replace("reverse16", "reverse8"),
-            plan.replace("register_mask0", "register_mask1"),
-            plan.replace("18656", "18657"),
-            format!("{plan};encode:extra"),
+        for invalid in [
+            "register_mask2.map0=0+1=8",
+            "register_mask1.map0=0+0=8",
+            "register_mask1.map0=32+1=8",
+            "register_mask1.map0=0+1=32",
+            "register_mask1.map0=16+1=8",
+            "register_mask1.map0=16+1=8.reverse16",
+            "register_mask1.map0=0+1=8.reverse8",
+            "register_mask1.map0=0+1=8+2=12",
         ] {
-            assert_eq!(parse_packed_mask_indirect(&unsupported), None);
+            assert_eq!(parse_register_mask(invalid), None, "{invalid}");
         }
     }
 

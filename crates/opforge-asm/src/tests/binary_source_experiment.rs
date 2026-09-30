@@ -66,6 +66,9 @@ mod selection;
 #[path = "binary_source_memory_move.rs"]
 mod memory_move;
 
+#[path = "binary_source_movem_restore.rs"]
+mod movem_restore;
+
 #[path = "binary_source_absolute_memory.rs"]
 mod absolute_memory;
 
@@ -97,7 +100,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BSP8");
+        assert_eq!(&bytes[..4], b"BSP9");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
@@ -159,14 +162,7 @@ fn binary_source_packages_prepare() {
             } else {
                 assert_eq!(table, u16::MAX);
             }
-            if bytes[row + 5] == 8 {
-                // Packed-mask indirect stores its 16-byte descriptor in the
-                // input-offset slot even though it has no scalar projections.
-                assert_eq!(input_count, 0);
-                assert!(inputs >= programs + program_count * 12);
-                assert!(inputs + 16 <= runtime_bytes);
-                runtime_references.push((inputs, 16));
-            } else if input_count == 0 {
+            if input_count == 0 {
                 assert_eq!(inputs, 0);
             } else {
                 assert!(inputs >= programs + program_count * 12);

@@ -1353,8 +1353,9 @@ and reproducible timings without claiming a gain or regression.
 Focused Rust qualification: 85 passed, 179 native/explicit-environment tests
 ignored. Assembly formatting (42 imported files), Rust formatting, fresh-native
 proof-contract structure and benchmark-selector guards pass. The CPU boundary
-guard retains nine findings in unchanged `binary_encoding.asm` and
-`binary_mask_unary.asm`; none occurs in this diff. Broad repository qualification
+guard at that checkpoint retained nine findings in `binary_encoding.asm` and
+the former `binary_mask_unary.asm`; none occurred in that diff. The latter is
+superseded by the generic `binary_register_mask.asm` projection reader. Broad repository qualification
 is not claimed. Use the documented FS-UAE environment with the 2 MiB profile:
 `cargo test -p asm compact_struct --lib -- --ignored --nocapture --test-threads=1`
 covers the positive layout cases and explicit readiness/rejection boundaries.

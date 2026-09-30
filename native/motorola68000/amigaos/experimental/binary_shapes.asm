@@ -9,6 +9,7 @@ OPEN_PAREN = 14
 CLOSE_PAREN = 15
 PLUS = 18
 MINUS = 19
+DIVIDE = 22
 	.section code, kind=code
 	.pub
 ; A0/A1=bounded operand. D0=1 for one complete compiled scalar wrapper.
@@ -80,6 +81,43 @@ done
 	movem.l (sp)+, d1-d3/a0-a2
 	rts
 	.bend  ; isMember
+
+; A0/A1=bounded operand. D0=1 only for a complete nonempty sequence of
+; unqualified numeric names joined by '-' or '/'. This proves a raw list root
+; cannot be a parenthesized member; register identity and ranges are not
+; interpreted here. Other registers are preserved; CCR reflects D0.
+isNameSequence	.block
+	movem.l d1/a0, -(sp)
+	cmpa.l a1, a0
+	bhs.w no
+nextName
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	blo.w no
+	cmpi.b #NAME_TAG_MAX, (a0)
+	bhi.w no
+	tst.b 3(a0)
+	bne.w no
+	addq.l #4, a0
+	cmpa.l a1, a0
+	beq.w yes
+	moveq #0, d1
+	move.b (a0)+, d1
+	cmpi.b #MINUS, d1
+	beq.w nextName
+	cmpi.b #DIVIDE, d1
+	beq.w nextName
+no
+	moveq #0, d0
+	bra.w done
+yes
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; isNameSequence
 
 ; A0/A1=bounded operand. D0=1 only for (name), -(name) or (name)+.
 ; A name token must be unqualified. All other registers are preserved;

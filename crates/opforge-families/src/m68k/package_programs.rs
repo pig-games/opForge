@@ -4794,18 +4794,22 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
             width_rank: 0,
         });
     }
-    selectors.push(ModeSelectorDescriptor {
-        owner: ScopedOwner::Family("motorola68000".to_string()),
-        mnemonic: "MOVE.L".to_string(),
-        shape_key: "immediate_register".to_string(),
-        mode_key: "semantic".to_string(),
-        operand_plan: format!(
-            "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target_atom:expr0,reg1.class0;encode:{PARAM_FIELD_9}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}8252,reg1.class0;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0"
-        ),
-        priority: 76,
-        unstable_widen: false,
-        width_rank: 0,
-    });
+    // Keep the atomic matcher used by compact package projection, and add a
+    // general expression matcher with the same absolute-long relocation semantics.
+    for (priority, target_plan) in [(76, "target_atom:expr0"), (77, "target:expr0")] {
+        selectors.push(ModeSelectorDescriptor {
+            owner: ScopedOwner::Family("motorola68000".to_string()),
+            mnemonic: "MOVE.L".to_string(),
+            shape_key: "immediate_register".to_string(),
+            mode_key: "semantic".to_string(),
+            operand_plan: format!(
+                "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{target_plan},reg1.class0;encode:{PARAM_FIELD_9}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}8252,reg1.class0;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0"
+            ),
+            priority,
+            unstable_widen: false,
+            width_rank: 0,
+        });
+    }
     for (mnemonic, _, immediate_base, _, _, _) in MOVE_IMMEDIATE_PROGRAMS.iter().copied().take(3) {
         let immediate_program = match mnemonic {
             "MOVE.B" => PARAM_IMMEDIATE_BYTE_FIELD_9,

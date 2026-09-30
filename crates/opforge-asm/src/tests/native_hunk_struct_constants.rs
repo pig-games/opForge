@@ -88,10 +88,13 @@ fn hunk_instruction_absolute_fields_and_displacements_do_not_relocate() {
 }
 
 #[test]
-#[ignore = "known package path certifies unsupported address arithmetic; tracked in compact frontend plan"]
 fn hunk_instruction_addends_cannot_contain_another_address_base() {
-    for instruction in ["move.l target+target,d3", "move.l #Frame.tail-target,d3"] {
-        let assembler = hunk_field_instruction(instruction, ".cpu 68020", false);
+    for instruction in [
+        "move.l target+target,d3",
+        "move.l #Frame.tail-target,d3",
+        "move.l target+target,target",
+    ] {
+        let assembler = hunk_field_instruction(instruction, ".cpu 68020", true);
         assert!(
             build_linker_output_payload(
                 &assembler.root_metadata.linker_outputs[0],
@@ -100,11 +103,29 @@ fn hunk_instruction_addends_cannot_contain_another_address_base() {
             .is_err(),
             "unsupported address arithmetic must fail closed: {instruction}"
         );
+        // Reject only relocatable output. Flat binary must preserve numeric encoding,
+        // including a valid destination fixup alongside an invalid source expression.
+        let mut binary = assembler.root_metadata.linker_outputs[0].clone();
+        binary.format_id = LinkerOutputFormat::Bin.format_id().to_string();
+        binary.options.insert(
+            "sections".to_string(),
+            LinkerOutputOptionValue::TextList(vec!["code".to_string()]),
+        );
+        let bytes = build_linker_output_payload(&binary, assembler.sections()).unwrap();
+        if instruction == "move.l target+target,target" {
+            assert_eq!(assembler.sections()["code"].output_fixups.len(), 1);
+            assert_eq!(&bytes[..10], &[0x23, 0xf9, 0, 0, 0x60, 0x10, 0, 0, 0, 8]);
+        } else {
+            assert_eq!(
+                bytes,
+                assembler.sections()["code"].bytes,
+                "flat binary encoding must remain available: {instruction}"
+            );
+        }
     }
 }
 
 #[test]
-#[ignore = "known complex immediate expression bypasses relocation; tracked in compact frontend plan"]
 fn hunk_instruction_named_immediate_addends_require_relocation() {
     let assembler = hunk_field_instruction("move.l #target+Frame.tail,d3", ".cpu 68020", false);
     let code = &assembler.sections()["code"];
@@ -117,7 +138,6 @@ fn hunk_instruction_named_immediate_addends_require_relocation() {
 }
 
 #[test]
-#[ignore = "known placed-section stabilization rebases symbols twice; tracked in compact frontend plan"]
 fn hunk_68020_placed_section_stabilization_must_not_rebase_twice() {
     // Literal and bare-label controls reproduce the independent placement bug.
     for (instruction, addend) in [("move.l target,d3", 8u32), ("move.l target+4,d3", 12)] {

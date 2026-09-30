@@ -13467,3 +13467,41 @@ fn serialized_state_program_primitive_is_cross_family() {
         );
     }
 }
+
+#[test]
+fn absolute_fixup_provenance_preserves_missing_targets_in_mixed_steps() {
+    use package::{
+        compile_fixup_program, EncodingEndian, FixupBase, FixupEncodingStep, FixupRange,
+        FixupTransform, PortableRelocationKind, UnresolvedValuePolicy,
+    };
+    let step = |input, relocation| FixupEncodingStep {
+        input,
+        width: 4,
+        endian: EncodingEndian::Big,
+        base: FixupBase::Value,
+        range: FixupRange::Unsigned,
+        unresolved: UnresolvedValuePolicy::Reject,
+        relocation,
+        transform: FixupTransform::Identity,
+    };
+    let program = compile_fixup_program(&[
+        step(0, PortableRelocationKind::Absolute),
+        step(1, PortableRelocationKind::Absolute),
+        step(2, PortableRelocationKind::None),
+    ])
+    .unwrap();
+    let input = |target| PortableFixupInput {
+        value: PortableDeferredValue::Resolved(12),
+        target_reference: true,
+        relocation_target: target,
+    };
+    let result = crate::fixup_vm::execute_fixup_program(
+        &program,
+        &[input(Some("target".to_string())), input(None), input(None)],
+        PortableFixupContext { position: 0 },
+    )
+    .unwrap();
+    assert_eq!(result.fixups.len(), 1);
+    assert_eq!(result.unrepresented_absolute_inputs, [1]);
+    assert_eq!(result.bytes.len(), 12);
+}

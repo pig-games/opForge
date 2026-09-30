@@ -127,6 +127,8 @@ use vm::rollout::{
     FamilyRuntimeMode,
 };
 
+#[path = "tests/hunk_placed_rebasing.rs"]
+mod hunk_placed_rebasing;
 #[path = "tests/native_cli_diagnostic_routing.rs"]
 mod native_cli_diagnostic_routing;
 #[path = "tests/native_compact_memo.rs"]
@@ -28698,28 +28700,16 @@ fn section_symbols_are_finalized_from_layout_before_pass2() {
 #[test]
 fn section_symbol_finalize_reports_address_overflow() {
     let mut symbols = SymbolTable::new();
-    assert_eq!(
-        symbols.add(
-            "main.start",
-            u32::MAX,
-            false,
-            SymbolVisibility::Private,
-            None
-        ),
-        SymbolTableResult::Ok
-    );
     let registry = default_registry();
     let mut asm = make_asm_line(&mut symbols, &registry);
-    asm.layout.sections.insert(
-        "code".to_string(),
-        SectionState {
-            base_addr: Some(1),
-            ..SectionState::default()
-        },
-    );
-    asm.layout
-        .section_symbol_sections
-        .insert("main.start".to_string(), "code".to_string());
+    // Capture a real section label so its origin participates in finalization.
+    for line in [".module main", ".section code", "start:"] {
+        assert_ne!(process_line(&mut asm, line, 0, 1), LineStatus::Error);
+    }
+    let entry = asm.symbols.entry_mut("main.start").expect("captured label");
+    entry.val = u32::MAX;
+    entry.updated = false;
+    asm.layout.sections.get_mut("code").unwrap().base_addr = Some(1);
 
     let errors = asm.finalize_section_symbol_addresses();
     assert_eq!(errors.len(), 1);
@@ -36680,8 +36670,7 @@ fn linker_output_hunk_live_path_explicit_and_unplaced_payloads_match_for_equate_
 }
 
 #[test]
-fn linker_output_hunk_live_path_rejects_unsupported_move_immediate_symbolic_expression_explicitly()
-{
+fn linker_output_hunk_live_path_accepts_same_section_immediate_difference_without_relocation() {
     let assembler = run_passes(&[
         ".module main",
         ".cpu 68000",
@@ -36702,18 +36691,15 @@ fn linker_output_hunk_live_path_rejects_unsupported_move_immediate_symbolic_expr
         .first()
         .expect("output directive");
 
-    let err = build_linker_output_payload(output, assembler.sections())
-        .expect_err("unsupported symbolic immediate expression should fail explicitly");
-    assert!(
-        err.message()
-            .contains("format=hunk does not support this symbolic instruction form in v0.3"),
-        "unexpected message: {}",
-        err.message()
-    );
+    let code = &assembler.sections()["code"];
+    assert_eq!(&code.bytes[..6], &[0x22, 0x3c, 0xff, 0xff, 0xff, 0xff]);
+    assert!(code.output_fixups.is_empty());
+    build_linker_output_payload(output, assembler.sections())
+        .expect("same-section address difference is an absolute constant");
 }
 
 #[test]
-fn linker_output_hunk_live_path_rejects_move_immediate_symbol_plus_equate_outside_v03_matrix() {
+fn linker_output_hunk_live_path_relocates_move_immediate_symbol_plus_equate() {
     let assembler = run_passes(&[
         ".module main",
         ".cpu 68000",
@@ -36734,14 +36720,18 @@ fn linker_output_hunk_live_path_rejects_move_immediate_symbol_plus_equate_outsid
         .first()
         .expect("output directive");
 
-    let err = build_linker_output_payload(output, assembler.sections())
-        .expect_err("MOVE.L #label+equate should remain outside the frozen v0.3 matrix");
-    assert!(
-        err.message()
-            .contains("format=hunk does not support this symbolic instruction form in v0.3"),
-        "unexpected message: {}",
-        err.message()
-    );
+    let code = &assembler.sections()["code"];
+    assert_eq!(&code.bytes[..6], &[0x22, 0x3c, 0, 0, 0, 12]);
+    assert_eq!(code.output_fixups.len(), 1);
+    assert_eq!(code.output_fixups[0].offset, 2);
+    assert_eq!(code.output_fixups[0].target_section_name(), Some("code"));
+    let payload = build_linker_output_payload(output, assembler.sections())
+        .expect("one address base plus an absolute equate has a relocation proof");
+    let words = payload
+        .chunks_exact(4)
+        .map(|word| u32::from_be_bytes(word.try_into().unwrap()))
+        .collect::<Vec<_>>();
+    assert!(words.windows(5).any(|words| words == [1004, 1, 0, 2, 0]));
 }
 
 #[test]

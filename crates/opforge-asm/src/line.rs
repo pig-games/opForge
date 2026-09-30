@@ -241,6 +241,8 @@ pub struct AsmLine<'a> {
     line_end_token: Option<String>,
     pub bytes: Vec<u8>,
     pending_output_fixups: Vec<OutputFixupRecord>,
+    // Capture-time origins differ from final placement during stabilization.
+    section_symbol_starts: HashMap<String, u32>,
     start_addr: u32,
     aux_value: u32,
     pass: u8,
@@ -446,6 +448,7 @@ impl<'a> AsmLine<'a> {
             line_end_token: None,
             bytes: Vec::with_capacity(256),
             pending_output_fixups: Vec::new(),
+            section_symbol_starts: HashMap::new(),
             start_addr: 0,
             aux_value: 0,
             pass: 1,
@@ -724,8 +727,18 @@ impl<'a> AsmLine<'a> {
             else {
                 continue;
             };
+            // Seeded provenance can include symbols not redefined in this pass;
+            // their existing addresses must not be rebased a second time.
+            let Some(start_pc) = self.section_symbol_starts.remove(&symbol_name) else {
+                continue;
+            };
             if let Some(entry) = self.symbols.entry_mut(&symbol_name) {
-                match entry.val.checked_add(base_addr) {
+                // Use the origin at label capture, before .place can change it.
+                let rebased = entry
+                    .val
+                    .checked_sub(start_pc)
+                    .and_then(|offset| base_addr.checked_add(offset));
+                match rebased {
                     Some(value) => {
                         entry.val = value;
                         entry.updated = true;
@@ -1605,6 +1618,10 @@ impl<'a> AsmLine<'a> {
 
     fn track_section_symbol(&mut self, full_name: &str) {
         if let Some(section_name) = self.layout.current_section.as_ref() {
+            if let Some(section) = self.layout.sections.get(section_name) {
+                self.section_symbol_starts
+                    .insert(full_name.to_string(), section.start_pc);
+            }
             self.layout
                 .section_symbol_sections
                 .insert(full_name.to_string(), section_name.clone());
@@ -2876,7 +2893,6 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn is_absolute_symbol(&self, name: &str) -> bool {
         // Dotted identifiers and member ASTs must resolve the same struct field.
         if let Some((owner, field)) = name.rsplit_once('.') {
@@ -2899,7 +2915,6 @@ impl<'a> AsmLine<'a> {
             .is_some_and(|resolved| self.layout.absolute_constant_symbols.contains(&resolved))
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn expr_is_absolute_constant_symbol_expr(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Number(_, _) | Expr::String(_, _) => true,
@@ -2967,12 +2982,6 @@ impl<'a> AsmLine<'a> {
             | Expr::Index { .. }
             | Expr::Call { .. } => false,
         }
-    }
-
-    #[cfg(feature = "vm-runtime-only")]
-    #[allow(dead_code)]
-    fn expr_is_absolute_constant_symbol_expr(&self, expr: &Expr) -> bool {
-        Self::expr_is_relocation_free_literal(expr)
     }
 
     fn operands_are_relocation_free_literals(operands: &[Expr]) -> bool {

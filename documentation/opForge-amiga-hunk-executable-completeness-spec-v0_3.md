@@ -339,8 +339,16 @@ Supported in `v0.3`:
 For supported absolute-long address encodings, the address may include a literal,
 constant equate or struct-field addend: `label+const`, `const+label` or
 `label-const`. The result retains one `HUNK_RELOC32` base; named offsets are
-absolute values, not additional relocation bases. This does not extend the
-supported instruction encodings or complex immediate-expression boundary.
+absolute values, not additional relocation bases. `MOVE.L #label+const,Dn`
+uses this same rule, including named equates and struct-field addends. A
+same-section address difference is absolute and emits no relocation. These
+rules do not extend other instruction sizes or immediate destination forms.
+
+Placed-section symbols retain their capture-time origin during layout
+stabilization, so a section base is applied once. An absolute package fixup whose
+expression has no representable base must fail Hunk output, including when
+another operand in the same instruction has a valid relocation. Flat binary
+output remains available for the evaluated numeric expression.
 
 Explicit-only in `v0.3`:
 
@@ -351,7 +359,6 @@ Explicit-only in `v0.3`:
 - instruction forms with more than one relocatable symbol-bearing operand
 - symbolic expression forms more complex than `label+const` for executable data
   fixups
-- symbolic instruction expressions with addends such as `#label+const`
 - instruction expressions containing multiple address bases or a constant minus
   an address base
 - symbolic indexed or full-extension-addressing cases that would require new

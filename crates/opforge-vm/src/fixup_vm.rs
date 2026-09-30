@@ -45,6 +45,8 @@ pub struct PortableFixupResult {
     pub bytes: Vec<u8>,
     pub fixups: Vec<PortableOutputFixup>,
     pub deferred_inputs: Vec<u8>,
+    /// Absolute fixup inputs without a target; callers distinguish constants.
+    pub unrepresented_absolute_inputs: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -184,6 +186,7 @@ pub fn execute_fixup_program_for_version(
     let mut bytes = Vec::new();
     let mut fixups = Vec::new();
     let mut deferred_inputs = Vec::new();
+    let mut unrepresented_absolute_inputs = Vec::new();
 
     for (ordinal, step) in steps.into_iter().enumerate() {
         // Decoded-step positions are ordinals; each fixup encoding step is PROJECT (0x01).
@@ -255,6 +258,8 @@ pub fn execute_fixup_program_for_version(
                     target: target.clone(),
                     encoded_addend: value as u32,
                 });
+            } else if !unrepresented_absolute_inputs.contains(&step.input) {
+                unrepresented_absolute_inputs.push(step.input);
             }
         }
     }
@@ -263,6 +268,7 @@ pub fn execute_fixup_program_for_version(
         bytes,
         fixups,
         deferred_inputs,
+        unrepresented_absolute_inputs,
     })
 }
 

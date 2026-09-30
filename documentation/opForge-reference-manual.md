@@ -1796,13 +1796,20 @@ offset. `target+offset`, `offset+target` and `target-offset` retain the target's
 offset = 4
 MOVE.L target+offset,D0
 MOVE.L D0,target+offset
+MOVE.L #target+offset,D1
 ```
+
+`MOVE.L` immediate-to-data-register operands follow the same rule. A difference
+between two addresses in the same section is absolute and needs no relocation.
+Expressions with multiple address bases, or a constant minus an address, cannot
+be represented by `HUNK_RELOC32` and are rejected for Hunk output; flat binary
+output still permits their evaluated numeric values.
 
 Representative explicit-only or unsupported forms include:
 
 ```asm
 MOVE.L target1,target2
-MOVE.L #target+4,D1
+MOVE.L #target+target,D1
 MOVE.L (target,A0),D0
 ```
 

@@ -61,6 +61,7 @@ use crate::runtime_model_types::{
 };
 
 pub(crate) const RELOCATION_FREE_CANDIDATE_MARKER: &[u8] = &[0xff, b'O', b'F', 1];
+pub(crate) const UNREPRESENTED_ABSOLUTE_RELOCATION_CANDIDATE_MARKER: &[u8] = &[0xff, b'O', b'F', 3];
 const OUTPUT_FIXUP_CANDIDATE_MARKER_PREFIX: &[u8] = &[0xff, b'O', b'F', 2];
 const MAX_OUTPUT_FIXUP_TARGET_BYTES: usize = 1024;
 
@@ -125,6 +126,7 @@ fn decode_output_fixup_candidate_marker(
 
 fn is_candidate_effect_marker(bytes: &[u8]) -> bool {
     bytes == RELOCATION_FREE_CANDIDATE_MARKER
+        || bytes == UNREPRESENTED_ABSOLUTE_RELOCATION_CANDIDATE_MARKER
         || bytes.starts_with(OUTPUT_FIXUP_CANDIDATE_MARKER_PREFIX)
 }
 use crate::runtime_portable_types::PortableTokenizeRequest;
@@ -861,6 +863,9 @@ impl RuntimeModelCore {
                 .operand_bytes
                 .iter()
                 .any(|operand| operand.as_slice() == RELOCATION_FREE_CANDIDATE_MARKER);
+            let unrepresented_absolute_relocation = candidate.operand_bytes.iter().any(|operand| {
+                operand.as_slice() == UNREPRESENTED_ABSOLUTE_RELOCATION_CANDIDATE_MARKER
+            });
             let mut output_fixups = Vec::new();
             for operand in &candidate.operand_bytes {
                 if let Some(fixup) = decode_output_fixup_candidate_marker(operand)? {
@@ -886,6 +891,7 @@ impl RuntimeModelCore {
                                 bytes,
                                 crate::runtime_model_types::VmInstructionEffects {
                                     relocation_free,
+                                    unrepresented_absolute_relocation,
                                     output_fixups,
                                 },
                             ))

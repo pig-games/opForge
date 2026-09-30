@@ -156,6 +156,10 @@ pub trait AssemblerContext {
     fn symbol_is_absolute_constant(&self, _name: &str) -> bool {
         false
     }
+    /// Whether an expression has an absolute value independent of relocation.
+    fn expression_is_absolute_constant(&self, expr: &Expr) -> bool {
+        !expr_has_symbol_references(expr)
+    }
     fn symbol_is_target_reference(&self, _name: &str) -> bool {
         false
     }

@@ -346,7 +346,7 @@ impl<'a> AsmLine<'a> {
                         ))
                     }
                 };
-                let has_output_fixups = !effects.output_fixups.is_empty();
+                self.record_instruction_relocation_proof(mnemonic, operands, &effects);
                 for fixup in effects.output_fixups {
                     if fixup.width != 4
                         || fixup.kind != vm::fixup_vm::PortableOutputFixupKind::Absolute
@@ -380,17 +380,6 @@ impl<'a> AsmLine<'a> {
                     self.pending_output_fixups.push(output_fixup);
                 }
                 self.bytes.extend_from_slice(&bytes);
-                if self.in_section()
-                    && !effects.relocation_free
-                    && !has_output_fixups
-                    && operands
-                        .iter()
-                        .any(|expr| self.instruction_expr_references_target(expr))
-                {
-                    self.mark_current_section_hunk_fixup_error(&format!(
-                        "format=hunk does not support this symbolic instruction form in v0.3: instruction {mnemonic} with operands {operands:?} references a relocatable symbol but its package encoding emitted no output fixup"
-                    ));
-                }
                 Some(LineStatus::Ok)
             }
             Ok(None) => None,
@@ -2123,7 +2112,7 @@ impl<'a> AsmLine<'a> {
                         ))
                     }
                 };
-                let has_output_fixups = !effects.output_fixups.is_empty();
+                self.record_instruction_relocation_proof(mnemonic, operands, &effects);
                 for fixup in effects.output_fixups {
                     if fixup.width != 4
                         || fixup.kind != vm::fixup_vm::PortableOutputFixupKind::Absolute
@@ -2157,17 +2146,6 @@ impl<'a> AsmLine<'a> {
                     self.pending_output_fixups.push(output_fixup);
                 }
                 self.bytes.extend_from_slice(&bytes);
-                if self.in_section()
-                    && !effects.relocation_free
-                    && !has_output_fixups
-                    && operands
-                        .iter()
-                        .any(|expr| self.instruction_expr_references_target(expr))
-                {
-                    self.mark_current_section_hunk_fixup_error(&format!(
-                        "format=hunk does not support this symbolic instruction form in v0.3: instruction {mnemonic} with operands {operands:?} references a relocatable symbol but its package encoding emitted no output fixup"
-                    ));
-                }
                 Some(LineStatus::Ok)
             }
             Ok(None) => Some(self.failure(
@@ -2182,6 +2160,26 @@ impl<'a> AsmLine<'a> {
                 &err.to_string(),
                 None,
             )),
+        }
+    }
+
+    fn record_instruction_relocation_proof(
+        &mut self,
+        mnemonic: &str,
+        operands: &[Expr],
+        effects: &vm::runtime_model_types::VmInstructionEffects,
+    ) {
+        if self.in_section()
+            && (effects.unrepresented_absolute_relocation
+                || (!effects.relocation_free
+                    && effects.output_fixups.is_empty()
+                    && operands
+                        .iter()
+                        .any(|expr| self.instruction_expr_references_target(expr))))
+        {
+            self.mark_current_section_hunk_fixup_error(&format!(
+                "format=hunk does not support this symbolic instruction form in v0.3: instruction {mnemonic} with operands {operands:?} lacks a valid package relocation proof"
+            ));
         }
     }
 
@@ -2345,7 +2343,7 @@ impl<'a> AsmLine<'a> {
                         ))
                     }
                 };
-                let has_output_fixups = !effects.output_fixups.is_empty();
+                self.record_instruction_relocation_proof(mnemonic, runtime_expr_operands, &effects);
                 for fixup in effects.output_fixups {
                     if fixup.width != 4
                         || fixup.kind != vm::fixup_vm::PortableOutputFixupKind::Absolute
@@ -2379,17 +2377,6 @@ impl<'a> AsmLine<'a> {
                     self.pending_output_fixups.push(output_fixup);
                 }
                 self.bytes.extend_from_slice(&bytes);
-                if self.in_section()
-                    && !effects.relocation_free
-                    && !has_output_fixups
-                    && runtime_expr_operands
-                        .iter()
-                        .any(|expr| self.instruction_expr_references_target(expr))
-                {
-                    self.mark_current_section_hunk_fixup_error(&format!(
-                        "format=hunk does not support this symbolic instruction form in v0.3: instruction {mnemonic} with operands {runtime_expr_operands:?} references a relocatable symbol but its package encoding emitted no output fixup"
-                    ));
-                }
                 if let Ok(resolved_operands) =
                     pipeline
                         .cpu

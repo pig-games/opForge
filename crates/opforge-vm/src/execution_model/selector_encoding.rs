@@ -92,6 +92,7 @@ pub(super) fn selector_to_candidate(
         return selector_to_candidate(&nested_selector, input, upper_mnemonic, expr_ctx);
     }
     let mut relocation_free = false;
+    let mut unrepresented_absolute_relocation = false;
     let mut output_fixups = Vec::new();
     let mode_key = selector.mode_key.to_ascii_lowercase();
     let Some(mode_operand_size) = mode_key_operand_size(mode_key.as_str()) else {
@@ -255,7 +256,10 @@ pub(super) fn selector_to_candidate(
                         .map_err(|err| err.to_string())?
                 }
                 "fixup" => {
-                    let Some(values) = semantic_fixup_plan_inputs(input_plan, input, expr_ctx)?
+                    let Some(SemanticFixupInputs {
+                        values,
+                        absolute_constants,
+                    }) = semantic_fixup_plan_inputs(input_plan, input, expr_ctx)?
                     else {
                         return Ok(None);
                     };
@@ -288,7 +292,12 @@ pub(super) fn selector_to_candidate(
                         })?;
                         output_fixups.push(fixup);
                     }
-                    relocation_free = output_fixups.is_empty();
+                    unrepresented_absolute_relocation |= result
+                        .unrepresented_absolute_inputs
+                        .iter()
+                        .any(|index| !absolute_constants[usize::from(*index)]);
+                    relocation_free =
+                        output_fixups.is_empty() && !unrepresented_absolute_relocation;
                     result.bytes
                 }
                 _ => {
@@ -466,6 +475,11 @@ pub(super) fn selector_to_candidate(
 
     if mode_operand_size == 0 && !operand_bytes.is_empty() {
         return Ok(None);
+    }
+    if unrepresented_absolute_relocation {
+        operand_bytes.push(
+            crate::runtime_model_core::UNREPRESENTED_ABSOLUTE_RELOCATION_CANDIDATE_MARKER.to_vec(),
+        );
     }
     if relocation_free {
         operand_bytes.push(crate::runtime_model_core::RELOCATION_FREE_CANDIDATE_MARKER.to_vec());
@@ -2484,15 +2498,21 @@ fn expression_is_atomic_relocation_target(expr: &Expr) -> bool {
     }
 }
 
+struct SemanticFixupInputs {
+    values: Vec<crate::fixup_vm::PortableFixupInput>,
+    absolute_constants: Vec<bool>,
+}
+
 fn semantic_fixup_plan_inputs(
     plan: &str,
     input: &SelectorInput<'_>,
     expr_ctx: &SelectorExprContext<'_>,
-) -> Result<Option<Vec<crate::fixup_vm::PortableFixupInput>>, String> {
+) -> Result<Option<SemanticFixupInputs>, String> {
     let exprs = (0..input.expr_count())
         .map(|index| input.expr(index))
         .collect::<Vec<_>>();
     let mut values = Vec::new();
+    let mut absolute_constants = Vec::new();
     for source in plan.split(',') {
         let (source, forced_target) = source
             .strip_prefix("target:")
@@ -2610,6 +2630,9 @@ fn semantic_fixup_plan_inputs(
                 } else {
                     None
                 };
+            let absolute_constant = expr_ctx
+                .assembler_ctx
+                .expression_is_absolute_constant(&expr);
             let value = if let Some((addend, _)) = relocation.as_ref() {
                 crate::fixup_vm::PortableDeferredValue::Resolved(*addend)
             } else if expr_ctx.assembler_ctx.should_defer_unstable_symbols()
@@ -2619,6 +2642,7 @@ fn semantic_fixup_plan_inputs(
             } else {
                 crate::fixup_vm::PortableDeferredValue::Resolved(expr_ctx.eval_expr(&expr)?)
             };
+            absolute_constants.push(absolute_constant);
             values.push(crate::fixup_vm::PortableFixupInput {
                 value,
                 target_reference: forced_target
@@ -2635,13 +2659,17 @@ fn semantic_fixup_plan_inputs(
                 "semantic fixup source '{source}' did not resolve to one value"
             ));
         }
+        absolute_constants.push(true);
         values.push(crate::fixup_vm::PortableFixupInput {
             value: crate::fixup_vm::PortableDeferredValue::Resolved(resolved[0]),
             target_reference: false,
             relocation_target: None,
         });
     }
-    Ok(Some(values))
+    Ok(Some(SemanticFixupInputs {
+        values,
+        absolute_constants,
+    }))
 }
 
 fn expression_is_target_reference(
@@ -2654,9 +2682,10 @@ fn expression_is_target_reference(
         Expr::Binary { left, right, .. } => {
             expression_is_target_reference(left, ctx) || expression_is_target_reference(right, ctx)
         }
-        Expr::Member { base, .. } | Expr::Indirect(base, _) => {
-            expression_is_target_reference(base, ctx)
-        }
+        Expr::Member { base, .. }
+        | Expr::Indirect(base, _)
+        | Expr::Immediate(base, _)
+        | Expr::IndirectLong(base, _) => expression_is_target_reference(base, ctx),
         Expr::Tuple(items, _) => items
             .iter()
             .any(|item| expression_is_target_reference(item, ctx)),

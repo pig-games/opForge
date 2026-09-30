@@ -152,25 +152,67 @@ covered by the repaired classifier. Other scanned candidates were constant-only
 layout sums or register-relative fields; this audit is not an exhaustive proof
 over every macro expansion.
 
-Broader probes found three independent pre-existing gaps. They are preserved as
-explicitly ignored known-failure regressions in `native_hunk_struct_constants.rs`,
-not counted as passing checks:
+### Follow-up: stable placement and complete relocation proof
 
-- Placed 68020/030/040 layout stabilization can add a section's base twice.
-  Even bare `target` and literal `target+4` reproduce this. Seeded sections retain
-  `start_pc=base`; symbol finalization then adds that base again. The self-host
-  graph uses unplaced Hunk sections and does not exercise this placement form.
-- Complex immediate expressions such as `#target+Frame.tail` can bypass the
-  relocation path. The documented complex-immediate boundary is unchanged by
-  this address-operand repair.
-- Unsupported address arithmetic such as `target+target` or a constant minus
-  a target can be incorrectly certified without a fixup. It must eventually
-  fail closed rather than emit an unrelocatable executable.
+The three broader probes now pass as active regressions:
 
-Run `cargo test -p asm --lib native_hunk_struct_constants` for the passing
-address and absolute-value cases; add `-- --ignored` to reproduce the known
-failures. These follow-ups need a coherent Rust relocation/provenance slice;
-the current repair must not be treated as full Hunk expression completeness.
+- Placed 68020/030/040 symbols are rebased from the section origin recorded when
+  each label is captured. This avoids adding a seeded section base twice and
+  does not rebase symbols that were not redefined during the current pass.
+  CODE/DATA/BSS cross-section references are checked after stabilization.
+- `MOVE.L #address+offset,Dn` has a general expression package descriptor with
+  the same absolute-long fixup as the atomic descriptor. The atomic matcher is
+  retained because it is already supported by compact package projection.
+  Named offsets relocate; same-section address differences are absolute. The
+  generated all-family native package is synchronized (+35 bytes in `CMSE`).
+  A signed-scalar regression also exposed a profile/pass mismatch in direct
+  `AsmLine` use: pass2 now evaluates instead of inheriting initial-pass deferral;
+  engine layout-stabilization deferral is preserved.
+- The fixup VM reports absolute inputs that lack a representable relocation
+  base. The selector combines this with the assembler's constant provenance and
+  carries the result as internal instruction effects. Hunk output rejects unsafe
+  arithmetic even alongside a valid fixup; flat binary retains numeric encoding.
+  This is generic provenance metadata, not CPU-specific logic or a new serialized
+  VM version. Both normal and VM-only builds use the same constant classifier.
+
+This does not establish compact-native support for complex immediate expressions
+or full Hunk expression completeness. The next native self-host frontier remains
+subject to fresh execution proof.
+
+The first named-addend repair's uninstrumented frozen 59-file self-host probe
+completed with the existing expected rejection at file 39, line 112. Under the
+same 68020/10 MiB profile it took 198.100 s, versus 197.438 s before that repair
+(+0.662 s; one run each, no speed claim). Its ordinary CLI remained 87,516 bytes
+with 98,580 bytes linked reservation; the package was 294,232 bytes. Source size
+was 674,295 bytes and the Rust Hunk oracle was 86,396 bytes. This is time to a
+reported failure, not successful native self-host assembly time.
+
+The follow-up repair's fresh uninstrumented run reports the same expected
+rejection at file 39, line 112 in 196.372 s, separately compared with 198.100 s
+above (-1.728 s; one run each, no speed claim). The package is 294,360 bytes
+(+128 bytes for the general expression descriptor). The ordinary executable is
+byte-for-byte unchanged, with the same 98,580-byte linked reservation. Inputs,
+profile and Rust oracle sizes are unchanged. Two fresh native bare-address and
+numeric-immediate Hunk controls complete with exact Rust output.
+
+Focused qualification passes: all 80 linker/Hunk tests, the placement and
+address/arithmetic probes, all 464 VM tests and all 214 family tests. VM-only
+instruction probes and same-section immediate differences pass; that feature's
+existing shared `.long` relocation stub remains a separate limitation. Runtime
+boundary, instrumentation safety, fresh-native proof, test ownership, benchmark
+selector and workflow-link checks pass. Workspace Clippy remains blocked by two
+existing `nonminimal_bool` findings in `packed_macro_vm.rs`; the full architecture
+scan flags ten terms in unchanged native files. Neither is waived as a green
+qualification result. The staged architecture check passes with no enforced
+errors. The final `cargo test --workspace --lib` assembler result is 1,819 passed,
+69 failed and 290 ignored; its 69 failure names match the earlier named-addend
+checkpoint exactly. The follow-up introduces no additional failures in that run,
+but the broad suite remains unqualified.
+
+Run `cargo test -p asm --lib native_hunk_struct_constants` for address, immediate,
+constant and negative arithmetic cases, `cargo test -p asm --lib
+placed_section_symbols_rebase_once` for stabilization, and `cargo test -p asm
+--lib linker_output_hunk_` for the affected output subsystem.
 
 ## Automatic branch package translation
 

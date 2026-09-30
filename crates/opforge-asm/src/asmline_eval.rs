@@ -752,6 +752,10 @@ impl<'a> AssemblerContext for AsmLine<'a> {
         })
     }
 
+    fn expression_is_absolute_constant(&self, expr: &Expr) -> bool {
+        self.expr_is_absolute_constant_symbol_expr(expr)
+    }
+
     fn absolute_relocation(&self, expr: &Expr) -> Result<Option<(i64, String)>, String> {
         let Some(target_section) = self.hunk_abs32_target_section_for_expr(expr) else {
             return Ok(None);
@@ -792,10 +796,10 @@ impl<'a> AssemblerContext for AsmLine<'a> {
     }
 
     fn should_defer_unstable_symbols(&self) -> bool {
-        matches!(
-            self.profile_phase,
-            AsmProfilePhase::Pass1 | AsmProfilePhase::LayoutStabilization
-        )
+        // Direct AsmLine callers set the pass without an engine profile phase.
+        // Pass2 must evaluate, while engine stabilization keeps its own deferral.
+        self.profile_phase == AsmProfilePhase::LayoutStabilization
+            || (self.pass == 1 && self.profile_phase == AsmProfilePhase::Pass1)
     }
 
     fn should_defer_unstable_branch_target(&self) -> bool {

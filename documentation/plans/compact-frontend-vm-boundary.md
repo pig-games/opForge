@@ -1612,3 +1612,49 @@ fixed. Fresh native completion reports the expected exit 20 at input line 7,
 pass 2, section sweep 2 of 4, with record offset 42 / 146 bytes. The control
 checks that precise diagnostic and capture; it is an expected rejection, not
 positive assembly parity or a full-input position measurement.
+
+## Ambiguous single-name transfer shapes
+
+Hypothesis confirmed in source: the native coarse shape classifier overwrites
+an ordinary pair with the structured-list shape when a single name is paired
+with a head/tail update wrapper. The package already supplies the ordinary
+register transfer recipe, but its row becomes ineligible before projection.
+The minimal Rust-valid `move.l d1,-(sp)` also rejects in a fresh 2 MiB native
+run before the correction.
+
+Retain the primary shape and permit the structured shape as an alternative
+only for this ambiguous single-name form. Explicit lists/ranges still use
+the structured route. Candidate priority and all package match/projection
+checks remain authoritative; an unsupported eligible recipe still blocks
+selection. The optional shape is reset for every instruction, with a sentinel
+that cannot match any wire shape. This changes native session state only;
+BSP8 and canonical package semantics remain unchanged.
+
+Success requires fresh exact-output comparisons for B/W/L register transfers
+in both directions, ordinary controls, one-element and explicit masks, MOVEA
+and arithmetic recipes, and compact CLI Hunk output. Invalid register classes
+and an instruction following an ambiguous form must still reject. Use the
+same frozen 59-file input for a separate ordinary self-host timing; the baseline
+is 196.857 s to scanner line 382 under the expanded 68020 / 10 MiB profile.
+Stop at the next unrelated structural capability failure.
+
+The shape correction alone proves the original push, but the transfer matrix
+then rejects `move.l (sp)+,d1`. Wire inspection identifies higher-priority CPU
+rows with canonical `xp1` paths requiring a different root; their necessary
+root metadata previously remained unknown for complete `(name)`, `-(name)` and
+`(name)+` wrappers. Forms 8/9 now use a bounded structural fact to disprove
+that mismatch. Other root forms, incomplete wrappers and matching unsupported
+candidates retain the barrier. The pure packed-shape helper owns this check; the selector uses
+it only where the package's necessary root demands it.
+
+Checkpoint qualification: intermediate builds passed the minimal native push
+and both invalid-input controls under 2 MiB; 153 Rust binary-source checks passed
+before the final plain-wrapper proof was added. The expanded wrapper proof has
+passed static review and targeted native formatting, but its final native matrix
+and Hunk comparison remain unverified. The fresh rerun stalled before guest START
+with a black emulator display; unrelated host Rust and staged-guard processes
+also stopped returning output, and a bounded Rust recovery probe timed out.
+Those attempts are environment failures, not assembly evidence. The latest full
+self-host frontier and timing above remain the last valid measurement. Resume
+with the focused register-transfer tests and guards, then the same frozen full
+input; do not claim a new performance result or integration readiness yet.

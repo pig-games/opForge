@@ -3,6 +3,12 @@
 	.module experimental.amigaos.binary_shapes
 	.cpu 68020
 	.use opasm.amigaos.binary_expression as expression
+
+NAME_TAG_MAX = 1
+OPEN_PAREN = 14
+CLOSE_PAREN = 15
+PLUS = 18
+MINUS = 19
 	.section code, kind=code
 	.pub
 ; A0/A1=bounded operand. D0=1 only for a complete parenthesized member root,
@@ -46,5 +52,54 @@ done
 	movem.l (sp)+, d1-d3/a0-a2
 	rts
 	.bend  ; isMember
+
+; A0/A1=bounded operand. D0=1 only for (name), -(name) or (name)+.
+; A name token must be unqualified. All other registers are preserved;
+; CCR reflects D0. This proves syntax only, without resolving the name.
+isWrappedName	.block
+	movem.l d1/a0, -(sp)
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	beq.w plain
+	cmpi.l #7, d0
+	bne.w no
+	cmpi.b #OPEN_PAREN, (a0)
+	beq.w tail
+	cmpi.b #MINUS, (a0)
+	bne.w no
+	cmpi.b #OPEN_PAREN, 1(a0)
+	bne.w no
+	cmpi.b #CLOSE_PAREN, 6(a0)
+	bne.w no
+	addq.l #2, a0
+	bra.w name
+tail
+	cmpi.b #CLOSE_PAREN, 5(a0)
+	bne.w no
+	cmpi.b #PLUS, 6(a0)
+	bne.w no
+	addq.l #1, a0
+	bra.w name
+plain
+	cmpi.b #OPEN_PAREN, (a0)
+	bne.w no
+	cmpi.b #CLOSE_PAREN, 5(a0)
+	bne.w no
+	addq.l #1, a0
+name
+	cmpi.b #NAME_TAG_MAX, (a0)
+	bhi.w no
+	tst.b 3(a0)
+	bne.w no
+	moveq #1, d0
+	bra.w done
+no
+	moveq #0, d0
+done
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; isWrappedName
 	.endsection
 	.endmodule

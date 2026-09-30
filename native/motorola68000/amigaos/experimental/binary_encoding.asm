@@ -34,6 +34,7 @@ SHAPE_STRUCTURED_PAIR = 7
 SHAPE_PREFIXED_VALUE = 8
 SHAPE_REGISTER = 9
 SHAPE_VALUE_PAIR = 10
+SHAPE_UNSET = -1
 
 RECIPE_NONE = 0
 RECIPE_U8 = 1
@@ -61,6 +62,7 @@ OperandStart	.res long, 2
 OperandEnd	.res long, 2
 OperandCount	.res word, 1
 OperandShape	.res word, 1
+AlternativeShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
 Records	.res byte, 128
@@ -130,9 +132,13 @@ rowLoop
 	bne.w nextRow
 	cmp.b package.Row.Qualifier(a5), d7
 	bne.w nextRow
-	move.w OperandShape, d0
-	cmp.b package.Row.Shape(a5), d0
+	moveq #0, d0
+	move.b package.Row.Shape(a5), d0
+	cmp.w OperandShape, d0
+	beq.w shapeReady
+	cmp.w AlternativeShape, d0
 	bne.w nextRow
+shapeReady
 	moveq #0, d0
 	move.b package.Row.MemberExcluded(a5), d0
 	and.w MemberMask, d0
@@ -227,6 +233,7 @@ splitOperands	.block
 	move.l a1, OperandEnd
 	clr.w OperandCount
 	clr.w OperandShape
+	move.w #SHAPE_UNSET, AlternativeShape
 	cmpa.l a1, a0
 	beq.w emptyOperands
 	moveq #0, d2
@@ -330,7 +337,7 @@ maskList
 	cmpi.b #1, (a0)
 	bhi.w pairComplete
 	cmpi.l #4, d0
-	beq.w structuredPair
+	beq.w ambiguousPair
 	cmpi.l #9, d0
 	blo.w pairComplete
 	cmpi.b #TOKEN_MINUS, 4(a0)
@@ -339,6 +346,11 @@ maskList
 	bne.w pairComplete
 structuredPair
 	move.w #SHAPE_STRUCTURED_PAIR, OperandShape
+	bra.w pairComplete
+ambiguousPair
+	; A single name also fits the one-element structured form. Retain its
+	; ordinary pair shape; only package recipes can resolve this ambiguity.
+	move.w #SHAPE_STRUCTURED_PAIR, AlternativeShape
 pairComplete
 	moveq #0, d0
 	rts
@@ -585,6 +597,14 @@ otherStructuredRoot
 	cmp.l d0, d1
 	beq.w mismatch  ; a bare scalar cannot have a member field
 structuredRoot
+	cmpi.l #8, d4
+	blo.w scalarRoot
+	; Path forms 8/9 require a nested first tuple item. A complete
+	; wrapper around one name cannot match that required structure.
+	jsr shapes.isWrappedName
+	tst.l d0
+	bne.w mismatch
+scalarRoot
 	bsr.w scalarTupleArity
 	tst.l d0
 	bne.w mismatch

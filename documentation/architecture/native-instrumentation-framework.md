@@ -151,8 +151,8 @@ Its `AssemblyPosition` type,
 20-byte owner storage and calls require all three progress gates. Bases are
 loaded with `lea`, then fields are read/written through relative offsets;
 `MEMORY_PROGRESS_BLOCK` and `MEMORY_PROGRESS_RECORDS` apply the same rule to
-reporting. This avoids the unresolved host Hunk-relocation bug for absolute
-`Base+Struct.Field` operands. No per-record
+reporting. These sites retain base-relative addressing after the Rust repair
+for absolute `Base+Struct.Field` address operands. No per-record
 logging or MEMD schema change is introduced. The self-host test decodes the
 terminal snapshot from that run's captured stdout. Its percentage describes
 position within the current record-buffer scan, not overall assembly work:

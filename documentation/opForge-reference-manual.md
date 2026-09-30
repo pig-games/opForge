@@ -1787,6 +1787,17 @@ CAS.W D0,D1,target
 BFTST target{3:5}
 ```
 
+Within the supported absolute-long address forms, one section
+address may carry an absolute addend: a literal, constant equate or struct-field
+offset. `target+offset`, `offset+target` and `target-offset` retain the target's
+`HUNK_RELOC32` record; the constant itself does not relocate. For example:
+
+```asm
+offset = 4
+MOVE.L target+offset,D0
+MOVE.L D0,target+offset
+```
+
 Representative explicit-only or unsupported forms include:
 
 ```asm

@@ -1447,9 +1447,11 @@ impl<'a> AsmLine<'a> {
                 right,
                 ..
             } => {
-                if Self::expr_is_relocation_free_literal(left) {
+                // Named equates and struct fields are absolute addends too;
+                // checking only literal syntax silently drops the base fixup.
+                if self.expr_is_absolute_constant_symbol_expr(left) {
                     self.hunk_abs32_target_section_for_expr(right)
-                } else if Self::expr_is_relocation_free_literal(right) {
+                } else if self.expr_is_absolute_constant_symbol_expr(right) {
                     self.hunk_abs32_target_section_for_expr(left)
                 } else {
                     None
@@ -1461,7 +1463,7 @@ impl<'a> AsmLine<'a> {
                 right,
                 ..
             } => {
-                if Self::expr_is_relocation_free_literal(right) {
+                if self.expr_is_absolute_constant_symbol_expr(right) {
                     self.hunk_abs32_target_section_for_expr(left)
                 } else {
                     None

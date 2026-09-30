@@ -98,8 +98,8 @@ The first capture exposed a Rust host Hunk-relocation defect: an absolute
 probe's apparent pass/sweep and zero remaining fields are discarded. Capture
 and reporting now load bare base labels with `lea` and use relative fields.
 The existing record-count progress sites use the same reusable mechanism.
-The Rust relocation repair and an audit of other absolute diagnostic field
-operands remain follow-up work; this slice changes telemetry addressing only.
+The subsequent Rust repair below fixes this address-addend classification;
+the capture slice itself changes telemetry addressing only.
 
 A fresh 68020 / 2 MiB negative Hunk probe, accepted by the live Rust assembler,
 rejects a memory-to-memory `move.w` on native. Its corrected capture reports
@@ -132,10 +132,45 @@ pass. The fresh negative native capture and positive compact CLI control run
 under 2 MiB; the positive control completes with exact Rust output (5 bytes).
 Formatting, native instrumentation safety, fresh-proof contract, test ownership,
 runtime-boundary contract and workflow links pass. This is capture qualification,
-not full native parity or broad project qualification. Repair the Rust Hunk
-relocation defect and audit its affected addressing sites before relying on
-additional absolute-field instrumentation; the memory-to-memory MOVE rejection
-is the next localized native instruction capability to investigate.
+not full native parity or broad project qualification. The memory-to-memory
+MOVE rejection is the next localized native instruction capability to investigate.
+
+## Rust Hunk named address addends
+
+Rust's absolute-address relocation classifier now recognizes the existing
+absolute-constant model instead of accepting only literal syntax for an addend.
+`base+offset`, `offset+base` and `base-offset` retain the base's relocation when
+the offset is a constant equate or struct field, including a qualified field.
+The section-relative value and CODE-to-BSS relocation are checked together for
+loads, stores and `lea`; constant-only operands and register displacements remain
+unrelocated. No CPU/package semantics or native execution code changes.
+
+The address tests cover placed 68000 and unplaced 68020 sections. The source
+audit confirmed one remaining debug failure-report call at `binary_app.prepare`
+using `Records+memory.Block.Used` through `MEMORY_LAYOUT`. Its relocation is
+covered by the repaired classifier. Other scanned candidates were constant-only
+layout sums or register-relative fields; this audit is not an exhaustive proof
+over every macro expansion.
+
+Broader probes found three independent pre-existing gaps. They are preserved as
+explicitly ignored known-failure regressions in `native_hunk_struct_constants.rs`,
+not counted as passing checks:
+
+- Placed 68020/030/040 layout stabilization can add a section's base twice.
+  Even bare `target` and literal `target+4` reproduce this. Seeded sections retain
+  `start_pc=base`; symbol finalization then adds that base again. The self-host
+  graph uses unplaced Hunk sections and does not exercise this placement form.
+- Complex immediate expressions such as `#target+Frame.tail` can bypass the
+  relocation path. The documented complex-immediate boundary is unchanged by
+  this address-operand repair.
+- Unsupported address arithmetic such as `target+target` or a constant minus
+  a target can be incorrectly certified without a fixup. It must eventually
+  fail closed rather than emit an unrelocatable executable.
+
+Run `cargo test -p asm --lib native_hunk_struct_constants` for the passing
+address and absolute-value cases; add `-- --ignored` to reproduce the known
+failures. These follow-ups need a coherent Rust relocation/provenance slice;
+the current repair must not be treated as full Hunk expression completeness.
 
 ## Automatic branch package translation
 

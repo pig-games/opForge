@@ -336,6 +336,12 @@ Supported in `v0.3`:
     `BFINS D3,label{4:D4}`
   - fixup model: `HUNK_RELOC32`
 
+For supported absolute-long address encodings, the address may include a literal,
+constant equate or struct-field addend: `label+const`, `const+label` or
+`label-const`. The result retains one `HUNK_RELOC32` base; named offsets are
+absolute values, not additional relocation bases. This does not extend the
+supported instruction encodings or complex immediate-expression boundary.
+
 Explicit-only in `v0.3`:
 
 - symbolic forms whose size is not fixed to long by the mnemonic or data form
@@ -346,6 +352,8 @@ Explicit-only in `v0.3`:
 - symbolic expression forms more complex than `label+const` for executable data
   fixups
 - symbolic instruction expressions with addends such as `#label+const`
+- instruction expressions containing multiple address bases or a constant minus
+  an address base
 - symbolic indexed or full-extension-addressing cases that would require new
   executable fixup semantics beyond the declared `v0.3` matrix
 

@@ -11,6 +11,34 @@ PLUS = 18
 MINUS = 19
 	.section code, kind=code
 	.pub
+; A0/A1=bounded operand. D0=1 for one complete compiled scalar wrapper.
+; All other registers are preserved. This proves its root shape only; the
+; compiler/evaluator own expression validity, and no payload byte is decoded.
+isScalar	.block
+	movem.l d1-d2, -(sp)
+	move.l a1, d1
+	sub.l a0, d1
+	bcs.w no
+	cmpi.l #3, d1
+	blo.w no
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w no
+	moveq #0, d2
+	move.b 1(a0), d2
+	beq.w no
+	addq.l #2, d2
+	cmp.l d1, d2
+	bne.w no
+	moveq #1, d0
+	bra.w done
+no
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d2
+	tst.l d0
+	rts
+	.bend  ; isScalar
+
 ; A0/A1=bounded operand. D0=1 only for a complete parenthesized member root,
 ; otherwise 0 (unknown/nonmember). Other registers preserved; CCR reflects D0.
 ; No values, names or package data are consulted.

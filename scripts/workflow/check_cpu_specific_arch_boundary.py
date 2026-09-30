@@ -540,13 +540,15 @@ def scan_native_asm_file(
         definition_match = NATIVE_LABEL_WITH_DIRECTIVE_RE.match(line)
         if definition_match:
             directive = definition_match.group("directive").lower()
-            # A declared macro parameter in operand position is not a directive.
-            # Keep real definition/data directives scanned, even inside macros.
+            operand_tail = line[definition_match.end("directive"):].lstrip()
+            # A declared macro parameter in operand position is not a directive;
+            # a following comma begins the next operand. Keep real definitions
+            # and data directives scanned, even inside macros.
             if (
                 line[0].isspace()
                 and macro_parameters
                 and directive[1:] in macro_parameters[-1]
-                and not line[definition_match.end("directive"):].strip()
+                and (not operand_tail or operand_tail.startswith(","))
                 and directive not in NATIVE_DEFINITION_DIRECTIVES | NATIVE_STORAGE_DIRECTIVES
                 and not NATIVE_DATA_DIRECTIVE_RE.match(directive)
             ):

@@ -66,6 +66,9 @@ mod selection;
 #[path = "binary_source_memory_move.rs"]
 mod memory_move;
 
+#[path = "binary_source_absolute_memory.rs"]
+mod absolute_memory;
+
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;
 

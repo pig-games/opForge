@@ -587,20 +587,14 @@ wrappedFirstItem
 	bne.w mismatch
 	bra.w advance
 otherStructuredRoot
-	cmpi.l #5, d4
-	bne.w structuredRoot
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #3, d0
-	blo.w structuredRoot
-	cmpi.b #expression.COMPILED_TAG, (a0)
-	bne.w structuredRoot
-	moveq #0, d1
-	move.b 1(a0), d1
-	addq.l #2, d1
-	cmp.l d0, d1
-	beq.w mismatch  ; a bare scalar cannot have a member field
-structuredRoot
+	; A complete scalar has no member or indirect path root. Form 6
+	; requires the scalar itself and must retain its matching barrier.
+	cmpi.l #6, d4
+	beq.w scalarRoot
+	jsr shapes.isScalar
+	tst.l d0
+	bne.w mismatch
+
 	cmpi.l #8, d4
 	blo.w scalarRoot
 	; Path forms 8/9 require a nested first tuple item. A complete
@@ -614,6 +608,11 @@ scalarRoot
 	bne.w mismatch
 	bra.w advance
 tuple
+	; A complete compiled scalar has no tuple tail, even when its payload
+	; is long enough to pass the minimum-length check for a tuple prefix.
+	jsr shapes.isScalar
+	tst.l d0
+	bne.w mismatch
 	; Tuple arity belongs to the full candidate match. A compiled prefix
 	; is only a necessary condition and also admits indexed 3-item tuples.
 	move.l a1, d0
@@ -1299,7 +1298,7 @@ recordReady
 	cmpi.b #14, d0
 	beq.w tupleItem
 	cmpi.b #15, d0
-	beq.w expressionValue
+	beq.w targetExpression
 	cmpi.b #16, d0
 	beq.w memberValue
 	cmpi.b #17, d0
@@ -1307,6 +1306,9 @@ recordReady
 	bra.w bad
 expressionValue
 	bsr.w projectionExpression
+	bra.w valueReady
+targetExpression
+	bsr.w projectionTargetExpression
 	bra.w valueReady
 atomicTarget
 	bsr.w projectionAtomicTarget
@@ -1368,6 +1370,42 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; project
+
+; Match a scalar expression containing a symbol, including absolute constants.
+; ExprVM supplies the predicate during evaluation; no second opcode scan is needed.
+; Numeric literals/current-PC expressions remain ordinary scalar candidates.
+projectionTargetExpression	.block
+	movem.l d1-d2/d4/a0-a1, -(sp)
+	bsr.w operandSpan
+	tst.l d0
+	bne.w done
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w ready
+	addq.l #1, a0
+ready
+	jsr expression.evaluateWithSymbols
+	tst.l d0
+	bne.w done
+	cmpa.l a1, a0
+	bne.w bad
+	tst.l d4
+	beq.w bad
+	tst.l d2
+	beq.w matched
+	move.w #1, Unresolved
+matched
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/d4/a0-a1
+	moveq #0, d3
+	tst.l d0
+	rts
+	.bend  ; projectionTargetExpression
 
 ; Match an immediate or direct operand that names exactly one relocation
 ; target. This is a package predicate, so it projects zero rather than the

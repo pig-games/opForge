@@ -24,12 +24,12 @@ class CpuSpecificArchitectureBoundaryTests(unittest.TestCase):
 
         self.assertEqual(files, [root / "native" / "runtime.asm"])
 
-    def scan_native(self, source):
+    def scan_native(self, source, terms=("bsr",)):
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "runtime.asm"
             path.write_text(source)
             return boundary.scan_native_asm_file(
-                path, "native/runtime.asm", "enforced", ["bsr"], []
+                path, "native/runtime.asm", "enforced", list(terms), []
             )
 
     def test_declared_macro_parameter_operand_is_not_a_directive(self):
@@ -38,6 +38,15 @@ class CpuSpecificArchitectureBoundaryTests(unittest.TestCase):
             "\tbsr.w .tighter\n"
             "\tbsr .TIGHTER ; case-insensitive parameter\n"
             "\t.endmacro\n"
+        )
+        self.assertEqual(findings, [])
+
+    def test_declared_macro_parameter_can_be_first_register_mask_operand(self):
+        findings = self.scan_native(
+            "SAVE .macro saved\n"
+            "\tmovem.l .saved, -(sp)\n"
+            "\t.endmacro\n",
+            terms=("movem",),
         )
         self.assertEqual(findings, [])
 
@@ -52,6 +61,19 @@ class CpuSpecificArchitectureBoundaryTests(unittest.TestCase):
             "\t.endmacro\n"
         )
         self.assertEqual([finding.line for finding in findings], [2, 3, 4, 5])
+
+    def test_macro_parameter_exception_keeps_directives_and_labels_scanned(self):
+        findings = self.scan_native(
+            "bsr .macro saved, block, word, byte\n"
+            "\tbsr .block, d0\n"
+            "\tbsr .word, d0\n"
+            "\tbsr .byte, d0\n"
+            "bsr .macro target\n"
+            "bsr\n"
+            "\t.endmacro\n"
+            "\t.endmacro\n"
+        )
+        self.assertEqual([finding.line for finding in findings], [1, 2, 3, 4, 5, 6])
 
     def test_parameter_exception_does_not_escape_its_macro(self):
         findings = self.scan_native(

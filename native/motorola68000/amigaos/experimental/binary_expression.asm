@@ -77,12 +77,12 @@ done
 	rts
 	.bend  ; compile
 
-; A0=compiled wrapper, A1=bounded end, A2=Frame.
-; Returns D0/CCR=status, D1=low scalar word, D2=unresolved, A0=after wrapper.
-; On success, writes the signed scalar high word to Frame.High.
-; Preserves D3-D7/A1-A6. No parser, lexical storage or source fallback.
-evaluate	.block
-	movem.l d3-d7/a1-a6, -(sp)
+	.priv
+; Generate both entry points from one body. The ordinary evaluator retains
+; its register ABI and instruction sequence; the target predicate additionally
+; consumes the symbol-presence result already computed by ExprVM.
+EVALUATE	.macro saved
+	movem.l .saved, -(sp)
 	.MEMORY_WORK #1, #1
 	move.l a1, d0
 	sub.l a0, d0
@@ -120,10 +120,26 @@ evaluated
 malformed
 	moveq #STATUS_MALFORMED, d0
 done
-	movem.l (sp)+, d3-d7/a1-a6
+	movem.l (sp)+, .saved
 	tst.l d0
 	rts
+.endmacro
+	.pub
+
+; A0=compiled wrapper, A1=bounded end, A2=Frame.
+; Returns D0/CCR=status, D1=low scalar word, D2=unresolved, A0=after wrapper.
+; On success, writes the signed scalar high word to Frame.High.
+; Preserves D3-D7/A1-A6. No parser, lexical storage or source fallback.
+evaluate	.block
+	.EVALUATE d3-d7/a1-a6
 	.bend  ; evaluate
+
+; Same inputs and scalar outputs as evaluate, plus D4=nonzero if any symbol
+; was read. D4 is clobbered; D3/D5-D7/A1-A6 are preserved. CCR reflects D0.
+evaluateWithSymbols	.block
+	.EVALUATE d3/d5-d7/a1-a6
+	.bend  ; evaluateWithSymbols
+
 	.priv
 
 ; Compiler helpers share bounded cursors A0/A1 and A3/A4. D6=syntax nesting,

@@ -11,14 +11,15 @@ alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slic
 Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
-Current measured frontier: the frozen 59-file input completes preparation,
-packs and binds the source, then rejects during instruction processing at file
-`0x28`, line `0x103` (259) on the expanded 68020 / 10 MiB profile. The
-uninstrumented runner takes 200.804 seconds. No native self-host Hunk exists.
-The earlier position capture below describes the superseded line-112 frontier;
-it does not measure the current pass or section position. The next slice should
-identify the physical source behind this diagnostic and inventory the affected
-module's missing package-controlled capabilities.
+Current measured frontier: the replacement frozen 61-file input rejects during
+instruction processing at file `0x2a`, line `0x136` (310) on the expanded
+68020 / 10 MiB profile. The scalar-root correction passes the earlier
+qualified-state access failure at line 259. Focused native Hunk comparison now
+covers those loads, comparisons and stores, numeric addresses, and compound
+absolute constants. No native self-host Hunk exists. See the
+[absolute-memory slice](#complete-scalar-roots-and-target-predicates) for separate
+change timings and the input replacement; the older 59-file timings below are
+historical measurements on a different input.
 
 Earlier convergence and memory observations: the compact native CLI accepts concrete code and
 data sections reopened by another module, with a focused 68020 / 2 MiB Hunk
@@ -1684,3 +1685,81 @@ isolated guest assembly duration was not captured. The final native image is
 above `e826a380`. Rust produces an 86,396-byte Hunk with four segments and
 97,532 linked reserved bytes from this input. Native still exits with a fresh
 expected rejection, so no completed native self-host output comparison exists.
+
+## Complete scalar roots and target predicates
+
+The next module inventory identified qualified absolute state loads, comparisons,
+clears and stores in `tkvm_runtime.asm`. The package already supplies their
+semantics. A fresh minimal `move.w state.Start,d0` has a valid Rust Hunk but
+native exits 20 before the correction. Whole compiled scalars cannot match
+required member or nested-indirect roots (forms 5/8/9); scalar-required form 6
+retains its barrier. A reusable bounded `binary_shapes.isScalar` proof checks
+only the wrapper extent, without decoding payloads or looking up spellings.
+
+The combined matrix exposed two further structural discrepancies. Canonical
+`target:expr` requires an identifier and projects zero; native previously
+accepted any scalar. That could select absolute-long output for a numeric
+absolute-word operand. The new projection consumes ExprVM's existing symbol
+flag through `expression.evaluateWithSymbols`. Its macro shares the evaluator
+source while keeping the ordinary entry's ABI and instruction sequence intact;
+the second entry duplicates a small emitted body to avoid adding a wrapper call
+or second opcode scan to ordinary evaluation. No release telemetry is added.
+
+A nine-byte compiled `Limit+1` also passed the old tuple-prefix length check.
+BSP8's earlier unsupported `MOVE.W` tuple rows (form 4, priorities 56 onward)
+therefore blocked the supported absolute-long row at priority 77. Whole scalars
+now disprove that tuple root too. Actual tuples, unknown shapes and matching
+unsupported recipes still retain the barrier. There are no new native opcode
+rules, package versions or CPU-dependent special cases.
+
+Fresh native exact Hunk comparison passes the thirteen-instruction matrix
+(200 bytes), including qualified B/W/L loads, compare, clear, register and
+immediate stores, MOVEA, literal/folded numeric addresses and absolute symbol
+expressions. Existing section-relative compound fixups remain unsupported;
+this slice does not claim parity for `state.Start+2`. The target predicate also
+uses evaluation to obtain its symbol flag, whereas Rust matches structurally;
+unstable expressions that fail evaluation remain a limitation. These boundaries
+must be handled coherently when their capabilities enter a later slice.
+
+The former `/tmp`-only 59-file, 674,295-byte snapshot disappeared during host
+recovery and could not be reconstructed exactly. Measurements now use the
+61 dependency files from committed `45e7d6c8`, totaling 696,570 bytes. Their
+sorted relative-path/NUL/content/NUL SHA-256 is
+`60b85ffd6c0286252b8ef268a35a85720c39449f49cc4b95fb38370b142ea197`.
+All measurements below use that identical input, the unchanged 294,360-byte
+runtime package, telemetry disabled, 68020 / 10 MiB and a thirty-minute safety
+bound. Rust's input oracle is an 88,096-byte, four-segment Hunk with 99,128
+linked reserved bytes. Host-startup stalls from the earlier recovery attempt
+are discarded; only fresh guest completions appear here.
+
+| Native change | Runner time | Fresh rejection | Image / linked reserved bytes |
+| --- | ---: | --- | ---: |
+| Unmodified `45e7d6c8` baseline | 225.516 s | File `0x2a`, line 259 | 88,096 / 99,128 |
+| Whole scalar disproves forms 5/8/9 | 227.088 s | File `0x2a`, line 310 | 88,096 / 99,128 |
+| Plus canonical target predicate | 225.071 s | File `0x2a`, line 310 | 88,328 / 99,344 |
+| Plus shared scalar proof and tuple-root correction | 224.881 s | File `0x2a`, line 310 | 88,388 / 99,396 |
+
+Runner time includes native executable construction, emulator launch and capture;
+isolated guest timing is unavailable for these full-input captures. Single-run
+variation and different failure frontiers prevent speed claims. The scalar-root
+change adds 1.572 seconds while reaching further; the target correction's observed
+delta is -2.017 seconds; the final shared proof and tuple correction's delta is
+-0.190 seconds. These are separately recorded observations, not proven performance
+gains or regressions. The staged runtime's line 310 is
+`movea.l 0(a1,d0.W),a1`; a fresh minimal indexed MOVEA probe is the next useful
+localization step rather than another broad full-input run.
+
+Focused Rust qualification passes 161 binary-source checks. Affected native
+formatting (19 files), instrumentation safety, fresh-native proof contract,
+test ownership, runtime boundary contract, canonical contracts and benchmark
+selectors pass. Five final fresh native executions pass: the two exact Hunk
+cases, numeric CLR rejection, nested-indirect barrier and existing PC-tuple
+barrier. The matrix's final guest START-to-DONE time is 1.020 seconds; this tiny
+case is correctness evidence, not a full-input speed comparison. Changed-scope
+architecture checking passes. The architecture guard's macro-operand exception
+now permits a comma after a declared parameter; seven
+focused Python tests preserve definition/data checking and macro scope limits.
+This corrects its false label classification of `movem.l .saved, -(sp)` without
+adding instruction allowlists.
+The existing broad architecture finding in unchanged `binary_source.asm`
+and earlier broad Rust qualification gaps remain outside this slice.

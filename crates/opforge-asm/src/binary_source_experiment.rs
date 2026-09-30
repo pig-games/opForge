@@ -81,7 +81,7 @@ impl<'a> Programs<'a> {
     }
 }
 
-/// Prepare a self-contained BSP7 block for one resolved package hierarchy.
+/// Prepare a self-contained BSP8 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -268,7 +268,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BSP7");
+    out[..4].copy_from_slice(b"BSP8");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -617,6 +617,11 @@ fn write_candidate(
         _ => 0,
     };
     set_word(out, row + 20, candidate.mode);
+    let tuple_classes = match &candidate.recipe {
+        CandidateRecipe::Unsupported { plan } => required_tuple_classes(name(names, *plan)?),
+        _ => 0,
+    };
+    set_word(out, row + 22, tuple_classes);
     set_word(out, row + 28, if recipe == 7 { table } else { MISSING });
     Ok(())
 }
@@ -645,20 +650,7 @@ fn semantic_emits_opcode(programs: &Programs<'_>, index: u16) -> bool {
 // sequence candidate. Native selection may skip a disproven candidate, but
 // still fails closed when its wrapper can match.
 fn required_operand_forms(plan: &str) -> u8 {
-    let predicates = if let Some(body) = plan.strip_prefix("semv.sequence.v1:match:_@") {
-        let Some((predicates, _)) = body.split_once(';') else {
-            return 0;
-        };
-        predicates
-    } else if let Some(body) = plan
-        .strip_prefix("semv.reject.v1:")
-        .or_else(|| plan.strip_prefix("semv.inputs.v1:"))
-    {
-        let Some((_, predicates)) = body.split_once('@') else {
-            return 0;
-        };
-        predicates.split('|').next().unwrap_or(predicates)
-    } else {
+    let Some(predicates) = match_predicates(plan) else {
         return 0;
     };
     let mut forms = [0u8; 2];
@@ -712,6 +704,51 @@ fn required_operand_forms(plan: &str) -> u8 {
         }
     }
     forms[0] | forms[1] << 4
+}
+
+// Facts come only from canonical match conjuncts. Unknown stages and predicates
+// provide no proof; known conjuncts may still disprove an unsupported candidate.
+fn match_predicates(plan: &str) -> Option<&str> {
+    if let Some(body) = plan.strip_prefix("semv.sequence.v1:match:_@") {
+        return body.split_once(';').map(|(predicates, _)| predicates);
+    }
+    let body = plan
+        .strip_prefix("semv.reject.v1:")
+        .or_else(|| plan.strip_prefix("semv.inputs.v1:"))?;
+    let (_, predicates) = body.split_once('@')?;
+    Some(predicates.split('|').next().unwrap_or(predicates))
+}
+
+// Two bytes in the row encode necessary tuple-base classes, operand 0 then 1.
+// Zero means unknown; classes beyond the one-byte representation retain the barrier.
+fn required_tuple_classes(plan: &str) -> u16 {
+    let Some(predicates) = match_predicates(plan) else {
+        return 0;
+    };
+    let mut classes = [0u8; 2];
+    for predicate in predicates.split(',') {
+        let Some((operand, class)) = predicate
+            .strip_prefix("indirect_tuple_reg")
+            .and_then(|rest| rest.split_once(".item1.class"))
+        else {
+            continue;
+        };
+        if operand.is_empty()
+            || class.is_empty()
+            || !operand.bytes().all(|byte| byte.is_ascii_digit())
+            || !class.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            continue;
+        }
+        let (Ok(operand @ 0..=1), Ok(class)) = (operand.parse::<usize>(), class.parse::<u8>())
+        else {
+            continue;
+        };
+        if let Some(encoded) = class.checked_add(1) {
+            classes[operand] = encoded;
+        }
+    }
+    u16::from_be_bytes(classes)
 }
 
 fn necessary_scalar_root(predicate: &str) -> Option<usize> {
@@ -1152,6 +1189,53 @@ mod sequence_wire_tests {
         programs.rows[1].bytes = &[];
         assert_eq!(write_sequence(&mut wire, &stages, &programs).unwrap(), None);
         assert_eq!(wire, original);
+    }
+
+    #[test]
+    fn tuple_class_proof_uses_only_bounded_canonical_match_conjuncts() {
+        for (predicate, expected) in [
+            ("indirect_tuple_reg0.item1.class8", 0x0900),
+            ("indirect_tuple_reg1.item1.class0", 1),
+            (
+                "indirect_tuple_reg0.item1.class1,indirect_tuple_reg1.item1.class2",
+                0x0203,
+            ),
+            ("future,indirect_tuple_reg0.item1.class1", 0x0200),
+        ] {
+            assert_eq!(
+                required_tuple_classes(&format!(
+                    "semv.sequence.v1:match:_@{predicate};encode:x@expr0"
+                )),
+                expected
+            );
+        }
+        for predicate in [
+            "indirect_tuple_reg0.item2.class8",
+            "indirect_tuple_reg2.item1.class8",
+            "indirect_tuple_reg0.item1.class255",
+            "indirect_tuple_reg0.item1.class256",
+            "indirect_tuple_reg0.item1.class-1",
+            "indirect_tuple_reg0.item1.class8.future",
+            "indirect_tuple_reg+0.item1.class8",
+            "indirect_tuple_reg0.item1.class+8",
+            "indirect_tuple_reg.item1.class8",
+            "indirect_tuple_reg0.item1.class",
+        ] {
+            assert_eq!(
+                required_tuple_classes(&format!("semv.reject.v1:bad@{predicate}")),
+                0
+            );
+        }
+        assert_eq!(
+            required_tuple_classes(
+                "semv.sequence.v2:match:_@indirect_tuple_reg0.item1.class8;encode:x@expr0"
+            ),
+            0
+        );
+        assert_eq!(
+            required_tuple_classes("semv.sequence.v1:encode:x@indirect_tuple_reg0.item1.class8"),
+            0
+        );
     }
 
     #[test]

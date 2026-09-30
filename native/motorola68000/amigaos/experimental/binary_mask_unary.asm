@@ -11,7 +11,7 @@ Bytes	.res byte, 4
 	.pub
 
 ; A0/A1=packed name-list bounds,A2/A3=packed unary-indirect bounds,
-; A4=validated 16-byte recipe,A5=validated BSP7 package.
+; A4=validated 16-byte recipe,A5=validated BSP8 package.
 ; D0/CCR=status; on success D1=4,A1=owned output bytes. Other regs preserved.
 encode	.block
 	movem.l d2-d7/a0/a2-a6, -(sp)
@@ -33,7 +33,7 @@ encode	.block
 	bne.w bad
 	cmpi.b #15, 6(a2)
 	bne.w bad
-	bra.w indirectReady
+	bra.w wrapperReady
 postfix
 	cmpi.b #14, (a2)
 	bne.w bad
@@ -41,7 +41,7 @@ postfix
 	bne.w bad
 	cmpi.b #18, 6(a2)
 	bne.w bad
-indirectReady
+wrapperReady
 	movem.l a0-a1, -(sp)
 	lea 1(a2), a0
 	cmpi.w #19, 14(a5)

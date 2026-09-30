@@ -246,7 +246,7 @@ fn compact_hunk_self_host_constants_fs_uae() {
     native_hunk_source(&self_host_constants_source());
 }
 
-fn native_hunk_source(source: &str) {
+pub(super) fn native_hunk_source(source: &str) {
     let oracle = rust_hunk_source(source);
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();

@@ -93,9 +93,9 @@ progress p=0000001c f=00000005 l=00000004 r=00000000 m=00000000\n",
 #[ignore = "requires FS-UAE with memory/progress gates; relocated snapshot fields"]
 fn compact_assembly_position_failure_fs_uae() {
     use super::*;
-    let source = ".module probe\n.cpu m68020\n.section entry, kind=code\n nop\n.endsection\n.section code, kind=code\n move.w 8(a2), (a1)\n.endsection\n.section data, kind=data\n.byte 7\n.endsection\n.section bss, kind=bss\n.res long, 1\n.endsection\n.output \"probe.hunk\", format=hunk, sections=entry,code,data,bss\n.endmodule\n.end\n";
-    // Rust accepts the same input; this probe isolates the compact instruction
-    // rejection and observes position, rather than claiming artifact parity.
+    let source = ".module probe\n.cpu m68020\n.section entry, kind=code\n nop\n.endsection\n.section code, kind=code\n move.l #payload+1,d0\n.endsection\n.section data, kind=data\npayload .byte 7\n.endsection\n.section bss, kind=bss\n.res long, 1\n.endsection\n.output \"probe.hunk\", format=hunk, sections=entry,code,data,bss\n.endmodule\n.end\n";
+    // Rust accepts the same input; compact native cannot bind this compound
+    // address relocation in pass 2. Observe its position, not artifact parity.
     let dir = create_temp_dir("assembly-position-oracle");
     let input = dir.join("input.asm");
     fs::write(&input, source).unwrap();
@@ -121,14 +121,15 @@ fn compact_assembly_position_failure_fs_uae() {
     assert_eq!(runs.len(), 1);
     assert!(runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(20));
+    assert!(runs[0].stdout.contains("[file 00000001, line 00000007]"));
     let report = failure_position(&runs[0].stdout).expect("gated assembly snapshot");
-    assert_eq!(report["pass"], 1);
+    eprintln!("COMPACT_ASSEMBLY_POSITION {report}");
+    assert_eq!(report["pass"], 2);
     assert_eq!(report["section_mode"], 5);
     assert_eq!(report["section_sweep"], 2);
     assert_eq!(report["section_sweeps"], 4);
     assert!(report["record_offset_bytes"].as_u64().unwrap() > 0);
     assert!(report["record_buffer_percent"].as_f64().unwrap() < 100.0);
-    eprintln!("COMPACT_ASSEMBLY_POSITION {report}");
 }
 
 #[test]

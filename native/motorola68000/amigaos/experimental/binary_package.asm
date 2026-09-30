@@ -5,6 +5,8 @@
 	.cpu 68020
 	.pub
 
+MAGIC = $42535038; BSP8
+
 Header	.struct
 Magic	.long ?
 Bytes	.long ?
@@ -83,7 +85,7 @@ Unstable	.byte ?
 MemberExcluded	.byte ?
 RequiredForms	.byte ?
 Mode	.word ?
-Padding	.word ?
+TupleClasses	.word ?  ; operand bytes: zero or required register class + 1
 Exclusions	.long ?
 TableProgram	.word ?
 Reserved2	.word ?

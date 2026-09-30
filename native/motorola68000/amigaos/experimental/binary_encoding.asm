@@ -31,9 +31,9 @@ SHAPE_PAIR = 4
 SHAPE_REGISTER_PAIR = 5
 SHAPE_VALUE_REGISTER = 6
 SHAPE_STRUCTURED_PAIR = 7
-SHAPE_PREFIXED_DIRECT = 8
+SHAPE_PREFIXED_VALUE = 8
 SHAPE_REGISTER = 9
-SHAPE_DIRECT_PAIR = 10
+SHAPE_VALUE_PAIR = 10
 
 RECIPE_NONE = 0
 RECIPE_U8 = 1
@@ -143,6 +143,11 @@ rowLoop
 	tst.l d0
 	bne.w nextRow
 	bsr.w requiredForms
+	cmpi.l #2, d0
+	beq.w fail
+	tst.l d0
+	bne.w nextRow
+	bsr.w tupleClasses
 	cmpi.l #2, d0
 	beq.w fail
 	tst.l d0
@@ -265,7 +270,7 @@ comma
 	cmpi.l #2, d0
 	beq.w malformed
 	tst.l d0
-	bne.w secondDirect
+	bne.w secondValue
 	move.w #SHAPE_VALUE_REGISTER, OperandShape
 	movea.l OperandStart, a0
 	movea.l OperandEnd, a1
@@ -276,7 +281,7 @@ comma
 	bne.w pairReady
 	move.w #SHAPE_REGISTER_PAIR, OperandShape
 	bra.w pairReady
-secondDirect
+secondValue
 	movea.l OperandStart, a0
 	movea.l OperandEnd, a1
 	bsr.w knownRegister
@@ -284,7 +289,7 @@ secondDirect
 	beq.w malformed
 	tst.l d0
 	beq.w pairReady
-	move.w #SHAPE_DIRECT_PAIR, OperandShape
+	move.w #SHAPE_VALUE_PAIR, OperandShape
 pairReady
 	; Recognize either operand order for the package-owned mask/indirect fragment.
 	movea.l OperandStart+4, a3
@@ -292,17 +297,17 @@ pairReady
 	move.l a4, d0
 	sub.l a3, d0
 	cmpi.l #7, d0
-	bne.w firstIndirect
+	bne.w firstWrapped
 	cmpi.b #TOKEN_MINUS, (a3)
-	bne.w firstIndirect
+	bne.w firstWrapped
 	cmpi.b #TOKEN_OPEN_PAREN, 1(a3)
-	bne.w firstIndirect
+	bne.w firstWrapped
 	cmpi.b #TOKEN_CLOSE_PAREN, 6(a3)
-	bne.w firstIndirect
+	bne.w firstWrapped
 	movea.l OperandStart, a0
 	movea.l OperandEnd, a1
 	bra.w maskList
-firstIndirect
+firstWrapped
 	movea.l OperandStart, a3
 	movea.l OperandEnd, a4
 	move.l a4, d0
@@ -356,11 +361,11 @@ singleOperand
 	cmpi.l #2, d0
 	beq.w malformed
 	tst.l d0
-	bne.w directOperand
+	bne.w valueOperand
 	move.w #SHAPE_REGISTER, OperandShape
 	moveq #0, d0
 	rts
-directOperand
+valueOperand
 	move.w #SHAPE_SINGLE, OperandShape
 	moveq #0, d0
 	rts
@@ -372,7 +377,7 @@ prefixedPair
 	beq.w malformed
 	tst.l d0
 	beq.w prefixedRegister
-	move.w #SHAPE_PREFIXED_DIRECT, OperandShape
+	move.w #SHAPE_PREFIXED_VALUE, OperandShape
 	moveq #0, d0
 	rts
 prefixedRegister
@@ -394,39 +399,48 @@ knownRegister	.block
 	bsr.w exactName
 	tst.l d0
 	bne.w done
-	movea.l package.Context.Package(a2), a6
-	move.l package.Header.RegisterRows(a6), d0
-	move.l package.Header.RegisterCount(a6), d2
-	cmpi.l #$ffff, d2
-	bhi.w malformed
-	move.l d2, d4
-	mulu.w #6, d4
-	add.l d0, d4
-	bcs.w malformed
-	cmp.l package.Header.Bytes(a6), d4
-	bhi.w malformed
-	adda.l d0, a6
-loop
-	tst.l d2
-	beq.w no
-	cmp.w (a6), d1
-	beq.w yes
-	addq.l #6, a6
-	subq.l #1, d2
-	bra.w loop
-yes
-	moveq #0, d0
-	bra.w done
-no
-	moveq #1, d0
-	bra.w done
-malformed
-	moveq #2, d0
+	bsr.w findRegisterClass
 done
 	movem.l (sp)+, d1-d4/a0-a1/a6
 	tst.l d0
 	rts
 	.bend  ; knownRegister
+
+; D1.W=name ID. Returns D0=0 and D2.W=class for the first register row,
+; 1 for an unknown name, or 2 for malformed table metadata. Clobbers D4/A6.
+findRegisterClass	.block
+	movea.l package.Context.Package(a2), a6
+	move.l package.Header.RegisterRows(a6), d0
+	move.l package.Header.RegisterCount(a6), d4
+	cmpi.l #$ffff, d4
+	bhi.w malformed
+	move.l d4, d2
+	mulu.w #6, d2
+	add.l d0, d2
+	bcs.w malformed
+	cmp.l package.Header.Bytes(a6), d2
+	bhi.w malformed
+	adda.l d0, a6
+loop
+	tst.l d4
+	beq.w no
+	cmp.w (a6), d1
+	beq.w yes
+	addq.l #6, a6
+	subq.l #1, d4
+	bra.w loop
+yes
+	moveq #0, d2
+	move.w 2(a6), d2
+	moveq #0, d0
+	rts
+no
+	moveq #1, d0
+	rts
+malformed
+	moveq #2, d0
+	rts
+	.bend  ; findRegisterClass
 
 ; D0=1 only when an exact package name disproves this row's match predicate;
 ; 0 is unknown/no exclusion, 2 is malformed metadata. Other registers preserved.
@@ -524,7 +538,7 @@ next
 	cmpi.l #7, d0
 	bne.w mismatch
 	cmpi.l #2, d4
-	beq.w postincrement
+	beq.w tailUpdate
 	cmpi.b #TOKEN_MINUS, (a0)
 	bne.w mismatch
 	cmpi.b #TOKEN_OPEN_PAREN, 1(a0)
@@ -532,7 +546,7 @@ next
 	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
 	bne.w mismatch
 	bra.w advance
-postincrement
+tailUpdate
 	cmpi.b #TOKEN_OPEN_PAREN, (a0)
 	bne.w mismatch
 	cmpi.b #TOKEN_CLOSE_PAREN, -2(a1)
@@ -601,6 +615,114 @@ done
 	tst.l d0
 	rts
 	.bend  ; requiredForms
+
+; Disprove a row only when a complete packed tuple contains a known register
+; with a different class. D0=0 unknown/matches, 1 mismatch, 2 bad metadata.
+; All other caller state is preserved; CCR reflects D0.
+tupleClasses	.block
+	move.w package.Row.TupleClasses(a5), d0
+	beq.w no
+	movem.l d1-d4/a0-a1/a4, -(sp)
+	lea package.Row.TupleClasses(a5), a4
+	moveq #0, d3
+next
+	moveq #0, d4
+	move.b 0(a4, d3.w), d4
+	beq.w advance
+	cmp.w OperandCount, d3
+	bhs.w malformed
+	move.w d3, d1
+	lsl.w #2, d1
+	lea OperandStart, a0
+	movea.l 0(a0, d1.w), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d1.w), a1
+	bsr.w tupleOperandClass
+	tst.l d0
+	bne.w done
+advance
+	addq.w #1, d3
+	cmpi.w #2, d3
+	blo.w next
+	moveq #0, d0
+	bra.w done
+malformed
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1/a4
+	tst.l d0
+	rts
+no
+	moveq #0, d0
+	rts
+	.bend  ; tupleClasses
+
+; A0/A1 bound one operand; D4.B is required class + 1. Only the exact
+; compiled-scalar/one-or-two-name wrapper can prove a base-register mismatch.
+; D0=0 unknown/matches, 1 mismatch, 2 bad register metadata; others preserved.
+tupleOperandClass	.block
+	movem.l d1-d5/a0-a1/a3/a6, -(sp)
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #9, d0
+	blo.w unknown
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w unknown
+	moveq #0, d1
+	move.b 1(a0), d1
+	beq.w unknown
+	addq.l #2, d1
+	sub.l d1, d0
+	cmpi.l #6, d0
+	beq.w oneName
+	cmpi.l #11, d0
+	bne.w unknown
+	cmpi.b #TOKEN_COMMA, 5(a0, d1.l)
+	bne.w unknown
+	cmpi.b #TOKEN_CLOSE_PAREN, 10(a0, d1.l)
+	bne.w unknown
+	bra.w baseName
+oneName
+	cmpi.b #TOKEN_CLOSE_PAREN, 5(a0, d1.l)
+	bne.w unknown
+baseName
+	lea 0(a0, d1.l), a3
+	cmpi.b #TOKEN_OPEN_PAREN, (a3)
+	bne.w unknown
+	lea 1(a3), a0
+	lea 5(a3), a1
+	bsr.w exactName
+	tst.l d0
+	bne.w unknown
+	move.w d1, d5
+	cmpi.b #TOKEN_COMMA, 5(a3)
+	bne.w lookup
+	; The second complete name token may carry a package qualifier. Its
+	; meaning is irrelevant to the necessary class of the first name.
+	cmpi.b #TOKEN_SYMBOL_0, 6(a3)
+	beq.w lookup
+	cmpi.b #TOKEN_SYMBOL_1, 6(a3)
+	bne.w unknown
+lookup
+	move.w d5, d1
+	move.w d4, d3
+	bsr.w findRegisterClass
+	cmpi.l #2, d0
+	beq.w result
+	tst.l d0
+	bne.w unknown
+	subq.w #1, d3
+	cmp.w d2, d3
+	beq.w unknown
+	moveq #1, d0
+	bra.w result
+unknown
+	moveq #0, d0
+result
+	movem.l (sp)+, d1-d5/a0-a1/a3/a6
+	tst.l d0
+	rts
+	.bend  ; tupleOperandClass
 
 ; Advance A3 over one bounded binary token.
 skipToken	.block
@@ -1440,9 +1562,9 @@ projectionWrappedRegister	.block
 	move.l a1, d0
 	sub.l a0, d0
 	cmpi.b #9, package.Projection.Kind(a4)
-	beq.w postincrement
+	beq.w tailUpdate
 	cmpi.b #10, package.Projection.Kind(a4)
-	beq.w predecrement
+	beq.w headUpdate
 	cmpi.l #6, d0
 	bne.w bad
 	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
@@ -1451,7 +1573,7 @@ projectionWrappedRegister	.block
 	bne.w bad
 	subq.l #1, a1
 	bra.w projectRegister
-postincrement
+tailUpdate
 	cmpi.l #7, d0
 	bne.w bad
 	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
@@ -1462,7 +1584,7 @@ postincrement
 	bne.w bad
 	subq.l #2, a1
 	bra.w projectRegister
-predecrement
+headUpdate
 	cmpi.l #7, d0
 	bne.w bad
 	cmpi.b #TOKEN_MINUS, (a0)+

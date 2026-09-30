@@ -11,13 +11,13 @@ alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slic
 Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
-Current measured frontier: after automatic branch package translation, the
-frozen 59-file input completes preparation and rejects at file `0x27`, line
-`0x70` on the expanded 68020 profile. Gated capture places that rejection in
-pass 1, section sweep 2 of 4, at packed-record byte 9,765 of 509,604 (1.92% of
-that sweep's scan). Its physical path has supporting localization below but no
-direct path capture. No native self-host Hunk exists. The preparation
-measurements below isolate each change from earlier gains.
+Current measured frontier: after package-derived tuple-class selection proof,
+the frozen 59-file input completes preparation and rejects at file `0x27`,
+line `0x17e` (scanner line 382, `move.l d1,-(sp)`) on the expanded 68020
+profile. The uninstrumented runner takes 196.857 seconds. No native self-host
+Hunk exists. The earlier position capture below describes the superseded
+line-112 frontier; it does not measure the current scan position. The next
+slice should investigate package-controlled register-to-stack transfers.
 
 Earlier convergence and memory observations: the compact native CLI accepts concrete code and
 data sections reopened by another module, with a focused 68020 / 2 MiB Hunk
@@ -73,8 +73,8 @@ cases match Rust exactly. The next full run reached a fresh guest exit after
 `00000061` (decimal 97, `move.l #UsageText,d1`). Rust emits a CODE-to-DATA
 relocation for that immediate address. The compact package now has a distinct
 atomic-target match projection, and native fixup identity binding strips the
-immediate marker before reading the symbol. BSP7 is the sole current package
-format; no BSP6 executor remains. Focused native exact-output cases pass for
+immediate marker before reading the symbol. BSP8 is the sole current package
+format; no earlier executor remains. Focused native exact-output cases pass for
 the immediate DATA address and a relocation-free numeric immediate. A renewed
 full self-host comparison is still required. Neither completed guest exit was
 a successful self-host performance measurement. The remaining repeated
@@ -222,8 +222,8 @@ compact lowerer treated it as an unsupported projection. Preparation now maps
 that field to the existing numeric SEMV automatic-request sentinel, `-1`, while
 preserving the package program, opcode and automatic class. The four-field
 branch contract is validated before lowering; `auto` in other fields or a
-non-branch input plan remains unsupported. Native execution and BSP7 are
-unchanged, with no mnemonic-specific shortcut or legacy package path.
+non-branch input plan remains unsupported. Native execution and the package format were
+unchanged in that slice, with no mnemonic-specific shortcut or legacy package path.
 
 The package's automatic policy chooses word width for a nearby target too;
 short width requires an explicit suffix. Fresh 68020 / 2 MiB native cases
@@ -1537,3 +1537,78 @@ The precise native selector/projection/encoding rejection point is not yet
 established. The next investigation should observe the failing boundary in
 the real guest before changing its semantics. The focused native parity tests
 are retained as ignored known-failure cases, not as passing evidence.
+
+## Tuple-class selection proof
+
+Hypothesis: the scanner's `move.w LOCAL_PENDING_KIND(a2),(a1)` is already
+covered by a canonical semantic sequence, but an earlier unsupported recipe
+blocks it because compact selection cannot disprove that recipe's necessary
+tuple-base register class. The replacement adds a generic package-directed
+proof, not a new MOVE encoder. Scope ends at a fresh full-input frontier;
+unrelated capability failures become the next slice.
+
+BSP8 reuses row bytes 22 and 23 for necessary tuple-base classes for operands
+0 and 1. Zero carries no proof; class + 1 represents classes 0 through 254.
+Only canonical match conjuncts contribute this metadata. Native selection
+compares a complete packed tuple's register against the package's first matching
+register row. A proven mismatch skips the unsupported recipe; a matching class,
+unknown register or incomplete wrapper retains the barrier. Malformed table
+metadata fails. Producer and all current readers move together to BSP8; no
+legacy executor remains. The row size and package size stay unchanged.
+
+Baseline: the fresh minimal displacement-to-indirect case exits 20, while Rust
+accepts it. The frozen 59-file input exits at file 39, line 112 in 196.372 s
+on the expanded 68020 / 10 MiB profile. Success requires fresh exact-output
+native comparisons for scanner transfer forms, preservation of the unsupported
+PC-tuple barrier, and a full frozen-input run. Time to a changed failure site
+will be reported separately and will not be called a speed improvement.
+
+The first proof extension passes the original minimal case, byte/word/long
+displacement/update transfer matrix, exact compact CLI Hunk output, and a
+matching unsupported PC-tuple control under 2 MiB. Its ordinary frozen-input
+run advances to scanner line 274 (`move.b 0(a4,d2.l),(a0)+`) in 196.803 s,
+versus 196.372 s before the extension (+0.430 s; one run each to different
+failures, not a speed result). The executable is 87,860 bytes (+344), reserving
+98,912 linked bytes (+332); the package remains 294,360 bytes.
+
+That indexed form exposes the same conservative proof boundary: the optional
+second name may have a package qualifier. The matcher now checks its complete
+four-byte token without interpreting that qualifier; only the exact unqualified
+base name supplies the class proof. Focused comparisons include both word- and
+long-qualified index names. This remains structural matching, with all encoding
+semantics in the existing package sequence.
+
+The qualified-index proof's fresh ordinary run reaches scanner line 382,
+`move.l d1,-(sp)`, with an explicit guest exit 20 in 196.857 s. This compares
+separately with 196.803 s before that extension (+0.054 s; again different
+failure frontiers, no speed claim). The ordinary image is 87,864 bytes (+4 for
+this extension, +348 overall), reserving 98,916 linked bytes (+336 overall).
+The package remains 294,360 bytes. All three ordinary runs use the same frozen
+59-file / 674,295-byte source graph, expanded 68020 / 10 MiB profile, disabled
+telemetry and 86,396-byte live Rust Hunk oracle. None produces native self-host
+output. The next register-to-stack frontier is separate from the now-proven
+memory transfer cases.
+
+Focused qualification: 151 Rust binary-source checks pass, plus four fresh
+68020 / 2 MiB native cases (minimal displacement, seven-form transfer matrix,
+exact CLI Hunk output, and matching unsupported PC-class rejection). Sol's
+static review finds no bounds or preservation issue, including the qualified
+second token. No telemetry code was added to this structural predicate; existing
+selection service instrumentation remains its owner. Rust formatting, the
+289-file native formatter gate, formatting of affected experimental dependencies,
+staged architecture boundaries, instrumentation safety, fresh-native proof,
+contract assertions, test ownership, runtime-boundary contract, benchmark-selector
+and workflow-link checks pass. Broad qualification remains incomplete: the
+no-growth guard reports nine pre-existing missing ownership annotations, the
+inventory checker reports existing drift in unchanged `tkpkg.value_execution`,
+and the full architecture scan retains one blocking term in an unchanged file.
+This slice removes nine existing terminology findings in the adapted matcher
+and wrapper helper. The earlier broad Rust failures above were not rerun or
+waived.
+
+The maintained gated failure-position control now uses Rust-valid compound
+immediate relocation (`move.l #payload+1,d0`), since the old MOVE failure is
+fixed. Fresh native completion reports the expected exit 20 at input line 7,
+pass 2, section sweep 2 of 4, with record offset 42 / 146 bytes. The control
+checks that precise diagnostic and capture; it is an expected rejection, not
+positive assembly parity or a full-input position measurement.

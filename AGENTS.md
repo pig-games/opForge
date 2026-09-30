@@ -48,7 +48,7 @@ historical documents do not activate work or grant authority.
   expensive capable model when savings exceed briefing, coordination, verification
   and rework. Keep small, context-heavy tasks local. The coordinator owns integration.
   Explicitly select GPT-6 Luna (`gpt-6-luna`) for straightforward bounded tasks
-  and GPT-6 Sol (`gpt-6-sol`) for implementation, debugging, review and routine
+  and GPT-6.1 Sol (`gpt-6.1-sol`) for implementation, debugging, review and routine
   coordination. Reserve GPT-6 Astra (`gpt-6-astra`) for genuinely complex problems
   and high-level architectural design and planning.
   Follow the workflow guide's delegation guidance; keep tool/model selection

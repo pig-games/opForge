@@ -116,7 +116,7 @@ Use the cheapest capable configured model; escalate when uncertainty erases savi
 Return compact deliverables and evidence, not repeated conversation histories.
 Avoid default reviewer chains or parallel agents with overlapping assignments.
 
-### Delegation with GPT-6 Sol and Luna
+### Delegation with GPT-6.1 Sol and Luna
 
 Select the delegate model explicitly rather than inheriting the coordinator's
 model by default. Current project defaults are:
@@ -124,11 +124,14 @@ model by default. Current project defaults are:
 | Model | Use when |
 |---|---|
 | GPT-6 Luna (`gpt-6-luna`) | Work is straightforward, bounded and easy to verify: targeted code searches, inventories, mechanical edits, focused documentation updates, or running established checks and summarizing failures. |
-| GPT-6 Sol (`gpt-6-sol`) | Default for implementation, debugging, test design, code review, integration and routine planning or coordination. |
+| GPT-6.1 Sol (`gpt-6.1-sol`) | Default for implementation, debugging, test design, code review, integration and routine planning or coordination. |
 | GPT-6 Astra (`gpt-6-astra`) | Reserve for genuinely complex problems and high-level architectural design and planning where Sol is unlikely to be sufficient. |
 
 These are project routing defaults, consistent with [OpenAI's model guidance](https://developers.openai.com/api/docs/models),
-not guarantees about capability or savings. Choose Sol directly when a task's
+not guarantees about capability or savings. The current [6.1 Sol rates](https://developers.openai.com/api/docs/models/gpt-6.1-sol)
+match [6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol) for uncached
+input and output, with lower cached-input cost. Recheck prices when changing
+these defaults; model age does not establish task cost. Choose Sol directly when a task's
 complexity warrants it; there is no mandatory Luna attempt. If a Luna task grows
 ambiguous or its result needs substantial repair, hand the findings to Sol or the
 coordinator. Avoid repeated cheap attempts whose combined cost exceeds one capable

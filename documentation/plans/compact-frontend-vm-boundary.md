@@ -12,13 +12,13 @@ Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
 Current measured frontier: the frozen 61-file input rejects at native origin
-`0x11`, line 111, on 68020 / 10 MiB, after the package-role repair. The unique
-EOF count matches `binary_mask_unary.asm`, whose line 111 is
-`move.w d4, Bytes+2`. The instrumented run reaches pass 1, section sweep 2 of 4,
-at 65.948% of that scan. Origin IDs are discovery/include IDs, not indices into
-the sorted Rust manifest, and this is not overall completion. The preceding
-frontier was `binary_graph.asm` and its `bra.w reset` at 47.963% of the scan;
-that branch now passes a focused exact comparison.
+`0x25`, line 1124, on 68020 / 10 MiB, after the relocation-addend repair.
+The preceding capture's unique EOF count maps that origin to frozen
+`binary_app.asm`, whose line 1124 is `cmpa.l IoEnd,a0`; the new scan position
+has not been captured. The last measured position was pass 1, section sweep 2
+of 4, at 65.948% of that scan, on `move.w d4, Bytes+2`, which now passes a
+focused exact comparison. Origin IDs are discovery/include IDs, not indices
+into the sorted Rust manifest, and scan position is not overall completion.
 The entry-file BSS-to-struct transfers and immediate CODE/DATA/BSS callback
 addresses now pass focused exact Hunk comparison.
 The register-mask slice below advances beyond the previous restore rejection;
@@ -2226,9 +2226,8 @@ proof, not a speed claim.
 
 The ordinary CLI is 89,432 bytes with 100,456 linked reserved bytes, separately
 +540/+536 from the package-role checkpoint. The runtime package remains
-298,408 bytes. The full frozen release run is being measured against the prior
-325.717233125 seconds; its moved frontier must not be confused with successful
-self-host parity or a speed improvement.
+298,408 bytes. The completed frozen release measurement below advances the
+frontier; it does not establish self-host parity or a speed improvement.
 
 Qualification so far: 197 packed-source Rust tests, the three exact native
 Hunk controls and the seven address/branch rejection controls, 54-file native
@@ -2239,3 +2238,61 @@ and separate identity/value transport. The existing VM-only shared `.long`
 relocation limitation still makes three broader Hunk assertions fail in that
 feature configuration; it does not affect the passing default-feature oracle.
 No broad repository or completed native self-host qualification is claimed.
+
+The fresh telemetry-off frozen full run after the addend repair completes its
+negative protocol at origin `0x25`, line 1124, in 374.754851542 runner seconds.
+Its separate delta from 325.717233125 seconds is +49.037618417 seconds; a new
+rejection point prevents a performance claim. The unchanged source/oracle and
+89,432-byte image/100,456-byte linked reservation are confirmed. The prior
+capture's unique EOF count of 1,683 maps origin `0x25` to the 1,682-line frozen
+`binary_app.asm`; its instruction is `cmpa.l IoEnd,a0`. No self-host Hunk is
+produced. The next structural investigation covers address-register compare,
+add and subtract source forms in that whole module.
+
+## Address-register memory operands
+
+The package has register, immediate, indirect, displacement, indexed and
+explicit-width ADDA/SUBA/CMPA forms, but lacks bare symbolic memory operands.
+Rust's family callback rewrites local bare symbols to explicit long addresses;
+the packed native path correctly depends on executable package programs instead.
+The frozen application module has two affected forms: `cmpa.l IoEnd,a0` and
+`adda.l NameCount,a0`, among 23 address-register arithmetic/compare instructions.
+
+Hypothesis: supply the six word/long forms in the family-owned canonical package,
+using its existing absolute-long fixup and generic expression projection. Preserve
+register, immediate, displaced and explicit-width behavior, reject invalid
+destination registers and byte forms, and retain the existing explicit-member
+export barrier. No native CPU exceptions, source rewriting or new VM contract
+are needed. Qualified imported targets and affine addends should use the same
+package forms and relocation proof.
+
+The unchanged focused baseline rejects its first `adda.w reserved,a0` at line 8
+with fresh START/DONE markers and guest exit 20. Require exact live Rust/native
+Hunk output for CODE/DATA/BSS targets and named absolute values after the change,
+plus separate imported/affine probes and unchanged operand controls. Qualify
+the executable package rows directly so Rust's callback cannot hide a remaining
+VM gap. Compare the identical frozen full release run against 374.754851542
+seconds; report its individual time and frontier, without a speed claim when
+the run reaches different work. Stop if the solution requires CPU semantics
+outside the family package or broadens unsupported expression/member behavior.
+
+The family package now supplies all six forms using existing match, field-9
+encoding and absolute-long fixup programs. Fresh native output matches the live
+Rust Hunk exactly for the unchanged baseline (328 bytes, 1.512402 start-to-done
+host seconds) and the separate imported/affine, colon-free-label probe (448
+bytes, 1.772799250 s). Register, immediate, displacement and numeric explicit
+word-address controls remain exact (1.016668250 s); invalid destination classes,
+byte width, a bare numeric address and the retained explicit-long member barrier
+complete their expected rejection protocols. Tiny timings supply no speed claim.
+
+The ordinary CLI remains 89,432 bytes with 100,456 linked reserved bytes. The
+prepared runtime package grows separately from 298,408 to 299,176 bytes (+768),
+and the canonical embedded package from 370,723 to 370,933 bytes (+210).
+Qualification includes 203 packed-source Rust tests, six focused checks in both
+default and VM-only configurations, 102 family tests, 14 VM package tests,
+package bounds and both canonical fixture comparisons. Runtime boundary, fresh
+proof, ownership, canonical contracts, benchmark-selector, dependency-ban and
+workflow-link guards pass. Additional fresh native controls reject multiple
+address bases, multiplication, reversed subtraction and negation at the offending
+instruction. No generic VM or native production code changes. The full frozen
+release comparison is pending; no full repository or self-host parity is claimed.

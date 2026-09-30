@@ -3885,6 +3885,22 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
                 width_rank: 0,
             });
         }
+        // Symbol-bearing scalar sources use an absolute-long address for both
+        // operation widths. The target predicate preserves numeric/register
+        // candidates and the fixup program owns relocation identity.
+        selectors.push(ModeSelectorDescriptor {
+            owner: ScopedOwner::Family("motorola68000".to_string()),
+            mnemonic: mnemonic.to_string(),
+            shape_key: "direct_register".to_string(),
+            mode_key: "semantic".to_string(),
+            operand_plan: format!(
+                "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0,reg1.class1;encode:{PARAM_FIELD_9}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},reg1.class1;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0",
+                base + 0x39
+            ),
+            priority: 9,
+            unstable_widen: false,
+            width_rank: 0,
+        });
     }
     for (mnemonic, base) in WORD_SOURCE_TO_DATA_BASES.iter().copied() {
         selectors.push(ModeSelectorDescriptor {

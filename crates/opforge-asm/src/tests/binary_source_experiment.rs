@@ -75,14 +75,16 @@ mod absolute_memory;
 #[path = "binary_source_callback.rs"]
 mod callback;
 
+#[path = "binary_source_address_addends.rs"]
+mod address_addends;
+#[path = "binary_source_address_alu.rs"]
+mod address_alu;
 #[path = "binary_source_callback_scope.rs"]
 mod callback_scope;
 #[path = "binary_source_keyword_labels.rs"]
 mod keyword_labels;
 #[path = "binary_source_mnemonic_labels.rs"]
 mod mnemonic_labels;
-#[path = "binary_source_address_addends.rs"]
-mod address_addends;
 
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;

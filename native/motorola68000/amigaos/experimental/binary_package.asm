@@ -69,7 +69,7 @@ Pc	.long ?
 High	.long ?
 Package	.long ?
 Pass	.word ?
-Reserved	.word ?
+Relocatable	.word ?  ; nonzero for section-relative Hunk output
 Parameters	.long ?
 ParameterCount	.long ?
 SectionIds	.long ?

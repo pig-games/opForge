@@ -197,6 +197,91 @@ fn compact_immediate_memory_undefined_source_fs_uae() {
     assert_native_rejection(UNDEFINED_IMMEDIATE_SOURCE, "m68020");
 }
 
+fn layout_alias_hunk(source: &str) -> String {
+    format!(".module alias_probe\n.cpu m68020\n.section code,kind=code\nCodeTarget .long 0\nAlias=CodeTarget\n move.l #{source},DataTarget\n rts\n.endsection\n.section data,kind=data\nDataTarget .long 0\n.endsection\n.output \"build/sections.hunk\",format=hunk,sections=code,data\n.endmodule\n")
+}
+
+fn rust_layout_alias_hunk(source: &str) -> Result<Vec<u8>, String> {
+    let dir = create_temp_dir("immediate-memory-layout-alias");
+    fs::create_dir_all(dir.join("build")).unwrap();
+    let input = dir.join("input.asm");
+    fs::write(&input, layout_alias_hunk(source)).unwrap();
+    let cli = Cli::parse_from([
+        "opForge".to_string(),
+        input.to_string_lossy().into_owned(),
+        "--cpu".to_string(),
+        "68020".to_string(),
+    ]);
+    let mut config = validate_cli(&cli).unwrap();
+    config.out_dir = Some(dir.clone());
+    let result = run_with_validated_cli_with_context(&cli, &config)
+        .map_err(|error| format!("{error:?}"))
+        .map(|_| fs::read(dir.join("build/sections.hunk")).unwrap());
+    fs::remove_dir_all(&dir).unwrap();
+    result
+}
+
+#[test]
+fn compact_immediate_memory_layout_alias_hunk_rust_rejects() {
+    for source in ["Alias", "Alias+4"] {
+        let error = rust_layout_alias_hunk(source).expect_err("opaque layout alias must reject");
+        assert!(
+            error.contains("lacks a valid package relocation proof"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
+fn compact_immediate_memory_layout_alias_direct_hunk_rust_oracle() {
+    for (source, addend) in [("CodeTarget", 0), ("CodeTarget+4", 4)] {
+        let oracle = rust_layout_alias_hunk(source).unwrap();
+        assert_eq!(long(&oracle, 8), 2);
+        let (code, relocations) = code_and_relocations(&oracle);
+        assert_eq!(
+            code,
+            [0, 0, 0, 0, 0x23, 0xfc, 0, 0, 0, addend, 0, 0, 0, 0, 0x4e, 0x75]
+        );
+        assert_eq!(relocations, BTreeMap::from([(6, 0), (10, 1)]));
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; opaque Hunk layout aliases must fail closed"]
+fn compact_immediate_memory_layout_alias_hunk_barrier_fs_uae() {
+    for source in ["Alias", "Alias+4"] {
+        assert_native_rejection(&layout_alias_hunk(source), "m68020");
+    }
+}
+
+const FLAT_LAYOUT_ALIAS: &str = ".cpu m68020\n.org 0\nCodeTarget .long 0\nAlias=CodeTarget\n move.l #Alias+4,DataTarget\n move.l #Alias,DataTarget\n rts\nDataTarget .long 0\n.end\n";
+
+#[test]
+fn compact_immediate_memory_layout_alias_flat_rust_oracle() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &FLAT_LAYOUT_ALIAS.lines().collect::<Vec<_>>(),
+        true,
+    )
+    .unwrap();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert_eq!(
+        entries
+            .into_iter()
+            .map(|(_, byte)| byte)
+            .collect::<Vec<_>>(),
+        [
+            0, 0, 0, 0, 0x23, 0xfc, 0, 0, 0, 4, 0, 0, 0, 26, 0x23, 0xfc, 0, 0, 0, 0, 0, 0, 0, 26,
+            0x4e, 0x75, 0, 0, 0, 0
+        ]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; flat layout aliases remain numeric"]
+fn compact_immediate_memory_layout_alias_flat_fs_uae() {
+    assert_binary_source(FLAT_LAYOUT_ALIAS.into(), "m68020".into());
+}
+
 fn source_address_hunk() -> &'static str {
     ".module immediate_address_probe\n.cpu m68020\n.section code,kind=code\nentry\n move.l #CodeTarget,DataTarget\n move.l #CodeTarget+4,ReturnCode\n move.l #DataTarget,$1234\n rts\nCodeTarget .long 0\n.endsection\n.section data,kind=data\n.byte 1,2,3,4\nDataTarget .long 0\n.endsection\n.section bss,kind=bss\n.res byte,1\n.align 4\nReturnCode .res long,2\n.endsection\n.output \"build/sections.hunk\",format=hunk,sections=code,bss,data\n.endmodule\n"
 }

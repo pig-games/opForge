@@ -146,12 +146,9 @@ symbol
 	bne.w bad
 	bra.w absolute  ; fixed-width pass-1 fixups defer value and identity together
 defined
-	; A defined flat-output label is a scalar. Only actual section provenance
-	; restricts its arithmetic to the affine relocation forms.
-	movea.l pkg.Context.SectionIds(a2), a3
-	move.l a3, d0
-	beq.w bad
-	tst.b 0(a3, d1.l)
+	; Flat labels are scalars. In Hunk output retain layout-dependent identity,
+	; including aliases whose missing section provenance must later reject.
+	tst.w pkg.Context.Relocatable(a2)
 	bne.w push
 absolute
 	moveq #-1, d1

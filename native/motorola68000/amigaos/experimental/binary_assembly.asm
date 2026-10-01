@@ -139,6 +139,12 @@ parametersReady
 	jsr sections.scan
 	bne.w fail
 	move.l #SectionState, Frame.Sections(a5)
+	clr.w pkg.Context.Relocatable(a6)
+	lea SectionState, a0
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
+	bne.w outputReady
+	move.w #1, pkg.Context.Relocatable(a6)
+outputReady
 	moveq #1, d7
 pass
 	move.w d7, pkg.Context.Pass(a6)
@@ -148,7 +154,7 @@ pass
 	jsr sections.beginPass
 	moveq #0, d5  ; ordinary single sweep
 	lea SectionState, a0
-	cmpi.w #5, sections.State.Mode(a0)
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
 	beq.w hunkPass
 	cmpi.w #2, sections.State.Mode(a0)
 	beq.w oneMap

@@ -2402,3 +2402,23 @@ the native-call wall interval even when proof rejects, and reports each differin
 Hunk segment's allocation, payload window and relocation identity. Exact proof
 and ephemeral cleanup remain unchanged. All 54 focused runner host tests and the
 native proof guard pass; this reporting change adds no guest instrumentation.
+
+### Preserve layout-alias rejection
+
+Broader review found that defined layout aliases have no section ID. Treating
+that metadata gap as a scalar made `#Alias+4` lose identity in Hunk output,
+although `#Alias` still rejected. A fresh before-fix case incorrectly completes
+with exit 0 (0.766512625 s between START/DONE). Rust rejects both opaque forms.
+The existing context padding word now records relocatable output, initialized
+once from section discovery. Defined non-absolute names retain their identity
+in that mode, so unsupported alias provenance rejects; flat labels and aliases
+remain scalar. The context size and package format are unchanged.
+
+All 10 fresh immediate-memory native tests pass after the correction, including
+both alias rejections, exact 30-byte flat aliases, forward and preceding-label
+arithmetic, both Hunk fixups, and unsafe arithmetic. Whole-matrix wall time is
+356.93 s. The CLI is 89,512 bytes / 100,504 linked reserved bytes (+20/+16 from
+the preceding product checkpoint); package size remains 299,048 bytes. The
+one-second focused cases do not establish a speed change. All 12 focused Rust
+tests pass; alias controls also pass in VM-only mode. Native formatting,
+instrumentation, architecture, runtime-boundary and contract guards pass.

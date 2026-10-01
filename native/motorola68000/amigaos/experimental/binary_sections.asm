@@ -43,6 +43,7 @@ HUNK_SLOT_BYTES = HunkSlot.Size+4
 HUNK_SLOTS = SLOTS+2*SLOT_BYTES
 ORDER = HUNK_SLOTS+8*HUNK_SLOT_BYTES
 SCRATCH_BYTES = ORDER+8
+HUNK_MODE = 5
 ; Modes 3/4 use two placed slots, without/with two imported maps.
 ; Started/Placed use one bit per slot; After retains its last completed PC.
 	.section code, kind=code

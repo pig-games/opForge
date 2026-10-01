@@ -126,8 +126,47 @@ ownership, zero profiling/allocation errors and valid phase/stage clocks. Nested
 token/binding observations must not be added to exclusive preparation stages.
 These measurements include potentially substantial hot-probe overhead. The two
 15-second release runs remain the release baseline. The instrumented export,
-16 focused Python checks and both release/instrumented dry runs pass; physical
-execution of the instrumented bootstrap is pending.
+16 focused Python checks and both release/instrumented dry runs pass.
+
+The fully instrumented physical A6000 run at checkpoint `2f4cf816` also completes
+with exit zero and the exact release Hunk. Guest overall duration is 58 seconds;
+host command duration including connection is 58.798227208 seconds. MEMD records
+49.16 seconds preparation and 8.82 seconds assembly (57.98 seconds together).
+Exclusive preparation stages sum to 49.150610604 seconds, within 9.4 ms of the
+coarse preparation clock:
+
+| Instrumented preparation stage | Seconds |
+| --- | ---: |
+| Tokenization | 22.987 |
+| Binding and raw records | 14.952 |
+| Source I/O and other preparation | 9.089 |
+| Expression preparation | 1.260 |
+| Runtime finalization | 0.465 |
+| Module discovery | 0.390 |
+| Package setup | 0.008 |
+
+Input collection is a separate nested observation: 1.363 seconds, 904,837 bytes
+and 351 reads. The broader source-I/O/other stage must not be reported as pure
+I/O time. Token telemetry counts 1,878,569 VM opcode executions and 157,921
+committed tokens. Expression work compiles 21,606 programs (81,168 bytes) and
+performs 62,391 evaluations. Sampled numeric binding estimates 3.166 seconds
+from 1,397 samples out of 89,370 calls; it is an estimate nested within binding
+work, not another exclusive stage. Full probing adds approximately 43 seconds
+relative to the observed release runs, including run variation. These phase ranks
+do not establish the uninstrumented phase split.
+
+Peak tracked ownership is 5,222,440 bytes, prepared live ownership 1,576,960 and
+assembly live ownership 1,986,560. Terminal tracked live ownership is zero;
+allocated and freed totals both equal 10,093,072 bytes. There are no profiling
+errors or allocation failures. The 552,366 packed-source bytes and these peak/live
+sizes match the recorded emulator measurements. This supports the full-workload
+result but neither explains the emulator/hardware timing gap nor qualifies 2 MiB.
+Case SHA-256 is
+`f30bc4035524bafd27412c1e5f978e569f41f121fd50c66ee3d248c379dff57a`;
+remote directory is `Development:opforge-0b31a5ac3225`. The retained pre/post-run
+captures verify fresh outputs, unchanged case inputs, exact completion challenges
+and a complete valid 2,280-byte MEMD record. A phase-only physical measurement
+would be needed before interpreting these detailed-profile ranks as release costs.
 
 ## Ownership and representation contracts
 

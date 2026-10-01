@@ -909,6 +909,10 @@ connection. The second run uses a fresh remote directory and the identical case.
 This is a different execution environment from FS-UAE, not a code-change speedup
 comparison; the timing gap remains unexplained. The frontend note records the
 case identity and pre/post-run verification.
+The fully instrumented physical run also matches the same release Hunk and
+finishes in 58 seconds (49.16 preparation, 8.82 assembly). Its detailed probes
+add substantial overhead relative to the 15-second release observations; the
+frontend note records stage/work counts and balanced, error-free memory accounting.
 
 The initial Rust baseline builds a deterministic 58,856-byte Hunk at
 `build/opforge_compact` from this entry (two separate temporary output roots

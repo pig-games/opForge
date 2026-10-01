@@ -40,6 +40,8 @@ targets	.block
 ; expression's relocation identity without evaluating its scalar value.
 ; D0=STATUS_CLEAR (absolute), STATUS_SECTION (one base), STATUS_BAD;
 ; D1=base ID, or $ffff. Other registers preserved; A0 advances.
+; Undefined symbols are provisionally scalar in pass 1. The caller must evaluate
+; through ExprVM and honor its unresolved flag before using the value or identity.
 ; Numeric evaluation remains ExprVM-owned. Only base+absolute,
 ; absolute+base, base-absolute and unary plus preserve a base.
 affineTarget	.block
@@ -137,7 +139,21 @@ symbol
 	move.l a3, d0
 	beq.w bad
 	cmpi.b #dependencies.ABSOLUTE, 0(a3, d1.l)
+	beq.w absolute
+	tst.b 0(a3, d1.l)
+	bne.w defined
+	cmpi.w #1, pkg.Context.Pass(a2)
+	bne.w bad
+	bra.w absolute  ; fixed-width pass-1 fixups defer value and identity together
+defined
+	; A defined flat-output label is a scalar. Only actual section provenance
+	; restricts its arithmetic to the affine relocation forms.
+	movea.l pkg.Context.SectionIds(a2), a3
+	move.l a3, d0
+	beq.w bad
+	tst.b 0(a3, d1.l)
 	bne.w push
+absolute
 	moveq #-1, d1
 push
 	cmpi.l #runtime.EXPRVM_STACK_CAPACITY, d6

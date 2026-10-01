@@ -4964,6 +4964,9 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
             unstable_widen: false,
             width_rank: 0,
         });
+        if mnemonic == "MOVE.L" {
+            continue;
+        }
         selectors.push(ModeSelectorDescriptor {
             owner: ScopedOwner::Family("motorola68000".to_string()),
             mnemonic: mnemonic.to_string(),
@@ -5063,9 +5066,11 @@ pub fn mode_selectors() -> Vec<ModeSelectorDescriptor> {
         shape_key: "immediate_direct".to_string(),
         mode_key: "semantic".to_string(),
         operand_plan: format!(
-            "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}encode:{PARAM_FIXED_EXTENSION_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}9212,expr0;encode:{PARAM_SCALAR_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr1"
+            "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}9212;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr0;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr1"
         ),
-        priority: 100,
+        // Both scalar immediates and memory addresses need the same bounded
+        // fixup path so section identities cannot disappear during evaluation.
+        priority: 130,
         unstable_widen: false,
         width_rank: 0,
     });

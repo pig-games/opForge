@@ -93,17 +93,17 @@ progress p=0000001c f=00000005 l=00000004 r=00000000 m=00000000\n",
 #[ignore = "requires FS-UAE with memory/progress gates; relocated snapshot fields"]
 fn compact_assembly_position_failure_fs_uae() {
     use super::*;
-    let source = ".module probe\n.cpu m68020\n.section entry, kind=code\n nop\n.endsection\n.section code, kind=code\n move.l #payload+1,d0\n.endsection\n.section data, kind=data\npayload .byte 7\n.endsection\n.section bss, kind=bss\n.res long, 1\n.endsection\n.output \"probe.hunk\", format=hunk, sections=entry,code,data,bss\n.endmodule\n.end\n";
-    // Rust accepts the same input; compact native cannot bind this compound
-    // address relocation in pass 2. Observe its position, not artifact parity.
+    let source = ".module probe\n.cpu m68020\n.section entry, kind=code\n nop\n.endsection\n.section code, kind=code\n move.l #payload+other,d0\n.endsection\n.section data, kind=data\npayload .byte 7\nother .byte 8\n.endsection\n.section bss, kind=bss\n.res long, 1\n.endsection\n.output \"probe.hunk\", format=hunk, sections=entry,code,data,bss\n.endmodule\n.end\n";
+    // Two address bases cannot form one Hunk relocation. Their forward labels
+    // become known in pass 2; use that deliberate rejection to observe position.
+    // A single-base addend now passes exact comparison in address_addends.
     let dir = create_temp_dir("assembly-position-oracle");
     let input = dir.join("input.asm");
     fs::write(&input, source).unwrap();
     let cli = Cli::parse_from(["opforge", input.to_str().unwrap()]);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(dir.clone());
-    run_with_validated_cli_with_context(&cli, &config).unwrap();
-    assert!(!fs::read(dir.join("probe.hunk")).unwrap().is_empty());
+    assert!(run_with_validated_cli_with_context(&cli, &config).is_err());
     fs::remove_dir_all(dir).unwrap();
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();

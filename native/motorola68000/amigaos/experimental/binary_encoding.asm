@@ -49,6 +49,7 @@ RECIPE_SEMANTIC_SEQUENCE = 9
 PROGRAM_TABLE = 1
 PROGRAM_SEMANTIC = 2
 PROGRAM_VALUE = 3
+PROJECTION_EXPRESSION = 0
 MISSING_PROGRAM = $ffff
 HEADER_BYTES = package.Header.MacroFragmentsBytes+4
 ROW_BYTES = 32
@@ -1431,6 +1432,9 @@ inputReady
 	.SELECTION_POSITION_PROJECTION Selection, package.Projection.Kind(a4)
 	cmpi.b #15, package.Projection.Kind(a4)
 	beq.w scalarTarget
+	; Scalar fixups share the same bounded identity proof; literals have no target.
+	cmpi.b #PROJECTION_EXPRESSION, package.Projection.Kind(a4)
+	beq.w scalarTarget
 	cmpi.b #6, package.Projection.Kind(a4)
 	bne.w bad  ; target:member and other paths need exact identity transport
 	bsr.w operandSpan
@@ -1454,7 +1458,13 @@ targetSpanReady
 	bne.w targetName
 	addq.l #1, a0
 targetName
+	cmpa.l a1, a0
+	bhs.w bad
+	; Exact-name probing may advance even on failure. The bounded proof starts
+	; at the original operand, not at the probe's failure cursor.
+	move.l a0, -(sp)
 	bsr.w exactTarget
+	movea.l (sp)+, a0
 	tst.l d0
 	beq.w exactIdentity
 	; The generic postfix proof transports one base through absolute addends.

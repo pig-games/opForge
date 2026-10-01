@@ -12,13 +12,14 @@ Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
 Current measured frontier: the frozen 61-file input rejects at native origin
-`0x25`, line 1124, on 68020 / 10 MiB, after the relocation-addend repair.
-The preceding capture's unique EOF count maps that origin to frozen
-`binary_app.asm`, whose line 1124 is `cmpa.l IoEnd,a0`; the new scan position
-has not been captured. The last measured position was pass 1, section sweep 2
-of 4, at 65.948% of that scan, on `move.w d4, Bytes+2`, which now passes a
-focused exact comparison. Origin IDs are discovery/include IDs, not indices
-into the sorted Rust manifest, and scan position is not overall completion.
+`0x25`, line 135, on 68020 / 10 MiB, after the address-register memory repair.
+The fresh position capture maps that origin to frozen `binary_app.asm`, whose
+line 135 is `move.l #20,ReturnCode`. The complete first assembly pass now finishes
+across all four sections. The second pass reaches section sweep 2 of 4, at
+90.814% of that scan, then rejects while recording instruction relocations.
+The preceding measured frontier was pass 1 at 65.948%, on `move.w d4, Bytes+2`,
+which now passes focused exact comparison. Origin IDs are discovery/include IDs,
+not indices into the sorted Rust manifest; scan position is not overall completion.
 The entry-file BSS-to-struct transfers and immediate CODE/DATA/BSS callback
 addresses now pass focused exact Hunk comparison.
 The register-mask slice below advances beyond the previous restore rejection;
@@ -2294,5 +2295,95 @@ package bounds and both canonical fixture comparisons. Runtime boundary, fresh
 proof, ownership, canonical contracts, benchmark-selector, dependency-ban and
 workflow-link guards pass. Additional fresh native controls reject multiple
 address bases, multiplication, reversed subtraction and negation at the offending
-instruction. No generic VM or native production code changes. The full frozen
-release comparison is pending; no full repository or self-host parity is claimed.
+instruction. No generic VM or native production code changes. No full repository
+or self-host parity is claimed.
+
+The fresh telemetry-off frozen full run now completes its negative protocol in
+534.873728125 runner seconds, separately +160.118876583 from 374.754851542.
+It rejects at origin `0x25`, line 135 (`move.l #20,ReturnCode` in frozen
+`binary_app.asm`). Source, oracle and native image identities
+remain unchanged; the prepared package is 299,176 bytes. The changed frontier
+prevents a performance claim. No self-host Hunk is produced.
+
+The separate gated capture confirms pass 2, raw sweep 9 (section 2 of 4, ID 3),
+at record 485,738 of 534,872 (90.814%). All four first-pass section sweeps have
+therefore completed. Failure stage 14 is instruction-relocation recording, not
+encoding or output emission. The last attempted candidate has priority 100,
+recipe 9 and projection 0; this alone is not selected-candidate proof.
+The instrumented run takes 552.340988375 runner seconds, excluded from release
+comparisons. Its image is 93,704 bytes with 106,372 linked reserved bytes.
+Peak tracked ownership is 5,222,568 bytes, with no allocation failure or profiling
+error. This is still completed negative protocol evidence, without a self-host Hunk.
+
+## Immediate stores and complete relocation ownership
+
+The canonical package already has byte/word/long immediate stores with a
+destination fixup. A MOVE.L numeric fallback at priority 100 precedes that
+target-aware row at 122, however, and can consume resolved addresses as plain
+values without emitting fixups. The native Hunk guard correctly rejects that
+result in pass 2. In the whole frozen application module, 17 of its 63 immediate
+MOVEs have bare-memory destinations; their sources are positive integers or
+absolute equates. No section-address immediate sources use that destination form
+in this module.
+
+The fresh unchanged nine-store baseline matches the 92-byte flat Rust output
+(1.018503167 start-to-done host seconds), but rejects its first long store in
+Hunk mode at line 7 after the byte/word stores, with fresh START/DONE and exit 20.
+The Hunk oracle checks forward CODE/DATA/BSS destinations and their nine exact
+relocation offsets, with BSS and DATA deliberately reordered in the output.
+
+Hypothesis: order complete family-owned relocation sequences before the numeric
+fallback, using existing absolute-long fixup stages. A simple destination-only
+reorder is insufficient: `move.l #CodeTarget,DataTarget` would otherwise carry
+only its destination fixup and could pass the native guard with a source
+relocation missing. Cover both targets and a source target with numeric destination
+in the same package correction. Preserve literal destinations and signed/named
+scalar controls; do not add CPU behavior or new predicates to the native VM.
+Require exact live Rust/native Hunk and flat output and retain unsafe address
+arithmetic rejection. Compare the identical frozen release workload against
+534.873728125 seconds, separately reporting its time and completion frontier.
+
+The position diagnostic's former valid `#payload+1` rejection became obsolete
+when affine addends gained exact native coverage. Its deliberate negative probe
+now uses two forward address bases, which Rust also rejects. Fresh gated native
+execution confirms the expected pass-2 snapshot, section 2 of 4, and protocol.
+The valid single-base behavior remains covered by the address-addend comparisons.
+
+Investigation also found that a source-only fixup plus an unrestricted destination
+expression would still permit partial relocation information after a rejected
+unsafe destination. The selected smaller correction aligns the compact path with
+Rust's existing plain-expression fixup inputs. Permit the already-defined
+Expression projection in fixup lowering and native execution; use the existing
+bounded identity proof and ExprVM value evaluation for both literals and addresses.
+One MOVE.L sequence then fixes up both operands, replacing the numeric fallback
+and its redundant destination-only long row. Byte/word rows and explicit-member
+barriers remain. This needs no new projection kind, layout, version or legacy
+executor. Numeric operands emit bytes without relocation records; address operands
+must retain their complete relocation identities, and unsafe algebra must reject.
+
+Fresh native comparisons now match the unchanged nine-store flat output (92
+bytes, 1.017806333 start-to-done host seconds) and Hunk (228 bytes, 1.265225792 s).
+The address-source probe matches its 164-byte Hunk with all five relocation
+offsets, including both operands of one store (1.015375750 s). Signed literals,
+absolute equates and numeric destinations remain exact. These tiny timings do
+not support a performance claim.
+
+Independent review caught two generic execution issues before integration. The
+identity proof must distinguish a defined flat label from a section address:
+zero section provenance leaves flat arithmetic unrestricted. Undefined symbols
+are provisionally scalar only in pass 1; ExprVM still marks them unresolved, the
+fixup drops provisional identity, and pass 2 checks the resolved provenance
+again. The new 38-byte forward-label probe originally completed with exit 20
+at line 4; after this correction it matches Rust exactly (1.012643333 s).
+Multiplication, subtraction and negation are covered in both operands, along
+with an 88-byte preceding-label probe. Permanently undefined names reject.
+Exact-name probing also restores its bounded input cursor before the fallback
+proof and checks for an empty operand after stripping the immediate marker.
+
+The CLI is 89,492 bytes with 100,488 linked reserved bytes, separately +60/+32
+from the preceding checkpoint. The prepared package is 299,048 bytes (-128),
+and the canonical embedded package 370,900 bytes (-33). Focused default and
+VM-only Rust comparisons, lowering, family, fixture and engineering checks pass.
+All eight fresh native tests pass, including four unsafe Hunk address cases and
+the permanently undefined name; no partial relocation output is accepted. The
+frozen full comparison is pending. No full repository or self-host parity is claimed.

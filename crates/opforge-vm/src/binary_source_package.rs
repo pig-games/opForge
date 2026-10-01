@@ -611,7 +611,9 @@ fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
                 && !inputs.iter().all(|input| {
                     matches!(
                         input,
-                        Projection::TargetExpression(_) | Projection::TargetMember { .. }
+                        Projection::Expression(_)
+                            | Projection::TargetExpression(_)
+                            | Projection::TargetMember { .. }
                     ) || matches!(input, Projection::TupleValue { operand } if has_bounded_tuple_match(&stages, *operand))
                 })
             {
@@ -1209,7 +1211,7 @@ mod tests {
             "semv.sequence.v1:match:named@expr0;encode:x@expr0",
             "semv.sequence.v1:encode:x@expr0;match:_@expr0",
             "semv.sequence.v1:match:_@expr0",
-            "semv.sequence.v1:encode:x@expr0;fixup:y@expr0",
+            "semv.sequence.v1:encode:x@expr0;fixup:y@literal:0",
             "semv.sequence.v1:encode:x@literal:0;fixup:y@indirect_tuple_value0.item0",
             "semv.sequence.v1:match:_@indirect_tuple_reg0.item1.class1,indirect_tuple_arity0.value3;encode:x@literal:0;fixup:y@indirect_tuple_value0.item0",
             "semv.sequence.v1:match:_@indirect_tuple_reg1.item1.class1,indirect_tuple_arity0.value2;encode:x@literal:0;fixup:y@indirect_tuple_value0.item0",
@@ -1250,6 +1252,31 @@ mod tests {
             ),
             CandidateRecipe::SemanticSequence { .. }
         ));
+    }
+
+    #[test]
+    fn scalar_expression_fixup_sequence_lowers_both_operands() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        let plan = "semv.sequence.v1:match:_@expr0,expr1;encode:word@literal:9212;fixup:fix.abs32@expr0;fixup:fix.abs32@expr1";
+        let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
+        else {
+            panic!("scalar expression fixup sequence must lower");
+        };
+        assert_eq!(stages.len(), 4);
+        assert_eq!(
+            stages[0].inputs,
+            [Projection::Expression(0), Projection::Expression(1)]
+        );
+        assert_eq!(stages[1].inputs, [Projection::Constant(9212)]);
+        for (operand, stage) in stages[2..].iter().enumerate() {
+            assert!(stage.fixup);
+            assert_eq!(stage.inputs, [Projection::Expression(operand as u8)]);
+        }
     }
 
     #[test]

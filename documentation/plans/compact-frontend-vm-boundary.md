@@ -1,6 +1,6 @@
 # Compact frontend: VM boundary correction
 
-Status: full 61-file native self-hosting is proven at the recorded checkpoint below, with exact live Rust Hunk output in both release and separately instrumented runs. The subsequent filename-only portability repair builds an identical Rust Hunk; its physical A6000 run is pending. The 2 MiB product target remains unqualified. Residual frontend ownership gaps and the deferred ordinary-label instruction binding issue are listed below.
+Status: full 61-file native self-hosting is proven at the recorded checkpoint below, with exact live Rust Hunk output in both release and separately instrumented emulator runs. The subsequent filename-only portability repair also completes on the physical A6000 with exact Rust output. The 2 MiB product target remains unqualified. Residual frontend ownership gaps and the deferred ordinary-label instruction binding issue are listed below.
 
 ## Current-source proof and measurement
 
@@ -74,14 +74,28 @@ Neither adds telemetry to the native executable. Fresh case-bound markers, expli
 assembler exit zero and exact full-Hunk comparison against that export's Rust
 oracle are required for success. Source/package/bootstrap identities and results
 are recorded locally. A timeout can leave assembly running remotely; inspect that
-run before retrying. The hardware script and its host checks are ready; no physical
-A6000 self-host result has been obtained yet.
-The first completed invocation returned exit 20 with the CLI usage message,
-before assembly. The physical-run script now uses ordinary output redirection
-immediately after the executable, compatible with AmigaOS 3.1 and the Shell's
-`oldredirect` mode. The previous `*>` syntax requires AmigaDOS 45; its handling is
-the suspected cause of the rejected invocation. The `C:CPU` environment probe is
-optional. Native validation of this invocation repair remains pending.
+run before retrying. The first completed invocation returned exit 20 with the CLI
+usage message, before assembly. After switching to ordinary output redirection
+immediately after the executable and making the `C:CPU` probe optional, the same
+source/package/bootstrap case completes successfully. No assembler logic changed.
+
+On 2026-10-01, the physical A6000 run at wrapper checkpoint `ac78348e` assembled
+all 61 current source files (719,329 bytes) and returned exit zero. Its complete
+89,880-byte Hunk matches the fresh export's Rust oracle byte-for-byte. Guest
+`Date` reports 15 seconds at one-second resolution (01:08:39 to 01:08:54); the
+host's monotonic command duration, including connection and Shell setup, is
+16.019971292 seconds. This is one uninstrumented physical run. It does not
+establish a code-change speedup against the earlier 545-second FS-UAE run: the
+execution environments differ, and the timing gap has not been explained.
+
+Case SHA-256 is
+`2919f26180f81f3f9db1e8529cbd9f4e4cbfedf1af3507104b6f356474675cfc`;
+remote directory is `Development:opforge-decab6f88c53`. The retained pre-run
+round-trip contains every input and no output Hunk, Rust oracle or completion
+markers. The post-run capture has unchanged inputs, fresh case-bound START/DONE
+responses, exit zero and the exact output. Environment capture reports Kickstart
+51.51, Workbench 40.0 and a 65,536-byte stack; no CPU clock measurement or 2 MiB
+memory qualification was performed.
 
 ## Ownership and representation contracts
 

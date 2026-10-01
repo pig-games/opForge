@@ -902,6 +902,12 @@ exactly. Release host-observed START/DONE is 545.460594291 s. The measured
 tracked allocation peak is 5,222,440 bytes, so the 2 MiB product target remains
 unqualified. The [current frontend note](compact-frontend-vm-boundary.md)
 records the input identity, phase measurements and remaining language boundaries.
+The current 61-file source also completes on the physical A6000 with an exact
+89,880-byte Rust Hunk match: one uninstrumented run reports 15 seconds on the
+guest clock and 16.019971292 seconds for the host command including connection.
+This is a different execution environment from FS-UAE, not a code-change speedup
+comparison; the timing gap remains unexplained. The frontend note records the
+case identity and pre/post-run verification.
 
 The initial Rust baseline builds a deterministic 58,856-byte Hunk at
 `build/opforge_compact` from this entry (two separate temporary output roots

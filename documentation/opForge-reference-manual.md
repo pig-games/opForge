@@ -1198,9 +1198,9 @@ is produced, how diagnostics are rendered, and a smaller set of switches that
 adjust assembler behavior.
 
 Inputs:
-- `[INPUT]...`: optional migration-friendly positional input. Exactly one positional input is accepted and treated like `-i INPUT`; multiple positional inputs require explicit `-i/--infile`.
+- `[INPUT]...`: one positional input is treated like `-i INPUT`; multiple positional inputs require explicit `-i/--infile`. `.` selects the current directory; omitted input also defaults to `.`.
 - `-i, --infile <FILE|FOLDER>`: input `.asm` file or folder (repeatable). Folder inputs must contain exactly one `main.*` root module.
-- `-I, --include-path <DIR>`: additional include search roots (repeatable). Include resolution order: including-file directory, then include roots in CLI order.
+- `-I, --include-path <DIR>`: additional include search roots (repeatable). Include resolution order: including-file directory, root-file directory, then explicit include roots in CLI order.
 - `-M, --module-path <DIR>`: additional module search roots (repeatable). Module resolution order: input root directory, then module roots in CLI order.
 
 Outputs:

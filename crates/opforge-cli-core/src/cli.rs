@@ -401,13 +401,13 @@ pub struct Cli {
         long = "infile",
         value_name = "FILE|FOLDER",
         action = ArgAction::Append,
-        long_help = "Input assembly file or folder (repeatable). Files must end with .asm. Folder inputs must contain exactly one main.* root module."
+        long_help = "Input assembly file or folder (repeatable). Files must end with .asm. Folder inputs must contain exactly one main.* root module. Use . for the current folder; omitted input defaults to ."
     )]
     pub infiles: Vec<PathBuf>,
     #[arg(
         value_name = "INPUT",
         action = ArgAction::Append,
-        long_help = "Optional migration-friendly positional input. Exactly one positional INPUT is accepted and treated like -i INPUT. Multiple positional inputs require explicit -i/--infile."
+        long_help = "Optional migration-friendly positional input. Exactly one positional INPUT is accepted and treated like -i INPUT. Multiple positional inputs require explicit -i/--infile. Omitted input defaults to . (the current folder)."
     )]
     pub positional_inputs: Vec<PathBuf>,
     #[arg(
@@ -524,6 +524,21 @@ pub fn input_base_from_path(
     path: &Path,
     ext_policy: &InputExtensionPolicy,
 ) -> Result<(String, String), AsmRunError> {
+    // Dot and parent-directory paths have no file name. Resolve them before
+    // applying the same extension and root-module rules as named folders.
+    let resolved_path;
+    let path = if path.is_dir() && path.file_name().is_none() {
+        resolved_path = fs::canonicalize(path).map_err(|err| {
+            AsmRunError::new(
+                AsmError::new(AsmErrorKind::Io, "Error resolving input folder", None),
+                Vec::new(),
+                vec![err.to_string()],
+            )
+        })?;
+        resolved_path.as_path()
+    } else {
+        path
+    };
     let file_name = match path.file_name().and_then(|s| s.to_str()) {
         Some(name) => name,
         None => {
@@ -1127,15 +1142,7 @@ fn validate_cli_inner(cli: &Cli) -> Result<CliConfig, AsmRunError> {
             Vec::new(),
         ));
     } else {
-        return Err(AsmRunError::new(
-            AsmError::new(
-                AsmErrorKind::Cli,
-                "No input files specified. Use -i/--infile",
-                None,
-            ),
-            Vec::new(),
-            Vec::new(),
-        ));
+        vec![PathBuf::from(".")]
     };
 
     if cli.fmt_config.is_some() && formatter_mode.is_none() {
@@ -1782,6 +1789,22 @@ mod tests {
     }
 
     #[test]
+    fn validate_cli_defaults_omitted_input_to_current_folder() {
+        let cli = Cli::parse_from(["opForge"]);
+        let config = validate_cli(&cli).expect("validate cli without input");
+        assert_eq!(config.input_paths, vec![PathBuf::from(".")]);
+    }
+
+    #[test]
+    fn validate_cli_accepts_current_folder_input() {
+        for args in [vec!["opForge", "."], vec!["opForge", "-i", "."]] {
+            let cli = Cli::parse_from(args);
+            let config = validate_cli(&cli).expect("validate current folder input");
+            assert_eq!(config.input_paths, vec![PathBuf::from(".")]);
+        }
+    }
+
+    #[test]
     fn validate_cli_rejects_multiple_positional_inputs() {
         let cli = Cli::parse_from(["opForge", "a.asm", "b.asm", "-l"]);
         let err = validate_cli(&cli).expect_err("should reject multiple positionals");
@@ -2206,6 +2229,35 @@ mod tests {
             err.to_string(),
             "Input file must use one of these source extensions: .asm"
         );
+    }
+
+    #[test]
+    fn input_base_from_current_folder_uses_directory_rules() {
+        let current_dir = fs::canonicalize(".").expect("resolve current folder");
+        let expected = input_base_from_path(&current_dir, &default_input_extensions());
+        let actual = input_base_from_path(Path::new("."), &default_input_extensions());
+        match (actual, expected) {
+            (Ok(actual), Ok(expected)) => assert_eq!(actual, expected),
+            (Err(actual), Err(expected)) => assert_eq!(actual.to_string(), expected.to_string()),
+            _ => panic!("dot input must resolve like the current folder"),
+        }
+    }
+
+    #[test]
+    fn input_base_from_parent_directory_resolves_main_module() {
+        let dir = create_temp_dir("input-parent-dir");
+        let child = dir.join("child");
+        fs::create_dir(&child).expect("create child folder");
+        let main_path = dir.join("main.asm");
+        fs::write(&main_path, "; main").expect("write root module");
+        let (asm_name, base) = input_base_from_path(&child.join(".."), &default_input_extensions())
+            .expect("resolve parent folder root module");
+        assert_eq!(
+            PathBuf::from(asm_name),
+            fs::canonicalize(main_path).unwrap()
+        );
+        assert_eq!(base, dir.file_name().unwrap().to_string_lossy());
+        fs::remove_dir_all(dir).expect("remove parent-directory fixture");
     }
 
     #[test]

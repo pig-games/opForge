@@ -546,6 +546,8 @@ pub(crate) enum OpforgeNativeCliProof<'a> {
         prefix: &'a str,
         rust_oracle: &'a [u8],
     },
+    /// Informational commands require a fresh exit-zero protocol and live text.
+    SuccessfulExitContaining(&'a str),
     ExpectedFailureWithDiagnostic,
     ExpectedFailureContaining(&'a str),
 }
@@ -1423,14 +1425,14 @@ pub(crate) fn run_compact_cli_files_from_env(
 ) -> Result<FsUaeSmokeOutcome, String> {
     let args = std::env::var(FS_UAE_ARGS_ENV).map_err(|err| err.to_string())?;
     let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
-    if sources.is_empty() || module_roots.len() > 8 || include_roots.len() > 16 {
+    if sources.is_empty() || module_roots.len() > 8 || include_roots.len() > 15 {
         return Err("compact CLI requires an entry and bounded search roots".into());
     }
     let valid = |path: &str| {
         !path.is_empty()
             && path.is_ascii()
             && !path.bytes().any(|byte| {
-                byte <= 32 || byte == 127 || byte == b':' || byte == b'\\' || byte == b'"'
+                byte < 32 || byte == 127 || byte == b':' || byte == b'\\' || byte == b'"'
             })
             && Path::new(path)
                 .components()
@@ -1448,12 +1450,26 @@ pub(crate) fn run_compact_cli_files_from_env(
     } else {
         format!("Work:sources/{}", sources[0].0)
     };
-    let mut command = format!("Work:input.bin {entry_path} Work:output.bin");
+    // Existing Hunk probes declare their format in source; the CLI option must
+    // state that format rather than sending Hunk bytes through --bin.
+    let hunk_output = sources.iter().any(|(_, bytes)| {
+        let text = String::from_utf8_lossy(bytes);
+        text.lines().any(|line| {
+            let line = line.to_ascii_lowercase().replace(' ', "");
+            line.contains(".output") && line.contains("format=hunk")
+        })
+    });
+    let quote = |value: &str| format!("\"{}\"", value.replace('*', "**"));
+    let mut command = format!(
+        "--runtime-package Work:input.bin -i {} {} Work:output.bin",
+        quote(&entry_path),
+        if hunk_output { "--hunk" } else { "--bin" }
+    );
     for root in module_roots {
-        command.push_str(&format!(" -M Work:sources/{root}"));
+        command.push_str(&format!(" -M {}", quote(&format!("Work:sources/{root}"))));
     }
     for root in include_roots {
-        command.push_str(&format!(" -I Work:sources/{root}"));
+        command.push_str(&format!(" -I {}", quote(&format!("Work:sources/{root}"))));
     }
     let paths = sources
         .iter()
@@ -2122,6 +2138,24 @@ fn verify_native_cli_case_proof_inner(
                 ));
             }
             run.verified_output = Some(actual);
+            Ok(())
+        }
+        OpforgeNativeCliProof::SuccessfulExitContaining(text) => {
+            if !run.success || run.exit_code != Some(0) {
+                return Err(format!(
+                    "FS-UAE informational proof for {} requires exactly exit 0, got {:?}",
+                    case.name, run.exit_code
+                ));
+            }
+            let stdout =
+                protocol_artifact(case.name, run, FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDOUT_FILE)?;
+            if !String::from_utf8_lossy(stdout).contains(text) {
+                return Err(format!(
+                    "FS-UAE informational proof for {} is missing required live stdout {text:?}",
+                    case.name
+                ));
+            }
+            run.verified_output = Some(stdout.to_vec());
             Ok(())
         }
         OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
@@ -2811,6 +2845,11 @@ fn opforge_native_cli_case_identity(
         }
         OpforgeNativeCliProof::ExpectedFailureWithDiagnostic => {
             state = fnv1a64_update(state, b"failure-with-diagnostic");
+        }
+        OpforgeNativeCliProof::SuccessfulExitContaining(text) => {
+            state = fnv1a64_update(state, b"successful-exit-containing");
+            state = fnv1a64_update(state, &[0]);
+            state = fnv1a64_update(state, text.as_bytes());
         }
         OpforgeNativeCliProof::ExpectedFailureContaining(diagnostic) => {
             state = fnv1a64_update(state, b"failure-containing");
@@ -6462,6 +6501,44 @@ mod tests {
     }
 
     #[test]
+    fn informational_proof_requires_fresh_zero_exit_and_isolated_stdout() {
+        let case = OpforgeNativeCliParityCase {
+            name: "informational-proof",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: None,
+            command_template: Some("--help"),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::SuccessfulExitContaining("Usage:"),
+        };
+        let path = PathBuf::from(FS_UAE_MOUNTED_WORK_DIR_NAME)
+            .join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_ARTIFACTS_DIR)
+            .join(opforge_native_cli_batch_case_name(0))
+            .join(FS_UAE_OPFORGE_NATIVE_CLI_CASE_STDOUT_FILE);
+        for (completed, exit, text) in [
+            (false, Some(0), "Usage:"),
+            (true, Some(20), "Usage:"),
+            (true, None, "Usage:"),
+            (true, Some(0), "unrelated text"),
+        ] {
+            let mut run = proof_test_run(completed, exit, None);
+            run.stdout = "Usage: stale launcher text".into();
+            run.captured_artifacts
+                .insert(path.clone(), text.as_bytes().to_vec());
+            assert!(verify_native_cli_case_proof(&case, &mut run).is_err());
+        }
+        let mut run = proof_test_run(true, Some(0), None);
+        run.captured_artifacts
+            .insert(path, b"Usage: fresh help".to_vec());
+        verify_native_cli_case_proof(&case, &mut run).unwrap();
+        assert_eq!(
+            run.verified_output.as_deref(),
+            Some(b"Usage: fresh help".as_slice())
+        );
+    }
+
+    #[test]
     fn mos_byte_proof_rejects_incomplete_nonzero_missing_and_mismatched_runs() {
         let expected = [0xa9, 0x42];
         let case = OpforgeNativeCliParityCase {
@@ -7675,3 +7752,7 @@ mod native_package_loader;
 #[cfg(test)]
 #[path = "tests/native_package_loading_performance.rs"]
 mod native_package_loading_performance;
+
+#[cfg(test)]
+#[path = "tests/compact_cli_input.rs"]
+mod compact_cli_input;

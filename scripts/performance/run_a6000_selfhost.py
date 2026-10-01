@@ -158,11 +158,11 @@ def load_bundle(bundle):
     command = manifest["command"]
     if command != (bundle / "command.txt").read_text().strip():
         raise ValueError("Assembly command mismatch")
-    prefix = "opforge --cpu 68020 " if storage == "embedded" else "opforge p.bin "
+    prefix = "opforge --cpu 68020 -i " if storage == "embedded" else "opforge --runtime-package p.bin -i "
     if not re.fullmatch(r"[A-Za-z0-9_./ -]+", command) or not command.startswith(prefix):
         raise ValueError("Unsafe assembly command")
     if storage == "embedded" and not re.fullmatch(
-        r"opforge --cpu 68020 src/[A-Za-z0-9_./-]+ output\.hunk(?: -(?:M|I) src(?:/[A-Za-z0-9_./-]+)?)*", command
+        r"opforge --cpu 68020 -i src/[A-Za-z0-9_./-]+ --hunk output\.hunk(?: -(?:M|I) src(?:/[A-Za-z0-9_./-]+)?)*", command
     ):
         raise ValueError("Embedded test cannot override package selection or search")
     identity.extend(b"m68020\0" + command.encode() + b"\0" + package + b"\0" + oracle)

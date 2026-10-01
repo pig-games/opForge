@@ -236,9 +236,16 @@ fn export_compact_self_host_bundle() {
         })
         .collect::<Vec<_>>();
     let entry = Path::new(ENTRY);
-    let selection = if embedded { "--cpu 68020" } else { "p.bin" };
+    let selection = if embedded {
+        "--cpu 68020"
+    } else {
+        "--runtime-package p.bin"
+    };
     let package_file = embedded_files.first().map_or("p.bin", String::as_str);
-    let mut command = format!("opforge {selection} src/{} output.hunk", entry.display());
+    let mut command = format!(
+        "opforge {selection} -i src/{} --hunk output.hunk",
+        entry.display()
+    );
     for root in &module_roots {
         command.push_str(&format!(" -M src/{root}"));
     }

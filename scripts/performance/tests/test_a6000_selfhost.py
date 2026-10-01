@@ -25,7 +25,7 @@ class HardwareCompletionTests(unittest.TestCase):
         oracle = b"release"
         bootstrap = b"profile" if instrumented else oracle
         package = b"BS14package"
-        command = "opforge p.bin src/entry.asm output.hunk"
+        command = "opforge --runtime-package p.bin -i src/entry.asm --hunk output.hunk"
         manifest = {
             "release_defines": [],
             "filename_mapping": "identity; source include literals are unchanged",
@@ -54,7 +54,7 @@ class HardwareCompletionTests(unittest.TestCase):
         package[128:130] = len(target).to_bytes(2, "big")
         package.extend(target)
         bootstrap = b"embedded executable:" + package
-        command = "opforge --cpu 68020 src/entry.asm output.hunk -M src"
+        command = "opforge --cpu 68020 -i src/entry.asm --hunk output.hunk -M src"
         manifest = json.loads((root / "manifest.json").read_text())
         manifest.update({"bootstrap_package_storage": "embedded",
                          "embedded_packages": [target.decode() + ".bin"],
@@ -375,16 +375,16 @@ class HardwareCompletionTests(unittest.TestCase):
         self.assertIsNone(runner.guest_seconds("10:00:00", "09:00:00", 5))
 
     def test_guest_script_preserves_exit_before_date_and_binds_markers(self):
-        script = runner.guest_script("Development:opforge-fresh", "fresh case", "opforge p.bin src/entry.asm output.hunk")
+        script = runner.guest_script("Development:opforge-fresh", "fresh case", "opforge --runtime-package p.bin -i src/entry.asm --hunk output.hunk")
         self.assertIn("Echo $RC >exitcode\nC:Date >end.time", script)
         self.assertIn('Echo "START fresh case"', script)
         self.assertIn('Echo "DONE fresh case"', script)
         self.assertLessEqual(max(map(len, script.splitlines())), 255)
 
     def test_invocation_uses_classic_shell_redirection_without_extra_arguments(self):
-        command = "opforge p.bin src/entry.asm output.hunk -M src -I src/debug"
+        command = "opforge --runtime-package p.bin -i src/entry.asm --hunk output.hunk -M src -I src/debug"
         script = runner.guest_script("Development:opforge-fresh", "fresh case", command)
-        self.assertIn("opforge >assembly.stdout p.bin src/entry.asm output.hunk -M src -I src/debug\n", script)
+        self.assertIn("opforge >assembly.stdout --runtime-package p.bin -i src/entry.asm --hunk output.hunk -M src -I src/debug\n", script)
         self.assertNotIn("*>", script)
         self.assertIn("If EXISTS C:CPU\nC:CPU >>environment.txt\nEndIf\n", script)
 

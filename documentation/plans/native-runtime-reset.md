@@ -189,6 +189,102 @@ outputs. Packages remain project-independent prepared assets. Iterable `.for`,
 nested compound values and broader language parity are separately reviewable;
 do not silently implement a catalog-only list evaluator or source-text fallback.
 
+### CLI checkpoint C1 — ordinary single-input invocation (delivered)
+
+Replace the provisional three-positional command with a separate bounded CLI
+argument/configuration layer over the packed engine. Accept one positional input
+or `-i`/`--infile`; `.` or omitted input selects the current directory, and a
+folder resolves to `main.asm`. Its resolved root directory
+is the first module/include search root, while nested includes first search their
+own directory. Explicit `-M`/`-I` roots retain command order. Input is a discovery
+root and must not impose execution order.
+
+Support `--cpu`, help/version, quote-aware Amiga Shell argument tails, long
+`--name=value`, attached short values and `--`. Deliver one explicit binary output
+and preserve source-configured Hunk self-builds through `--hunk`. Multiple inputs,
+multiple/ranged outputs, defines and broader CLI artifacts remain following
+slices. CLI output policy and source-selected filenames are the separate C2
+checkpoint agreed below; C1 still requires an explicit `--bin` or `--hunk`.
+Initial package selection still requires `--cpu` or `--runtime-package`; source
+CPU selection/defaults belong to P3. `--hunk` currently selects source-configured
+sections, rather than general Rust Hunk CLI synthesis. Informational commands
+need no input, package or output configuration.
+Native runtime-package/dialect/search-root options remain separate from canonical
+Rust `.opasm` loading; never mislabel BS14 as the canonical container.
+
+Reuse isolated old CLI routines where coherent, without importing the old engine
+state or preprocessor. Qualify actual accepted/rejected invocations against live
+Rust and fresh native protocol/output/diagnostics. Recheck a root-dir module and
+nested include from a different working directory, quoted paths and search order.
+Compare the unchanged module benchmark with checkpoint `4009e4b5`, recording
+release time, image/package size and limitations separately from earlier gains.
+
+C1 has 19 distinct CLI invocation cases qualified across 22 fresh native runs:
+file/directory/current-directory inputs, root and nested search precedence,
+quoted/attached/equal/separator syntax, filename defaults, source-configured Hunk,
+help/version and explicit rejections. Fresh named-6502 selection and wrong-target
+payload rejection also pass after migrating existing package-loader callers.
+Positive artifacts match live Rust exactly; negative/informational commands have
+fresh completion, the required explicit exit and isolated diagnostic/stdout proof.
+Nine live Rust input oracles, 59 CLI-policy tests, four package-builder checks,
+19 hardware-runner tests and the informational-proof guard pass. Two warning-report
+tests reproduce unchanged at `4009e4b5`; the ownership guard still reports ten
+pre-existing missing annotations (the touched CLI entry now has an owner).
+Workflow, proof-contract, test-ownership, formatting and affected CCR checks pass.
+
+This slice's separate release comparison uses the unchanged 10,687-byte,
+two-module/64-block input and identical 299,142-byte BS14 package. All samples
+emit the exact live Rust 2,434-byte artifact on 68020/10 MiB FS-UAE, unlimited
+speed. These are host-observed START/DONE intervals, with roughly 0.25-second
+polling resolution and only two samples per version; they are not hardware times.
+
+| CLI state | Native seconds | Median seconds | Image / linked reserved bytes |
+| --- | --- | ---: | ---: |
+| Before C1 (`4009e4b5`) | 7.8431, 7.6000 | 7.7216 | 99,400 / 111,244 |
+| Final C1 | 8.1016, 8.1060 | 8.1038 | 103,388 / 115,856 |
+
+The observed C1 cost is +0.3822 seconds (+4.95%), with input validation and default
+discovery enabled. Image growth is 3,988 bytes; linked reservations grow 4,612
+bytes. Package bytes are unchanged. This adds CLI capability; it is not another
+performance gain or a precise statistical overhead estimate.
+
+A fresh embedded-m68020 export has 74 inputs (809,376 text bytes plus the
+299,142-byte package), fingerprint `fnv1a64:261b1c46ffcea3c6`, and a 402,532-byte
+release Hunk. Rust assembly before/after relocation is identical and the hardware
+runner validates the files and new command. **The entire current source has not
+been reassembled by native in this checkpoint**; the export records
+`native_validation: not_run`. C1 qualification is focused CLI execution, not a
+new full self-host or physical A6000 completion claim.
+
+### Next CLI checkpoint C2 — requested outputs and source declarations
+
+`.lst`, `.hex` and `.srec` are equally optional: request them explicitly through
+CLI flags or source metadata; never generate listing/Hex merely because no
+output flag was supplied. Source `.output` declarations must retain their literal
+filenames and work without CLI output arguments. With neither CLI nor source
+outputs requested, the intended behavior is assembly/validation without files.
+This is a deliberate policy change: current Rust still implicitly requests
+listing/Hex, and `.output` artifacts are additional to those defaults. Change
+that Rust behavior with the output checkpoint, not silently in C1.
+
+The compact section preparer currently discards `.output` filenames and supports
+one Hunk selection. First establish numeric output descriptors with owned paths,
+formats, section selections and options, separate from assembly layout. Support
+source-selected bin/PRG/Hunk artifacts and explicit CLI outputs without using a
+Hunk image as `--bin`. Multiple requested artifacts must share one assembly result.
+Preserve source paths literally; only CLI names gain a missing format extension.
+
+Listing also needs optional display provenance and final-pass emission events;
+HEX/S-record need addresses and occupied spans, not just a contiguous byte buffer.
+Retain display text only for requested reporting, outside binary execution.
+Do not restore text-based parsing/execution, import the legacy engine's large
+state, or fabricate simplified listings under a parity claim. Keep each writer
+separate from output planning and VM-owned declaration preparation. Qualify
+filenames and complete bytes against live Rust, including simultaneous outputs,
+source-only declarations, no-output validation, reservations, origins, section
+order and write failures. Split these capabilities into inspectable recovery
+points as needed; completing C1 does not claim output parity.
+
 ### Built-in `.emit` — implementation and focused qualification
 
 The compact path implements `.emit unit,value[,value...]` over packed source.
@@ -393,18 +489,18 @@ Copy `opforge_compact` and the needed `packages/` files together. The provisiona
 native syntax is:
 
 ```text
-opforge_compact --cpu 6502 input.asm output.bin
-opforge_compact --cpu 68020 input.asm output.bin -d motorola68k -P Development:packages
-opforge_compact p.bin input.asm output.bin
+opforge_compact --cpu 6502 -i input.asm --bin output.bin
+opforge_compact --cpu 68020 -i input.asm --bin output.bin -d motorola68k -P Development:packages
+opforge_compact --runtime-package p.bin -i input.asm --bin output.bin
 ```
 
 Named selection prefers the matching embedded payload, otherwise loads
 `PROGDIR:packages/CPU--dialect.bin` (or the directory selected by `-P`). `-M` and
 `-I` retain module/include search. The explicit-package form remains useful for
 harnesses and self-hosting; `-d` and `-P` apply to named selection, while an
-explicit package path already determines the target and file. Quoted paths and
-full Rust CLI flag parity remain
-outside this provisional interface.
+explicit package path already determines the target and file. It cannot be
+combined with named-target selection options. Quoted paths are now supported;
+full Rust CLI/output parity remains outside this provisional interface.
 
 Catalog lookup, acquisition/ownership, structural validation and assembly are
 separate modules. Catalog and package offsets are relative to their stated bases.

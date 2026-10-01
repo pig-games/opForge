@@ -7,12 +7,38 @@ These sources are intentionally separate from `examples/`. Example programs are
 small instructional or fixture-oriented assembly inputs; native implementations
 are product/runtime code whose host environment is itself an opForge target.
 
-Status as of 2026-05-06: the AmigaOS tree contains a real native opForge CLI
-deliverable plus runtime modules and FS-UAE validation harnesses. It is not yet
-the full Rust VM assembler path in native form. The live native path currently
-proves host bootstrap, package-backed tokenization, PRVM line routing for the
-current module/use parser slice, a small two-pass 6502 smoke assembler path,
-flat `.bin` output, and deterministic diagnostics for known unsupported cases.
+The AmigaOS tree retains the legacy CLI and the compact experimental replacement.
+The compact implementation uses packed source and package-backed VM execution;
+its current capability and qualification are tracked in the
+[runtime reset plan](../documentation/plans/native-runtime-reset.md).
+Neither path is a claim of full Rust language, target or output parity.
+
+## Compact CLI input checkpoint (experimental)
+
+The separate entry is `motorola68000/amigaos/experimental/opforge_compact_cli.asm`.
+Its provisional invocation uses ordinary named options:
+
+```text
+opforge_compact --cpu 68020 project --bin output.bin
+opforge_compact --runtime-package p.bin -i main.asm --hunk output.hunk
+opforge_compact --cpu 68020 . --bin
+```
+
+One positional file or directory replaces `-i`. A directory selects `main.asm`;
+`.` and omitted input mean the current directory. The resolved root-file directory
+is the default module/include search root; an include first searches its own
+directory. Additional `-M`/`-I` roots retain command order. Root input anchors
+discovery, not module execution order. Quoted Amiga Shell paths, `--name=value`,
+attached short values and `--` are supported. Help/version need no package/input.
+
+For this checkpoint an initial `--cpu` or `--runtime-package` and one explicit
+`--bin` or `--hunk` are required. Omitting an explicit output's filename derives it
+from the input basename. `--hunk` requires source-configured Hunk sections.
+Source-selected filenames, optional listing/Hex/S-record writers, output-free
+validation, multiple artifacts, defines and source CPU/default selection remain
+following work. The BS14 runtime package option is distinct from Rust's canonical
+`.opasm` option. Old three-positional compact commands are no longer supported;
+current export and hardware-runner commands use the named options.
 
 ## Current Layout
 
@@ -53,7 +79,7 @@ wrapper that links the tkpkg service for smoke/link validation. It intentionally
 lives outside `motorola68000/amigaos/tkpkg/` because the production tkpkg
 surface is the service/runtime modules, not an executable entry wrapper.
 
-## Current Native CLI Surface
+## Legacy Native CLI Surface
 
 The native CLI accepts the current subset:
 

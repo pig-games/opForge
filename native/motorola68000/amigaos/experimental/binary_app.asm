@@ -88,7 +88,7 @@ PackagePath	.long ?
 SourcePath	.long ?
 OutputPath	.long ?
 Mode	.word ?  ; zero: manifest harness; one: single source; two: discovery
-Reserved	.word ?
+OutputKind	.word ?  ; zero: harness auto; one: flat binary; two: Hunk
 ModuleRoots	.long ?
 ModuleCount	.long ?
 IncludeRoots	.long ?
@@ -109,6 +109,7 @@ execute	.block
 	move.l Frame.PackagePath(a0), InputName
 	move.l Frame.OutputPath(a0), OutputName
 	move.w Frame.Mode(a0), CliMode
+	move.w Frame.OutputKind(a0), CliOutputKind
 	move.l Frame.ModuleRoots(a0), CliModuleRoots
 	move.l Frame.ModuleCount(a0), CliModuleCount
 	move.l Frame.IncludeRoots(a0), CliIncludeRoots
@@ -1403,6 +1404,17 @@ selectOutput	.block
 	lea Output, a0
 	move.l memory.Block.Pointer(a0), WritePointer
 	movea.l assembly.Frame.Sections(a5), a6
+	cmpi.w #1, CliOutputKind
+	beq.w requireFlat
+	cmpi.w #2, CliOutputKind
+	bne.w sourceFormat
+	cmpi.w #5, sections.State.Mode(a6)
+	bne.w badSelect
+	bra.w sourceFormat
+requireFlat
+	cmpi.w #5, sections.State.Mode(a6)
+	beq.w badSelect
+sourceFormat
 	cmpi.w #5, sections.State.Mode(a6)
 	bne.w selected
 	lea HunkParts, a4
@@ -1621,6 +1633,7 @@ DosBase	.res long, 1
 InputName	.res long, 1
 OutputName	.res long, 1
 CliMode	.res word, 1
+CliOutputKind	.res word, 1
 	.align 4
 CliModuleRoots	.res long, 1
 CliModuleCount	.res long, 1

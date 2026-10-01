@@ -311,7 +311,7 @@ fn native_package_loading_performance() {
             round,
             &external_cli,
             &package,
-            "Work:package.bin Work:source.asm Work:output.bin",
+            "--runtime-package Work:package.bin -i Work:source.asm --bin Work:output.bin",
             Some("package.bin"),
             false,
         );
@@ -320,7 +320,7 @@ fn native_package_loading_performance() {
             round,
             &external_cli,
             &package,
-            "--cpu m68020 Work:source.asm Work:output.bin",
+            "--cpu m68020 -i Work:source.asm --bin Work:output.bin",
             Some(&named_path),
             false,
         );
@@ -329,7 +329,7 @@ fn native_package_loading_performance() {
             round,
             &embedded_cli,
             &package,
-            "--cpu m68020 Work:source.asm Work:output.bin",
+            "--cpu m68020 -i Work:source.asm --bin Work:output.bin",
             None,
             false,
         );
@@ -341,7 +341,7 @@ fn native_package_loading_performance() {
             1,
             &image,
             &package,
-            "--cpu m68020 Work:source.asm Work:output.bin",
+            "--cpu m68020 -i Work:source.asm --bin Work:output.bin",
             Some(&named_path),
             true,
         );
@@ -351,7 +351,7 @@ fn native_package_loading_performance() {
             1,
             &image,
             &package,
-            "--cpu m68020 Work:source.asm Work:output.bin",
+            "--cpu m68020 -i Work:source.asm --bin Work:output.bin",
             None,
             true,
         );

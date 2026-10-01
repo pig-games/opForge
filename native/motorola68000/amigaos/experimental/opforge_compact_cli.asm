@@ -1,16 +1,17 @@
-; Provisional Shell entry with source-root search on the packed engine.
+; Shell configuration only; packed preparation and execution belong to app.
+; @opforge-owner: experimental.amigaos.compact_cli
 	.module main
 	.cpu 68020
 	.use experimental.amigaos.binary_app as app
-PATH_BYTES = 256
-MODULE_ROOT_LIMIT = 8
-INCLUDE_ROOT_LIMIT = 16
+	.use experimental.amigaos.cli_arguments as args
+	.use experimental.amigaos.cli_input as input
 OPEN_LIBRARY = -552
 CLOSE_LIBRARY = -414
 GET_ARG_STR = -534
 PUT_STR = -948
 	.section entry, kind=code
 	.pub
+; Shell entry, D0=AmigaDOS exit code; preserves D2-D7/A2-A6.
 start	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	lea DosName, a1
@@ -23,124 +24,92 @@ start	.block
 	movea.l d0, a6
 	jsr GET_ARG_STR(a6)
 	tst.l d0
-	beq.w usage
-	movea.l d0, a3
-	lea PackagePath, a1
-	bsr.w nextPath
-	bne.w usage
-	cmpi.l #$2d2d6370, PackagePath  ; --cpu
-	bne.w source
-	cmpi.w #$7500, PackagePath+4
-	bne.w source
-	lea CpuName, a1
-	bsr.w nextPath
-	bne.w usage
-	move.l #1, CpuMode
-source
-	lea SourcePath, a1
-	bsr.w nextPath
-	bne.w usage
-	lea OutputPath, a1
-	bsr.w nextPath
-	bne.w usage
-options
-	bsr.w skipSpace
-	tst.b (a3)
-	beq.w ready
-	cmpi.b #'-', (a3)
-	bne.w usage
-	move.b 1(a3), d2
-	cmpi.b #'P', d2
-	beq.w packageRoot
-	cmpi.b #'d', d2
-	beq.w dialect
-	cmpi.b #'M', d2
-	beq.w moduleRoot
-	cmpi.b #'I', d2
-	bne.w usage
-	cmpi.l #INCLUDE_ROOT_LIMIT, IncludeCount
-	bhs.w usage
-	bsr.w optionValue
-	bne.w usage
-	move.l IncludeCount, d0
-	lsl.l #8, d0
-	lea IncludePaths, a1
-	adda.l d0, a1
-	bsr.w nextPath
-	bne.w usage
-	addq.l #1, IncludeCount
-	bra.w options
-packageRoot
-	bsr.w optionValue
-	bne.w usage
-	lea PackageRoot, a1
-	bsr.w nextPath
-	bne.w usage
-	move.l #PackageRoot, RootPointer
-	bra.w options
-dialect
-	bsr.w optionValue
-	bne.w usage
-	lea DialectName, a1
-	bsr.w nextPath
-	bne.w usage
-	move.l #DialectName, DialectPointer
-	bra.w options
-moduleRoot
-	cmpi.l #MODULE_ROOT_LIMIT, ModuleCount
-	bhs.w usage
-	bsr.w optionValue
-	bne.w usage
-	move.l ModuleCount, d0
-	lsl.l #8, d0
-	lea ModulePaths, a1
-	adda.l d0, a1
-	bsr.w nextPath
-	bne.w usage
-	addq.l #1, ModuleCount
-	bra.w options
-ready
-	movea.l DosBase, a1
-	movea.l 4.w, a6
-	jsr CLOSE_LIBRARY(a6)
+	bne.w tail
+	move.l #EmptyArgs, d0
+tail
+	movea.l d0, a0
+	lea Arguments, a1
+	jsr args.parse
+	cmpi.l #args.HELP, d0
+	beq.w help
+	cmpi.l #args.VERSION, d0
+	beq.w version
+	tst.l d0
+	bne.w badArguments
+	lea Arguments, a0
+	lea Root, a1
+	jsr input.resolve
+	bne.w badInput
+	lea Arguments, a2
+	tst.w args.State.OutputKind(a2)
+	beq.w pendingOutputs
 	lea Config, a0
-	move.l #PackagePath, app.Frame.PackagePath(a0)
-	move.l #SourcePath, app.Frame.SourcePath(a0)
-	move.l #OutputPath, app.Frame.OutputPath(a0)
-	move.w #1, app.Frame.Mode(a0)
-	tst.l ModuleCount
-	bne.w graphMode
-	tst.l IncludeCount
-	beq.w modeReady
-graphMode
+	lea args.State.Input(a2), a1
+	move.l a1, app.Frame.SourcePath(a0)
+	lea args.State.Output(a2), a1
+	move.l a1, app.Frame.OutputPath(a0)
 	move.w #2, app.Frame.Mode(a0)
-modeReady
-	move.l #ModulePaths, app.Frame.ModuleRoots(a0)
-	move.l ModuleCount, app.Frame.ModuleCount(a0)
-	move.l #IncludePaths, app.Frame.IncludeRoots(a0)
-	move.l IncludeCount, app.Frame.IncludeCount(a0)
+	move.w args.State.OutputKind(a2), app.Frame.OutputKind(a0)
+	lea args.State.ModulePaths(a2), a1
+	move.l a1, app.Frame.ModuleRoots(a0)
+	move.l args.State.ModuleCount(a2), app.Frame.ModuleCount(a0)
+	lea args.State.IncludePaths(a2), a1
+	move.l a1, app.Frame.IncludeRoots(a0)
+	move.l args.State.IncludeCount(a2), app.Frame.IncludeCount(a0)
 	move.l #Catalog, app.Frame.Catalog(a0)
 	move.l Catalog, app.Frame.CatalogBytes(a0)
-	move.l DialectPointer, app.Frame.Dialect(a0)
-	move.l RootPointer, d0
-	bne.w rootReady
-	move.l #DefaultRoot, d0
-rootReady
-	move.l d0, app.Frame.PackageRoot(a0)
-	tst.l CpuMode
+	tst.b args.State.RuntimePackage(a2)
+	beq.w namedCpu
+	lea args.State.RuntimePackage(a2), a1
+	move.l a1, app.Frame.PackagePath(a0)
+	bra.w optional
+namedCpu
+	tst.b args.State.Cpu(a2)
+	beq.w missingTarget
+	lea args.State.Cpu(a2), a1
+	move.l a1, app.Frame.Cpu(a0)
+optional
+	tst.b args.State.Dialect(a2)
+	beq.w packageRoot
+	lea args.State.Dialect(a2), a1
+	move.l a1, app.Frame.Dialect(a0)
+packageRoot
+	move.l #DefaultRoot, app.Frame.PackageRoot(a0)
+	tst.b args.State.PackageRoot(a2)
 	beq.w execute
-	clr.l app.Frame.PackagePath(a0)
-	move.l #CpuName, app.Frame.Cpu(a0)
+	lea args.State.PackageRoot(a2), a1
+	move.l a1, app.Frame.PackageRoot(a0)
 execute
+	bsr.w closeDos
+	lea Config, a0
 	jsr app.execute
 	bra.w done
-usage
-	movea.l DosBase, a6
+help
 	move.l #UsageText, d1
+	bra.w information
+version
+	move.l #VersionText, d1
+information
+	movea.l DosBase, a6
 	jsr PUT_STR(a6)
-	movea.l DosBase, a1
-	movea.l 4.w, a6
-	jsr CLOSE_LIBRARY(a6)
+	bsr.w closeDos
+	moveq #0, d0
+	bra.w done
+badArguments
+	move.l #ArgumentError, d1
+	bra.w error
+badInput
+	move.l #InputError, d1
+	bra.w error
+missingTarget
+	move.l #TargetError, d1
+	bra.w error
+pendingOutputs
+	move.l #OutputError, d1
+error
+	movea.l DosBase, a6
+	jsr PUT_STR(a6)
+	bsr.w closeDos
 unavailable
 	moveq #20, d0
 done
@@ -148,79 +117,36 @@ done
 	rts
 	.bend  ; start
 	.priv
-; A3=argument tail cursor, A1=256-byte destination. D0=0 on success.
-nextPath	.block
-	bsr.w skipSpace
-	tst.b (a3)
-	beq.w bad
-	move.w #PATH_BYTES-1, d1
-copy
-	moveq #0, d0
-	move.b (a3), d0
-	beq.w endPath
-	cmpi.b #' ', d0
-	beq.w endPath
-	cmpi.b #9, d0
-	beq.w endPath
-	cmpi.b #10, d0
-	beq.w endPath
-	cmpi.b #13, d0
-	beq.w endPath
-	cmpi.b #'"', d0  ; quoted paths need a later explicit parser contract
-	beq.w bad
-	tst.w d1
-	beq.w bad
-	move.b (a3)+, (a1)+
-	subq.w #1, d1
-	bra.w copy
-endPath
-	clr.b (a1)
-	moveq #0, d0
+closeDos	.block
+	movea.l DosBase, a1
+	movea.l 4.w, a6
+	jsr CLOSE_LIBRARY(a6)
 	rts
-bad
-	moveq #1, d0
-	rts
-	.bend  ; nextPath
-; Consume the whitespace after -M or -I. A3 advances to its path value.
-optionValue	.block
-	move.b 2(a3), d0
-	cmpi.b #' ', d0
-	beq.w advance
-	cmpi.b #9, d0
-	beq.w advance
-	cmpi.b #10, d0
-	beq.w advance
-	cmpi.b #13, d0
-	bne.w bad
-advance
-	addq.l #2, a3
-	moveq #0, d0
-	rts
-bad
-	moveq #1, d0
-	rts
-	.bend  ; optionValue
-skipSpace	.block
-again
-	cmpi.b #' ', (a3)
-	beq.w advance
-	cmpi.b #9, (a3)
-	beq.w advance
-	cmpi.b #10, (a3)
-	beq.w advance
-	cmpi.b #13, (a3)
-	bne.w done
-advance
-	addq.l #1, a3
-	bra.w again
-done
-	rts
-	.bend  ; skipSpace
+	.bend  ; closeDos
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
+EmptyArgs	.byte 0
 DefaultRoot	.byte "PROGDIR:packages", 0
-UsageText	.byte "Usage: opforge_compact PACKAGE.bin|--cpu CPU ENTRY.asm OUTPUT.bin [-d DIALECT] [-P DIR] [-M DIR] [-I DIR]", 10, 0
+UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
+	.byte "  -i, --infile FILE     Input (directory selects main.asm; default .)", 10
+	.byte "      --cpu CPU         Initial target; embedded or external package", 10
+	.byte "      --runtime-package FILE  Explicit BS14 runtime package", 10
+	.byte "  -b, --bin [FILE]      Flat binary output", 10
+	.byte "      --hunk [FILE]     Source-configured Hunk output", 10
+	.byte "  -M, --module-path DIR Additional module search root (repeatable)", 10
+	.byte "  -I, --include-path DIR Additional include search root (repeatable)", 10
+	.byte "  -P, --package-path DIR Package directory", 10
+	.byte "  -d, --dialect NAME    Package dialect", 10
+	.byte "  -h, --help           This help", 10
+	.byte "  -V, --version        Build identity", 10
+	.byte "Root-file directory is the default module/include search root.", 10
+	.byte "Additional output formats and source-selected filenames follow in the output checkpoint.", 10, 0
+VersionText	.byte "opForge compact native | BS14 | experimental CLI-input checkpoint", 10, 0
+ArgumentError	.byte "compact CLI: invalid or unsupported arguments (see --help)", 10, 0
+InputError	.byte "compact CLI: invalid input; expected readable .asm file or directory with main.asm (bounded paths)", 10, 0
+TargetError	.byte "compact CLI: initial target requires --cpu or --runtime-package", 10, 0
+OutputError	.byte "compact CLI: output-free validation and source-named outputs are pending; specify --bin or --hunk", 10, 0
 	.align 4
 	.include "package_catalog.i"
 	.endsection
@@ -228,19 +154,8 @@ UsageText	.byte "Usage: opforge_compact PACKAGE.bin|--cpu CPU ENTRY.asm OUTPUT.b
 	.align 4
 DosBase	.res long, 1
 Config	.res byte, app.FRAME_BYTES
-PackagePath	.res byte, PATH_BYTES
-CpuName	.res byte, PATH_BYTES
-DialectName	.res byte, PATH_BYTES
-PackageRoot	.res byte, PATH_BYTES
-CpuMode	.res long, 1
-DialectPointer	.res long, 1
-RootPointer	.res long, 1
-SourcePath	.res byte, PATH_BYTES
-OutputPath	.res byte, PATH_BYTES
-ModuleCount	.res long, 1
-IncludeCount	.res long, 1
-ModulePaths	.res byte, MODULE_ROOT_LIMIT*PATH_BYTES
-IncludePaths	.res byte, INCLUDE_ROOT_LIMIT*PATH_BYTES
+Arguments	.res byte, args.STATE_BYTES
+Root	.res byte, args.PATH_BYTES
 	.endsection
 	.output "build/opforge_compact", format=hunk, sections=entry, code, data, bss
 	.endmodule

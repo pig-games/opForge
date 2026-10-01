@@ -1,5 +1,6 @@
 """Exercise link resolution and staged-change isolation in temporary repositories."""
 import importlib.util
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -16,6 +17,33 @@ RELEASE_SPEC.loader.exec_module(release)
 
 
 class WorkflowHelpersTests(unittest.TestCase):
+    def test_clean_is_scoped_to_its_repository_despite_cwd_and_target_override(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            repo = root / "repo with spaces"
+            peer = root / "neighbor"
+            tools = root / "tools"
+            for path in (repo, peer, tools):
+                path.mkdir()
+            shutil.copyfile(ROOT / "Makefile", repo / "Makefile")
+            (peer / "keep").write_text("unrelated work")
+            command_log = root / "cargo-arguments"
+            cargo = tools / "cargo"
+            cargo.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CLEAN_COMMAND_LOG"\n')
+            cargo.chmod(0o755)
+            env = dict(os.environ, PATH=str(tools) + os.pathsep + os.environ["PATH"],
+                       CARGO_TARGET_DIR=str(peer), CLEAN_COMMAND_LOG=str(command_log))
+            result = subprocess.run(["make", "-f", str(repo / "Makefile"), "clean"],
+                                    cwd=peer, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(command_log.read_text().splitlines(), [
+                "clean", "--manifest-path", str(repo / "Cargo.toml"),
+                "--target-dir", str(repo / "target"), "--offline",
+            ])
+            self.assertEqual((peer / "keep").read_text(), "unrelated work")
+            self.assertTrue((repo / "target").is_dir())
+            self.assertEqual(list((repo / "target").iterdir()), [])
+
     def test_links_resolve_relative_paths_and_report_missing_targets(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

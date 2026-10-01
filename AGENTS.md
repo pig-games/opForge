@@ -73,6 +73,14 @@ historical documents do not activate work or grant authority.
   when risk or failures warrant it, independently of commit count.
 - Report the scope and result of validation honestly. A checkpoint is not a
   qualification claim. See the workflow guide for available commands.
+- Keep build cache in the repository's `target` directory only for an active
+  build/test batch. When the batch ends, including a failed batch, preserve needed
+  deliverables and diagnostic summaries outside `target`, then run `make clean`
+  before handing back; keep the empty `target` directory itself. Coordinate with
+  active builds, tests or native runs sharing `target` and defer cleanup until
+  they finish; never delete files underneath them. This
+  user-authorized generated-artifact cleanup needs no recurring approval. Cleaning
+  removes cached build outputs, so the next build or test must recompile.
 
 ## Communication and artifact lifecycle
 

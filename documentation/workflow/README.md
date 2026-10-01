@@ -106,6 +106,20 @@ local token efficiency is not grounds to disable useful integration checks.
 Report what ran, what passed and material gaps. Do not repeatedly run an unchanged
 broad suite after successful validation without a reason.
 
+Keep the repository's `target` build cache only during an active build/test batch.
+When that batch ends, including a failed batch, preserve needed deliverables and
+diagnostic summaries outside `target`, then run the existing `make clean` before
+handing the work back. Coordinate with active builds, tests or native runs sharing
+`target`; wait for them to finish before cleaning so files are not removed underneath them.
+This generated-artifact cleanup is already authorized and does not need repeated
+approval. Cleaning removes cached outputs, so a later build or test will recompile.
+
+`make clean` removes all local `target` contents, including release and
+custom-profile artifacts, then leaves an empty `target` directory. Cleanup is
+scoped to this repository. The existing general and reference test cleanup recipes
+use it; direct Cargo commands and other
+multi-command batches need the same explicit cleanup at their end.
+
 ## Spend effort where it changes the result
 
 Script stable, repeated mechanics with clear inputs, output and failure behavior.

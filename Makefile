@@ -4,6 +4,10 @@
 .PHONY: build release clean fmt clippy audit quality-gate workflow-gate arch-boundary-gate native-68000-format-check native-68000-format native-68000-redundant-test-check native-68000-ccr-cleanup-round native-reference-parity-completion reference reference-test test test-core test-external-oracle test-external-oracle-mos6502-64tass test-vm-runtime test-vm-runtime-artifact test-vm-runtime-intel test-vm-rollout-criteria test-vm-parity test-vm-opasm-modes test-build-profile-matrix test-build-combo-smoke ci-core ci-vm-mos6502 ci-vm-intel8080 build-cli build-lsp build-ffi build-ffi-release test-ffi-packaging build-vm-package build-vm-runtime-artifact vm-only-build vm-only-release vm-only-build-embedded vm-only-release-embedded vm-only-build-unbundled vm-only-release-unbundled vm-only-build-unbundled-artifact vm-only-release-unbundled-artifact manual-pdf loc
 
 MANUAL_MD := documentation/opForge-reference-manual.md
+REPO_ROOT := $(shell cd "$$(dirname "$(strip $(MAKEFILE_LIST))")" && pwd -P)
+ifeq ($(REPO_ROOT),)
+$(error Cannot determine repository root; refusing cleanup)
+endif
 MANUAL_PDF := documentation/opForge-reference-manual.pdf
 VM_RUNTIME_ARTIFACT := target/vm/opforge-vm-runtime.opasm
 EXTERNAL_ORACLE_VASM_ENV := $(if $(OPFORGE_VASM_BIN),OPFORGE_VASM_BIN="$(OPFORGE_VASM_BIN)")
@@ -39,7 +43,8 @@ release:
 	$(MAKE) build-ffi-release
 
 clean:
-	cargo clean
+	cargo clean --manifest-path "$(REPO_ROOT)/Cargo.toml" --target-dir "$(REPO_ROOT)/target" --offline
+	mkdir -p "$(REPO_ROOT)/target"
 
 fmt:
 	cargo fmt --all
@@ -86,19 +91,19 @@ workflow-gate: workflow-test
 
 test:
 	cargo test --workspace
-	../scripts/cleanup-build-artifacts.sh ..
+	$(MAKE) clean
 
 test-core:
 	cargo test --workspace --no-default-features
-	../scripts/cleanup-build-artifacts.sh ..
+	$(MAKE) clean
 
 test-external-oracle:
 	$(EXTERNAL_ORACLE_VASM_ENV) OPFORGE_EXTERNAL_ORACLE_VASM=1 cargo test -p asm external_oracle_ -- --nocapture
-	../scripts/cleanup-build-artifacts.sh ..
+	$(MAKE) clean
 
 test-external-oracle-mos6502-64tass:
 	$(EXTERNAL_ORACLE_64TASS_ENV) OPFORGE_EXTERNAL_ORACLE_64TASS=1 cargo test -p asm external_oracle_64tass_mos6502_ -- --nocapture
-	../scripts/cleanup-build-artifacts.sh ..
+	$(MAKE) clean
 
 test-vm-runtime:
 	cargo test vm_runtime_mos6502_
@@ -191,7 +196,7 @@ test-build-combo-smoke:
 
 reference-test:
 	cargo test -p asm examples_match_reference_outputs
-	../scripts/cleanup-build-artifacts.sh ..
+	$(MAKE) clean
 
 reference:
 	opForge_UPDATE_REFERENCE=1 cargo test -p asm examples_match_reference_outputs -- --nocapture

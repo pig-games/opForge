@@ -37,7 +37,19 @@ fn assemble(root: &Path, build: &NativePackageBuild, instrumented: bool) -> Vec<
     let cli = Cli::parse_from(args);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(build.output_dir.clone());
-    run_with_validated_cli_with_context(&cli, &config).expect("build measured native CLI");
+    run_with_validated_cli_with_context(&cli, &config).unwrap_or_else(|error| match error {
+        cli_core::CliRunError::Assembler { error, .. } => panic!(
+            "build measured native CLI: {}; diagnostics: {:?}",
+            error.summary(),
+            error.diagnostics()
+        ),
+        cli_core::CliRunError::Workflow { error, .. } => {
+            panic!("build measured native CLI: {error}")
+        }
+        cli_core::CliRunError::WarningsAsErrors { .. } => {
+            panic!("build measured native CLI: warnings treated as errors")
+        }
+    });
     fs::read(build.output_dir.join("build/opforge_compact")).unwrap()
 }
 
@@ -177,10 +189,10 @@ fn native_package_loading_performance() {
         _ => panic!("both baseline paths are required together"),
     };
     if let Some((_, package)) = &baseline {
-        assert_eq!(
-            &package[..4],
-            b"BS11",
-            "baseline must be the pre-P2 contract"
+        assert!(
+            [b"BS11".as_slice(), b"BS12".as_slice(), b"BS13".as_slice()]
+                .contains(&package.get(..4).unwrap_or(&[])),
+            "baseline must carry its own known frozen native contract"
         );
     }
     let rounds = std::env::var("OPFORGE_PACKAGE_PERF_ROUNDS")

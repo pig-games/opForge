@@ -76,6 +76,18 @@ impl AsmMacroProcessor {
         result
     }
 
+    pub fn expand_with_origins(
+        &mut self,
+        lines: &[String],
+        origins: &[types::source_map::SourceOrigin],
+    ) -> Result<(Vec<String>, Vec<types::source_map::SourceOrigin>), AsmMacroError> {
+        clear_preprocess_runtime_processing_traces();
+        let result = self.inner.expand_with_origins(lines, origins);
+        self.runtime_processing_traces
+            .extend(take_preprocess_runtime_processing_traces());
+        result
+    }
+
     pub fn inject_from(&mut self, exports: &AsmMacroExports, names: &[String]) {
         self.inner.inject_from(&exports.core, names);
         self.inner
@@ -245,7 +257,11 @@ fn asm_expand_statement_invocation(
         attach_label_to_expansion(label, &mut expanded);
     }
 
-    let nested = processor.expand_nested_statement_lines(&expanded, depth + 1)?;
+    let nested = processor.expand_nested_statement_lines_with_origins(
+        &expanded,
+        matching_defs[selection].body_origins(),
+        depth + 1,
+    )?;
     Ok(Some(nested))
 }
 

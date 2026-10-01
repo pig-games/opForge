@@ -7,22 +7,40 @@
 pub struct SourceOrigin {
     pub file: Option<String>,
     pub line: u32,
+    /// Definition-site authority retained through include/macro expansion.
+    pub binary_context: Option<crate::binary_resource::BinaryResourceContext>,
 }
 
 impl SourceOrigin {
     pub fn new(file: Option<String>, line: u32) -> Self {
-        Self { file, line }
+        Self {
+            file,
+            line,
+            binary_context: None,
+        }
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default)]
 pub struct SourceMap {
     origins: Vec<SourceOrigin>,
+    /// Owned capability; diagnostic-map equality compares origins, not handles.
+    pub binary_reader: Option<std::sync::Arc<dyn crate::binary_resource::BinaryResourceReader>>,
 }
+
+impl PartialEq for SourceMap {
+    fn eq(&self, other: &Self) -> bool {
+        self.origins == other.origins
+    }
+}
+impl Eq for SourceMap {}
 
 impl SourceMap {
     pub fn new(origins: Vec<SourceOrigin>) -> Self {
-        Self { origins }
+        Self {
+            origins,
+            binary_reader: None,
+        }
     }
 
     pub fn origins(&self) -> &[SourceOrigin] {

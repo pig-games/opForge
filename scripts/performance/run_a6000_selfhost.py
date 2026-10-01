@@ -88,15 +88,15 @@ def load_bundle(bundle):
         raise ValueError("Bootstrap digest mismatch")
     if not defines and storage == "external" and bootstrap != oracle:
         raise ValueError("Release bootstrap/oracle mismatch")
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS12":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS13":
         raise ValueError("Runtime package mismatch")
     files["opforge"] = bootstrap
     if storage == "embedded":
-        if len(package) < 132:
+        if len(package) < 140:
             raise ValueError("Invalid embedded package header")
         offset = int.from_bytes(package[124:128], "big")
         size = int.from_bytes(package[128:130], "big")
-        if offset < 132 or not 1 <= size <= 26 or offset + size > len(package):
+        if offset < 140 or not 1 <= size <= 26 or offset + size > len(package):
             raise ValueError("Invalid embedded package identity")
         target = package[offset:offset + size].decode("ascii")
         if not re.fullmatch(r"m68020--[A-Za-z0-9_-]+", target) or embedded_packages != [target + ".bin"]:

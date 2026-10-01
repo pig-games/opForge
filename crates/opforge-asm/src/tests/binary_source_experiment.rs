@@ -127,11 +127,11 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS12");
-        assert_eq!(long(16), 132);
+        assert_eq!(&bytes[..4], b"BS13");
+        assert_eq!(long(16), 140);
         assert_eq!(word(64), little_endian);
         assert_eq!(word(130), 0);
-        assert!(target_offset >= 132);
+        assert!(target_offset >= 140);
         assert_eq!(target_bytes, expected.len());
         assert_eq!(
             &bytes[target_offset..target_offset + target_bytes],
@@ -174,11 +174,11 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS12");
+        assert_eq!(&bytes[..4], b"BS13");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((132..=bytes.len()).contains(&runtime_bytes));
+        assert!((140..=bytes.len()).contains(&runtime_bytes));
         assert_eq!(runtime_bytes % 2, 0);
         let fragments = long(&bytes, 116);
         let fragment_bytes = long(&bytes, 120);
@@ -199,7 +199,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 132);
+            assert!(offset >= 140);
             assert!(offset + count * width <= runtime_bytes);
         }
 
@@ -299,6 +299,11 @@ fn binary_source_packages_prepare() {
         assert!(macro_header + macro_header_bytes <= macro_packed);
         assert!(macro_packed + macro_packed_bytes <= macro_spelling);
         assert!(macro_spelling + macro_spelling_bytes <= bytes.len());
+        let file_plan = long(&bytes, 132);
+        let file_plan_bytes = long(&bytes, 136);
+        assert_eq!(file_plan_bytes, package::packed_file_program(0).len());
+        assert!(file_plan >= macro_spelling + macro_spelling_bytes);
+        assert!(file_plan + file_plan_bytes <= bytes.len());
         assert!(dictionary >= runtime_bytes);
         assert!(tokenizer >= dictionary);
         assert!(tokenizer + tokenizer_bytes <= bytes.len());

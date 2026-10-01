@@ -71,6 +71,7 @@ struct MacroParam {
 struct MacroDef {
     params: Vec<MacroParam>,
     body: Vec<String>,
+    origins: Vec<types::source_map::SourceOrigin>,
     wrap_scope: bool,
     visibility: CompileTimeVisibility,
 }
@@ -80,6 +81,7 @@ struct StatementDef {
     keyword: String,
     signature: StatementSignature,
     body: Vec<String>,
+    origins: Vec<types::source_map::SourceOrigin>,
     visibility: CompileTimeVisibility,
 }
 
@@ -213,6 +215,7 @@ pub struct NativeStatementExport {
     keyword: String,
     signature: StatementSignature,
     body: Vec<String>,
+    origins: Vec<types::source_map::SourceOrigin>,
     visibility: CompileTimeVisibility,
 }
 
@@ -229,6 +232,10 @@ impl NativeStatementExport {
         &self.body
     }
 
+    pub fn body_origins(&self) -> &[types::source_map::SourceOrigin] {
+        &self.origins
+    }
+
     pub fn visibility(&self) -> CompileTimeVisibility {
         self.visibility
     }
@@ -242,6 +249,7 @@ pub struct MacroProcessor {
     namespace_stack: Vec<Option<String>>,
     structure_stack: Vec<StructuralScopeKind>,
     max_depth: usize,
+    statement_output_origins: Vec<types::source_map::SourceOrigin>,
 }
 
 impl Default for MacroProcessor {
@@ -260,6 +268,7 @@ impl MacroProcessor {
             namespace_stack: Vec::new(),
             structure_stack: Vec::new(),
             max_depth: 64,
+            statement_output_origins: Vec::new(),
         }
     }
 
@@ -353,6 +362,7 @@ impl MacroProcessor {
                     keyword: def.keyword.clone(),
                     signature: def.signature.clone(),
                     body: def.body.clone(),
+                    origins: def.origins.clone(),
                     visibility: def.visibility,
                 })
                 .collect();
@@ -380,6 +390,7 @@ impl MacroProcessor {
                     keyword: def.keyword.clone(),
                     signature: def.signature.clone(),
                     body: def.body.clone(),
+                    origins: def.origins.clone(),
                     visibility: def.visibility,
                 });
         }
@@ -411,6 +422,7 @@ impl MacroProcessor {
                     keyword: def.keyword.clone(),
                     signature: def.signature.clone(),
                     body: def.body.clone(),
+                    origins: def.origins.clone(),
                     visibility: def.visibility,
                 });
         }
@@ -441,6 +453,7 @@ impl MacroProcessor {
                     keyword: def.keyword,
                     signature: def.signature,
                     body: def.body,
+                    origins: def.origins,
                     visibility: def.visibility,
                 });
             }
@@ -460,11 +473,23 @@ impl MacroProcessor {
                         keyword: def.keyword.clone(),
                         signature: def.signature.clone(),
                         body: def.body.clone(),
+                        origins: def.origins.clone(),
                         visibility: def.visibility,
                     })
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    pub fn expand_nested_statement_lines_with_origins(
+        &mut self,
+        lines: &[String],
+        origins: &[types::source_map::SourceOrigin],
+        depth: usize,
+    ) -> Result<Vec<String>, MacroError> {
+        let (lines, origins) = self.expand_contextual(lines, origins, depth)?;
+        self.statement_output_origins = origins;
+        Ok(lines)
     }
 
     pub fn expand_nested_statement_lines(
@@ -581,7 +606,23 @@ impl MacroProcessor {
         }
     }
 
+    pub fn expand_with_origins(
+        &mut self,
+        lines: &[String],
+        origins: &[types::source_map::SourceOrigin],
+    ) -> Result<(Vec<String>, Vec<types::source_map::SourceOrigin>), MacroError> {
+        self.expand_contextual(lines, origins, 0)
+    }
     fn expand_lines(&mut self, lines: &[String], depth: usize) -> Result<Vec<String>, MacroError> {
+        self.expand_contextual(lines, &[], depth)
+            .map(|(lines, _)| lines)
+    }
+    fn expand_contextual(
+        &mut self,
+        lines: &[String],
+        origins: &[types::source_map::SourceOrigin],
+        depth: usize,
+    ) -> Result<(Vec<String>, Vec<types::source_map::SourceOrigin>), MacroError> {
         if depth > self.max_depth {
             return Err(MacroError::new(
                 format!(
@@ -594,6 +635,7 @@ impl MacroProcessor {
         }
 
         let mut out = Vec::new();
+        let mut out_origins = Vec::new();
         let mut current: Option<(String, MacroDef, MacroKind)> = None;
         let mut current_statement: Option<StatementDef> = None;
         let mut skip_statement_body = false;
@@ -601,6 +643,10 @@ impl MacroProcessor {
 
         for (idx, line) in lines.iter().enumerate() {
             let line_num = idx as u32 + 1;
+            let origin = origins
+                .get(idx)
+                .cloned()
+                .unwrap_or_else(|| types::source_map::SourceOrigin::new(None, line_num));
             let (code, _) = crate::text_utils::split_comment(line);
 
             if current.is_none() && current_statement.is_none() && !skip_statement_body {
@@ -658,6 +704,7 @@ impl MacroProcessor {
                     MacroDef {
                         params: param_defs,
                         body: Vec::new(),
+                        origins: Vec::new(),
                         wrap_scope,
                         visibility: self.current_visibility(),
                     },
@@ -719,6 +766,7 @@ impl MacroProcessor {
                                         keyword,
                                         signature,
                                         body: Vec::new(),
+                                        origins: Vec::new(),
                                         visibility: self.current_visibility(),
                                     });
                                     continue;
@@ -741,6 +789,7 @@ impl MacroProcessor {
                                 continue;
                             }
                             out.push(line.clone());
+                            out_origins.push(origin.clone());
                             continue;
                         }
                     }
@@ -749,12 +798,14 @@ impl MacroProcessor {
 
             if let Some(def) = current_statement.as_mut() {
                 def.body.push(line.clone());
+                def.origins.push(origin.clone());
                 continue;
             }
 
             if let Some((name, def, _kind)) = current.as_mut() {
                 let _ = name;
                 def.body.push(line.clone());
+                def.origins.push(origin.clone());
                 continue;
             }
 
@@ -768,14 +819,23 @@ impl MacroProcessor {
                     .ok_or_else(|| MacroError::new("Unknown macro", Some(line_num), Some(1)))?;
                 let args = build_macro_args(&def, &inv);
                 let mut expanded = Vec::new();
+                let mut expanded_origins = Vec::new();
                 if def.wrap_scope {
                     expanded.push(format_macro_block_start(&inv));
+                    expanded_origins.push(origin.clone());
                 }
-                for body_line in &def.body {
+                for (index, body_line) in def.body.iter().enumerate() {
                     expanded.push(substitute_line(body_line, &args));
+                    expanded_origins.push(
+                        def.origins
+                            .get(index)
+                            .cloned()
+                            .unwrap_or_else(|| origin.clone()),
+                    );
                 }
                 if def.wrap_scope {
                     expanded.push(format!("{}{}", inv.indent, ".endblock"));
+                    expanded_origins.push(origin.clone());
                 } else if let Some(label) = &inv.label {
                     if let Some(first) = expanded.first_mut() {
                         let trimmed = first.trim_start();
@@ -786,10 +846,13 @@ impl MacroProcessor {
                         }
                     } else {
                         expanded.push(label.clone());
+                        expanded_origins.push(origin.clone());
                     }
                 }
-                let nested = self.expand_lines(&expanded, depth + 1)?;
+                let (nested, nested_origins) =
+                    self.expand_contextual(&expanded, &expanded_origins, depth + 1)?;
                 out.extend(nested);
+                out_origins.extend(nested_origins);
                 continue;
             }
 
@@ -797,12 +860,20 @@ impl MacroProcessor {
                 if let Some(expanded) =
                     (statement_hooks.expand_invocation)(code, line_num, depth, self)?
                 {
+                    if self.statement_output_origins.len() == expanded.len() {
+                        out_origins.extend(std::mem::take(&mut self.statement_output_origins));
+                    } else {
+                        out_origins.extend(std::iter::repeat(origin.clone()).take(expanded.len()));
+                    }
                     out.extend(expanded);
                     continue;
                 }
             }
 
-            out.push(line.clone());
+            out.push(
+                crate::preprocess::normalize_incbin_filename(line).unwrap_or_else(|| line.clone()),
+            );
+            out_origins.push(origin.clone());
         }
 
         if let Some((_name, _def, kind)) = current {
@@ -821,7 +892,7 @@ impl MacroProcessor {
             ));
         }
 
-        Ok(out)
+        Ok((out, out_origins))
     }
 }
 

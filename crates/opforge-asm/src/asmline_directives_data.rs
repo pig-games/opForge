@@ -10,6 +10,7 @@ impl<'a> AsmLine<'a> {
         operands: &[Expr],
     ) -> Option<LineStatus> {
         match directive {
+            "INCBIN" => Some(self.incbin_directive_ast(operands)),
             "FILL" => Some(self.fill_directive_ast(operands)),
             "ORG" => Some(self.org_directive_ast(operands)),
             "ALIGN" => Some(self.align_directive_ast(operands)),
@@ -42,6 +43,62 @@ impl<'a> AsmLine<'a> {
             "DS" => Some(self.ds_directive_ast(operands)),
             _ => None,
         }
+    }
+
+    fn incbin_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
+        let [Expr::String(path, span)] = operands else {
+            return self.failure(
+                LineStatus::Error,
+                AsmErrorKind::Directive,
+                ".incbin requires one quoted filename",
+                None,
+            );
+        };
+        let Ok(path) = std::str::from_utf8(path) else {
+            return self.failure(
+                LineStatus::Error,
+                AsmErrorKind::Directive,
+                ".incbin filename must be UTF-8",
+                None,
+            );
+        };
+        let result = self
+            .binary_resources
+            .as_ref()
+            .ok_or_else(|| "INCBIN source resource context unavailable".to_string())
+            .and_then(|resources| resources.borrow_mut().load(self.current_line_num, path));
+        let bytes = match result {
+            Ok(bytes) => bytes,
+            Err(message) => {
+                return self.failure_at_span(
+                    LineStatus::Error,
+                    AsmErrorKind::Directive,
+                    &message,
+                    None,
+                    *span,
+                )
+            }
+        };
+        let Ok(count) = u32::try_from(bytes.len()) else {
+            return self.failure_at_span(
+                LineStatus::Error,
+                AsmErrorKind::Directive,
+                "INCBIN file exceeds address range",
+                None,
+                *span,
+            );
+        };
+        if let Err(error) = self.validate_program_span(count, ".incbin", *span) {
+            return self.failure_at_span(
+                LineStatus::Error,
+                AsmErrorKind::Directive,
+                error.error.message(),
+                None,
+                error.span,
+            );
+        }
+        self.bytes.extend_from_slice(&bytes);
+        LineStatus::Ok
     }
 
     pub fn org_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {

@@ -299,7 +299,7 @@ pub fn build_native_packages(
         package_paths.push(path);
     }
     let manifest = serde_json::json!({
-        "format": "BS12",
+        "format": "BS13",
         "scope": "host catalog build inputs; no native execution or parity claim",
         "embedded_files": embedded_files,
         "targets": targets.iter().map(|target| serde_json::json!({

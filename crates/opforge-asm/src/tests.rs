@@ -3838,13 +3838,23 @@ fn incbin_expands_and_assembles_binary_data() {
         lines,
         vec![
             ".org $1000".to_string(),
-            "SpriteData .byte $DE, $AD, $BE, $EF".to_string(),
+            "SpriteData .incbin \"sprite.bin\"".to_string(),
             ".byte $ff".to_string()
         ]
     );
 
-    let line_refs: Vec<&str> = lines.iter().map(String::as_str).collect();
-    let assembler = run_passes(&line_refs);
+    let mut pp = opcore::preprocess::Preprocessor::new();
+    pp.process_file(root_path.to_str().unwrap()).unwrap();
+    let mut source_map = types::source_map::SourceMap::new(pp.origins().to_vec());
+    source_map.binary_reader = Some(std::sync::Arc::new(
+        opcore::preprocess::FsPreprocessFileLoader,
+    ));
+    let mut assembler = Assembler::new();
+    assembler.set_source_resources(source_map);
+    assert_eq!(assembler.pass1(&lines).errors, 0);
+    let mut listing_out = Vec::new();
+    let mut listing = ListingWriter::new(&mut listing_out, false);
+    assert_eq!(assembler.pass2(&lines, &mut listing).unwrap().errors, 0);
     let entries = assembler.image().entries().expect("image entries");
     assert_eq!(
         entries,
@@ -42704,6 +42714,11 @@ mod native_runtime_comparison;
 
 #[path = "tests/binary_source_experiment.rs"]
 mod binary_source_experiment;
+#[path = "tests/binary_source_incbin.rs"]
+mod binary_source_incbin;
 
 #[path = "tests/native_telemetry_macros.rs"]
 mod native_telemetry_macros;
+
+#[path = "tests/binary_resource_activity.rs"]
+mod binary_resource_activity;

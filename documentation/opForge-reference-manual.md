@@ -192,6 +192,10 @@ tuples, code blocks, and type values.
 Notes:
 - `.include` is literal text inclusion only; it does not participate in module loading.
 - `.incbin` includes the raw bytes of a binary file at the current program counter.
+- Binary files are loaded only for active `.incbin` statements, including expanded
+  macros or segments. An inactive conditional or an unused definition does not
+  require its binary file to exist. Relative paths in a definition use that
+  definition's source-file directory; bytes are reused across assembly passes.
 - Include resolution is constrained to the including-file directory and explicit `-I/--include-path` roots.
 - Absolute include paths and parent-relative traversals are accepted only when they resolve inside those allowed roots.
 

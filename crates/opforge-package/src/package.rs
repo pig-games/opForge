@@ -1609,6 +1609,13 @@ pub const PARSER_VM_MACRO_ENTRY: u16 = 2;
 pub const PARSER_VM_MACRO_VERSION: u16 = 2;
 pub const PARSER_VM_PACKED_MACRO_ENTRY: u16 = 3;
 pub const PARSER_VM_MACRO_FRAGMENT_ENTRY: u16 = 4;
+pub const PARSER_VM_PACKED_FILE_ENTRY: u16 = 5;
+
+/// Package-owned directive identity for one decoded file operand.
+pub fn packed_file_program(directive: u16) -> Vec<u8> {
+    let [high, low] = directive.to_be_bytes();
+    vec![0x90, 1, 0x91, high, low, 0x92, 0x83, 0]
+}
 
 /// Operands select envelope grammar and delimiter/default policy; never ignored.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1622,6 +1629,9 @@ pub enum MacroDescriptorOpcode {
     FragmentScan = 0x86, // policy1, positional/dot markers, digit bounds, braces
     PackedEnvelope = 0x84, // flags:u8 (labels, outer parentheses, leading comma)
     PackedSplit = 0x85,  // matched-stack policy:u8 (2, max depth 16), separator kind:u8
+    FileEnvelope = 0x90, // flags:u8 (optional normalized label prefix)
+    FileDirective = 0x91, // selected numeric directive:u16 big-endian
+    FileOperand = 0x92,  // one nonempty decoded string
 }
 
 pub fn packed_macro_call_program() -> Vec<u8> {

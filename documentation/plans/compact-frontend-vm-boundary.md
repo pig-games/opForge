@@ -1,8 +1,8 @@
 # Compact frontend: VM boundary correction
 
-Status: the current P2 external-only 65-file native self-host completes with exact live Rust output. Full 61-file native self-hosting is also proven at the recorded earlier checkpoint below, with exact live Rust Hunk output in both release and separately instrumented emulator runs. The subsequent filename-only portability repair also completes on the physical A6000 with exact Rust output. The 2 MiB product target remains unqualified. Residual frontend ownership gaps and the deferred ordinary-label instruction binding issue are listed below.
+Status: the recorded P2 BS12 external-only 65-file native self-host completed with exact live Rust output. The subsequent BS13 binary-inclusion slice passes focused Rust/native and allocation checks; its changed source tree has no fresh full self-host result yet. Full 61-file native self-hosting is also proven at the recorded earlier checkpoint below, with exact live Rust Hunk output in both release and separately instrumented emulator runs. The subsequent filename-only portability repair also completes on the physical A6000 with exact Rust output. The 2 MiB product target remains unqualified. Residual frontend ownership gaps and the deferred ordinary-label instruction binding issue are listed below.
 
-## Current P2 self-host proof
+## Recorded P2 self-host proof
 
 The 2026-10-01 external-only BS12 implementation fully self-assembles its current
 65-file, 748,663-byte source tree (`fnv1a64:210d4e6e48e356c7`) in FS-UAE with
@@ -59,8 +59,10 @@ Require fresh case-bound START/DONE challenges, guest exit zero and exact comple
 ### Physical A6000 run
 
 The host-only ignored test `export_compact_self_host_bundle` builds a fresh release
-bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS12
-package. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
+bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS13
+package. Its preparation-only file plan has focused native qualification recorded
+in the [current plan](native-runtime-reset.md#bs13-binary-inclusion-qualification);
+host export alone does not prove self-hosting. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
 the test. It preserves source bytes and include filenames exactly.
 
 Run [the hardware script](../../scripts/performance/run_a6000_selfhost.py) from
@@ -97,9 +99,12 @@ verification but is not transferred. On the guest, the runner invokes
 `opforge --cpu 68020` without
 external packages. Input remains the unchanged default release/native CLI
 source, and the 94,356-byte release Rust oracle remains an external-package
-configuration. This mode does not prove native self-assembly of the embedded
-configuration; `.incbin` parity is pending, and no hardware timings are
-available. `/tmp/opforge-a6000-current` remains the external release bundle.
+configuration. This recorded P2 bundle does not prove native self-assembly of the embedded
+configuration. The current BS13 replacement is `/tmp/opforge-a6000-bs13-incbin`,
+with the same m68020-only embedded bootstrap choice and a fresh 96,572-byte
+external-default Rust oracle. It has no hardware timing yet.
+`/tmp/opforge-a6000-current` selects this new bundle; old BS12 exports require
+their matching historical runner rather than a current-format compatibility path.
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
@@ -252,16 +257,22 @@ bytecode and shared ExprVM execution do not supply that missing parser program.
 The macro-only initial PRVM plan currently runs after binding, which is why it
 cannot yet classify an ordinary statement head before the value binder acts.
 
-BS12 is the current compact package format; the producer writes `BS12` and the
-native package owner checks the matching magic. Header offsets and lengths are
-big-endian and relative to the block start. Unsupported candidate recipes stay
-explicit rows rather than becoming silent omissions. Package rows select
-package-owned recipes, numeric projections and literal constants, including
-instruction encodings. Generic native executes them without inventing CPU/family
-semantics. Preparation-only markers are consumed before runtime records
-are emitted. If a bytecode or package contract changes, regenerate its producer
-and migrate Rust/native consumers together. Keep one current contract rather
-than a compatibility executor for a superseded format.
+BS13 is the current compact package format; the producer writes `BS13` and the
+native package owner checks the matching magic. Its header is 140 bytes, with
+big-endian block-relative fields. The canonical target identity remains at
+offset 124 (length at 128); the preparation-only file plan offset and length are
+at 132 and 136. Rust preparation expands only active `.incbin` statements for
+the quoted relative native subset, using definition-file-relative roots
+and the explicit supported cases. [Focused native qualification](native-runtime-reset.md#bs13-binary-inclusion-qualification)
+passes; full embedded-config self-hosting and per-record origins for macro bodies
+drawn from several physical files remain unqualified. Unsupported candidate recipes stay explicit rows rather than
+becoming silent omissions. Package rows select package-owned recipes, numeric
+projections and literal constants, including instruction encodings. Generic
+native executes them without inventing CPU/family semantics. Preparation-only
+markers are consumed before runtime records are emitted. If a bytecode or
+package contract changes, regenerate its producer and migrate Rust/native
+consumers together. Keep one current contract rather than a compatibility
+executor for a superseded format.
 
 For Hunk output, section and symbol provenance survives stabilization. The
 native output path must preserve absolute instruction fixups and supported

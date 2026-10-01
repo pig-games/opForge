@@ -4,12 +4,13 @@
 	.use prvm.amigaos.abi as abi
 	.use prvm.amigaos.macro_descriptors as macro_descriptors
 	.use prvm.amigaos.packed_macro as packed_macro
+	.use prvm.amigaos.packed_file as file
 	.use prvm.amigaos.macro_fragments as fragments
 	.include "telemetry_macros.i"
 	.section code, kind=code
 	.pub
 
-; Execute macro entry 2, 3 or 4; each executor owns its request/program validation.
+; Execute package-selected entries 2 through 5; each executor owns its request/program validation.
 ; Inputs: A0 request frame, D0 available frame bytes.
 ; Outputs: D0 status, D1 record count, D2 error offset, D3 published bytes.
 ; Clobbers: A0-A3; preserves D4-D7/A4-A6. Executors stage atomic publication.
@@ -21,6 +22,8 @@ run	.block
 	beq invalidArgument
 	cmpi.l #abi.PRVM_REQUEST_FRAME_SIZE, d0
 	blt invalidArgument
+	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_FILE, abi.PRVM_FRAME_ENTRY_KIND(a0)
+	beq fileEntry
 	cmpi.w #abi.PRVM_ENTRY_KIND_MACRO_DESCRIPTORS, abi.PRVM_FRAME_ENTRY_KIND(a0)
 	beq descriptors
 	cmpi.w #abi.PRVM_ENTRY_KIND_MACRO_FRAGMENTS, abi.PRVM_FRAME_ENTRY_KIND(a0)
@@ -28,6 +31,9 @@ run	.block
 	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_MACRO, abi.PRVM_FRAME_ENTRY_KIND(a0)
 	bne invalidArgument
 	jsr packed_macro.run
+	bra done
+fileEntry
+	jsr file.run
 	bra done
 fragmentEntry
 	jsr fragments.run

@@ -54,6 +54,7 @@ GeneratedPlan	.long ?
 ActivePlan	.long ?
 Package	.long ?  ; session capsule supplies shared core directive identities
 FragmentLine	.long ?  ; VM-owned whole-line expansion callback
+Origin	.long ?  ; opaque application source identity
 	.endstruct
 CallFrame	.struct
 Definition	.word ?
@@ -137,12 +138,13 @@ Last	.long ?
 Kind	.word ?
 ParamCount	.word ?
 HeaderPlan	.long ?
+Origin	.long ?  ; definition source identity, never a path or pointer
 	.endstruct
-DEF_BYTES = Def.HeaderPlan+4
+DEF_BYTES = Def.Origin+4
 KIND_SEGMENT = 0
 KIND_MACRO = 1
 BLOCK_BYTES = memory.Block.Used+4
-DEFS = State.FragmentLine+4
+DEFS = State.Origin+4
 DEFAULTS = DEFS+BLOCK_BYTES
 DEFAULT_TEXT = DEFAULTS+BLOCK_BYTES
 BODY = DEFAULT_TEXT+BLOCK_BYTES
@@ -169,6 +171,7 @@ begin	.block
 	clr.w State.Skipping(a0)
 	clr.l State.Used(a0)
 	clr.w State.Depth(a0)
+	clr.l State.Origin(a0)
 	clr.l DEFAULT_USED(a0)
 	clr.l DEFAULT_TEXT_USED(a0)
 	clr.l DEFS+memory.Block.Used(a0)
@@ -673,6 +676,7 @@ parametersValid
 	mulu.w #DEF_BYTES, d0
 	movea.l DEFS+memory.Block.Pointer(a6), a0
 	adda.l d0, a0
+	move.l State.Origin(a6), Def.Origin(a0)
 	move.w d5, Def.Name(a0)
 	move.l State.Used(a6), Def.First(a0)
 	move.l State.Used(a6), Def.Last(a0)
@@ -1144,6 +1148,7 @@ nextFrame
 	mulu.w #DEF_BYTES, d0
 	movea.l DEFS+memory.Block.Pointer(a0), a4
 	adda.l d0, a4
+	move.l Def.Origin(a4), State.Origin(a0)
 	tst.w Def.Kind(a4)
 	beq.w bodyRecord
 	cmpi.w #1, CallFrame.CallPhase(a6)

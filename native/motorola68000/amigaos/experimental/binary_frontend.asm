@@ -37,7 +37,11 @@ NameCount	.long ?
 Scratch	.long ?
 Graph	.long ?
 GraphBefore	.long ?
+FileInclude	.long ?  ; optional preparation callback, A0=Frame,A1=PRVM file plan
+Origin	.long ?  ; opaque application source identity for file callbacks
 	.endstruct
+	.pub
+FRAME_BYTES = Frame.Origin+4
 	.pub
 GRAPH_BYTES = graph.SCRATCH_BYTES
 GRAPH_SPAN_BYTES = graph.MAX_SPANS*graph.SPAN_BYTES
@@ -364,6 +368,7 @@ line	.block
 	adda.l #CONDITION_STATE, a0
 	move.w conditionals.State.Active(a0), d0
 	movea.l Frame.Output(a5), a0
+	move.l Frame.Origin(a5), templates.State.Origin(a1)
 	.MEMORY_DETAIL_BEGIN #5
 	jsr templates.line
 	.MEMORY_DETAIL_END #5
@@ -947,6 +952,9 @@ nextDone
 ; child frame and resume the parent when that child drains.
 expandRecord	.block
 generatedLoop
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	move.l templates.State.Origin(a0), Frame.Origin(a5)
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.startLine
 	movea.l Frame.Output(a5), a0
@@ -975,6 +983,10 @@ nextGenerated
 	rts
 prepareGenerated
 	bsr.w processRecord
+	bne.w failed
+	tst.l Frame.Used(a5)
+	beq.w nextGenerated  ; streamed actions publish directly; keep draining the call
+	moveq #0, d0  ; return status flags after testing the published byte count
 	rts
 failed
 	moveq #1, d0
@@ -1029,6 +1041,11 @@ activeLine
 	bne.w failed
 constantCaptured
 conditionReady
+	.MEMORY_DETAIL_BEGIN #3
+	bsr.w fileLine
+	bne.w failed
+	tst.l d1
+	bne.w graphLineDone  ; callback published its numeric data and graph bytes
 	.MEMORY_STAGE #4
 	movea.l Frame.Output(a5), a0
 	lea PREPARED_LINE(a6), a1
@@ -1036,7 +1053,6 @@ conditionReady
 	jsr prepare.line
 	bne.w failed
 	.MEMORY_STAGE #0
-	.MEMORY_DETAIL_BEGIN #3
 	cmp.l Frame.Capacity(a5), d1
 	bhi.w failed
 	lea PREPARED_LINE(a6), a0
@@ -1070,6 +1086,104 @@ done
 	tst.l d0
 	rts
 	.bend  ; processRecord
+	.pub
+; Publish one already-numeric data record from a preparation-only file callback.
+; A0=session,A1=record,D0=bytes. No binding, text parsing or expression compilation
+; occurs here. Updates Used and graph ownership; caller then appends Output.
+; D0/CCR=status; preserves other registers. Input/output may coincide.
+data	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	cmpi.l #4, d0
+	blo.w bad
+	cmpi.l #writer.MAX_LINE, d0
+	bhi.w bad
+	cmp.l Frame.Capacity(a5), d0
+	bhi.w bad
+	move.l d0, Frame.Used(a5)
+	movea.l Frame.Output(a5), a2
+copy
+	move.b (a1)+, (a2)+
+	subq.l #1, d0
+	bne.w copy
+	movea.l Frame.Graph(a5), a0
+	move.l a0, d0
+	beq.w good
+	move.l Frame.Used(a5), d0
+	move.l Frame.GraphBefore(a5), d1
+	movea.l Frame.Scratch(a5), a1
+	moveq #0, d2
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a1), d2
+	jsr graph.line
+	bra.w done
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; data
+	.priv
+; PRVM selects a file action from active packed records; native code only
+; delegates the resulting bounded path/prefix view to caller-owned I/O.
+; A5=session,A6=scratch. D0/CCR=status,D1=handled; preserves other registers.
+fileLine	.block
+	movem.l d2-d7/a0-a4, -(sp)
+	lea MACRO_REQUEST(a6), a0
+	movea.l a0, a1
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
+clear
+	clr.l (a1)+
+	dbra d0, clear
+	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
+	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #parser_abi.PRVM_ENTRY_KIND_PACKED_FILE, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.l Frame.Output(a5), parser_abi.PRVM_FRAME_SOURCE_PTR(a0)
+	movea.l Frame.Output(a5), a1
+	moveq #0, d0
+	move.b (a1), d0
+	addq.l #1, d0
+	lea MACRO_REQUEST(a6), a0
+	move.l d0, parser_abi.PRVM_FRAME_SOURCE_LEN(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.FilePlanBytes(a1), parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	adda.l package.Header.FilePlan(a1), a1
+	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
+	move.l #1024, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	jsr macro_runtime.run
+	bne.w bad
+	tst.l d1
+	beq.w good
+	cmpi.l #1, d1
+	bne.w bad
+	move.l Frame.FileInclude(a5), d0
+	beq.w bad  ; stand-alone frontends must explicitly supply file I/O
+	movea.l d0, a2
+	movea.l a5, a0
+	lea MACRO_EVENTS(a6), a1
+	jsr (a2)
+	bne.w bad
+	clr.l Frame.Used(a5)
+	moveq #1, d1
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; fileLine
 	.pub
 ; Finish one source file without discarding identities shared by the session.
 ; A0=Frame,D0=nonzero to require explicit modules for file content.
@@ -1436,6 +1550,9 @@ validateMacroPrograms	.block
 	bsr.w region
 	bne.w bad
 	lea package.Header.MacroFragments(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.FilePlan(a4), a0
 	bsr.w region
 	bra.w done
 region

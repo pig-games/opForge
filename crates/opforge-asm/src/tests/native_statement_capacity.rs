@@ -451,7 +451,9 @@ fn native_item38_full_product_macro_depth_budget_contract() {
     let rust = fs::read_to_string(root.join("crates/opforge-core/src/macro_processor.rs"))
         .expect("read Rust macro authority");
     assert!(rust.contains("max_depth: 64"));
-    assert!(rust.contains("self.expand_lines(&expanded, depth + 1)?"));
+    assert!(rust.contains("if depth > self.max_depth {"));
+    assert!(rust.contains("self.expand_contextual(&expanded, &expanded_origins, depth + 1)?"));
+    assert!(rust.contains("out_origins.extend(nested_origins);"));
 
     let amigaos = root.join("native/motorola68000/amigaos");
     let product_macros = fs::read_to_string(amigaos.join("tkvm/tkvm_demo_program.asm"))

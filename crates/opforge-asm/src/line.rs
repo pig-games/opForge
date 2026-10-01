@@ -236,6 +236,7 @@ pub struct AsmLine<'a> {
     active_struct: Option<ActiveStructDefinition>,
     diagnostics: AsmDiagnosticsState,
     current_line_num: u32,
+    binary_resources: Option<Rc<std::cell::RefCell<crate::binary_resources::BinaryResources>>>,
     current_source_line: Option<String>,
     line_end_span: Option<Span>,
     line_end_token: Option<String>,
@@ -443,6 +444,7 @@ impl<'a> AsmLine<'a> {
             active_struct: None,
             diagnostics: AsmDiagnosticsState::new(),
             current_line_num: 1,
+            binary_resources: None,
             current_source_line: None,
             line_end_span: None,
             line_end_token: None,
@@ -809,6 +811,13 @@ impl<'a> AsmLine<'a> {
 
     pub fn aux_value(&self) -> u32 {
         self.aux_value
+    }
+
+    pub(crate) fn set_binary_resources(
+        &mut self,
+        resources: Option<Rc<std::cell::RefCell<crate::binary_resources::BinaryResources>>>,
+    ) {
+        self.binary_resources = resources;
     }
 
     pub fn clear_conditionals(&mut self) {

@@ -292,6 +292,11 @@ pub fn root_module_id_from_lines(
     Ok(explicit[0].clone())
 }
 
+/// Expand textual includes and preprocessing directives.
+///
+/// `.incbin` remains in the returned source: binary assets are acquired only by
+/// active assembly statements. Flat text does not retain resource origins or an
+/// owned reader; use [`prepare_assembly_session`] for resource-aware assembly.
 pub fn expand_source_file(
     path: &Path,
     defines: &[String],
@@ -303,6 +308,10 @@ pub fn expand_source_file(
     Ok(lines)
 }
 
+/// Expand text and report source/include dependencies observed during preparation.
+///
+/// Binary dependencies are deferred until active assembly, so they are absent
+/// from this result. See [`expand_source_file`] for the flat-text resource limit.
 pub fn expand_source_file_with_dependencies(
     path: &Path,
     defines: &[String],
@@ -319,6 +328,8 @@ pub fn expand_source_file_with_dependencies(
     )
 }
 
+/// Provider-backed variant of [`expand_source_file_with_dependencies`], with the
+/// same deferred binary behavior and flat-text resource limit.
 pub fn expand_source_file_with_dependencies_with_provider(
     path: &Path,
     defines: &[String],
@@ -326,6 +337,30 @@ pub fn expand_source_file_with_dependencies_with_provider(
     pp_macro_depth: usize,
     source_provider: &dyn SourceProvider,
 ) -> Result<(Vec<String>, Vec<std::path::PathBuf>), AsmRunError> {
+    expand_source_file_with_context(
+        path,
+        defines,
+        include_roots,
+        pp_macro_depth,
+        source_provider,
+    )
+    .map(|(lines, files, _)| (lines, files))
+}
+
+pub(crate) fn expand_source_file_with_context(
+    path: &Path,
+    defines: &[String],
+    include_roots: &[PathBuf],
+    pp_macro_depth: usize,
+    source_provider: &dyn SourceProvider,
+) -> Result<
+    (
+        Vec<String>,
+        Vec<PathBuf>,
+        Vec<types::source_map::SourceOrigin>,
+    ),
+    AsmRunError,
+> {
     let mut pp = Preprocessor::with_max_depth(pp_macro_depth);
     if let Some(parent) = path.parent() {
         pp.add_include_root(parent.to_path_buf());
@@ -363,7 +398,7 @@ pub fn expand_source_file_with_dependencies_with_provider(
         }
         return Err(AsmRunError::new(err_msg, diagnostics, source_lines));
     }
-    Ok((pp.lines().to_vec(), pp.seen_files()))
+    Ok((pp.lines().to_vec(), pp.seen_files(), pp.origins().to_vec()))
 }
 
 pub fn build_default_asm_registry() -> AsmRegistry {
@@ -1234,7 +1269,7 @@ pub fn prepare_assembly_session(
     let source_provider: &dyn SourceProvider =
         request.source_provider.unwrap_or(&fs_source_provider);
     let source_load_started_at = Instant::now();
-    let (root_lines, root_dependency_files) = expand_source_file_with_dependencies_with_provider(
+    let (root_lines, root_dependency_files, root_origins) = expand_source_file_with_context(
         request.root_path,
         request.defines,
         request.include_roots,
@@ -1247,7 +1282,7 @@ pub fn prepare_assembly_session(
     );
     let root_module_id = root_module_id_from_lines(request.root_path, &root_lines)?;
     let module_graph_started_at = Instant::now();
-    let graph = load_module_graph_with_provider(
+    let graph = source_graph::load_module_graph_contextual(
         request.root_path,
         root_lines,
         request.defines,
@@ -1255,6 +1290,7 @@ pub fn prepare_assembly_session(
         request.module_paths,
         request.pp_macro_depth,
         source_provider,
+        &root_origins,
     )?;
     phase_profile::record_direct(
         PhaseBucket::PrepareSourceModuleLoading,
@@ -1670,6 +1706,7 @@ fn run_assembly_with_prepared(
     };
 
     assembler.clear_diagnostics();
+    assembler.set_source_resources(source_map.clone());
     let pass1 = assembler.pass1(&expanded_lines);
     // Refusals remain fatal even if candidate selection or parser recovery consumed
     // the immediate error. Check before opening any output files.
@@ -2104,6 +2141,10 @@ fn run_assembly_with_prepared(
         }
 
         if let Some(policy) = request.dependency_output {
+            let mut dependency_files = dependency_files;
+            dependency_files.extend(assembler.binary_resource_dependencies());
+            dependency_files.sort();
+            dependency_files.dedup();
             emit_dependency_file(
                 policy,
                 request.output_format,
@@ -3593,6 +3634,46 @@ mod tests {
             .dependency_files()
             .iter()
             .any(|path| path == &PathBuf::from("/virtual/inc.asm")));
+    }
+
+    #[test]
+    fn prepare_assembly_session_retains_owned_binary_reader_without_asset_lookup() {
+        let provider = MemorySourceProvider::default()
+            .with_file("/virtual/main.asm", ".module main\n.if 0\n.incbin \"missing.bin\"\n.endif\n.incbin \"data.bin\"\n.endmodule\n")
+            .with_file("/virtual/data.bin", "\0asset");
+        let prepared = prepare_assembly_session(AssemblyPreparationRequest {
+            root_path: Path::new("/virtual/main.asm"),
+            defines: &[],
+            include_roots: &[],
+            module_paths: &[],
+            pp_macro_depth: 32,
+            registry: build_default_asm_registry(),
+            cpu_override: Some("m6502"),
+            default_cpu: CpuType::new("m6502"),
+            max_loop_iterations: 1000,
+            source_provider: Some(&provider),
+        })
+        .unwrap();
+        drop(provider);
+        assert!(!prepared
+            .dependency_files()
+            .iter()
+            .any(|path| path.ends_with("data.bin") || path.ends_with("missing.bin")));
+        let reader = prepared.source_map().binary_reader.as_ref().unwrap();
+        assert_eq!(
+            reader.read_bytes(Path::new("/virtual/data.bin")).unwrap(),
+            b"\0asset"
+        );
+        let origin = prepared
+            .source_map()
+            .origins()
+            .iter()
+            .find(|origin| origin.line == 5)
+            .unwrap();
+        assert_eq!(
+            origin.binary_context.as_ref().unwrap().base_dir,
+            PathBuf::from("/virtual")
+        );
     }
 
     #[test]

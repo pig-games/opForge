@@ -24,7 +24,7 @@ class HardwareCompletionTests(unittest.TestCase):
         (root / "src/entry.asm").write_bytes(b"source")
         oracle = b"release"
         bootstrap = b"profile" if instrumented else oracle
-        package = b"BS12package"
+        package = b"BS13package"
         command = "opforge p.bin src/entry.asm output.hunk"
         manifest = {
             "release_defines": [],
@@ -48,9 +48,9 @@ class HardwareCompletionTests(unittest.TestCase):
     def embedded_bundle(self, root):
         self.bundle(root, False)
         target = b"m68020--motorola68k"
-        package = bytearray(132)
-        package[:4] = b"BS12"
-        package[124:128] = (132).to_bytes(4, "big")
+        package = bytearray(140)
+        package[:4] = b"BS13"
+        package[124:128] = (140).to_bytes(4, "big")
         package[128:130] = len(target).to_bytes(2, "big")
         package.extend(target)
         bootstrap = b"embedded executable:" + package

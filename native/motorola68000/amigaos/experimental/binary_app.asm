@@ -17,6 +17,8 @@
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_ordered_records as ordered
 	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_file_data as filedata
+	.use prvm.amigaos.abi as parser_abi
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
@@ -36,6 +38,8 @@ DISCOVERY_LIMIT = 128
 PATH_BYTES = 256
 DOS_OUTPUT = -60
 DOS_WRITE = -48
+DOS_OPEN = -30
+DOS_CLOSE = -36
 STEP_ORDER = 1
 STEP_BIND = 2
 PROGRESS_SOURCE_BEGIN = 1
@@ -215,6 +219,9 @@ freeBlocks
 	jsr memory.release
 	lea OriginSpans, a0
 	jsr memory.release
+	lea OriginPaths, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	lea RootPaths, a0
 	jsr memory.release
 	lea DiscoveryBlock, a0
@@ -477,6 +484,7 @@ load
 	adda.l #LINE_BYTES, a1
 	move.l a1, frontend.Frame.Output(a0)
 	move.l #RECORD_BYTES, frontend.Frame.Capacity(a0)
+	move.l #includeBinary, frontend.Frame.FileInclude(a0)
 	move.l #1, FrontStarted
 	jsr frontend.begin
 	bne.w closeBad
@@ -662,6 +670,8 @@ fileDerivedReady
 	bhs.w closeBad
 spanAllowed
 	move.l SourceOrdinal, OriginId
+	bsr.w retainOriginPath
+	bne.w closeBad
 	bsr.w fileSpan
 	lea Records, a1
 	move.l memory.Block.Used(a1), Span.Start(a0)
@@ -850,6 +860,9 @@ parametersSaved
 	lea Front, a0
 	jsr frontend.finish
 	clr.l FrontStarted
+	lea OriginPaths, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	lea GraphBlock, a0
 	jsr memory.release
 	lea GraphSpans, a0
@@ -1167,6 +1180,7 @@ lowerLine	.block
 	bmi.w bad
 	beq.w skipped
 	lea Front, a0
+	move.l OriginId, frontend.Frame.Origin(a0)
 	move.l LineBuffer, frontend.Frame.Source(a0)
 	move.l LineUsed, d0
 	beq.w trimmed
@@ -1573,6 +1587,7 @@ done
 	.include "binary_source_discovery_idx.i"
 	.include "binary_source_selection.i"
 	.include "binary_source_includes.i"
+	.include "binary_source_assets.i"
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
@@ -1643,6 +1658,7 @@ RootCount	.res long, 1
 IncludeRootsRemaining	.res long, 1
 NextOrigin	.res long, 1
 OriginId	.res long, 1
+OriginPaths	.res byte, memory.Block.Used+4
 LineOffset	.res long, 1
 IncludeDepthNow	.res long, 1
 IncludeStack	.res byte, INCLUDE_FRAME_BYTES*INCLUDE_DEPTH
@@ -1663,7 +1679,7 @@ LineBuffer	.res long, 1
 LineUsed	.res long, 1
 SourceBytes	.res long, 1
 NameCount	.res long, 1
-Front	.res byte, frontend.Frame.GraphBefore+4
+Front	.res byte, frontend.FRAME_BYTES
 Work	.res byte, assembly.Frame.AddReloc+4
 Context	.res byte, package.Context.SectionIds+4
 PackageSource	.res byte, loader.FRAME_BYTES

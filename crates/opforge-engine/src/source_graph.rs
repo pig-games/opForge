@@ -38,6 +38,7 @@ struct ModuleSource {
     path: PathBuf,
     lines: Vec<String>,
     first_line: u32,
+    origins: Vec<SourceOrigin>,
     params: HashMap<String, i64>,
 }
 
@@ -80,9 +81,10 @@ fn module_id_from_path(path: &Path) -> Result<String, AsmRunError> {
 fn expand_with_processor(
     mp: &mut AsmMacroProcessor,
     lines: &[String],
-) -> Result<Vec<String>, AsmRunError> {
+    origins: &[SourceOrigin],
+) -> Result<(Vec<String>, Vec<SourceOrigin>), AsmRunError> {
     let _expand_scope = phase_profile::scope(PhaseBucket::PrepareMacroSegmentStatementExpand);
-    match mp.expand(lines) {
+    match mp.expand_with_origins(lines, origins) {
         Ok(lines) => Ok(lines),
         Err(err) => {
             let err_msg = AsmError::new(AsmErrorKind::Preprocess, err.message(), None);
@@ -746,8 +748,8 @@ fn load_module_recursive(
         }
         let info = &infos[0];
 
-        let (source_lines, dependency_files) =
-            crate::expand_source_file_with_dependencies_with_provider(
+        let (source_lines, dependency_files, source_origins) =
+            crate::expand_source_file_with_context(
                 &info.path,
                 ctx.defines,
                 ctx.include_roots,
@@ -792,6 +794,9 @@ fn load_module_recursive(
             .map_or(1, |offset| offset as u32 + 1);
         ModuleSource {
             path: info.path.clone(),
+            origins: source_origins
+                [(first_line - 1) as usize..(first_line - 1) as usize + module_lines.len()]
+                .to_vec(),
             lines: module_lines,
             first_line,
             params: import.params.clone(),
@@ -868,6 +873,46 @@ pub fn load_module_graph_with_provider(
     pp_macro_depth: usize,
     source_provider: &dyn SourceProvider,
 ) -> Result<ModuleGraphResult, AsmRunError> {
+    load_module_graph_contextual(
+        root_path,
+        root_lines,
+        defines,
+        include_roots,
+        module_roots,
+        pp_macro_depth,
+        source_provider,
+        &[],
+    )
+}
+
+pub(crate) fn load_module_graph_contextual(
+    root_path: &Path,
+    root_lines: Vec<String>,
+    defines: &[String],
+    include_roots: &[PathBuf],
+    module_roots: &[PathBuf],
+    pp_macro_depth: usize,
+    source_provider: &dyn SourceProvider,
+    root_origins: &[SourceOrigin],
+) -> Result<ModuleGraphResult, AsmRunError> {
+    let fallback = |index: usize| {
+        let mut origin = SourceOrigin::new(Some(stable_path_string(root_path)), index as u32 + 1);
+        origin.binary_context = Some(types::binary_resource::BinaryResourceContext {
+            base_dir: module_search_root(root_path),
+            allowed_roots: std::iter::once(module_search_root(root_path))
+                .chain(include_roots.iter().cloned())
+                .collect(),
+        });
+        origin
+    };
+    let root_origins: Vec<_> = (0..root_lines.len())
+        .map(|index| {
+            root_origins
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| fallback(index))
+        })
+        .collect();
     let root_dir = module_search_root(root_path);
     let mut search_roots = Vec::with_capacity(module_roots.len() + 1);
     search_roots.push(root_dir);
@@ -894,6 +939,7 @@ pub fn load_module_graph_with_provider(
             ModuleSource {
                 path: root_path.to_path_buf(),
                 lines: root_lines.clone(),
+                origins: root_origins.clone(),
                 first_line: 1,
                 params: HashMap::new(),
             },
@@ -926,6 +972,7 @@ pub fn load_module_graph_with_provider(
                 canonical,
                 ModuleSource {
                     path: root_path.to_path_buf(),
+                    origins: root_origins[block_start..end].to_vec(),
                     lines: root_lines[block_start..end].to_vec(),
                     first_line: block_start as u32 + 1,
                     params: HashMap::new(),
@@ -1010,12 +1057,14 @@ pub fn load_module_graph_with_provider(
             }
         }
 
-        let expanded = expand_with_processor(&mut mp, module_lines)?;
+        let (expanded, expanded_origins) =
+            expand_with_processor(&mut mp, module_lines, &source.origins)?;
         module_exports.insert(canonical, mp.take_native_exports());
         expanded_deps.push((
             module_id.clone(),
             ModuleSource {
                 lines: expanded,
+                origins: expanded_origins,
                 ..source.clone()
             },
         ));
@@ -1023,10 +1072,14 @@ pub fn load_module_graph_with_provider(
 
     let mut combined = Vec::new();
     let mut origins = Vec::new();
-    let root_file = stable_path_string(root_path);
     for (idx, line) in prefix.into_iter().enumerate() {
         combined.push(line);
-        origins.push(SourceOrigin::new(Some(root_file.clone()), idx as u32 + 1));
+        origins.push(
+            root_origins
+                .get(idx)
+                .cloned()
+                .unwrap_or_else(|| fallback(idx)),
+        );
     }
     for (module_id, source) in expanded_deps {
         let file_name = stable_path_string(&source.path);
@@ -1060,10 +1113,9 @@ pub fn load_module_graph_with_provider(
                         if statement.mnemonic.as_deref().is_some_and(|name| name.eq_ignore_ascii_case(".module"))
                 );
             combined.push(line);
-            origins.push(SourceOrigin::new(
-                Some(file_name.clone()),
-                source.first_line + idx as u32,
-            ));
+            origins.push(source.origins.get(idx).cloned().unwrap_or_else(|| {
+                SourceOrigin::new(Some(file_name.clone()), source.first_line + idx as u32)
+            }));
             if starts_module {
                 for (name, value) in &parameter_lines {
                     combined.push(format!("{name} = {value}"));
@@ -1084,10 +1136,12 @@ pub fn load_module_graph_with_provider(
     }
     for (idx, line) in suffix.into_iter().enumerate() {
         combined.push(line);
-        origins.push(SourceOrigin::new(
-            Some(root_file.clone()),
-            suffix_line + idx as u32,
-        ));
+        origins.push(
+            root_origins
+                .get(suffix_line as usize - 1 + idx)
+                .cloned()
+                .unwrap_or_else(|| fallback(suffix_line as usize - 1 + idx)),
+        );
     }
 
     let module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>> = module_exports
@@ -1108,9 +1162,11 @@ pub fn load_module_graph_with_provider(
         })
         .collect();
 
+    let mut source_map = SourceMap::new(origins);
+    source_map.binary_reader = source_provider.owned_binary_reader();
     Ok(ModuleGraphResult {
         lines: combined,
-        source_map: SourceMap::new(origins),
+        source_map,
         dependency_files: {
             let mut files: Vec<PathBuf> = dependency_files.into_iter().collect();
             files.sort();

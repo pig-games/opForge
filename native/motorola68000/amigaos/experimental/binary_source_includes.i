@@ -237,9 +237,20 @@ baseDone
 	rts
 	.bend ; copyIncludeBase
 
-; IncludePath holds a directory prefix. Normalize the relative name in place,
-; stopping parent traversal at the volume boundary before authorization.
-openIncludedPath .block
+; Textual include wrapper: current physical file supplies authorization.
+; D0/CCR=status; other registers preserved.
+resolveIncludedPath .block
+	move.l a2, -(sp)
+	lea SourcePath, a2
+	bsr.w resolveIncludeFrom
+	movea.l (sp)+, a2
+	rts
+	.bend ; resolveIncludedPath
+
+; A2=source path authorizing this request; IncludePath holds a directory prefix.
+; Normalize the relative name at the volume boundary, then authorize it.
+; D0/CCR=0 resolved,1 denied,-1 invalid; other registers preserved.
+resolveIncludeFrom .block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea IncludePath, a0
 	bsr.w normalizeIncludePath
@@ -340,8 +351,27 @@ nameDone
 	lea IncludePath, a0
 	bsr.w normalizeIncludePath
 	bne.w invalidPath
+	movea.l a2, a0
 	bsr.w authorizeIncludePath
 	bne.w openFailed
+	moveq #0, d0
+	bra.w done
+openFailed
+	moveq #1, d0
+	bra.w done
+invalidPath
+	moveq #-1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend ; resolveIncludeFrom
+
+; Enter an authorized source include; path construction is shared with assets.
+openIncludedPath .block
+	movem.l d1-d7/a0-a6, -(sp)
+	bsr.w resolveIncludedPath
+	bne.w openDone
 	; A repeated active path is a cycle, even if AmigaDOS would open it.
 	lea IncludePath, a0
 	lea SourcePath, a1
@@ -474,10 +504,10 @@ pathDone
 	.bend ; normalizeIncludePath
 
 ; The Rust include guard accepts a path only below the including directory or
-; a configured include root. Normalize each root before comparing components.
+; a configured include root. A0=request source path; D0/CCR=0 allowed,1 denied.
+; Other registers preserved. Normalize roots before comparing components.
 authorizeIncludePath .block
 	movem.l d1-d5/a0-a2, -(sp)
-	lea SourcePath, a0
 	lea AllowedPath, a1
 	bsr.w parentPath
 	bne.w denied
@@ -656,10 +686,14 @@ usePath
 	move.l a0, IoEnd
 	addq.l #1, NextOrigin
 	move.l NextOrigin, OriginId
+	bsr.w retainOriginPath
+	bne.w failed
 	move.l #1, SourceLine
 	clr.l LineUsed
 	moveq #0, d0
+failed
 	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
 	rts
 	.bend ; pushInclude
 

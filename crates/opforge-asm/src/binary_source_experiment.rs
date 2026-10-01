@@ -5,7 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use package::{
     decode_encoding_program, macro_descriptor_program, macro_fragment_program,
-    macro_spelling_program, packed_macro_call_program, validate_fixup_program, EncodingStep,
+    macro_spelling_program, packed_file_program, packed_macro_call_program, validate_fixup_program,
+    EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -14,7 +15,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 132;
+const HEADER: usize = 140;
 const ROW: usize = 32;
 const SCALAR_EXACT_IDENTITY: u16 = 1;
 
@@ -101,7 +102,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS12 block for one resolved package hierarchy.
+/// Prepare a self-contained BS13 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -246,6 +247,14 @@ pub fn prepare_package(
         )?;
         directive_ids.push(id);
     }
+    let file_id = intern(&mut names, "incbin")?;
+    bind(
+        &mut dictionary,
+        "incbin".into(),
+        file_id,
+        0,
+        DictionaryRoleFlags::CONTEXTUAL,
+    )?;
     let cpu_id = intern(&mut names, &resolved.cpu_id)?;
     bind(
         &mut dictionary,
@@ -322,7 +331,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS12");
+    out[..4].copy_from_slice(b"BS13");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -436,6 +445,10 @@ pub fn prepare_package(
     out.extend_from_slice(&macro_fragment);
     let macro_fragment_length = macro_fragment.len();
     align(&mut out);
+    let file_offset = out.len();
+    let file_plan = packed_file_program(file_id);
+    out.extend_from_slice(&file_plan);
+    align(&mut out);
     let total = long(out.len())?;
     for (offset, value) in [
         (4, total),
@@ -462,6 +475,8 @@ pub fn prepare_package(
         (116, long(macro_fragment_offset)?),
         (120, long(macro_fragment_length)?),
         (124, long(target_offset)?),
+        (132, long(file_offset)?),
+        (136, long(file_plan.len())?),
     ] {
         set_long(&mut out, offset, value);
     }

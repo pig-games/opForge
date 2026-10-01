@@ -39,3 +39,5 @@ pub mod runtime_model;
 pub mod state;
 
 pub use line::repetition;
+
+mod binary_resources;

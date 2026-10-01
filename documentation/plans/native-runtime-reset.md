@@ -58,7 +58,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS12 represents one CPU/dialect pipeline and carries its canonical
+Current BS13 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -97,6 +97,89 @@ but this plan does not establish that disk format.
 
 Keep P3 and P4 grounded in the inventory's actual gaps; package storage alone
 does not establish instruction or language parity.
+
+### Current slice — shared binary inclusion before P3
+
+Close `.incbin` for quoted relative whole-file assets before multi-package replay,
+so an embedded configuration can progress toward native self-assembly. PRVM
+selects path and optional label spans from packed source; shared preparation owns
+file search/authorization and buffered I/O. Stream asset bytes into existing
+packed `.byte` string records; do not regenerate source text or retain paths and
+handles for replay. Keep the first record's label and the physical source origin.
+
+The current Rust behavior has no offset/length operands. Qualify empty files,
+all byte values, read/record boundaries, labels, includes, allowed search roots,
+inactive conditionals and explicit missing/forbidden-file failures against fresh
+Rust. Measure unchanged release workload overhead separately from new asset work;
+host generation and a focused asset case are not full embedded self-host proof.
+BS13 extends the preparation contract with the package-selected file plan; migrate
+its producer and consumers together without a BS12 compatibility executor.
+
+### BS13 binary-inclusion qualification
+
+The shared PRVM file plan selects a decoded path and optional label from packed
+records. The application resolves authorized paths, streams 4 KiB reads and emits
+ordinary numeric data records; filenames, handles and the origin-path registry
+are released before assembly replay. An empty labeled file still defines its
+label. The stream's reusable state uses an owned 4,368-byte heap allocation,
+leaving only its small descriptor on the stack.
+
+Rust now leaves file loading to active shared assembly statements, rather than
+preprocessing every asset. Expanded macros, segments and statements retain their
+physical definition origins. Session-owned provider capabilities and immutable
+caches survive loops, assembly passes and reachable-module relayout. Only loaded
+assets enter dependencies. Custom source providers must supply an owned binary
+reader; missing authority fails explicitly without filesystem fallback.
+
+Eleven fresh FS-UAE release cases pass: patterned data containing all 256 byte values,
+4 KiB read/packed-record boundaries, canonical and colon labels, empty assets,
+6502/68020 data byte order, nested include paths, configured search roots,
+definition-relative nested macros with consecutive asset actions, macro filename
+arguments, inactive
+missing files, Hunk data/offset output and three missing/forbidden-file rejections.
+Positive cases exit zero and match live Rust artifacts exactly; negatives have
+fresh completion, exit 20 and the expected diagnostic. A separate instrumented
+4,109-byte output case also matches Rust, frees all 1,063,328 allocated bytes,
+has zero terminal ownership and profiling errors, and peaks at 831,840 tracked
+owned bytes. That small case does not qualify the full product's memory target.
+
+This slice's separate release comparison uses the unchanged P2 workload: 10,687
+source bytes, two modules, 64 reachable blocks and exact 2,434-byte output. FS-UAE
+is 68020/10 MiB, unlimited CPU speed, with telemetry disabled. Valid host-observed
+START/DONE samples are:
+
+| Build | Seconds (two valid runs) | Mean | Image / linked reserved bytes |
+| --- | --- | ---: | ---: |
+| Retained P2 BS12 | 7.5991, 7.6063 | 7.6027 | 94,356 / 106,328 |
+| BS13 with binary inclusion | 7.5971, 7.8411 | 7.7191 | 96,572 / 108,460 |
+
+The observed mean increases 0.1164 seconds (1.53%), less than the new build's
+0.2441-second run spread; these samples do not establish a meaningful speed change.
+Image cost is +2,216 bytes, linked reservation +2,132 bytes and the m68020 package
++28 bytes (299,104 total). One pre-start emulator timeout is excluded from timing;
+its subsequent run and a fresh retry supply the two valid baseline samples.
+
+Current-format inventory generates all 16 packages (six still have no instruction
+candidates). Affected core, engine, resource and VM checks pass. The broad host
+assembler selection has 1,457 passes, three ignored tests and 47 failures; all
+47 failing names occur in the retained P2 baseline. This is focused feature
+qualification, not an all-green broad suite or a fresh full self-host proof.
+
+A fresh local m68020-only embedded-bootstrap bundle is
+`/tmp/opforge-a6000-bs13-incbin`: 68 source files, 768,020 bytes, source fingerprint
+`fnv1a64:1b92de0b3e833dfc`, 395,676-byte bootstrap and 96,572-byte external-default
+Rust oracle. It remains host-built and has no new hardware/self-host result.
+The next full self-host run must use current sources and a fresh oracle; native
+self-assembly of an embedded configuration needs its own case and qualification,
+including portable staged catalog paths instead of the generator's host absolute
+asset paths.
+
+P3 discovery found a second prerequisite beyond package pointers: source-symbol
+IDs currently start at the active package's `NameCount`. P3 needs a session-wide
+source-symbol boundary and record-bound package identities that survive graph
+ordering, generated records and section sweeps. Reconfiguring one global package
+pointer would misinterpret existing tokens. Stateful CPU transport is a separate
+coverage requirement; 68020/6502 switching alone cannot qualify it.
 
 ### P2 configuration and current boundary
 
@@ -144,16 +227,23 @@ After preparation, both modes still copy the execution prefix and discard lexica
 storage. The whole embedded payload remains part of the executable image, so
 tracked allocation savings alone do not establish lower total RAM use.
 
-BS12 extends the header from 124 to 132 bytes: canonical target offset at 124,
-length at 128 and zero reserved word at 130, all big-endian. Target identity lies
-inside `RuntimeBytes`, survives preparation, uses safe filename characters and
-fits in 26 bytes (plus `.bin`, within the classic 30-byte component limit).
+BS13 uses a 140-byte header. The canonical target offset remains at 124, its
+length at 128 and the reserved word at 130; the preparation-only file plan offset
+and byte length are at 132 and 136. Fields are big-endian and block-relative.
+Target identity lies inside `RuntimeBytes`, survives preparation, uses safe
+filename characters and fits in 26 bytes (plus `.bin`, within the classic
+30-byte component limit). The current slice loads assets only from active,
+quoted relative `.incbin` statements expanded into packed `.byte` records. Search
+roots are relative to the defining file and behavior is limited to the explicit
+whole-file cases qualified below. Macro bodies assembled from multiple physical
+files still need per-record asset origins; this slice tracks the definition header
+file. Full embedded-config self-hosting remains unqualified.
 Unknown contracts, wrong target identities, invalid spans, truncation and missing
 files must fail before execution. Program interpreters retain opcode/version and
 execution bounds checks beyond the common structural validator.
 
 Configured embedded builds currently use Rust `.incbin` during host assembly;
-compact native `.incbin` parity is still outstanding. The external-only default
+compact native `.incbin` passes the focused whole-file cases below. The external-only default
 source contains no `.incbin` and remains the self-hosting configuration. Embedding
 a package proves its storage and execution path, not that an embedded build can
 self-assemble or that every target's instruction forms are implemented.
@@ -177,11 +267,11 @@ Both have four segments and 106,328 linked reserved bytes. The run uses BS12
 m68020 (299,076 bytes), 68020 / 10 MiB and unlimited emulator CPU speed.
 Uninstrumented guest START/DONE observed on the host is **563.914554959 seconds**;
 native runner duration including preparation/startup is 588.966862375 seconds,
-and whole-test wall time is 592.09 seconds. This is a current-checkout full
-self-host proof, not a frozen subset. The source differs from the earlier
+and whole-test wall time is 592.09 seconds. This was a full current-checkout
+self-host proof at P2; it does not qualify the subsequent BS13 source changes. The source differs from the earlier
 61-file checkpoint, so these times do not establish a before/after speed change.
 It does not qualify the 2 MiB target, physical A6000 timing or an embedded build's
-self-assembly. Embedded `.incbin` remains outstanding.
+self-assembly. The later BS13 file-inclusion cases do not replace that full proof.
 
 ### P2 measurements and qualification
 

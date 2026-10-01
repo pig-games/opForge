@@ -68,6 +68,7 @@ pub struct Assembler {
     runtime_execution_model: Option<HierarchyExecutionModel>,
     runtime_parse_cache: Rc<std::cell::RefCell<RuntimeParseCache>>,
     prepared_source: Option<PreparedSource>,
+    binary_resources: Option<Rc<std::cell::RefCell<crate::binary_resources::BinaryResources>>>,
     collect_runtime_traces: bool,
     pub runtime_processing_traces: Vec<(u8, u32, LineProcessingTrace)>,
     pub runtime_lockstep_report: LockstepReport,
@@ -537,6 +538,7 @@ qualified_share={:.2}%",
                 root_metadata,
                 runtime_execution_model,
             );
+            asm_line.set_binary_resources(self.binary_resources.clone());
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
             asm_line.set_reachable_block_relayout(self.block_relayout.clone());
             asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
@@ -1002,6 +1004,7 @@ qualified_share={:.2}%",
             runtime_execution_model: None,
             runtime_parse_cache: Rc::new(std::cell::RefCell::new(RuntimeParseCache::default())),
             prepared_source: None,
+            binary_resources: None,
             collect_runtime_traces: true,
             runtime_processing_traces: Vec::new(),
             runtime_lockstep_report: LockstepReport::default(),
@@ -1012,6 +1015,19 @@ qualified_share={:.2}%",
             reachable_blocks: Vec::new(),
             block_relayout: None,
         }
+    }
+
+    pub fn binary_resource_dependencies(&self) -> Vec<std::path::PathBuf> {
+        self.binary_resources
+            .as_ref()
+            .map(|resources| resources.borrow().dependencies())
+            .unwrap_or_default()
+    }
+
+    pub fn set_source_resources(&mut self, source_map: types::source_map::SourceMap) {
+        self.binary_resources = Some(Rc::new(std::cell::RefCell::new(
+            crate::binary_resources::BinaryResources::new(source_map),
+        )));
     }
 
     /// Prepare the current request's package before timed assembly work.
@@ -1503,6 +1519,7 @@ qualified_share={:.2}%",
         replay.collect_runtime_traces = self.collect_runtime_traces;
         replay.implicit_hunk_output_requested = self.implicit_hunk_output_requested;
         replay.prepared_source = self.prepared_source.take();
+        replay.binary_resources = self.binary_resources.clone();
         replay.block_relayout = Some(Rc::new(plan));
         let result = replay.pass1(lines);
         *self = replay;
@@ -1535,6 +1552,7 @@ qualified_share={:.2}%",
             RootMetadata::default(),
             runtime_execution_model,
         );
+        asm_line.set_binary_resources(self.binary_resources.clone());
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
         asm_line.set_reachable_block_relayout(self.block_relayout.clone());
         asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));

@@ -19,3 +19,5 @@ pub mod target_callbacks;
 pub mod text_encoding;
 
 pub mod vm_work;
+
+pub mod binary_resource;

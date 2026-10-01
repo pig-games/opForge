@@ -115,7 +115,9 @@ pub(super) fn expand_statement_invocation(
         attach_label_to_expansion(label, &mut expanded);
     }
 
-    let nested = processor.expand_lines(&expanded, depth + 1)?;
+    let origins = defs[idx].origins.clone();
+    let nested =
+        processor.expand_nested_statement_lines_with_origins(&expanded, &origins, depth + 1)?;
     Ok(Some(nested))
 }
 

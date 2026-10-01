@@ -9,6 +9,17 @@ use std::sync::{Arc, Mutex};
 use std::collections::{HashMap, HashSet};
 
 pub trait SourceProvider: Send + Sync {
+    /// Return an owned capability for deferred, active `.incbin` requests.
+    ///
+    /// The reader must preserve this provider's namespace and access authority,
+    /// and remain usable after the provider is dropped. Preparation retains it
+    /// without reading assets. The default keeps existing providers compatible,
+    /// but their active binary requests fail explicitly; there is no filesystem
+    /// fallback. Providers supporting `.incbin` should override this method.
+    fn owned_binary_reader(&self) -> Option<Arc<dyn types::binary_resource::BinaryResourceReader>> {
+        None
+    }
+
     fn read_string(&self, path: &Path) -> io::Result<String>;
     fn read_bytes(&self, path: &Path) -> io::Result<Vec<u8>>;
     fn read_dir(&self, path: &Path) -> io::Result<Vec<PathBuf>>;
@@ -28,6 +39,10 @@ pub trait OutputSink: Send + Sync {
 pub struct FsSourceProvider;
 
 impl SourceProvider for FsSourceProvider {
+    fn owned_binary_reader(&self) -> Option<Arc<dyn types::binary_resource::BinaryResourceReader>> {
+        Some(Arc::new(OwnedBinaryReader(*self)))
+    }
+
     fn read_string(&self, path: &Path) -> io::Result<String> {
         fs::read_to_string(path)
     }
@@ -192,6 +207,10 @@ impl MemoryFsOverlaySourceProvider {
 }
 
 impl SourceProvider for MemoryFsOverlaySourceProvider {
+    fn owned_binary_reader(&self) -> Option<Arc<dyn types::binary_resource::BinaryResourceReader>> {
+        Some(Arc::new(OwnedBinaryReader(self.clone())))
+    }
+
     fn read_string(&self, path: &Path) -> io::Result<String> {
         match self.memory.read_string(path) {
             Ok(contents) => Ok(contents),
@@ -248,6 +267,10 @@ impl SourceProvider for MemoryFsOverlaySourceProvider {
 }
 
 impl SourceProvider for MemorySourceProvider {
+    fn owned_binary_reader(&self) -> Option<Arc<dyn types::binary_resource::BinaryResourceReader>> {
+        Some(Arc::new(OwnedBinaryReader(self.clone())))
+    }
+
     fn read_string(&self, path: &Path) -> io::Result<String> {
         self.files
             .get(&normalize_path(path))
@@ -548,5 +571,21 @@ mod tests {
         assert_eq!(bytes, vec![0xff, 0x00, 0x41]);
 
         assert_eq!(sink.text("/virtual/missing.bin"), Ok(None));
+    }
+}
+
+#[derive(Debug)]
+struct OwnedBinaryReader<P>(P);
+impl<P: SourceProvider + std::fmt::Debug> types::binary_resource::BinaryResourceReader
+    for OwnedBinaryReader<P>
+{
+    fn read_bytes(&self, path: &Path) -> io::Result<Vec<u8>> {
+        self.0.read_bytes(path)
+    }
+    fn is_file(&self, path: &Path) -> bool {
+        self.0.is_file(path).unwrap_or(false)
+    }
+    fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+        self.0.canonicalize(path)
     }
 }

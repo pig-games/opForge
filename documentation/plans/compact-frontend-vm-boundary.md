@@ -41,6 +41,36 @@ against the selected tree; it does not replace a current-checkout proof.
 
 Require fresh case-bound START/DONE challenges, guest exit zero and exact complete Hunk equality, including segment allocation, payload and relocation data. Do not use a stored Hunk as the parity oracle. Report host-observed START/DONE separately from runner and whole-test durations. For the separate phase/memory run, add `OPFORGE_COMPARE_MEMORY=1 OPFORGE_PREPARATION_PROGRESS=1 OPFORGE_PHASE_ONLY=1` to the same command. Frozen-source results are comparative evidence, not completion of a changed current tree. Git retains the superseded convergence history.
 
+### Physical A6000 run
+
+The host-only ignored test `export_compact_self_host_bundle` builds a fresh release
+bootstrap and Rust oracle, gathers the actual dependencies and generates the BS11
+package. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
+the test. It preserves source bytes and include filenames exactly.
+
+Run [the hardware script](../../scripts/performance/run_a6000_selfhost.py) from
+macOS Terminal where `ash` and `acp` can reach the A6000:
+
+```sh
+python3 scripts/performance/run_a6000_selfhost.py --bundle /tmp/opforge-a6000-compact-export
+```
+
+Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
+timeout. Each invocation creates a fresh remote directory and local result tree.
+The script verifies current sources and round-trips the transferred input bytes
+before execution. A 31-character include filename must survive unchanged; a
+filename limit or incomplete copy stops the run rather than renaming sources.
+
+Only overall duration is measured: guest `Date` captures bracket assembly at
+one-second resolution, excluding transfers and environment capture. Host command
+duration is also recorded and explicitly includes connection and shell setup.
+Neither adds telemetry to the native executable. Fresh case-bound markers, explicit
+assembler exit zero and exact full-Hunk comparison against that export's Rust
+oracle are required for success. Source/package/bootstrap identities and results
+are recorded locally. A timeout can leave assembly running remotely; inspect that
+run before retrying. The hardware script and its host checks are ready; no physical
+A6000 self-host result has been obtained yet.
+
 ## Ownership and representation contracts
 
 The compact path is a package-directed execution path. Rust and the canonical package define semantic behavior; native code executes bounded shared primitives and package-selected operations. Update package producers and consumers together and retain only the latest supported format; version identifiers detect mismatches and do not require compatibility executors.

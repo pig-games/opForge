@@ -18,6 +18,10 @@ use vm::output_model::BinOutputSpec;
 #[path = "tests/binary_source_hunk.rs"]
 mod hunk;
 
+#[cfg(test)]
+#[path = "tests/compact_self_host_export.rs"]
+mod compact_self_host_export;
+
 const FS_UAE_BIN_ENV: &str = "OPFORGE_FS_UAE_BIN";
 const FS_UAE_ARGS_ENV: &str = "OPFORGE_FS_UAE_ARGS";
 const FS_UAE_CONFIG_TEMPLATE_ENV: &str = "OPFORGE_FS_UAE_CONFIG_TEMPLATE";

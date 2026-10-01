@@ -84,16 +84,20 @@ all 61 current source files (719,329 bytes) and returned exit zero. Its complete
 89,880-byte Hunk matches the fresh export's Rust oracle byte-for-byte. Guest
 `Date` reports 15 seconds at one-second resolution (01:08:39 to 01:08:54); the
 host's monotonic command duration, including connection and Shell setup, is
-16.019971292 seconds. This is one uninstrumented physical run. It does not
-establish a code-change speedup against the earlier 545-second FS-UAE run: the
-execution environments differ, and the timing gap has not been explained.
+16.019971292 seconds. An unchanged repeat in a fresh remote directory also
+returns exit zero with the exact Hunk: guest time is 15 seconds (01:15:42 to
+01:15:57), and host command time is 15.848975208 seconds. Both runs are
+uninstrumented. They reproduce the physical-machine result but do not establish
+a code-change speedup against the earlier 545-second FS-UAE run: the execution
+environments differ, and the timing gap has not been explained.
 
 Case SHA-256 is
 `2919f26180f81f3f9db1e8529cbd9f4e4cbfedf1af3507104b6f356474675cfc`;
-remote directory is `Development:opforge-decab6f88c53`. The retained pre-run
-round-trip contains every input and no output Hunk, Rust oracle or completion
-markers. The post-run capture has unchanged inputs, fresh case-bound START/DONE
-responses, exit zero and the exact output. Environment capture reports Kickstart
+remote directories are `Development:opforge-decab6f88c53` and
+`Development:opforge-3e4f5796d66c`. Each retained pre-run round-trip contains
+every input and no output Hunk, Rust oracle or completion markers. Each post-run
+capture has unchanged inputs, fresh case-bound START/DONE responses, exit zero
+and the exact output. Environment capture reports Kickstart
 51.51, Workbench 40.0 and a 65,536-byte stack; no CPU clock measurement or 2 MiB
 memory qualification was performed.
 

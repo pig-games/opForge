@@ -376,7 +376,9 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     let require_parity = std::env::var("OPFORGE_SELF_HOST_REQUIRE_PARITY").as_deref() == Ok("1");
     // A fixed source tree lets before/after runs measure the CLI implementation
     // against identical self-host input even when the implementation changes.
-    let root = std::env::var_os("OPFORGE_SELF_HOST_SOURCE_ROOT")
+    let source_override = std::env::var_os("OPFORGE_SELF_HOST_SOURCE_ROOT");
+    let explicit_source_tree = source_override.is_some();
+    let root = source_override
         .map(PathBuf::from)
         .unwrap_or_else(|| workspace_root().join("native/motorola68000/amigaos"));
     let root = fs::canonicalize(root).expect("canonical self-host source root");
@@ -460,11 +462,38 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
-    let native_started = std::time::Instant::now();
     // Compare native revisions against the same frozen input and Rust oracle.
     let native_root = std::env::var_os("OPFORGE_COMPARE_NATIVE_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(workspace_root);
+    // Identify inputs before execution, including when the native proof fails.
+    // This diagnostic fingerprint is separate from the fresh-run proof contract.
+    let mut ordered_sources = sources.iter().collect::<Vec<_>>();
+    ordered_sources.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut manifest_bytes = Vec::new();
+    for (path, bytes) in ordered_sources {
+        manifest_bytes.extend_from_slice(path.as_bytes());
+        manifest_bytes.push(0);
+        manifest_bytes.extend_from_slice(bytes);
+        manifest_bytes.push(0);
+    }
+    let input = serde_json::json!({
+        "source_kind": if explicit_source_tree {
+            "explicit_source_tree"
+        } else {
+            "current_checkout"
+        },
+        "source_root": root,
+        "source_manifest_digest": crate::fs_uae_smoke::opforge_self_host_package_digest(&manifest_bytes),
+        "source_bytes": sources.iter().map(|(_, bytes)| bytes.len()).sum::<usize>(),
+        "staged_files": source_refs.len(),
+        "native_root": native_root,
+        "rust_hunk_bytes": hunk_oracle.len(),
+        "runtime_package_bytes": package.len(),
+    });
+    drop(manifest_bytes);
+    eprintln!("COMPACT_SELF_HOST_INPUT {input}");
+    let native_started = std::time::Instant::now();
     let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
         &native_root,
         &package,
@@ -636,6 +665,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     eprintln!(
         "COMPACT_SELF_HOST_READINESS {}",
         serde_json::json!({
+            "input": input,
             "staged_files": source_refs.len(),
             "source_bytes": sources.iter().map(|(_, bytes)| bytes.len()).sum::<usize>(),
             "rust_hunk_bytes": hunk_oracle.len(),

@@ -887,17 +887,28 @@ exit and a byte-for-byte identical Hunk. Do not count the host-built bootstrap
 Hunk as a native assembly result. Keep the old full-CLI non-completing self-host
 test out of routine measurement.
 
+The completion target is the **current full source tree**, including all
+transitive dependencies. Frozen-source comparisons and focused module probes
+are intermediate evidence and must be reported as such. Each result must state
+which source tree was assembled, whether native exited successfully, whether the
+full Hunk matched the current Rust oracle, and what remains. Do not describe a
+successful intermediate comparison as completed current-source self-hosting.
+Completion also requires the requested release timing and separate instrumented
+measurements; instrumentation time is not release performance.
+
 The initial Rust baseline builds a deterministic 58,856-byte Hunk at
 `build/opforge_compact` from this entry (two separate temporary output roots
 produced SHA-256 `fcf86df103ba8b41b79c31a391acee127beb395dd43a8fd019ae0f01e39d3223`
-at checkpoint `c97d9735`). The compact native CLI currently writes a flat
-contiguous byte stream. Focused section placement works, but its restricted
-section/layout and directive handling does not yet cover the entry's full use
-of `.section`, `.res`, and `.output`. Broader compile-time and 68020 instruction
-coverage must be established from actual failures. Some source filenames also
-exceed classic AmigaOS component limits, notably
-`binary_source_discovery_index.i`. These are concrete work items, not
-reasons to replace the target with a simplified self-host fixture.
+at checkpoint `c97d9735`). At that baseline, the compact native CLI wrote a flat
+contiguous byte stream. Focused section placement worked, but its restricted
+section/layout and directive handling did not yet cover the entry's full use
+of `.section`, `.res`, and `.output`. Compile-time and 68020 instruction coverage
+was then expanded from actual failures. Some source filenames also exceeded
+classic AmigaOS component limits, notably
+`binary_source_discovery_index.i`. These were initial convergence problems;
+the target remains the full entry and its dependencies. The active frontier
+and current proof are recorded in the
+[frontend boundary plan](compact-frontend-vm-boundary.md).
 
 First establish a reproducible source manifest, runtime package, Rust Hunk
 oracle and bounded guest invocation that reports the first native rejection.

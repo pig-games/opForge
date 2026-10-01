@@ -1569,7 +1569,7 @@ loop
 done
 	rts
 	.bend  ; copy
-	.include "binary_source_discovery_index.i"
+	.include "binary_source_discovery_idx.i"
 	.include "binary_source_selection.i"
 	.include "binary_source_includes.i"
 	.endsection

@@ -148,6 +148,12 @@ fn export_compact_self_host_bundle() {
         .map(|part| part.as_os_str().to_str().unwrap())
         .filter(|name| name.len() > AMIGAOS_CLASSIC_FILENAME_COMPONENT_MAX)
         .collect::<BTreeSet<_>>();
+    assert!(
+        long_components.is_empty(),
+        "physical Amiga export requires filenames of at most {} bytes: {:?}",
+        AMIGAOS_CLASSIC_FILENAME_COMPONENT_MAX,
+        long_components
+    );
     let manifest = json!({
         "manifest_version": 1,
         "kind": "compact-self-host-local-export",

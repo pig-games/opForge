@@ -1,6 +1,6 @@
 # Compact frontend: VM boundary correction
 
-Status: the current 61-file source tree assembles natively with exact live Rust Hunk output in both release and separately instrumented runs. The 2 MiB product target remains unqualified. Residual frontend ownership gaps and the deferred ordinary-label instruction binding issue are listed below.
+Status: full 61-file native self-hosting is proven at the recorded checkpoint below, with exact live Rust Hunk output in both release and separately instrumented runs. The subsequent filename-only portability repair builds an identical Rust Hunk; its physical A6000 run is pending. The 2 MiB product target remains unqualified. Residual frontend ownership gaps and the deferred ordinary-label instruction binding issue are listed below.
 
 ## Current-source proof and measurement
 
@@ -58,8 +58,14 @@ python3 scripts/performance/run_a6000_selfhost.py --bundle /tmp/opforge-a6000-co
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
 The script verifies current sources and round-trips the transferred input bytes
-before execution. A 31-character include filename must survive unchanged; a
-filename limit or incomplete copy stops the run rather than renaming sources.
+before execution. Export rejects filename components longer than 30 bytes.
+The first hardware transfer truncated `binary_source_discovery_index.i` to 30
+characters; no assembly started. Its repository filename and include are now
+`binary_source_discovery_idx.i`. Transfers preserve these current names exactly.
+The fresh export has 61 files and 719,329 source bytes, fingerprint
+`fnv1a64:465747a987753572`. The new Rust Hunk, bootstrap and runtime package are
+byte-for-byte identical to the preceding export. This host result does not replace
+fresh physical execution of the renamed source tree.
 
 Only overall duration is measured: guest `Date` captures bracket assembly at
 one-second resolution, excluding transfers and environment capture. Host command

@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -12,6 +13,17 @@ SPEC.loader.exec_module(runner)
 
 
 class HardwareCompletionTests(unittest.TestCase):
+    def test_incompatible_filename_bundle_stops_before_transfer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "manifest.json").write_text(json.dumps({
+                "release_defines": [],
+                "filename_mapping": "identity; source include literals are unchanged",
+                "classic_filename_compatible": False,
+            }))
+            with self.assertRaisesRegex(ValueError, "filenames over 30 bytes"):
+                runner.load_bundle(root)
+
     def result(self, *, rc=0, marker="fresh case", output=b"oracle", missing=False):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

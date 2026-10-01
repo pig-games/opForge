@@ -30,6 +30,8 @@ def load_bundle(bundle):
         "identity; source include literals are unchanged"
     ):
         raise ValueError("Require the unchanged, uninstrumented release export")
+    if not manifest["classic_filename_compatible"]:
+        raise ValueError("Bundle has filenames over 30 bytes; regenerate the corrected export")
     files = {}
     identity = bytearray()
     for row in manifest["source_mapping"]:

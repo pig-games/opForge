@@ -14,7 +14,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 124;
+const HEADER: usize = 132;
 const ROW: usize = 32;
 const SCALAR_EXACT_IDENTITY: u16 = 1;
 
@@ -101,13 +101,25 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS11 block for one resolved package hierarchy.
+/// Prepare a self-contained BS12 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
     core: &RuntimeModelCore,
     resolved: &ResolvedHierarchy,
 ) -> Result<Vec<u8>, String> {
+    let target = format!("{}--{}", resolved.cpu_id, resolved.dialect_id);
+    if resolved.cpu_id.is_empty()
+        || resolved.dialect_id.is_empty()
+        || target.len() > 26
+        || !target
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return Err(format!(
+            "runtime package target key {target:?} must use nonempty CPU and dialect identifiers containing only ASCII letters, digits, '_' or '-' and fit within 26 bytes"
+        ));
+    }
     let package = BinarySourcePackage::prepare(core, resolved)?;
     let mut names = package.names.clone();
     let mut dictionary = BTreeMap::new();
@@ -310,7 +322,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS11");
+    out[..4].copy_from_slice(b"BS12");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -364,6 +376,9 @@ pub fn prepare_package(
         set_long(&mut out, row + 4, long(offset)?);
         set_long(&mut out, row + 8, long(program.bytes.len())?);
     }
+    align(&mut out);
+    let target_offset = out.len();
+    out.extend_from_slice(target.as_bytes());
     align(&mut out);
     let runtime_bytes = long(out.len())?;
     let dictionary_offset = out.len();
@@ -446,6 +461,7 @@ pub fn prepare_package(
         (112, long(macro_spelling_length)?),
         (116, long(macro_fragment_offset)?),
         (120, long(macro_fragment_length)?),
+        (124, long(target_offset)?),
     ] {
         set_long(&mut out, offset, value);
     }
@@ -463,6 +479,7 @@ pub fn prepare_package(
     set_word(&mut out, 62, total_names);
     set_word(&mut out, 64, u16::from(properties.data_little_endian));
     set_word(&mut out, 96, 2);
+    set_word(&mut out, 128, word(target.len())?);
     Ok(out)
 }
 

@@ -24960,7 +24960,7 @@ fn external_fs_uae_native_item36_symbolic_long_rejection_diagnostics_parity() {
         .expect("native CLI FS-UAE smoke lock poisoned");
     let definitions = [
         (
-            "item36-long-target-subtract-target",
+            "item36-long-cross-section-target-difference",
             concat!(
                 ".module main\n",
                 ".cpu 68000\n",
@@ -24968,10 +24968,13 @@ fn external_fs_uae_native_item36_symbolic_long_rejection_diagnostics_parity() {
                 ".section code, kind=code\n",
                 "start: .long target1 - target2\n",
                 "target1: .byte 0\n",
+                ".endsection\n",
+                ".section data, kind=data\n",
                 "target2: .byte 0\n",
                 ".endsection\n",
                 ".place code in ram\n",
-                ".output \"build/item36_reject_sub_targets.hunk\", format=hunk, sections=code\n",
+                ".place data in ram\n",
+                ".output \"build/item36_reject_sub_targets.hunk\", format=hunk, sections=code,data\n",
                 ".endmodule\n",
             ),
         ),

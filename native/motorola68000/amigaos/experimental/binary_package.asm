@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533131; BS11
+MAGIC = $42533132; BS12
 DICTIONARY_REGISTER_OR_NAMED = 1
 DICTIONARY_MEMBER = 2
 DICTIONARY_ROLE_ALLOWED = DICTIONARY_REGISTER_OR_NAMED+DICTIONARY_MEMBER
@@ -59,7 +59,11 @@ MacroSpelling	.long ?
 MacroSpellingBytes	.long ?
 MacroFragments	.long ?
 MacroFragmentsBytes	.long ?
+TargetOffset	.long ?
+TargetBytes	.word ?
+TargetReserved	.word ?
 .endstruct
+HEADER_BYTES = Header.TargetReserved+2
 
 Context	.struct
 Values	.long ?

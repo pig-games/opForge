@@ -375,8 +375,11 @@ fn native_hunk_bytes(source: &str, oracle: &[u8]) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
+    let native_root = std::env::var_os("OPFORGE_COMPARE_NATIVE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(workspace_root);
     let result = crate::fs_uae_smoke::run_compact_cli_from_env(
-        &workspace_root(),
+        &native_root,
         &package,
         source.as_bytes(),
         Some(oracle),

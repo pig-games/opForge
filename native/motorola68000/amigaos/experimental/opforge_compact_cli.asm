@@ -28,6 +28,15 @@ start	.block
 	lea PackagePath, a1
 	bsr.w nextPath
 	bne.w usage
+	cmpi.l #$2d2d6370, PackagePath  ; --cpu
+	bne.w source
+	cmpi.w #$7500, PackagePath+4
+	bne.w source
+	lea CpuName, a1
+	bsr.w nextPath
+	bne.w usage
+	move.l #1, CpuMode
+source
 	lea SourcePath, a1
 	bsr.w nextPath
 	bne.w usage
@@ -41,6 +50,10 @@ options
 	cmpi.b #'-', (a3)
 	bne.w usage
 	move.b 1(a3), d2
+	cmpi.b #'P', d2
+	beq.w packageRoot
+	cmpi.b #'d', d2
+	beq.w dialect
 	cmpi.b #'M', d2
 	beq.w moduleRoot
 	cmpi.b #'I', d2
@@ -56,6 +69,22 @@ options
 	bsr.w nextPath
 	bne.w usage
 	addq.l #1, IncludeCount
+	bra.w options
+packageRoot
+	bsr.w optionValue
+	bne.w usage
+	lea PackageRoot, a1
+	bsr.w nextPath
+	bne.w usage
+	move.l #PackageRoot, RootPointer
+	bra.w options
+dialect
+	bsr.w optionValue
+	bne.w usage
+	lea DialectName, a1
+	bsr.w nextPath
+	bne.w usage
+	move.l #DialectName, DialectPointer
 	bra.w options
 moduleRoot
 	cmpi.l #MODULE_ROOT_LIMIT, ModuleCount
@@ -90,6 +119,19 @@ modeReady
 	move.l ModuleCount, app.Frame.ModuleCount(a0)
 	move.l #IncludePaths, app.Frame.IncludeRoots(a0)
 	move.l IncludeCount, app.Frame.IncludeCount(a0)
+	move.l #Catalog, app.Frame.Catalog(a0)
+	move.l Catalog, app.Frame.CatalogBytes(a0)
+	move.l DialectPointer, app.Frame.Dialect(a0)
+	move.l RootPointer, d0
+	bne.w rootReady
+	move.l #DefaultRoot, d0
+rootReady
+	move.l d0, app.Frame.PackageRoot(a0)
+	tst.l CpuMode
+	beq.w execute
+	clr.l app.Frame.PackagePath(a0)
+	move.l #CpuName, app.Frame.Cpu(a0)
+execute
 	jsr app.execute
 	bra.w done
 usage
@@ -177,13 +219,22 @@ done
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
-UsageText	.byte "Usage: opforge_compact PACKAGE.bsp3 ENTRY.asm OUTPUT.bin [-M DIR] [-I DIR]", 10, 0
+DefaultRoot	.byte "PROGDIR:packages", 0
+UsageText	.byte "Usage: opforge_compact PACKAGE.bin|--cpu CPU ENTRY.asm OUTPUT.bin [-d DIALECT] [-P DIR] [-M DIR] [-I DIR]", 10, 0
+	.align 4
+	.include "package_catalog.i"
 	.endsection
 	.section bss, kind=bss
 	.align 4
 DosBase	.res long, 1
-Config	.res byte, app.Frame.IncludeCount+4
+Config	.res byte, app.FRAME_BYTES
 PackagePath	.res byte, PATH_BYTES
+CpuName	.res byte, PATH_BYTES
+DialectName	.res byte, PATH_BYTES
+PackageRoot	.res byte, PATH_BYTES
+CpuMode	.res long, 1
+DialectPointer	.res long, 1
+RootPointer	.res long, 1
 SourcePath	.res byte, PATH_BYTES
 OutputPath	.res byte, PATH_BYTES
 ModuleCount	.res long, 1

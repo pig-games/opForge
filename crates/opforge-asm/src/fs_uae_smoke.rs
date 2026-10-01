@@ -7645,3 +7645,11 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "tests/native_package_loader.rs"]
+mod native_package_loader;
+
+#[cfg(test)]
+#[path = "tests/native_package_loading_performance.rs"]
+mod native_package_loading_performance;

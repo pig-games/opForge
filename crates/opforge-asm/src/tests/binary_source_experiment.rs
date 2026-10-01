@@ -13,6 +13,8 @@ mod hunk;
 
 #[path = "binary_source_hunk_data_relocations.rs"]
 mod hunk_data_relocations;
+#[path = "binary_source_hunk_offsets.rs"]
+mod hunk_offsets;
 #[path = "binary_source_hunk_sections.rs"]
 mod hunk_sections;
 
@@ -113,6 +115,56 @@ mod namespaces;
 mod scopes;
 
 #[test]
+fn binary_source_runtime_target_identity_is_relocatable() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    for (cpu, little_endian) in [("m68020", 0u16), ("m6502", 1u16)] {
+        let resolved = core.resolve_pipeline(cpu, None).unwrap();
+        let bytes = prepare_package(&core, &resolved).unwrap();
+        let long =
+            |offset| u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+        let word = |offset| u16::from_be_bytes(bytes[offset..offset + 2].try_into().unwrap());
+        let target_offset = long(124);
+        let target_bytes = usize::from(word(128));
+        let runtime_bytes = long(72);
+        let expected = format!("{cpu}--{}", resolved.dialect_id);
+        assert_eq!(&bytes[..4], b"BS12");
+        assert_eq!(long(16), 132);
+        assert_eq!(word(64), little_endian);
+        assert_eq!(word(130), 0);
+        assert!(target_offset >= 132);
+        assert_eq!(target_bytes, expected.len());
+        assert_eq!(
+            &bytes[target_offset..target_offset + target_bytes],
+            expected.as_bytes()
+        );
+        assert_eq!(runtime_bytes, (target_offset + target_bytes + 1) & !1);
+        assert_eq!(long(8), runtime_bytes);
+
+        // Moving the runtime prefix within another allocation preserves block-relative offsets.
+        let mut embedded = vec![0xa5; 19];
+        embedded.extend_from_slice(&bytes[..runtime_bytes]);
+        let moved = &embedded[19..];
+        let moved_offset = u32::from_be_bytes(moved[124..128].try_into().unwrap()) as usize;
+        let moved_bytes = usize::from(u16::from_be_bytes(moved[128..130].try_into().unwrap()));
+        assert_eq!(
+            &moved[moved_offset..moved_offset + moved_bytes],
+            expected.as_bytes()
+        );
+    }
+}
+
+#[test]
+fn binary_source_runtime_target_identity_rejects_unsafe_or_long_names() {
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    for dialect in ["", "unsafe/name", "abcdefghijklmnopqrstuvwxyz"] {
+        let mut resolved = core.resolve_pipeline("m6502", None).unwrap();
+        resolved.dialect_id = dialect.to_string();
+        let error = prepare_package(&core, &resolved).unwrap_err();
+        assert!(error.contains("runtime package target key"), "{error}");
+    }
+}
+
+#[test]
 fn binary_source_packages_prepare() {
     fn long(bytes: &[u8], offset: usize) -> usize {
         u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize
@@ -122,11 +174,11 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS11");
+        assert_eq!(&bytes[..4], b"BS12");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((124..=bytes.len()).contains(&runtime_bytes));
+        assert!((132..=bytes.len()).contains(&runtime_bytes));
         assert_eq!(runtime_bytes % 2, 0);
         let fragments = long(&bytes, 116);
         let fragment_bytes = long(&bytes, 120);
@@ -147,7 +199,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 124);
+            assert!(offset >= 132);
             assert!(offset + count * width <= runtime_bytes);
         }
 

@@ -847,6 +847,10 @@ dataExpression
 	beq.w dataValue
 	cmpi.w #1, pkg.Context.Pass(a2)
 	bne.w bad
+	; Fixed-width unresolved data reserves layout in pass one. Its provisional
+	; value and incomplete section provenance cannot prove range or relocation.
+	moveq #0, d1
+	bra.w dataEmitValue
 dataValue
 	cmpi.w #4, d6
 	beq.w dataRangeOk
@@ -876,6 +880,7 @@ wordRange
 dataRangeOk
 	bsr.w markDataReloc
 	bne.w bad
+dataEmitValue
 	movea.l a0, a5
 	lea DataBytes, a4
 	move.l d6, d5
@@ -1012,42 +1017,34 @@ done
 	rts
 	.bend  ; markInstructionRelocs
 
-; Record a section-relative absolute-long data reference. Other data values
-; retain the existing scalar path. The packed expression has no source text.
-; A5=expression start,A2=Context,D6=unit bytes. D0/CCR=status.
+; Classify shared DATA expressions after the caller evaluates their scalar value.
+; Same-section address differences are absolute; one surviving section base
+; requires a long and records its section relocation only in pass two.
+; A5=expression start,A1=bounded end,A2=Context,D6=unit bytes. D0/CCR=status.
+; Other registers are preserved; ExprVM value and unresolved handling stay caller-owned.
 markDataReloc	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea SectionState, a4
 	cmpi.w #5, sections.State.Mode(a4)
 	bne.w good
 	movea.l a5, a0
-	jsr hunkrefs.expression
-	cmpi.l #hunkrefs.STATUS_BAD, d0
-	beq.w bad
-	tst.l d0
+	jsr hunkrefs.affineTarget
+	cmpi.l #hunkrefs.STATUS_CLEAR, d0
 	beq.w good
-	cmpi.b #expr.COMPILED_TAG, (a5)
+	cmpi.l #hunkrefs.STATUS_SECTION, d0
 	bne.w bad
-	cmpi.b #4, 1(a5)
-	bne.w bad
-	cmpi.b #exprvm.EXPRVM_V2_OPCODE_PUSH_SYMBOL, 2(a5)
-	bne.w bad
-	tst.b 5(a5)  ; END
-	bne.w bad
-	moveq #0, d1
-	move.b 4(a5), d1
-	lsl.w #8, d1
-	move.b 3(a5), d1
-	cmp.l pkg.Context.Count(a2), d1
-	bhs.w bad
-	movea.l pkg.Context.SectionIds(a2), a0
-	moveq #0, d2
-	move.b 0(a0, d1.l), d2
-	beq.w good
 	cmpi.w #4, d6
 	bne.w bad
 	cmpi.w #2, pkg.Context.Pass(a2)
 	bne.w good
+	cmp.l pkg.Context.Count(a2), d1
+	bhs.w bad
+	movea.l pkg.Context.SectionIds(a2), a0
+	move.l a0, d0
+	beq.w bad
+	moveq #0, d2
+	move.b 0(a0, d1.l), d2
+	beq.w bad
 	subq.l #1, d2
 	move.l d2, d1
 	moveq #0, d0

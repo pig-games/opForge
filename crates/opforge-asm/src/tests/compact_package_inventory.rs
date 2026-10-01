@@ -1,4 +1,4 @@
-//! Host-only BS11 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS12 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -33,10 +33,25 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS11")
+        || bytes.get(..4) != Some(b"BS12")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS11 header".into());
+        return Err("invalid BS12 header".into());
+    }
+    let target_offset = number(bytes, 124, 4)?;
+    let target_bytes = number(bytes, 128, 2)?;
+    let runtime_bytes = number(bytes, 72, 4)?;
+    let target = region(bytes, target_offset, target_bytes, 1)?;
+    if target_offset < HEADER
+        || target_bytes == 0
+        || target_bytes > 26
+        || target_offset + target_bytes > runtime_bytes
+        || number(bytes, 130, 2)? != 0
+        || !target
+            .iter()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    {
+        return Err("invalid runtime target identity".into());
     }
     let rows = region(bytes, number(bytes, 16, 4)?, number(bytes, 20, 4)?, ROW)?;
     let programs = region(bytes, number(bytes, 32, 4)?, number(bytes, 36, 4)?, 12)?;
@@ -144,6 +159,7 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
     }
     Ok(
         json!({"byte_size": bytes.len(), "runtime_byte_size": number(bytes,72,4)?,
+        "target_key": std::str::from_utf8(target).map_err(|_| "invalid target UTF-8")?,
         "dictionary_count": dictionary_count, "program_count": programs.len()/12,
         "table_program_count": package.table_programs.len(),
         "table_mode_counts": table_modes,
@@ -273,7 +289,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS11", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS12", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

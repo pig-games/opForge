@@ -1,7 +1,7 @@
 # Native assembler completion plan
 
-Status: active. The compact native CLI fully self-hosts the current 61-file
-implementation with exact live Rust Hunk output on the physical A6000. It remains
+Status: active. The recorded 61-file compact native implementation fully
+self-hosted with exact live Rust Hunk output on the physical A6000. It remains
 experimental: that proof does not establish full language, CPU, CLI or output
 parity. Current measurements, reproduction commands and remaining frontend
 ownership gaps are maintained in the
@@ -58,12 +58,13 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS11 represents one CPU/dialect pipeline. It is distinct from the canonical
-`.opasm` container. The compact CLI accepts a package filename as its first
-argument; its `.cpu` directive checks that same pipeline rather than switching it.
-Embedding, catalog resolution and multi-package source execution are upcoming work.
-The first catalog/key specification must include dialect and contract identity,
-not only a CPU name. Aliases should not create duplicate target packages.
+Current BS12 represents one CPU/dialect pipeline and carries its canonical
+`CPU--dialect` identity in the retained runtime prefix. It is distinct from the
+canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
+Its `.cpu` directive still checks that same pipeline rather than switching it;
+multi-package source execution is P3. Aliases select canonical packages without
+creating duplicate assets. BS11 executors are superseded, with no compatibility
+path. The P1 size inventory below records the earlier BS11 checkpoint.
 
 Start with self-contained packages. Shared family/core payload deduplication is a
 later measured option, not a prerequisite that complicates the first resolver.
@@ -78,7 +79,7 @@ but this plan does not establish that disk format.
    generation failures and unsupported candidate forms. Distinguish intermediate
    unsupported plans from final wire-format barriers: lowering can introduce more
    barriers. A generated package is not proof of successful native assembly.
-2. **P2 — common acquisition and validation.** Specify the catalog and build-time
+2. **P2 — common acquisition and validation (delivered 2026-10-01).** Specify the catalog and build-time
    embedded selection, then deliver an embedded/external pair for the same target
    through one native loader. Compare exact output with live Rust; prove missing,
    wrong-target, truncated and wrong-contract packages fail explicitly. Measure
@@ -94,8 +95,178 @@ but this plan does not establish that disk format.
    matrix derived from the registry; capsule presence or a NOP per CPU is not full
    CPU qualification.
 
-P1 establishes the next decision. Refine P2 and P4 from actual gaps; do not build
-an elaborate loader around an assumed complete package inventory.
+Keep P3 and P4 grounded in the inventory's actual gaps; package storage alone
+does not establish instruction or language parity.
+
+### P2 configuration and current boundary
+
+Build configuration is a list of CPU or `CPU:DIALECT` names. Registry metadata
+resolves aliases and default dialects. External-only is the default; repeated
+`--embed` options replace the optional JSON configuration's defaults, and
+`--external-only` or `--embed-all` selects an explicit whole-build policy.
+There is no family bitfield or fixed family-count limit.
+
+```sh
+cargo run -p asm --example build_native_packages -- \
+  --out-dir /tmp/opforge-native-new --embed 6502 --embed 68020
+```
+
+The destination must be fresh and absolute. The builder generates all registered
+external packages, `catalog.i`, configured CLI source, a manifest and the assembled
+`opforge_compact` executable. An optional `--config CONFIG.json` accepts
+`{"embed":["6502","68020"]}`. `--catalog-only` generates assets and source without
+assembling the executable. The checked-in `package_catalog.i` is the generated
+external-only catalog; a host test guards drift from the production registry.
+
+Copy `opforge_compact` and the needed `packages/` files together. The provisional
+native syntax is:
+
+```text
+opforge_compact --cpu 6502 input.asm output.bin
+opforge_compact --cpu 68020 input.asm output.bin -d motorola68k -P Development:packages
+opforge_compact p.bin input.asm output.bin
+```
+
+Named selection prefers the matching embedded payload, otherwise loads
+`PROGDIR:packages/CPU--dialect.bin` (or the directory selected by `-P`). `-M` and
+`-I` retain module/include search. The explicit-package form remains useful for
+harnesses and self-hosting; `-d` and `-P` apply to named selection, while an
+explicit package path already determines the target and file. Quoted paths and
+full Rust CLI flag parity remain
+outside this provisional interface.
+
+Catalog lookup, acquisition/ownership, structural validation and assembly are
+separate modules. Catalog and package offsets are relative to their stated bases.
+Both storage modes use identical BS12 bytes and the same validator. External
+allocations are owned and released; embedded image bytes are borrowed and never
+freed. A matching invalid embedded payload fails; it does not silently fall back.
+After preparation, both modes still copy the execution prefix and discard lexical
+storage. The whole embedded payload remains part of the executable image, so
+tracked allocation savings alone do not establish lower total RAM use.
+
+BS12 extends the header from 124 to 132 bytes: canonical target offset at 124,
+length at 128 and zero reserved word at 130, all big-endian. Target identity lies
+inside `RuntimeBytes`, survives preparation, uses safe filename characters and
+fits in 26 bytes (plus `.bin`, within the classic 30-byte component limit).
+Unknown contracts, wrong target identities, invalid spans, truncation and missing
+files must fail before execution. Program interpreters retain opcode/version and
+execution bounds checks beyond the common structural validator.
+
+Configured embedded builds currently use Rust `.incbin` during host assembly;
+compact native `.incbin` parity is still outstanding. The external-only default
+source contains no `.incbin` and remains the self-hosting configuration. Embedding
+a package proves its storage and execution path, not that an embedded build can
+self-assemble or that every target's instruction forms are implemented.
+
+The catalog's offset tables also require same-section address subtraction. Rust
+DATA directives and compact Hunk provenance now recognize cancellation of equal
+section bases; unrelated section bases still reject. Instruction fixups evaluate
+their scalar before relocation proof, defer unresolved pass-one identities, and
+recognize cancelled bases during pass-two reference accounting. Compact `.emit` preparation
+remains a language gap; this slice uses `.byte`, `.word` and `.long` for its native
+offset proof. The Rust repair also covers `.emit long`.
+The compact frontend rejects the operand form `#'a'-'A'`; the catalog uses a named
+numeric ASCII case offset with identical emitted code.
+
+### P2 full current-source self-host proof
+
+The final external-only release CLI assembles all **65 current source files**
+(748,663 source bytes, `fnv1a64:210d4e6e48e356c7`) on native FS-UAE, exits zero,
+and emits the complete **94,356-byte Hunk exactly equal to fresh Rust output**.
+Both have four segments and 106,328 linked reserved bytes. The run uses BS12
+m68020 (299,076 bytes), 68020 / 10 MiB and unlimited emulator CPU speed.
+Uninstrumented guest START/DONE observed on the host is **563.914554959 seconds**;
+native runner duration including preparation/startup is 588.966862375 seconds,
+and whole-test wall time is 592.09 seconds. This is a current-checkout full
+self-host proof, not a frozen subset. The source differs from the earlier
+61-file checkpoint, so these times do not establish a before/after speed change.
+It does not qualify the 2 MiB target, physical A6000 timing or an embedded build's
+self-assembly. Embedded `.incbin` remains outstanding.
+
+### P2 measurements and qualification
+
+The 2026-10-01 comparison uses the same 10,687-byte source, two compatible
+modules, 64 referenced blocks, mixed arithmetic/branches/data and a fresh
+2,434-byte Rust oracle. FS-UAE uses the 68020/10 MiB profile with the template's
+unlimited CPU setting. Release timings are host observations between fresh guest
+START/DONE markers, excluding emulator startup; polling resolution and scheduling
+limit small differences. These initial P2 measurements precede the final
+forward-expression repairs below; they are separate from earlier optimization
+gains.
+
+| Release invocation | Observed seconds | Executable bytes | Linked static bytes |
+| --- | ---: | ---: | ---: |
+| Previous explicit BS11 package | 7.60, 7.73 | 89,880 | 100,864 |
+| P2 explicit BS12 package | 7.46, 7.58 | 94,300 | 106,280 |
+| P2 named external package | 7.60, 7.61, 7.84 | 94,300 | 106,280 |
+| P2 named embedded m68020 | 7.60, 7.60 | 393,376 | 405,356 |
+
+Every listed observation completed with zero exit and exact output. One additional
+named-external attempt stalled without a fresh completion and is excluded; two
+fresh retries passed. These few observations show similar command costs and do
+not establish a meaningful speedup. The m68020 package grew by 28 bytes to
+299,076 bytes; all 16 BS12 packages total 1,902,524 bytes.
+
+The final forward-expression changes were measured separately on exactly the
+same source and Rust oracle, using `new_explicit` and two fresh runs per state:
+
+| Repair state | Observed seconds | Executable bytes | Linked static bytes |
+| --- | ---: | ---: | ---: |
+| Before pass-one DATA deferral | 7.46, 7.58 | 94,300 | 106,280 |
+| DATA deferral only | 7.69, 7.71 | 94,308 | 106,288 |
+| Plus instruction deferral and cancellation proof | 7.67, 7.71 | 94,356 | 106,328 |
+
+Polling resolution and these few observations do not establish a meaningful
+gain or regression for either repair. Each state completes
+with exit zero and exact output on this benchmark. The pre-repair implementation
+fails the new forward-expression correctness probes and updated full self-host,
+so failed self-host durations are not compared as speed measurements.
+`OPFORGE_COMPARE_NATIVE_ROOT` selects the frozen native implementation for this
+test; it does not change its source workload or live Rust oracle. The final
+external-only executable is 4,476 bytes larger than P1; embedding 6502 and 68020
+produces a 404,600-byte executable. The memory observations below precede these
+final expression repairs.
+
+Separate instrumented runs have balanced allocation/free totals, zero terminal
+owned bytes and no profiling errors:
+
+| Storage | Package setup seconds | Peak owned bytes | Linked static bytes | Accounted peak bytes |
+| --- | ---: | ---: | ---: | ---: |
+| External | 0.120 | 840,008 | 110,588 | 950,596 |
+| Embedded m68020 | 0.071 | 577,792 | 409,664 | 987,456 |
+
+Package setup includes acquisition, structural validation and frontend
+initialization, not isolated file I/O. Accounted peak adds Hunk segment reservations
+to tracked owned peak; it excludes OS, executable-loader overhead and untracked
+allocations. Embedding saves heap allocation but increases accounted peak by
+36,860 bytes here because the whole payload stays resident. Both paths still copy
+the 290,512-byte execution prefix. Instrumented timings do not replace release
+timings or qualify the 2 MiB self-host target.
+
+With the environment in the [FS-UAE guide](../../agents/rules/fs-uae.md), run:
+
+```sh
+OPFORGE_PACKAGE_BASELINE_CLI=/path/to/previous/opforge \
+OPFORGE_PACKAGE_BASELINE_PACKAGE=/path/to/previous/m68020--motorola68k.bin \
+OPFORGE_PACKAGE_PERF_MEMORY=1 \
+cargo test -p asm --lib native_package_loading_performance -- --ignored --nocapture --test-threads=1
+```
+
+The previous image/package must be the BS11 checkpoint; the test builds fresh P2
+images and the shared Rust oracle. Omit both baseline variables for storage-mode
+comparison only. `OPFORGE_PACKAGE_PERF_CASE=new_named_external` selects just that
+case for a bounded retry; `OPFORGE_PACKAGE_PERF_ROUNDS` selects 1–8 rounds (default
+two). These controls affect the test driver, never production behavior.
+
+Focused package-generation/identity tests, ten fresh native loader positive and
+negative cases, and exact native Hunk offset/rejection probes pass. A PC-relative
+`LEA dispatchTable(PC),A1` probe rejects before candidate execution in both the
+pre-repair P2 implementation and the repaired implementation. That existing
+coverage gap remains pending; it is not counted as successful native validation.
+The broad Rust assembler run reports 1,923 passed, 69 failed and 385 ignored. All 69 failing tests
+also fail individually at clean P1 `9ee9e92a`; they remain existing qualification
+debt and are not claimed fixed by P2. Architecture, proof-contract and formatting
+guards pass. Full CPU/language/CLI parity and promotion remain pending.
 
 ### P1 findings and reproduction
 

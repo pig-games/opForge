@@ -25,6 +25,7 @@ pub mod error;
 pub mod expression;
 pub mod line;
 pub mod listing;
+pub mod native_package_build;
 pub mod opasm;
 pub mod operand;
 pub mod output;

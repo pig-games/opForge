@@ -208,7 +208,7 @@ fn export_compact_self_host_bundle() {
         "bootstrap_hunk_digest": opforge_self_host_package_digest(&bootstrap),
         "bootstrap_hunk_allocation_bytes": bootstrap_allocation.total(),
         "telemetry_file": instrumented.then_some("memory.bin"),
-        "runtime_package_magic": "BS11",
+        "runtime_package_magic": "BS12",
         "runtime_package_bytes": package.len(),
         "runtime_package_digest": opforge_self_host_package_digest(&package),
         "entry": format!("src/{}", entry.display()),

@@ -42,7 +42,7 @@ GraphBefore	.long ?
 GRAPH_BYTES = graph.SCRATCH_BYTES
 GRAPH_SPAN_BYTES = graph.MAX_SPANS*graph.SPAN_BYTES
 	.priv
-HEADER_BYTES = package.Header.MacroFragmentsBytes+4
+HEADER_BYTES = package.HEADER_BYTES
 PROGRAM = 0
 PROGRAM_BYTES = 4
 PACKAGE_BASE = 8

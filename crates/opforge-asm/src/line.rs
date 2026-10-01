@@ -1214,6 +1214,7 @@ impl<'a> AsmLine<'a> {
 
     fn hunk_data_expression_requires_unsupported_fixup(&self, expr: &Expr) -> bool {
         !self.expr_is_relocation_free_symbolic_value(expr, false)
+            && !self.expr_is_absolute_constant_symbol_expr(expr)
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]

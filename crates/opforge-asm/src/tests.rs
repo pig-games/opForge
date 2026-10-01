@@ -127,6 +127,9 @@ use vm::rollout::{
     FamilyRuntimeMode,
 };
 
+#[path = "tests/hunk_data_offsets.rs"]
+mod hunk_data_offsets;
+
 #[path = "tests/hunk_placed_rebasing.rs"]
 mod hunk_placed_rebasing;
 #[path = "tests/native_cli_diagnostic_routing.rs"]
@@ -35376,7 +35379,7 @@ fn linker_output_hunk_live_path_emits_reloc32_for_long_pointer_table() {
 }
 
 #[test]
-fn linker_output_hunk_live_path_rejects_unsupported_symbolic_long_expression_explicitly() {
+fn linker_output_hunk_live_path_rejects_cross_section_symbolic_long_difference_explicitly() {
     let assembler = run_passes(&[
         ".module main",
         ".cpu 68000",
@@ -35385,10 +35388,13 @@ fn linker_output_hunk_live_path_rejects_unsupported_symbolic_long_expression_exp
         "start: .long target1 - target2",
         " RTS",
         "target1: .byte 0",
+        ".endsection",
+        ".section data, kind=data",
         "target2: .byte 0",
         ".endsection",
         ".place code in ram",
-        ".output \"build/out.hunk\", format=hunk, sections=code",
+        ".place data in ram",
+        ".output \"build/out.hunk\", format=hunk, sections=code,data",
         ".endmodule",
     ]);
     let output = assembler

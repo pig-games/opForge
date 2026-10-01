@@ -51,7 +51,7 @@ PROGRAM_SEMANTIC = 2
 PROGRAM_VALUE = 3
 PROJECTION_EXPRESSION = 0
 MISSING_PROGRAM = $ffff
-HEADER_BYTES = package.Header.MacroFragmentsBytes+4
+HEADER_BYTES = package.HEADER_BYTES
 ROW_BYTES = 32
 PROJECTION_BYTES = 12
 PROGRAM_BYTES = 12
@@ -1453,6 +1453,22 @@ targetSpanReady
 	move.w #$ffff, ProjectedTarget
 	cmpa.l a1, a0
 	bhs.w bad
+	; Validate the scalar before proving relocation identity. In pass one an
+	; undefined label has no usable section provenance yet; ExprVM owns that
+	; unresolved decision. Preserve the bounded span for resolved-value proof.
+	movem.l a0-a1, -(sp)
+	cmpi.b #6, package.Projection.Kind(a4)
+	bne.w scalarValue
+	bsr.w projectionTupleValue
+	bra.w valueProjected
+scalarValue
+	bsr.w projectionExpression
+valueProjected
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	bne.w bad
+	tst.w Unresolved
+	bne.w targetReady
 	; The immediate marker is syntax, not part of the target identity.
 	cmpi.b #TOKEN_HASH, (a0)
 	bne.w targetName
@@ -1488,15 +1504,6 @@ exactIdentity
 	beq.w targetReady
 	move.w d1, ProjectedTarget
 targetReady
-	cmpi.b #6, package.Projection.Kind(a4)
-	bne.w scalarValue
-	bsr.w projectionTupleValue
-	bra.w valueProjected
-scalarValue
-	bsr.w projectionExpression
-valueProjected
-	tst.l d0
-	bne.w bad
 	moveq #0, d0
 	cmpi.w #$ffff, ProjectedTarget
 	beq.w targetFlagReady

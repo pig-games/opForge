@@ -24,7 +24,7 @@ class HardwareCompletionTests(unittest.TestCase):
         (root / "src/entry.asm").write_bytes(b"source")
         oracle = b"release"
         bootstrap = b"profile" if instrumented else oracle
-        package = b"BS11package"
+        package = b"BS12package"
         command = "opforge p.bin src/entry.asm output.hunk"
         manifest = {
             "release_defines": [],

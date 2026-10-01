@@ -43,7 +43,8 @@ targets	.block
 ; Undefined symbols are provisionally scalar in pass 1. The caller must evaluate
 ; through ExprVM and honor its unresolved flag before using the value or identity.
 ; Numeric evaluation remains ExprVM-owned. Only base+absolute,
-; absolute+base, base-absolute and unary plus preserve a base.
+; absolute+base, base-absolute and unary plus preserve a base. Subtracting
+; two symbols with the same nonzero section provenance cancels their bases.
 affineTarget	.block
 	movem.l d2-d7/a1-a6, -(sp)
 	suba.w #runtime.EXPRVM_STACK_CAPACITY*2, sp
@@ -202,11 +203,28 @@ binary
 	move.w 0(a5, d0.l), d5
 	cmpi.w #$ffff, d7
 	beq.w rightConstant
+	cmpi.l #1, d3
+	beq.w difference
 	tst.l d3
 	bne.w bad
 	cmpi.w #$ffff, d5
 	bne.w bad
 	move.w d7, 0(a5, d0.l)
+	bra.w next
+difference
+	; The stack retains symbol IDs, not section IDs: resolve both here so
+	; different labels in one section cancel without granting cross-section math.
+	cmpi.w #$ffff, d5
+	beq.w bad
+	movea.l pkg.Context.SectionIds(a2), a3
+	move.l a3, d1
+	beq.w bad
+	moveq #0, d1
+	move.b 0(a3, d5.l), d1
+	beq.w bad
+	cmp.b 0(a3, d7.l), d1
+	bne.w bad
+	move.w #$ffff, 0(a5, d0.l)
 	bra.w next
 rightConstant
 	cmpi.l #2, d3
@@ -366,6 +384,17 @@ next
 	bra.w next
 wrapped
 	subq.l #1, a0
+	; Cancelled same-section bases need no instruction relocation. Keep the
+	; conservative scan for surviving bases and positional/unsupported forms;
+	; the package projection still owns their fixup proof or rejection.
+	move.l a0, -(sp)
+	jsr affineTarget
+	tst.l d0
+	bne.w wrappedReferences
+	addq.l #4, sp
+	bra.w next
+wrappedReferences
+	movea.l (sp)+, a0
 	jsr expression
 	cmpi.l #STATUS_BAD, d0
 	beq.w bad

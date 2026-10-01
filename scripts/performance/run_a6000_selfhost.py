@@ -77,7 +77,7 @@ def load_bundle(bundle):
         raise ValueError("Bootstrap digest mismatch")
     if not defines and bootstrap != oracle:
         raise ValueError("Release bootstrap/oracle mismatch")
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS11":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS12":
         raise ValueError("Runtime package mismatch")
     files.update({"opforge": bootstrap, "p.bin": package})
     command = manifest["command"]

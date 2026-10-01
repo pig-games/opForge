@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_output as hunk
 	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_package_loader as loader
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_discovery as discovery
 	.use experimental.amigaos.binary_input_plan as inputs
@@ -26,7 +27,7 @@
 .endif
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
-HEADER_BYTES = package.Header.MacroFragmentsBytes+4
+HEADER_BYTES = package.HEADER_BYTES
 IO_BYTES = 4096
 INCLUDE_DEPTH = 8
 LINE_BYTES = 4096
@@ -55,6 +56,7 @@ PROGRESS_ASSEMBLY_POSITION = 26
 PROGRESS_ASSEMBLY_RECORDS = 27
 PROGRESS_ASSEMBLY_SECTIONS = 28
 PROGRESS_ASSEMBLY_SELECTION = 29
+PROGRESS_PACKAGE = 30
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -87,7 +89,13 @@ ModuleRoots	.long ?
 ModuleCount	.long ?
 IncludeRoots	.long ?
 IncludeCount	.long ?
+Catalog	.long ?
+CatalogBytes	.long ?
+Cpu	.long ?
+Dialect	.long ?
+PackageRoot	.long ?
 	.endstruct
+FRAME_BYTES = Frame.PackageRoot+4
 	.section code, kind=code
 	.pub
 ; Assemble one package and source selection. A0=Frame, D0=Shell return code.
@@ -101,8 +109,18 @@ execute	.block
 	move.l Frame.ModuleCount(a0), CliModuleCount
 	move.l Frame.IncludeRoots(a0), CliIncludeRoots
 	move.l Frame.IncludeCount(a0), CliIncludeCount
+	lea PackageSource, a1
+	move.l Frame.Catalog(a0), loader.Frame.Catalog(a1)
+	move.l Frame.CatalogBytes(a0), loader.Frame.CatalogBytes(a1)
+	move.l Frame.Cpu(a0), loader.Frame.Cpu(a1)
+	move.l Frame.Dialect(a0), loader.Frame.Dialect(a1)
+	move.l Frame.PackageRoot(a0), loader.Frame.Root(a1)
+	clr.l PackageStatus
 	tst.l InputName
+	bne.w packageConfigured
+	tst.l loader.Frame.Cpu(a1)
 	beq.w invalidConfig
+packageConfigured
 	tst.l OutputName
 	beq.w invalidConfig
 	tst.w CliMode
@@ -173,8 +191,8 @@ cleanup
 	lea Front, a0
 	jsr frontend.finish
 freeBlocks
-	lea PackageBlock, a0
-	jsr memory.release
+	lea PackageSource, a0
+	jsr loader.release
 	lea RuntimeBlock, a0
 	jsr memory.release
 	lea PrepBlock, a0
@@ -250,6 +268,13 @@ located
 	move.l #FailureMessageEnd, d3
 	sub.l d2, d3
 	jsr DOS_WRITE(a6)
+	tst.l PackageStatus
+	beq.w afterPackage
+	move.l #PackageFailure, d2
+	move.l #PackageFailureEnd-PackageFailure, d3
+	move.l d4, d1
+	jsr DOS_WRITE(a6)
+afterPackage
 	tst.l InAssembly
 	bne.w done
 	tst.l SourceOrdinal
@@ -413,50 +438,21 @@ done
 	.bend  ; readExact
 
 prepare	.block
-	movea.l DosBase, a6
-	move.l InputName, d1
-	move.l #1005, d2
-	jsr -30(a6)
-	tst.l d0
-	beq.w bad
-	move.l d0, InputHandle
-	move.l #Header, d2
-	moveq #HEADER_BYTES, d3
-	bsr.w readExact
-	bne.w closeBad
-	lea Header, a4
-	cmpi.l #package.MAGIC, package.Header.Magic(a4)
-	bne.w closeBad
-	move.l package.Header.Bytes(a4), d0
-	cmpi.l #HEADER_BYTES, d0
-	blo.w closeBad
-	lea PackageBlock, a0
-	jsr memory.reserveExact
-	bne.w closeBad
-	lea PackageBlock, a0
-	movea.l memory.Block.Pointer(a0), a1
-	lea Header, a0
-	moveq #HEADER_BYTES, d0
-	bsr.w copy
-	lea PackageBlock, a0
-	movea.l memory.Block.Pointer(a0), a4
-	move.l a4, d2
-	addi.l #HEADER_BYTES, d2
-	move.l package.Header.Bytes(a4), d3
-	subi.l #HEADER_BYTES, d3
-	bsr.w readExact
-	bne.w closeBad
-	move.l package.Header.RuntimeBytes(a4), d0
-	cmpi.l #HEADER_BYTES, d0
-	blo.w closeBad
-	cmp.l package.Header.Bytes(a4), d0
-	bhi.w closeBad
-	btst #0, d0
-	bne.w closeBad
-	cmp.l package.Header.Dictionary(a4), d0
-	bhi.w closeBad
-	cmp.l package.Header.Tokenizer(a4), d0
-	bhi.w closeBad
+	lea PackageSource, a0
+	move.l DosBase, loader.Frame.DosBase(a0)
+	move.l InputName, loader.Frame.Path(a0)
+	clr.w loader.Frame.AllowTrailing(a0)
+	tst.w CliMode
+	bne.w load
+	move.w #1, loader.Frame.AllowTrailing(a0)
+load
+	jsr loader.acquire
+	move.l d0, PackageStatus
+	bne.w bad
+	move.l loader.Frame.Handle(a0), InputHandle
+	clr.l loader.Frame.Handle(a0)  ; manifest handle transfers to this caller
+	movea.l loader.Frame.Data(a0), a4
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_PACKAGE, PackageSource, loader.Frame.Storage, loader.Frame.Bytes, loader.Frame.ReadCalls
 	movea.l a4, a0
 	jsr frontend.scratchSize
 	bne.w closeBad
@@ -576,6 +572,8 @@ includeRoot
 	subq.l #1, IncludeRootsRemaining
 	bra.w includeRoot
 rootsDone
+	tst.w CliMode
+	bne.w candidateCountReady
 	movea.l DosBase, a6
 	move.l InputHandle, d1
 	move.l #ManifestWord, d2
@@ -583,6 +581,7 @@ rootsDone
 	jsr -42(a6)
 	tst.l d0
 	bne.w closeBad
+candidateCountReady
 	move.l CandidateCount, d0
 sourceCountReady
 	move.l d0, SourceCount
@@ -738,6 +737,8 @@ sequential
 	move.l SourceCount, d0
 	cmp.l SourceOrdinal, d0
 	bhs.w nextFile
+	tst.w CliMode
+	bne.w prepared
 	movea.l DosBase, a6
 	move.l InputHandle, d1
 	move.l #ManifestWord, d2
@@ -865,8 +866,8 @@ parametersSaved
 	clr.l LineBuffer
 ; Copy relocatable execution prefix while the old allocation is still live.
 ; No lexical storage or source buffer remains when either assembly pass starts.
-	lea PackageBlock, a0
-	movea.l memory.Block.Pointer(a0), a4
+	lea PackageSource, a0
+	movea.l loader.Frame.Data(a0), a4
 	move.l package.Header.RuntimeBytes(a4), d0
 	lea RuntimeBlock, a0
 	jsr memory.reserve
@@ -883,8 +884,8 @@ parametersSaved
 	clr.l package.Header.DictionaryCount(a4)
 	clr.l package.Header.Tokenizer(a4)
 	clr.l package.Header.TokenizerBytes(a4)
-	lea PackageBlock, a0
-	jsr memory.release
+	lea PackageSource, a0
+	jsr loader.release
 	lea Records, a0
 	.MEMORY_LAYOUT package.Header.RuntimeBytes(a4), memory.Block.Used(a0), SourceBytes
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_PREPARED, #0, #0, Records, memory.Block.Used
@@ -1575,6 +1576,8 @@ done
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
+PackageFailure	.byte "package: missing, invalid or incompatible runtime package", 10
+PackageFailureEnd
 SelectedModuleKeyword	.byte "module"
 SelectedEndmoduleKeyword	.byte "endmodule"
 FailureMessage	.byte "binary source: unsupported or invalid input [file "
@@ -1660,11 +1663,11 @@ LineBuffer	.res long, 1
 LineUsed	.res long, 1
 SourceBytes	.res long, 1
 NameCount	.res long, 1
-Header	.res byte, HEADER_BYTES
 Front	.res byte, frontend.Frame.GraphBefore+4
 Work	.res byte, assembly.Frame.AddReloc+4
 Context	.res byte, package.Context.SectionIds+4
-PackageBlock	.res byte, memory.Block.Used+4
+PackageSource	.res byte, loader.FRAME_BYTES
+PackageStatus	.res long, 1
 RuntimeBlock	.res byte, memory.Block.Used+4
 PrepBlock	.res byte, memory.Block.Used+4
 Records	.res byte, memory.Block.Used+4

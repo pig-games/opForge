@@ -1,8 +1,23 @@
 # Compact frontend: VM boundary correction
 
-Status: full 61-file native self-hosting is proven at the recorded checkpoint below, with exact live Rust Hunk output in both release and separately instrumented emulator runs. The subsequent filename-only portability repair also completes on the physical A6000 with exact Rust output. The 2 MiB product target remains unqualified. Residual frontend ownership gaps and the deferred ordinary-label instruction binding issue are listed below.
+Status: the current P2 external-only 65-file native self-host completes with exact live Rust output. Full 61-file native self-hosting is also proven at the recorded earlier checkpoint below, with exact live Rust Hunk output in both release and separately instrumented emulator runs. The subsequent filename-only portability repair also completes on the physical A6000 with exact Rust output. The 2 MiB product target remains unqualified. Residual frontend ownership gaps and the deferred ordinary-label instruction binding issue are listed below.
 
-## Current-source proof and measurement
+## Current P2 self-host proof
+
+The 2026-10-01 external-only BS12 implementation fully self-assembles its current
+65-file, 748,663-byte source tree (`fnv1a64:210d4e6e48e356c7`) in FS-UAE with
+exit zero. The complete 94,356-byte Hunk equals fresh Rust output byte-for-byte,
+including four segments, payload, relocations and 106,328 linked reserved bytes.
+Uninstrumented host-observed guest START/DONE is 563.914554959 seconds; runner
+time is 588.966862375 seconds and whole-test time is 592.09 seconds. Environment:
+68020 / 10 MiB, unlimited emulator CPU speed. The source differs from the
+recorded 61-file checkpoint below; no comparative speed claim follows.
+[The current plan](native-runtime-reset.md#p2-configuration-and-current-boundary)
+records configurable package storage, measurements and outstanding gaps.
+This proof covers external-only self-hosting. Embedded `.incbin`, the 2 MiB
+product target and fresh P2 execution on the physical A6000 remain unqualified.
+
+## Recorded self-host proof and measurement
 
 At native implementation checkpoint `a49bc945`, the current-tree input contains 61 files and 719,331 source bytes (diagnostic fingerprint `fnv1a64:01877bbc3c29d612`). On 68020 / 10 MiB with unlimited CPU speed, the fresh native guest exits 0 and emits a Hunk byte-for-byte equal to the fresh Rust Hunk: 89,880 bytes, four segments, 100,864 linked reserved bytes. Host-observed guest START/DONE is 545.460594291 s; native runner time is 569.87131525 s and whole-test wall time is 572.54 s. These are single-run measurements, not physical-Amiga clock timings.
 
@@ -44,7 +59,7 @@ Require fresh case-bound START/DONE challenges, guest exit zero and exact comple
 ### Physical A6000 run
 
 The host-only ignored test `export_compact_self_host_bundle` builds a fresh release
-bootstrap and Rust oracle, gathers the actual dependencies and generates the BS11
+bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS12
 package. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
 the test. It preserves source bytes and include filenames exactly.
 
@@ -206,7 +221,7 @@ bytecode and shared ExprVM execution do not supply that missing parser program.
 The macro-only initial PRVM plan currently runs after binding, which is why it
 cannot yet classify an ordinary statement head before the value binder acts.
 
-BS11 is the current compact package format; the producer writes `BS11` and the
+BS12 is the current compact package format; the producer writes `BS12` and the
 native package owner checks the matching magic. Header offsets and lengths are
 big-endian and relative to the block start. Unsupported candidate recipes stay
 explicit rows rather than becoming silent omissions. Package rows select
@@ -252,7 +267,7 @@ supported cases.
 Anonymous macro invocation scopes retain lexical hygiene through a
 preparation-only marker. They must not become named reachability spans, because
 selected imported expansion may otherwise discard emitted bytes. This marker
-does not enter runtime records or alter BS11. Named blocks nested inside
+does not enter runtime records or alter the package format. Named blocks nested inside
 anonymous macro scopes remain a distinct Rust/native selection edge.
 
 ## Implemented behavior retained

@@ -90,6 +90,8 @@ directive
 	beq.w oneScalar
 	cmp.w package.Header.ResDirective(a2), d7
 	beq.w reserve
+	cmp.w package.Header.EmitDirective(a2), d7
+	beq.w emitUnit
 	cmp.w package.Header.ByteDirective(a2), d7
 	beq.w dataScalar
 	cmp.w package.Header.WordDirective(a2), d7
@@ -119,6 +121,32 @@ noOperands
 	cmpa.l a1, a0
 	bne.w bad
 	bra.w complete
+emitUnit
+	; Preserve package-owned named units. All other unit expressions use the
+	; shared scalar compiler; the data VM owns the complete operand grammar.
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #5, d0
+	blo.w bad
+	cmpi.b #1, (a0)
+	bhi.w scalar
+	tst.b 3(a0)
+	bne.w scalar
+	cmpi.b #4, 4(a0)
+	bne.w scalar
+	moveq #0, d0
+	move.w 1(a0), d0
+	cmp.w package.Header.ByteDirective(a2), d0
+	beq.w namedUnit
+	cmp.w package.Header.WordDirective(a2), d0
+	beq.w namedUnit
+	cmp.w package.Header.LongDirective(a2), d0
+	bne.w scalar
+namedUnit
+	moveq #4, d6
+	bsr.w copy
+	bne.w bad
+	bra.w scalarTail
 reserve
 	bsr.w name
 	bne.w bad

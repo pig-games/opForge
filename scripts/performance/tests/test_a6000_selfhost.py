@@ -24,7 +24,7 @@ class HardwareCompletionTests(unittest.TestCase):
         (root / "src/entry.asm").write_bytes(b"source")
         oracle = b"release"
         bootstrap = b"profile" if instrumented else oracle
-        package = b"BS13package"
+        package = b"BS14package"
         command = "opforge p.bin src/entry.asm output.hunk"
         manifest = {
             "release_defines": [],
@@ -48,9 +48,9 @@ class HardwareCompletionTests(unittest.TestCase):
     def embedded_bundle(self, root):
         self.bundle(root, False)
         target = b"m68020--motorola68k"
-        package = bytearray(140)
-        package[:4] = b"BS13"
-        package[124:128] = (140).to_bytes(4, "big")
+        package = bytearray(152)
+        package[:4] = b"BS14"
+        package[124:128] = (152).to_bytes(4, "big")
         package[128:130] = len(target).to_bytes(2, "big")
         package.extend(target)
         bootstrap = b"embedded executable:" + package
@@ -133,7 +133,7 @@ class HardwareCompletionTests(unittest.TestCase):
             ("configured_entry", "native", None, "Current source"),
             ("generated_catalog", None, b'.incbin "/host/package.bin"\n', "catalog"),
             ("generated_catalog", None, b'.incbin "packages/m68020--motorola68k.bin"\n' * 2, "catalog"),
-            ("package_asset", None, b"BS13corrupt", "asset mismatch"),
+            ("package_asset", None, b"BS14corrupt", "asset mismatch"),
         ]
         for origin, replacement_origin, data, error in mutations:
             with self.subTest(origin=origin, error=error), tempfile.TemporaryDirectory() as directory:

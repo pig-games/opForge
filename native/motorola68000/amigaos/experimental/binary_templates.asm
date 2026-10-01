@@ -225,12 +225,25 @@ done
 ; A0=packed record,A1=scope state,A2=template state. D0/CCR=0 ordinary,
 ; 1 known/body call,2 macro header,3 segment header. Preserves others.
 role	.block
+	moveq #0, d0
+	bra.w classifyRole
+	.bend
+
+; Same numeric record inputs as role; never classify a deferred body call.
+; Used when a package permits an already-declared template to shadow its head.
+knownRole	.block
+	moveq #-1, d0
+	bra.w classifyRole
+	.bend
+
+	.priv
+classifyRole	.block
 	movem.l d1-d5/a0-a4, -(sp)
 	moveq #0, d2  ; failed candidate attempts, including an exhausted lookup
 	.MEMORY_TEMPLATE_WORK #0, #1
 	movea.l a0, a3
 	movea.l a1, a4
-	moveq #0, d5  ; unresolved calls need a leading dot or a source label
+	move.l d0, d5  ; negative queries forbid deferred body calls
 	moveq #0, d3
 	move.b (a3), d3
 	addq.l #1, d3
@@ -245,7 +258,7 @@ role	.block
 	move.w 1(a1), d0
 	cmp.w layout.State.Base(a4), d0
 	blo.w packageHead
-	moveq #1, d5
+	ori.l #1, d5
 packageHead
 	addq.l #4, a1
 	cmpi.b #5, (a1)
@@ -255,7 +268,7 @@ packageHead
 	addq.l #1, a1
 	bra.w dot
 leadingDot
-	moveq #1, d5
+	ori.l #1, d5
 dot
 	cmpi.b #7, (a1)
 	bne.w none
@@ -281,6 +294,8 @@ coreDirective
 	cmp.w package.Header.AlignDirective(a3), d4
 	beq.w none
 	cmp.w package.Header.ResDirective(a3), d4
+	beq.w none
+	cmp.w package.Header.EmitDirective(a3), d4
 	beq.w none
 scopeDirective
 	move.l d4, d0
@@ -338,6 +353,8 @@ alias
 	.MEMORY_TEMPLATE_WORK #3, #1
 	bra.w call
 body
+	tst.l d5
+	bmi.w none
 	tst.w State.Open(a2)
 	beq.w none
 	tst.w d5
@@ -358,7 +375,8 @@ done
 	movem.l (sp)+, d1-d5/a0-a4
 	tst.l d0
 	rts
-	.bend  ; role
+	.bend  ; classifyRole
+	.pub
 
 ; A0=scope,A1=templates,D0=call ID. Read-only exact-definition hint for
 ; a selected rename whose leaf differs. D0/CCR=status,D1=index cursor.

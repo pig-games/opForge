@@ -6,6 +6,8 @@
 	.use experimental.amigaos.binary_package as pkg
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as exprvm
+	.use prvm.amigaos.abi as dataabi
+	.use prvm.amigaos.macro_runtime as datavm
 	.use experimental.amigaos.binary_encoding as encoding
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_source as source
@@ -664,6 +666,8 @@ directive
 	beq.w align
 	cmp.w pkg.Header.ResDirective(a3), d0
 	beq.w reserve
+	cmp.w pkg.Header.EmitDirective(a3), d0
+	beq.w packedData
 	moveq #1, d6
 	cmp.w pkg.Header.ByteDirective(a3), d0
 	beq.w data
@@ -674,6 +678,9 @@ directive
 	cmp.w pkg.Header.LongDirective(a3), d0
 	beq.w data
 	bra.w bad
+packedData
+	bsr.w emitData
+	bra.w done
 cpu
 	bsr.w name
 	bne.w bad
@@ -1089,7 +1096,7 @@ fail
 	rts
 	.bend  ; name
 
-; A0=bytes,D0=count,A2=Context. Updates PC and Used; only pass two copies output.
+; A0=bytes (zero means zero-fill),D0=count,A2=Context. Updates PC and Used; only pass two copies output.
 ; D0=status; other registers preserved. CCR reflects D0.
 emit	.block
 	movem.l d1-d4/a0-a3, -(sp)
@@ -1130,6 +1137,8 @@ checked
 	adda.l d1, a1
 	tst.l d0
 	beq.w ok
+	move.l a0, d3
+	beq.w zeroCopy
 copy
 	move.b (a0)+, (a1)+
 	subq.l #1, d0
@@ -1137,6 +1146,11 @@ copy
 ok
 	moveq #0, d0
 	bra.w done
+zeroCopy
+	clr.b (a1)+
+	subq.l #1, d0
+	bne.w zeroCopy
+	bra.w ok
 fail
 	moveq #1, d0
 done
@@ -1145,5 +1159,6 @@ done
 	rts
 	.bend  ; emit
 
+	.include "binary_data_emit.asm"
 	.endsection
 	.endmodule

@@ -1610,11 +1610,30 @@ pub const PARSER_VM_MACRO_VERSION: u16 = 2;
 pub const PARSER_VM_PACKED_MACRO_ENTRY: u16 = 3;
 pub const PARSER_VM_MACRO_FRAGMENT_ENTRY: u16 = 4;
 pub const PARSER_VM_PACKED_FILE_ENTRY: u16 = 5;
+pub const PARSER_VM_PACKED_DATA_ENTRY: u16 = 6;
 
 /// Package-owned directive identity for one decoded file operand.
 pub fn packed_file_program(directive: u16) -> Vec<u8> {
     let [high, low] = directive.to_be_bytes();
     vec![0x90, 1, 0x91, high, low, 0x92, 0x83, 0]
+}
+
+/// Shared built-in data directive grammar; identities and word width are package inputs.
+pub fn packed_data_program(
+    directive: u16,
+    byte: u16,
+    word: u16,
+    long: u16,
+    word_bytes: u16,
+) -> Vec<u8> {
+    let mut program = vec![0x93, 1, 0x94];
+    program.extend(directive.to_be_bytes());
+    program.push(0x95);
+    for value in [byte, word, long, word_bytes] {
+        program.extend(value.to_be_bytes());
+    }
+    program.extend([0x83, 0]);
+    program
 }
 
 /// Operands select envelope grammar and delimiter/default policy; never ignored.
@@ -1632,6 +1651,9 @@ pub enum MacroDescriptorOpcode {
     FileEnvelope = 0x90, // flags:u8 (optional normalized label prefix)
     FileDirective = 0x91, // selected numeric directive:u16 big-endian
     FileOperand = 0x92,  // one nonempty decoded string
+    DataEnvelope = 0x93, // flags:u8 (optional normalized label prefix)
+    DataDirective = 0x94, // selected numeric directive:u16 big-endian
+    DataOperands = 0x95, // byte/word/long IDs:u16, word bytes:u16
 }
 
 pub fn packed_macro_call_program() -> Vec<u8> {

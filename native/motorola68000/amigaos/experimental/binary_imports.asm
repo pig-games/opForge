@@ -128,10 +128,8 @@ release	.block
 captureConstant	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
-	moveq #0, d0
-	move.w layout.MODULE_STATE+modules.State.Active(a6), d0
-	cmp.w layout.State.Current(a6), d0
-	bne.w constantOk
+	; Known scalar values remain keyed by their lexical source IDs. Keeping
+	; local assignments here also serves first-pass unit/conditional consumers.
 	moveq #0, d0
 	move.b (a0), d0
 	addq.w #1, d0

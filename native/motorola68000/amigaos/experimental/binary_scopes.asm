@@ -433,6 +433,15 @@ declaration
 	move.w 1(a0), d7
 	cmpi.b #34, 4(a0)
 	beq.w assignment
+	movem.l a0/d0, -(sp)
+	moveq #0, d0
+	move.w 1(a0), d0
+	sub.w layout.State.Base(a6), d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a0
+	adda.l d0, a0
+	ori.w #records.LABEL_VALUE, records.Entry.Flags(a0)
+	movem.l (sp)+, a0/d0
 	addq.l #5, a0
 	bra.w statement
 assignment
@@ -560,7 +569,11 @@ block
 	bsr.w openScope
 	bne.w done
 	tst.w d5
-	bne.w done
+	beq.w addressBlock
+	; Macro hygiene changes lexical binding only; its generated scope name
+	; is not an address label to define again during counted replay.
+	bra.w empty
+addressBlock
 	ori.b #source.FLAG_BLOCK_OPEN, 1(a5)
 	bra.w done
 namespace

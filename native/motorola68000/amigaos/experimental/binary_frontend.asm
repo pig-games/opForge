@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_prepare as prepare
+	.use experimental.amigaos.binary_data_prepare as data_prepare
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_structs as structs
@@ -345,6 +346,8 @@ line	.block
 	movea.l Frame.Package(a5), a1
 	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
 	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
+	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
+	clr.w writer.Frame.Reserved(a0)
 	lea PACKED_MAP(a6), a1
 	move.l a1, writer.Frame.PackedMap(a0)
 	.MEMORY_DETAIL_BEGIN #0
@@ -555,6 +558,8 @@ fragmentLine	.block
 	movea.l Frame.Package(a5), a3
 	move.w package.Header.CpuDirective(a3), writer.Frame.NameDirective(a0)
 	move.w package.Header.ResDirective(a3), writer.Frame.WidthDirective(a0)
+	move.w package.Header.EmitDirective(a3), writer.Frame.DataWidthDirective(a0)
+	clr.w writer.Frame.Reserved(a0)
 	lea PACKED_MAP(a6), a3
 	move.l a3, writer.Frame.PackedMap(a0)
 	jsr writer.writeLine
@@ -887,6 +892,8 @@ relexGeneratedCall	.block
 	movea.l Frame.Package(a5), a1
 	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
 	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
+	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
+	clr.w writer.Frame.Reserved(a0)
 	clr.l writer.Frame.PackedMap(a0)
 	jsr writer.writeLine
 	bne.w generatedRelexBad
@@ -1047,6 +1054,11 @@ conditionReady
 	tst.l d1
 	bne.w graphLineDone  ; callback published its numeric data and graph bytes
 	.MEMORY_STAGE #4
+	movea.l Frame.Output(a5), a0
+	movea.l Frame.Package(a5), a1
+	lea SCOPE_STATE(a6), a2
+	jsr data_prepare.check
+	bne.w failed
 	movea.l Frame.Output(a5), a0
 	lea PREPARED_LINE(a6), a1
 	movea.l Frame.Package(a5), a2
@@ -1650,6 +1662,23 @@ memberBound
 	btst #package.DICTIONARY_MEMBER_BIT, package.DictionaryEntry.Roles(a3)
 	beq.w findSymbol
 packageBound
+	cmpi.l #2, d5
+	bne.w fixedPackageName
+	; Dot heads belong to shared directives/templates, including names that
+	; also occur in a CPU package. Declared templates take lexical precedence.
+	movea.l a6, a4
+	adda.l #TEMPLATE_STATE, a4
+	tst.w templates.State.Count(a4)
+	beq.w fixedPackageName
+	movem.l d1-d2/a3, -(sp)
+	bsr.w templateIdentity
+	tst.l d0
+	bne.w noTemplateIdentity
+	adda.w #12, sp
+	bra.w good
+noTemplateIdentity
+	movem.l (sp)+, d1-d2/a3
+fixedPackageName
 	moveq #0, d2
 	move.b 4(a3), d2
 	bra.w good
@@ -1690,6 +1719,47 @@ done
 	movem.l (sp)+, d3-d7/a2-a6
 	rts
 	.bend  ; bind
+; Probe only a declared template; a failed probe retains the package identity.
+; A2/D6=lexeme,A6=session scratch. D0=status,D1/D2=source ID/qualifier.
+templateIdentity	.block
+	movem.l d3-d7/a0-a6, -(sp)
+	suba.w #12, sp
+	movea.l a2, a0
+	move.l d6, d0
+	lea SCOPE_STATE(a6), a1
+	move.l layout.State.FirstBound(a1), d7
+	jsr scopes.bind
+	move.l d7, layout.State.FirstBound(a1)
+	tst.l d0
+	bne.w bad
+	move.b #8, (sp)
+	move.b #1, 1(sp)
+	clr.w 2(sp)
+	move.b #7, 4(sp)
+	clr.b 5(sp)
+	move.w d1, 6(sp)
+	move.b d2, 8(sp)
+	movea.l sp, a0
+	lea SCOPE_STATE(a6), a1
+	movea.l a6, a2
+	adda.l #TEMPLATE_STATE, a2
+	jsr templates.knownRole
+	cmpi.l #1, d0
+	bne.w bad
+	moveq #0, d1
+	move.w 6(sp), d1
+	moveq #0, d2
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	adda.w #12, sp
+	movem.l (sp)+, d3-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; templateIdentity
+
 ; Case-insensitive ASCII hash shared by dictionary construction and binding.
 ; A0/D0=bytes/count; D0=8-bit bucket. Clobbers D1-D3/A0; other registers kept.
 hash	.block

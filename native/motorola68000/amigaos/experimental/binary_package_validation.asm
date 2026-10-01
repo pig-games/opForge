@@ -1,4 +1,5 @@
-; Shared structural boundary for embedded and external BS13 packages.
+; @opforge-owner: experimental.amigaos.binary_package_validation
+; Shared structural boundary for embedded and external BS14 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -17,7 +18,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS13 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS14 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -128,6 +129,20 @@ programLoop
 	subq.l #1, d6
 	bra.w programLoop
 preparation
+	moveq #0, d0
+	move.w package.Header.EmitDirective(a4), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	tst.w package.Header.WordBytes(a4)
+	beq.w bad
+	move.l package.Header.DataPlan(a4), d0
+	btst #0, d0
+	bne.w bad
+	move.l package.Header.DataPlanBytes(a4), d1
+	cmpi.l #16, d1
+	bne.w bad
+	bsr.w span
+	bne.w bad
 	move.l d4, d3
 	move.l d7, d4
 	move.l package.Header.DictionaryCount(a4), d6

@@ -46,8 +46,10 @@ SourceBytes	.long ?
 NameDirective	.word ?  ; package ID whose first operand uses the binder; 0 disables
 WidthDirective	.word ?  ; package ID whose first comma-separated operand is a width; 0 disables
 PackedMap	.long ?  ; optional Count+1 u16 packed offsets
+DataWidthDirective	.word ?  ; second configured width operand directive
+Reserved	.word ?
 	.endstruct
-FRAME_BYTES = Frame.PackedMap+4
+FRAME_BYTES = Frame.Reserved+2
 
 Token	.struct
 Kind	.word ?
@@ -312,7 +314,13 @@ widthOperand
 	bsr.w nameOperand
 	moveq #0, d2
 	tst.l d0
+	bne.w widthIdentity
+	move.w Frame.DataWidthDirective(a5), d2
+	bsr.w nameOperand
+	moveq #0, d2
+	tst.l d0
 	beq.w restoreLength
+widthIdentity
 	moveq #BIND_ROLE_WIDTH, d2
 restoreLength
 	move.l d6, d0

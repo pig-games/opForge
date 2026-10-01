@@ -58,7 +58,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS13 represents one CPU/dialect pipeline and carries its canonical
+Current BS14 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -114,7 +114,7 @@ optimization or full CPU/language parity. Stop to investigate a real functional
 or capacity blocker. Keep the external-output bundle path working. P3 remains
 separate.
 
-The full current-source embedded build now passes fresh FS-UAE START/DONE,
+The recorded BS13 embedded build passes fresh FS-UAE START/DONE,
 exit zero and exact comparison against the live Rust Hunk. The 69 input files
 contain 768,109 text bytes and one 299,104-byte package asset (1,067,213 bytes
 total), fingerprint `fnv1a64:81fdeed3c3f5b3c1`. Rust assembly before and after
@@ -147,7 +147,8 @@ pass. The aggregate native gate still fails on 13 pre-existing missing ownership
 annotations in unchanged native modules; it is not reported as green.
 
 The hardware bundle is `/tmp/opforge-a6000-bs13-embedded-selfhost-v2`, also selected
-by `/tmp/opforge-a6000-current`. The usual Mac Terminal command remains:
+by `/tmp/opforge-a6000-current` at that checkpoint. The BS14 slice below updates
+the pointer. The usual Mac Terminal command remains:
 
 ```sh
 python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
@@ -187,6 +188,79 @@ using identical configured source on Rust/native and exact complete self-build
 outputs. Packages remain project-independent prepared assets. Iterable `.for`,
 nested compound values and broader language parity are separately reviewable;
 do not silently implement a catalog-only list evaluator or source-text fallback.
+
+### Built-in `.emit` — implementation and focused qualification
+
+The compact path implements `.emit unit,value[,value...]` over packed source.
+The package supplies numeric byte/word/long identities and CPU word width; shared
+PRVM entry 6 selects unit/value spans and ExprVM evaluates scalars. Data grammar
+never enters a CPU operand parser. Preparation checks unit symbol availability
+in declaration order; later value references may resolve during assembly.
+Values follow Rust scalar-to-u32 conversion, strict width overflow below four
+bytes and zero extension above four in target byte order. BSS rejects emission;
+Hunk preserves supported 32-bit affine relocations and rejects unsupported
+address arithmetic or non-literal relocation-bearing unit forms.
+
+BS14 migrates producer, consumers, exports and the hardware runner together,
+without a legacy executor. Its retained 16-byte data plan uses envelope,
+directive and operand opcodes `0x93`–`0x95`, then publish/end `0x83`/`0x00`.
+The atomic 32-byte result contains kind 18, unit offset/length at 4/8, value
+span at 12/16, fixed width at 20 and optional label-prefix length at 24.
+Offsets are relative to the packed record. The shared invocation wrapper counts
+telemetry; disabled telemetry emits no instrumentation code. Execution uses
+bounded stack scratch and existing output/relocation owners.
+
+Integration also corrects lexical template precedence for dot-prefixed names
+that occur in package dictionaries. A declared macro named `emit` keeps precedence;
+`pack` is likewise a template call even when PACK is an instruction mnemonic.
+Generated macro hygiene scopes no longer publish repeated address labels, and
+counted replay accepts their empty packed scope records, including `.for 0`.
+These are shared binding/scope repairs, with no target spelling special cases.
+
+Fresh positive FS-UAE cases match complete live Rust artifacts for both byte
+orders, canonical/colon labels, named/expression widths, earlier labels and `$`,
+forward data values, zero/repeated macro expansion, template precedence and
+CODE/DATA Hunk relocation payloads. Fourteen overflow/grammar/forward-unit/BSS
+cases and four unsupported Hunk cases are covered by explicit negative tests.
+All 18 negative cases complete freshly with exit 20 and the required native
+rejection diagnostic. The five positive cases exit zero and match their complete
+live Rust artifacts. These focused results are not full language parity or a
+fresh full native self-host proof.
+Host checks pass: 475 VM tests, 101 package tests, 243 packed-source tests,
+four package-builder tests and 19 hardware-runner unit tests. All 16 registered
+pipeline packages generate; six still lack instruction candidates, which is
+not full CPU parity. Workflow, formatting, invocation, proof, test ownership and
+instrumentation guards pass. The aggregate native gate retains 11 pre-existing
+missing ownership annotations in untouched modules; it is not green.
+
+The same 10,687-byte, two-module/64-block workload produces the exact live
+2,434-byte Rust result in each uninstrumented comparison, using 68020 / 10 MiB
+FS-UAE with unlimited CPU speed. The frozen preceding image is `d875ad3a`'s
+BS13 external-default release with its own package; current execution uses BS14.
+
+| Release | Native seconds (two samples) | Median seconds | Image / reserved bytes | Package bytes |
+| --- | --- | ---: | ---: | ---: |
+| Before this slice | 7.6096, 7.6052 | 7.6074 | 96,572 / 108,460 | 299,104 |
+| Built-in `.emit` slice | 7.8588, 7.8451 | 7.8520 | 99,400 / 111,244 | 299,142 |
+
+The observed overhead is 0.2446 seconds (3.22%), plus 2,828 image bytes,
+2,784 linked reserved bytes and 38 package bytes. START/DONE is host-observed
+command time; the small timing delta is close to polling resolution. Two samples
+do not establish a statistically precise slowdown. This workload measures the
+integrated capability's cost on existing source, not `.emit` versus `.byte` speed.
+Earlier optimization gains are separate. Raw logs are retained locally at
+`/tmp/opforge-emit-perf-before.log` and `/tmp/opforge-emit-perf-after.log`.
+
+A fresh m68020-embedded bundle is `/tmp/opforge-a6000-bs14-emit`, selected by
+`/tmp/opforge-a6000-current`. Rust assembles the original and relocated configured
+source identically; the hardware runner validates the current sources and bundle.
+It contains 72 inputs totaling 1,089,123 bytes, including its 299,142-byte package
+asset, fingerprint `fnv1a64:243daf02bc9e77df`. Bootstrap and oracle are the same
+398,544-byte embedded Hunk (410,388 linked reserved bytes). No full BS14 native
+self-host run or physical A6000 timing has been performed in this slice.
+The normal hardware command above uses this fresh bundle. The older BS13 full
+self-host results remain their own evidence. List bindings, native arbitrary
+package embedding and multi-package source switching remain deferred.
 
 ### Completed prerequisite — shared binary inclusion before P3
 
@@ -334,16 +408,18 @@ outside this provisional interface.
 
 Catalog lookup, acquisition/ownership, structural validation and assembly are
 separate modules. Catalog and package offsets are relative to their stated bases.
-Both storage modes use identical BS12 bytes and the same validator. External
+Both storage modes use identical current package bytes and the same validator. External
 allocations are owned and released; embedded image bytes are borrowed and never
 freed. A matching invalid embedded payload fails; it does not silently fall back.
 After preparation, both modes still copy the execution prefix and discard lexical
 storage. The whole embedded payload remains part of the executable image, so
 tracked allocation savings alone do not establish lower total RAM use.
 
-BS13 uses a 140-byte header. The canonical target offset remains at 124, its
+BS14 uses a 152-byte header. The canonical target offset remains at 124, its
 length at 128 and the reserved word at 130; the preparation-only file plan offset
-and byte length are at 132 and 136. Fields are big-endian and block-relative.
+and byte length are at 132 and 136. Built-in `.emit` identity is at 140, CPU
+word bytes at 142, and the retained data-plan offset/length at 144/148. Fields
+are big-endian and block-relative.
 Target identity lies inside `RuntimeBytes`, survives preparation, uses safe
 filename characters and fits in 26 bytes (plus `.bin`, within the classic
 30-byte component limit). The current slice loads assets only from active,
@@ -366,7 +442,7 @@ DATA directives and compact Hunk provenance now recognize cancellation of equal
 section bases; unrelated section bases still reject. Instruction fixups evaluate
 their scalar before relocation proof, defer unresolved pass-one identities, and
 recognize cancelled bases during pass-two reference accounting. Compact `.emit` preparation
-remains a language gap; this slice uses `.byte`, `.word` and `.long` for its native
+was a language gap at P2; that slice used `.byte`, `.word` and `.long` for its native
 offset proof. The Rust repair also covers `.emit long`.
 The compact frontend rejects the operand form `#'a'-'A'`; the catalog uses a named
 numeric ASCII case offset with identical emitted code.

@@ -89,7 +89,7 @@ fn dictionary_offsets(wire: &[u8]) -> BTreeMap<String, usize> {
 #[test]
 fn compact_mnemonic_dictionary_roles() {
     let wire = wire();
-    assert_eq!(&wire[..4], b"BS13");
+    assert_eq!(&wire[..4], b"BS14");
     let offsets = dictionary_offsets(&wire);
     for spelling in ["reset", "word", "m68020", "68020"] {
         assert_eq!(wire[offsets[spelling] + 5], 0, "{spelling} is contextual");

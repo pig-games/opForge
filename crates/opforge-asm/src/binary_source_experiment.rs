@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use package::{
     decode_encoding_program, macro_descriptor_program, macro_fragment_program,
-    macro_spelling_program, packed_file_program, packed_macro_call_program, validate_fixup_program,
-    EncodingStep,
+    macro_spelling_program, packed_data_program, packed_file_program, packed_macro_call_program,
+    validate_fixup_program, EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -15,7 +15,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 140;
+const HEADER: usize = 152;
 const ROW: usize = 32;
 const SCALAR_EXACT_IDENTITY: u16 = 1;
 
@@ -102,7 +102,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS13 block for one resolved package hierarchy.
+/// Prepare a self-contained BS14 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -247,6 +247,14 @@ pub fn prepare_package(
         )?;
         directive_ids.push(id);
     }
+    let emit_id = intern(&mut names, "emit")?;
+    bind(
+        &mut dictionary,
+        "emit".into(),
+        emit_id,
+        0,
+        DictionaryRoleFlags::CONTEXTUAL,
+    )?;
     let file_id = intern(&mut names, "incbin")?;
     bind(
         &mut dictionary,
@@ -331,7 +339,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS13");
+    out[..4].copy_from_slice(b"BS14");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -388,6 +396,20 @@ pub fn prepare_package(
     align(&mut out);
     let target_offset = out.len();
     out.extend_from_slice(target.as_bytes());
+    align(&mut out);
+    let data_offset = out.len();
+    let word_bytes = word(properties.word_size_bytes as usize)?;
+    if word_bytes == 0 {
+        return Err("binary-source word size must be positive".into());
+    }
+    let data_plan = packed_data_program(
+        emit_id,
+        directive_ids[2],
+        directive_ids[3],
+        directive_ids[4],
+        word_bytes,
+    );
+    out.extend_from_slice(&data_plan);
     align(&mut out);
     let runtime_bytes = long(out.len())?;
     let dictionary_offset = out.len();
@@ -477,6 +499,8 @@ pub fn prepare_package(
         (124, long(target_offset)?),
         (132, long(file_offset)?),
         (136, long(file_plan.len())?),
+        (144, long(data_offset)?),
+        (148, long(data_plan.len())?),
     ] {
         set_long(&mut out, offset, value);
     }
@@ -490,6 +514,8 @@ pub fn prepare_package(
         };
         set_word(&mut out, offset, *id);
     }
+    set_word(&mut out, 140, emit_id);
+    set_word(&mut out, 142, word_bytes);
     set_word(&mut out, 60, cpu_id);
     set_word(&mut out, 62, total_names);
     set_word(&mut out, 64, u16::from(properties.data_little_endian));

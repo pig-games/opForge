@@ -102,12 +102,14 @@ skipLine
 	moveq #0, d0
 	move.b (a0), d0
 	addq.w #1, d0
-	cmpi.w #9, d0
+	cmpi.w #4, d0
 	blo.w invalid
 	movea.l a0, a4
 	adda.w d0, a4
 	cmpa.l a6, a4
 	bhi.w invalid
+	cmpi.w #9, d0
+	blo.w skipNext
 	cmpi.b #7, 4(a0)
 	bne.w skipNext
 	cmpi.b #1, 5(a0)
@@ -156,6 +158,8 @@ ordinary
 	; column-one name is a label; explicit ':' and '=' are labels at any indent.
 	tst.w State.Depth(a3)
 	beq.w ordinaryReady
+	cmpi.w #9, d0
+	blo.w ordinaryReady
 	cmpi.b #1, 4(a5)
 	bhi.w ordinaryReady
 	btst #0, 1(a5)

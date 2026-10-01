@@ -35,6 +35,7 @@ pub mod output_artifacts;
 pub(crate) mod output_components;
 pub(crate) mod output_hunk;
 pub mod output_model;
+pub mod packed_data_vm;
 pub mod packed_file_vm;
 pub mod packed_macro_vm;
 pub mod portable_contract;

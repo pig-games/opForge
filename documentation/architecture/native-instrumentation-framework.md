@@ -65,6 +65,9 @@ preserve registers/CCR, never use request/output/error buffers, and keep a bound
 2280-byte record. The terminal export writes that record separately as `Work:memory.bin`;
 a missing/partial record fails the host accounting check. Ordinary release builds
 perform no accounting I/O.
+`OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT` selects relative `memory.bin` instead,
+for a physical run whose Shell current directory owns its inputs and results.
+It changes only the instrumented export path; the default emulator path is retained.
 
 The current MEMD record (magic `0x4D454D44`) starts with sixteen big-endian u32 fields: magic, live capacity, peak live
 capacity, cumulative allocated, cumulative freed, live after preparation, cumulative

@@ -58,7 +58,11 @@ PROGRESS_BYTES = 64; five fixed eight-digit fields and a newline
 .endif
 	.section data, kind=data
 	.priv
+.ifdef OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT
+Path	.byte "memory.bin", 0
+.else
 Path	.byte "Work:memory.bin", 0
+.endif
 TimerName	.byte "timer.device", 0
 .ifdef OPFORGE_PREPARATION_PROGRESS
 ProgressLine	.byte "progress p="

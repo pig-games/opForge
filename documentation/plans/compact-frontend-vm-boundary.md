@@ -101,6 +101,34 @@ and the exact output. Environment capture reports Kickstart
 51.51, Workbench 40.0 and a 65,536-byte stack; no CPU clock measurement or 2 MiB
 memory qualification was performed.
 
+For a separate fully instrumented compact build, set
+`OPFORGE_COMPACT_EXPORT_INSTRUMENTED=1` alongside a new
+`OPFORGE_COMPACT_EXPORT_DIR` when running `export_compact_self_host_bundle`.
+The export builds a fresh release oracle first, then enables the existing memory,
+phase/progress, token-detail, binding-detail, template-work and input probes in
+the bootstrap. Its manifest records all build defines and separate bootstrap and
+oracle identities. The current instrumented bootstrap is 98,780 bytes, with
+110,736 linked reserved bytes; the 61-file source manifest, 299,048-byte runtime
+package and 89,880-byte release oracle are identical to the physical release case.
+
+The prepared local instrumented bundle can be run from macOS Terminal with:
+
+```sh
+python3 scripts/performance/run_a6000_selfhost.py --bundle /tmp/opforge-a6000-compact-instrumented-export
+```
+
+Instrumentation writes relative `memory.bin` inside the isolated `Development:`
+run directory. The script requires no pre-existing outputs or telemetry, verifies
+the full release Hunk as before, then decodes the current MEMD record into
+`instrumented_memory` in `result.json`. It reports `assembly_success` separately
+from `telemetry_completed`; overall success additionally requires balanced tracked
+ownership, zero profiling/allocation errors and valid phase/stage clocks. Nested
+token/binding observations must not be added to exclusive preparation stages.
+These measurements include potentially substantial hot-probe overhead. The two
+15-second release runs remain the release baseline. The instrumented export,
+16 focused Python checks and both release/instrumented dry runs pass; physical
+execution of the instrumented bootstrap is pending.
+
 ## Ownership and representation contracts
 
 The compact path is a package-directed execution path. Rust and the canonical package define semantic behavior; native code executes bounded shared primitives and package-selected operations. Update package producers and consumers together and retain only the latest supported format; version identifiers detect mismatches and do not require compatibility executors.

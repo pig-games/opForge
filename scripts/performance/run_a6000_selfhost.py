@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run the prepared compact self-host bundle from macOS Terminal via acp/ash.
 
-The native assembler is unchanged. Transfers are outside the timing window.
+The export selects a release or instrumented bootstrap and a release oracle.
+Transfers are outside the timing window.
 Each invocation keeps its own local results and Development: directory.
 """
 
@@ -16,6 +17,15 @@ import tempfile
 import time
 import uuid
 
+from memory_telemetry import decode_memory_telemetry
+
+INSTRUMENTATION_DEFINES = {
+    "OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
+    "OPFORGE_TOKEN_DETAIL_TELEMETRY", "OPFORGE_PREPARATION_PROGRESS",
+    "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
+    "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+}
+
 
 def fnv(data):
     value = 0xCBF29CE484222325
@@ -29,7 +39,17 @@ def load_bundle(bundle):
     if manifest["release_defines"] or manifest["filename_mapping"] != (
         "identity; source include literals are unchanged"
     ):
-        raise ValueError("Require the unchanged, uninstrumented release export")
+        raise ValueError("Require unchanged source filenames and a release output oracle")
+    defines = set(manifest.get("bootstrap_defines", []))
+    if defines:
+        required = {"OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
+                    "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"}
+        if not required <= defines or not defines <= INSTRUMENTATION_DEFINES:
+            raise ValueError("Unsupported bootstrap instrumentation defines")
+        if manifest.get("telemetry_file") != "memory.bin":
+            raise ValueError("Instrumented export must write local memory.bin")
+    elif manifest.get("telemetry_file"):
+        raise ValueError("Release export must not require telemetry")
     if not manifest["classic_filename_compatible"]:
         raise ValueError("Bundle has filenames over 30 bytes; regenerate the corrected export")
     files = {}
@@ -49,18 +69,25 @@ def load_bundle(bundle):
     if fnv(identity) != manifest["source_manifest_digest"]:
         raise ValueError("Source manifest mismatch")
     oracle = (bundle / "oracle.hunk").read_bytes()
+    bootstrap = (bundle / "opforge").read_bytes()
     package = (bundle / "p.bin").read_bytes()
-    if fnv(oracle) != manifest["release_hunk_digest"] or oracle != (bundle / "opforge").read_bytes():
+    if fnv(oracle) != manifest["release_hunk_digest"]:
+        raise ValueError("Release oracle mismatch")
+    if fnv(bootstrap) != manifest.get("bootstrap_hunk_digest", manifest["release_hunk_digest"]):
+        raise ValueError("Bootstrap digest mismatch")
+    if not defines and bootstrap != oracle:
         raise ValueError("Release bootstrap/oracle mismatch")
     if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS11":
         raise ValueError("Runtime package mismatch")
-    files.update({"opforge": oracle, "p.bin": package})
+    files.update({"opforge": bootstrap, "p.bin": package})
     command = manifest["command"]
     if command != (bundle / "command.txt").read_text().strip():
         raise ValueError("Assembly command mismatch")
     if not re.fullmatch(r"[A-Za-z0-9_./ -]+", command) or not command.startswith("opforge p.bin "):
         raise ValueError("Unsafe assembly command")
     identity.extend(b"m68020\0" + command.encode() + b"\0" + package + b"\0" + oracle)
+    if defines:
+        identity.extend(b"\0instrumented-bootstrap\0" + bootstrap)
     return manifest, files, oracle, hashlib.sha256(identity).hexdigest()
 
 
@@ -89,6 +116,12 @@ def verify_files(root, files):
         path = root / name
         if not path.is_file() or path.read_bytes() != data:
             raise ValueError(f"Remote copy differs or is missing: {name}")
+
+
+def verify_fresh_directory(root):
+    for name in ("output.hunk", "memory.bin", "start.marker", "done.marker", "exitcode"):
+        if (root / name).exists():
+            raise ValueError(f"Pre-run directory contains an old result: {name}")
 
 
 def guest_seconds(start, end, host_seconds):
@@ -130,6 +163,33 @@ def inspect_result(root, files, oracle, marker, host_seconds):
         "host_command_seconds_including_connection": host_seconds,
         "success": rc == 0 and matched,
     }
+
+
+def add_telemetry(result, root, manifest):
+    defines = manifest.get("bootstrap_defines", [])
+    result.update({"measurement_mode": "instrumented" if defines else "release",
+                   "bootstrap_defines": defines})
+    if not defines:
+        return
+    result["assembly_success"] = result["success"]
+    try:
+        memory = decode_memory_telemetry((root / "memory.bin").read_bytes())
+    except (OSError, ValueError) as error:
+        result.update({"instrumented_memory": None, "telemetry_completed": False,
+                       "telemetry_error": str(error), "success": False})
+        return
+    diagnostics = memory["diagnostics"]
+    if memory["allocation_failure_count"]:
+        diagnostics.append("allocation failures recorded")
+    preparation = memory["instrumented_preparation_seconds"]
+    assembly = memory["instrumented_assembly_seconds"]
+    if preparation is None or assembly is None:
+        diagnostics.append("missing or invalid phase clocks")
+    stages = memory["preparation_stage_seconds"]
+    if preparation is not None and stages is not None and abs(stages - preparation) > 0.040001:
+        diagnostics.append("exclusive stage clocks disagree with preparation by more than 40 ms")
+    result.update({"instrumented_memory": memory, "telemetry_completed": not diagnostics,
+                   "success": result["success"] and not diagnostics})
 
 
 def main():
@@ -178,6 +238,7 @@ def main():
     run([acp, "-r", f"{args.host}:{args.volume}/{name}", str(copied)])
     verify_files(copied / name, files)
     verify_files(copied / name, {"run-selfhost": (stage / "run-selfhost").read_bytes()})
+    verify_fresh_directory(copied / name)
     print("Remote source, package, bootstrap and script verified. Starting native self-host.", flush=True)
     started = time.monotonic()
     try:
@@ -190,6 +251,7 @@ def main():
     captured.mkdir()
     run([acp, "-r", f"{args.host}:{args.volume}/{name}", str(captured)])
     result = inspect_result(captured / name, files, oracle, marker, elapsed)
+    add_telemetry(result, captured / name, manifest)
     if not result["success"]:
         diagnostic = captured / name / "assembly.stdout"
         if diagnostic.is_file():

@@ -17,6 +17,16 @@ const MODULE_ROOTS: &[&str] = &[
     "opcore",
     "opasm",
 ];
+const INSTRUMENTED_DEFINES: &[&str] = &[
+    "OPFORGE_DEBUG_CONTRACTS",
+    "OPFORGE_MEMORY_TELEMETRY",
+    "OPFORGE_TOKEN_DETAIL_TELEMETRY",
+    "OPFORGE_PREPARATION_PROGRESS",
+    "OPFORGE_BINDING_DETAIL_TELEMETRY",
+    "OPFORGE_TEMPLATE_WORK_TELEMETRY",
+    "OPFORGE_INPUT_TELEMETRY",
+    "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+];
 
 #[test]
 #[ignore = "host-only export; requires a new OPFORGE_COMPACT_EXPORT_DIR"]
@@ -62,11 +72,34 @@ fn export_compact_self_host_bundle() {
     ]);
     let cli = Cli::parse_from(args);
     let mut config = validate_cli(&cli).expect("validate live release self-build");
+    assert!(
+        config.defines.is_empty(),
+        "release oracle requires no defines"
+    );
     config.out_dir = Some(scratch.clone());
     run_with_validated_cli_with_context(&cli, &config).expect("fresh release self-build");
     let oracle = fs::read(scratch.join("build/opforge_compact")).unwrap();
     let allocation = hunk::allocation(&oracle).expect("strict release Hunk allocation");
     let dependency_text = fs::read_to_string(&dependencies).unwrap();
+    let instrumented = std::env::var("OPFORGE_COMPACT_EXPORT_INSTRUMENTED").as_deref() == Ok("1");
+    let bootstrap_defines = if instrumented {
+        INSTRUMENTED_DEFINES
+    } else {
+        &[]
+    };
+    let bootstrap = if instrumented {
+        config.defines = bootstrap_defines
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect();
+        run_with_validated_cli_with_context(&cli, &config)
+            .expect("fresh instrumented bootstrap build");
+        fs::read(scratch.join("build/opforge_compact")).unwrap()
+    } else {
+        oracle.clone()
+    };
+    let bootstrap_allocation =
+        hunk::allocation(&bootstrap).expect("strict bootstrap Hunk allocation");
     let (_, prerequisites) = dependency_text
         .split_once(": ")
         .expect("Makefile dependency prerequisites");
@@ -170,6 +203,11 @@ fn export_compact_self_host_bundle() {
         "release_hunk_bytes": oracle.len(),
         "release_hunk_digest": opforge_self_host_package_digest(&oracle),
         "release_hunk_allocation_bytes": allocation.total(),
+        "bootstrap_defines": bootstrap_defines,
+        "bootstrap_hunk_bytes": bootstrap.len(),
+        "bootstrap_hunk_digest": opforge_self_host_package_digest(&bootstrap),
+        "bootstrap_hunk_allocation_bytes": bootstrap_allocation.total(),
+        "telemetry_file": instrumented.then_some("memory.bin"),
         "runtime_package_magic": "BS11",
         "runtime_package_bytes": package.len(),
         "runtime_package_digest": opforge_self_host_package_digest(&package),
@@ -185,7 +223,7 @@ fn export_compact_self_host_bundle() {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, bytes).unwrap();
     }
-    fs::write(output.join("opforge"), &oracle).unwrap();
+    fs::write(output.join("opforge"), &bootstrap).unwrap();
     fs::write(output.join("oracle.hunk"), &oracle).unwrap();
     fs::write(output.join("p.bin"), package).unwrap();
     fs::write(output.join("command.txt"), format!("{command}\n")).unwrap();
@@ -196,7 +234,7 @@ fn export_compact_self_host_bundle() {
     .unwrap();
     fs::write(
         output.join("README.txt"),
-        "Fresh local release export; no native run has occurred.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare output.hunk exactly with oracle.hunk.\nThe manifest records unchanged source bytes and identity filename mappings.\nCheck over_classic_limit_components: the destination filesystem must support\nthese exact filenames. Include literals have not been rewritten.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
+        "Fresh local self-host export; no native run has occurred.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare output.hunk exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation defines; an instrumented\nbootstrap writes memory.bin in its current directory. Its output is release.\nSource bytes and include filenames are unchanged. FNV digests identify inputs;\nexact artifact bytes remain the parity authority.\n",
     )
     .unwrap();
     drop(cleanup);
@@ -209,6 +247,8 @@ fn export_compact_self_host_bundle() {
             "source_bytes": manifest["source_bytes"],
             "source_manifest_digest": manifest["source_manifest_digest"],
             "release_hunk_bytes": oracle.len(),
+            "bootstrap_hunk_bytes": bootstrap.len(),
+            "bootstrap_defines": bootstrap_defines,
             "over_classic_limit_components": manifest["over_classic_limit_components"],
         })
     );

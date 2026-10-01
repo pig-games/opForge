@@ -1566,3 +1566,7 @@ mod sequence_wire_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "tests/compact_package_inventory.rs"]
+mod compact_package_inventory;

@@ -358,7 +358,7 @@ The maintained proof contract is [native Rust parity](../../agents/rules/native-
 
 ## Related current documentation
 
-- [Native runtime direction and migration plan](native-runtime-reset.md) owns the 68020 / 2 MiB product goal, memory direction and broader integration boundaries.
+- [Native assembler completion plan](native-runtime-reset.md) owns the 68020 / 2 MiB product goal, memory direction and broader integration boundaries.
 - [Workflow guide](../workflow/README.md) describes validation and artifact lifecycle.
 - [Canonical VM boundary](../vm-boundary-protocol-v1.md#3-canonical-boundary-matrix) defines which VM owns each grammar and operation.
 - [Package execution boundaries](package-execution-boundaries.md#outcome-and-scope) defines permitted shared execution primitives and package ownership.

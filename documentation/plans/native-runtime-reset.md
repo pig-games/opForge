@@ -1,2069 +1,240 @@
-# Native runtime direction and migration plan
-
-Status: active direction. The compact binary-source runtime now has a separate
-provisional Shell executable, but it implements only a bounded language subset and
-is not yet the normal native CLI path. Its current representation, measurements and
-reproduction details are in the
-[binary-source runtime note](prepared-source-experiment.md). Git history contains
-the completed W1–W3, R1 and M1–M8 investigation records.
-
-The active [operating contract](../../AGENTS.md),
-[workflow](../workflow/README.md),
-[native assembly guide](../../agents/rules/native-68000.md) and
-[native parity contract](../../agents/rules/native-rust-parity-porting.md) govern
-the work. This document records the current direction and active migration order;
-it does not grant authority for future steps by itself.
-
-## Product goal
-
-The native assembler should be able to assemble itself on any Amiga with a 68020,
-AmigaOS 3.1 or newer and 2 MiB installed RAM in at most 15 minutes, preferably much
-faster. Qualification must include source loading, preparation, layout and output
-in a runnable executable. Emulator results remain development evidence until a
-baseline clock, storage and physical machine are chosen and measured.
-
-Optimize the shared VM-based design across supported source targets. The 68020 is
-the execution-platform floor, not a reason to move CPU-family semantics into the
-native core. Rust remains the executable semantic reference and fast measurement
-laboratory. Native layouts should use simple bounded memory blocks suited to the
-platform rather than mirror Rust data structures.
-
-Canonical packages remain authoritative. A derived runtime package may later
-trade preparation time, size or CPU-specific layout for execution speed, but it
-must be reproducible from the current canonical package and may not become a
-second hand-maintained source of target semantics. Before 1.0, update producer and
-consumers together and retain only the latest bytecode or package contract.
-
-## Current architecture direction
-
-Use controlled replacement: keep the existing native CLI as a correctness
-reference while a compact path assumes one complete responsibility at a time.
-Each increment must assemble a meaningful case end to end, compare with live Rust,
-and identify which old work it makes unnecessary. Once the replacement is
-qualified and integrated, remove the superseded path rather than maintaining two
-native products indefinitely.
-
-The compact path has established these principles:
-
-- Tokenization produces the authoritative binary source line by line. Later
-  phases consume numeric identities, structured values and compact expression
-  programs; source text may be reread only to produce diagnostics.
-- Stored binary representations contain offsets or numeric IDs, never process
-  pointers. Every offset has a declared base and validated bounds, so moving a
-  block does not require patching it.
-- Instruction identities are normalized package-owned IDs. Aliases share an ID;
-  semantic qualifiers remain explicit and IDs are unrelated to machine opcodes.
-- Symbol identity, scoped binding and pass-dependent value are separate. Immutable
-  package/source preparation is kept apart from mutable layout, CPU state and
-  fixups.
-- Preparation scratch is released before assembly. Allocations use measured
-  requirements and bounded growth, with transient overlap included in accounting.
-- Conditional telemetry uses reusable macros and contributes no code, data or
-  imports to release builds. Instrumented work counts and release timing are
-  reported separately.
-
-New assembly should use opForge structs, macros, lists, loops and other language
-features where they improve clarity. Names inside a module should be short rather
-than repeat module qualification. Compact code and small files are design results,
-not line-count exercises.
-
-## Breadth migration plan
-
-The current priority is language breadth rather than another isolated hot-spot
-optimization. Each item is an inspectable increment, refined from evidence before
-implementation:
-
-1. **F1 — implemented: named constants and required expressions.** Added `name = expression`
-   for practical standalone routines. Resolve immutable constants at their pass-one
-   definition and verify the same value in pass two. Earlier constants, labels and
-   the program counter may be referenced; forward or otherwise deferred constant
-   dependencies reject explicitly in this fixed two-pass increment. Existing unary
-   `+`/`-` and binary `+`, `-`, `*` form the initial expression set.
-2. **F2 — implemented: package-owned operand shapes and predicates.** Carry the structural and
-   register and rejection predicates required by indexed/register operands through
-   the capsule and native selection boundary. Prove the same package-owned decision as Rust; do not accept
-   unchecked token pairs or add CPU-specific recognition to generic native code.
-3. **F3 — implemented: bit operations and forward absolute constants.** Added `&`, `|`,
-   `^`, `~`, `<<` and `>>` with canonical precedence, and resolved forward immutable
-   constant chains that are independent of layout. Detect cycles and missing names.
-   Keep definition-site PC/label-dependent constants source-ordered; broader
-   dependency/layout convergence follows as a separate increment.
-4. **F4/F5 — implemented: named blocks, namespaces and canonical labels.** Bind
-   nested scopes, parent and absolute qualified references to final numeric
-   identities during preparation, including forward local shadowing. F5 adds
-   namespace reopening, typed closes and canonical column-one bare labels.
-   **F6** extends preparation to sequential single-source modules, visibility and
-   fully qualified public cross-module references. **F7** adds explicitly ordered
-   physical files and module-local imports. Native discovery, dependency ordering
-   and include lifetime remain later work; do not restore string lookup during
-   assembly.
-5. **Source expansion.** Encode macro, conditional and loop syntax once as binary
-   records. Expansion and control flow that depend on layout, the program counter
-   or symbols must evaluate against the appropriate pass state without falling
-   back to source text. Preserve macro-instance and source provenance for binding
-   and diagnostics.
-6. **Structured language values.** Add structs, lists and the expression/value
-   forms needed by representative sources, using compact runtime representations.
-7. **General layout and emission.** Support sections, discontiguous origins,
-   relocation/fixups and convergence-sensitive instruction selection without
-   caching state-dependent results.
-8. **Product integration.** Feed the compact preparation/execution path from normal
-   native package loading and the CLI, qualify representative projects, then remove
-   the old responsibilities it replaces.
-
-Select cases for semantic coverage and realistic work, not because they happen to
-fit the implementation. Use more than one source-target family where the boundary
-is intended to be generic. A complete small case is preferable to a wide set of
-helpers that cannot produce an artifact Erik can inspect.
-
-## Module boundary before the next phase
-
-The module-focused phase has established compact CLI execution for explicit and
-file-derived modules, selected-file discovery and dependency order, common
-`.use` forms and visibility, selected includes, reference-driven named blocks,
-bounded mapped-section content, and scalar import-site parameters. Fresh exact
-Rust/native cases include successful output and rejection of missing/ambiguous
-imports, cycles, private names and invalid include paths. The host-prepared
-package boundary remains; native package generation is separate.
-
-Direct per-item `.use` aliases, implicit file identities, direct wildcard
-availability, and scalar configured parameters now have focused Rust/native
-cases. Conditional or generated module discovery, remaining include path forms,
-and general section-map composition depend on broader language and layout work.
-Do not claim full module parity while those forms are unsupported. The next
-phase returns to measured performance and broader assembler language support;
-revisit remaining module forms when those capabilities make them practical.
-Keep the binary-source representation and numeric graph so later assembly passes
-do not return to source strings.
-
-Rust now binds scalar `.use ... with (...)` values as private symbols in the
-imported module. It evaluates the expression in the importer from values known
-at the `.use` site; forward values fail. The compact native path now evaluates
-supported signed-32-bit scalar expressions from earlier module-scope `=`
-constants and incoming parameters. It carries their values by numeric symbol ID
-through preparation into assembly. Preparation now also filters nested `.if` /
-`.else` / `.endif` records using known module-scope scalar values inside a
-reached imported block. `.const`, compound values, loops, conditionals needing
-assembly-time values, and expressions outside the compact VM grammar remain
-broader language gaps. Do not claim full module or parameter parity yet.
-The [prepared-source experiment](prepared-source-experiment.md#module-parameter-checkpoint)
-tracks this parameter subset and its limitations.
-
-## Performance and language re-entry
-
-The [bounded compact-CLI baseline](prepared-source-experiment.md#bounded-compact-cli-baseline-after-module-work)
-now covers an imported instruction/data routine and a two-map structured-data
-control on both m6502 and m68000 packages. All four cases matched live Rust
-output in fresh 68020 / 2 MiB native runs. These are single, small-workload
-observations, not a self-host estimate or a measured optimization gain.
-Instrumented preparation points first to tokenizer VM work in both workloads;
-the mixed m68000 case also has substantial assembly time. Count tokenizer VM
-operations and attribute instruction selection/encoding before changing either
-path, then compare release builds on identical inputs. Keep telemetry conditional
-and use the existing reusable macros.
-
-The principal language blockers for larger representative sources are:
-
-- Macro, conditional, loop and `.statement` expansion, including provenance and
-  pass-dependent values. The [opcore examples](../../examples/opcore) exercise
-  these shared-language forms; they do not belong in CPU packages.
-- General section/output layout and binary inclusion. The
-  [AmigaOS raw-image example](../../examples/manual/motorola68000/amigaos/rawimageview_320x256x4_incbin.asm)
-  needs section attributes, `.incbin` and `.output` beyond the bounded mapped
-  sections already supported.
-- String and richer data values, followed by broader expression and deferred
-  layout behavior. These remain shared-language work; their exact order should
-  follow a small complete source that can be assembled and inspected.
-
-Base instruction rows for the two measured packages have not been shown to be
-the main breadth blocker. The next implementation choice should be made from
-the measured work counts and a concrete language case, preserving the normal
-native CLI as the reference while the compact path grows.
-
-The [full/compact CLI comparison](prepared-source-experiment.md#full-cli-comparison-attempt)
-now completes with exact output for an M6502/M68000 common-subset module/import
-workload. After the Rust Hunk-entry and M68K reference fixes, the full CLI took
-about 5 seconds for eight M6502 blocks, 13 seconds for 24 M6502 blocks and
-20 seconds for 24 M68000 blocks. The compact CLI completed near the 20 ms
-host-polling resolution on the same expanded emulator setup; this is a clear
-large relative gain, but not a precise ratio or 68020 / 2 MiB proof. The old
-full CLI still misassembles `block+1` and emits an unreferenced sibling block
-on the richer test source, so that case remains a correctness probe rather
-than performance evidence. The next measurements should separate startup and
-package cost from per-statement execution and improve timing resolution for
-short compact runs.
-
-## Selected modules and reachable output
-
-Native discovery now selects the requested `.module` from a
-candidate file, including when that file declares other modules. Selection is by
-module identity, not by file identity; two requested modules in one file must both
-work. The entry file remains the search root, not an ordering shortcut. Selected
-modules retain their physical source and include provenance. This increment does
-not prune code or data inside a selected module.
-
-The Rust reference now uses named `.block` boundaries as its removable units.
-Ordinary labels inside a block, including fall-through targets, belong to that
-block. Qualified references to the entry or an internal label include the
-whole block, and references from anywhere inside it include dependencies.
-Unowned code/data remain in a reached logical section. A section with no named
-blocks remains whole. The selected source is laid out and encoded at its final
-mapped address before its bytes are appended; the old label-range byte copier
-has been removed.
-
-Focused Rust cases compare final branch and address bytes with directly placed
-source, cover 68000 and 68020 layout, unowned bytes and references, and reject
-a mapped section that exceeds its region. A selective `.use dep (entry)` makes
-the named import available and validates it; it does not retain `entry` without
-a reference from reached code. References inside discarded blocks do not retain
-their targets. Native block pruning and mapped-section behavior have focused
-fresh Rust/native parity for one and two imported maps in adjacent regions.
-Rust replay reuses prepared lines when cached, but the native implementation
-must operate on binary source records rather than reopening source strings.
-Multiple concrete targets for one logical section, and multiple logical
-sections targeting one concrete section, currently fail explicitly; ordered
-multi-source mapping needs its own bounded increment. The current two-map cost
-is recorded in the [bounded scaling case](prepared-source-experiment.md#bounded-two-map-scaling-baseline).
-
-Native preparation preserves named `.block` open and close markers as bits in
-each packed line's flag byte, then indexes offset-based spans after numeric
-binding and module ordering. The experimental selector retains entry-file
-blocks, follows numeric references into imported blocks (including internal
-labels), and skips unreachable imported records before its two assembly passes.
-Unowned code/data remain. The native import parser accepts unqualified selected
-names in `.use dep (entry, helper)`, optionally followed by `as alias`. It
-validates each name even when unused, but does not retain a block until reached
-code references it. Repeated names within one list share a numeric selection.
-Direct per-item aliases such as `.use dep (entry as chosen)` now bind the exposed
-name to the selected original target; Rust and native reject combining a
-per-item alias with a module qualifier. Wildcard imports remain outside this
-bounded native path.
-The compact CLI has one- and two-region section placement with focused live
-FS-UAE parity. For the first imported map, native assembly
-sweeps the packed records for concrete content before the imported logical
-section while retaining selected-block pruning. Keep other unsupported mapping
-cases explicit rather than silently assembling them in dependency order.
-It also accepts two concrete sections placed in adjacent literal regions when
-their emitted bytes form one contiguous image. A forward label reference across
-those sections matches Rust in a fresh 68020 / 2 MiB run. Two imported maps
-with distinct targets now use indexed two-slot section state. Native execution
-follows pairwise concrete-then-logical ordering and matches Rust; same-region
-overlap rejects. General placement ordering and sparse output remain
-unsupported. The [bounded scaling case](prepared-source-experiment.md#bounded-two-map-scaling-baseline)
-records the cost of its five packed-record sweeps per pass.
-
-## Increment contract
-
-For every increment, state the hypothesis, reference behavior, resource budget
-and stop condition. Preserve a working reference path during the experiment.
-Correctness evidence includes fresh native completion, explicit zero or expected
-failure exit, exact live-Rust artifacts and cleanup checks. Production behavior
-must never depend on a fixture, benchmark name, path or expected result.
-
-Measurements use focused, reasonably complex inputs. Do not run the non-completing
-native self-host case or extend timeouts to obtain a result. The existing limits
-are 10 seconds after guest `START`, 60 seconds per invocation and 150 seconds per
-batch. Report source and binary-record bytes, executable and linked size, retained
-and peak owned memory, preparation work and uninstrumented elapsed time. A timeout,
-launcher success or partial capture is not completion.
-
-At each coherent checkpoint, keep the tree runnable, record remaining limits and
-make a local recovery commit. Broad qualification belongs at meaningful integration
-boundaries. Pushes remain separately authorized.
-
-## Current decision boundary
-
-F1 and F2 cover complete standalone byte-reversal, page-copy and range-check
-routines, plus indexed-address and register-pair boundary cases. These are
-representative small sources, not full-application or native CLI qualification.
-The [runtime note](prepared-source-experiment.md) records current proof and costs.
-
-F2 adds canonical package predicates for indexed operands and lowers the required
-register names/classes into numeric runtime metadata. Native can exclude a
-higher-priority rejection only when a known package register conclusively fails
-one of its match predicates. Unknown names and unsupported predicates remain
-fail-closed. Semantic operand encoding and table opcode emission both execute;
-only a verified identity table is elided. The normal Rust m6502 route consumes the
-same new package rows; other MOS CPU variants retain their existing specialized
-selection routes until migrated and qualified.
-
-F3 extends the expression and deferred-binding boundary with forward absolute
-constants and explicit cycle rejection in both Rust and native. Native PC/label
-dependencies retain fixed two-pass/source-order semantics. File discovery/includes,
-expansion and product integration remain later increments. F4/F5 finalize named block
-and namespace bindings during preparation and accept canonical bare labels.
-F6 adds module ownership and public/private access checks; F7 resolves imports
-across explicitly ordered files before assembly.
-Select the next coherent breadth
-step for review; do not start those increments automatically from this plan.
-
-## F3 increment contract
-
-Hypothesis: masks/shifts and forward absolute constants let practical routines use
-clear symbolic configuration without repeated text parsing or repeated full-source
-resolution passes. Index numeric definitions once, walk compact expression
-references with an explicit dependency stack, and evaluate each absolute constant
-after its dependencies resolve. Reuse symbol storage during this prelayout phase;
-release bounded offset-based scratch before layout. Never publish an expression
-offset or provisional value as a resolved symbol.
-
-Prove complete small mask/configuration routines for m6502 and m68000 against
-live Rust, including reversed declaration order, shared dependencies and signed
-boundaries. Explicit negative coverage includes cycles (including PC-tainted
-cycles), missing names, duplicate/colliding definitions, arithmetic range failure
-and unsupported forward layout dependencies. Preserve earlier-label and
-definition-site-PC behavior. Rust cycle handling is repaired as part of this work;
-provisional cyclic values are not an oracle to reproduce.
-
-The compact expression path retains its checked signed32 range. Operator
-precedence and shift-count behavior follow the canonical Rust language; results
-outside the supported range reject rather than truncate. Source/package lookups
-remain numeric after preparation. New measurement code uses existing gated macros.
-
-Baseline: F2 `6decb730`. Compare identical expression-layout workloads under the
-same 68020 / 2 MiB emulator settings; CPU clock is not calibrated, so interpret
-relative results only. Report complete routine output, release image size,
-retained/peak owned memory and fresh completion/cleanup. Existing 10-second guest,
-60-second invocation and 150-second batch limits remain unchanged. No self-host run.
-
-Stop for review if this requires source reconstruction, a general layout solver,
-full-source repeated convergence sweeps or a new unbounded storage structure.
-Keep normal native package loading/CLI integration and other source-target
-qualification out of this increment. Finish with a local checkpoint and an F3-only
-review; no push is authorized.
-
-### F3 checkpoint: reference defect and scope decision
-
-Erik approved repairing production Rust before completing native F3 comparisons.
-The repair resolves executed immutable `=` and `.const` scalar dependency graphs
-with an explicit work stack, scoped/import-aware bindings and synchronized symbol
-values/classification. Corrected values trigger the existing bounded layout
-refresh; dependency depth does not require additional source passes. Already
-correct absolute constants avoid a second expression evaluation.
-
-The reversed 128-definition chain now emits `128,65,1` rather than `2,2,1`; the
-pixel-mask routine computes mask `48` rather than `3`. Both independent byte
-oracles and fresh native comparisons pass. Seven focused Rust regressions pass in
-default and VM-only builds, covering definition forms, instruction widths/labels,
-block/import binding, inactive definitions, mutable snapshots, PC/list values and
-cycles. Production asm/core library lint passes.
-
-The repair intentionally does not defer expressions that already error in the
-initial pass or resolve structured/PC/label/mutable-dependent expressions as
-absolute DAGs. See the [symbol contract](../opForge-reference-manual.md#36-symbols-and-assignments).
-
-The full host assembler suite reports 1,544 passed, 160 failed and 35 ignored.
-All 160 failing test names also fail with the frozen F2 test executable against
-the same working tree (1,527 passed, 165 failed, 30 ignored). This is no-new-failure
-evidence, not a passing repository qualification. The embedded package differs
-from current package generation, causing equality failures and poisoned-lock
-cascades; other baseline failures remain. All-target lint additionally reports
-five findings in unchanged test/harness code. Do not regenerate packages or alter
-baseline measurements to conceal these limitations.
-
-Final-image bounded native proof now passes the pixel-mask and control-word
-routines, the 128-definition chain, precedence/definition-site-PC data, retained
-page-copy/indexed/register cases and all 82 compact/canonical evaluator cases.
-Explicit native rejections pass for ordinary and PC-tainted cycles, missing
-symbols, duplicates, label collisions, overflow and forward layout dependencies.
-Fresh completion/exit/output checks and cleanup passed within existing deadlines.
-The architecture guard now recognizes declared macro-parameter operands without
-misclassifying them as labelled directives; its five tests and workflow checks pass.
-
-Release throughput on identical expression-layout sources is approximately
-unchanged in one pair (+1.3% m6502, +0.7% m68000), while image size grows by 1,508 B
-and prior-case owned memory is unchanged. See the
-[F3 measurements](prepared-source-experiment.md#f3-bit-operators-and-absolute-dependencies).
-This completes the bounded F3 increment, not full native product or repository
-qualification. Review before choosing the next breadth increment.
-
-## F4 increment contract — implemented: named block scopes
-
-Hypothesis: scope binding can be completed during preparation, allowing several
-real routines to share short local names without introducing name lookup into
-assembly or enlarging its per-symbol value state.
-
-Support simple named `.block` scopes, `.endblock`/`.bend`, nesting, parent lookup,
-absolute qualified references, forward references and scoped immutable constant
-DAGs. A block declaration defines its entry label in its parent scope. A later
-local declaration shadows an earlier outer declaration: do not bind a reference
-permanently on first encounter. Match Rust's case-insensitive names and binding
-rules. Anonymous blocks, dotted block declarations, namespaces, modules/imports,
-includes and expansion remain explicit exclusions for this increment.
-
-Preparation may retain source-name dictionaries and scope metadata. Assign
-provisional numeric identities while streaming each line into binary records;
-once declarations are known, resolve references and rewrite numeric identities
-before freeing lexical scratch. Existing assembly and dependency evaluation must
-consume final IDs only. Binary structures contain offsets and IDs, not process
-pointers. Reuse the current 512 provisional source-name bound, 16 KiB name arena
-and 256-byte packed-record limit; reject exhaustion rather than silently expand
-limits. Report extra preparation storage and work through the gated framework.
-
-Prove complete copy/fold routines for m6502 and control-word routines for m68000,
-with repeated local labels/constants and qualified references. Each scoped source
-has an equivalent flat fixture and independent byte expectations. Add a nested
-lookup case covering forward local shadowing, parent constants, qualified names
-and literal bytes that must not be mistaken for IDs. Negative checks cover scope
-imbalance, duplicate definitions, sibling-name leakage, missing qualified names,
-malformed closes and explicit unsupported scope forms.
-
-Baseline: F3 `92a78722`. Measure unchanged 32-block expression-layout workloads
-before/after, plus scoped versus flat routines on the final image. Use matching
-frozen source/test producers, telemetry-off relative timing and separate gated
-memory/work observations. Same 68020 / 2 MiB profile and 10-second post-start,
-60-second invocation, 150-second batch limits; no calibrated clock or self-host
-claim. Preserve the existing broad-suite qualification limitations.
-
-Stop and discuss if this requires text replay during assembly, a general layout
-solver, a package/CPU semantic change or a substantially larger language migration.
-Finish with a local review checkpoint and current coverage/measurement notes. No
-remote push is authorized.
-
-F4 checkpoint: scoped/flat copy and control-word routines plus nested bindings
-match live Rust and independent bytes on the native 68020 / 2 MiB path. All nine
-scope rejection cases, the 512-ID boundary/overflow and the 128-definition chain
-pass with cleanup proof. Two narrow Rust reference repairs cover forward local
-scalar shadowing and unclosed lexical scopes. The full host suite has 1,548 passing
-tests and the same 160 failing test names as the F3 baseline; focused default and
-VM-only scope tests, production library lint and engineering guards pass.
-
-One matched release comparison observes +3.7% m6502 and +1.8% m68000 time, with
-1,940 B added to the image. This is language coverage with a modest observed cost,
-not a speedup or full product qualification. See the
-[F4 measurements](prepared-source-experiment.md#f4-named-block-scopes). Review this
-checkpoint before selecting the next breadth increment.
-
-## F5 increment contract — implemented: namespaces and canonical labels
-
-Add simple named namespaces as the next scope slice: `.namespace name`,
-`name .namespace`, labelled operand form, `.endnamespace`/`.endn`, nesting with
-blocks and reopening operand-named namespaces. Match Rust's distinction: an
-operand supplies a scope name, not an address symbol; a label still defines its
-ordinary parent-scope address. Closing directives must match the opening kind.
-Forward shadowing, parent lookup and absolute qualified references remain numeric
-after preparation. Namespace identity may coexist with a value of the same name.
-
-Hypothesis: reuse preparation-only scope metadata without increasing persistent
-record or per-symbol runtime storage. Reuse gated preparation/accounting telemetry.
-No original-text lookup during assembly, package changes or legacy executor. Keep
-the current name/arena/record bounds. Dotted scope declarations, anonymous blocks,
-files, modules/imports and expansion remain excluded; reject unsupported forms.
-
-Prove a practical namespaced routine for each existing source family against live
-Rust and independent expected bytes, plus reopening/mixed nesting/name-vs-value
-contracts and malformed/duplicate/mismatched-close failures. Recheck retained F4
-behavior. Measure unchanged expression-layout32 release workloads against frozen
-F4 `11561735`, plus separate memory accounting on the new cases. Same 68020 /
-2 MiB profile, 10-second guest, 60-second invocation and 150-second batch bounds.
-No self-host or calibrated-clock claim. Preserve known baseline qualification
-failures and finish with a local step-only review checkpoint; no push.
-
-User clarification: exercise canonical bare labels directly. This increment also
-normalizes column-one standalone labels and labels before instructions/directives
-during preparation, preserving optional adjacent-colon forms and rejecting
-indented labels. The prior compact path's colon-only restriction is removed;
-reserved package spellings remain an explicit native naming restriction.
-
-F5 checkpoint: both practical routines use canonical bare labels and match live
-Rust plus independent expected bytes. The mixed namespace case, fourteen
-rejections and two retained F4 cases pass natively with cleanup proof. Focused
-default and VM-only host checks, native formatting and engineering guards pass.
-No production Rust changes or new broad-suite qualification are claimed; the F4
-baseline failures remain unresolved. One matched release pair observes +0.7% /
-+0.1% time (below the polling interval), +360 B image size and no fixed-scratch
-growth. See the [F5 measurements](prepared-source-experiment.md#f5-namespaces-and-canonical-labels).
-Review this checkpoint before selecting files/modules or another breadth slice.
-
-## F6 increment contract — implemented: single-source modules and visibility
-
-Support sequential `.module dotted.id` / `.endmodule` regions, `.pub`/`.priv`,
-existing blocks/namespaces inside modules, and absolute public references between
-modules in one source file. Module ownership is distinct from lexical name
-prefixes; dotted module IDs preserve parent-prefix lookup. Default visibility is
-private, inherited on scope entry and restored on exit. Private module-owned
-references are allowed only within their owning module, including forward
-references; global labels retain Rust's global access behavior. A numeric ID used
-from multiple modules must not conceal an illegal private use.
-
-Hypothesis: bounded preparation-only ownership/reference metadata can finish
-visibility checks before lexical storage is released, leaving assembly and
-expression execution numeric and unchanged. Keep stored offsets/IDs, existing
-512 provisional-ID/name-arena/record bounds and gated accounting. Measure any
-extra preparation storage and timing. Preserve the non-module path and canonical
-bare labels. Reject nested/duplicate/unclosed modules, unmatched closes, open
-child scopes and program content outside explicit modules. `.cpu`/`.org` and
-other program statements belong inside modules; `.end` may follow them.
-
-Do not implement imports, `.use`, include/file loading, module metadata, sections
-or expansion in this slice; keep explicit rejection. Prove practical routines
-for m6502 and m68000, private internal/public external access, visibility restore,
-forward cross-module references and dotted-prefix ownership distinctions against
-live Rust plus independent bytes. Check private-access and malformed-boundary
-failures with fresh native completion/error/cleanup.
-
-Baseline F5 `5067b41d`; compare unchanged expression-layout32 release workloads
-and separately account memory on module cases. Same 68020 / 2 MiB profile,
-10-second guest, 60-second invocation and 150-second batch limits. Stop to discuss
-if this needs text replay, unbounded reference logs, a package semantic change or
-imports/file loading. End with current notes and a local step-only review; no push.
-
-F6 checkpoint: module ownership and visibility finish during preparation with
-three bounded side arrays (+3,084 B temporary storage), leaving 16-byte symbol
-entries and runtime records unchanged. Practical m6502/m68000 module routines,
-labelled directives, sixteen rejection cases and three retained scope regressions
-pass on native: 22 functional checks. Canonical bare labels remain covered.
-The 26 focused host tests and three VM-only module tests pass; no production Rust
-change or broad-host qualification is claimed. Imports and multiple-file loading
-remain future work. The matched release pair shows no meaningful regression
-(about −0.75% observed time on both workloads); image size grows 1,068 B.
-See the [F6 measurements](prepared-source-experiment.md#f6-single-source-modules-and-visibility).
-
-## F7 increment contract — implemented: explicit source files and imports
-
-Stream an explicitly ordered list of real guest source files through one native
-preparation session. Each file has independent EOF/line numbering and complete
-module/scope boundaries; declarations, module identities and bindings are shared.
-Retain compact numeric file/record spans for diagnostics, with no stored pointers
-or source text used during assembly. Existing one-file inputs use the same path.
-
-Add module-local `.use module.id` and `.use module.id as alias`, including
-forward availability within the owning module, case-insensitive qualifiers,
-public/private access, duplicate aliases and missing/ambiguous module checks.
-Resolve imports and references before freeing lexical scratch. Reuse the existing
-512 provisional-ID limit and measure additional bounded metadata. Preserve bare
-labels. Explicitly reject unsupported import forms and imports in child scopes.
-
-The caller supplies assembly order. Native discovery, search paths, dependency
-ordering, implicit file-derived modules and `.include` remain outside this slice.
-The Rust file-graph oracle may order dependencies first; test manifests explicitly
-match that order rather than claiming native graph loading. Source `.end` must
-not swallow later files; keep the current terminal-marker restriction explicit.
-
-Hypothesis: one shared preparation session can bind identical one-file and split
-programs, with bounded per-file I/O/provenance overhead and no runtime string
-lookup. Prove identical output against live Rust, exercise genuine guest file
-opens, forward imports, alias reuse and private/missing references, and test file
-boundary errors plus source-local diagnostic locations. Compare one/split release
-times and gated peak memory, and unchanged expression-layout32 against F6
-`36bc145c`. Same 68020/2MiB profile and 10s guest/60s invocation/150s batch limits.
-Stop for a need to broaden language/layout semantics or restore source replay.
-Finish with current notes, a local commit and step-only review; no push.
-
-F7 checkpoint: real ordered source files stream through shared preparation;
-module-local aliases resolve before assembly, including forward targets and
-qualified-name interning order. File-local error locations use numeric spans;
-final-binding/dependency error attribution still reports unknown. Native file
-discovery, dependency ordering and includes remain deferred.
-
-Eighteen native functional checks pass, plus joined/split and F6/F7 comparisons.
-Host checks pass 30 binary-source, four VM-only and 45 runner tests. Joined/split
-programs have identical output and measured memory peaks. Single release pairs
-observe +39/+9 ms for splitting the small 6502/68000 fixtures and +1.9%/−0.2% on
-unchanged F6 workloads. Cost: +2,476 B release image, +4,610 B preparation metadata
-and a retained 12-byte numeric span per source (subject to allocation granularity).
-See the [F7 results](prepared-source-experiment.md#f7-explicit-source-files-and-imports).
-
-## F8 increment contract — experimental graph and discovery checkpoint
-
-The entry file anchors search and identifies the initial modules to include;
-its modules receive no exception from dependency ordering. Resolve every included
-module's imports in source order, emit dependencies before their importers, and
-include each module once. Reject cycles consistently, including entry-file cycles.
-All modules declared in the entry file participate; unrelated modules in candidate
-files do not join the graph. Update Rust and native together for this behavior
-change; previous Rust entry-file ordering and preloaded-cycle exemptions retire.
-
-The first reviewable checkpoint implements opt-in native graph execution over explicit candidate
-files (first file is the entry), using numeric module IDs and packed-record spans.
-Keep F7's explicitly ordered execution as the comparison path. Preparation captures
-module boundaries and import edges once; ordering and assembly never reconstruct
-or consult source text. Preserve file/line diagnostic provenance after reordering.
-Native candidate preparation is initially eager: unused modules' missing imports
-and unresolved values must not fail selected execution, but malformed/unsupported
-candidate syntax can still fail preparation. This limit retires with selective
-loading; it is not a new language requirement.
-
-The second checkpoint adds native AmigaDOS directory enumeration from the entry
-directory and additional roots. It scans `.asm` and `.inc` recursively, deduplicates
-identical guest paths and prepares candidates for the same numeric graph. Search
-does not choose the first match across roots. `.include` remains separate.
-
-The initial discovery checkpoint eagerly prepared every candidate. The selective
-follow-up now builds a declaration index and prepares only files in the requested
-dependency closure. It skips unrelated invalid source, `.include` fragments and
-duplicate unused declarations. The index remains syntactic. File-derived module
-identity now works for files without explicit declarations; conditional or
-macro-generated declarations and unused modules within a selected file remain
-outside this experimental path. Rust's loader covers those cases. The scanner
-bounds paths to 255 bytes, directory nesting to eight levels,
-discovered files to 128, declarations to 512 and declaration names to 16 KiB;
-an exceeded bound is an explicit failure.
-
-Validation: live Rust output comparison for shuffled candidate order, diamonds,
-entry-file dependencies, multiple modules per file and unused siblings; fresh
-native rejection for missing modules and self/indirect cycles. Retain bare-label
-coverage. Measure bounded release timing and allocation accounting against F7;
-report feature cost, not an assumed speedup. No long self-hosting measurement.
-
-The bounded 2 MiB diamond comparison is recorded in the
-[prepared-source experiment](prepared-source-experiment.md#f8-numeric-module-graph-and-guest-side-search).
-F8 added 3,220 image bytes and 2,964 linked reserved bytes relative to F7;
-graph mode's conditional peak owned allocation exceeded explicit order by
-25,088 bytes. The instrumented native elapsed times were effectively equal,
-so F8 is a breadth checkpoint rather than a demonstrated performance win.
-
-The selective follow-up adds 1,380 release-image bytes and 1,344 linked-reserved
-bytes beyond initial F8. Its bounded 2 MiB proof and limits are recorded in the
-[experiment note](prepared-source-experiment.md#selective-native-discovery-follow-up).
-
-## F9 increment contract — selected-file includes
-
-Selected native source files expand whole-line `.include "relative/path"` while
-streaming through the binary frontend. Resolve the including file's directory
-first, then the separately configured include roots. Nested includes share the
-enclosing module/scope session; only the top-level candidate closes a file in
-the module graph. Missing files, cycles and the eight-level include bound fail
-within preparation. The unused candidate index does not expand includes.
-
-Keep physical file/line provenance as numeric packed-offset runs. Rebase these
-runs when dependency ordering copies module spans, so assembly diagnostics point
-to the included fragment. No include path, source buffer or lexical lookup may
-survive preparation. Preserve F7 explicit files and F8 discovery for comparison.
-The current bounded checkpoint is described in the
-[runtime note](prepared-source-experiment.md#f9-selected-file-includes).
-
-This does not complete Rust's include language. Relative path components `.`
-and `..` are now normalized for selected-file includes within allowed roots;
-labels on an include line, preprocessor-generated includes and larger depths
-remain outside this experiment. Broader language coverage should follow
-focused parity cases instead of growing a parallel text preprocessor blindly.
-
-## First CLI integration checkpoint
-
-`opforge_compact PACKAGE.bsp3 SOURCE.asm OUTPUT.bin` is a separate 68020 Hunk
-executable. It requires three unquoted, space-free positional Shell paths, reads a
-host-prepared BSP3 package, starts from the specified source file, and writes
-flat binary output.
-The test harness and CLI call the same compact engine; the manifest-backed
-multi-file path remains available for focused language tests. The CLI now accepts
-`-M DIR` module roots and `-I DIR` include roots after the three paths. Either
-option selects dependency-ordered discovery; the entry directory is searched
-first, while the dependency graph decides output order. Without search roots,
-the CLI keeps direct single-source processing for sources without modules. The
-standalone CLI does not yet generate or load canonical packages natively or
-replace `opforge_cli`. Unsupported input returns nonzero. Focused native proof
-and current constraints are in the
-[runtime note](prepared-source-experiment.md#first-compact-cli-checkpoint).
-
-The first bounded layout increment adds same-name logical/concrete section
-placement and a literal region to this compact CLI. It is limited to one
-contiguous placed section; the focused identical-source Rust/native proof and
-the intermittent 2 MiB emulator startup timeout are recorded in the
-[runtime note](prepared-source-experiment.md#first-bounded-section-placement).
-
-The next increment accepts one explicit `.use` section map between differently
-named logical and concrete sections, provided the concrete section is empty.
-Rust/native byte parity, native rejection of a nonempty mapped concrete body,
-and image-size observations are in the
-[runtime note](prepared-source-experiment.md#first-explicit-imported-section-map).
-The remaining layout issue at that checkpoint was Rust's
-concrete-before-import content order.
-
-That ordering is now implemented for the single-map subset by two numeric
-record sweeps per assembly pass. A concrete body with an imported reference,
-unowned logical bytes and an unreachable imported block matches Rust under
-the 68020 / 2 MiB profile; the [runtime note](prepared-source-experiment.md#concrete-content-before-mapped-import)
-records the bytes and resource cost. Multiple maps and placements were a
-separate scope decision at that checkpoint.
-
-The two-map reference case exposed a Rust placement hazard: when consecutive
-concrete sections share one region, late mapped growth can overlap the second
-section. Rust now rejects that conflict. Two adjacent explicit regions produce
-a valid contiguous reference image, recorded in the
-[runtime note](prepared-source-experiment.md#two-map-placement-boundary).
-Native two-map parity now uses indexed maps and section slots and schedules
-both mapped pairs against their adjacent regions. Treat same-region repacking
-after mapped growth as a separate convergence problem. Before broadening this
-mode, use the [bounded two-map scaling baseline](prepared-source-experiment.md#bounded-two-map-scaling-baseline)
-to track cost. On a 300-record case, instrumented assembly took 0.30–0.32 s
-while tokenization took 2.18–2.20 s. Defer a span index until assembly scans
-become material on a larger bounded case; investigate tokenization first.
-
-## First binary `.segment` expansion checkpoint
-
-The compact native frontend now captures a local, name-first
-`NAME .segment parameter` body as numeric writer records and expands repeated
-`.NAME expression` calls before the ordinary binary preparation path. Expansion
-substitutes packed parameter tokens and never reopens or retokenizes source
-text. The current bound is eight definitions, 4 KiB of captured records, and
-64 bytes for one argument expression. An expanded record uses the invocation
-line as its diagnostic origin.
-
-This is deliberately a first subset: defaults, argument lists, nested
-expansion, and imported segment visibility are not yet supported. The compact
-CLI rejects unsupported forms; they need separate parity work before claiming
-general `.segment` support.
-
-A fresh 68020 / 2 MiB FS-UAE run matched live Rust CLI output exactly for
-repeated instruction and data expansions on both m6502 and m68000 packages.
-An unclosed definition returned a completed native error. In one bounded
-eight-block mixed run, pre-change/current assembly time was 0.563/0.555 s
-for m6502 and 1.150/1.186 s for m68000; these single observations show no
-reliable speed difference. Hunk bytes rose from 48,580 to 50,024, and linked
-reservation rose from 53,180 to 54,580 bytes. Dynamic peak owned memory was
-not measured.
-
-The next syntax slice also accepts `.segment NAME(parameter)` and
-parenthesized `.NAME(expression)` calls. It still binds exactly one parameter,
-and a parenthesized call must contain a simple, nonempty expression without a
-nested parenthesis; multi-argument calls fail explicitly. Fresh native runs
-matched the live Rust CLI for both spellings mixed with the existing bare form
-on m6502 and m68000, and rejected a two-argument call with exit 20. In one
-identical eight-block mixed comparison against the preceding commit, native
-START-to-DONE time was 0.567/0.561 s (m6502) and 1.189/1.183 s (m68000).
-The single observations do not establish a speed gain. The Hunk and linked
-reservation each grew by 132 bytes.
-
-Call-site labels now attach to the first expanded numeric record for both
-`placed .NAME value` and `placed: .NAME(value)`. The label is emitted at the
-invocation line's origin, and the generated record is marked as column-one
-source so ordinary symbol handling accepts it. A first body record that already
-declares a label is rejected in this subset. Fresh native runs on both packages
-matched the live Rust CLI for subsequent references to both call labels;
-the preceding unlabeled parity case still passed. An identical eight-block
-mixed comparison showed 0.548/0.567 s (m6502) and 1.201/1.193 s (m68000)
-before/after. One observation per package is insufficient to claim a speed
-change. The Hunk and linked reservation each grew by 184 bytes.
-
-## First binary `.macro` scope checkpoint
-
-The compact native frontend now captures a name-first, one-parameter
-`NAME .macro parameter` definition as numeric records in the same bounded
-template engine as `.segment`. Calls accept `.NAME expression` and
-`.NAME(expression)`, with an optional call-site label. Expansion injects
-numeric `.block`/`.endblock` records to give every call its own scope and
-rebinds definition-body source identifiers to that scope. Arguments retain
-their call-site bindings; the captured body is never changed or read back as
-source text. This supports repeated calls containing the same internal label.
-
-Fresh 68020 / 2 MiB FS-UAE runs matched live Rust CLI bytes for three macro
-calls, including a local label and a labeled call, on both m6502 and m68000
-packages. The existing `.segment` parity case also passed after the shared
-engine refactor. On an identical eight-block mixed workload without macros,
-pre-change/current START-to-DONE times were 0.557/0.576 s (m6502) and
-1.176/1.191 s (m68000). These are single observations and establish no
-reliable timing change. Hunk bytes rose from 50,340 to 51,028; linked
-reservation rose from 54,896 to 55,560 bytes. Dynamic peak was not measured.
-
-This is still a bounded subset: eight definitions, 4 KiB captured records,
-and a 64-byte argument expression. Defaults, multiple or zero arguments,
-directive-first definitions, nested expansion, and imported macro visibility
-remain outside this parity checkpoint. There is no source-text expansion
-fallback for them.
-
-The next macro syntax checkpoint adds zero-parameter name-first definitions,
-directive-first `.macro NAME()` and `.macro NAME(parameter)` definitions, and
-empty `.NAME` / `.NAME()` calls. The 68020 / 2 MiB native output matched the
-live Rust CLI for these forms on m6502 and m68000. The earlier repeated
-local-label macro case still passed. Argument lists, defaults, textual
-substitution forms, nested calls, and imported definitions remain follow-on
-work; this checkpoint is not general macro parity.
-
-The next argument checkpoint accepts up to four named parameters and four
-packed positional arguments in either definition/call spelling. It splits
-commas only at the outer level of nested parentheses, brackets, and braces,
-then substitutes both `.name` and `.1`–`.4` without reparsing source. The
-same parser extends `.segment` argument lists. Fresh native m6502/m68000
-output matched live Rust for both macro forms, nested argument expressions,
-and named/positional body references. The earlier scoped macro and segment
-cases also passed. This bounded slice requires exact argument count; Rust's
-default and missing/extra-argument rules are not implemented yet.
-
-The defaults checkpoint retains packed default expression tokens with their
-definition, fills omitted parameters at each call, and permits extra
-positional arguments through `.9`, matching Rust's substitution model. Supplied
-arguments keep their call-site identities; default identifiers are rebound as
-the expanded records enter the call scope. Macro lookup now checks numeric
-scope ancestry so a definition in an outer block remains callable inside a
-nested block. Real 68020 / 2 MiB runs matched Rust on both packages for
-defaults, omitted/extra arguments, caller-block default resolution, and the
-earlier repeated-local-label case. Current bounds are nine parameter/argument
-slots, 192 packed argument bytes per call, and 512 default bytes per session.
-
-An identical eight-block mixed workload without macros produced the same
-output as the first macro checkpoint. One START-to-DONE observation per package
-was 0.576/0.585 s (m6502) and 1.191/1.188 s (m68000), earlier/current;
-there is no reliable timing conclusion. Hunk size rose from 51,028 to 52,332
-bytes and linked reservation from 55,560 to 56,856 bytes. Dynamic peak was
-not measured.
-
-Nested `.macro` and `.segment` calls now use a bounded 64-frame stack of
-packed invocation state. Generated records reenter numeric template lookup,
-then resume their parent after a nested call drains. The live Rust CLI and
-fresh 68020 / 2 MiB FS-UAE runs agreed for nested macro-to-macro and
-macro-to-segment calls on both CPU packages; the earlier default-argument
-and segment cases also passed. Recursion beyond the bound is an error.
-The identical eight-block mixed workload still produced identical bytes.
-One START-to-DONE observation changed from 0.585 to 0.547 s (m6502) and
-1.188 to 1.173 s (m68000); these samples do not establish a speed gain.
-Hunk size changed from 52,332 to 52,508 bytes and linked reservation from
-56,856 to 57,028 bytes. Dynamic peak, including the invocation stack, was
-not measured. The next parity gaps include textual placeholder forms,
-imported template visibility, and string-bearing template records.
-
-The next packed placeholder checkpoint adds a one-byte `@` token to the
-shared tokenizer contract and expands `@1`–`@9`, `.@`, and `.{name}` from
-captured binary argument records. `.@` contains the supplied argument list,
-not defaults. Live Rust and fresh 68020 / 2 MiB native runs agreed for two
-calls using all three forms on both packages; the nested-call regression also
-passed. The identical eight-block mixed workload retained identical output.
-One START-to-DONE observation was 0.547/0.550 s (m6502) and 1.173/1.189 s
-(m68000), earlier/current; this is not evidence of a speed change. Hunk size
-rose from 52,508 to 52,780 bytes and linked reservation from 57,028 to
-57,296 bytes. Dynamic peak was not measured. This does not yet cover Rust's
-textual concatenation around placeholders or strings; imported template
-visibility remains a separate gap.
-
-Macro substitution still needs exact argument spelling where a placeholder is
-embedded in an identifier or string. A live Rust example with `symbol@1:` and
-`"x@1"`, called with `A`, produces `symbolA` and bytes `78 41 00 20` at
-`$2000`. Numeric package identity alone loses this distinction: the package
-dictionary spells the same m6502 name `a`, and reverse lookup incorrectly
-produced `"xa"`. That trial was rejected. A name-only spelling annotation is
-also insufficient: Rust substitutes each trimmed argument's original text,
-including numeric notation, punctuation and internal spacing.
-
-The bounded exact-text slice now appends a flagged, offset-only argument
-sidecar to call-shaped packed records during tokenization. Normal binding and
-execution still use numeric tokens; no later phase rereads the source line.
-The sidecar is stripped from ordinary directives. Macro calls split its exact
-trimmed arguments, including omitted default spellings, and carry substituted
-text through nested calls. Identifier recipes bind generated names to numeric
-IDs; quoted template bytes expand in the packed body. The 256-byte record and
-192-byte per-frame text limits reject overflow. Ordinary quoted data remains
-literal, including `"x@1"` outside a macro.
-
-Fresh 68020 / 2 MiB runs matched the live Rust CLI for package-name casing,
-leading and infix identifier fragments, multiple placeholders, quoted strings,
-numeric spelling (`$0A`), omitted defaults, empty calls, directive-first
-headers, nested positional/named/full-list forms, and selected imported
-macros. The eight-block repeated-macro workload independently checks 64 calls
-and exact output. After the final quoted-template correction, one
-START-to-DONE observation was 1.036 s for m6502 and 1.886 s for m68000;
-linked compact reservation was 70,152 bytes. The unchanged eight-block mixed
-binary-source workload retained exact output and measured 0.614/1.216 s; the
-prior checkpoint's one-observation 0.550/1.189 s does not establish a stable
-regression. Its linked reservation grew from 57,296 to 62,644 bytes. Dynamic
-peak was not measured.
-
-The same bounded exact-text rewriter now expands `.name`, `.1`, `.{name}` and
-`.@` inside quoted template strings. Fresh Rust-oracle/68020 comparison covers
-all four forms in one call, irregular spacing in `.@`, and an ordinary quoted
-string outside a macro that must remain literal. Quoted supplied arguments,
-quoted defaults, and a directive-first definition followed by a name-first
-definition also matched the Rust CLI. A fresh nested `.@` case retained its
-original comma spacing. These checks close the immediate quoted-template gap.
-
-Macro work pauses here. Remaining parity issues include dotted embedded
-substitutions in identifiers: a Rust-accepted macro with `a.suffix:`, `b.1:`,
-and `c.{suffix}:` failed closed in the compact CLI at invocation; composite
-identifier recipes currently cover `@1`–`@9` fragments only. The sidecar also
-does not retain trailing whitespace after the last invocation token, and
-quoted-string substitution after TKVM escape decoding may differ from Rust's
-text-first substitution for escape-sensitive arguments. The 256-byte record,
-192-byte per-frame text, four-argument and 64-frame depth limits remain
-experimental bounds, not full macro-language parity. Review the growing
-template module's responsibilities before widening support further.
-
-## Compact CLI self-host convergence
-
-Use the experimental compact CLI's own entry
-`native/motorola68000/amigaos/experimental/opforge_compact_cli.asm` and its
-transitive source files as the guiding workload. The authority is a fresh Rust
-assembly of those same source bytes into the entry's declared Amiga Hunk. A
-native result qualifies only after a fresh 68020 guest completion with zero
-exit and a byte-for-byte identical Hunk. Do not count the host-built bootstrap
-Hunk as a native assembly result. Keep the old full-CLI non-completing self-host
-test out of routine measurement.
-
-The completion target is the **current full source tree**, including all
-transitive dependencies. Frozen-source comparisons and focused module probes
-are intermediate evidence and must be reported as such. Each result must state
-which source tree was assembled, whether native exited successfully, whether the
-full Hunk matched the current Rust oracle, and what remains. Do not describe a
-successful intermediate comparison as completed current-source self-hosting.
-Completion also requires the requested release timing and separate instrumented
-measurements; instrumentation time is not release performance.
-
-That current-source milestone is now proven on the expanded 68020 / 10 MiB
-emulator profile: release and instrumented runs both match the fresh Rust Hunk
-exactly. Release host-observed START/DONE is 545.460594291 s. The measured
-tracked allocation peak is 5,222,440 bytes, so the 2 MiB product target remains
-unqualified. The [current frontend note](compact-frontend-vm-boundary.md)
-records the input identity, phase measurements and remaining language boundaries.
-The current 61-file source also completes on the physical A6000 with an exact
-89,880-byte Rust Hunk match: two uninstrumented runs each report 15 seconds on the
-guest clock and 16.019971292 / 15.848975208 seconds for the host commands including
-connection. The second run uses a fresh remote directory and the identical case.
-This is a different execution environment from FS-UAE, not a code-change speedup
-comparison; the timing gap remains unexplained. The frontend note records the
-case identity and pre/post-run verification.
-The fully instrumented physical run also matches the same release Hunk and
-finishes in 58 seconds (49.16 preparation, 8.82 assembly). Its detailed probes
-add substantial overhead relative to the 15-second release observations; the
-frontend note records stage/work counts and balanced, error-free memory accounting.
-
-The initial Rust baseline builds a deterministic 58,856-byte Hunk at
-`build/opforge_compact` from this entry (two separate temporary output roots
-produced SHA-256 `fcf86df103ba8b41b79c31a391acee127beb395dd43a8fd019ae0f01e39d3223`
-at checkpoint `c97d9735`). At that baseline, the compact native CLI wrote a flat
-contiguous byte stream. Focused section placement worked, but its restricted
-section/layout and directive handling did not yet cover the entry's full use
-of `.section`, `.res`, and `.output`. Compile-time and 68020 instruction coverage
-was then expanded from actual failures. Some source filenames also exceeded
-classic AmigaOS component limits, notably
-`binary_source_discovery_index.i`. These were initial convergence problems;
-the target remains the full entry and its dependencies. The active frontier
-and current proof are recorded in the
-[frontend boundary plan](compact-frontend-vm-boundary.md).
-
-First establish a reproducible source manifest, runtime package, Rust Hunk
-oracle and bounded guest invocation that reports the first native rejection.
-Then group missing capabilities by their responsibility and by the complete
-source module they must support. A first rejection locates a boundary but does
-not by itself define a slice. Keep exact small Rust/native cases for new
-boundaries, and rerun the unchanged entry at each useful checkpoint. Output and
-section work must ultimately produce the Hunk itself; flat bytes cannot
-qualify as self-host parity. Review memory cost and responsibility boundaries
-as features accumulate, especially before broadening the template or app
-modules.
-
-After roughly two or three self-host slices, review the direction together before
-selecting more. Check that shared directives and source preparation stay in the
-generic layer, while instruction forms, register classes and encoding decisions
-come from the canonical package and its derived runtime data. Compare the new
-capability with package growth, peak native memory, measurable runtime and code
-responsibilities; identify any narrow special cases to consolidate. A first
-rejection moving forward is useful progress, but does not alone justify carrying
-an increasingly expensive or target-specific mechanism. Keep these reviews brief
-and use their findings to choose the next slice.
-
-Measure release builds with guest START-to-DONE elapsed time and exact-output
-proof. In separate instrumented builds, use the existing gated telemetry
-macros for preparation stages, assembly clock, work counters, packed-source
-size, owned-memory peak and cleanup; never combine an instrumented duration
-with release timing to claim a speedup. The compact CLI runner now enables this
-record with `OPFORGE_COMPARE_MEMORY=1`. On the focused 51-byte smoke source,
-one release observation took 0.508 s and reserved 70,152 linked bytes; the
-instrumented run recorded 303,872 peak owned bytes, 0.14 s preparation and
-0.02 s assembly clocks, and 75,404 linked reserved bytes. These values prove
-the measurement path, not self-host feasibility or stable performance.
-
-Keep early entry attempts short and fail closed; extend the guest time budget
-only when a previous bounded run shows meaningful progress. Record the exact
-last completed stage and first failure, not just the timeout. Recheck the 2 MiB
-profile at each useful checkpoint. The eventual target remains a complete
-self-assembly within 15 minutes on a 68020/AmigaOS 3.1+ machine with 2 MiB;
-prefer much faster. If a new feature exceeds that budget, revisit its memory
-layout and reuse before continuing parity breadth.
-
-The first bounded entry probe now uses Rust's live dependency manifest rather
-than staging every file in each search directory: 43 source/include files,
-457,729 source bytes, a 149,066-byte m68020 BSP3 package and the 58,856-byte
-Rust Hunk. A fresh 68020 / 2 MiB native run completed with exit 20 and
-reported `file 1, line 8`: `.section entry, kind=code`. This is an expected
-readiness failure, not self-host parity. The separately instrumented run reached
-the same line, recorded 656,128 peak owned bytes, balanced all tracked
-allocations on cleanup and marked preparation incomplete. A valid full-command
-native duration is unavailable at this failure point; the phase clock has no
-completion stamp. The next bounded slice should carry section kind through
-numeric records and verify the layout with a focused Rust/native case; a
-following output slice must build exact Hunk bytes from the resulting sections.
-Simply accepting `kind=code` and continuing flat output would conceal this
-self-host target's four-segment, 70,152-byte linked Hunk requirement.
-
-The first section-kind checkpoint now lowers `kind=code/data/bss` into a
-six-byte numeric section-open record; `logical` and `kind` options can appear
-in either order. Native section execution retains the kind and rejects
-initialized emission in BSS. A focused two-section code/data source and a
-typed logical/concrete mapping both matched fresh Rust bytes in 68020 / 2 MiB
-FS-UAE. The existing untyped two-section case still matches, and a BSS
-initialized-byte case is rejected. These are flat placed-section checks, not
-proof of Hunk section output or BSS reservation support. Other section options
-such as `align`, `memory` and `region` remain outside this native subset.
-
-On the unchanged self-host entry, the fresh native rejection moved from line 8
-to line 11, the first `movem.l d2-d7/a2-a6, -(sp)` statement. This locates the
-next investigation; it does not yet identify which instruction-lowering
-boundary rejected the line. The current Rust oracle is a 59,104-byte,
-four-segment Hunk reserving 70,400 linked bytes, from 43 staged dependencies
-and a 149,066-byte m68020 runtime package. The instrumented rejection had
-656,128 peak owned bytes with balanced cleanup. Preparation was incomplete,
-so there remains no valid native self-host duration. Next isolate that first
-instruction failure with a small exact Rust/native case, then continue to
-subsequent real-source blockers; Hunk emission remains a separate required
-output slice.
-
-The first instruction rejection has a reduced, real-native reproducer:
-`movem.l d2-d7/a2-a6, -(sp)` under `m68020` at address zero. Rust emits
-`48 e7 3f 3e`; the 68020 / 2 MiB native binary-source harness completes
-with exit 20 and reports that statement's line. Instrumented self-host
-preparation stopped before completing the failing line. Two boundaries matter:
-the generic packed preparer currently accepts a bare register or scalar
-expression, but consumes `d2` as a complete register operand and rejects the
-following range separator; it also has no structured path for `-(sp)`. BSP3
-marks the corresponding `semv.sequence.v1` selector plan unsupported.
-Passing the tokens through without adding package-driven selection and
-execution would not make the instruction assemble.
-
-Treat this as the next feature family, split into reviewable checkpoints.
-First define a bounded, offset-only packed representation for structured
-operands, preserving the existing scalar path and rejecting unsupported
-forms. Then carry the smallest reusable package-owned sequence operations
-needed for register-list mask and indirect destination matching through BSP3
-and the native executor. The package must supply the register classes, mask
-mapping, reversal and opcode choices; the generic frontend/VM must not know
-68020 instruction semantics. Each checkpoint needs a focused Rust/native
-case and the unchanged self-host probe. A one-off `movem` encoding branch in
-the generic assembler would advance one line while creating the wrong
-boundary for the many structured operands still ahead.
-
-The first bounded fragment is now implemented. The preparer retains numeric
-register-list/range and unary-parenthesized-name tokens when the names resolve
-to package registers; ordinary name subtraction still takes the scalar path.
-BSP3 derives a 16-byte offset-addressed recipe from the package's exact
-literal-plus-register-field and reversed-mask sequence. The native executor
-uses package register classes, indices, mask shifts and opcode data; it does
-not match an instruction spelling. It remains one supported sequence shape,
-not a general sequence interpreter. Fresh 68020 / 2 MiB runs matched Rust for
-the original `movem.l d2-d7/a2-a6, -(sp)` (`48 e7 3f 3e`), a word-size mixed
-list, a single register, a duplicate list entry and scalar `VALUE-1` on
-m6502; a cross-class range was rejected on both paths.
-
-The unchanged compact self-host entry now rejects at line 14,
-`movea.l 4.w,a6`, instead of line 11. Its current Rust oracle is a
-60,204-byte four-segment Hunk reserving 71,452 linked bytes from 44 staged
-files and a 149,130-byte runtime package. An instrumented early-rejection run
-again observed 656,128 peak owned bytes. Preparation did not finish, so neither
-the release nor instrumented probe provides a valid native self-host duration
-or a performance-gain claim. The next slice should isolate line 14 and its
-package/operand boundary before changing the larger runtime.
-
-That line-14 boundary was a packed-source normalization gap. A numeric literal
-with a member suffix, such as `4.w`, now enters the existing compiled-scalar
-member wrapper used by `(4).w`; the package still decides whether the member
-qualifies a candidate. Fresh 68020 / 2 MiB native runs matched Rust for
-`movea.l 4.w,a6` (`2c 78 00 04`) and `lea 8.w,a0` (`41 f8 00 08`). This
-does not implement every member-qualified recipe: `movea.l 4.l,a6` still
-requires an unsupported sequence/fixup plan, and a separate `jmp 12.w` probe
-also rejected. Keep those as distinct later execution gaps.
-
-The unchanged self-host entry now first rejects at line 15, `jsr -552(a6)`.
-Its current Rust oracle is a 60,212-byte four-segment Hunk reserving 71,460
-linked bytes from 44 staged files and the 149,130-byte package. The gated
-early-rejection run again recorded 656,128 peak owned bytes. Native
-preparation still does not complete, so there is no valid self-host duration.
-The next slice should isolate that displacement/indirect form and derive its
-execution from the package rather than special-casing the instruction.
-
-The compact path now preserves a bounded packed `value(register)` operand and
-projects its value and package-classified register into the package's existing
-semantic program. A plain `(register)` candidate was also made executable so
-it can fail structurally on a displacement tuple rather than block the later
-candidate. Tuple arity remains a checked match condition; it is not an extra
-SEMV input. Fresh 68020 / 2 MiB runs matched Rust for `jsr (a6)`,
-`jsr 0(a6)`, `jsr -552(a6)` (`4e ae fd d8`) and a module-level named offset
-inside a block. Wrong-class and out-of-range displacement cases rejected on
-both paths. This is a two-item tuple subset, not general indirect/indexed
-addressing support.
-
-The compact entry now names its four AmigaOS library-call offsets, including
-`OPEN_LIBRARY = -552`, at module scope. Importing the old CLI's constants
-module solely for those values would bring unrelated dependencies into the
-compact path; these local names preserve the current source's meaning. The
-current self-host entry advances to line 41, `cmpi.b #'-', (a3)`, after the
-four added declarations. Its live Rust oracle is a 60,668-byte four-segment
-Hunk reserving 71,908 linked bytes; the package is 161,466 bytes and the
-gated early-rejection owned-memory peak is 657,408 bytes. Preparation still
-does not complete, so no native self-host duration is valid. The package grew
-12,336 bytes relative to the prior checkpoint as more tuple candidates became
-executable; monitor this cost as the general selector expands. The next
-rejection concerns an immediate operand paired with an indirect register.
-
-That next boundary had two independent shared-path gaps. The canonical 68020
-package already defines the immediate/direct selector with package-owned opcode
-and register-class projections, but BSP3 did not route its structural
-`immediate_direct` shape through the existing two-operand selector. The packed
-preparer also left a one-byte decoded string after `#` as a string token, while
-the expression compiler accepts the equivalent numeric token. It now reuses the
-shared one-byte scalar conversion for instruction operands; longer strings still
-reject there. No instruction spelling or encoding choice was added to the native
-core. Fresh 68020 / 2 MiB runs matched Rust for `cmpi.b #45, (a3)`, the exact
-`cmpi.b #'-', (a3)` and `cmpi.w #$1234, (a3)`.
-
-The unchanged compact self-host entry now first rejects at line 69,
-`bsr.w nextPath`; an earlier call to the same target passed, so this is only a
-location, not yet a diagnosis. The current live Rust oracle is a 60,720-byte
-four-segment Hunk reserving 71,960 linked bytes. The BSP3 package is 163,614
-bytes, up 2,148 from the preceding checkpoint. The separate gated early-rejection
-run observed 658,944 peak owned bytes, up 1,536. Preparation remains incomplete,
-so no self-host duration is valid. The next slice should reduce line 69 before
-editing: test whether this is branch displacement, later-pass state, or another
-selector boundary, and keep the fix in the appropriate layer.
-
-The reduced `bsr.w` investigation found a separate BSP3 dictionary omission:
-the package had an executable `bsr.w` candidate but bound only the unqualified
-`bsr` and the `s` alias. BSP3 now binds missing canonical qualified candidate
-spellings while retaining explicit alias precedence. Fresh 68020 / 2 MiB native
-comparisons exactly matched Rust for numeric, backward, repeated forward and
-internal-label word branches. A direct native branch-VM control also encoded the
-resolved and first-pass placeholder cases; its disposable probe was removed.
-The package is now 164,560 bytes (+946); the native image is unchanged at 60,040
-bytes and 64,452 linked reserved bytes. The gated readiness run still observed
-658,944 peak owned bytes. No useful native self-host time can be reported.
-
-Crucially, the unchanged self-host entry **still** rejects at line 69. Five
-repeated forward calls and a late-line control also passed, so neither the
-fifth call nor line ordinal alone explains it. Keep the real-native readiness
-probe bounded; a console capture without a safe breakpoint at the relevant
-path would not establish the cause.
-
-### Whole-module capability slices
-
-The earlier first-rejection rhythm made progress visible but produced narrow
-changes that are hard to review together. Audit the complete source module
-before choosing a slice, group related missing behavior, and finish one
-responsibility before returning to the readiness probe. Do not infer a fix for
-line 69 from its spelling alone: earlier calls to `nextPath` pass, and reduced
-word-branch cases pass. Localize the failure inside the full entry context,
-then repair the general binding, selection or pass-state boundary it exposes.
-
-The live Rust dependency manifest currently contains 44 source/include files
-and about 22,500 source lines. The 195-line entry has four `.block`s and 136
-instruction statements across its code section: fixed-width branches and
-calls, direct and indirect memory operations, immediate arithmetic, register
-lists, and qualified `app.Frame` operands. It also has code, data and BSS
-sections, `.align`, `.res` and a four-section Hunk output. Its dependency graph
-uses structs, macros, conditional assembly and a compile-time loop. This is a
-syntax inventory, not proof that each construct fails natively. Completing
-the entry alone does not establish parity for the transitive graph.
-
-1. **Entry control flow and operand execution.** Audit every statement in the
-   entry code section, including all four blocks and their forward/backward
-   references. Resolve the line-69 failure as part of the whole section, then
-   carry any missing operand, scoped-symbol and fixed-width control-flow forms
-   through the packed source and package-owned semantic path. The checkpoint is
-   exact Rust/native code bytes for representative full-block cases and a
-   bounded unchanged-entry run that passes the complete entry code section.
-   Do not add mnemonic-specific decisions to shared code. Keep the selected
-   forms and package-size cost visible for review.
-2. **Section storage and Hunk output.** Support the entry's code/data/BSS
-   layout as a unit: `.align`, `.res`, section-relative symbols, any required
-   cross-section fixups, selected output order and Hunk serialization. Verify
-   one complete small multi-section module against fresh Rust Hunk bytes,
-   including BSS allocation and relocation; the unchanged entry remains the
-   broader probe. A flat stream or host-built Hunk is not acceptance.
-3. **Dependency-module cohorts.** Audit one full transitive module and its
-   immediate imports at a time, starting with `binary_app.asm`, recording which
-   declarations, compile-time constructs and package-driven 68020 forms are
-   actually missing. Implement a shared feature family across the affected
-   modules instead of handling isolated source lines. Accept each cohort with
-   complete module-level Rust/native comparisons and a bounded unchanged-entry
-   probe. The telemetry include files and existing `.macro` work need a
-   compatibility check, not an assumption of general macro parity.
-
-These are review units, not a promise that each fits in one commit. Use
-recovery-point commits inside a larger slice when useful, but present one
-combined diff and result for review. At every useful checkpoint record fresh
-parity, native completion status, package/image size and 2 MiB owned-memory
-peak. Record release timing only after a run actually completes. Revisit the
-architecture and code structure together after two or three such slices.
-
-The first entry-code checkpoint corrected an earlier trace interpretation:
-native diagnostic line numbers are hexadecimal. The reported `line 00000069`
-was physical line 105 (`movem.l (sp)+, d2-d7/a2-a6`), not a `bsr` at physical
-line 69. The package now supports the corresponding postincrement MOVEM mask
-form; a fresh 68020 / 2 MiB native run matched Rust exactly. Numeric operand
-shapes now distinguish immediate/register from immediate/direct and unary
-register from direct forms, allowing the existing semantic programs to execute
-the entry's `move.w #PATH_BYTES-1,d1` and `tst.w d1` patterns. Both literal and
-constant-expression immediate/register controls matched Rust exactly.
-
-The unchanged entry now reaches hexadecimal line `B6`, physical line 182,
-`.section bss, kind=bss`. That is still a preparation rejection, not native
-self-host completion. This checkpoint's BSP3 package is 166,412 bytes, native
-image 60,380 bytes with 64,744 linked reserved bytes. The bounded readiness
-probe staged 44 files / 470,860 source bytes, assembled a fresh 61,060-byte
-Rust Hunk, and observed 662,016 peak owned bytes on the native early-rejection
-path. It provides no valid full-assembly time.
-
-The next operand-family slice made `direct_direct` distinct from other pairs
-and carried plain indirect, postincrement and predecrement register projections
-through the package and native selector. For unsupported package sequences, a
-necessary packed-wrapper predicate may now prove that a row cannot match;
-possible matches still fail closed. The predicate is deliberately conservative
-for indexed tuples. One fresh native case matched Rust for three different
-plain/update combinations. More significantly, the complete `nextPath`,
-`optionValue` and `skipSpace` helper blocks from the unchanged entry matched
-Rust **byte-for-byte** in a 1,134-byte source case (about 1.81 seconds from
-guest start to done, including harness overhead). This is proof of those
-blocks, not a self-host time or a speedup claim.
-
-The unchanged-entry probe still first rejects at hex `B6`, physical line 182,
-the BSS section declaration. It now stages 44 files / 473,446 source bytes;
-the fresh Rust Hunk is 61,540 bytes with 72,708 linked reserved bytes. BSP3 is
-175,736 bytes (+9,324 from the prior checkpoint), the native image 60,860
-bytes with 65,200 linked reserved bytes, and the bounded early-rejection path
-again observed 662,016 peak owned bytes. The larger package reflects newly
-executable package candidates and wrapper metadata; inspect this growth before
-expanding all direct/direct forms. The entry-code acceptance above is met for
-representative full blocks and the unchanged entry reaches the next section
-boundary. Proceed with the section/BSS and Hunk slice as a coherent unit.
-
-The section/BSS/Hunk checkpoint now lowers selected code, data and BSS sections
-into bounded section-local storage, handles `.align` and `.res`, and writes a
-native Hunk with selected output order and grouped absolute-long relocations.
-The small module deliberately declares code/data/BSS but selects code/BSS/data;
-its code contains an aligned `.long` reference into data, while BSS reserves
-and aligns bytes without emitting them. Fresh Rust and 68020 / 2 MiB native
-Hunk files matched byte-for-byte (100 output bytes, three segments and 12 BSS
-bytes). One observed guest START-to-DONE time was 0.77 seconds; it is a single
-functional run, not an optimization comparison. The compact native executable
-was 66,364 bytes with 77,728 linked reserved bytes. The older flat mapped-
-section case still matched Rust. Section-bearing instruction operands and
-compound section-relative data expressions currently reject explicitly:
-instruction fixup provenance and expression addends are not yet represented.
-
-The unchanged self-host readiness probe now passes the entry's BSS declaration
-but rejects during preparation in an imported file (diagnostic file `29`, line
-`02`, hexadecimal). It staged 45 files / 500,955 source bytes and a fresh
-65,772-byte Rust Hunk; BSP3 was 175,762 bytes. The instrumented early-
-rejection run observed 662,016 peak owned bytes. Preparation did not finish,
-so there is still no native self-host time. The next breadth slice should
-identify the full imported module at that diagnostic, inventory its unsupported
-constructs and immediate dependencies, and complete one structural feature
-family before repeating the unchanged probe.
-
-The next investigation identified `debug/memory_telemetry.i`, rather than an
-instruction in an imported module. Preparation cleanup had erased the current
-path before reporting it; failures now report that path before the common
-cleanup releases it. The shared conditional selector now distinguishes numeric
-`.if`/`.elseif` from preprocessing `.ifdef`/`.ifndef` and named branches. Rust
-definedness checks preprocessing definitions, not assembler assignments. The
-compact CLI has no `-D` ingress, so its preprocessing definition namespace is
-explicitly empty; true defined branches are not supported yet. Arithmetic and
-bitwise conditional expressions remain supported; comparisons such as `==`
-remain outside the current preparation expression compiler.
-
-A complete small conditional module, including nested absent gates, an
-assembler assignment that must not count as a preprocessing definition,
-`.elseif`, and a gated macro invocation, matched the full Rust CLI's six-byte
-output under fresh 68020 / 2 MiB execution. One observed START-to-DONE time was
-0.52 seconds. The compact image was 66,820 bytes with 78,156 linked reserved
-bytes (+456 / +428 from the preceding section checkpoint); this is a capability
-cost, not a speedup measurement. The unchanged telemetry include and self-host
-probe now reject at physical line 114 (`TOKEN_BEGIN .macro amount`), the ninth
-macro definition. The gated early-rejection owned-memory peak remains 662,016
-bytes, and no self-host duration exists.
-
-The early-rejection telemetry still reports sixteen profiling errors as at
-the preceding checkpoint; do not derive phase times from that record. The
-allocator accounting returns to zero after rejection.
-
-The template-storage investigation found that definitions persist across files
-in one assembly session. Four experimental modules plus two tokenizer modules
-include the fourteen telemetry macros. Raising one limit would not address
-their session-wide lifetime or 16-bit pool offsets. The implemented slice
-therefore separates growable definition/body/default storage from the bounded
-active call stack, retaining module visibility and imported-template identity.
-
-The template-storage checkpoint replaces the eight-definition table and fixed
-body/default pools with four growable session-owned blocks. Definition IDs stay
-16-bit; body cursors and default/text ranges are 32-bit offsets. Each block uses
-the existing 1 MiB allocator cap, and the active expansion stack remains bounded
-at 64 frames. Pool ownership belongs to the template engine; frontend cleanup
-releases it before caller scratch is freed. Expansion remains over packed records.
-
-The unchanged telemetry include and repeated includes in separate modules now
-match Rust, including an exported macro called from the importing module. A
-121-template case over 84,687 source bytes crosses 64 KiB of packed body storage
-and matches all 1,701 Rust output bytes, including early/late defaults and a
-nested call. Its release START-to-DONE observation was 8.62 seconds on 68020 /
-2 MiB. The separate instrumented run peaked at 736,256 owned bytes and returned
-owned allocation accounting to zero. These are capability measurements, not an
-optimization comparison. The release image is 67,020 bytes with 78,320 linked
-reserved bytes (+200 / +164 versus the preceding conditional checkpoint).
-
-The unchanged self-host probe stages 46 files / 510,312 source bytes with BSP3
-at 175,762 bytes. It now passes the telemetry include and first rejects at
-`binary_app.asm`, physical line 29 (hex file `1F`, line `1D`), the `Span .struct`
-declaration. The fresh Rust Hunk is 67,020 bytes / 78,320 linked reserved bytes.
-The bounded instrumented rejection peaks at 670,208 owned bytes. Sixteen
-profiling errors remain, so no trustworthy phase or native self-host duration
-is available.
-
-**Structure-layout slice (implemented below).** Inventory
-`.struct` declarations and field uses across `binary_app.asm` and its immediate
-dependencies, then implement the coherent shared declaration/layout feature
-family over binary preparation records. Preserve generic ownership: structure
-layout belongs to shared language processing, not CPU instruction selection.
-Use complete representative layouts and their field references for Rust/native
-proof before repeating the unchanged self-host probe. Avoid repairing individual
-field spellings or instruction sites in isolation.
-
-
-The approved layout slice targets the flat definitions used by the compact
-CLI: both `.struct` declaration spellings, labeled byte/word/long placeholders,
-nonnegative `.res` byte extents, type-size constants and qualified field offsets.
-Rust places fields consecutively without implicit alignment. Typed instances,
-initializers and aggregate member values are separate expression capabilities
-and are outside this slice. Preparation should lower layouts to numeric
-constants consumed by the existing assembly path. Acceptance uses complete
-imported layouts, mixed-width fields, reservation sizes and explicit malformed
-or unclosed rejection, followed by a fresh bounded unchanged self-host probe.
-Record image growth, release completion time and separate instrumented memory;
-do not turn an early rejection into a self-host timing claim.
-
-
-The layout checkpoint now lowers consecutive field offsets and total sizes to
-ordinary numeric assignments in a focused shared preparation module. It uses
-20 bytes of session state, independent of layout count. A leading-name callback
-role prevents fields such as `End` from binding to package directives; extent
-expressions resolve in the surrounding scope. Global known constants are now
-captured as well as module constants. Module visibility remains owned by the
-existing binder. No struct spelling is consulted by assembly passes.
-
-Fresh 68020 / 2 MiB native output matched Rust for imported Span/IncludeFrame
-and odd-width layouts, both declaration spellings, `.db`/`.dw` aliases, ignored
-conditional definitions, qualified offsets and total sizes (14 output bytes).
-One release START-to-DONE observation was 0.76 seconds. A global-constant-sized
-reservation layout also matched all four Rust bytes in 0.52 seconds. The final
-release image is 67,868 bytes / 79,148 linked reserved bytes, up 848 / 828 bytes
-from the template-storage checkpoint. These are capability costs and individual
-functional timings, not comparative performance improvements.
-
-The macro-layout Rust oracle exposes a separate qualified-path boundary:
-`Local.End` retains definition-time qualification in native template expansion,
-while generated declarations belong to the invocation scope. Native must reject
-rather than emit incorrect bytes. A readiness probe retains this case for a
-future template declaration-ownership slice; this checkpoint does not claim
-complete struct-value or macro-composition parity.
-
-The unchanged self-host probe now passes all three `binary_app.asm` layouts and
-rejects at physical line 103 (hex file `20`, line `67`), `.MEMORY_PHASE #0`.
-It stages 47 files / 516,909 source bytes; BSP3 remains 175,762 bytes. The fresh
-Rust Hunk is 67,868 bytes / 79,148 linked reserved bytes. Bounded instrumented
-rejection peaks at 676,352 owned bytes. The profiler's incomplete-preparation
-flag remains 16, so there is still no complete native self-host duration.
-
-**Next candidate: macro invocation across lexical scopes.** The follow-up
-inventory found immediate numbers, bare registers/symbols, dotted constants,
-register-indirect field operands and zero-argument calls across the module and
-its immediate dependencies. The argument parser already admits these packed
-token forms, including `#`: line 103 identifies the call boundary, not a proven
-argument-parser defect. First compare representative generic calls inside and
-outside blocks and localize binding, call validation or expansion failure.
-Then implement the coherent missing responsibility. Preserve binary arguments;
-do not add a telemetry-specific exception. Keep qualified macro-local declaration
-ownership as an explicitly distinct gap.
-
-A separate instrumented imported-layout run also matched Rust, peaked at
-550,656 owned bytes, returned live allocation accounting to zero and balanced
-all tracked allocation/free counts. Its profiling error flags were zero. Its
-time includes instrumentation overhead and is not the release timing above.
-
-The unchanged 84,687-byte / 121-template workload still matched all 1,701 Rust
-bytes after this slice. Its release START-to-DONE observation was 8.76 seconds
-versus 8.62 seconds at the previous checkpoint. One run per state cannot
-establish a meaningful performance change; retain the exact-output regression
-and reproducible timings without claiming a gain or regression.
-
-Focused Rust qualification: 85 passed, 179 native/explicit-environment tests
-ignored. Assembly formatting (42 imported files), Rust formatting, fresh-native
-proof-contract structure and benchmark-selector guards pass. The CPU boundary
-guard at that checkpoint retained nine findings in `binary_encoding.asm` and
-the former `binary_mask_unary.asm`; none occurred in that diff. The latter is
-superseded by the generic `binary_register_mask.asm` projection reader. Broad repository qualification
-is not claimed. Use the documented FS-UAE environment with the 2 MiB profile:
-`cargo test -p asm compact_struct --lib -- --ignored --nocapture --test-threads=1`
-covers the positive layout cases and explicit readiness/rejection boundaries.
-
-## Qualified macro invocation checkpoint
-
-The representative root and block/namespace macro comparisons already passed.
-The actual disabled telemetry body reproduced the self-host rejection: binding
-its gate names inside the synthetic invocation scope exceeded the shared
-63-byte composed-name bound. The binder now uses one 256-byte preparation
-buffer and a 255-byte name limit for both spelling and composition checks.
-This is a shared storage correction, with no telemetry exception, argument-parser
-change or CPU-specific behavior. It adds 192 dynamically allocated scratch bytes;
-the release image remains 67,868 bytes / 79,148 linked reserved bytes.
-
-All three fresh 68020 / 2 MiB cases match their live Rust outputs. Root and
-nested calls include immediate, register, field-address and zero-argument forms;
-the actual disabled telemetry case emits only the expected two data bytes.
-Release observations were 0.77, 0.76 and 1.52 seconds; no speedup is claimed.
-
-The unchanged self-host probe advances from physical line 103 to line 219 in
-`binary_app.asm` (hex file `20`, line `DB`), `tst.b 0(a0, d3.w)`. It stages
-47 files / 517,067 source bytes; the runtime package remains 175,762 bytes.
-Instrumented peak owned memory remains 676,352 bytes, and cleanup returns owned
-accounting to zero with balanced allocations/frees. Preparation-stage calls
-are [695, 1, 592, 592, 694, 0]. Incomplete-preparation flag 16 remains; no
-complete native self-host time or artifact parity is claimed.
-
-**Next candidate: indexed operand forms.** Inventory the complete addressing
-family across the app and immediate dependencies before choosing the next slice.
-Establish whether rejection belongs to packed operand lowering or package-owned
-selection/encoding. Keep CPU semantics within package boundaries; no repair
-should special-case this source or instruction spelling. Qualified macro-local
-declaration ownership remains a separate recorded gap.
-
-Focused binary-source Rust qualification passes 90 tests, with 182 explicit
-native/environment tests ignored. The three new native comparisons and bounded
-self-host diagnostic complete freshly. Rust and assembly formatting (42 files),
-proof-contract and benchmark-selector guards pass. CPU-boundary qualification
-still reports nine findings in unchanged encoding/mask modules; this change
-adds none. Broad repository qualification is not claimed.
-
-The unchanged 121-template / 84,687-byte release control still matches all
-1,701 Rust bytes. START-to-DONE was 8.64 seconds versus 8.76 seconds at the
-preceding layout checkpoint. One observation per state supports no material
-performance-change claim; the name-bound correction carries no measured
-regression on this control.
-
-## Indexed addressing checkpoint
-
-Hypothesis: the next self-host rejection is a missing compact implementation of
-existing package-defined projections and semantic sequences, not absent family
-encoding semantics. The app and immediate compact imports contain 41 indexed
-operands (21 word / 20 long indexes, mostly displacement zero and one -1).
-Preparation currently preserves only a displacement/base pair; indexed operands
-need displacement/base/qualified-index triples. Package recipes already define
-register classes, qualifiers, displacement constraints and extension encoding.
-
-Implement bounded numeric tuple projections and projection-only `match:_`
-followed by semantic encoding stages. Named match programs and unsupported stage
-or projection forms remain explicit rejections. Keep preparation, recipe storage
-and execution separated; use offsets and IDs in package/source blocks. Do not
-introduce mnemonic tests or CPU encoding logic in compact infrastructure.
-
-Acceptance: live Rust/native comparison for a complete mixed indexed workload
-covering unary, register/memory and immediate/memory forms, both index widths,
-address-register indexes and signed displacement. Preserve explicit invalid-base
-rejection and existing displacement, macro and template behavior. Record release
-image/package costs, repeat the unchanged 121-template timing control, and run a
-bounded instrumented unchanged self-host probe. The current baseline rejects at
-app line 219; baseline release image is 67,868 bytes / 79,148 linked reserved bytes,
-BSP3 is 175,762 bytes, and template control is 8.64 seconds. Stop and discuss if the
-slice requires CPU-specific generic logic or an unbounded executor rewrite.
-
-Implemented numeric two/three-item tuples, package-qualified register identities,
-and bounded projection-only match/semantic-encoding sequences (eight stages,
-sixteen inputs per stage). Selection can disprove certain unsupported candidates
-from necessary structural facts; unknown structures still stop explicitly.
-Named match programs, fixup stages, unresolved sequence values and full-format
-addressing remain unsupported. No source-text assembly path or mnemonic-specific
-native behavior was added.
-
-Fresh native comparisons match all 68 bytes for the 15-form mixed source and
-all 1,632 bytes for its 24-fold repetition (7,489 source bytes). The repeated
-release observation is 11.83 seconds; no prior successful compact baseline
-exists for this workload, so this is capability/timing evidence, not a speedup.
-Signed sequence comparison also matches, and invalid base/range inputs finish
-with explicit exit 20. The release image is 68,952 bytes / 80,256 linked reserved
-bytes, up 1,084 / 1,108 bytes from the preceding checkpoint. The m68020 capsule
-grows from 175,762 to 269,162 bytes as sequence bodies become executable.
-
-The unchanged m6502 / 121-template control matches all 1,701 Rust bytes in
-8.639 seconds versus 8.64 previously (one observation per state). This supports
-no material timing-change claim. Package growth deserves a direction review:
-each candidate currently owns its descriptors/projections; sharing equivalent
-projection slices is a plausible follow-up, not an optimization implemented here.
-
-The self-host probe still stages the same 47-file dependency graph, now 524,572
-source bytes including this implementation. It advances to `binary_app.asm`
-line 399 (hex file `20`, line `18F`), `.MEMORY_STAGE #0`. Instrumented peak owned
-memory is 950,784 bytes, cleanup returns owned accounting to zero, allocations
-and frees balance, and incomplete-preparation flag 16 remains. Preparation calls
-are [880, 1, 768, 768, 878, 0]. No full native self-host artifact parity or time
-is claimed. Next, inventory the telemetry macro family and its binding/expansion
-requirements together before choosing a repair; do not special-case telemetry.
-
-Focused qualification passes 96 binary-source Rust tests and eight VM package
-tests (187 explicit native/environment tests ignored). Rust/assembly formatting,
-proof-contract and benchmark-selector checks pass. The architecture guard still
-reports the same nine existing findings in encoding/mask modules; this slice adds
-none. Broad repository qualification is not claimed.
-
-## Growable preparation-name arena checkpoint
-
-The entire disabled telemetry macro family matches Rust in a reduced native case.
-The self-host rejection at app line 399 is instead localized to shared name
-storage: temporarily changing the entry limit from 512 to 544 leaves the same
-rejection; increasing only the 16,384-byte arena by 512 bytes moves it to line
-413. These probes are diagnostics, not a maintained capacity increase. A larger
-inline layout also overflows signed instruction displacements during host build.
-
-Hypothesis: an owned growable name arena removes the accidental 16 KiB storage
-limit without changing binary source or package semantics. Reuse the existing
-allocator and gated accounting. Keep the 16-byte binding entry, 16-bit name
-offsets and 512-identity limit; reject a required extent above 65,535 explicitly.
-Separate arena storage from fixed preparation state and release it before
-assembly and on errors. Preserve block-index scratch reuse with an explicit
-capacity reservation. Source/package records continue to contain IDs/offsets.
-
-Acceptance: complete disabled macro-family parity, a spelling workload exceeding
-16 KiB with identical output, explicit offset-bound rejection, balanced native
-allocation/free accounting on success and rejection, unchanged timing control,
-and another bounded instrumented self-host probe. Do not expand this into a
-simultaneous module/import metadata or binary offset-width redesign.
-
-The arena now grows through `binary_memory` and is freed by frontend shutdown on
-success and rejection. Fixed preparation state contains only its owned block
-metadata; binding entries continue to contain word offsets. Binding, module-prefix
-opening and wildcard resolution preserve spelling bytes across callbacks that may
-relocate storage. Block indexing explicitly reserves its scratch capacity before
-reusing the arena. The shared composition/copy bound remains 255 bytes per name.
-
-Fresh native growth comparison matches all 15 Rust bytes for a 20,127-byte source:
-180 long sibling constants inside a deeply qualified module, followed by all 14
-disabled telemetry macro calls. It crosses allocation boundaries during module
-prefix binding and exceeds the former 16 KiB spelling limit. Instrumented peak is
-794,880 owned bytes, with zero error flags and balanced cleanup. The separate
-over-65,535-byte spelling case completes with explicit exit 20, peak 791,040 bytes,
-balanced cleanup and only incomplete-preparation flag 16. Instrumented times are
-not release performance measurements.
-
-The release image is 69,168 bytes / 80,456 linked reserved bytes, up 216 / 200
-bytes; runtime package remains 269,162 bytes. The unchanged 121-template control
-matches all 1,701 Rust bytes in 8.502 seconds versus 8.639 previously. One run per
-state supports no material performance-change claim.
-
-Self-hosting advances to app line 524 (hex file `20`, line `20C`),
-`move.l #declarations.SCRATCH_BYTES, d0`. The same 47-file graph now contains
-526,644 source bytes. Instrumented peak is 860,672 owned bytes versus the previous
-950,784 observation; the input and rejection point have advanced, so this is
-resource evidence from incomplete probes rather than a matched full-assembly
-comparison. Cleanup balances, flag 16 remains, and preparation calls are
-[1007, 1, 893, 893, 1005, 0]. No native self-host time or artifact parity is claimed.
-
-The referenced constant is public and fits the existing immediate path. The
-independent 512-identity bound is the next plausible resource constraint; confirm
-it before changing instruction semantics or storage. Scope/module/import metadata
-capacities are coupled, and simply enlarging their inline layout risks signed
-displacement overflow. Keep this as the next investigation, not a confirmed cause.
-
-Qualification: 98 focused Rust binary-source tests pass, with 190 explicit native
-or environment tests ignored. Native arena growth/rejection, wildcard import and
-bounded self-host checks complete freshly. Rust and assembly formatting (42 files), proof-contract
-and benchmark-selector checks pass. The architecture guard still reports the same
-nine existing findings; this slice adds none. Broad qualification is not claimed.
-
-## Growable preparation-identity tables slice
-
-A synchronized diagnostic change from 512 to 544 identity slots advances the
-bounded self-host rejection from app line 524 to line 600, with balanced cleanup.
-This confirms a storage constraint; the temporary capacity change was reverted.
-
-Replace inline binding entries and per-identity module/import metadata with owned,
-growable blocks. Preserve the 16-byte binding entry, word IDs/name offsets and
-serialized source/package contracts. Reserve every coupled table before publishing
-an identity, refresh pointers across relocating callbacks, and release all tables
-at preparation shutdown. Retain separate graph/import-list limits for this slice;
-a higher symbol limit must not implicitly allocate larger graphs or import lists.
-
-Acceptance: fresh exact Rust/native output for more than 512 short constants,
-conditional use of those constants, wildcard imports and referenced block selection;
-balanced owned-memory accounting on success and existing offset-bound rejection;
-unchanged release timing control; and another bounded instrumented self-host probe.
-No full self-host parity or performance claim is made by an incomplete probe.
-
-Implementation outcome: binding entries, module owner/origin/flags and import
-heads/known-value/known-defined tables use owned growable blocks. All tables are
-reserved before Count publication. Existing 16-byte entries and packed records
-are unchanged. Borrowed pointers refresh across callbacks, and discovery retains
-candidate spelling offsets. `$ffff` remains reserved for selected-import wildcard
-state, so the logical Count bound is 65,534, additionally limited by source-ID
-space and spelling extent. An obsolete 512-identity dependency-resolution guard
-is removed; its scratch already grows from the actual constant count.
-
-Fresh 68020 / 2 MiB native comparisons match Rust for 600 short constants with
-conditional evaluation and references both before/after growth: 5 output bytes
-from 6,652 source bytes locally, and 8 bytes from a 6,738-byte wildcard-import case
-including a reached block and an excluded unused block. Instrumented peak owned
-memory is 803,072 / 849,152 bytes respectively. The local module has 21 dotted components, exercising entry relocation during
-prefix binding. Error flags are zero and cleanup balances. A late-module graph-bound case also completes freshly with explicit
-exit 20, peak 849,152 bytes, balanced cleanup and incomplete-preparation flag 16.
-The retained 512-node graph is keyed by binding index; new guards reject high
-module identities before touching graph storage. Instrumented times are not
-release performance evidence.
-
-The bounded self-host probe advances from app line 524 to line 856 (hex file `20`,
-line `358`), `move.w #PATH_BYTES/4-1, d0`. It reads the current 47-file graph of
-534,619 source bytes. Instrumented peak owned memory is 906,752 bytes; allocations
-and frees balance, cleanup reaches zero, and only incomplete-preparation flag 16
-remains. Preparation stage calls are [1361, 1, 1223, 1223, 1360, 0]. No full native
-self-host artifact parity or time is claimed. The packed expression product parser
-currently admits multiplication but not division; inventory division/remainder and
-other outstanding arithmetic forms together before the next slice. This is the
-next investigation, not authorization for another implementation slice.
-
-Focused qualification passes 99 binary-source Rust tests (193 explicit native or
-environment tests ignored). Three new native identity-growth/bounds checks and the
-bounded self-host probe complete freshly. Rust/assembly formatting (42 files),
-proof-contract and benchmark-selector checks pass. The architecture guard still
-reports the same nine existing enforced findings; this slice adds none. Broad
-repository qualification is not claimed.
-
-Final release control matches all 1,701 Rust bytes from the unchanged 84,687-byte,
-121-template workload in 8.750 seconds versus 8.502 before this slice (2.9% slower).
-An earlier integrated sample was 8.739 seconds. This is a small observed cost, not
-a statistical performance conclusion; the change removes a demonstrated resource
-constraint rather than claiming a speedup. Release image is 70,224 bytes / 81,432
-linked reserved bytes, up 1,056 / 976 bytes. m68020 BSP3 remains 269,162 bytes.
-
-The existing over-65,535-byte spelling case also completes freshly with explicit
-exit 20, 798,464 peak owned bytes, balanced cleanup and only flag 16. No new
-legacy executor, CPU semantics or serialized pointer is introduced.
-
-## Packed arithmetic grammar slice
-
-The first self-host division expression is `move.w #PATH_BYTES/4-1,d0` at app
-line 856. Other source modules use division in scratch sizes and copy-loop bounds.
-Before this slice, the packed compiler's product tier recognized only multiplication;
-canonical Rust/package grammar also admits division and remainder at that tier,
-with a tighter right-associative power tier. Shared native ExprVM math and folding
-already implement those operations.
-
-Connect `/`, `%` and `**` to those existing operator pairs. Preserve canonical
-precedence (including unary tighter than power), left-associative products and
-right-associative power. Keep recursion bounded by the shared syntax-depth limit,
-the existing checked signed32 domain and the current packed format. Do not add
-CPU-specific arithmetic, a second evaluator, source fallback or legacy programs.
-
-Acceptance: exact fresh Rust/native output on both endian target packages for
-signed quotient/remainder, nested precedence, forward constants, label-derived
-expressions and the self-host immediate form; explicit rejection of zero divisors,
-invalid exponents, malformed input and excess power depth; existing compilation/
-evaluation telemetry with balanced cleanup; unchanged release timing control and
-a bounded instrumented self-host probe. Full signed64 parity is outside this slice.
-Baseline control: 8.750 seconds, release image 70,224 bytes / 81,432 linked reserved,
-m68020 package 269,162 bytes; incomplete self-host peak 906,752 bytes at app line856.
-
-The compiler now emits existing DIVIDE/MOD/POWER operator pairs; the product tier
-preserves its selected operator across recursive parsing. Power uses the existing
-shared syntax-depth budget and unwinds it on both successful and failing recursion.
-No math evaluator, compact opcode or serialized-format variant is introduced.
-
-The first remainder case exposed a native scanner gap: `17%7` was consumed as a
-single numeric spelling because the body predicate also admits `%`. Number scanning
-now stops at a nonleading `%`; leading binary prefixes remain accepted. Cases cover
-both `%101%10` (5 modulo decimal10) and `%101 % %10` (5 modulo binary2).
-
-The arithmetic slice deferred a separate Rust oracle defect at Erik's explicit
-request: ordinary assignment truncated scalar values into unsigned symbol shadows,
-so `n=-17; n/7` produced an unsigned quotient. That grammar proof used unary
-negation of a positive symbol, plus signed literals and checked32 boundary values.
-It did not claim parity for assignment-produced negative scalar symbols; the
-subsequent reference repair is described below.
-
-Fresh instrumented 68020 / 2 MiB runs match all 116 / 114 Rust bytes for m68020 /
-m6502 packages. Both compile 39 expressions into 187 program bytes; evaluations
-are 73 / 69, peak tracked ownership 787,712 / 183,808 bytes, with balanced cleanup
-and zero profiling errors. Excess syntax depth rejects explicitly. All five invalid
-arithmetic cases complete with expected rejection on a focused rerun. The initial
-group run timed out during rejection testing and is not counted as proof; the
-timeout's cause remains unconfirmed.
-
-The unchanged 84,687-byte, 121-template release control matches all 1,701 Rust bytes
-in 8.648 seconds versus 8.750 before this slice (1.2% lower in this sample, not a
-statistical speedup claim). Release image / linked reservation are 70,324 / 81,532
-bytes, both up 100 bytes. The arithmetic extension's main gain is language coverage.
-
-The bounded instrumented self-host probe completes with explicit exit 20 at
-`experimental/binary_frontend.asm:375` (`.bend ; nextExpansion`), beyond the former
-app division failure. Its cause remains unclassified. The live manifest contains
-47 files / 535,421 source bytes; m68020 BSP3 remains 269,162 bytes. Tracked peak
-ownership is 1,018,368 bytes with balanced cleanup. Flag 16 and the absent completed
-duration indicate preparation timing closed early on rejection, not an allocation
-bound or a completed assembly measurement. Full self-host parity/time remain unproven.
-
-Focused Rust qualification passes 102 binary-source tests (197 native/environment
-tests ignored), plus Rust modulo and fresh native percent-prefix regressions. Rust formatting, native
-formatting (42 files), proof-contract and benchmark-selector checks pass. The
-architecture guard retains the same nine existing enforced findings. Broad
-repository qualification is not claimed.
-
-## Rust signed scalar reference repair
-
-Replace scalar classification-only storage with semantic `i64` values alongside
-the unchanged unsigned address/ABI shadows. Assignment, `.const`/`.var`/`.set`,
-mutable arithmetic updates and forward-constant resolution synchronize both.
-Scoped host and VM expression leaves read the semantic value; address labels keep
-their unsigned meaning. Bitwise/shift and packed concatenation/repetition compound
-operators retain their established 32-bit domain. Output width rules are unchanged.
-
-Use one signed host expression walk with a 32-bit adapter for consumers requiring
-that result width; do not retain parallel signed/unsigned AST interpreters.
-The correctness comparison covers negative quotient/remainder, mutable snapshots,
-forward chains, structured/scalar reassignment, qualified imports, both target byte
-orders, positive wide constants and unsigned high-address labels. Host-forced and
-VM instruction operands must agree. Native code/package formats are unaffected;
-this slice repairs the reference rather than advancing the self-host frontier.
-
-Semantic values also participate in layout-stability comparisons and survive
-recreated line processors between passes; comparing only their 32-bit shadows can
-miss changes in sign or upper bits. The shared core now rejects unrepresentable
-signed-minimum negation/division/remainder rather than panicking, matching the
-native fail-closed boundary. Zero divisors remain errors. No separate host-only
-overflow rule remains.
-
-Qualification: all eight signed-scalar regressions pass, including signed struct
-fields and exact dotted-binding precedence. The broad `asm`, `opcore` and `vm`
-run passes 202 core and 434 VM unit tests, plus their integration checks. The
-assembler run has 187 remaining failures reproduced in an isolated pre-slice
-baseline; these include stale package/reference expectations and existing module
-output failures. Its one additional failure was an incorrect new test expectation
-about forward dotted-binding precedence, corrected and rechecked in the focused
-suite. No broad green qualification or fresh native execution is claimed.
-
-Formatting and benchmark-selector checks pass. The architecture guard retains
-its nine existing enforced findings. All-target Clippy also encounters existing
-warnings in the unchanged engine dependency; Clippy with `--lib --no-deps` passes
-for all three affected crates.
-This is a correctness repair, with no comparative performance claim.
-
-## Wider preparation spelling offsets experiment
-
-Hypothesis: self-host rejection at `binary_frontend.asm:375` is caused by the
-session-wide 64 KiB spelling extent, rather than unsupported `.bend` syntax.
-Complete live-block cases with 520, 1,032 and 2,056 short constants already match
-Rust on native 68020 / 2 MiB, establishing the existing scope/identity growth path.
-A bounded debugger sample near the end of `binary_app.asm` observes 1,383
-identities and 55,241 spelling bytes; it does not capture the failing instruction.
-
-Widen the preparation-only name offset and arena extent to 32 bits. A 20-byte
-binding entry retains word IDs/owners/selection fields and explicit padding;
-all consumers use its declared stride. The shared 1 MiB allocation limit implies
-an explicit 52,428-entry bound, still constrained by available numeric source IDs.
-Serialized source and runtime-package formats do not change. This keeps a simple
-contiguous preparation arena; prefix-sharing is a separate optimization rather
-than a requirement for this capacity experiment.
-
-Accept only with exact fresh Rust/native output beyond 64 KiB of spellings,
-including wildcard imports, macro arguments, directive lookup and block
-closure; balanced allocation cleanup; and self-host progress beyond the original
-close. Repeat the unchanged release template control to report runtime/image
-costs. If the original self-host failure remains, reconsider the diagnosis rather
-than claiming this experiment fixes it. Full self-host parity remains the target,
-not an outcome established by successful reduced cases.
-
-The widened telemetry case matches all 15 Rust bytes with 908,288 peak tracked
-owned bytes, zero profiling errors and balanced cleanup. A fresh 47-file self-host
-probe passes the original close and reaches `binary_frontend.asm:741`,
-`andi.l #$fffffffe, d1`. Peak tracked ownership rises from 1,018,368 to 1,157,632
-bytes (+139,264); cleanup balances. This supports the original spelling-limit
-hypothesis but leaves preparation incomplete (flag 16), without full assembly
-parity or completed timing. The next structural investigation is full-width
-32-bit literal handling rather than another local `.bend` workaround.
-
-A composite probe with a provider struct, exported scalar, imported macro and
-routine reference fails with file/line zero. Its reduced single-file,
-provider-before-caller form also fails against pre-change native sources; preserve
-`compact_scope_provider_first_readiness_fs_uae` as a known readiness gap. The
-included-provider plus discovery variant also fails, but has not been compared
-against pre-change sources. Neither is claimed as wide-offset parity. Qualify the
-storage change with independent established import/block and telemetry/macro paths;
-do not erase or reinterpret these valid Rust cases as native success.
-
-Fresh post-change native proof on 68020 / 2 MiB: all three live-block cases
-(520, 1,032 and 2,056 constants) match Rust. A 320-long-name provider exceeds
-64 KiB of spellings, then exports a retained routine through wildcard import;
-all three output bytes match, its unused block stays excluded, and cleanup
-balances with zero profiling errors. Peak tracked ownership is 1,006,336 bytes.
-The focused Rust prepared-source suite passes all 97 tests; the final fixture
-oracles pass separately. Formatting, workflow links, benchmark selectors, debugger
-helper tests and the native proof-contract guard pass. The architecture guard
-retains its nine existing enforced findings; no broad green gate is claimed.
-
-The unchanged release control (84,687 source bytes / 121 templates) matches all
-1,701 output bytes in 8.629 seconds versus 8.648 before widening, a single-sample
-observation with no meaningful runtime gain/loss claim. Telemetry is disabled for
-this comparison; guest execution is 68020 / 2 MiB with an m6502 target package.
-Release image is 70,452 bytes / 81,660 linked reserved bytes, +128 each; the
-m68020 runtime capsule remains 269,162 bytes. Capacity and self-host progress are
-the benefit of this slice, with the tracked memory increase stated above.
-
-## Full-width scalar expression slice
-
-The scanner already preserves unsigned 32-bit magnitudes. The self-host mask
-`$fffffffe` is rejected in expression compilation; removing that gate alone
-would silently narrow it to signed -2 during folding. Preserve positive literal
-meaning through the shared ExprVM instead of adding instruction-specific handling.
-
-Carry signed i64 high/low words through compact literals, constant folding,
-evaluation results, dependency/label tables and compile-time module parameters.
-Keep narrow literal encodings for ordinary values and add explicit wider forms.
-Reuse shared ExprVM arithmetic; validate address/count/projection widths at their
-consumers. Packed source number tokens remain u32; expressions can compute wider
-values. Replace the experimental signed32 evaluator contract rather than retaining
-an old executor or compatibility mode. Package CPU semantics remain unchanged.
-
-Qualify literal and symbol division/shifts/comparisons, high-bit emission,
-intermediates crossing u32, full-width conditional truth, parameters and the
-original instruction mask against fresh Rust/native outputs. Preserve scanner
-u32 overflow rejection and independent syntax/stack/program bounds. Repeat the
-release template control and a bounded timed/instrumented self-host probe. Stop
-and reconsider if correct meaning cannot be carried through downstream storage;
-matching the ANDI bytes alone is insufficient proof. Full self-host completion
-remains a target rather than the expected outcome of this slice.
-
-Implementation retains the shared Rust operator rules (including shifts masked to
-31 and logical right shift). Compact literals add explicit U32/I64 forms rather
-than reinterpreting high-bit magnitudes. Eight-byte scalar slots and twelve-byte
-parameter records retain both words; the old experimental signed32 wrappers are
-removed. Binding, dependency, block-retention and Hunk-reference walkers recognize
-the new literal widths. Source tokens remain u32; package bytes/contracts stay
-unchanged.
-
-The tests exposed a Rust conditional defect: `.if`/`.elseif` discarded high bits
-before checking truth. Those two checks now use the existing signed scalar
-evaluator; match/case and other bounded scalar consumers are unchanged. The manual
-states full-width truth and its example is exercised by live Rust/native probes.
-Fresh native 68020 / 2 MiB proof matches 60 literal bytes, 50 symbol/macro/instruction
-bytes and 16 incoming-parameter bytes, with zero profiling errors and balanced
-cleanup. Their peak tracked ownership is 786,944 / 787,200 / 789,504 bytes.
-All 118 direct compact/canonical ExprVM records match, including wide symbol
-comparisons, malformed programs, stack limits and alternating evaluator modes.
-The Rust prepared-source suite passes 98 tests, plus seven conditional regressions.
-
-The unchanged release template control (84,687 source bytes, 121 templates,
-1,701 output bytes) takes 8.575 s versus 8.629 s at the previous checkpoint.
-These single runs indicate no material regression; they do not establish a
-statistical speed improvement. The release Hunk grows from 70,452 to 70,872 bytes
-and its linked reservation from 81,660 to 82,092 bytes. The runtime capsule remains
-269,162 bytes.
-
-Fresh bounded self-host preparation passes the original high-bit mask and stops
-at a new diagnostic: file `0000000B`, line `0000006A`. Its path field is empty;
-discovery ordinals depend on guest enumeration and cannot safely be mapped using
-the sorted Rust manifest. Locating this new stopping point remains next-slice
-work. Peak tracked ownership is 1,165,824 bytes, up 8,192 bytes, with balanced
-cleanup. Preparation is incomplete (telemetry flag 16); there is no completed
-self-host Hunk or total assembly time. The live Rust self-build still succeeds.
-
-Native formatting, fresh-run proof, benchmark-selector and workflow-link guards
-pass. The CPU architecture guard still reports its existing nine enforced
-findings; this checkpoint does not claim repository-wide qualification.
-
-All three fresh decimal/hex/binary source-literal overflow probes reject cleanly;
-the u32 scanner bound has not been relaxed.
-
-## Qualified struct fields and EOF diagnostics
-
-The full-width checkpoint's next rejection is in `binary_package.asm` at EOF.
-Input close cleared the preparation path before finalization could report it;
-retain that bounded diagnostic path until the next open replaces it. This does
-not restore textual execution or add source retention to the binary passes.
-
-A fresh whole-package layout comparison independently fails native final binding
-while its live Rust oracle succeeds. The native binder treats every dotted name
-as absolute/imported; Rust additionally resolves a struct member through its
-lexical owner. `PARAMETER_BYTES = Parameter.High+4` exposes that gap. Preserve
-struct identity and reference origin through numeric preparation, resolving
-lexical struct owners at completion while retaining definition-time availability.
-Rust rejects a nearer struct declared after a field use; retain that rejection. Keep
-ordinary qualified symbols, import aliases and visibility consistent with Rust;
-do not add a general relative dotted-name language extension.
-
-Acceptance: the actual package layouts and stride produce identical Rust/native
-bytes, with ancestor/local-shadowing cases, rejected forward struct owners and a
-genuine unclosed-struct EOF retaining its path. Repeat affected qualified/import
-checks, the bounded self-host
-probe and an unchanged release control. A later rejection is progress, not full
-self-host parity. Stop to discuss if preserving Rust lookup requires a broader
-representation redesign.
-
-Implementation preserves lexical origin and definition-time struct identity in
-qualified proxies. Lookup uses existing folded hash buckets, and does not add a
-general relative dotted-symbol rule. Binding records grow from 20 to 22 bytes;
-the existing 1 MiB allocation now holds at most 47,662 entries. These tables are
-preparation-only and released before assembly. Serialized contracts are unchanged.
-
-The whole-package test also exposed numeric `.cpu` aliases being emitted as
-number tokens. The writer now binds that directive's first numeric-looking operand
-through the package dictionary. Unlabeled, bare-label and explicit-colon forms
-work; ordinary numeric data remains numeric and mismatched CPU aliases reject.
-The directive ID and supported aliases come from the selected package, with no
-CPU-specific semantics in the native writer.
-
-Fresh native 68020 / 2 MiB runs match the actual package's 20 layout bytes,
-local stride/field constants, ancestor lookup and earlier local shadowing. Forward
-struct shadowing rejects as Rust does. A genuine unclosed struct reports its EOF
-line and source path. Existing qualified macro imports and nested/forward-label
-checks pass. Numeric CPU alias probes match on both m68020 and m6502; the wrong
-selected-pipeline alias rejects. Successful instrumented probes have balanced
-cleanup and zero profiling errors. The Rust prepared-source suite passes 101 tests;
-the final extended numeric-alias oracle also passes.
-
-The bounded self-host probe still rejects at `binary_package.asm` EOF106 after
-4,271 expression-preparation calls. This is not proof of a struct-close failure:
-graph resolution runs after EOF checks and shares those diagnostic coordinates.
-The graph currently indexes 512 slots by source-symbol identity; structs, fields
-and proxies also consume that identity space. An import beyond index 511 is a
-concrete next hypothesis, requiring capture of the failing graph operation before
-changing representation. No completed self-host output or duration is claimed.
-Peak tracked ownership remains 1,165,824 bytes; preparation is incomplete
-(telemetry flag 16). The live Rust self-build succeeds.
-
-The unchanged release template control (84,687 source bytes, 121 templates,
-1,701 output bytes) matches exactly and takes 8.622 s versus 8.575 s at the
-previous checkpoint: approximately 0.5% slower in single runs, with no statistical
-performance conclusion. The release Hunk grows from 70,872 to 71,580 bytes
-(+708); linked reservation grows from 82,092 to 82,804 (+712). The runtime capsule
-remains 269,162 bytes. Instrumentation is disabled for this timing comparison.
-
-Rust and native formatting, native proof, benchmark-selector and workflow-link
-checks pass. The CPU architecture guard retains nine existing enforced findings,
-25 enforced-scope warnings and 565 outside-scope warnings; repository-wide
-qualification is not claimed.
-
-## Dense module graph identities
-
-Hypothesis: the remaining EOF rejection comes from graph arrays keyed by shared
-source-symbol IDs while reserving only 512 slots. A semantically complete diamond
-with 600 preceding constants should reproduce the rejection with just four modules.
-Compare against live Rust, then index graph nodes densely by module count and map
-their source identities explicitly. Keep the 512-module capacity, independent
-import capacity, discovery retries, dependency/source order, cycle detection and
-module-selection semantics. Do not allocate full graph records for every symbol.
-
-Acceptance: the sparse-ID diamond matches exact Rust/native output; existing
-ordinary discovery/order and cycle/missing cases retain their behavior. Repeat a
-bounded instrumented self-host probe and the unchanged release template control.
-Record any new stopping point separately from completion; reconsider if lookup
-cost or memory grows disproportionately to the module responsibility.
-
-The four-module diamond reproduces the original bug with fresh guest completion,
-exit 20 and an entry-file EOF diagnostic; Rust produces `[1,2,3,4]`. The same case
-now matches all four bytes after migration, including repeated discovery retries.
-Fresh 68020 / 2 MiB checks accept 512 actual modules and reject the 513th with
-explicit completion/exit. The deliberate module-capacity bound is retained.
-
-Nodes are dense and retain their source binding identity. A 1,024-word map links
-source IDs to module slots; DFS frames and edge heads use dense slots while
-module flags and import ownership still use source IDs. Source-array addresses
-use long offsets. Missing discovery requests retain the original source identity.
-The compact declaration-order node array replaces the separate roots array;
-graph scratch grows by 2,048 bytes to 13,328. Layout sizes and offsets derive from
-struct fields and owning capacities. The existing telemetry boundary remains.
-
-A new layout alias initially collided with the case-insensitive `heads` branch
-label. Naming the region `EDGE_HEADS` fixes the collision; the fresh full Hunk
-build accepts derived struct sizes and imported capacity constants. No literal
-layout duplication, additional runtime address setup or Rust repair remains.
-
-The Rust graph/module suite passes 46 tests. The former late-wildcard-import
-rejection test now requires successful exact output and balanced cleanup instead
-of preserving the superseded source-identity restriction.
-
-The late wildcard import matches all three Rust bytes with 853,248 bytes peak
-tracked ownership, zero profiling errors and balanced cleanup. Existing entry-file
-dependency ordering passes, as do fresh cycle, self-import and missing-module
-rejections. The native proof, instrumentation safety, formatting, benchmark-selector,
-supply-chain and workflow-link checks pass. The architecture guard reports ten
-existing enforced findings (including the preceding slice's generic bare-label
-helper name), with 25 enforced-scope and 565 outside-scope warnings. This graph
-change adds none; repository-wide qualification is not claimed.
-
-The bounded self-host probe advances past the original package EOF to
-`binary_source.asm`, line 12, `STATUS_BIND_FAILED = 4`. This is the declaration's
-spelling, not evidence that the writer returned its binding-error status: frontend
-preparation collapses several failure paths into the same diagnostic. Peak tracked
-ownership remains 1,165,824 bytes. Preparation-stage calls are
-`4462/1/4279/4279/4460/0`; profiling flag 16 denotes an unfinished interval, not an
-allocation-error report. There is no completed self-host output or total duration.
-The live Rust self-build succeeds.
-
-The following fixed-input slice localized this rejection by swapping complete
-declarations in a staged diagnostic workload, then comparing allocation policy
-under the original configuration. The temporary swap probe was removed afterward.
-
-The unchanged release control matches all 1,701 bytes from 84,687 source bytes
-and 121 templates. It takes 8.492 s versus 8.622 s at the preceding checkpoint,
-an observed 1.5% reduction in single runs, not a statistical speed claim. The
-release Hunk grows from 71,580 to 71,636 bytes (+56) and linked reservation from
-82,804 to 82,860 (+56). The m68020 capsule remains 269,162 bytes; instrumentation
-is disabled for this timing comparison. A rebuilt host test binary also incurred
-a roughly three-minute startup wait while `codesign` checked notarization; process
-snapshots separated this delay from FS-UAE execution and guest timing.
-
-## Fixed input allocation slice
-
-The declaration-swap probe still rejects at `binary_source.asm` line 12, with
-identical preparation counts and peak ownership. A diagnostic using the existing
-expanded-memory template advances to line 224; that template uses 68040 rather
-than the constrained profile's 68020, so it does not by itself isolate memory.
-The package's declared 269,162 bytes nevertheless receive 524,288 bytes through
-generic geometric growth. That is measurable avoidable slack for a fixed input.
-
-Reserve the immutable loaded package at its declared extent, rounded only to Exec
-allocation alignment. Retain geometric growth for mutable arenas and records;
-share allocation/copy/free logic and preserve failure cleanup. Compare actual
-outputs, allocation accounting and the bounded self-host frontier under the
-original 68020 / 2 MiB profile. Keep release timing separate from telemetry.
-Do not claim memory exhaustion until the original configuration advances or the
-failing allocation is observed; a later rejection remains incomplete self-hosting.
-
-The implementation adds `memory.reserveExact`: requests remain bounded to 1 MiB
-and round up to eight-byte Exec alignment. Only initial package loading uses it.
-Both policies share allocation/copy/release logic; mutable buffers still grow
-geometrically, existing capacity is retained, and failure preserves owned storage.
-For the m68020 capsule this reserves 269,168 rather than 524,288 bytes, saving
-255,120 bytes. The release Hunk grows by 76 bytes to 71,712, with 82,936 bytes
-linked reservation. No wire contract or CPU semantics change.
-
-Fresh self-host preparation under the original 68020 / 2 MiB profile now reaches
-`binary_source.asm` line 224, `.for 4`, instead of line 12. Its peak tracked
-ownership is 1,011,056 bytes versus 1,165,824 before the change. These peaks cover
-different preparation frontiers; their difference is not the isolated buffer
-saving. Stage calls are `4669/1/4487/4487/4668/0`, identical to the expanded-memory
-diagnostic frontier. Cleanup remains balanced, but profiling flag 16 still marks
-an unfinished interval. This supports memory pressure as the former blocker;
-no failed AllocMem call was directly observed. Self-hosting remains incomplete,
-with no completed artifact or duration. The next self-host language frontier is
-packed loop expansion, beginning with this `.for` use. Following the frontend audit,
-[VM boundary correction](compact-frontend-vm-boundary.md) takes precedence over
-adding more parity through the current handwritten grammar.
-
-Fresh numeric-alias cases match live Rust output for both m68020 and m6502, with
-zero live ownership after cleanup and zero profiling errors. The identical
-m68020 case peaks at 531,824 rather than 786,944 bytes: exactly 255,120 bytes saved
-(32.4%). The m6502 case peaks at 152,984 bytes. The unchanged release control
-matches all 1,701 bytes from 84,687 source bytes and 121 templates, including
-mutable-pool growth and relocation. It takes 8.862 s versus 8.492 s previously:
-an observed 4.4% increase in single runs, not a statistically established regression
-or speed claim. Instrumentation is disabled for that timing comparison.
-
-The two affected Rust oracle tests, compact CLI host assembly, linked-source
-formatter, native proof and instrumentation guards, benchmark-selector,
-supply-chain and workflow-link checks pass. The architecture gate remains blocked
-by the same ten existing findings (25 enforced warnings, 565 outside warnings);
-this allocation change adds none. Focused code review confirms public register/CCR
-preservation and unchanged logical extent on copying/release. Native tests cover
-fresh exact allocation and geometric growth; populated exact-buffer growth and
-forced allocation failure were not directly exercised. No broad repository
-qualification or full self-host completion is claimed.
-
-
-## VM-owned numeric normalization
-
-The first [frontend correction](compact-frontend-vm-boundary.md#numeric-normalization-checkpoint)
-is implemented: TKVM selects normalization rules and the writer consumes values.
-The unchanged release control matches 1,701 bytes in 9.116 s versus 8.862 s at
-the allocation checkpoint (single runs, about 2.9% slower). The 72,344-byte release
-image and 83,560-byte linked reservation include the correction; no speed gain
-is claimed. Explicit binary substitution recipes are the next architectural
-slice, followed by VM-controlled expression compilation before loop parity.
+# Native assembler completion plan
+
+Status: active. The compact native CLI fully self-hosts the current 61-file
+implementation with exact live Rust Hunk output on the physical A6000. It remains
+experimental: that proof does not establish full language, CPU, CLI or output
+parity. Current measurements, reproduction commands and remaining frontend
+ownership gaps are maintained in the
+[compact frontend note](compact-frontend-vm-boundary.md).
+
+This plan replaces the completed migration and prepared-source experiment
+journals. Git retains their slices, measurements and superseded contracts.
+The [workflow](../workflow/README.md) and
+[native parity contract](../../agents/rules/native-rust-parity-porting.md)
+govern execution; a future plan item alone does not authorize its implementation.
+
+## Product outcome and scope
+
+Provide the current Rust assembler language, all registered source CPU/dialect
+pipelines, and assembly CLI/output capabilities through the compact native path.
+Formatting, fix-it generation and other developer tools are deferred.
+
+The execution-platform floor remains a 68020 running AmigaOS 3.1 or newer.
+The product goal is full self-assembly within 15 minutes, preferably much faster,
+on a machine with 2 MiB installed RAM. The A6000 release measurement is 15 seconds,
+but the separate instrumented peak tracked allocation is 5,222,440 bytes; neither
+proves the 2 MiB goal. Preserve working full self-hosting while completing breadth,
+then qualify memory and platform requirements before promotion.
+
+Source targets and execution platforms are separate. Adding a CPU package must
+not add that CPU's parsing or encoding rules to shared native code. Canonical
+packages and live Rust define behavior. Derived runtime packages are generated
+from them, never maintained as a second source of target semantics.
+
+## Agreed runtime package model
+
+Runtime package generation is independent of source projects. Its inputs are the
+canonical runtime model and selected CPU/dialect pipeline. Generate distributable
+packages at build time; an Amiga user must not need Rust or project-specific host
+preparation to assemble a new project.
+
+- Configure the executable to embed zero, some or all target packages. Distribute
+  external packages for other supported targets; full CPU support does not require
+  every package to be resident or embedded.
+- Resolve the requested CPU and dialect through package/catalog metadata. Prefer
+  the matching embedded package; otherwise load it from configured external roots.
+  Report missing, invalid or incompatible packages explicitly.
+- Use identical runtime-package bytes, validation and execution for embedded and
+  external storage. Keep catalog lookup, storage acquisition, package validation
+  and assembly execution as separate responsibilities.
+- Validate the current format/VM contract, target identity, offsets, lengths and
+  resource requirements before use. Before 1.0, migrate producer and consumers
+  together and retain only the latest supported contract.
+- Keep package data immutable and position independent: stored offsets have
+  declared bases, with no persisted memory pointers. Bound loaded-package lifetime
+  and memory; do not copy Rust's unbounded artifact cache into native code.
+- Preserve package identity alongside prepared instruction IDs. Numeric IDs are
+  local to a package; `.cpu` changes cannot be implemented by replacing one global
+  package pointer. Every assembly pass must use the originating package and the
+  correct mutable CPU state.
+
+Current BS11 represents one CPU/dialect pipeline. It is distinct from the canonical
+`.opasm` container. The compact CLI accepts a package filename as its first
+argument; its `.cpu` directive checks that same pipeline rather than switching it.
+Embedding, catalog resolution and multi-package source execution are upcoming work.
+The first catalog/key specification must include dialect and contract identity,
+not only a CPU name. Aliases should not create duplicate target packages.
+
+Start with self-contained packages. Shared family/core payload deduplication is a
+later measured option, not a prerequisite that complicates the first resolver.
+A future editable binary source format may preserve optional formatting bytes,
+but this plan does not establish that disk format.
+
+## Package work: inspectable slices
+
+1. **P1 — implemented: all-target generation and coverage inventory.** Enumerate
+   the production registry rather than a copied target list. Export fresh packages
+   for every registered CPU/dialect, their sizes, aliases/defaults, recipe counts,
+   generation failures and unsupported candidate forms. Distinguish intermediate
+   unsupported plans from final wire-format barriers: lowering can introduce more
+   barriers. A generated package is not proof of successful native assembly.
+2. **P2 — common acquisition and validation.** Specify the catalog and build-time
+   embedded selection, then deliver an embedded/external pair for the same target
+   through one native loader. Compare exact output with live Rust; prove missing,
+   wrong-target, truncated and wrong-contract packages fail explicitly. Measure
+   executable/package size, load cost and peak memory separately from assembly.
+3. **P3 — package identity through preparation and replay.** Support source `.cpu`
+   transitions and defaults with stable package-context identities. Exercise at
+   least two families and repeated switching, checking emitted bytes, endianness,
+   instruction legality, CPU state and both passes. Avoid retaining dictionaries
+   solely to resolve already-prepared instruction IDs.
+4. **P4 — close target coverage gaps.** Choose coherent package/VM capabilities
+   from P1 findings and representative Rust reference sources. Cover legal forms,
+   aliases, qualifiers, rejection precedence and stateful CPUs. Maintain a target
+   matrix derived from the registry; capsule presence or a NOP per CPU is not full
+   CPU qualification.
+
+P1 establishes the next decision. Refine P2 and P4 from actual gaps; do not build
+an elaborate loader around an assumed complete package inventory.
+
+### P1 findings and reproduction
+
+The 2026-10-01 host inventory generates all 16 registered CPU/dialect pipelines
+for 14 canonical CPUs without generation errors. Total self-contained package
+size is 1,902,110 bytes (1.81 MiB), including duplicated family/core content.
+The m68020 package is byte-for-byte equal to the 299,048-byte package used in the
+physical self-host export. This is host generation evidence; no native instruction
+coverage is inferred from successful export.
+
+| CPU | Dialect | Package bytes | Compact instruction candidates |
+| --- | --- | ---: | ---: |
+| 45gs02 | transparent | 23,942 | 420 |
+| 65816 | transparent | 22,956 | 490 |
+| 65c02 | transparent | 14,958 | 260 |
+| 8085 | intel8080 | 5,364 | 0 |
+| 8085 | zilog | 5,490 | 0 |
+| hd6309 | motorola680x | 2,768 | 0 |
+| m6502 | transparent | 11,142 | 193 |
+| m68000 | motorola68k | 267,648 | 2,882 |
+| m68010 | motorola68k | 271,290 | 2,923 |
+| m68020 | motorola68k | 299,048 | 3,386 |
+| m68030 | motorola68k | 299,026 | 3,386 |
+| m68040 | motorola68k | 300,482 | 3,401 |
+| m68080 | motorola68k | 343,044 | 4,116 |
+| m6809 | motorola680x | 2,600 | 0 |
+| z80 | intel8080 | 16,122 | 0 |
+| z80 | zilog | 16,230 | 0 |
+
+The six zero-candidate pipelines cannot execute instructions in the compact
+native route. They do carry instruction table programs, but no executable compact
+candidate rows connect those programs to instruction selection. Their existing
+mode keys are opaque Intel descriptors or Motorola names such as `Inherent`, while
+the compact producer's synthesized candidate route handles only `implied`.
+Close the selector/transport gap in the owning package definitions, using
+authoritative tables and existing VM primitives; do not add CPU-specific encoders
+or mode-name interpretation to the generic native path. A first bounded bridge
+can connect operand-free instruction selectors to the existing table bodies,
+including CPU-extension and prefixed instructions and illegal-operand controls.
+It would establish that capability, not full instruction coverage.
+
+Final recipe-6 rows are rejection barriers, including deliberate illegal-form
+rejections. The inventory records every row and distinguishes matched declared
+rejections from other/unclassified barriers. Neither a barrier count nor its
+absence proves legal-form coverage; qualify actual inputs and rejection precedence.
+The report also includes CPU aliases/defaults and intermediate unsupported plans,
+which alone cannot account for barriers introduced during wire lowering.
+
+Choose a fresh absolute directory outside `target` and run:
+
+```sh
+OPFORGE_COMPACT_PACKAGE_EXPORT_DIR=/tmp/opforge-package-inventory-new \
+cargo test -p asm --lib compact_package_inventory_export -- --ignored --nocapture --test-threads=1
+```
+
+The [host-only exporter](../../crates/opforge-asm/src/tests/compact_package_inventory.rs)
+writes provisional `CPU--dialect.bin` files and `inventory.json`, retaining any
+generation failures in the report. Passing the inventory test means the report
+was produced, not that every target succeeded. Inspect its summary and individual
+statuses. Existing destinations are refused. Filenames are checked for classic
+Amiga's 30-byte component limit; these names are not a final catalog specification.
+After the build/test batch, run `make clean`; exports survive outside `target`.
+
+This slice changes no native execution or package-generation behavior, so it
+makes no new native speed claim. Its purpose is to make completion work measurable
+and prevent missing instruction transports from being mistaken for CPU support.
+
+## Language and product completion tracks
+
+Choose the next structural capability from representative complete files and
+known gaps, preserving separation of concerns. These tracks are priorities to
+refine, not claims that each is a single small change:
+
+- **Frontend ownership.** Move ordinary statement-head classification ahead of
+  value binding under PRVM/package control, including `entry nop` and `entry: nop`.
+  Move expression compilation behind EXVM/package ownership and remove the residual
+  decoded-string macro fallback. Add grammar through the owning VM boundary rather
+  than extending native precedence parsers or ad hoc packed-record heuristics.
+- **Expansion and values.** Complete macros/segments, conditionals, loop forms,
+  statement patterns and structured values against Rust. Preserve source provenance,
+  lexical hygiene, declaration order and pass-dependent behavior. Reconcile stale
+  expected-failure tests with fresh probes before counting them as gaps.
+- **Data and layout.** Complete shared data/text/encoding/binary-inclusion behavior,
+  section/region/mapping/output layout, relocation and stabilization. Keep address
+  provenance through fixups; unsupported algebra must fail explicitly. General
+  directives remain shared even when output endianness comes from a target package.
+- **Modules and parameters.** Finish forms that depend on broader expansion or
+  values. `.use ... with (...)` values follow the ordinary symbol value model and
+  are evaluated in the importer from values known at the use site. Preserve
+  reference-driven whole named-block retention: an internal label reference retains
+  the entire block, including fall-through code; merely importing it does not.
+  The entry file is a discovery root, not an ordering shortcut.
+- **Assembly CLI and outputs.** Integrate target selection/package roots, defines,
+  include/module roots and assembly controls; qualify the current Rust assembly
+  artifact formats and diagnostics. Remove compact-only invocation requirements
+  as normal CLI behavior becomes available.
+
+The current frontend note owns precise supported subsets and residual limits.
+Inventory each track from live Rust behavior and reference sources before claiming
+completeness. In particular, recheck the old signed-32-bit parameter description
+against the newer full-width scalar tests rather than treating stale prose as truth.
+
+## Working and validation boundaries
+
+Each slice delivers something Erik can inspect and test: a complete source,
+artifact or reproducible inventory, with explicit remaining limits. Delegate bounded
+work to the cheapest capable configured model when coordination saves total cost.
+Pause after a few slices to review architecture direction, code structure, package
+size and resource growth. New native code should use opForge's language features
+where they improve clarity, and short names within qualified modules.
+
+Tokenization produces binary source line by line. Later passes use numeric
+identities, structured values and compact expression programs; original text is
+for diagnostics. Keep immutable preparation separate from mutable pass/layout
+state, free preparation scratch before assembly, and count transient growth/copy
+overlap in memory measurements.
+
+Preserve the full self-host case as a regression anchor, alongside focused positive
+and negative Rust/native comparisons. A timeout, partial capture or launcher
+success is never completion. Real-native proof requires fresh case-bound completion,
+explicit exit and exact complete output against live Rust. Host-only inventory
+results must be labelled accordingly.
+
+Record each implementation change's time impact separately on unchanged inputs and
+settings. Use release timing for user-facing performance and separately instrumented
+runs for phase/work/memory attribution. Telemetry uses reusable conditionally
+compiled macros with no release code/data overhead. Broaden validation at meaningful
+capability boundaries; do not repeat expensive unchanged runs mechanically.
+After build/test batches preserve required deliverables outside `target`, run
+`make clean`, and leave the empty directory intact.
+
+## Promotion out of experimental
+
+Promote only after the target/language/assembly CLI matrix is qualified, representative
+multi-module projects and full self-hosting match live Rust, native failure diagnostics
+are useful, and resource requirements are stated honestly. Qualify the 68020/AmigaOS
+floor and 2 MiB goal separately from the much larger A6000 environment.
+
+Before integrating the replacement, review combined responsibilities, update current
+user/technical documentation, and remove the superseded experimental or legacy code
+that no longer serves a validated purpose. Local commits are recovery points;
+remote pushes remain separately authorized.

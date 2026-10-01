@@ -27,7 +27,7 @@
 - [Workflow](workflow/README.md)
 - [Shared workflow notebook](workflow/NOTES.md)
 - [Optional artifact skills](../skills/README.md)
-- [Native runtime direction and migration plan](plans/native-runtime-reset.md)
+- [Native assembler completion plan](plans/native-runtime-reset.md)
 
 Completed plans, reviews, backups and captured results belong in Git history.
 The remaining technical specifications are retained for their design contracts;

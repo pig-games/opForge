@@ -26,7 +26,6 @@ IMPORT_STATE = layout.IMPORT_STATE
 DECLARED = 1
 REFERENCED = 2
 EXPLICIT = 4
-TEMPLATE = 16
 KIND_BLOCK = 1
 KIND_NAMESPACE = 2
 LEXICAL_BLOCK = 128; preparation-only: macro hygiene without a reachability unit
@@ -339,6 +338,8 @@ stableName
 	clr.w records.Entry.ScopeKind(a3)
 	clr.w records.Entry.Padding(a3)
 	clr.w records.Entry.MemberBase(a3)
+	clr.w records.Entry.TemplateModule(a3)
+	clr.w records.Entry.TemplateFlags(a3)
 	move.w layout.State.Base(a6), d2
 	add.w d1, d2
 	move.w d2, records.Entry.Target(a3)
@@ -644,8 +645,6 @@ reference
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
-	btst #4, records.Entry.Flags+1(a3)
-	bne.w bad  ; template names are callable, not numeric values
 	ori.w #REFERENCED, records.Entry.Flags(a3)
 	clr.b 3(a0)
 	move.l d1, d0
@@ -763,20 +762,6 @@ lookupFailed
 	move.w records.Entry.Target(a3), records.Entry.Target(a4)
 	move.w #1, layout.State.Changed(a6)
 access
-	btst #1, records.Entry.Flags+1(a4)
-	beq.w checkAccess
-	moveq #0, d0
-	move.w records.Entry.Target(a4), d0
-	sub.w layout.State.Base(a6), d0
-	bcs.w checkAccess
-	cmp.w layout.State.Count(a6), d0
-	bhs.w failSaved
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
-	btst #4, records.Entry.Flags+1(a3)
-	bne.w failSaved
-checkAccess
 	move.l d7, d0
 	moveq #0, d1
 	move.w records.Entry.Target(a4), d1
@@ -1619,9 +1604,10 @@ exact
 	bcs.w missing
 	cmp.w layout.State.Count(a6), d0
 	bhs.w missing
-	add.l d0, d0
-	movea.l MODULE_STATE+modules.OWNERS_POINTER(a6), a0
-	move.w 0(a0, d0.l), d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a0
+	adda.l d0, a0
+	move.w records.Entry.TemplateModule(a0), d0
 	beq.w foundTemplate  ; global template
 	cmp.w MODULE_STATE+modules.State.Active(a6), d0
 	bne.w missing
@@ -1637,20 +1623,32 @@ templateDone
 	rts
 	.bend  ; templateDistance
 
-; A0=template name token,A1=scope state. Make a captured .macro/.segment
-; visible to the ordinary numeric declaration and module import machinery.
-; The definition record itself remains in binary_templates.
+; A0=template name token,A1=scope state. Declare the independent template
+; facet of a lexical identity; the body remains in binary_templates.
 ; D0/CCR=status; other registers preserved.
 declareTemplate	.block
 	movem.l d1/a0-a1/a3/a6, -(sp)
 	movea.l a1, a6
-	bsr.w declare
-	bne.w templateDeclared
-	btst #1, records.Entry.Flags+1(a3)
-	bne.w templateReferenced
-	ori.w #TEMPLATE, records.Entry.Flags(a3)
+	cmpi.b #1, 3(a0)
+	bhi.w templateBad
+	moveq #0, d0
+	move.w 1(a0), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w templateBad
+	cmp.w layout.State.Count(a6), d0
+	bhs.w templateBad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	btst #0, records.Entry.TemplateFlags+1(a3)
+	bne.w templateBad
+	ori.w #records.TEMPLATE_DECLARED, records.Entry.TemplateFlags(a3)
+	movea.l a3, a1
+	lea MODULE_STATE(a6), a0
+	jsr modules.claimTemplate
+	moveq #0, d0
 	bra.w templateDeclared
-templateReferenced
+templateBad
 	moveq #1, d0
 templateDeclared
 	movem.l (sp)+, d1/a0-a1/a3/a6

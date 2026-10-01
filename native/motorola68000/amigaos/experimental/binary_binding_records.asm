@@ -17,9 +17,17 @@ Next	.word ?
 ScopeKind	.word ?
 Padding	.word ?  ; proxy origin lexical scope; zero for ordinary entries
 MemberBase	.word ?  ; qualified proxy's definition-time struct identity+1
+TemplateModule	.word ?  ; declaration ownership independent of the numeric value
+TemplateFlags	.word ?  ; preparation-only declaration and visibility facet
 .endstruct
-ENTRY_BYTES = Entry.MemberBase+2
+ENTRY_BYTES = Entry.TemplateFlags+2
 STRUCT_TYPE = 32
+TEMPLATE_PROXY_BIT = 6
+TEMPLATE_PROXY = 1<<TEMPLATE_PROXY_BIT
+TEMPLATE_DECLARED = 1
+TEMPLATE_PUBLIC = 2
+NAMESPACE_VALUE = 0
+NAMESPACE_TEMPLATE = 1
 ; Includes room for the terminator in preparation-only composition/copy buffers.
 NAME_BYTES = 256
 	.section code, kind=code

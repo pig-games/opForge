@@ -142,6 +142,39 @@ claim	.block
 	rts
 	.bend  ; claim
 
+; A0=module state,A1=lexical entry. Capture the template declaration facet
+; without changing numeric declaration ownership or reference origins.
+; All registers preserved; CCR unspecified.
+claimTemplate	.block
+	movem.l d0, -(sp)
+	move.w State.Active(a0), records.Entry.TemplateModule(a1)
+	andi.w #65535-records.TEMPLATE_PUBLIC, records.Entry.TemplateFlags(a1)
+	move.w State.Visibility(a0), d0
+	lsl.w #1, d0
+	or.w d0, records.Entry.TemplateFlags(a1)
+	movem.l (sp)+, d0
+	rts
+	.bend  ; claimTemplate
+
+; A0=module state,A1=template entry. Check the current invocation origin
+; against its independent declaration ownership and visibility.
+; D0/CCR=status; other registers preserved.
+checkTemplate	.block
+	moveq #0, d0
+	move.w records.Entry.TemplateModule(a1), d0
+	beq.w ok
+	cmp.w State.Active(a0), d0
+	beq.w ok
+	btst #1, records.Entry.TemplateFlags+1(a1)
+	beq.w bad
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; checkTemplate
+
 ; D0=source index,A0=state. Aggregate all reference origins, including references
 ; before declaration. Preserves all registers; CCR unspecified.
 reference	.block

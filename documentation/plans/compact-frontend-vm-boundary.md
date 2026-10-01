@@ -16,12 +16,15 @@ with fresh exit 0 and exact current Rust Hunk equality on 68020 / 10 MiB:
 88,096 output bytes. The anonymous macro scope repair restores the missing
 60 DATA bytes. The release START/DONE host observation is 526.700183541 s;
 whole-test wall time is 554.71 s, including host preparation and emulator
-startup. This proves the frozen-input comparison. The current-source run rejects
+startup. This proves the frozen-input comparison. The last current-source run rejects
 `evaluate .block` in `binary_expression.asm` during preparation after
 68.085095583 s: the new private `EVALUATE` macro and public `evaluate` routine
 collide in native declaration binding. Rust keeps template and value declarations
-separate. Repairing that shared binding boundary, then rerunning current-source
-self-host and a separate instrumented completion measurement, are the next steps.
+separate. The shared binding repair now passes focused native local/import and
+rejection checks; renewed current-source self-host and a separate instrumented
+completion measurement are still required. A separate ordinary label plus
+instruction binding gap is deferred for package-owned PRVM head classification;
+it must not be patched with native grammar heuristics.
 
 Before the immediate-memory fix, pass 2 rejected at frozen `binary_app.asm`
 line 135, `move.l #20,ReturnCode`, while recording instruction relocations.
@@ -2498,3 +2501,39 @@ Lexical IDs may be shared where safe, but value remapping must remain value-only
 Selected imports follow Rust's existing value precedence: a private value blocks
 selection of the same-named public macro; a public value does not expose a private
 macro. A local duplicate-flag exception would not satisfy this boundary.
+
+Per-item selection aliases rename values only in the current Rust behavior.
+For `.use dual (SHARED as picked)`, numeric `picked` can bind the exported
+value, while the selected macro remains callable as `.SHARED`, not `.picked`.
+This also applies when the selected name has only a macro declaration. Module
+aliases and qualified macro calls are separate supported cases. Native namespace
+qualification must cover these spellings and independent visibility.
+
+The repair adds independent template ownership/visibility to each preparation
+identity (+4 bytes per entry), and separates template import proxies from value
+remapping. The release CLI is 89,880 bytes, with 100,864 linked reserved bytes
+(+312/+304 versus the preceding implementation). Three local cases and seven
+import cases match their fresh Rust Hunks; ten duplicate/visibility/alias
+rejection cases complete with the expected native failures. The host oracles
+pass in default and VM-only profiles (eight tests each). Existing imported
+macro guards also pass. These are focused namespace results; current-source
+self-hosting is still incomplete, and no full-run speed change is established.
+
+Scalar module parameter and two-alias regressions also match fresh Rust output,
+covering the canonical-ID metadata indexing changed with the entry stride.
+Architecture, native contracts, instrumentation safety, runtime boundary and
+fresh-proof structural guards pass. The native owner/no-growth guard still has
+pre-existing missing-owner annotations outside the changed modules; this is not
+a clean broad native qualification claim.
+
+The ordinary-label controls reveal a separate existing binding gap: `entry nop`,
+`entry: nop`, and the renamed-macro control all fail during instruction encoding.
+An instrumented renamed control identifies assembly stage 12. The writer assigns
+the instruction after the label a value-operand role, so the contextual package
+mnemonic receives a source identity. This is not established as a namespace
+regression. Preserve the failing controls. A future coherent repair should use
+a package-owned head-classification PRVM plan before binding, rather than adding
+native grammar based on packed offsets. Existing PRVM parsing produces head
+spans, but the current macro-only initial plan runs after binding; a head-only
+preparation program needs producer/consumer contract integration. This work is
+deferred unless the current full self-host input requires it.

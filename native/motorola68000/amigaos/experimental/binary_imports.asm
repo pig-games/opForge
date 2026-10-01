@@ -485,7 +485,24 @@ done
 ; A0=name token,A1=scope state. Imported references get a proxy keyed by
 ; (module, original ID), sharing name bytes. D0/CCR=status; others kept.
 reference	.block
+	moveq #records.NAMESPACE_VALUE, d0
+	bra.w referenceNamespace
+	.bend  ; reference
+
+; A0=name token,A1=scope state. Resolve invocation spelling independently
+; of a numeric reference with the same spelling and origin.
+; D0/CCR=status; other registers preserved.
+referenceTemplate	.block
+	moveq #records.NAMESPACE_TEMPLATE, d0
+	bra.w referenceNamespace
+	.bend  ; referenceTemplate
+
+	.priv
+; D0=namespace,A0=token,A1=scope state. The namespace joins the existing
+; module, spelling and lexical-origin proxy key. Other registers preserved.
+referenceNamespace	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	move.w d0, -(sp)
 	movea.l a1, a6
 	movea.l a0, a5
 	moveq #0, d4
@@ -501,6 +518,7 @@ reference	.block
 	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
+	move.w (sp), d0
 	bsr.w selectedTarget
 	bne.w bad
 	tst.w d4
@@ -531,6 +549,13 @@ find
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
+	moveq #records.NAMESPACE_VALUE, d0
+	btst #records.TEMPLATE_PROXY_BIT, records.Entry.Flags+1(a3)
+	beq.w namespaceReady
+	moveq #records.NAMESPACE_TEMPLATE, d0
+namespaceReady
+	cmp.w (sp), d0
+	bne.w next
 	cmp.w records.Entry.Owner(a3), d7
 	bne.w next
 	move.w layout.State.Current(a6), d0
@@ -570,10 +595,16 @@ allocate
 	move.w d7, records.Entry.Owner(a3)
 	move.w d4, records.Entry.Leaf(a3)  ; selected target index+1, or zero
 	move.w #PROXY, records.Entry.Flags(a3)
+	tst.w (sp)
+	beq.w proxyNamespaceReady
+	ori.w #records.TEMPLATE_PROXY, records.Entry.Flags(a3)
+proxyNamespaceReady
 	move.w d6, records.Entry.ScopeKind(a3)
 	addq.w #1, records.Entry.ScopeKind(a3)
 	move.w layout.State.Current(a6), records.Entry.Padding(a3)
 	clr.w records.Entry.MemberBase(a3)
+	clr.w records.Entry.TemplateModule(a3)
+	clr.w records.Entry.TemplateFlags(a3)
 	move.w (a4), records.Entry.Next(a3)
 	move.w d2, d0
 	addq.w #1, d0
@@ -584,6 +615,9 @@ allocate
 	move.w layout.State.Base(a6), d0
 	add.w d2, d0
 	move.w d0, records.Entry.Target(a3)
+	; Templates have no struct-member interpretation or numeric value remap.
+	tst.w (sp)
+	bne.w found
 	; Struct definitions must exist at the reference site. Import and absolute
 	; targets may still be forward references, so only gate the member fallback.
 	movea.l layout.ARENA_POINTER(a6), a2
@@ -611,15 +645,19 @@ ok
 bad
 	moveq #1, d0
 done
+	addq.l #2, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; reference
+	.bend  ; referenceNamespace
 
-; A5=unqualified name token,A6=scope state,D7=active module. D4=selected
+; A5=unqualified name token,A6=scope state,D7=active module,D0=namespace.
+; Templates retain selected original names; per-item aliases expose values.
+; D4=selected
 ; target index+1 (zero when not imported), D0/CCR=status. Other registers kept.
 selectedTarget	.block
 	movem.l d1-d3/d5-d7/a0-a4, -(sp)
+	move.w d0, -(sp)
 	lea layout.IMPORT_STATE(a6), a4
 	move.l d7, d0
 	subq.w #1, d0
@@ -667,6 +705,8 @@ selected
 	move.w Selection.Next(a1), d2
 	moveq #0, d3
 	move.w Selection.Name(a1), d3
+	tst.w (sp)
+	bne.w originalLeaf
 	moveq #0, d0
 	move.w Selection.Alias(a1), d0
 	beq.w originalLeaf
@@ -701,6 +741,7 @@ ok
 bad
 	moveq #1, d0
 done
+	addq.l #2, sp
 	movem.l (sp)+, d1-d3/d5-d7/a0-a4
 	tst.l d0
 	rts
@@ -708,6 +749,7 @@ done
 
 ; A0=scope state,A1=binder callback. Validate forward modules and resolve every
 ; proxy after all imports are known. D0/CCR=status; other registers preserved.
+	.pub
 finish	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
@@ -793,6 +835,8 @@ loop
 	adda.l d0, a3
 	btst #3, records.Entry.Flags+1(a3)
 	beq.w next
+	btst #records.TEMPLATE_PROXY_BIT, records.Entry.Flags+1(a3)
+	bne.w next  ; invocation proxies were checked when their bodies expanded
 	tst.w layout.MODULE_STATE+modules.State.Selection(a6)
 	beq.w resolveProxy
 	moveq #0, d0
@@ -841,7 +885,7 @@ resolveTemplate	.block
 	movea.l a0, a3
 	movea.l a1, a6
 	movea.l a2, a5
-	jsr reference
+	jsr referenceTemplate
 	bne.w templateBad
 	moveq #0, d1
 	move.w 1(a3), d1
@@ -870,22 +914,17 @@ templateTarget
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
-	btst #4, records.Entry.Flags+1(a3)
+	btst #0, records.Entry.TemplateFlags+1(a3)
 	beq.w templateBad
-	move.l d6, d0
-	andi.l #$ffff, d0
-	add.l d0, d0
-	movea.l layout.MODULE_STATE+modules.OWNERS_POINTER(a6), a0
 	moveq #0, d7
-	move.w 0(a0, d0.l), d7
+	move.w records.Entry.TemplateModule(a3), d7
 	beq.w templateOk  ; unscoped global definitions remain visible
 	cmp.w layout.MODULE_STATE+modules.State.Active(a6), d7
 	beq.w templateOk
-	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
-	adda.l d0, a0
-	btst #0, 1(a0)
-	suba.l d0, a0
-	beq.w templateBad
+	movea.l a3, a1
+	lea layout.MODULE_STATE(a6), a0
+	jsr modules.checkTemplate
+	bne.w templateBad
 	moveq #0, d0
 	move.w layout.MODULE_STATE+modules.State.Active(a6), d0
 	beq.w templateBad
@@ -958,6 +997,7 @@ templateAliasTarget	.block
 	clr.b 3(sp)
 	movea.l sp, a5
 	moveq #0, d4
+	moveq #records.NAMESPACE_TEMPLATE, d0
 	bsr.w selectedTarget
 	addq.l #4, sp
 	bne.w missing
@@ -1003,6 +1043,7 @@ templateAliasCandidate	.block
 	clr.b 3(sp)
 	movea.l sp, a5
 	moveq #0, d4
+	moveq #records.NAMESPACE_TEMPLATE, d0
 	bsr.w selectedTarget
 	addq.l #4, sp
 	bne.w aliasMissing
@@ -1047,13 +1088,19 @@ selected
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 	btst #0, records.Entry.Flags+1(a0)
-	beq.w bad
+	beq.w selectedTemplate
 	andi.l #$ffff, d1
 	add.l d1, d1
 	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a1
 	adda.l d1, a1
 	btst #0, 1(a1)
 	suba.l d1, a1
+	beq.w bad
+	bra.w selected
+selectedTemplate
+	btst #0, records.Entry.TemplateFlags+1(a0)
+	beq.w bad
+	btst #1, records.Entry.TemplateFlags+1(a0)
 	beq.w bad
 	bra.w selected
 ok
@@ -1071,6 +1118,7 @@ done
 ; D0/CCR=status; other registers preserved. Alias precedence precedes exact names.
 resolve	.block
 	movem.l d2-d7/a0-a4, -(sp)
+	move.w records.Entry.Flags(a3), -(sp)  ; retain namespace across moving bindings
 	tst.w records.Entry.Leaf(a3)
 	beq.w resolveQualified
 	cmpi.w #$ffff, records.Entry.Leaf(a3)
@@ -1181,6 +1229,13 @@ fullNext
 	move.w Item.Next(a1), d7
 	bra.w fullLoop
 exact
+	move.w (sp), d0
+	btst #records.TEMPLATE_PROXY_BIT, d0
+	beq.w numericExact
+	movea.l a2, a0
+	move.l d6, d0
+	bra.w bind
+numericExact
 	moveq #0, d0
 	bsr.w resolveStructMember
 	bra.w done
@@ -1194,8 +1249,9 @@ bind
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
-	btst #0, records.Entry.Flags+1(a0)
-	beq.w bad
+	move.w (sp), d0
+	bsr.w targetDeclared
+	bne.w bad
 	moveq #0, d0
 	bra.w done
 resolveWildcard
@@ -1207,32 +1263,89 @@ resolveSelected
 	subq.w #1, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
+	move.l d0, d2
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
-	btst #0, records.Entry.Flags+1(a0)
-	bne.w selectedBound
+	move.w (sp), d0
+	bsr.w targetDeclared
+	beq.w selectedBound
 	moveq #0, d0
 	move.w records.Entry.Leaf(a3), d0
 	subq.w #1, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
+	move.l d0, d2
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
-	btst #0, records.Entry.Flags+1(a0)
-	beq.w bad
+	move.w (sp), d0
+	bsr.w targetDeclared
+	bne.w bad
 selectedBound
+	move.w (sp), d0
+	btst #records.TEMPLATE_PROXY_BIT, d0
+	beq.w selectedValue
+	move.l d2, d1
+	add.w layout.State.Base(a6), d1
+	bra.w selectedReady
+selectedValue
 	move.w records.Entry.Target(a0), d1
+selectedReady
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
+	addq.l #2, sp
 	movem.l (sp)+, d2-d7/a0-a4
 	tst.l d0
 	rts
 	.bend  ; resolve
+
+; A0=canonical entry,D0=proxy flags. Test declaration in the selected
+; namespace without consulting or rewriting numeric Target. Other regs kept.
+targetDeclared	.block
+	btst #records.TEMPLATE_PROXY_BIT, d0
+	beq.w value
+	btst #0, records.Entry.TemplateFlags+1(a0)
+	bra.w checked
+value
+	btst #0, records.Entry.Flags+1(a0)
+checked
+	beq.w bad
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; targetDeclared
+
+; A0=canonical entry,D0=proxy flags,D2=canonical source index,A6=scope.
+; Test namespace-specific export visibility. D0/CCR=status; others kept.
+targetPublic	.block
+	movem.l d1/a1, -(sp)
+	btst #records.TEMPLATE_PROXY_BIT, d0
+	beq.w value
+	btst #1, records.Entry.TemplateFlags+1(a0)
+	bra.w checked
+value
+	move.l d2, d1
+	add.l d1, d1
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a1
+	adda.l d1, a1
+	btst #0, 1(a1)
+checked
+	beq.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a1
+	tst.l d0
+	rts
+	.bend  ; targetPublic
 
 ; A0=first suffix token,A4=end,A5=binder,A6=scope,D7=target module index.
 ; Capture scalar parameters by numeric ID. On success A4 ends before
@@ -1333,8 +1446,10 @@ newParameter
 	move.w d7, d0
 	addq.w #1, d0
 	move.w d0, records.Entry.Owner(a0)
-	move.l d1, d0
-	lsr.l #3, d0
+	move.l d5, d0
+	sub.w layout.State.Base(a6), d0
+	andi.l #$ffff, d0
+	add.l d0, d0
 	movea.l layout.MODULE_STATE+modules.OWNERS_POINTER(a6), a0
 	move.w d7, 0(a0, d0.l)
 	adda.l d0, a0
@@ -1735,6 +1850,7 @@ badToken
 ; The import itself never makes a named block live; remapped references do.
 wildcardTarget	.block
 	movem.l d2-d7/a0-a3, -(sp)
+	move.w records.Entry.Flags(a3), -(sp)
 	suba.l #layout.NAME_BYTES, sp  ; retain leaf across bindings that relocate names
 	moveq #0, d0
 	move.w records.Entry.ScopeKind(a3), d0
@@ -1806,16 +1922,12 @@ copyWildcardLeaf
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
-	btst #0, records.Entry.Flags+1(a0)
-	beq.w wildcardItem
-	move.l d2, d0
-	andi.l #$ffff, d0
-	add.l d0, d0
-	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
-	adda.l d0, a0
-	btst #0, 1(a0)
-	suba.l d0, a0
-	beq.w wildcardItem
+	move.w layout.NAME_BYTES(sp), d0
+	bsr.w targetDeclared
+	bne.w wildcardItem
+	move.w layout.NAME_BYTES(sp), d0
+	bsr.w targetPublic
+	bne.w wildcardItem
 	tst.w d5
 	beq.w wildcardMatch
 	cmp.w d1, d5
@@ -1834,6 +1946,7 @@ wildcardBad
 	moveq #1, d0
 wildcardExit
 	adda.l #layout.NAME_BYTES, sp
+	addq.l #2, sp
 	movem.l (sp)+, d2-d7/a0-a3
 	tst.l d0
 	rts

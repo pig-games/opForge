@@ -658,8 +658,8 @@ parametersDone
 	tst.w Def.ParamCount(a0)
 	beq.w bad  ; zero-parameter segments are outside this bounded slice
 parametersValid
-	; Definitions are ordinary numeric declarations for import visibility,
-	; but scopes marks them template-only so expressions cannot use their IDs.
+	; Definitions share lexical IDs with values, but declaration ownership and
+	; visibility live in an independent template facet.
 	subq.l #4, sp
 	clr.b (sp)
 	move.w d5, 1(sp)

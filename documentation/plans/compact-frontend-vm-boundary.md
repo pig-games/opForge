@@ -70,6 +70,18 @@ macOS Terminal where `ash` and `acp` can reach the A6000:
 python3 scripts/performance/run_a6000_selfhost.py --bundle /tmp/opforge-a6000-compact-export
 ```
 
+For the current export, `/tmp/opforge-a6000-current` points to the release
+bundle. With that pointer present, the ordinary command needs no options:
+
+```sh
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
+```
+
+Use `--bundle` only to select another export, such as the instrumented bundle.
+After creating a new release export, update the current pointer to its directory;
+preserve the existing bundle rather than overwriting it. Without the pointer,
+the historical `/tmp/opforge-a6000-compact-export` default remains available.
+
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
 The script verifies current sources and round-trips the transferred input bytes

@@ -194,7 +194,10 @@ def add_telemetry(result, root, manifest):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bundle", type=Path, default=Path("/tmp/opforge-a6000-compact-export"))
+    current = Path("/tmp/opforge-a6000-current")
+    default_bundle = current if current.is_dir() else Path("/tmp/opforge-a6000-compact-export")
+    parser.add_argument("--bundle", type=Path, default=default_bundle,
+                        help="bundle directory; defaults to the current export when available")
     parser.add_argument("--host", default="192.168.0.220")
     parser.add_argument("--volume", default="Development")
     parser.add_argument("--timeout", type=int, default=3600, help="assembly timeout in seconds")
@@ -217,7 +220,7 @@ def main():
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
     (stage / "run-selfhost").write_text(guest_script(remote, marker, manifest["command"]))
-    print(f"Local results: {local}\nRemote directory: {remote}", flush=True)
+    print(f"Bundle: {args.bundle.resolve()}\nLocal results: {local}\nRemote directory: {remote}", flush=True)
     if manifest["over_classic_limit_components"]:
         print("Exact filenames required: " + ", ".join(manifest["over_classic_limit_components"]), flush=True)
     if args.dry_run:
@@ -236,9 +239,12 @@ def main():
     copied = local / "copy-check"
     copied.mkdir()
     run([acp, "-r", f"{args.host}:{args.volume}/{name}", str(copied)])
-    verify_files(copied / name, files)
-    verify_files(copied / name, {"run-selfhost": (stage / "run-selfhost").read_bytes()})
-    verify_fresh_directory(copied / name)
+    try:
+        verify_files(copied / name, files)
+        verify_files(copied / name, {"run-selfhost": (stage / "run-selfhost").read_bytes()})
+        verify_fresh_directory(copied / name)
+    except (OSError, ValueError) as error:
+        raise ValueError(f"Pre-run transfer verification failed; assembly was not started: {error}") from error
     print("Remote source, package, bootstrap and script verified. Starting native self-host.", flush=True)
     started = time.monotonic()
     try:
@@ -250,7 +256,10 @@ def main():
     captured = local / "captured"
     captured.mkdir()
     run([acp, "-r", f"{args.host}:{args.volume}/{name}", str(captured)])
-    result = inspect_result(captured / name, files, oracle, marker, elapsed)
+    try:
+        result = inspect_result(captured / name, files, oracle, marker, elapsed)
+    except (OSError, ValueError) as error:
+        raise ValueError(f"Post-run capture validation failed; execution returned but the hardware result is unverified: {error}") from error
     add_telemetry(result, captured / name, manifest)
     if not result["success"]:
         diagnostic = captured / name / "assembly.stdout"

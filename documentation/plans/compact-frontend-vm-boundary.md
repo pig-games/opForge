@@ -12,12 +12,12 @@ Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
 Current measured frontier: the frozen 61-file input completes native assembly
-with fresh exit 0 on 68020 / 10 MiB. Exact comparison still fails: the native Hunk
-is 88,036 bytes versus Rust's 88,096 bytes. The positive comparison took 553.30 s
-of whole-test wall time, including host preparation and emulator startup; guest
-timing was not preserved on this failure. This proves completion of the frozen
-input, not artifact parity or current-source self-hosting. The next step is to
-localize the 60-byte difference using section and payload diagnostics.
+with fresh exit 0 and exact current Rust Hunk equality on 68020 / 10 MiB:
+88,096 output bytes. The anonymous macro scope repair restores the missing
+60 DATA bytes. The release START/DONE host observation is 526.700183541 s;
+whole-test wall time is 554.71 s, including host preparation and emulator
+startup. This proves the frozen-input comparison. Current-source self-host proof
+and a separate instrumented completion measurement remain the next steps.
 
 Before the immediate-memory fix, pass 2 rejected at frozen `binary_app.asm`
 line 135, `move.l #20,ReturnCode`, while recording instruction relocations.
@@ -46,8 +46,8 @@ recorded one allocation failure and a peak of 1,083,256 tracked bytes against
 1,121,200 bytes free at entry. The small compact CLI search-roots case still
 matches Rust under 2 MiB. After functional self-host parity, identify the owner
 and lifetime of that growing block and reduce its peak without narrowing source.
-The expanded-memory frozen run above completes, but exact output and the 2 MiB
-product target remain unqualified.
+The expanded-memory frozen run above matches Rust exactly; the 2 MiB product
+target remains unqualified.
 
 For functional convergence, the runner now also supports a 68020 profile with
 2 MiB chip and 8 MiB fast RAM. On that profile the instrumented 59-file case
@@ -2422,3 +2422,50 @@ the preceding product checkpoint); package size remains 299,048 bytes. The
 one-second focused cases do not establish a speed change. All 12 focused Rust
 tests pass; alias controls also pass in VM-only mode. Native formatting,
 instrumentation, architecture, runtime-boundary and contract guards pass.
+
+### Imported anonymous macro scopes
+
+A small complete imported TKVM demo reproduces the 60-byte DATA omission in
+2.031640958 s between fresh guest START/DONE, with exit 0 but failed exact proof.
+Native emits 220 padded DATA bytes versus Rust's 280; the first difference is
+at DATA offset 26. Its eleven top-level jump macros emit 60 bytes in Rust.
+Native makes every anonymous invocation a synthetic named block, and imported
+unreferenced block selection consequently discards those expansions.
+
+The active repair uses a preparation-only marker on unlabeled invocation scope
+opens/closes. Scope binding consumes it before label normalization and retains
+lexical hygiene without creating a reachability span. Labeled calls and real
+blocks keep their existing selection behavior. No marker reaches runtime records
+or changes the package format. Five focused Rust tests pass in both default and
+VM-only modes. After unlocking the Mac, all four focused native tests (six cases)
+pass: imported and root-local full demos, flat and Hunk quoted alphabets, and
+macro definitions inside/outside DATA. The imported demo's Hunk is now exactly
+352 bytes, including 280 padded DATA bytes. Its release START/DONE interval is
+2.029588375 s versus the incorrect prior output's 2.031640958 s; this shows no
+measurable speed gain. Whole-matrix wall time is 468.72 s and includes host
+startup delays. The CLI is 89,568 bytes / 100,560 linked reserved bytes (+56/+56);
+the runtime package remains 299,048 bytes. The earlier startup-only interruption
+provides no native evidence. The repaired CLI also completes the full frozen
+61-file / 696,570-byte source manifest with exact current Rust Hunk equality:
+88,096 output bytes, four segments, 99,100 linked reserved bytes. Release
+START/DONE host observation is 526.700183541 s; the native runner call is
+551.710638458 s and whole-test wall time is 554.71 s. The preceding mismatched
+full run recorded only whole-test wall time, so it does not support an isolated
+speed claim for this repair. The additional native reachability guards pass:
+unused/referenced imported real blocks with nested macros and both unreferenced
+and referenced labeled calls. Their exact Hunk outputs are 76/100 bytes; release
+START/DONE intervals are 1.008/1.016 s for real blocks and 0.762/0.765 s for
+labeled calls. Current-source self-host proof is still required. Named blocks
+inside anonymous macro scopes remain a separate pre-existing Rust/native
+selection edge.
+
+These guards also exposed shared Rust DATA relocation no-op stubs under
+`vm-runtime-only`: imported `.long` addresses emitted correct scalar bytes but
+lost section fixups, and unsupported symbolic DATA was silently accepted. Both
+profiles now use the existing shared runtime scalar evaluation and symbol/section
+metadata checks. CPU/family instruction handling is unchanged. New positive and
+negative DATA regressions, all self-host DATA/reachability oracles, existing Hunk
+DATA cases and host-evaluator failpoint controls pass: 22 focused tests in each
+profile. Native formatting checks all 54 files without changes; architecture,
+instrumentation, runtime/proof boundary and contract guards pass. This is focused
+qualification, not a clean broad-suite claim.

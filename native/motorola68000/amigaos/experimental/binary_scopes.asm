@@ -29,6 +29,7 @@ EXPLICIT = 4
 TEMPLATE = 16
 KIND_BLOCK = 1
 KIND_NAMESPACE = 2
+LEXICAL_BLOCK = 128; preparation-only: macro hygiene without a reachability unit
 KEY_BLOCK = 1
 KEY_ENDBLOCK = 2
 KEY_END = 3
@@ -390,6 +391,10 @@ line	.block
 	movea.l a1, a6
 	movea.l a0, a5
 	move.l d0, d4
+	moveq #0, d5
+	move.b 1(a5), d5
+	andi.w #LEXICAL_BLOCK, d5
+	andi.b #255-LEXICAL_BLOCK, 1(a5)
 	tst.w layout.State.Ended(a6)
 	bne.w empty
 	bsr.w normalizeLabel
@@ -553,6 +558,8 @@ block
 	moveq #KIND_BLOCK, d2
 	bsr.w openScope
 	bne.w done
+	tst.w d5
+	bne.w done
 	ori.b #source.FLAG_BLOCK_OPEN, 1(a5)
 	bra.w done
 namespace
@@ -561,7 +568,10 @@ opening
 	bsr.w openScope
 	bra.w done
 endBlock
+	tst.w d5
+	bne.w lexicalClose
 	ori.b #source.FLAG_BLOCK_CLOSE, 1(a5)
+lexicalClose
 	moveq #KIND_BLOCK, d2
 	bra.w closing
 endNamespace

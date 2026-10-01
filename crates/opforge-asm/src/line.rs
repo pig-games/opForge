@@ -1212,14 +1212,8 @@ impl<'a> AsmLine<'a> {
         ))
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn hunk_data_expression_requires_unsupported_fixup(&self, expr: &Expr) -> bool {
         !self.expr_is_relocation_free_symbolic_value(expr, false)
-    }
-
-    #[cfg(feature = "vm-runtime-only")]
-    fn hunk_data_expression_requires_unsupported_fixup(&self, _expr: &Expr) -> bool {
-        false
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
@@ -1308,7 +1302,6 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn expr_is_relocation_free_symbolic_value(
         &self,
         expr: &Expr,
@@ -1508,7 +1501,6 @@ impl<'a> AsmLine<'a> {
         Ok(Some((adjusted, target_section)))
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn hunk_abs32_target_section_for_data_expr(&self, expr: &Expr) -> Option<String> {
         match expr {
             Expr::Identifier(name, _) => {
@@ -1548,7 +1540,6 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    #[cfg(not(feature = "vm-runtime-only"))]
     fn eval_hunk_abs32_data_relocation_value(
         &self,
         expr: &Expr,
@@ -1568,14 +1559,6 @@ impl<'a> AsmLine<'a> {
             )
         })?;
         Ok(Some((adjusted, target_section)))
-    }
-
-    #[cfg(feature = "vm-runtime-only")]
-    fn eval_hunk_abs32_data_relocation_value(
-        &self,
-        _expr: &Expr,
-    ) -> Result<Option<(u32, String)>, AstEvalError> {
-        Ok(None)
     }
 
     #[cfg(feature = "vm-runtime-only")]

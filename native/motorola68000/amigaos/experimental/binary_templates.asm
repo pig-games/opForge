@@ -1660,6 +1660,10 @@ openerDirective
 	bne.w bad
 	move.b #13, (a5)
 	clr.b 1(a5)
+	tst.w CallFrame.CallLabelPresent(a6)
+	bne.w openerFlagsReady
+	move.b #scopes.LEXICAL_BLOCK, 1(a5)
+openerFlagsReady
 	move.w CallFrame.CallLine(a6), 2(a5)
 	move.l d5, 4(a5)
 	move.b #5, 8(a5)
@@ -1679,6 +1683,10 @@ macroClose
 	bne.w bad
 	move.b #8, (a5)
 	clr.b 1(a5)
+	tst.w CallFrame.CallLabelPresent(a6)
+	bne.w closerFlagsReady
+	move.b #scopes.LEXICAL_BLOCK, 1(a5)
+closerFlagsReady
 	move.w CallFrame.CallLine(a6), 2(a5)
 	move.b #7, 4(a5)
 	clr.b 5(a5)

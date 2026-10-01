@@ -11,6 +11,8 @@ use vm::runtime_model_core::RuntimeModelCore;
 #[path = "binary_source_hunk.rs"]
 mod hunk;
 
+#[path = "binary_source_hunk_data_relocations.rs"]
+mod hunk_data_relocations;
 #[path = "binary_source_hunk_sections.rs"]
 mod hunk_sections;
 
@@ -87,6 +89,8 @@ mod immediate_memory;
 mod keyword_labels;
 #[path = "binary_source_mnemonic_labels.rs"]
 mod mnemonic_labels;
+#[path = "binary_source_selfhost_data.rs"]
+mod selfhost_data;
 
 #[path = "binary_source_dependencies.rs"]
 mod dependencies;

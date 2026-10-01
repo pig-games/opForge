@@ -277,7 +277,8 @@ pub fn build_native_packages(
     if template.matches(marker).count() != 1 {
         return Err("CLI template must contain exactly one package_catalog.i include".into());
     }
-    let source = template.replace(marker, &format!(".include {}", quoted_path(&catalog_path)?));
+    // Generated sources and assets form one relocatable build directory.
+    let source = template.replace(marker, ".include \"catalog.i\"");
     let payloads = targets
         .iter()
         .zip(&packages)
@@ -285,7 +286,7 @@ pub fn build_native_packages(
         .map(|(t, p)| {
             (
                 t.filename.clone(),
-                (packages_dir.join(&t.filename), p.len()),
+                (Path::new("packages").join(&t.filename), p.len()),
             )
         })
         .collect();

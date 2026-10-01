@@ -69,6 +69,145 @@ class HardwareCompletionTests(unittest.TestCase):
         (root / "command.txt").write_text(command)
         (root / "manifest.json").write_text(json.dumps(manifest))
 
+    def embedded_output_bundle(self, root):
+        self.embedded_bundle(root)
+        manifest = json.loads((root / "manifest.json").read_text())
+        package_file = manifest["runtime_package_file"]
+        package = (root / package_file).read_bytes()
+        original = b'.include "package_catalog.i"\n.entry native\n'
+        (root / "original/experimental").mkdir()
+        (root / "original/experimental/opforge_compact_cli.asm").write_bytes(original)
+        sources = [
+            ("experimental/opforge_compact_cli.asm", "configured_entry", original.replace(b"package_catalog.i", b"catalog.i")),
+            ("experimental/catalog.i", "generated_catalog", f'.incbin "packages/{package_file}"\n'.encode()),
+            (f"experimental/packages/{package_file}", "package_asset", package),
+        ]
+        identity = bytearray(b"entry.asm\0source\0")
+        for logical, origin, data in sources:
+            path = root / "src" / logical
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            manifest["source_mapping"].append({"logical_path": logical, "staged_path": "src/" + logical,
+                                               "origin": origin, "bytes": len(data), "digest": runner.fnv(data)})
+            identity.extend(logical.encode() + b"\0" + data + b"\0")
+        oracle = (root / "opforge").read_bytes()
+        (root / "oracle.hunk").write_bytes(oracle)
+        manifest.update({"filename_mapping": "identity; generated inputs have explicit origins",
+                         "output_package_storage": "embedded", "output_embedded_packages": [package_file],
+                         "release_hunk_digest": runner.fnv(oracle), "source_manifest_digest": runner.fnv(identity)})
+        (root / "manifest.json").write_text(json.dumps(manifest))
+
+    def test_embedded_output_transfers_verified_sources_and_matches_oracle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.embedded_output_bundle(root)
+            manifest, files, oracle, case = runner.load_bundle(root)
+            self.assertEqual(files["opforge"], oracle)
+            asset = "src/experimental/packages/" + manifest["runtime_package_file"]
+            self.assertEqual(files[asset], (root / manifest["runtime_package_file"]).read_bytes())
+            self.assertNotIn("p.bin", files)
+            transfer = root / "transfer"
+            for name, data in files.items():
+                path = transfer / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            runner.verify_files(transfer, files)
+            for name, data in {"start.marker": b"START fresh", "done.marker": b"DONE fresh",
+                               "exitcode": b"0", "start.time": b"10:00:00", "end.time": b"10:00:01",
+                               "output.hunk": oracle}.items():
+                (transfer / name).write_bytes(data)
+            self.assertTrue(runner.inspect_result(transfer, files, oracle, "fresh", 1.1)["success"])
+            (transfer / "output.hunk").write_bytes(oracle + b"changed")
+            self.assertFalse(runner.inspect_result(transfer, files, oracle, "fresh", 1.1)["success"])
+            (transfer / asset).write_bytes(b"corrupt")
+            with self.assertRaisesRegex(ValueError, "Remote copy differs"):
+                runner.verify_files(transfer, files)
+            result = {"success": True}
+            runner.add_telemetry(result, root, manifest)
+            self.assertEqual(result["output_package_storage"], "embedded")
+            self.assertEqual(result["output_embedded_packages"], [manifest["runtime_package_file"]])
+
+    def test_embedded_output_rejects_invalid_origins_assets_and_catalogs(self):
+        mutations = [
+            ("configured_entry", "unknown", None, "origin"),
+            ("configured_entry", "native", None, "Current source"),
+            ("generated_catalog", None, b'.incbin "/host/package.bin"\n', "catalog"),
+            ("generated_catalog", None, b'.incbin "packages/m68020--motorola68k.bin"\n' * 2, "catalog"),
+            ("package_asset", None, b"BS13corrupt", "asset mismatch"),
+        ]
+        for origin, replacement_origin, data, error in mutations:
+            with self.subTest(origin=origin, error=error), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.embedded_output_bundle(root)
+                manifest = json.loads((root / "manifest.json").read_text())
+                row = next(row for row in manifest["source_mapping"] if row.get("origin") == origin)
+                if replacement_origin:
+                    row["origin"] = replacement_origin
+                if data is not None:
+                    (root / row["staged_path"]).write_bytes(data)
+                    row.update({"bytes": len(data), "digest": runner.fnv(data)})
+                identity = bytearray()
+                for item in manifest["source_mapping"]:
+                    identity.extend(item["logical_path"].encode() + b"\0" + (root / item["staged_path"]).read_bytes() + b"\0")
+                manifest["source_manifest_digest"] = runner.fnv(identity)
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, error):
+                    runner.load_bundle(root)
+
+    def test_embedded_output_rejects_missing_duplicate_and_misplaced_mapping(self):
+        for mutation in ("missing", "duplicate", "case_duplicate", "misplaced", "external"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.embedded_output_bundle(root)
+                manifest = json.loads((root / "manifest.json").read_text())
+                row = manifest["source_mapping"][-1]
+                if mutation == "missing":
+                    manifest["source_mapping"].pop()
+                elif mutation == "duplicate":
+                    manifest["source_mapping"].append(dict(row))
+                elif mutation == "case_duplicate":
+                    copied = dict(row)
+                    copied["logical_path"] = copied["logical_path"].upper()
+                    copied["staged_path"] = "src/" + copied["logical_path"]
+                    path = root / copied["staged_path"]
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes((root / row["staged_path"]).read_bytes())
+                    manifest["source_mapping"].append(copied)
+                elif mutation == "misplaced":
+                    row["staged_path"] = "packages/" + manifest["runtime_package_file"]
+                else:
+                    manifest.update({"output_package_storage": "external", "output_embedded_packages": []})
+                identity = bytearray()
+                for item in manifest["source_mapping"]:
+                    path = root / "src" / item["logical_path"]
+                    identity.extend(item["logical_path"].encode() + b"\0" + path.read_bytes() + b"\0")
+                manifest["source_manifest_digest"] = runner.fnv(identity)
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaises(ValueError):
+                    runner.load_bundle(root)
+
+    def test_embedded_output_rejects_missing_or_duplicate_package_in_oracle(self):
+        for copies in (0, 2):
+            with self.subTest(copies=copies), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.embedded_output_bundle(root)
+                manifest = json.loads((root / "manifest.json").read_text())
+                oracle = b"executable" + (root / manifest["runtime_package_file"]).read_bytes() * copies
+                (root / "oracle.hunk").write_bytes(oracle)
+                manifest.update({"release_hunk_digest": runner.fnv(oracle),
+                                 "bootstrap_defines": sorted(runner.INSTRUMENTATION_DEFINES), "telemetry_file": "memory.bin"})
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, "release oracle"):
+                    runner.load_bundle(root)
+
+    def test_embedded_output_rejects_stale_native_dependency(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.embedded_output_bundle(root)
+            (root / "original/entry.asm").write_bytes(b"new source")
+            with self.assertRaisesRegex(ValueError, "Current source differs"):
+                runner.load_bundle(root)
+
     def test_embedded_case_transfers_only_bootstrap_and_binds_its_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

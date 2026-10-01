@@ -98,7 +98,97 @@ but this plan does not establish that disk format.
 Keep P3 and P4 grounded in the inventory's actual gaps; package storage alone
 does not establish instruction or language parity.
 
-### Current slice — shared binary inclusion before P3
+### Embedded-configuration native self-assembly
+
+Use the completed shared `.incbin` capability to rebuild the whole current
+compact CLI with its m68020 package embedded. Generated `catalog.i` and its
+`packages/` assets must use relative paths and remain relocatable. Stage the
+configured entry, generated catalog and exact package bytes alongside unchanged
+native dependencies; reassemble that relocated tree with Rust before running it
+on native. Distinguish binary build inputs from runtime package fallback files.
+
+Success requires fresh native START/DONE, exit zero and exact equality with the
+complete Rust embedded Hunk, including its package payload. Record release timing
+and image/reservation sizes; this is a configuration qualification, not a speed
+optimization or full CPU/language parity. Stop to investigate a real functional
+or capacity blocker. Keep the external-output bundle path working. P3 remains
+separate.
+
+The full current-source embedded build now passes fresh FS-UAE START/DONE,
+exit zero and exact comparison against the live Rust Hunk. The 69 input files
+contain 768,109 text bytes and one 299,104-byte package asset (1,067,213 bytes
+total), fingerprint `fnv1a64:81fdeed3c3f5b3c1`. Rust assembly before and after
+relocation produces identical bytes. Native emits the entire 395,676-byte Hunk,
+including the package payload, matching its bootstrap exactly; linked reservation
+is 407,564 bytes. Release START/DONE time is 590.4703 seconds (9m 50.47s), under
+68020/10 MiB FS-UAE with unlimited CPU speed. This qualifies the embedded
+configuration's self-assembly, not the 2 MiB target, physical hardware timing or
+full CPU/language parity. An initial run was interrupted by a mistakenly shorter
+overall harness timeout at five minutes and is excluded from measurement.
+
+A controlled comparison uses the exact same 395,676-byte embedded release
+bootstrap, package bytes, roots and emulator profile for both configurations:
+
+| Configuration assembled | Input bytes | Result Hunk / reserved bytes | Native seconds |
+| --- | ---: | ---: | ---: |
+| External-default catalog | 768,020 | 96,572 / 108,460 | 587.3049 |
+| m68020 embedded catalog | 1,067,213 | 395,676 / 407,564 | 590.4703 |
+
+Both runs have fresh completion, exit zero and exact full Rust Hunk matches.
+The observed extra cost is 3.1654 seconds (0.54%) for the configured input and
+299,104-byte package payload. There is one valid release sample per configuration;
+this is a measured workload cost, not a statistically established speed change.
+The portable path change leaves the bootstrap byte-for-byte unchanged.
+
+Four package-builder checks, 50 proof-runner unit checks, 19 hardware-runner checks,
+the public builder command, relocated Rust assemblies and the focused proof,
+ownership, invocation, debug, instrumentation, formatting and workflow guards
+pass. The aggregate native gate still fails on 13 pre-existing missing ownership
+annotations in unchanged native modules; it is not reported as green.
+
+The hardware bundle is `/tmp/opforge-a6000-bs13-embedded-selfhost-v2`, also selected
+by `/tmp/opforge-a6000-current`. The usual Mac Terminal command remains:
+
+```sh
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
+```
+
+It transfers the package under `src/experimental/packages/` as a binary build
+input. No external runtime fallback package or oracle is transferred. The emitted
+executable is embedded too. No new A6000 execution has occurred during this slice.
+
+### Parked — ordinary list symbols for shared embedding configuration
+
+Erik deferred this work after qualification of the embedded self-build. The
+current host-configured source is sufficient for the coming days. Focus next on
+shared opcore and assembler-language parity; this note does not activate further
+embedding or list work.
+
+Erik wants the same source build to choose embedded packages on Rust and native
+through ordinary symbols and module conditions. Use a list of declared package-ID
+symbols, not a family bitfield, strings requiring a new value kind, or a separate
+native catalog generator. The intended CLI surface is normal expression-valued
+definitions, for example `-D 'embed={m68020,m6502}'`; that compact-native command
+is proposed, not implemented. The package IDs must be declared by source/catalog
+metadata; CPU names do not become implicit language constants.
+
+First qualify Rust list-valued `.use with` binding explicitly, then establish
+VM-owned flat scalar lists in the compact native value model. The current native
+symbol, assignment, expression and import ABIs carry scalar i64 values only; this
+is broader than accepting braces in the import parser. A coherent first
+checkpoint covers list literals, assignment, indexing, `.len`, module binding
+and forwarding, with offset-addressed owned storage and intact scalar behavior.
+Invalid indexes and scalar/list misuse need explicit diagnostics. Keep parsing
+and evaluation in their existing VM/package owners.
+
+Then use those ordinary bindings and conditions in the catalog source and wire
+normal native CLI definitions. Qualify empty, single and multiple package sets
+using identical configured source on Rust/native and exact complete self-build
+outputs. Packages remain project-independent prepared assets. Iterable `.for`,
+nested compound values and broader language parity are separately reviewable;
+do not silently implement a catalog-only list evaluator or source-text fallback.
+
+### Completed prerequisite — shared binary inclusion before P3
 
 Close `.incbin` for quoted relative whole-file assets before multi-package replay,
 so an embedded configuration can progress toward native self-assembly. PRVM
@@ -169,10 +259,9 @@ A fresh local m68020-only embedded-bootstrap bundle is
 `/tmp/opforge-a6000-bs13-incbin`: 68 source files, 768,020 bytes, source fingerprint
 `fnv1a64:1b92de0b3e833dfc`, 395,676-byte bootstrap and 96,572-byte external-default
 Rust oracle. It remains host-built and has no new hardware/self-host result.
-The next full self-host run must use current sources and a fresh oracle; native
-self-assembly of an embedded configuration needs its own case and qualification,
-including portable staged catalog paths instead of the generator's host absolute
-asset paths.
+The separate embedded-output qualification above uses portable staged catalog
+paths and a fresh current-source oracle; it does not reuse this earlier bundle's
+external-output result.
 
 P3 discovery found a second prerequisite beyond package pointers: source-symbol
 IDs currently start at the active package's `NameCount`. P3 needs a session-wide
@@ -200,6 +289,31 @@ external packages, `catalog.i`, configured CLI source, a manifest and the assemb
 `{"embed":["6502","68020"]}`. `--catalog-only` generates assets and source without
 assembling the executable. The checked-in `package_catalog.i` is the generated
 external-only catalog; a host test guards drift from the production registry.
+The configured entry includes `catalog.i` beside it; embedded payloads are read
+from `packages/` relative to that catalog. The generated build directory can be
+moved without retaining the original host path.
+
+The local self-host exporter accepts
+`OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020` to make both the release oracle and
+bootstrap the embedded configuration. It records generated entry/catalog/asset
+origins separately from unchanged native dependencies. Using the known-good
+FS-UAE environment from the [execution guide](../../agents/rules/fs-uae.md), add
+native qualification explicitly:
+
+```sh
+OPFORGE_COMPACT_EXPORT_DIR=/tmp/opforge-embedded-selfhost-new \
+OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020 \
+OPFORGE_COMPACT_EXPORT_NATIVE=1 \
+OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m \
+OPFORGE_FS_UAE_TIMEOUT_MS=1830000 \
+OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=1800000 \
+cargo test -p asm --lib export_compact_self_host_bundle -- --ignored --nocapture --test-threads=1
+```
+
+The overall timeout still bounds the entire run after START; increase both limits
+for long self-host cases. Omitting `OUTPUT_EMBED` preserves external-default
+output. `OPFORGE_COMPACT_EXPORT_EMBED=68020` independently selects an embedded
+bootstrap for that comparison. A host-only export is not native completion.
 
 Copy `opforge_compact` and the needed `packages/` files together. The provisional
 native syntax is:
@@ -237,16 +351,15 @@ quoted relative `.incbin` statements expanded into packed `.byte` records. Searc
 roots are relative to the defining file and behavior is limited to the explicit
 whole-file cases qualified below. Macro bodies assembled from multiple physical
 files still need per-record asset origins; this slice tracks the definition header
-file. Full embedded-config self-hosting remains unqualified.
+file. Full m68020 embedded-config self-hosting is qualified above.
 Unknown contracts, wrong target identities, invalid spans, truncation and missing
 files must fail before execution. Program interpreters retain opcode/version and
 execution bounds checks beyond the common structural validator.
 
-Configured embedded builds currently use Rust `.incbin` during host assembly;
-compact native `.incbin` passes the focused whole-file cases below. The external-only default
-source contains no `.incbin` and remains the self-hosting configuration. Embedding
-a package proves its storage and execution path, not that an embedded build can
-self-assemble or that every target's instruction forms are implemented.
+Configured embedded builds use shared `.incbin` on Rust and native. Both the
+external-only default and the m68020 embedded configuration can self-assemble;
+the latter includes its generated catalog and package asset in the input tree.
+This does not establish that every target's instruction forms are implemented.
 
 The catalog's offset tables also require same-section address subtraction. Rust
 DATA directives and compact Hunk provenance now recognize cancellation of equal

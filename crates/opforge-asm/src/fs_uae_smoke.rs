@@ -1371,6 +1371,28 @@ pub(crate) fn run_binary_source_harness_from_env(
     )
 }
 
+/// Exercise an explicitly supplied compact executable through the normal fresh
+/// challenge and exact-artifact proof path. The bootstrap is part of case identity.
+pub(crate) fn run_prebuilt_compact_cli_case_from_env(
+    workspace_root: &Path,
+    case: &OpforgeNativeCliParityCase<'_>,
+    bootstrap: &[u8],
+) -> Result<FsUaeSmokeOutcome, String> {
+    if bootstrap.is_empty() {
+        return Err("compact CLI bootstrap must not be empty".into());
+    }
+    let args = std::env::var(FS_UAE_ARGS_ENV).map_err(|err| err.to_string())?;
+    let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
+    run_native_cli_parity_batch_cases(
+        workspace_root,
+        &binary,
+        &args,
+        std::slice::from_ref(case),
+        NativeCliParityExecutable::CompactCli,
+        Some(bootstrap),
+    )
+}
+
 /// Exercise the standalone Shell entry with a plain BSP3 package and one source.
 pub(crate) fn run_compact_cli_from_env(
     workspace_root: &Path,

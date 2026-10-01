@@ -36,16 +36,21 @@ def fnv(data):
 
 def load_bundle(bundle):
     manifest = json.loads((bundle / "manifest.json").read_text())
-    if manifest["release_defines"] or manifest["filename_mapping"] != (
-        "identity; source include literals are unchanged"
-    ):
+    output_storage = manifest.get("output_package_storage", "external")
+    filename_mappings = {"identity; source include literals are unchanged"}
+    if output_storage == "embedded":
+        filename_mappings.add("identity; generated inputs have explicit origins")
+    if manifest["release_defines"] or manifest["filename_mapping"] not in filename_mappings:
         raise ValueError("Require unchanged source filenames and a release output oracle")
     defines = set(manifest.get("bootstrap_defines", []))
     storage = manifest.get("bootstrap_package_storage", "external")
     embedded_packages = manifest.get("embedded_packages", [])
+    output_packages = manifest.get("output_embedded_packages", [])
     if storage not in ("external", "embedded") or (
         storage == "external" and embedded_packages
-    ) or manifest.get("output_package_storage", "external") != "external":
+    ) or output_storage not in ("external", "embedded") or (
+        output_storage == "external" and output_packages
+    ) or (output_storage == "embedded" and storage != "embedded"):
         raise ValueError("Unsupported self-host package storage")
     if defines:
         required = {"OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
@@ -60,6 +65,8 @@ def load_bundle(bundle):
         raise ValueError("Bundle has filenames over 30 bytes; regenerate the corrected export")
     files = {}
     identity = bytearray()
+    origins = {}
+    mapped_paths = set()
     for row in manifest["source_mapping"]:
         path = Path(row["staged_path"])
         logical = Path(row["logical_path"])
@@ -68,7 +75,32 @@ def load_bundle(bundle):
         data = (bundle / path).read_bytes()
         if len(data) != row["bytes"] or fnv(data) != row["digest"]:
             raise ValueError(f"Export source changed: {path}")
-        if data != (Path(manifest["source_root"]) / logical).read_bytes():
+        origin = row.get("origin", "native")
+        folded_path = path.as_posix().lower()
+        if folded_path in mapped_paths:
+            raise ValueError("Duplicate source mapping")
+        mapped_paths.add(folded_path)
+        if origin == "native":
+            expected = (Path(manifest["source_root"]) / logical).read_bytes()
+        elif output_storage == "embedded" and origin in (
+            "configured_entry", "generated_catalog", "package_asset"
+        ):
+            if origin in origins:
+                raise ValueError("Duplicate embedded source origin")
+            origins[origin] = (logical.as_posix(), data)
+            if origin == "configured_entry":
+                if logical.as_posix() != "experimental/opforge_compact_cli.asm":
+                    raise ValueError("Invalid configured entry mapping")
+                original = (Path(manifest["source_root"]) / logical).read_bytes()
+                literal = b'.include "package_catalog.i"'
+                if original.count(literal) != 1:
+                    raise ValueError("Configured entry requires exactly one catalog include")
+                expected = original.replace(literal, b'.include "catalog.i"')
+            else:
+                expected = data
+        else:
+            raise ValueError("Invalid source mapping origin")
+        if data != expected:
             raise ValueError(f"Current source differs; regenerate the export: {logical}")
         files[path.as_posix()] = data
         identity.extend(logical.as_posix().encode() + b"\0" + data + b"\0")
@@ -86,7 +118,7 @@ def load_bundle(bundle):
         raise ValueError("Release oracle mismatch")
     if fnv(bootstrap) != manifest.get("bootstrap_hunk_digest", manifest["release_hunk_digest"]):
         raise ValueError("Bootstrap digest mismatch")
-    if not defines and storage == "external" and bootstrap != oracle:
+    if not defines and (storage == "external" or output_storage == "embedded") and bootstrap != oracle:
         raise ValueError("Release bootstrap/oracle mismatch")
     if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS13":
         raise ValueError("Runtime package mismatch")
@@ -99,7 +131,7 @@ def load_bundle(bundle):
         if offset < 140 or not 1 <= size <= 26 or offset + size > len(package):
             raise ValueError("Invalid embedded package identity")
         target = package[offset:offset + size].decode("ascii")
-        if not re.fullmatch(r"m68020--[A-Za-z0-9_-]+", target) or embedded_packages != [target + ".bin"]:
+        if target != "m68020--motorola68k" or embedded_packages != [target + ".bin"]:
             raise ValueError("Require exactly the self-host m68020 package embedded")
         if package_file != target + ".bin":
             raise ValueError("Embedded package filename must identify its target")
@@ -107,6 +139,22 @@ def load_bundle(bundle):
             raise ValueError("Embedded bootstrap must contain the exact package once")
     else:
         files["p.bin"] = package
+    if output_storage == "embedded":
+        if output_packages != [package_file] or set(origins) != {
+            "configured_entry", "generated_catalog", "package_asset"
+        }:
+            raise ValueError("Require exactly the embedded output package and source origins")
+        catalog_path, catalog = origins["generated_catalog"]
+        asset_path, asset = origins["package_asset"]
+        if catalog_path != "experimental/catalog.i" or asset_path != f"experimental/packages/{package_file}":
+            raise ValueError("Invalid embedded source mapping")
+        if asset != package:
+            raise ValueError("Embedded source package asset mismatch")
+        incbins = re.findall(rb'(?im)^\s*(?:[A-Za-z_][A-Za-z0-9_]*:\s*)?\.incbin\b([^\r\n]*)', catalog)
+        if [operand.strip() for operand in incbins] != [f'"packages/{package_file}"'.encode()]:
+            raise ValueError("Embedded catalog must include exactly its package asset")
+        if oracle.count(package) != 1:
+            raise ValueError("Embedded release oracle must contain the exact package once")
     command = manifest["command"]
     if command != (bundle / "command.txt").read_text().strip():
         raise ValueError("Assembly command mismatch")
@@ -118,6 +166,7 @@ def load_bundle(bundle):
     ):
         raise ValueError("Embedded test cannot override package selection or search")
     identity.extend(b"m68020\0" + command.encode() + b"\0" + package + b"\0" + oracle)
+    identity.extend(b"\0output-package-storage\0" + output_storage.encode() + b"\0")
     if defines:
         identity.extend(b"\0instrumented-bootstrap\0" + bootstrap)
     if storage == "embedded":
@@ -209,7 +258,8 @@ def add_telemetry(result, root, manifest):
                    "bootstrap_defines": defines,
                    "bootstrap_package_storage": manifest.get("bootstrap_package_storage", "external"),
                    "embedded_packages": manifest.get("embedded_packages", []),
-                   "output_package_storage": "external"})
+                   "output_package_storage": manifest.get("output_package_storage", "external"),
+                   "output_embedded_packages": manifest.get("output_embedded_packages", [])})
     if not defines:
         return
     result["assembly_success"] = result["success"]

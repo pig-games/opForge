@@ -33,6 +33,8 @@ mod struct_layout;
 
 #[path = "binary_source_macro_calls.rs"]
 mod macro_calls;
+#[path = "binary_source_macro_name_collisions.rs"]
+mod macro_name_collisions;
 
 #[path = "binary_source_macro_profile.rs"]
 mod macro_profile;

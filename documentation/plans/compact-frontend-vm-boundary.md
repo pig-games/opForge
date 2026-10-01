@@ -16,8 +16,12 @@ with fresh exit 0 and exact current Rust Hunk equality on 68020 / 10 MiB:
 88,096 output bytes. The anonymous macro scope repair restores the missing
 60 DATA bytes. The release START/DONE host observation is 526.700183541 s;
 whole-test wall time is 554.71 s, including host preparation and emulator
-startup. This proves the frozen-input comparison. Current-source self-host proof
-and a separate instrumented completion measurement remain the next steps.
+startup. This proves the frozen-input comparison. The current-source run rejects
+`evaluate .block` in `binary_expression.asm` during preparation after
+68.085095583 s: the new private `EVALUATE` macro and public `evaluate` routine
+collide in native declaration binding. Rust keeps template and value declarations
+separate. Repairing that shared binding boundary, then rerunning current-source
+self-host and a separate instrumented completion measurement, are the next steps.
 
 Before the immediate-memory fix, pass 2 rejected at frozen `binary_app.asm`
 line 135, `move.l #20,ReturnCode`, while recording instruction relocations.
@@ -2469,3 +2473,28 @@ DATA cases and host-evaluator failpoint controls pass: 22 focused tests in each
 profile. Native formatting checks all 54 files without changes; architecture,
 instrumentation, runtime/proof boundary and contract guards pass. This is focused
 qualification, not a clean broad-suite claim.
+
+### Independent template and value declarations
+
+The first renewed current-source comparison exits 20 at `binary_expression.asm`
+line 133, `evaluate .block`, during preparation. Release START/DONE observation
+is 68.085095583 s, runner call 92.459527792 s and whole-test wall time 95.17 s.
+It produces no valid self-host artifact. The frozen source contains the evaluator
+body inline; current code factors it into a private `EVALUATE` macro. Native's
+case-folded lexical identity is also its declaration identity, so capturing the
+macro marks the routine's name DECLARED+TEMPLATE and the block opener rejects it.
+
+A reduced evaluator with two register-list arguments preserves the structural
+failure: fresh native exit 20 at `evaluate .block` after 0.254682791 s. Renaming
+only the helper macro and calls to `EVALUATE_BODY` gives an exact 100-byte Hunk in
+1.014355 s. Rust default and VM-only modes accept both and produce identical
+28-byte CODE payloads; the ordinary instruction-label collision is also covered
+by a host oracle. The renamed form is a diagnostic control, not a production
+workaround. These are convergence observations, not a speed comparison.
+
+The repair must keep template declarations, duplicates, call resolution and
+visibility independent from numeric value binding, including imported names.
+Lexical IDs may be shared where safe, but value remapping must remain value-only.
+Selected imports follow Rust's existing value precedence: a private value blocks
+selection of the same-named public macro; a public value does not expose a private
+macro. A local duplicate-flag exception would not satisfy this boundary.

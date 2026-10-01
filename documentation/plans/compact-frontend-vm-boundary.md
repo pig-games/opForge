@@ -82,6 +82,25 @@ After creating a new release export, update the current pointer to its directory
 preserve the existing bundle rather than overwriting it. Without the pointer,
 the historical `/tmp/opforge-a6000-compact-export` default remains available.
 
+The provisional hardware export mode accepts
+`OPFORGE_COMPACT_EXPORT_EMBED=68020` with
+`OPFORGE_COMPACT_EXPORT_DIR=/tmp/opforge-a6000-m68020-embedded`. It embeds only
+the default-dialect m68020 package in the bootstrap executable named `opforge`.
+Run it with:
+
+```sh
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py --bundle /tmp/opforge-a6000-m68020-embedded
+```
+
+The local `m68020--motorola68k.bin` remains available for package identity
+verification but is not transferred. On the guest, the runner invokes
+`opforge --cpu 68020` without
+external packages. Input remains the unchanged default release/native CLI
+source, and the 94,356-byte release Rust oracle remains an external-package
+configuration. This mode does not prove native self-assembly of the embedded
+configuration; `.incbin` parity is pending, and no hardware timings are
+available. `/tmp/opforge-a6000-current` remains the external release bundle.
+
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
 The script verifies current sources and round-trips the transferred input bytes

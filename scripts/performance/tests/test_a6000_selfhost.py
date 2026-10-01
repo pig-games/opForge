@@ -45,6 +45,85 @@ class HardwareCompletionTests(unittest.TestCase):
                            "manifest.json": json.dumps(manifest).encode()}.items():
             (root / name).write_bytes(data)
 
+    def embedded_bundle(self, root):
+        self.bundle(root, False)
+        target = b"m68020--motorola68k"
+        package = bytearray(132)
+        package[:4] = b"BS12"
+        package[124:128] = (132).to_bytes(4, "big")
+        package[128:130] = len(target).to_bytes(2, "big")
+        package.extend(target)
+        bootstrap = b"embedded executable:" + package
+        command = "opforge --cpu 68020 src/entry.asm output.hunk -M src"
+        manifest = json.loads((root / "manifest.json").read_text())
+        manifest.update({"bootstrap_package_storage": "embedded",
+                         "embedded_packages": [target.decode() + ".bin"],
+                         "output_package_storage": "external",
+                         "runtime_package_file": target.decode() + ".bin",
+                         "runtime_package_digest": runner.fnv(package),
+                         "bootstrap_hunk_digest": runner.fnv(bootstrap),
+                         "command": command})
+        (root / (target.decode() + ".bin")).write_bytes(package)
+        (root / "p.bin").unlink()
+        (root / "opforge").write_bytes(bootstrap)
+        (root / "command.txt").write_text(command)
+        (root / "manifest.json").write_text(json.dumps(manifest))
+
+    def test_embedded_case_transfers_only_bootstrap_and_binds_its_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.embedded_bundle(root)
+            manifest, files, oracle, case = runner.load_bundle(root)
+            self.assertEqual(manifest["embedded_packages"], ["m68020--motorola68k.bin"])
+            self.assertNotIn("p.bin", files)
+            self.assertEqual(oracle, b"release")
+            bootstrap = files["opforge"] + b"changed code"
+            (root / "opforge").write_bytes(bootstrap)
+            manifest["bootstrap_hunk_digest"] = runner.fnv(bootstrap)
+            (root / "manifest.json").write_text(json.dumps(manifest))
+            self.assertNotEqual(case, runner.load_bundle(root)[3])
+            result = {"success": True}
+            runner.add_telemetry(result, root, manifest)
+            self.assertEqual(result["bootstrap_package_storage"], "embedded")
+
+    def test_embedded_case_rejects_extra_targets_missing_payload_or_external_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.embedded_bundle(root)
+            manifest = json.loads((root / "manifest.json").read_text())
+            for changes, error in [
+                ({"embedded_packages": manifest["embedded_packages"] + ["m6502--transparent.bin"]}, "exactly"),
+                ({"bootstrap_package_storage": "unknown"}, "storage"),
+            ]:
+                (root / "manifest.json").write_text(json.dumps(manifest | changes))
+                with self.assertRaisesRegex(ValueError, error):
+                    runner.load_bundle(root)
+            bootstrap = b"missing payload"
+            (root / "opforge").write_bytes(bootstrap)
+            changed = manifest | {"bootstrap_hunk_digest": runner.fnv(bootstrap)}
+            (root / "manifest.json").write_text(json.dumps(changed))
+            with self.assertRaisesRegex(ValueError, "exact package"):
+                runner.load_bundle(root)
+            (root / "opforge").write_bytes(b"embedded executable:" + (root / manifest["runtime_package_file"]).read_bytes())
+            for option in (" -P src", " --cpu 6502", " -d zilog"):
+                command = manifest["command"] + option
+                (root / "command.txt").write_text(command)
+                (root / "manifest.json").write_text(json.dumps(manifest | {"command": command}))
+                with self.assertRaisesRegex(ValueError, "override"):
+                    runner.load_bundle(root)
+
+    def test_embedded_transfer_rejects_unexpected_external_package_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = {"opforge": b"embedded"}
+            (root / "opforge").write_bytes(files["opforge"])
+            runner.verify_files(root, files)
+            for name in ("p.bin", "packages"):
+                (root / name).write_bytes(b"external")
+                with self.assertRaisesRegex(ValueError, "external package"):
+                    runner.verify_files(root, files)
+                (root / name).unlink()
+
     def test_instrumented_bootstrap_is_distinct_from_release_oracle_and_case(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

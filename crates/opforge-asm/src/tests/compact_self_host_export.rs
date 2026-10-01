@@ -70,7 +70,7 @@ fn export_compact_self_host_bundle() {
         "-I".to_string(),
         source_root.join("debug").to_string_lossy().into_owned(),
     ]);
-    let cli = Cli::parse_from(args);
+    let cli = Cli::parse_from(args.clone());
     let mut config = validate_cli(&cli).expect("validate live release self-build");
     assert!(
         config.defines.is_empty(),
@@ -82,18 +82,44 @@ fn export_compact_self_host_bundle() {
     let allocation = hunk::allocation(&oracle).expect("strict release Hunk allocation");
     let dependency_text = fs::read_to_string(&dependencies).unwrap();
     let instrumented = std::env::var("OPFORGE_COMPACT_EXPORT_INSTRUMENTED").as_deref() == Ok("1");
+    // This case assembles the unchanged external-only source with an embedded
+    // bootstrap. It does not exercise native .incbin self-assembly yet.
+    let embedded = match std::env::var("OPFORGE_COMPACT_EXPORT_EMBED") {
+        Err(std::env::VarError::NotPresent) => false,
+        Ok(value) if value == "68020" => true,
+        _ => panic!("OPFORGE_COMPACT_EXPORT_EMBED currently accepts only 68020"),
+    };
     let bootstrap_defines = if instrumented {
         INSTRUMENTED_DEFINES
     } else {
         &[]
     };
-    let bootstrap = if instrumented {
+    let embedded_files = if embedded {
+        use crate::native_package_build::{build_native_packages, EmbedSelection};
+        let registry = engine::build_default_asm_registry();
+        let build = build_native_packages(
+            &registry,
+            &scratch.join("embedded"),
+            &source_root.join(ENTRY),
+            &EmbedSelection::Targets(vec!["68020".into()]),
+        )
+        .expect("generate single-CPU embedded catalog");
+        assert_eq!(build.embedded_files.len(), 1);
+        args[1] = build.cli_source_path.to_string_lossy().into_owned();
+        build.embedded_files.into_iter().collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let bootstrap = if instrumented || embedded {
+        let bootstrap_cli = Cli::parse_from(args);
+        config = validate_cli(&bootstrap_cli).expect("validate configured bootstrap");
+        config.out_dir = Some(scratch.clone());
         config.defines = bootstrap_defines
             .iter()
             .map(|name| (*name).to_owned())
             .collect();
-        run_with_validated_cli_with_context(&cli, &config)
-            .expect("fresh instrumented bootstrap build");
+        run_with_validated_cli_with_context(&bootstrap_cli, &config)
+            .expect("fresh configured bootstrap build");
         fs::read(scratch.join("build/opforge_compact")).unwrap()
     } else {
         oracle.clone()
@@ -145,6 +171,20 @@ fn export_compact_self_host_bundle() {
     let core = RuntimeModelCore::from_registry(&registry).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    if embedded {
+        assert_eq!(
+            fs::read(scratch.join("embedded/packages").join(&embedded_files[0])).unwrap(),
+            package,
+            "embedded payload must match the self-host package"
+        );
+        assert_eq!(
+            bootstrap
+                .windows(package.len())
+                .filter(|w| *w == package)
+                .count(),
+            1
+        );
+    }
     let module_roots = MODULE_ROOTS
         .iter()
         .copied()
@@ -155,7 +195,9 @@ fn export_compact_self_host_bundle() {
         })
         .collect::<Vec<_>>();
     let entry = Path::new(ENTRY);
-    let mut command = format!("opforge p.bin src/{} output.hunk", entry.display());
+    let selection = if embedded { "--cpu 68020" } else { "p.bin" };
+    let package_file = embedded_files.first().map_or("p.bin", String::as_str);
+    let mut command = format!("opforge {selection} src/{} output.hunk", entry.display());
     for root in &module_roots {
         command.push_str(&format!(" -M src/{root}"));
     }
@@ -204,11 +246,15 @@ fn export_compact_self_host_bundle() {
         "release_hunk_digest": opforge_self_host_package_digest(&oracle),
         "release_hunk_allocation_bytes": allocation.total(),
         "bootstrap_defines": bootstrap_defines,
+        "bootstrap_package_storage": if embedded { "embedded" } else { "external" },
+        "embedded_packages": embedded_files,
+        "output_package_storage": "external",
         "bootstrap_hunk_bytes": bootstrap.len(),
         "bootstrap_hunk_digest": opforge_self_host_package_digest(&bootstrap),
         "bootstrap_hunk_allocation_bytes": bootstrap_allocation.total(),
         "telemetry_file": instrumented.then_some("memory.bin"),
         "runtime_package_magic": "BS12",
+        "runtime_package_file": package_file,
         "runtime_package_bytes": package.len(),
         "runtime_package_digest": opforge_self_host_package_digest(&package),
         "entry": format!("src/{}", entry.display()),
@@ -225,7 +271,7 @@ fn export_compact_self_host_bundle() {
     }
     fs::write(output.join("opforge"), &bootstrap).unwrap();
     fs::write(output.join("oracle.hunk"), &oracle).unwrap();
-    fs::write(output.join("p.bin"), package).unwrap();
+    fs::write(output.join(package_file), package).unwrap();
     fs::write(output.join("command.txt"), format!("{command}\n")).unwrap();
     fs::write(
         output.join("manifest.json"),
@@ -234,7 +280,7 @@ fn export_compact_self_host_bundle() {
     .unwrap();
     fs::write(
         output.join("README.txt"),
-        "Fresh local self-host export; no native run has occurred.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare output.hunk exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation defines; an instrumented\nbootstrap writes memory.bin in its current directory. Its output is release.\nSource bytes and include filenames are unchanged. FNV digests identify inputs;\nexact artifact bytes remain the parity authority.\n",
+        "Fresh local self-host export; no native run has occurred.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare output.hunk exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and package storage. An embedded\nbootstrap uses --cpu 68020; its named package is retained locally for identity\nverification and is not transferred by the hardware runner. An instrumented\nbootstrap writes memory.bin in its current directory. Output is the default\nexternal-package release executable, not a self-assembled embedded configuration.\nSource bytes and include filenames are unchanged. FNV digests identify inputs;\nexact artifact bytes remain the parity authority.\n",
     )
     .unwrap();
     drop(cleanup);
@@ -249,6 +295,8 @@ fn export_compact_self_host_bundle() {
             "release_hunk_bytes": oracle.len(),
             "bootstrap_hunk_bytes": bootstrap.len(),
             "bootstrap_defines": bootstrap_defines,
+            "bootstrap_package_storage": manifest["bootstrap_package_storage"],
+            "embedded_packages": manifest["embedded_packages"],
             "over_classic_limit_components": manifest["over_classic_limit_components"],
         })
     );

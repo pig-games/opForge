@@ -41,6 +41,12 @@ def load_bundle(bundle):
     ):
         raise ValueError("Require unchanged source filenames and a release output oracle")
     defines = set(manifest.get("bootstrap_defines", []))
+    storage = manifest.get("bootstrap_package_storage", "external")
+    embedded_packages = manifest.get("embedded_packages", [])
+    if storage not in ("external", "embedded") or (
+        storage == "external" and embedded_packages
+    ) or manifest.get("output_package_storage", "external") != "external":
+        raise ValueError("Unsupported self-host package storage")
     if defines:
         required = {"OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
                     "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"}
@@ -70,24 +76,52 @@ def load_bundle(bundle):
         raise ValueError("Source manifest mismatch")
     oracle = (bundle / "oracle.hunk").read_bytes()
     bootstrap = (bundle / "opforge").read_bytes()
-    package = (bundle / "p.bin").read_bytes()
+    package_file = manifest.get("runtime_package_file", "p.bin")
+    if not isinstance(package_file, str) or not (
+        re.fullmatch(r"[A-Za-z0-9_-]+\.bin", package_file) or package_file == "p.bin"
+    ):
+        raise ValueError("Unsafe runtime package filename")
+    package = (bundle / package_file).read_bytes()
     if fnv(oracle) != manifest["release_hunk_digest"]:
         raise ValueError("Release oracle mismatch")
     if fnv(bootstrap) != manifest.get("bootstrap_hunk_digest", manifest["release_hunk_digest"]):
         raise ValueError("Bootstrap digest mismatch")
-    if not defines and bootstrap != oracle:
+    if not defines and storage == "external" and bootstrap != oracle:
         raise ValueError("Release bootstrap/oracle mismatch")
     if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS12":
         raise ValueError("Runtime package mismatch")
-    files.update({"opforge": bootstrap, "p.bin": package})
+    files["opforge"] = bootstrap
+    if storage == "embedded":
+        if len(package) < 132:
+            raise ValueError("Invalid embedded package header")
+        offset = int.from_bytes(package[124:128], "big")
+        size = int.from_bytes(package[128:130], "big")
+        if offset < 132 or not 1 <= size <= 26 or offset + size > len(package):
+            raise ValueError("Invalid embedded package identity")
+        target = package[offset:offset + size].decode("ascii")
+        if not re.fullmatch(r"m68020--[A-Za-z0-9_-]+", target) or embedded_packages != [target + ".bin"]:
+            raise ValueError("Require exactly the self-host m68020 package embedded")
+        if package_file != target + ".bin":
+            raise ValueError("Embedded package filename must identify its target")
+        if bootstrap.count(package) != 1:
+            raise ValueError("Embedded bootstrap must contain the exact package once")
+    else:
+        files["p.bin"] = package
     command = manifest["command"]
     if command != (bundle / "command.txt").read_text().strip():
         raise ValueError("Assembly command mismatch")
-    if not re.fullmatch(r"[A-Za-z0-9_./ -]+", command) or not command.startswith("opforge p.bin "):
+    prefix = "opforge --cpu 68020 " if storage == "embedded" else "opforge p.bin "
+    if not re.fullmatch(r"[A-Za-z0-9_./ -]+", command) or not command.startswith(prefix):
         raise ValueError("Unsafe assembly command")
+    if storage == "embedded" and not re.fullmatch(
+        r"opforge --cpu 68020 src/[A-Za-z0-9_./-]+ output\.hunk(?: -(?:M|I) src(?:/[A-Za-z0-9_./-]+)?)*", command
+    ):
+        raise ValueError("Embedded test cannot override package selection or search")
     identity.extend(b"m68020\0" + command.encode() + b"\0" + package + b"\0" + oracle)
     if defines:
         identity.extend(b"\0instrumented-bootstrap\0" + bootstrap)
+    if storage == "embedded":
+        identity.extend(b"\0embedded-bootstrap\0" + bootstrap)
     return manifest, files, oracle, hashlib.sha256(identity).hexdigest()
 
 
@@ -116,6 +150,10 @@ def verify_files(root, files):
         path = root / name
         if not path.is_file() or path.read_bytes() != data:
             raise ValueError(f"Remote copy differs or is missing: {name}")
+    if "opforge" in files and "p.bin" not in files:
+        for name in ("p.bin", "packages"):
+            if (root / name).exists():
+                raise ValueError(f"Embedded test must not have an external package: {name}")
 
 
 def verify_fresh_directory(root):
@@ -168,7 +206,10 @@ def inspect_result(root, files, oracle, marker, host_seconds):
 def add_telemetry(result, root, manifest):
     defines = manifest.get("bootstrap_defines", [])
     result.update({"measurement_mode": "instrumented" if defines else "release",
-                   "bootstrap_defines": defines})
+                   "bootstrap_defines": defines,
+                   "bootstrap_package_storage": manifest.get("bootstrap_package_storage", "external"),
+                   "embedded_packages": manifest.get("embedded_packages", []),
+                   "output_package_storage": "external"})
     if not defines:
         return
     result["assembly_success"] = result["success"]

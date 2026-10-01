@@ -896,6 +896,13 @@ successful intermediate comparison as completed current-source self-hosting.
 Completion also requires the requested release timing and separate instrumented
 measurements; instrumentation time is not release performance.
 
+That current-source milestone is now proven on the expanded 68020 / 10 MiB
+emulator profile: release and instrumented runs both match the fresh Rust Hunk
+exactly. Release host-observed START/DONE is 545.460594291 s. The measured
+tracked allocation peak is 5,222,440 bytes, so the 2 MiB product target remains
+unqualified. The [current frontend note](compact-frontend-vm-boundary.md)
+records the input identity, phase measurements and remaining language boundaries.
+
 The initial Rust baseline builds a deterministic 58,856-byte Hunk at
 `build/opforge_compact` from this entry (two separate temporary output roots
 produced SHA-256 `fcf86df103ba8b41b79c31a391acee127beb395dd43a8fd019ae0f01e39d3223`

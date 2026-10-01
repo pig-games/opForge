@@ -369,11 +369,10 @@ fn compact_cli_fs_uae() {
 }
 
 #[test]
-#[ignore = "bounded native readiness probe; update as self-host parity advances"]
+#[ignore = "requires configured FS-UAE; full current-source self-host and exact Rust Hunk"]
 fn compact_cli_self_host_entry_readiness_fs_uae() {
     // The live Rust assembly determines the exact source manifest and Hunk
-    // oracle. The opt-in parity mode requires the fresh native Hunk to match.
-    let require_parity = std::env::var("OPFORGE_SELF_HOST_REQUIRE_PARITY").as_deref() == Ok("1");
+    // oracle. Fresh native completion must always match the complete Hunk.
     // A fixed source tree lets before/after runs measure the CLI implementation
     // against identical self-host input even when the implementation changes.
     let source_override = std::env::var_os("OPFORGE_SELF_HOST_SOURCE_ROOT");
@@ -500,7 +499,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
         &source_refs,
         &native_roots,
         &["debug"],
-        require_parity.then_some(hunk_oracle.as_slice()),
+        Some(hunk_oracle.as_slice()),
         false,
     )
     .unwrap_or_else(|error| {
@@ -515,7 +514,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].protocol_completed);
-    assert_eq!(runs[0].exit_code, Some(if require_parity { 0 } else { 20 }));
+    assert_eq!(runs[0].exit_code, Some(0));
     let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
     let native_allocation = hunk::allocation(image).expect("native executable allocation");
     let assembly_position = progress::failure_position(&runs[0].stdout);
@@ -541,6 +540,19 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
         assert_eq!(words[1], 0, "terminal path releases tracked memory");
         assert_eq!(words[3], words[4]);
         assert_eq!(words[11], 0);
+        let phase_seconds = |start: usize, end: usize| {
+            let stamp = |offset: usize| {
+                u64::from(words[offset]) * 24 * 60 * 60 * 50
+                    + u64::from(words[offset + 1]) * 60 * 50
+                    + u64::from(words[offset + 2])
+            };
+            let start = stamp(start);
+            let end = stamp(end);
+            (start != 0 && end != 0)
+                .then(|| end.checked_sub(start))
+                .flatten()
+                .map(|ticks| ticks as f64 / 50.0)
+        };
         let preparation_stages = (words[28] != 0).then(|| {
             [
                 "source_io_and_other",
@@ -644,6 +656,11 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             });
         serde_json::json!({
             "peak_owned_bytes": words[2],
+            "total_allocated_bytes": words[3],
+            "prepared_live_bytes": words[5],
+            "assembly_live_bytes": words[10],
+            "instrumented_preparation_seconds": phase_seconds(19, 22),
+            "instrumented_assembly_seconds": phase_seconds(22, 25),
             "free_at_entry_bytes": words[7],
             "largest_at_entry_bytes": words[8],
             "source_bytes_read": words[15],
@@ -681,19 +698,10 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
             "instrumented_memory": memory,
         })
     );
-    if require_parity {
-        assert_eq!(
-            runs[0].captured_artifacts[&PathBuf::from("Work/output.bin")],
-            hunk_oracle
-        );
-    } else {
-        assert!(runs[0].stdout.contains("[file "));
-        assert!(
-            !runs[0].stdout.contains("[file 00000000, line 00000000]")
-                || runs[0].stdout.contains("preparation step: "),
-            "unlocated rejection needs a preparation-stage diagnostic"
-        );
-    }
+    assert_eq!(
+        runs[0].captured_artifacts[&PathBuf::from("Work/output.bin")],
+        hunk_oracle
+    );
 }
 
 #[test]

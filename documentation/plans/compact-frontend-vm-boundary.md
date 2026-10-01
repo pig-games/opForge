@@ -11,23 +11,20 @@ alongside the [native reset](native-runtime-reset.md#fixed-input-allocation-slic
 Speculative shortcuts are deferred until completed native self-host proof.
 Measured preparation bottlenecks may be addressed to shorten convergence runs.
 
-Current measured frontier: the frozen 61-file input rejects at native origin
-`0x25`, line 135, on 68020 / 10 MiB, after the address-register memory repair.
-The fresh position capture maps that origin to frozen `binary_app.asm`, whose
-line 135 is `move.l #20,ReturnCode`. The complete first assembly pass now finishes
-across all four sections. The second pass reaches section sweep 2 of 4, at
-90.814% of that scan, then rejects while recording instruction relocations.
-The preceding measured frontier was pass 1 at 65.948%, on `move.w d4, Bytes+2`,
-which now passes focused exact comparison. Origin IDs are discovery/include IDs,
-not indices into the sorted Rust manifest; scan position is not overall completion.
-The entry-file BSS-to-struct transfers and immediate CODE/DATA/BSS callback
-addresses now pass focused exact Hunk comparison.
-The register-mask slice below advances beyond the previous restore rejection;
-see its separate measurements and the callback-selection slice below. The full
-run still rejects during encoding; the smaller callback repair does not resolve
-that full-input gap.
-No native self-host Hunk exists. Older 59-file measurements below use a different
-input; the current frozen identity is recorded in
+Current measured frontier: the frozen 61-file input completes native assembly
+with fresh exit 0 on 68020 / 10 MiB. Exact comparison still fails: the native Hunk
+is 88,036 bytes versus Rust's 88,096 bytes. The positive comparison took 553.30 s
+of whole-test wall time, including host preparation and emulator startup; guest
+timing was not preserved on this failure. This proves completion of the frozen
+input, not artifact parity or current-source self-hosting. The next step is to
+localize the 60-byte difference using section and payload diagnostics.
+
+Before the immediate-memory fix, pass 2 rejected at frozen `binary_app.asm`
+line 135, `move.l #20,ReturnCode`, while recording instruction relocations.
+That run reached section sweep 2 of 4, at 90.814% of that scan, after completing
+pass 1 across all four sections. Origin IDs are discovery/include IDs, not indices
+into the sorted Rust manifest; scan position is not overall completion.
+Older 59-file measurements below use a different input; the current frozen identity is recorded in
 [the scalar-root slice](#complete-scalar-roots-and-target-predicates).
 
 Earlier convergence and memory observations: the compact native CLI accepts concrete code and
@@ -49,7 +46,8 @@ recorded one allocation failure and a peak of 1,083,256 tracked bytes against
 1,121,200 bytes free at entry. The small compact CLI search-roots case still
 matches Rust under 2 MiB. After functional self-host parity, identify the owner
 and lifetime of that growing block and reduce its peak without narrowing source.
-There is no completed native self-host artifact or full-run timing claim.
+The expanded-memory frozen run above completes, but exact output and the 2 MiB
+product target remain unqualified.
 
 For functional convergence, the runner now also supports a 68020 profile with
 2 MiB chip and 8 MiB fast RAM. On that profile the instrumented 59-file case
@@ -2387,3 +2385,20 @@ VM-only Rust comparisons, lowering, family, fixture and engineering checks pass.
 All eight fresh native tests pass, including four unsafe Hunk address cases and
 the permanently undefined name; no partial relocation output is accepted. The
 frozen full comparison is pending. No full repository or self-host parity is claimed.
+
+The telemetry-off frozen readiness run now reports guest exit 0 instead of the
+configured negative expectation. Its test fails at that evidence boundary, before
+artifact comparison and timing reporting. Overall test wall time is 553.43 s;
+this is not the native runner or guest timing and cannot supply the per-change
+comparison against 534.873728125 runner seconds. A fresh positive run must require
+the full Rust Hunk byte-for-byte before claiming frozen-source parity, followed by
+the current source tree for actual self-host proof.
+
+The subsequent strict positive run also completes with exit 0, but its Hunk is
+88,036 bytes versus the current Rust oracle's 88,096 bytes. Whole-test wall time
+is 553.30 s. The first raw difference is header offset 31; this does not yet locate
+the missing payload. Failure reporting now preserves fresh START/DONE timing and
+the native-call wall interval even when proof rejects, and reports each differing
+Hunk segment's allocation, payload window and relocation identity. Exact proof
+and ephemeral cleanup remain unchanged. All 54 focused runner host tests and the
+native proof guard pass; this reporting change adds no guest instrumentation.

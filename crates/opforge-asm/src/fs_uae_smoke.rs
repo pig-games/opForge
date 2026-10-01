@@ -15,6 +15,9 @@ use types::lockstep::ContinuationHead;
 use vm::builder::{build_hierarchy_chunks_from_registry, build_hierarchy_package_from_registry};
 use vm::output_model::BinOutputSpec;
 
+#[path = "tests/binary_source_hunk.rs"]
+mod hunk;
+
 const FS_UAE_BIN_ENV: &str = "OPFORGE_FS_UAE_BIN";
 const FS_UAE_ARGS_ENV: &str = "OPFORGE_FS_UAE_ARGS";
 const FS_UAE_CONFIG_TEMPLATE_ENV: &str = "OPFORGE_FS_UAE_CONFIG_TEMPLATE";
@@ -2000,6 +2003,21 @@ fn verify_native_cli_case_proof(
     case: &OpforgeNativeCliParityCase<'_>,
     run: &mut FsUaeSmokeRun,
 ) -> Result<(), String> {
+    verify_native_cli_case_proof_inner(case, run).map_err(|error| {
+        match run.start_to_done_host_seconds.filter(|_| run.protocol_completed) {
+            Some(seconds) => format!(
+                "{error}\ncase timing: start_to_done_host_seconds={seconds:.9}; guest_exit={:?}; proof_verified=false (host observation of fresh START/DONE)",
+                run.exit_code
+            ),
+            None => error,
+        }
+    })
+}
+
+fn verify_native_cli_case_proof_inner(
+    case: &OpforgeNativeCliParityCase<'_>,
+    run: &mut FsUaeSmokeRun,
+) -> Result<(), String> {
     fn protocol_artifact<'a>(
         case_name: &str,
         run: &'a FsUaeSmokeRun,
@@ -2159,7 +2177,7 @@ fn verify_exact_native_cli_artifacts(
                 relative_output_path.display(),
                 actual.len(),
                 artifact.rust_oracle.len(),
-                describe_first_byte_mismatch(&actual, artifact.rust_oracle)
+                describe_artifact_mismatch(&actual, artifact.rust_oracle)
             ));
             continue;
         }
@@ -2230,6 +2248,97 @@ fn describe_first_byte_mismatch(actual: &[u8], expected: &[u8]) -> String {
         );
     }
     "outputs are equal".to_string()
+}
+
+fn first_byte_difference(actual: &[u8], expected: &[u8]) -> usize {
+    actual
+        .iter()
+        .zip(expected)
+        .position(|(native, rust)| native != rust)
+        .unwrap_or(actual.len().min(expected.len()))
+}
+
+fn describe_byte_window(bytes: &[u8], offset: usize) -> String {
+    let start = offset.saturating_sub(16).min(bytes.len());
+    let end = offset.saturating_add(17).min(bytes.len());
+    let hex = bytes[start..end]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("[{start}..{end}): {hex}")
+}
+
+fn describe_hunk_segments(segments: &[hunk::Segment<'_>]) -> String {
+    let mut summaries = segments
+        .iter()
+        .enumerate()
+        .take(16)
+        .map(|(index, segment)| {
+            let kind = match segment.kind {
+                0x3e9 => "CODE",
+                0x3ea => "DATA",
+                0x3eb => "BSS",
+                _ => unreachable!(),
+            };
+            format!(
+                "segment {index} {kind} allocation={} body={} reloc32={}",
+                segment.reserved_bytes,
+                segment.payload.len(),
+                segment.relocations.len()
+            )
+        })
+        .collect::<Vec<_>>();
+    if segments.len() > 16 {
+        summaries.push(format!("{} further segments omitted", segments.len() - 16));
+    }
+    format!("{} segments; {}", segments.len(), summaries.join("; "))
+}
+
+fn describe_artifact_mismatch(actual: &[u8], expected: &[u8]) -> String {
+    let raw = describe_first_byte_mismatch(actual, expected);
+    let (Ok(native), Ok(rust)) = (hunk::segments(actual), hunk::segments(expected)) else {
+        let offset = first_byte_difference(actual, expected);
+        return format!(
+            "{raw}\nnative byte window {}\nRust byte window {}",
+            describe_byte_window(actual, offset),
+            describe_byte_window(expected, offset)
+        );
+    };
+    let mut details = format!(
+        "{raw}\nHunk native: {}\nHunk Rust: {}",
+        describe_hunk_segments(&native),
+        describe_hunk_segments(&rust)
+    );
+    for (index, (native, rust)) in native.iter().zip(&rust).enumerate().take(16) {
+        if native.payload != rust.payload {
+            let offset = first_byte_difference(native.payload, rust.payload);
+            details.push_str(&format!(
+                "\nHunk payload difference: segment={index}; payload_offset={offset}; native_file_offset={}; Rust_file_offset={}; {}\nnative payload window {}\nRust payload window {}",
+                native.payload_offset + offset,
+                rust.payload_offset + offset,
+                describe_first_byte_mismatch(native.payload, rust.payload),
+                describe_byte_window(native.payload, offset),
+                describe_byte_window(rust.payload, offset)
+            ));
+        }
+        let mut native_relocations = native.relocations.clone();
+        let mut rust_relocations = rust.relocations.clone();
+        native_relocations.sort_unstable();
+        rust_relocations.sort_unstable();
+        if native_relocations != rust_relocations {
+            let record = native_relocations
+                .iter()
+                .zip(&rust_relocations)
+                .position(|(native, rust)| native != rust)
+                .unwrap_or(native_relocations.len().min(rust_relocations.len()));
+            details.push_str(&format!(
+                "\nHunk relocation identities differ: segment={index}; first_sorted_record={record}; native={:?}; Rust={:?} (payload_offset, target_segment)",
+                native_relocations.get(record), rust_relocations.get(record)
+            ));
+        }
+    }
+    details
 }
 
 pub(crate) fn run_opforge_native_cli_item10_include_from_env(
@@ -3719,7 +3828,8 @@ fn run_native_cli_parity_batch_cases(
             ),
             exit_code,
             protocol_completed,
-            start_to_done_host_seconds: wait_outcome.single_case_seconds(cases.len(), success),
+            start_to_done_host_seconds: wait_outcome
+                .single_case_seconds(cases.len(), protocol_completed),
             native_image_digest: Some(opforge_self_host_package_digest(
                 &fs::read(&mounted_hunk_alias_path)
                     .map_err(|err| format!("read measured native image: {err}"))?,
@@ -4464,9 +4574,9 @@ enum FsUaeWaitOutcome {
 }
 
 impl FsUaeWaitOutcome {
-    fn single_case_seconds(self, case_count: usize, success: bool) -> Option<f64> {
+    fn single_case_seconds(self, case_count: usize, protocol_completed: bool) -> Option<f64> {
         match self {
-            Self::Captured(Some(duration)) if case_count == 1 && success => {
+            Self::Captured(Some(duration)) if case_count == 1 && protocol_completed => {
                 Some(duration.as_secs_f64())
             }
             _ => None,
@@ -5795,7 +5905,7 @@ mod tests {
     }
 
     #[test]
-    fn completed_timing_never_promotes_missing_failed_or_batch_evidence() {
+    fn completed_timing_requires_single_case_protocol_evidence() {
         // Level B receipt contract; not native parity or a timing calibration.
         let timed = FsUaeWaitOutcome::Captured(Some(Duration::from_millis(1250)));
         assert_eq!(timed.single_case_seconds(1, true), Some(1.25));
@@ -6148,6 +6258,145 @@ mod tests {
     }
 
     #[test]
+    fn artifact_diagnostics_localize_hunk_payload_after_header_difference() {
+        let image = |payload: &[u32]| {
+            let mut words = vec![
+                0x3f3,
+                0,
+                3,
+                0,
+                2,
+                payload.len() as u32,
+                1,
+                5,
+                0x3e9,
+                payload.len() as u32,
+            ];
+            words.extend_from_slice(payload);
+            words.extend_from_slice(&[
+                0x3ec, 1, 1, 0, 0, 0x3f2, 0x3ea, 1, 0x11223344, 0x3f2, 0x3eb, 5, 0x3f2,
+            ]);
+            words
+                .into_iter()
+                .flat_map(u32::to_be_bytes)
+                .collect::<Vec<_>>()
+        };
+        let native = image(&[0x11223344, 0x55667788, 0x99aabbcc]);
+        let rust = image(&[0x11223344, 0xdeadbeef, 0x99aabbcc, 0]);
+        let detail = describe_artifact_mismatch(&native, &rust);
+        assert!(detail.contains("first mismatch at offset 23"), "{detail}");
+        assert!(
+            detail.contains("segment 0 CODE allocation=12 body=12 reloc32=1"),
+            "{detail}"
+        );
+        assert!(
+            detail.contains("segment 0 CODE allocation=16 body=16 reloc32=1"),
+            "{detail}"
+        );
+        assert!(
+            detail.contains("segment 1 DATA allocation=4 body=4 reloc32=0"),
+            "{detail}"
+        );
+        assert!(
+            detail.contains("segment 2 BSS allocation=20 body=0 reloc32=0"),
+            "{detail}"
+        );
+        assert!(
+            detail.contains(
+                "segment=0; payload_offset=4; native_file_offset=44; Rust_file_offset=44"
+            ),
+            "{detail}"
+        );
+        assert!(
+            detail.contains("native payload window [0..12): 11 22 33 44 55 66 77 88"),
+            "{detail}"
+        );
+        assert!(
+            detail.contains("Rust payload window [0..16): 11 22 33 44 de ad be ef"),
+            "{detail}"
+        );
+
+        let truncated = &native[..native.len() - 1];
+        let raw = describe_artifact_mismatch(truncated, &rust);
+        assert!(!raw.contains("Hunk native"));
+        assert!(raw.contains("native byte window"));
+        assert!(raw.contains("Rust byte window"));
+    }
+
+    #[test]
+    fn mismatch_windows_are_bounded_and_cover_missing_payload_tails() {
+        let bytes = [0xaa; 100];
+        let window = describe_byte_window(&bytes, 50);
+        assert!(window.starts_with("[34..67): "));
+        assert_eq!(
+            window
+                .split(": ")
+                .nth(1)
+                .unwrap()
+                .split_whitespace()
+                .count(),
+            33
+        );
+        assert_eq!(describe_byte_window(&[], 0), "[0..0): ");
+        assert!(describe_byte_window(&bytes[..40], 40).starts_with("[24..40): "));
+    }
+
+    #[test]
+    fn hunk_diagnostics_report_later_segment_gaps_and_relocation_identity_changes() {
+        let image = |address, data: &[u32], target| {
+            let mut words = vec![
+                0x3f3,
+                0,
+                2,
+                0,
+                1,
+                1,
+                data.len() as u32,
+                0x3e9,
+                1,
+                address,
+                0x3ec,
+                1,
+                target,
+                0,
+                0,
+                0x3f2,
+                0x3ea,
+                data.len() as u32,
+            ];
+            words.extend_from_slice(data);
+            words.push(0x3f2);
+            words
+                .into_iter()
+                .flat_map(u32::to_be_bytes)
+                .collect::<Vec<_>>()
+        };
+        let rust = image(20, &[0x11223344, 0x55667788], 1);
+        let address_only =
+            describe_artifact_mismatch(&image(16, &[0x11223344, 0x55667788], 1), &rust);
+        assert!(
+            address_only.contains("Hunk payload difference: segment=0; payload_offset=3"),
+            "{address_only}"
+        );
+        assert!(!address_only.contains("Hunk payload difference: segment=1"));
+        assert!(!address_only.contains("relocation identities differ"));
+
+        let gap = describe_artifact_mismatch(&image(16, &[0x11223344], 1), &rust);
+        assert!(gap.contains("Hunk payload difference: segment=0"), "{gap}");
+        assert!(
+            gap.contains("Hunk payload difference: segment=1; payload_offset=4"),
+            "{gap}"
+        );
+        assert!(gap.contains("native output ends at offset 4"), "{gap}");
+
+        let identities =
+            describe_artifact_mismatch(&image(20, &[0x11223344, 0x55667788], 0), &rust);
+        assert!(identities.contains("Hunk relocation identities differ: segment=0; first_sorted_record=0; native=Some((0, 0)); Rust=Some((0, 1))"), "{identities}");
+        assert!(!identities.contains("Hunk payload difference:"));
+        assert!(!identities.starts_with("outputs are equal"));
+    }
+
+    #[test]
     fn batch_case_success_requires_done_marker_and_zero_exit() {
         assert!(determine_batch_case_success(true, true, Some(0), false));
         assert!(!determine_batch_case_success(false, true, Some(0), true));
@@ -6215,6 +6464,52 @@ mod tests {
         let mut run = proof_test_run(true, Some(0), Some(&expected));
         verify_native_cli_case_proof(&case, &mut run).expect("exact fresh byte proof");
         assert_eq!(run.verified_output.as_deref(), Some(expected.as_slice()));
+    }
+
+    #[test]
+    fn failed_proofs_retain_fresh_completed_case_timing_without_verification() {
+        let case = OpforgeNativeCliParityCase {
+            name: "timed-failure",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(b"input"),
+            command_template: None,
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/opforge_native_out.bin",
+                rust_oracle: &[0xa9, 0x42],
+            },
+        };
+        for exit in [0, 7] {
+            let mut run = proof_test_run(true, Some(exit), Some(&[0xa9, 0x43]));
+            run.start_to_done_host_seconds =
+                FsUaeWaitOutcome::Captured(Some(Duration::from_millis(1250)))
+                    .single_case_seconds(1, run.protocol_completed);
+            let error = verify_native_cli_case_proof(&case, &mut run).unwrap_err();
+            assert!(
+                error.contains("start_to_done_host_seconds=1.250000000"),
+                "{error}"
+            );
+            assert!(
+                error.contains(&format!("guest_exit=Some({exit}); proof_verified=false")),
+                "{error}"
+            );
+            assert!(run.verified_output.is_none());
+        }
+        let mut negative = case;
+        negative.proof = OpforgeNativeCliProof::ExpectedFailureWithDiagnostic;
+        let mut run = proof_test_run(true, Some(0), None);
+        run.start_to_done_host_seconds = Some(1.25);
+        assert!(verify_native_cli_case_proof(&negative, &mut run)
+            .unwrap_err()
+            .contains("proof_verified=false"));
+
+        run.protocol_completed = false;
+        assert!(!verify_native_cli_case_proof(&case, &mut run)
+            .unwrap_err()
+            .contains("case timing:"));
+        assert!(run.verified_output.is_none());
     }
 
     #[test]

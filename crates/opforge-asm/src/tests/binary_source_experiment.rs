@@ -468,7 +468,12 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
         require_parity.then_some(hunk_oracle.as_slice()),
         false,
     )
-    .expect("fresh bounded native self-host entry probe");
+    .unwrap_or_else(|error| {
+        panic!(
+            "fresh bounded native self-host entry probe: {error}\nnative_run_host_seconds={:.9} (includes host preparation and emulator startup)",
+            native_started.elapsed().as_secs_f64()
+        )
+    });
     let native_run_host_seconds = native_started.elapsed().as_secs_f64();
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("real FS-UAE execution required");

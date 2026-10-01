@@ -8,6 +8,15 @@ pub(super) struct Allocation {
     pub bss: u64,
     pub segments: u32,
 }
+
+#[derive(Debug)]
+pub(super) struct Segment<'a> {
+    pub kind: u32,
+    pub reserved_bytes: u64,
+    pub payload: &'a [u8],
+    pub payload_offset: usize,
+    pub relocations: Vec<(u32, u32)>, // validated (payload byte offset, target segment)
+}
 impl Allocation {
     pub fn total(&self) -> u64 {
         self.code + self.data + self.bss
@@ -40,6 +49,23 @@ impl Reader<'_> {
 }
 
 pub(super) fn allocation(bytes: &[u8]) -> Result<Allocation, &'static str> {
+    let segments = segments(bytes)?;
+    let mut result = Allocation {
+        segments: segments.len() as u32,
+        ..Allocation::default()
+    };
+    for segment in segments {
+        match segment.kind {
+            0x3e9 => result.code += segment.reserved_bytes,
+            0x3ea => result.data += segment.reserved_bytes,
+            0x3eb => result.bss += segment.reserved_bytes,
+            _ => unreachable!(),
+        }
+    }
+    Ok(result)
+}
+
+pub(super) fn segments(bytes: &[u8]) -> Result<Vec<Segment<'_>>, &'static str> {
     let mut r = Reader { bytes, offset: 0 };
     if r.word()? != 0x3f3 {
         return Err("missing HUNK_HEADER");
@@ -62,10 +88,7 @@ pub(super) fn allocation(bytes: &[u8]) -> Result<Allocation, &'static str> {
         }
         reservations.push(u64::from(raw & 0x3fff_ffff) * 4);
     }
-    let mut result = Allocation {
-        segments: count,
-        ..Allocation::default()
-    };
+    let mut result = Vec::new();
     for reserved in reservations {
         let kind = r.word()?;
         if !matches!(kind, 0x3e9..=0x3eb) {
@@ -76,15 +99,12 @@ pub(super) fn allocation(bytes: &[u8]) -> Result<Allocation, &'static str> {
         if payload_bytes > reserved {
             return Err("payload exceeds reservation");
         }
-        match kind {
-            0x3e9 => result.code += reserved,
-            0x3ea => result.data += reserved,
-            0x3eb => result.bss += reserved,
-            _ => unreachable!(),
-        }
+        let payload_offset = r.offset;
         if kind != 0x3eb {
             r.skip_words(payload_words)?;
         }
+        let payload = &bytes[payload_offset..r.offset];
+        let mut relocation_sites = Vec::new();
         loop {
             match r.word()? {
                 0x3f2 => break,
@@ -93,22 +113,31 @@ pub(super) fn allocation(bytes: &[u8]) -> Result<Allocation, &'static str> {
                     if relocations == 0 {
                         break;
                     }
-                    if r.word()? >= count {
+                    let target = r.word()?;
+                    if target >= count {
                         return Err("invalid relocation target");
                     }
                     if u64::from(relocations) * 4 > (bytes.len() - r.offset) as u64 {
                         return Err("truncated relocation group");
                     }
                     for _ in 0..relocations {
-                        let offset = u64::from(r.word()?);
-                        if offset + 4 > payload_bytes {
+                        let offset = r.word()?;
+                        if u64::from(offset) + 4 > payload_bytes {
                             return Err("relocation outside payload");
                         }
+                        relocation_sites.push((offset, target));
                     }
                 },
                 _ => return Err("unsupported or missing segment terminator"),
             }
         }
+        result.push(Segment {
+            kind,
+            reserved_bytes: reserved,
+            payload,
+            payload_offset,
+            relocations: relocation_sites,
+        });
     }
     if r.offset != bytes.len() {
         return Err("trailing Hunk bytes");
@@ -141,6 +170,21 @@ mod tests {
             }
         );
         assert_eq!(result.total(), 40);
+    }
+    #[test]
+    fn segment_summaries_borrow_validated_payloads_and_count_relocations() {
+        let bytes = fixture();
+        let segments = segments(&bytes).unwrap();
+        assert_eq!(segments.len(), 3);
+        assert_eq!(segments[0].kind, 0x3e9);
+        assert_eq!(segments[0].reserved_bytes, 12);
+        assert_eq!(segments[0].payload_offset, 40);
+        assert_eq!(segments[0].payload, &bytes[40..48]);
+        assert_eq!(segments[0].relocations, [(0, 1)]);
+        assert_eq!(segments[1].payload.len(), 4);
+        assert_eq!(segments[2].kind, 0x3eb);
+        assert!(segments[2].payload.is_empty());
+        assert_eq!(segments[2].reserved_bytes, 20);
     }
     #[test]
     fn rejects_every_truncation_and_trailing_data() {

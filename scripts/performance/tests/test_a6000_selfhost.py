@@ -66,6 +66,13 @@ class HardwareCompletionTests(unittest.TestCase):
         self.assertIn('Echo "DONE fresh case"', script)
         self.assertLessEqual(max(map(len, script.splitlines())), 255)
 
+    def test_invocation_uses_classic_shell_redirection_without_extra_arguments(self):
+        command = "opforge p.bin src/entry.asm output.hunk -M src -I src/debug"
+        script = runner.guest_script("Development:opforge-fresh", "fresh case", command)
+        self.assertIn("opforge >assembly.stdout p.bin src/entry.asm output.hunk -M src -I src/debug\n", script)
+        self.assertNotIn("*>", script)
+        self.assertIn("If EXISTS C:CPU\nC:CPU >>environment.txt\nEndIf\n", script)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -76,6 +76,12 @@ oracle are required for success. Source/package/bootstrap identities and results
 are recorded locally. A timeout can leave assembly running remotely; inspect that
 run before retrying. The hardware script and its host checks are ready; no physical
 A6000 self-host result has been obtained yet.
+The first completed invocation returned exit 20 with the CLI usage message,
+before assembly. The physical-run script now uses ordinary output redirection
+immediately after the executable, compatible with AmigaOS 3.1 and the Shell's
+`oldredirect` mode. The previous `*>` syntax requires AmigaDOS 45; its handling is
+the suspected cause of the rejected invocation. The `C:CPU` environment probe is
+optional. Native validation of this invocation repair remains pending.
 
 ## Ownership and representation contracts
 

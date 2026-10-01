@@ -66,13 +66,16 @@ def load_bundle(bundle):
 
 def guest_script(remote, marker, command):
     # Save RC immediately; ash's Execute status alone is not assembly completion.
+    executable, arguments = command.split(" ", 1)
     script = (
         f"FailAt 10\nCD {remote}\nStack 65536\nProtect opforge +e\n"
-        "C:Version >environment.txt\nC:CPU >>environment.txt\n"
+        "C:Version >environment.txt\nIf EXISTS C:CPU\nC:CPU >>environment.txt\nEndIf\n"
         "C:Avail >>environment.txt\nStack >>environment.txt\n"
         f'Echo "START {marker}" >start.marker\nC:Date >start.time\n'
         "FailAt 999\n"
-        f"{command} >assembly.stdout *>assembly.stderr\n"
+        # OS 3.1 lacks *>; put ordinary output redirection immediately after
+        # the executable, which also works with the Shell's oldredirect mode.
+        f"{executable} >assembly.stdout {arguments}\n"
         "Echo $RC >exitcode\nC:Date >end.time\n"
         f'Echo "DONE {marker}" >done.marker\n'
     )
@@ -187,6 +190,10 @@ def main():
     captured.mkdir()
     run([acp, "-r", f"{args.host}:{args.volume}/{name}", str(captured)])
     result = inspect_result(captured / name, files, oracle, marker, elapsed)
+    if not result["success"]:
+        diagnostic = captured / name / "assembly.stdout"
+        if diagnostic.is_file():
+            print("Native diagnostic:\n" + diagnostic.read_text(errors="replace"), flush=True)
     result.update({"case_sha256": case_digest, "remote_directory": remote, "source_files": manifest["source_files"], "source_bytes": manifest["source_bytes"]})
     (local / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2), flush=True)

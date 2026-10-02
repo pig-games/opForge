@@ -7,7 +7,7 @@ fn rust_hunk_oracle() -> Vec<u8> {
     rust_hunk_source(SOURCE)
 }
 
-fn rust_hunk_bytes(source: &str) -> Vec<u8> {
+pub(super) fn rust_hunk_bytes(source: &str) -> Vec<u8> {
     let dir = create_temp_dir("compact-hunk-sections-rust-oracle");
     fs::create_dir_all(dir.join("build")).expect("create output directory");
     let input = dir.join("input.asm");

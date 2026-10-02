@@ -43,7 +43,38 @@ def snapshot(name=b"Widget", *, index=1, related=0xFFFFFFFF, stage=5, count=3):
     return "\n".join(lines)
 
 
+def correlation(kind, **kwargs):
+    metadata, spelling = decoder.SNAPSHOT_PHASES[kind]
+    lines = []
+    for line in snapshot(**kwargs).splitlines():
+        match = decoder.PROGRESS.fullmatch(line)
+        phase, first, second, third, _ = (int(part, 16) for part in match.groups())
+        phase += metadata - 32 if phase < 64 else spelling - 64
+        lines.append(progress(phase, first, second, third))
+    return "\n".join(lines)
+
+
 class BindingDiagnosticTests(unittest.TestCase):
+    def test_optional_correlated_views_keep_original_snapshot(self):
+        text = snapshot(stage=16)
+        for kind in ("owner", "previous", "next"):
+            text += "\n" + correlation(kind, stage=16, index=0, related=1)
+        result = decoder.decode_binding_diagnostic(text)
+        self.assertEqual(result["snapshot"]["entry_index"], 1)
+        self.assertEqual(set(result["correlations"]), {"owner", "previous", "next"})
+        self.assertEqual(result["correlations"]["owner"]["entry_index"], 0)
+
+    def test_correlations_must_be_complete_and_consistent(self):
+        primary = snapshot(stage=16)
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "incomplete"):
+            decoder.decode_binding_diagnostic(primary + "\n" + progress(96, 16, 0, 1))
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "inconsistent owner"):
+            decoder.decode_binding_diagnostic(
+                primary + "\n" + correlation("owner", stage=16, related=2)
+            )
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "without primary"):
+            decoder.decode_binding_diagnostic(correlation("owner", stage=16, related=1))
+
     def test_complete_snapshot_decodes_entry_and_stage(self):
         result = decoder.decode_binding_diagnostic("unrelated output\n" + snapshot() + "\n")
         self.assertTrue(result["localization_only"])
@@ -68,6 +99,17 @@ class BindingDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             result["snapshot"]["stage_meaning"], "canonical import target declaration"
         )
+
+    def test_stages_15_and_16_decode_target_scan_checks(self):
+        meanings = {
+            15: "declared canonical target found by linear scan",
+            16: "first declared spelling with same leaf",
+        }
+        for stage, meaning in meanings.items():
+            with self.subTest(stage=stage):
+                result = decoder.decode_binding_diagnostic(snapshot(stage=stage, related=0))
+                self.assertEqual(result["snapshot"]["stage_meaning"], meaning)
+                self.assertEqual(result["snapshot"]["related_entry_index"], 0)
 
     def test_absent_is_distinct_from_incomplete(self):
         result = decoder.decode_binding_diagnostic("hello\n" + progress(1))

@@ -1982,7 +1982,8 @@ Words
 	.priv
 BindingView	.word layout.State.Count, layout.State.Base, layout.State.Current
 	.word layout.ENTRIES_POINTER, layout.ARENA_POINTER, layout.State.ArenaUsed
-	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length
+	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length, records.Entry.Flags
+	.word records.Entry.Owner
 	.endsection
 .endif
 .endif

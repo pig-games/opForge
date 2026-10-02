@@ -747,6 +747,61 @@ and constant controls across both physical orders and split files, so the genera
 import spelling alone does not explain the full failure. A further gated probe
 records the canonical target returned by binding and its declaration flags.
 
+That canonical-target capture exits 20 after 551.887688125 seconds, still before
+assembly. It forms the correct `tkvm.amigaos.state.tkvmlastfailurekind` spelling,
+but binding creates a new entry: index 20,632 of 20,633, with only the explicit-name
+flag and no declaration flag. Its source manifest is `fnv1a64:2a8219283cb58828`
+(85 inputs, 1,235,281 bytes); the release oracle is unchanged. This narrows the
+failure to a missing declaration lookup rather than an incorrect import prefix.
+
+The subsequent bounded linear declaration scan finds the declaration, but its
+stored canonical name contains four zero bytes replacing `.sta` in
+`tkvm.amigaos.state.tkvmlastfailurekind`. The declaration is index 354,
+owner 338, with a 19-byte leaf offset and declared/address flags; the failed
+correctly spelled target remains index 20,632. The fresh phase-only diagnostic
+exits 20 before assembly after 551.118666458 seconds, manifest
+`fnv1a64:a291f1e8b806845e` (85 inputs, 1,235,323 bytes). This establishes a corrupt
+stored spelling, without yet establishing its writer. Release output is still
+the unchanged 418,564-byte Rust oracle. A gated owner/neighbor capture is being
+used to distinguish corrupted-prefix composition from a later isolated overwrite.
+
+The owner/neighbor capture leaves the module name and adjacent declarations
+intact (553.023165333 seconds, still exit 20 before assembly). The writer is
+`frontend.templateIdentity`: `scopes.bind` can return A1 at the end of a matched
+name, but the caller restored saved `FirstBound` flags through that clobbered
+register. A repeated `.word` lookup therefore writes four zeros twelve bytes
+past its stored spelling, exactly into the following declaration's prefix.
+The caller now reacquires its scope pointer before restoring the flags. Other
+binder callers were reviewed without finding the same mistake.
+
+An ordinary unused macro activates the affected template-lookup path in the
+four-module state fixture, while Rust's complete Hunk remains unchanged. Fresh
+native execution fails at final binding before the repair and exits zero with
+exact Rust Hunk equality after it. The no-macro control also passes. The repair
+adds four release bytes (119,260-byte CLI, 132,760 linked reserved bytes); the
+short observations do not establish a speed change. The full release retry still
+exits 20 at final binding before assembly after 466.466222125 seconds. It has
+85 inputs, 1,235,473 bytes, manifest `fnv1a64:99f7f92ca6485512`, and a fresh
+418,568-byte Rust release Hunk. A further failure is being localized; this repair
+does not establish complete self-hosting. The completed instrumented captures above are failure-localization
+measurements, not completed self-host timings.
+
+Further fresh native discriminators pass complete live Rust comparisons: a
+four-module CODE/DATA/BSS Hunk with public bare labels and an imported address
+initializer (1.547492542 seconds), that graph split across mismatched filenames
+with an `other.state` decoy (1.518117333 seconds), and a 712,942-byte growth case
+with 3,000 long constants crossing name/entry growth and capture-region boundaries
+(134.587513 seconds). These are correctness/localization cases, not comparative
+performance claims. The stronger reachable-consumer version of the original
+six-case matrix has Rust proof but has not been rerun natively yet.
+
+A bounded failure-only declaration scan now distinguishes an existing canonical
+declaration from the first declaration with the same leaf under another scope.
+Validated import proxies are excluded. It reuses the existing snapshot storage;
+only gated view descriptors grow by two bytes each. Two fresh native rejected
+assemblies verify the absent and alternate-scope results (0.752716417 and
+0.761505791 seconds). They remain failed assemblies and diagnostic evidence.
+
 Affected Rust binary-source checks pass (262 passed, 400 ignored); ignored native
 tests are not native execution evidence. The wider Rust library run is not green:
 1,955 passed, 69 failed and 410 were ignored. Its legacy source assertions,

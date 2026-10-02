@@ -33,6 +33,8 @@ STAGES = {
     12: "invalid selected names in selected-import validation",
     13: "unresolved import proxy",
     14: "canonical import target declaration",
+    15: "declared canonical target found by linear scan",
+    16: "first declared spelling with same leaf",
 }
 ENTRY_FIELDS = (
     (0, 4, "name_offset", "u32"),
@@ -48,6 +50,12 @@ ENTRY_FIELDS = (
     (22, 2, "template_module", "u16"),
     (24, 2, "template_flags", "u16"),
 )
+SNAPSHOT_PHASES = {
+    "snapshot": (32, 64),
+    "owner": (96, 128),
+    "previous": (160, 192),
+    "next": (224, 256),
+}
 
 
 class BindingDiagnosticError(ValueError):
@@ -68,23 +76,48 @@ def _decode_entry(raw: bytes) -> dict[str, object]:
 
 def decode_binding_diagnostic(text: str) -> dict[str, object]:
     """Decode all phase lines for the first binding snapshot in captured text."""
-    phases: dict[int, tuple[int, int, int, int]] = {}
+    groups = {name: {} for name in SNAPSHOT_PHASES}
     for line in text.splitlines():
         match = PROGRESS.fullmatch(line.strip())
         if not match:
             continue
-        phase, first, second, third, _live = (int(part, 16) for part in match.groups())
-        if 32 <= phase <= 36 or 64 <= phase <= 85:
-            if phase in phases:
-                raise BindingDiagnosticError(f"duplicate binding phase {phase}")
-            phases[phase] = (first, second, third, _live)
+        phase, *values = (int(part, 16) for part in match.groups())
+        for name, (metadata, spelling) in SNAPSHOT_PHASES.items():
+            normalized = None
+            if metadata <= phase < metadata + 5:
+                normalized = phase - metadata + 32
+            elif spelling <= phase < spelling + 22:
+                normalized = phase - spelling + 64
+            if normalized is not None:
+                if normalized in groups[name]:
+                    raise BindingDiagnosticError(f"duplicate binding phase {phase}")
+                groups[name][normalized] = tuple(values)
+                break
+    primary = _decode_snapshot(groups["snapshot"])
+    correlations = {
+        name: _decode_snapshot(phases)
+        for name, phases in groups.items()
+        if name != "snapshot" and phases
+    }
+    if correlations:
+        if primary is None:
+            raise BindingDiagnosticError("correlation without primary snapshot")
+        for name, correlated in correlations.items():
+            if (correlated["related_entry_index"] != primary["entry_index"]
+                or any(correlated[field] != primary[field]
+                       for field in ("stage", "base", "count", "current_scope"))):
+                raise BindingDiagnosticError(f"inconsistent {name} correlation")
+    result = {"localization_only": True, "snapshot": primary,
+              "status": "present" if primary is not None else "absent"}
+    if correlations:
+        result["correlations"] = correlations
+    return result
 
+
+def _decode_snapshot(phases: dict[int, tuple[int, int, int, int]]) -> dict[str, object] | None:
+    """Decode one normalized, complete optional snapshot block."""
     if not phases:
-        return {
-            "localization_only": True,
-            "snapshot": None,
-            "status": "absent",
-        }
+        return None
     required = set(range(32, 37)) | set(range(64, 86))
     missing = sorted(required - phases.keys())
     if missing:
@@ -148,7 +181,7 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
         "name_buffer_bytes": len(name_buffer),
         "entry": _decode_entry(raw_entry) if index != 0xFFFFFFFF else None,
     }
-    return {"localization_only": True, "snapshot": snapshot, "status": "present"}
+    return snapshot
 
 
 def main() -> None:

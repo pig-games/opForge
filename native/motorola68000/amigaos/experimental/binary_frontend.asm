@@ -2234,6 +2234,8 @@ templateIdentity	.block
 	lea SCOPE_STATE(a6), a1
 	move.l layout.State.FirstBound(a1), d7
 	jsr scopes.bind
+	; The binder may leave A1 in its name arena; restore the scope owner.
+	lea SCOPE_STATE(a6), a1
 	move.l d7, layout.State.FirstBound(a1)
 	tst.l d0
 	bne.w bad

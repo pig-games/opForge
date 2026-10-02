@@ -189,8 +189,9 @@ The completion diagnostic in
 [`binding_telemetry.i`](../../native/motorola68000/amigaos/debug/binding_telemetry.i)
 and [`debug.amigaos.binding_diagnostic`](../../native/motorola68000/amigaos/debug/opforge_binding_diagnostic.asm)
 uses the same three gates. Only scopes, imports and the compact app include its
-macros. The dedicated owner retains a 308-byte snapshot and twelve-byte pending
-check; scopes and imports each supply an eighteen-byte view descriptor. MEMD
+macros. The dedicated owner retains a 308-byte primary snapshot, three optional
+308-byte correlation snapshots, and a twelve-byte pending check (1244 bytes).
+Scopes and imports each supply a twenty-two-byte view descriptor. MEMD
 remains 2280 bytes. Missing any gate emits no diagnostic calls, imports, storage
 or changes to the original failure branches.
 
@@ -205,11 +206,28 @@ therefore captures the composed canonical name and its declaration flags.
 `BINDING_DIAGNOSTIC_COMMIT(status, scope, view)` latches only a nonzero status;
 the first actual failure wins, including a nested import failure before outer
 scope completion. The descriptor supplies word offsets for count, base, current,
-entries pointer, arena pointer/used extent, entry stride and name offset/length.
+entries pointer, arena pointer/used extent, entry stride and name offset/length,
+plus flags and owner offsets. `DECLARED` is bit zero of the current shared entry
+ABI; the owner is a one-based source-entry index, with zero meaning absent.
 The observer copies at most 28 entry bytes and 255 canonical-name bytes. It
 checks the index against count and the name extent against the owned arena,
 rejects arithmetic overflow, and stores a zero-padded name independently of the
-source allocations. Marks and commits allocate nothing and perform no I/O.
+source allocations. Descriptor entry fields must fit inside the bounded stride.
+For a valid stage-14 target, the observer scans at most the retained entry count
+for declarations: a complete folded canonical match takes priority over the first
+folded final-component match. Import proxies (flag bit three) are excluded:
+validated references do not constitute owner declarations. Each candidate name must fit the owned arena and
+the 255-byte limit. A match replaces the entry/name snapshot with stage 15 or 16
+and retains the failed target index as related; absent matches retain stage 14.
+This search uses no binding hash and changes no source entries. It reuses the
+primary snapshot and pending storage. At stages 15/16 only, the observer also
+copies the declaration's owner and immediate previous/next entries into the
+three correlation views. Every related entry must fit the retained count before
+being read; absent owners and out-of-range neighbors remain empty. Each view
+uses the same entry/name bounds and zero padding as the primary. Its stage is
+inherited, its index identifies the related entry, and its related index points
+to the primary declaration. The original failure snapshot remains unchanged.
+Marks and commits allocate nothing and perform no I/O.
 
 `BINDING_DIAGNOSTIC_REPORT(dosbase)` emits through the existing progress ABI at
 app failure reporting, with no output when no completion failure was latched.
@@ -217,7 +235,7 @@ Its hexadecimal `f`, `l`, `r` fields have these diagnostic meanings:
 
 | Phase | `f` | `l` | `r` |
 |---:|---|---|---|
-| 32 | failure stage | entry index | related entry index |
+| 32 | failure stage or declaration-search result | entry index | related entry index |
 | 33 | base in high word, count in low word | current lexical scope | canonical-name byte count |
 | 34 | raw entry bytes 0–3 | bytes 4–7 | bytes 8–11 |
 | 35 | raw entry bytes 12–15 | bytes 16–19 | bytes 20–23 |
@@ -228,7 +246,21 @@ Its hexadecimal `f`, `l`, `r` fields have these diagnostic meanings:
 Name chunks are big-endian byte groups; concatenate phases 64–85 in order and
 truncate to the phase-33 byte count. Raw entry fields follow the current
 `binary_binding_records.Entry` layout. The ordinary progress `m` field still
-reports tracked live allocation bytes. Numeric failure stages are:
+reports tracked live allocation bytes.
+
+Optional correlation views use the identical row schema at distinct phase bases:
+
+| View | Five metadata phases | Twenty-two name phases |
+|---|---|---|
+| declaration owner | 96–100 | 128–149 |
+| previous entry | 160–164 | 192–213 |
+| next entry | 224–228 | 256–277 |
+
+A valid correlation view emits every row; an empty view emits none. The primary
+phases and their meaning remain unchanged. Correlations are neighboring storage
+and ownership observations, not additional assembly failures.
+
+Numeric failure stages are:
 
 | Stage | Check |
 |---:|---|
@@ -244,6 +276,8 @@ reports tracked live allocation bytes. Numeric failure stages are:
 | 11, 12 | invalid selected names in all-import or selected-import validation |
 | 13 | unresolved import proxy |
 | 14 | canonical import target is undeclared |
+| 15 | declared canonical target found by linear scan |
+| 16 | first declared spelling with the same leaf component |
 
 All macros and passive helper APIs preserve D0–D7, A0–A6, CCR and stack depth;
 argument setup is inside the preserving wrappers. No production request, VM or

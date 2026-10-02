@@ -73,6 +73,8 @@ next
 	beq.w end
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d3
 	beq.w symbol
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d3
+	beq.w currentAddress
 	cmpi.b #runtime.COMPACT_I8, d3
 	beq.w byte
 	cmpi.b #runtime.COMPACT_I16, d3
@@ -105,6 +107,12 @@ next
 	cmpi.b #runtime.EXPRVM_BINARY_SUBTRACT, d3
 	beq.w subtract
 	bra.w binaryConstant
+currentAddress
+	; Flat current-PC values are scalars. Section-relative current-PC
+	; provenance is not yet represented and must still fail closed.
+	tst.w pkg.Context.Relocatable(a2)
+	bne.w bad
+	bra.w absolute
 byte
 	moveq #1, d1
 	bra.w literal

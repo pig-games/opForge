@@ -188,3 +188,22 @@ pub fn execute_encoding_program(
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod zero_output_tests {
+    use super::*;
+    #[test]
+    fn explicit_zero_output_does_not_require_or_consume_scalar_inputs() {
+        let program = package::compile_encoding_program(&[]).unwrap();
+        for inputs in [&[][..], &[123, -1][..]] {
+            assert_eq!(
+                execute_encoding_program(package::SEMANTIC_VM_OPCODE_VERSION_V2, &program, inputs)
+                    .unwrap(),
+                Vec::<u8>::new()
+            );
+        }
+        assert!(
+            execute_encoding_program(package::SEMANTIC_VM_OPCODE_VERSION_V2, &[], &[]).is_err()
+        );
+    }
+}

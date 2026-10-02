@@ -7,6 +7,7 @@
 	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_shapes as shapes
+	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_hunk_references as references
 	.use experimental.amigaos.binary_register_mask as register_mask
@@ -52,6 +53,9 @@ PROGRAM_VALUE = 3
 PROJECTION_EXPRESSION = 0
 PROJECTION_TARGET_MEMBER = 16
 PROJECTION_MEMBER_SHAPE = 19
+PROJECTION_WRAPPED_SCALAR = 20
+PROJECTION_TUPLE_NAMED = 21
+PROJECTION_SCALAR_EXPRESSION = 22
 MISSING_PROGRAM = $ffff
 HEADER_BYTES = package.HEADER_BYTES
 ROW_BYTES = 32
@@ -867,15 +871,60 @@ table
 	bsr.w prepareExecution
 	jsr encoding.table
 	rts
+; Conservative metadata scan; no register spellings or target widths.
+hasWiderRow	.block
+	movem.l d1-d4/a0-a1, -(sp)
+	movea.l package.Context.Package(a2), a0
+	move.l package.Header.RowCount(a0), d1
+	movea.l a0, a1
+	adda.l package.Header.Rows(a0), a1
+next
+	tst.l d1
+	beq.w no
+	move.w package.Row.Name(a5), d2
+	cmp.w package.Row.Name(a1), d2
+	bne.w advance
+	move.b package.Row.Qualifier(a5), d2
+	cmp.b package.Row.Qualifier(a1), d2
+	bne.w advance
+	move.b package.Row.Shape(a5), d2
+	cmp.b package.Row.Shape(a1), d2
+	bne.w advance
+	move.b package.Row.Owner(a5), d2
+	cmp.b package.Row.Owner(a1), d2
+	bne.w advance
+	move.b package.Row.WidthRank(a5), d2
+	cmp.b package.Row.WidthRank(a1), d2
+	bhs.w advance
+	cmpi.b #RECIPE_UNSUPPORTED, package.Row.Recipe(a1)
+	beq.w advance
+	moveq #1, d0
+	bra.w done
+advance
+	adda.w #ROW_BYTES, a1
+	subq.l #1, d1
+	bra.w next
+no
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1
+	rts
+	.bend
+
 semantic
 	bsr.w project
 	tst.l d0
 	bne.w bad
-	; Indexed payload width can change with the resolved address. Without
-	; layout convergence, a deferred short candidate could invalidate labels.
+	; Deferred scalar inputs use a fixed-width placeholder. An unstable
+	; narrow row must yield to a supported wider row from the same owner.
 	cmpi.b #RECIPE_SEMANTIC_TABLE, package.Row.Recipe(a5)
 	bne.w resolvedInputs
 	tst.w Unresolved
+	beq.w resolvedInputs
+	tst.b package.Row.Unstable(a5)
+	beq.w resolvedInputs
+	bsr.w hasWiderRow
+	tst.l d0
 	bne.w bad
 resolvedInputs
 	bsr.w program
@@ -925,7 +974,11 @@ payloadReady
 	bne.w bad
 	cmpi.w #PROGRAM_TABLE, d2
 	bne.w bad
+	moveq #0, d5
+	tst.l d6
+	beq.w tablePayloadReady
 	moveq #1, d5
+tablePayloadReady
 	lea Records, a3
 	bsr.w prepareExecution
 	jsr encoding.table
@@ -965,6 +1018,32 @@ copyRow
 	; The private row copy uses its reserved word to track the encoding phase.
 	clr.w package.Row.Reserved2(a5)
 	moveq #0, d6
+	moveq #0, d0
+	move.w package.Row.TableProgram(a5), d0
+	cmpi.w #MISSING_PROGRAM, d0
+	beq.w loop
+	; Package table prefix precedes operand-only semantic stages. Programs
+	; that emit the instruction themselves carry no table prefix descriptor.
+	movem.l d7/a4, -(sp)
+	bsr.w programId
+	tst.l d0
+	bne.w prefixBad
+	cmpi.w #PROGRAM_TABLE, d2
+	bne.w prefixBad
+	; The table owns the opcode and its operand slot. The sequence supplies
+	; that slot later, so bind one empty operand for prefix emission.
+	moveq #1, d5
+	lea Records, a3
+	bsr.w prepareExecution
+	jsr encoding.table
+	tst.l d0
+	bne.w prefixBad
+	move.l d1, d6
+	movem.l (sp)+, d7/a4
+	bra.w loop
+prefixBad
+	movem.l (sp)+, d7/a4
+	bra.w bad
 loop
 	movem.l d6-d7/a4, -(sp)
 	moveq #0, d0
@@ -1256,6 +1335,12 @@ recordReady
 	beq.w registerMask
 	cmpi.b #PROJECTION_MEMBER_SHAPE, d0
 	beq.w memberShape
+	cmpi.b #PROJECTION_WRAPPED_SCALAR, d0
+	beq.w wrappedScalar
+	cmpi.b #PROJECTION_TUPLE_NAMED, d0
+	beq.w tupleNamed
+	cmpi.b #PROJECTION_SCALAR_EXPRESSION, d0
+	beq.w scalarExpression
 	bra.w bad
 expressionValue
 	move.w package.ScalarProjection.Flags(a4), d0
@@ -1308,6 +1393,15 @@ wrappedRegister
 	bra.w valueReady
 tupleItem
 	bsr.w projectionTupleItem
+	bra.w valueReady
+wrappedScalar
+	bsr.w projectionWrappedScalar
+	bra.w valueReady
+tupleNamed
+	bsr.w projectionTupleNamed
+	bra.w valueReady
+scalarExpression
+	bsr.w projectionScalarExpression
 	bra.w valueReady
 constantValue
 	tst.w package.Projection.Reserved(a4)
@@ -1449,7 +1543,7 @@ inputReady
 	bsr.w operandSpan
 	tst.l d0
 	bne.w bad
-	bsr.w tupleBounds
+	bsr.w projectedTupleBounds
 	tst.l d0
 	bne.w bad
 	movea.l a6, a1  ; first tuple item is the bounded scalar target
@@ -1764,7 +1858,7 @@ projectionTupleItem	.block
 	bne.w triple
 	cmpi.w #2, package.Projection.Class(a4)
 	bne.w triple
-	bsr.w tupleBounds
+	bsr.w projectedTupleBounds
 	moveq #0, d3
 	rts
 triple
@@ -1946,11 +2040,82 @@ bad
 	rts
 	.bend  ; tupleBounds
 
+; Both structural encodings expose the exact first scalar and named item.
+projectedTupleBounds	.block
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)
+	beq.w wrapped
+	bra.w tupleBounds
+wrapped
+	jsr wrappers.tuple
+	; Existing displacement consumers use A6 as the scalar-end delimiter.
+	; The new named projection uses the helper directly for its name cursor.
+	tst.l d0
+	bne.w done
+	movea.l a1, a6
+done
+	rts
+	.bend
+
+projectionScalarExpression	.block
+	bsr.w operandSpan
+	bne.w done
+	jsr shapes.isScalar
+	cmpi.l #1, d0
+	bne.w bad
+	bra.w projectionExpression
+bad
+	moveq #1, d0
+done
+	rts
+	.bend
+
+projectionWrappedScalar	.block
+	bsr.w operandSpan
+	bne.w done
+	jsr wrappers.scalar
+	bne.w done
+	bsr.w evaluateScalar
+	tst.l d0
+	bne.w done
+	cmpa.l a1, a0
+	bne.w bad
+	move.l d1, d3
+	tst.l d2
+	beq.w done
+	move.w #1, Unresolved
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	rts
+	.bend
+
+projectionTupleNamed	.block
+	bsr.w operandSpan
+	bne.w done
+	jsr wrappers.tuple
+	bne.w done
+	movea.l a6, a0
+	lea 4(a0), a1
+	bsr.w exactName
+	bne.w done
+	cmp.w package.Projection.Class(a4), d1
+	bne.w bad
+	moveq #0, d3
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	rts
+	.bend
+
 projectionTupleRegister	.block
 	bsr.w operandSpan
 	tst.l d0
 	bne.w return
-	bsr.w tupleBounds
+	bsr.w projectedTupleBounds
 	tst.l d0
 	bne.w return
 	lea 1(a6), a0
@@ -1964,7 +2129,7 @@ projectionTupleValue	.block
 	bsr.w operandSpan
 	tst.l d0
 	bne.w return
-	bsr.w tupleBounds
+	bsr.w projectedTupleBounds
 	tst.l d0
 	bne.w return
 	movea.l a6, a1

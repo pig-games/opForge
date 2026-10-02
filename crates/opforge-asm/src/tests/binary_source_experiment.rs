@@ -134,10 +134,10 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS16");
+        assert_eq!(&bytes[..4], b"BS17");
         assert_eq!(long(16), 168);
         assert_eq!(word(64), little_endian);
-        assert_eq!(word(130), 0);
+        assert_eq!(word(130), u16::from(cpu == "m6502"));
         assert!(target_offset >= 168);
         assert_eq!(target_bytes, expected.len());
         assert_eq!(
@@ -195,7 +195,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS16");
+        assert_eq!(&bytes[..4], b"BS17");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
@@ -251,7 +251,7 @@ fn binary_source_packages_prepare() {
                 }
             }
             let table = u16::from_be_bytes(bytes[row + 28..row + 30].try_into().unwrap());
-            if bytes[row + 5] == 7 {
+            if bytes[row + 5] == 7 || (bytes[row + 5] == 9 && table != u16::MAX) {
                 assert!(usize::from(table) < program_count);
                 assert_eq!(&bytes[programs + usize::from(table) * 12..][..2], &[0, 1]);
             } else {

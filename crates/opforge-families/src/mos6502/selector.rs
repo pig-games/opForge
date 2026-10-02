@@ -22,25 +22,57 @@ pub fn selector_input_from_exprs(
     Ok(selector_input_from_family_operands(parsed.as_slice()))
 }
 
-/// Retain raw indexed operands for the package-owned predicate on the base CPU.
+/// Retain complete raw operand structures for package predicates on the base CPU.
 /// Other CPUs still use their specialized bank/width/force selection paths.
 pub fn selector_input_for_cpu(
     cpu: &str,
     mnemonic: &str,
     exprs: &[Expr],
 ) -> Result<Option<VmSelectorInput>, FamilyParseError> {
-    let Some(mut input) = selector_input_from_exprs(mnemonic, exprs)? else {
-        return Ok(None);
-    };
-    if cpu.eq_ignore_ascii_case(super::module::CPU_ID.as_str())
-        && matches!(input.shape_key.as_str(), "direct_x" | "direct_y")
-        && exprs.len() == 2
-    {
-        input.shape_key = "direct_register".to_string();
-        input.expr0 = Some(exprs[0].clone());
-        input.expr1 = Some(exprs[1].clone());
+    if cpu.eq_ignore_ascii_case(super::module::CPU_ID.as_str()) {
+        return Ok(raw_base_input(exprs));
     }
-    Ok(Some(input))
+    selector_input_from_exprs(mnemonic, exprs)
+}
+
+// Preserve wrappers and index operands so package predicates prove the complete
+// source form. A specialized parser must not strip a wrapper or reject an index
+// before the selected package's structural plan can inspect it.
+fn raw_base_input(exprs: &[Expr]) -> Option<VmSelectorInput> {
+    let is_register = |expr: &Expr| {
+        matches!(expr,
+        Expr::Register(name, _) | Expr::Identifier(name, _)
+        if super::module::FAMILY_REGISTER_IDS.iter().any(|id| name.eq_ignore_ascii_case(id)))
+    };
+    let (shape, first, second) = match exprs {
+        [] => ("implied", None, None),
+        [Expr::Immediate(inner, _)] => ("immediate", Some(inner.as_ref().clone()), None),
+        [first] => (
+            if is_register(first) {
+                "register"
+            } else {
+                "direct"
+            },
+            Some(first.clone()),
+            None,
+        ),
+        [first, second] => {
+            let shape = match (is_register(first), is_register(second)) {
+                (false, true) => "direct_register",
+                (true, true) => "register_register",
+                (true, false) => "register_direct",
+                (false, false) => "direct_direct",
+            };
+            (shape, Some(first.clone()), Some(second.clone()))
+        }
+        _ => return None,
+    };
+    Some(VmSelectorInput {
+        shape_key: shape.to_string(),
+        expr0: first,
+        expr1: second,
+        force: None,
+    })
 }
 
 fn selector_input_from_family_operands(operands: &[FamilyOperand]) -> Option<VmSelectorInput> {

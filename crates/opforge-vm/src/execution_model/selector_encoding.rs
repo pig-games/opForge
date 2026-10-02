@@ -14,23 +14,25 @@ use package::{
     MODE_SELECTOR_PLAN_IMMEDIATE_PREFIX, MODE_SELECTOR_PLAN_INDIRECT_REGISTER_PREFIX,
     MODE_SELECTOR_PLAN_INDIRECT_TUPLE_ARITY_PREFIX,
     MODE_SELECTOR_PLAN_INDIRECT_TUPLE_IDENTITY_SCALE_PREFIX,
+    MODE_SELECTOR_PLAN_INDIRECT_TUPLE_NAMED_REGISTER_PREFIX,
     MODE_SELECTOR_PLAN_INDIRECT_TUPLE_NONIDENTITY_SCALE_PREFIX,
     MODE_SELECTOR_PLAN_INDIRECT_TUPLE_QUALIFIED_REGISTER_PREFIX,
     MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX,
-    MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX, MODE_SELECTOR_PLAN_INPUT_SEPARATOR,
-    MODE_SELECTOR_PLAN_LITERAL_PREFIX, MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR,
-    MODE_SELECTOR_PLAN_MEMBER_INDIRECT_PREFIX, MODE_SELECTOR_PLAN_MEMBER_PREFIX,
-    MODE_SELECTOR_PLAN_MEMBER_SHAPE_PREFIX, MODE_SELECTOR_PLAN_NAMED_REGISTER_PREFIX,
-    MODE_SELECTOR_PLAN_NAMED_REGISTER_RANGE_COUNT_PREFIX,
+    MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX, MODE_SELECTOR_PLAN_INDIRECT_VALUE_PREFIX,
+    MODE_SELECTOR_PLAN_INPUT_SEPARATOR, MODE_SELECTOR_PLAN_LITERAL_PREFIX,
+    MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR, MODE_SELECTOR_PLAN_MEMBER_INDIRECT_PREFIX,
+    MODE_SELECTOR_PLAN_MEMBER_PREFIX, MODE_SELECTOR_PLAN_MEMBER_SHAPE_PREFIX,
+    MODE_SELECTOR_PLAN_NAMED_REGISTER_PREFIX, MODE_SELECTOR_PLAN_NAMED_REGISTER_RANGE_COUNT_PREFIX,
     MODE_SELECTOR_PLAN_NAMED_REGISTER_RANGE_PREFIX, MODE_SELECTOR_PLAN_OUT_OF_RANGE_PREFIX,
     MODE_SELECTOR_PLAN_REGISTER_INDEX_MASK_SUFFIX, MODE_SELECTOR_PLAN_REGISTER_INDEX_SHIFT_SUFFIX,
     MODE_SELECTOR_PLAN_REGISTER_INDEX_XOR_PREFIX, MODE_SELECTOR_PLAN_REGISTER_MASK_PREFIX,
     MODE_SELECTOR_PLAN_REGISTER_OR_NAMED_RANGE_PREFIX,
     MODE_SELECTOR_PLAN_REGISTER_QUALIFIER_SEPARATOR, MODE_SELECTOR_PLAN_REGISTER_SEQUENCE_PREFIX,
-    MODE_SELECTOR_PLAN_REQUIRED_VALUE_PROGRAM_PREFIX, MODE_SELECTOR_PLAN_SEMANTIC_BRANCH_PREFIX,
-    MODE_SELECTOR_PLAN_SEMANTIC_INPUTS_PREFIX, MODE_SELECTOR_PLAN_SEMANTIC_REJECT_PREFIX,
-    MODE_SELECTOR_PLAN_SEMANTIC_SCALAR_PREFIX, MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX,
-    MODE_SELECTOR_PLAN_STATE_REQUIRE_PREFIX, MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR,
+    MODE_SELECTOR_PLAN_REQUIRED_VALUE_PROGRAM_PREFIX, MODE_SELECTOR_PLAN_SCALAR_EXPR_PREFIX,
+    MODE_SELECTOR_PLAN_SEMANTIC_BRANCH_PREFIX, MODE_SELECTOR_PLAN_SEMANTIC_INPUTS_PREFIX,
+    MODE_SELECTOR_PLAN_SEMANTIC_REJECT_PREFIX, MODE_SELECTOR_PLAN_SEMANTIC_SCALAR_PREFIX,
+    MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX, MODE_SELECTOR_PLAN_STATE_REQUIRE_PREFIX,
+    MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR,
     MODE_SELECTOR_PLAN_UNARY_MINUS_INDIRECT_REGISTER_PREFIX,
     MODE_SELECTOR_PLAN_UNARY_PLUS_INDIRECT_REGISTER_PREFIX,
     MODE_SELECTOR_PLAN_VALUE_PROGRAM_PREFIX, MODE_SELECTOR_PLAN_VALUE_PROGRAM_SEPARATOR,
@@ -473,6 +475,8 @@ pub(super) fn selector_to_candidate(
         }
     };
 
+    // A predicate-only encoding contributes no operand payload to TABL.
+    operand_bytes.retain(|bytes| !bytes.is_empty());
     if mode_operand_size == 0 && !operand_bytes.is_empty() {
         return Ok(None);
     }
@@ -895,6 +899,19 @@ fn project_expr_path(
     Err(format!(
         "expression path '{spec}' has unsupported terminal '{terminal}'"
     ))
+}
+
+fn plain_scalar_projection(expr: &Expr) -> bool {
+    !matches!(
+        expr,
+        Expr::Indirect(..)
+            | Expr::IndirectLong(..)
+            | Expr::Tuple(..)
+            | Expr::List(..)
+            | Expr::Immediate(..)
+            | Expr::Register(..)
+            | Expr::Placeholder(..)
+    )
 }
 
 fn parse_named_register_range<'a>(
@@ -1575,6 +1592,62 @@ fn semantic_plan_inputs(
             values.push(i64::from(value));
             continue;
         }
+        if let Some(spec) =
+            source.strip_prefix(MODE_SELECTOR_PLAN_INDIRECT_TUPLE_NAMED_REGISTER_PREFIX)
+        {
+            let (index, expected) = spec.split_once(".item1=").ok_or_else(|| {
+                format!("invalid indirect tuple named-register source '{source}'")
+            })?;
+            let index = index
+                .parse::<usize>()
+                .map_err(|_| format!("invalid tuple operand in '{source}'"))?;
+            if expected.is_empty() {
+                return Err(format!("empty tuple register name in '{source}'"));
+            }
+            let Some(Expr::Indirect(inner, _)) = exprs.get(index).copied().flatten() else {
+                return Ok(None);
+            };
+            let Expr::Tuple(items, _) = inner.as_ref() else {
+                return Ok(None);
+            };
+            if items.len() != 2 {
+                return Ok(None);
+            }
+            let (Expr::Register(actual, _) | Expr::Identifier(actual, _)) = &items[1] else {
+                return Ok(None);
+            };
+            if !actual.eq_ignore_ascii_case(expected) {
+                return Ok(None);
+            }
+            values.push(0);
+            continue;
+        }
+        if let Some(index) = source.strip_prefix(MODE_SELECTOR_PLAN_SCALAR_EXPR_PREFIX) {
+            let index = index
+                .parse::<usize>()
+                .map_err(|_| format!("invalid scalar source '{source}'"))?;
+            let Some(expr) = exprs.get(index).copied().flatten() else {
+                return Ok(None);
+            };
+            if !plain_scalar_projection(expr) {
+                return Ok(None);
+            }
+            values.push(expr_ctx.eval_expr(expr)?);
+            continue;
+        }
+        if let Some(index) = source.strip_prefix(MODE_SELECTOR_PLAN_INDIRECT_VALUE_PREFIX) {
+            let index = index
+                .parse::<usize>()
+                .map_err(|_| format!("invalid indirect scalar source '{source}'"))?;
+            let Some(Expr::Indirect(inner, _)) = exprs.get(index).copied().flatten() else {
+                return Ok(None);
+            };
+            if !plain_scalar_projection(inner) {
+                return Ok(None);
+            }
+            values.push(expr_ctx.eval_expr(inner)?);
+            continue;
+        }
         if let Some(named_spec) = source.strip_prefix(MODE_SELECTOR_PLAN_NAMED_REGISTER_PREFIX) {
             let Some((index, expected)) = named_spec.split_once('=') else {
                 return Err(format!(
@@ -1679,6 +1752,32 @@ fn semantic_plan_inputs(
                     return Ok(None);
                 };
                 expr_ctx.eval_expr(expr)?
+            } else if let Some(index) =
+                projected_source.strip_prefix(MODE_SELECTOR_PLAN_SCALAR_EXPR_PREFIX)
+            {
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid scalar value-program source '{source}'"))?;
+                let Some(expr) = exprs.get(index).copied().flatten() else {
+                    return Ok(None);
+                };
+                if !plain_scalar_projection(expr) {
+                    return Ok(None);
+                }
+                expr_ctx.eval_expr(expr)?
+            } else if let Some(index) =
+                projected_source.strip_prefix(MODE_SELECTOR_PLAN_INDIRECT_VALUE_PREFIX)
+            {
+                let index = index
+                    .parse::<usize>()
+                    .map_err(|_| format!("invalid indirect value-program source '{source}'"))?;
+                let Some(Expr::Indirect(inner, _)) = exprs.get(index).copied().flatten() else {
+                    return Ok(None);
+                };
+                if !plain_scalar_projection(inner) {
+                    return Ok(None);
+                }
+                expr_ctx.eval_expr(inner)?
             } else if let Some(member_spec) =
                 projected_source.strip_prefix(MODE_SELECTOR_PLAN_MEMBER_PREFIX)
             {

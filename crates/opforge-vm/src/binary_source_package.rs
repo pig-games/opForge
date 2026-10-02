@@ -122,6 +122,14 @@ pub enum ScalarPlan {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Projection {
     Expression(u8),
+    ScalarExpression(u8),
+    IndirectValue {
+        operand: u8,
+    },
+    TupleNamedRegister {
+        operand: u8,
+        name: u16,
+    },
     TargetExpression(u8),
     AtomicTargetExpression(u8),
     TargetMember {
@@ -535,6 +543,16 @@ fn non_member_operand(value: &str) -> Option<u8> {
         }
         return non_member_operand(source);
     }
+    if let Some(rest) = value.strip_prefix("indirect_value") {
+        return rest.parse().ok();
+    }
+    if let Some(rest) = value.strip_prefix("indirect_tuple_named_register") {
+        let (operand, name) = rest.split_once(".item1=")?;
+        if name.is_empty() {
+            return None;
+        }
+        return operand.parse().ok();
+    }
     for prefix in [
         "reg",
         "indirect_reg",
@@ -679,7 +697,7 @@ fn has_bounded_tuple_match(stages: &[SemanticStage], operand: u8) -> bool {
             && stage.program.is_none()
             && stage.inputs.contains(&Projection::TupleArity { operand })
             && stage.inputs.iter().any(|input| {
-                matches!(input, Projection::TupleRegister { operand: other, .. } if *other == operand)
+                matches!(input, Projection::TupleRegister { operand: other, .. } | Projection::TupleNamedRegister { operand: other, .. } if *other == operand)
             })
     })
 }
@@ -784,8 +802,27 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
     if let Ok(value) = value.parse() {
         return Some(Projection::Constant(value));
     }
+    if let Some(rest) = value.strip_prefix("scalar_expr") {
+        return rest.parse().ok().map(Projection::ScalarExpression);
+    }
     if let Some(rest) = value.strip_prefix("expr") {
         return rest.parse().ok().map(Projection::Expression);
+    }
+    if let Some(rest) = value.strip_prefix("indirect_value") {
+        return rest
+            .parse()
+            .ok()
+            .map(|operand| Projection::IndirectValue { operand });
+    }
+    if let Some(rest) = value.strip_prefix("indirect_tuple_named_register") {
+        let (operand, name) = rest.split_once(".item1=")?;
+        if name.is_empty() {
+            return None;
+        }
+        return Some(Projection::TupleNamedRegister {
+            operand: operand.parse().ok()?,
+            name: names.id(name),
+        });
     }
     if let Some(rest) = value.strip_prefix("named_register") {
         let (operand, name) = rest.split_once('=')?;

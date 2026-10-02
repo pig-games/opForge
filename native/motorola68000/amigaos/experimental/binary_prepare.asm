@@ -5,6 +5,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package
 	.use opasm.amigaos.binary_expression as expression
+	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.pub
 	.section code, kind=code
 
@@ -234,6 +235,12 @@ bareName
 	bne.w bad
 	bra.w operandDone
 parenthesizedRegister
+	btst #0, package.Header.TargetFlags+1(a2)
+	beq.w ordinaryParenthesis
+	jsr wrappers.prepare
+	bne.w bad
+	bra.w operandDone
+ordinaryParenthesis
 	move.l a1, d0
 	sub.l a0, d0
 	cmpi.l #6, d0

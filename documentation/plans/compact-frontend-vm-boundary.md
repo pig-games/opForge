@@ -23,7 +23,7 @@ qualified address bases, macro bodies and numeric/quoted CPU directives. The fre
 confirms the packed-record block reaches its 1 MiB owner limit during embedded
 binary inclusion. Records and its ordering copy now have explicit 2 MiB budgets;
 other owner limits remain unchanged. A fresh native allocator contract passes.
-The complete current BS16 embedded self-host now exits zero and matches the fresh
+The complete BS16 embedded self-host at checkpoint `76a1d11e` exits zero and matches the fresh
 442,140-byte Rust Hunk exactly: 86 inputs, 1,270,932 source bytes, manifest
 `fnv1a64:44f083e11ac57356`. Uninstrumented guest START/DONE is 931.022937958
 seconds on 68020 / 74 MiB with unlimited emulator CPU speed. The preceding failed
@@ -90,7 +90,7 @@ Require fresh case-bound START/DONE challenges, guest exit zero and exact comple
 ### Physical A6000 run
 
 The host-only ignored test `export_compact_self_host_bundle` builds a fresh release
-bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS16
+bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS17
 package. Its preparation-only file plan has focused native qualification recorded
 in the [current plan](native-runtime-reset.md#bs13-binary-inclusion-qualification);
 host export alone does not prove self-hosting. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
@@ -137,7 +137,7 @@ configuration. The subsequent BS13 embedded-output bundle is
 `/tmp/opforge-a6000-bs13-embedded-selfhost-v2`, with a 395,676-byte embedded
 Rust oracle and full emulator self-host qualification. It has no recorded new
 hardware timing. Old BS12/BS13 exports require their matching historical runner;
-current BS16 source and package bytes must be exported afresh.
+current BS17 source and package bytes must be exported afresh.
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
@@ -290,8 +290,12 @@ bytecode and shared ExprVM execution do not supply that missing parser program.
 The macro-only initial PRVM plan currently runs after binding, which is why it
 cannot yet classify an ordinary statement head before the value binder acts.
 
-BS16 is the current compact package format; the producer writes `BS16` and the
-native package owner checks the matching magic. Its header is 168 bytes, with
+BS17 is the current compact package format; the producer writes `BS17` and the
+native package owner checks the matching magic. Only this latest runtime contract
+is supported; packages must be regenerated. Target flags at 130 request structural
+wrapper preservation from canonical projections. Typed scalar/wrapped-value and
+numeric tuple-name projections retain addressing predicates without source text
+or CPU-specific native parsing. Its header is 168 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its

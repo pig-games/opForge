@@ -120,7 +120,9 @@ def load_bundle(bundle):
         raise ValueError("Bootstrap digest mismatch")
     if not defines and (storage == "external" or output_storage == "embedded") and bootstrap != oracle:
         raise ValueError("Release bootstrap/oracle mismatch")
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS16":
+    # Frozen bundles retain their matching executable. This transport verifies
+    # their assets; only the bundled native runtime interprets the VM contract.
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] not in (b"BS16", b"BS17"):
         raise ValueError("Runtime package mismatch")
     if len(package) < 168 or int.from_bytes(package[4:8], "big") != len(package):
         raise ValueError("Invalid runtime package header")

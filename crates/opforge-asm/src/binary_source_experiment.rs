@@ -102,7 +102,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS16 block for one resolved package hierarchy.
+/// Prepare a self-contained BS17 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -366,7 +366,22 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS16");
+    out[..4].copy_from_slice(b"BS17");
+    // Structural policies come from canonical projections, never CPU identities.
+    let retain_indirect = package
+        .candidates
+        .iter()
+        .any(|candidate| match &candidate.recipe {
+            CandidateRecipe::SemanticInputs { inputs, .. }
+            | CandidateRecipe::SemanticBranch { inputs, .. } => {
+                inputs.iter().any(preserves_indirect)
+            }
+            CandidateRecipe::SemanticSequence { stages } => stages
+                .iter()
+                .any(|stage| stage.inputs.iter().any(preserves_indirect)),
+            _ => false,
+        });
+    set_word(&mut out, 130, u16::from(retain_indirect));
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -620,6 +635,19 @@ fn write_candidate(
     if recipe == 5 && !identity_table {
         recipe = 6;
     }
+    let sequence_needs_prefix = matches!(&candidate.recipe, CandidateRecipe::SemanticSequence { stages }
+        if !stages.iter().any(|stage| stage.program.is_some_and(|id| programs.semantics.get(&id).is_some_and(|index| semantic_emits_opcode(programs, *index)))));
+    // Native emits the table prefix before the combined sequence payload.
+    // Canonical TABLE must therefore emit that payload exactly once at the end.
+    if recipe == 9
+        && sequence_needs_prefix
+        && !programs
+            .rows
+            .get(usize::from(table))
+            .is_some_and(|row| sequence_prefix_table(row.bytes))
+    {
+        recipe = 6;
+    }
     let shape = match name(names, candidate.shape)? {
         "implied" => 0,
         "direct" => 1,
@@ -652,7 +680,7 @@ fn write_candidate(
         if let Projection::TupleArity { operand } | Projection::TupleArityThree { operand } = input
         {
             let has_register = inputs.iter().any(|projection| {
-                matches!(projection, Projection::TupleRegister { operand: other, .. } if other == operand)
+                matches!(projection, Projection::TupleRegister { operand: other, .. } | Projection::TupleNamedRegister { operand: other, .. } if other == operand)
             });
             let has_value = inputs.iter().any(|projection| {
                 matches!(projection, Projection::TupleValue { operand: other } if other == operand)
@@ -744,8 +772,23 @@ fn write_candidate(
     out[row + 19] = required_forms;
     set_word(out, row + 20, candidate.mode);
     set_word(out, row + 22, tuple_classes);
-    set_word(out, row + 28, if recipe == 7 { table } else { MISSING });
+    set_word(
+        out,
+        row + 28,
+        if recipe == 7 || (recipe == 9 && sequence_needs_prefix) {
+            table
+        } else {
+            MISSING
+        },
+    );
     Ok(())
+}
+
+fn sequence_prefix_table(mut bytes: &[u8]) -> bool {
+    while let [vm::bytecode::OP_EMIT_U8, _, rest @ ..] = bytes {
+        bytes = rest;
+    }
+    bytes == [vm::bytecode::OP_EMIT_OPERAND, 0, vm::bytecode::OP_END]
 }
 
 fn semantic_emits_opcode(programs: &Programs<'_>, index: u16) -> bool {
@@ -1130,6 +1173,9 @@ fn write_projection(
     }
     let (kind, operand, field, literal) = match projection {
         Projection::Expression(operand) => (0, *operand, 0, 0),
+        Projection::IndirectValue { operand } => (20, *operand, 0, 0),
+        Projection::TupleNamedRegister { operand, name } => (21, *operand, *name, 0),
+        Projection::ScalarExpression(operand) => (22, *operand, 0, 0),
         Projection::TargetExpression(operand) => (15, *operand, 0, 0),
         Projection::AtomicTargetExpression(operand) => (17, *operand, 0, 0),
         Projection::TargetMember { operand, qualifier } => (16, *operand, *qualifier, 0),
@@ -1185,6 +1231,17 @@ fn write_projection(
     Ok(true)
 }
 
+fn preserves_indirect(projection: &Projection) -> bool {
+    match projection {
+        Projection::IndirectValue { .. }
+        | Projection::TupleNamedRegister { .. }
+        | Projection::ScalarExpression(_) => true,
+        Projection::ValueProgram { source, .. }
+        | Projection::RequiredValueProgram { source, .. } => preserves_indirect(source),
+        _ => false,
+    }
+}
+
 fn collect_qualified_classes(projection: &Projection, classes: &mut BTreeSet<(u16, u16)>) {
     match projection {
         Projection::TupleQualifiedRegister {
@@ -1206,13 +1263,15 @@ fn bind_member(
     dictionary: &mut BTreeMap<String, DictionaryBinding>,
 ) -> Result<(), String> {
     match projection {
-        Projection::NamedRegister { name, .. } => bind(
-            dictionary,
-            self::name(names, *name)?.into(),
-            *name,
-            0,
-            DictionaryRoleFlags::REGISTER_OR_NAMED,
-        ),
+        Projection::NamedRegister { name, .. } | Projection::TupleNamedRegister { name, .. } => {
+            bind(
+                dictionary,
+                self::name(names, *name)?.into(),
+                *name,
+                0,
+                DictionaryRoleFlags::REGISTER_OR_NAMED,
+            )
+        }
         Projection::Member { qualifier, .. }
         | Projection::MemberShape { qualifier, .. }
         | Projection::TargetMember { qualifier, .. }
@@ -1263,6 +1322,22 @@ fn name(names: &[String], id: u16) -> Result<&str, String> {
 #[cfg(test)]
 mod dictionary_role_contract_tests {
     use super::*;
+
+    #[test]
+    fn sequence_prefix_requires_one_trailing_payload_slot() {
+        use vm::bytecode::{OP_EMIT_OPERAND as INPUT, OP_EMIT_U8 as BYTE, OP_END as END};
+        assert!(sequence_prefix_table(&[BYTE, 0x90, INPUT, 0, END]));
+        assert!(sequence_prefix_table(&[INPUT, 0, END]));
+        for program in [
+            vec![BYTE, 0x90, END],
+            vec![INPUT, 1, END],
+            vec![INPUT, 0, INPUT, 0, END],
+            vec![INPUT, 0, BYTE, 0x90, END],
+            vec![BYTE],
+        ] {
+            assert!(!sequence_prefix_table(&program), "{program:?}");
+        }
+    }
 
     #[test]
     fn member_shape_and_target_share_the_package_field_dictionary_role() {

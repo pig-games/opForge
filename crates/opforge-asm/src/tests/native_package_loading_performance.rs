@@ -195,7 +195,7 @@ fn native_package_loading_performance() {
     };
     if let Some((_, package)) = &baseline {
         assert!(
-            [b"BS16".as_slice()].contains(&package.get(..4).unwrap_or(&[])),
+            [b"BS16".as_slice(), b"BS17".as_slice()].contains(&package.get(..4).unwrap_or(&[])),
             "baseline must carry its own known frozen native contract"
         );
     }

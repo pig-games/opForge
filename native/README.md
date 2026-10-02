@@ -32,6 +32,15 @@ directory. Additional `-M`/`-I` roots retain command order. Root input anchors
 discovery, not module execution order. Quoted Amiga Shell paths, `--name=value`,
 attached short values and `--` are supported. Help/version need no package/input.
 
+Base m6502 instruction/addressing parity is qualified in the compact CLI against
+all 151 instructions in the canonical all-modes example, including accumulators,
+indirect forms, relative branches and forward-width selection. A prepared
+`m6502--transparent.bin` works independently of the source project; place it in a
+`-P` package root. For example, `.cpu 6502` in the root preamble selects it with
+`opforge_compact main.asm --bin output.bin -P packages`. Regenerate packages for
+BS17. This focused matrix is separate from full language/output and CPU-variant
+qualification; see the [checkpoint](../documentation/plans/native-runtime-reset.md#base-6502-package-parity-checkpoint).
+
 An initial `--cpu` or `--runtime-package` is optional. The compact CLI can select
 its package from `.cpu NAME` in the unconditional root preamble, after comments,
 blank lines and `.module NAME`. Numeric aliases and quoted names are accepted;
@@ -79,7 +88,7 @@ imported modules and nested scopes cannot set root output metadata. Descriptive
 `.meta.name "..."` and `.meta.version "..."` are accepted without an output effect.
 This is an inline quoted subset: unquoted values, configuration blocks, CPU
 metadata overrides, source BIN/FILL/S-record metadata, listings, defines and general source-dependent
-CPU switching remain future work. The BS16 runtime package option is distinct from
+CPU switching remain future work. The BS17 runtime package option is distinct from
 Rust's canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.
 

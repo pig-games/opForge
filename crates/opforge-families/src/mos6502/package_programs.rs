@@ -20,6 +20,7 @@ pub const RECORD_ABSOLUTE_WORD: &str = "operand.absolute-word";
 pub const RECORD_IMMEDIATE: &str = "operand.immediate";
 pub const FIXUP_RELATIVE_BYTE: &str = "fix.rel8";
 pub const FIXUP_ABSOLUTE_LONG: &str = "fix.abs32";
+pub const ENCODING_NONE: &str = "enc.none";
 pub const ENCODING_UNSIGNED_BYTE: &str = "enc.u8";
 pub const ENCODING_UNSIGNED_WORD: &str = "enc.u16le";
 
@@ -67,6 +68,12 @@ pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecE
         })
     };
     Ok(vec![
+        SemanticProgramDescriptor {
+            owner: owner.clone(),
+            id: ENCODING_NONE.to_string(),
+            opcode_version: SEMANTIC_VM_OPCODE_VERSION_V2,
+            program: compile_encoding_program(&[])?,
+        },
         scalar(ENCODING_UNSIGNED_BYTE, 1, 0xff)?,
         scalar(ENCODING_UNSIGNED_WORD, 2, 0xffff)?,
         SemanticProgramDescriptor {
@@ -128,4 +135,39 @@ pub fn operand_record_programs() -> Result<Vec<OperandRecordProgramDescriptor>, 
             OperandRecordProgram::Immediate { value_input: 0 },
         )?,
     ])
+}
+
+/// Describe raw base-family source structures with CPU-neutral projection plans.
+/// Retain the descriptor's existing precedence, width and widening policy.
+/// Legacy semantic shapes remain available to specialized CPU parsers.
+pub fn structural_selector(
+    mut selector: package::ModeSelectorDescriptor,
+    mode: super::AddressMode,
+) -> Option<package::ModeSelectorDescriptor> {
+    use super::AddressMode;
+    let (shape, plan) = match mode {
+        AddressMode::ZeroPageX | AddressMode::ZeroPageY
+        | AddressMode::AbsoluteX | AddressMode::AbsoluteY => {
+            let register = if matches!(mode, AddressMode::ZeroPageX | AddressMode::AbsoluteX) { "X" } else { "Y" };
+            let byte = matches!(mode, AddressMode::ZeroPageX | AddressMode::ZeroPageY);
+            let encoding = if byte { ENCODING_UNSIGNED_BYTE } else { ENCODING_UNSIGNED_WORD };
+            let value = if byte { VALUE_UNSIGNED_BYTE } else { VALUE_UNSIGNED_WORD };
+            ("direct_register", format!("semv.inputs.v1:{encoding}@required_value_program:{value}:scalar_expr0,named_register1={register}"))
+        }
+        AddressMode::ZeroPage | AddressMode::Absolute => {
+            let byte = mode == AddressMode::ZeroPage;
+            let encoding = if byte { ENCODING_UNSIGNED_BYTE } else { ENCODING_UNSIGNED_WORD };
+            let value = if byte { VALUE_UNSIGNED_BYTE } else { VALUE_UNSIGNED_WORD };
+            ("direct", format!("semv.inputs.v1:{encoding}@required_value_program:{value}:scalar_expr0"))
+        }
+        AddressMode::Relative => ("direct", format!("semv.sequence.v1:match:_@scalar_expr0;encode:{ENCODING_NONE}@literal:0;fixup:{FIXUP_RELATIVE_BYTE}@expr0")),
+        AddressMode::Accumulator => ("register", format!("semv.inputs.v1:{ENCODING_NONE}@named_register0=A")),
+        AddressMode::Indirect => ("direct", format!("semv.inputs.v1:{ENCODING_UNSIGNED_WORD}@required_value_program:{VALUE_UNSIGNED_WORD}:indirect_value0")),
+        AddressMode::IndexedIndirectX => ("direct", format!("semv.inputs.v1:{ENCODING_UNSIGNED_BYTE}@required_value_program:{VALUE_UNSIGNED_BYTE}:indirect_tuple_value0.item0,indirect_tuple_named_register0.item1=X,indirect_tuple_arity0.value2")),
+        AddressMode::IndirectIndexedY => ("direct_register", format!("semv.inputs.v1:{ENCODING_UNSIGNED_BYTE}@required_value_program:{VALUE_UNSIGNED_BYTE}:indirect_value0,named_register1=Y")),
+        _ => return None,
+    };
+    selector.shape_key = shape.to_string();
+    selector.operand_plan = plan;
+    Some(selector)
 }

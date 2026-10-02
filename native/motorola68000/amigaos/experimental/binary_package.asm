@@ -5,7 +5,8 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533136; BS16
+MAGIC = $42533137; BS17
+TARGET_PRESERVE_WRAPPERS = 1
 DICTIONARY_REGISTER_OR_NAMED = 1
 DICTIONARY_MEMBER = 2
 DICTIONARY_ROLE_ALLOWED = DICTIONARY_REGISTER_OR_NAMED+DICTIONARY_MEMBER
@@ -61,7 +62,7 @@ MacroFragments	.long ?
 MacroFragmentsBytes	.long ?
 TargetOffset	.long ?
 TargetBytes	.word ?
-TargetReserved	.word ?
+TargetFlags	.word ?
 FilePlan	.long ?
 FilePlanBytes	.long ?
 EmitDirective	.word ?

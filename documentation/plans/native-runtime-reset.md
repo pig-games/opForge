@@ -1,10 +1,13 @@
 # Native assembler completion plan
 
 Status: active. The recorded 61-file compact native implementation fully
-self-hosted with exact live Rust Hunk output on the physical A6000. The current
-86-input BS16 embedded implementation also completes a fresh FS-UAE self-host
+self-hosted with exact live Rust Hunk output on the physical A6000. The
+86-input BS16 embedded implementation at checkpoint `76a1d11e` completes a fresh
+FS-UAE self-host
 with exact Rust Hunk equality in 931.022937958 seconds on the expanded 74 MiB
-investigation profile. It remains
+investigation profile. The latest BS17 CPU-selection/base-6502 checkpoints have
+focused qualification; their changed tree has not repeated that full self-host.
+It remains
 experimental: that proof does not establish full language, CPU, CLI or output
 parity. Current measurements, reproduction commands and remaining frontend
 ownership gaps are maintained in the
@@ -61,7 +64,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS16 represents one CPU/dialect pipeline and carries its canonical
+Current BS17 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -214,7 +217,7 @@ mid-source package transitions remain P3. `--hunk` currently selects source-conf
 sections, rather than general Rust Hunk CLI synthesis. Informational commands
 need no input, package or output configuration.
 Native runtime-package/dialect/search-root options remain separate from canonical
-Rust `.opasm` loading; never mislabel BS16 as the canonical container.
+Rust `.opasm` loading; never mislabel BS17 as the canonical container.
 
 Reuse isolated old CLI routines where coherent, without importing the old engine
 state or preprocessor. Qualify actual accepted/rejected invocations against live
@@ -298,9 +301,72 @@ The external CLI is 122,808 bytes (+2,128); linked static reservations are
 140,536 bytes (+6,372). Dynamic peak was not measured. Source, output and
 321,458-byte m68020 package are unchanged. Focused bootstrap VM tests, generated
 asset equality, native formatting and workflow/instrumentation/ownership guards
-pass. Broader 6502 native proof currently rejects the all-modes source at
-`eor $BCDE`; it is a separate next-slice blocker, not CPU-selection completion.
+pass. At this checkpoint, broader 6502 native proof rejected the all-modes
+source at `lda ($20,x)` (diagnostic line `$94`, decimal 148). The earlier
+`eor $BCDE` interpretation incorrectly treated the hexadecimal line as decimal.
+Addressing breadth is qualified separately below.
 
+
+### Base-6502 package parity checkpoint
+
+The compact native CLI now qualifies all 151 instructions in
+`examples/mos6502/6502_allmodes.asm` against the complete live Rust output
+(321 bytes). The prepared `m6502--transparent.bin` is source-independent and
+13,640 bytes. The CLI embeds m68020 and loads m6502 externally from `-P` roots.
+Native code contains no 6502 operand parsing or encoding decisions: the family
+package selects typed scalar, wrapped-value and numeric tuple-name projections.
+The bounded wrapper helper owns structural preparation separately from selection.
+
+BS17 replaces BS16 without a legacy executor. Header target flags at offset 130
+request wrapper preservation based on canonical projections. Semantic encoding
+can explicitly emit no bytes; sequence TABLE prefixes bind an empty payload slot
+before later stages append their output. The producer accepts that prefix path
+only for literal prefixes followed by one trailing payload slot. Flat current-PC
+expressions have absolute fixup provenance; section-relative current-PC compound
+provenance remains unsupported and fails closed.
+
+Fresh 68020 / 10 MiB release qualification covers five exact-artifact cases:
+structural forms, the complete matrix, forward plain/indexed widening, and a
+fixed-width forward operand. Ten further fresh runs reject wrong indices,
+malformed indirect forms, an invalid accumulator and overwide values. Final matrix
+START/DONE time is 2.296862250 seconds (an earlier same-code observation was
+2.558640417). These are completion times, not a gain against a working matrix
+baseline. The CLI is 445,088 bytes (+832 from the CPU-selection checkpoint);
+linked static reservations are 462,780 bytes. Dynamic peak was not measured.
+
+Separate unchanged-workload release measurements are 11.158090041 and
+10.890247958 seconds (median 11.0241689995), versus 11.167484938 at the
+CPU-selection checkpoint: observed -0.143 seconds (-1.28%). The two-run spread
+is larger than this difference; no performance gain is established. Source
+(10,687 bytes), exact Rust output (2,434 bytes), 68020 / 10 MiB settings and
+m68020 package size (321,458 bytes) are unchanged. The external CLI is 123,628
+bytes (+820); linked static reservations are 141,320 bytes (+784). This comparison
+isolates this checkpoint from earlier optimization gains.
+
+261 packed-source Rust checks and all 102 package checks pass, alongside the
+focused family/VM checks. Native formatting, architecture, instrumentation,
+proof, runtime-boundary and test-ownership guards pass. The existing full self-host
+proof remains checkpoint `76a1d11e`; this checkpoint does not imply full language,
+output, 65C02/65816 or 2 MiB product qualification. Initial `.cpu` discovery retains
+the root-preamble limits described above; source-dependent package switching is
+still deferred.
+
+To reproduce/export with a configured FS-UAE environment, choose a fresh,
+nonexistent absolute directory:
+
+```sh
+OPFORGE_CPU_PARITY_EXPORT=/tmp/opforge-6502-new \
+  cargo test -p asm --lib native_base6502_parity_fs_uae -- --ignored --nocapture --test-threads=1
+```
+
+On AmigaOS, run from the exported directory:
+
+```text
+opforge main.asm --bin output.bin -P packages
+```
+
+Compare the complete `output.bin` with `oracle.bin`. This is a 6502 test bundle,
+not a replacement self-host bundle for `run_a6000_selfhost.py`.
 
 ### CLI checkpoint C2 — requested outputs and source declarations (in progress)
 

@@ -8,13 +8,13 @@ use crate::native_package_build::{build_native_packages, EmbedSelection};
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 
-struct Case {
+struct Case<'a> {
     name: &'static str,
-    source: &'static str,
+    source: &'a str,
     command: &'static str,
     rejection: Option<&'static str>,
 }
-const CASES: &[Case] = &[
+const CASES: &[Case<'static>] = &[
     Case {
         name: "numeric-source-cpu",
         source: ";comment\n.cpu 6502;target\n.org $1000\n lda #$42;instruction\n sta $1234\n",
@@ -66,6 +66,21 @@ const CASES: &[Case] = &[
 ];
 
 const ALL_MODES: &str = include_str!("../../../../examples/mos6502/6502_allmodes.asm");
+const STRUCTURAL: &str = ".cpu 6502\n.org $1000\n asl A\n lsr A\n rol A\n ror A\n lda ($20,x)\n lda ($20),y\n jmp ($bcde)\n lda #(1+2)\n";
+const INVALID: &[(&str, &str)] = &[
+    ("scalar-as-indirect", "lda ($20)"),
+    ("wrong-inner-index", "lda ($20,y)"),
+    ("wrong-outer-index", "lda ($20),x"),
+    ("extra-index", "lda ($20,x),y"),
+    ("wrong-accumulator", "asl X"),
+    ("overwide-indirect", "lda ($100,x)"),
+    ("overwide-immediate", "lda #$100"),
+    ("overwide-absolute", "jmp $10000"),
+    ("illegal-zp-index", "stx $20,x"),
+    ("overwide-relative", "bne $2000"),
+];
+const FORWARD_INDEXED: &str = ".cpu 6502\n.org $00fd\n lda target,x\n nop\ntarget\n rts\n";
+const FORWARD_FIXED: &str = ".cpu 6502\n.org 0\n stx target,y\n nop\ntarget\n rts\n";
 const FORWARD: &str = ".cpu 6502\n.org $00fd\nstart\n lda target\n nop\ntarget\n rts\n";
 
 fn scratch() -> PathBuf {
@@ -114,6 +129,14 @@ fn initial_cpu_and_6502_live_rust_oracles() {
     }
     assert!(!oracle(&dir, "all-modes", ALL_MODES).unwrap().is_empty());
     assert_eq!(
+        oracle(&dir, "structural", STRUCTURAL).unwrap(),
+        [0x0a, 0x4a, 0x2a, 0x6a, 0xa1, 0x20, 0xb1, 0x20, 0x6c, 0xde, 0xbc, 0xa9, 3]
+    );
+    for (name, statement) in INVALID {
+        let source = format!(".cpu 6502\n.org $1000\n {statement}\n");
+        assert!(oracle(&dir, name, &source).is_err(), "accepted {statement}");
+    }
+    assert_eq!(
         oracle(&dir, "forward", FORWARD).unwrap(),
         [0xad, 1, 1, 0xea, 0x60]
     );
@@ -156,7 +179,17 @@ fn native(breadth: bool) {
     );
     let default_package = fs::read(build.output_dir.join("packages").join(&default_name)).unwrap();
     let default_path = format!("packages/{default_name}");
-    let breadth_cases = [
+    let invalid_sources: Vec<_> = INVALID
+        .iter()
+        .map(|(_, statement)| format!(".cpu 6502\n.org $1000\n {statement}\n"))
+        .collect();
+    let mut breadth_cases = vec![
+        Case {
+            name: "structural-forms",
+            source: STRUCTURAL,
+            command: "Work:main.asm --bin Work:output.bin -P Work:packages",
+            rejection: None,
+        },
         Case {
             name: "all-modes",
             source: ALL_MODES,
@@ -170,6 +203,25 @@ fn native(breadth: bool) {
             rejection: None,
         },
     ];
+    for ((name, _), source) in INVALID.iter().zip(&invalid_sources) {
+        breadth_cases.push(Case {
+            name,
+            source,
+            command: "Work:main.asm --bin Work:output.bin -P Work:packages",
+            rejection: Some("binary source: unsupported or invalid input"),
+        });
+    }
+    for (name, source) in [
+        ("forward-indexed", FORWARD_INDEXED),
+        ("forward-fixed", FORWARD_FIXED),
+    ] {
+        breadth_cases.push(Case {
+            name,
+            source,
+            command: "Work:main.asm --bin Work:output.bin -P Work:packages",
+            rejection: None,
+        });
+    }
     let selected = std::env::var("OPFORGE_CPU_SELECTION_CASES").ok();
     let mut count = 0;
     for case in if breadth { &breadth_cases[..] } else { CASES } {
@@ -195,14 +247,6 @@ fn native(breadth: bool) {
                 bytes: &default_package,
             },
         ];
-        let proof = if let Some(message) = case.rejection {
-            OpforgeNativeCliProof::ExpectedFailureContaining(message)
-        } else {
-            OpforgeNativeCliProof::ExactArtifact {
-                relative_path: "Work/output.bin",
-                rust_oracle: expected.as_ref().unwrap(),
-            }
-        };
         let native_case = OpforgeNativeCliParityCase {
             name: case.name,
             cpu_override: "68020",
@@ -211,7 +255,13 @@ fn native(breadth: bool) {
             command_template: Some(case.command),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &files,
-            proof,
+            proof: match case.rejection {
+                Some(message) => OpforgeNativeCliProof::ExpectedFailureContaining(message),
+                None => OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/output.bin",
+                    rust_oracle: expected.as_ref().unwrap(),
+                },
+            },
         };
         let result = run_prebuilt_compact_cli_case_from_env(&root, &native_case, &image)
             .unwrap_or_else(|e| panic!("{}: {e}", case.name));

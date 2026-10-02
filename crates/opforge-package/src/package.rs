@@ -1298,6 +1298,10 @@ pub const MODE_SELECTOR_PLAN_IMMEDIATE_PREFIX: &str = "immediate";
 /// nested inside an indirect wrapper. Tuple position and expected register
 /// class remain package data.
 pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX: &str = "indirect_tuple_reg";
+pub const MODE_SELECTOR_PLAN_SCALAR_EXPR_PREFIX: &str = "scalar_expr";
+pub const MODE_SELECTOR_PLAN_INDIRECT_VALUE_PREFIX: &str = "indirect_value";
+pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_NAMED_REGISTER_PREFIX: &str =
+    "indirect_tuple_named_register";
 pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX: &str = "indirect_tuple_value";
 pub const MODE_SELECTOR_PLAN_INDIRECT_TUPLE_QUALIFIED_REGISTER_PREFIX: &str =
     "indirect_tuple_qualified_reg";

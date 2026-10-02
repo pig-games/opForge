@@ -145,11 +145,6 @@ fn compile_encoding_program_for_version(
     opcode_version: u16,
     steps: &[EncodingStep],
 ) -> Result<Vec<u8>, OpcpuCodecError> {
-    if steps.is_empty() {
-        return Err(invalid(
-            "encoding VM program must contain at least one step",
-        ));
-    }
     let mut out = Vec::new();
     for step in steps {
         match step {
@@ -311,8 +306,8 @@ pub fn decode_encoding_program(
     loop {
         let opcode = take_u8(&mut pc)?;
         if opcode == ENCODING_VM_OP_END {
-            if pc != bytes.len() || steps.is_empty() {
-                return Err(invalid("encoding VM has trailing bytes or no steps"));
+            if pc != bytes.len() {
+                return Err(invalid("encoding VM has trailing bytes"));
             }
             return Ok(steps);
         }
@@ -565,4 +560,25 @@ fn decode_fields(
         });
     }
     Ok(fields)
+}
+
+#[cfg(test)]
+mod zero_output_tests {
+    use super::*;
+    #[test]
+    fn zero_output_program_is_explicit_and_still_requires_exact_termination() {
+        let bytes = compile_encoding_program(&[]).unwrap();
+        assert_eq!(bytes, [ENCODING_VM_OP_END]);
+        assert!(
+            decode_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V2, &bytes)
+                .unwrap()
+                .is_empty()
+        );
+        validate_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V2, &bytes).unwrap();
+        assert!(decode_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V2, &[]).is_err());
+        assert!(
+            decode_encoding_program(SEMANTIC_VM_OPCODE_VERSION_V2, &[ENCODING_VM_OP_END, 0])
+                .is_err()
+        );
+    }
 }

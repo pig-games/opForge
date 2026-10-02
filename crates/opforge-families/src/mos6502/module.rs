@@ -20,7 +20,7 @@ pub const DIALECT_TRANSPARENT: &str = "transparent";
 pub const FAMILY_ID: CpuFamily = CpuFamily::new("mos6502");
 pub const CPU_ID: CpuType = CpuType::new("m6502");
 const FAMILY_CPU_NAME: &str = "6502";
-const FAMILY_REGISTER_IDS: &[&str] = &["A", "X", "Y"];
+pub(super) const FAMILY_REGISTER_IDS: &[&str] = &["A", "X", "Y"];
 
 fn family_form_mnemonics() -> Vec<String> {
     let mut mnemonics: Vec<String> = super::table::FAMILY_INSTRUCTION_TABLE

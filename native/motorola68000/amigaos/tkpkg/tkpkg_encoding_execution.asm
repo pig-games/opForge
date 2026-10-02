@@ -1343,8 +1343,7 @@ encodingEnd
 	move.l a2, d1
 	movea.l Context.Output(a6), a1
 	sub.l a1, d1
-	tst.w d1
-	beq.w encodingFail
+	; END-only is an explicit zero-output encoding program.
 	moveq #0, d0
 	bra.w encodingReturn
 encodingFail

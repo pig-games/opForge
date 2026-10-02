@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_scopes
 	.cpu 68020
 	.include "telemetry_macros.i"
+	.include "binding_telemetry.i"
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_scope_layout as layout
@@ -899,23 +900,28 @@ done
 finish	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	.BINDING_DIAGNOSTIC_CLEAR
 	movea.l a1, a6
+	.BINDING_ATTEMPT #binding_diagnostic.CURRENT, #-1, #-1
 	tst.w layout.State.Current(a6)
 	bne.w bad
 	movea.l a0, a5
 	move.l d0, -(sp)
 	movea.l a6, a0
 	lea bind, a1
+	.BINDING_ATTEMPT #binding_diagnostic.IMPORTS, #-1, #-1
 	jsr imports.finish
 	bne.w failSaved
 	movea.l a6, a0
 	adda.l #SECTION_STATE, a0
+	.BINDING_ATTEMPT #binding_diagnostic.SECTIONS, #-1, #-1
 	jsr sections.finish
 	bne.w failSaved
 	movea.l a0, a2
 	movea.l a5, a0
 	move.l (sp), d0
 	movea.l a6, a1
+	.BINDING_ATTEMPT #binding_diagnostic.OUTPUTS, #-1, #-1
 	jsr sections.resolveOutputs
 	bne.w failSaved
 	moveq #0, d7
@@ -956,11 +962,13 @@ resolve
 selectedReference
 	btst #0, records.Entry.Flags+1(a4)
 	bne.w access
+	.BINDING_ATTEMPT #binding_diagnostic.EXPLICIT, d7, #-1
 	btst #2, records.Entry.Flags+1(a4)
 	bne.w failSaved
 	moveq #0, d3
 	move.w records.Entry.Owner(a4), d3
 parent
+	.BINDING_ATTEMPT #binding_diagnostic.UNRESOLVED, d7, #-1
 	tst.w d3
 	beq.w failSaved
 	move.l d3, d0
@@ -998,6 +1006,7 @@ access
 	move.w records.Entry.Target(a4), d1
 	sub.w layout.State.Base(a6), d1
 	lea MODULE_STATE(a6), a0
+	.BINDING_ATTEMPT #binding_diagnostic.VISIBILITY, d7, d1
 	jsr modules.check
 	bne.w failSaved
 next
@@ -1013,6 +1022,7 @@ rewrite
 	move.w layout.State.Base(a6), d1
 	moveq #0, d2
 	move.w layout.State.Count(a6), d2
+	.BINDING_ATTEMPT #binding_diagnostic.REMAP, #-1, #-1
 	jsr records.remap
 	bra.w done
 unchanged
@@ -1023,6 +1033,7 @@ failSaved
 bad
 	moveq #1, d0
 done
+	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
 	.TELEMETRY_SERVICE_LEAVE
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
@@ -1963,4 +1974,17 @@ Words
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection
+
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	.section data, kind=data
+	.priv
+BindingView	.word layout.State.Count, layout.State.Base, layout.State.Current
+	.word layout.ENTRIES_POINTER, layout.ARENA_POINTER, layout.State.ArenaUsed
+	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length
+	.endsection
+.endif
+.endif
+.endif
 	.endmodule

@@ -217,12 +217,38 @@ fn assemble_memory_telemetry_case(label: &str, source: &str, defines: &[String])
     let root = workspace_root();
     let temp = create_temp_dir(label);
     let source_path = temp.join("memory_telemetry_test.asm");
-    fs::write(&source_path, source).expect("write memory telemetry test source");
+    // Binding progress imports the independent diagnostic owner. Keep the passive
+    // profile stub in each fixture, and assemble the real diagnostic owner.
+    let enabled_diagnostic = [
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_PREPARATION_PROGRESS",
+    ]
+    .iter()
+    .all(|gate| defines.iter().any(|define| define == gate))
+        && source.contains("binding_telemetry.i");
+    let owned_source = if enabled_diagnostic {
+        let diagnostic = fs::read_to_string(
+            root.join("native/motorola68000/amigaos/debug/opforge_binding_diagnostic.asm"),
+        )
+        .expect("read bounded binding diagnostic owner");
+        let body = source.trim_end().strip_suffix(".end").unwrap_or(source);
+        format!("{body}\n{diagnostic}\n.end\n")
+    } else {
+        source.to_string()
+    };
+    fs::write(&source_path, owned_source).expect("write memory telemetry test source");
     fs::write(
         temp.join("memory_telemetry.i"),
         fs::read(root.join(MEMORY_TELEMETRY_INCLUDE)).expect("read memory telemetry macro include"),
     )
     .expect("stage memory telemetry macro include");
+    fs::write(
+        temp.join("binding_telemetry.i"),
+        fs::read(root.join("native/motorola68000/amigaos/debug/binding_telemetry.i"))
+            .expect("read binding telemetry macro include"),
+    )
+    .expect("stage binding telemetry macro include");
     assemble_example_with_base_and_defines(
         &source_path,
         &temp,
@@ -625,5 +651,122 @@ fn native_selection_position_is_triple_gated_and_preserves_setup_frame() {
             &defines
         ),
         "enabled snapshot must match the full passive frame and base-relative stores"
+    );
+}
+
+fn binding_diagnostic_source(sites: &str) -> String {
+    selection_position_source(sites).replace(
+        ".include \"memory_telemetry.i\"",
+        ".include \"memory_telemetry.i\"\n.include \"binding_telemetry.i\"",
+    )
+}
+
+#[test]
+fn native_binding_failure_diagnostic_is_gated_and_preserves_setup_frame() {
+    let sites = r#"
+    .BINDING_DIAGNOSTIC_CLEAR
+    .BINDING_ATTEMPT #13, d7, d1
+    .BINDING_ATTEMPT_WORD #10, 2(a0), d6
+    .BINDING_CANONICAL_TARGET #14, d1, (a0)
+    .BINDING_DIAGNOSTIC_COMMIT d0, a6, Position
+    .BINDING_DIAGNOSTIC_REPORT a1
+"#;
+    let gates = [
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_PREPARATION_PROGRESS",
+    ];
+    for mask in 0..7 {
+        let defines = gates
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| mask & (1 << index) != 0)
+            .map(|(_, gate)| (*gate).to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            assemble_memory_telemetry_case(
+                "binding-diagnostic-disabled",
+                &binding_diagnostic_source(sites),
+                &defines,
+            ),
+            assemble_memory_telemetry_case(
+                "binding-diagnostic-absent",
+                &binding_diagnostic_source(""),
+                &defines,
+            ),
+            "partial gates must emit no diagnostic call/storage/import bytes",
+        );
+    }
+    // Exact assembled wrapper proof, following the existing passive telemetry
+    // test style. This establishes balanced saves and CCR-before-setup behavior;
+    // it does not execute guest code or prove native completion.
+    let expected = r#"
+    jsr binding_diagnostic.clear
+    move.w ccr, -(sp)
+    movem.l d0-d2, -(sp)
+    move.l #13, -(sp)
+    move.l d7, -(sp)
+    move.l d1, -(sp)
+    move.l (sp)+, d2
+    move.l (sp)+, d1
+    move.l (sp)+, d0
+    jsr binding_diagnostic.attempt
+    movem.l (sp)+, d0-d2
+    move.w (sp)+, ccr
+    move.w ccr, -(sp)
+    movem.l d0-d1, -(sp)
+    move.l d6, d1
+    moveq #0, d0
+    move.w 2(a0), d0
+    move.w ccr, -(sp)
+    movem.l d0-d2, -(sp)
+    move.l #10, -(sp)
+    move.l d0, -(sp)
+    move.l d1, -(sp)
+    move.l (sp)+, d2
+    move.l (sp)+, d1
+    move.l (sp)+, d0
+    jsr binding_diagnostic.attempt
+    movem.l (sp)+, d0-d2
+    move.w (sp)+, ccr
+    movem.l (sp)+, d0-d1
+    move.w (sp)+, ccr
+    move.w ccr, -(sp)
+    movem.l d0-d2, -(sp)
+    move.l d1, d1
+    moveq #0, d2
+    move.w (a0), d2
+    move.l #14, d0
+    jsr binding_diagnostic.attemptTarget
+    movem.l (sp)+, d0-d2
+    move.w (sp)+, ccr
+    move.w ccr, -(sp)
+    movem.l d0/a0-a1, -(sp)
+    move.l d0, d0
+    movea.l a6, a0
+    lea Position, a1
+    jsr binding_diagnostic.commit
+    movem.l (sp)+, d0/a0-a1
+    move.w (sp)+, ccr
+    move.w ccr, -(sp)
+    move.l a0, -(sp)
+    movea.l a1, a0
+    jsr binding_diagnostic.report
+    movea.l (sp)+, a0
+    move.w (sp)+, ccr
+"#;
+    let defines = gates.map(str::to_string);
+    assert_eq!(
+        assemble_memory_telemetry_case(
+            "binding-diagnostic-enabled",
+            &binding_diagnostic_source(sites),
+            &defines,
+        ),
+        assemble_memory_telemetry_case(
+            "binding-diagnostic-preservation",
+            &binding_diagnostic_source(expected),
+            &defines,
+        ),
+        "enabled wrappers must match the full passive frame and stable argument snapshots",
     );
 }

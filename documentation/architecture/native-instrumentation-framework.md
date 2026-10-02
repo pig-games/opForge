@@ -185,6 +185,79 @@ meaning or proof that the row completed. The host macro transparency test covers
 all incomplete gate combinations and compares enabled bytes to the explicit
 balanced preservation sequence; it does not execute the guest or establish parity.
 
+The completion diagnostic in
+[`binding_telemetry.i`](../../native/motorola68000/amigaos/debug/binding_telemetry.i)
+and [`debug.amigaos.binding_diagnostic`](../../native/motorola68000/amigaos/debug/opforge_binding_diagnostic.asm)
+uses the same three gates. Only scopes, imports and the compact app include its
+macros. The dedicated owner retains a 308-byte snapshot and twelve-byte pending
+check; scopes and imports each supply an eighteen-byte view descriptor. MEMD
+remains 2280 bytes. Missing any gate emits no diagnostic calls, imports, storage
+or changes to the original failure branches.
+
+`BINDING_ATTEMPT(stage, entry, related)` records the check about to run; entry
+and related are zero-based source-entry indices, with `ffffffff` meaning absent.
+`BINDING_ATTEMPT_WORD` zero-extends an import's word-valued target index.
+`BINDING_CANONICAL_TARGET(stage, target, baseWord)` follows a successful binder
+call: it converts the returned ID to a zero-based canonical target index and
+retains the previous origin proxy index as related. A target-declaration failure
+therefore captures the composed canonical name and its declaration flags.
+`BINDING_DIAGNOSTIC_CLEAR` starts one completion. At the existing routine return,
+`BINDING_DIAGNOSTIC_COMMIT(status, scope, view)` latches only a nonzero status;
+the first actual failure wins, including a nested import failure before outer
+scope completion. The descriptor supplies word offsets for count, base, current,
+entries pointer, arena pointer/used extent, entry stride and name offset/length.
+The observer copies at most 28 entry bytes and 255 canonical-name bytes. It
+checks the index against count and the name extent against the owned arena,
+rejects arithmetic overflow, and stores a zero-padded name independently of the
+source allocations. Marks and commits allocate nothing and perform no I/O.
+
+`BINDING_DIAGNOSTIC_REPORT(dosbase)` emits through the existing progress ABI at
+app failure reporting, with no output when no completion failure was latched.
+Its hexadecimal `f`, `l`, `r` fields have these diagnostic meanings:
+
+| Phase | `f` | `l` | `r` |
+|---:|---|---|---|
+| 32 | failure stage | entry index | related entry index |
+| 33 | base in high word, count in low word | current lexical scope | canonical-name byte count |
+| 34 | raw entry bytes 0–3 | bytes 4–7 | bytes 8–11 |
+| 35 | raw entry bytes 12–15 | bytes 16–19 | bytes 20–23 |
+| 36 | raw entry bytes 24–27, padded | zero | zero |
+| 64–84 | name chunk's first four bytes | next four bytes | next four bytes |
+| 85 | final four name-buffer bytes | zero | zero |
+
+Name chunks are big-endian byte groups; concatenate phases 64–85 in order and
+truncate to the phase-33 byte count. Raw entry fields follow the current
+`binary_binding_records.Entry` layout. The ordinary progress `m` field still
+reports tracked live allocation bytes. Numeric failure stages are:
+
+| Stage | Check |
+|---:|---|
+| 1 | lexical scope still open |
+| 2 | aggregate import completion |
+| 3 | section completion |
+| 4 | output-section resolution |
+| 5 | undeclared explicit name |
+| 6 | exhausted lexical parent search |
+| 7 | module visibility |
+| 8 | prepared-record identity remap |
+| 9, 10 | missing module in all-import or selected-import validation |
+| 11, 12 | invalid selected names in all-import or selected-import validation |
+| 13 | unresolved import proxy |
+| 14 | canonical import target is undeclared |
+
+All macros and passive helper APIs preserve D0–D7, A0–A6, CCR and stack depth;
+argument setup is inside the preserving wrappers. No production request, VM or
+error buffer is used. Host tests cover all seven incomplete gate combinations
+and compare enabled wrapper bytes with explicit balanced save/restore sequences.
+This is a bounded failure-localization facility; those checks do not execute the
+guest, establish artifact parity or supply release performance measurements.
+
+Decode the captured guest stdout with
+`python3 scripts/performance/decode_binding_diagnostic.py /absolute/capture.txt`.
+The [decoder](../../scripts/performance/decode_binding_diagnostic.py) rejects
+incomplete or inconsistent snapshots and explicitly reports an absent snapshot.
+Its result remains localization evidence only.
+
 The compiler/evaluator counters describe actual calls, not a semantic redundancy
 proof. The previous telemetry record is superseded, with no compatibility decoder.
 

@@ -735,6 +735,18 @@ the individual import, section and scope checks still need localization. These
 instrumented durations include probe cost. This is localization progress, not
 full self-host completion, and the current A6000 bundle pointer remains unchanged.
 
+A subsequent phase-only failure capture localizes the unresolved import proxy
+`state.tkvmlastfailurekind` at final binding. It exits 20 without output after
+550.382683084 seconds on the same 74 MiB diagnostic profile; this instrumented
+duration is not release timing. The diagnostic source has 85 inputs and 1,234,649
+bytes, manifest `fnv1a64:eaa6068e266008ec`. Its release Hunk remains byte-identical
+to the preceding 418,564-byte oracle: disabled diagnostics emit no release changes.
+Peak owned storage is 19,488,456 bytes with zero allocation failures and zero
+terminal ownership. Six focused native cases resolve public bare address labels
+and constant controls across both physical orders and split files, so the general
+import spelling alone does not explain the full failure. A further gated probe
+records the canonical target returned by binding and its declaration flags.
+
 Affected Rust binary-source checks pass (262 passed, 400 ignored); ignored native
 tests are not native execution evidence. The wider Rust library run is not green:
 1,955 passed, 69 failed and 410 were ignored. Its legacy source assertions,

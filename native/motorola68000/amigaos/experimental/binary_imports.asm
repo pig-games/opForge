@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_imports
 	.cpu 68020
 	.include "telemetry_macros.i"
+	.include "binding_telemetry.i"
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_scope_layout as layout
@@ -818,6 +819,7 @@ modulesLoop
 	lea ITEMS(a4), a0
 	adda.l d0, a0
 	moveq #0, d0
+	.BINDING_ATTEMPT_WORD #binding_diagnostic.IMPORT_MODULE, Item.Target(a0), #-1
 	move.w Item.Target(a0), d0
 	andi.l #$ffff, d0
 	add.l d0, d0
@@ -830,6 +832,7 @@ modulesLoop
 	mulu.w #ITEM_BYTES, d0
 	lea ITEMS(a4), a3
 	adda.l d0, a3
+	.BINDING_ATTEMPT_WORD #binding_diagnostic.IMPORT_SELECTION, Item.Target(a3), #-1
 	bsr.w validateSelected
 	bne.w bad
 	addq.w #1, d7
@@ -859,6 +862,7 @@ selectedItem
 	lea ITEMS(a4), a3
 	adda.l d0, a3
 	moveq #0, d0
+	.BINDING_ATTEMPT_WORD #binding_diagnostic.SELECTED_MODULE, Item.Target(a3), d6
 	move.w Item.Target(a3), d0
 	andi.l #$ffff, d0
 	add.l d0, d0
@@ -867,6 +871,7 @@ selectedItem
 	btst #3, 1(a0)
 	suba.l d0, a0
 	beq.w bad
+	.BINDING_ATTEMPT_WORD #binding_diagnostic.SELECTED_SELECTION, Item.Target(a3), d6
 	bsr.w validateSelected
 	bne.w bad
 	moveq #0, d7
@@ -902,6 +907,7 @@ loop
 	suba.l d0, a0
 	beq.w next
 resolveProxy
+	.BINDING_ATTEMPT #binding_diagnostic.PROXY, d7, #-1
 	bsr.w resolve
 	bne.w bad
 	move.l d7, d0
@@ -920,6 +926,7 @@ ok
 bad
 	moveq #1, d0
 done
+	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
 	.TELEMETRY_SERVICE_LEAVE
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
@@ -1293,6 +1300,7 @@ numericExact
 bind
 	bsr.w globalBind
 	bne.w bad
+	.BINDING_CANONICAL_TARGET #binding_diagnostic.TARGET_DECLARATION, d1, layout.State.Base(a6)
 	moveq #0, d0
 	move.w d1, d0
 	sub.w layout.State.Base(a6), d0
@@ -2454,4 +2462,17 @@ done
 	rts
 	.bend  ; fold
 	.endsection
+
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	.section data, kind=data
+	.priv
+BindingView	.word layout.State.Count, layout.State.Base, layout.State.Current
+	.word layout.ENTRIES_POINTER, layout.ARENA_POINTER, layout.State.ArenaUsed
+	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length
+	.endsection
+.endif
+.endif
+.endif
 	.endmodule

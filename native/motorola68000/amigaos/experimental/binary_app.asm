@@ -38,6 +38,7 @@
 .endif
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
+	.include "binding_telemetry.i"
 HEADER_BYTES = package.HEADER_BYTES
 IO_BYTES = 4096
 INCLUDE_DEPTH = 8
@@ -328,6 +329,7 @@ done
 	.bend  ; execute
 	.priv
 reportFailure	.block
+	.BINDING_DIAGNOSTIC_REPORT DosBase
 	tst.l InAssembly
 	beq.w located
 	bsr.w locateFailure

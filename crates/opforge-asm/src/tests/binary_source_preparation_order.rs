@@ -4,6 +4,9 @@ use super::*;
 #[path = "binary_source_preparation_order/character_literals.rs"]
 mod character_literals;
 
+#[path = "binary_source_preparation_order/imported_labels.rs"]
+mod imported_labels;
+
 const IMPORTER: &str = ".module app\n.cpu m68020\n.use owner as dep with (COUNT=5)\nFrame .struct\nBody .res dep.Span\nTail .byte ?\n.endstruct\n.byte Frame.Tail\n.endmodule\n";
 const OWNER: &str = ".module owner\n.cpu m68020\n.pub\nSpan .struct\nBody .res COUNT\nTail .byte ?\n.endstruct\n.endmodule\n";
 

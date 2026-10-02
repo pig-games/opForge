@@ -21,8 +21,9 @@ End	.long ?
 File	.word ?
 Color	.word ?
 Binding	.word ?
+Configured	.word ?
 .endstruct
-NODE_BYTES = Node.Binding+2
+NODE_BYTES = Node.Configured+2
 FrameEntry	.struct
 Module	.word ?
 Edge	.word ?
@@ -94,6 +95,7 @@ line	.block
 	move.w d3, (a1)
 	move.w d3, GraphState.Count(a6)
 	move.w d1, Node.Binding(a0)
+	move.w #1, Node.Configured(a0)  ; ordinary streaming nodes are already prepared
 	move.l d4, Node.Start(a0)
 	move.w GraphState.SourceIndex+2(a6), d0
 	move.w d0, Node.File(a0)
@@ -138,8 +140,71 @@ bad
 	rts
 	.bend  ; endFile
 
+; A0=graph,D0=owned capture extent. Advance an outside-module capture offset
+; without interpreting its physical storage size as semantic body content.
+; D0/CCR=status; other registers preserved.
+advanceCapture	.block
+	move.l d1, -(sp)
+	move.l GraphState.Cursor(a0), d1
+	add.l d0, d1
+	bcs.w bad
+	move.l d1, GraphState.Cursor(a0)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	move.l (sp)+, d1
+	tst.l d0
+	rts
+	.bend  ; advanceCapture
+
+; A0=graph,D1=source binding index+1. Mark a captured module for a separate
+; configuration scan before its dependencies are traversed. D0/CCR=status;
+; other registers preserved. Must precede successful ordering.
+requireConfiguration	.block
+	movem.l d1-d2/a0-a1/a6, -(sp)
+	movea.l a0, a6
+	tst.w GraphState.Ordered(a6)
+	bne.w bad
+	bsr.w findBinding
+	tst.w d2
+	beq.w bad
+	clr.w Node.Configured(a0)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1/a6
+	tst.l d0
+	rts
+	.bend  ; requireConfiguration
+
+; A0=graph,D1=source binding index+1. Publish a completed configuration scan.
+; D0/CCR=status; other registers preserved. Retry order after this call.
+configured	.block
+	movem.l d1-d2/a0-a1/a6, -(sp)
+	movea.l a0, a6
+	tst.w GraphState.Ordered(a6)
+	bne.w bad
+	bsr.w findBinding
+	tst.w d2
+	beq.w bad
+	move.w #1, Node.Configured(a0)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1/a6
+	tst.l d0
+	rts
+	.bend  ; configured
+
 ; A0=graph,A1=scope state,A2=span buffer,D0=buffer bytes. D0=0,D1=span
 ; count on success; D0=2,D1=missing module index+1 for a discovery retry;
+; D0=3,D1=present module index+1 needing configuration before traversal;
 ; D0=1,D1=0 for invalid graph. CCR reflects D0; other registers preserved.
 ; Visit entry-file modules in declaration order and imports in source order.
 order	.block
@@ -232,6 +297,9 @@ root
 	beq.w rootNext
 	moveq #0, d6
 	bsr.w push
+	cmpi.l #3, d0
+	beq.w needsConfiguration
+	tst.l d0
 	bne.w bad
 walk
 	tst.w d6
@@ -267,6 +335,9 @@ walk
 	cmpi.w #2, Node.Color(a0)
 	beq.w walk
 	bsr.w push
+	cmpi.l #3, d0
+	beq.w needsConfiguration
+	tst.l d0
 	bne.w bad
 	bra.w walk
 emit
@@ -303,6 +374,11 @@ bad
 	bra.w done
 missing
 	moveq #2, d0  ; D1 remains the requested module index+1
+	bra.w done
+needsConfiguration
+	moveq #0, d1
+	move.w Node.Binding(a0), d1
+	moveq #3, d0
 done
 	.TELEMETRY_SERVICE_LEAVE
 	movem.l (sp)+, d2-d7/a0-a6
@@ -380,6 +456,8 @@ getNode	.block
 ; Push one explicit DFS frame and mark exact module ownership as selected.
 ; D0/CCR=status; A1/D2 scratch, D6 incremented.
 push	.block
+	tst.w Node.Configured(a0)
+	beq.w needsConfiguration
 	cmpi.w #LIMIT, d6
 	bhs.w bad
 	move.w #1, Node.Color(a0)
@@ -407,6 +485,9 @@ push	.block
 	rts
 bad
 	moveq #1, d0
+	rts
+needsConfiguration
+	moveq #3, d0
 	rts
 	.bend  ; push
 	.endsection

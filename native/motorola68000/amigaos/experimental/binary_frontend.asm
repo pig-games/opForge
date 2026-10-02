@@ -14,6 +14,7 @@
 	.use experimental.amigaos.binary_structs as structs
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_templates as templates
+	.use experimental.amigaos.binary_capture as capture
 	.use experimental.amigaos.binary_macro_plans as macro_plans
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_graph as graph
@@ -59,7 +60,8 @@ DICTIONARY_COUNT = 12
 PACKAGE_END = 16
 LINE_NUMBER = 20
 NEXT_ID = 24
-LINE_FRAME = 28
+CAPTURE_RECORD = 28
+LINE_FRAME = CAPTURE_RECORD+4
 TOKENS = LINE_FRAME+writer.FRAME_BYTES
 TOKEN_CAPACITY = 64
 LEXICAL_BYTES = 1024
@@ -144,6 +146,7 @@ begin	.block
 	move.l a6, d0
 	andi.l #3, d0
 	bne.w failed
+	clr.l CAPTURE_RECORD(a6)
 	lea PACKAGE_BUCKETS(a6), a0
 	move.l #256-1, d0
 clearBuckets
@@ -319,6 +322,324 @@ line	.block
 	move.l a4, d2
 	add.l d1, d2
 	bcs.w failed
+	clr.l CAPTURE_RECORD(a6)
+	bsr.w tokenizeLine
+	bne.w failed
+	bsr.w lowerTokens
+	bra.w done
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; line
+
+; A0=session,A1=capture.Frame with Arena=caller-owned memory.Block.
+; Capture unbound TKVM rows and all VM candidate plans without binding names or
+; advancing scope/template/graph/line state. D0/CCR=status,D1=record handle;
+; other registers preserved. Source is used only here, never by replayLine.
+captureLine	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a4
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w bad
+	cmpi.l #65535, LINE_NUMBER(a6)
+	bhi.w bad
+	bsr.w tokenizeLine
+	bne.w bad
+	lea TOKENS(a6), a0
+	move.l a0, capture.Frame.Tokens(a4)
+	move.l d1, capture.Frame.Count(a4)
+	move.l d1, LINE_FRAME+writer.Frame.Count(a6)
+	lea LEXEMES(a6), a0
+	move.l a0, capture.Frame.Lexemes(a4)
+	move.l d3, capture.Frame.LexemeBytes(a4)
+	move.l Frame.SourceBytes(a5), capture.Frame.SourceBytes(a4)
+	move.l Frame.Origin(a5), capture.Frame.Origin(a4)
+	move.l LINE_NUMBER(a6), capture.Frame.Line(a4)
+	move.w Frame.RootFile(a5), capture.Frame.RootFile(a4)
+	clr.w capture.Frame.Reserved(a4)
+	suba.w #memory.Block.Used+4, sp
+	movea.l sp, a0
+	clr.l memory.Block.Pointer(a0)
+	clr.l memory.Block.Capacity(a0)
+	clr.l memory.Block.Used(a0)
+	move.l a0, capture.Frame.Plans(a4)
+	bsr.w captureCandidates
+	bne.w releaseBad
+	movea.l a4, a0
+	jsr capture.create
+	bra.w release
+releaseBad
+	moveq #1, d0
+	moveq #0, d1
+release
+	move.l d0, -(sp)
+	movea.l capture.Frame.Plans(a4), a0
+	jsr memory.release
+	move.l (sp)+, d0
+	clr.l capture.Frame.Plans(a4)
+	adda.w #memory.Block.Used+4, sp
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; captureLine
+
+; A0=session,A1=capture memory.Block,D1=record handle. Replay existing owned
+; tokens through current contextual binding and all ordinary semantic consumers.
+; No original source is read or re-tokenized. D0/CCR=status; other regs preserved.
+; Frame.Used/NameCount and nextExpansion retain the direct line API contract.
+replayLine	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	clr.l Frame.Used(a5)
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w bad
+	movea.l a1, a0
+	jsr capture.resolve
+	bne.w bad
+	movea.l a1, a4
+	move.l capture.Record.LexemeBytes(a4), d3
+	cmpi.l #LEXEME_BYTES, d3
+	bhi.w bad
+	move.l Frame.Source(a5), -(sp)
+	move.l Frame.SourceBytes(a5), -(sp)
+	clr.l Frame.Source(a5)
+	clr.l Frame.SourceBytes(a5)
+	move.l a4, CAPTURE_RECORD(a6)
+	move.l capture.Record.Line(a4), LINE_NUMBER(a6)
+	move.l capture.Record.Origin(a4), Frame.Origin(a5)
+	move.w capture.Record.RootFile(a4), Frame.RootFile(a5)
+	move.l capture.Record.Count(a4), d1
+	move.l d1, d0
+	mulu.w #20, d0
+	lea capture.HEADER_BYTES(a4), a0
+	lea TOKENS(a6), a1
+	bsr.w copyCaptureBytes
+	lea LEXEMES(a6), a1
+	move.l d3, d0
+	bsr.w copyCaptureBytes
+	move.l capture.Record.Count(a4), d1
+	bsr.w lowerTokens
+	clr.l CAPTURE_RECORD(a6)
+	move.l (sp)+, Frame.SourceBytes(a5)
+	move.l (sp)+, Frame.Source(a5)
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; replayLine
+
+; A0=session,A1=capture memory.Block,D1=record handle. Materialize only the
+; writer record with the current binder. No plans/templates/scope semantics or
+; line advancement. D0/CCR=status; other registers preserved. Used/NameCount
+; are outputs. Configuration owners select records before calling this entry.
+bindCapture	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	clr.l Frame.Used(a5)
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w bad
+	movea.l a1, a0
+	jsr capture.resolve
+	bne.w bad
+	movea.l a1, a4
+	move.l capture.Record.LexemeBytes(a4), d3
+	cmpi.l #LEXEME_BYTES, d3
+	bhi.w bad
+	move.l capture.Record.Line(a4), LINE_NUMBER(a6)
+	move.l capture.Record.Origin(a4), Frame.Origin(a5)
+	move.w capture.Record.RootFile(a4), Frame.RootFile(a5)
+	move.l capture.Record.Count(a4), d0
+	mulu.w #20, d0
+	lea capture.HEADER_BYTES(a4), a0
+	lea TOKENS(a6), a1
+	bsr.w copyCaptureBytes
+	lea LEXEMES(a6), a1
+	move.l d3, d0
+	bsr.w copyCaptureBytes
+	move.l Frame.Source(a5), -(sp)
+	move.l Frame.SourceBytes(a5), -(sp)
+	clr.l Frame.Source(a5)
+	clr.l Frame.SourceBytes(a5)
+	move.l capture.Record.Count(a4), d1
+	bsr.w writeTokens
+	bne.w written
+	move.l d1, Frame.Used(a5)
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a5)
+	moveq #0, d0
+written
+	move.l (sp)+, Frame.SourceBytes(a5)
+	move.l (sp)+, Frame.Source(a5)
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; bindCapture
+	.priv
+
+; A0=owned input,A1=destination,D0=bytes. D0/A0/A1 scratch; CCR unspecified.
+copyCaptureBytes	.block
+	tst.l d0
+	beq.w done
+next
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w next
+done
+	rts
+	.bend  ; copyCaptureBytes
+
+; A4=capture request,A5=session,A6=scratch. Candidate grammar failures remain
+; outcomes until contextual replay selects a role. Allocation failure aborts.
+captureCandidates	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	suba.w #(TOKEN_CAPACITY+1)*2, sp
+	movea.l sp, a0
+	moveq #0, d0
+identityMap
+	move.w d0, (a0)+
+	addq.w #1, d0
+	cmpi.w #TOKEN_CAPACITY+1, d0
+	blo.w identityMap
+	moveq #1, d4
+	bsr.w captureCandidate
+	bne.w bad
+	move.l d5, capture.Frame.CallStatus(a4)
+	move.l d6, capture.Frame.CallHandle(a4)
+	move.l d7, capture.Frame.CallRecipeStatus(a4)
+	moveq #2, d4
+	bsr.w captureCandidate
+	bne.w bad
+	move.l d5, capture.Frame.HeaderStatus(a4)
+	move.l d6, capture.Frame.HeaderHandle(a4)
+	; Whole-line spelling plans are needed only for template string consumers.
+	moveq #1, d5
+	moveq #0, d6
+	lea TOKENS(a6), a0
+	move.l capture.Frame.Count(a4), d0
+findString
+	tst.l d0
+	beq.w lineReady
+	cmpi.w #tokenizer.TK_KIND_STRING, (a0)
+	beq.w stringCandidate
+	adda.w #20, a0
+	subq.l #1, d0
+	bra.w findString
+stringCandidate
+	moveq #3, d4
+	bsr.w captureCandidate
+	bne.w bad
+	tst.l d7
+	beq.w lineReady
+	move.l d7, d5  ; selected string-template replay requires valid recipes
+lineReady
+	move.l d5, capture.Frame.LineStatus(a4)
+	move.l d6, capture.Frame.LineHandle(a4)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	adda.w #(TOKEN_CAPACITY+1)*2, sp
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; captureCandidates
+
+; A4=capture request,A5=session,A6=scratch,D4=candidate kind.
+; Identity map is at caller SP. D5=descriptor status,D6=handle,D7=recipe status;
+; D0/CCR=allocation/capture status. Other registers preserved.
+captureCandidate	.block
+	movea.l sp, a0
+	addq.l #4, a0  ; skip BSR return address to caller identity map
+	movem.l d1-d4/a0-a4, -(sp)
+	moveq #0, d6
+	moveq #0, d7
+	cmpi.l #3, d4
+	beq.w stringRows
+	bsr.w sourceDescriptors
+	move.l d0, d5
+	bne.w candidateReady
+	tst.l d1
+	bne.w rowsReady
+	moveq #1, d5  ; successful grammar no-match has no candidate plan
+	bra.w candidateReady
+stringRows
+	lea MACRO_EVENTS(a6), a1
+	movea.l a1, a0
+	moveq #macro_plans.ROW_BYTES/4-1, d0
+clearRow
+	clr.l (a0)+
+	dbra d0, clearRow
+	move.w #parser_abi.PRVM_RESULT_MACRO_LINE, macro_plans.Row.Kind(a1)
+	move.l capture.Frame.Count(a4), macro_plans.Row.PackedEnd(a1)
+	move.l Frame.SourceBytes(a5), macro_plans.Row.SpellingEnd(a1)
+	moveq #1, d1
+	moveq #0, d5
+rowsReady
+	lea MACRO_FRAME(a6), a0
+	move.l d1, macro_plans.Frame.Count(a0)
+	move.l capture.Frame.Plans(a4), macro_plans.Frame.Arena(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
+	; Saved A0 is the caller's identity map (D1-D4 precede it on stack).
+	move.l 16(sp), macro_plans.Frame.PackedMap(a0)
+	move.l capture.Frame.Count(a4), macro_plans.Frame.TokenCount(a0)
+	clr.l macro_plans.Frame.RecipeEvents(a0)
+	clr.l macro_plans.Frame.RecipeCount(a0)
+	cmpi.l #2, d4
+	beq.w createCandidate
+	bsr.w captureFragments
+	move.l d0, d7
+	beq.w createCandidate
+	clr.l macro_plans.Frame.RecipeEvents(a0)
+	clr.l macro_plans.Frame.RecipeCount(a0)
+createCandidate
+	jsr macro_plans.create
+	bne.w bad
+	move.l d1, d6
+candidateReady
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d4/a0-a4
+	tst.l d0
+	rts
+	.bend  ; captureCandidate
+
+; A5=session,A6=scratch. Existing TKVM is the only physical-line lexer.
+; D0/CCR=status,D1=token count,D3=lexeme bytes; other registers preserved.
+tokenizeLine	.block
+	movem.l d2/d4-d7/a0-a4, -(sp)
+	movea.l Frame.Source(a5), a0
+	move.l Frame.SourceBytes(a5), d0
+	bmi.w bad
+	move.l a0, d1
+	add.l d0, d1
+	bcs.w bad
 	lea TOKENS(a6), a1
 	lea LEXEMES(a6), a2
 	movea.l PROGRAM(a6), a3
@@ -327,36 +648,25 @@ line	.block
 	move.l PROGRAM_BYTES(a6), d3
 	.MEMORY_STAGE #2
 	jsr tokenizer.tkvmRun68000
-	bne.w failed
+	bne.w bad
 	.MEMORY_STAGE #3
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2/d4-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; tokenizeLine
+
+; A5=session,A6=scratch,D1=token count,D3=lexeme bytes. Bind only now.
+; D0/CCR=status; other registers preserved.
+lowerTokens	.block
+	movem.l d1-d7/a0-a6, -(sp)
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.startLine
-	lea LINE_FRAME(a6), a0
-	lea TOKENS(a6), a1
-	move.l a1, writer.Frame.Tokens(a0)
-	move.l #64*20, writer.Frame.TokenBytes(a0)
-	move.l d1, writer.Frame.Count(a0)
-	lea LEXEMES(a6), a1
-	move.l a1, writer.Frame.Lexemes(a0)
-	move.l d3, writer.Frame.LexemeBytes(a0)
-	move.l Frame.Output(a5), writer.Frame.Output(a0)
-	move.l Frame.Capacity(a5), writer.Frame.Capacity(a0)
-	move.l #bind, writer.Frame.Binder(a0)
-	move.l a6, writer.Frame.Context(a0)
-	move.l LINE_NUMBER(a6), d0
-	move.w d0, writer.Frame.SourceLine(a0)
-	move.l Frame.Source(a5), writer.Frame.Source(a0)
-	move.l Frame.SourceBytes(a5), writer.Frame.SourceBytes(a0)
-	movea.l Frame.Package(a5), a1
-	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
-	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
-	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
-	clr.w writer.Frame.Reserved(a0)
-	lea PACKED_MAP(a6), a1
-	move.l a1, writer.Frame.PackedMap(a0)
-	.MEMORY_DETAIL_BEGIN #0
-	jsr writer.writeLine
-	.MEMORY_DETAIL_END #0
+	bsr.w writeTokens
 	bne.w failed
 	.MEMORY_DETAIL_BEGIN #1
 	bsr.w initialPlan
@@ -416,8 +726,50 @@ failed
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
 	rts
-	.bend  ; line
+	.bend  ; lowerTokens
+
+; A5=session,A6=scratch,D1=count,D3=lexeme bytes. Write current lexical
+; rows with current binder; no semantic processing or source parsing.
+; D0/CCR=status,D1=writer record bytes; other registers preserved.
+writeTokens	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	lea LINE_FRAME(a6), a0
+	lea TOKENS(a6), a1
+	move.l a1, writer.Frame.Tokens(a0)
+	move.l #64*20, writer.Frame.TokenBytes(a0)
+	move.l d1, writer.Frame.Count(a0)
+	lea LEXEMES(a6), a1
+	move.l a1, writer.Frame.Lexemes(a0)
+	move.l d3, writer.Frame.LexemeBytes(a0)
+	move.l Frame.Output(a5), writer.Frame.Output(a0)
+	move.l Frame.Capacity(a5), writer.Frame.Capacity(a0)
+	move.l #bind, writer.Frame.Binder(a0)
+	move.l a6, writer.Frame.Context(a0)
+	move.l LINE_NUMBER(a6), d0
+	move.w d0, writer.Frame.SourceLine(a0)
+	move.l Frame.Source(a5), writer.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), writer.Frame.SourceBytes(a0)
+	movea.l Frame.Package(a5), a1
+	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
+	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
+	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
+	clr.w writer.Frame.Reserved(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, writer.Frame.PackedMap(a0)
+	.MEMORY_DETAIL_BEGIN #0
+	jsr writer.writeLine
+	.MEMORY_DETAIL_END #0
+	bne.w failed
+	bra.w done
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; writeTokens
 
 ; Capture pre-decoding spelling for ordinary macro/segment body string lines.
 ; Known nested calls keep their existing call recipes until that consumer moves.
@@ -449,6 +801,13 @@ findString
 	subq.l #1, d2
 	bra.w findString
 capture
+	tst.l CAPTURE_RECORD(a6)
+	beq.w physicalCapture
+	moveq #0, d4  ; retained whole-line string recipe
+	bsr.w bindCapturedPlan
+	bne.w bad
+	bra.w appendCaptured
+physicalCapture
 	.MEMORY_TEMPLATE_WORK #11, #1
 	lea MACRO_EVENTS(a6), a1
 	movea.l a1, a0
@@ -473,6 +832,7 @@ clearRow
 	bne.w bad
 	jsr macro_plans.create
 	bne.w bad
+appendCaptured
 	lea LINE_FRAME(a6), a0
 	jsr writer.appendPlan
 	bne.w bad
@@ -594,6 +954,119 @@ initialPlan	.block
 	tst.l d0
 	beq.w ready
 	move.l d0, d4
+	tst.l CAPTURE_RECORD(a6)
+	beq.w physicalPlan
+	bsr.w bindCapturedPlan
+	bne.w bad
+	bra.w appendCaptured
+physicalPlan
+	bsr.w sourceDescriptors
+	bne.w bad
+	lea MACRO_FRAME(a6), a0
+	move.l d1, macro_plans.Frame.Count(a0)
+	lea MACRO_PLANS(a6), a1
+	move.l a1, macro_plans.Frame.Arena(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, macro_plans.Frame.PackedMap(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Frame.TokenCount(a0)
+	clr.l macro_plans.Frame.RecipeEvents(a0)
+	clr.l macro_plans.Frame.RecipeCount(a0)
+	movea.l a6, a1
+	adda.l #TEMPLATE_STATE, a1
+	tst.w templates.State.Open(a1)
+	beq.w planReady
+	cmpi.l #1, d4
+	bne.w planReady
+	bsr.w captureFragments
+	bne.w bad
+planReady
+	jsr macro_plans.create
+	bne.w bad
+appendCaptured
+	lea LINE_FRAME(a6), a0
+	jsr writer.appendPlan
+	bne.w bad
+ready
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; initialPlan
+
+; A5=session,A6=scratch,D4=role (zero selects string-line candidate).
+; Select only now, after the replay writer has rebound names in current scope.
+; D0/CCR=status,D1=normal session plan handle; other registers preserved.
+bindCapturedPlan	.block
+	movem.l d2-d7/a0-a4, -(sp)
+	movea.l CAPTURE_RECORD(a6), a4
+	moveq #0, d7
+	tst.l d4
+	beq.w lineCandidate
+	cmpi.l #1, d4
+	bne.w headerCandidate
+	tst.l capture.Record.CallStatus(a4)
+	bne.w bad
+	move.l capture.Record.CallHandle(a4), d6
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	tst.w templates.State.Open(a0)
+	beq.w candidateReady
+	tst.l capture.Record.CallRecipeStatus(a4)
+	bne.w bad
+	moveq #1, d7
+	bra.w candidateReady
+headerCandidate
+	tst.l capture.Record.HeaderStatus(a4)
+	bne.w bad
+	move.l capture.Record.HeaderHandle(a4), d6
+	bra.w candidateReady
+lineCandidate
+	tst.l capture.Record.LineStatus(a4)
+	bne.w bad
+	move.l capture.Record.LineHandle(a4), d6
+	moveq #1, d7
+candidateReady
+	suba.w #memory.Block.Used+4+macro_plans.BIND_FRAME_BYTES, sp
+	movea.l a4, a1
+	jsr capture.planView
+	move.l a0, memory.Block.Pointer(sp)
+	move.l d0, memory.Block.Capacity(sp)
+	move.l d0, memory.Block.Used(sp)
+	lea memory.Block.Used+4(sp), a0
+	lea MACRO_PLANS(a6), a1
+	move.l a1, macro_plans.BindFrame.Arena(a0)
+	move.l sp, macro_plans.BindFrame.Source(a0)
+	move.l d6, macro_plans.BindFrame.Handle(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, macro_plans.BindFrame.PackedMap(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.BindFrame.TokenCount(a0)
+	move.w d7, macro_plans.BindFrame.IncludeRecipes(a0)
+	clr.w macro_plans.BindFrame.Reserved(a0)
+	jsr macro_plans.bind
+	adda.w #memory.Block.Used+4+macro_plans.BIND_FRAME_BYTES, sp
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	movem.l (sp)+, d2-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; bindCapturedPlan
+
+; A5=session,A6=scratch,D4=call(1) or header role. Existing shared PRVM
+; reads the physical line only during direct preparation or initial capture.
+; D0/CCR=status,D1=event count; other registers preserved.
+sourceDescriptors	.block
+	movem.l d2-d7/a0-a4, -(sp)
 	lea MACRO_REQUEST(a6), a0
 	movea.l a0, a1
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
@@ -631,43 +1104,14 @@ selectedProgram
 	.MEMORY_TEMPLATE_WORK #10, #1
 	jsr macro_runtime.run
 	bne.w bad
-	lea MACRO_FRAME(a6), a0
-	move.l d1, macro_plans.Frame.Count(a0)
-	lea MACRO_PLANS(a6), a1
-	move.l a1, macro_plans.Frame.Arena(a0)
-	lea MACRO_EVENTS(a6), a1
-	move.l a1, macro_plans.Frame.Events(a0)
-	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
-	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
-	lea PACKED_MAP(a6), a1
-	move.l a1, macro_plans.Frame.PackedMap(a0)
-	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Frame.TokenCount(a0)
-	clr.l macro_plans.Frame.RecipeEvents(a0)
-	clr.l macro_plans.Frame.RecipeCount(a0)
-	movea.l a6, a1
-	adda.l #TEMPLATE_STATE, a1
-	tst.w templates.State.Open(a1)
-	beq.w planReady
-	cmpi.l #1, d4
-	bne.w planReady
-	bsr.w captureFragments
-	bne.w bad
-planReady
-	jsr macro_plans.create
-	bne.w bad
-	lea LINE_FRAME(a6), a0
-	jsr writer.appendPlan
-	bne.w bad
-ready
-	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d1-d7/a0-a4
+	movem.l (sp)+, d2-d7/a0-a4
 	tst.l d0
 	rts
-	.bend  ; initialPlan
+	.bend  ; sourceDescriptors
 
 ; Cache package-selected fragments only for nested calls captured in a template.
 ; A0=initial plan frame,A5=session,A6=scratch. D0/CCR=status; preserves others.
@@ -934,6 +1378,7 @@ generatedRelexExit
 ; Emit the next already-tokenized line of a pending segment invocation.
 ; A0=Frame. Used=0 when the invocation is exhausted; the physical source
 ; line counter remains at the following line. D0/CCR=status.
+	.pub
 nextExpansion	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5

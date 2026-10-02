@@ -1523,52 +1523,8 @@ expressionBad
 	addq.l #4, sp
 	bra.w parametersBad
 expressionStored
-	lea layout.IMPORT_STATE(a6), a0
-	moveq #0, d0
-	move.w PARAM_COUNT(a0), d0
-	tst.w d3
-	beq.w appendParameter
-	lea PARAMS(a0), a1
-	move.l d0, d1
-existingParameter
-	tst.l d1
-	beq.w parametersBad
-	cmp.w pkg.Parameter.Id(a1), d5
-	bne.w nextParameter
-	cmp.l pkg.Parameter.Low(a1), d6
+	bsr.w storeParameter
 	bne.w parametersBad
-	cmp.l pkg.Parameter.High(a1), d2
-	bne.w parametersBad
-	bra.w parameterStored
-nextParameter
-	adda.w #PARAM_BYTES, a1
-	subq.l #1, d1
-	bra.w existingParameter
-appendParameter
-	cmpi.w #LIST_LIMIT, d0
-	bhs.w parametersBad
-	mulu.w #PARAM_BYTES, d0
-	lea PARAMS(a0), a1
-	adda.l d0, a1
-	move.w d5, pkg.Parameter.Id(a1)
-	clr.w pkg.Parameter.Reserved(a1)
-	move.l d6, pkg.Parameter.Low(a1)
-	move.l d2, pkg.Parameter.High(a1)
-	addq.w #1, PARAM_COUNT(a0)
-parameterStored
-	move.l d5, d0
-	sub.w layout.State.Base(a6), d0
-	bcs.w parametersBad
-	andi.l #$ffff, d0
-	cmp.w layout.State.Count(a6), d0
-	bhs.w parametersBad
-	move.l d0, d1
-	lsl.l #3, d1
-	movea.l KNOWN_VALUES_POINTER(a0), a1
-	move.l d6, runtime.Value.Low(a1, d1.l)
-	move.l d2, runtime.Value.High(a1, d1.l)
-	movea.l KNOWN_DEFINED_POINTER(a0), a1
-	move.b #1, 0(a1, d0.l)
 	cmpa.l a4, a3
 	bhs.w parametersBad
 	cmpi.b #4, (a3)
@@ -1601,6 +1557,119 @@ parametersDone
 	tst.l d0
 	rts
 	.bend  ; parameters
+
+; A6=scope,D5=canonical ID,D6=low,D2=high,D3=already declared.
+; Store or compare one scalar parameter and publish its known value. The same
+; conflict rule serves parsed imports and configuration transfer. D0/CCR=status;
+; other registers preserved.
+storeParameter	.block
+	movem.l d1/a0-a1, -(sp)
+	lea layout.IMPORT_STATE(a6), a0
+	moveq #0, d0
+	move.w PARAM_COUNT(a0), d0
+	tst.w d3
+	beq.w appendParameter
+	lea PARAMS(a0), a1
+	move.l d0, d1
+existingParameter
+	tst.l d1
+	beq.w bad
+	cmp.w pkg.Parameter.Id(a1), d5
+	bne.w nextParameter
+	cmp.l pkg.Parameter.Low(a1), d6
+	bne.w bad
+	cmp.l pkg.Parameter.High(a1), d2
+	bne.w bad
+	bra.w parameterStored
+nextParameter
+	adda.w #PARAM_BYTES, a1
+	subq.l #1, d1
+	bra.w existingParameter
+appendParameter
+	cmpi.w #LIST_LIMIT, d0
+	bhs.w bad
+	mulu.w #PARAM_BYTES, d0
+	lea PARAMS(a0), a1
+	adda.l d0, a1
+	move.w d5, pkg.Parameter.Id(a1)
+	clr.w pkg.Parameter.Reserved(a1)
+	move.l d6, pkg.Parameter.Low(a1)
+	move.l d2, pkg.Parameter.High(a1)
+	addq.w #1, PARAM_COUNT(a0)
+parameterStored
+	move.l d5, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w bad
+	andi.l #$ffff, d0
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	move.l d0, d1
+	lsl.l #3, d1
+	movea.l KNOWN_VALUES_POINTER(a0), a1
+	move.l d6, runtime.Value.Low(a1, d1.l)
+	move.l d2, runtime.Value.High(a1, d1.l)
+	movea.l KNOWN_DEFINED_POINTER(a0), a1
+	move.b #1, 0(a1, d0.l)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; storeParameter
+
+	.pub
+; A0=destination scope,D0=canonical parameter ID,D1=module source index+1,
+; D2=low,D3=high. Seed a private scalar parameter before dependency body replay.
+; Identities must already be bound in this scope. D0/CCR=status; other registers
+; preserved. A conflict leaves this caller-owned preparation state releasable.
+seedParameter	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	move.l d0, d5
+	move.l d2, d6
+	move.l d3, d2
+	move.l d1, d7
+	beq.w bad
+	cmp.w layout.State.Count(a6), d7
+	bhi.w bad
+	move.l d5, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w bad
+	andi.l #$ffff, d0
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	move.l d0, d4
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a1
+	adda.l d0, a1
+	moveq #0, d3
+	btst #0, records.Entry.Flags+1(a1)
+	beq.w new
+	moveq #1, d3
+	cmp.w records.Entry.Owner(a1), d7
+	bne.w bad
+	bra.w store
+new
+	ori.w #1, records.Entry.Flags(a1)
+	move.w d7, records.Entry.Owner(a1)
+	add.l d4, d4
+	movea.l layout.MODULE_STATE+modules.OWNERS_POINTER(a6), a1
+	move.w d7, 0(a1, d4.l)
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a1
+	andi.w #$fffe, 0(a1, d4.l)
+store
+	bsr.w storeParameter
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; seedParameter
 
 	.pub
 ; A0..A1=complete numeric token range,A2=scope state. Resolve a known

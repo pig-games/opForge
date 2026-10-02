@@ -1733,12 +1733,15 @@ fn run_binary_source_files_from_env(
         }]
     });
     let memory_telemetry = std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1");
-    let extra_assembly_defines = exact_harness_assembly_defines(
+    let mut extra_assembly_defines = exact_harness_assembly_defines(
         NativeCliParityExecutable::BinarySourceHarness,
         memory_telemetry,
         false,
         std::env::var("OPFORGE_PHASE_ONLY").as_deref() != Ok("1"),
     );
+    if std::env::var("OPFORGE_CAPTURE_REPLAY_TEST").as_deref() == Ok("1") {
+        extra_assembly_defines.push("OPFORGE_CAPTURE_REPLAY_TEST");
+    }
     let case = OpforgeNativeCliParityCase {
         name: "binary-source-files",
         cpu_override: "68020",

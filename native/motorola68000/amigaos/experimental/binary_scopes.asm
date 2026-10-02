@@ -11,6 +11,7 @@
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_section_prepare as sections
 	.use experimental.amigaos.binary_structs as structs
+	.use experimental.amigaos.binary_package as pkg
 	.pub
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
@@ -52,6 +53,12 @@ KEY_STRUCT = structs.KEY_STRUCT
 KEY_ENDSTRUCT = structs.KEY_ENDSTRUCT
 KEY_DB = structs.KEY_DB
 KEY_DW = structs.KEY_DW
+KEY_IF = 24
+KEY_ELSE = 25
+KEY_ELSEIF = 26
+KEY_ENDIF = 27
+KEY_IFDEF = 28
+KEY_IFNDEF = 29
 SECTION_STATE = IMPORT_STATE+imports.SCRATCH_BYTES
 STRUCT_STATE = SECTION_STATE+sections.SCRATCH_BYTES
 SCRATCH_BYTES = STRUCT_STATE+structs.SCRATCH_BYTES
@@ -382,6 +389,211 @@ done
 	tst.l d0
 	rts
 	.bend  ; bind
+
+; A0=writer copy,A1=scope state,D0=buffer capacity. Normalize a canonical label
+; prefix through the ordinary shared path, without declaring its value.
+; D0/CCR=status,D1=statement offset (4 or9); other registers preserved.
+configurationStatement	.block
+	movem.l d2-d3/a0-a2/a6, -(sp)
+	movea.l a1, a6
+	bsr.w normalizeLabel
+	bne.w done
+	moveq #4, d1
+	cmpi.b #8, (a0)
+	blo.w good
+	cmpi.b #1, 4(a0)
+	bhi.w good
+	cmpi.b #5, 8(a0)
+	bne.w good
+	moveq #9, d1
+good
+	moveq #0, d0
+done
+	movem.l (sp)+, d2-d3/a0-a2/a6
+	tst.l d0
+	rts
+	.bend  ; configurationStatement
+
+; A0=bound configuration record,A1=scope state,D0=buffer capacity.
+; Process only module boundaries,
+; imports and preceding scalar assignments. The caller selects active top-level
+; records; bodies, templates, structs and sections never enter this API.
+; Uses the same module/import parsers and expression VM as normal preparation.
+; D0/CCR=status; other registers preserved. Consumes directives in the copy.
+configurationLine	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	movea.l a0, a5
+	bsr.w configurationStatement
+	bne.w bad
+	move.l d1, d4
+	moveq #0, d6
+	move.b (a5), d6
+	addq.w #1, d6
+	cmpi.w #9, d6
+	blo.w bad
+	movea.l a5, a4
+	adda.w d6, a4
+	movea.l a5, a0
+	adda.l d4, a0
+	cmpi.b #1, (a0)
+	bhi.w directive
+	cmpi.b #34, 4(a0)
+	bne.w bad
+	bsr.w declare
+	bne.w bad
+	movea.l a5, a0
+	movea.l a6, a1
+	jsr imports.captureConstant
+	bra.w done
+directive
+	cmpi.b #7, (a0)
+	bne.w bad
+	cmpi.b #1, 1(a0)
+	bhi.w bad
+	tst.b 4(a0)
+	bne.w bad
+	moveq #0, d0
+	move.w 2(a0), d0
+	bsr.w keyword
+	cmpi.l #KEY_MODULE, d0
+	beq.w module
+	cmpi.l #KEY_ENDMODULE, d0
+	beq.w endModule
+	cmpi.l #KEY_USE, d0
+	beq.w importing
+	cmpi.l #KEY_END, d0
+	beq.w end
+	bra.w bad
+module
+	bsr.w openModule
+	bne.w bad
+	bra.w consumed
+endModule
+	addq.l #5, a0
+	cmpa.l a4, a0
+	bne.w bad
+	lea MODULE_STATE(a6), a0
+	moveq #0, d0
+	move.w layout.State.Current(a6), d0
+	jsr modules.close
+	bne.w bad
+	clr.w layout.State.Current(a6)
+	bra.w consumed
+importing
+	movea.l a6, a1
+	lea bind, a2
+	movea.l a6, a3
+	adda.l #SECTION_STATE, a3
+	jsr imports.line
+	bne.w bad
+	bra.w consumed
+end
+	addq.l #5, a0
+	cmpa.l a4, a0
+	bne.w bad
+	tst.w layout.State.Current(a6)
+	beq.w ended
+	lea MODULE_STATE(a6), a0
+	tst.w modules.State.FileDerived(a0)
+	beq.w bad
+	moveq #0, d0
+	move.w layout.State.Current(a6), d0
+	jsr modules.close
+	bne.w bad
+	clr.w layout.State.Current(a6)
+	clr.w modules.State.FileDerived(a0)
+ended
+	move.w #1, layout.State.Ended(a6)
+consumed
+	move.b #3, (a5)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; configurationLine
+
+; A0=completed configuration scope,A1=fresh semantic scope. Transfer incoming
+; scalar parameters by canonical name, remapping parameter and module identities
+; through the ordinary binder. Dependency bodies can then run before importers.
+; D0/CCR=status; other registers preserved. No configuration IDs or pointers
+; survive in the destination parameter records. Destination Current must be zero.
+seedConfiguration	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a6
+	tst.w layout.State.Current(a6)
+	bne.w bad
+	moveq #0, d7
+	move.w IMPORT_STATE+imports.PARAM_COUNT(a5), d7
+	lea IMPORT_STATE+imports.PARAMS(a5), a4
+next
+	tst.w d7
+	beq.w good
+	moveq #0, d0
+	move.w pkg.Parameter.Id(a4), d0
+	sub.w layout.State.Base(a5), d0
+	bcs.w bad
+	cmp.w layout.State.Count(a5), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a5), a3
+	adda.l d0, a3
+	moveq #0, d6
+	move.w records.Entry.Owner(a3), d6
+	beq.w bad
+	cmp.w layout.State.Count(a5), d6
+	bhi.w bad
+	bsr.w bindConfigurationName
+	bne.w bad
+	move.l d1, d5
+	move.l d6, d0
+	subq.w #1, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a5), a3
+	adda.l d0, a3
+	bsr.w bindConfigurationName
+	bne.w bad
+	sub.w layout.State.Base(a6), d1
+	bcs.w bad
+	andi.l #$ffff, d1
+	addq.l #1, d1
+	movea.l a6, a0
+	move.l d5, d0
+	move.l pkg.Parameter.Low(a4), d2
+	move.l pkg.Parameter.High(a4), d3
+	jsr imports.seedParameter
+	bne.w bad
+	adda.w #imports.PARAM_BYTES, a4
+	subq.w #1, d7
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; seedConfiguration
+	.priv
+; A3=configuration entry,A5=configuration scope,A6=semantic scope.
+; Bind its owned canonical spelling globally. D0/CCR=status,D1=new ID,D2=flags;
+; A0/A1 scratch, other registers preserved.
+bindConfigurationName	.block
+	movea.l ARENA_POINTER(a5), a0
+	adda.l records.Entry.Name(a3), a0
+	moveq #0, d0
+	move.w records.Entry.Length(a3), d0
+	movea.l a6, a1
+	bra.w bind
+	.bend  ; bindConfigurationName
+	.pub
 
 ; A0=writer record, A1=state, D0=record buffer capacity. Normalize labels,
 ; mark declarations/references and consume scope
@@ -1267,6 +1479,21 @@ leafScan
 leafNext
 	subq.w #1, d0
 	bne.w leafScan
+	bsr.w matchKeyword
+	bra.w done
+end
+	moveq #KEY_END, d0
+	bra.w done
+none
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d4/a0-a3
+	rts
+	.bend  ; keyword
+
+; A0=directive leaf,D4=bytes. Match the shared directive table without binding.
+; D0=KEY_* or zero; D1-D3/A1-A3 scratch. CCR unspecified.
+matchKeyword	.block
 	lea Words, a2
 word
 	moveq #0, d3
@@ -1296,17 +1523,25 @@ skip
 	adda.w d2, a2
 next
 	bra.w word
-end
-	moveq #KEY_END, d0
-	bra.w done
 none
 	moveq #0, d0
 done
-	movem.l (sp)+, d1-d4/a0-a3
 	rts
-	.bend  ; keyword
+	.bend  ; matchKeyword
 
 	.pub
+; A0=owned directive leaf,D0=bytes. Classify using the same table as numeric
+; preparation, without allocating an identity. D0/CCR=KEY_* or zero; other
+; registers preserved. Input must be a bounded TKVM identifier spelling.
+classifySpelling	.block
+	movem.l d1-d4/a0-a3, -(sp)
+	move.l d0, d4
+	bsr.w matchKeyword
+	movem.l (sp)+, d1-d4/a0-a3
+	tst.l d0
+	rts
+	.bend  ; classifySpelling
+
 ; A0=scope state,D0=numeric directive ID. D0=KEY_* or zero; other
 ; registers preserved. Classification reads only the bound numeric name.
 classifyDirective	.block
@@ -1692,6 +1927,7 @@ resolveTemplate	.block
 	.bend  ; resolveTemplate
 	.priv
 Words
+	.byte KEY_END, 3, "end"
 	.byte KEY_BLOCK, 5, "block"
 	.byte KEY_ENDBLOCK, 8, "endblock"
 	.byte KEY_ENDBLOCK, 4, "bend"
@@ -1718,6 +1954,12 @@ Words
 	.byte KEY_ENDSTRUCT, 9, "endstruct"
 	.byte KEY_DB, 2, "db"
 	.byte KEY_DW, 2, "dw"
+	.byte KEY_IF, 2, "if"
+	.byte KEY_ELSE, 4, "else"
+	.byte KEY_ELSEIF, 6, "elseif"
+	.byte KEY_ENDIF, 5, "endif"
+	.byte KEY_IFDEF, 5, "ifdef"
+	.byte KEY_IFNDEF, 6, "ifndef"
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection

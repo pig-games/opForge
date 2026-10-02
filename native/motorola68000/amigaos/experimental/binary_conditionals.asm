@@ -22,18 +22,30 @@ Kind	.byte ?
 State	.struct
 Depth	.word ?
 Active	.word ?
+Static	.word ?  ; configuration discovery treats unavailable expressions as false
 	.endstruct
-SLOTS = State.Active+2
+SLOTS = State.Static+2
 SCRATCH_BYTES = SLOTS+LIMIT*4
 	.section code, kind=code
 
-; A0=state. Start a physical source with no open conditionals.
+; A0=state. Start a strict semantic source with no open conditionals.
 begin	.block
 	clr.w State.Depth(a0)
 	move.w #1, State.Active(a0)
+	clr.w State.Static(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
+
+; A0=state. Start configuration discovery with no open conditionals. Unavailable
+; scalar expressions select false, matching Rust's static source-graph scan;
+; malformed conditional structure still fails. D0/CCR=status, others preserved.
+beginStatic	.block
+	bsr.w begin
+	move.w #1, State.Static(a0)
+	moveq #0, d0
+	rts
+	.bend  ; beginStatic
 
 ; A0=state. D0/CCR=status; reject a conditional crossing a file boundary.
 endFile	.block
@@ -176,15 +188,8 @@ ifExpression
 	moveq #1, d1
 	bra.w ifValue
 evaluateIf
-	movea.l a5, a0
-	moveq #0, d0
-	move.b (a0), d0
-	lea 1(a0, d0.w), a1
-	lea 9(a0), a0
-	movea.l a6, a2
-	jsr imports.evaluateScoped
+	bsr.w evaluateCondition
 	bne.w bad
-	or.l d2, d1
 ifValue
 	tst.l d1
 	beq.w ifStored
@@ -253,17 +258,8 @@ expressionBranch
 	beq.w consumed
 	tst.b Slot.Taken(a2)
 	bne.w consumed
-	move.l a2, -(sp)
-	movea.l a5, a0
-	moveq #0, d0
-	move.b (a0), d0
-	lea 1(a0, d0.w), a1
-	lea 9(a0), a0
-	movea.l a6, a2
-	jsr imports.evaluateScoped
-	movea.l (sp)+, a2
+	bsr.w evaluateCondition
 	bne.w bad
-	or.l d2, d1
 	tst.l d1
 	beq.w consumed
 	move.b #1, Slot.Taken(a2)
@@ -303,6 +299,36 @@ done
 	rts
 	.bend  ; line
 	.priv
+; A5=conditional writer record,A6=scope,A4=conditional state. Use the shared
+; expression evaluator in both modes; only static discovery converts failure
+; to a false condition. D0/CCR=status,D1=truth value,D2 scratch; others kept.
+evaluateCondition	.block
+	movem.l a0-a2, -(sp)
+	movea.l a5, a0
+	moveq #0, d0
+	move.b (a0), d0
+	lea 1(a0, d0.w), a1
+	lea 9(a0), a0
+	movea.l a6, a2
+	jsr imports.evaluateScoped
+	beq.w known
+	tst.w State.Static(a4)
+	beq.w failed
+	moveq #0, d1
+	moveq #0, d0
+	bra.w done
+known
+	or.l d2, d1
+	moveq #0, d0
+	bra.w done
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; evaluateCondition
+
 ; A5=control record. Validate one packed preprocessor name without consulting
 ; assembler definitions. D0/CCR=status; other registers kept.
 definedOperand	.block

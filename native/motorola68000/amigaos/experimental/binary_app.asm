@@ -111,8 +111,9 @@ Start	.long ?
 OutputBase	.long ?  ; Shell input basename, independent of source selection
 OutputDefault	.word ?  ; CLI output filename was omitted
 Reserved	.word ?
+LowerLine	.long ?  ; temporary capture proof callback; zero uses frontend.line
 	.endstruct
-FRAME_BYTES = Frame.Reserved+2
+FRAME_BYTES = Frame.LowerLine+4
 	.section code, kind=code
 	.pub
 ; Assemble one package and source selection. A0=Frame, D0=Shell return code.
@@ -122,6 +123,7 @@ execute	.block
 	move.l Frame.PackagePath(a0), InputName
 	move.l Frame.OutputPath(a0), OutputName
 	move.w Frame.Mode(a0), CliMode
+	move.l Frame.LowerLine(a0), LowerLineRoutine
 	move.w Frame.OutputKind(a0), CliOutputKind
 	move.w Frame.StartSet(a0), OutputStartSet
 	move.l Frame.Start(a0), OutputStart
@@ -1264,7 +1266,14 @@ trimmed
 	jsr frontend.setLine
 	bne.w bad
 	lea Front, a0
+	movea.l LowerLineRoutine, a1
+	move.l a1, d0
+	beq.w streamedLine
+	jsr (a1)
+	bra.w lineReady
+streamedLine
 	jsr frontend.line
+lineReady
 	bne.w bad
 	.MEMORY_DETAIL_BEGIN #3
 	bsr.w appendPrepared
@@ -1850,6 +1859,7 @@ InputName	.res long, 1
 OutputName	.res long, 1
 CliMode	.res word, 1
 CliOutputKind	.res word, 1
+LowerLineRoutine	.res long, 1
 	.align 4
 CliModuleRoots	.res long, 1
 CliModuleCount	.res long, 1

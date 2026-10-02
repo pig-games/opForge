@@ -565,8 +565,8 @@ dependencies only after that semantic preparation. An imports-only repair cannot
 resolve a declaration in an unread dependency. Rust accepts either physical
 module order because it loads dependencies before preparing consumers.
 
-Erik requested diagnosis and plan review before implementation. Proposed
-structural direction: retain compact token records and
+Erik approved the preparation-order repair after reviewing the diagnosis. The
+structural direction is to retain compact token records and
 their provenance, scan module configuration/dependencies, then replay dependency
 modules before consumers through the existing semantic frontend. Match
 [Rust's configured-use scan](../../crates/opforge-engine/src/source_graph.rs):
@@ -618,6 +618,50 @@ Success requires both physical module orders on the actual ABI case, existing
 parameter/conditional/cycle/visibility rejections, then a complete fresh native
 self-host with exact Rust Hunk equality. Stop for discussion if the split would
 duplicate directive grammar or change Rust's configuration visibility.
+
+#### R1 capture/replay proof — ordering repair remains in progress
+
+The native frontend can now capture owned, unbound TKVM rows, lexemes, physical
+provenance and VM-produced macro plan candidates. Records contain offsets, not
+process pointers. Replay binds names and maps plan token indices through the
+current writer map; it does not read or tokenize the original source. Candidate
+plans are selected only after contextual binding. The normal streaming path
+remains available while dependency scheduling is integrated.
+
+The focused fresh native comparison covers a struct reservation using an earlier
+constant, canonical block labels, nested namespace lookup, macro header defaults,
+both parameter-controlled conditional branches, embedded string substitutions and
+an ordinary string containing an unsubstituted placeholder. Both paths exit zero
+and match the complete live Rust output. The replay harness copies the capture
+block into a distinct allocation, frees the original, overwrites the original
+line buffer and clears the frontend source view before replay. The optional
+lowering callback exists only to make this intermediate proof possible; remove it
+when the deferred pipeline replaces this comparison setup.
+
+On the same focused input, release START/DONE observations were 1.022985084 seconds
+direct and 1.017211250 seconds capture/replay. Their difference is below the
+approximately 0.25-second observation resolution, so this establishes no speed
+change. The capture-enabled image was 105,916 bytes versus 104,320 bytes direct;
+linked reservations were 111,568 versus 109,968 bytes. The separately instrumented
+capture run matched Rust and released every tracked allocation, with 824,368 bytes
+peak owned storage. That peak includes the whole assembler's owned storage, not
+just capture records, and excludes OS/loader allocations. The separately
+instrumented direct run had the same 824,368-byte peak; capture's temporary
+allocations did not raise the whole-run maximum on this small input.
+
+Configuration-only scanner, graph scheduling statuses and canonical parameter
+remapping APIs are also present as foundations. They are not yet connected to
+the application's production preparation order.
+
+A more complex `.if .value==7` macro probe failed at its first invocation. The
+unchanged `52f5ff9f` reference also rejects the probe with the macro named `emit`.
+The positive regression is retained; its precise cause is not yet established.
+It is outside the passing capture proof and must not be described as fixed or as
+a successful negative parity case.
+
+This is an intermediate capture proof. Production module ordering is unchanged,
+the app-first ABI reservation regression is still unresolved, and there has been
+no successful full self-host run for this repair.
 
 ### Built-in `.emit` — implementation and focused qualification
 

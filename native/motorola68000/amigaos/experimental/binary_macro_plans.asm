@@ -1,5 +1,6 @@
 ; Session-owned macro descriptors. The VM owns all selected boundaries.
 ; Stored rows contain arena and packed-record offsets, never source pointers.
+; @opforge-owner: experimental.amigaos.binary_macro_plans
 	.module experimental.amigaos.binary_macro_plans
 	.cpu 68020
 	.use prvm.amigaos.abi as abi
@@ -51,6 +52,16 @@ RecipeCount	.long ?
 	.endstruct
 GENERATED_FRAME_BYTES = GeneratedFrame.RecipeCount+4
 FRAME_BYTES = Frame.RecipeCount+4
+BindFrame	.struct
+Arena	.long ?
+Source	.long ?  ; read-only memory.Block view of captured plans
+Handle	.long ?
+PackedMap	.long ?
+TokenCount	.long ?
+IncludeRecipes	.word ?
+Reserved	.word ?
+.endstruct
+BIND_FRAME_BYTES = BindFrame.Reserved+2
 	.section code, kind=code
 	; A0=zero-initialized arena or prior session. Release storage and reset usage.
 ; D0/CCR=zero; preserves other registers.
@@ -201,6 +212,123 @@ done
 	tst.l d0
 	rts
 	.bend  ; create
+
+; A0=BindFrame. Captured rows retain token indices via an identity map.
+; Copy selected spelling/recipes and apply the replay writer's fresh map through
+; create; the captured arena is immutable. D0/CCR=status,D1=session plan handle.
+; Other registers preserved. Temporary recipe rows use at most MAX_ROWS*32 bytes.
+bind	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	suba.w #FRAME_BYTES, sp
+	movea.l sp, a5
+	moveq #0, d7
+	clr.l Frame.RecipeEvents(a5)
+	clr.l Frame.RecipeCount(a5)
+	movea.l BindFrame.Source(a6), a0
+	move.l BindFrame.Handle(a6), d1
+	bsr.w resolve
+	bne.w bad
+	movea.l a1, a4
+	movea.l BindFrame.Arena(a6), a0
+	movea.l BindFrame.Source(a6), a2
+	move.l memory.Block.Pointer(a0), d0
+	cmp.l memory.Block.Pointer(a2), d0
+	beq.w bad  ; destination reservation cannot relocate captured input
+	move.l a0, Frame.Arena(a5)
+	move.l memory.Block.Pointer(a2), Frame.Source(a5)
+	move.l Plan.Bytes(a4), Frame.SourceBytes(a5)
+	lea HEADER_BYTES(a4), a3
+	move.l a3, Frame.Events(a5)
+	move.l Plan.Count(a4), Frame.Count(a5)
+	move.l BindFrame.PackedMap(a6), Frame.PackedMap(a5)
+	move.l BindFrame.TokenCount(a6), Frame.TokenCount(a5)
+	; The root spelling must lie inside this candidate, beyond its event rows.
+	move.l a3, d0
+	sub.l memory.Block.Pointer(a2), d0
+	move.l Plan.Count(a4), d1
+	lsl.l #5, d1
+	add.l d1, d0
+	move.l Row.SpellingStart(a3), d4
+	cmp.l d0, d4
+	blo.w bad
+	move.l Row.SpellingEnd(a3), d5
+	cmp.l d4, d5
+	blo.w bad
+	cmp.l Plan.Bytes(a4), d5
+	bhi.w bad
+	tst.w BindFrame.IncludeRecipes(a6)
+	beq.w createBound
+	move.l Plan.Recipes(a4), d1
+	beq.w createBound
+	cmp.l d0, d1
+	blo.w bad
+	move.l d4, d2
+	sub.l d1, d2
+	bcs.w bad
+	cmpi.l #4, d2
+	blo.w bad
+	movea.l memory.Block.Pointer(a2), a1
+	adda.l d1, a1
+	move.l (a1)+, d3
+	cmpi.l #MAX_ROWS, d3
+	bhi.w bad
+	move.l d3, d6
+	lsl.l #5, d6
+	addq.l #4, d6
+	cmp.l d2, d6
+	bhi.w bad
+	move.l d3, Frame.RecipeCount(a5)
+	move.l d3, d7
+	lsl.l #5, d7
+	suba.l d7, sp
+	move.l sp, Frame.RecipeEvents(a5)
+	movea.l sp, a2
+recipe
+	tst.l d3
+	beq.w createBound
+	movea.l a2, a0
+	moveq #7, d0
+copyRecipe
+	move.l (a1)+, (a2)+
+	dbra d0, copyRecipe
+	move.l Row.SpellingStart(a0), d0
+	sub.l d4, d0
+	bcs.w bad
+	move.l d0, Row.SpellingStart(a0)
+	move.l Row.SpellingEnd(a0), d0
+	cmp.l d5, d0
+	bhi.w bad
+	sub.l d4, d0
+	bcs.w bad
+	move.l d0, Row.SpellingEnd(a0)
+	cmpi.w #abi.PRVM_RESULT_MACRO_NAMED, Row.Kind(a0)
+	bne.w nextRecipe
+	move.l Row.Aux0(a0), d0
+	sub.l d4, d0
+	bcs.w bad
+	move.l d0, Row.Aux0(a0)
+	move.l Row.Aux1(a0), d0
+	sub.l d4, d0
+	bcs.w bad
+	move.l d0, Row.Aux1(a0)
+nextRecipe
+	subq.l #1, d3
+	bra.w recipe
+createBound
+	movea.l a5, a0
+	bsr.w create
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	adda.l d7, sp
+	adda.w #FRAME_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; bind
 
 	; Merge independent VM representations by argument ordinal. Packed offsets
 ; already address the execution record; spelling offsets address the literal list.

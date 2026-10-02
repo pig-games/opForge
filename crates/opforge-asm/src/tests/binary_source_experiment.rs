@@ -44,6 +44,8 @@ mod macro_name_collisions;
 #[path = "binary_source_macro_profile.rs"]
 mod macro_profile;
 
+#[path = "binary_source_capture.rs"]
+mod capture;
 #[path = "binary_source_cpu_names.rs"]
 mod cpu_names;
 #[path = "binary_source_full_width.rs"]

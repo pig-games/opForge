@@ -141,6 +141,107 @@ fn compact_struct_long_imported_field_fs_uae() {
     native(LONG_IMPORTED_FIELD, "m68020");
 }
 
+fn imported_reservation_source(owner_first: bool) -> String {
+    let abi = include_str!("../../../../native/motorola68000/amigaos/prvm/prvm_abi.asm");
+    let app = ".module app\n.cpu m68020\n.use prvm.amigaos.abi as abi\nFrame .struct\nRequest .res abi.PRVM_REQUEST_FRAME_SIZE\nResult .res 32\n.endstruct\n.byte Frame.Result\n.endmodule\n";
+    if owner_first {
+        format!("{abi}\n{app}")
+    } else {
+        format!("{app}\n{abi}")
+    }
+}
+
+#[test]
+fn compact_struct_imported_reservation_rust_oracle() {
+    for owner_first in [true, false] {
+        assert_eq!(
+            oracle(&imported_reservation_source(owner_first), "68020").unwrap(),
+            [112]
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; imported constants in structure reservations"]
+fn compact_struct_imported_reservation_fs_uae() {
+    native(&imported_reservation_source(true), "m68020");
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; unresolved preparation before dependency ordering"]
+fn compact_struct_imported_reservation_input_order_fs_uae() {
+    // The live Rust oracle accepts both module orders. Native must eventually do
+    // the same; retain the failing positive regression until preparation moves.
+    native(&imported_reservation_source(false), "m68020");
+}
+
+const RESERVATION_BINDINGS: &str = r#".module owner
+.cpu m68020
+.pub
+Count = 5
+.endmodule
+.module aliases
+.use owner as dep
+Frame .struct
+Data .res dep.Count
+.endstruct
+.byte Frame
+.endmodule
+.module selection
+.use owner (Count as size)
+Frame .struct
+Data .res size
+.endstruct
+.byte Frame
+.endmodule
+.module wildcard
+.use owner (*)
+Frame .struct
+Data .res Count
+.endstruct
+.byte Frame
+.endmodule
+"#;
+
+#[test]
+fn compact_struct_reservation_bindings_rust_oracle() {
+    assert_eq!(oracle(RESERVATION_BINDINGS, "68020").unwrap(), [5, 5, 5]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; alias, selected and wildcard reservation bindings"]
+fn compact_struct_reservation_bindings_fs_uae() {
+    native(RESERVATION_BINDINGS, "m68020");
+}
+
+fn reservation_rejections() -> [String; 3] {
+    let owner = ".module owner\n.cpu m68020\n.pub\nCount = 5\n.priv\nSecret = 7\n.endmodule\n";
+    let app = |name: &str| {
+        format!(".module app\n.cpu m68020\n.use owner as dep\nFrame .struct\nData .res dep.{name}\n.endstruct\n.byte Frame\n.endmodule\n")
+    };
+    [
+        format!("{owner}{}", app("Secret")),
+        format!("{owner}{}", app("Missing")),
+        ".module app\n.cpu m68020\nFrame .struct\nData .res unknown\n.endstruct\n.byte Frame\n.endmodule\n".into(),
+    ]
+}
+
+#[test]
+fn compact_struct_reservation_rejection_rust_oracles() {
+    for source in reservation_rejections() {
+        assert!(oracle(&source, "68020").is_err(), "{source}");
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; private, missing and unknown reservation values"]
+fn compact_struct_reservation_rejections_fs_uae() {
+    for source in reservation_rejections() {
+        assert!(oracle(&source, "68020").is_err());
+        native_rejection_for_cpu(&source, "m68020");
+    }
+}
+
 #[test]
 fn compact_package_layout_rust_oracle() {
     assert_eq!(

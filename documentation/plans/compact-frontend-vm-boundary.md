@@ -6,7 +6,12 @@ self-host proofs with exact live Rust output; see the
 The BS14 built-in `.emit` and CLI record-output checkpoints have focused native
 qualification. The current BS15 inline metadata checkpoint has focused qualification
 separately in the current plan. That is
-not a fresh full self-host proof of its changed source tree. The earlier 61-file
+not a fresh full self-host proof of its changed source tree. The current embedded
+self-host fails at an imported constant in a struct reservation: semantic
+preparation precedes dependency scheduling. The
+[diagnosis and proposed repair](native-runtime-reset.md#self-host-blocker--preparation-precedes-dependency-ordering)
+distinguish the passing focused binding fixes from that unresolved full-run blocker.
+The earlier 61-file
 implementation also completed on the physical A6000. The 2 MiB product target
 remains unqualified. Residual frontend ownership gaps and the deferred
 ordinary-label instruction binding issue are listed below.

@@ -521,6 +521,26 @@ referenceNamespace	.block
 	bne.w bad
 	tst.w d4
 	beq.w ok
+	cmpi.w #$ffff, d4
+	bne.w referenceProxy
+	; Wildcard availability must not capture an existing lexical declaration
+	; (for example the consumer's own struct size). Named selections retain
+	; their explicit precedence. Test the requested namespace independently.
+	moveq #0, d0
+	move.w 1(a5), d0
+	sub.w layout.State.Base(a6), d0
+	andi.l #$ffff, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	tst.w (sp)
+	bne.w wildcardTemplateDeclaration
+	btst #0, records.Entry.Flags+1(a3)
+	bne.w ok
+	bra.w referenceProxy
+wildcardTemplateDeclaration
+	btst #0, records.Entry.TemplateFlags+1(a3)
+	bne.w ok
 referenceProxy
 	moveq #0, d6
 	move.w 1(a0), d6
@@ -1716,14 +1736,31 @@ leafReady
 ; A0..A1=complete numeric token range,A6=scope state. D1=known i64 low/D2=high on
 ; success, D0/CCR=status. The biased VM pointers are used only after every
 ; symbol ID has been checked against the bounded local-name arrays.
+; Resolve already-declared import proxies in an owned token copy: neither source
+; tokens nor proxy values are cached, so later mutable updates remain visible.
 	.pub
 evaluateRange	.block
 	movem.l d3-d7/a0-a6, -(sp)
-	movea.l a0, a2
-	movea.l a0, a5
+	subq.l #4, sp
+	clr.l (sp)
+	move.l a1, d0
+	sub.l a0, d0
+	beq.w rangeBad
+	bcs.w rangeBad
+	move.l d0, d1
+	addq.l #1, d0
+	andi.l #$fffffffe, d0
+	suba.l d0, sp
+	move.l d0, (sp)
+	lea 4(sp), a2
+	move.l d1, d0
+	movea.l a2, a1
+copyExpressionToken
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copyExpressionToken
+	movea.l a2, a5
 	movea.l a1, a4
-	cmpa.l a4, a5
-	bhs.w rangeBad
 	lea layout.IMPORT_STATE(a6), a3
 validateExpressionToken
 	cmpa.l a4, a5
@@ -1739,7 +1776,26 @@ validateExpressionToken
 	sub.l a5, d0
 	cmpi.l #4, d0
 	blo.w rangeBad
-	tst.b 3(a5)
+	cmpi.b #1, 3(a5)
+	bhi.w rangeBad
+	moveq #0, d0
+	move.w 1(a5), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w rangeBad
+	andi.l #$ffff, d0
+	cmp.w layout.State.Count(a6), d0
+	bhs.w rangeBad
+	move.l d0, d3
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a0
+	adda.l d0, a0
+	btst #3, records.Entry.Flags+1(a0)
+	bne.w registeredExpressionSymbol
+	; Struct extents precede scopes.line's normal reference walk. Use the same
+	; import registration on our copy, including lexical origin and selections.
+	movea.l a5, a0
+	movea.l a6, a1
+	bsr.w reference
 	bne.w rangeBad
 	moveq #0, d0
 	move.w 1(a5), d0
@@ -1748,6 +1804,48 @@ validateExpressionToken
 	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w rangeBad
+	move.l d0, d3
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a0
+	adda.l d0, a0
+registeredExpressionSymbol
+	ori.w #2, records.Entry.Flags(a0)  ; same REFERENCED bit as scopes.line
+	clr.b 3(a5)
+	move.l d3, d0
+	lea layout.MODULE_STATE(a6), a0
+	jsr modules.reference
+	move.l d3, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a0
+	adda.l d0, a0
+	btst #3, records.Entry.Flags+1(a0)
+	beq.w knownExpressionSymbol
+	movem.l a2-a5, -(sp)
+	movea.l a0, a3
+	lea layout.IMPORT_STATE(a6), a4
+	lea findDeclared, a5  ; lookup only: forward declarations cannot be allocated
+	bsr.w resolve
+	movem.l (sp)+, a2-a5
+	bne.w rangeBad
+	moveq #0, d0
+	move.w d1, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w rangeBad
+	andi.l #$ffff, d0
+	cmp.w layout.State.Count(a6), d0
+	bhs.w rangeBad
+	move.l d0, d4
+	move.l d0, d1
+	move.l d3, d0
+	lea layout.MODULE_STATE(a6), a0
+	jsr modules.check
+	bne.w rangeBad
+	move.l d4, d3
+	move.l d3, d0
+	add.w layout.State.Base(a6), d0
+	move.w d0, 1(a5)
+knownExpressionSymbol
+	move.l d3, d0
 	movea.l KNOWN_DEFINED_POINTER(a3), a0
 	adda.l d0, a0
 	tst.b 0(a0)
@@ -1805,6 +1903,9 @@ evaluatedBad
 rangeBad
 	moveq #1, d0
 rangeDone
+	move.l (sp), d3
+	adda.l d3, sp
+	addq.l #4, sp
 	movem.l (sp)+, d3-d7/a0-a6
 	tst.l d0
 	rts

@@ -481,6 +481,110 @@ and a 409,616-byte Hunk. **This BS15 tree has not completed a full native
 self-host run.** The ordinary hardware-runner command selects this export;
 listing provenance/rendering and the unsupported metadata forms remain later work.
 
+#### Self-host blocker — preparation precedes dependency ordering
+
+The 2026-10-02 A6000 run of the BS15 export completes its guest protocol but
+exits 20 after three seconds, with no output. Its capture identifies
+`Request .res abi.PRVM_REQUEST_FRAME_SIZE` in `binary_data_prepare.asm`.
+This is failed assembly, not full self-host completion.
+
+The focused binding repair resolves already-declared imported scalar values in
+an owned numeric-token copy through the existing import/visibility helpers and
+ExprVM. It preserves original tokens and reads current canonical values rather
+than caching proxy values. Wildcard imports no longer capture an already-declared
+local value or template. The real ABI-first reservation case and alias, selected
+and wildcard reservation cases match live Rust; private, missing and unknown
+values still reject. The separate ABI-last positive regression remains failing
+in native and passing in Rust; it is retained rather than changing its oracle.
+Focused checks report six passing Rust/native tests (two exact native positive
+cases and three fresh expected rejections). The packed-source host batch reports
+259 passed; formatting, workflow links, proof, boundary, ownership, contract and
+instrumentation checks pass. The ten pre-existing missing-owner findings in the
+no-growth guard remain unresolved.
+
+The complete embedded-package retry still exits 20 at the same reservation after
+90.638832250 seconds of fresh guest START/DONE. It uses 81 inputs, 1,164,356 bytes
+including the package, source digest `fnv1a64:fc30cdabb13c0a72`, and a fresh
+409,944-byte Rust Hunk. No native output is produced. These failed durations
+cannot establish a performance gain. The existing current-bundle pointer is
+not changed to this unqualified retry.
+
+This repair's release cost is measured separately on the unchanged 10,687-byte
+two-module/64-block workload, with the same fresh 2,434-byte Rust oracle and
+68020 / 10 MiB unlimited-speed FS-UAE profile. Both new rounds complete exactly.
+
+| Metric | Before (`9c612a55`) | Binding repair | This repair |
+| --- | ---: | ---: | ---: |
+| START/DONE rounds, seconds | 8.351344875, 8.108089167 | 8.104508792, 8.361962833 | — |
+| Median, seconds | 8.229717021 | 8.233235813 | +0.003518792 (+0.043%) |
+| External-package CLI bytes | 110,308 | 110,636 | +328 |
+| Linked static reservation bytes | 124,400 | 124,716 | +316 |
+| Runtime package bytes | 299,306 | 299,306 | 0 |
+
+The timing change is below the roughly 0.25-second observation resolution and
+within-pair variation; no meaningful speed change is established. The repair
+image digest is `fnv1a64:6c75b5cf00c83aeb`.
+
+The cause is sequencing: `frontend.processRecord` evaluates struct extents and
+captures constants while source files are read; `frontend.orderGraph` schedules
+dependencies only after that semantic preparation. An imports-only repair cannot
+resolve a declaration in an unread dependency. Rust accepts either physical
+module order because it loads dependencies before preparing consumers.
+
+Erik requested diagnosis and plan review before implementation. Proposed
+structural direction: retain compact token records and
+their provenance, scan module configuration/dependencies, then replay dependency
+modules before consumers through the existing semantic frontend. Match
+[Rust's configured-use scan](../../crates/opforge-engine/src/source_graph.rs):
+only incoming parameters and preceding module-level constants are available to
+configuration expressions; inactive imports create no edges. Keep grammar in its
+owning shared/package boundaries, with no second source-text parser. Graph owns
+scheduling; imports owns configuration/visibility; frontend owns numeric capture
+and replay; app owns loading and memory lifetime. Preserve include/macro gating,
+root metadata identity, lexical scopes, diagnostics and selective block inclusion.
+Do not defer just `.res` to finalization: its result can affect later declarations
+and conditionals, and final constant arrays lose source-position semantics.
+
+The existing prepared records cannot be replayed unchanged: they already contain
+lexically bound identifiers, compiled expressions, consumed directives and macro
+expansions. Capture must precede `writer.writeLine`, retaining owned unbound token
+rows and spelling identities, distinct from final symbol IDs. Specify retained
+VM-produced macro/string plans and their spans explicitly; tokenizer rows alone
+are insufficient. Generate expansions in the later semantic environment, not in
+the configuration scan. Store file/line/include provenance as offsets/ordinals.
+
+Reviewable sequence:
+
+1. **Capture contract proof.** Keep production ordering unchanged. Define owned
+   unbound tokens and required plans, then prove capture/replay through the existing
+   writer/binder equals direct processing in source order. Cover scoped labels,
+   struct reservations, package-name collisions, strings and macro arguments.
+   Record transient peak memory and released ownership. This checkpoint alone
+   does not repair dependency ordering or establish full self-host completion.
+2. **Configuration and scheduling.** Separate configured dependency scanning from
+   full semantic preparation, then replay modules dependency-first. Reuse existing
+   graph traversal and semantic processors. Qualify both ABI orders, incoming
+   parameters, preceding constants, active/inactive imports, conflict/cycle errors,
+   scopes and include provenance. Root metadata ownership must remain tied to the
+   physical entry module even when dependencies are prepared first. Do not add a
+   duplicate native grammar or eagerly evaluate unrelated bodies/assets.
+3. **Current-source proof.** Run the complete configured embedded-package self-host,
+   requiring fresh zero exit and exact live Rust Hunk equality. Measure release
+   duration separately from instrumentation and each change against the unchanged
+   representative workload; inspect memory before removing the comparison path.
+
+The main risks are raw spelling versus contextual symbol identity, macro/string
+plan ownership, conditional/include configuration visibility and extra transient
+storage. Favor one shared token payload plus offset descriptors over simultaneous
+full raw/prepared copies; measure the actual peak instead of promising a memory
+neutral change. The configuration scan adds some work but avoids repeating full
+semantic preparation. Its total cost remains an experiment, not a speed claim.
+
+Success requires both physical module orders on the actual ABI case, existing
+parameter/conditional/cycle/visibility rejections, then a complete fresh native
+self-host with exact Rust Hunk equality. Stop for discussion if the split would
+duplicate directive grammar or change Rust's configuration visibility.
+
 ### Built-in `.emit` — implementation and focused qualification
 
 The compact path implements `.emit unit,value[,value...]` over packed source.

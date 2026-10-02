@@ -80,6 +80,13 @@ selection remain future work. The BS15 runtime package option is distinct from
 Rust's canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.
 
+The current preparation-order repair captures unbound binary records before
+configuration/dependency scanning, then performs semantic preparation in dependency
+order. The imported-struct regression has focused native parity proof. Full
+self-hosting of this changed tree remains unproven: capture exceeds the 10 MiB
+investigation profile, and an expanded-memory retry fails during final binding
+before assembly. See the runtime reset plan for current evidence.
+
 ## Current Layout
 
 - `motorola68000/amigaos/opforge-cli/`: native AmigaOS opForge CLI entry point

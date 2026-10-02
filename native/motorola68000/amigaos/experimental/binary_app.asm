@@ -4,6 +4,9 @@
 	.module experimental.amigaos.binary_app
 	.cpu 68020
 	.use experimental.amigaos.binary_frontend as frontend
+	.use experimental.amigaos.binary_capture as capture
+	.use experimental.amigaos.binary_configuration as configuration
+	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_output as hunk
@@ -79,6 +82,14 @@ End	.long ?
 File	.long ?
 	.endstruct
 SPAN_BYTES = graph.SPAN_BYTES
+CaptureRegion	.struct
+Base	.long ?
+End	.long ?
+File	.long ?
+Derived	.long ?
+Arena	.byte ?
+	.endstruct
+CAPTURE_REGION_BYTES = CaptureRegion.Arena+memory.Block.Used+4
 IO_SCRATCH_BYTES = IO_BYTES*(INCLUDE_DEPTH+1)+LINE_BYTES+RECORD_BYTES
 IncludeFrame	.struct
 Handle	.long ?
@@ -255,6 +266,8 @@ cleanup
 	lea Front, a0
 	jsr frontend.finish
 freeBlocks
+	bsr.w releaseScheduledFrontend
+	bsr.w releaseCapturedSources
 	lea PackageSource, a0
 	jsr loader.release
 	lea RuntimeBlock, a0
@@ -732,6 +745,8 @@ fileDerivedSelection
 	bsr.w pathStem
 	beq.w closeBad
 	lea Front, a0
+	tst.l GraphMode
+	bne.w fileDerivedReady
 	jsr frontend.beginFileDerived
 	bne.w closeBad
 fileDerivedReady
@@ -744,10 +759,17 @@ spanAllowed
 	move.l SourceOrdinal, OriginId
 	bsr.w retainOriginPath
 	bne.w closeBad
+	tst.l GraphMode
+	beq.w streamedFile
+	bsr.w captureFileBegin
+	bne.w closeBad
+	bra.w fileRecordsReady
+streamedFile
 	bsr.w fileSpan
 	lea Records, a1
 	move.l memory.Block.Used(a1), Span.Start(a0)
 	move.l SourceOrdinal, Span.File(a0)
+fileRecordsReady
 	clr.l LineUsed
 	move.l #1, SourceLine
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_SOURCE_BEGIN, SourceOrdinal, SourceLine, Records, memory.Block.Used
@@ -791,6 +813,12 @@ selectionComplete
 fileDone
 	bsr.w closeSource
 	bne.w closeBad
+	tst.l GraphMode
+	beq.w streamedFileEnd
+	bsr.w captureFileEnd
+	bne.w closeBad
+	bra.w sourceScheduling
+streamedFileEnd
 	lea Front, a0
 	jsr frontend.endFileDerived
 	bne.w closeBad
@@ -805,6 +833,7 @@ fileDone
 	addq.l #1, SpanCount
 	lea FileSpans, a0
 	addi.l #SPAN_BYTES, memory.Block.Used(a0)
+sourceScheduling
 	tst.l DiscoverMode
 	beq.w sequential
 	.MEMORY_STAGE #6
@@ -829,6 +858,11 @@ sequential
 	tst.l d0
 	bne.w closeBad  ; trailing manifest bytes and read errors are invalid
 prepared
+	tst.l GraphMode
+	beq.w sourcesPrepared
+	bsr.w prepareCapturedSources
+	bne.w closeBad
+sourcesPrepared
 	move.l SourceCount, SourceOrdinal
 	.MEMORY_STAGE #5
 	bsr.w closeInput
@@ -932,6 +966,7 @@ parametersSaved
 	lea Front, a0
 	jsr frontend.finish
 	clr.l FrontStarted
+	bsr.w releaseScheduledFrontend
 	lea OriginPaths, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -1251,6 +1286,12 @@ lowerLine	.block
 	tst.l d0
 	bmi.w bad
 	beq.w skipped
+	tst.l GraphMode
+	beq.w streamPhysicalLine
+	bsr.w capturePhysicalLine
+	bne.w bad
+	bra.w lowered
+streamPhysicalLine
 	lea Front, a0
 	move.l OriginId, frontend.Frame.Origin(a0)
 	move.l LineBuffer, frontend.Frame.Source(a0)
@@ -1819,6 +1860,7 @@ loop
 done
 	rts
 	.bend  ; copy
+	.include "binary_source_schedule.i"
 	.include "binary_source_discovery_idx.i"
 	.include "binary_source_selection.i"
 	.include "binary_source_includes.i"
@@ -1887,6 +1929,24 @@ SelectedFileDerived	.res long, 1
 OrderedCount	.res long, 1
 GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4
+CaptureRegions	.res byte, memory.Block.Used+4
+CaptureRegionCount	.res long, 1
+CaptureRegionCurrent	.res long, 1
+CaptureBytes	.res long, 1
+CaptureDerived	.res long, 1
+CaptureLine	.res byte, memory.Block.Used+4
+CaptureRequest	.res byte, capture.FRAME_BYTES
+ConfigScan	.res byte, configuration.FRAME_BYTES
+CaptureOrder	.res byte, memory.Block.Used+4
+CaptureOrderCount	.res long, 1
+CaptureOrderIndex	.res long, 1
+ScheduleCursor	.res long, 1
+ScheduleEnd	.res long, 1
+ScheduleFile	.res long, 1
+ScheduleDerived	.res long, 1
+ConfigFront	.res byte, frontend.FRAME_BYTES
+ConfigFrontStarted	.res long, 1
+SemanticScratch	.res byte, memory.Block.Used+4
 OrderFrame	.res byte, ordered.FRAME_BYTES
 OrderedRecords	.res byte, memory.Block.Used+4
 OrderedFiles	.res byte, memory.Block.Used+4

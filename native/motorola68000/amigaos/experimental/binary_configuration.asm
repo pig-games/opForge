@@ -9,6 +9,8 @@
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_graph as graph
+	.use experimental.amigaos.binary_imports as imports
+	.use experimental.amigaos.binary_memory as memory
 	.pub
 ASSIGNMENT = 30
 Frame	.struct
@@ -24,6 +26,7 @@ End	.long ?
 IndexModule	.long ?  ; source binding index+1, no module semantic state
 Binding	.long ?  ; requested graph binding for configure
 Depth	.word ?
+Priority	.word ?  ; physical entry only: static incoming-use root priority
 Reserved	.word ?
 	.endstruct
 CONDITIONS = Frame.Reserved+2
@@ -72,7 +75,8 @@ done
 
 ; A0=Frame. Index [Cursor,End) capture boundaries without binding body records.
 ; graph.Cursor advances in logical capture bytes; local Cursor addresses Arena.
-; BindCapture is invoked only for .module names. D0/CCR=status; other regs kept.
+; BindCapture serves module names and the entry-only static priority subset.
+; D0/CCR=status; other registers preserved.
 index	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
@@ -89,13 +93,16 @@ next
 	moveq #0, d4
 	move.l Frame.IndexModule(a6), d5
 	move.l d5, d6
+	tst.w Frame.Priority(a6)
+	bne.w controls
 	tst.l d5
 	bne.w boundary
+controls
 	cmpi.l #scopes.KEY_IF, d3
 	blo.w outsideActive
 	cmpi.l #scopes.KEY_IFNDEF, d3
 	bhi.w outsideActive
-	bsr.w bindRecord
+	bsr.w bindIndexRecord
 	bne.w bad
 	movea.l Frame.Output(a6), a0
 	movea.l Frame.Scope(a6), a1
@@ -110,6 +117,46 @@ outsideActive
 	moveq #1, d4
 	bra.w publish
 boundary
+	tst.w Frame.Priority(a6)
+	beq.w statement
+	tst.l d5
+	beq.w statement
+	move.l d3, d1
+	movea.l a6, a0
+	bsr.w trackDepth
+	bmi.w bad
+	bne.w publish
+	cmpi.l #ASSIGNMENT, d3
+	bne.w importTarget
+	tst.w Frame.Depth(a6)
+	bne.w publish
+	bsr.w bindIndexRecord
+	bne.w bad
+	movea.l Frame.Output(a6), a0
+	movea.l Frame.Scope(a6), a1
+	jsr imports.captureConstant
+	bra.w publish
+importTarget
+	cmpi.l #scopes.KEY_USE, d3
+	bne.w statement
+	bsr.w bindIndexRecord
+	bne.w bad
+	movea.l Frame.Output(a6), a0
+	movea.l Frame.Scope(a6), a1
+	move.l Frame.Capacity(a6), d0
+	jsr scopes.configurationStatement
+	bne.w bad
+	adda.l d1, a0
+	addq.l #5, a0
+	lea scopes.bind, a2
+	jsr imports.configurationTarget
+	bne.w bad
+	movea.l Frame.Graph(a6), a0
+	movea.l Frame.Scope(a6), a1
+	jsr graph.entryTarget
+	bne.w bad
+	bra.w publish
+statement
 	move.l d3, d1
 	cmpi.l #scopes.KEY_MODULE, d1
 	beq.w module
@@ -119,10 +166,16 @@ boundary
 	bne.w publish
 	; .end closes an implicit unit; explicit modules end with .endmodule.
 	moveq #0, d6
-	bra.w publish
+	bra.w clearPriority
 module
 	tst.l d5
 	bne.w bad
+	clr.w Frame.Depth(a6)
+	tst.w Frame.Priority(a6)
+	beq.w moduleName
+	movea.l Frame.Scope(a6), a0
+	bsr.w clearStaticValues
+moduleName
 	bsr.w bindRecord
 	bne.w bad
 	movea.l Frame.Output(a6), a0
@@ -152,6 +205,11 @@ endModule
 	tst.l d5
 	beq.w bad
 	moveq #0, d6
+clearPriority
+	tst.w Frame.Priority(a6)
+	beq.w publish
+	movea.l Frame.Scope(a6), a0
+	bsr.w clearStaticValues
 publish
 	movea.l Frame.Graph(a6), a0
 	move.l d7, d0
@@ -223,6 +281,13 @@ done
 ; explicit modules and conditionals crossing source files. D0/CCR=status;
 ; other registers preserved.
 endIndex	.block
+	tst.w Frame.Priority(a0)
+	beq.w validate
+	movem.l a0-a1, -(sp)
+	movea.l Frame.Scope(a0), a0
+	bsr.w clearStaticValues
+	movem.l (sp)+, a0-a1
+validate
 	tst.l Frame.IndexModule(a0)
 	bne.w bad
 	move.l a0, -(sp)
@@ -301,26 +366,11 @@ active
 	beq.w moduleBoundary
 	cmpi.l #scopes.KEY_ENDMODULE, d6
 	beq.w moduleBoundary
-	cmpi.l #scopes.KEY_BLOCK, d6
-	beq.w openNested
-	cmpi.l #scopes.KEY_NAMESPACE, d6
-	beq.w openNested
-	cmpi.l #scopes.KEY_MACRO, d6
-	beq.w openNested
-	cmpi.l #scopes.KEY_SEGMENT, d6
-	beq.w openNested
-	cmpi.l #scopes.KEY_STRUCT, d6
-	beq.w openNested
-	cmpi.l #scopes.KEY_ENDBLOCK, d6
-	beq.w closeNested
-	cmpi.l #scopes.KEY_ENDNAMESPACE, d6
-	beq.w closeNested
-	cmpi.l #scopes.KEY_ENDMACRO, d6
-	beq.w closeNested
-	cmpi.l #scopes.KEY_ENDSEGMENT, d6
-	beq.w closeNested
-	cmpi.l #scopes.KEY_ENDSTRUCT, d6
-	beq.w closeNested
+	movea.l a6, a0
+	move.l d6, d1
+	bsr.w trackDepth
+	bmi.w bad
+	bne.w advance
 	cmpi.l #scopes.KEY_USE, d6
 	beq.w selected
 	cmpi.l #scopes.KEY_END, d6
@@ -341,14 +391,6 @@ selected
 	jsr scopes.configurationLine
 	bne.w bad
 	bra.w advance
-openNested
-	addq.w #1, Frame.Depth(a6)
-	beq.w bad
-	bra.w advance
-closeNested
-	tst.w Frame.Depth(a6)
-	beq.w advance
-	subq.w #1, Frame.Depth(a6)
 advance
 	add.l d7, Frame.Cursor(a6)
 	bra.w next
@@ -426,6 +468,82 @@ done
 	rts
 	.bend  ; classify
 	.priv
+; A0=Frame,D1=shared directive key. D0=1 structural record consumed,
+; 0 ordinary record, -1 depth overflow; CCR reflects D0. Other registers kept.
+trackDepth	.block
+	cmpi.l #scopes.KEY_BLOCK, d1
+	beq.w openNested
+	cmpi.l #scopes.KEY_NAMESPACE, d1
+	beq.w openNested
+	cmpi.l #scopes.KEY_MACRO, d1
+	beq.w openNested
+	cmpi.l #scopes.KEY_SEGMENT, d1
+	beq.w openNested
+	cmpi.l #scopes.KEY_STRUCT, d1
+	beq.w openNested
+	cmpi.l #scopes.KEY_ENDBLOCK, d1
+	beq.w closeNested
+	cmpi.l #scopes.KEY_ENDNAMESPACE, d1
+	beq.w closeNested
+	cmpi.l #scopes.KEY_ENDMACRO, d1
+	beq.w closeNested
+	cmpi.l #scopes.KEY_ENDSEGMENT, d1
+	beq.w closeNested
+	cmpi.l #scopes.KEY_ENDSTRUCT, d1
+	beq.w closeNested
+	moveq #0, d0
+	rts
+openNested
+	addq.w #1, Frame.Depth(a0)
+	beq.w bad
+	moveq #1, d0
+	rts
+closeNested
+	tst.w Frame.Depth(a0)
+	beq.w consumed
+	subq.w #1, Frame.Depth(a0)
+consumed
+	moveq #1, d0
+	rts
+bad
+	moveq #-1, d0
+	rts
+	.bend  ; trackDepth
+
+; A0=config scope. The priority pass owns no declarations or incoming params.
+; Its known values are transient and reset for each entry module and at EOF.
+; Preserve all registers; CCR unspecified. Empty known-value storage is safe.
+clearStaticValues	.block
+	movem.l d0/a0-a1, -(sp)
+	lea layout.IMPORT_STATE+imports.KNOWN_DEFINED(a0), a0
+	move.l memory.Block.Used(a0), d0
+	beq.w done
+	movea.l memory.Block.Pointer(a0), a1
+clear
+	clr.b (a1)+
+	subq.l #1, d0
+	bne.w clear
+done
+	movem.l (sp)+, d0/a0-a1
+	rts
+	.bend  ; clearStaticValues
+
+; A6=Frame. Bind static priority records under their indexed module identity,
+; without modules.open, declarations or persistent changes to Current.
+; D0/CCR=status; other registers preserved by bindCapture.
+bindIndexRecord	.block
+	movem.l a0-a1, -(sp)
+	movea.l Frame.Scope(a6), a1
+	move.w layout.State.Current(a1), -(sp)
+	move.w Frame.IndexModule+2(a6), layout.State.Current(a1)
+	bsr.w bindRecord
+	movea.l Frame.Scope(a6), a1
+	move.w (sp)+, layout.State.Current(a1)
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; bindIndexRecord
+
 ; A6=Frame. Validate the next local handle; D0/CCR=status,D1=one if present,
 ; A1=immutable capture record when present. Other registers preserved.
 resolveNext	.block

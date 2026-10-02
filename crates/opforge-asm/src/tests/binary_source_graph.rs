@@ -12,6 +12,8 @@ mod implicit_modules;
 mod include_parent;
 #[path = "binary_source_parameters.rs"]
 mod parameters;
+#[path = "binary_source_preparation_order.rs"]
+mod preparation_order;
 #[path = "binary_source_wildcard.rs"]
 mod wildcard;
 

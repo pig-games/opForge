@@ -7,10 +7,14 @@ The BS14 built-in `.emit` and CLI record-output checkpoints have focused native
 qualification. The current BS15 inline metadata checkpoint has focused qualification
 separately in the current plan. That is
 not a fresh full self-host proof of its changed source tree. The current embedded
-self-host fails at an imported constant in a struct reservation: semantic
-preparation precedes dependency scheduling. The
-[diagnosis and proposed repair](native-runtime-reset.md#self-host-blocker--preparation-precedes-dependency-ordering)
-distinguish the passing focused binding fixes from that unresolved full-run blocker.
+self-host originally failed at an imported constant in a struct reservation.
+Dependency-first preparation now passes that focused regression and seven other
+native cases, but the complete current run exhausts the 10 MiB investigation
+profile during unbound capture and emits no output. With expanded diagnostic
+memory and the shared quoted-scalar repair, the release retry reaches final
+binding but still exits 20 before assembly, without output. The
+[repair status](native-runtime-reset.md#r2-dependency-first-preparation--focused-proof-full-run-still-blocked)
+records the measured preparation cost and the expanded-memory diagnostic.
 The earlier 61-file
 implementation also completed on the physical A6000. The 2 MiB product target
 remains unqualified. Residual frontend ownership gaps and the deferred

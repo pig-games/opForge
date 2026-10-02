@@ -52,6 +52,14 @@ RAM but adds 8 MiB fast RAM. Use it to investigate functional self-host parity
 without the current 2 MiB allocation frontier. It is an investigation profile,
 not evidence that the 2 MiB product target has been met.
 
+`OPFORGE_FS_UAE_MEMORY_PROFILE=68020-74m` keeps that 68020, 2 MiB chip and
+8 MiB fast setup and adds 64 MiB Zorro III memory, matching the repository's
+normal expanded-memory configuration. This diagnostic profile is useful when
+investigating allocation failures caused by retained storage. It does not prove the
+product memory budget or fit within the 2 MiB product target. Do not combine
+measurements from this profile with the `68020-10m` native clock comparison;
+keep that comparison on its existing profile.
+
 `scripts/performance/prepared_source_native.py --binary-source --binary-only
 --memory-profile 2m --blocks 32 --native-test <test-binary>` explicitly selects
 binary-only qualification; the existing text runtime is not claimed to fit.

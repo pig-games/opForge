@@ -13,6 +13,7 @@ End	.long ?
 File	.long ?
 .endstruct
 SPAN_BYTES = Span.File+4
+ENTRY_TARGET = 32; graph-private static incoming-use flag in module metadata
 LIMIT = 512; independent module graph capacity
 MAX_SPANS = LIMIT
 Node	.struct
@@ -202,6 +203,29 @@ done
 	rts
 	.bend  ; configured
 
+; A0=graph,A1=scope,D1=canonical module binding index+1. Mark a static
+; active .use target, including forward entry declarations. No graph edge or
+; configuration is created. D0/CCR=status; other registers preserved.
+entryTarget	.block
+	movem.l d1-d2/a0-a2, -(sp)
+	tst.l d1
+	beq.w bad
+	cmp.w layout.State.Count(a1), d1
+	bhi.w bad
+	subq.l #1, d1
+	add.l d1, d1
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a1), a2
+	ori.w #ENTRY_TARGET, 0(a2, d1.l)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; entryTarget
+
 ; A0=graph,A1=scope state,A2=span buffer,D0=buffer bytes. D0=0,D1=span
 ; count on success; D0=2,D1=missing module index+1 for a discovery retry;
 ; D0=3,D1=present module index+1 needing configuration before traversal;
@@ -284,10 +308,11 @@ headNext
 	addq.w #1, d7
 	bra.w heads
 roots
+	clr.w GraphState.Reserved(a6)  ; stable non-target pass, then target pass
 	moveq #0, d7
 root
 	cmp.w GraphState.Count(a6), d7
-	bhs.w ok
+	bhs.w nextRootPass
 	move.l d7, d1
 	addq.w #1, d1
 	bsr.w getNode
@@ -295,6 +320,21 @@ root
 	bne.w rootNext
 	cmpi.w #2, Node.Color(a0)
 	beq.w rootNext
+	moveq #0, d0
+	move.w Node.Binding(a0), d0
+	subq.w #1, d0
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a5), a1
+	move.w 0(a1, d0.l), d0
+	andi.w #ENTRY_TARGET, d0
+	beq.w nonTarget
+	tst.w GraphState.Reserved(a6)
+	beq.w rootNext
+	bra.w visitRoot
+nonTarget
+	tst.w GraphState.Reserved(a6)
+	bne.w rootNext
+visitRoot
 	moveq #0, d6
 	bsr.w push
 	cmpi.l #3, d0
@@ -348,7 +388,7 @@ emit
 	blo.w bad
 	move.l Node.End(a0), d0
 	cmp.l Node.Start(a0), d0
-	bls.w bad
+	blo.w bad
 	move.l Node.Start(a0), (a4)+
 	move.l d0, (a4)+
 	moveq #0, d0
@@ -361,6 +401,12 @@ emit
 	bra.w walk
 rootNext
 	addq.w #1, d7
+	bra.w root
+nextRootPass
+	tst.w GraphState.Reserved(a6)
+	bne.w ok
+	move.w #1, GraphState.Reserved(a6)
+	moveq #0, d7
 	bra.w root
 ok
 	move.w #1, GraphState.Ordered(a6)

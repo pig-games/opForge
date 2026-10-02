@@ -485,6 +485,7 @@ resolve	.block
 	cmp.l memory.Block.Used(a0), d2
 	bhi.w bad
 	sub.l d1, d2
+	bcs.w bad
 	cmp.l d3, d2
 	blo.w bad
 	.TELEMETRY_COMPACT runtime_profile.compactLookup, #1

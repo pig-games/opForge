@@ -188,6 +188,41 @@ constantDone
 	rts
 	.bend  ; captureConstant
 
+; A0=first .use target token,A1=scope,A2=ordinary binder callback.
+; Resolve only its shared canonical module identity; no suffix, parameters or
+; outgoing edge is executed. D0/CCR=status,D1=source module index+1;
+; other registers preserved. The same primitive serves normal imports.line.
+configurationTarget	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	movea.l a2, a5
+	bsr.w boundModuleTarget
+	bne.w done
+	sub.w layout.State.Base(a6), d1
+	bcs.w bad
+	andi.l #$ffff, d1
+	addq.l #1, d1
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; configurationTarget
+	.priv
+; A0=target token,A5=binder,A6=scope. Shared lexical target extraction and
+; global binding. D0/CCR=status,D1=canonical source ID; caller supplies bounds.
+boundModuleTarget	.block
+	bsr.w tokenName
+	bne.w done
+	bsr.w globalBind
+done
+	tst.l d0
+	rts
+	.bend  ; boundModuleTarget
+	.pub
+
 ; A0=.use token,A1=scope state,A2=binder callback,A3=section state,
 ; A4=record end.
 ; One or more selected names and an optional module alias; references stay separate.
@@ -208,9 +243,7 @@ line	.block
 	sub.l a3, d0
 	cmpi.l #4, d0
 	blo.w bad
-	bsr.w tokenName
-	bne.w bad
-	bsr.w globalBind
+	bsr.w boundModuleTarget
 	bne.w bad
 	move.l d1, d7
 	sub.w layout.State.Base(a6), d7

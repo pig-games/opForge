@@ -650,8 +650,8 @@ instrumented direct run had the same 824,368-byte peak; capture's temporary
 allocations did not raise the whole-run maximum on this small input.
 
 Configuration-only scanner, graph scheduling statuses and canonical parameter
-remapping APIs are also present as foundations. They are not yet connected to
-the application's production preparation order.
+remapping APIs were introduced with this capture checkpoint. Their integration
+is described below.
 
 A more complex `.if .value==7` macro probe failed at its first invocation. The
 unchanged `52f5ff9f` reference also rejects the probe with the macro named `emit`.
@@ -659,9 +659,95 @@ The positive regression is retained; its precise cause is not yet established.
 It is outside the passing capture proof and must not be described as fixed or as
 a successful negative parity case.
 
-This is an intermediate capture proof. Production module ordering is unchanged,
-the app-first ABI reservation regression is still unresolved, and there has been
-no successful full self-host run for this repair.
+This is an intermediate capture proof; it does not establish full self-host
+completion for the ordering repair.
+
+#### R2 dependency-first preparation — focused proof, full run still blocked
+
+The compact CLI now captures owned unbound records, scans configured dependency
+edges and replays reachable modules dependency-first through the existing
+semantic frontend. Configuration sees incoming parameters and preceding
+module-level constants; it does not prepare structs, instructions or assets.
+Parameter spellings are rebound into fresh semantic scope state rather than
+copying transient symbol IDs. Physical entry identity still controls root output
+metadata. Tokenizer control is restored after releasing the configuration session.
+The streaming harness remains a comparison path while this repair is qualified.
+
+Five focused fresh native tests cover eight cases: both physical module orders,
+both branches of a parameter-selected dependency chain, an imported entry module
+receiving parameters before configuration, an empty file-derived dependency and
+the real PRVM ABI declared after its importer. Every case exits zero and equals
+live Rust output. The ABI reservation produces the expected 112-byte frame offset;
+this repairs the original focused preparation-order regression.
+
+The separate representative release comparison uses identical 10,687-byte input,
+2,434-byte Rust output and runtime package on 68020 / 10 MiB. Two observations at
+`52f5ff9f` are 8.112051 and 8.355077625 seconds (median 8.2335643125); two after
+this repair are 11.051957791 and 11.035703542 seconds (median 11.0438306665).
+The measured increase is 2.810266354 seconds, or 34.13%. Release image size rises
+from 110,636 to 119,200 bytes; linked reservations rise from 124,716 to 132,700.
+This is a correctness repair with a measured preparation cost, not an optimization.
+
+The complete current embedded self-host has **not succeeded**. On 68020 / 10 MiB,
+the release run exits 20 without output after 168.510260958 seconds. A separate
+fully instrumented failure completes after 272.092272917 seconds and confirms an
+allocation failure during capture: peak owned storage 8,233,864 bytes, failed
+growth from 262,144 to 524,288 bytes, and 676,246 source bytes read. Terminal
+ownership is zero and allocated/freed capacities balance. The different failing
+source lines between builds are allocation frontiers, not evidence that those
+branch instructions are unsupported.
+
+The capture currently retains 20-byte tokenizer rows, a 68-byte header per
+physical line and owned candidate plans. This is substantially larger than final
+packed source. A separately labelled 68020 / 74 MiB release run passes the earlier
+allocation frontier, then exits 20 without output after 408.918868167 seconds at
+`addi.w #'0'-1,d0` in `binary_record_output.asm`. Native preparation previously
+handled a standalone quoted scalar as a special case but rejected trailing
+arithmetic; the shared expression repair below addresses that gap. This failed run qualifies
+neither complete self-hosting nor the 10 MiB investigation or 2 MiB product budget.
+
+The subsequent shared expression repair passes fresh direct, relocated
+capture/replay and compact CLI comparisons. Decoded one-byte and two-byte quoted
+leaves work in arithmetic, assignments and instruction operands; two bytes pack
+big-endian regardless of target output endianness. Plain quoted data operands
+retain string emission. Empty and longer scalar leaves reject. The frozen
+pre-repair direct and capture paths both reject the original `'0'-1` probe,
+confirming that this gap predates deferred preparation. The CLI image increases
+by 56 bytes, to 119,256 bytes, with 132,756 linked reserved bytes.
+
+Its separate representative timing observations are 10.885410958 and
+10.895558333 seconds (median 10.8904846455), versus R2's 11.0438306665 median.
+The 0.153346021-second difference is below the approximately 0.25-second
+observation resolution; no speed improvement is established. Fresh captured-CLI
+negative cases also reject dependency cycles, self-import and missing modules.
+The complete current embedded release retry still exits 20 without output after
+452.265375833 seconds on the 74 MiB diagnostic profile. It passes per-line
+semantic preparation and fails at preparation step 2, final binding, before
+assembly begins. The current source has 84 inputs and 1,230,675 bytes including
+the embedded package, manifest `fnv1a64:944699b4f0067efa`; its fresh Rust release
+Hunk is 418,564 bytes. The separate fully instrumented run also exits 20 at this
+boundary after 723.947896417 seconds. It has zero allocation failures, peak owned
+storage of 19,357,384 bytes (18.46 MiB), and 1,025,979 bytes of packed records.
+Terminal ownership is zero; all 41,069,784 allocated bytes are released. Profiling
+flag 16 records the unfinished preparation clock, not an allocation failure.
+This establishes a logical finalization failure in the expanded-memory run;
+the individual import, section and scope checks still need localization. These
+instrumented durations include probe cost. This is localization progress, not
+full self-host completion, and the current A6000 bundle pointer remains unchanged.
+
+Affected Rust binary-source checks pass (262 passed, 400 ignored); ignored native
+tests are not native execution evidence. The wider Rust library run is not green:
+1,955 passed, 69 failed and 410 were ignored. Its legacy source assertions,
+token/AST span comparisons and reference/diagnostic failures remain outside this
+repair; not every failure has been reproduced on the baseline. Workflow, native
+instrumentation, canonical contracts and fresh-proof checks pass. The aggregate
+native ownership gate still reports nine unchanged missing owner annotations.
+
+Existing configuration limits also remain: native scalar configuration resolves
+some explicitly qualified constant spellings that Rust's static source-spelling
+environment treats as unknown, and textual includes inside an inactive
+preprocessor `.ifdef` are still opened before capture. These are unqualified
+parity gaps, not claims that the new pipeline covers the complete Rust language.
 
 ### Built-in `.emit` — implementation and focused qualification
 

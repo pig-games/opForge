@@ -133,6 +133,7 @@ done
 ; 2 with SourceOrdinal set to the next required file, 1 for invalid graph.
 resolveGraph .block
 	movem.l d2-d7/a0-a6, -(sp)
+retry
 	lea GraphSpans, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Capacity(a0), d0
@@ -143,6 +144,12 @@ resolveGraph .block
 	move.l d1, OrderedCount
 	bra.w done
 unresolved
+	cmpi.l #3, d0
+	bne.w missing
+	bsr.w configureCapturedModule
+	bne.w bad
+	bra.w retry
+missing
 	cmpi.l #2, d0
 	bne.w bad
 	bsr.w selectCandidate

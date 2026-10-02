@@ -4978,6 +4978,7 @@ enum FsUaeMemoryProfile {
     Existing,
     Constrained2MiB,
     Expanded68020,
+    ExpandedDiagnostic68020,
 }
 
 fn fs_uae_memory_profile_from_env() -> Result<FsUaeMemoryProfile, String> {
@@ -4988,8 +4989,9 @@ fn fs_uae_memory_profile_from_env() -> Result<FsUaeMemoryProfile, String> {
         }
         Ok(value) if value == "2m" => Ok(FsUaeMemoryProfile::Constrained2MiB),
         Ok(value) if value == "68020-10m" => Ok(FsUaeMemoryProfile::Expanded68020),
+        Ok(value) if value == "68020-74m" => Ok(FsUaeMemoryProfile::ExpandedDiagnostic68020),
         Ok(value) => Err(format!(
-            "unsupported {FS_UAE_MEMORY_PROFILE_ENV} value '{value}'; expected 'existing', '2m' or '68020-10m'"
+            "unsupported {FS_UAE_MEMORY_PROFILE_ENV} value '{value}'; expected 'existing', '2m', '68020-10m' or '68020-74m'"
         )),
         Err(error) => Err(format!("read {FS_UAE_MEMORY_PROFILE_ENV}: {error}")),
     }
@@ -5017,8 +5019,17 @@ fn cpu_68020_fs_uae_setting(
         .copied()
         .find(|(candidate, _)| *candidate == key)
         .map(|(key, value)| {
-            if key == "fast_memory" && memory_profile == FsUaeMemoryProfile::Expanded68020 {
+            if key == "fast_memory"
+                && matches!(
+                    memory_profile,
+                    FsUaeMemoryProfile::Expanded68020 | FsUaeMemoryProfile::ExpandedDiagnostic68020
+                )
+            {
                 (key, "8192")
+            } else if key == "zorro_iii_memory"
+                && memory_profile == FsUaeMemoryProfile::ExpandedDiagnostic68020
+            {
+                (key, "65536")
             } else {
                 (key, value)
             }
@@ -7038,6 +7049,46 @@ mod tests {
             assert!(
                 rewritten.contains(required),
                 "missing {required}:\n{rewritten}"
+            );
+        }
+    }
+
+    #[test]
+    fn rewrite_fs_uae_config_work_mount_sets_expanded_diagnostic_68020_profile() {
+        let template = "[fs-uae]\namiga_model = A4000\ncpu = 68040\nchip_memory = 1024\nfast_memory = 4096\nhard_drive_1 = /old/work\ngraphics_card = uaegfx-z3\ngraphics_memory = 16384\nzorro_iii_memory = 0\n";
+        let rewritten = rewrite_fs_uae_config_work_mount(
+            template,
+            "/new/work",
+            FsUaeMemoryProfile::ExpandedDiagnostic68020,
+        );
+
+        for required in [
+            "cpu = 68020",
+            "chip_memory = 2048",
+            "fast_memory = 8192",
+            "slow_memory = 0",
+            "motherboard_ram = 0",
+            "zorro_iii_memory = 65536",
+            "graphics_card = none",
+            "graphics_memory = 0",
+            "graphics_card_memory = 0",
+            "hard_drive_1 = /new/work",
+        ] {
+            assert!(
+                rewritten.contains(required),
+                "missing {required}:\n{rewritten}"
+            );
+        }
+        for removed in [
+            "68040",
+            "4096",
+            "uaegfx-z3",
+            "16384",
+            "zorro_iii_memory = 0",
+        ] {
+            assert!(
+                !rewritten.contains(removed),
+                "retained {removed}:\n{rewritten}"
             );
         }
     }

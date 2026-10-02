@@ -1,4 +1,4 @@
-; Compile bounded numeric tokens once; evaluate through the shared ExprVM.
+; Compile bounded scalar tokens once; evaluate through the shared ExprVM.
 ; @opforge-owner: opasm.amigaos.binary_expression
 	.module opasm.amigaos.binary_expression
 	.cpu 68020
@@ -27,6 +27,8 @@ FRAME_BYTES = Frame.High+4
 ; Preserves D1-D7/A1-A2/A4-A6. Failed output is uncommitted scratch.
 ; Wrapper: $81,u8 payload length, compact runtime expression (LE payloads).
 ; Canonical v2 scratch is checked/folded before lowering; only compact bytes persist.
+; Decoded string leaves are scalar only at one or two bytes; two bytes pack
+; big-endian, independent of target output endianness. No source text is read.
 compile	.block
 	movem.l d1-d7/a1-a2/a4-a6, -(sp)
 	move.l a4, d0
@@ -362,6 +364,8 @@ primary	.block
 	move.b (a0)+, d3
 	cmpi.b #2, d3
 	beq.w literal
+	cmpi.b #3, d3
+	beq.w stringLiteral
 	cmpi.b #1, d3
 	bls.w symbol
 	cmpi.b #6, d3
@@ -406,6 +410,46 @@ literal
 	clr.b (a3)+
 	clr.b (a3)+
 	addq.l #4, a0
+	bra.w push
+stringLiteral
+	; Shared scalar strings contain one byte or a big-endian packed word.
+	; TKVM owns decoding; longer strings remain valid only as data operands.
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #2, d0
+	blo.w malformed
+	moveq #0, d1
+	move.b (a0), d1
+	beq.w malformed
+	cmpi.w #2, d1
+	bhi.w malformed
+	move.l d1, d2
+	addq.l #1, d2
+	cmp.l d2, d0
+	blo.w malformed
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #9, d0
+	blo.w output
+	moveq #0, d2
+	move.b 1(a0), d2
+	cmpi.w #1, d1
+	beq.w stringValue
+	lsl.w #8, d2
+	move.b 2(a0), d2
+stringValue
+	adda.w d1, a0
+	addq.l #1, a0
+	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, (a3)+
+	move.b d2, (a3)+
+	lsr.w #8, d2
+	move.b d2, (a3)+
+	clr.b (a3)+
+	clr.b (a3)+
+	clr.b (a3)+
+	clr.b (a3)+
+	clr.b (a3)+
+	clr.b (a3)+
 	bra.w push
 symbol
 	move.l a1, d0

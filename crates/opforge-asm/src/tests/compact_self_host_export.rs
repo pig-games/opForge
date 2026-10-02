@@ -38,6 +38,24 @@ const INSTRUMENTED_DEFINES: &[&str] = &[
 #[test]
 #[ignore = "host-only export; requires a new OPFORGE_COMPACT_EXPORT_DIR"]
 fn export_compact_self_host_bundle() {
+    export_bundle(false);
+}
+
+#[test]
+#[ignore = "diagnostic failure capture only; requires instrumented full native export"]
+fn capture_compact_self_host_failure() {
+    assert_eq!(
+        std::env::var("OPFORGE_COMPACT_EXPORT_NATIVE").as_deref(),
+        Ok("1")
+    );
+    assert_eq!(
+        std::env::var("OPFORGE_COMPACT_EXPORT_INSTRUMENTED").as_deref(),
+        Ok("1")
+    );
+    export_bundle(true);
+}
+
+fn export_bundle(failure_capture: bool) {
     let output = PathBuf::from(
         std::env::var_os("OPFORGE_COMPACT_EXPORT_DIR")
             .expect("set OPFORGE_COMPACT_EXPORT_DIR to a new local directory"),
@@ -115,10 +133,15 @@ fn export_compact_self_host_bundle() {
     let oracle = fs::read(scratch.join("build/opforge_compact")).unwrap();
     let allocation = hunk::allocation(&oracle).expect("strict release Hunk allocation");
     let dependency_text = fs::read_to_string(&dependencies).unwrap();
-    let bootstrap_defines = if instrumented {
+    let phase_only = std::env::var("OPFORGE_PHASE_ONLY").as_deref() == Ok("1");
+    let bootstrap_defines: Vec<_> = if instrumented {
         INSTRUMENTED_DEFINES
+            .iter()
+            .copied()
+            .filter(|define| !phase_only || *define != "OPFORGE_TOKEN_DETAIL_TELEMETRY")
+            .collect()
     } else {
-        &[]
+        Vec::new()
     };
     let embedded_files = if let Some(build) = &package_build {
         assert_eq!(build.embedded_files.len(), 1);
@@ -391,12 +414,16 @@ fn export_compact_self_host_bundle() {
         let case = OpforgeNativeCliParityCase {
             name: "compact-configured-self-host",
             cpu_override: "68020",
-            extra_assembly_defines: bootstrap_defines,
+            extra_assembly_defines: &bootstrap_defines,
             source_override: Some(b""),
             command_template: Some(command.strip_prefix("opforge ").unwrap()),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &files,
-            proof: OpforgeNativeCliProof::ExactArtifacts(&artifacts),
+            proof: if failure_capture {
+                OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
+            } else {
+                OpforgeNativeCliProof::ExactArtifacts(&artifacts)
+            },
         };
         eprintln!(
             "COMPACT_CONFIGURED_SELF_HOST_INPUT {}",
@@ -412,13 +439,46 @@ fn export_compact_self_host_bundle() {
             })
         );
         let result = run_prebuilt_compact_cli_case_from_env(&workspace, &case, &bootstrap)
-            .expect("fresh full configured native self-host proof");
+            .expect("fresh configured native self-host execution");
         let FsUaeSmokeOutcome::Completed { runs } = result else {
             panic!("real native execution is required");
         };
         assert_eq!(runs.len(), 1);
-        assert!(runs[0].success && runs[0].protocol_completed);
-        manifest["native_validation"] = json!("fresh_fs_uae_exact_hunk");
+        assert!(runs[0].protocol_completed);
+        assert_eq!(runs[0].success, !failure_capture);
+        assert_eq!(
+            runs[0].exit_code,
+            Some(if failure_capture { 20 } else { 0 })
+        );
+        if failure_capture {
+            fs::write(output.join("native-stdout.txt"), &runs[0].stdout).unwrap();
+            fs::write(output.join("native-stderr.txt"), &runs[0].stderr).unwrap();
+        }
+        if instrumented {
+            let memory = runs[0]
+                .captured_artifacts
+                .get(&PathBuf::from("Work/memory.bin"))
+                .expect("fresh instrumented self-host memory record");
+            let words = memory
+                .chunks_exact(4)
+                .map(|bytes| u32::from_be_bytes(bytes.try_into().unwrap()))
+                .collect::<Vec<_>>();
+            assert_eq!(memory.len(), 2280, "current MEMD layout");
+            assert_eq!(words[0], 0x4d454d44, "MEMD magic");
+            assert_eq!(words[1], 0, "no live owned storage after cleanup");
+            assert_eq!(words[3], words[4], "all allocated capacity is freed");
+            if !failure_capture {
+                assert_eq!(words[29], 0, "no profiling errors");
+            }
+            fs::write(output.join("memory.bin"), memory).unwrap();
+            manifest["native_peak_owned_bytes"] = json!(words[2]);
+        }
+        manifest["native_validation"] = json!(if failure_capture {
+            "fresh_fs_uae_failure_capture"
+        } else {
+            "fresh_fs_uae_exact_hunk"
+        });
+        manifest["native_assembler_exit_code"] = json!(runs[0].exit_code);
         manifest["native_start_to_done_host_seconds"] = json!(runs[0].start_to_done_host_seconds);
         fs::write(
             output.join("manifest.json"),
@@ -436,7 +496,8 @@ fn export_compact_self_host_bundle() {
                 "bootstrap_hunk_bytes": bootstrap.len(),
                 "linked_reserved_bytes": allocation.total(),
                 "native_start_to_done_host_seconds": runs[0].start_to_done_host_seconds,
-                "exact_rust_match": true,
+                "exact_rust_match": !failure_capture,
+                "failure_capture_only": failure_capture,
             })
         );
     }

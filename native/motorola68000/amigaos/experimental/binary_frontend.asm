@@ -664,6 +664,7 @@ done
 ; D0/CCR=status; other registers preserved.
 lowerTokens	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	.MEMORY_STAGE #3
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.startLine
 	bsr.w writeTokens
@@ -1821,6 +1822,31 @@ selectDone
 	tst.l d0
 	rts
 	.bend  ; selectBlocks
+; A0=already begun Frame with its readable immutable package and live scratch.
+; Restore this session's package tokenizer control after another session ends.
+; Does not reset symbols, templates or lexical state. D0/CCR=status;
+; other registers preserved. No control-table pointer outlives its package.
+activate	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l Frame.Scratch(a0), a1
+	move.l a1, d0
+	beq.w bad
+	tst.l PROGRAM(a1)
+	beq.w bad
+	movea.l Frame.Package(a0), a2
+	move.l a2, d0
+	beq.w bad
+	adda.l package.Header.Tokenizer(a2), a2
+	bsr.w activateControl
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; activate
+
 ; End a streaming session. A0=Frame. Clears scratch-resident pointers and resets
 ; tokenizer control state before the caller frees scratch. D0=0. Preserves other
 ; registers; CCR reflects D0.
@@ -1980,19 +2006,31 @@ checkStates
 	bhs.w bad
 	subq.l #1, d0
 	bne.w checkStates
+	bsr.w activateControl
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; configure
+
+; A2=validated package tokenizer header. Install its shared TKVM control.
+; D0/CCR=status; clobbers D1/A0, other registers preserved.
+activateControl	.block
 	move.l 8(a2), d0
 	ble.w bad
 	jsr control.tkvmSetStepBudget68000
 	lea 12(a2), a0
-	move.l d4, d0
-	move.l d5, d1
+	moveq #0, d0
+	move.w 4(a2), d0
+	moveq #0, d1
+	move.w 2(a2), d1
 	jsr control.tkvmSetProgramStateTable68000
 	moveq #0, d0
 	rts
 bad
 	moveq #1, d0
 	rts
-	.bend  ; configure
+	.bend  ; activateControl
 
 ; The five package-selected macro programs live in the preparation region.
 ; A4=capsule, D7=complete capsule size; D0/CCR=status, other registers preserved.

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! CLI-input checkpoint: live Rust file trees and fresh compact Shell proofs.
-//! Automatic/source-named outputs and source-selected initial CPUs are separate.
+//! Output qualification and source-selected initial CPUs are separate checkpoints.
 use super::*;
 use crate::native_package_build::{build_native_packages, EmbedSelection, NativePackageBuild};
 use clap::Parser;
@@ -237,7 +237,7 @@ fn rust_oracle(base: &Path, case: &InputCase) -> Vec<u8> {
     oracle
 }
 
-fn assemble_cli(root: &Path, build: &NativePackageBuild) -> Vec<u8> {
+pub(super) fn assemble_cli(root: &Path, build: &NativePackageBuild) -> Vec<u8> {
     let mut argv = vec![
         "opForge".to_string(),
         build.cli_source_path.to_string_lossy().into_owned(),
@@ -435,12 +435,12 @@ fn compact_cli_input_defaults_and_argument_integration() {
         })
         .collect();
     run(
-        "no-output-yet",
+        "missing-initial-target",
         b"",
         "",
         &current_files,
         OpforgeNativeCliProof::ExpectedFailureContaining(
-            "compact CLI: output-free validation and source-named outputs are pending",
+            "compact CLI: initial target requires --cpu or --runtime-package",
         ),
         20,
     );

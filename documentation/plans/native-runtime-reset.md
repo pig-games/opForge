@@ -256,23 +256,83 @@ been reassembled by native in this checkpoint**; the export records
 `native_validation: not_run`. C1 qualification is focused CLI execution, not a
 new full self-host or physical A6000 completion claim.
 
-### Next CLI checkpoint C2 — requested outputs and source declarations
+### CLI checkpoint C2 — requested outputs and source declarations (in progress)
 
 `.lst`, `.hex` and `.srec` are equally optional: request them explicitly through
 CLI flags or source metadata; never generate listing/Hex merely because no
 output flag was supplied. Source `.output` declarations must retain their literal
 filenames and work without CLI output arguments. With neither CLI nor source
 outputs requested, the intended behavior is assembly/validation without files.
-This is a deliberate policy change: current Rust still implicitly requests
-listing/Hex, and `.output` artifacts are additional to those defaults. Change
-that Rust behavior with the output checkpoint, not silently in C1.
+The first C2 checkpoint implements this policy in Rust: listing, Hex and S-record
+are equally opt-in, including multi-input validation. `-o` and metadata base names
+alone do not request an artifact. Shared-library defaults remain unchanged.
 
-The compact section preparer currently discards `.output` filenames and supports
-one Hunk selection. First establish numeric output descriptors with owned paths,
-formats, section selections and options, separate from assembly layout. Support
-source-selected bin/PRG/Hunk artifacts and explicit CLI outputs without using a
-Hunk image as `--bin`. Multiple requested artifacts must share one assembly result.
-Preserve source paths literally; only CLI names gain a missing format extension.
+The first native C2 checkpoint retains numeric output descriptors with literal
+paths and section selections. `binary_output_plan` owns bounded descriptor
+validation and flat ranges; `binary_output_io` owns parent-directory creation,
+short writes, prefix/payload transport and close failures. All source requests
+share one completed assembly. Source paths are literal; only CLI names gain a
+missing format extension. No output request still runs preparation and assembly.
+
+The supported declaration is `.output "path",format=bin|prg|hunk,sections=name,...`:
+format precedes the required section list; other options reject explicitly. Bin
+and PRG select the existing one/two contiguous placed-section layout, including a
+data-only selection declared before the sections themselves. Flat selections are
+resolved after declarations without allocating slots or changing layout. Hunk
+still establishes the existing section-relative layout: multiple Hunk artifacts
+require the same ordered selection. Decoupling Hunk layout from artifact requests,
+arbitrary selections/options and one-code-Hunk defaults remain later work. One
+explicit CLI bin/Hunk artifact is additive to source requests; a Hunk buffer is
+never emitted as `--bin`. Compact `-o` is still unsupported.
+
+Packed descriptors carry IDs and bytes, never memory pointers. Their internal
+record schema changes together in preparation/execution; BS14 packages are
+unchanged. The touched section preparer also fixes its map scratch area overlapping
+five live state words, adding ten reserved bytes rather than retaining corruption.
+
+Focused live Rust oracles cover eleven positive output/validation cases. Fresh
+native runs verify literal and nested paths, multiple Hunk files, relocations/BSS,
+mapped sections, bin/PRG, additive CLI output, pre-declaration selection, inactive
+requests and output-free validation; five negative cases verify source errors,
+unsupported options, unplaced bin, differing Hunk selections and failed writes.
+The first matrix had a wrong expected diagnostic for unplaced bin; the corrected
+probe completes with explicit exit 20 at binding, not the output writer. The
+harness absence proof requires fresh START/DONE, exit zero and missing named
+artifacts, and rejects even an unexpectedly created empty file.
+
+CLI-core reports 65 passed and two previously reproduced warning-report failures.
+The reference check still fails first on `45gs02_absx_overrides`, reproduced with
+unchanged CLI files at `892de310`. Workflow, proof-contract, test-ownership,
+formatter, hardware-runner (19 tests), and affected CCR checks pass; the runtime
+ownership guard retains ten pre-existing missing annotations. An explicit
+`lea buffer.l,a0` probe exposes an existing binding gap; bare `lea buffer,a0`
+passes. Operand-suffix parity is pending, not counted as output support.
+
+The current full native self-host has **not** been rerun in C2. The fresh
+embedded-m68020 A6000 bundle is host-assembled and relocation-checked only;
+its manifest records `native_validation: not_run`. The export has 76 inputs
+(821,890 text bytes plus the 299,142-byte package), fingerprint
+`fnv1a64:9115c28635887652`, and a 404,204-byte release Hunk. The maintained
+`/tmp/opforge-a6000-current` link selects this embedded-m68020 bundle; the usual
+`python3 scripts/performance/run_a6000_selfhost.py` command remains unchanged.
+
+C2's separate release comparison freezes the native tree from `892de310` and
+uses `OPFORGE_COMPARE_NATIVE_ROOT` with the same `new_named_external` command on
+both versions. Source (10,687 bytes), BS14 package (299,142 bytes), live Rust oracle
+(2,434 bytes), 68020/10 MiB configuration and unlimited emulator speed are identical.
+Both samples per version complete fresh and match exactly; no telemetry is enabled.
+
+| CLI state | Native seconds | Median seconds | Image / linked reserved bytes |
+| --- | --- | ---: | ---: |
+| Before C2 (`892de310`) | 7.9379, 7.9406 | 7.9393 | 103,388 / 115,856 |
+| First C2 output checkpoint | 8.1696, 8.1698 | 8.1697 | 105,060 / 117,712 |
+
+The observed change is +0.2305 seconds (+2.90%), not a performance gain. With only
+two host-observed START/DONE samples and approximately 0.25-second polling, it
+is not a precise overhead estimate or an A6000 time. Image growth is 1,672 bytes;
+linked reservations grow 1,856 bytes. Package bytes are unchanged. This workload
+measures the integrated checkpoint using an explicit bin request; it does not
+isolate the cost of each new format or directory creation.
 
 Listing also needs optional display provenance and final-pass emission events;
 HEX/S-record need addresses and occupied spans, not just a contiguous byte buffer.

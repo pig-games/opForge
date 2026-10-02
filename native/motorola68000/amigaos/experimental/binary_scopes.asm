@@ -700,6 +700,12 @@ finish	.block
 	adda.l #SECTION_STATE, a0
 	jsr sections.finish
 	bne.w failSaved
+	movea.l a0, a2
+	movea.l a5, a0
+	move.l (sp), d0
+	movea.l a6, a1
+	jsr sections.resolveOutputs
+	bne.w failSaved
 	moveq #0, d7
 resolve
 	cmp.w layout.State.Count(a6), d7

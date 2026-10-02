@@ -143,7 +143,7 @@ fn run_one(
         .bin_specs(&config.bin_specs)
         .label_output_format(config.label_output_format)
         .header_title(&header_title)
-        .default_outputs(config.default_outputs)
+        .default_outputs(false)
         .collect_runtime_traces(false)
         .debug_conditionals(config.debug_conditionals);
 
@@ -221,6 +221,122 @@ mod tests {
 
     fn write_text(path: &PathBuf, text: &str) {
         fs::write(path, text).expect("write file");
+    }
+
+    fn directory_files(dir: &std::path::Path) -> Vec<String> {
+        let mut files: Vec<_> = fs::read_dir(dir)
+            .expect("read outputs")
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn no_output_requests_validate_single_and_multiple_inputs_without_writing_files() {
+        for multiple in [false, true] {
+            for output_base in [false, true] {
+                let dir = unique_temp_dir("cli-core-no-outputs");
+                let first = dir.join("first.asm");
+                let second = dir.join("second.asm");
+                write_text(
+                    &first,
+                    ".module first\n.meta.output.name \"named\"\nnop\n.endmodule\n",
+                );
+                write_text(&second, ".module second\nnop\n.endmodule\n");
+                let mut args = vec![
+                    "opforge".to_string(),
+                    "-i".into(),
+                    first.display().to_string(),
+                ];
+                if multiple {
+                    args.extend(["-i".into(), second.display().to_string()]);
+                }
+                if output_base {
+                    args.extend([
+                        "-o".into(),
+                        if multiple {
+                            dir.display().to_string()
+                        } else {
+                            dir.join("override").display().to_string()
+                        },
+                    ]);
+                }
+                let reports =
+                    run_with_cli_with_context(&Cli::parse_from(args)).expect("validation");
+                assert_eq!(reports.len(), if multiple { 2 } else { 1 });
+                assert_eq!(directory_files(&dir), vec!["first.asm", "second.asm"]);
+                fs::remove_dir_all(dir).expect("clean test directory");
+            }
+        }
+    }
+
+    #[test]
+    fn list_hex_and_srec_are_individually_selected_with_optional_names() {
+        for (flag, extension) in [("-l", "lst"), ("-x", "hex"), ("-s", "srec")] {
+            for explicit_name in [false, true] {
+                let dir = unique_temp_dir("cli-core-selected-output");
+                let source = dir.join("main.asm");
+                write_text(&source, ".module main\n.org $1000\n.byte $42\n.endmodule\n");
+                let mut args = vec![
+                    "opforge".to_string(),
+                    "-i".into(),
+                    source.display().to_string(),
+                    "-o".into(),
+                    dir.join("selected").display().to_string(),
+                    flag.into(),
+                ];
+                if explicit_name {
+                    args.push("named".into());
+                }
+                run_with_cli_with_context(&Cli::parse_from(args)).expect("selected output");
+                let filename = format!(
+                    "{}.{}",
+                    if explicit_name { "named" } else { "selected" },
+                    extension
+                );
+                assert_eq!(
+                    directory_files(&dir),
+                    vec!["main.asm".to_string(), filename.clone()]
+                );
+                assert!(!fs::read(dir.join(filename))
+                    .expect("read output")
+                    .is_empty());
+                fs::remove_dir_all(dir).expect("clean test directory");
+            }
+        }
+    }
+
+    #[test]
+    fn source_output_directives_write_only_the_requested_files() {
+        for extension in ["hex", "bin"] {
+            let dir = unique_temp_dir("cli-core-source-output");
+            let source = dir.join("main.asm");
+            let output = dir.join(format!("source-selected.{extension}"));
+            let directives = if extension == "hex" {
+                format!(".meta.output.hex \"{}\"\n.byte $42\n", output.display())
+            } else {
+                format!(".region rom, $1000, $10ff\n.section code, kind=code\n.byte $42\n.endsection\n.place code in rom\n.output \"{}\", format=bin, sections=code\n", output.display())
+            };
+            write_text(&source, &format!(".module main\n{directives}.endmodule\n"));
+            let cli = Cli::parse_from(["opforge", "-i", source.to_str().expect("source path")]);
+            run_with_cli_with_context(&cli).expect("source-selected output");
+            assert_eq!(
+                directory_files(&dir),
+                vec![
+                    "main.asm".to_string(),
+                    format!("source-selected.{extension}")
+                ]
+            );
+            assert!(!fs::read(output).expect("read output").is_empty());
+            fs::remove_dir_all(dir).expect("clean test directory");
+        }
     }
 
     #[test]

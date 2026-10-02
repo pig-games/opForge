@@ -13,7 +13,7 @@ its current capability and qualification are tracked in the
 [runtime reset plan](../documentation/plans/native-runtime-reset.md).
 Neither path is a claim of full Rust language, target or output parity.
 
-## Compact CLI input checkpoint (experimental)
+## Compact CLI input and output checkpoints (experimental)
 
 The separate entry is `motorola68000/amigaos/experimental/opforge_compact_cli.asm`.
 Its provisional invocation uses ordinary named options:
@@ -31,13 +31,23 @@ directory. Additional `-M`/`-I` roots retain command order. Root input anchors
 discovery, not module execution order. Quoted Amiga Shell paths, `--name=value`,
 attached short values and `--` are supported. Help/version need no package/input.
 
-For this checkpoint an initial `--cpu` or `--runtime-package` and one explicit
-`--bin` or `--hunk` are required. Omitting an explicit output's filename derives it
-from the input basename. `--hunk` requires source-configured Hunk sections.
-Source-selected filenames, optional listing/Hex/S-record writers, output-free
-validation, multiple artifacts, defines and source CPU/default selection remain
-following work. The BS14 runtime package option is distinct from Rust's canonical
-`.opasm` option. Old three-positional compact commands are no longer supported;
+An initial `--cpu` or `--runtime-package` is still required. With no output
+request, the compact CLI validates the assembly and writes no artifact. An
+omitted `--bin`/`--hunk` filename derives from the input basename. `-o` is still
+unsupported in compact. CLI output names are resolved relative to the input
+directory. Source `.output` paths are literal paths relative to the process
+working directory, and can name multiple artifacts without CLI output options.
+
+The compact source-output subset accepts `.output "path", format=bin|prg|hunk,
+sections=name,...`; specify `format` before `sections`. Sections are required.
+`bin` and `prg` accept one or two contiguous placed sections. `hunk` uses the
+source-configured Hunk sections. Repeated Hunk outputs must use the same section
+list in the same order. One explicit CLI `--bin` or `--hunk` request can add an
+artifact alongside source-selected outputs. The compact writer creates missing
+parent directories. Native listing,
+Hex/S-record writers and metadata, defines, and CPU/source-default selection
+remain future work. The BS14 runtime package option is distinct from Rust's
+canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.
 
 ## Current Layout
@@ -194,23 +204,22 @@ extensions rather than by teaching the CLI to parse package internals.
 
 ## Output Status
 
-Current native output behavior:
+Current legacy native CLI output behavior:
 
 - `.bin`: implemented as a flat byte writer from the current native image
   buffer.
 - `.hunk`: recognized by the CLI but intentionally returns
   `OPC-NCLI028`.
 
-Planned first-run output work for the 6502 completion plan:
+Compact CLI source outputs currently support:
 
 - `.bin`
 - `.prg`
-- `.hex`
-- `.lst`
+- `.hunk` with source-configured sections
 
-The output architecture should become a native artifact subsystem owned below
-the CLI. The CLI should request artifacts and write files, while artifact
-renderers consume assembled session/image state.
+The compact CLI has a native artifact subsystem below the CLI. The legacy CLI
+still writes flat `.bin` only. Neither surface yet provides native listing,
+Intel HEX or S-record writers.
 
 ## Build And Run
 
@@ -421,6 +430,7 @@ The current FS-UAE native CLI coverage includes:
   engine.
 - Native `opcore` expression support is a scalar bridge, not complete EXVM
   parity.
-- Native output is flat `.bin` only.
+- Legacy native CLI output is flat `.bin` only; the compact CLI also supports
+  source-selected `.bin`, `.prg`, and `.hunk` artifacts.
 - Some report records are compatibility observations for tests rather than
   final stable external CLI output.

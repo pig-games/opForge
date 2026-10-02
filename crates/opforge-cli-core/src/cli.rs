@@ -93,9 +93,9 @@ define_build_profile_strings!("full-runtime | bundled");
 const LONG_ABOUT: &str =
     "Multi-CPU assembler supporting Intel 8080/8085, Zilog Z80, Motorola 6809/Hitachi 6309, MOS 6502, WDC 65C02, WDC 65816, and CSG 45GS02.
 
-Outputs are opt-in: specify at least one of -l/--list, -x/--hex, -s/--srec, --hunk, or -b/--bin.
-If no outputs are specified for a single input, the assembler defaults to list+hex
-when a root-module output name (or -o) is available.
+CLI outputs are opt-in: use -l/--list, -x/--hex, -s/--srec, --hunk, or -b/--bin.
+Output files are emitted only when requested by CLI flags or source directives.
+With no output requests, assembly validates the inputs without emitting files.
 Use -o/--outfile to set the output base name when filenames are omitted.
 For -b, ranges are optional: ssss:eeee (4-8 hex digits each).
 If a range is omitted, the binary spans the emitted output.
@@ -1224,32 +1224,11 @@ fn validate_cli_inner(cli: &Cli) -> Result<CliConfig, AsmRunError> {
             dependency_output: None,
             pp_macro_depth: effective_pp_macro_depth,
             max_loop_iterations: effective_max_loop_iterations,
-            default_outputs: false,
             formatter: formatter_mode.map(|mode| FormatterOptions {
                 mode,
                 config_path: cli.fmt_config.clone(),
             }),
         });
-    }
-
-    let list_requested = cli.list_name.is_some();
-    let hex_requested = cli.hex_name.is_some();
-    let srec_requested = cli.srec_name.is_some();
-    let hunk_requested = cli.hunk_name.is_some();
-    let bin_requested = !cli.bin_outputs.is_empty();
-
-    let default_outputs =
-        !list_requested && !hex_requested && !srec_requested && !hunk_requested && !bin_requested;
-    if default_outputs && input_paths.len() > 1 {
-        return Err(AsmRunError::new(
-            AsmError::new(
-                AsmErrorKind::Cli,
-                "No outputs selected. Use -l/--list, -x/--hex, -s/--srec, --hunk, or -b/--bin with multiple inputs",
-                None,
-            ),
-            Vec::new(),
-            Vec::new(),
-        ));
     }
 
     if input_paths.len() > 1 {
@@ -1509,7 +1488,6 @@ fn validate_cli_inner(cli: &Cli) -> Result<CliConfig, AsmRunError> {
         }),
         pp_macro_depth: effective_pp_macro_depth,
         max_loop_iterations: effective_max_loop_iterations,
-        default_outputs,
         formatter: None,
     })
 }
@@ -1548,7 +1526,6 @@ pub struct CliConfig {
     pub dependency_output: Option<DependencyOutputPolicy>,
     pub pp_macro_depth: usize,
     pub max_loop_iterations: u32,
-    pub default_outputs: bool,
     pub formatter: Option<FormatterOptions>,
 }
 
@@ -1876,10 +1853,10 @@ mod tests {
     }
 
     #[test]
-    fn validate_cli_allows_default_outputs_for_single_input() {
+    fn validate_cli_allows_no_outputs_for_single_input() {
         let cli = Cli::parse_from(["opForge", "-i", "prog.asm"]);
         let config = validate_cli(&cli).expect("validate cli");
-        assert!(config.default_outputs);
+        assert_eq!(config.input_paths, vec![PathBuf::from("prog.asm")]);
     }
 
     #[test]
@@ -2090,7 +2067,6 @@ mod tests {
         let config = validate_cli(&cli).expect("validate cli");
         assert_eq!(config.srec_name.as_deref(), Some("out.srec"));
         assert_eq!(config.go_addr.as_deref(), Some("1234"));
-        assert!(!config.default_outputs);
     }
 
     #[test]
@@ -2098,7 +2074,6 @@ mod tests {
         let cli = Cli::parse_from(["opForge", "-i", "prog.asm", "--hunk", "out.hunk"]);
         let config = validate_cli(&cli).expect("validate cli");
         assert_eq!(config.hunk_name.as_deref(), Some("out.hunk"));
-        assert!(!config.default_outputs);
     }
 
     #[test]
@@ -2404,7 +2379,6 @@ mod tests {
             dependency_output: None,
             pp_macro_depth: 32,
             max_loop_iterations: 10_000,
-            default_outputs: false,
             formatter: None,
         }
     }

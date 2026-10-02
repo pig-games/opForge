@@ -548,6 +548,8 @@ pub(crate) enum OpforgeNativeCliProof<'a> {
     },
     /// Informational commands require a fresh exit-zero protocol and live text.
     SuccessfulExitContaining(&'a str),
+    /// Validation requires fresh successful completion and absence of named artifacts.
+    SuccessfulExitWithoutArtifacts(&'a [&'a str]),
     ExpectedFailureWithDiagnostic,
     ExpectedFailureContaining(&'a str),
 }
@@ -2103,6 +2105,23 @@ fn verify_native_cli_case_proof_inner(
         OpforgeNativeCliProof::ExactArtifacts(artifacts) => {
             verify_exact_native_cli_artifacts(case, run, artifacts)
         }
+        OpforgeNativeCliProof::SuccessfulExitWithoutArtifacts(paths) => {
+            if paths.is_empty() || !run.success || run.exit_code != Some(0) {
+                return Err(format!(
+                    "FS-UAE absence proof for {} requires named paths and fresh exit zero",
+                    case.name
+                ));
+            }
+            for path in paths {
+                if run.captured_artifacts.contains_key(&PathBuf::from(path)) {
+                    return Err(format!(
+                        "FS-UAE absence proof for {} unexpectedly produced {path}",
+                        case.name
+                    ));
+                }
+            }
+            Ok(())
+        }
         OpforgeNativeCliProof::ExactStdoutLines {
             prefix,
             rust_oracle,
@@ -2845,6 +2864,13 @@ fn opforge_native_cli_case_identity(
         }
         OpforgeNativeCliProof::ExpectedFailureWithDiagnostic => {
             state = fnv1a64_update(state, b"failure-with-diagnostic");
+        }
+        OpforgeNativeCliProof::SuccessfulExitWithoutArtifacts(paths) => {
+            state = fnv1a64_update(state, b"successful-exit-without-artifacts");
+            for path in paths {
+                state = fnv1a64_update(state, &[0]);
+                state = fnv1a64_update(state, path.as_bytes());
+            }
         }
         OpforgeNativeCliProof::SuccessfulExitContaining(text) => {
             state = fnv1a64_update(state, b"successful-exit-containing");
@@ -6501,6 +6527,42 @@ mod tests {
     }
 
     #[test]
+    fn absence_proof_requires_fresh_zero_exit_and_missing_artifacts() {
+        let case = OpforgeNativeCliParityCase {
+            name: "absence-proof",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(b".byte 1"),
+            command_template: Some("--cpu 68020 source.asm"),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::SuccessfulExitWithoutArtifacts(&["Work/unrequested.lst"]),
+        };
+        for (completed, exit) in [(false, Some(0)), (true, None), (true, Some(20))] {
+            assert!(verify_native_cli_case_proof(
+                &case,
+                &mut proof_test_run(completed, exit, None)
+            )
+            .is_err());
+        }
+        let mut run = proof_test_run(true, Some(0), None);
+        verify_native_cli_case_proof(&case, &mut run).unwrap();
+        run.captured_artifacts
+            .insert(PathBuf::from("Work/unrequested.lst"), Vec::new());
+        assert!(verify_native_cli_case_proof(&case, &mut run).is_err());
+        let empty_case = OpforgeNativeCliParityCase {
+            name: "empty-absence-proof",
+            proof: OpforgeNativeCliProof::SuccessfulExitWithoutArtifacts(&[]),
+            ..case
+        };
+        assert!(verify_native_cli_case_proof(
+            &empty_case,
+            &mut proof_test_run(true, Some(0), None)
+        )
+        .is_err());
+    }
+
+    #[test]
     fn informational_proof_requires_fresh_zero_exit_and_isolated_stdout() {
         let case = OpforgeNativeCliParityCase {
             name: "informational-proof",
@@ -7756,3 +7818,6 @@ mod native_package_loading_performance;
 #[cfg(test)]
 #[path = "tests/compact_cli_input.rs"]
 mod compact_cli_input;
+
+#[path = "tests/compact_cli_outputs.rs"]
+mod compact_cli_outputs;

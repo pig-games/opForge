@@ -51,8 +51,11 @@ The `.cpu` directive currently accepts:
   handling, never CPU instruction selection. Unresolved dot names are errors.
 - Labels may end with `:` or omit it.
 - The program counter can be set with `* = expr` or `.org expr`.
-- If no outputs are specified for a single input, the assembler defaults to
-  list+hex when a root-module output name (or `-o`) is available.
+- The Rust CLI writes artifacts only when an output is explicitly requested.
+  With no output request, it validates the assembly and writes no artifact;
+  this applies to single and multiple inputs. `-o` supplies a base name for
+  requested outputs whose filenames are omitted, but does not request output
+  by itself. The shared library's default output policy is unchanged.
 
 ## 2. Expressions and data types
 
@@ -1261,10 +1264,15 @@ The following rules are the ones most likely to affect day-to-day invocation:
 - If multiple inputs are provided, `-o` must be a directory and explicit output
   filenames are not allowed; each input uses its own base name under the output
   directory.
-- With multiple inputs, at least one output type (`-l`, `-x`, `-s`, `--hunk`, `-b`) must be selected.
-- If no outputs are specified for a single input, opForge defaults to list+hex
-  when `.meta.output.name` (or `-o`) is available; otherwise output selection is required.
-- Relative output filenames are anchored to the input file's directory.
+- An output type is optional with multiple inputs, so validation-only runs are
+  supported. The Rust CLI writes artifacts only when an output is explicitly
+  requested; `-o` provides a base name for requested outputs with omitted
+  filenames, but does not request output by itself. The shared library's default
+  output policy is unchanged.
+- Relative filenames supplied to CLI output flags are anchored to the input
+  file's directory. A literal path in a source `.output` directive is relative
+  to the process working directory, or to the configured output directory when
+  one is set.
 - Formatter mode (`--fmt`, `--fmt-check`, `--fmt-write`, `--fmt-stdout`) requires at least one input and cannot be combined with assembler output flags or fixit options.
 - `--fmt-stdout` requires exactly one input.
 - `-b` without a range emits a binary that spans the emitted output.

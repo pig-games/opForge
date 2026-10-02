@@ -93,6 +93,8 @@ record
 	beq.w next
 	cmpi.w #5, d0
 	blo.w bad
+	cmpi.b #21, 4(a0)  ; output descriptors do not change placed layout
+	beq.w next
 	move.w d0, -(sp)
 	bsr.w scanHunkControl
 	bne.w hunkScanBad
@@ -285,9 +287,7 @@ firstKind
 	move.w #1, HunkSlot.Seen(a5)
 	bra.w ok
 output
-	tst.w State.OutputSeen(a6)
-	bne.w bad
-	cmpi.w #6, d0
+	cmpi.w #8, d0
 	blo.w bad
 	moveq #0, d2
 	move.b 5(a0), d2
@@ -295,9 +295,24 @@ output
 	cmpi.w #8, d2
 	bhi.w bad
 	move.l d2, d3
-	addq.l #6, d3
+	add.l d3, d3
+	addq.l #8, d3
 	cmp.l d0, d3
+	bhi.w bad
+	tst.w State.OutputSeen(a6)
+	beq.w firstOrder
+	cmp.w State.OrderCount(a6), d2
 	bne.w bad
+	lea ORDER(a6), a4
+	lea 6(a0), a1
+repeatOrder
+	move.w (a1)+, d3
+	cmp.b (a4)+, d3
+	bne.w bad
+	subq.w #1, d2
+	bne.w repeatOrder
+	bra.w ok
+firstOrder
 	move.w d2, State.OrderCount(a6)
 	move.w #1, State.OutputSeen(a6)
 	lea ORDER(a6), a4
@@ -305,7 +320,7 @@ output
 	moveq #0, d4
 copyOrder
 	moveq #0, d3
-	move.b (a1)+, d3
+	move.w (a1)+, d3
 	cmpi.w #8, d3
 	bhs.w bad
 	btst d3, d4
@@ -366,6 +381,8 @@ clearHunkPass
 ; before imported logical records for an explicit map.
 control	.block
 	movem.l d1-d3/a0-a2/a5-a6, -(sp)
+	cmpi.b #21, 4(a2)
+	beq.w ok
 	cmpi.w #5, State.Mode(a0)
 	beq.w hunkControl
 	moveq #0, d2

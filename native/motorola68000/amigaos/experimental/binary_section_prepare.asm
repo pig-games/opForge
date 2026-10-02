@@ -29,7 +29,7 @@ OutputCount	.word ?
 OutputSeen	.word ?
 Selected	.word ?
 	.endstruct
-MAPS = State.MapCount+2
+MAPS = State.Selected+2
 SLOT_NAMES = MAPS+2*MAP_BYTES
 OUTPUT_SLOTS = SLOT_NAMES+8*2
 SCRATCH_BYTES = OUTPUT_SLOTS+8
@@ -468,32 +468,48 @@ done
 	rts
 	.bend  ; line
 
-; A0=writer record,A1=scope state,A2=section state. Lower an explicit
-; Hunk output selection to numeric section slots. Names may be registered
-; before their declarations; finish verifies that every selected slot opens.
-; The output path belongs to the CLI caller and is not retained here.
+; A0=writer record,A1=scope state,A2=section state. Retain a literal path,
+; container and numeric section selection. Hunk output establishes the existing
+; section-relative layout; additional Hunk artifacts must use the same order.
+; Bin/PRG declarations are metadata only and must use placed sections at runtime.
+; Records: [header,20(Hunk)/21(flat),count,u16 slots...,format,pathBytes,path...].
+; Stack: 272 temporary bytes; D0/CCR=status, other registers preserved.
 output	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #272, sp
 	movea.l a0, a5
 	movea.l a1, a6
+	lea 256(sp), a1
 	movea.l a2, a4
-	tst.w State.OutputSeen(a4)
-	bne.w outputBad
 	moveq #0, d0
 	move.b (a5), d0
 	addq.w #1, d0
 	movea.l a5, a3
 	adda.w d0, a3
-	lea 9(a5), a2  ; directive identifier is a five-byte token
+	lea 9(a5), a2
 	cmpa.l a3, a2
 	bhs.w outputBad
 	cmpi.b #3, (a2)+
 	bne.w outputBad
-	moveq #0, d0
-	move.b (a2)+, d0
-	adda.w d0, a2
-	cmpa.l a3, a2
+	moveq #0, d4
+	move.b (a2)+, d4
+	beq.w outputBad
+	move.l a3, d0
+	sub.l a2, d0
+	cmp.l d0, d4
 	bhi.w outputBad
+	movea.l sp, a0
+	move.l d4, d0
+pathCopy
+	move.b (a2)+, d1
+	beq.w outputBad
+	cmpi.b #32, d1
+	blo.w outputBad
+	move.b d1, (a0)+
+	subq.w #1, d0
+	bne.w pathCopy
+	cmpa.l a3, a2
+	bhs.w outputBad
 	cmpi.b #4, (a2)+
 	bne.w outputBad
 	bsr.w name
@@ -502,14 +518,30 @@ output	.block
 	moveq #6, d0
 	bsr.w matches
 	bne.w outputBad
+	cmpa.l a3, a2
+	bhs.w outputBad
 	cmpi.b #34, (a2)+
 	bne.w outputBad
 	bsr.w name
 	bne.w outputBad
+	moveq #2, d5
 	lea HunkWord(pc), a0
 	moveq #4, d0
 	bsr.w matches
+	beq.w outputFormat
+	moveq #1, d5
+	lea BinWord(pc), a0
+	moveq #3, d0
+	bsr.w matches
+	beq.w outputFormat
+	moveq #3, d5
+	lea PrgWord(pc), a0
+	moveq #3, d0
+	bsr.w matches
 	bne.w outputBad
+outputFormat
+	cmpa.l a3, a2
+	bhs.w outputBad
 	cmpi.b #4, (a2)+
 	bne.w outputBad
 	bsr.w name
@@ -518,21 +550,31 @@ output	.block
 	moveq #8, d0
 	bsr.w matches
 	bne.w outputBad
+	cmpa.l a3, a2
+	bhs.w outputBad
 	cmpi.b #34, (a2)+
 	bne.w outputBad
-	moveq #0, d6  ; selected-slot bitset
-	moveq #0, d7  ; selection count
+	moveq #0, d6
+	moveq #0, d7
 outputSection
 	cmpi.w #8, d7
 	bhs.w outputBad
 	bsr.w name
 	bne.w outputBad
+	cmpi.w #2, d5
+	bne.w deferredSection
 	bsr.w slot
 	bmi.w outputBad
 	btst d0, d6
 	bne.w outputBad
 	bset d0, d6
-	move.b d0, OUTPUT_SLOTS(a4, d7.w)
+	bra.w storeSection
+deferredSection
+	move.l d1, d0
+storeSection
+	move.w d7, d1
+	add.w d1, d1
+	move.w d0, 0(a1, d1.w)
 	addq.w #1, d7
 	cmpa.l a3, a2
 	beq.w outputReady
@@ -540,27 +582,74 @@ outputSection
 	bne.w outputBad
 	bra.w outputSection
 outputReady
+	cmpi.w #2, d5
+	bne.w outputRecord
+	tst.w State.OutputSeen(a4)
+	beq.w firstOutput
+	cmp.w State.OutputCount(a4), d7
+	bne.w outputBad
+	moveq #0, d0
+sameOrder
+	move.w d0, d1
+	add.w d1, d1
+	move.w 0(a1, d1.w), d1
+	cmp.b OUTPUT_SLOTS(a4, d0.w), d1
+	bne.w outputBad
+	addq.w #1, d0
+	cmp.w d7, d0
+	blo.w sameOrder
+	bra.w outputRecord
+firstOutput
 	move.w d7, State.OutputCount(a4)
 	move.w #1, State.OutputSeen(a4)
 	move.w d6, State.Selected(a4)
+	moveq #0, d0
+storeOrder
+	move.w d0, d1
+	add.w d1, d1
+	move.w 0(a1, d1.w), d1
+	move.b d1, OUTPUT_SLOTS(a4, d0.w)
+	addq.w #1, d0
+	cmp.w d7, d0
+	blo.w storeOrder
+outputRecord
 	move.w d7, d0
-	addq.w #5, d0
-	move.b d0, (a5)  ; record length minus one
+	add.w d0, d0
+	add.w d4, d0
+	addq.w #8, d0
+	cmpi.w #256, d0
+	bhi.w outputBad
+	subq.w #1, d0
+	move.b d0, (a5)
 	move.b #source.FLAG_LAYOUT, 1(a5)
 	move.b #20, 4(a5)
+	cmpi.w #2, d5
+	beq.w outputHeader
+	move.b #21, 4(a5)
+outputHeader
 	move.b d7, 5(a5)
-	moveq #0, d6
-outputCopy
-	move.b OUTPUT_SLOTS(a4, d6.w), d0
-	move.b d0, 6(a5, d6.w)
-	addq.w #1, d6
-	cmp.w d7, d6
-	blo.w outputCopy
+	lea 6(a5), a0
+	moveq #0, d0
+outputSlots
+	move.w d0, d1
+	add.w d1, d1
+	move.w 0(a1, d1.w), (a0)+
+	addq.w #1, d0
+	cmp.w d7, d0
+	blo.w outputSlots
+	move.b d5, (a0)+
+	move.b d4, (a0)+
+	movea.l sp, a1
+outputPath
+	move.b (a1)+, (a0)+
+	subq.w #1, d4
+	bne.w outputPath
 	moveq #0, d0
 	bra.w outputDone
 outputBad
 	moveq #1, d0
 outputDone
+	adda.w #272, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -639,6 +728,73 @@ mapDone
 	rts
 	.bend  ; importMap
 
+	; Resolve flat output references after declarations, without allocating layout
+; identities. A0=packed records,D0=bytes,A1=scope state,A2=section state.
+; Numeric u16 source IDs become u16 runtime slots in place; record size is stable.
+; D0/CCR=status; other registers preserved. Hunk records already contain slots.
+resolveOutputs	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	movea.l a2, a4
+	movea.l a0, a5
+	movea.l a0, a3
+	adda.l d0, a3
+record
+	cmpa.l a3, a5
+	beq.w ok
+	bhi.w bad
+	moveq #0, d7
+	move.b (a5), d7
+	addq.w #1, d7
+	cmpi.w #4, d7
+	blo.w bad
+	move.l a3, d0
+	sub.l a5, d0
+	cmp.l d0, d7
+	bhi.w bad
+	btst #4, 1(a5)
+	beq.w next
+	cmpi.w #5, d7
+	blo.w bad
+	cmpi.b #21, 4(a5)
+	bne.w next
+	moveq #0, d5
+	move.b 5(a5), d5
+	beq.w bad
+	cmpi.w #8, d5
+	bhi.w bad
+	move.l d5, d0
+	add.l d0, d0
+	addq.l #8, d0
+	cmp.l d7, d0
+	bhs.w bad
+	lea 6(a5), a2
+	moveq #0, d6
+selection
+	moveq #0, d1
+	move.w (a2), d1
+	bsr.w flatSlot
+	bmi.w bad
+	btst d0, d6
+	bne.w bad
+	bset d0, d6
+	move.w d0, (a2)+
+	subq.w #1, d5
+	bne.w selection
+next
+	adda.l d7, a5
+	bra.w record
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; resolveOutputs
+
 ; A0=section state. A mapped case requires both named sections by completion.
 finish	.block
 	movem.l d1, -(sp)
@@ -700,6 +856,61 @@ finishDone
 	.bend  ; finish
 
 	.priv
+	; D1=section name,A4=section state,A6=scope state. Return placed slot 0/1
+; or -1. Output references never create sections or change declaration order.
+flatSlot	.block
+	movem.l d1-d5/a0, -(sp)
+	move.w d1, d5
+	tst.w State.MapCount(a4)
+	bne.w mapped
+	moveq #0, d0
+	move.w State.Concrete(a4), d0
+	beq.w second
+	bsr.w sameLeaf
+	beq.w first
+second
+	moveq #0, d0
+	move.w State.Second(a4), d0
+	beq.w missing
+	bsr.w sameLeaf
+	bne.w missing
+	moveq #1, d0
+	bra.w done
+first
+	moveq #0, d0
+	bra.w done
+mapped
+	moveq #0, d4
+mapSlot
+	cmp.w State.MapCount(a4), d4
+	bhs.w missing
+	move.l d4, d0
+	lsl.l #3, d0
+	lea MAPS(a4), a0
+	adda.l d0, a0
+	moveq #0, d0
+	move.w Map.Concrete(a0), d0
+	move.w d5, d1
+	bsr.w sameLeaf
+	beq.w found
+	moveq #0, d0
+	move.w Map.Logical(a0), d0
+	move.w d5, d1
+	bsr.w sameLeaf
+	beq.w found
+	addq.w #1, d4
+	bra.w mapSlot
+found
+	move.l d4, d0
+	bra.w done
+missing
+	moveq #-1, d0
+done
+	movem.l (sp)+, d1-d5/a0
+	tst.l d0
+	rts
+	.bend  ; flatSlot
+
 ; D1=source ID,A4=section state,A6=scope state. Return slot 0..7 in D0,
 ; or -1 when the bounded table is full. Preserve all other registers.
 slot	.block
@@ -892,6 +1103,8 @@ InWord	.byte "in"
 MapWord	.byte "map"
 FormatWord	.byte "format"
 HunkWord	.byte "hunk"
+BinWord	.byte "bin"
+PrgWord	.byte "prg"
 SectionsWord	.byte "sections"
 	.align 2  ; keep the next module's instructions word-aligned
 	.endsection

@@ -7,6 +7,8 @@
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_output as hunk
+	.use experimental.amigaos.binary_output_plan as output_plan
+	.use experimental.amigaos.binary_output_io as output_io
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_package_loader as loader
 	.use experimental.amigaos.binary_memory as memory
@@ -40,6 +42,7 @@ DOS_OUTPUT = -60
 DOS_WRITE = -48
 DOS_OPEN = -30
 DOS_CLOSE = -36
+DOS_PUT_STR = -948
 STEP_ORDER = 1
 STEP_BIND = 2
 PROGRESS_SOURCE_BEGIN = 1
@@ -88,7 +91,7 @@ PackagePath	.long ?
 SourcePath	.long ?
 OutputPath	.long ?
 Mode	.word ?  ; zero: manifest harness; one: single source; two: discovery
-OutputKind	.word ?  ; zero: harness auto; one: flat binary; two: Hunk
+OutputKind	.word ?  ; zero: harness auto; one: flat binary; two: Hunk; three: source-only
 ModuleRoots	.long ?
 ModuleCount	.long ?
 IncludeRoots	.long ?
@@ -126,8 +129,11 @@ execute	.block
 	tst.l loader.Frame.Cpu(a1)
 	beq.w invalidConfig
 packageConfigured
+	cmpi.w #3, CliOutputKind
+	beq.w outputConfigured
 	tst.l OutputName
 	beq.w invalidConfig
+outputConfigured
 	tst.w CliMode
 	beq.w configured
 	cmpi.l #8, CliModuleCount
@@ -178,9 +184,14 @@ configured
 	.MEMORY_CLOCK DosBase, #2
 	.MEMORY_PHASE #2
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_OUTPUT, #0, #0, Records, memory.Block.Used
-	bsr.w writeOutput
-	bne.w failed
+	bsr.w writeOutputs
+	bne.w outputFailed
 	clr.l ReturnCode
+	bra.w cleanup
+outputFailed
+	movea.l DosBase, a6
+	move.l #OutputFailure, d1
+	jsr DOS_PUT_STR(a6)
 	bra.w cleanup
 failed
 	bsr.w reportFailure
@@ -1354,46 +1365,97 @@ done
 	rts
 	.bend  ; appendReloc
 
-writeOutput	.block
+; Execute requested artifacts after one completed assembly. The harness retains
+; its explicit capture path; Shell invocations additionally honor source paths.
+writeOutputs	.block
+	tst.w CliOutputKind
+	beq.w explicit
+	cmpi.w #3, CliOutputKind
+	beq.w sources
+explicit
+	move.w CliOutputKind, d0
+	move.w d0, SelectedOutputKind
 	bsr.w selectOutput
 	bne.w bad
-	movea.l DosBase, a6
-	move.l OutputName, d1
-	move.l #1006, d2
-	jsr -30(a6)
-	tst.l d0
-	beq.w bad
-	move.l d0, d4
-	moveq #0, d5
-	lea Work, a5
-loop
-	move.l WriteBytes, d3
-	sub.l d5, d3
+	move.l OutputName, SelectedOutputPath
+	clr.l PrefixBytes
+	bsr.w writeSelected
+	bne.w bad
+	tst.w CliOutputKind
 	beq.w complete
-	move.l WritePointer, d2
-	add.l d5, d2
-	move.l d4, d1
-	jsr -48(a6)
+sources
+	lea OutputCursor, a0
+	lea Records, a1
+	move.l memory.Block.Pointer(a1), output_plan.Cursor.Records(a0)
+	move.l memory.Block.Used(a1), output_plan.Cursor.Bytes(a0)
+	clr.l output_plan.Cursor.Offset(a0)
+next
+	lea OutputCursor, a0
+	jsr output_plan.next
+	cmpi.l #output_plan.END, d0
+	beq.w complete
 	tst.l d0
-	ble.w closeBad
-	add.l d0, d5
-	cmp.l WriteBytes, d5
-	bhi.w closeBad
-	bra.w loop
+	bne.w bad
+	move.w d1, SelectedOutputKind
+	lea OutputPath, a3
+	move.l a3, SelectedOutputPath
+	move.l d3, d4
+copyPath
+	move.b (a2)+, (a3)+
+	subq.w #1, d4
+	bne.w copyPath
+	clr.b (a3)
+	clr.l PrefixBytes
+	cmpi.w #output_plan.HUNK, d1
+	beq.w hunkArtifact
+	move.l d2, d0
+	lea Work, a5
+	move.l assembly.Frame.Used(a5), d1
+	movea.l assembly.Frame.Sections(a5), a0
+	jsr output_plan.range
+	bne.w bad
+	lea Output, a0
+	add.l memory.Block.Pointer(a0), d1
+	bcs.w bad
+	move.l d1, WritePointer
+	move.l d2, WriteBytes
+	cmpi.w #output_plan.PRG, SelectedOutputKind.l
+	bne.w write
+	cmpi.l #$ffff, d3
+	bhi.w bad
+	lea Prefix, a0
+	move.b d3, (a0)+
+	lsr.w #8, d3
+	move.b d3, (a0)
+	move.l #2, PrefixBytes
+	bra.w write
+hunkArtifact
+	bsr.w selectOutput
+	bne.w bad
+write
+	bsr.w writeSelected
+	bne.w bad
+	bra.w next
 complete
-	move.l d4, d1
-	jsr -36(a6)
-	tst.l d0
-	beq.w bad
 	moveq #0, d0
 	rts
-closeBad
-	move.l d4, d1
-	jsr -36(a6)
 bad
 	moveq #1, d0
 	rts
-	.bend  ; writeOutput
+	.bend  ; writeOutputs
+
+; Transport only. All format selection and buffers are complete before IO.
+writeSelected	.block
+	lea OutputWrite, a0
+	move.l SelectedOutputPath, output_io.Frame.Path(a0)
+	move.l WritePointer, output_io.Frame.Data(a0)
+	move.l WriteBytes, output_io.Frame.Bytes(a0)
+	move.l #Prefix, output_io.Frame.Prefix(a0)
+	move.l PrefixBytes, output_io.Frame.PrefixBytes(a0)
+	movea.l DosBase, a6
+	jsr output_io.write
+	rts
+	.bend  ; writeSelected
 
 ; Build selected native Hunk sections from numeric assembly metadata.
 ; The flat path keeps its existing write buffer. D0/CCR=status.
@@ -1404,9 +1466,9 @@ selectOutput	.block
 	lea Output, a0
 	move.l memory.Block.Pointer(a0), WritePointer
 	movea.l assembly.Frame.Sections(a5), a6
-	cmpi.w #1, CliOutputKind
+	cmpi.w #1, SelectedOutputKind
 	beq.w requireFlat
-	cmpi.w #2, CliOutputKind
+	cmpi.w #2, SelectedOutputKind
 	bne.w sourceFormat
 	cmpi.w #5, sections.State.Mode(a6)
 	bne.w badSelect
@@ -1603,6 +1665,7 @@ done
 	.endsection
 	.section data, kind=data
 DosName	.byte "dos.library", 0
+OutputFailure	.byte "compact CLI: output failed", 10, 0
 PackageFailure	.byte "package: missing, invalid or incompatible runtime package", 10
 PackageFailureEnd
 SelectedModuleKeyword	.byte "module"
@@ -1711,6 +1774,13 @@ HunkFrame	.res byte, hunk.Frame.Used+4
 HunkParts	.res byte, hunk.MAX_SEGMENTS*hunk.SEGMENT_BYTES
 SlotToPart	.res byte, 8
 PartSlots	.res byte, 8
+OutputCursor	.res byte, output_plan.CURSOR_BYTES
+OutputWrite	.res byte, output_io.FRAME_BYTES
+OutputPath	.res byte, PATH_BYTES
+SelectedOutputPath	.res long, 1
+SelectedOutputKind	.res word, 1
+Prefix	.res byte, 2
+PrefixBytes	.res long, 1
 WritePointer	.res long, 1
 WriteBytes	.res long, 1
 	.endsection

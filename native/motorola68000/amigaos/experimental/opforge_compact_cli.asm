@@ -41,8 +41,6 @@ tail
 	jsr input.resolve
 	bne.w badInput
 	lea Arguments, a2
-	tst.w args.State.OutputKind(a2)
-	beq.w pendingOutputs
 	lea Config, a0
 	lea args.State.Input(a2), a1
 	move.l a1, app.Frame.SourcePath(a0)
@@ -50,6 +48,9 @@ tail
 	move.l a1, app.Frame.OutputPath(a0)
 	move.w #2, app.Frame.Mode(a0)
 	move.w args.State.OutputKind(a2), app.Frame.OutputKind(a0)
+	bne.w outputConfigured
+	move.w #3, app.Frame.OutputKind(a0)
+outputConfigured
 	lea args.State.ModulePaths(a2), a1
 	move.l a1, app.Frame.ModuleRoots(a0)
 	move.l args.State.ModuleCount(a2), app.Frame.ModuleCount(a0)
@@ -104,8 +105,6 @@ badInput
 missingTarget
 	move.l #TargetError, d1
 	bra.w error
-pendingOutputs
-	move.l #OutputError, d1
 error
 	movea.l DosBase, a6
 	jsr PUT_STR(a6)
@@ -141,12 +140,11 @@ UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "  -h, --help           This help", 10
 	.byte "  -V, --version        Build identity", 10
 	.byte "Root-file directory is the default module/include search root.", 10
-	.byte "Additional output formats and source-selected filenames follow in the output checkpoint.", 10, 0
-VersionText	.byte "opForge compact native | BS14 | experimental CLI-input checkpoint", 10, 0
+	.byte "Source .output filenames are literal; no request means validation only.", 10, 0
+VersionText	.byte "opForge compact native | BS14 | experimental CLI-output checkpoint", 10, 0
 ArgumentError	.byte "compact CLI: invalid or unsupported arguments (see --help)", 10, 0
 InputError	.byte "compact CLI: invalid input; expected readable .asm file or directory with main.asm (bounded paths)", 10, 0
 TargetError	.byte "compact CLI: initial target requires --cpu or --runtime-package", 10, 0
-OutputError	.byte "compact CLI: output-free validation and source-named outputs are pending; specify --bin or --hunk", 10, 0
 	.align 4
 	.include "package_catalog.i"
 	.endsection

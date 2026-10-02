@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533134; BS14
+MAGIC = $42533135; BS15
 DICTIONARY_REGISTER_OR_NAMED = 1
 DICTIONARY_MEMBER = 2
 DICTIONARY_ROLE_ALLOWED = DICTIONARY_REGISTER_OR_NAMED+DICTIONARY_MEMBER
@@ -68,8 +68,10 @@ EmitDirective	.word ?
 WordBytes	.word ?
 DataPlan	.long ?
 DataPlanBytes	.long ?
+MetadataPlan	.long ?
+MetadataPlanBytes	.long ?
 .endstruct
-HEADER_BYTES = Header.DataPlanBytes+4
+HEADER_BYTES = Header.MetadataPlanBytes+4
 
 Context	.struct
 Values	.long ?

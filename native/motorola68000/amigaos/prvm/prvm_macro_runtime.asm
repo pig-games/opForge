@@ -7,12 +7,13 @@
 	.use prvm.amigaos.packed_macro as packed_macro
 	.use prvm.amigaos.packed_file as file
 	.use prvm.amigaos.packed_data as data
+	.use prvm.amigaos.packed_metadata as metadata
 	.use prvm.amigaos.macro_fragments as fragments
 	.include "telemetry_macros.i"
 	.section code, kind=code
 	.pub
 
-; Execute package-selected entries 2 through 6; each executor owns its request/program validation.
+; Execute package-selected entries 2 through 7; each executor owns its request/program validation.
 ; Inputs: A0 request frame, D0 available frame bytes.
 ; Outputs: D0 status, D1 record count, D2 error offset, D3 published bytes.
 ; Clobbers: A0-A3; preserves D4-D7/A4-A6. Executors stage atomic publication.
@@ -24,6 +25,8 @@ run	.block
 	beq invalidArgument
 	cmpi.l #abi.PRVM_REQUEST_FRAME_SIZE, d0
 	blt invalidArgument
+	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_METADATA, abi.PRVM_FRAME_ENTRY_KIND(a0)
+	beq metadataEntry
 	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_DATA, abi.PRVM_FRAME_ENTRY_KIND(a0)
 	beq dataEntry
 	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_FILE, abi.PRVM_FRAME_ENTRY_KIND(a0)
@@ -35,6 +38,9 @@ run	.block
 	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_MACRO, abi.PRVM_FRAME_ENTRY_KIND(a0)
 	bne invalidArgument
 	jsr packed_macro.run
+	bra done
+metadataEntry
+	jsr metadata.run
 	bra done
 dataEntry
 	jsr data.run

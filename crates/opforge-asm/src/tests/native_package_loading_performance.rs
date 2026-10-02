@@ -135,7 +135,12 @@ fn native_package_loading_performance() {
     .into_iter()
     .next()
     .unwrap();
-    let package = fs::read(external.output_dir.join("packages").join(&target_name)).unwrap();
+    // A frozen native tree carries its own capsule contract for before/after
+    // measurements. This changes the test input, never production dispatch.
+    let package_path = std::env::var_os("OPFORGE_COMPARE_PACKAGE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| external.output_dir.join("packages").join(&target_name));
+    let package = fs::read(package_path).unwrap();
     let named_path = format!("build/packages/{target_name}");
     // Arithmetic, conditional branches, modules/imports and data share one input
     // and live Rust oracle across every storage mode and baseline executable.
@@ -194,7 +199,8 @@ fn native_package_loading_performance() {
                 b"BS11".as_slice(),
                 b"BS12".as_slice(),
                 b"BS13".as_slice(),
-                b"BS14".as_slice()
+                b"BS14".as_slice(),
+                b"BS15".as_slice()
             ]
             .contains(&package.get(..4).unwrap_or(&[])),
             "baseline must carry its own known frozen native contract"

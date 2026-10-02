@@ -58,7 +58,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS14 represents one CPU/dialect pipeline and carries its canonical
+Current BS15 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -210,7 +210,7 @@ CPU selection/defaults belong to P3. `--hunk` currently selects source-configure
 sections, rather than general Rust Hunk CLI synthesis. Informational commands
 need no input, package or output configuration.
 Native runtime-package/dialect/search-root options remain separate from canonical
-Rust `.opasm` loading; never mislabel BS14 as the canonical container.
+Rust `.opasm` loading; never mislabel BS15 as the canonical container.
 
 Reuse isolated old CLI routines where coherent, without importing the old engine
 state or preprocessor. Qualify actual accepted/rejected invocations against live
@@ -394,7 +394,8 @@ resolved timing regression on ordinary binary output. Executable growth is
 This measures the integrated binary path, not isolated Hex/S-record rendering
 cost or physical A6000 time. It is separate from the previous C2 comparison.
 
-Listing and source output metadata remain next C2 capabilities. Reuse numeric
+Inline source output metadata is the next checkpoint below; listing remains a
+later C2 capability. Reuse numeric
 final-pass emission events and add optional display provenance for listings.
 Retain display text only for requested reporting, outside binary execution.
 Do not restore text-based parsing/execution, import the legacy engine's large
@@ -404,6 +405,81 @@ filenames and complete bytes against live Rust, including simultaneous outputs,
 source-only declarations, no-output validation, reservations, origins, section
 order and write failures. Split these capabilities into inspectable recovery
 points as needed; completing C1 does not claim output parity.
+
+#### Third C2 checkpoint — inline output metadata (focused qualification)
+
+Implement quoted inline `.meta.output.name` and `.meta.output.hex ["name"]`,
+plus descriptive `.meta.name`/`.meta.version`. A missing or empty Hex name uses
+`<output-base>.hex`. Naming alone requests no artifact. CLI Hex overrides the
+source Hex filename; other CLI formats remain additive, and an omitted CLI
+filename follows the metadata base. Metadata belongs to the entry's root module
+and obeys active conditionals. Existing literal `.output` artifacts stay additive.
+
+Keep grammar in shared packed PRVM entry 7, contract 2: a package-selected table
+maps numeric heads to output/descriptive roles and publishes bounded decoded
+string spans. Native preparation validates scope and retains only output names;
+assembly continues over numeric records. A separate output policy module resolves
+paths before assembly; rendering and file transport retain their existing owners.
+BS15 replaces BS14: its 160-byte header adds the preparation-only metadata program
+at offset/length 152/156. Producer, native readers, exports and hardware checks
+migrate together; regenerate packages instead of keeping old executors.
+
+This checkpoint does **not** complete metadata parity: unquoted values, `.meta`/
+`.output` configuration blocks, CPU overrides, source BIN/FILL and listing remain
+unsupported. Unknown or unsupported active forms must fail explicitly; inactive
+forms must not request outputs. The existing linker `.output "path",format=...`
+subset is a distinct capability.
+
+Qualification uses fresh Rust artifact oracles, complete output inventories,
+case-bound native completion, precedence/default/conditional/scope cases, and
+existing CLI/output regressions. Compare the unchanged two-module/64-block release
+workload against frozen `4ed61b50` and its own BS14 package, reporting this slice's
+time and image/reservation delta separately. Stop on mismatched artifacts,
+unaccounted output requests, or a material runtime regression. A host export is
+not a new full native self-host proof.
+
+The complete fresh native matrix passes 21 positive cases against live Rust
+artifacts and output inventories, plus 13 expected rejections with fresh exit 20.
+Final regressions cover four CLI input/default/source-Hunk cases, two record-output
+cases (including 6502), and two macro-hygiene cases. Two enabled metadata cases
+also check zero terminal owned memory, balanced allocation/free totals, and zero
+allocation/profiling errors. Private macro scope markers reach their owning scope
+layer before the portable metadata envelope. An undefined `compactCopyBytes`
+telemetry call was removed; copy-byte telemetry remains unavailable rather than
+being mapped to an unrelated counter. Its removal changes no release code.
+
+Affected host checks pass: 256 packed-source tests, 478 VM tests, 101 package
+tests, CLI/output oracles and 19 hardware-runner unit tests. Proof, native boundary,
+instrumentation, contract, ownership, formatting and workflow checks pass. The
+no-growth guard still fails on ten existing missing owner annotations. The root
+and nested multi-argument macro-call probes fail at `.args Frame.Value(a4),d1,SourceBytes`
+on both this tree and frozen `4ed61b50` with its own BS14 package; this is a
+pre-existing macro gap, not qualified by this checkpoint.
+
+Release comparison uses the same 10,687-byte two-module/64-block source, fresh
+2,434-byte Rust oracle, 68020 / 10 MiB FS-UAE with unlimited CPU speed, and two
+uninstrumented rounds per implementation. START/DONE excludes emulator startup.
+
+| Metric | Frozen `4ed61b50` / BS14 | C2 metadata / BS15 | This slice |
+| --- | ---: | ---: | ---: |
+| START/DONE rounds, seconds | 8.1464, 7.9133 | 8.3513, 8.1081 | — |
+| Median, seconds | 8.0299 | 8.2297 | +0.1999 (+2.49%) |
+| External-package CLI bytes | 107,172 | 110,308 | +3,136 |
+| Linked static reservation bytes | 119,832 | 124,400 | +4,568 |
+| Runtime package bytes | 299,142 | 299,306 | +164 |
+
+The timing difference is unresolved at the roughly 0.25-second observation
+resolution and the observed 0.23–0.24-second within-pair variation. These are
+relative emulator measurements, not physical Amiga time or a 2 MiB qualification.
+They are separate from earlier C2 improvements.
+
+Fresh hardware bundle: `/tmp/opforge-a6000-cli-metadata-release`, selected by
+`/tmp/opforge-a6000-current`. Both bootstrap and expected output embed only the
+m68020 package. Rust assembles the relocated source exactly: 81 inputs,
+1,161,681 bytes including the package, source digest `fnv1a64:7832dd5b24eee742`,
+and a 409,616-byte Hunk. **This BS15 tree has not completed a full native
+self-host run.** The ordinary hardware-runner command selects this export;
+listing provenance/rendering and the unsupported metadata forms remain later work.
 
 ### Built-in `.emit` — implementation and focused qualification
 
@@ -631,11 +707,12 @@ After preparation, both modes still copy the execution prefix and discard lexica
 storage. The whole embedded payload remains part of the executable image, so
 tracked allocation savings alone do not establish lower total RAM use.
 
-BS14 uses a 152-byte header. The canonical target offset remains at 124, its
+BS15 uses a 160-byte header. The canonical target offset remains at 124, its
 length at 128 and the reserved word at 130; the preparation-only file plan offset
 and byte length are at 132 and 136. Built-in `.emit` identity is at 140, CPU
 word bytes at 142, and the retained data-plan offset/length at 144/148. Fields
-are big-endian and block-relative.
+are big-endian and block-relative. The preparation-only metadata plan is at
+152/156. Regenerate superseded packages; only BS15 is supported.
 Target identity lies inside `RuntimeBytes`, survives preparation, uses safe
 filename characters and fits in 26 bytes (plus `.bin`, within the classic
 30-byte component limit). The current slice loads assets only from active,

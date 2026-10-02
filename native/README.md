@@ -34,10 +34,12 @@ attached short values and `--` are supported. Help/version need no package/input
 
 An initial `--cpu` or `--runtime-package` is still required. With no output
 request, the compact CLI validates the assembly and writes no artifact. An
-omitted `--bin`/`--hunk` filename derives from the input basename. `-o` is still
-unsupported in compact. CLI output names are resolved relative to the input
-directory. Source `.output` paths are literal paths relative to the process
-working directory, and can name multiple artifacts without CLI output options.
+omitted output filename derives from the input basename unless output metadata
+selects another base. `-o` is still unsupported in compact. Relative output names
+resolve under the effective output base parent; the default base is the input
+basename in the working directory. Source `.output` paths are literal paths
+relative to the process working directory, and can name multiple artifacts
+without CLI output options.
 
 The compact source-output subset accepts `.output "path", format=bin|prg|hunk,
 sections=name,...`; specify `format` before `sections`. Sections are required.
@@ -53,8 +55,24 @@ numeric address spans, but CLI `.org` sparse parity is not yet claimed. Record
 rendering uses an 84-byte frame and a caller-owned 4096-byte streaming buffer;
 ordinary binary and Hunk output allocate neither the buffer nor captured spans.
 The compact writer creates
-missing parent directories. Native listing, source metadata, defines, and
-CPU/source-default selection remain future work. The BS14 runtime package option is distinct from
+missing parent directories.
+
+Quoted inline root-module metadata can request Hex without output flags:
+
+```asm
+.meta.output.name "build/program"
+.meta.output.hex
+```
+
+`.meta.output.hex "records"` selects a named Hex file, adding `.hex` when absent.
+CLI Hex takes precedence over that filename. A CLI binary/Hunk/S-record request
+can coexist with source Hex; its omitted filename follows `.meta.output.name`.
+Output naming alone produces no artifact. Active conditionals control metadata;
+imported modules and nested scopes cannot set root output metadata. Descriptive
+`.meta.name "..."` and `.meta.version "..."` are accepted without an output effect.
+This is an inline quoted subset: unquoted values, configuration blocks, CPU
+metadata overrides, source BIN/FILL/S-record metadata, listings, defines and CPU/source-default
+selection remain future work. The BS15 runtime package option is distinct from
 Rust's canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.
 
@@ -219,15 +237,16 @@ Current legacy native CLI output behavior:
 - `.hunk`: recognized by the CLI but intentionally returns
   `OPC-NCLI028`.
 
-Compact CLI source outputs currently support:
+Compact CLI output currently supports:
 
 - `.bin`
 - `.prg`
 - `.hunk` with source-configured sections
+- Intel HEX through CLI options or inline source metadata
+- Motorola S-record through CLI options
 
 The compact CLI has a native artifact subsystem below the CLI. The legacy CLI
-still writes flat `.bin` only. Neither surface yet provides native listing,
-Intel HEX or S-record writers.
+still writes flat `.bin` only. Neither surface yet provides native listings.
 
 ## Build And Run
 

@@ -36,6 +36,14 @@ tail
 	beq.w version
 	tst.l d0
 	bne.w badArguments
+	; Preserve whether the CLI requested a derived output name before the
+	; resolver fills State.Output from the input basename.
+	tst.w args.State.OutputKind(a1)
+	beq.s outputDefaultReady
+	tst.b args.State.Output(a1)
+	bne.s outputDefaultReady
+	move.w #1, args.State.OutputDefault(a1)
+outputDefaultReady
 	lea Arguments, a0
 	lea Root, a1
 	jsr input.resolve
@@ -46,6 +54,9 @@ tail
 	move.l a1, app.Frame.SourcePath(a0)
 	lea args.State.Output(a2), a1
 	move.l a1, app.Frame.OutputPath(a0)
+	lea args.State.OutputBase(a2), a1
+	move.l a1, app.Frame.OutputBase(a0)
+	move.w args.State.OutputDefault(a2), app.Frame.OutputDefault(a0)
 	move.w #2, app.Frame.Mode(a0)
 	move.w args.State.OutputKind(a2), app.Frame.OutputKind(a0)
 	bne.w outputConfigured
@@ -132,7 +143,7 @@ DefaultRoot	.byte "PROGDIR:packages", 0
 UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "  -i, --infile FILE     Input (directory selects main.asm; default .)", 10
 	.byte "      --cpu CPU         Initial target; embedded or external package", 10
-	.byte "      --runtime-package FILE  Explicit BS14 runtime package", 10
+	.byte "      --runtime-package FILE  Explicit BS15 runtime package", 10
 	.byte "  -b, --bin [FILE]      Flat binary output", 10
 	.byte "      --hunk [FILE]     Source-configured Hunk output", 10
 	.byte "  -x, --hex [FILE]      Intel HEX output", 10
@@ -146,7 +157,7 @@ UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "  -V, --version        Build identity", 10
 	.byte "Root-file directory is the default module/include search root.", 10
 	.byte "Source .output filenames are literal; no request means validation only.", 10, 0
-VersionText	.byte "opForge compact native | BS14 | experimental CLI-output checkpoint", 10, 0
+VersionText	.byte "opForge compact native | BS15 | experimental CLI-output checkpoint", 10, 0
 ArgumentError	.byte "compact CLI: invalid or unsupported arguments (see --help)", 10, 0
 InputError	.byte "compact CLI: invalid input; expected readable .asm file or directory with main.asm (bounded paths)", 10, 0
 TargetError	.byte "compact CLI: initial target requires --cpu or --runtime-package", 10, 0

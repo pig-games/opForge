@@ -157,58 +157,24 @@ bad
 ; D5=entry type, A4=args.State. Explicit names gain an extension if absent.
 ; D0/CCR=status, clobbers D1-D4/A0-A2. All copies stay within PATH_BYTES.
 outputName	.block
+	bsr.w outputBase
+	tst.l d0
+	bne.w bad
 	tst.w args.State.OutputKind(a4)
 	beq.w ready
 	lea args.State.Output(a4), a1
 	tst.b (a1)
 	bne.w explicit
-	lea args.State.Input(a4), a0
-	tst.l d5
-	ble.w inputName
-	lea FIB_NAME+4(sp), a0  ; first Examine result, before appending main.asm
-inputName
-	movea.l a0, a2
-basename
-	move.b (a0)+, d0
-	beq.w baseReady
-	cmpi.b #':', d0
-	beq.w newBase
-	cmpi.b #'/', d0
-	bne.w basename
-newBase
-	tst.b (a0)
-	beq.w baseReady
-	movea.l a0, a2
-	bra.w basename
-baseReady
-	movea.l a2, a0
+	lea args.State.OutputBase(a4), a0
+	lea args.State.Output(a4), a1
 	moveq #0, d3
-	moveq #0, d4
-copyBase
-	move.b (a0)+, d0
-	beq.w stem
-	cmpi.b #'/', d0
-	beq.w stem
-	cmpi.b #':', d0
-	beq.w stem
-	cmpi.b #'.', d0
-	bne.w baseByte
-	move.l a1, d4
-baseByte
-	move.b d0, (a1)+
+copyDefault
+	move.b (a0)+, (a1)+
+	beq.w defaultCopied
 	addq.w #1, d3
-	bra.w copyBase
-stem
-	tst.l d5
-	bgt.w extension  ; a directory basename retains its dots
-	tst.l d4
-	beq.w extension
-	lea args.State.Output(a4), a2
-	cmpa.l d4, a2  ; a leading dot is part of the basename
-	beq.w extension
-	movea.l d4, a1
-	move.l a1, d3
-	sub.l a2, d3
+	bra.w copyDefault
+defaultCopied
+	subq.l #1, a1  ; overwrite the copied terminator with the suffix
 	bra.w extension
 explicit
 	moveq #0, d3
@@ -267,6 +233,68 @@ bad
 	moveq #CAPACITY, d0
 	rts
 	.bend  ; outputName
+
+; Save the basename of the original input before directory resolution mutates
+; State.Input to its selected root source. D5 is the original Examine type.
+; File inputs lose their final extension; directory names retain dots.
+outputBase	.block
+	lea args.State.Input(a4), a0
+	tst.l d5
+	ble.s outputBasePath
+	lea FIB_NAME+8(sp), a0  ; outputName plus this helper each add a return address
+outputBasePath
+	movea.l a0, a2
+outputBaseFind
+	move.b (a0)+, d0
+	beq.s outputBaseCopy
+	cmpi.b #':', d0
+	beq.s outputBaseNext
+	cmpi.b #'/', d0
+	bne.s outputBaseFind
+outputBaseNext
+	tst.b (a0)
+	beq.s outputBaseFind
+	movea.l a0, a2
+	bra.s outputBaseFind
+outputBaseCopy
+	movea.l a2, a0
+	lea args.State.OutputBase(a4), a1
+	moveq #0, d3
+	moveq #0, d4
+outputBaseByte
+	move.b (a0)+, d0
+	beq.s outputBaseDone
+	cmpi.b #'/', d0
+	beq.s outputBaseDone
+	cmpi.b #':', d0
+	beq.s outputBaseDone
+	cmpi.b #'.', d0
+	bne.s outputBaseStore
+	move.l a1, d4
+outputBaseStore
+	cmpi.w #args.PATH_BYTES-1, d3
+	bhs.s outputBaseBad
+	move.b d0, (a1)+
+	addq.w #1, d3
+	bra.s outputBaseByte
+outputBaseDone
+	clr.b (a1)
+	tst.l d5
+	bgt.s outputBaseOk
+	tst.l d4
+	beq.s outputBaseOk
+	lea args.State.OutputBase(a4), a2
+	cmpa.l d4, a2  ; keep a leading dot as part of the filename
+	beq.s outputBaseOk
+	movea.l d4, a1
+	clr.b (a1)
+outputBaseOk
+	moveq #OK, d0
+	rts
+outputBaseBad
+	moveq #CAPACITY, d0
+	rts
+	.bend  ; outputBase
 ; A0=path. The caller's FIB is above our return address on the stack.
 ; D0/CCR=status, clobbers D1/D2/A2; OS calls may destroy scratch registers.
 inspect	.block

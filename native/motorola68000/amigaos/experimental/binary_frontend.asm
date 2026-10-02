@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_data_prepare as data_prepare
+	.use experimental.amigaos.binary_metadata_prepare as metadata
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_structs as structs
@@ -40,9 +41,12 @@ Graph	.long ?
 GraphBefore	.long ?
 FileInclude	.long ?  ; optional preparation callback, A0=Frame,A1=PRVM file plan
 Origin	.long ?  ; opaque application source identity for file callbacks
+Metadata	.long ?  ; optional metadata.Config, retained outside execution records
+RootFile	.word ?  ; current source belongs to the entry file (includes inherit it)
+Reserved	.word ?
 	.endstruct
 	.pub
-FRAME_BYTES = Frame.Origin+4
+FRAME_BYTES = Frame.Reserved+2
 	.pub
 GRAPH_BYTES = graph.SCRATCH_BYTES
 GRAPH_SPAN_BYTES = graph.MAX_SPANS*graph.SPAN_BYTES
@@ -1028,6 +1032,21 @@ graphBeforeDone
 	bra.w conditionReady
 activeLine
 	movea.l Frame.Output(a5), a0
+	; Private macro hygiene markers belong to scopes, not portable PRVM records.
+	move.b 1(a0), d0
+	andi.b #scopes.LEXICAL_BLOCK, d0
+	bne.w bindLine
+	movea.l Frame.Package(a5), a1
+	lea SCOPE_STATE(a6), a2
+	movea.l Frame.Metadata(a5), a3
+	moveq #0, d1
+	move.w Frame.RootFile(a5), d1
+	jsr metadata.check
+	bne.w failed
+	tst.l d1
+	bne.w conditionReady
+bindLine
+	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
 	move.l Frame.Capacity(a5), d0
 	.MEMORY_DETAIL_BEGIN #2
@@ -1565,6 +1584,9 @@ validateMacroPrograms	.block
 	bsr.w region
 	bne.w bad
 	lea package.Header.FilePlan(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MetadataPlan(a4), a0
 	bsr.w region
 	bra.w done
 region

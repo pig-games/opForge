@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use package::{
     decode_encoding_program, macro_descriptor_program, macro_fragment_program,
     macro_spelling_program, packed_data_program, packed_file_program, packed_macro_call_program,
-    validate_fixup_program, EncodingStep,
+    packed_metadata_program, validate_fixup_program, EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -15,7 +15,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 152;
+const HEADER: usize = 160;
 const ROW: usize = 32;
 const SCALAR_EXACT_IDENTITY: u16 = 1;
 
@@ -102,7 +102,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS14 block for one resolved package hierarchy.
+/// Prepare a self-contained BS15 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -263,6 +263,24 @@ pub fn prepare_package(
         0,
         DictionaryRoleFlags::CONTEXTUAL,
     )?;
+    let mut metadata_heads = [0; 6];
+    for (slot, spelling) in metadata_heads.iter_mut().zip([
+        "meta.output.name",
+        "meta.output.hex",
+        "meta.output.bin",
+        "meta.output.fill",
+        "meta.name",
+        "meta.version",
+    ]) {
+        *slot = intern(&mut names, spelling)?;
+        bind(
+            &mut dictionary,
+            spelling.into(),
+            *slot,
+            0,
+            DictionaryRoleFlags::CONTEXTUAL,
+        )?;
+    }
     let cpu_id = intern(&mut names, &resolved.cpu_id)?;
     bind(
         &mut dictionary,
@@ -339,7 +357,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS14");
+    out[..4].copy_from_slice(b"BS15");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -471,6 +489,10 @@ pub fn prepare_package(
     let file_plan = packed_file_program(file_id);
     out.extend_from_slice(&file_plan);
     align(&mut out);
+    let metadata_offset = out.len();
+    let metadata_plan = packed_metadata_program(metadata_heads);
+    out.extend_from_slice(&metadata_plan);
+    align(&mut out);
     let total = long(out.len())?;
     for (offset, value) in [
         (4, total),
@@ -501,6 +523,8 @@ pub fn prepare_package(
         (136, long(file_plan.len())?),
         (144, long(data_offset)?),
         (148, long(data_plan.len())?),
+        (152, long(metadata_offset)?),
+        (156, long(metadata_plan.len())?),
     ] {
         set_long(&mut out, offset, value);
     }

@@ -1612,6 +1612,27 @@ pub const PARSER_VM_MACRO_FRAGMENT_ENTRY: u16 = 4;
 pub const PARSER_VM_PACKED_FILE_ENTRY: u16 = 5;
 pub const PARSER_VM_PACKED_DATA_ENTRY: u16 = 6;
 
+pub const PARSER_VM_PACKED_METADATA_ENTRY: u16 = 7;
+
+/// Shared inline metadata grammar. Each row selects head, role, key and operand policy.
+/// Policies: 0 required decoded string, 1 optional string, 2 exactly two decoded bytes.
+pub fn packed_metadata_program(heads: [u16; 6]) -> Vec<u8> {
+    let mut program = vec![0x96, 6];
+    for (head, (role, key, policy)) in heads.into_iter().zip([
+        (1, 1, 0),
+        (1, 2, 1),
+        (1, 3, 1),
+        (1, 4, 2),
+        (2, 1, 0),
+        (2, 5, 0),
+    ]) {
+        program.extend(head.to_be_bytes());
+        program.extend([role, key, policy]);
+    }
+    program.extend([0x83, 0]);
+    program
+}
+
 /// Package-owned directive identity for one decoded file operand.
 pub fn packed_file_program(directive: u16) -> Vec<u8> {
     let [high, low] = directive.to_be_bytes();

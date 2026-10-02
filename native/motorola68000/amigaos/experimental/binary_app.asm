@@ -11,6 +11,8 @@
 	.use experimental.amigaos.binary_output_io as output_io
 	.use experimental.amigaos.binary_record_output as record_output
 	.use experimental.amigaos.binary_output_spans as output_spans
+	.use experimental.amigaos.binary_metadata_prepare as metadata
+	.use experimental.amigaos.binary_metadata_output as metadata_output
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_package_loader as loader
 	.use experimental.amigaos.binary_memory as memory
@@ -106,8 +108,11 @@ Dialect	.long ?
 PackageRoot	.long ?
 StartSet	.word ?
 Start	.long ?
+OutputBase	.long ?  ; Shell input basename, independent of source selection
+OutputDefault	.word ?  ; CLI output filename was omitted
+Reserved	.word ?
 	.endstruct
-FRAME_BYTES = Frame.Start+4
+FRAME_BYTES = Frame.Reserved+2
 	.section code, kind=code
 	.pub
 ; Assemble one package and source selection. A0=Frame, D0=Shell return code.
@@ -120,6 +125,17 @@ execute	.block
 	move.w Frame.OutputKind(a0), CliOutputKind
 	move.w Frame.StartSet(a0), OutputStartSet
 	move.l Frame.Start(a0), OutputStart
+	lea MetadataOutput, a1
+	move.l Frame.OutputBase(a0), metadata_output.Frame.Base(a1)
+	move.w Frame.OutputDefault(a0), metadata_output.Frame.Default(a1)
+	move.w Frame.OutputKind(a0), metadata_output.Frame.CliKind(a1)
+	move.l Frame.OutputPath(a0), metadata_output.Frame.CliPath(a1)
+	move.l #MetadataConfig, metadata_output.Frame.Config(a1)
+	clr.w metadata_output.Frame.HexSet(a1)
+	lea MetadataConfig, a1
+	clr.w metadata.Config.NameSet(a1)
+	clr.w metadata.Config.HexSet(a1)
+	clr.w metadata.Config.Root(a1)
 	.MEMORY_COUNTER_CLEAR output_spans.Events
 	move.l Frame.ModuleRoots(a0), CliModuleRoots
 	move.l Frame.ModuleCount(a0), CliModuleCount
@@ -184,6 +200,23 @@ configured
 	clr.w PrepStep
 	bsr.w prepare
 	bne.w failed
+	tst.w CliMode
+	beq.w outputsReady
+	lea MetadataOutput, a0
+	jsr metadata_output.resolve
+	bne.w failed
+	lea MetadataOutput, a0
+	lea metadata_output.Frame.ResolvedCli(a0), a1
+	move.l a1, OutputName
+	tst.w OutputStartSet
+	beq.w outputsReady
+	cmpi.w #record_output.HEX, CliOutputKind
+	beq.w outputsReady
+	cmpi.w #record_output.SREC, CliOutputKind
+	beq.w outputsReady
+	tst.w metadata_output.Frame.HexSet(a0)
+	beq.w missingRecordOutput
+outputsReady
 	.MEMORY_CLOCK DosBase, #1
 	.MEMORY_PHASE #1
 	bsr.w run
@@ -199,6 +232,11 @@ configured
 outputFailed
 	movea.l DosBase, a6
 	move.l #OutputFailure, d1
+	jsr DOS_PUT_STR(a6)
+	bra.w cleanup
+missingRecordOutput
+	movea.l DosBase, a6
+	move.l #GoFailure, d1
 	jsr DOS_PUT_STR(a6)
 	bra.w cleanup
 failed
@@ -510,6 +548,7 @@ load
 	move.l a1, frontend.Frame.Output(a0)
 	move.l #RECORD_BYTES, frontend.Frame.Capacity(a0)
 	move.l #includeBinary, frontend.Frame.FileInclude(a0)
+	move.l #MetadataConfig, frontend.Frame.Metadata(a0)
 	move.l #1, FrontStarted
 	jsr frontend.begin
 	bne.w closeBad
@@ -665,6 +704,12 @@ nextFile
 	movea.l memory.Block.Pointer(a0), a0
 	move.l SourceOrdinal, graph.GraphState.SourceIndex(a0)
 ordinalReady
+	lea Front, a0
+	clr.w frontend.Frame.RootFile(a0)
+	cmpi.l #1, SourceOrdinal
+	bne.w metadataFileReady
+	move.w #1, frontend.Frame.RootFile(a0)
+metadataFileReady
 	clr.l SourceLine
 	bsr.w openSource
 	bne.w closeBad
@@ -1330,7 +1375,10 @@ run	.block
 	cmpi.w #record_output.HEX, CliOutputKind
 	beq.w captureSpans
 	cmpi.w #record_output.SREC, CliOutputKind
-	bne.w assemble
+	beq.w captureSpans
+	lea MetadataConfig, a1
+	tst.w metadata.Config.HexSet(a1)
+	beq.w assemble
 captureSpans
 	move.l #appendEmission, assembly.Frame.Emitted(a0)
 assemble
@@ -1428,9 +1476,23 @@ explicit
 	beq.w complete
 	bra.w sources
 recordArtifact
+	move.w CliOutputKind, d0
+	move.w d0, SelectedOutputKind
+	move.l OutputName, SelectedOutputPath
 	bsr.w writeRecords
 	bne.w bad
 sources
+	tst.w CliMode
+	beq.w sourceDescriptors
+	lea MetadataOutput, a0
+	tst.w metadata_output.Frame.HexSet(a0)
+	beq.w sourceDescriptors
+	lea metadata_output.Frame.ResolvedHex(a0), a1
+	move.l a1, SelectedOutputPath
+	move.w #record_output.HEX, SelectedOutputKind
+	bsr.w writeRecords
+	bne.w bad
+sourceDescriptors
 	lea OutputCursor, a0
 	lea Records, a1
 	move.l memory.Block.Pointer(a1), output_plan.Cursor.Records(a0)
@@ -1527,14 +1589,14 @@ writeRecords	.block
 	lea EmissionSpans, a0
 	move.l memory.Block.Pointer(a0), record_output.Frame.Spans(a1)
 	move.l memory.Block.Used(a0), record_output.Frame.SpanBytes(a1)
-	move.w CliOutputKind, record_output.Frame.Format(a1)
+	move.w SelectedOutputKind, record_output.Frame.Format(a1)
 	move.w OutputStartSet, record_output.Frame.StartSet(a1)
 	move.l OutputStart, record_output.Frame.Start(a1)
 	movea.l a1, a0
 	jsr record_output.begin
 	bne.w bad
 	lea OutputWrite, a0
-	move.l OutputName, output_io.Frame.Path(a0)
+	move.l SelectedOutputPath, output_io.Frame.Path(a0)
 	clr.l output_io.Frame.PrefixBytes(a0)
 	move.l #record_output.next, output_io.Frame.Generator(a0)
 	move.l #RecordFrame, output_io.Frame.Context(a0)
@@ -1754,6 +1816,7 @@ done
 	.include "binary_source_assets.i"
 	.endsection
 	.section data, kind=data
+GoFailure	.byte "compact CLI: --go requires Hex or S-record output (CLI or metadata)", 10, 0
 DosName	.byte "dos.library", 0
 OutputFailure	.byte "compact CLI: output failed", 10, 0
 PackageFailure	.byte "package: missing, invalid or incompatible runtime package", 10
@@ -1869,6 +1932,9 @@ TextBuffer	.res byte, memory.Block.Used+4
 RecordFrame	.res byte, record_output.FRAME_BYTES
 OutputStartSet	.res word, 1
 OutputStart	.res long, 1
+MetadataConfig	.res byte, metadata.CONFIG_BYTES
+MetadataOutput	.res byte, metadata_output.FRAME_BYTES
+	.align 4
 OutputCursor	.res byte, output_plan.CURSOR_BYTES
 OutputWrite	.res byte, output_io.FRAME_BYTES
 OutputPath	.res byte, PATH_BYTES

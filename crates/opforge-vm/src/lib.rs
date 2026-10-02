@@ -38,6 +38,7 @@ pub mod output_model;
 pub mod packed_data_vm;
 pub mod packed_file_vm;
 pub mod packed_macro_vm;
+pub mod packed_metadata_vm;
 pub mod portable_contract;
 pub mod prepared_encoding;
 pub mod rewrite;

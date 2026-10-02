@@ -24,6 +24,7 @@ State	.struct
 InputStyle	.word ?  ; 1 positional, 2 explicit -i/--infile
 BinRequested	.word ?
 OutputKind	.word ?  ; 0 none, 1 binary, 2 Hunk, 4 Hex, 5 S-record
+OutputDefault	.word ?  ; CLI requested output with no explicit filename
 Status	.word ?
 Help	.word ?
 Version	.word ?
@@ -33,8 +34,9 @@ ModuleCount	.long ?
 IncludeCount	.long ?
 Input	.res PATH_BYTES
 Output	.res PATH_BYTES
+OutputBase	.res PATH_BYTES  ; Rust-compatible basename of original input
 Cpu	.res PATH_BYTES
-RuntimePackage	.res PATH_BYTES  ; BS14, never a Rust .opasm package
+RuntimePackage	.res PATH_BYTES  ; BS15, never a Rust .opasm package
 Dialect	.res PATH_BYTES
 PackageRoot	.res PATH_BYTES
 ModulePaths	.res MODULE_LIMIT*PATH_BYTES

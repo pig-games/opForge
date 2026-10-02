@@ -3,8 +3,9 @@
 Status: BS13 has full external-default (68-file) and m68020-embedded (69-file)
 self-host proofs with exact live Rust output; see the
 [current plan](native-runtime-reset.md#embedded-configuration-native-self-assembly).
-The current BS14 built-in `.emit` slice passes focused positive/negative native
-qualification, recorded in the current plan. That is
+The BS14 built-in `.emit` and CLI record-output checkpoints have focused native
+qualification. The current BS15 inline metadata checkpoint has focused qualification
+separately in the current plan. That is
 not a fresh full self-host proof of its changed source tree. The earlier 61-file
 implementation also completed on the physical A6000. The 2 MiB product target
 remains unqualified. Residual frontend ownership gaps and the deferred
@@ -67,7 +68,7 @@ Require fresh case-bound START/DONE challenges, guest exit zero and exact comple
 ### Physical A6000 run
 
 The host-only ignored test `export_compact_self_host_bundle` builds a fresh release
-bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS14
+bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS15
 package. Its preparation-only file plan has focused native qualification recorded
 in the [current plan](native-runtime-reset.md#bs13-binary-inclusion-qualification);
 host export alone does not prove self-hosting. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
@@ -80,9 +81,9 @@ macOS Terminal where `ash` and `acp` can reach the A6000:
 python3 scripts/performance/run_a6000_selfhost.py --bundle /tmp/opforge-a6000-compact-export
 ```
 
-For the current export, `/tmp/opforge-a6000-current` points to the BS14 release
-bundle `/tmp/opforge-a6000-bs14-emit`, with its m68020 package embedded in both
-bootstrap and oracle. Rust verifies the relocated source; full native BS14
+For the current export, `/tmp/opforge-a6000-current` points to the BS15 release
+bundle `/tmp/opforge-a6000-cli-metadata-release`, with its m68020 package embedded in both
+bootstrap and oracle. Rust verifies the relocated source; full native BS15
 self-hosting has not yet been run. With that pointer present, the ordinary command needs no options:
 
 ```sh
@@ -114,7 +115,7 @@ configuration. The subsequent BS13 embedded-output bundle is
 `/tmp/opforge-a6000-bs13-embedded-selfhost-v2`, with a 395,676-byte embedded
 Rust oracle and full emulator self-host qualification. It has no recorded new
 hardware timing. Old BS12/BS13 exports require their matching historical runner;
-current BS14 source and package bytes must be exported afresh.
+current BS15 source and package bytes must be exported afresh.
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
@@ -267,17 +268,19 @@ bytecode and shared ExprVM execution do not supply that missing parser program.
 The macro-only initial PRVM plan currently runs after binding, which is why it
 cannot yet classify an ordinary statement head before the value binder acts.
 
-BS14 is the current compact package format; the producer writes `BS14` and the
-native package owner checks the matching magic. Its header is 152 bytes, with
+BS15 is the current compact package format; the producer writes `BS15` and the
+native package owner checks the matching magic. Its header is 160 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its
-shared data-plan offset/length at 144/148 remains in the runtime prefix. Rust
+shared data-plan offset/length at 144/148 remains in the runtime prefix. The
+preparation-only inline metadata program is at 152/156; shared PRVM entry 7
+selects output/descriptive roles and bounded decoded-string spans. Rust
 preparation expands only active `.incbin` statements for
 the quoted relative native subset, using definition-file-relative roots
 and the explicit supported cases. [Focused native qualification](native-runtime-reset.md#bs13-binary-inclusion-qualification)
 passes; BS13 embedded-config self-hosting is qualified in the current plan.
-BS14 full self-hosting and per-record origins for macro bodies drawn from several
+BS15 full self-hosting and per-record origins for macro bodies drawn from several
 physical files remain unqualified. Unsupported candidate recipes stay explicit rows rather than
 becoming silent omissions. Package rows select package-owned recipes, numeric
 projections and literal constants, including instruction encodings. Generic

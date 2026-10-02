@@ -263,7 +263,6 @@ copyText
 	cmp.l Frame.Capacity(a6), d0
 	bhi.w bad
 	move.l d0, Frame.Used(a6)
-	.TELEMETRY_COMPACT runtime_profile.compactCopyBytes, d3
 	tst.l d3
 	beq.w advance
 copyByte

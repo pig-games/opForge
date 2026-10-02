@@ -14,16 +14,6 @@ use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 use vm::runtime_model_core::RuntimeModelCore;
 
 const ENTRY: &str = "experimental/opforge_compact_cli.asm";
-const MODULE_ROOTS: &[&str] = &[
-    "experimental",
-    "opforge-cli",
-    "tkpkg",
-    "tkvm",
-    "prvm",
-    "exprvm",
-    "opcore",
-    "opasm",
-];
 const INSTRUMENTED_DEFINES: &[&str] = &[
     "OPFORGE_DEBUG_CONTRACTS",
     "OPFORGE_MEMORY_TELEMETRY",
@@ -104,13 +94,9 @@ fn export_bundle(failure_capture: bool) {
         "--dependencies".to_string(),
         dependencies.to_string_lossy().into_owned(),
     ];
-    for root in MODULE_ROOTS.iter().copied().chain(["debug"]) {
-        args.extend([
-            "-M".to_string(),
-            source_root.join(root).to_string_lossy().into_owned(),
-        ]);
-    }
     args.extend([
+        "-M".to_string(),
+        source_root.to_string_lossy().into_owned(),
         "-I".to_string(),
         source_root.join("debug").to_string_lossy().into_owned(),
     ]);
@@ -249,30 +235,18 @@ fn export_bundle(failure_capture: bool) {
             1
         );
     }
-    let module_roots = MODULE_ROOTS
-        .iter()
-        .copied()
-        .filter(|root| {
-            sources
-                .iter()
-                .any(|(logical, _, _, _)| logical.starts_with(root))
-        })
-        .collect::<Vec<_>>();
+    let module_roots = ["src"];
     let entry = Path::new(ENTRY);
-    let selection = if embedded {
-        "--cpu 68020"
-    } else {
-        "--runtime-package p.bin"
-    };
     let package_file = embedded_files.first().map_or("p.bin", String::as_str);
-    let mut command = format!(
-        "opforge {selection} -i src/{} --hunk output.hunk",
-        entry.display()
-    );
-    for root in &module_roots {
-        command.push_str(&format!(" -M src/{root}"));
-    }
-    command.push_str(" -I src/debug");
+    let mut command = if embedded {
+        format!("opforge -i src/{} --hunk output.hunk", entry.display())
+    } else {
+        format!(
+            "opforge --runtime-package p.bin -i src/{} --hunk output.hunk",
+            entry.display()
+        )
+    };
+    command.push_str(" -M src -I src/debug");
     assert!(
         command.len() <= 255,
         "classic Shell command exceeds 255 bytes"
@@ -335,7 +309,7 @@ fn export_bundle(failure_capture: bool) {
         "runtime_package_bytes": package.len(),
         "runtime_package_digest": opforge_self_host_package_digest(&package),
         "entry": format!("src/{}", entry.display()),
-        "module_roots": module_roots.iter().map(|root| format!("src/{root}")).collect::<Vec<_>>(),
+        "module_roots": module_roots,
         "include_roots": ["src/debug"],
         "command": command,
         "native_validation": "not_run",
@@ -358,13 +332,9 @@ fn export_bundle(failure_capture: bool) {
         "--cpu".into(),
         "68020".into(),
     ];
-    for root in &module_roots {
-        relocated_args.extend([
-            "-M".into(),
-            output.join("src").join(root).to_string_lossy().into_owned(),
-        ]);
-    }
     relocated_args.extend([
+        "-M".into(),
+        output.join("src").to_string_lossy().into_owned(),
         "-I".into(),
         output.join("src/debug").to_string_lossy().into_owned(),
     ]);
@@ -389,7 +359,7 @@ fn export_bundle(failure_capture: bool) {
     .unwrap();
     fs::write(
         output.join("README.txt"),
-        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare output.hunk exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nAn embedded bootstrap uses --cpu 68020; its named verification package is retained\nlocally and is not a runtime fallback. Embedded-output cases also stage that\npackage under src/experimental/packages as a binary assembly input.\nAn instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude. Generated catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
+        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare output.hunk exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nAn embedded bootstrap uses the entry source's .cpu 68020 selection; its named\nverification package is retained locally and is not a runtime fallback. Embedded-\noutput cases also stage that package under src/experimental/packages as a binary\nassembly input. An instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude. Generated catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
     )
     .unwrap();
     if std::env::var("OPFORGE_COMPACT_EXPORT_NATIVE").as_deref() == Ok("1") {

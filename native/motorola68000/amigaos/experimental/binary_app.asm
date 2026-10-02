@@ -363,8 +363,6 @@ located
 	move.l d4, d1
 	jsr DOS_WRITE(a6)
 afterPackage
-	tst.l InAssembly
-	bne.w done
 	tst.l SourceOrdinal
 	bne.w sourcePath
 	tst.w PrepStep
@@ -396,6 +394,9 @@ sourcePath
 	move.l #FailureNewline, d2
 	moveq #1, d3
 	jsr DOS_WRITE(a6)
+	; The capture line buffer is no longer the source of an assembly record.
+	tst.l InAssembly
+	bne.w done
 	move.l LineUsed, d5
 	beq.w done
 	cmpi.l #LINE_BYTES, d5
@@ -1018,9 +1019,8 @@ parametersSaved
 	jsr frontend.finish
 	clr.l FrontStarted
 	bsr.w releaseScheduledFrontend
-	lea OriginPaths, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
+	; Keep bounded origin filenames for diagnostics through assembly and output.
+	; They never participate in packed execution; final cleanup releases them.
 	lea GraphBlock, a0
 	jsr memory.release
 	lea GraphSpans, a0

@@ -32,6 +32,19 @@ directory. Additional `-M`/`-I` roots retain command order. Root input anchors
 discovery, not module execution order. Quoted Amiga Shell paths, `--name=value`,
 attached short values and `--` are supported. Help/version need no package/input.
 
+The configured self-host bundle keeps its entry below the project root. It needs
+one recursive module root and one include root for the bare debug header names:
+
+```text
+opforge -i src/experimental/opforge_compact_cli.asm --hunk output.hunk -M src -I src/debug
+```
+
+The entry's `.cpu 68020` selects the embedded package. The current BS17 sources
+complete a fresh native self-host with exact Rust Hunk equality; see the
+[full result and A6000 bundle](../documentation/plans/native-runtime-reset.md#current-bs17-full-self-host-and-search-roots).
+Assembly errors now retain source filenames alongside numeric line provenance,
+without retaining source text for execution.
+
 Base m6502 instruction/addressing parity is qualified in the compact CLI against
 all 151 instructions in the canonical all-modes example, including accumulators,
 indirect forms, relative branches and forward-width selection. A prepared

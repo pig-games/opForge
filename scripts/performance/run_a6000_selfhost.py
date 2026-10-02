@@ -34,6 +34,21 @@ def fnv(data):
     return f"fnv1a64:{value:016x}"
 
 
+def has_m68020_entry_preamble(entry):
+    statements = []
+    for line in entry.splitlines():
+        statement = line.partition(b";")[0].strip()
+        if statement:
+            statements.append(statement)
+            if len(statements) == 2:
+                break
+    return (
+        len(statements) == 2
+        and re.fullmatch(rb"\.module\s+main", statements[0], re.IGNORECASE) is not None
+        and re.fullmatch(rb"\.cpu\s+(?:68020|m68020)", statements[1], re.IGNORECASE) is not None
+    )
+
+
 def load_bundle(bundle):
     manifest = json.loads((bundle / "manifest.json").read_text())
     output_storage = manifest.get("output_package_storage", "external")
@@ -169,13 +184,23 @@ def load_bundle(bundle):
     command = manifest["command"]
     if command != (bundle / "command.txt").read_text().strip():
         raise ValueError("Assembly command mismatch")
-    prefix = "opforge --cpu 68020 -i " if storage == "embedded" else "opforge --runtime-package p.bin -i "
-    if not re.fullmatch(r"[A-Za-z0-9_./ -]+", command) or not command.startswith(prefix):
+    if not re.fullmatch(r"[A-Za-z0-9_./ -]+", command):
         raise ValueError("Unsafe assembly command")
-    if storage == "embedded" and not re.fullmatch(
-        r"opforge --cpu 68020 -i src/[A-Za-z0-9_./-]+ --hunk output\.hunk(?: -(?:M|I) src(?:/[A-Za-z0-9_./-]+)?)*", command
-    ):
-        raise ValueError("Embedded test cannot override package selection or search")
+    if storage == "embedded":
+        search_options = r"(?: -(?:M|I) src(?:/[A-Za-z0-9_./-]+)?)*"
+        command_tail = r"-i (src/[A-Za-z0-9_./-]+) --hunk output\.hunk" + search_options
+        explicit_cpu = re.fullmatch(r"opforge --cpu 68020 " + command_tail, command)
+        source_cpu = re.fullmatch(r"opforge " + command_tail, command)
+        if not explicit_cpu and not source_cpu:
+            raise ValueError("Embedded test cannot override package selection or search")
+        if source_cpu:
+            entry_path = source_cpu.group(1)
+            entry = files.get(entry_path)
+            if (manifest.get("entry") != entry_path or entry is None
+                    or not has_m68020_entry_preamble(entry)):
+                raise ValueError("Source-selected embedded test requires the mapped m68020 entry preamble")
+    elif not command.startswith("opforge --runtime-package p.bin -i "):
+        raise ValueError("External-package test requires the named runtime package")
     identity.extend(b"m68020\0" + command.encode() + b"\0" + package + b"\0" + oracle)
     identity.extend(b"\0output-package-storage\0" + output_storage.encode() + b"\0")
     if defines:

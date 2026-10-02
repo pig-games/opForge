@@ -2,12 +2,10 @@
 
 Status: active. The recorded 61-file compact native implementation fully
 self-hosted with exact live Rust Hunk output on the physical A6000. The
-86-input BS16 embedded implementation at checkpoint `76a1d11e` completes a fresh
-FS-UAE self-host
-with exact Rust Hunk equality in 931.022937958 seconds on the expanded 74 MiB
-investigation profile. The latest BS17 CPU-selection/base-6502 checkpoints have
-focused qualification; their changed tree has not repeated that full self-host.
-It remains
+90-input BS17 embedded implementation completes a fresh FS-UAE self-host with
+exact Rust Hunk equality in 950.411414625 seconds on the expanded 74 MiB
+investigation profile, using source `.cpu` selection and one module/include root
+each. The latest bundle awaits its physical A6000 run. It remains
 experimental: that proof does not establish full language, CPU, CLI or output
 parity. Current measurements, reproduction commands and remaining frontend
 ownership gaps are maintained in the
@@ -211,8 +209,8 @@ and preserve source-configured Hunk self-builds through `--hunk`. Multiple input
 multiple/ranged outputs, defines and broader CLI artifacts remain following
 slices. CLI output policy and source-selected filenames are the separate C2
 checkpoint agreed below; C1 still requires an explicit `--bin` or `--hunk`.
-Initial package selection still requires `--cpu` or `--runtime-package`; source
-CPU selection/defaults are missing CLI parity, tracked separately below;
+At C1, initial package selection required `--cpu` or `--runtime-package`; the
+source-selection checkpoint below supersedes that restriction;
 mid-source package transitions remain P3. `--hunk` currently selects source-configured
 sections, rather than general Rust Hunk CLI synthesis. Informational commands
 need no input, package or output configuration.
@@ -290,8 +288,8 @@ CPU declarations. Both embedded m68020 and external m6502/default packages are
 exercised. No-space semicolon comments are covered. The embedded CLI is 444,256
 bytes; the prepared source-independent m6502 package is 11,406 bytes. Base-6502
 addressing breadth is the next qualification, not implied by these small cases.
-The preceding complete self-host proof remains checkpoint `76a1d11e`; this changed
-CLI has not yet repeated the full self-host run.
+This initial checkpoint did not repeat the full self-host run. Current BS17
+self-host qualification is recorded below.
 
 Separate unchanged-workload release observations are 11.191842167 and
 11.143127709 seconds (median 11.167484938), versus the preceding
@@ -345,8 +343,8 @@ isolates this checkpoint from earlier optimization gains.
 
 261 packed-source Rust checks and all 102 package checks pass, alongside the
 focused family/VM checks. Native formatting, architecture, instrumentation,
-proof, runtime-boundary and test-ownership guards pass. The existing full self-host
-proof remains checkpoint `76a1d11e`; this checkpoint does not imply full language,
+proof, runtime-boundary and test-ownership guards pass. The full BS17 self-host is
+qualified separately below; this matrix does not imply full language,
 output, 65C02/65816 or 2 MiB product qualification. Initial `.cpu` discovery retains
 the root-preamble limits described above; source-dependent package switching is
 still deferred.
@@ -367,6 +365,72 @@ opforge main.asm --bin output.bin -P packages
 
 Compare the complete `output.bin` with `oracle.bin`. This is a 6502 test bundle,
 not a replacement self-host bundle for `run_a6000_selfhost.py`.
+
+### Current BS17 full self-host and search roots
+
+The complete current compact implementation assembles itself on native with
+fresh completion, exit zero and exact equality against its live Rust oracle:
+all 445,080 bytes of the embedded Hunk, including the unchanged 321,458-byte
+m68020 package. The 90 inputs total 1,291,116 bytes; their fingerprint is
+`fnv1a64:5492e50e1e461e43`. Linked static reservations are 462,776 bytes.
+The uninstrumented 68020 / 74 MiB FS-UAE START/DONE interval is
+950.411414625 seconds (15m 50.41s); emulator startup is excluded. This is full
+current-source self-host proof, not physical hardware timing, full assembler
+parity or qualification of the 2 MiB product target.
+
+The first BS17 retry failed after 720.105147416 seconds with no output. A focused
+probe isolated an explicit `.L` member operand: an earlier unsupported candidate
+for a nested tuple incorrectly remained eligible. The generic structural screen
+now disproves that tuple requirement for a complete member. Member meanings and
+instruction encoding stay package-owned. Fresh complete Hunk comparison covers
+plain/qualified symbols, numeric `.L`/`.W`, parenthesized expressions and a member
+destination. A separate fresh exit-20 probe rejects an imported out-of-range
+immediate and reports its actual filename and line. Bounded origin filenames
+remain owned through assembly/output for diagnostics; source text is never
+consulted by execution. Full-run dynamic peak was not measured in this release run.
+
+The portable bundle command exercises the root `.cpu 68020` and uses only:
+
+```text
+opforge -i src/experimental/opforge_compact_cli.asm --hunk output.hunk -M src -I src/debug
+```
+
+The entry is below the project root, so one recursive `-M src` exposes its sibling
+modules. Bare debug include names need `-I src/debug`. A root entry layout can
+remove those explicit paths later. The hardware runner validates the mapped
+source preamble for source-selected commands and still checks frozen explicit-CPU
+commands without adding a legacy VM executor.
+
+`/tmp/opforge-a6000-current` now selects
+`/tmp/opforge-selfhost-bs17-source-cpu-release`, with release bootstrap and output
+both embedding m68020. The usual Mac Terminal command is unchanged:
+
+```sh
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
+```
+
+This new bundle has not yet been timed on the physical A6000. Its FS-UAE duration
+must not be treated as a speed comparison with the smaller BS16 source/package
+state. A separate comparison uses the unchanged 10,687-byte two-module/64-block
+source, live 2,434-byte Rust oracle, identical 321,458-byte BS17 package, named
+external selection and 68020 / 10 MiB profile. All four uninstrumented runs
+complete with exact output:
+
+| Metric | Before (`21224e7d`) | Member/diagnostic repair |
+| --- | ---: | ---: |
+| START/DONE seconds | 11.002211167, 11.044870083 | 11.030623708, 11.273958167 |
+| Median seconds | 11.023540625 | 11.1522909375 |
+| External CLI bytes | 123,628 | 123,620 |
+| Linked static reservations | 141,320 | 141,316 |
+
+The observed increase is 0.1287503125 seconds (+1.17%), smaller than the roughly
+0.25-second observation resolution and within the new pair's spread. No resolved
+timing regression or gain is established. This isolates the repair from earlier
+improvements; the explicit CPU benchmark does not measure preamble discovery.
+274 packed-source Rust tests, live positive/negative diagnostic oracles, 20
+hardware-runner tests, formatting and the relevant architecture, instrumentation,
+proof, runtime-boundary and test-ownership guards pass. The aggregate product
+qualification and full native feature matrix remain separate work.
 
 ### CLI checkpoint C2 — requested outputs and source declarations (in progress)
 

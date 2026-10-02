@@ -588,6 +588,11 @@ notMemberForm
 	jsr shapes.isWrappedName
 	tst.l d0
 	bne.w mismatch
+	; A complete member root likewise has no outer indirect tuple. Its
+	; scalar payload remains opaque; only the complete wrapper proves this.
+	jsr shapes.isMember
+	tst.l d0
+	bne.w mismatch
 scalarRoot
 	bsr.w scalarTupleArity
 	tst.l d0

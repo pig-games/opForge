@@ -7908,6 +7908,10 @@ mod compact_cli_input;
 #[path = "tests/native_cpu_selection.rs"]
 mod native_cpu_selection;
 
+#[cfg(test)]
+#[path = "tests/compact_cli_diagnostics.rs"]
+mod compact_cli_diagnostics;
+
 #[path = "tests/compact_cli_outputs.rs"]
 mod compact_cli_outputs;
 

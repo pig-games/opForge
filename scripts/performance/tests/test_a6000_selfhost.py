@@ -77,6 +77,62 @@ class HardwareCompletionTests(unittest.TestCase):
         (root / "command.txt").write_text(command)
         (root / "manifest.json").write_text(json.dumps(manifest))
 
+    def source_selected_embedded_bundle(
+        self, root, module_line=b"\t.module main", cpu_line=b"\t.cpu 68020",
+        comments=(
+            b"; Shell configuration only; packed preparation and execution belong to app.",
+            b"; @opforge-owner: experimental.amigaos.compact_cli",
+        ),
+        preceding=None,
+    ):
+        self.embedded_bundle(root)
+        manifest = json.loads((root / "manifest.json").read_text())
+        lines = [*comments]
+        if preceding is not None:
+            lines.append(preceding)
+        lines.append(module_line)
+        if cpu_line is not None:
+            lines.append(cpu_line)
+        source = b"\n".join(lines) + b"\n"
+        (root / "original/entry.asm").write_bytes(source)
+        (root / "src/entry.asm").write_bytes(source)
+        row = manifest["source_mapping"][0]
+        row.update({"bytes": len(source), "digest": runner.fnv(source)})
+        manifest["source_manifest_digest"] = runner.fnv(b"entry.asm\0" + source + b"\0")
+        manifest["entry"] = "src/entry.asm"
+        command = "opforge -i src/entry.asm --hunk output.hunk -M src"
+        manifest["command"] = command
+        (root / "command.txt").write_text(command)
+        (root / "manifest.json").write_text(json.dumps(manifest))
+
+    def test_source_selected_embedded_command_requires_m68020_entry_preamble(self):
+        accepted = [
+            {},
+            {
+                "module_line": b" .MODULE    Main ; selected module",
+                "cpu_line": b"  .CPU   M68020 ; selected target",
+                "comments": (b"; changed comment", b"", b"  ; another comment"),
+            },
+        ]
+        for options in accepted:
+            with self.subTest(options=options), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.source_selected_embedded_bundle(root, **options)
+                manifest, _, _, _ = runner.load_bundle(root)
+                self.assertEqual(manifest["command"], "opforge -i src/entry.asm --hunk output.hunk -M src")
+
+        rejected = [
+            {"cpu_line": b"\t.cpu 6502"},
+            {"cpu_line": None},
+            {"preceding": b".define EARLY 1"},
+        ]
+        for options in rejected:
+            with self.subTest(options=options), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.source_selected_embedded_bundle(root, **options)
+                with self.assertRaisesRegex(ValueError, "mapped m68020 entry preamble"):
+                    runner.load_bundle(root)
+
     def embedded_output_bundle(self, root):
         self.embedded_bundle(root)
         manifest = json.loads((root / "manifest.json").read_text())
@@ -252,12 +308,13 @@ class HardwareCompletionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "exact package"):
                 runner.load_bundle(root)
             (root / "opforge").write_bytes(b"embedded executable:" + (root / manifest["runtime_package_file"]).read_bytes())
-            for option in (" -P src", " --cpu 6502", " -d zilog"):
-                command = manifest["command"] + option
-                (root / "command.txt").write_text(command)
-                (root / "manifest.json").write_text(json.dumps(manifest | {"command": command}))
-                with self.assertRaisesRegex(ValueError, "override"):
-                    runner.load_bundle(root)
+            for base in (manifest["command"], "opforge -i src/entry.asm --hunk output.hunk -M src"):
+                for option in (" -P src", " --cpu 6502", " -d zilog"):
+                    command = base + option
+                    (root / "command.txt").write_text(command)
+                    (root / "manifest.json").write_text(json.dumps(manifest | {"command": command}))
+                    with self.assertRaisesRegex(ValueError, "override"):
+                        runner.load_bundle(root)
 
     def test_embedded_transfer_rejects_unexpected_external_package_files(self):
         with tempfile.TemporaryDirectory() as directory:

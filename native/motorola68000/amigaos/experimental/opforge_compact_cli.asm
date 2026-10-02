@@ -5,6 +5,7 @@
 	.use experimental.amigaos.binary_app as app
 	.use experimental.amigaos.cli_arguments as args
 	.use experimental.amigaos.cli_input as input
+	.use experimental.amigaos.cli_target as target
 OPEN_LIBRARY = -552
 CLOSE_LIBRARY = -414
 GET_ARG_STR = -534
@@ -48,6 +49,9 @@ outputDefaultReady
 	lea Root, a1
 	jsr input.resolve
 	bne.w badInput
+	lea Arguments, a0
+	jsr target.select
+	bne.w missingTarget
 	lea Arguments, a2
 	lea Config, a0
 	lea args.State.Input(a2), a1
@@ -142,7 +146,7 @@ EmptyArgs	.byte 0
 DefaultRoot	.byte "PROGDIR:packages", 0
 UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "  -i, --infile FILE     Input (directory selects main.asm; default .)", 10
-	.byte "      --cpu CPU         Initial target; embedded or external package", 10
+	.byte "      --cpu CPU         Optional initial target; otherwise root .cpu or default", 10
 	.byte "      --runtime-package FILE  Explicit BS16 runtime package", 10
 	.byte "  -b, --bin [FILE]      Flat binary output", 10
 	.byte "      --hunk [FILE]     Source-configured Hunk output", 10
@@ -160,7 +164,7 @@ UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 VersionText	.byte "opForge compact native | BS16 | experimental CLI-output checkpoint", 10, 0
 ArgumentError	.byte "compact CLI: invalid or unsupported arguments (see --help)", 10, 0
 InputError	.byte "compact CLI: invalid input; expected readable .asm file or directory with main.asm (bounded paths)", 10, 0
-TargetError	.byte "compact CLI: initial target requires --cpu or --runtime-package", 10, 0
+TargetError	.byte "compact CLI: cannot select initial target from root preamble", 10, 0
 	.align 4
 	.include "package_catalog.i"
 	.endsection

@@ -2652,7 +2652,7 @@ fn apply_token_policy_to_token(token: PortableToken, policy: &RuntimeTokenPolicy
 }
 
 fn default_dispatch_tokenizer_vm_program_bytes() -> Vec<u8> {
-    crate::builder::default_family_tokenizer_vm_program_bytes()
+    crate::builder::shared_tokenizer_vm_program_bytes()
 }
 
 #[cfg(test)]

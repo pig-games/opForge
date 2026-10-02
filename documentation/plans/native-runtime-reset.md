@@ -260,38 +260,47 @@ been reassembled by native in this checkpoint**; the export records
 `native_validation: not_run`. C1 qualification is focused CLI execution, not a
 new full self-host or physical A6000 completion claim.
 
-#### Source-selected initial package — required CLI follow-up (not implemented)
+#### Source-selected initial package — initial preamble qualified
 
-Erik's `opforge src/experimental/opforge_compact_cli.asm` must accept the root
-source's `.cpu 68020` without a redundant CLI CPU/package option. The current
-Shell entry rejects before source I/O. Its frontend requires a loaded package
-for tokenization/binding, and native `.cpu` only validates that selected package;
-removing the rejection alone would not implement source selection.
+The compact CLI accepts an initial root-source `.cpu` without a redundant CLI
+CPU/package option. Package-independent shared TKVM tokenizes each preamble line;
+shared PRVM entry 8 executes generated declaration policy over unbound tokens and
+decoded lexemes. The CLI owns input and catalog loading, not CPU identity rules.
+Numeric aliases retain their lexical spelling, quoted names are decoded, and
+catalog metadata selects embedded or external packages. The shared tokenizer,
+bootstrap policy and engine default (`8085`) are generated into a checked asset.
+Explicit `--cpu` or `--runtime-package` bypasses bootstrap discovery.
 
-Add package-independent bootstrap recognition through shared TKVM/PRVM programs,
-then use the existing catalog/loader to resolve CPU aliases, dialect and
-embedded/external storage. Preserve lexical spellings such as `68020` for catalog
-lookup; do not treat the token's normalized numeric value as its target identity.
-Keep CPU mappings and the initial default in generated data, not native family
-branches. Rust's current no-option default is `8085`; explicit `--cpu` sets the
-initial target while source `.cpu` may later change it. A single-pipeline initial
-selection checkpoint must not claim mid-source switching parity.
+This bounded discovery skips comments, empty lines and `.module NAME`, and stops
+at the first other statement or a `.cpu NAME`. Only an unconditional root preamble
+is supported: it does not search includes, inactive conditionals or macro bodies,
+or implement mid-source package switching. Absent a discovered declaration, it
+uses the engine default. Limits are 1,024 bytes per line/decoded-lexeme buffer,
+64 tokens per line and 4,096 preamble lines. These are experimental limits, not
+full Rust source-selection parity.
 
-The first bounded proof should cover an unconditional root-source preamble
-declaration, including `.module`, whitespace/comments and canonical/alias names,
-and the current entry-file example. Define the bootstrap stopping boundary before
-implementation: inactive branches, includes and macro bodies must not be scanned
-indiscriminately for a CPU. Either support those preprocessing contexts through
-their shared owners or reject an unsupported discovery case explicitly. Document
-that limitation; full source selection remains the parity target.
+Fresh 68020 / 10 MiB native runs qualify six successful cases against exact live
+Rust artifacts: numeric source CPU, qualified module plus quoted alias,
+directory input, omitted input, no declaration/default, and explicit CPU
+precedence. Two further runs qualify nonzero rejection of malformed and unknown
+CPU declarations. Both embedded m68020 and external m6502/default packages are
+exercised. No-space semicolon comments are covered. The embedded CLI is 444,256
+bytes; the prepared source-independent m6502 package is 11,406 bytes. Base-6502
+addressing breadth is the next qualification, not implied by these small cases.
+The preceding complete self-host proof remains checkpoint `76a1d11e`; this changed
+CLI has not yet repeated the full self-host run.
 
-Qualify omitted/file/directory input, explicit CPU/package options, unknown or
-malformed declarations, missing packages, embedded/external lookup and no-CPU
-default behavior against fresh Rust/native results. Preserve the full-source
-preparation-order failure as a separate regression: selecting its package does
-not fix struct preparation. Coordinate this bootstrap contract with the proposed
-unbound-token capture slice while keeping dependency-order redesign paused for
-the requested plan review.
+Separate unchanged-workload release observations are 11.191842167 and
+11.143127709 seconds (median 11.167484938), versus the preceding
+11.154376917 median: +0.013 seconds (+0.12%), too small to establish a change.
+Explicit CPU selection bypasses bootstrap source I/O in this comparison.
+The external CLI is 122,808 bytes (+2,128); linked static reservations are
+140,536 bytes (+6,372). Dynamic peak was not measured. Source, output and
+321,458-byte m68020 package are unchanged. Focused bootstrap VM tests, generated
+asset equality, native formatting and workflow/instrumentation/ownership guards
+pass. Broader 6502 native proof currently rejects the all-modes source at
+`eor $BCDE`; it is a separate next-slice blocker, not CPU-selection completion.
+
 
 ### CLI checkpoint C2 — requested outputs and source declarations (in progress)
 

@@ -896,7 +896,7 @@ fn default_family_token_policy(family_id: &str) -> TokenPolicyDescriptor {
 }
 
 fn default_family_tokenizer_vm_program(family_id: &str) -> TokenizerVmProgramDescriptor {
-    let program = default_family_tokenizer_vm_program_bytes();
+    let program = shared_tokenizer_vm_program_bytes();
     TokenizerVmProgramDescriptor {
         owner: ScopedOwner::Family(family_id.to_string()),
         opcode_version: TOKENIZER_VM_OPCODE_VERSION_V1,
@@ -1016,7 +1016,8 @@ fn default_family_parser_vm_program_bytes() -> Vec<u8> {
     ]
 }
 
-pub(crate) fn default_family_tokenizer_vm_program_bytes() -> Vec<u8> {
+/// Core lexical dispatch shared by default family programs and target bootstrap.
+pub fn shared_tokenizer_vm_program_bytes() -> Vec<u8> {
     let loop_offset = 0u32;
     let mut program = Vec::new();
 

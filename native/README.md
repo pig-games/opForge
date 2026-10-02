@@ -32,11 +32,14 @@ directory. Additional `-M`/`-I` roots retain command order. Root input anchors
 discovery, not module execution order. Quoted Amiga Shell paths, `--name=value`,
 attached short values and `--` are supported. Help/version need no package/input.
 
-An initial `--cpu` or `--runtime-package` is still required, even when the input
-contains `.cpu`. This is a missing CLI parity capability: the command currently
-rejects before reading source, and `.cpu` validates an already-selected package.
-[Source-selected initial package work](../documentation/plans/native-runtime-reset.md#source-selected-initial-package--required-cli-follow-up-not-implemented)
-is planned separately from later in-source package switching. With no output
+An initial `--cpu` or `--runtime-package` is optional. The compact CLI can select
+its package from `.cpu NAME` in the unconditional root preamble, after comments,
+blank lines and `.module NAME`. Numeric aliases and quoted names are accepted;
+explicit CLI selection takes precedence. If the preamble contains no `.cpu`, the
+generated engine default is used. Discovery stops at the first other statement;
+it does not inspect includes or conditional/macro bodies. Later package switching
+remains unsupported. See [initial package selection](../documentation/plans/native-runtime-reset.md#source-selected-initial-package--initial-preamble-qualified)
+for bounds and fresh qualification. With no output
 request, the compact CLI validates the assembly and writes no artifact. An
 omitted output filename derives from the input basename unless output metadata
 selects another base. `-o` is still unsupported in compact. Relative output names
@@ -75,17 +78,18 @@ Output naming alone produces no artifact. Active conditionals control metadata;
 imported modules and nested scopes cannot set root output metadata. Descriptive
 `.meta.name "..."` and `.meta.version "..."` are accepted without an output effect.
 This is an inline quoted subset: unquoted values, configuration blocks, CPU
-metadata overrides, source BIN/FILL/S-record metadata, listings, defines and CPU/source-default
-selection remain future work. The BS16 runtime package option is distinct from
+metadata overrides, source BIN/FILL/S-record metadata, listings, defines and general source-dependent
+CPU switching remain future work. The BS16 runtime package option is distinct from
 Rust's canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.
 
-The current preparation-order repair captures unbound binary records before
+The preparation-order repair captures unbound binary records before
 configuration/dependency scanning, then performs semantic preparation in dependency
-order. The imported-struct regression has focused native parity proof. Full
-self-hosting of this changed tree remains unproven: capture exceeds the 10 MiB
-investigation profile, and an expanded-memory retry fails during final binding
-before assembly. See the runtime reset plan for current evidence.
+order. Checkpoint `76a1d11e` has complete fresh self-host proof with an exact
+442,140-byte Rust Hunk artifact under an expanded-memory investigation profile;
+this is not a 2 MiB or full feature-parity qualification. The subsequent initial
+CPU-selection change has focused native proof, but no repeated full self-host run.
+See the runtime reset plan for current evidence.
 
 ## Current Layout
 

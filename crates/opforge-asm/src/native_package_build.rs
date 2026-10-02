@@ -225,6 +225,51 @@ pub fn render_default_catalog(registry: &ModuleRegistry) -> Result<String, Strin
     catalog(registry, &package_targets(registry)?, &BTreeMap::new())
 }
 
+/// Package-independent Shell bootstrap assets, derived from shared VM grammar
+/// and the engine's default rather than a native target-specific fallback.
+pub fn render_target_bootstrap(default_cpu: &str) -> Result<String, String> {
+    if default_cpu.is_empty()
+        || default_cpu.len() > 255
+        || !default_cpu
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+    {
+        return Err("invalid bootstrap default identity".into());
+    }
+    let mut out =
+        String::from("; Generated shared target bootstrap; no target package or project inputs.\n");
+    for (label, bytes) in [
+        (
+            "BootstrapTokenizer",
+            vm::builder::shared_tokenizer_vm_program_bytes(),
+        ),
+        (
+            "BootstrapParser",
+            package::package::target_bootstrap_program(),
+        ),
+    ] {
+        writeln!(out, "{label}").unwrap();
+        for row in bytes.chunks(16) {
+            out.push_str("\t.byte ");
+            for (i, byte) in row.iter().enumerate() {
+                if i != 0 {
+                    out.push(',');
+                }
+                write!(out, "${byte:02x}").unwrap();
+            }
+            out.push('\n');
+        }
+        writeln!(out, "{label}End").unwrap();
+    }
+    writeln!(
+        out,
+        "BootstrapDefault\n\t.byte \"{}\",0\n\t.align 2",
+        default_cpu
+    )
+    .unwrap();
+    Ok(out)
+}
+
 #[derive(Debug)]
 pub struct NativePackageBuild {
     pub output_dir: PathBuf,
@@ -396,5 +441,29 @@ mod tests {
         for target in package_targets(&registry).unwrap() {
             assert!(text.contains(&format!("\"{}--{}\",0", target.cpu, target.dialect)));
         }
+    }
+
+    #[test]
+    fn shared_target_bootstrap_matches_checked_in_asset() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../native/motorola68000/amigaos/experimental/target_bootstrap.i");
+        assert_eq!(
+            fs::read_to_string(path).unwrap(),
+            render_target_bootstrap(engine::default_cpu().as_str()).unwrap()
+        );
+    }
+
+    #[test]
+    #[ignore = "explicit shared bootstrap asset regeneration"]
+    fn export_native_target_bootstrap_asset() {
+        let path = std::env::var_os("OPFORGE_TARGET_BOOTSTRAP_EXPORT")
+            .map(PathBuf::from)
+            .expect("explicit export path");
+        assert!(path.is_absolute());
+        fs::write(
+            path,
+            render_target_bootstrap(engine::default_cpu().as_str()).unwrap(),
+        )
+        .unwrap();
     }
 }

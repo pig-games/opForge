@@ -1613,6 +1613,19 @@ pub const PARSER_VM_PACKED_FILE_ENTRY: u16 = 5;
 pub const PARSER_VM_PACKED_DATA_ENTRY: u16 = 6;
 
 pub const PARSER_VM_PACKED_METADATA_ENTRY: u16 = 7;
+pub const PARSER_VM_TARGET_BOOTSTRAP_ENTRY: u16 = 8;
+
+/// Shared initial-target grammar over unbound TKVM tokens. Names are policy
+/// operands, never CPU identifiers; consumers return decoded lexeme spans.
+pub fn target_bootstrap_program() -> Vec<u8> {
+    let mut program = vec![0x97, 2];
+    for (role, name) in [(1, b"module".as_slice()), (2, b"cpu".as_slice())] {
+        program.extend([role, name.len() as u8]);
+        program.extend_from_slice(name);
+    }
+    program.extend([0x83, 0]);
+    program
+}
 
 /// Shared inline metadata grammar. Each row selects head, role, key and operand policy.
 /// Policies: 0 required decoded string, 1 optional string, 2 exactly two decoded bytes.

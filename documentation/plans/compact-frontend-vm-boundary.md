@@ -4,7 +4,7 @@ Status: BS13 has full external-default (68-file) and m68020-embedded (69-file)
 self-host proofs with exact live Rust output; see the
 [current plan](native-runtime-reset.md#embedded-configuration-native-self-assembly).
 The BS14 built-in `.emit` and CLI record-output checkpoints have focused native
-qualification. The current BS15 inline metadata checkpoint has focused qualification
+qualification. The BS15 inline metadata checkpoint has focused qualification
 separately in the current plan. That is
 not a fresh full self-host proof of its changed source tree. The current embedded
 self-host originally failed at an imported constant in a struct reservation.
@@ -15,6 +15,14 @@ memory and the shared quoted-scalar repair, the release retry reaches final
 binding but still exits 20 before assembly, without output. The
 [repair status](native-runtime-reset.md#r2-dependency-first-preparation--focused-proof-full-run-still-blocked)
 records the measured preparation cost and the expanded-memory diagnostic.
+The current BS16 member transport repair follows a further final-binding failure
+on `SelectedOutputKind.l`. Focused native Hunk comparisons now pass, including
+qualified address bases, macro bodies and numeric/quoted CPU directives. The fresh
+86-input embedded release self-host still exits 20 without output after
+463.532497500 seconds, reporting origin 75, line 572. A separate diagnostic
+confirms the packed-record block reaches its 1 MiB owner limit during embedded
+binary inclusion; an owner-specific budget repair is next.
+It has no fresh full self-host proof yet.
 The earlier 61-file
 implementation also completed on the physical A6000. The 2 MiB product target
 remains unqualified. Residual frontend ownership gaps and the deferred
@@ -77,7 +85,7 @@ Require fresh case-bound START/DONE challenges, guest exit zero and exact comple
 ### Physical A6000 run
 
 The host-only ignored test `export_compact_self_host_bundle` builds a fresh release
-bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS15
+bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS16
 package. Its preparation-only file plan has focused native qualification recorded
 in the [current plan](native-runtime-reset.md#bs13-binary-inclusion-qualification);
 host export alone does not prove self-hosting. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
@@ -124,7 +132,7 @@ configuration. The subsequent BS13 embedded-output bundle is
 `/tmp/opforge-a6000-bs13-embedded-selfhost-v2`, with a 395,676-byte embedded
 Rust oracle and full emulator self-host qualification. It has no recorded new
 hardware timing. Old BS12/BS13 exports require their matching historical runner;
-current BS15 source and package bytes must be exported afresh.
+current BS16 source and package bytes must be exported afresh.
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
@@ -277,19 +285,24 @@ bytecode and shared ExprVM execution do not supply that missing parser program.
 The macro-only initial PRVM plan currently runs after binding, which is why it
 cannot yet classify an ordinary statement head before the value binder acts.
 
-BS15 is the current compact package format; the producer writes `BS15` and the
-native package owner checks the matching magic. Its header is 160 bytes, with
+BS16 is the current compact package format; the producer writes `BS16` and the
+native package owner checks the matching magic. Its header is 168 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its
 shared data-plan offset/length at 144/148 remains in the runtime prefix. The
-preparation-only inline metadata program is at 152/156; shared PRVM entry 7
+preparation-only inline metadata program is at 152/156. Contextual member-binding
+offset/count at 160/164 select eight-byte rows derived from canonical selector
+projections. Complete lexical instruction operands are normalized before binding
+using those package-supplied field identities; shared directives and exact
+register spellings retain their identities. MemberShape predicates and TargetMember
+fixups operate on numeric wrappers without source text. Shared PRVM entry 7
 selects output/descriptive roles and bounded decoded-string spans. Rust
 preparation expands only active `.incbin` statements for
 the quoted relative native subset, using definition-file-relative roots
 and the explicit supported cases. [Focused native qualification](native-runtime-reset.md#bs13-binary-inclusion-qualification)
 passes; BS13 embedded-config self-hosting is qualified in the current plan.
-BS15 full self-hosting and per-record origins for macro bodies drawn from several
+BS16 full self-hosting and per-record origins for macro bodies drawn from several
 physical files remain unqualified. Unsupported candidate recipes stay explicit rows rather than
 becoming silent omissions. Package rows select package-owned recipes, numeric
 projections and literal constants, including instruction encodings. Generic

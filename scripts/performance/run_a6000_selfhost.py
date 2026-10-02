@@ -120,15 +120,24 @@ def load_bundle(bundle):
         raise ValueError("Bootstrap digest mismatch")
     if not defines and (storage == "external" or output_storage == "embedded") and bootstrap != oracle:
         raise ValueError("Release bootstrap/oracle mismatch")
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS15":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS16":
         raise ValueError("Runtime package mismatch")
+    if len(package) < 168 or int.from_bytes(package[4:8], "big") != len(package):
+        raise ValueError("Invalid runtime package header")
+    bindings_offset = int.from_bytes(package[160:164], "big")
+    bindings_count = int.from_bytes(package[164:168], "big")
+    bindings_end = bindings_offset + bindings_count * 8
+    runtime_bytes = int.from_bytes(package[72:76], "big")
+    if bindings_offset < 168 or bindings_end > runtime_bytes or bindings_end > len(package):
+        raise ValueError("Invalid member-binding table region")
+    if any(package[offset + 6:offset + 8] != b"\0\0"
+           for offset in range(bindings_offset, bindings_end, 8)):
+        raise ValueError("Invalid member-binding reserved field")
     files["opforge"] = bootstrap
     if storage == "embedded":
-        if len(package) < 160:
-            raise ValueError("Invalid embedded package header")
         offset = int.from_bytes(package[124:128], "big")
         size = int.from_bytes(package[128:130], "big")
-        if offset < 160 or not 1 <= size <= 26 or offset + size > len(package):
+        if offset < 168 or not 1 <= size <= 26 or offset + size > len(package):
             raise ValueError("Invalid embedded package identity")
         target = package[offset:offset + size].decode("ascii")
         if target != "m68020--motorola68k" or embedded_packages != [target + ".bin"]:

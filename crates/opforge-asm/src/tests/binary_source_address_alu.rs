@@ -283,12 +283,13 @@ fn compact_address_alu_invalid_rust_oracle() {
 }
 
 #[test]
-fn compact_address_alu_member_packet_barrier() {
+fn compact_address_alu_member_packet_sequences() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let numeric =
         vm::binary_source_package::BinarySourcePackage::prepare(&core, &resolved).unwrap();
     let packet = prepare_package(&core, &resolved).unwrap();
+    let field = numeric.names.iter().position(|name| name == "l").unwrap() as u16;
     for (mnemonic, _) in FORMS {
         let (base, size) = mnemonic.split_once('.').unwrap();
         let name = numeric.names.iter().position(|name| name == base).unwrap() as u16;
@@ -305,10 +306,33 @@ fn compact_address_alu_member_packet_barrier() {
                     && packet[row + 2] == qualifier
                     && packet[row + 3] == 6
                     && u16::from_be_bytes(packet[row + 6..row + 8].try_into().unwrap()) == 5
-                    && packet[row + 5] == 6
+                    && packet[row + 5] == 9
+                    && {
+                        // An indexed-address sequence also has priority 5.
+                        // Select the package's member-shape match explicitly.
+                        let stages = long(&packet, row + 12);
+                        let inputs = long(&packet, stages + 8);
+                        packet[stages] == 0 && packet[inputs..inputs + 2] == [19, 0]
+                    }
             })
-            .expect("explicit member candidate remains an unsupported packet row");
-        assert_eq!(packet[row + 19] & 0x0f, 5);
+            .expect("explicit member candidate must be exported");
+        assert_eq!(packet[row + 5], 9);
+        assert_eq!(
+            u16::from_be_bytes(packet[row + 10..row + 12].try_into().unwrap()),
+            3
+        );
+        let stages = long(&packet, row + 12);
+        assert_eq!(
+            [packet[stages], packet[stages + 12], packet[stages + 24]],
+            [0, 1, 2]
+        );
+        let inputs = long(&packet, stages + 8);
+        assert_eq!(&packet[inputs..inputs + 2], &[19, 0]);
+        assert_eq!(&packet[inputs + 2..inputs + 4], &field.to_be_bytes());
+        assert_eq!(&packet[inputs + 12..inputs + 16], &[1, 1, 0, 1]);
+        let fixup = long(&packet, stages + 24 + 8);
+        assert_eq!(&packet[fixup..fixup + 2], &[16, 0]);
+        assert_eq!(&packet[fixup + 2..fixup + 4], &field.to_be_bytes());
     }
 }
 
@@ -326,13 +350,9 @@ fn compact_address_alu_invalid_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; explicit absolute-long address ALU member remains unsupported"]
-fn compact_address_alu_member_barrier_fs_uae() {
+#[ignore = "requires configured FS-UAE; explicit absolute-long address ALU member matches Rust"]
+fn compact_address_alu_member_fs_uae() {
     let source = invalid_source("cmpa.l (target).l,a0");
-    rust_bytes(&source);
-    assert_native_files_rejection(
-        &[("input.asm", &source)],
-        "m68020",
-        Some("[file 00000001, line 00000003]"),
-    );
+    assert_eq!(rust_bytes(&source), [0xb1, 0xf9, 0, 0, 0, 6, 0, 0, 0, 0]);
+    assert_binary_source(source, "m68020".into());
 }

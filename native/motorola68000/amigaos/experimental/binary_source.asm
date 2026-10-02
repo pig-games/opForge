@@ -48,8 +48,9 @@ WidthDirective	.word ?  ; package ID whose first comma-separated operand is a wi
 PackedMap	.long ?  ; optional Count+1 u16 packed offsets
 DataWidthDirective	.word ?  ; second configured width operand directive
 Reserved	.word ?
+MemberBinder	.long ?  ; optional contextual package-member binding callback
 	.endstruct
-FRAME_BYTES = Frame.Reserved+2
+FRAME_BYTES = Frame.MemberBinder+4
 
 Token	.struct
 Kind	.word ?
@@ -76,6 +77,9 @@ Length	.long ?
 ; BIND_ROLE_MEMBER_NAME after a dot outside the statement head,
 ; otherwise 0. Width names retain package identity; value operands bind normally.
 ; The callback returns the existing D2 qualifier.
+; Optional MemberBinder receives A0=Frame,A1=current token. It returns D0=0
+; with D1=base ID,D2=field ID,D3=base qualifier, 1 for an ordinary name or 2
+; for invalid binding. It preserves D4-D7/A2-A6. Zero disables this callback.
 ; TKVM kind bytes: kinds 0/1 have u16 ID,u8 qualifier; kind2 has u32 value;
 ; kind 3 has [u8 decoded byte count, decoded bytes]. Kinds 4..40 have no
 ; payload. Kind 41 is a bounded composite recipe:
@@ -325,6 +329,56 @@ widthIdentity
 restoreLength
 	move.l d6, d0
 callBinder
+	; A single captured identifier may represent a package-declared member.
+	; Keep one lexical map entry while emitting its numeric wrapper. Shared
+	; directives and statement names are excluded by the contextual callback.
+	tst.l d2
+	bne.w ordinaryName
+	move.l Frame.MemberBinder(a5), d0
+	beq.w ordinaryName
+	move.l d3, -(sp)  ; retain contextual lowering, not the raw TKVM kind
+	movem.l a0-a1, -(sp)
+	movea.l d0, a6
+	movea.l a5, a0
+	movea.l a2, a1
+	jsr (a6)
+	movem.l (sp)+, a0-a1
+	cmpi.l #1, d0
+	beq.w ordinaryMember
+	addq.l #4, sp
+	tst.l d0
+	bne.w bindFailed
+	cmpi.l #$ffff, d1
+	bhi.w bindFailed
+	cmpi.l #$ffff, d2
+	bhi.w bindFailed
+	cmpi.l #$ff, d3
+	bhi.w bindFailed
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #11, d0
+	blo.w overflow
+	move.b #14, (a3)+
+	clr.b (a3)+
+	move.w d1, d0
+	lsr.w #8, d0
+	move.b d0, (a3)+
+	move.b d1, (a3)+
+	move.b d3, (a3)+
+	move.b #15, (a3)+
+	move.b #7, (a3)+
+	clr.b (a3)+
+	move.w d2, d0
+	lsr.w #8, d0
+	move.b d0, (a3)+
+	move.b d2, (a3)+
+	clr.b (a3)+
+	bra.w next
+ordinaryMember
+	move.l (sp)+, d3
+ordinaryName
+	movea.l Frame.Binder(a5), a6
+	move.l d6, d0
 	jsr (a6)
 	tst.l d0
 	bne.w bindFailed

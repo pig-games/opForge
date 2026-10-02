@@ -6,6 +6,7 @@
 	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_source as writer
+	.use experimental.amigaos.binary_members as members
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_data_prepare as data_prepare
 	.use experimental.amigaos.binary_metadata_prepare as metadata
@@ -757,6 +758,7 @@ writeTokens	.block
 	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
 	clr.w writer.Frame.Reserved(a0)
+	move.l #bindMember, writer.Frame.MemberBinder(a0)
 	lea PACKED_MAP(a6), a1
 	move.l a1, writer.Frame.PackedMap(a0)
 	.MEMORY_DETAIL_BEGIN #0
@@ -925,6 +927,7 @@ fragmentLine	.block
 	move.w package.Header.ResDirective(a3), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a3), writer.Frame.DataWidthDirective(a0)
 	clr.w writer.Frame.Reserved(a0)
+	move.l #bindMember, writer.Frame.MemberBinder(a0)
 	lea PACKED_MAP(a6), a3
 	move.l a3, writer.Frame.PackedMap(a0)
 	jsr writer.writeLine
@@ -1343,6 +1346,7 @@ relexGeneratedCall	.block
 	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
 	clr.w writer.Frame.Reserved(a0)
+	move.l #bindMember, writer.Frame.MemberBinder(a0)
 	clr.l writer.Frame.PackedMap(a0)
 	jsr writer.writeLine
 	bne.w generatedRelexBad
@@ -1902,6 +1906,8 @@ configure	.block
 	move.l d0, PACKAGE_END(a6)
 	bsr.w validateMacroPrograms
 	bne.w bad
+	bsr.w validateMemberBindings
+	bne.w bad
 	moveq #0, d0
 	move.w package.Header.NameCount(a4), d0
 	move.l d0, NEXT_ID(a6)
@@ -2096,6 +2102,109 @@ done
 	tst.l d0
 	rts
 	.bend  ; validateMacroPrograms
+
+; Validate the contextual member table once, before callbacks can read it.
+; A4=capsule,D7=complete size; D0/CCR=status; other registers preserved.
+validateMemberBindings	.block
+	movem.l d1-d3/a0, -(sp)
+	move.l package.Header.MemberBindingCount(a4), d1
+	cmpi.l #65535, d1
+	bhi.w bad
+	move.l package.Header.MemberBindings(a4), d0
+	cmpi.l #HEADER_BYTES, d0
+	blo.w bad
+	btst #0, d0
+	bne.w bad
+	move.l d1, d2
+	lsl.l #3, d2
+	add.l d0, d2
+	bcs.w bad
+	cmp.l package.Header.RuntimeBytes(a4), d2
+	bhi.w bad
+	lea 0(a4, d0.l), a0
+next
+	tst.l d1
+	beq.w good
+	move.w package.MemberBinding.Name(a0), d2
+	cmp.w package.Header.NameCount(a4), d2
+	bhs.w bad
+	move.w package.MemberBinding.Field(a0), d2
+	cmp.w package.Header.NameCount(a4), d2
+	bhs.w bad
+	tst.w package.MemberBinding.Reserved(a0)
+	bne.w bad
+	adda.w #package.MEMBER_BINDING_BYTES, a0
+	subq.l #1, d1
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0
+	tst.l d0
+	rts
+	.bend  ; validateMemberBindings
+
+; Writer's optional member callback: A0=writer.Frame,A1=current token.
+; D0=0 member/1 ordinary/2 invalid,D1=base ID,D2=field ID,D3=base qualifier;
+; CCR=D0. Preserve D4-D7/A2-A6; inspect only captured lexical storage.
+bindMember	.block
+	movem.l a2-a3, -(sp)
+	movea.l writer.Frame.Context(a0), a2
+	movea.l PACKAGE_BASE(a2), a2
+	lea lookupPackage, a3
+	jsr members.bind
+	movem.l (sp)+, a2-a3
+	tst.l d0
+	rts
+	.bend  ; bindMember
+
+; Read-only package dictionary lookup. A0/D0=bounded bytes,A1=scratch.
+; D0=0 found/1 absent,D1=name,D2=qualifier,D3=roles; CCR=D0.
+; Preserve D4-D7/A2-A6; no source symbols or scope state are touched.
+lookupPackage	.block
+	movem.l d4-d7/a2-a6, -(sp)
+	movea.l a1, a6
+	movea.l a0, a2
+	move.l d0, d6
+	bsr.w hash
+	lsl.l #2, d0
+	lea PACKAGE_BUCKETS(a6), a1
+	move.l 0(a1, d0.l), d7
+next
+	tst.l d7
+	beq.w absent
+	movea.l a6, a4
+	adda.l d7, a4
+	movea.l PACKAGE_BASE(a6), a3
+	adda.l Node.Entry(a4), a3
+	cmp.w package.DictionaryEntry.Length(a3), d6
+	bne.w advance
+	movea.l a2, a0
+	lea package.DICTIONARY_ENTRY_BYTES(a3), a1
+	move.l d6, d0
+	bsr.w equal
+	bne.w advance
+	moveq #0, d1
+	move.w package.DictionaryEntry.Name(a3), d1
+	moveq #0, d2
+	move.b package.DictionaryEntry.Qualifier(a3), d2
+	moveq #0, d3
+	move.b package.DictionaryEntry.Roles(a3), d3
+	moveq #0, d0
+	bra.w done
+advance
+	move.l Node.Next(a4), d7
+	bra.w next
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d4-d7/a2-a6
+	tst.l d0
+	rts
+	.bend  ; lookupPackage
 ; Writer callback ABI: lexical bytes A0/D0, D2=leading-name role;
 ; outputs D1=id,D2=qualifier,D0/status.
 ; A1=Scratch context. Preserves D3-D7/A2-A6.

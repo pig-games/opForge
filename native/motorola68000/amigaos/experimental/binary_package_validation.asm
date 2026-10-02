@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS15 packages.
+; Shared structural boundary for embedded and external BS16 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -18,7 +18,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS15 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS16 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -94,6 +94,27 @@ identity
 	tst.b 0(a5, d2.l)
 	bne.w bad
 tables
+	move.l package.Header.MemberBindings(a4), d0
+	move.l package.Header.MemberBindingCount(a4), d2
+	moveq #package.MEMBER_BINDING_BYTES, d1
+	bsr.w table
+	bne.w bad
+	move.l package.Header.MemberBindingCount(a4), d6
+memberLoop
+	tst.l d6
+	beq.w candidateTables
+	move.w package.MemberBinding.Name(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	move.w package.MemberBinding.Field(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	tst.w package.MemberBinding.Reserved(a3)
+	bne.w bad
+	adda.w #package.MEMBER_BINDING_BYTES, a3
+	subq.l #1, d6
+	bra.w memberLoop
+candidateTables
 	move.l package.Header.Rows(a4), d0
 	move.l package.Header.RowCount(a4), d2
 	moveq #ROW_BYTES, d1

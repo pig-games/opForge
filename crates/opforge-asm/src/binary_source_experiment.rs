@@ -15,7 +15,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 160;
+const HEADER: usize = 168;
 const ROW: usize = 32;
 const SCALAR_EXACT_IDENTITY: u16 = 1;
 
@@ -102,7 +102,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS15 block for one resolved package hierarchy.
+/// Prepare a self-contained BS16 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -233,6 +233,15 @@ pub fn prepare_package(
             }
         }
     }
+    for member in &package.member_bindings {
+        bind(
+            &mut dictionary,
+            name(&names, member.field)?.into(),
+            member.field,
+            0,
+            DictionaryRoleFlags::MEMBER,
+        )?;
+    }
     let mut directive_ids = Vec::new();
     for directive in [
         "cpu", "org", "byte", "word", "long", "end", "align", "res", "for", "endfor",
@@ -357,7 +366,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS15");
+    out[..4].copy_from_slice(b"BS16");
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -429,6 +438,13 @@ pub fn prepare_package(
     );
     out.extend_from_slice(&data_plan);
     align(&mut out);
+    let member_bindings_offset = out.len();
+    for member in &package.member_bindings {
+        push_word(&mut out, member.mnemonic);
+        out.extend_from_slice(&[qualifier(member.qualifier)?, member.operand]);
+        push_word(&mut out, member.field);
+        push_word(&mut out, 0);
+    }
     let runtime_bytes = long(out.len())?;
     let dictionary_offset = out.len();
     for (spelling, binding) in &dictionary {
@@ -496,6 +512,8 @@ pub fn prepare_package(
     let total = long(out.len())?;
     for (offset, value) in [
         (4, total),
+        (160, long(member_bindings_offset)?),
+        (164, long(package.member_bindings.len())?),
         (8, long(dictionary_offset)?),
         (12, long(dictionary.len())?),
         (16, long(rows_offset)?),
@@ -1038,12 +1056,12 @@ fn write_sequence(
         } else {
             !encoded && !stage.fixup
         };
-        // Native fixup input binding currently transports exact scalar targets.
-        // Keep member targets unsupported until their numeric identity is bound.
+        // Rust has no TargetMember match predicate; only fixup stages transport it.
+        // Keep those canonical rows as barriers until both executors support matching.
         if !supported
             || stage.inputs.is_empty()
             || stage.inputs.len() > 16
-            || (stage.fixup
+            || (stage.program.is_none()
                 && stage
                     .inputs
                     .iter()
@@ -1132,6 +1150,7 @@ fn write_projection(
             0,
         ),
         Projection::Member { operand, qualifier } => (2, *operand, *qualifier, 0),
+        Projection::MemberShape { operand, qualifier } => (19, *operand, *qualifier, 0),
         Projection::TupleRegister { operand, class } => (5, *operand, *class, 0),
         Projection::TupleValue { operand } => (6, *operand, 0, 0),
         Projection::TupleArity { operand } => (14, *operand, 2, 0),
@@ -1195,6 +1214,7 @@ fn bind_member(
             DictionaryRoleFlags::REGISTER_OR_NAMED,
         ),
         Projection::Member { qualifier, .. }
+        | Projection::MemberShape { qualifier, .. }
         | Projection::TargetMember { qualifier, .. }
         | Projection::TupleQualifiedRegister { qualifier, .. } => bind(
             dictionary,
@@ -1243,6 +1263,27 @@ fn name(names: &[String], id: u16) -> Result<&str, String> {
 #[cfg(test)]
 mod dictionary_role_contract_tests {
     use super::*;
+
+    #[test]
+    fn member_shape_and_target_share_the_package_field_dictionary_role() {
+        let names = vec!["Width".to_string()];
+        let mut dictionary = BTreeMap::new();
+        for projection in [
+            Projection::MemberShape {
+                operand: 1,
+                qualifier: 0,
+            },
+            Projection::TargetMember {
+                operand: 1,
+                qualifier: 0,
+            },
+        ] {
+            bind_member(&projection, &names, &mut dictionary).unwrap();
+        }
+        assert_eq!(dictionary.len(), 1);
+        assert_eq!(dictionary["width"].id, 0);
+        assert_eq!(dictionary["width"].roles, DictionaryRoleFlags::MEMBER);
+    }
 
     #[test]
     fn dictionary_roles_merge_only_the_same_canonical_identity() {
@@ -1367,7 +1408,6 @@ mod sequence_wire_tests {
         );
         assert_eq!(wire[44], 2);
         assert_eq!(&wire[68..80], &[15, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0]);
-        let original = wire.clone();
         let member_stages = [
             stages[0].clone(),
             SemanticStage {
@@ -1381,14 +1421,78 @@ mod sequence_wire_tests {
         ];
         assert_eq!(
             write_sequence(&mut wire, &member_stages, &programs).unwrap(),
-            None
+            Some(80)
         );
-        assert_eq!(wire, original);
+        assert_eq!(&wire[116..128], &[16, 0, 0, 3, 0, 0, 0, 0, 255, 255, 0, 0]);
+        let original = wire.clone();
         programs.rows[1].version = 6;
         assert_eq!(write_sequence(&mut wire, &stages, &programs).unwrap(), None);
         assert_eq!(wire, original);
+        assert_eq!(
+            write_sequence(&mut wire, &member_stages, &programs).unwrap(),
+            None
+        );
+        assert_eq!(wire, original);
         programs.rows[1].version = 4;
         programs.rows[1].bytes = &[];
+        assert_eq!(
+            write_sequence(&mut wire, &member_stages, &programs).unwrap(),
+            None
+        );
+        assert_eq!(wire, original);
+    }
+
+    #[test]
+    fn member_shape_wire_preserves_package_field_without_value_program() {
+        let mut programs = Programs::default();
+        programs.add(2, 6, &[]).unwrap();
+        programs.semantics.insert(7, 0);
+        let stages = [
+            SemanticStage {
+                program: None,
+                fixup: false,
+                inputs: vec![Projection::MemberShape {
+                    operand: 1,
+                    qualifier: 42,
+                }],
+            },
+            SemanticStage {
+                program: Some(7),
+                fixup: false,
+                inputs: vec![Projection::Constant(1)],
+            },
+        ];
+        let mut wire = Vec::new();
+        assert_eq!(
+            write_sequence(&mut wire, &stages, &programs).unwrap(),
+            Some(0)
+        );
+        assert_eq!(wire[0], 0);
+        assert_eq!(&wire[24..36], &[19, 1, 0, 42, 0, 0, 0, 0, 255, 255, 0, 0]);
+    }
+
+    #[test]
+    fn member_target_match_keeps_an_unsupported_barrier_without_partial_wire() {
+        let mut programs = Programs::default();
+        programs.add(2, 6, &[]).unwrap();
+        programs.semantics.insert(7, 0);
+        let stages = [
+            SemanticStage {
+                program: None,
+                fixup: false,
+                inputs: vec![Projection::TargetMember {
+                    operand: 1,
+                    qualifier: 42,
+                }],
+            },
+            SemanticStage {
+                program: Some(7),
+                fixup: false,
+                inputs: vec![Projection::Constant(1)],
+            },
+        ];
+        let mut wire = vec![0xa5; 16];
+        let original = wire.clone();
         assert_eq!(write_sequence(&mut wire, &stages, &programs).unwrap(), None);
         assert_eq!(wire, original);
     }

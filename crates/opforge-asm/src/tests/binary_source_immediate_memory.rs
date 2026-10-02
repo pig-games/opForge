@@ -474,8 +474,31 @@ fn compact_immediate_memory_packet_sequence() {
             assert!(rows[&99] < rows[&130]);
             assert_eq!(
                 packet[rows[&99] + 5],
-                6,
-                "explicit member barrier must remain unsupported"
+                9,
+                "explicit member target must carry its executable sequence"
+            );
+            let member_steps = long(&packet, rows[&99] + 12);
+            assert_eq!(
+                [
+                    packet[member_steps],
+                    packet[member_steps + 12],
+                    packet[member_steps + 24]
+                ],
+                [0, 1, 2]
+            );
+            let member_inputs = long(&packet, member_steps + 8);
+            assert_eq!(&packet[member_inputs..member_inputs + 4], &[0, 0, 0, 0]);
+            assert_eq!(&packet[member_inputs + 12..member_inputs + 14], &[19, 1]);
+            let field = numeric.names.iter().position(|name| name == "l").unwrap() as u16;
+            assert_eq!(
+                &packet[member_inputs + 14..member_inputs + 16],
+                &field.to_be_bytes()
+            );
+            let member_fixup = long(&packet, member_steps + 32);
+            assert_eq!(&packet[member_fixup..member_fixup + 2], &[16, 1]);
+            assert_eq!(
+                &packet[member_fixup + 2..member_fixup + 4],
+                &field.to_be_bytes()
             );
             assert!(rows[&111] < rows[&130]);
             assert!(rows[&115] < rows[&130]);

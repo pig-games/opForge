@@ -173,6 +173,44 @@ fn compact_callback_package_sequence_inventory() {
             && wire[row + 2] == qualifier
             && wire[row + 3] == 8
         {
+            let priority = u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap());
+            if [99, 120, 121].contains(&priority) {
+                assert_eq!(wire[row + 5], 9, "member candidate must execute");
+                assert_eq!(
+                    u16::from_be_bytes(wire[row + 10..row + 12].try_into().unwrap()),
+                    3
+                );
+                let stages =
+                    u32::from_be_bytes(wire[row + 12..row + 16].try_into().unwrap()) as usize;
+                assert_eq!(
+                    [wire[stages], wire[stages + 12], wire[stages + 24]],
+                    [0, 1, if priority == 120 { 1 } else { 2 }]
+                );
+                let inputs =
+                    u32::from_be_bytes(wire[stages + 8..stages + 12].try_into().unwrap()) as usize;
+                assert_eq!(&wire[inputs..inputs + 4], &[0, 0, 0, 0]);
+                assert_eq!(&wire[inputs + 12..inputs + 14], &[19, 1]);
+                let field_name = if priority == 120 { "w" } else { "l" };
+                let field = numeric
+                    .names
+                    .iter()
+                    .position(|name| name == field_name)
+                    .unwrap() as u16;
+                assert_eq!(&wire[inputs + 14..inputs + 16], &field.to_be_bytes());
+                let last_inputs =
+                    u32::from_be_bytes(wire[stages + 32..stages + 36].try_into().unwrap()) as usize;
+                assert_eq!(
+                    &wire[last_inputs..last_inputs + 2],
+                    &[if priority == 120 { 2 } else { 16 }, 1]
+                );
+                assert_eq!(
+                    &wire[last_inputs + 2..last_inputs + 4],
+                    &field.to_be_bytes()
+                );
+                if priority == 120 {
+                    assert_ne!(&wire[last_inputs + 8..last_inputs + 10], &[255, 255]);
+                }
+            }
             if u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap()) == 111 {
                 let stage =
                     u32::from_be_bytes(wire[row + 12..row + 16].try_into().unwrap()) as usize;
@@ -203,9 +241,12 @@ fn compact_callback_package_sequence_inventory() {
             .filter(|row| row.1 == 6)
             .copied()
             .collect::<Vec<_>>(),
-        [(99, 6, 0x56, 0), (120, 6, 0x56, 0), (121, 6, 0x56, 0)],
-        "earlier unsupported rows must retain their scalar/member match facts"
+        [],
+        "all immediate member rows must export executable recipes"
     );
+    for priority in [99, 120, 121] {
+        assert!(immediate_rows.contains(&(priority, 9, 0, 0)));
+    }
     assert_eq!(
         immediate_rows.iter().filter(|row| row.0 == 111).count(),
         1,

@@ -21,6 +21,17 @@ pub struct BinarySourcePackage {
     pub semantic_programs: Vec<NumericProgram>,
     pub value_programs: Vec<NumericProgram>,
     pub candidates: Vec<NumericCandidate>,
+    pub member_bindings: Vec<NumericMemberBinding>,
+}
+
+/// Package-selected member fields needed before lexical source names are bound.
+/// These survive unsupported candidate recipes because binding precedes selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct NumericMemberBinding {
+    pub mnemonic: u16,
+    pub qualifier: Option<u8>,
+    pub operand: u8,
+    pub field: u16,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -138,6 +149,10 @@ pub enum Projection {
         operand: u8,
         qualifier: u16,
     },
+    MemberShape {
+        operand: u8,
+        qualifier: u16,
+    },
     TupleRegister {
         operand: u8,
         class: u16,
@@ -218,6 +233,7 @@ impl BinarySourcePackage {
         let mut value_programs = Vec::new();
         let mut candidates = Vec::new();
         let mut candidate_plans = Vec::new();
+        let mut member_bindings = BTreeSet::new();
         for (rank, (tag, owner)) in owners.into_iter().enumerate() {
             let Some(owner) = owner else { continue };
             for (&(key_tag, key_owner, name), value) in &core.register_encodings {
@@ -268,6 +284,18 @@ impl BinarySourcePackage {
                     continue;
                 }
                 for row in rows {
+                    let spelling = names.name(mnemonic).to_string();
+                    let (base, qualifier) = split_qualifier(&spelling);
+                    let bound_mnemonic = names.id(base);
+                    let bound_qualifier = qualifier.map(|value| qualifiers.id(value));
+                    for (operand, field) in member_binding_fields(&row.operand_plan) {
+                        member_bindings.insert(NumericMemberBinding {
+                            mnemonic: bound_mnemonic,
+                            qualifier: bound_qualifier,
+                            operand,
+                            field: names.id(field),
+                        });
+                    }
                     candidate_plans.push(row.operand_plan.clone());
                     candidates.push(candidate(
                         row,
@@ -314,6 +342,7 @@ impl BinarySourcePackage {
             semantic_programs,
             value_programs,
             candidates,
+            member_bindings: member_bindings.into_iter().collect(),
         })
     }
 }
@@ -795,6 +824,13 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
             });
         }
     }
+    if let Some(rest) = value.strip_prefix("member_shape") {
+        let (operand, qualifier) = parse_member_spec(rest)?;
+        return Some(Projection::MemberShape {
+            operand,
+            qualifier: names.id(qualifier),
+        });
+    }
     if let Some((operand, qualifier)) = parse_member_projection(value) {
         return Some(Projection::Member {
             operand,
@@ -877,6 +913,10 @@ fn parse_register_mask(value: &str) -> Option<Projection> {
 
 fn parse_member_projection(value: &str) -> Option<(u8, &str)> {
     let rest = value.strip_prefix("member")?;
+    parse_member_spec(rest)
+}
+
+fn parse_member_spec(rest: &str) -> Option<(u8, &str)> {
     let (operand, qualifier) = rest.split_once(MODE_SELECTOR_PLAN_MEMBER_FIELD_SEPARATOR)?;
     if operand.is_empty()
         || !operand.bytes().all(|byte| byte.is_ascii_digit())
@@ -885,6 +925,56 @@ fn parse_member_projection(value: &str) -> Option<(u8, &str)> {
         return None;
     }
     Some((operand.parse().ok()?, qualifier))
+}
+
+fn member_binding_fields(plan: &str) -> BTreeSet<(u8, &str)> {
+    let plan = plan
+        .split_once(MODE_SELECTOR_PLAN_DIAGNOSTIC_SEPARATOR)
+        .map_or(plan, |(body, _)| body);
+    let bodies: Vec<_> = if let Some(sequence) = plan.strip_prefix("semv.sequence.v1:") {
+        sequence
+            .split(';')
+            .filter_map(|stage| {
+                let (kind, body) = stage.split_once(':')?;
+                matches!(kind, "match" | "encode" | "fixup").then_some(body)
+            })
+            .collect()
+    } else {
+        ["semv.inputs.v1:", "semv.reject.v1:", "semv.branch.v1:"]
+            .into_iter()
+            .find_map(|prefix| plan.strip_prefix(prefix))
+            .into_iter()
+            .collect()
+    };
+    bodies
+        .into_iter()
+        .filter_map(|body| {
+            let (program, inputs) = body.split_once('@')?;
+            (!program.is_empty()).then_some(inputs)
+        })
+        .flat_map(|inputs| inputs.split(','))
+        .filter_map(member_binding_field)
+        .collect()
+}
+
+fn member_binding_field(source: &str) -> Option<(u8, &str)> {
+    for prefix in ["value_program:", "required_value_program:"] {
+        if let Some(rest) = source.strip_prefix(prefix) {
+            let (program, source) = rest.split_once(':')?;
+            return if program.is_empty() {
+                None
+            } else {
+                member_binding_field(source)
+            };
+        }
+    }
+    if let Some(source) = source.strip_prefix("target:") {
+        return parse_member_projection(source);
+    }
+    if let Some(rest) = source.strip_prefix("member_shape") {
+        return parse_member_spec(rest);
+    }
+    parse_member_projection(source)
 }
 
 fn split_qualifier(value: &str) -> (&str, Option<&str>) {
@@ -976,7 +1066,8 @@ impl QualifierTable {
 mod tests {
     use super::{
         known_name_exclusions, member_excluded, parse_member_projection, parse_projection,
-        parse_register_mask, BTreeMap, CandidateRecipe, NameTable, NumericRegister, Projection,
+        parse_register_mask, BTreeMap, BTreeSet, CandidateRecipe, NameTable, NumericRegister,
+        Projection,
     };
 
     #[test]
@@ -1115,6 +1206,93 @@ mod tests {
         assert_eq!(parse_member_projection("member1.fieldW"), Some((1, "W")));
         assert_eq!(parse_member_projection("member1.field"), None);
         assert_eq!(parse_member_projection("member1.W"), None);
+    }
+
+    #[test]
+    fn member_shape_sequence_preserves_package_field_identity() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        let plan = "semv.sequence.v1:match:_@expr0,member_shape1.fieldWidth;encode:word@expr0;fixup:fix.abs32@target:member1.fieldWidth";
+        let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
+        else {
+            panic!("member-shape match and member target must lower together");
+        };
+        let field = names.id("Width");
+        assert_eq!(
+            stages[0].inputs,
+            [
+                Projection::Expression(0),
+                Projection::MemberShape {
+                    operand: 1,
+                    qualifier: field,
+                },
+            ]
+        );
+        assert_eq!(
+            stages[2].inputs,
+            [Projection::TargetMember {
+                operand: 1,
+                qualifier: field,
+            }]
+        );
+        for source in [
+            "member_shape.fieldWidth",
+            "member_shape1.field",
+            "member_shape256.fieldWidth",
+            "member_shape1.Width",
+            "target:member_shape1.fieldWidth",
+        ] {
+            assert_eq!(
+                super::parse_projection(source, &mut names),
+                None,
+                "{source}"
+            );
+        }
+        for plan in [
+            "semv.sequence.v1:encode:word@target:member1.fieldWidth",
+            "semv.sequence.v1:encode:word@expr0;fixup:fix.abs32@member_shape1.fieldWidth",
+        ] {
+            assert!(matches!(
+                super::parse_recipe(plan, &mut names),
+                CandidateRecipe::Unsupported { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn member_binding_metadata_survives_unsupported_sequence_steps() {
+        let plan = "semv.sequence.v1:match:_@member_shape1.fieldWidth;encode:future@unknown;fixup:fix@target:member1.fieldWidth,member0.fieldAddress|diagnostic";
+        assert_eq!(
+            super::member_binding_fields(plan),
+            BTreeSet::from([(0, "Address"), (1, "Width")])
+        );
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        assert!(matches!(
+            super::parse_recipe(plan, &mut names),
+            CandidateRecipe::Unsupported { .. }
+        ));
+        assert_eq!(
+            super::member_binding_fields(
+                "semv.inputs.v1:encode@value_program:check:member1.fieldWidth,required_value_program:check:member0.fieldAddress"
+            ),
+            BTreeSet::from([(0, "Address"), (1, "Width")])
+        );
+        for plan in [
+            "semv.inputs.v2:encode@member1.fieldWidth",
+            "semv.sequence.v1:future:encode@member1.fieldWidth",
+            "semv.inputs.v1:encode@member1.Width,target:member_shape1.fieldWidth,value_program::member0.fieldAddress",
+        ] {
+            assert!(super::member_binding_fields(plan).is_empty(), "{plan}");
+        }
     }
 
     #[test]
@@ -1415,6 +1593,52 @@ mod tests {
                 && matches!(&candidate.recipe, CandidateRecipe::SemanticSequence { stages }
                     if stages.iter().any(|stage| stage.fixup
                         && stage.inputs == [Projection::TargetExpression(0)]))
+        }));
+    }
+
+    #[test]
+    fn qualified_immediate_symbol_candidate_is_an_executable_sequence() {
+        let mut registry = registry::ModuleRegistry::new();
+        families::register_motorola68000_family_stack(&mut registry);
+        let core = super::RuntimeModelCore::from_registry(&registry).unwrap();
+        let resolved = core.resolve_pipeline("m68020", None).unwrap();
+        let package = super::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+        let field = package.names.iter().position(|name| name == "l").unwrap() as u16;
+        let mnemonic = package
+            .names
+            .iter()
+            .position(|name| name == "cmpi")
+            .unwrap() as u16;
+        let qualifier = package
+            .qualifiers
+            .iter()
+            .position(|name| name == "w")
+            .unwrap() as u8;
+        assert!(package
+            .member_bindings
+            .contains(&super::NumericMemberBinding {
+                mnemonic,
+                qualifier: Some(qualifier),
+                operand: 1,
+                field,
+            }));
+        assert!(package
+            .member_bindings
+            .windows(2)
+            .all(|pair| pair[0] < pair[1]));
+        assert!(package.candidates.iter().any(|candidate| {
+            candidate.priority == 325
+                && package.names[usize::from(candidate.mnemonic)] == "cmpi"
+                && candidate
+                    .qualifier
+                    .is_some_and(|qualifier| package.qualifiers[usize::from(qualifier)] == "w")
+                && matches!(&candidate.recipe, CandidateRecipe::SemanticSequence { stages }
+                if stages.len() == 3 && stages[0].inputs.contains(&Projection::MemberShape {
+                    operand: 1, qualifier: field,
+                }) && stages[2].fixup
+                    && stages[2].inputs == [Projection::TargetMember {
+                        operand: 1, qualifier: field,
+                    }])
         }));
     }
 }

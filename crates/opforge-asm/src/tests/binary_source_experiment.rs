@@ -96,6 +96,8 @@ mod callback_scope;
 mod immediate_memory;
 #[path = "binary_source_keyword_labels.rs"]
 mod keyword_labels;
+#[path = "binary_source_members.rs"]
+mod members;
 #[path = "binary_source_mnemonic_labels.rs"]
 mod mnemonic_labels;
 #[path = "binary_source_selfhost_data.rs"]
@@ -132,11 +134,11 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS15");
-        assert_eq!(long(16), 160);
+        assert_eq!(&bytes[..4], b"BS16");
+        assert_eq!(long(16), 168);
         assert_eq!(word(64), little_endian);
         assert_eq!(word(130), 0);
-        assert!(target_offset >= 160);
+        assert!(target_offset >= 168);
         assert_eq!(target_bytes, expected.len());
         assert_eq!(
             &bytes[target_offset..target_offset + target_bytes],
@@ -144,7 +146,8 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         );
         assert_eq!(long(144), (target_offset + target_bytes + 1) & !1);
         assert_eq!(long(148), 16);
-        assert_eq!(runtime_bytes, long(144) + long(148));
+        assert_eq!(long(160), long(144) + long(148));
+        assert_eq!(runtime_bytes, long(160) + long(164) * 8);
         assert_eq!(
             word(142),
             core.cpu_execution_properties(cpu)
@@ -153,7 +156,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
                 .word_size_bytes as u16
         );
         assert_eq!(
-            &bytes[long(144)..runtime_bytes],
+            &bytes[long(144)..long(160)],
             package::packed_data_program(word(140), word(52), word(54), word(56), word(142))
         );
         assert_eq!(long(8), runtime_bytes);
@@ -192,11 +195,11 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS15");
+        assert_eq!(&bytes[..4], b"BS16");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((160..=bytes.len()).contains(&runtime_bytes));
+        assert!((168..=bytes.len()).contains(&runtime_bytes));
         assert_eq!(runtime_bytes % 2, 0);
         let fragments = long(&bytes, 116);
         let fragment_bytes = long(&bytes, 120);
@@ -217,7 +220,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 160);
+            assert!(offset >= 168);
             assert!(offset + count * width <= runtime_bytes);
         }
 

@@ -76,7 +76,7 @@ imported modules and nested scopes cannot set root output metadata. Descriptive
 `.meta.name "..."` and `.meta.version "..."` are accepted without an output effect.
 This is an inline quoted subset: unquoted values, configuration blocks, CPU
 metadata overrides, source BIN/FILL/S-record metadata, listings, defines and CPU/source-default
-selection remain future work. The BS15 runtime package option is distinct from
+selection remain future work. The BS16 runtime package option is distinct from
 Rust's canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.
 

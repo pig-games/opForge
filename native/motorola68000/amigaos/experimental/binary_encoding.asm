@@ -50,6 +50,8 @@ PROGRAM_TABLE = 1
 PROGRAM_SEMANTIC = 2
 PROGRAM_VALUE = 3
 PROJECTION_EXPRESSION = 0
+PROJECTION_TARGET_MEMBER = 16
+PROJECTION_MEMBER_SHAPE = 19
 MISSING_PROGRAM = $ffff
 HEADER_BYTES = package.HEADER_BYTES
 ROW_BYTES = 32
@@ -1246,12 +1248,14 @@ recordReady
 	beq.w tupleItem
 	cmpi.b #15, d0
 	beq.w targetExpression
-	cmpi.b #16, d0
+	cmpi.b #PROJECTION_TARGET_MEMBER, d0
 	beq.w memberValue
 	cmpi.b #17, d0
 	beq.w atomicTarget
 	cmpi.b #18, d0
 	beq.w registerMask
+	cmpi.b #PROJECTION_MEMBER_SHAPE, d0
+	beq.w memberShape
 	bra.w bad
 expressionValue
 	move.w package.ScalarProjection.Flags(a4), d0
@@ -1289,6 +1293,9 @@ namedValue
 	bra.w valueReady
 memberValue
 	bsr.w projectionMember
+	bra.w valueReady
+memberShape
+	bsr.w projectionMemberShape
 	bra.w valueReady
 tupleRegister
 	bsr.w projectionTupleRegister
@@ -1435,8 +1442,10 @@ inputReady
 	; Scalar fixups share the same bounded identity proof; literals have no target.
 	cmpi.b #PROJECTION_EXPRESSION, package.Projection.Kind(a4)
 	beq.w scalarTarget
+	cmpi.b #PROJECTION_TARGET_MEMBER, package.Projection.Kind(a4)
+	beq.w memberTarget
 	cmpi.b #6, package.Projection.Kind(a4)
-	bne.w bad  ; target:member and other paths need exact identity transport
+	bne.w bad
 	bsr.w operandSpan
 	tst.l d0
 	bne.w bad
@@ -1444,6 +1453,13 @@ inputReady
 	tst.l d0
 	bne.w bad
 	movea.l a6, a1  ; first tuple item is the bounded scalar target
+	bra.w targetSpanReady
+memberTarget
+	bsr.w operandSpan
+	tst.l d0
+	bne.w bad
+	bsr.w memberBase
+	bne.w bad
 	bra.w targetSpanReady
 scalarTarget
 	bsr.w operandSpan
@@ -1462,6 +1478,11 @@ targetSpanReady
 	bsr.w projectionTupleValue
 	bra.w valueProjected
 scalarValue
+	cmpi.b #PROJECTION_TARGET_MEMBER, package.Projection.Kind(a4)
+	bne.w expressionValue
+	bsr.w projectionMember
+	bra.w valueProjected
+expressionValue
 	bsr.w projectionExpression
 valueProjected
 	movem.l (sp)+, a0-a1
@@ -1626,40 +1647,52 @@ bad
 	rts
 	.bend  ; projectionNamed
 
-projectionMember	.block
-	bsr.w operandSpan
-	tst.l d0
-	bne.w return
-	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
-	bne.w bad
+; A0/A1=bounded member wrapper, A4=package projection. Return the compiled
+; scalar base in A0/A1 after validating the package's numeric field identity.
+; D0/CCR=status; clobbers A0/A1/A6. No field spelling or value is interpreted.
+memberBase	.block
+	jsr shapes.isMember
+	beq.w bad
 	movea.l a1, a6
 	subq.l #6, a6
-	cmpa.l a0, a6
-	blo.w bad
-	cmpi.b #TOKEN_CLOSE_PAREN, (a6)
-	bne.w bad
-	cmpi.b #TOKEN_DOT, 1(a6)
-	bne.w bad
-	moveq #0, d0
-	move.b 2(a6), d0
-	cmpi.b #TOKEN_SYMBOL_0, d0
-	beq.w word
-	cmpi.b #TOKEN_SYMBOL_1, d0
-	bne.w bad
-word
 	moveq #0, d0
 	move.b 3(a6), d0
 	lsl.w #8, d0
 	move.b 4(a6), d0
 	cmp.w package.Projection.Class(a4), d0
 	bne.w bad
-	tst.b 5(a6)
-	bne.w bad
+	addq.l #1, a0
 	movea.l a6, a1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; memberBase
+
+; Shape-only package predicates validate the wrapper without evaluating its
+; base. Forward and section-bearing names therefore remain valid matches.
+projectionMemberShape	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w memberBase
+return
+	moveq #0, d3
+	tst.l d0
+	rts
+	.bend  ; projectionMemberShape
+
+projectionMember	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w memberBase
+	bne.w return
 	bsr.w evaluateScalar
 	tst.l d0
 	bne.w return
-	cmpa.l a6, a0
+	cmpa.l a1, a0
 	bne.w bad
 	move.l d1, d3
 	tst.l d2

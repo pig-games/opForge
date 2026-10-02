@@ -58,7 +58,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS15 represents one CPU/dialect pipeline and carries its canonical
+Current BS16 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -211,7 +211,7 @@ mid-source package transitions remain P3. `--hunk` currently selects source-conf
 sections, rather than general Rust Hunk CLI synthesis. Informational commands
 need no input, package or output configuration.
 Native runtime-package/dialect/search-root options remain separate from canonical
-Rust `.opasm` loading; never mislabel BS15 as the canonical container.
+Rust `.opasm` loading; never mislabel BS16 as the canonical container.
 
 Reuse isolated old CLI routines where coherent, without importing the old engine
 state or preprocessor. Qualify actual accepted/rejected invocations against live
@@ -782,8 +782,57 @@ adds four release bytes (119,260-byte CLI, 132,760 linked reserved bytes); the
 short observations do not establish a speed change. The full release retry still
 exits 20 at final binding before assembly after 466.466222125 seconds. It has
 85 inputs, 1,235,473 bytes, manifest `fnv1a64:99f7f92ca6485512`, and a fresh
-418,568-byte Rust release Hunk. A further failure is being localized; this repair
-does not establish complete self-hosting. The completed instrumented captures above are failure-localization
+418,568-byte Rust release Hunk. The separate unchanged-workload pointer-fix
+comparison is 10.915554500/11.187310083 seconds before and
+10.895403833/11.119199625 after (medians 11.051432292 and 11.007301729).
+The 0.044-second difference is below useful timing resolution; this is a
+correctness repair with four added release bytes, not a measured speed gain.
+
+The fresh phase-only diagnostic reaches the next unresolved proxy,
+`SelectedOutputKind.l`, after 561.407299 seconds on the same source manifest.
+This is a package-defined address member, incorrectly bound as a qualified
+source name. The current repair carries contextual member forms from canonical
+selector projections, normalizes complete instruction operands before binding,
+and transports MemberShape and TargetMember fixup identities. Shared directives
+and exact package registers retain their existing identities. The new binding
+module consumes owned TKVM lexemes without changing unbound capture storage.
+BS16 replaces BS15; regeneration is required and no legacy executor is retained.
+Fresh native member comparisons now exit zero with exact live Rust Hunk equality,
+including qualified bases, address addends, CODE/DATA/BSS relocation, macro bodies,
+register-member precedence and numeric/quoted CPU directives. The final spelling
+comparisons take 1.540888625 and 1.531500208 seconds and produce the complete
+188-byte Hunk. Affected host checks pass: 273 assembler tests, 18 VM package
+tests and 19 A6000 runner tests. The host inventory regenerates all 16 package
+combinations without generation failures; six still have no compact instruction
+candidates, so inventory generation is not CPU coverage proof.
+
+The fresh BS16 embedded release self-host still exits 20 without output after
+463.532497500 seconds, reporting physical origin 75, line 572. Its 86 inputs
+contain 1,268,843 bytes, manifest `fnv1a64:5907162c81a85037`; the fresh Rust
+release Hunk is 441,896 bytes (`fnv1a64:934bbeab1fab7076`). The current package
+is 321,458 bytes (`fnv1a64:9361ef54cac5e022`), 22,152 more than BS15. This is
+another unsuccessful full self-host run, not a speed comparison: both source and
+package changed. The separate phase-only capture takes 559.383321500 seconds,
+still exits 20 without output, and records one bounded allocation failure:
+request 1,048,675 bytes, capacity 1,048,576, used 1,048,419. The packed-record
+block reaches its 1 MiB owner limit while replaying the embedded package's
+`.incbin`. This is not an unresolved-symbol failure. Peak tracked owned storage
+is 19,553,992 bytes and all tracked allocations are freed. The next repair gives
+only packed records a larger bounded allowance, preserving the symbol and other
+buffer limits. The 74 MiB investigation profile does not qualify the 2 MiB target.
+
+The separate member-only release comparison keeps the same 10,687-byte source,
+2,434-byte exact Rust output and 68020/10 MiB settings. Final BS16 observations
+are 11.054639833/11.305725042 seconds (median 11.180182438), compared with
+10.895403833/11.119199625 (median 11.007301729) immediately before this repair.
+The observed median difference is +0.173 seconds (+1.57%); with two observations
+and overlapping ranges, it does not establish a performance regression or gain.
+The external CLI grows by 1,176 bytes to 120,436; linked reservations grow by
+1,160 bytes to 133,920. These numbers isolate the member repair, excluding the
+subsequent diagnostic and record-budget changes.
+An additional probe confirms that MOVE absolute-word `(8).w` remains an
+unsupported packet form; it is outside this address-long binding repair.
+This repair does not establish complete self-hosting. The completed instrumented captures above are failure-localization
 measurements, not completed self-host timings.
 
 Further fresh native discriminators pass complete live Rust comparisons: a
@@ -1042,12 +1091,16 @@ After preparation, both modes still copy the execution prefix and discard lexica
 storage. The whole embedded payload remains part of the executable image, so
 tracked allocation savings alone do not establish lower total RAM use.
 
-BS15 uses a 160-byte header. The canonical target offset remains at 124, its
+BS16 uses a 168-byte header. The canonical target offset remains at 124, its
 length at 128 and the reserved word at 130; the preparation-only file plan offset
 and byte length are at 132 and 136. Built-in `.emit` identity is at 140, CPU
 word bytes at 142, and the retained data-plan offset/length at 144/148. Fields
 are big-endian and block-relative. The preparation-only metadata plan is at
-152/156. Regenerate superseded packages; only BS15 is supported.
+152/156. Contextual member-binding offset/count are at 160/164; each eight-byte
+row holds mnemonic ID, qualifier, operand index, field ID and a zero reserved
+word. Rows derive from canonical package projections, including unsupported
+candidate plans, and remain in the runtime prefix. Generic preparation does not
+contain CPU suffix spellings. Regenerate superseded packages; only BS16 is supported.
 Target identity lies inside `RuntimeBytes`, survives preparation, uses safe
 filename characters and fits in 26 bytes (plus `.bin`, within the classic
 30-byte component limit). The current slice loads assets only from active,

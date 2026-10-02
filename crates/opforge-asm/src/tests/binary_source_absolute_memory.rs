@@ -90,7 +90,7 @@ fn compact_bss_to_struct_has_executable_package_sequence() {
     let wire = prepare_package(&core, &resolved).unwrap();
     let offset = u32::from_be_bytes(wire[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
-    let blocking_row = (0..count)
+    let member_row = (0..count)
         .map(|index| offset + index * 32)
         .find(|&row| {
             u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == move_id
@@ -99,14 +99,10 @@ fn compact_bss_to_struct_has_executable_package_sequence() {
                 && u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap()) == 75
         })
         .unwrap();
-    assert_eq!(wire[blocking_row + 5], 6); // still an unsupported recipe
-    assert_eq!(wire[blocking_row + 19] & 0x0f, 4); // source needs tuple root
+    assert_eq!(wire[member_row + 5], 6); // TargetMember match remains unsupported in Rust.
+    assert_eq!(wire[member_row + 19] & 0x0f, 4); // source needs tuple root
     assert_eq!(
-        u16::from_be_bytes(
-            wire[blocking_row + 22..blocking_row + 24]
-                .try_into()
-                .unwrap()
-        ),
+        u16::from_be_bytes(wire[member_row + 22..member_row + 24].try_into().unwrap()),
         0x0900
     ); // PC base register class + 1
     assert!((0..count).any(|index| {

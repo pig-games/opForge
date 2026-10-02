@@ -27,7 +27,7 @@ fn compact_memory_move_package_rows() {
         .unwrap() as u8
         + 1;
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
-    let mut barriers = 0;
+    let mut member_barriers = 0;
     let mut sequences = 0;
     let mut pc_sequences = 0;
     for row in wire[rows..rows + count * 32].chunks_exact(32) {
@@ -38,25 +38,23 @@ fn compact_memory_move_package_rows() {
             continue;
         }
         let priority = u16::from_be_bytes(row[6..8].try_into().unwrap());
-        // The PC-to-absolute recipe is executable. The following PC-to-member
-        // recipe remains unsupported but carries enough match facts to reject
-        // scalar sources before it can block later transfer candidates.
+        // PC-to-absolute executes; PC-to-member retains its unsupported match barrier.
         if priority == 74 {
             assert_eq!(row[5], 9);
             pc_sequences += 1;
         }
-        if row[5] == 6 && row[22] == 9 {
-            assert_eq!(priority, 75);
+        if priority == 75 {
+            assert_eq!(row[5], 6);
             assert_eq!(row[19] & 0x0f, 4);
-            assert_eq!(row[23], 0);
-            barriers += 1;
+            assert_eq!(&row[22..24], &[9, 0]);
+            member_barriers += 1;
         }
         if row[5] == 9 {
             assert_eq!(&row[22..24], &[0, 0]);
             sequences += 1;
         }
     }
-    assert_eq!(barriers, 1);
+    assert_eq!(member_barriers, 1);
     assert_eq!(pc_sequences, 1);
     assert!(sequences > 0);
 }

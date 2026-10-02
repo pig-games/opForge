@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533135; BS15
+MAGIC = $42533136; BS16
 DICTIONARY_REGISTER_OR_NAMED = 1
 DICTIONARY_MEMBER = 2
 DICTIONARY_ROLE_ALLOWED = DICTIONARY_REGISTER_OR_NAMED+DICTIONARY_MEMBER
@@ -70,8 +70,21 @@ DataPlan	.long ?
 DataPlanBytes	.long ?
 MetadataPlan	.long ?
 MetadataPlanBytes	.long ?
+MemberBindings	.long ?
+MemberBindingCount	.long ?
 .endstruct
-HEADER_BYTES = Header.MetadataPlanBytes+4
+HEADER_BYTES = Header.MemberBindingCount+4
+
+; Contextual member forms are derived from canonical selector projections,
+; including unsupported candidates. Field meanings remain package-owned.
+MemberBinding	.struct
+Name	.word ?
+Qualifier	.byte ?
+Operand	.byte ?
+Field	.word ?
+Reserved	.word ?
+.endstruct
+MEMBER_BINDING_BYTES = MemberBinding.Reserved+2
 
 Context	.struct
 Values	.long ?

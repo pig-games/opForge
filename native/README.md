@@ -32,7 +32,11 @@ directory. Additional `-M`/`-I` roots retain command order. Root input anchors
 discovery, not module execution order. Quoted Amiga Shell paths, `--name=value`,
 attached short values and `--` are supported. Help/version need no package/input.
 
-An initial `--cpu` or `--runtime-package` is still required. With no output
+An initial `--cpu` or `--runtime-package` is still required, even when the input
+contains `.cpu`. This is a missing CLI parity capability: the command currently
+rejects before reading source, and `.cpu` validates an already-selected package.
+[Source-selected initial package work](../documentation/plans/native-runtime-reset.md#source-selected-initial-package--required-cli-follow-up-not-implemented)
+is planned separately from later in-source package switching. With no output
 request, the compact CLI validates the assembly and writes no artifact. An
 omitted output filename derives from the input basename unless output metadata
 selects another base. `-o` is still unsupported in compact. Relative output names

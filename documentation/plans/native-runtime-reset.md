@@ -206,7 +206,8 @@ multiple/ranged outputs, defines and broader CLI artifacts remain following
 slices. CLI output policy and source-selected filenames are the separate C2
 checkpoint agreed below; C1 still requires an explicit `--bin` or `--hunk`.
 Initial package selection still requires `--cpu` or `--runtime-package`; source
-CPU selection/defaults belong to P3. `--hunk` currently selects source-configured
+CPU selection/defaults are missing CLI parity, tracked separately below;
+mid-source package transitions remain P3. `--hunk` currently selects source-configured
 sections, rather than general Rust Hunk CLI synthesis. Informational commands
 need no input, package or output configuration.
 Native runtime-package/dialect/search-root options remain separate from canonical
@@ -255,6 +256,39 @@ runner validates the files and new command. **The entire current source has not
 been reassembled by native in this checkpoint**; the export records
 `native_validation: not_run`. C1 qualification is focused CLI execution, not a
 new full self-host or physical A6000 completion claim.
+
+#### Source-selected initial package — required CLI follow-up (not implemented)
+
+Erik's `opforge src/experimental/opforge_compact_cli.asm` must accept the root
+source's `.cpu 68020` without a redundant CLI CPU/package option. The current
+Shell entry rejects before source I/O. Its frontend requires a loaded package
+for tokenization/binding, and native `.cpu` only validates that selected package;
+removing the rejection alone would not implement source selection.
+
+Add package-independent bootstrap recognition through shared TKVM/PRVM programs,
+then use the existing catalog/loader to resolve CPU aliases, dialect and
+embedded/external storage. Preserve lexical spellings such as `68020` for catalog
+lookup; do not treat the token's normalized numeric value as its target identity.
+Keep CPU mappings and the initial default in generated data, not native family
+branches. Rust's current no-option default is `8085`; explicit `--cpu` sets the
+initial target while source `.cpu` may later change it. A single-pipeline initial
+selection checkpoint must not claim mid-source switching parity.
+
+The first bounded proof should cover an unconditional root-source preamble
+declaration, including `.module`, whitespace/comments and canonical/alias names,
+and the current entry-file example. Define the bootstrap stopping boundary before
+implementation: inactive branches, includes and macro bodies must not be scanned
+indiscriminately for a CPU. Either support those preprocessing contexts through
+their shared owners or reject an unsupported discovery case explicitly. Document
+that limitation; full source selection remains the parity target.
+
+Qualify omitted/file/directory input, explicit CPU/package options, unknown or
+malformed declarations, missing packages, embedded/external lookup and no-CPU
+default behavior against fresh Rust/native results. Preserve the full-source
+preparation-order failure as a separate regression: selecting its package does
+not fix struct preparation. Coordinate this bootstrap contract with the proposed
+unbound-token capture slice while keeping dependency-order redesign paused for
+the requested plan review.
 
 ### CLI checkpoint C2 — requested outputs and source declarations (in progress)
 

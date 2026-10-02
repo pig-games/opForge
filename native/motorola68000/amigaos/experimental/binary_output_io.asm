@@ -9,8 +9,10 @@ Data	.long ?
 Bytes	.long ?
 Prefix	.long ?
 PrefixBytes	.long ?
+Generator	.long ?
+Context	.long ?
 	.endstruct
-FRAME_BYTES = Frame.PrefixBytes+4
+FRAME_BYTES = Frame.Context+4
 OPEN = -30
 CLOSE = -36
 DOS_WRITE = -48
@@ -26,7 +28,9 @@ NEW_FILE = 1006
 ; prefix then payload, and close on every opened path. Handles short writes;
 ; a zero/negative/oversized write or failed close returns D0/CCR=1, else 0.
 ; Path is NUL-terminated within PATH_BYTES. Creates missing parent directories.
-; Other registers preserved. No output ownership is transferred.
+; Optional Generator(A0=Context) returns D0/CCR ITEM=0,A0=data,D1=bytes;
+; END=1 or error>=2, preserving other registers. Fixed Data/Bytes are used only
+; without a generator. Other registers preserved; no ownership is transferred.
 write	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
@@ -44,10 +48,29 @@ write	.block
 	move.l Frame.PrefixBytes(a5), d6
 	bsr.w bytes
 	bne.w closeBad
+	move.l Frame.Generator(a5), d7
+	beq.w fixed
+chunk
+	movea.l d7, a2
+	movea.l Frame.Context(a5), a0
+	jsr (a2)
+	cmpi.l #1, d0
+	beq.w finishFile
+	tst.l d0
+	bne.w closeBad
+	tst.l d1
+	ble.w closeBad
+	move.l a0, d5
+	move.l d1, d6
+	bsr.w bytes
+	bne.w closeBad
+	bra.w chunk
+fixed
 	move.l Frame.Data(a5), d5
 	move.l Frame.Bytes(a5), d6
 	bsr.w bytes
 	bne.w closeBad
+finishFile
 	move.l d4, d1
 	jsr CLOSE(a6)
 	tst.l d0

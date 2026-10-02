@@ -9,6 +9,8 @@
 	.use experimental.amigaos.binary_hunk_output as hunk
 	.use experimental.amigaos.binary_output_plan as output_plan
 	.use experimental.amigaos.binary_output_io as output_io
+	.use experimental.amigaos.binary_record_output as record_output
+	.use experimental.amigaos.binary_output_spans as output_spans
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_package_loader as loader
 	.use experimental.amigaos.binary_memory as memory
@@ -64,6 +66,7 @@ PROGRESS_ASSEMBLY_RECORDS = 27
 PROGRESS_ASSEMBLY_SECTIONS = 28
 PROGRESS_ASSEMBLY_SELECTION = 29
 PROGRESS_PACKAGE = 30
+PROGRESS_RECORD_OUTPUT = 31
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -101,8 +104,10 @@ CatalogBytes	.long ?
 Cpu	.long ?
 Dialect	.long ?
 PackageRoot	.long ?
+StartSet	.word ?
+Start	.long ?
 	.endstruct
-FRAME_BYTES = Frame.PackageRoot+4
+FRAME_BYTES = Frame.Start+4
 	.section code, kind=code
 	.pub
 ; Assemble one package and source selection. A0=Frame, D0=Shell return code.
@@ -113,6 +118,9 @@ execute	.block
 	move.l Frame.OutputPath(a0), OutputName
 	move.w Frame.Mode(a0), CliMode
 	move.w Frame.OutputKind(a0), CliOutputKind
+	move.w Frame.StartSet(a0), OutputStartSet
+	move.l Frame.Start(a0), OutputStart
+	.MEMORY_COUNTER_CLEAR output_spans.Events
 	move.l Frame.ModuleRoots(a0), CliModuleRoots
 	move.l Frame.ModuleCount(a0), CliModuleCount
 	move.l Frame.IncludeRoots(a0), CliIncludeRoots
@@ -220,6 +228,11 @@ freeBlocks
 	lea Parameters, a0
 	jsr memory.release
 	lea Output, a0
+	jsr memory.release
+	lea EmissionSpans, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	lea TextBuffer, a0
 	jsr memory.release
 	lea HunkBlock, a0
 	jsr memory.release
@@ -1313,12 +1326,38 @@ run	.block
 	move.l #Context, assembly.Frame.Context(a0)
 	move.l #allocateOutput, assembly.Frame.Allocate(a0)
 	move.l #appendReloc, assembly.Frame.AddReloc(a0)
+	clr.l assembly.Frame.Emitted(a0)
+	cmpi.w #record_output.HEX, CliOutputKind
+	beq.w captureSpans
+	cmpi.w #record_output.SREC, CliOutputKind
+	bne.w assemble
+captureSpans
+	move.l #appendEmission, assembly.Frame.Emitted(a0)
+assemble
 	jsr assembly.assemble
 	rts
 bad
 	moveq #1, d0
 	rts
 	.bend  ; run
+
+; A0=assembly.Frame,D1=address,D2=buffer offset,D3=initialized bytes.
+; Capture only numeric final-pass spans for requested addressed output.
+; D0/CCR=status; other registers preserved. No allocation for ordinary bin/Hunk.
+appendEmission	.block
+	movem.l a0-a1, -(sp)
+	movea.l assembly.Frame.Sections(a0), a1
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a1)
+	beq.w relocatable
+	lea EmissionSpans, a0
+	jsr output_spans.append
+	bra.w done
+relocatable
+	moveq #0, d0
+done
+	movem.l (sp)+, a0-a1
+	rts
+	.bend  ; appendEmission
 
 ; Assembly sizing-pass callback. D0=needed bytes,A0=Frame; other registers preserved.
 allocateOutput	.block
@@ -1373,6 +1412,10 @@ writeOutputs	.block
 	cmpi.w #3, CliOutputKind
 	beq.w sources
 explicit
+	cmpi.w #record_output.HEX, CliOutputKind
+	beq.w recordArtifact
+	cmpi.w #record_output.SREC, CliOutputKind
+	beq.w recordArtifact
 	move.w CliOutputKind, d0
 	move.w d0, SelectedOutputKind
 	bsr.w selectOutput
@@ -1383,6 +1426,10 @@ explicit
 	bne.w bad
 	tst.w CliOutputKind
 	beq.w complete
+	bra.w sources
+recordArtifact
+	bsr.w writeRecords
+	bne.w bad
 sources
 	lea OutputCursor, a0
 	lea Records, a1
@@ -1452,10 +1499,53 @@ writeSelected	.block
 	move.l WriteBytes, output_io.Frame.Bytes(a0)
 	move.l #Prefix, output_io.Frame.Prefix(a0)
 	move.l PrefixBytes, output_io.Frame.PrefixBytes(a0)
+	clr.l output_io.Frame.Generator(a0)
+	clr.l output_io.Frame.Context(a0)
 	movea.l DosBase, a6
 	jsr output_io.write
 	rts
 	.bend  ; writeSelected
+
+; Format sparse initialized spans through a fixed 4 KiB transport buffer.
+; D0/CCR=status; caller owns one assembly result and all requested artifacts.
+writeRecords	.block
+	lea Work, a0
+	movea.l assembly.Frame.Sections(a0), a1
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a1)
+	beq.w bad
+	lea TextBuffer, a0
+	move.l #4096, d0
+	jsr memory.reserveExact
+	bne.w bad
+	lea RecordFrame, a1
+	move.l memory.Block.Pointer(a0), record_output.Frame.Buffer(a1)
+	move.l #4096, record_output.Frame.Capacity(a1)
+	lea Output, a0
+	move.l memory.Block.Pointer(a0), record_output.Frame.Data(a1)
+	lea Work, a0
+	move.l assembly.Frame.Used(a0), record_output.Frame.DataBytes(a1)
+	lea EmissionSpans, a0
+	move.l memory.Block.Pointer(a0), record_output.Frame.Spans(a1)
+	move.l memory.Block.Used(a0), record_output.Frame.SpanBytes(a1)
+	move.w CliOutputKind, record_output.Frame.Format(a1)
+	move.w OutputStartSet, record_output.Frame.StartSet(a1)
+	move.l OutputStart, record_output.Frame.Start(a1)
+	movea.l a1, a0
+	jsr record_output.begin
+	bne.w bad
+	lea OutputWrite, a0
+	move.l OutputName, output_io.Frame.Path(a0)
+	clr.l output_io.Frame.PrefixBytes(a0)
+	move.l #record_output.next, output_io.Frame.Generator(a0)
+	move.l #RecordFrame, output_io.Frame.Context(a0)
+	movea.l DosBase, a6
+	jsr output_io.write
+	.MEMORY_PROGRESS DosBase, #PROGRESS_RECORD_OUTPUT, output_spans.Events, record_output.RecordCount, record_output.OutputBytes
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; writeRecords
 
 ; Build selected native Hunk sections from numeric assembly metadata.
 ; The flat path keeps its existing write buffer. D0/CCR=status.
@@ -1756,7 +1846,7 @@ LineUsed	.res long, 1
 SourceBytes	.res long, 1
 NameCount	.res long, 1
 Front	.res byte, frontend.FRAME_BYTES
-Work	.res byte, assembly.Frame.AddReloc+4
+Work	.res byte, assembly.FRAME_BYTES
 Context	.res byte, package.Context.SectionIds+4
 PackageSource	.res byte, loader.FRAME_BYTES
 PackageStatus	.res long, 1
@@ -1774,6 +1864,11 @@ HunkFrame	.res byte, hunk.Frame.Used+4
 HunkParts	.res byte, hunk.MAX_SEGMENTS*hunk.SEGMENT_BYTES
 SlotToPart	.res byte, 8
 PartSlots	.res byte, 8
+EmissionSpans	.res byte, memory.Block.Used+4
+TextBuffer	.res byte, memory.Block.Used+4
+RecordFrame	.res byte, record_output.FRAME_BYTES
+OutputStartSet	.res word, 1
+OutputStart	.res long, 1
 OutputCursor	.res byte, output_plan.CURSOR_BYTES
 OutputWrite	.res byte, output_io.FRAME_BYTES
 OutputPath	.res byte, PATH_BYTES

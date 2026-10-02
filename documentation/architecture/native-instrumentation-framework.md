@@ -319,3 +319,25 @@ current combined frontend phase are documented in
 [`opforge-native-progress-record-v1.md`](../performance/opforge-native-progress-record-v1.md).
 An active or incomplete record is localization evidence only and cannot satisfy
 native parity proof.
+
+## Experimental compact CLI record output
+
+The compact CLI has one optional explicit artifact request: `-x`/`--hex
+[FILE]` or `-s`/`--srec [FILE]` selects Intel HEX or Motorola S-record output;
+`-g`/`--go ADDRESS` supplies a 4–8 digit hexadecimal start address. The
+record writers operate on flat addressable output and reject Hunk record
+conversion. Their renderer also supports sparse numeric spans, while CLI sparse
+`.org` parity remains unclaimed. The renderer uses an 84-byte frame and a
+caller-owned 4096-byte streaming buffer. Ordinary binary/Hunk output allocates
+neither this buffer nor captured output spans.
+
+When debug contracts, memory telemetry, and preparation progress are enabled,
+phase 31 reports span-capture event count, record count, and ASCII output bytes
+in the existing bounded progress line. The reusable gated
+`MEMORY_COUNTER_ADD` macro preserves D0 and CCR; counter storage and updates
+are absent from ordinary builds. Listing and source metadata are later slices.
+Byte counts describe rendered chunks returned to transport, not completed
+device writes when an output operation fails.
+These behaviors are provisional. They do not establish performance or parity;
+see the [native progress record](../performance/opforge-native-progress-record-v1.md)
+for the instrumentation contract.

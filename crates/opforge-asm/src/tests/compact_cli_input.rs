@@ -238,6 +238,14 @@ fn rust_oracle(base: &Path, case: &InputCase) -> Vec<u8> {
 }
 
 pub(super) fn assemble_cli(root: &Path, build: &NativePackageBuild) -> Vec<u8> {
+    assemble_cli_with_defines(root, build, &[])
+}
+
+pub(super) fn assemble_cli_with_defines(
+    root: &Path,
+    build: &NativePackageBuild,
+    defines: &[&str],
+) -> Vec<u8> {
     let mut argv = vec![
         "opForge".to_string(),
         build.cli_source_path.to_string_lossy().into_owned(),
@@ -257,10 +265,23 @@ pub(super) fn assemble_cli(root: &Path, build: &NativePackageBuild) -> Vec<u8> {
             .to_string_lossy()
             .into_owned(),
     ]);
+    for define in defines {
+        argv.extend(["--define".into(), (*define).into()]);
+    }
     let cli = Cli::parse_from(argv);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(build.output_dir.clone());
-    run_with_validated_cli_with_context(&cli, &config).expect("assemble current compact CLI");
+    run_with_validated_cli_with_context(&cli, &config).unwrap_or_else(|error| match error {
+        cli_core::CliRunError::Assembler { error, .. } => {
+            panic!("assemble current compact CLI: {:?}", error.diagnostics())
+        }
+        cli_core::CliRunError::Workflow { error, .. } => {
+            panic!("assemble current compact CLI: {error}")
+        }
+        cli_core::CliRunError::WarningsAsErrors { .. } => {
+            panic!("assemble current compact CLI: warnings treated as errors")
+        }
+    });
     fs::read(build.output_dir.join("build/opforge_compact")).unwrap()
 }
 

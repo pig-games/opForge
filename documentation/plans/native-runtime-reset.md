@@ -308,14 +308,6 @@ ownership guard retains ten pre-existing missing annotations. An explicit
 `lea buffer.l,a0` probe exposes an existing binding gap; bare `lea buffer,a0`
 passes. Operand-suffix parity is pending, not counted as output support.
 
-The current full native self-host has **not** been rerun in C2. The fresh
-embedded-m68020 A6000 bundle is host-assembled and relocation-checked only;
-its manifest records `native_validation: not_run`. The export has 76 inputs
-(821,890 text bytes plus the 299,142-byte package), fingerprint
-`fnv1a64:9115c28635887652`, and a 404,204-byte release Hunk. The maintained
-`/tmp/opforge-a6000-current` link selects this embedded-m68020 bundle; the usual
-`python3 scripts/performance/run_a6000_selfhost.py` command remains unchanged.
-
 C2's separate release comparison freezes the native tree from `892de310` and
 uses `OPFORGE_COMPARE_NATIVE_ROOT` with the same `new_named_external` command on
 both versions. Source (10,687 bytes), BS14 package (299,142 bytes), live Rust oracle
@@ -334,8 +326,76 @@ linked reservations grow 1,856 bytes. Package bytes are unchanged. This workload
 measures the integrated checkpoint using an explicit bin request; it does not
 isolate the cost of each new format or directory creation.
 
-Listing also needs optional display provenance and final-pass emission events;
-HEX/S-record need addresses and occupied spans, not just a contiguous byte buffer.
+#### Second C2 checkpoint — Hex/S-record streaming
+
+The agreed scope is native `-x`/`--hex [FILE]`, `-s`/`--srec [FILE]` and
+`-g`/`--go ADDRESS` over the existing flat assembly path. Start addresses use
+Rust's 4–8 hexadecimal-digit syntax. One explicit CLI artifact remains the limit;
+source bin/PRG/Hunk requests remain additive. Listing and source metadata stay
+separate. Hunk-to-record conversion rejects explicitly, rather than serializing
+the container as addressed data. CLI sparse `.org` execution remains a language
+gap, independent of the renderer's sparse-view support.
+
+`binary_output_spans` coalesces numeric address/byte-offset/count spans observed
+during final-pass emission. `binary_record_output` validates that view and
+renders complete lines through an 84-byte frame and one reusable 4 KiB buffer.
+`binary_output_io` transports generated chunks and handles short writes/close
+failures. No second full text image is allocated. Ordinary bin/Hunk output
+collects no spans and allocates no text buffer. Assembly observation passes no
+source strings, package grammar or CPU semantics to the output modules.
+
+The live Rust fixture matrix covers thirteen positive CLI cases; fresh native
+execution matches every complete artifact. It includes 6502 and 68020 target
+data, record splitting, the 64 KiB boundary, 24/32-bit addresses, optional names,
+start addresses, empty images, adjacent placed sections and additive source bin.
+Seven negative cases complete with explicit exit 20: four malformed start
+addresses, conflicting CLI outputs, unsupported Hunk conversion and failed
+record writes. Long data lines are split in the fixtures to respect the existing
+frontend token limit; that limit has not been raised by this output slice.
+
+The independent renderer probe checks sparse ranges, disjoint backing offsets,
+unused backing bytes, multiple buffered writes and invalid span/capacity states.
+Its first native attempt hung because the test wrapper called between Hunk
+sections with relative branches. Relocatable absolute calls repair the wrapper;
+the release probe then matches both Rust artifacts exactly. Reusable telemetry
+uses `MEMORY_COUNTER_ADD`; progress phase 31 reports emission events, rendered
+records and ASCII bytes without changing the MEMD record layout. Enabled native
+CLI telemetry preserves the additive artifacts; the enabled sparse probe also
+verifies the rendered-byte counter against each Rust file's length. Both enabled
+and disabled renderer executions complete fresh. Existing native bin, PRG,
+Hunk relocation/BSS and output-free checks pass after the transport change.
+Workflow, proof-contract, test-ownership, formatting and affected CCR checks pass;
+the runtime ownership guard retains the same ten pre-existing missing annotations.
+
+The new embedded-m68020 A6000 bundle contains 78 inputs: 837,419 text bytes and
+the unchanged 299,142-byte package. Its fingerprint is
+`fnv1a64:2b172c6914651b27`; the release executable is 406,316 bytes. It is freshly
+host-assembled, relocation-checked and validated by the hardware runner's bundle
+loader. `/tmp/opforge-a6000-current` selects `/tmp/opforge-a6000-cli-records-final`.
+The full native self-host has **not** been rerun for this checkpoint;
+`native_validation` remains `not_run`. The usual hardware command is unchanged.
+
+This slice's release comparison freezes `e42cc114` at
+`/tmp/opforge-cli-c2-record-baseline` and runs `new_named_external` twice on each
+tree with `OPFORGE_PACKAGE_PERF_ROUNDS=2`. It uses the same 10,687-byte module/use
+workload, 299,142-byte BS14 package, live 2,434-byte Rust oracle, 68020/10 MiB
+profile and unlimited emulator speed as above. All four fresh completions match
+exactly, with telemetry disabled.
+
+| CLI state | Native seconds | Median seconds | Image / linked reserved bytes |
+| --- | --- | ---: | ---: |
+| Before record writers (`e42cc114`) | 8.1705, 8.1858 | 8.1781 | 105,060 / 117,712 |
+| With record writers | 8.1758, 8.1870 | 8.1814 | 107,172 / 119,832 |
+
+The observed difference is +0.0032 seconds (+0.039%); it is unresolved at the
+roughly 0.25-second START/DONE observation resolution. This slice shows no
+resolved timing regression on ordinary binary output. Executable growth is
+2,112 bytes and linked reservations grow 2,120 bytes; package bytes are unchanged.
+This measures the integrated binary path, not isolated Hex/S-record rendering
+cost or physical A6000 time. It is separate from the previous C2 comparison.
+
+Listing and source output metadata remain next C2 capabilities. Reuse numeric
+final-pass emission events and add optional display provenance for listings.
 Retain display text only for requested reporting, outside binary execution.
 Do not restore text-based parsing/execution, import the legacy engine's large
 state, or fabricate simplified listings under a parity claim. Keep each writer

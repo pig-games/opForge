@@ -51,6 +51,8 @@ tail
 	bne.w outputConfigured
 	move.w #3, app.Frame.OutputKind(a0)
 outputConfigured
+	move.w args.State.StartSet(a2), app.Frame.StartSet(a0)
+	move.l args.State.Start(a2), app.Frame.Start(a0)
 	lea args.State.ModulePaths(a2), a1
 	move.l a1, app.Frame.ModuleRoots(a0)
 	move.l args.State.ModuleCount(a2), app.Frame.ModuleCount(a0)
@@ -133,6 +135,9 @@ UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "      --runtime-package FILE  Explicit BS14 runtime package", 10
 	.byte "  -b, --bin [FILE]      Flat binary output", 10
 	.byte "      --hunk [FILE]     Source-configured Hunk output", 10
+	.byte "  -x, --hex [FILE]      Intel HEX output", 10
+	.byte "  -s, --srec [FILE]     Motorola S-record output", 10
+	.byte "  -g, --go ADDRESS      Record start address (4-8 hex digits)", 10
 	.byte "  -M, --module-path DIR Additional module search root (repeatable)", 10
 	.byte "  -I, --include-path DIR Additional include search root (repeatable)", 10
 	.byte "  -P, --package-path DIR Package directory", 10

@@ -30,6 +30,7 @@ Allocate	.long ?
 RecordOffset	.long ?
 Sections	.long ?
 AddReloc	.long ?
+Emitted	.long ?
 	.endstruct
 
 OutputReloc	.struct
@@ -38,6 +39,7 @@ Target	.long ?
 Offset	.long ?
 	.endstruct
 OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
+FRAME_BYTES = Frame.Emitted+4
 
 	.section bss, kind=bss
 	.priv
@@ -75,6 +77,9 @@ Position
 ; all buffers. Returns D0=0 only for two complete passes; Used=output bytes.
 ; Allocate callback: A0=Frame, D0=pass-one output size; returns D0/CCR status,
 ; preserves other registers, supplies Frame.Output/Capacity before pass two.
+; Optional Emitted(A0=Frame,D1=address,D2=buffer offset,D3=bytes) runs only
+; for nonempty final-pass emissions, before advancing state. It returns D0/CCR
+; status and preserves other registers. No text/CPU grammar enters the callback.
 ; Other registers preserved; CCR reflects D0. No text/dictionary pointer enters
 ; this module. Variable-size convergence and discontiguous origins are unsupported.
 assemble	.block
@@ -1129,6 +1134,24 @@ capacityReady
 	cmp.l pkg.Header.MaxAddress(a1), d4
 	bhi.w fail
 checked
+	; Passive numeric observation is requested only by artifact consumers.
+	cmpi.w #1, pkg.Context.Pass(a2)
+	beq.w observed
+	tst.l d0
+	beq.w observed
+	move.l Frame.Emitted(a3), d4
+	beq.w observed
+	movem.l d0-d4/a0-a3, -(sp)
+	movea.l d4, a1
+	move.l d0, d3
+	move.l d1, d2
+	move.l pkg.Context.Pc(a2), d1
+	movea.l a3, a0
+	jsr (a1)
+	tst.l d0
+	movem.l (sp)+, d0-d4/a0-a3
+	bne.w fail
+observed
 	move.l d3, pkg.Context.Pc(a2)
 	move.l d2, Frame.Used(a3)
 	cmpi.w #1, pkg.Context.Pass(a2)

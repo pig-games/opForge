@@ -23,7 +23,7 @@ CONFLICT = 12
 State	.struct
 InputStyle	.word ?  ; 1 positional, 2 explicit -i/--infile
 BinRequested	.word ?
-OutputKind	.word ?  ; 0 none, 1 binary, 2 Hunk
+OutputKind	.word ?  ; 0 none, 1 binary, 2 Hunk, 4 Hex, 5 S-record
 Status	.word ?
 Help	.word ?
 Version	.word ?
@@ -39,6 +39,8 @@ Dialect	.res PATH_BYTES
 PackageRoot	.res PATH_BYTES
 ModulePaths	.res MODULE_LIMIT*PATH_BYTES
 IncludePaths	.res (INCLUDE_LIMIT+1)*PATH_BYTES
+StartSet	.word ?
+Start	.long ?
 Token	.res TOKEN_BYTES
 	.endstruct
 STATE_BYTES = State.Token+TOKEN_BYTES
@@ -52,6 +54,9 @@ K_HUNK = 6
 K_HELP = 7
 K_VERSION = 8
 K_UNSUPPORTED = 9
+K_HEX = 10
+K_SREC = 11
+K_GO = 12
 Record	.struct
 Short	.word ?
 Kind	.word ?
@@ -161,6 +166,12 @@ selected
 	beq.w output
 	cmpi.w #K_HUNK, d2
 	beq.w output
+	cmpi.w #K_HEX, d2
+	beq.w output
+	cmpi.w #K_SREC, d2
+	beq.w output
+	cmpi.w #K_GO, d2
+	beq.w go
 	movea.l a4, a6
 	adda.w Record.Dest(a5), a6
 	tst.b (a6)
@@ -201,11 +212,46 @@ root
 includeAdded
 	addq.l #1, State.IncludeCount(a4)
 	bra.w next
+go
+	tst.w State.StartSet(a4)
+	bne.w rejectDuplicate
+	lea State.Token(a4), a6
+	bsr.w required
+	bne.w done
+	lea State.Token(a4), a5
+	moveq #0, d4
+	bsr.w hexGroup
+	bne.w rejectMalformed
+	lea State.Token(a4), a0
+	moveq #0, d5
+goDigit
+	moveq #0, d0
+	move.b (a0)+, d0
+	beq.w goReady
+	subi.b #'0', d0
+	cmpi.b #9, d0
+	bls.w goValue
+	andi.b #$df, d0
+	subi.b #7, d0
+goValue
+	lsl.l #4, d5
+	or.l d0, d5
+	bra.w goDigit
+goReady
+	move.l d5, State.Start(a4)
+	move.w #1, State.StartSet(a4)
+	bra.w next
 output
 	moveq #1, d5
 	cmpi.w #K_BIN, d2
 	beq.w outputKind
 	moveq #2, d5
+	cmpi.w #K_HUNK, d2
+	beq.w outputKind
+	moveq #4, d5
+	cmpi.w #K_HEX, d2
+	beq.w outputKind
+	moveq #5, d5
 outputKind
 	tst.w State.OutputKind(a4)
 	beq.w firstOutput
@@ -585,9 +631,9 @@ Options
 	.long Name30
 	.word 'l', K_UNSUPPORTED, 0, 0
 	.long Name31
-	.word 'x', K_UNSUPPORTED, 0, 0
+	.word 'x', K_HEX, 0, 0
 	.long Name32
-	.word 's', K_UNSUPPORTED, 0, 0
+	.word 's', K_SREC, 0, 0
 	.long Name33
 	.word 'o', K_UNSUPPORTED, 0, 0
 	.long Name34
@@ -605,7 +651,7 @@ Options
 	.long Name40
 	.word 'f', K_UNSUPPORTED, 0, 0
 	.long Name41
-	.word 'g', K_UNSUPPORTED, 0, 0
+	.word 'g', K_GO, 0, 0
 	.long Name42
 	.word 'c', K_UNSUPPORTED, 0, 0
 	.long Name43

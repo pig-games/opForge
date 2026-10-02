@@ -245,8 +245,18 @@ extension
 	beq.w bad
 	lea BinExtension, a0
 	cmpi.w #2, args.State.OutputKind(a4)
+	beq.w useHunkSuffix
+	cmpi.w #4, args.State.OutputKind(a4)
+	beq.w useHexSuffix
+	cmpi.w #5, args.State.OutputKind(a4)
 	bne.w addExtension
+	lea SrecExtension, a0
+	bra.w addExtension
+useHunkSuffix
 	lea HunkExtension, a0
+	bra.w addExtension
+useHexSuffix
+	lea HexExtension, a0
 addExtension
 	move.b (a0)+, (a1)+
 	bne.w addExtension
@@ -286,5 +296,7 @@ fail
 MainName	.byte "main.asm", 0
 BinExtension	.byte ".bin", 0
 HunkExtension	.byte ".hunk", 0
+HexExtension	.byte ".hex", 0
+SrecExtension	.byte ".srec", 0
 	.endsection
 	.endmodule

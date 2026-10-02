@@ -22,6 +22,7 @@ Its provisional invocation uses ordinary named options:
 opforge_compact --cpu 68020 project --bin output.bin
 opforge_compact --runtime-package p.bin -i main.asm --hunk output.hunk
 opforge_compact --cpu 68020 . --bin
+opforge_compact --cpu 68020 project -x records.hex -g 00C000
 ```
 
 One positional file or directory replaces `-i`. A directory selects `main.asm`;
@@ -43,11 +44,18 @@ sections=name,...`; specify `format` before `sections`. Sections are required.
 `bin` and `prg` accept one or two contiguous placed sections. `hunk` uses the
 source-configured Hunk sections. Repeated Hunk outputs must use the same section
 list in the same order. One explicit CLI `--bin` or `--hunk` request can add an
-artifact alongside source-selected outputs. The compact writer creates missing
-parent directories. Native listing,
-Hex/S-record writers and metadata, defines, and CPU/source-default selection
-remain future work. The BS14 runtime package option is distinct from Rust's
-canonical `.opasm` option. Old three-positional compact commands are retired;
+artifact alongside source-selected outputs. An explicit `-x`/`--hex [FILE]`
+or `-s`/`--srec [FILE]` adds one Intel HEX or Motorola S-record artifact;
+`-g`/`--go ADDRESS` supplies a record start address of 4–8 hexadecimal digits.
+Record output supports flat assembly, including placed flat sections. Converting
+Hunk output to record output is rejected. The renderer can consume sparse
+numeric address spans, but CLI `.org` sparse parity is not yet claimed. Record
+rendering uses an 84-byte frame and a caller-owned 4096-byte streaming buffer;
+ordinary binary and Hunk output allocate neither the buffer nor captured spans.
+The compact writer creates
+missing parent directories. Native listing, source metadata, defines, and
+CPU/source-default selection remain future work. The BS14 runtime package option is distinct from
+Rust's canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.
 
 ## Current Layout

@@ -384,3 +384,23 @@ native execution of the 68020-targeted build under the recorded emulator CPU, bu
 does not prove a full assembly. Only an independently complete, fresh guest run
 with explicit zero exit and exact Rust artifact equality can be Level D parity
 proof. An `OFPR` complete bit never substitutes for that contract.
+
+## Compact CLI record-output checkpoint (experimental)
+
+The experimental compact CLI accepts one explicit `-x`/`--hex [FILE]` or
+`-s`/`--srec [FILE]` artifact request. `-g`/`--go ADDRESS` supplies a 4–8 digit
+hexadecimal start address. Record rendering consumes flat addressable spans;
+Hunk conversion is rejected. The renderer accepts sparse numeric spans, but
+CLI sparse `.org` parity has not been established. It uses an 84-byte frame and
+a caller-owned 4096-byte streaming buffer; ordinary binary and Hunk output
+allocate neither that buffer nor the captured spans.
+
+The preparation-progress line's phase 31 reports span-capture event count,
+record count, and ASCII output bytes. These counters are gated by debug
+contracts and memory telemetry and do not change the OFPR/OFWM/OFSE/OFVE/OFIO
+record layouts described above. They are diagnostic counts, not a performance
+measurement or parity evidence. Listing and source metadata remain later
+implementation slices. See the [framework contract](../architecture/native-instrumentation-framework.md#experimental-compact-cli-record-output)
+and [native CLI overview](../../native/README.md) for current limits.
+ASCII bytes count rendered chunks returned to transport, not completed device
+writes on a failed output operation.

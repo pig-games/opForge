@@ -7821,3 +7821,6 @@ mod compact_cli_input;
 
 #[path = "tests/compact_cli_outputs.rs"]
 mod compact_cli_outputs;
+
+#[path = "tests/compact_cli_records.rs"]
+mod compact_cli_records;

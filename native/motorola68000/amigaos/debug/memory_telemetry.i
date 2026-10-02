@@ -39,6 +39,19 @@ MEMORY_COUNTER_INC	.macro counter
 .endif
 .endmacro
 
+MEMORY_COUNTER_ADD	.macro counter, amount
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .amount, d0
+	add.l d0, .counter
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
 ; Bounded work and phase-clock accounting uses the same optional record.
 MEMORY_WORK	.macro index, amount
 .ifdef OPFORGE_DEBUG_CONTRACTS

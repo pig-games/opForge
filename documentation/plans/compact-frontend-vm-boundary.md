@@ -13,7 +13,7 @@ native cases, but the complete current run exhausts the 10 MiB investigation
 profile during unbound capture and emits no output. With expanded diagnostic
 memory and the shared quoted-scalar repair, the release retry reaches final
 binding but still exits 20 before assembly, without output. The
-[repair status](native-runtime-reset.md#r2-dependency-first-preparation--focused-proof-full-run-still-blocked)
+[repair status](native-runtime-reset.md#r2-dependency-first-preparation--focused-proof-and-full-run-recovery)
 records the measured preparation cost and the expanded-memory diagnostic.
 The current BS16 member transport repair follows a further final-binding failure
 on `SelectedOutputKind.l`. Focused native Hunk comparisons now pass, including
@@ -21,8 +21,13 @@ qualified address bases, macro bodies and numeric/quoted CPU directives. The fre
 86-input embedded release self-host still exits 20 without output after
 463.532497500 seconds, reporting origin 75, line 572. A separate diagnostic
 confirms the packed-record block reaches its 1 MiB owner limit during embedded
-binary inclusion; an owner-specific budget repair is next.
-It has no fresh full self-host proof yet.
+binary inclusion. Records and its ordering copy now have explicit 2 MiB budgets;
+other owner limits remain unchanged. A fresh native allocator contract passes.
+The complete current BS16 embedded self-host now exits zero and matches the fresh
+442,140-byte Rust Hunk exactly: 86 inputs, 1,270,932 source bytes, manifest
+`fnv1a64:44f083e11ac57356`. Uninstrumented guest START/DONE is 931.022937958
+seconds on 68020 / 74 MiB with unlimited emulator CPU speed. The preceding failed
+runs establish localization, not comparative full-run performance.
 The earlier 61-file
 implementation also completed on the physical A6000. The 2 MiB product target
 remains unqualified. Residual frontend ownership gaps and the deferred
@@ -302,8 +307,9 @@ preparation expands only active `.incbin` statements for
 the quoted relative native subset, using definition-file-relative roots
 and the explicit supported cases. [Focused native qualification](native-runtime-reset.md#bs13-binary-inclusion-qualification)
 passes; BS13 embedded-config self-hosting is qualified in the current plan.
-BS16 full self-hosting and per-record origins for macro bodies drawn from several
-physical files remain unqualified. Unsupported candidate recipes stay explicit rows rather than
+BS16 embedded full self-hosting is qualified on the expanded investigation
+profile; per-record origins for macro bodies drawn from several physical files
+remain unqualified. Unsupported candidate recipes stay explicit rows rather than
 becoming silent omissions. Package rows select package-owned recipes, numeric
 projections and literal constants, including instruction encodings. Generic
 native executes them without inventing CPU/family semantics. Preparation-only

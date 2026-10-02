@@ -648,6 +648,33 @@ pub(crate) fn run_native_debug_contract_from_env(
     }
 }
 
+/// Fresh challenged allocator probe; guest zero exit requires every ownership,
+/// capacity, payload and public-register assertion in the harness to pass.
+pub(crate) fn run_native_memory_budget_from_env(
+    workspace_root: &Path,
+) -> Result<FsUaeSmokeOutcome, String> {
+    let args = match std::env::var(FS_UAE_ARGS_ENV) {
+        Ok(value) if !value.trim().is_empty() => value,
+        _ => {
+            return Ok(FsUaeSmokeOutcome::Skipped(format!(
+                "{FS_UAE_ARGS_ENV} is not set"
+            )))
+        }
+    };
+    let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
+    match run_example_smoke(
+        workspace_root,
+        &binary,
+        &args,
+        "binary_memory_budget_harness",
+        "native/motorola68000/amigaos/test-harnesses/experimental/binary_memory_budget_harness.asm",
+        "68020",
+    )? {
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
+    }
+}
+
 /// Confirm the complete session reset without adding large clears to progress tests.
 /// Both modes run before errors are returned; each owns its fresh guest protocol.
 // @opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent
@@ -4204,6 +4231,9 @@ fn example_assembly_defines(example_name: &str) -> Vec<String> {
 }
 
 fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBuf> {
+    if example_name == "binary_memory_budget_harness" {
+        return vec![workspace_root.join("native/motorola68000/amigaos/experimental")];
+    }
     if example_name == FS_UAE_CLI_DEBUG_EVENT_EXAMPLE_NAME
         || example_name == FS_UAE_PROGRESS_HARNESS_NAME
         || example_name == "opasm_session_init_harness"
@@ -4321,6 +4351,7 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
                 | "tkpkg_compact_memo_harness"
                 | "binary_source_harness"
                 | "opforge_compact"
+                | "binary_memory_budget_harness"
         )
     {
         let amigaos_dir = workspace_root

@@ -1,7 +1,10 @@
 # Native assembler completion plan
 
 Status: active. The recorded 61-file compact native implementation fully
-self-hosted with exact live Rust Hunk output on the physical A6000. It remains
+self-hosted with exact live Rust Hunk output on the physical A6000. The current
+86-input BS16 embedded implementation also completes a fresh FS-UAE self-host
+with exact Rust Hunk equality in 931.022937958 seconds on the expanded 74 MiB
+investigation profile. It remains
 experimental: that proof does not establish full language, CPU, CLI or output
 parity. Current measurements, reproduction commands and remaining frontend
 ownership gaps are maintained in the
@@ -662,7 +665,7 @@ a successful negative parity case.
 This is an intermediate capture proof; it does not establish full self-host
 completion for the ordering repair.
 
-#### R2 dependency-first preparation — focused proof, full run still blocked
+#### R2 dependency-first preparation — focused proof and full-run recovery
 
 The compact CLI now captures owned unbound records, scans configured dependency
 edges and replays reachable modules dependency-first through the existing
@@ -688,7 +691,7 @@ The measured increase is 2.810266354 seconds, or 34.13%. Release image size rise
 from 110,636 to 119,200 bytes; linked reservations rise from 124,716 to 132,700.
 This is a correctness repair with a measured preparation cost, not an optimization.
 
-The complete current embedded self-host has **not succeeded**. On 68020 / 10 MiB,
+The first complete embedded self-host attempt after R2 did **not succeed**. On 68020 / 10 MiB,
 the release run exits 20 without output after 168.510260958 seconds. A separate
 fully instrumented failure completes after 272.092272917 seconds and confirms an
 allocation failure during capture: peak owned storage 8,233,864 bytes, failed
@@ -830,10 +833,44 @@ and overlapping ranges, it does not establish a performance regression or gain.
 The external CLI grows by 1,176 bytes to 120,436; linked reservations grow by
 1,160 bytes to 133,920. These numbers isolate the member repair, excluding the
 subsequent diagnostic and record-budget changes.
+
+The owner-budget repair keeps `memory.reserve` and `reserveExact` at their
+existing 1 MiB limit. A separate `reserveBounded` entry accepts a caller-owned
+unsigned limit, clamps non-power-of-two growth and preserves the old block on
+rejection or allocation failure. Only Records and its dependency-ordering copy
+receive a 2 MiB allowance; symbol, capture-region, origin and output limits are
+unchanged. A fresh native allocator harness passes zero/unsigned caps, 300-byte
+clamping, rejection without mutation, byte preservation across 1 MiB growth,
+public register/stack/CCR preservation and release cleanup. Its host assembly
+test and relevant formatting, instrumentation, ownership and proof guards pass.
+
+The error-path repair uses bounded retained-origin paths. The former fallback
+also had a confirmed local-name collision: case-insensitive lookup resolved
+`SourcePath` to `reportFailure.sourcePath`, and the old Rust Hunk's LEA points to
+that instruction itself. Extracting path resolution into its own scope removes
+the collision. A fresh included-file rejection regression exits 20 and reports
+`project/part.i`, proving the owned filename is retained through the error path.
+
+A fresh complete embedded self-host now succeeds on 86 inputs, 1,270,932 bytes,
+manifest `fnv1a64:44f083e11ac57356`, with a fresh 442,140-byte Rust release Hunk
+(`fnv1a64:21b5603818ea2ca6`). Native exits zero and produces that entire Hunk
+byte-for-byte, including the embedded package. Uninstrumented host-observed guest
+START/DONE is 931.022937958 seconds (15 minutes 31 seconds); whole-test time is
+969.78 seconds. Settings are 68020 / 74 MiB with unlimited emulator CPU speed.
+This restores full current experimental CLI self-hosting after dependency-first
+preparation; it does not establish full language/CPU/CLI parity or the 2 MiB
+product target. The earlier failed runs cannot serve as comparative full-run
+timings. The separate unchanged-workload comparison uses the same 10,687-byte
+source, 2,434-byte exact output, BS16 package and 68020 / 10 MiB profile.
+Observations are 11.179954000 and 11.128799833 seconds (median 11.154376917),
+versus 11.180182438 immediately before the budget/diagnostic repair. The
+0.026-second decrease is below useful timing resolution; no speed change is
+established. The external CLI and its linked reservations each grow by 244 bytes,
+to 120,680 and 134,164 bytes respectively.
 An additional probe confirms that MOVE absolute-word `(8).w` remains an
 unsupported packet form; it is outside this address-long binding repair.
-This repair does not establish complete self-hosting. The completed instrumented captures above are failure-localization
-measurements, not completed self-host timings.
+The instrumented captures above remain failure-localization measurements,
+separate from this completed release self-host timing.
 
 Further fresh native discriminators pass complete live Rust comparisons: a
 four-module CODE/DATA/BSS Hunk with public bare labels and an imported address

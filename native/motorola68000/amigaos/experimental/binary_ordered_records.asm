@@ -16,8 +16,9 @@ Origins	.long ?
 OriginCount	.long ?
 OrderedRecords	.long ?
 OrderedOrigins	.long ?
+RecordLimit	.long ?
 .endstruct
-FRAME_BYTES = Frame.OrderedOrigins+4
+FRAME_BYTES = Frame.RecordLimit+4
 	.section code, kind=code
 
 ; A0=Frame. Span fields are offsets in the original packed Records block;
@@ -26,6 +27,8 @@ FRAME_BYTES = Frame.OrderedOrigins+4
 ; replaces Records and Origins only after every span and allocation is valid,
 ; updates Frame.OriginCount, and clears temporary ownership. D0/CCR=status;
 ; other registers preserved. Source text is never consulted.
+; Frame.RecordLimit bounds the temporary packed-record allocation; origins
+; retain the memory module's ordinary limit.
 materialize	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
@@ -100,7 +103,8 @@ spanValid
 	bhi.w bad
 	movea.l Frame.OrderedRecords(a6), a0
 	move.l d6, d0
-	jsr memory.reserve
+	move.l Frame.RecordLimit(a6), d1
+	jsr memory.reserveBounded
 	bne.w bad
 	move.l d6, memory.Block.Used(a0)
 	movea.l Frame.OrderedOrigins(a6), a0

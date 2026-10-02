@@ -176,6 +176,8 @@ mod native_hunk_output_contract;
 mod native_hunk_struct_constants;
 #[path = "tests/native_label_capacity.rs"]
 mod native_label_capacity;
+#[path = "tests/native_memory_budget.rs"]
+mod native_memory_budget;
 #[path = "tests/native_mos_forward_ref_stability.rs"]
 mod native_mos_forward_ref_stability;
 #[path = "tests/native_production_corpus.rs"]
@@ -2764,6 +2766,9 @@ fn example_requests_hunk_output(asm_path: &Path) -> bool {
 }
 
 fn example_module_paths(asm_path: &Path) -> Vec<PathBuf> {
+    if asm_path.file_stem().and_then(|stem| stem.to_str()) == Some("binary_memory_budget_harness") {
+        return vec![workspace_root().join("native/motorola68000/amigaos/experimental")];
+    }
     if matches!(
         asm_path.file_stem().and_then(|stem| stem.to_str()),
         Some("debug_contract_harness" | "opasm_progress_harness" | "opasm_session_init_harness")

@@ -44,6 +44,7 @@ IO_BYTES = 4096
 INCLUDE_DEPTH = 8
 LINE_BYTES = 4096
 RECORD_BYTES = 256
+RECORD_LIMIT = 2*memory.LIMIT
 DISCOVERY_LIMIT = 128
 PATH_BYTES = 256
 DOS_OUTPUT = -60
@@ -379,30 +380,8 @@ afterPackage
 	jsr DOS_WRITE(a6)
 	bra.w done
 sourcePath
-	; Discovery ordinals name immutable candidate paths. The working path can
-	; change while nested includes and selected files are being prepared.
-	lea SourcePath, a0
-	moveq #0, d3
-	tst.l DiscoverMode
-	beq.w pathLength
-	tst.l DiscoveryPaths
-	beq.w pathLength
-	move.l SourceOrdinal, d0
-	beq.w pathLength
-	cmp.l CandidateCount, d0
-	bhi.w pathLength
-	subq.l #1, d0
-	lsl.l #8, d0
-	movea.l DiscoveryPaths, a0
-	adda.l d0, a0
-pathLength
-	tst.b 0(a0, d3.w)
-	beq.w pathReady
-	addq.w #1, d3
-	cmpi.w #PATH_BYTES, d3
-	blo.w pathLength
-	bra.w done
-pathReady
+	bsr.w sourceOriginPath
+	bne.w done
 	move.l d3, d5
 	move.l a0, d6
 	move.l d4, d1
@@ -438,6 +417,75 @@ pathReady
 done
 	rts
 	.bend  ; reportFailure
+
+; Resolve the diagnostic identity without borrowing capture/discovery views.
+; Retained origin slots contain owned bytes; zero-filled unused slots permit
+; physical candidate fallback before retention. A0=path,D3=bounded length,
+; D0/CCR=status; other registers preserved. Missing/invalid paths are omitted.
+sourceOriginPath	.block
+	movem.l d1-d2/a1, -(sp)
+	move.l SourceOrdinal, d1
+	beq.w bad
+	cmpi.l #ORIGIN_LIMIT, d1
+	bhi.w candidate
+	lsl.l #8, d1
+	move.l d1, d2
+	addi.l #PATH_BYTES, d2
+	lea OriginPaths, a1
+	cmp.l memory.Block.Used(a1), d2
+	bhi.w candidate
+	cmp.l memory.Block.Capacity(a1), d2
+	bhi.w candidate
+	move.l memory.Block.Pointer(a1), d0
+	beq.w candidate
+	add.l d1, d0
+	bcs.w bad
+	movea.l d0, a0
+	tst.b (a0)
+	bne.w measure
+candidate
+	tst.l DiscoverMode
+	beq.w working
+	move.l SourceOrdinal, d1
+	cmp.l CandidateCount, d1
+	bhi.w bad
+	cmpi.l #DISCOVERY_LIMIT, d1
+	bhi.w bad
+	lsl.l #8, d1
+	move.l d1, d2
+	addi.l #discovery.SCRATCH_BYTES, d2
+	lea DiscoveryBlock, a1
+	cmp.l memory.Block.Capacity(a1), d2
+	bhi.w bad
+	move.l memory.Block.Pointer(a1), d0
+	beq.w bad
+	subi.l #PATH_BYTES, d2
+	add.l d2, d0
+	bcs.w bad
+	movea.l d0, a0
+	bra.w measure
+working
+	lea SourcePath, a0
+measure
+	moveq #0, d3
+length
+	tst.b 0(a0, d3.w)
+	beq.w ready
+	addq.w #1, d3
+	cmpi.w #PATH_BYTES, d3
+	blo.w length
+bad
+	moveq #1, d0
+	bra.w done
+ready
+	tst.l d3
+	beq.w bad
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d2/a1
+	tst.l d0
+	rts
+	.bend  ; sourceOriginPath
 
 ; Locate the failing record in numeric provenance only; no source strings survive.
 ; A missing location (e.g. failure before dispatch) reports file/line zero.
@@ -923,6 +971,7 @@ orderReady
 	move.l OriginCount, ordered.Frame.OriginCount(a0)
 	move.l #OrderedRecords, ordered.Frame.OrderedRecords(a0)
 	move.l #OrderedFiles, ordered.Frame.OrderedOrigins(a0)
+	move.l #RECORD_LIMIT, ordered.Frame.RecordLimit(a0)
 	jsr ordered.materialize
 	bne.w completionBad
 	move.l ordered.Frame.OriginCount(a0), OriginCount
@@ -1362,7 +1411,8 @@ appendPrepared	.block
 	lea Front, a1
 	add.l frontend.Frame.Used(a1), d0
 	bcs.w bad
-	jsr memory.reserve
+	move.l #RECORD_LIMIT, d1
+	jsr memory.reserveBounded
 	bne.w bad
 	lea Records, a1
 	movea.l memory.Block.Pointer(a1), a2

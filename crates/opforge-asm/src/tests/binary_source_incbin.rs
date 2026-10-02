@@ -280,6 +280,46 @@ fn native(name: &str, cpu: &str, files: &[(&str, &[u8])], roots: &[&str], expect
 }
 
 #[test]
+#[ignore = "requires configured FS-UAE; error diagnostics retain included-file origin"]
+fn binary_incbin_included_origin_diagnostic_fs_uae() {
+    let files = [
+        (
+            "project/main.asm",
+            &b".module main\n.cpu m68020\n.include \"part.i\"\n.endmodule\n"[..],
+        ),
+        ("project/part.i", &b".incbin \"missing.bin\"\n"[..]),
+    ];
+    assert!(oracle("m68020", &files, &[], "output.bin", true).is_err());
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
+        &workspace_root(),
+        &package,
+        &files,
+        &[],
+        &[],
+        None,
+        false,
+    )
+    .expect("fresh included-origin rejection");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("real native execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed && !runs[0].success);
+    assert_eq!(runs[0].exit_code, Some(20));
+    assert!(
+        runs[0]
+            .stdout
+            .lines()
+            .any(|line| { line.starts_with("source: ") && line.ends_with("project/part.i") }),
+        "included file must be identified through its owned origin: {}",
+        runs[0].stdout
+    );
+}
+
+#[test]
 #[ignore = "requires configured FS-UAE; fresh exact incbin output and explicit rejection"]
 fn binary_incbin_fs_uae() {
     let payload = patterned();

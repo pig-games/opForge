@@ -26,7 +26,7 @@ Output	.long ?
 Capacity	.long ?
 Used	.long ?
 Line	.word ?
-Reserved	.word ?
+Failure	.word ?
 Allocate	.long ?
 RecordOffset	.long ?
 Sections	.long ?
@@ -41,6 +41,8 @@ Offset	.long ?
 	.endstruct
 OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
 FRAME_BYTES = Frame.Emitted+4
+FAILURE_NONE = 0
+FAILURE_MUTABLE_LAYOUT = 1
 
 	.section bss, kind=bss
 	.priv
@@ -90,6 +92,7 @@ assemble	.block
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #0
 	.ASSEMBLY_POSITION_CLEAR Position
 	clr.l Frame.Used(a5)
+	clr.w Frame.Failure(a5)
 	move.l #-1, Frame.RecordOffset(a5)
 	movea.l Frame.Context(a5), a6
 	move.l pkg.Context.Count(a6), d0
@@ -147,6 +150,18 @@ parametersReady
 	jsr sections.scan
 	bne.w fail
 	move.l #SectionState, Frame.Sections(a5)
+	movea.l Frame.Records(a5), a0
+	move.l Frame.RecordBytes(a5), d0
+	lea SectionState, a1
+	move.w sections.State.Mode(a1), d2
+	jsr mutable.validateLayout
+	beq.w layoutReady
+	move.l d1, Frame.RecordOffset(a5)
+	cmpi.l #mutable.UNSUPPORTED_LAYOUT, d0
+	bne.w fail
+	move.w #FAILURE_MUTABLE_LAYOUT, Frame.Failure(a5)
+	bra.w fail
+layoutReady
 	clr.w pkg.Context.Relocatable(a6)
 	lea SectionState, a0
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)

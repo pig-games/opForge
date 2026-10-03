@@ -54,19 +54,46 @@ fn source(cpu: &str, style: &str) -> String {
 }
 
 fn oracle(dir: &Path, source: &str) -> Result<Vec<u8>, String> {
+    project_oracle(dir, source, false, &[])
+}
+
+fn module_roots(files: &[(String, String)]) -> Vec<&Path> {
+    files
+        .iter()
+        .filter_map(|(path, _)| Path::new(path).parent())
+        .filter(|path| !path.as_os_str().is_empty())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn project_oracle(
+    dir: &Path,
+    source: &str,
+    hunk: bool,
+    files: &[(String, String)],
+) -> Result<Vec<u8>, String> {
     fs::create_dir_all(dir).unwrap();
     let input = dir.join("main.asm");
-    let output = dir.join("output.bin");
+    let output = dir.join(if hunk { "out.hunk" } else { "output.bin" });
     fs::write(&input, source).unwrap();
-    let cli = Cli::parse_from([
-        "opForge".to_string(),
-        input.to_string_lossy().into_owned(),
-        "--bin".into(),
-        output.to_string_lossy().into_owned(),
-    ]);
-    let config = validate_cli(&cli).map_err(|error| format!("{error:?}"))?;
+    for (path, contents) in files {
+        let path = dir.join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+    let mut args = vec!["opForge".to_string(), input.to_string_lossy().into_owned()];
+    if !hunk {
+        args.extend(["--bin".into(), output.to_string_lossy().into_owned()]);
+    }
+    for root in module_roots(files) {
+        args.extend(["-M".into(), dir.join(root).to_string_lossy().into_owned()]);
+    }
+    let cli = Cli::parse_from(args);
+    let mut config = validate_cli(&cli).map_err(|error| format!("{error:?}"))?;
+    config.out_dir = Some(dir.to_path_buf());
     run_with_validated_cli_with_context(&cli, &config).map_err(|error| format!("{error:?}"))?;
-    Ok(fs::read(output).unwrap())
+    fs::read(output).map_err(|error| format!("{error:?}"))
 }
 
 fn invalid_sources() -> Vec<(&'static str, String)> {
@@ -130,6 +157,16 @@ fn compact_const_fs_uae() {
 
 type DeclarationCase = (String, &'static str, String, bool);
 
+#[derive(Clone, Copy, Debug)]
+enum NativeExpected {
+    MatchRust,
+    MatchHunk,
+    RejectInvalid,
+    RejectLayout,
+    RejectHunkLayout,
+}
+const LAYOUT_DIAGNOSTIC: &str = "mutable declarations are not supported in Hunk or mapped outputs";
+
 fn digest(bytes: &[u8]) -> String {
     let value = bytes.iter().fold(0xcbf29ce484222325u64, |hash, byte| {
         (hash ^ u64::from(*byte)).wrapping_mul(0x100000001b3)
@@ -138,13 +175,61 @@ fn digest(bytes: &[u8]) -> String {
 }
 
 fn native_cases(cases: Vec<DeclarationCase>, report_env: &str) {
+    native_expected_cases(
+        cases
+            .into_iter()
+            .map(|(name, cpu, source, valid)| {
+                (
+                    name,
+                    cpu,
+                    source,
+                    if valid {
+                        NativeExpected::MatchRust
+                    } else {
+                        NativeExpected::RejectInvalid
+                    },
+                )
+            })
+            .collect(),
+        report_env,
+    );
+}
+
+struct NativeCase {
+    name: String,
+    cpu: &'static str,
+    source: String,
+    expectation: NativeExpected,
+    files: Vec<(String, String)>,
+}
+
+fn native_expected_cases(
+    cases: Vec<(String, &'static str, String, NativeExpected)>,
+    report_env: &str,
+) {
+    native_project_cases(
+        cases
+            .into_iter()
+            .map(|(name, cpu, source, expectation)| NativeCase {
+                name,
+                cpu,
+                source,
+                expectation,
+                files: Vec::new(),
+            })
+            .collect(),
+        report_env,
+    );
+}
+
+fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
     let selected = std::env::var("OPFORGE_DECLARATION_CASES").ok();
     let cases: Vec<_> = cases
         .into_iter()
         .filter(|case| {
             selected
                 .as_ref()
-                .is_none_or(|names| names.split(',').any(|name| name == case.0))
+                .is_none_or(|names| names.split(',').any(|name| name == case.name))
         })
         .collect();
     assert!(
@@ -162,14 +247,18 @@ fn native_cases(cases: Vec<DeclarationCase>, report_env: &str) {
     ));
     fs::create_dir(&dir).unwrap();
     let _cleanup = Cleanup(dir.clone());
+    // A caller may supply an isolated source snapshot for an exact before/after run.
+    let native_root = std::env::var_os("OPFORGE_DECLARATION_NATIVE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.clone());
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &dir.join("build"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &native_root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
         &EmbedSelection::Targets(vec!["m68020".into()]),
     )
     .unwrap();
-    let image = assemble_cli(&root, &build);
+    let image = assemble_cli(&native_root, &build);
     let packages = ["m6502--transparent.bin", "m68020--motorola68k.bin"].map(|name| {
         (
             name,
@@ -181,11 +270,40 @@ fn native_cases(cases: Vec<DeclarationCase>, report_env: &str) {
         .unwrap_or_else(|| panic!("absolute {report_env} required"));
     assert!(report.is_absolute());
     let mut rows = Vec::new();
-    for (index, (name, cpu, source, valid)) in cases.iter().enumerate() {
-        let expected = oracle(&dir.join(index.to_string()), source);
-        assert_eq!(expected.is_ok(), *valid, "Rust oracle {name}: {expected:?}");
+    for (
+        index,
+        NativeCase {
+            name,
+            cpu,
+            source,
+            expectation,
+            files: project_files,
+        },
+    ) in cases.iter().enumerate()
+    {
+        let case_dir = dir.join(index.to_string());
+        let is_hunk = matches!(
+            expectation,
+            NativeExpected::MatchHunk | NativeExpected::RejectHunkLayout
+        );
+        let valid = matches!(
+            expectation,
+            NativeExpected::MatchRust | NativeExpected::MatchHunk
+        );
+        let rust_valid = !matches!(expectation, NativeExpected::RejectInvalid);
+        let expected = project_oracle(&case_dir, source, is_hunk, project_files);
+        assert_eq!(
+            expected.is_ok(),
+            rust_valid,
+            "Rust oracle {name}: {expected:?}"
+        );
         let expected = expected.unwrap_or_default();
         let mut guest = vec![("main.asm".to_string(), source.as_bytes().to_vec())];
+        guest.extend(
+            project_files
+                .iter()
+                .map(|(path, contents)| (path.clone(), contents.as_bytes().to_vec())),
+        );
         guest.extend(
             packages
                 .iter()
@@ -198,7 +316,19 @@ fn native_cases(cases: Vec<DeclarationCase>, report_env: &str) {
                 bytes,
             })
             .collect::<Vec<_>>();
-        let command = format!("--cpu {cpu} Work:main.asm -P Work:packages --bin Work:output.bin");
+        let mut command = if is_hunk {
+            format!("--cpu {cpu} Work:main.asm -P Work:packages")
+        } else {
+            format!("--cpu {cpu} Work:main.asm -P Work:packages --bin Work:output.bin")
+        };
+        for root in module_roots(project_files) {
+            command.push_str(&format!(" -M Work:{}", root.display()));
+        }
+        let artifact = if is_hunk {
+            "Work/out.hunk"
+        } else {
+            "Work/output.bin"
+        };
         let case = OpforgeNativeCliParityCase {
             name,
             cpu_override: "68020",
@@ -207,20 +337,28 @@ fn native_cases(cases: Vec<DeclarationCase>, report_env: &str) {
             command_template: Some(&command),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &files,
-            proof: if *valid {
+            proof: if valid {
                 OpforgeNativeCliProof::ExactArtifact {
-                    relative_path: "Work/output.bin",
+                    relative_path: artifact,
                     rust_oracle: &expected,
                 }
             } else {
                 OpforgeNativeCliProof::ExpectedFailureContaining(
-                    "binary source: unsupported or invalid input",
+                    if matches!(
+                        expectation,
+                        NativeExpected::RejectLayout | NativeExpected::RejectHunkLayout
+                    ) {
+                        LAYOUT_DIAGNOSTIC
+                    } else {
+                        "binary source: unsupported or invalid input"
+                    },
                 )
             },
         };
         let mut row = json!({
-            "name": name, "expected_success": valid, "success": false,
+            "name": name, "expected_success": valid, "rust_expected_success": rust_valid, "expectation": format!("{expectation:?}"), "success": false,
             "source_bytes": source.len(), "source_fnv1a64": digest(source.as_bytes()),
+            "project_files": project_files.iter().map(|(path, contents)| json!({"path":path,"bytes":contents.len(),"fnv1a64":digest(contents.as_bytes())})).collect::<Vec<_>>(),
             "image_bytes": image.len(), "image_fnv1a64": digest(&image),
             "oracle_bytes": expected.len(), "oracle_fnv1a64": digest(&expected),
             "command": command,
@@ -232,12 +370,22 @@ fn native_cases(cases: Vec<DeclarationCase>, report_env: &str) {
                 let run = &runs[0];
                 row["success"] = json!(
                     run.protocol_completed
-                        && if *valid {
+                        && if valid {
                             run.success && run.exit_code == Some(0)
                         } else {
                             run.exit_code.is_some_and(|code| code != 0)
                         }
                 );
+                if matches!(
+                    expectation,
+                    NativeExpected::RejectLayout | NativeExpected::RejectHunkLayout
+                ) {
+                    let no_output = !run
+                        .captured_artifacts
+                        .contains_key(&PathBuf::from(artifact));
+                    row["no_output"] = json!(no_output);
+                    row["success"] = json!(row["success"] == true && no_output);
+                }
                 row["native_seconds"] = json!(run.start_to_done_host_seconds);
                 row["exit_code"] = json!(run.exit_code);
             }
@@ -312,7 +460,7 @@ fn mutable_rejections() -> Vec<(&'static str, &'static str)> {
 fn compact_mutable_section_rust_oracle() {
     let dir = create_temp_dir("mutable-section-oracle");
     let _cleanup = Cleanup(dir.clone());
-    let source = ".module probe\n.cpu m68020\nn .var 1\n.section data,kind=data\n.long n\nn .set n+1\n.endsection\n.section code,kind=code\n.long n\nn .set n+1\n.endsection\n.section data,kind=data\n.long n\n.endsection\n.output \"out.hunk\",format=hunk,sections=code,data\n.endmodule\n";
+    let source = hunk_layout_source();
     let input = dir.join("main.asm");
     fs::write(&input, source).unwrap();
     let cli = Cli::parse_from(["opForge".to_string(), input.to_string_lossy().into_owned()]);
@@ -477,4 +625,166 @@ fn compact_mutable_fs_uae() {
             .map(|(name, body)| (name.into(), "m68020", mutable_probe(body, "m68020"), false)),
     );
     native_cases(cases, "OPFORGE_MUTABLE_REPORT");
+}
+
+fn layout_source(maps: usize) -> String {
+    let mut body = String::from(".module main\n.cpu m6502\n.region rom_a, $1000, $1004\n");
+    if maps == 2 {
+        body.push_str(".region rom_b, $1005, $10ff\n");
+    } else {
+        body = body.replace("$1004", "$10ff");
+    }
+    for index in 0..maps {
+        let letter = if index == 0 { "a" } else { "b" };
+        body.push_str(&format!(
+            ".use dep_{letter} (entry) as lib_{letter} map {{ code_{letter} -> app_{letter} }}\n"
+        ));
+    }
+    for index in 0..maps.max(1) {
+        let letter = if index == 0 { "a" } else { "b" };
+        body.push_str(&format!(".section app_{letter}\n"));
+        if index == 0 {
+            body.push_str("n .var 1\n");
+        }
+        body.push_str(".byte n\nn .set n+1\n.byte n\n");
+        if maps > 0 {
+            body.push_str(&format!(".word lib_{letter}.entry\n"));
+        }
+        body.push_str(".endsection\n");
+    }
+    for index in 0..maps.max(1) {
+        let letter = if index == 0 { "a" } else { "b" };
+        body.push_str(&format!(".place app_{letter} in rom_{letter}\n"));
+    }
+    body.push_str(".endmodule\n.end\n");
+    body
+}
+
+fn layout_files(maps: usize) -> Vec<(String, String)> {
+    (0..maps).map(|index| {
+        let letter = if index == 0 { "a" } else { "b" };
+        (format!("library/dep_{letter}.asm"), format!(".module dep_{letter}\n.cpu m6502\n.pub\n.section code_{letter}, logical\nentry .block\n.byte $11\n.bend\n.endsection\n.endmodule\n.end\n"))
+    }).collect()
+}
+
+fn concrete_pair_source() -> &'static str {
+    ".module main\n.cpu 6502\nn .var 1\n.region rom_a,$1000,$1001\n.region rom_b,$1002,$10ff\n.section app_a\n.byte n\nn .set n+1\n.byte n\n.endsection\n.section app_b\n.byte n\nn .set n+1\n.byte n\n.endsection\n.place app_a in rom_a\n.place app_b in rom_b\n.endmodule\n"
+}
+
+fn hunk_layout_source() -> &'static str {
+    ".module probe\n.cpu m68020\nn .var 1\n.section data,kind=data\n.long n\nn .set n+1\n.endsection\n.section code,kind=code\n.long n\nn .set n+1\n.endsection\n.section data,kind=data\n.long n\n.endsection\n.output \"out.hunk\",format=hunk,sections=code,data\n.endmodule\n"
+}
+
+#[test]
+fn compact_mutable_layout_rust_oracles() {
+    let dir = create_temp_dir("mutable-layout-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (maps, expected) in [
+        (0, vec![1, 2]),
+        (1, vec![1, 2, 4, 16, 0x11]),
+        (2, vec![1, 2, 4, 16, 0x11, 2, 3, 9, 16, 0x11]),
+    ] {
+        assert_eq!(
+            project_oracle(&dir, &layout_source(maps), false, &layout_files(maps)).unwrap(),
+            expected,
+            "maps={maps}"
+        );
+    }
+    assert_eq!(oracle(&dir, concrete_pair_source()).unwrap(), [1, 2, 2, 3]);
+    assert!(oracle(&dir, hunk_layout_source()).is_ok());
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE Hunk rejection and single-sweep mutable controls"]
+fn compact_mutable_layout_fs_uae() {
+    let readonly = hunk_layout_source()
+        .replace("n .var 1\n", "n = 1\n")
+        .replace("n .set n+1\n", "");
+    let cases = vec![
+        (
+            "hunk-mutable",
+            "m68020",
+            hunk_layout_source().into(),
+            NativeExpected::RejectHunkLayout,
+        ),
+        (
+            "single-section",
+            "6502",
+            layout_source(0),
+            NativeExpected::MatchRust,
+        ),
+        (
+            "flat-mutable",
+            "6502",
+            mutable_source("6502", false),
+            NativeExpected::MatchRust,
+        ),
+        // $2b is the declaration marker; payload bytes are never scanned as records.
+        (
+            "hunk-payload-marker",
+            "m68020",
+            readonly.replace("n = 1", "n = $2b"),
+            NativeExpected::MatchHunk,
+        ),
+        (
+            "hunk-unused-macro",
+            "m68020",
+            readonly.replace("n = 1\n", "unused .macro\nlocal .var 1\n.endmacro\nn = 1\n"),
+            NativeExpected::MatchHunk,
+        ),
+        (
+            "hunk-inactive-declaration",
+            "m68020",
+            readonly.replace("n = 1\n", ".if 0\nignored .var 1\n.endif\nn=1\n"),
+            NativeExpected::MatchHunk,
+        ),
+        (
+            "hunk-readonly",
+            "m68020",
+            readonly.clone(),
+            NativeExpected::MatchHunk,
+        ),
+        (
+            "single-sweep-two-regions",
+            "6502",
+            concrete_pair_source().into(),
+            NativeExpected::MatchRust,
+        ),
+        (
+            "hunk-expanded-macro",
+            "m68020",
+            readonly
+                .replace(
+                    "n = 1\n",
+                    "n=1\nproduce .macro\nlocalValue .var 1\n.long localValue\n.endmacro\n",
+                )
+                .replace(
+                    ".section data,kind=data\n",
+                    ".section data,kind=data\n.produce\n",
+                ),
+            NativeExpected::RejectHunkLayout,
+        ),
+    ];
+    native_expected_cases(
+        cases
+            .into_iter()
+            .map(|(name, cpu, source, expectation)| (name.into(), cpu, source, expectation))
+            .collect(),
+        "OPFORGE_MUTABLE_LAYOUT_REPORT",
+    );
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE mapped rejection; currently blocked by mapped preparation"]
+fn compact_mutable_mapped_layout_fs_uae() {
+    let cases = (1..=2)
+        .map(|maps| NativeCase {
+            name: format!("layout-maps={maps}"),
+            cpu: "6502",
+            source: layout_source(maps),
+            expectation: NativeExpected::RejectLayout,
+            files: layout_files(maps),
+        })
+        .collect();
+    native_project_cases(cases, "OPFORGE_MUTABLE_LAYOUT_REPORT");
 }

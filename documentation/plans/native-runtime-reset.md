@@ -716,7 +716,7 @@ absolute `OPFORGE_INLINE_HEAD_REPORT`, invoking `compact_inline_heads_fs_uae`.
 No full BS19 self-host completion is claimed. The BS17 proof below remains the
 recorded full self-host baseline.
 
-### BS20 scalar mutable declarations — flat-output checkpoint
+### BS20 scalar mutable declarations — single-sweep checkpoint
 
 Shared PRVM now classifies `.const`, `.var` and `.set` through a 13-byte
 package-owned identity/role table. `.var` and `.set` both create or update mutable
@@ -735,12 +735,19 @@ immutable consistency checks and readonly ownership remain enforced. Record
 bodies and compiled expressions stay unchanged. Macro-private scope records
 bypass declaration normalization.
 
-This checkpoint is **not general mutable-variable parity or integration-ready**.
-The section-scope decision is pending: native Hunk and mapped outputs traverse
-sections in filtered sweeps, so general cross-section mutable state requires a
-source-order traversal repair. No section traversal repair or explicit rejection
-policy has been implemented yet. Lists, ranges and struct-valued mutable symbols
-also remain outside the scalar slice. Imported mutable updates are unqualified.
+This checkpoint covers scalar mutations in single-source-sweep layouts: flat
+output, one concrete section, and two concrete sections/regions (modes 0/1/3).
+Native Hunk and mapped layouts traverse sections in filtered sweeps (modes
+2/4/5), so general cross-section mutable state requires a source-order traversal
+repair. The approved boundary is explicit rejection of active `.var`/`.set`
+records in those layouts before assembly sweeps start. The Hunk path reaches
+that guard and identifies the offending declaration. Mapped preparation currently
+fails earlier, including the existing readonly mapped-body regression, so the
+implemented mapped-mode guard remains unqualified. Inactive declarations and
+unused macro templates do not trigger the Hunk guard. The source-order traversal
+repair is deferred to a separate structural slice. Lists, ranges and struct-valued mutable symbols remain outside
+the scalar slice. Imported mutable updates are unqualified; this is **not general
+mutable-variable parity or an integration-ready completion of the slice**.
 
 The focused controls exercise bare/colon declarations on 6502 and 68020,
 reassignment, location-counter values, signed division, wide-value arithmetic,
@@ -767,7 +774,7 @@ with the configured FS-UAE environment and
 The optional `OPFORGE_DECLARATION_CASES` selects exact comma-separated case names;
 selected retries are not a complete declaration qualification. The host section
 oracle separately specifies CODE `[2]` / DATA `[1,3]` under reordered Hunk section
-output; no native equivalence is claimed for it.
+output; native explicitly rejects that mutable case until traversal is repaired.
 
 The isolated release comparison uses the identical 10,687-byte mixed source
 (`fnv1a64:eea73a7ec2cfca28`), command and live 2,434-byte Rust output
@@ -804,6 +811,70 @@ The selected audit therefore fails after both cases, retaining its report at
 `/tmp/opforge-mutable-corpus-retry.json`. No goldens were refreshed. Reproduce
 with `OPFORGE_MOS_CORPUS_CASES=6502_first_run_artifact_contract.asm,65816_wide_const_var.asm`,
 an absolute `OPFORGE_MOS_CORPUS_REPORT` and `compact_mos_corpus_fs_uae`.
+
+#### Explicit layout guard — limited follow-up checkpoint
+
+The guard inspects bounded packed record headers once before reordered assembly
+sweeps. It uses numeric layout modes and the shared mutable declaration marker;
+it does not parse source strings or dispatch through family-specific semantics.
+The existing frame's reserved word carries a dedicated failure reason, without
+changing frame size or allocating another table. Diagnostics preserve source
+provenance, and a rejected run creates no output artifact.
+
+Fresh native proof passes nine controls: seven exact live Rust artifact
+comparisons (flat mutable output, one/two concrete layouts, readonly Hunk,
+marker-valued Hunk data, unused macro, and inactive declaration), plus two
+completed Hunk diagnostic rejections (direct and macro-expanded mutation).
+The readonly comparisons use actual nonempty Hunk files. Four affected Rust
+oracle tests, workflow checks, native formatting, proof-contract, test ownership and
+instrumentation checks pass; a bounded Sol review found no actionable production
+issues. Reports are retained at `/tmp/opforge-mutable-layout-hunk-qualified.json`
+and `/tmp/opforge-mutable-layout-host-final.log`.
+
+Mapped proof remains red: both one-map and two-map cases stop before the guard,
+and the existing `compact_cli_explicit_mapped_section_body_fs_uae` readonly
+regression also rejects its `.use` at source line 4. Separate dependency files,
+explicit library roots, normalized CPU names and trailing `.end` do not resolve
+that failure. These failed probes are not mapped guard proof. Keep the strict
+`compact_mutable_mapped_layout_fs_uae` controls for the preparation repair;
+do not replace the required layout diagnostic with a generic expected failure.
+A fresh before/after comparison confirms both mapped failures predate this guard:
+the `1020f7d0` snapshot produces the identical diagnostics with identical source,
+project-file, package and Rust-oracle digests and commands. Its executable digest
+is `fnv1a64:54afadc7bd0fc8f8`; the guard executable is
+`fnv1a64:6bb22fa9e53fd622`. The failed current comparison, exact baseline and
+existing-regression reports are `/tmp/opforge-mutable-layout-qualified.json`,
+`/tmp/opforge-mutable-layout-mapped-baseline.json` and
+`/tmp/opforge-mutable-layout-map-regression.log`. Localize the preparation failure
+before choosing the repair; the section preparer's order-sensitive map registration
+is a lead, not a completed diagnosis.
+
+Reproduce the qualified controls with the configured FS-UAE environment,
+`OPFORGE_MUTABLE_LAYOUT_REPORT=/tmp/opforge-mutable-layout.json` and
+`cargo test -p asm --lib compact_mutable_layout_fs_uae -- --ignored --nocapture --test-threads=1`.
+For the blocked mapped controls, substitute `compact_mutable_mapped_layout_fs_uae`.
+`OPFORGE_DECLARATION_NATIVE_ROOT` optionally points the proof builder at an isolated
+native source snapshot for a before/after check; package generation still uses the
+current host registry, so compare only snapshots sharing that package contract.
+
+The separate guard comparison retains the identical mixed source, command,
+packages, live Rust output and 68020 / 10 MiB release profile described above.
+
+| Measurement | BS20 before guard (`1020f7d0`) | Guard checkpoint | Change |
+| --- | ---: | ---: | ---: |
+| Mixed workload run 1 | 11.538642084 s | 11.575919500 s | +0.037277416 s |
+| Mixed workload run 2 | 11.548778833 s | 11.604494708 s | +0.055715875 s |
+| Two-run median | 11.543710459 s | 11.590207104 s | +0.046496645 s (+0.4%) |
+| Embedded CLI image | 451,808 bytes | 452,196 bytes | +388 bytes |
+| Linked reserved allocation | 469,500 bytes | 469,868 bytes | +368 bytes |
+| m68020 / m6502 packages | 321,532 / 13,714 bytes | unchanged | 0 bytes |
+
+This small observed time increase includes run variation; two observations do
+not establish a precise overhead estimate. The flat benchmark takes the guard's
+constant-time allow path and does **not** measure the full record scan needed by
+Hunk or mapped layouts. No new heap storage is added; total peak RAM remains
+unqualified. The separate before/after reports are
+`/tmp/opforge-mutable-timing.json` and `/tmp/opforge-mutable-layout-timing.json`.
 
 No current full corpus or BS20 full self-host completion is claimed. The recorded BS17 full self-host remains the baseline.
 

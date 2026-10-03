@@ -363,6 +363,16 @@ located
 	move.l d4, d1
 	jsr DOS_WRITE(a6)
 afterPackage
+	tst.l InAssembly
+	beq.w afterLayout
+	lea Work, a0
+	cmpi.w #assembly.FAILURE_MUTABLE_LAYOUT, assembly.Frame.Failure(a0)
+	bne.w afterLayout
+	move.l #MutableLayoutFailure, d2
+	move.l #MutableLayoutFailureEnd-MutableLayoutFailure, d3
+	move.l d4, d1
+	jsr DOS_WRITE(a6)
+afterLayout
 	tst.l SourceOrdinal
 	bne.w sourcePath
 	tst.w PrepStep
@@ -1434,6 +1444,7 @@ run	.block
 	move.l #1, InAssembly
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_ASSEMBLE, #0, #0, Records, memory.Block.Used
 	lea Work, a0
+	clr.w assembly.Frame.Failure(a0)
 	move.l #-1, assembly.Frame.RecordOffset(a0)
 	move.l NameCount, d0
 	beq.w bad
@@ -1931,6 +1942,8 @@ FailureFile	.byte "00000000"
 	.byte ", line "
 FailureLine	.byte "00000000", "]", 10
 FailureMessageEnd
+MutableLayoutFailure	.byte "mutable declarations are not supported in Hunk or mapped outputs until source-order traversal is implemented", 10
+MutableLayoutFailureEnd
 FailurePrepStep	.byte "preparation step: "
 FailurePrepStepValue	.byte "00000000", 10
 FailurePrepStepEnd

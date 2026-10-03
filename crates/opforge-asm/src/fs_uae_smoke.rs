@@ -7902,7 +7902,7 @@ mod native_package_loading_performance;
 
 #[cfg(test)]
 #[path = "tests/compact_cli_input.rs"]
-mod compact_cli_input;
+pub(crate) mod compact_cli_input;
 
 #[cfg(test)]
 #[path = "tests/native_cpu_selection.rs"]

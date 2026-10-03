@@ -1,3 +1,6 @@
+#[path = "tests/compact_mos_corpus.rs"]
+mod compact_mos_corpus;
+
 #[path = "tests/macro_descriptor_native.rs"]
 mod macro_descriptor_native;
 
@@ -3067,6 +3070,26 @@ fn assemble_example_with_base_and_defines(
     allow_error_outputs: bool,
     defines: &[String],
 ) -> Result<Vec<(String, Vec<u8>)>, String> {
+    assemble_example_with_base_and_defines_in_mode(
+        asm_path,
+        out_dir,
+        base,
+        allow_error_outputs,
+        defines,
+        ExecutionMode::Lockstep {
+            continuation_head: ContinuationHead::Vm,
+        },
+    )
+}
+
+fn assemble_example_with_base_and_defines_in_mode(
+    asm_path: &Path,
+    out_dir: &Path,
+    base: &str,
+    allow_error_outputs: bool,
+    defines: &[String],
+    execution_mode: ExecutionMode,
+) -> Result<Vec<(String, Vec<u8>)>, String> {
     let out_dir = out_dir.to_path_buf();
     let header_title = format!("opForge Assembler v{VERSION}");
     let use_srec = example_uses_srec_reference(asm_path);
@@ -3077,9 +3100,7 @@ fn assemble_example_with_base_and_defines(
     let module_paths = example_module_paths(asm_path);
     let result = run_assembly(AssemblyExecutionRequest {
         root_path: asm_path,
-        execution_mode: ExecutionMode::Lockstep {
-            continuation_head: ContinuationHead::Vm,
-        },
+        execution_mode,
         input_base: base,
         defines,
         include_paths: &include_paths,
@@ -3119,15 +3140,17 @@ fn assemble_example_with_base_and_defines(
         }
     }
     if let Ok(report) = &result {
-        assert_partitioned_report_traces(
-            report.runtime_processing_traces(),
-            &format!("successful run report for {base}"),
-        );
-        assert_lockstep_reference_report_clean(
-            report.lockstep_report(),
-            &format!("successful reference run for {base}"),
-            true,
-        );
+        if matches!(execution_mode, ExecutionMode::Lockstep { .. }) {
+            assert_partitioned_report_traces(
+                report.runtime_processing_traces(),
+                &format!("successful run report for {base}"),
+            );
+            assert_lockstep_reference_report_clean(
+                report.lockstep_report(),
+                &format!("successful reference run for {base}"),
+                true,
+            );
+        }
     }
     if let Err(err) = &result {
         assert_lockstep_reference_report_clean(
@@ -3416,6 +3439,18 @@ fn diagnostic_context_lines_for_example<'a>(
 }
 
 fn assemble_example_error(asm_path: &Path) -> Option<String> {
+    assemble_example_error_in_mode(
+        asm_path,
+        ExecutionMode::Lockstep {
+            continuation_head: ContinuationHead::Vm,
+        },
+    )
+}
+
+fn assemble_example_error_in_mode(
+    asm_path: &Path,
+    execution_mode: ExecutionMode,
+) -> Option<String> {
     let out_dir = workspace_root().join("target").join(format!(
         "example-error-{}-{}",
         process::id(),
@@ -3432,9 +3467,7 @@ fn assemble_example_error(asm_path: &Path) -> Option<String> {
     let module_paths = example_module_paths(asm_path);
     match run_assembly(AssemblyExecutionRequest {
         root_path: asm_path,
-        execution_mode: ExecutionMode::Lockstep {
-            continuation_head: ContinuationHead::Vm,
-        },
+        execution_mode,
         input_base,
         defines: &[],
         include_paths: &include_paths,
@@ -3474,7 +3507,9 @@ fn assemble_example_error(asm_path: &Path) -> Option<String> {
                 &format!("failed reference error run for {}", asm_path.display()),
                 false,
             );
-            if !err.runtime_processing_traces().is_empty() {
+            if matches!(execution_mode, ExecutionMode::Lockstep { .. })
+                && !err.runtime_processing_traces().is_empty()
+            {
                 assert_partitioned_report_traces(
                     err.runtime_processing_traces(),
                     &format!("failed run report for {}", asm_path.display()),

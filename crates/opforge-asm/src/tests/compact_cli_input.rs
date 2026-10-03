@@ -237,7 +237,7 @@ fn rust_oracle(base: &Path, case: &InputCase) -> Vec<u8> {
     oracle
 }
 
-pub(super) fn assemble_cli(root: &Path, build: &NativePackageBuild) -> Vec<u8> {
+pub(crate) fn assemble_cli(root: &Path, build: &NativePackageBuild) -> Vec<u8> {
     assemble_cli_with_defines(root, build, &[])
 }
 

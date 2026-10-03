@@ -366,6 +366,125 @@ opforge main.asm --bin output.bin -P packages
 Compare the complete `output.bin` with `oracle.bin`. This is a 6502 test bundle,
 not a replacement self-host bundle for `run_a6000_selfhost.py`.
 
+### Full MOS-family and shared-language corpus audit
+
+The audit covers all 39 roots in `examples/mos6502` (base 6502, 65C02,
+65816, 45GS02/MEGA65 and a source-CPU-switching example), plus all 85 root
+examples in the native opcore ownership inventory, with their owned support
+files. Shared assembler features apply to every CPU; they are not excluded
+from 6502 support. Passing an addressing matrix does not qualify those features.
+
+The two explicit audit tests in
+`crates/opforge-asm/src/tests/compact_mos_corpus.rs` separate agreement with
+stored references from fresh compact-native agreement with the current Rust
+CLI. Stored references are not refreshed. The reference audit uses
+`ExecutionMode::Rust`; existing reference-test helpers retain their lockstep
+VM defaults. The Rust reference audit records 54 matches, 65 failures and five
+unqualified error-output fixtures on these 124 roots. The failures comprise
+35 assembly failures, 29 listing-only differences and one Hex/listing difference.
+The five fixtures have no comparable partial artifacts; the canonical suite
+permits their omission, so they are not five additional Rust regressions.
+These baseline problems and absent evidence must be resolved before claiming
+canonical reference parity.
+
+Numeric-leading MOS filenames currently generate implicit module declarations
+that Rust rejects. To observe the instructions rather than stop there, the native
+audit copies each MOS source byte-for-byte to `input.asm` for both engines.
+The report identifies the original filename, staged entry and source digest.
+This explicitly qualifies source semantics under the neutral filename; it does
+not qualify the original CLI filename behavior. Generic roots retain their
+filenames and support-file layout.
+
+Native runs use one freshly built release CLI, external current CPU packages,
+68020 / 10 MiB FS-UAE settings, and a single explicit `--hex` output. Each
+positive case requires fresh guest completion, exit zero and exact equality
+with the live Rust Hex artifact; source-declared additional outputs are also
+compared. Each expected-error case records fresh nonzero rejection with a
+diagnostic, **not diagnostic-text parity**. Error-output fixtures without a
+diagnostic contract follow the live Rust exit status, with that basis recorded
+explicitly. An unexpected Rust oracle error, timeout or
+partial capture cannot establish positive native parity. The current CLI does
+not support `--list` or mixed CLI output kinds, so those remain independent
+interface gaps. Timings in the report are individual START/DONE observations;
+the overall audit time includes emulator startup for each isolated case.
+
+With the FS-UAE environment configured, reproduce the audits with:
+
+```sh
+OPFORGE_MOS_CORPUS_REPORT=/tmp/opforge-mos-rust-references.json \
+  cargo test -p asm --lib compact_mos_corpus_rust_references -- --ignored --nocapture --test-threads=1
+OPFORGE_MOS_CORPUS_REPORT=/tmp/opforge-mos-native-corpus.json \
+  OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m \
+  OPFORGE_FS_UAE_TIMEOUT_MS=180000 \
+  OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 \
+  cargo test -p asm --lib compact_mos_corpus_fs_uae -- --ignored --nocapture --test-threads=1
+```
+
+Both audit tests deliberately fail when they find gaps, after recording the
+whole selected corpus. `OPFORGE_MOS_CORPUS_CASES` optionally selects comma-separated
+path substrings for a focused native retry; the report records that selection.
+Do not present a selected retry as a new full-corpus qualification. Reports are
+saved incrementally outside the build cache and should be preserved before
+running `make clean` at the end of the batch.
+
+#### Observed gaps — 2026-10-03
+
+All 124 roots were attempted with the same 445,080-byte CLI
+(`fnv1a64:2c747d77ba201f03`). A separate six-case retry preserves the original
+attempts: one failed guest startup and five corrected error-output classifications.
+Input, image and package digests match across retries. No production code or
+stored reference was changed by this audit.
+
+| Corpus | Roots | Exact live Rust Hex matches | Expected nonzero rejections observed | Other results requiring work or qualification |
+| --- | ---: | ---: | ---: | ---: |
+| MOS family | 39 | 16 | 0 | 23 |
+| Shared opcore | 85 | 3 | 35 | 47 |
+
+The MOS matches comprise two base-6502 and 14 45GS02 examples. The complete
+151-instruction base-6502 matrix matches; its fresh retry START/DONE interval
+is 2.279971916 seconds. No complete 65C02, 65816 or mixed-CPU example is qualified
+by this corpus run. That does not mean their entire instruction sets are absent:
+many first stops occur in shared language processing. The unchanged 15-case
+base-6502 matrix/negative suite also passes independently.
+
+The main groups are:
+
+- **Shared labelled statements:** ordinary instruction heads after inline bare
+  labels are misbound as source symbols. This blocks `6502_simple`,
+  `6502_native_cli_smoke`, `65c02_simple` and a 45GS02 branch example. Existing
+  bare/colon controls in `binary_source_members.rs` identify this as a shared
+  context-binding gap. Labelled `.const` is a separate missing shared declaration
+  path; giving a dotted head the right role does not implement that directive.
+- **Includes at an Amiga volume root:** support files are present, but the native
+  parent-path helper recognizes `/` and not `Work:`. It fails before searching
+  configured roots. This blocks four include examples; it is not evidence that
+  all includes are unsupported.
+- **Other shared forms:** `.var` and collection/struct values, collection
+  `.for`/`.bfor` and `.while`,
+  statement declarations, module metadata and advanced region/reservation/output
+  forms have failing examples. Counter `.for`, grouping and simple sections match.
+  `align_simple` completes with zero exit but differs in Hex gap handling: native
+  emits zero-filled contiguous data where Rust uses sparse records.
+- **Package operand/state work:** first stops directly on indexed indirect JSR,
+  PHW immediate, bracketed Z operands, 65816 indirect JMP/JML and 65C02 BBR.
+  Inspect package export/projections and native recipe support before changing
+  instruction semantics. `.assume` state and source-dependent CPU switching also
+  remain unqualified. File/line-zero preparation failures are not localized
+  instruction failures.
+- **Rejection and completion:** native accepts `loop_pass_instability_error`,
+  where Rust rejects it. `led1` reaches guest START but exceeds its 120-second
+  execution bound; it remains unresolved, not completed. Five otherwise-positive
+  live Rust oracles fail: the placed-section branch artifact example, two macro
+  examples and two scope examples. Their native runs cannot establish positive
+  artifact parity until the Rust baseline is repaired.
+
+The next native slice should repair shared instruction-head binding after bare
+and colon labels, with split-label controls and the affected MOS examples.
+Fix the volume-root include boundary separately. Restore the canonical Rust
+filename/reference baseline before claiming full example/reference parity;
+then choose narrowly defined package operand/state slices from the remaining
+first stops. These are audit findings and proposed work, not completed features.
+
 ### Current BS17 full self-host and search roots
 
 The complete current compact implementation assembles itself on native with

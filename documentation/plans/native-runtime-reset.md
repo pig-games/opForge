@@ -562,8 +562,73 @@ OPFORGE_INLINE_HEAD_REPORT=/tmp/opforge-inline-heads.json \
 Current reports are `/tmp/opforge-inline-before.json`,
 `/tmp/opforge-inline-after.json` and `/tmp/opforge-mos-inline-after.json`.
 The complete BS18 self-host has not been repeated. The BS17 proof below remains
-the full self-host baseline. Volume-root include handling is the next proposed
-shared parity slice; the other corpus gaps remain open.
+the full self-host baseline. The following checkpoint addresses volume-root
+include handling; the other corpus gaps remain open.
+
+### BS18 volume-root includes — focused parity
+
+The shared parent-path helper now recognizes the Amiga volume separator as well
+as directory separators. `Work:main.asm` supplies `Work:` as its parent instead
+of failing before sibling lookup or configured-root search. Textual `.include`
+and active `.incbin` reuse this helper, including the existing authorization
+boundary. Path normalization, volume floors, cycle checks and relative-path
+restrictions remain in their existing owners. No grammar, package bytes, heap
+allocation or stack-frame size changes are introduced; BS18 remains current.
+
+A fresh before-run fails at `.include "part.inc"` in `Work:main.asm`, exit 20.
+The focused controls cover sibling lookup at the actual volume root, configured
+root fallback, binary assets, normalized cycles, traversal above a volume, and
+parent-relative includes with explicit/default roots or outside all allowed roots.
+The ordinary source-set helper stages under `Work:sources/`; the new volume
+controls deliberately stage directly under `Work:` so a slash cannot hide the
+regression. Rust file-resource and CLI-default oracles use the actual CLI.
+Nine focused native checks pass, with exact live Rust binary output for positive
+cases and fresh completed nonzero diagnostics for rejection cases. Fourteen host
+discovery tests pass; native formatting, architecture, fresh-run proof,
+instrumentation and test-ownership checks pass. The initial binary-asset test
+could not construct a Rust oracle through the low-level graph helper; the corrected
+test uses the real CLI resource context and passes fresh native comparison.
+
+An older native negative fixture had expected rejection of a path inside the
+entry directory tree, ignoring the CLI's later default `-I` root. The real Rust
+CLI accepts that case. It is now a positive default-root comparison, with a
+separate negative fixture whose existing include lies outside both the entry
+tree and configured roots. The lower-level Rust API still has its explicit-root
+rejection control; CLI defaults do not change that API contract.
+
+The four selected corpus retries all reach their included files, but none is
+qualified end to end: each next stop is a labelled `.const` declaration in
+`cli_json_outputs.inc`, `module_use_lib.inc`, `preproc_syntax.inc` or
+`section_module_use_lib.inc`. The report is
+`/tmp/opforge-volume-include-corpus.json`. These are completed nonzero failures,
+not successful assemblies or include-file lookup failures. Shared `.const`
+declarations are the next proposed parity slice.
+
+The isolated release comparison reuses the two recorded observations for the
+unchanged `4fde8796` image and repeats the same 10,687-byte source, command,
+321,474-byte embedded m68020 package and 2,434-byte live Rust output. Source,
+oracle and package digests match. Profile remains 68020 / 10 MiB, unlimited
+emulator CPU speed, without telemetry; intervals are host-observed guest START/DONE.
+
+| Measurement | Before (`4fde8796`) | After | Change |
+| --- | ---: | ---: | ---: |
+| Mixed workload run 1 | 11.281888375 s | 11.390938250 s | +0.109049875 s |
+| Mixed workload run 2 | 11.593824875 s | 11.391589375 s | -0.202235500 s |
+| Two-run median | 11.437856625 s | 11.391263813 s | -0.046592813 s (-0.4%) |
+| Embedded CLI image | 449,940 bytes | 449,948 bytes | +8 bytes |
+| Linked reserved allocation | 467,648 bytes | 467,656 bytes | +8 bytes |
+| m68020 / m6502 packages | 321,474 / 13,656 bytes | unchanged | 0 bytes |
+
+These timings are effectively unchanged at the observed variation; no speedup
+claim follows. The after-image is `fnv1a64:6dc2ee4e0a1197ae`. Baseline observations
+are in `/tmp/opforge-inline-after.json`; the current report is
+`/tmp/opforge-volume-include-timing.json`.
+
+Focused release timing can select only the unchanged mixed workload using
+`OPFORGE_INLINE_HEAD_CASES=mixed-release/0,mixed-release/1` with the existing
+`compact_inline_heads_fs_uae` test. The selector validates exact test names and
+does not select production behavior. Selected timing runs do not repeat the
+full inline-head qualification. No full self-host is claimed for this checkpoint.
 
 ### BS17 full self-host baseline and search roots
 

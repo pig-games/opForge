@@ -172,6 +172,18 @@ fn compact_inline_heads_fs_uae() {
     for repeat in 0..2 {
         cases.push((format!("mixed-release/{repeat}"), "m68020", workload()));
     }
+    // Allow a focused repeat of measurements without relaunching unrelated
+    // native controls. This selects test cases, never production behavior.
+    if let Ok(selection) = std::env::var("OPFORGE_INLINE_HEAD_CASES") {
+        let names: Vec<_> = selection.split(',').map(str::trim).collect();
+        for name in &names {
+            assert!(
+                cases.iter().any(|(case, _, _)| case == name),
+                "unknown inline-head case: {name}"
+            );
+        }
+        cases.retain(|(name, _, _)| names.contains(&name.as_str()));
+    }
     for (index, (name, cpu, source)) in cases.iter().enumerate() {
         let expected = oracle(&dir.join(index.to_string()), source);
         let mut guest = vec![("main.asm".to_string(), source.as_bytes().to_vec())];

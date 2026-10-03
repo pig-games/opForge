@@ -170,24 +170,28 @@ done
 
 includeKeyword .byte "include", 0
 
-; A0=current path, A1=destination. Copy through its final slash.
+; A0=current path, A1=destination. Copy through its final directory or volume
+; separator. D0/CCR=status; preserves other registers. A bare filename rejects.
 parentPath .block
 	movem.l d1-d3/a0-a2, -(sp)
 	movea.l a0, a2
 	moveq #0, d2
 	moveq #-1, d3
-findSlash
+findSeparator
 	cmpi.l #PATH_BYTES, d2
 	bhs.w pathBad
 	move.b (a2)+, d1
-	beq.w foundSlash
+	beq.w foundSeparator
 	cmpi.b #'/', d1
-	bne.w nextSlash
+	beq.w keepSeparator
+	cmpi.b #':', d1
+	bne.w nextSeparator
+keepSeparator
 	move.l d2, d3
-nextSlash
+nextSeparator
 	addq.l #1, d2
-	bra.w findSlash
-foundSlash
+	bra.w findSeparator
+foundSeparator
 	tst.l d3
 	bmi.w pathBad
 	move.l d3, d2
@@ -205,7 +209,7 @@ parentDone
 	movem.l (sp)+, d1-d3/a0-a2
 	tst.l d0
 	rts
-	.bend ; parentPath
+	.bend  ; parentPath
 
 ; A0=NUL base, A1=IncludePath. Append IncludeName after a slash.
 copyIncludeBase .block

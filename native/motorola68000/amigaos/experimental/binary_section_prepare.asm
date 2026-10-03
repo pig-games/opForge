@@ -28,8 +28,9 @@ Declared	.word ?
 OutputCount	.word ?
 OutputSeen	.word ?
 Selected	.word ?
+Seeded	.word ?  ; maps awaiting their ordinary import replay
 	.endstruct
-MAPS = State.Selected+2
+MAPS = State.Seeded+2
 SLOT_NAMES = MAPS+2*MAP_BYTES
 OUTPUT_SLOTS = SLOT_NAMES+8*2
 SCRATCH_BYTES = OUTPUT_SLOTS+8
@@ -58,6 +59,7 @@ begin	.block
 	clr.w State.OutputCount(a0)
 	clr.w State.OutputSeen(a0)
 	clr.w State.Selected(a0)
+	clr.w State.Seeded(a0)
 	lea MAPS(a0), a0
 	moveq #(SCRATCH_BYTES-MAPS)/2-1, d0
 clearMaps
@@ -262,6 +264,24 @@ mapCompare
 mapConcreteOwner
 	cmp.w Map.Owner(a0), d0
 	bne.w nextMapName
+	; Dependency logical bodies may precede their importer. All maps owned
+	; by this concrete declaration's module must precede its declarations.
+	move.w d0, d2
+	moveq #0, d1
+	lea MAPS(a4), a1
+pendingOwnerMap
+	cmp.w State.MapCount(a4), d1
+	bhs.w concreteMapsReady
+	move.w State.Seeded(a4), d0
+	btst d1, d0
+	beq.w nextOwnerMap
+	cmp.w Map.Owner(a1), d2
+	beq.w bad
+nextOwnerMap
+	addq.w #1, d1
+	adda.w #MAP_BYTES, a1
+	bra.w pendingOwnerMap
+concreteMapsReady
 	tst.w d3
 	beq.w firstMappedConcrete
 	moveq #11, d5
@@ -695,6 +715,39 @@ importMap	.block
 	bne.w badMap
 	cmpa.l a3, a2
 	bne.w badMap
+	; Configuration metadata is already available to dependency bodies. Each
+	; seeded map must still match its ordinary import exactly, once.
+	moveq #0, d3
+seededMap
+	cmp.w State.MapCount(a5), d3
+	bhs.w newMap
+	move.w State.Seeded(a5), d0
+	btst d3, d0
+	beq.w nextSeededMap
+	move.l d3, d0
+	lsl.l #3, d0
+	lea MAPS(a5), a0
+	adda.l d0, a0
+	move.w layout.State.Current(a6), d0
+	cmp.w Map.Owner(a0), d0
+	bne.w nextSeededMap
+	move.w d7, d0
+	addq.w #1, d0
+	cmp.w Map.Module(a0), d0
+	bne.w nextSeededMap
+	cmp.w Map.Logical(a0), d5
+	bne.w nextSeededMap
+	cmp.w Map.Concrete(a0), d6
+	bne.w nextSeededMap
+	move.w State.Seeded(a5), d0
+	bclr d3, d0
+	move.w d0, State.Seeded(a5)
+	movea.l d4, a4
+	bra.w noMap
+nextSeededMap
+	addq.w #1, d3
+	bra.w seededMap
+newMap
 	tst.w State.Second(a5)
 	bne.w badMap
 	move.w State.Seen(a5), d0
@@ -798,6 +851,8 @@ done
 ; A0=section state. A mapped case requires both named sections by completion.
 finish	.block
 	movem.l d1, -(sp)
+	tst.w State.Seeded(a0)
+	bne.w badFinish
 	tst.w State.OutputSeen(a0)
 	beq.w flatFinish
 	tst.w State.MapCount(a0)

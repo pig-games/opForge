@@ -740,10 +740,9 @@ output, one concrete section, and two concrete sections/regions (modes 0/1/3).
 Native Hunk and mapped layouts traverse sections in filtered sweeps (modes
 2/4/5), so general cross-section mutable state requires a source-order traversal
 repair. The approved boundary is explicit rejection of active `.var`/`.set`
-records in those layouts before assembly sweeps start. The Hunk path reaches
-that guard and identifies the offending declaration. Mapped preparation currently
-fails earlier, including the existing readonly mapped-body regression, so the
-implemented mapped-mode guard remains unqualified. Inactive declarations and
+records in those layouts before assembly sweeps start. Fresh Hunk and
+one-map/two-map native controls now reach that guard and identify the offending declaration. Readonly mapped output is
+restored by the preparation repair below. Inactive declarations and
 unused macro templates do not trigger the Hunk guard. The source-order traversal
 repair is deferred to a separate structural slice. Lists, ranges and struct-valued mutable symbols remain outside
 the scalar slice. Imported mutable updates are unqualified; this is **not general
@@ -831,28 +830,16 @@ instrumentation checks pass; a bounded Sol review found no actionable production
 issues. Reports are retained at `/tmp/opforge-mutable-layout-hunk-qualified.json`
 and `/tmp/opforge-mutable-layout-host-final.log`.
 
-Mapped proof remains red: both one-map and two-map cases stop before the guard,
-and the existing `compact_cli_explicit_mapped_section_body_fs_uae` readonly
-regression also rejects its `.use` at source line 4. Separate dependency files,
-explicit library roots, normalized CPU names and trailing `.end` do not resolve
-that failure. These failed probes are not mapped guard proof. Keep the strict
-`compact_mutable_mapped_layout_fs_uae` controls for the preparation repair;
-do not replace the required layout diagnostic with a generic expected failure.
-A fresh before/after comparison confirms both mapped failures predate this guard:
-the `1020f7d0` snapshot produces the identical diagnostics with identical source,
-project-file, package and Rust-oracle digests and commands. Its executable digest
-is `fnv1a64:54afadc7bd0fc8f8`; the guard executable is
-`fnv1a64:6bb22fa9e53fd622`. The failed current comparison, exact baseline and
-existing-regression reports are `/tmp/opforge-mutable-layout-qualified.json`,
-`/tmp/opforge-mutable-layout-mapped-baseline.json` and
-`/tmp/opforge-mutable-layout-map-regression.log`. Localize the preparation failure
-before choosing the repair; the section preparer's order-sensitive map registration
-is a lead, not a completed diagnosis.
+The one-map and two-map mutable controls now pass with the required layout
+rejection, exit 20 and no output. The preparation repair below restores the
+previously blocked readonly mapped-body comparison as well. Separate baseline
+proof at `1020f7d0` established that the preparation failure predated this guard;
+it was not introduced by mutable-layout validation.
 
 Reproduce the qualified controls with the configured FS-UAE environment,
 `OPFORGE_MUTABLE_LAYOUT_REPORT=/tmp/opforge-mutable-layout.json` and
 `cargo test -p asm --lib compact_mutable_layout_fs_uae -- --ignored --nocapture --test-threads=1`.
-For the blocked mapped controls, substitute `compact_mutable_mapped_layout_fs_uae`.
+For the qualified mapped controls, substitute `compact_mutable_mapped_layout_fs_uae`.
 `OPFORGE_DECLARATION_NATIVE_ROOT` optionally points the proof builder at an isolated
 native source snapshot for a before/after check; package generation still uses the
 current host registry, so compare only snapshots sharing that package contract.
@@ -875,6 +862,70 @@ constant-time allow path and does **not** measure the full record scan needed by
 Hunk or mapped layouts. No new heap storage is added; total peak RAM remains
 unqualified. The separate before/after reports are
 `/tmp/opforge-mutable-timing.json` and `/tmp/opforge-mutable-layout-timing.json`.
+
+### BS20 mapped preparation — configuration transfer repair
+
+Discovery already collected active section maps, but the transition into
+dependency-ordered preparation transferred only scalar import parameters.
+Dependency logical sections therefore ran without their mappings; replaying the
+import later encountered the section preparer's late-map restriction.
+
+Preparation now transfers the bounded map metadata before dependency bodies run.
+It rebinds owner/module identities canonically and logical/concrete names in the
+importing module's lexical scope. No configuration-scope IDs or pointers survive.
+Each seeded map must match its ordinary import replay exactly once, and finish
+rejects unconsumed maps. This preserves the native boundary that all maps owned
+by an importer precede its concrete sections. The two-map limit and rejection
+of late maps remain explicit native limitations; Rust accepts the late forms.
+No CPU-specific processing or package-format change is added.
+
+Fresh native checks restore exact live Rust output for one/two mapped layouts,
+logical-section bodies, selected parameterized imports and inactive imports.
+Inactive imports neither discover missing modules nor consume map capacity.
+Overlap and both late-map controls complete with the expected native rejection.
+The real ABI and configured dependency-chain preparation regressions also pass.
+The one/two-map mutable controls now reach their dedicated layout diagnostic;
+flat mutable and readonly Hunk exact comparisons plus Hunk mutation rejection
+remain passing. The source-order mutable traversal repair remains deferred.
+
+The packed-source host suite passes 285 tests. Workflow, native formatting
+(81 files), Rust formatting, native proof contract, test ownership and
+instrumentation safeguards pass. A bounded independent Sol review found no
+actionable production issues. Reports survive cache cleanup at
+`/tmp/opforge-map-repair-guard-final.json`, `/tmp/opforge-map-config-native.log`,
+`/tmp/opforge-map-regressions.json`,
+`/tmp/opforge-map-repair-nonmap-regressions.json` and
+`/tmp/opforge-map-repair-packed-host.log`.
+
+Reproduce the map/parameter controls with `compact_map_configuration_` as the
+ignored native test filter, and the mutable map guard with
+`compact_mutable_mapped_layout_fs_uae`, using the configured FS-UAE environment
+and `--ignored --nocapture --test-threads=1`. The regular
+`map_configuration_rust_oracles` test demonstrates Rust acceptance of the late
+forms; their native rejection is a retained gap, not a parity claim.
+
+The isolated repair comparison retains the same mixed source, command, packages,
+exact live Rust output and uninstrumented 68020 / 10 MiB profile as the guard
+checkpoint (`79838c60`). Emulator startup is excluded; speed is unlimited, so
+these are relative emulator measurements, not physical hardware predictions.
+
+| Measurement | Before map repair | Map repair | Change |
+| --- | ---: | ---: | ---: |
+| Mixed workload run 1 | 11.575919500 s | 11.645047958 s | +0.069128458 s |
+| Mixed workload run 2 | 11.604494708 s | 11.636356208 s | +0.031861500 s |
+| Two-run median | 11.590207104 s | 11.640702083 s | +0.050494979 s (+0.4%) |
+| Embedded CLI image | 452,196 bytes | 452,564 bytes | +368 bytes |
+| Linked reserved allocation | 469,868 bytes | 470,236 bytes | +368 bytes |
+| m68020 / m6502 packages | 321,532 / 13,714 bytes | unchanged | 0 bytes |
+
+Two runs do not separate this small observed increase from run variation. This
+flat workload measures the unaffected-path cost; it does not measure map-copy
+work on a mapped project, and the failing mapped baseline permits no speedup
+claim. Section state gains one 2-byte pending-map word per scope, without a new
+heap table. Total dynamic peak RAM and the 2 MiB target remain unqualified.
+Before/after reports are `/tmp/opforge-mutable-layout-timing.json` and
+`/tmp/opforge-map-repair-timing.json`; their executable digests are
+`fnv1a64:6bb22fa9e53fd622` and `fnv1a64:0b8861cfd55707dc` respectively.
 
 No current full corpus or BS20 full self-host completion is claimed. The recorded BS17 full self-host remains the baseline.
 

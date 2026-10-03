@@ -4,6 +4,9 @@ use super::*;
 #[path = "binary_source_map_measurement.rs"]
 mod measurement;
 
+#[path = "binary_source_map_configuration.rs"]
+mod map_configuration;
+
 #[path = "binary_source_graph_identities.rs"]
 mod identities;
 #[path = "binary_source_implicit_modules.rs"]

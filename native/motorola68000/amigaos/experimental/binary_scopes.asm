@@ -522,10 +522,10 @@ done
 	.bend  ; configurationLine
 
 ; A0=completed configuration scope,A1=fresh semantic scope. Transfer incoming
-; scalar parameters by canonical name, remapping parameter and module identities
-; through the ordinary binder. Dependency bodies can then run before importers.
+; scalar parameters and mapped-section metadata by canonical name, remapping
+; identities through the ordinary binder before dependency bodies run.
 ; D0/CCR=status; other registers preserved. No configuration IDs or pointers
-; survive in the destination parameter records. Destination Current must be zero.
+; survive in destination preparation records. Destination Current must be zero.
 seedConfiguration	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
@@ -576,7 +576,7 @@ next
 	subq.w #1, d7
 	bra.w next
 good
-	moveq #0, d0
+	bsr.w seedConfigurationMaps
 	bra.w done
 bad
 	moveq #1, d0
@@ -586,6 +586,89 @@ done
 	rts
 	.bend  ; seedConfiguration
 	.priv
+; A5=configuration scope,A6=fresh semantic scope. Rebind bounded map fields
+; before any dependency section is lowered. Owner/module are entry indices+1;
+; logical/concrete are source IDs. No configuration identity survives.
+; D0/CCR=status; other registers preserved.
+seedConfigurationMaps	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	moveq #0, d7
+	move.w SECTION_STATE+sections.State.MapCount(a5), d7
+	cmpi.w #2, d7
+	bhi.w bad
+	lea SECTION_STATE+sections.MAPS(a5), a4
+	lea SECTION_STATE+sections.MAPS(a6), a2
+	moveq #0, d4
+nextMap
+	cmp.w d7, d4
+	bhs.w good
+	moveq #0, d5
+field
+	moveq #0, d0
+	move.w 0(a4, d5.w), d0
+	cmpi.w #sections.Map.Logical, d5
+	bhs.w sourceId
+	subq.w #1, d0
+	bra.w entry
+sourceId
+	sub.w layout.State.Base(a5), d0
+entry
+	bcs.w bad
+	cmp.w layout.State.Count(a5), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a5), a3
+	adda.l d0, a3
+	cmpi.w #sections.Map.Logical, d5
+	blo.w bindMapModule
+	; A canonical dotted name bound globally loses its lexical leaf/owner.
+	; Bind the original map leaf inside its importing owner instead.
+	move.w sections.Map.Owner(a2), layout.State.Current(a6)
+	movea.l ARENA_POINTER(a5), a0
+	adda.l records.Entry.Name(a3), a0
+	moveq #0, d0
+	move.w records.Entry.Length(a3), d0
+	moveq #0, d1
+	move.w records.Entry.Leaf(a3), d1
+	sub.l d1, d0
+	adda.l d1, a0
+	movea.l a6, a1
+	bsr.w bind
+	move.l d0, d3
+	clr.w layout.State.Current(a6)
+	move.l d3, d0
+	bne.w bad
+	bra.w store
+bindMapModule
+	bsr.w bindConfigurationName
+	bne.w bad
+	sub.w layout.State.Base(a6), d1
+	bcs.w bad
+	addq.w #1, d1
+store
+	move.w d1, 0(a2, d5.w)
+	addq.w #2, d5
+	cmpi.w #sections.MAP_BYTES, d5
+	blo.w field
+	move.w SECTION_STATE+sections.State.Seeded(a6), d0
+	bset d4, d0
+	move.w d0, SECTION_STATE+sections.State.Seeded(a6)
+	addq.w #1, d4
+	adda.w #sections.MAP_BYTES, a4
+	adda.w #sections.MAP_BYTES, a2
+	bra.w nextMap
+good
+	move.w d7, SECTION_STATE+sections.State.MapCount(a6)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; seedConfigurationMaps
+
 ; A3=configuration entry,A5=configuration scope,A6=semantic scope.
 ; Bind its owned canonical spelling globally. D0/CCR=status,D1=new ID,D2=flags;
 ; A0/A1 scratch, other registers preserved.

@@ -6,7 +6,7 @@
 	.use prvm.amigaos.macro_descriptors as macro_descriptors
 	.use prvm.amigaos.packed_macro as packed_macro
 	.use prvm.amigaos.packed_file as file
-	.use prvm.amigaos.packed_constant as constant
+	.use prvm.amigaos.packed_declaration as declaration
 	.use prvm.amigaos.packed_data as data
 	.use prvm.amigaos.packed_metadata as metadata
 	.use prvm.amigaos.target_bootstrap as bootstrap
@@ -27,8 +27,8 @@ run	.block
 	beq invalidArgument
 	cmpi.l #abi.PRVM_REQUEST_FRAME_SIZE, d0
 	blt invalidArgument
-	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_CONSTANT, abi.PRVM_FRAME_ENTRY_KIND(a0)
-	beq constantEntry
+	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_DECLARATION, abi.PRVM_FRAME_ENTRY_KIND(a0)
+	beq declarationEntry
 	cmpi.w #abi.PRVM_ENTRY_KIND_TARGET_BOOTSTRAP, abi.PRVM_FRAME_ENTRY_KIND(a0)
 	beq bootstrapEntry
 	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_METADATA, abi.PRVM_FRAME_ENTRY_KIND(a0)
@@ -45,8 +45,8 @@ run	.block
 	bne invalidArgument
 	jsr packed_macro.run
 	bra done
-constantEntry
-	jsr constant.run
+declarationEntry
+	jsr declaration.run
 	bra done
 bootstrapEntry
 	jsr bootstrap.run

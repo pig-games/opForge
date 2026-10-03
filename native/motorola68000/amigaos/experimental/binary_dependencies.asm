@@ -9,6 +9,7 @@
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_mutable as mutable
 	.pub
 ABSOLUTE = 2
 	.priv
@@ -16,6 +17,7 @@ PENDING = 3
 VISITING = 4
 LAYOUT = 5
 LABEL = 6
+MUTABLE_SNAPSHOT = 8
 Entry	.struct
 Id	.word ?
 Cursor	.word ?
@@ -142,7 +144,7 @@ advance
 	move.w d3, Entry.Cursor(a3)
 	bra.w visit
 current
-	move.w #1, Entry.Flags(a3)
+	ori.w #1, Entry.Flags(a3)
 	bra.w advance
 dependency
 	move.w d3, d1
@@ -163,10 +165,17 @@ dependency
 	beq.w consumed
 	cmpi.b #LAYOUT, d2
 	beq.w dependentLayout
+	cmpi.b #mutable.PENDING, d2
+	beq.w dependentMutable
+	cmpi.b #MUTABLE_SNAPSHOT, d2
+	beq.w dependentMutable
 	cmpi.b #LABEL, d2
 	bne.w clearFailure  ; missing names and visiting nodes are errors
 dependentLayout
-	move.w #1, Entry.Flags(a3)
+	ori.w #1, Entry.Flags(a3)
+	bra.w consumed
+dependentMutable
+	ori.w #2, Entry.Flags(a3)
 consumed
 	move.w d1, Entry.Cursor(a3)
 	bra.w visit
@@ -197,6 +206,12 @@ completed
 	bra.w pop
 deferred
 	move.b #LAYOUT, 0(a5, d4.l)
+	btst #1, Entry.Flags+1(a3)
+	beq.w pop
+	; A0 is the compiled expression, nine bytes after its record header.
+	; Only the dependency owner marks readonly snapshots; bodies stay immutable.
+	ori.b #source.FLAG_MUTABLE_SNAPSHOT, -8(a0)
+	move.b #MUTABLE_SNAPSHOT, 0(a5, d4.l)
 pop
 	subq.l #1, Depth
 	bra.w visit
@@ -277,7 +292,9 @@ done
 	.bend  ; push
 
 ; Index declaration ownership and constant offsets; leave expression evaluation
-; to the graph walk. Packed records remain immutable. Other registers preserved.
+; to the graph walk. Record bodies remain immutable; resolve owns the snapshot
+; role flag on immutable declarations that depend on mutable values.
+; Other registers preserved.
 index	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	movea.l Base, a0
@@ -315,6 +332,9 @@ line
 	beq.w declaration
 	moveq #PENDING, d7
 	cmpi.b #34, 4(a3)
+	beq.w declaration
+	moveq #mutable.PENDING, d7
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a3)
 	bne.w next
 declaration
 	tst.b 3(a3)
@@ -326,10 +346,18 @@ declaration
 	cmp.l pkg.Context.Count(a6), d4
 	bhs.w bad
 	tst.b 0(a5, d4.l)
+	beq.w firstDeclaration
+	cmpi.b #mutable.PENDING, d7
 	bne.w bad
+	cmpi.b #mutable.PENDING, 0(a5, d4.l)
+	bne.w bad
+firstDeclaration
 	move.b d7, 0(a5, d4.l)
+	cmpi.b #mutable.PENDING, d7
+	beq.w scalarDeclaration
 	cmpi.b #PENDING, d7
 	bne.w labelTail
+scalarDeclaration
 	cmpi.w #12, d6
 	blo.w bad
 	addq.l #5, a3
@@ -343,6 +371,8 @@ declaration
 	bne.w bad
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, -1(a0, d6.w)
 	bne.w bad
+	cmpi.b #mutable.PENDING, d7
+	beq.w next
 	move.l a3, d0
 	sub.l Base, d0
 	lsl.l #3, d4

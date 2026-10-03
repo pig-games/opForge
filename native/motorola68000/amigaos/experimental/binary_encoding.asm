@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_shapes as shapes
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.use experimental.amigaos.binary_dependencies as dependencies
+	.use experimental.amigaos.binary_mutable as mutable
 	.use experimental.amigaos.binary_hunk_references as references
 	.use experimental.amigaos.binary_register_mask as register_mask
 	.use opasm.amigaos.binary_expression as expression
@@ -1622,6 +1623,8 @@ exactIdentity
 	beq.w targetReady
 	cmpi.b #dependencies.ABSOLUTE, 0(a0, d1.l)
 	beq.w targetReady
+	cmpi.b #mutable.DEFINED, 0(a0, d1.l)
+	beq.w targetReady
 	move.w d1, ProjectedTarget
 targetReady
 	moveq #0, d0
@@ -1706,6 +1709,8 @@ target
 	tst.b 0(a0, d1.l)
 	beq.w absent
 	cmpi.b #dependencies.ABSOLUTE, 0(a0, d1.l)
+	beq.w absent
+	cmpi.b #mutable.DEFINED, 0(a0, d1.l)
 	beq.w absent
 	move.w d1, ScalarTarget
 absent

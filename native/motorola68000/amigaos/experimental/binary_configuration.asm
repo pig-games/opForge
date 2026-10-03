@@ -135,7 +135,7 @@ boundary
 	bne.w bad
 	movea.l Frame.Output(a6), a0
 	movea.l Frame.Scope(a6), a1
-	jsr imports.captureConstant
+	jsr imports.captureScalar
 	bra.w publish
 importTarget
 	cmpi.l #scopes.KEY_USE, d3

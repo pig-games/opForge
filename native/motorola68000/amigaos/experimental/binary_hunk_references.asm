@@ -6,6 +6,7 @@
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_dependencies as dependencies
+	.use experimental.amigaos.binary_mutable as mutable
 	.pub
 STATUS_CLEAR = 0
 STATUS_SECTION = 1
@@ -148,6 +149,8 @@ symbol
 	move.l a3, d0
 	beq.w bad
 	cmpi.b #dependencies.ABSOLUTE, 0(a3, d1.l)
+	beq.w absolute
+	cmpi.b #mutable.DEFINED, 0(a3, d1.l)
 	beq.w absolute
 	tst.b 0(a3, d1.l)
 	bne.w defined
@@ -483,6 +486,8 @@ sectionId	.block
 	move.b 0(a3, d1.l), d0
 	beq.w found  ; an unresolved symbol may become a layout label
 	cmpi.b #dependencies.ABSOLUTE, d0
+	beq.w clear
+	cmpi.b #mutable.DEFINED, d0
 	beq.w clear
 	bra.w found
 section

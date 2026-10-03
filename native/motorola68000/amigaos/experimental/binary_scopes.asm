@@ -440,12 +440,15 @@ configurationLine	.block
 	cmpi.b #1, (a0)
 	bhi.w directive
 	cmpi.b #34, 4(a0)
+	beq.w scalarDeclaration
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	bne.w bad
+scalarDeclaration
 	bsr.w declare
 	bne.w bad
 	movea.l a5, a0
 	movea.l a6, a1
-	jsr imports.captureConstant
+	jsr imports.captureScalar
 	bra.w done
 directive
 	cmpi.b #7, (a0)
@@ -636,6 +639,8 @@ line	.block
 	bhi.w statement
 	cmpi.b #34, 4(a0)
 	beq.w declaration
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
+	beq.w declaration
 	cmpi.b #5, 4(a0)
 	beq.w declaration
 	bra.w statement
@@ -645,6 +650,8 @@ declaration
 	moveq #0, d7
 	move.w 1(a0), d7
 	cmpi.b #34, 4(a0)
+	beq.w assignment
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	beq.w assignment
 	movem.l a0/d0, -(sp)
 	moveq #0, d0
@@ -1152,6 +1159,8 @@ normalizeLabel	.block
 	blo.w indentation
 	cmpi.b #34, 8(a0)
 	beq.w ok
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a0)
+	beq.w ok
 	cmpi.b #5, 8(a0)
 	bne.w indentation
 	tst.b 1(a0)
@@ -1314,9 +1323,21 @@ declare	.block
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #0, records.Entry.Flags+1(a3)
+	beq.w firstDeclaration
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	bne.w bad
+	btst #records.MUTABLE_BIT-8, records.Entry.Flags(a3)
+	beq.w bad
+	clr.b 3(a0)
+	moveq #0, d0
+	rts
+firstDeclaration
 	clr.b 3(a0)
 	ori.w #DECLARED, records.Entry.Flags(a3)
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
+	bne.w ownershipReady
+	ori.w #records.MUTABLE, records.Entry.Flags(a3)
+ownershipReady
 	move.l d1, d0
 	move.l a0, -(sp)
 	lea MODULE_STATE(a6), a0

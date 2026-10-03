@@ -11,6 +11,7 @@
 	.use experimental.amigaos.binary_section_prepare as sections
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_package as pkg
+	.use experimental.amigaos.binary_source as source
 	.use exprvm.amigaos.runtime as runtime
 	.pub
 Item	.struct
@@ -126,7 +127,7 @@ release	.block
 ; The existing
 ; expression VM handles arithmetic; labels and forward values remain unknown.
 ; D0/CCR=status; other registers preserved.
-captureConstant	.block
+captureScalar	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
 	; Known scalar values remain keyed by their lexical source IDs. Keeping
@@ -139,7 +140,10 @@ captureConstant	.block
 	cmpi.b #1, 4(a0)
 	bhi.w constantOk
 	cmpi.b #34, 8(a0)
+	beq.w scalarValue
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a0)
 	bne.w constantOk
+scalarValue
 	movea.l a0, a1
 	adda.l d0, a1
 	moveq #0, d7
@@ -187,7 +191,7 @@ constantDone
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; captureConstant
+	.bend  ; captureScalar
 
 ; A0=first .use target token,A1=scope,A2=ordinary binder callback.
 ; Resolve only its shared canonical module identity; no suffix, parameters or

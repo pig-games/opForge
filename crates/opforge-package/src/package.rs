@@ -1618,12 +1618,18 @@ pub const PARSER_VM_PACKED_DATA_ENTRY: u16 = 6;
 
 pub const PARSER_VM_PACKED_METADATA_ENTRY: u16 = 7;
 pub const PARSER_VM_TARGET_BOOTSTRAP_ENTRY: u16 = 8;
-pub const PARSER_VM_PACKED_CONSTANT_ENTRY: u16 = 9;
+pub const PARSER_VM_PACKED_DECLARATION_ENTRY: u16 = 9;
 
-/// Shared scalar declaration envelope. The operand stays owned by the scalar expression VM.
-pub fn packed_constant_program(directive: u16) -> Vec<u8> {
-    let [high, low] = directive.to_be_bytes();
-    vec![0x98, high, low, 0x83, 0]
+/// Shared scalar declaration heads and mutability; operands stay expression-owned.
+/// Row roles are 1 immutable, 2 mutable. Both mutable spellings share one role.
+pub fn packed_declaration_program(heads: [u16; 3]) -> Vec<u8> {
+    let mut program = vec![0x98, 3];
+    for (head, role) in heads.into_iter().zip([1, 2, 2]) {
+        program.extend(head.to_be_bytes());
+        program.push(role);
+    }
+    program.extend([0x83, 0]);
+    program
 }
 
 /// Shared PRVM v2 prefix policy for binding an inline statement head.

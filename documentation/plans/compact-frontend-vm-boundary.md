@@ -30,11 +30,11 @@ seconds on 68020 / 74 MiB with unlimited emulator CPU speed. The preceding faile
 runs establish localization, not comparative full-run performance.
 The earlier 61-file
 implementation also completed on the physical A6000. The 2 MiB product target
-remains unqualified. Current BS19 retains shared instruction-head selection
+remains unqualified. Current BS20 retains shared instruction-head selection
 before binding and adds
-package-owned PRVM lowering of labelled scalar `.const` declarations to immutable
-assignments. Focused qualification is separate from the recorded BS17 full
-self-host baseline; no BS19 full self-host completion is claimed here. Residual
+package-owned PRVM lowering of labelled scalar `.const`, `.var` and `.set`
+declarations to immutable or mutable assignments. Focused qualification is separate from the recorded BS17 full
+self-host baseline; no BS20 full self-host completion is claimed here. Residual
 frontend ownership gaps are listed below.
 
 ## Recorded P2 self-host proof
@@ -94,7 +94,7 @@ Require fresh case-bound START/DONE challenges, guest exit zero and exact comple
 ### Physical A6000 run
 
 The host-only ignored test `export_compact_self_host_bundle` builds a fresh release
-bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS19
+bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS20
 package. Its preparation-only file plan has focused native qualification recorded
 in the [current plan](native-runtime-reset.md#bs13-binary-inclusion-qualification);
 host export alone does not prove self-hosting. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
@@ -141,7 +141,7 @@ configuration. The subsequent BS13 embedded-output bundle is
 `/tmp/opforge-a6000-bs13-embedded-selfhost-v2`, with a 395,676-byte embedded
 Rust oracle and full emulator self-host qualification. It has no recorded new
 hardware timing. Old BS12/BS13 exports require their matching historical runner;
-current BS19 source and package bytes must be exported afresh.
+current BS20 source and package bytes must be exported afresh.
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
@@ -298,7 +298,7 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS19 is the current compact package format; the producer writes `BS19` and the
+BS20 is the current compact package format; the producer writes `BS20` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Target flags at 130 request structural
 wrapper preservation from canonical projections. Typed scalar/wrapped-value and
@@ -311,17 +311,24 @@ shared data-plan offset/length at 144/148 remains in the runtime prefix. The
 preparation-only inline metadata program is at 152/156. Contextual member-binding
 offset/count at 160/164 select eight-byte rows derived from canonical selector
 projections. Head-policy offset/length are at 168/172, PRVM version at 176 and
-a zero reserved word at 178. Constant-plan offset/length are at 180/184, its
+a zero reserved word at 178. Declaration-plan offset/length are at 180/184, its
 PRVM version at 188 and a zero reserved word at 190. Both policies stay inside
 the retained RuntimeBytes prefix. Shared PRVM entry 9 validates the labelled
-scalar declaration envelope using the package-supplied `.const` identity and
-returns operand spans. A generic adapter lowers the record after template
+scalar declaration envelope using the package-supplied `.const`/`.var`/`.set`
+identity-to-role table and returns operand spans plus immutable/mutable ownership.
+The retained program is 13 bytes; both mutable spellings share one role. A generic adapter lowers the record after template
 expansion and before scope/conditional processing; configuration capture lowers
 its private writer record before import-parameter evaluation. Discovery selects
 declaration roles through package identity before that materialization; it does
-not decide declaration grammar. Scalar compilation, immutability, signed values,
-dependency resolution and symbol ownership remain with the existing assignment
-machinery. Complete lexical instruction operands are normalized before binding
+not decide declaration grammar. Scalar compilation and binding remain shared. Immutable graph evaluation
+and layout consistency remain with the assignment/dependency owners; mutable
+records (tag 43) execute at their statement positions and overwrite both signed64
+words. Existing Defined byte states distinguish mutable ownership (3) from
+absolute immutable values (2), without a new per-name allocation. Dependency
+preparation alone may set record flag 64 on immutable declarations whose graph
+reaches a mutable value; their expressions/bodies remain unchanged. Only these
+readonly snapshots can retain unresolved pass-one placeholders and refresh in
+pass two. Ordinary immutable layout checks stay strict. Complete lexical instruction operands are normalized before binding
 using those package-supplied field identities; shared directives and exact
 register spellings retain their identities. MemberShape predicates and TargetMember
 fixups operate on numeric wrappers without source text. Shared PRVM entry 7
@@ -384,6 +391,7 @@ anonymous macro scopes remain a distinct Rust/native selection edge.
 - BS18 selects ordinary and dotted heads after bare/adjacent-colon labels through shared PRVM policy before binding. Focused split/bare/colon controls pass on 6502 and 68020; member Hunk, composed macro label and register-spelling label regressions also pass. The [current checkpoint](native-runtime-reset.md#bs18-shared-instruction-heads--focused-parity) records the selected corpus results and isolated time/size cost. This does not establish complete family or language parity.
 - Parent-path resolution recognizes Amiga volume separators, allowing textual and binary inclusion from a volume-root entry such as `Work:main.asm`. Root lookup, normalization and authorization retain their existing boundaries. The [focused checkpoint](native-runtime-reset.md#bs18-volume-root-includes--focused-parity) records the original include proof and the subsequent `.const` stops; the BS19 checkpoint below records their retry.
 - BS19 lowers labelled scalar `.const` through shared PRVM into immutable assignment records, including configuration-time import parameters. The [focused checkpoint](native-runtime-reset.md#bs19-shared-scalar-declarations--focused-parity) records the controls, selected real-example retries, contract migration and remaining compound-value/8085 gaps.
+- BS20 adds shared scalar `.var`/`.set` declaration roles and statement-time signed64 storage with readonly snapshot tracking. [Focused proof](native-runtime-reset.md#bs20-scalar-mutable-declarations--flat-output-checkpoint) covers flat outputs, both label styles, conditionals, macro locals and instruction operands. Cross-section mutable state remains unqualified because filtered native Hunk/mapped sweeps do not preserve general source-order mutations; the traversal/rejection scope decision is pending. Compound values and general narrow-output truncation remain gaps.
 - TKVM-selected number normalization, composed-name recipes, and ordinary macro/segment string fragment recipes are implemented. Generated-call argument fragments are re-tokenized under VM control. Macro descriptor services use the compact PRVM boundary and offset-only fragment records.
 - Preparation binds scopes, module identities, selected imports, visibility and supported scalar parameters before assembly. Selected-file discovery and dependency order, common `.use` forms, selected includes and numeric import identities have fresh focused native/Rust coverage.
 - Counted packed `.for` replay passes focused real-native comparison. Package-selected branch width, supported register masks, scalar roots, predicates, and supported instruction/data Hunk relocations are exercised by exact focused native/Rust comparisons.

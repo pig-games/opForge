@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_prepare
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_source as source
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.pub
@@ -40,6 +41,8 @@ line	.block
 	cmpi.b #1, (a0)
 	bhi.w statement
 	cmpi.b #34, 4(a0)
+	beq.w constant
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	beq.w constant
 	cmpi.b #5, 4(a0)
 	bne.w statement

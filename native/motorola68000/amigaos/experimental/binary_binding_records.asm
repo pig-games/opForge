@@ -21,6 +21,8 @@ TemplateModule	.word ?  ; declaration ownership independent of the numeric value
 TemplateFlags	.word ?  ; preparation-only declaration and visibility facet
 .endstruct
 ENTRY_BYTES = Entry.TemplateFlags+2
+MUTABLE_BIT = 8
+MUTABLE = 1<<MUTABLE_BIT
 LABEL_VALUE_BIT = 7
 LABEL_VALUE = 1<<LABEL_VALUE_BIT; preparation-time address declaration availability
 STRUCT_TYPE = 32

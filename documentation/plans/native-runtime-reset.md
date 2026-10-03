@@ -5,8 +5,8 @@ self-hosted with exact live Rust Hunk output on the physical A6000. The
 90-input BS17 embedded implementation completed a fresh FS-UAE self-host with
 exact Rust Hunk equality in 950.411414625 seconds on the expanded 74 MiB
 investigation profile, using source `.cpu` selection and one module/include root
-each. The BS17 bundle awaits its physical A6000 run. Current BS19 retains shared
-PRVM instruction-head classification and adds labelled scalar `.const` lowering;
+each. The BS17 bundle awaits its physical A6000 run. Current BS20 extends shared
+PRVM scalar declarations with mutable `.var`/`.set` execution;
 its focused qualification is recorded below, separately from that BS17 full self-host proof. It remains
 experimental: that proof does not establish full language, CPU, CLI or output
 parity. Current measurements, reproduction commands and remaining frontend
@@ -64,7 +64,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS19 represents one CPU/dialect pipeline and carries its canonical
+Current BS20 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -715,6 +715,97 @@ absolute `OPFORGE_INLINE_HEAD_REPORT`, invoking `compact_inline_heads_fs_uae`.
 
 No full BS19 self-host completion is claimed. The BS17 proof below remains the
 recorded full self-host baseline.
+
+### BS20 scalar mutable declarations — flat-output checkpoint
+
+Shared PRVM now classifies `.const`, `.var` and `.set` through a 13-byte
+package-owned identity/role table. `.var` and `.set` both create or update mutable
+scalars; neither overwrites a readonly constant. Preparation emits tag 43 and
+runtime updates preserve signed64 values and source-order snapshots. Binding,
+expression evaluation and execution remain separate owners. Mutable storage
+reuses the existing symbol-state byte; no additional per-symbol heap table is
+allocated. BS20 replaces BS19, retaining the same 192-byte header; regenerate
+embedded and external packages together.
+
+Dependency preparation distinguishes mutable ancestry from PC/label dependencies.
+It owns flag 64 on the headers of immutable declarations that capture mutable
+values, including transitive and forward-derived snapshots. Only these snapshots
+accept unresolved pass-one placeholders and refresh in pass two; ordinary
+immutable consistency checks and readonly ownership remain enforced. Record
+bodies and compiled expressions stay unchanged. Macro-private scope records
+bypass declaration normalization.
+
+This checkpoint is **not general mutable-variable parity or integration-ready**.
+The section-scope decision is pending: native Hunk and mapped outputs traverse
+sections in filtered sweeps, so general cross-section mutable state requires a
+source-order traversal repair. No section traversal repair or explicit rejection
+policy has been implemented yet. Lists, ranges and struct-valued mutable symbols
+also remain outside the scalar slice. Imported mutable updates are unqualified.
+
+The focused controls exercise bare/colon declarations on 6502 and 68020,
+reassignment, location-counter values, signed division, wide-value arithmetic,
+conditionals, macro-local ownership, forward/self references and direct/transitive
+readonly snapshots. A reduced probe exposed the existing native `.byte` range
+policy: `.byte wide>>32` with `wide .var $ffffffff+1` rejects natively, whereas
+Rust truncates to zero (shift counts mask to 31). The mutable control uses
+explicit narrowing and `.long wide/2`; this does not resolve the general narrow
+data-emission mismatch. The existing 6502 package-register name restriction also
+excludes a scalar declaration named `a`; probes use nonreserved names.
+
+Fresh proof passes 17 mutable controls (12 positive exact-artifact cases and
+five completed diagnostic rejections), plus three immutable regression controls
+(two exact artifacts and one cycle rejection). Host qualification passes 283
+packed-source tests, three current mutable Rust oracles, three shared declaration
+VM tests and all 16 package generations. These prove the selected flat-output
+cases; they do not qualify section traversal, the full corpus or compound values.
+
+The proof reports identify the actual source, image and package digests:
+`/tmp/opforge-mutable-parity-final.json`, `/tmp/opforge-mutable-operands.json`
+and `/tmp/opforge-mutable-const-regressions.json`. Reproduce the mutable proof
+with the configured FS-UAE environment and
+`OPFORGE_MUTABLE_REPORT=/tmp/opforge-mutable-parity.json cargo test -p asm --lib compact_mutable_fs_uae -- --ignored --nocapture --test-threads=1`.
+The optional `OPFORGE_DECLARATION_CASES` selects exact comma-separated case names;
+selected retries are not a complete declaration qualification. The host section
+oracle separately specifies CODE `[2]` / DATA `[1,3]` under reordered Hunk section
+output; no native equivalence is claimed for it.
+
+The isolated release comparison uses the identical 10,687-byte mixed source
+(`fnv1a64:eea73a7ec2cfca28`), command and live 2,434-byte Rust output
+(`fnv1a64:5149ec034f77e53c`) as BS19. Environment remains 68020 / 10 MiB,
+unlimited emulator CPU speed, without telemetry. This workload uses ordinary
+immutable assignments, so it measures added policy/runtime overhead on existing
+work rather than the benefit of using mutable variables.
+
+| Measurement | BS19 (`ddc82248`) | BS20 checkpoint | Change |
+| --- | ---: | ---: | ---: |
+| Mixed workload run 1 | 11.784530541 s | 11.538642084 s | -0.245888457 s |
+| Mixed workload run 2 | 11.545062042 s | 11.548778833 s | +0.003716791 s |
+| Two-run median | 11.664796292 s | 11.543710459 s | -0.121085833 s (-1.0%) |
+| Embedded CLI image | 451,132 bytes | 451,808 bytes | +676 bytes |
+| Linked reserved allocation | 468,832 bytes | 469,500 bytes | +668 bytes |
+| m68020 package | 321,504 bytes | 321,532 bytes | +28 bytes |
+| m6502 package | 13,686 bytes | 13,714 bytes | +28 bytes |
+
+Two observations do not establish a speedup: the faster median reflects a slower
+first baseline observation, while the second pair is nearly identical. No
+material runtime cost is demonstrated by this limited comparison. The checkpoint
+image is `fnv1a64:54afadc7bd0fc8f8`; retained timing reports are
+`/tmp/opforge-const-timing.json` and `/tmp/opforge-mutable-timing.json`. Total peak
+RAM and the 2 MiB target are unqualified. Reproduce with
+`OPFORGE_INLINE_HEAD_CASES=mixed-release/0,mixed-release/1`, an absolute
+`OPFORGE_INLINE_HEAD_REPORT` and the `compact_inline_heads_fs_uae` ignored test.
+
+Two real examples are retried separately. `65816_wide_const_var.asm` completes
+with exact live Rust HEX; it has declarations but no instructions/emitted bytes,
+so this does not establish 65816 instruction or native listing parity.
+`6502_first_run_artifact_contract.asm` still rejects its `.region` at source line
+7, before the mutable declaration; Rust reference comparison also remains red.
+The selected audit therefore fails after both cases, retaining its report at
+`/tmp/opforge-mutable-corpus-retry.json`. No goldens were refreshed. Reproduce
+with `OPFORGE_MOS_CORPUS_CASES=6502_first_run_artifact_contract.asm,65816_wide_const_var.asm`,
+an absolute `OPFORGE_MOS_CORPUS_REPORT` and `compact_mos_corpus_fs_uae`.
+
+No current full corpus or BS20 full self-host completion is claimed. The recorded BS17 full self-host remains the baseline.
 
 ### BS17 full self-host baseline and search roots
 
@@ -1617,7 +1708,7 @@ After preparation, both modes still copy the execution prefix and discard lexica
 storage. The whole embedded payload remains part of the executable image, so
 tracked allocation savings alone do not establish lower total RAM use.
 
-BS19 uses a 192-byte header. The canonical target offset remains at 124, its
+BS20 uses a 192-byte header. The canonical target offset remains at 124, its
 length at 128 and structural target flags at 130; the preparation-only file plan offset
 and byte length are at 132 and 136. Built-in `.emit` identity is at 140, CPU
 word bytes at 142, and the retained data-plan offset/length at 144/148. Fields
@@ -1630,7 +1721,7 @@ contain CPU suffix spellings. The retained shared instruction-head policy offset
 and byte length are at 168/172, its PRVM version is at 176 and a zero reserved
 word is at 178. The retained shared scalar declaration-plan offset/length are at
 180/184, its PRVM version at 188 and a zero reserved word at 190. Regenerate
-superseded packages; only BS19 is supported.
+superseded packages; only BS20 is supported.
 Target identity lies inside `RuntimeBytes`, survives preparation, uses safe
 filename characters and fits in 26 bytes (plus `.bin`, within the classic
 30-byte component limit). The current slice loads assets only from active,

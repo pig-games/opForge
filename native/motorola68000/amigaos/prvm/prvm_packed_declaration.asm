@@ -1,6 +1,6 @@
 ; Shared scalar declaration spans over immutable compact records.
 ; No source spelling or expression evaluation enters this service.
-	.module prvm.amigaos.packed_constant
+	.module prvm.amigaos.packed_declaration
 	.cpu 68020
 	.use prvm.amigaos.abi as abi
 	.include "telemetry_macros.i"
@@ -10,8 +10,9 @@ Budget	.long ?
 Stage	.res 32
 	.endstruct
 STATE_BYTES = State.Stage+32
-VALUE_OFFSET = State.Stage+abi.PRVM_CONSTANT_VALUE_OFFSET
-VALUE_BYTES = State.Stage+abi.PRVM_CONSTANT_VALUE_BYTES
+ROLE = State.Stage+abi.PRVM_DECLARATION_ROLE
+VALUE_OFFSET = State.Stage+abi.PRVM_DECLARATION_VALUE_OFFSET
+VALUE_BYTES = State.Stage+abi.PRVM_DECLARATION_VALUE_BYTES
 
 	.section code, kind=code
 ; A0=request,D0=available bytes; standard PRVM status/count/offset/bytes.
@@ -31,7 +32,7 @@ run	.block
 	bne.w invalidFrame
 	cmpi.w #abi.PRVM_REQUEST_FRAME_SIZE, abi.PRVM_FRAME_FRAME_SIZE(a4)
 	blo.w invalidFrame
-	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_CONSTANT, abi.PRVM_FRAME_ENTRY_KIND(a4)
+	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_DECLARATION, abi.PRVM_FRAME_ENTRY_KIND(a4)
 	bne.w invalidFrame
 	tst.w abi.PRVM_FRAME_CALL_MODE(a4)
 	bne.w invalidFrame
@@ -66,14 +67,42 @@ run	.block
 	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	beq.w invalidFrame
 	movea.l d0, a5
-	cmpi.l #5, abi.PRVM_FRAME_PROGRAM_LEN(a4)
+	cmpi.l #13, abi.PRVM_FRAME_PROGRAM_LEN(a4)
 	bne.w invalidProgram
 	cmpi.b #$98, (a5)
 	bne.w invalidProgram
-	cmpi.b #$83, 3(a5)
+	cmpi.b #$83, 11(a5)
 	bne.w invalidProgram
-	tst.b 4(a5)
+	tst.b 12(a5)
 	bne.w invalidProgram
+	cmpi.b #3, 1(a5)
+	bne.w invalidProgram
+	lea 2(a5), a0
+	moveq #2, d1
+validateRole
+	cmpi.b #1, 2(a0)
+	blo.w invalidProgram
+	cmpi.b #2, 2(a0)
+	bhi.w invalidProgram
+	lea 2(a5), a1
+	moveq #0, d2
+	move.b (a0), d2
+	lsl.w #8, d2
+	move.b 1(a0), d2
+validateUnique
+	cmpa.l a0, a1
+	beq.w nextRole
+	moveq #0, d3
+	move.b (a1), d3
+	lsl.w #8, d3
+	move.b 1(a1), d3
+	cmp.w d2, d3
+	beq.w invalidProgram
+	addq.l #3, a1
+	bra.w validateUnique
+nextRole
+	addq.l #3, a0
+	dbra d1, validateRole
 	suba.w #STATE_BYTES, sp
 	movea.l sp, a3
 	movea.l a3, a0
@@ -113,12 +142,11 @@ matchHead
 	move.b 2(a6, d2.l), d0
 	lsl.w #8, d0
 	move.b 3(a6, d2.l), d0
-	moveq #0, d1
-	move.b 1(a5), d1
-	lsl.w #8, d1
-	move.b 2(a5), d1
-	cmp.w d1, d0
-	bne.w noMatch
+	movea.l a5, a0
+	bsr.w selectIdentity
+	tst.l d0
+	beq.w noMatch
+	move.w d0, ROLE(a3)
 	bsr.w tick
 	bne.w failure
 	tst.b 7(a6)
@@ -141,7 +169,7 @@ operand
 	bne.w failure
 	clr.l d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
-	move.w #abi.PRVM_RESULT_PACKED_CONSTANT, State.Stage(a3)
+	move.w #abi.PRVM_RESULT_PACKED_DECLARATION, State.Stage(a3)
 	move.l d2, VALUE_OFFSET(a3)
 	move.l d5, VALUE_BYTES(a3)
 	lea State.Stage(a3), a0
@@ -188,18 +216,29 @@ done
 	rts
 	.bend  ; run
 ; A0=validated declaration program,D0=numeric package head identity.
-; D0/CCR=1 selected declaration head,0 otherwise; other registers preserved.
-; This is a selection hint only; run retains authoritative declaration grammar.
+; D0/CCR=immutable/mutable role,0 otherwise; other registers preserved.
+; Selection is a hint only; run retains authoritative declaration grammar.
 selectIdentity	.block
-	move.l d1, -(sp)
+	movem.l d1-d3/a0, -(sp)
+	move.l d0, d3
+	addq.l #2, a0
+	moveq #2, d2
+row
 	moveq #0, d1
-	move.b 1(a0), d1
+	move.b (a0), d1
 	lsl.w #8, d1
-	move.b 2(a0), d1
-	cmp.w d1, d0
-	seq d0
-	andi.l #1, d0
-	move.l (sp)+, d1
+	move.b 1(a0), d1
+	cmp.w d1, d3
+	beq.w selected
+	addq.l #3, a0
+	dbra d2, row
+	moveq #0, d0
+	bra.w done
+selected
+	moveq #0, d0
+	move.b 2(a0), d0
+done
+	movem.l (sp)+, d1-d3/a0
 	tst.l d0
 	rts
 	.bend  ; selectIdentity

@@ -10,6 +10,7 @@
 	.use prvm.amigaos.macro_runtime as datavm
 	.use experimental.amigaos.binary_encoding as encoding
 	.use experimental.amigaos.binary_dependencies as dependencies
+	.use experimental.amigaos.binary_mutable as mutable
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_references as hunkrefs
@@ -519,6 +520,8 @@ statement	.block
 	bhi.w dispatch
 	cmpi.b #34, 4(a0)
 	beq.w constant
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
+	beq.w mutableDeclaration
 	cmpi.b #5, 4(a0)
 	bne.w dispatch
 	lea SectionState, a4
@@ -609,8 +612,13 @@ instructionReady
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #17
 	bsr.w emit
 	bra.w done
+mutableDeclaration
+	jsr mutable.execute
+	bra.w done
 constant
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #15
+	moveq #0, d6
+	move.b -3(a0), d6
 	; Absolute constants were resolved once before layout. Remaining constants
 	; retain definition-site PC/label semantics and must resolve in source order.
 	bsr.w name
@@ -634,7 +642,13 @@ constant
 	tst.l d0
 	bne.w bad
 	tst.l d2
+	beq.w constantResolved
+	; Mutable-derived readonly snapshots share pass1 forward placeholders.
+	btst #6, d6
+	beq.w bad
+	cmpi.w #1, pkg.Context.Pass(a2)
 	bne.w bad
+constantResolved
 	cmpa.l a1, a0
 	bne.w bad
 	movea.l pkg.Context.Defined(a2), a4
@@ -648,11 +662,17 @@ constant
 	move.b #1, 0(a4, d4.l)
 	bra.w ok
 existingConstant
+	btst #6, d6
+	bne.w refreshSnapshot
 	move.l pkg.Context.High(a2), d0
 	cmp.l exprvm.Value.High(a5, d5.l), d0
 	bne.w bad
 	cmp.l exprvm.Value.Low(a5, d5.l), d1
 	bne.w bad
+	bra.w ok
+refreshSnapshot
+	move.l d1, exprvm.Value.Low(a5, d5.l)
+	move.l pkg.Context.High(a2), exprvm.Value.High(a5, d5.l)
 	bra.w ok
 directive
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #16

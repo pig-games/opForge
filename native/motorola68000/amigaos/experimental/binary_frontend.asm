@@ -27,8 +27,8 @@
 	.use experimental.amigaos.binary_macro_fragments as fragment_binding
 	.use tkvm.amigaos.control as control
 	.use prvm.amigaos.macro_runtime as macro_runtime
-	.use experimental.amigaos.binary_constant as constant
-	.use prvm.amigaos.packed_constant as declaration_parser
+	.use experimental.amigaos.binary_declaration as declaration
+	.use prvm.amigaos.packed_declaration as declaration_parser
 	.use prvm.amigaos.runtime as parser_runtime
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.macro_spelling as spelling
@@ -496,7 +496,7 @@ bindCapture	.block
 	move.l d1, Frame.Used(a5)
 	movea.l Frame.Output(a5), a0
 	movea.l Frame.Package(a5), a1
-	jsr constant.normalize
+	jsr declaration.normalize
 	bne.w written
 	moveq #0, d1
 	move.b (a0), d1
@@ -1622,9 +1622,13 @@ failed
 ; records. This routine does not tokenize source or advance the physical line.
 processRecord	.block
 	movea.l Frame.Output(a5), a0
+	; Scope-private macro records are not portable declaration requests.
+	btst #7, 1(a0)
+	bne.w declarationReady
 	movea.l Frame.Package(a5), a1
-	jsr constant.normalize
+	jsr declaration.normalize
 	bne.w failed
+declarationReady
 	clr.l Frame.GraphBefore(a5)
 	movea.l Frame.Graph(a5), a0
 	move.l a0, d0
@@ -1674,15 +1678,18 @@ bindLine
 	moveq #0, d0
 	move.b (a0), d0
 	cmpi.w #9, d0
-	blo.w constantCaptured
+	blo.w scalarCaptured
 	cmpi.b #34, 8(a0)
-	bne.w constantCaptured
+	beq.w captureScalar
+	cmpi.b #writer.TOKEN_MUTABLE_DECLARATION, 8(a0)
+	bne.w scalarCaptured
+captureScalar
 	lea SCOPE_STATE(a6), a1
 	.MEMORY_DETAIL_BEGIN #2
-	jsr imports.captureConstant
+	jsr imports.captureScalar
 	.MEMORY_DETAIL_END #2
 	bne.w failed
-constantCaptured
+scalarCaptured
 conditionReady
 	.MEMORY_DETAIL_BEGIN #3
 	bsr.w fileLine
@@ -2315,8 +2322,8 @@ done
 	.bend  ; validateMemberBindings
 
 	.pub
-; A0=session,A1=bounded directive leaf,D0=bytes. D0/CCR=1 declaration
-; head,0 other. Other registers preserved; dictionary lookup is read-only.
+; A0=session,A1=bounded directive leaf,D0=bytes. D0/CCR=declaration role
+; (immutable/mutable),0 other. Other registers preserved; dictionary lookup is read-only.
 ; Configuration selection uses package identity only; PRVM still parses the
 ; complete declaration after the selected capture record is materialized.
 declarationRole	.block
@@ -2329,7 +2336,7 @@ declarationRole	.block
 	tst.l d2
 	bne.w absent
 	movea.l Frame.Package(a2), a0
-	move.l package.Header.ConstantPlan(a0), d0
+	move.l package.Header.DeclarationPlan(a0), d0
 	adda.l d0, a0
 	move.l d1, d0
 	jsr declaration_parser.selectIdentity

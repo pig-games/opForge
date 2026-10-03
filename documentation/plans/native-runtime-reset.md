@@ -5,9 +5,9 @@ self-hosted with exact live Rust Hunk output on the physical A6000. The
 90-input BS17 embedded implementation completed a fresh FS-UAE self-host with
 exact Rust Hunk equality in 950.411414625 seconds on the expanded 74 MiB
 investigation profile, using source `.cpu` selection and one module/include root
-each. The BS17 bundle awaits its physical A6000 run. Current BS18 adds shared
-PRVM instruction-head classification before binding; its focused qualification
-is recorded below, separately from that BS17 full self-host proof. It remains
+each. The BS17 bundle awaits its physical A6000 run. Current BS19 retains shared
+PRVM instruction-head classification and adds labelled scalar `.const` lowering;
+its focused qualification is recorded below, separately from that BS17 full self-host proof. It remains
 experimental: that proof does not establish full language, CPU, CLI or output
 parity. Current measurements, reproduction commands and remaining frontend
 ownership gaps are maintained in the
@@ -64,7 +64,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS18 represents one CPU/dialect pipeline and carries its canonical
+Current BS19 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -573,7 +573,8 @@ of failing before sibling lookup or configured-root search. Textual `.include`
 and active `.incbin` reuse this helper, including the existing authorization
 boundary. Path normalization, volume floors, cycle checks and relative-path
 restrictions remain in their existing owners. No grammar, package bytes, heap
-allocation or stack-frame size changes are introduced; BS18 remains current.
+allocation or stack-frame size changes were introduced; BS18 remained current
+at this checkpoint.
 
 A fresh before-run fails at `.include "part.inc"` in `Work:main.asm`, exit 20.
 The focused controls cover sibling lookup at the actual volume root, configured
@@ -629,6 +630,91 @@ Focused release timing can select only the unchanged mixed workload using
 `compact_inline_heads_fs_uae` test. The selector validates exact test names and
 does not select production behavior. Selected timing runs do not repeat the
 full inline-head qualification. No full self-host is claimed for this checkpoint.
+
+### BS19 shared scalar declarations — focused parity
+
+Labelled scalar `.const` declarations now use shared package-owned PRVM policy
+and the existing immutable assignment path. Bare and adjacent-colon labels retain
+the same constant, signed-value, dependency, scope and import ownership as `=`.
+Macro expansions lower after lexical recipes are consumed; configuration capture
+lowers its private writer record before parameter evaluation. The policy consumes
+numeric packed tokens and returns a bounded operand span; the generic adapter
+copies that span into the canonical assignment record. No CPU-specific directive
+parser or source-text replay is introduced.
+
+The first importer-parameter probe exposed an earlier selection gap: discovery
+skipped `.const` records before `bindCapture` could normalize them. Its classifier
+now selects declaration heads through the existing package dictionary and shared
+PRVM policy identity. Existing activity and depth checks still govern scheduling;
+PRVM remains authoritative for the declaration grammar. The fresh repaired probe
+uses an importing `.const` in a `.use with` expression, then an incoming parameter
+in the dependency's colon-labelled `.const`; native output matches Rust exactly.
+
+This is scalar support, not complete `.const` value-model parity. Lists, ranges
+and structs remain unsupported by the compact scalar expression domain. `.var`
+and `.set` are outside this slice. BS19 replaces BS18: regenerate embedded and
+external packages together. Its 192-byte header adds a retained five-byte scalar
+declaration plan, numeric `.const` identity and PRVM contract version; there is
+no legacy executor. Normalization uses a 144-byte request/result frame and a
+36-byte VM stage, plus register saves; configuration gains a four-byte callback
+slot. No new heap or persistent source-state table is introduced. Full peak RAM
+and the 2 MiB product target have not been measured here.
+
+Focused proof covers scalar forward dependencies, signed division, current-PC
+and label-difference values, both conditional branches, repeated macro-local
+constants, and instruction operands on 6502 and 68020. Six positive native cases
+compare `=`, bare `.const` and colon-labelled `.const` against live Rust bytes;
+four rejection cases require fresh completed nonzero diagnostics for mixed-form
+duplicates, cycles, missing labels and missing values. All ten pass on the final
+implementation, as does the separate importer-parameter case. Host qualification
+passes 279 packed-source tests, the additional import-parameter oracle, two PRVM
+contract tests and the 16-package inventory. Native formatting, architecture,
+fresh-run proof, instrumentation, test ownership and workflow checks pass. A
+bounded Luna review found no concrete contract, span, register or callback issue.
+
+The four original real examples are retried separately from those controls.
+`module_use_include.asm`, `preproc_syntax.asm` and
+`section_module_use_include.asm` complete with exact live Rust HEX output.
+`cli_json_outputs.asm` gets past the included constant and fails at `START: nop`
+on line 5: its selected 8085 pipeline has no compact instruction candidates.
+That CPU-package gap remains open. Existing Rust listing-reference drift also
+keeps the audit red; no reference output was refreshed or test weakened. These
+selected retries do not qualify the complete MOS/opcore corpus.
+
+The isolated release comparison uses the same 10,687-byte mixed source,
+command, input digest and exact 2,434-byte Rust output as `f363f4cd`; it contains
+ordinary assignments, so this measures the added policy/selection overhead on
+existing work. Environment remains 68020 / 10 MiB, unlimited emulator CPU speed,
+without telemetry. Package bytes change from BS18 to BS19 as required by the
+contract migration. Intervals are host-observed guest START/DONE.
+
+| Measurement | Before (`f363f4cd`) | BS19 after | Change |
+| --- | ---: | ---: | ---: |
+| Mixed workload run 1 | 11.390938250 s | 11.784530541 s | +0.393592291 s |
+| Mixed workload run 2 | 11.391589375 s | 11.545062042 s | +0.153472667 s |
+| Two-run median | 11.391263813 s | 11.664796292 s | +0.273532479 s (+2.4%) |
+| Embedded CLI image | 449,948 bytes | 451,132 bytes | +1,184 bytes |
+| Linked reserved allocation | 467,656 bytes | 468,832 bytes | +1,176 bytes |
+| m68020 package | 321,474 bytes | 321,504 bytes | +30 bytes |
+| m6502 package | 13,656 bytes | 13,686 bytes | +30 bytes |
+
+This is an observed small cost for added functionality; two observations include
+run variation and do not establish a precise population estimate. No speedup is
+claimed. The after-image is `fnv1a64:a3e265fef177600e`; source is
+`fnv1a64:eea73a7ec2cfca28`, oracle `fnv1a64:5149ec034f77e53c`.
+Reports survive build-cache cleanup at `/tmp/opforge-const-parity-final.json`,
+`/tmp/opforge-const-corpus-final.json` and `/tmp/opforge-const-timing.json`;
+comparison input is `/tmp/opforge-volume-include-timing.json`.
+
+With the configured FS-UAE environment, reproduce the focused proof using
+`OPFORGE_CONST_REPORT=/tmp/opforge-const-parity.json` and
+`cargo test -p asm --lib compact_const_fs_uae -- --ignored --nocapture --test-threads=1`.
+Run `compact_const_import_parameter_fs_uae` separately. The existing timing
+selector is `OPFORGE_INLINE_HEAD_CASES=mixed-release/0,mixed-release/1`, with an
+absolute `OPFORGE_INLINE_HEAD_REPORT`, invoking `compact_inline_heads_fs_uae`.
+
+No full BS19 self-host completion is claimed. The BS17 proof below remains the
+recorded full self-host baseline.
 
 ### BS17 full self-host baseline and search roots
 
@@ -1531,7 +1617,7 @@ After preparation, both modes still copy the execution prefix and discard lexica
 storage. The whole embedded payload remains part of the executable image, so
 tracked allocation savings alone do not establish lower total RAM use.
 
-BS18 uses a 180-byte header. The canonical target offset remains at 124, its
+BS19 uses a 192-byte header. The canonical target offset remains at 124, its
 length at 128 and structural target flags at 130; the preparation-only file plan offset
 and byte length are at 132 and 136. Built-in `.emit` identity is at 140, CPU
 word bytes at 142, and the retained data-plan offset/length at 144/148. Fields
@@ -1542,7 +1628,9 @@ word. Rows derive from canonical package projections, including unsupported
 candidate plans, and remain in the runtime prefix. Generic preparation does not
 contain CPU suffix spellings. The retained shared instruction-head policy offset
 and byte length are at 168/172, its PRVM version is at 176 and a zero reserved
-word is at 178. Regenerate superseded packages; only BS18 is supported.
+word is at 178. The retained shared scalar declaration-plan offset/length are at
+180/184, its PRVM version at 188 and a zero reserved word at 190. Regenerate
+superseded packages; only BS19 is supported.
 Target identity lies inside `RuntimeBytes`, survives preparation, uses safe
 filename characters and fits in 26 bytes (plus `.bin`, within the classic
 30-byte component limit). The current slice loads assets only from active,

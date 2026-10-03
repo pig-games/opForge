@@ -19,6 +19,7 @@ Arena	.long ?
 Scope	.long ?
 Graph	.long ?
 BindCapture	.long ?  ; frontend.bindCapture ABI; the selected writer copy only
+DeclarationRole	.long ?  ; read-only package declaration-head selection callback
 Output	.long ?  ; session's caller-owned writer output
 Capacity	.long ?  ; writer output capacity, including shared label normalization
 Cursor	.long ?  ; local capture offset, independent of the graph's logical offset
@@ -424,7 +425,7 @@ done
 
 ; A0=validated capture.Record. D0=0,D1=shared directive key/ASSIGNMENT/zero;
 ; all other registers preserved. Read TKVM structural rows only; identifier
-; spelling classification uses the same scope table as normal preparation.
+; spelling classification uses shared scope roles and package declaration identity.
 classify	.block
 	movem.l d2-d5/a0-a4, -(sp)
 	movea.l a0, a4
@@ -457,8 +458,22 @@ directive
 	adda.l d0, a0
 	adda.l source.Token.Offset(a2), a0
 	move.l source.Token.Length(a2), d0
+	move.l a0, -(sp)
+	move.l d0, -(sp)
 	jsr scopes.classifySpelling
 	move.l d0, d1
+	move.l (sp)+, d0
+	movea.l (sp)+, a1
+	tst.l d1
+	bne.w done
+	movea.l Frame.DeclarationRole(a6), a3
+	move.l a3, d2
+	beq.w done
+	movea.l Frame.Session(a6), a0
+	jsr (a3)
+	tst.l d0
+	beq.w done
+	moveq #ASSIGNMENT, d1
 	bra.w done
 assignmentRecord
 	moveq #ASSIGNMENT, d1

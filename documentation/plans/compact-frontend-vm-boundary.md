@@ -30,10 +30,12 @@ seconds on 68020 / 74 MiB with unlimited emulator CPU speed. The preceding faile
 runs establish localization, not comparative full-run performance.
 The earlier 61-file
 implementation also completed on the physical A6000. The 2 MiB product target
-remains unqualified. Current BS18 moves ordinary-label instruction-head selection
-before binding using shared PRVM policy. Its focused proof is separate from the
-recorded BS17 full self-host baseline in the current plan; no BS18 full self-host
-completion is claimed here. Residual frontend ownership gaps are listed below.
+remains unqualified. Current BS19 retains shared instruction-head selection
+before binding and adds
+package-owned PRVM lowering of labelled scalar `.const` declarations to immutable
+assignments. Focused qualification is separate from the recorded BS17 full
+self-host baseline; no BS19 full self-host completion is claimed here. Residual
+frontend ownership gaps are listed below.
 
 ## Recorded P2 self-host proof
 
@@ -92,7 +94,7 @@ Require fresh case-bound START/DONE challenges, guest exit zero and exact comple
 ### Physical A6000 run
 
 The host-only ignored test `export_compact_self_host_bundle` builds a fresh release
-bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS18
+bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS19
 package. Its preparation-only file plan has focused native qualification recorded
 in the [current plan](native-runtime-reset.md#bs13-binary-inclusion-qualification);
 host export alone does not prove self-hosting. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
@@ -139,7 +141,7 @@ configuration. The subsequent BS13 embedded-output bundle is
 `/tmp/opforge-a6000-bs13-embedded-selfhost-v2`, with a 395,676-byte embedded
 Rust oracle and full emulator self-host qualification. It has no recorded new
 hardware timing. Old BS12/BS13 exports require their matching historical runner;
-current BS18 source and package bytes must be exported afresh.
+current BS19 source and package bytes must be exported afresh.
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
@@ -296,12 +298,12 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS18 is the current compact package format; the producer writes `BS18` and the
+BS19 is the current compact package format; the producer writes `BS19` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Target flags at 130 request structural
 wrapper preservation from canonical projections. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
-or CPU-specific native parsing. Its header is 180 bytes, with
+or CPU-specific native parsing. Its header is 192 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its
@@ -309,8 +311,17 @@ shared data-plan offset/length at 144/148 remains in the runtime prefix. The
 preparation-only inline metadata program is at 152/156. Contextual member-binding
 offset/count at 160/164 select eight-byte rows derived from canonical selector
 projections. Head-policy offset/length are at 168/172, PRVM version at 176 and
-a zero reserved word at 178. The policy stays inside the retained RuntimeBytes
-prefix. Complete lexical instruction operands are normalized before binding
+a zero reserved word at 178. Constant-plan offset/length are at 180/184, its
+PRVM version at 188 and a zero reserved word at 190. Both policies stay inside
+the retained RuntimeBytes prefix. Shared PRVM entry 9 validates the labelled
+scalar declaration envelope using the package-supplied `.const` identity and
+returns operand spans. A generic adapter lowers the record after template
+expansion and before scope/conditional processing; configuration capture lowers
+its private writer record before import-parameter evaluation. Discovery selects
+declaration roles through package identity before that materialization; it does
+not decide declaration grammar. Scalar compilation, immutability, signed values,
+dependency resolution and symbol ownership remain with the existing assignment
+machinery. Complete lexical instruction operands are normalized before binding
 using those package-supplied field identities; shared directives and exact
 register spellings retain their identities. MemberShape predicates and TargetMember
 fixups operate on numeric wrappers without source text. Shared PRVM entry 7
@@ -349,8 +360,8 @@ imports, cycles, private names, invalid include paths, aliases, and imported
 macro calls.
 
 Scalar `.use ... with (...)` evaluation is limited to earlier module-scope `=`
-constants and incoming parameters in the compact signed-32-bit expression
-grammar. Preparation filters nested `.if`/`.else`/`.endif` records only when
+or scalar `.const` constants and incoming parameters in the compact signed-32-bit
+expression grammar. Preparation filters nested `.if`/`.else`/`.endif` records only when
 their module-scope scalar inputs are known. The unsupported forms are listed
 explicitly below; they are not implicitly covered by the imported-module tests.
 
@@ -371,7 +382,8 @@ anonymous macro scopes remain a distinct Rust/native selection edge.
 ## Implemented behavior retained
 
 - BS18 selects ordinary and dotted heads after bare/adjacent-colon labels through shared PRVM policy before binding. Focused split/bare/colon controls pass on 6502 and 68020; member Hunk, composed macro label and register-spelling label regressions also pass. The [current checkpoint](native-runtime-reset.md#bs18-shared-instruction-heads--focused-parity) records the selected corpus results and isolated time/size cost. This does not establish complete family or language parity.
-- Parent-path resolution recognizes Amiga volume separators, allowing textual and binary inclusion from a volume-root entry such as `Work:main.asm`. Root lookup, normalization and authorization retain their existing boundaries. The [focused checkpoint](native-runtime-reset.md#bs18-volume-root-includes--focused-parity) distinguishes include proof from the four real examples still stopped at shared `.const` declarations.
+- Parent-path resolution recognizes Amiga volume separators, allowing textual and binary inclusion from a volume-root entry such as `Work:main.asm`. Root lookup, normalization and authorization retain their existing boundaries. The [focused checkpoint](native-runtime-reset.md#bs18-volume-root-includes--focused-parity) records the original include proof and the subsequent `.const` stops; the BS19 checkpoint below records their retry.
+- BS19 lowers labelled scalar `.const` through shared PRVM into immutable assignment records, including configuration-time import parameters. The [focused checkpoint](native-runtime-reset.md#bs19-shared-scalar-declarations--focused-parity) records the controls, selected real-example retries, contract migration and remaining compound-value/8085 gaps.
 - TKVM-selected number normalization, composed-name recipes, and ordinary macro/segment string fragment recipes are implemented. Generated-call argument fragments are re-tokenized under VM control. Macro descriptor services use the compact PRVM boundary and offset-only fragment records.
 - Preparation binds scopes, module identities, selected imports, visibility and supported scalar parameters before assembly. Selected-file discovery and dependency order, common `.use` forms, selected includes and numeric import identities have fresh focused native/Rust coverage.
 - Counted packed `.for` replay passes focused real-native comparison. Package-selected branch width, supported register masks, scalar roots, predicates, and supported instruction/data Hunk relocations are exercised by exact focused native/Rust comparisons.
@@ -393,7 +405,7 @@ These statements describe the implemented subset. They do not imply complete ass
 - Iterable `.for` and `.bfor` remain unsupported; labels inside an active unscoped loop reject. Counted packed-loop execution is supported and has focused native/Rust comparison. These limits do not imply that general loop execution is absent.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
-- Scalar `.use ... with (...)` support is limited to supported signed-32-bit expressions from earlier module-scope `=` constants and incoming parameters. Within this import-parameter evaluation model, `.const` values, compound values, loop-derived or other assembly-time-dependent conditions, and expressions outside the compact grammar remain unsupported. This limit does not describe general loop execution. Do not claim full module, parameter or Hunk-expression parity.
+- Scalar `.use ... with (...)` support is limited to supported signed-32-bit expressions from earlier module-scope `=` or scalar `.const` constants and incoming parameters. Within this import-parameter evaluation model, compound values, loop-derived or other assembly-time-dependent conditions, and expressions outside the compact grammar remain unsupported. This limit does not describe general loop execution. Do not claim full module, parameter or Hunk-expression parity.
 
 For instruction and address selection, required tuple/register classes and
 package predicates remain barriers: native may skip a higher-priority recipe

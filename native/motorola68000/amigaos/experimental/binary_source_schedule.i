@@ -14,6 +14,7 @@ captureFileBegin .block
 	lea GraphBlock, a1
 	move.l memory.Block.Pointer(a1), configuration.Frame.Graph(a0)
 	move.l #frontend.bindCapture, configuration.Frame.BindCapture(a0)
+	move.l #frontend.declarationRole, configuration.Frame.DeclarationRole(a0)
 	lea Front, a1
 	move.l frontend.Frame.Output(a1), configuration.Frame.Output(a0)
 	move.l frontend.Frame.Capacity(a1), configuration.Frame.Capacity(a0)

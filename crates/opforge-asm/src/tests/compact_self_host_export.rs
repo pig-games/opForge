@@ -304,7 +304,7 @@ fn export_bundle(failure_capture: bool) {
         "bootstrap_hunk_digest": opforge_self_host_package_digest(&bootstrap),
         "bootstrap_hunk_allocation_bytes": bootstrap_allocation.total(),
         "telemetry_file": instrumented.then_some("memory.bin"),
-        "runtime_package_magic": "BS18",
+        "runtime_package_magic": "BS19",
         "runtime_package_file": package_file,
         "runtime_package_bytes": package.len(),
         "runtime_package_digest": opforge_self_host_package_digest(&package),

@@ -5,8 +5,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use package::{
     decode_encoding_program, inline_head_policy_program, macro_descriptor_program,
-    macro_fragment_program, macro_spelling_program, packed_data_program, packed_file_program,
-    packed_macro_call_program, packed_metadata_program, validate_fixup_program, EncodingStep,
+    macro_fragment_program, macro_spelling_program, packed_constant_program, packed_data_program,
+    packed_file_program, packed_macro_call_program, packed_metadata_program,
+    validate_fixup_program, EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -15,7 +16,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 180;
+const HEADER: usize = 192;
 const ROW: usize = 32;
 const SCALAR_EXACT_IDENTITY: u16 = 1;
 
@@ -102,7 +103,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS18 block for one resolved package hierarchy.
+/// Prepare a self-contained BS19 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -256,6 +257,14 @@ pub fn prepare_package(
         )?;
         directive_ids.push(id);
     }
+    let constant_id = intern(&mut names, "const")?;
+    bind(
+        &mut dictionary,
+        "const".into(),
+        constant_id,
+        0,
+        DictionaryRoleFlags::CONTEXTUAL,
+    )?;
     let emit_id = intern(&mut names, "emit")?;
     bind(
         &mut dictionary,
@@ -366,7 +375,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS18");
+    out[..4].copy_from_slice(b"BS19");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -464,6 +473,10 @@ pub fn prepare_package(
     let head_policy = inline_head_policy_program();
     out.extend_from_slice(&head_policy);
     align(&mut out);
+    let constant_plan_offset = out.len();
+    let constant_plan = packed_constant_program(constant_id);
+    out.extend_from_slice(&constant_plan);
+    align(&mut out);
     let runtime_bytes = long(out.len())?;
     let dictionary_offset = out.len();
     for (spelling, binding) in &dictionary {
@@ -533,6 +546,8 @@ pub fn prepare_package(
         (4, total),
         (160, long(member_bindings_offset)?),
         (164, long(package.member_bindings.len())?),
+        (180, long(constant_plan_offset)?),
+        (184, long(constant_plan.len())?),
         (168, long(head_policy_offset)?),
         (172, long(head_policy.len())?),
         (8, long(dictionary_offset)?),
@@ -583,6 +598,7 @@ pub fn prepare_package(
     set_word(&mut out, 62, total_names);
     set_word(&mut out, 64, u16::from(properties.data_little_endian));
     set_word(&mut out, 96, 2);
+    set_word(&mut out, 188, package::PARSER_VM_MACRO_VERSION);
     set_word(
         &mut out,
         176,

@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS18 packages.
+; Shared structural boundary for embedded and external BS19 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -18,7 +18,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS18 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS19 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -151,6 +151,30 @@ programLoop
 	subq.l #1, d6
 	bra.w programLoop
 preparation
+	cmpi.w #2, package.Header.ConstantPlanVersion(a4)
+	bne.w bad
+	tst.w package.Header.ConstantReserved(a4)
+	bne.w bad
+	move.l package.Header.ConstantPlan(a4), d0
+	btst #0, d0
+	bne.w bad
+	move.l package.Header.ConstantPlanBytes(a4), d1
+	cmpi.l #5, d1
+	bne.w bad
+	bsr.w span
+	bne.w bad
+	cmpi.b #$98, (a3)
+	bne.w bad
+	cmpi.b #$83, 3(a3)
+	bne.w bad
+	tst.b 4(a3)
+	bne.w bad
+	moveq #0, d0
+	move.b 1(a3), d0
+	lsl.w #8, d0
+	move.b 2(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
 	cmpi.w #2, package.Header.HeadPolicyVersion(a4)
 	bne.w bad
 	tst.w package.Header.Reserved(a4)

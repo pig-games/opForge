@@ -255,6 +255,39 @@ fn compact_cli_caller_expression_parameter_fs_uae() {
     compact_cli(files, &["library"], &[], Some(&expected), false);
 }
 
+const DECLARATION_PARAMETER: &[(&str, &str)] = &[
+    (
+        "main.asm",
+        ".module main\n.cpu m6502\nBase .const 3\n.use dep (entry) with (FEATURE=(Base+2)*2-1)\n.word entry\n.endmodule\n.end\n",
+    ),
+    (
+        "library/dep.asm",
+        ".module dep\n.cpu m6502\n.org $1000\nDerived: .const FEATURE+1\n.pub\nentry .block\n.byte Derived\n.bend\n.endmodule\n.end\n",
+    ),
+];
+
+#[test]
+fn declaration_constant_import_parameter_oracle() {
+    assert_eq!(
+        oracle_with_roots(DECLARATION_PARAMETER, &["library"]).unwrap(),
+        [10, 0, 0x10]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; .const importer-site and incoming parameter evaluation"]
+fn compact_const_import_parameter_fs_uae() {
+    let expected = oracle_with_roots(DECLARATION_PARAMETER, &["library"]).unwrap();
+    assert_eq!(expected, [10, 0, 0x10]);
+    compact_cli(
+        DECLARATION_PARAMETER,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+    );
+}
+
 #[test]
 #[ignore = "requires configured FS-UAE; unrelated forward constants remain valid"]
 fn compact_cli_unrelated_forward_constant_with_import_fs_uae() {

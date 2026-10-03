@@ -27,6 +27,8 @@
 	.use experimental.amigaos.binary_macro_fragments as fragment_binding
 	.use tkvm.amigaos.control as control
 	.use prvm.amigaos.macro_runtime as macro_runtime
+	.use experimental.amigaos.binary_constant as constant
+	.use prvm.amigaos.packed_constant as declaration_parser
 	.use prvm.amigaos.runtime as parser_runtime
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.macro_spelling as spelling
@@ -491,6 +493,14 @@ bindCapture	.block
 	move.l capture.Record.Count(a4), d1
 	bsr.w writeTokens
 	bne.w written
+	move.l d1, Frame.Used(a5)
+	movea.l Frame.Output(a5), a0
+	movea.l Frame.Package(a5), a1
+	jsr constant.normalize
+	bne.w written
+	moveq #0, d1
+	move.b (a0), d1
+	addq.l #1, d1
 	move.l d1, Frame.Used(a5)
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.count
@@ -1611,6 +1621,10 @@ failed
 ; normal numeric selection, binding and expression path to original or expanded
 ; records. This routine does not tokenize source or advance the physical line.
 processRecord	.block
+	movea.l Frame.Output(a5), a0
+	movea.l Frame.Package(a5), a1
+	jsr constant.normalize
+	bne.w failed
 	clr.l Frame.GraphBefore(a5)
 	movea.l Frame.Graph(a5), a0
 	move.l a0, d0
@@ -2299,6 +2313,35 @@ done
 	tst.l d0
 	rts
 	.bend  ; validateMemberBindings
+
+	.pub
+; A0=session,A1=bounded directive leaf,D0=bytes. D0/CCR=1 declaration
+; head,0 other. Other registers preserved; dictionary lookup is read-only.
+; Configuration selection uses package identity only; PRVM still parses the
+; complete declaration after the selected capture record is materialized.
+declarationRole	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l a1, a0
+	movea.l Frame.Scratch(a2), a1
+	bsr.w lookupPackage
+	bne.w absent
+	tst.l d2
+	bne.w absent
+	movea.l Frame.Package(a2), a0
+	move.l package.Header.ConstantPlan(a0), d0
+	adda.l d0, a0
+	move.l d1, d0
+	jsr declaration_parser.selectIdentity
+	bra.w done
+absent
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; declarationRole
+	.priv
 
 ; Writer's optional member callback: A0=writer.Frame,A1=current token.
 ; D0=0 member/1 ordinary/2 invalid,D1=base ID,D2=field ID,D3=base qualifier;

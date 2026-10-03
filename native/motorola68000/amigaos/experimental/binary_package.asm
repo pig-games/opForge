@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533138; BS18
+MAGIC = $42533139; BS19
 TARGET_PRESERVE_WRAPPERS = 1
 DICTIONARY_REGISTER_OR_NAMED = 1
 DICTIONARY_MEMBER = 2
@@ -77,8 +77,12 @@ HeadPolicy	.long ?
 HeadPolicyBytes	.long ?
 HeadPolicyVersion	.word ?
 Reserved	.word ?
+ConstantPlan	.long ?
+ConstantPlanBytes	.long ?
+ConstantPlanVersion	.word ?
+ConstantReserved	.word ?
 	.endstruct
-HEADER_BYTES = Header.Reserved+2
+HEADER_BYTES = Header.ConstantReserved+2
 
 ; Contextual member forms are derived from canonical selector projections,
 ; including unsupported candidates. Field meanings remain package-owned.

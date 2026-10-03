@@ -1,6 +1,9 @@
 #[path = "tests/compact_mos_corpus.rs"]
 mod compact_mos_corpus;
 
+#[path = "tests/binary_source_inline_heads.rs"]
+mod binary_source_inline_heads;
+
 #[path = "tests/macro_descriptor_native.rs"]
 mod macro_descriptor_native;
 

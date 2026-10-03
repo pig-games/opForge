@@ -134,11 +134,11 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS17");
-        assert_eq!(long(16), 168);
+        assert_eq!(&bytes[..4], b"BS18");
+        assert_eq!(long(16), 180);
         assert_eq!(word(64), little_endian);
         assert_eq!(word(130), u16::from(cpu == "m6502"));
-        assert!(target_offset >= 168);
+        assert!(target_offset >= 180);
         assert_eq!(target_bytes, expected.len());
         assert_eq!(
             &bytes[target_offset..target_offset + target_bytes],
@@ -147,7 +147,18 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         assert_eq!(long(144), (target_offset + target_bytes + 1) & !1);
         assert_eq!(long(148), 16);
         assert_eq!(long(160), long(144) + long(148));
-        assert_eq!(runtime_bytes, long(160) + long(164) * 8);
+        assert_eq!(long(168), long(160) + long(164) * 8);
+        assert_eq!(long(172), 4);
+        assert_eq!(
+            word(176),
+            package::PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT
+        );
+        assert_eq!(word(178), 0);
+        assert_eq!(
+            &bytes[long(168)..long(168) + long(172)],
+            package::inline_head_policy_program()
+        );
+        assert_eq!(runtime_bytes, long(168) + long(172));
         assert_eq!(
             word(142),
             core.cpu_execution_properties(cpu)
@@ -195,11 +206,11 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS17");
+        assert_eq!(&bytes[..4], b"BS18");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((168..=bytes.len()).contains(&runtime_bytes));
+        assert!((180..=bytes.len()).contains(&runtime_bytes));
         assert_eq!(runtime_bytes % 2, 0);
         let fragments = long(&bytes, 116);
         let fragment_bytes = long(&bytes, 120);
@@ -220,7 +231,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 168);
+            assert!(offset >= 180);
             assert!(offset + count * width <= runtime_bytes);
         }
 

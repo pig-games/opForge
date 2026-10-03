@@ -89,7 +89,7 @@ fn dictionary_offsets(wire: &[u8]) -> BTreeMap<String, usize> {
 #[test]
 fn compact_mnemonic_dictionary_roles() {
     let wire = wire();
-    assert_eq!(&wire[..4], b"BS17");
+    assert_eq!(&wire[..4], b"BS18");
     let offsets = dictionary_offsets(&wire);
     for spelling in ["reset", "word", "m68020", "68020"] {
         assert_eq!(wire[offsets[spelling] + 5], 0, "{spelling} is contextual");
@@ -151,10 +151,20 @@ fn compact_mnemonic_unknown_dictionary_role_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; BS10 does not carry the BS12 lexical-role contract"]
+#[ignore = "requires configured FS-UAE; BS17 lacks the BS18 shared head-policy contract"]
 fn compact_mnemonic_stale_contract_fs_uae() {
     let mut wire = wire();
-    wire[..4].copy_from_slice(b"BS10");
+    wire[..4].copy_from_slice(b"BS17");
+    reject_wire(&wire);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; head-policy span must stay in retained package bytes"]
+fn compact_mnemonic_invalid_head_policy_fs_uae() {
+    let mut wire = wire();
+    let runtime_bytes = wire[72..76].to_vec();
+    // A four-byte policy beginning at RuntimeBytes lies outside the retained prefix.
+    wire[168..172].copy_from_slice(&runtime_bytes);
     reject_wire(&wire);
 }
 

@@ -27,6 +27,7 @@ MACRO_PLAN = 42
 BIND_ROLE_WIDTH = 3
 BIND_ROLE_PACKAGE_NAME = 4
 BIND_ROLE_MEMBER_NAME = 5
+BIND_ROLE_INLINE_HEAD = 6
 TOKEN_COMMA = 4
 
 Frame	.struct
@@ -47,7 +48,7 @@ NameDirective	.word ?  ; package ID whose first operand uses the binder; 0 disab
 WidthDirective	.word ?  ; package ID whose first comma-separated operand is a width; 0 disables
 PackedMap	.long ?  ; optional Count+1 u16 packed offsets
 DataWidthDirective	.word ?  ; second configured width operand directive
-Reserved	.word ?
+HeadToken	.word ?  ; physical TKVM index selected by the package PRVM policy
 MemberBinder	.long ?  ; optional contextual package-member binding callback
 	.endstruct
 FRAME_BYTES = Frame.MemberBinder+4
@@ -71,8 +72,9 @@ Length	.long ?
 ; NameDirective is a package-owned directive ID, or zero to disable numeric-name
 ; operands. Its first operand uses the same binder as identifier spellings.
 ; Result: [u8(total length-1), u8(flags), u16 source line], followed by
-; Binder input D2 is 1 for the leading name token, 2 for a dotted
-; statement head, BIND_ROLE_WIDTH for the first comma-separated WidthDirective operand,
+; Binder input D2 is 1 for the first name token, 2 for a dotted
+; statement head, BIND_ROLE_INLINE_HEAD for a head after a leading label,
+; BIND_ROLE_WIDTH for the first comma-separated WidthDirective operand,
 ; BIND_ROLE_PACKAGE_NAME for the first NameDirective operand (including quoted names),
 ; BIND_ROLE_MEMBER_NAME after a dot outside the statement head,
 ; otherwise 0. Width names retain package identity; value operands bind normally.
@@ -112,6 +114,10 @@ capacityReady
 	bcs.w invalid
 	movea.l d0, a4
 	move.l Frame.Count(a5), d7
+	moveq #0, d0
+	move.w Frame.HeadToken(a5), d0
+	cmp.l d7, d0
+	bhi.w invalid
 	cmpi.l #MAX_LINE-4, d7
 	bhi.w overflow
 	move.l d7, d0
@@ -269,32 +275,33 @@ sizeReady
 	beq.w bindFailed
 	movea.l d1, a6
 	movea.l Frame.Context(a5), a1
-	; Input D2 identifies a leading name, independently of package spelling.
-	move.l a3, d2
-	sub.l Frame.Output(a5), d2
-	cmpi.l #4, d2
-	seq d2
-	andi.l #1, d2
-	tst.l d2
-	bne.w bindName
-	cmpa.l Frame.Tokens(a5), a2
-	beq.w bindName
+	; The package PRVM selected a physical head token before binding.
+	; D7 is remaining source records, including a composed recipe's head.
+	move.l Frame.Count(a5), d2
+	sub.l d7, d2
+	beq.w firstName
+	cmp.w Frame.HeadToken(a5), d2
+	beq.w inlineHead
 	cmpi.w #7, Token.Kind-20(a2)
-	bne.w bindName
-	move.l a3, d2
-	sub.l Frame.Output(a5), d2
-	cmpi.l #5, d2
+	bne.w ordinaryRole
+	subq.l #1, d2
+	cmp.w Frame.HeadToken(a5), d2
 	beq.w directiveName
-	cmpi.l #9, d2
-	beq.w directiveName
-	cmpi.l #10, d2
-	bne.w memberName
+	bra.w memberName
+firstName
+	moveq #1, d2
+	bra.w bindName
+inlineHead
+	moveq #BIND_ROLE_INLINE_HEAD, d2
+	bra.w bindName
 directiveName
 	moveq #2, d2
 	bra.w bindName
 memberName
 	moveq #BIND_ROLE_MEMBER_NAME, d2
 	bra.w bindName
+ordinaryRole
+	moveq #0, d2
 bindName
 	tst.l d2
 	bne.w callBinder

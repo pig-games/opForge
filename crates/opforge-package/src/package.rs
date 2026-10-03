@@ -1619,6 +1619,18 @@ pub const PARSER_VM_PACKED_DATA_ENTRY: u16 = 6;
 pub const PARSER_VM_PACKED_METADATA_ENTRY: u16 = 7;
 pub const PARSER_VM_TARGET_BOOTSTRAP_ENTRY: u16 = 8;
 
+/// Shared PRVM v2 prefix policy for binding an inline statement head.
+/// The returned cursor is after a column-one label and optional adjacent colon.
+/// FinishLine deliberately accepts trailing tokens; the writer handles their roles.
+pub fn inline_head_policy_program() -> Vec<u8> {
+    vec![
+        ParserVmOpcodeV2::BeginStatement as u8,
+        ParserVmOpcodeV2::ParseOptionalLeadingLabel as u8,
+        ParserVmOpcodeV2::FinishLine as u8,
+        ParserVmOpcodeV2::End as u8,
+    ]
+}
+
 /// Shared initial-target grammar over unbound TKVM tokens. Names are policy
 /// operands, never CPU identifiers; consumers return decoded lexeme spans.
 pub fn target_bootstrap_program() -> Vec<u8> {

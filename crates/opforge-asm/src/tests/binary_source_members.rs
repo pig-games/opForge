@@ -56,8 +56,7 @@ fn compact_members_cpu_spellings_fs_uae() {
     }
 }
 
-// Ordinary instruction-head binding after an inline label is a separate known
-// gap. Keep the Rust oracle and desired native comparison visible for that slice.
+// Inline heads must preserve the same member identities and Hunk relocations.
 fn inline_source(colon: bool) -> String {
     source(true).replacen(
         " cmpi.w #7,Target.l",
@@ -82,7 +81,7 @@ fn compact_members_inline_label_rust_oracle() {
 }
 
 #[test]
-#[ignore = "requires FS-UAE; pending ordinary instruction-head binding after inline labels"]
+#[ignore = "requires FS-UAE; member operands after bare and colon inline labels"]
 fn compact_members_inline_label_fs_uae() {
     for colon in [false, true] {
         hunk_sections::native_hunk_source_with_allocation(&inline_source(colon), 16);

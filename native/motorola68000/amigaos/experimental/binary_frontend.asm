@@ -27,6 +27,7 @@
 	.use experimental.amigaos.binary_macro_fragments as fragment_binding
 	.use tkvm.amigaos.control as control
 	.use prvm.amigaos.macro_runtime as macro_runtime
+	.use prvm.amigaos.runtime as parser_runtime
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.macro_spelling as spelling
 	.pub
@@ -98,6 +99,17 @@ GENERATED_RECORD = GENERATED_REQUEST+fragment_tokenizer.FRAME_BYTES
 GENERATED_SPACE = GENERATED_RECORD+256
 GENERATED_BYTES = GENERATED_SPACE+2
 	.priv
+; The head policy inspects at most two logical TKVM records. A composed recipe
+; occupies one logical record, and the three boundary entries map PRVM's cursor
+; back to the physical token array used by the writer.
+HEAD_REQUEST = 0
+HEAD_RESULTS = HEAD_REQUEST+parser_abi.PRVM_REQUEST_FRAME_SIZE
+HEAD_DIAGNOSTIC = HEAD_RESULTS+3*parser_abi.PRVM_RESULT_RECORD_SIZE
+HEAD_RESUME = HEAD_DIAGNOSTIC+64
+HEAD_EXPR = HEAD_RESUME+512
+HEAD_TOKENS = HEAD_EXPR+parser_abi.PRVM_EXPR_REQUEST_RECORD_SIZE
+HEAD_MAP = HEAD_TOKENS+2*parser_abi.PRVM_TOKEN_RECORD_SIZE
+HEAD_WORK_BYTES = HEAD_MAP+8
 ; Package nodes hold capsule-relative entries and scratch-relative chain links.
 Node	.struct
 Entry	.long ?
@@ -732,6 +744,147 @@ done
 	rts
 	.bend  ; lowerTokens
 
+; A0=initialized writer Frame,A5=session. Run package PRVM over the unbound
+; logical prefix and pass its physical head index to the generic writer.
+; D0/CCR=status,D1=record bytes; preserves other registers.
+writeWithHeadPolicy	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	suba.w #HEAD_WORK_BYTES, sp
+	movea.l a0, a4
+	move.l writer.Frame.Count(a4), d7
+	cmpi.l #TOKEN_CAPACITY, d7
+	bhi.w headBad
+	move.l d7, d0
+	mulu.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, d0
+	cmp.l writer.Frame.TokenBytes(a4), d0
+	bhi.w headBad
+	movea.l writer.Frame.Tokens(a4), a1
+	lea HEAD_TOKENS(sp), a2
+	lea HEAD_MAP(sp), a3
+	clr.l d5
+	clr.l d6
+	clr.w (a3)+
+headView
+	cmpi.l #2, d5
+	bcc.w headViewReady
+	cmp.l d7, d6
+	bcc.w headViewReady
+	moveq #1, d4
+	move.w writer.Token.Reserved(a1), d0
+	andi.w #tokenizer.TOKEN_RECIPE_INVALID, d0
+	bne.w headBad
+	move.w writer.Token.Reserved(a1), d0
+	andi.w #tokenizer.TOKEN_RECIPE_VALID, d0
+	beq.w headCopy
+	move.l writer.Token.Offset(a1), d0
+	cmp.l writer.Frame.LexemeBytes(a4), d0
+	bhi.w headBad
+	move.l writer.Frame.LexemeBytes(a4), d1
+	sub.l d0, d1
+	move.l writer.Token.Length(a1), d2
+	cmp.l d1, d2
+	bhi.w headBad
+	sub.l d2, d1
+	cmpi.l #2, d1
+	blo.w headBad
+	add.l d2, d0
+	movea.l writer.Frame.Lexemes(a4), a0
+	moveq #0, d4
+	move.b 0(a0, d0.l), d4
+	beq.w headBad
+	move.l d7, d0
+	sub.l d6, d0
+	cmp.l d0, d4
+	bhi.w headBad
+headCopy
+	move.l writer.Token.Kind(a1), d0
+	move.l d0, writer.Token.Kind(a2)
+	move.l writer.Token.Start(a1), d0
+	move.l d0, writer.Token.Start(a2)
+	move.l writer.Token.End(a1), d0
+	move.l d0, writer.Token.End(a2)
+	move.l writer.Token.Offset(a1), d0
+	move.l d0, writer.Token.Offset(a2)
+	move.l writer.Token.Length(a1), d0
+	move.l d0, writer.Token.Length(a2)
+	move.l d4, d0
+	subq.l #1, d0
+	mulu.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, d0
+	move.l writer.Token.End(a1, d0.l), d1
+	move.l d1, writer.Token.End(a2)
+	add.l d4, d6
+	move.w d6, (a3)+
+	addq.l #1, d5
+	adda.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, a2
+	add.l #parser_abi.PRVM_TOKEN_RECORD_SIZE, d0
+	adda.l d0, a1
+	bra.w headView
+headViewReady
+	lea HEAD_REQUEST(sp), a0
+	movea.l a0, a1
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
+headClear
+	clr.l (a1)+
+	dbra d0, headClear
+	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
+	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #parser_abi.PRVM_ENTRY_KIND_OPASM_STATEMENT, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	moveq #0, d0
+	move.w writer.Frame.SourceLine(a4), d0
+	move.l d0, parser_abi.PRVM_FRAME_LINE_NUM(a0)
+	lea HEAD_TOKENS(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_TOKEN_PTR(a0)
+	move.l d5, parser_abi.PRVM_FRAME_TOKEN_COUNT(a0)
+	move.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, parser_abi.PRVM_FRAME_TOKEN_RECORD_SIZE(a0)
+	move.l writer.Frame.Lexemes(a4), d0
+	move.l d0, parser_abi.PRVM_FRAME_LEXEME_PTR(a0)
+	move.l writer.Frame.LexemeBytes(a4), d0
+	move.l d0, parser_abi.PRVM_FRAME_LEXEME_LEN(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.HeadPolicy(a1), d0
+	adda.l d0, a1
+	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.HeadPolicyBytes(a1), d0
+	move.l d0, parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	lea HEAD_RESULTS(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #3*parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	lea HEAD_DIAGNOSTIC(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_DIAGNOSTIC_PTR(a0)
+	move.l #64, parser_abi.PRVM_FRAME_DIAGNOSTIC_CAPACITY(a0)
+	lea HEAD_RESUME(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESUME_PTR(a0)
+	move.l #512, parser_abi.PRVM_FRAME_RESUME_CAPACITY(a0)
+	lea HEAD_EXPR(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_EXPR_REQUEST_PTR(a0)
+	move.l #parser_abi.PRVM_EXPR_REQUEST_RECORD_SIZE, parser_abi.PRVM_FRAME_EXPR_REQUEST_SIZE(a0)
+	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
+	move.l #16, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	jsr parser_runtime.prvmRun68000
+	tst.l d0
+	bne.w headBad
+	cmp.l d5, d2
+	bhi.w headBad
+	add.w d2, d2
+	lea HEAD_MAP(sp), a1
+	move.w 0(a1, d2.w), d2
+	move.w d2, writer.Frame.HeadToken(a4)
+	movea.l a4, a0
+	jsr writer.writeLine
+	bra.w headDone
+headBad
+	moveq #1, d0
+	moveq #0, d1
+headDone
+	adda.w #HEAD_WORK_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; writeWithHeadPolicy
+
 ; A5=session,A6=scratch,D1=count,D3=lexeme bytes. Write current lexical
 ; rows with current binder; no semantic processing or source parsing.
 ; D0/CCR=status,D1=writer record bytes; other registers preserved.
@@ -757,12 +910,12 @@ writeTokens	.block
 	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
 	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
-	clr.w writer.Frame.Reserved(a0)
+	clr.w writer.Frame.HeadToken(a0)
 	move.l #bindMember, writer.Frame.MemberBinder(a0)
 	lea PACKED_MAP(a6), a1
 	move.l a1, writer.Frame.PackedMap(a0)
 	.MEMORY_DETAIL_BEGIN #0
-	jsr writer.writeLine
+	bsr.w writeWithHeadPolicy
 	.MEMORY_DETAIL_END #0
 	bne.w failed
 	bra.w done
@@ -926,11 +1079,11 @@ fragmentLine	.block
 	move.w package.Header.CpuDirective(a3), writer.Frame.NameDirective(a0)
 	move.w package.Header.ResDirective(a3), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a3), writer.Frame.DataWidthDirective(a0)
-	clr.w writer.Frame.Reserved(a0)
+	clr.w writer.Frame.HeadToken(a0)
 	move.l #bindMember, writer.Frame.MemberBinder(a0)
 	lea PACKED_MAP(a6), a3
 	move.l a3, writer.Frame.PackedMap(a0)
-	jsr writer.writeLine
+	bsr.w writeWithHeadPolicy
 	bra.w done
 bad
 	moveq #1, d0
@@ -1345,10 +1498,10 @@ relexGeneratedCall	.block
 	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
 	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
-	clr.w writer.Frame.Reserved(a0)
+	clr.w writer.Frame.HeadToken(a0)
 	move.l #bindMember, writer.Frame.MemberBinder(a0)
 	clr.l writer.Frame.PackedMap(a0)
-	jsr writer.writeLine
+	bsr.w writeWithHeadPolicy
 	bne.w generatedRelexBad
 	move.l d1, d2
 	subq.l #4, d2
@@ -2224,6 +2377,8 @@ bind	.block
 	cmpi.l #writer.BIND_ROLE_PACKAGE_NAME, d2
 	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d2
+	beq.w packageName
+	cmpi.l #writer.BIND_ROLE_INLINE_HEAD, d2
 	beq.w packageName
 	; Column-one names are declarations even when their spelling also occurs
 	; in the package dictionary (for example, an `end` branch label).

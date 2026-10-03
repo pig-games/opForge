@@ -2,10 +2,12 @@
 
 Status: active. The recorded 61-file compact native implementation fully
 self-hosted with exact live Rust Hunk output on the physical A6000. The
-90-input BS17 embedded implementation completes a fresh FS-UAE self-host with
+90-input BS17 embedded implementation completed a fresh FS-UAE self-host with
 exact Rust Hunk equality in 950.411414625 seconds on the expanded 74 MiB
 investigation profile, using source `.cpu` selection and one module/include root
-each. The latest bundle awaits its physical A6000 run. It remains
+each. The BS17 bundle awaits its physical A6000 run. Current BS18 adds shared
+PRVM instruction-head classification before binding; its focused qualification
+is recorded below, separately from that BS17 full self-host proof. It remains
 experimental: that proof does not establish full language, CPU, CLI or output
 parity. Current measurements, reproduction commands and remaining frontend
 ownership gaps are maintained in the
@@ -62,7 +64,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS17 represents one CPU/dialect pipeline and carries its canonical
+Current BS18 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -215,7 +217,7 @@ mid-source package transitions remain P3. `--hunk` currently selects source-conf
 sections, rather than general Rust Hunk CLI synthesis. Informational commands
 need no input, package or output configuration.
 Native runtime-package/dialect/search-root options remain separate from canonical
-Rust `.opasm` loading; never mislabel BS17 as the canonical container.
+Rust `.opasm` loading; never mislabel the compact runtime package as the canonical container.
 
 Reuse isolated old CLI routines where coherent, without importing the old engine
 state or preprocessor. Qualify actual accepted/rejected invocations against live
@@ -288,7 +290,7 @@ CPU declarations. Both embedded m68020 and external m6502/default packages are
 exercised. No-space semicolon comments are covered. The embedded CLI is 444,256
 bytes; the prepared source-independent m6502 package is 11,406 bytes. Base-6502
 addressing breadth is the next qualification, not implied by these small cases.
-This initial checkpoint did not repeat the full self-host run. Current BS17
+This initial checkpoint did not repeat the full self-host run. The subsequent BS17
 self-host qualification is recorded below.
 
 Separate unchanged-workload release observations are 11.191842167 and
@@ -427,7 +429,7 @@ Do not present a selected retry as a new full-corpus qualification. Reports are
 saved incrementally outside the build cache and should be preserved before
 running `make clean` at the end of the batch.
 
-#### Observed gaps — 2026-10-03
+#### Observed gaps — 2026-10-03 baseline (`3889198f`)
 
 All 124 roots were attempted with the same 445,080-byte CLI
 (`fnv1a64:2c747d77ba201f03`). A separate six-case retry preserves the original
@@ -478,16 +480,94 @@ The main groups are:
   examples and two scope examples. Their native runs cannot establish positive
   artifact parity until the Rust baseline is repaired.
 
-The next native slice should repair shared instruction-head binding after bare
+The following BS18 checkpoint addresses shared instruction-head binding after bare
 and colon labels, with split-label controls and the affected MOS examples.
 Fix the volume-root include boundary separately. Restore the canonical Rust
 filename/reference baseline before claiming full example/reference parity;
 then choose narrowly defined package operand/state slices from the remaining
 first stops. These are audit findings and proposed work, not completed features.
 
-### Current BS17 full self-host and search roots
+### BS18 shared instruction heads — focused parity
 
-The complete current compact implementation assembles itself on native with
+Repair the shared binding defect identified by the corpus audit, without adding
+instruction or label grammar to native preparation. The package now supplies a
+four-opcode PRVM prefix policy using the existing optional-leading-label grammar.
+Before binding, the frontend presents the first two logical tokens; composed-name
+recipes preserve their physical extent and colon adjacency. The returned cursor
+selects the physical head token. The writer gives ordinary inline heads package
+identity, dotted heads shared directive/call identity, and value operands their
+existing contextual identities. Register-kind labels follow the Rust PRVM rule.
+Normal tokenization, macro fragments and generated-call relexing use this boundary.
+
+BS18 replaces BS17; regenerate embedded and external packages together. The
+180-byte header contains the retained four-byte policy and its PRVM version.
+There is no BS17 executor or compatibility fallback.
+
+Fresh release comparisons pass split, bare and adjacent-colon forms on both 6502
+and 68020, including mnemonic-spelling constants, a mnemonic-spelling label,
+forward labels, register operands and labelled shared data emission. Every output
+equals its live Rust oracle. The selected real-example retry now matches
+`6502_simple`, `6502_native_cli_smoke` and `65c02_simple` exactly as Hex.
+This is a four-example retry, not a repeat of the whole corpus audit.
+
+Seven further real-native regression tests pass: bare/colon member operands with
+exact Hunk relocations, composed macro labels, mnemonic-spelling labels/constants,
+register-spelling inline labels, stale BS17 rejection and rejection of a head-policy
+span outside the retained prefix. Host checks pass 275 binary-source tests, two
+inline-source oracle tests and the shared PRVM prefix grammar test. Native format,
+architecture, fresh-run proof, instrumentation and test-ownership checks pass.
+The host inventory validates all 16 BS18 packages; six still have no instruction
+candidates. Its target-flag check now recognizes the existing wrapper-preservation
+bit rather than treating that BS17 field as reserved. Inventory success is not
+instruction-set parity.
+
+`45gs02_rel_branch_overrides` now completes with exit zero but remains unqualified:
+native branch displacements are zero while Rust emits 1 through 9. Every branch
+targets the next instruction, so zero is consistent with the source. This suggests
+a separate Rust/package branch sizing or symbol-resolution defect; its cause has
+not been established. Do not refresh its reference or claim parity from completion.
+
+The isolated timing comparison uses the unchanged 10,687-byte mixed workload,
+2,434-byte exact Rust output, release image, embedded m68020 package and
+68020 / 10 MiB profile with unlimited emulator CPU speed. It measures
+host-observed fresh guest START/DONE, excluding guest startup and transfer.
+
+| Measurement | BS17 before (`3889198f`) | BS18 after | Change |
+| --- | ---: | ---: | ---: |
+| Mixed workload run 1 | 11.280576375 s | 11.281888375 s | +0.001312 s |
+| Mixed workload run 2 | 11.008896958 s | 11.593824875 s | +0.584927917 s |
+| Two-run median | 11.144736667 s | 11.437856625 s | +0.293119958 s (+2.6%) |
+| Embedded CLI image | 445,080 bytes | 449,940 bytes | +4,860 bytes |
+| Linked reserved allocation | 462,776 bytes | 467,648 bytes | +4,872 bytes |
+| m68020 package | 321,458 bytes | 321,474 bytes | +16 bytes |
+| m6502 package | 13,640 bytes | 13,656 bytes | +16 bytes |
+
+The observed time increase is small and close to the variation between these two
+observations; two runs do not establish a precise regression estimate. This is a
+parity repair, not a speed improvement. The adapter adds 864 bytes of bounded
+stack workspace plus 52 bytes of saved registers while active; this is a static
+frame calculation, not a measured peak-RAM claim. It makes no new heap allocation.
+Before/after image identities are `fnv1a64:2c747d77ba201f03` and
+`fnv1a64:6a0848d5a8eda1d5`; both reports retain matching source/oracle digests.
+
+Reproduce the paired native controls and timing cases with the usual configured
+FS-UAE environment and an absolute report path:
+
+```sh
+OPFORGE_INLINE_HEAD_REPORT=/tmp/opforge-inline-heads.json \
+  OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m \
+  cargo test -p asm --lib compact_inline_heads_fs_uae -- --ignored --nocapture --test-threads=1
+```
+
+Current reports are `/tmp/opforge-inline-before.json`,
+`/tmp/opforge-inline-after.json` and `/tmp/opforge-mos-inline-after.json`.
+The complete BS18 self-host has not been repeated. The BS17 proof below remains
+the full self-host baseline. Volume-root include handling is the next proposed
+shared parity slice; the other corpus gaps remain open.
+
+### BS17 full self-host baseline and search roots
+
+The complete BS17 compact implementation assembles itself on native with
 fresh completion, exit zero and exact equality against its live Rust oracle:
 all 445,080 bytes of the embedded Hunk, including the unchanged 321,458-byte
 m68020 package. The 90 inputs total 1,291,116 bytes; their fingerprint is
@@ -1386,8 +1466,8 @@ After preparation, both modes still copy the execution prefix and discard lexica
 storage. The whole embedded payload remains part of the executable image, so
 tracked allocation savings alone do not establish lower total RAM use.
 
-BS16 uses a 168-byte header. The canonical target offset remains at 124, its
-length at 128 and the reserved word at 130; the preparation-only file plan offset
+BS18 uses a 180-byte header. The canonical target offset remains at 124, its
+length at 128 and structural target flags at 130; the preparation-only file plan offset
 and byte length are at 132 and 136. Built-in `.emit` identity is at 140, CPU
 word bytes at 142, and the retained data-plan offset/length at 144/148. Fields
 are big-endian and block-relative. The preparation-only metadata plan is at
@@ -1395,7 +1475,9 @@ are big-endian and block-relative. The preparation-only metadata plan is at
 row holds mnemonic ID, qualifier, operand index, field ID and a zero reserved
 word. Rows derive from canonical package projections, including unsupported
 candidate plans, and remain in the runtime prefix. Generic preparation does not
-contain CPU suffix spellings. Regenerate superseded packages; only BS16 is supported.
+contain CPU suffix spellings. The retained shared instruction-head policy offset
+and byte length are at 168/172, its PRVM version is at 176 and a zero reserved
+word is at 178. Regenerate superseded packages; only BS18 is supported.
 Target identity lies inside `RuntimeBytes`, survives preparation, uses safe
 filename characters and fits in 26 bytes (plus `.bin`, within the classic
 30-byte component limit). The current slice loads assets only from active,

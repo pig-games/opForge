@@ -1388,6 +1388,49 @@ mod tests {
     }
 
     #[test]
+    fn inline_head_policy_uses_existing_optional_label_grammar() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let policy = package::inline_head_policy_program();
+        for (tokens, expected_cursor) in [
+            (vec![ident("lda", 2, 5)], 0),
+            (vec![ident("label", 1, 6), ident("lda", 7, 10)], 1),
+            (vec![ident("label", 1, 6), colon(6), ident("lda", 8, 11)], 2),
+            (vec![ident("label", 1, 6), colon(7), ident("lda", 9, 12)], 1),
+            (
+                vec![
+                    Token {
+                        kind: TokenKind::Register("d0".into()),
+                        span: span(1, 3),
+                    },
+                    ident("moveq", 4, 9),
+                ],
+                1,
+            ),
+        ] {
+            let mut state = ParserVmV2State {
+                tokens,
+                end_span: span(12, 12),
+                end_token_text: None,
+                parser_contract: &contract,
+                program: &policy,
+                exec_ctx: exec_context(&model, None),
+                pc: 0,
+                cursor: 0,
+                steps: 0,
+                value_stack: Vec::new(),
+                checkpoints: Vec::new(),
+                operand_boundaries: Vec::new(),
+                builder: ParserVmV2AstBuilder::default(),
+                parsed_line: None,
+                advance_mnemonic_suffix_plus: false,
+            };
+            state.run().expect("shared prefix policy should finish");
+            assert_eq!(state.cursor, expected_cursor);
+        }
+    }
+
+    #[test]
     fn parser_vm_v2_parity_rejects_wrong_entry_boundary() {
         let model = model_for_tests();
         let contract = parser_contract_for_tests();

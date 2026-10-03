@@ -54,7 +54,7 @@ fn assemble(root: &Path, build: &NativePackageBuild, instrumented: bool) -> Vec<
 }
 
 // HUNK_HEADER reservations measure linked static segments, not allocator overhead.
-fn linked_static_bytes(image: &[u8]) -> u64 {
+pub(crate) fn linked_static_bytes(image: &[u8]) -> u64 {
     let word = |offset: usize| u32::from_be_bytes(image[offset..offset + 4].try_into().unwrap());
     assert!(image.len() >= 20);
     assert_eq!(word(0), 0x3f3);
@@ -89,6 +89,27 @@ fn memory(bytes: &[u8]) -> Value {
         "total_allocated_bytes": words[3], "total_freed_bytes": words[4],
         "runtime_prefix_bytes": words[13], "packed_source_bytes": words[14],
         "source_bytes_read": words[15], "eclock_hz": words[28], "preparation_stages": stages})
+}
+
+pub(crate) fn workload() -> String {
+    // Arithmetic, conditional branches, modules/imports and data share one input
+    // and live Rust oracle across every storage mode and baseline executable.
+    let mut source = String::from(".module constants\n.cpu m68020\n.org $1000\n.pub\nmask = $ff\nstep = 3\n.endmodule\n.module main\n.use constants as c\n");
+    for index in 0..64 {
+        source.push_str(&format!("block{index} .block\n move.l #({index}+1)*c.step,d0\n andi.l #c.mask,d0\n cmpi.l #127,d0\n bne.w done\n eori.l #$55,d0\ndone\n .word {index},({index}+2)*c.step\n .byte {index},c.mask\n .bend\n"));
+    }
+    source.push_str(" rts\n");
+    // Keep each packed record within the existing native byte-sized line limit.
+    // Every block is still referenced and the emitted pointer bytes are unchanged.
+    for start in (0..64).step_by(8) {
+        let names = (start..start + 8)
+            .map(|index| format!("block{index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        source.push_str(&format!(" .long {names}\n"));
+    }
+    source.push_str(".endmodule\n.end\n");
+    source
 }
 
 #[test]
@@ -142,23 +163,7 @@ fn native_package_loading_performance() {
         .unwrap_or_else(|| external.output_dir.join("packages").join(&target_name));
     let package = fs::read(package_path).unwrap();
     let named_path = format!("build/packages/{target_name}");
-    // Arithmetic, conditional branches, modules/imports and data share one input
-    // and live Rust oracle across every storage mode and baseline executable.
-    let mut source = String::from(".module constants\n.cpu m68020\n.org $1000\n.pub\nmask = $ff\nstep = 3\n.endmodule\n.module main\n.use constants as c\n");
-    for index in 0..64 {
-        source.push_str(&format!("block{index} .block\n move.l #({index}+1)*c.step,d0\n andi.l #c.mask,d0\n cmpi.l #127,d0\n bne.w done\n eori.l #$55,d0\ndone\n .word {index},({index}+2)*c.step\n .byte {index},c.mask\n .bend\n"));
-    }
-    source.push_str(" rts\n");
-    // Keep each packed record within the existing native byte-sized line limit.
-    // Every block is still referenced and the emitted pointer bytes are unchanged.
-    for start in (0..64).step_by(8) {
-        let names = (start..start + 8)
-            .map(|index| format!("block{index}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        source.push_str(&format!(" .long {names}\n"));
-    }
-    source.push_str(".endmodule\n.end\n");
+    let source = workload();
     let input = scratch.join("source.asm");
     let output = scratch.join("oracle.bin");
     fs::write(&input, &source).unwrap();
@@ -195,7 +200,8 @@ fn native_package_loading_performance() {
     };
     if let Some((_, package)) = &baseline {
         assert!(
-            [b"BS16".as_slice(), b"BS17".as_slice()].contains(&package.get(..4).unwrap_or(&[])),
+            [b"BS16".as_slice(), b"BS17".as_slice(), b"BS18".as_slice()]
+                .contains(&package.get(..4).unwrap_or(&[])),
             "baseline must carry its own known frozen native contract"
         );
     }

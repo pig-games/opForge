@@ -15,7 +15,7 @@ memory and the shared quoted-scalar repair, the release retry reaches final
 binding but still exits 20 before assembly, without output. The
 [repair status](native-runtime-reset.md#r2-dependency-first-preparation--focused-proof-and-full-run-recovery)
 records the measured preparation cost and the expanded-memory diagnostic.
-The current BS16 member transport repair follows a further final-binding failure
+The BS16 member transport repair followed a further final-binding failure
 on `SelectedOutputKind.l`. Focused native Hunk comparisons now pass, including
 qualified address bases, macro bodies and numeric/quoted CPU directives. The fresh
 86-input embedded release self-host still exits 20 without output after
@@ -30,8 +30,10 @@ seconds on 68020 / 74 MiB with unlimited emulator CPU speed. The preceding faile
 runs establish localization, not comparative full-run performance.
 The earlier 61-file
 implementation also completed on the physical A6000. The 2 MiB product target
-remains unqualified. Residual frontend ownership gaps and the deferred
-ordinary-label instruction binding issue are listed below.
+remains unqualified. Current BS18 moves ordinary-label instruction-head selection
+before binding using shared PRVM policy. Its focused proof is separate from the
+recorded BS17 full self-host baseline in the current plan; no BS18 full self-host
+completion is claimed here. Residual frontend ownership gaps are listed below.
 
 ## Recorded P2 self-host proof
 
@@ -90,7 +92,7 @@ Require fresh case-bound START/DONE challenges, guest exit zero and exact comple
 ### Physical A6000 run
 
 The host-only ignored test `export_compact_self_host_bundle` builds a fresh release
-bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS17
+bootstrap and Rust oracle, gathers the actual dependencies and generates the current BS18
 package. Its preparation-only file plan has focused native qualification recorded
 in the [current plan](native-runtime-reset.md#bs13-binary-inclusion-qualification);
 host export alone does not prove self-hosting. Set `OPFORGE_COMPACT_EXPORT_DIR` to a new absolute directory when invoking
@@ -137,7 +139,7 @@ configuration. The subsequent BS13 embedded-output bundle is
 `/tmp/opforge-a6000-bs13-embedded-selfhost-v2`, with a 395,676-byte embedded
 Rust oracle and full emulator self-host qualification. It has no recorded new
 hardware timing. Old BS12/BS13 exports require their matching historical runner;
-current BS17 source and package bytes must be exported afresh.
+current BS18 source and package bytes must be exported afresh.
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates a fresh remote directory and local result tree.
@@ -287,22 +289,28 @@ unfinished boundary below.
 The compact capsule embeds TKVM and macro descriptor programs; it does not
 embed an EXVM expression-parser program. Existing canonical expression
 bytecode and shared ExprVM execution do not supply that missing parser program.
-The macro-only initial PRVM plan currently runs after binding, which is why it
-cannot yet classify an ordinary statement head before the value binder acts.
+The macro-only initial PRVM plan runs after binding. A separate shared four-byte
+PRVM prefix policy now runs before binding: BeginStatement,
+ParseOptionalLeadingLabel, FinishLine, End. The VM owns column-one label and
+adjacent-colon decisions. The native adapter presents two logical tokens and
+maps the returned cursor to a physical token index, including composed-name
+recipes; the writer uses that index to distinguish package heads from values.
 
-BS17 is the current compact package format; the producer writes `BS17` and the
+BS18 is the current compact package format; the producer writes `BS18` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Target flags at 130 request structural
 wrapper preservation from canonical projections. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
-or CPU-specific native parsing. Its header is 168 bytes, with
+or CPU-specific native parsing. Its header is 180 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its
 shared data-plan offset/length at 144/148 remains in the runtime prefix. The
 preparation-only inline metadata program is at 152/156. Contextual member-binding
 offset/count at 160/164 select eight-byte rows derived from canonical selector
-projections. Complete lexical instruction operands are normalized before binding
+projections. Head-policy offset/length are at 168/172, PRVM version at 176 and
+a zero reserved word at 178. The policy stays inside the retained RuntimeBytes
+prefix. Complete lexical instruction operands are normalized before binding
 using those package-supplied field identities; shared directives and exact
 register spellings retain their identities. MemberShape predicates and TargetMember
 fixups operate on numeric wrappers without source text. Shared PRVM entry 7
@@ -362,6 +370,7 @@ anonymous macro scopes remain a distinct Rust/native selection edge.
 
 ## Implemented behavior retained
 
+- BS18 selects ordinary and dotted heads after bare/adjacent-colon labels through shared PRVM policy before binding. Focused split/bare/colon controls pass on 6502 and 68020; member Hunk, composed macro label and register-spelling label regressions also pass. The [current checkpoint](native-runtime-reset.md#bs18-shared-instruction-heads--focused-parity) records the selected corpus results and isolated time/size cost. This does not establish complete family or language parity.
 - TKVM-selected number normalization, composed-name recipes, and ordinary macro/segment string fragment recipes are implemented. Generated-call argument fragments are re-tokenized under VM control. Macro descriptor services use the compact PRVM boundary and offset-only fragment records.
 - Preparation binds scopes, module identities, selected imports, visibility and supported scalar parameters before assembly. Selected-file discovery and dependency order, common `.use` forms, selected includes and numeric import identities have fresh focused native/Rust coverage.
 - Counted packed `.for` replay passes focused real-native comparison. Package-selected branch width, supported register masks, scalar roots, predicates, and supported instruction/data Hunk relocations are exercised by exact focused native/Rust comparisons.
@@ -371,7 +380,7 @@ anonymous macro scopes remain a distinct Rust/native selection edge.
 The compact path has no general capability claim from those examples. Each
 instruction recipe, expression form, import form and layout behavior needs
 focused fresh Rust/native proof at its owning boundary. The full self-host result
-at the top qualifies the current source tree on its recorded profile; it does
+at the top qualifies its recorded source tree on its recorded profile; it does
 not turn unsupported language forms into supported ones.
 
 These statements describe the implemented subset. They do not imply complete assembler-language parity.
@@ -380,7 +389,6 @@ These statements describe the implemented subset. They do not imply complete ass
 
 - `binary_templates.rewriteCallText` still consumes decoded-string bytes in the residual body-token fallback. Replace this last caller with explicit VM-selected recipes before claiming complete string-boundary migration; keep decoded-string provenance for diagnostics and generated spelling.
 - `binary_expression.compile` still implements precedence and associativity in native code before invoking shared ExprVM. Move covered expression compilation behind package/EXVM ownership. Ordinary Rust expression handling also still uses core token spelling instead of portable numeric metadata. The expression-range and operand-wrapper choices in preparation need a PRVM/package audit as this boundary moves.
-- A separate ordinary-label plus instruction binding gap remains: `entry nop` and `entry: nop` fail in instruction encoding because the instruction head is bound as a value operand. Defer repair to a package-owned PRVM head-classification plan before binding. Existing PRVM parsing exposes head spans, but its current macro-only initial plan runs after binding; integrate producer and consumer contracts. Do not add native grammar heuristics based on packed offsets.
 - Iterable `.for` and `.bfor` remain unsupported; labels inside an active unscoped loop reject. Counted packed-loop execution is supported and has focused native/Rust comparison. These limits do not imply that general loop execution is absent.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.

@@ -4,9 +4,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use package::{
-    decode_encoding_program, macro_descriptor_program, macro_fragment_program,
-    macro_spelling_program, packed_data_program, packed_file_program, packed_macro_call_program,
-    packed_metadata_program, validate_fixup_program, EncodingStep,
+    decode_encoding_program, inline_head_policy_program, macro_descriptor_program,
+    macro_fragment_program, macro_spelling_program, packed_data_program, packed_file_program,
+    packed_macro_call_program, packed_metadata_program, validate_fixup_program, EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -15,7 +15,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 168;
+const HEADER: usize = 180;
 const ROW: usize = 32;
 const SCALAR_EXACT_IDENTITY: u16 = 1;
 
@@ -102,7 +102,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS17 block for one resolved package hierarchy.
+/// Prepare a self-contained BS18 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -366,7 +366,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS17");
+    out[..4].copy_from_slice(b"BS18");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -460,6 +460,10 @@ pub fn prepare_package(
         push_word(&mut out, member.field);
         push_word(&mut out, 0);
     }
+    let head_policy_offset = out.len();
+    let head_policy = inline_head_policy_program();
+    out.extend_from_slice(&head_policy);
+    align(&mut out);
     let runtime_bytes = long(out.len())?;
     let dictionary_offset = out.len();
     for (spelling, binding) in &dictionary {
@@ -529,6 +533,8 @@ pub fn prepare_package(
         (4, total),
         (160, long(member_bindings_offset)?),
         (164, long(package.member_bindings.len())?),
+        (168, long(head_policy_offset)?),
+        (172, long(head_policy.len())?),
         (8, long(dictionary_offset)?),
         (12, long(dictionary.len())?),
         (16, long(rows_offset)?),
@@ -577,6 +583,11 @@ pub fn prepare_package(
     set_word(&mut out, 62, total_names);
     set_word(&mut out, 64, u16::from(properties.data_little_endian));
     set_word(&mut out, 96, 2);
+    set_word(
+        &mut out,
+        176,
+        package::PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+    );
     set_word(&mut out, 128, word(target.len())?);
     Ok(out)
 }

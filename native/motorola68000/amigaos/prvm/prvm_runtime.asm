@@ -530,7 +530,10 @@ opcodeParseOptionalLabel
 	bsr.w tokenPtrByIndex
 	bne returnWithLocals
 	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, 0(a1)
+	beq optionalLabelName
+	cmpi.w #abi.PRVM_TOKEN_KIND_REGISTER, 0(a1)
 	bne programLoop
+optionalLabelName
 	cmpi.l #1, 4(a1)
 	bne programLoop
 	move.l 12(a1), d0

@@ -7898,7 +7898,7 @@ mod native_package_loader;
 
 #[cfg(test)]
 #[path = "tests/native_package_loading_performance.rs"]
-mod native_package_loading_performance;
+pub(crate) mod native_package_loading_performance;
 
 #[cfg(test)]
 #[path = "tests/compact_cli_input.rs"]

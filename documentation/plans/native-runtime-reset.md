@@ -735,16 +735,14 @@ immutable consistency checks and readonly ownership remain enforced. Record
 bodies and compiled expressions stay unchanged. Macro-private scope records
 bypass declaration normalization.
 
-This checkpoint covers scalar mutations in single-source-sweep layouts: flat
-output, one concrete section, and two concrete sections/regions (modes 0/1/3).
-Native Hunk and mapped layouts traverse sections in filtered sweeps (modes
-2/4/5), so general cross-section mutable state requires a source-order traversal
-repair. The approved boundary is explicit rejection of active `.var`/`.set`
-records in those layouts before assembly sweeps start. Fresh Hunk and
-one-map/two-map native controls now reach that guard and identify the offending declaration. Readonly mapped output is
-restored by the preparation repair below. Inactive declarations and
-unused macro templates do not trigger the Hunk guard. The source-order traversal
-repair is deferred to a separate structural slice. Lists, ranges and struct-valued mutable symbols remain outside
+Scalar mutations now execute in source order for flat output, one/two concrete
+sections/regions (modes 0/1/3), and Hunk output (mode 5). Hunk serialization order
+is independent of statement execution; its focused migration is recorded below.
+Mapped modes 2/4 still traverse concrete/logical sections in filtered sweeps and
+explicitly reject active `.var`/`.set` records before those sweeps start. Inactive
+declarations and unused macro templates do not trigger the guard. Mapped
+source-order traversal remains a separate structural slice. Lists, ranges and
+struct-valued mutable symbols remain outside
 the scalar slice. Imported mutable updates are unqualified; this is **not general
 mutable-variable parity or an integration-ready completion of the slice**.
 
@@ -773,7 +771,7 @@ with the configured FS-UAE environment and
 The optional `OPFORGE_DECLARATION_CASES` selects exact comma-separated case names;
 selected retries are not a complete declaration qualification. The host section
 oracle separately specifies CODE `[2]` / DATA `[1,3]` under reordered Hunk section
-output; native explicitly rejects that mutable case until traversal is repaired.
+output; native now matches that mutable case after the Hunk traversal repair below.
 
 The isolated release comparison uses the identical 10,687-byte mixed source
 (`fnv1a64:eea73a7ec2cfca28`), command and live 2,434-byte Rust output
@@ -811,7 +809,7 @@ The selected audit therefore fails after both cases, retaining its report at
 with `OPFORGE_MOS_CORPUS_CASES=6502_first_run_artifact_contract.asm,65816_wide_const_var.asm`,
 an absolute `OPFORGE_MOS_CORPUS_REPORT` and `compact_mos_corpus_fs_uae`.
 
-#### Explicit layout guard — limited follow-up checkpoint
+#### Mapped layout guard and retained guard baseline
 
 The guard inspects bounded packed record headers once before reordered assembly
 sweeps. It uses numeric layout modes and the shared mutable declaration marker;
@@ -820,10 +818,11 @@ The existing frame's reserved word carries a dedicated failure reason, without
 changing frame size or allocating another table. Diagnostics preserve source
 provenance, and a rejected run creates no output artifact.
 
-Fresh native proof passes nine controls: seven exact live Rust artifact
+The guard checkpoint (`79838c60`) qualified nine controls: seven exact live Rust artifact
 comparisons (flat mutable output, one/two concrete layouts, readonly Hunk,
 marker-valued Hunk data, unused macro, and inactive declaration), plus two
-completed Hunk diagnostic rejections (direct and macro-expanded mutation).
+Hunk diagnostic rejections (direct and macro-expanded mutation). The Hunk
+traversal repair below replaces those rejections with exact-output comparisons.
 The readonly comparisons use actual nonempty Hunk files. Four affected Rust
 oracle tests, workflow checks, native formatting, proof-contract, test ownership and
 instrumentation checks pass; a bounded Sol review found no actionable production
@@ -858,10 +857,122 @@ packages, live Rust output and 68020 / 10 MiB release profile described above.
 
 This small observed time increase includes run variation; two observations do
 not establish a precise overhead estimate. The flat benchmark takes the guard's
-constant-time allow path and does **not** measure the full record scan needed by
-Hunk or mapped layouts. No new heap storage is added; total peak RAM remains
+constant-time allow path and did **not** measure the full record scan used by
+Hunk/mapped layouts at that guard checkpoint. No new heap storage is added; total peak RAM remains
 unqualified. The separate before/after reports are
 `/tmp/opforge-mutable-timing.json` and `/tmp/opforge-mutable-layout-timing.json`.
+
+### BS20 source-order Hunk traversal
+
+Hunk assembly now executes packed records once per pass in source order. Each
+section retains its local PC and initialized-byte cursor; reopening resumes them.
+Pass one measures all declared sections, then plans selected payload offsets in
+Hunk output order. Pass two routes bytes into those bounded ranges and requires
+matching final PC/payload extents. BSS consumes reservation space without an
+initialized payload. Outside-section PC remains separate and starts at zero.
+Unselected sections still execute mutations and definitions, matching Rust, but
+contribute neither output bytes nor relocation/emission callbacks.
+
+Assembly owns record traversal and repetition; section state owns switching and
+bounded layout. No per-record symbol snapshot table or speculative execution pass
+is added. Mapped modes 2/4 retain the mutation guard because their concrete/logical
+placement planning is separate from this Hunk migration.
+
+Readonly snapshots with mutable ancestry carry runtime state 4 only when the
+resolved definition expression proves absolute through the existing numeric
+relocation classifier. They refresh value and proof at their declaration each
+pass. Unresolved placeholders do not establish that proof. State 2 still denotes
+precomputed absolutes and alone skips statement evaluation. Address-derived
+snapshots remain conservatively unsupported rather than losing relocation
+identity; their scalar value alone cannot prove absolute provenance.
+
+Fresh native qualification passes all six exact live Rust Hunk controls: forward
+readonly snapshots, outside-section PC, reopened/reordered sections, unselected
+sections, combined scalar snapshots/relocations/BSS, and nested/zero loops.
+Existing layout controls pass all nine cases, including macro-expanded mutations;
+both mapped-mutation controls retain their dedicated rejection and no output.
+Existing Hunk section, PC-dispatch and forward-immediate controls pass. An obsolete
+negative test expected `payload+1` to reject: fresh comparisons at `b4382b27` and
+this checkpoint both match Rust. It is now a positive addend test, with unsupported
+`payload*2` as the fresh rejecting control. An address-derived snapshot also
+rejects without output. Host checks pass 293 packed-source tests, 22 focused Hunk
+oracles and 18 progress-decoder tests, plus formatting, workflow/boundary,
+instrumentation, test-ownership and native-proof guards. Independent read-only
+review found no actionable issues. The ownership/no-growth guard also passes
+following comment-only repair of 12 pre-existing missing module-owner annotations;
+a final fresh snapshot/relocation/BSS control matches Rust and retains the exact
+release image digest (`/tmp/opforge-hunk-traversal-owner-final.json`).
+
+Remaining reference gaps are explicit: Rust rejects direct Hunk `.long $` and
+instruction immediates using mutable-derived readonly snapshots. Rust currently
+serializes an address-derived snapshot such as `.const snapshot payload+n` as a
+scalar without relocation; native rejects that alias rather than discarding its
+address provenance. These are separate repair decisions, not completed parity.
+Mapped mutations, compound mutable values, complete corpus qualification and a
+fresh BS20 full self-host remain outside this checkpoint.
+
+Reproduce the new positive controls with the configured FS-UAE environment and
+`cargo test -p asm --lib compact_hunk_traversal_fs_uae -- --ignored --nocapture
+--test-threads=1`. Set `OPFORGE_HUNK_TRAVERSAL_REPORT` to capture case identities,
+image/package digests and exact-match outcomes. Set
+`OPFORGE_DECLARATION_TELEMETRY=1` and
+`OPFORGE_DECLARATION_CASES=snapshots-relocations-bss` for the instrumented control;
+phase 300 reports actual source sweeps and record visits independently of guest
+completion and artifact proof. The fresh instrumented combined
+snapshot/relocation/BSS control also completes with exact live Rust output: phase 300 records two scheduled source sweeps and 54
+record visits. Its separate image is 459,752 bytes (`a6433b21a77efb0f`); report
+`/tmp/opforge-hunk-traversal-telemetry-final.json` retains the capture and
+`/tmp/opforge-hunk-traversal-progress-final.txt` is the decoder input. This capture
+is diagnostic proof, excluded from release timing. Release builds omit counter
+storage, updates and reporting through the existing macro gates.
+
+Reports for this checkpoint are `/tmp/opforge-hunk-traversal-qualified.json`,
+`/tmp/opforge-hunk-traversal-regressions.json` and
+`/tmp/opforge-hunk-addend-comparison.json`. The regression report retains the
+obsolete negative-test failure; the addend report records its baseline/current
+positive comparison and the corrected negative control.
+
+Isolated release comparison against the preceding `b4382b27` checkpoint uses the
+same 68020 / 10 MiB FS-UAE profile, unlimited emulator speed and host START-to-DONE
+time, excluding emulator startup. Each workload has two fresh native runs and
+exact output comparisons; telemetry is disabled. Both inputs, commands, live Rust
+oracles and package bytes/digests are identical before/after.
+
+| Measurement | Before (`b4382b27`) | This checkpoint | Change |
+|---|---:|---:|---:|
+| Readonly Hunk run 1 | 19.016693 s | 18.970511 s | — |
+| Readonly Hunk run 2 | 18.986377 s | 19.006571 s | — |
+| Readonly Hunk median | 19.001535 s | 18.988541 s | -0.0130 s (-0.068%) |
+| Flat mixed run 1 | 11.645048 s | 11.668905 s | — |
+| Flat mixed run 2 | 11.636356 s | 11.423127 s | — |
+| Flat mixed median | 11.640702 s | 11.546016 s | -0.0947 s (-0.81%) |
+| Embedded release image | 452,564 bytes | 452,776 bytes | +212 bytes |
+| Linked Hunk reservations | 470,236 bytes | 470,524 bytes | +288 bytes |
+| Bounded section scratch | prior layout | prior layout +70 bytes | +70 bytes |
+
+The readonly Hunk input reopens two sections across 128 fragments and uses mixed
+instructions/data: 18,391 source bytes, 1,844 output bytes. Its source digest is
+`1d62eb38a482ac9a` and output digest `0a02e9fc68860da3`. Flat mixed input is
+10,687 bytes, output 2,434 bytes; digests remain `eea73a7ec2cfca28` and
+`5149ec034f77e53c`. Image digests are `0b8861cfd55707dc` before and
+`3c8722a0693935bb` after. Both use unchanged 321,532-byte m68020 and 13,714-byte
+m6502 packages (`d313ed96a210a3c7` / `b4cff8b25e13282a`). These two-run observations
+show no material runtime change, not a demonstrated speedup. Linked reservations
+are static executable allocation, not peak working memory; no new dynamic snapshot
+table is allocated. The section scratch increase is already included in linked
+reservations and must not be added again.
+
+Reproduce with `compact_hunk_traversal_measurement_fs_uae` and
+`OPFORGE_HUNK_TRAVERSAL_REPORT`; for flat controls use
+`compact_inline_heads_fs_uae`,
+`OPFORGE_INLINE_HEAD_CASES=mixed-release/0,mixed-release/1` and
+`OPFORGE_INLINE_HEAD_REPORT`. Reports are
+`/tmp/opforge-hunk-traversal-baseline.json`,
+`/tmp/opforge-hunk-traversal-timing.json`,
+`/tmp/opforge-map-repair-timing.json` and
+`/tmp/opforge-hunk-traversal-flat-timing.json`. This is focused functionality and
+relative emulator measurement, not an A6000 timing, 2 MiB qualification, complete
+6502/corpus parity or a fresh full self-host proof.
 
 ### BS20 mapped preparation — configuration transfer repair
 
@@ -885,8 +996,9 @@ Inactive imports neither discover missing modules nor consume map capacity.
 Overlap and both late-map controls complete with the expected native rejection.
 The real ABI and configured dependency-chain preparation regressions also pass.
 The one/two-map mutable controls now reach their dedicated layout diagnostic;
-flat mutable and readonly Hunk exact comparisons plus Hunk mutation rejection
-remain passing. The source-order mutable traversal repair remains deferred.
+flat mutable and readonly Hunk exact comparisons remain passing. The subsequent
+Hunk traversal repair also supports Hunk mutations; mapped mutable traversal
+remains deferred.
 
 The packed-source host suite passes 285 tests. Workflow, native formatting
 (81 files), Rust formatting, native proof contract, test ownership and

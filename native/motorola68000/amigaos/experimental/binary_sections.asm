@@ -1,4 +1,4 @@
-; Bounded contiguous placed sections over numeric records.
+; Bounded placed and source-order Hunk layouts over numeric records.
 ; This bounded runtime consumes numeric controls only; no source names or paths.
 ; @opforge-owner: experimental.amigaos.binary_sections
 	.module experimental.amigaos.binary_sections
@@ -22,8 +22,10 @@ OrderCount	.word ?
 OutputSeen	.word ?
 HunkInvalid	.word ?
 HunkCurrent	.word ?
+HunkSelected	.word ?
+OutsidePc	.long ?
 	.endstruct
-SLOTS = State.HunkCurrent+2
+SLOTS = State.OutsidePc+4
 FIRST = SLOTS
 SECOND = SLOTS+SLOT_BYTES
 FIRST_BASE = FIRST+Slot.Base
@@ -38,8 +40,10 @@ Seen	.word ?
 Start	.long ?
 Used	.long ?
 Size	.long ?
+Limit	.long ?
+PcLimit	.long ?
 	.endstruct
-HUNK_SLOT_BYTES = HunkSlot.Size+4
+HUNK_SLOT_BYTES = HunkSlot.PcLimit+4
 HUNK_SLOTS = SLOTS+2*SLOT_BYTES
 ORDER = HUNK_SLOTS+8*HUNK_SLOT_BYTES
 SCRATCH_BYTES = ORDER+8
@@ -351,14 +355,18 @@ slotAddress	.block
 	rts
 	.bend  ; slotAddress
 
-; A0=State. Reset the active control for the next assembly pass.
+; A0=State,A1=Context. Reset traversal cursors; pass-two measured bounds persist.
+; D0/CCR=0; other registers preserved.
 beginPass	.block
-	movem.l d1/a1, -(sp)
+	movem.l d1-d2/a1, -(sp)
+	move.w pkg.Context.Pass(a1), d2
 	clr.w State.Active(a0)
 	clr.w State.ActiveKind(a0)
 	clr.w State.Started(a0)
 	clr.w State.Placed(a0)
 	clr.w State.ActiveSlot(a0)
+	clr.w State.HunkSelected(a0)
+	clr.l State.OutsidePc(a0)
 	clr.l FIRST_AFTER(a0)
 	clr.l SECOND_AFTER(a0)
 	moveq #0, d0
@@ -366,19 +374,24 @@ beginPass	.block
 	moveq #7, d1
 clearHunkPass
 	; Keep the section kind and declaration bit discovered by scan.
-	clr.l HunkSlot.Start(a1)
 	clr.l HunkSlot.Used(a1)
 	clr.l HunkSlot.Size(a1)
+	cmpi.w #1, d2
+	bne.w nextHunkPass
+	clr.l HunkSlot.Start(a1)
+	clr.l HunkSlot.Limit(a1)
+	clr.l HunkSlot.PcLimit(a1)
+nextHunkPass
 	adda.w #HUNK_SLOT_BYTES, a1
 	dbra d1, clearHunkPass
 	moveq #0, d0
-	movem.l (sp)+, d1/a1
+	movem.l (sp)+, d1-d2/a1
 	rts
 	.bend  ; beginPass
 
 ; A0=State,A1=Context,A2=packed control record. D0/CCR=status.
-; One section is emitted contiguously. The caller schedules concrete records
-; before imported logical records for an explicit map.
+; Mapped output still schedules concrete before logical records. Hunk controls
+; switch section-local cursors during a single source-order traversal.
 control	.block
 	movem.l d1-d3/a0-a2/a5-a6, -(sp)
 	cmpi.b #21, 4(a2)
@@ -538,8 +551,8 @@ hunkControl
 hunkOpen
 	tst.w State.Active(a0)
 	bne.w bad
-	cmp.w State.HunkCurrent(a0), d3
-	bne.w bad
+	move.w d3, State.HunkCurrent(a0)
+	move.l pkg.Context.Pc(a1), State.OutsidePc(a0)
 	movea.l a0, a6
 	move.l d3, d0
 	bsr.w slotAddress
@@ -548,11 +561,29 @@ hunkOpen
 	cmp.w HunkSlot.Kind(a5), d1
 	bne.w bad
 	move.w d1, State.ActiveKind(a0)
+	move.l HunkSlot.Size(a5), pkg.Context.Pc(a1)
+	clr.w State.HunkSelected(a0)
+	moveq #0, d1
+	move.w State.OrderCount(a0), d2
+	lea ORDER(a0), a2
+hunkSelection
+	cmp.b (a2)+, d3
+	bne.w nextSelection
+	move.w #1, State.HunkSelected(a0)
+nextSelection
+	subq.w #1, d2
+	bne.w hunkSelection
 	move.w #1, State.Active(a0)
 	bra.w ok
 hunkClose
 	tst.w State.Active(a0)
 	beq.w bad
+	movea.l a0, a6
+	moveq #0, d0
+	move.w State.HunkCurrent(a0), d0
+	bsr.w slotAddress
+	move.l pkg.Context.Pc(a1), HunkSlot.Size(a5)
+	move.l State.OutsidePc(a0), pkg.Context.Pc(a1)
 	clr.w State.Active(a0)
 	clr.w State.ActiveKind(a0)
 	bra.w ok
@@ -567,53 +598,112 @@ done
 	rts
 	.bend  ; control
 
-; The Hunk path has section-local PCs and no placement/region directives.
-; beginHunkSlot and endHunkSlot bracket one ordered sweep of the packed records.
-beginHunkSlot	.block
-	movem.l d1/a0-a1/a5-a6, -(sp)
+	.priv
+; Seal pass-one extents and output-order payload offsets; pass two must match.
+; A0=State,A1=Context. D0/CCR=status,D1=selected initialized bytes.
+; Other registers preserved. No symbols or source records are visited.
+finishHunk	.block
+	movem.l d2-d5/a2-a6, -(sp)
 	movea.l a0, a6
-	cmpi.w #5, State.Mode(a6)
-	bne.w hunkBad
-	cmpi.l #8, d0
-	bhs.w hunkBad
-	move.w d0, State.HunkCurrent(a6)
+	lea HUNK_SLOTS(a6), a5
+	moveq #7, d5
+bounds
+	cmpi.w #1, pkg.Context.Pass(a1)
+	bne.w compareBounds
+	move.l HunkSlot.Used(a5), HunkSlot.Limit(a5)
+	move.l HunkSlot.Size(a5), HunkSlot.PcLimit(a5)
+	bra.w nextBound
+compareBounds
+	move.l HunkSlot.Used(a5), d2
+	cmp.l HunkSlot.Limit(a5), d2
+	bne.w bad
+	move.l HunkSlot.Size(a5), d2
+	cmp.l HunkSlot.PcLimit(a5), d2
+	bne.w bad
+nextBound
+	adda.w #HUNK_SLOT_BYTES, a5
+	dbra d5, bounds
+	moveq #0, d1
+	moveq #0, d4
+	move.w State.OrderCount(a6), d4
+	lea ORDER(a6), a4
+ordered
+	moveq #0, d0
+	move.b (a4)+, d0
 	bsr.w slotAddress
-	tst.w HunkSlot.Seen(a5)
-	beq.w hunkBad
+	cmpi.w #1, pkg.Context.Pass(a1)
+	bne.w offsetReady
 	move.l d1, HunkSlot.Start(a5)
-	move.l HunkSlot.Size(a5), pkg.Context.Pc(a1)
+offsetReady
+	add.l HunkSlot.Limit(a5), d1
+	bcs.w bad
+	subq.w #1, d4
+	bne.w ordered
 	moveq #0, d0
-	bra.w hunkDone
-hunkBad
+	bra.w done
+bad
 	moveq #1, d0
-hunkDone
-	movem.l (sp)+, d1/a0-a1/a5-a6
+done
+	movem.l (sp)+, d2-d5/a2-a6
 	tst.l d0
 	rts
-	.bend  ; beginHunkSlot
-
-endHunkSlot	.block
-	movem.l d1/a0-a1/a5-a6, -(sp)
+	.bend  ; finishHunk
+; A0=State,A1=Context,D1=next PC. D0/CCR=status; others preserved.
+; Pass two cannot exceed the measured local extent, including BSS.
+checkHunkPc	.block
+	movem.l d1/a5-a6, -(sp)
+	cmpi.w #1, pkg.Context.Pass(a1)
+	beq.w good
 	movea.l a0, a6
-	tst.w State.Active(a6)
-	bne.w hunkBad
-	cmp.w State.HunkCurrent(a6), d0
-	bne.w hunkBad
-	bsr.w slotAddress
-	move.l pkg.Context.Pc(a1), HunkSlot.Size(a5)
-	move.l d1, d0
-	sub.l HunkSlot.Start(a5), d0
-	bcs.w hunkBad
-	move.l d0, HunkSlot.Used(a5)
 	moveq #0, d0
-	bra.w hunkDone
-hunkBad
+	move.w State.HunkCurrent(a6), d0
+	bsr.w slotAddress
+	cmp.l HunkSlot.PcLimit(a5), d1
+	bhi.w bad
+good
+	moveq #0, d0
+	bra.w done
+bad
 	moveq #1, d0
-hunkDone
-	movem.l (sp)+, d1/a0-a1/a5-a6
+done
+	movem.l (sp)+, d1/a5-a6
 	tst.l d0
 	rts
-	.bend  ; endHunkSlot
+	.bend  ; checkHunkPc
+	.pub
+
+; Route one Hunk emission. A0=State,A1=Context,D0=count.
+; D0/CCR=status,D1=payload offset,D2=selected. Others preserved.
+; Advances only the slot's initialized cursor; PC remains emission-owned.
+routeHunk	.block
+	movem.l d3/a5-a6, -(sp)
+	movea.l a0, a6
+	move.l d0, d3
+	moveq #0, d0
+	move.w State.HunkCurrent(a6), d0
+	bsr.w slotAddress
+	move.l HunkSlot.Used(a5), d1
+	add.l d1, d3
+	bcs.w bad
+	cmpi.w #1, pkg.Context.Pass(a1)
+	beq.w bounded
+	cmp.l HunkSlot.Limit(a5), d3
+	bhi.w bad
+bounded
+	move.l d3, HunkSlot.Used(a5)
+	add.l HunkSlot.Start(a5), d1
+	bcs.w bad
+	moveq #0, d2
+	move.w State.HunkSelected(a6), d2
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d3/a5-a6
+	tst.l d0
+	rts
+	.bend  ; routeHunk
 
 ; A0=State,A1=Context,D0=reservation bytes. BSS has no initialized payload.
 reserve	.block
@@ -630,6 +720,8 @@ reserve	.block
 	movea.l pkg.Context.Package(a1), a2
 	tst.l d0
 	beq.w checked
+	bsr.w checkHunkPc
+	bne.w bad
 	move.l d1, d2
 	subq.l #1, d2
 	cmp.l pkg.Header.MaxAddress(a2), d2
@@ -689,6 +781,10 @@ hunkEmit
 	move.l pkg.Context.Pc(a1), d1
 	add.l d0, d1
 	bcs.w bad
+	movem.l d0, -(sp)
+	bsr.w checkHunkPc
+	movem.l (sp)+, d0
+	bne.w bad
 	tst.l d0
 	beq.w ok
 	subq.l #1, d1
@@ -710,14 +806,15 @@ done
 	rts
 	.bend  ; checkEmit
 
-; A0=State. The sectioned subset requires a completed placement each pass.
+; A0=State,A1=Context. D0/CCR=status; D1=Hunk payload total when applicable.
+; The placed subset requires completed placement; Hunk seals measured bounds.
 finishPass	.block
 	tst.w State.Mode(a0)
 	beq.w ok
 	tst.w State.Active(a0)
 	bne.w bad
 	cmpi.w #5, State.Mode(a0)
-	beq.w ok
+	beq.w finishHunk
 	move.w State.Placed(a0), d0
 	cmpi.w #3, State.Mode(a0)
 	beq.w twoPlaces

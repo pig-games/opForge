@@ -74,6 +74,7 @@ PROGRESS_ASSEMBLY_SECTIONS = 28
 PROGRESS_ASSEMBLY_SELECTION = 29
 PROGRESS_PACKAGE = 30
 PROGRESS_RECORD_OUTPUT = 31
+PROGRESS_ASSEMBLY_WORK = 300
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -1496,6 +1497,7 @@ captureSpans
 	move.l #appendEmission, assembly.Frame.Emitted(a0)
 assemble
 	jsr assembly.assemble
+	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_WORK, assembly.TraversalPasses, assembly.TraversalRecords, #0
 	rts
 bad
 	moveq #1, d0
@@ -1942,7 +1944,7 @@ FailureFile	.byte "00000000"
 	.byte ", line "
 FailureLine	.byte "00000000", "]", 10
 FailureMessageEnd
-MutableLayoutFailure	.byte "mutable declarations are not supported in Hunk or mapped outputs until source-order traversal is implemented", 10
+MutableLayoutFailure	.byte "mutable declarations are not supported in mapped outputs until source-order traversal is implemented", 10
 MutableLayoutFailureEnd
 FailurePrepStep	.byte "preparation step: "
 FailurePrepStepValue	.byte "00000000", 10

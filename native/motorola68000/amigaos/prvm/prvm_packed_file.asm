@@ -1,5 +1,6 @@
 ; Package-selected file operand spans over immutable compact records.
 ; No source spelling or host file operation enters this service.
+; @opforge-owner: prvm.amigaos.packed_file
 	.module prvm.amigaos.packed_file
 	.cpu 68020
 	.use prvm.amigaos.abi as abi

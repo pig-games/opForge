@@ -1,5 +1,6 @@
 ; Shared scalar declaration spans over immutable compact records.
 ; No source spelling or expression evaluation enters this service.
+; @opforge-owner: prvm.amigaos.packed_declaration
 	.module prvm.amigaos.packed_declaration
 	.cpu 68020
 	.use prvm.amigaos.abi as abi

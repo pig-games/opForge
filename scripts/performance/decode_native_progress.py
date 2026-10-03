@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import struct
 import sys
 from pathlib import Path
@@ -761,9 +762,33 @@ def decode_platform_io(
     }
 
 
+def decode_assembly_work(text: str) -> dict[str, object] | None:
+    """Decode phase 300 from one compact CLI capture; completion is independent."""
+    event = re.compile(
+        r"^progress p=0000012[cC] f=([0-9a-fA-F]{8}) "
+        r"l=([0-9a-fA-F]{8}) r=([0-9a-fA-F]{8}) m=([0-9a-fA-F]{8})$"
+    )
+    result = None
+    for line in text.splitlines():
+        if not line.strip().lower().startswith("progress p=0000012c"):
+            continue
+        match = event.fullmatch(line.strip())
+        if match is None:
+            raise ProgressDecodeError("malformed assembly-work progress line")
+        if result is not None:
+            raise ProgressDecodeError("duplicate assembly-work progress line")
+        traversals, visits, reserved, _ = (int(word, 16) for word in match.groups())
+        if reserved != 0:
+            raise ProgressDecodeError("assembly-work reserved field must be zero")
+        result = {"scheduled_source_sweeps": traversals,
+                  "selected_record_visits": visits, "localization_only": True}
+    return result
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("record", type=Path)
+    parser.add_argument("record", type=Path, nargs="?")
+    parser.add_argument("--assembly-progress-text", type=Path)
     parser.add_argument("--work-record", type=Path)
     parser.add_argument("--symbol-expression-record", type=Path)
     parser.add_argument("--runtime-record", type=Path)
@@ -771,9 +796,21 @@ def main() -> int:
     parser.add_argument("--require-complete", action="store_true")
     args = parser.parse_args()
     try:
-        report = decode_progress(
-            args.record.read_bytes(), require_complete=args.require_complete
-        )
+        if args.record is None:
+            if args.assembly_progress_text is None:
+                parser.error("provide a binary record or --assembly-progress-text")
+            if args.require_complete or any((args.work_record, args.symbol_expression_record,
+                                           args.runtime_record, args.platform_record)):
+                parser.error("binary completion/companion checks require a binary record")
+            report = {"localization_only": True}
+        else:
+            report = decode_progress(
+                args.record.read_bytes(), require_complete=args.require_complete
+            )
+        if args.assembly_progress_text is not None:
+            report["assembly_work"] = decode_assembly_work(
+                args.assembly_progress_text.read_text()
+            )
         if args.work_record is not None:
             report["work_multiplication"] = decode_work_multiplication(
                 args.work_record.read_bytes(),

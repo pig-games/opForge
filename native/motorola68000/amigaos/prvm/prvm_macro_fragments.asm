@@ -1,4 +1,5 @@
 ; Package-selected raw generated-call recipes; no binding or rescanning inserts.
+; @opforge-owner: prvm.amigaos.macro_fragments
 	.module prvm.amigaos.macro_fragments
 	.cpu 68020
 	.use prvm.amigaos.abi as abi

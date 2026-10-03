@@ -60,6 +60,16 @@ HunkInstructionRefCount
 	.res word, 1
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
+	.pub
+TraversalPasses
+	.res long, 1
+TraversalRecords
+	.res long, 1
+	.priv
+.endif
+.endif
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
 	.pub
 FailureStage
@@ -91,6 +101,8 @@ assemble	.block
 	move.l a0, Active
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #0
 	.ASSEMBLY_POSITION_CLEAR Position
+	.MEMORY_COUNTER_CLEAR TraversalPasses
+	.MEMORY_COUNTER_CLEAR TraversalRecords
 	clr.l Frame.Used(a5)
 	clr.w Frame.Failure(a5)
 	move.l #-1, Frame.RecordOffset(a5)
@@ -174,11 +186,12 @@ pass
 	clr.l pkg.Context.Pc(a6)
 	clr.l Frame.Used(a5)
 	lea SectionState, a0
+	movea.l a6, a1
 	jsr sections.beginPass
 	moveq #0, d5  ; ordinary single sweep
 	lea SectionState, a0
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
-	beq.w hunkPass
+	beq.w sweep
 	cmpi.w #2, sections.State.Mode(a0)
 	beq.w oneMap
 	cmpi.w #4, sections.State.Mode(a0)
@@ -188,24 +201,10 @@ pass
 oneMap
 	moveq #1, d5  ; explicit map: concrete sweep, then remaining records
 	bra.w sweep
-hunkPass
-	moveq #8, d5  ; one source sweep for each selected Hunk section
 sweep
-	moveq #0, d4  ; section selection state for this sweep
-	cmpi.w #8, d5
-	blo.w sweepRecords
-	move.l d5, d0
-	subq.w #8, d0
-	lea SectionState, a0
-	lea sections.ORDER(a0), a1
-	moveq #0, d1
-	move.b 0(a1, d0.w), d1
-	move.l d1, d0
-	move.l Frame.Used(a5), d1
-	movea.l a6, a1
-	jsr sections.beginHunkSlot
-	bne.w fail
+	moveq #0, d4  ; section selection state for mapped sweeps
 sweepRecords
+	.MEMORY_COUNTER_INC TraversalPasses
 	.ASSEMBLY_POSITION Position, d7, d5, SectionState, sections.State.Mode, sections.State.HunkCurrent, sections.State.OrderCount
 	lea RepeatState, a0
 	jsr repetition.begin
@@ -231,8 +230,6 @@ line
 	sub.l a4, d0
 	cmp.l d0, d6
 	bhi.w fail
-	cmpi.w #8, d5
-	bhs.w hunkSelect
 	cmpi.w #3, d5
 	bhs.w pairedSelect
 	; An explicit map needs concrete bytes and labels before the imported
@@ -347,53 +344,8 @@ pairedStatement
 	tst.w d4
 	bne.w omitted
 	bra.w selected
-hunkSelect
-	.ASSEMBLY_FAILURE_STAGE FailureStage, #2
-	btst #4, 1(a4)
-	beq.w hunkStatement
-	moveq #0, d0
-	move.b 4(a4), d0
-	cmpi.w #3, d0
-	beq.w hunkClose
-	moveq #0, d1
-	cmpi.w #2, d0
-	beq.w hunkOpen
-	moveq #1, d1
-	cmpi.w #7, d0
-	beq.w hunkOpen
-	cmpi.w #12, d0
-	bne.w omitted
-	move.b 6(a4), d1
-hunkOpen
-	tst.w d4
-	bne.w fail
-	moveq #2, d4
-	move.l d5, d0
-	subq.w #8, d0
-	lea SectionState, a0
-	lea sections.ORDER(a0), a1
-	moveq #0, d2
-	move.b 0(a1, d0.w), d2
-	cmp.w d2, d1
-	bne.w omitted
-	moveq #1, d4
-	bra.w selected
-hunkClose
-	tst.w d4
-	beq.w fail
-	move.w d4, d0
-	moveq #0, d4
-	cmpi.w #1, d0
-	beq.w selected
-	bra.w omitted
-hunkStatement
-	cmpi.w #1, d4
-	beq.w selected
-	tst.w d4
-	bne.w omitted
-	cmpi.w #8, d5
-	bne.w omitted
 selected
+	.MEMORY_COUNTER_INC TraversalRecords
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #3
 	move.w 2(a4), Frame.Line(a5)
 	moveq #0, d0
@@ -439,6 +391,7 @@ layoutControl
 	movea.l a4, a2
 	jsr sections.control
 	bne.w fail
+	.ASSEMBLY_POSITION Position, d7, d5, SectionState, sections.State.Mode, sections.State.HunkCurrent, sections.State.OrderCount
 omitted
 	adda.l d6, a4
 	bra.w line
@@ -448,8 +401,6 @@ passDone
 	jsr repetition.end
 	bne.w fail
 	; Continue the same assembly pass at the current PC/output offset.
-	cmpi.w #8, d5
-	bhs.w hunkPassDone
 	cmpi.w #3, d5
 	bhs.w pairedPassDone
 	cmpi.w #1, d5
@@ -465,34 +416,19 @@ pairedPassDone
 	beq.w sweepDone
 	addq.w #1, d5
 	bra.w sweep
-hunkPassDone
-	.ASSEMBLY_FAILURE_STAGE FailureStage, #8
-	tst.w d4
-	bne.w fail
-	move.l d5, d0
-	subq.w #8, d0
-	lea SectionState, a0
-	lea sections.ORDER(a0), a1
-	moveq #0, d1
-	move.b 0(a1, d0.w), d1
-	move.l d1, d0
-	move.l Frame.Used(a5), d1
-	movea.l a6, a1
-	jsr sections.endHunkSlot
-	bne.w fail
-	addq.w #1, d5
-	move.l d5, d0
-	subq.w #8, d0
-	lea SectionState, a0
-	cmp.w sections.State.OrderCount(a0), d0
-	blo.w sweep
 sweepDone
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #9
 	tst.w d4
 	bne.w fail
 	lea SectionState, a0
+	movea.l a6, a1
 	jsr sections.finishPass
 	bne.w fail
+	lea SectionState, a0
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
+	bne.w finishedLayout
+	move.l d1, Frame.Used(a5)
+finishedLayout
 	cmpi.w #1, d7
 	bne.w nextPass
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #18
@@ -651,9 +587,11 @@ constant
 	movea.l pkg.Context.Defined(a2), a4
 	cmpi.b #dependencies.ABSOLUTE, 0(a4, d4.l)
 	beq.w ok  ; dependency preparation validated and evaluated this definition
+	move.l a0, -(sp)
 	movea.l a2, a6
 	jsr expr.evaluate
 	movea.l a6, a2
+	movea.l (sp)+, a3  ; retain definition expression for runtime scalar proof
 	tst.l d0
 	bne.w bad
 	tst.l d2
@@ -666,6 +604,23 @@ constant
 constantResolved
 	cmpa.l a1, a0
 	bne.w bad
+	moveq #1, d7
+	btst #6, d6
+	beq.w constantProofReady
+	tst.l d2
+	bne.w constantProofReady  ; forward placeholders cannot prove absolute
+	lea SectionState, a4
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a4)
+	bne.w constantProofReady
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l a3, a0
+	jsr hunkrefs.affineTarget
+	cmpi.l #hunkrefs.STATUS_CLEAR, d0
+	bne.w constantProofDone
+	moveq #mutable.SNAPSHOT_ABSOLUTE, d7
+constantProofDone
+	movem.l (sp)+, d1-d2/a0-a1
+constantProofReady
 	movea.l pkg.Context.Defined(a2), a4
 	movea.l pkg.Context.Values(a2), a5
 	cmpi.w #1, pkg.Context.Pass(a2)
@@ -674,8 +629,7 @@ constantResolved
 	bne.w bad
 	move.l d1, exprvm.Value.Low(a5, d5.l)
 	move.l pkg.Context.High(a2), exprvm.Value.High(a5, d5.l)
-	move.b #1, 0(a4, d4.l)
-	bra.w ok
+	bra.w snapshotState
 existingConstant
 	btst #6, d6
 	bne.w refreshSnapshot
@@ -688,6 +642,12 @@ existingConstant
 refreshSnapshot
 	move.l d1, exprvm.Value.Low(a5, d5.l)
 	move.l pkg.Context.High(a2), exprvm.Value.High(a5, d5.l)
+snapshotState
+	move.b d7, 0(a4, d4.l)
+	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, d7
+	bne.w ok
+	movea.l pkg.Context.SectionIds(a2), a5
+	clr.b 0(a5, d4.l)
 	bra.w ok
 directive
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #16
@@ -985,6 +945,8 @@ markInstructionRelocs	.block
 	bne.w good
 	cmpi.w #2, pkg.Context.Pass(a2)
 	bne.w good
+	tst.w sections.State.HunkSelected(a4)
+	beq.w good
 	jsr encoding.outputFixupCount
 	move.l d0, d6
 	cmpi.w #hunkrefs.STATUS_SECTION, HunkInstructionRefs
@@ -1074,6 +1036,9 @@ markDataReloc	.block
 	lea SectionState, a4
 	cmpi.w #5, sections.State.Mode(a4)
 	bne.w good
+	; Unselected sections evaluate data normally but have no Hunk payload.
+	tst.w sections.State.HunkSelected(a4)
+	beq.w good
 	movea.l a5, a0
 	jsr hunkrefs.affineTarget
 	cmpi.l #hunkrefs.STATUS_CLEAR, d0
@@ -1150,12 +1115,32 @@ emit	.block
 	move.l d4, d0
 	movea.l Active, a3
 	move.l Frame.Used(a3), d1
-	move.l d1, d2
+	lea SectionState, a1
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a1)
+	bne.w ordinaryOffset
+	movem.l d0/a0-a1, -(sp)
+	movea.l a1, a0
+	movea.l a2, a1
+	jsr sections.routeHunk
+	movem.l (sp)+, d0/a0-a1
+	bne.w fail
+	tst.w d2
+	beq.w unselectedEmit
+	bra.w routedOffset
+ordinaryOffset
+	move.l Frame.Used(a3), d1
+routedOffset
+	move.l Frame.Used(a3), d2
 	add.l d0, d2
 	bcs.w fail
 	cmpi.w #1, pkg.Context.Pass(a2)
 	beq.w capacityReady
 	cmp.l Frame.Capacity(a3), d2
+	bhi.w fail
+	move.l d1, d4
+	add.l d0, d4
+	bcs.w fail
+	cmp.l Frame.Capacity(a3), d4
 	bhi.w fail
 capacityReady
 	move.l pkg.Context.Pc(a2), d3
@@ -1208,6 +1193,13 @@ zeroCopy
 	clr.b (a1)+
 	subq.l #1, d0
 	bne.w zeroCopy
+	bra.w ok
+unselectedEmit
+	; Omitted payload still executes with a section-local PC and symbol state.
+	move.l pkg.Context.Pc(a2), d3
+	add.l d0, d3
+	bcs.w fail
+	move.l d3, pkg.Context.Pc(a2)
 	bra.w ok
 fail
 	moveq #1, d0

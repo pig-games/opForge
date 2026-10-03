@@ -241,7 +241,7 @@ pub(crate) fn assemble_cli(root: &Path, build: &NativePackageBuild) -> Vec<u8> {
     assemble_cli_with_defines(root, build, &[])
 }
 
-pub(super) fn assemble_cli_with_defines(
+pub(crate) fn assemble_cli_with_defines(
     root: &Path,
     build: &NativePackageBuild,
     defines: &[&str],

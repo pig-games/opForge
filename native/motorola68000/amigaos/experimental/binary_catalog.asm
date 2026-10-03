@@ -1,4 +1,5 @@
 ; Bounded, data-driven catalog lookup. Offsets are relative to catalog base.
+; @opforge-owner: experimental.amigaos.binary_catalog
 	.module experimental.amigaos.binary_catalog
 	.cpu 68020
 	.pub

@@ -1,4 +1,5 @@
 ; Bind VM-selected captured call fragments without rescanning marker grammar.
+; @opforge-owner: experimental.amigaos.binary_macro_fragments
 	.module experimental.amigaos.binary_macro_fragments
 	.cpu 68020
 	.use prvm.amigaos.abi as abi

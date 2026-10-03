@@ -1,5 +1,6 @@
 ; Package-selected initial macro descriptor service. Events retain source/token
 ; offsets; publication occurs only after complete program validation.
+; @opforge-owner: prvm.amigaos.macro_descriptors
 	.module prvm.amigaos.macro_descriptors
 	.cpu 68020
 	.use prvm.amigaos.abi as abi

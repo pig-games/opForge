@@ -1,5 +1,6 @@
 ; VM-owned logical line materialization. Fragment pointers are transient request
 ; views; persisted spelling recipes must retain offsets into owned storage.
+; @opforge-owner: tkvm.amigaos.fragments
 	.module tkvm.amigaos.fragments
 	.cpu 68020
 	.include "memory_telemetry.i"

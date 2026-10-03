@@ -424,12 +424,26 @@ fn compact_hunk_reserved_segment_fs_uae() {
 }
 
 #[test]
+fn compact_hunk_expression_addend_rust_oracle() {
+    let oracle = rust_hunk_source(&SOURCE.replace(".long payload", ".long payload+1"));
+    let segments = hunk::segments(&oracle).unwrap();
+    assert_eq!(&segments[0].payload[..4], 1u32.to_be_bytes());
+    assert_eq!(segments[0].relocations, [(0, 2)]);
+}
+
+#[test]
+#[ignore = "requires fresh native exact Hunk expression addend comparison"]
+fn compact_hunk_expression_addend_fs_uae() {
+    native_hunk_source(&SOURCE.replace(".long payload", ".long payload+1"));
+}
+
+#[test]
 #[ignore = "requires configured FS-UAE; unsupported Hunk expression must fail closed"]
 fn compact_hunk_expression_relocation_rejects_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
-    let source = SOURCE.replace(".long payload", ".long payload+1");
+    let source = SOURCE.replace(".long payload", ".long payload*2");
     let result = crate::fs_uae_smoke::run_compact_cli_from_env(
         &workspace_root(),
         &package,

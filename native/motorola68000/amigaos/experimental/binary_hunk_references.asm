@@ -152,6 +152,8 @@ symbol
 	beq.w absolute
 	cmpi.b #mutable.DEFINED, 0(a3, d1.l)
 	beq.w absolute
+	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, 0(a3, d1.l)
+	beq.w absolute
 	tst.b 0(a3, d1.l)
 	bne.w defined
 	cmpi.w #1, pkg.Context.Pass(a2)
@@ -488,6 +490,8 @@ sectionId	.block
 	cmpi.b #dependencies.ABSOLUTE, d0
 	beq.w clear
 	cmpi.b #mutable.DEFINED, d0
+	beq.w clear
+	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, d0
 	beq.w clear
 	bra.w found
 section

@@ -1,5 +1,6 @@
 ; Package-selected boundaries over immutable compact records. Tokens are opaque
 ; payloads; only package-selected punctuation grammar is traversed here.
+; @opforge-owner: prvm.amigaos.packed_macro
 	.module prvm.amigaos.packed_macro
 	.cpu 68020
 	.use prvm.amigaos.abi as abi

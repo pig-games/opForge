@@ -1,12 +1,15 @@
 //! Shared scalar declaration policy and source-order immutable/mutable execution.
 use super::*;
 use crate::fs_uae_smoke::{
-    compact_cli_input::assemble_cli, run_prebuilt_compact_cli_case_from_env, FsUaeSmokeOutcome,
-    OpforgeNativeCliGuestFile, OpforgeNativeCliPackageMode, OpforgeNativeCliParityCase,
-    OpforgeNativeCliProof,
+    compact_cli_input::{assemble_cli, assemble_cli_with_defines},
+    run_prebuilt_compact_cli_case_from_env, FsUaeSmokeOutcome, OpforgeNativeCliGuestFile,
+    OpforgeNativeCliPackageMode, OpforgeNativeCliParityCase, OpforgeNativeCliProof,
 };
 use crate::native_package_build::{build_native_packages, EmbedSelection};
 use serde_json::json;
+
+#[path = "binary_source_hunk_traversal.rs"]
+mod hunk_traversal;
 
 struct Cleanup(PathBuf);
 impl Drop for Cleanup {
@@ -161,11 +164,11 @@ type DeclarationCase = (String, &'static str, String, bool);
 enum NativeExpected {
     MatchRust,
     MatchHunk,
+    RejectHunk,
     RejectInvalid,
     RejectLayout,
-    RejectHunkLayout,
 }
-const LAYOUT_DIAGNOSTIC: &str = "mutable declarations are not supported in Hunk or mapped outputs";
+const LAYOUT_DIAGNOSTIC: &str = "mutable declarations are not supported in mapped outputs";
 
 fn digest(bytes: &[u8]) -> String {
     let value = bytes.iter().fold(0xcbf29ce484222325u64, |hash, byte| {
@@ -258,7 +261,21 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
         &EmbedSelection::Targets(vec!["m68020".into()]),
     )
     .unwrap();
-    let image = assemble_cli(&native_root, &build);
+    let telemetry = std::env::var("OPFORGE_DECLARATION_TELEMETRY").as_deref() == Ok("1");
+    let defines: &[&str] = if telemetry {
+        &[
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_MEMORY_TELEMETRY",
+            "OPFORGE_PREPARATION_PROGRESS",
+        ]
+    } else {
+        &[]
+    };
+    let image = if telemetry {
+        assemble_cli_with_defines(&native_root, &build, defines)
+    } else {
+        assemble_cli(&native_root, &build)
+    };
     let packages = ["m6502--transparent.bin", "m68020--motorola68k.bin"].map(|name| {
         (
             name,
@@ -284,7 +301,7 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
         let case_dir = dir.join(index.to_string());
         let is_hunk = matches!(
             expectation,
-            NativeExpected::MatchHunk | NativeExpected::RejectHunkLayout
+            NativeExpected::MatchHunk | NativeExpected::RejectHunk
         );
         let valid = matches!(
             expectation,
@@ -332,7 +349,7 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
         let case = OpforgeNativeCliParityCase {
             name,
             cpu_override: "68020",
-            extra_assembly_defines: &[],
+            extra_assembly_defines: defines,
             source_override: Some(source.as_bytes()),
             command_template: Some(&command),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
@@ -344,10 +361,7 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
                 }
             } else {
                 OpforgeNativeCliProof::ExpectedFailureContaining(
-                    if matches!(
-                        expectation,
-                        NativeExpected::RejectLayout | NativeExpected::RejectHunkLayout
-                    ) {
+                    if matches!(expectation, NativeExpected::RejectLayout) {
                         LAYOUT_DIAGNOSTIC
                     } else {
                         "binary source: unsupported or invalid input"
@@ -362,6 +376,7 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
             "image_bytes": image.len(), "image_fnv1a64": digest(&image),
             "oracle_bytes": expected.len(), "oracle_fnv1a64": digest(&expected),
             "command": command,
+            "assembly_defines": defines,
             "packages": packages.iter().map(|(name, bytes)| json!({"name":name,"bytes":bytes.len(),"fnv1a64":digest(bytes)})).collect::<Vec<_>>(),
         });
         match run_prebuilt_compact_cli_case_from_env(&root, &case, &image) {
@@ -378,7 +393,7 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
                 );
                 if matches!(
                     expectation,
-                    NativeExpected::RejectLayout | NativeExpected::RejectHunkLayout
+                    NativeExpected::RejectLayout | NativeExpected::RejectHunk
                 ) {
                     let no_output = !run
                         .captured_artifacts
@@ -387,6 +402,9 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
                     row["success"] = json!(row["success"] == true && no_output);
                 }
                 row["native_seconds"] = json!(run.start_to_done_host_seconds);
+                if telemetry {
+                    row["native_stdout"] = json!(run.stdout);
+                }
                 row["exit_code"] = json!(run.exit_code);
             }
             Ok(FsUaeSmokeOutcome::Skipped(reason)) | Err(reason) => row["error"] = json!(reason),
@@ -695,7 +713,7 @@ fn compact_mutable_layout_rust_oracles() {
 }
 
 #[test]
-#[ignore = "requires fresh FS-UAE Hunk rejection and single-sweep mutable controls"]
+#[ignore = "requires fresh FS-UAE source-order Hunk and single-sweep mutable controls"]
 fn compact_mutable_layout_fs_uae() {
     let readonly = hunk_layout_source()
         .replace("n .var 1\n", "n = 1\n")
@@ -705,7 +723,7 @@ fn compact_mutable_layout_fs_uae() {
             "hunk-mutable",
             "m68020",
             hunk_layout_source().into(),
-            NativeExpected::RejectHunkLayout,
+            NativeExpected::MatchHunk,
         ),
         (
             "single-section",
@@ -762,7 +780,7 @@ fn compact_mutable_layout_fs_uae() {
                     ".section data,kind=data\n",
                     ".section data,kind=data\n.produce\n",
                 ),
-            NativeExpected::RejectHunkLayout,
+            NativeExpected::MatchHunk,
         ),
     ];
     native_expected_cases(
@@ -775,7 +793,7 @@ fn compact_mutable_layout_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires fresh FS-UAE mapped rejection; currently blocked by mapped preparation"]
+#[ignore = "requires fresh FS-UAE mapped mutable rejection"]
 fn compact_mutable_mapped_layout_fs_uae() {
     let cases = (1..=2)
         .map(|maps| NativeCase {

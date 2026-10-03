@@ -1,5 +1,6 @@
 ; Apply the shared PRVM declaration plan to the canonical scalar declaration.
 ; Only numeric spans are consumed; scope and expression owners retain semantics.
+; @opforge-owner: experimental.amigaos.binary_declaration
 	.module experimental.amigaos.binary_declaration
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package

@@ -143,13 +143,14 @@ name. Phases 26–28 add a bounded sweep snapshot: phase 26 carries assembly pas
 raw sweep selector and section ID; phase 27 carries zero-based packed-record
 byte offset and total record bytes (the third field is cleared output size);
 phase 28 carries section mode, Hunk section count and the pass again.
-In Hunk mode 5, raw sweep 8 is the first section,
-9 the second, and so on; raw sweep 0 is the later outside-section control scan.
-The section ID is meaningful only during a section sweep. Pass 0 and record
+Hunk mode 5 now uses raw sweep 0 for its one source-order traversal per pass;
+its section ID is the most recently opened section, including unselected sections.
+Mapped modes retain filtered sweeps. Pass 0 and record
 offset `ffffffff` identify failure before record execution starts.
 
-`ASSEMBLY_POSITION` stores this snapshot at sweep boundaries, preserving D0 and
-CCR and zero-extending word-valued section fields. A0/A1 are also preserved.
+`ASSEMBLY_POSITION` stores this snapshot at sweep and section-control
+boundaries, preserving D0 and CCR and zero-extending word-valued section fields.
+A0/A1 are also preserved.
 Its `AssemblyPosition` type,
 20-byte owner storage and calls require all three progress gates. Bases are
 loaded with `lea`, then fields are read/written through relative offsets;
@@ -162,6 +163,26 @@ position within the current record-buffer scan, not overall assembly work:
 section filtering, repeated passes and loop replay prevent that inference.
 An explicit failed guest completion remains a failed assembly; progress capture
 does not turn it into artifact parity or release timing.
+
+Phase 300 reports aggregate assembly work once when the compact assembly owner
+returns, on success or failure: `f` is scheduled source sweeps, `l` is selected
+record visits (including layout and repetition controls and loop replay), and `r` is
+zero. `TraversalPasses` and `TraversalRecords` use the existing gated local-counter
+macros; their storage and updates require both memory gates, and reporting also
+requires preparation progress. Hunk uses two sweeps for a complete two-pass
+assembly independently of output-section count; mapped modes can schedule more
+than two. Record visits count executed traversal work, not unique source lines.
+Counters measure actual work, not completed statements or assembly success; the
+normal terminal result owns completion. The fixed progress-line format and MEMD
+schema are unchanged. Decode one captured run with:
+
+```sh
+python3 scripts/performance/decode_native_progress.py --assembly-progress-text capture.txt
+```
+
+The JSON `assembly_work` field exposes
+`scheduled_source_sweeps` and `selected_record_visits`. A binary OFPR record can
+also be supplied to retain its independent completion validation.
 
 `SelectionPosition` is a separate 12-byte owner snapshot of the last attempted
 numeric package row: u32 `Priority`, `Recipe`, and `Projection`. Its type, storage

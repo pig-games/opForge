@@ -1,5 +1,6 @@
 ; Statement-time signed scalar storage for read-write declarations.
 ; Values persist between assembly passes, matching forward/self initializers.
+; @opforge-owner: experimental.amigaos.binary_mutable
 	.module experimental.amigaos.binary_mutable
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package
@@ -8,6 +9,8 @@
 	.use experimental.amigaos.binary_source as source
 	.pub
 DEFINED = 3
+; Readonly statement-time scalar proof; unlike dependency ABSOLUTE, recompute.
+SNAPSHOT_ABSOLUTE = 4
 PENDING = 7; dependency indexing only; never an executable availability state
 INVALID_RECORDS = 1
 UNSUPPORTED_LAYOUT = 2
@@ -15,7 +18,7 @@ UNSUPPORTED_LAYOUT = 2
 ; Reject scalar mutations before layouts that execute filtered record sweeps.
 ; A0=packed records, D0=record bytes, D2=layout mode. D0/CCR=status;
 ; D1=offending record offset, or -1 when none. Other registers preserved.
-; Only modes 2/4/5 need inspection; inactive/template/control records are ignored.
+; Only modes 2/4 need inspection; inactive/template/control records are ignored.
 validateLayout	.block
 	movem.l d2-d4/a0-a2, -(sp)
 	moveq #-1, d1
@@ -23,8 +26,7 @@ validateLayout	.block
 	beq.w scan
 	cmpi.w #4, d2
 	beq.w scan
-	cmpi.w #5, d2
-	bne.w good
+	bra.w good
 scan
 	movea.l a0, a2
 	add.l a0, d0

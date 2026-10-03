@@ -1,5 +1,6 @@
 ; VM-owned temporary literal-fragment lexing and macro spelling boundaries.
 ; Temporary lexical records never replace already expanded packed execution tokens.
+; @opforge-owner: prvm.amigaos.macro_spelling
 	.module prvm.amigaos.macro_spelling
 	.cpu 68020
 	.use prvm.amigaos.abi as abi

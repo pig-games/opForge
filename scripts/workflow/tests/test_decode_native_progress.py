@@ -157,6 +157,22 @@ def platform_record(
 
 
 class NativeProgressDecoderTests(unittest.TestCase):
+    def test_assembly_work_does_not_imply_completion(self) -> None:
+        line = "progress p=0000012c f=00000002 l=00000039 r=00000000 m=00000100"
+        result = decoder.decode_assembly_work("other output\n" + line + "\n")
+        self.assertEqual(result, {
+            "scheduled_source_sweeps": 2, "selected_record_visits": 57,
+            "localization_only": True,
+        })
+        self.assertIsNone(decoder.decode_assembly_work("progress p=00000006"))
+
+    def test_assembly_work_rejects_ambiguous_or_invalid_captures(self) -> None:
+        line = "progress p=0000012c f=00000002 l=00000039 r=00000000 m=00000100"
+        for capture in [line + "\n" + line, line.replace("r=00000000", "r=00000001"),
+                        line.replace("l=00000039", "l=invalid")]:
+            with self.assertRaises(decoder.ProgressDecodeError):
+                decoder.decode_assembly_work(capture)
+
     def test_platform_disabled_groups_are_explicit_and_empty(self) -> None:
         for bit, spans in [
             (decoder.PLATFORM_FLAG_IO_ENABLED, [(20, 140), (168, 184)]),

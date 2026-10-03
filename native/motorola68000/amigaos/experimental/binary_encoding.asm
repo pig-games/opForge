@@ -1625,6 +1625,8 @@ exactIdentity
 	beq.w targetReady
 	cmpi.b #mutable.DEFINED, 0(a0, d1.l)
 	beq.w targetReady
+	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, 0(a0, d1.l)
+	beq.w targetReady
 	move.w d1, ProjectedTarget
 targetReady
 	moveq #0, d0
@@ -1711,6 +1713,8 @@ target
 	cmpi.b #dependencies.ABSOLUTE, 0(a0, d1.l)
 	beq.w absent
 	cmpi.b #mutable.DEFINED, 0(a0, d1.l)
+	beq.w absent
+	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, 0(a0, d1.l)
 	beq.w absent
 	move.w d1, ScalarTarget
 absent

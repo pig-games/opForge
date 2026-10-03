@@ -1,5 +1,6 @@
 ; Stream a binary asset into ordinary packed data records during preparation.
 ; No file handle, path or source text survives into assembly replay.
+; @opforge-owner: experimental.amigaos.binary_file_data
 
 	.module experimental.amigaos.binary_file_data
 	.cpu 68020

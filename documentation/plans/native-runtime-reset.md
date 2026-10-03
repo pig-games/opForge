@@ -1,23 +1,22 @@
 # Native assembler completion plan
 
-Status: active. The recorded 61-file compact native implementation fully
-self-hosted with exact live Rust Hunk output on the physical A6000. The
-90-input BS17 embedded implementation completed a fresh FS-UAE self-host with
-exact Rust Hunk equality in 950.411414625 seconds on the expanded 74 MiB
-investigation profile, using source `.cpu` selection and one module/include root
-each. The BS17 bundle awaits its physical A6000 run. Current BS20 extends shared
-PRVM scalar declarations with mutable `.var`/`.set` execution;
-its focused qualification is recorded below, separately from that BS17 full self-host proof. It remains
-experimental: that proof does not establish full language, CPU, CLI or output
-parity. Current measurements, reproduction commands and remaining frontend
-ownership gaps are maintained in the
-[compact frontend note](compact-frontend-vm-boundary.md).
+Status: active. Current BS20 (native source at `7f8bebf2`) completes a fresh
+full embedded self-host in FS-UAE: all 452,776 Hunk bytes match the live Rust
+oracle, with guest exit zero. The 94 inputs total 1,360,588 bytes. Release
+START/DONE time is 1,037.690232625 seconds on the 68020 / 74 MiB investigation
+profile. The separate instrumented full run also matches the complete Rust output;
+its clocks and allocation accounting validate. Updated release and instrumented
+bundles are ready for physical A6000 runs. The earlier 61-file implementation also
+self-hosted exactly on the physical A6000. This remains experimental: full
+self-host equality does not establish full language, CPU, CLI/output parity or
+the 2 MiB product goal. The current qualification and search roots are recorded
+below; focused feature measurements and remaining frontend ownership gaps are
+maintained in the [compact frontend note](compact-frontend-vm-boundary.md).
 
-This plan replaces the completed migration and prepared-source experiment
-journals. Git retains their slices, measurements and superseded contracts.
-The [workflow](../workflow/README.md) and
+Git retains superseded experiments and measurements. The
+[workflow](../workflow/README.md) and
 [native parity contract](../../agents/rules/native-rust-parity-porting.md)
-govern execution; a future plan item alone does not authorize its implementation.
+govern execution; a future plan item alone does not authorize implementation.
 
 ## Product outcome and scope
 
@@ -561,9 +560,9 @@ OPFORGE_INLINE_HEAD_REPORT=/tmp/opforge-inline-heads.json \
 
 Current reports are `/tmp/opforge-inline-before.json`,
 `/tmp/opforge-inline-after.json` and `/tmp/opforge-mos-inline-after.json`.
-The complete BS18 self-host has not been repeated. The BS17 proof below remains
-the full self-host baseline. The following checkpoint addresses volume-root
-include handling; the other corpus gaps remain open.
+This BS18 checkpoint did not repeat full self-hosting. Subsequent current BS20
+full qualification is recorded below. The following checkpoint addresses
+volume-root include handling; the other corpus gaps remain open.
 
 ### BS18 volume-root includes — focused parity
 
@@ -713,8 +712,8 @@ Run `compact_const_import_parameter_fs_uae` separately. The existing timing
 selector is `OPFORGE_INLINE_HEAD_CASES=mixed-release/0,mixed-release/1`, with an
 absolute `OPFORGE_INLINE_HEAD_REPORT`, invoking `compact_inline_heads_fs_uae`.
 
-No full BS19 self-host completion is claimed. The BS17 proof below remains the
-recorded full self-host baseline.
+This BS19 checkpoint did not repeat full self-hosting. Subsequent current BS20
+full qualification is recorded below.
 
 ### BS20 scalar mutable declarations — single-sweep checkpoint
 
@@ -1039,73 +1038,149 @@ Before/after reports are `/tmp/opforge-mutable-layout-timing.json` and
 `/tmp/opforge-map-repair-timing.json`; their executable digests are
 `fnv1a64:6bb22fa9e53fd622` and `fnv1a64:0b8861cfd55707dc` respectively.
 
-No current full corpus or BS20 full self-host completion is claimed. The recorded BS17 full self-host remains the baseline.
+No full corpus completion is claimed for the mapped-preparation repair.
+Subsequent current BS20 full self-host qualification is recorded below.
 
-### BS17 full self-host baseline and search roots
+### Current full self-host qualification and search roots
 
-The complete BS17 compact implementation assembles itself on native with
-fresh completion, exit zero and exact equality against its live Rust oracle:
-all 445,080 bytes of the embedded Hunk, including the unchanged 321,458-byte
-m68020 package. The 90 inputs total 1,291,116 bytes; their fingerprint is
-`fnv1a64:5492e50e1e461e43`. Linked static reservations are 462,776 bytes.
-The uninstrumented 68020 / 74 MiB FS-UAE START/DONE interval is
-950.411414625 seconds (15m 50.41s); emulator startup is excluded. This is full
-current-source self-host proof, not physical hardware timing, full assembler
-parity or qualification of the 2 MiB product target.
+The complete current BS20 compact implementation (`7f8bebf2` native source)
+assembles itself on native with a fresh case-bound START/DONE protocol, exit zero
+and exact equality against the live Rust oracle: all 452,776 bytes of the embedded
+Hunk. Bootstrap and output are the same release configuration, each containing
+one identical 321,532-byte m68020 package. Both repository and relocated bundle
+inputs were freshly assembled by Rust before native execution.
 
-The first BS17 retry failed after 720.105147416 seconds with no output. A focused
-probe isolated an explicit `.L` member operand: an earlier unsupported candidate
-for a nested tuple incorrectly remained eligible. The generic structural screen
-now disproves that tuple requirement for a complete member. Member meanings and
-instruction encoding stay package-owned. Fresh complete Hunk comparison covers
-plain/qualified symbols, numeric `.L`/`.W`, parenthesized expressions and a member
-destination. A separate fresh exit-20 probe rejects an imported out-of-range
-immediate and reports its actual filename and line. Bounded origin filenames
-remain owned through assembly/output for diagnostics; source text is never
-consulted by execution. Full-run dynamic peak was not measured in this release run.
+| Release self-host property | Current BS20 |
+|---|---:|
+| Complete source inputs | 94 |
+| Input bytes, including generated package asset | 1,360,588 |
+| Source manifest fingerprint | `fnv1a64:ddfdd62b45de2cc1` |
+| Release/bootstrap Hunk bytes | 452,776 |
+| Complete Hunk fingerprint | `fnv1a64:3c8722a0693935bb` |
+| m68020 package fingerprint | `fnv1a64:d313ed96a210a3c7` |
+| Linked static reservations | 470,524 bytes |
+| Native START/DONE duration, telemetry disabled | 1,037.690232625 s (17m 17.69s) |
 
-The portable bundle command exercises the root `.cpu 68020` and uses only:
+The FS-UAE profile is 68020 / 74 MiB, with unlimited emulator speed and host
+START/DONE timing excluding emulator startup. This is complete native self-host
+proof for this source/package state, not physical hardware timing, full assembler
+parity or qualification of the 2 MiB product target. The earlier BS17 run took
+950.411414625 seconds on the same profile but used 90 inputs / 1,291,116 bytes and
+a 445,080-byte executable. Those different workloads do not isolate change cost;
+individual feature comparisons remain in their focused checkpoint notes. Full
+release-run dynamic peak is not measured.
+
+The separate phase-only instrumented bootstrap also completes the **entire same
+self-host case**, with fresh completion, exit zero and the exact same release
+Hunk. Source mappings, command, package bytes and release oracle are identical;
+bootstrap instrumentation is the only configuration change. It enables the
+existing memory, phase/progress, sampled binding, template and input probes,
+excluding detailed per-opcode tokenizer probes via `OPFORGE_PHASE_ONLY=1`.
+
+| Instrumented full-run measurement | Value |
+|---|---:|
+| Host START/DONE | 1,147.941797667 s (19m 07.94s) |
+| Guest preparation clock | 665.36 s (11m 05.36s) |
+| Guest assembly clock | 481.54 s (8m 01.54s) |
+| Scheduled source sweeps | 2 |
+| Record visits, including controls and loop replay | 122,798 |
+| Peak tracked owned allocation | 22,380,568 bytes (21.34 MiB) |
+| Tracked live after preparation | 2,691,072 bytes |
+| Tracked live during assembly | 3,510,272 bytes |
+| Terminal tracked live allocation | 0 bytes |
+| Total allocated / freed capacities | 50,449,312 / 50,449,312 bytes |
+| Profiling errors / allocation failures | 0 / 0 |
+| Packed source bytes | 1,120,052 |
+| Compiled expressions / evaluations | 33,465 / 93,810 |
+| Compiled expression program bytes | 126,200 |
+| Instrumented bootstrap Hunk / static reservations | 462,068 / 482,064 bytes |
+| Instrumented bootstrap fingerprint | `fnv1a64:7dc8ac8bf15a6688` |
+
+Exclusive preparation stage timings use the guest E-clock:
+
+| Preparation responsibility | Seconds |
+|---|---:|
+| Binding and raw records | 390.130 |
+| Tokenization | 107.299 |
+| Source I/O and other preparation | 79.270 |
+| Module discovery | 43.042 |
+| Runtime finalization | 26.782 |
+| Expression preparation | 15.790 |
+| Package setup | 3.044 |
+| Total | 665.357 |
+
+Stage totals agree with the coarse preparation clock within 3.2 ms. Input
+collection is nested within preparation (10.674 seconds, 1,302,502 bytes,
+512 reads), not an additional exclusive stage. Sampled binding/template details
+are retained in the decoded report. Token opcode counters are disabled in this
+phase-only build and must not be interpreted as zero tokenizer work.
+
+The instrumented run is 110.251565042 seconds (+10.62%) longer than release.
+This single pair includes probe overhead and run variation; measured phase ranks
+are instrumented observations, not the release phase split. Allocation counts
+exclude static executable reservations and untracked OS storage. They establish
+balanced tracked ownership for this full case, not total required RAM. Peak is
+not compared as an incremental cost: no matched BS17 full-run dynamic baseline
+was measured. The current 2 MiB product target remains unqualified.
+
+The portable bundle command exercises the root source `.cpu 68020`:
 
 ```text
 opforge -i src/experimental/opforge_compact_cli.asm --hunk output.hunk -M src -I src/debug
 ```
 
-The entry is below the project root, so one recursive `-M src` exposes its sibling
+The entry is below the project root, so one recursive `-M src` exposes sibling
 modules. Bare debug include names need `-I src/debug`. A root entry layout can
-remove those explicit paths later. The hardware runner validates the mapped
-source preamble for source-selected commands and still checks frozen explicit-CPU
-commands without adding a legacy VM executor.
+remove those explicit paths later. The hardware runner checks source/package/image
+identity and the source-selected preamble, accepts only the current BS20 package
+header, and leaves VM opcode validation to native execution. Header/bounds,
+source/output identity and fresh-completion tests pass (84 performance-tool tests).
 
-`/tmp/opforge-a6000-current` now selects
-`/tmp/opforge-selfhost-bs17-source-cpu-release`, with release bootstrap and output
-both embedding m68020. The usual Mac Terminal command is unchanged:
+The release bundle is `/tmp/opforge-selfhost-bs20-release`, now selected by
+`/tmp/opforge-a6000-current`. Bootstrap and output both embed only
+`m68020--motorola68k.bin`; the named verification package is retained locally,
+not used as a runtime fallback. Its manifest records fresh FS-UAE exact-Hunk
+validation. The transfer dry run succeeds. It has not been run on the physical
+A6000; no new hardware time is claimed. Use the unchanged Mac Terminal command:
 
 ```sh
 python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 ```
 
-This new bundle has not yet been timed on the physical A6000. Its FS-UAE duration
-must not be treated as a speed comparison with the smaller BS16 source/package
-state. A separate comparison uses the unchanged 10,687-byte two-module/64-block
-source, live 2,434-byte Rust oracle, identical 321,458-byte BS17 package, named
-external selection and 68020 / 10 MiB profile. All four uninstrumented runs
-complete with exact output:
+The separate instrumented bundle is `/tmp/opforge-selfhost-bs20-instrumented`,
+with its successful fresh protocol metadata, captured `native-stdout.txt` /
+`native-stderr.txt`, raw 2,280-byte `memory.bin` and decoded `measurements.json`.
+Its transfer dry run also passes. Select it explicitly in macOS Terminal:
 
-| Metric | Before (`21224e7d`) | Member/diagnostic repair |
-| --- | ---: | ---: |
-| START/DONE seconds | 11.002211167, 11.044870083 | 11.030623708, 11.273958167 |
-| Median seconds | 11.023540625 | 11.1522909375 |
-| External CLI bytes | 123,628 | 123,620 |
-| Linked static reservations | 141,320 | 141,316 |
+```sh
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py --bundle /tmp/opforge-selfhost-bs20-instrumented
+```
 
-The observed increase is 0.1287503125 seconds (+1.17%), smaller than the roughly
-0.25-second observation resolution and within the new pair's spread. No resolved
-timing regression or gain is established. This isolates the repair from earlier
-improvements; the explicit CPU benchmark does not measure preamble discovery.
-274 packed-source Rust tests, live positive/negative diagnostic oracles, 20
-hardware-runner tests, formatting and the relevant architecture, instrumentation,
-proof, runtime-boundary and test-ownership guards pass. The aggregate product
-qualification and full native feature matrix remain separate work.
+Neither new bundle has a physical A6000 result yet. Both target the same release
+output; running the instrumented executable does not create an instrumented
+self-build. Hardware duration and telemetry remain separate fresh measurements.
+
+Full logs are `/tmp/opforge-selfhost-bs20-release.log` and
+`/tmp/opforge-selfhost-bs20-instrumented.log`; the exported
+`manifest.json`, `oracle.hunk`, executable, package and exact mapped input files
+remain outside `target`. With the configured FS-UAE environment, reproduce the
+release run using a fresh export directory:
+
+```sh
+OPFORGE_COMPACT_EXPORT_DIR=/tmp/opforge-selfhost-bs20-new \
+OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020 \
+OPFORGE_COMPACT_EXPORT_NATIVE=1 \
+OPFORGE_FS_UAE_MEMORY_PROFILE=68020-74m \
+OPFORGE_FS_UAE_TIMEOUT_MS=5430000 \
+OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=5400000 \
+cargo test -p asm --lib export_compact_self_host_bundle -- --ignored --nocapture --test-threads=1
+```
+
+For the instrumented counterpart, choose another new directory, add
+`OPFORGE_COMPACT_EXPORT_INSTRUMENTED=1 OPFORGE_PHASE_ONLY=1`, and set the overall /
+post-start bounds to 7,230,000 / 7,200,000 ms. These bounds allow 90 minutes after
+START for release and 120 minutes for instrumentation to distinguish slow
+completion from timeout; they are not measured durations or product targets.
 
 ### CLI checkpoint C2 — requested outputs and source declarations (in progress)
 

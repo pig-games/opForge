@@ -420,7 +420,7 @@ fn export_bundle(failure_capture: bool) {
             runs[0].exit_code,
             Some(if failure_capture { 20 } else { 0 })
         );
-        if failure_capture {
+        if failure_capture || instrumented {
             fs::write(output.join("native-stdout.txt"), &runs[0].stdout).unwrap();
             fs::write(output.join("native-stderr.txt"), &runs[0].stderr).unwrap();
         }
@@ -449,6 +449,7 @@ fn export_bundle(failure_capture: bool) {
             "fresh_fs_uae_exact_hunk"
         });
         manifest["native_assembler_exit_code"] = json!(runs[0].exit_code);
+        manifest["native_protocol_completed"] = json!(runs[0].protocol_completed);
         manifest["native_start_to_done_host_seconds"] = json!(runs[0].start_to_done_host_seconds);
         fs::write(
             output.join("manifest.json"),

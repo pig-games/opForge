@@ -25,6 +25,7 @@ INSTRUMENTATION_DEFINES = {
     "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
 }
+PACKAGE_HEADER_BYTES = 192
 
 
 def fnv(data):
@@ -135,26 +136,37 @@ def load_bundle(bundle):
         raise ValueError("Bootstrap digest mismatch")
     if not defines and (storage == "external" or output_storage == "embedded") and bootstrap != oracle:
         raise ValueError("Release bootstrap/oracle mismatch")
-    # Frozen bundles retain their matching executable. This transport verifies
-    # their assets; only the bundled native runtime interprets the VM contract.
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] not in (b"BS16", b"BS17"):
+    # Only the current package contract is supported. This transport verifies
+    # assets and header regions; the native runtime interprets VM opcodes.
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS20":
         raise ValueError("Runtime package mismatch")
-    if len(package) < 168 or int.from_bytes(package[4:8], "big") != len(package):
+    if len(package) < PACKAGE_HEADER_BYTES or int.from_bytes(package[4:8], "big") != len(package):
         raise ValueError("Invalid runtime package header")
+    runtime_bytes = int.from_bytes(package[72:76], "big")
+    if not PACKAGE_HEADER_BYTES <= runtime_bytes <= len(package) or runtime_bytes % 2:
+        raise ValueError("Invalid runtime package region")
     bindings_offset = int.from_bytes(package[160:164], "big")
     bindings_count = int.from_bytes(package[164:168], "big")
     bindings_end = bindings_offset + bindings_count * 8
-    runtime_bytes = int.from_bytes(package[72:76], "big")
-    if bindings_offset < 168 or bindings_end > runtime_bytes or bindings_end > len(package):
+    if (bindings_offset < PACKAGE_HEADER_BYTES or bindings_offset % 2
+            or bindings_count > 65535 or bindings_end > runtime_bytes):
         raise ValueError("Invalid member-binding table region")
     if any(package[offset + 6:offset + 8] != b"\0\0"
            for offset in range(bindings_offset, bindings_end, 8)):
         raise ValueError("Invalid member-binding reserved field")
+    for label, header_offset, expected_size in (("head-policy", 168, 4), ("declaration", 180, 13)):
+        offset = int.from_bytes(package[header_offset:header_offset + 4], "big")
+        size = int.from_bytes(package[header_offset + 4:header_offset + 8], "big")
+        version = int.from_bytes(package[header_offset + 8:header_offset + 10], "big")
+        reserved = package[header_offset + 10:header_offset + 12]
+        if (offset < PACKAGE_HEADER_BYTES or offset % 2 or size != expected_size
+                or offset + size > runtime_bytes or version != 2 or reserved != b"\0\0"):
+            raise ValueError(f"Invalid {label} program header")
     files["opforge"] = bootstrap
     if storage == "embedded":
         offset = int.from_bytes(package[124:128], "big")
         size = int.from_bytes(package[128:130], "big")
-        if offset < 168 or not 1 <= size <= 26 or offset + size > len(package):
+        if offset < PACKAGE_HEADER_BYTES or not 1 <= size <= 26 or offset + size > runtime_bytes:
             raise ValueError("Invalid embedded package identity")
         target = package[offset:offset + size].decode("ascii")
         if target != "m68020--motorola68k" or embedded_packages != [target + ".bin"]:

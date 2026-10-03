@@ -16,6 +16,28 @@ SPEC.loader.exec_module(runner)
 
 
 class HardwareCompletionTests(unittest.TestCase):
+    def package(self, target=b""):
+        package = bytearray(192)
+        package[:4] = b"BS20"
+        package[168:172] = (192).to_bytes(4, "big")
+        package[172:176] = (4).to_bytes(4, "big")
+        package[176:178] = (2).to_bytes(2, "big")
+        package.extend(b"\0" * 4)
+        package[180:184] = (196).to_bytes(4, "big")
+        package[184:188] = (13).to_bytes(4, "big")
+        package[188:190] = (2).to_bytes(2, "big")
+        package.extend(b"\0" * 14)
+        package[160:164] = (192).to_bytes(4, "big")
+        if target:
+            package[124:128] = len(package).to_bytes(4, "big")
+            package[128:130] = len(target).to_bytes(2, "big")
+            package.extend(target)
+            if len(package) % 2:
+                package.append(0)
+        package[4:8] = len(package).to_bytes(4, "big")
+        package[72:76] = len(package).to_bytes(4, "big")
+        return bytes(package)
+
     def bundle(self, root, instrumented):
         source = root / "original"
         source.mkdir()
@@ -24,12 +46,7 @@ class HardwareCompletionTests(unittest.TestCase):
         (root / "src/entry.asm").write_bytes(b"source")
         oracle = b"release"
         bootstrap = b"profile" if instrumented else oracle
-        package = bytearray(168)
-        package[:4] = b"BS17"
-        package[4:8] = (168).to_bytes(4, "big")
-        package[72:76] = (168).to_bytes(4, "big")
-        package[160:164] = (168).to_bytes(4, "big")
-        package = bytes(package)
+        package = self.package()
         command = "opforge --runtime-package p.bin -i src/entry.asm --hunk output.hunk"
         manifest = {
             "release_defines": [],
@@ -53,14 +70,7 @@ class HardwareCompletionTests(unittest.TestCase):
     def embedded_bundle(self, root):
         self.bundle(root, False)
         target = b"m68020--motorola68k"
-        package = bytearray(168)
-        package[:4] = b"BS17"
-        package[4:8] = (168 + len(target)).to_bytes(4, "big")
-        package[72:76] = (168 + len(target)).to_bytes(4, "big")
-        package[160:164] = (168).to_bytes(4, "big")
-        package[124:128] = (168).to_bytes(4, "big")
-        package[128:130] = len(target).to_bytes(2, "big")
-        package.extend(target)
+        package = self.package(target)
         bootstrap = b"embedded executable:" + package
         command = "opforge --cpu 68020 -i src/entry.asm --hunk output.hunk -M src"
         manifest = json.loads((root / "manifest.json").read_text())
@@ -76,6 +86,92 @@ class HardwareCompletionTests(unittest.TestCase):
         (root / "opforge").write_bytes(bootstrap)
         (root / "command.txt").write_text(command)
         (root / "manifest.json").write_text(json.dumps(manifest))
+
+    def replace_package(self, root, package):
+        manifest = json.loads((root / "manifest.json").read_text())
+        filename = manifest.get("runtime_package_file", "p.bin")
+        (root / filename).write_bytes(package)
+        manifest["runtime_package_digest"] = runner.fnv(package)
+        if manifest.get("bootstrap_package_storage") == "embedded":
+            bootstrap = b"embedded executable:" + package
+            (root / "opforge").write_bytes(bootstrap)
+            manifest["bootstrap_hunk_digest"] = runner.fnv(bootstrap)
+        (root / "manifest.json").write_text(json.dumps(manifest))
+
+    def test_runtime_package_rejects_superseded_magic_and_truncated_header(self):
+        for magic, size, error in ((b"BS16", 210, "package mismatch"),
+                                   (b"BS17", 210, "package mismatch"),
+                                   (b"BS19", 210, "package mismatch"),
+                                   (b"BS20", 191, "package header")):
+            with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.bundle(root, False)
+                package = bytearray(self.package()[:size])
+                package[:4] = magic
+                package[4:8] = len(package).to_bytes(4, "big")
+                self.replace_package(root, package)
+                with self.assertRaisesRegex(ValueError, error):
+                    runner.load_bundle(root)
+
+    def test_current_header_rejects_invalid_regions_versions_and_reserved_words(self):
+        mutations = [
+            (4, 4, 209, "package header"),
+            (72, 4, 190, "package region"),
+            (72, 4, 212, "package region"),
+            (72, 4, 209, "package region"),
+            (160, 4, 168, "member-binding table"),
+            (160, 4, 193, "member-binding table"),
+            (160, 4, 212, "member-binding table"),
+            (164, 4, 3, "member-binding table"),
+            (164, 4, 0xFFFFFFFF, "member-binding table"),
+        ]
+        for start, label in ((168, "head-policy"), (180, "declaration")):
+            mutations.extend([
+                (start, 4, 168, label),
+                (start, 4, 193, label),
+                (start, 4, 210, label),
+                (start + 4, 4, 0, label),
+                (start + 8, 2, 1, label),
+                (start + 10, 2, 1, label),
+            ])
+        for offset, width, value, error in mutations:
+            with self.subTest(offset=offset, value=value), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.bundle(root, False)
+                package = bytearray(self.package())
+                package[offset:offset + width] = value.to_bytes(width, "big")
+                self.replace_package(root, package)
+                with self.assertRaisesRegex(ValueError, error):
+                    runner.load_bundle(root)
+
+    def test_member_binding_reserved_word_is_checked_in_current_runtime_region(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.bundle(root, False)
+            package = bytearray(self.package())
+            package.extend(b"\0" * 8)
+            package[4:8] = len(package).to_bytes(4, "big")
+            package[72:76] = len(package).to_bytes(4, "big")
+            package[160:164] = (210).to_bytes(4, "big")
+            package[164:168] = (1).to_bytes(4, "big")
+            self.replace_package(root, package)
+            runner.load_bundle(root)
+            package[-1] = 1
+            self.replace_package(root, package)
+            with self.assertRaisesRegex(ValueError, "member-binding reserved"):
+                runner.load_bundle(root)
+
+    def test_embedded_target_must_be_inside_runtime_region_after_current_header(self):
+        for offset, runtime in ((168, 230), (210, 210)):
+            with self.subTest(offset=offset, runtime=runtime), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.embedded_bundle(root)
+                package = bytearray(self.package(b"m68020--motorola68k"))
+                package[124:128] = offset.to_bytes(4, "big")
+                package[72:76] = runtime.to_bytes(4, "big")
+                self.replace_package(root, package)
+                with self.assertRaisesRegex(ValueError, "embedded package identity"):
+                    runner.load_bundle(root)
 
     def source_selected_embedded_bundle(
         self, root, module_line=b"\t.module main", cpu_line=b"\t.cpu 68020",
@@ -197,7 +293,7 @@ class HardwareCompletionTests(unittest.TestCase):
             ("configured_entry", "native", None, "Current source"),
             ("generated_catalog", None, b'.incbin "/host/package.bin"\n', "catalog"),
             ("generated_catalog", None, b'.incbin "packages/m68020--motorola68k.bin"\n' * 2, "catalog"),
-            ("package_asset", None, b"BS17corrupt", "asset mismatch"),
+            ("package_asset", None, b"BS20corrupt", "asset mismatch"),
         ]
         for origin, replacement_origin, data, error in mutations:
             with self.subTest(origin=origin, error=error), tempfile.TemporaryDirectory() as directory:

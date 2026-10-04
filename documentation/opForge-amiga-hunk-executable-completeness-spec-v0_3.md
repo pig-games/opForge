@@ -363,9 +363,15 @@ snapshots, aliases, `$` snapshots and same-section alias differences. Mutable
 addends are frozen at declaration; aliases do not reevaluate their definitions
 at use sites. Forward-label aliases work when the declaration precedes its use
 and can resolve in the existing two passes. More complex unresolved alias
-chains/use-before-declaration, direct instruction `$` and mapped logical-section
-Hunk parity remain native gaps. Native requires proof for nonabsolute instruction
-aliases even when their section identity is missing; reserved package operand
+chains/use-before-declaration and direct instruction `$` remain native gaps.
+Explicit mapped logical sections now append their reachable blocks after concrete
+content. Native retains separate fragment cursors and measures concrete prefixes
+before fresh source-order assembly passes; mapped labels, data `$`, aliases and
+relocation source offsets use the concrete destination. Reopened concrete sections,
+BSS and statement-time mutable snapshots are covered. This bounded path supports
+two maps and eight source slots, requires compatible kinds and stable prefix sizes,
+and retains current global section-name/conflicting-map rejections. Native requires
+proof for nonabsolute instruction aliases even when their section identity is missing; reserved package operand
 names do not count as source targets. Rust accepts some unsupported address
 arithmetic through positional branch aliases; that behavior needs separate review
 and is not counted as rejection parity here.

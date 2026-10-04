@@ -1,4 +1,5 @@
 ; Two bounded assembly passes over binary source, with no source-text interface.
+; Mapped Hunk layout first measures concrete prefixes in a disposable pass.
 ; @opforge-owner: experimental.amigaos.binary_assembly
 
 	.module experimental.amigaos.binary_assembly
@@ -14,6 +15,7 @@
 	.use experimental.amigaos.binary_constants as constants
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_sections as sections
+	.use experimental.amigaos.binary_hunk_mapping as mapping
 	.use experimental.amigaos.binary_hunk_references as hunkrefs
 	.use experimental.amigaos.binary_repetition as repetition
 	.include "memory_telemetry.i"
@@ -181,6 +183,8 @@ layoutReady
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
 	bne.w outputReady
 	move.w #1, pkg.Context.Relocatable(a6)
+	jsr mapping.validate
+	bne.w fail
 outputReady
 	moveq #1, d7
 pass
@@ -430,6 +434,22 @@ sweepDone
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
 	bne.w finishedLayout
 	move.l d1, Frame.Used(a5)
+	tst.w sections.State.MapCount(a0)
+	beq.w finishedLayout
+	tst.w sections.State.MapReady(a0)
+	bne.w mappedBounds
+	; Preliminary measurement is discarded. Bind fresh symbols with final
+	; concrete-prefix origins, keeping both authoritative passes source ordered.
+	jsr mapping.freeze
+	bne.w fail
+	bra.w pass
+mappedBounds
+	jsr mapping.check
+	bne.w fail
+	cmpi.w #2, d7
+	bne.w finishedLayout
+	jsr mapping.merge
+	bne.w fail
 finishedLayout
 	cmpi.w #1, d7
 	bne.w nextPass

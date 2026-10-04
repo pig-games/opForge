@@ -164,7 +164,6 @@ type DeclarationCase = (String, &'static str, String, bool);
 enum NativeExpected {
     MatchRust,
     MatchHunk,
-    RejectHunk,
     RejectInvalid,
     RejectInvalidHunk,
     RejectLayout,
@@ -302,9 +301,7 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
         let case_dir = dir.join(index.to_string());
         let is_hunk = matches!(
             expectation,
-            NativeExpected::MatchHunk
-                | NativeExpected::RejectHunk
-                | NativeExpected::RejectInvalidHunk
+            NativeExpected::MatchHunk | NativeExpected::RejectInvalidHunk
         );
         let valid = matches!(
             expectation,
@@ -399,9 +396,7 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
                 );
                 if matches!(
                     expectation,
-                    NativeExpected::RejectLayout
-                        | NativeExpected::RejectHunk
-                        | NativeExpected::RejectInvalidHunk
+                    NativeExpected::RejectLayout | NativeExpected::RejectInvalidHunk
                 ) {
                     let no_output = !run
                         .captured_artifacts

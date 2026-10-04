@@ -1820,8 +1820,16 @@ two equal addends with separate relocation records. Shared `.emit long,$,$`
 follows the same rule. Same-section differences such as `$-label` are absolute;
 different section bases do not cancel merely because their numeric offsets match.
 The compact native implementation does not yet support direct section-relative
-`$` in instruction operands. Its mapped logical-section Hunk path also remains
-incomplete.
+`$` in instruction operands. Its explicit mapped logical-section Hunk path now
+appends reachable imported blocks after concrete content, including reopened
+concrete sections and BSS reservations. Mapped labels, data `$` and aliases use
+the concrete segment identity and include its prefix in their addends and fixup
+offsets. A preliminary layout traversal measures those prefixes; both assembly
+passes retain statement order, including mutable symbols and readonly snapshots.
+The compact path currently supports two explicit maps and eight source section
+slots in total, including logical fragments. It requires matching section kinds
+and stable concrete prefix sizes; it does not promise general layout convergence.
+Current global section-name collisions and conflicting mappings remain rejected.
 
 Readonly assignments in Rust and the compact native assembler retain their
 relocation meaning: a readonly snapshot of `target+offset` remains an address,

@@ -24,8 +24,11 @@ HunkInvalid	.word ?
 HunkCurrent	.word ?
 HunkSelected	.word ?
 OutsidePc	.long ?
+HunkFragment	.word ?
+MapCount	.word ?
+MapReady	.word ?
 	.endstruct
-SLOTS = State.OutsidePc+4
+SLOTS = State.MapReady+2
 FIRST = SLOTS
 SECOND = SLOTS+SLOT_BYTES
 FIRST_BASE = FIRST+Slot.Base
@@ -42,8 +45,11 @@ Used	.long ?
 Size	.long ?
 Limit	.long ?
 PcLimit	.long ?
+Target	.word ?  ; one-based concrete slot, zero for an ordinary section
+Bias	.long ?  ; frozen concrete PC before mapped logical content
+PayloadBias	.long ?  ; frozen initialized-byte prefix
 	.endstruct
-HUNK_SLOT_BYTES = HunkSlot.PcLimit+4
+HUNK_SLOT_BYTES = HunkSlot.PayloadBias+4
 HUNK_SLOTS = SLOTS+2*SLOT_BYTES
 ORDER = HUNK_SLOTS+8*HUNK_SLOT_BYTES
 SCRATCH_BYTES = ORDER+8
@@ -70,6 +76,9 @@ scan	.block
 	clr.w State.OutputSeen(a6)
 	clr.w State.HunkInvalid(a6)
 	clr.w State.HunkCurrent(a6)
+	clr.w State.HunkFragment(a6)
+	clr.w State.MapCount(a6)
+	clr.w State.MapReady(a6)
 	lea SLOTS(a6), a5
 	move.w #(SCRATCH_BYTES-SLOTS)/2-1, d0
 clearSlots
@@ -239,23 +248,50 @@ scanHunkControl	.block
 	beq.w output
 	cmpi.w #2, d1
 	beq.w first
+	cmpi.w #6, d1
+	beq.w extra
+	cmpi.w #11, d1
+	beq.w extra
 	cmpi.w #7, d1
 	beq.w second
 	cmpi.w #12, d1
 	beq.w extra
 	cmpi.w #1, d1
-	beq.w incompatible
-	cmpi.w #6, d1
-	beq.w incompatible
+	beq.w mapped
 	cmpi.w #10, d1
-	beq.w incompatible
-	cmpi.w #11, d1
-	beq.w incompatible
+	beq.w mapped
 	cmpi.w #5, d1
 	beq.w incompatible
 	cmpi.w #9, d1
 	beq.w incompatible
 	bra.w ok
+mapped
+	cmpi.w #8, d0
+	bne.w incompatible
+	moveq #0, d2
+	move.b 6(a0), d2
+	cmpi.w #8, d2
+	bhs.w bad
+	move.l d2, d0
+	bsr.w slotAddress
+	moveq #0, d4
+	move.b 7(a0), d4
+	cmpi.w #8, d4
+	bhs.w bad
+	cmp.w d2, d4
+	beq.w bad
+	addq.w #1, d4
+	tst.w HunkSlot.Target(a5)
+	beq.w newMap
+	cmp.w HunkSlot.Target(a5), d4
+	bne.w bad
+	bra.w mappedKind
+newMap
+	move.w d4, HunkSlot.Target(a5)
+	addq.w #1, State.MapCount(a6)
+mappedKind
+	moveq #8, d0
+	bra.w section
 first
 	moveq #0, d2
 	bra.w section
@@ -391,8 +427,9 @@ nextHunkPass
 	.bend  ; beginPass
 
 ; A0=State,A1=Context,A2=packed control record. D0/CCR=status.
-; Mapped output still schedules concrete before logical records. Hunk controls
-; switch section-local cursors during a single source-order traversal.
+; Flat mapped output still schedules concrete before logical records. Hunk
+; controls switch independent fragment cursors during source-order traversal;
+; mapped fragments expose their destination identity and frozen PC prefix.
 control	.block
 	movem.l d1-d3/a0-a2/a5-a6, -(sp)
 	cmpi.b #21, 4(a2)
@@ -547,11 +584,22 @@ hunkControl
 	cmpi.w #7, d2
 	beq.w hunkOpen
 	cmpi.w #12, d2
+	beq.w fragmentSlot
+	cmpi.w #1, d2
+	beq.w fragmentSlot
+	cmpi.w #10, d2
+	beq.w fragmentSlot
+	cmpi.w #6, d2
+	beq.w fragmentSlot
+	cmpi.w #11, d2
 	bne.w bad
+fragmentSlot
+	moveq #0, d3
 	move.b 6(a2), d3
 hunkOpen
 	tst.w State.Active(a0)
 	bne.w bad
+	move.w d3, State.HunkFragment(a0)
 	move.w d3, State.HunkCurrent(a0)
 	move.l pkg.Context.Pc(a1), State.OutsidePc(a0)
 	movea.l a0, a6
@@ -562,7 +610,16 @@ hunkOpen
 	cmp.w HunkSlot.Kind(a5), d1
 	bne.w bad
 	move.w d1, State.ActiveKind(a0)
-	move.l HunkSlot.Size(a5), pkg.Context.Pc(a1)
+	move.l HunkSlot.Size(a5), d1
+	add.l HunkSlot.Bias(a5), d1
+	bcs.w bad
+	move.l d1, pkg.Context.Pc(a1)
+	tst.w HunkSlot.Target(a5)
+	beq.w canonicalReady
+	move.w HunkSlot.Target(a5), d3
+	subq.w #1, d3
+	move.w d3, State.HunkCurrent(a0)
+canonicalReady
 	clr.w State.HunkSelected(a0)
 	moveq #0, d1
 	move.w State.OrderCount(a0), d2
@@ -583,9 +640,12 @@ hunkClose
 	beq.w bad
 	movea.l a0, a6
 	moveq #0, d0
-	move.w State.HunkCurrent(a0), d0
+	move.w State.HunkFragment(a0), d0
 	bsr.w slotAddress
-	move.l pkg.Context.Pc(a1), HunkSlot.Size(a5)
+	move.l pkg.Context.Pc(a1), d1
+	sub.l HunkSlot.Bias(a5), d1
+	bcs.w bad
+	move.l d1, HunkSlot.Size(a5)
 	move.l State.OutsidePc(a0), pkg.Context.Pc(a1)
 	clr.w pkg.Context.CurrentSection(a1)
 	clr.w State.Active(a0)
@@ -641,8 +701,43 @@ ordered
 offsetReady
 	add.l HunkSlot.Limit(a5), d1
 	bcs.w bad
+	tst.w State.MapCount(a6)
+	beq.w nextOrder
+	; slotAddress consumed D0; recover the selected source ID from ORDER.
+	moveq #0, d2
+	move.b -1(a4), d2
+	addq.w #1, d2
+	lea HUNK_SLOTS(a6), a3
+	moveq #7, d3
+appendLimits
+	cmp.w HunkSlot.Target(a3), d2
+	bne.w nextLimit
+	add.l HunkSlot.Limit(a3), d1
+	bcs.w bad
+nextLimit
+	adda.w #HUNK_SLOT_BYTES, a3
+	dbra d3, appendLimits
+nextOrder
 	subq.w #1, d4
 	bne.w ordered
+	tst.w State.MapReady(a6)
+	beq.w good
+	lea HUNK_SLOTS(a6), a3
+	moveq #7, d3
+mapStarts
+	moveq #0, d0
+	move.w HunkSlot.Target(a3), d0
+	beq.w nextStart
+	subq.w #1, d0
+	bsr.w slotAddress
+	move.l HunkSlot.Start(a5), d2
+	add.l HunkSlot.PayloadBias(a3), d2
+	bcs.w bad
+	move.l d2, HunkSlot.Start(a3)
+nextStart
+	adda.w #HUNK_SLOT_BYTES, a3
+	dbra d3, mapStarts
+good
 	moveq #0, d0
 	bra.w done
 bad
@@ -660,8 +755,10 @@ checkHunkPc	.block
 	beq.w good
 	movea.l a0, a6
 	moveq #0, d0
-	move.w State.HunkCurrent(a6), d0
+	move.w State.HunkFragment(a6), d0
 	bsr.w slotAddress
+	sub.l HunkSlot.Bias(a5), d1
+	bcs.w bad
 	cmp.l HunkSlot.PcLimit(a5), d1
 	bhi.w bad
 good
@@ -684,7 +781,7 @@ routeHunk	.block
 	movea.l a0, a6
 	move.l d0, d3
 	moveq #0, d0
-	move.w State.HunkCurrent(a6), d0
+	move.w State.HunkFragment(a6), d0
 	bsr.w slotAddress
 	move.l HunkSlot.Used(a5), d1
 	add.l d1, d3
@@ -844,7 +941,25 @@ bad
 ; A0=state,A2=numeric section control. Retain kind across active emission.
 ; D0/CCR=status; other registers preserved.
 sectionKind	.block
-	cmpi.b #5, (a2)
+	moveq #5, d0
+	cmpi.w #6, d2
+	beq.w mappedConcrete
+	cmpi.w #11, d2
+	beq.w mappedConcrete
+	cmpi.w #1, d2
+	beq.w mappedLogical
+	cmpi.w #10, d2
+	bne.w checkBytes
+mappedLogical
+	; Current unmapped logical reopenings have no numeric map suffix.
+	tst.w State.MapCount(a0)
+	beq.w checkBytes
+	moveq #7, d0
+	bra.w checkBytes
+mappedConcrete
+	moveq #6, d0
+checkBytes
+	cmp.b (a2), d0
 	bne.w invalidKind
 	moveq #0, d0
 	move.b 5(a2), d0

@@ -71,8 +71,10 @@ clearMaps
 	.bend  ; begin
 
 ; A0=writer record,A1=scope state,A2=section state,D0=1..4.
-; Supports up to two mapped pairs or two concrete sections in adjacent regions.
-; Rewrites section opens to [header,opcode,kind] (1=code,2=data,3=bss).
+; Flat placement supports two mapped pairs or adjacent concrete regions; Hunk
+; layout shares eight source slots across concrete and mapped logical sections.
+; Section opens carry [header,opcode,kind] (1=code,2=data,3=bss). Mapped
+; opens append a source slot; logical opens also append their concrete target.
 ; Region controls carry optional u32 start,u32 end after the opcode.
 ; D0/CCR=status; other registers preserved.
 line	.block
@@ -231,7 +233,7 @@ mappedName
 	moveq #0, d3
 mapNameLoop
 	cmp.w State.MapCount(a4), d3
-	bhs.w bad
+	bhs.w unmappedName
 	move.l d3, d0
 	lsl.l #3, d0
 	lea MAPS(a4), a0
@@ -292,6 +294,15 @@ firstMappedConcrete
 nextMapName
 	addq.w #1, d3
 	bra.w mapNameLoop
+unmappedName
+	cmpi.w #1, d5
+	beq.w bad
+	move.w d6, d1
+	bsr.w declareSlot
+	bmi.w bad
+	move.w d0, d7
+	moveq #12, d5
+	bra.w matched
 matched
 	cmpi.w #1, d5
 	beq.w logical
@@ -464,14 +475,40 @@ secondPlaced
 	ori.w #64, State.Seen(a4)
 	bra.w control
 sectionControl
+	tst.w State.MapCount(a4)
+	beq.w writeSection
+	cmpi.w #12, d5
+	beq.w writeSection
+	move.w d6, d1
+	bsr.w declareSlot
+	bmi.w bad
+	move.w d0, d7
+writeSection
 	move.b #5, (a5)
 	move.b #source.FLAG_LAYOUT, 1(a5)
 	move.b d5, 4(a5)
 	move.b d4, 5(a5)
 	cmpi.w #12, d5
-	bne.w ok
+	beq.w writeSlot
+	tst.w State.MapCount(a4)
+	beq.w ok
+writeSlot
 	move.b #6, (a5)
 	move.b d7, 6(a5)
+	cmpi.w #1, d5
+	beq.w writeMap
+	cmpi.w #10, d5
+	bne.w ok
+writeMap
+	move.l d3, d0
+	lsl.l #3, d0
+	lea MAPS(a4), a0
+	adda.l d0, a0
+	move.w Map.Concrete(a0), d1
+	bsr.w slot
+	bmi.w bad
+	move.b #7, (a5)
+	move.b d0, 7(a5)
 	bra.w ok
 control
 	move.b #4, (a5)
@@ -855,8 +892,6 @@ finish	.block
 	bne.w badFinish
 	tst.w State.OutputSeen(a0)
 	beq.w flatFinish
-	tst.w State.MapCount(a0)
-	bne.w badFinish
 	move.w State.Selected(a0), d1
 	and.w State.Declared(a0), d1
 	cmp.w State.Selected(a0), d1

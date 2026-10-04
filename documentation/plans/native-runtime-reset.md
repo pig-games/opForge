@@ -2458,3 +2458,82 @@ Before integrating the replacement, review combined responsibilities, update cur
 user/technical documentation, and remove the superseded experimental or legacy code
 that no longer serves a validated purpose. Local commits are recovery points;
 remote pushes remain separately authorized.
+
+
+#### Explicit mapped logical-section Hunk layout
+
+The compact native Hunk path now accepts ordinary concrete sections alongside
+explicit import maps. Preparation emits numeric fragment/destination slots;
+execution never looks up section strings. `binary_hunk_mapping.asm` owns map
+validation, concrete-prefix measurement, fresh symbol/proof reset, stability
+checks and final extent merging. `binary_sections.asm` keeps independent concrete
+and logical cursors and routes their payloads; assembly only schedules the passes.
+
+Mapped Hunk builds perform one disposable source-order layout traversal, freeze
+concrete PC and initialized-byte prefixes, then run two fresh authoritative
+source-order assembly passes. Only compile-time constants and incoming parameters
+survive the reset. Labels, data `$` and aliases use the destination section identity
+and prefix. Concrete reopenings still precede appended logical content; mutable
+symbols and readonly snapshots retain statement order. Map-free builds keep two
+passes. Flat mapped layouts retain their existing mutation rejection.
+
+Nine fresh native positives match current Rust Hunk output exactly: mapped PC and
+scalar blocks, imported aliases, reversed output selection, dependency-first source,
+two destinations, reopened concrete prefixes, BSS and mutable snapshot order.
+Three paired rejections require explicit nonzero completion and no Hunk artifact:
+kind mismatch, logical/concrete name collision, and one logical name mapped to two
+targets. The current Rust section table uses global names; the equal-name controls
+are existing limitations, not newly supported module-qualified section identities.
+The bounded native path retains two maps and eight total source slots, rejects
+chained/many-to-one maps, and requires stable concrete prefixes. General layout
+convergence, implicit mapping and broader Hunk parity are not established here.
+
+The release image grows from 453,004 bytes at `a9e08952` to 453,912 (+908),
+`fnv1a64:e7cd7408abff1373`. Section-control storage grows by 86 bytes (six state
+bytes plus ten per slot); symbol slots and packages are unchanged. These are
+static layout counts, not a measured peak or 2 MiB qualification. Mapped open
+records retain one extra source-slot byte, plus a destination byte for logical
+opens. No legacy executor or source-text assembly path was added.
+
+On identical uninstrumented scalar-snapshot input, FS-UAE 68020/10 MiB timings
+exclude emulator startup and measure START-to-DONE host wall time:
+
+| Run | Baseline `a9e08952` | Mapped-layout repair |
+|---|---:|---:|
+| 1 | 13.427084 s | 13.362053 s |
+| 2 | 13.693347 s | 13.609220 s |
+| Median | 13.560215 s | 13.485636 s |
+
+The median difference is -0.074579 seconds (-0.550%). Run-to-run spread exceeds
+that difference, so no speedup is established. Both images match the same live
+Rust output `fnv1a64:7eaac19333981023`, source `fnv1a64:a7120dfa242f6e68`
+(15,748 bytes), packages and command. Reports are
+`/tmp/opforge-hunk-map-measurement-baseline.json` and
+`/tmp/opforge-hunk-map-measurement-current-final.json`.
+
+A separate post-change mapped workload has a 128-longword concrete prefix and
+128 mapped current-PC fields, plus an imported entry reference. Its two fresh
+release runs take 4.116896 and 3.837860 seconds (median 3.977378). Both match live
+Rust Hunk `fnv1a64:aa448e957e3fcca2`, source `fnv1a64:4482a308fb156dc2`
+(3,416 bytes), on the final image and unchanged packages. Report:
+`/tmp/opforge-hunk-map-mapped-measurement-final.json`. This is an absolute
+post-change measurement; the old mapped Hunk path rejects, so no mapped speedup
+comparison is possible.
+
+Fresh final-image regression controls also pass for mixed snapshots/relocations/BSS,
+nested/zero loops, flat logical reopening without an explicit map, and two mapped
+6502 regions. The flat reader validates current metadata-bearing open records
+while retaining the current unmapped reopening form; it is not a legacy executor.
+Two flat mutation-rejection controls retain explicit nonzero/no-output behavior.
+Focused Rust checks pass 30 Hunk tests, 23 reachable-block relayout tests and one
+flat reopening test. Library Clippy, Rust/native formatting, CPU boundaries,
+runtime ownership/no-growth, instrumentation safety, native test ownership,
+fresh-proof, benchmark-selector and workflow-link checks pass. Independent review
+resolved the current record-length edge. The broader inventory hash check fails
+for five unchanged runtime modules identically at baseline; test-only Clippy
+reports 22 existing findings in unchanged test sources. These are not broad
+qualification claims.
+This checkpoint does not claim a new full native self-host.
+
+Batch cleanup reclaimed 3.1 GiB with `make clean`; `target` remains empty.
+Required release deliverables and diagnostic summaries are preserved outside it.

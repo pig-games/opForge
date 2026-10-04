@@ -474,34 +474,265 @@ fn compact_hunk_section_pc_relocation_fs_uae() {
     );
 }
 
+fn mapped_hunk_cases() -> Vec<(&'static str, String)> {
+    let (_, pc) = section_pc_cases()
+        .into_iter()
+        .find(|(name, _)| *name == "section-pc-mapped-block")
+        .unwrap();
+    let scalar = pc.replace(".long $\n.long $\n", ".long 1\n.long 2\n");
+    let alias = pc.replace(
+        ".section code,kind=code\n.long dep.entry\n",
+        "root_alias .const dep.entry+2\n.section code,kind=code\n.long dep.entry,root_alias\n",
+    );
+    let reversed = alias
+        .replace("sections=code,data", "sections=data,code")
+        .replace("kind=data", "kind=code");
+    let dependency_start = alias.find(".module pc_dep\n").unwrap();
+    let dependency_first = format!(
+        "{}{}",
+        &alias[dependency_start..],
+        &alias[..dependency_start]
+    );
+    let reopened = dependency_first.replace(
+        ".section data,kind=data\n.long 0\n.endsection\n",
+        ".section data,kind=data\n.long $11\n.endsection\n.section data,kind=data\n.long $22,$33\n.endsection\n",
+    );
+    let bss = pc
+        .replace("kind=data", "kind=bss")
+        .replace(
+            ".section data,kind=bss\n.long 0",
+            ".section data,kind=bss\n.res byte,4",
+        )
+        .replace(".long $\n.long $", ".res byte,8");
+    let mutable = pc
+        .replace(".use pc_dep", "n .var 1\n.use pc_dep")
+        .replace(
+            ".section code,kind=code\n.long dep.entry\n.endsection\n.section data,kind=data\n.long 0\n.endsection\n",
+            ".section data,kind=data\n.long n\nn .set n+1\nsnap .const n\n.endsection\n.section code,kind=code\n.long n,snap,dep.entry\nn .set n+1\n.endsection\n.section data,kind=data\n.long n,snap\n.endsection\n",
+        );
+    let two_maps = concat!(
+        ".module main\n.cpu m68020\n",
+        ".use dep_a (entry) as left map { logical_a -> data_a }\n",
+        ".use dep_b (entry) as right map { logical_b -> data_b }\n",
+        ".section code,kind=code\n.long left.entry,right.entry\n.endsection\n",
+        ".section data_a,kind=data\n.long $11\n.endsection\n",
+        ".section data_b,kind=data\n.long $22,$33\n.endsection\n",
+        ".output \"out.hunk\",format=hunk,sections=code,data_b,data_a\n.endmodule\n",
+        ".module dep_a\n.cpu m68020\n.pub\n",
+        ".section logical_a,kind=data,logical\nentry .block\n.long $\n.bend\n.endsection\n.endmodule\n",
+        ".module dep_b\n.cpu m68020\n.pub\n",
+        ".section logical_b,kind=data,logical\nentry .block\n.long $\n.bend\n.endsection\n.endmodule\n",
+    );
+    vec![
+        ("mapped-pc-block", pc),
+        ("mapped-scalar-block", scalar),
+        ("mapped-imported-alias", alias),
+        ("mapped-reversed-output", reversed),
+        ("mapped-dependency-first", dependency_first),
+        ("mapped-two-targets", two_maps.into()),
+        ("mapped-reopened-prefix", reopened),
+        ("mapped-bss-block", bss),
+        ("mapped-mutable-snapshot-order", mutable),
+    ]
+}
+
 #[test]
-#[ignore = "known native mapped Hunk boundary; requires fresh FS-UAE desired PC comparison"]
-fn compact_hunk_mapped_section_pc_relocation_fs_uae() {
+fn compact_hunk_mapped_logical_sections_rust_oracles() {
+    let dir = create_temp_dir("hunk-mapped-logical-sections-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (name, source) in mapped_hunk_cases() {
+        let bytes = project_oracle(&dir, &source, true, &[])
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let segments = hunk::segments(&bytes).unwrap();
+        if name == "mapped-bss-block" {
+            assert_eq!(segments[1].kind, 0x3eb);
+            assert_eq!(segments[1].reserved_bytes, 12);
+        }
+        let expected = match name {
+            "mapped-pc-block" => vec![
+                (vec![4], vec![(0, 1)]),
+                (vec![0, 4, 8], vec![(4, 1), (8, 1)]),
+            ],
+            "mapped-scalar-block" => vec![(vec![4], vec![(0, 1)]), (vec![0, 1, 2], vec![])],
+            "mapped-imported-alias" | "mapped-dependency-first" => vec![
+                (vec![4, 6], vec![(0, 1), (4, 1)]),
+                (vec![0, 4, 8], vec![(4, 1), (8, 1)]),
+            ],
+            "mapped-reversed-output" => vec![
+                (vec![0, 4, 8], vec![(4, 0), (8, 0)]),
+                (vec![4, 6], vec![(0, 0), (4, 0)]),
+            ],
+            "mapped-reopened-prefix" => vec![
+                (vec![12, 14], vec![(0, 1), (4, 1)]),
+                (vec![0x11, 0x22, 0x33, 12, 16], vec![(12, 1), (16, 1)]),
+            ],
+            "mapped-bss-block" => vec![(vec![4], vec![(0, 1)]), (vec![], vec![])],
+            "mapped-mutable-snapshot-order" => vec![
+                (vec![2, 2, 12], vec![(8, 1)]),
+                (vec![1, 3, 2, 12, 16], vec![(12, 1), (16, 1)]),
+            ],
+            "mapped-two-targets" => vec![
+                (vec![4, 8], vec![(4, 1), (0, 2)]),
+                (vec![0x22, 0x33, 8], vec![(8, 1)]),
+                (vec![0x11, 4], vec![(4, 2)]),
+            ],
+            _ => unreachable!(),
+        };
+        assert_eq!(segments.len(), expected.len(), "{name}");
+        for (index, (segment, (words, relocations))) in segments.iter().zip(expected).enumerate() {
+            let payload: Vec<u8> = words.into_iter().flat_map(u32::to_be_bytes).collect();
+            assert_eq!(segment.payload, payload, "{name}/{index} payload");
+            assert_eq!(
+                segment.relocations, relocations,
+                "{name}/{index} relocations"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE mapped logical section placement and relocation comparison"]
+fn compact_hunk_mapped_logical_sections_fs_uae() {
     native_expected_cases(
-        section_pc_cases()
+        mapped_hunk_cases()
             .into_iter()
-            .filter(|(name, _)| *name == "section-pc-mapped-block")
             .map(|(name, source)| (name.into(), "m68020", source, NativeExpected::MatchHunk))
             .collect(),
-        "OPFORGE_HUNK_SECTION_PC_REPORT",
+        "OPFORGE_HUNK_MAPPED_REPORT",
+    );
+}
+
+fn mapped_hunk_measurement() -> String {
+    let (_, pc) = mapped_hunk_cases()
+        .into_iter()
+        .find(|(name, _)| *name == "mapped-pc-block")
+        .unwrap();
+    pc.replace(".long 0\n", &".long $11223344\n".repeat(128))
+        .replace(".long $\n.long $\n", &".long $\n".repeat(128))
+}
+
+#[test]
+fn compact_hunk_mapped_measurement_rust_oracle() {
+    let dir = create_temp_dir("hunk-mapped-measurement-oracle");
+    let _cleanup = Cleanup(dir.clone());
+    let bytes = project_oracle(&dir, &mapped_hunk_measurement(), true, &[]).unwrap();
+    let segments = hunk::segments(&bytes).unwrap();
+    assert_eq!(segments.len(), 2);
+    assert_eq!(segments[0].payload, 512u32.to_be_bytes());
+    assert_eq!(segments[0].relocations, [(0, 1)]);
+    let offsets = (512u32..1024).step_by(4);
+    let payload: Vec<u8> = std::iter::repeat_n(0x11223344u32, 128)
+        .chain(offsets.clone())
+        .flat_map(u32::to_be_bytes)
+        .collect();
+    assert_eq!(segments[1].payload, payload);
+    assert_eq!(
+        segments[1].relocations,
+        offsets.map(|offset| (offset, 1)).collect::<Vec<_>>()
     );
 }
 
 #[test]
-#[ignore = "requires fresh FS-UAE scalar control for the existing mapped Hunk rejection"]
-fn compact_hunk_mapped_section_pc_scalar_control_fs_uae() {
-    let (_, source) = section_pc_cases()
+#[ignore = "two fresh timings for identical mapped Hunk prefix and logical payload"]
+fn compact_hunk_mapped_measurement_fs_uae() {
+    native_expected_cases(
+        (0..2)
+            .map(|round| {
+                (
+                    format!("mapped-measurement/{round}"),
+                    "m68020",
+                    mapped_hunk_measurement(),
+                    NativeExpected::MatchHunk,
+                )
+            })
+            .collect(),
+        "OPFORGE_HUNK_MAPPED_REPORT",
+    );
+}
+
+fn flat_reopened_logical_source() -> String {
+    concat!(
+        ".module main\n.cpu m6502\n.region image,$1000,$10ff\n",
+        ".section code\n.byte 1\n.endsection\n",
+        ".section code,logical\n.byte 2\n.endsection\n",
+        ".place code in image\n.output \"output.bin\",format=bin,sections=code\n.endmodule\n",
+    )
+    .into()
+}
+
+#[test]
+fn compact_flat_reopened_logical_rust_oracle() {
+    let dir = create_temp_dir("flat-reopened-logical-oracle");
+    let _cleanup = Cleanup(dir.clone());
+    assert_eq!(
+        project_oracle(&dir, &flat_reopened_logical_source(), false, &[]).unwrap(),
+        [1, 2],
+    );
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE flat logical section reopening without an explicit map"]
+fn compact_flat_reopened_logical_fs_uae() {
+    native_expected_cases(
+        vec![(
+            "flat-reopened-logical".into(),
+            "6502",
+            flat_reopened_logical_source(),
+            NativeExpected::MatchRust,
+        )],
+        "OPFORGE_HUNK_MAPPED_REPORT",
+    );
+}
+
+fn invalid_mapped_hunk_cases() -> Vec<(&'static str, String)> {
+    let (_, pc) = section_pc_cases()
         .into_iter()
         .find(|(name, _)| *name == "section-pc-mapped-block")
         .unwrap();
+    let (_, two_maps) = mapped_hunk_cases()
+        .into_iter()
+        .find(|(name, _)| *name == "mapped-two-targets")
+        .unwrap();
+    vec![
+        (
+            "mapped-kind-mismatch",
+            pc.replace(".section data,kind=data", ".section data,kind=code"),
+        ),
+        ("mapped-equal-leaf", pc.replace("logical_data", "data")),
+        (
+            "mapped-two-owner-equal-leaf",
+            two_maps
+                .replace("logical_a", "logical_data")
+                .replace("logical_b", "logical_data"),
+        ),
+    ]
+}
+
+#[test]
+fn compact_hunk_mapped_invalid_rust_oracles() {
+    let dir = create_temp_dir("hunk-mapped-invalid-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (name, source) in invalid_mapped_hunk_cases() {
+        assert!(project_oracle(&dir, &source, true, &[]).is_err(), "{name}");
+    }
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE unsupported mapped section contract rejection"]
+fn compact_hunk_mapped_invalid_fs_uae() {
     native_expected_cases(
-        vec![(
-            "section-pc-mapped-block-scalar-control".into(),
-            "m68020",
-            source.replace(".long $\n.long $\n", ".long 1\n.long 2\n"),
-            NativeExpected::RejectHunk,
-        )],
-        "OPFORGE_HUNK_SECTION_PC_REPORT",
+        invalid_mapped_hunk_cases()
+            .into_iter()
+            .map(|(name, source)| {
+                (
+                    name.into(),
+                    "m68020",
+                    source,
+                    NativeExpected::RejectInvalidHunk,
+                )
+            })
+            .collect(),
+        "OPFORGE_HUNK_MAPPED_REPORT",
     );
 }
 

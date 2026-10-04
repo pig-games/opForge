@@ -863,7 +863,7 @@ impl MacroProcessor {
                     if self.statement_output_origins.len() == expanded.len() {
                         out_origins.extend(std::mem::take(&mut self.statement_output_origins));
                     } else {
-                        out_origins.extend(std::iter::repeat(origin.clone()).take(expanded.len()));
+                        out_origins.extend(std::iter::repeat_n(origin.clone(), expanded.len()));
                     }
                     out.extend(expanded);
                     continue;

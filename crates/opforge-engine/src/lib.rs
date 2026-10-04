@@ -347,20 +347,19 @@ pub fn expand_source_file_with_dependencies_with_provider(
     .map(|(lines, files, _)| (lines, files))
 }
 
+pub(crate) type ExpandedSourceFile = (
+    Vec<String>,
+    Vec<PathBuf>,
+    Vec<types::source_map::SourceOrigin>,
+);
+
 pub(crate) fn expand_source_file_with_context(
     path: &Path,
     defines: &[String],
     include_roots: &[PathBuf],
     pp_macro_depth: usize,
     source_provider: &dyn SourceProvider,
-) -> Result<
-    (
-        Vec<String>,
-        Vec<PathBuf>,
-        Vec<types::source_map::SourceOrigin>,
-    ),
-    AsmRunError,
-> {
+) -> Result<ExpandedSourceFile, AsmRunError> {
     let mut pp = Preprocessor::with_max_depth(pp_macro_depth);
     if let Some(parent) = path.parent() {
         pp.add_include_root(parent.to_path_buf());
@@ -1284,13 +1283,15 @@ pub fn prepare_assembly_session(
     let module_graph_started_at = Instant::now();
     let graph = source_graph::load_module_graph_contextual(
         request.root_path,
-        root_lines,
+        source_graph::PreparedRootSource {
+            lines: root_lines,
+            origins: root_origins,
+        },
         request.defines,
         request.include_roots,
         request.module_paths,
         request.pp_macro_depth,
         source_provider,
-        &root_origins,
     )?;
     phase_profile::record_direct(
         PhaseBucket::PrepareSourceModuleLoading,

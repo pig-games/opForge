@@ -42,6 +42,11 @@ struct ModuleSource {
     params: HashMap<String, i64>,
 }
 
+pub(crate) struct PreparedRootSource {
+    pub(crate) lines: Vec<String>,
+    pub(crate) origins: Vec<SourceOrigin>,
+}
+
 struct ModuleLoadContext<'a> {
     index: &'a ModuleIndex,
     loaded: &'a mut HashSet<String>,
@@ -489,53 +494,50 @@ fn collect_configured_uses(source: &ModuleSource) -> Result<Vec<ModuleUseRef>, A
         if scope_depth == 0 {
             record_compile_time_constant(&ast, &mut values);
         }
-        match ast {
-            LineAst::Use(use_ast) => {
-                let mut import = ModuleUseRef {
-                    module_id: use_ast.module_id,
-                    span: Span {
-                        line: use_ast.span.line + source.first_line - 1,
-                        ..use_ast.span
-                    },
-                    params: HashMap::new(),
-                };
-                for param in use_ast.params {
-                    let key = param.name.to_ascii_uppercase();
-                    if import.params.contains_key(&key) {
-                        return Err(module_import_error(
-                            &format!("duplicate .use parameter: {}", param.name),
-                            Some(&param.name),
-                            &import,
-                            &source.path,
-                            &source.lines,
-                        ));
-                    }
-                    if contains_string_literal(&param.value) {
-                        return Err(module_import_error(
-                            &format!(
-                                ".use parameter {}: string values are not supported",
-                                param.name
-                            ),
-                            Some(&param.name),
-                            &import,
-                            &source.path,
-                            &source.lines,
-                        ));
-                    }
-                    let value = eval_core_expr(&param.value, &values).map_err(|err| {
-                        module_import_error(
-                            &format!(".use parameter {}: {}", param.name, err.message),
-                            Some(&param.name),
-                            &import,
-                            &source.path,
-                            &source.lines,
-                        )
-                    })?;
-                    import.params.insert(key, value);
+        if let LineAst::Use(use_ast) = ast {
+            let mut import = ModuleUseRef {
+                module_id: use_ast.module_id,
+                span: Span {
+                    line: use_ast.span.line + source.first_line - 1,
+                    ..use_ast.span
+                },
+                params: HashMap::new(),
+            };
+            for param in use_ast.params {
+                let key = param.name.to_ascii_uppercase();
+                if import.params.contains_key(&key) {
+                    return Err(module_import_error(
+                        &format!("duplicate .use parameter: {}", param.name),
+                        Some(&param.name),
+                        &import,
+                        &source.path,
+                        &source.lines,
+                    ));
                 }
-                uses.push(import);
+                if contains_string_literal(&param.value) {
+                    return Err(module_import_error(
+                        &format!(
+                            ".use parameter {}: string values are not supported",
+                            param.name
+                        ),
+                        Some(&param.name),
+                        &import,
+                        &source.path,
+                        &source.lines,
+                    ));
+                }
+                let value = eval_core_expr(&param.value, &values).map_err(|err| {
+                    module_import_error(
+                        &format!(".use parameter {}: {}", param.name, err.message),
+                        Some(&param.name),
+                        &import,
+                        &source.path,
+                        &source.lines,
+                    )
+                })?;
+                import.params.insert(key, value);
             }
-            _ => {}
+            uses.push(import);
         }
     }
     Ok(uses)
@@ -875,26 +877,31 @@ pub fn load_module_graph_with_provider(
 ) -> Result<ModuleGraphResult, AsmRunError> {
     load_module_graph_contextual(
         root_path,
-        root_lines,
+        PreparedRootSource {
+            lines: root_lines,
+            origins: Vec::new(),
+        },
         defines,
         include_roots,
         module_roots,
         pp_macro_depth,
         source_provider,
-        &[],
     )
 }
 
 pub(crate) fn load_module_graph_contextual(
     root_path: &Path,
-    root_lines: Vec<String>,
+    root_source: PreparedRootSource,
     defines: &[String],
     include_roots: &[PathBuf],
     module_roots: &[PathBuf],
     pp_macro_depth: usize,
     source_provider: &dyn SourceProvider,
-    root_origins: &[SourceOrigin],
 ) -> Result<ModuleGraphResult, AsmRunError> {
+    let PreparedRootSource {
+        lines: root_lines,
+        origins: root_origins,
+    } = root_source;
     let fallback = |index: usize| {
         let mut origin = SourceOrigin::new(Some(stable_path_string(root_path)), index as u32 + 1);
         origin.binary_context = Some(types::binary_resource::BinaryResourceContext {
@@ -1013,7 +1020,6 @@ pub(crate) fn load_module_graph_contextual(
             _ => None,
         })
         .collect();
-    let mut entry_order = entry_order;
     entry_order.sort_by_key(|id| entry_targets.contains(&canonical_module_id(id)));
     for id in entry_order {
         if ctx.loaded.contains(&canonical_module_id(&id)) {

@@ -101,8 +101,8 @@ pub fn execute(
                         i += 1;
                     }
                 }
-                if !tokens.get(i).is_some_and(|t| t.kind == 7)
-                    || !tokens.get(i + 1).is_some_and(|t| t.kind <= 1)
+                if tokens.get(i).is_none_or(|t| t.kind != 7)
+                    || tokens.get(i + 1).is_none_or(|t| t.kind > 1)
                 {
                     return Err(error(
                         4,

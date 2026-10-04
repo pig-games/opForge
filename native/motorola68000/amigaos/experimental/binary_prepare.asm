@@ -251,7 +251,7 @@ ordinaryParenthesis
 	cmpi.b #1, 1(a0)
 	bhi.w expressionOperand
 	cmpi.b #4, 5(a0)
-	beq.w zeroFirstValue
+	beq.w namedTuple
 	cmpi.b #15, 5(a0)
 	bne.w expressionOperand
 	move.l a0, -(sp)
@@ -274,22 +274,12 @@ parenthesizedReady
 	bsr.w copy
 	bne.w bad
 	bra.w operandDone
-zeroFirstValue
+namedTuple
 	bsr.w tupleTail
 	tst.l d0
 	bne.w bad
-	; Compile an implicit zero through the same scalar compiler as explicit
-	; displacement syntax; the packed representation remains canonical.
-	movem.l a0-a1, -(sp)
-	subq.l #6, sp
-	move.b #2, (sp)
-	clr.l 1(sp)
-	movea.l sp, a0
-	lea 5(sp), a1
-	jsr expression.compile
-	addq.l #6, sp
-	movem.l (sp)+, a0-a1
-	tst.l d0
+	; Retain the actual two-item tuple. Packages supply any implicit value.
+	bsr.w copy
 	bne.w bad
 	bra.w operandDone
 

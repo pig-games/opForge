@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_shapes as shapes
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
+	.use experimental.amigaos.binary_tuples as tuples
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_mutable as mutable
 	.use experimental.amigaos.binary_hunk_references as references
@@ -605,6 +606,10 @@ wrappedFirstItem
 	jsr shapes.isWrappedName
 	tst.l d0
 	bne.w mismatch
+	; A complete tuple cannot satisfy a bare register/named-range root.
+	bsr.w tupleArity
+	tst.l d0
+	bne.w mismatch
 	bra.w advance
 otherStructuredRoot
 	; A complete scalar has no member or indirect path root. Form 6
@@ -639,24 +644,28 @@ notMemberForm
 	tst.l d0
 	bne.w mismatch
 scalarRoot
-	bsr.w scalarTupleArity
+	bsr.w tupleArity
 	tst.l d0
 	bne.w mismatch
 	bra.w advance
 tuple
-	; A complete compiled scalar has no tuple tail, even when its payload
-	; is long enough to pass the minimum-length check for a tuple prefix.
+	; Only complete non-tuple roots disprove an arbitrary tuple projection.
+	; Register-first pairs are not displacement-prefix tuples.
 	jsr shapes.isScalar
 	tst.l d0
 	bne.w mismatch
-	; Tuple arity belongs to the full candidate match. A compiled prefix
-	; is only a necessary condition and also admits indexed 3-item tuples.
+	jsr shapes.isWrappedName
+	tst.l d0
+	bne.w mismatch
+	jsr shapes.isMember
+	tst.l d0
+	bne.w mismatch
 	move.l a1, d0
 	sub.l a0, d0
-	cmpi.l #9, d0
-	blo.w mismatch
-	cmpi.b #expression.COMPILED_TAG, (a0)
-	bne.w mismatch
+	cmpi.l #4, d0
+	bne.w advance
+	cmpi.b #TOKEN_SYMBOL_1, (a0)
+	bls.w mismatch
 advance
 	lsr.l #4, d2
 	addq.l #1, d3
@@ -1357,10 +1366,6 @@ recordReady
 	beq.w constantValue
 	cmpi.b #4, d0
 	beq.w namedValue
-	cmpi.b #5, d0
-	beq.w tupleRegister
-	cmpi.b #6, d0
-	beq.w tupleValue
 	cmpi.b #8, d0
 	beq.w wrappedRegister
 	cmpi.b #9, d0
@@ -1431,12 +1436,6 @@ memberValue
 	bra.w valueReady
 memberShape
 	bsr.w projectionMemberShape
-	bra.w valueReady
-tupleRegister
-	bsr.w projectionTupleRegister
-	bra.w valueReady
-tupleValue
-	bsr.w projectionTupleValue
 	bra.w valueReady
 wrappedRegister
 	bsr.w projectionWrappedRegister
@@ -1596,15 +1595,14 @@ inputReady
 	beq.w scalarTarget
 	cmpi.b #PROJECTION_TARGET_MEMBER, package.Projection.Kind(a4)
 	beq.w memberTarget
-	cmpi.b #6, package.Projection.Kind(a4)
+	cmpi.b #12, package.Projection.Kind(a4)
 	bne.w bad
 	bsr.w operandSpan
 	tst.l d0
 	bne.w bad
-	bsr.w projectedTupleBounds
+	bsr.w tupleProjectionSpan
 	tst.l d0
 	bne.w bad
-	movea.l a6, a1  ; first tuple item is the bounded scalar target
 	bra.w targetSpanReady
 memberTarget
 	bsr.w operandSpan
@@ -1625,9 +1623,9 @@ targetSpanReady
 	; undefined label has no usable section provenance yet; ExprVM owns that
 	; unresolved decision. Preserve the bounded span for resolved-value proof.
 	movem.l a0-a1, -(sp)
-	cmpi.b #6, package.Projection.Kind(a4)
+	cmpi.b #12, package.Projection.Kind(a4)
 	bne.w scalarValue
-	bsr.w projectionTupleValue
+	bsr.w projectionTupleItem
 	bra.w valueProjected
 scalarValue
 	cmpi.b #PROJECTION_TARGET_MEMBER, package.Projection.Kind(a4)
@@ -1940,83 +1938,35 @@ bad
 	rts
 	.bend  ; projectionWrappedRegister
 
-; Generic three-item tuple projections. The first item is compiled scalar data;
-; the remaining items retain numeric names and an optional numeric qualifier.
-; A4 selects class/qualifier; no target register bits or spelling are consulted.
+; Tuple fields retain exact arity and item index from the package selector.
+; Shared bounds expose scalar/name leaves; classes and qualifiers remain package data.
 projectionTupleItem	.block
-	bsr.w operandSpan
-	tst.l d0
-	bne.w return
-	cmpi.b #14, package.Projection.Kind(a4)
-	bne.w triple
-	cmpi.w #2, package.Projection.Class(a4)
-	bne.w triple
-	bsr.w projectedTupleBounds
-	moveq #0, d3
-	rts
-triple
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #3, d0
-	blo.w bad
-	cmpi.b #expression.COMPILED_TAG, (a0)
-	bne.w bad
-	moveq #0, d0
-	move.b 1(a0), d0
-	beq.w bad
-	addq.l #2, d0
-	lea 0(a0, d0.l), a6
-	move.l a1, d0
-	sub.l a6, d0
-	cmpi.l #11, d0
-	bne.w bad
-	cmpi.b #TOKEN_CLOSE_PAREN, 10(a6)
-	bne.w bad
-
-bounds
-	cmpi.b #TOKEN_OPEN_PAREN, (a6)
-	bne.w bad
-	cmpi.b #TOKEN_SYMBOL_1, 1(a6)
-	bhi.w bad
-	tst.b 4(a6)
-	bne.w bad
-	cmpi.b #TOKEN_COMMA, 5(a6)
-	bne.w bad
-	cmpi.b #TOKEN_SYMBOL_1, 6(a6)
-	bhi.w bad
-	; Numeric names occupy four bytes: symbol, id word, qualifier byte.
 	cmpi.b #14, package.Projection.Kind(a4)
 	beq.w arity
-	cmpi.b #3, package.Projection.Reserved(a4)
-	bne.w bad
+	bsr.w tupleProjectionSpan
+	bne.w return
 	cmpi.b #12, package.Projection.Kind(a4)
 	beq.w scalar
 	cmpi.b #11, package.Projection.Kind(a4)
-	beq.w base
+	beq.w register
 	cmpi.b #13, package.Projection.Kind(a4)
 	bne.w bad
-	cmpi.b #2, package.Projection.Reserved+1(a4)
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
 	bne.w bad
+	cmpi.b #TOKEN_SYMBOL_1, (a0)
+	bhi.w bad
 	moveq #0, d0
-	move.b 9(a6), d0
+	move.b 3(a0), d0
 	cmp.l package.Projection.Literal(a4), d0
 	bne.w bad
 	moveq #0, d1
-	move.b 7(a6), d1
+	move.b 1(a0), d1
 	lsl.w #8, d1
-	move.b 8(a6), d1
+	move.b 2(a0), d1
 	bra.w lookupRegister
-
-base
-	cmpi.b #1, package.Projection.Reserved+1(a4)
-	bne.w bad
-	lea 1(a6), a0
-	lea 4(a0), a1
-	bra.w register
 scalar
-	tst.b package.Projection.Reserved+1(a4)
-	bne.w bad
-	movea.l a6, a1
 	bsr.w evaluateScalar
 	tst.l d0
 	bne.w return
@@ -2028,126 +1978,60 @@ scalar
 	move.w #1, Unresolved
 	bra.w return
 arity
-	cmpi.w #3, package.Projection.Class(a4)
-	bne.w bad
-	moveq #0, d3
+	bsr.w operandSpan
+	bne.w return
 	moveq #0, d0
+	move.w package.Projection.Class(a4), d0
+	moveq #0, d1
+	jsr tuples.select
 return
+	tst.l d0
 	rts
 bad
 	moveq #1, d0
 	rts
 	.bend  ; projectionTupleItem
 
-; Recognize a complete tuple whose first item is a valid compiled scalar and
-; whose remaining items are numeric names. Returns D0=2/3, or zero unknown.
-; Malformed structures/programs return unknown and never disprove a match;
-; unresolved values can still prove scalar structure after successful validation.
-; Preserves D1-D4/A0-A1. A6 is scratch; no package semantics are consulted.
-scalarTupleArity	.block
-	movem.l d1-d4/a0-a1, -(sp)
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #9, d0
-	blo.w unknown
-	cmpi.b #expression.COMPILED_TAG, (a0)
-	bne.w unknown
+; A4=descriptor. Return A0/A1 as its bounded tuple leaf, D0/CCR=status.
+; Other clobbers match operandSpan and tuples.select; no value is evaluated.
+tupleProjectionSpan	.block
+	bsr.w operandSpan
+	bne.w done
 	moveq #0, d0
-	move.b 1(a0), d0
-	beq.w unknown
-	addq.l #2, d0
-	lea 0(a0, d0.l), a6
-	move.l a1, d0
-	sub.l a6, d0
-	moveq #2, d4
-	cmpi.l #6, d0
-	beq.w tail
-	cmpi.l #11, d0
-	bne.w unknown
-	moveq #3, d4
-	cmpi.b #TOKEN_COMMA, 5(a6)
-	bne.w unknown
-	cmpi.b #TOKEN_SYMBOL_1, 6(a6)
-	bhi.w unknown
-	cmpi.b #TOKEN_CLOSE_PAREN, 10(a6)
-	bne.w unknown
-	bra.w tail
-tail
-	cmpi.b #TOKEN_OPEN_PAREN, (a6)
-	bne.w unknown
-	cmpi.b #TOKEN_SYMBOL_1, 1(a6)
-	bhi.w unknown
-	tst.b 4(a6)
-	bne.w unknown
-	cmpi.w #2, d4
-	bne.w scalar
-	cmpi.b #TOKEN_CLOSE_PAREN, 5(a6)
-	bne.w unknown
-scalar
-	movea.l a6, a1
-	bsr.w evaluateScalar
+	move.b package.Projection.Reserved(a4), d0
+	beq.w arityReady
+	cmpi.l #2, d0
+	blo.w bad
+	cmpi.l #3, d0
+	bhi.w bad
+arityReady
+	moveq #0, d1
+	move.b package.Projection.Reserved+1(a4), d1
+	jsr tuples.select
+	bra.w done
+bad
+	moveq #1, d0
+done
+	tst.l d0
+	rts
+	.bend  ; tupleProjectionSpan
+
+; Complete tuple structure disproves a scalar root without evaluating values.
+; D0=arity (2/3), or zero unknown; other registers preserved.
+tupleArity	.block
+	movem.l d3/a0-a1, -(sp)
+	jsr tuples.count
 	tst.l d0
 	bne.w unknown
-	cmpa.l a1, a0
-	bne.w unknown
-	move.l d4, d0
+	move.l d3, d0
 	bra.w done
 unknown
 	moveq #0, d0
 done
-	movem.l (sp)+, d1-d4/a0-a1
-	rts
-	.bend  ; scalarTupleArity
-
-; The two-item packed tuple is [compiled displacement] '(' [numeric name] ')'.
-; A0/A1 bound the operand; returns A6 at '(' or D0=1. No source text is read.
-tupleBounds	.block
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #9, d0
-	blo.w bad
-	movea.l a1, a6
-	suba.w #6, a6
-	cmpi.b #TOKEN_OPEN_PAREN, (a6)
-	bne.w bad
-	cmpi.b #TOKEN_CLOSE_PAREN, 5(a6)
-	bne.w bad
-	cmpi.b #TOKEN_SYMBOL_1, 1(a6)
-	bhi.w bad
-	tst.b 4(a6)
-	bne.w bad
-	cmpi.b #expression.COMPILED_TAG, (a0)
-	bne.w bad
-	moveq #0, d0
-	move.b 1(a0), d0
-	beq.w bad
-	addq.l #2, d0
-	move.l a0, d1
-	add.l d1, d0
-	cmpa.l d0, a6
-	bne.w bad
-	moveq #0, d0
-	rts
-bad
-	moveq #1, d0
-	rts
-	.bend  ; tupleBounds
-
-; Both structural encodings expose the exact first scalar and named item.
-projectedTupleBounds	.block
-	cmpi.b #TOKEN_OPEN_PAREN, (a0)
-	beq.w wrapped
-	bra.w tupleBounds
-wrapped
-	jsr wrappers.tuple
-	; Existing displacement consumers use A6 as the scalar-end delimiter.
-	; The new named projection uses the helper directly for its name cursor.
+	movem.l (sp)+, d3/a0-a1
 	tst.l d0
-	bne.w done
-	movea.l a1, a6
-done
 	rts
-	.bend
+	.bend  ; tupleArity
 
 projectionScalarExpression	.block
 	bsr.w operandSpan
@@ -2203,44 +2087,6 @@ bad
 done
 	rts
 	.bend
-
-projectionTupleRegister	.block
-	bsr.w operandSpan
-	tst.l d0
-	bne.w return
-	bsr.w projectedTupleBounds
-	tst.l d0
-	bne.w return
-	lea 1(a6), a0
-	subq.l #1, a1
-	bsr.w register
-return
-	rts
-	.bend  ; projectionTupleRegister
-
-projectionTupleValue	.block
-	bsr.w operandSpan
-	tst.l d0
-	bne.w return
-	bsr.w projectedTupleBounds
-	tst.l d0
-	bne.w return
-	movea.l a6, a1
-	bsr.w evaluateScalar
-	tst.l d0
-	bne.w return
-	cmpa.l a1, a0
-	bne.w bad
-	move.l d1, d3
-	tst.l d2
-	beq.w return
-	move.w #1, Unresolved
-return
-	rts
-bad
-	moveq #1, d0
-	rts
-	.bend  ; projectionTupleValue
 
 ; Project a package-mapped register mask through the reusable bounded list
 ; parser. The map and reversal reside in this row's projection metadata.

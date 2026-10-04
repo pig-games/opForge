@@ -163,16 +163,19 @@ pub enum Projection {
     },
     TupleRegister {
         operand: u8,
+        item: u8,
         class: u16,
     },
     TupleValue {
         operand: u8,
+        item: u8,
     },
     TupleArity {
         operand: u8,
     },
     TupleQualifiedRegister {
         operand: u8,
+        item: u8,
         class: u16,
         qualifier: u16,
     },
@@ -661,7 +664,7 @@ fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
                         Projection::Expression(_)
                             | Projection::TargetExpression(_)
                             | Projection::TargetMember { .. }
-                    ) || matches!(input, Projection::TupleValue { operand } if has_bounded_tuple_match(&stages, *operand))
+                    ) || matches!(input, Projection::TupleValue { operand, item: 0 } if has_bounded_tuple_match(&stages, *operand))
                 })
             {
                 return None;
@@ -763,6 +766,11 @@ fn parse_semantic(
     } else {
         CandidateRecipe::SemanticInputs { program, inputs }
     }
+}
+
+fn bounded_tuple_item(value: &str) -> Option<u8> {
+    let item = value.parse().ok()?;
+    (item <= 2).then_some(item)
 }
 
 fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
@@ -875,31 +883,36 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
         });
     }
     if let Some(rest) = value.strip_prefix("indirect_tuple_qualified_reg") {
-        let (operand, rest) = rest.split_once(".item2.qualifier")?;
+        let (operand, rest) = rest.split_once(".item")?;
+        let (item, rest) = rest.split_once(".qualifier")?;
+        let item = bounded_tuple_item(item)?;
         let (qualifier, class) = rest.split_once(".class")?;
         if qualifier.is_empty() {
             return None;
         }
         return Some(Projection::TupleQualifiedRegister {
             operand: operand.parse().ok()?,
+            item,
             class: class.parse().ok()?,
             qualifier: names.id(qualifier),
         });
     }
     if let Some(rest) = value.strip_prefix("indirect_tuple_reg") {
-        let (operand, tail) = rest.split_once(".item1.class")?;
+        let (operand, rest) = rest.split_once(".item")?;
+        let (item, tail) = rest.split_once(".class")?;
+        let item = bounded_tuple_item(item)?;
         return Some(Projection::TupleRegister {
             operand: operand.parse().ok()?,
+            item,
             class: tail.parse().ok()?,
         });
     }
     if let Some(rest) = value.strip_prefix("indirect_tuple_value") {
         let (operand, item) = rest.split_once(".item")?;
-        if item != "0" {
-            return None;
-        }
+        let item = bounded_tuple_item(item)?;
         return Some(Projection::TupleValue {
             operand: operand.parse().ok()?,
+            item,
         });
     }
     if let Some(rest) = value.strip_prefix("indirect_tuple_arity") {
@@ -1384,6 +1397,44 @@ mod tests {
             0
         );
     }
+    #[test]
+    fn tuple_projections_preserve_bounded_item_indices() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        assert_eq!(
+            parse_projection("indirect_tuple_reg0.item0.class1", &mut names),
+            Some(Projection::TupleRegister {
+                operand: 0,
+                item: 0,
+                class: 1
+            })
+        );
+        assert!(matches!(
+            parse_projection(
+                "indirect_tuple_qualified_reg0.item1.qualifierw.class0",
+                &mut names
+            ),
+            Some(Projection::TupleQualifiedRegister {
+                operand: 0,
+                item: 1,
+                class: 0,
+                ..
+            })
+        ));
+        for source in [
+            "indirect_tuple_reg0.item3.class1",
+            "indirect_tuple_reg0.item-1.class1",
+            "indirect_tuple_value0.item255",
+            "indirect_tuple_qualified_reg0.item3.qualifierw.class0",
+        ] {
+            assert_eq!(parse_projection(source, &mut names), None, "{source}");
+        }
+    }
+
     #[test]
     fn indexed_sequence_keeps_match_and_encoder_inputs_separate() {
         let mut names = NameTable {

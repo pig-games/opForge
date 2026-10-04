@@ -103,7 +103,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS20 block for one resolved package hierarchy.
+/// Prepare a self-contained BS21 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -378,7 +378,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS20");
+    out[..4].copy_from_slice(b"BS21");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -695,8 +695,8 @@ fn write_candidate(
         recipe = 6;
     }
     // Tuple arity is a match predicate, not a scalar input to the SEMV
-    // encoder. The two projected tuple fields each validate the exact packed
-    // two-item shape before execution.
+    // encoder. Each projected leaf validates its package-specified arity and
+    // item index before execution; absent arity remains bounded to two/three.
     let execution_inputs = inputs
         .iter()
         .filter(|input| {
@@ -706,24 +706,8 @@ fn write_candidate(
             )
         })
         .collect::<Vec<_>>();
-    for input in inputs {
-        if let Projection::TupleArity { operand } | Projection::TupleArityThree { operand } = input
-        {
-            let has_register = inputs.iter().any(|projection| {
-                matches!(projection, Projection::TupleRegister { operand: other, .. } | Projection::TupleNamedRegister { operand: other, .. } if other == operand)
-            });
-            let has_value = inputs.iter().any(|projection| {
-                matches!(projection, Projection::TupleValue { operand: other } if other == operand)
-                    || matches!(projection, Projection::ValueProgram { source, .. } | Projection::RequiredValueProgram { source, .. }
-                        if matches!(source.as_ref(), Projection::TupleValue { operand: other } if other == operand))
-            });
-            let has_index = !matches!(input, Projection::TupleArityThree { .. }) || inputs.iter().any(|projection| {
-                matches!(projection, Projection::TupleQualifiedRegister { operand: other, .. } if other == operand)
-            });
-            if !has_register || !has_value || !has_index {
-                recipe = 6;
-            }
-        }
+    if !filtered_tuple_arities_covered(inputs) {
+        recipe = 6;
     }
     let sequence_offset = if let CandidateRecipe::SemanticSequence { stages } = &candidate.recipe {
         let offset = write_sequence(out, stages, programs)?;
@@ -734,12 +718,12 @@ fn write_candidate(
     } else {
         None
     };
-    let arity_three = tuple_arity_three(inputs.iter());
+    let arities = tuple_arities(inputs.iter());
     let projection_start = out.len();
     if recipe != 6 {
         for (index, projection) in execution_inputs.iter().enumerate() {
             let descriptor = out.len();
-            if !write_bound_projection(out, projection, programs, &arity_three)? {
+            if !write_bound_projection(out, projection, programs, &arities)? {
                 out.truncate(projection_start);
                 recipe = 6;
                 break;
@@ -939,8 +923,18 @@ fn required_tuple_classes(plan: &str) -> u16 {
         else {
             continue;
         };
-        if let Some(encoded) = class.checked_add(1) {
-            classes[operand] = encoded;
+        // Item 1 may be an index in a register-first pair. Only a required
+        // scalar item 0 proves this class belongs to a scalar-first tuple base.
+        let scalar = format!("indirect_tuple_value{operand}.item0");
+        let scalar_first = plan.match_indices(&scalar).any(|(offset, _)| {
+            plan.as_bytes()
+                .get(offset + scalar.len())
+                .is_none_or(|byte| matches!(byte, b',' | b';' | b'|'))
+        });
+        if scalar_first {
+            if let Some(encoded) = class.checked_add(1) {
+                classes[operand] = encoded;
+            }
         }
     }
     u16::from_be_bytes(classes)
@@ -948,8 +942,9 @@ fn required_tuple_classes(plan: &str) -> u16 {
 
 // A sequence can be downgraded after a later executable stage fails native
 // transport. Its leading match-only stages still provide sound, typed facts
-// about the operand wrapper and base-register class. Unknown projections keep
-// the unsupported barrier; this never assumes a later stage is executable.
+// about the operand wrapper and base-register class. A required scalar projection
+// in any stage proves the tuple starts with scalar data; it does not prove that
+// stage is executable. Unknown projections retain the unsupported barrier.
 fn necessary_sequence_match(stages: &[SemanticStage]) -> (u8, u16) {
     let mut forms = [0u8; 2];
     let mut classes = [0u8; 2];
@@ -958,9 +953,18 @@ fn necessary_sequence_match(stages: &[SemanticStage]) -> (u8, u16) {
         .take_while(|stage| stage.program.is_none() && !stage.fixup)
     {
         for input in &stage.inputs {
-            if let Projection::TupleRegister { operand, class } = input {
+            if let Projection::TupleRegister {
+                operand,
+                item: 1,
+                class,
+            } = input
+            {
                 let index = usize::from(*operand);
-                if index < 2 {
+                let scalar_first = stages
+                    .iter()
+                    .flat_map(|stage| &stage.inputs)
+                    .any(|input| tuple_scalar_first(input, *operand));
+                if index < 2 && scalar_first {
                     forms[index] = 4;
                     classes[index] = class
                         .checked_add(1)
@@ -971,6 +975,18 @@ fn necessary_sequence_match(stages: &[SemanticStage]) -> (u8, u16) {
         }
     }
     (forms[0] | forms[1] << 4, u16::from_be_bytes(classes))
+}
+
+fn tuple_scalar_first(projection: &Projection, operand: u8) -> bool {
+    match projection {
+        Projection::TupleValue {
+            operand: other,
+            item: 0,
+        } => *other == operand,
+        Projection::ValueProgram { source, .. }
+        | Projection::RequiredValueProgram { source, .. } => tuple_scalar_first(source, operand),
+        _ => false,
+    }
 }
 
 fn necessary_scalar_root(predicate: &str) -> Option<usize> {
@@ -1053,40 +1069,94 @@ fn necessary_path_form(predicate: &str) -> Option<(usize, u8)> {
     }
 }
 
-fn tuple_arity_three<'a>(inputs: impl Iterator<Item = &'a Projection>) -> BTreeSet<u8> {
-    inputs
-        .filter_map(|input| match input {
-            Projection::TupleArityThree { operand } => Some(*operand),
-            _ => None,
+// Flat semantic inputs omit arity predicates from the encoder ABI. Every such
+// predicate must therefore survive in an executed leaf's structural metadata.
+fn filtered_tuple_arities_covered(inputs: &[Projection]) -> bool {
+    fn covers(input: &Projection, operand: u8, arity: u8) -> bool {
+        match input {
+            Projection::TupleRegister {
+                operand: other,
+                item,
+                ..
+            }
+            | Projection::TupleValue {
+                operand: other,
+                item,
+            }
+            | Projection::TupleQualifiedRegister {
+                operand: other,
+                item,
+                ..
+            } => *other == operand && *item < arity,
+            Projection::TupleNamedRegister { operand: other, .. } => {
+                *other == operand && arity == 2
+            }
+            Projection::ValueProgram { source, .. }
+            | Projection::RequiredValueProgram { source, .. } => covers(source, operand, arity),
+            _ => false,
+        }
+    }
+    tuple_arities(inputs.iter())
+        .into_iter()
+        .all(|(operand, arity)| {
+            matches!(arity, 2 | 3) && inputs.iter().any(|input| covers(input, operand, arity))
         })
-        .collect()
+}
+
+fn tuple_arities<'a>(inputs: impl Iterator<Item = &'a Projection>) -> BTreeMap<u8, u8> {
+    let mut arities = BTreeMap::new();
+    for input in inputs {
+        let (operand, arity) = match input {
+            Projection::TupleArity { operand } => (*operand, 2),
+            Projection::TupleArityThree { operand } => (*operand, 3),
+            _ => continue,
+        };
+        arities
+            .entry(operand)
+            .and_modify(|existing| {
+                if *existing != arity {
+                    *existing = u8::MAX;
+                }
+            })
+            .or_insert(arity);
+    }
+    arities
 }
 
 fn write_bound_projection(
     out: &mut Vec<u8>,
     projection: &Projection,
     programs: &Programs<'_>,
-    arity_three: &BTreeSet<u8>,
+    arities: &BTreeMap<u8, u8>,
 ) -> Result<bool, String> {
+    let source = match projection {
+        Projection::ValueProgram { source, .. }
+        | Projection::RequiredValueProgram { source, .. } => source.as_ref(),
+        other => other,
+    };
+    let tuple = match source {
+        Projection::TupleRegister { operand, item, .. }
+        | Projection::TupleValue { operand, item }
+        | Projection::TupleQualifiedRegister { operand, item, .. } => Some((*operand, *item)),
+        _ => None,
+    };
+    let bounds = if let Some((operand, item)) = tuple {
+        // An absent predicate allows either supported tuple length. A conflicting
+        // predicate is kept distinct from that bounded, dynamic arity.
+        let arity = arities.get(&operand).copied().unwrap_or(0);
+        if !matches!(arity, 0 | 2 | 3) || item > 2 || (arity != 0 && item >= arity) {
+            return Ok(false);
+        }
+        Some((arity, item))
+    } else {
+        None
+    };
     let start = out.len();
     if !write_projection(out, projection, programs)? {
         return Ok(false);
     }
-    if arity_three.contains(&out[start + 1]) {
-        let item = match out[start] {
-            5 => {
-                out[start] = 11;
-                Some(1)
-            }
-            6 => {
-                out[start] = 12;
-                Some(0)
-            }
-            _ => None,
-        };
-        if let Some(item) = item {
-            set_word(out, start + 10, (3 << 8) | item);
-        }
+    if let Some((arity, item)) = bounds {
+        set_word(out, start + 10, (u16::from(arity) << 8) | u16::from(item));
     }
     Ok(true)
 }
@@ -1104,7 +1174,12 @@ fn write_sequence(
     let start = out.len();
     let offset = long(start)?;
     out.resize(start + stages.len() * 12, 0);
-    let arity_three = tuple_arity_three(stages.iter().flat_map(|stage| &stage.inputs));
+    let arities = tuple_arities(
+        stages
+            .iter()
+            .filter(|stage| stage.program.is_none() && !stage.fixup)
+            .flat_map(|stage| &stage.inputs),
+    );
     let mut encoded = false;
     for (index, stage) in stages.iter().enumerate() {
         let descriptor = start + index * 12;
@@ -1153,7 +1228,7 @@ fn write_sequence(
         let inputs_offset = long(out.len())?;
         set_long(out, descriptor + 8, inputs_offset);
         for input in &stage.inputs {
-            if !write_bound_projection(out, input, programs, &arity_three)? {
+            if !write_bound_projection(out, input, programs, &arities)? {
                 out.truncate(start);
                 return Ok(None);
             }
@@ -1227,14 +1302,15 @@ fn write_projection(
         ),
         Projection::Member { operand, qualifier } => (2, *operand, *qualifier, 0),
         Projection::MemberShape { operand, qualifier } => (19, *operand, *qualifier, 0),
-        Projection::TupleRegister { operand, class } => (5, *operand, *class, 0),
-        Projection::TupleValue { operand } => (6, *operand, 0, 0),
+        Projection::TupleRegister { operand, class, .. } => (11, *operand, *class, 0),
+        Projection::TupleValue { operand, .. } => (12, *operand, 0, 0),
         Projection::TupleArity { operand } => (14, *operand, 2, 0),
         Projection::TupleArityThree { operand } => (14, *operand, 3, 0),
         Projection::TupleQualifiedRegister {
             operand,
             class,
             qualifier,
+            ..
         } => {
             let Some(qualifier) = programs.qualifiers.get(qualifier) else {
                 return Ok(false);
@@ -1257,7 +1333,7 @@ fn write_projection(
     push_word(out, field);
     out.extend_from_slice(&literal.to_be_bytes());
     push_word(out, value_program);
-    push_word(out, if kind == 13 { 0x0302 } else { 0 });
+    push_word(out, 0);
     Ok(true)
 }
 
@@ -1615,11 +1691,12 @@ mod sequence_wire_tests {
         ] {
             assert_eq!(
                 required_tuple_classes(&format!(
-                    "semv.sequence.v1:match:_@{predicate};encode:x@expr0"
+                    "semv.sequence.v1:match:_@{predicate};encode:x@indirect_tuple_value0.item0,indirect_tuple_value1.item0"
                 )),
                 expected
             );
         }
+        assert_eq!(required_tuple_classes("semv.inputs.v1:x@indirect_tuple_reg0.item0.class1,indirect_tuple_reg0.item1.class0,indirect_tuple_arity0.value2"), 0);
         for predicate in [
             "indirect_tuple_reg0.item2.class8",
             "indirect_tuple_reg2.item1.class8",
@@ -1657,9 +1734,14 @@ mod sequence_wire_tests {
             inputs: vec![
                 Projection::TupleRegister {
                     operand: 0,
+                    item: 1,
                     class: 8,
                 },
                 Projection::TupleArity { operand: 0 },
+                Projection::TupleValue {
+                    operand: 0,
+                    item: 0,
+                },
             ],
         };
         let later = SemanticStage {
@@ -1674,18 +1756,37 @@ mod sequence_wire_tests {
             necessary_sequence_match(&[matched.clone(), later]),
             (4, 0x0900)
         );
+        let mut register_pair = matched.clone();
+        register_pair
+            .inputs
+            .retain(|input| !matches!(input, Projection::TupleValue { .. }));
+        assert_eq!(necessary_sequence_match(&[register_pair.clone()]), (0, 0));
+        let scalar_fixup = SemanticStage {
+            program: Some(1),
+            fixup: true,
+            inputs: vec![Projection::TupleValue {
+                operand: 0,
+                item: 0,
+            }],
+        };
+        assert_eq!(
+            necessary_sequence_match(&[register_pair, scalar_fixup]),
+            (4, 0x0900)
+        );
         let mut encode_only = matched.clone();
         encode_only.program = Some(1);
         assert_eq!(necessary_sequence_match(&[encode_only]), (0, 0));
         let mut outside = matched.clone();
         outside.inputs[0] = Projection::TupleRegister {
             operand: 2,
+            item: 1,
             class: 8,
         };
         assert_eq!(necessary_sequence_match(&[outside]), (0, 0));
         let mut untransportable_class = matched;
         untransportable_class.inputs[0] = Projection::TupleRegister {
             operand: 0,
+            item: 1,
             class: 255,
         };
         assert_eq!(necessary_sequence_match(&[untransportable_class]), (4, 0));
@@ -1772,12 +1873,129 @@ mod sequence_wire_tests {
         ] {
             assert_eq!(
                 required_operand_forms(&format!(
-                    "semv.sequence.v1:match:_@{predicate};encode:x@expr0"
+                    "semv.sequence.v1:match:_@{predicate};encode:x@indirect_tuple_value0.item0,indirect_tuple_value1.item0"
                 )),
                 0,
                 "{predicate}"
             );
         }
+    }
+
+    #[test]
+    fn filtered_tuple_arity_requires_an_executed_covering_leaf() {
+        assert!(!filtered_tuple_arities_covered(&[
+            Projection::TupleArity { operand: 0 },
+            Projection::Constant(1),
+        ]));
+        assert!(!filtered_tuple_arities_covered(&[
+            Projection::TupleArity { operand: 0 },
+            Projection::TupleRegister {
+                operand: 1,
+                item: 0,
+                class: 1
+            },
+        ]));
+        assert!(filtered_tuple_arities_covered(&[
+            Projection::TupleArity { operand: 0 },
+            Projection::TupleRegister {
+                operand: 0,
+                item: 0,
+                class: 1
+            },
+            Projection::TupleRegister {
+                operand: 0,
+                item: 1,
+                class: 0
+            },
+        ]));
+        assert!(filtered_tuple_arities_covered(&[
+            Projection::TupleArity { operand: 0 },
+            Projection::RequiredValueProgram {
+                program: 7,
+                source: Box::new(Projection::TupleValue {
+                    operand: 0,
+                    item: 0
+                })
+            },
+        ]));
+        assert!(filtered_tuple_arities_covered(&[
+            Projection::TupleArity { operand: 0 },
+            Projection::TupleNamedRegister {
+                operand: 0,
+                name: 7
+            },
+        ]));
+        assert!(!filtered_tuple_arities_covered(&[
+            Projection::TupleArityThree { operand: 0 },
+            Projection::TupleNamedRegister {
+                operand: 0,
+                name: 7
+            },
+        ]));
+        assert!(!filtered_tuple_arities_covered(&[
+            Projection::TupleArity { operand: 0 },
+            Projection::TupleArityThree { operand: 0 },
+            Projection::TupleRegister {
+                operand: 0,
+                item: 0,
+                class: 1
+            },
+        ]));
+    }
+
+    #[test]
+    fn tuple_wire_binds_register_first_pairs_and_rejects_invalid_bounds() {
+        let mut programs = Programs::default();
+        programs.qualifiers.insert(9, 2);
+        let arities = tuple_arities([&Projection::TupleArity { operand: 0 }].into_iter());
+        let mut wire = Vec::new();
+        for projection in [
+            Projection::TupleRegister {
+                operand: 0,
+                item: 0,
+                class: 1,
+            },
+            Projection::TupleQualifiedRegister {
+                operand: 0,
+                item: 1,
+                class: 0,
+                qualifier: 9,
+            },
+        ] {
+            assert!(write_bound_projection(&mut wire, &projection, &programs, &arities).unwrap());
+        }
+        assert_eq!(wire[0], 11);
+        assert_eq!(&wire[10..12], &[2, 0]);
+        assert_eq!(wire[12], 13);
+        assert_eq!(&wire[22..24], &[2, 1]);
+        let original = wire.clone();
+        for item in [2, 3, 255] {
+            let projection = Projection::TupleRegister {
+                operand: 0,
+                item,
+                class: 1,
+            };
+            assert!(!write_bound_projection(&mut wire, &projection, &programs, &arities).unwrap());
+            assert_eq!(wire, original);
+        }
+        let conflicting = tuple_arities(
+            [
+                &Projection::TupleArity { operand: 0 },
+                &Projection::TupleArityThree { operand: 0 },
+            ]
+            .into_iter(),
+        );
+        assert!(!write_bound_projection(
+            &mut wire,
+            &Projection::TupleValue {
+                operand: 0,
+                item: 0
+            },
+            &programs,
+            &conflicting
+        )
+        .unwrap());
+        assert_eq!(wire, original);
     }
 
     #[test]
@@ -1794,6 +2012,7 @@ mod sequence_wire_tests {
                     Projection::TupleArityThree { operand: 0 },
                     Projection::TupleQualifiedRegister {
                         operand: 0,
+                        item: 2,
                         class: 4,
                         qualifier: 9,
                     },
@@ -1805,9 +2024,13 @@ mod sequence_wire_tests {
                 inputs: vec![
                     Projection::TupleRegister {
                         operand: 0,
+                        item: 1,
                         class: 1,
                     },
-                    Projection::TupleValue { operand: 0 },
+                    Projection::TupleValue {
+                        operand: 0,
+                        item: 0,
+                    },
                 ],
             },
         ];

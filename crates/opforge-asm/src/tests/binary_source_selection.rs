@@ -252,10 +252,10 @@ fn binary_selection_displacement_package_recipe() {
         package.names[usize::from(candidate.mnemonic)] == "jsr"
             && matches!(&candidate.recipe, CandidateRecipe::SemanticInputs { inputs, .. }
                 if matches!(inputs.as_slice(),
-                    [Projection::TupleRegister { operand: 0, class: 1 },
+                    [Projection::TupleRegister { operand: 0, class: 1, item: 1 },
                      Projection::ValueProgram { source, .. },
                      Projection::TupleArity { operand: 0 }]
-                     if matches!(source.as_ref(), Projection::TupleValue { operand: 0 })))
+                     if matches!(source.as_ref(), Projection::TupleValue { operand: 0, item: 0 })))
     }));
     let bytes = prepare_package(&core, &resolved).unwrap();
     let rows = u32::from_be_bytes(bytes[16..20].try_into().unwrap()) as usize;

@@ -1,18 +1,15 @@
 # Compact frontend: VM boundary correction
 
-Status: current BS20 (`7f8bebf2` native source) completes a fresh full embedded
-self-host: all 452,776 Hunk bytes equal the live Rust oracle, with fresh native
-completion and exit zero. The 94 inputs / 1,360,588 bytes take 1,037.690232625
-seconds on the 68020 / 74 MiB investigation profile, telemetry disabled.
-[Current full qualification](native-runtime-reset.md#current-full-self-host-qualification-and-search-roots)
-records input/package/image identities and the updated A6000 bundle. Separate
-phase/memory instrumentation also completes the same full case with exact output
-and valid accounting. No new physical A6000 run or 2 MiB qualification is claimed. Current BS20 retains shared instruction-head selection
-before binding and package-owned PRVM scalar declaration lowering, with
-source-order scalar mutation support in Hunk. Residual frontend ownership gaps
-remain below; full self-hosting does not establish full language or CPU parity.
+Status: the current runtime contract is BS21. Tuple projections now retain
+package-selected arity and item indices, and native preparation preserves
+register-first pairs without inventing a displacement. Focused native coverage
+and the per-change timing comparison are recorded in the
+[tuple checkpoint](native-runtime-reset.md#bs21-bounded-tuple-projections--baseline-a30de087).
+Full self-hosting has not been repeated for BS21; the qualified BS20 runs below
+remain baseline evidence only. Full self-host equality does not establish full
+language or CPU parity, physical A6000 timing or the 2 MiB product goal.
 
-## Current self-host qualification
+## Most recent full self-host qualification (BS20 baseline)
 
 The complete BS20 embedded implementation self-assembles in FS-UAE with fresh
 case-bound completion, exit zero and exact live Rust equality. The release image
@@ -39,20 +36,21 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The release bundle `/tmp/opforge-selfhost-bs20-release` is selected by
-`/tmp/opforge-a6000-current`. Bootstrap and assembled output both embed only
+The previously qualified release bundle `/tmp/opforge-selfhost-bs20-release`
+uses BS20. The current BS21 hardware runner rejects that format; regenerate the
+bundle before using the command below and select it with `--bundle PATH`. Bootstrap and assembled output both embed only
 `m68020--motorola68k.bin`. The named package is retained for local identity
-verification; no external runtime fallback is used. This bundle has complete
+verification; no external runtime fallback is used. That baseline bundle has complete
 FS-UAE qualification and a passing transfer dry run, but no new physical run.
 Use macOS Terminal, where `ash` and `acp` can reach the A6000:
 
 ```sh
-python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py --bundle /absolute/path/to/fresh-bs21-bundle
 ```
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The script validates the current BS20 package header, mapped source preamble and
+The script validates the current BS21 package header, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
@@ -65,8 +63,9 @@ completes the entire same self-host with fresh exact live Rust output, in
 1,147.941797667 seconds. Preparation is 665.36 seconds, assembly 481.54 seconds;
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
-execute 122,798 record visits. Its transfer dry run also passes. Select it using
-`--bundle /tmp/opforge-selfhost-bs20-instrumented` in the hardware command above.
+execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
+instrumented configuration as BS21 before selecting it in the current hardware
+runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
 per-opcode tokenizer probes. The exporter retains fresh native stdout/stderr and
@@ -127,10 +126,14 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS20 is the current compact package format; the producer writes `BS20` and the
+BS21 is the current compact package format; the producer writes `BS21` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Target flags at 130 request structural
-wrapper preservation from canonical projections. Typed scalar/wrapped-value and
+wrapper preservation from canonical projections. Tuple register/value/qualified projections use kinds 11/12/13. Descriptor
+bytes 10/11 hold arity and item index: arity 2/3 is exact, while 0 allows only
+actual arity 2/3 when the canonical plan has no explicit arity predicate.
+Conflicting predicates reject. Native bounds selection does not evaluate scalar
+payloads or select register classes. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
 or CPU-specific native parsing. Its header is 192 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
@@ -167,7 +170,7 @@ preparation expands only active `.incbin` statements for
 the quoted relative native subset, using definition-file-relative roots
 and the explicit supported cases. [Focused native qualification](native-runtime-reset.md#bs13-binary-inclusion-qualification)
 passes; BS13 embedded-config self-hosting is qualified in the current plan.
-Current BS20 embedded full self-hosting is qualified on the expanded investigation
+The BS20 baseline embedded full self-host is qualified on the expanded investigation
 profile; per-record origins for macro bodies drawn from several physical files
 remain unqualified. Unsupported candidate recipes stay explicit rows rather than
 becoming silent omissions. Package rows select package-owned recipes, numeric

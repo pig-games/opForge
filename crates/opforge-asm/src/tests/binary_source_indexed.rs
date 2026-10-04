@@ -46,6 +46,47 @@ fn binary_indexed_rust_oracle() {
     assert_eq!(oracle(&source(24)), bytes.repeat(24));
 }
 
+fn register_pair_source() -> String {
+    ".cpu m68020\n.org 0\n move.b (a3,d4),d5\n move.w (a3,d4),d5\n move.l (a3,d4),d5\n.end\n".into()
+}
+
+#[test]
+fn binary_indexed_register_pairs_match_explicit_zero_oracle() {
+    let pair = oracle(&register_pair_source());
+    let explicit = oracle(".cpu m68020\n.org 0\n move.b 0(a3,d4.w),d5\n move.w 0(a3,d4.w),d5\n move.l 0(a3,d4.w),d5\n.end\n");
+    assert_eq!(pair, explicit);
+    assert_eq!(&pair[4..8], [0x3a, 0x33, 0x40, 0]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package-owned register-first tuple projections"]
+fn binary_indexed_register_pairs_fs_uae() {
+    native_source(register_pair_source());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; shared tuple changes preserve MOS wrapper recipes"]
+fn binary_indexed_mos_wrappers_fs_uae() {
+    let source = ".cpu 6502\n.org 0\n lda ($20,x)\n lda ($20),y\n lda $20,x\n.end\n";
+    assert_eq!(oracle(source), [0xa1, 0x20, 0xb1, 0x20, 0xb5, 0x20]);
+    assert_binary_source(source.into(), "6502".into());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; invalid register-first tuple class and arity"]
+fn binary_indexed_pair_rejections_fs_uae() {
+    for body in ["move.w (d3,d4),d5", "move.w (a3,d4,d5),d5"] {
+        let source = format!(".cpu m68020\n {body}\n.end\n");
+        let result =
+            assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true);
+        assert!(
+            !matches!(result, Ok((_, ref diagnostics)) if diagnostics.is_empty()),
+            "Rust accepted {body}"
+        );
+        compact_rejection(&source);
+    }
+}
+
 #[test]
 fn binary_indexed_rejection_oracles() {
     for body in [
@@ -170,7 +211,7 @@ fn binary_pc_dispatch_lea_has_executable_package_row() {
         numeric.names[usize::from(candidate.mnemonic)] == "lea"
             && numeric.names[usize::from(candidate.shape)] == "direct_register"
             && matches!(&candidate.recipe, vm::binary_source_package::CandidateRecipe::SemanticSequence { stages }
-                if stages.iter().any(|stage| stage.fixup && stage.inputs.contains(&vm::binary_source_package::Projection::TupleValue { operand: 0 })))
+                if stages.iter().any(|stage| stage.fixup && stage.inputs.contains(&vm::binary_source_package::Projection::TupleValue { operand: 0, item: 0 })))
     }).collect::<Vec<_>>();
     assert_eq!(rows.len(), 1);
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;

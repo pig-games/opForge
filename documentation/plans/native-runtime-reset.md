@@ -1,17 +1,15 @@
 # Native assembler completion plan
 
-Status: active. Current BS20 (native source at `7f8bebf2`) completes a fresh
-full embedded self-host in FS-UAE: all 452,776 Hunk bytes match the live Rust
-oracle, with guest exit zero. The 94 inputs total 1,360,588 bytes. Release
-START/DONE time is 1,037.690232625 seconds on the 68020 / 74 MiB investigation
-profile. The separate instrumented full run also matches the complete Rust output;
-its clocks and allocation accounting validate. Updated release and instrumented
-bundles are ready for physical A6000 runs. The earlier 61-file implementation also
-self-hosted exactly on the physical A6000. This remains experimental: full
-self-host equality does not establish full language, CPU, CLI/output parity or
-the 2 MiB product goal. The current qualification and search roots are recorded
-below; focused feature measurements and remaining frontend ownership gaps are
-maintained in the [compact frontend note](compact-frontend-vm-boundary.md).
+Status: active. The current BS21 runtime contract preserves package-selected
+tuple arity and item positions. The
+[focused tuple checkpoint](#bs21-bounded-tuple-projections--baseline-a30de087)
+records native correctness and the measured change against `a30de087`.
+No BS21 full self-host or physical A6000 run is claimed. The prior qualified BS20
+full self-host and instrumented measurements remain baseline evidence below;
+its hardware bundles must be regenerated for the current package contract.
+This remains experimental: full self-host equality does not establish full
+language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
+ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
 
 Git retains superseded experiments and measurements. The
 [workflow](../workflow/README.md) and
@@ -63,7 +61,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS20 represents one CPU/dialect pipeline and carries its canonical
+Current BS21 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -560,7 +558,7 @@ OPFORGE_INLINE_HEAD_REPORT=/tmp/opforge-inline-heads.json \
 
 Current reports are `/tmp/opforge-inline-before.json`,
 `/tmp/opforge-inline-after.json` and `/tmp/opforge-mos-inline-after.json`.
-This BS18 checkpoint did not repeat full self-hosting. Subsequent current BS20
+This BS18 checkpoint did not repeat full self-hosting. Subsequent BS20 baseline
 full qualification is recorded below. The following checkpoint addresses
 volume-root include handling; the other corpus gaps remain open.
 
@@ -712,7 +710,7 @@ Run `compact_const_import_parameter_fs_uae` separately. The existing timing
 selector is `OPFORGE_INLINE_HEAD_CASES=mixed-release/0,mixed-release/1`, with an
 absolute `OPFORGE_INLINE_HEAD_REPORT`, invoking `compact_inline_heads_fs_uae`.
 
-This BS19 checkpoint did not repeat full self-hosting. Subsequent current BS20
+This BS19 checkpoint did not repeat full self-hosting. Subsequent BS20 baseline
 full qualification is recorded below.
 
 ### BS20 scalar mutable declarations — single-sweep checkpoint
@@ -1198,11 +1196,11 @@ Before/after reports are `/tmp/opforge-mutable-layout-timing.json` and
 `fnv1a64:6bb22fa9e53fd622` and `fnv1a64:0b8861cfd55707dc` respectively.
 
 No full corpus completion is claimed for the mapped-preparation repair.
-Subsequent current BS20 full self-host qualification is recorded below.
+Subsequent BS20 baseline full self-host qualification is recorded below.
 
 ### Current full self-host qualification and search roots
 
-The complete current BS20 compact implementation (`7f8bebf2` native source)
+The complete BS20 baseline compact implementation (`7f8bebf2` native source)
 assembles itself on native with a fresh case-bound START/DONE protocol, exit zero
 and exact equality against the live Rust oracle: all 452,776 bytes of the embedded
 Hunk. Bootstrap and output are the same release configuration, each containing
@@ -1291,7 +1289,7 @@ opforge -i src/experimental/opforge_compact_cli.asm --hunk output.hunk -M src -I
 The entry is below the project root, so one recursive `-M src` exposes sibling
 modules. Bare debug include names need `-I src/debug`. A root entry layout can
 remove those explicit paths later. The hardware runner checks source/package/image
-identity and the source-selected preamble, accepts only the current BS20 package
+identity and the source-selected preamble, at that checkpoint accepted only the BS20 package
 header, and leaves VM opcode validation to native execution. Header/bounds,
 source/output identity and fresh-completion tests pass (84 performance-tool tests).
 
@@ -2176,7 +2174,7 @@ After preparation, both modes still copy the execution prefix and discard lexica
 storage. The whole embedded payload remains part of the executable image, so
 tracked allocation savings alone do not establish lower total RAM use.
 
-BS20 uses a 192-byte header. The canonical target offset remains at 124, its
+BS21 uses a 192-byte header. The canonical target offset remains at 124, its
 length at 128 and structural target flags at 130; the preparation-only file plan offset
 and byte length are at 132 and 136. Built-in `.emit` identity is at 140, CPU
 word bytes at 142, and the retained data-plan offset/length at 144/148. Fields
@@ -2189,7 +2187,7 @@ contain CPU suffix spellings. The retained shared instruction-head policy offset
 and byte length are at 168/172, its PRVM version is at 176 and a zero reserved
 word is at 178. The retained shared scalar declaration-plan offset/length are at
 180/184, its PRVM version at 188 and a zero reserved word at 190. Regenerate
-superseded packages; only BS20 is supported.
+superseded packages; only BS21 is supported.
 Target identity lies inside `RuntimeBytes`, survives preparation, uses safe
 filename characters and fits in 26 bytes (plus `.bin`, within the classic
 30-byte component limit). The current slice loads assets only from active,
@@ -3086,3 +3084,81 @@ The next proposed slice remains packed tuple/index operand-recipe coverage,
 with the listing-provenance repair tracked separately. Build-cache cleanup is
 complete: `make clean` removed 3.1 GiB and retained the empty `target` directory.
 Unrelated workflow-notebook edits are preserved.
+
+#### BS21 bounded tuple projections — baseline `a30de087`
+
+The canonical projection selects an actual tuple item, not a fixed native field.
+Packed export now retains item indices 0–2 for register, scalar and qualified
+register projections. Descriptor bytes 10/11 carry arity/item. Explicit arity
+2/3 remains exact; absent arity uses 0 for bounded actual arity 2/3; conflicting
+arity predicates reject. Native `binary_tuples` validates complete bounds and
+exposes opaque leaves; package classes/qualifiers and the expression VM retain
+semantic ownership. Existing projection telemetry boundaries remain in place;
+no per-helper instrumentation or release-time telemetry was added.
+
+Native preparation preserves `(a3,d4)` as a two-item tuple instead of inventing
+`0(a3,d4)`. Package literals supply implicit displacement when required. The
+package-owned `move.b/w/l (a3,d4),d5` recipes now execute and match live Rust's
+12 bytes, also equal to explicit `0(a3,d4.w)` forms. A complete tuple can disprove
+a bare register/named-range rejection; unknown unsupported candidates still fail
+closed. Necessary scalar-first class facts require canonical scalar item-0
+evidence, so an index register is not mislabeled as the base.
+
+The producer, native consumer, inventory and hardware runner now use BS21.
+BS20 is superseded, with no compatibility executor. Old packages and self-host
+bundles require regeneration; no BS21 full self-host or A6000 qualification was
+performed in this slice. Host export produced 16 packages without generation
+errors; six pipelines still have no compact instruction candidates. Generation
+is not target parity proof. Assets/report are outside `target` at
+`/tmp/opforge-bs21-tuple-inventory`.
+
+Focused qualification:
+
+- Packed-source host subsystem: 320 tests pass; native-only tests remain ignored
+  in this host batch. VM package projections: 19 tests pass. Invalid indices,
+  exact versus absent arities, conflicting bounds and unsupported match facts
+  have regression coverage. The two initially exposed host match-fact failures
+  were repaired and the subsystem rerun passed. The final arity-coverage guard
+  then passes all 11 wire tests; all 16 regenerated package files are byte-identical
+  to those used for native qualification, so the measurements remain applicable.
+- Fresh FS-UAE 68020/10 MiB release runs: indexed register pairs, displacement/
+  qualifier forms, MOVEA, signed sequences, the repeated workload and 6502 indexed
+  wrappers match live Rust bytes with explicit exit 0. Invalid base/arity/range
+  cases complete with exit 20. The nine-test batch performs ten fresh runs.
+- A separate fresh PC-relative LEA fixup regression passes with all ten bytes
+  equal to Rust, exit 0 and a 1.013161-second START/DONE observation.
+- Rust formatting, VM/assembler library Clippy with warnings denied, native
+  formatting (81 files), CPU-boundary, fresh-proof, test-ownership and workflow
+  link checks pass. Hardware-runner unit tests: 24 pass. Independent Sol review
+  found no substantive correctness/architecture issue. The changed-file CCR
+  scan still finds one pre-existing autofixable test in encoding (also present
+  at `a30de087`) plus report-only call-return checks; this is not a clean whole-
+  native redundant-test qualification.
+
+Per-change comparison on identical source, FS-UAE 68020/10 MiB, telemetry off:
+
+| Property | Baseline `a30de087` | BS21 tuple change |
+| --- | ---: | ---: |
+| Source / output bytes | 7,489 / 1,632 | 7,489 / 1,632 |
+| Fresh START/DONE seconds | 11.814089333 | 12.006181667 |
+| Focused executable bytes | 134,564 | 134,372 |
+| Linked reserved bytes | 152,916 | 152,716 |
+| m68020 package bytes | 321,532 | 342,736 |
+
+Observed time increases 1.6% in this single comparison; no statistical speedup
+or regression conclusion is claimed. The earlier intermediate run was
+12.044083750 seconds and is not the final result. Package growth is 21,204 bytes
+(6.6%) because additional canonical recipes now retain executable projections.
+This focused executable uses external package staging, so its image size does
+not include that package growth. Logs are retained as `/tmp/opforge-tuple-*.log`.
+
+Remaining: identity-scale projections such as `(a0,d1.w*1)` stay explicit
+unsupported forms. Do not flatten multiplication into a register or add CPU
+logic to native. Their canonical expression/scale projection transport is a
+logical follow-up; listing provenance, BBR/BBS fixup support and other family
+inventory gaps remain separate. Full self-host and hardware qualification must
+use freshly generated BS21 inputs before updating those status claims.
+
+After the build/native batch ended, `make clean` reported 4.5 GiB removed and
+retained an empty `target` directory. Deliverable packages and diagnostic logs
+remain outside it. Unrelated workflow-notebook edits are preserved.

@@ -306,6 +306,33 @@ done
 	tst.l d0
 	rts
 	.bend  ; baseSection
+; D1=one-based canonical section,A2=Context. Return its placed origin in D1.
+; Optional absent geometry means zero origin. D0/CCR=status; others preserved.
+sectionBase	.block
+	move.l a3, -(sp)
+	tst.l d1
+	beq.w bad
+	cmpi.l #8, d1
+	bhi.w bad
+	movea.l pkg.Context.SectionBases(a2), a3
+	move.l a3, d0
+	beq.w unplaced
+	subq.l #1, d1
+	lsl.l #2, d1
+	move.l 0(a3, d1.l), d1
+	bra.w good
+unplaced
+	moveq #0, d1
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #STATUS_BAD, d0
+done
+	movea.l (sp)+, a3
+	tst.l d0
+	rts
+	.bend  ; sectionBase
 	.priv
 scanExpression	.block
 	movem.l d2-d7/a1-a6, -(sp)

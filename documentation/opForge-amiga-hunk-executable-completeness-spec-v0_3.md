@@ -367,8 +367,16 @@ chains/use-before-declaration remain native gaps. Direct instruction `$` now
 carries the statement PC and canonical section through the same address proof:
 `MOVE.L #$,D0` relocates its immediate longword, while `BRA.W $` cancels the
 source position. Absolute addends and same-section differences are supported.
-Explicit Hunk `.place` remains a separate native preparation gap; Rust placed
-current-address instruction output is covered.
+The compact native Hunk path supports literal `.region` / `.place` geometry,
+including shared regions, reverse placement order, BSS and power-of-two alignment
+at region, section and placement levels. Placed PCs and section-relative Hunk
+fields remain distinct. Maximum layout extents determine Hunk reservations,
+following placements and mapped prefixes; initialized payloads retain their
+final size, with mapped-prefix gaps zero-filled. Geometry stabilizes through
+bounded pass-one replays before authoritative emission. This remains an
+eight-source-slot subset, also limited to eight regions and eight placements:
+`.pack`, expression-valued geometry and nondefault
+flat placement alignment are not qualified. Invalid geometry rejects explicitly.
 Explicit mapped logical sections now append their reachable blocks after concrete
 content. Native retains separate fragment cursors and measures concrete prefixes
 before fresh source-order assembly passes; mapped labels, data `$`, aliases and

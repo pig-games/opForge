@@ -4,7 +4,6 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_package as pkg
-	.use experimental.amigaos.binary_dependencies as dependencies
 	.pub
 	.section code, kind=code
 
@@ -59,8 +58,8 @@ done
 	.bend  ; validate
 
 ; A0=section state,A1=Context. Freeze measured concrete PC/payload prefixes.
-; Discard provisional layout values and mutable state; retain compile-time
-; constants and incoming parameters. D0/CCR=status; other registers preserved.
+; The assembly coordinator resets provisional symbols before replay.
+; D0/CCR=status; other registers preserved.
 freeze	.block
 	movem.l d1-d3/a0-a4, -(sp)
 	lea sections.HUNK_SLOTS(a0), a2
@@ -73,36 +72,23 @@ slot
 	mulu.w #sections.HUNK_SLOT_BYTES, d1
 	lea sections.HUNK_SLOTS(a0), a3
 	adda.l d1, a3
-	move.l sections.HunkSlot.Size(a3), sections.HunkSlot.Bias(a2)
-	move.l sections.HunkSlot.Used(a3), sections.HunkSlot.PayloadBias(a2)
+	move.l sections.HunkSlot.Allocation(a3), sections.HunkSlot.Bias(a2)
+	clr.l sections.HunkSlot.PayloadBias(a2)
+	cmpi.w #3, sections.HunkSlot.Kind(a3)
+	beq.w next
+	move.l sections.HunkSlot.Allocation(a3), sections.HunkSlot.PayloadBias(a2)
 next
 	adda.w #sections.HUNK_SLOT_BYTES, a2
 	dbra d3, slot
 	move.w #1, sections.State.MapReady(a0)
-	move.l pkg.Context.Count(a1), d3
-	movea.l pkg.Context.Values(a1), a2
-	movea.l pkg.Context.Defined(a1), a3
-	movea.l pkg.Context.SectionIds(a1), a4
-symbol
-	cmpi.b #dependencies.ABSOLUTE, (a3)
-	beq.w retained
-	clr.l (a2)
-	clr.l 4(a2)
-	clr.b (a3)
-	clr.b (a4)
-retained
-	addq.l #8, a2
-	addq.l #1, a3
-	addq.l #1, a4
-	subq.l #1, d3
-	bne.w symbol
 	moveq #0, d0
 	movem.l (sp)+, d1-d3/a0-a4
 	rts
 	.bend  ; freeze
 
-; A0=section state. Prefix sizes must survive authoritative replay unchanged;
-; layouts requiring convergence remain unsupported. D0/CCR=status, others kept.
+; A0=section state. Compare frozen prefixes with current allocation extents.
+; The coordinator may replay pass one; pass-two changes fail. D0/CCR=status,
+; other registers preserved.
 check	.block
 	movem.l d1-d3/a0-a3, -(sp)
 	lea sections.HUNK_SLOTS(a0), a1
@@ -115,10 +101,14 @@ slot
 	mulu.w #sections.HUNK_SLOT_BYTES, d1
 	lea sections.HUNK_SLOTS(a0), a2
 	adda.l d1, a2
-	move.l sections.HunkSlot.Size(a2), d2
+	move.l sections.HunkSlot.Allocation(a2), d2
 	cmp.l sections.HunkSlot.Bias(a1), d2
 	bne.w bad
-	move.l sections.HunkSlot.Used(a2), d2
+	moveq #0, d2
+	cmpi.w #3, sections.HunkSlot.Kind(a2)
+	beq.w payloadChecked
+	move.l sections.HunkSlot.Allocation(a2), d2
+payloadChecked
 	cmp.l sections.HunkSlot.PayloadBias(a1), d2
 	bne.w bad
 next
@@ -151,9 +141,15 @@ slot
 	move.l sections.HunkSlot.Size(a1), d2
 	add.l d2, sections.HunkSlot.Size(a2)
 	bcs.w bad
-	move.l sections.HunkSlot.Used(a1), d2
-	add.l d2, sections.HunkSlot.Used(a2)
+	move.l sections.HunkSlot.Allocation(a1), d2
+	add.l d2, sections.HunkSlot.Allocation(a2)
 	bcs.w bad
+	move.l sections.HunkSlot.PayloadBias(a1), d2
+	add.l sections.HunkSlot.Used(a1), d2
+	bcs.w bad
+	cmp.l sections.HunkSlot.Used(a2), d2
+	bls.w next
+	move.l d2, sections.HunkSlot.Used(a2)
 next
 	adda.w #sections.HUNK_SLOT_BYTES, a1
 	dbra d3, slot

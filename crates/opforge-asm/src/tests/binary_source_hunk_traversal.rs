@@ -4,6 +4,9 @@ use super::*;
 #[path = "binary_source_hunk.rs"]
 mod hunk;
 
+#[path = "binary_source_hunk_placement.rs"]
+mod placement;
+
 fn source(body: &str, order: &str) -> String {
     format!(".module probe\n.cpu m68020\n{body}.output \"out.hunk\",format=hunk,sections={order}\n.endmodule\n")
 }
@@ -1043,22 +1046,6 @@ fn compact_hunk_instruction_pc_fs_uae() {
     native_expected_cases(
         instruction_pc_cases()
             .into_iter()
-            // Explicit Hunk placement is an existing preparation gap, tracked
-            // by the separate reproducer below rather than counted as parity.
-            .filter(|(name, _)| *name != "instruction-pc-placed")
-            .map(|(name, source)| (name.into(), "m68020", source, NativeExpected::MatchHunk))
-            .collect(),
-        "OPFORGE_HUNK_INSTRUCTION_PC_REPORT",
-    );
-}
-
-#[test]
-#[ignore = "known native gap: explicit Hunk placement rejects during preparation"]
-fn compact_hunk_instruction_pc_placed_gap_fs_uae() {
-    native_expected_cases(
-        instruction_pc_cases()
-            .into_iter()
-            .filter(|(name, _)| *name == "instruction-pc-placed")
             .map(|(name, source)| (name.into(), "m68020", source, NativeExpected::MatchHunk))
             .collect(),
         "OPFORGE_HUNK_INSTRUCTION_PC_REPORT",

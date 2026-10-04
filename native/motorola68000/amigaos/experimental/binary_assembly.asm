@@ -16,6 +16,7 @@
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_mapping as mapping
+	.use experimental.amigaos.binary_hunk_placement as placement
 	.use experimental.amigaos.binary_hunk_references as hunkrefs
 	.use experimental.amigaos.binary_repetition as repetition
 	.include "memory_telemetry.i"
@@ -46,11 +47,15 @@ OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
 FRAME_BYTES = Frame.Emitted+4
 FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
+MAX_LAYOUT_ROUNDS = 8
 
 	.section bss, kind=bss
 	.priv
 Active
 	.res long, 1
+LayoutRounds
+	.res word, 1
+	.align 4
 DataPc	.res long, 1
 DataBytes
 	.res byte, 4
@@ -108,6 +113,7 @@ assemble	.block
 	.MEMORY_COUNTER_CLEAR TraversalPasses
 	.MEMORY_COUNTER_CLEAR TraversalRecords
 	clr.l Frame.Used(a5)
+	clr.w LayoutRounds
 	clr.w Frame.Failure(a5)
 	move.l #-1, Frame.RecordOffset(a5)
 	movea.l Frame.Context(a5), a6
@@ -165,6 +171,18 @@ parametersReady
 	move.l pkg.Header.MaxAddress(a2), d1
 	jsr sections.scan
 	bne.w fail
+	lea SectionState+placement.BASES, a0
+	move.l a0, pkg.Context.SectionBases(a6)
+	lea SectionState, a1
+	movea.l Frame.Records(a5), a0
+	move.l Frame.RecordBytes(a5), d0
+	movea.l pkg.Context.Package(a6), a2
+	move.l pkg.Header.MaxAddress(a2), d1
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a1)
+	bne.w placementReady
+	jsr placement.scan
+	bne.w fail
+placementReady
 	move.l #SectionState, Frame.Sections(a5)
 	movea.l Frame.Records(a5), a0
 	move.l Frame.RecordBytes(a5), d0
@@ -434,18 +452,38 @@ sweepDone
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
 	bne.w finishedLayout
 	move.l d1, Frame.Used(a5)
+	moveq #0, d2  ; provisional geometry changed, requiring a fresh pass one
 	tst.w sections.State.MapCount(a0)
-	beq.w finishedLayout
+	beq.w placedBounds
 	tst.w sections.State.MapReady(a0)
-	bne.w mappedBounds
-	; Preliminary measurement is discarded. Bind fresh symbols with final
-	; concrete-prefix origins, keeping both authoritative passes source ordered.
+	beq.w mappedFreeze
+	jsr mapping.check
+	beq.w placedBounds
+	cmpi.w #1, d7
+	bne.w fail
+mappedFreeze
 	jsr mapping.freeze
 	bne.w fail
-	bra.w pass
-mappedBounds
-	jsr mapping.check
+	moveq #1, d2
+placedBounds
+	tst.w sections.State.PlaceCount(a0)
+	beq.w layoutCompared
+	jsr placement.freeze
 	bne.w fail
+	or.l d1, d2
+layoutCompared
+	tst.l d2
+	beq.w stableLayout
+	cmpi.w #1, d7
+	bne.w fail
+	addq.w #1, LayoutRounds
+	cmpi.w #MAX_LAYOUT_ROUNDS, LayoutRounds
+	bhs.w fail
+	jsr dependencies.resetLayout
+	bra.w pass
+stableLayout
+	tst.w sections.State.MapCount(a0)
+	beq.w finishedLayout
 	cmpi.w #2, d7
 	bne.w finishedLayout
 	jsr mapping.merge
@@ -941,13 +979,30 @@ nextFixup
 	bcs.w bad
 	cmp.l d5, d2
 	bhi.w bad
-	move.l d3, d4
-	beq.w bad
-	cmpi.l #sections.HUNK_SLOT_COUNT, d4
-	bhi.w bad
+	move.l d1, -(sp)  ; package field offset
+	move.l d4, -(sp)  ; encoded absolute address
+	move.l d3, d1
+	jsr hunkrefs.sectionBase
+	bne.w fixupBad
+	move.l (sp)+, d4
+	; Instruction fixups permit signed addends represented in the long field.
+	sub.l d1, d4
+	move.l d3, -(sp)  ; canonical target section
+	move.l d4, d1
+	move.l d7, d0
+	jsr encoding.patchOutputFixup
+	bne.w targetBad
+	move.l (sp)+, d4
 	subq.l #1, d4
-	move.l d1, d2
+	move.l (sp)+, d2
 	add.l pkg.Context.Pc(a2), d2
+	bcs.w bad
+	moveq #0, d1
+	move.w sections.State.HunkCurrent(a4), d1
+	addq.l #1, d1
+	jsr hunkrefs.sectionBase
+	bne.w bad
+	sub.l d1, d2
 	bcs.w bad
 	move.l d4, d1
 	moveq #0, d0
@@ -961,6 +1016,12 @@ nextFixup
 	bne.w bad
 	addq.l #1, d7
 	bra.w nextFixup
+	; Keep the bounded fixup stack balanced on every validation failure.
+targetBad
+fixupBad
+	addq.l #4, sp
+	addq.l #4, sp
+	bra.w bad
 good
 	moveq #0, d0
 	bra.w done
@@ -976,7 +1037,8 @@ done
 ; Same-section address differences are absolute; one surviving section base
 ; requires a long and records its section relocation only in pass two.
 ; A5=expression start,A1=bounded end,A2=Context,D6=unit bytes. D0/CCR=status.
-; Other registers are preserved; ExprVM value and unresolved handling stay caller-owned.
+; D1 returns the normalized scalar; other registers are preserved.
+; ExprVM evaluation and unresolved handling stay caller-owned.
 markDataReloc	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea SectionState, a4
@@ -997,10 +1059,25 @@ markDataReloc	.block
 	bne.w good
 	jsr hunkrefs.baseSection
 	bne.w bad
+	move.l d1, d7
+	jsr hunkrefs.sectionBase
+	bne.w bad
+	move.l (sp), d2  ; caller's evaluated scalar
+	sub.l d1, d2
+	bcs.w bad
+	move.l d2, (sp)  ; returned value is now section relative
+	moveq #0, d1
+	move.w sections.State.HunkCurrent(a4), d1
+	addq.l #1, d1
+	jsr hunkrefs.sectionBase
+	bne.w bad
+	move.l pkg.Context.Pc(a2), d2
+	sub.l d1, d2
+	bcs.w bad
+	move.l d7, d1
 	subq.l #1, d1
 	moveq #0, d0
 	move.w sections.State.HunkCurrent(a4), d0
-	move.l pkg.Context.Pc(a2), d2
 	movea.l Active, a0
 	movea.l Frame.AddReloc(a0), a1
 	move.l a1, d3

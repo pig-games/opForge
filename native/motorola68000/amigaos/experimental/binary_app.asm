@@ -1782,7 +1782,7 @@ keepPart
 	clr.w hunk.Part.Reserved(a4)
 	clr.l hunk.Part.Data(a4)
 	move.l d2, hunk.Part.Used(a4)
-	move.l sections.HunkSlot.Size(a2), hunk.Part.Size(a4)
+	move.l sections.HunkSlot.Allocation(a2), hunk.Part.Size(a4)
 	clr.l hunk.Part.Fixups(a4)
 	clr.l hunk.Part.FixupCount(a4)
 	cmpi.w #3, d1

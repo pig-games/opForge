@@ -108,8 +108,9 @@ Parameters	.long ?
 ParameterCount	.long ?
 SectionIds	.long ?
 CurrentSection	.word ?  ; one-based active Hunk section; zero outside sections
+SectionBases	.long ?  ; optional eight canonical Hunk origins; zero means unplaced
 	.endstruct
-CONTEXT_BYTES = Context.CurrentSection+2
+CONTEXT_BYTES = Context.SectionBases+4
 
 Parameter	.struct
 Id	.word ?

@@ -1503,3 +1503,21 @@ fn binary_discovery_rejections_fs_uae() {
         Some(&["first", "second"]),
     );
 }
+
+// Until flat geometry shares the new placement path, reject its nondefault
+// alignment explicitly instead of accepting it while emitting wrong addresses.
+#[test]
+#[ignore = "requires fresh FS-UAE; unsupported flat placement alignment rejects"]
+fn compact_cli_flat_placement_alignment_gap_fs_uae() {
+    let base = ".module main\n.cpu m6502\n.region rom,$1001,$10ff\n.section code,kind=code\nentry .word $\n.endsection\n.place code in rom\n.endmodule\n.end\n";
+    for (original, aligned) in [
+        (".region rom,$1001,$10ff", ".region rom,$1001,$10ff,align=4"),
+        (".section code,kind=code", ".section code,kind=code,align=4"),
+        (".place code in rom", ".place code in rom,align=4"),
+    ] {
+        let source = base.replace(original, aligned);
+        let files = [("main.asm", source.as_str())];
+        assert_eq!(oracle(&files).unwrap(), [4, 0x10]);
+        compact_cli(&files, &[], &[], None, false);
+    }
+}

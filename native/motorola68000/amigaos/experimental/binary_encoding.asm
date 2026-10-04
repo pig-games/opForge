@@ -257,6 +257,49 @@ fixupReturn
 	rts
 	.bend  ; outputFixup
 
+; Replace a proven absolute-long fixup field after placement normalization.
+; D0=index,D1=section-relative addend,A2=Context. D0/CCR=status; others preserved.
+; The field offset/width and byte order come from package execution and metadata.
+patchOutputFixup	.block
+	movem.l d1-d5/a0-a1, -(sp)
+	move.l d1, d5
+	move.l d0, -(sp)
+	bsr.w outputFixup
+	tst.l d0
+	bne.w bad
+	cmpi.l #4, d2
+	bne.w bad
+	cmpi.l #4092, d1
+	bhi.w bad
+	lea Output, a0
+	adda.l d1, a0
+	movea.l package.Context.Package(a2), a1
+	tst.w package.Header.LittleEndian(a1)
+	beq.w bigEndian
+	moveq #3, d2
+littleLoop
+	move.b d5, (a0)+
+	lsr.l #8, d5
+	dbra d2, littleLoop
+	bra.w patched
+bigEndian
+	move.l d5, (a0)
+patched
+	move.l (sp), d0
+	lsl.l #2, d0
+	lea FixupAddends, a0
+	move.l 4(sp), 0(a0, d0.l)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	addq.l #4, sp
+	movem.l (sp)+, d1-d5/a0-a1
+	tst.l d0
+	rts
+	.bend  ; patchOutputFixup
+
 	.priv
 
 ; Record at most two top-level operands and derive their numeric shape.

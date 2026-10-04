@@ -411,5 +411,33 @@ done
 	tst.l d0
 	rts
 	.bend  ; index
+
+	.pub
+; A1=Context. Discard provisional label/alias and mutable values before a fresh
+; layout replay. Compile-time constants and incoming parameters are retained.
+; D0/CCR=0; other registers preserved.
+resetLayout	.block
+	movem.l d3/a2-a4, -(sp)
+	move.l pkg.Context.Count(a1), d3
+	movea.l pkg.Context.Values(a1), a2
+	movea.l pkg.Context.Defined(a1), a3
+	movea.l pkg.Context.SectionIds(a1), a4
+symbol
+	cmpi.b #ABSOLUTE, (a3)
+	beq.w retained
+	clr.l (a2)
+	clr.l 4(a2)
+	clr.b (a3)
+	clr.b (a4)
+retained
+	addq.l #8, a2
+	addq.l #1, a3
+	addq.l #1, a4
+	subq.l #1, d3
+	bne.w symbol
+	moveq #0, d0
+	movem.l (sp)+, d3/a2-a4
+	rts
+	.bend  ; resetLayout
 	.endsection
 	.endmodule

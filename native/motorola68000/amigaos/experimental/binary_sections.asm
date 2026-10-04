@@ -27,8 +27,11 @@ OutsidePc	.long ?
 HunkFragment	.word ?
 MapCount	.word ?
 MapReady	.word ?
+PlaceCount	.word ?
+PlaceReady	.word ?
+HunkLayout	.word ?
 	.endstruct
-SLOTS = State.MapReady+2
+SLOTS = State.HunkLayout+2
 FIRST = SLOTS
 SECOND = SLOTS+SLOT_BYTES
 FIRST_BASE = FIRST+Slot.Base
@@ -48,12 +51,17 @@ PcLimit	.long ?
 Target	.word ?  ; one-based concrete slot, zero for an ordinary section
 Bias	.long ?  ; frozen concrete PC before mapped logical content
 PayloadBias	.long ?  ; frozen initialized-byte prefix
+Align	.long ?
+Origin	.long ?
+Allocation	.long ?  ; maximum local PC extent across layout passes
 	.endstruct
-HUNK_SLOT_BYTES = HunkSlot.PayloadBias+4
+HUNK_SLOT_BYTES = HunkSlot.Allocation+4
 HUNK_SLOT_COUNT = 8
 HUNK_SLOTS = SLOTS+2*SLOT_BYTES
 ORDER = HUNK_SLOTS+8*HUNK_SLOT_BYTES
-SCRATCH_BYTES = ORDER+8
+PLACEMENT_SCRATCH = ORDER+8
+PLACEMENT_BYTES = 256
+SCRATCH_BYTES = PLACEMENT_SCRATCH+PLACEMENT_BYTES
 HUNK_MODE = 5
 ; Modes 3/4 use two placed slots, without/with two imported maps.
 ; Started/Placed use one bit per slot; After retains its last completed PC.
@@ -89,6 +97,31 @@ clearSlots
 	add.l d5, d7
 	bcs.w bad
 	move.l d1, d6
+	clr.w State.HunkLayout(a6)
+	movea.l a0, a4
+findLayout
+	cmp.l a4, d7
+	beq.w record
+	blo.w bad
+	moveq #0, d0
+	move.b (a4), d0
+	addq.w #1, d0
+	cmpi.w #4, d0
+	blo.w bad
+	move.l d7, d1
+	sub.l a4, d1
+	cmp.l d1, d0
+	bhi.w bad
+	btst #4, 1(a4)
+	beq.w nextLayout
+	cmpi.w #5, d0
+	blo.w bad
+	cmpi.b #20, 4(a4)
+	bne.w nextLayout
+	move.w #1, State.HunkLayout(a6)
+nextLayout
+	adda.l d0, a4
+	bra.w findLayout
 record
 	move.l a0, d1
 	cmp.l d7, d1
@@ -141,12 +174,33 @@ twoSlots
 	beq.w regionCheck
 	move.w #3, State.Mode(a6)  ; two concrete sections and regions
 regionCheck
+	tst.w State.HunkLayout(a6)
+	bne.w next
+	; Nondefault placement alignment belongs to the Hunk geometry path.
+	; Flat two-region layouts must fail closed rather than ignore new metadata.
+	moveq #7, d2
+	cmpi.w #11, d0
+	beq.w flatAlignment
+	moveq #8, d2
+	cmpi.w #12, d0
+	beq.w flatAlignment
+	moveq #14, d2
+	cmpi.w #18, d0
+	bne.w flatAlignmentReady
+flatAlignment
+	cmpi.l #1, 0(a0, d2.w)
+	bne.w bad
+flatAlignmentReady
+	cmpi.b #22, 4(a0)
+	beq.w bad
+	cmpi.b #23, 4(a0)
+	beq.w bad
 	cmpi.b #4, 4(a0)
 	beq.w scanRegion
 	cmpi.b #8, 4(a0)
 	bne.w next
 scanRegion
-	cmpi.w #13, d0
+	cmpi.w #18, d0
 	bne.w bad
 	moveq #1, d3
 	cmpi.b #8, 4(a0)
@@ -195,8 +249,6 @@ complete
 	tst.w State.OutputSeen(a6)
 	beq.w flatComplete
 	tst.w State.HunkInvalid(a6)
-	bne.w bad
-	tst.w State.Started(a6)
 	bne.w bad
 	move.w State.OrderCount(a6), d3
 	beq.w bad
@@ -261,13 +313,9 @@ scanHunkControl	.block
 	beq.w mapped
 	cmpi.w #10, d1
 	beq.w mapped
-	cmpi.w #5, d1
-	beq.w incompatible
-	cmpi.w #9, d1
-	beq.w incompatible
 	bra.w ok
 mapped
-	cmpi.w #8, d0
+	cmpi.w #12, d0
 	bne.w incompatible
 	moveq #0, d2
 	move.b 6(a0), d2
@@ -291,22 +339,18 @@ newMap
 	move.w d4, HunkSlot.Target(a5)
 	addq.w #1, State.MapCount(a6)
 mappedKind
-	moveq #8, d0
+	moveq #12, d0
 	bra.w section
 first
-	moveq #0, d2
-	bra.w section
 second
-	moveq #1, d2
-	bra.w section
 extra
-	cmpi.w #7, d0
+	cmpi.w #11, d0
 	bne.w bad
 	moveq #0, d2
 	move.b 6(a0), d2
 	bra.w section
 section
-	cmpi.w #6, d0
+	cmpi.w #11, d0
 	blo.w bad
 	cmpi.w #8, d2
 	bhs.w bad
@@ -318,6 +362,24 @@ section
 	bhi.w bad
 	move.l d2, d0
 	bsr.w slotAddress
+	moveq #7, d4
+	tst.w HunkSlot.Target(a5)
+	beq.w alignOffset
+	moveq #8, d4
+alignOffset
+	move.l 0(a0, d4.w), d4
+	tst.l d4
+	beq.w bad
+	move.l d4, d1
+	subq.l #1, d1
+	and.l d4, d1
+	bne.w bad
+	tst.w HunkSlot.Seen(a5)
+	beq.w storeAlign
+	cmp.l HunkSlot.Align(a5), d4
+	bne.w bad
+storeAlign
+	move.l d4, HunkSlot.Align(a5)
 	tst.w HunkSlot.Seen(a5)
 	beq.w firstKind
 	cmp.w HunkSlot.Kind(a5), d3
@@ -523,7 +585,7 @@ closed
 	clr.w State.ActiveKind(a0)
 	bra.w ok
 region
-	cmpi.b #12, (a2)
+	cmpi.b #17, (a2)
 	bne.w bad
 	bra.w ok
 place
@@ -576,14 +638,24 @@ hunkControl
 	move.b 4(a2), d2
 	cmpi.w #20, d2
 	beq.w ok
+	cmpi.w #4, d2
+	beq.w ok
+	cmpi.w #8, d2
+	beq.w ok
+	cmpi.w #22, d2
+	beq.w ok
+	cmpi.w #5, d2
+	beq.w ok
+	cmpi.w #9, d2
+	beq.w ok
+	cmpi.w #23, d2
+	beq.w ok
 	cmpi.w #3, d2
 	beq.w hunkClose
-	moveq #0, d3
 	cmpi.w #2, d2
-	beq.w hunkOpen
-	moveq #1, d3
+	beq.w fragmentSlot
 	cmpi.w #7, d2
-	beq.w hunkOpen
+	beq.w fragmentSlot
 	cmpi.w #12, d2
 	beq.w fragmentSlot
 	cmpi.w #1, d2
@@ -613,6 +685,8 @@ hunkOpen
 	move.w d1, State.ActiveKind(a0)
 	move.l HunkSlot.Size(a5), d1
 	add.l HunkSlot.Bias(a5), d1
+	bcs.w bad
+	add.l HunkSlot.Origin(a5), d1
 	bcs.w bad
 	move.l d1, pkg.Context.Pc(a1)
 	tst.w HunkSlot.Target(a5)
@@ -644,6 +718,8 @@ hunkClose
 	move.w State.HunkFragment(a0), d0
 	bsr.w slotAddress
 	move.l pkg.Context.Pc(a1), d1
+	sub.l HunkSlot.Origin(a5), d1
+	bcs.w bad
 	sub.l HunkSlot.Bias(a5), d1
 	bcs.w bad
 	move.l d1, HunkSlot.Size(a5)
@@ -673,6 +749,11 @@ finishHunk	.block
 	lea HUNK_SLOTS(a6), a5
 	moveq #7, d5
 bounds
+	move.l HunkSlot.Size(a5), d2
+	cmp.l HunkSlot.Allocation(a5), d2
+	bls.w allocationReady
+	move.l d2, HunkSlot.Allocation(a5)
+allocationReady
 	cmpi.w #1, pkg.Context.Pass(a1)
 	bne.w compareBounds
 	move.l HunkSlot.Used(a5), HunkSlot.Limit(a5)
@@ -713,6 +794,13 @@ offsetReady
 appendLimits
 	cmp.w HunkSlot.Target(a3), d2
 	bne.w nextLimit
+	move.l HunkSlot.Start(a5), d5
+	add.l HunkSlot.PayloadBias(a3), d5
+	bcs.w bad
+	cmp.l d1, d5
+	bls.w prefixReady
+	move.l d5, d1
+prefixReady
 	add.l HunkSlot.Limit(a3), d1
 	bcs.w bad
 nextLimit
@@ -758,6 +846,8 @@ checkHunkPc	.block
 	moveq #0, d0
 	move.w State.HunkFragment(a6), d0
 	bsr.w slotAddress
+	sub.l HunkSlot.Origin(a5), d1
+	bcs.w bad
 	sub.l HunkSlot.Bias(a5), d1
 	bcs.w bad
 	cmp.l HunkSlot.PcLimit(a5), d1
@@ -942,7 +1032,7 @@ bad
 ; A0=state,A2=numeric section control. Retain kind across active emission.
 ; D0/CCR=status; other registers preserved.
 sectionKind	.block
-	moveq #5, d0
+	moveq #10, d0
 	cmpi.w #6, d2
 	beq.w mappedConcrete
 	cmpi.w #11, d2
@@ -954,11 +1044,14 @@ sectionKind	.block
 mappedLogical
 	; Current unmapped logical reopenings have no numeric map suffix.
 	tst.w State.MapCount(a0)
-	beq.w checkBytes
-	moveq #7, d0
+	bne.w mappedSize
+	moveq #5, d0
+	bra.w checkBytes
+mappedSize
+	moveq #11, d0
 	bra.w checkBytes
 mappedConcrete
-	moveq #6, d0
+	moveq #10, d0
 checkBytes
 	cmp.b (a2), d0
 	bne.w invalidKind

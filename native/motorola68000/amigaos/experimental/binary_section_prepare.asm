@@ -29,11 +29,14 @@ OutputCount	.word ?
 OutputSeen	.word ?
 Selected	.word ?
 Seeded	.word ?  ; maps awaiting their ordinary import replay
+RegionCount	.word ?
+PendingAlign	.long ?
 	.endstruct
-MAPS = State.Seeded+2
+MAPS = State.PendingAlign+4
 SLOT_NAMES = MAPS+2*MAP_BYTES
 OUTPUT_SLOTS = SLOT_NAMES+8*2
-SCRATCH_BYTES = OUTPUT_SLOTS+8
+REGION_NAMES = OUTPUT_SLOTS+8
+SCRATCH_BYTES = REGION_NAMES+8*2
 ; Seen bits: first logical/concrete/region/place, second concrete/region/place,
 ; second logical. Packed control opcodes 10/11 are second logical/concrete.
 CONTROL_SECTION = 1
@@ -60,6 +63,8 @@ begin	.block
 	clr.w State.OutputSeen(a0)
 	clr.w State.Selected(a0)
 	clr.w State.Seeded(a0)
+	clr.w State.RegionCount(a0)
+	move.l #1, State.PendingAlign(a0)
 	lea MAPS(a0), a0
 	moveq #(SCRATCH_BYTES-MAPS)/2-1, d0
 clearMaps
@@ -73,9 +78,10 @@ clearMaps
 ; A0=writer record,A1=scope state,A2=section state,D0=1..4.
 ; Flat placement supports two mapped pairs or adjacent concrete regions; Hunk
 ; layout shares eight source slots across concrete and mapped logical sections.
-; Section opens carry [header,opcode,kind] (1=code,2=data,3=bss). Mapped
-; opens append a source slot; logical opens also append their concrete target.
-; Region controls carry optional u32 start,u32 end after the opcode.
+; Concrete opens carry [header,opcode,kind,slot,u32 alignment]; mapped
+; logical opens append a destination slot before the alignment. Unmapped flat
+; logical opens retain [header,opcode,kind]. Region/place controls carry
+; canonical numeric slots and literal bounds/alignment (see preparation include).
 ; D0/CCR=status; other registers preserved.
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -106,6 +112,7 @@ line	.block
 section
 	tst.w State.Active(a4)
 	bne.w bad
+	move.l #1, State.PendingAlign(a4)
 	bsr.w name
 	bne.w bad
 	move.w d1, d6
@@ -129,6 +136,18 @@ sectionOption
 	moveq #1, d5  ; logical control opcode
 	bra.w sectionOption
 kindOption
+	lea AlignWord(pc), a0
+	moveq #5, d0
+	bsr.w matches
+	bne.w sectionKindOption
+	btst #2, d2
+	bne.w bad
+	bset #2, d2
+	bsr.w alignmentValue
+	bne.w bad
+	move.l d1, State.PendingAlign(a4)
+	bra.w sectionOption
+sectionKindOption
 	lea KindWord(pc), a0
 	moveq #4, d0
 	bsr.w matches
@@ -364,121 +383,12 @@ endsection
 	moveq #3, d5
 	bra.w control
 region
-	tst.w State.Active(a4)
-	bne.w bad
-	move.w State.Seen(a4), d0
-	btst #2, d0
-	bne.w nextRegion
-	moveq #4, d5
-	bra.w regionName
-nextRegion
-	btst #5, d0
-	bne.w bad
-	moveq #8, d5
-regionName
-	bsr.w name
-	bne.w bad
-	cmpi.w #4, d5
-	bne.w storeSecondRegion
-	move.w d1, State.Region(a4)
-	bra.w regionBounds
-storeSecondRegion
-	move.w d1, State.SecondRegion(a4)
-regionBounds
-	move.l a3, d0
-	sub.l a2, d0
-	cmpi.l #12, d0
-	bne.w bad
-	cmpi.b #4, (a2)+
-	bne.w bad
-	cmpi.b #2, (a2)
-	bne.w bad
-	lea 1(a2), a0
-	lea 5(a5), a1
-	moveq #3, d2
-startBytes
-	move.b (a0)+, (a1)+
-	dbra d2, startBytes
-	adda.w #5, a2
-	cmpi.b #4, (a2)+
-	bne.w bad
-	cmpi.b #2, (a2)
-	bne.w bad
-	lea 1(a2), a0
-	moveq #3, d2
-endBytes
-	move.b (a0)+, (a1)+
-	dbra d2, endBytes
-	adda.w #5, a2
-	cmpa.l a3, a2
-	bne.w bad
-	cmpi.w #4, d5
-	bne.w seenSecondRegion
-	ori.w #4, State.Seen(a4)
-	bra.w regionControl
-seenSecondRegion
-	ori.w #32, State.Seen(a4)
-regionControl
-	move.b #12, (a5)
-	move.b #source.FLAG_LAYOUT, 1(a5)
-	move.b d5, 4(a5)
-	bra.w ok
+	bsr.w prepareRegion
+	bra.w done
 place
-	tst.w State.Active(a4)
-	bne.w bad
-	moveq #0, d0
-	move.w State.Concrete(a4), d0
-	beq.w bad
-	move.l d0, d6
-	bsr.w name
-	bne.w bad
-	cmp.w d6, d1
-	bne.w secondPlace
-	move.w State.Seen(a4), d0
-	btst #2, d0
-	beq.w bad
-	btst #3, d0
-	bne.w bad
-	move.w State.Region(a4), d6
-	moveq #5, d5
-	bra.w placeRegion
-secondPlace
-	cmp.w State.Second(a4), d1
-	bne.w bad
-	move.w State.Seen(a4), d0
-	btst #3, d0  ; the first placement fixes contiguous output order
-	beq.w bad
-	btst #5, d0
-	beq.w bad
-	btst #6, d0
-	bne.w bad
-	move.w State.SecondRegion(a4), d6
-	moveq #9, d5
-placeRegion
-	bsr.w name
-	bne.w bad
-	lea InWord(pc), a0
-	moveq #2, d0
-	bsr.w matches
-	bne.w bad
-	bsr.w name
-	bne.w bad
-	cmp.w d6, d1
-	bne.w bad
-	cmpa.l a3, a2
-	bne.w bad
-	cmpi.w #5, d5
-	bne.w secondPlaced
-	ori.w #8, State.Seen(a4)
-	bra.w control
-secondPlaced
-	ori.w #64, State.Seen(a4)
-	bra.w control
+	bsr.w preparePlace
+	bra.w done
 sectionControl
-	tst.w State.MapCount(a4)
-	beq.w writeSection
-	cmpi.w #12, d5
-	beq.w writeSection
 	move.w d6, d1
 	bsr.w declareSlot
 	bmi.w bad
@@ -488,17 +398,17 @@ writeSection
 	move.b #source.FLAG_LAYOUT, 1(a5)
 	move.b d5, 4(a5)
 	move.b d4, 5(a5)
-	cmpi.w #12, d5
-	beq.w writeSlot
+	cmpi.w #1, d5
+	bne.w writeSlot
 	tst.w State.MapCount(a4)
-	beq.w ok
+	beq.w unmappedLogical
 writeSlot
 	move.b #6, (a5)
 	move.b d7, 6(a5)
 	cmpi.w #1, d5
 	beq.w writeMap
 	cmpi.w #10, d5
-	bne.w ok
+	bne.w concreteAlign
 writeMap
 	move.l d3, d0
 	lsl.l #3, d0
@@ -509,6 +419,19 @@ writeMap
 	bmi.w bad
 	move.b #7, (a5)
 	move.b d0, 7(a5)
+	lea 8(a5), a0
+	move.b #11, (a5)
+	bra.w writeAlignment
+concreteAlign
+	lea 7(a5), a0
+	move.b #10, (a5)
+writeAlignment
+	move.l State.PendingAlign(a4), d1
+	bsr.w writeLong
+	bra.w ok
+unmappedLogical
+	cmpi.l #1, State.PendingAlign(a4)
+	bne.w bad
 	bra.w ok
 control
 	move.b #4, (a5)
@@ -1184,7 +1107,10 @@ done
 	rts
 	.bend  ; fold
 
+	.include "binary_placement_prepare.i"
+
 LogicalWord	.byte "logical"
+AlignWord	.byte "align"
 KindWord	.byte "kind"
 CodeWord	.byte "code"
 DataWord	.byte "data"

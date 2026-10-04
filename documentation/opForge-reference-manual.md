@@ -1824,17 +1824,28 @@ instruction address forms. `MOVE.L #$,D0` loads the instruction's starting addre
 and records its longword relocation; `BRA.W $` branches to itself with no Hunk
 relocation. Absolute addends retain that address base, and same-section
 differences are absolute. Each instruction captures its own starting PC, even
-across reopened or mapped sections. Explicit Hunk `.place` remains a compact
-native preparation gap; Rust covers placed current-address instruction output.
+across reopened or mapped sections. The compact native Hunk path also supports
+literal `.region` bounds and `.place` with power-of-two region, section and
+placement alignment. Labels, `$`, branches and internal `.align` use placed
+addresses; absolute-long relocation fields and fixup locations remain relative
+to their canonical section. Placement order is independent of output order.
+Hunk reservation size retains the maximum extent seen during layout, which can
+exceed the final initialized payload. Native retains eight total source section
+slots, eight regions and eight placements, and rejects nonconvergent layout after
+its bounded replay limit. This does
+not establish `.pack`, expression-valued placement options or full flat-placement
+alignment parity; unsupported nondefault flat alignment rejects explicitly.
 The compact native explicit mapped logical-section Hunk path now
 appends reachable imported blocks after concrete content, including reopened
 concrete sections and BSS reservations. Mapped labels, data `$` and aliases use
 the concrete segment identity and include its prefix in their addends and fixup
-offsets. A preliminary layout traversal measures those prefixes; both assembly
+offsets. Mapped content follows the concrete maximum extent, with zero padding
+when that extent exceeds its initialized payload. Layout traversals measure and
+stabilize those prefixes; both assembly
 passes retain statement order, including mutable symbols and readonly snapshots.
 The compact path currently supports two explicit maps and eight source section
 slots in total, including logical fragments. It requires matching section kinds
-and stable concrete prefix sizes; it does not promise general layout convergence.
+and bounded layout stabilization; it does not promise general layout convergence.
 Current global section-name collisions and conflicting mappings remain rejected.
 
 Readonly assignments in Rust and the compact native assembler retain their

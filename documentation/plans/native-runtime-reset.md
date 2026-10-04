@@ -2621,9 +2621,99 @@ The qualified A6000 bundle is
 `/tmp/opforge-a6000-current` link selects it for the maintained hardware runner.
 Transport dry-run validates the bundle. Physical A6000 execution is still for
 Erik to run; no current hardware timing is claimed. Explicit native Hunk placement
-remains the next layout-parity candidate. Broad test/reference debt and the
+was the next layout-parity candidate, qualified in the checkpoint below. Broad
+test/reference debt and the
 full-source memory budget remain separately recorded limits.
 
 Batch cleanup removed 7.2 GiB of Cargo-generated files with `make clean` and
 retained the empty `target` directory. Deliverables, the exact-output bundle and
 diagnostic summaries remain outside it. No remote push is part of this checkpoint.
+
+
+#### Placed Hunk layout parity — qualified checkpoint
+
+Implement shared `.region` / `.place` layout through packed numeric records.
+Baseline is `06dab3d0`: placed Hunk input rejects before execution; unplaced and
+mapped current-address proof plus full current self-host are qualified. Labels,
+statement `$` and branch evaluation must use absolute placed addresses; Hunk
+longword fields and relocation locations remain relative to canonical sections.
+Region placement order and Hunk output order are independent. Keep preparation,
+layout measurement, numeric encoding and serialization in their existing owners;
+place geometry receives its own bounded runtime responsibility.
+
+Qualify direct addresses/addends, branches, two sections sharing a region with
+alignment and reverse placement, BSS, mapped blocks, and overlap/overflow/duplicate
+failures against live Rust. Do not merely remove the rejection or discard placed
+origins. Keep native's existing bounded section capacity explicit and reject
+unsupported/nonconvergent layouts. No source strings or pointers enter packed
+layout records. Use unchanged scalar-snapshot release timing before/after this
+change, plus a separately identified placed workload. Require fresh full current
+native self-host on the previously qualified 68020/74 MiB profile and export the
+complete embedded-m68020 bundle. A6000 execution remains separate hardware proof.
+Discuss any required VM/package semantic redesign; keep this focused on shared
+layout parity and preserve the working reference until exact comparison passes.
+
+Implementation now lowers region bounds, alignments and placement identities to
+packed numeric records. Geometry has a dedicated runtime owner; canonical origins
+feed label/PC evaluation, while package-proven instruction fields and shared DATA
+fields are normalized before Hunk serialization. Layout retains maximum extents
+for reservations, following placements and mapped prefixes, with zero-filled
+initialized gaps. Pass-one replay is bounded. There are eight source section
+slots, eight regions, eight placements and two explicit maps. Literal geometry
+with power-of-two alignment is supported; `.pack`, expression-valued geometry,
+general convergence and nondefault flat placement alignment remain outside this
+checkpoint. Unsupported flat alignment rejects explicitly.
+
+Fresh release native comparison covers 16 placement cases: exact live Rust Hunk
+bytes for addresses/addends, branches, alignment/order, BSS, mapped blocks and
+high-water gaps; overlap, overflow and duplicate placement reject with exit 20.
+Host oracles also assert placed label values. Native label-file export remains
+unqualified. Existing 6502 flat two-section and mapped-region release regressions
+pass, as do unplaced/mapped instruction-PC probes. An earlier flat release timeout
+did not recur in instrumented or fresh release retries; it is not a demonstrated
+code regression.
+
+Identical 15,748-byte scalar-snapshot input, identical package and exact 1,588-byte
+Hunk: two-run mean START-to-DONE is 13.595977792 seconds at `06dab3d0`, versus
+13.591572021 seconds now (-0.0324%, effectively unchanged). The separate placed
+15,810-byte version averages 13.819500521 seconds (+1.68% against current
+unplaced input); this is a capability comparison, not an isolated speedup. Both
+use release builds without telemetry, FS-UAE 68020/10 MiB and unlimited emulator
+CPU. The embedded-m68020 release image grows from 454,092 to 456,048 bytes
+(+1,956 bytes, +0.43%); package bytes are unchanged. Raw comparative records are
+retained in `/tmp/opforge-placement-before.json`, `-after.json` and
+`-placed-times.json`; the 16 native case records are consolidated in
+`/tmp/opforge-placement-validation.json`.
+
+Focused Hunk host checks pass (29 passed, 24 ignored), reachable-block layout
+checks pass (23), and format, affected-library Clippy, workflow and deterministic
+native engineering guards pass. A broad Hunk run is not green: 13 unrelated
+failures recur in the earlier recorded baseline; an intermediate new high-water
+failure was repaired and the final host/native probes pass. No whole-suite
+qualification claim is made.
+
+Fresh full current native self-host completes with guest exit zero and exact
+complete 456,048-byte Rust Hunk (`fnv1a64:a1e43b34ac8e71fb`), including unchanged
+embedded m68020 package bytes. All 98 inputs (97 text/generated inputs plus one
+321,532-byte package asset) total 1,388,392 bytes; source manifest is
+`fnv1a64:bc4281fb706d43cf`. START-to-DONE is 1,066.644855709 seconds
+(17m 46.64s), release telemetry disabled, FS-UAE 68020/74 MiB with unlimited
+emulator CPU. Hunk linked reservation totals 474,144 bytes. This qualifies the
+complete assembly of this current source state, not full language parity,
+physical hardware timing or the 2 MiB product memory budget. Compared with the
+preceding 1,049.062893959-second self-host, both source and image changed; only
+the scalar-snapshot comparison above isolates this change's runtime impact.
+
+The refreshed bundle is `/tmp/opforge-selfhost-placement-qualified-74m` and
+`/tmp/opforge-a6000-current` now selects it. The maintained hardware runner's
+`--dry-run` validates and stages it; no physical A6000 execution is claimed.
+Run `python3 scripts/performance/run_a6000_selfhost.py` from macOS Terminal for
+fresh transfer, overall hardware timing and exact-output comparison. Both
+bootstrap and assembled output embed m68020. The comparative records and full
+manifest summary are retained in `/tmp/opforge-placement-qualification-summary.json`;
+the full native log is `/tmp/opforge-placement-full-selfhost.log`.
+
+Batch cleanup completed after all native runs and builds: `make clean` reported
+4.6 GiB of generated outputs removed and retained the empty `target` directory.
+The qualified bundle and reports remain outside it. No remote push is authorized
+for this checkpoint.

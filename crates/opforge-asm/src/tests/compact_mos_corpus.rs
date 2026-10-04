@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Full, unmodified MOS/opcore corpus audit; stored references are never refreshed.
+//! Full, unmodified family/opcore corpus audits; stored references are never refreshed.
 use super::*;
 use crate::fs_uae_smoke::{
     compact_cli_input::assemble_cli, opforge_self_host_package_digest,
@@ -19,8 +19,8 @@ struct Case {
     support: Vec<PathBuf>,
 }
 
-fn corpus(root: &Path) -> Vec<Case> {
-    let mut cases = collect_example_asm_files(&root.join("examples/mos6502"))
+fn family_corpus(root: &Path, family: &str) -> Vec<Case> {
+    collect_example_asm_files(&root.join("examples").join(family))
         .into_iter()
         .map(|source| Case {
             name: source
@@ -29,12 +29,31 @@ fn corpus(root: &Path) -> Vec<Case> {
                 .to_string_lossy()
                 .into_owned(),
             reference: root
-                .join("examples/reference/mos6502")
-                .join(source.file_stem().unwrap()),
+                .join("examples/reference")
+                .join(family)
+                .join(
+                    source
+                        .strip_prefix(root.join("examples").join(family))
+                        .unwrap(),
+                )
+                .with_extension(""),
             source,
             support: Vec::new(),
         })
-        .collect::<Vec<_>>();
+        .collect()
+}
+
+// The family instruction audit covers every top-level fixture. Nested AmigaOS
+// programs and support use Hunk output/implicit CPU setup and need a separate audit.
+fn motorola68000_instruction_corpus(root: &Path) -> Vec<Case> {
+    family_corpus(root, "motorola68000")
+        .into_iter()
+        .filter(|case| case.source.parent() == Some(root.join("examples/motorola68000").as_path()))
+        .collect()
+}
+
+fn corpus(root: &Path) -> Vec<Case> {
+    let mut cases = family_corpus(root, "mos6502");
     for assignment in NATIVE_OPCORE_ASSIGNMENTS {
         let NativeOpcoreRole::Root { reference_stem } = assignment.role else {
             continue;
@@ -178,16 +197,23 @@ fn reference_check(case: &Case, out: &Path) -> Result<(), String> {
     }
 }
 
-fn save_report(kind: &str, selection: &Option<String>, total: usize, rows: &[Value]) {
-    let path = std::env::var_os("OPFORGE_MOS_CORPUS_REPORT")
+fn save_report(
+    audit: &CorpusAudit,
+    kind: &str,
+    selection: &Option<String>,
+    total: usize,
+    rows: &[Value],
+) {
+    let path = std::env::var_os(audit.report_env)
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            std::env::temp_dir().join(format!("opforge-mos-corpus-{kind}-{}.json", process::id()))
+            std::env::temp_dir().join(format!(
+                "opforge-{}-corpus-{kind}-{}.json",
+                audit.slug,
+                process::id()
+            ))
         });
-    assert!(
-        path.is_absolute(),
-        "OPFORGE_MOS_CORPUS_REPORT must be absolute"
-    );
+    assert!(path.is_absolute(), "{} must be absolute", audit.report_env);
     fs::write(
         &path,
         serde_json::to_vec_pretty(&json!({
@@ -202,7 +228,8 @@ fn save_report(kind: &str, selection: &Option<String>, total: usize, rows: &[Val
     )
     .unwrap();
     eprintln!(
-        "MOS/opcore audit: {} cases; report {}",
+        "{} audit: {} cases; report {}",
+        audit.label,
         rows.len(),
         path.display()
     );
@@ -223,7 +250,7 @@ fn compact_mos_corpus_rust_references() {
             json!({"case": case.name, "rust_reference_ok": result.is_ok(), "error": result.err()})
         })
         .collect::<Vec<_>>();
-    save_report("rust-references", &None, cases.len(), &rows);
+    save_report(&MOS_AUDIT, "rust-references", &None, cases.len(), &rows);
     assert!(
         rows.iter().all(|r| r["rust_reference_ok"] == true),
         "Rust reference failures; inspect audit report"
@@ -268,7 +295,9 @@ fn initial_cpu(source: &[u8]) -> String {
 
 fn stage(case: &Case, dir: &Path) -> Result<(String, BTreeMap<PathBuf, Vec<u8>>), String> {
     fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    if case.name.starts_with("examples/mos6502/") {
+    if case.name.starts_with("examples/mos6502/")
+        || case.name.starts_with("examples/motorola68000/")
+    {
         // Numeric corpus basenames synthesize invalid implicit module identifiers.
         // Keep every source byte, but use the same neutral entry for both engines.
         fs::copy(&case.source, dir.join("input.asm")).map_err(|e| e.to_string())?;
@@ -290,9 +319,43 @@ fn stage(case: &Case, dir: &Path) -> Result<(String, BTreeMap<PathBuf, Vec<u8>>)
     ))
 }
 
+struct CorpusAudit {
+    slug: &'static str,
+    label: &'static str,
+    cases_env: &'static str,
+    report_env: &'static str,
+}
+
+const MOS_AUDIT: CorpusAudit = CorpusAudit {
+    slug: "mos",
+    label: "MOS/opcore",
+    cases_env: "OPFORGE_MOS_CORPUS_CASES",
+    report_env: "OPFORGE_MOS_CORPUS_REPORT",
+};
+const M68K_AUDIT: CorpusAudit = CorpusAudit {
+    slug: "m68k",
+    label: "motorola68000",
+    cases_env: "OPFORGE_M68K_CORPUS_CASES",
+    report_env: "OPFORGE_M68K_CORPUS_REPORT",
+};
+
 #[test]
 #[ignore = "full corpus fresh compact-native audit; requires configured FS-UAE"]
 fn compact_mos_corpus_fs_uae() {
+    let root = workspace_root();
+    run_compact_corpus(&MOS_AUDIT, corpus(&root));
+}
+
+/// Audit all top-level instruction fixtures, including expected-error cases.
+/// Nested AmigaOS programs/support require a separate Hunk/CPU setup audit.
+#[test]
+#[ignore = "top-level Motorola instruction corpus fresh compact-native audit; requires configured FS-UAE"]
+fn compact_motorola68000_corpus_fs_uae() {
+    let root = workspace_root();
+    run_compact_corpus(&M68K_AUDIT, motorola68000_instruction_corpus(&root));
+}
+
+fn run_compact_corpus(audit: &CorpusAudit, cases: Vec<Case>) {
     let root = workspace_root();
     let scratch = scratch();
     let _cleanup = ScratchCleanup(scratch.clone());
@@ -306,8 +369,7 @@ fn compact_mos_corpus_fs_uae() {
     .unwrap();
     let image = assemble_cli(&root, &build);
     let packages = tree_files(&build.output_dir.join("packages"));
-    let selection = std::env::var("OPFORGE_MOS_CORPUS_CASES").ok();
-    let cases = corpus(&root);
+    let selection = std::env::var(audit.cases_env).ok();
     let mut rows = Vec::new();
     for (index, case) in cases.iter().enumerate() {
         if selection
@@ -332,7 +394,8 @@ fn compact_mos_corpus_fs_uae() {
             ];
             row["original_filename"] = json!(case.source.file_name().unwrap().to_string_lossy());
             row["staged_entry"] = json!(entry);
-            row["filename_adjustment"] = json!(case.name.starts_with("examples/mos6502/"));
+            row["filename_adjustment"] =
+                json!(entry != case.source.file_name().unwrap().to_string_lossy());
             argv.extend([
                 "--hex".into(),
                 dir.join("audit.hex").to_string_lossy().into_owned(),
@@ -480,12 +543,63 @@ fn compact_mos_corpus_fs_uae() {
         row["elapsed_seconds"] = json!(started.elapsed().as_secs_f64());
         eprintln!("{}: {}", case.name, row["native_ok"]);
         rows.push(row);
-        save_report("compact-native", &selection, cases.len(), &rows);
+        save_report(audit, "compact-native", &selection, cases.len(), &rows);
     }
     assert!(!rows.is_empty(), "no corpus cases selected");
     assert!(
         rows.iter()
             .all(|r| r["rust_reference_ok"] == true && r["native_ok"] == true),
-        "MOS/opcore audit found gaps; inspect complete JSON report"
+        "{} audit found gaps; inspect complete JSON report",
+        audit.label
     );
+}
+
+#[test]
+fn compact_family_corpus_staging_preserves_source_bytes() {
+    let root = workspace_root();
+    let scratch = scratch();
+    let _cleanup = ScratchCleanup(scratch.clone());
+    for family in ["mos6502", "motorola68000"] {
+        let all_cases = family_corpus(&root, family);
+        for case in &all_cases {
+            assert!(
+                case.reference.with_extension("lst").is_file()
+                    || case.reference.with_extension("err").is_file(),
+                "missing reference contract for {} at {}",
+                case.source.display(),
+                case.reference.display()
+            );
+        }
+        let cases = if family == "motorola68000" {
+            let selected = motorola68000_instruction_corpus(&root);
+            let mut expected = fs::read_dir(root.join("examples/motorola68000"))
+                .unwrap()
+                .map(|entry| entry.unwrap().path())
+                .filter(|path| path.extension().is_some_and(|ext| ext == "asm"))
+                .collect::<Vec<_>>();
+            expected.sort();
+            assert_eq!(
+                selected
+                    .iter()
+                    .map(|case| case.source.clone())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            selected
+        } else {
+            all_cases
+        };
+        assert!(!cases.is_empty(), "empty {family} corpus");
+        for (index, case) in cases.iter().enumerate() {
+            assert_eq!(case.reference.file_stem(), case.source.file_stem());
+            let (entry, inputs) =
+                stage(case, &scratch.join(family).join(index.to_string())).unwrap();
+            assert_eq!(entry, "input.asm");
+            assert_eq!(inputs.len(), 1);
+            assert_eq!(
+                inputs[Path::new("input.asm")],
+                fs::read(&case.source).unwrap()
+            );
+        }
+    }
 }

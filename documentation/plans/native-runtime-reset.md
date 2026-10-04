@@ -2896,3 +2896,136 @@ Documentation links and whitespace checks pass. Once both native batches ended,
 `make clean` removed 1.5 GiB of generated cache and retained an empty `target`.
 Reports and logs remain outside the cache. Unrelated workflow-notebook edits
 remain untouched.
+
+#### Cross-family parity comparison — baseline `b840b27f`
+
+Audit the 43 top-level `examples/motorola68000` instruction fixtures, including
+seven expected-error cases, against the current compact native CLI and live Rust.
+Nested AmigaOS executable demos and support modules remain outside this Hex
+instruction audit; they require separate Hunk/implicit-CPU setup. Reuse the MOS
+audit's fresh executable/package preparation, byte-preserving neutral filenames,
+per-case completion/exit/artifact checks and independent stored-reference checks.
+Run serially on FS-UAE 68020/10 MiB without telemetry. Production code, packages,
+sources and goldens remain unchanged. Record all selected results before comparing
+them with the 39-case MOS audit to select the next implementation slice.
+
+The test harness now shares its corpus runner rather than duplicating it.
+Existing MOS/opcore commands and selection remain intact. Family reference paths
+retain relative subdirectories; a host inventory/staging check verifies complete
+top-level selection and byte-identical staging. Expected-error cases establish
+fresh nonzero rejection with a diagnostic, not diagnostic text/identity parity
+or successful assembly. Check whether native rejects before the intended operation.
+
+```sh
+OPFORGE_M68K_CORPUS_REPORT=/tmp/opforge-m68k-current-b840b27f.json \
+  OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m \
+  OPFORGE_FS_UAE_TIMEOUT_MS=180000 \
+  OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 \
+  cargo test -p asm --lib compact_motorola68000_corpus_fs_uae -- --ignored --nocapture --test-threads=1
+```
+
+Optional `OPFORGE_M68K_CORPUS_CASES` selects path substrings for later focused
+retries; unset it for the complete 43-root audit. Success for this inventory is
+recording every case honestly, not forcing the deliberately gap-reporting test
+green. Neither this run nor the MOS audit establishes whole-language parity,
+diagnostic parity, original numeric-filename behavior, new full self-host proof
+or physical A6000 timing.
+
+The full run records all 43 cases in 1,380.04 host seconds, including preparation,
+emulator startup and one startup timeout. All 36 positive live Rust oracles
+succeed. Fifteen match complete native artifacts; 20 complete with exit 20 and
+one stalls before guest START. All seven expected-error cases complete with
+nonzero exit and a diagnostic. The audit test remains deliberately failing;
+negative rejection is not positive assembly or diagnostic identity qualification.
+
+| Target | Positive roots | Exact artifact matches | Expected-error roots / nonzero rejections observed |
+| --- | ---: | ---: | ---: |
+| 68000 | 20 | 14 | 1 / 1 |
+| 68010 | 1 | 0 | 0 / 0 |
+| 68020 | 5 | 0 | 0 / 0 |
+| 68030 | 2 | 0 | 0 / 0 |
+| 68040 | 3 | 1 | 4 / 4 |
+| 68080 | 5 | 0 | 2 / 2 |
+| Total | 36 | 15 | 7 / 7 |
+
+This is example coverage, not a percentage of instruction-set support. A first
+stop prevents qualification of later forms, and the existing current full
+m68020 self-host proves its actual source workload rather than every 68020
+instruction. The fresh release image remains 456,048 bytes,
+`fnv1a64:a1e43b34ac8e71fb`, byte-identical to the MOS audit and qualified compact
+self-host image. Positive match START/DONE observations range from 1.2618 to
+1.5249 seconds. Inputs differ from MOS, so these times do not establish a
+cross-family speed ratio or the impact of a code change.
+
+The stalled `68020_fpu_registers` case was retried with identical source/input,
+image, package digests and command. Fresh execution completes with exit 20 at
+line 3, `.fpu 68881`, in 1.016601417 START/DONE host seconds. Startup timeout does
+not recur; preserve both outcomes. The complete and retry reports are
+`/tmp/opforge-m68k-current-b840b27f.json` and
+`/tmp/opforge-m68k-current-b840b27f-startup-retry.json`; the derived summary is
+`/tmp/opforge-cross-family-parity-summary.json`.
+
+Four negative cases reject earlier than Rust's intended failing operation:
+FSIN stops at `.fpu`; AMMX-shape and Apollo-gating cases stop at `.apollo`; MOVEC
+CAAR fails during preparation. Three negatives reach the same reported source
+operation as Rust, but their generic diagnostics still do not establish reason
+or text parity. Do not present seven observed rejections as seven CPU-policy
+contracts qualified.
+
+#### Shared priorities identified by both family audits
+
+1. **Implicit module naming:** only one of 43 M68K stored-reference checks passes;
+   35 positive originals report source errors and all seven error references
+   report different diagnostics. MOS has 30 original-filename source failures
+   and two listing differences. A fresh Rust CLI discriminator confirms that
+   original `6502_simple.asm` and `68000_basic_moves.asm` fail at the generated
+   `.module` line, while byte-identical `input.asm` copies succeed. The engine
+   derives implicit IDs directly from filename stems, which may begin with a
+   digit although module identifiers cannot. This shared bug is independent of
+   the valid neutral-filename native comparisons. Evidence:
+   `/tmp/opforge-cross-family-implicit-name-report.json`.
+2. **Packed package recipe coverage:** M68K first stops include wrapped
+   absolute-long MOVE, zero-displacement/scaled indexed aliases, MOVEP, default
+   LINK, BKPT, full-extension addressing and register-pair DIVS/CAS2. Existing
+   CPU-owned indexed selectors use tuple register item 0, qualified item 1 and
+   identity-scale projections that the packed exporter does not retain. BKPT's
+   `semv.scalar.v1` recipe is unsupported, and MOVEP's match-after-encode ordering
+   cannot lower. Wrapped absolute-W already passes; absolute-L and LINK have
+   existing transport and need localization. MOS similarly lacks structural
+   projections for some indirect/tuple forms, but BBR's three-byte relative
+   fixup and PHW's word width also require their own family-owned producer work.
+   Extend neutral transport/execution where needed; CPU policy remains in
+   package definitions. Do not add CPU parsers to native preparation.
+3. **Package configuration:** ten positive M68K examples first stop at `.fpu`
+   or `.apollo`, after the retry, while 65816 `.assume` is a MOS first stop.
+   These require package-owned state transitions through generic execution.
+   FPU/AMMX instruction bodies remain unqualified; fixing configuration alone
+   may reveal later recipe gaps.
+4. **Shared layout/language/output:** second `.org` statements block the M68K
+   qualified-module call and a MOS far-branch example. MOS also stops at `.text`,
+   typed `.res`, wide output metadata and `.mapfile`; collection values and
+   unlocalized preparation failures remain separate known gaps. Keep the
+   completed MOS branch-displacement mismatch open; no matching M68K artifact
+   discrepancy was observed among completed positive cases.
+
+The recommended **first implementation slice is legal implicit module IDs**.
+Derive stable valid IDs for implicit files, preserve valid and explicit names,
+check module discovery/import consistency and avoid silently merging collisions.
+Verify original numeric-leading filenames on both Rust and native, compare
+emitted bytes with the neutral-name controls, and rerun relevant original-path
+reference checks without refreshing goldens. This is a shared correctness repair
+with a small coherent scope; it does not resolve native operand/configuration
+gaps. Then take the packed tuple/index recipe-export slice, followed by package
+configuration. This revises the MOS-only proposed 65C02-first ordering using the
+cross-family evidence; these are recommendations, not implemented repairs.
+
+The inventory/staging host test, Rust formatting, native fresh-proof guard and
+native test-ownership guard pass. No production, package or golden change was
+made, and the qualified A6000 bundle remains unchanged.
+
+A Luna result review confirms the reported scope, counts and shared naming
+diagnosis. After both native runs and host checks ended, `make clean` removed
+2.9 GiB of generated cache; the final staging-test batch then passed and its
+cleanup removed another 1.5 GiB, retaining an empty `target`. Reports and CLI
+discriminator artifacts remain outside the cache. Unrelated notebook edits are
+preserved.

@@ -24247,7 +24247,7 @@ fn motorola68020_tkpkg_selected_compound_expressions_retain_lexical_resolution()
         .map(|(_, body)| body)
         .expect("Rust relocation-target projection");
     for fragment in [
-        "Expr::Identifier(_, _) => true",
+        "Expr::Identifier(_, _) | Expr::Dollar(_) => true",
         "Expr::Binary { left, right, .. }",
         "expression_can_be_relocation_target(left)",
         "expression_can_be_relocation_target(right)",

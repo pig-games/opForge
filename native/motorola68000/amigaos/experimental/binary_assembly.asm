@@ -913,11 +913,9 @@ markInstructionRelocs	.block
 	bne.w bad
 	cmpi.w #1, HunkInstructionRefCount
 	bne.w bad
-	cmp.l pkg.Context.Count(a2), d1
-	bhs.w bad
-	movea.l pkg.Context.SectionIds(a2), a0
-	moveq #0, d2
-	move.b 0(a0, d1.l), d2
+	; Projection binds an opaque target directly to its canonical section.
+	; The package VM proved cancellation; it never interprets this identity.
+	move.w d1, d2
 	moveq #0, d3
 	move.w sections.State.HunkCurrent(a4), d3
 	addq.w #1, d3
@@ -943,12 +941,10 @@ nextFixup
 	bcs.w bad
 	cmp.l d5, d2
 	bhi.w bad
-	cmp.l pkg.Context.Count(a2), d3
-	bhs.w bad
-	movea.l pkg.Context.SectionIds(a2), a0
-	moveq #0, d4
-	move.b 0(a0, d3.l), d4
+	move.l d3, d4
 	beq.w bad
+	cmpi.l #sections.HUNK_SLOT_COUNT, d4
+	bhi.w bad
 	subq.l #1, d4
 	move.l d1, d2
 	add.l pkg.Context.Pc(a2), d2

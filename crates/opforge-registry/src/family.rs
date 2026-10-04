@@ -169,6 +169,11 @@ pub trait AssemblerContext {
     fn expression_is_absolute_constant(&self, expr: &Expr) -> bool {
         !expr_has_symbol_references(expr)
     }
+    /// Whether a position-based projection can consume this address without
+    /// an output relocation. Flat-output contexts have no relocation constraint.
+    fn expression_supports_position_projection(&self, _expr: &Expr) -> bool {
+        true
+    }
     fn symbol_is_target_reference(&self, _name: &str) -> bool {
         false
     }

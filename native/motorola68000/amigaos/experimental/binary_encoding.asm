@@ -204,8 +204,8 @@ fail
 	rts
 	.bend  ; encode
 
-; Numeric side channel from the most recent successful encode. No source text
-; or section ownership enters this package encoder.
+; Numeric side channel from the most recent successful encode. Hunk projection
+; binds opaque targets to canonical sections; package execution only transports IDs.
 outputFixupCount	.block
 	moveq #0, d0
 	move.w FixupCount, d0
@@ -213,7 +213,7 @@ outputFixupCount	.block
 	.bend  ; outputFixupCount
 
 ; Return the successful package VM's positional cancellation proof.
-; D0.W=count (saturated at two), D1.W=numeric target ID. Other registers
+; D0.W=count (saturated at two), D1.W=one-based Hunk section ID (flat: symbol ID). Other registers
 ; preserved; CCR reflects D0.
 outputPositionProof	.block
 	moveq #0, d0
@@ -225,7 +225,8 @@ outputPositionProof	.block
 	.bend  ; outputPositionProof
 
 ; D0.W=index. Returns D0=status,D1=byte offset,D2=width,D3=target
-; symbol ID,D4=encoded addend. Preserves D5-D7/A0-A6.
+; one-based Hunk section ID (flat: symbol ID),D4=encoded addend.
+; Preserves D5-D7/A0-A6.
 outputFixup	.block
 	movem.l d5/a0, -(sp)
 	moveq #0, d5
@@ -1351,7 +1352,7 @@ recordReady
 expressionValue
 	move.w package.ScalarProjection.Flags(a4), d0
 	beq.w plainExpression
-	cmpi.w #package.SCALAR_EXACT_IDENTITY, d0
+	cmpi.w #package.SCALAR_ADDRESS_IDENTITY, d0
 	bne.w bad
 	cmpi.b #RECIPE_SEMANTIC_BRANCH, package.Row.Recipe(a5)
 	bne.w bad
@@ -1449,10 +1450,10 @@ bad
 	.bend  ; project
 
 ; Match a scalar expression containing a symbol, including absolute constants.
-; ExprVM supplies the predicate during evaluation; no second opcode scan is needed.
-; Numeric literals/current-PC expressions remain ordinary scalar candidates.
+; ExprVM supplies symbol presence. Relocatable current-PC expressions also name
+; an address base, classified by the shared bounded reference proof.
 projectionTargetExpression	.block
-	movem.l d1-d2/d4/a0-a1, -(sp)
+	movem.l d1-d2/d4/a0-a1/a6, -(sp)
 	bsr.w operandSpan
 	tst.l d0
 	bne.w done
@@ -1462,13 +1463,21 @@ projectionTargetExpression	.block
 	bne.w ready
 	addq.l #1, a0
 ready
+	movea.l a0, a6
 	jsr expression.evaluateWithSymbols
 	tst.l d0
 	bne.w done
 	cmpa.l a1, a0
 	bne.w bad
 	tst.l d4
+	bne.w targetPresent
+	tst.w package.Context.Relocatable(a2)
 	beq.w bad
+	movea.l a6, a0
+	jsr references.targets
+	cmpi.l #references.STATUS_SECTION, d0
+	bne.w bad
+targetPresent
 	tst.l d2
 	beq.w matched
 	move.w #1, Unresolved
@@ -1478,7 +1487,7 @@ matched
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d1-d2/d4/a0-a1
+	movem.l (sp)+, d1-d2/d4/a0-a1/a6
 	moveq #0, d3
 	tst.l d0
 	rts
@@ -1508,9 +1517,9 @@ invalid
 	rts
 	.bend  ; projectionAtomicTarget
 
-; Build the package fixup VM's seven-byte numeric input records. An exact
-; packed identifier supplies the optional relocation identity. Other scalar
+; Build the package fixup VM's seven-byte numeric input records. Scalar
 ; expressions transport identity only when the generic affine proof succeeds.
+; Hunk targets are canonical section IDs, so a PC base needs no fabricated symbol.
 ; The Hunk caller rejects section-bearing operands without a package fixup.
 projectFixup	.block
 	moveq #0, d7
@@ -1613,13 +1622,10 @@ targetName
 	beq.w bad
 	cmpi.l #references.STATUS_SECTION, d0
 	bne.w targetReady
-	; Instruction transport currently carries symbol IDs only. Reject a PC
-	; base explicitly rather than truncating it into an unrelated symbol.
-	cmp.l package.Context.Count(a2), d1
-	bhs.w bad
-	move.w d1, ProjectedTarget
-	bra.w targetReady
+	bra.w bindTarget
 exactIdentity
+	cmpi.l #references.CURRENT_PC_BASE, d1
+	beq.w bindTarget
 	cmp.l package.Context.Count(a2), d1
 	bhs.w bad
 	movea.l package.Context.Defined(a2), a0
@@ -1631,6 +1637,12 @@ exactIdentity
 	beq.w targetReady
 	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, 0(a0, d1.l)
 	beq.w targetReady
+bindTarget
+	tst.w package.Context.Relocatable(a2)
+	beq.w storeTarget
+	jsr references.baseSection
+	bne.w bad
+storeTarget
 	move.w d1, ProjectedTarget
 targetReady
 	moveq #0, d0
@@ -1692,8 +1704,9 @@ bad
 	rts
 	.bend  ; projectionExpression
 
-; Bind optional exact scalar identity after expression validation. Numeric and
-; compound values retain no identity; undefined and absolute names do likewise.
+; Bind optional scalar address identity after expression validation. In Hunk
+; mode the bounded affine proof supplies a canonical section for symbols or PC.
+; Flat mode retains exact symbol identity; unresolved and absolute values have none.
 ; D0/CCR=status; all projected values and caller registers are retained.
 scalarIdentity	.block
 	movem.l d1-d3/a0-a1, -(sp)
@@ -1706,6 +1719,19 @@ scalarIdentity	.block
 	bne.w target
 	addq.l #1, a0
 target
+	tst.w package.Context.Relocatable(a2)
+	beq.w exact
+	tst.w Unresolved
+	bne.w absent
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w exact
+	jsr references.affineTarget
+	cmpi.l #references.STATUS_BAD, d0
+	beq.w bad
+	cmpi.l #references.STATUS_SECTION, d0
+	bne.w absent
+	bra.w bind
+exact
 	bsr.w exactTarget
 	tst.l d0
 	bne.w absent
@@ -1720,6 +1746,12 @@ target
 	beq.w absent
 	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, 0(a0, d1.l)
 	beq.w absent
+bind
+	tst.w package.Context.Relocatable(a2)
+	beq.w store
+	jsr references.baseSection
+	bne.w bad
+store
 	move.w d1, ScalarTarget
 absent
 	moveq #0, d0
@@ -2198,11 +2230,29 @@ bad
 	rts
 	.bend  ; operandSpan
 
-; A0/A1=operand; D0=status,D1=numeric symbol ID. The prepared frontend
-; commonly wraps scalar names as an EXPRVM PUSH_SYMBOL program.
+; A0/A1=operand; D0=status,D1=numeric symbol ID or CURRENT_PC_BASE.
+; Exact ExprVM leaves retain their identity without evaluating source syntax.
+; The PC leaf is a target only inside relocatable output; flat PC is absolute.
 exactTarget	.block
 	move.l a1, d0
 	sub.l a0, d0
+	cmpi.l #4, d0
+	bne.w symbol
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w plain
+	cmpi.b #2, 1(a0)
+	bne.w bad
+	cmpi.b #exprvm.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, 2(a0)
+	bne.w bad
+	tst.b 3(a0)
+	bne.w bad
+	tst.w package.Context.Relocatable(a2)
+	beq.w bad
+	tst.w package.Context.CurrentSection(a2)
+	beq.w bad
+	move.l #references.CURRENT_PC_BASE, d1
+	bra.w ready
+symbol
 	cmpi.l #6, d0
 	bne.w plain
 	cmpi.b #expression.COMPILED_TAG, (a0)
@@ -2217,6 +2267,7 @@ exactTarget	.block
 	move.b 4(a0), d1
 	lsl.w #8, d1
 	move.b 3(a0), d1
+ready
 	movea.l a1, a0
 	moveq #0, d0
 	rts

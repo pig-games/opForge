@@ -192,3 +192,28 @@ after
     );
     assert!(segments[1].relocations.is_empty());
 }
+
+#[test]
+fn hunk_value_provenance_position_proofs_preserve_sectioned_binary_algebra() {
+    for (instruction, expected) in [
+        ("lea alias(PC),a0", vec![0, 0, 0, 0, 0x41, 0xfa, 0xff, 0xfa]),
+        ("bra.w alias", vec![0, 0, 0, 0, 0x60, 0, 0xff, 0xfa]),
+        ("bra.w $*2", vec![0, 0, 0, 0, 0x60, 0, 0, 2]),
+        ("move.l #$*2,d0", vec![0, 0, 0, 0, 0x20, 0x3c, 0, 0, 0, 8]),
+    ] {
+        for format in ["bin", "hunk"] {
+            let source = format!(".module main\n.cpu m68020\n.section code,kind=code\nanchor .long 0\nbad .const anchor*2\nalias .const bad\n {instruction}\n.endsection\n.region image,0,$ff\n.place code in image\n.output \"out.{format}\",format={format},sections=code\n.endmodule\n");
+            let assembler = run_passes(&source.lines().collect::<Vec<_>>());
+            let result = payload(&assembler);
+            if format == "bin" {
+                assert_eq!(result.unwrap(), expected, "{instruction}");
+            } else {
+                let error = result.expect_err("unsupported position proof must reject Hunk output");
+                assert!(
+                    error.message().contains("symbolic"),
+                    "{instruction}: {error:?}"
+                );
+            }
+        }
+    }
+}

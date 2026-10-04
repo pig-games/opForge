@@ -18,7 +18,7 @@ use vm::runtime_model_core::RuntimeModelCore;
 const MISSING: u16 = u16::MAX;
 const HEADER: usize = 192;
 const ROW: usize = 32;
-const SCALAR_EXACT_IDENTITY: u16 = 1;
+const SCALAR_ADDRESS_IDENTITY: u16 = 1;
 
 struct Program<'a> {
     kind: u16,
@@ -745,7 +745,7 @@ fn write_candidate(
                 break;
             }
             // The canonical branch envelope fixes scalar input one as its
-            // target. Bind optional exact identity alongside that scalar;
+            // target. Bind optional affine address identity alongside that scalar;
             // the branch VM owns the successful positional proof.
             if recipe == 5 && index == 1 {
                 if !matches!(projection, Projection::Expression(0)) {
@@ -753,7 +753,7 @@ fn write_candidate(
                     recipe = 6;
                     break;
                 }
-                set_word(out, descriptor + 10, SCALAR_EXACT_IDENTITY);
+                set_word(out, descriptor + 10, SCALAR_ADDRESS_IDENTITY);
             }
         }
     }

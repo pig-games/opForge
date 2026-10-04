@@ -943,3 +943,328 @@ fn compact_flat_data_pc_fs_uae() {
         "OPFORGE_HUNK_SECTION_PC_REPORT",
     );
 }
+
+fn instruction_pc_cases() -> Vec<(&'static str, String)> {
+    let direct = source(
+        ".section code,kind=code\n.long 0\n move.l #$,d0\n bra.w $\n.endsection\n",
+        "code",
+    );
+    let mapped = section_pc_cases()
+        .into_iter()
+        .find(|(name, _)| *name == "section-pc-mapped-block")
+        .unwrap()
+        .1
+        .replace("kind=data", "kind=code")
+        .replace(".long $\n.long $\n", " move.l #$,d0\n bra.w $\n");
+    vec![
+        ("instruction-pc-unplaced", direct.clone()),
+        ("instruction-pc-placed", direct.replace(".output", ".region ram,$2000,$20ff\n.place code in ram\n.output")),
+        ("instruction-pc-addends", source("Offset .const 3\n.section code,kind=code\n.long 0\n move.l #$+Offset,d0\n move.l #Offset+$,d0\n move.l #$-Offset,d0\n.endsection\n", "code")),
+        ("instruction-pc-differences", source(".section code,kind=code\n.long 0\nanchor\n move.l #$-anchor,d0\n move.l #anchor-$,d0\n.endsection\n", "code")),
+        ("instruction-pc-branch-addend", source(".section code,kind=code\n bra.w $+4\n.endsection\n", "code")),
+        ("instruction-pc-literal-addends", source(".section code,kind=code\n.long 0\n move.l #$+3,d0\n move.l #3+$,d0\n.endsection\n", "code")),
+        ("instruction-pc-interleaved", source(".section data,kind=code\n move.l #$,d0\n bra.w $\n.endsection\n.section code,kind=code\n move.l #$+3,d0\n bra.w $+4\n.endsection\n.section data,kind=code\n bra.w $\n move.l #3+$,d0\n.endsection\n", "code,data")),
+        ("instruction-pc-mapped", mapped),
+    ]
+}
+
+#[test]
+fn compact_hunk_instruction_pc_rust_oracles() {
+    let dir = create_temp_dir("hunk-instruction-pc-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (name, source) in instruction_pc_cases() {
+        let bytes = project_oracle(&dir, &source, true, &[])
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let segments = hunk::segments(&bytes).unwrap();
+        let expected = match name {
+            "instruction-pc-unplaced" | "instruction-pc-placed" => vec![(
+                vec![
+                    0, 0, 0, 0, 0x20, 0x3c, 0, 0, 0, 4, 0x60, 0, 0xff, 0xfe, 0, 0,
+                ],
+                vec![(6, 0)],
+            )],
+            "instruction-pc-literal-addends" => vec![(
+                vec![0, 0, 0, 0, 0x20, 0x3c, 0, 0, 0, 7, 0x20, 0x3c, 0, 0, 0, 13],
+                vec![(6, 0), (12, 0)],
+            )],
+            "instruction-pc-interleaved" => vec![
+                (
+                    vec![0x20, 0x3c, 0, 0, 0, 3, 0x60, 0, 0, 2, 0, 0],
+                    vec![(2, 0)],
+                ),
+                (
+                    vec![
+                        0x20, 0x3c, 0, 0, 0, 0, 0x60, 0, 0xff, 0xfe, 0x60, 0, 0xff, 0xfe, 0x20,
+                        0x3c, 0, 0, 0, 17,
+                    ],
+                    vec![(2, 1), (16, 1)],
+                ),
+            ],
+            "instruction-pc-addends" => vec![(
+                vec![
+                    0, 0, 0, 0, 0x20, 0x3c, 0, 0, 0, 7, 0x20, 0x3c, 0, 0, 0, 13, 0x20, 0x3c, 0, 0,
+                    0, 13, 0, 0,
+                ],
+                vec![(6, 0), (12, 0), (18, 0)],
+            )],
+            "instruction-pc-differences" => vec![(
+                vec![
+                    0, 0, 0, 0, 0x20, 0x3c, 0, 0, 0, 0, 0x20, 0x3c, 0xff, 0xff, 0xff, 0xfa,
+                ],
+                vec![],
+            )],
+            "instruction-pc-branch-addend" => vec![(vec![0x60, 0, 0, 2], vec![])],
+            "instruction-pc-mapped" => vec![
+                (vec![0, 0, 0, 4], vec![(0, 1)]),
+                (
+                    vec![
+                        0, 0, 0, 0, 0x20, 0x3c, 0, 0, 0, 4, 0x60, 0, 0xff, 0xfe, 0, 0,
+                    ],
+                    vec![(6, 1)],
+                ),
+            ],
+            _ => unreachable!(),
+        };
+        assert_eq!(segments.len(), expected.len(), "{name}");
+        for (index, (segment, (payload, relocations))) in segments.iter().zip(expected).enumerate()
+        {
+            assert_eq!(segment.payload, payload, "{name}/{index} payload");
+            assert_eq!(
+                segment.relocations, relocations,
+                "{name}/{index} relocations"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE direct instruction PC exact live Rust Hunk comparison"]
+fn compact_hunk_instruction_pc_fs_uae() {
+    native_expected_cases(
+        instruction_pc_cases()
+            .into_iter()
+            // Explicit Hunk placement is an existing preparation gap, tracked
+            // by the separate reproducer below rather than counted as parity.
+            .filter(|(name, _)| *name != "instruction-pc-placed")
+            .map(|(name, source)| (name.into(), "m68020", source, NativeExpected::MatchHunk))
+            .collect(),
+        "OPFORGE_HUNK_INSTRUCTION_PC_REPORT",
+    );
+}
+
+#[test]
+#[ignore = "known native gap: explicit Hunk placement rejects during preparation"]
+fn compact_hunk_instruction_pc_placed_gap_fs_uae() {
+    native_expected_cases(
+        instruction_pc_cases()
+            .into_iter()
+            .filter(|(name, _)| *name == "instruction-pc-placed")
+            .map(|(name, source)| (name.into(), "m68020", source, NativeExpected::MatchHunk))
+            .collect(),
+        "OPFORGE_HUNK_INSTRUCTION_PC_REPORT",
+    );
+}
+
+fn invalid_instruction_pc_cases() -> Vec<(&'static str, String)> {
+    [
+        ("instruction-pc-multiply", "$*2"),
+        ("instruction-pc-add-address", "$+anchor"),
+        ("instruction-pc-cross-section", "$-other"),
+        ("instruction-pc-reverse-cross-section", "other-$"),
+        ("instruction-pc-malformed", "$+"),
+    ].map(|(name, expression)| (name, source(&format!(
+        ".section data,kind=data\nother .long 0\n.endsection\n.section code,kind=code\nanchor .long 0\n move.l #{expression},d0\n.endsection\n"), "code,data"))).into()
+}
+
+#[test]
+fn compact_hunk_instruction_pc_invalid_rust_oracles() {
+    let dir = create_temp_dir("hunk-instruction-pc-invalid-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (name, source) in invalid_instruction_pc_cases() {
+        assert!(
+            project_oracle(&dir, &source, true, &[]).is_err(),
+            "{name} must be rejected"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE direct instruction PC invalid arithmetic completion"]
+fn compact_hunk_instruction_pc_invalid_fs_uae() {
+    native_expected_cases(
+        invalid_instruction_pc_cases()
+            .into_iter()
+            .map(|(name, source)| {
+                (
+                    name.into(),
+                    "m68020",
+                    source,
+                    NativeExpected::RejectInvalidHunk,
+                )
+            })
+            .collect(),
+        "OPFORGE_HUNK_INSTRUCTION_PC_REPORT",
+    );
+}
+
+fn invalid_instruction_pc_branch_cases() -> Vec<(&'static str, String)> {
+    [
+        ("instruction-pc-branch-multiply", "$*2"),
+        ("instruction-pc-branch-add-address", "$+anchor"),
+        ("instruction-pc-branch-cross-section", "$-other"),
+        ("instruction-pc-branch-invalid-alias", "alias"),
+    ].map(|(name, expression)| (name, source(&format!(
+        ".section data,kind=data\nother .long 0\n.endsection\n.section code,kind=code\nanchor .long 0\nbad .const anchor*2\nalias .const bad\n bra.w {expression}\n.endsection\n"), "code,data"))).into()
+}
+
+#[test]
+fn compact_hunk_instruction_pc_branch_invalid_rust_oracles() {
+    let dir = create_temp_dir("hunk-instruction-pc-branch-invalid-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (name, source) in invalid_instruction_pc_branch_cases() {
+        assert!(
+            project_oracle(&dir, &source, true, &[]).is_err(),
+            "{name} must be rejected"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE unsupported positional branch arithmetic completion"]
+fn compact_hunk_instruction_pc_branch_invalid_fs_uae() {
+    native_expected_cases(
+        invalid_instruction_pc_branch_cases()
+            .into_iter()
+            .map(|(name, source)| {
+                (
+                    name.into(),
+                    "m68020",
+                    source,
+                    NativeExpected::RejectInvalidHunk,
+                )
+            })
+            .collect(),
+        "OPFORGE_HUNK_INSTRUCTION_PC_REPORT",
+    );
+}
+
+#[test]
+fn compact_flat_instruction_pc_arithmetic_rust_oracle() {
+    let dir = create_temp_dir("flat-instruction-pc-arithmetic-oracle");
+    let _cleanup = Cleanup(dir.clone());
+    let source = flat_instruction_pc_arithmetic_source();
+    assert_eq!(
+        oracle(&dir, &source).unwrap(),
+        [
+            0, 0, 0, 0, 0x20, 0x3c, 0, 0, 0, 8, 0x60, 0, 0xff, 0xf4, 0x22, 0x3c, 0, 0, 0, 14, 0x60,
+            0, 0xff, 0xfe
+        ]
+    );
+}
+
+fn instruction_pc_measurement() -> String {
+    source(
+        &format!(
+            "Offset .const 3\n.section code,kind=code\n{}.endsection\n",
+            " move.l #$+Offset,d0\n bra.w $+4\n".repeat(128)
+        ),
+        "code",
+    )
+}
+
+#[test]
+fn compact_hunk_instruction_pc_measurement_rust_oracle() {
+    let dir = create_temp_dir("hunk-instruction-pc-measurement-oracle");
+    let _cleanup = Cleanup(dir.clone());
+    let bytes = project_oracle(&dir, &instruction_pc_measurement(), true, &[]).unwrap();
+    let segments = hunk::segments(&bytes).unwrap();
+    let mut payload = Vec::new();
+    for offset in (0u32..1280).step_by(10) {
+        payload.extend([0x20, 0x3c]);
+        payload.extend((offset + 3).to_be_bytes());
+        payload.extend([0x60, 0, 0, 2]);
+    }
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].payload, payload);
+    assert_eq!(
+        segments[0].relocations,
+        (0u32..1280)
+            .step_by(10)
+            .map(|offset| (offset + 2, 0))
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+#[ignore = "two fresh release timings for identical direct instruction PC mixed workload"]
+fn compact_hunk_instruction_pc_measurement_fs_uae() {
+    native_expected_cases(
+        (0..2)
+            .map(|round| {
+                (
+                    format!("instruction-pc-measurement/{round}"),
+                    "m68020",
+                    instruction_pc_measurement(),
+                    NativeExpected::MatchHunk,
+                )
+            })
+            .collect(),
+        "OPFORGE_HUNK_INSTRUCTION_PC_REPORT",
+    );
+}
+
+fn flat_instruction_pc_arithmetic_source() -> String {
+    ".module flat_pc\n.cpu m68020\n.org 0\nanchor .long 0\nbad .const anchor*2\nalias .const bad\n move.l #$*2,d0\n bra.w alias\n move.l #$,d1\n bra.w $\n.endmodule\n".into()
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE flat numeric PC and alias arithmetic exact Rust comparison"]
+fn compact_flat_instruction_pc_arithmetic_fs_uae() {
+    native_expected_cases(
+        vec![(
+            "flat-instruction-pc-arithmetic".into(),
+            "m68020",
+            flat_instruction_pc_arithmetic_source(),
+            NativeExpected::MatchRust,
+        )],
+        "OPFORGE_HUNK_INSTRUCTION_PC_REPORT",
+    );
+}
+
+fn forward_block_branch_source() -> String {
+    source(
+        &format!(
+            ".section code,kind=code\nentry .block\n bra.w consumed\n bra.w consumed\n bra.w consumed\n{}consumed\n rts\n.bend\n.endsection\n",
+            ".byte 0,0,0,0\n".repeat(64)
+        ),
+        "code",
+    )
+}
+
+#[test]
+fn compact_hunk_forward_block_branches_rust_oracle() {
+    let dir = create_temp_dir("hunk-forward-block-branches-oracle");
+    let _cleanup = Cleanup(dir.clone());
+    let bytes = project_oracle(&dir, &forward_block_branch_source(), true, &[]).unwrap();
+    let segments = hunk::segments(&bytes).unwrap();
+    let mut payload = vec![0x60, 0, 1, 10, 0x60, 0, 1, 6, 0x60, 0, 1, 2];
+    payload.extend([0; 256]);
+    payload.extend([0x4e, 0x75, 0, 0]);
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].payload, payload);
+    assert!(segments[0].relocations.is_empty());
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE forward ordinary internal block labels and word branch parity"]
+fn compact_hunk_forward_block_branches_fs_uae() {
+    native_expected_cases(
+        vec![(
+            "forward-block-branches".into(),
+            "m68020",
+            forward_block_branch_source(),
+            NativeExpected::MatchHunk,
+        )],
+        "OPFORGE_HUNK_INSTRUCTION_PC_REPORT",
+    );
+}

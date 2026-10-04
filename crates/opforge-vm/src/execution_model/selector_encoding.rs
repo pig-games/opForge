@@ -94,7 +94,7 @@ pub(super) fn selector_to_candidate(
         return selector_to_candidate(&nested_selector, input, upper_mnemonic, expr_ctx);
     }
     let mut relocation_free = false;
-    let mut unrepresented_absolute_relocation = false;
+    let mut unrepresented_relocation = false;
     let mut output_fixups = Vec::new();
     let mode_key = selector.mode_key.to_ascii_lowercase();
     let Some(mode_operand_size) = mode_key_operand_size(mode_key.as_str()) else {
@@ -157,6 +157,9 @@ pub(super) fn selector_to_candidate(
         let target_expr = input
             .expr0
             .ok_or_else(|| "semantic branch operand plan requires one expression".to_string())?;
+        unrepresented_relocation |= !expr_ctx
+            .assembler_ctx
+            .expression_supports_position_projection(target_expr);
         let unstable = expr_ctx.has_unstable_symbols(target_expr)?;
         // The first symbol-discovery pass needs the package's unresolved
         // placeholder. Once a later pass has an address, even an explicitly
@@ -204,7 +207,7 @@ pub(super) fn selector_to_candidate(
                     },
                 )
             })?;
-        relocation_free = true;
+        relocation_free = !unrepresented_relocation;
         vec![result.bytes]
     } else if let Some(program_spec) = selector
         .operand_plan
@@ -261,6 +264,7 @@ pub(super) fn selector_to_candidate(
                     let Some(SemanticFixupInputs {
                         values,
                         absolute_constants,
+                        position_proofs,
                     }) = semantic_fixup_plan_inputs(input_plan, input, expr_ctx)?
                     else {
                         return Ok(None);
@@ -285,6 +289,10 @@ pub(super) fn selector_to_candidate(
                                 )
                             })
                         })?;
+                    unrepresented_relocation |= result
+                        .position_inputs
+                        .iter()
+                        .any(|index| !position_proofs[usize::from(*index)]);
                     let step_offset = u32::try_from(encoded.len())
                         .map_err(|_| "semantic sequence output offset exceeds supported range")?;
                     for mut fixup in result.fixups {
@@ -294,12 +302,11 @@ pub(super) fn selector_to_candidate(
                         })?;
                         output_fixups.push(fixup);
                     }
-                    unrepresented_absolute_relocation |= result
+                    unrepresented_relocation |= result
                         .unrepresented_absolute_inputs
                         .iter()
                         .any(|index| !absolute_constants[usize::from(*index)]);
-                    relocation_free =
-                        output_fixups.is_empty() && !unrepresented_absolute_relocation;
+                    relocation_free = output_fixups.is_empty() && !unrepresented_relocation;
                     result.bytes
                 }
                 _ => {
@@ -480,10 +487,9 @@ pub(super) fn selector_to_candidate(
     if mode_operand_size == 0 && !operand_bytes.is_empty() {
         return Ok(None);
     }
-    if unrepresented_absolute_relocation {
-        operand_bytes.push(
-            crate::runtime_model_core::UNREPRESENTED_ABSOLUTE_RELOCATION_CANDIDATE_MARKER.to_vec(),
-        );
+    if unrepresented_relocation {
+        operand_bytes
+            .push(crate::runtime_model_core::UNREPRESENTED_RELOCATION_CANDIDATE_MARKER.to_vec());
     }
     if relocation_free {
         operand_bytes.push(crate::runtime_model_core::RELOCATION_FREE_CANDIDATE_MARKER.to_vec());
@@ -2596,7 +2602,7 @@ fn project_register_index(index: u16, projection: RegisterIndexProjection) -> u1
 
 fn expression_can_be_relocation_target(expr: &Expr) -> bool {
     match expr {
-        Expr::Identifier(_, _) => true,
+        Expr::Identifier(_, _) | Expr::Dollar(_) => true,
         Expr::Unary { expr, .. }
         | Expr::Immediate(expr, _)
         | Expr::Indirect(expr, _)
@@ -2626,7 +2632,7 @@ fn expression_is_member_relocation_target(expr: &Expr, expected_field: &str) -> 
 
 fn expression_is_atomic_relocation_target(expr: &Expr) -> bool {
     match expr {
-        Expr::Identifier(_, _) => true,
+        Expr::Identifier(_, _) | Expr::Dollar(_) => true,
         Expr::Immediate(expr, _)
         | Expr::Indirect(expr, _)
         | Expr::IndirectLong(expr, _)
@@ -2638,6 +2644,7 @@ fn expression_is_atomic_relocation_target(expr: &Expr) -> bool {
 struct SemanticFixupInputs {
     values: Vec<crate::fixup_vm::PortableFixupInput>,
     absolute_constants: Vec<bool>,
+    position_proofs: Vec<bool>,
 }
 
 fn semantic_fixup_plan_inputs(
@@ -2650,6 +2657,7 @@ fn semantic_fixup_plan_inputs(
         .collect::<Vec<_>>();
     let mut values = Vec::new();
     let mut absolute_constants = Vec::new();
+    let mut position_proofs = Vec::new();
     for source in plan.split(',') {
         let (source, forced_target) = source
             .strip_prefix("target:")
@@ -2781,6 +2789,11 @@ fn semantic_fixup_plan_inputs(
                 })
             };
             absolute_constants.push(absolute_constant);
+            position_proofs.push(
+                expr_ctx
+                    .assembler_ctx
+                    .expression_supports_position_projection(&expr),
+            );
             values.push(crate::fixup_vm::PortableFixupInput {
                 value,
                 target_reference: forced_target
@@ -2799,6 +2812,7 @@ fn semantic_fixup_plan_inputs(
             ));
         }
         absolute_constants.push(true);
+        position_proofs.push(true);
         values.push(crate::fixup_vm::PortableFixupInput {
             value: crate::fixup_vm::PortableDeferredValue::Resolved(resolved[0]),
             target_reference: false,
@@ -2809,6 +2823,7 @@ fn semantic_fixup_plan_inputs(
     Ok(Some(SemanticFixupInputs {
         values,
         absolute_constants,
+        position_proofs,
     }))
 }
 
@@ -2816,7 +2831,11 @@ fn expression_is_target_reference(
     expr: &Expr,
     ctx: &dyn registry::family::AssemblerContext,
 ) -> bool {
+    if ctx.expression_is_absolute_constant(expr) {
+        return false;
+    }
     match expr {
+        Expr::Dollar(_) => true,
         Expr::Identifier(name, _) | Expr::Register(name, _) => ctx.symbol_is_target_reference(name),
         Expr::Unary { expr, .. } => expression_is_target_reference(expr, ctx),
         Expr::Binary { left, right, .. } => {

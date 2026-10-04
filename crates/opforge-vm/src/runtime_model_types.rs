@@ -10,8 +10,8 @@ use crate::fixup_vm::PortableOutputFixup;
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct VmInstructionEffects {
     pub relocation_free: bool,
-    /// An absolute expression lacked both a relocation base and constant proof.
-    pub unrepresented_absolute_relocation: bool,
+    /// An address expression lacked a valid absolute or position relocation proof.
+    pub unrepresented_relocation: bool,
     pub output_fixups: Vec<PortableOutputFixup>,
 }
 

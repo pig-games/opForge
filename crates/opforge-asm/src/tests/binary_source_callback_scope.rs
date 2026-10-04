@@ -137,16 +137,29 @@ fn compact_branch_cross_section_rejection_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; compound branch targets lack exact identity transport"]
+fn compact_branch_compound_address_rust_hunk_oracle() {
+    let source = SOURCE.replace(" bsr.w run\n", " bsr.w run+0\n");
+    assert_eq!(
+        hunk_sections::rust_hunk_source(&source),
+        hunk_sections::rust_hunk_source(SOURCE)
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; compound branch address identity Hunk parity"]
+fn compact_branch_compound_address_fs_uae() {
+    hunk_sections::native_hunk_source(&SOURCE.replace(" bsr.w run\n", " bsr.w run+0\n"));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; branch addition of two addresses must reject"]
 fn compact_branch_compound_target_rejection_fs_uae() {
-    for target in ["run+0", "run+allocateOutput"] {
-        let source = SOURCE.replace(" bsr.w run\n", &format!(" bsr.w {target}\n"));
-        assert_native_files_rejection(
-            &[("input.asm", &source)],
-            "m68020",
-            Some("[file 00000001, line 00000007]"),
-        );
-    }
+    let source = SOURCE.replace(" bsr.w run\n", " bsr.w run+allocateOutput\n");
+    assert_native_files_rejection(
+        &[("input.asm", &source)],
+        "m68020",
+        Some("[file 00000001, line 00000007]"),
+    );
 }
 
 fn branch_wire() -> (Vec<u8>, usize) {
@@ -178,7 +191,7 @@ fn branch_wire() -> (Vec<u8>, usize) {
 }
 
 #[test]
-fn compact_branch_package_binds_optional_exact_identity() {
+fn compact_branch_package_binds_optional_address_identity() {
     let (wire, target) = branch_wire();
     assert_eq!(&wire[..4], b"BS20");
     assert_eq!(&wire[target..target + 2], &[0, 0]);
@@ -227,7 +240,7 @@ fn compact_branch_scalar_flags_rejection_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; exact identity flag is invalid in non-branch projections"]
+#[ignore = "requires configured FS-UAE; address identity flag is invalid in non-branch projections"]
 fn compact_branch_nonbranch_identity_flag_rejection_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();

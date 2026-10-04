@@ -363,7 +363,12 @@ snapshots, aliases, `$` snapshots and same-section alias differences. Mutable
 addends are frozen at declaration; aliases do not reevaluate their definitions
 at use sites. Forward-label aliases work when the declaration precedes its use
 and can resolve in the existing two passes. More complex unresolved alias
-chains/use-before-declaration and direct instruction `$` remain native gaps.
+chains/use-before-declaration remain native gaps. Direct instruction `$` now
+carries the statement PC and canonical section through the same address proof:
+`MOVE.L #$,D0` relocates its immediate longword, while `BRA.W $` cancels the
+source position. Absolute addends and same-section differences are supported.
+Explicit Hunk `.place` remains a separate native preparation gap; Rust placed
+current-address instruction output is covered.
 Explicit mapped logical sections now append their reachable blocks after concrete
 content. Native retains separate fragment cursors and measures concrete prefixes
 before fresh source-order assembly passes; mapped labels, data `$`, aliases and
@@ -372,9 +377,13 @@ BSS and statement-time mutable snapshots are covered. This bounded path supports
 two maps and eight source slots, requires compatible kinds and stable prefix sizes,
 and retains current global section-name/conflicting-map rejections. Native requires
 proof for nonabsolute instruction aliases even when their section identity is missing; reserved package operand
-names do not count as source targets. Rust accepts some unsupported address
-arithmetic through positional branch aliases; that behavior needs separate review
-and is not counted as rejection parity here.
+names do not count as source targets. Rust and native reject unsupported address
+arithmetic through positional branch aliases for Hunk output. Shared package
+position projections consume a context-owned address proof; decoded fixup policy
+identifies the inputs that require it. Numeric flat emission remains available.
+Native transports one-based canonical section identities through the VM's
+existing opaque target field, with no fabricated symbol, pointer or versioned
+compatibility path.
 
 In Rust, mapped logical content uses its concrete segment as the relocation target.
 Addends include any bytes already present in that segment, and fixups emitted

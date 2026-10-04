@@ -50,6 +50,7 @@ Bias	.long ?  ; frozen concrete PC before mapped logical content
 PayloadBias	.long ?  ; frozen initialized-byte prefix
 	.endstruct
 HUNK_SLOT_BYTES = HunkSlot.PayloadBias+4
+HUNK_SLOT_COUNT = 8
 HUNK_SLOTS = SLOTS+2*SLOT_BYTES
 ORDER = HUNK_SLOTS+8*HUNK_SLOT_BYTES
 SCRATCH_BYTES = ORDER+8

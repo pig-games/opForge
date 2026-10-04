@@ -48,6 +48,8 @@ pub struct PortableFixupResult {
     pub bytes: Vec<u8>,
     pub fixups: Vec<PortableOutputFixup>,
     pub deferred_inputs: Vec<u8>,
+    /// Inputs consumed by decoded position projections, including deferred ones.
+    pub position_inputs: Vec<u8>,
     /// Absolute fixup inputs without a target; callers distinguish constants.
     pub unrepresented_absolute_inputs: Vec<u8>,
 }
@@ -189,6 +191,7 @@ pub fn execute_fixup_program_for_version(
     let mut bytes = Vec::new();
     let mut fixups = Vec::new();
     let mut deferred_inputs = Vec::new();
+    let mut position_inputs = Vec::new();
     let mut unrepresented_absolute_inputs = Vec::new();
 
     for (ordinal, step) in steps.into_iter().enumerate() {
@@ -232,6 +235,9 @@ pub fn execute_fixup_program_for_version(
                 ..
             } => !target_references_only || input.target_reference,
         };
+        if should_project && !position_inputs.contains(&step.input) {
+            position_inputs.push(step.input);
+        }
         if should_project && !matches!(input.value, PortableDeferredValue::Unresolved) {
             let FixupBase::Position { adjustment, .. } = step.base else {
                 unreachable!("projection requires a position base")
@@ -279,6 +285,7 @@ pub fn execute_fixup_program_for_version(
         bytes,
         fixups,
         deferred_inputs,
+        position_inputs,
         unrepresented_absolute_inputs,
     })
 }
@@ -325,6 +332,42 @@ mod tests {
     use package::{compile_fixup_program, FixupEncodingStep};
 
     #[test]
+    fn position_inputs_follow_decoded_projection_and_include_deferred_targets() {
+        let step = FixupEncodingStep {
+            input: 0,
+            width: 2,
+            endian: EncodingEndian::Big,
+            base: FixupBase::Position {
+                adjustment: 2,
+                target_references_only: true,
+            },
+            range: FixupRange::Signed,
+            unresolved: UnresolvedValuePolicy::Placeholder(0),
+            relocation: PortableRelocationKind::None,
+            transform: FixupTransform::Identity,
+        };
+        let program = compile_fixup_program(&[step.clone(), step]).unwrap();
+        for (target_reference, value, expected) in [
+            (false, PortableDeferredValue::Resolved(4), vec![]),
+            (true, PortableDeferredValue::Resolved(4), vec![0]),
+            (true, PortableDeferredValue::Unresolved, vec![0]),
+        ] {
+            let result = execute_fixup_program(
+                &program,
+                &[PortableFixupInput {
+                    value,
+                    target_reference,
+                    relocation_target: None,
+                    relocation_addend: None,
+                }],
+                PortableFixupContext { position: 0 },
+            )
+            .unwrap();
+            assert_eq!(result.position_inputs, expected);
+        }
+    }
+
+    #[test]
     fn full_target_and_section_addend_are_distinct_for_the_same_input() {
         let absolute = FixupEncodingStep {
             input: 0,
@@ -360,6 +403,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result.bytes, [0, 0, 0, 10, 0, 8]);
+        assert_eq!(result.position_inputs, [0]);
         assert_eq!(
             result.fixups,
             [PortableOutputFixup {

@@ -2537,3 +2537,93 @@ This checkpoint does not claim a new full native self-host.
 
 Batch cleanup reclaimed 3.1 GiB with `make clean`; `target` remains empty.
 Required release deliverables and diagnostic summaries are preserved outside it.
+
+#### Direct instruction current-address parity — qualified checkpoint
+
+Direct `$` expressions now participate in instruction address proof and transport.
+ExprVM evaluation and affine relocation identity are reused; native Hunk projection
+binds opaque VM targets to canonical one-based section IDs, including current PC,
+without fabricated symbols or CPU logic in shared execution. Optional branch scalar
+identity now covers bounded affine addresses, while flat numeric behavior remains.
+The Rust oracle was repaired first: direct `$` retains immediate Hunk relocation,
+and unsupported positional address algebra rejects Hunk output.
+
+Fresh native comparisons cover direct/addended current addresses, same-section
+differences, mapped sections and invalid arithmetic. Rust placed instruction output
+is covered separately. Native explicit Hunk `.place` stops during section preparation
+before encoding (fresh exit 20, step 6); its separate known-gap reproducer remains,
+with placed origins deferred to the next layout slice. Unchanged release workload
+timing is compared against `d56ca7e5`; new workload timings are recorded separately.
+
+Focused proof: seven supported-layout positives and nine invalid immediate
+or branch cases pass fresh FS-UAE comparison on release image 454,092 bytes,
+`fnv1a64:8bf2312a2ef1111a`. Invalid cases have explicit exit 20 and no Hunk output.
+Flat PC/alias numeric arithmetic, including direct `#$` and `BRA.W $`, matches
+Rust; existing `run+0` branch now also matches. Packages are unchanged.
+Compared with `d56ca7e5`, image growth is 180 bytes with no added static storage.
+
+The unchanged scalar-snapshot workload takes 13.587732 and 13.489737 seconds at
+baseline, versus 13.514463 and 13.364657 after this change: median 13.538734 ->
+13.439560, -0.099174 s (-0.733%). Spread exceeds the change; no speedup is
+established. Input/output/package identities remain those recorded in the prior
+mapped-layout checkpoint. Reports: `/tmp/opforge-instruction-pc-measurement-baseline.json` and `/tmp/opforge-instruction-pc-measurement-current.json`. The new
+128-pair current-PC immediate/branch workload takes 6.386515 and 6.392916 seconds
+(median 6.389716). This is post-change only: the old path rejects current-PC
+instruction targets. Timings are fresh START-to-DONE host wall time under FS-UAE
+68020/10 MiB with unlimited emulator CPU, excluding startup, not physical 68020
+clock measurements.
+
+The focused default Rust checks pass 34 Hunk tests, 14 value-provenance tests,
+four branch tests and the flat-PC test; VM library 496 and registry library 23
+tests pass. Library Clippy for asm/VM/registry, native formatting and affected
+engineering guards pass. Broad asm library testing found 202 failures: 201 names
+also fail on a fresh isolated `d56ca7e5` build. The one new failure was a source
+shape assertion requiring the old Identifier-only target arm; it now also checks
+Dollar and passes independently. The baseline itself has 210 failures, including
+extra snapshot-path/environment failures. No broad-green qualification is claimed;
+this existing test/reference debt needs its own maintained-contract review before
+promotion. Raw logs and failure-name comparison are outside `target` in `/tmp`.
+
+A fresh m68020-embedded release bundle contains 96 source files, 1,373,030 bytes,
+source manifest `fnv1a64:6bfa19d06fe2dab0`. Host export and transport dry-run pass.
+Direct `ash` cannot connect to the A6000 and computer use refuses Terminal, so
+physical-device execution remains unavailable here. Full native FS-UAE self-host
+qualification first stopped during source preparation after 179.031102 seconds
+under 68020/10 MiB. A separate instrumented capture established allocation
+failure, not instruction rejection: a 524,288-byte request while growing a
+262,144-byte block (262,076 used) failed; tracked peak was 8,628,136 bytes and
+all owned storage was freed at terminal cleanup. The failing source location
+was an ordinary forward branch; a focused three-branch block regression passes
+fresh native comparison. The release full self-host subsequently completed under
+the separate 68020/74 MiB diagnostic profile. This does not qualify the 10 MiB
+or 2 MiB memory target. The earlier full BS20 qualification also used 74 MiB, with a separate
+instrumented peak of 22,380,568 bytes. Thus the 10 MiB failure does not establish
+a new memory regression. The full-source memory target remains open; this slice
+does not change its priority relative to language/layout parity. Telemetry: `/tmp/opforge-instruction-pc-memory-failure.json`.
+
+Forced VM-only Rust checks also pass all four direct-PC Hunk tests and 14
+value-provenance tests; they do not depend on Rust's specialized fallback.
+
+The complete current native self-host now passes: all 96 source inputs,
+1,373,030 bytes including the embedded package asset, fresh case-bound START/DONE,
+explicit exit zero and exact complete 454,092-byte Rust Hunk. Bootstrap and output
+both embed the unchanged m68020 package. Release START-to-DONE duration is
+1,049.062893959 seconds (17m 29.06s), with telemetry disabled, under FS-UAE
+68020/74 MiB and unlimited emulator CPU. This is full native self-host proof for
+this exact source/package state, not physical hardware timing, full language
+parity or proof of the product memory budget. The earlier 1,037.690233-second
+full run used 94 inputs/1,360,588 bytes and a different image; that comparison
+does not isolate this change's performance cost. Workspace compilation also
+passes, including CLI, library, LSP and FFI.
+
+The qualified A6000 bundle is
+`/tmp/opforge-selfhost-instruction-pc-qualified-74m`; the local
+`/tmp/opforge-a6000-current` link selects it for the maintained hardware runner.
+Transport dry-run validates the bundle. Physical A6000 execution is still for
+Erik to run; no current hardware timing is claimed. Explicit native Hunk placement
+remains the next layout-parity candidate. Broad test/reference debt and the
+full-source memory budget remain separately recorded limits.
+
+Batch cleanup removed 7.2 GiB of Cargo-generated files with `make clean` and
+retained the empty `target` directory. Deliverables, the exact-output bundle and
+diagnostic summaries remain outside it. No remote push is part of this checkpoint.

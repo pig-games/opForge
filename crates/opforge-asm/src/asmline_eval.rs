@@ -762,6 +762,19 @@ impl<'a> AssemblerContext for AsmLine<'a> {
         self.expr_is_absolute_constant_symbol_expr(expr)
     }
 
+    fn expression_supports_position_projection(&self, expr: &Expr) -> bool {
+        !self.in_section()
+            || self.pass <= 1
+            || self.expr_is_absolute_constant_symbol_expr(expr)
+            || self
+                .hunk_abs32_target_section_for_expr(expr)
+                .is_some_and(|target| {
+                    self.current_section_name().is_some_and(|current| {
+                        target.eq_ignore_ascii_case(&self.hunk_output_section(current))
+                    })
+                })
+    }
+
     fn absolute_relocation(
         &self,
         expr: &Expr,

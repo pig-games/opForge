@@ -149,9 +149,9 @@ ValueProgram	.word ?
 Reserved	.word ?
 .endstruct
 
-; Scalar projection kind 0 optionally transports one exact numeric target.
+; Scalar projection kind 0 optionally transports one proven numeric address base.
 ; The flag is valid only for the canonical branch target input; other bits reject.
-SCALAR_EXACT_IDENTITY = 1
+SCALAR_ADDRESS_IDENTITY = 1
 ScalarProjection	.struct
 Kind	.byte ?
 Operand	.byte ?

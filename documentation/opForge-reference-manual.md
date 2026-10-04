@@ -1819,8 +1819,14 @@ All operands of one data statement use its starting address: `.long $,$` emits
 two equal addends with separate relocation records. Shared `.emit long,$,$`
 follows the same rule. Same-section differences such as `$-label` are absolute;
 different section bases do not cancel merely because their numeric offsets match.
-The compact native implementation does not yet support direct section-relative
-`$` in instruction operands. Its explicit mapped logical-section Hunk path now
+Rust and the compact native assembler also support `$` in the supported
+instruction address forms. `MOVE.L #$,D0` loads the instruction's starting address
+and records its longword relocation; `BRA.W $` branches to itself with no Hunk
+relocation. Absolute addends retain that address base, and same-section
+differences are absolute. Each instruction captures its own starting PC, even
+across reopened or mapped sections. Explicit Hunk `.place` remains a compact
+native preparation gap; Rust covers placed current-address instruction output.
+The compact native explicit mapped logical-section Hunk path now
 appends reachable imported blocks after concrete content, including reopened
 concrete sections and BSS reservations. Mapped labels, data `$` and aliases use
 the concrete segment identity and include its prefix in their addends and fixup
@@ -1841,8 +1847,10 @@ same-section alias differences are absolute. Native supports a declaration befor
 its use that refers to a later label. Unresolved alias chains requiring more than
 its two passes, or use before an unresolved alias's declaration, remain outside
 that native subset. Unsupported address arithmetic hidden by aliases is rejected
-by the native Hunk proof; Rust's positional branch handling still needs separate
-qualification for such expressions.
+for Hunk output by Rust and native address proofs. Position-based package
+projections require an absolute value or one address in the current output
+section; multiplying an address or mixing section bases does not supply that
+proof. Flat binary output retains evaluated numeric arithmetic.
 
 Expressions with multiple address bases, or a constant minus an address, cannot
 be represented by `HUNK_RELOC32` and are rejected for Hunk output; flat binary

@@ -1860,6 +1860,28 @@ impl<'a> AsmLine<'a> {
         let mut saw_symbolic_fixup_candidate = false;
         for operand in operands {
             let (expr, explicit_long_required) = match operand {
+                M68KFamilyOperand::BranchTarget { expr, .. }
+                | M68KFamilyOperand::PcDisplacement {
+                    displacement: expr, ..
+                }
+                | M68KFamilyOperand::PcIndexed {
+                    displacement: expr, ..
+                } => {
+                    // Position-relative fields need a single address in the current
+                    // output segment, or a proven absolute displacement.
+                    if !self.expr_is_absolute_constant_symbol_expr(expr)
+                        && !self
+                            .hunk_abs32_target_section_for_expr(expr)
+                            .is_some_and(|target| {
+                                self.current_section_name().is_some_and(|current| {
+                                    target.eq_ignore_ascii_case(&self.hunk_output_section(current))
+                                })
+                            })
+                    {
+                        saw_symbolic_fixup_candidate = true;
+                    }
+                    continue;
+                }
                 M68KFamilyOperand::Absolute { expr, size, .. } => (
                     expr,
                     matches!(size, families::m68k::operand::AbsoluteSize::Word),
@@ -2170,7 +2192,7 @@ impl<'a> AsmLine<'a> {
         effects: &vm::runtime_model_types::VmInstructionEffects,
     ) {
         if self.in_section()
-            && (effects.unrepresented_absolute_relocation
+            && (effects.unrepresented_relocation
                 || (!effects.relocation_free
                     && effects.output_fixups.is_empty()
                     && operands
@@ -2184,7 +2206,11 @@ impl<'a> AsmLine<'a> {
     }
 
     fn instruction_expr_references_target(&self, expr: &Expr) -> bool {
+        if self.expr_is_absolute_constant_symbol_expr(expr) {
+            return false;
+        }
         match expr {
+            Expr::Dollar(_) => self.in_section(),
             Expr::Identifier(name, _) | Expr::Register(name, _) => {
                 self.symbol_is_target_reference(name)
             }

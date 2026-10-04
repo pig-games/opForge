@@ -166,6 +166,7 @@ enum NativeExpected {
     MatchHunk,
     RejectHunk,
     RejectInvalid,
+    RejectInvalidHunk,
     RejectLayout,
 }
 const LAYOUT_DIAGNOSTIC: &str = "mutable declarations are not supported in mapped outputs";
@@ -301,13 +302,18 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
         let case_dir = dir.join(index.to_string());
         let is_hunk = matches!(
             expectation,
-            NativeExpected::MatchHunk | NativeExpected::RejectHunk
+            NativeExpected::MatchHunk
+                | NativeExpected::RejectHunk
+                | NativeExpected::RejectInvalidHunk
         );
         let valid = matches!(
             expectation,
             NativeExpected::MatchRust | NativeExpected::MatchHunk
         );
-        let rust_valid = !matches!(expectation, NativeExpected::RejectInvalid);
+        let rust_valid = !matches!(
+            expectation,
+            NativeExpected::RejectInvalid | NativeExpected::RejectInvalidHunk
+        );
         let expected = project_oracle(&case_dir, source, is_hunk, project_files);
         assert_eq!(
             expected.is_ok(),
@@ -393,7 +399,9 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
                 );
                 if matches!(
                     expectation,
-                    NativeExpected::RejectLayout | NativeExpected::RejectHunk
+                    NativeExpected::RejectLayout
+                        | NativeExpected::RejectHunk
+                        | NativeExpected::RejectInvalidHunk
                 ) {
                     let no_output = !run
                         .captured_artifacts

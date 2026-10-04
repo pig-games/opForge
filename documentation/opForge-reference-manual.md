@@ -1813,8 +1813,17 @@ MOVE.L #target+offset,D1
 
 `MOVE.L` immediate-to-data-register operands follow the same rule. A difference
 between two addresses in the same section is absolute and needs no relocation.
-In the Rust assembler, the current address `$` inside a section carries that
-section's relocation base, so `.long $` emits `HUNK_RELOC32`. Scalar assignments
+The current address `$` inside a section carries that section's relocation base,
+so `.long $` emits `HUNK_RELOC32` in Rust and the compact native assembler.
+All operands of one data statement use its starting address: `.long $,$` emits
+two equal addends with separate relocation records. Shared `.emit long,$,$`
+follows the same rule. Same-section differences such as `$-label` are absolute;
+different section bases do not cancel merely because their numeric offsets match.
+The compact native implementation does not yet support section-relative `$` in
+instruction operands, address-derived assignment snapshots or general address
+aliases. Its mapped logical-section Hunk path also remains incomplete.
+
+In Rust, scalar assignments
 retain their relocation meaning: a readonly snapshot of `target+offset` remains an address,
 while a snapshot of an absolute mutable value remains an absolute number. Later
 changes to the mutable input do not alter the snapshot's value or relocation.

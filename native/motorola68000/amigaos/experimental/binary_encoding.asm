@@ -1613,6 +1613,10 @@ targetName
 	beq.w bad
 	cmpi.l #references.STATUS_SECTION, d0
 	bne.w targetReady
+	; Instruction transport currently carries symbol IDs only. Reject a PC
+	; base explicitly rather than truncating it into an unrelated symbol.
+	cmp.l package.Context.Count(a2), d1
+	bhs.w bad
 	move.w d1, ProjectedTarget
 	bra.w targetReady
 exactIdentity

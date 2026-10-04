@@ -48,6 +48,7 @@ FAILURE_MUTABLE_LAYOUT = 1
 	.priv
 Active
 	.res long, 1
+DataPc	.res long, 1
 DataBytes
 	.res byte, 4
 SectionState
@@ -817,6 +818,8 @@ reserveCount
 	jsr sections.reserve
 	bra.w done
 data
+	move.l pkg.Context.Pc(a2), DataPc
+dataValueStart
 	cmpa.l a1, a0
 	bhs.w bad
 	cmpi.b #3, (a0)
@@ -846,8 +849,11 @@ data
 dataExpression
 	movea.l a0, a5
 	movea.l a2, a6
+	move.l pkg.Context.Pc(a2), -(sp)
+	move.l DataPc, pkg.Context.Pc(a2)
 	jsr expr.evaluate
 	movea.l a6, a2
+	move.l (sp)+, pkg.Context.Pc(a2)
 	tst.l d0
 	bne.w bad
 	tst.l d2
@@ -922,7 +928,7 @@ dataNext
 	beq.w ok
 	cmpi.b #4, (a0)+
 	bne.w bad
-	bra.w data
+	bra.w dataValueStart
 ok
 	moveq #0, d0
 	bra.w done
@@ -1049,16 +1055,9 @@ markDataReloc	.block
 	bne.w bad
 	cmpi.w #2, pkg.Context.Pass(a2)
 	bne.w good
-	cmp.l pkg.Context.Count(a2), d1
-	bhs.w bad
-	movea.l pkg.Context.SectionIds(a2), a0
-	move.l a0, d0
-	beq.w bad
-	moveq #0, d2
-	move.b 0(a0, d1.l), d2
-	beq.w bad
-	subq.l #1, d2
-	move.l d2, d1
+	jsr hunkrefs.baseSection
+	bne.w bad
+	subq.l #1, d1
 	moveq #0, d0
 	move.w sections.State.HunkCurrent(a4), d0
 	move.l pkg.Context.Pc(a2), d2

@@ -2047,7 +2047,7 @@ SourceBytes	.res long, 1
 NameCount	.res long, 1
 Front	.res byte, frontend.FRAME_BYTES
 Work	.res byte, assembly.FRAME_BYTES
-Context	.res byte, package.Context.SectionIds+4
+Context	.res byte, package.CONTEXT_BYTES
 PackageSource	.res byte, loader.FRAME_BYTES
 PackageStatus	.res long, 1
 RuntimeBlock	.res byte, memory.Block.Used+4

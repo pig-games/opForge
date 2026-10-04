@@ -12,6 +12,8 @@ STATUS_CLEAR = 0
 STATUS_SECTION = 1
 STATUS_BAD = 2
 WRAPPER = $81
+NO_BASE = $ffffffff
+CURRENT_PC_BASE = $10000; distinct from every encoded 16-bit symbol ID
 	.section code, kind=code
 
 ; A0=bounded compiled expression wrapper, A1=end, A2=Context.
@@ -40,7 +42,8 @@ targets	.block
 ; A0=compiled wrapper,A1=end,A2=Context. Classify a bounded postfix
 ; expression's relocation identity without evaluating its scalar value.
 ; D0=STATUS_CLEAR (absolute), STATUS_SECTION (one base), STATUS_BAD;
-; D1=base ID, or $ffff. Other registers preserved; A0 advances.
+; D1.L=symbol ID, CURRENT_PC_BASE, or NO_BASE. Other registers preserved;
+; A0 advances. The proof stack never truncates a PC tag into a symbol ID.
 ; Undefined symbols are provisionally scalar in pass 1. The caller must evaluate
 ; through ExprVM and honor its unresolved flag before using the value or identity.
 ; Numeric evaluation remains ExprVM-owned. Only base+absolute,
@@ -48,7 +51,7 @@ targets	.block
 ; two symbols with the same nonzero section provenance cancels their bases.
 affineTarget	.block
 	movem.l d2-d7/a1-a6, -(sp)
-	suba.w #runtime.EXPRVM_STACK_CAPACITY*2, sp
+	suba.w #runtime.EXPRVM_STACK_CAPACITY*4, sp
 	movea.l sp, a5
 	moveq #0, d6
 	move.l a1, d0
@@ -109,11 +112,13 @@ next
 	beq.w subtract
 	bra.w binaryConstant
 currentAddress
-	; Flat current-PC values are scalars. Section-relative current-PC
-	; provenance is not yet represented and must still fail closed.
+	; A PC base is session state, not a fabricated symbol or encoded pointer.
 	tst.w pkg.Context.Relocatable(a2)
-	bne.w bad
-	bra.w absolute
+	beq.w absolute
+	tst.w pkg.Context.CurrentSection(a2)
+	beq.w absolute
+	move.l #CURRENT_PC_BASE, d1
+	bra.w push
 byte
 	moveq #1, d1
 	bra.w literal
@@ -142,7 +147,7 @@ symbol
 	lsl.w #8, d2
 	or.w d2, d1
 	cmpi.w #$ffff, d1
-	beq.w bad  ; the absolute proof sentinel cannot name a target
+	beq.w bad  ; reserved encoded symbol ID cannot name a target
 	cmp.l pkg.Context.Count(a2), d1
 	bhs.w bad
 	movea.l pkg.Context.Defined(a2), a3
@@ -170,8 +175,8 @@ push
 	cmpi.l #runtime.EXPRVM_STACK_CAPACITY, d6
 	bhs.w bad
 	move.l d6, d0
-	add.l d0, d0
-	move.w d1, 0(a5, d0.l)
+	lsl.l #2, d0
+	move.l d1, 0(a5, d0.l)
 	addq.l #1, d6
 	bra.w next
 unary
@@ -187,8 +192,8 @@ unaryConstant
 	beq.w bad
 	move.l d6, d0
 	subq.l #1, d0
-	add.l d0, d0
-	cmpi.w #$ffff, 0(a5, d0.l)
+	lsl.l #2, d0
+	cmpi.l #NO_BASE, 0(a5, d0.l)
 	bne.w bad
 	bra.w next
 unaryPlus
@@ -209,40 +214,44 @@ binary
 	subq.l #1, d6
 	moveq #0, d7
 	move.l d6, d0
-	add.l d0, d0
-	move.w 0(a5, d0.l), d7
-	subq.l #2, d0
+	lsl.l #2, d0
+	move.l 0(a5, d0.l), d7
+	subq.l #4, d0
 	moveq #0, d5
-	move.w 0(a5, d0.l), d5
-	cmpi.w #$ffff, d7
+	move.l 0(a5, d0.l), d5
+	cmpi.l #NO_BASE, d7
 	beq.w rightConstant
 	cmpi.l #1, d3
 	beq.w difference
 	tst.l d3
 	bne.w bad
-	cmpi.w #$ffff, d5
+	cmpi.l #NO_BASE, d5
 	bne.w bad
-	move.w d7, 0(a5, d0.l)
+	move.l d7, 0(a5, d0.l)
 	bra.w next
 difference
-	; The stack retains symbol IDs, not section IDs: resolve both here so
-	; different labels in one section cancel without granting cross-section math.
-	cmpi.w #$ffff, d5
-	beq.w bad
-	movea.l pkg.Context.SectionIds(a2), a3
-	move.l a3, d1
-	beq.w bad
-	moveq #0, d1
-	move.b 0(a3, d5.l), d1
-	beq.w bad
-	cmp.b 0(a3, d7.l), d1
-	bne.w bad
-	move.w #$ffff, 0(a5, d0.l)
+	; Resolve both symbol and current-PC bases to actual section identities.
+	; Only equal nonzero identities cancel; numeric coincidence proves nothing.
+	move.l d0, -(sp)
+	move.l d5, d1
+	bsr.w baseSection
+	bne.w differenceBad
+	move.w d1, d2
+	move.l d7, d1
+	bsr.w baseSection
+	bne.w differenceBad
+	cmp.w d1, d2
+	bne.w differenceBad
+	move.l (sp)+, d0
+	move.l #NO_BASE, 0(a5, d0.l)
 	bra.w next
+differenceBad
+	addq.l #4, sp
+	bra.w bad
 rightConstant
 	cmpi.l #2, d3
 	bne.w next
-	cmpi.w #$ffff, d5
+	cmpi.l #NO_BASE, d5
 	bne.w bad
 	bra.w next
 end
@@ -251,9 +260,9 @@ end
 	cmpi.l #1, d6
 	bne.w bad
 	moveq #0, d1
-	move.w (a5), d1
+	move.l (a5), d1
 	moveq #STATUS_CLEAR, d0
-	cmpi.w #$ffff, d1
+	cmpi.l #NO_BASE, d1
 	beq.w done
 	moveq #STATUS_SECTION, d0
 	bra.w done
@@ -261,11 +270,42 @@ bad
 	moveq #STATUS_BAD, d0
 	moveq #-1, d1
 done
-	adda.w #runtime.EXPRVM_STACK_CAPACITY*2, sp
+	adda.w #runtime.EXPRVM_STACK_CAPACITY*4, sp
 	movem.l (sp)+, d2-d7/a1-a6
 	tst.l d0
 	rts
 	.bend  ; affineTarget
+
+; D1.L=affine base identity,A2=Context. D0/CCR=0 and D1.W=one-based section,
+; or STATUS_BAD when no section provenance is available. Other registers preserved.
+baseSection	.block
+	move.l a3, -(sp)
+	cmpi.l #CURRENT_PC_BASE, d1
+	beq.w current
+	cmp.l pkg.Context.Count(a2), d1
+	bhs.w bad
+	movea.l pkg.Context.SectionIds(a2), a3
+	move.l a3, d0
+	beq.w bad
+	move.b 0(a3, d1.l), d0
+	andi.l #$ff, d0
+	move.l d0, d1
+	bra.w ready
+current
+	moveq #0, d1
+	move.w pkg.Context.CurrentSection(a2), d1
+ready
+	tst.l d1
+	beq.w bad
+	moveq #STATUS_CLEAR, d0
+	bra.w done
+bad
+	moveq #STATUS_BAD, d0
+done
+	movea.l (sp)+, a3
+	tst.l d0
+	rts
+	.bend  ; baseSection
 	.priv
 scanExpression	.block
 	movem.l d2-d7/a1-a6, -(sp)

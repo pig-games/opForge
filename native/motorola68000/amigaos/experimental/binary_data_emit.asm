@@ -7,8 +7,9 @@ Result	.res 32
 Record	.res 256
 End	.long ?
 Cursor	.long ?
+Pc	.long ?  ; one statement-start PC for every value on this line
 	.endstruct
-DATA_CALL_BYTES = DataCall.Cursor+4
+DATA_CALL_BYTES = DataCall.Pc+4
 
 ; A0=.emit operands,A1=bounded end,A2=Context,A3=package.
 ; D0/CCR=status; all other registers preserved. Uses bounded stack scratch.
@@ -16,6 +17,7 @@ emitData	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.w #DATA_CALL_BYTES, sp
 	movea.l sp, a6
+	move.l pkg.Context.Pc(a2), DataCall.Pc(a6)
 	lea -5(a0), a4
 	move.l a1, d6
 	sub.l a4, d6
@@ -120,7 +122,11 @@ value
 	movea.l DataCall.Cursor(a6), a0
 	movea.l DataCall.End(a6), a1
 	movea.l a0, a5
+	move.l pkg.Context.Pc(a2), -(sp)
+	move.l DataCall.Pc(a6), pkg.Context.Pc(a2)
 	jsr expr.evaluate
+	move.l (sp)+, pkg.Context.Pc(a2)
+	tst.l d0
 	bne.w bad
 	tst.l d2
 	beq.w resolved

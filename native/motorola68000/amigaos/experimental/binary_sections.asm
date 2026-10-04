@@ -360,6 +360,7 @@ slotAddress	.block
 beginPass	.block
 	movem.l d1-d2/a1, -(sp)
 	move.w pkg.Context.Pass(a1), d2
+	clr.w pkg.Context.CurrentSection(a1)
 	clr.w State.Active(a0)
 	clr.w State.ActiveKind(a0)
 	clr.w State.Started(a0)
@@ -574,6 +575,8 @@ nextSelection
 	subq.w #1, d2
 	bne.w hunkSelection
 	move.w #1, State.Active(a0)
+	move.w d3, pkg.Context.CurrentSection(a1)
+	addq.w #1, pkg.Context.CurrentSection(a1)
 	bra.w ok
 hunkClose
 	tst.w State.Active(a0)
@@ -584,6 +587,7 @@ hunkClose
 	bsr.w slotAddress
 	move.l pkg.Context.Pc(a1), HunkSlot.Size(a5)
 	move.l State.OutsidePc(a0), pkg.Context.Pc(a1)
+	clr.w pkg.Context.CurrentSection(a1)
 	clr.w State.Active(a0)
 	clr.w State.ActiveKind(a0)
 	bra.w ok

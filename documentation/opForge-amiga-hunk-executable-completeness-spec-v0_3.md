@@ -352,7 +352,15 @@ value is captured at the assignment, not reevaluated at the use. Unsupported
 address arithmetic remains unsupported through aliases. This is a correction
 to relocation proof, not a new instruction encoding rule.
 
-Mapped logical content uses its concrete segment as the relocation target.
+The compact native assembler also supports section-relative `$` in DATA
+statements, including shared `.emit`, absolute addends and same-section address
+differences. Every operand uses the statement's starting PC, while relocation
+records use each emitted field's offset. Source section identity is independent
+of output selection and ordering. Unsupported address arithmetic and narrow
+relocatable fields reject explicitly. Instruction `$`, address-derived snapshots,
+general address aliases and mapped logical-section Hunk parity remain native gaps.
+
+In Rust, mapped logical content uses its concrete segment as the relocation target.
 Addends include any bytes already present in that segment, and fixups emitted
 inside the imported block follow its destination source segment and offset.
 Fixup inputs distinguish the full target address from the section-relative

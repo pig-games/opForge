@@ -107,7 +107,9 @@ Relocatable	.word ?  ; nonzero for section-relative Hunk output
 Parameters	.long ?
 ParameterCount	.long ?
 SectionIds	.long ?
+CurrentSection	.word ?  ; one-based active Hunk section; zero outside sections
 	.endstruct
+CONTEXT_BYTES = Context.CurrentSection+2
 
 Parameter	.struct
 Id	.word ?

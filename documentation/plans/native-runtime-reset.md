@@ -909,8 +909,9 @@ address-derived snapshots retain their section and frozen addend. Mapped logical
 Hunk references use the concrete segment identity and include its existing bytes
 in their addends. Fixup inputs keep full addresses separate from section-relative
 addends so package-owned positional projections also preserve placed/mapped
-PC-relative aliases. Native section-relative `.long $`, address-derived snapshots
-and general layout aliases remain fail-closed gaps; the Rust repair does not
+PC-relative aliases. At that checkpoint, native section-relative `.long $`,
+address-derived snapshots and general layout aliases remained fail-closed gaps;
+the following DATA-PC slice addresses only the first of these. The Rust repair does not
 establish those native cases or complete Hunk parity.
 
 Rust qualification passes all 46 existing Hunk instruction relocation controls,
@@ -935,6 +936,71 @@ branch-range blocker; its files were not changed. This host build does not quali
 the Presenter application on hardware.
 Mapped mutations, compound mutable values, complete corpus qualification and a
 fresh BS20 full self-host remain outside this checkpoint.
+
+#### Native section-relative DATA PC
+
+The compact native DATA path now retains the current Hunk source section as
+runtime context. `$` therefore carries a section base without becoming a fake
+symbol, serialized pointer or CPU-specific expression rule. The bounded affine
+proof distinguishes symbol IDs, current-PC identity and absolute values; equal
+nonzero section identities cancel under subtraction. Output selection/reordering
+does not redefine that identity. Instruction transport still accepts symbol IDs
+only and rejects the new PC identity explicitly.
+
+DATA operands all evaluate at their statement's starting PC. Emission still
+advances the live PC and records each field's actual relocation offset. This
+also fixes `.long $,$` in flat output and applies to shared `.emit`; subsequent
+lines see the advanced PC normally. No package or packed-source format changed.
+
+Fresh FS-UAE comparisons cover DATA PC relocations, absolute addends,
+same-section cancellation, same-line operands, narrow absolute cancellation,
+unselected sections and reordered/reopened sections. Six invalid-expression
+cases complete with exit 20 and no Hunk file, including equal numeric offsets
+in distinct sections. The flat-PC control and the existing mixed scalar
+snapshot/relocation/BSS control match their live Rust oracles.
+
+The imported mapped logical-section Hunk fixture still rejects at its import,
+before DATA execution. Replacing `$` with ordinary numbers reproduces this in
+both baseline `0650076b` and the current implementation with identical source,
+packages and Rust oracle. The desired positive Rust/native test remains separate
+and explicitly marked as a known native gap. This slice does not establish
+mapped Hunk parity, instruction `$`, address-derived snapshots, general aliases
+or a new full native self-host.
+
+The release image grows from 452,776 to 452,936 bytes (+160). Persistent native
+state grows by six bytes (current-section identity and statement PC); affine
+proof scratch grows by 16 bytes and the shared DATA call frame by four bytes.
+PC preservation and helper calls also use bounded stack scratch. The m68020
+package remains 321,532 bytes. These are implementation sizes, not a new measured
+peak-memory claim.
+
+The small mixed control measures 1.275279 seconds before and 1.262542 after.
+This is too short to establish a performance gain. Reports are retained as
+`/tmp/opforge-section-pc-control-{baseline,current}.json`; the source and exact
+Rust Hunk digests match across the pair. The existing 128-fragment readonly Hunk workload (18,391 source bytes) measures:
+
+| Fresh release run | Baseline `0650076b` | DATA-PC repair |
+|---|---:|---:|
+| 1 | 18.990015 s | 19.021078 s |
+| 2 | 18.995526 s | 18.977380 s |
+| Median | 18.992770 s | 18.999229 s |
+
+The median difference is +0.006458 seconds (+0.034%). Two runs per
+build do not establish a reliable change this small. All four produce the exact
+same live Rust Hunk (`fnv1a64:0a02e9fc68860da3`), with the same source
+(`fnv1a64:1d62eb38a482ac9a`), package bytes and command. This measures only this
+correctness slice on that workload, not full self-host duration or a hardware
+speedup. FS-UAE uses the existing 68020/10 MiB profile; timings are guest
+START-to-DONE host wall time and exclude emulator startup. Reports are
+`/tmp/opforge-section-pc-measurement-{baseline,current}.json`.
+
+Final checks pass 25 focused Rust Hunk tests and the shared emission Rust matrix,
+eight fresh native DATA-PC Hunk comparisons, the flat control, six required
+native rejections, and the mixed regression before/after. Independent read-only
+review, Rust/native formatting, CPU boundaries, runtime ownership/no-growth,
+instrumentation safety, native test ownership, fresh-proof and benchmark-selector
+guards pass. The separate mapped-Hunk positive probe still fails as documented;
+this is not broad corpus or self-host qualification.
 
 Reproduce the new positive controls with the configured FS-UAE environment and
 `cargo test -p asm --lib compact_hunk_traversal_fs_uae -- --ignored --nocapture

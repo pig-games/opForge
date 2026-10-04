@@ -902,11 +902,37 @@ following comment-only repair of 12 pre-existing missing module-owner annotation
 a final fresh snapshot/relocation/BSS control matches Rust and retains the exact
 release image digest (`/tmp/opforge-hunk-traversal-owner-final.json`).
 
-Remaining reference gaps are explicit: Rust rejects direct Hunk `.long $` and
-instruction immediates using mutable-derived readonly snapshots. Rust currently
-serializes an address-derived snapshot such as `.const snapshot payload+n` as a
-scalar without relocation; native rejects that alias rather than discarding its
-address provenance. These are separate repair decisions, not completed parity.
+The subsequent Rust Hunk repair preserves scalar assignment provenance through
+aliases and source-order snapshots. Direct `.long $` now relocates to its current
+section; mutable-derived readonly scalar instruction immediates are absolute;
+address-derived snapshots retain their section and frozen addend. Mapped logical
+Hunk references use the concrete segment identity and include its existing bytes
+in their addends. Fixup inputs keep full addresses separate from section-relative
+addends so package-owned positional projections also preserve placed/mapped
+PC-relative aliases. Native section-relative `.long $`, address-derived snapshots
+and general layout aliases remain fail-closed gaps; the Rust repair does not
+establish those native cases or complete Hunk parity.
+
+Rust qualification passes all 46 existing Hunk instruction relocation controls,
+the new provenance/mapped-layout regressions and all 521 VM tests. The final
+broad assembler run reports 1,876 passing, 203 failing and 461 ignored tests;
+201 failures also occur in the unmodified baseline. The other two were obsolete
+expectations for a missing member projection and the old callback signature;
+both were corrected and pass separately. Six baseline failures are resolved by
+the full-address fixup repair. This is not broad product qualification.
+Fresh FS-UAE scalar-snapshot assembly matches the live Rust Hunk oracle
+(1.272 seconds START-to-DONE); the separate section-PC probe rejects with exit 20.
+Host assembly of all 94 native source files succeeds, producing the unchanged
+452,776-byte embedded executable and unchanged 321,532-byte package. The retained
+bundle is `/tmp/opforge-hunk-repair-selfhost-final`; its manifest explicitly says
+native validation was not run. No new full native self-host or performance gain
+is claimed by this correctness repair.
+The installed 0.9.7 CLI predates the committed mapped-label replay fix
+(`7349ca53`); the exact split-file report now has a live CLI regression checking
+`02 09 60`, header `$0900` and worker entry `$0902`. The current Presenter project
+also assembles successfully with the repaired Rust CLI, removing its reported
+branch-range blocker; its files were not changed. This host build does not qualify
+the Presenter application on hardware.
 Mapped mutations, compound mutable values, complete corpus qualification and a
 fresh BS20 full self-host remain outside this checkpoint.
 

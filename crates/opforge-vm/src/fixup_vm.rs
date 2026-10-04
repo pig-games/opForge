@@ -19,6 +19,9 @@ pub struct PortableFixupInput {
     pub value: PortableDeferredValue,
     pub target_reference: bool,
     pub relocation_target: Option<String>,
+    /// Section-relative value for an absolute relocation field. Position-based
+    /// projections always use the full numeric `value` instead.
+    pub relocation_addend: Option<i64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -214,6 +217,14 @@ pub fn execute_fixup_program_for_version(
                 }
             },
         };
+        if !unresolved
+            && step.base == FixupBase::Value
+            && step.relocation == PortableRelocationKind::Absolute
+        {
+            if let Some(addend) = input.relocation_addend {
+                value = addend;
+            }
+        }
         let should_project = match step.base {
             FixupBase::Value => false,
             FixupBase::Position {
@@ -305,5 +316,59 @@ fn apply_transform(
                     adjustment: mapping.adjustment,
                 })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use package::{compile_fixup_program, FixupEncodingStep};
+
+    #[test]
+    fn full_target_and_section_addend_are_distinct_for_the_same_input() {
+        let absolute = FixupEncodingStep {
+            input: 0,
+            width: 4,
+            endian: EncodingEndian::Big,
+            base: FixupBase::Value,
+            range: FixupRange::Unsigned,
+            unresolved: UnresolvedValuePolicy::Reject,
+            relocation: PortableRelocationKind::Absolute,
+            transform: FixupTransform::Identity,
+        };
+        let relative = FixupEncodingStep {
+            width: 2,
+            base: FixupBase::Position {
+                adjustment: 2,
+                target_references_only: true,
+            },
+            range: FixupRange::Signed,
+            relocation: PortableRelocationKind::None,
+            ..absolute.clone()
+        };
+        let program = compile_fixup_program(&[absolute, relative]).unwrap();
+        let input = PortableFixupInput {
+            value: PortableDeferredValue::Resolved(0x200a),
+            target_reference: true,
+            relocation_target: Some("data".into()),
+            relocation_addend: Some(10),
+        };
+        let result = execute_fixup_program(
+            &program,
+            &[input],
+            PortableFixupContext { position: 0x2000 },
+        )
+        .unwrap();
+        assert_eq!(result.bytes, [0, 0, 0, 10, 0, 8]);
+        assert_eq!(
+            result.fixups,
+            [PortableOutputFixup {
+                offset: 0,
+                width: 4,
+                kind: PortableOutputFixupKind::Absolute,
+                target: "data".into(),
+                encoded_addend: 10,
+            }]
+        );
     }
 }

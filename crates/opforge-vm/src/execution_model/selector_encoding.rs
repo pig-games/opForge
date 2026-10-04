@@ -1032,6 +1032,29 @@ fn semantic_plan_inputs(
             values.push(0);
             continue;
         }
+        if let Some(spec) = source.strip_prefix("target:member") {
+            let Some((index, expected_field)) = spec.split_once(".field") else {
+                return Err(format!(
+                    "semantic target member source '{source}' requires an expected field"
+                ));
+            };
+            let index = index.parse::<usize>().map_err(|_| {
+                format!("semantic target source '{source}' has an invalid expression")
+            })?;
+            if expected_field.is_empty() {
+                return Err(format!(
+                    "semantic target member source '{source}' has an empty field"
+                ));
+            }
+            let Some(expr) = exprs.get(index).copied().flatten() else {
+                return Ok(None);
+            };
+            if !expression_is_member_relocation_target(expr, expected_field) {
+                return Ok(None);
+            }
+            values.push(0);
+            continue;
+        }
         if let Some(spec) = source.strip_prefix(MODE_SELECTOR_PLAN_EXPR_PATH_PREFIX) {
             let Some(value) = project_expr_path(spec, exprs.as_slice(), expr_ctx)? else {
                 return Ok(None);
@@ -2586,6 +2609,21 @@ fn expression_can_be_relocation_target(expr: &Expr) -> bool {
     }
 }
 
+fn expression_is_member_relocation_target(expr: &Expr, expected_field: &str) -> bool {
+    match expr {
+        Expr::Member { base, field, .. } => {
+            field.eq_ignore_ascii_case(expected_field) && expression_can_be_relocation_target(base)
+        }
+        Expr::Identifier(qualified, span) => qualified
+            .rsplit_once('.')
+            .filter(|(base, field)| !base.is_empty() && field.eq_ignore_ascii_case(expected_field))
+            .is_some_and(|(base, _)| {
+                expression_can_be_relocation_target(&Expr::Identifier(base.to_string(), *span))
+            }),
+        _ => false,
+    }
+}
+
 fn expression_is_atomic_relocation_target(expr: &Expr) -> bool {
     match expr {
         Expr::Identifier(_, _) => true,
@@ -2732,21 +2770,23 @@ fn semantic_fixup_plan_inputs(
             let absolute_constant = expr_ctx
                 .assembler_ctx
                 .expression_is_absolute_constant(&expr);
-            let value = if let Some((addend, _)) = relocation.as_ref() {
-                crate::fixup_vm::PortableDeferredValue::Resolved(*addend)
-            } else if expr_ctx.assembler_ctx.should_defer_unstable_symbols()
+            let value = if expr_ctx.assembler_ctx.should_defer_unstable_symbols()
                 && expr_ctx.has_unstable_symbols(&expr)?
             {
                 crate::fixup_vm::PortableDeferredValue::Unresolved
             } else {
-                crate::fixup_vm::PortableDeferredValue::Resolved(expr_ctx.eval_expr(&expr)?)
+                crate::fixup_vm::PortableDeferredValue::Resolved(match &relocation {
+                    Some(relocation) => relocation.value,
+                    None => expr_ctx.eval_expr(&expr)?,
+                })
             };
             absolute_constants.push(absolute_constant);
             values.push(crate::fixup_vm::PortableFixupInput {
                 value,
                 target_reference: forced_target
                     || expression_is_target_reference(&expr, expr_ctx.assembler_ctx),
-                relocation_target: relocation.map(|(_, target)| target),
+                relocation_addend: relocation.as_ref().map(|relocation| relocation.addend),
+                relocation_target: relocation.map(|relocation| relocation.target),
             });
             continue;
         }
@@ -2763,6 +2803,7 @@ fn semantic_fixup_plan_inputs(
             value: crate::fixup_vm::PortableDeferredValue::Resolved(resolved[0]),
             target_reference: false,
             relocation_target: None,
+            relocation_addend: None,
         });
     }
     Ok(Some(SemanticFixupInputs {
@@ -2867,4 +2908,42 @@ fn encode_expr_relative(
         error_label,
         expr_ctx.assembler_ctx.pass(),
     )
+}
+
+#[cfg(test)]
+mod member_target_tests {
+    use super::*;
+    use opcore::tokenizer::Span;
+
+    #[test]
+    fn member_target_shape_accepts_qualified_names_and_checks_base() {
+        let span = Span {
+            line: 1,
+            col_start: 1,
+            col_end: 1,
+        };
+        let member = Expr::Member {
+            base: Box::new(Expr::Identifier("target".into(), span)),
+            field: "L".into(),
+            span,
+        };
+        assert!(expression_is_member_relocation_target(&member, "l"));
+        assert!(expression_is_member_relocation_target(
+            &Expr::Identifier("target.L".into(), span),
+            "l"
+        ));
+        assert!(!expression_is_member_relocation_target(&member, "w"));
+        assert!(!expression_is_member_relocation_target(
+            &Expr::Member {
+                base: Box::new(Expr::Number("1".into(), span)),
+                field: "L".into(),
+                span,
+            },
+            "l"
+        ));
+        assert!(!expression_is_member_relocation_target(
+            &Expr::Identifier(".L".into(), span),
+            "l"
+        ));
+    }
 }

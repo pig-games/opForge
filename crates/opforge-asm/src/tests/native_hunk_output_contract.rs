@@ -422,7 +422,16 @@ fn native_item36_hunk_directive_long_package_contract() {
     }
     let rust_eval = fs::read_to_string(root.join("crates/opforge-asm/src/asmline_eval.rs"))
         .expect("read Rust relocation-expression authority");
-    assert!(rust_eval.contains("fn absolute_relocation(&self, expr: &Expr)"));
+    assert!(source_contains_in_order(
+        &rust_eval,
+        &[
+            "fn absolute_relocation(",
+            "Option<registry::family::AbsoluteRelocation>",
+            "value,",
+            "addend,",
+            "target: target_section"
+        ],
+    ));
 
     let service = fs::read_to_string(
         root.join("native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm"),

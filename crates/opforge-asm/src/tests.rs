@@ -136,6 +136,9 @@ use vm::rollout::{
     FamilyRuntimeMode,
 };
 
+#[path = "tests/hunk_value_provenance.rs"]
+mod hunk_value_provenance;
+
 #[path = "tests/hunk_data_offsets.rs"]
 mod hunk_data_offsets;
 
@@ -35470,7 +35473,7 @@ fn linker_output_hunk_live_path_rejects_cross_section_symbolic_long_difference_e
 }
 
 #[test]
-fn linker_output_hunk_live_path_rejects_long_section_symbol_with_equate_subtract_addend() {
+fn linker_output_hunk_live_path_supports_long_section_symbol_with_equate_subtract_addend() {
     let assembler = run_passes(&[
         ".module main",
         ".cpu 68000",
@@ -35491,14 +35494,15 @@ fn linker_output_hunk_live_path_rejects_long_section_symbol_with_equate_subtract
         .first()
         .expect("output directive");
 
-    let err = build_linker_output_payload(output, assembler.sections())
-        .expect_err("subtraction-by-const should remain outside the frozen v0.3 matrix");
-    assert!(
-        err.message()
-            .contains("format=hunk does not support this symbolic .long expression"),
-        "unexpected message: {}",
-        err.message()
-    );
+    let bytes = build_linker_output_payload(output, assembler.sections())
+        .expect("one address base minus an absolute addend retains HUNK_RELOC32");
+    let expected: Vec<_> = [
+        1011u32, 0, 1, 0, 0, 2, 1001, 2, 2, 0x4e750000, 1004, 1, 0, 0, 0, 1010,
+    ]
+    .into_iter()
+    .flat_map(u32::to_be_bytes)
+    .collect();
+    assert_eq!(bytes, expected);
 }
 
 #[test]
@@ -36314,6 +36318,7 @@ fn package_fixup_abs32_projection_matches_live_cross_section_relocation_oracle()
                 )),
                 target_reference: true,
                 relocation_target: oracle.target_section_name().map(str::to_string),
+                relocation_addend: None,
             }],
             vm::fixup_vm::PortableFixupContext { position: 0x2000 },
         )

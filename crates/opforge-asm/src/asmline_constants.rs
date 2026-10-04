@@ -156,6 +156,10 @@ impl AsmLine<'_> {
                         .layout
                         .absolute_constant_symbols
                         .insert(definition.name.clone());
+                    self.layout.symbol_relocations.insert(
+                        definition.name.clone(),
+                        crate::state::SymbolRelocation::Absolute,
+                    );
                     changed |= repaired[node];
                 }
                 states[node] = 2;

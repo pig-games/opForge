@@ -196,6 +196,9 @@ pub fn set_host_expr_eval_failpoint_for_tests(enabled: bool) {
     HOST_EXPR_EVAL_FAILPOINT.with(|flag| flag.set(enabled));
 }
 
+#[path = "asmline_relocation.rs"]
+mod asmline_relocation;
+
 #[path = "asmline_constants.rs"]
 mod asmline_constants;
 
@@ -840,6 +843,7 @@ impl<'a> AsmLine<'a> {
         self.layout.placement_directives.clear();
         self.layout.section_symbol_sections.clear();
         self.layout.absolute_constant_symbols.clear();
+        self.layout.symbol_relocations.clear();
         self.layout.section_stack.clear();
         self.layout.current_section = None;
         self.symbol_scope.saw_explicit_module = false;
@@ -1317,6 +1321,9 @@ impl<'a> AsmLine<'a> {
         expr: &Expr,
         allow_current_section_symbols: bool,
     ) -> bool {
+        if self.expr_is_absolute_constant_symbol_expr(expr) {
+            return true;
+        }
         match expr {
             Expr::Number(_, _) | Expr::String(_, _) => true,
             Expr::Indirect(inner, _)
@@ -1371,12 +1378,19 @@ impl<'a> AsmLine<'a> {
                 let Some(resolved_name) = self.resolve_symbol_name_for_relocation(name) else {
                     return false;
                 };
+                if matches!(
+                    self.layout.symbol_relocations.get(&resolved_name),
+                    Some(crate::state::SymbolRelocation::Unsupported)
+                ) {
+                    return false;
+                }
                 match self.resolved_symbol_section_name(&resolved_name) {
                     Some(section_name) => {
                         allow_current_section_symbols
-                            && self
-                                .current_section_name()
-                                .is_some_and(|current| current.eq_ignore_ascii_case(&section_name))
+                            && self.current_section_name().is_some_and(|current| {
+                                self.hunk_output_section(current)
+                                    .eq_ignore_ascii_case(&self.hunk_output_section(&section_name))
+                            })
                     }
                     None => {
                         self.symbols.entry(&resolved_name).is_some()
@@ -1407,6 +1421,12 @@ impl<'a> AsmLine<'a> {
     }
 
     fn resolved_symbol_section_name(&self, resolved_name: &str) -> Option<String> {
+        if let Some(provenance) = self.layout.symbol_relocations.get(resolved_name) {
+            return match provenance {
+                crate::state::SymbolRelocation::Section(section) => Some(section.clone()),
+                _ => None,
+            };
+        }
         if let Some(section_name) = self.layout.section_symbol_sections.get(resolved_name) {
             return Some(section_name.clone());
         }
@@ -1426,7 +1446,8 @@ impl<'a> AsmLine<'a> {
     }
 
     fn hunk_abs32_target_section_for_expr(&self, expr: &Expr) -> Option<String> {
-        match expr {
+        let section = match expr {
+            Expr::Dollar(_) => self.layout.current_section.clone(),
             Expr::Identifier(name, _) => {
                 let relocation_name = name
                     .rsplit_once('.')
@@ -1486,7 +1507,8 @@ impl<'a> AsmLine<'a> {
                 }
             }
             _ => None,
-        }
+        };
+        section.map(|name| self.hunk_output_section(&name))
     }
 
     #[cfg(not(feature = "vm-runtime-only"))]
@@ -1512,7 +1534,8 @@ impl<'a> AsmLine<'a> {
     }
 
     fn hunk_abs32_target_section_for_data_expr(&self, expr: &Expr) -> Option<String> {
-        match expr {
+        let section = match expr {
+            Expr::Dollar(_) => self.layout.current_section.clone(),
             Expr::Identifier(name, _) => {
                 let resolved_name = self.resolve_symbol_name_for_relocation(name)?;
                 if self
@@ -1546,8 +1569,17 @@ impl<'a> AsmLine<'a> {
                     None
                 }
             }
+            Expr::Binary {
+                op: BinaryOp::Subtract,
+                left,
+                right,
+                ..
+            } if self.expr_is_absolute_constant_symbol_expr(right) => {
+                self.hunk_abs32_target_section_for_data_expr(left)
+            }
             _ => None,
-        }
+        };
+        section.map(|name| self.hunk_output_section(&name))
     }
 
     fn eval_hunk_abs32_data_relocation_value(
@@ -2704,6 +2736,7 @@ impl<'a> AsmLine<'a> {
                         Some(1),
                     );
                 }
+                self.record_symbol_relocation(&full_name, expr);
                 self.sync_value_symbol(&full_name, &value);
                 if self.pass == 1 && op == AssignOp::Const {
                     self.capture_constant(&full_name, expr);
@@ -2822,6 +2855,7 @@ impl<'a> AsmLine<'a> {
             }
         };
 
+        self.record_compound_symbol_relocation(&target, op, expr, span);
         if let Some(entry) = self.symbols.entry_mut(&target) {
             entry.val = new_val as u32;
             entry.updated = true;
@@ -2887,6 +2921,11 @@ impl<'a> AsmLine<'a> {
     }
 
     fn is_absolute_symbol(&self, name: &str) -> bool {
+        if let Some(resolved) = self.resolve_symbol_name_for_relocation(name) {
+            if let Some(provenance) = self.layout.symbol_relocations.get(&resolved) {
+                return *provenance == crate::state::SymbolRelocation::Absolute;
+            }
+        }
         // Dotted identifiers and member ASTs must resolve the same struct field.
         if let Some((owner, field)) = name.rsplit_once('.') {
             if let Ok(Some(struct_name)) = self.resolve_scoped_name(owner) {
@@ -2911,7 +2950,15 @@ impl<'a> AsmLine<'a> {
     fn expr_is_absolute_constant_symbol_expr(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Number(_, _) | Expr::String(_, _) => true,
-            Expr::Identifier(name, _) => self.is_absolute_symbol(name),
+            Expr::Dollar(_) => self.layout.current_section.is_none(),
+            Expr::Identifier(name, _) | Expr::Register(name, _) => self.is_absolute_symbol(name),
+            Expr::Index { base, index, .. } => {
+                self.expr_is_absolute_constant_symbol_expr(base)
+                    && self.expr_is_absolute_constant_symbol_expr(index)
+            }
+            Expr::Call { args, .. } => args
+                .iter()
+                .all(|arg| self.expr_is_absolute_constant_symbol_expr(arg)),
             Expr::Indirect(inner, _)
             | Expr::IndirectLong(inner, _)
             | Expr::Immediate(inner, _)
@@ -2963,17 +3010,15 @@ impl<'a> AsmLine<'a> {
                 self.expr_is_absolute_constant_symbol_expr(base)
             }
             Expr::Member { base, field, .. } => {
+                if self.expr_is_absolute_constant_symbol_expr(base) {
+                    return true;
+                }
                 let Expr::Identifier(owner, _) = base.as_ref() else {
                     return false;
                 };
                 self.is_absolute_symbol(&format!("{owner}.{field}"))
             }
-            Expr::Error(_, _)
-            | Expr::Placeholder(_)
-            | Expr::Dollar(_)
-            | Expr::Register(_, _)
-            | Expr::Index { .. }
-            | Expr::Call { .. } => false,
+            Expr::Error(_, _) | Expr::Placeholder(_) => false,
         }
     }
 

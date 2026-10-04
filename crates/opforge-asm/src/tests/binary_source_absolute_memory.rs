@@ -99,7 +99,7 @@ fn compact_bss_to_struct_has_executable_package_sequence() {
                 && u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap()) == 75
         })
         .unwrap();
-    assert_eq!(wire[member_row + 5], 6); // TargetMember match remains unsupported in Rust.
+    assert_eq!(wire[member_row + 5], 6); // TargetMember match remains unsupported in the native package.
     assert_eq!(wire[member_row + 19] & 0x0f, 4); // source needs tuple root
     assert_eq!(
         u16::from_be_bytes(wire[member_row + 22..member_row + 24].try_into().unwrap()),
@@ -133,24 +133,24 @@ fn compact_immediate_bss_to_struct_fs_uae() {
     hunk_sections::native_hunk_source(&bss_to_struct_source(IMMEDIATE_BSS_TO_STRUCT));
 }
 
-// This PC-tuple source really matches the earlier unsupported row. A scalar
-// source may skip that row, but a matching tuple must keep its barrier.
+// Rust projects the package-declared member target. Native retains its explicit
+// unsupported-row barrier until that projection is implemented there.
 const PC_TO_ABSOLUTE_MEMBER: &str =
     ".cpu m68020\n.org $1000\nentry:\n move.l 6(pc),(reserved).l\nreserved: .long 0\n.end\n";
 
 #[test]
-fn compact_pc_to_absolute_member_rust_rejection() {
-    let (_, diagnostics) = assemble_source_entries_with_runtime_mode(
+fn compact_pc_to_absolute_member_rust_oracle() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
         &PC_TO_ABSOLUTE_MEMBER.lines().collect::<Vec<_>>(),
         true,
     )
     .unwrap();
-    assert!(
-        diagnostics
-            .iter()
-            .any(|message| message.contains("unknown source 'target:member1.fieldl'")),
-        "{diagnostics:?}"
-    );
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let bytes = entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    assert_eq!(bytes, [0x23, 0xfa, 0, 6, 0, 0, 0x10, 8, 0, 0, 0, 0]);
 }
 
 #[test]

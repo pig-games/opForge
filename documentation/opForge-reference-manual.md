@@ -1813,6 +1813,13 @@ MOVE.L #target+offset,D1
 
 `MOVE.L` immediate-to-data-register operands follow the same rule. A difference
 between two addresses in the same section is absolute and needs no relocation.
+In the Rust assembler, the current address `$` inside a section carries that
+section's relocation base, so `.long $` emits `HUNK_RELOC32`. Scalar assignments
+retain their relocation meaning: a readonly snapshot of `target+offset` remains an address,
+while a snapshot of an absolute mutable value remains an absolute number. Later
+changes to the mutable input do not alter the snapshot's value or relocation.
+Aliases cannot hide unsupported address arithmetic.
+
 Expressions with multiple address bases, or a constant minus an address, cannot
 be represented by `HUNK_RELOC32` and are rejected for Hunk output; flat binary
 output still permits their evaluated numeric values.

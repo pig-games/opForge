@@ -55,6 +55,7 @@ pub struct Assembler {
     pub section_symbol_sections: HashMap<String, String>,
     pub concrete_section_declarations: HashSet<String>,
     pub absolute_constant_symbols: HashSet<String>,
+    symbol_relocations: HashMap<String, crate::state::SymbolRelocation>,
     scalar_value_symbols: HashMap<String, i64>,
     pub diagnostics: Vec<Diagnostic>,
     pub cpu: CpuType,
@@ -553,6 +554,7 @@ qualified_share={:.2}%",
             if pass_num > 1 {
                 asm_line.layout.section_symbol_sections = self.section_symbol_sections.clone();
                 asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
+                asm_line.layout.symbol_relocations = self.symbol_relocations.clone();
                 asm_line.scalar_value_symbols = self.scalar_value_symbols.clone();
             }
             if let Some(concrete_section_declarations) = seeded_concrete_section_declarations {
@@ -790,6 +792,7 @@ qualified_share={:.2}%",
             self.concrete_section_declarations =
                 asm_line.layout.concrete_section_declarations.clone();
             self.absolute_constant_symbols = asm_line.layout.absolute_constant_symbols.clone();
+            self.symbol_relocations = asm_line.layout.symbol_relocations.clone();
             self.scalar_value_symbols = std::mem::take(&mut asm_line.scalar_value_symbols);
             self.root_metadata = asm_line.take_root_metadata();
             self.sections = asm_line.take_sections();
@@ -991,6 +994,7 @@ qualified_share={:.2}%",
             section_symbol_sections: HashMap::new(),
             concrete_section_declarations: HashSet::new(),
             absolute_constant_symbols: HashSet::new(),
+            symbol_relocations: HashMap::new(),
             scalar_value_symbols: HashMap::new(),
             diagnostics: Vec::new(),
             cpu,
@@ -1563,6 +1567,7 @@ qualified_share={:.2}%",
         asm_line.layout.section_symbol_sections = self.section_symbol_sections.clone();
         asm_line.layout.concrete_section_declarations = self.concrete_section_declarations.clone();
         asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
+        asm_line.layout.symbol_relocations = self.symbol_relocations.clone();
         asm_line.scalar_value_symbols = self.scalar_value_symbols.clone();
         // Seed pass2 with pass1 placement/layout state so section-local encoding
         // (especially relative branches) uses rebased absolute addresses even if
@@ -1813,6 +1818,7 @@ qualified_share={:.2}%",
         self.cpu = asm_line.cpu;
         self.runtime_execution_model = asm_line.opthread_execution_model.take();
         self.absolute_constant_symbols = asm_line.layout.absolute_constant_symbols.clone();
+        self.symbol_relocations = asm_line.layout.symbol_relocations.clone();
         self.scalar_value_symbols = std::mem::take(&mut asm_line.scalar_value_symbols);
         self.concrete_section_declarations = asm_line.layout.concrete_section_declarations.clone();
         self.sections = sections;
@@ -2072,6 +2078,7 @@ qualified_share={:.2}%",
                 target_section.bytes.extend_from_slice(&bytes);
             }
             for mut fixup in fixups {
+                fixup.source_section = target.clone();
                 fixup.offset = fixup.offset.checked_add(base_offset).ok_or_else(|| {
                     AsmError::new(
                         AsmErrorKind::Directive,

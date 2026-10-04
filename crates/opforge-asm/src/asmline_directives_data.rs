@@ -313,6 +313,7 @@ impl<'a> AsmLine<'a> {
                 Some(1),
             );
         }
+        self.record_symbol_relocation(&full_name, expr);
         self.sync_value_symbol(&full_name, &value);
         if self.pass == 1 && directive == "CONST" {
             self.capture_constant(&full_name, expr);

@@ -222,13 +222,15 @@ fn rust_layout_alias_hunk(source: &str) -> Result<Vec<u8>, String> {
 }
 
 #[test]
-fn compact_immediate_memory_layout_alias_hunk_rust_rejects() {
-    for source in ["Alias", "Alias+4"] {
-        let error = rust_layout_alias_hunk(source).expect_err("opaque layout alias must reject");
-        assert!(
-            error.contains("lacks a valid package relocation proof"),
-            "{error}"
+fn compact_immediate_memory_layout_alias_hunk_rust_oracle() {
+    for (source, addend) in [("Alias", 0), ("Alias+4", 4)] {
+        let oracle = rust_layout_alias_hunk(source).expect("aliases retain their relocation base");
+        let (code, relocations) = code_and_relocations(&oracle);
+        assert_eq!(
+            code,
+            [0, 0, 0, 0, 0x23, 0xfc, 0, 0, 0, addend, 0, 0, 0, 0, 0x4e, 0x75]
         );
+        assert_eq!(relocations, BTreeMap::from([(6, 0), (10, 1)]));
     }
 }
 

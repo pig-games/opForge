@@ -42,6 +42,14 @@ impl AsmDiagnosticsState {
     }
 }
 
+/// Frozen relocation meaning of a scalar assignment at its source position.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum SymbolRelocation {
+    Absolute,
+    Section(String),
+    Unsupported,
+}
+
 #[derive(Debug, Default)]
 pub struct AsmLayoutState {
     pub sections: HashMap<String, SectionState>,
@@ -50,6 +58,7 @@ pub struct AsmLayoutState {
     pub section_symbol_sections: HashMap<String, String>,
     pub concrete_section_declarations: HashSet<String>,
     pub absolute_constant_symbols: HashSet<String>,
+    pub(crate) symbol_relocations: HashMap<String, SymbolRelocation>,
     pub section_stack: Vec<Option<String>>,
     pub current_section: Option<String>,
 }
@@ -89,6 +98,7 @@ impl AsmLayoutState {
             section_symbol_sections: HashMap::new(),
             concrete_section_declarations: HashSet::new(),
             absolute_constant_symbols: HashSet::new(),
+            symbol_relocations: HashMap::new(),
             section_stack: Vec::new(),
             current_section: None,
         }

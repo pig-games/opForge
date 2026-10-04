@@ -693,3 +693,183 @@ fn absolute_long_reference_reaches_imported_block_and_its_helper() {
     assert!(assembled.symbols.entry("dep.helper").is_some());
     assert!(assembled.symbols.entry("dep.unused").is_none());
 }
+
+#[test]
+fn mapped_worker_after_root_header_emits_final_address_and_bytes() {
+    let assembler = run_passes(&[
+        ".module proof.main",
+        ".cpu 6502",
+        ".use presenter.worker as worker map { code -> worker_code }",
+        ".region image, $0900, $090f",
+        ".section header, kind=code",
+        "header",
+        "    .word worker.entry",
+        ".endsection",
+        ".section worker_code, kind=code",
+        ".endsection",
+        ".place header in image",
+        ".place worker_code in image",
+        ".endmodule",
+        ".module presenter.worker",
+        ".cpu 6502",
+        ".pub",
+        ".section code, kind=code, logical",
+        "entry .block",
+        "    rts",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+    ]);
+
+    assert_eq!(assembler.sections()["header"].bytes, [0x02, 0x09]);
+    assert_eq!(assembler.sections()["worker_code"].bytes, [0x60]);
+    assert_eq!(
+        assembler.image().entries().expect("emitted image"),
+        [(0x0900, 0x02), (0x0901, 0x09), (0x0902, 0x60)]
+    );
+    assert_eq!(
+        assembler.symbols().lookup("proof.main.header"),
+        Some(0x0900)
+    );
+    assert_eq!(
+        assembler.symbols().lookup("presenter.worker.entry"),
+        Some(0x0902)
+    );
+}
+
+#[test]
+fn mapped_worker_after_root_header_prunes_and_rebases_internal_labels() {
+    let assembler = run_passes(&[
+        ".module proof.main",
+        ".cpu 6502",
+        ".use presenter.worker as worker map { code -> worker_code }",
+        ".region image, $0900, $090f",
+        ".section header, kind=data",
+        "header: .word worker.entry, worker.entry.inside",
+        ".endsection",
+        ".section worker_code, kind=code",
+        ".endsection",
+        ".place header in image",
+        ".place worker_code in image",
+        ".endmodule",
+        ".module presenter.worker",
+        ".cpu 6502",
+        ".pub",
+        ".section code, kind=code, logical",
+        "unused .block",
+        "    .byte $aa, $bb",
+        "    .bend",
+        "entry .block",
+        "    nop",
+        "inside:",
+        "    .word inside",
+        "    rts",
+        "    .bend",
+        ".endsection",
+        ".endmodule",
+    ]);
+
+    assert_eq!(
+        assembler.sections()["header"].bytes,
+        [0x04, 0x09, 0x05, 0x09]
+    );
+    assert_eq!(
+        assembler.sections()["worker_code"].bytes,
+        [0xea, 0x05, 0x09, 0x60]
+    );
+    assert_eq!(
+        assembler.image().entries().expect("emitted image"),
+        [
+            (0x0900, 0x04),
+            (0x0901, 0x09),
+            (0x0902, 0x05),
+            (0x0903, 0x09),
+            (0x0904, 0xea),
+            (0x0905, 0x05),
+            (0x0906, 0x09),
+            (0x0907, 0x60),
+        ]
+    );
+    assert_eq!(
+        assembler.symbols().lookup("proof.main.header"),
+        Some(0x0900)
+    );
+    assert_eq!(
+        assembler.symbols().lookup("presenter.worker.entry"),
+        Some(0x0904)
+    );
+    assert_eq!(
+        assembler.symbols().lookup("presenter.worker.entry.inside"),
+        Some(0x0905)
+    );
+    assert!(assembler
+        .symbols()
+        .entry("presenter.worker.unused")
+        .is_none());
+}
+
+#[test]
+fn mapped_worker_split_cli_emits_final_address_and_labels() {
+    let dir = create_temp_dir("mapped-worker-split-cli");
+    let input = dir.join("main.asm");
+    let binary = dir.join("image.bin");
+    let labels = dir.join("image.lbl");
+    write_file(
+        &input,
+        r#".module proof.main
+    .cpu 6502
+    .use presenter.worker as worker map { code -> worker_code }
+    .region image, $0900, $090f
+    .section header, kind=code
+header
+    .word worker.entry
+    .endsection
+    .section worker_code, kind=code
+    .endsection
+    .place header in image
+    .place worker_code in image
+.endmodule
+"#,
+    );
+    write_file(
+        &dir.join("worker.asm"),
+        r#".module presenter.worker
+    .cpu 6502
+    .pub
+    .section code, kind=code, logical
+entry .block
+    rts
+    .bend
+    .endsection
+.endmodule
+"#,
+    );
+    let cli = Cli::parse_from([
+        "opForge",
+        "-i",
+        input.to_string_lossy().as_ref(),
+        "-b",
+        binary.to_string_lossy().as_ref(),
+        "--labels",
+        labels.to_string_lossy().as_ref(),
+    ]);
+    let config = validate_cli(&cli).expect("validate mapped worker CLI");
+    run_with_validated_cli_with_context(&cli, &config).expect("assemble split mapped worker");
+    let payload = fs::read(&binary).expect("read complete mapped worker image");
+    let exported_labels = fs::read_to_string(&labels).expect("read mapped worker labels");
+    fs::remove_dir_all(&dir).expect("remove mapped worker CLI directory");
+
+    assert_eq!(payload, [0x02, 0x09, 0x60]);
+    assert!(
+        exported_labels
+            .lines()
+            .any(|line| line == "proof.main.header = $0900"),
+        "wrong header label: {exported_labels}"
+    );
+    assert!(
+        exported_labels
+            .lines()
+            .any(|line| line == "presenter.worker.entry = $0902"),
+        "wrong worker entry label: {exported_labels}"
+    );
+}

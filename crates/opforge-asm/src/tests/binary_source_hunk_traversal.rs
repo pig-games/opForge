@@ -150,7 +150,7 @@ fn compact_hunk_address_snapshot_rust_oracle() {
     let bytes = project_oracle(&dir, &address_snapshot(), true, &[]).unwrap();
     let segments = hunk::segments(&bytes).unwrap();
     assert_eq!(segments[0].payload, 1u32.to_be_bytes());
-    assert!(segments[0].relocations.is_empty());
+    assert_eq!(segments[0].relocations, [(0, 1)]);
 }
 
 #[test]
@@ -201,5 +201,59 @@ fn compact_hunk_traversal_measurement_fs_uae() {
             })
             .collect(),
         "OPFORGE_HUNK_TRAVERSAL_REPORT",
+    );
+}
+
+fn reference_repair_cases() -> Vec<(String, &'static str, String, NativeExpected)> {
+    vec![
+        ("section-pc".into(), "m68020", source(".section code,kind=code\n.long $\n.long $\n.endsection\n", "code"), NativeExpected::MatchHunk),
+        ("scalar-snapshot-instruction".into(), "m68020", source("n .var 1\n.section data,kind=data\n.long 0\nsnapshot .const n\nn .set 2\n.endsection\n.section code,kind=code\n moveq #snapshot,d1\n.long snapshot,n\n.endsection\n", "code,data"), NativeExpected::MatchHunk),
+    ]
+}
+
+#[test]
+fn compact_hunk_reference_repair_rust_oracles() {
+    let dir = create_temp_dir("hunk-reference-repair-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (name, _, source, _) in reference_repair_cases() {
+        let bytes = project_oracle(&dir, &source, true, &[]).unwrap();
+        let segments = hunk::segments(&bytes).unwrap();
+        match name.as_str() {
+            "section-pc" => {
+                assert_eq!(segments[0].payload, [0, 0, 0, 0, 0, 0, 0, 4]);
+                assert_eq!(segments[0].relocations, [(0, 0), (4, 0)]);
+            }
+            "scalar-snapshot-instruction" => {
+                assert_eq!(segments[0].payload, [0x72, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0]);
+                assert!(segments
+                    .iter()
+                    .all(|segment| segment.relocations.is_empty()));
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[test]
+#[ignore = "fresh native Hunk scalar instruction snapshot comparison"]
+fn compact_hunk_scalar_snapshot_instruction_fs_uae() {
+    native_expected_cases(
+        reference_repair_cases()
+            .into_iter()
+            .filter(|(name, _, _, _)| name == "scalar-snapshot-instruction")
+            .collect(),
+        "OPFORGE_HUNK_REFERENCE_REPAIR_REPORT",
+    );
+}
+
+#[test]
+#[ignore = "known native gap: section-relative PC is rejected; requires configured FS-UAE"]
+fn compact_hunk_section_pc_relocation_fs_uae() {
+    native_expected_cases(
+        reference_repair_cases()
+            .into_iter()
+            .filter(|(name, _, _, _)| name == "section-pc")
+            .collect(),
+        "OPFORGE_HUNK_SECTION_PC_REPORT",
     );
 }

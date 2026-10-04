@@ -344,6 +344,22 @@ uses this same rule, including named equates and struct-field addends. A
 same-section address difference is absolute and emits no relocation. These
 rules do not extend other instruction sizes or immediate destination forms.
 
+Rust scalar assignments preserve address/absolute provenance through aliases
+and source-order snapshots. `.long $` refers to the current section, and an
+address minus an absolute addend retains its relocation. A mutable-derived
+readonly scalar remains absolute in both data and instruction operands; its
+value is captured at the assignment, not reevaluated at the use. Unsupported
+address arithmetic remains unsupported through aliases. This is a correction
+to relocation proof, not a new instruction encoding rule.
+
+Mapped logical content uses its concrete segment as the relocation target.
+Addends include any bytes already present in that segment, and fixups emitted
+inside the imported block follow its destination source segment and offset.
+Fixup inputs distinguish the full target address from the section-relative
+addend. Package-defined position-based projections use the full address, while
+absolute relocation fields use the addend; placed PC-relative aliases therefore
+retain their correct displacement.
+
 Placed-section symbols retain their capture-time origin during layout
 stabilization, so a section base is applied once. An absolute package fixup whose
 expression has no representable base must fail Hunk output, including when
@@ -357,8 +373,8 @@ Explicit-only in `v0.3`:
 - symbolic instruction forms where both absolute-word and absolute-long remain
   materially legal and no single canonical relocatable rule is declared
 - instruction forms with more than one relocatable symbol-bearing operand
-- symbolic expression forms more complex than `label+const` for executable data
-  fixups
+- executable data expressions requiring more than one relocation base or a
+  coefficient other than one for the retained base
 - instruction expressions containing multiple address bases or a constant minus
   an address base
 - symbolic indexed or full-extension-addressing cases that would require new

@@ -148,6 +148,15 @@ impl<T> FamilyEncodeResult<T> {
     }
 }
 
+/// A resolved address and its section-relative relocation representation.
+/// Both values refer to the same projected operand expression.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AbsoluteRelocation {
+    pub value: i64,
+    pub addend: i64,
+    pub target: String,
+}
+
 pub trait AssemblerContext {
     fn eval_expr(&self, expr: &Expr) -> Result<i64, String>;
     fn symbols(&self) -> &SymbolTable;
@@ -163,10 +172,9 @@ pub trait AssemblerContext {
     fn symbol_is_target_reference(&self, _name: &str) -> bool {
         false
     }
-    /// Resolve an expression to a portable absolute relocation addend and
-    /// target name. Backends that do not support relocatable output leave the
-    /// default implementation in place.
-    fn absolute_relocation(&self, _expr: &Expr) -> Result<Option<(i64, String)>, String> {
+    /// Resolve an operand expression to its full address, section-relative
+    /// addend and target. Backends without relocatable output use the default.
+    fn absolute_relocation(&self, _expr: &Expr) -> Result<Option<AbsoluteRelocation>, String> {
         Ok(None)
     }
     fn current_address(&self) -> u32;

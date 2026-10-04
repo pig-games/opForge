@@ -8960,6 +8960,7 @@ fn serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_fam
         value: PortableDeferredValue::Resolved(value),
         target_reference: true,
         relocation_target: None,
+        relocation_addend: None,
     };
 
     assert_eq!(
@@ -8994,6 +8995,7 @@ fn serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_fam
                 value: PortableDeferredValue::Resolved(4),
                 target_reference: false,
                 relocation_target: None,
+                relocation_addend: None,
             }],
             context,
         )
@@ -9009,6 +9011,7 @@ fn serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_fam
                 value: PortableDeferredValue::Unresolved,
                 target_reference: true,
                 relocation_target: None,
+                relocation_addend: None,
             }],
             context,
         )
@@ -9050,6 +9053,7 @@ fn serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_fam
                 value: PortableDeferredValue::Resolved(4),
                 target_reference: true,
                 relocation_target: Some("data".to_string()),
+                relocation_addend: None,
             }],
             context,
         )
@@ -9077,6 +9081,7 @@ fn serialized_fixup_programs_match_pc_relative_deferred_relocation_and_cross_fam
                     value: PortableDeferredValue::Unresolved,
                     target_reference: false,
                     relocation_target: None,
+                    relocation_addend: None,
                 }],
                 context
             )
@@ -9134,6 +9139,7 @@ fn serialized_fixup_v7_executes_neutral_aligned_and_range_map_projections() {
         value: PortableDeferredValue::Resolved(value),
         target_reference: true,
         relocation_target: None,
+        relocation_addend: None,
     };
     let execute =
         |program, value| model.execute_fixup_program(&resolved, program, &[target(value)], context);
@@ -9152,6 +9158,7 @@ fn serialized_fixup_v7_executes_neutral_aligned_and_range_map_projections() {
                 value: PortableDeferredValue::Unresolved,
                 target_reference: true,
                 relocation_target: None,
+                relocation_addend: None,
             }],
             context,
         )
@@ -10014,6 +10021,7 @@ fn serialized_all_family_adoptions_match_existing_scalar_record_and_encoding_ora
         value: PortableDeferredValue::Resolved(value),
         target_reference: true,
         relocation_target: None,
+        relocation_addend: None,
     };
     assert_eq!(
         model
@@ -10055,6 +10063,7 @@ fn serialized_all_family_adoptions_match_existing_scalar_record_and_encoding_ora
         value: PortableDeferredValue::Unresolved,
         target_reference: true,
         relocation_target: None,
+        relocation_addend: None,
     };
     for (pipeline, program, width) in [
         (&z80, intel8080_package_programs::FIXUP_Z80_RELATIVE_BYTE, 1),
@@ -13494,6 +13503,7 @@ fn absolute_fixup_provenance_preserves_missing_targets_in_mixed_steps() {
         value: PortableDeferredValue::Resolved(12),
         target_reference: true,
         relocation_target: target,
+        relocation_addend: None,
     };
     let result = crate::fixup_vm::execute_fixup_program(
         &program,

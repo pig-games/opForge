@@ -49,6 +49,7 @@ fn serialized_mos_abs32_fixup_matches_live_cross_section_long_oracle() {
                 )),
                 target_reference: true,
                 relocation_target: oracle.target_section_name().map(str::to_string),
+                relocation_addend: None,
             }],
             vm::fixup_vm::PortableFixupContext { position: 0x2000 },
         )
@@ -76,6 +77,7 @@ fn serialized_mos_abs32_fixup_matches_live_cross_section_long_oracle() {
                 )),
                 target_reference: false,
                 relocation_target: None,
+                relocation_addend: None,
             }],
             vm::fixup_vm::PortableFixupContext { position: 0x2000 },
         )

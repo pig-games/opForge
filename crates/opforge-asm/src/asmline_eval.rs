@@ -739,10 +739,16 @@ impl<'a> AssemblerContext for AsmLine<'a> {
     }
 
     fn symbol_is_absolute_constant(&self, name: &str) -> bool {
-        self.layout.absolute_constant_symbols.contains(name)
+        self.is_absolute_symbol(name)
     }
 
     fn symbol_is_target_reference(&self, name: &str) -> bool {
+        let Some(resolved) = self.resolve_symbol_name_for_relocation(name) else {
+            return false;
+        };
+        if let Some(provenance) = self.layout.symbol_relocations.get(&resolved) {
+            return !matches!(provenance, crate::state::SymbolRelocation::Absolute);
+        }
         self.lookup_scoped_entry(name).is_some_and(|entry| {
             !entry.rw
                 && !self
@@ -756,7 +762,10 @@ impl<'a> AssemblerContext for AsmLine<'a> {
         self.expr_is_absolute_constant_symbol_expr(expr)
     }
 
-    fn absolute_relocation(&self, expr: &Expr) -> Result<Option<(i64, String)>, String> {
+    fn absolute_relocation(
+        &self,
+        expr: &Expr,
+    ) -> Result<Option<registry::family::AbsoluteRelocation>, String> {
         let Some(target_section) = self.hunk_abs32_target_section_for_expr(expr) else {
             return Ok(None);
         };
@@ -784,7 +793,11 @@ impl<'a> AssemblerContext for AsmLine<'a> {
         let addend = value.checked_sub(base).ok_or_else(|| {
             "section relocation value underflows the target section base".to_string()
         })?;
-        Ok(Some((addend, target_section)))
+        Ok(Some(registry::family::AbsoluteRelocation {
+            value,
+            addend,
+            target: target_section,
+        }))
     }
 
     fn current_address(&self) -> u32 {

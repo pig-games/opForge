@@ -22019,12 +22019,22 @@ fn motorola68020_opforge_native_cli_shell_assembles_without_selector_stage_fallb
 #[test]
 fn motorola68020_opforge_native_cli_hunk_sections_have_relocation_evidence() {
     let asm_path = workspace_root().join("native/motorola68000/amigaos/main.asm");
-    let root_lines = expand_source_file(&asm_path, &[], &[], 64).expect("expand native CLI root");
+    let include_paths = example_include_paths(&asm_path);
+    let root_lines =
+        expand_source_file(&asm_path, &[], &include_paths, 64).expect("expand native CLI root");
     let module_paths = example_module_paths(&asm_path);
-    let graph = load_module_graph(&asm_path, root_lines.clone(), &[], &[], &module_paths, 64)
-        .expect("load native CLI module graph");
+    let graph = load_module_graph(
+        &asm_path,
+        root_lines.clone(),
+        &[],
+        &include_paths,
+        &module_paths,
+        64,
+    )
+    .expect("load native CLI module graph");
 
     let mut assembler = Assembler::new();
+    assembler.set_source_resources(graph.source_map.clone());
     assembler.set_runtime_line_router(Some(make_test_runtime_line_router(
         runtime_enabled_execution_mode(true),
     )));
@@ -22040,7 +22050,12 @@ fn motorola68020_opforge_native_cli_hunk_sections_have_relocation_evidence() {
     let pass2 = assembler
         .pass2(&graph.lines, &mut listing)
         .expect("assemble native CLI pass two");
-    assert_eq!(pass1.errors + pass2.errors, 0, "native CLI assembly errors");
+    assert_eq!(
+        pass1.errors + pass2.errors,
+        0,
+        "native CLI assembly errors: {:?}",
+        assembler.diagnostics
+    );
 
     let output = assembler
         .root_metadata

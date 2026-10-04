@@ -2717,3 +2717,65 @@ Batch cleanup completed after all native runs and builds: `make clean` reported
 4.6 GiB of generated outputs removed and retained the empty `target` directory.
 The qualified bundle and reports remain outside it. No remote push is authorized
 for this checkpoint.
+
+#### Hunk qualification recovery — host checks qualified; listing gap exposed
+
+Baseline `85f4e81f`: broad host Hunk checks reproduce 212 passes, 13 failures and
+54 ignored tests. Eleven failures occur before guest execution because the legacy
+CLI's checked-in canonical package differs from the current registry; the other
+two concern a missing telemetry include root and structural checks still pointing
+at an extracted fixup owner. Refresh only the identified package with the canonical
+generator, restore the intended test setup and ownership checks, and rerun the
+complete host Hunk selection. Preserve exact package equality, relocation checks
+and fresh-run native proof requirements. Do not interpret skipped emulator cases
+as native qualification. The compact runtime/package and its qualified A6000
+bundle should remain unchanged; if production behavior differs, investigate that
+separately and measure/qualify the affected implementation.
+
+The canonical generator refreshed only
+`native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm`, from 370,900
+to 372,302 bytes (+1,402). Only CSEM and CMSE differ; the other 22 chunks are
+byte-identical, and a second independent generation produces identical bytes.
+Regenerate this asset explicitly with:
+
+```sh
+cargo run -p cli --bin build_vm_package -- native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm
+```
+
+The graph test now receives its configured include roots and graph source-resource
+context, as production assembly does for active `.incbin`. Structural checks
+follow fixup execution into its shared owner and retain relocation, width, opaque
+target and capacity checks. All 81 duplicate freshness assertions now use one
+exact-byte comparison helper; mismatch diagnostics show sizes, the first differing
+offset and the regeneration command instead of dumping the package. Expected
+artifacts and fresh-run safeguards are unchanged. Independent review confirms
+the mechanical substitutions and restored ownership/setup.
+
+`cargo test -p asm --lib hunk -- --test-threads=1` now passes all 225 enabled host
+tests; 54 optional tests are ignored. This is broader host qualification, not
+proof that skipped native cases ran. Formatting, affected-library Clippy and
+deterministic native guards pass. Test-target Clippy reports 22 warnings in
+untouched test code; no whole-suite or all-target Clippy qualification is claimed.
+
+Fresh FS-UAE legacy CLI checks with the current canonical package, on 68020/74 MiB,
+exit zero and match complete live Rust Hunk artifacts for cross-section absolute
+relocation and shared `.long`. A simultaneous Hunk/S-record/listing case completes
+with guest exit zero and exact Hunk/S-record bytes, but its listing mismatches
+(412 native bytes versus 515 Rust bytes). The comparison remains failing. Rust's
+source graph inserts implicit `.module input` / `.endmodule` lines and lists them;
+legacy native lists the original physical lines. Listing policy needs discussion
+before changing either output contract; no filtered oracle or relaxed comparison
+was introduced. That gap is distinct from the repaired host setup failures.
+
+No compact native source or prepared package changed. All 95 native inputs in
+the `85f4e81f` qualified compact self-host bundle still match the workspace, and
+the refreshed legacy asset is outside that source closure. Its full self-host
+proof and A6000 bundle remain current; no repeated compact timing or fresh
+hardware run is claimed. Package-refresh details and logs are retained outside
+the build cache under `/tmp/opforge-hunk-package-refresh.json` and
+`/tmp/opforge-hunk-qualification-*`.
+
+Workflow checks pass with the existing advisory architecture findings. After all
+builds and native runs finished, `make clean` removed 3.4 GiB of generated cache;
+the empty `target` directory remains. Reports and qualified bundles remain outside
+that cache.

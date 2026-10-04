@@ -187,6 +187,26 @@ fn fs_uae_native_cli_smoke_lock() -> &'static FsUaeNativeCliSmokeLock {
     LOCK.get_or_init(|| FsUaeNativeCliSmokeLock(std::sync::Mutex::new(())))
 }
 
+fn assert_current_cli_package(package: &[u8]) {
+    let current = build_hierarchy_package_from_registry(&default_registry())
+        .expect("build unmodified Rust package vector");
+    if package == current {
+        return;
+    }
+    let first_difference = package
+        .iter()
+        .zip(&current)
+        .position(|(stored, generated)| stored != generated)
+        .unwrap_or_else(|| package.len().min(current.len()));
+    assert!(
+        package == current,
+        "checked-in opforge CLI package is stale: stored {} bytes, current registry {} bytes, first differing byte offset {}; regenerate with `cargo run -p cli --bin build_vm_package -- native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm`",
+        package.len(),
+        current.len(),
+        first_difference,
+    );
+}
+
 #[derive(Clone, Copy)]
 enum NativeCliSchemaArtifactLocation {
     CaseWork,
@@ -13608,11 +13628,7 @@ fn external_fs_uae_native_m68020_nested_operand_record_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 22 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let model = load_opasm_model_from_package_bytes(package.as_slice());
     let pipeline = model
         .resolve_pipeline("m68020", Some("motorola68k"))
@@ -15336,11 +15352,7 @@ fn external_fs_uae_native_m68020_expr_path_projection_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 22 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item22-directed-expr-path",
         cpu_override: "68020",
@@ -15414,11 +15426,7 @@ fn external_fs_uae_native_m68020_nonidentity_scale_rejection_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 22 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let commands = cases_with_diagnostics
         .iter()
         .map(|(_, cpu, _, _)| {
@@ -15489,11 +15497,7 @@ fn external_fs_uae_native_m68020_call_arg_register_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 23 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item23-directed-call-arg-registers",
         cpu_override: "68020",
@@ -15560,11 +15564,7 @@ fn external_fs_uae_native_m68020_distinct_register_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 23 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
             name: "item23-directed-distinct-register-positive",
@@ -15626,11 +15626,7 @@ fn external_fs_uae_native_m68020_later_integer_group_a_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 23 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let positive_source = concat!(
         "        LINK.L A6,#-8\n",
@@ -15809,11 +15805,7 @@ fn external_fs_uae_native_m68020_call_arg_value_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 24 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item24-directed-call-arg-value",
         cpu_override: "68020",
@@ -15874,11 +15866,7 @@ fn external_fs_uae_native_m68020_call_arg_value_target_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 24 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item24-directed-call-arg-value-target",
         cpu_override: "68020",
@@ -15932,11 +15920,7 @@ fn external_fs_uae_native_m68020_call_arg_member_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 24 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item24-directed-call-arg-member",
         cpu_override: "68020",
@@ -15992,11 +15976,7 @@ fn external_fs_uae_native_m68020_call_arg_member_target_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 24 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item24-directed-call-arg-member-target",
         cpu_override: "68020",
@@ -16052,11 +16032,7 @@ fn external_fs_uae_native_m68020_call_arg_indirect_tuple_register_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 24 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item24-directed-call-arg-indirect-tuple-register",
         cpu_override: "68020",
@@ -16100,11 +16076,7 @@ fn external_fs_uae_native_m68020_bitfield_insert_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 24 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item24-directed-bitfield-insert",
         cpu_override: "68020",
@@ -16165,11 +16137,7 @@ fn external_fs_uae_native_m68020_pack_mnemonic_routing_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 24 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
             name: "item24-directed-pack-m68020",
@@ -16233,11 +16201,7 @@ fn external_fs_uae_native_m68020_callm_count_diagnostic_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 24 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item24-directed-callm-count",
         cpu_override: "68020",
@@ -16278,11 +16242,7 @@ fn external_fs_uae_native_m68k_runtime_directive_state_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 25 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let definitions = [
         (
             "item25-fpu-68881",
@@ -16494,11 +16454,7 @@ fn external_fs_uae_native_m68030_m68040_integer_mmu_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 26 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let positive_definitions = vec![
         (
@@ -17408,11 +17364,7 @@ fn external_fs_uae_native_m68881_m68882_core_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 27 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let fixture_definitions = [
         (
@@ -17693,11 +17645,7 @@ fn external_fs_uae_native_m68881_m68882_extended_math_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 28 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let fixture = fs::read_to_string(
         workspace_root().join("examples/motorola68000/68020_fpu_instruction_catalog.asm"),
     )
@@ -17952,11 +17900,7 @@ fn external_fs_uae_native_m68040_integrated_fpu_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 29 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let positive_source = fs::read_to_string(
         workspace_root().join("examples/motorola68000/68040_integrated_fpu.asm"),
     )
@@ -18311,11 +18255,7 @@ fn external_fs_uae_native_m68080_integer_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 30 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let positive_definitions = [
         (
@@ -18460,11 +18400,7 @@ fn external_fs_uae_native_m68080_extended_short_v7_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 30 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source = concat!(
         ".cpu 68080\n",
         ".org $100\n",
@@ -18528,11 +18464,7 @@ fn external_fs_uae_native_m68040_b_register_rejection_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 30 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source = "        ADDQ.L #1,B0\n";
     let diagnostic = live_rust_cpu_name_diagnostic(
         source,
@@ -18589,11 +18521,7 @@ fn external_fs_uae_native_m68080_integer_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 30 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let positive_definitions = [
         (
@@ -18774,11 +18702,7 @@ fn external_fs_uae_native_m68080_ammx_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 31 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let positive_definitions = [
         (
@@ -18949,11 +18873,7 @@ fn external_fs_uae_native_m68080_ammx_tex24_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 31 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source = concat!(
         ".cpu 68080\n",
         ".org 0\n",
@@ -19012,11 +18932,7 @@ fn external_fs_uae_native_m68080_ammx_sequence_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 31 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let positive_source = concat!(
         ".cpu 68080\n",
@@ -19142,11 +19058,7 @@ fn external_fs_uae_native_m68080_ammx_call_arg_projection_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 31 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source = concat!(
         ".cpu 68080\n",
         ".org 0\n",
@@ -19207,11 +19119,7 @@ fn external_fs_uae_native_m68080_ammx_group_projection_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 31 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source = concat!(
         ".cpu 68080\n",
         ".org 0\n",
@@ -19273,11 +19181,7 @@ fn external_fs_uae_native_m68080_ammx_combined_projection_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 31 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source = concat!(".cpu 68080\n", ".org 0\n", "        MINTERM D0-D3,D4\n",);
     let oracle = live_rust_cpu_name_oracle(
         source,
@@ -19334,11 +19238,7 @@ fn external_fs_uae_native_m68080_ammx_pair_projection_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 31 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source = concat!(
         ".cpu 68080\n",
         ".org 0\n",
@@ -19397,11 +19297,7 @@ fn external_fs_uae_native_m68080_ammx_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 31 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let positive_definitions = [
         (
@@ -19615,11 +19511,7 @@ fn external_fs_uae_native_m68080_fpu_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 32 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source =
         fs::read_to_string(workspace_root().join("examples/motorola68000/68080_fpu_surface.asm"))
             .expect("read exact m68080 FPU fixture");
@@ -19683,11 +19575,7 @@ fn external_fs_uae_native_m68080_fpu_long_counter_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 32 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source = concat!(
         ".cpu 68080\n",
         ".fpu 68080\n",
@@ -19752,11 +19640,7 @@ fn external_fs_uae_native_m68080_fpu_state_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 32 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let default_source = concat!(
         ".cpu 68080\n",
@@ -19869,11 +19753,7 @@ fn external_fs_uae_native_m68080_fpu_illegal_pairing_directed_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 32 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let source = concat!(".cpu 68080\n", ".fpu 68881\n", ".org 0\n", "        FNOP\n",);
     let rust_diagnostic = live_rust_cpu_name_diagnostic(
         source,
@@ -19925,11 +19805,7 @@ fn external_fs_uae_native_m68080_fpu_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 32 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let positive_definitions = [
         (
@@ -20138,11 +20014,7 @@ fn external_fs_uae_native_m68020_later_integer_group_b_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 24 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let fixture_source = fs::read_to_string(
         workspace_root().join("examples/motorola68000/68020_later_families.asm"),
@@ -20365,11 +20237,7 @@ fn external_fs_uae_native_m68020_full_extension_addressing_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 22 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let fixture = fs::read_to_string(
         workspace_root().join("examples/motorola68000/68020_full_extension_addressing.asm"),
     )
@@ -20578,11 +20446,7 @@ fn external_fs_uae_native_m68010_named_register_diagnostic_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 21 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item21-m68010-named-register-diagnostic",
         cpu_override: "68020",
@@ -20623,11 +20487,7 @@ fn external_fs_uae_native_m68010_delta_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 21 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let fixture_source =
         fs::read_to_string(workspace_root().join("examples/motorola68000/68010_delta.asm"))
@@ -20781,11 +20641,7 @@ fn external_fs_uae_native_m68010_baseline_rejection_diagnostic_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 21 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
 
     let definitions = [
         ("item21-directed-m68000-reject-bkpt", "        BKPT #3\n"),
@@ -20872,11 +20728,7 @@ fn external_fs_uae_native_m68010_moves_rejection_diagnostic_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 21 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item21-directed-m68000-reject-moves-only",
         cpu_override: "68020",
@@ -21014,11 +20866,7 @@ fn external_fs_uae_native_m68000_single_register_mask_localization() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 20 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item20-movem-single-register-mask",
         cpu_override: "68020",
@@ -21073,11 +20921,7 @@ fn external_fs_uae_native_m68000_movem_duplicate_register_diagnostic_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 20 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item20-movem-duplicate-register",
         cpu_override: "68020",
@@ -21123,11 +20967,7 @@ fn external_fs_uae_native_m68000_identity_scale_alias_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 20 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item20-identity-scale-alias",
         cpu_override: "68020",
@@ -21179,11 +21019,7 @@ fn external_fs_uae_native_m68000_trap_value_diagnostic_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 20 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item20-trap-value-diagnostic",
         cpu_override: "68020",
@@ -21545,11 +21381,7 @@ fn external_fs_uae_native_m68000_value_member_projection_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 18 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item18-value-member-projection",
         cpu_override: "68020",
@@ -21642,11 +21474,7 @@ fn external_fs_uae_native_m68000_package_shape_regression_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 18 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = definitions
         .iter()
         .zip(rust_oracles.iter())
@@ -21715,11 +21543,7 @@ fn external_fs_uae_native_m68000_semantic_branch_word_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 18 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item18-semantic-branch-word",
         cpu_override: "68020",
@@ -21767,11 +21591,7 @@ fn external_fs_uae_native_m68000_semantic_diagnostic_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 18 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let definitions = [
         ("item18-diagnostic-addi", "        ADDI.W #1,A0\n"),
         ("item18-diagnostic-tst", "        TST.W A0\n"),
@@ -21845,11 +21665,7 @@ fn external_fs_uae_native_m68000_value_normalize_window_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 18 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item18-value-normalize-window",
         cpu_override: "68020",
@@ -22060,11 +21876,7 @@ fn external_fs_uae_native_m68020_branch_layout_convergence_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 19 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item19-branch-layout-convergence",
         cpu_override: "68020",
@@ -22268,11 +22080,7 @@ fn external_fs_uae_native_m68000_branch_byte_range_diagnostic_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 19 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item19-68000-explicit-byte-range-directed",
         cpu_override: "68020",
@@ -23758,11 +23566,7 @@ fn external_fs_uae_native_item37_68040_reference_timeout_closure_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-wrapper-68040-integrated-fpu-timeout-closure",
         cpu_override: "68020",
@@ -23831,11 +23635,7 @@ fn external_fs_uae_native_item34_pc_relative_fixup_closure_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 34 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item34-pc-relative-fixup-closure",
         cpu_override: "68020",
@@ -23894,11 +23694,7 @@ fn external_fs_uae_native_item34_bounded_register_closure_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 34 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item34-bounded-register-closure",
         cpu_override: "68020",
@@ -23975,11 +23771,7 @@ fn external_fs_uae_native_item35_forward_extended_short_fixup_closure_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 35 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let Item34ReferenceOracle::Binary(oracle) = &cases[0].oracle else {
         panic!("Item 35 closure source must have a binary Rust oracle");
     };
@@ -24047,11 +23839,7 @@ fn external_fs_uae_native_item35_implicit_code_hunk_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 35 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item35-implicit-code-hunk",
         cpu_override: "68020",
@@ -24138,11 +23926,7 @@ fn external_fs_uae_native_item35_ordered_segment_hunk_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 35 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item35-ordered-segment-hunk",
         cpu_override: "68020",
@@ -24235,11 +24019,7 @@ fn external_fs_uae_native_hunk_segment_surface_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 35 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item35-executable-segment-hunk",
         cpu_override: "68020",
@@ -24334,11 +24114,7 @@ fn external_fs_uae_native_item36_cross_section_abs32_hunk_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 36 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item36-cross-section-abs32",
         cpu_override: "68020",
@@ -24420,11 +24196,7 @@ fn external_fs_uae_native_item36_implicit_code_abs32_hunk_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 36 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item36-implicit-code-abs32",
         cpu_override: "68020",
@@ -24517,11 +24289,7 @@ fn external_fs_uae_native_item36_multi_group_abs32_hunk_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 36 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item36-multi-group-abs32",
         cpu_override: "68020",
@@ -24615,11 +24383,7 @@ fn external_fs_uae_native_item36_directive_long_hunk_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 36 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item36-directive-long",
         cpu_override: "68020",
@@ -24713,11 +24477,7 @@ fn external_fs_uae_native_item36_emit_long_hunk_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 36 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item36-emit-long",
         cpu_override: "68020",
@@ -24808,11 +24568,7 @@ fn external_fs_uae_native_item36_empty_target_index_hunk_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 36 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item36-empty-target-index",
         cpu_override: "68020",
@@ -24903,11 +24659,7 @@ fn external_fs_uae_native_item36_symbolic_long_acceptance_matrix_hunk_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 36 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item36-symbolic-long-acceptance",
         cpu_override: "68020",
@@ -25033,11 +24785,7 @@ fn external_fs_uae_native_item36_symbolic_long_rejection_diagnostics_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 36 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = definitions
         .iter()
         .zip(diagnostics.iter())
@@ -25118,11 +24866,7 @@ fn external_fs_uae_native_item36_flat_bin_fixup_isolation_closure_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 36 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item36-flat-bin-fixup-isolation",
         cpu_override: "68020",
@@ -25185,11 +24929,7 @@ fn external_fs_uae_native_item37_s1_s9_contiguous_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-s1-s9-contiguous",
         cpu_override: "68020",
@@ -25252,11 +24992,7 @@ fn external_fs_uae_native_item37_s2_s8_wide_go_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-s2-s8-wide-go",
         cpu_override: "68020",
@@ -25330,11 +25066,7 @@ fn external_fs_uae_native_item37_s3_s7_line_limit_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-s3-s7-line-limit",
         cpu_override: "68020",
@@ -25392,11 +25124,7 @@ fn external_fs_uae_native_item37_sparse_gap_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-sparse-gap",
         cpu_override: "68020",
@@ -25473,11 +25201,7 @@ fn external_fs_uae_native_item37_simultaneous_hunk_srec_listing_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-simultaneous-hunk-srec-listing",
         cpu_override: "68020",
@@ -25546,11 +25270,7 @@ fn external_fs_uae_native_item37_omitted_srec_path_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-omitted-srec-path",
         cpu_override: "68020",
@@ -25623,11 +25343,7 @@ fn external_fs_uae_native_item37_go_failure_diagnostic_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [
         crate::fs_uae_smoke::OpforgeNativeCliParityCase {
             name: "item37-invalid-go",
@@ -25721,11 +25437,7 @@ fn external_fs_uae_native_item37_source_srec_rejection_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-source-srec-rejection",
         cpu_override: "68020",
@@ -25776,11 +25488,7 @@ fn external_fs_uae_native_item37_empty_image_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-empty-image",
         cpu_override: "68020",
@@ -25852,11 +25560,7 @@ fn external_fs_uae_native_item37_sorted_last_write_wins_parity() {
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"),
     )
     .expect("read exact Item 37 package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliParityCase {
         name: "item37-sorted-last-write-wins",
         cpu_override: "68020",
@@ -26942,11 +26646,7 @@ fn external_fs_uae_native_opforge_full_product_artifact_parity() {
 
     let package = fs::read(amigaos.join("opforge-cli/opforge_cli_package.opasm"))
         .expect("read exact full-product package");
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let rust_case_dir = create_temp_dir("item38-full-product-rust-oracle");
     let _rust_cleanup = NativeCpuOracleDir(rust_case_dir.clone());
     let rust_hunk_path = rust_case_dir.join("build/opforge_cli");
@@ -28346,11 +28046,7 @@ fn external_fs_uae_native_opforge_self_host_generation_one_parity() {
         .expect("self-host tree contains the product package")
         .bytes
         .clone();
-    assert_eq!(
-        package,
-        build_hierarchy_package_from_registry(&default_registry())
-            .expect("build unmodified Rust package vector")
-    );
+    assert_current_cli_package(&package);
     let package_digest = crate::fs_uae_smoke::opforge_self_host_package_digest(&package);
 
     let rust_case_dir = create_temp_dir("item39-self-host-generation-one-rust-oracle");

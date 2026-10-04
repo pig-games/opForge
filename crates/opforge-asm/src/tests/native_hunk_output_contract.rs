@@ -120,23 +120,66 @@ fn native_item36_hunk_abs32_transport_contract() {
     let native_fixup = fs::read_to_string(
         root.join("native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm"),
     )
-    .expect("read native fixup transport");
+    .expect("read native fixup service");
+    let native_execution = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/tkpkg/tkpkg_encoding_execution.asm"),
+    )
+    .expect("read shared native fixup execution");
+    // The service projects its buffers into the shared executor. Keep the
+    // relocation/width/target and bounds checks with their current owner.
     assert!(source_contains_in_order(
-        &native_fixup,
-        &["cmpi.w #1, 20(sp)", "tkpkgRecordOutputFixupV1"]
+        &native_execution,
+        &[
+            "fixupTransformReady",
+            "cmpi.w #1, 20(sp)",
+            "bne.w fixupRecordReady",
+            "cmpi.w #$ffff, d5",
+            "move.w d2, d1",
+            "move.w d5, d2",
+            "bsr.w recordFixup",
+            "move.w 2(sp), d2",
+        ]
     ));
     assert!(source_contains_in_order(
-        &native_fixup,
-        &["tkpkgSemanticLoadFixupInputV4", "cmpi.w #7, d2"]
+        &native_execution,
+        &["loadFixupInput\t.block", "cmpi.w #7, d2", "andi.w #3, d6"]
     ));
     assert!(source_contains_in_order(
         &native_fixup,
         &[
             "bsr.w tkpkgNormalizeOutputFixupLengthV1",
-            "tkpkgNormalizeOutputFixupLengthV1",
-            "lea buffers.SemanticOutputFixupOffsets, a0",
-            "lea buffers.SemanticOutputFixupWidths, a0",
-            "cmpi.l #buffers.LAST_ERROR_BUFFER_CAPACITY, d4",
+            "jsr execution.semantic",
+            "tkpkgNormalizeOutputFixupLengthV1\t.block",
+            "jsr execution.normalizeFixupLength",
+            "move.l #buffers.SemanticOutputFixupOffsets, execution.Context.FixupOffsets(a6)",
+            "move.l #buffers.SemanticOutputFixupWidths, execution.Context.FixupWidths(a6)",
+            "move.l #buffers.SemanticOutputFixupTargetSymbolIndices, execution.Context.FixupTargets(a6)",
+            "move.l #buffers.LAST_ERROR_BUFFER_CAPACITY, execution.Context.Capacity(a6)",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &native_execution,
+        &[
+            "recordFixup\t.block",
+            "movea.l Context.FixupOffsets(a6), a0",
+            "move.l d0, 0(a0, d6.l)",
+            "movea.l Context.FixupAddends(a6), a0",
+            "move.l d3, 0(a0, d6.l)",
+            "movea.l Context.FixupWidths(a6), a0",
+            "move.w d1, 0(a0, d6.w)",
+            "movea.l Context.FixupTargets(a6), a0",
+            "move.w d2, 0(a0, d6.w)",
+        ]
+    ));
+    assert!(source_contains_in_order(
+        &native_execution,
+        &[
+            "normalizeFixupLength\t.block",
+            "movea.l Context.FixupOffsets(a6), a0",
+            "movea.l Context.FixupWidths(a6), a0",
+            "add.l d5, d4",
+            "bcs.w outputFixupExtentFail",
+            "cmp.l Context.Capacity(a6), d4",
             "move.w d4, d1",
         ]
     ));

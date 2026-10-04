@@ -407,12 +407,13 @@ done
 	.bend  ; scanExpression
 	.pub
 
-; A0=prepared operand tokens, A1=end, A2=Context. The same statuses as
-; expression are returned; D1.W is section-reference count, capped at two.
+; A0=prepared operand tokens, A1=end, A2=Context. Conservatively require proof
+; for every nonabsolute target, including an alias with missing section provenance.
+; The same statuses as targets are returned; D1.W is target count, capped at two.
 ; A0 advances to the end. Other registers are preserved.
 tokens	.block
 	movem.l d2-d7/a1-a6, -(sp)
-	moveq #0, d7
+	moveq #1, d7
 	movea.l a1, a4
 	moveq #STATUS_CLEAR, d5
 	moveq #0, d6
@@ -448,7 +449,7 @@ wrapped
 	bra.w next
 wrappedReferences
 	movea.l (sp)+, a0
-	jsr expression
+	jsr targets
 	cmpi.l #STATUS_BAD, d0
 	beq.w bad
 	tst.l d0
@@ -470,6 +471,10 @@ name
 	move.b (a0)+, d2
 	or.w d2, d1
 	tst.b (a0)+  ; qualifier is not part of the numeric ID
+	; Package names are reserved operand syntax, not source scalar targets.
+	movea.l pkg.Context.Package(a2), a3
+	cmp.w pkg.Header.NameCount(a3), d1
+	blo.w next
 	bsr.w sectionId
 	bne.w bad
 	bra.w next

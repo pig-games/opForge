@@ -143,27 +143,242 @@ fn address_snapshot() -> String {
     source("n .var 1\n.section data,kind=data\npayload\n.long n\nsnapshot .const payload+n\n.endsection\n.section code,kind=code\n.long snapshot\n.endsection\n", "code,data")
 }
 
-#[test]
-fn compact_hunk_address_snapshot_rust_oracle() {
-    let dir = create_temp_dir("hunk-address-snapshot-oracle");
-    let _cleanup = Cleanup(dir.clone());
-    let bytes = project_oracle(&dir, &address_snapshot(), true, &[]).unwrap();
-    let segments = hunk::segments(&bytes).unwrap();
-    assert_eq!(segments[0].payload, 1u32.to_be_bytes());
-    assert_eq!(segments[0].relocations, [(0, 1)]);
+fn address_alias_cases() -> Vec<(&'static str, String)> {
+    vec![
+        ("address-snapshot", address_snapshot()),
+        (
+            "address-snapshot-mutable-addend",
+            source(
+                "n .var 1\n.section data,kind=data\npayload .long 0\nsnapshot .const payload+n\nalias .const snapshot+2\nn .set 9\n.long alias\n.endsection\n.section code,kind=code\n.long snapshot,alias,n\n.endsection\n",
+                "code,data",
+            ),
+        ),
+        (
+            "address-alias-cancellation",
+            source(
+                ".section data,kind=data\nbase .long 0\nend .long 0\nleft .const base+1\nright .const end+3\n.long right-left,left-right\n.endsection\n.section code,kind=code\n.long right-left,left-right\n.endsection\n",
+                "code,data",
+            ),
+        ),
+        (
+            "address-alias-forward",
+            source(
+                ".section code,kind=code\nalias .const later+3\n.long alias\n.endsection\n.section data,kind=data\n.long 0\nlater .long 7\n.endsection\n",
+                "code,data",
+            ),
+        ),
+        (
+            "address-snapshot-pc",
+            source(
+                ".section data,kind=data\n.long 0\nsnapshot .const $+3\n.long 0\n.long snapshot\n.endsection\n.section code,kind=code\n.long snapshot\n.endsection\n",
+                "code,data",
+            ),
+        ),
+        (
+            "address-alias-positional-instruction",
+            source(
+                ".section code,kind=code\nalias .const later\n bra.w alias\n.long 0\nlater rts\n.endsection\n",
+                "code",
+            ),
+        ),
+        (
+            "address-alias-instructions",
+            source(
+                ".section data,kind=data\n.long 0\npayload .long 7\nalias .const payload\n.long alias\n.endsection\n.section code,kind=code\n move.l #alias,d0\n lea alias,a0\n.endsection\n",
+                "code,data",
+            ),
+        ),
+    ]
 }
 
 #[test]
-#[ignore = "fresh native address-derived snapshots retain the unsupported alias boundary"]
+fn compact_hunk_address_alias_rust_oracles() {
+    let dir = create_temp_dir("hunk-address-alias-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (name, source) in address_alias_cases() {
+        let bytes = project_oracle(&dir, &source, true, &[])
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        let segments = hunk::segments(&bytes).unwrap();
+        let words = |values: &[u32]| -> Vec<u8> {
+            values.iter().flat_map(|word| word.to_be_bytes()).collect()
+        };
+        let expected = match name {
+            "address-snapshot" => vec![(words(&[1]), vec![(0, 1)]), (words(&[1]), vec![])],
+            "address-snapshot-mutable-addend" => vec![
+                (words(&[1, 3, 9]), vec![(0, 1), (4, 1)]),
+                (words(&[0, 3]), vec![(4, 1)]),
+            ],
+            "address-alias-cancellation" => vec![
+                (words(&[6, (-6i32) as u32]), vec![]),
+                (words(&[0, 0, 6, (-6i32) as u32]), vec![]),
+            ],
+            "address-alias-forward" => vec![(words(&[7]), vec![(0, 1)]), (words(&[0, 7]), vec![])],
+            // The snapshot captures DATA offset 4, before either following .long.
+            "address-snapshot-pc" => vec![
+                (words(&[7]), vec![(0, 1)]),
+                (words(&[0, 0, 7]), vec![(8, 1)]),
+            ],
+            "address-alias-positional-instruction" => {
+                vec![(vec![0x60, 0, 0, 6, 0, 0, 0, 0, 0x4e, 0x75, 0, 0], vec![])]
+            }
+            "address-alias-instructions" => vec![
+                (
+                    vec![0x20, 0x3c, 0, 0, 0, 4, 0x41, 0xf9, 0, 0, 0, 4],
+                    vec![(2, 1), (8, 1)],
+                ),
+                (words(&[0, 7, 4]), vec![(8, 1)]),
+            ],
+            _ => unreachable!(),
+        };
+        assert_eq!(segments.len(), expected.len(), "{name}");
+        for (index, (segment, (payload, relocations))) in segments.iter().zip(expected).enumerate()
+        {
+            assert_eq!(segment.payload, payload, "{name}/{index} payload");
+            assert_eq!(
+                segment.relocations, relocations,
+                "{name}/{index} relocations"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE address alias value and relocation comparison"]
 fn compact_hunk_address_snapshot_fs_uae() {
     native_expected_cases(
-        vec![(
-            "address-snapshot".into(),
-            "m68020",
-            address_snapshot(),
-            NativeExpected::RejectHunk,
-        )],
-        "OPFORGE_HUNK_TRAVERSAL_REPORT",
+        address_alias_cases()
+            .into_iter()
+            .map(|(name, source)| (name.into(), "m68020", source, NativeExpected::MatchHunk))
+            .collect(),
+        "OPFORGE_HUNK_ADDRESS_ALIAS_REPORT",
+    );
+}
+
+fn invalid_address_alias_cases() -> Vec<(&'static str, String)> {
+    let mut cases: Vec<_> = [
+        ("address-alias-multiply", "alias*2"),
+        ("address-alias-add-address", "alias+payload"),
+        ("address-alias-cross-section-subtract", "alias-entry"),
+    ]
+    .map(|(name, expression)| {
+        (
+            name,
+            source(
+                &format!(".section data,kind=data\npayload .long 0\nalias .const payload\n.endsection\n.section code,kind=code\nentry .long {expression}\n.endsection\n"),
+                "code,data",
+            ),
+        )
+    })
+    .into();
+    cases.extend([
+        ("address-alias-hidden-multiply", "bad .const payload*2\n", "bad"),
+        ("address-alias-hidden-multiply-chain", "bad .const payload*2\nalias .const bad\n", "alias"),
+        ("address-alias-hidden-multiply-cancellation", "bad .const payload*2\nalias .const bad\n", "alias-alias"),
+    ].map(|(name, declarations, expression)| {
+        (
+            name,
+            source(
+                &format!(".section data,kind=data\npayload .long 0\n{declarations}.endsection\n.section code,kind=code\n.long {expression}\n.endsection\n"),
+                "code,data",
+            ),
+        )
+    }));
+    cases
+}
+
+fn invalid_address_alias_instruction_cases() -> Vec<(&'static str, String)> {
+    [
+        ("address-alias-hidden-multiply-immediate", " move.l #alias,d0"),
+    ]
+    .map(|(name, instruction)| {
+        (
+            name,
+            source(
+                &format!(".section data,kind=data\npayload .long 0\nbad .const payload*2\nalias .const bad\n.endsection\n.section code,kind=code\n{instruction}\n.endsection\n"),
+                "code,data",
+            ),
+        )
+    })
+    .into()
+}
+
+#[test]
+fn compact_hunk_address_alias_invalid_rust_oracles() {
+    let dir = create_temp_dir("hunk-address-alias-invalid-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (name, source) in invalid_address_alias_cases()
+        .into_iter()
+        .chain(invalid_address_alias_instruction_cases())
+    {
+        assert!(
+            project_oracle(&dir, &source, true, &[]).is_err(),
+            "{name} must be rejected"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE invalid address arithmetic through aliases"]
+fn compact_hunk_address_alias_invalid_fs_uae() {
+    native_expected_cases(
+        invalid_address_alias_cases()
+            .into_iter()
+            .chain(invalid_address_alias_instruction_cases())
+            .map(|(name, source)| {
+                (
+                    name.into(),
+                    "m68020",
+                    source,
+                    NativeExpected::RejectInvalidHunk,
+                )
+            })
+            .collect(),
+        "OPFORGE_HUNK_ADDRESS_ALIAS_REPORT",
+    );
+}
+
+fn scalar_snapshot_measurement() -> String {
+    let mut body = String::from("n .var 1\n");
+    for index in 0..128 {
+        body.push_str(&format!(
+            ".section data,kind=data\nsnap{index} .const n\nn .set n+1\n.long snap{index},n\n.endsection\n.section code,kind=code\n.long n\n.endsection\n"
+        ));
+    }
+    source(&body, "code,data")
+}
+
+#[test]
+fn compact_hunk_scalar_snapshot_measurement_rust_oracle() {
+    let dir = create_temp_dir("hunk-scalar-snapshot-measurement-oracle");
+    let _cleanup = Cleanup(dir.clone());
+    let bytes = project_oracle(&dir, &scalar_snapshot_measurement(), true, &[]).unwrap();
+    let segments = hunk::segments(&bytes).unwrap();
+    let code: Vec<u8> = (2u32..=129).flat_map(u32::to_be_bytes).collect();
+    let data: Vec<u8> = (1u32..=128)
+        .flat_map(|value| [value, value + 1])
+        .flat_map(u32::to_be_bytes)
+        .collect();
+    assert_eq!(segments.len(), 2);
+    assert_eq!(segments[0].payload, code);
+    assert_eq!(segments[1].payload, data);
+    assert!(segments.iter().all(|part| part.relocations.is_empty()));
+}
+
+#[test]
+#[ignore = "two fresh release timings for identical mutable scalar snapshot Hunk input"]
+fn compact_hunk_scalar_snapshot_measurement_fs_uae() {
+    native_expected_cases(
+        (0..2)
+            .map(|round| {
+                (
+                    format!("scalar-snapshots/{round}"),
+                    "m68020",
+                    scalar_snapshot_measurement(),
+                    NativeExpected::MatchHunk,
+                )
+            })
+            .collect(),
+        "OPFORGE_HUNK_ADDRESS_ALIAS_REPORT",
     );
 }
 

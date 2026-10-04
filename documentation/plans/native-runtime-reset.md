@@ -1002,6 +1002,73 @@ instrumentation safety, native test ownership, fresh-proof and benchmark-selecto
 guards pass. The separate mapped-Hunk positive probe still fails as documented;
 this is not broad corpus or self-host qualification.
 
+#### Native readonly address snapshots and aliases
+
+Readonly statement execution now belongs to `binary_constants.asm`; the assembly
+traversal delegates to it. The helper captures a numeric value and its section
+proof together in the existing Values/Defined/SectionIds arrays. Address aliases
+and `$` snapshots retain the declaration's section; absolute mutable-derived
+snapshots remain numeric. Alias use does not reparse or reevaluate a definition.
+Same-section differences cancel, while unsupported arithmetic retains no section
+proof and cannot become absolute through another assignment or `alias-alias`.
+
+An unresolved pass-one readonly value remains unavailable. Pass two must resolve
+it before use; the supported forward-label case declares the alias before its
+use. Known immutable layout values still have to remain stable, while snapshots
+with mutable ancestry refresh at their declaration. This preserves the existing
+two-pass boundary: unresolved alias chains/use before an unresolved declaration
+and variable-size convergence are not established by this slice.
+
+Instruction reference counting now includes nonabsolute aliases with missing
+proof, for raw and compiled operands. Otherwise an unsupported alias could vanish
+from the requirement for package-proven fixups. Reserved package names such as
+registers are excluded; CPU semantics stay in package projections. The packed
+readonly declaration marker has a shared symbolic name, with no format change.
+
+Seven positive Rust/native cases cover captured address values, frozen mutable
+addends, chained aliases, same-section cancellation, a later label, a `$` snapshot,
+absolute instruction fixups and a same-section positional branch. The instruction
+cases were rerun on the final reference scanner. Seven rejecting cases include
+hidden unsupported assignments and an immediate instruction use; the latter also
+was rerun after the scanner review. Four existing Hunk controls pass on the final
+image: forward scalar snapshot, outside-section PC, mixed snapshots/relocations/BSS
+and nested/zero loops. Three 6502 flat-output checks also pass on that exact image:
+snapshot update, derived snapshot and unresolved snapshot. The symbolic-marker
+cleanup retains the same release image fingerprint. Focused Rust checks pass
+13 tests (11 native tests ignored).
+Independent review found and resolved the wrapped-operand/package-name counting
+issues; the final review found no further actionable issue.
+
+The release image grows from 452,936 bytes at `cdcd9f01` to 453,004 (+68),
+`fnv1a64:fed6d4afd1975c82`. Symbol slots, context and persistent storage are
+unchanged. The extracted helper's register-preserving call adds 60 bytes of bounded
+transient stack at that boundary. This is not a peak-memory measurement. The
+m68020 package remains 321,532 bytes.
+
+The 128-fragment scalar-snapshot workload exercises declarations, mutation,
+reopened sections and data emission on both implementations. Fresh uninstrumented
+FS-UAE 68020/10 MiB timings exclude emulator startup:
+
+| Run | Baseline `cdcd9f01` | Readonly address repair |
+|---|---:|---:|
+| 1 | 13.564583 s | 13.357474 s |
+| 2 | 13.559268 s | 13.629594 s |
+| Median | 13.561925 s | 13.493534 s |
+
+The median change is -0.068391 seconds (-0.504%). Variation in the two current
+runs exceeds that difference, so no speedup is established. All four outputs
+match the same live Rust Hunk (`fnv1a64:7eaac19333981023`), source
+(`fnv1a64:a7120dfa242f6e68`, 15,748 bytes), packages and command. Reports are
+`/tmp/opforge-hunk-alias-measurement-{baseline,current}.json`.
+
+Rust currently accepts `bra.w alias` when `alias` hides `payload*2`; the compact
+native positional proof requires a nonzero compatible section identity. This
+specific positional Rust behavior needs separate review and was not added to
+the paired rejection matrix.
+Mapped logical-section Hunk, direct instruction `$` and broader unresolved alias
+resolution remain gaps. This slice does not claim a new full native self-host or
+complete Hunk/assembler parity.
+
 Reproduce the new positive controls with the configured FS-UAE environment and
 `cargo test -p asm --lib compact_hunk_traversal_fs_uae -- --ignored --nocapture
 --test-threads=1`. Set `OPFORGE_HUNK_TRAVERSAL_REPORT` to capture case identities,

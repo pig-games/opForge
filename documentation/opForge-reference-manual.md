@@ -1819,15 +1819,22 @@ All operands of one data statement use its starting address: `.long $,$` emits
 two equal addends with separate relocation records. Shared `.emit long,$,$`
 follows the same rule. Same-section differences such as `$-label` are absolute;
 different section bases do not cancel merely because their numeric offsets match.
-The compact native implementation does not yet support section-relative `$` in
-instruction operands, address-derived assignment snapshots or general address
-aliases. Its mapped logical-section Hunk path also remains incomplete.
+The compact native implementation does not yet support direct section-relative
+`$` in instruction operands. Its mapped logical-section Hunk path also remains
+incomplete.
 
-In Rust, scalar assignments
-retain their relocation meaning: a readonly snapshot of `target+offset` remains an address,
+Readonly assignments in Rust and the compact native assembler retain their
+relocation meaning: a readonly snapshot of `target+offset` remains an address,
 while a snapshot of an absolute mutable value remains an absolute number. Later
 changes to the mutable input do not alter the snapshot's value or relocation.
-Aliases cannot hide unsupported address arithmetic.
+A snapshot of `$+offset` retains the value and section captured at its declaration.
+Aliases to these values can be used in data and supported instruction operands;
+same-section alias differences are absolute. Native supports a declaration before
+its use that refers to a later label. Unresolved alias chains requiring more than
+its two passes, or use before an unresolved alias's declaration, remain outside
+that native subset. Unsupported address arithmetic hidden by aliases is rejected
+by the native Hunk proof; Rust's positional branch handling still needs separate
+qualification for such expressions.
 
 Expressions with multiple address bases, or a constant minus an address, cannot
 be represented by `HUNK_RELOC32` and are rejected for Hunk output; flat binary

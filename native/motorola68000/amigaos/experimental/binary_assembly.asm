@@ -11,6 +11,7 @@
 	.use experimental.amigaos.binary_encoding as encoding
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_mutable as mutable
+	.use experimental.amigaos.binary_constants as constants
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_references as hunkrefs
@@ -470,7 +471,7 @@ statement	.block
 	blo.w dispatch
 	cmpi.b #1, (a0)
 	bhi.w dispatch
-	cmpi.b #34, 4(a0)
+	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 4(a0)
 	beq.w constant
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	beq.w mutableDeclaration
@@ -569,87 +570,10 @@ mutableDeclaration
 	bra.w done
 constant
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #15
-	moveq #0, d6
-	move.b -3(a0), d6
-	; Absolute constants were resolved once before layout. Remaining constants
-	; retain definition-site PC/label semantics and must resolve in source order.
-	bsr.w name
-	bne.w bad
-	tst.l d1
-	bne.w bad
-	cmp.w pkg.Header.NameCount(a3), d0
-	blo.w bad
-	cmp.l pkg.Context.Count(a2), d0
-	bhs.w bad
-	move.l d0, d4
-	move.l d0, d5
-	lsl.l #3, d5
-	addq.l #1, a0
-	movea.l pkg.Context.Defined(a2), a4
-	cmpi.b #dependencies.ABSOLUTE, 0(a4, d4.l)
-	beq.w ok  ; dependency preparation validated and evaluated this definition
-	move.l a0, -(sp)
-	movea.l a2, a6
-	jsr expr.evaluate
-	movea.l a6, a2
-	movea.l (sp)+, a3  ; retain definition expression for runtime scalar proof
-	tst.l d0
-	bne.w bad
-	tst.l d2
-	beq.w constantResolved
-	; Mutable-derived readonly snapshots share pass1 forward placeholders.
-	btst #6, d6
-	beq.w bad
-	cmpi.w #1, pkg.Context.Pass(a2)
-	bne.w bad
-constantResolved
-	cmpa.l a1, a0
-	bne.w bad
-	moveq #1, d7
-	btst #6, d6
-	beq.w constantProofReady
-	tst.l d2
-	bne.w constantProofReady  ; forward placeholders cannot prove absolute
-	lea SectionState, a4
-	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a4)
-	bne.w constantProofReady
-	movem.l d1-d2/a0-a1, -(sp)
-	movea.l a3, a0
-	jsr hunkrefs.affineTarget
-	cmpi.l #hunkrefs.STATUS_CLEAR, d0
-	bne.w constantProofDone
-	moveq #mutable.SNAPSHOT_ABSOLUTE, d7
-constantProofDone
-	movem.l (sp)+, d1-d2/a0-a1
-constantProofReady
-	movea.l pkg.Context.Defined(a2), a4
-	movea.l pkg.Context.Values(a2), a5
-	cmpi.w #1, pkg.Context.Pass(a2)
-	bne.w existingConstant
-	tst.b 0(a4, d4.l)
-	bne.w bad
-	move.l d1, exprvm.Value.Low(a5, d5.l)
-	move.l pkg.Context.High(a2), exprvm.Value.High(a5, d5.l)
-	bra.w snapshotState
-existingConstant
-	btst #6, d6
-	bne.w refreshSnapshot
-	move.l pkg.Context.High(a2), d0
-	cmp.l exprvm.Value.High(a5, d5.l), d0
-	bne.w bad
-	cmp.l exprvm.Value.Low(a5, d5.l), d1
-	bne.w bad
-	bra.w ok
-refreshSnapshot
-	move.l d1, exprvm.Value.Low(a5, d5.l)
-	move.l pkg.Context.High(a2), exprvm.Value.High(a5, d5.l)
-snapshotState
-	move.b d7, 0(a4, d4.l)
-	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, d7
-	bne.w ok
-	movea.l pkg.Context.SectionIds(a2), a5
-	clr.b 0(a5, d4.l)
-	bra.w ok
+	moveq #0, d0
+	move.b -3(a0), d0
+	jsr constants.execute
+	bra.w done
 directive
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #16
 	addq.l #1, a0

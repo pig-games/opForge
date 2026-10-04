@@ -357,8 +357,18 @@ statements, including shared `.emit`, absolute addends and same-section address
 differences. Every operand uses the statement's starting PC, while relocation
 records use each emitted field's offset. Source section identity is independent
 of output selection and ordering. Unsupported address arithmetic and narrow
-relocatable fields reject explicitly. Instruction `$`, address-derived snapshots,
-general address aliases and mapped logical-section Hunk parity remain native gaps.
+relocatable fields reject explicitly. Native readonly assignments now capture
+the numeric value and section identity together, including address-derived
+snapshots, aliases, `$` snapshots and same-section alias differences. Mutable
+addends are frozen at declaration; aliases do not reevaluate their definitions
+at use sites. Forward-label aliases work when the declaration precedes its use
+and can resolve in the existing two passes. More complex unresolved alias
+chains/use-before-declaration, direct instruction `$` and mapped logical-section
+Hunk parity remain native gaps. Native requires proof for nonabsolute instruction
+aliases even when their section identity is missing; reserved package operand
+names do not count as source targets. Rust accepts some unsupported address
+arithmetic through positional branch aliases; that behavior needs separate review
+and is not counted as rejection parity here.
 
 In Rust, mapped logical content uses its concrete segment as the relocation target.
 Addends include any bytes already present in that segment, and fixups emitted

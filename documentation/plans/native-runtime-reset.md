@@ -2779,3 +2779,120 @@ Workflow checks pass with the existing advisory architecture findings. After all
 builds and native runs finished, `make clean` removed 3.4 GiB of generated cache;
 the empty `target` directory remains. Reports and qualified bundles remain outside
 that cache.
+
+#### Current MOS-family audit — baseline `77210ddb`
+
+Refresh all 39 roots in `examples/mos6502` against the current compact native CLI
+and live Rust CLI before choosing more parity work. The selection includes every
+MOS example, but excludes the separate 85-root opcore corpus. Build one fresh
+release native executable and the current source-independent packages, then run
+each case serially on FS-UAE 68020/10 MiB without telemetry. Preserve the sources,
+fresh completion/exit/artifact checks and per-case timing; do not repair production
+semantics, refresh stored references or relax comparisons during this inventory.
+Completion means every selected root has a recorded result, including failures;
+it does not mean family parity or full self-host qualification.
+
+The corpus contains five base-6502 cases, two 65C02 cases, nine 65816 cases,
+22 45GS02/MEGA65 cases and one 6502-to-65C02 switching case. Separate instruction
+encoding gaps from shared-language/layout/output gaps. Six 65816 wide/layout
+examples primarily exercise shared functionality, not the 65816 instruction set.
+An independent Luna source inventory confirms these scope limits.
+
+Reproduce with the maintained FS-UAE environment and:
+
+```sh
+OPFORGE_MOS_CORPUS_CASES=examples/mos6502/ \
+  OPFORGE_MOS_CORPUS_REPORT=/tmp/opforge-mos-current-77210ddb.json \
+  OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m \
+  OPFORGE_FS_UAE_TIMEOUT_MS=180000 \
+  OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 \
+  cargo test -p asm --lib compact_mos_corpus_fs_uae -- --ignored --nocapture --test-threads=1
+```
+
+The report's total inventory remains 124 MOS/opcore roots; its selection and
+attempted count identify the 39-root scope. Numeric-leading source filenames
+remain staged byte-for-byte as `input.asm` for both engines; this qualifies source
+semantics under that name, not original filename handling. CLI listing and mixed
+output kinds remain outside this invocation. Source-requested additional outputs
+are compared and can fail independently of an exact Hex match. Stored-reference
+checks are a separate result, and diagnostic text parity is not established by
+nonzero rejection. Timings are absolute current release observations; this audit
+does not provide an isolated before/after speed claim.
+
+The full 39-case run completed in 1,220.75 host seconds, including package/image
+preparation, emulator startup and one timeout. Every live Rust oracle succeeded.
+Twenty native cases match every required artifact; 17 complete with exit 20,
+one completes with exit zero but different Hex bytes, and one exceeds the
+120-second post-START bound. The audit test deliberately fails after recording
+all cases. Only seven stored-reference checks pass: 30 report source errors with
+the original filenames and two report listing differences. No references changed.
+
+| Corpus group | Roots | Exact live Rust artifact matches | Remaining cases |
+| --- | ---: | ---: | ---: |
+| Base 6502 | 5 | 4 | 1 |
+| 65C02 | 2 | 1 | 1 |
+| 65816 | 9 | 1 | 8 |
+| 45GS02 / MEGA65 | 22 | 14 | 8 |
+| 6502-to-65C02 switching | 1 | 0 | 1 |
+| Total | 39 | 20 | 19 |
+
+Compared with the earlier audit's 16 qualified MOS matches, the four additional
+matches are `6502_simple`, `6502_native_cli_smoke`, `65c02_simple` and
+`65816_wide_const_var`. The last is a scalar-declaration example with no emitted
+instructions; it is not 65816 instruction qualification. The complete base-6502
+151-instruction matrix still matches (321 emitted bytes). Matches take
+0.7546–2.7849 START/DONE host seconds; the matrix takes 2.7849 seconds. These
+single observations are not a comparative performance claim. The release image
+is 456,048 bytes, `fnv1a64:a1e43b34ac8e71fb`, identical to the qualified
+`85f4e81f` compact self-host image. Current m6502 is 13,714 bytes,
+`fnv1a64:b4cff8b25e13282a`.
+
+The only timeout, `45gs02_simple`, was retried independently with identical
+source/input/image/package digests and command. It completed in 0.761342750
+START/DONE host seconds with exit 20 at line 11, `lda [$21],z`. The timeout did
+not recur; the original failure remains in its full-run report. This retry is
+localization of the unsupported form, not successful assembly. The reports are
+`/tmp/opforge-mos-current-77210ddb.json`,
+`/tmp/opforge-mos-current-77210ddb-timeout-retry.json` and the compact derived
+summary `/tmp/opforge-mos-current-77210ddb-summary.json`.
+
+Remaining first stops, with preparation failures kept distinct from instruction
+diagnostics:
+
+- **Package operands:** 65C02 `bbr0 $20,bbr_target`; 45GS02
+  `jsr ($2002,x)`, `phw #$1234`, `ldq [$23],z`, `lda [$21],z` and
+  `bsr far_bsr`; 65816 `jmp [$3456]` and `jml [$2345]`.
+- **Package state:** 65816 `.assume` rejects before later width/bank/direct-page
+  forms execute. Those later forms are not qualified by this run.
+- **Shared language/output:** the base-6502 artifact example now passes region
+  placement and stops at `.text "OK"`; other stops are the second `.org` in
+  `45gs02_relfar`, `.res long,20000`, wide `.output` metadata and `.mapfile`.
+- **Unlocalized preparation:** stack-relative indirect Y and the CPU-switching
+  example reject at preparation step 2; wide alignment and listing-aux examples
+  reject at step 6. A first stop does not prove every later feature missing.
+- **Completed mismatch:** `45gs02_rel_branch_overrides` emits zero displacements
+  while Rust emits 1 through 9 for branches to the following instruction. Its
+  native exit is zero, but exact comparison fails. Resolve the Rust/package
+  sizing discrepancy before treating either output as corrected.
+
+The proposed next slice is the **65C02 addressing matrix**, starting with
+family-owned binary projections for BBR/BBS and word-sized indexed-indirect
+operands. Source review identifies legacy `pair_u8_rel8` descriptors and an
+omitted `AbsoluteIndexedIndirect` structural projection. BBR/BBS need a three-byte
+instruction-relative fixup, not the existing two-byte branch adjustment. Reuse
+neutral execution mechanisms; retain CPU policy in package producers. Qualify
+the complete 65C02 matrix, branch limits/forward labels and base-6502 regressions;
+also check the corresponding 45GS02 indexed-indirect JSR form. Immediate PHW's
+word-width policy and 65816 state/bracketed projections remain following slices
+unless the matrix exposes a necessary shared prerequisite. This is a proposed
+implementation scope, not completed work.
+
+No production code, packages, golden references or qualified bundle changed in
+this audit. No new full self-host or A6000 run is claimed. The current experimental
+CLI still lacks command-line listing and mixed output-kind support; the legacy
+CLI's implicit-wrapper listing mismatch is a separate unresolved issue.
+
+Documentation links and whitespace checks pass. Once both native batches ended,
+`make clean` removed 1.5 GiB of generated cache and retained an empty `target`.
+Reports and logs remain outside the cache. Unrelated workflow-notebook edits
+remain untouched.

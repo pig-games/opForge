@@ -243,7 +243,13 @@ fn module_id_from_path(path: &Path) -> Result<String, AsmRunError> {
             Vec::new(),
         )
     })?;
-    Ok(stem.to_string())
+    // An implicit module must also be nameable by .use and by the generated
+    // .module statement. Keep existing identifiers; make numeric stems legal.
+    Ok(if stem.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+        format!("_{stem}")
+    } else {
+        stem.to_string()
+    })
 }
 
 struct SourceProviderFileLoader<'a> {
@@ -3413,6 +3419,27 @@ mod tests {
         let module_id = root_module_id_from_lines(Path::new("main.asm"), &lines)
             .expect("root module id should resolve");
         assert_eq!(module_id, "main");
+    }
+
+    #[test]
+    fn root_module_id_prefixes_numeric_filename_without_changing_explicit_identity() {
+        for (filename, expected) in [
+            ("6502_simple.asm", "_6502_simple"),
+            ("68000_basic_moves.asm", "_68000_basic_moves"),
+            ("main.asm", "main"),
+            ("_6502_simple.asm", "_6502_simple"),
+            ("mforth.base.asm", "mforth.base"),
+        ] {
+            assert_eq!(
+                root_module_id_from_lines(Path::new(filename), &[]).unwrap(),
+                expected
+            );
+        }
+        let lines = vec![".module project.main".into(), ".endmodule".into()];
+        assert_eq!(
+            root_module_id_from_lines(Path::new("6502_simple.asm"), &lines).unwrap(),
+            "project.main"
+        );
     }
 
     #[test]

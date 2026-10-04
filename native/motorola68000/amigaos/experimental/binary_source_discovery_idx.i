@@ -64,8 +64,10 @@ done
 	rts
 	.bend ; indexCandidates
 
-; Return A1/D0 as the basename without its final extension. SourcePath is
-; bounded and remains preparation-only. Zero length means an invalid path.
+; Return A1/D0 as the basename without its final extension, prefixing ASCII
+; digit-leading names with '_'. SourcePath is unchanged; prefixed names use
+; StemName until the next call. Other registers preserved; CCR reflects D0.
+; Zero length means an invalid path.
 pathStem .block
 	movem.l d1-d2/a0/a2-a3, -(sp)
 	lea SourcePath, a0
@@ -100,11 +102,26 @@ stemEnd
 	sub.l d2, d0
 	ble.w stemBad
 	movea.l a2, a1
+	cmpi.b #'0', (a1)
+	blo.w stemDone
+	cmpi.b #'9', (a1)
+	bhi.w stemDone
+	lea StemName, a0
+	movea.l a0, a1
+	move.b #'_', (a0)+
+	move.l d0, d1
+copyStem
+	move.b (a2)+, (a0)+
+	subq.l #1, d1
+	bne.w copyStem
+	clr.b (a0)
+	addq.l #1, d0
 	bra.w stemDone
 stemBad
 	moveq #0, d0
 stemDone
 	movem.l (sp)+, d1-d2/a0/a2-a3
+	tst.l d0
 	rts
 	.bend ; pathStem
 

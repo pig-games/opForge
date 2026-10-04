@@ -783,10 +783,16 @@ v0.1; requests such as `format=hunklib`, `format=hunk-object`, and
 
 #### 3.10.2 Module identity
 
-- If a file has no explicit `.module`, it defines an **implicit module** whose id is the file basename.
+- If a file has no explicit `.module`, it defines an **implicit module** whose id
+  is the filename stem (without the final extension). An ASCII digit-leading
+  stem gets an underscore prefix: `6502_driver.asm` defines `_6502_driver`,
+  importable with `.use _6502_driver`. Other stems are unchanged and must be
+  valid module identifiers; use an explicit `.module` for a different identity.
+  Distinct dependency files with the same derived id are ambiguous, including
+  `6502_driver.asm` and `_6502_driver.asm`.
 - If explicit modules exist, all top-level content must be inside `.module` blocks.
 - The **root module** is:
-    - the module matching the entry filename (case-insensitive), or
+    - the module matching the entry's derived module id (case-insensitive), or
     - the first explicit module if no match exists.
 
 #### 3.10.3 Module resolution

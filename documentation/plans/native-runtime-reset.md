@@ -3029,3 +3029,60 @@ diagnosis. After both native runs and host checks ended, `make clean` removed
 cleanup removed another 1.5 GiB, retaining an empty `target`. Reports and CLI
 discriminator artifacts remain outside the cache. Unrelated notebook edits are
 preserved.
+
+#### Numeric-leading implicit module repair — baseline `262ed3bf`
+
+The shared Rust filename helper now prefixes ASCII digit-leading stems with `_`:
+`6502_driver.asm` defines `_6502_driver`, usable through `.use _6502_driver`.
+Valid existing stems and explicit module declarations are preserved. Rust root
+metadata, dependency indexing and generated module boundaries already share this
+helper. Compact native `pathStem` applies the same rule in discovery, captured
+configuration and dependency-ordered preparation. Its bounded temporary buffer
+leaves the physical source path untouched. Distinct dependency files such as
+`6502_dep.asm` and `_6502_DEP.asm` remain ambiguous through the existing folded
+declaration lookup; no file silently wins.
+
+The corpus harness now retains original family filenames and source bytes,
+removing the neutral-name workaround. Neutral copies remain explicit controls
+in focused regression tests. The shared Rust reference audit also has a separate
+Motorola entry point, so original-path checks need no emulator rerun.
+
+Validation:
+
+- All 72 engine unit tests pass, including root metadata and explicit identity.
+- Focused discovery/include host checks: 16 pass, 11 native checks ignored.
+  Corpus inventory/staging passes with original names.
+- Fresh FS-UAE 68020/10 MiB, release/no telemetry: six runs complete. The original
+  `6502_simple.asm` (49 bytes) and `68000_basic_moves.asm` (16 bytes), and each
+  byte-identical `input.asm` control, match live Rust exactly with exit 0. A
+  numeric implicit root importing a numeric dependency matches `[7, 7]`; the
+  normalized-name collision completes with exit 20.
+- Observed START/DONE seconds: MOS original 0.763332459, control 0.753267958;
+  M68K original 1.010124834, control 1.019982375; numeric import 0.763951667;
+  collision 0.508423208. These compare filenames under the same new build,
+  not before/after code performance. The focused executable is 134,564 bytes,
+  with 152,916 linked reserved bytes; it uses the focused harness's package
+  configuration, not the full audit/self-host image configuration.
+- Original-path reference audits record all 124 MOS/opcore roots and 43 M68K
+  roots. All 39 MOS payloads and all 36 positive M68K payloads match their stored
+  references; all seven M68K negative diagnostics match. The audits still fail
+  on 32 MOS and 35 M68K listings (7/39 and 8/43 complete reference matches).
+  The source errors caused by numeric names are gone. A representative CLI
+  listing exposes the generated `.module` row and shifted line numbers, a
+  previously known listing-provenance issue. No golden is refreshed or listing
+  comparison weakened; remaining row/symbol differences require their own slice.
+- Rust formatting and engine-library Clippy with warnings denied pass. The
+  native formatter checks 80 files through `binary_app.asm`: no changes/warnings.
+  Workflow, CPU-boundary, fresh-proof and native test-ownership guards pass.
+  The experimental-directory redundant-test scan still reports five autofixable
+  findings in untouched encoding/imports/sections/templates code; none are in
+  this repair. This is not a clean whole-native redundant-test qualification.
+
+Logs/reports are outside `target`, under `/tmp/opforge-implicit-*`, including
+`native-test.log`, `host-test.log`, `engine-full.log`, `mos-rust-references.json`
+and `m68k-rust-references.json`. The previously qualified A6000 bundle is retained
+at its earlier baseline; no new full self-host or hardware run is claimed here.
+The next proposed slice remains packed tuple/index operand-recipe coverage,
+with the listing-provenance repair tracked separately. Build-cache cleanup is
+complete: `make clean` removed 3.1 GiB and retained the empty `target` directory.
+Unrelated workflow-notebook edits are preserved.

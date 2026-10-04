@@ -239,9 +239,19 @@ fn save_report(
 #[ignore = "full Rust reference audit; existing corpus/reference regressions need classification"]
 fn compact_mos_corpus_rust_references() {
     let root = workspace_root();
+    run_rust_reference_audit(&MOS_AUDIT, corpus(&root));
+}
+
+#[test]
+#[ignore = "full Rust reference audit; existing corpus/reference regressions need classification"]
+fn compact_motorola68000_corpus_rust_references() {
+    let root = workspace_root();
+    run_rust_reference_audit(&M68K_AUDIT, motorola68000_instruction_corpus(&root));
+}
+
+fn run_rust_reference_audit(audit: &CorpusAudit, cases: Vec<Case>) {
     let scratch = scratch();
     let _cleanup = ScratchCleanup(scratch.clone());
-    let cases = corpus(&root);
     let rows = cases
         .iter()
         .enumerate()
@@ -250,7 +260,7 @@ fn compact_mos_corpus_rust_references() {
             json!({"case": case.name, "rust_reference_ok": result.is_ok(), "error": result.err()})
         })
         .collect::<Vec<_>>();
-    save_report(&MOS_AUDIT, "rust-references", &None, cases.len(), &rows);
+    save_report(audit, "rust-references", &None, cases.len(), &rows);
     assert!(
         rows.iter().all(|r| r["rust_reference_ok"] == true),
         "Rust reference failures; inspect audit report"
@@ -298,10 +308,14 @@ fn stage(case: &Case, dir: &Path) -> Result<(String, BTreeMap<PathBuf, Vec<u8>>)
     if case.name.starts_with("examples/mos6502/")
         || case.name.starts_with("examples/motorola68000/")
     {
-        // Numeric corpus basenames synthesize invalid implicit module identifiers.
-        // Keep every source byte, but use the same neutral entry for both engines.
-        fs::copy(&case.source, dir.join("input.asm")).map_err(|e| e.to_string())?;
-        return Ok(("input.asm".into(), tree_files(dir)));
+        let entry = case
+            .source
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        fs::copy(&case.source, dir.join(&entry)).map_err(|e| e.to_string())?;
+        return Ok((entry, tree_files(dir)));
     }
     let base = workspace_root().join("examples/opcore");
     for source in std::iter::once(&case.source).chain(case.support.iter()) {
@@ -594,12 +608,9 @@ fn compact_family_corpus_staging_preserves_source_bytes() {
             assert_eq!(case.reference.file_stem(), case.source.file_stem());
             let (entry, inputs) =
                 stage(case, &scratch.join(family).join(index.to_string())).unwrap();
-            assert_eq!(entry, "input.asm");
+            assert_eq!(entry, case.source.file_name().unwrap().to_string_lossy());
             assert_eq!(inputs.len(), 1);
-            assert_eq!(
-                inputs[Path::new("input.asm")],
-                fs::read(&case.source).unwrap()
-            );
+            assert_eq!(inputs[Path::new(&entry)], fs::read(&case.source).unwrap());
         }
     }
 }

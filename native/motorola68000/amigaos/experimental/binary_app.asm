@@ -2039,6 +2039,7 @@ PrepStep	.res word, 1
 FileSpans	.res byte, memory.Block.Used+4
 ManifestWord	.res word, 1
 SourcePath	.res byte, 256
+StemName	.res byte, PATH_BYTES+1
 	.align 4
 FrontStarted	.res long, 1
 LineBuffer	.res long, 1

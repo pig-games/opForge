@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_source
 	.cpu 68020
 	.use tkvm.amigaos.runtime as runtime
+	.use experimental.amigaos.binary_state as state
 	.pub
 
 STATUS_OK = 0
@@ -32,6 +33,7 @@ BIND_ROLE_WIDTH = 3
 BIND_ROLE_PACKAGE_NAME = 4
 BIND_ROLE_MEMBER_NAME = 5
 BIND_ROLE_INLINE_HEAD = 6
+BIND_ROLE_STATE_ARGUMENT = 7
 TOKEN_COMMA = 4
 
 Frame	.struct
@@ -54,8 +56,9 @@ PackedMap	.long ?  ; optional Count+1 u16 packed offsets
 DataWidthDirective	.word ?  ; second configured width operand directive
 HeadToken	.word ?  ; physical TKVM index selected by the package PRVM policy
 MemberBinder	.long ?  ; optional contextual package-member binding callback
+StatePlan	.long ?  ; optional package state plan for first-operand name binding
 	.endstruct
-FRAME_BYTES = Frame.MemberBinder+4
+FRAME_BYTES = Frame.StatePlan+4
 
 Token	.struct
 Kind	.word ?
@@ -231,8 +234,7 @@ recipeMapped
 	bra.w next
 compositeString
 	moveq #0, d2
-	move.w Frame.NameDirective(a5), d2
-	bsr.w nameOperand
+	bsr.w packageNameOperand
 	tst.l d0
 	beq.w dataString
 	moveq #0, d3
@@ -246,8 +248,7 @@ regularToken
 	cmpi.w #2, d3
 	bne.w tokenKindReady
 	moveq #0, d2
-	move.w Frame.NameDirective(a5), d2
-	bsr.w nameOperand
+	bsr.w packageNameOperand
 	tst.l d0
 	beq.w tokenKindReady
 	moveq #0, d3  ; numeric-looking spellings can be package-owned names
@@ -306,12 +307,14 @@ bindName
 	tst.l d2
 	bne.w callBinder
 	moveq #0, d2
-	move.w Frame.NameDirective(a5), d2
-	bsr.w nameOperand
+	bsr.w packageNameOperand
 	moveq #0, d2
 	tst.l d0
 	beq.w widthOperand
 	moveq #BIND_ROLE_PACKAGE_NAME, d2
+	cmpi.l #2, d0
+	bne.w restoreLength
+	moveq #BIND_ROLE_STATE_ARGUMENT, d2
 	bra.w restoreLength
 widthOperand
 	; Only an explicit width followed by a comma has package identity.
@@ -441,6 +444,42 @@ done
 	movem.l (sp)+, d2-d7/a0-a6
 	rts
 	.bend  ; writeLine
+
+; Recognize the first operand of either .cpu or a package state directive.
+; A3=output cursor,A5=Frame. D0=0 absent,1 CPU,2 state; other registers preserved.
+packageNameOperand	.block
+	movem.l d1-d3/a1, -(sp)
+	moveq #0, d2
+	move.w Frame.NameDirective(a5), d2
+	bsr.w nameOperand
+	tst.l d0
+	bne.w done
+	move.l Frame.StatePlan(a5), d0
+	beq.w done
+	movea.l d0, a1
+	moveq #0, d3
+	move.w state.Header.Directives(a1), d3
+	adda.l state.Header.DirectiveRows(a1), a1
+next
+	tst.w d3
+	beq.w absent
+	move.w state.Directive.Head(a1), d2
+	bsr.w nameOperand
+	tst.l d0
+	beq.w advance
+	moveq #2, d0
+	bra.w done
+advance
+	adda.w #state.DIRECTIVE_BYTES, a1
+	subq.w #1, d3
+	bra.w next
+absent
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a1
+	tst.l d0
+	rts
+	.bend  ; packageNameOperand
 
 ; A3=current output,A5=Frame,D2=configured directive ID (zero disables).
 ; D0=1 for its first operand, otherwise zero. Preserve other registers and A0.

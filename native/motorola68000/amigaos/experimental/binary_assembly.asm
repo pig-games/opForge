@@ -5,6 +5,7 @@
 	.module experimental.amigaos.binary_assembly
 	.cpu 68020
 	.use experimental.amigaos.binary_package as pkg
+	.use experimental.amigaos.binary_state as state
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as exprvm
 	.use prvm.amigaos.abi as dataabi
@@ -228,6 +229,11 @@ oneMap
 sweep
 	moveq #0, d4  ; section selection state for mapped sweeps
 sweepRecords
+	movem.l a2, -(sp)
+	movea.l pkg.Context.Package(a6), a2
+	jsr state.reset
+	movem.l (sp)+, a2
+	bne.w fail
 	.MEMORY_COUNTER_INC TraversalPasses
 	.ASSEMBLY_POSITION Position, d7, d5, SectionState, sections.State.Mode, sections.State.HunkCurrent, sections.State.OrderCount
 	lea RepeatState, a0
@@ -254,6 +260,45 @@ line
 	sub.l a4, d0
 	cmp.l d0, d6
 	bhi.w fail
+	move.w 2(a4), Frame.Line(a5)
+	moveq #0, d0
+	move.b 1(a4), d0
+	cmpi.b #source.FLAG_ALLOWED, d0
+	bhi.w fail
+	btst #4, d0
+	bne.w controlsReady
+	btst #3, d0
+	bne.w omitted
+	; Loop traversal precedes output selection, so skipped/repeated bodies also
+	; govern state directives in every mapped sweep.
+	movea.l a4, a0
+	movea.l a3, a1
+	movea.l a6, a2
+	lea RepeatState, a3
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #4
+	jsr repetition.step
+	movea.l a1, a3
+	cmpi.l #2, d0
+	beq.w fail
+	tst.l d0
+	beq.w controlsReady
+	movea.l a0, a4
+	bra.w line
+controlsReady
+	tst.w d5
+	beq.w stateReady
+	; Replay state in source order even when section sweeps filter byte emission.
+	; Omitted conditional/reachability records never change package state.
+	movem.l a0-a2, -(sp)
+	movea.l a4, a0
+	movea.l a4, a1
+	adda.w d6, a1
+	movea.l pkg.Context.Package(a6), a2
+	bsr.w stateRecord
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	bne.w fail
+stateReady
 	cmpi.w #3, d5
 	bhs.w pairedSelect
 	; An explicit map needs concrete bytes and labels before the imported
@@ -380,19 +425,6 @@ selected
 	bne.w layoutControl
 	btst #3, d0
 	bne.w omitted
-	movea.l a4, a0
-	movea.l a3, a1
-	movea.l a6, a2
-	lea RepeatState, a3
-	.ASSEMBLY_FAILURE_STAGE FailureStage, #4
-	jsr repetition.step
-	movea.l a1, a3
-	cmpi.l #2, d0
-	beq.w fail
-	tst.l d0
-	beq.w ordinaryStatement
-	movea.l a0, a4
-	bra.w line
 ordinaryStatement
 	moveq #0, d0
 	move.b 1(a4), d0
@@ -514,6 +546,68 @@ done
 	.bend  ; assemble
 
 	.priv
+
+; A0=valid prepared record,A1=end,A2=package. D0/CCR=status; others preserved.
+; Inspect only the packed statement prefix; expressions and encodings stay in VMs.
+stateRecord	.block
+	movem.l d1/a0-a1, -(sp)
+	move.b 1(a0), d0
+	andi.w #source.FLAG_LAYOUT+source.FLAG_OMIT, d0
+	bne.w ok
+	addq.l #4, a0
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #5, d0
+	blo.w ok
+	cmpi.b #1, (a0)
+	bhi.w directive
+	cmpi.b #5, 4(a0)
+	bne.w ok
+	addq.l #5, a0
+directive
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #5, d0
+	blo.w ok
+	cmpi.b #7, (a0)+
+	bne.w ok
+	cmpi.b #1, (a0)
+	bhi.w ok
+	tst.b 3(a0)
+	bne.w ok
+	moveq #0, d0
+	move.w 1(a0), d0
+	addq.l #4, a0
+	cmp.w pkg.Header.CpuDirective(a2), d0
+	beq.w resetCpu
+	jsr state.apply
+	cmpi.l #2, d0
+	beq.w ok
+	bra.w done
+resetCpu
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	bne.w bad
+	cmpi.b #1, (a0)
+	bhi.w bad
+	tst.b 3(a0)
+	bne.w bad
+	move.w 1(a0), d0
+	cmp.w pkg.Header.CpuName(a2), d0
+	bne.w bad
+	jsr state.reset
+	bra.w done
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; stateRecord
 
 ; A0/A1=bounded token range, A2=Context, D0=indent flag. D0 status, 2=.end.
 statement	.block
@@ -660,6 +754,12 @@ directive
 	moveq #4, d6
 	cmp.w pkg.Header.LongDirective(a3), d0
 	beq.w data
+	movem.l a2, -(sp)
+	movea.l a3, a2
+	jsr state.apply
+	movem.l (sp)+, a2
+	tst.l d0
+	beq.w ok
 	bra.w bad
 packedData
 	bsr.w emitData
@@ -673,7 +773,11 @@ cpu
 	bne.w bad  ; the capsule declares this experiment's single pipeline
 	cmpa.l a1, a0
 	bne.w bad
-	bra.w ok
+	movem.l a2, -(sp)
+	movea.l a3, a2
+	jsr state.reset
+	movem.l (sp)+, a2
+	bra.w done
 origin
 	lea SectionState, a4
 	tst.w sections.State.Mode(a4)

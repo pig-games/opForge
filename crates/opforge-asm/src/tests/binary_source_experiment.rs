@@ -134,8 +134,8 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS22");
-        assert_eq!(long(16), 192);
+        assert_eq!(&bytes[..4], b"BS23");
+        assert_eq!(long(16), 200);
         assert_eq!(word(188), package::PARSER_VM_MACRO_VERSION);
         assert_eq!(word(190), 0);
         let declaration_offset = long(180);
@@ -153,7 +153,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         );
         assert_eq!(word(64), little_endian);
         assert_eq!(word(130), u16::from(cpu == "m6502"));
-        assert!(target_offset >= 192);
+        assert!(target_offset >= 200);
         assert_eq!(target_bytes, expected.len());
         assert_eq!(
             &bytes[target_offset..target_offset + target_bytes],
@@ -174,7 +174,14 @@ fn binary_source_runtime_target_identity_is_relocatable() {
             package::inline_head_policy_program()
         );
         assert_eq!(long(180), long(168) + long(172));
-        assert_eq!(runtime_bytes, (long(180) + long(184) + 1) & !1);
+        let declaration_end = (long(180) + long(184) + 1) & !1;
+        if long(192) == 0 {
+            assert_eq!(long(196), 0);
+            assert_eq!(runtime_bytes, declaration_end);
+        } else {
+            assert_eq!(long(192), declaration_end);
+            assert_eq!(runtime_bytes, long(192) + long(196));
+        }
         assert_eq!(
             word(142),
             core.cpu_execution_properties(cpu)
@@ -219,14 +226,82 @@ fn binary_source_packages_prepare() {
     }
 
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS22");
+        assert_eq!(&bytes[..4], b"BS23");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((192..=bytes.len()).contains(&runtime_bytes));
+        assert!((200..=bytes.len()).contains(&runtime_bytes));
+        let numeric =
+            vm::binary_source_package::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+        let state_offset = long(&bytes, 192);
+        let state_bytes = long(&bytes, 196);
+        if numeric.state.defaults.is_empty() {
+            assert_eq!((state_offset, state_bytes), (0, 0));
+            assert!(numeric.candidates.iter().all(|c| c.state_guard == 0));
+        } else {
+            assert!(state_offset >= 200 && state_offset + state_bytes <= runtime_bytes);
+            let plan = &bytes[state_offset..state_offset + state_bytes];
+            assert_eq!(
+                usize::from(u16::from_be_bytes(plan[0..2].try_into().unwrap())),
+                numeric.state.defaults.len()
+            );
+            let rows = long(&bytes, 16);
+            let count = long(&bytes, 20);
+            for index in 0..count {
+                let guard = u16::from_be_bytes(
+                    bytes[rows + index * 32 + 30..rows + index * 32 + 32]
+                        .try_into()
+                        .unwrap(),
+                );
+                assert!(usize::from(guard) <= numeric.state.guards.len());
+            }
+            let mut dictionary = long(&bytes, 8);
+            let mut bindings = std::collections::BTreeMap::new();
+            let mut state_bindings = std::collections::BTreeMap::new();
+            for _ in 0..long(&bytes, 12) {
+                let length = usize::from(u16::from_be_bytes(
+                    bytes[dictionary..dictionary + 2].try_into().unwrap(),
+                ));
+                let id =
+                    u16::from_be_bytes(bytes[dictionary + 2..dictionary + 4].try_into().unwrap());
+                let spelling = std::str::from_utf8(&bytes[dictionary + 6..dictionary + 6 + length])
+                    .unwrap()
+                    .to_string();
+                let roles = bytes[dictionary + 5];
+                if roles == 4 {
+                    assert!(state_bindings.insert(spelling, id).is_none());
+                } else {
+                    assert!(bindings.insert(spelling, (id, roles)).is_none());
+                }
+                dictionary = (dictionary + 6 + length + 1) & !1;
+            }
+            if cpu == "m68040" {
+                assert_eq!(bindings["68040"].0, bindings["m68040"].0);
+                assert_ne!(state_bindings["68040"], bindings["68040"].0);
+                assert!(!state_bindings.contains_key("m68040"));
+            }
+            let directive_rows = long(plan, 12);
+            for (directive_index, directive) in numeric.state.directives.iter().enumerate() {
+                assert_eq!(
+                    bindings[&numeric.names[directive.head as usize]].0,
+                    directive.head
+                );
+                let arguments_offset = long(plan, directive_rows + directive_index * 12 + 8);
+                for (argument_index, argument) in directive.arguments.iter().enumerate() {
+                    assert_eq!(argument.kind, 0);
+                    let id = argument.matched as u16;
+                    let bound = state_bindings[&numeric.names[id as usize]];
+                    assert_eq!(bound, id);
+                    assert_eq!(
+                        long(plan, arguments_offset + argument_index * 12 + 4),
+                        usize::from(bound)
+                    );
+                }
+            }
+        }
         assert_eq!(runtime_bytes % 2, 0);
         let fragments = long(&bytes, 116);
         let fragment_bytes = long(&bytes, 120);
@@ -247,7 +322,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 192);
+            assert!(offset >= 200);
             assert!(offset + count * width <= runtime_bytes);
         }
 
@@ -883,7 +958,7 @@ fn compact_cli_self_host_descriptor_module_fs_uae() {
 #[ignore = "requires configured FS-UAE; binary segment expansion in compact CLI"]
 fn compact_cli_segment_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let instruction = if cpu == "m6502" {
             "lda #.v"
         } else {
@@ -941,7 +1016,7 @@ fn compact_cli_segment_fs_uae() {
 #[ignore = "requires configured FS-UAE; binary segment invocation labels in compact CLI"]
 fn compact_cli_segment_label_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let source = format!(
             ".cpu {cpu}\n.org $2000\nINLINE .segment v\n .byte .v\n .byte .v+1\n.endsegment\nfirst .INLINE 7\nsecond: .INLINE(9)\n.word first,second\n.end\n"
         );
@@ -988,7 +1063,7 @@ fn compact_cli_segment_label_fs_uae() {
 #[ignore = "requires configured FS-UAE; binary macro scope parity in compact CLI"]
 fn compact_cli_macro_scope_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let source = format!(
             ".cpu {cpu}\n.org $2000\nEMIT .macro v\nlocal:\n .byte .v\n .word local\n.endmacro\n .EMIT 3\nfirst .EMIT 5\n .EMIT(7)\n .word first\n.end\n"
         );
@@ -1079,7 +1154,7 @@ fn compact_cli_macro_simple_fs_uae() {
 #[ignore = "requires configured FS-UAE; zero-argument and directive-first binary macros"]
 fn compact_cli_macro_definition_forms_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let source = format!(
             ".cpu {cpu}\n.org $2000\nEMPTY .macro\n .byte $11\n.endm\n.macro FILL(value)\n .byte .value\n.endmacro\n .EMPTY\n .EMPTY()\n .FILL(2)\n .FILL 3\n.end\n"
         );
@@ -1121,7 +1196,7 @@ fn compact_cli_macro_definition_forms_fs_uae() {
 #[ignore = "requires configured FS-UAE; multi-argument binary macro parity"]
 fn compact_cli_macro_multiple_arguments_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let source = format!(
             ".cpu {cpu}\n.org $2000\nPAIR .macro left, right\n .byte .left, .right\n.endmacro\n.macro MIX(x, y)\n .byte .1, .y, .2, .x\n.endmacro\n .PAIR 1+(2), 3+(4)\n .MIX(5, 6)\n.end\n"
         );
@@ -1163,7 +1238,7 @@ fn compact_cli_macro_multiple_arguments_fs_uae() {
 #[ignore = "requires configured FS-UAE; packed macro defaults and omitted/extra arguments"]
 fn compact_cli_macro_defaults_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let source = format!(
             ".cpu {cpu}\n.org $2000\nPAIR .macro a, b=2\n .byte .a, .b\n.endmacro\n.macro DEFAULT(value=9)\n .byte .value\n.endmacro\nEXTRA .macro first\n .byte .1, .2, .3\n.endmacro\nONLY .macro a, unused\n .byte .a\n.endmacro\n .PAIR 1\n .PAIR(3, 4)\n .DEFAULT\n .EXTRA 5, 6, 7\n .ONLY 8\n.end\n"
         );
@@ -1205,7 +1280,7 @@ fn compact_cli_macro_defaults_fs_uae() {
 #[ignore = "requires configured FS-UAE; default identifiers bind at the macro call"]
 fn compact_cli_macro_default_caller_scope_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let source = format!(
             ".cpu {cpu}\n.org $2000\nPICK .macro value=amount\n .byte .value\n.endmacro\ncaller .block\namount = 3\n .PICK\n.bend\n.end\n"
         );
@@ -1247,7 +1322,7 @@ fn compact_cli_macro_default_caller_scope_fs_uae() {
 #[ignore = "requires configured FS-UAE; nested packed macro and segment calls"]
 fn compact_cli_macro_nested_calls_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let source = format!(
             ".cpu {cpu}\n.org $2000\nINNER .macro v\n .byte .v\n.endmacro\nTAIL .segment v\n .byte .v+1\n.endsegment\nOUTER .macro v\n .INNER .v\n .TAIL .v\n.endmacro\n .OUTER 3\n .OUTER 5\n.end\n"
         );
@@ -1403,7 +1478,7 @@ fn compact_cli_imported_macro_qualified_alias_fs_uae() {
 #[ignore = "requires configured FS-UAE; packed macro @ placeholders"]
 fn compact_cli_macro_at_placeholders_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let source = format!(
             ".cpu {cpu}\n.org $2000\nBOTH .macro left,right\n .byte @1\n .byte .@\n .byte .{{right}}\n.endmacro\n .BOTH 3,4\n .BOTH(5,6)\n.end\n"
         );
@@ -1785,7 +1860,7 @@ fn compact_cli_macro_embedded_identifier_fs_uae() {
 #[ignore = "requires configured FS-UAE; packed string data operands"]
 fn compact_cli_string_data_fs_uae() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    for cpu in ["m6502", "m68000"] {
+    for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let source = format!(
             ".cpu {cpu}\n.org $2000\n.byte \"A\", \"BC\"\n.word \"D\", \"EF\"\n.long \"G\", \"HI\"\n.byte \"\\0\"\n.byte \"x@1\"\n.end\n"
         );
@@ -2435,4 +2510,23 @@ fn binary_binding_alias_live_oracle() {
 #[ignore = "requires configured FS-UAE; collisions, mnemonic case, aliases and references"]
 fn binary_binding_alias_fs_uae() {
     assert_binary_source(binding_alias_source(), "m68000".into());
+}
+
+#[test]
+fn binary_source_all_supported_profiles_and_dialects_prepare() {
+    let registry = default_registry();
+    let dialects = vm::builder::build_hierarchy_chunks_from_registry(&registry)
+        .unwrap()
+        .dialects;
+    let core = RuntimeModelCore::from_registry(&registry).unwrap();
+    for (cpu, _, _) in core.supported_cpus() {
+        let resolved = core.resolve_pipeline(&cpu, None).unwrap();
+        prepare_package(&core, &resolved).unwrap_or_else(|error| panic!("{cpu}: {error}"));
+        for dialect in &dialects {
+            if let Ok(resolved) = core.resolve_pipeline(&cpu, Some(&dialect.id)) {
+                prepare_package(&core, &resolved)
+                    .unwrap_or_else(|error| panic!("{cpu}/{}: {error}", dialect.id));
+            }
+        }
+    }
 }

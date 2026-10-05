@@ -5,6 +5,7 @@
 	.cpu 68020
 	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_members as members
 	.use experimental.amigaos.binary_prepare as prepare
@@ -930,6 +931,11 @@ writeTokens	.block
 	move.l Frame.SourceBytes(a5), writer.Frame.SourceBytes(a0)
 	movea.l Frame.Package(a5), a1
 	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
+	move.l package.Header.StatePlan(a1), d0
+	beq.w noStatePlan
+	add.l a1, d0
+noStatePlan
+	move.l d0, writer.Frame.StatePlan(a0)
 	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
 	clr.w writer.Frame.HeadToken(a0)
@@ -1099,6 +1105,11 @@ fragmentLine	.block
 	clr.l writer.Frame.SourceBytes(a0)
 	movea.l Frame.Package(a5), a3
 	move.w package.Header.CpuDirective(a3), writer.Frame.NameDirective(a0)
+	move.l package.Header.StatePlan(a3), d0
+	beq.w noStatePlan
+	add.l a3, d0
+noStatePlan
+	move.l d0, writer.Frame.StatePlan(a0)
 	move.w package.Header.ResDirective(a3), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a3), writer.Frame.DataWidthDirective(a0)
 	clr.w writer.Frame.HeadToken(a0)
@@ -1518,6 +1529,11 @@ relexGeneratedCall	.block
 	clr.l writer.Frame.SourceBytes(a0)
 	movea.l Frame.Package(a5), a1
 	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
+	move.l package.Header.StatePlan(a1), d0
+	beq.w noStatePlan
+	add.l a1, d0
+noStatePlan
+	move.l d0, writer.Frame.StatePlan(a0)
 	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
 	clr.w writer.Frame.HeadToken(a0)
@@ -2090,6 +2106,9 @@ configure	.block
 	add.l d7, d0
 	bcs.w bad
 	move.l d0, PACKAGE_END(a6)
+	movea.l a4, a2
+	jsr state.validate
+	bne.w bad
 	bsr.w validateMacroPrograms
 	bne.w bad
 	bsr.w validateMemberBindings
@@ -2402,6 +2421,8 @@ next
 	move.l d6, d0
 	bsr.w equal
 	bne.w advance
+	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
+	bne.w advance
 	moveq #0, d1
 	move.w package.DictionaryEntry.Name(a3), d1
 	moveq #0, d2
@@ -2437,6 +2458,8 @@ bind	.block
 	cmpi.l #writer.BIND_ROLE_WIDTH, d2
 	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_PACKAGE_NAME, d2
+	beq.w packageName
+	cmpi.l #writer.BIND_ROLE_STATE_ARGUMENT, d2
 	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d2
 	beq.w packageName
@@ -2478,6 +2501,15 @@ findPackage
 	move.l d6, d0
 	bsr.w equal
 	bne.w advance
+	cmpi.l #writer.BIND_ROLE_STATE_ARGUMENT, d5
+	bne.w ordinaryPackageEntry
+	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
+	beq.w advance
+	bra.w entryFound
+ordinaryPackageEntry
+	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
+	bne.w advance
+entryFound
 	moveq #0, d1
 	move.w 2(a3), d1
 	; Package metadata owns operand identities. Statement-only spellings

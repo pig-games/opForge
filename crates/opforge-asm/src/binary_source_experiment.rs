@@ -16,7 +16,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 192;
+const HEADER: usize = 200;
 const ROW: usize = 32;
 const SCALAR_ADDRESS_IDENTITY: u16 = 1;
 
@@ -94,6 +94,8 @@ impl DictionaryRoleFlags {
     const REGISTER_OR_NAMED: Self = Self(1);
     // Member markers retain identity only after a non-head dot.
     const MEMBER: Self = Self(2);
+    // Exact STVM spellings retain their identity only in state directive operands.
+    const STATE_ARGUMENT: Self = Self(4);
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -103,7 +105,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS22 block for one resolved package hierarchy.
+/// Prepare a self-contained BS23 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -324,6 +326,31 @@ pub fn prepare_package(
             )?;
         }
     }
+    // State operands use a separate lexical context so CPU aliases cannot widen
+    // the exact package-owned state argument vocabulary.
+    let mut state_argument_dictionary = BTreeMap::new();
+    for directive in &package.state.directives {
+        bind(
+            &mut dictionary,
+            name(&names, directive.head)?.to_string(),
+            directive.head,
+            0,
+            DictionaryRoleFlags::CONTEXTUAL,
+        )?;
+        for argument in &directive.arguments {
+            if argument.kind != 0 {
+                return Err("binary-source state argument kind unsupported".into());
+            }
+            let id = word(argument.matched as usize)?;
+            bind(
+                &mut state_argument_dictionary,
+                name(&names, id)?.to_string(),
+                id,
+                0,
+                DictionaryRoleFlags::STATE_ARGUMENT,
+            )?;
+        }
+    }
     let properties = core
         .cpu_execution_properties(&resolved.cpu_id)
         .map_err(|e| e.to_string())?
@@ -352,6 +379,7 @@ pub fn prepare_package(
         }
         let shape = intern(&mut names, "implied")?;
         candidates.push(NumericCandidate {
+            state_guard: 0,
             mnemonic: table.mnemonic,
             qualifier: table.qualifier,
             shape,
@@ -378,7 +406,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS22");
+    out[..4].copy_from_slice(b"BS23");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -480,9 +508,21 @@ pub fn prepare_package(
     let declaration_plan = packed_declaration_program(declaration_heads);
     out.extend_from_slice(&declaration_plan);
     align(&mut out);
+    align(&mut out);
+    let state_offset = if package.state.defaults.is_empty() {
+        0
+    } else {
+        out.len()
+    };
+    let state_plan = if package.state.defaults.is_empty() {
+        Vec::new()
+    } else {
+        write_state_plan(&package.state)?
+    };
+    out.extend_from_slice(&state_plan);
     let runtime_bytes = long(out.len())?;
     let dictionary_offset = out.len();
-    for (spelling, binding) in &dictionary {
+    for (spelling, binding) in dictionary.iter().chain(state_argument_dictionary.iter()) {
         push_word(&mut out, word(spelling.len())?);
         push_word(&mut out, binding.id);
         out.extend_from_slice(&[binding.qualifier, binding.roles.0]);
@@ -547,6 +587,8 @@ pub fn prepare_package(
     let total = long(out.len())?;
     for (offset, value) in [
         (4, total),
+        (192, long(state_offset)?),
+        (196, long(state_plan.len())?),
         (160, long(member_bindings_offset)?),
         (164, long(package.member_bindings.len())?),
         (180, long(declaration_plan_offset)?),
@@ -554,7 +596,10 @@ pub fn prepare_package(
         (168, long(head_policy_offset)?),
         (172, long(head_policy.len())?),
         (8, long(dictionary_offset)?),
-        (12, long(dictionary.len())?),
+        (
+            12,
+            long(dictionary.len() + state_argument_dictionary.len())?,
+        ),
         (16, long(rows_offset)?),
         (20, long(candidates.len())?),
         (24, long(registers_offset)?),
@@ -741,6 +786,7 @@ fn write_candidate(
             }
         }
     }
+    set_word(out, row + 30, candidate.state_guard);
     set_word(out, row, candidate.mnemonic);
     out[row + 2] = qualifier(candidate.qualifier)?;
     out[row + 3] = shape;
@@ -764,11 +810,15 @@ fn write_candidate(
     set_long(
         out,
         row + 12,
-        sequence_offset.unwrap_or(if recipe == 6 || execution_inputs.is_empty() {
+        if recipe == 6 {
             0
         } else {
-            long(projection_start)?
-        }),
+            sequence_offset.unwrap_or(if execution_inputs.is_empty() {
+                0
+            } else {
+                long(projection_start)?
+            })
+        },
     );
     out[row + 16] = candidate.width_rank;
     out[row + 17] = u8::from(candidate.unstable_widen);
@@ -1938,6 +1988,7 @@ mod sequence_wire_tests {
             "semv.sequence.v1:match:_@indirect_tuple_arity0.value3;encode:future@expr0".to_string(),
         ];
         let candidate = NumericCandidate {
+            state_guard: 0,
             mnemonic: 0,
             qualifier: None,
             shape: 1,
@@ -2365,3 +2416,103 @@ mod sequence_wire_tests {
 #[cfg(test)]
 #[path = "tests/compact_package_inventory.rs"]
 mod compact_package_inventory;
+
+fn write_state_plan(plan: &vm::binary_source_package::NumericStatePlan) -> Result<Vec<u8>, String> {
+    let mut out = vec![0; 20];
+    set_word(&mut out, 0, word(plan.defaults.len())?);
+    set_word(&mut out, 2, word(plan.directives.len())?);
+    set_word(&mut out, 4, word(plan.guards.len())?);
+    set_long(&mut out, 8, 20);
+    for value in &plan.defaults {
+        out.extend_from_slice(&value.to_be_bytes());
+    }
+    let directives = out.len();
+    set_long(&mut out, 12, long(directives)?);
+    reserve(&mut out, plan.directives.len(), 12)?;
+    let guards = out.len();
+    set_long(&mut out, 16, long(guards)?);
+    reserve(&mut out, plan.guards.len(), 8)?;
+    for (index, directive) in plan.directives.iter().enumerate() {
+        let row = directives + index * 12;
+        set_word(&mut out, row, directive.head);
+        set_word(&mut out, row + 2, directive.key);
+        set_word(&mut out, row + 4, word(directive.arguments.len())?);
+        let offset = long(out.len())?;
+        set_long(&mut out, row + 8, offset);
+        for argument in &directive.arguments {
+            push_word(&mut out, argument.kind);
+            push_word(&mut out, u16::from(argument.allowed));
+            out.extend_from_slice(&argument.matched.to_be_bytes());
+            out.extend_from_slice(&argument.value.to_be_bytes());
+        }
+    }
+    for (index, guard) in plan.guards.iter().enumerate() {
+        let row = guards + index * 8;
+        set_word(&mut out, row, word(guard.clauses.len())?);
+        let offset = long(out.len())?;
+        set_long(&mut out, row + 4, offset);
+        let clauses = out.len();
+        reserve(&mut out, guard.clauses.len(), 12)?;
+        for (index, clause) in guard.clauses.iter().enumerate() {
+            let row = clauses + index * 12;
+            set_word(&mut out, row, clause.key);
+            set_word(&mut out, row + 2, word(clause.values.len())?);
+            set_word(&mut out, row + 4, u16::from(clause.reject));
+            let offset = long(out.len())?;
+            set_long(&mut out, row + 8, offset);
+            for value in &clause.values {
+                out.extend_from_slice(&value.to_be_bytes());
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+mod state_wire_tests {
+    use super::*;
+    use vm::binary_source_package::{
+        NumericStateArgument, NumericStateClause, NumericStateDirective, NumericStateGuard,
+        NumericStatePlan,
+    };
+    #[test]
+    fn numeric_state_wire_offsets_are_plan_relative() {
+        let mut plan = NumericStatePlan::default();
+        plan.defaults = vec![4, 0];
+        plan.directives.push(NumericStateDirective {
+            head: 17,
+            key: 1,
+            arguments: vec![NumericStateArgument {
+                kind: 0,
+                allowed: true,
+                matched: 18,
+                value: 1,
+            }],
+        });
+        plan.guards.push(NumericStateGuard {
+            clauses: vec![NumericStateClause {
+                reject: true,
+                key: 0,
+                values: vec![1, 2],
+            }],
+        });
+        let wire = write_state_plan(&plan).unwrap();
+        let word = |offset| u16::from_be_bytes(wire[offset..offset + 2].try_into().unwrap());
+        let long = |offset| u32::from_be_bytes(wire[offset..offset + 4].try_into().unwrap());
+        assert_eq!((word(0), word(2), word(4), word(6)), (2, 1, 1, 0));
+        assert_eq!((long(8), long(12), long(16)), (20, 28, 40));
+        assert_eq!((long(20), long(24)), (4, 0));
+        assert_eq!(
+            (word(28), word(30), word(32), word(34), long(36)),
+            (17, 1, 1, 0, 48)
+        );
+        assert_eq!((word(40), word(42), long(44)), (1, 0, 60));
+        assert_eq!((word(48), word(50), long(52), long(56)), (0, 1, 18, 1));
+        assert_eq!(
+            (word(60), word(62), word(64), word(66), long(68)),
+            (0, 2, 1, 0, 72)
+        );
+        assert_eq!((long(72), long(76)), (1, 2));
+        assert_eq!(wire.len(), 80);
+    }
+}

@@ -1,14 +1,10 @@
 # Native assembler completion plan
 
-Status: active. The current BS22 runtime contract adds bounded identity-product
-projection transport while preserving package-selected tuple arity/item positions. The
-[focused identity checkpoint](#bs22-identity-product-projections--baseline-f23ebf3a)
-records native correctness and the measured change against `f23ebf3a`.
-The [wider-access checkpoint](#wider-native-memory-operations--source-cfa0ee92)
-qualifies the complete current embedded release on FS-UAE and compares its
-performance with the preceding BS22 full run; its A6000 bundle is ready. No new physical A6000 run or current peak-memory measurement is claimed.
-The prior BS20 full self-host and instrumented measurements remain baseline
-evidence below; older bundles require regeneration for the current contract.
+Status: active. BS23 adds package-owned numeric runtime state and selector guards;
+its [state slice](#bs23-package-state--baseline-8940af51) passes focused native
+checks and complete release self-host equality on 68020/74 MiB in 1,089.649658834
+seconds. No new physical A6000 run or complete peak-memory result is claimed.
+Packages and bundles must use the current BS23 contract.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -63,7 +59,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS22 represents one CPU/dialect pipeline and carries its canonical
+Current BS23 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -3465,3 +3461,182 @@ All builds and native runs finished before `make clean`; it removed 2.2 GiB
 and retained the empty `target` directory. The qualified bundle and diagnostic
 summaries remain outside `target`. Unrelated workflow-notebook edits are preserved;
 no remote push was performed.
+
+## BS23 package state — baseline 8940af51
+
+Scope: connect package-owned STVM state to compact execution, starting with the
+M68K `.fpu` and `.apollo` directives. Focused native state checks and complete
+release self-host equality pass. The prior `cfa0ee92` full self-host is the timing
+baseline; no new hardware result is claimed.
+
+The hypothesis is that resolving the selected profile's existing STVM matrix to
+numeric data will unlock configuration and guarded encodings without adding
+CPU-specific directive rules to native code. Defaults, arguments, per-profile
+legality and selector guard values remain authoritative in the package. The
+65816 `.assume` grammar/state model and general CPU switching are separate work.
+
+BS23 adds a bounded state-plan offset/length to the 200-byte header. All plan
+references are relative offsets; candidate rows retain their 32-byte layout and
+use their final word for a one-based guard identity. State plans contain numeric
+defaults, directive/argument rows and ordered guard clauses. Each guard preserves
+whether failure records a diagnostic refusal or merely mismatches. Guard refusal
+precedes nested-plan predicates/recipes, and a later candidate may still succeed;
+invalid metadata remains fatal. Unknown recipes
+remain explicit unsupported rows. Only BS23 is accepted by the new executables;
+old bundles remain historical evidence, not compatible runtime packages.
+
+State argument spellings have a separate preparation-only dictionary role. This
+keeps `.cpu 68040` aliases independent of the exact `.fpu 68040` vocabulary; an
+unlisted spelling must not become valid through CPU alias normalization. The
+writer binds arguments once, including quoted and numeric-looking spellings.
+Assembly uses IDs and scalar values after lexical storage is released. Native
+state storage is private execution state; no addresses enter the serialized plan.
+
+Defaults reset per source sweep and on `.cpu`, as in Rust. Active directives run
+at statement positions. Mapped sweeps replay state in source order; counted-loop
+traversal precedes output filtering so skipped bodies cannot alter state. Inactive
+conditionals and unreachable records do not apply directives.
+
+Success requires fresh Rust/native output equality for legal transitions and
+representative guarded instructions, fresh completed rejection for invalid
+states, host package generation across all supported CPU/dialect pipelines,
+existing compact controls, and a recorded unchanged-input timing comparison.
+Representative corpus retries identify subsequent encoding gaps rather than
+asserting complete FPU/Apollo instruction parity. Native error wording remains a
+separate diagnostic-parity gap. A complete self-host comparison is the final
+contract-migration check, distinct from all reduced tests.
+
+Focused qualification (2026-10-05): live Rust oracles and fresh native execution
+agree for m68020 external-FPU changes, quoted targets, an inactive conditional,
+same-CPU reset, m68040 integrated-FPU operations, m68080 default FPU/Apollo toggles,
+a lexical `on` symbol, and state directives expanded from a no-argument macro.
+The mapped regression uses a supported concrete section with an initialized
+prefix followed by imported logical content; `.for 0` does not change replayed
+state. It is not qualification of separate-header/two-concrete-section flat maps.
+
+Twelve state rejection inputs complete with explicit guest exit 20, including
+illegal profiles, disabled instructions, invalid arguments and CPU spellings that
+are not state argument spellings. A separate invalid `.res` control also rejects;
+that is not state-parity evidence. Generic native failure text is checked, but
+exact Rust diagnostic wording/precedence is not qualified.
+
+Three synthetic policy inputs give the same edited selector package to live Rust
+and native: a false soft guard preceding an unsupported nested recipe accepts a
+later executable candidate; a diagnostic refusal also permits that fallback; and
+a diagnostic refusal without fallback rejects before its nested operand mismatch.
+Wire assertions ensure the guarded row actually precedes the fallback. These are
+contract regressions, not additional canonical instruction coverage.
+
+Host validation: 25 numeric-package tests; 284 packed-source tests, including
+all registered CPU/dialect package-generation paths; three focused state oracles;
+24 hardware-runner Python tests; production-library Clippy with warnings denied;
+compact formatting (87 files), workflow/architecture guards and the native proof
+contract check pass. Test-target Clippy additionally encounters existing VM/ASM test warnings
+(including `field_reassign_with_default` at `runtime_model_core.rs:2669` and
+redundant fields in CLI tests); the two new `clone_on_copy` findings were fixed.
+No full workspace quality-gate claim is made. Native tests continue across individual
+case failures before reporting the aggregate result.
+
+The external-package executable is 137,296 bytes and linked static reservation
+156,592 bytes, compared with 135,580 and 153,900 in `cfa0ee92`. Private numeric state
+reserves 1,020 bytes for the bounded key limit; linked reservation is not peak RAM.
+Timing, corpus retries and complete self-host qualification follow below.
+
+Unchanged-input comparison, telemetry disabled, same 68020/10 MiB template:
+
+| Property | `cfa0ee92` wider-access baseline | BS23 state slice |
+| --- | --- | --- |
+| Indexed source / output | 7,489 / 1,632 bytes | identical |
+| m68020 package | 346,768 bytes | 376,418 bytes (+29,650; 8.55%) |
+| External-package executable | 135,580 bytes | 137,296 bytes (+1,716) |
+| Linked static reservation | 153,900 bytes | 156,592 bytes (+2,692) |
+| Fresh START/DONE samples | 12.067000542, 12.082992084 s | 12.264527458, 12.060403084 s |
+| Mean | 12.074996313 s | 12.162465271 s (+0.087468958; 0.72%) |
+
+Both new runs complete with explicit exit zero and exact live Rust equality. The
+input/output sizes and representative indexed operations are unchanged; package
+and executable identities necessarily change. Two samples, with noticeable new
+sample spread, do not establish a reliable timing regression or improvement.
+The cost buys package state and newly lowered guarded plans; it is not an
+optimization claim. Keep this incremental comparison separate from cumulative
+gains, full-source self-host timing, hardware timing and peak memory. Unchanged
+counted loops (MOS and M68K) and the MOS mapped-prefix control also pass fresh
+native comparison under BS23.
+
+Representative M68K corpus retry (`OPFORGE_M68K_CORPUS_CASES` selects the four
+cases below) remains partial, not corpus qualification:
+
+| Case | Fresh native result after state integration |
+| --- | --- |
+| `68020_fpu_registers.asm` | Rejects line 26, `FSINCOS FP0,.pair(FP6,FP7)`; prior first stop was `.fpu` |
+| `68030_pflush_external_fpu.asm` | Rejects line 7, `PFLUSH #0,#0`; prior first stop was `.fpu` |
+| `68040_integrated_fpu.asm` | Rejects line 9, `FMOVEM FP0/FP2,(A0)`; prior first stop was `.fpu` |
+| `68080_apollo_gate_error.asm` | Fresh completed negative check passes after `.apollo` processing |
+
+All four run independently; the audit exits nonzero for the three remaining
+positive failures. The first-stop lines identify investigation targets, not proof
+that all preceding instructions or emitted prefixes match. Full byte equality is
+claimed only for the successful focused artifact cases above.
+
+The three positive cases' stored `.lst` comparisons also fail. Bounded listing
+checks for the first two find identical instruction addresses/bytes (20 and five
+rows respectively), with drift in the header suffix, generated implicit-module
+boundaries, line numbers and qualified symbols. Current live Rust assembly
+succeeds. Golden listing refresh/qualification is a separate follow-up; no
+reference fixtures were modified or stale output substituted for a live oracle.
+The diagnostic `preparation step` can reflect the last completed preparation stage
+on an assembly preflight failure; zero file/line is not enough to locate that
+failure in preparation. The state mapped fixture initially hit existing flat
+layout limits and was narrowed to the supported single concrete mapped section.
+
+Complete BS23 self-host attempt: the fresh release run on 68020/74 MiB completed
+the guest protocol with exit 20 after 562.204570500 seconds. It reported binding
+completion (`preparation step: 00000002`) with zero file/line and produced no
+successful output comparison. The exported case contains 101 source inputs,
+1,466,695 source bytes, a 513,716-byte live Rust oracle and a 376,418-byte embedded
+m68020 package. This failed qualification was localized and repaired below.
+
+That reduced probe completes with native exit zero and exact equality with a
+fresh 1,248-byte Rust Hunk (13,885 source bytes; 12.348308834 seconds on
+68020/10 MiB). It assembles the actual state/package modules and a consumer of
+all state record fields and five public routines. This rules out those isolated
+bindings; it does not qualify the full-source case.
+
+The full diagnostic capture uses `capture_compact_self_host_failure` with
+`OPFORGE_COMPACT_EXPORT_INSTRUMENTED=1` and
+`OPFORGE_BINDING_FAILURE_ONLY=1`. This keeps the existing bounded completion
+snapshot, phase progress and allocation accounting while omitting detailed
+token/binding/template/input counters. Its manifest records the exact bootstrap
+defines. Diagnostic timing includes instrumentation; only a subsequent release
+comparison can qualify the replacement.
+
+The completed diagnostic capture (586.906738375 seconds, explicit guest exit 20)
+identifies `binary_templates.State.Origin` during imported-name resolution. The
+new `state` import alias collides case-insensitively with the module's existing
+`State` struct; native alias resolution precedes local struct lookup. The repair
+renames only that import to `pkgstate` and its `find` call. General parity for an
+import alias sharing a local struct name remains a separate gap. The alias repair
+leaves the complete Rust-built Hunk byte-for-byte unchanged.
+
+Final complete release self-host qualification (2026-10-05): fresh case-bound
+START/DONE, explicit guest exit zero, and exact live Rust Hunk equality pass on
+the same 68020/74 MiB configuration. Bootstrap and output embed only the m68020
+package; telemetry is disabled. The 101 mapped inputs total 1,466,701 bytes.
+The complete Hunk is 513,716 bytes; linked static reservation is 533,012 bytes,
+not peak RAM. Source fingerprint is `fnv1a64:b117cd67d550c1e3`, package fingerprint
+`fnv1a64:b7ee99560acc04d9`, and bootstrap/output fingerprint
+`fnv1a64:866683b8e9bcad5b`.
+
+Uninstrumented START/DONE duration is 1,089.649658834 seconds (18m09.65s), compared
+with 1,072.190396500 seconds at `cfa0ee92`: +17.459262334 seconds (+1.63%). This is
+the integrated slice impact with larger source/package inputs, one full sample
+per state. The unchanged-input indexed comparison above separately measures the
+executable change. Neither comparison establishes hardware speed or the 2 MiB
+product goal. Full self-host equality does not remove the remaining corpus,
+diagnostic, alias-shadowing, language or CLI/output parity gaps.
+
+The qualified release bundle is
+`/tmp/opforge-selfhost-bs23-state-qualified-release-74m`, selected by
+`/tmp/opforge-a6000-current`. Local hardware-runner dry-run validation passes;
+no remote transfer or physical A6000 execution was performed. Logs and bundle
+deliverables remain outside `target`; the build cache is cleaned at handback.

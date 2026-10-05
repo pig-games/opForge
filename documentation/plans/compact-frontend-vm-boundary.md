@@ -1,38 +1,38 @@
 # Compact frontend: VM boundary correction
 
-Status: the current runtime contract is BS22. Bounded product nodes retain
-identity-scaled tuple leaves; package projections select register qualifiers and
-validate the scalar factor through the shared ExprVM. Tuple arity/item indices
-and register-first pairs remain intact. Focused qualification and per-change
-timing are recorded in the
-[identity checkpoint](native-runtime-reset.md#bs22-identity-product-projections--baseline-f23ebf3a).
-The [wider-access self-host checkpoint](native-runtime-reset.md#wider-native-memory-operations--source-cfa0ee92)
-qualifies the complete current embedded release on FS-UAE. Earlier BS20
-measurements remain baseline evidence. Full self-host equality does not establish
-full language or CPU parity, physical A6000 timing or the 2 MiB product goal.
+Status: the current runtime contract is BS23, with package-owned state and guards.
+The [state checkpoint](native-runtime-reset.md#bs23-package-state--baseline-8940af51)
+passes focused native checks and complete release self-host equality. Bounded
+product nodes retain identity-scaled tuple leaves; package projections select
+register qualifiers and validate scalar factors through shared ExprVM. Tuple
+arity/item indices and register-first pairs remain intact. Full self-host equality
+does not establish full language or CPU parity, physical A6000 timing or the 2 MiB
+product goal.
 
-## Most recent full self-host qualification (BS22)
+## Most recent full self-host qualification (BS23)
 
-The complete BS22 embedded implementation self-assembles in FS-UAE with fresh
-case-bound completion, exit zero and exact live Rust equality. Current source
-checkpoint is `cfa0ee92`: wider contiguous clears/stores and capture copies retain
-all packed byte layouts and their bounds. The release image is 482,348 bytes;
-the 100 mapped inputs total 1,423,665 bytes, including the unchanged 346,768-byte
-m68020 package asset. Source fingerprint is `fnv1a64:8c39f768c3beb5f7`; complete
-output fingerprint is `fnv1a64:101e8c4f49ddf5b7`; package fingerprint remains
-`fnv1a64:f049c4fe0e8ebb86`.
+The complete BS23 embedded implementation self-assembles in FS-UAE with fresh
+case-bound START/DONE, explicit exit zero and exact live Rust equality. Bootstrap
+and output embed only the 376,418-byte m68020 package. The 101 mapped inputs total
+1,466,701 bytes; the complete Hunk is 513,716 bytes and linked static reservation
+533,012 bytes. Source fingerprint is `fnv1a64:b117cd67d550c1e3`, complete output
+fingerprint `fnv1a64:866683b8e9bcad5b`, and package fingerprint
+`fnv1a64:b7ee99560acc04d9`.
 
-Uninstrumented host START/DONE duration is 1,072.190396500 seconds (17m52.19s),
-excluding emulator startup and host preparation. On the same 68020/74 MiB profile
-and template, that is 7.014565125 seconds (0.65%) below the preceding BS22 full
-run. Its source is also 775 bytes shorter; one full sample per state does not
-establish a statistically reliable speedup. The unchanged indexed workload on
-68020/10 MiB separately measured 12.067000542 and 12.082992084 seconds versus
-the prior 12.323494250-second sample (2.02% lower mean). Keep those profiles separate.
-The [current full-run note](native-runtime-reset.md#wider-native-memory-operations--source-cfa0ee92)
-owns identities, limits, validation gaps and reproduction commands. No new phase
-or peak-memory capture was performed. These are emulator observations; no new
-physical A6000 timing, 2 MiB fit or full language/CPU/CLI parity is claimed.
+Uninstrumented START/DONE duration is 1,089.649658834 seconds (18m09.65s), excluding
+emulator startup and host preparation. On the same 68020/74 MiB profile/template,
+that is +17.459262334 seconds (+1.63%) versus the preceding
+[wider-access BS22 checkpoint](native-runtime-reset.md#wider-native-memory-operations--source-cfa0ee92).
+The source/package inputs are larger, and there is one full sample per state.
+The unchanged indexed workload on 68020/10 MiB separately averages 12.162465271
+seconds versus 12.074996313 seconds (+0.72%, within observed two-sample variation).
+Keep the two input sets and memory profiles separate. No new physical A6000 timing,
+complete peak-memory capture or 2 MiB fit is claimed.
+
+The [state checkpoint](native-runtime-reset.md#bs23-package-state--baseline-8940af51)
+owns identities, remaining instruction/corpus and diagnostic gaps, and the
+localized `state` import versus local `State` struct collision. Only BS23 runtime
+packages are accepted; older bundles are baseline evidence.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
@@ -44,9 +44,8 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The qualified release bundle `/tmp/opforge-selfhost-wide-access-release-74m` is selected
-by `/tmp/opforge-a6000-current`. The current BS22 hardware runner validates it;
-older formats are rejected. Bootstrap and assembled output both embed only
+The qualified release bundle `/tmp/opforge-selfhost-bs23-state-qualified-release-74m`
+is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both embed only
 `m68020--motorola68k.bin`. The named package is retained for local identity
 verification; no external runtime fallback is used. This bundle has complete
 FS-UAE qualification and a passing local transfer-preparation dry run, but no
@@ -59,7 +58,7 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The script validates the current BS22 package header, mapped source preamble and
+The script validates the current BS23 package header, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
@@ -73,7 +72,7 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS22 before selecting it in the current hardware
+instrumented configuration as BS23 before selecting it in the current hardware
 runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
@@ -135,7 +134,7 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS22 is the current compact package format; the producer writes `BS22` and the
+BS23 is the current compact package format; the producer writes `BS23` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Target flags at 130 request structural
 wrapper preservation from canonical projections. Tuple register/value/qualified projections use kinds 11/12/13. Descriptor
@@ -158,7 +157,7 @@ already-proven complete non-tuple root disproves those rows; unknown structure
 and contradictory predicates remain closed. Nonidentity/full-extension selectors
 remain explicit unsupported boundaries. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
-or CPU-specific native parsing. Its header is 192 bytes, with
+or CPU-specific native parsing. Its header is 200 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its
@@ -167,8 +166,12 @@ preparation-only inline metadata program is at 152/156. Contextual member-bindin
 offset/count at 160/164 select eight-byte rows derived from canonical selector
 projections. Head-policy offset/length are at 168/172, PRVM version at 176 and
 a zero reserved word at 178. Declaration-plan offset/length are at 180/184, its
-PRVM version at 188 and a zero reserved word at 190. Both policies stay inside
-the retained RuntimeBytes prefix. Shared PRVM entry 9 validates the labelled
+PRVM version at 188 and a zero reserved word at 190. Numeric state-plan
+offset/length are at 192/196; the final word of each 32-byte candidate row is a
+one-based state guard, zero when unguarded. Dictionary role bit 2 is reserved
+for state-argument spellings and excluded from ordinary name lookup. These
+policies and the state plan stay inside the retained RuntimeBytes prefix.
+Shared PRVM entry 9 validates the labelled
 scalar declaration envelope using the package-supplied `.const`/`.var`/`.set`
 identity-to-role table and returns operand spans plus immutable/mutable ownership.
 The retained program is 13 bytes; both mutable spellings share one role. A generic adapter lowers the record after template

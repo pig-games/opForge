@@ -17,17 +17,17 @@ SPEC.loader.exec_module(runner)
 
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
-        package = bytearray(192)
-        package[:4] = b"BS22"
-        package[168:172] = (192).to_bytes(4, "big")
+        package = bytearray(200)
+        package[:4] = b"BS23"
+        package[168:172] = (200).to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
         package[176:178] = (2).to_bytes(2, "big")
         package.extend(b"\0" * 4)
-        package[180:184] = (196).to_bytes(4, "big")
+        package[180:184] = (204).to_bytes(4, "big")
         package[184:188] = (13).to_bytes(4, "big")
         package[188:190] = (2).to_bytes(2, "big")
         package.extend(b"\0" * 14)
-        package[160:164] = (192).to_bytes(4, "big")
+        package[160:164] = (200).to_bytes(4, "big")
         if target:
             package[124:128] = len(package).to_bytes(4, "big")
             package[128:130] = len(target).to_bytes(2, "big")
@@ -103,7 +103,8 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS17", 210, "package mismatch"),
                                    (b"BS19", 210, "package mismatch"),
                                    (b"BS21", 210, "package mismatch"),
-                                   (b"BS22", 191, "package header")):
+                                   (b"BS22", 210, "package mismatch"),
+                                   (b"BS23", 199, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -117,20 +118,20 @@ class HardwareCompletionTests(unittest.TestCase):
     def test_current_header_rejects_invalid_regions_versions_and_reserved_words(self):
         mutations = [
             (4, 4, 209, "package header"),
-            (72, 4, 190, "package region"),
-            (72, 4, 212, "package region"),
+            (72, 4, 198, "package region"),
+            (72, 4, 220, "package region"),
             (72, 4, 209, "package region"),
             (160, 4, 168, "member-binding table"),
-            (160, 4, 193, "member-binding table"),
-            (160, 4, 212, "member-binding table"),
+            (160, 4, 201, "member-binding table"),
+            (160, 4, 219, "member-binding table"),
             (164, 4, 3, "member-binding table"),
             (164, 4, 0xFFFFFFFF, "member-binding table"),
         ]
         for start, label in ((168, "head-policy"), (180, "declaration")):
             mutations.extend([
                 (start, 4, 168, label),
-                (start, 4, 193, label),
-                (start, 4, 210, label),
+                (start, 4, 201, label),
+                (start, 4, 218, label),
                 (start + 4, 4, 0, label),
                 (start + 8, 2, 1, label),
                 (start + 10, 2, 1, label),
@@ -153,7 +154,7 @@ class HardwareCompletionTests(unittest.TestCase):
             package.extend(b"\0" * 8)
             package[4:8] = len(package).to_bytes(4, "big")
             package[72:76] = len(package).to_bytes(4, "big")
-            package[160:164] = (210).to_bytes(4, "big")
+            package[160:164] = (218).to_bytes(4, "big")
             package[164:168] = (1).to_bytes(4, "big")
             self.replace_package(root, package)
             runner.load_bundle(root)
@@ -163,7 +164,7 @@ class HardwareCompletionTests(unittest.TestCase):
                 runner.load_bundle(root)
 
     def test_embedded_target_must_be_inside_runtime_region_after_current_header(self):
-        for offset, runtime in ((168, 230), (210, 210)):
+        for offset, runtime in ((168, 230), (218, 218)):
             with self.subTest(offset=offset, runtime=runtime), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.embedded_bundle(root)
@@ -294,7 +295,7 @@ class HardwareCompletionTests(unittest.TestCase):
             ("configured_entry", "native", None, "Current source"),
             ("generated_catalog", None, b'.incbin "/host/package.bin"\n', "catalog"),
             ("generated_catalog", None, b'.incbin "packages/m68020--motorola68k.bin"\n' * 2, "catalog"),
-            ("package_asset", None, b"BS22corrupt", "asset mismatch"),
+            ("package_asset", None, b"BS23corrupt", "asset mismatch"),
         ]
         for origin, replacement_origin, data, error in mutations:
             with self.subTest(origin=origin, error=error), tempfile.TemporaryDirectory() as directory:

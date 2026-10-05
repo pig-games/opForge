@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_macro_plans as plans
 	.use experimental.amigaos.binary_macro_fragments as fragments
 	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_state as pkgstate
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
@@ -296,6 +297,14 @@ coreDirective
 	cmp.w package.Header.ResDirective(a3), d4
 	beq.w none
 	cmp.w package.Header.EmitDirective(a3), d4
+	beq.w none
+	; Package state directives are ordinary statements even inside templates.
+	movem.l a0/a2, -(sp)
+	movea.l a3, a2
+	move.l d4, d0
+	jsr pkgstate.find
+	movem.l (sp)+, a0/a2
+	tst.l d0
 	beq.w none
 scopeDirective
 	move.l d4, d0

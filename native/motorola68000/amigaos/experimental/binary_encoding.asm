@@ -6,6 +6,7 @@
 	.include "telemetry_macros.i"
 	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_shapes as shapes
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.use experimental.amigaos.binary_tuples as tuples
@@ -65,6 +66,7 @@ HEADER_BYTES = package.HEADER_BYTES
 ROW_BYTES = 32
 PROJECTION_BYTES = 12
 PROGRAM_BYTES = 12
+SEQUENCE_PHASE = package.Row.StateGuard; private row copy only
 
 	.section bss, kind=bss
 	.priv
@@ -159,6 +161,20 @@ rowLoop
 	move.b package.Row.Shape(a5), d0
 	cmp.w OperandShape, d0
 	bne.w nextRow
+	; Guards wrap the nested plan: skip refused candidates before inspecting
+	; their predicates or unsupported recipes. A later candidate may succeed.
+	moveq #0, d0
+	move.w package.Row.StateGuard(a5), d0
+	beq.w guardReady
+	movem.l a2, -(sp)
+	movea.l package.Context.Package(a2), a2
+	jsr state.check
+	movem.l (sp)+, a2
+	cmpi.l #state.GUARD_INVALID, d0
+	beq.w fail
+	tst.l d0
+	bne.w nextRow
+guardReady
 	moveq #0, d0
 	move.b package.Row.MemberExcluded(a5), d0
 	and.w MemberMask, d0
@@ -187,7 +203,8 @@ rowLoop
 	bsr.w tryRow
 	movem.l (sp)+, d3/d6-d7/a2/a5
 	tst.l d0
-	beq.w success
+	bne.w nextRow
+	bra.w success
 nextRow
 	adda.w #ROW_BYTES, a5
 	subq.l #1, d3
@@ -1104,8 +1121,9 @@ copyRow
 	bhi.w bad
 	adda.l d0, a4
 	movea.l sp, a5
-	; The private row copy uses its reserved word to track the encoding phase.
-	clr.w package.Row.Reserved2(a5)
+	; The private row copy reuses the guard word for its encoding phase.
+	; Selection checks the untouched package row after this routine returns.
+	clr.w SEQUENCE_PHASE(a5)
 	moveq #0, d6
 	moveq #0, d0
 	move.w package.Row.TableProgram(a5), d0
@@ -1180,7 +1198,7 @@ encodeStage
 	cmpi.w #6, d4
 	bne.w stageBad
 encodingVersion
-	move.w #1, package.Row.Reserved2(a5)
+	move.w #1, SEQUENCE_PHASE(a5)
 	bsr.w prepareExecution
 	; Saved sequence output length is at the top of the stage frame.
 	move.w 2(sp), encoding.Context.WriteOffset(a6)
@@ -1197,7 +1215,7 @@ encodingVersion
 	move.l d1, (sp)
 	bra.w next
 fixupStage
-	tst.w package.Row.Reserved2(a5)
+	tst.w SEQUENCE_PHASE(a5)
 	beq.w stageBad
 	bsr.w program
 	tst.l d0
@@ -1225,7 +1243,7 @@ fixupVersion
 	move.l d1, (sp)
 	bra.w next
 match
-	tst.w package.Row.Reserved2(a5)
+	tst.w SEQUENCE_PHASE(a5)
 	bne.w stageBad
 	cmpi.w #MISSING_PROGRAM, package.Row.Program(a5)
 	bne.w stageBad
@@ -1234,7 +1252,7 @@ next
 	adda.w #12, a4
 	subq.w #1, d7
 	bne.w loop
-	tst.w package.Row.Reserved2(a5)
+	tst.w SEQUENCE_PHASE(a5)
 	beq.w bad
 	move.l d6, d1
 	lea Output, a1

@@ -89,7 +89,7 @@ fn dictionary_offsets(wire: &[u8]) -> BTreeMap<String, usize> {
 #[test]
 fn compact_mnemonic_dictionary_roles() {
     let wire = wire();
-    assert_eq!(&wire[..4], b"BS22");
+    assert_eq!(&wire[..4], b"BS23");
     let offsets = dictionary_offsets(&wire);
     for spelling in ["reset", "word", "m68020", "68020"] {
         assert_eq!(wire[offsets[spelling] + 5], 0, "{spelling} is contextual");
@@ -106,7 +106,10 @@ fn compact_mnemonic_dictionary_roles() {
         2,
         "w owns member identity only after a dot"
     );
-    assert!(offsets.values().all(|offset| wire[offset + 5] <= 3));
+    for spelling in ["on", "off", "68881"] {
+        assert_eq!(wire[offsets[spelling] + 5], 4, "{spelling} is state-only");
+    }
+    assert!(offsets.values().all(|offset| wire[offset + 5] & !7 == 0));
 }
 
 const QUOTED_CONTROL: &str = ".cpu \"m68020\"\n .byte \"reset\"\n rts\n.end\n";
@@ -151,7 +154,7 @@ fn compact_mnemonic_unknown_dictionary_role_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; BS17 lacks the BS22 shared head-policy contract"]
+#[ignore = "requires configured FS-UAE; BS17 lacks the BS23 shared head-policy contract"]
 fn compact_mnemonic_stale_contract_fs_uae() {
     let mut wire = wire();
     wire[..4].copy_from_slice(b"BS17");

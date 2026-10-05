@@ -23,6 +23,9 @@ mod wildcard;
 #[path = "binary_source_copy_tails.rs"]
 mod copy_tails;
 
+#[path = "binary_source_state.rs"]
+mod package_state;
+
 const ROOT: &str =
     ".module main\n.cpu m6502\n.use alpha\n.use beta\n.pub\nentry\n.byte 4\n.endmodule\n.end\n";
 const A: &str = ".module alpha\n.cpu m6502\n.use shared\n.pub\nentry\n.byte 2\n.endmodule\n.end\n";

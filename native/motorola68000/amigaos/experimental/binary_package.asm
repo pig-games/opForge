@@ -5,13 +5,15 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533232; BS22
+MAGIC = $42533233; BS23
 TARGET_PRESERVE_WRAPPERS = 1
 DICTIONARY_REGISTER_OR_NAMED = 1
 DICTIONARY_MEMBER = 2
-DICTIONARY_ROLE_ALLOWED = DICTIONARY_REGISTER_OR_NAMED+DICTIONARY_MEMBER
+DICTIONARY_STATE_ARGUMENT = 4
+DICTIONARY_ROLE_ALLOWED = DICTIONARY_REGISTER_OR_NAMED+DICTIONARY_MEMBER+DICTIONARY_STATE_ARGUMENT
 DICTIONARY_REGISTER_OR_NAMED_BIT = 0
 DICTIONARY_MEMBER_BIT = 1
+DICTIONARY_STATE_ARGUMENT_BIT = 2
 
 DictionaryEntry	.struct
 Length	.word ?
@@ -81,8 +83,10 @@ DeclarationPlan	.long ?
 DeclarationPlanBytes	.long ?
 DeclarationPlanVersion	.word ?
 DeclarationReserved	.word ?
+StatePlan	.long ?
+StatePlanBytes	.long ?
 	.endstruct
-HEADER_BYTES = Header.DeclarationReserved+2
+HEADER_BYTES = Header.StatePlanBytes+4
 
 ; Contextual member forms are derived from canonical selector projections,
 ; including unsupported candidates. Field meanings remain package-owned.
@@ -138,7 +142,7 @@ Mode	.word ?
 TupleClasses	.word ?  ; operand bytes: zero or required register class + 1
 Exclusions	.long ?
 TableProgram	.word ?
-Reserved2	.word ?
+StateGuard	.word ?  ; one-based package state guard; zero means unguarded
 .endstruct
 
 Projection	.struct

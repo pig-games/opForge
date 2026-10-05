@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_prepare
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_source as source
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
@@ -102,7 +103,14 @@ directive
 	cmp.w package.Header.WordDirective(a2), d7
 	beq.w dataScalar
 	cmp.w package.Header.LongDirective(a2), d7
+	beq.w dataScalar
+	movem.l a0, -(sp)
+	move.w d7, d0
+	jsr state.find
+	movem.l (sp)+, a0
+	tst.l d0
 	bne.w bad
+	bra.w copyRest
 dataScalar
 	cmpa.l a1, a0
 	bhs.w bad

@@ -11,9 +11,16 @@ use types::hierarchy::ResolvedHierarchy;
 use crate::runtime_model_core::RuntimeModelCore;
 use crate::selector_vm::PortableSelectorOutcome;
 
+mod state;
+pub use state::{
+    NumericStateArgument, NumericStateClause, NumericStateDirective, NumericStateGuard,
+    NumericStatePlan,
+};
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BinarySourcePackage {
     pub names: Vec<String>,
+    pub state: NumericStatePlan,
     pub qualifiers: Vec<String>,
     pub aliases: Vec<NumericAlias>,
     pub registers: Vec<NumericRegister>,
@@ -69,6 +76,7 @@ pub struct NumericTableProgram {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NumericCandidate {
+    pub state_guard: u16,
     pub mnemonic: u16,
     pub qualifier: Option<u8>,
     pub shape: u16,
@@ -210,6 +218,7 @@ impl BinarySourcePackage {
         let mut names = NameTable::from_core(core)?;
         let mut qualifiers = QualifierTable::default();
         let owners = core.scoped_owner_lookup_order(resolved);
+        let mut state = state::prepare(core, resolved, &mut names)?;
         let mut aliases = Vec::new();
         let mut spellings = BTreeSet::new();
         for (forms, owner_name) in [
@@ -299,6 +308,9 @@ impl BinarySourcePackage {
                     continue;
                 }
                 for row in rows {
+                    let (guard, nested) = state::unwrap_guard(&row.operand_plan, &mut state)?;
+                    let mut row = row.clone();
+                    row.operand_plan = nested.to_string();
                     let spelling = names.name(mnemonic).to_string();
                     let (base, qualifier) = split_qualifier(&spelling);
                     let bound_mnemonic = names.id(base);
@@ -312,14 +324,16 @@ impl BinarySourcePackage {
                         });
                     }
                     candidate_plans.push(row.operand_plan.clone());
-                    candidates.push(candidate(
-                        row,
+                    let mut lowered = candidate(
+                        &row,
                         mnemonic,
                         shape,
                         rank as u8,
                         &mut names,
                         &mut qualifiers,
-                    ));
+                    );
+                    lowered.state_guard = guard;
+                    candidates.push(lowered);
                 }
             }
         }
@@ -349,6 +363,7 @@ impl BinarySourcePackage {
             return Err("binary-source qualifier dictionary exceeds u8".into());
         }
         Ok(Self {
+            state,
             names: names.finish(),
             qualifiers: qualifiers.finish(),
             aliases,
@@ -393,6 +408,7 @@ fn candidate(
     let spelling = names.name(mnemonic).to_string();
     let (base, qualifier) = split_qualifier(&spelling);
     NumericCandidate {
+        state_guard: 0,
         mnemonic: names.id(base),
         qualifier: qualifier.map(|value| qualifiers.id(value)),
         shape: names.core_id(shape),

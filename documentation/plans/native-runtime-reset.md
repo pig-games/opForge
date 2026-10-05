@@ -4,9 +4,9 @@ Status: active. The current BS22 runtime contract adds bounded identity-product
 projection transport while preserving package-selected tuple arity/item positions. The
 [focused identity checkpoint](#bs22-identity-product-projections--baseline-f23ebf3a)
 records native correctness and the measured change against `f23ebf3a`.
-The [BS22 full self-host checkpoint](#bs22-full-self-host-checkpoint--source-97589afc)
-qualifies the complete current embedded release on FS-UAE; its A6000 bundle is
-ready. No new physical A6000 run or current peak-memory measurement is claimed.
+The [wider-access checkpoint](#wider-native-memory-operations--source-cfa0ee92)
+qualifies the complete current embedded release on FS-UAE and compares its
+performance with the preceding BS22 full run; its A6000 bundle is ready. No new physical A6000 run or current peak-memory measurement is claimed.
 The prior BS20 full self-host and instrumented measurements remain baseline
 evidence below; older bundles require regeneration for the current contract.
 This remains experimental: full self-host equality does not establish full
@@ -3364,3 +3364,104 @@ dry-run log is `/tmp/opforge-bs22-a6000-qualified-dry-run.log`. These remain out
 After the build/native batch ended, `make clean` removed 1.5 GiB and retained the
 empty `target` directory. No production code changed during this qualification;
 unrelated workflow-notebook edits remain untouched. No remote push was performed.
+
+#### Wider native memory operations — source `cfa0ee92`
+
+Hypothesis: contiguous word/long accesses reduce native instruction and memory
+traffic during capture, packed-record preparation, expression compilation and
+package input projection. Retain BS22, exact byte order, buffer boundaries and
+register/status contracts. The native floor is 68020; these accesses are ordinary
+RAM, including unaligned packed payloads. Separate buffers and variable-width
+fields remain byte-oriented where widening would change their meaning.
+
+The change replaces contiguous clears, fixed BE/LE scalar serialization, macro
+and struct metadata copies, and the disjoint owned-capture copy loop. That loop
+uses longs, then a word/byte tail without reading or writing past its count.
+Nonzero LE scalar stores still reverse bytes explicitly. Four legacy package
+service/bridge files and their smoke wrapper also receive contiguous clear
+changes; those files are outside the compact self-host closure and its timing.
+No CPU package, source-language rule, VM contract or instrumentation changed.
+
+The unchanged 7,489-byte indexed workload still emits the exact 1,632-byte live
+Rust oracle with the identical 346,768-byte BS22 package. On the existing
+68020/10 MiB profile, the prior source's 12.323494250-second sample compares with
+12.067000542 and 12.082992084 seconds for this checkpoint: mean 12.074996313,
+2.02% lower. This is a modest observation from one baseline and two new samples,
+not a statistical performance qualification. Workload SHA-256 remains
+`80b128940a471c41bd2c304b65cfdc9f9cf4bf0fa6f3ee7c98a66f888bd78107`.
+The external-package image is 135,580 bytes, down 164; linked reservations are
+153,900 bytes, down 160. Native clocks from this profile are not combined
+with the full self-host profile below.
+
+The complete embedded release self-host finishes with fresh case-bound START/DONE,
+explicit guest exit zero and exact equality against the entire live Rust Hunk.
+Both repository and relocated bundle inputs were freshly assembled by Rust. The
+bootstrap and produced output are the same release configuration, each embedding
+only `m68020--motorola68k.bin`.
+
+| Property | Prior full checkpoint (`97589afc`) | Wider accesses (`cfa0ee92`) |
+| --- | ---: | ---: |
+| Source/generated/package inputs | 100 | 100 |
+| Total input bytes, including package asset | 1,424,440 | 1,423,665 |
+| Complete release/bootstrap Hunk bytes | 482,512 | 482,348 |
+| Linked static reserved bytes | 500,828 | 500,668 |
+| Embedded m68020 package bytes | 346,768 | 346,768 |
+| Native START/DONE seconds | 1,079.204961625 | 1,072.190396500 |
+
+On the same FS-UAE 68020/74 MiB profile and template, duration is 17m52.19s,
+7.014565125 seconds (0.65%) lower than the immediately preceding full run. This
+isolates the current cleanup from earlier development, but includes its slightly
+shorter assembly input (775 bytes fewer). One sample per full source state cannot
+separate a small gain from run variation. No large or statistical speedup claim
+is made. Telemetry, emulator startup and host preparation are excluded; no new
+phase or peak-memory capture was performed. Static reservations are not peak RAM.
+
+Source fingerprint is `fnv1a64:8c39f768c3beb5f7`; complete output fingerprint is
+`fnv1a64:101e8c4f49ddf5b7`; the unchanged package fingerprint is
+`fnv1a64:f049c4fe0e8ebb86`. The qualified bundle is
+`/tmp/opforge-selfhost-wide-access-release-74m`, selected by
+`/tmp/opforge-a6000-current`. Its local hardware-runner dry run passes. No remote
+transfer, physical A6000 execution, full language/family parity or 2 MiB fit is
+claimed. Run the maintained hardware command from macOS Terminal when desired:
+
+```sh
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
+```
+
+Focused validation covers mixed copy lengths and asymmetric endian values,
+full-width literal/parameter/symbol handling, scalar characters, capture after
+relocation and source poisoning, binary assets on both families, indexed operand
+projections and odd-origin Hunk alignment. Literal/capture/placement controls
+were repeated after the final fixed-width additions. The new copy-tail source
+also has a Rust oracle with explicit expected bytes. Both native format checks
+(319 legacy and 86 compact files), Rust formatting, workflow/boundary checks and
+the native proof guard pass.
+
+The whole-tree CCR checker remains non-green: its ten autofixable and 510
+advisory findings are identical to HEAD before this change. Legacy
+`external_fs_uae_hunk_smoke` fails at `tkpkg_debug_cli` without guest completion
+on 68020/10 MiB; the same failure reproduces with all five changed legacy sources
+restored to HEAD. Those clear edits have bounds/ABI review and host assembly,
+but no successful legacy native smoke qualification is claimed. Neither existing
+gap is weakened or reclassified as a pass.
+
+With the configured [FS-UAE environment](../../agents/rules/fs-uae.md), reproduce
+the unchanged-input timing using:
+
+```sh
+OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m \
+cargo test -p asm --lib binary_indexed_workload_fs_uae -- --ignored --nocapture --test-threads=1
+```
+
+The new regression is `compact_copy_tails_fs_uae`; the placement control also
+requires an absolute `OPFORGE_HUNK_PLACEMENT_ALIGNMENT_REPORT` path. Full export
+uses the command in the previous checkpoint with a fresh absolute destination
+and the same embedded-package, release and 68020/74 MiB settings. Logs are
+`/tmp/opforge-wide-*.log`; comparison identities and durations are retained in
+`/tmp/opforge-wide-access-performance-summary.json`. These stored results cannot
+replace fresh native execution.
+
+All builds and native runs finished before `make clean`; it removed 2.2 GiB
+and retained the empty `target` directory. The qualified bundle and diagnostic
+summaries remain outside `target`. Unrelated workflow-notebook edits are preserved;
+no remote push was performed.

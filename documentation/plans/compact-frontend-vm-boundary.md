@@ -6,30 +6,33 @@ validate the scalar factor through the shared ExprVM. Tuple arity/item indices
 and register-first pairs remain intact. Focused qualification and per-change
 timing are recorded in the
 [identity checkpoint](native-runtime-reset.md#bs22-identity-product-projections--baseline-f23ebf3a).
-The [BS22 full self-host checkpoint](native-runtime-reset.md#bs22-full-self-host-checkpoint--source-97589afc)
-now qualifies the complete current embedded release on FS-UAE. Earlier BS20
+The [wider-access self-host checkpoint](native-runtime-reset.md#wider-native-memory-operations--source-cfa0ee92)
+qualifies the complete current embedded release on FS-UAE. Earlier BS20
 measurements remain baseline evidence. Full self-host equality does not establish
 full language or CPU parity, physical A6000 timing or the 2 MiB product goal.
 
 ## Most recent full self-host qualification (BS22)
 
 The complete BS22 embedded implementation self-assembles in FS-UAE with fresh
-case-bound completion, exit zero and exact live Rust equality. The release image
-is 482,512 bytes; the 100 mapped inputs total 1,424,440 bytes, including the generated
-346,768-byte m68020 package asset. Source fingerprint is `fnv1a64:86a557be012263fa`;
-complete output fingerprint is `fnv1a64:d4707aa5c06d794d`; package fingerprint is
-`fnv1a64:f049c4fe0e8ebb86`. The source and package state is checkpoint `97589afc`.
+case-bound completion, exit zero and exact live Rust equality. Current source
+checkpoint is `cfa0ee92`: wider contiguous clears/stores and capture copies retain
+all packed byte layouts and their bounds. The release image is 482,348 bytes;
+the 100 mapped inputs total 1,423,665 bytes, including the unchanged 346,768-byte
+m68020 package asset. Source fingerprint is `fnv1a64:8c39f768c3beb5f7`; complete
+output fingerprint is `fnv1a64:101e8c4f49ddf5b7`; package fingerprint remains
+`fnv1a64:f049c4fe0e8ebb86`.
 
-Uninstrumented host START/DONE duration is 1,079.204961625 seconds (17m 59.20s),
-excluding emulator startup and host preparation. Profile: 68020 / 74 MiB, using
-the same configuration template as the previous full run. Its 1,066.644855709-second
-duration is 12.560106 seconds shorter; changed sources, packages and images make
-this an aggregate comparison, not the isolated cost of the latest change.
-The [current full-run note](native-runtime-reset.md#bs22-full-self-host-checkpoint--source-97589afc)
-owns complete identities, static reservations and reproduction commands. No new
-phase or peak-memory capture was performed. These are emulator observations, not A6000 timing or
-2 MiB qualification. Full self-host equality does not establish complete language,
-target, CLI or output parity.
+Uninstrumented host START/DONE duration is 1,072.190396500 seconds (17m52.19s),
+excluding emulator startup and host preparation. On the same 68020/74 MiB profile
+and template, that is 7.014565125 seconds (0.65%) below the preceding BS22 full
+run. Its source is also 775 bytes shorter; one full sample per state does not
+establish a statistically reliable speedup. The unchanged indexed workload on
+68020/10 MiB separately measured 12.067000542 and 12.082992084 seconds versus
+the prior 12.323494250-second sample (2.02% lower mean). Keep those profiles separate.
+The [current full-run note](native-runtime-reset.md#wider-native-memory-operations--source-cfa0ee92)
+owns identities, limits, validation gaps and reproduction commands. No new phase
+or peak-memory capture was performed. These are emulator observations; no new
+physical A6000 timing, 2 MiB fit or full language/CPU/CLI parity is claimed.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
@@ -41,7 +44,7 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The qualified release bundle `/tmp/opforge-selfhost-bs22-release-74m` is selected
+The qualified release bundle `/tmp/opforge-selfhost-wide-access-release-74m` is selected
 by `/tmp/opforge-a6000-current`. The current BS22 hardware runner validates it;
 older formats are rejected. Bootstrap and assembled output both embed only
 `m68020--motorola68k.bin`. The named package is retained for local identity

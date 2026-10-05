@@ -10,6 +10,9 @@ mod fpu_operands;
 #[path = "binary_source_immediate_operands.rs"]
 mod immediate_operands;
 
+#[path = "binary_source_nested_operands.rs"]
+mod nested_operands;
+
 const CASES: &[(&str, &str)] = &[
     (
         "m68020",

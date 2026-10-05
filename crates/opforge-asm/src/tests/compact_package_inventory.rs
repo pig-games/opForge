@@ -1,4 +1,4 @@
-//! Host-only BS25 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS26 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -33,10 +33,10 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS25")
+        || bytes.get(..4) != Some(b"BS26")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS25 header".into());
+        return Err("invalid BS26 header".into());
     }
     let declaration_offset = number(bytes, 180, 4)?;
     let declaration_bytes = number(bytes, 184, 4)?;
@@ -94,7 +94,7 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
         || target_bytes == 0
         || target_bytes > 26
         || target_offset + target_bytes > runtime_bytes
-        || number(bytes, 130, 2)? & !1 != 0
+        || number(bytes, 130, 2)? & !3 != 0
         || !target
             .iter()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
@@ -223,6 +223,25 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
 }
 
 // Provisional readable filenames suitable for classic Amiga directory entries.
+#[test]
+fn inventory_accepts_current_target_policy_bits_and_rejects_unknown_bits() {
+    let core = RuntimeModelCore::from_registry(&engine::build_default_asm_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    let mut bytes = prepare_package(&core, &resolved).unwrap();
+    for flags in 0u16..=3 {
+        bytes[130..132].copy_from_slice(&flags.to_be_bytes());
+        assert!(inventory(&bytes, &package).is_ok(), "flags {flags}");
+    }
+    for flags in [4u16, 5, 0x8000, u16::MAX] {
+        bytes[130..132].copy_from_slice(&flags.to_be_bytes());
+        assert_eq!(
+            inventory(&bytes, &package).unwrap_err(),
+            "invalid runtime target identity"
+        );
+    }
+}
+
 fn filename(cpu: &str, dialect: &str) -> Result<String, String> {
     for id in [cpu, dialect] {
         if id.is_empty()
@@ -337,7 +356,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS25", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS26", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

@@ -11,6 +11,8 @@ use types::hierarchy::ResolvedHierarchy;
 use crate::runtime_model_core::RuntimeModelCore;
 use crate::selector_vm::PortableSelectorOutcome;
 
+mod path;
+pub use path::ExpressionPathOperation;
 mod state;
 pub use state::{
     NumericStateArgument, NumericStateClause, NumericStateDirective, NumericStateGuard,
@@ -129,6 +131,10 @@ pub enum ScalarPlan {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Projection {
+    ExpressionPath {
+        operand: u8,
+        operations: Vec<ExpressionPathOperation>,
+    },
     Expression(u8),
     ScalarExpression(u8),
     ImmediateExpression(u8),
@@ -361,6 +367,46 @@ impl BinarySourcePackage {
                 row.mode,
             )
         });
+        fn path_qualifiers(
+            projection: &Projection,
+            names: &NameTable,
+            qualifiers: &mut QualifierTable,
+        ) {
+            match projection {
+                Projection::ExpressionPath { operations, .. } => {
+                    for operation in operations {
+                        if let ExpressionPathOperation::QualifiedRegister { qualifier, .. } =
+                            operation
+                        {
+                            qualifiers.id(&names.names[usize::from(*qualifier)]);
+                        }
+                    }
+                }
+                Projection::ValueProgram { source, .. }
+                | Projection::RequiredValueProgram { source, .. } => {
+                    path_qualifiers(source, names, qualifiers)
+                }
+                _ => {}
+            }
+        }
+        for candidate in &candidates {
+            match &candidate.recipe {
+                CandidateRecipe::SemanticInputs { inputs, .. }
+                | CandidateRecipe::SemanticBranch { inputs, .. } => {
+                    for input in inputs {
+                        path_qualifiers(input, &names, &mut qualifiers);
+                    }
+                }
+                CandidateRecipe::SemanticSequence { stages } => {
+                    for stage in stages {
+                        for input in &stage.inputs {
+                            path_qualifiers(input, &names, &mut qualifiers);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
         aliases.sort_by_key(|row| (row.spelling, row.spelling_qualifier));
         if names.overflow {
             return Err("binary-source package name dictionary exceeds u16".into());
@@ -800,6 +846,9 @@ fn bounded_tuple_item(value: &str) -> Option<u8> {
 }
 
 fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
+    if value.starts_with("xp1:") {
+        return path::parse(value, names);
+    }
     if let Some(mask) = parse_register_mask(value) {
         return Some(mask);
     }
@@ -1074,6 +1123,15 @@ fn member_binding_fields(plan: &str) -> BTreeSet<(u8, &str)> {
 }
 
 fn member_binding_field(source: &str) -> Option<(u8, &str)> {
+    if let Some(spec) = source.strip_prefix("xp1:") {
+        let mut names = NameTable::default();
+        path::parse(source, &mut names)?;
+        let (operand, _) = spec.split_once('/')?;
+        return Some((
+            operand.parse().ok()?,
+            spec.rsplit('/').next()?.strip_prefix('m')?,
+        ));
+    }
     for prefix in ["value_program:", "required_value_program:"] {
         if let Some(rest) = source.strip_prefix(prefix) {
             let (program, source) = rest.split_once(':')?;
@@ -1099,6 +1157,7 @@ fn split_qualifier(value: &str) -> (&str, Option<&str>) {
         .map_or((value, None), |(base, qualifier)| (base, Some(qualifier)))
 }
 
+#[derive(Default)]
 struct NameTable {
     names: Vec<String>,
     ids: BTreeMap<String, u16>,

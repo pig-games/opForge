@@ -11,6 +11,7 @@
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.use experimental.amigaos.binary_tuples as tuples
 	.use experimental.amigaos.binary_products as products
+	.use experimental.amigaos.binary_operand_paths as paths
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_mutable as mutable
 	.use experimental.amigaos.binary_hunk_references as references
@@ -25,6 +26,8 @@ TOKEN_SYMBOL_1 = 1
 TOKEN_COMMA = 4
 TOKEN_DOT = 7
 TOKEN_HASH = 8
+TOKEN_OPEN_BRACKET = 10
+TOKEN_CLOSE_BRACKET = 11
 TOKEN_OPEN_PAREN = 14
 TOKEN_CLOSE_PAREN = 15
 TOKEN_PLUS = 18
@@ -63,6 +66,7 @@ PROJECTION_SCALAR_EXPRESSION = 22
 PROJECTION_TUPLE_IDENTITY = 23
 PROJECTION_CALL_REGISTER = 24
 PROJECTION_HASH_SCALAR = 25
+PROJECTION_PATH = 26
 MISSING_PROGRAM = $ffff
 HEADER_BYTES = package.HEADER_BYTES
 ROW_BYTES = 32
@@ -338,13 +342,19 @@ scan
 	bhs.w one
 	moveq #0, d0
 	move.b (a3), d0
+	cmpi.b #TOKEN_OPEN_BRACKET, d0
+	beq.w opening
 	cmpi.b #TOKEN_OPEN_PAREN, d0
 	bne.w close
+opening
 	addq.w #1, d2
 	bra.w step
 close
+	cmpi.b #TOKEN_CLOSE_BRACKET, d0
+	beq.w closing
 	cmpi.b #TOKEN_CLOSE_PAREN, d0
 	bne.w comma
+closing
 	tst.w d2
 	beq.w malformed
 	subq.w #1, d2
@@ -1451,6 +1461,8 @@ recordReady
 	beq.w callRegister
 	cmpi.b #PROJECTION_HASH_SCALAR, d0
 	beq.w hashScalar
+	cmpi.b #PROJECTION_PATH, d0
+	beq.w pathValue
 	bra.w bad
 expressionValue
 	move.w package.ScalarProjection.Flags(a4), d0
@@ -1521,6 +1533,16 @@ callRegister
 	bra.w valueReady
 scalarExpression
 	bsr.w projectionScalarExpression
+	bra.w valueReady
+pathValue
+	bsr.w operandSpan
+	bne.w valueReady
+	jsr paths.evaluate
+	tst.l d0
+	bne.w valueReady
+	tst.l d2
+	beq.w valueReady
+	move.w #1, Unresolved
 	bra.w valueReady
 hashScalar
 	bsr.w projectionHashScalar

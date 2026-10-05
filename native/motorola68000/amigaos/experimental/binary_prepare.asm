@@ -9,6 +9,7 @@
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.use experimental.amigaos.binary_products as products
+	.use experimental.amigaos.binary_nested_operands as nested
 	.pub
 	.section code, kind=code
 
@@ -219,6 +220,28 @@ operands
 	; Immediate operands are scalar even when a reserved name follows.
 	bra.w expressionOperand
 operand
+	btst #1, package.Header.TargetFlags+1(a2)
+	beq.w ordinaryOperand
+	move.l a6, -(sp)
+	jsr nested.needs
+	cmpi.l #2, d0
+	beq.w malformedNested
+	tst.l d0
+	beq.w ordinaryNested
+	move.l a1, -(sp)
+	movea.l a6, a1
+	jsr nested.prepare
+	movea.l (sp)+, a1
+	movea.l (sp)+, a6
+	tst.l d0
+	bne.w bad
+	bra.w operandDone
+malformedNested
+	movea.l (sp)+, a6
+	bra.w bad
+ordinaryNested
+	movea.l (sp)+, a6
+ordinaryOperand
 	cmpi.b #7, (a0)
 	beq.w dottedCall
 	cmpi.b #14, (a0)

@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS25 packages.
+; Shared structural boundary for embedded and external BS26 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -19,7 +19,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS25 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS26 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -55,7 +55,7 @@ validate	.block
 	cmpi.w #TARGET_LIMIT, d1
 	bhi.w bad
 	move.w package.Header.TargetFlags(a4), d2
-	andi.w #$ffff-package.TARGET_PRESERVE_WRAPPERS, d2
+	andi.w #$ffff-package.TARGET_PRESERVE_WRAPPERS-package.TARGET_NESTED_PATHS, d2
 	bne.w bad
 	bsr.w span
 	bne.w bad

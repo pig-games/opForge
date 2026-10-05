@@ -3817,12 +3817,12 @@ qualified full artifact. Their rejection times are not assembly-performance
 measurements; the positive times are single observations, without a same-input
 completed baseline. No optimization claim follows from this reassessment.
 
-Read-only Sol analysis and coordinator inspection identify two independent
-structural boundaries. Full-extension selectors already describe `xp1:` paths
+At the BS25 baseline, read-only Sol analysis and coordinator inspection identified
+two independent structural boundaries. Full-extension selectors already described `xp1:` paths
 through indirect/bracket wrappers, tuple children, qualified register products
-and qualified displacement values. The numeric lowerer has no path projection;
-shallow tuple/identity-product projections cannot express them. Packed nested
-preparation also needs qualification before such paths can execute. The line-6
+and qualified displacement values. The numeric lowerer had no path projection;
+shallow tuple/identity-product projections could not express them. Packed nested
+preparation also needed qualification before such paths could execute. The line-6
 diagnostic alone does not localize all missing preparation/selection behavior.
 
 CAS2 requires three top-level operands and projections into paired call arguments,
@@ -3831,33 +3831,92 @@ cover only two operand slots and direct register arguments. Colon-pair normaliza
 must follow the canonical frontend contract; do not add a CAS2-specific native
 parser. This is a separate structural slice.
 
-### Selected next implementation boundary: numeric expression paths
+### Numeric expression paths (BS26)
 
-Translate the existing canonical paths to bounded numeric traversal programs in
-the runtime package. Preserve qualifiers, products and nested wrapper/tuple
-structure in packed preparation; traverse that representation without source
-strings. Paths and storage references must use package/source-relative offsets,
-never persisted pointers. Package classes, qualifiers, scale validation and
-encoding programs remain authoritative. Put traversal and packed-node views in
-separate helpers rather than growing instruction selection with special cases.
+BS26 lowers the canonical `xp1:` forms to bounded numeric traversal programs,
+with indirect/bracket unwrap, tuple child 0–2 and register, qualified-register,
+scale or member-value terminals. Programs have at most eight four-byte steps.
+Kind 26 retains the standard 12-byte projection slot and value-program field;
+path programs are deduplicated outside descriptor arrays. Package-base-relative
+offsets carry storage references; no binary record stores a memory pointer.
+The producer, package validator, runtime, export/runner and CLI contract checks
+migrate together. BS25 is retained only as frozen baseline evidence.
 
-Start with the path operations already used by the complete full-extension
-example: indirect/bracket unwrap, tuple child, register/class, qualified register,
-scale and qualified scalar value. Include both equivalent displacement spellings
-and pre/postindexed brackets. Reject malformed paths, unsupported nesting and
-invalid classes/widths/scales according to canonical selection; an unknown shape
-must not authorize skipping a higher-priority unsupported row. Preserve the
-existing brief/indexed path. New contract data requires one coherent latest-only
-producer/native migration; the present reassessment leaves BS25 unchanged.
+`binary_nested_operands.asm` owns bounded packed preparation and node views;
+`binary_operand_paths.asm` executes the numeric programs. Instruction selection
+only dispatches the new projection. Preparation preserves numeric names,
+qualifiers, opaque expression/product capsules, nested parentheses/brackets and
+commas. Qualified displacement-prefix and tuple spellings normalize alike.
+Ordinary lexical struct fields retain shared scalar processing. Container views
+distinguish singleton wrapper interiors from actual tuples. The existing indexed
+projection path remains the reference; neither CPU spellings nor opcode selection
+are added to these generic helpers. Existing conditional selection-position
+telemetry records the new projection kind without adding release-time telemetry.
 
-Success is exact live Rust/native output for the entire example (six addressed
-MOVE/MOVES cases plus RTS), focused legal/illegal structural controls and
-unchanged indexed regressions.
-Record before/after timing and image/package/static size separately; rejected
-baseline files cannot provide an end-to-end speedup comparison. Run a complete
-self-host after the coherent production change, not for this diagnostic-only
-reassessment. This is not a claim that all expression parsing has moved into VM
-programs: the existing EXVM/frontend ownership gaps remain explicit.
+The complete unchanged full-extension example now has fresh native completion
+and exact live Rust raw-output equality. Additional qualification covers scale
+1/2/4/8, ordinary struct-field operands, invalid classes/qualifiers/scales and
+corrupted path opcodes.
+
+Separate release timing uses the unchanged indexed input (7,489 source bytes,
+1,632 output bytes) on 68020/10 MiB. BS25 samples were 12.035299500 and
+12.060032375 seconds (mean 12.0476659375); BS26 samples are 12.410430875 and
+12.338585000 (mean 12.3745079375). This slice adds 0.326842 seconds (+2.7129%).
+Two samples per state give only a limited estimate; this is a measured cost of
+added coverage, not an optimization. The new full-extension example has no
+completed native baseline, so its 1.522867916-second current observation cannot
+establish a speedup. The additional valid scale/struct-field set takes
+1.271196334 seconds. Rejected-input times are not assembly-performance samples.
+The external CLI grows from 137,684 to 140,020 bytes (+2,336); linked static
+reservation grows from 156,976 to 159,264 (+2,288), not peak RAM. The size figures
+include the new helper code and ordinary latest-contract migration. Stored
+listing drift from the four-example audit remains separate; references were not
+regenerated.
+
+All 16 registered target/dialect packages generate, with zero failures and six
+without instruction candidates. The m68020 package grows from 376,994 to 378,874
+bytes (+1,880); m68030 and m68040 grow by the same amount. Their final unsupported
+row counts each decrease by eight, while declared rejection barriers remain
+unchanged. The m68080 package grows by 6,764 bytes and its unsupported count
+decreases by 30. These are host inventory facts, not family-wide native proof;
+other/unclassified rows are not automatically legal coverage gaps.
+
+Complete current-code uninstrumented self-host passes fresh case-bound START/DONE,
+native exit zero and exact live Rust equality for the entire 518,896-byte Hunk.
+Bootstrap and output both embed only the 378,874-byte m68020 package. All 103
+mapped inputs total 1,489,427 bytes (including the generated binary package);
+linked static reservation is 538,140 bytes, not peak RAM. Source fingerprint is
+`fnv1a64:251e179f71cb9d53`, package fingerprint `fnv1a64:ba0f35c20b1942a8`, and
+bootstrap/output fingerprint `fnv1a64:b5bd5e0ff6349a48`.
+
+On the same release 68020/74 MiB profile, START/DONE takes 1114.496267083 seconds
+(18m34.50s), versus BS25's 1091.929879083 (18m11.93s): +22.566388000 seconds
+(+2.0667%). There is one full sample per state, with changed source/package
+bytes; this is distinct from the unchanged indexed workload comparison above.
+The complete source adds two files and 19,287 mapped bytes. No physical A6000
+execution, complete peak-memory capture or 2 MiB fit is claimed.
+
+The qualified release bundle is
+`/tmp/opforge-selfhost-bs26-nested-qualified-release-74m`, selected by
+`/tmp/opforge-a6000-current`. Local hardware-runner dry-run validation passes;
+no remote transfer was performed. Logs and inventory remain under
+`/tmp/opforge-bs26-*`, outside the build cache.
+
+Affected host qualification passes 30 numeric-package and 292 packed-source
+tests, 24 hardware-runner tests, production vm/asm Clippy, native formatting and
+the architecture/workflow/proof guards. Two Sol delegates implemented/reviewed
+package lowering and bounded native preparation/traversal; the coordinator
+integrated and ran final fresh native checks. The new helper modules are 554
+and 327 lines, keeping their responsibilities separate from selection.
+
+This slice does not cover the remaining path operations/terminals, CAS2's third
+operand and indirect call-child traversal, or PC-indexed fixup grouping. It does
+not claim all expression parsing has moved into VM programs: the existing
+EXVM/frontend ownership gaps remain explicit. Exploratory Rust oracles also
+exposed restrictions on symbol-qualified displacements, a negative qualified
+outer displacement and a span disagreement for parenthesized arithmetic before
+an address tuple. Those need separate canonical investigation; the native path
+must not invent behavior to work around them.
 
 The raw report and command log are retained outside the build cache at
 `/tmp/opforge-bs25-four-example-audit.json` and

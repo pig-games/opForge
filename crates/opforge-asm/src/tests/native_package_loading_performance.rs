@@ -206,7 +206,8 @@ fn native_package_loading_performance() {
                 b"BS18".as_slice(),
                 b"BS19".as_slice(),
                 b"BS24".as_slice(),
-                b"BS25".as_slice()
+                b"BS25".as_slice(),
+                b"BS26".as_slice()
             ]
             .contains(&package.get(..4).unwrap_or(&[])),
             "baseline must carry its own known frozen native contract"

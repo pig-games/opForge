@@ -1,38 +1,36 @@
 # Compact frontend: VM boundary correction
 
-Status: the current runtime contract is BS25, adding required immediate-expression
-projections to package-owned state/guards, call-argument register projections and
-single-class masks. The
-[immediate operand slice](native-runtime-reset.md#bs25-required-immediate-expressions--baseline-2946d7bd)
-passes focused fresh native comparisons, the complete 68030 PFLUSH/FPU example
-and complete release self-host equality. Full self-host equality does not establish
-full language or CPU parity, physical A6000 timing or the 2 MiB product goal.
+Status: the current runtime contract is BS26, adding numeric expression paths
+to package-owned state/guards, call-argument register projections and single-class
+masks. The [numeric path slice](native-runtime-reset.md#numeric-expression-paths-bs26)
+passes the complete full-extension example and focused fresh native structural
+comparisons. The complete current BS26 release implementation also self-hosts
+with exact whole-Hunk Rust/native equality. Self-host success does not establish
+whole-language or CPU-family parity.
 
-## Most recent full self-host qualification (BS25)
+## Most recent full self-host qualification (BS26)
 
-The complete BS25 embedded implementation self-assembles in FS-UAE with fresh
-case-bound START/DONE, explicit exit zero and exact live Rust equality. Bootstrap
-and output embed only the 376,994-byte m68020 package. The 101 mapped inputs total
-1,470,140 bytes; the complete Hunk is 514,680 bytes and linked static reservation
-533,972 bytes. Input fingerprint is `fnv1a64:a6332b613ab63e31`, complete output
-fingerprint `fnv1a64:b2082f2bf51cbcb1`, and package fingerprint
-`fnv1a64:fe2c303018fffd3b`.
+The complete BS26 embedded implementation self-assembles in FS-UAE with fresh
+case-bound START/DONE, native exit zero and exact live Rust equality for the
+entire 518,896-byte Hunk. Bootstrap and output embed only the 378,874-byte
+m68020 package; 103 mapped source/binary inputs total 1,489,427 bytes. Linked
+static reservation is 538,140 bytes, not peak RAM. Source fingerprint is
+`fnv1a64:251e179f71cb9d53`, package fingerprint `fnv1a64:ba0f35c20b1942a8`, and
+bootstrap/output fingerprint `fnv1a64:b5bd5e0ff6349a48`.
 
-Uninstrumented START/DONE duration is 1091.929879083 seconds (18m11.93s), excluding
-emulator startup and host preparation. On the same 68020/74 MiB configuration,
-that is -0.841589959 seconds (-0.0770%) versus the preceding
-[BS24 FPU checkpoint](native-runtime-reset.md#bs24-fpu-operand-projections--baseline-f7969d7f).
-The source/package inputs differ, and there is one full sample per state.
-The unchanged indexed workload on 68020/10 MiB separately averages 12.0476659375
-seconds versus 12.1861941875 seconds (-1.1368%, two samples per state). Neither
-small decrease demonstrates an optimization. Keep the two input sets and memory
-profiles separate. No new physical A6000 timing, complete peak-memory capture or
-2 MiB fit is claimed.
+Release START/DONE takes 1114.496267083 seconds (18m34.50s), versus BS25's
+1091.929879083 (18m11.93s): +22.566388 seconds (+2.0667%), one full sample per
+state with different source/package bytes. The unchanged indexed workload on
+68020/10 MiB separately averages 12.3745079375 seconds versus 12.0476659375
+(+2.7129%, two samples per state). This slice adds functional coverage and a
+small measured runtime cost. Keep the two input sets and profiles separate.
+No physical A6000 timing, complete peak-memory capture or 2 MiB fit is claimed.
 
-The current checkpoint owns immediate projection details, focused proof and
-remaining reference gaps. Only BS25 runtime packages are accepted; older bundles
-are baseline evidence. The unused extra call-argument preparation and localized
-import-alias/local-struct shadowing gaps remain open.
+The [numeric path slice](native-runtime-reset.md#numeric-expression-paths-bs26)
+owns the path contract, focused proof and remaining boundaries. Only BS26 runtime
+packages are accepted; older bundles are baseline evidence. CAS2's third operand,
+other path/call-child forms, unused extra call-argument preparation and localized
+import-alias/local-struct shadowing remain open.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
@@ -44,7 +42,7 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The qualified release bundle `/tmp/opforge-selfhost-bs25-immediate-qualified-release-74m`
+The qualified release bundle `/tmp/opforge-selfhost-bs26-nested-qualified-release-74m`
 is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both embed only
 `m68020--motorola68k.bin`. The named package is retained for local identity
 verification; no external runtime fallback is used. This bundle has complete
@@ -58,7 +56,7 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The script validates the current BS25 package header, mapped source preamble and
+The script validates the current BS26 package header, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
@@ -72,7 +70,7 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS25 before selecting it in the current hardware
+instrumented configuration as BS26 before selecting it in the current hardware
 runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
@@ -134,10 +132,10 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS25 is the current compact package format; the producer writes `BS25` and the
+BS26 is the current compact package format; the producer writes `BS26` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Target flags at 130 request structural
-wrapper preservation from canonical projections. Tuple register/value/qualified projections use kinds 11/12/13. Descriptor
+wrapper preservation (bit 0) and nested preparation (bit 1) from canonical projections. Tuple register/value/qualified projections use kinds 11/12/13. Descriptor
 bytes 10/11 hold arity and item index: arity 2/3 is exact, while 0 allows only
 actual arity 2/3 when the canonical plan has no explicit arity predicate.
 Kind 24 selects argument 0/1 from a complete dotted numeric call, preserving
@@ -149,6 +147,25 @@ Kind 25 requires an immediate (`#`) wrapper around the selected operand and
 evaluates its scalar expression. Class, Literal and Reserved are zero; the
 standard value-program field remains available. The package owns value bounds
 and encoding; native code only validates the structural wrapper.
+Kind 26 traverses package-owned numeric expression paths. Its Class word is
+path byte length (4–32, a multiple of four), Literal is a package-base-relative
+path offset and Reserved is zero. The standard value-program field remains
+available. Deduplicated path programs occupy the arena between the 200-byte
+header and candidate rows; projection descriptor arrays stay contiguous.
+Each step is `opcode:u8, argument:u8, parameter:u16` in big-endian order:
+indirect/bracket unwrap (1/2), tuple child 0–2 (3), register/class (4), qualified
+register/class (5), scale (6), or member value/field ID (7). Container parameters
+are zero; only the final step is a terminal. Unknown operations remain unsupported.
+Packed preparation retains bounded delimiters, numeric names and opaque scalar/
+product capsules; qualified displacement-prefix syntax normalizes to the same
+structure as the equivalent tuple spelling. Ordinary lexical struct fields keep
+the existing scalar path. Traversal distinguishes singleton wrapper interiors
+from tuples, reads no source strings and persists no memory pointers.
+Qualified products use full 64-bit right-first scalar evaluation; scale accepts
+only the first successful scalar value 1/2/4/8. Classes, qualifiers, member IDs,
+ranges and emission semantics remain canonical package data. The implementation
+lives in `binary_nested_operands.asm` and `binary_operand_paths.asm`; existing
+brief/indexed projections remain available.
 Conflicting predicates reject. Native bounds selection does not evaluate scalar
 payloads or select register classes. Identity predicate kind 23 carries expected
 identity 1 in its Class word and the same bounded arity/item fields. Register
@@ -163,8 +180,8 @@ strict barrier rather than authorizing left fallback. All 64 bits matter.
 Unsupported rows retain exact canonical match arity through RequiredForms
 nibbles 10/11 (two/three items). A complete tuple with a different arity or an
 already-proven complete non-tuple root disproves those rows; unknown structure
-and contradictory predicates remain closed. Nonidentity/full-extension selectors
-remain explicit unsupported boundaries. Typed scalar/wrapped-value and
+and contradictory predicates remain closed. The represented nested full-extension paths are executable; other path
+operations, terminals and call-child forms remain explicit unsupported boundaries. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
 or CPU-specific native parsing. Its header is 200 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
@@ -276,7 +293,7 @@ These statements describe the implemented subset. They do not imply complete ass
 
 ## Remaining boundary gaps and explicit limitations
 
-- The [current four-example reassessment](native-runtime-reset.md#bs25-four-example-reassessment--implementation-2332b7d0) qualifies complete FPU addressing/catalog Hex output. Full-extension addressing still requires generic numeric `xp1:` traversal through nested packed operands; current shallow tuple projections cannot express those paths. This is the selected next structural implementation boundary.
+- The [current four-example reassessment](native-runtime-reset.md#bs25-four-example-reassessment--implementation-2332b7d0) qualifies complete FPU addressing/catalog Hex output. Full-extension addressing now has BS26 numeric `xp1:` traversal through nested packed operands. Qualification and remaining boundaries are recorded in the current numeric-path slice.
 - CAS2 requires a third top-level operand and indirect-register call-child projections, with canonical colon-pair normalization. The current two-slot/direct-call subset does not cover it; this remains separate from nested expression-path work.
 
 - Dotted call preparation compiles extra argument leaves that canonical call-register projections ignore. Unused nested calls, long strings or unresolved names can reject. BS24 covers selected register arguments and supported extra scalar/register leaves, not general call-expression parity.

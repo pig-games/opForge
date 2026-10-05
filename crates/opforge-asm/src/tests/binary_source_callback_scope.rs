@@ -193,7 +193,7 @@ fn branch_wire() -> (Vec<u8>, usize) {
 #[test]
 fn compact_branch_package_binds_optional_address_identity() {
     let (wire, target) = branch_wire();
-    assert_eq!(&wire[..4], b"BS25");
+    assert_eq!(&wire[..4], b"BS26");
     assert_eq!(&wire[target..target + 2], &[0, 0]);
     assert_eq!(
         u16::from_be_bytes(wire[target + 10..target + 12].try_into().unwrap()),

@@ -11,7 +11,8 @@ use package::{
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
-    BinarySourcePackage, CandidateRecipe, NumericCandidate, Projection, ScalarPlan, SemanticStage,
+    BinarySourcePackage, CandidateRecipe, ExpressionPathOperation, NumericCandidate, Projection,
+    ScalarPlan, SemanticStage,
 };
 use vm::runtime_model_core::RuntimeModelCore;
 
@@ -28,6 +29,7 @@ struct Program<'a> {
 
 #[derive(Default)]
 struct Programs<'a> {
+    paths: BTreeMap<Vec<ExpressionPathOperation>, (u32, Vec<u8>)>,
     rows: Vec<Program<'a>>,
     tables: BTreeMap<(u16, Option<u8>, u16), u16>,
     semantics: BTreeMap<u16, u16>,
@@ -80,6 +82,49 @@ impl<'a> Programs<'a> {
                 result.values.insert(row.name, id);
             }
         }
+        fn collect(projection: &Projection, result: &mut Programs<'_>) -> Result<(), String> {
+            match projection {
+                Projection::ExpressionPath {
+                    operand,
+                    operations,
+                } => {
+                    let bytes = encode_path(*operand, operations, &result.qualifiers)?;
+                    if !result.paths.contains_key(operations) {
+                        let offset = HEADER
+                            + result
+                                .paths
+                                .values()
+                                .map(|(_, bytes)| bytes.len())
+                                .sum::<usize>();
+                        result
+                            .paths
+                            .insert(operations.clone(), (long(offset)?, bytes));
+                    }
+                }
+                Projection::ValueProgram { source, .. }
+                | Projection::RequiredValueProgram { source, .. } => collect(source, result)?,
+                _ => {}
+            }
+            Ok(())
+        }
+        for candidate in &package.candidates {
+            match &candidate.recipe {
+                CandidateRecipe::SemanticInputs { inputs, .. }
+                | CandidateRecipe::SemanticBranch { inputs, .. } => {
+                    for input in inputs {
+                        collect(input, &mut result)?;
+                    }
+                }
+                CandidateRecipe::SemanticSequence { stages } => {
+                    for stage in stages {
+                        for input in &stage.inputs {
+                            collect(input, &mut result)?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
         Ok(result)
     }
 }
@@ -105,7 +150,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS25 block for one resolved package hierarchy.
+/// Prepare a self-contained BS26 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -406,7 +451,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS25");
+    out[..4].copy_from_slice(b"BS26");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -421,7 +466,16 @@ pub fn prepare_package(
                 .any(|stage| stage.inputs.iter().any(preserves_indirect)),
             _ => false,
         });
-    set_word(&mut out, 130, u16::from(retain_indirect));
+    set_word(
+        &mut out,
+        130,
+        u16::from(retain_indirect) | if programs.paths.is_empty() { 0 } else { 2 },
+    );
+    let mut paths = programs.paths.values().collect::<Vec<_>>();
+    paths.sort_by_key(|(offset, _)| *offset);
+    for (_, bytes) in paths {
+        out.extend_from_slice(bytes);
+    }
     let rows_offset = out.len();
     reserve(&mut out, candidates.len(), ROW)?;
     let registers_offset = out.len();
@@ -1347,6 +1401,43 @@ fn write_sequence(
     Ok(Some(offset))
 }
 
+fn encode_path(
+    operand: u8,
+    operations: &[ExpressionPathOperation],
+    qualifiers: &BTreeMap<u16, u8>,
+) -> Result<Vec<u8>, String> {
+    if operand > 1 || !(1..=8).contains(&operations.len()) {
+        return Err("invalid expression path bounds".into());
+    }
+    let mut bytes = Vec::new();
+    for (index, operation) in operations.iter().enumerate() {
+        let terminal = index + 1 == operations.len();
+        let (opcode, arg, param, is_terminal) = match operation {
+            ExpressionPathOperation::Indirect => (1, 0, 0, false),
+            ExpressionPathOperation::Bracket => (2, 0, 0, false),
+            ExpressionPathOperation::TupleChild(item) if *item <= 2 => (3, *item, 0, false),
+            ExpressionPathOperation::Register(class) => (4, 0, *class, true),
+            ExpressionPathOperation::QualifiedRegister { qualifier, class } => (
+                5,
+                *qualifiers
+                    .get(qualifier)
+                    .ok_or("expression path qualifier missing")?,
+                *class,
+                true,
+            ),
+            ExpressionPathOperation::Scale => (6, 0, 0, true),
+            ExpressionPathOperation::Member(field) => (7, 0, *field, true),
+            _ => return Err("invalid expression path operation".into()),
+        };
+        if terminal != is_terminal {
+            return Err("invalid expression path framing".into());
+        }
+        bytes.extend_from_slice(&[opcode, arg]);
+        push_word(&mut bytes, param);
+    }
+    Ok(bytes)
+}
+
 fn write_projection(
     out: &mut Vec<u8>,
     projection: &Projection,
@@ -1406,6 +1497,15 @@ fn write_projection(
         return Ok(true);
     }
     let (kind, operand, field, literal) = match projection {
+        Projection::ExpressionPath {
+            operand,
+            operations,
+        } => {
+            let Some((offset, bytes)) = programs.paths.get(operations) else {
+                return Ok(false);
+            };
+            (26, *operand, word(bytes.len())?, *offset as i32)
+        }
         Projection::Expression(operand) => (0, *operand, 0, 0),
         Projection::ImmediateExpression(operand) => {
             if *operand > 1 {
@@ -1489,6 +1589,13 @@ fn preserves_indirect(projection: &Projection) -> bool {
 
 fn collect_qualified_classes(projection: &Projection, classes: &mut BTreeSet<(u16, u16)>) {
     match projection {
+        Projection::ExpressionPath { operations, .. } => {
+            for operation in operations {
+                if let ExpressionPathOperation::QualifiedRegister { class, qualifier } = operation {
+                    classes.insert((*class, *qualifier));
+                }
+            }
+        }
         Projection::TupleQualifiedRegister {
             class, qualifier, ..
         } => {
@@ -1508,6 +1615,24 @@ fn bind_member(
     dictionary: &mut BTreeMap<String, DictionaryBinding>,
 ) -> Result<(), String> {
     match projection {
+        Projection::ExpressionPath { operations, .. } => {
+            for operation in operations {
+                if let ExpressionPathOperation::Member(field)
+                | ExpressionPathOperation::QualifiedRegister {
+                    qualifier: field, ..
+                } = operation
+                {
+                    bind(
+                        dictionary,
+                        name(names, *field)?.into(),
+                        *field,
+                        0,
+                        DictionaryRoleFlags::MEMBER,
+                    )?;
+                }
+            }
+            Ok(())
+        }
         Projection::NamedRegister { name, .. } | Projection::TupleNamedRegister { name, .. } => {
             bind(
                 dictionary,
@@ -1567,6 +1692,60 @@ fn name(names: &[String], id: u16) -> Result<&str, String> {
 #[cfg(test)]
 mod dictionary_role_contract_tests {
     use super::*;
+
+    #[test]
+    fn expression_path_wire_validates_bounds_and_framing() {
+        use ExpressionPathOperation::*;
+        let qualifiers = BTreeMap::from([(12, 3)]);
+        assert_eq!(
+            encode_path(
+                1,
+                &[
+                    Indirect,
+                    TupleChild(0),
+                    Bracket,
+                    TupleChild(2),
+                    QualifiedRegister {
+                        qualifier: 12,
+                        class: 0
+                    }
+                ],
+                &qualifiers
+            )
+            .unwrap(),
+            [1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 3, 2, 0, 0, 5, 3, 0, 0]
+        );
+        for operations in [
+            vec![],
+            vec![Indirect],
+            vec![Scale, Register(0)],
+            vec![TupleChild(3), Scale],
+            vec![Indirect; 9],
+            vec![QualifiedRegister {
+                qualifier: 99,
+                class: 0,
+            }],
+        ] {
+            assert!(encode_path(0, &operations, &qualifiers).is_err());
+        }
+        assert!(encode_path(2, &[Scale], &qualifiers).is_err());
+        let mut programs = Programs::default();
+        programs.paths.insert(
+            vec![Indirect, Member(4)],
+            (200, vec![1, 0, 0, 0, 7, 0, 0, 4]),
+        );
+        let mut wire = Vec::new();
+        assert!(write_projection(
+            &mut wire,
+            &Projection::ExpressionPath {
+                operand: 1,
+                operations: vec![Indirect, Member(4)]
+            },
+            &programs
+        )
+        .unwrap());
+        assert_eq!(wire, [26, 1, 0, 8, 0, 0, 0, 200, 255, 255, 0, 0]);
+    }
 
     #[test]
     fn immediate_projection_wire_preserves_wrapper_and_value_program() {

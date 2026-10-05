@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS26 packages.
+; Shared structural boundary for embedded and external BS27 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -12,14 +12,14 @@ SUCCESS = 0
 INVALID = 1
 TARGET_LIMIT = 26
 COUNT_LIMIT = 65535
-ROW_BYTES = 32
+ROW_BYTES = package.ROW_BYTES
 REGISTER_BYTES = 6
 PROGRAM_BYTES = 12
 TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS26 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS27 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -122,6 +122,18 @@ candidateTables
 	moveq #ROW_BYTES, d1
 	bsr.w table
 	bne.w bad
+	move.l package.Header.RowCount(a4), d6
+candidateLoop
+	tst.l d6
+	beq.w registerTable
+	cmpi.b #11, package.Row.RequiredForm2(a3)
+	bhi.w bad
+	tst.w package.Row.Reserved(a3)
+	bne.w bad
+	adda.w #ROW_BYTES, a3
+	subq.l #1, d6
+	bra.w candidateLoop
+registerTable
 	move.l package.Header.RegisterRows(a4), d0
 	move.l package.Header.RegisterCount(a4), d2
 	moveq #REGISTER_BYTES, d1

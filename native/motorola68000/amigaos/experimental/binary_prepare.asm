@@ -285,7 +285,7 @@ dottedCall
 	bne.w bad
 	bsr.w name
 	bne.w bad
-	bsr.w tupleTail
+	bsr.w callTail
 	bne.w bad
 	bra.w operandDone
 parenthesizedRegister
@@ -435,7 +435,19 @@ bad
 ; Preserve tuple boundaries and prepare each bounded leaf without selecting
 ; target classes or scales. A0/A3 advance; D0/CCR=status, other registers retained.
 tupleTail	.block
+	moveq #0, d0
+	bra.w tuplePrepare
+	.bend  ; tupleTail
+
+; Call arguments retain proven register wrappers for package projections.
+callTail	.block
+	moveq #1, d0
+	bra.w tuplePrepare
+	.bend  ; callTail
+
+tuplePrepare	.block
 	movem.l d1-d7/a1-a2/a4-a6, -(sp)
+	move.l d0, d2
 	cmpa.l a1, a0
 	bhs.w bad
 	cmpi.b #14, (a0)
@@ -503,7 +515,31 @@ leafReady
 	bhi.w bad
 	move.l a1, -(sp)
 	movea.l a6, a1
+	tst.l d2
+	beq.w scalarLeaf
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	bne.w scalarLeaf
+	cmpi.b #14, (a0)
+	bne.w scalarLeaf
+	cmpi.b #15, 5(a0)
+	bne.w scalarLeaf
+	move.l a0, -(sp)
+	addq.l #1, a0
+	bsr.w packageRegister
+	movea.l (sp)+, a0
+	cmpi.l #2, d0
+	beq.w leafFailed
+	tst.l d0
+	bne.w scalarLeaf
+	moveq #6, d6
+	bsr.w copy
+	bra.w leafFailed
+scalarLeaf
 	jsr products.prepare
+leafFailed
+	tst.l d0
 	movea.l (sp)+, a1
 	bne.w bad
 	cmpa.l a6, a0
@@ -522,7 +558,7 @@ done
 	movem.l (sp)+, d1-d7/a1-a2/a4-a6
 	tst.l d0
 	rts
-	.bend  ; tupleTail
+	.bend  ; tuplePrepare
 
 ; Copy one numeric name, return its ID in D7. Other clobbers as copy.
 name	.block

@@ -1,4 +1,4 @@
-//! Host-only BS26 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS27 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -33,10 +33,10 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS26")
+        || bytes.get(..4) != Some(b"BS27")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS26 header".into());
+        return Err("invalid BS27 header".into());
     }
     let declaration_offset = number(bytes, 180, 4)?;
     let declaration_bytes = number(bytes, 184, 4)?;
@@ -172,6 +172,9 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
             8 => "immediate_direct",
             9 => "register",
             10 => "direct_direct",
+            11 => "direct_direct_direct",
+            12 => "register_register_immediate",
+            13 => "direct_direct_immediate",
             _ => "unrecognized",
         };
         let mut reasons = Vec::new();
@@ -356,7 +359,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS26", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS27", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

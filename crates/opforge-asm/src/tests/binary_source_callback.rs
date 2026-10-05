@@ -168,7 +168,7 @@ fn compact_callback_package_sequence_inventory() {
         + 1;
     let mut immediate_rows = Vec::new();
     for index in 0..count {
-        let row = rows + index * 32;
+        let row = rows + index * crate::binary_source_experiment::ROW;
         if u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == move_id
             && wire[row + 2] == qualifier
             && wire[row + 3] == 8

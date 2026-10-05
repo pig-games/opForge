@@ -15,7 +15,7 @@ pub enum ExpressionPathOperation {
 pub(super) fn parse(value: &str, names: &mut NameTable) -> Option<Projection> {
     let spec = value.strip_prefix("xp1:")?;
     let (operand, tail) = spec.split_once('/')?;
-    let operand = operand.parse::<u8>().ok().filter(|operand| *operand <= 1)?;
+    let operand = operand.parse::<u8>().ok().filter(|operand| *operand <= 2)?;
     let steps = tail.split('/').collect::<Vec<_>>();
     if !(1..=8).contains(&steps.len()) {
         return None;
@@ -110,7 +110,7 @@ mod tests {
             })
         );
         for source in [
-            "xp1:2/r0",
+            "xp1:3/r0",
             "xp1:0",
             "xp1:0/i",
             "xp1:0/t3/r0",

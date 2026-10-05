@@ -18,7 +18,7 @@ use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
 const HEADER: usize = 200;
-const ROW: usize = 32;
+pub(crate) const ROW: usize = 36;
 const SCALAR_ADDRESS_IDENTITY: u16 = 1;
 
 struct Program<'a> {
@@ -150,7 +150,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS26 block for one resolved package hierarchy.
+/// Prepare a self-contained BS27 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -451,7 +451,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS26");
+    out[..4].copy_from_slice(b"BS27");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -495,13 +495,13 @@ pub fn prepare_package(
             &names,
             &programs,
         )?;
-        // This runtime has at most two operands. Predicates on other operands
+        // This runtime has at most three operands. Predicates on other operands
         // cannot disprove a candidate here and remain unsupported barriers.
         let supported_exclusions: Vec<_> = candidate
             .known_name_excluded
             .iter()
             .copied()
-            .filter(|(operand, _)| *operand < 2)
+            .filter(|(operand, _)| *operand < 3)
             .collect();
         if !supported_exclusions.is_empty() {
             let offset = if let Some(offset) = exclusions.get(&supported_exclusions) {
@@ -785,6 +785,9 @@ fn write_candidate(
         "immediate_direct" => 8,
         "register" => 9,
         "direct_direct" => 10,
+        "direct_direct_direct" => 11,
+        "register_register_immediate" => 12,
+        "direct_direct_immediate" => 13,
         "register_direct" => 4,
         "register_register" => 5,
         "direct_register" => 6,
@@ -887,9 +890,11 @@ fn write_candidate(
         }
         _ => (0, 0),
     };
-    out[row + 19] = required_forms;
+    out[row + 19] = required_forms as u8;
+    out[row + 32] = (required_forms >> 8) as u8;
+    out[row + 33] = (tuple_classes >> 24) as u8;
     set_word(out, row + 20, candidate.mode);
-    set_word(out, row + 22, tuple_classes);
+    set_word(out, row + 22, tuple_classes as u16);
     set_word(
         out,
         row + 28,
@@ -932,11 +937,11 @@ fn semantic_emits_opcode(programs: &Programs<'_>, index: u16) -> bool {
 // Each nibble is a necessary packed-operand wrapper for an unsupported
 // sequence candidate. Native selection may skip a disproven candidate, but
 // still fails closed when its wrapper can match.
-fn required_operand_forms(plan: &str) -> u8 {
+fn required_operand_forms(plan: &str) -> u16 {
     let Some(predicates) = match_predicates(plan) else {
         return 0;
     };
-    let mut forms = [0u8; 2];
+    let mut forms = [0u8; 3];
     for predicate in predicates.split(',') {
         if let Some(operand) = necessary_scalar_root(predicate) {
             forms[operand] = 6;
@@ -956,7 +961,7 @@ fn required_operand_forms(plan: &str) -> u8 {
                         .bytes()
                         .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
                 {
-                    if let Ok(operand @ 0..=1) = operand.parse::<usize>() {
+                    if let Ok(operand @ 0..=2) = operand.parse::<usize>() {
                         forms[operand] = if forms[operand] == 0 || forms[operand] == 5 {
                             5
                         } else {
@@ -976,7 +981,7 @@ fn required_operand_forms(plan: &str) -> u8 {
                 let Some((operand, _)) = rest.split_once('.') else {
                     continue;
                 };
-                if let Ok(operand @ 0..=1) = operand.parse::<usize>() {
+                if let Ok(operand @ 0..=2) = operand.parse::<usize>() {
                     if forms[operand] == 0 || forms[operand] == form {
                         forms[operand] = form;
                     } else {
@@ -995,8 +1000,8 @@ fn required_operand_forms(plan: &str) -> u8 {
 // Exact arity strengthens only an unknown or arbitrary-tuple wrapper. Conflicting
 // arity conjuncts retain the barrier; unrelated wrapper facts are not replaced.
 // Nibbles 10/11 require a complete two/three-item tuple, respectively.
-fn exact_tuple_forms(forms: [u8; 2], arities: impl Iterator<Item = (u8, u8)>) -> u8 {
-    let mut required = [0u8; 2];
+fn exact_tuple_forms(forms: [u8; 3], arities: impl Iterator<Item = (u8, u8)>) -> u16 {
+    let mut required = [0u8; 3];
     for (operand, arity) in arities {
         let Some(existing) = required.get_mut(usize::from(operand)) else {
             continue;
@@ -1013,7 +1018,7 @@ fn exact_tuple_forms(forms: [u8; 2], arities: impl Iterator<Item = (u8, u8)>) ->
             *form = arity + 8;
         }
     }
-    forms[0] | forms[1] << 4
+    u16::from(forms[0]) | u16::from(forms[1]) << 4 | u16::from(forms[2]) << 8
 }
 
 fn canonical_tuple_arity(predicate: &str) -> Option<(u8, u8)> {
@@ -1044,13 +1049,13 @@ fn match_predicates(plan: &str) -> Option<&str> {
     Some(predicates.split('|').next().unwrap_or(predicates))
 }
 
-// Two bytes in the row encode necessary tuple-base classes, operand 0 then 1.
+// Bytes 22, 23 and 33 encode necessary tuple-base classes for operands 0, 1 and 2.
 // Zero means unknown; classes beyond the one-byte representation retain the barrier.
-fn required_tuple_classes(plan: &str) -> u16 {
+fn required_tuple_classes(plan: &str) -> u32 {
     let Some(predicates) = match_predicates(plan) else {
         return 0;
     };
-    let mut classes = [0u8; 2];
+    let mut classes = [0u8; 3];
     for predicate in predicates.split(',') {
         let Some((operand, class)) = predicate
             .strip_prefix("indirect_tuple_reg")
@@ -1065,7 +1070,7 @@ fn required_tuple_classes(plan: &str) -> u16 {
         {
             continue;
         }
-        let (Ok(operand @ 0..=1), Ok(class)) = (operand.parse::<usize>(), class.parse::<u8>())
+        let (Ok(operand @ 0..=2), Ok(class)) = (operand.parse::<usize>(), class.parse::<u8>())
         else {
             continue;
         };
@@ -1083,7 +1088,7 @@ fn required_tuple_classes(plan: &str) -> u16 {
             }
         }
     }
-    u16::from_be_bytes(classes)
+    u32::from_be_bytes([classes[2], 0, classes[0], classes[1]])
 }
 
 // A sequence can be downgraded after a later executable stage fails native
@@ -1091,9 +1096,9 @@ fn required_tuple_classes(plan: &str) -> u16 {
 // about the operand wrapper and base-register class. A required scalar projection
 // in any stage proves the tuple starts with scalar data; it does not prove that
 // stage is executable. Unknown projections retain the unsupported barrier.
-fn necessary_sequence_match(stages: &[SemanticStage]) -> (u8, u16) {
-    let mut forms = [0u8; 2];
-    let mut classes = [0u8; 2];
+fn necessary_sequence_match(stages: &[SemanticStage]) -> (u16, u32) {
+    let mut forms = [0u8; 3];
+    let mut classes = [0u8; 3];
     for stage in stages
         .iter()
         .take_while(|stage| stage.program.is_none() && !stage.fixup)
@@ -1110,7 +1115,7 @@ fn necessary_sequence_match(stages: &[SemanticStage]) -> (u8, u16) {
                     .iter()
                     .flat_map(|stage| &stage.inputs)
                     .any(|input| tuple_scalar_first(input, *operand));
-                if index < 2 && scalar_first {
+                if index < 3 && scalar_first {
                     forms[index] = 4;
                     classes[index] = class
                         .checked_add(1)
@@ -1128,7 +1133,7 @@ fn necessary_sequence_match(stages: &[SemanticStage]) -> (u8, u16) {
     );
     (
         exact_tuple_forms(forms, arities.into_iter()),
-        u16::from_be_bytes(classes),
+        u32::from_be_bytes([classes[2], 0, classes[0], classes[1]]),
     )
 }
 
@@ -1151,7 +1156,7 @@ fn necessary_scalar_root(predicate: &str) -> Option<usize> {
     if operand.is_empty() || !operand.bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
-    operand.parse::<usize>().ok().filter(|operand| *operand < 2)
+    operand.parse::<usize>().ok().filter(|operand| *operand < 3)
 }
 
 fn necessary_named_root(predicate: &str) -> Option<usize> {
@@ -1171,7 +1176,7 @@ fn necessary_named_root(predicate: &str) -> Option<usize> {
     {
         return None;
     }
-    operand.parse::<usize>().ok().filter(|operand| *operand < 2)
+    operand.parse::<usize>().ok().filter(|operand| *operand < 3)
 }
 
 // A partial structural proof for two exact expression-path roots. The full
@@ -1183,7 +1188,7 @@ fn necessary_path_form(predicate: &str) -> Option<(usize, u8)> {
         return None;
     }
     let operand = parts[0].parse::<usize>().ok()?;
-    if operand > 1 || !parts[0].bytes().all(|byte| byte.is_ascii_digit()) {
+    if operand > 2 || !parts[0].bytes().all(|byte| byte.is_ascii_digit()) {
         return None;
     }
     let (terminal, containers) = parts[3..].split_last()?;
@@ -1406,7 +1411,7 @@ fn encode_path(
     operations: &[ExpressionPathOperation],
     qualifiers: &BTreeMap<u16, u8>,
 ) -> Result<Vec<u8>, String> {
-    if operand > 1 || !(1..=8).contains(&operations.len()) {
+    if operand > 2 || !(1..=8).contains(&operations.len()) {
         return Err("invalid expression path bounds".into());
     }
     let mut bytes = Vec::new();
@@ -1457,12 +1462,24 @@ fn write_projection(
         operand,
         argument,
         class,
+    }
+    | Projection::CallArgumentIndirectRegister {
+        operand,
+        argument,
+        class,
     } = projection
     {
-        if *operand > 1 || *argument > 1 || *class == MISSING {
+        if *operand > 2 || *argument > 1 || *class == MISSING {
             return Ok(false);
         }
-        out.extend_from_slice(&[24, *operand]);
+        out.extend_from_slice(&[
+            if matches!(projection, Projection::CallArgumentIndirectRegister { .. }) {
+                27
+            } else {
+                24
+            },
+            *operand,
+        ]);
         push_word(out, *class);
         out.extend_from_slice(&0i32.to_be_bytes());
         push_word(out, value_program);
@@ -1479,7 +1496,7 @@ fn write_projection(
     } = projection
     {
         if value_program != MISSING
-            || *operand > 1
+            || *operand > 2
             || *first_class == MISSING
             || *first_class == *second_class
             || *first_shift > 15
@@ -1508,7 +1525,7 @@ fn write_projection(
         }
         Projection::Expression(operand) => (0, *operand, 0, 0),
         Projection::ImmediateExpression(operand) => {
-            if *operand > 1 {
+            if *operand > 2 {
                 return Ok(false);
             }
             (25, *operand, 0, 0)
@@ -1566,8 +1583,13 @@ fn write_projection(
         Projection::ValueProgram { .. } | Projection::RequiredValueProgram { .. } => {
             return Ok(false)
         }
-        Projection::RegisterMask { .. } | Projection::CallArgumentRegister { .. } => unreachable!(),
+        Projection::RegisterMask { .. }
+        | Projection::CallArgumentRegister { .. }
+        | Projection::CallArgumentIndirectRegister { .. } => unreachable!(),
     };
+    if operand > 2 {
+        return Ok(false);
+    }
     out.extend_from_slice(&[kind, operand]);
     push_word(out, field);
     out.extend_from_slice(&literal.to_be_bytes());
@@ -1728,7 +1750,7 @@ mod dictionary_role_contract_tests {
         ] {
             assert!(encode_path(0, &operations, &qualifiers).is_err());
         }
-        assert!(encode_path(2, &[Scale], &qualifiers).is_err());
+        assert!(encode_path(3, &[Scale], &qualifiers).is_err());
         let mut programs = Programs::default();
         programs.paths.insert(
             vec![Indirect, Member(4)],
@@ -1751,7 +1773,7 @@ mod dictionary_role_contract_tests {
     fn immediate_projection_wire_preserves_wrapper_and_value_program() {
         let mut programs = Programs::default();
         programs.values.insert(7, 3);
-        for operand in 0..=1 {
+        for operand in 0..=2 {
             let mut wire = Vec::new();
             assert!(write_projection(
                 &mut wire,
@@ -1777,7 +1799,7 @@ mod dictionary_role_contract_tests {
         }
         let mut wire = vec![42];
         assert!(
-            !write_projection(&mut wire, &Projection::ImmediateExpression(2), &programs).unwrap()
+            !write_projection(&mut wire, &Projection::ImmediateExpression(3), &programs).unwrap()
         );
         assert_eq!(wire, [42]);
     }
@@ -2150,6 +2172,7 @@ mod sequence_wire_tests {
         for (predicate, expected) in [
             ("indirect_tuple_arity0.value2", 10),
             ("indirect_tuple_arity1.value3", 0xb0),
+            ("indirect_tuple_arity2.value2", 0xa00),
             ("indirect_tuple_reg0.item1.class8,indirect_tuple_arity0.value3", 11),
             ("indirect_tuple_arity0.value2,indirect_tuple_arity1.value3", 0xba),
             ("indirect_tuple_arity0.value2,indirect_tuple_arity0.value2", 10),
@@ -2167,7 +2190,7 @@ mod sequence_wire_tests {
             "indirect_tuple_arity0.value+2",
             "indirect_tuple_arity+0.value2",
             "indirect_tuple_arity0.value2.future",
-            "indirect_tuple_arity2.value2",
+            "indirect_tuple_arity3.value2",
         ] {
             assert_eq!(
                 required_operand_forms(&format!("semv.reject.v1:bad@{predicate}")),
@@ -2297,7 +2320,7 @@ mod sequence_wire_tests {
         assert_eq!(required_operand_forms("semv.inputs.v1:future@expr1"), 0x60);
         for predicate in [
             "target:expr",
-            "target:expr2",
+            "target:expr3",
             "target:expr0.more",
             "expr0future",
             "register_or_named_range0.classes.prefixb.min0.max7",
@@ -2327,7 +2350,7 @@ mod sequence_wire_tests {
             "xp1:0/i/t0/b",
             "xp1:0/i/t0/b/future",
             "xp1:0/i/t0/b/t2/qL.c",
-            "xp1:2/i/t0/mW",
+            "xp1:3/i/t0/mW",
             "xp1:0/i/t1/mW",
             "xp1:0/i/t0/r1",
             "xp1:0/i/t0/b/x/r1",
@@ -2359,7 +2382,7 @@ mod sequence_wire_tests {
             "member_shape1.",
             "member_shape1.W.extra",
             "member_shape.W",
-            "member_shape2.W",
+            "member_shape3.W",
             "member_shape1W",
             "member_shape_1.W",
             "member1.W",
@@ -2434,6 +2457,47 @@ mod sequence_wire_tests {
                 class: 1
             },
         ]));
+    }
+
+    #[test]
+    fn third_operand_call_arguments_preserve_indirection_and_bounds() {
+        let programs = Programs::default();
+        for argument in 0..=1 {
+            let mut wire = Vec::new();
+            assert!(write_projection(
+                &mut wire,
+                &Projection::CallArgumentIndirectRegister {
+                    operand: 2,
+                    argument,
+                    class: 1,
+                },
+                &programs
+            )
+            .unwrap());
+            assert_eq!(wire, [27, 2, 0, 1, 0, 0, 0, 0, 255, 255, 0, argument]);
+        }
+        let mut wire = Vec::new();
+        assert!(!write_projection(
+            &mut wire,
+            &Projection::CallArgumentIndirectRegister {
+                operand: 3,
+                argument: 0,
+                class: 1,
+            },
+            &programs
+        )
+        .unwrap());
+        assert!(wire.is_empty());
+        assert_eq!(
+            required_operand_forms("semv.reject.v1:bad@indirect_reg2.class1"),
+            0x100
+        );
+        assert_eq!(
+            required_tuple_classes(
+                "semv.reject.v1:bad@indirect_tuple_reg2.item1.class1,indirect_tuple_value2.item0"
+            ),
+            0x02000000
+        );
     }
 
     #[test]

@@ -170,7 +170,7 @@ fn binary_selection_self_host_immediate_indirect_oracle_and_package() {
         .position(|name| name == "cmpi")
         .unwrap() as u16;
     assert!((0..count).any(|index| {
-        let row = rows + index * 32;
+        let row = rows + index * crate::binary_source_experiment::ROW;
         u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == cmpi
             && bytes[row + 2] == 1
             && bytes[row + 3] == 3
@@ -225,7 +225,7 @@ fn binary_selection_repeated_forward_call_rust_oracle() {
     }
     assert_eq!(binding, Some((bsr, 3)));
     assert!((0..count).any(|index| {
-        let row = rows + index * 32;
+        let row = rows + index * crate::binary_source_experiment::ROW;
         u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == bsr
             && bytes[row + 2] == 3
             && bytes[row + 3] == 1
@@ -262,7 +262,7 @@ fn binary_selection_displacement_package_recipe() {
     let count = u32::from_be_bytes(bytes[20..24].try_into().unwrap()) as usize;
     let jsr = package.names.iter().position(|name| name == "jsr").unwrap() as u16;
     assert!((0..count).any(|index| {
-        let row = rows + index * 32;
+        let row = rows + index * crate::binary_source_experiment::ROW;
         u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == jsr
             && bytes[row + 3] == 1
             && bytes[row + 5] == 4
@@ -370,7 +370,12 @@ fn binary_selection_distinguishes_register_and_direct_shapes() {
     let rows = u32::from_be_bytes(bytes[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(bytes[20..24].try_into().unwrap()) as usize;
     let serialized = (0..count)
-        .map(|index| &bytes[rows + index * 32..rows + index * 32 + 32])
+        .map(|index| {
+            &bytes[rows + index * crate::binary_source_experiment::ROW
+                ..rows
+                    + index * crate::binary_source_experiment::ROW
+                    + crate::binary_source_experiment::ROW]
+        })
         .collect::<Vec<_>>();
     for (mnemonic, qualifier, shape, priority, expected_shape) in [
         ("move", 2, "immediate_register", 81, 3),

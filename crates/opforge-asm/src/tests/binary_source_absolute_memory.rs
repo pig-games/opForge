@@ -91,7 +91,7 @@ fn compact_bss_to_struct_has_executable_package_sequence() {
     let offset = u32::from_be_bytes(wire[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
     let member_row = (0..count)
-        .map(|index| offset + index * 32)
+        .map(|index| offset + index * crate::binary_source_experiment::ROW)
         .find(|&row| {
             u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == move_id
                 && wire[row + 2] == qualifier
@@ -106,7 +106,7 @@ fn compact_bss_to_struct_has_executable_package_sequence() {
         0x0900
     ); // PC base register class + 1
     assert!((0..count).any(|index| {
-        let row = offset + index * 32;
+        let row = offset + index * crate::binary_source_experiment::ROW;
         u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == move_id
             && wire[row + 2] == qualifier
             && wire[row + 3] == 10 // direct_direct

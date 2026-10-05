@@ -43,6 +43,10 @@ SHAPE_VALUE_REGISTER = 6
 SHAPE_PREFIXED_VALUE = 8
 SHAPE_REGISTER = 9
 SHAPE_VALUE_PAIR = 10
+SHAPE_VALUE_TRIPLE = 11
+SHAPE_REGISTER_PREFIX_TRIPLE = 12
+SHAPE_VALUE_PREFIX_TRIPLE = 13
+MAX_OPERANDS = 3
 
 RECIPE_NONE = 0
 RECIPE_U8 = 1
@@ -67,17 +71,18 @@ PROJECTION_TUPLE_IDENTITY = 23
 PROJECTION_CALL_REGISTER = 24
 PROJECTION_HASH_SCALAR = 25
 PROJECTION_PATH = 26
+PROJECTION_CALL_WRAPPED_REGISTER = 27
 MISSING_PROGRAM = $ffff
 HEADER_BYTES = package.HEADER_BYTES
-ROW_BYTES = 32
+ROW_BYTES = package.ROW_BYTES
 PROJECTION_BYTES = 12
 PROGRAM_BYTES = 12
 SEQUENCE_PHASE = package.Row.StateGuard; private row copy only
 
 	.section bss, kind=bss
 	.priv
-OperandStart	.res long, 2
-OperandEnd	.res long, 2
+OperandStart	.res long, MAX_OPERANDS
+OperandEnd	.res long, MAX_OPERANDS
 OperandCount	.res word, 1
 OperandShape	.res word, 1
 MemberMask	.res word, 1
@@ -125,19 +130,21 @@ encode	.block
 	tst.l d0
 	bne.w fail
 	clr.w MemberMask
-	tst.w OperandCount
-	beq.w shapesReady
-	movea.l OperandStart, a0
-	movea.l OperandEnd, a1
+	moveq #0, d4
+memberOperand
+	cmp.w OperandCount, d4
+	bhs.w shapesReady
+	move.w d4, d0
+	lsl.w #2, d0
+	lea OperandStart, a0
+	movea.l 0(a0, d0.w), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d0.w), a1
 	jsr shapes.isMember
-	move.w d0, MemberMask
-	cmpi.w #2, OperandCount
-	bne.w shapesReady
-	movea.l OperandStart+4, a0
-	movea.l OperandEnd+4, a1
-	jsr shapes.isMember
-	add.w d0, d0
+	lsl.w d4, d0
 	or.w d0, MemberMask
+	addq.w #1, d4
+	bra.w memberOperand
 shapesReady
 	movea.l package.Context.Package(a2), a5
 	move.l a5, d0
@@ -327,7 +334,8 @@ done
 
 	.priv
 
-; Record at most two top-level operands and derive their numeric shape.
+; Record bounded top-level operands before deriving their numeric shape.
+; Nested separators remain inside their operand; empty/fourth operands reject.
 splitOperands	.block
 	move.l a0, OperandStart
 	move.l a1, OperandEnd
@@ -336,10 +344,12 @@ splitOperands	.block
 	cmpa.l a1, a0
 	beq.w emptyOperands
 	moveq #0, d2
+	moveq #0, d3  ; current slot
+	movea.l a0, a4  ; current bounded operand start
 	movea.l a0, a3
 scan
 	cmpa.l a1, a3
-	bhs.w one
+	bhs.w scanned
 	moveq #0, d0
 	move.b (a3), d0
 	cmpi.b #TOKEN_OPEN_BRACKET, d0
@@ -364,15 +374,37 @@ comma
 	bne.w step
 	tst.w d2
 	bne.w step
-	cmpa.l a0, a3
+	cmpa.l a4, a3
 	beq.w malformed
-	move.l a3, OperandEnd
+	move.w d3, d0
+	lsl.w #2, d0
+	lea OperandEnd, a6
+	move.l a3, 0(a6, d0.w)
+	addq.w #1, d3
+	cmpi.w #MAX_OPERANDS, d3
+	bhs.w malformed
 	addq.l #1, a3
 	cmpa.l a1, a3
 	bhs.w malformed
-	move.l a3, OperandStart+4
-	move.l a1, OperandEnd+4
-	move.w #2, OperandCount
+	movea.l a3, a4
+	move.w d3, d0
+	lsl.w #2, d0
+	lea OperandStart, a6
+	move.l a3, 0(a6, d0.w)
+	bra.w scan
+scanned
+	tst.w d2
+	bne.w malformed
+	move.w d3, d0
+	lsl.w #2, d0
+	lea OperandEnd, a6
+	move.l a1, 0(a6, d0.w)
+	addq.w #1, d3
+	move.w d3, OperandCount
+	cmpi.w #1, d3
+	beq.w one
+	cmpi.w #MAX_OPERANDS, d3
+	beq.w triple
 	cmpi.b #TOKEN_HASH, (a0)
 	beq.w prefixedPair
 	move.w #SHAPE_PAIR, OperandShape
@@ -410,9 +442,31 @@ step
 	tst.l d0
 	bne.w malformed
 	bra.w scan
+triple
+	move.w #SHAPE_VALUE_TRIPLE, OperandShape
+	movea.l OperandStart+8, a0
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w tripleReady
+	move.w #SHAPE_VALUE_PREFIX_TRIPLE, OperandShape
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w tripleReady
+	movea.l OperandStart+4, a0
+	movea.l OperandEnd+4, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w tripleReady
+	move.w #SHAPE_REGISTER_PREFIX_TRIPLE, OperandShape
+tripleReady
+	moveq #0, d0
+	rts
 one
-	tst.w d2
-	bne.w malformed
 	move.w #1, OperandCount
 	cmpi.b #TOKEN_HASH, (a0)
 	bne.w singleOperand
@@ -533,7 +587,7 @@ loop
 	beq.w complete
 	moveq #0, d0
 	move.w (a3)+, d0
-	cmpi.w #2, d0
+	cmpi.w #MAX_OPERANDS, d0
 	bhs.w malformed
 	move.w (a3)+, d2
 	cmp.w package.Header.NameCount(a6), d2
@@ -573,6 +627,8 @@ done
 requiredForms	.block
 	movem.l d1-d4/a0-a1/a6, -(sp)
 	moveq #0, d2
+	move.b package.Row.RequiredForm2(a5), d2
+	lsl.w #8, d2
 	move.b package.Row.RequiredForms(a5), d2
 	moveq #0, d3
 next
@@ -727,7 +783,7 @@ tuple
 advance
 	lsr.l #4, d2
 	addq.l #1, d3
-	cmpi.l #2, d3
+	cmpi.l #MAX_OPERANDS, d3
 	blo.w next
 	moveq #0, d0
 	bra.w done
@@ -747,13 +803,22 @@ done
 ; All other caller state is preserved; CCR reflects D0.
 tupleClasses	.block
 	move.w package.Row.TupleClasses(a5), d0
+	or.b package.Row.TupleClass2(a5), d0
+	tst.w d0
 	beq.w no
 	movem.l d1-d4/a0-a1/a4, -(sp)
 	lea package.Row.TupleClasses(a5), a4
 	moveq #0, d3
 next
 	moveq #0, d4
+	cmpi.w #2, d3
+	beq.w thirdClass
 	move.b 0(a4, d3.w), d4
+	bra.w classReady
+thirdClass
+	move.b package.Row.TupleClass2(a5), d4
+classReady
+	tst.b d4
 	beq.w advance
 	cmp.w OperandCount, d3
 	bhs.w malformed
@@ -768,7 +833,7 @@ next
 	bne.w done
 advance
 	addq.w #1, d3
-	cmpi.w #2, d3
+	cmpi.w #MAX_OPERANDS, d3
 	blo.w next
 	moveq #0, d0
 	bra.w done
@@ -1111,10 +1176,10 @@ bad
 ; SEMV interfaces. Match stages validate projections; encode stages append bytes.
 sequence	.block
 	movem.l d2-d7/a2-a5, -(sp)
-	suba.w #32, sp
+	suba.w #ROW_BYTES, sp
 	movea.l sp, a0
 	movea.l a5, a1
-	moveq #7, d0
+	moveq #ROW_BYTES/4-1, d0
 copyRow
 	move.l (a1)+, (a0)+
 	dbf d0, copyRow
@@ -1277,7 +1342,7 @@ stageBad
 bad
 	moveq #1, d0
 done
-	adda.w #32, sp
+	adda.w #ROW_BYTES, sp
 	movem.l (sp)+, d2-d7/a2-a5
 	rts
 	.bend  ; sequence
@@ -1459,6 +1524,8 @@ recordReady
 	beq.w scalarExpression
 	cmpi.b #PROJECTION_CALL_REGISTER, d0
 	beq.w callRegister
+	cmpi.b #PROJECTION_CALL_WRAPPED_REGISTER, d0
+	beq.w callRegister
 	cmpi.b #PROJECTION_HASH_SCALAR, d0
 	beq.w hashScalar
 	cmpi.b #PROJECTION_PATH, d0
@@ -1527,7 +1594,13 @@ callRegister
 	bhi.w bad
 	tst.l package.Projection.Literal(a4)
 	bne.w bad
+	cmpi.b #PROJECTION_CALL_WRAPPED_REGISTER, package.Projection.Kind(a4)
+	beq.w wrappedCall
 	jsr tuples.callArgument
+	bra.w callSelected
+wrappedCall
+	jsr tuples.callWrappedRegister
+callSelected
 	bne.w valueReady
 	bsr.w register
 	bra.w valueReady

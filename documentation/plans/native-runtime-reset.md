@@ -3922,3 +3922,64 @@ The raw report and command log are retained outside the build cache at
 `/tmp/opforge-bs25-four-example-audit.json` and
 `/tmp/opforge-bs25-four-example-audit.log`. The qualified BS25 self-host bundle
 and default A6000 selection remain unchanged.
+
+### Three operands and indirect call children (BS27, checkpoint)
+
+The current slice extends shared numeric instruction transport to three bounded
+operands and preserves package-recognized indirect register children in canonical
+call operands. Opcode, register-class and range semantics remain in the canonical
+package selectors. Candidate rows grow from 32 to 36 bytes, retaining old field
+offsets and appending third-operand predicate slots; projection 27 selects an
+indirect call child. Production accepts only the new BS27 contract.
+
+Correctness separates same-source `PACK`/`UNPK` parity from transformed-input
+CAS2 execution probes, with class, indirectness, arity and range controls. Rust
+cannot directly parse the indirect child structure from `.pair((a0),(a1))`;
+its family parser constructs that structure from raw colon pairs. Therefore
+transformed-input output equality cannot qualify unchanged-source CAS2 parity. Existing two-operand, FPU-call and nested
+addressing cases remain regression controls. Release cost is measured separately
+on the unchanged indexed workload against BS26 (mean 12.3745079375 seconds,
+140,020-byte external image, 159,264-byte static reservation); a fresh complete
+release self-host remains required before updating the hardware bundle.
+
+Raw colon pairs are a separate exposed boundary: Rust's family compatibility
+parser creates `.pair` nodes, while the packed native frontend currently retains
+token 5. This slice must not implement mnemonic-specific normalization in generic
+native code. Its qualification must identify whether that spelling is still
+unsupported; canonical call equivalence is not unchanged-source example parity.
+
+Current evidence, before full qualification:
+
+- Fresh native same-source `PACK` register/memory and `UNPK` output matches Rust.
+  Existing FPU call/mask controls also match Rust. Seven malformed call/range
+  controls complete with the expected explicit error exit.
+- The actual native package validator accepts a valid BS27 package and rejects
+  a nonzero reserved row word and an out-of-range third-operand form. Migration
+  exposed two hidden 32-byte candidate strides in `binary_state`; these now use
+  the package owner's row-size constant.
+- A standalone component feeds actual package IDs through `prepare.line` and
+  proves exact preservation of three calls, including wrapped register children.
+  This is component evidence, not full frontend or instruction parity.
+- Both positive transformed CAS2 CLI probes still reject during captured-source
+  preparation, before the ORDER/BIND progress boundaries. The actual frontend
+  component probe is host-assembled and ready for native localization. No CAS2
+  output or unchanged-source example completion is claimed.
+- Host checks pass: 510 VM unit tests, 297 compact-source subsystem tests
+  (448 native tests ignored), Clippy for VM/assembler libraries, package generation
+  for all 16 executable pipelines, workflow/architecture and fresh-proof guards.
+
+The one valid release sample on the unchanged 7,489-byte indexed workload takes
+12.506508041 seconds and matches all 1,632 output bytes. BS26's two-sample mean
+is 12.3745079375 seconds: this single sample is 0.132000104 seconds (1.067%)
+higher, not a statistically established slowdown. The second run stalled before
+guest START while the Mac was locked; it supplies no assembly timing. External
+image size grows 140,020 → 140,500 bytes (+480); linked static reservation grows
+159,264 → 159,736 (+472), not peak RAM. The m68020 package grows
+378,874 → 394,246 bytes (+15,372); 13,544 bytes are the four additional bytes
+for each of its 3,386 candidate rows.
+
+No BS27 full self-host or qualified A6000 bundle exists yet. The previous BS26
+bundle remains baseline evidence; the migrated BS27-only hardware helper requires
+a newly qualified BS27 bundle before its default command can be used again.
+Native localization, the second release timing and complete exact-Hunk self-host
+remain required before integration readiness.

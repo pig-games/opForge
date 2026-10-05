@@ -134,7 +134,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS26");
+        assert_eq!(&bytes[..4], b"BS27");
         let rows_offset = long(16);
         assert!(rows_offset >= 200);
         assert_eq!((rows_offset - 200) % 4, 0);
@@ -233,7 +233,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS26");
+        assert_eq!(&bytes[..4], b"BS27");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
@@ -256,7 +256,8 @@ fn binary_source_packages_prepare() {
             let count = long(&bytes, 20);
             for index in 0..count {
                 let guard = u16::from_be_bytes(
-                    bytes[rows + index * 32 + 30..rows + index * 32 + 32]
+                    bytes[rows + index * crate::binary_source_experiment::ROW + 30
+                        ..rows + index * crate::binary_source_experiment::ROW + 32]
                         .try_into()
                         .unwrap(),
                 );
@@ -322,7 +323,7 @@ fn binary_source_packages_prepare() {
         let programs = long(&bytes, 32);
         let program_count = long(&bytes, 36);
         for (offset, count, width) in [
-            (rows, row_count, 32),
+            (rows, row_count, crate::binary_source_experiment::ROW),
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
@@ -331,12 +332,12 @@ fn binary_source_packages_prepare() {
         }
 
         let mut runtime_references = vec![
-            (rows, row_count * 32),
+            (rows, row_count * crate::binary_source_experiment::ROW),
             (registers, register_count * 6),
             (programs, program_count * 12),
         ];
         for index in 0..row_count {
-            let row = rows + index * 32;
+            let row = rows + index * crate::binary_source_experiment::ROW;
             let input_count =
                 u16::from_be_bytes(bytes[row + 10..row + 12].try_into().unwrap()) as usize;
             let inputs = long(&bytes, row + 12);
@@ -352,7 +353,7 @@ fn binary_source_packages_prepare() {
                 runtime_references.push((exclusions, 2 + count * 4));
                 let name_count = u16::from_be_bytes(bytes[62..64].try_into().unwrap());
                 for predicate in bytes[exclusions + 2..exclusions + 2 + count * 4].chunks_exact(4) {
-                    assert!(u16::from_be_bytes(predicate[..2].try_into().unwrap()) < 2);
+                    assert!(u16::from_be_bytes(predicate[..2].try_into().unwrap()) < 3);
                     assert!(u16::from_be_bytes(predicate[2..].try_into().unwrap()) < name_count);
                 }
             }

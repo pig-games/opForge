@@ -456,7 +456,7 @@ fn compact_immediate_memory_packet_sequence() {
             assert_eq!(stages[2].inputs, [Projection::TargetExpression(1)]);
         }
         let rows = (0..long(&packet, 20))
-            .map(|index| long(&packet, 16) + index * 32)
+            .map(|index| long(&packet, 16) + index * crate::binary_source_experiment::ROW)
             .filter(|&row| {
                 u16::from_be_bytes(packet[row..row + 2].try_into().unwrap()) == candidate.mnemonic
                     && packet[row + 2] == candidate.qualifier.unwrap() as u8 + 1

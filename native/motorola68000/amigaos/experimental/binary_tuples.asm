@@ -29,6 +29,33 @@ callArgument	.block
 	moveq #1, d3
 	bra.w view
 	.bend  ; callArgument
+
+; A0/A1=complete numeric call,D1=argument ordinal. Select an indirect
+; register child (name); success A0/A1=bare unqualified name,D3=call arity.
+; D0/CCR=status; other registers preserved. Package owns register classes.
+callWrappedRegister	.block
+	bsr.w callArgument
+	bne.w bad
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	bne.w bad
+	cmpi.b #OPEN, (a0)
+	bne.w bad
+	cmpi.b #NAME_MAX, 1(a0)
+	bhi.w bad
+	tst.b 4(a0)
+	bne.w bad
+	cmpi.b #CLOSE, 5(a0)
+	bne.w bad
+	addq.l #1, a0
+	subq.l #1, a1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; callWrappedRegister
 	.priv
 view	.block
 	movem.l d1-d2/d4-d5/a2-a5, -(sp)
@@ -149,7 +176,23 @@ leaf	.block
 	cmpi.b #expression.COMPILED_TAG, (a2)
 	beq.w sized
 	cmpi.b #products.BINARY_TAG, (a2)
+	beq.w sized
+	cmpi.b #OPEN, (a2)
 	bne.w name
+	; Only calls carry preserved indirect register children. Ordinary tuple
+	; views keep their existing leaf grammar and expected arity checks.
+	tst.l d2
+	bpl.w bad
+	cmpi.l #6, d0
+	blo.w bad
+	cmpi.b #NAME_MAX, 1(a2)
+	bhi.w bad
+	tst.b 4(a2)
+	bne.w bad
+	cmpi.b #CLOSE, 5(a2)
+	bne.w bad
+	moveq #6, d5
+	bra.w length
 sized
 	moveq #0, d5
 	move.b 1(a2), d5

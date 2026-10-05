@@ -201,6 +201,11 @@ pub enum Projection {
     TupleArityThree {
         operand: u8,
     },
+    CallArgumentIndirectRegister {
+        operand: u8,
+        argument: u8,
+        class: u16,
+    },
     CallArgumentRegister {
         operand: u8,
         argument: u8,
@@ -585,7 +590,7 @@ fn member_excluded(plan: &str) -> u8 {
             inputs
                 .split(',')
                 .filter_map(non_member_operand)
-                .filter(|operand| *operand < 2)
+                .filter(|operand| *operand < 3)
                 .fold(0, |mask, operand| mask | (1 << operand))
         })
         .unwrap_or(0)
@@ -887,7 +892,7 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
     }
     if let Some(rest) = value.strip_prefix("immediate") {
         let operand = rest.parse::<u8>().ok()?;
-        return (operand <= 1).then_some(Projection::ImmediateExpression(operand));
+        return (operand <= 2).then_some(Projection::ImmediateExpression(operand));
     }
     if let Some(rest) = value.strip_prefix("scalar_expr") {
         return rest.parse().ok().map(Projection::ScalarExpression);
@@ -921,20 +926,33 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
             name: names.id(name),
         });
     }
-    if let Some(rest) = value.strip_prefix("call_arg_register") {
-        let (operand, rest) = rest.split_once(".arg")?;
-        let (argument, class) = rest.split_once(".class")?;
-        let operand = operand.parse::<u8>().ok()?;
-        let argument = argument.parse::<u8>().ok()?;
-        let class = class.parse::<u16>().ok()?;
-        if operand > 1 || argument > 1 || class == u16::MAX {
-            return None;
+    for (prefix, indirect) in [
+        ("call_arg_register", false),
+        ("call_arg_indirect_register", true),
+    ] {
+        if let Some(rest) = value.strip_prefix(prefix) {
+            let (operand, rest) = rest.split_once(".arg")?;
+            let (argument, class) = rest.split_once(".class")?;
+            let operand = operand.parse::<u8>().ok()?;
+            let argument = argument.parse::<u8>().ok()?;
+            let class = class.parse::<u16>().ok()?;
+            if operand > 2 || argument > 1 || class == u16::MAX {
+                return None;
+            }
+            return Some(if indirect {
+                Projection::CallArgumentIndirectRegister {
+                    operand,
+                    argument,
+                    class,
+                }
+            } else {
+                Projection::CallArgumentRegister {
+                    operand,
+                    argument,
+                    class,
+                }
+            });
         }
-        return Some(Projection::CallArgumentRegister {
-            operand,
-            argument,
-            class,
-        });
     }
     if let Some(rest) = value.strip_prefix("reg") {
         let (operand, class) = rest.split_once(".class")?;
@@ -1058,7 +1076,7 @@ fn parse_register_mask(value: &str) -> Option<Projection> {
     } else {
         (u16::MAX, 0)
     };
-    if operand > 1
+    if operand > 2
         || first_class == u16::MAX
         || first_class == second_class
         || first_shift > 15
@@ -1246,14 +1264,14 @@ mod tests {
     };
 
     #[test]
-    fn immediate_projection_lowers_only_two_numeric_operand_slots() {
+    fn immediate_projection_lowers_three_numeric_operand_slots() {
         let mut names = NameTable {
             names: Vec::new(),
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
         };
-        for operand in 0..=1 {
+        for operand in 0..=2 {
             assert_eq!(
                 parse_projection(&format!("immediate{operand}"), &mut names),
                 Some(Projection::ImmediateExpression(operand))
@@ -1261,7 +1279,7 @@ mod tests {
         }
         for source in [
             "immediate",
-            "immediate2",
+            "immediate3",
             "immediate256",
             "immediate-1",
             "immediate0.extra",
@@ -1278,7 +1296,7 @@ mod tests {
             Some(Projection::ValueProgram { source, .. }) if *source == Projection::ImmediateExpression(1))
         );
         assert!(matches!(
-            super::parse_recipe("semv.inputs.v1:pflush@expr0,immediate2", &mut names),
+            super::parse_recipe("semv.inputs.v1:pflush@expr0,immediate3", &mut names),
             CandidateRecipe::Unsupported { .. }
         ));
     }
@@ -1308,7 +1326,7 @@ mod tests {
             })
         );
         for invalid in [
-            "register_mask2.map0=0+1=8",
+            "register_mask3.map0=0+1=8",
             "register_mask1.map0=0+0=8",
             "register_mask1.map0=32+1=8",
             "register_mask1.map0=0+1=32",
@@ -1319,6 +1337,46 @@ mod tests {
         ] {
             assert_eq!(parse_register_mask(invalid), None, "{invalid}");
         }
+    }
+
+    #[test]
+    fn third_operand_indirect_call_arguments_lower_without_identity_rules() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        for argument in 0..=1 {
+            assert_eq!(
+                parse_projection(
+                    &format!("call_arg_indirect_register2.arg{argument}.class1"),
+                    &mut names
+                ),
+                Some(Projection::CallArgumentIndirectRegister {
+                    operand: 2,
+                    argument,
+                    class: 1
+                })
+            );
+        }
+        assert!(matches!(
+            parse_projection("call_arg_register2.arg0.class0", &mut names),
+            Some(Projection::CallArgumentRegister { operand: 2, .. })
+        ));
+        for value in [
+            "call_arg_indirect_register3.arg0.class1",
+            "call_arg_indirect_register2.arg2.class1",
+            "call_arg_indirect_register2.arg0.class65535",
+            "call_arg_indirect_register2.arg0.class1.extra",
+        ] {
+            assert_eq!(parse_projection(value, &mut names), None, "{value}");
+        }
+        let plan = "semv.sequence.v1:match:_@call_arg_register0.arg0.class0,call_arg_register1.arg1.class0,call_arg_indirect_register2.arg0.class1,call_arg_indirect_register2.arg1.class1;encode:word@literal:3324";
+        assert!(matches!(
+            super::parse_recipe(plan, &mut names),
+            CandidateRecipe::SemanticSequence { .. }
+        ));
     }
 
     #[test]
@@ -1338,7 +1396,7 @@ mod tests {
             })
         );
         for invalid in [
-            "call_arg_register2.arg0.class2",
+            "call_arg_register3.arg0.class2",
             "call_arg_register1.arg2.class2",
             "call_arg_register1.arg1.class65535",
             "call_arg_register1.arg1.class2.extra",
@@ -1943,6 +2001,22 @@ mod tests {
                 "{plan}"
             );
         }
+    }
+
+    #[test]
+    fn pack_register_immediate_candidate_remains_executable() {
+        let mut registry = registry::ModuleRegistry::new();
+        families::register_motorola68000_family_stack(&mut registry);
+        let core = super::RuntimeModelCore::from_registry(&registry).unwrap();
+        let resolved = core.resolve_pipeline("m68020", None).unwrap();
+        let package = super::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+        assert!(package.candidates.iter().any(|candidate| {
+            package.names[usize::from(candidate.mnemonic)] == "pack"
+                && package.names[usize::from(candidate.shape)] == "register_register_immediate"
+                && matches!(&candidate.recipe, CandidateRecipe::SemanticSequence { stages }
+                    if stages.iter().any(|stage| stage.program.is_some()
+                        && stage.inputs == [Projection::Expression(2)]))
+        }));
     }
 
     #[test]

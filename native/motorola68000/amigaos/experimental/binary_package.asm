@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533236; BS26
+MAGIC = $42533237; BS27
 TARGET_PRESERVE_WRAPPERS = 1
 TARGET_NESTED_PATHS = 2
 DICTIONARY_REGISTER_OR_NAMED = 1
@@ -144,7 +144,11 @@ TupleClasses	.word ?  ; operand bytes: zero or required register class + 1
 Exclusions	.long ?
 TableProgram	.word ?
 StateGuard	.word ?  ; one-based package state guard; zero means unguarded
+RequiredForm2	.byte ?  ; low nibble: third operand wrapper predicate
+TupleClass2	.byte ?  ; third operand register class + 1
+Reserved	.word ?
 .endstruct
+ROW_BYTES = Row.Reserved+2
 
 Projection	.struct
 Kind	.byte ?

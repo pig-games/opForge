@@ -13,6 +13,15 @@ mod immediate_operands;
 #[path = "binary_source_nested_operands.rs"]
 mod nested_operands;
 
+#[path = "binary_source_call_operands.rs"]
+mod call_operands;
+
+#[path = "binary_source_package_validation.rs"]
+mod package_validation;
+
+#[path = "binary_source_call_component.rs"]
+mod call_component;
+
 const CASES: &[(&str, &str)] = &[
     (
         "m68020",

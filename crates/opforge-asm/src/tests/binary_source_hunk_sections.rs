@@ -103,7 +103,7 @@ fn compact_hunk_instruction_relocation_rust_oracle() {
     let rows = u32::from_be_bytes(wire[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
     assert!((0..count).any(|index| {
-        let row = rows + index * 32;
+        let row = rows + index * crate::binary_source_experiment::ROW;
         u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == lea
             && u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap()) == 78
             && wire[row + 5] == 9
@@ -308,7 +308,7 @@ fn compact_hunk_immediate_data_package_projection() {
     let word = |offset: usize| u16::from_be_bytes(wire[offset..offset + 2].try_into().unwrap());
     let rows = long(16);
     let row = (0..long(20))
-        .map(|index| rows + index * 32)
+        .map(|index| rows + index * crate::binary_source_experiment::ROW)
         .find(|&row| {
             word(row) == candidate.mnemonic
                 && wire[row + 2] == candidate.qualifier.unwrap() as u8 + 1

@@ -202,7 +202,7 @@ fn compact_address_alu_memory_packet_sequences() {
             assert!(stages[2].fixup);
             assert_eq!(stages[2].inputs, [Projection::TargetExpression(0)]);
             let row = (0..long(&packet, 20))
-                .map(|index| long(&packet, 16) + index * 32)
+                .map(|index| long(&packet, 16) + index * crate::binary_source_experiment::ROW)
                 .find(|&row| {
                     u16::from_be_bytes(packet[row..row + 2].try_into().unwrap())
                         == candidate.mnemonic
@@ -300,7 +300,7 @@ fn compact_address_alu_member_packet_sequences() {
             .unwrap() as u8
             + 1;
         let row = (0..long(&packet, 20))
-            .map(|index| long(&packet, 16) + index * 32)
+            .map(|index| long(&packet, 16) + index * crate::binary_source_experiment::ROW)
             .find(|&row| {
                 u16::from_be_bytes(packet[row..row + 2].try_into().unwrap()) == name
                     && packet[row + 2] == qualifier

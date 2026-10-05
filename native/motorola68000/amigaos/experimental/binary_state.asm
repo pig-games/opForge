@@ -172,7 +172,7 @@ guardCountReady
 	cmpi.l #65535, d7
 	bhi.w bad
 	move.l d7, d1
-	mulu.w #32, d1
+	mulu.w #package.ROW_BYTES, d1
 	move.l package.Header.Rows(a5), d0
 	cmpi.l #package.HEADER_BYTES, d0
 	blo.w bad
@@ -186,7 +186,7 @@ rowLoop
 	beq.w ok
 	cmp.w package.Row.StateGuard(a0), d6
 	blo.w bad
-	adda.w #32, a0
+	adda.w #package.ROW_BYTES, a0
 	subq.l #1, d7
 	bra.w rowLoop
 ok

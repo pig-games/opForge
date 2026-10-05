@@ -75,7 +75,7 @@ fn compact_movem_restore_uses_executable_mask_projection_rows() {
     for priority in [25, 33] {
         assert!(
             (0..count).any(|index| {
-                let row = offset + index * 32;
+                let row = offset + index * crate::binary_source_experiment::ROW;
                 u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == move_id
                     && wire[row + 2] == qualifier
                     && wire[row + 3] == 10
@@ -85,7 +85,8 @@ fn compact_movem_restore_uses_executable_mask_projection_rows() {
             "missing executable MOVEM.L direct_direct row priority {priority}"
         );
     }
-    assert!((0..count).all(|index| wire[offset + index * 32 + 5] != 8));
+    assert!((0..count)
+        .all(|index| wire[offset + index * crate::binary_source_experiment::ROW + 5] != 8));
     assert!(wire
         .windows(12)
         .any(|row| { row == [18, 1, 0, 0, 0, 1, 0, 8, 0xff, 0xff, 0, 0] }));

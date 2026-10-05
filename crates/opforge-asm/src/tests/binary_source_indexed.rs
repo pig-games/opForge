@@ -304,7 +304,7 @@ fn binary_pc_dispatch_lea_has_executable_package_row() {
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
     assert!(
         (0..count).any(|index| {
-            let row = offset + index * 32;
+            let row = offset + index * crate::binary_source_experiment::ROW;
             u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == rows[0].1.mnemonic
                 && u16::from_be_bytes(wire[row + 6..row + 8].try_into().unwrap())
                     == rows[0].1.priority

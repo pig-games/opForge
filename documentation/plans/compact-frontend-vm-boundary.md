@@ -1,10 +1,15 @@
 # Compact frontend: VM boundary correction
 
-Status: the current runtime contract is BS26, adding numeric expression paths
-to package-owned state/guards, call-argument register projections and single-class
-masks. The [numeric path slice](native-runtime-reset.md#numeric-expression-paths-bs26)
+Status: the working runtime contract is BS27, extending numeric transport to
+three operands and wrapped call children. This is an incomplete checkpoint:
+same-source PACK/UNPK and FPU controls pass, but the transformed CAS2 frontend
+probe still rejects, and BS27 has no complete self-host qualification yet. The
+[current checkpoint](native-runtime-reset.md#three-operands-and-indirect-call-children-bs27-checkpoint)
+records its evidence and pending checks. The previous BS26 contract added numeric
+expression paths to package-owned state/guards, call-argument register projections
+and single-class masks. The [numeric path slice](native-runtime-reset.md#numeric-expression-paths-bs26)
 passes the complete full-extension example and focused fresh native structural
-comparisons. The complete current BS26 release implementation also self-hosts
+comparisons. The previous BS26 release implementation also self-hosts
 with exact whole-Hunk Rust/native equality. Self-host success does not establish
 whole-language or CPU-family parity.
 
@@ -27,9 +32,10 @@ small measured runtime cost. Keep the two input sets and profiles separate.
 No physical A6000 timing, complete peak-memory capture or 2 MiB fit is claimed.
 
 The [numeric path slice](native-runtime-reset.md#numeric-expression-paths-bs26)
-owns the path contract, focused proof and remaining boundaries. Only BS26 runtime
-packages are accepted; older bundles are baseline evidence. CAS2's third operand,
-other path/call-child forms, unused extra call-argument preparation and localized
+owns the path contract, focused proof and remaining boundaries. Only BS27 runtime
+packages are accepted by current code; older bundles are baseline evidence.
+CAS2 source normalization and frontend preparation, other path/call-child forms,
+unused extra call-argument preparation and localized
 import-alias/local-struct shadowing remain open.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
@@ -42,7 +48,12 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The qualified release bundle `/tmp/opforge-selfhost-bs26-nested-qualified-release-74m`
+**Pending BS27 qualification:** the current hardware helper accepts BS27 only,
+while the default symlink still selects the qualified BS26 baseline below. The
+default command cannot be used with this combination. Update it only after fresh
+complete BS27 self-host proof; no new hardware bundle is claimed at this checkpoint.
+
+The previous qualified release bundle `/tmp/opforge-selfhost-bs26-nested-qualified-release-74m`
 is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both embed only
 `m68020--motorola68k.bin`. The named package is retained for local identity
 verification; no external runtime fallback is used. This bundle has complete
@@ -56,7 +67,7 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The script validates the current BS26 package header, mapped source preamble and
+The script validates the current BS27 package header, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
@@ -132,9 +143,16 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS26 is the current compact package format; the producer writes `BS26` and the
+BS27 is the current compact package format; the producer writes `BS27` and the
 native package owner checks the matching magic. Only this latest runtime contract
-is supported; packages must be regenerated. Target flags at 130 request structural
+is supported; packages must be regenerated. Candidate rows are 36 bytes: offsets
+0–31 retain their previous fields, byte 32 carries the third-operand form nibble,
+byte 33 the third tuple class (class + 1), and word 34 is reserved zero. Shapes
+11/12/13 carry the canonical three-operand forms. Projection kind 27 selects a
+wrapped register child from call argument 0/1 on operand 0–2, using the same
+class/value-program/argument fields as kind 24; no callee or opcode spelling is
+interpreted by native transport. Raw colon normalization remains unsupported.
+Target flags at 130 request structural
 wrapper preservation (bit 0) and nested preparation (bit 1) from canonical projections. Tuple register/value/qualified projections use kinds 11/12/13. Descriptor
 bytes 10/11 hold arity and item index: arity 2/3 is exact, while 0 allows only
 actual arity 2/3 when the canonical plan has no explicit arity predicate.

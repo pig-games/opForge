@@ -100,10 +100,7 @@ done
 ; Clobbers: CCR.
 ; CCR: reflects the final clear.
 writeClearExtensionFieldsV1	.block
-	clr.b abi.CB_EXTENSION_PTR(a0)
-	clr.b 25(a0)
-	clr.b abi.CB_EXTENSION_LEN(a0)
-	clr.b 27(a0)
+	clr.l abi.CB_EXTENSION_PTR(a0)
 	rts
 	.bend  ; writeClearExtensionFieldsV1
 
@@ -113,10 +110,7 @@ writeClearExtensionFieldsV1	.block
 ; Clobbers: CCR.
 ; CCR: reflects the final clear.
 writeClearInputFieldsV1	.block
-	clr.b abi.CB_INPUT_PTR(a0)
-	clr.b 17(a0)
-	clr.b abi.CB_INPUT_LEN(a0)
-	clr.b 19(a0)
+	clr.l abi.CB_INPUT_PTR(a0)
 	rts
 	.bend  ; writeClearInputFieldsV1
 

@@ -273,11 +273,10 @@ loop
 	cmpi.b #runtime.COMPACT_I64, d0
 	bne.w done
 	move.l d4, d3
-	moveq #3, d2
-highLoop
-	move.b d3, (a6)+
-	lsr.l #8, d3
-	dbra d2, highLoop
+	ror.w #8, d3
+	swap d3
+	ror.w #8, d3
+	move.l d3, (a6)+
 done
 	rts
 	.bend  ; writeLiteral

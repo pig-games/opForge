@@ -1111,10 +1111,7 @@ tkpkgDebugCliWriteInputWindowV1
 	rts
 
 tkpkgDebugCliClearInputWindowV1
-	clr.b abi.CB_INPUT_PTR(a0)
-	clr.b 17(a0)
-	clr.b abi.CB_INPUT_LEN(a0)
-	clr.b 19(a0)
+	clr.l abi.CB_INPUT_PTR(a0)
 	rts
 
 tkpkgDebugCliReadStatusV1

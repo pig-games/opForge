@@ -178,11 +178,7 @@ literal	.block
 	blo.w bad
 	cmpi.b #2, (a2)+
 	bne.w bad
-	moveq #0, d1
-	.for 4
-	lsl.l #8, d1
-	move.b (a2)+, d1
-	.endfor
+	move.l (a2)+, d1
 	moveq #0, d0
 	rts
 bad
@@ -190,19 +186,10 @@ bad
 	rts
 	.bend  ; literal
 
-; D1=value,A0=destination. Write an unaligned big-endian scalar.
+; D1=value,A0=destination. Write four big-endian bytes and advance A0.
+; Preserves D1; CCR unspecified. The owning module requires 68020.
 writeLong	.block
-	move.l d1, d0
-	swap d0
-	lsr.w #8, d0
-	move.b d0, (a0)+
-	move.l d1, d0
-	swap d0
-	move.b d0, (a0)+
-	move.l d1, d0
-	lsr.w #8, d0
-	move.b d0, (a0)+
-	move.b d1, (a0)+
+	move.l d1, (a0)+
 	rts
 	.bend  ; writeLong
 

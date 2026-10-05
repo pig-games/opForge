@@ -519,14 +519,26 @@ done
 	.bend  ; bindCapture
 	.priv
 
-; A0=owned input,A1=destination,D0=bytes. D0/A0/A1 scratch; CCR unspecified.
+; A0=owned capture input,A1=disjoint scratch destination,D0=bytes.
+; D0/A0/A1 scratch; CCR unspecified. Copy exactly D0 bytes, including tails.
 copyCaptureBytes	.block
+	cmpi.l #4, d0
+	blo.w tail
+longs
+	move.l (a0)+, (a1)+
+	subq.l #4, d0
+	cmpi.l #4, d0
+	bhs.w longs
+tail
+	cmpi.l #2, d0
+	blo.w byteTail
+	move.w (a0)+, (a1)+
+	subq.l #2, d0
+byteTail
 	tst.l d0
 	beq.w done
-next
 	move.b (a0)+, (a1)+
 	subq.l #1, d0
-	bne.w next
 done
 	rts
 	.bend  ; copyCaptureBytes

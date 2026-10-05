@@ -175,8 +175,7 @@ ifExpression
 	adda.w d2, a2
 	move.w State.Active(a4), d0
 	move.b d0, Slot.Parent(a2)
-	clr.b Slot.Taken(a2)
-	clr.b Slot.ElseSeen(a2)
+	clr.w Slot.Taken(a2)
 	move.b d7, Slot.Kind(a2)
 	tst.w State.Active(a4)
 	beq.w ifStored

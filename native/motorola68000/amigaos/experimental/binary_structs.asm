@@ -202,14 +202,7 @@ assignment
 	clr.b 7(a5)
 	move.b #34, 8(a5)
 	move.b #2, 9(a5)
-	move.l d1, d0
-	lsr.l #8, d0
-	move.b d0, 12(a5)
-	lsr.l #8, d0
-	move.b d0, 11(a5)
-	lsr.l #8, d0
-	move.b d0, 10(a5)
-	move.b d1, 13(a5)
+	move.l d1, 10(a5)
 	bra.w ok
 emptyLine
 	tst.l d7

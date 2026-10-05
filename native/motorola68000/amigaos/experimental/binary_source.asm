@@ -143,11 +143,7 @@ capacityReady
 	moveq #1, d0
 flagsReady
 	move.b d0, (a3)+
-	move.w Frame.SourceLine(a5), d0
-	lsr.w #8, d0
-	move.b d0, (a3)+
-	move.w Frame.SourceLine(a5), d0
-	move.b d0, (a3)+
+	move.w Frame.SourceLine(a5), (a3)+
 loop
 	bsr.w mapCursor
 	tst.l d7
@@ -371,18 +367,12 @@ callBinder
 	blo.w overflow
 	move.b #14, (a3)+
 	clr.b (a3)+
-	move.w d1, d0
-	lsr.w #8, d0
-	move.b d0, (a3)+
-	move.b d1, (a3)+
+	move.w d1, (a3)+
 	move.b d3, (a3)+
 	move.b #15, (a3)+
 	move.b #7, (a3)+
 	clr.b (a3)+
-	move.w d2, d0
-	lsr.w #8, d0
-	move.b d0, (a3)+
-	move.b d2, (a3)+
+	move.w d2, (a3)+
 	clr.b (a3)+
 	bra.w next
 ordinaryMember
@@ -398,10 +388,7 @@ ordinaryName
 	cmpi.l #$ff, d2
 	bhi.w bindFailed
 	move.b d3, (a3)+
-	move.w d1, d0
-	lsr.w #8, d0
-	move.b d0, (a3)+
-	move.b d1, (a3)+
+	move.w d1, (a3)+
 	move.b d2, (a3)+
 	bra.w next
 numeric
@@ -417,10 +404,7 @@ numeric
 	bne.w invalid
 	move.l (a0), d1
 	move.b d3, (a3)+
-	.for 4
-	rol.l #8, d1
-	move.b d1, (a3)+
-	.endfor
+	move.l d1, (a3)+
 	bra.w next
 punctuation
 	move.b d3, (a3)+
@@ -550,10 +534,7 @@ appendPlan	.block
 	movea.l Frame.Output(a0), a1
 	adda.w Frame.Used(a0), a1
 	move.b #MACRO_PLAN, (a1)+
-	.for 4
-	rol.l #8, d1
-	move.b d1, (a1)+
-	.endfor
+	move.l d1, (a1)+
 	move.b #6, (a1)
 	move.w d2, Frame.Used(a0)
 	movea.l Frame.Output(a0), a1

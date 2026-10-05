@@ -401,15 +401,13 @@ literal
 	cmpi.l #9, d0
 	blo.w output
 	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, (a3)+
-	move.b 3(a0), (a3)+
-	move.b 2(a0), (a3)+
-	move.b 1(a0), (a3)+
-	move.b (a0), (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
-	addq.l #4, a0
+	; Raw literals are BE; ExprVM requires LE low 32 bits and zero high 32 bits.
+	move.l (a0)+, d2
+	ror.w #8, d2
+	swap d2
+	ror.w #8, d2
+	move.l d2, (a3)+
+	clr.l (a3)+
 	bra.w push
 stringLiteral
 	; Shared scalar strings contain one byte or a big-endian packed word.
@@ -441,15 +439,10 @@ stringValue
 	adda.w d1, a0
 	addq.l #1, a0
 	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, (a3)+
-	move.b d2, (a3)+
-	lsr.w #8, d2
-	move.b d2, (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
+	ror.w #8, d2
+	move.w d2, (a3)+
+	clr.l (a3)+
+	clr.w (a3)+
 	bra.w push
 symbol
 	move.l a1, d0
@@ -463,8 +456,9 @@ symbol
 	cmpi.l #3, d0
 	blo.w output
 	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, (a3)+
-	move.b 1(a0), (a3)+
-	move.b (a0), (a3)+
+	move.w (a0), d2
+	ror.w #8, d2
+	move.w d2, (a3)+
 	addq.l #3, a0
 	bra.w push
 depth

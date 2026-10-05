@@ -1291,8 +1291,7 @@ tokenBody
 	movea.l a0, a2
 bodyTextReady
 	lea 256(a5), a1
-	move.b (a3)+, (a5)+
-	move.b (a3)+, (a5)+
+	move.w (a3)+, (a5)+
 	move.w CallFrame.CallLine(a6), (a5)+
 	addq.l #2, a3  ; source line is replaced by the invocation line
 	cmp.l Def.First(a4), d0
@@ -1617,8 +1616,7 @@ bindBodyName
 	move.b (a3)+, (a5)+
 	bra.w tokens
 writeDot
-	move.b (a3)+, (a5)+
-	move.b (a3)+, (a5)+
+	move.w (a3)+, (a5)+
 	move.w d1, (a5)+
 	addq.l #2, a3
 	move.b (a3)+, (a5)+

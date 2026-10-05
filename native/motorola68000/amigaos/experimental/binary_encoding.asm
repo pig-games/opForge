@@ -279,11 +279,10 @@ patchOutputFixup	.block
 	movea.l package.Context.Package(a2), a1
 	tst.w package.Header.LittleEndian(a1)
 	beq.w bigEndian
-	moveq #3, d2
-littleLoop
-	move.b d5, (a0)+
-	lsr.l #8, d5
-	dbra d2, littleLoop
+	ror.w #8, d5
+	swap d5
+	ror.w #8, d5
+	move.l d5, (a0)
 	bra.w patched
 bigEndian
 	move.l d5, (a0)
@@ -1027,8 +1026,7 @@ resolvedInputs
 	move.l package.Context.Pc(a2), encoding.Context.Pc(a6)
 	move.w package.Context.Pass(a2), encoding.Context.Pass(a6)
 	move.b package.Row.Unstable(a5), encoding.Context.Unstable(a6)
-	clr.b encoding.Context.Defer(a6)
-	clr.b encoding.Context.HasSymbol(a6)
+	clr.w encoding.Context.Defer(a6)
 	tst.w Unresolved
 	beq.w branchStateReady
 	move.b #1, encoding.Context.Defer(a6)
@@ -1188,8 +1186,7 @@ encodingVersion
 	move.w 2(sp), encoding.Context.WriteOffset(a6)
 	move.l package.Context.Pc(a2), encoding.Context.Pc(a6)
 	move.w package.Context.Pass(a2), encoding.Context.Pass(a6)
-	clr.b encoding.Context.Unstable(a6)
-	clr.b encoding.Context.Defer(a6)
+	clr.w encoding.Context.Unstable(a6)
 	clr.b encoding.Context.HasSymbol(a6)
 	move.l #Records, encoding.Context.Input(a6)
 	move.w package.Row.InputCount(a5), encoding.Context.InputCount(a6)
@@ -1501,14 +1498,10 @@ valueReady
 	tst.l d0
 	bne.w bad
 store
-	move.b d3, (a3)
-	lsr.l #8, d3
-	move.b d3, 1(a3)
-	lsr.l #8, d3
-	move.b d3, 2(a3)
-	lsr.l #8, d3
-	move.b d3, 3(a3)
-	adda.w #4, a3
+	ror.w #8, d3
+	swap d3
+	ror.w #8, d3
+	move.l d3, (a3)+
 	adda.w #PROJECTION_BYTES, a4
 	addq.w #1, d6
 	bra.w loop
@@ -1733,17 +1726,11 @@ targetFlagReady
 	move.w #$ffff, ProjectedTarget
 valueReady
 	move.b d0, (a3)+
-	move.b d3, (a3)+
-	lsr.l #8, d3
-	move.b d3, (a3)+
-	lsr.l #8, d3
-	move.b d3, (a3)+
-	lsr.l #8, d3
-	move.b d3, (a3)+
-	move.w ProjectedTarget, d0
-	lsr.w #8, d0
-	move.b d0, (a3)+
-	move.b ProjectedTarget+1, (a3)+
+	ror.w #8, d3
+	swap d3
+	ror.w #8, d3
+	move.l d3, (a3)+
+	move.w ProjectedTarget, (a3)+
 	adda.w #PROJECTION_BYTES, a4
 	addq.w #1, d6
 	bra.w nextFixupInput

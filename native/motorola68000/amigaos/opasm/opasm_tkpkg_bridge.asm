@@ -226,10 +226,7 @@ writeExtensionWindow	.block
 	rts
 
 clearExtension
-	clr.b tkabi.CB_EXTENSION_PTR(a0)
-	clr.b 25(a0)
-	clr.b tkabi.CB_EXTENSION_LEN(a0)
-	clr.b 27(a0)
+	clr.l tkabi.CB_EXTENSION_PTR(a0)
 	rts
 	.bend  ; writeExtensionWindow
 

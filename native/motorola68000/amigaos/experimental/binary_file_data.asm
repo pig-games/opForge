@@ -103,10 +103,7 @@ header
 	andi.b #source.FLAG_INDENT, State.Record+1(a5)
 	move.b #7, (a3)+
 	move.b #0, (a3)+
-	move.w Frame.ByteName(a6), d0
-	lsr.w #8, d0
-	move.b d0, (a3)+
-	move.b Frame.ByteName+1(a6), (a3)+
+	move.w Frame.ByteName(a6), (a3)+
 	clr.b (a3)+
 	move.b #3, (a3)+
 	move.b d4, (a3)+

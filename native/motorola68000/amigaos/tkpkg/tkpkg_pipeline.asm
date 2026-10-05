@@ -155,13 +155,11 @@ separatorFound
 	move.b d4, (a3)+
 	lsr.w #8, d4
 	move.b d4, (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
+	clr.w (a3)+
 	move.b d5, (a3)+
 	lsr.w #8, d5
 	move.b d5, (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
+	clr.w (a3)+
 	move.w d6, d0
 	move.w d3, d1
 	sub.w d1, d0
@@ -178,13 +176,11 @@ separatorFound
 	move.b d2, (a3)+
 	lsr.w #8, d2
 	move.b d2, (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
+	clr.w (a3)+
 	move.b d0, (a3)+
 	lsr.w #8, d0
 	move.b d0, (a3)+
-	clr.b (a3)+
-	clr.b (a3)+
+	clr.w (a3)+
 	moveq #0, d0
 	rts
 

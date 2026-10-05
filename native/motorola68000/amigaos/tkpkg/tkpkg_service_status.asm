@@ -89,8 +89,7 @@ setRuntimeErrorMessageV1	.block
 ; Clobbers: CCR.
 ; CCR: reflects the final stored-kind write.
 clearStoredLastErrorV1	.block
-	clr.b buffers.StoredLastErrorLen
-	clr.b buffers.StoredLastErrorLenHi
+	clr.w buffers.StoredLastErrorLen
 	move.b #buffers.LAST_ERROR_KIND_NONE, buffers.StoredLastErrorKind
 	rts
 	.bend  ; clearStoredLastErrorV1
@@ -101,10 +100,7 @@ clearStoredLastErrorV1	.block
 ; Clobbers: CCR.
 ; CCR: reflects the final clear.
 writeClearOutputFieldsV1	.block
-	clr.b abi.CB_OUTPUT_PTR(a0)
-	clr.b 21(a0)
-	clr.b abi.CB_OUTPUT_LEN(a0)
-	clr.b 23(a0)
+	clr.l abi.CB_OUTPUT_PTR(a0)
 	rts
 	.bend  ; writeClearOutputFieldsV1
 
@@ -114,10 +110,7 @@ writeClearOutputFieldsV1	.block
 ; Clobbers: CCR.
 ; CCR: reflects the final clear.
 writeClearLastErrorFieldsV1	.block
-	clr.b abi.CB_LAST_ERROR_PTR(a0)
-	clr.b 29(a0)
-	clr.b abi.CB_LAST_ERROR_LEN(a0)
-	clr.b 31(a0)
+	clr.l abi.CB_LAST_ERROR_PTR(a0)
 	rts
 	.bend  ; writeClearLastErrorFieldsV1
 
@@ -169,8 +162,7 @@ done
 ; Clobbers: CCR.
 ; CCR: reflects the final clear.
 setStatusOkV1	.block
-	clr.b abi.CB_STATUS_CODE(a0)
-	clr.b 11(a0)
+	clr.w abi.CB_STATUS_CODE(a0)
 	rts
 	.bend  ; setStatusOkV1
 

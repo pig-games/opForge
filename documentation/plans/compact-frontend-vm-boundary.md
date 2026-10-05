@@ -276,6 +276,9 @@ These statements describe the implemented subset. They do not imply complete ass
 
 ## Remaining boundary gaps and explicit limitations
 
+- The [current four-example reassessment](native-runtime-reset.md#bs25-four-example-reassessment--implementation-2332b7d0) qualifies complete FPU addressing/catalog Hex output. Full-extension addressing still requires generic numeric `xp1:` traversal through nested packed operands; current shallow tuple projections cannot express those paths. This is the selected next structural implementation boundary.
+- CAS2 requires a third top-level operand and indirect-register call-child projections, with canonical colon-pair normalization. The current two-slot/direct-call subset does not cover it; this remains separate from nested expression-path work.
+
 - Dotted call preparation compiles extra argument leaves that canonical call-register projections ignore. Unused nested calls, long strings or unresolved names can reject. BS24 covers selected register arguments and supported extra scalar/register leaves, not general call-expression parity.
 
 - `binary_templates.rewriteCallText` still consumes decoded-string bytes in the residual body-token fallback. Replace this last caller with explicit VM-selected recipes before claiming complete string-boundary migration; keep decoded-string provenance for diagnostics and generated spelling.

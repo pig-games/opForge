@@ -3793,3 +3793,73 @@ The qualified release bundle is
 `/tmp/opforge-a6000-current`. Local hardware-runner dry-run validation passes.
 No remote transfer or physical hardware execution was performed. Deliverables and
 validation logs remain outside `target`; its cache is cleaned at handback.
+
+
+## BS25 four-example reassessment — implementation 2332b7d0
+
+The unchanged complete sources were rerun on the current release executable,
+with current packages, live Rust Hex oracles and the 68020/10 MiB profile.
+The audit attempted all four cases independently. No production code, package
+contract or stored references changed.
+
+| Complete example | Fresh native result | START/DONE seconds |
+|---|---|---:|
+| `68020_fpu_allmodes.asm` | Exit 0, exact live Rust Hex | 1.766111833 |
+| `68020_fpu_instruction_catalog.asm` | Exit 0, exact live Rust Hex | 2.026752000 |
+| `68020_full_extension_addressing.asm` | Exit 20, rejects line 6: `MOVE.W (4.W,A0,D1.L*4),D0` | 1.016026083 |
+| `68030_carry_forward.asm` | Exit 20, rejects line 12: `CAS2.W D0:D1,D2:D3,(A0):(A1)` | 1.017956583 |
+
+All four stored listing checks still differ from current Rust. Consequently the
+combined audit exits nonzero: two native parity gaps plus four existing listing
+reference gaps. The two FPU successes qualify their complete Hex output only,
+not listing output or the entire FPU family. Rejected complete files have no
+qualified full artifact. Their rejection times are not assembly-performance
+measurements; the positive times are single observations, without a same-input
+completed baseline. No optimization claim follows from this reassessment.
+
+Read-only Sol analysis and coordinator inspection identify two independent
+structural boundaries. Full-extension selectors already describe `xp1:` paths
+through indirect/bracket wrappers, tuple children, qualified register products
+and qualified displacement values. The numeric lowerer has no path projection;
+shallow tuple/identity-product projections cannot express them. Packed nested
+preparation also needs qualification before such paths can execute. The line-6
+diagnostic alone does not localize all missing preparation/selection behavior.
+
+CAS2 requires three top-level operands and projections into paired call arguments,
+including indirect registers. Current native storage and call-register projections
+cover only two operand slots and direct register arguments. Colon-pair normalization
+must follow the canonical frontend contract; do not add a CAS2-specific native
+parser. This is a separate structural slice.
+
+### Selected next implementation boundary: numeric expression paths
+
+Translate the existing canonical paths to bounded numeric traversal programs in
+the runtime package. Preserve qualifiers, products and nested wrapper/tuple
+structure in packed preparation; traverse that representation without source
+strings. Paths and storage references must use package/source-relative offsets,
+never persisted pointers. Package classes, qualifiers, scale validation and
+encoding programs remain authoritative. Put traversal and packed-node views in
+separate helpers rather than growing instruction selection with special cases.
+
+Start with the path operations already used by the complete full-extension
+example: indirect/bracket unwrap, tuple child, register/class, qualified register,
+scale and qualified scalar value. Include both equivalent displacement spellings
+and pre/postindexed brackets. Reject malformed paths, unsupported nesting and
+invalid classes/widths/scales according to canonical selection; an unknown shape
+must not authorize skipping a higher-priority unsupported row. Preserve the
+existing brief/indexed path. New contract data requires one coherent latest-only
+producer/native migration; the present reassessment leaves BS25 unchanged.
+
+Success is exact live Rust/native output for the entire example (six addressed
+MOVE/MOVES cases plus RTS), focused legal/illegal structural controls and
+unchanged indexed regressions.
+Record before/after timing and image/package/static size separately; rejected
+baseline files cannot provide an end-to-end speedup comparison. Run a complete
+self-host after the coherent production change, not for this diagnostic-only
+reassessment. This is not a claim that all expression parsing has moved into VM
+programs: the existing EXVM/frontend ownership gaps remain explicit.
+
+The raw report and command log are retained outside the build cache at
+`/tmp/opforge-bs25-four-example-audit.json` and
+`/tmp/opforge-bs25-four-example-audit.log`. The qualified BS25 self-host bundle
+and default A6000 selection remain unchanged.

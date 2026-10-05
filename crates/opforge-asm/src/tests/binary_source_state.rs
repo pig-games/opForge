@@ -4,6 +4,9 @@ use super::*;
 #[path = "binary_source_state_guards.rs"]
 mod guards;
 
+#[path = "binary_source_fpu_operands.rs"]
+mod fpu_operands;
+
 const CASES: &[(&str, &str)] = &[
     (
         "m68020",

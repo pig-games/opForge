@@ -61,6 +61,7 @@ PROJECTION_WRAPPED_SCALAR = 20
 PROJECTION_TUPLE_NAMED = 21
 PROJECTION_SCALAR_EXPRESSION = 22
 PROJECTION_TUPLE_IDENTITY = 23
+PROJECTION_CALL_REGISTER = 24
 MISSING_PROGRAM = $ffff
 HEADER_BYTES = package.HEADER_BYTES
 ROW_BYTES = 32
@@ -1445,6 +1446,8 @@ recordReady
 	beq.w tupleNamed
 	cmpi.b #PROJECTION_SCALAR_EXPRESSION, d0
 	beq.w scalarExpression
+	cmpi.b #PROJECTION_CALL_REGISTER, d0
+	beq.w callRegister
 	bra.w bad
 expressionValue
 	move.w package.ScalarProjection.Flags(a4), d0
@@ -1497,6 +1500,21 @@ wrappedScalar
 	bra.w valueReady
 tupleNamed
 	bsr.w projectionTupleNamed
+	bra.w valueReady
+callRegister
+	cmpi.w #$ffff, package.Projection.Class(a4)
+	beq.w bad
+	bsr.w operandSpan
+	bne.w valueReady
+	moveq #0, d1
+	move.w package.Projection.Reserved(a4), d1
+	cmpi.w #1, d1
+	bhi.w bad
+	tst.l package.Projection.Literal(a4)
+	bne.w bad
+	jsr tuples.callArgument
+	bne.w valueReady
+	bsr.w register
 	bra.w valueReady
 scalarExpression
 	bsr.w projectionScalarExpression

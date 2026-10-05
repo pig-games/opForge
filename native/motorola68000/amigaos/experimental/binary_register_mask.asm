@@ -18,6 +18,13 @@ project	.block
 	bne.w projectBad
 	cmpi.w #1, pkg.MaskProjection.Flags(a4)
 	bhi.w projectBad
+	cmpi.w #$ffff, pkg.MaskProjection.FirstClass(a4)
+	beq.w projectBad
+	cmpi.w #$ffff, pkg.MaskProjection.SecondClass(a4)
+	bne.w classes
+	tst.b pkg.MaskProjection.SecondShift(a4)
+	bne.w projectBad
+classes
 	move.w pkg.MaskProjection.FirstClass(a4), d0
 	cmp.w pkg.MaskProjection.SecondClass(a4), d0
 	beq.w projectBad
@@ -158,6 +165,8 @@ done
 bitIndex	.block
 	cmp.w pkg.MaskProjection.FirstClass(a5), d1
 	beq.w first
+	cmpi.w #$ffff, pkg.MaskProjection.SecondClass(a5)
+	beq.w invalid
 	cmp.w pkg.MaskProjection.SecondClass(a5), d1
 	bne.w invalid
 	moveq #0, d3

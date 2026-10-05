@@ -105,7 +105,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS23 block for one resolved package hierarchy.
+/// Prepare a self-contained BS24 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -406,7 +406,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS23");
+    out[..4].copy_from_slice(b"BS24");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -1362,6 +1362,22 @@ fn write_projection(
         }
         projection => (projection, MISSING),
     };
+    if let Projection::CallArgumentRegister {
+        operand,
+        argument,
+        class,
+    } = projection
+    {
+        if *operand > 1 || *argument > 1 || *class == MISSING {
+            return Ok(false);
+        }
+        out.extend_from_slice(&[24, *operand]);
+        push_word(out, *class);
+        out.extend_from_slice(&0i32.to_be_bytes());
+        push_word(out, value_program);
+        push_word(out, u16::from(*argument));
+        return Ok(true);
+    }
     if let Projection::RegisterMask {
         operand,
         first_class,
@@ -1371,7 +1387,14 @@ fn write_projection(
         reverse,
     } = projection
     {
-        if value_program != MISSING {
+        if value_program != MISSING
+            || *operand > 1
+            || *first_class == MISSING
+            || *first_class == *second_class
+            || *first_shift > 15
+            || *second_shift > 15
+            || (*second_class == MISSING && *second_shift != 0)
+        {
             return Ok(false);
         }
         out.extend_from_slice(&[18, *operand]);
@@ -1437,7 +1460,7 @@ fn write_projection(
         Projection::ValueProgram { .. } | Projection::RequiredValueProgram { .. } => {
             return Ok(false)
         }
-        Projection::RegisterMask { .. } => unreachable!(),
+        Projection::RegisterMask { .. } | Projection::CallArgumentRegister { .. } => unreachable!(),
     };
     out.extend_from_slice(&[kind, operand]);
     push_word(out, field);
@@ -2191,6 +2214,53 @@ mod sequence_wire_tests {
                 class: 1
             },
         ]));
+    }
+
+    #[test]
+    fn compact_call_and_single_class_mask_wire_preserve_numeric_fields() {
+        let programs = Programs::default();
+        let mut wire = Vec::new();
+        assert!(write_projection(
+            &mut wire,
+            &Projection::CallArgumentRegister {
+                operand: 1,
+                argument: 1,
+                class: 2,
+            },
+            &programs
+        )
+        .unwrap());
+        assert_eq!(wire, [24, 1, 0, 2, 0, 0, 0, 0, 255, 255, 0, 1]);
+        wire.clear();
+        assert!(write_projection(
+            &mut wire,
+            &Projection::RegisterMask {
+                operand: 0,
+                first_class: 2,
+                first_shift: 0,
+                second_class: u16::MAX,
+                second_shift: 0,
+                reverse: false,
+            },
+            &programs
+        )
+        .unwrap());
+        assert_eq!(wire, [18, 0, 0, 2, 255, 255, 0, 0, 255, 255, 0, 0]);
+        wire.clear();
+        assert!(!write_projection(
+            &mut wire,
+            &Projection::RegisterMask {
+                operand: 0,
+                first_class: 2,
+                first_shift: 0,
+                second_class: u16::MAX,
+                second_shift: 1,
+                reverse: false,
+            },
+            &programs
+        )
+        .unwrap());
+        assert!(wire.is_empty());
     }
 
     #[test]

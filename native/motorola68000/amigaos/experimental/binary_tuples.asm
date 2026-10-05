@@ -17,7 +17,26 @@ CLOSE = 15
 ; Other registers preserved. Scalar payloads are opaque length-delimited leaves.
 ; Accept (item,item) and scalar(item[,item]) without changing their arity.
 select	.block
+	moveq #0, d3
+	bra.w view
+	.bend  ; select
+
+; A0/A1=complete numeric call, D1=argument ordinal. Select a bounded leaf
+; without interpreting the callee name. D0/CCR=status, A0/A1=leaf,D3=arity.
+; Other registers preserved. Canonical call projections require an existing
+; argument, not a particular callee spelling or exact argument count.
+callArgument	.block
+	moveq #1, d3
+	bra.w view
+	.bend  ; callArgument
+	.priv
+view	.block
 	movem.l d1-d2/d4-d5/a2-a5, -(sp)
+	tst.l d3
+	beq.w tuple
+	moveq #-1, d2
+	bra.w expectedReady
+tuple
 	move.l d0, d2
 	beq.w expectedReady
 	cmpi.l #2, d2
@@ -31,6 +50,8 @@ expectedReady
 	moveq #0, d4
 	cmpa.l a3, a2
 	bhs.w bad
+	tst.l d2
+	bmi.w callHead
 	cmpi.b #OPEN, (a2)
 	beq.w opening
 	; Displacement-style syntax retains its scalar before the opening token.
@@ -38,6 +59,21 @@ expectedReady
 	bne.w bad
 	bsr.w leaf
 	bne.w bad
+	bra.w opening
+callHead
+	cmpi.b #7, (a2)
+	bne.w callName
+	addq.l #1, a2
+callName
+	move.l a3, d0
+	sub.l a2, d0
+	cmpi.l #5, d0
+	blo.w bad
+	cmpi.b #NAME_MAX, (a2)
+	bhi.w bad
+	tst.b 3(a2)
+	bne.w bad
+	addq.l #4, a2
 opening
 	cmpa.l a3, a2
 	bhs.w bad
@@ -53,12 +89,16 @@ next
 	beq.w finish
 	cmpi.b #COMMA, d0
 	bne.w bad
+	tst.l d2
+	bmi.w next
 	cmpi.l #3, d4
 	bhs.w bad
 	bra.w next
 finish
 	cmpa.l a3, a2
 	bne.w bad
+	tst.l d2
+	bmi.w arityReady
 	cmpi.l #2, d4
 	blo.w bad
 	cmpi.l #3, d4
@@ -81,7 +121,8 @@ done
 	movem.l (sp)+, d1-d2/d4-d5/a2-a5
 	tst.l d0
 	rts
-	.bend  ; select
+	.bend  ; view
+	.pub
 
 ; A0/A1=complete prepared operand. D0/CCR=status, D3=arity (2/3).
 ; Other registers preserved; selected item bounds are not exposed.

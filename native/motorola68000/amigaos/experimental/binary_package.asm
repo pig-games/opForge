@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533233; BS23
+MAGIC = $42533234; BS24
 TARGET_PRESERVE_WRAPPERS = 1
 DICTIONARY_REGISTER_OR_NAMED = 1
 DICTIONARY_MEMBER = 2
@@ -167,6 +167,8 @@ Flags	.word ?
 .endstruct
 
 ; Projection kind 18 uses the same 12-byte wire slot with a mask map.
+; SecondClass=$ffff means absent and requires SecondShift=0.
+; Kind 24 uses Class and Reserved=argument ordinal (0/1), with Literal=0.
 MaskProjection	.struct
 Kind	.byte ?
 Operand	.byte ?

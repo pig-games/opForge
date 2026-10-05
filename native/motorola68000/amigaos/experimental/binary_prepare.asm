@@ -219,6 +219,8 @@ operands
 	; Immediate operands are scalar even when a reserved name follows.
 	bra.w expressionOperand
 operand
+	cmpi.b #7, (a0)
+	beq.w dottedCall
 	cmpi.b #14, (a0)
 	beq.w parenthesizedRegister
 	cmpi.b #19, (a0)  ; preserve unary/indirect token structure
@@ -244,6 +246,23 @@ bareName
 	bhs.w expressionOperand
 	; Keep package-defined register IDs intact; the package validates the class.
 	bsr.w name
+	bne.w bad
+	bra.w operandDone
+dottedCall
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	blo.w bad
+	cmpi.b #1, 1(a0)
+	bhi.w bad
+	cmpi.b #14, 5(a0)
+	bne.w bad
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	bsr.w name
+	bne.w bad
+	bsr.w tupleTail
 	bne.w bad
 	bra.w operandDone
 parenthesizedRegister
@@ -457,7 +476,7 @@ leafReady
 	cmpa.l a0, a6
 	beq.w bad
 	addq.w #1, d5
-	cmpi.w #3, d5
+	cmpi.w #255, d5
 	bhi.w bad
 	move.l a1, -(sp)
 	movea.l a6, a1

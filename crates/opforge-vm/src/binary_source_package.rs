@@ -194,6 +194,11 @@ pub enum Projection {
     TupleArityThree {
         operand: u8,
     },
+    CallArgumentRegister {
+        operand: u8,
+        argument: u8,
+        class: u16,
+    },
     RegisterMask {
         operand: u8,
         first_class: u16,
@@ -862,6 +867,21 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
             name: names.id(name),
         });
     }
+    if let Some(rest) = value.strip_prefix("call_arg_register") {
+        let (operand, rest) = rest.split_once(".arg")?;
+        let (argument, class) = rest.split_once(".class")?;
+        let operand = operand.parse::<u8>().ok()?;
+        let argument = argument.parse::<u8>().ok()?;
+        let class = class.parse::<u16>().ok()?;
+        if operand > 1 || argument > 1 || class == u16::MAX {
+            return None;
+        }
+        return Some(Projection::CallArgumentRegister {
+            operand,
+            argument,
+            class,
+        });
+    }
     if let Some(rest) = value.strip_prefix("reg") {
         let (operand, class) = rest.split_once(".class")?;
         return Some(Projection::Register {
@@ -968,14 +988,28 @@ fn parse_register_mask(value: &str) -> Option<Projection> {
     } else {
         (mapping, false)
     };
-    let (first, second) = mapping.split_once('+')?;
+    let (first, second) = mapping
+        .split_once('+')
+        .map_or((mapping, None), |(first, second)| (first, Some(second)));
     let (first_class, first_shift) = first.split_once('=')?;
-    let (second_class, second_shift) = second.split_once('=')?;
     let first_class = first_class.parse::<u16>().ok()?;
     let first_shift = first_shift.parse::<u8>().ok()?;
-    let second_class = second_class.parse::<u16>().ok()?;
-    let second_shift = second_shift.parse::<u8>().ok()?;
-    if operand > 1 || first_class == second_class || first_shift > 15 || second_shift > 15 {
+    let (second_class, second_shift) = if let Some(second) = second {
+        let (class, shift) = second.split_once('=')?;
+        let class = class.parse::<u16>().ok()?;
+        if class == u16::MAX {
+            return None;
+        }
+        (class, shift.parse::<u8>().ok()?)
+    } else {
+        (u16::MAX, 0)
+    };
+    if operand > 1
+        || first_class == u16::MAX
+        || first_class == second_class
+        || first_shift > 15
+        || second_shift > 15
+    {
         return None;
     }
     Some(Projection::RegisterMask {
@@ -1180,6 +1214,57 @@ mod tests {
             "register_mask1.map0=16+1=8.reverse16",
             "register_mask1.map0=0+1=8.reverse8",
             "register_mask1.map0=0+1=8+2=12",
+        ] {
+            assert_eq!(parse_register_mask(invalid), None, "{invalid}");
+        }
+    }
+
+    #[test]
+    fn compact_call_argument_register_projection_is_bounded() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        assert_eq!(
+            parse_projection("call_arg_register1.arg1.class2", &mut names),
+            Some(Projection::CallArgumentRegister {
+                operand: 1,
+                argument: 1,
+                class: 2
+            })
+        );
+        for invalid in [
+            "call_arg_register2.arg0.class2",
+            "call_arg_register1.arg2.class2",
+            "call_arg_register1.arg1.class65535",
+            "call_arg_register1.arg1.class2.extra",
+            "call_arg_register_sequence1.arg0.arg1.class2.align2",
+        ] {
+            assert_eq!(parse_projection(invalid, &mut names), None, "{invalid}");
+        }
+    }
+
+    #[test]
+    fn single_class_register_mask_uses_absent_class_sentinel() {
+        assert_eq!(
+            parse_register_mask("register_mask0.map2=0"),
+            Some(Projection::RegisterMask {
+                operand: 0,
+                first_class: 2,
+                first_shift: 0,
+                second_class: u16::MAX,
+                second_shift: 0,
+                reverse: false
+            })
+        );
+        for invalid in [
+            "register_mask0.map65535=0",
+            "register_mask0.map2=16",
+            "register_mask0.map2=0+65535=0",
+            "register_mask0.map2=0+",
+            "register_mask0.map2=0.reverse8",
         ] {
             assert_eq!(parse_register_mask(invalid), None, "{invalid}");
         }

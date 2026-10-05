@@ -138,7 +138,7 @@ def load_bundle(bundle):
         raise ValueError("Release bootstrap/oracle mismatch")
     # Only the current package contract is supported. This transport verifies
     # assets and header regions; the native runtime interprets VM opcodes.
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS23":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS24":
         raise ValueError("Runtime package mismatch")
     if len(package) < PACKAGE_HEADER_BYTES or int.from_bytes(package[4:8], "big") != len(package):
         raise ValueError("Invalid runtime package header")

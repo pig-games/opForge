@@ -18,7 +18,7 @@ SPEC.loader.exec_module(runner)
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
         package = bytearray(200)
-        package[:4] = b"BS23"
+        package[:4] = b"BS24"
         package[168:172] = (200).to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
         package[176:178] = (2).to_bytes(2, "big")
@@ -104,7 +104,7 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS19", 210, "package mismatch"),
                                    (b"BS21", 210, "package mismatch"),
                                    (b"BS22", 210, "package mismatch"),
-                                   (b"BS23", 199, "package header")):
+                                   (b"BS24", 199, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -295,7 +295,7 @@ class HardwareCompletionTests(unittest.TestCase):
             ("configured_entry", "native", None, "Current source"),
             ("generated_catalog", None, b'.incbin "/host/package.bin"\n', "catalog"),
             ("generated_catalog", None, b'.incbin "packages/m68020--motorola68k.bin"\n' * 2, "catalog"),
-            ("package_asset", None, b"BS23corrupt", "asset mismatch"),
+            ("package_asset", None, b"BS24corrupt", "asset mismatch"),
         ]
         for origin, replacement_origin, data, error in mutations:
             with self.subTest(origin=origin, error=error), tempfile.TemporaryDirectory() as directory:

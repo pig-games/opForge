@@ -927,6 +927,8 @@ references
 	beq.w literal
 	cmpi.b #3, d0
 	beq.w string
+	cmpi.b #7, d0
+	beq.w callHead
 	bra.w punctuation
 literal
 	addq.l #5, a0
@@ -943,6 +945,19 @@ string
 	cmp.l d0, d1
 	blo.w bad
 	adda.l d0, a0
+	bra.w references
+; A dotted call head names syntax, not an address dependency. Keep its
+; numeric identity opaque; argument names still pass through normal binding.
+callHead
+	move.l a4, d1
+	sub.l a0, d1
+	cmpi.l #6, d1
+	blo.w punctuation
+	cmpi.b #1, 1(a0)
+	bhi.w punctuation
+	cmpi.b #14, 5(a0)
+	bne.w punctuation
+	addq.l #5, a0
 	bra.w references
 punctuation
 	addq.l #1, a0

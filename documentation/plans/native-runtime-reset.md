@@ -1,10 +1,10 @@
 # Native assembler completion plan
 
-Status: active. BS23 adds package-owned numeric runtime state and selector guards;
-its [state slice](#bs23-package-state--baseline-8940af51) passes focused native
-checks and complete release self-host equality on 68020/74 MiB in 1,089.649658834
-seconds. No new physical A6000 run or complete peak-memory result is claimed.
-Packages and bundles must use the current BS23 contract.
+Status: active. BS24 adds numeric FPU operand projections on top of package-owned
+runtime state and selector guards. Its [FPU slice](#bs24-fpu-operand-projections--baseline-f7969d7f)
+passes focused native checks, two complete FPU examples and full release self-host
+Hunk equality on 68020/74 MiB in 1,092.771469042 seconds. No new physical A6000
+run or complete peak-memory result is claimed. Packages and bundles must use BS24.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -59,7 +59,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS23 represents one CPU/dialect pipeline and carries its canonical
+Current BS24 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -3640,3 +3640,87 @@ The qualified release bundle is
 `/tmp/opforge-a6000-current`. Local hardware-runner dry-run validation passes;
 no remote transfer or physical A6000 execution was performed. Logs and bundle
 deliverables remain outside `target`; the build cache is cleaned at handback.
+
+## BS24 FPU operand projections — baseline f7969d7f
+
+Scope: lower canonical call-argument register and single-class register-mask
+projections, beginning with `FSINCOS` and `FMOVEM`. Classes, bit positions,
+reversal, state guards and encoding programs remain package data. Native code
+consumes bounded numeric operands; no FPU spelling or opcode logic enters it.
+PFLUSH and broader FPU/CPU parity remain separate work.
+
+BS24 retains the 200-byte header and 12-byte projection slots. Kind 24 carries
+operand ordinal, register class, zero Literal and argument ordinal (0/1) in the
+Reserved word. The standard value-program field remains available. Kind 18 can
+omit its second register class with `$ffff`, requiring a zero second shift.
+The first class cannot be the sentinel. Producer, native consumers, inventory,
+CLI identification and hardware runner migrate together; BS23 is superseded.
+
+Packed preparation preserves dotted call boundaries and prepares argument leaves
+without a source-text fallback. Scope tracking excludes a dotted callee from
+address dependencies while its arguments retain normal binding. Shared bounded
+call views select the requested existing argument without imposing a particular
+callee name or exact argument count. Ordinary tuple views keep their 2/3 arity
+contract. The canonical parser/selector remains the reference; this structural
+transport does not close the existing frontend/EXVM ownership gaps.
+
+Focused live Rust/native comparisons pass for FSINCOS paired destinations,
+FMOVEM indirect, predecrement and postincrement transfers, a register range and a
+call with additional scalar/register arguments. A separate m68040 mask case
+passes. The complete focused case also proves FMOVEM.L control-register lists
+in both directions. Four fresh native rejections agree with Rust for a wrong destination
+class, a missing argument, a mixed-class mask and a descending range. Rejection
+text remains generic rather than exact diagnostic parity.
+
+Both complete `68020_fpu_registers.asm` and `68040_integrated_fpu.asm` now complete
+with exit zero and exact live Rust Hex equality. The combined corpus audit still
+returns failure for their existing stored listing drift; native equality does not
+qualify those stored references. No references were regenerated or substituted.
+
+A bounded limitation remains: preparation validates extra argument leaves that
+canonical call-argument projections do not inspect. Unused nested calls, long
+strings and unresolved extra names can therefore reject. General call-argument
+transport/parameter semantics are not completed by this slice.
+
+Host qualification passes 27 numeric-package tests, 287 packed-source tests,
+production vm/asm library Clippy, all registered target/dialect package generation,
+24 hardware-runner tests and relevant workflow/proof/format guards. Independent
+Sol implementation and read-only integration review covered the projection wire
+contract, native bounds, register preservation and reference tracking.
+
+Separate release timing comparison: the unchanged indexed input is 7,489 source
+bytes and produces the same 1,632 output bytes. On 68020/10 MiB, the preceding
+BS23 samples were 12.264527458 and 12.060403084 seconds (mean 12.162465271).
+BS24 samples are 12.303503500 and 12.068884875 seconds (mean 12.1861941875).
+The difference is +0.0237289165 seconds (+0.1951%), within the observed sample
+variation; no meaningful regression or gain is established. These are separate
+START/DONE observations with telemetry disabled, not the full self-host input.
+The external-package CLI grows from 137,296 to 137,612 bytes (+316), and linked
+static reservation from 156,592 to 156,904 (+312). The m68020 package grows from
+376,418 to 376,994 bytes (+576). Candidate count remains 3,386; six previously
+unsupported rows now have executable projections. Generation remains source
+project independent. Linked reservation is not peak memory.
+
+Complete current BS24 self-host qualification (2026-10-05): release bootstrap and
+assembled output both embed only `m68020--motorola68k.bin`. Fresh case-bound
+START/DONE completed, guest exit was explicitly zero and the entire 514,608-byte
+Hunk exactly matches newly assembled Rust output. All 101 mapped inputs total
+1,469,495 bytes. Linked static reservation is 533,900 bytes; this is not peak
+memory. Input fingerprint is `fnv1a64:d24acf8b5a76a710`, package fingerprint
+`fnv1a64:618b859db7f54c74` and bootstrap/output fingerprint
+`fnv1a64:01643ab5d2cdff45`.
+
+Uninstrumented START/DONE duration is 1,092.771469042 seconds (18m12.77s), excluding
+host preparation and emulator startup. The preceding BS23 full run was
+1,089.649658834 seconds: +3.121810208 seconds (+0.2865%). This compares successive
+complete implementations, including their changed source/package inputs, on the
+same 68020/74 MiB configuration. It is one full sample per checkpoint rather than
+an isolated same-input microbenchmark. The full Hunk grows by 892 bytes and static
+reservation by 888; the separate unchanged-input comparison above owns the
+measurement of the indexed workload.
+
+The qualified bundle is `/tmp/opforge-selfhost-bs24-fpu-qualified-release-74m`,
+selected by `/tmp/opforge-a6000-current`. Default hardware-runner dry-run preparation
+passes. No remote transfer or physical A6000 execution is claimed. The older BS23
+bundle remains a baseline artifact outside the repository tree, not a supported
+current runtime package.

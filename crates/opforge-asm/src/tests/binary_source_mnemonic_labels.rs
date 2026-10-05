@@ -89,7 +89,7 @@ fn dictionary_offsets(wire: &[u8]) -> BTreeMap<String, usize> {
 #[test]
 fn compact_mnemonic_dictionary_roles() {
     let wire = wire();
-    assert_eq!(&wire[..4], b"BS24");
+    assert_eq!(&wire[..4], b"BS25");
     let offsets = dictionary_offsets(&wire);
     for spelling in ["reset", "word", "m68020", "68020"] {
         assert_eq!(wire[offsets[spelling] + 5], 0, "{spelling} is contextual");
@@ -154,10 +154,10 @@ fn compact_mnemonic_unknown_dictionary_role_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; BS23 lacks the BS24 call/mask contract"]
+#[ignore = "requires configured FS-UAE; BS24 lacks the BS25 immediate-expression contract"]
 fn compact_mnemonic_stale_contract_fs_uae() {
     let mut wire = wire();
-    wire[..4].copy_from_slice(b"BS23");
+    wire[..4].copy_from_slice(b"BS24");
     reject_wire(&wire);
 }
 

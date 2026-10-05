@@ -7,6 +7,9 @@ mod guards;
 #[path = "binary_source_fpu_operands.rs"]
 mod fpu_operands;
 
+#[path = "binary_source_immediate_operands.rs"]
+mod immediate_operands;
+
 const CASES: &[(&str, &str)] = &[
     (
         "m68020",

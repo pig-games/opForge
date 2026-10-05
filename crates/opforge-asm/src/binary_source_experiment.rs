@@ -105,7 +105,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS24 block for one resolved package hierarchy.
+/// Prepare a self-contained BS25 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -406,7 +406,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS24");
+    out[..4].copy_from_slice(b"BS25");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -1407,6 +1407,12 @@ fn write_projection(
     }
     let (kind, operand, field, literal) = match projection {
         Projection::Expression(operand) => (0, *operand, 0, 0),
+        Projection::ImmediateExpression(operand) => {
+            if *operand > 1 {
+                return Ok(false);
+            }
+            (25, *operand, 0, 0)
+        }
         Projection::IndirectValue { operand } => (20, *operand, 0, 0),
         Projection::TupleNamedRegister { operand, name } => (21, *operand, *name, 0),
         Projection::ScalarExpression(operand) => (22, *operand, 0, 0),
@@ -1561,6 +1567,41 @@ fn name(names: &[String], id: u16) -> Result<&str, String> {
 #[cfg(test)]
 mod dictionary_role_contract_tests {
     use super::*;
+
+    #[test]
+    fn immediate_projection_wire_preserves_wrapper_and_value_program() {
+        let mut programs = Programs::default();
+        programs.values.insert(7, 3);
+        for operand in 0..=1 {
+            let mut wire = Vec::new();
+            assert!(write_projection(
+                &mut wire,
+                &Projection::ImmediateExpression(operand),
+                &programs
+            )
+            .unwrap());
+            assert_eq!(wire, [25, operand, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0]);
+            for projection in [
+                Projection::ValueProgram {
+                    program: 7,
+                    source: Box::new(Projection::ImmediateExpression(operand)),
+                },
+                Projection::RequiredValueProgram {
+                    program: 7,
+                    source: Box::new(Projection::ImmediateExpression(operand)),
+                },
+            ] {
+                wire.clear();
+                assert!(write_projection(&mut wire, &projection, &programs).unwrap());
+                assert_eq!(wire, [25, operand, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0]);
+            }
+        }
+        let mut wire = vec![42];
+        assert!(
+            !write_projection(&mut wire, &Projection::ImmediateExpression(2), &programs).unwrap()
+        );
+        assert_eq!(wire, [42]);
+    }
 
     #[test]
     fn sequence_prefix_requires_one_trailing_payload_slot() {

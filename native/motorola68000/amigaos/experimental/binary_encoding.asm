@@ -62,6 +62,7 @@ PROJECTION_TUPLE_NAMED = 21
 PROJECTION_SCALAR_EXPRESSION = 22
 PROJECTION_TUPLE_IDENTITY = 23
 PROJECTION_CALL_REGISTER = 24
+PROJECTION_HASH_SCALAR = 25
 MISSING_PROGRAM = $ffff
 HEADER_BYTES = package.HEADER_BYTES
 ROW_BYTES = 32
@@ -1448,6 +1449,8 @@ recordReady
 	beq.w scalarExpression
 	cmpi.b #PROJECTION_CALL_REGISTER, d0
 	beq.w callRegister
+	cmpi.b #PROJECTION_HASH_SCALAR, d0
+	beq.w hashScalar
 	bra.w bad
 expressionValue
 	move.w package.ScalarProjection.Flags(a4), d0
@@ -1518,6 +1521,9 @@ callRegister
 	bra.w valueReady
 scalarExpression
 	bsr.w projectionScalarExpression
+	bra.w valueReady
+hashScalar
+	bsr.w projectionHashScalar
 	bra.w valueReady
 constantValue
 	tst.w package.Projection.Reserved(a4)
@@ -1801,6 +1807,28 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; projectionExpression
+
+; Require the package-selected immediate wrapper before ordinary scalar
+; evaluation. A4=projection; D0=status, D3=value on success; CCR unspecified.
+projectionHashScalar	.block
+	tst.w package.Projection.Class(a4)
+	bne.w bad
+	tst.l package.Projection.Literal(a4)
+	bne.w bad
+	tst.w package.Projection.Reserved(a4)
+	bne.w bad
+	bsr.w operandSpan
+	bne.w done
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w bad
+	bra.w projectionExpression
+bad
+	moveq #1, d0
+done
+	rts
+	.bend  ; projectionHashScalar
 
 ; Bind optional scalar address identity after expression validation. In Hunk
 ; mode the bounded affine proof supplies a canonical section for symbols or PC.

@@ -131,6 +131,7 @@ pub enum ScalarPlan {
 pub enum Projection {
     Expression(u8),
     ScalarExpression(u8),
+    ImmediateExpression(u8),
     IndirectValue {
         operand: u8,
     },
@@ -835,6 +836,10 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
     if let Ok(value) = value.parse() {
         return Some(Projection::Constant(value));
     }
+    if let Some(rest) = value.strip_prefix("immediate") {
+        let operand = rest.parse::<u8>().ok()?;
+        return (operand <= 1).then_some(Projection::ImmediateExpression(operand));
+    }
     if let Some(rest) = value.strip_prefix("scalar_expr") {
         return rest.parse().ok().map(Projection::ScalarExpression);
     }
@@ -1180,6 +1185,44 @@ mod tests {
         parse_register_mask, BTreeMap, BTreeSet, CandidateRecipe, NameTable, NumericRegister,
         Projection,
     };
+
+    #[test]
+    fn immediate_projection_lowers_only_two_numeric_operand_slots() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        for operand in 0..=1 {
+            assert_eq!(
+                parse_projection(&format!("immediate{operand}"), &mut names),
+                Some(Projection::ImmediateExpression(operand))
+            );
+        }
+        for source in [
+            "immediate",
+            "immediate2",
+            "immediate256",
+            "immediate-1",
+            "immediate0.extra",
+        ] {
+            assert_eq!(parse_projection(source, &mut names), None, "{source}");
+        }
+        assert!(
+            matches!(super::parse_recipe("semv.inputs.v1:pflush@expr0,immediate1", &mut names),
+            CandidateRecipe::SemanticInputs { inputs, .. }
+                if inputs == [Projection::Expression(0), Projection::ImmediateExpression(1)])
+        );
+        assert!(
+            matches!(parse_projection("value_program:mask:immediate1", &mut names),
+            Some(Projection::ValueProgram { source, .. }) if *source == Projection::ImmediateExpression(1))
+        );
+        assert!(matches!(
+            super::parse_recipe("semv.inputs.v1:pflush@expr0,immediate2", &mut names),
+            CandidateRecipe::Unsupported { .. }
+        ));
+    }
 
     #[test]
     fn register_mask_projection_requires_bounded_unambiguous_map() {

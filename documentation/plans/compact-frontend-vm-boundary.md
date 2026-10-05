@@ -1,36 +1,38 @@
 # Compact frontend: VM boundary correction
 
-Status: the current runtime contract is BS24, with package-owned state/guards,
-call-argument register projections and single-class masks. The
-[FPU operand slice](native-runtime-reset.md#bs24-fpu-operand-projections--baseline-f7969d7f)
-passes focused fresh native comparisons, the two selected complete FPU examples
+Status: the current runtime contract is BS25, adding required immediate-expression
+projections to package-owned state/guards, call-argument register projections and
+single-class masks. The
+[immediate operand slice](native-runtime-reset.md#bs25-required-immediate-expressions--baseline-2946d7bd)
+passes focused fresh native comparisons, the complete 68030 PFLUSH/FPU example
 and complete release self-host equality. Full self-host equality does not establish
 full language or CPU parity, physical A6000 timing or the 2 MiB product goal.
 
-## Most recent full self-host qualification (BS24)
+## Most recent full self-host qualification (BS25)
 
-The complete BS24 embedded implementation self-assembles in FS-UAE with fresh
+The complete BS25 embedded implementation self-assembles in FS-UAE with fresh
 case-bound START/DONE, explicit exit zero and exact live Rust equality. Bootstrap
 and output embed only the 376,994-byte m68020 package. The 101 mapped inputs total
-1,469,495 bytes; the complete Hunk is 514,608 bytes and linked static reservation
-533,900 bytes. Input fingerprint is `fnv1a64:d24acf8b5a76a710`, complete output
-fingerprint `fnv1a64:01643ab5d2cdff45`, and package fingerprint
-`fnv1a64:618b859db7f54c74`.
+1,470,140 bytes; the complete Hunk is 514,680 bytes and linked static reservation
+533,972 bytes. Input fingerprint is `fnv1a64:a6332b613ab63e31`, complete output
+fingerprint `fnv1a64:b2082f2bf51cbcb1`, and package fingerprint
+`fnv1a64:fe2c303018fffd3b`.
 
-Uninstrumented START/DONE duration is 1,092.771469042 seconds (18m12.77s), excluding
+Uninstrumented START/DONE duration is 1091.929879083 seconds (18m11.93s), excluding
 emulator startup and host preparation. On the same 68020/74 MiB configuration,
-that is +3.121810208 seconds (+0.2865%) versus the preceding
-[BS23 state checkpoint](native-runtime-reset.md#bs23-package-state--baseline-8940af51).
-The source/package inputs are larger, and there is one full sample per state.
-The unchanged indexed workload on 68020/10 MiB separately averages 12.1861941875
-seconds versus 12.162465271 seconds (+0.1951%, within observed two-sample variation).
-Keep the two input sets and memory profiles separate. No new physical A6000 timing,
-complete peak-memory capture or 2 MiB fit is claimed.
+that is -0.841589959 seconds (-0.0770%) versus the preceding
+[BS24 FPU checkpoint](native-runtime-reset.md#bs24-fpu-operand-projections--baseline-f7969d7f).
+The source/package inputs differ, and there is one full sample per state.
+The unchanged indexed workload on 68020/10 MiB separately averages 12.0476659375
+seconds versus 12.1861941875 seconds (-1.1368%, two samples per state). Neither
+small decrease demonstrates an optimization. Keep the two input sets and memory
+profiles separate. No new physical A6000 timing, complete peak-memory capture or
+2 MiB fit is claimed.
 
-The FPU checkpoint owns projection details, focused proof and remaining call
-argument/reference gaps. Only BS24 runtime packages are accepted; older bundles
-are baseline evidence. The localized import-alias/local-struct shadowing gap from
-the BS23 checkpoint remains open.
+The current checkpoint owns immediate projection details, focused proof and
+remaining reference gaps. Only BS25 runtime packages are accepted; older bundles
+are baseline evidence. The unused extra call-argument preparation and localized
+import-alias/local-struct shadowing gaps remain open.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
@@ -42,7 +44,7 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The qualified release bundle `/tmp/opforge-selfhost-bs24-fpu-qualified-release-74m`
+The qualified release bundle `/tmp/opforge-selfhost-bs25-immediate-qualified-release-74m`
 is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both embed only
 `m68020--motorola68k.bin`. The named package is retained for local identity
 verification; no external runtime fallback is used. This bundle has complete
@@ -56,7 +58,7 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The script validates the current BS24 package header, mapped source preamble and
+The script validates the current BS25 package header, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
@@ -70,7 +72,7 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS24 before selecting it in the current hardware
+instrumented configuration as BS25 before selecting it in the current hardware
 runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
@@ -132,7 +134,7 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS24 is the current compact package format; the producer writes `BS24` and the
+BS25 is the current compact package format; the producer writes `BS25` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Target flags at 130 request structural
 wrapper preservation from canonical projections. Tuple register/value/qualified projections use kinds 11/12/13. Descriptor
@@ -143,6 +145,10 @@ the package register class and standard value-program field; Literal is zero
 and the final word stores the argument ordinal. It requires the selected argument
 to exist, not an exact arity or callee spelling. Mask kind 18 supports one class
 with an absent second-class sentinel `$ffff` and zero second shift.
+Kind 25 requires an immediate (`#`) wrapper around the selected operand and
+evaluates its scalar expression. Class, Literal and Reserved are zero; the
+standard value-program field remains available. The package owns value bounds
+and encoding; native code only validates the structural wrapper.
 Conflicting predicates reject. Native bounds selection does not evaluate scalar
 payloads or select register classes. Identity predicate kind 23 carries expected
 identity 1 in its Class word and the same bounded arity/item fields. Register

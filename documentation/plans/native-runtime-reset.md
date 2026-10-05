@@ -3724,3 +3724,72 @@ selected by `/tmp/opforge-a6000-current`. Default hardware-runner dry-run prepar
 passes. No remote transfer or physical A6000 execution is claimed. The older BS23
 bundle remains a baseline artifact outside the repository tree, not a supported
 current runtime package.
+
+
+## BS25 required immediate expressions — baseline 2946d7bd
+
+Scope: make the canonical `immediateN` projection executable in packed native
+selection, beginning with the deferred 68030 PFLUSH form. The 68040 indirect
+form is checked alongside it. Both encoding programs and CPU restrictions remain
+unchanged in the canonical package; no MMU/CPU encoding logic enters generic
+native processing.
+
+Kind 25 uses the existing 12-byte slot: operand ordinal 0/1, zero Class, Literal
+and Reserved, and the standard optional value-program field. Selection requires
+the prepared hash wrapper and then uses ordinary scalar evaluation. Producer,
+native magic/identification, inventory and hardware runner migrate together to
+BS25; BS24 packages must be regenerated, without a legacy executor.
+
+Success requires fresh exact Rust/native output for legal constant/expression
+operands, fresh rejection for invalid wrappers/ranges/arity/CPU forms, and the
+complete 68030 example. Compare the unchanged indexed workload with BS24 on the
+same 68020/10 MiB profile; retain release self-host timing separately on 74 MiB.
+
+Focused correctness passes two positive CPU cases (68030 constants, arithmetic
+and assigned values; 68040 indirect registers) and nine fresh native rejections
+for wrapper, range, arity and CPU restrictions. The complete unchanged
+`68030_pflush_external_fpu.asm` now completes with fresh START/DONE, guest exit
+zero and exact live Rust Hex equality in 1.545340166 seconds. The combined corpus
+audit still fails its existing stored `.lst` comparison; that reference drift is
+not native failure and was neither regenerated nor substituted.
+
+All registered target/dialect package generation passes (16 generated, zero
+failed, six without instruction candidates). The 68030 package gains one legal
+semantic-input row and 24 bytes (376,972 to 376,996); the 68020 and 68040 package
+sizes are unchanged. The external CLI grows 72 bytes (137,612 to 137,684), with
+linked static reservation likewise +72 (156,904 to 156,976); this is not peak RAM.
+Host qualification passes 28 numeric-package and 289 packed-source tests,
+production vm/asm Clippy, 24 hardware-runner tests, native formatting and the
+relevant architecture/workflow/proof guards. Sol implemented and reviewed the
+Rust projection/contract migration and reviewed native field bounds and calling
+behavior; the coordinator integrated and ran the fresh native checks.
+
+Separate release timing comparison: unchanged indexed input, 7,489 source bytes
+and identical 1,632-byte output, on 68020/10 MiB. BS24 samples were 12.303503500
+and 12.068884875 seconds (mean 12.1861941875); BS25 samples are 12.035299500 and
+12.060032375 seconds (mean 12.0476659375). The mean difference is
+-0.1385282500 seconds (-1.1368%). With only two samples and variation
+in the preceding pair, this does not establish a meaningful performance gain.
+This change adds operand coverage rather than an optimization.
+
+Complete uninstrumented release self-host now passes fresh case-bound START/DONE,
+guest exit zero and exact live Rust equality for the entire 514,680-byte Hunk.
+Bootstrap and output embed only the 376,994-byte m68020 package; 101 mapped inputs
+total 1,470,140 bytes. Linked static reservation is 533,972 bytes, not peak RAM.
+Input fingerprint is `fnv1a64:a6332b613ab63e31`, package fingerprint
+`fnv1a64:fe2c303018fffd3b`, and bootstrap/output fingerprint
+`fnv1a64:b2082f2bf51cbcb1`.
+
+On the unchanged 68020/74 MiB profile, START/DONE takes 1091.929879083 seconds
+(18m11.93s), versus BS24's 1092.771469042 seconds (18m12.77s):
+-0.841589959 seconds (-0.0770%). These are one complete sample per
+implementation, with different current source/package bytes; the small decrease
+does not demonstrate an optimization. Keep this comparison separate from the
+unchanged indexed input on 10 MiB. No physical A6000 timing, full peak-memory
+capture or 2 MiB fit is claimed.
+
+The qualified release bundle is
+`/tmp/opforge-selfhost-bs25-immediate-qualified-release-74m`, selected by
+`/tmp/opforge-a6000-current`. Local hardware-runner dry-run validation passes.
+No remote transfer or physical hardware execution was performed. Deliverables and
+validation logs remain outside `target`; its cache is cleaned at handback.

@@ -103,7 +103,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS21 block for one resolved package hierarchy.
+/// Prepare a self-contained BS22 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -378,7 +378,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS21");
+    out[..4].copy_from_slice(b"BS22");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -882,7 +882,49 @@ fn required_operand_forms(plan: &str) -> u8 {
             }
         }
     }
+    exact_tuple_forms(
+        forms,
+        predicates.split(',').filter_map(canonical_tuple_arity),
+    )
+}
+
+// Exact arity strengthens only an unknown or arbitrary-tuple wrapper. Conflicting
+// arity conjuncts retain the barrier; unrelated wrapper facts are not replaced.
+// Nibbles 10/11 require a complete two/three-item tuple, respectively.
+fn exact_tuple_forms(forms: [u8; 2], arities: impl Iterator<Item = (u8, u8)>) -> u8 {
+    let mut required = [0u8; 2];
+    for (operand, arity) in arities {
+        let Some(existing) = required.get_mut(usize::from(operand)) else {
+            continue;
+        };
+        if *existing == 0 {
+            *existing = arity;
+        } else if *existing != arity {
+            *existing = u8::MAX;
+        }
+    }
+    let mut forms = forms;
+    for (form, arity) in forms.iter_mut().zip(required) {
+        if matches!(*form, 0 | 4) && matches!(arity, 2 | 3) {
+            *form = arity + 8;
+        }
+    }
     forms[0] | forms[1] << 4
+}
+
+fn canonical_tuple_arity(predicate: &str) -> Option<(u8, u8)> {
+    let rest = predicate.strip_prefix("indirect_tuple_arity")?;
+    let (operand, arity) = rest.split_once(".value")?;
+    if operand.is_empty() || !operand.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let operand = operand.parse::<u8>().ok()?;
+    let arity = match arity {
+        "2" => 2,
+        "3" => 3,
+        _ => return None,
+    };
+    Some((operand, arity))
 }
 
 // Facts come only from canonical match conjuncts. Unknown stages and predicates
@@ -974,7 +1016,16 @@ fn necessary_sequence_match(stages: &[SemanticStage]) -> (u8, u16) {
             }
         }
     }
-    (forms[0] | forms[1] << 4, u16::from_be_bytes(classes))
+    let arities = tuple_arities(
+        stages
+            .iter()
+            .take_while(|stage| stage.program.is_none() && !stage.fixup)
+            .flat_map(|stage| &stage.inputs),
+    );
+    (
+        exact_tuple_forms(forms, arities.into_iter()),
+        u16::from_be_bytes(classes),
+    )
 }
 
 fn tuple_scalar_first(projection: &Projection, operand: u8) -> bool {
@@ -1083,6 +1134,10 @@ fn filtered_tuple_arities_covered(inputs: &[Projection]) -> bool {
                 operand: other,
                 item,
             }
+            | Projection::TupleIdentityScale {
+                operand: other,
+                item,
+            }
             | Projection::TupleQualifiedRegister {
                 operand: other,
                 item,
@@ -1137,6 +1192,7 @@ fn write_bound_projection(
     let tuple = match source {
         Projection::TupleRegister { operand, item, .. }
         | Projection::TupleValue { operand, item }
+        | Projection::TupleIdentityScale { operand, item }
         | Projection::TupleQualifiedRegister { operand, item, .. } => Some((*operand, *item)),
         _ => None,
     };
@@ -1302,8 +1358,12 @@ fn write_projection(
         ),
         Projection::Member { operand, qualifier } => (2, *operand, *qualifier, 0),
         Projection::MemberShape { operand, qualifier } => (19, *operand, *qualifier, 0),
-        Projection::TupleRegister { operand, class, .. } => (11, *operand, *class, 0),
+        // Canonical tuple-register sources accept an optional identity product.
+        // Its expected value is transported in the high word; the low word
+        // remains the qualified-register dictionary id (zero when absent).
+        Projection::TupleRegister { operand, class, .. } => (11, *operand, *class, 1 << 16),
         Projection::TupleValue { operand, .. } => (12, *operand, 0, 0),
+        Projection::TupleIdentityScale { operand, .. } => (23, *operand, 1, 0),
         Projection::TupleArity { operand } => (14, *operand, 2, 0),
         Projection::TupleArityThree { operand } => (14, *operand, 3, 0),
         Projection::TupleQualifiedRegister {
@@ -1315,7 +1375,7 @@ fn write_projection(
             let Some(qualifier) = programs.qualifiers.get(qualifier) else {
                 return Ok(false);
             };
-            (13, *operand, *class, i32::from(*qualifier))
+            (13, *operand, *class, (1 << 16) | i32::from(*qualifier))
         }
         Projection::NamedRegister { operand, name } => (4, *operand, *name, 0),
         Projection::Constant(value) => {
@@ -1754,13 +1814,13 @@ mod sequence_wire_tests {
         };
         assert_eq!(
             necessary_sequence_match(&[matched.clone(), later]),
-            (4, 0x0900)
+            (10, 0x0900)
         );
         let mut register_pair = matched.clone();
         register_pair
             .inputs
             .retain(|input| !matches!(input, Projection::TupleValue { .. }));
-        assert_eq!(necessary_sequence_match(&[register_pair.clone()]), (0, 0));
+        assert_eq!(necessary_sequence_match(&[register_pair.clone()]), (10, 0));
         let scalar_fixup = SemanticStage {
             program: Some(1),
             fixup: true,
@@ -1771,7 +1831,7 @@ mod sequence_wire_tests {
         };
         assert_eq!(
             necessary_sequence_match(&[register_pair, scalar_fixup]),
-            (4, 0x0900)
+            (10, 0x0900)
         );
         let mut encode_only = matched.clone();
         encode_only.program = Some(1);
@@ -1782,14 +1842,153 @@ mod sequence_wire_tests {
             item: 1,
             class: 8,
         };
-        assert_eq!(necessary_sequence_match(&[outside]), (0, 0));
+        assert_eq!(necessary_sequence_match(&[outside]), (10, 0));
         let mut untransportable_class = matched;
         untransportable_class.inputs[0] = Projection::TupleRegister {
             operand: 0,
             item: 1,
             class: 255,
         };
-        assert_eq!(necessary_sequence_match(&[untransportable_class]), (4, 0));
+        assert_eq!(necessary_sequence_match(&[untransportable_class]), (10, 0));
+    }
+
+    #[test]
+    fn exact_tuple_arity_proof_uses_only_canonical_match_conjuncts() {
+        for (predicate, expected) in [
+            ("indirect_tuple_arity0.value2", 10),
+            ("indirect_tuple_arity1.value3", 0xb0),
+            ("indirect_tuple_reg0.item1.class8,indirect_tuple_arity0.value3", 11),
+            ("indirect_tuple_arity0.value2,indirect_tuple_arity1.value3", 0xba),
+            ("indirect_tuple_arity0.value2,indirect_tuple_arity0.value2", 10),
+            ("indirect_tuple_arity0.value2,indirect_tuple_arity0.value3", 0),
+            ("indirect_tuple_reg0.item1.class8,indirect_tuple_arity0.value2,indirect_tuple_arity0.value3", 4),
+            ("expr0,indirect_tuple_arity0.value2", 6),
+        ] {
+            assert_eq!(required_operand_forms(
+                &format!("semv.sequence.v1:match:_@{predicate};encode:x@literal:0")
+            ), expected, "{predicate}");
+        }
+        for predicate in [
+            "indirect_tuple_arity0.value4",
+            "indirect_tuple_arity0.valueX",
+            "indirect_tuple_arity0.value+2",
+            "indirect_tuple_arity+0.value2",
+            "indirect_tuple_arity0.value2.future",
+            "indirect_tuple_arity2.value2",
+        ] {
+            assert_eq!(
+                required_operand_forms(&format!("semv.reject.v1:bad@{predicate}")),
+                0,
+                "{predicate}"
+            );
+        }
+        for plan in [
+            "semv.sequence.v1:encode:x@indirect_tuple_arity0.value2",
+            "semv.sequence.v1:match:_@indirect_tuple_reg0.item1.class8;encode:x@indirect_tuple_arity0.value3",
+            "semv.sequence.v1:match:_@indirect_tuple_reg0.item1.class8;encode:x@literal:0;fixup:y@indirect_tuple_arity0.value3",
+        ] {
+            assert_eq!(required_operand_forms(plan), if plan.contains("match:") { 4 } else { 0 }, "{plan}");
+        }
+    }
+
+    #[test]
+    fn downgraded_exact_tuple_arity_ignores_later_stages_and_conflicts() {
+        let matched = SemanticStage {
+            program: None,
+            fixup: false,
+            inputs: vec![Projection::TupleArityThree { operand: 0 }],
+        };
+        let later = SemanticStage {
+            program: Some(1),
+            fixup: false,
+            inputs: vec![Projection::TupleArity { operand: 0 }],
+        };
+        assert_eq!(
+            necessary_sequence_match(&[matched.clone(), later.clone()]),
+            (11, 0)
+        );
+        assert_eq!(
+            necessary_sequence_match(&[later.clone(), matched.clone()]),
+            (0, 0)
+        );
+        let mut fixup = later.clone();
+        fixup.fixup = true;
+        assert_eq!(necessary_sequence_match(&[fixup]), (0, 0));
+        let conflicting = SemanticStage {
+            program: None,
+            fixup: false,
+            inputs: vec![Projection::TupleArity { operand: 0 }],
+        };
+        assert_eq!(
+            necessary_sequence_match(&[matched.clone(), conflicting]),
+            (0, 0)
+        );
+        assert_eq!(
+            necessary_sequence_match(&[matched.clone(), matched]),
+            (11, 0)
+        );
+    }
+
+    #[test]
+    fn unsupported_candidate_wire_carries_exact_match_arity() {
+        let names = vec![
+            "instruction".to_string(),
+            "direct_register".to_string(),
+            "semantic".to_string(),
+            "semv.sequence.v1:match:_@indirect_tuple_arity0.value3;encode:future@expr0".to_string(),
+        ];
+        let candidate = NumericCandidate {
+            mnemonic: 0,
+            qualifier: None,
+            shape: 1,
+            mode: 2,
+            owner_rank: 0,
+            priority: 0,
+            width_rank: 0,
+            unstable_widen: false,
+            member_excluded: 0,
+            known_name_excluded: Vec::new(),
+            recipe: CandidateRecipe::Unsupported { plan: 3 },
+        };
+        let mut wire = vec![0; ROW];
+        write_candidate(&mut wire, 0, &candidate, &names, &Programs::default()).unwrap();
+        assert_eq!(wire[5], 6);
+        assert_eq!(wire[19], 11);
+        let mut downgraded = candidate;
+        downgraded.recipe = CandidateRecipe::SemanticSequence {
+            stages: vec![
+                SemanticStage {
+                    program: None,
+                    fixup: false,
+                    inputs: vec![
+                        Projection::TupleRegister {
+                            operand: 0,
+                            item: 1,
+                            class: 8,
+                        },
+                        Projection::TupleArityThree { operand: 0 },
+                    ],
+                },
+                SemanticStage {
+                    program: Some(99),
+                    fixup: false,
+                    inputs: vec![Projection::Constant(0)],
+                },
+                SemanticStage {
+                    program: Some(99),
+                    fixup: true,
+                    inputs: vec![Projection::TupleValue {
+                        operand: 0,
+                        item: 0,
+                    }],
+                },
+            ],
+        };
+        let mut wire = vec![0; ROW];
+        write_candidate(&mut wire, 0, &downgraded, &names, &Programs::default()).unwrap();
+        assert_eq!(wire[5], 6);
+        assert_eq!(wire[19], 11);
+        assert_eq!(&wire[22..24], &[9, 0]);
     }
 
     #[test]
@@ -1965,8 +2164,10 @@ mod sequence_wire_tests {
             assert!(write_bound_projection(&mut wire, &projection, &programs, &arities).unwrap());
         }
         assert_eq!(wire[0], 11);
+        assert_eq!(&wire[4..8], &65536i32.to_be_bytes());
         assert_eq!(&wire[10..12], &[2, 0]);
         assert_eq!(wire[12], 13);
+        assert_eq!(&wire[16..20], &65538i32.to_be_bytes());
         assert_eq!(&wire[22..24], &[2, 1]);
         let original = wire.clone();
         for item in [2, 3, 255] {
@@ -2045,7 +2246,7 @@ mod sequence_wire_tests {
         assert_eq!(&wire[100..104], &128u32.to_be_bytes());
         assert_eq!(&wire[104..108], &[14, 0, 0, 3]);
         assert_eq!(&wire[116..120], &[13, 0, 0, 4]);
-        assert_eq!(&wire[120..124], &2i32.to_be_bytes());
+        assert_eq!(&wire[120..124], &65538i32.to_be_bytes());
         assert_eq!(&wire[126..128], &[3, 2]);
         assert_eq!(wire[128], 11);
         assert_eq!(&wire[138..140], &[3, 1]);
@@ -2078,6 +2279,86 @@ mod sequence_wire_tests {
             wire, original,
             "unsupported stage must leave no partial wire body"
         );
+    }
+
+    #[test]
+    fn identity_scale_wire_preserves_predicate_identity_and_tuple_bounds() {
+        let mut programs = Programs::default();
+        programs.add(2, 6, &[]).unwrap();
+        programs.semantics.insert(7, 0);
+        programs.qualifiers.insert(9, 2);
+        let stages = [
+            SemanticStage {
+                program: None,
+                fixup: false,
+                inputs: vec![
+                    Projection::TupleQualifiedRegister {
+                        operand: 0,
+                        item: 1,
+                        class: 4,
+                        qualifier: 9,
+                    },
+                    Projection::TupleIdentityScale {
+                        operand: 0,
+                        item: 1,
+                    },
+                    Projection::TupleArity { operand: 0 },
+                ],
+            },
+            SemanticStage {
+                program: Some(7),
+                fixup: false,
+                inputs: vec![Projection::TupleQualifiedRegister {
+                    operand: 0,
+                    item: 1,
+                    class: 4,
+                    qualifier: 9,
+                }],
+            },
+        ];
+        let mut wire = vec![0; 80];
+        assert_eq!(
+            write_sequence(&mut wire, &stages, &programs).unwrap(),
+            Some(80)
+        );
+        assert_eq!(&wire[84..86], &3u16.to_be_bytes());
+        assert_eq!(&wire[104..108], &[13, 0, 0, 4]);
+        assert_eq!(&wire[108..112], &[0, 1, 0, 2]);
+        assert_eq!(&wire[114..116], &[2, 1]);
+        assert_eq!(&wire[116..128], &[23, 0, 0, 1, 0, 0, 0, 0, 255, 255, 2, 1]);
+        assert_eq!(&wire[128..132], &[14, 0, 0, 2]);
+        assert_eq!(&wire[140..144], &[13, 0, 0, 4]);
+        assert_eq!(&wire[144..148], &[0, 1, 0, 2]);
+        assert_eq!(&wire[150..152], &[2, 1]);
+        assert!(filtered_tuple_arities_covered(&stages[0].inputs));
+        let original = wire.clone();
+        for item in [2, 3, 255] {
+            let mut invalid = stages.clone();
+            invalid[0].inputs[1] = Projection::TupleIdentityScale { operand: 0, item };
+            assert_eq!(
+                write_sequence(&mut wire, &invalid, &programs).unwrap(),
+                None
+            );
+            assert_eq!(wire, original, "invalid identity item must roll back");
+        }
+        let conflicting = tuple_arities(
+            [
+                &Projection::TupleArity { operand: 0 },
+                &Projection::TupleArityThree { operand: 0 },
+            ]
+            .into_iter(),
+        );
+        assert!(!write_bound_projection(
+            &mut wire,
+            &Projection::TupleIdentityScale {
+                operand: 0,
+                item: 1
+            },
+            &programs,
+            &conflicting,
+        )
+        .unwrap());
+        assert_eq!(wire, original);
     }
 }
 

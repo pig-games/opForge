@@ -1,10 +1,10 @@
 # Native assembler completion plan
 
-Status: active. The current BS21 runtime contract preserves package-selected
-tuple arity and item positions. The
-[focused tuple checkpoint](#bs21-bounded-tuple-projections--baseline-a30de087)
-records native correctness and the measured change against `a30de087`.
-No BS21 full self-host or physical A6000 run is claimed. The prior qualified BS20
+Status: active. The current BS22 runtime contract adds bounded identity-product
+projection transport while preserving package-selected tuple arity/item positions. The
+[focused identity checkpoint](#bs22-identity-product-projections--baseline-f23ebf3a)
+records native correctness and the measured change against `f23ebf3a`.
+No BS22 full self-host or physical A6000 run is claimed. The prior qualified BS20
 full self-host and instrumented measurements remain baseline evidence below;
 its hardware bundles must be regenerated for the current package contract.
 This remains experimental: full self-host equality does not establish full
@@ -61,7 +61,7 @@ preparation to assemble a new project.
   package pointer. Every assembly pass must use the originating package and the
   correct mutable CPU state.
 
-Current BS21 represents one CPU/dialect pipeline and carries its canonical
+Current BS22 represents one CPU/dialect pipeline and carries its canonical
 `CPU--dialect` identity in the retained runtime prefix. It is distinct from the
 canonical `.opasm` container. P2 adds configurable embedding and catalog selection.
 Its `.cpu` directive still checks that same pipeline rather than switching it;
@@ -2174,7 +2174,7 @@ After preparation, both modes still copy the execution prefix and discard lexica
 storage. The whole embedded payload remains part of the executable image, so
 tracked allocation savings alone do not establish lower total RAM use.
 
-BS21 uses a 192-byte header. The canonical target offset remains at 124, its
+BS22 uses a 192-byte header. The canonical target offset remains at 124, its
 length at 128 and structural target flags at 130; the preparation-only file plan offset
 and byte length are at 132 and 136. Built-in `.emit` identity is at 140, CPU
 word bytes at 142, and the retained data-plan offset/length at 144/148. Fields
@@ -2187,7 +2187,7 @@ contain CPU suffix spellings. The retained shared instruction-head policy offset
 and byte length are at 168/172, its PRVM version is at 176 and a zero reserved
 word is at 178. The retained shared scalar declaration-plan offset/length are at
 180/184, its PRVM version at 188 and a zero reserved word at 190. Regenerate
-superseded packages; only BS21 is supported.
+superseded packages; only BS22 is supported.
 Target identity lies inside `RuntimeBytes`, survives preparation, uses safe
 filename characters and fits in 26 bytes (plus `.bin`, within the classic
 30-byte component limit). The current slice loads assets only from active,
@@ -3162,3 +3162,130 @@ use freshly generated BS21 inputs before updating those status claims.
 After the build/native batch ended, `make clean` reported 4.5 GiB removed and
 retained an empty `target` directory. Deliverable packages and diagnostic logs
 remain outside it. Unrelated workflow-notebook edits are preserved.
+
+#### BS22 identity-product projections — baseline `f23ebf3a`
+
+This slice transports canonical identity-scale tuple projections without flattening
+multiplication, recreating source strings or selecting target scales in native.
+The shared product owner retains one top-level numeric multiplication node with
+bounded name/compiled-scalar children. Tuple bounds expose it as an opaque leaf;
+package projections select qualifiers/classes and the expected identity. Scalar
+factor evaluation uses shared ExprVM, retaining all 64 bits and unresolved state.
+The encoder only adapts package wire fields to these shared primitives.
+This does not add a PRVM/EXVM expression-parser program or close the existing
+native expression-parser ownership gap.
+
+BS22 migrates producer, native package readers, inventory and hardware runner
+as one latest-only contract. Kind 23 carries the package's identity predicate;
+register kinds 11/13 carry expected identity in Literal's high word and the
+qualifier ID in the low word. Descriptor arity/item bounds remain unchanged.
+The product is `$82,u8 payload bytes,u8 operator,u8 left bytes,left,right`, with
+no pointers or nested product nodes. Mixed outer infixes and chained outer
+products reject rather than being silently reassociated.
+
+Two candidate-selection distinctions were necessary:
+
+- Downgraded unsupported rows must retain canonical *match* arity. RequiredForms
+  nibbles 10/11 mean exact tuple arity 2/3. Complete mismatching bounds or a
+  proven complete non-tuple root can skip the row; unknown structure, conflicting
+  predicates and later encode/fixup facts supply no new proof. This lets a
+  two-item identity alias pass an earlier three-item PC-relative barrier without
+  weakening that barrier.
+- Unresolved factors differ from evaluation errors. Rust's pass-one unresolved
+  scalar placeholder is a successful zero; the right-first identity predicate
+  therefore cannot fall back to a left one. Native retains that strict barrier.
+  Treating an unknown qualified name as an error had incorrectly accepted
+  `1*d1.w`; the rejection regression covers the distinction.
+
+The live Rust controls accept MOVE byte/word/long aliases with word/long data
+indices, address-register indices, PC bases, displacement, earlier scalar
+constants and computed identity `(1+0)`. Ordinary explicit-displacement
+spellings compare byte-for-byte where Rust supports them. Rust's ordinary
+address-register-index MOVE spelling has no portable recipe, so that alias is
+checked against a known four-byte opcode fixture instead. Reversed qualified
+products, bad qualifiers, nonidentity factors, a 64-bit factor whose low word is
+one, and chained products remain rejected. These are bounded coverage claims,
+not full CPU/family or expression parity.
+
+The old member-export test accidentally identified an alias with the same
+selection key as its canonical member recipe. It now preserves stable duplicate
+order and checks the actual executable member/value-program descriptors. The
+old native known-gap assertion also became obsolete: its complete 171-byte
+source now produces all 30 live Rust bytes in a fresh packed-harness run.
+That control covers mnemonic labels and the parenthesized member-value input;
+it does not establish general member-value parity.
+
+Focused qualification:
+
+- Final packed-source host subsystem: 327 pass, 463 native-only/opt-in tests
+  ignored. VM package projections: 20 pass. Wire transport: 15 pass, including
+  exact/unknown/conflicting arity, item bounds, unsupported sources and later-stage
+  nonproof controls. The two initially stale tuple-root assertions now check
+  the stronger exact-two-item proof; the complete final subsystem rerun passes.
+- FS-UAE 68020/10 MiB release indexed batch before the final non-tuple safeguard:
+  11 tests, 17 fresh guest runs.
+  Supported cases match live Rust bytes with explicit exit zero; invalid
+  base/arity/range and all six identity rejection cases complete with exit 20.
+  The seven identity aliases produce the exact 28 Rust bytes in 1.267023 seconds.
+  The shared 6502 wrapper control also matches all six Rust bytes.
+- Final review restored the existing complete non-tuple proof when an exact
+  arity row cannot find a tuple. Fresh controls after that refinement match all
+  30 member-fixture Rust bytes in the packed harness (1.007752 seconds), and all
+  200 Hunk bytes in the full compact CLI absolute-state matrix (1.774168 seconds).
+  The latter includes module/use, BSS and scalar/qualified absolute operands.
+  The final identity rerun again matches the seven aliases' 28 live Rust bytes
+  (1.278361 seconds), and all six rejection controls again complete with exit 20.
+  Final PC-relative LEA dispatch also matches its ten Rust bytes (1.025831 seconds).
+  Together with the final workload and breadth controls, the reviewed code has
+  six passing native tests with eleven fresh guest runs. The earlier indexed
+  batch supplies additional unchanged tuple/class/range coverage.
+- VM/assembler library Clippy with warnings denied, Rust formatting, experimental
+  native formatting (86 files), CPU-boundary, fresh-proof, ownership and workflow
+  link guards pass. Hardware-runner unit tests: 24 pass, including rejection of
+  the immediately superseded BS21 contract. Independent Sol reviews found no
+  remaining product ABI/framing or projection-contract defect. The changed-file
+  CCR scan still finds one pre-existing autofixable encoding test plus report-only
+  checks; no whole-native clean CCR qualification is claimed.
+- Host inventory regenerates all 16 packages without errors; six pipelines still
+  have no compact instruction candidates. Assets/report are retained outside
+  `target` at `/tmp/opforge-bs22-identity-final`. m68020 now exports 1,175 semantic
+  sequence rows, up from 1,151; unsupported rows drop from 903 to 879.
+  Generation and row counts are not family parity proof.
+
+Per-change comparison on identical 7,489-byte source / 1,632-byte output,
+FS-UAE 68020/10 MiB, unlimited emulator CPU speed, telemetry off:
+
+| Property | Baseline `f23ebf3a` | Final BS22 identity change |
+| --- | ---: | ---: |
+| Fresh START/DONE seconds | 12.159126833 | 12.323494250 |
+| Focused executable bytes | 134,372 | 135,744 |
+| Linked reserved bytes | 152,716 | 154,060 |
+| m68020 package bytes | 342,736 | 346,768 |
+
+Observed duration increases 0.164367 seconds (1.4%) in this single comparison;
+this does not establish a statistical regression. The intermediate run before
+exact-arity and unresolved-factor repair was 12.159168417 seconds; the indexed
+batch before the final non-tuple safeguard measured 12.421884834 seconds.
+Neither is the final measurement. Executable growth is 1,372 bytes; linked static reservations
+increase 1,344 bytes, and package growth is 4,032 bytes (1.2%). Static reservations
+are not peak memory. The focused image uses an external package; its image size
+therefore excludes package growth. Workload SHA-256 is
+`80b128940a471c41bd2c304b65cfdc9f9cf4bf0fa6f3ee7c98a66f888bd78107`.
+Logs remain as `/tmp/opforge-identity-*.log`.
+
+With the configured [FS-UAE environment](../../agents/rules/fs-uae.md), reproduce
+this batch with:
+
+```sh
+OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m cargo test -p asm --lib binary_indexed_ -- --ignored --nocapture --test-threads=1
+```
+
+Remaining: full self-host and physical A6000 qualification have not been repeated
+for BS22. Regenerate all older packages/bundles before those runs. Nonidentity
+scales, nested/path/full-extension projections, listing provenance, BBR/BBS
+fixups and the other corpus gaps remain separate work. No Rust source-language
+semantics were expanded to make these controls pass.
+
+After all builds and native runs finished, `make clean` reported 5.6 GiB removed
+and left an empty `target` directory. Package inventory and diagnostic logs remain
+outside it; unrelated workflow-notebook edits are preserved.

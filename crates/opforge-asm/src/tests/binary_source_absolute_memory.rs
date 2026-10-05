@@ -100,7 +100,7 @@ fn compact_bss_to_struct_has_executable_package_sequence() {
         })
         .unwrap();
     assert_eq!(wire[member_row + 5], 6); // TargetMember match remains unsupported in the native package.
-    assert_eq!(wire[member_row + 19] & 0x0f, 4); // source needs tuple root
+    assert_eq!(wire[member_row + 19] & 0x0f, 10); // source needs exactly two tuple items
     assert_eq!(
         u16::from_be_bytes(wire[member_row + 22..member_row + 24].try_into().unwrap()),
         0x0900

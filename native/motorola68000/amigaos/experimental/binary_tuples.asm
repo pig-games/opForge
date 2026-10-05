@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_tuples
 	.cpu 68020
 	.use opasm.amigaos.binary_expression as expression
+	.use experimental.amigaos.binary_products as products
 	.priv
 NAME_MAX = 1
 COMMA = 4
@@ -105,7 +106,10 @@ leaf	.block
 	blo.w bad
 	moveq #4, d5
 	cmpi.b #expression.COMPILED_TAG, (a2)
+	beq.w sized
+	cmpi.b #products.BINARY_TAG, (a2)
 	bne.w name
+sized
 	moveq #0, d5
 	move.b 1(a2), d5
 	beq.w bad

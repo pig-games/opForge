@@ -32,7 +32,7 @@ fn oracle(source: &str) -> Vec<u8> {
     let (entries, diagnostics) =
         assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true)
             .expect("live package-backed Rust oracle");
-    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    assert!(diagnostics.is_empty(), "{diagnostics:?}\n{source}");
     entries.into_iter().map(|(_, byte)| byte).collect()
 }
 
@@ -56,6 +56,93 @@ fn binary_indexed_register_pairs_match_explicit_zero_oracle() {
     let explicit = oracle(".cpu m68020\n.org 0\n move.b 0(a3,d4.w),d5\n move.w 0(a3,d4.w),d5\n move.l 0(a3,d4.w),d5\n.end\n");
     assert_eq!(pair, explicit);
     assert_eq!(&pair[4..8], [0x3a, 0x33, 0x40, 0]);
+}
+
+const IDENTITY_FORMS: &[(&str, &str)] = &[
+    ("move.b (a0,d1.w*1),d0", "move.b 0(a0,d1.w),d0"),
+    ("move.w (a0,d1.l*1),d0", "move.w 0(a0,d1.l),d0"),
+    // Rust accepts this identity alias, but its ordinary displacement spelling
+    // has no portable recipe. Compare the live alias with the known encoding.
+    ("move.l (a0,a1.w*1),d0", ".byte $20,$30,$90,0"),
+    ("move.w (pc,d2.w*1),d3", "move.w 0(pc,d2.w),d3"),
+    ("move.w 4(a0,d1.l*1),d0", "move.w 4(a0,d1.l),d0"),
+    ("move.w (a0,d1.w*ONE),d0", "move.w 0(a0,d1.w),d0"),
+    ("move.w (a0,d1.w*(1+0)),d0", "move.w 0(a0,d1.w),d0"),
+];
+
+fn identity_source(alias: bool) -> String {
+    format!(
+        ".cpu m68020\n.org 0\nONE = 1\n{}\n.end\n",
+        IDENTITY_FORMS
+            .iter()
+            .map(|(scaled, explicit)| format!(" {}", if alias { *scaled } else { *explicit }))
+            .collect::<Vec<_>>()
+            .join("\n")
+    )
+}
+
+#[test]
+fn binary_indexed_identity_alias_oracles() {
+    for (scaled, explicit) in IDENTITY_FORMS {
+        let prefix = ".cpu m68020\n.org 0\nONE = 1\n";
+        assert_eq!(
+            oracle(&format!("{prefix} {scaled}\n.end\n")),
+            oracle(&format!("{prefix} {explicit}\n.end\n")),
+            "{scaled}"
+        );
+    }
+    assert_eq!(
+        oracle(&identity_source(true)),
+        oracle(&identity_source(false))
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package-selected binary identity projection"]
+fn binary_indexed_identity_alias_fs_uae() {
+    native_source(identity_source(true));
+}
+
+const IDENTITY_REJECTIONS: &[&str] = &[
+    "move.w (a0,d1.w*0),d0",
+    "move.w (a0,d1.b*1),d0",
+    "move.w (a0,1*d1.w),d0",
+    "move.w (a0,ONE*d1.w),d0",
+    "move.w (a0,d1.w*4294967297),d0",
+    "move.w (a0,d1.w*1*1),d0",
+];
+
+fn identity_rejection_source(body: &str) -> String {
+    format!(".cpu m68020\nONE = 1\n {body}\n.end\n")
+}
+
+#[test]
+fn binary_indexed_identity_rejection_oracles() {
+    for body in IDENTITY_REJECTIONS {
+        let source = identity_rejection_source(body);
+        let result =
+            assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true);
+        assert!(
+            !matches!(result, Ok((_, ref diagnostics)) if diagnostics.is_empty()),
+            "Rust accepted {body}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; invalid factor/qualifier must not flatten"]
+fn binary_indexed_identity_rejections_fs_uae() {
+    for body in IDENTITY_REJECTIONS {
+        let source = identity_rejection_source(body);
+        let result =
+            assemble_source_entries_with_runtime_mode(&source.lines().collect::<Vec<_>>(), true);
+        assert!(
+            !matches!(result, Ok((_, ref diagnostics)) if diagnostics.is_empty()),
+            "Rust accepted {body}"
+        );
+        eprintln!("IDENTITY_REJECTION {body}");
+        compact_rejection(&source);
+    }
 }
 
 #[test]

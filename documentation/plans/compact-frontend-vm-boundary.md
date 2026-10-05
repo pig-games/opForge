@@ -1,11 +1,12 @@
 # Compact frontend: VM boundary correction
 
-Status: the current runtime contract is BS21. Tuple projections now retain
-package-selected arity and item indices, and native preparation preserves
-register-first pairs without inventing a displacement. Focused native coverage
-and the per-change timing comparison are recorded in the
-[tuple checkpoint](native-runtime-reset.md#bs21-bounded-tuple-projections--baseline-a30de087).
-Full self-hosting has not been repeated for BS21; the qualified BS20 runs below
+Status: the current runtime contract is BS22. Bounded product nodes retain
+identity-scaled tuple leaves; package projections select register qualifiers and
+validate the scalar factor through the shared ExprVM. Tuple arity/item indices
+and register-first pairs remain intact. Focused qualification and per-change
+timing are recorded in the
+[identity checkpoint](native-runtime-reset.md#bs22-identity-product-projections--baseline-f23ebf3a).
+Full self-hosting has not been repeated for BS22; the qualified BS20 runs below
 remain baseline evidence only. Full self-host equality does not establish full
 language or CPU parity, physical A6000 timing or the 2 MiB product goal.
 
@@ -37,7 +38,7 @@ stored manifests or outputs cannot replace the live oracle.
 ## Physical A6000 execution
 
 The previously qualified release bundle `/tmp/opforge-selfhost-bs20-release`
-uses BS20. The current BS21 hardware runner rejects that format; regenerate the
+uses BS20. The current BS22 hardware runner rejects that format; regenerate the
 bundle before using the command below and select it with `--bundle PATH`. Bootstrap and assembled output both embed only
 `m68020--motorola68k.bin`. The named package is retained for local identity
 verification; no external runtime fallback is used. That baseline bundle has complete
@@ -45,12 +46,12 @@ FS-UAE qualification and a passing transfer dry run, but no new physical run.
 Use macOS Terminal, where `ash` and `acp` can reach the A6000:
 
 ```sh
-python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py --bundle /absolute/path/to/fresh-bs21-bundle
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py --bundle /absolute/path/to/fresh-bs22-bundle
 ```
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The script validates the current BS21 package header, mapped source preamble and
+The script validates the current BS22 package header, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
@@ -64,7 +65,7 @@ completes the entire same self-host with fresh exact live Rust output, in
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS21 before selecting it in the current hardware
+instrumented configuration as BS22 before selecting it in the current hardware
 runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
@@ -126,14 +127,28 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS21 is the current compact package format; the producer writes `BS21` and the
+BS22 is the current compact package format; the producer writes `BS22` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Target flags at 130 request structural
 wrapper preservation from canonical projections. Tuple register/value/qualified projections use kinds 11/12/13. Descriptor
 bytes 10/11 hold arity and item index: arity 2/3 is exact, while 0 allows only
 actual arity 2/3 when the canonical plan has no explicit arity predicate.
 Conflicting predicates reject. Native bounds selection does not evaluate scalar
-payloads or select register classes. Typed scalar/wrapped-value and
+payloads or select register classes. Identity predicate kind 23 carries expected
+identity 1 in its Class word and the same bounded arity/item fields. Register
+projections 11/13 carry that identity in Literal's high word and the qualifier
+ID in its low word. A prepared product is `$82,u8 payload length,u8 operator,
+u8 left length,left leaf,right leaf`; operator 20 is shared numeric multiplication.
+Leaves retain numeric names or compiled scalar wrappers, with no pointers, nested
+product nodes or source-text fallback. Register extraction accepts either proven
+identity side; the canonical match predicate prefers a successfully evaluated
+right side before considering the left. An unresolved right scalar retains the
+strict barrier rather than authorizing left fallback. All 64 bits matter.
+Unsupported rows retain exact canonical match arity through RequiredForms
+nibbles 10/11 (two/three items). A complete tuple with a different arity or an
+already-proven complete non-tuple root disproves those rows; unknown structure
+and contradictory predicates remain closed. Nonidentity/full-extension selectors
+remain explicit unsupported boundaries. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
 or CPU-specific native parsing. Its header is 192 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
@@ -311,6 +326,7 @@ Macro definitions and calls use package-selected PRVM services and bounded offse
 | Native tokenization | [TKVM scanner](../../native/motorola68000/amigaos/tkvm/tkvm_scanner.asm) and [program builder](../../crates/opforge-vm/src/builder.rs) | Package-owned lexical classification and normalization policy. |
 | Native frontend and preparation | [frontend](../../native/motorola68000/amigaos/experimental/binary_frontend.asm), [preparation](../../native/motorola68000/amigaos/experimental/binary_prepare.asm), [writer](../../native/motorola68000/amigaos/experimental/binary_source.asm) | Token use, identity binding, recipe selection and packed-source output. |
 | Macro fragments and descriptors | [templates](../../native/motorola68000/amigaos/experimental/binary_templates.asm), [macro plans](../../native/motorola68000/amigaos/experimental/binary_macro_plans.asm), and PRVM package producers | Offset-only descriptors, lexical hygiene and selected string/argument recipes. |
+| Bounded product nodes | [products](../../native/motorola68000/amigaos/experimental/binary_products.asm) and tuple preparation | Numeric node framing; scalar identity proof through ExprVM, with target choices in package projections. |
 | Expression parsing and execution | [native expression compiler](../../native/motorola68000/amigaos/experimental/binary_expression.asm) and shared ExprVM | Current compiler is the unresolved native parser boundary; evaluation stays in ExprVM. |
 
 These are responsibility references, not an exhaustive source or instruction

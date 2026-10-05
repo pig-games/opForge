@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_source as source
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
+	.use experimental.amigaos.binary_products as products
 	.pub
 	.section code, kind=code
 
@@ -276,10 +277,6 @@ parenthesizedReady
 	bra.w operandDone
 namedTuple
 	bsr.w tupleTail
-	tst.l d0
-	bne.w bad
-	; Retain the actual two-item tuple. Packages supply any implicit value.
-	bsr.w copy
 	bne.w bad
 	bra.w operandDone
 
@@ -324,9 +321,6 @@ operandDone
 	cmpi.b #14, (a0)
 	bne.w operandDelimiter
 	bsr.w tupleTail
-	tst.l d0
-	bne.w bad
-	bsr.w copy
 	bne.w bad
 	cmpa.l a1, a0
 	beq.w complete
@@ -388,37 +382,95 @@ bad
 	rts
 	.bend  ; copy
 
-; Preserve bounded tuple structure after its compiled first scalar. Package
-; projections validate register classes and qualifiers later. D6=tail bytes.
+; Preserve tuple boundaries and prepare each bounded leaf without selecting
+; target classes or scales. A0/A3 advance; D0/CCR=status, other registers retained.
 tupleTail	.block
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #6, d0
-	blo.w bad
-	cmpi.b #1, 1(a0)
-	bhi.w bad
-	tst.b 4(a0)
+	movem.l d1-d7/a1-a2/a4-a6, -(sp)
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #14, (a0)
 	bne.w bad
-	cmpi.b #15, 5(a0)
-	beq.w pair
-	cmpi.l #11, d0
-	blo.w bad
-	cmpi.b #4, 5(a0)
+	moveq #1, d6
+	bsr.w copy
 	bne.w bad
-	cmpi.b #1, 6(a0)
-	bhi.w bad
-	cmpi.b #15, 10(a0)
-	bne.w bad
-	moveq #11, d6
-	bra.w ok
-
-pair
-	moveq #6, d6
-ok
+	moveq #0, d5
+next
+	movea.l a0, a6
+	moveq #0, d4
+scan
+	cmpa.l a1, a6
+	bhs.w bad
 	moveq #0, d0
-	rts
+	move.b (a6), d0
+	cmpi.b #14, d0
+	beq.w opening
+	cmpi.b #15, d0
+	beq.w closing
+	tst.l d4
+	bne.w token
+	cmpi.b #4, d0
+	beq.w leafReady
+	bra.w token
+opening
+	addq.w #1, d4
+	bra.w token
+closing
+	tst.l d4
+	beq.w leafReady
+	subq.w #1, d4
+token
+	moveq #1, d1
+	cmpi.b #2, d0
+	beq.w number
+	bhi.w string
+	moveq #4, d1
+	bra.w bounded
+number
+	moveq #5, d1
+	bra.w bounded
+string
+	cmpi.b #3, d0
+	bne.w bounded
+	move.l a1, d0
+	sub.l a6, d0
+	cmpi.l #2, d0
+	blo.w bad
+	moveq #0, d1
+	move.b 1(a6), d1
+	addq.l #2, d1
+bounded
+	move.l a1, d0
+	sub.l a6, d0
+	cmp.l d1, d0
+	blo.w bad
+	adda.l d1, a6
+	bra.w scan
+leafReady
+	cmpa.l a0, a6
+	beq.w bad
+	addq.w #1, d5
+	cmpi.w #3, d5
+	bhi.w bad
+	move.l a1, -(sp)
+	movea.l a6, a1
+	jsr products.prepare
+	movea.l (sp)+, a1
+	bne.w bad
+	cmpa.l a6, a0
+	bne.w bad
+	move.b (a0), d7
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	cmpi.b #15, d7
+	bne.w next
+	moveq #0, d0
+	bra.w done
 bad
 	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a1-a2/a4-a6
+	tst.l d0
 	rts
 	.bend  ; tupleTail
 

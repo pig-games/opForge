@@ -45,7 +45,7 @@ fn compact_memory_move_package_rows() {
         }
         if priority == 75 {
             assert_eq!(row[5], 6);
-            assert_eq!(row[19] & 0x0f, 4);
+            assert_eq!(row[19] & 0x0f, 10); // exact canonical two-item source tuple
             assert_eq!(&row[22..24], &[9, 0]);
             member_barriers += 1;
         }

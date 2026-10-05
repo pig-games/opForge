@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_shapes as shapes
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.use experimental.amigaos.binary_tuples as tuples
+	.use experimental.amigaos.binary_products as products
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_mutable as mutable
 	.use experimental.amigaos.binary_hunk_references as references
@@ -58,6 +59,7 @@ PROJECTION_MEMBER_SHAPE = 19
 PROJECTION_WRAPPED_SCALAR = 20
 PROJECTION_TUPLE_NAMED = 21
 PROJECTION_SCALAR_EXPRESSION = 22
+PROJECTION_TUPLE_IDENTITY = 23
 MISSING_PROGRAM = $ffff
 HEADER_BYTES = package.HEADER_BYTES
 ROW_BYTES = 32
@@ -548,7 +550,7 @@ requiredForms	.block
 next
 	move.l d2, d4
 	andi.l #15, d4
-	cmpi.l #9, d4
+	cmpi.l #11, d4
 	bhi.w malformed
 	tst.l d4
 	beq.w advance
@@ -560,6 +562,8 @@ next
 	movea.l 0(a0, d1.l), a0
 	lea OperandEnd, a1
 	movea.l 0(a1, d1.l), a1
+	cmpi.l #10, d4
+	bhs.w exactTuple
 	cmpi.l #5, d4
 	bhs.w wrappedFirstItem
 	cmpi.l #4, d4
@@ -593,6 +597,16 @@ plain
 	cmpi.b #TOKEN_OPEN_PAREN, (a0)
 	bne.w mismatch
 	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w mismatch
+	bra.w advance
+exactTuple
+	; Forms 10/11 retain an exact canonical tuple arity 2/3. Only complete
+	; tuple bounds disprove that necessary match fact. Complete non-tuple
+	; roots reuse the common structural proof; unknown shapes stay closed.
+	bsr.w tupleArity
+	beq.w tuple
+	addq.l #8, d0
+	cmp.l d4, d0
 	bne.w mismatch
 	bra.w advance
 wrappedFirstItem
@@ -644,6 +658,22 @@ notMemberForm
 	tst.l d0
 	bne.w mismatch
 scalarRoot
+	cmpi.l #9, d4
+	bne.w rootArity
+	movem.l d1/d3/a0-a1, -(sp)
+	moveq #0, d0
+	moveq #0, d1
+	jsr tuples.select
+	bne.w firstReady
+	cmpi.b #products.BINARY_TAG, (a0)
+	beq.w binaryFirst
+firstReady
+	movem.l (sp)+, d1/d3/a0-a1
+	bra.w rootArity
+binaryFirst
+	movem.l (sp)+, d1/d3/a0-a1
+	bra.w advance
+rootArity
 	bsr.w tupleArity
 	tst.l d0
 	bne.w mismatch
@@ -799,6 +829,8 @@ skipToken	.block
 	moveq #0, d0
 	move.b (a3)+, d0
 	cmpi.b #expression.COMPILED_TAG, d0
+	beq.w compiled
+	cmpi.b #products.BINARY_TAG, d0
 	beq.w compiled
 	cmpi.b #3, d0
 	beq.w string
@@ -1380,6 +1412,8 @@ recordReady
 	beq.w tupleItem
 	cmpi.b #14, d0
 	beq.w tupleItem
+	cmpi.b #PROJECTION_TUPLE_IDENTITY, d0
+	beq.w tupleItem
 	cmpi.b #15, d0
 	beq.w targetExpression
 	cmpi.b #PROJECTION_TARGET_MEMBER, d0
@@ -1947,6 +1981,10 @@ projectionTupleItem	.block
 	bne.w return
 	cmpi.b #12, package.Projection.Kind(a4)
 	beq.w scalar
+	cmpi.b #PROJECTION_TUPLE_IDENTITY, package.Projection.Kind(a4)
+	beq.w identity
+	bsr.w tupleRegisterLeaf
+	bne.w return
 	cmpi.b #11, package.Projection.Kind(a4)
 	beq.w register
 	cmpi.b #13, package.Projection.Kind(a4)
@@ -1959,13 +1997,21 @@ projectionTupleItem	.block
 	bhi.w bad
 	moveq #0, d0
 	move.b 3(a0), d0
-	cmp.l package.Projection.Literal(a4), d0
+	cmp.w package.Projection.Literal+2(a4), d0
 	bne.w bad
 	moveq #0, d1
 	move.b 1(a0), d1
 	lsl.w #8, d1
 	move.b 2(a0), d1
 	bra.w lookupRegister
+identity
+	movem.l d4-d5, -(sp)
+	moveq #1, d4
+	moveq #0, d5
+	move.w package.Projection.Class(a4), d5
+	jsr products.resolveIdentity
+	movem.l (sp)+, d4-d5
+	bra.w return
 scalar
 	bsr.w evaluateScalar
 	tst.l d0
@@ -1991,6 +2037,24 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; projectionTupleItem
+
+; A0/A1=selected tuple leaf, A4=package projection. Unscaled names stay
+; intact. A product may expose its opposite child only after ExprVM proves
+; the package-selected identity. A0/A1=selected name; D0/CCR=status.
+tupleRegisterLeaf	.block
+	cmpi.b #products.BINARY_TAG, (a0)
+	bne.w plain
+	movem.l d4-d5, -(sp)
+	moveq #0, d4
+	moveq #0, d5
+	move.w package.Projection.Literal(a4), d5
+	jsr products.resolveIdentity
+	movem.l (sp)+, d4-d5
+	rts
+plain
+	moveq #0, d0
+	rts
+	.bend  ; tupleRegisterLeaf
 
 ; A4=descriptor. Return A0/A1 as its bounded tuple leaf, D0/CCR=status.
 ; Other clobbers match operandSpan and tuples.select; no value is evaluated.

@@ -89,7 +89,7 @@ fn dictionary_offsets(wire: &[u8]) -> BTreeMap<String, usize> {
 #[test]
 fn compact_mnemonic_dictionary_roles() {
     let wire = wire();
-    assert_eq!(&wire[..4], b"BS21");
+    assert_eq!(&wire[..4], b"BS22");
     let offsets = dictionary_offsets(&wire);
     for spelling in ["reset", "word", "m68020", "68020"] {
         assert_eq!(wire[offsets[spelling] + 5], 0, "{spelling} is contextual");
@@ -151,7 +151,7 @@ fn compact_mnemonic_unknown_dictionary_role_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; BS17 lacks the BS21 shared head-policy contract"]
+#[ignore = "requires configured FS-UAE; BS17 lacks the BS22 shared head-policy contract"]
 fn compact_mnemonic_stale_contract_fs_uae() {
     let mut wire = wire();
     wire[..4].copy_from_slice(b"BS17");
@@ -290,17 +290,13 @@ fn compact_mnemonic_field_scope_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; current member-value input convergence readiness"]
-fn compact_mnemonic_member_value_known_gap_fs_uae() {
-    assert_native_files_rejection(
-        &[("input.asm", SOURCE)],
-        "m68020",
-        Some("[file 00000001, line 0000000E]"),
-    );
+#[ignore = "requires configured FS-UAE; mnemonic labels and parenthesized member-value projection"]
+fn compact_mnemonic_member_value_fs_uae() {
+    assert_binary_source(SOURCE.into(), "m68020".into());
 }
 
 #[test]
-fn compact_mnemonic_member_package_barrier() {
+fn compact_mnemonic_member_package_projection() {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let numeric = BinarySourcePackage::prepare(&core, &resolved).unwrap();
@@ -308,8 +304,8 @@ fn compact_mnemonic_member_package_barrier() {
     let word = |offset| u16::from_be_bytes(wire[offset..offset + 2].try_into().unwrap());
     let rows = u32::from_be_bytes(wire[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
-    let mut barriers = 0;
-    for candidate in &numeric.candidates {
+    let mut projections = 0;
+    for (candidate_index, candidate) in numeric.candidates.iter().enumerate() {
         if numeric.names[candidate.mnemonic as usize] != "move"
             || numeric.names[candidate.shape as usize] != "direct_register"
             || candidate
@@ -328,28 +324,64 @@ fn compact_mnemonic_member_package_barrier() {
         }) {
             continue;
         }
+        // Distinct canonical recipes can share every selection key. Preserve
+        // their stable order instead of accidentally inspecting the first alias.
+        let same_key = |other: &vm::binary_source_package::NumericCandidate| {
+            (
+                other.mnemonic,
+                other.qualifier,
+                other.shape,
+                other.owner_rank,
+                other.priority,
+                other.width_rank,
+                other.mode,
+            ) == (
+                candidate.mnemonic,
+                candidate.qualifier,
+                candidate.shape,
+                candidate.owner_rank,
+                candidate.priority,
+                candidate.width_rank,
+                candidate.mode,
+            )
+        };
+        let ordinal = numeric.candidates[..candidate_index]
+            .iter()
+            .filter(|other| same_key(other))
+            .count();
         let row = (0..count)
             .map(|index| rows + index * 32)
-            .find(|&row| {
+            .filter(|&row| {
                 word(row) == candidate.mnemonic
                     && wire[row + 2] == candidate.qualifier.unwrap() + 1
                     && wire[row + 3] == 6
                     && wire[row + 4] == candidate.owner_rank
                     && word(row + 6) == candidate.priority
+                    && wire[row + 16] == candidate.width_rank
                     && word(row + 20) == candidate.mode
             })
+            .nth(ordinal)
             .expect("serialized canonical member candidate");
-        assert_eq!(
-            wire[row + 5],
-            6,
-            "current member-value export remains closed"
-        );
-        assert_eq!(word(row + 10), 0, "no executable inputs for a barrier");
-        assert_eq!(&wire[row + 12..row + 16], &[0; 4]);
-        barriers += 1;
+        // The package exports the member-value program. The full source
+        // above must independently match live Rust in a fresh native run.
+        assert_eq!(wire[row + 5], 4, "canonical member semantic inputs");
+        assert_ne!(word(row + 8), u16::MAX, "executable semantic program");
+        assert_eq!(word(row + 10), 2);
+        let offset = u32::from_be_bytes(wire[row + 12..row + 16].try_into().unwrap()) as usize;
+        let Projection::RequiredValueProgram { source, .. } = &inputs[0] else {
+            unreachable!()
+        };
+        let Projection::Member { operand, qualifier } = source.as_ref() else {
+            unreachable!()
+        };
+        assert_eq!(&wire[offset..offset + 2], &[2, *operand]);
+        assert_eq!(word(offset + 2), *qualifier);
+        assert_ne!(word(offset + 8), u16::MAX, "required member value program");
+        assert_eq!(&wire[offset + 12..offset + 16], &[1, 1, 0, 0]);
+        projections += 1;
     }
     assert!(
-        barriers > 0,
-        "fixture must exercise a canonical member-value export barrier"
+        projections > 0,
+        "fixture must exercise the canonical member-value projection"
     );
 }

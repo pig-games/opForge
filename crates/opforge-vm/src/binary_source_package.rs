@@ -170,6 +170,10 @@ pub enum Projection {
         operand: u8,
         item: u8,
     },
+    TupleIdentityScale {
+        operand: u8,
+        item: u8,
+    },
     TupleArity {
         operand: u8,
     },
@@ -597,7 +601,7 @@ fn non_member_operand(value: &str) -> Option<u8> {
         ("qualified_reg", [item, qualifier, class]) => {
             numbered(item, "item") && !qualifier.is_empty() && numbered(class, "class")
         }
-        ("value", [item]) => numbered(item, "item"),
+        ("value" | "identity_scale", [item]) => numbered(item, "item"),
         ("arity", [arity]) => numbered(arity, "value"),
         _ => false,
     };
@@ -913,6 +917,13 @@ fn parse_projection(value: &str, names: &mut NameTable) -> Option<Projection> {
         return Some(Projection::TupleValue {
             operand: operand.parse().ok()?,
             item,
+        });
+    }
+    if let Some(rest) = value.strip_prefix("indirect_tuple_identity_scale") {
+        let (operand, item) = rest.split_once(".item")?;
+        return Some(Projection::TupleIdentityScale {
+            operand: operand.parse().ok()?,
+            item: bounded_tuple_item(item)?,
         });
     }
     if let Some(rest) = value.strip_prefix("indirect_tuple_arity") {
@@ -1369,6 +1380,12 @@ mod tests {
             member_excluded("semv.inputs.v1:enc@value_program:check:reg0.class0"),
             0b01
         );
+        assert_eq!(
+            member_excluded(
+                "semv.sequence.v1:match:_@indirect_tuple_identity_scale1.item1;encode:x@literal:0"
+            ),
+            0b10
+        );
     }
 
     #[test]
@@ -1467,6 +1484,63 @@ mod tests {
             stages[0].inputs[3],
             Projection::TupleArityThree { operand: 0 }
         );
+    }
+
+    #[test]
+    fn identity_scale_projection_preserves_item_and_match_predicate() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        for item in 0..=2 {
+            assert_eq!(
+                parse_projection(
+                    &format!("indirect_tuple_identity_scale1.item{item}"),
+                    &mut names
+                ),
+                Some(Projection::TupleIdentityScale { operand: 1, item })
+            );
+        }
+        let plan = "semv.sequence.v1:match:_@indirect_tuple_reg0.item0.class1,indirect_tuple_qualified_reg0.item1.qualifierW.class0,indirect_tuple_identity_scale0.item1,indirect_tuple_arity0.value2;encode:fields@literal:48,indirect_tuple_reg0.item0.class1;encode:index@indirect_tuple_qualified_reg0.item1.qualifierW.class0,literal:0,literal:0,literal:0";
+        let super::CandidateRecipe::SemanticSequence { stages } =
+            super::parse_recipe(plan, &mut names)
+        else {
+            panic!("canonical identity-scale sequence must lower");
+        };
+        assert_eq!(
+            stages[0].inputs[2],
+            Projection::TupleIdentityScale {
+                operand: 0,
+                item: 1
+            }
+        );
+        assert_eq!(stages[0].inputs[3], Projection::TupleArity { operand: 0 });
+        assert_eq!(stages[0].program, None);
+        assert!(stages[1..].iter().all(|stage| stage
+            .inputs
+            .iter()
+            .all(|input| { !matches!(input, Projection::TupleIdentityScale { .. }) })));
+        for source in [
+            "indirect_tuple_identity_scale0.item3",
+            "indirect_tuple_identity_scale0.item-1",
+            "indirect_tuple_identity_scale0.itemany",
+            "indirect_tuple_identity_scale0.item1.left",
+            "indirect_tuple_nonidentity_scale0.item1",
+        ] {
+            assert_eq!(parse_projection(source, &mut names), None, "{source}");
+            assert!(
+                matches!(
+                    super::parse_recipe(
+                        &format!("semv.sequence.v1:match:_@{source};encode:x@literal:0"),
+                        &mut names
+                    ),
+                    super::CandidateRecipe::Unsupported { .. }
+                ),
+                "{source}"
+            );
+        }
     }
 
     #[test]

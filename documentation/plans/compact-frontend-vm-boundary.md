@@ -6,24 +6,28 @@ validate the scalar factor through the shared ExprVM. Tuple arity/item indices
 and register-first pairs remain intact. Focused qualification and per-change
 timing are recorded in the
 [identity checkpoint](native-runtime-reset.md#bs22-identity-product-projections--baseline-f23ebf3a).
-Full self-hosting has not been repeated for BS22; the qualified BS20 runs below
-remain baseline evidence only. Full self-host equality does not establish full
-language or CPU parity, physical A6000 timing or the 2 MiB product goal.
+The [BS22 full self-host checkpoint](native-runtime-reset.md#bs22-full-self-host-checkpoint--source-97589afc)
+now qualifies the complete current embedded release on FS-UAE. Earlier BS20
+measurements remain baseline evidence. Full self-host equality does not establish
+full language or CPU parity, physical A6000 timing or the 2 MiB product goal.
 
-## Most recent full self-host qualification (BS20 baseline)
+## Most recent full self-host qualification (BS22)
 
-The complete BS20 embedded implementation self-assembles in FS-UAE with fresh
+The complete BS22 embedded implementation self-assembles in FS-UAE with fresh
 case-bound completion, exit zero and exact live Rust equality. The release image
-is 452,776 bytes; the 94 mapped inputs total 1,360,588 bytes, including the generated
-m68020 package asset. Source fingerprint is `fnv1a64:ddfdd62b45de2cc1`; complete
-output fingerprint is `fnv1a64:3c8722a0693935bb`. The source and package state is
-native checkpoint `7f8bebf2`.
+is 482,512 bytes; the 100 mapped inputs total 1,424,440 bytes, including the generated
+346,768-byte m68020 package asset. Source fingerprint is `fnv1a64:86a557be012263fa`;
+complete output fingerprint is `fnv1a64:d4707aa5c06d794d`; package fingerprint is
+`fnv1a64:f049c4fe0e8ebb86`. The source and package state is checkpoint `97589afc`.
 
-Uninstrumented host START/DONE duration is 1,037.690232625 seconds (17m 17.69s),
-excluding emulator startup. Profile: 68020 / 74 MiB, unlimited emulator CPU speed.
-The [current full-run note](native-runtime-reset.md#current-full-self-host-qualification-and-search-roots)
-owns complete image/package identities, static reservations, measured phases and
-reproduction commands. These are emulator observations, not A6000 timing or
+Uninstrumented host START/DONE duration is 1,079.204961625 seconds (17m 59.20s),
+excluding emulator startup and host preparation. Profile: 68020 / 74 MiB, using
+the same configuration template as the previous full run. Its 1,066.644855709-second
+duration is 12.560106 seconds shorter; changed sources, packages and images make
+this an aggregate comparison, not the isolated cost of the latest change.
+The [current full-run note](native-runtime-reset.md#bs22-full-self-host-checkpoint--source-97589afc)
+owns complete identities, static reservations and reproduction commands. No new
+phase or peak-memory capture was performed. These are emulator observations, not A6000 timing or
 2 MiB qualification. Full self-host equality does not establish complete language,
 target, CLI or output parity.
 
@@ -37,16 +41,17 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The previously qualified release bundle `/tmp/opforge-selfhost-bs20-release`
-uses BS20. The current BS22 hardware runner rejects that format; regenerate the
-bundle before using the command below and select it with `--bundle PATH`. Bootstrap and assembled output both embed only
+The qualified release bundle `/tmp/opforge-selfhost-bs22-release-74m` is selected
+by `/tmp/opforge-a6000-current`. The current BS22 hardware runner validates it;
+older formats are rejected. Bootstrap and assembled output both embed only
 `m68020--motorola68k.bin`. The named package is retained for local identity
-verification; no external runtime fallback is used. That baseline bundle has complete
-FS-UAE qualification and a passing transfer dry run, but no new physical run.
+verification; no external runtime fallback is used. This bundle has complete
+FS-UAE qualification and a passing local transfer-preparation dry run, but no
+physical execution or remote transfer proof.
 Use macOS Terminal, where `ash` and `acp` can reach the A6000:
 
 ```sh
-python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py --bundle /absolute/path/to/fresh-bs22-bundle
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 ```
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
@@ -59,8 +64,8 @@ host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
 can leave a guest command running: inspect that run before retrying.
 
-The separate instrumented bundle `/tmp/opforge-selfhost-bs20-instrumented` also
-completes the entire same self-host with fresh exact live Rust output, in
+The separate historical instrumented bundle `/tmp/opforge-selfhost-bs20-instrumented`
+completes its entire BS20 baseline self-host with fresh exact live Rust output, in
 1,147.941797667 seconds. Preparation is 665.36 seconds, assembly 481.54 seconds;
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps

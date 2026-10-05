@@ -4,9 +4,11 @@ Status: active. The current BS22 runtime contract adds bounded identity-product
 projection transport while preserving package-selected tuple arity/item positions. The
 [focused identity checkpoint](#bs22-identity-product-projections--baseline-f23ebf3a)
 records native correctness and the measured change against `f23ebf3a`.
-No BS22 full self-host or physical A6000 run is claimed. The prior qualified BS20
-full self-host and instrumented measurements remain baseline evidence below;
-its hardware bundles must be regenerated for the current package contract.
+The [BS22 full self-host checkpoint](#bs22-full-self-host-checkpoint--source-97589afc)
+qualifies the complete current embedded release on FS-UAE; its A6000 bundle is
+ready. No new physical A6000 run or current peak-memory measurement is claimed.
+The prior BS20 full self-host and instrumented measurements remain baseline
+evidence below; older bundles require regeneration for the current contract.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -3280,8 +3282,9 @@ this batch with:
 OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m cargo test -p asm --lib binary_indexed_ -- --ignored --nocapture --test-threads=1
 ```
 
-Remaining: full self-host and physical A6000 qualification have not been repeated
-for BS22. Regenerate all older packages/bundles before those runs. Nonidentity
+At this focused checkpoint, full self-host and physical A6000 qualification had
+not been repeated for BS22. The full self-host result follows below. Regenerate
+all older packages/bundles before further runs. Nonidentity
 scales, nested/path/full-extension projections, listing provenance, BBR/BBS
 fixups and the other corpus gaps remain separate work. No Rust source-language
 semantics were expanded to make these controls pass.
@@ -3289,3 +3292,75 @@ semantics were expanded to make these controls pass.
 After all builds and native runs finished, `make clean` reported 5.6 GiB removed
 and left an empty `target` directory. Package inventory and diagnostic logs remain
 outside it; unrelated workflow-notebook edits are preserved.
+
+#### BS22 full self-host checkpoint — source `97589afc`
+
+The complete current compact native CLI assembles itself with a fresh case-bound
+START/DONE protocol, explicit guest exit zero and exact equality against the
+entire live Rust Hunk oracle. Both the repository inputs and relocated bundle
+inputs were freshly assembled by Rust before this native run. The bootstrap and
+native-produced output are the same uninstrumented release configuration, each
+embedding the identical m68020 BS22 package. This is full self-host completion
+for this source/package state, not complete assembler-language or family parity.
+
+| Property | Previous full checkpoint (`85f4e81f`, BS20) | Current source `97589afc`, BS22 |
+| --- | ---: | ---: |
+| Source/generated/package inputs | 98 | 100 |
+| Total input bytes, including package asset | 1,388,392 | 1,424,440 |
+| Complete release/bootstrap Hunk bytes | 456,048 | 482,512 |
+| Linked static reserved bytes | 474,144 | 500,828 |
+| Embedded m68020 package bytes | 321,532 | 346,768 |
+| Native START/DONE seconds | 1,066.644855709 | 1,079.204961625 |
+
+The current 100 inputs comprise 99 text/generated files and one package asset.
+Source manifest fingerprint is `fnv1a64:86a557be012263fa`; complete release/bootstrap
+Hunk fingerprint is `fnv1a64:d4707aa5c06d794d`; package fingerprint is
+`fnv1a64:f049c4fe0e8ebb86`. All input filename components fit the classic 30-byte
+limit. The native case used the fresh in-memory Rust oracle rather than a stored
+expected-output file.
+
+Duration is 17m 59.20s, measured from fresh guest START to DONE on FS-UAE
+68020/74 MiB with the same configuration template as the preceding full run.
+Telemetry is disabled; emulator startup and host preparation are excluded.
+The observed increase is 12.560106 seconds (1.2%). Source, package and executable
+all changed, so this is an aggregate workload comparison, not the isolated cost
+of the latest identity-product change. Its focused comparison remains above.
+Static reservations are not peak RAM; this run does not qualify the 2 MiB product
+goal, a fixed hardware clock speed or physical A6000 timing.
+
+The qualified bundle is `/tmp/opforge-selfhost-bs22-release-74m`;
+`/tmp/opforge-a6000-current` now selects it. Both bootstrap and output embed only
+`m68020--motorola68k.bin`. Invoking the hardware runner with `--dry-run` and its
+default bundle selection validates the current sources and prepares local transfer inputs. It does
+not prove remote transfer or hardware execution. From macOS Terminal, use:
+
+```sh
+python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
+```
+
+That command transfers to the A6000's `Development:` volume, measures overall
+guest assembly duration, and requires fresh completion, exit zero and exact Hunk
+equality. No physical-device run was performed in this checkpoint.
+
+Reproduce the FS-UAE proof with the configured environment in the
+[execution guide](../../agents/rules/fs-uae.md), a fresh absolute destination and:
+
+```sh
+OPFORGE_COMPACT_EXPORT_DIR=/tmp/opforge-selfhost-bs22-new \
+OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020 \
+OPFORGE_COMPACT_EXPORT_NATIVE=1 \
+OPFORGE_FS_UAE_MEMORY_PROFILE=68020-74m \
+OPFORGE_FS_UAE_TIMEOUT_MS=3630000 \
+OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=3600000 \
+cargo test -p asm --lib export_compact_self_host_bundle -- --ignored --nocapture --test-threads=1
+```
+
+The complete log is `/tmp/opforge-bs22-full-selfhost.log`; the bundle contains the
+current manifest, exact release oracle and command. The comparative summary is
+`/tmp/opforge-bs22-selfhost-qualification-summary.json`; the default hardware
+dry-run log is `/tmp/opforge-bs22-a6000-qualified-dry-run.log`. These remain outside
+`target` and do not substitute for a fresh native run.
+
+After the build/native batch ended, `make clean` removed 1.5 GiB and retained the
+empty `target` directory. No production code changed during this qualification;
+unrelated workflow-notebook edits remain untouched. No remote push was performed.

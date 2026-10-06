@@ -30,7 +30,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     assert!(count > 0);
-    assert_eq!(&valid[..4], b"BS27");
+    assert_eq!(&valid[..4], b"BS28");
     assert!(rows + count * crate::binary_source_experiment::ROW <= valid.len());
     assert_eq!(&valid[rows + 34..rows + 36], &[0, 0]);
     assert!(valid[rows + 32] <= 11);

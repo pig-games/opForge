@@ -150,7 +150,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS27 block for one resolved package hierarchy.
+/// Prepare a self-contained BS28 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -451,7 +451,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS27");
+    out[..4].copy_from_slice(b"BS28");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates

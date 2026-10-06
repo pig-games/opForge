@@ -60,7 +60,7 @@ clear
 	cmpi.w #abi.PRVM_RESULT_PACKED_DECLARATION, Frame.Result(a3)
 	bne.w bad
 	move.l Frame.Result+abi.PRVM_DECLARATION_VALUE_OFFSET(a3), d0
-	cmpi.l #13, d0
+	cmpi.l #9, d0
 	blo.w bad
 	cmp.l d6, d0
 	bhi.w bad
@@ -72,7 +72,7 @@ clear
 	bne.w bad
 	lea 0(a5, d0.l), a0
 	lea 8(a5), a1
-	moveq #34, d2
+	moveq #source.TOKEN_CONSTANT_DECLARATION, d2
 	cmpi.w #abi.PRVM_DECLARATION_IMMUTABLE, Frame.Result+abi.PRVM_DECLARATION_ROLE(a3)
 	beq.w roleReady
 	cmpi.w #abi.PRVM_DECLARATION_MUTABLE, Frame.Result+abi.PRVM_DECLARATION_ROLE(a3)

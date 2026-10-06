@@ -45,8 +45,28 @@ fn cases() -> Vec<CountCase<'static>> {
             name: "mutable-snapshot",
             cpu: "68020",
             source:
-                "variable .var 2\nsaved .const variable\nvariable .set 4\n.for saved\n.byte $56\n.endfor\n",
+                "variable := 2\nsaved = variable\nvariable := 4\n.for saved\n.byte $56\n.endfor\n",
             expected: Some(&[0x56; 2]),
+        },
+        CountCase {
+            name: "mutable-m68k",
+            cpu: "68020",
+            source: "n:=1\n moveq #n,d0\nn := -17\n.long n/7\nsaved = n\nn:=4\n.long saved,n\n",
+            expected: Some(&[
+                0x70, 1, 0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xff, 0xef, 0, 0, 0, 4,
+            ]),
+        },
+        CountCase {
+            name: "mutable-mos",
+            cpu: "6502",
+            source: "n:=1\n lda #n\nn := 2\n lda #n\nn .set 3\n.byte n\nn: .var 4\n.byte n\n",
+            expected: Some(&[0xa9, 1, 0xa9, 2, 3, 4]),
+        },
+        CountCase {
+            name: "readonly-assignment",
+            cpu: "68020",
+            source: "n = 1\nn := 2\n.byte n\n",
+            expected: None,
         },
         CountCase {
             name: "inactive-definition",
@@ -98,10 +118,17 @@ fn oracle(dir: &Path, case: &CountCase<'_>) -> Option<Vec<u8>> {
         Some(bytes)
     } else {
         let Err(CliRunError::Assembler { error, .. }) = result else {
-            panic!("contextual count must reject during assembly");
+            panic!("{} must reject during assembly", case.name);
         };
-        assert!(format!("{:?}", error.diagnostics())
-            .contains("loop iteration count changed between passes"));
+        if case.name == "contextual-count" {
+            assert!(format!("{:?}", error.diagnostics())
+                .contains("loop iteration count changed between passes"));
+        }
+        if case.name == "readonly-assignment" {
+            assert!(
+                format!("{:?}", error.diagnostics()).contains("symbol has already been defined")
+            );
+        }
         None
     }
 }

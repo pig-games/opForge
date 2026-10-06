@@ -26,9 +26,9 @@ pub fn execute(
     if entry != PARSER_VM_PACKED_DECLARATION_ENTRY || version != PARSER_VM_MACRO_VERSION {
         return Err(error(4, 0, "Invalid packed declaration entry or version"));
     }
-    if program.len() != 13
+    if program.len() != 17
         || program[..2] != [0x98, 3]
-        || program[11..] != [0x83, 0]
+        || program[11..] != [1, 2, 5, 34, 0x83, 0]
         || program[2..11]
             .chunks_exact(3)
             .any(|row| !(1..=2).contains(&row[2]))
@@ -50,30 +50,37 @@ pub fn execute(
     if steps == 0 {
         return Err(error(12, 0, "Step budget exceeded"));
     }
-    if source[1] & (8 | 16) != 0 || source.len() < 13 || source[4] > 1 {
+    if source[1] & (8 | 16) != 0 || source.len() < 10 || source[4] > 1 {
         return Ok(vec![]);
     }
-    let mut head = 8;
-    if source[head] == 5 {
-        head += 1;
-    }
-    if source.len() - head < 5 || source[head] != 7 || source[head + 1] > 1 || source[head + 4] != 0
-    {
-        return Ok(vec![]);
-    }
-    let Some(role) = program[2..11]
-        .chunks_exact(3)
-        .find_map(|row| (source[head + 2..head + 4] == row[..2]).then_some(row[2]))
-    else {
-        return Ok(vec![]);
+    let (role, match_head, head) = if source.get(8..10) == Some(&program[13..15]) {
+        (program[12], 8, 10)
+    } else {
+        let mut head = 8;
+        if source.get(head) == Some(&5) {
+            head += 1;
+        }
+        if source.len() - head < 5
+            || source[head] != 7
+            || source[head + 1] > 1
+            || source[head + 4] != 0
+        {
+            return Ok(vec![]);
+        }
+        let Some(role) = program[2..11]
+            .chunks_exact(3)
+            .find_map(|row| (source[head + 2..head + 4] == row[..2]).then_some(row[2]))
+        else {
+            return Ok(vec![]);
+        };
+        (role, head, head + 5)
     };
     if steps < 2 {
-        return Err(error(12, head, "Step budget exceeded"));
+        return Err(error(12, match_head, "Step budget exceeded"));
     }
     if source[7] != 0 {
         return Err(error(5, 7, "Qualified scalar declaration"));
     }
-    head += 5;
     if capacity < 32 {
         return Err(error(7, head, "Declaration result capacity exceeded"));
     }
@@ -133,6 +140,64 @@ mod tests {
             }
         }
     }
+    fn assignment(value: &[u8]) -> Vec<u8> {
+        let mut source = vec![0, 1, 0, 7, 0, 0, 90, 0, 5, 34];
+        source.extend(value);
+        source[0] = (source.len() - 1) as u8;
+        source
+    }
+    #[test]
+    fn colon_equal_returns_mutable_scalar_spans() {
+        for value in [&[2, 0, 0, 0, 3][..], &[][..]] {
+            let rows = run(&assignment(value), 32, 3).unwrap();
+            assert_eq!(u16::from_be_bytes(rows[0][2..4].try_into().unwrap()), 2);
+            assert_eq!(u32::from_be_bytes(rows[0][4..8].try_into().unwrap()), 10);
+            assert_eq!(
+                u32::from_be_bytes(rows[0][8..12].try_into().unwrap()) as usize,
+                value.len()
+            );
+        }
+    }
+    #[test]
+    fn declarations_accept_arbitrary_source_line_numbers() {
+        for mut source in [assignment(&[]), record(false, &[]), record(true, &[])] {
+            for line in [1u16, 256, 65535] {
+                source[2..4].copy_from_slice(&line.to_be_bytes());
+                assert_eq!(run(&source, 32, 3).unwrap().len(), 1);
+            }
+        }
+    }
+    #[test]
+    fn colon_equal_near_misses_remain_unmatched() {
+        for operator in [
+            &[34][..],
+            &[5][..],
+            &[5, 35][..],
+            &[34, 5][..],
+            &[5, 36, 34][..],
+        ] {
+            let mut source = assignment(&[]);
+            source.truncate(8);
+            source.extend(operator);
+            source[0] = (source.len() - 1) as u8;
+            assert!(run(&source, 0, 1).unwrap().is_empty());
+        }
+    }
+    #[test]
+    fn colon_equal_qualification_and_resource_errors_are_atomic() {
+        let mut source = assignment(&[2, 0, 0, 0, 3]);
+        for budget in 0..3 {
+            assert_eq!(run(&source, 32, budget).unwrap_err().status, 12);
+        }
+        assert_eq!(run(&source, 31, 3).unwrap_err().status, 7);
+        source[7] = 1;
+        assert_eq!(run(&source, 32, 3).unwrap_err().status, 5);
+        source[7] = 0;
+        for flags in [8, 16] {
+            source[1] = flags;
+            assert!(run(&source, 0, 1).unwrap().is_empty());
+        }
+    }
     #[test]
     fn roles_and_program_rejections_are_shared_and_atomic() {
         for (id, role) in [(42, 1u16), (43, 2), (44, 2)] {
@@ -144,7 +209,13 @@ mod tests {
         let source = record(false, &[2, 0, 0, 0, 1]);
         let valid = packed_declaration_program([42, 43, 44]);
         for program in [
-            valid[..12].to_vec(),
+            valid[..16].to_vec(),
+            valid[..11].iter().copied().chain([0x83, 0]).collect(),
+            {
+                let mut p = valid.clone();
+                p[14] = 35;
+                p
+            },
             packed_declaration_program([42, 42, 44]),
             {
                 let mut p = valid.clone();

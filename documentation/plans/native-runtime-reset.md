@@ -1,11 +1,13 @@
 # Native assembler completion plan
 
-Status: active. BS27 adds three-operand transport and indirect call-child
-projections. Its [qualified checkpoint](#three-operands-and-indirect-call-children-bs27-checkpoint)
-passes full current-source native self-hosting with exact equality for all
+Status: active. BS28 extends shared scalar declaration policy with numeric `:=`
+normalization. The last full self-host proof is the earlier BS27
+[qualified checkpoint](#three-operands-and-indirect-call-children-bs27-checkpoint),
+with exact equality for all
 534,964 Hunk bytes on 68020/74 MiB in 1,121.611579667 seconds. No new physical
 A6000 run or complete peak-memory result is claimed. Current executables require
-BS27 packages; superseded contracts have no compatibility executor.
+BS28 packages; superseded contracts have no compatibility executor. That older
+self-host proof does not qualify the current BS28 implementation.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -3063,9 +3065,9 @@ from the recorded START/DONE durations:
 
 The initial batch qualified six cases and failed the snapshot case at its first
 `variable := 2` line with exit 20. The equivalent snapshot written with assignment
-operators remains a separate native parity gap. The snapshot comparison now uses
-supported `.var`/`.const`/`.set`
-forms and qualifies in a fresh focused rerun; the original failure is retained
+operators remained a separate native parity gap until the BS28 checkpoint below.
+At this loop checkpoint, the snapshot comparison used supported `.var`/`.const`/`.set`
+forms and qualified in a fresh focused rerun; the original failure is retained
 as a separate observation, not reclassified as success. Rust retains `:=`
 snapshot tests. Native diagnostic wording parity is not established by the
 negative case. No new full native self-host, A6000 timing, constrained-memory
@@ -3076,6 +3078,61 @@ engine checks, production Clippy, formatting and workflow/native engineering
 guards. Sol implementation and independent reviews cover replay provenance,
 retained-iteration activation and iterator shadowing. Detailed logs and timing
 samples remain outside `target` under `/tmp/opforge-forward-count-*`.
+
+### Mutable assignment operators (BS28)
+
+Shared packed-declaration PRVM entry 9 now normalizes scalar `:=` to the existing
+mutable declaration marker. The package carries the numeric colon/equal policy;
+the native frontend adds no spelling parser or CPU-specific assignment handling.
+Expression compilation, statement-time updates and readonly snapshots retain
+their existing owners. The declaration program grows from 13 to 17 bytes, and
+BS28 detects the changed contract. Regenerate packages; no BS27 executor is kept.
+
+Rust's shared label-colon predicate also preserves tight `n:=1` and `n:?=1`
+operators instead of consuming their colon as a label delimiter. Core, mixed
+and VM parser consumers use that predicate. Ordinary `entry: .byte 1` still
+works. Native `:?=`, compound operators and list/struct-valued mutable assignments
+remain outside this scalar slice.
+
+Fresh FS-UAE/68020/10 MiB cases qualify the assignment snapshot that previously
+failed, tight/spaced signed updates with 68020 instructions, tight/spaced updates
+with the external prepared m6502 package, and readonly-update rejection. The three
+positive cases match live Rust Bin bytes exactly; the negative case completes
+with exit 20 and a diagnostic. Their START/DONE times are respectively
+1.255115, 1.264079, 0.510065 and 0.754445 seconds. These are focused cases,
+not full self-host completion or diagnostic wording parity.
+
+The unchanged 15,474-byte instruction/alignment control
+(`fnv1a64:ac05445d958571b5`) has exact Bin equality in all four timing runs.
+Telemetry is disabled; release START/DONE on the same 68020/10 MiB profile
+excludes emulator startup, host compilation and transfer:
+
+| State | Samples (seconds) | Mean | Separate change |
+| --- | --- | ---: | ---: |
+| `a4b06b9f` native baseline | 20.818026, 20.746206 | 20.782116 | — |
+| Scalar `:=` normalization | 20.757899, 20.752065 | 20.754982 | -0.027134 s (-0.131%) |
+
+The difference is smaller than the baseline sample spread. This establishes no
+speed gain or meaningful slowdown, and is not an estimate of full self-host time.
+The current executable is 535,092 bytes with 554,292 bytes of linked reservation,
+both +68 bytes. The embedded m68020 package is 394,322 bytes, +4 bytes. No new
+mutable storage is added; linked reservation is not a peak-RAM measurement.
+Baseline/current image FNVs are `7c762b034c1b99f9` / `ea9e5549c42f7856`;
+current SHA-256 is `8b1a1e9ed955e19689ea2750deb98818b2d64d9000876ffa049dacc44bd62ff8`.
+
+Three additional fresh native regressions retain exact dependency-graph and
+nested-loop output and completed contextual-count rejection. Focused host checks
+pass 66 core parser tests, seven VM colon tests, seven packed-declaration tests,
+the ten CLI loop/assignment oracles, existing mutable declaration oracles,
+package generation/header/validator fixtures and 24 hardware-runner tests.
+Production Clippy for opcore/package/VM/assembler, formatting and workflow/native
+engineering guards pass. An independent Sol review found no must-fix issue.
+
+The hardware bundle exporter and transfer validator use BS28. The retained BS27
+full self-host bundle is historical proof and has not been replaced by a newly
+qualified BS28 bundle. No new full native self-host, A6000 run, 2 MiB qualification
+or remote push accompanies this checkpoint. Logs and the focused executable are
+outside `target`, under `/tmp/opforge-assignment-*`.
 
 ### Next parity choice
 

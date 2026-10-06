@@ -374,6 +374,9 @@ Compound assignment operators:
 ```
 
 `.const` and `.var` mirror `=` and `:=` semantics; `.set` is an alias for `.var`.
+Whitespace before `:=` or `:?=` is optional: `n:=1` is a mutable assignment,
+not a label followed by immutable `=`. An ordinary label colon remains supported,
+for example `entry: .byte 1`.
 
 Numeric scalar assignments retain their signed expression value. For example,
 `n = -17` followed by `n / 7` evaluates to `-2`, and `n % 7` evaluates to `-3`.

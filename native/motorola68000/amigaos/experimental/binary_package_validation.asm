@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS27 packages.
+; Shared structural boundary for embedded and external BS28 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -19,7 +19,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS27 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS28 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -175,7 +175,7 @@ preparation
 	btst #0, d0
 	bne.w bad
 	move.l package.Header.DeclarationPlanBytes(a4), d1
-	cmpi.l #13, d1
+	cmpi.l #17, d1
 	bne.w bad
 	bsr.w span
 	bne.w bad
@@ -183,9 +183,12 @@ preparation
 	bne.w bad
 	cmpi.b #3, 1(a3)
 	bne.w bad
-	cmpi.b #$83, 11(a3)
+	; Exact latest policy: one mutable colon/equal operator row.
+	cmpi.l #$01020522, 11(a3)
 	bne.w bad
-	tst.b 12(a3)
+	cmpi.b #$83, 15(a3)
+	bne.w bad
+	tst.b 16(a3)
 	bne.w bad
 	addq.l #2, a3
 	moveq #2, d6

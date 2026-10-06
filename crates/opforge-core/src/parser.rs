@@ -25,6 +25,24 @@ pub(crate) use parser_statement_signature::{
     match_statement_signature, select_statement_signature,
 };
 
+/// An adjacent colon terminates a label unless it begins an assignment operator.
+pub fn has_adjacent_label_colon(tokens: &[Token]) -> bool {
+    let (Some(first), Some(colon)) = (tokens.first(), tokens.get(1)) else {
+        return false;
+    };
+    if !matches!(colon.kind, TokenKind::Colon) || colon.span.col_start != first.span.col_end {
+        return false;
+    }
+    match tokens.get(2).map(|token| &token.kind) {
+        Some(TokenKind::Operator(OperatorKind::Eq)) => false,
+        Some(TokenKind::Question) => !matches!(
+            tokens.get(3).map(|token| &token.kind),
+            Some(TokenKind::Operator(OperatorKind::Eq))
+        ),
+        _ => true,
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ParseError {
     pub message: String,
@@ -1668,6 +1686,35 @@ mod tests {
             }
             _ => panic!("Expected assignment"),
         }
+    }
+
+    #[test]
+    fn adjacent_label_colon_preserves_assignment_operators() {
+        for (text, op) in [
+            ("n:=1", AssignOp::Var),
+            ("n := 1", AssignOp::Var),
+            ("n:?=1", AssignOp::VarIfUndef),
+            ("n :?= 1", AssignOp::VarIfUndef),
+        ] {
+            let mut parser = Parser::from_line(text, 1).unwrap();
+            let LineAst::Assignment(assignment) = parser.parse_compat_mixed_line().unwrap() else {
+                panic!("Expected assignment for {text}");
+            };
+            assert_eq!(assignment.op, op);
+            assert_eq!(assignment.label.name, "n");
+            let types::processing::ProcessingOutcome::Done(LineAst::Assignment(assignment)) =
+                Parser::process_opcore_line_request(text, 1)
+            else {
+                panic!("Expected core assignment for {text}");
+            };
+            assert_eq!(assignment.op, op);
+        }
+        let mut parser = Parser::from_line("n: .byte 1", 1).unwrap();
+        let LineAst::Statement(statement) = parser.parse_compat_mixed_line().unwrap() else {
+            panic!("Expected byte directive");
+        };
+        assert_eq!(statement.label.unwrap().name, "n");
+        assert_eq!(statement.mnemonic.as_deref(), Some(".byte"));
     }
 
     #[test]

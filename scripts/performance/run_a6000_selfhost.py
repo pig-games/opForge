@@ -138,7 +138,7 @@ def load_bundle(bundle):
         raise ValueError("Release bootstrap/oracle mismatch")
     # Only the current package contract is supported. This transport verifies
     # assets and header regions; the native runtime interprets VM opcodes.
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS27":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS28":
         raise ValueError("Runtime package mismatch")
     if len(package) < PACKAGE_HEADER_BYTES or int.from_bytes(package[4:8], "big") != len(package):
         raise ValueError("Invalid runtime package header")
@@ -154,7 +154,7 @@ def load_bundle(bundle):
     if any(package[offset + 6:offset + 8] != b"\0\0"
            for offset in range(bindings_offset, bindings_end, 8)):
         raise ValueError("Invalid member-binding reserved field")
-    for label, header_offset, expected_size in (("head-policy", 168, 4), ("declaration", 180, 13)):
+    for label, header_offset, expected_size in (("head-policy", 168, 4), ("declaration", 180, 17)):
         offset = int.from_bytes(package[header_offset:header_offset + 4], "big")
         size = int.from_bytes(package[header_offset + 4:header_offset + 8], "big")
         version = int.from_bytes(package[header_offset + 8:header_offset + 10], "big")

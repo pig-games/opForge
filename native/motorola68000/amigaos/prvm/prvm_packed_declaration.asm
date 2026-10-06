@@ -14,6 +14,8 @@ STATE_BYTES = State.Stage+32
 ROLE = State.Stage+abi.PRVM_DECLARATION_ROLE
 VALUE_OFFSET = State.Stage+abi.PRVM_DECLARATION_VALUE_OFFSET
 VALUE_BYTES = State.Stage+abi.PRVM_DECLARATION_VALUE_BYTES
+; One operator row: count, mutable role, colon token, equal token.
+MUTABLE_POLICY = $01020522
 
 	.section code, kind=code
 ; A0=request,D0=available bytes; standard PRVM status/count/offset/bytes.
@@ -68,13 +70,15 @@ run	.block
 	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	beq.w invalidFrame
 	movea.l d0, a5
-	cmpi.l #13, abi.PRVM_FRAME_PROGRAM_LEN(a4)
+	cmpi.l #17, abi.PRVM_FRAME_PROGRAM_LEN(a4)
 	bne.w invalidProgram
 	cmpi.b #$98, (a5)
 	bne.w invalidProgram
-	cmpi.b #$83, 11(a5)
+	cmpi.l #MUTABLE_POLICY, 11(a5)
 	bne.w invalidProgram
-	tst.b 12(a5)
+	cmpi.b #$83, 15(a5)
+	bne.w invalidProgram
+	tst.b 16(a5)
 	bne.w invalidProgram
 	cmpi.b #3, 1(a5)
 	bne.w invalidProgram
@@ -120,11 +124,23 @@ clear
 	move.b 1(a6), d0
 	andi.b #24, d0
 	bne.w noMatch
-	cmpi.l #13, d6
+	cmpi.l #10, d6
 	blo.w noMatch
 	cmpi.b #1, 4(a6)
 	bhi.w noMatch
 	moveq #8, d2
+	; The plan owns the numeric mutable operator, before optional label colon.
+	move.b 0(a6, d2.l), d0
+	cmp.b 13(a5), d0
+	bne.w directive
+	move.b 1(a6, d2.l), d0
+	cmp.b 14(a5), d0
+	bne.w directive
+	moveq #0, d0
+	move.b 12(a5), d0
+	moveq #2, d4
+	bra.w matched
+directive
 	cmpi.b #5, 8(a6)
 	bne.w matchHead
 	addq.l #1, d2
@@ -147,6 +163,8 @@ matchHead
 	bsr.w selectIdentity
 	tst.l d0
 	beq.w noMatch
+	moveq #5, d4
+matched
 	move.w d0, ROLE(a3)
 	bsr.w tick
 	bne.w failure
@@ -155,7 +173,7 @@ matchHead
 	moveq #7, d2
 	bra.w tokenFailure
 operand
-	addq.l #5, d2
+	add.l d4, d2
 	move.l d6, d5
 	sub.l d2, d5
 	move.l #$83, d7

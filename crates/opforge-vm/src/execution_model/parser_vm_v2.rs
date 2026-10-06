@@ -8,7 +8,7 @@ use crate::vm_opasm::{
 };
 use crate::vm_opasm_parse::ParserVmExecContext;
 use crate::vm_opcore::parse_expr_with_vm_contract;
-use opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError};
+use opcore::parser::{has_adjacent_label_colon, AssignOp, Expr, Label, LineAst, ParseError};
 #[cfg(test)]
 use opcore::tokenizer::{NumberLiteral, StringLiteral};
 use opcore::tokenizer::{OperatorKind, Span, Token, TokenKind};
@@ -570,16 +570,11 @@ impl ParserVmV2State<'_, '_> {
             span: first.span,
         };
         self.builder.label = Some(label.clone());
-        if let Some(colon) = self.tokens.get(1) {
-            if matches!(colon.kind, TokenKind::Colon) && colon.span.col_start == first.span.col_end
-            {
-                self.cursor = 2;
-            } else {
-                self.cursor = 1;
-            }
+        self.cursor = if has_adjacent_label_colon(&self.tokens) {
+            2
         } else {
-            self.cursor = 1;
-        }
+            1
+        };
         self.push_value(ParserVmV2Value::Label(label))
     }
 
@@ -968,13 +963,7 @@ fn leading_label_and_cursor(tokens: &[Token]) -> (Option<Label>, usize) {
         name,
         span: first.span,
     };
-    let cursor = if matches!(
-        tokens.get(1),
-        Some(Token {
-            kind: TokenKind::Colon,
-            span,
-        }) if span.col_start == first.span.col_end
-    ) {
+    let cursor = if has_adjacent_label_colon(tokens) {
         2
     } else {
         1
@@ -1862,6 +1851,56 @@ mod tests {
             }
             other => panic!("expected assignment, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parser_vm_v2_preserves_tight_and_spaced_colon_assignments() {
+        let model = model_for_tests();
+        let contract = parser_contract_for_tests();
+        let program = default_statement_program_for_tests();
+        for spaced in [false, true] {
+            for if_undef in [false, true] {
+                let column = if spaced { 3 } else { 2 };
+                let mut tokens = vec![ident("n", 1, 2), colon(column)];
+                if if_undef {
+                    tokens.push(Token {
+                        kind: TokenKind::Question,
+                        span: span(column + 1, column + 2),
+                    });
+                }
+                let equal_column = column + 1 + usize::from(if_undef);
+                tokens.push(operator(OperatorKind::Eq, equal_column));
+                tokens.push(number("1", 10, equal_column + 1, equal_column + 2));
+                assert_eq!(leading_label_and_cursor(&tokens).1, 1);
+                let handler: DynExprProcessingHandler<'_> =
+                    Rc::new(RefCell::new(Box::new(StubExprHandler)));
+                let line = parse_line_with_parser_vm_v2(
+                    tokens,
+                    span(equal_column + 2, equal_column + 2),
+                    None,
+                    &contract,
+                    &program,
+                    &request(),
+                    exec_context(&model, Some(handler)),
+                )
+                .unwrap();
+                let LineAst::Assignment(assignment) = line else {
+                    panic!("Expected assignment");
+                };
+                assert_eq!(
+                    assignment.op,
+                    if if_undef {
+                        AssignOp::VarIfUndef
+                    } else {
+                        AssignOp::Var
+                    }
+                );
+            }
+        }
+        assert_eq!(
+            leading_label_and_cursor(&[ident("n", 1, 2), colon(2), ident("byte", 5, 9)]).1,
+            2
+        );
     }
 
     #[test]

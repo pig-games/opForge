@@ -1622,13 +1622,16 @@ pub const PARSER_VM_PACKED_DECLARATION_ENTRY: u16 = 9;
 
 /// Shared scalar declaration heads and mutability; operands stay expression-owned.
 /// Row roles are 1 immutable, 2 mutable. Both mutable spellings share one role.
+/// Three directive rows are followed by one operator row: mutable role, colon,
+/// equal. The packed service consumes this numeric policy before label-colon
+/// handling; it never evaluates the declaration value.
 pub fn packed_declaration_program(heads: [u16; 3]) -> Vec<u8> {
     let mut program = vec![0x98, 3];
     for (head, role) in heads.into_iter().zip([1, 2, 2]) {
         program.extend(head.to_be_bytes());
         program.push(role);
     }
-    program.extend([0x83, 0]);
+    program.extend([1, 2, 5, 34, 0x83, 0]);
     program
 }
 

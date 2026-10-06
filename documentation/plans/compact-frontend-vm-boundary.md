@@ -1,11 +1,12 @@
 # Compact frontend: VM boundary correction
 
-Status: BS27 transports three numeric operands, wrapped call-register children,
+Status: BS28 adds package-owned numeric `:=` normalization to shared declarations.
+It retains three numeric operands, wrapped call-register children,
 register/immediate pairs and register triples. Same-source PACK/UNPK, LINK and
 CAS checks and transformed CAS2 execution probes pass. The last full
 embedded compact self-host proof precedes the layout follow-up below and has
 exact whole-Hunk Rust/native equality. This qualifies that implementation and
-case, not whole-language or CPU-family parity. The [current slice](native-runtime-reset.md#three-operands-and-indirect-call-children-bs27-checkpoint)
+case, not whole-language or CPU-family parity. The [current slice](native-runtime-reset.md#mutable-assignment-operators-bs28)
 records focused coverage, costs and remaining boundaries.
 
 ## Current breadth parity checkpoint
@@ -34,10 +35,12 @@ It preserves strict traversal checks for layout-dependent changes, source-order
 snapshots and iterator shadowing. Newly activated constant declarations still
 reject; forward `.while` limits and deferred iterables are outside that slice.
 The freshly Rust-built native executable exactly matches the layout checkpoint's
-535,024-byte image. Seven focused current native cases qualify across the initial
+535,024-byte image. At that checkpoint, seven focused native cases qualified across the initial
 batch and a snapshot rerun using `.var`/`.set`; the initial `:=` control exposed
-a separate unsupported native assignment form. These follow-ups have no new full
-native self-host run.
+a separate unsupported native assignment form. The subsequent
+[BS28 scalar-assignment repair](native-runtime-reset.md#mutable-assignment-operators-bs28)
+qualifies that original snapshot and tight/spaced updates on both packages.
+These follow-ups have no new full native self-host run.
 Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.
@@ -66,7 +69,7 @@ The previous BS26 reference Hunk was 518,896 bytes with 538,140 bytes of linked
 reservation and a 378,874-byte embedded package. BS27 adds 16,068 Hunk bytes,
 16,024 linked-reservation bytes and 15,444 package bytes. Its numeric-path
 qualification remains recorded in the [BS26 slice](native-runtime-reset.md#numeric-expression-paths-bs26).
-Only latest BS27 packages are accepted by current code; older bundles are
+Only latest BS28 packages are accepted by current code; older bundles are
 baseline evidence. Raw CAS2 colon normalization, other path/call-child forms,
 unused extra call-argument preparation and localized
 import-alias/local-struct shadowing remain open.
@@ -81,8 +84,9 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The qualified release bundle `/tmp/opforge-selfhost-bs27-qualified-release-74m`
-is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both
+The historical qualified release bundle `/tmp/opforge-selfhost-bs27-qualified-release-74m`
+is still selected by `/tmp/opforge-a6000-current`; regenerate and qualify a BS28
+bundle before using the current runner. Bootstrap and assembled output both
 embed only `m68020--motorola68k.bin`. The named package is retained for local
 identity verification; no external runtime fallback is used. This bundle has
 complete FS-UAE qualification and a passing local transfer-preparation dry run,
@@ -95,7 +99,7 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The script validates the current BS27 package header, mapped source preamble and
+The script validates the current BS28 package header, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
@@ -109,7 +113,7 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS27 before selecting it in the current hardware
+instrumented configuration as BS28 before selecting it in the current hardware
 runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
@@ -171,7 +175,7 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS27 is the current compact package format; the producer writes `BS27` and the
+BS28 is the current compact package format; the producer writes `BS28` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Candidate rows are 36 bytes: offsets
 0–31 retain their previous fields, byte 32 carries the third-operand form nibble,
@@ -248,8 +252,12 @@ for state-argument spellings and excluded from ordinary name lookup. These
 policies and the state plan stay inside the retained RuntimeBytes prefix.
 Shared PRVM entry 9 validates the labelled
 scalar declaration envelope using the package-supplied `.const`/`.var`/`.set`
-identity-to-role table and returns operand spans plus immutable/mutable ownership.
-The retained program is 13 bytes; both mutable spellings share one role. A generic adapter lowers the record after template
+identity-to-role table and the numeric colon/equal operator policy, returning
+operand spans plus immutable/mutable ownership. The retained program is 17 bytes;
+`:=`, `.var` and `.set` share the mutable role. Operator matching precedes the
+optional label colon and consumes the complete packed record, independently of
+the two-token physical-head hint. `:?=` and compound assignment execution remain
+open native parity gaps. A generic adapter lowers the record after template
 expansion and before scope/conditional processing; configuration capture lowers
 its private writer record before import-parameter evaluation. Discovery selects
 declaration roles through package identity before that materialization; it does

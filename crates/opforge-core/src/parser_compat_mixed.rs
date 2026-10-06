@@ -546,10 +546,8 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
         };
         if let Some(name) = label_name {
             if first.span.col_start == 1 {
-                if let Some(colon) = parser.tokens.get(1) {
-                    if matches!(colon.kind, TokenKind::Colon)
-                        && colon.span.col_start == first.span.col_end
-                    {
+                if parser.tokens.get(1).is_some() {
+                    if has_adjacent_label_colon(&parser.tokens) {
                         label = Some(Label {
                             name: name.clone(),
                             span: first.span,

@@ -134,7 +134,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS27");
+        assert_eq!(&bytes[..4], b"BS28");
         let rows_offset = long(16);
         assert!(rows_offset >= 200);
         assert_eq!((rows_offset - 200) % 4, 0);
@@ -142,7 +142,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         assert_eq!(word(188), package::PARSER_VM_MACRO_VERSION);
         assert_eq!(word(190), 0);
         let declaration_offset = long(180);
-        assert_eq!(long(184), 13);
+        assert_eq!(long(184), 17);
         let heads = [2, 5, 8].map(|slot| {
             u16::from_be_bytes(
                 bytes[declaration_offset + slot..declaration_offset + slot + 2]
@@ -151,7 +151,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
             )
         });
         assert_eq!(
-            &bytes[declaration_offset..declaration_offset + 13],
+            &bytes[declaration_offset..declaration_offset + 17],
             package::packed_declaration_program(heads)
         );
         assert_eq!(word(64), little_endian);
@@ -233,7 +233,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS27");
+        assert_eq!(&bytes[..4], b"BS28");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);

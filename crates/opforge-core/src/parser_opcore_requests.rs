@@ -19,10 +19,8 @@ pub(super) fn process_opcore_statement_request(
         };
         if let Some(name) = label_name {
             if first.span.col_start == 1 {
-                if let Some(colon) = parser.tokens.get(1) {
-                    if matches!(colon.kind, TokenKind::Colon)
-                        && colon.span.col_start == first.span.col_end
-                    {
+                if parser.tokens.get(1).is_some() {
+                    if has_adjacent_label_colon(&parser.tokens) {
                         label = Some(Label {
                             name: name.clone(),
                             span: first.span,

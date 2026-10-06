@@ -8,6 +8,23 @@ equality. This qualifies that implementation and case, not whole-language or
 CPU-family parity. The [current slice](native-runtime-reset.md#three-operands-and-indirect-call-children-bs27-checkpoint)
 records focused coverage, costs and remaining boundaries.
 
+## Current breadth parity checkpoint
+
+The [BS27 corpus checkpoint](native-runtime-reset.md#current-breadth-parity-checkpoint)
+records all 167 selected roots: MOS 20/39 exact positives, M68K 21/36 and opcore
+17/49 (four opcore positives cannot produce a live Rust oracle). Of 43 expected
+errors, 41 have completed native rejection observations after one independent
+startup retry; undefined-region placement and a forward-count loop are accepted
+by native while Rust rejects them. Negative completion is not diagnostic parity.
+The corpus exposes two exit-zero positive Hex mismatches: MOS branch offsets and
+opcore alignment gaps. No production semantics or references change in the audit.
+
+The next recommended slice restores the four Rust qualified-scope oracles, then
+addresses native layout correctness before expanding shared-language capability.
+Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
+syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
+Current full self-host proof remains the separate result below.
+
 ## Most recent full self-host qualification (BS27)
 
 The complete BS27 embedded implementation self-assembles in FS-UAE with fresh
@@ -308,8 +325,8 @@ These statements describe the implemented subset. They do not imply complete ass
 
 ## Remaining boundary gaps and explicit limitations
 
-- The [current four-example reassessment](native-runtime-reset.md#bs25-four-example-reassessment--implementation-2332b7d0) qualifies complete FPU addressing/catalog Hex output. Full-extension addressing now has BS26 numeric `xp1:` traversal through nested packed operands. Qualification and remaining boundaries are recorded in the current numeric-path slice.
-- CAS2 requires a third top-level operand and indirect-register call-child projections, with canonical colon-pair normalization. The current two-slot/direct-call subset does not cover it; this remains separate from nested expression-path work.
+- The [current breadth checkpoint](native-runtime-reset.md#current-breadth-parity-checkpoint) qualifies complete FPU all-modes, instruction catalog, FPU registers, full-extension and PFLUSH/FPU Hex examples. Other path operations and terminals remain bounded by the numeric-path contract; these files do not establish whole-family parity.
+- BS27 supports three top-level operands and indirect-register call-child projections. Transformed CAS2 execution probes match Rust, but the original colon-pair syntax still needs package/VM-owned normalization. These probes do not qualify unchanged-source CAS2 parity.
 
 - Dotted call preparation compiles extra argument leaves that canonical call-register projections ignore. Unused nested calls, long strings or unresolved names can reject. BS24 covers selected register arguments and supported extra scalar/register leaves, not general call-expression parity.
 

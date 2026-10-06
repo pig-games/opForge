@@ -1,10 +1,11 @@
 # Native assembler completion plan
 
-Status: active. BS24 adds numeric FPU operand projections on top of package-owned
-runtime state and selector guards. Its [FPU slice](#bs24-fpu-operand-projections--baseline-f7969d7f)
-passes focused native checks, two complete FPU examples and full release self-host
-Hunk equality on 68020/74 MiB in 1,092.771469042 seconds. No new physical A6000
-run or complete peak-memory result is claimed. Packages and bundles must use BS24.
+Status: active. BS27 adds three-operand transport and indirect call-child
+projections. Its [qualified checkpoint](#three-operands-and-indirect-call-children-bs27-checkpoint)
+passes full current-source native self-hosting with exact equality for all
+534,964 Hunk bytes on 68020/74 MiB in 1,121.611579667 seconds. No new physical
+A6000 run or complete peak-memory result is claimed. Current executables require
+BS27 packages; superseded contracts have no compatibility executor.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -2776,255 +2777,170 @@ builds and native runs finished, `make clean` removed 3.4 GiB of generated cache
 the empty `target` directory remains. Reports and qualified bundles remain outside
 that cache.
 
-#### Current MOS-family audit — baseline `77210ddb`
+## Current breadth parity checkpoint
 
-Refresh all 39 roots in `examples/mos6502` against the current compact native CLI
-and live Rust CLI before choosing more parity work. The selection includes every
-MOS example, but excludes the separate 85-root opcore corpus. Build one fresh
-release native executable and the current source-independent packages, then run
-each case serially on FS-UAE 68020/10 MiB without telemetry. Preserve the sources,
-fresh completion/exit/artifact checks and per-case timing; do not repair production
-semantics, refresh stored references or relax comparisons during this inventory.
-Completion means every selected root has a recorded result, including failures;
-it does not mean family parity or full self-host qualification.
+Baseline `676175ea`, latest BS27, 2026-10-06. All 167 selected roots received
+recorded results against freshly built compact native code and live Rust CLI
+oracles. Sources and packages were not modified to obtain matches; stored
+references were not refreshed. This completes the inventory, not product parity.
 
-The corpus contains five base-6502 cases, two 65C02 cases, nine 65816 cases,
-22 45GS02/MEGA65 cases and one 6502-to-65C02 switching case. Separate instruction
-encoding gaps from shared-language/layout/output gaps. Six 65816 wide/layout
-examples primarily exercise shared functionality, not the 65816 instruction set.
-An independent Luna source inventory confirms these scope limits.
+| Corpus | Positive roots | Exact complete artifact matches | Valid-positive native gaps | Unexpected Rust oracle failures | Expected-error roots / completed rejections |
+|---|---:|---:|---:|---:|---:|
+| MOS family | 39 | 20 | 19 | 0 | 0 / 0 |
+| M68K top-level examples | 36 | 21 | 15 | 0 | 7 / 6 in full run; seventh passes independent retry |
+| Shared opcore | 49 | 17 | 28 | 4 | 36 / 34 |
 
-Reproduce with the maintained FS-UAE environment and:
+There are 58 exact positive matches, 60 native positive rejections, two positive
+artifact mismatches and four unusable positive Rust oracles. Two expected-negative
+opcore inputs instead exit zero. One M68K negative case times out without guest
+output in the full run; its fresh independent retry completes with exit 20.
+Negative completion checks do not establish Rust diagnostic identity, wording,
+precedence or the intended rejection cause.
 
-```sh
-OPFORGE_MOS_CORPUS_CASES=examples/mos6502/ \
-  OPFORGE_MOS_CORPUS_REPORT=/tmp/opforge-mos-current-77210ddb.json \
-  OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m \
-  OPFORGE_FS_UAE_TIMEOUT_MS=180000 \
-  OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 \
-  cargo test -p asm --lib compact_mos_corpus_fs_uae -- --ignored --nocapture --test-threads=1
-```
+### Scope and reproducibility
 
-The report's total inventory remains 124 MOS/opcore roots; its selection and
-attempted count identify the 39-root scope. Numeric-leading source filenames
-remain staged byte-for-byte as `input.asm` for both engines; this qualifies source
-semantics under that name, not original filename handling. CLI listing and mixed
-output kinds remain outside this invocation. Source-requested additional outputs
-are compared and can fail independently of an exact Hex match. Stored-reference
-checks are a separate result, and diagnostic text parity is not established by
-nonzero rejection. Timings are absolute current release observations; this audit
-does not provide an isolated before/after speed claim.
+MOS covers every family example. M68K covers its 43 top-level instruction roots;
+nested AmigaOS/Hunk programs are excluded and require separate qualification.
+Opcore covers 85 assigned roots, with owned support files staged alongside their
+roots rather than counted separately. The original filenames, relative support
+paths and source bytes are preserved. The host family-staging test passes.
 
-The full 39-case run completed in 1,220.75 host seconds, including package/image
-preparation, emulator startup and one timeout. Every live Rust oracle succeeded.
-Twenty native cases match every required artifact; 17 complete with exit 20,
-one completes with exit zero but different Hex bytes, and one exceeds the
-120-second post-START bound. The audit test deliberately fails after recording
-all cases. Only seven stored-reference checks pass: 30 report source errors with
-the original filenames and two report listing differences. No references changed.
+The runner builds a source-independent package catalog and a fresh executable
+embedding m68020; other packages load from the staged catalog. Every case uses
+the executable fingerprint `fnv1a64:a0c63661a3b96bb1`, identical to the BS27 full
+self-host-qualified executable. Guest execution is FS-UAE 68020/10 MiB, release,
+telemetry disabled, with fresh case-bound completion/exit/artifact checks.
+Commands explicitly supply the initial CPU, package root and module/include
+roots, and request Hex. Automatic CLI target/input defaults and command-line
+listing/mixed-output support are not qualified by this invocation. Additional
+source-requested artifacts are compared as well. Cases without `.cpu` use Rust's
+current default, 8085; an instruction first stop there does not establish a
+shared-language failure.
 
-| Corpus group | Roots | Exact live Rust artifact matches | Remaining cases |
-| --- | ---: | ---: | ---: |
-| Base 6502 | 5 | 4 | 1 |
-| 65C02 | 2 | 1 | 1 |
-| 65816 | 9 | 1 | 8 |
-| 45GS02 / MEGA65 | 22 | 14 | 8 |
-| 6502-to-65C02 switching | 1 | 0 | 1 |
-| Total | 39 | 20 | 19 |
-
-Compared with the earlier audit's 16 qualified MOS matches, the four additional
-matches are `6502_simple`, `6502_native_cli_smoke`, `65c02_simple` and
-`65816_wide_const_var`. The last is a scalar-declaration example with no emitted
-instructions; it is not 65816 instruction qualification. The complete base-6502
-151-instruction matrix still matches (321 emitted bytes). Matches take
-0.7546–2.7849 START/DONE host seconds; the matrix takes 2.7849 seconds. These
-single observations are not a comparative performance claim. The release image
-is 456,048 bytes, `fnv1a64:a1e43b34ac8e71fb`, identical to the qualified
-`85f4e81f` compact self-host image. Current m6502 is 13,714 bytes,
-`fnv1a64:b4cff8b25e13282a`.
-
-The only timeout, `45gs02_simple`, was retried independently with identical
-source/input/image/package digests and command. It completed in 0.761342750
-START/DONE host seconds with exit 20 at line 11, `lda [$21],z`. The timeout did
-not recur; the original failure remains in its full-run report. This retry is
-localization of the unsupported form, not successful assembly. The reports are
-`/tmp/opforge-mos-current-77210ddb.json`,
-`/tmp/opforge-mos-current-77210ddb-timeout-retry.json` and the compact derived
-summary `/tmp/opforge-mos-current-77210ddb-summary.json`.
-
-Remaining first stops, with preparation failures kept distinct from instruction
-diagnostics:
-
-- **Package operands:** 65C02 `bbr0 $20,bbr_target`; 45GS02
-  `jsr ($2002,x)`, `phw #$1234`, `ldq [$23],z`, `lda [$21],z` and
-  `bsr far_bsr`; 65816 `jmp [$3456]` and `jml [$2345]`.
-- **Package state:** 65816 `.assume` rejects before later width/bank/direct-page
-  forms execute. Those later forms are not qualified by this run.
-- **Shared language/output:** the base-6502 artifact example now passes region
-  placement and stops at `.text "OK"`; other stops are the second `.org` in
-  `45gs02_relfar`, `.res long,20000`, wide `.output` metadata and `.mapfile`.
-- **Unlocalized preparation:** stack-relative indirect Y and the CPU-switching
-  example reject at preparation step 2; wide alignment and listing-aux examples
-  reject at step 6. A first stop does not prove every later feature missing.
-- **Completed mismatch:** `45gs02_rel_branch_overrides` emits zero displacements
-  while Rust emits 1 through 9 for branches to the following instruction. Its
-  native exit is zero, but exact comparison fails. Resolve the Rust/package
-  sizing discrepancy before treating either output as corrected.
-
-The proposed next slice is the **65C02 addressing matrix**, starting with
-family-owned binary projections for BBR/BBS and word-sized indexed-indirect
-operands. Source review identifies legacy `pair_u8_rel8` descriptors and an
-omitted `AbsoluteIndexedIndirect` structural projection. BBR/BBS need a three-byte
-instruction-relative fixup, not the existing two-byte branch adjustment. Reuse
-neutral execution mechanisms; retain CPU policy in package producers. Qualify
-the complete 65C02 matrix, branch limits/forward labels and base-6502 regressions;
-also check the corresponding 45GS02 indexed-indirect JSR form. Immediate PHW's
-word-width policy and 65816 state/bracketed projections remain following slices
-unless the matrix exposes a necessary shared prerequisite. This is a proposed
-implementation scope, not completed work.
-
-No production code, packages, golden references or qualified bundle changed in
-this audit. No new full self-host or A6000 run is claimed. The current experimental
-CLI still lacks command-line listing and mixed output-kind support; the legacy
-CLI's implicit-wrapper listing mismatch is a separate unresolved issue.
-
-Documentation links and whitespace checks pass. Once both native batches ended,
-`make clean` removed 1.5 GiB of generated cache and retained an empty `target`.
-Reports and logs remain outside the cache. Unrelated workflow-notebook edits
-remain untouched.
-
-#### Cross-family parity comparison — baseline `b840b27f`
-
-Audit the 43 top-level `examples/motorola68000` instruction fixtures, including
-seven expected-error cases, against the current compact native CLI and live Rust.
-Nested AmigaOS executable demos and support modules remain outside this Hex
-instruction audit; they require separate Hunk/implicit-CPU setup. Reuse the MOS
-audit's fresh executable/package preparation, byte-preserving neutral filenames,
-per-case completion/exit/artifact checks and independent stored-reference checks.
-Run serially on FS-UAE 68020/10 MiB without telemetry. Production code, packages,
-sources and goldens remain unchanged. Record all selected results before comparing
-them with the 39-case MOS audit to select the next implementation slice.
-
-The test harness now shares its corpus runner rather than duplicating it.
-Existing MOS/opcore commands and selection remain intact. Family reference paths
-retain relative subdirectories; a host inventory/staging check verifies complete
-top-level selection and byte-identical staging. Expected-error cases establish
-fresh nonzero rejection with a diagnostic, not diagnostic text/identity parity
-or successful assembly. Check whether native rejects before the intended operation.
+With the maintained FS-UAE environment, unset both substring-selection variables
+and run:
 
 ```sh
-OPFORGE_M68K_CORPUS_REPORT=/tmp/opforge-m68k-current-b840b27f.json \
-  OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m \
-  OPFORGE_FS_UAE_TIMEOUT_MS=180000 \
-  OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 \
-  cargo test -p asm --lib compact_motorola68000_corpus_fs_uae -- --ignored --nocapture --test-threads=1
+OPFORGE_MOS_CORPUS_REPORT=/tmp/opforge-parity-676175ea-mos-opcore.json \
+OPFORGE_M68K_CORPUS_REPORT=/tmp/opforge-parity-676175ea-m68k.json \
+OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m \
+OPFORGE_FS_UAE_TIMEOUT_MS=180000 \
+OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=120000 \
+cargo test -p asm --lib corpus_fs_uae -- --ignored --nocapture --test-threads=1
 ```
 
-Optional `OPFORGE_M68K_CORPUS_CASES` selects path substrings for later focused
-retries; unset it for the complete 43-root audit. Success for this inventory is
-recording every case honestly, not forcing the deliberately gap-reporting test
-green. Neither this run nor the MOS audit establishes whole-language parity,
-diagnostic parity, original numeric-filename behavior, new full self-host proof
-or physical A6000 timing.
+Both audit tests deliberately return nonzero after recording all their gaps.
+The full test batch takes 4,909.26 host seconds (81m49.26s), including per-case
+startup and one timeout. Positive guest START/DONE observations range from
+0.7529 to 2.5680 seconds for MOS, 1.2636 to 2.0287 for M68K, and 0.7555 to
+1.0310 for opcore. These are current single observations, not isolated per-change
+performance comparisons, clock-calibrated hardware results or a 2 MiB claim.
+The 166 completed observations, including failed proofs, total 171.41 seconds;
+this is not a successful assembly-time total. Emulator startup dominates this
+breadth audit, so retain its inventory and choose focused regressions for repairs.
 
-The full run records all 43 cases in 1,380.04 host seconds, including preparation,
-emulator startup and one startup timeout. All 36 positive live Rust oracles
-succeed. Fifteen match complete native artifacts; 20 complete with exit 20 and
-one stalls before guest START. All seven expected-error cases complete with
-nonzero exit and a diagnostic. The audit test remains deliberately failing;
-negative rejection is not positive assembly or diagnostic identity qualification.
+`68040_callm_error` times out without stdout/stderr in the full run. Retry uses
+`OPFORGE_M68K_CORPUS_CASES=68040_callm_error` with report
+`/tmp/opforge-parity-676175ea-m68k-startup-retry.json`. It completes fresh in
+1.277793083 START/DONE seconds, with exit 20 and a diagnostic. Source/input,
+executable, package digests and command equal the original attempt. The original
+failure remains recorded; a successful retry does not erase it.
 
-| Target | Positive roots | Exact artifact matches | Expected-error roots / nonzero rejections observed |
-| --- | ---: | ---: | ---: |
-| 68000 | 20 | 14 | 1 / 1 |
-| 68010 | 1 | 0 | 0 / 0 |
-| 68020 | 5 | 0 | 0 / 0 |
-| 68030 | 2 | 0 | 0 / 0 |
-| 68040 | 3 | 1 | 4 / 4 |
-| 68080 | 5 | 0 | 2 / 2 |
-| Total | 36 | 15 | 7 / 7 |
+### CPU-family results
 
-This is example coverage, not a percentage of instruction-set support. A first
-stop prevents qualification of later forms, and the existing current full
-m68020 self-host proves its actual source workload rather than every 68020
-instruction. The fresh release image remains 456,048 bytes,
-`fnv1a64:a1e43b34ac8e71fb`, byte-identical to the MOS audit and qualified compact
-self-host image. Positive match START/DONE observations range from 1.2618 to
-1.5249 seconds. Inputs differ from MOS, so these times do not establish a
-cross-family speed ratio or the impact of a code change.
+MOS remains 20/39, with identical source digests and the same match set as the
+older `77210ddb` audit. Base 6502 is 4/5, including the complete 151-instruction
+matrix; 65C02 is 1/2, 65816 1/9, 45GS02/MEGA65 14/22, and the separate CPU-switch
+root 0/1. The sole successful 65816 case is a scalar-declaration example, not
+65816 instruction qualification. Its broad gaps remain:
 
-The stalled `68020_fpu_registers` case was retried with identical source/input,
-image, package digests and command. Fresh execution completes with exit 20 at
-line 3, `.fpu 68881`, in 1.016601417 START/DONE host seconds. Startup timeout does
-not recur; preserve both outcomes. The complete and retry reports are
-`/tmp/opforge-m68k-current-b840b27f.json` and
-`/tmp/opforge-m68k-current-b840b27f-startup-retry.json`; the derived summary is
-`/tmp/opforge-cross-family-parity-summary.json`.
+- 65C02 BBR/BBS; 45GS02 indexed-indirect JSR, immediate PHW, bracketed/Q operands,
+  far BSR and unlocalized stack-relative preparation; 65816 bracketed JMP/JML
+  and `.assume` before later width/bank forms can execute.
+- Shared `.text`, typed wide `.res`, repeated `.org`, richer output metadata and
+  `.mapfile`; wide alignment/listing and CPU switching have unlocalized
+  preparation stops.
+- `45gs02_rel_branch_overrides` exits zero with different Hex bytes. All other
+  failed MOS positives now complete with exit 20; the older `45gs02_simple`
+  timeout does not recur.
 
-Four negative cases reject earlier than Rust's intended failing operation:
-FSIN stops at `.fpu`; AMMX-shape and Apollo-gating cases stop at `.apollo`; MOVEC
-CAAR fails during preparation. Three negatives reach the same reported source
-operation as Rust, but their generic diagnostics still do not establish reason
-or text parity. Do not present seven observed rejections as seven CPU-policy
-contracts qualified.
+M68K improves from 15/36 to 21/36 positive matches on unchanged source digests:
 
-#### Shared priorities identified by both family audits
+| Target | Exact matches / positive roots |
+|---|---:|
+| 68000 | 14 / 20 |
+| 68010 | 0 / 1 |
+| 68020 | 4 / 5 |
+| 68030 | 1 / 2 |
+| 68040 | 2 / 3 |
+| 68080 | 0 / 5 |
 
-1. **Implicit module naming:** only one of 43 M68K stored-reference checks passes;
-   35 positive originals report source errors and all seven error references
-   report different diagnostics. MOS has 30 original-filename source failures
-   and two listing differences. A fresh Rust CLI discriminator confirms that
-   original `6502_simple.asm` and `68000_basic_moves.asm` fail at the generated
-   `.module` line, while byte-identical `input.asm` copies succeed. The engine
-   derives implicit IDs directly from filename stems, which may begin with a
-   digit although module identifiers cannot. This shared bug is independent of
-   the valid neutral-filename native comparisons. Evidence:
-   `/tmp/opforge-cross-family-implicit-name-report.json`.
-2. **Packed package recipe coverage:** M68K first stops include wrapped
-   absolute-long MOVE, zero-displacement/scaled indexed aliases, MOVEP, default
-   LINK, BKPT, full-extension addressing and register-pair DIVS/CAS2. Existing
-   CPU-owned indexed selectors use tuple register item 0, qualified item 1 and
-   identity-scale projections that the packed exporter does not retain. BKPT's
-   `semv.scalar.v1` recipe is unsupported, and MOVEP's match-after-encode ordering
-   cannot lower. Wrapped absolute-W already passes; absolute-L and LINK have
-   existing transport and need localization. MOS similarly lacks structural
-   projections for some indirect/tuple forms, but BBR's three-byte relative
-   fixup and PHW's word width also require their own family-owned producer work.
-   Extend neutral transport/execution where needed; CPU policy remains in
-   package definitions. Do not add CPU parsers to native preparation.
-3. **Package configuration:** ten positive M68K examples first stop at `.fpu`
-   or `.apollo`, after the retry, while 65816 `.assume` is a MOS first stop.
-   These require package-owned state transitions through generic execution.
-   FPU/AMMX instruction bodies remain unqualified; fixing configuration alone
-   may reveal later recipe gaps.
-4. **Shared layout/language/output:** second `.org` statements block the M68K
-   qualified-module call and a MOS far-branch example. MOS also stops at `.text`,
-   typed `.res`, wide output metadata and `.mapfile`; collection values and
-   unlocalized preparation failures remain separate known gaps. Keep the
-   completed MOS branch-displacement mismatch open; no matching M68K artifact
-   discrepancy was observed among completed positive cases.
+The six newly matching full sources are the 68020 FPU all-modes, instruction
+catalog, FPU registers and full-extension examples, the 68030 PFLUSH/external-FPU
+example and the integrated 68040 FPU example. All 15 failed positives complete
+with exit 20; no completed positive M68K artifact mismatch is observed.
+Remaining first stops include wrapped absolute-long MOVE, PC-relative indexed
+MOVE, MOVEP, TRAP, BKPT, repeated `.org`, colon-pair DIVS/CAS2 and Apollo forms
+such as TEX8.512, LOAD, three-operand FMUL.W and ADDIW.L. The MOVE16 carry-forward
+example stops at CAS2 before reaching MOVE16; do not call that a MOVE16 failure.
+Colon normalization could unblock three complete M68K roots, but later forms
+remain unqualified until the complete original files match.
 
-The recommended **first implementation slice is legal implicit module IDs**.
-Derive stable valid IDs for implicit files, preserve valid and explicit names,
-check module discovery/import consistency and avoid silently merging collisions.
-Verify original numeric-leading filenames on both Rust and native, compare
-emitted bytes with the neutral-name controls, and rerun relevant original-path
-reference checks without refreshing goldens. This is a shared correctness repair
-with a small coherent scope; it does not resolve native operand/configuration
-gaps. Then take the packed tuple/index recipe-export slice, followed by package
-configuration. This revises the MOS-only proposed 65C02-first ordering using the
-cross-family evidence; these are recommendations, not implemented repairs.
+### Shared-language results and next priorities
 
-The inventory/staging host test, Rust formatting, native fresh-proof guard and
-native test-ownership guard pass. No production, package or golden change was
-made, and the qualified A6000 bundle remains unchanged.
+Seventeen opcore positives match, including counted loops, grouping, the LED
+program, macro/segment syntax, cross-module segments, preprocessing, project-root
+discovery, module use/autoload/include/visibility, qualified section mapping and
+section/module cases. These support the existing subset; they do not imply full
+module, expansion, expression, layout or output parity.
 
-A Luna result review confirms the reported scope, counts and shared naming
-diagnosis. After both native runs and host checks ended, `make clean` removed
-2.9 GiB of generated cache; the final staging-test batch then passed and its
-cleanup removed another 1.5 GiB, retaining an empty `target`. Reports and CLI
-discriminator artifacts remain outside the cache. Unrelated notebook edits are
-preserved.
+The 28 valid-positive failures comprise 27 rejections and the `align_simple` Hex
+mismatch. First stops cluster around six statement-declaration roots, lists and
+struct instances, high-byte unary expression syntax, labelled conditionals,
+iterable `.for`/`.bfor`, `.while`, `.ds`, text encoding, imported macro invocation,
+repeated origins, `.pack`, `.mapfile` and broader metadata. `cli_json_outputs`
+stops at `START: nop` under 8085; its JSON/output behavior has not been reached.
+A first stop cannot establish every later missing capability.
+
+Before expanding capability, address these concrete discrepancies:
+
+1. **Restore the Rust scope oracles.** `macro_invocation_native` and `macro_syntax`
+   fail on `foo.local`; `scopes` fails on `OUTER.INNER.VAL`; `scopes_namespace`
+   fails on `outer.inner.VALUE` and `SCOPE.LOCAL`. Read-only Sol review identifies
+   a likely relative-qualified-name lookup gap under implicit module wrappers:
+   dotted-name lookup and pending references do not search active scope prefixes.
+   Verify wrapped/unwrapped cases, then repair evaluation, lookup and reference
+   candidates coherently. This is a diagnosis to confirm, not a proven fix or a
+   reason to weaken whole-block retention.
+2. **Native layout correctness.** Undefined placement region `nowhere` is accepted
+   while Rust rejects it. `align_simple` exits zero but includes zero padding in
+   contiguous Hex where Rust preserves an address gap. Repair validation and
+   emission provenance through shared layout/output owners, without CPU rules.
+3. **Review forward-count semantics.** Native accepts `.for target` followed by
+   `target=2`; Rust reports pass-one/pass-two iteration change. Decide whether
+   safe precomputed immutable constants should be accepted by both before
+   changing either implementation. This is distinct from true pass instability.
+
+Then choose shared statement/value support or package/VM-owned colon normalization
+from the verified remaining matrix. Keep CPU/family grammar in its owning package
+boundary; original CAS2 parity is still missing despite transformed numeric probes.
+The canonical frontend ownership gaps remain in the
+[frontend note](compact-frontend-vm-boundary.md#remaining-boundary-gaps-and-explicit-limitations).
+
+### Stored references and checkpoint limits
+
+Rust stored-reference checks pass 7/39 MOS, 8/43 M68K and 48/85 opcore roots.
+Failures are 95 listing differences, the four opcore source/oracle errors, and
+five error-output fixtures without comparable partial artifacts (omission is
+permitted by the canonical suite). Missing partial artifacts are not native
+support failures. No golden files are changed or stale artifacts used as oracles.
+
+Raw reports, retry, derived classification and command logs remain outside the
+build cache as `/tmp/opforge-parity-676175ea-*`. Only enduring current results
+belong in these notes; Git retains superseded audit narratives. No production,
+package, fixture or hardware bundle changes, new full self-host run, physical
+A6000 timing, whole-workspace quality gate or product-completion claim follow
+from this checkpoint.
 
 #### Numeric-leading implicit module repair — baseline `262ed3bf`
 

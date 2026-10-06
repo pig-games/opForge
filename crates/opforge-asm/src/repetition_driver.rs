@@ -250,6 +250,12 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                         }
                     };
 
+                    asm_line.observe_repetition(
+                        line_num,
+                        plan.values.len() as u32,
+                        &operands,
+                        true,
+                    );
                     ctx.observe_loop_iterations(
                         line_num,
                         u32::try_from(plan.values.len()).unwrap_or(u32::MAX),
@@ -258,7 +264,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
 
                     let mut iteration_bases = Vec::with_capacity(plan.values.len());
                     let mut iteration_scopes = Vec::with_capacity(plan.values.len());
-                    for value in &plan.values {
+                    for (iteration, value) in plan.values.iter().enumerate() {
                         if scoped_repeat {
                             asm_line
                                 .symbol_scope
@@ -279,6 +285,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                         if let Some(var_name) = plan.var_name.as_deref() {
                             asm_line.push_loop_var(var_name, *value);
                         }
+                        asm_line.repetition_path.push((line_num, iteration as u32));
                         execute_lines(
                             ctx,
                             lines,
@@ -294,6 +301,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             prepared_source,
                             max_loop_iterations,
                         )?;
+                        asm_line.repetition_path.pop();
                         if plan.var_name.is_some() {
                             asm_line.pop_loop_var();
                         }
@@ -390,6 +398,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             );
                         }
 
+                        asm_line.repetition_path.push((line_num, loop_count - 1));
                         execute_lines(
                             ctx,
                             lines,
@@ -406,6 +415,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             max_loop_iterations,
                         )?;
 
+                        asm_line.repetition_path.pop();
                         if scoped_repeat {
                             let _ = asm_line
                                 .symbol_scope
@@ -433,6 +443,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                         continue;
                     }
 
+                    asm_line.observe_repetition(line_num, loop_count, &operands, false);
                     ctx.observe_loop_iterations(line_num, loop_count, lines)?;
 
                     if scoped_repeat {

@@ -3,6 +3,8 @@
 
 //! Resolve immutable scalar dependencies independently of assembly pass count.
 use super::*;
+use crate::engine::repetition_trace::LoopObservation;
+use std::collections::HashSet;
 
 pub(super) struct Definition {
     name: String,
@@ -10,16 +12,127 @@ pub(super) struct Definition {
     scope: AsmSymbolScopeState,
     cpu: CpuType,
     line: u32,
+    loop_dependencies: Vec<String>,
 }
 
 impl AsmLine<'_> {
+    pub(crate) fn executed_constant_names(&self) -> HashSet<(String, u32)> {
+        self.constant_definitions
+            .iter()
+            .map(|definition| (definition.name.clone(), definition.line))
+            .collect()
+    }
+
+    pub(crate) fn observe_repetition(
+        &mut self,
+        line: u32,
+        count: u32,
+        operands: &[Expr],
+        counted: bool,
+    ) {
+        if matches!(self.profile_phase, AsmProfilePhase::Pass2) {
+            return;
+        }
+        self.loop_observations.push(LoopObservation {
+            line,
+            count,
+            original_count: count,
+            path: self.repetition_path.clone(),
+            operands: operands.to_vec(),
+            scope: self.symbol_scope.clone(),
+            cpu: self.cpu,
+            counted,
+            immutable: false,
+            loop_variable_dependent: operands.iter().any(|expr| {
+                let mut names = Vec::new();
+                scalar_dependencies(expr, &mut names);
+                names
+                    .into_iter()
+                    .any(|name| self.lookup_loop_var(name).is_some())
+            }),
+        });
+    }
+
+    pub(crate) fn immutable_loop_count(
+        &mut self,
+        observation: &LoopObservation,
+        max_loop_iterations: u32,
+    ) -> Result<Option<u32>, (u32, AsmError)> {
+        if !observation.counted
+            || observation.operands.len() != 1
+            || observation.loop_variable_dependent
+        {
+            return Ok(None);
+        }
+        let saved_scope = std::mem::replace(&mut self.symbol_scope, observation.scope.clone());
+        let saved_cpu = std::mem::replace(&mut self.cpu, observation.cpu);
+        let saved_pass = std::mem::replace(&mut self.pass, 2);
+        let result = (|| {
+            let expr = &observation.operands[0];
+            let mut names = Vec::new();
+            if !scalar_dependencies(expr, &mut names) {
+                return Ok(None);
+            }
+            for name in names {
+                let Some(name) = self
+                    .resolve_scoped_name(name)
+                    .map_err(|e| (observation.line, e))?
+                else {
+                    return Ok(None);
+                };
+                if !self.immutable_scalar_constants.contains(&name)
+                    || self.symbols.entry(&name).is_none_or(|entry| entry.rw)
+                {
+                    return Ok(None);
+                }
+            }
+            self.eval_expr_for_non_negative_directive(expr, ".for count")
+                .and_then(|count| {
+                    if count > max_loop_iterations {
+                        Err(AstEvalError::directive(
+                            format!(
+                                "loop exceeded maximum iteration limit ({max_loop_iterations})"
+                            ),
+                            expr_span(expr),
+                        ))
+                    } else {
+                        Ok(Some(count))
+                    }
+                })
+                .map_err(|e| {
+                    (
+                        observation.line,
+                        AsmError::new(
+                            ast_eval_error_kind_to_asm(e.error.kind()),
+                            e.error.message(),
+                            None,
+                        ),
+                    )
+                })
+        })();
+        self.symbol_scope = saved_scope;
+        self.cpu = saved_cpu;
+        self.pass = saved_pass;
+        result
+    }
     pub(super) fn capture_constant(&mut self, name: &str, expr: &Expr) {
+        if matches!(self.profile_phase, AsmProfilePhase::Pass2) {
+            return;
+        }
+        let mut names = Vec::new();
+        scalar_dependencies(expr, &mut names);
+        let loop_dependencies = names
+            .into_iter()
+            .filter(|name| self.lookup_loop_var(name).is_some())
+            .map(str::to_string)
+            .collect();
         self.constant_definitions.push(Definition {
             name: name.into(),
             expr: expr.clone(),
             scope: self.symbol_scope.clone(),
             cpu: self.cpu,
             line: self.current_line_num,
+            loop_dependencies,
         });
     }
 
@@ -62,6 +175,16 @@ impl AsmLine<'_> {
             let mut names = Vec::new();
             absolute[index] = scalar_dependencies(&definition.expr, &mut names);
             for name in names {
+                if definition
+                    .loop_dependencies
+                    .iter()
+                    .any(|dependency| dependency.eq_ignore_ascii_case(name))
+                {
+                    // Iterator bindings are source-order inputs, even when an
+                    // immutable global symbol has the same spelling.
+                    absolute[index] = false;
+                    continue;
+                }
                 let resolved = self
                     .resolve_scoped_name(name)
                     .map_err(|error| (definition.line, error))?;
@@ -124,6 +247,10 @@ impl AsmLine<'_> {
                     .absolute_constant_symbols
                     .contains(&definition.name)
                     || edges[node].iter().any(|&child| repaired[child]);
+                if absolute[node] {
+                    self.immutable_scalar_constants
+                        .insert(definition.name.clone());
+                }
                 if absolute[node] && needs_evaluation {
                     self.symbol_scope = definition.scope.clone();
                     self.cpu = definition.cpu;

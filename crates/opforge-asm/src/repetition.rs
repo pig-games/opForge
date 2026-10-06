@@ -238,6 +238,12 @@ pub fn evaluate_for_plan(
 
     let (var_name, values) = if operands.len() == 1 {
         let count = asm_line.eval_expr_for_non_negative_directive(&operands[0], ".for count")?;
+        if count > max_loop_iterations {
+            return Err(AstEvalError::directive(
+                format!("loop exceeded maximum iteration limit ({max_loop_iterations})"),
+                expr_span(&operands[0]),
+            ));
+        }
         let values = (0..count).collect::<Vec<_>>();
         (None, values)
     } else if operands.len() == 2 {

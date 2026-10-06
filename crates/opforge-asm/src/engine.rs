@@ -6,6 +6,8 @@ use crate::line::{
     repetition, AsmLine, AsmProfilePhase, CachedRuntimeParseResult, RuntimeLineRouter,
     RuntimeParseCache,
 };
+#[path = "repetition_trace.rs"]
+pub(crate) mod repetition_trace;
 use crate::phase_profile::{self, PhaseBucket};
 use crate::prepared_line::{PreparedLine, PreparedSource};
 use crate::repetition_driver::{
@@ -22,6 +24,7 @@ use families::{
 };
 use registry::cpu::CpuType;
 use registry::registry::ModuleRegistry;
+use repetition_trace::LoopReplayState;
 use std::collections::{HashMap, HashSet};
 use std::convert::Infallible;
 use std::io::Write;
@@ -75,6 +78,7 @@ pub struct Assembler {
     pub runtime_lockstep_report: LockstepReport,
     implicit_hunk_output_requested: bool,
     constant_layout_changed: bool,
+    loop_replay: LoopReplayState,
     qualified_reachability_profile: QualifiedReachabilityProfile,
     module_timing_profile: ModuleTimingProfile,
     reachable_blocks: Vec<ReachableBlock>,
@@ -556,6 +560,8 @@ qualified_share={:.2}%",
                 asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
                 asm_line.layout.symbol_relocations = self.symbol_relocations.clone();
                 asm_line.scalar_value_symbols = self.scalar_value_symbols.clone();
+                asm_line.immutable_scalar_constants =
+                    self.loop_replay.immutable_scalar_constants.clone();
             }
             if let Some(concrete_section_declarations) = seeded_concrete_section_declarations {
                 asm_line.layout.concrete_section_declarations = concrete_section_declarations;
@@ -594,6 +600,7 @@ qualified_share={:.2}%",
             );
 
             if pass_num == 1 && counts.errors == 0 {
+                self.loop_replay.executed_constant_names = asm_line.executed_constant_names();
                 match asm_line.resolve_absolute_constants() {
                     Ok(changed) => self.constant_layout_changed = changed,
                     Err((line, error)) => {
@@ -602,6 +609,15 @@ qualified_share={:.2}%",
                     }
                 }
             }
+
+            self.loop_replay.resolve_loop_observations(
+                &mut asm_line,
+                pass_num,
+                self.max_loop_iterations,
+                &mut self.constant_layout_changed,
+                diagnostics,
+                &mut counts,
+            );
 
             if capture_runtime_trace {
                 if self.collect_runtime_traces {
@@ -1014,6 +1030,7 @@ qualified_share={:.2}%",
             runtime_lockstep_report: LockstepReport::default(),
             implicit_hunk_output_requested: false,
             constant_layout_changed: false,
+            loop_replay: LoopReplayState::default(),
             qualified_reachability_profile: QualifiedReachabilityProfile::default(),
             module_timing_profile: ModuleTimingProfile::default(),
             reachable_blocks: Vec::new(),
@@ -1148,6 +1165,10 @@ qualified_share={:.2}%",
             self.prepared_source = Some(PreparedSource::from_lines(lines));
         }
         self.constant_layout_changed = false;
+        self.loop_replay.loop_observations.clear();
+        self.loop_replay.immutable_count_replay = false;
+        self.loop_replay.executed_constant_names.clear();
+        self.loop_replay.immutable_scalar_constants.clear();
         self.loop_iteration_trace_pass1.clear();
         self.runtime_processing_traces.clear();
         self.runtime_lockstep_report = LockstepReport::default();
@@ -1229,7 +1250,10 @@ qualified_share={:.2}%",
             }
 
             let next_snapshot = self.capture_layout_snapshot();
-            if next_snapshot == previous_snapshot {
+            let trace_stable = loop_trace == self.loop_iteration_trace_pass1;
+            self.loop_iteration_trace_pass1 = loop_trace;
+            self.loop_replay.immutable_count_replay = false;
+            if next_snapshot == previous_snapshot && trace_stable {
                 stabilized = true;
                 break;
             }
@@ -1640,6 +1664,21 @@ qualified_share={:.2}%",
             self.prepared_source.as_ref(),
             self.max_loop_iterations,
         )?;
+
+        if pass2_loop_trace_cursor != pass1_loop_trace.len() {
+            let diagnostic = Diagnostic::new(
+                u32::try_from(lines.len()).unwrap_or(u32::MAX),
+                Severity::Error,
+                AsmError::new(
+                    AsmErrorKind::Directive,
+                    "loop traversal changed between passes",
+                    None,
+                ),
+            );
+            listing.write_diagnostic_with_annotations(&diagnostic, lines)?;
+            diagnostics.push(diagnostic);
+            counts.errors += 1;
+        }
 
         if self.collect_runtime_traces {
             self.runtime_processing_traces.extend(
@@ -2594,12 +2633,25 @@ impl<W: Write> RepetitionPass for Pass2RepetitionTraversal<'_, W> {
         iterations: u32,
         all_lines: &[String],
     ) -> Result<(), Self::Error> {
-        let (pass1_line, pass1_count) = self
+        let previous = self
             .pass1_loop_trace
             .get(*self.pass2_loop_trace_cursor)
-            .copied()
-            .unwrap_or((line_num, 0));
+            .copied();
         *self.pass2_loop_trace_cursor = self.pass2_loop_trace_cursor.saturating_add(1);
+        let Some((pass1_line, pass1_count)) = previous else {
+            return self.emit_error(
+                Diagnostic::new(
+                    line_num,
+                    Severity::Error,
+                    AsmError::new(
+                        AsmErrorKind::Directive,
+                        "unexpected loop during emission",
+                        None,
+                    ),
+                ),
+                all_lines,
+            );
+        };
         if pass1_line != line_num || pass1_count != iterations {
             let message = format!(
                 "loop iteration count changed between passes (pass1: {pass1_count}, pass2: {iterations})"

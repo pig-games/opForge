@@ -467,8 +467,27 @@ value .byte i
 Notes:
 - Labels inside unscoped `.for`/`.while` bodies are rejected (use `.bfor`/`.bwhile`).
 - Labels on `.endfor`/`.endwhile` are rejected.
-- Loop iteration counts must be stable between pass1 and pass2.
+- Loop iteration counts must be stable between the accepted sizing traversal and emission.
 - Loop execution is guarded by `--max-loop-iterations` (default `65536`, env override `OPFORGE_MAX_LOOP_ITERATIONS`).
+
+Scalar `.for` and `.bfor` counts may refer forward to immutable constants whose
+dependencies are independent of labels, the program counter, mutable values and
+active loop variables. The assembler resolves their executed definitions, then
+performs one checked sizing replay before accepting the loop traversal:
+
+```
+.for count
+    .byte $12
+.endfor
+count = base + 1
+base .const 1            ; emits two bytes
+```
+
+Definitions must have executed during the initial sizing traversal. If the replay
+activates a previously skipped constant declaration, assembly rejects rather than
+guessing its dependency semantics. Mutable and loop-variable snapshots retain
+source-order evaluation; layout-dependent count changes still reject. This
+replay does not enable forward `.while` limits or general deferred iterable values.
 
 ### 3.8 Struct definitions
 

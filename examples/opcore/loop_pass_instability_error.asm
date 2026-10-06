@@ -3,4 +3,4 @@
     .byte 1
 .endfor
 
-target = 2
+target = $ + 2

@@ -1,0 +1,28 @@
+opForge Assembler v0.9.7
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  .module loop_forward_constant
+----                                2  ; Immutable counts can be defined after the loop, including dependency chains.
+0000    12                          4      .byte $12
+0001    12                          4      .byte $12
+----                                6  
+----    EQU 0002                    7  count = base + 1
+----    EQU 0001                    8  base .const 1
+----                                9  .endmodule
+
+Lines: 9  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+loop_forward_constant.base  0001      prv  lbl 
+loop_forward_constant.count  0002      prv  lbl 
+
+Total memory is 2 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+0000    12 12

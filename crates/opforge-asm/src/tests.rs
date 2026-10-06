@@ -2494,7 +2494,7 @@ fn repetition_for_loop_reports_pass_stability_mismatch() {
         ".for target".to_string(),
         ".byte 1".to_string(),
         ".endfor".to_string(),
-        "target = 2".to_string(),
+        "target = $+2".to_string(),
     ];
 
     let pass1 = assembler.pass1(&lines);

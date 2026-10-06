@@ -13,8 +13,8 @@ records focused coverage, costs and remaining boundaries.
 The [BS27 corpus checkpoint](native-runtime-reset.md#current-breadth-parity-checkpoint)
 records all 167 selected roots: MOS 20/39 exact positives, M68K 21/36 and opcore
 17/49 (four opcore positives cannot produce a live Rust oracle). Of 43 expected
-errors, 41 have completed native rejection observations after one independent
-startup retry; undefined-region placement and a forward-count loop are accepted
+errors, 41 have completed native rejection observations; undefined-region
+placement and a forward-count loop are accepted
 by native while Rust rejects them. Negative completion is not diagnostic parity.
 The corpus exposes two exit-zero positive Hex mismatches: MOS branch offsets and
 opcore alignment gaps. No production semantics or references change in the audit.
@@ -28,8 +28,16 @@ qualifies fifteen fresh focused cases: undefined regions reject, forward region
 declarations remain valid, flat alignment gaps stay sparse in Hex/S-record, and
 placed payload padding remains initialized as in Rust. Bin/Hunk and 6502 package
 checks pass. The original corpus counts above are not a rerun of the full inventory.
-The next decision is forward-count loop semantics. The latest layout code has not
-yet had a new full native self-host run.
+The subsequent [immutable-count repair](native-runtime-reset.md#immutable-forward-loop-counts)
+aligns Rust with native acceptance of graph-proven forward scalar counted loops.
+It preserves strict traversal checks for layout-dependent changes, source-order
+snapshots and iterator shadowing. Newly activated constant declarations still
+reject; forward `.while` limits and deferred iterables are outside that slice.
+The freshly Rust-built native executable exactly matches the layout checkpoint's
+535,024-byte image. Seven focused current native cases qualify across the initial
+batch and a snapshot rerun using `.var`/`.set`; the initial `:=` control exposed
+a separate unsupported native assignment form. These follow-ups have no new full
+native self-host run.
 Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.

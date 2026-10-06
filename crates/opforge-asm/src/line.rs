@@ -60,7 +60,7 @@ use registry::registry::{FamilyOperandSet, OperandSet, ResolvedPipeline};
 use registry::registry::{ModuleRegistry, RegistryError};
 use registry::syntax::RegisterChecker;
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -234,6 +234,9 @@ pub struct AsmLine<'a> {
     struct_table: StructTable,
     value_symbols: HashMap<String, AsmValue>,
     constant_definitions: Vec<asmline_constants::Definition>,
+    pub(crate) loop_observations: Vec<crate::engine::repetition_trace::LoopObservation>,
+    pub(crate) repetition_path: Vec<(u32, u32)>,
+    pub(crate) immutable_scalar_constants: HashSet<String>,
     pub(crate) scalar_value_symbols: HashMap<String, i64>,
     repeat_iteration_scopes: HashMap<String, Vec<String>>,
     active_struct: Option<ActiveStructDefinition>,
@@ -442,6 +445,9 @@ impl<'a> AsmLine<'a> {
             struct_table: StructTable::new(),
             value_symbols: HashMap::new(),
             constant_definitions: Vec::new(),
+            loop_observations: Vec::new(),
+            repetition_path: Vec::new(),
+            immutable_scalar_constants: HashSet::new(),
             scalar_value_symbols: HashMap::new(),
             repeat_iteration_scopes: HashMap::new(),
             active_struct: None,
@@ -2748,7 +2754,7 @@ impl<'a> AsmLine<'a> {
                 }
                 self.record_symbol_relocation(&full_name, expr);
                 self.sync_value_symbol(&full_name, &value);
-                if self.pass == 1 && op == AssignOp::Const {
+                if op == AssignOp::Const {
                     self.capture_constant(&full_name, expr);
                 }
                 if op == AssignOp::Const && self.expr_is_absolute_constant_symbol_expr(expr) {

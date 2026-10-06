@@ -7922,5 +7922,9 @@ mod compact_cli_records;
 #[path = "tests/native_layout_parity.rs"]
 mod native_layout_parity;
 
+#[cfg(test)]
+#[path = "tests/native_forward_count_parity.rs"]
+mod native_forward_count_parity;
+
 #[path = "tests/compact_cli_metadata.rs"]
 mod compact_cli_metadata;

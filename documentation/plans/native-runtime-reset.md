@@ -3003,14 +3003,83 @@ The last full self-host proof still qualifies the implementation before these ed
 Raw logs, retained executables and comparative measurements stay outside `target`
 under `/tmp/opforge-layout-*`; no stored references change.
 
-### Next parity decision
+### Immutable forward loop counts
 
-Review forward-count semantics: native accepts `.for target` followed by
-`target=2`; Rust reports pass-one/pass-two iteration change. Decide whether
-safe precomputed immutable constants should be accepted by both before changing
-either implementation. This is distinct from true pass instability.
+Rust now accepts forward scalar `.for`/`.bfor` counts proven by the executed
+immutable dependency graph. One checked sizing replay replaces provisional
+counts; subsequent sizing and emission require stable observations and complete
+traces. Dynamic nesting paths distinguish repeated occurrences. Validation lives
+in `repetition_trace.rs`, with indexed occurrence lookup rather than quadratic
+scans. Shared expression/constant ownership and all native/package contracts stay
+unchanged; no second source parser or speculative inactive-definition scan is added.
 
-Then choose shared statement/value support or package/VM-owned colon normalization
+Proof excludes PC/labels, mutable snapshots and active loop-variable dependencies.
+Iterator bindings are captured while live, so a same-named global constant cannot
+replace a source-order iterator value. Newly reached nested loops are permitted
+only in iterations actually added by an immutable count repair. Layout-driven
+activation in retained iterations, missing observations and unexpected zero-count
+observations reject. Scalar limits are checked before allocating iteration values.
+
+The original `loop_pass_instability_error.asm` now uses `target = $ + 2` to retain
+genuine instability coverage. The new `loop_forward_constant.asm` and its focused
+Hex/listing references demonstrate the accepted case. Constants must have executed
+in the initial traversal: a replay that activates a new constant declaration
+fails closed, even for a literal declaration. Forward `.while` limits and deferred
+iterables remain outside this slice. Absent counts retain Rust's existing zero-count
+behavior; this is not a claim of unresolved-count parity with native.
+
+The unchanged host control has 4,096 outer iterations, one inner iteration and
+8,192 emitted bytes (`fnv1a64:bd7c04d48e0045ab`). Baseline is `73b288a8`;
+serial warm-cache CLI samples use Rust 1.95.0, `aarch64-apple-darwin`, and
+the optimized debug-test profile on the same Mac: five final samples average
+0.227457183 seconds; ten baseline samples bracketing them average 0.213040171.
+The observed change is +0.014417013 seconds (+6.77%). This records the Rust cost
+of validation on a loop-heavy control, not a general assembly or native estimate.
+Builds and emulator execution are excluded from this comparison. Earlier samples
+overlapping compilation and intermediate candidates are not the final comparison.
+
+The freshly Rust-assembled compact executable exactly matches the prior native
+layout image: 535,024 bytes, SHA-256
+`4535ecff44f0f960db1b7064549511d37601bec1474d033d47ff46eb0ede8744`,
+FNV `7c762b034c1b99f9`. This change therefore adds no native executable bytes or
+native instructions; it has no new comparative native performance claim.
+
+Seven current focused cases qualify on FS-UAE/68020/10 MiB, with the unchanged
+release executable: six positive exact live Rust Bin comparisons and one fresh
+exit-20 contextual-count rejection with a diagnostic. Coverage includes direct
+forward counts with embedded m68020 and external prepared m6502 packages, a DAG,
+nested counts, an inactive definition and a mutable snapshot. Startup is excluded
+from the recorded START/DONE durations:
+
+| Case | Seconds | Result |
+| --- | ---: | --- |
+| Forward count, m68020 package | 1.269466 | Exact Bin |
+| Forward count, m6502 package | 0.505351 | Exact Bin |
+| Forward dependency graph | 1.263283 | Exact Bin |
+| Nested forward counts | 1.263843 | Exact Bin |
+| Inactive definition | 1.262279 | Exact Bin |
+| Mutable snapshot, `.var`/`.set` | 1.294560 | Exact Bin |
+| Contextual count | 1.263331 | Completed rejection |
+
+The initial batch qualified six cases and failed the snapshot case at its first
+`variable := 2` line with exit 20. The equivalent snapshot written with assignment
+operators remains a separate native parity gap. The snapshot comparison now uses
+supported `.var`/`.const`/`.set`
+forms and qualifies in a fresh focused rerun; the original failure is retained
+as a separate observation, not reclassified as success. Rust retains `:=`
+snapshot tests. Native diagnostic wording parity is not established by the
+negative case. No new full native self-host, A6000 timing, constrained-memory
+qualification or remote push accompanies this checkpoint.
+
+Focused qualification covers constant/dependency, repetition, reachability and
+engine checks, production Clippy, formatting and workflow/native engineering
+guards. Sol implementation and independent reviews cover replay provenance,
+retained-iteration activation and iterator shadowing. Detailed logs and timing
+samples remain outside `target` under `/tmp/opforge-forward-count-*`.
+
+### Next parity choice
+
+Choose shared statement/value support or package/VM-owned colon normalization
 from the verified remaining matrix. Keep CPU/family grammar in its owning package
 boundary; original CAS2 parity is still missing despite transformed numeric probes.
 The canonical frontend ownership gaps remain in the

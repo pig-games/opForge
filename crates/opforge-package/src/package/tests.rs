@@ -636,7 +636,7 @@ fn sample_expr_contracts() -> Vec<ExprContractDescriptor> {
 fn expr_parser_contract_for_test(owner: ScopedOwner) -> ExprParserContractDescriptor {
     ExprParserContractDescriptor {
         owner,
-        opcode_version: EXVM_OPCODE_VERSION_V1,
+        opcode_version: EXVM_OPCODE_VERSION,
         diagnostics: ExprParserDiagnosticMap {
             invalid_expression_program: DIAG_PARSER_INVALID_STATEMENT.to_string(),
         },
@@ -1662,7 +1662,7 @@ fn encode_decode_round_trip_preserves_expr_parser_contracts() {
     ));
     assert_eq!(
         decoded.expr_parser_contracts[0].opcode_version,
-        EXVM_OPCODE_VERSION_V1
+        EXVM_OPCODE_VERSION
     );
     assert_eq!(
         decoded.expr_parser_contracts[0]
@@ -1942,9 +1942,9 @@ fn decode_accepts_expr_contract_with_v2_opcode_version() {
 }
 
 #[test]
-fn decode_accepts_expr_parser_contract_with_v2_opcode_version() {
+fn decode_rejects_noncurrent_expr_parser_contract_version() {
     let mut contract = expr_parser_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    contract.opcode_version = EXVM_OPCODE_VERSION_V2;
+    contract.opcode_version = 2;
 
     let bytes = encode_container(&[
         (
@@ -1966,11 +1966,10 @@ fn decode_accepts_expr_parser_contract_with_v2_opcode_version() {
     ])
     .expect("container");
 
-    let decoded = decode_hierarchy_chunks(&bytes).expect("v2 EXVM contract should decode");
-    assert_eq!(decoded.expr_parser_contracts.len(), 1);
-    assert_eq!(
-        decoded.expr_parser_contracts[0].opcode_version,
-        EXVM_OPCODE_VERSION_V2
+    let error = decode_hierarchy_chunks(&bytes).expect_err("retired version2 must be rejected");
+    assert!(
+        error.to_string().contains("unsupported opcode_version: 2"),
+        "{error}"
     );
 }
 
@@ -2010,119 +2009,104 @@ fn decode_rejects_expr_contract_with_missing_diag_mapping() {
 }
 
 #[test]
-fn expr_parser_vm_opcode_from_u8_round_trip_and_unknown_rejection() {
-    assert_eq!(
-        ExvmOpcode::from_u8(ExvmOpcode::End as u8),
-        Some(ExvmOpcode::End)
-    );
-    assert_eq!(
-        ExvmOpcode::from_u8(ExvmOpcode::ParseExpression as u8),
-        Some(ExvmOpcode::ParseExpression)
-    );
-    assert_eq!(
-        ExvmOpcode::from_u8(ExvmOpcode::EmitDiag as u8),
-        Some(ExvmOpcode::EmitDiag)
-    );
-    assert_eq!(
-        ExvmOpcode::from_u8(ExvmOpcode::Fail as u8),
-        Some(ExvmOpcode::Fail)
-    );
-    assert_eq!(ExvmOpcode::from_u8(0x04), None);
+fn expr_parser_vm_current_opcode_from_u8_round_trip_and_unknown_rejection() {
+    let opcodes = [
+        (0x00, ExvmOpcode::End),
+        (0x01, ExvmOpcode::Jump),
+        (0x02, ExvmOpcode::JumpIfTrue),
+        (0x03, ExvmOpcode::Call),
+        (0x04, ExvmOpcode::Return),
+        (0x10, ExvmOpcode::PeekKind),
+        (0x11, ExvmOpcode::PeekOperator),
+        (0x20, ExvmOpcode::Advance),
+        (0x21, ExvmOpcode::ConsumeOperator),
+        (0x22, ExvmOpcode::ConsumeKind),
+        (0x32, ExvmOpcode::LoadTokenText),
+        (0x40, ExvmOpcode::BuildUnary),
+        (0x41, ExvmOpcode::BuildBinary),
+        (0x42, ExvmOpcode::BuildTernary),
+        (0x43, ExvmOpcode::BuildRange),
+        (0x60, ExvmOpcode::BuildIdentifier),
+        (0x61, ExvmOpcode::BuildNumber),
+        (0x62, ExvmOpcode::BuildCurrentAddress),
+        (0x63, ExvmOpcode::ParseGrouping),
+        (0x64, ExvmOpcode::ParseList),
+        (0x65, ExvmOpcode::ParseStructLiteralIfPresent),
+        (0x66, ExvmOpcode::ParsePostfixChain),
+        (0x67, ExvmOpcode::BuildString),
+        (0x68, ExvmOpcode::BuildPlaceholder),
+        (0x69, ExvmOpcode::BuildRegister),
+        (0x6A, ExvmOpcode::ParseCall),
+        (0x70, ExvmOpcode::EmitDiag),
+        (0x72, ExvmOpcode::Fail),
+    ];
+
+    for (byte, opcode) in opcodes {
+        assert_eq!(ExvmOpcode::from_u8(byte), Some(opcode));
+        assert_eq!(opcode as u8, byte);
+    }
     assert_eq!(ExvmOpcode::from_u8(0xFF), None);
 }
 
 #[test]
-fn expr_parser_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
-    let opcodes = [
-        (0x00, ExvmOpcodeV2::End),
-        (0x01, ExvmOpcodeV2::Jump),
-        (0x02, ExvmOpcodeV2::JumpIfTrue),
-        (0x03, ExvmOpcodeV2::Call),
-        (0x04, ExvmOpcodeV2::Return),
-        (0x10, ExvmOpcodeV2::PeekKind),
-        (0x11, ExvmOpcodeV2::PeekOperator),
-        (0x20, ExvmOpcodeV2::Advance),
-        (0x21, ExvmOpcodeV2::ConsumeOperator),
-        (0x22, ExvmOpcodeV2::ConsumeKind),
-        (0x32, ExvmOpcodeV2::LoadTokenText),
-        (0x40, ExvmOpcodeV2::BuildUnary),
-        (0x41, ExvmOpcodeV2::BuildBinary),
-        (0x42, ExvmOpcodeV2::BuildTernary),
-        (0x43, ExvmOpcodeV2::BuildRange),
-        (0x60, ExvmOpcodeV2::BuildIdentifier),
-        (0x61, ExvmOpcodeV2::BuildNumber),
-        (0x62, ExvmOpcodeV2::BuildCurrentAddress),
-        (0x63, ExvmOpcodeV2::ParseGrouping),
-        (0x64, ExvmOpcodeV2::ParseList),
-        (0x65, ExvmOpcodeV2::ParseStructLiteralIfPresent),
-        (0x66, ExvmOpcodeV2::ParsePostfixChain),
-        (0x70, ExvmOpcodeV2::EmitDiag),
-        (0x72, ExvmOpcodeV2::Fail),
-    ];
-
-    for (byte, opcode) in opcodes {
-        assert_eq!(ExvmOpcodeV2::from_u8(byte), Some(opcode));
-        assert_eq!(opcode as u8, byte);
-    }
-    assert_eq!(ExvmOpcodeV2::from_u8(0xFF), None);
-}
-
-#[test]
-fn expr_parser_vm_v2_operator_kind_from_u8_round_trip_and_unknown_rejection() {
+fn expr_parser_vm_current_operator_kind_from_u8_round_trip_and_unknown_rejection() {
     let kinds = [
-        (0x01, ExvmOperatorKindV2::Plus),
-        (0x02, ExvmOperatorKindV2::Minus),
-        (0x03, ExvmOperatorKindV2::Multiply),
-        (0x04, ExvmOperatorKindV2::Divide),
-        (0x05, ExvmOperatorKindV2::Mod),
-        (0x06, ExvmOperatorKindV2::Power),
-        (0x07, ExvmOperatorKindV2::BitNot),
-        (0x08, ExvmOperatorKindV2::LogicNot),
-        (0x09, ExvmOperatorKindV2::Lt),
-        (0x0A, ExvmOperatorKindV2::Gt),
-        (0x0B, ExvmOperatorKindV2::Shl),
-        (0x0C, ExvmOperatorKindV2::Shr),
-        (0x0D, ExvmOperatorKindV2::Eq),
-        (0x0E, ExvmOperatorKindV2::Ne),
-        (0x0F, ExvmOperatorKindV2::Ge),
-        (0x10, ExvmOperatorKindV2::Le),
-        (0x11, ExvmOperatorKindV2::BitAnd),
-        (0x12, ExvmOperatorKindV2::BitOr),
-        (0x13, ExvmOperatorKindV2::BitXor),
-        (0x14, ExvmOperatorKindV2::LogicAnd),
-        (0x15, ExvmOperatorKindV2::LogicOr),
-        (0x16, ExvmOperatorKindV2::LogicXor),
-        (0x17, ExvmOperatorKindV2::Range),
-        (0x18, ExvmOperatorKindV2::RangeInclusive),
+        (0x01, ExvmOperatorKind::Plus),
+        (0x02, ExvmOperatorKind::Minus),
+        (0x03, ExvmOperatorKind::Multiply),
+        (0x04, ExvmOperatorKind::Divide),
+        (0x05, ExvmOperatorKind::Mod),
+        (0x06, ExvmOperatorKind::Power),
+        (0x07, ExvmOperatorKind::BitNot),
+        (0x08, ExvmOperatorKind::LogicNot),
+        (0x09, ExvmOperatorKind::Lt),
+        (0x0A, ExvmOperatorKind::Gt),
+        (0x0B, ExvmOperatorKind::Shl),
+        (0x0C, ExvmOperatorKind::Shr),
+        (0x0D, ExvmOperatorKind::Eq),
+        (0x0E, ExvmOperatorKind::Ne),
+        (0x0F, ExvmOperatorKind::Ge),
+        (0x10, ExvmOperatorKind::Le),
+        (0x11, ExvmOperatorKind::BitAnd),
+        (0x12, ExvmOperatorKind::BitOr),
+        (0x13, ExvmOperatorKind::BitXor),
+        (0x14, ExvmOperatorKind::LogicAnd),
+        (0x15, ExvmOperatorKind::LogicOr),
+        (0x16, ExvmOperatorKind::LogicXor),
+        (0x17, ExvmOperatorKind::Range),
+        (0x18, ExvmOperatorKind::RangeInclusive),
     ];
 
     for (byte, kind) in kinds {
-        assert_eq!(ExvmOperatorKindV2::from_u8(byte), Some(kind));
+        assert_eq!(ExvmOperatorKind::from_u8(byte), Some(kind));
         assert_eq!(kind as u8, byte);
     }
-    assert_eq!(ExvmOperatorKindV2::from_u8(0x00), None);
-    assert_eq!(ExvmOperatorKindV2::from_u8(0xFF), None);
+    assert_eq!(ExvmOperatorKind::from_u8(0x00), None);
+    assert_eq!(ExvmOperatorKind::from_u8(0xFF), None);
 }
 
 #[test]
-fn expr_parser_vm_v2_token_kind_from_u8_round_trip_and_unknown_rejection() {
+fn expr_parser_vm_current_token_kind_from_u8_round_trip_and_unknown_rejection() {
     let kinds = [
-        (0x01, ExvmTokenKindV2::Number),
-        (0x02, ExvmTokenKindV2::Identifier),
-        (0x03, ExvmTokenKindV2::Dollar),
-        (0x04, ExvmTokenKindV2::OpenParen),
-        (0x05, ExvmTokenKindV2::CloseParen),
-        (0x06, ExvmTokenKindV2::Question),
-        (0x07, ExvmTokenKindV2::Colon),
-        (0x08, ExvmTokenKindV2::OpenBrace),
+        (0x01, ExvmTokenKind::Number),
+        (0x02, ExvmTokenKind::Identifier),
+        (0x03, ExvmTokenKind::Dollar),
+        (0x04, ExvmTokenKind::OpenParen),
+        (0x05, ExvmTokenKind::CloseParen),
+        (0x06, ExvmTokenKind::Question),
+        (0x07, ExvmTokenKind::Colon),
+        (0x08, ExvmTokenKind::OpenBrace),
+        (0x09, ExvmTokenKind::String),
+        (0x0A, ExvmTokenKind::Register),
+        (0x0B, ExvmTokenKind::Dot),
     ];
 
     for (byte, kind) in kinds {
-        assert_eq!(ExvmTokenKindV2::from_u8(byte), Some(kind));
+        assert_eq!(ExvmTokenKind::from_u8(byte), Some(kind));
         assert_eq!(kind as u8, byte);
     }
-    assert_eq!(ExvmTokenKindV2::from_u8(0x00), None);
-    assert_eq!(ExvmTokenKindV2::from_u8(0xFF), None);
+    assert_eq!(ExvmTokenKind::from_u8(0x00), None);
+    assert_eq!(ExvmTokenKind::from_u8(0xFF), None);
 }
 
 #[test]

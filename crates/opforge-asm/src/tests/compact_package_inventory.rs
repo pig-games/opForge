@@ -1,4 +1,4 @@
-//! Host-only BS28 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS30 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -33,10 +33,24 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS28")
+        || bytes.get(..4) != Some(b"BS30")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS28 header".into());
+        return Err("invalid BS30 header".into());
+    }
+    let expression_offset = number(bytes, 200, 4)?;
+    let expression_bytes = number(bytes, 204, 4)?;
+    if expression_offset < HEADER
+        || expression_offset % 2 != 0
+        || expression_bytes == 0
+        || expression_bytes > 65535
+        || expression_offset
+            .checked_add(expression_bytes)
+            .is_none_or(|end| end > number(bytes, 72, 4).unwrap_or(0))
+        || region(bytes, expression_offset, expression_bytes, 1)?
+            != vm::vm_opcore::expression_parser_program()
+    {
+        return Err("invalid scalar expression program".into());
     }
     let declaration_offset = number(bytes, 180, 4)?;
     let declaration_bytes = number(bytes, 184, 4)?;
@@ -45,9 +59,9 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
         || declaration_offset + declaration_bytes > number(bytes, 72, 4)?
         || number(bytes, 188, 2)? != package::PARSER_VM_MACRO_VERSION as usize
         || number(bytes, 190, 2)? != 0
-        || declaration.len() != 17
+        || declaration.len() != 23
         || declaration[..2] != [0x98, 3]
-        || declaration[11..] != [1, 2, 5, 34, 0x83, 0]
+        || declaration[11..] != [2, 2, 2, 5, 34, 3, 3, 5, 9, 34, 0x83, 0]
         || declaration[2..11].chunks_exact(3).any(|row| {
             !(1..=2).contains(&row[2])
                 || u16::from_be_bytes(row[..2].try_into().unwrap()) as usize
@@ -212,7 +226,7 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
             "intermediate_plans": reasons}));
     }
     Ok(
-        json!({"byte_size": bytes.len(), "runtime_byte_size": number(bytes,72,4)?,
+        json!({"expression_program_offset": expression_offset, "expression_program_bytes": expression_bytes, "byte_size": bytes.len(), "runtime_byte_size": number(bytes,72,4)?,
         "target_key": std::str::from_utf8(target).map_err(|_| "invalid target UTF-8")?,
         "dictionary_count": dictionary_count, "program_count": programs.len()/12,
         "table_program_count": package.table_programs.len(),
@@ -362,7 +376,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS28", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS30", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

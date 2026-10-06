@@ -47,6 +47,10 @@ line	.block
 	beq.w constant
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	beq.w constant
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
+	beq.w constant
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
+	beq.w constant
 	cmpi.b #5, 4(a0)
 	bne.w statement
 	moveq #5, d6
@@ -707,7 +711,17 @@ compile	.block
 	movem.l a3-a4, -(sp)
 	movea.l a6, a3
 	lea 256(a6), a4
+	; Ignored declarations retain checked compact syntax and references, but
+	; their RHS must never be evaluated, including during constant folding.
+	cmpi.b #1, 4(a5)
+	bhi.w ordinaryCompile
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 8(a5)
+	bne.w ordinaryCompile
+	jsr expression.compileUnfolded
+	bra.w compiled
+ordinaryCompile
 	jsr expression.compile
+compiled
 	move.l a3, d6
 	sub.l a6, d6
 	movem.l (sp)+, a3-a4

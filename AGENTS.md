@@ -26,6 +26,9 @@ historical documents do not activate work or grant authority.
   Version identifiers detect mismatches; they do not require legacy executors.
   Migrate affected package generation and Rust/native execution together, removing
   superseded program versions rather than adding compatibility paths.
+  Consolidate each VM's current capabilities into its own v1 contract. Native
+  executors assume that compiled contract: no VM version fields, parameters,
+  checks or dispatch. Keep package/container integrity and bounds validation.
 - Production behavior must not be selected by test or benchmark identity, fixture
   or output paths, self-host generation, or expected output. Do not weaken tests or substitute stale results for proof.
 - Preserve the approved native instrumentation and fresh-run parity safeguards.

@@ -103,6 +103,58 @@ fn constant_dependencies_forward_count_scope() {
 }
 
 #[test]
+fn constant_dependencies_count_subtraction_uses_enclosing_module() {
+    for directive in [".for", ".bfor"] {
+        assert_eq!(
+            bytes(&format!(
+                ".module table\nhigh = 5\nlow = 2\nroutine .block\n{directive} high-low-1\n.byte 7\n.endfor\n.bend\n.endmodule"
+            )),
+            [7, 7]
+        );
+    }
+}
+
+#[test]
+fn constant_dependencies_count_subtraction_keeps_forward_local_shadow() {
+    assert_eq!(
+        bytes(".module table\nhigh = 9\nlow = 2\nroutine .block\n.for high-low-1\n.byte 7\n.endfor\nhigh = 5\n.bend\n.endmodule"),
+        [7, 7]
+    );
+}
+
+#[test]
+fn constant_dependencies_count_subtraction_rejects_resolved_negative() {
+    for source in [
+        ".for -1\n.byte 7\n.endfor",
+        "high = 2\nlow = 5\n.for high-low-1\n.byte 7\n.endfor",
+        ".module table\nhigh = 2\nlow = 5\nroutine .block\n.for high-low-1\n.byte 7\n.endfor\n.bend\n.endmodule",
+    ] {
+        // Retain an ordinary statement for the processing-trace contract.
+        let source = if source.starts_with(".module table\n") {
+            source.replacen(".module table\n", ".module table\n.byte 1\n", 1)
+        } else {
+            format!(".byte 1\n{source}")
+        };
+        let lines: Vec<String> = source.lines().map(str::to_string).collect();
+        let mut assembler = Assembler::new();
+        if assembler.pass1(&lines).errors == 0 {
+            // Enclosing names are deliberately provisional during pass one.
+            let mut listing_bytes = Vec::new();
+            let mut listing = ListingWriter::new(&mut listing_bytes, false);
+            let _ = assembler.pass2(&lines, &mut listing).unwrap();
+        }
+        assert!(
+            assembler.diagnostics.iter().any(|diagnostic| diagnostic
+                .error
+                .message()
+                .contains("Expected non-negative value for .for count")),
+            "negative count accepted: {source}; diagnostics: {:?}",
+            assembler.diagnostics
+        );
+    }
+}
+
+#[test]
 fn constant_dependencies_forward_count_mutable_snapshot() {
     assert_eq!(bytes("variable := 2\nsaved = variable\nvariable := 4\n.for saved\n.byte 1\n.endfor\ntrigger = next+1\nnext = 1"), [1,1]);
 }

@@ -1,11 +1,13 @@
 # Native assembler completion plan
 
-Status: active. BS28 extends shared scalar declaration policy with numeric `:=`
-normalization. The [current full self-host checkpoint](#full-bs28-self-host-qualification)
+Status: active. BS30 retains the shared EXVM grammar and extends scalar declaration
+policy with `:?=`. Integration is still being qualified; `:?=` forward-initializer
+semantics remain an open decision. The [last qualified full self-host checkpoint](#full-bs28-self-host-qualification)
 has exact equality for all 535,092 Hunk bytes on 68020/74 MiB in
 1,122.755769250 seconds. No new physical
 A6000 run or complete peak-memory result is claimed. Current executables require
-BS28 packages; superseded contracts have no compatibility executor.
+BS30 packages; superseded contracts have no compatibility executor. The BS28
+result describes the earlier qualified implementation, not the current changes.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -20,6 +22,120 @@ govern execution; a future plan item alone does not authorize implementation.
 Provide the current Rust assembler language, all registered source CPU/dialect
 pipelines, and assembly CLI/output capabilities through the compact native path.
 Formatting, fix-it generation and other developer tools are deferred.
+
+## Active shared-language completion work
+
+Erik has selected the shared-language gaps as the next workstream. Close them
+through shared package/VM owners and the packed source path; retain the latest
+qualified self-host as a working reference. Each implemented capability needs a
+live Rust oracle and fresh native completion, including invalid-input controls.
+An unchanged representative control measures each production checkpoint's own
+time and image/storage impact. Rerun the complete shared corpus at a meaningful
+completion boundary; focused fixes do not silently update the breadth counts.
+
+The first investigation found that native `binary_expression.compile` owned
+handwritten numeric expression grammar. Its shared-EXVM replacement is now under
+qualification. The approved sequence is:
+
+1. **Shared expression compilation:** consolidate the current EXVM grammar and
+   execute it against packed numeric tokens. Builders consume bound IDs and decoded
+   literals into a bounded scratch arena with offset references, then lower to
+   the compact expression programs already consumed by native ExprVM. Package
+   validation supplies the grammar and budgets. The final VM contracts
+   combine current capabilities into one supported v1 per VM; native supports
+   only that current contract. Native executors have no version parameters,
+   selectors, legacy handlers or repeated version checks. Existing v1/v2 programs
+   are migration inputs, not compatibility obligations. Rust EXVM now uses the
+   consolidated grammar; the old handwritten VM parser and version dispatch are
+   removed. The old native text service still needs retirement or migration.
+   Fill missing shared grammar constructs, switch producers and consumers together,
+   and remove superseded programs/executors before claiming integration readiness.
+   Replace the superseded native precedence parser rather than retaining two
+   production grammars. First prove the existing scalar subset, folding,
+   diagnostics and self-build controls.
+2. **Compound values:** extend that backend with list/range descriptors and a
+   shared value owner, supporting declarations, aliases, `.len` and indexing.
+   Keep scalar signed64 storage/evaluation fast; compound symbol references use
+   explicit kinds and arena offsets, never pointers disguised as scalar values.
+   Dependency/provenance traversal must cover every scalar child.
+3. **Iterable unscoped loops:** PRVM owns the loop envelope and operand spans;
+   EXVM owns the iterable expression. Snapshot the iterable at opening, bind and
+   restore the loop variable, and preserve nested shadowing and Rust's value,
+   direction, overflow and iteration checks. Ordinary `.for` still rejects body
+   labels/declarations where Rust does.
+4. **Scoped loops:** `.bfor` needs distinct symbol identities per iteration, plus
+   the labeled form's address list and member lookup. Compare preparation-time
+   expansion/rebinding with contextual replay before choosing: replaying already
+   bound records unchanged would overwrite iteration symbols; expansion grows
+   retained records and memory. Qualify repeated labels and nested scopes.
+5. **Remaining shared gaps:** condition-based loops, struct-instance values,
+   remaining declaration/update operators, text/encoding and reserve directives,
+   labeled control statements, macro edges and shared layout/metadata behavior.
+   Use the unchanged opcore examples to select structurally related slices and
+   expose later blockers. Do not treat a first-stop fix as whole-file parity.
+
+Scalar `:?=` is an independent initial slice through the existing declaration
+PRVM. It must skip an existing symbol without changing readonly ownership or
+evaluating its RHS, preserve syntax/reference bookkeeping, and respect source
+order. Compound RHS support remains with the value work above.
+
+Forward-initializer replay is unresolved: current Rust can retain a pass-one zero
+placeholder or a later mutation, while native preparation resolves forward
+immutable constants first. Do not claim conditional-assignment parity until that
+language choice and the resulting implementation are qualified.
+The compiler-first sequence is approved; implementation and qualification are in progress. CPU-specific
+instruction gaps and promotion of the experimental CLI remain separate work.
+
+### Shared compiler cost checkpoint
+
+Erik selected overhead reduction before compound values. The unchanged
+`aligned-control` input (15,474 bytes, FNV `ac05445d958571b5`) completes with exact
+live Rust output on 68020/10 MiB, release telemetry disabled. Each timing below is
+fresh guest START-to-DONE observed by the host; these are relative emulator
+measurements, not hardware clock qualification. No concurrent builds or tests ran
+during the timing samples.
+
+The integrated `.word symbol+(3*2)` failure was stack exhaustion: the wrapper and
+shared compiler together exceeded the default Amiga Shell stack. Giving the same
+image an adequate stack proved the diagnosis. Production now uses one bounded,
+session-owned workspace for compilation and lowering, not large stack arenas or
+per-expression allocations. The original comma-separated folded-expression test,
+malformed-input/workspace controls and session switching all complete natively
+with exact live Rust results.
+
+| Change, in order | Two samples (seconds) | Mean | Separate effect | Storage effect |
+|---|---|---|---|---|
+| Shared compiler, adequate stack reference | 25.571 / 25.803 | 25.687 | Reference for stack repair | 538,084-byte image |
+| Session workspace, linear opcode dispatch | 25.921 / 25.691 | 25.806 | +0.46%; overlapping ranges, no clear timing effect | Image +176 bytes; reusable workspace 5,712 bytes |
+| Bounded relative opcode dispatch table | 25.360 / 25.500 | 25.430 | 1.46% faster than previous row | Image +28 bytes; workspace unchanged |
+| Cache validated token kind/width at current cursor | 25.309 / 25.058 | 25.183 | 0.97% faster than previous row | Image +48 bytes; workspace +8 bytes |
+
+Both cache samples are faster than both dispatch-only samples, but the small gain
+from two samples is provisional. The immutable packed input permits reuse; each
+compile request invalidates the cache, malformed tokens never populate it, and
+bounds checks remain. The two optimizations together reduce the repaired shared
+compiler control by 2.41%. Final image: 538,336 bytes, FNV `614c8d71228e52b1`;
+transient expression workspace: 5,720 bytes, released with preparation storage.
+
+A temporary old handwritten-compiler reference under the same surrounding code
+and package took 21.064 seconds in a clean sample. The final shared compiler is
+still approximately 19.6% slower on this workload. Its old reference contains
+temporary entry-point scaffolding, so image size is not a clean compiler-only
+comparison. The measured modest gains do not close that remaining overhead.
+Do not add compound-value scope to this performance checkpoint.
+The next bounded overhead candidate is retaining the validated program base and
+length in unused saved registers for bytecode fetch, preserving every PC bounds
+check. CALL also scans active frames to enforce per-target recursion; measure its
+cost before replacing that safety mechanism with additional scratch structures.
+
+Focused Rust expression tests (54 passing, two native tests ignored in the host
+batch), constant-dependency tests (24 passing) and repetition tests (20 passing)
+pass. Production-library Clippy, Rust formatting and workflow guards pass.
+Workspace all-target Clippy still fails outside the new compiler tests. The earlier
+broad assembler run had 2,114 passing, 54 failing and 525 ignored tests; no clean
+HEAD comparison has established that every failure predates this work. This is a
+checkpoint, not broad integration qualification. No current BS30 full self-host
+or A6000 run has been completed; the full result remains the BS28 checkpoint above.
 
 The execution-platform floor remains a 68020 running AmigaOS 3.1 or newer.
 The product goal is full self-assembly within 15 minutes, preferably much faster,

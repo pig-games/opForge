@@ -13,7 +13,7 @@ use package::{
     ModeSelectorDescriptor, OpcpuCodecError, SelectorProgramDescriptor, TokenCaseRule,
     TokenizerVmDiagnosticMap, TokenizerVmLimits, TokenizerVmOpcode, TokenizerVmStreamMode,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
-    EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION_V1,
+    EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION,
     OPERAND_RECORD_VM_VERSION_V1, OPERAND_RECORD_VM_VERSION_V2, OPERAND_RECORD_VM_VERSION_V3,
     PARSER_AST_SCHEMA_ID_LINE_V1, PARSER_GRAMMAR_ID_LINE_V1,
     PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, SEMANTIC_VM_OPCODE_VERSION_V1,
@@ -1813,9 +1813,7 @@ impl RuntimeModelCore {
             contract.diagnostics.invalid_expression_program.as_str()
         };
 
-        if contract.opcode_version != EXVM_OPCODE_VERSION_V1
-            && contract.opcode_version != package::EXVM_OPCODE_VERSION_V2
-        {
+        if contract.opcode_version != EXVM_OPCODE_VERSION {
             return Err(RuntimeBridgeError::Resolve(format!(
                 "{}: unsupported expression parser contract opcode version {}",
                 error_code, contract.opcode_version
@@ -1856,9 +1854,7 @@ impl RuntimeModelCore {
                 ),
             ));
         };
-        if contract.opcode_version != EXVM_OPCODE_VERSION_V1
-            && contract.opcode_version != package::EXVM_OPCODE_VERSION_V2
-        {
+        if contract.opcode_version != EXVM_OPCODE_VERSION {
             return Err(RuntimeBridgeError::Diagnostic(
                 RuntimeBridgeDiagnostic::new(
                     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH,
@@ -2666,9 +2662,11 @@ mod numeric_vm_tests {
     fn composed_names_are_explicit_recipes_and_policy_selected() {
         use crate::portable_contract::PortableComposedName;
         let model = RuntimeModelCore::from_registry(&ModuleRegistry::new()).unwrap();
-        let mut policy = RuntimeTokenPolicy::default();
-        policy.identifier_start_class = (1 << 0) | (1 << 2);
-        policy.identifier_continue_class = (1 << 6) - 1;
+        let policy = RuntimeTokenPolicy {
+            identifier_start_class: (1 << 0) | (1 << 2),
+            identifier_continue_class: (1 << 6) - 1,
+            ..RuntimeTokenPolicy::default()
+        };
         let mut program = RuntimeTokenizerVmProgram {
             opcode_version: TOKENIZER_VM_OPCODE_VERSION_V1,
             start_state: 0,

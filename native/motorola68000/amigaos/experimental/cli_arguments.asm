@@ -36,7 +36,7 @@ Input	.res PATH_BYTES
 Output	.res PATH_BYTES
 OutputBase	.res PATH_BYTES  ; Rust-compatible basename of original input
 Cpu	.res PATH_BYTES
-RuntimePackage	.res PATH_BYTES  ; BS28, never a Rust .opasm package
+RuntimePackage	.res PATH_BYTES  ; BS30, never a Rust .opasm package
 Dialect	.res PATH_BYTES
 PackageRoot	.res PATH_BYTES
 ModulePaths	.res MODULE_LIMIT*PATH_BYTES

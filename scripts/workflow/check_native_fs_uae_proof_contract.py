@@ -100,7 +100,8 @@ def validate(root: Path = ROOT) -> list[str]:
             "OpforgeNativeCliMosFixtureCase",
         ):
             for block in struct_initializers(source, case_type):
-                if re.search(r"\bname\s*(?=:|,)", block) is None or "proof:" not in block:
+                if any(re.search(rf"\b{field}\s*(?=:|,)", block) is None
+                       for field in ("name", "proof")):
                     errors.append(
                         f"{path.relative_to(root)}: every {case_type} FS-UAE case must declare its name and mandatory proof mode"
                     )

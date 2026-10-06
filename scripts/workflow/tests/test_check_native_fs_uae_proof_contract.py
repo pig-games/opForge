@@ -47,6 +47,24 @@ class NativeFsUaeProofContractTests(unittest.TestCase):
                 sum("mandatory proof mode" in error for error in errors), 2
             )
 
+    def test_case_fields_accept_rust_shorthand_but_remain_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runner = root / RUNNER
+            runner.parent.mkdir(parents=True)
+            runner.write_text((ROOT / RUNNER).read_text(encoding="utf-8"))
+            case = root / "crates/opforge-asm/src/tests/case.rs"
+            case.parent.mkdir(parents=True)
+            for fields in ('name: "case", proof: mode,', 'name, proof,'):
+                case.write_text(
+                    f"// poisoned.into_inner()\nOpforgeNativeCliParityCase {{ {fields} }}\n"
+                )
+                self.assertEqual(validate(root), [])
+            case.write_text(
+                '// poisoned.into_inner()\nOpforgeNativeCliParityCase { name, }\n'
+            )
+            self.assertTrue(any("mandatory proof mode" in error for error in validate(root)))
+
 
 if __name__ == "__main__":
     unittest.main()

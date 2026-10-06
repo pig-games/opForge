@@ -1,12 +1,19 @@
 # Compact frontend: VM boundary correction
 
-Status: BS28 adds package-owned numeric `:=` normalization to shared declarations.
+Status: BS30 shared EXVM compilation is being integrated and qualified. Rust has
+one consolidated EXVM v1 grammar/executor; native preparation executes it over
+bound numeric tokens and lowers a transient offset-based tree to ExprVM programs.
+Native EXVM has no version argument, field, check or dispatch. Consolidation of
+other VM contracts and retirement of the old native text service remain open.
+Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
+still unresolved. The last qualified BS28 implementation adds numeric `:=`
+normalization to shared declarations.
 It retains three numeric operands, wrapped call-register children,
 register/immediate pairs and register triples. Same-source PACK/UNPK, LINK and
-CAS checks and transformed CAS2 execution probes pass. The current full
+CAS checks and transformed CAS2 execution probes pass. The last qualified full
 embedded BS28 compact self-host has exact whole-Hunk Rust/native equality.
 This qualifies that implementation and
-case, not whole-language or CPU-family parity. The [current slice](native-runtime-reset.md#mutable-assignment-operators-bs28)
+case, not whole-language or CPU-family parity. The [active work](native-runtime-reset.md#active-shared-language-completion-work)
 records focused coverage, costs and remaining boundaries.
 
 ## Current breadth parity checkpoint
@@ -69,7 +76,7 @@ claimed.
 
 Compared with that BS27 full baseline, Hunk and linked reservation both grow
 128 bytes: 60 bytes for the intervening layout repairs and 68 for BS28 assignment
-support, including its four package bytes. Only latest BS28 packages are accepted;
+support, including its four package bytes. At that checkpoint only BS28 packages were accepted;
 older bundles are baseline evidence. Raw CAS2 colon normalization, other path/
 call-child forms, unused extra call-argument preparation and localized
 import-alias/local-struct shadowing remain open.
@@ -99,9 +106,11 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The script validates the current BS28 package header, mapped source preamble and
+The current script validates BS30 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
-before execution. Filename components must fit the 30-byte classic limit.
+before execution. Filename components must fit the 30-byte classic limit. The
+retained BS28 bundle must be regenerated and qualified before use with the
+current validator.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
@@ -113,7 +122,7 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS28 before selecting it in the current hardware
+instrumented configuration as BS30 before selecting it in the current hardware
 runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
@@ -165,9 +174,17 @@ same spelling a second time. Generated calls re-tokenize VM-bound argument
 fragments. The remaining decoded-string body-token fallback is called out as an
 unfinished boundary below.
 
-The compact capsule embeds TKVM and macro descriptor programs; it does not
-embed an EXVM expression-parser program. Existing canonical expression
-bytecode and shared ExprVM execution do not supply that missing parser program.
+The compact capsule embeds TKVM, macro descriptor programs and the current shared
+EXVM expression-parser program. The native adapter builds bounded scalar nodes
+from numeric IDs and decoded literals, then lowers them to the compact evaluator
+format. Compound values and dotted calls remain backend gaps. Version identity
+belongs to producer tooling; native EXVM assumes its compiled contract and checks
+program, token and arena bounds without selecting a version.
+The active frontend session owns one reusable expression workspace. `begin` and
+`activate` install its grammar and scratch; `finish` invalidates that configuration.
+Compilation and lowering reuse it sequentially, with no per-expression allocation
+or large grammar workspace on the Amiga Shell stack. Persisted nodes remain offsets;
+workspace pointers belong only to the transient calling interface.
 The macro-only initial PRVM plan runs after binding. A separate shared four-byte
 PRVM prefix policy now runs before binding: BeginStatement,
 ParseOptionalLeadingLabel, FinishLine, End. The VM owns column-one label and
@@ -175,7 +192,7 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS28 is the current compact package format; the producer writes `BS28` and the
+BS30 is the current compact package format; the producer writes `BS30` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Candidate rows are 36 bytes: offsets
 0–31 retain their previous fields, byte 32 carries the third-operand form nibble,
@@ -203,7 +220,7 @@ and encoding; native code only validates the structural wrapper.
 Kind 26 traverses package-owned numeric expression paths. Its Class word is
 path byte length (4–32, a multiple of four), Literal is a package-base-relative
 path offset and Reserved is zero. The standard value-program field remains
-available. Deduplicated path programs occupy the arena between the 200-byte
+available. Deduplicated path programs occupy the arena between the 208-byte
 header and candidate rows; projection descriptor arrays stay contiguous.
 Each step is `opcode:u8, argument:u8, parameter:u16` in big-endian order:
 indirect/bracket unwrap (1/2), tuple child 0–2 (3), register/class (4), qualified
@@ -236,7 +253,7 @@ already-proven complete non-tuple root disproves those rows; unknown structure
 and contradictory predicates remain closed. The represented nested full-extension paths are executable; other path
 operations, terminals and call-child forms remain explicit unsupported boundaries. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
-or CPU-specific native parsing. Its header is 200 bytes, with
+or CPU-specific native parsing. Its header is 208 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its
@@ -246,18 +263,19 @@ offset/count at 160/164 select eight-byte rows derived from canonical selector
 projections. Head-policy offset/length are at 168/172, PRVM version at 176 and
 a zero reserved word at 178. Declaration-plan offset/length are at 180/184, its
 PRVM version at 188 and a zero reserved word at 190. Numeric state-plan
-offset/length are at 192/196; the final word of each 32-byte candidate row is a
+offset/length are at 192/196. Expression-program offset/length are at 200/204,
+with no EXVM version field. The final word of each 32-byte candidate row is a
 one-based state guard, zero when unguarded. Dictionary role bit 2 is reserved
 for state-argument spellings and excluded from ordinary name lookup. These
 policies and the state plan stay inside the retained RuntimeBytes prefix.
 Shared PRVM entry 9 validates the labelled
 scalar declaration envelope using the package-supplied `.const`/`.var`/`.set`
 identity-to-role table and the numeric colon/equal operator policy, returning
-operand spans plus immutable/mutable ownership. The retained program is 17 bytes;
+operand spans plus immutable/mutable/conditional ownership. The retained program is 23 bytes;
 `:=`, `.var` and `.set` share the mutable role. Operator matching precedes the
 optional label colon and consumes the complete packed record, independently of
-the two-token physical-head hint. `:?=` and compound assignment execution remain
-open native parity gaps. A generic adapter lowers the record after template
+the two-token physical-head hint. Scalar `:?=` is under qualification and has an
+unresolved forward-initializer semantic choice; compound assignment remains open. A generic adapter lowers the record after template
 expansion and before scope/conditional processing; configuration capture lowers
 its private writer record before import-parameter evaluation. Discovery selects
 declaration roles through package identity before that materialization; it does
@@ -356,7 +374,15 @@ These statements describe the implemented subset. They do not imply complete ass
 - Dotted call preparation compiles extra argument leaves that canonical call-register projections ignore. Unused nested calls, long strings or unresolved names can reject. BS24 covers selected register arguments and supported extra scalar/register leaves, not general call-expression parity.
 
 - `binary_templates.rewriteCallText` still consumes decoded-string bytes in the residual body-token fallback. Replace this last caller with explicit VM-selected recipes before claiming complete string-boundary migration; keep decoded-string provenance for diagnostics and generated spelling.
-- `binary_expression.compile` still implements precedence and associativity in native code before invoking shared ExprVM. Move covered expression compilation behind package/EXVM ownership. Ordinary Rust expression handling also still uses core token spelling instead of portable numeric metadata. The expression-range and operand-wrapper choices in preparation need a PRVM/package audit as this boundary moves.
+- `binary_expression.compile` now runs the shared EXVM program, replacing its
+  handwritten precedence parser. Fresh native component, folded-statement and
+  session-lifecycle comparisons pass; unchanged-control timing is recorded in the
+  [active plan](native-runtime-reset.md#shared-compiler-cost-checkpoint). Current
+  full self-host and broad integration qualification remain outstanding.
+  Ordinary Rust expression handling still uses core token spelling instead of
+  portable numeric metadata. Expression-range and operand-wrapper choices in
+  preparation need a PRVM/package audit. Other native VM contracts still carry
+  version fields/checks pending consolidation; their presence is a migration gap.
 - Iterable `.for` and `.bfor` remain unsupported; labels inside an active unscoped loop reject. Counted packed-loop execution is supported and has focused native/Rust comparison. These limits do not imply that general loop execution is absent.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.

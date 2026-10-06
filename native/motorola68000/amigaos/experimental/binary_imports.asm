@@ -141,6 +141,8 @@ captureScalar	.block
 	bhi.w constantOk
 	cmpi.b #34, 8(a0)
 	beq.w scalarValue
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
+	beq.w scalarValue
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a0)
 	bne.w constantOk
 scalarValue

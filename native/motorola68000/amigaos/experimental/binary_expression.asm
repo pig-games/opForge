@@ -4,11 +4,18 @@
 	.cpu 68020
 	.use exprvm.amigaos.runtime as runtime
 	.use opasm.amigaos.binary_fold as folder
+	.use experimental.amigaos.binary_exvm as compiler
+	.use experimental.amigaos.binary_exvm_lower as lowering
 	.include "telemetry_macros.i"
 	.include "memory_telemetry.i"
 	.pub
 COMPILED_TAG = $81
-MAX_DEPTH = 16
+MAX_DEPTH = compiler.MAX_DEPTH
+ARENA_BYTES = lowering.NODE_LIMIT*compiler.NODE_BYTES
+ARENA = compiler.REQUEST_BYTES
+COMPILER_WORK = ARENA+ARENA_BYTES
+WORKSPACE_BYTES = COMPILER_WORK+compiler.SCRATCH_BYTES
+STEP_BUDGET = 65536
 STATUS_OK = 0
 STATUS_MALFORMED = 1
 STATUS_OUTPUT = 2
@@ -22,48 +29,125 @@ High	.long ?
 	.endstruct
 FRAME_BYTES = Frame.High+4
 	.section code, kind=code
+	.pub
+; Install validated package grammar and session-owned transient workspace.
+; A0/D0=program/bytes, A1/D1=workspace/bytes. D0/CCR=0; others preserved.
+; Clearing all inputs invalidates the session; no pointers outlive its owner.
+configure	.block
+	move.l a0, Program
+	move.l d0, ProgramBytes
+	move.l a1, Workspace
+	move.l d1, WorkspaceBytes
+	moveq #0, d0
+	rts
+	.bend  ; configure
+
 ; A0=input tokens, A1=bounded end, A3=output, A4=bounded output end.
 ; Returns D0/CCR=status, A0=first delimiter/end, A3=after compiled wrapper.
 ; Preserves D1-D7/A1-A2/A4-A6. Failed output is uncommitted scratch.
 ; Wrapper: $81,u8 payload length, compact runtime expression (LE payloads).
-; Canonical v2 scratch is checked/folded before lowering; only compact bytes persist.
-; Decoded string leaves are scalar only at one or two bytes; two bytes pack
-; big-endian, independent of target output endianness. No source text is read.
+; Installed workspace is transient and exclusive to the active session.
+; Shared EXVM owns grammar, the offset arena is transient, and only compact
+; evaluator bytes persist. Compiler/lowerer enforce independent syntax, arena,
+; program-step, output and evaluator-stack bounds. No source text is read.
 compile	.block
+	moveq #0, d0
+	bra.w compileMode
+	.bend  ; compile
+
+; Check the same syntax and lower operators, without constant evaluation.
+compileUnfolded	.block
+	moveq #1, d0
+	bra.w compileMode
+	.bend  ; compileUnfolded
+
+	.priv
+compileMode	.block
 	movem.l d1-d7/a1-a2/a4-a6, -(sp)
+	movea.l Workspace, a2
+	move.l a2, d1
+	beq.w unavailable
+	btst #0, d1
+	bne.w unavailable
+	move.l WorkspaceBytes, d1
+	cmpi.l #WORKSPACE_BYTES, d1
+	blo.w unavailable
+	add.l a2, d1
+	bcs.w unavailable
+	move.l d0, d4
+	movea.l a0, a5
+	movea.l a3, a6
+	clr.l compiler.Request.Consumed(a2)
 	move.l a4, d0
 	sub.l a3, d0
 	bcs.w output
 	cmpi.l #3, d0
 	blo.w output
-	move.b #COMPILED_TAG, (a3)+
-	movea.l a3, a5
-	clr.b (a3)+
-	moveq #0, d6
-	moveq #0, d7
-	bsr.w bitOr
+	move.l a1, d1
+	sub.l a0, d1
+	bcs.w malformed
+	move.l a0, compiler.Request.Tokens(a2)
+	move.l d1, compiler.Request.TokenBytes(a2)
+	move.l Program, compiler.Request.Program(a2)
+	move.l ProgramBytes, compiler.Request.ProgramBytes(a2)
+	lea ARENA(a2), a0
+	move.l a0, compiler.Request.Arena(a2)
+	move.l #ARENA_BYTES, compiler.Request.ArenaBytes(a2)
+	move.l #STEP_BUDGET, compiler.Request.StepBudget(a2)
+	lea COMPILER_WORK(a2), a0
+	move.l a0, compiler.Request.Scratch(a2)
+	move.l #compiler.SCRATCH_BYTES, compiler.Request.ScratchBytes(a2)
+	movea.l a2, a0
+	jsr compiler.compile
 	tst.l d0
-	bne.w done
-	cmpi.w #1, d7
-	bne.w malformed
-	moveq #runtime.EXPRVM_V2_OPCODE_END, d0
-	bsr.w emit
-	bne.w done
-	move.l a3, d1
-	sub.l a5, d1
-	subq.l #1, d1
-	cmpi.l #255, d1
-	bhi.w output
-	move.l a0, -(sp)
-	lea 1(a5), a0
-	move.l d1, d0
+	beq.w lower
+	cmpi.l #compiler.STATUS_DEPTH, d0
+	beq.w depth
+	cmpi.l #compiler.STATUS_STEPS, d0
+	beq.w depth
+	bra.w malformed
+lower
+	; The canonical payload must fit the existing one-byte wrapper before
+	; folding. Limiting scratch output preserves the previous compiler bound.
+	move.l a6, d0
+	addi.l #257, d0
+	bcs.w output
+	cmp.l a4, d0
+	bhi.w bounded
+	movea.l d0, a4
+bounded
+	lea 2(a6), a3
+	movea.l compiler.Request.Arena(a2), a0
+	move.l compiler.Request.Used(a2), d0
+	move.l compiler.Request.Root(a2), d1
+	lea COMPILER_WORK(a2), a1
+	move.l #compiler.SCRATCH_BYTES, d2
+	jsr lowering.lower
+	tst.l d0
+	beq.w prepare
+	cmpi.l #lowering.STATUS_OUTPUT, d0
+	beq.w output
+	cmpi.l #lowering.STATUS_DEPTH, d0
+	beq.w depth
+	bra.w malformed
+prepare
+	move.l a3, d0
+	sub.l a6, d0
+	subq.l #2, d0
+	lea 2(a6), a0
+	tst.l d4
+	beq.w folded
+	jsr folder.prepareUnfolded
+	bra.w prepared
+folded
 	jsr folder.prepare
-	movea.l (sp)+, a0
+prepared
 	tst.l d0
 	bne.w malformed
-	lea 1(a5), a3
+	move.b #COMPILED_TAG, (a6)
+	move.b d1, 1(a6)
+	lea 2(a6), a3
 	adda.l d1, a3
-	move.b d1, (a5)
 	.MEMORY_WORK #0, #1
 	.MEMORY_WORK #2, d1
 	moveq #STATUS_OK, d0
@@ -71,13 +155,22 @@ compile	.block
 output
 	moveq #STATUS_OUTPUT, d0
 	bra.w done
+depth
+	moveq #STATUS_DEPTH, d0
+	bra.w done
 malformed
 	moveq #STATUS_MALFORMED, d0
 done
+	movea.l a5, a0
+	adda.l compiler.Request.Consumed(a2), a0
+	bra.w restore
+unavailable
+	moveq #STATUS_MALFORMED, d0
+restore
 	movem.l (sp)+, d1-d7/a1-a2/a4-a6
 	tst.l d0
 	rts
-	.bend  ; compile
+	.bend  ; compileMode
 
 	.priv
 ; Generate both entry points from one body. The ordinary evaluator retains
@@ -142,373 +235,15 @@ evaluateWithSymbols	.block
 	.EVALUATE d3/d5-d7/a1-a6
 	.bend  ; evaluateWithSymbols
 
-	.priv
-
-; Compiler helpers share bounded cursors A0/A1 and A3/A4. D6=syntax nesting,
-; D7=postfix stack depth; D0-D3 scratch. An operator is saved across recursion.
-; Canonical precedence, lowest first: OR, XOR, AND, shifts, sum, product,
-; power, unary. Power associates right; product and the lower levels left.
-; The three single-operator levels share one left-associative parser template.
-BIT_LEVEL	.macro tighter, token, operator
-	bsr.w .tighter
-	tst.l d0
-	bne.w done
-loop
-	cmpa.l a1, a0
-	bhs.w ok
-	cmpi.b #.token, (a0)
-	bne.w ok
-	addq.l #1, a0
-	bsr.w .tighter
-	tst.l d0
-	bne.w done
-	moveq #.operator, d1
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
-	bsr.w pair
-	bne.w done
-	subq.w #1, d7
-	bra.w loop
-ok
-	moveq #STATUS_OK, d0
-done
-	rts
-	.endmacro
-
-bitOr	.block
-	.BIT_LEVEL bitXor, 29, runtime.EXPRVM_BINARY_BIT_OR
-	.bend  ; bitOr
-
-bitXor	.block
-	.BIT_LEVEL bitAnd, 30, runtime.EXPRVM_BINARY_BIT_XOR
-	.bend  ; bitXor
-
-bitAnd	.block
-	.BIT_LEVEL shift, 28, runtime.EXPRVM_BINARY_BIT_AND
-	.bend  ; bitAnd
-
-shift	.block
-	bsr.w sum
-	tst.l d0
-	bne.w done
-loop
-	cmpa.l a1, a0
-	bhs.w ok
-	moveq #runtime.EXPRVM_BINARY_SHIFT_LEFT, d3
-	cmpi.b #24, (a0)
-	beq.w operator
-	moveq #runtime.EXPRVM_BINARY_SHIFT_RIGHT, d3
-	cmpi.b #25, (a0)
-	bne.w ok
-operator
-	addq.l #1, a0
-	move.l d3, -(sp)
-	bsr.w sum
-	move.l (sp)+, d1
-	tst.l d0
-	bne.w done
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
-	bsr.w pair
-	bne.w done
-	subq.w #1, d7
-	bra.w loop
-ok
-	moveq #STATUS_OK, d0
-done
-	rts
-	.bend  ; shift
-
-sum	.block
-	bsr.w product
-	tst.l d0
-	bne.w done
-loop
-	cmpa.l a1, a0
-	bhs.w ok
-	moveq #runtime.EXPRVM_BINARY_ADD, d3
-	cmpi.b #18, (a0)
-	beq.w operator
-	moveq #runtime.EXPRVM_BINARY_SUBTRACT, d3
-	cmpi.b #19, (a0)
-	bne.w ok
-operator
-	addq.l #1, a0
-	move.l d3, -(sp)
-	bsr.w product
-	move.l (sp)+, d1
-	tst.l d0
-	bne.w done
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
-	bsr.w pair
-	bne.w done
-	subq.w #1, d7
-	bra.w loop
-ok
-	moveq #STATUS_OK, d0
-done
-	rts
-	.bend  ; sum
-
-product	.block
-	bsr.w power
-	tst.l d0
-	bne.w done
-loop
-	cmpa.l a1, a0
-	bhs.w ok
-	moveq #runtime.EXPRVM_BINARY_MULTIPLY, d3
-	cmpi.b #20, (a0)
-	beq.w operator
-	moveq #runtime.EXPRVM_BINARY_DIVIDE, d3
-	cmpi.b #22, (a0)
-	beq.w operator
-	moveq #runtime.EXPRVM_BINARY_MOD, d3
-	cmpi.b #23, (a0)
-	bne.w ok
-operator
-	addq.l #1, a0
-	move.l d3, -(sp)
-	bsr.w power
-	move.l (sp)+, d1
-	tst.l d0
-	bne.w done
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
-	bsr.w pair
-	bne.w done
-	subq.w #1, d7
-	bra.w loop
-ok
-	moveq #STATUS_OK, d0
-done
-	rts
-	.bend  ; product
-
-power	.block
-	bsr.w unary
-	tst.l d0
-	bne.w done
-	cmpa.l a1, a0
-	bhs.w ok
-	cmpi.b #21, (a0)
-	bne.w ok
-	addq.l #1, a0
-	addq.w #1, d6
-	cmpi.w #MAX_DEPTH, d6
-	bhi.w depth
-	bsr.w power
-	subq.w #1, d6
-	tst.l d0
-	bne.w done
-	moveq #runtime.EXPRVM_BINARY_POWER, d1
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
-	bsr.w pair
-	bne.w done
-	subq.w #1, d7
-ok
-	moveq #STATUS_OK, d0
-done
-	rts
-depth
-	subq.w #1, d6
-	moveq #STATUS_DEPTH, d0
-	rts
-	.bend  ; power
-
-unary	.block
-	cmpa.l a1, a0
-	bhs.w malformed
-	moveq #0, d3
-	move.b (a0), d3
-	cmpi.b #18, d3
-	beq.w signed
-	cmpi.b #19, d3
-	beq.w signed
-	cmpi.b #26, d3
-	bne.w primary
-signed
-	addq.l #1, a0
-	addq.w #1, d6
-	cmpi.w #MAX_DEPTH, d6
-	bhi.w depth
-	move.l d3, -(sp)
-	bsr.w unary
-	move.l (sp)+, d3
-	subq.w #1, d6
-	tst.l d0
-	bne.w done
-	cmpi.b #18, d3
-	beq.w ok
-	moveq #runtime.EXPRVM_UNARY_MINUS, d1
-	cmpi.b #19, d3
-	beq.w apply
-	moveq #runtime.EXPRVM_UNARY_BIT_NOT, d1
-apply
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d0
-	bra.w pair
-ok
-	moveq #STATUS_OK, d0
-done
-	rts
-depth
-	subq.w #1, d6
-	moveq #STATUS_DEPTH, d0
-	rts
-malformed
-	moveq #STATUS_MALFORMED, d0
-	rts
-	.bend  ; unary
-
-primary	.block
-	cmpa.l a1, a0
-	bhs.w malformed
-	moveq #0, d3
-	move.b (a0)+, d3
-	cmpi.b #2, d3
-	beq.w literal
-	cmpi.b #3, d3
-	beq.w stringLiteral
-	cmpi.b #1, d3
-	bls.w symbol
-	cmpi.b #6, d3
-	beq.w current
-	cmpi.b #14, d3
-	bne.w malformed
-	addq.w #1, d6
-	cmpi.w #MAX_DEPTH, d6
-	bhi.w depth
-	bsr.w bitOr
-	subq.w #1, d6
-	tst.l d0
-	bne.w done
-	cmpa.l a1, a0
-	bhs.w malformed
-	cmpi.b #15, (a0)+
-	bne.w malformed
-	moveq #STATUS_OK, d0
-done
-	rts
-current
-	moveq #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d0
-	bsr.w emit
-	bne.w done
-	bra.w push
-literal
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #4, d0
-	blo.w malformed
-	move.l a4, d0
-	sub.l a3, d0
-	cmpi.l #9, d0
-	blo.w output
-	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, (a3)+
-	; Raw literals are BE; ExprVM requires LE low 32 bits and zero high 32 bits.
-	move.l (a0)+, d2
-	ror.w #8, d2
-	swap d2
-	ror.w #8, d2
-	move.l d2, (a3)+
-	clr.l (a3)+
-	bra.w push
-stringLiteral
-	; Shared scalar strings contain one byte or a big-endian packed word.
-	; TKVM owns decoding; longer strings remain valid only as data operands.
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #2, d0
-	blo.w malformed
-	moveq #0, d1
-	move.b (a0), d1
-	beq.w malformed
-	cmpi.w #2, d1
-	bhi.w malformed
-	move.l d1, d2
-	addq.l #1, d2
-	cmp.l d2, d0
-	blo.w malformed
-	move.l a4, d0
-	sub.l a3, d0
-	cmpi.l #9, d0
-	blo.w output
-	moveq #0, d2
-	move.b 1(a0), d2
-	cmpi.w #1, d1
-	beq.w stringValue
-	lsl.w #8, d2
-	move.b 2(a0), d2
-stringValue
-	adda.w d1, a0
-	addq.l #1, a0
-	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, (a3)+
-	ror.w #8, d2
-	move.w d2, (a3)+
-	clr.l (a3)+
-	clr.w (a3)+
-	bra.w push
-symbol
-	move.l a1, d0
-	sub.l a0, d0
-	cmpi.l #3, d0
-	blo.w malformed
-	tst.b 2(a0)
-	bne.w malformed
-	move.l a4, d0
-	sub.l a3, d0
-	cmpi.l #3, d0
-	blo.w output
-	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, (a3)+
-	move.w (a0), d2
-	ror.w #8, d2
-	move.w d2, (a3)+
-	addq.l #3, a0
-	bra.w push
-depth
-	subq.w #1, d6
-	moveq #STATUS_DEPTH, d0
-	rts
-output
-	moveq #STATUS_OUTPUT, d0
-	rts
-malformed
-	moveq #STATUS_MALFORMED, d0
-	rts
-	.bend  ; primary
-
-push	.block
-	addq.w #1, d7
-	cmpi.w #runtime.EXPRVM_STACK_CAPACITY, d7
-	bhi.w bad
-	moveq #STATUS_OK, d0
-	rts
-bad
-	moveq #STATUS_DEPTH, d0
-	rts
-	.bend  ; push
-
-; D0=opcode,D1=operator. D2 scratch; preserves D1. CCR=status.
-pair	.block
-	move.l a4, d2
-	sub.l a3, d2
-	cmpi.l #2, d2
-	blo.w bad
-	move.b d0, (a3)+
-	move.b d1, (a3)+
-	moveq #STATUS_OK, d0
-	rts
-bad
-	moveq #STATUS_OUTPUT, d0
-	rts
-	.bend  ; pair
-
-; D0=byte to append; returns D0/CCR=status.
-emit	.block
-	cmpa.l a4, a3
-	bhs.w bad
-	move.b d0, (a3)+
-	moveq #STATUS_OK, d0
-	rts
-bad
-	moveq #STATUS_OUTPUT, d0
-	rts
-	.bend  ; emit
+	.endsection
+	.section bss, kind=bss
+Program
+	.res long, 1
+ProgramBytes
+	.res long, 1
+Workspace
+	.res long, 1
+WorkspaceBytes
+	.res long, 1
 	.endsection
 	.endmodule

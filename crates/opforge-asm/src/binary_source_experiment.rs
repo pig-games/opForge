@@ -17,7 +17,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 200;
+const HEADER: usize = 208;
 pub(crate) const ROW: usize = 36;
 const SCALAR_ADDRESS_IDENTITY: u16 = 1;
 
@@ -150,7 +150,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS28 block for one resolved package hierarchy.
+/// Prepare a self-contained BS30 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -451,7 +451,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS28");
+    out[..4].copy_from_slice(b"BS30");
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates
@@ -574,6 +574,14 @@ pub fn prepare_package(
         write_state_plan(&package.state)?
     };
     out.extend_from_slice(&state_plan);
+    align(&mut out);
+    let expression_offset = out.len();
+    let expression_plan = vm::vm_opcore::expression_parser_program();
+    if expression_plan.is_empty() || expression_plan.len() > 65535 {
+        return Err("binary-source expression program length unsupported".into());
+    }
+    out.extend_from_slice(expression_plan);
+    align(&mut out);
     let runtime_bytes = long(out.len())?;
     let dictionary_offset = out.len();
     for (spelling, binding) in dictionary.iter().chain(state_argument_dictionary.iter()) {
@@ -643,6 +651,8 @@ pub fn prepare_package(
         (4, total),
         (192, long(state_offset)?),
         (196, long(state_plan.len())?),
+        (200, long(expression_offset)?),
+        (204, long(expression_plan.len())?),
         (160, long(member_bindings_offset)?),
         (164, long(package.member_bindings.len())?),
         (180, long(declaration_plan_offset)?),

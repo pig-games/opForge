@@ -76,7 +76,12 @@ clear
 	cmpi.w #abi.PRVM_DECLARATION_IMMUTABLE, Frame.Result+abi.PRVM_DECLARATION_ROLE(a3)
 	beq.w roleReady
 	cmpi.w #abi.PRVM_DECLARATION_MUTABLE, Frame.Result+abi.PRVM_DECLARATION_ROLE(a3)
+	beq.w mutableRole
+	cmpi.w #abi.PRVM_DECLARATION_CONDITIONAL, Frame.Result+abi.PRVM_DECLARATION_ROLE(a3)
 	bne.w bad
+	moveq #source.TOKEN_CONDITIONAL_DECLARATION, d2
+	bra.w roleReady
+mutableRole
 	moveq #source.TOKEN_MUTABLE_DECLARATION, d2
 roleReady
 	move.b d2, (a1)+

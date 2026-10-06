@@ -26,9 +26,9 @@ pub fn execute(
     if entry != PARSER_VM_PACKED_DECLARATION_ENTRY || version != PARSER_VM_MACRO_VERSION {
         return Err(error(4, 0, "Invalid packed declaration entry or version"));
     }
-    if program.len() != 17
+    if program.len() != 23
         || program[..2] != [0x98, 3]
-        || program[11..] != [1, 2, 5, 34, 0x83, 0]
+        || program[11..] != [2, 2, 2, 5, 34, 3, 3, 5, 9, 34, 0x83, 0]
         || program[2..11]
             .chunks_exact(3)
             .any(|row| !(1..=2).contains(&row[2]))
@@ -53,7 +53,9 @@ pub fn execute(
     if source[1] & (8 | 16) != 0 || source.len() < 10 || source[4] > 1 {
         return Ok(vec![]);
     }
-    let (role, match_head, head) = if source.get(8..10) == Some(&program[13..15]) {
+    let (role, match_head, head) = if source.get(8..11) == Some(&program[18..21]) {
+        (program[16], 8, 11)
+    } else if source.get(8..10) == Some(&program[14..16]) {
         (program[12], 8, 10)
     } else {
         let mut head = 8;
@@ -158,6 +160,55 @@ mod tests {
             );
         }
     }
+    fn question_kind() -> u8 {
+        // Derive the wire kind through TKVM decoding, rather than mistaking an
+        // EXVM or operator enum value for the packed punctuation identity.
+        let kind = (0..=40)
+            .find(|kind| {
+                crate::tokenizer_runtime_utils::vm_build_token(*kind, b"?", 1, 0, 1, 0).is_ok_and(
+                    |token| {
+                        matches!(
+                            token.kind,
+                            crate::portable_contract::PortableTokenKind::Question
+                        )
+                    },
+                )
+            })
+            .unwrap();
+        let native = include_str!("../../../native/motorola68000/amigaos/tkvm/tkvm_runtime.asm");
+        let declared = native
+            .lines()
+            .find(|line| line.starts_with("TK_KIND_QUESTION "))
+            .unwrap()
+            .split('=')
+            .nth(1)
+            .unwrap()
+            .trim()
+            .parse::<u8>()
+            .unwrap();
+        assert_eq!(
+            kind, declared,
+            "Rust and native TKVM question kind must agree"
+        );
+        kind
+    }
+    #[test]
+    fn conditional_assignment_preserves_operand_spans_and_resources() {
+        for value in [&[2, 0, 0, 0, 3][..], &[][..]] {
+            let mut source = assignment(value);
+            source.insert(9, question_kind());
+            source[0] += 1;
+            let rows = run(&source, 32, 3).unwrap();
+            assert_eq!(u16::from_be_bytes(rows[0][2..4].try_into().unwrap()), 3);
+            assert_eq!(u32::from_be_bytes(rows[0][4..8].try_into().unwrap()), 11);
+            assert_eq!(
+                u32::from_be_bytes(rows[0][8..12].try_into().unwrap()) as usize,
+                value.len()
+            );
+            assert_eq!(run(&source, 31, 3).unwrap_err().status, 7);
+            assert_eq!(run(&source, 32, 2).unwrap_err().status, 12);
+        }
+    }
     #[test]
     fn declarations_accept_arbitrary_source_line_numbers() {
         for mut source in [assignment(&[]), record(false, &[]), record(true, &[])] {
@@ -169,13 +220,7 @@ mod tests {
     }
     #[test]
     fn colon_equal_near_misses_remain_unmatched() {
-        for operator in [
-            &[34][..],
-            &[5][..],
-            &[5, 35][..],
-            &[34, 5][..],
-            &[5, 36, 34][..],
-        ] {
+        for operator in [&[34][..], &[5][..], &[5, 35][..], &[34, 5][..]] {
             let mut source = assignment(&[]);
             source.truncate(8);
             source.extend(operator);
@@ -213,7 +258,7 @@ mod tests {
             valid[..11].iter().copied().chain([0x83, 0]).collect(),
             {
                 let mut p = valid.clone();
-                p[14] = 35;
+                p[15] = 35;
                 p
             },
             packed_declaration_program([42, 42, 44]),

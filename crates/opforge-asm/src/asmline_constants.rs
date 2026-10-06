@@ -16,6 +16,35 @@ pub(super) struct Definition {
 }
 
 impl AsmLine<'_> {
+    /// Defer the whole scalar count, rather than evaluating unknown leaves as
+    /// zero. Captured loop observations resolve its final lexical owner later.
+    pub(crate) fn counted_loop_has_provisional_dependencies(
+        &self,
+        expr: &Expr,
+    ) -> Result<bool, AstEvalError> {
+        if self.pass != 1 {
+            return Ok(false);
+        }
+        if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
+            return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
+        }
+        let mut names = Vec::new();
+        if !scalar_dependencies(expr, &mut names) {
+            return Ok(false);
+        }
+        let mut unresolved = false;
+        for name in names {
+            if self.lookup_loop_var(name).is_some() {
+                continue;
+            }
+            unresolved |= self
+                .resolve_scoped_name(name)
+                .map_err(|error| ast_eval_from_asm_error(error, expr_span(expr)))?
+                .is_none();
+        }
+        Ok(unresolved)
+    }
+
     pub(crate) fn executed_constant_names(&self) -> HashSet<(String, u32)> {
         self.constant_definitions
             .iter()

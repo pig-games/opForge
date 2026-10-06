@@ -105,7 +105,7 @@ use opcore::parser::{BinaryOp, Expr};
 use opcore::tokenizer::Span;
 use package::{
     encode_hierarchy_chunks_from_chunks, ModeSelectorDescriptor, ParserVmOpcodeV2,
-    TokenizerVmOpcode, EXVM_OPCODE_VERSION_V2,
+    TokenizerVmOpcode, EXVM_OPCODE_VERSION,
 };
 use registry::cpu::CpuType;
 use registry::family::AssemblerContext;
@@ -165,6 +165,8 @@ mod native_expression_bitwise;
 mod native_expression_compact;
 #[path = "tests/native_expression_comparison.rs"]
 mod native_expression_comparison;
+#[path = "tests/native_expression_compiler.rs"]
+mod native_expression_compiler;
 #[path = "tests/native_expression_digit_separators.rs"]
 mod native_expression_digit_separators;
 #[path = "tests/native_expression_i64.rs"]
@@ -175,6 +177,8 @@ mod native_expression_label_boundary;
 mod native_expression_logical;
 #[path = "tests/native_expression_power.rs"]
 mod native_expression_power;
+#[path = "tests/native_expression_session_lifecycle.rs"]
+mod native_expression_session_lifecycle;
 #[path = "tests/native_expression_string_literal.rs"]
 mod native_expression_string_literal;
 #[path = "tests/native_expression_ternary.rs"]
@@ -39458,7 +39462,7 @@ fn vm_runtime_mos6502_expr_parser_contract_breakage_errors_instead_of_host_fallb
         .cloned()
         .expect("mos6502 family expr parser contract");
     cpu_override.owner = ScopedOwner::Cpu("m6502".to_string());
-    cpu_override.opcode_version = EXVM_OPCODE_VERSION_V2.saturating_add(1);
+    cpu_override.opcode_version = EXVM_OPCODE_VERSION.saturating_add(1);
     chunks.expr_parser_contracts.push(cpu_override);
 
     asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks));
@@ -40154,7 +40158,7 @@ fn vm_runtime_intel8085_expr_parser_contract_breakage_errors_instead_of_host_fal
         .cloned()
         .expect("intel8080 family expr parser contract");
     cpu_override.owner = ScopedOwner::Cpu("8085".to_string());
-    cpu_override.opcode_version = EXVM_OPCODE_VERSION_V2.saturating_add(1);
+    cpu_override.opcode_version = EXVM_OPCODE_VERSION.saturating_add(1);
     chunks.expr_parser_contracts.push(cpu_override);
 
     asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks));
@@ -40189,7 +40193,7 @@ fn vm_runtime_motorola6800_expr_parser_contract_breakage_errors_instead_of_host_
         .cloned()
         .expect("motorola6800 family expr parser contract");
     cpu_override.owner = ScopedOwner::Cpu("m6809".to_string());
-    cpu_override.opcode_version = EXVM_OPCODE_VERSION_V2.saturating_add(1);
+    cpu_override.opcode_version = EXVM_OPCODE_VERSION.saturating_add(1);
     chunks.expr_parser_contracts.push(cpu_override);
 
     asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks));

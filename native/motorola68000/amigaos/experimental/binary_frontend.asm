@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_members as members
 	.use experimental.amigaos.binary_prepare as prepare
+	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_data_prepare as data_prepare
 	.use experimental.amigaos.binary_metadata_prepare as metadata
 	.use experimental.amigaos.binary_scopes as scopes
@@ -91,7 +92,8 @@ PREPARED_LINE = MACRO_SPELL_SCRATCH+spelling.SCRATCH_BYTES
 SCOPE_STATE = PREPARED_LINE+256
 CONDITION_STATE = SCOPE_STATE+scopes.SCRATCH_BYTES
 TEMPLATE_STATE = CONDITION_STATE+conditionals.SCRATCH_BYTES
-SCRATCH_BYTES = TEMPLATE_STATE+templates.SCRATCH_BYTES
+EXPRESSION_WORK = (TEMPLATE_STATE+templates.SCRATCH_BYTES+3)&$fffffffc
+SCRATCH_BYTES = EXPRESSION_WORK+expression.WORKSPACE_BYTES
 	.priv
 FRAGMENT_REQUEST = fragment_binding.FRAME_BYTES
 FRAGMENT_VIEWS = FRAGMENT_REQUEST+fragment_tokenizer.FRAME_BYTES
@@ -1709,6 +1711,8 @@ bindLine
 	blo.w scalarCaptured
 	cmpi.b #34, 8(a0)
 	beq.w captureScalar
+	cmpi.b #writer.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
+	beq.w captureScalar
 	cmpi.b #writer.TOKEN_MUTABLE_DECLARATION, 8(a0)
 	bne.w scalarCaptured
 captureScalar
@@ -2029,12 +2033,13 @@ selectDone
 	rts
 	.bend  ; selectBlocks
 ; A0=already begun Frame with its readable immutable package and live scratch.
-; Restore this session's package tokenizer control after another session ends.
+; Restore this session's package grammar control after another session ends.
 ; Does not reset symbols, templates or lexical state. D0/CCR=status;
 ; other registers preserved. No control-table pointer outlives its package.
 activate	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	movea.l Frame.Scratch(a0), a1
+	movea.l Frame.Scratch(a0), a6
+	movea.l a6, a1
 	move.l a1, d0
 	beq.w bad
 	tst.l PROGRAM(a1)
@@ -2042,6 +2047,13 @@ activate	.block
 	movea.l Frame.Package(a0), a2
 	move.l a2, d0
 	beq.w bad
+	movea.l a2, a0
+	adda.l package.Header.ExpressionPlan(a2), a0
+	move.l package.Header.ExpressionPlanBytes(a2), d0
+	movea.l a6, a1
+	adda.l #EXPRESSION_WORK, a1
+	move.l #expression.WORKSPACE_BYTES, d1
+	jsr expression.configure
 	adda.l package.Header.Tokenizer(a2), a2
 	bsr.w activateControl
 	bra.w done
@@ -2054,7 +2066,7 @@ done
 	.bend  ; activate
 
 ; End a streaming session. A0=Frame. Clears scratch-resident pointers and resets
-; tokenizer control state before the caller frees scratch. D0=0. Preserves other
+; grammar control state before the caller frees scratch. D0=0. Preserves other
 ; registers; CCR reflects D0.
 finish	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -2079,6 +2091,11 @@ clearFrame
 	clr.l (a1)+
 	dbra d0, clearFrame
 resetControl
+	suba.l a0, a0
+	suba.l a1, a1
+	moveq #0, d0
+	moveq #0, d1
+	jsr expression.configure
 	moveq #0, d0
 	jsr control.tkvmSetStepBudget68000
 	moveq #0, d0
@@ -2109,6 +2126,28 @@ configure	.block
 	movea.l a4, a2
 	jsr state.validate
 	bne.w bad
+	move.l package.Header.ExpressionPlan(a4), d0
+	cmpi.l #HEADER_BYTES, d0
+	blo.w bad
+	btst #0, d0
+	bne.w bad
+	move.l package.Header.RuntimeBytes(a4), d1
+	cmp.l d7, d1
+	bhi.w bad
+	sub.l d0, d1
+	bcs.w bad
+	move.l package.Header.ExpressionPlanBytes(a4), d2
+	beq.w bad
+	cmpi.l #65535, d2
+	bhi.w bad
+	cmp.l d1, d2
+	bhi.w bad
+	lea 0(a4, d0.l), a0
+	move.l d2, d0
+	movea.l a6, a1
+	adda.l #EXPRESSION_WORK, a1
+	move.l #expression.WORKSPACE_BYTES, d1
+	jsr expression.configure
 	bsr.w validateMacroPrograms
 	bne.w bad
 	bsr.w validateMemberBindings

@@ -627,6 +627,10 @@ statement	.block
 	beq.w constant
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	beq.w mutableDeclaration
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
+	beq.w mutableDeclaration
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
+	beq.w ok
 	cmpi.b #5, 4(a0)
 	bne.w dispatch
 	lea SectionState, a4

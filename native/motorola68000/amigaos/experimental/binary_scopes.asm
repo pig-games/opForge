@@ -27,6 +27,7 @@ MODULE_STATE = layout.MODULE_STATE
 IMPORT_STATE = layout.IMPORT_STATE
 DECLARED = 1
 REFERENCED = 2
+OPTIONAL_REFERENCED = 512; skipped conditional RHS still carries graph references
 EXPLICIT = 4
 KIND_BLOCK = 1
 KIND_NAMESPACE = 2
@@ -441,6 +442,8 @@ configurationLine	.block
 	bhi.w directive
 	cmpi.b #34, 4(a0)
 	beq.w scalarDeclaration
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
+	beq.w scalarDeclaration
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	bne.w bad
 scalarDeclaration
@@ -724,6 +727,10 @@ line	.block
 	beq.w declaration
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	beq.w declaration
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
+	beq.w declaration
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
+	beq.w declaration
 	cmpi.b #5, 4(a0)
 	beq.w declaration
 	bra.w statement
@@ -735,6 +742,10 @@ declaration
 	cmpi.b #34, 4(a0)
 	beq.w assignment
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
+	beq.w assignment
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
+	beq.w assignment
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
 	beq.w assignment
 	movem.l a0/d0, -(sp)
 	moveq #0, d0
@@ -976,7 +987,13 @@ reference
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 8(a5)
+	beq.w optionalReference
 	ori.w #REFERENCED, records.Entry.Flags(a3)
+	bra.w referenceReady
+optionalReference
+	ori.w #OPTIONAL_REFERENCED, records.Entry.Flags(a3)
+referenceReady
 	clr.b 3(a0)
 	move.l d1, d0
 	move.l a0, -(sp)
@@ -1038,7 +1055,7 @@ resolve
 	movea.l ENTRIES_POINTER(a6), a4
 	adda.l d0, a4
 	move.w records.Entry.Flags(a4), d0
-	andi.w #DECLARED+REFERENCED, d0
+	andi.w #DECLARED+REFERENCED+OPTIONAL_REFERENCED, d0
 	beq.w next
 	tst.w MODULE_STATE+modules.State.Selection(a6)
 	beq.w selectedReference
@@ -1069,13 +1086,13 @@ selectedReference
 	bne.w access
 	.BINDING_ATTEMPT #binding_diagnostic.EXPLICIT, d7, #-1
 	btst #2, records.Entry.Flags+1(a4)
-	bne.w failSaved
+	bne.w unresolvedReference
 	moveq #0, d3
 	move.w records.Entry.Owner(a4), d3
 parent
 	.BINDING_ATTEMPT #binding_diagnostic.UNRESOLVED, d7, #-1
 	tst.w d3
-	beq.w failSaved
+	beq.w unresolvedReference
 	move.l d3, d0
 	subq.w #1, d0
 	mulu.w #records.ENTRY_BYTES, d0
@@ -1113,6 +1130,12 @@ access
 	lea MODULE_STATE(a6), a0
 	.BINDING_ATTEMPT #binding_diagnostic.VISIBILITY, d7, d1
 	jsr modules.check
+	bne.w failSaved
+	bra.w next
+unresolvedReference
+	; Optional skipped RHS names do not require a scalar definition. A later
+	; ordinary reference to the same entry retains the usual hard error.
+	btst #1, records.Entry.Flags+1(a4)
 	bne.w failSaved
 next
 	addq.w #1, d7
@@ -1258,6 +1281,10 @@ normalizeLabel	.block
 	cmpi.b #34, 8(a0)
 	beq.w ok
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a0)
+	beq.w ok
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
+	beq.w ok
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 8(a0)
 	beq.w ok
 	cmpi.b #5, 8(a0)
 	bne.w indentation
@@ -1415,6 +1442,8 @@ declare	.block
 	adda.l d0, a3
 	btst #0, records.Entry.Flags+1(a3)
 	beq.w firstDeclaration
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
+	beq.w ignored
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	bne.w bad
 	btst #records.MUTABLE_BIT-8, records.Entry.Flags(a3)
@@ -1422,11 +1451,19 @@ declare	.block
 	clr.b 3(a0)
 	moveq #0, d0
 	rts
+ignored
+	move.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
+	clr.b 3(a0)
+	moveq #0, d0
+	rts
 firstDeclaration
 	clr.b 3(a0)
 	ori.w #DECLARED, records.Entry.Flags(a3)
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
+	beq.w mutableOwnership
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	bne.w ownershipReady
+mutableOwnership
 	ori.w #records.MUTABLE, records.Entry.Flags(a3)
 ownershipReady
 	move.l d1, d0

@@ -334,6 +334,8 @@ line
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 4(a3)
 	beq.w declaration
 	moveq #mutable.PENDING, d7
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a3)
+	beq.w declaration
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a3)
 	bne.w next
 declaration

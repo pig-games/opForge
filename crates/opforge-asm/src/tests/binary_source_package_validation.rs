@@ -30,7 +30,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     assert!(count > 0);
-    assert_eq!(&valid[..4], b"BS28");
+    assert_eq!(&valid[..4], b"BS30");
     assert!(rows + count * crate::binary_source_experiment::ROW <= valid.len());
     assert_eq!(&valid[rows + 34..rows + 36], &[0, 0]);
     assert!(valid[rows + 32] <= 11);
@@ -38,11 +38,29 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     reserved[rows + 35] = 1;
     let mut form = valid.clone();
     form[rows + 32] = 12;
-    vec![
-        ("valid-package", valid, 0),
+    let mut cases = vec![
+        ("valid-package", valid.clone(), 0),
         ("nonzero-row-reserved", reserved, 1),
         ("invalid-third-form", form, 1),
-    ]
+    ];
+    for (name, offset, value) in [
+        ("expression-absent", 200, 0),
+        ("expression-header-overlap", 200, 206),
+        ("expression-odd-offset", 200, 209),
+        ("expression-past-runtime", 200, valid.len() as u32),
+        ("expression-empty", 204, 0),
+        ("expression-too-large", 204, 65536),
+        ("expression-span-overflow", 204, u32::MAX),
+    ] {
+        let mut malformed = valid.clone();
+        malformed[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
+        cases.push((name, malformed, 1));
+    }
+    let mut superseded = valid.clone();
+    superseded[..4].copy_from_slice(b"BS29");
+    cases.push(("superseded-package", superseded, 1));
+    cases.push(("truncated-current-header", valid[..207].to_vec(), 1));
+    cases
 }
 
 fn source(root: &Path) -> String {
@@ -158,8 +176,31 @@ fn compact_package_validation_component_fixture_contract() {
             .filter_map(|(offset, (left, right))| (left != right).then_some(offset))
             .collect::<Vec<_>>();
         assert_eq!(*expected, 1, "{name}");
-        assert_eq!(changed.len(), 1, "{name}");
-        assert!(changed[0] == rows + 32 || changed[0] == rows + 35);
+        let field = match *name {
+            "nonzero-row-reserved" => rows + 35..rows + 36,
+            "invalid-third-form" => rows + 32..rows + 33,
+            "expression-absent"
+            | "expression-header-overlap"
+            | "expression-odd-offset"
+            | "expression-past-runtime" => 200..204,
+            "expression-empty" | "expression-too-large" | "expression-span-overflow" => 204..208,
+            "superseded-package" => 0..4,
+            "truncated-current-header" => {
+                assert_eq!(bytes.len(), 207);
+                assert_eq!(bytes, &valid[..207]);
+                assert!(changed.is_empty());
+                continue;
+            }
+            _ => panic!("unclassified invalid fixture {name}"),
+        };
+        assert_eq!(bytes.len(), valid.len(), "{name}");
+        assert!(!changed.is_empty(), "{name}");
+        assert!(
+            changed.iter().all(|offset| field.contains(offset)),
+            "{name}"
+        );
+        assert_eq!(&bytes[..field.start], &valid[..field.start], "{name}");
+        assert_eq!(&bytes[field.end..], &valid[field.end..], "{name}");
     }
 }
 

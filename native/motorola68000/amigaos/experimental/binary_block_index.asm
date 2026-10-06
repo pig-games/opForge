@@ -414,6 +414,10 @@ ownerLine
 	bhi.w ownerAdvance
 	cmpi.b #5, 8(a4)
 	beq.w ownerDeclaration
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a4)
+	beq.w ownerDeclaration
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 8(a4)
+	beq.w ownerDeclaration
 	cmpi.b #34, 8(a4)
 	bne.w ownerAdvance
 ownerDeclaration

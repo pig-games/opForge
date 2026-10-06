@@ -27,7 +27,7 @@ use types::processing::{
 };
 
 #[cfg(test)]
-use crate::execution_model::{CORE_EXPR_PARSER_FAILPOINT, RUNTIME_EXPR_COMPATIBILITY_FAILPOINT};
+use crate::execution_model::CORE_EXPR_PARSER_FAILPOINT;
 pub use crate::expr_vm_compat;
 use crate::rollout::portable_expr_parser_runtime_enabled_for_family;
 use crate::runtime_diagnostics::RuntimeBridgeDiagnostic;
@@ -39,20 +39,22 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use types::asm_value::AsmValue;
 
-const EXVM_DEFAULT_PROGRAM_V1: &[u8] = &[
-    package::ExvmOpcode::ParseExpression as u8,
-    package::ExvmOpcode::End as u8,
-];
+static EXVM_DEFAULT_PROGRAM: LazyLock<Vec<u8>> = LazyLock::new(build_expression_parser_program);
 
-static EXVM_DEFAULT_PROGRAM_V2: LazyLock<Vec<u8>> = LazyLock::new(build_default_exvm_program_v2);
+/// Shared current expression grammar for preparation runtimes.
+/// Consumers adapt their token payloads; precedence and construction remain in
+/// this program rather than a platform-specific parser.
+pub fn expression_parser_program() -> &'static [u8] {
+    EXVM_DEFAULT_PROGRAM.as_slice()
+}
 
-struct ExvmV2DefaultProgramBuilder {
+struct ExvmDefaultProgramBuilder {
     bytes: Vec<u8>,
     labels: HashMap<&'static str, usize>,
     patches: Vec<(&'static str, usize)>,
 }
 
-impl ExvmV2DefaultProgramBuilder {
+impl ExvmDefaultProgramBuilder {
     fn new() -> Self {
         Self {
             bytes: Vec::new(),
@@ -63,18 +65,18 @@ impl ExvmV2DefaultProgramBuilder {
 
     fn mark(&mut self, label: &'static str) {
         let prev = self.labels.insert(label, self.bytes.len());
-        assert!(prev.is_none(), "duplicate EXVM v2 default label: {label}");
+        assert!(prev.is_none(), "duplicate EXVM current label: {label}");
     }
 
-    fn opcode(&mut self, opcode: package::ExvmOpcodeV2) {
+    fn opcode(&mut self, opcode: package::ExvmOpcode) {
         self.bytes.push(opcode as u8);
     }
 
-    fn operator(&mut self, operator: package::ExvmOperatorKindV2) {
+    fn operator(&mut self, operator: package::ExvmOperatorKind) {
         self.bytes.push(operator as u8);
     }
 
-    fn token_kind(&mut self, kind: package::ExvmTokenKindV2) {
+    fn token_kind(&mut self, kind: package::ExvmTokenKind) {
         self.bytes.push(kind as u8);
     }
 
@@ -89,75 +91,75 @@ impl ExvmV2DefaultProgramBuilder {
     }
 
     fn call(&mut self, label: &'static str) {
-        self.opcode(package::ExvmOpcodeV2::Call);
+        self.opcode(package::ExvmOpcode::Call);
         self.push_label_target(label);
     }
 
     fn jump(&mut self, label: &'static str) {
-        self.opcode(package::ExvmOpcodeV2::Jump);
+        self.opcode(package::ExvmOpcode::Jump);
         self.push_label_target(label);
     }
 
     fn jump_if_true(&mut self, label: &'static str) {
-        self.opcode(package::ExvmOpcodeV2::JumpIfTrue);
+        self.opcode(package::ExvmOpcode::JumpIfTrue);
         self.push_label_target(label);
     }
 
     fn ret(&mut self) {
-        self.opcode(package::ExvmOpcodeV2::Return);
+        self.opcode(package::ExvmOpcode::Return);
     }
 
-    fn peek_kind_jump_if_true(&mut self, kind: package::ExvmTokenKindV2, label: &'static str) {
-        self.opcode(package::ExvmOpcodeV2::PeekKind);
+    fn peek_kind_jump_if_true(&mut self, kind: package::ExvmTokenKind, label: &'static str) {
+        self.opcode(package::ExvmOpcode::PeekKind);
         self.token_kind(kind);
         self.jump_if_true(label);
     }
 
     fn peek_operator_jump_if_true(
         &mut self,
-        operator: package::ExvmOperatorKindV2,
+        operator: package::ExvmOperatorKind,
         label: &'static str,
     ) {
-        self.opcode(package::ExvmOpcodeV2::PeekOperator);
+        self.opcode(package::ExvmOpcode::PeekOperator);
         self.operator(operator);
         self.jump_if_true(label);
     }
 
-    fn consume_operator(&mut self, operator: package::ExvmOperatorKindV2) {
-        self.opcode(package::ExvmOpcodeV2::ConsumeOperator);
+    fn consume_operator(&mut self, operator: package::ExvmOperatorKind) {
+        self.opcode(package::ExvmOpcode::ConsumeOperator);
         self.operator(operator);
     }
 
-    fn consume_kind(&mut self, kind: package::ExvmTokenKindV2) {
-        self.opcode(package::ExvmOpcodeV2::ConsumeKind);
+    fn consume_kind(&mut self, kind: package::ExvmTokenKind) {
+        self.opcode(package::ExvmOpcode::ConsumeKind);
         self.token_kind(kind);
     }
 
-    fn build_unary(&mut self, operator: package::ExvmOperatorKindV2) {
-        self.opcode(package::ExvmOpcodeV2::BuildUnary);
+    fn build_unary(&mut self, operator: package::ExvmOperatorKind) {
+        self.opcode(package::ExvmOpcode::BuildUnary);
         self.operator(operator);
     }
 
-    fn build_binary(&mut self, operator: package::ExvmOperatorKindV2) {
-        self.opcode(package::ExvmOpcodeV2::BuildBinary);
+    fn build_binary(&mut self, operator: package::ExvmOperatorKind) {
+        self.opcode(package::ExvmOpcode::BuildBinary);
         self.operator(operator);
     }
 
     fn build_ternary(&mut self) {
-        self.opcode(package::ExvmOpcodeV2::BuildTernary);
+        self.opcode(package::ExvmOpcode::BuildTernary);
     }
 
     fn build_range(&mut self, inclusive: bool, has_step: bool) {
-        self.opcode(package::ExvmOpcodeV2::BuildRange);
+        self.opcode(package::ExvmOpcode::BuildRange);
         self.byte(u8::from(inclusive) | (u8::from(has_step) << 1));
     }
 
     fn parse_struct_literal_if_present(&mut self) {
-        self.opcode(package::ExvmOpcodeV2::ParseStructLiteralIfPresent);
+        self.opcode(package::ExvmOpcode::ParseStructLiteralIfPresent);
     }
 
     fn parse_postfix_chain(&mut self) {
-        self.opcode(package::ExvmOpcodeV2::ParsePostfixChain);
+        self.opcode(package::ExvmOpcode::ParsePostfixChain);
     }
 
     fn finish(mut self) -> Vec<u8> {
@@ -165,120 +167,134 @@ impl ExvmV2DefaultProgramBuilder {
             let target = *self
                 .labels
                 .get(label)
-                .unwrap_or_else(|| panic!("missing EXVM v2 default label: {label}"));
-            let target = u16::try_from(target).expect("EXVM v2 default program exceeds u16");
+                .unwrap_or_else(|| panic!("missing EXVM current label: {label}"));
+            let target = u16::try_from(target).expect("EXVM current program exceeds u16");
             self.bytes[offset..offset + 2].copy_from_slice(&target.to_le_bytes());
         }
         self.bytes
     }
 }
 
-fn build_default_exvm_program_v2() -> Vec<u8> {
-    let mut builder = ExvmV2DefaultProgramBuilder::new();
+fn build_expression_parser_program() -> Vec<u8> {
+    let mut builder = ExvmDefaultProgramBuilder::new();
 
+    builder.call("expression");
+    builder.opcode(package::ExvmOpcode::End);
+
+    builder.mark("expression");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Lt, "expression_low");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Gt, "expression_high");
     builder.call("ternary");
-    builder.opcode(package::ExvmOpcodeV2::End);
+    builder.ret();
+    builder.mark("expression_low");
+    builder.consume_operator(package::ExvmOperatorKind::Lt);
+    builder.call("expression");
+    builder.build_unary(package::ExvmOperatorKind::Lt);
+    builder.ret();
+    builder.mark("expression_high");
+    builder.consume_operator(package::ExvmOperatorKind::Gt);
+    builder.call("expression");
+    builder.build_unary(package::ExvmOperatorKind::Gt);
+    builder.ret();
 
     builder.mark("ternary");
     builder.call("logical_or");
-    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Question, "ternary_build");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::Question, "ternary_build");
     builder.ret();
     builder.mark("ternary_build");
-    builder.consume_kind(package::ExvmTokenKindV2::Question);
-    builder.call("ternary");
-    builder.consume_kind(package::ExvmTokenKindV2::Colon);
-    builder.call("ternary");
+    builder.consume_kind(package::ExvmTokenKind::Question);
+    builder.call("expression");
+    builder.consume_kind(package::ExvmTokenKind::Colon);
+    builder.call("expression");
     builder.build_ternary();
     builder.ret();
 
     builder.mark("logical_or");
     builder.call("logical_and");
     builder.mark("logical_or_loop");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::LogicOr, "logical_or_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::LogicXor, "logical_xor_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::LogicOr, "logical_or_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::LogicXor, "logical_xor_build");
     builder.ret();
     builder.mark("logical_or_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::LogicOr);
+    builder.consume_operator(package::ExvmOperatorKind::LogicOr);
     builder.call("logical_and");
-    builder.build_binary(package::ExvmOperatorKindV2::LogicOr);
+    builder.build_binary(package::ExvmOperatorKind::LogicOr);
     builder.jump("logical_or_loop");
     builder.mark("logical_xor_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::LogicXor);
+    builder.consume_operator(package::ExvmOperatorKind::LogicXor);
     builder.call("logical_and");
-    builder.build_binary(package::ExvmOperatorKindV2::LogicXor);
+    builder.build_binary(package::ExvmOperatorKind::LogicXor);
     builder.jump("logical_or_loop");
 
     builder.mark("logical_and");
     builder.call("bit_or");
     builder.mark("logical_and_loop");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::LogicAnd, "logical_and_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::LogicAnd, "logical_and_build");
     builder.ret();
     builder.mark("logical_and_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::LogicAnd);
+    builder.consume_operator(package::ExvmOperatorKind::LogicAnd);
     builder.call("bit_or");
-    builder.build_binary(package::ExvmOperatorKindV2::LogicAnd);
+    builder.build_binary(package::ExvmOperatorKind::LogicAnd);
     builder.jump("logical_and_loop");
 
     builder.mark("bit_or");
     builder.call("bit_xor");
     builder.mark("bit_or_loop");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::BitOr, "bit_or_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::BitOr, "bit_or_build");
     builder.ret();
     builder.mark("bit_or_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::BitOr);
+    builder.consume_operator(package::ExvmOperatorKind::BitOr);
     builder.call("bit_xor");
-    builder.build_binary(package::ExvmOperatorKindV2::BitOr);
+    builder.build_binary(package::ExvmOperatorKind::BitOr);
     builder.jump("bit_or_loop");
 
     builder.mark("bit_xor");
     builder.call("bit_and");
     builder.mark("bit_xor_loop");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::BitXor, "bit_xor_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::BitXor, "bit_xor_build");
     builder.ret();
     builder.mark("bit_xor_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::BitXor);
+    builder.consume_operator(package::ExvmOperatorKind::BitXor);
     builder.call("bit_and");
-    builder.build_binary(package::ExvmOperatorKindV2::BitXor);
+    builder.build_binary(package::ExvmOperatorKind::BitXor);
     builder.jump("bit_xor_loop");
 
     builder.mark("bit_and");
     builder.call("range");
     builder.mark("bit_and_loop");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::BitAnd, "bit_and_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::BitAnd, "bit_and_build");
     builder.ret();
     builder.mark("bit_and_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::BitAnd);
+    builder.consume_operator(package::ExvmOperatorKind::BitAnd);
     builder.call("range");
-    builder.build_binary(package::ExvmOperatorKindV2::BitAnd);
+    builder.build_binary(package::ExvmOperatorKind::BitAnd);
     builder.jump("bit_and_loop");
 
     builder.mark("range");
     builder.call("compare");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Range, "range_exclusive");
-    builder.peek_operator_jump_if_true(
-        package::ExvmOperatorKindV2::RangeInclusive,
-        "range_inclusive",
-    );
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Range, "range_exclusive");
+    builder
+        .peek_operator_jump_if_true(package::ExvmOperatorKind::RangeInclusive, "range_inclusive");
     builder.ret();
     builder.mark("range_exclusive");
-    builder.consume_operator(package::ExvmOperatorKindV2::Range);
+    builder.consume_operator(package::ExvmOperatorKind::Range);
     builder.call("compare");
-    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Colon, "range_exclusive_step");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::Colon, "range_exclusive_step");
     builder.build_range(false, false);
     builder.ret();
     builder.mark("range_exclusive_step");
-    builder.consume_kind(package::ExvmTokenKindV2::Colon);
+    builder.consume_kind(package::ExvmTokenKind::Colon);
     builder.call("compare");
     builder.build_range(false, true);
     builder.ret();
     builder.mark("range_inclusive");
-    builder.consume_operator(package::ExvmOperatorKindV2::RangeInclusive);
+    builder.consume_operator(package::ExvmOperatorKind::RangeInclusive);
     builder.call("compare");
-    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Colon, "range_inclusive_step");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::Colon, "range_inclusive_step");
     builder.build_range(true, false);
     builder.ret();
     builder.mark("range_inclusive_step");
-    builder.consume_kind(package::ExvmTokenKindV2::Colon);
+    builder.consume_kind(package::ExvmTokenKind::Colon);
     builder.call("compare");
     builder.build_range(true, true);
     builder.ret();
@@ -286,186 +302,194 @@ fn build_default_exvm_program_v2() -> Vec<u8> {
     builder.mark("compare");
     builder.call("shift");
     builder.mark("compare_loop");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Eq, "compare_eq_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Ne, "compare_ne_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Ge, "compare_ge_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Gt, "compare_gt_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Le, "compare_le_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Lt, "compare_lt_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Eq, "compare_eq_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Ne, "compare_ne_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Ge, "compare_ge_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Gt, "compare_gt_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Le, "compare_le_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Lt, "compare_lt_build");
     builder.ret();
     builder.mark("compare_eq_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Eq);
+    builder.consume_operator(package::ExvmOperatorKind::Eq);
     builder.call("shift");
-    builder.build_binary(package::ExvmOperatorKindV2::Eq);
+    builder.build_binary(package::ExvmOperatorKind::Eq);
     builder.jump("compare_loop");
     builder.mark("compare_ne_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Ne);
+    builder.consume_operator(package::ExvmOperatorKind::Ne);
     builder.call("shift");
-    builder.build_binary(package::ExvmOperatorKindV2::Ne);
+    builder.build_binary(package::ExvmOperatorKind::Ne);
     builder.jump("compare_loop");
     builder.mark("compare_ge_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Ge);
+    builder.consume_operator(package::ExvmOperatorKind::Ge);
     builder.call("shift");
-    builder.build_binary(package::ExvmOperatorKindV2::Ge);
+    builder.build_binary(package::ExvmOperatorKind::Ge);
     builder.jump("compare_loop");
     builder.mark("compare_gt_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Gt);
+    builder.consume_operator(package::ExvmOperatorKind::Gt);
     builder.call("shift");
-    builder.build_binary(package::ExvmOperatorKindV2::Gt);
+    builder.build_binary(package::ExvmOperatorKind::Gt);
     builder.jump("compare_loop");
     builder.mark("compare_le_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Le);
+    builder.consume_operator(package::ExvmOperatorKind::Le);
     builder.call("shift");
-    builder.build_binary(package::ExvmOperatorKindV2::Le);
+    builder.build_binary(package::ExvmOperatorKind::Le);
     builder.jump("compare_loop");
     builder.mark("compare_lt_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Lt);
+    builder.consume_operator(package::ExvmOperatorKind::Lt);
     builder.call("shift");
-    builder.build_binary(package::ExvmOperatorKindV2::Lt);
+    builder.build_binary(package::ExvmOperatorKind::Lt);
     builder.jump("compare_loop");
 
     builder.mark("shift");
     builder.call("sum");
     builder.mark("shift_loop");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Shl, "shift_shl_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Shr, "shift_shr_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Shl, "shift_shl_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Shr, "shift_shr_build");
     builder.ret();
     builder.mark("shift_shl_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Shl);
+    builder.consume_operator(package::ExvmOperatorKind::Shl);
     builder.call("sum");
-    builder.build_binary(package::ExvmOperatorKindV2::Shl);
+    builder.build_binary(package::ExvmOperatorKind::Shl);
     builder.jump("shift_loop");
     builder.mark("shift_shr_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Shr);
+    builder.consume_operator(package::ExvmOperatorKind::Shr);
     builder.call("sum");
-    builder.build_binary(package::ExvmOperatorKindV2::Shr);
+    builder.build_binary(package::ExvmOperatorKind::Shr);
     builder.jump("shift_loop");
 
     builder.mark("sum");
     builder.call("term");
     builder.mark("sum_loop");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Plus, "sum_plus_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Minus, "sum_minus_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Plus, "sum_plus_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Minus, "sum_minus_build");
     builder.ret();
     builder.mark("sum_plus_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Plus);
+    builder.consume_operator(package::ExvmOperatorKind::Plus);
     builder.call("term");
-    builder.build_binary(package::ExvmOperatorKindV2::Plus);
+    builder.build_binary(package::ExvmOperatorKind::Plus);
     builder.jump("sum_loop");
     builder.mark("sum_minus_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Minus);
+    builder.consume_operator(package::ExvmOperatorKind::Minus);
     builder.call("term");
-    builder.build_binary(package::ExvmOperatorKindV2::Minus);
+    builder.build_binary(package::ExvmOperatorKind::Minus);
     builder.jump("sum_loop");
 
     builder.mark("term");
     builder.call("power");
     builder.mark("term_loop");
-    builder
-        .peek_operator_jump_if_true(package::ExvmOperatorKindV2::Multiply, "term_multiply_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Divide, "term_divide_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Mod, "term_mod_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Multiply, "term_multiply_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Divide, "term_divide_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Mod, "term_mod_build");
     builder.ret();
     builder.mark("term_multiply_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Multiply);
+    builder.consume_operator(package::ExvmOperatorKind::Multiply);
     builder.call("power");
-    builder.build_binary(package::ExvmOperatorKindV2::Multiply);
+    builder.build_binary(package::ExvmOperatorKind::Multiply);
     builder.jump("term_loop");
     builder.mark("term_divide_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Divide);
+    builder.consume_operator(package::ExvmOperatorKind::Divide);
     builder.call("power");
-    builder.build_binary(package::ExvmOperatorKindV2::Divide);
+    builder.build_binary(package::ExvmOperatorKind::Divide);
     builder.jump("term_loop");
     builder.mark("term_mod_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Mod);
+    builder.consume_operator(package::ExvmOperatorKind::Mod);
     builder.call("power");
-    builder.build_binary(package::ExvmOperatorKindV2::Mod);
+    builder.build_binary(package::ExvmOperatorKind::Mod);
     builder.jump("term_loop");
 
     builder.mark("power");
     builder.call("unary");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Power, "power_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Power, "power_build");
     builder.ret();
     builder.mark("power_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Power);
+    builder.consume_operator(package::ExvmOperatorKind::Power);
     builder.call("power");
-    builder.build_binary(package::ExvmOperatorKindV2::Power);
+    builder.build_binary(package::ExvmOperatorKind::Power);
     builder.ret();
 
     builder.mark("unary");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Plus, "unary_plus_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Minus, "unary_minus_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::BitNot, "unary_bit_not_build");
-    builder.peek_operator_jump_if_true(
-        package::ExvmOperatorKindV2::LogicNot,
-        "unary_logic_not_build",
-    );
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Lt, "unary_low_build");
-    builder.peek_operator_jump_if_true(package::ExvmOperatorKindV2::Gt, "unary_high_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Plus, "unary_plus_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::Minus, "unary_minus_build");
+    builder.peek_operator_jump_if_true(package::ExvmOperatorKind::BitNot, "unary_bit_not_build");
+    builder
+        .peek_operator_jump_if_true(package::ExvmOperatorKind::LogicNot, "unary_logic_not_build");
     builder.call("primary");
     builder.ret();
     builder.mark("unary_plus_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Plus);
+    builder.consume_operator(package::ExvmOperatorKind::Plus);
     builder.call("unary");
-    builder.build_unary(package::ExvmOperatorKindV2::Plus);
+    builder.build_unary(package::ExvmOperatorKind::Plus);
     builder.ret();
     builder.mark("unary_minus_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Minus);
+    builder.consume_operator(package::ExvmOperatorKind::Minus);
     builder.call("unary");
-    builder.build_unary(package::ExvmOperatorKindV2::Minus);
+    builder.build_unary(package::ExvmOperatorKind::Minus);
     builder.ret();
     builder.mark("unary_bit_not_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::BitNot);
+    builder.consume_operator(package::ExvmOperatorKind::BitNot);
     builder.call("unary");
-    builder.build_unary(package::ExvmOperatorKindV2::BitNot);
+    builder.build_unary(package::ExvmOperatorKind::BitNot);
     builder.ret();
     builder.mark("unary_logic_not_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::LogicNot);
+    builder.consume_operator(package::ExvmOperatorKind::LogicNot);
     builder.call("unary");
-    builder.build_unary(package::ExvmOperatorKindV2::LogicNot);
+    builder.build_unary(package::ExvmOperatorKind::LogicNot);
     builder.ret();
-    builder.mark("unary_low_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Lt);
-    builder.call("unary");
-    builder.build_unary(package::ExvmOperatorKindV2::Lt);
-    builder.ret();
-    builder.mark("unary_high_build");
-    builder.consume_operator(package::ExvmOperatorKindV2::Gt);
-    builder.call("unary");
-    builder.build_unary(package::ExvmOperatorKindV2::Gt);
-    builder.ret();
-
     builder.mark("primary");
-    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Number, "primary_number");
-    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Identifier, "primary_identifier");
-    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::Dollar, "primary_dollar");
-    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::OpenParen, "primary_grouping");
-    builder.peek_kind_jump_if_true(package::ExvmTokenKindV2::OpenBrace, "primary_list");
-    builder.opcode(package::ExvmOpcodeV2::EmitDiag);
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::Number, "primary_number");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::String, "primary_string");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::Identifier, "primary_identifier");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::Register, "primary_register");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::Question, "primary_placeholder");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::Dot, "primary_call");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::Dollar, "primary_dollar");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::OpenParen, "primary_grouping");
+    builder.peek_kind_jump_if_true(package::ExvmTokenKind::OpenBrace, "primary_list");
+    builder.opcode(package::ExvmOpcode::EmitDiag);
     builder.mark("primary_number");
-    builder.opcode(package::ExvmOpcodeV2::LoadTokenText);
-    builder.opcode(package::ExvmOpcodeV2::BuildNumber);
-    builder.opcode(package::ExvmOpcodeV2::Advance);
+    builder.opcode(package::ExvmOpcode::LoadTokenText);
+    builder.opcode(package::ExvmOpcode::BuildNumber);
+    builder.opcode(package::ExvmOpcode::Advance);
+    builder.parse_postfix_chain();
+    builder.ret();
+    builder.mark("primary_string");
+    builder.opcode(package::ExvmOpcode::BuildString);
+    builder.opcode(package::ExvmOpcode::Advance);
     builder.parse_postfix_chain();
     builder.ret();
     builder.mark("primary_identifier");
-    builder.opcode(package::ExvmOpcodeV2::LoadTokenText);
-    builder.opcode(package::ExvmOpcodeV2::BuildIdentifier);
-    builder.opcode(package::ExvmOpcodeV2::Advance);
+    builder.opcode(package::ExvmOpcode::LoadTokenText);
+    builder.opcode(package::ExvmOpcode::BuildIdentifier);
+    builder.opcode(package::ExvmOpcode::Advance);
     builder.parse_struct_literal_if_present();
     builder.parse_postfix_chain();
     builder.ret();
+    builder.mark("primary_register");
+    builder.opcode(package::ExvmOpcode::BuildRegister);
+    builder.opcode(package::ExvmOpcode::Advance);
+    builder.parse_struct_literal_if_present();
+    builder.parse_postfix_chain();
+    builder.ret();
+    builder.mark("primary_placeholder");
+    builder.opcode(package::ExvmOpcode::BuildPlaceholder);
+    builder.opcode(package::ExvmOpcode::Advance);
+    builder.parse_postfix_chain();
+    builder.ret();
+    builder.mark("primary_call");
+    builder.opcode(package::ExvmOpcode::ParseCall);
+    builder.parse_postfix_chain();
+    builder.ret();
     builder.mark("primary_dollar");
-    builder.opcode(package::ExvmOpcodeV2::BuildCurrentAddress);
-    builder.opcode(package::ExvmOpcodeV2::Advance);
+    builder.opcode(package::ExvmOpcode::BuildCurrentAddress);
+    builder.opcode(package::ExvmOpcode::Advance);
     builder.parse_postfix_chain();
     builder.ret();
     builder.mark("primary_grouping");
-    builder.opcode(package::ExvmOpcodeV2::ParseGrouping);
+    builder.opcode(package::ExvmOpcode::ParseGrouping);
     builder.parse_postfix_chain();
     builder.ret();
     builder.mark("primary_list");
-    builder.opcode(package::ExvmOpcodeV2::ParseList);
+    builder.opcode(package::ExvmOpcode::ParseList);
     builder.parse_postfix_chain();
     builder.ret();
 
@@ -477,7 +501,6 @@ pub(crate) struct ExvmExecutionBudgets {
     pub max_steps: usize,
     pub max_token_count: usize,
     pub max_stack_depth: usize,
-    pub allow_out_of_scope_compatibility: bool,
 }
 
 impl ExvmExecutionBudgets {
@@ -486,7 +509,6 @@ impl ExvmExecutionBudgets {
             max_steps: token_count.saturating_mul(128).max(128),
             max_token_count: token_count,
             max_stack_depth: token_count.max(1),
-            allow_out_of_scope_compatibility: true,
         }
     }
 }
@@ -605,10 +627,11 @@ pub fn parse_expression_tokens(
         tokens,
         end_span,
         end_token_text,
-        package::EXVM_OPCODE_VERSION_V1,
+        package::EXVM_OPCODE_VERSION,
     )
 }
 
+/// Execute the current shared grammar used by numeric preparation compilers.
 pub(crate) fn parse_expression_tokens_with_opcode_version(
     tokens: Vec<Token>,
     end_span: Span,
@@ -616,21 +639,11 @@ pub(crate) fn parse_expression_tokens_with_opcode_version(
     opcode_version: u16,
 ) -> Result<Expr, ParseError> {
     let budgets = ExvmExecutionBudgets::for_tokens(tokens.len());
-    let program = match opcode_version {
-        package::EXVM_OPCODE_VERSION_V1 => EXVM_DEFAULT_PROGRAM_V1,
-        package::EXVM_OPCODE_VERSION_V2 => EXVM_DEFAULT_PROGRAM_V2.as_slice(),
-        _ => {
-            return Err(ParseError {
-                message: format!("unsupported EXVM opcode version {}", opcode_version),
-                span: end_span,
-            })
-        }
-    };
     run_exvm_expression_parser_program_with_opcode_version(
         tokens,
         end_span,
         end_token_text,
-        program,
+        expression_parser_program(),
         budgets,
         opcode_version,
     )
@@ -645,58 +658,23 @@ pub(crate) fn compile_expression_tokens_to_portable_program_with_opcode_versions
     expr_opcode_version: u16,
 ) -> Result<PortableExprProgram, ParseError> {
     let budgets = ExvmExecutionBudgets::for_tokens(tokens.len());
-    let program = match expr_parser_opcode_version {
-        package::EXVM_OPCODE_VERSION_V1 => EXVM_DEFAULT_PROGRAM_V1,
-        package::EXVM_OPCODE_VERSION_V2 => EXVM_DEFAULT_PROGRAM_V2.as_slice(),
-        _ => {
-            return Err(ParseError {
-                message: format!(
-                    "unsupported EXVM opcode version {}",
-                    expr_parser_opcode_version
-                ),
-                span: end_span,
-            })
-        }
-    };
-
-    match expr_parser_opcode_version {
-        package::EXVM_OPCODE_VERSION_V1 => {
-            let expr = run_exvm_expression_parser_program_with_opcode_version(
-                tokens,
-                end_span,
-                end_token_text,
-                program,
-                budgets,
-                expr_parser_opcode_version,
-            )?;
-            HierarchyExecutionModel::compile_parsed_expression_for_assembler(
-                &expr,
-                expr_opcode_version,
-                end_span,
-            )
-        }
-        package::EXVM_OPCODE_VERSION_V2 => {
-            let strict_tokens = tokens.clone();
-            crate::exvm_v2_runtime::run_exvm_expression_parser_program_to_portable_program(
-                tokens,
-                end_span,
-                end_token_text,
-                program,
-                budgets,
-                expr_opcode_version,
-            )
-            .map_err(|err| {
-                if let Some(parse_error) =
-                    strict_out_of_scope_value_node_error(&strict_tokens, end_span)
-                {
-                    parse_error
-                } else {
-                    err
-                }
-            })
-        }
-        _ => unreachable!(),
+    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION {
+        return Err(ParseError {
+            message: format!(
+                "unsupported EXVM opcode version {}",
+                expr_parser_opcode_version
+            ),
+            span: end_span,
+        });
     }
+    crate::exvm_runtime::run_exvm_expression_parser_program_to_portable_program(
+        tokens,
+        end_span,
+        end_token_text,
+        expression_parser_program(),
+        budgets,
+        expr_opcode_version,
+    )
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -713,7 +691,7 @@ pub(crate) fn run_exvm_expression_parser_program(
         end_token_text,
         program,
         budgets,
-        package::EXVM_OPCODE_VERSION_V1,
+        package::EXVM_OPCODE_VERSION,
     )
 }
 
@@ -725,200 +703,19 @@ pub(crate) fn run_exvm_expression_parser_program_with_opcode_version(
     budgets: ExvmExecutionBudgets,
     opcode_version: u16,
 ) -> Result<Expr, ParseError> {
-    match opcode_version {
-        package::EXVM_OPCODE_VERSION_V1 => run_exvm_v1_expression_parser_program(
-            tokens,
-            end_span,
-            end_token_text,
-            program,
-            budgets,
-        ),
-        package::EXVM_OPCODE_VERSION_V2 => {
-            let strict_tokens = tokens.clone();
-            crate::exvm_v2_runtime::run_exvm_expression_parser_program(
-                tokens,
-                end_span,
-                end_token_text,
-                program,
-                budgets,
-            )
-            .map_err(|err| {
-                if let Some(parse_error) =
-                    strict_out_of_scope_value_node_error(&strict_tokens, end_span)
-                {
-                    parse_error
-                } else {
-                    err
-                }
-            })
-        }
-        _ => Err(ParseError {
+    if opcode_version != package::EXVM_OPCODE_VERSION {
+        return Err(ParseError {
             message: format!("unsupported EXVM opcode version {}", opcode_version),
             span: end_span,
-        }),
-    }
-}
-
-fn run_exvm_v1_expression_parser_program(
-    tokens: Vec<Token>,
-    end_span: Span,
-    end_token_text: Option<String>,
-    program: &[u8],
-    budgets: ExvmExecutionBudgets,
-) -> Result<Expr, ParseError> {
-    if tokens.len() > budgets.max_token_count {
-        return Err(ParseError {
-            message: format!(
-                "EXVM token budget exceeded ({}/{})",
-                tokens.len(),
-                budgets.max_token_count
-            ),
-            span: end_span,
         });
     }
-
-    let mut pc = 0usize;
-    let mut steps = 0usize;
-    let mut output_stack = Vec::new();
-
-    while pc < program.len() {
-        if steps >= budgets.max_steps {
-            return Err(ParseError {
-                message: format!(
-                    "EXVM step budget exceeded ({}/{})",
-                    steps, budgets.max_steps
-                ),
-                span: end_span,
-            });
-        }
-        steps += 1;
-
-        let opcode_pc = pc;
-        let opcode_byte = program[pc];
-        pc += 1;
-        let opcode = package::ExvmOpcode::from_u8(opcode_byte).ok_or_else(|| ParseError {
-            message: format!("invalid EXVM opcode 0x{opcode_byte:02X} at pc={opcode_pc}"),
-            span: end_span,
-        })?;
-
-        match opcode {
-            package::ExvmOpcode::End => {
-                return match output_stack.pop() {
-                    Some(expr) if output_stack.is_empty() => Ok(expr),
-                    Some(_) => Err(ParseError {
-                        message: "EXVM program ended with multiple expressions".to_string(),
-                        span: end_span,
-                    }),
-                    None => Err(ParseError {
-                        message: "EXVM program ended without expression".to_string(),
-                        span: end_span,
-                    }),
-                };
-            }
-            package::ExvmOpcode::ParseExpression => {
-                if output_stack.len() >= budgets.max_stack_depth {
-                    return Err(ParseError {
-                        message: format!(
-                            "EXVM output stack depth exceeded ({}/{})",
-                            output_stack.len() + 1,
-                            budgets.max_stack_depth
-                        ),
-                        span: end_span,
-                    });
-                }
-                let scalar_result =
-                    crate::runtime_expr_parser::parse_exvm_scalar_expression_tokens(
-                        tokens.clone(),
-                        end_span,
-                        end_token_text.clone(),
-                    )
-                    .or_else(|err| {
-                        if budgets.allow_out_of_scope_compatibility {
-                            if let Some(expr) = parse_out_of_scope_compatibility_expr(
-                                tokens.clone(),
-                                end_span,
-                                end_token_text.clone(),
-                            ) {
-                                return Ok(expr);
-                            }
-                        }
-
-                        if let Some(parse_error) =
-                            strict_out_of_scope_value_node_error(&tokens, end_span)
-                        {
-                            Err(parse_error)
-                        } else {
-                            Err(err)
-                        }
-                    })?;
-                output_stack.push(scalar_result);
-            }
-            package::ExvmOpcode::EmitDiag => {
-                return Err(ParseError {
-                    message: "EXVM emitted diagnostic".to_string(),
-                    span: end_span,
-                });
-            }
-            package::ExvmOpcode::Fail => {
-                return Err(ParseError {
-                    message: "EXVM program failed".to_string(),
-                    span: end_span,
-                });
-            }
-        }
-    }
-
-    Err(ParseError {
-        message: "EXVM program missing End opcode".to_string(),
-        span: end_span,
-    })
-}
-
-enum StrictOutOfScopeValueNode {
-    Call(Span),
-    Placeholder(Span),
-}
-
-impl StrictOutOfScopeValueNode {
-    fn message(&self) -> &'static str {
-        match self {
-            Self::Call(_) => "EXVM strict mode does not cover function/call expressions",
-            Self::Placeholder(_) => "EXVM strict mode does not cover placeholder expressions",
-        }
-    }
-
-    fn span(&self) -> Span {
-        match self {
-            Self::Call(span) | Self::Placeholder(span) => *span,
-        }
-    }
-}
-
-fn parse_out_of_scope_compatibility_expr(
-    tokens: Vec<Token>,
-    end_span: Span,
-    end_token_text: Option<String>,
-) -> Option<Expr> {
-    let expr = parse_runtime_expression_compatibility(tokens, end_span, end_token_text).ok()?;
-    find_strict_out_of_scope_value_node(&expr)?;
-    Some(expr)
-}
-
-pub(crate) fn parse_runtime_expression_compatibility(
-    tokens: Vec<Token>,
-    end_span: Span,
-    end_token_text: Option<String>,
-) -> Result<Expr, ParseError> {
-    #[cfg(test)]
-    if RUNTIME_EXPR_COMPATIBILITY_FAILPOINT.with(|flag| flag.get()) {
-        return Err(ParseError {
-            message: "runtime expression compatibility failpoint".to_string(),
-            span: end_span,
-        });
-    }
-
-    crate::runtime_expr_parser::RuntimeExpressionParser::new(tokens, end_span, end_token_text)
-        .parse_expr_from_tokens()
+    crate::exvm_runtime::run_exvm_expression_parser_program(
+        tokens,
+        end_span,
+        end_token_text,
+        program,
+        budgets,
+    )
 }
 
 fn parse_expression_with_core_parser_compatibility_for_assembler(
@@ -967,7 +764,7 @@ fn try_compile_direct_leaf_expression_program_for_assembler(
     expr_parser_opcode_version: u16,
     end_span: Span,
 ) -> Result<Option<PortableExprProgram>, ParseError> {
-    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION_V2 {
+    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION {
         return Ok(None);
     }
 
@@ -989,7 +786,7 @@ fn try_compile_direct_scalar_expression_program_for_assembler(
     expr_parser_opcode_version: u16,
     end_span: Span,
 ) -> Result<Option<PortableExprProgram>, ParseError> {
-    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION_V2 {
+    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION {
         return Ok(None);
     }
 
@@ -1011,7 +808,7 @@ fn try_compile_direct_structural_expression_program_for_assembler(
     expr_parser_opcode_version: u16,
     end_span: Span,
 ) -> Result<Option<PortableExprProgram>, ParseError> {
-    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION_V2 {
+    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION {
         return Ok(None);
     }
 
@@ -1036,7 +833,7 @@ fn try_compile_direct_member_index_expression_program_for_assembler(
     expr_parser_opcode_version: u16,
     end_span: Span,
 ) -> Result<Option<PortableExprProgram>, ParseError> {
-    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION_V2 {
+    if expr_parser_opcode_version != package::EXVM_OPCODE_VERSION {
         return Ok(None);
     }
 
@@ -1087,135 +884,6 @@ fn compile_expression_program_for_direct_stage(
 
     compile_core_expr_to_portable_program_with_opcode_version(expr, expr_opcode_version)
         .map_err(|err| err.to_string())
-}
-
-fn strict_out_of_scope_value_node_error(tokens: &[Token], end_span: Span) -> Option<ParseError> {
-    let node = find_strict_out_of_scope_value_node_in_tokens(tokens, end_span)?;
-    Some(ParseError {
-        message: node.message().to_string(),
-        span: node.span(),
-    })
-}
-
-fn find_strict_out_of_scope_value_node_in_tokens(
-    tokens: &[Token],
-    end_span: Span,
-) -> Option<StrictOutOfScopeValueNode> {
-    let mut expecting_value = true;
-
-    for (index, token) in tokens.iter().enumerate() {
-        match &token.kind {
-            TokenKind::Question if expecting_value => {
-                return Some(StrictOutOfScopeValueNode::Placeholder(token.span));
-            }
-            TokenKind::Question => expecting_value = true,
-            TokenKind::Dot if expecting_value => {
-                let next_is_name = matches!(
-                    tokens.get(index + 1).map(|next| &next.kind),
-                    Some(TokenKind::Identifier(_) | TokenKind::Register(_))
-                );
-                let next_is_open_paren = matches!(
-                    tokens.get(index + 2).map(|next| &next.kind),
-                    Some(TokenKind::OpenParen)
-                );
-                if next_is_name && next_is_open_paren {
-                    return Some(StrictOutOfScopeValueNode::Call(
-                        strict_out_of_scope_call_span(tokens, index, end_span),
-                    ));
-                }
-                expecting_value = true;
-            }
-            TokenKind::Dot => expecting_value = false,
-            TokenKind::Number(_)
-            | TokenKind::Identifier(_)
-            | TokenKind::Register(_)
-            | TokenKind::Dollar
-            | TokenKind::String(_)
-            | TokenKind::CloseParen
-            | TokenKind::CloseBracket
-            | TokenKind::CloseBrace => expecting_value = false,
-            TokenKind::OpenParen
-            | TokenKind::OpenBracket
-            | TokenKind::OpenBrace
-            | TokenKind::Comma
-            | TokenKind::Colon
-            | TokenKind::Hash
-            | TokenKind::Operator(_) => expecting_value = true,
-            _ => {}
-        }
-    }
-
-    None
-}
-
-fn strict_out_of_scope_call_span(tokens: &[Token], call_start: usize, end_span: Span) -> Span {
-    let dot_span = tokens[call_start].span;
-    let mut paren_depth = 0usize;
-
-    for token in tokens.iter().skip(call_start + 2) {
-        match token.kind {
-            TokenKind::OpenParen => paren_depth += 1,
-            TokenKind::CloseParen if paren_depth <= 1 => {
-                return Span {
-                    line: dot_span.line,
-                    col_start: dot_span.col_start,
-                    col_end: token.span.col_end,
-                };
-            }
-            TokenKind::CloseParen => paren_depth -= 1,
-            _ => {}
-        }
-    }
-
-    Span {
-        line: dot_span.line,
-        col_start: dot_span.col_start,
-        col_end: end_span.col_end,
-    }
-}
-
-fn find_strict_out_of_scope_value_node(expr: &Expr) -> Option<StrictOutOfScopeValueNode> {
-    match expr {
-        Expr::Call { span, .. } => Some(StrictOutOfScopeValueNode::Call(*span)),
-        Expr::Placeholder(span) => Some(StrictOutOfScopeValueNode::Placeholder(*span)),
-        Expr::List(elements, _) | Expr::Tuple(elements, _) => elements
-            .iter()
-            .find_map(find_strict_out_of_scope_value_node),
-        Expr::Index { base, index, .. } => find_strict_out_of_scope_value_node(base)
-            .or_else(|| find_strict_out_of_scope_value_node(index)),
-        Expr::Member { base, .. } => find_strict_out_of_scope_value_node(base),
-        Expr::StructLiteral { fields, .. } => fields
-            .iter()
-            .find_map(|(_, field_expr)| find_strict_out_of_scope_value_node(field_expr)),
-        Expr::Indirect(expr, _)
-        | Expr::Immediate(expr, _)
-        | Expr::IndirectLong(expr, _)
-        | Expr::Unary { expr, .. } => find_strict_out_of_scope_value_node(expr),
-        Expr::Ternary {
-            cond,
-            then_expr,
-            else_expr,
-            ..
-        } => find_strict_out_of_scope_value_node(cond)
-            .or_else(|| find_strict_out_of_scope_value_node(then_expr))
-            .or_else(|| find_strict_out_of_scope_value_node(else_expr)),
-        Expr::Binary { left, right, .. } => find_strict_out_of_scope_value_node(left)
-            .or_else(|| find_strict_out_of_scope_value_node(right)),
-        Expr::Range {
-            start, end, step, ..
-        } => find_strict_out_of_scope_value_node(start)
-            .or_else(|| find_strict_out_of_scope_value_node(end))
-            .or_else(|| {
-                step.as_deref()
-                    .and_then(find_strict_out_of_scope_value_node)
-            }),
-        Expr::Number(_, _)
-        | Expr::Identifier(_, _)
-        | Expr::Register(_, _)
-        | Expr::Dollar(_)
-        | Expr::String(_, _)
-        | Expr::Error(_, _) => None,
-    }
 }
 
 /// Runnable `.opcore` VM stage: evaluate an expression for assembler use
@@ -1769,7 +1437,7 @@ impl HierarchyExecutionModel {
         Ok(contract
             .as_ref()
             .map(|entry| entry.opcode_version)
-            .unwrap_or(package::EXVM_OPCODE_VERSION_V1))
+            .unwrap_or(package::EXVM_OPCODE_VERSION))
     }
 
     pub fn parse_expression_program_for_assembler(
@@ -1903,17 +1571,15 @@ impl HierarchyExecutionModel {
 
         let opcode_version = parser_vm_opcode_version
             .or_else(|| contract.as_ref().map(|entry| entry.opcode_version))
-            .unwrap_or(package::EXVM_OPCODE_VERSION_V1);
-        if opcode_version != package::EXVM_OPCODE_VERSION_V1
-            && opcode_version != package::EXVM_OPCODE_VERSION_V2
-        {
+            .unwrap_or(package::EXVM_OPCODE_VERSION);
+        if opcode_version != package::EXVM_OPCODE_VERSION {
             return Err(ParseError {
                 message: format!("unsupported EXVM opcode version {}", opcode_version),
                 span: end_span,
             });
         }
 
-        if opcode_version == package::EXVM_OPCODE_VERSION_V2
+        if opcode_version == package::EXVM_OPCODE_VERSION
             && expr_opcode_version == package::EXPR_VM_OPCODE_VERSION_V2
             && !tokens_require_ast_portable_program_fallback(&tokens)
         {

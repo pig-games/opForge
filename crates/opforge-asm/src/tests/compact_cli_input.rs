@@ -347,7 +347,7 @@ fn compact_cli_input_defaults_and_argument_integration() {
             command_template: Some(command),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: files,
-            proof: proof,
+            proof,
         };
         match run_prebuilt_compact_cli_case_from_env(&root, &case, &image) {
             Ok(FsUaeSmokeOutcome::Completed { runs })
@@ -399,7 +399,7 @@ fn compact_cli_input_defaults_and_argument_integration() {
             "--help",
             "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY",
         ),
-        ("version-success", "-V", "opForge compact native | BS28"),
+        ("version-success", "-V", "opForge compact native | BS30"),
     ] {
         run(
             name,

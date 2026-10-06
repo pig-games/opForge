@@ -59,6 +59,8 @@ record
 	bhi.w next
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a0)
 	beq.w unsupported
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
+	beq.w unsupported
 next
 	adda.l d3, a0
 	bra.w record
@@ -95,6 +97,8 @@ execute	.block
 	movea.l package.Context.Defined(a2), a3
 	tst.b 0(a3, d4.l)
 	beq.w evaluate
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
+	beq.w good
 	cmpi.b #DEFINED, 0(a3, d4.l)
 	bne.w bad
 evaluate
@@ -120,6 +124,7 @@ resolved
 	move.b #DEFINED, 0(a3, d4.l)
 	movea.l package.Context.SectionIds(a2), a3
 	clr.b 0(a3, d4.l)
+good
 	moveq #0, d0
 	bra.w done
 bad

@@ -156,8 +156,7 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 ///
 /// - `TOKENIZER_VM_OPCODE_VERSION_V1`: tokenizer VM (`TKVM`) payloads.
 /// - `PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT`: `.opasm` statement PRVM v2 payloads.
-/// - `EXVM_OPCODE_VERSION_V1`: expression parser VM (`EXVM`) payloads.
-/// - `EXVM_OPCODE_VERSION_V2`: staged expression parser VM v2 contract payloads.
+/// - `EXVM_OPCODE_VERSION`: expression parser VM (`EXVM`) payloads.
 /// - `EXPR_VM_OPCODE_VERSION_V1`: expression evaluator VM contracts (`EXPR`),
 ///   sourced from `core::expr_vm` to keep runtime/package compatibility strict.
 /// - `EXPR_VM_OPCODE_VERSION_V2`: staged expression evaluator VM v2 contract
@@ -220,8 +219,7 @@ pub const SELECTOR_VM_OP_MAP_EXACT: u8 = 0x05;
 pub const SELECTOR_VM_OP_REWRITE_SUFFIX: u8 = 0x06;
 pub const SELECTOR_VM_OP_END: u8 = 0xFF;
 pub const PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT: u16 = 0x0002;
-pub const EXVM_OPCODE_VERSION_V1: u16 = 0x0001;
-pub const EXVM_OPCODE_VERSION_V2: u16 = 0x0002;
+pub const EXVM_OPCODE_VERSION: u16 = 0x0001;
 pub const PARSER_GRAMMAR_ID_LINE_V1: &str = "opforge.line.v1";
 pub const PARSER_AST_SCHEMA_ID_LINE_V1: &str = "opforge.ast.line.v1";
 pub const EXPR_VM_OPCODE_VERSION_V1: u16 = super::expr_vm_compat::EXPR_VM_OPCODE_VERSION_V1;
@@ -1622,16 +1620,17 @@ pub const PARSER_VM_PACKED_DECLARATION_ENTRY: u16 = 9;
 
 /// Shared scalar declaration heads and mutability; operands stay expression-owned.
 /// Row roles are 1 immutable, 2 mutable. Both mutable spellings share one role.
-/// Three directive rows are followed by one operator row: mutable role, colon,
-/// equal. The packed service consumes this numeric policy before label-colon
-/// handling; it never evaluates the declaration value.
+/// Three directive rows are followed by mutable and conditional operator rows.
+/// Each row contains its role, token count, and numeric operator tokens. The
+/// packed service consumes this numeric policy before label-colon handling;
+/// it never evaluates the declaration value.
 pub fn packed_declaration_program(heads: [u16; 3]) -> Vec<u8> {
     let mut program = vec![0x98, 3];
     for (head, role) in heads.into_iter().zip([1, 2, 2]) {
         program.extend(head.to_be_bytes());
         program.push(role);
     }
-    program.extend([1, 2, 5, 34, 0x83, 0]);
+    program.extend([2, 2, 2, 5, 34, 3, 3, 5, 9, 34, 0x83, 0]);
     program
 }
 
@@ -1760,29 +1759,6 @@ pub type ParserVmOpcodeV2 = ParserVmOpcode;
 #[repr(u8)]
 pub enum ExvmOpcode {
     End = 0x00,
-    ParseExpression = 0x01,
-    EmitDiag = 0x02,
-    Fail = 0x03,
-}
-
-pub type ExvmOpcodeV1 = ExvmOpcode;
-
-impl ExvmOpcode {
-    pub fn from_u8(value: u8) -> Option<Self> {
-        match value {
-            0x00 => Some(Self::End),
-            0x01 => Some(Self::ParseExpression),
-            0x02 => Some(Self::EmitDiag),
-            0x03 => Some(Self::Fail),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum ExvmOpcodeV2 {
-    End = 0x00,
     Jump = 0x01,
     JumpIfTrue = 0x02,
     Call = 0x03,
@@ -1804,11 +1780,15 @@ pub enum ExvmOpcodeV2 {
     ParseList = 0x64,
     ParseStructLiteralIfPresent = 0x65,
     ParsePostfixChain = 0x66,
+    BuildString = 0x67,
+    BuildPlaceholder = 0x68,
+    BuildRegister = 0x69,
+    ParseCall = 0x6A,
     EmitDiag = 0x70,
     Fail = 0x72,
 }
 
-impl ExvmOpcodeV2 {
+impl ExvmOpcode {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0x00 => Some(Self::End),
@@ -1833,6 +1813,10 @@ impl ExvmOpcodeV2 {
             0x64 => Some(Self::ParseList),
             0x65 => Some(Self::ParseStructLiteralIfPresent),
             0x66 => Some(Self::ParsePostfixChain),
+            0x67 => Some(Self::BuildString),
+            0x68 => Some(Self::BuildPlaceholder),
+            0x69 => Some(Self::BuildRegister),
+            0x6A => Some(Self::ParseCall),
             0x70 => Some(Self::EmitDiag),
             0x72 => Some(Self::Fail),
             _ => None,
@@ -1842,7 +1826,7 @@ impl ExvmOpcodeV2 {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
-pub enum ExvmOperatorKindV2 {
+pub enum ExvmOperatorKind {
     Plus = 0x01,
     Minus = 0x02,
     Multiply = 0x03,
@@ -1869,7 +1853,7 @@ pub enum ExvmOperatorKindV2 {
     RangeInclusive = 0x18,
 }
 
-impl ExvmOperatorKindV2 {
+impl ExvmOperatorKind {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0x01 => Some(Self::Plus),
@@ -1903,7 +1887,7 @@ impl ExvmOperatorKindV2 {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
-pub enum ExvmTokenKindV2 {
+pub enum ExvmTokenKind {
     Number = 0x01,
     Identifier = 0x02,
     Dollar = 0x03,
@@ -1912,9 +1896,12 @@ pub enum ExvmTokenKindV2 {
     Question = 0x06,
     Colon = 0x07,
     OpenBrace = 0x08,
+    String = 0x09,
+    Register = 0x0A,
+    Dot = 0x0B,
 }
 
-impl ExvmTokenKindV2 {
+impl ExvmTokenKind {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0x01 => Some(Self::Number),
@@ -1925,6 +1912,9 @@ impl ExvmTokenKindV2 {
             0x06 => Some(Self::Question),
             0x07 => Some(Self::Colon),
             0x08 => Some(Self::OpenBrace),
+            0x09 => Some(Self::String),
+            0x0A => Some(Self::Register),
+            0x0B => Some(Self::Dot),
             _ => None,
         }
     }

@@ -134,15 +134,22 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS28");
+        assert_eq!(&bytes[..4], b"BS30");
+        let expression_offset = long(200);
+        let expression_bytes = long(204);
+        assert!(expression_offset >= 208 && expression_offset % 2 == 0);
+        assert_eq!(
+            &bytes[expression_offset..expression_offset + expression_bytes],
+            vm::vm_opcore::expression_parser_program(),
+        );
+        assert!(expression_offset + expression_bytes <= runtime_bytes);
         let rows_offset = long(16);
-        assert!(rows_offset >= 200);
-        assert_eq!((rows_offset - 200) % 4, 0);
-        assert_eq!(word(130) & 2 != 0, rows_offset > 200);
+        assert!(rows_offset >= 208);
+        assert_eq!((rows_offset - 208) % 4, 0);
+        assert_eq!(word(130) & 2 != 0, rows_offset > 208);
         assert_eq!(word(188), package::PARSER_VM_MACRO_VERSION);
         assert_eq!(word(190), 0);
         let declaration_offset = long(180);
-        assert_eq!(long(184), 17);
         let heads = [2, 5, 8].map(|slot| {
             u16::from_be_bytes(
                 bytes[declaration_offset + slot..declaration_offset + slot + 2]
@@ -150,14 +157,16 @@ fn binary_source_runtime_target_identity_is_relocatable() {
                     .unwrap(),
             )
         });
+        let declaration_program = package::packed_declaration_program(heads);
+        assert_eq!(long(184), declaration_program.len());
         assert_eq!(
-            &bytes[declaration_offset..declaration_offset + 17],
-            package::packed_declaration_program(heads)
+            &bytes[declaration_offset..declaration_offset + declaration_program.len()],
+            declaration_program
         );
         assert_eq!(word(64), little_endian);
         assert_eq!(word(130) & 1, u16::from(cpu == "m6502"));
         assert_eq!(word(130) & !3, 0);
-        assert!(target_offset >= 200);
+        assert!(target_offset >= 208);
         assert_eq!(target_bytes, expected.len());
         assert_eq!(
             &bytes[target_offset..target_offset + target_bytes],
@@ -179,13 +188,18 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         );
         assert_eq!(long(180), long(168) + long(172));
         let declaration_end = (long(180) + long(184) + 1) & !1;
-        if long(192) == 0 {
+        let state_end = if long(192) == 0 {
             assert_eq!(long(196), 0);
-            assert_eq!(runtime_bytes, declaration_end);
+            declaration_end
         } else {
             assert_eq!(long(192), declaration_end);
-            assert_eq!(runtime_bytes, long(192) + long(196));
-        }
+            long(192) + long(196)
+        };
+        assert_eq!(expression_offset, (state_end + 1) & !1);
+        assert_eq!(
+            runtime_bytes,
+            (expression_offset + expression_bytes + 1) & !1
+        );
         assert_eq!(
             word(142),
             core.cpu_execution_properties(cpu)
@@ -233,11 +247,11 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS28");
+        assert_eq!(&bytes[..4], b"BS30");
         assert_eq!(long(&bytes, 4), bytes.len());
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((200..=bytes.len()).contains(&runtime_bytes));
+        assert!((208..=bytes.len()).contains(&runtime_bytes));
         let numeric =
             vm::binary_source_package::BinarySourcePackage::prepare(&core, &resolved).unwrap();
         let state_offset = long(&bytes, 192);
@@ -246,7 +260,7 @@ fn binary_source_packages_prepare() {
             assert_eq!((state_offset, state_bytes), (0, 0));
             assert!(numeric.candidates.iter().all(|c| c.state_guard == 0));
         } else {
-            assert!(state_offset >= 200 && state_offset + state_bytes <= runtime_bytes);
+            assert!(state_offset >= 208 && state_offset + state_bytes <= runtime_bytes);
             let plan = &bytes[state_offset..state_offset + state_bytes];
             assert_eq!(
                 usize::from(u16::from_be_bytes(plan[0..2].try_into().unwrap())),
@@ -327,7 +341,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 200);
+            assert!(offset >= 208);
             assert!(offset + count * width <= runtime_bytes);
         }
 

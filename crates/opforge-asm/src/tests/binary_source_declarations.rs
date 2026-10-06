@@ -809,3 +809,167 @@ fn compact_mutable_mapped_layout_fs_uae() {
         .collect();
     native_project_cases(cases, "OPFORGE_MUTABLE_LAYOUT_REPORT");
 }
+
+fn conditional_scalar_cases() -> Vec<(&'static str, &'static str, Vec<u8>)> {
+    vec![
+        (
+            "conditional-create",
+            "n :?= 3\n.byte n\nn :?= 9\n.byte n\nn := 5\n.byte n\n",
+            vec![5, 5, 5],
+        ),
+        ("conditional-readonly", "n=7\nn :?= 1/0\n.byte n\n", vec![7]),
+        (
+            "conditional-missing-skipped",
+            "n=7\nn :?= missing\n.byte n\n",
+            vec![7],
+        ),
+        ("conditional-label", "n\nn :?= 1/0\n.byte n&255\n", vec![0]),
+        (
+            "conditional-forward",
+            "n :?= later\n.byte n\nlater=7\n",
+            vec![0],
+        ),
+    ]
+}
+#[test]
+fn compact_conditional_scalar_rust_oracles() {
+    let dir = create_temp_dir("conditional-scalar-oracles");
+    let _cleanup = Cleanup(dir.clone());
+    for (name, body, expected) in conditional_scalar_cases() {
+        assert_eq!(
+            oracle(&dir, &mutable_probe(body, "6502")).unwrap(),
+            expected,
+            "{name}"
+        );
+    }
+    for body in [
+        "n :?= 1\nn=2\n.byte n\n",
+        "n :?=\n.byte 1\n",
+        "n=1\nn :?= 1+\n.byte n\n",
+        "n=1\nn :?=\n.byte n\n",
+    ] {
+        assert!(
+            oracle(&dir, &mutable_probe(body, "6502")).is_err(),
+            "{body}"
+        );
+    }
+}
+#[test]
+#[ignore = "requires fresh FS-UAE conditional scalar source-order, skipped RHS and rejection proof"]
+fn compact_conditional_scalar_fs_uae() {
+    let mut cases = Vec::new();
+    for cpu in ["6502", "m68020"] {
+        cases.extend(
+            conditional_scalar_cases()
+                .into_iter()
+                .map(|(name, body, _)| {
+                    (format!("{cpu}/{name}"), cpu, mutable_probe(body, cpu), true)
+                }),
+        );
+    }
+    for (name, body) in [
+        ("conditional-readonly-collision", "n :?= 1\nn=2\n.byte n\n"),
+        (
+            "conditional-skipped-invalid-syntax",
+            "n=1\nn :?= 1+\n.byte n\n",
+        ),
+        ("conditional-missing-value", "n :?=\n.byte 1\n"),
+    ] {
+        cases.push((name.into(), "6502", mutable_probe(body, "6502"), false));
+    }
+    native_cases(cases, "OPFORGE_CONDITIONAL_REPORT");
+}
+
+fn conditional_import_case() -> NativeCase {
+    NativeCase {
+        name: "conditional-imported-rhs".into(),
+        cpu: "6502",
+        source: ".module main\n.cpu 6502\n.use dep (entry) as lib\nn=7\nn :?= lib.entry\n.byte n\n.endmodule\n".into(),
+        expectation: NativeExpected::MatchRust,
+        files: vec![("library/dep.asm".into(), ".module dep\n.cpu 6502\n.pub\nentry .block\n.byte $aa\n.bend\n.endmodule\n".into())],
+    }
+}
+#[test]
+fn compact_conditional_import_rust_oracle() {
+    let dir = create_temp_dir("conditional-import-oracle");
+    let _cleanup = Cleanup(dir.clone());
+    let case = conditional_import_case();
+    assert_eq!(
+        project_oracle(&dir, &case.source, false, &case.files).unwrap(),
+        [0xaa, 7]
+    );
+}
+#[test]
+#[ignore = "requires fresh FS-UAE skipped conditional RHS imported-block reachability"]
+fn compact_conditional_import_fs_uae() {
+    native_project_cases(
+        vec![conditional_import_case()],
+        "OPFORGE_CONDITIONAL_IMPORT_REPORT",
+    );
+}
+
+#[test]
+fn compact_conditional_policy_matches_live_tkvm_punctuation() {
+    use vm::runtime_portable_types::{PortableTokenizeRequest, PortableTokenizerByteStream};
+    let core =
+        vm::runtime_model_core::RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let source = "n :?= 3";
+    let tokens = core
+        .tokenize_with_vm_core(
+            &PortableTokenizeRequest {
+                family_id: resolved.family_id.as_str(),
+                cpu_id: resolved.cpu_id.as_str(),
+                dialect_id: resolved.dialect_id.as_str(),
+                source_line: source,
+                source_stream: PortableTokenizerByteStream::from_source_line(source),
+                line_num: 1,
+                token_policy: core.token_policy_for_resolved(&resolved),
+            },
+            core.tokenizer_vm_program_for_resolved(&resolved).unwrap(),
+        )
+        .unwrap();
+    // The packed writer copies TKVM punctuation kinds without remapping. Derive
+    // each code by decoding against actual tokenizer output, not EXVM enums.
+    let mut punctuation: Vec<_> = tokens[1..3]
+        .iter()
+        .zip([b":".as_slice(), b"?"])
+        .map(|(token, lexeme)| {
+            (0..=40)
+                .find(|code| {
+                    vm::tokenizer_runtime_utils::vm_build_token(*code, lexeme, 1, 0, 1, 0)
+                        .is_ok_and(|decoded| decoded.kind == token.kind)
+                })
+                .unwrap()
+        })
+        .collect();
+    assert!(matches!(
+        tokens[3].kind,
+        vm::portable_contract::PortableTokenKind::Operator(
+            vm::portable_contract::PortableOperatorKind::Eq
+        )
+    ));
+    let native = include_str!("../../../../native/motorola68000/amigaos/tkvm/tkvm_runtime.asm");
+    punctuation.push(
+        native
+            .lines()
+            .find(|line| line.starts_with("TK_KIND_OP_EQ "))
+            .unwrap()
+            .split('=')
+            .nth(1)
+            .unwrap()
+            .trim()
+            .parse::<u8>()
+            .unwrap(),
+    );
+    assert_eq!(punctuation, [5, 9, 34]);
+    let mut packed = vec![0, 1, 0, 1, 0, 0, 90, 0];
+    packed.extend(punctuation);
+    packed.extend([2, 0, 0, 0, 3]);
+    packed[0] = (packed.len() - 1) as u8;
+    let plan = package::package::packed_declaration_program([42, 43, 44]);
+    let rows = vm::packed_declaration_vm::execute(9, 2, &plan, &packed, 32, 3).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(u16::from_be_bytes(rows[0][2..4].try_into().unwrap()), 3);
+    assert_eq!(u32::from_be_bytes(rows[0][4..8].try_into().unwrap()), 11);
+}

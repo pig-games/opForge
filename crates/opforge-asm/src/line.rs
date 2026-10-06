@@ -2660,6 +2660,17 @@ impl<'a> AsmLine<'a> {
     ) -> LineStatus {
         let _symbol_update_scope = self.pass_symbol_update_scope();
         self.label = Some(label.name.clone());
+        // Deferred parser errors remain errors even when a conditional declaration
+        // preserves an existing value. This validates syntax without evaluating RHS.
+        if let Expr::Error(message, error_span) = expr {
+            return self.failure_at_span(
+                LineStatus::Error,
+                AsmErrorKind::Expression,
+                message,
+                None,
+                *error_span,
+            );
+        }
 
         match op {
             AssignOp::Const | AssignOp::Var | AssignOp::VarIfUndef => {

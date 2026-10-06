@@ -127,7 +127,7 @@ fn compact_state_false_guard_policy_host_contract() {
             .values
             .contains(&numeric.state.defaults[clause.key as usize]));
         let wire = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&wire[..4], b"BS28");
+        assert_eq!(&wire[..4], b"BS30");
         let long =
             |offset| u32::from_be_bytes(wire[offset..offset + 4].try_into().unwrap()) as usize;
         let word = |offset| u16::from_be_bytes(wire[offset..offset + 2].try_into().unwrap());
@@ -258,7 +258,7 @@ fn actual_state_binding_source(root: &std::path::Path) -> String {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; actual BS28 state/package modules imported by a small Hunk consumer"]
+#[ignore = "requires configured FS-UAE; actual BS30 state/package modules imported by a small Hunk consumer"]
 fn compact_actual_state_package_binding_probe_fs_uae() {
     use crate::fs_uae_smoke::{
         run_prebuilt_compact_cli_case_from_env, OpforgeNativeCliGuestFile,

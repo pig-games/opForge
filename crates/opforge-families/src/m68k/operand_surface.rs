@@ -155,7 +155,7 @@ fn parse_postfix_tuple_operand(
         parse_wrapped_or_expr,
     ));
 
-    let start_span = opcore::expression::expr_span(&elements[0]);
+    let start_span = tokens[0].span;
     let span = Span {
         line: start_span.line,
         col_start: start_span.col_start,
@@ -774,6 +774,40 @@ mod tests {
         assert!(matches!(elements[0], Expr::Number(ref text, _) if text == "4"));
         assert!(matches!(elements[1], Expr::Register(ref name, _) if name == "A0"));
         assert!(matches!(elements[2], Expr::Register(ref name, _) if name == "D1"));
+    }
+
+    #[test]
+    fn postfix_tuple_wrapper_span_covers_binary_prefix_tokens() {
+        let tokens = vec![
+            number("4", 1, 2),
+            token(TokenKind::Operator(OperatorKind::Plus), 2, 3),
+            number("1", 3, 4),
+            token(TokenKind::OpenParen, 4, 5),
+            token(TokenKind::Register("A0".to_string()), 5, 7),
+            token(TokenKind::CloseParen, 7, 8),
+        ];
+        let mut parse_prefix = |_: &[Token], _: Span, _: Option<String>| {
+            Ok(Expr::Binary {
+                op: opcore::parser::BinaryOp::Add,
+                left: Box::new(Expr::Number("4".to_string(), span(1, 2))),
+                right: Box::new(Expr::Number("1".to_string(), span(3, 4))),
+                span: span(2, 3),
+            })
+        };
+        let expression =
+            parse_postfix_tuple_operand(&tokens, &mut parse_prefix, &mut parse_wrapped_or_expr)
+                .unwrap();
+        let Expr::Indirect(inner, wrapper_span) = expression else {
+            panic!("expected indirect");
+        };
+        assert_eq!(wrapper_span, span(1, 8));
+        let Expr::Tuple(elements, tuple_span) = *inner else {
+            panic!("expected tuple");
+        };
+        assert_eq!(tuple_span, span(1, 8));
+        assert!(
+            matches!(elements[0], Expr::Binary { span: operator_span, .. } if operator_span == span(2, 3))
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@ use opcore::expr_vm::{
 use opcore::expression::expr_span;
 use opcore::parser::{BinaryOp, Expr, ParseError, UnaryOp};
 use opcore::tokenizer::{OperatorKind, Span, Token, TokenKind};
-use package::{ExvmOpcodeV2, ExvmOperatorKindV2, ExvmTokenKindV2};
+use package::{ExvmOpcode, ExvmOperatorKind, ExvmTokenKind, EXVM_OPCODE_VERSION};
 
 use crate::vm_opcore::ExvmExecutionBudgets;
 
@@ -14,16 +14,25 @@ pub(crate) trait ExvmRuntimeBackend {
 
     fn build_identifier(&mut self, name: String, span: Span) -> Result<Self::Value, ParseError>;
     fn build_number(&mut self, text: String, span: Span) -> Result<Self::Value, ParseError>;
+    fn build_string(&mut self, bytes: Vec<u8>, span: Span) -> Result<Self::Value, ParseError>;
+    fn build_register(&mut self, name: String, span: Span) -> Result<Self::Value, ParseError>;
+    fn build_placeholder(&mut self, span: Span) -> Result<Self::Value, ParseError>;
+    fn build_call(
+        &mut self,
+        name: String,
+        args: Vec<Self::Value>,
+        span: Span,
+    ) -> Result<Self::Value, ParseError>;
     fn build_current_address(&mut self, span: Span) -> Result<Self::Value, ParseError>;
     fn build_unary(
         &mut self,
-        operator: ExvmOperatorKindV2,
+        operator: ExvmOperatorKind,
         expr: Self::Value,
         span: Span,
     ) -> Result<Self::Value, ParseError>;
     fn build_binary(
         &mut self,
-        operator: ExvmOperatorKindV2,
+        operator: ExvmOperatorKind,
         left: Self::Value,
         right: Self::Value,
         span: Span,
@@ -85,13 +94,32 @@ impl ExvmRuntimeBackend for AstExprBackend {
         Ok(Expr::Number(text, span))
     }
 
+    fn build_string(&mut self, bytes: Vec<u8>, span: Span) -> Result<Self::Value, ParseError> {
+        Ok(Expr::String(bytes, span))
+    }
+
+    fn build_register(&mut self, name: String, span: Span) -> Result<Self::Value, ParseError> {
+        Ok(Expr::Register(name, span))
+    }
+    fn build_placeholder(&mut self, span: Span) -> Result<Self::Value, ParseError> {
+        Ok(Expr::Placeholder(span))
+    }
+    fn build_call(
+        &mut self,
+        name: String,
+        args: Vec<Self::Value>,
+        span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        Ok(Expr::Call { name, args, span })
+    }
+
     fn build_current_address(&mut self, span: Span) -> Result<Self::Value, ParseError> {
         Ok(Expr::Dollar(span))
     }
 
     fn build_unary(
         &mut self,
-        operator: ExvmOperatorKindV2,
+        operator: ExvmOperatorKind,
         expr: Self::Value,
         span: Span,
     ) -> Result<Self::Value, ParseError> {
@@ -105,7 +133,7 @@ impl ExvmRuntimeBackend for AstExprBackend {
 
     fn build_binary(
         &mut self,
-        operator: ExvmOperatorKindV2,
+        operator: ExvmOperatorKind,
         left: Self::Value,
         right: Self::Value,
         span: Span,
@@ -229,11 +257,11 @@ struct PortableExprRuntimeValue {
 enum PortableExprRuntimeNode {
     Leaf(PortableExprDirectLeaf),
     Unary {
-        operator: ExvmOperatorKindV2,
+        operator: ExvmOperatorKind,
         expr: Box<PortableExprRuntimeValue>,
     },
     Binary {
-        operator: ExvmOperatorKindV2,
+        operator: ExvmOperatorKind,
         left: Box<PortableExprRuntimeValue>,
         right: Box<PortableExprRuntimeValue>,
     },
@@ -398,6 +426,35 @@ impl ExvmRuntimeBackend for PortableExprProgramBackend {
         ))
     }
 
+    fn build_string(&mut self, bytes: Vec<u8>, span: Span) -> Result<Self::Value, ParseError> {
+        Ok(Self::value(
+            span,
+            None,
+            PortableExprRuntimeNode::Leaf(PortableExprDirectLeaf::StringLiteral(bytes)),
+        ))
+    }
+
+    fn build_register(&mut self, name: String, span: Span) -> Result<Self::Value, ParseError> {
+        self.build_identifier(name, span)
+    }
+    fn build_placeholder(&mut self, span: Span) -> Result<Self::Value, ParseError> {
+        Err(ParseError {
+            message: "Placeholder cannot be evaluated as scalar expression".to_owned(),
+            span,
+        })
+    }
+    fn build_call(
+        &mut self,
+        _name: String,
+        _args: Vec<Self::Value>,
+        span: Span,
+    ) -> Result<Self::Value, ParseError> {
+        Err(ParseError {
+            message: "Call expression cannot be evaluated as scalar expression".to_owned(),
+            span,
+        })
+    }
+
     fn build_current_address(&mut self, span: Span) -> Result<Self::Value, ParseError> {
         Ok(Self::value(
             span,
@@ -408,7 +465,7 @@ impl ExvmRuntimeBackend for PortableExprProgramBackend {
 
     fn build_unary(
         &mut self,
-        operator: ExvmOperatorKindV2,
+        operator: ExvmOperatorKind,
         expr: Self::Value,
         span: Span,
     ) -> Result<Self::Value, ParseError> {
@@ -424,7 +481,7 @@ impl ExvmRuntimeBackend for PortableExprProgramBackend {
 
     fn build_binary(
         &mut self,
-        operator: ExvmOperatorKindV2,
+        operator: ExvmOperatorKind,
         left: Self::Value,
         right: Self::Value,
         span: Span,
@@ -609,12 +666,13 @@ pub(crate) fn run_exvm_expression_parser_program_with_backend<B: ExvmRuntimeBack
         });
     }
 
-    let mut runtime = ExvmV2Runtime {
+    let mut runtime = ExvmRuntime {
         tokens,
         index: 0,
         end_span,
         end_token_text,
         steps: 0,
+        expression_depth: 0,
         loaded_token_text: None,
         last_peek_result: false,
         build_spans: Vec::new(),
@@ -631,12 +689,13 @@ pub(crate) fn run_exvm_expression_parser_program_with_backend<B: ExvmRuntimeBack
     runtime.finish_value(expr)
 }
 
-struct ExvmV2Runtime<B: ExvmRuntimeBackend> {
+struct ExvmRuntime<B: ExvmRuntimeBackend> {
     tokens: Vec<Token>,
     index: usize,
     end_span: Span,
     end_token_text: Option<String>,
     steps: usize,
+    expression_depth: usize,
     loaded_token_text: Option<String>,
     last_peek_result: bool,
     build_spans: Vec<Span>,
@@ -644,9 +703,21 @@ struct ExvmV2Runtime<B: ExvmRuntimeBackend> {
     backend: B,
 }
 
-impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
+impl<B: ExvmRuntimeBackend> ExvmRuntime<B> {
     fn execute_expression(&mut self, program: &[u8]) -> Result<B::Value, ParseError> {
-        self.execute_from(program, 0)
+        const MAX_EXPRESSION_DEPTH: usize = 64;
+        if self.expression_depth >= MAX_EXPRESSION_DEPTH {
+            return Err(ParseError {
+                message: format!(
+                    "EXVM expression recursion depth exceeded ({MAX_EXPRESSION_DEPTH})"
+                ),
+                span: self.current_span(),
+            });
+        }
+        self.expression_depth += 1;
+        let result = self.execute_from(program, 0);
+        self.expression_depth -= 1;
+        result
     }
 
     fn finish_value(&mut self, value: B::Value) -> Result<B::FinalOutput, ParseError> {
@@ -654,7 +725,8 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
     }
 
     fn execute_from(&mut self, program: &[u8], mut pc: usize) -> Result<B::Value, ParseError> {
-        let work = types::vm_work::ProgramRun::new("expression_parser", 2, program);
+        let work =
+            types::vm_work::ProgramRun::new("expression_parser", EXVM_OPCODE_VERSION, program);
         let mut output_stack = Vec::new();
         let mut call_stack = Vec::new();
 
@@ -664,14 +736,14 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
             let opcode_pc = pc;
             let opcode_byte = program[pc];
             pc += 1;
-            let opcode = ExvmOpcodeV2::from_u8(opcode_byte).ok_or_else(|| ParseError {
+            let opcode = ExvmOpcode::from_u8(opcode_byte).ok_or_else(|| ParseError {
                 message: format!("invalid EXVM opcode 0x{opcode_byte:02X} at pc={opcode_pc}"),
                 span: self.current_span(),
             })?;
 
             work.step(opcode_pc, opcode_byte);
             match opcode {
-                ExvmOpcodeV2::End => {
+                ExvmOpcode::End => {
                     if !call_stack.is_empty() {
                         return Err(ParseError {
                             message: "EXVM program ended inside subroutine".to_string(),
@@ -680,30 +752,30 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
                     }
                     return self.finish_output_stack(output_stack);
                 }
-                ExvmOpcodeV2::Jump => {
+                ExvmOpcode::Jump => {
                     pc = self.read_jump_target(program, &mut pc, opcode_pc)?;
                 }
-                ExvmOpcodeV2::JumpIfTrue => {
+                ExvmOpcode::JumpIfTrue => {
                     let target = self.read_jump_target(program, &mut pc, opcode_pc)?;
                     if self.last_peek_result {
                         pc = target;
                     }
                 }
-                ExvmOpcodeV2::Call => {
+                ExvmOpcode::Call => {
                     let target = self.read_jump_target(program, &mut pc, opcode_pc)?;
                     call_stack.push(pc);
                     pc = target;
                 }
-                ExvmOpcodeV2::Return => {
+                ExvmOpcode::Return => {
                     let target = call_stack.pop().ok_or_else(|| ParseError {
                         message: "EXVM return without call".to_string(),
                         span: self.current_span(),
                     })?;
                     pc = target;
                 }
-                ExvmOpcodeV2::PeekKind => {
+                ExvmOpcode::PeekKind => {
                     let kind_byte = self.read_u8(program, &mut pc, opcode_pc)?;
-                    let kind = ExvmTokenKindV2::from_u8(kind_byte).ok_or_else(|| ParseError {
+                    let kind = ExvmTokenKind::from_u8(kind_byte).ok_or_else(|| ParseError {
                         message: format!(
                             "invalid EXVM token kind 0x{kind_byte:02X} at pc={opcode_pc}"
                         ),
@@ -711,26 +783,26 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
                     })?;
                     self.last_peek_result = self.peek_matches(kind);
                 }
-                ExvmOpcodeV2::PeekOperator => {
+                ExvmOpcode::PeekOperator => {
                     let operator = self.read_operator_kind(program, &mut pc, opcode_pc)?;
                     self.last_peek_result = self.peek_operator_matches(operator);
                 }
-                ExvmOpcodeV2::Advance => self.advance()?,
-                ExvmOpcodeV2::ConsumeOperator => {
+                ExvmOpcode::Advance => self.advance()?,
+                ExvmOpcode::ConsumeOperator => {
                     let operator = self.read_operator_kind(program, &mut pc, opcode_pc)?;
                     self.consume_operator(operator)?;
                 }
-                ExvmOpcodeV2::ConsumeKind => {
+                ExvmOpcode::ConsumeKind => {
                     let kind = self.read_token_kind(program, &mut pc, opcode_pc)?;
                     self.consume_kind(kind)?;
                 }
-                ExvmOpcodeV2::LoadTokenText => {
+                ExvmOpcode::LoadTokenText => {
                     let token = self
                         .current_token()
                         .ok_or_else(|| self.expected_leaf_error())?;
                     self.loaded_token_text = Some(token.to_source_text());
                 }
-                ExvmOpcodeV2::BuildIdentifier => {
+                ExvmOpcode::BuildIdentifier => {
                     let (name, span) = match self.current_token() {
                         Some(Token {
                             kind: TokenKind::Identifier(name),
@@ -747,7 +819,7 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
                     };
                     output_stack.push(self.backend.build_identifier(name, span)?);
                 }
-                ExvmOpcodeV2::BuildNumber => {
+                ExvmOpcode::BuildNumber => {
                     let (text, span) = match self.current_token() {
                         Some(Token {
                             kind: TokenKind::Number(number),
@@ -764,7 +836,43 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
                     };
                     output_stack.push(self.backend.build_number(text, span)?);
                 }
-                ExvmOpcodeV2::BuildCurrentAddress => {
+                ExvmOpcode::BuildString => {
+                    let (bytes, span) = match self.current_token() {
+                        Some(Token {
+                            kind: TokenKind::String(string),
+                            span,
+                        }) => (string.bytes.clone(), *span),
+                        Some(token) => return Err(self.unexpected_token_error(token.span)),
+                        None => return Err(self.expected_leaf_error()),
+                    };
+                    output_stack.push(self.backend.build_string(bytes, span)?);
+                }
+                ExvmOpcode::BuildRegister => {
+                    let (name, span) = match self.current_token() {
+                        Some(Token {
+                            kind: TokenKind::Register(name),
+                            span,
+                        }) => (name.clone(), *span),
+                        Some(token) => return Err(self.unexpected_token_error(token.span)),
+                        None => return Err(self.expected_leaf_error()),
+                    };
+                    output_stack.push(self.backend.build_register(name, span)?);
+                }
+                ExvmOpcode::BuildPlaceholder => {
+                    let span = match self.current_token() {
+                        Some(Token {
+                            kind: TokenKind::Question,
+                            span,
+                        }) => *span,
+                        Some(token) => return Err(self.unexpected_token_error(token.span)),
+                        None => return Err(self.expected_leaf_error()),
+                    };
+                    output_stack.push(self.backend.build_placeholder(span)?);
+                }
+                ExvmOpcode::ParseCall => {
+                    output_stack.push(self.parse_call(program)?);
+                }
+                ExvmOpcode::BuildCurrentAddress => {
                     let span = match self.current_token() {
                         Some(Token {
                             kind: TokenKind::Dollar,
@@ -775,20 +883,20 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
                     };
                     output_stack.push(self.backend.build_current_address(span)?);
                 }
-                ExvmOpcodeV2::BuildUnary => {
+                ExvmOpcode::BuildUnary => {
                     let operator = self.read_operator_kind(program, &mut pc, opcode_pc)?;
                     let span = self.pop_build_span()?;
                     let expr = self.pop_output(&mut output_stack)?;
                     output_stack.push(self.backend.build_unary(operator, expr, span)?);
                 }
-                ExvmOpcodeV2::BuildBinary => {
+                ExvmOpcode::BuildBinary => {
                     let operator = self.read_operator_kind(program, &mut pc, opcode_pc)?;
                     let span = self.pop_build_span()?;
                     let right = self.pop_output(&mut output_stack)?;
                     let left = self.pop_output(&mut output_stack)?;
                     output_stack.push(self.backend.build_binary(operator, left, right, span)?);
                 }
-                ExvmOpcodeV2::BuildTernary => {
+                ExvmOpcode::BuildTernary => {
                     let span = self.pop_build_span()?;
                     let else_expr = self.pop_output(&mut output_stack)?;
                     let then_expr = self.pop_output(&mut output_stack)?;
@@ -798,7 +906,7 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
                             .build_ternary(cond, then_expr, else_expr, span)?,
                     );
                 }
-                ExvmOpcodeV2::BuildRange => {
+                ExvmOpcode::BuildRange => {
                     let span = self.pop_build_span()?;
                     let flags = self.read_u8(program, &mut pc, opcode_pc)?;
                     if flags & !0x03 != 0 {
@@ -823,22 +931,22 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
                             .build_range(start, end, step, inclusive, span)?,
                     );
                 }
-                ExvmOpcodeV2::ParseGrouping => {
+                ExvmOpcode::ParseGrouping => {
                     output_stack.push(self.parse_grouping(program)?);
                 }
-                ExvmOpcodeV2::ParseList => {
+                ExvmOpcode::ParseList => {
                     output_stack.push(self.parse_list(program)?);
                 }
-                ExvmOpcodeV2::ParseStructLiteralIfPresent => {
+                ExvmOpcode::ParseStructLiteralIfPresent => {
                     let expr = self.pop_output(&mut output_stack)?;
                     output_stack.push(self.parse_struct_literal_if_present(program, expr)?);
                 }
-                ExvmOpcodeV2::ParsePostfixChain => {
+                ExvmOpcode::ParsePostfixChain => {
                     let expr = self.pop_output(&mut output_stack)?;
                     output_stack.push(self.parse_postfix_chain(program, expr)?);
                 }
-                ExvmOpcodeV2::EmitDiag => return Err(self.expected_leaf_error()),
-                ExvmOpcodeV2::Fail => {
+                ExvmOpcode::EmitDiag => return Err(self.expected_leaf_error()),
+                ExvmOpcode::Fail => {
                     return Err(ParseError {
                         message: "EXVM program failed".to_string(),
                         span: self.current_span(),
@@ -876,6 +984,45 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
                 span: self.current_span(),
             }),
         }
+    }
+
+    // Shared dot-prefixed function syntax. Names are opaque to EXVM; builtin
+    // selection/evaluation belongs to the caller's value semantics.
+    fn parse_call(&mut self, program: &[u8]) -> Result<B::Value, ParseError> {
+        let dot_span = self.current_span();
+        if !self.consume_raw_kind(TokenKind::Dot) {
+            return Err(self.unexpected_token_error(dot_span));
+        }
+        let (name, _) = self.consume_identifier_like("Expected function name after '.'")?;
+        if !self.consume_raw_kind(TokenKind::OpenParen) {
+            return Err(ParseError {
+                message: "Expected '(' after function name".to_owned(),
+                span: self.current_span(),
+            });
+        }
+        let mut args = Vec::new();
+        if !self.consume_raw_kind(TokenKind::CloseParen) {
+            args.push(self.execute_expression(program)?);
+            while self.consume_raw_kind(TokenKind::Comma) {
+                args.push(self.execute_expression(program)?);
+            }
+            if !self.consume_raw_kind(TokenKind::CloseParen) {
+                return Err(ParseError {
+                    message: "Missing ')' in function call".to_owned(),
+                    span: self.current_span(),
+                });
+            }
+        }
+        let close_span = self.previous_span();
+        self.backend.build_call(
+            format!(".{name}"),
+            args,
+            Span {
+                line: dot_span.line,
+                col_start: dot_span.col_start,
+                col_end: close_span.col_end,
+            },
+        )
     }
 
     fn parse_grouping(&mut self, program: &[u8]) -> Result<B::Value, ParseError> {
@@ -1108,9 +1255,9 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
         program: &[u8],
         pc: &mut usize,
         opcode_pc: usize,
-    ) -> Result<ExvmOperatorKindV2, ParseError> {
+    ) -> Result<ExvmOperatorKind, ParseError> {
         let operator_byte = self.read_u8(program, pc, opcode_pc)?;
-        ExvmOperatorKindV2::from_u8(operator_byte).ok_or_else(|| ParseError {
+        ExvmOperatorKind::from_u8(operator_byte).ok_or_else(|| ParseError {
             message: format!("invalid EXVM operator kind 0x{operator_byte:02X} at pc={opcode_pc}"),
             span: self.current_span(),
         })
@@ -1121,9 +1268,9 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
         program: &[u8],
         pc: &mut usize,
         opcode_pc: usize,
-    ) -> Result<ExvmTokenKindV2, ParseError> {
+    ) -> Result<ExvmTokenKind, ParseError> {
         let kind_byte = self.read_u8(program, pc, opcode_pc)?;
-        ExvmTokenKindV2::from_u8(kind_byte).ok_or_else(|| ParseError {
+        ExvmTokenKind::from_u8(kind_byte).ok_or_else(|| ParseError {
             message: format!("invalid EXVM token kind 0x{kind_byte:02X} at pc={opcode_pc}"),
             span: self.current_span(),
         })
@@ -1141,19 +1288,19 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
         Ok(value)
     }
 
-    fn peek_matches(&self, kind: ExvmTokenKindV2) -> bool {
+    fn peek_matches(&self, kind: ExvmTokenKind) -> bool {
         self.current_token()
             .is_some_and(|token| token_matches_kind(&token.kind, kind))
     }
 
-    fn peek_operator_matches(&self, operator: ExvmOperatorKindV2) -> bool {
+    fn peek_operator_matches(&self, operator: ExvmOperatorKind) -> bool {
         match self.current_token().map(|token| &token.kind) {
             Some(TokenKind::Operator(current)) => *current == operator_kind(operator),
             _ => false,
         }
     }
 
-    fn consume_operator(&mut self, operator: ExvmOperatorKindV2) -> Result<(), ParseError> {
+    fn consume_operator(&mut self, operator: ExvmOperatorKind) -> Result<(), ParseError> {
         let token = self
             .current_token()
             .ok_or_else(|| self.expected_leaf_error())?;
@@ -1166,18 +1313,18 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
         Ok(())
     }
 
-    fn consume_kind(&mut self, kind: ExvmTokenKindV2) -> Result<(), ParseError> {
+    fn consume_kind(&mut self, kind: ExvmTokenKind) -> Result<(), ParseError> {
         let token = self.current_token().ok_or_else(|| match kind {
-            ExvmTokenKindV2::Colon => self.missing_colon_error(),
+            ExvmTokenKind::Colon => self.missing_colon_error(),
             _ => self.expected_leaf_error(),
         })?;
         if !token_matches_kind(&token.kind, kind) {
             return Err(match kind {
-                ExvmTokenKindV2::Colon => self.missing_colon_error(),
+                ExvmTokenKind::Colon => self.missing_colon_error(),
                 _ => self.unexpected_token_error(token.span),
             });
         }
-        if kind == ExvmTokenKindV2::Question {
+        if kind == ExvmTokenKind::Question {
             self.build_spans.push(token.span);
         }
         self.index += 1;
@@ -1296,43 +1443,43 @@ impl<B: ExvmRuntimeBackend> ExvmV2Runtime<B> {
     }
 }
 
-fn operator_kind(operator: ExvmOperatorKindV2) -> OperatorKind {
+fn operator_kind(operator: ExvmOperatorKind) -> OperatorKind {
     match operator {
-        ExvmOperatorKindV2::Plus => OperatorKind::Plus,
-        ExvmOperatorKindV2::Minus => OperatorKind::Minus,
-        ExvmOperatorKindV2::Multiply => OperatorKind::Multiply,
-        ExvmOperatorKindV2::Divide => OperatorKind::Divide,
-        ExvmOperatorKindV2::Mod => OperatorKind::Mod,
-        ExvmOperatorKindV2::Power => OperatorKind::Power,
-        ExvmOperatorKindV2::BitNot => OperatorKind::BitNot,
-        ExvmOperatorKindV2::LogicNot => OperatorKind::LogicNot,
-        ExvmOperatorKindV2::Lt => OperatorKind::Lt,
-        ExvmOperatorKindV2::Gt => OperatorKind::Gt,
-        ExvmOperatorKindV2::Shl => OperatorKind::Shl,
-        ExvmOperatorKindV2::Shr => OperatorKind::Shr,
-        ExvmOperatorKindV2::Eq => OperatorKind::Eq,
-        ExvmOperatorKindV2::Ne => OperatorKind::Ne,
-        ExvmOperatorKindV2::Ge => OperatorKind::Ge,
-        ExvmOperatorKindV2::Le => OperatorKind::Le,
-        ExvmOperatorKindV2::BitAnd => OperatorKind::BitAnd,
-        ExvmOperatorKindV2::BitOr => OperatorKind::BitOr,
-        ExvmOperatorKindV2::BitXor => OperatorKind::BitXor,
-        ExvmOperatorKindV2::LogicAnd => OperatorKind::LogicAnd,
-        ExvmOperatorKindV2::LogicOr => OperatorKind::LogicOr,
-        ExvmOperatorKindV2::LogicXor => OperatorKind::LogicXor,
-        ExvmOperatorKindV2::Range => OperatorKind::Range,
-        ExvmOperatorKindV2::RangeInclusive => OperatorKind::RangeInclusive,
+        ExvmOperatorKind::Plus => OperatorKind::Plus,
+        ExvmOperatorKind::Minus => OperatorKind::Minus,
+        ExvmOperatorKind::Multiply => OperatorKind::Multiply,
+        ExvmOperatorKind::Divide => OperatorKind::Divide,
+        ExvmOperatorKind::Mod => OperatorKind::Mod,
+        ExvmOperatorKind::Power => OperatorKind::Power,
+        ExvmOperatorKind::BitNot => OperatorKind::BitNot,
+        ExvmOperatorKind::LogicNot => OperatorKind::LogicNot,
+        ExvmOperatorKind::Lt => OperatorKind::Lt,
+        ExvmOperatorKind::Gt => OperatorKind::Gt,
+        ExvmOperatorKind::Shl => OperatorKind::Shl,
+        ExvmOperatorKind::Shr => OperatorKind::Shr,
+        ExvmOperatorKind::Eq => OperatorKind::Eq,
+        ExvmOperatorKind::Ne => OperatorKind::Ne,
+        ExvmOperatorKind::Ge => OperatorKind::Ge,
+        ExvmOperatorKind::Le => OperatorKind::Le,
+        ExvmOperatorKind::BitAnd => OperatorKind::BitAnd,
+        ExvmOperatorKind::BitOr => OperatorKind::BitOr,
+        ExvmOperatorKind::BitXor => OperatorKind::BitXor,
+        ExvmOperatorKind::LogicAnd => OperatorKind::LogicAnd,
+        ExvmOperatorKind::LogicOr => OperatorKind::LogicOr,
+        ExvmOperatorKind::LogicXor => OperatorKind::LogicXor,
+        ExvmOperatorKind::Range => OperatorKind::Range,
+        ExvmOperatorKind::RangeInclusive => OperatorKind::RangeInclusive,
     }
 }
 
-fn exvm_unary_operator(operator: ExvmOperatorKindV2, span: Span) -> Result<UnaryOp, ParseError> {
+fn exvm_unary_operator(operator: ExvmOperatorKind, span: Span) -> Result<UnaryOp, ParseError> {
     match operator {
-        ExvmOperatorKindV2::Plus => Ok(UnaryOp::Plus),
-        ExvmOperatorKindV2::Minus => Ok(UnaryOp::Minus),
-        ExvmOperatorKindV2::BitNot => Ok(UnaryOp::BitNot),
-        ExvmOperatorKindV2::LogicNot => Ok(UnaryOp::LogicNot),
-        ExvmOperatorKindV2::Lt => Ok(UnaryOp::Low),
-        ExvmOperatorKindV2::Gt => Ok(UnaryOp::High),
+        ExvmOperatorKind::Plus => Ok(UnaryOp::Plus),
+        ExvmOperatorKind::Minus => Ok(UnaryOp::Minus),
+        ExvmOperatorKind::BitNot => Ok(UnaryOp::BitNot),
+        ExvmOperatorKind::LogicNot => Ok(UnaryOp::LogicNot),
+        ExvmOperatorKind::Lt => Ok(UnaryOp::Low),
+        ExvmOperatorKind::Gt => Ok(UnaryOp::High),
         _ => Err(ParseError {
             message: "unsupported EXVM unary operator".to_string(),
             span,
@@ -1340,28 +1487,28 @@ fn exvm_unary_operator(operator: ExvmOperatorKindV2, span: Span) -> Result<Unary
     }
 }
 
-fn exvm_binary_operator(operator: ExvmOperatorKindV2, span: Span) -> Result<BinaryOp, ParseError> {
+fn exvm_binary_operator(operator: ExvmOperatorKind, span: Span) -> Result<BinaryOp, ParseError> {
     match operator {
-        ExvmOperatorKindV2::Plus => Ok(BinaryOp::Add),
-        ExvmOperatorKindV2::Minus => Ok(BinaryOp::Subtract),
-        ExvmOperatorKindV2::Multiply => Ok(BinaryOp::Multiply),
-        ExvmOperatorKindV2::Divide => Ok(BinaryOp::Divide),
-        ExvmOperatorKindV2::Mod => Ok(BinaryOp::Mod),
-        ExvmOperatorKindV2::Power => Ok(BinaryOp::Power),
-        ExvmOperatorKindV2::Shl => Ok(BinaryOp::Shl),
-        ExvmOperatorKindV2::Shr => Ok(BinaryOp::Shr),
-        ExvmOperatorKindV2::Eq => Ok(BinaryOp::Eq),
-        ExvmOperatorKindV2::Ne => Ok(BinaryOp::Ne),
-        ExvmOperatorKindV2::Ge => Ok(BinaryOp::Ge),
-        ExvmOperatorKindV2::Gt => Ok(BinaryOp::Gt),
-        ExvmOperatorKindV2::Le => Ok(BinaryOp::Le),
-        ExvmOperatorKindV2::Lt => Ok(BinaryOp::Lt),
-        ExvmOperatorKindV2::BitAnd => Ok(BinaryOp::BitAnd),
-        ExvmOperatorKindV2::BitOr => Ok(BinaryOp::BitOr),
-        ExvmOperatorKindV2::BitXor => Ok(BinaryOp::BitXor),
-        ExvmOperatorKindV2::LogicAnd => Ok(BinaryOp::LogicAnd),
-        ExvmOperatorKindV2::LogicOr => Ok(BinaryOp::LogicOr),
-        ExvmOperatorKindV2::LogicXor => Ok(BinaryOp::LogicXor),
+        ExvmOperatorKind::Plus => Ok(BinaryOp::Add),
+        ExvmOperatorKind::Minus => Ok(BinaryOp::Subtract),
+        ExvmOperatorKind::Multiply => Ok(BinaryOp::Multiply),
+        ExvmOperatorKind::Divide => Ok(BinaryOp::Divide),
+        ExvmOperatorKind::Mod => Ok(BinaryOp::Mod),
+        ExvmOperatorKind::Power => Ok(BinaryOp::Power),
+        ExvmOperatorKind::Shl => Ok(BinaryOp::Shl),
+        ExvmOperatorKind::Shr => Ok(BinaryOp::Shr),
+        ExvmOperatorKind::Eq => Ok(BinaryOp::Eq),
+        ExvmOperatorKind::Ne => Ok(BinaryOp::Ne),
+        ExvmOperatorKind::Ge => Ok(BinaryOp::Ge),
+        ExvmOperatorKind::Gt => Ok(BinaryOp::Gt),
+        ExvmOperatorKind::Le => Ok(BinaryOp::Le),
+        ExvmOperatorKind::Lt => Ok(BinaryOp::Lt),
+        ExvmOperatorKind::BitAnd => Ok(BinaryOp::BitAnd),
+        ExvmOperatorKind::BitOr => Ok(BinaryOp::BitOr),
+        ExvmOperatorKind::BitXor => Ok(BinaryOp::BitXor),
+        ExvmOperatorKind::LogicAnd => Ok(BinaryOp::LogicAnd),
+        ExvmOperatorKind::LogicOr => Ok(BinaryOp::LogicOr),
+        ExvmOperatorKind::LogicXor => Ok(BinaryOp::LogicXor),
         _ => Err(ParseError {
             message: "unsupported EXVM binary operator".to_string(),
             span,
@@ -1376,16 +1523,215 @@ fn portable_expr_error_to_parse_error(err: PortableExprError, fallback_span: Spa
     }
 }
 
-fn token_matches_kind(token_kind: &TokenKind, kind: ExvmTokenKindV2) -> bool {
+fn token_matches_kind(token_kind: &TokenKind, kind: ExvmTokenKind) -> bool {
     match token_kind {
-        TokenKind::Number(_) => kind == ExvmTokenKindV2::Number,
-        TokenKind::Identifier(_) => kind == ExvmTokenKindV2::Identifier,
-        TokenKind::Dollar => kind == ExvmTokenKindV2::Dollar,
-        TokenKind::OpenParen => kind == ExvmTokenKindV2::OpenParen,
-        TokenKind::CloseParen => kind == ExvmTokenKindV2::CloseParen,
-        TokenKind::Question => kind == ExvmTokenKindV2::Question,
-        TokenKind::Colon => kind == ExvmTokenKindV2::Colon,
-        TokenKind::OpenBrace => kind == ExvmTokenKindV2::OpenBrace,
+        TokenKind::Number(_) => kind == ExvmTokenKind::Number,
+        TokenKind::String(_) => kind == ExvmTokenKind::String,
+        TokenKind::Register(_) => kind == ExvmTokenKind::Register,
+        TokenKind::Dot => kind == ExvmTokenKind::Dot,
+        TokenKind::Identifier(_) => kind == ExvmTokenKind::Identifier,
+        TokenKind::Dollar => kind == ExvmTokenKind::Dollar,
+        TokenKind::OpenParen => kind == ExvmTokenKind::OpenParen,
+        TokenKind::CloseParen => kind == ExvmTokenKind::CloseParen,
+        TokenKind::Question => kind == ExvmTokenKind::Question,
+        TokenKind::Colon => kind == ExvmTokenKind::Colon,
+        TokenKind::OpenBrace => kind == ExvmTokenKind::OpenBrace,
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod decoded_string_tests {
+    use super::*;
+    use opcore::tokenizer::StringLiteral;
+
+    fn string(bytes: &[u8]) -> Token {
+        Token {
+            kind: TokenKind::String(StringLiteral {
+                // Deliberately not valid source spelling: EXVM consumes decoded
+                // tokenizer bytes and must never reinterpret this field.
+                raw: "not source text".to_owned(),
+                bytes: bytes.to_vec(),
+            }),
+            span: Span {
+                line: 1,
+                col_start: 1,
+                col_end: 2,
+            },
+        }
+    }
+
+    #[test]
+    fn canonical_exvm_builds_decoded_string_ast_without_text_reparse() {
+        for bytes in [b"A".as_slice(), b"AB", b"\0", b"\n", b"", b"ABC"] {
+            let tokens = vec![string(bytes)];
+            let span = tokens[0].span;
+            let ast = run_exvm_expression_parser_program(
+                tokens,
+                span,
+                None,
+                crate::vm_opcore::expression_parser_program(),
+                ExvmExecutionBudgets::for_tokens(1),
+            )
+            .unwrap();
+            assert_eq!(
+                format!("{ast:?}"),
+                format!("{:?}", Expr::String(bytes.to_vec(), span))
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_exvm_string_program_uses_shared_scalar_leaf_semantics() {
+        for bytes in [b"A".as_slice(), b"AB", b"\0", b"\n", b"", b"ABC"] {
+            let tokens = vec![string(bytes)];
+            let span = tokens[0].span;
+            let program = run_exvm_expression_parser_program_to_portable_program(
+                tokens,
+                span,
+                None,
+                crate::vm_opcore::expression_parser_program(),
+                ExvmExecutionBudgets::for_tokens(1),
+                package::EXPR_VM_OPCODE_VERSION_V2,
+            )
+            .unwrap();
+            let mut reference =
+                PortableExprProgramBuilder::for_scalar(package::EXPR_VM_OPCODE_VERSION_V2).unwrap();
+            reference
+                .emit_direct_leaf(&PortableExprDirectLeaf::StringLiteral(bytes.to_vec()))
+                .unwrap();
+            assert_eq!(program, reference.finish());
+        }
+    }
+}
+
+#[cfg(test)]
+mod shared_primary_tests {
+    use super::*;
+    use opcore::tokenizer::{register_checker_from_fn, Tokenizer};
+
+    fn tokens(source: &str) -> (Vec<Token>, Span) {
+        let mut tokenizer = Tokenizer::with_register_checker(
+            source,
+            1,
+            register_checker_from_fn(|name| name.eq_ignore_ascii_case("d0")),
+        );
+        let mut tokens = Vec::new();
+        loop {
+            let token = tokenizer.next_token().unwrap();
+            if token.kind == TokenKind::End {
+                return (tokens, token.span);
+            }
+            tokens.push(token);
+        }
+    }
+
+    fn canonical(source: &str) -> Result<Expr, ParseError> {
+        let (tokens, end) = tokens(source);
+        let budget = ExvmExecutionBudgets::for_tokens(tokens.len());
+        run_exvm_expression_parser_program(
+            tokens,
+            end,
+            None,
+            crate::vm_opcore::expression_parser_program(),
+            budget,
+        )
+    }
+
+    #[test]
+    fn canonical_register_call_and_placeholder_match_existing_ast_semantics() {
+        for source in [
+            "d0",
+            "d0+1",
+            "d0.field",
+            "d0{field:1}",
+            "?",
+            "1 ? ? : 3",
+            ".len({1,2})",
+            ".lo($1234)",
+            ".hi($1234)",
+            ".min(1,2)",
+            ".custom()",
+            ".custom(d0,?,.len({1,2}))",
+            ".d0(1)",
+            ".custom(1)[0]",
+            ".custom(1).field",
+        ] {
+            let (tokens, end) = tokens(source);
+            let reference =
+                opcore::parser::Parser::parse_expr_from_tokens(tokens, end, None).unwrap();
+            assert_eq!(
+                format!("{:?}", canonical(source).unwrap()),
+                format!("{reference:?}"),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn canonical_calls_reject_malformed_syntax_without_old_parser_fallback() {
+        for source in [
+            ".",
+            ".len",
+            ".len(",
+            ".len(1",
+            ".len(1,)",
+            ".len(1,,2)",
+            ".1(2)",
+        ] {
+            assert!(canonical(source).is_err(), "{source}");
+        }
+        for (source, message) in [
+            (".len", "Expected '(' after function name"),
+            (".len(1", "Missing ')' in function call"),
+        ] {
+            assert_eq!(canonical(source).unwrap_err().message, message);
+        }
+    }
+
+    #[test]
+    fn canonical_portable_register_leaf_uses_shared_symbol_lowering() {
+        let (tokens, end) = tokens("d0");
+        assert!(matches!(tokens[0].kind, TokenKind::Register(_)));
+        let program = run_exvm_expression_parser_program_to_portable_program(
+            tokens,
+            end,
+            None,
+            crate::vm_opcore::expression_parser_program(),
+            ExvmExecutionBudgets::for_tokens(1),
+            package::EXPR_VM_OPCODE_VERSION_V2,
+        )
+        .unwrap();
+        let mut reference =
+            PortableExprProgramBuilder::for_scalar(package::EXPR_VM_OPCODE_VERSION_V2).unwrap();
+        reference
+            .emit_direct_leaf(&PortableExprDirectLeaf::SymbolName("d0".to_owned()))
+            .unwrap();
+        assert_eq!(program, reference.finish());
+    }
+
+    #[test]
+    fn canonical_portable_calls_and_placeholders_keep_scalar_context_errors() {
+        for (source, message) in [
+            (
+                ".len({1,2})",
+                "Call expression cannot be evaluated as scalar expression",
+            ),
+            ("?", "Placeholder cannot be evaluated as scalar expression"),
+        ] {
+            let (tokens, end) = tokens(source);
+            let budget = ExvmExecutionBudgets::for_tokens(tokens.len());
+            let error = run_exvm_expression_parser_program_to_portable_program(
+                tokens,
+                end,
+                None,
+                crate::vm_opcore::expression_parser_program(),
+                budget,
+                package::EXPR_VM_OPCODE_VERSION_V2,
+            )
+            .unwrap_err();
+            assert_eq!(error.message, message);
+            assert_eq!(error.span.col_start, 1);
+        }
     }
 }

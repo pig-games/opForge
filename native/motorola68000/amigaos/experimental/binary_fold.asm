@@ -19,6 +19,19 @@ SCRATCH_BYTES = MAP_BYTES+runtime.EXPRVM_STACK_CAPACITY*ENTRY_BYTES
 ; Original compiler limits apply before this call. Rewrites only on success
 ; paths; a failed expression remains uncommitted preparation scratch.
 prepare	.block
+	moveq #0, d1
+	bra.w prepareMode
+	.bend  ; prepare
+
+; Same validated input/output contract; lower literals and operators without
+; evaluating any subtree. Syntax checking remains with the shared compiler.
+prepareUnfolded	.block
+	moveq #1, d1
+	bra.w prepareMode
+	.bend  ; prepareUnfolded
+
+	.priv
+prepareMode	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	; A lone literal needs narrowing but no subtree analysis or span map.
 	cmpi.l #10, d0
@@ -47,6 +60,8 @@ clear
 	clr.l (a1)+
 	dbra d0, clear
 	movea.l sp, a1
+	tst.l d1
+	bne.w rewrite
 scan
 	move.l a3, d6
 	sub.l a4, d6
@@ -206,7 +221,7 @@ restore
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; prepare
+	.bend  ; prepareMode
 	.priv
 
 ; Read signed i64 D4:D3 from a validated canonical literal at A3.

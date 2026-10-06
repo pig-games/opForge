@@ -597,8 +597,13 @@ Symbol lookup searches in this order:
 Inner scope symbols shadow outer symbols with the same name:
 
 Forward scalar references obey this rule too: a local definition later in the
-block takes precedence over an already-defined outer symbol. Qualified names
-select their explicit binding. Blocks and namespaces must be closed before
+block takes precedence over an already-defined outer symbol. Dotted paths also
+search relative to the current and parent scopes before the global spelling.
+For example, `OUTER.INNER.VAL` inside module `app` can resolve to
+`app.OUTER.INNER.VAL`; the fully qualified spelling remains usable. Imported
+aliases and full imported module paths select the imported binding first, even
+if a local scope has the same name. Missing, private or ambiguous imported targets
+do not fall back to a local binding. Blocks and namespaces must be closed before
 `.end` or the end of the source; an unfinished scope is an error.
 
 ```

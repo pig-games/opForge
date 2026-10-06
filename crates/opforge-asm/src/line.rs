@@ -1114,15 +1114,10 @@ impl<'a> AsmLine<'a> {
 
     fn resolve_scoped_value_name(&self, name: &str) -> Option<String> {
         if name.contains('.') {
-            let candidate = self
-                .resolve_qualified_imported_name(name)
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| name.to_string());
-            if self.lookup_value_symbol(&candidate).is_some() {
-                return Some(candidate);
-            }
-            return None;
+            return self
+                .qualified_name_candidates(name)
+                .ok()?
+                .find(|candidate| self.lookup_value_symbol(candidate).is_some());
         }
 
         let mut depth = self.symbol_scope.scope_stack.depth();
@@ -1928,6 +1923,27 @@ impl<'a> AsmLine<'a> {
         }
     }
 
+    fn lexical_name_candidates<'s>(&'s self, name: &'s str) -> impl Iterator<Item = String> + 's {
+        (1..=self.symbol_scope.scope_stack.depth())
+            .rev()
+            .map(move |depth| format!("{}.{}", self.symbol_scope.scope_stack.prefix(depth), name))
+            .chain(std::iter::once_with(move || name.to_string()))
+    }
+
+    fn qualified_name_candidates<'s>(
+        &'s self,
+        name: &'s str,
+    ) -> Result<impl Iterator<Item = String> + 's, AsmError> {
+        // An imported qualifier remains authoritative even for a forward or
+        // missing target. Otherwise a dotted path may be relative to any active
+        // scope, including the implicit module created by source preprocessing.
+        let imported = self.resolve_qualified_imported_name(name)?;
+        let lexical = imported
+            .is_none()
+            .then(|| self.lexical_name_candidates(name));
+        Ok(imported.into_iter().chain(lexical.into_iter().flatten()))
+    }
+
     fn record_operand_references(&mut self, operands: &[Expr]) {
         if self.pass != 1 {
             return;
@@ -2037,14 +2053,11 @@ impl<'a> AsmLine<'a> {
             return;
         }
         let candidates = if name.contains('.') {
-            vec![name.to_string()]
+            self.qualified_name_candidates(name)
+                .map(Iterator::collect)
+                .unwrap_or_default()
         } else {
-            let mut candidates = (1..=self.symbol_scope.scope_stack.depth())
-                .rev()
-                .map(|depth| format!("{}.{}", self.symbol_scope.scope_stack.prefix(depth), name))
-                .collect::<Vec<_>>();
-            candidates.push(name.to_string());
-            candidates
+            self.lexical_name_candidates(name).collect()
         };
         self.pending_unit_references.push(PendingUnitReference {
             source,
@@ -2082,14 +2095,13 @@ impl<'a> AsmLine<'a> {
     fn resolve_scoped_name(&self, name: &str) -> Result<Option<String>, AsmError> {
         let _symbol_lookup_scope = self.pass_symbol_lookup_scope();
         if name.contains('.') {
-            let candidate = self
-                .resolve_qualified_imported_name(name)?
-                .unwrap_or_else(|| name.to_string());
-            if let Some(entry) = self.symbols.entry(&candidate) {
-                if !self.entry_is_visible(entry) {
-                    return Err(self.visibility_error(name));
+            for candidate in self.qualified_name_candidates(name)? {
+                if let Some(entry) = self.symbols.entry(&candidate) {
+                    if !self.entry_is_visible(entry) {
+                        return Err(self.visibility_error(name));
+                    }
+                    return Ok(Some(entry.name.clone()));
                 }
-                return Ok(Some(entry.name.clone()));
             }
             return Ok(None);
         }
@@ -2135,12 +2147,10 @@ impl<'a> AsmLine<'a> {
 
     fn lookup_scoped_entry(&self, name: &str) -> Option<&SymbolTableEntry> {
         if name.contains('.') {
-            let candidate = self
-                .resolve_qualified_imported_name(name)
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| name.to_string());
-            return self.symbols.entry(&candidate);
+            return self
+                .qualified_name_candidates(name)
+                .ok()?
+                .find_map(|candidate| self.symbols.entry(&candidate));
         }
         let block_local_only = self.defer_outer_lookup_for_active_block_pass1();
         let stop_depth = if block_local_only {

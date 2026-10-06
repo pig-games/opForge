@@ -40,6 +40,9 @@ mod signed_scalar_values;
 #[path = "tests/reachable_block_relayout.rs"]
 mod reachable_block_relayout;
 
+#[path = "tests/qualified_scope_lookup.rs"]
+mod qualified_scope_lookup;
+
 use crate::engine::Assembler;
 use crate::error::{AsmError, AsmErrorKind, Diagnostic, LineStatus, Severity};
 use crate::line::{set_host_expr_eval_failpoint_for_tests, AsmLine};

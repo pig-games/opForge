@@ -19,8 +19,11 @@ by native while Rust rejects them. Negative completion is not diagnostic parity.
 The corpus exposes two exit-zero positive Hex mismatches: MOS branch offsets and
 opcore alignment gaps. No production semantics or references change in the audit.
 
-The next recommended slice restores the four Rust qualified-scope oracles, then
-addresses native layout correctness before expanding shared-language capability.
+The subsequent Rust qualified-scope repair restores all four original CLI roots;
+it changes shared Rust lookup and deferred reachability, with no native/package
+changes or new native coverage. The corpus counts above remain its original
+observations. The next recommended slice addresses native layout correctness
+before expanding shared-language capability.
 Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.

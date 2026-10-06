@@ -2902,21 +2902,50 @@ repeated origins, `.pack`, `.mapfile` and broader metadata. `cli_json_outputs`
 stops at `START: nop` under 8085; its JSON/output behavior has not been reached.
 A first stop cannot establish every later missing capability.
 
-Before expanding capability, address these concrete discrepancies:
+The subsequent Rust scope repair confirms that diagnosis: dotted-name lookup
+skipped active scope prefixes, including implicit module wrappers. The unchanged
+`macro_invocation_native`, `macro_syntax`, `scopes` and `scopes_namespace` roots
+now assemble through the Rust CLI with the expected complete binary bytes.
+Scalar lookup, structured-value lookup, private-entry lookup and deferred
+reachability use one qualified candidate order: authoritative imported path,
+otherwise current scope, parents and literal global spelling. Plain-name
+pass-one block deferral remains unchanged. Regressions cover wrapped/unwrapped
+namespaces, relative/global/import collisions, private and missing imports, and
+forward references that retain entire imported blocks while pruning unused ones.
+No native code, packages or goldens change. The four native cases have not been
+rerun, so the table above remains the original corpus observation, not new native
+coverage. The existing BS27 full self-host proof and A6000 bundle remain separate.
 
-1. **Restore the Rust scope oracles.** `macro_invocation_native` and `macro_syntax`
-   fail on `foo.local`; `scopes` fails on `OUTER.INNER.VAL`; `scopes_namespace`
-   fails on `outer.inner.VALUE` and `SCOPE.LOCAL`. Read-only Sol review identifies
-   a likely relative-qualified-name lookup gap under implicit module wrappers:
-   dotted-name lookup and pending references do not search active scope prefixes.
-   Verify wrapped/unwrapped cases, then repair evaluation, lookup and reference
-   candidates coherently. This is a diagnosis to confirm, not a proven fix or a
-   reason to weaken whole-block retention.
-2. **Native layout correctness.** Undefined placement region `nowhere` is accepted
+Qualification of the repair: all 54 selected scope/import/reachability/signed-value
+and constant-dependency regressions pass, including 11 new scope tests. All 72
+engine tests, production Clippy with warnings denied, formatting and workflow
+guards pass; architecture advisories remain. The broad assembler suite records
+2,089 passes, 57 failures and 518 ignored tests. All 57 failures reproduce after
+temporarily restoring the pre-repair `line.rs`, as do both CLI-core failures
+(65 pass) and the same 22 all-target test lints. The repaired file is restored
+byte-for-byte before final checks. These existing reference, legacy native-source,
+lockstep, symbol-output and test-contract issues prevent a clean broad
+qualification; they are not repaired or waived by this scope checkpoint.
+
+A copy of the qualified BS27 bundle assembles through the repaired Rust CLI with
+exit zero and a fresh source-directed Hunk exactly equal to all 534,964 retained
+oracle bytes (SHA-256
+`10be61dd4ce1f26e533a990b0ed3b8a731386b22bf5a40ca2ff8b38acf414f3f`).
+The debug host command takes 51.35 seconds; this is a correctness check, not a
+comparative performance measurement or a new native run. Adding a separate
+Rust `--hunk FILE` request to that sectioned source writes its source-directed
+Hunk, then fails with `Missing sections option in .output`: the synthetic CLI
+Hunk request has no section option. Keep that output issue for separate repair.
+Logs, exact baseline comparisons and host artifacts remain outside `target`
+under `/tmp/opforge-scope-*`; no stored references are regenerated.
+
+Before expanding capability, address these remaining concrete discrepancies:
+
+1. **Native layout correctness.** Undefined placement region `nowhere` is accepted
    while Rust rejects it. `align_simple` exits zero but includes zero padding in
    contiguous Hex where Rust preserves an address gap. Repair validation and
    emission provenance through shared layout/output owners, without CPU rules.
-3. **Review forward-count semantics.** Native accepts `.for target` followed by
+2. **Review forward-count semantics.** Native accepts `.for target` followed by
    `target=2`; Rust reports pass-one/pass-two iteration change. Decide whether
    safe precomputed immutable constants should be accepted by both before
    changing either implementation. This is distinct from true pass instability.

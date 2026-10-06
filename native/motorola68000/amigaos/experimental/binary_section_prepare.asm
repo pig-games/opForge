@@ -30,6 +30,8 @@ OutputSeen	.word ?
 Selected	.word ?
 Seeded	.word ?  ; maps awaiting their ordinary import replay
 RegionCount	.word ?
+RegionDeclared	.word ?
+RegionReferenced	.word ?
 PendingAlign	.long ?
 	.endstruct
 MAPS = State.PendingAlign+4
@@ -64,6 +66,8 @@ begin	.block
 	clr.w State.Selected(a0)
 	clr.w State.Seeded(a0)
 	clr.w State.RegionCount(a0)
+	clr.w State.RegionDeclared(a0)
+	clr.w State.RegionReferenced(a0)
 	move.l #1, State.PendingAlign(a0)
 	lea MAPS(a0), a0
 	moveq #(SCRATCH_BYTES-MAPS)/2-1, d0
@@ -808,9 +812,14 @@ done
 	rts
 	.bend  ; resolveOutputs
 
-; A0=section state. A mapped case requires both named sections by completion.
+; A0=section state. Resolve region references after all declarations; a mapped
+; case also requires both named sections by completion.
 finish	.block
 	movem.l d1, -(sp)
+	move.w State.RegionReferenced(a0), d1
+	and.w State.RegionDeclared(a0), d1
+	cmp.w State.RegionReferenced(a0), d1
+	bne.w badFinish
 	tst.w State.Seeded(a0)
 	bne.w badFinish
 	tst.w State.OutputSeen(a0)

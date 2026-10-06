@@ -2939,16 +2939,76 @@ Hunk request has no section option. Keep that output issue for separate repair.
 Logs, exact baseline comparisons and host artifacts remain outside `target`
 under `/tmp/opforge-scope-*`; no stored references are regenerated.
 
-Before expanding capability, address these remaining concrete discrepancies:
+### Native region validation and alignment provenance
 
-1. **Native layout correctness.** Undefined placement region `nowhere` is accepted
-   while Rust rejects it. `align_simple` exits zero but includes zero padding in
-   contiguous Hex where Rust preserves an address gap. Repair validation and
-   emission provenance through shared layout/output owners, without CPU rules.
-2. **Review forward-count semantics.** Native accepts `.for target` followed by
-   `target=2`; Rust reports pass-one/pass-two iteration change. Decide whether
-   safe precomputed immutable constants should be accepted by both before
-   changing either implementation. This is distinct from true pass instability.
+Undefined placement regions now reject during deferred preparation validation.
+Numeric declared/referenced region sets ensure that an unrelated declaration
+cannot satisfy a placement, while a later matching declaration remains valid.
+Inactive statements do not reserve active references. Shared `.align` preserves
+zero-filled Bin/Hunk storage and leaves flat address gaps uninitialized for Hex
+and S-record output. Rust replays placed sections as complete initialized byte
+vectors, so native preserves padding in those payloads. Already-aligned statements
+remain no-ops outside an active section; BSS continues through section reservation.
+Package formats, CPU semantics and public language syntax do not change.
+
+Fifteen focused cases have fresh native proof on 68020/10 MiB: the original
+unknown-region and alignment examples, flat and placed Bin/Hex/S-record output,
+external prepared 6502 packages, inactive references, forward region declarations,
+zero-padding no-ops, Hunk code/data/BSS and a placed instruction control workload.
+Each positive compares complete artifacts with a current in-memory Rust oracle;
+the negative requires exit 20 and a diagnostic. Twelve cases complete in the
+main batch, and the three 6502 cases pass in corrected, separately fresh reruns.
+Their first invocations used conflicting target arguments and are not counted
+as proof. An earlier placed-output mismatch caught and corrected overly broad
+span suppression before this qualification. The BSS probe uses supported `.res`;
+`.ds` remains a separate known parity gap.
+
+The final embedded m68020 executable is 535,024 bytes with 554,224 bytes of linked
+reservation, both +60 bytes from the retained BS27 baseline. Region validation
+adds 44 bytes; alignment handling adds 16 bytes. These are image/static costs,
+not a peak-RAM measurement. Package bytes remain unchanged. Final image SHA-256:
+`4535ecff44f0f960db1b7064549511d37601bec1474d033d47ff46eb0ede8744`.
+
+The unchanged 15,474-byte placed instruction/alignment control
+(`fnv1a64:ac05445d958571b5`) has exact complete Bin equality in every timing run. Release
+START/DONE on 68020/10 MiB, with telemetry disabled, gives two samples per state:
+
+| State | Samples (seconds) | Mean | Separate change |
+|---|---|---|---|
+| Retained baseline | 20.787517, 21.022436 | 20.904976 | — |
+| Region validation only | 20.997906, 20.792440 | 20.895173 | -0.009803 s (-0.0469%) |
+| Region validation + alignment | 21.037188, 21.027608 | 21.032398 | +0.137225 s (+0.6567%) |
+
+The alignment difference is smaller than the baseline's 0.234919-second sample
+spread. These measurements show a small observed cost, not a demonstrated speed
+improvement or an estimate for full self-host. Baseline/region/final image FNVs
+are `a0c63661a3b96bb1`, `7d067263bea2c55f`, `7c762b034c1b99f9`.
+Emulator startup is excluded. Invalid harness invocations and the interrupted
+initial batch are retained as diagnostics and excluded from qualification.
+
+The new `native_layout_parity` tests provide live Rust oracles and opt-in native
+execution. `OPFORGE_LAYOUT_CASES` selects exact case names;
+`OPFORGE_LAYOUT_IMAGE` supplies a retained executable, and
+`OPFORGE_LAYOUT_SAVE_IMAGE` saves a freshly built executable. Use the maintained
+[FS-UAE environment](../../agents/rules/fs-uae.md). Explicit BSP3 packages are
+staged guest files loaded with `--runtime-package`, without conflicting `--cpu`.
+Each invocation requests one CLI output kind; Hunk output comes from the source.
+
+Focused host record-output and Hunk tests, production Clippy, formatting,
+workflow guards and the deterministic native gate pass. Sol reviews cover region
+validation, callback restoration, zero-count handling and the CLI contract.
+The prior broad-suite failures remain open. This checkpoint has no new full native
+self-host run, physical A6000 run, product-memory qualification or remote push.
+The last full self-host proof still qualifies the implementation before these edits.
+Raw logs, retained executables and comparative measurements stay outside `target`
+under `/tmp/opforge-layout-*`; no stored references change.
+
+### Next parity decision
+
+Review forward-count semantics: native accepts `.for target` followed by
+`target=2`; Rust reports pass-one/pass-two iteration change. Decide whether
+safe precomputed immutable constants should be accepted by both before changing
+either implementation. This is distinct from true pass instability.
 
 Then choose shared statement/value support or package/VM-owned colon normalization
 from the verified remaining matrix. Keep CPU/family grammar in its owning package

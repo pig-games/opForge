@@ -2,10 +2,10 @@
 
 Status: BS27 transports three numeric operands, wrapped call-register children,
 register/immediate pairs and register triples. Same-source PACK/UNPK, LINK and
-CAS checks and transformed CAS2 execution probes pass. The complete current
-embedded compact implementation self-hosts with exact whole-Hunk Rust/native
-equality. This qualifies that implementation and case, not whole-language or
-CPU-family parity. The [current slice](native-runtime-reset.md#three-operands-and-indirect-call-children-bs27-checkpoint)
+CAS checks and transformed CAS2 execution probes pass. The last full
+embedded compact self-host proof precedes the layout follow-up below and has
+exact whole-Hunk Rust/native equality. This qualifies that implementation and
+case, not whole-language or CPU-family parity. The [current slice](native-runtime-reset.md#three-operands-and-indirect-call-children-bs27-checkpoint)
 records focused coverage, costs and remaining boundaries.
 
 ## Current breadth parity checkpoint
@@ -22,8 +22,14 @@ opcore alignment gaps. No production semantics or references change in the audit
 The subsequent Rust qualified-scope repair restores all four original CLI roots;
 it changes shared Rust lookup and deferred reachability, with no native/package
 changes or new native coverage. The corpus counts above remain its original
-observations. The next recommended slice addresses native layout correctness
-before expanding shared-language capability.
+observations. The subsequent
+[native layout checkpoint](native-runtime-reset.md#native-region-validation-and-alignment-provenance)
+qualifies fifteen fresh focused cases: undefined regions reject, forward region
+declarations remain valid, flat alignment gaps stay sparse in Hex/S-record, and
+placed payload padding remains initialized as in Rust. Bin/Hunk and 6502 package
+checks pass. The original corpus counts above are not a rerun of the full inventory.
+The next decision is forward-count loop semantics. The latest layout code has not
+yet had a new full native self-host run.
 Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.

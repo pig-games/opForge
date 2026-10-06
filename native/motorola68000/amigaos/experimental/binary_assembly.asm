@@ -101,7 +101,7 @@ Position
 ; Allocate callback: A0=Frame, D0=pass-one output size; returns D0/CCR status,
 ; preserves other registers, supplies Frame.Output/Capacity before pass two.
 ; Optional Emitted(A0=Frame,D1=address,D2=buffer offset,D3=bytes) runs only
-; for nonempty final-pass emissions, before advancing state. It returns D0/CCR
+; for nonempty initialized final-pass emissions, before advancing state. It returns D0/CCR
 ; status and preserves other registers. No text/CPU grammar enters the callback.
 ; Other registers preserved; CCR reflects D0. No text/dictionary pointer enters
 ; this module. Variable-size convergence and discontiguous origins are unsupported.
@@ -845,21 +845,8 @@ align
 	jsr sections.reserve
 	bra.w done
 alignBytes
-	clr.l DataBytes
-alignLoop
-	tst.l d6
-	beq.w ok
-	moveq #4, d0
-	cmp.l d0, d6
-	bhs.w alignChunk
-	move.l d6, d0
-alignChunk
-	sub.l d0, d6
-	lea DataBytes, a0
-	bsr.w emit
-	tst.l d0
-	bne.w bad
-	bra.w alignLoop
+	bsr.w emitGap
+	bra.w done
 reserve
 	bsr.w name
 	bne.w bad
@@ -1221,7 +1208,31 @@ fail
 	rts
 	.bend  ; name
 
-; A0=bytes (zero means zero-fill),D0=count,A2=Context. Updates PC and Used; only pass two copies output.
+; D0=padding count,A2=Context. Flat address gaps are uninitialized; placed
+; section payloads retain initialized padding, as in Rust's section replay.
+; Bin/Hunk storage stays zero-filled. D0/CCR=status; other registers preserved.
+; An already-aligned statement is a no-op.
+emitGap	.block
+	tst.l d0
+	beq.w done
+	movem.l d1/a0-a1, -(sp)
+	movea.l Active, a1
+	move.l Frame.Emitted(a1), d1
+	tst.w SectionState+sections.State.Mode
+	bne.w sectionPadding
+	clr.l Frame.Emitted(a1)
+sectionPadding
+	suba.l a0, a0
+	bsr.w emit
+	move.l d1, Frame.Emitted(a1)
+	movem.l (sp)+, d1/a0-a1
+done
+	tst.l d0
+	rts
+	.bend  ; emitGap
+
+; A0=initialized bytes (zero means initialized zero-fill),D0=count,A2=Context.
+; Updates PC and Used; only pass two copies output.
 ; D0=status; other registers preserved. CCR reflects D0.
 emit	.block
 	movem.l d1-d4/a0-a3, -(sp)

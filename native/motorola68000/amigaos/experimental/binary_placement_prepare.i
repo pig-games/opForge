@@ -52,6 +52,9 @@ second
 	ori.w #32, State.Seen(a4)
 	moveq #8, d5
 ready
+	move.w State.RegionDeclared(a4), d0
+	bset d7, d0
+	move.w d0, State.RegionDeclared(a4)
 	move.b #17, (a5)
 	move.b #source.FLAG_LAYOUT, 1(a5)
 	move.b d5, 4(a5)
@@ -112,6 +115,9 @@ second
 	moveq #9, d5
 	ori.w #64, State.Seen(a4)
 ready
+	move.w State.RegionReferenced(a4), d0
+	bset d4, d0
+	move.w d0, State.RegionReferenced(a4)
 	move.b #10, (a5)
 	move.b #source.FLAG_LAYOUT, 1(a5)
 	move.b d5, 4(a5)

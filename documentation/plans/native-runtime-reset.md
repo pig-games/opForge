@@ -3927,59 +3927,76 @@ and default A6000 selection remain unchanged.
 
 The current slice extends shared numeric instruction transport to three bounded
 operands and preserves package-recognized indirect register children in canonical
-call operands. Opcode, register-class and range semantics remain in the canonical
+call operands. Opcode, register-class and range semantics remain in canonical
 package selectors. Candidate rows grow from 32 to 36 bytes, retaining old field
 offsets and appending third-operand predicate slots; projection 27 selects an
-indirect call child. Production accepts only the new BS27 contract.
+indirect call child. Production accepts only the latest BS27 contract.
 
-Correctness separates same-source `PACK`/`UNPK` parity from transformed-input
-CAS2 execution probes, with class, indirectness, arity and range controls. Rust
-cannot directly parse the indirect child structure from `.pair((a0),(a1))`;
-its family parser constructs that structure from raw colon pairs. Therefore
-transformed-input output equality cannot qualify unchanged-source CAS2 parity. Existing two-operand, FPU-call and nested
-addressing cases remain regression controls. Release cost is measured separately
-on the unchanged indexed workload against BS26 (mean 12.3745079375 seconds,
-140,020-byte external image, 159,264-byte static reservation); a fresh complete
-release self-host remains required before updating the hardware bundle.
+Fresh native comparisons now pass same-source `PACK`/`UNPK`, `LINK.W`/`LINK.L`
+and `CAS.B`/`CAS.W`/`CAS.L`. Seven call/range, four register/immediate and three
+register/destination/capability controls complete with explicit error exits.
+The complete transformed 68030 carry-forward example and CAS2 word/long
+variations match the live Rust oracle. These CAS2 cases are execution probes:
+Rust constructs indirect call children from raw colon pairs and cannot parse the
+same structure directly from `.pair((a0),(a1))`. The original example remains
+unchanged; transformed-input equality does not establish unchanged-source CAS2
+parity.
 
-Raw colon pairs are a separate exposed boundary: Rust's family compatibility
-parser creates `.pair` nodes, while the packed native frontend currently retains
-token 5. This slice must not implement mnemonic-specific normalization in generic
-native code. Its qualification must identify whether that spelling is still
-unsupported; canonical call equivalence is not unchanged-source example parity.
+Localization found an unrelated blanket restriction in shared label normalization:
+an indented instruction whose first operand started with a dot was rejected.
+Removing that restriction leaves operand validation with preparation/package
+selection. The actual frontend component now proves exact preservation of the
+captured numeric record, including lexical callee IDs and wrapped children.
+The broader example then exposed missing `register_immediate`,
+`register_register_direct` and `register_register_register` transport shapes
+(14/15/16). Their classes, encodings and diagnostic barriers remain package owned.
+No CPU/opcode names or colon grammar were added to generic native code.
 
-Current evidence, before full qualification:
+Fresh component checks also accept a valid BS27 package and reject a nonzero
+reserved row word and an invalid third-operand form. The migration repaired two
+hidden 32-byte candidate strides in `binary_state` to use the package owner's
+row-size constant. FPU-call, nested addressing and MOS wrapper regressions pass.
+Host qualification passes 512 VM tests, 348 compact-source tests (489 native
+checks ignored in that host command), VM/assembler Clippy, package generation for
+16 executable pipelines, formatting, workflow/architecture and fresh-proof guards.
+Generation is not native family parity.
 
-- Fresh native same-source `PACK` register/memory and `UNPK` output matches Rust.
-  Existing FPU call/mask controls also match Rust. Seven malformed call/range
-  controls complete with the expected explicit error exit.
-- The actual native package validator accepts a valid BS27 package and rejects
-  a nonzero reserved row word and an out-of-range third-operand form. Migration
-  exposed two hidden 32-byte candidate strides in `binary_state`; these now use
-  the package owner's row-size constant.
-- A standalone component feeds actual package IDs through `prepare.line` and
-  proves exact preservation of three calls, including wrapped register children.
-  This is component evidence, not full frontend or instruction parity.
-- Both positive transformed CAS2 CLI probes still reject during captured-source
-  preparation, before the ORDER/BIND progress boundaries. The actual frontend
-  component probe is host-assembled and ready for native localization. No CAS2
-  output or unchanged-source example completion is claimed.
-- Host checks pass: 510 VM unit tests, 297 compact-source subsystem tests
-  (448 native tests ignored), Clippy for VM/assembler libraries, package generation
-  for all 16 executable pipelines, workflow/architecture and fresh-proof guards.
+Release measurements use the unchanged 7,489-byte indexed workload, exact 1,632
+output bytes and the same 68020/10 MiB profile. Each production change has its own
+samples; times exclude telemetry. Image/static columns describe the external CLI
+and linked reservation, not peak RAM.
 
-The one valid release sample on the unchanged 7,489-byte indexed workload takes
-12.506508041 seconds and matches all 1,632 output bytes. BS26's two-sample mean
-is 12.3745079375 seconds: this single sample is 0.132000104 seconds (1.067%)
-higher, not a statistically established slowdown. The second run stalled before
-guest START while the Mac was locked; it supplies no assembly timing. External
-image size grows 140,020 → 140,500 bytes (+480); linked static reservation grows
-159,264 → 159,736 (+472), not peak RAM. The m68020 package grows
-378,874 → 394,246 bytes (+15,372); 13,544 bytes are the four additional bytes
-for each of its 3,386 candidate rows.
+| State | START/DONE seconds | Mean seconds | Image bytes | Static bytes | m68020 package bytes |
+|---|---|---:|---:|---:|---:|
+| Qualified BS26 baseline | 12.410430875, 12.338585000 | 12.374507938 | 140,020 | 159,264 | 378,874 |
+| Initial BS27 checkpoint | 12.506508041 | 12.506508041 | 140,500 | 159,736 | 394,246 |
+| Shared label repair | 12.415211833, 12.398881917 | 12.407046875 | 140,484 | 159,720 | 394,246 |
+| Register/immediate shape | 12.584426417, 12.305381875 | 12.444904146 | 140,568 | 159,784 | 394,318 |
+| Register triple shapes | 12.324951000, 12.532501708 | 12.428726354 | 140,644 | 159,844 | 394,318 |
 
-No BS27 full self-host or qualified A6000 bundle exists yet. The previous BS26
-bundle remains baseline evidence; the migrated BS27-only hardware helper requires
-a newly qualified BS27 bundle before its default command can be used again.
-Native localization, the second release timing and complete exact-Hunk self-host
-remain required before integration readiness.
+The register/immediate step changes the observed mean by +0.037857271 seconds
+(+0.305%); the triple classification step by -0.016177792 (-0.130%). The final
+mean differs from BS26 by +0.054218417 (+0.438%). These small differences are
+within the variation in this limited sample set, not established speedups or
+slowdowns. The label repair has only one preceding checkpoint sample, so no
+robust isolated performance claim is made for it. Pre-START launch stalls supply
+no assembly timing and are excluded.
+
+The final external image grows by 624 bytes and linked static reservation by
+580 bytes versus BS26. The m68020 package grows by 15,444 bytes; 13,544 bytes
+come from four added bytes across 3,386 candidate rows. Register/immediate
+support adds 72 package bytes beyond the initial BS27 checkpoint; triple
+classification adds no m68020 package bytes.
+
+Raw colon normalization, unused extra call-argument preparation and other
+previously recorded parity boundaries remain open. They need package/VM-owned
+work, not mnemonic-specific native shortcuts.
+
+Full BS27 self-host qualification is running. Its live Rust oracle is a
+534,964-byte Hunk with 554,164 bytes of linked reservation; 103 mapped inputs
+total 1,509,170 bytes, and bootstrap/output embed only the 394,318-byte m68020
+package. Source fingerprint is `fnv1a64:87ef757925cb6aba`, package fingerprint
+`fnv1a64:0e13af9d947d7620`, and bootstrap/output fingerprint
+`fnv1a64:a0c63661a3b96bb1`. Native completion/equality are not yet claimed.
+The default A6000 helper must not select this bundle until the fresh complete
+exact-Hunk proof succeeds; the older BS26 bundle remains baseline evidence.

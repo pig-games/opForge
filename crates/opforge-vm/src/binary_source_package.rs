@@ -2004,6 +2004,58 @@ mod tests {
     }
 
     #[test]
+    fn register_triple_cas_candidates_preserve_encoding_and_rejection() {
+        let mut registry = registry::ModuleRegistry::new();
+        families::register_motorola68000_family_stack(&mut registry);
+        let core = super::RuntimeModelCore::from_registry(&registry).unwrap();
+        let resolved = core.resolve_pipeline("m68020", None).unwrap();
+        let package = super::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+        for qualifier in ["b", "w", "l"] {
+            let candidates = package
+                .candidates
+                .iter()
+                .filter(|candidate| {
+                    package.names[usize::from(candidate.mnemonic)] == "cas"
+                        && candidate
+                            .qualifier
+                            .map(|index| package.qualifiers[usize::from(index)].as_str())
+                            == Some(qualifier)
+                })
+                .collect::<Vec<_>>();
+            assert!(candidates.iter().any(|candidate| {
+                package.names[usize::from(candidate.shape)] == "register_register_direct"
+                    && matches!(&candidate.recipe, CandidateRecipe::SemanticSequence { stages }
+                        if stages.iter().any(|stage| stage.inputs.contains(&Projection::IndirectRegister { operand: 2, class: 1 })))
+            }), "{qualifier}");
+            assert!(
+                candidates.iter().any(|candidate| {
+                    package.names[usize::from(candidate.shape)] == "register_register_register"
+                        && matches!(candidate.recipe, CandidateRecipe::Unsupported { .. })
+                }),
+                "{qualifier}"
+            );
+        }
+    }
+
+    #[test]
+    fn register_immediate_link_candidates_preserve_package_programs() {
+        let mut registry = registry::ModuleRegistry::new();
+        families::register_motorola68000_family_stack(&mut registry);
+        let core = super::RuntimeModelCore::from_registry(&registry).unwrap();
+        let resolved = core.resolve_pipeline("m68020", None).unwrap();
+        let package = super::BinarySourcePackage::prepare(&core, &resolved).unwrap();
+        for qualifier in [None, Some("w"), Some("l")] {
+            assert!(package.candidates.iter().any(|candidate| {
+                package.names[usize::from(candidate.mnemonic)] == "link"
+                    && candidate.qualifier.map(|index| package.qualifiers[usize::from(index)].as_str()) == qualifier
+                    && package.names[usize::from(candidate.shape)] == "register_immediate"
+                    && matches!(&candidate.recipe, CandidateRecipe::SemanticInputs { inputs, .. }
+                        if inputs == &[Projection::Expression(1), Projection::Register { operand: 0, class: 1 }])
+            }), "{qualifier:?}");
+        }
+    }
+
+    #[test]
     fn pack_register_immediate_candidate_remains_executable() {
         let mut registry = registry::ModuleRegistry::new();
         families::register_motorola68000_family_stack(&mut registry);

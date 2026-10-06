@@ -25,6 +25,95 @@ const INVALID: &[&str] = &[
     "pack d0,d1,#65536",
 ];
 
+const REGISTER_IMMEDIATE: &str = " link.w a6,#-8\n link.l a6,#-8\n link.l a0,#$12345678\n";
+const REGISTER_IMMEDIATE_INVALID: &[(&str, &str)] = &[
+    ("m68020", "link.l d0,#-8"),
+    ("m68020", "link.l a6,-8"),
+    ("m68020", "sub.w d0,#1"),
+    ("m68000", "link.l a6,#-8"),
+];
+
+const REGISTER_DIRECT: &str = " cas.b d0,d1,(a0)\n cas.w d2,d3,(a1)\n cas.l d4,d5,(a2)\n";
+const REGISTER_DIRECT_INVALID: &[(&str, &str)] = &[
+    ("m68020", "cas.w a0,d1,(a2)"),
+    ("m68020", "cas.w d0,d1,d2"),
+    ("m68000", "cas.w d0,d1,(a0)"),
+];
+
+#[test]
+fn compact_register_direct_rust_oracles() {
+    let text = source(&format!(".cpu m68020\n{REGISTER_DIRECT}"));
+    assert_eq!(oracle(&[("main.asm", &text)]).unwrap().len(), 12);
+    for (cpu, body) in REGISTER_DIRECT_INVALID {
+        let text = source(&format!(".cpu {cpu}\n {body}\n"));
+        assert!(oracle(&[("main.asm", &text)]).is_err(), "{cpu}: {body}");
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package-owned three-operand byte, word and long encoding"]
+fn compact_register_direct_parity_fs_uae() {
+    let text = source(&format!(".cpu m68020\n{REGISTER_DIRECT}"));
+    let expected = oracle(&[("main.asm", &text)]).unwrap();
+    compact_cli_cpu(
+        &[("main.asm", &text)],
+        &[],
+        &[],
+        Some(&expected),
+        false,
+        "m68020",
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; three-operand class, destination and capability barriers"]
+fn compact_register_direct_rejections_fs_uae() {
+    for (cpu, body) in REGISTER_DIRECT_INVALID {
+        let text = source(&format!(".cpu {cpu}\n {body}\n"));
+        compact_cli_cpu(&[("main.asm", &text)], &[], &[], None, false, cpu);
+    }
+}
+
+#[test]
+fn compact_register_immediate_rust_oracles() {
+    let text = source(&format!(".cpu m68020\n{REGISTER_IMMEDIATE}"));
+    assert_eq!(
+        oracle(&[("main.asm", &text)]).unwrap(),
+        [
+            0x4e, 0x56, 0xff, 0xf8, 0x48, 0x0e, 0xff, 0xff, 0xff, 0xf8, 0x48, 0x08, 0x12, 0x34,
+            0x56, 0x78
+        ]
+    );
+    for (cpu, body) in REGISTER_IMMEDIATE_INVALID {
+        let text = source(&format!(".cpu {cpu}\n {body}\n"));
+        assert!(oracle(&[("main.asm", &text)]).is_err(), "{cpu}: {body}");
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package-owned register/immediate word and long encoding"]
+fn compact_register_immediate_parity_fs_uae() {
+    let text = source(&format!(".cpu m68020\n{REGISTER_IMMEDIATE}"));
+    let expected = oracle(&[("main.asm", &text)]).unwrap();
+    compact_cli_cpu(
+        &[("main.asm", &text)],
+        &[],
+        &[],
+        Some(&expected),
+        false,
+        "m68020",
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; register class, immediate form and package capability barriers"]
+fn compact_register_immediate_rejections_fs_uae() {
+    for (cpu, body) in REGISTER_IMMEDIATE_INVALID {
+        let text = source(&format!(".cpu {cpu}\n {body}\n"));
+        compact_cli_cpu(&[("main.asm", &text)], &[], &[], None, false, cpu);
+    }
+}
+
 #[test]
 fn compact_call_operand_rust_oracles() {
     assert!(!oracle(&[("main.asm", EXAMPLE)]).unwrap().is_empty());

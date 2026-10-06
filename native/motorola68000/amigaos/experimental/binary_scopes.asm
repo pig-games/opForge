@@ -1266,7 +1266,7 @@ normalizeLabel	.block
 	bra.w ok
 indentation
 	tst.b 1(a0)
-	bne.w instruction
+	bne.w ok  ; operands, including dotted calls, belong to preparation/selection
 	moveq #0, d2
 	move.w 5(a0), d2
 	cmp.w layout.State.Base(a6), d2
@@ -1290,13 +1290,6 @@ colon
 	move.b #5, 8(a0)
 	addq.b #1, (a0)
 	bra.w ok
-instruction
-	; An indented identifier followed by a dot is not an entry label for a
-	; scope directive. Leave ordinary operand parsing to existing preparation.
-	cmpi.w #9, d1
-	blo.w ok
-	cmpi.b #7, 8(a0)
-	beq.w bad
 ok
 	moveq #0, d0
 	rts

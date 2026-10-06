@@ -1,9 +1,9 @@
 # Compact frontend: VM boundary correction
 
 Status: the working runtime contract is BS27, extending numeric transport to
-three operands and wrapped call children. This is an incomplete checkpoint:
-same-source PACK/UNPK and FPU controls pass, but the transformed CAS2 frontend
-probe still rejects, and BS27 has no complete self-host qualification yet. The
+three operands and wrapped call children. Same-source PACK/UNPK, LINK and CAS
+checks and transformed CAS2 execution probes pass. Complete BS27 self-host
+qualification is running; native completion is not yet claimed. The
 [current checkpoint](native-runtime-reset.md#three-operands-and-indirect-call-children-bs27-checkpoint)
 records its evidence and pending checks. The previous BS26 contract added numeric
 expression paths to package-owned state/guards, call-argument register projections
@@ -34,7 +34,7 @@ No physical A6000 timing, complete peak-memory capture or 2 MiB fit is claimed.
 The [numeric path slice](native-runtime-reset.md#numeric-expression-paths-bs26)
 owns the path contract, focused proof and remaining boundaries. Only BS27 runtime
 packages are accepted by current code; older bundles are baseline evidence.
-CAS2 source normalization and frontend preparation, other path/call-child forms,
+CAS2 source normalization, other path/call-child forms,
 unused extra call-argument preparation and localized
 import-alias/local-struct shadowing remain open.
 
@@ -81,7 +81,7 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS26 before selecting it in the current hardware
+instrumented configuration as BS27 before selecting it in the current hardware
 runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
@@ -148,7 +148,10 @@ native package owner checks the matching magic. Only this latest runtime contrac
 is supported; packages must be regenerated. Candidate rows are 36 bytes: offsets
 0–31 retain their previous fields, byte 32 carries the third-operand form nibble,
 byte 33 the third tuple class (class + 1), and word 34 is reserved zero. Shapes
-11/12/13 carry the canonical three-operand forms. Projection kind 27 selects a
+11/12/13 carry direct and immediate three-operand forms; 14 represents
+register/immediate, 15 register/register/direct and 16 register/register/register.
+These are structural distinctions; package projections own classes and semantics.
+Projection kind 27 selects a
 wrapped register child from call argument 0/1 on operand 0–2, using the same
 class/value-program/argument fields as kind 24; no callee or opcode spelling is
 interpreted by native transport. Raw colon normalization remains unsupported.

@@ -14,6 +14,8 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68030", None).unwrap();
     let numeric = BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    let package = prepare_package(&core, &resolved).unwrap();
+    let exported_names = u16::from_be_bytes(package[62..64].try_into().unwrap());
     let id = |name: &str| {
         u16::try_from(
             numeric
@@ -46,10 +48,11 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
         if index != 0 {
             record.push(4);
         }
-        // The call projection ignores its callee identity. Reuse a package
-        // name so the fixture does not depend on frontend lexical allocation.
+        // Match frontend allocation after a module name: an unqualified
+        // lexical call name follows the package's initial name arena.
         record.push(7);
-        record.extend(name(0, "cas2", 0));
+        let callee = exported_names.checked_add(2).unwrap();
+        record.extend([0, (callee >> 8) as u8, callee as u8, 0]);
         record.push(14);
         for (argument, register) in [left, right].into_iter().enumerate() {
             if argument != 0 {
@@ -58,7 +61,7 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
             if index == 2 {
                 record.push(14);
             }
-            record.extend(name(1, register, 0));
+            record.extend(name(0, register, 0));
             if index == 2 {
                 record.push(15);
             }
@@ -66,7 +69,7 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
         record.push(15);
     }
     record[0] = u8::try_from(record.len() - 1).unwrap();
-    (prepare_package(&core, &resolved).unwrap(), record)
+    (package, record)
 }
 
 fn source(output_bytes: usize) -> String {
@@ -195,7 +198,7 @@ fn assemble_source(
     std::fs::read(scratch.join("prepare-probe.hunk")).unwrap()
 }
 
-fn frontend_source(package: &[u8]) -> String {
+fn frontend_source(package: &[u8], output_bytes: usize) -> String {
     let dictionary = u32::from_be_bytes(package[12..16].try_into().unwrap());
     let setup = r#" lea Frame,a0
  move.l #Payload,frontend.Frame.Package(a0)
@@ -223,46 +226,23 @@ frontendDone
  move.l d0,Output
  jsr frontend.finish
 "#;
-    let dump = r#" movea.l a5,a6
- lea Output,a0
- lea HexBuffer,a1
- lea HexDigits,a2
- move.w #259,d4
-dumpByte
- moveq #0,d0
- move.b (a0)+,d0
- move.l d0,d1
- lsr.b #4,d0
- move.b 0(a2,d0.w),(a1)+
- andi.w #15,d1
- move.b 0(a2,d1.w),(a1)+
- dbra d4,dumpByte
- move.b #10,(a1)
- jsr DOS_OUTPUT(a6)
- move.l d0,d1
- move.l #HexBuffer,d2
- move.l #521,d3
- jsr DOS_WRITE(a6)
-"#;
-    source(4)
+    source(output_bytes)
         .replace(
             ".use experimental.amigaos.binary_prepare as prepare",
             ".use experimental.amigaos.binary_frontend as frontend",
         )
-        .replace("DOS_OPEN = -30", "DOS_OPEN = -30\nDOS_OUTPUT = -60")
         .replace(
             " lea Record,a0\n lea Output+4,a1\n lea Payload,a2\n jsr prepare.line\n move.l d0,Output\n",
             setup,
         )
-        .replacen(" movea.l a5,a6\n", dump, 1)
         .replace("Work:prepared.bin", "Work:frontend-status.bin")
         .replace(
             "Record .incbin \"record.bin\"",
-            "Record .incbin \"record.bin\"\nHexDigits .byte \"0123456789ABCDEF\"\nModuleLine .byte \".module component\"\nModuleLineEnd\nCpuLine .byte \".cpu m68030\"\nCpuLineEnd\nCallLine .byte \" cas2.w .pair(d0,d1),.pair(d2,d3),.pair((a0),(a1))\"\nCallLineEnd",
+            "Record .incbin \"record.bin\"\nModuleLine .byte \".module component\"\nModuleLineEnd\nCpuLine .byte \".cpu m68030\"\nCpuLineEnd\nCallLine .byte \" cas2.w .pair(d0,d1),.pair(d2,d3),.pair((a0),(a1))\"\nCallLineEnd",
         )
         .replace(
             "Output .res byte,260",
-            &format!("Output .res byte,260\nHexBuffer .res byte,521\n.align 4\nFrame .res byte,frontend.FRAME_BYTES\n.align 4\nFrontendScratch .res byte,frontend.SCRATCH_BYTES+{dictionary}*8"),
+            &format!("Output .res byte,260\n.align 4\nFrame .res byte,frontend.FRAME_BYTES\n.align 4\nFrontendScratch .res byte,frontend.SCRATCH_BYTES+{dictionary}*8"),
         )
 }
 
@@ -270,12 +250,12 @@ dumpByte
 fn compact_call_frontend_component_host_assembly() {
     let (package, record) = fixture();
     let scratch = scratch();
-    let source = frontend_source(&package);
+    let source = frontend_source(&package, 4 + record.len());
     assert!(!assemble_source(&workspace_root(), &scratch.0, &package, &record, &source).is_empty());
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; frontend component status and bounded record hex diagnostic"]
+#[ignore = "requires configured FS-UAE; dotted first operand survives frontend label normalization"]
 fn compact_call_frontend_component_fs_uae() {
     use crate::fs_uae_smoke::{
         run_prebuilt_compact_cli_case_from_env, OpforgeNativeCliPackageMode,
@@ -284,9 +264,10 @@ fn compact_call_frontend_component_fs_uae() {
     let root = workspace_root();
     let scratch = scratch();
     let (package, record) = fixture();
-    let source = frontend_source(&package);
+    let source = frontend_source(&package, 4 + record.len());
     let image = assemble_source(&root, &scratch.0, &package, &record, &source);
-    let expected = [0; 4];
+    let mut expected = vec![0; 4];
+    expected.extend_from_slice(&record);
     let case = OpforgeNativeCliParityCase {
         name: "actual-call-frontend-component",
         cpu_override: "68020",
@@ -309,7 +290,6 @@ fn compact_call_frontend_component_fs_uae() {
     assert!(runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(0));
     assert!(runs[0].success);
-    eprintln!("FRONTEND_COMPONENT_RECORD_HEX {}", runs[0].stdout);
 }
 
 fn scratch() -> Scratch {

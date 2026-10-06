@@ -46,6 +46,9 @@ SHAPE_VALUE_PAIR = 10
 SHAPE_VALUE_TRIPLE = 11
 SHAPE_REGISTER_PREFIX_TRIPLE = 12
 SHAPE_VALUE_PREFIX_TRIPLE = 13
+SHAPE_REGISTER_PREFIX_PAIR = 14
+SHAPE_REGISTER_VALUE_TRIPLE = 15
+SHAPE_REGISTER_TRIPLE = 16
 MAX_OPERANDS = 3
 
 RECIPE_NONE = 0
@@ -407,6 +410,9 @@ scanned
 	beq.w triple
 	cmpi.b #TOKEN_HASH, (a0)
 	beq.w prefixedPair
+	movea.l OperandStart+4, a0
+	cmpi.b #TOKEN_HASH, (a0)
+	beq.w registerPrefixedPair
 	move.w #SHAPE_PAIR, OperandShape
 	movea.l OperandStart+4, a0
 	movea.l OperandEnd+4, a1
@@ -424,6 +430,17 @@ scanned
 	tst.l d0
 	bne.w pairReady
 	move.w #SHAPE_REGISTER_PAIR, OperandShape
+	bra.w pairReady
+registerPrefixedPair
+	move.w #SHAPE_VALUE_PAIR, OperandShape
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w pairReady
+	move.w #SHAPE_REGISTER_PREFIX_PAIR, OperandShape
 	bra.w pairReady
 secondValue
 	movea.l OperandStart, a0
@@ -446,8 +463,9 @@ triple
 	move.w #SHAPE_VALUE_TRIPLE, OperandShape
 	movea.l OperandStart+8, a0
 	cmpi.b #TOKEN_HASH, (a0)
-	bne.w tripleReady
+	bne.w triplePrefix
 	move.w #SHAPE_VALUE_PREFIX_TRIPLE, OperandShape
+triplePrefix
 	movea.l OperandStart, a0
 	movea.l OperandEnd, a1
 	bsr.w knownRegister
@@ -462,7 +480,20 @@ triple
 	beq.w malformed
 	tst.l d0
 	bne.w tripleReady
+	movea.l OperandStart+8, a0
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w tripleDestination
 	move.w #SHAPE_REGISTER_PREFIX_TRIPLE, OperandShape
+	bra.w tripleReady
+tripleDestination
+	move.w #SHAPE_REGISTER_VALUE_TRIPLE, OperandShape
+	movea.l OperandEnd+8, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w tripleReady
+	move.w #SHAPE_REGISTER_TRIPLE, OperandShape
 tripleReady
 	moveq #0, d0
 	rts

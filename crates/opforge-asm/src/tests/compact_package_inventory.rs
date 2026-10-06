@@ -175,6 +175,9 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
             11 => "direct_direct_direct",
             12 => "register_register_immediate",
             13 => "direct_direct_immediate",
+            14 => "register_immediate",
+            15 => "register_register_direct",
+            16 => "register_register_register",
             _ => "unrecognized",
         };
         let mut reasons = Vec::new();

@@ -3,9 +3,9 @@
 Status: BS28 adds package-owned numeric `:=` normalization to shared declarations.
 It retains three numeric operands, wrapped call-register children,
 register/immediate pairs and register triples. Same-source PACK/UNPK, LINK and
-CAS checks and transformed CAS2 execution probes pass. The last full
-embedded compact self-host proof precedes the layout follow-up below and has
-exact whole-Hunk Rust/native equality. This qualifies that implementation and
+CAS checks and transformed CAS2 execution probes pass. The current full
+embedded BS28 compact self-host has exact whole-Hunk Rust/native equality.
+This qualifies that implementation and
 case, not whole-language or CPU-family parity. The [current slice](native-runtime-reset.md#mutable-assignment-operators-bs28)
 records focused coverage, costs and remaining boundaries.
 
@@ -45,38 +45,39 @@ Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.
 
-## Most recent full self-host qualification (BS27)
+## Most recent full self-host qualification (BS28)
 
-The complete BS27 embedded implementation self-assembles in FS-UAE with fresh
-case-bound START/DONE, native exit zero and exact live Rust equality for the
-entire 534,964-byte Hunk. Bootstrap and output embed only the 394,318-byte
-m68020 package; 103 mapped source/binary inputs total 1,509,170 bytes. Linked
-static reservation is 554,164 bytes, not peak RAM. Source fingerprint is
-`fnv1a64:87ef757925cb6aba`, package fingerprint `fnv1a64:0e13af9d947d7620`, and
-bootstrap/output fingerprint `fnv1a64:a0c63661a3b96bb1`.
+The complete BS28 embedded implementation at `d7ec7a17` self-assembles in FS-UAE
+with fresh case-bound START/DONE, native exit zero and exact live Rust equality
+for the entire 535,092-byte Hunk. Bootstrap and output embed only the 394,322-byte
+m68020 package; 103 mapped source/binary inputs total 1,510,690 bytes. Linked
+static reservation is 554,292 bytes, not peak RAM. Source fingerprint is
+`fnv1a64:0b57c01a5a18cfbd`, package fingerprint is `fnv1a64:72fa2a2eee62305d`,
+and bootstrap/output fingerprint is `fnv1a64:ea9e5549c42f7856`.
 
-Release START/DONE takes 1121.611579667 seconds (18m41.61s), versus BS26's
-1114.496267083 (18m34.50s): +7.115313 seconds (+0.6384%), one full sample per
-state with different source/package bytes. The unchanged indexed workload on
-68020/10 MiB separately averages 12.428726354 seconds versus 12.3745079375
-(+0.4381%, two samples per state). Intermediate label, pair and triple changes
-have separate measurements in the current slice; small indexed differences are
-within the observed variation. Keep the two input sets and memory profiles
-separate. Full self-host uses 68020/74 MiB; no physical A6000 timing, complete
-peak-memory capture or 2 MiB fit is claimed.
+Release START/DONE takes 1122.755769250 seconds (18m42.76s), versus the last
+qualified BS27 full run's 1121.611579667 seconds (18m41.61s): +1.144190 seconds
+(+0.1020%), one full sample per state with different source/package bytes. This
+comparison includes the intervening region/alignment repairs and BS28 scalar
+assignment support. It does not isolate `:=` cost or demonstrate a speed change.
+The separate unchanged-control measurements in the
+[layout](native-runtime-reset.md#native-region-validation-and-alignment-provenance)
+and [assignment](native-runtime-reset.md#mutable-assignment-operators-bs28)
+checkpoints retain their individual change costs on 68020/10 MiB. Full self-host
+uses 68020/74 MiB; no physical A6000 timing, peak-memory capture or 2 MiB fit is
+claimed.
 
-The previous BS26 reference Hunk was 518,896 bytes with 538,140 bytes of linked
-reservation and a 378,874-byte embedded package. BS27 adds 16,068 Hunk bytes,
-16,024 linked-reservation bytes and 15,444 package bytes. Its numeric-path
-qualification remains recorded in the [BS26 slice](native-runtime-reset.md#numeric-expression-paths-bs26).
-Only latest BS28 packages are accepted by current code; older bundles are
-baseline evidence. Raw CAS2 colon normalization, other path/call-child forms,
-unused extra call-argument preparation and localized
+Compared with that BS27 full baseline, Hunk and linked reservation both grow
+128 bytes: 60 bytes for the intervening layout repairs and 68 for BS28 assignment
+support, including its four package bytes. Only latest BS28 packages are accepted;
+older bundles are baseline evidence. Raw CAS2 colon normalization, other path/
+call-child forms, unused extra call-argument preparation and localized
 import-alias/local-struct shadowing remain open.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
-`OPFORGE_COMPACT_EXPORT_NATIVE=1`, a new absolute
+`OPFORGE_COMPACT_EXPORT_NATIVE=1`, both `OPFORGE_FS_UAE_TIMEOUT_MS=3600000`
+and `OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=3600000`, a new absolute
 `OPFORGE_COMPACT_EXPORT_DIR` and the [configured FS-UAE environment](../../agents/rules/fs-uae.md).
 Host export alone does not establish native completion. Fresh case-bound
 START/DONE, explicit exit zero and exact complete Hunk equality are required;
@@ -84,9 +85,8 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The historical qualified release bundle `/tmp/opforge-selfhost-bs27-qualified-release-74m`
-is still selected by `/tmp/opforge-a6000-current`; regenerate and qualify a BS28
-bundle before using the current runner. Bootstrap and assembled output both
+The qualified release bundle `/tmp/opforge-selfhost-bs28-release-74m-d7ec7a17`
+is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both
 embed only `m68020--motorola68k.bin`. The named package is retained for local
 identity verification; no external runtime fallback is used. This bundle has
 complete FS-UAE qualification and a passing local transfer-preparation dry run,

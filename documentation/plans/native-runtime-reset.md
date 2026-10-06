@@ -1,13 +1,11 @@
 # Native assembler completion plan
 
 Status: active. BS28 extends shared scalar declaration policy with numeric `:=`
-normalization. The last full self-host proof is the earlier BS27
-[qualified checkpoint](#three-operands-and-indirect-call-children-bs27-checkpoint),
-with exact equality for all
-534,964 Hunk bytes on 68020/74 MiB in 1,121.611579667 seconds. No new physical
+normalization. The [current full self-host checkpoint](#full-bs28-self-host-qualification)
+has exact equality for all 535,092 Hunk bytes on 68020/74 MiB in
+1,122.755769250 seconds. No new physical
 A6000 run or complete peak-memory result is claimed. Current executables require
-BS28 packages; superseded contracts have no compatibility executor. That older
-self-host proof does not qualify the current BS28 implementation.
+BS28 packages; superseded contracts have no compatibility executor.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -3128,11 +3126,36 @@ package generation/header/validator fixtures and 24 hardware-runner tests.
 Production Clippy for opcore/package/VM/assembler, formatting and workflow/native
 engineering guards pass. An independent Sol review found no must-fix issue.
 
-The hardware bundle exporter and transfer validator use BS28. The retained BS27
-full self-host bundle is historical proof and has not been replaced by a newly
-qualified BS28 bundle. No new full native self-host, A6000 run, 2 MiB qualification
-or remote push accompanies this checkpoint. Logs and the focused executable are
-outside `target`, under `/tmp/opforge-assignment-*`.
+The hardware bundle exporter and transfer validator use BS28. The focused checks
+above do not establish full self-hosting; that subsequent qualification is
+recorded below. Logs and the focused executable are outside `target`, under
+`/tmp/opforge-assignment-*`.
+
+### Full BS28 self-host qualification
+
+The complete embedded implementation at `d7ec7a17` finishes native self-hosting
+on FS-UAE/68020/74 MiB with fresh case-bound START/DONE, explicit exit zero and
+exact live Rust equality for **all 535,092 Hunk bytes**. Both bootstrap and output
+embed only the 394,322-byte m68020 package. The 103 mapped inputs total 1,510,690
+bytes; source/package/image fingerprints are respectively
+`0b57c01a5a18cfbd`, `72fa2a2eee62305d` and `ea9e5549c42f7856` (FNV-1a64).
+Linked static reservation is 554,292 bytes; no peak-memory capture was requested.
+
+Release START/DONE is **1122.755769250 seconds (18m42.76s)**, versus the previous
+BS27 full proof's 1121.611579667 seconds: +1.144190 seconds (+0.1020%). One full
+sample per state uses changed source/package inputs. This includes intervening
+layout repairs and BS28 assignment support, not just the latest change. The
+separate unchanged controls above retain their individual timing costs. Full
+Hunk/reservation growth since that full baseline is 128 bytes: 60 for layout and
+68 for BS28 assignment, with four package bytes included in the latter.
+
+`/tmp/opforge-selfhost-bs28-release-74m-d7ec7a17` retains the qualified bundle;
+`/tmp/opforge-a6000-current` selects it. The default hardware script's local
+dry-run passes current source/package/image validation and classic filename
+checks. No transfer or physical A6000 execution was performed, and this does not
+qualify the 2 MiB product target or whole-language/CPU parity. Both timeout bounds
+were one hour; that bound is not the measured runtime. The full-run log is
+`/tmp/opforge-selfhost-bs28-release.log`.
 
 ### Next parity choice
 

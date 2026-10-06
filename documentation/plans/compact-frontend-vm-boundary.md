@@ -1,40 +1,39 @@
 # Compact frontend: VM boundary correction
 
-Status: the working runtime contract is BS27, extending numeric transport to
-three operands and wrapped call children. Same-source PACK/UNPK, LINK and CAS
-checks and transformed CAS2 execution probes pass. Complete BS27 self-host
-qualification is running; native completion is not yet claimed. The
-[current checkpoint](native-runtime-reset.md#three-operands-and-indirect-call-children-bs27-checkpoint)
-records its evidence and pending checks. The previous BS26 contract added numeric
-expression paths to package-owned state/guards, call-argument register projections
-and single-class masks. The [numeric path slice](native-runtime-reset.md#numeric-expression-paths-bs26)
-passes the complete full-extension example and focused fresh native structural
-comparisons. The previous BS26 release implementation also self-hosts
-with exact whole-Hunk Rust/native equality. Self-host success does not establish
-whole-language or CPU-family parity.
+Status: BS27 transports three numeric operands, wrapped call-register children,
+register/immediate pairs and register triples. Same-source PACK/UNPK, LINK and
+CAS checks and transformed CAS2 execution probes pass. The complete current
+embedded compact implementation self-hosts with exact whole-Hunk Rust/native
+equality. This qualifies that implementation and case, not whole-language or
+CPU-family parity. The [current slice](native-runtime-reset.md#three-operands-and-indirect-call-children-bs27-checkpoint)
+records focused coverage, costs and remaining boundaries.
 
-## Most recent full self-host qualification (BS26)
+## Most recent full self-host qualification (BS27)
 
-The complete BS26 embedded implementation self-assembles in FS-UAE with fresh
+The complete BS27 embedded implementation self-assembles in FS-UAE with fresh
 case-bound START/DONE, native exit zero and exact live Rust equality for the
-entire 518,896-byte Hunk. Bootstrap and output embed only the 378,874-byte
-m68020 package; 103 mapped source/binary inputs total 1,489,427 bytes. Linked
-static reservation is 538,140 bytes, not peak RAM. Source fingerprint is
-`fnv1a64:251e179f71cb9d53`, package fingerprint `fnv1a64:ba0f35c20b1942a8`, and
-bootstrap/output fingerprint `fnv1a64:b5bd5e0ff6349a48`.
+entire 534,964-byte Hunk. Bootstrap and output embed only the 394,318-byte
+m68020 package; 103 mapped source/binary inputs total 1,509,170 bytes. Linked
+static reservation is 554,164 bytes, not peak RAM. Source fingerprint is
+`fnv1a64:87ef757925cb6aba`, package fingerprint `fnv1a64:0e13af9d947d7620`, and
+bootstrap/output fingerprint `fnv1a64:a0c63661a3b96bb1`.
 
-Release START/DONE takes 1114.496267083 seconds (18m34.50s), versus BS25's
-1091.929879083 (18m11.93s): +22.566388 seconds (+2.0667%), one full sample per
+Release START/DONE takes 1121.611579667 seconds (18m41.61s), versus BS26's
+1114.496267083 (18m34.50s): +7.115313 seconds (+0.6384%), one full sample per
 state with different source/package bytes. The unchanged indexed workload on
-68020/10 MiB separately averages 12.3745079375 seconds versus 12.0476659375
-(+2.7129%, two samples per state). This slice adds functional coverage and a
-small measured runtime cost. Keep the two input sets and profiles separate.
-No physical A6000 timing, complete peak-memory capture or 2 MiB fit is claimed.
+68020/10 MiB separately averages 12.428726354 seconds versus 12.3745079375
+(+0.4381%, two samples per state). Intermediate label, pair and triple changes
+have separate measurements in the current slice; small indexed differences are
+within the observed variation. Keep the two input sets and memory profiles
+separate. Full self-host uses 68020/74 MiB; no physical A6000 timing, complete
+peak-memory capture or 2 MiB fit is claimed.
 
-The [numeric path slice](native-runtime-reset.md#numeric-expression-paths-bs26)
-owns the path contract, focused proof and remaining boundaries. Only BS27 runtime
-packages are accepted by current code; older bundles are baseline evidence.
-CAS2 source normalization, other path/call-child forms,
+The previous BS26 reference Hunk was 518,896 bytes with 538,140 bytes of linked
+reservation and a 378,874-byte embedded package. BS27 adds 16,068 Hunk bytes,
+16,024 linked-reservation bytes and 15,444 package bytes. Its numeric-path
+qualification remains recorded in the [BS26 slice](native-runtime-reset.md#numeric-expression-paths-bs26).
+Only latest BS27 packages are accepted by current code; older bundles are
+baseline evidence. Raw CAS2 colon normalization, other path/call-child forms,
 unused extra call-argument preparation and localized
 import-alias/local-struct shadowing remain open.
 
@@ -48,17 +47,12 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-**Pending BS27 qualification:** the current hardware helper accepts BS27 only,
-while the default symlink still selects the qualified BS26 baseline below. The
-default command cannot be used with this combination. Update it only after fresh
-complete BS27 self-host proof; no new hardware bundle is claimed at this checkpoint.
-
-The previous qualified release bundle `/tmp/opforge-selfhost-bs26-nested-qualified-release-74m`
-is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both embed only
-`m68020--motorola68k.bin`. The named package is retained for local identity
-verification; no external runtime fallback is used. This bundle has complete
-FS-UAE qualification and a passing local transfer-preparation dry run, but no
-physical execution or remote transfer proof.
+The qualified release bundle `/tmp/opforge-selfhost-bs27-qualified-release-74m`
+is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both
+embed only `m68020--motorola68k.bin`. The named package is retained for local
+identity verification; no external runtime fallback is used. This bundle has
+complete FS-UAE qualification and a passing local transfer-preparation dry run,
+but no physical execution or remote transfer proof.
 Use macOS Terminal, where `ash` and `acp` can reach the A6000:
 
 ```sh

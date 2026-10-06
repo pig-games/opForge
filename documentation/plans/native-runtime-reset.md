@@ -3992,11 +3992,25 @@ Raw colon normalization, unused extra call-argument preparation and other
 previously recorded parity boundaries remain open. They need package/VM-owned
 work, not mnemonic-specific native shortcuts.
 
-Full BS27 self-host qualification is running. Its live Rust oracle is a
-534,964-byte Hunk with 554,164 bytes of linked reservation; 103 mapped inputs
-total 1,509,170 bytes, and bootstrap/output embed only the 394,318-byte m68020
-package. Source fingerprint is `fnv1a64:87ef757925cb6aba`, package fingerprint
-`fnv1a64:0e13af9d947d7620`, and bootstrap/output fingerprint
-`fnv1a64:a0c63661a3b96bb1`. Native completion/equality are not yet claimed.
-The default A6000 helper must not select this bundle until the fresh complete
-exact-Hunk proof succeeds; the older BS26 bundle remains baseline evidence.
+The complete current BS27 embedded implementation self-hosts with fresh
+case-bound START/DONE, native exit zero and exact live Rust equality for the
+entire 534,964-byte Hunk. This is actual complete native self-assembly, not host
+export or a reduced source probe. Linked reservation is 554,164 bytes, not peak
+RAM; 103 mapped inputs total 1,509,170 bytes. Bootstrap/output embed only the
+394,318-byte m68020 package. Source fingerprint is `fnv1a64:87ef757925cb6aba`,
+package fingerprint `fnv1a64:0e13af9d947d7620`, and bootstrap/output fingerprint
+`fnv1a64:a0c63661a3b96bb1`.
+
+Release START/DONE on 68020/74 MiB takes 1121.611579667 seconds (18m41.61s),
+versus BS26's 1114.496267083 (18m34.50s): +7.115313 seconds (+0.6384%). This
+compares one full sample per changed source/package case; the separate unchanged
+indexed measurements above isolate the smaller steps. Hunk size grows by 16,068
+bytes and linked reservation by 16,024 bytes versus BS26. No physical timing,
+peak-memory capture or 2 MiB fit is claimed.
+
+The qualified bundle `/tmp/opforge-selfhost-bs27-qualified-release-74m` passes
+local A6000 transfer preparation and is selected by `/tmp/opforge-a6000-current`.
+The existing default runner command works again. No remote transfer or physical
+execution has been performed for this bundle. Raw colon normalization remains
+the next exposed package/VM boundary; full self-host does not establish complete
+assembler-language or CPU-family parity.

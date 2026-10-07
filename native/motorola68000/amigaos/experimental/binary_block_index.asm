@@ -540,8 +540,18 @@ token
 	beq.w compactExpression
 	cmpi.b #expr.VALUE_TAG, d1
 	beq.w typedExpression
+	cmpi.b #source.TOKEN_ITERATOR_BINDING, d1
+	beq.w iterator
 	cmpi.b #41, d1
 	beq.w bad  ; expansion must replace composite recipes before indexing
+	bra.w token
+iterator
+	; An iterator binding is not a reference to an emitted block.
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #2, d0
+	blo.w bad
+	addq.l #2, a0
 	bra.w token
 literal
 	addq.l #4, a0

@@ -78,6 +78,8 @@ token
 	beq.w compactExpression
 	cmpi.b #expr.VALUE_TAG, d0
 	beq.w typedExpression
+	cmpi.b #source.TOKEN_ITERATOR_BINDING, d0
+	beq.w iterator
 	cmpi.b #2, d0
 	beq.w literal
 	cmpi.b #3, d0
@@ -110,6 +112,18 @@ name
 	bne.w bad
 	move.w d1, (a0)
 	addq.l #3, a0
+	bra.w token
+iterator
+	move.l a4, d0
+	sub.l a0, d0
+	cmpi.l #2, d0
+	blo.w bad
+	moveq #0, d0
+	move.w (a0), d0
+	bsr.w identity
+	bne.w bad
+	move.w d1, (a0)
+	addq.l #2, a0
 	bra.w token
 compactExpression
 	moveq #0, d5

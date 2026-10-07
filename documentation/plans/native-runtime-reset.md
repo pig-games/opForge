@@ -1,14 +1,18 @@
 # Native assembler completion plan
 
 Status: active. BS31 adds statement-time flat lists, compact ranges and numeric `.len` binding
-while retaining the shared EXVM grammar and scalar `:?=` policy. The
+while retaining the shared EXVM grammar and scalar `:?=` policy. Packed
+iterable `.for` over lists and ranges is the current implementation slice and
+remains under validation. The
 [last complete full self-host checkpoint](#shared-exvm-migration-qualification)
 has exact equality for all 538,336 Hunk bytes on 68020/74 MiB in
 1,253.615809917 seconds. Scalar `:?=` forward-initializer semantics remain an open
 decision, and broad tests retain 54 inherited failures. No new physical
 A6000 run or complete peak-memory result is claimed. Current executables require
 BS31 packages; superseded contracts have no compatibility executor. Subsequent
-compiler/list work has focused qualification only; it has not rerun the complete self-host or replaced the qualified hardware bundle.
+compiler/list work has focused qualification only; iterable-loop qualification
+is in progress. No complete self-host rerun or replacement hardware bundle is
+claimed for this current work.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -140,7 +144,7 @@ never serialized pointers. Immutable aliases and mutable snapshots retain concre
 list values; replacing a mutable list does not rewrite earlier snapshots.
 
 BS31 adds a numeric shared `.len` identity and a builtin dictionary role; its
-212-byte header replaces BS30 without a compatibility executor. EXVM parses
+220-byte header replaces BS30 without a compatibility executor. EXVM parses
 opaque call IDs, and ExprVM executes builtin ID 1 with one argument. Rust's typed
 compiler/evaluator and native execution consume the same operation contract.
 Native binding/reachability walks visit scalar children inside typed programs.
@@ -342,6 +346,65 @@ balanced allocated/freed capacity and zero profiling errors. These are focused
 owned-allocation measurements, not full self-host RAM or total Amiga memory.
 Memory reproduction uses `native_lists_probe_fs_uae`, `OPFORGE_COMPARE_MEMORY=1`
 and `OPFORGE_LIST_SOURCE` pointing to the corresponding actual source.
+
+#### Packed iterable `.for` checkpoint (partial qualification)
+
+The current slice adds list/range iterable evaluation to packed `.for` through
+the shared numeric PRVM loop plan at header offsets 212/216 for
+`.for <var> in <expr>`. EXVM owns evaluation of the iterable expression. Rust
+inline range/list evaluation now uses the full signed `AsmValue`, matching named
+snapshots; the iterator value remains subject to the unsigned 32-bit limit.
+The `in` marker is selected by a contextual dictionary role and a shared PRVM
+context-keyword predicate over the partial numeric writer prefix. It is not a
+globally reserved word, and the placement parser is unchanged. This avoids the
+regression where reserving `in` globally broke the unchanged `.place ... in ram`
+control. The eighth positive scenario uses `in` as an iterator/source constant
+to keep that context boundary covered.
+
+The regression-fixed two-package image is **562,640 bytes**, with **582,040
+bytes** of linked static reservation, up from **561,012 / 579,944 bytes**
+(**+1,628 image / +2,096 linked bytes**). These are static reservations, not
+measured peak RAM. The loop stack itself grows by 512 bytes.
+
+The unchanged `aligned-control` input (15,474 bytes, FNV
+`ac05445d958571b5`) has four alternating release measurements on
+FS-UAE 68020/10 MiB, without concurrent builds or tests. All four complete with
+fresh guest markers, exit zero and exact live Rust output. Baseline samples are
+**25.076547 / 25.168159 seconds** (mean **25.122353**); candidate samples are
+**24.935607 / 25.143752 seconds** (mean **25.039679**). The observed **0.33%
+decrease** falls within overlapping sample ranges: no meaningful timing change
+is established by this two-sample comparison. The measured one-package images
+are **545,816 / 547,420 bytes**, with **564,748 / 566,820 bytes** linked
+reservation (**+1,604 / +2,072 bytes**); image FNVs are
+`5c819f287c5b34c9` / `b3b288b8539b71fb`. The earlier failed placement-control
+run is excluded from this comparison.
+
+The final combined fixture covers eight positive scenarios on each package
+(68020: 1,204 source bytes, 2.308109042 seconds; 6502: 1,203 source bytes,
+1.810013541 seconds). Both native runs exit zero and match fresh live Rust
+output exactly. Thirteen individually completed loop rejection cases ran on
+the pre-alignment-guard build (`562,404` bytes); the final guard build also
+rejects the fourteenth case, an iteration-limit violation. The native validator
+component accepts a valid loop plan and rejects its placement at an odd offset.
+Host qualification passes 352 packed-source checks, three PRVM checks, 20
+repetition checks and 24 Python checks.
+
+Imported iterator shadowing remains a confirmed parity bug: focused probes on
+the 562,412-byte build exit zero but emit body values `0` where Rust emits `2`
+and `4`. These probes precede the contextual-keyword repair and remain explicit
+failing regressions, rather than qualified cases. The
+constant folder does not fold `PUSH_SYMBOL`; investigation confirms canonical
+identity collapse, so iterator-local identities must be established before
+import canonicalization. Rust also retains an unused selected block when only a
+bare iterator shadow is read, and compound-expression lookup can bypass
+iterator priority. Erik chose this as a checkpoint; binding repair is next.
+That repair must assign fresh iterator identities before import
+canonicalization, distinguish a bare helper temporary from an actual
+`dep.helper` reference, evaluate the outer iterable expression before activating
+its iterator, restore nested bindings, keep register-value binding distinct
+from instruction binding, and fix bare-only block reachability plus compound
+lookup priority in Rust. Iterable-loop parity is therefore incomplete; no broad
+corpus result or full self-host rerun is claimed.
 
 ### Shared compiler cost checkpoint
 

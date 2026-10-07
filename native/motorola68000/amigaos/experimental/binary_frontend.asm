@@ -32,6 +32,7 @@
 	.use prvm.amigaos.macro_runtime as macro_runtime
 	.use experimental.amigaos.binary_declaration as declaration
 	.use prvm.amigaos.packed_declaration as declaration_parser
+	.use prvm.amigaos.packed_loop as loop_parser
 	.use prvm.amigaos.runtime as parser_runtime
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.macro_spelling as spelling
@@ -180,6 +181,9 @@ clearBuckets
 	move.w package.Header.EndDirective(a1), d1
 	jsr scopes.begin
 	bne.w failed
+	lea SCOPE_STATE(a6), a0
+	movea.l Frame.Package(a5), a1
+	jsr scopes.configureLoops
 	lea SCOPE_STATE(a6), a0
 	adda.l #scopes.STRUCT_STATE, a0
 	movea.l Frame.Package(a5), a1
@@ -2363,6 +2367,14 @@ validateMacroPrograms	.block
 	bne.w bad
 	lea package.Header.MetadataPlan(a4), a0
 	bsr.w region
+	bne.w bad
+	; The loop envelope belongs to the retained grammar region.
+	move.l d7, -(sp)
+	move.l d3, d7
+	move.l #HEADER_BYTES, d3
+	lea package.Header.LoopPlan(a4), a0
+	bsr.w region
+	move.l (sp)+, d7
 	bra.w done
 region
 	move.l (a0), d0
@@ -2529,6 +2541,7 @@ bind	.block
 	movem.l d3-d7/a2-a6, -(sp)
 	.MEMORY_BIND_SAMPLE_BEGIN
 	movea.l a1, a6
+	movea.l a3, a5  ; writer cursor before dictionary lookup repurposes A3
 	movea.l a0, a2
 	move.l d0, d6
 	move.l d2, d5
@@ -2610,7 +2623,20 @@ entryFound
 	tst.l d5
 	bne.w packageBound
 	btst #package.DICTIONARY_REGISTER_OR_NAMED_BIT, package.DictionaryEntry.Roles(a3)
-	beq.w findSymbol
+	bne.w packageBound
+	; PRVM owns contextual grammar binding; `in` remains a normal source
+	; name everywhere else, including the existing placement grammar.
+	movem.l d1/a0-a2, -(sp)
+	move.l d1, d0
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a0
+	movea.l a5, a1
+	movea.l PACKAGE_BASE(a6), a2
+	move.l package.Header.LoopPlanBytes(a2), d1
+	adda.l package.Header.LoopPlan(a2), a2
+	jsr loop_parser.contextKeyword
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	bne.w findSymbol
 	bra.w packageBound
 memberBound
 	btst #package.DICTIONARY_MEMBER_BIT, package.DictionaryEntry.Roles(a3)

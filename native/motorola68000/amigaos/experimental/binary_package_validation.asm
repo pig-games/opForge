@@ -169,6 +169,26 @@ programLoop
 	subq.l #1, d6
 	bra.w programLoop
 preparation
+	move.l package.Header.LoopPlan(a4), d0
+	btst #0, d0
+	bne.w bad
+	move.l package.Header.LoopPlanBytes(a4), d1
+	cmpi.l #7, d1
+	bne.w bad
+	bsr.w span
+	bne.w bad
+	cmpi.b #$99, (a3)
+	bne.w bad
+	cmpi.b #$83, 5(a3)
+	bne.w bad
+	tst.b 6(a3)
+	bne.w bad
+	move.w 1(a3), d0
+	cmp.w package.Header.ForDirective(a4), d0
+	bne.w bad
+	move.w 3(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
 	move.l package.Header.ExpressionPlan(a4), d0
 	btst #0, d0
 	bne.w bad

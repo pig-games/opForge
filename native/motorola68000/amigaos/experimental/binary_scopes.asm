@@ -14,6 +14,7 @@
 	.use experimental.amigaos.binary_section_prepare as sections
 	.use experimental.amigaos.binary_structs as structs
 	.use experimental.amigaos.binary_package as pkg
+	.use prvm.amigaos.packed_loop as loop_parser
 	.pub
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
@@ -28,6 +29,8 @@ MODULE_STATE = layout.MODULE_STATE
 IMPORT_STATE = layout.IMPORT_STATE
 DECLARED = 1
 REFERENCED = 2
+LOOP_BOUND_HIGH_BIT = 2
+LOOP_BOUND = 1<<(LOOP_BOUND_HIGH_BIT+8)
 OPTIONAL_REFERENCED = 512; skipped conditional RHS still carries graph references
 EXPLICIT = 4
 KIND_BLOCK = 1
@@ -79,6 +82,8 @@ begin	.block
 	move.w d1, layout.State.EndDirective(a0)
 	clr.w layout.State.Changed(a0)
 	clr.w layout.State.FileContent(a0)
+	clr.w layout.State.LoopDepth(a0)
+	clr.l layout.State.Package(a0)
 	clr.l ENTRIES+memory.Block.Pointer(a0)
 	clr.l ENTRIES+memory.Block.Capacity(a0)
 	clr.l ENTRIES+memory.Block.Used(a0)
@@ -120,6 +125,14 @@ done
 	tst.l d0
 	rts
 	.bend  ; begin
+
+; A0=scope state,A1=validated package. Keep only the preparation policy owner.
+; D0/CCR=0; other registers preserved. No pointers enter packed output.
+configureLoops	.block
+	move.l a1, layout.State.Package(a0)
+	moveq #0, d0
+	rts
+	.bend  ; configureLoops
 
 ; A0=preparation scope state. Release all owned preparation tables.
 ; All registers preserved; CCR unspecified. Safe for empty/released storage.
@@ -790,6 +803,17 @@ directive
 	bne.w bad
 	moveq #0, d0
 	move.w 2(a0), d0
+	movea.l layout.State.Package(a6), a1
+	move.l a1, d1
+	beq.w ordinaryDirective
+	cmp.w pkg.Header.ForDirective(a1), d0
+	beq.w loopHeader
+	cmp.w pkg.Header.EndforDirective(a1), d0
+	bne.w ordinaryDirective
+	tst.w layout.State.LoopDepth(a6)
+	beq.w bad
+	subq.w #1, layout.State.LoopDepth(a6)
+ordinaryDirective
 	bsr.w keyword
 	cmpi.l #KEY_USE, d0
 	beq.w importing
@@ -823,6 +847,32 @@ directive
 	beq.w outputControl
 	; Other directives retain their existing generic preparation/assembly route.
 	addq.l #5, a0
+	bra.w references
+loopHeader
+	movea.l a5, a0
+	move.l d6, d0
+	move.l pkg.Header.LoopPlanBytes(a1), d1
+	adda.l pkg.Header.LoopPlan(a1), a1
+	jsr loop_parser.classify
+	tst.l d0
+	bne.w bad
+	cmpi.w #16, layout.State.LoopDepth(a6)
+	bhs.w bad
+	addq.w #1, layout.State.LoopDepth(a6)
+	tst.l d1
+	bmi.w loopOperand
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w loopOperand  ; reserved register names can be iterator bindings
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	ori.w #LOOP_BOUND, records.Entry.Flags(a3)
+loopOperand
+	movea.l a5, a0
+	adda.l d2, a0
 	bra.w references
 sectionControl
 	movea.l a5, a0
@@ -993,6 +1043,8 @@ reference
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
+	tst.w layout.State.LoopDepth(a6)
+	bne.w optionalReference
 	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 8(a5)
 	beq.w optionalReference
 	ori.w #REFERENCED, records.Entry.Flags(a3)
@@ -1032,6 +1084,8 @@ finish	.block
 	movea.l a1, a6
 	.BINDING_ATTEMPT #binding_diagnostic.CURRENT, #-1, #-1
 	tst.w layout.State.Current(a6)
+	bne.w bad
+	tst.w layout.State.LoopDepth(a6)
 	bne.w bad
 	movea.l a0, a5
 	move.l d0, -(sp)
@@ -1139,6 +1193,8 @@ access
 	bne.w failSaved
 	bra.w next
 unresolvedReference
+	btst #LOOP_BOUND_HIGH_BIT, records.Entry.Flags(a4)
+	bne.w next
 	; Optional skipped RHS names do not require a scalar definition. A later
 	; ordinary reference to the same entry retains the usual hard error.
 	btst #1, records.Entry.Flags+1(a4)

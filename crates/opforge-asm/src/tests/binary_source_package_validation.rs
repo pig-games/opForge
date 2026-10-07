@@ -64,10 +64,35 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         malformed[offset..offset + 2].copy_from_slice(&value.to_be_bytes());
         cases.push((name, malformed, 1));
     }
+    let loop_offset = u32::from_be_bytes(valid[212..216].try_into().unwrap()) as usize;
+    let mut odd = valid.clone();
+    odd[loop_offset + 1..loop_offset + 8].copy_from_slice(&valid[loop_offset..loop_offset + 7]);
+    odd[212..216].copy_from_slice(&((loop_offset + 1) as u32).to_be_bytes());
+    cases.push(("loop-odd-offset", odd, 1));
+    for (name, offset, value) in [
+        ("loop-header-overlap", 212, 216u32),
+        ("loop-out-of-bounds", 212, valid.len() as u32),
+        ("loop-truncated-program", 216, 6u32),
+    ] {
+        let mut malformed = valid.clone();
+        malformed[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
+        cases.push((name, malformed, 1));
+    }
+    for (name, offset, width) in [
+        ("loop-corrupt-opcode", loop_offset, 1),
+        ("loop-wrong-head", loop_offset + 1, 2),
+        ("loop-name-out-of-bounds", loop_offset + 3, 2),
+        ("loop-corrupt-return", loop_offset + 5, 1),
+        ("loop-corrupt-stop", loop_offset + 6, 1),
+    ] {
+        let mut malformed = valid.clone();
+        malformed[offset..offset + width].fill(255);
+        cases.push((name, malformed, 1));
+    }
     let mut superseded = valid.clone();
     superseded[..4].copy_from_slice(b"BS30");
     cases.push(("superseded-package", superseded, 1));
-    cases.push(("truncated-current-header", valid[..211].to_vec(), 1));
+    cases.push(("truncated-current-header", valid[..219].to_vec(), 1));
     cases
 }
 
@@ -176,6 +201,7 @@ fn compact_package_validation_component_fixture_contract() {
     let cases = fixtures();
     let valid = &cases[0].1;
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
+    let loop_offset = u32::from_be_bytes(valid[212..216].try_into().unwrap()) as usize;
     for (name, bytes, expected) in cases.iter().skip(1) {
         let changed = valid
             .iter()
@@ -184,6 +210,15 @@ fn compact_package_validation_component_fixture_contract() {
             .filter_map(|(offset, (left, right))| (left != right).then_some(offset))
             .collect::<Vec<_>>();
         assert_eq!(*expected, 1, "{name}");
+        if *name == "loop-odd-offset" {
+            assert_eq!(
+                &bytes[loop_offset + 1..loop_offset + 8],
+                &valid[loop_offset..loop_offset + 7]
+            );
+            assert!(changed.iter().all(|offset| (212..216).contains(offset)
+                || (loop_offset..loop_offset + 8).contains(offset)));
+            continue;
+        }
         let field = match *name {
             "nonzero-row-reserved" => rows + 35..rows + 36,
             "invalid-third-form" => rows + 32..rows + 33,
@@ -194,10 +229,17 @@ fn compact_package_validation_component_fixture_contract() {
             "expression-empty" | "expression-too-large" | "expression-span-overflow" => 204..208,
             "builtin-name-out-of-bounds" => 208..210,
             "builtin-reserved" => 210..212,
+            "loop-header-overlap" | "loop-out-of-bounds" => 212..216,
+            "loop-truncated-program" => 216..220,
+            "loop-corrupt-opcode" => loop_offset..loop_offset + 1,
+            "loop-wrong-head" => loop_offset + 1..loop_offset + 3,
+            "loop-name-out-of-bounds" => loop_offset + 3..loop_offset + 5,
+            "loop-corrupt-return" => loop_offset + 5..loop_offset + 6,
+            "loop-corrupt-stop" => loop_offset + 6..loop_offset + 7,
             "superseded-package" => 0..4,
             "truncated-current-header" => {
-                assert_eq!(bytes.len(), 211);
-                assert_eq!(bytes, &valid[..211]);
+                assert_eq!(bytes.len(), 219);
+                assert_eq!(bytes, &valid[..219]);
                 assert!(changed.is_empty());
                 continue;
             }
@@ -230,7 +272,18 @@ fn compact_package_validation_component_fs_uae() {
     let input = scratch.0.join("entry.asm");
     std::fs::write(&input, &source).unwrap();
     let mut failures = Vec::new();
-    for (name, package, expected_status) in fixtures() {
+    let cases = fixtures();
+    let selected = std::env::var("OPFORGE_PACKAGE_VALIDATION_CASES").ok();
+    if let Some(names) = &selected {
+        assert!(names
+            .split(',')
+            .all(|name| cases.iter().any(|case| case.0 == name)));
+    }
+    for (name, package, expected_status) in cases.into_iter().filter(|case| {
+        selected
+            .as_ref()
+            .is_none_or(|names| names.split(',').any(|name| name == case.0))
+    }) {
         std::fs::write(scratch.0.join("package.bin"), &package).unwrap();
         let cli = Cli::parse_from(["opForge", input.to_str().unwrap(), "--cpu", "68020"]);
         let mut config = validate_cli(&cli).unwrap();

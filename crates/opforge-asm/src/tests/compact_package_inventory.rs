@@ -38,6 +38,22 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
     {
         return Err("invalid BS31 header".into());
     }
+    let loop_offset = number(bytes, 212, 4)?;
+    let loop_bytes = number(bytes, 216, 4)?;
+    let loop_plan = region(bytes, loop_offset, loop_bytes, 1)?;
+    if loop_offset < HEADER
+        || loop_offset % 2 != 0
+        || loop_bytes != 7
+        || loop_offset
+            .checked_add(loop_bytes)
+            .is_none_or(|end| end > number(bytes, 72, 4).unwrap_or(0))
+        || loop_plan[0] != 0x99
+        || loop_plan[5..] != [0x83, 0]
+        || u16::from_be_bytes(loop_plan[1..3].try_into().unwrap()) as usize != number(bytes, 66, 2)?
+        || u16::from_be_bytes(loop_plan[3..5].try_into().unwrap()) as usize >= number(bytes, 62, 2)?
+    {
+        return Err("invalid loop header program".into());
+    }
     let expression_offset = number(bytes, 200, 4)?;
     let expression_bytes = number(bytes, 204, 4)?;
     if expression_offset < HEADER
@@ -277,6 +293,35 @@ fn inventory_accepts_current_target_policy_bits_and_rejects_unknown_bits() {
             "invalid runtime target identity"
         );
     }
+}
+
+#[test]
+fn inventory_rejects_loop_plan_corruption_and_bounds() {
+    let core = RuntimeModelCore::from_registry(&engine::build_default_asm_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    let bytes = prepare_package(&core, &resolved).unwrap();
+    let offset = number(&bytes, 212, 4).unwrap();
+    assert!(inventory(&bytes, &package).is_ok());
+    for field in [offset, offset + 1, offset + 3, offset + 5, offset + 6] {
+        let mut invalid = bytes.clone();
+        invalid[field] = 255;
+        assert!(inventory(&invalid, &package).is_err(), "field {field}");
+    }
+    for (field, value) in [(212, 216u32), (212, bytes.len() as u32), (216, 6u32)] {
+        let mut invalid = bytes.clone();
+        invalid[field..field + 4].copy_from_slice(&value.to_be_bytes());
+        assert!(inventory(&invalid, &package).is_err(), "field {field}");
+    }
+    assert!(inventory(&bytes[..219], &package).is_err());
+    let mut odd = bytes.clone();
+    let plan = odd[offset..offset + 7].to_vec();
+    odd[offset + 1..offset + 8].copy_from_slice(&plan);
+    odd[212..216].copy_from_slice(&((offset + 1) as u32).to_be_bytes());
+    assert_eq!(
+        inventory(&odd, &package).unwrap_err(),
+        "invalid loop header program"
+    );
 }
 
 fn filename(cpu: &str, dialect: &str) -> Result<String, String> {

@@ -7937,3 +7937,7 @@ mod native_forward_count_parity;
 
 #[path = "tests/compact_cli_metadata.rs"]
 mod compact_cli_metadata;
+
+#[cfg(test)]
+#[path = "tests/native_iterable_loops.rs"]
+mod native_iterable_loops;

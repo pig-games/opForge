@@ -1,9 +1,9 @@
 # Compact frontend: VM boundary correction
 
-Status: BS30 shared EXVM compilation has complete native self-host proof at
-`09c55688`. Subsequent program-fetch register caching has focused native
-qualification only; that complete self-host has not been rerun. Broad tests
-retain 54 inherited failures. Rust has
+Status: BS31 is current. The latest complete native self-host proof is the BS30
+shared-EXVM result at `09c55688`. Subsequent program-fetch register caching has
+focused native qualification only; that complete self-host has not been rerun.
+Broad tests retain 54 inherited failures. Rust has
 one consolidated EXVM v1 grammar/executor; native preparation executes it over
 bound numeric tokens and lowers a transient offset-based tree to ExprVM programs.
 Native EXVM has no version argument, field, check or dispatch. Consolidation of
@@ -14,10 +14,16 @@ source-site scalar, flat-list and range values for `.use ... with (...)` in Rust
 snapshots mutable assignments at the import site, and forwards owned values
 through imported modules. Native has focused shared-EXVM support for flat lists
 and ranges, with independent offset arenas, `.len`, indexed conditionals and
-`.var`/`.set` snapshots. Native compound-value forwarding through a complete
-`.use` chain remains under diagnosis. Iterable-loop and struct values are not
-newly qualified, and existing wide-literal packing limits remain. Full language
-parity and a new full self-host qualification are not claimed.
+`.var`/`.set` snapshots. Native compound-value forwarding through two imported
+modules and repeated equal imports has focused proof. Packed iterable `.for`
+has partial native qualification for eight positive scenarios on each package,
+including a regression check that `in` is contextual rather than globally
+reserved. Imported iterator shadowing still produces incorrect body values.
+The [active checkpoint](native-runtime-reset.md#packed-iterable-for-checkpoint-partial-qualification)
+records the regression-fixed image, exact coverage and next binding-repair
+criteria. Iterable-loop parity and struct behavior are not qualified, and
+existing wide-literal packing limits remain. Full language parity and a new
+full self-host qualification are not claimed.
 Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
 still unresolved. BS28 introduced numeric `:=`
 normalization to shared declarations.
@@ -230,7 +236,7 @@ and encoding; native code only validates the structural wrapper.
 Kind 26 traverses package-owned numeric expression paths. Its Class word is
 path byte length (4–32, a multiple of four), Literal is a package-base-relative
 path offset and Reserved is zero. The standard value-program field remains
-available. Deduplicated path programs occupy the arena between the 212-byte
+available. Deduplicated path programs occupy the arena between the 220-byte
 header and candidate rows; projection descriptor arrays stay contiguous.
 Each step is `opcode:u8, argument:u8, parameter:u16` in big-endian order:
 indirect/bracket unwrap (1/2), tuple child 0–2 (3), register/class (4), qualified
@@ -263,7 +269,7 @@ already-proven complete non-tuple root disproves those rows; unknown structure
 and contradictory predicates remain closed. The represented nested full-extension paths are executable; other path
 operations, terminals and call-child forms remain explicit unsupported boundaries. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
-or CPU-specific native parsing. Its header is 212 bytes, with
+or CPU-specific native parsing. Its header is 220 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its
@@ -275,7 +281,9 @@ a zero reserved word at 178. Declaration-plan offset/length are at 180/184, its
 PRVM version at 188 and a zero reserved word at 190. Numeric state-plan
 offset/length are at 192/196. Expression-program offset/length are at 200/204,
 with no EXVM version field. The core `.len` name ID is at 208 and the word at
-210 is reserved zero. Dictionary role bit 3 marks core builtins, excluded from
+210 is reserved zero. The shared numeric PRVM loop plan uses the final eight
+header bytes: offset 212 and length 216 for iterable `.for` envelopes. Dictionary
+role bit 3 marks core builtins, excluded from
 ordinary lexical-name lookup. Dot-call binding resolves builtin names before
 EXVM execution; generic call trees still carry opaque numeric IDs. The final word
 of each 32-byte candidate row is a
@@ -346,8 +354,9 @@ forwards owned values through imported modules. Native's focused flat-list/range
 path uses shared EXVM and independent offset arenas, and covers `.len`, indexed
 conditionals and mutable `.var`/`.set` snapshots. Native compound values also
 pass focused forwarding through two imported modules and repeated equal imports.
-Iterable-loop values, struct values and existing wide-literal packing limits remain outside this
-qualification. These focused cases do not establish full Rust/native parity or
+Iterable-loop execution has separate partial qualification with an open imported
+iterator-shadowing bug. Struct values and existing wide-literal packing limits
+remain outside this parameter qualification. These focused cases do not establish full Rust/native parity or
 a new full self-host result.
 
 Macro descriptors preserve definition order, lexical distance, visibility,
@@ -404,10 +413,10 @@ These statements describe the implemented subset. They do not imply complete ass
   portable numeric metadata. Expression-range and operand-wrapper choices in
   preparation need a PRVM/package audit. Other native VM contracts still carry
   version fields/checks pending consolidation; their presence is a migration gap.
-- Iterable `.for` and `.bfor` remain unsupported; labels inside an active unscoped loop reject. Counted packed-loop execution is supported and has focused native/Rust comparison. These limits do not imply that general loop execution is absent.
+- Iterable `.for` has partial qualification: eight positive scenarios pass on both embedded packages, including contextual `in` handling, but imported iterator shadowing is a known mismatch (native emits 0 where Rust emits 2 and 4). The [active checkpoint](native-runtime-reset.md#packed-iterable-for-checkpoint-partial-qualification) records rejection controls, image size, and the next repair criteria. `.bfor` remains unsupported, and labels inside an active unscoped loop reject. Counted packed-loop execution is supported and has focused native/Rust comparison.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
-- `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop and struct values are not newly qualified, wide-literal packing remains limited, and these cases do not establish full module, parameter or Hunk-expression parity.
+- `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification with an open imported iterator-shadowing bug. Struct values are not newly qualified, wide-literal packing remains limited, and these cases do not establish full module, parameter or Hunk-expression parity.
 
 For instruction and address selection, required tuple/register classes and
 package predicates remain barriers: native may skip a higher-priority recipe

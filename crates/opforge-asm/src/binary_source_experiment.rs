@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use package::{
     decode_encoding_program, inline_head_policy_program, macro_descriptor_program,
     macro_fragment_program, macro_spelling_program, packed_data_program,
-    packed_declaration_program, packed_file_program, packed_macro_call_program,
-    packed_metadata_program, validate_fixup_program, EncodingStep,
+    packed_declaration_program, packed_file_program, packed_loop_program,
+    packed_macro_call_program, packed_metadata_program, validate_fixup_program, EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -17,7 +17,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 212;
+const HEADER: usize = 220;
 pub(crate) const ROW: usize = 36;
 const SCALAR_ADDRESS_IDENTITY: u16 = 1;
 
@@ -306,6 +306,14 @@ pub fn prepare_package(
         )?;
         directive_ids.push(id);
     }
+    let in_name = intern(&mut names, "in")?;
+    bind(
+        &mut dictionary,
+        "in".into(),
+        in_name,
+        0,
+        DictionaryRoleFlags::CONTEXTUAL,
+    )?;
     let mut declaration_heads = [0; 3];
     for (head, spelling) in declaration_heads.iter_mut().zip(["const", "var", "set"]) {
         *head = intern(&mut names, spelling)?;
@@ -569,6 +577,10 @@ pub fn prepare_package(
     let head_policy = inline_head_policy_program();
     out.extend_from_slice(&head_policy);
     align(&mut out);
+    let loop_plan_offset = out.len();
+    let loop_plan = packed_loop_program(directive_ids[8], in_name);
+    out.extend_from_slice(&loop_plan);
+    align(&mut out);
     let declaration_plan_offset = out.len();
     let declaration_plan = packed_declaration_program(declaration_heads);
     out.extend_from_slice(&declaration_plan);
@@ -702,6 +714,8 @@ pub fn prepare_package(
         (148, long(data_plan.len())?),
         (152, long(metadata_offset)?),
         (156, long(metadata_plan.len())?),
+        (212, long(loop_plan_offset)?),
+        (216, long(loop_plan.len())?),
     ] {
         set_long(&mut out, offset, value);
     }

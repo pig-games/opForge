@@ -10,6 +10,7 @@
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.use experimental.amigaos.binary_products as products
 	.use experimental.amigaos.binary_nested_operands as nested
+	.use prvm.amigaos.packed_loop as loop_parser
 	.pub
 	.section code, kind=code
 
@@ -92,7 +93,7 @@ directive
 	cmp.w package.Header.EndDirective(a2), d7
 	beq.w copyRest
 	cmp.w package.Header.ForDirective(a2), d7
-	beq.w oneScalar
+	beq.w loopHeader
 	cmp.w package.Header.EndforDirective(a2), d7
 	beq.w noOperands
 	cmp.w package.Header.OrgDirective(a2), d7
@@ -150,6 +151,44 @@ oneScalar
 	cmpa.l a1, a0
 	bne.w bad
 	bra.w complete
+loopHeader
+	; PRVM selects the envelope; EXVM compiles its complete value expression.
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l 8(sp), a0
+	suba.w #9, a0
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l a2, a1
+	adda.l package.Header.LoopPlan(a2), a1
+	move.l package.Header.LoopPlanBytes(a2), d1
+	jsr loop_parser.classify
+	tst.l d0
+	bne.w loopFailed
+	tst.l d1
+	bmi.w countedLoop
+	move.b #source.TOKEN_ITERATOR_BINDING, (a3)+
+	move.w d1, (a3)+
+	movea.l 8(sp), a0
+	suba.w #9, a0
+	adda.l d2, a0
+	movea.l 12(sp), a1
+	jsr expression.compileValue
+	bra.w loopCompiled
+countedLoop
+	movea.l 8(sp), a0
+	movea.l 12(sp), a1
+	jsr expression.compile
+loopCompiled
+	tst.l d0
+	bne.w loopFailed
+	cmpa.l a1, a0
+	bne.w loopFailed
+	adda.w #16, sp
+	bra.w complete
+loopFailed
+	adda.w #16, sp
+	bra.w bad
 noOperands
 	cmpa.l a1, a0
 	bne.w bad

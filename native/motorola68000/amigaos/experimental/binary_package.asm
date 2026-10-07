@@ -92,8 +92,10 @@ ExpressionPlan	.long ?
 ExpressionPlanBytes	.long ?
 BuiltinLenName	.word ?
 BuiltinReserved	.word ?
+LoopPlan	.long ?
+LoopPlanBytes	.long ?
 	.endstruct
-HEADER_BYTES = Header.BuiltinReserved+2
+HEADER_BYTES = Header.LoopPlanBytes+4
 
 ; Contextual member forms are derived from canonical selector projections,
 ; including unsupported candidates. Field meanings remain package-owned.

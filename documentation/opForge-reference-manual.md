@@ -472,6 +472,13 @@ Notes:
 - Labels on `.endfor`/`.endwhile` are rejected.
 - Loop iteration counts must be stable between the accepted sizing traversal and emission.
 - Loop execution is guarded by `--max-loop-iterations` (default `65536`, env override `OPFORGE_MAX_LOOP_ITERATIONS`).
+- Inline iterable range/list expressions are evaluated as full signed assembler values, like named snapshots. The iterator value must still fit the unsigned 32-bit loop-value limit.
+- In iterable `.for` syntax, `in` is a contextual marker and is not globally
+  reserved as a name.
+- The packed native iterable `.for` has partial qualification: eight positive
+  scenarios pass on each embedded package, but imported iterator shadowing still
+  emits `0` where Rust emits `2` and `4`. Full iterator parity and a new full
+  self-host result are not established.
 
 Scalar `.for` and `.bfor` counts may refer forward to immutable constants whose
 dependencies are independent of labels, the program counter, mutable values and
@@ -739,7 +746,9 @@ Notes:
   at this graph boundary; other compound forms remain outside this slice.
   The experimental compact native path has focused matching coverage for these
   values, `.len`, indexing, `.var`/`.set` snapshots and forwarding through imported
-  modules. Native iterable-loop and struct values are not newly qualified;
+  modules, including two-module forwarding and repeated equal imports. Native
+  iterable `.for` has partial coverage, with imported iterator shadowing still
+  mismatching Rust; struct values are not newly qualified;
   wide numeric literal packing remains limited. These focused checks do not
   establish complete module or assembler-language parity.
 - A `map { logical -> concrete }` clause maps logical sections declared by the

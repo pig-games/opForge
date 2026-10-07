@@ -24,8 +24,10 @@ EndDirective	.word ?
 Changed	.word ?
 FileContent	.word ?
 ReserveRoutine	.long ?
+Package	.long ?  ; validated preparation capsule, never serialized
+LoopDepth	.word ?
 .endstruct
-ENTRIES = State.ReserveRoutine+4
+ENTRIES = State.LoopDepth+2
 ENTRIES_POINTER = ENTRIES+memory.Block.Pointer
 BUCKETS = ENTRIES+memory.Block.Used+4
 ARENA = BUCKETS+256*2

@@ -17,20 +17,23 @@ SPEC.loader.exec_module(runner)
 
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
-        package = bytearray(212)
+        package = bytearray(220)
         package[:4] = b"BS31"
-        package[168:172] = (212).to_bytes(4, "big")
+        package[168:172] = (220).to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
         package[176:178] = (2).to_bytes(2, "big")
         package.extend(b"\0" * 4)
-        package[180:184] = (216).to_bytes(4, "big")
+        package[180:184] = (224).to_bytes(4, "big")
         package[184:188] = (23).to_bytes(4, "big")
         package[188:190] = (2).to_bytes(2, "big")
         package.extend(b"\0" * 24)
-        package[160:164] = (212).to_bytes(4, "big")
+        package[160:164] = (220).to_bytes(4, "big")
         package[200:204] = len(package).to_bytes(4, "big")
         package[204:208] = (1).to_bytes(4, "big")
         package.extend(b"\0\0")
+        package[212:216] = len(package).to_bytes(4, "big")
+        package[216:220] = (7).to_bytes(4, "big")
+        package.extend(b"\0" * 8)
         if target:
             package[124:128] = len(package).to_bytes(4, "big")
             package[128:130] = len(target).to_bytes(2, "big")
@@ -111,7 +114,7 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS26", 210, "package mismatch"),
                                    (b"BS27", 210, "package mismatch"),
                                    (b"BS29", 210, "package mismatch"),
-                                   (b"BS31", 211, "package header")):
+                                   (b"BS31", 219, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -126,27 +129,32 @@ class HardwareCompletionTests(unittest.TestCase):
         mutations = [
             (4, 4, 209, "package header"),
             (72, 4, 198, "package region"),
-            (72, 4, 244, "package region"),
+            (72, 4, 260, "package region"),
             (72, 4, 209, "package region"),
             (160, 4, 168, "member-binding table"),
             (160, 4, 201, "member-binding table"),
             (184, 4, 13, "declaration"),
             (160, 4, 219, "member-binding table"),
-            (164, 4, 4, "member-binding table"),
+            (164, 4, 5, "member-binding table"),
             (164, 4, 0xFFFFFFFF, "member-binding table"),
             (200, 4, 0, "expression program"),
             (200, 4, 206, "expression program"),
-            (200, 4, 241, "expression program"),
-            (200, 4, 242, "expression program"),
+            (200, 4, 257, "expression program"),
+            (200, 4, 258, "expression program"),
             (204, 4, 0, "expression program"),
             (204, 4, 65536, "expression program"),
-            (204, 4, 3, "expression program"),
+            (204, 4, 11, "expression program"),
+            (212, 4, 212, "loop-plan program"),
+            (212, 4, 251, "loop-plan program"),
+            (212, 4, 254, "loop-plan program"),
+            (216, 4, 0, "loop-plan program"),
+            (216, 4, 8, "loop-plan program"),
         ]
         for start, label in ((168, "head-policy"), (180, "declaration")):
             mutations.extend([
                 (start, 4, 168, label),
                 (start, 4, 201, label),
-                (start, 4, 242, label),
+                (start, 4, 258, label),
                 (start + 4, 4, 0, label),
                 (start + 8, 2, 1, label),
                 (start + 10, 2, 1, label),
@@ -179,7 +187,7 @@ class HardwareCompletionTests(unittest.TestCase):
                 runner.load_bundle(root)
 
     def test_embedded_target_must_be_inside_runtime_region_after_current_header(self):
-        for offset, runtime in ((168, 242), (242, 242)):
+        for offset, runtime in ((168, 258), (258, 258)):
             with self.subTest(offset=offset, runtime=runtime), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.embedded_bundle(root)

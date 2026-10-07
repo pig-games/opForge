@@ -318,46 +318,9 @@ fn evaluate_for_iterable_value(
     asm_line: &AsmLine<'_>,
     expr: &Expr,
 ) -> Result<AsmValue, AstEvalError> {
-    match expr {
-        Expr::List(items, _) => {
-            let mut values = Vec::with_capacity(items.len());
-            for item in items {
-                values.push(i64::from(asm_line.eval_expr_for_scalar_context(item)?));
-            }
-            Ok(AsmValue::List(values))
-        }
-        Expr::Range {
-            start,
-            end,
-            step,
-            inclusive,
-            span,
-        } => {
-            let start = i64::from(asm_line.eval_expr_for_scalar_context(start)?);
-            let end = i64::from(asm_line.eval_expr_for_scalar_context(end)?);
-            let step = match step {
-                Some(step_expr) => {
-                    Some(i64::from(asm_line.eval_expr_for_scalar_context(step_expr)?))
-                }
-                None => None,
-            };
-            AsmValue::try_range(start, end, *inclusive, step).map_err(|err| {
-                let message = match err {
-                    types::asm_value::AsmValueError::ZeroStep => {
-                        "range step must be non-zero".to_string()
-                    }
-                    types::asm_value::AsmValueError::DirectionMismatch { .. } => {
-                        "range step direction conflicts with start..end".to_string()
-                    }
-                    types::asm_value::AsmValueError::EndOverflow => {
-                        "range end overflows supported integer range".to_string()
-                    }
-                };
-                AstEvalError::expression(message, *span)
-            })
-        }
-        _ => asm_line.eval_value_ast(expr),
-    }
+    // Preserve signed list elements and range steps identically for inline
+    // expressions and named snapshots. Iterator conversion happens once above.
+    asm_line.eval_value_ast(expr)
 }
 
 pub fn evaluate_while_condition(

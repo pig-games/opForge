@@ -1634,6 +1634,15 @@ pub fn packed_declaration_program(heads: [u16; 3]) -> Vec<u8> {
     program
 }
 
+/// Shared packed `.for` envelope: numeric directive and grammar-name identities.
+pub fn packed_loop_program(for_directive: u16, in_name: u16) -> Vec<u8> {
+    let mut program = vec![0x99];
+    program.extend_from_slice(&for_directive.to_be_bytes());
+    program.extend_from_slice(&in_name.to_be_bytes());
+    program.extend_from_slice(&[0x83, 0]);
+    program
+}
+
 /// Shared PRVM v2 prefix policy for binding an inline statement head.
 /// The returned cursor is after a column-one label and optional adjacent colon.
 /// FinishLine deliberately accepts trailing tokens; the writer handles their roles.

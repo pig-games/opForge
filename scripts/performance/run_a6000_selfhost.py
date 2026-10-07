@@ -25,7 +25,7 @@ INSTRUMENTATION_DEFINES = {
     "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
 }
-PACKAGE_HEADER_BYTES = 212
+PACKAGE_HEADER_BYTES = 220
 
 
 def fnv(data):
@@ -168,6 +168,11 @@ def load_bundle(bundle):
             or not 1 <= expression_size <= 65535
             or expression_offset + expression_size > runtime_bytes):
         raise ValueError("Invalid expression program region")
+    loop_offset = int.from_bytes(package[212:216], "big")
+    loop_size = int.from_bytes(package[216:220], "big")
+    if (loop_offset < PACKAGE_HEADER_BYTES or loop_offset % 2
+            or loop_size != 7 or loop_offset + loop_size > runtime_bytes):
+        raise ValueError("Invalid loop-plan program region")
     files["opforge"] = bootstrap
     if storage == "embedded":
         offset = int.from_bytes(package[124:128], "big")

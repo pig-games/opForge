@@ -1,9 +1,9 @@
 # Compact frontend: VM boundary correction
 
 Status: BS31 is current. The latest complete native self-host proof is the BS30
-shared-EXVM result at `09c55688`. Subsequent program-fetch register caching has
-focused native qualification only; that complete self-host has not been rerun.
-Broad tests retain 54 inherited failures. Rust has
+shared-EXVM result at `09c55688`. The current complete attempt fails with native
+exit 20; the fresh host suite has 49 failures whose inheritance is unqualified.
+Rust has
 one consolidated EXVM v1 grammar/executor; native preparation executes it over
 bound numeric tokens and lowers a transient offset-based tree to ExprVM programs.
 Native EXVM has no version argument, field, check or dispatch. Consolidation of
@@ -31,6 +31,10 @@ remain. Full language parity is not claimed. The
 fails with native exit 20; focused controls confirm a regression in register-list
 macro argument binding. The previous successful full self-host remains the
 qualified reference.
+The proposed repair must defer register/value selection to the numeric operand
+consumer; macro calls also carry iterator, inherited and forward source values.
+The narrow early-choice experiment was removed after failed native validation.
+See the [self-host investigation](native-runtime-reset.md#bs31-full-self-host-attempt-2026-10-07).
 Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
 still unresolved. BS28 introduced numeric `:=`
 normalization to shared declarations.

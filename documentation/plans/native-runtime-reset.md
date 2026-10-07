@@ -516,6 +516,27 @@ by expanding `.EVALUATE` manually, changing register spellings, or restoring a
 text parser. Recheck direct/macro controls, existing iterator controls and the
 complete current self-host after that repair.
 
+The subsequent repair investigation rejects an early register/source choice at
+the macro call. Fresh controls on the unchanged `02fc0e41` release image show
+that register-spelled iterator values, inherited values and forward constants
+already work when consumed by a macro's `.byte`. A narrow template-role/existing-
+name probe cannot preserve forward bindings, and its fresh MOVEM comparison
+still failed; its implementation was removed. No replacement full self-host or
+comparative performance result is claimed.
+
+Retained Rust/native regression cases in `binary_source_macro_calls.rs` consume
+register lists, values in root and parent scopes, forward values and the same
+iterator argument in both `MOVE` and `.byte`. The proposed coherent repair
+retains numeric source and package-register facets until the package-owned
+operand consumer selects its role. Preserve original candidate identity through
+import remapping: two aliases can share a value target but denote different
+registers. Prefer resolving the facet after substitution but before scalar
+reference accounting and remapping, using existing package-owned operand roles.
+Otherwise register-only uses can spuriously retain blocks or reject undeclared
+values. If selection remains assembly-time, preparation-only scopes must export
+numeric candidate/target metadata and defer the corresponding reference obligations.
+This larger contract/binding slice awaits Erik's scope decision.
+
 The fresh serial assembler host suite reports **2,139 passed / 49 failed /
 530 ignored**. Failure review finds source/inventory/version/digest expectations,
 fixture/listing/label differences and behavioral or oracle-setup failures. These

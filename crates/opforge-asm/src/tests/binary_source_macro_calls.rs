@@ -78,6 +78,62 @@ fn compact_macro_register_list_fs_uae() {
     native_source(register_list_source(true));
 }
 
+// Macro register arguments and lexical value arguments must both work.
+// Exercise consumed arguments; neither an unused parameter nor .if 0 proves this.
+fn register_value_source() -> String {
+    ".module probe\n.cpu m68020\nsave .macro regs\n\tmovem.l .regs,-(sp)\n\tmovem.l (sp)+,.regs\n.endmacro\nemitValue .macro value\n.byte .value\n.endmacro\nd1=9\n.emitValue d1\n.for d0 in {2,4}\n.save d3-d7/a1-a6\n.emitValue d0\n.if d0==2\n.byte 7\n.else\n.byte 8\n.endif\n.endfor\n.endmodule\n".into()
+}
+
+#[test]
+fn compact_macro_register_value_rust_oracle() {
+    let registers = [0x48, 0xe7, 0x1f, 0x7e, 0x4c, 0xdf, 0x7e, 0xf8];
+    let expected = [&[9][..], &registers, &[2, 7], &registers, &[4, 8]].concat();
+    assert_eq!(oracle(&register_value_source()), expected);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; consumed register and lexical macro arguments"]
+fn compact_macro_register_value_fs_uae() {
+    native_source(register_value_source());
+}
+
+fn inherited_register_value_source(forward: bool) -> String {
+    let body = if forward {
+        ".emitValue d1\nd1=9\n"
+    } else {
+        "d1=9\n.namespace inner\n.emitValue d1\n.endnamespace\n"
+    };
+    format!(".module probe\n.cpu m68020\nemitValue .macro value\n.byte .value\n.endmacro\n{body}.endmodule\n")
+}
+
+#[test]
+fn compact_macro_inherited_register_value_rust_oracles() {
+    assert_eq!(oracle(&inherited_register_value_source(false)), [9]);
+    assert_eq!(oracle(&inherited_register_value_source(true)), [9]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; inherited and forward macro value bindings"]
+fn compact_macro_inherited_register_value_fs_uae() {
+    native_source(inherited_register_value_source(false));
+    native_source(inherited_register_value_source(true));
+}
+
+fn dual_role_source() -> String {
+    ".module probe\n.cpu m68020\nemitBoth .macro value\n\tmove.l .value,d2\n.byte .value\n.endmacro\n.for d0 in {2,4}\n.emitBoth d0\n.endfor\n.endmodule\n".into()
+}
+
+#[test]
+fn compact_macro_dual_role_rust_oracle() {
+    assert_eq!(oracle(&dual_role_source()), [0x24, 0, 2, 0x24, 0, 4]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; known destination-role binding gap"]
+fn compact_macro_dual_role_fs_uae() {
+    native_source(dual_role_source());
+}
+
 fn inactive_header_source() -> String {
     ".cpu m68020\n.if 0\nignored .macro value=\n.byte 99\n.endmacro\n.endif\nemit .macro value\n.if .value\n.byte 1\n.else\n.byte 2\n.endif\n.endmacro\n.emit 1\n.emit 0\n.end\n".into()
 }

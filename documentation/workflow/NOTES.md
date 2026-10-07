@@ -78,3 +78,12 @@ then remove notes once incorporated or obsolete. These are observations, not rul
   and linked memory cost), and consider a cheaper agent only for a separable task
   whose coordination cost is justified. Do not turn single-run emulator times
   into speed claims.
+
+- **Later full code review: numeric offsets and constants.** Review the native
+  implementation and corresponding Rust/package boundaries for unexplained
+  record/program offsets, VM opcodes, token kinds, masks and other contract
+  constants. Replace them with named fields or constants at their owning
+  boundary, shared by consumers and validators. Keep ordinary arithmetic literals
+  where clear. Verify generated code stays unchanged, or explain and measure any
+  encoding, size or runtime change. The PRVM loop cleanup is a starting example;
+  this broader review is deferred, not part of the current binding repair.

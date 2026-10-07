@@ -179,6 +179,7 @@ fn binary(op: BinaryOp) -> u8 {
     }) as u8
 }
 fn tree(expr: &Expr, nodes: &mut Vec<u8>) -> u32 {
+    let mut third = 0;
     let (kind, op, count, first, second, span) = match expr {
         Expr::Number(text, span) => (
             1,
@@ -208,18 +209,67 @@ fn tree(expr: &Expr, nodes: &mut Vec<u8>) -> u32 {
             let second = tree(right, nodes);
             (5, binary(*op), 2, first, second, *span)
         }
-        _ => panic!("unsupported scalar oracle {expr:?}"),
+        Expr::Range {
+            start,
+            end,
+            step,
+            inclusive,
+            span,
+        } => {
+            let first = tree(start, nodes);
+            let second = tree(end, nodes);
+            third = step.as_ref().map_or(u32::MAX, |step| tree(step, nodes));
+            (
+                6,
+                u8::from(*inclusive) | (u8::from(step.is_some()) << 1),
+                if step.is_some() { 3 } else { 2 },
+                first,
+                second,
+                *span,
+            )
+        }
+        Expr::List(items, span) => (7, 0, items.len(), children(items, nodes), 0, *span),
+        Expr::Index { base, index, span } => {
+            let first = tree(base, nodes);
+            let second = tree(index, nodes);
+            (8, 0, 2, first, second, *span)
+        }
+        Expr::Call { args, span, .. } => (9, 0, args.len(), 7, children(args, nodes), *span),
+        _ => panic!("unsupported tree oracle {expr:?}"),
     };
     let offset = nodes.len() as u32;
     nodes.extend([kind, op]);
     nodes.extend((count as u16).to_be_bytes());
-    for word in [first, second, 0, u32::MAX] {
+    for word in [first, second, third, u32::MAX] {
         nodes.extend(word.to_be_bytes());
     }
     nodes.extend((span.col_start as u16).to_be_bytes());
     nodes.extend((span.col_end as u16).to_be_bytes());
     assert_eq!(nodes.len() % NODE_BYTES, 0);
     offset
+}
+// Only child roots are siblings; nested children retain their own links.
+fn children(items: &[Expr], nodes: &mut Vec<u8>) -> u32 {
+    let mut head = u32::MAX;
+    let mut previous = None;
+    for item in items {
+        let offset = tree(item, nodes);
+        if let Some(previous) = previous {
+            nodes[previous + 16..previous + 20].copy_from_slice(&offset.to_be_bytes());
+        } else {
+            head = offset;
+        }
+        previous = Some(offset as usize);
+    }
+    head
+}
+fn scalar_tree(expr: &Expr) -> bool {
+    match expr {
+        Expr::Number(..) | Expr::String(..) | Expr::Identifier(..) | Expr::Dollar(..) => true,
+        Expr::Unary { expr, .. } => scalar_tree(expr),
+        Expr::Binary { left, right, .. } => scalar_tree(left) && scalar_tree(right),
+        _ => false,
+    }
 }
 // Opcode/unary values are shared. Native binary IDs retain the existing evaluator
 // representation and are read from its named constants, rather than Rust IDs.
@@ -324,9 +374,14 @@ fn success(source: &str) -> Case {
     }
     expected.extend(nodes);
     let mut payload = Vec::new();
-    postfix(&ast, &mut payload);
-    payload.push(opcore::expr_vm::ExprVmOpcodeV2::End as u8);
-    lower_result(&mut expected, 0, &payload);
+    if scalar_tree(&ast) {
+        postfix(&ast, &mut payload);
+        payload.push(opcore::expr_vm::ExprVmOpcodeV2::End as u8);
+        lower_result(&mut expected, 0, &payload);
+    } else {
+        // The current scalar lowerer intentionally rejects compound node kinds.
+        lower_result(&mut expected, 1, &[]);
+    }
     Case {
         tokens,
         program: vm::vm_opcore::expression_parser_program().to_vec(),
@@ -427,13 +482,90 @@ fn batch() -> (Vec<u8>, Vec<u8>) {
             cursor,
         ));
     }
+    cases.extend(
+        [
+            "{}",
+            "{1}",
+            "{1,2,3}",
+            "{-1,(2+3),+4}",
+            "{{1},{2,3}}",
+            "1..2",
+            "1..=3",
+            "4..0:-2",
+            "0..=6:2",
+            "(0..=6:2)[1]",
+            "value[0]",
+            "{1,2}[1]",
+            "{{1,2}}[0][1]",
+            ".len({1,2})",
+            ".bound()",
+            ".bound(1,2,3)",
+            ".bound(.bound({}),(-1))",
+        ]
+        .into_iter()
+        .map(success),
+    );
+    cases.push(success(&format!("{}1{}", "{".repeat(16), "}".repeat(16))));
+    // Child roots leave OUTPUTS immediately: wide envelopes must not consume
+    // one output-stack slot per item, even beyond its 64-slot capacity.
+    let wide = vec!["1"; 65].join(",");
+    for source in [format!("{{{wide}}}"), format!(".bound({wide})")] {
+        let mut case = success(&source);
+        case.steps = 65536;
+        cases.push(case);
+    }
+    // Compound parents need their own node after all children have succeeded.
+    for (source, arena) in [("{1}", 24), ("1[0]", 48), ("1..2", 48), (".bound(1)", 24)] {
+        let tokens = numeric(source).0;
+        let consumed = tokens.len() as u32;
+        cases.push(failure(tokens, canonical.clone(), arena, 8192, 3, consumed));
+    }
+    let mixed = |depth| {
+        (0..depth).fold("value[0]".to_owned(), |source, level| match level % 3 {
+            0 => format!("{{{source}}}"),
+            1 => format!(".bound({source})"),
+            _ => format!("({source})"),
+        })
+    };
+    // Fifteen enclosing envelopes plus the innermost index reach depth sixteen.
+    cases.push(success(&mixed(15)));
+    let (tokens, core) = numeric(&mixed(16));
+    let consumed = core
+        .iter()
+        .find(|token| matches!(token.kind, TokenKind::OpenBracket))
+        .unwrap()
+        .span
+        .col_start as u32;
+    cases.push(failure(tokens, canonical.clone(), 3072, 8192, 4, consumed));
+    // Delimiter errors retain the exact bounded prefix consumed before failure.
+    for (source, cursor) in [
+        ("{1", 6),
+        ("{1,}", 7),
+        ("{1 2}", 6),
+        ("1[", 6),
+        ("1[0", 11),
+        ("1[0,1]", 11),
+        (".bound", 5),
+        (".bound(1", 11),
+        (".bound(1,)", 12),
+        (".bound(1 2)", 11),
+    ] {
+        cases.push(failure(
+            numeric(source).0,
+            canonical.clone(),
+            768,
+            8192,
+            1,
+            cursor,
+        ));
+    }
     cases.push(failure(
-        numeric("1..2").0,
+        numeric(&format!("{}1{}", "{".repeat(17), "}".repeat(17))).0,
         canonical.clone(),
         768,
         8192,
-        6,
-        11,
+        4,
+        17,
     ));
     cases.push(failure(
         numeric("1?2:3").0,
@@ -456,6 +588,7 @@ fn batch() -> (Vec<u8>, Vec<u8>) {
     cases.push(prefix);
     let literal = numeric("1").0;
     cases.push(failure(literal.clone(), vec![4], 768, 8192, 2, 0));
+    cases.push(failure(literal.clone(), vec![0x43, 4], 768, 8192, 2, 0));
     // A valid literal followed by ADVANCE exhausts the program without END.
     // The next fetch must reject at the exact byte boundary, after consuming it.
     cases.push(failure(
@@ -505,15 +638,12 @@ fn batch() -> (Vec<u8>, Vec<u8>) {
         1,
         0,
     ));
-    cases.push(failure(
-        numeric("{1}").0,
-        canonical.clone(),
-        768,
-        8192,
-        6,
-        0,
-    ));
-    cases.push(failure(numeric("1[0]").0, canonical, 768, 8192, 6, 5));
+    // Opaque function IDs are preserved by the compiler, independent of names.
+    let mut opaque_call = success(".bound()");
+    opaque_call.tokens[2..4].copy_from_slice(&123u16.to_be_bytes());
+    opaque_call.expected[20..24].copy_from_slice(&123u32.to_be_bytes());
+    cases.push(opaque_call);
+    assert!(cases.len() <= 128);
     let mut input = (cases.len() as u32).to_be_bytes().to_vec();
     let mut expected = Vec::new();
     for case in cases {
@@ -609,7 +739,7 @@ fn native_expression_compiler_host_assembles() {
     assert!(!assemble(&workspace_root(), &input).1.is_empty());
 }
 #[test]
-#[ignore = "requires configured FS-UAE; one fresh scalar compiler tree batch"]
+#[ignore = "requires configured FS-UAE; one fresh canonical compiler tree batch"]
 fn native_expression_compiler_fs_uae() {
     use crate::fs_uae_smoke::{
         run_prebuilt_compact_cli_case_from_env, OpforgeNativeCliPackageMode,
@@ -638,4 +768,11 @@ fn native_expression_compiler_fs_uae() {
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].success && runs[0].protocol_completed && runs[0].exit_code == Some(0));
+    eprintln!(
+        "EXVM_TREE cases={} oracle_bytes={} image_bytes={} seconds={:?} exact=true",
+        u32::from_be_bytes(input[..4].try_into().unwrap()),
+        expected.len(),
+        image.len(),
+        runs[0].start_to_done_host_seconds
+    );
 }

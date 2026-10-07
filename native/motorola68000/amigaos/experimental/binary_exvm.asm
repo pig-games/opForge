@@ -80,7 +80,21 @@ KIND_SYMBOL = 2
 KIND_CURRENT = 3
 KIND_UNARY = 4
 KIND_BINARY = 5
+KIND_RANGE = 6
+KIND_LIST = 7
+KIND_INDEX = 8
+KIND_CALL = 9
 	.priv
+Sequence	.struct
+Start	.long ?
+Head	.long ?
+Tail	.long ?
+Count	.long ?
+Kind	.long ?
+Name	.long ?
+Close	.long ?
+	.endstruct
+SEQUENCE_BYTES = Sequence.Close+4
 State	.struct
 Cursor	.long ?
 Pc	.long ?
@@ -108,9 +122,11 @@ SCRATCH_BYTES = SPANS+OUTPUT_LIMIT*4
 ; D0/CCR=status; all other registers preserved. Results always initialized;
 ; failure Root=NONE, Used=0; Consumed is the exact bounded numeric cursor.
 ; Success returns the consumed prefix; owners validate required delimiters/end.
-; Packed DOT7 is a package-wrapper delimiter; bracket indexing is unsupported.
+; Packed DOT7 begins a call envelope selected by the shared EXVM action.
 ; Success nodes contain arena offsets only. Literal First=u32, symbol First=u16
-; ID; unary First=child; binary First/Second=children. Count=child arity.
+; ID; unary First=child; binary/index First/Second=children. Range Third=step
+; or NONE, Operator=canonical flags. List First=head; call First=function ID,
+; Second=argument head. Child-root Next links siblings. Count=child arity.
 ; Request.Scratch owns SCRATCH_BYTES reusable work; only call frames use stack.
 compile	.block
 	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_EXVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_FRONTEND
@@ -444,6 +460,41 @@ childReady
 	bsr.w push
 	bne.w done
 	bra.w next
+range
+	bsr.w programByte
+	bne.w done
+	cmpi.w #3, d1
+	bhi.w programBad
+	move.w d1, d4
+	moveq #2, d5
+	btst #1, d4
+	beq.w rangeCount
+	addq.w #1, d5
+rangeCount
+	moveq #0, d2
+	move.w State.Outputs(a6), d2
+	sub.w (sp), d2
+	cmp.w d5, d2
+	blo.w syntaxBad
+	tst.w State.Spans(a6)
+	beq.w programBad
+	bsr.w allocate
+	bne.w done
+	move.b #KIND_RANGE, Node.Kind(a1)
+	move.b d4, Node.Operator(a1)
+	move.w d5, Node.Count(a1)
+	move.l d7, d6
+	move.l #NONE, Node.Third(a1)
+	cmpi.w #3, d5
+	bne.w rangeEnd
+	bsr.w pop
+	move.l d1, Node.Third(a1)
+rangeEnd
+	bsr.w pop
+	move.l d1, Node.Second(a1)
+	bsr.w pop
+	move.l d1, Node.First(a1)
+	bra.w childReady
 grouping
 	bsr.w token
 	bne.w done
@@ -473,7 +524,58 @@ postfixCheck
 	bsr.w token
 	bne.w done
 	cmpi.w #tokens.TK_KIND_OPEN_BRACKET, d1
-	beq.w unsupported
+	bne.w next
+	move.w State.Outputs(a6), d0
+	cmp.w (sp), d0
+	bls.w syntaxBad
+	bsr.w parseIndex
+	bne.w done
+	bra.w postfixCheck
+list
+	bsr.w token
+	bne.w done
+	cmpi.w #tokens.TK_KIND_OPEN_BRACE, d1
+	bne.w syntaxBad
+	move.l State.Cursor(a6), d5
+	add.l d2, State.Cursor(a6)
+	moveq #KIND_LIST, d3
+	moveq #0, d4
+	moveq #tokens.TK_KIND_CLOSE_BRACE, d6
+	bsr.w parseSequence
+	bne.w done
+	bra.w next
+functionCall
+	bsr.w token
+	bne.w done
+	cmpi.w #tokens.TK_KIND_DOT, d1
+	bne.w syntaxBad
+	move.l State.Cursor(a6), -(sp)
+	add.l d2, State.Cursor(a6)
+	bsr.w token
+	bne.w callEnvelopeDone
+	cmpi.w #1, d1
+	bhi.w callEnvelopeBad
+	tst.b 3(a0)
+	bne.w callEnvelopeBad
+	moveq #0, d4
+	move.w 1(a0), d4
+	add.l d2, State.Cursor(a6)
+	bsr.w token
+	bne.w callEnvelopeDone
+	cmpi.w #tokens.TK_KIND_OPEN_PAREN, d1
+	bne.w callEnvelopeBad
+	add.l d2, State.Cursor(a6)
+	move.l (sp), d5
+	moveq #KIND_CALL, d3
+	moveq #tokens.TK_KIND_CLOSE_PAREN, d6
+	bsr.w parseSequence
+	bra.w callEnvelopeDone
+callEnvelopeBad
+	moveq #STATUS_SYNTAX, d0
+callEnvelopeDone
+	addq.l #4, sp
+	tst.l d0
+	bne.w done
 	bra.w next
 unsupported
 	moveq #STATUS_UNSUPPORTED, d0
@@ -514,18 +616,136 @@ Dispatch
 	.for OP_BUILD_UNARY-OP_LOAD_TOKEN_TEXT-1
 	.word programBad-Dispatch
 	.endfor
-	.word unary-Dispatch, binary-Dispatch, unsupported-Dispatch, unsupported-Dispatch
+	.word unary-Dispatch, binary-Dispatch, unsupported-Dispatch, range-Dispatch
 	.for OP_BUILD_IDENTIFIER-OP_BUILD_RANGE-1
 	.word programBad-Dispatch
 	.endfor
 	.word identifier-Dispatch, number-Dispatch, current-Dispatch, grouping-Dispatch
-	.word unsupported-Dispatch, structCheck-Dispatch, postfixCheck-Dispatch
-	.word string-Dispatch, unsupported-Dispatch, identifier-Dispatch, unsupported-Dispatch
+	.word list-Dispatch, structCheck-Dispatch, postfixCheck-Dispatch
+	.word string-Dispatch, unsupported-Dispatch, identifier-Dispatch, functionCall-Dispatch
 	.for OP_EMIT_DIAG-OP_PARSE_CALL-1
 	.word programBad-Dispatch
 	.endfor
 	.word syntaxBad-Dispatch, programBad-Dispatch, syntaxBad-Dispatch
 	.bend  ; execute
+; Parse a comma-separated envelope selected by ParseList/ParseCall.
+; D3=kind,D4=function ID,D5=start,D6=close token. D0/CCR=status.
+; Child roots are removed from OUTPUTS immediately and linked by arena offsets.
+; Stack locals survive nested canonical execution; preserve A3-A6.
+parseSequence	.block
+	cmpi.w #MAX_DEPTH, State.Depth(a6)
+	bhs.w depthBad
+	addq.w #1, State.Depth(a6)
+	suba.l #SEQUENCE_BYTES, sp
+	move.l d5, Sequence.Start(sp)
+	move.l #NONE, Sequence.Head(sp)
+	move.l #NONE, Sequence.Tail(sp)
+	clr.l Sequence.Count(sp)
+	move.l d3, Sequence.Kind(sp)
+	move.l d4, Sequence.Name(sp)
+	move.l d6, Sequence.Close(sp)
+	bsr.w token
+	bne.w done
+	cmp.w Sequence.Close+2(sp), d1
+	beq.w closed
+item
+	bsr.w execute
+	bne.w done
+	bsr.w pop
+	move.l Sequence.Tail(sp), d0
+	cmpi.l #NONE, d0
+	beq.w first
+	movea.l Request.Arena(a5), a0
+	adda.l d0, a0
+	move.l d1, Node.Next(a0)
+	bra.w linked
+first
+	move.l d1, Sequence.Head(sp)
+linked
+	move.l d1, Sequence.Tail(sp)
+	addq.l #1, Sequence.Count(sp)
+	bsr.w token
+	bne.w done
+	cmpi.w #tokens.TK_KIND_COMMA, d1
+	bne.w requireClose
+	add.l d2, State.Cursor(a6)
+	bra.w item
+requireClose
+	cmp.w Sequence.Close+2(sp), d1
+	bne.w syntaxBad
+closed
+	add.l d2, State.Cursor(a6)
+	bsr.w allocate
+	bne.w done
+	move.l Sequence.Kind(sp), d0
+	move.b d0, Node.Kind(a1)
+	move.w Sequence.Count+2(sp), Node.Count(a1)
+	move.l Sequence.Head(sp), Node.First(a1)
+	cmpi.w #KIND_CALL, d0
+	bne.w span
+	move.l Sequence.Name(sp), Node.First(a1)
+	move.l Sequence.Head(sp), Node.Second(a1)
+span
+	move.w Sequence.Start+2(sp), Node.SpanStart(a1)
+	move.l State.Cursor(a6), d0
+	move.w d0, Node.SpanEnd(a1)
+	bsr.w push
+	bra.w done
+syntaxBad
+	moveq #STATUS_SYNTAX, d0
+done
+	adda.l #SEQUENCE_BYTES, sp
+	subq.w #1, State.Depth(a6)
+	tst.l d0
+	rts
+depthBad
+	moveq #STATUS_DEPTH, d0
+	rts
+	.bend  ; parseSequence
+
+; Parse one index envelope, with the base already on OUTPUTS.
+; D0/CCR=status; preserve A3-A6. Nested EXVM execution owns index precedence.
+parseIndex	.block
+	cmpi.w #MAX_DEPTH, State.Depth(a6)
+	bhs.w depthBad
+	addq.w #1, State.Depth(a6)
+	add.l d2, State.Cursor(a6)
+	bsr.w execute
+	subq.w #1, State.Depth(a6)
+	tst.l d0
+	bne.w done
+	bsr.w token
+	bne.w done
+	cmpi.w #tokens.TK_KIND_CLOSE_BRACKET, d1
+	bne.w syntaxBad
+	add.l d2, State.Cursor(a6)
+	bsr.w allocate
+	bne.w done
+	move.b #KIND_INDEX, Node.Kind(a1)
+	move.w #2, Node.Count(a1)
+	move.l d7, d6
+	bsr.w pop
+	move.l d1, Node.Second(a1)
+	bsr.w pop
+	move.l d1, Node.First(a1)
+	movea.l Request.Arena(a5), a0
+	adda.l d1, a0
+	move.w Node.SpanStart(a0), Node.SpanStart(a1)
+	move.l State.Cursor(a6), d0
+	move.w d0, Node.SpanEnd(a1)
+	move.l d6, d7
+	bsr.w push
+	bra.w done
+syntaxBad
+	moveq #STATUS_SYNTAX, d0
+	bra.w done
+depthBad
+	moveq #STATUS_DEPTH, d0
+done
+	tst.l d0
+	rts
+	.bend  ; parseIndex
+
 ; Fetch one canonical program byte; A3=program,A4=length,A6=scratch.
 ; D1=byte, D0/CCR=status; all other registers preserved. Every fetch is bounded.
 programByte	.block

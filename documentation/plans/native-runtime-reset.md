@@ -88,6 +88,67 @@ language choice and the resulting implementation are qualified.
 The compiler-first sequence is approved; remaining language qualification is in progress. CPU-specific
 instruction gaps and promotion of the experimental CLI remain separate work.
 
+### Compound-value checkpoints
+
+The first checkpoint extends the native EXVM backend's shared grammar actions
+to build list, range, index and function-call trees. Nodes retain the existing
+24-byte layout; children and sibling links are arena-relative offsets. Calls
+carry opaque numeric function IDs. The grammar, rather than a native precedence
+parser, owns these envelopes. This changes the compiler component only: the
+scalar lowerer still rejects compound nodes, and the native CLI does **not** yet
+execute compound declarations, indexing or `.len`.
+
+The fresh 68020/10 MiB compiler batch passes all 101 cases with exact equality
+to the live Rust tree/lowering oracle (13,280 bytes). Controls cover scalar
+regressions, inclusive/stepped ranges, empty/nested lists, generic calls and
+chained indexing; malformed delimiters/programs, child-only arena capacity,
+65-item envelopes exceeding the output-stack width, and mixed nesting at the
+native sixteen-envelope limit. Nested lists and unknown calls are syntactically
+valid trees, not a promise of their value semantics. The compiler harness is
+60,076 bytes and final START-to-DONE takes 2.022699333 seconds; that component timing
+is not an assembler performance result or a full self-host run.
+
+The Rust range oracle also now widens the signed step before taking its absolute
+value, avoiding overflow for `i64::MIN`. Focused controls verify length/indexing
+at that step and rejection of inclusive endpoint overflow.
+All 60 `types` tests pass, as do the compiler/session host checks, fresh native
+session isolation, formatter and workflow/native engineering guards. The
+complete self-host and full breadth corpus have not been rerun for this checkpoint.
+
+The unchanged `aligned-control` release comparison isolates this checkpoint
+against `6c1a1e14`, on the same 68020/10 MiB profile with telemetry disabled and
+no concurrent builds/tests. All four samples have fresh completion, exit zero
+and exact live Rust output; input remains 15,474 bytes, FNV `ac05445d958571b5`.
+
+| State | Release seconds | Mean | Hunk / linked reservation bytes |
+|---|---|---|---|
+| Previous compiler `6c1a1e14` | 25.116194959 / 25.047371583 | 25.081783271 | 538,336 / 557,480 |
+| Compound tree builders | 25.069417875 / 25.091874166 | 25.080646021 | 539,004 / 558,148 |
+
+Time is indistinguishable within sample variation; no speedup is claimed.
+Both image and linked reservation grow 668 bytes; the reusable workspace stays
+5,720 bytes. Linked reservation is not peak memory. Image FNV changes from
+`c6357c068b0e4acb` to `1d9d93fb60d26dbc`; the package contract is unchanged.
+
+Next, integrate a shared typed value owner and lowering/evaluation. Keep the
+existing signed64 scalar cells and compact scalar path; compound symbols need
+explicit kinds and offsets into separately owned, growable storage that survives
+preparation and assembly passes. Do not retain the transient EXVM arena or store
+pointers as numeric symbol values. Immutable aliases snapshot concrete values;
+ranges stay compact descriptors rather than expanded lists. Preserve Rust's
+signed indexing, direction, step and checked-overflow semantics, and traverse
+all scalar children for symbol dependencies and address provenance.
+
+Builtin identity also needs a shared core boundary: Rust currently recognizes
+`.len` in value evaluation, while native operand binding treats its name as an
+ordinary source symbol. Bind it to a core-owned numeric builtin identity before
+execution. EXVM should continue to parse generic calls without knowing their
+spelling. The existing typed ExprVM operation family has list/range/index
+operations, but its reserved builtin-call operation still lacks implementation;
+complete that shared contract rather than adding a native-only expression
+language. Iterable loops follow after declarations, aliases, indexing and length
+have end-to-end native qualification.
+
 ### Shared compiler cost checkpoint
 
 Erik selected overhead reduction before compound values. The unchanged

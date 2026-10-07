@@ -1,4 +1,4 @@
-; Direct canonical EXVM numeric compiler batch: scalar trees and failures.
+; Direct canonical EXVM numeric compiler batch: scalar/compound trees and failures.
 ; @opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent
 
 	.module main

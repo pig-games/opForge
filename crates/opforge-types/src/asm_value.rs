@@ -199,7 +199,7 @@ fn range_len(start: i64, end: i64, step: i64) -> usize {
     if (step > 0 && start >= end) || (step < 0 && start <= end) {
         return 0;
     }
-    let step_abs = i128::from(step.abs());
+    let step_abs = i128::from(step).abs();
     if step_abs == 0 {
         return 0;
     }
@@ -263,6 +263,29 @@ mod tests {
         assert_eq!(value.get(0), Some(10));
         assert_eq!(value.get(3), Some(13));
         assert_eq!(value.get(4), None);
+    }
+
+    #[test]
+    fn minimum_negative_step_len_and_get_do_not_overflow() {
+        let value = AsmValue::try_range(i64::MAX, i64::MIN, false, Some(i64::MIN))
+            .expect("range with minimum negative step should build");
+
+        assert_eq!(value.len(), Some(2));
+        assert_eq!(value.get(0), Some(i64::MAX));
+        assert_eq!(value.get(1), Some(-1));
+        assert_eq!(value.get(2), None);
+    }
+
+    #[test]
+    fn inclusive_range_endpoint_overflow_is_reported() {
+        assert_eq!(
+            AsmValue::try_range(0, i64::MAX, true, None),
+            Err(AsmValueError::EndOverflow)
+        );
+        assert_eq!(
+            AsmValue::try_range(0, i64::MIN, true, None),
+            Err(AsmValueError::EndOverflow)
+        );
     }
 
     #[test]

@@ -53,6 +53,31 @@ fn compact_macro_call_rust_oracles() {
     assert_eq!(oracle(&source(true)), [1, 2, 3, 0]);
 }
 
+// The complete assembler uses this register-list substitution in .EVALUATE.
+// Consume the argument: accepting and then ignoring it cannot test its binding.
+fn register_list_source(macro_call: bool) -> String {
+    let body = if macro_call {
+        "save .macro regs\n\tmovem.l .regs,-(sp)\n\tmovem.l (sp)+,.regs\n.endmacro\n.save d3-d7/a1-a6\n"
+    } else {
+        "\tmovem.l d3-d7/a1-a6,-(sp)\n\tmovem.l (sp)+,d3-d7/a1-a6\n"
+    };
+    format!(".module probe\n.cpu m68020\n{body}.endmodule\n")
+}
+
+#[test]
+fn compact_macro_register_list_rust_oracle() {
+    let expected = [0x48, 0xe7, 0x1f, 0x7e, 0x4c, 0xdf, 0x7e, 0xf8];
+    assert_eq!(oracle(&register_list_source(false)), expected);
+    assert_eq!(oracle(&register_list_source(true)), expected);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; known macro register-binding regression"]
+fn compact_macro_register_list_fs_uae() {
+    native_source(register_list_source(false));
+    native_source(register_list_source(true));
+}
+
 fn inactive_header_source() -> String {
     ".cpu m68020\n.if 0\nignored .macro value=\n.byte 99\n.endmacro\n.endif\nemit .macro value\n.if .value\n.byte 1\n.else\n.byte 2\n.endif\n.endmacro\n.emit 1\n.emit 0\n.end\n".into()
 }

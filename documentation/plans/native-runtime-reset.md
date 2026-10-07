@@ -1,20 +1,26 @@
 # Native assembler completion plan
 
-Status: active. BS31 adds statement-time flat lists, compact ranges and numeric `.len` binding
-while retaining the shared EXVM grammar and scalar `:?=` policy. Packed
-iterable `.for` over lists and ranges is the current implementation slice and
-remains under validation. The
-[last complete full self-host checkpoint](#shared-exvm-migration-qualification)
-has exact equality for all 538,336 Hunk bytes on 68020/74 MiB in
-1,253.615809917 seconds. Scalar `:?=` forward-initializer semantics remain an open
-decision, and broad tests retain 54 inherited failures. No new physical
-A6000 run or complete peak-memory result is claimed. Current executables require
-BS31 packages; superseded contracts have no compatibility executor. Subsequent
-compiler/list work has focused qualification only; iterable-loop qualification
-is in progress. No complete self-host rerun or replacement hardware bundle is
-claimed for this current work.
-This remains experimental: full self-host equality does not establish full
-language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
+Status: active. BS31 adds statement-time flat lists, compact ranges, numeric
+`.len` and focused iterable `.for` support on the shared EXVM grammar. The
+[full current-source self-host attempt](#bs31-full-self-host-attempt-2026-10-07)
+at `02fc0e41` completes the fresh guest protocol but **fails with native exit 20
+and no output**, after 734.921603416 seconds on 68020/74 MiB. A focused comparison
+confirms that the last binding change regressed register-list macro arguments;
+the complete source uses this pattern in `.EVALUATE`. Repair that boundary and
+repeat the complete run before claiming restored self-host parity.
+
+The [last successful full self-host checkpoint](#shared-exvm-migration-qualification)
+remains BS30 `09c55688`: exact equality for all 538,336 Hunk bytes in
+1,253.615809917 seconds on 68020/74 MiB. The fresh current host assembler suite
+has 2,139 passing, 49 failing and 530 ignored tests; the old failure-name list is
+not retained, so the reduced failure count does not establish which cases were
+fixed or newly broken. Scalar `:?=` forward-initializer semantics remain open.
+Current executables require BS31 packages; superseded contracts have no
+compatibility executor. No new physical A6000 run or qualified replacement
+hardware bundle is claimed.
+
+This remains experimental: even successful self-host equality does not establish
+full language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
 
 Git retains superseded experiments and measurements. The
@@ -450,6 +456,81 @@ and native formatting pass. The native runs use FS-UAE 68020/10 MiB and are not
 run is part of this slice. `.bfor`, existing loop-body restrictions, compound
 struct support and wide-literal packing limits are not repaired here; full
 iterator/language parity remains unclaimed.
+
+### BS31 full self-host attempt (2026-10-07)
+
+The complete release inputs at `02fc0e41` contain **111 mapped inputs /
+1,612,696 bytes**. A fresh Rust build and a separate build of the relocated
+exported inputs both produce the same **548,212-byte Hunk**, embedding only the
+394,962-byte m68020 BS31 package. Linked reservation is 567,592 bytes, not peak
+memory. Source fingerprint is `fnv1a64:c17f1c0eb3c79d35`; package fingerprint is
+`fnv1a64:42966fa843d62336`; bootstrap/output-oracle fingerprint is
+`fnv1a64:f250dc312d538d98`.
+
+The actual complete native command is:
+
+```text
+opforge -i src/experimental/opforge_compact_cli.asm --hunk output.hunk -M src -I src/debug
+```
+
+The uninstrumented run on the established FS-UAE 68020/74 MiB profile has fresh
+case-bound START/DONE and **exit 20**, after **734.921603416 seconds
+(12m14.92s)**. No output Hunk exists, so this is **failed full self-assembly**,
+not output parity or a performance improvement over the prior successful run.
+Its diagnostic is `unsupported or invalid input`, file/line zero, last recorded
+preparation step 2. That step alone cannot distinguish final binding from later
+assembly preflight. The generous 90-minute completion bound was not reached.
+
+A second complete diagnostic run uses the same release inputs/oracle with the
+existing debug-contract, memory and preparation-progress macros enabled in the
+bootstrap. It reproduces fresh completion and exit 20 in **759.646596750 seconds**;
+no failing binding name is reported. Its test passes the expected-failure capture
+contract, not assembly. Tracked peak owned allocation is **24,498,360 bytes**,
+with zero terminal ownership and allocation/accounting errors. This instrumented
+figure is neither release peak memory nor total Amiga RAM; it does not qualify
+the 2 MiB goal. Diagnostic runtime includes instrumentation and concurrent host
+qualification, so it is not a release-speed comparison.
+
+Focused fresh native controls isolate a regression in the last binding change:
+
+| Release executable | Input | Native result |
+|---|---|---|
+| Current `02fc0e41`, 548,212 bytes | Direct `MOVEM` register list | Exit zero, exact 8-byte live Rust output |
+| Current `02fc0e41`, 548,212 bytes | Same list passed through a macro | Exit 20, no output, same step-2 diagnostic |
+| Pre-repair checkpoint image, 547,420 bytes | Same macro input | Exit zero, exact 8-byte live Rust output |
+
+The pre-repair image fingerprint is `fnv1a64:b3b288b8539b71fb`.
+`binary_expression` uses the same argument shape in `.EVALUATE d3-d7/a1-a6`.
+The PRVM value-context predicate currently accepts every dot-prefixed head;
+frontend binding can therefore convert register actuals into source IDs before
+packed macro substitution places them in instruction register slots. The focused
+cases prove this regression; the complete capture does not identify the exact
+failing instruction or prove it is the only full-run blocker. Retained regression
+`compact_macro_register_list_fs_uae` requires exact output and remains failing;
+its Rust oracle consumes the argument and matches the direct instructions.
+
+The next repair must distinguish shared value operands from macro argument roles
+through the packed/package-owned path, preserve instruction registers through
+expansion, and retain iterable register-name value binding. Do not work around it
+by expanding `.EVALUATE` manually, changing register spellings, or restoring a
+text parser. Recheck direct/macro controls, existing iterator controls and the
+complete current self-host after that repair.
+
+The fresh serial assembler host suite reports **2,139 passed / 49 failed /
+530 ignored**. Failure review finds source/inventory/version/digest expectations,
+fixture/listing/label differences and behavioral or oracle-setup failures. These
+are current observations, not an assertion that all 49 are inherited or that the
+native corpus is qualified. The prior broad native corpus has not been rerun.
+
+Logs and diagnostic summaries are retained outside `target`:
+`/tmp/opforge-selfhost-iterator-02fc0e41.log`,
+`/tmp/opforge-selfhost-iterator-02fc0e41-diagnostic.log`,
+`/tmp/opforge-selfhost-iterator-release-failure-summary.json`, and
+`/tmp/opforge-selfhost-iterator-full-host-suite.log`. The release export
+`/tmp/opforge-selfhost-iterator-02fc0e41-release-74m` is **not a qualified hardware
+bundle**; its manifest still says `not_run` because the positive exporter aborted
+on native proof failure. The diagnostic export records
+`fresh_fs_uae_failure_capture`. Keep the previous qualified A6000 bundle selected.
 
 ### Shared compiler cost checkpoint
 

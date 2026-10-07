@@ -26,8 +26,11 @@ separation, identity-table growth and scalar misuse rejection. The
 [binding repair checkpoint](native-runtime-reset.md#imported-iterator-binding-repair-2026-10-07)
 records the separate comparative measurement. Iterable-loop parity and struct
 behavior are not yet fully qualified, and existing wide-literal packing limits
-remain. Full language parity and a new
-full self-host qualification are not claimed.
+remain. Full language parity is not claimed. The
+[current full self-host attempt](native-runtime-reset.md#bs31-full-self-host-attempt-2026-10-07)
+fails with native exit 20; focused controls confirm a regression in register-list
+macro argument binding. The previous successful full self-host remains the
+qualified reference.
 Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
 still unresolved. BS28 introduced numeric `:=`
 normalization to shared declarations.

@@ -144,6 +144,14 @@ Mode	.long ?
 Section	.long ?
 Count	.long ?
 .endstruct
+PREPARATION_PREFIX_BYTES = 32
+PreparationPosition	.struct
+Input	.long ?
+Prepared	.long ?
+Record	.res PREPARATION_PREFIX_BYTES
+Status	.long ?
+.endstruct
+PREPARATION_POSITION_BYTES = PreparationPosition.Status+4
 .endif
 .endif
 .endif
@@ -318,10 +326,53 @@ ASSEMBLY_FAILURE_STAGE	.macro slot, stage
 .endif
 .endif
 .endmacro
-; Last preparation boundary and bounded opaque writer prefix on failure.
-; Uses three existing progress records, without event/request buffer growth.
-; The caller supplies its frame layout; all registers and CCR are preserved.
-MEMORY_PREPARATION_FAILURE	.macro dosbase, assembling, stage, frame, outputOffset, capacityOffset, usedOffset, countOffset, phase
+; Retain the input boundary, independently of any failed preparation output.
+; A0=writer record, A1=distinct output. Snapshot uses PreparationPosition's
+; two pointers and bounded prefix; its status belongs to the caller's boundary.
+; Copy only caller-bounded bytes; zero the unused prefix. All state survives.
+MEMORY_PREPARATION_INPUT	.macro snapshot, capacity
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0-d1/a0-a2, -(sp)
+	lea .snapshot, a2
+	move.l a0, (a2)+
+	move.l a1, (a2)+
+	movea.l a2, a1
+	moveq #PREPARATION_PREFIX_BYTES/4-1, d0
+clear
+	clr.l (a1)+
+	dbra d0, clear
+	move.l .capacity, d0
+	beq.w done
+	moveq #0, d1
+	move.b (a0), d1
+	addq.l #1, d1
+	cmp.l d1, d0
+	bls.w bounded
+	move.l d1, d0
+bounded
+	cmpi.l #PREPARATION_PREFIX_BYTES, d0
+	bls.w ready
+	moveq #PREPARATION_PREFIX_BYTES, d0
+ready
+	subq.w #1, d0
+copy
+	move.b (a0)+, (a2)+
+	dbra d0, copy
+done
+	movem.l (sp)+, d0-d1/a0-a2
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
+; Last preparation boundary, return status and opaque record prefixes on failure.
+; Uses the existing progress protocol without event/request buffer growth.
+; Nine parameters fit the current native macro contract. All state survives.
+MEMORY_PREPARATION_FAILURE	.macro dosbase, assembling, stage, output, capacity, used, count, snapshot, phase
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
@@ -329,17 +380,25 @@ MEMORY_PREPARATION_FAILURE	.macro dosbase, assembling, stage, frame, outputOffse
 	movem.l d0/a0, -(sp)
 	tst.l .assembling
 	bne.w done
-	.MEMORY_PROGRESS .dosbase, .phase, .stage, .frame+.usedOffset, .frame+.countOffset
-	lea .frame, a0
-	cmpi.l #6*4, .capacityOffset(a0)
+	.MEMORY_PROGRESS .dosbase, .phase, .stage, .used, .count
+	.MEMORY_PROGRESS .dosbase, .phase+7, .snapshot+PreparationPosition.Status, #0, #0
+	cmpi.l #6*4, .capacity
 	blo.w done
-	movea.l .outputOffset(a0), a0
+	movea.l .output, a0
 	move.l a0, d0
 	beq.w done
 	; Only bytes within byte0+1 belong to the active record. The decoder
 	; discards the rest of this fixed 24-byte observation.
 	.MEMORY_PROGRESS_BLOCK .dosbase, .phase+1, (a0), 0*4, 1*4, 2*4
 	.MEMORY_PROGRESS_BLOCK .dosbase, .phase+2, (a0), 3*4, 4*4, 5*4
+	cmpi.l #8, .stage
+	bne.w done  ; input snapshot belongs only to the expression boundary
+	; The pre-call snapshot also identifies the two distinct buffers. Its
+	; record framing bounds which prefix bytes the decoder may interpret.
+	.MEMORY_PROGRESS_BLOCK .dosbase, .phase+3, .snapshot, PreparationPosition.Input, PreparationPosition.Prepared, PreparationPosition.Record
+	.MEMORY_PROGRESS_BLOCK .dosbase, .phase+4, .snapshot, PreparationPosition.Record+1*4, PreparationPosition.Record+2*4, PreparationPosition.Record+3*4
+	.MEMORY_PROGRESS_BLOCK .dosbase, .phase+5, .snapshot, PreparationPosition.Record+4*4, PreparationPosition.Record+5*4, PreparationPosition.Record+6*4
+	.MEMORY_PROGRESS .dosbase, .phase+6, .snapshot+PreparationPosition.Record+7*4, #0, #0
 done
 	movem.l (sp)+, d0/a0
 	move.w (sp)+, ccr

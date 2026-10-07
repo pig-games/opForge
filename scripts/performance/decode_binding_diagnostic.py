@@ -29,6 +29,8 @@ PREPARATION_STAGES = {
     6: "file",
     7: "data",
     8: "expression",
+    9: "writer",
+    10: "template",
 }
 STAGES = {
     1: "lexical scope still open",
@@ -94,11 +96,11 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
         match = PROGRESS.fullmatch(line.strip())
         if not match:
             candidate = PREPARATION_PROGRESS_PREFIX.match(line.strip())
-            if candidate and int(candidate.group(1), 16) in (301, 302, 303):
+            if candidate and int(candidate.group(1), 16) in (301, 302, 303, 304, 305, 306, 307, 308):
                 raise BindingDiagnosticError("malformed preparation failure progress record")
             continue
         phase, *values = (int(part, 16) for part in match.groups())
-        if phase in (301, 302, 303):
+        if phase in (301, 302, 303, 304, 305, 306, 307, 308):
             if phase in preparation_phases:
                 raise BindingDiagnosticError(f"duplicate preparation failure phase {phase}")
             preparation_phases[phase] = tuple(values)
@@ -161,17 +163,63 @@ def _decode_preparation_failure(
         "last_published_name_count": name_count,
         "live_owned_bytes": live_owned,
     }
+    if 308 in phases:
+        status, reserved_first, reserved_second, _ = phases[308]
+        if reserved_first != 0 or reserved_second != 0:
+            raise BindingDiagnosticError("phase 308 trailing words must be zero")
+        result["last_writer_or_expression_status"] = status
+        if stage not in (8, 9):
+            result["last_writer_or_expression_status_note"] = (
+                "may be stale for template and other stages"
+            )
     if has_first:
         raw = b"".join(word.to_bytes(4, "big") for phase in (302, 303) for word in phases[phase][:3])
         extent = raw[0] + 1
         if extent < 4:
-            raise BindingDiagnosticError(f"preparation record extent {extent} is below 4 bytes")
-        prefix_length = min(extent, len(raw))
-        result.update({
+            result.update({
+                "record_framing_valid": False,
+                "captured_prefix_hex": raw.hex(),
+            })
+        else:
+            prefix_length = min(extent, len(raw))
+            result.update({
+                "record_framing_valid": True,
+                "actual_record_extent": extent,
+                "record_prefix_hex": raw[:prefix_length].hex(),
+                "truncated": extent > len(raw),
+            })
+    input_phases = {phase: phases[phase] for phase in range(304, 308) if phase in phases}
+    if input_phases:
+        if set(input_phases) != set(range(304, 308)):
+            missing = sorted(set(range(304, 308)) - input_phases.keys())
+            raise BindingDiagnosticError(
+                "pre-call input snapshot requires phases 304-307; missing "
+                + ", ".join(map(str, missing))
+            )
+        first = input_phases[304]
+        if input_phases[307][1] != 0 or input_phases[307][2] != 0:
+            raise BindingDiagnosticError("phase 307 trailing words must be zero")
+        raw = b"".join(
+            word.to_bytes(4, "big")
+            for word in (
+                first[2],
+                *input_phases[305][:3],
+                *input_phases[306][:3],
+                input_phases[307][0],
+            )
+        )
+        extent = raw[0] + 1
+        if extent < 4:
+            raise BindingDiagnosticError(f"pre-call record extent {extent} is below 4 bytes")
+        result["pre_call_input"] = {
+            "input_pointer": f"0x{first[0]:08x}",
+            "prepared_pointer": f"0x{first[1]:08x}",
+            "pointers_alias": first[0] == first[1],
+            "live_owned_bytes": {str(phase): input_phases[phase][3] for phase in range(304, 308)},
             "actual_record_extent": extent,
-            "record_prefix_hex": raw[:prefix_length].hex(),
-            "truncated": extent > len(raw),
-        })
+            "record_prefix_hex": raw[:min(extent, 32)].hex(),
+            "truncated": extent > 32,
+        }
     return result
 
 

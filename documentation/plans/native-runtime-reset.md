@@ -6,8 +6,8 @@ still **fails with native exit 20 and no output**, after 747.212714458 seconds
 on 68020/74 MiB. The reported record is `lea DosName,a1`, CLI entry file 1,
 line 18. Focused LEA/Hunk and named-block forward-reference controls pass; a
 complete diagnostic capture confirms failure during captured-source preparation,
-before assembly begins. A narrower preparation-stage capture is in progress.
-This is not restored self-host
+before assembly begins. The narrower stage marker could remain stale across
+writer/template failures; a corrected boundary capture is in progress. This is not restored self-host
 parity. BS31 added statement-time flat lists, compact ranges, numeric `.len` and
 focused iterable `.for` support on the shared EXVM grammar.
 
@@ -526,8 +526,25 @@ fresh exit 20 after 771.912019750 seconds, before any assembly or preparation-
 completion marker. It has no binding-finalization snapshot: the failure is in
 captured-source preparation, not instruction selection/emission. Both named-
 block LEA controls also pass using the full 590,720-byte embedded executable.
-A gated preparation-stage and bounded numeric-record capture is in progress.
-Its disabled build remains byte-identical to that release executable.
+A gated preparation-stage capture then fails after 771.389576375 seconds at
+`lea FIB_NAME+8(sp),a0`, `cli_input.asm` line 244. The stage-8 marker was the last
+entered processRecord boundary; writer/template work previously left it stale.
+It therefore does not establish expression preparation as the failing call.
+The failure prefix has a zero length header and
+partially compiled content; it is opaque localization evidence, not a valid
+record. Moving the failure does not prove that the earlier LEA was fixed.
+The exact stack-constant form plus a forward data LEA passes under the full
+embedded executable (1.532706667 seconds, 104 exact Rust Hunk bytes).
+A second capture retains the raw input and both buffer identities immediately
+before preparation. That run stops after 639.269199416 seconds on an introduced
+ten-parameter telemetry macro definition; native currently allows nine. Its
+pre-call record belongs to an earlier line and must not diagnose the original
+LEA. The helper now uses nine parameters, with separate writer/template markers
+and captured writer/expression return codes. A fresh native pilot accepts all
+current telemetry definitions and produces the exact two Rust output bytes.
+The corrected complete boundary capture is in progress.
+All capture code/storage is triple-gated; its disabled build remains
+byte-identical to that release executable. No production repair is claimed yet.
 
 Source fingerprint is `fnv1a64:1dbf2231e724c77e`; package fingerprint is
 `fnv1a64:98b91e6dc8f6122d`. Bootstrap and fresh Rust oracle both identify the

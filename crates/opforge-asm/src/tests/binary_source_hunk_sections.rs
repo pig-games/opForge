@@ -150,6 +150,28 @@ fn compact_hunk_block_instruction_reference_fs_uae() {
     }
 }
 
+fn stack_constant_reference_source() -> String {
+    SOURCE.replace(
+        "entry: .long payload\n RTS",
+        "FIB_NAME=8\nentry .block\n lea FIB_NAME+8(sp),a0\n lea payload,a1\n rts\n.bend",
+    )
+}
+
+#[test]
+fn compact_hunk_stack_constant_reference_rust_oracle() {
+    let oracle = rust_hunk_oracle();
+    let stack = rust_hunk_source(&stack_constant_reference_source());
+    assert!(stack.windows(4).any(|bytes| bytes == [0x41, 0xef, 0, 16]));
+    assert!(contains_hunk_reloc(&stack, 2, 6));
+    assert_ne!(stack, oracle);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; self-host stack constant and forward data reference"]
+fn compact_hunk_stack_constant_reference_fs_uae() {
+    native_hunk_source(&stack_constant_reference_source());
+}
+
 fn pc_dispatch_reference_source() -> String {
     SOURCE.replace(
         "entry: .long payload\n RTS",
@@ -428,11 +450,7 @@ fn native_hunk_bytes(source: &str, oracle: &[u8]) {
                 rust_oracle: oracle,
             },
         };
-        crate::fs_uae_smoke::run_prebuilt_compact_cli_case_from_env(
-            &native_root,
-            &case,
-            &image,
-        )
+        crate::fs_uae_smoke::run_prebuilt_compact_cli_case_from_env(&native_root, &case, &image)
     } else {
         crate::fs_uae_smoke::run_compact_cli_from_env(
             &native_root,

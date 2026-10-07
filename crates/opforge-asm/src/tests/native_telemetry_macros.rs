@@ -535,10 +535,13 @@ fn native_assembly_position_capture_is_triple_gated_and_byte_transparent() {
 
 #[test]
 fn native_preparation_failure_capture_is_triple_gated() {
-    let baseline = assembly_position_source(false);
+    let baseline = assembly_position_source(false).replace(
+        "Position .res byte, AssemblyPosition.Count+4",
+        "Position .res byte, PREPARATION_POSITION_BYTES",
+    );
     let source = baseline.replace(
         "    moveq #7, d0",
-        "    moveq #7, d0\n    .MEMORY_PREPARATION_FAILURE a1, d0, d0, Position, 0, 4, 8, 12, #301",
+        "    moveq #7, d0\n    .MEMORY_PREPARATION_INPUT Position, #32\n    .MEMORY_PREPARATION_FAILURE a1, d0, d0, Position, Position+4, Position+8, Position+12, Position, #301",
     );
     let gates = [
         "OPFORGE_DEBUG_CONTRACTS",
@@ -557,7 +560,10 @@ fn native_preparation_failure_capture_is_triple_gated() {
         if mask == 7 {
             assert!(observed.len() > reference.len());
         } else {
-            assert_eq!(observed, reference, "missing gates must emit no capture code");
+            assert_eq!(
+                observed, reference,
+                "missing gates must emit no capture code"
+            );
         }
     }
 }

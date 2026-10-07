@@ -65,6 +65,8 @@ PREP_SCOPE = 5
 PREP_FILE = 6
 PREP_DATA = 7
 PREP_EXPRESSION = 8
+PREP_WRITER = 9
+PREP_TEMPLATE = 10
 ; Last attempted preparation boundary, observed only by the existing gated
 ; failure/progress macros. It has no release storage or runtime updates.
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -72,6 +74,8 @@ PREP_EXPRESSION = 8
 .ifdef OPFORGE_PREPARATION_PROGRESS
 	.section bss, kind=bss
 PreparationStage	.res long, 1
+; Two diagnostic-only pointers followed by the bounded raw writer prefix.
+PreparationInput	.res byte, PREPARATION_POSITION_BYTES
 	.endsection
 .endif
 .endif
@@ -726,13 +730,16 @@ done
 ; A5=session,A6=scratch,D1=token count,D3=lexeme bytes. Bind only now.
 ; D0/CCR=status; other registers preserved.
 lowerTokens	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_WRITER
 	movem.l d1-d7/a0-a6, -(sp)
 	.MEMORY_STAGE #3
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.startLine
 	bsr.w writeTokens
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w failed
 	.MEMORY_DETAIL_BEGIN #1
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 	bsr.w initialPlan
 	.MEMORY_DETAIL_END #1
 	bne.w failed
@@ -1630,6 +1637,7 @@ nextDone
 ; Reenter template lookup before ordinary preparation; nested calls push a
 ; child frame and resume the parent when that child drains.
 expandRecord	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 generatedLoop
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
@@ -1787,7 +1795,9 @@ conditionReady
 	lea PREPARED_LINE(a6), a1
 	movea.l Frame.Package(a5), a2
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_EXPRESSION
+	.MEMORY_PREPARATION_INPUT PreparationInput, Frame.Capacity(a5)
 	jsr prepare.line
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w failed
 	.MEMORY_STAGE #0
 	cmp.l Frame.Capacity(a5), d1

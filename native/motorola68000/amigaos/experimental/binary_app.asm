@@ -336,7 +336,7 @@ done
 	.priv
 reportFailure	.block
 	.BINDING_DIAGNOSTIC_REPORT DosBase
-	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, frontend.PreparationStage, Front, frontend.Frame.Output, frontend.Frame.Capacity, frontend.Frame.Used, frontend.Frame.NameCount, #PROGRESS_PREPARATION_FAILURE
+	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, frontend.PreparationStage, Front+frontend.Frame.Output, Front+frontend.Frame.Capacity, Front+frontend.Frame.Used, Front+frontend.Frame.NameCount, frontend.PreparationInput, #PROGRESS_PREPARATION_FAILURE
 	tst.l InAssembly
 	beq.w located
 	bsr.w locateFailure

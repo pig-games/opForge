@@ -10,8 +10,8 @@ decoder = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(decoder)
 
 
-def progress(phase, first=0, second=0, third=0):
-    return f"progress p={phase:08x} f={first:08x} l={second:08x} r={third:08x} m=0000000a"
+def progress(phase, first=0, second=0, third=0, fourth=10):
+    return f"progress p={phase:08x} f={first:08x} l={second:08x} r={third:08x} m={fourth:08x}"
 
 
 def preparation_failure(stage=4, *, used=7, name_count=2, live_owned=99, raw=None):
@@ -22,6 +22,21 @@ def preparation_failure(stage=4, *, used=7, name_count=2, live_owned=99, raw=Non
         lines.append(progress(302, *words[:3]))
         lines.append(progress(303, *words[3:]))
     return "\n".join(lines)
+
+
+def pre_call_input(input_pointer=0x1000, prepared_pointer=0x1000, raw=None, live_owned=99):
+    raw = (raw or bytes([7]) + bytes(range(1, 32))).ljust(32, b"\0")[:32]
+    words = [int.from_bytes(raw[i:i + 4], "big") for i in range(0, 32, 4)]
+    return "\n".join([
+        progress(304, input_pointer, prepared_pointer, words[0], live_owned),
+        progress(305, *words[1:4], fourth=live_owned),
+        progress(306, *words[4:7], fourth=live_owned),
+        progress(307, words[7], 0, 0, live_owned),
+    ])
+
+
+def writer_status(status, reserved_first=0, reserved_second=0, live_owned=99):
+    return progress(308, status, reserved_first, reserved_second, live_owned)
 
 
 def snapshot(name=b"Widget", *, index=1, related=0xFFFFFFFF, stage=5, count=3):
@@ -124,6 +139,33 @@ class BindingDiagnosticTests(unittest.TestCase):
         self.assertEqual(failure["stage_interpretation"], "last attempted boundary")
         self.assertNotIn("actual_record_extent", failure)
 
+    def test_writer_status_is_exact_at_writer_and_documented_stale_for_template(self):
+        writer = decoder.decode_binding_diagnostic(
+            preparation_failure(stage=9) + "\n" + writer_status(0xFFFFFFFE)
+        )["preparation_failure"]
+        self.assertEqual(writer["last_writer_or_expression_status"], 0xFFFFFFFE)
+        self.assertNotIn("last_writer_or_expression_status_note", writer)
+        template = decoder.decode_binding_diagnostic(
+            preparation_failure(stage=10) + "\n" + writer_status(0xFFFFFFFE)
+        )["preparation_failure"]
+        self.assertEqual(template["last_writer_or_expression_status"], 0xFFFFFFFE)
+        self.assertIn("may be stale", template["last_writer_or_expression_status_note"])
+
+    def test_writer_status_rejects_malformed_duplicate_and_reserved_words(self):
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "malformed preparation"):
+            decoder.decode_binding_diagnostic(
+                preparation_failure(stage=9) + "\nprogress p=00000134 f=1 l=2 r=3"
+            )
+        status = writer_status(1)
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "duplicate preparation"):
+            decoder.decode_binding_diagnostic(
+                preparation_failure(stage=9) + "\n" + status + "\n" + status
+            )
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "phase 308 trailing"):
+            decoder.decode_binding_diagnostic(
+                preparation_failure(stage=9) + "\n" + writer_status(1, reserved_first=1)
+            )
+
     def test_preparation_buffer_uses_actual_extent_and_caps_prefix(self):
         raw = bytes([48]) + bytes(range(1, 24))
         failure = decoder.decode_binding_diagnostic(
@@ -141,6 +183,45 @@ class BindingDiagnosticTests(unittest.TestCase):
         self.assertEqual(bytes.fromhex(failure["record_prefix_hex"]), raw[:8])
         self.assertFalse(failure["truncated"])
 
+    def test_pre_call_input_snapshot_decodes_raw_record_and_pointer_aliasing(self):
+        raw = bytes([40]) + bytes(range(1, 32))
+        result = decoder.decode_binding_diagnostic(
+            preparation_failure(raw=b"\x00invalid") + "\n" + pre_call_input(raw=raw)
+        )["preparation_failure"]
+        self.assertFalse(result["record_framing_valid"])
+        self.assertEqual(result["captured_prefix_hex"], (b"\x00invalid".ljust(24, b"\0")).hex())
+        snapshot = result["pre_call_input"]
+        self.assertEqual(snapshot["input_pointer"], "0x00001000")
+        self.assertTrue(snapshot["pointers_alias"])
+        self.assertEqual(snapshot["actual_record_extent"], 41)
+        self.assertEqual(snapshot["record_prefix_hex"], raw.hex())
+        self.assertTrue(snapshot["truncated"])
+        distinct = decoder.decode_binding_diagnostic(
+            preparation_failure() + "\n" + pre_call_input(0x1000, 0x2000)
+        )["preparation_failure"]["pre_call_input"]
+        self.assertFalse(distinct["pointers_alias"])
+
+    def test_pre_call_input_snapshot_requires_all_phases_and_valid_extent(self):
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "requires phases 304-307"):
+            decoder.decode_binding_diagnostic(
+                preparation_failure() + "\n" + progress(304, 1, 2, 3, 4)
+            )
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "below 4"):
+            decoder.decode_binding_diagnostic(
+                preparation_failure() + "\n" + pre_call_input(raw=b"\0" * 32)
+            )
+        lines = pre_call_input().splitlines()
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "duplicate preparation"):
+            decoder.decode_binding_diagnostic(preparation_failure() + "\n" + "\n".join(lines + [lines[0]]))
+
+    def test_postfailure_zero_framing_preserves_opaque_capture(self):
+        failure = decoder.decode_binding_diagnostic(
+            preparation_failure(raw=b"\0" + bytes(range(1, 24)))
+        )["preparation_failure"]
+        self.assertFalse(failure["record_framing_valid"])
+        self.assertNotIn("record_prefix_hex", failure)
+        self.assertEqual(len(bytes.fromhex(failure["captured_prefix_hex"])), 24)
+
     def test_preparation_records_reject_malformed_combinations(self):
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "both phases"):
             line = preparation_failure(raw=b"\x04abc").splitlines()[0]
@@ -149,11 +230,12 @@ class BindingDiagnosticTests(unittest.TestCase):
             line = preparation_failure().splitlines()[0]
             decoder.decode_binding_diagnostic(line + "\n" + line)
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "unknown preparation"):
-            decoder.decode_binding_diagnostic(preparation_failure(stage=9))
+            decoder.decode_binding_diagnostic(preparation_failure(stage=11))
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "malformed preparation"):
             decoder.decode_binding_diagnostic("progress p=0000012d f=1 l=2 r=3 m=0000000a")
-        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "below 4"):
-            decoder.decode_binding_diagnostic(preparation_failure(raw=b"\x00abc"))
+        self.assertFalse(decoder.decode_binding_diagnostic(
+            preparation_failure(raw=b"\x00abc")
+        )["preparation_failure"]["record_framing_valid"])
 
     def test_stage_14_decodes_canonical_import_target_declaration(self):
         result = decoder.decode_binding_diagnostic(snapshot(stage=14))

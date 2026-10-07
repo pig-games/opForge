@@ -6,12 +6,13 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_iterator_bindings as iterators
 	.pub
-; Source IDs remain words; each owned allocation is bounded by memory.LIMIT.
-; Entry allocation caps identities below wildcard $ffff.
+; Source IDs remain words; the entry table retains the default block bound.
 LIMIT = memory.LIMIT/records.ENTRY_BYTES
-ARENA_BYTES = memory.LIMIT
 ; Composed lexical paths include invocation scopes as well as source names.
 NAME_BYTES = records.NAME_BYTES
+; Spellings grow independently: every identity may own a full composed name.
+; Stored lengths exclude the composition buffer's terminator.
+ARENA_BYTES = LIMIT*(NAME_BYTES-1)
 ENTRY_BYTES = records.ENTRY_BYTES
 State	.struct
 Base	.word ?

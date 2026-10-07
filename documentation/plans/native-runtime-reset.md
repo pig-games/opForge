@@ -463,7 +463,7 @@ iterator/language parity remains unclaimed.
 
 The current repair preserves each register-spelled macro actual's source origin
 alongside its normalized package register ID/qualifier. Preparation-only source
-entries grow from 28 to 32 bytes; no pointers enter persisted source records.
+entries grow from 26 to 30 bytes; no pointers enter persisted source records.
 After binary macro substitution, the consuming package's structural projections
 resolve register leaves before declaration/reference accounting. Scalar operands
 retain their source identities, including iterator, inherited, forward and import
@@ -551,14 +551,35 @@ uses those actual source call sites and passes with the two exact Rust bytes
 (9.927917917 seconds); all eight host gate combinations also pass. The boundary
 markers now reset on capture/replay entry and cover configuration binding,
 repeated expansion and EOF. A fresh complete capture with only the four needed
-diagnostic defines is in progress; the earlier dense telemetry duration is not
-a release performance measurement.
+diagnostic defines completes START/DONE with exit 20 and no output after
+786.292174292 seconds. The last attempted boundary is writer stage 9 at
+`binary_source_assets.i` line 16, the `move.l` with two qualified struct offsets;
+29,311 names have been published. It fails before expression preparation.
+The earlier dense telemetry duration is not a release performance measurement.
+The one-MiB spelling arena is a candidate capacity blocker. A separate native
+component confirms that limit: distinct 128-byte names stop at 8,192 entries /
+1,048,576 bytes. The repair uses the existing caller-bounded allocator and derives
+the spelling bound from supported identities times the maximum composed length
+(`34952 * 255 = 8,912,760` bytes), with allocation only on demand. Numeric IDs,
+entry-table limits and long spelling offsets stay unchanged. The fresh repaired
+probe binds all 10,000 names / 1,280,000 bytes and preserves first/last identities
+after growth. These are storage observations, not full self-host parity or a
+timing comparison: the unrepaired probe stops early. The release executable
+grows by eight bytes to 590,728; the package remains 434,326 bytes. The unchanged
+aligned control passes exact native output before/after at 25.478647167 /
+25.207140416 seconds on 68020/10 MiB, both release builds. This one pair is
+0.271506751 seconds faster (1.066%); it does not establish a speedup beyond normal
+run variation. Full current self-host qualification is in progress on 68020/74 MiB.
 All capture code/storage is triple-gated; its disabled build remains
-byte-identical to that release executable. No production repair is claimed yet.
+byte-identical to the corresponding release executable. The spelling-cap repair
+has focused native proof; its role in the complete failure is not yet established.
 
-Source fingerprint is `fnv1a64:1dbf2231e724c77e`; package fingerprint is
+The original failed release source fingerprint is `fnv1a64:1dbf2231e724c77e`; package fingerprint is
 `fnv1a64:98b91e6dc8f6122d`. Bootstrap and fresh Rust oracle both identify the
-590,720-byte Hunk above. No current physical A6000 timing, qualified replacement
+590,720-byte Hunk above. The repaired host export uses source fingerprint
+`fnv1a64:c22a499719730814`, with identical bootstrap/Rust oracle fingerprints
+`fnv1a64:25e4eb7c3a4c83d5` and 610,028 linked reserved bytes. Host export is not
+native completion. No current physical A6000 timing, qualified replacement
 hardware bundle or 2 MiB qualification is claimed. The BS30 full self-host
 remains the last successful complete reference.
 

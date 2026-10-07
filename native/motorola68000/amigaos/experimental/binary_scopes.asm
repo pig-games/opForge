@@ -358,7 +358,8 @@ stableName
 	lea BUFFER(a6), a2
 	move.l 0(sp), d0
 	lea ARENA(a6), a0
-	jsr memory.reserve
+	move.l #ARENA_BYTES, d1
+	jsr memory.reserveBounded
 	movem.l (sp)+, d0/a0-a1
 	bne.w bad
 	moveq #0, d1

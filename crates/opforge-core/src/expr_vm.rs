@@ -118,6 +118,39 @@ impl ExprVmOpcodeV2 {
     }
 }
 
+/// Shared compile-time builtins. CallBuiltin carries a u8 ID and u16 LE arity.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum ExprBuiltin {
+    Len = 1,
+}
+
+impl ExprBuiltin {
+    pub fn from_name(name: &str) -> Option<Self> {
+        name.eq_ignore_ascii_case(".len").then_some(Self::Len)
+    }
+
+    pub fn from_u8(id: u8) -> Option<Self> {
+        match id {
+            1 => Some(Self::Len),
+            _ => None,
+        }
+    }
+}
+
+fn read_builtin(code: &[u8], ip: &mut usize) -> Result<ExprBuiltin, PortableExprError> {
+    let builtin = ExprBuiltin::from_u8(read_u8(code, ip)?).ok_or_else(|| {
+        PortableExprError::new(DIAG_EXPR_INVALID_PROGRAM, "unknown expression builtin ID")
+    })?;
+    if read_u16_le(code, ip)? != 1 {
+        return Err(PortableExprError::new(
+            DIAG_EXPR_INVALID_PROGRAM,
+            ".len() expects exactly one argument",
+        ));
+    }
+    Ok(builtin)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ExprVmUnary {
@@ -709,11 +742,15 @@ pub fn expr_is_supported_by_direct_scalar_lowering(expr: &Expr) -> bool {
                 && expr_is_supported_by_direct_scalar_lowering(then_expr)
                 && expr_is_supported_by_direct_scalar_lowering(else_expr)
         }
+        Expr::Call { name, args, .. } => {
+            ExprBuiltin::from_name(name).is_some()
+                && args.len() == 1
+                && expr_is_supported_by_direct_member_index_lowering(&args[0])
+        }
         Expr::List(_, _)
         | Expr::Index { .. }
         | Expr::Member { .. }
         | Expr::StructLiteral { .. }
-        | Expr::Call { .. }
         | Expr::Placeholder(_)
         | Expr::Indirect(_, _)
         | Expr::IndirectLong(_, _)
@@ -855,7 +892,6 @@ pub fn eval_portable_expr_program_v2(
     ctx: &dyn PortableExprEvalContext,
     budgets: PortableExprBudgetsV2,
 ) -> Result<PortableExprEvaluationV2, PortableExprError> {
-    validate_portable_expr_program_v2_skeleton(program, budgets)?;
     let mut evaluation = eval_portable_expr_program_v2_internal(
         program.opcode_version,
         &program.code,
@@ -1105,7 +1141,10 @@ fn expr_program_has_unstable_symbols_v2_scalar(
         types::vm_work::event("expression.unstable_scan_opcodes", 1);
         let opcode = read_opcode_v2(&program.code, &mut ip)?;
         match opcode {
-            ExprVmOpcodeV2::End => return Ok(false),
+            ExprVmOpcodeV2::End => {
+                require_final_end(ip, program.code.len())?;
+                return Ok(false);
+            }
             ExprVmOpcodeV2::PushLiteral => {
                 read_i64_le(&program.code, &mut ip)?;
             }
@@ -1152,7 +1191,13 @@ fn expr_program_has_unstable_symbols_v2_scalar(
                 read_u16_le(&program.code, &mut ip)?;
             }
             ExprVmOpcodeV2::BuildRange => {
-                read_u8(&program.code, &mut ip)?;
+                let flags = read_u8(&program.code, &mut ip)?;
+                if flags & !3 != 0 {
+                    return Err(PortableExprError::new(
+                        DIAG_EXPR_INVALID_PROGRAM,
+                        "invalid v2 range flags",
+                    ));
+                }
             }
             ExprVmOpcodeV2::BuildStructLiteral => {
                 let type_name_idx = read_u16_le(&program.code, &mut ip)? as usize;
@@ -1172,16 +1217,16 @@ fn expr_program_has_unstable_symbols_v2_scalar(
                 }
                 let field_count = read_u16_le(&program.code, &mut ip)? as usize;
                 for _ in 0..field_count {
-                    read_u16_le(&program.code, &mut ip)?;
+                    read_symbol_name(&program.code, &mut ip, &program.symbols)?;
                 }
             }
             ExprVmOpcodeV2::GetMember => {
-                read_u16_le(&program.code, &mut ip)?;
+                read_symbol_name(&program.code, &mut ip, &program.symbols)?;
             }
-            ExprVmOpcodeV2::EmitDiag
-            | ExprVmOpcodeV2::Fail
-            | ExprVmOpcodeV2::PushRegisterRef
-            | ExprVmOpcodeV2::CallBuiltin => {
+            ExprVmOpcodeV2::CallBuiltin => {
+                read_builtin(&program.code, &mut ip)?;
+            }
+            ExprVmOpcodeV2::EmitDiag | ExprVmOpcodeV2::Fail | ExprVmOpcodeV2::PushRegisterRef => {
                 return Err(PortableExprError::new(
                     DIAG_EXPR_UNSUPPORTED_FEATURE,
                     format!(
@@ -1193,7 +1238,7 @@ fn expr_program_has_unstable_symbols_v2_scalar(
         }
     }
 
-    Ok(false)
+    Err(missing_end())
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1343,6 +1388,7 @@ fn eval_portable_expr_program_v2_internal(
     let mut stack: Vec<PortableExprValueV2> = Vec::new();
     let mut ip = 0usize;
     let mut steps = 0usize;
+    let mut ended = false;
     let mut has_symbol_refs = false;
     let mut has_unstable_symbols = false;
 
@@ -1362,7 +1408,11 @@ fn eval_portable_expr_program_v2_internal(
         let opcode = read_opcode_v2(code, &mut ip)?;
         work.step(opcode_offset, opcode as u8);
         match opcode {
-            ExprVmOpcodeV2::End => break,
+            ExprVmOpcodeV2::End => {
+                require_final_end(ip, code.len())?;
+                ended = true;
+                break;
+            }
             ExprVmOpcodeV2::PushLiteral => {
                 stack.push(PortableExprValueV2::Int(read_i64_le(code, &mut ip)?));
                 enforce_stack_budget_v2(&stack, budgets)?;
@@ -1645,10 +1695,41 @@ fn eval_portable_expr_program_v2_internal(
                     &value, ctx,
                 )?));
             }
-            ExprVmOpcodeV2::EmitDiag
-            | ExprVmOpcodeV2::Fail
-            | ExprVmOpcodeV2::PushRegisterRef
-            | ExprVmOpcodeV2::CallBuiltin => {
+            ExprVmOpcodeV2::CallBuiltin => {
+                let builtin = read_builtin(code, &mut ip)?;
+                let value = pop_value_v2(&mut stack)?;
+                let length = match (builtin, value) {
+                    (ExprBuiltin::Len, PortableExprValueV2::List(items)) => items.len(),
+                    (ExprBuiltin::Len, PortableExprValueV2::Range(range)) => {
+                        let start = portable_expr_value_to_scalar(&range.start, ctx)?;
+                        let end = portable_expr_value_to_scalar(&range.end, ctx)?;
+                        let step = range
+                            .step
+                            .as_deref()
+                            .map(|value| portable_expr_value_to_scalar(value, ctx))
+                            .transpose()?;
+                        types::asm_value::AsmValue::try_range(start, end, range.inclusive, step)
+                            .map_err(|error| {
+                                PortableExprError::new(
+                                    DIAG_EXPR_EVAL_FAILURE,
+                                    format!("invalid range: {error:?}"),
+                                )
+                            })?
+                            .len()
+                            .expect("range has a length")
+                    }
+                    _ => {
+                        return Err(PortableExprError::new(
+                            DIAG_EXPR_EVAL_FAILURE,
+                            ".len() expects a range or list argument",
+                        ))
+                    }
+                };
+                stack.push(PortableExprValueV2::Int(
+                    i64::try_from(length).unwrap_or(i64::MAX),
+                ));
+            }
+            ExprVmOpcodeV2::EmitDiag | ExprVmOpcodeV2::Fail | ExprVmOpcodeV2::PushRegisterRef => {
                 return Err(PortableExprError::new(
                     DIAG_EXPR_UNSUPPORTED_FEATURE,
                     format!(
@@ -1662,6 +1743,9 @@ fn eval_portable_expr_program_v2_internal(
         enforce_stack_budget_v2(&stack, budgets)?;
     }
 
+    if !ended {
+        return Err(missing_end());
+    }
     if stack.len() != 1 {
         return Err(PortableExprError::new(
             DIAG_EXPR_INVALID_PROGRAM,
@@ -1808,6 +1892,116 @@ fn range_value_get(range: &PortableExprRangeValueV2, index: usize) -> Option<i64
     in_bounds.then_some(candidate)
 }
 
+fn require_final_end(ip: usize, code_len: usize) -> Result<(), PortableExprError> {
+    if ip != code_len {
+        return Err(PortableExprError::new(
+            DIAG_EXPR_INVALID_PROGRAM,
+            "expression VM program has trailing bytes after End",
+        ));
+    }
+    Ok(())
+}
+
+fn missing_end() -> PortableExprError {
+    PortableExprError::new(
+        DIAG_EXPR_INVALID_PROGRAM,
+        "expression VM program is missing End",
+    )
+}
+
+fn validate_typed_bytecode(code: &[u8], symbols: &[String]) -> Result<(), PortableExprError> {
+    let mut ip = 0;
+    let mut depth = 0usize;
+    while ip < code.len() {
+        let opcode = read_opcode_v2(code, &mut ip)?;
+        let (consumed, produced) = match opcode {
+            ExprVmOpcodeV2::End => {
+                if ip != code.len() || depth != 1 {
+                    return Err(PortableExprError::new(
+                        DIAG_EXPR_INVALID_PROGRAM,
+                        "expression VM must end with exactly one value and no trailing bytes",
+                    ));
+                }
+                return Ok(());
+            }
+            ExprVmOpcodeV2::PushLiteral => {
+                read_i64_le(code, &mut ip)?;
+                (0, 1)
+            }
+            ExprVmOpcodeV2::PushCurrentAddress | ExprVmOpcodeV2::PushPlaceholder => (0, 1),
+            ExprVmOpcodeV2::PushSymbol => {
+                read_symbol_name(code, &mut ip, symbols)?;
+                (0, 1)
+            }
+            ExprVmOpcodeV2::PushStringLiteral => {
+                let len = read_u16_le(code, &mut ip)? as usize;
+                read_bytes(code, &mut ip, len)?;
+                (0, 1)
+            }
+            ExprVmOpcodeV2::ApplyUnary => {
+                ExprVmUnary::from_u8(read_u8(code, &mut ip)?).ok_or_else(|| {
+                    PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid unary opcode")
+                })?;
+                (1, 1)
+            }
+            ExprVmOpcodeV2::ApplyBinary => {
+                ExprVmBinary::from_u8(read_u8(code, &mut ip)?).ok_or_else(|| {
+                    PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid binary opcode")
+                })?;
+                (2, 1)
+            }
+            ExprVmOpcodeV2::SelectTernary => (3, 1),
+            ExprVmOpcodeV2::WrapImmediate
+            | ExprVmOpcodeV2::WrapIndirect
+            | ExprVmOpcodeV2::WrapIndirectLong
+            | ExprVmOpcodeV2::RequireScalar => (1, 1),
+            ExprVmOpcodeV2::IndexValue => (2, 1),
+            ExprVmOpcodeV2::BuildTuple | ExprVmOpcodeV2::BuildList => {
+                (read_u16_le(code, &mut ip)? as usize, 1)
+            }
+            ExprVmOpcodeV2::BuildRange => {
+                let flags = read_u8(code, &mut ip)?;
+                if flags & !3 != 0 {
+                    return Err(PortableExprError::new(
+                        DIAG_EXPR_INVALID_PROGRAM,
+                        "invalid v2 range flags",
+                    ));
+                }
+                (2 + usize::from(flags & 1 != 0), 1)
+            }
+            ExprVmOpcodeV2::BuildStructLiteral => {
+                read_symbol_name(code, &mut ip, symbols)?;
+                let count = read_u16_le(code, &mut ip)? as usize;
+                for _ in 0..count {
+                    read_symbol_name(code, &mut ip, symbols)?;
+                }
+                (count, 1)
+            }
+            ExprVmOpcodeV2::GetMember => {
+                read_symbol_name(code, &mut ip, symbols)?;
+                (1, 1)
+            }
+            ExprVmOpcodeV2::CallBuiltin => {
+                read_builtin(code, &mut ip)?;
+                (1, 1)
+            }
+            ExprVmOpcodeV2::EmitDiag | ExprVmOpcodeV2::Fail | ExprVmOpcodeV2::PushRegisterRef => {
+                return Err(PortableExprError::new(
+                    DIAG_EXPR_UNSUPPORTED_FEATURE,
+                    "unsupported expression VM opcode",
+                ))
+            }
+        };
+        depth = depth.checked_sub(consumed).ok_or_else(|| {
+            PortableExprError::new(DIAG_EXPR_STACK_UNDERFLOW, "expression VM stack underflow")
+        })? + produced;
+    }
+    Err(PortableExprError::new(
+        DIAG_EXPR_INVALID_PROGRAM,
+        "expression VM program is missing End",
+    ))
+}
+
 pub fn validate_portable_expr_program_v2_skeleton(
     program: &PortableExprProgramV2,
     budgets: PortableExprBudgetsV2,
@@ -1851,6 +2045,7 @@ pub fn validate_portable_expr_program_v2_skeleton(
         ));
     }
 
+    validate_typed_bytecode(&program.code, &program.symbols)?;
     Ok(())
 }
 
@@ -2120,11 +2315,34 @@ impl ExprCompiler {
                 self.stack_collapse(fields.len())?;
                 Ok(())
             }
-            Expr::Call { span, .. } => Err(PortableExprError::with_span(
-                DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "Call expression cannot be evaluated as scalar expression",
-                *span,
-            )),
+            Expr::Call { name, args, span } => {
+                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
+                    return Err(PortableExprError::with_span(
+                        DIAG_EXPR_UNSUPPORTED_FEATURE,
+                        "Call expression cannot be evaluated as scalar expression",
+                        *span,
+                    ));
+                }
+                let builtin = ExprBuiltin::from_name(name).ok_or_else(|| {
+                    PortableExprError::with_span(
+                        DIAG_EXPR_EVAL_FAILURE,
+                        "Unknown compile-time function call",
+                        *span,
+                    )
+                })?;
+                if args.len() != 1 {
+                    return Err(PortableExprError::with_span(
+                        DIAG_EXPR_EVAL_FAILURE,
+                        ".len() expects exactly one argument",
+                        *span,
+                    ));
+                }
+                self.compile(&args[0])?;
+                self.code.push(ExprVmOpcodeV2::CallBuiltin as u8);
+                self.code.push(builtin as u8);
+                self.emit_u16(1);
+                Ok(())
+            }
             Expr::Placeholder(span) => Err(PortableExprError::with_span(
                 DIAG_EXPR_UNSUPPORTED_FEATURE,
                 "Placeholder cannot be evaluated as scalar expression",
@@ -2301,6 +2519,7 @@ impl ExprCompiler {
                 self.stack_pop()?;
                 Ok(())
             }
+            Expr::Call { .. } => self.compile(expr),
             _ => Err(PortableExprError::new(
                 DIAG_EXPR_UNSUPPORTED_FEATURE,
                 "expression is outside direct scalar lowering coverage",
@@ -2794,7 +3013,10 @@ mod tests {
     fn expr_vm_v2_skeleton_types_are_constructible() {
         let program = PortableExprProgramV2 {
             opcode_version: EXPR_VM_OPCODE_VERSION_V2,
-            code: vec![ExprVmOpcodeV2::End as u8],
+            code: vec![
+                ExprVmOpcodeV2::PushPlaceholder as u8,
+                ExprVmOpcodeV2::End as u8,
+            ],
             symbols: vec!["label".to_string()],
             declared_stack_depth: 1,
             result_mode: PortableExprResultModeV2::ShapePreserving,
@@ -3725,5 +3947,219 @@ mod tests {
         .expect("eval literal");
 
         assert_eq!(result.value, 0x0B8);
+    }
+    fn len_call(argument: Expr) -> Expr {
+        Expr::Call {
+            name: ".LeN".into(),
+            args: vec![argument],
+            span: span(),
+        }
+    }
+
+    #[test]
+    fn builtin_len_round_trips_typed_arguments_and_scalar_result() {
+        let number = |value: i64| {
+            if value == i64::MIN {
+                Expr::Binary {
+                    op: BinaryOp::Subtract,
+                    left: Box::new(Expr::Number((-i64::MAX).to_string(), span())),
+                    right: Box::new(Expr::Number("1".into(), span())),
+                    span: span(),
+                }
+            } else {
+                Expr::Number(value.to_string(), span())
+            }
+        };
+        let cases = [
+            (Expr::List(vec![number(1), number(2)], span()), 2),
+            (Expr::List(vec![], span()), 0),
+            (
+                Expr::Range {
+                    start: Box::new(number(3)),
+                    end: Box::new(number(0)),
+                    step: None,
+                    inclusive: true,
+                    span: span(),
+                },
+                4,
+            ),
+            (
+                Expr::Range {
+                    start: Box::new(number(i64::MAX)),
+                    end: Box::new(number(i64::MIN)),
+                    step: Some(Box::new(number(i64::MIN))),
+                    inclusive: false,
+                    span: span(),
+                },
+                2,
+            ),
+            (
+                Expr::Range {
+                    start: Box::new(number(i64::MIN)),
+                    end: Box::new(number(i64::MAX)),
+                    step: None,
+                    inclusive: false,
+                    span: span(),
+                },
+                i64::MAX,
+            ),
+        ];
+        for (argument, expected) in cases {
+            let expr = len_call(argument);
+            let program = compile_core_expr_to_portable_program_with_opcode_version(
+                &expr,
+                EXPR_VM_OPCODE_VERSION_V2,
+            )
+            .unwrap();
+            assert!(program
+                .code
+                .windows(4)
+                .any(|bytes| bytes == [0x62, 1, 1, 0]));
+            assert_eq!(
+                eval_portable_expr_program(&program, &TestCtx::default(), Default::default())
+                    .unwrap()
+                    .value,
+                expected
+            );
+            assert!(!expr_program_has_unstable_symbols(
+                &program,
+                &TestCtx::default(),
+                Default::default()
+            )
+            .unwrap());
+        }
+    }
+
+    #[test]
+    fn builtin_len_rejects_scalar_and_invalid_ranges() {
+        let number = |value: i64| {
+            if value == i64::MIN {
+                Expr::Binary {
+                    op: BinaryOp::Subtract,
+                    left: Box::new(Expr::Number((-i64::MAX).to_string(), span())),
+                    right: Box::new(Expr::Number("1".into(), span())),
+                    span: span(),
+                }
+            } else {
+                Expr::Number(value.to_string(), span())
+            }
+        };
+        for argument in [
+            number(3),
+            Expr::Range {
+                start: Box::new(number(0)),
+                end: Box::new(number(3)),
+                step: Some(Box::new(number(0))),
+                inclusive: false,
+                span: span(),
+            },
+            Expr::Range {
+                start: Box::new(number(0)),
+                end: Box::new(number(i64::MAX)),
+                step: None,
+                inclusive: true,
+                span: span(),
+            },
+            Expr::Range {
+                start: Box::new(number(0)),
+                end: Box::new(number(3)),
+                step: Some(Box::new(number(-1))),
+                inclusive: false,
+                span: span(),
+            },
+        ] {
+            let program = compile_core_expr_to_portable_program_with_opcode_version(
+                &len_call(argument),
+                EXPR_VM_OPCODE_VERSION_V2,
+            )
+            .unwrap();
+            assert!(
+                eval_portable_expr_program(&program, &TestCtx::default(), Default::default())
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_len_rejects_malformed_bytecode_and_arity() {
+        let expr = len_call(Expr::List(vec![], span()));
+        let valid = compile_core_expr_to_portable_program_with_opcode_version(
+            &expr,
+            EXPR_VM_OPCODE_VERSION_V2,
+        )
+        .unwrap();
+        let call = valid.code.iter().position(|byte| *byte == 0x62).unwrap();
+        for (offset, value) in [(1, 255), (2, 0), (2, 2), (3, 1)] {
+            let mut program = valid.clone();
+            program.code[call + offset] = value;
+            assert!(
+                eval_portable_expr_program(&program, &TestCtx::default(), Default::default())
+                    .is_err()
+            );
+            assert!(expr_program_has_unstable_symbols(
+                &program,
+                &TestCtx::default(),
+                Default::default()
+            )
+            .is_err());
+        }
+        for length in call..valid.code.len() {
+            let mut program = valid.clone();
+            program.code.truncate(length);
+            assert!(
+                eval_portable_expr_program(&program, &TestCtx::default(), Default::default())
+                    .is_err()
+            );
+        }
+        for args in [vec![], vec![expr.clone(), expr]] {
+            let call = Expr::Call {
+                name: ".len".into(),
+                args,
+                span: span(),
+            };
+            assert!(compile_core_expr_to_portable_program_with_opcode_version(
+                &call,
+                EXPR_VM_OPCODE_VERSION_V2
+            )
+            .is_err());
+        }
+    }
+    #[test]
+    fn typed_execution_and_scanning_require_final_end() {
+        let valid = compile_core_expr_to_portable_program_with_opcode_version(
+            &len_call(Expr::List(vec![], span())),
+            EXPR_VM_OPCODE_VERSION_V2,
+        )
+        .unwrap();
+        let mut missing = valid.clone();
+        missing.code.pop();
+        let mut trailing = valid.clone();
+        trailing.code.push(ExprVmOpcodeV2::End as u8);
+        for program in [missing, trailing] {
+            assert!(
+                eval_portable_expr_program(&program, &TestCtx::default(), Default::default())
+                    .is_err()
+            );
+            assert!(expr_program_has_unstable_symbols(
+                &program,
+                &TestCtx::default(),
+                Default::default()
+            )
+            .is_err());
+            let typed = PortableExprProgramV2 {
+                opcode_version: program.opcode_version,
+                code: program.code,
+                symbols: program.symbols,
+                declared_stack_depth: program.declared_stack_depth,
+                result_mode: PortableExprResultModeV2::ShapePreserving,
+            };
+            assert!(
+                eval_portable_expr_program_v2(&typed, &TestCtx::default(), Default::default())
+                    .is_err()
+            );
+            assert!(
+                validate_portable_expr_program_v2_skeleton(&typed, Default::default()).is_err()
+            );
+        }
     }
 }

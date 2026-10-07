@@ -19,6 +19,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_package_loader as loader
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_discovery as discovery
 	.use experimental.amigaos.binary_input_plan as inputs
 	.use experimental.amigaos.binary_line_input as line_input
@@ -281,6 +282,8 @@ freeBlocks
 	jsr memory.release
 	lea Symbols, a0
 	jsr memory.release
+	lea ValueOwner, a0
+	jsr values.release
 	lea Parameters, a0
 	jsr memory.release
 	lea Output, a0
@@ -1470,6 +1473,12 @@ run	.block
 	adda.l NameCount, a2
 	move.l a2, package.Context.SectionIds(a0)
 	move.l NameCount, package.Context.Count(a0)
+	move.l #ValueOwner, package.Context.Owner(a0)
+	lea ValueOwner, a0
+	move.l NameCount, d0
+	jsr values.init
+	bne.w bad
+	lea Context, a0
 	lea Parameters, a1
 	move.l memory.Block.Pointer(a1), package.Context.Parameters(a0)
 	move.l ParameterBytes, d0
@@ -2049,6 +2058,7 @@ NameCount	.res long, 1
 Front	.res byte, frontend.FRAME_BYTES
 Work	.res byte, assembly.FRAME_BYTES
 Context	.res byte, package.CONTEXT_BYTES
+ValueOwner	.res byte, values.OWNER_BYTES
 PackageSource	.res byte, loader.FRAME_BYTES
 PackageStatus	.res long, 1
 RuntimeBlock	.res byte, memory.Block.Used+4

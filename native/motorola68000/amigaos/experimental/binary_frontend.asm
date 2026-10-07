@@ -2054,6 +2054,9 @@ activate	.block
 	adda.l #EXPRESSION_WORK, a1
 	move.l #expression.WORKSPACE_BYTES, d1
 	jsr expression.configure
+	moveq #0, d0
+	move.w package.Header.BuiltinLenName(a2), d0
+	jsr expression.configureBuiltin
 	adda.l package.Header.Tokenizer(a2), a2
 	bsr.w activateControl
 	bra.w done
@@ -2096,6 +2099,8 @@ resetControl
 	moveq #0, d0
 	moveq #0, d1
 	jsr expression.configure
+	moveq #-1, d0
+	jsr expression.configureBuiltin
 	moveq #0, d0
 	jsr control.tkvmSetStepBudget68000
 	moveq #0, d0
@@ -2148,6 +2153,9 @@ configure	.block
 	adda.l #EXPRESSION_WORK, a1
 	move.l #expression.WORKSPACE_BYTES, d1
 	jsr expression.configure
+	moveq #0, d0
+	move.w package.Header.BuiltinLenName(a4), d0
+	jsr expression.configureBuiltin
 	bsr.w validateMacroPrograms
 	bne.w bad
 	bsr.w validateMemberBindings
@@ -2155,6 +2163,11 @@ configure	.block
 	moveq #0, d0
 	move.w package.Header.NameCount(a4), d0
 	move.l d0, NEXT_ID(a6)
+	tst.w package.Header.BuiltinReserved(a4)
+	bne.w bad
+	move.w package.Header.BuiltinLenName(a4), d1
+	cmp.w d0, d1
+	bhs.w bad
 	move.l package.Header.Dictionary(a4), d0
 	cmpi.l #HEADER_BYTES, d0
 	blo.w bad
@@ -2167,6 +2180,7 @@ configure	.block
 	move.l d6, DICTIONARY_COUNT(a6)
 	movea.l a6, a3
 	adda.l #SCRATCH_BYTES, a3
+	moveq #0, d3
 dictLoop
 	tst.l d6
 	beq.w indexDictionary
@@ -2183,6 +2197,14 @@ dictLoop
 	move.w 2(a2), d2
 	cmp.l NEXT_ID(a6), d2
 	bhs.w bad
+	btst #package.DICTIONARY_BUILTIN_BIT, package.DictionaryEntry.Roles(a2)
+	beq.w dictionaryNext
+	cmp.w package.Header.BuiltinLenName(a4), d2
+	bne.w bad
+	tst.b package.DictionaryEntry.Qualifier(a2)
+	bne.w bad
+	addq.l #1, d3
+dictionaryNext
 	addi.l #6, d1
 	addq.l #1, d1
 	andi.l #$fffffffe, d1
@@ -2197,6 +2219,8 @@ dictLoop
 	bra.w dictLoop
 ; Insert backwards so duplicate folded spellings retain original first-match order.
 indexDictionary
+	cmpi.l #1, d3
+	bne.w bad
 	move.l DICTIONARY_COUNT(a6), d6
 indexLoop
 	tst.l d6
@@ -2502,6 +2526,8 @@ bind	.block
 	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d2
 	beq.w packageName
+	cmpi.l #writer.BIND_ROLE_CALL_NAME, d2
+	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_INLINE_HEAD, d2
 	beq.w packageName
 	; Column-one names are declarations even when their spelling also occurs
@@ -2540,12 +2566,20 @@ findPackage
 	move.l d6, d0
 	bsr.w equal
 	bne.w advance
+	cmpi.l #writer.BIND_ROLE_CALL_NAME, d5
+	bne.w statePackageEntry
+	btst #package.DICTIONARY_BUILTIN_BIT, package.DictionaryEntry.Roles(a3)
+	beq.w advance
+	bra.w entryFound
+statePackageEntry
 	cmpi.l #writer.BIND_ROLE_STATE_ARGUMENT, d5
 	bne.w ordinaryPackageEntry
 	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
 	beq.w advance
 	bra.w entryFound
 ordinaryPackageEntry
+	cmpi.b #package.DICTIONARY_BUILTIN, package.DictionaryEntry.Roles(a3)
+	beq.w advance
 	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
 	bne.w advance
 entryFound
@@ -2596,6 +2630,8 @@ findSymbol
 	tst.l d5
 	beq.w valueEnvironment
 	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d5
+	beq.w valueEnvironment
+	cmpi.l #writer.BIND_ROLE_CALL_NAME, d5
 	bne.w bindScopedName
 valueEnvironment
 	movea.l a1, a4

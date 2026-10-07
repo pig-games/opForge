@@ -38,7 +38,7 @@ NAME_BYTES = 256
 
 ; A0=packed records,D0=bytes,A1=Entry array,
 ; D1=source ID base,D2=entry count. D0/CCR=status; other registers preserved.
-; Literal payloads are skipped using the compact-expression contract. Only
+; Compact and canonical typed payloads are skipped by their encoded widths. Only
 ; symbol operands are rewritten, with their original BE/LE representation.
 remap	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -75,7 +75,9 @@ token
 	cmpi.b #1, d0
 	bls.w name
 	cmpi.b #expr.COMPILED_TAG, d0
-	beq.w expression
+	beq.w compactExpression
+	cmpi.b #expr.VALUE_TAG, d0
+	beq.w typedExpression
 	cmpi.b #2, d0
 	beq.w literal
 	cmpi.b #3, d0
@@ -109,6 +111,11 @@ name
 	move.w d1, (a0)
 	addq.l #3, a0
 	bra.w token
+compactExpression
+	moveq #0, d5
+	bra.w expression
+typedExpression
+	moveq #1, d5
 expression
 	cmpa.l a4, a0
 	bhs.w bad
@@ -125,6 +132,8 @@ opcode
 	moveq #0, d0
 	move.b (a0)+, d0
 	beq.w endExpression
+	tst.l d5
+	bne.w typedOpcode
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d0
 	beq.w symbol
 	cmpi.b #runtime.COMPACT_I8, d0
@@ -152,6 +161,30 @@ opcode
 	cmpi.b #runtime.COMPACT_MULTIPLY, d0
 	beq.w opcode
 	bra.w bad
+typedOpcode
+	cmpi.b #$10, d0
+	beq.w eight
+	cmpi.b #$11, d0
+	beq.w opcode
+	cmpi.b #$12, d0
+	beq.w symbol
+	cmpi.b #$20, d0
+	beq.w one
+	cmpi.b #$21, d0
+	beq.w one
+	cmpi.b #$51, d0
+	beq.w two
+	cmpi.b #$61, d0
+	beq.w opcode
+	cmpi.b #$62, d0
+	beq.w three
+	cmpi.b #$70, d0
+	beq.w opcode
+	bra.w bad
+three
+	addq.l #3, a0
+	bra.w opcode
+
 one
 	addq.l #1, a0
 	bra.w opcode
@@ -167,7 +200,7 @@ eight
 symbol
 	move.l a3, d0
 	sub.l a0, d0
-	cmpi.l #3, d0
+	cmpi.l #2, d0
 	blo.w bad
 	moveq #0, d0
 	move.b 1(a0), d0

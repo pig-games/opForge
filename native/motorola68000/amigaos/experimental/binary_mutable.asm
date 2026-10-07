@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use opasm.amigaos.binary_expression as expression
 	.use exprvm.amigaos.runtime as runtime
+	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_source as source
 	.pub
 DEFINED = 3
@@ -99,12 +100,15 @@ execute	.block
 	beq.w evaluate
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
 	beq.w good
-	cmpi.b #DEFINED, 0(a3, d4.l)
+	moveq #0, d0
+	move.b 0(a3, d4.l), d0
+	andi.b #$7f, d0
+	cmpi.b #DEFINED, d0
 	bne.w bad
 evaluate
 	addq.l #5, a0
 	movea.l a2, a6
-	jsr expression.evaluate
+	jsr expression.evaluateValue
 	movea.l a6, a2
 	tst.l d0
 	bne.w bad
@@ -115,6 +119,27 @@ evaluate
 resolved
 	cmpa.l a1, a0
 	bne.w bad
+	tst.l package.Context.Kind(a2)
+	beq.w kindStore
+	tst.w package.Context.Relocatable(a2)
+	bne.w bad
+kindStore
+	movem.l d1-d2/a0, -(sp)
+	movea.l package.Context.Owner(a2), a0
+	move.l a0, d0
+	beq.w noOwner
+	move.l d4, d1
+	move.l package.Context.Kind(a2), d2
+	jsr values.setKind
+	bra.w kindReady
+noOwner
+	tst.l package.Context.Kind(a2)
+	beq.w kindReady
+	moveq #1, d0
+kindReady
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	bne.w bad
 	movea.l package.Context.Values(a2), a3
 	move.l d4, d5
 	lsl.l #3, d5
@@ -122,6 +147,15 @@ resolved
 	move.l package.Context.High(a2), runtime.Value.High(a3, d5.l)
 	movea.l package.Context.Defined(a2), a3
 	move.b #DEFINED, 0(a3, d4.l)
+	tst.l package.Context.Kind(a2)
+	beq.w scalarStored
+	tst.l d2
+	beq.w compoundStored
+	clr.b 0(a3, d4.l)
+	bra.w scalarStored
+compoundStored
+	move.b #DEFINED+(1<<expression.COMPOUND_BIT), 0(a3, d4.l)
+scalarStored
 	movea.l package.Context.SectionIds(a2), a3
 	clr.b 0(a3, d4.l)
 good

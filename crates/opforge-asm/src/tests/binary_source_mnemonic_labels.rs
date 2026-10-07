@@ -89,7 +89,7 @@ fn dictionary_offsets(wire: &[u8]) -> BTreeMap<String, usize> {
 #[test]
 fn compact_mnemonic_dictionary_roles() {
     let wire = wire();
-    assert_eq!(&wire[..4], b"BS30");
+    assert_eq!(&wire[..4], b"BS31");
     let offsets = dictionary_offsets(&wire);
     for spelling in ["reset", "word", "m68020", "68020"] {
         assert_eq!(wire[offsets[spelling] + 5], 0, "{spelling} is contextual");
@@ -109,7 +109,8 @@ fn compact_mnemonic_dictionary_roles() {
     for spelling in ["on", "off", "68881"] {
         assert_eq!(wire[offsets[spelling] + 5], 4, "{spelling} is state-only");
     }
-    assert!(offsets.values().all(|offset| wire[offset + 5] & !7 == 0));
+    assert!(offsets.values().all(|offset| wire[offset + 5] & !15 == 0));
+    assert_eq!(wire[offsets["len"] + 5], 8, "shared builtin role only");
 }
 
 const QUOTED_CONTROL: &str = ".cpu \"m68020\"\n .byte \"reset\"\n rts\n.end\n";
@@ -154,7 +155,7 @@ fn compact_mnemonic_unknown_dictionary_role_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; BS24 lacks the BS30 immediate-expression contract"]
+#[ignore = "requires configured FS-UAE; BS24 lacks the BS31 immediate-expression contract"]
 fn compact_mnemonic_stale_contract_fs_uae() {
     let mut wire = wire();
     wire[..4].copy_from_slice(b"BS24");

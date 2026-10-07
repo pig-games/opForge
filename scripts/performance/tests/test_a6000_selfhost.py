@@ -17,17 +17,17 @@ SPEC.loader.exec_module(runner)
 
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
-        package = bytearray(208)
-        package[:4] = b"BS30"
-        package[168:172] = (208).to_bytes(4, "big")
+        package = bytearray(212)
+        package[:4] = b"BS31"
+        package[168:172] = (212).to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
         package[176:178] = (2).to_bytes(2, "big")
         package.extend(b"\0" * 4)
-        package[180:184] = (212).to_bytes(4, "big")
+        package[180:184] = (216).to_bytes(4, "big")
         package[184:188] = (23).to_bytes(4, "big")
         package[188:190] = (2).to_bytes(2, "big")
         package.extend(b"\0" * 24)
-        package[160:164] = (208).to_bytes(4, "big")
+        package[160:164] = (212).to_bytes(4, "big")
         package[200:204] = len(package).to_bytes(4, "big")
         package[204:208] = (1).to_bytes(4, "big")
         package.extend(b"\0\0")
@@ -111,7 +111,7 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS26", 210, "package mismatch"),
                                    (b"BS27", 210, "package mismatch"),
                                    (b"BS29", 210, "package mismatch"),
-                                   (b"BS30", 207, "package header")):
+                                   (b"BS31", 211, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -126,7 +126,7 @@ class HardwareCompletionTests(unittest.TestCase):
         mutations = [
             (4, 4, 209, "package header"),
             (72, 4, 198, "package region"),
-            (72, 4, 240, "package region"),
+            (72, 4, 244, "package region"),
             (72, 4, 209, "package region"),
             (160, 4, 168, "member-binding table"),
             (160, 4, 201, "member-binding table"),
@@ -136,8 +136,8 @@ class HardwareCompletionTests(unittest.TestCase):
             (164, 4, 0xFFFFFFFF, "member-binding table"),
             (200, 4, 0, "expression program"),
             (200, 4, 206, "expression program"),
-            (200, 4, 237, "expression program"),
-            (200, 4, 238, "expression program"),
+            (200, 4, 241, "expression program"),
+            (200, 4, 242, "expression program"),
             (204, 4, 0, "expression program"),
             (204, 4, 65536, "expression program"),
             (204, 4, 3, "expression program"),
@@ -146,7 +146,7 @@ class HardwareCompletionTests(unittest.TestCase):
             mutations.extend([
                 (start, 4, 168, label),
                 (start, 4, 201, label),
-                (start, 4, 238, label),
+                (start, 4, 242, label),
                 (start + 4, 4, 0, label),
                 (start + 8, 2, 1, label),
                 (start + 10, 2, 1, label),
@@ -179,7 +179,7 @@ class HardwareCompletionTests(unittest.TestCase):
                 runner.load_bundle(root)
 
     def test_embedded_target_must_be_inside_runtime_region_after_current_header(self):
-        for offset, runtime in ((168, 238), (238, 238)):
+        for offset, runtime in ((168, 242), (242, 242)):
             with self.subTest(offset=offset, runtime=runtime), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.embedded_bundle(root)
@@ -310,7 +310,7 @@ class HardwareCompletionTests(unittest.TestCase):
             ("configured_entry", "native", None, "Current source"),
             ("generated_catalog", None, b'.incbin "/host/package.bin"\n', "catalog"),
             ("generated_catalog", None, b'.incbin "packages/m68020--motorola68k.bin"\n' * 2, "catalog"),
-            ("package_asset", None, b"BS30corrupt", "asset mismatch"),
+            ("package_asset", None, b"BS31corrupt", "asset mismatch"),
         ]
         for origin, replacement_origin, data, error in mutations:
             with self.subTest(origin=origin, error=error), tempfile.TemporaryDirectory() as directory:

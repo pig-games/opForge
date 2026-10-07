@@ -7919,6 +7919,9 @@ mod compact_cli_outputs;
 mod compact_cli_records;
 
 #[cfg(test)]
+#[path = "tests/native_expression_lists.rs"]
+mod native_expression_lists;
+#[cfg(test)]
 #[path = "tests/native_layout_parity.rs"]
 mod native_layout_parity;
 

@@ -9,8 +9,10 @@ bound numeric tokens and lowers a transient offset-based tree to ExprVM programs
 Native EXVM has no version argument, field, check or dispatch. Consolidation of
 other VM contracts and retirement of the old native text service remain open.
 The subsequent compound-tree checkpoint adds list/range/index/call builders
-through the same grammar. Typed storage, lowering and execution remain open;
-native CLI compound-value support is not claimed.
+through the same grammar. BS31 adds typed lowering and session-owned flat-list
+storage/execution;
+its focused scope and remaining boundaries are in the active plan. Ranges and
+preparation-time compound values remain open; full language parity is not claimed.
 Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
 still unresolved. BS28 introduced numeric `:=`
 normalization to shared declarations.
@@ -79,8 +81,9 @@ uses 68020/74 MiB; no physical A6000 timing, peak-memory capture or 2 MiB fit is
 claimed.
 
 Compared with the BS28 full baseline, Hunk grows 3,244 bytes, including 602 package
-bytes, and linked static reservation grows 3,188 bytes. Only current BS30 packages
-are accepted; older bundles are baseline evidence. Raw CAS2 colon normalization, other path/
+bytes, and linked static reservation grows 3,188 bytes. Current executables accept
+only BS31 packages; the BS30 result remains baseline evidence and is not a proof
+for the later executable. Raw CAS2 colon normalization, other path/
 call-child forms, unused extra call-argument preparation and localized
 import-alias/local-struct shadowing remain open.
 
@@ -109,7 +112,7 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The current script validates BS30 package headers, mapped source preamble and
+The current script validates BS31 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. The
 older BS28 bundle is baseline evidence and cannot be used with the current validator.
@@ -124,8 +127,8 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS30 before selecting it in the current hardware
-runner; the stored BS20 bundle is baseline evidence only.
+instrumented configuration as BS31 and qualify it before selecting it in the
+current hardware runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
 per-opcode tokenizer probes. The exporter retains fresh native stdout/stderr and
@@ -194,7 +197,7 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS30 is the current compact package format; the producer writes `BS30` and the
+BS31 is the current compact package format; the producer writes `BS31` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Candidate rows are 36 bytes: offsets
 0–31 retain their previous fields, byte 32 carries the third-operand form nibble,
@@ -222,7 +225,7 @@ and encoding; native code only validates the structural wrapper.
 Kind 26 traverses package-owned numeric expression paths. Its Class word is
 path byte length (4–32, a multiple of four), Literal is a package-base-relative
 path offset and Reserved is zero. The standard value-program field remains
-available. Deduplicated path programs occupy the arena between the 208-byte
+available. Deduplicated path programs occupy the arena between the 212-byte
 header and candidate rows; projection descriptor arrays stay contiguous.
 Each step is `opcode:u8, argument:u8, parameter:u16` in big-endian order:
 indirect/bracket unwrap (1/2), tuple child 0–2 (3), register/class (4), qualified
@@ -255,7 +258,7 @@ already-proven complete non-tuple root disproves those rows; unknown structure
 and contradictory predicates remain closed. The represented nested full-extension paths are executable; other path
 operations, terminals and call-child forms remain explicit unsupported boundaries. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
-or CPU-specific native parsing. Its header is 208 bytes, with
+or CPU-specific native parsing. Its header is 212 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its
@@ -266,7 +269,11 @@ projections. Head-policy offset/length are at 168/172, PRVM version at 176 and
 a zero reserved word at 178. Declaration-plan offset/length are at 180/184, its
 PRVM version at 188 and a zero reserved word at 190. Numeric state-plan
 offset/length are at 192/196. Expression-program offset/length are at 200/204,
-with no EXVM version field. The final word of each 32-byte candidate row is a
+with no EXVM version field. The core `.len` name ID is at 208 and the word at
+210 is reserved zero. Dictionary role bit 3 marks core builtins, excluded from
+ordinary lexical-name lookup. Dot-call binding resolves builtin names before
+EXVM execution; generic call trees still carry opaque numeric IDs. The final word
+of each 32-byte candidate row is a
 one-based state guard, zero when unguarded. Dictionary role bit 2 is reserved
 for state-argument spellings and excluded from ordinary name lookup. These
 policies and the state plan stay inside the retained RuntimeBytes prefix.
@@ -457,7 +464,7 @@ Macro definitions and calls use package-selected PRVM services and bounded offse
 | Native frontend and preparation | [frontend](../../native/motorola68000/amigaos/experimental/binary_frontend.asm), [preparation](../../native/motorola68000/amigaos/experimental/binary_prepare.asm), [writer](../../native/motorola68000/amigaos/experimental/binary_source.asm) | Token use, identity binding, recipe selection and packed-source output. |
 | Macro fragments and descriptors | [templates](../../native/motorola68000/amigaos/experimental/binary_templates.asm), [macro plans](../../native/motorola68000/amigaos/experimental/binary_macro_plans.asm), and PRVM package producers | Offset-only descriptors, lexical hygiene and selected string/argument recipes. |
 | Bounded product nodes | [products](../../native/motorola68000/amigaos/experimental/binary_products.asm) and tuple preparation | Numeric node framing; scalar identity proof through ExprVM, with target choices in package projections. |
-| Expression parsing and execution | [native expression compiler](../../native/motorola68000/amigaos/experimental/binary_expression.asm) and shared ExprVM | Current compiler is the unresolved native parser boundary; evaluation stays in ExprVM. |
+| Expression parsing and execution | [native expression compiler](../../native/motorola68000/amigaos/experimental/binary_expression.asm) and shared ExprVM | Shared EXVM owns syntax; scalar/typed lowering emits bounded ExprVM programs. |
 
 These are responsibility references, not an exhaustive source or instruction
 audit. CPU/family semantics stay in package definitions and their specialized
@@ -467,7 +474,7 @@ fall through to instruction handling.
 
 ### Native proof boundary
 
-The maintained proof contract is [native Rust parity](../../agents/rules/native-rust-parity-porting.md). Fresh guest completion is mandatory: timeout, crash, partial capture, or launcher success is not completion. Compare against a live Rust build from identical source bytes. The run recorded at the top is the current-source baseline; any later source change requires a fresh exact proof.
+The maintained proof contract is [native Rust parity](../../agents/rules/native-rust-parity-porting.md). Fresh guest completion is mandatory: timeout, crash, partial capture, or launcher success is not completion. Compare against a live Rust build from identical source bytes. The full run recorded at the top qualifies that earlier source state; later source changes require a fresh full proof.
 
 ## Related current documentation
 

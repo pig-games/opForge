@@ -177,6 +177,8 @@ scan
 	beq.w stringToken
 	cmpi.b #$81, d0
 	beq.w compiledToken
+	cmpi.b #$83, d0
+	beq.w compiledToken  ; typed programs are opaque expression capsules too
 	cmpi.b #4, d0
 	beq.w commaToken
 	cmpi.b #14, d0

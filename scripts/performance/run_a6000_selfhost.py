@@ -25,7 +25,7 @@ INSTRUMENTATION_DEFINES = {
     "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
 }
-PACKAGE_HEADER_BYTES = 208
+PACKAGE_HEADER_BYTES = 212
 
 
 def fnv(data):
@@ -138,7 +138,7 @@ def load_bundle(bundle):
         raise ValueError("Release bootstrap/oracle mismatch")
     # Only the current package contract is supported. This transport verifies
     # assets and header regions; the native runtime interprets VM opcodes.
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS30":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS31":
         raise ValueError("Runtime package mismatch")
     if len(package) < PACKAGE_HEADER_BYTES or int.from_bytes(package[4:8], "big") != len(package):
         raise ValueError("Invalid runtime package header")

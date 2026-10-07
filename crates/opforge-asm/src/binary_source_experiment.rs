@@ -17,7 +17,7 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 208;
+const HEADER: usize = 212;
 pub(crate) const ROW: usize = 36;
 const SCALAR_ADDRESS_IDENTITY: u16 = 1;
 
@@ -141,6 +141,8 @@ impl DictionaryRoleFlags {
     const MEMBER: Self = Self(2);
     // Exact STVM spellings retain their identity only in state directive operands.
     const STATE_ARGUMENT: Self = Self(4);
+    // Core call names retain identity only before a call argument list.
+    const BUILTIN: Self = Self(8);
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -150,7 +152,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS30 block for one resolved package hierarchy.
+/// Prepare a self-contained BS31 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -438,6 +440,14 @@ pub fn prepare_package(
             recipe: CandidateRecipe::None,
         });
     }
+    let builtin_len = intern(&mut names, "len")?;
+    bind(
+        &mut dictionary,
+        "len".into(),
+        builtin_len,
+        0,
+        DictionaryRoleFlags::BUILTIN,
+    )?;
     let total_names = word(names.len())?;
     candidates.sort_by_key(|row| {
         (
@@ -451,7 +461,8 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS30");
+    out[..4].copy_from_slice(b"BS31");
+    set_word(&mut out, 208, builtin_len);
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
         .candidates

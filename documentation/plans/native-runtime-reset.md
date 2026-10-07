@@ -1,14 +1,14 @@
 # Native assembler completion plan
 
-Status: active. BS30 retains the shared EXVM grammar and extends scalar declaration
-policy with `:?=`. The [last complete full self-host checkpoint](#shared-exvm-migration-qualification)
+Status: active. BS31 adds statement-time flat lists and numeric `.len` binding
+while retaining the shared EXVM grammar and scalar `:?=` policy. The
+[last complete full self-host checkpoint](#shared-exvm-migration-qualification)
 has exact equality for all 538,336 Hunk bytes on 68020/74 MiB in
 1,253.615809917 seconds. Scalar `:?=` forward-initializer semantics remain an open
 decision, and broad tests retain 54 inherited failures. No new physical
 A6000 run or complete peak-memory result is claimed. Current executables require
-BS30 packages; superseded contracts have no compatibility executor. The subsequent
-program-fetch register experiment below has focused qualification only; it has
-not rerun the complete self-host or replaced the qualified hardware bundle.
+BS31 packages; superseded contracts have no compatibility executor. Subsequent
+compiler/list work has focused qualification only; it has not rerun the complete self-host or replaced the qualified hardware bundle.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -130,24 +130,71 @@ Both image and linked reservation grow 668 bytes; the reusable workspace stays
 5,720 bytes. Linked reservation is not peak memory. Image FNV changes from
 `c6357c068b0e4acb` to `1d9d93fb60d26dbc`; the package contract is unchanged.
 
-Next, integrate a shared typed value owner and lowering/evaluation. Keep the
-existing signed64 scalar cells and compact scalar path; compound symbols need
-explicit kinds and offsets into separately owned, growable storage that survives
-preparation and assembly passes. Do not retain the transient EXVM arena or store
-pointers as numeric symbol values. Immutable aliases snapshot concrete values;
-ranges stay compact descriptors rather than expanded lists. Preserve Rust's
-signed indexing, direction, step and checked-overflow semantics, and traverse
-all scalar children for symbol dependencies and address provenance.
+#### Statement-time flat lists (BS31)
 
-Builtin identity also needs a shared core boundary: Rust currently recognizes
-`.len` in value evaluation, while native operand binding treats its name as an
-ordinary source symbol. Bind it to a core-owned numeric builtin identity before
-execution. EXVM should continue to parse generic calls without knowing their
-spelling. The existing typed ExprVM operation family has list/range/index
-operations, but its reserved builtin-call operation still lacks implementation;
-complete that shared contract rather than adding a native-only expression
-language. Iterable loops follow after declarations, aliases, indexing and length
-have end-to-end native qualification.
+The shared EXVM grammar now lowers flat lists, indexing and `.len` calls into
+canonical typed ExprVM programs. The ordinary compact scalar program and signed64
+symbol cells remain. Compound cells carry an explicit kind and an offset into a
+session-owned growable arena; descriptors contain kind/count and signed64 pairs,
+never serialized pointers. Immutable aliases and mutable snapshots retain concrete
+list values; replacing a mutable list does not rewrite earlier snapshots.
+
+BS31 adds a numeric shared `.len` identity and a builtin dictionary role; its
+212-byte header replaces BS30 without a compatibility executor. EXVM parses
+opaque call IDs, and ExprVM executes builtin ID 1 with one argument. Rust's typed
+compiler/evaluator and native execution consume the same operation contract.
+Native binding/reachability walks visit scalar children inside typed programs.
+The scalar preparation context has no compound owner: list expressions cannot
+accidentally interpret stack residue as one. Layout replay clears compound kinds
+and descriptors together while retaining proven scalar constants.
+
+Native scope here is flat statement-time declarations, aliases, mutable replacement,
+length and signed indexing into scalar lists, including forward-label elements in
+raw output. It does not qualify ranges, nested/struct values, preparation-time
+conditions/import parameters, instruction operands or compound Hunk provenance.
+Rust range `.len` execution is covered at the shared core boundary; native range
+execution still rejects. The existing native narrow data writer also rejects
+out-of-range `.word` values that Rust truncates; full-width list values are tested
+with `.long`, without changing that separate emission boundary.
+
+Fresh CLI comparisons complete on 68020/10 MiB for the same combined list
+workload under the embedded 68020 and 6502 packages, with zero exits and exact
+live Rust bytes. Seven invalid-input cases complete with exit 20 and a required
+diagnostic (nested lists, negative/out-of-range indexing, scalar/wrong-arity
+length, unknown calls and list arithmetic). The 101-case native compiler oracle
+and session-isolation regressions pass. A separate instrumented mixed-list run
+reports 921,024 peak owned bytes, no profiling errors, zero live owned bytes at
+cleanup and equal allocated/freed capacity. That is the whole focused case's
+tracked allocation, not incremental list storage or full self-host peak RAM.
+
+Host checks pass all 207 core tests, core Clippy, 351 compact-source host cases
+(across the broad batch and two repaired schema assertions), package generation/
+validation checks, 24 A6000 runner tests and the native engineering gate. Assembler
+all-target Clippy still reports existing lint debt, including duplicated test
+modules and old helper warnings. Neither the full unit suite, breadth corpus nor
+complete native self-host was rerun for this checkpoint.
+
+The unchanged `aligned-control` release case isolates this slice against
+`4e397de0`: input 15,474 bytes, FNV `ac05445d958571b5`, same 68020/10 MiB profile,
+telemetry disabled and no concurrent builds/tests. Each included sample has
+fresh completion, zero exit and exact live Rust bytes. One baseline attempt timed
+out without guest markers and is excluded; its retry completed normally.
+
+| State | Release seconds | Mean | Hunk / linked reservation bytes |
+|---|---|---|---|
+| Previous compiler `4e397de0` | 25.040531250 / 25.366315166 | 25.203423208 | 539,004 / 558,148 |
+| Statement-time flat lists | 25.607073584 / 25.083172708 | 25.345123146 | 543,124 / 562,172 |
+
+The mean scalar-control cost is 0.56% higher for this slice;
+the sample ranges overlap, so no clear timing regression is established. This
+is a two-sample relative emulator comparison, not a hardware timing claim. Image grows 4,120 bytes and linked reservation grows 4,024 bytes. Linked
+reservation is not peak RAM; list scratch/arena/kind storage is allocated lazily.
+
+Range descriptors and preparation-time compound values are the next structural
+work before iterable loops. Keep ranges compact, preserve direction/step and
+checked-overflow semantics, and extend dependency/address provenance coherently.
+Other VM version selectors still need consolidation to the approved single v1
+contract per VM; this slice does not complete that migration.
 
 ### Shared compiler cost checkpoint
 

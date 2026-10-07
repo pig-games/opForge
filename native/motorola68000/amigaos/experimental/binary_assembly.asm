@@ -5,6 +5,7 @@
 	.module experimental.amigaos.binary_assembly
 	.cpu 68020
 	.use experimental.amigaos.binary_package as pkg
+	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_state as state
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as exprvm
@@ -118,6 +119,12 @@ assemble	.block
 	clr.w Frame.Failure(a5)
 	move.l #-1, Frame.RecordOffset(a5)
 	movea.l Frame.Context(a5), a6
+	movea.l pkg.Context.Owner(a6), a0
+	move.l a0, d0
+	beq.w scalarOwner
+	jsr values.reset
+	bne.w fail
+scalarOwner
 	move.l pkg.Context.Count(a6), d0
 	beq.w fail
 	cmpi.l #65536, d0
@@ -512,6 +519,7 @@ layoutCompared
 	cmpi.w #MAX_LAYOUT_ROUNDS, LayoutRounds
 	bhs.w fail
 	jsr dependencies.resetLayout
+	bne.w fail
 	bra.w pass
 stableLayout
 	tst.w sections.State.MapCount(a0)

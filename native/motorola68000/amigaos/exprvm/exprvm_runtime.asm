@@ -323,6 +323,10 @@ pushSymbolStable
 	moveq #0, d2
 	bra.s symbolHighReady
 preparedSymbol
+	; Compound declaration cells hold arena offsets, never scalar integers.
+	; Typed evaluation consumes their explicit kind through the value owner.
+	tst.b 0(a6, d6.l)
+	bmi.w fail
 	lsl.l #3, d6
 	adda.l d6, a2
 	move.l Value.Low(a2), d3

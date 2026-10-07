@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS30 packages.
+; Shared structural boundary for embedded and external BS31 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -19,7 +19,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS30 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS31 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -40,6 +40,11 @@ validate	.block
 	bne.w bad
 	cmp.l package.Header.Bytes(a4), d7
 	bne.w bad
+	tst.w package.Header.BuiltinReserved(a4)
+	bne.w bad
+	move.w package.Header.BuiltinLenName(a4), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
 	move.l package.Header.RuntimeBytes(a4), d4
 	cmpi.l #package.HEADER_BYTES, d4
 	blo.w bad
@@ -246,6 +251,7 @@ declarationRow
 	bne.w bad
 	move.l d4, d3
 	move.l d7, d4
+	suba.l a5, a5
 	move.l package.Header.DictionaryCount(a4), d6
 	cmpi.l #COUNT_LIMIT, d6
 	bhi.w bad
@@ -267,10 +273,26 @@ dictionaryLoop
 	move.l d5, d0
 	bsr.w span
 	bne.w bad
+	cmpi.b #package.DICTIONARY_ROLE_ALLOWED, package.DictionaryEntry.Roles(a3)
+	bhi.w bad
+	move.w package.DictionaryEntry.Name(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	btst #package.DICTIONARY_BUILTIN_BIT, package.DictionaryEntry.Roles(a3)
+	beq.w dictionaryNext
+	cmp.w package.Header.BuiltinLenName(a4), d0
+	bne.w bad
+	tst.b package.DictionaryEntry.Qualifier(a3)
+	bne.w bad
+	addq.l #1, a5
+dictionaryNext
 	add.l d1, d5
 	subq.l #1, d6
 	bra.w dictionaryLoop
 tokenizer
+	move.l a5, d0
+	cmpi.l #1, d0
+	bne.w bad
 	; Validate even an empty dictionary's start offset.
 	move.l package.Header.Dictionary(a4), d0
 	moveq #0, d1

@@ -5,16 +5,18 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533330; BS30
+MAGIC = $42533331; BS31
 TARGET_PRESERVE_WRAPPERS = 1
 TARGET_NESTED_PATHS = 2
 DICTIONARY_REGISTER_OR_NAMED = 1
 DICTIONARY_MEMBER = 2
 DICTIONARY_STATE_ARGUMENT = 4
-DICTIONARY_ROLE_ALLOWED = DICTIONARY_REGISTER_OR_NAMED+DICTIONARY_MEMBER+DICTIONARY_STATE_ARGUMENT
+DICTIONARY_BUILTIN = 8
+DICTIONARY_ROLE_ALLOWED = DICTIONARY_REGISTER_OR_NAMED+DICTIONARY_MEMBER+DICTIONARY_STATE_ARGUMENT+DICTIONARY_BUILTIN
 DICTIONARY_REGISTER_OR_NAMED_BIT = 0
 DICTIONARY_MEMBER_BIT = 1
 DICTIONARY_STATE_ARGUMENT_BIT = 2
+DICTIONARY_BUILTIN_BIT = 3
 
 DictionaryEntry	.struct
 Length	.word ?
@@ -88,8 +90,10 @@ StatePlan	.long ?
 StatePlanBytes	.long ?
 ExpressionPlan	.long ?
 ExpressionPlanBytes	.long ?
+BuiltinLenName	.word ?
+BuiltinReserved	.word ?
 	.endstruct
-HEADER_BYTES = Header.ExpressionPlanBytes+4
+HEADER_BYTES = Header.BuiltinReserved+2
 
 ; Contextual member forms are derived from canonical selector projections,
 ; including unsupported candidates. Field meanings remain package-owned.
@@ -108,6 +112,8 @@ Defined	.long ?
 Count	.long ?
 Pc	.long ?
 High	.long ?
+Owner	.long ?
+Kind	.long ?
 Package	.long ?
 Pass	.word ?
 Relocatable	.word ?  ; nonzero for section-relative Hunk output

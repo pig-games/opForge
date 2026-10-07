@@ -6,6 +6,7 @@
 	.include "telemetry_macros.i"
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_values as values
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_source as source
@@ -363,6 +364,8 @@ scalarDeclaration
 	cmpi.w #12, d6
 	blo.w bad
 	addq.l #5, a3
+	cmpi.b #expr.VALUE_TAG, (a3)
+	beq.w compoundDeclaration
 	cmpi.b #expr.COMPILED_TAG, (a3)
 	bne.w bad
 	moveq #0, d0
@@ -380,6 +383,21 @@ scalarDeclaration
 	lsl.l #3, d4
 	move.l d0, runtime.Value.Low(a4, d4.l)
 	addq.l #1, Constants
+	bra.w next
+compoundDeclaration
+	; Compound declarations are source-order snapshots, outside the scalar
+	; immutable DAG. Scalar aliases inherit layout dependence through this ID.
+	moveq #0, d0
+	move.b 1(a3), d0
+	beq.w bad
+	addi.w #11, d0
+	cmp.w d6, d0
+	bne.w bad
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, -1(a0, d6.w)
+	bne.w bad
+	cmpi.b #mutable.PENDING, d7
+	beq.w next
+	move.b #LAYOUT, 0(a5, d4.l)
 	bra.w next
 labelTail
 	; An explicit label may precede .end on the same record.
@@ -417,9 +435,18 @@ done
 	.pub
 ; A1=Context. Discard provisional label/alias and mutable values before a fresh
 ; layout replay. Compile-time constants and incoming parameters are retained.
-; D0/CCR=0; other registers preserved.
+; ABSOLUTE entries are scalar: only scalar dependency evaluation and scalar
+; incoming parameters create them. Compounds are deferred source snapshots.
+; D0/CCR=status; other registers preserved. Owner validation failure leaves
+; cells intact; caller must propagate failure before replaying layout.
 resetLayout	.block
-	movem.l d3/a2-a4, -(sp)
+	movem.l d3/a0/a2-a4, -(sp)
+	movea.l pkg.Context.Owner(a1), a0
+	move.l a0, d0
+	beq.w ownerReady
+	jsr values.reset
+	bne.w done
+ownerReady
 	move.l pkg.Context.Count(a1), d3
 	movea.l pkg.Context.Values(a1), a2
 	movea.l pkg.Context.Defined(a1), a3
@@ -438,7 +465,9 @@ retained
 	subq.l #1, d3
 	bne.w symbol
 	moveq #0, d0
-	movem.l (sp)+, d3/a2-a4
+done
+	movem.l (sp)+, d3/a0/a2-a4
+	tst.l d0
 	rts
 	.bend  ; resetLayout
 	.endsection

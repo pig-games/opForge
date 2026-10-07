@@ -134,19 +134,19 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS30");
+        assert_eq!(&bytes[..4], b"BS31");
         let expression_offset = long(200);
         let expression_bytes = long(204);
-        assert!(expression_offset >= 208 && expression_offset % 2 == 0);
+        assert!(expression_offset >= 212 && expression_offset % 2 == 0);
         assert_eq!(
             &bytes[expression_offset..expression_offset + expression_bytes],
             vm::vm_opcore::expression_parser_program(),
         );
         assert!(expression_offset + expression_bytes <= runtime_bytes);
         let rows_offset = long(16);
-        assert!(rows_offset >= 208);
-        assert_eq!((rows_offset - 208) % 4, 0);
-        assert_eq!(word(130) & 2 != 0, rows_offset > 208);
+        assert!(rows_offset >= 212);
+        assert_eq!((rows_offset - 212) % 4, 0);
+        assert_eq!(word(130) & 2 != 0, rows_offset > 212);
         assert_eq!(word(188), package::PARSER_VM_MACRO_VERSION);
         assert_eq!(word(190), 0);
         let declaration_offset = long(180);
@@ -166,7 +166,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         assert_eq!(word(64), little_endian);
         assert_eq!(word(130) & 1, u16::from(cpu == "m6502"));
         assert_eq!(word(130) & !3, 0);
-        assert!(target_offset >= 208);
+        assert!(target_offset >= 212);
         assert_eq!(target_bytes, expected.len());
         assert_eq!(
             &bytes[target_offset..target_offset + target_bytes],
@@ -247,11 +247,32 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS30");
+        assert_eq!(&bytes[..4], b"BS31");
         assert_eq!(long(&bytes, 4), bytes.len());
+        let builtin_len = u16::from_be_bytes(bytes[208..210].try_into().unwrap());
+        assert!(builtin_len < u16::from_be_bytes(bytes[62..64].try_into().unwrap()));
+        assert_eq!(&bytes[210..212], &[0, 0]);
+        let mut entry = long(&bytes, 8);
+        let mut builtin_count = 0;
+        for _ in 0..long(&bytes, 12) {
+            let length = usize::from(u16::from_be_bytes(
+                bytes[entry..entry + 2].try_into().unwrap(),
+            ));
+            if bytes[entry + 5] & 8 != 0 {
+                assert_eq!(
+                    u16::from_be_bytes(bytes[entry + 2..entry + 4].try_into().unwrap()),
+                    builtin_len
+                );
+                assert_eq!(bytes[entry + 4], 0);
+                assert_eq!(&bytes[entry + 6..entry + 6 + length], b"len");
+                builtin_count += 1;
+            }
+            entry = (entry + 6 + length + 1) & !1;
+        }
+        assert_eq!(builtin_count, 1);
 
         let runtime_bytes = long(&bytes, 72);
-        assert!((208..=bytes.len()).contains(&runtime_bytes));
+        assert!((212..=bytes.len()).contains(&runtime_bytes));
         let numeric =
             vm::binary_source_package::BinarySourcePackage::prepare(&core, &resolved).unwrap();
         let state_offset = long(&bytes, 192);
@@ -260,7 +281,7 @@ fn binary_source_packages_prepare() {
             assert_eq!((state_offset, state_bytes), (0, 0));
             assert!(numeric.candidates.iter().all(|c| c.state_guard == 0));
         } else {
-            assert!(state_offset >= 208 && state_offset + state_bytes <= runtime_bytes);
+            assert!(state_offset >= 212 && state_offset + state_bytes <= runtime_bytes);
             let plan = &bytes[state_offset..state_offset + state_bytes];
             assert_eq!(
                 usize::from(u16::from_be_bytes(plan[0..2].try_into().unwrap())),
@@ -341,7 +362,7 @@ fn binary_source_packages_prepare() {
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
-            assert!(offset >= 208);
+            assert!(offset >= 212);
             assert!(offset + count * width <= runtime_bytes);
         }
 

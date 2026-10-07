@@ -537,7 +537,9 @@ token
 	cmpi.b #3, d1
 	beq.w string
 	cmpi.b #expr.COMPILED_TAG, d1
-	beq.w expression
+	beq.w compactExpression
+	cmpi.b #expr.VALUE_TAG, d1
+	beq.w typedExpression
 	cmpi.b #41, d1
 	beq.w bad  ; expansion must replace composite recipes before indexing
 	bra.w token
@@ -566,6 +568,11 @@ name
 	bne.w bad
 	addq.l #3, a0
 	bra.w token
+compactExpression
+	moveq #0, d5
+	bra.w expression
+typedExpression
+	moveq #1, d5
 expression
 	cmpa.l a1, a0
 	bhs.w bad
@@ -582,6 +589,8 @@ opcode
 	moveq #0, d1
 	move.b (a0)+, d1
 	beq.w endExpression
+	tst.l d5
+	bne.w typedOpcode
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d1
 	beq.w symbol
 	cmpi.b #runtime.COMPACT_I8, d1
@@ -609,6 +618,30 @@ opcode
 	cmpi.b #runtime.COMPACT_MULTIPLY, d1
 	beq.w opcode
 	bra.w bad
+typedOpcode
+	cmpi.b #$10, d1
+	beq.w eight
+	cmpi.b #$11, d1
+	beq.w opcode
+	cmpi.b #$12, d1
+	beq.w symbol
+	cmpi.b #$20, d1
+	beq.w one
+	cmpi.b #$21, d1
+	beq.w one
+	cmpi.b #$51, d1
+	beq.w two
+	cmpi.b #$61, d1
+	beq.w opcode
+	cmpi.b #$62, d1
+	beq.w three
+	cmpi.b #$70, d1
+	beq.w opcode
+	bra.w bad
+three
+	addq.l #3, a0
+	bra.w opcode
+
 one
 	addq.l #1, a0
 	bra.w opcode

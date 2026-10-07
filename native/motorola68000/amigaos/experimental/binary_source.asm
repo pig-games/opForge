@@ -36,6 +36,8 @@ BIND_ROLE_PACKAGE_NAME = 4
 BIND_ROLE_MEMBER_NAME = 5
 BIND_ROLE_INLINE_HEAD = 6
 BIND_ROLE_STATE_ARGUMENT = 7
+BIND_ROLE_CALL_NAME = 8
+TOKEN_OPEN_PAREN = 14
 TOKEN_COMMA = 4
 
 Frame	.struct
@@ -86,6 +88,7 @@ Length	.long ?
 ; BIND_ROLE_WIDTH for the first comma-separated WidthDirective operand,
 ; BIND_ROLE_PACKAGE_NAME for the first NameDirective operand (including quoted names),
 ; BIND_ROLE_MEMBER_NAME after a dot outside the statement head,
+; BIND_ROLE_CALL_NAME for that member when followed by an open parenthesis,
 ; otherwise 0. Width names retain package identity; value operands bind normally.
 ; The callback returns the existing D2 qualifier.
 ; Optional MemberBinder receives A0=Frame,A1=current token. It returns D0=0
@@ -302,6 +305,11 @@ directiveName
 	bra.w bindName
 memberName
 	moveq #BIND_ROLE_MEMBER_NAME, d2
+	cmpi.l #1, d7
+	bls.w bindName
+	cmpi.w #TOKEN_OPEN_PAREN, Token.Kind+20(a2)
+	bne.w bindName
+	moveq #BIND_ROLE_CALL_NAME, d2
 	bra.w bindName
 ordinaryRole
 	moveq #0, d2

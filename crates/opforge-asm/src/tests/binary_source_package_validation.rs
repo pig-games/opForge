@@ -30,7 +30,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     assert!(count > 0);
-    assert_eq!(&valid[..4], b"BS30");
+    assert_eq!(&valid[..4], b"BS31");
     assert!(rows + count * crate::binary_source_experiment::ROW <= valid.len());
     assert_eq!(&valid[rows + 34..rows + 36], &[0, 0]);
     assert!(valid[rows + 32] <= 11);
@@ -56,10 +56,18 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         malformed[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
         cases.push((name, malformed, 1));
     }
+    for (name, offset, value) in [
+        ("builtin-name-out-of-bounds", 208, u16::MAX),
+        ("builtin-reserved", 210, 1),
+    ] {
+        let mut malformed = valid.clone();
+        malformed[offset..offset + 2].copy_from_slice(&value.to_be_bytes());
+        cases.push((name, malformed, 1));
+    }
     let mut superseded = valid.clone();
-    superseded[..4].copy_from_slice(b"BS29");
+    superseded[..4].copy_from_slice(b"BS30");
     cases.push(("superseded-package", superseded, 1));
-    cases.push(("truncated-current-header", valid[..207].to_vec(), 1));
+    cases.push(("truncated-current-header", valid[..211].to_vec(), 1));
     cases
 }
 
@@ -184,10 +192,12 @@ fn compact_package_validation_component_fixture_contract() {
             | "expression-odd-offset"
             | "expression-past-runtime" => 200..204,
             "expression-empty" | "expression-too-large" | "expression-span-overflow" => 204..208,
+            "builtin-name-out-of-bounds" => 208..210,
+            "builtin-reserved" => 210..212,
             "superseded-package" => 0..4,
             "truncated-current-header" => {
-                assert_eq!(bytes.len(), 207);
-                assert_eq!(bytes, &valid[..207]);
+                assert_eq!(bytes.len(), 211);
+                assert_eq!(bytes, &valid[..211]);
                 assert!(changed.is_empty());
                 continue;
             }

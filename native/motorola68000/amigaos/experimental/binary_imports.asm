@@ -2001,6 +2001,10 @@ compileExpression
 	add.l d1, d0
 	move.l d0, expression.Frame.Count(a2)
 	clr.l expression.Frame.Pc(a2)
+	; Preparation owns scalar snapshots only. Never interpret stack residue
+	; as an assembly-session compound owner when compilation yields a list.
+	clr.l expression.Frame.Owner(a2)
+	clr.l expression.Frame.Kind(a2)
 	movea.l a5, a0
 	movea.l a3, a1
 	jsr expression.evaluate

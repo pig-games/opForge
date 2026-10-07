@@ -1,4 +1,4 @@
-//! Host-only BS30 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS31 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -33,10 +33,10 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS30")
+        || bytes.get(..4) != Some(b"BS31")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS30 header".into());
+        return Err("invalid BS31 header".into());
     }
     let expression_offset = number(bytes, 200, 4)?;
     let expression_bytes = number(bytes, 204, 4)?;
@@ -120,16 +120,33 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
     for program in programs.chunks_exact(12) {
         region(bytes, number(program, 4, 4)?, number(program, 8, 4)?, 1)?;
     }
+    let builtin_len = number(bytes, 208, 2)?;
+    if builtin_len >= number(bytes, 62, 2)? || number(bytes, 210, 2)? != 0 {
+        return Err("invalid builtin header".into());
+    }
+    let mut builtin_entries = 0;
     let dictionary_count = number(bytes, 12, 4)?;
     let mut dictionary_offset = number(bytes, 8, 4)?;
     for _ in 0..dictionary_count {
         let length = number(bytes, dictionary_offset, 2)?;
         let entry = length.checked_add(6).ok_or("dictionary length overflow")?;
-        region(bytes, dictionary_offset, entry, 1)?;
+        let row = region(bytes, dictionary_offset, entry, 1)?;
+        if row[5] & 8 != 0 {
+            if number(bytes, dictionary_offset + 2, 2)? != builtin_len
+                || row[4] != 0
+                || &row[6..] != b"len"
+            {
+                return Err("invalid builtin dictionary mapping".into());
+            }
+            builtin_entries += 1;
+        }
         dictionary_offset = dictionary_offset
             .checked_add(entry)
             .and_then(|end| end.checked_add(end % 2))
             .ok_or("dictionary offset overflow")?;
+    }
+    if builtin_entries != 1 {
+        return Err("missing or duplicate builtin dictionary mapping".into());
     }
     if dictionary_offset != number(bytes, 40, 4)? {
         return Err("dictionary does not end at tokenizer".into());
@@ -376,7 +393,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS30", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS31", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

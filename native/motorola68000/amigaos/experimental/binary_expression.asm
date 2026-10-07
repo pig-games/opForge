@@ -6,10 +6,15 @@
 	.use opasm.amigaos.binary_fold as folder
 	.use experimental.amigaos.binary_exvm as compiler
 	.use experimental.amigaos.binary_exvm_lower as lowering
+	.use exprvm.amigaos.values_runtime as typed
+	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_memory as memory
 	.include "telemetry_macros.i"
 	.include "memory_telemetry.i"
 	.pub
 COMPILED_TAG = $81
+VALUE_TAG = $83
+COMPOUND_BIT = 7
 MAX_DEPTH = compiler.MAX_DEPTH
 ARENA_BYTES = lowering.NODE_LIMIT*compiler.NODE_BYTES
 ARENA = compiler.REQUEST_BYTES
@@ -26,8 +31,10 @@ Defined	.long ?
 Count	.long ?
 Pc	.long ?
 High	.long ?
+Owner	.long ?
+Kind	.long ?
 	.endstruct
-FRAME_BYTES = Frame.High+4
+FRAME_BYTES = Frame.Kind+4
 	.section code, kind=code
 	.pub
 ; Install validated package grammar and session-owned transient workspace.
@@ -41,6 +48,14 @@ configure	.block
 	moveq #0, d0
 	rts
 	.bend  ; configure
+
+; D0=validated package .len numeric name ID, or -1 when clearing a session.
+; Preserves other registers; D0/CCR=0. No lexical name reaches evaluation.
+configureBuiltin	.block
+	move.l d0, LenName
+	moveq #0, d0
+	rts
+	.bend  ; configureBuiltin
 
 ; A0=input tokens, A1=bounded end, A3=output, A4=bounded output end.
 ; Returns D0/CCR=status, A0=first delimiter/end, A3=after compiled wrapper.
@@ -125,6 +140,29 @@ bounded
 	jsr lowering.lower
 	tst.l d0
 	beq.w prepare
+	cmpi.l #lowering.STATUS_MALFORMED, d0
+	bne.w lowerFailed
+	; Keep scalar compilation/folding intact; compound trees use canonical
+	; typed operations and never pass through the scalar constant folder.
+	lea 2(a6), a3
+	movea.l compiler.Request.Arena(a2), a0
+	move.l compiler.Request.Used(a2), d0
+	move.l compiler.Request.Root(a2), d1
+	lea COMPILER_WORK(a2), a1
+	move.l #compiler.SCRATCH_BYTES, d2
+	move.l d4, -(sp)
+	move.l LenName, d4
+	jsr lowering.lowerValue
+	move.l (sp)+, d4
+	tst.l d0
+	bne.w lowerFailed
+	move.l a3, d1
+	sub.l a6, d1
+	subq.l #2, d1
+	move.b #VALUE_TAG, (a6)
+	move.b d1, 1(a6)
+	bra.w compiledValue
+lowerFailed
 	cmpi.l #lowering.STATUS_OUTPUT, d0
 	beq.w output
 	cmpi.l #lowering.STATUS_DEPTH, d0
@@ -148,6 +186,7 @@ prepared
 	move.b d1, 1(a6)
 	lea 2(a6), a3
 	adda.l d1, a3
+compiledValue
 	.MEMORY_WORK #0, #1
 	.MEMORY_WORK #2, d1
 	moveq #STATUS_OK, d0
@@ -176,7 +215,7 @@ restore
 ; Generate both entry points from one body. The ordinary evaluator retains
 ; its register ABI and instruction sequence; the target predicate additionally
 ; consumes the symbol-presence result already computed by ExprVM.
-EVALUATE	.macro saved
+EVALUATE	.macro saved, compound=0
 	movem.l .saved, -(sp)
 	.MEMORY_WORK #1, #1
 	move.l a1, d0
@@ -184,7 +223,11 @@ EVALUATE	.macro saved
 	bcs.w malformed
 	cmpi.l #3, d0
 	blo.w malformed
-	cmpi.b #COMPILED_TAG, (a0)+
+	moveq #0, d3
+	move.b (a0)+, d3
+	cmpi.b #VALUE_TAG, d3
+	beq.w typedValue
+	cmpi.b #COMPILED_TAG, d3
 	bne.w malformed
 	moveq #0, d3
 	move.b (a0)+, d3
@@ -197,6 +240,55 @@ EVALUATE	.macro saved
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, -1(a4)
 	bne.w malformed
 	movea.l a2, a5
+	.if .compound
+	clr.l Frame.Kind(a5)
+	; A bare alias retains its immutable descriptor and explicit kind.
+	cmpi.l #4, d3
+	bne.w scalarValue
+	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, (a0)
+	bne.w scalarValue
+	moveq #0, d1
+	move.b 2(a0), d1
+	lsl.w #8, d1
+	move.b 1(a0), d1
+	cmp.l Frame.Count(a5), d1
+	bhs.w malformed
+	movea.l Frame.Defined(a5), a6
+	moveq #0, d5
+	move.b 0(a6, d1.l), d5
+	movea.l Frame.Owner(a5), a0
+	move.l a0, d0
+	beq.w scalarValue
+	jsr values.getKind
+	tst.l d0
+	bne.w malformed
+	cmpi.l #values.LIST, d2
+	bne.w scalarValue
+	move.l d2, Frame.Kind(a5)
+	lsl.l #3, d1
+	movea.l Frame.Values(a5), a0
+	tst.l runtime.Value.High(a0, d1.l)
+	bne.w malformed
+	move.l runtime.Value.Low(a0, d1.l), d1
+	movem.l d1-d2/a0, -(sp)
+	movea.l Frame.Owner(a5), a0
+	jsr values.listLength
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	bne.w malformed
+	clr.l Frame.High(a5)
+	moveq #0, d2
+	tst.l d5
+	bne.w aliasResolved
+	moveq #1, d2
+aliasResolved
+	moveq #0, d0
+	movea.l a4, a0
+	bra.w done
+scalarValue
+	movea.l a4, a0
+	suba.l d3, a0
+	.endif
 	move.l d3, d0
 	move.l Frame.Count(a5), d1
 	move.l Frame.Pc(a5), d2
@@ -211,6 +303,33 @@ evaluated
 	movea.l a4, a0
 	move.l d3, d1
 	move.l d5, d2
+	bra.w done
+typedValue
+	moveq #0, d3
+	move.b (a0)+, d3
+	beq.w malformed
+	subq.l #2, d0
+	cmp.l d3, d0
+	blo.w malformed
+	.if .compound == 0
+	movea.l Frame.Owner(a2), a6
+	move.l a6, d0
+	beq.w malformed
+	move.l values.Owner.Arena+memory.Block.Used(a6), d5
+	.endif
+	move.l d3, d0
+	jsr typed.evaluate
+	tst.l d0
+	bne.w done
+	.if .compound
+	move.l d3, Frame.Kind(a2)
+	.else
+	tst.l d3
+	beq.w typedScalar
+	move.l d5, values.Owner.Arena+memory.Block.Used(a6)
+	bra.w malformed
+typedScalar
+	.endif
 	bra.w done
 malformed
 	moveq #STATUS_MALFORMED, d0
@@ -235,6 +354,12 @@ evaluateWithSymbols	.block
 	.EVALUATE d3/d5-d7/a1-a6
 	.bend  ; evaluateWithSymbols
 
+; Declaration value variant: Kind is explicit; Low is an arena offset only
+; when Kind=LIST. Scalars retain the original signed64 cell representation.
+evaluateValue	.block
+	.EVALUATE d3-d7/a1-a6, 1
+	.bend  ; evaluateValue
+
 	.endsection
 	.section bss, kind=bss
 Program
@@ -244,6 +369,8 @@ ProgramBytes
 Workspace
 	.res long, 1
 WorkspaceBytes
+	.res long, 1
+LenName
 	.res long, 1
 	.endsection
 	.endmodule

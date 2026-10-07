@@ -163,7 +163,7 @@ dependency
 	cmpi.b #PENDING, d2
 	beq.w descend
 	cmpi.b #ABSOLUTE, d2
-	beq.w consumed
+	beq.w absoluteDependency
 	cmpi.b #LAYOUT, d2
 	beq.w dependentLayout
 	cmpi.b #mutable.PENDING, d2
@@ -172,6 +172,28 @@ dependency
 	beq.w dependentMutable
 	cmpi.b #LABEL, d2
 	bne.w clearFailure  ; missing names and visiting nodes are errors
+	bra.w dependentLayout
+absoluteDependency
+	; The scalar DAG must never interpret a compound arena offset as an i64.
+	; Bare aliases retain their kind when replayed by expression.evaluateValue.
+	movem.l d1/a0, -(sp)
+	move.l d0, d1
+	movea.l pkg.Context.Owner(a6), a0
+	move.l a0, d0
+	beq.w absoluteScalar
+	jsr values.getKind
+	tst.l d0
+	bne.w absoluteFailed
+	tst.l d2
+	beq.w absoluteScalar
+	movem.l (sp)+, d1/a0
+	bra.w dependentLayout
+absoluteScalar
+	movem.l (sp)+, d1/a0
+	bra.w consumed
+absoluteFailed
+	movem.l (sp)+, d1/a0
+	bra.w clearFailure
 dependentLayout
 	ori.w #1, Entry.Flags(a3)
 	bra.w consumed
@@ -435,22 +457,27 @@ done
 	.pub
 ; A1=Context. Discard provisional label/alias and mutable values before a fresh
 ; layout replay. Compile-time constants and incoming parameters are retained.
-; ABSOLUTE entries are scalar: only scalar dependency evaluation and scalar
-; incoming parameters create them. Compounds are deferred source snapshots.
+; Incoming compound parameters occupy a retained immutable owner prefix.
+; Later compound declarations are discarded with their provisional cells.
 ; D0/CCR=status; other registers preserved. Owner validation failure leaves
 ; cells intact; caller must propagate failure before replaying layout.
 resetLayout	.block
-	movem.l d3/a0/a2-a4, -(sp)
+	movem.l d3-d4/a0/a2-a4, -(sp)
 	movea.l pkg.Context.Owner(a1), a0
 	move.l a0, d0
 	beq.w ownerReady
-	jsr values.reset
+	move.l pkg.Context.RetainedValues(a1), d0
+	jsr values.rewind
 	bne.w done
+	; Rewind validated Count and the complete kinds extent. Clear provisional
+	; tags alongside their cells; scalar-only sessions have no kinds allocation.
+	movea.l values.Owner.Kinds+memory.Block.Pointer(a0), a0
 ownerReady
 	move.l pkg.Context.Count(a1), d3
 	movea.l pkg.Context.Values(a1), a2
 	movea.l pkg.Context.Defined(a1), a3
 	movea.l pkg.Context.SectionIds(a1), a4
+	moveq #0, d4
 symbol
 	cmpi.b #ABSOLUTE, (a3)
 	beq.w retained
@@ -458,15 +485,19 @@ symbol
 	clr.l 4(a2)
 	clr.b (a3)
 	clr.b (a4)
+	move.l a0, d0
+	beq.w retained
+	clr.b 0(a0, d4.l)
 retained
 	addq.l #8, a2
 	addq.l #1, a3
 	addq.l #1, a4
+	addq.l #1, d4
 	subq.l #1, d3
 	bne.w symbol
 	moveq #0, d0
 done
-	movem.l (sp)+, d3/a0/a2-a4
+	movem.l (sp)+, d3-d4/a0/a2-a4
 	tst.l d0
 	rts
 	.bend  ; resetLayout

@@ -213,10 +213,10 @@ indexing preserves Rust's checked intermediate multiplication and addition.
 
 The slice covers statement-time declarations, immutable aliases and mutable
 snapshots/replacements through the packed source path. Preparation snapshots and
-`.use with` currently use scalar tables and scalar parameter entries; extending
-those requires owned compound capture, source-order replacement, reset/cleanup
-and an explicit offset-based transfer contract. Hunk compound provenance,
-instruction operands and iterable loops remain unqualified.
+`.use with` still used scalar tables at this range checkpoint; the following
+preparation slice extends them with owned compound capture and offset transfer.
+Hunk compound provenance, instruction operands and iterable loops remain
+unqualified.
 
 The first wide-range CLI probe exposed an existing packed-source limit: numeric
 literal tokens reject a nonzero high32 half. Full-width arithmetic can still
@@ -267,6 +267,81 @@ grows from 558,320 to 559,616 bytes and linked reservation from 577,368 to
 Linked reservation is not peak RAM. Reproducible comparison uses
 `native_layout_fs_uae` with `OPFORGE_LAYOUT_CASES=aligned-control` and the saved
 before/after release images; range qualification uses `native_ranges_fs_uae`.
+
+#### Preparation snapshots and compound module parameters
+
+Current slice extends the flat-list/range foundation to source-order preparation
+and `.use ... with (...)`, before iterable-loop work. Rust uses the existing
+assembler value evaluator for compound expressions with only already-known
+bindings. Native uses shared EXVM trees and ExprVM operations; no handwritten
+list/range grammar or CPU-specific core processing is added.
+
+Preparation owns separate immutable arenas for known values and incoming module
+parameters. Scalar cells remain signed64 pairs; compound cells hold kind and
+arena-relative offset. Mutable replacement cannot change an earlier alias or
+import snapshot. Parameter serialization consists of a numeric table followed by
+bounded payload, copied into the assembly session's owner before preparation is
+released. Layout replay retains that imported prefix and discards provisional
+statement values. Repeated equal imports compare contents and release their
+temporary comparison records. The container stays BS31; no version dispatch is
+added. A dedicated `binary_parameters` module owns session transfer validation.
+
+The focused cases exercise list/range aliases, scalar/compound replacements,
+lexical isolation, `.len` and indexing in preparation conditions, reversed module
+declarations and forwarding through two dependencies. Imported values remain
+private compile-time symbols. Forward/unavailable values, address dependence,
+invalid ranges/indexes and compound/scalar misuse must reject explicitly.
+Function identities are recognized separately from symbol cells; parameter
+expression framing counts braces as well as brackets and parentheses.
+
+This is not a complete module/language parity or self-host checkpoint. Struct
+values, iterable loops, wide literal packing and Hunk compound provenance remain
+unqualified. Rust's entry scheduling only prioritizes potential import targets;
+parameter-dependent potential cycles can still make the configured root
+ambiguous. The previous complete self-host/A6000 bundle remains the full-run
+reference. Package-selection embedding work remains parked.
+
+Focused qualification: engine **79/79**; compact-source host batch **350** passed,
+followed by the corrected parameter suite **18/18** (the old mutable-source
+rejection assertion now verifies snapshot behavior). New preparation Rust
+oracles pass. Fresh native cases cover preparation and two-module forwarding on
+both 68020 and 6502 packages, full-width scalar/list/range transfer (including
+negative members), ten required rejection controls, mixed-list/range
+regressions, the **101-case** shared compiler oracle and session isolation.
+An independent native review found temporary duplicate parameter payloads; equal
+imports now rewind them after content comparison. Both formatters, workflow/native
+engineering guards and production-library Clippy pass. Broad `--all-targets`
+Clippy still reports 22 findings in unchanged test/harness code; no whole Rust
+quality-gate claim is made.
+
+Separate release comparison against `56b2098e`: identical 15,474-byte
+`aligned-control` source, FNV `ac05445d958571b5`, 68020/10 MiB, telemetry disabled,
+no concurrent builds/tests. Runs alternate before/after; every sample has fresh
+START/DONE, zero exit and exact live Rust output. Times are host observations of
+guest assembly, excluding image preparation and emulator startup.
+
+| Image | Sample 1 | Sample 2 | Mean |
+| --- | ---: | ---: | ---: |
+| Before preparation values | 25.079905 s | 25.208525 s | 25.144215 s |
+| After preparation values | 25.226399 s | 25.071586 s | 25.148993 s |
+
+Mean change is **+0.019%**, indistinguishable from variation in this small sample.
+This measures existing-workload cost, not a speedup for previously unsupported
+compound imports. One-package image: **544,420 → 545,816** bytes; linked reservation:
+**563,436 → 564,748**. Two-package image: **559,616 → 561,012**; linked reservation:
+**578,632 → 579,944**. Increment: **1,396** image and **1,312** linked bytes in either
+configuration. Linked reservation is not peak RAM. Reproduce with
+`native_layout_fs_uae`, `OPFORGE_LAYOUT_CASES=aligned-control` and the saved images;
+preparation qualification uses `native_preparation_values_fs_uae`.
+
+Instrumented measurement of the identical 2,126-byte range control reports
+**924,096 peak tracked owned bytes before and after**. The new 807-byte
+compound-forwarding case reports **920,768**; that different input is not a
+memory delta. Both current accounting runs have zero live owned bytes at cleanup,
+balanced allocated/freed capacity and zero profiling errors. These are focused
+owned-allocation measurements, not full self-host RAM or total Amiga memory.
+Memory reproduction uses `native_lists_probe_fs_uae`, `OPFORGE_COMPARE_MEMORY=1`
+and `OPFORGE_LIST_SOURCE` pointing to the corresponding actual source.
 
 ### Shared compiler cost checkpoint
 
@@ -564,14 +639,11 @@ definitions, for example `-D 'embed={m68020,m6502}'`; that compact-native comman
 is proposed, not implemented. The package IDs must be declared by source/catalog
 metadata; CPU names do not become implicit language constants.
 
-First qualify Rust list-valued `.use with` binding explicitly, then establish
-VM-owned flat scalar lists in the compact native value model. The current native
-symbol, assignment, expression and import ABIs carry scalar i64 values only; this
-is broader than accepting braces in the import parser. A coherent first
-checkpoint covers list literals, assignment, indexing, `.len`, module binding
-and forwarding, with offset-addressed owned storage and intact scalar behavior.
-Invalid indexes and scalar/list misuse need explicit diagnostics. Keep parsing
-and evaluation in their existing VM/package owners.
+The preparation snapshot slice above supplies the focused list/range binding
+foundation: assignment, indexing, `.len`, module forwarding and offset-addressed
+ownership. It does not implement package catalog configuration or list-valued
+CLI definitions. Keep parsing and evaluation in their existing VM/package owners
+when this parked work is resumed.
 
 Then use those ordinary bindings and conditions in the catalog source and wire
 normal native CLI definitions. Qualify empty, single and multiple package sets

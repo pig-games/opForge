@@ -6,6 +6,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_parameters as parameters
 	.use experimental.amigaos.binary_state as state
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as exprvm
@@ -139,33 +140,9 @@ clearSymbols
 	clr.b (a2)+
 	subq.l #1, d0
 	bne.w clearSymbols
-	move.l pkg.Context.ParameterCount(a6), d6
-	beq.w parametersReady
-	cmpi.l #512, d6
-	bhi.w fail
-	movea.l pkg.Context.Parameters(a6), a3
-	move.l a3, d0
-	beq.w fail
-	movea.l pkg.Context.Values(a6), a0
-	movea.l pkg.Context.Defined(a6), a1
-parameter
-	moveq #0, d0
-	move.w (a3), d0
-	movea.l pkg.Context.Package(a6), a2
-	cmp.w pkg.Header.NameCount(a2), d0
-	blo.w fail
-	cmp.l pkg.Context.Count(a6), d0
-	bhs.w fail
-	tst.b 0(a1, d0.l)
+	movea.l a6, a0
+	jsr parameters.load
 	bne.w fail
-	move.b #dependencies.ABSOLUTE, 0(a1, d0.l)
-	lsl.l #3, d0
-	move.l pkg.Parameter.Low(a3), exprvm.Value.Low(a0, d0.l)
-	move.l pkg.Parameter.High(a3), exprvm.Value.High(a0, d0.l)
-	adda.w #pkg.PARAMETER_BYTES, a3
-	subq.l #1, d6
-	bne.w parameter
-parametersReady
 	movea.l Frame.Records(a5), a0
 	move.l Frame.RecordBytes(a5), d0
 	movea.l a6, a2

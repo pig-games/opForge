@@ -135,7 +135,7 @@ boundary
 	bne.w bad
 	movea.l Frame.Output(a6), a0
 	movea.l Frame.Scope(a6), a1
-	jsr imports.captureScalar
+	jsr imports.captureValue
 	bra.w publish
 importTarget
 	cmpi.l #scopes.KEY_USE, d3
@@ -176,6 +176,7 @@ module
 	beq.w moduleName
 	movea.l Frame.Scope(a6), a0
 	bsr.w clearStaticValues
+	bne.w bad
 moduleName
 	bsr.w bindRecord
 	bne.w bad
@@ -211,6 +212,7 @@ clearPriority
 	beq.w publish
 	movea.l Frame.Scope(a6), a0
 	bsr.w clearStaticValues
+	bne.w bad
 publish
 	movea.l Frame.Graph(a6), a0
 	move.l d7, d0
@@ -288,6 +290,7 @@ endIndex	.block
 	movea.l Frame.Scope(a0), a0
 	bsr.w clearStaticValues
 	movem.l (sp)+, a0-a1
+	bne.w bad
 validate
 	tst.l Frame.IndexModule(a0)
 	bne.w bad
@@ -525,21 +528,10 @@ bad
 	rts
 	.bend  ; trackDepth
 
-; A0=config scope. The priority pass owns no declarations or incoming params.
-; Its known values are transient and reset for each entry module and at EOF.
-; Preserve all registers; CCR unspecified. Empty known-value storage is safe.
+; A0=config scope. Priority-pass snapshots reset per entry module and EOF.
+; D0/CCR=status; other registers preserved. Parameters have independent ownership.
 clearStaticValues	.block
-	movem.l d0/a0-a1, -(sp)
-	lea layout.IMPORT_STATE+imports.KNOWN_DEFINED(a0), a0
-	move.l memory.Block.Used(a0), d0
-	beq.w done
-	movea.l memory.Block.Pointer(a0), a1
-clear
-	clr.b (a1)+
-	subq.l #1, d0
-	bne.w clear
-done
-	movem.l (sp)+, d0/a0-a1
+	jsr imports.clearKnown
 	rts
 	.bend  ; clearStaticValues
 

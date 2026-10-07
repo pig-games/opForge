@@ -5,6 +5,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use asm::error::{AsmError, AsmErrorKind, AsmRunError, Diagnostic, Severity};
+use asm::line::AsmLine;
 use asm::phase_profile::{self, PhaseBucket};
 use asm::preprocess::{AsmMacroExports, AsmMacroProcessor};
 use opcore::expr::{eval_expr as eval_core_expr, EvalContext};
@@ -12,9 +13,12 @@ use opcore::macro_processor::CompileTimeVisibility;
 use opcore::modules::{expr_to_ident, extract_module_block, UseDirectiveSpec};
 use opcore::parser::{Expr, LineAst, Parser};
 use opcore::tokenizer::{ConditionalKind, Span};
+use registry::ModuleRegistry;
+use types::asm_value::AsmValue;
 use types::path_display::stable_path_string;
 use types::processing::ProcessingOutcome;
 use types::source_map::{SourceMap, SourceOrigin};
+use types::symbol::SymbolTable;
 use types::symbol::SymbolVisibility;
 
 use crate::{FsSourceProvider, SourceProvider};
@@ -39,7 +43,7 @@ struct ModuleSource {
     lines: Vec<String>,
     first_line: u32,
     origins: Vec<SourceOrigin>,
-    params: HashMap<String, i64>,
+    params: HashMap<String, AsmValue>,
 }
 
 pub(crate) struct PreparedRootSource {
@@ -50,7 +54,7 @@ pub(crate) struct PreparedRootSource {
 struct ModuleLoadContext<'a> {
     index: &'a ModuleIndex,
     loaded: &'a mut HashSet<String>,
-    configurations: &'a mut HashMap<String, HashMap<String, i64>>,
+    configurations: &'a mut HashMap<String, HashMap<String, AsmValue>>,
     entry_modules: &'a HashMap<String, ModuleSource>,
     order: &'a mut Vec<(String, ModuleSource)>,
     stack: &'a mut Vec<String>,
@@ -65,7 +69,7 @@ struct ModuleLoadContext<'a> {
 struct ModuleUseRef {
     module_id: String,
     span: Span,
-    params: HashMap<String, i64>,
+    params: HashMap<String, AsmValue>,
 }
 
 fn canonical_module_id(module_id: &str) -> String {
@@ -127,20 +131,67 @@ struct ActiveConditionalFrame {
     branch_taken: bool,
     current_active: bool,
     switch_value: Option<i64>,
+    uncertain: bool,
 }
 
 #[derive(Debug, Default)]
 struct StaticConditionalEvalContext {
-    values: HashMap<String, i64>,
+    values: HashMap<String, AsmValue>,
+    mutable: HashSet<String>,
 }
 
 impl EvalContext for StaticConditionalEvalContext {
     fn lookup_symbol(&self, name: &str) -> Option<i64> {
-        self.values.get(&name.to_ascii_uppercase()).copied()
+        match self.values.get(&name.to_ascii_uppercase()) {
+            Some(AsmValue::Scalar(value)) => Some(*value),
+            _ => None,
+        }
     }
 
     fn current_address(&self) -> Option<i64> {
         None
+    }
+}
+
+impl StaticConditionalEvalContext {
+    fn evaluate(&self, expr: &Expr) -> Result<AsmValue, String> {
+        if contains_current_address(expr) {
+            return Err("Current address ($) not available".into());
+        }
+        // Preserve the shared scalar evaluator and its inexpensive context for
+        // scalar-only expressions; compound grammar uses the full evaluator.
+        if let Ok(value) = eval_core_expr(expr, self) {
+            return Ok(AsmValue::Scalar(value));
+        }
+        // Use the ordinary assembler value evaluator with only values already
+        // known at this source site. No labels or assembly address are supplied.
+        let registry = ModuleRegistry::new();
+        let mut symbols = SymbolTable::new();
+        for (name, value) in &self.values {
+            let scalar = match value {
+                AsmValue::Scalar(value) => *value as u32,
+                _ => 0,
+            };
+            if symbols.add(name, scalar, false, SymbolVisibility::Public, None)
+                != types::symbol::SymbolTableResult::Ok
+            {
+                return Err("Compile-time symbol table capacity exceeded".into());
+            }
+        }
+        let mut evaluator = AsmLine::new(&mut symbols, &registry);
+        for (name, value) in &self.values {
+            evaluator.set_value_symbol(name, value.clone());
+        }
+        evaluator
+            .eval_value_ast_requiring_defined_symbols(expr)
+            .map_err(|error| error.error.message().to_owned())
+    }
+
+    fn evaluate_scalar(&self, expr: &Expr) -> Result<i64, String> {
+        match self.evaluate(expr)? {
+            AsmValue::Scalar(value) => Ok(value),
+            _ => Err("Compound value cannot be evaluated as scalar expression".into()),
+        }
     }
 }
 
@@ -152,30 +203,55 @@ fn current_branch_is_active(stack: &[ActiveConditionalFrame]) -> bool {
 }
 
 fn eval_static_condition(expr: &Expr, values: &StaticConditionalEvalContext) -> Option<bool> {
-    eval_core_expr(expr, values).ok().map(|value| value != 0)
+    values.evaluate_scalar(expr).ok().map(|value| value != 0)
 }
 
-fn record_compile_time_constant(ast: &LineAst, values: &mut StaticConditionalEvalContext) {
-    let (name, expr) = match ast {
-        LineAst::Assignment(assignment) if assignment.op == opcore::parser::AssignOp::Const => {
-            (&assignment.label.name, &assignment.expr)
-        }
-        LineAst::Statement(statement)
-            if statement
-                .mnemonic
-                .as_deref()
-                .is_some_and(|name| name.eq_ignore_ascii_case(".const"))
-                && statement.operands.len() == 1 =>
+fn record_compile_time_value(ast: &LineAst, values: &mut StaticConditionalEvalContext) {
+    let (name, expr, mutable, only_if_undefined) = match ast {
+        LineAst::Assignment(assignment)
+            if matches!(
+                assignment.op,
+                opcore::parser::AssignOp::Const
+                    | opcore::parser::AssignOp::Var
+                    | opcore::parser::AssignOp::VarIfUndef
+            ) =>
         {
+            (
+                &assignment.label.name,
+                &assignment.expr,
+                assignment.op != opcore::parser::AssignOp::Const,
+                assignment.op == opcore::parser::AssignOp::VarIfUndef,
+            )
+        }
+        LineAst::Statement(statement) if statement.operands.len() == 1 => {
             let Some(label) = &statement.label else {
                 return;
             };
-            (&label.name, &statement.operands[0])
+            let Some(mnemonic) = statement.mnemonic.as_deref() else {
+                return;
+            };
+            if mnemonic.eq_ignore_ascii_case(".const") {
+                (&label.name, &statement.operands[0], false, false)
+            } else if mnemonic.eq_ignore_ascii_case(".var") || mnemonic.eq_ignore_ascii_case(".set")
+            {
+                (&label.name, &statement.operands[0], true, false)
+            } else {
+                return;
+            }
         }
         _ => return,
     };
     let key = name.to_ascii_uppercase();
-    if let Ok(value) = eval_core_expr(expr, values) {
+    if only_if_undefined && values.values.contains_key(&key) {
+        return;
+    }
+    if values.values.contains_key(&key) && !values.mutable.contains(&key) {
+        return;
+    }
+    if mutable {
+        values.mutable.insert(key.clone());
+    }
+    if let Ok(value) = values.evaluate(expr) {
         values.values.insert(key, value);
     } else {
         values.values.remove(&key);
@@ -190,6 +266,9 @@ fn parse_graph_line(line: &str, line_num: u32) -> Option<LineAst> {
                 .as_bytes()
                 .windows(6)
                 .any(|part| part.eq_ignore_ascii_case(b".const"))
+                || line.as_bytes().windows(4).any(|part| {
+                    part.eq_ignore_ascii_case(b".var") || part.eq_ignore_ascii_case(b".set")
+                })
                 || line
                     .as_bytes()
                     .windows(5)
@@ -202,7 +281,10 @@ fn parse_graph_line(line: &str, line_num: u32) -> Option<LineAst> {
             match &ast {
                 LineAst::Statement(statement)
                     if statement.mnemonic.as_deref().is_some_and(|name| {
-                        name.eq_ignore_ascii_case(".const") || name.eq_ignore_ascii_case(".bend")
+                        name.eq_ignore_ascii_case(".const")
+                            || name.eq_ignore_ascii_case(".bend")
+                            || name.eq_ignore_ascii_case(".var")
+                            || name.eq_ignore_ascii_case(".set")
                     }) =>
                 {
                     Some(ast)
@@ -250,41 +332,38 @@ fn update_nested_scope_depth(ast: &LineAst, depth: &mut usize) {
 }
 
 fn contains_string_literal(expr: &Expr) -> bool {
+    expression_contains(expr, |expr| matches!(expr, Expr::String(_, _)))
+}
+
+fn contains_current_address(expr: &Expr) -> bool {
+    expression_contains(expr, |expr| matches!(expr, Expr::Dollar(_)))
+}
+
+fn expression_contains(expr: &Expr, predicate: fn(&Expr) -> bool) -> bool {
+    if predicate(expr) {
+        return true;
+    }
+    let contains = |expr: &Expr| expression_contains(expr, predicate);
     match expr {
-        Expr::String(_, _) => true,
-        Expr::List(items, _) | Expr::Tuple(items, _) => items.iter().any(contains_string_literal),
-        Expr::Index { base, index, .. } => {
-            contains_string_literal(base) || contains_string_literal(index)
-        }
+        Expr::List(items, _) | Expr::Tuple(items, _) => items.iter().any(contains),
+        Expr::Index { base, index, .. } => contains(base) || contains(index),
         Expr::Member { base, .. }
         | Expr::Indirect(base, _)
         | Expr::Immediate(base, _)
         | Expr::IndirectLong(base, _)
-        | Expr::Unary { expr: base, .. } => contains_string_literal(base),
-        Expr::StructLiteral { fields, .. } => fields
-            .iter()
-            .any(|(_, value)| contains_string_literal(value)),
-        Expr::Call { args, .. } => args.iter().any(contains_string_literal),
+        | Expr::Unary { expr: base, .. } => contains(base),
+        Expr::StructLiteral { fields, .. } => fields.iter().any(|(_, value)| contains(value)),
+        Expr::Call { args, .. } => args.iter().any(contains),
         Expr::Ternary {
             cond,
             then_expr,
             else_expr,
             ..
-        } => {
-            contains_string_literal(cond)
-                || contains_string_literal(then_expr)
-                || contains_string_literal(else_expr)
-        }
-        Expr::Binary { left, right, .. } => {
-            contains_string_literal(left) || contains_string_literal(right)
-        }
+        } => contains(cond) || contains(then_expr) || contains(else_expr),
+        Expr::Binary { left, right, .. } => contains(left) || contains(right),
         Expr::Range {
             start, end, step, ..
-        } => {
-            contains_string_literal(start)
-                || contains_string_literal(end)
-                || step.as_deref().is_some_and(contains_string_literal)
-        }
+        } => contains(start) || contains(end) || step.as_deref().is_some_and(contains),
         _ => false,
     }
 }
@@ -294,21 +373,23 @@ fn apply_conditional_ast(
     kind: ConditionalKind,
     exprs: &[Expr],
     values: &StaticConditionalEvalContext,
+    include_unknown: bool,
 ) {
     let parent_active = current_branch_is_active(stack);
     match kind {
         ConditionalKind::If => {
-            let branch_active = parent_active
-                && exprs
-                    .first()
-                    .and_then(|expr| eval_static_condition(expr, values))
-                    .unwrap_or(false);
+            let condition = exprs
+                .first()
+                .and_then(|expr| eval_static_condition(expr, values));
+            let uncertain = include_unknown && condition.is_none();
+            let branch_active = parent_active && condition.unwrap_or(uncertain);
             stack.push(ActiveConditionalFrame {
                 kind: ActiveConditionalKind::If,
                 parent_active,
-                branch_taken: branch_active,
+                branch_taken: branch_active && !uncertain,
                 current_active: branch_active,
                 switch_value: None,
+                uncertain,
             });
         }
         ConditionalKind::ElseIf => {
@@ -318,14 +399,15 @@ fn apply_conditional_ast(
             if frame.kind != ActiveConditionalKind::If {
                 return;
             }
-            let branch_active = frame.parent_active
-                && !frame.branch_taken
-                && exprs
-                    .first()
-                    .and_then(|expr| eval_static_condition(expr, values))
-                    .unwrap_or(false);
+            let condition = exprs
+                .first()
+                .and_then(|expr| eval_static_condition(expr, values));
+            let uncertain = include_unknown && condition.is_none();
+            let branch_active =
+                frame.parent_active && !frame.branch_taken && condition.unwrap_or(uncertain);
             frame.current_active = branch_active;
-            frame.branch_taken |= branch_active;
+            frame.branch_taken |= branch_active && !uncertain;
+            frame.uncertain |= uncertain;
         }
         ConditionalKind::Else => {
             let Some(frame) = stack.last_mut() else {
@@ -350,7 +432,7 @@ fn apply_conditional_ast(
             let switch_value = if parent_active {
                 exprs
                     .first()
-                    .and_then(|expr| eval_core_expr(expr, values).ok())
+                    .and_then(|expr| values.evaluate_scalar(expr).ok())
             } else {
                 None
             };
@@ -360,6 +442,7 @@ fn apply_conditional_ast(
                 branch_taken: false,
                 current_active: false,
                 switch_value,
+                uncertain: include_unknown && switch_value.is_none(),
             });
         }
         ConditionalKind::Case => {
@@ -371,15 +454,16 @@ fn apply_conditional_ast(
             }
             let branch_active = frame.parent_active
                 && !frame.branch_taken
-                && frame.switch_value.is_some()
-                && exprs.iter().any(|expr| {
-                    eval_core_expr(expr, values)
-                        .ok()
-                        .zip(frame.switch_value)
-                        .is_some_and(|(value, switch)| value == switch)
-                });
+                && (frame.uncertain
+                    || exprs.iter().any(|expr| {
+                        values
+                            .evaluate_scalar(expr)
+                            .ok()
+                            .zip(frame.switch_value)
+                            .is_some_and(|(value, switch)| value == switch)
+                    }));
             frame.current_active = branch_active;
-            frame.branch_taken |= branch_active;
+            frame.branch_taken |= branch_active && !frame.uncertain;
         }
         ConditionalKind::Default => {
             let Some(frame) = stack.last_mut() else {
@@ -403,26 +487,38 @@ fn apply_conditional_ast(
     }
 }
 
-fn scan_active_module_items(lines: &[String]) -> Vec<LineAst> {
+fn scan_active_module_items_with_values(
+    lines: &[String],
+    values: StaticConditionalEvalContext,
+) -> Vec<LineAst> {
+    scan_module_items(lines, values, false)
+}
+
+fn scan_module_items(
+    lines: &[String],
+    mut values: StaticConditionalEvalContext,
+    potential: bool,
+) -> Vec<LineAst> {
     let _parse_scope = phase_profile::scope(PhaseBucket::PrepareParseLineAst);
     let mut out = Vec::new();
     let mut stack = Vec::new();
-    let mut values = StaticConditionalEvalContext::default();
     let mut scope_depth = 0;
     for (idx, line) in lines.iter().enumerate() {
         let Some(ast) = parse_graph_line(line, idx as u32 + 1) else {
             continue;
         };
         if let LineAst::Conditional(cond) = &ast {
-            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values);
+            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values, potential);
             continue;
         }
         if current_branch_is_active(&stack) {
             update_nested_scope_depth(&ast, &mut scope_depth);
-            if scope_depth == 0 {
-                record_compile_time_constant(&ast, &mut values);
+            if scope_depth == 0 && !stack.iter().any(|frame| frame.uncertain) {
+                record_compile_time_value(&ast, &mut values);
             }
-            out.push(ast);
+            if !potential || scope_depth == 0 {
+                out.push(ast);
+            }
         }
     }
     out
@@ -446,7 +542,7 @@ fn scan_module_starts_from_processing(lines: &[String]) -> Vec<(String, usize)> 
             continue;
         };
         if let LineAst::Conditional(cond) = &ast {
-            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values);
+            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values, false);
             continue;
         }
         if !current_branch_is_active(&stack) {
@@ -471,10 +567,11 @@ fn scan_module_starts_from_processing(lines: &[String]) -> Vec<(String, usize)> 
 }
 
 // Module configuration is needed before the dependency is assembled. Evaluate
-// imports in source order using only constants already defined by the caller.
+// imports in source order using only values already defined by the caller.
 fn collect_configured_uses(source: &ModuleSource) -> Result<Vec<ModuleUseRef>, AsmRunError> {
     let mut values = StaticConditionalEvalContext {
         values: source.params.clone(),
+        mutable: HashSet::new(),
     };
     let mut stack = Vec::new();
     let mut scope_depth = 0;
@@ -484,7 +581,7 @@ fn collect_configured_uses(source: &ModuleSource) -> Result<Vec<ModuleUseRef>, A
             continue;
         };
         if let LineAst::Conditional(cond) = &ast {
-            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values);
+            apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values, false);
             continue;
         }
         if !current_branch_is_active(&stack) {
@@ -492,7 +589,7 @@ fn collect_configured_uses(source: &ModuleSource) -> Result<Vec<ModuleUseRef>, A
         }
         update_nested_scope_depth(&ast, &mut scope_depth);
         if scope_depth == 0 {
-            record_compile_time_constant(&ast, &mut values);
+            record_compile_time_value(&ast, &mut values);
         }
         if let LineAst::Use(use_ast) = ast {
             let mut import = ModuleUseRef {
@@ -526,9 +623,9 @@ fn collect_configured_uses(source: &ModuleSource) -> Result<Vec<ModuleUseRef>, A
                         &source.lines,
                     ));
                 }
-                let value = eval_core_expr(&param.value, &values).map_err(|err| {
+                let value = values.evaluate(&param.value).map_err(|err| {
                     module_import_error(
-                        &format!(".use parameter {}: {}", param.name, err.message),
+                        &format!(".use parameter {}: {}", param.name, err),
                         Some(&param.name),
                         &import,
                         &source.path,
@@ -543,9 +640,15 @@ fn collect_configured_uses(source: &ModuleSource) -> Result<Vec<ModuleUseRef>, A
     Ok(uses)
 }
 
-fn collect_use_directives_with_items_from_processing(lines: &[String]) -> Vec<UseDirectiveSpec> {
+fn collect_use_directives_with_items_from_processing(
+    source: &ModuleSource,
+) -> Vec<UseDirectiveSpec> {
     let mut uses = Vec::new();
-    for ast in scan_active_module_items(lines) {
+    let values = StaticConditionalEvalContext {
+        values: source.params.clone(),
+        mutable: HashSet::new(),
+    };
+    for ast in scan_active_module_items_with_values(&source.lines, values) {
         let LineAst::Use(use_ast) = ast else {
             continue;
         };
@@ -819,6 +922,49 @@ fn load_module_recursive(
     Ok(())
 }
 
+fn parameter_scalar_text(value: i64) -> String {
+    if value == i64::MIN {
+        "(-9223372036854775807-1)".into()
+    } else {
+        value.to_string()
+    }
+}
+
+fn parameter_value_text(value: &AsmValue) -> String {
+    match value {
+        AsmValue::Scalar(value) => parameter_scalar_text(*value),
+        AsmValue::List(values) => format!(
+            "{{{}}}",
+            values
+                .iter()
+                .map(|value| parameter_scalar_text(*value))
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        // AsmValue stores the normalized exclusive bound; preserve it directly.
+        AsmValue::Range { start, end, step } => format!(
+            "{}..{}:{}",
+            parameter_scalar_text(*start),
+            parameter_scalar_text(*end),
+            parameter_scalar_text(*step)
+        ),
+        AsmValue::Struct(def) => def.name.clone(),
+        AsmValue::StructInstance(instance) => {
+            let mut fields: Vec<_> = instance.fields.iter().collect();
+            fields.sort_by_key(|(name, _)| *name);
+            format!(
+                "{}{{{}}}",
+                instance.type_name,
+                fields
+                    .into_iter()
+                    .map(|(name, value)| format!("{name}:{}", parameter_scalar_text(*value)))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        }
+    }
+}
+
 fn module_import_error(
     message: &str,
     param: Option<&str>,
@@ -1009,12 +1155,15 @@ pub(crate) fn load_module_graph_contextual(
         pp_macro_depth,
         source_provider,
     };
-    // Visit entry modules that import other entry modules first. An imported
-    // entry module receives its configuration from the importer; treating its
-    // declaration as an unconfigured root first would fix the wrong values.
+    // Prioritize source roots before potential module-scope import targets,
+    // including branches whose conditions need configuration parameters. These
+    // scheduling hints do not activate imports; configured evaluation still
+    // selects dependencies and rejects only actual import cycles.
     let entry_targets: HashSet<String> = entry_modules
         .values()
-        .flat_map(|source| scan_active_module_items(&source.lines))
+        .flat_map(|source| {
+            scan_module_items(&source.lines, StaticConditionalEvalContext::default(), true)
+        })
         .filter_map(|ast| match ast {
             LineAst::Use(use_ast) => Some(canonical_module_id(&use_ast.module_id)),
             _ => None,
@@ -1044,7 +1193,7 @@ pub(crate) fn load_module_graph_contextual(
         let module_lines = &source.lines;
         let canonical = canonical_module_id(module_id);
         let use_directives: Vec<UseDirectiveSpec> =
-            collect_use_directives_with_items_from_processing(module_lines);
+            collect_use_directives_with_items_from_processing(source);
 
         let mut mp = AsmMacroProcessor::new(pp_macro_depth);
         for import in &use_directives {
@@ -1103,7 +1252,7 @@ pub(crate) fn load_module_graph_contextual(
         parameter_lines.sort_by_key(|(name, _)| *name);
         if implicit {
             for (name, value) in &parameter_lines {
-                combined.push(format!("{name} = {value}"));
+                combined.push(format!("{name} = {}", parameter_value_text(value)));
                 origins.push(SourceOrigin::new(
                     Some(file_name.clone()),
                     source.first_line,
@@ -1124,7 +1273,7 @@ pub(crate) fn load_module_graph_contextual(
             }));
             if starts_module {
                 for (name, value) in &parameter_lines {
-                    combined.push(format!("{name} = {value}"));
+                    combined.push(format!("{name} = {}", parameter_value_text(value)));
                     origins.push(SourceOrigin::new(
                         Some(file_name.clone()),
                         source.first_line + idx as u32,

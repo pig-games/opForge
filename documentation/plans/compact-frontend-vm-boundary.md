@@ -9,10 +9,15 @@ bound numeric tokens and lowers a transient offset-based tree to ExprVM programs
 Native EXVM has no version argument, field, check or dispatch. Consolidation of
 other VM contracts and retirement of the old native text service remain open.
 The subsequent compound-tree checkpoint adds list/range/index/call builders
-through the same grammar. BS31 adds typed lowering and session-owned flat-list
-and compact-range storage/execution;
-its focused scope and remaining boundaries are in the active plan.
-Preparation-time compound values remain open; full language parity is not claimed.
+through the same grammar. The current preparation slice evaluates known
+source-site scalar, flat-list and range values for `.use ... with (...)` in Rust,
+snapshots mutable assignments at the import site, and forwards owned values
+through imported modules. Native has focused shared-EXVM support for flat lists
+and ranges, with independent offset arenas, `.len`, indexed conditionals and
+`.var`/`.set` snapshots. Native compound-value forwarding through a complete
+`.use` chain remains under diagnosis. Iterable-loop and struct values are not
+newly qualified, and existing wide-literal packing limits remain. Full language
+parity and a new full self-host qualification are not claimed.
 Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
 still unresolved. BS28 introduced numeric `:=`
 normalization to shared declarations.
@@ -329,17 +334,21 @@ unrepresentable alias must reject without emitting partial relocation data.
 The focused subset covers explicitly ordered physical files, module-local
 imports, dependency discovery/order, selected includes, common `.use` forms,
 visibility, public qualified references, selected-file discovery, and the
-tested direct per-item, wildcard and scalar configured parameters. Numeric
-identities are bound before assembly; native assembly does not return to source
+tested direct per-item, wildcard and scalar/flat-list/range configured
+parameters. Numeric identities are bound before assembly; native assembly does not return to source
 string lookup. Fresh exact Rust/native cases include missing and ambiguous
 imports, cycles, private names, invalid include paths, aliases, and imported
 macro calls.
 
-Scalar `.use ... with (...)` evaluation is limited to earlier module-scope `=`
-or scalar `.const` constants and incoming parameters in the compact signed-32-bit
-expression grammar. Preparation filters nested `.if`/`.else`/`.endif` records only when
-their module-scope scalar inputs are known. The unsupported forms are listed
-explicitly below; they are not implicitly covered by the imported-module tests.
+`.use ... with (...)` preparation evaluates known source-site scalar, flat-list
+and range values. Rust snapshots mutable assignments at the import site and
+forwards owned values through imported modules. Native's focused flat-list/range
+path uses shared EXVM and independent offset arenas, and covers `.len`, indexed
+conditionals and mutable `.var`/`.set` snapshots. Native compound values also
+pass focused forwarding through two imported modules and repeated equal imports.
+Iterable-loop values, struct values and existing wide-literal packing limits remain outside this
+qualification. These focused cases do not establish full Rust/native parity or
+a new full self-host result.
 
 Macro descriptors preserve definition order, lexical distance, visibility,
 source order and argument spelling. Duplicate definitions and import/value
@@ -362,7 +371,7 @@ anonymous macro scopes remain a distinct Rust/native selection edge.
 - BS19 lowers labelled scalar `.const` through shared PRVM into immutable assignment records, including configuration-time import parameters. The [focused checkpoint](native-runtime-reset.md#bs19-shared-scalar-declarations--focused-parity) records the controls, selected real-example retries, contract migration and remaining compound-value/8085 gaps.
 - BS20 adds shared scalar `.var`/`.set` declaration roles and statement-time signed64 storage with readonly snapshot tracking. [Focused proof](native-runtime-reset.md#bs20-scalar-mutable-declarations--single-sweep-checkpoint) covers flat outputs, both label styles, conditionals, macro locals and instruction operands. Single-source-sweep concrete layouts remain supported. [Hunk traversal](native-runtime-reset.md#bs20-source-order-hunk-traversal) now executes statements once per pass in source order, with bounded section-local cursors and independent output ordering. Unselected sections execute state without contributing output. Only resolved, proven-absolute readonly snapshots acquire runtime absolute state 4; their values and proof refresh each pass. One/two-map layouts still reject active mutations before filtered sweeps can reorder state, with dedicated-diagnostic controls. [Mapped preparation](native-runtime-reset.md#bs20-mapped-preparation--configuration-transfer-repair) now transfers discovered maps with canonical identity rebinding and lexical ownership before dependency bodies run; readonly mapped output, parameterized imports and inactive imports pass. Each seeded map must match its ordinary import replay once. The native two-map limit and late-map rejection remain explicit gaps. Mapped source-order traversal remains a separate structural slice. Compound values and general narrow-output truncation remain gaps.
 - TKVM-selected number normalization, composed-name recipes, and ordinary macro/segment string fragment recipes are implemented. Generated-call argument fragments are re-tokenized under VM control. Macro descriptor services use the compact PRVM boundary and offset-only fragment records.
-- Preparation binds scopes, module identities, selected imports, visibility and supported scalar parameters before assembly. Selected-file discovery and dependency order, common `.use` forms, selected includes and numeric import identities have fresh focused native/Rust coverage.
+- Preparation binds scopes, module identities, selected imports, visibility and supported scalar/flat-list/range parameters before assembly. Selected-file discovery and dependency order, common `.use` forms, selected includes and numeric import identities have fresh focused native/Rust coverage.
 - Counted packed `.for` replay passes focused real-native comparison. Package-selected branch width, supported register masks, scalar roots, predicates, and supported instruction/data Hunk relocations are exercised by exact focused native/Rust comparisons.
 - Imported anonymous macro invocation scopes carry a preparation-only marker so their expansions remain reachable without creating a named reachability span. The marker does not enter runtime records or change the package format.
 - Template declarations and numeric value declarations have independent ownership and visibility. Per-item selection aliases currently rename values; selected macro calls retain their declared name. Module aliases and qualified macro calls are separate supported forms.
@@ -398,7 +407,7 @@ These statements describe the implemented subset. They do not imply complete ass
 - Iterable `.for` and `.bfor` remain unsupported; labels inside an active unscoped loop reject. Counted packed-loop execution is supported and has focused native/Rust comparison. These limits do not imply that general loop execution is absent.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
-- Scalar `.use ... with (...)` support is limited to supported signed-32-bit expressions from earlier module-scope `=` or scalar `.const` constants and incoming parameters. Within this import-parameter evaluation model, compound values, loop-derived or other assembly-time-dependent conditions, and expressions outside the compact grammar remain unsupported. This limit does not describe general loop execution. Do not claim full module, parameter or Hunk-expression parity.
+- `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop and struct values are not newly qualified, wide-literal packing remains limited, and these cases do not establish full module, parameter or Hunk-expression parity.
 
 For instruction and address selection, required tuple/register classes and
 package predicates remain barriers: native may skip a higher-priority recipe

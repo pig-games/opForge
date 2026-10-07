@@ -12,6 +12,7 @@
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_values as values
 	.use exprvm.amigaos.runtime as runtime
 	.pub
 Item	.struct
@@ -39,11 +40,13 @@ PROXIES = SELECTIONS+LIST_LIMIT*SELECTION_BYTES
 PARAM_COUNT = PROXIES+256*2
 PARAMS = PARAM_COUNT+2
 PARAM_BYTES = pkg.PARAMETER_BYTES
-KNOWN_VALUES = PARAMS+LIST_LIMIT*PARAM_BYTES
+KNOWN_VALUES = PARAMS+pkg.PARAMETER_LIMIT*PARAM_BYTES
 KNOWN_VALUES_POINTER = KNOWN_VALUES+memory.Block.Pointer
 KNOWN_DEFINED = KNOWN_VALUES+memory.Block.Used+4
 KNOWN_DEFINED_POINTER = KNOWN_DEFINED+memory.Block.Pointer
-EXPRESSION_SCRATCH = KNOWN_DEFINED+memory.Block.Used+4
+KNOWN_OWNER = KNOWN_DEFINED+memory.Block.Used+4
+PARAM_OWNER = KNOWN_OWNER+values.OWNER_BYTES
+EXPRESSION_SCRATCH = PARAM_OWNER+values.OWNER_BYTES
 SCRATCH_BYTES = EXPRESSION_SCRATCH+256
 PROXY = 8
 	.section code, kind=code
@@ -94,6 +97,12 @@ extent2
 	bls.w extent3
 	move.l d2, memory.Block.Used(a0)
 extent3
+	moveq #0, d1
+	move.w -layout.IMPORT_STATE+layout.State.Base(a1), d1
+	add.l d2, d1
+	lea KNOWN_OWNER(a1), a0
+	move.l d1, d0
+	jsr values.growSymbols
 done
 	movem.l (sp)+, d1-d2/a0-a1
 	tst.l d0
@@ -105,6 +114,7 @@ bad
 
 ; A0=import state. Release every owned per-identity block; registers kept.
 release	.block
+	move.l d0, -(sp)
 	move.l a0, -(sp)
 	lea HEADS(a0), a0
 	jsr memory.release
@@ -117,20 +127,48 @@ release	.block
 	lea KNOWN_DEFINED(a0), a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
+	movea.l (sp), a0
+	lea KNOWN_OWNER(a0), a0
+	jsr values.release
+	movea.l (sp), a0
+	lea PARAM_OWNER(a0), a0
+	jsr values.release
 	movea.l (sp)+, a0
+	move.l (sp)+, d0
 	rts
 	.bend  ; release
 
-; A0=normalized writer record,A1=scope state. Retain module/global-scope
-; assignments whose values are known at this source position. Global scope
-; is the zero module/current identity; nested lexical scopes remain excluded.
-; The existing
-; expression VM handles arithmetic; labels and forward values remain unknown.
+	.pub
+; A0=scope. Reset transient known snapshots while retaining parameter ownership.
 ; D0/CCR=status; other registers preserved.
-captureScalar	.block
+clearKnown	.block
+	movem.l d1/a0-a1, -(sp)
+	lea layout.IMPORT_STATE(a0), a1
+	lea KNOWN_OWNER(a1), a0
+	jsr values.reset
+	bne.w done
+	move.l KNOWN_DEFINED+memory.Block.Used(a1), d1
+	movea.l KNOWN_DEFINED_POINTER(a1), a0
+	tst.l d1
+	beq.w done
+clear
+	clr.b (a0)+
+	subq.l #1, d1
+	bne.w clear
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; clearKnown
+
+; A0=normalized writer record,A1=scope state. Retain assignments known at this
+; source position. Bound identities preserve lexical scope and shadowing.
+; The expression VM handles typed values; labels and forward values remain unknown.
+; D0/CCR=status; other registers preserved.
+captureValue	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
-	; Known scalar values remain keyed by their lexical source IDs. Keeping
+	; Known snapshots remain keyed by their lexical source IDs. Keeping
 	; local assignments here also serves first-pass unit/conditional consumers.
 	moveq #0, d0
 	move.b (a0), d0
@@ -151,7 +189,7 @@ scalarValue
 	moveq #0, d7
 	move.w 5(a0), d7
 	lea 9(a0), a0
-	bsr.w evaluateRange
+	bsr.w evaluateValue
 	bne.w constantUnknown
 	move.l d7, d0
 	sub.w layout.State.Base(a6), d0
@@ -167,7 +205,11 @@ scalarValue
 	move.l d2, runtime.Value.High(a1, d4.l)
 	movea.l KNOWN_DEFINED_POINTER(a0), a1
 	move.b #1, 0(a1, d0.l)
-	bra.w constantOk
+	lea KNOWN_OWNER(a0), a0
+	move.l d7, d1
+	move.l d3, d2
+	jsr values.setKind
+	bra.w constantDone
 constantUnknown
 	move.l d7, d0
 	sub.w layout.State.Base(a6), d0
@@ -187,13 +229,18 @@ constantUnknown
 	adda.l d0, a1
 	clr.b 0(a1)
 	suba.l d0, a1
+	lea KNOWN_OWNER(a0), a0
+	move.l d7, d1
+	moveq #0, d2
+	jsr values.setKind
+	bra.w constantDone
 constantOk
 	moveq #0, d0
 constantDone
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; captureScalar
+	.bend  ; captureValue
 
 ; A0=first .use target token,A1=scope,A2=ordinary binder callback.
 ; Resolve only its shared canonical module identity; no suffix, parameters or
@@ -1413,7 +1460,7 @@ done
 	.bend  ; targetPublic
 
 ; A0=first suffix token,A4=end,A5=binder,A6=scope,D7=target module index.
-; Capture scalar parameters by numeric ID. On success A4 ends before
+; Capture scalar or compound parameters by numeric ID. On success A4 ends before
 ; the with clause, so the existing selection/alias parser sees its own suffix.
 ; Other registers preserved; D0/CCR=status.
 parameters	.block
@@ -1537,13 +1584,23 @@ parameterValue
 parameterExpression
 	cmpa.l a4, a3
 	bhs.w expressionBad
+	cmpi.b #10, (a3)
+	beq.w expressionOpen
+	cmpi.b #12, (a3)
+	beq.w expressionOpen
 	cmpi.b #14, (a3)
 	bne.w expressionClose
+expressionOpen
 	addq.w #1, d2
 	bra.w expressionAdvance
 expressionClose
+	cmpi.b #11, (a3)
+	beq.w expressionEnd
+	cmpi.b #13, (a3)
+	beq.w expressionEnd
 	cmpi.b #15, (a3)
 	bne.w expressionComma
+expressionEnd
 	tst.w d2
 	beq.w expressionReady
 	subq.w #1, d2
@@ -1562,15 +1619,25 @@ expressionAdvance
 expressionReady
 	movea.l (sp)+, a0
 	movea.l a3, a1
-	bsr.w evaluateRange
-	bne.w parametersBad
+	move.l d3, -(sp)
+	bsr.w evaluateValue
+	move.l d4, -(sp)
+	move.l d3, d4
+	move.l 4(sp), d3
 	move.l d1, d6
-	bra.w expressionStored
+	tst.l d0
+	beq.w expressionStored
+	move.l (sp)+, d4
+	addq.l #4, sp
+	bra.w parametersBad
 expressionBad
 	addq.l #4, sp
 	bra.w parametersBad
 expressionStored
 	bsr.w storeParameter
+	move.l (sp)+, d4
+	addq.l #4, sp
+	tst.l d0
 	bne.w parametersBad
 	cmpa.l a4, a3
 	bhs.w parametersBad
@@ -1605,24 +1672,59 @@ parametersDone
 	rts
 	.bend  ; parameters
 
-; A6=scope,D5=canonical ID,D6=low,D2=high,D3=already declared.
-; Store or compare one scalar parameter and publish its known value. The same
-; conflict rule serves parsed imports and configuration transfer. D0/CCR=status;
-; other registers preserved.
+; A6=scope,D5=canonical ID,D6=known low,D2=high,D3=already declared,D4=kind.
+; Snapshot parameters in their independent arena; compare immutable contents.
+; D0/CCR=status; other registers preserved.
 storeParameter	.block
-	movem.l d1/a0-a1, -(sp)
-	lea layout.IMPORT_STATE(a6), a0
+	movem.l d1-d4/d7/a0-a2, -(sp)
+	lea layout.IMPORT_STATE(a6), a2
+	move.l PARAM_OWNER+values.Owner.Arena+memory.Block.Used(a2), -(sp)
+	move.l d6, d7
+	tst.l d4
+	beq.w scalarParameter
+	move.l d2, -(sp)
+	move.l d3, -(sp)
+	lea PARAM_OWNER(a2), a0
+	movea.l KNOWN_OWNER+values.Owner.Arena+memory.Block.Pointer(a2), a1
+	move.l KNOWN_OWNER+values.Owner.Arena+memory.Block.Used(a2), d0
+	move.l d6, d1
+	move.l d4, d3
+	jsr values.copyRecord
+	move.l d2, d7
+	move.l (sp)+, d3
+	move.l (sp)+, d2
+	tst.l d0
+	bne.w done
+scalarParameter
 	moveq #0, d0
-	move.w PARAM_COUNT(a0), d0
+	move.w PARAM_COUNT(a2), d0
 	tst.w d3
 	beq.w appendParameter
-	lea PARAMS(a0), a1
+	lea PARAMS(a2), a1
 	move.l d0, d1
 existingParameter
 	tst.l d1
 	beq.w bad
 	cmp.w pkg.Parameter.Id(a1), d5
 	bne.w nextParameter
+	cmp.w pkg.Parameter.Kind(a1), d4
+	bne.w bad
+	tst.l d4
+	beq.w compareScalar
+	move.l d1, -(sp)
+	move.l pkg.Parameter.Low(a1), d1
+	move.l d7, d2
+	lea PARAM_OWNER(a2), a0
+	jsr values.equalValues
+	move.l (sp)+, d1
+	tst.l d0
+	bne.w done
+	; Equality needs the temporary copy only until comparison completes.
+	move.l (sp), d0
+	jsr values.rewind
+	bne.w done
+	bra.w parameterStored
+compareScalar
 	cmp.l pkg.Parameter.Low(a1), d6
 	bne.w bad
 	cmp.l pkg.Parameter.High(a1), d2
@@ -1633,16 +1735,16 @@ nextParameter
 	subq.l #1, d1
 	bra.w existingParameter
 appendParameter
-	cmpi.w #LIST_LIMIT, d0
+	cmpi.w #pkg.PARAMETER_LIMIT, d0
 	bhs.w bad
 	mulu.w #PARAM_BYTES, d0
-	lea PARAMS(a0), a1
+	lea PARAMS(a2), a1
 	adda.l d0, a1
 	move.w d5, pkg.Parameter.Id(a1)
-	clr.w pkg.Parameter.Reserved(a1)
-	move.l d6, pkg.Parameter.Low(a1)
+	move.w d4, pkg.Parameter.Kind(a1)
+	move.l d7, pkg.Parameter.Low(a1)
 	move.l d2, pkg.Parameter.High(a1)
-	addq.w #1, PARAM_COUNT(a0)
+	addq.w #1, PARAM_COUNT(a2)
 parameterStored
 	move.l d5, d0
 	sub.w layout.State.Base(a6), d0
@@ -1652,33 +1754,55 @@ parameterStored
 	bhs.w bad
 	move.l d0, d1
 	lsl.l #3, d1
-	movea.l KNOWN_VALUES_POINTER(a0), a1
+	movea.l KNOWN_VALUES_POINTER(a2), a1
 	move.l d6, runtime.Value.Low(a1, d1.l)
+	tst.l d4
+	beq.w scalarHigh
+	moveq #0, d2
+scalarHigh
 	move.l d2, runtime.Value.High(a1, d1.l)
-	movea.l KNOWN_DEFINED_POINTER(a0), a1
+	movea.l KNOWN_DEFINED_POINTER(a2), a1
 	move.b #1, 0(a1, d0.l)
-	moveq #0, d0
+	lea KNOWN_OWNER(a2), a0
+	move.l d5, d1
+	move.l d4, d2
+	jsr values.setKind
 	bra.w done
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d1/a0-a1
+	addq.l #4, sp
+	movem.l (sp)+, d1-d4/d7/a0-a2
 	tst.l d0
 	rts
 	.bend  ; storeParameter
 
 	.pub
 ; A0=destination scope,D0=canonical parameter ID,D1=module source index+1,
-; D2=low,D3=high. Seed a private scalar parameter before dependency body replay.
+; D2=low,D3=high,D4=kind,A1=source parameter arena,D6=arena bytes.
+; Copy a private parameter before dependency body replay.
 ; Identities must already be bound in this scope. D0/CCR=status; other registers
 ; preserved. A conflict leaves this caller-owned preparation state releasable.
 seedParameter	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	move.l d0, d5
+	move.l d1, d7
+	tst.l d4
+	beq.w scalarSeed
+	move.l d3, -(sp)
+	move.l d2, d1
+	move.l d4, d3
+	move.l d6, d0
+	lea layout.IMPORT_STATE+KNOWN_OWNER(a6), a0
+	jsr values.copyRecord
+	move.l (sp)+, d3
+	tst.l d0
+	bne.w bad
+scalarSeed
 	move.l d2, d6
 	move.l d3, d2
-	move.l d1, d7
+	tst.l d7
 	beq.w bad
 	cmp.w layout.State.Count(a6), d7
 	bhi.w bad
@@ -1688,6 +1812,7 @@ seedParameter	.block
 	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
+	move.l d4, -(sp)
 	move.l d0, d4
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a1
@@ -1697,7 +1822,7 @@ seedParameter	.block
 	beq.w new
 	moveq #1, d3
 	cmp.w records.Entry.Owner(a1), d7
-	bne.w bad
+	bne.w ownerBad
 	bra.w store
 new
 	ori.w #1, records.Entry.Flags(a1)
@@ -1708,8 +1833,11 @@ new
 	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a1
 	andi.w #$fffe, 0(a1, d4.l)
 store
+	move.l (sp)+, d4
 	bsr.w storeParameter
 	bra.w done
+ownerBad
+	addq.l #4, sp
 bad
 	moveq #1, d0
 done
@@ -1856,7 +1984,21 @@ leafReady
 ; tokens nor proxy values are cached, so later mutable updates remain visible.
 	.pub
 evaluateRange	.block
-	movem.l d3-d7/a0-a6, -(sp)
+	move.l d3, -(sp)
+	bsr.w evaluateValue
+	bne.w done
+	tst.l d3
+	beq.w done
+	moveq #1, d0
+done
+	move.l (sp)+, d3
+	tst.l d0
+	rts
+	.bend  ; evaluateRange
+
+; Same validated token binding, with D3=SCALAR/LIST/RANGE and owned offsets.
+evaluateValue	.block
+	movem.l d4-d7/a0-a6, -(sp)
 	subq.l #4, sp
 	clr.l (sp)
 	move.l a1, d0
@@ -1878,6 +2020,7 @@ copyExpressionToken
 	movea.l a2, a5
 	movea.l a1, a4
 	lea layout.IMPORT_STATE(a6), a3
+	moveq #0, d7  ; any known compound forces typed lowering
 validateExpressionToken
 	cmpa.l a4, a5
 	beq.w compileExpression
@@ -1896,6 +2039,14 @@ validateExpressionToken
 	bhi.w rangeBad
 	moveq #0, d0
 	move.w 1(a5), d0
+	move.l d0, d1
+	jsr expression.isBuiltin
+	bne.w ordinaryExpressionName
+	; A call name has no value cell. Typed lowering validates its node role.
+	moveq #1, d7
+	bra.w nextExpressionToken
+ordinaryExpressionName
+	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w rangeBad
 	andi.l #$ffff, d0
@@ -1967,6 +2118,14 @@ knownExpressionSymbol
 	tst.b 0(a0)
 	suba.l d0, a0
 	beq.w rangeBad
+	lea KNOWN_OWNER(a3), a0
+	move.l d3, d1
+	add.w layout.State.Base(a6), d1
+	jsr values.getKind
+	bne.w rangeBad
+	tst.l d2
+	beq.w nextExpressionToken
+	moveq #1, d7
 nextExpressionToken
 	movea.l a5, a0
 	bsr.w nextParameterToken
@@ -1979,7 +2138,14 @@ compileExpression
 	lea EXPRESSION_SCRATCH(a3), a5
 	movea.l a5, a3
 	lea 256(a5), a4
+	tst.l d7
+	beq.w scalarCompile
+	jsr expression.compileValue
+	bra.w expressionCompiled
+scalarCompile
 	jsr expression.compile
+expressionCompiled
+	tst.l d0
 	bne.w rangeBad
 	cmpa.l a1, a0
 	bne.w rangeBad
@@ -2001,13 +2167,13 @@ compileExpression
 	add.l d1, d0
 	move.l d0, expression.Frame.Count(a2)
 	clr.l expression.Frame.Pc(a2)
-	; Preparation owns scalar snapshots only. Never interpret stack residue
-	; as an assembly-session compound owner when compilation yields a list.
-	clr.l expression.Frame.Owner(a2)
+	; The expression VM owns all transient compound records in this scope.
+	lea KNOWN_OWNER(a4), a0
+	move.l a0, expression.Frame.Owner(a2)
 	clr.l expression.Frame.Kind(a2)
 	movea.l a5, a0
 	movea.l a3, a1
-	jsr expression.evaluate
+	jsr expression.evaluateValue
 	tst.l d0
 	bne.w evaluatedBad
 	tst.l d2
@@ -2015,6 +2181,7 @@ compileExpression
 	cmpa.l a1, a0
 	bne.w evaluatedBad
 	move.l expression.Frame.High(a2), d2
+	move.l expression.Frame.Kind(a2), d3
 	adda.w #expression.FRAME_BYTES, sp
 	moveq #0, d0
 	bra.w rangeDone
@@ -2023,13 +2190,13 @@ evaluatedBad
 rangeBad
 	moveq #1, d0
 rangeDone
-	move.l (sp), d3
-	adda.l d3, sp
+	move.l (sp), d4
+	adda.l d4, sp
 	addq.l #4, sp
-	movem.l (sp)+, d3-d7/a0-a6
+	movem.l (sp)+, d4-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; evaluateRange
+	.bend  ; evaluateValue
 	.priv
 
 ; A0=token,A4=end. Advance one packed source token without inspecting its

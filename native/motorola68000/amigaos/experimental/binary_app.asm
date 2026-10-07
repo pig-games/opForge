@@ -1017,6 +1017,8 @@ blocksSelected
 	lea Front, a0
 	jsr frontend.parameterBytes
 	move.l d0, ParameterBytes
+	move.l d1, ParameterCount
+	tst.l d0
 	beq.w parametersSaved
 	lea Parameters, a0
 	jsr memory.reserve
@@ -1481,10 +1483,8 @@ run	.block
 	lea Context, a0
 	lea Parameters, a1
 	move.l memory.Block.Pointer(a1), package.Context.Parameters(a0)
-	move.l ParameterBytes, d0
-	divu.w #package.PARAMETER_BYTES, d0
-	andi.l #$ffff, d0
-	move.l d0, package.Context.ParameterCount(a0)
+	move.l ParameterCount, package.Context.ParameterCount(a0)
+	move.l ParameterBytes, package.Context.ParameterBytes(a0)
 	lea RuntimeBlock, a1
 	move.l memory.Block.Pointer(a1), package.Context.Package(a0)
 	lea Work, a0
@@ -2067,6 +2067,7 @@ Records	.res byte, memory.Block.Used+4
 Symbols	.res byte, memory.Block.Used+4
 Parameters	.res byte, memory.Block.Used+4
 ParameterBytes	.res long, 1
+ParameterCount	.res long, 1
 Output	.res byte, memory.Block.Used+4
 HunkBlock	.res byte, memory.Block.Used+4
 RelocBlock	.res byte, memory.Block.Used+4

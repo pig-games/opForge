@@ -24,6 +24,7 @@
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_values as values
 	.use tkvm.amigaos.runtime as tokenizer
 	.use tkvm.amigaos.fragments as fragment_tokenizer
 	.use experimental.amigaos.binary_macro_fragments as fragment_binding
@@ -1710,15 +1711,15 @@ bindLine
 	cmpi.w #9, d0
 	blo.w scalarCaptured
 	cmpi.b #34, 8(a0)
-	beq.w captureScalar
+	beq.w captureValue
 	cmpi.b #writer.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
-	beq.w captureScalar
+	beq.w captureValue
 	cmpi.b #writer.TOKEN_MUTABLE_DECLARATION, 8(a0)
 	bne.w scalarCaptured
-captureScalar
+captureValue
 	lea SCOPE_STATE(a6), a1
 	.MEMORY_DETAIL_BEGIN #2
-	jsr imports.captureScalar
+	jsr imports.captureValue
 	.MEMORY_DETAIL_END #2
 	bne.w failed
 scalarCaptured
@@ -1943,42 +1944,59 @@ complete	.block
 	tst.l d0
 	rts
 	.bend  ; complete
-; A0=Frame. Return D0=parameter record bytes. Preparation scratch remains live.
+; A0=Frame. D0=serialized table/payload bytes,D1=parameter count.
+; Other registers preserved. Preparation scratch remains live.
 parameterBytes	.block
+	move.l a0, -(sp)
 	movea.l Frame.Scratch(a0), a0
 	lea SCOPE_STATE(a0), a0
 	lea scopes.IMPORT_STATE(a0), a0
-	moveq #0, d0
-	move.w imports.PARAM_COUNT(a0), d0
+	moveq #0, d1
+	move.w imports.PARAM_COUNT(a0), d1
+	move.l d1, d0
 	mulu.w #imports.PARAM_BYTES, d0
+	add.l imports.PARAM_OWNER+values.Owner.Arena+memory.Block.Used(a0), d0
+	movea.l (sp)+, a0
 	rts
 	.bend  ; parameterBytes
-; A0=Frame,A1=destination,D0=exact parameter record bytes. Copy only numeric
-; identities and values before preparation scratch is released. D0/CCR=status.
+; A0=Frame,A1=destination,D0=exact serialized bytes. Copy numeric table and
+; immutable payload before scratch release. Compound offsets are payload-relative.
+; D0/CCR=status; other registers preserved. No runtime pointers are serialized.
 copyParameters	.block
-	movem.l d1/a0-a2, -(sp)
+	movem.l d1-d2/a0-a2, -(sp)
 	movea.l Frame.Scratch(a0), a0
 	lea SCOPE_STATE(a0), a0
 	lea scopes.IMPORT_STATE(a0), a0
 	moveq #0, d1
 	move.w imports.PARAM_COUNT(a0), d1
 	mulu.w #imports.PARAM_BYTES, d1
-	cmp.l d0, d1
+	move.l imports.PARAM_OWNER+values.Owner.Arena+memory.Block.Used(a0), d2
+	add.l d1, d2
+	cmp.l d0, d2
 	bne.w parametersBad
+	movea.l imports.PARAM_OWNER+values.Owner.Arena+memory.Block.Pointer(a0), a2
+	move.l imports.PARAM_OWNER+values.Owner.Arena+memory.Block.Used(a0), d2
 	tst.l d1
-	beq.w parametersDone
+	beq.w payload
 	lea imports.PARAMS(a0), a0
 parametersCopy
 	move.b (a0)+, (a1)+
 	subq.l #1, d1
 	bne.w parametersCopy
+payload
+	tst.l d2
+	beq.w parametersDone
+payloadCopy
+	move.l (a2)+, (a1)+
+	subq.l #4, d2
+	bne.w payloadCopy
 parametersDone
 	moveq #0, d0
 	bra.w parametersExit
 parametersBad
 	moveq #1, d0
 parametersExit
-	movem.l (sp)+, d1/a0-a2
+	movem.l (sp)+, d1-d2/a0-a2
 	tst.l d0
 	rts
 	.bend  ; copyParameters

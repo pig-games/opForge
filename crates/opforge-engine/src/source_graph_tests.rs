@@ -400,4 +400,187 @@ mod tests {
         assert!(graph.lines.iter().any(|line| line.trim() == ".byte 7"));
         assert!(!graph.lines.iter().any(|line| line.trim() == ".helper.emit"));
     }
+
+    fn compound_graph(
+        source: &str,
+    ) -> Result<crate::source_graph::ModuleGraphResult, asm::error::AsmRunError> {
+        let project = temp_dir();
+        let root = project.join("main.asm");
+        fs::write(&root, source).unwrap();
+        let result = load_module_graph(
+            &root,
+            source.lines().map(str::to_owned).collect(),
+            &[],
+            &[],
+            &[],
+            64,
+        );
+        fs::remove_dir_all(project).unwrap();
+        result
+    }
+
+    #[test]
+    fn configured_compounds_snapshot_and_chain() {
+        let graph = compound_graph(concat!(
+            ".module main\n",
+            "changing .var {2,4,6}\nlistSnapshot=changing\n",
+            "changing .set 3..=9:3\nrangeSnapshot=changing\nchanging .set 17\n",
+            ".use middle with (SCALAR=changing, ITEMS=listSnapshot, RANGE=rangeSnapshot)\n",
+            ".endmodule\n.module middle\n",
+            ".if SCALAR==17 && .len(ITEMS)==3 && ITEMS[1]==4 && RANGE[2]==9\n",
+            ".use leaf with (ITEMS=ITEMS, RANGE=RANGE, COUNT=.len(RANGE))\n",
+            ".else\n.use missing\n.endif\n.endmodule\n",
+            ".module leaf\n.endmodule\n"
+        ))
+        .unwrap();
+        assert_eq!(
+            graph
+                .lines
+                .iter()
+                .filter(|line| *line == "ITEMS = {2,4,6}")
+                .count(),
+            2
+        );
+        assert_eq!(
+            graph
+                .lines
+                .iter()
+                .filter(|line| *line == "RANGE = 3..10:3")
+                .count(),
+            2
+        );
+        assert!(graph.lines.iter().any(|line| line == "SCALAR = 17"));
+        assert!(graph.lines.iter().any(|line| line == "COUNT = 3"));
+        assert_eq!(graph.lines.len(), graph.source_map.origins().len());
+    }
+
+    #[test]
+    fn configured_compounds_compare_full_values() {
+        let source = |second: &str| {
+            format!(
+            ".module main\n.use dep with (ITEMS={{2,4}}, RANGE=3..=9:3)\n.use dep with (ITEMS={second}, RANGE=3..10:3)\n.endmodule\n.module dep\n.endmodule\n"
+        )
+        };
+        compound_graph(&source("{2,4}")).unwrap();
+        let error = compound_graph(&source("{2,5}")).unwrap_err();
+        assert!(error
+            .error()
+            .message()
+            .contains("conflicting .use parameters"));
+    }
+
+    #[test]
+    fn configured_compounds_reject_unavailable_and_malformed_values() {
+        for body in [
+            ".use dep with (ITEMS=missing)\n",
+            ".use dep with (ITEMS=later)\nlater={1,2}\n",
+            "hidden .block\nvalues={1,2}\n.bend\n.use dep with (ITEMS=values)\n",
+            ".use dep with (ITEMS=0..4:0)\n",
+            "values={1,2}\n.use dep with (ITEMS=values+1)\n",
+            ".use dep with (ITEMS={1,{2}})\n",
+            ".use dep with (ITEMS={1,$})\n",
+            ".use dep with (ITEMS=1?7:$)\n",
+        ] {
+            let source = format!(".module main\n{body}.endmodule\n.module dep\n.endmodule\n");
+            let error = compound_graph(&source).unwrap_err();
+            assert!(
+                error.error().message().contains(".use parameter ITEMS"),
+                "{body}: {}",
+                error.error().message()
+            );
+        }
+    }
+
+    #[test]
+    fn configured_compounds_preserve_outer_values_and_failed_replacement() {
+        let graph = compound_graph(concat!(
+            ".module main\nvalues={1,2}\n",
+            "hidden .block\nvalues={8,9,10}\n.bend\n",
+            ".if .len(values)==2\n.use dep with (ITEMS=values)\n.else\n.use missing\n.endif\n",
+            ".endmodule\n.module dep\n.endmodule\n"
+        ))
+        .unwrap();
+        assert!(graph.lines.iter().any(|line| line == "ITEMS = {1,2}"));
+        let error = compound_graph(concat!(
+            ".module main\nvalues .var {1,2}\nvalues .set missing\n",
+            ".use dep with (ITEMS=values)\n.endmodule\n.module dep\n.endmodule\n"
+        ))
+        .unwrap_err();
+        assert!(error.error().message().contains(".use parameter ITEMS"));
+    }
+    #[test]
+    fn compile_time_value_evaluation_is_strict_without_changing_pass_one() {
+        use asm::line::AsmLine;
+        use opcore::parser::{Expr, Parser};
+        let registry = registry::ModuleRegistry::new();
+        let mut symbols = types::symbol::SymbolTable::new();
+        let mut evaluator = AsmLine::new(&mut symbols, &registry);
+        let expr = Expr::Identifier(
+            "forward".into(),
+            opcore::tokenizer::Span {
+                line: 1,
+                col_start: 1,
+                col_end: 8,
+            },
+        );
+        assert_eq!(
+            evaluator.eval_value_ast(&expr).unwrap(),
+            types::asm_value::AsmValue::Scalar(0)
+        );
+        assert!(evaluator
+            .eval_value_ast_requiring_defined_symbols(&expr)
+            .is_err());
+        assert_eq!(evaluator.pass_number(), 1);
+        assert_eq!(
+            evaluator.eval_value_ast(&expr).unwrap(),
+            types::asm_value::AsmValue::Scalar(0)
+        );
+        let ast = Parser::from_line("value={1,2}", 1)
+            .unwrap()
+            .parse_compat_mixed_line()
+            .unwrap();
+        let opcore::parser::LineAst::Assignment(assignment) = ast else {
+            panic!("assignment expected");
+        };
+        assert_eq!(
+            evaluator
+                .eval_value_ast_requiring_defined_symbols(&assignment.expr)
+                .unwrap(),
+            types::asm_value::AsmValue::List(vec![1, 2])
+        );
+        assert_eq!(evaluator.pass_number(), 1);
+    }
+    #[test]
+    fn configured_compound_conditionals_keep_dependency_macro_imports() {
+        let graph = compound_graph(concat!(
+            ".module main\n.use middle with (ITEMS={2,4})\n.endmodule\n",
+            ".module middle\n.if .len(ITEMS)==2 && ITEMS[1]==4\n.use leaf as child\n.endif\n.child.emit\n.endmodule\n",
+            ".module leaf\n.pub\nemit .macro\n.byte 7\n.endmacro\n.endmodule\n"
+        )).unwrap();
+        assert!(graph.lines.iter().any(|line| line.trim() == ".byte 7"));
+        assert!(!graph.lines.iter().any(|line| line.trim() == ".child.emit"));
+    }
+    #[test]
+    fn configured_compound_chain_schedules_reversed_modules_and_ignores_inactive_cycles() {
+        let graph = compound_graph(concat!(
+            ".module leaf\n.if 0\n.use main\n.use missing\n.endif\n.endmodule\n",
+            ".module middle\n.if .len(ITEMS)==2 && ITEMS[1]==4\n.use leaf with (ITEMS=ITEMS)\n.else\n.use missing\n.endif\n.endmodule\n",
+            ".module main\n.use middle with (ITEMS={2,4})\n.endmodule\n"
+        )).unwrap();
+        let modules: Vec<_> = graph
+            .lines
+            .iter()
+            .filter(|line| line.starts_with(".module "))
+            .map(String::as_str)
+            .collect();
+        assert_eq!(modules, [".module leaf", ".module middle", ".module main"]);
+        assert_eq!(
+            graph
+                .lines
+                .iter()
+                .filter(|line| *line == "ITEMS = {2,4}")
+                .count(),
+            2
+        );
+    }
 }

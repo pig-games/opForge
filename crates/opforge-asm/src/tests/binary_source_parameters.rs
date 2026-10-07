@@ -345,13 +345,14 @@ fn import_parameter_expressions_use_const_directive() {
 }
 
 #[test]
-fn mutable_import_parameter_source_is_rejected() {
+fn mutable_import_parameter_source_is_snapshotted() {
     let main = PARAMETERIZED_BYTE[0].1.replace(
         ".use dep (entry) with (FEATURE=7)",
-        "BASE := 7\n.use dep (entry) with (FEATURE=BASE)",
+        "BASE := 7\n.use dep (entry) with (FEATURE=BASE)\nBASE .set 99",
     );
-    assert!(
-        oracle_with_roots(&[("main.asm", &main), PARAMETERIZED_BYTE[1]], &["library"]).is_err()
+    assert_eq!(
+        oracle_with_roots(&[("main.asm", &main), PARAMETERIZED_BYTE[1]], &["library"]).unwrap(),
+        [7, 0, 0x10]
     );
 }
 

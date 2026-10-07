@@ -312,6 +312,11 @@ literal
 	bra.w success
 symbol
 	move.l compiler.Node.First(a2), d1
+	tst.l MODE(a5)
+	beq.w ordinarySymbol
+	cmp.l LEN_NAME(a5), d1
+	beq.w malformedActive  ; builtin names are only valid in KIND_CALL
+ordinarySymbol
 	cmpi.l #65535, d1
 	bhi.w malformedActive
 	moveq #3, d0

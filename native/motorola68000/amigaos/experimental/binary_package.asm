@@ -119,6 +119,8 @@ Pass	.word ?
 Relocatable	.word ?  ; nonzero for section-relative Hunk output
 Parameters	.long ?
 ParameterCount	.long ?
+ParameterBytes	.long ?  ; bounded table followed by immutable compound payload
+RetainedValues	.long ?  ; assembly owner prefix retained across layout replay
 SectionIds	.long ?
 CurrentSection	.word ?  ; one-based active Hunk section; zero outside sections
 SectionBases	.long ?  ; optional eight canonical Hunk origins; zero means unplaced
@@ -127,11 +129,12 @@ CONTEXT_BYTES = Context.SectionBases+4
 
 Parameter	.struct
 Id	.word ?
-Reserved	.word ?
+Kind	.word ?  ; scalar, flat list or canonical range
 Low	.long ?
 High	.long ?
 	.endstruct
 PARAMETER_BYTES = Parameter.High+4
+PARAMETER_LIMIT = 512
 
 Row	.struct
 Name	.word ?

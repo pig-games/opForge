@@ -710,6 +710,7 @@ block (or `.meta.output.*` inline), `.name` sets the output base name.
 .use util.math map { code -> app_code }
 .use util.math (add16) as M map { code -> app_code }
 .use util.math with (FEATURE=1, COUNT=2)
+.use util.math with (INPUTS={2,4,6}, WINDOW=3..=9:3)
 ```
 
 Notes:
@@ -728,18 +729,19 @@ Notes:
 - Selective imports with a module qualifier keep the names qualified. In
   `.use util.math (add16) as M`, `M.add16` is available and `add16` is not
   directly imported. The same reference-driven block rule applies.
-- On the Rust assembly path, `with (NAME=expression, ...)` evaluates each value
-  in the importing module at the `.use` site. Numeric literals, earlier constant
-  assignments, and incoming parameters are available; forward or assembly-time
-  values are errors. Each value becomes a private symbol in the imported module.
-  The current graph requires repeated imports of one module to agree on its
-  parameter values. Strings are not symbol values. Compound values remain
-  unsupported at this graph boundary.
-  The experimental compact native CLI evaluates supported signed-32-bit scalar
-  expressions at the `.use` site. Literals, earlier module-scope `=` constants,
-  and incoming scalar parameters can supply their values. The native expression
-  grammar is narrower than Rust's; `.const`, compound values, and values needing
-  assembly-time resolution remain outside this compact path.
+- `with (NAME=expression, ...)` evaluates each value in the importing module at
+  the `.use` site. Numeric literals, earlier module-scope values and incoming
+  parameters are available; forward or assembly-time values are errors. Mutable
+  values are snapshotted at that site, so later replacements do not alter the
+  imported value. Each parameter becomes a private constant in the imported
+  module. Repeated imports of one module must agree on their complete values.
+  Strings are not symbol values. Rust supports scalar, flat-list and range values
+  at this graph boundary; other compound forms remain outside this slice.
+  The experimental compact native path has focused matching coverage for these
+  values, `.len`, indexing, `.var`/`.set` snapshots and forwarding through imported
+  modules. Native iterable-loop and struct values are not newly qualified;
+  wide numeric literal packing remains limited. These focused checks do not
+  establish complete module or assembler-language parity.
 - A `map { logical -> concrete }` clause maps logical sections declared by the
   imported module into concrete sections in the importing/root module. Map
   clauses require a namespace binding, so `.use util.math (add16) map { ... }`

@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_imports as imports
+	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_section_prepare as sections
 	.use experimental.amigaos.binary_structs as structs
@@ -418,7 +419,7 @@ done
 
 ; A0=bound configuration record,A1=scope state,D0=buffer capacity.
 ; Process only module boundaries,
-; imports and preceding scalar assignments. The caller selects active top-level
+; imports and preceding known assignments. The caller selects active top-level
 ; records; bodies, templates, structs and sections never enter this API.
 ; Uses the same module/import parsers and expression VM as normal preparation.
 ; D0/CCR=status; other registers preserved. Consumes directives in the copy.
@@ -451,7 +452,7 @@ scalarDeclaration
 	bne.w bad
 	movea.l a5, a0
 	movea.l a6, a1
-	jsr imports.captureScalar
+	jsr imports.captureValue
 	bra.w done
 directive
 	cmpi.b #7, (a0)
@@ -525,7 +526,7 @@ done
 	.bend  ; configurationLine
 
 ; A0=completed configuration scope,A1=fresh semantic scope. Transfer incoming
-; scalar parameters and mapped-section metadata by canonical name, remapping
+; typed parameters and mapped-section metadata by canonical name, remapping
 ; identities through the ordinary binder before dependency bodies run.
 ; D0/CCR=status; other registers preserved. No configuration IDs or pointers
 ; survive in destination preparation records. Destination Current must be zero.
@@ -573,6 +574,11 @@ next
 	move.l d5, d0
 	move.l pkg.Parameter.Low(a4), d2
 	move.l pkg.Parameter.High(a4), d3
+	moveq #0, d4
+	move.w pkg.Parameter.Kind(a4), d4
+	lea IMPORT_STATE+imports.PARAM_OWNER+values.Owner.Arena(a5), a1
+	move.l memory.Block.Used(a1), d6
+	movea.l memory.Block.Pointer(a1), a1
 	jsr imports.seedParameter
 	bne.w bad
 	adda.w #imports.PARAM_BYTES, a4

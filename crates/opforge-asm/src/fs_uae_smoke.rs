@@ -7927,6 +7927,9 @@ mod native_expression_ranges;
 #[cfg(test)]
 #[path = "tests/native_layout_parity.rs"]
 mod native_layout_parity;
+#[cfg(test)]
+#[path = "tests/native_preparation_values.rs"]
+mod native_preparation_values;
 
 #[cfg(test)]
 #[path = "tests/native_forward_count_parity.rs"]

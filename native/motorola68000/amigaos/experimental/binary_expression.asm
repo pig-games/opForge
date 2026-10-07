@@ -57,6 +57,20 @@ configureBuiltin	.block
 	rts
 	.bend  ; configureBuiltin
 
+; D1=numeric name ID. D0/CCR=0 only for the configured builtin call name.
+; Other registers preserved; syntax and call placement remain compiler-owned.
+isBuiltin	.block
+	cmp.l LenName, d1
+	bne.w unknown
+	tst.l d1
+	bmi.w unknown
+	moveq #0, d0
+	rts
+unknown
+	moveq #1, d0
+	rts
+	.bend  ; isBuiltin
+
 ; A0=input tokens, A1=bounded end, A3=output, A4=bounded output end.
 ; Returns D0/CCR=status, A0=first delimiter/end, A3=after compiled wrapper.
 ; Preserves D1-D7/A1-A2/A4-A6. Failed output is uncommitted scratch.
@@ -75,6 +89,13 @@ compileUnfolded	.block
 	moveq #1, d0
 	bra.w compileMode
 	.bend  ; compileUnfolded
+
+; Force canonical typed lowering when a bound symbol may carry a compound value.
+; Same ABI as compile; scalar arithmetic is then checked by the typed runtime.
+compileValue	.block
+	moveq #2, d0
+	bra.w compileMode
+	.bend  ; compileValue
 
 	.priv
 compileMode	.block
@@ -137,11 +158,14 @@ bounded
 	move.l compiler.Request.Root(a2), d1
 	lea COMPILER_WORK(a2), a1
 	move.l #compiler.SCRATCH_BYTES, d2
+	btst #1, d4
+	bne.w lowerValue
 	jsr lowering.lower
 	tst.l d0
 	beq.w prepare
 	cmpi.l #lowering.STATUS_MALFORMED, d0
 	bne.w lowerFailed
+lowerValue
 	; Keep scalar compilation/folding intact; compound trees use canonical
 	; typed operations and never pass through the scalar constant folder.
 	lea 2(a6), a3

@@ -99,6 +99,20 @@ impl<'a> AsmLine<'a> {
         )))
     }
 
+    /// Evaluate a value with undefined-symbol errors instead of pass-one
+    /// forward-reference placeholders. Preparation callers must supply only
+    /// compile-time bindings and reject address-dependent expressions.
+    pub fn eval_value_ast_requiring_defined_symbols(
+        &mut self,
+        expr: &Expr,
+    ) -> Result<AsmValue, AstEvalError> {
+        let saved_pass = self.pass;
+        self.pass = 2;
+        let result = self.eval_value_ast(expr);
+        self.pass = saved_pass;
+        result
+    }
+
     pub fn eval_value_ast(&self, expr: &Expr) -> Result<AsmValue, AstEvalError> {
         match expr {
             Expr::Identifier(name, span) | Expr::Register(name, span) => {

@@ -41,6 +41,83 @@ bad
 	rts
 	.bend  ; init
 
+; A0=Owner,D0=new absolute symbol count. D0/CCR=status; others preserved.
+; Grows kinds before committing Count; an unallocated scalar table stays empty.
+growSymbols	.block
+	movem.l d1/d3/a0-a2, -(sp)
+	move.l d0, d1
+	cmpi.l #memory.LIMIT, d1
+	bhi.w noSpace
+	cmp.l Owner.Count(a0), d1
+	blo.w invalid
+	movea.l a0, a2
+	lea Owner.Arena(a0), a1
+	bsr.w block
+	bne.w done
+	lea Owner.Kinds(a0), a1
+	bsr.w kinds
+	bne.w done
+	tst.l memory.Block.Pointer(a1)
+	beq.w commit
+	movea.l a1, a0
+	move.l d1, d0
+	jsr memory.reserve
+	tst.l d0
+	bne.w noSpace
+	movea.l memory.Block.Pointer(a0), a1
+	move.l Owner.Count(a2), d3
+	adda.l d3, a1
+	sub.l d1, d3
+	beq.w used
+clear
+	clr.b (a1)+
+	addq.l #1, d3
+	bne.w clear
+used
+	move.l d1, memory.Block.Used(a0)
+commit
+	move.l d1, Owner.Count(a2)
+	moveq #OK, d0
+	bra.w done
+invalid
+	moveq #MALFORMED, d0
+	bra.w done
+noSpace
+	moveq #STORAGE, d0
+done
+	movem.l (sp)+, d1/d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; growSymbols
+
+; A0=Owner,D0=retained arena bytes. D0/CCR=status; others preserved.
+; Retains imported descriptors and kinds, truncates arena and clears work usage.
+rewind	.block
+	movem.l d1/d3/a1, -(sp)
+	move.l d0, d1
+	move.l d1, d3
+	andi.l #7, d3
+	bne.w invalid
+	lea Owner.Arena(a0), a1
+	bsr.w block
+	bne.w done
+	cmp.l memory.Block.Used(a1), d1
+	bhi.w invalid
+	lea Owner.Kinds(a0), a1
+	bsr.w kinds
+	bne.w done
+	move.l d1, Owner.Arena+memory.Block.Used(a0)
+	clr.l Owner.Work+memory.Block.Used(a0)
+	moveq #OK, d0
+	bra.w done
+invalid
+	moveq #MALFORMED, d0
+done
+	movem.l (sp)+, d1/d3/a1
+	tst.l d0
+	rts
+	.bend  ; rewind
+
 ; A0=Owner. D0/CCR=status; others preserved. Retains allocations, clears kinds.
 reset	.block
 	movem.l d1-d3/a0-a1, -(sp)
@@ -206,6 +283,84 @@ done
 	tst.l d0
 	rts
 	.bend  ; appendRange
+
+; Copy a complete bounded external descriptor into an immutable owned record.
+; A0=destination Owner,A1=source arena,D0=arena bytes,D1=offset,D3=kind.
+; D0/CCR=status,D2=destination offset on success; others preserved.
+; Rejects source overlap with Arena capacity; validates before allocation.
+copyRecord	.block
+	movem.l d1/d3-d7/a0-a3, -(sp)
+	move.l d3, d7
+	cmpi.l #LIST, d7
+	beq.w kindReady
+	cmpi.l #RANGE, d7
+	bne.w invalid
+kindReady
+	move.l d0, d4
+	cmpi.l #memory.LIMIT, d4
+	bhi.w invalid
+	move.l a1, d5
+	beq.w invalid
+	btst #0, d5
+	bne.w invalid
+	add.l d4, d5
+	bcs.w invalid
+	move.l d1, d6
+	andi.l #7, d6
+	bne.w invalid
+	cmp.l d4, d1
+	bhi.w invalid
+	sub.l d1, d4
+	cmpi.l #HEADER_BYTES, d4
+	blo.w invalid
+	movea.l a1, a2
+	lea Owner.Arena(a0), a1
+	bsr.w block
+	bne.w done
+	move.l memory.Block.Pointer(a1), d6
+	beq.w separate
+	cmp.l d6, d5
+	bls.w separate
+	add.l memory.Block.Capacity(a1), d6
+	move.l a2, d0
+	cmp.l d6, d0
+	blo.w invalid
+separate
+	movea.l a2, a1
+	adda.l d1, a1
+	cmp.l Record.Kind(a1), d7
+	bne.w invalid
+	cmpi.l #RANGE, d7
+	beq.w rangeRecord
+	subi.l #HEADER_BYTES, d4
+	move.l Record.Count(a1), d0
+	cmpi.l #MAX_ELEMENTS, d0
+	bhi.w invalid
+	move.l d0, d6
+	lsl.l #3, d6
+	cmp.l d4, d6
+	bhi.w invalid
+	lea HEADER_BYTES(a1), a1
+	move.l d4, d1
+	bsr.w appendList
+	bra.w done
+rangeRecord
+	cmpi.l #ranges.BYTES, d4
+	blo.w invalid
+	jsr ranges.validate
+	bne.w done
+	lea HEADER_BYTES(a1), a1
+	moveq #ranges.HAS_STEP, d0
+	moveq #ranges.BYTES-HEADER_BYTES, d1
+	bsr.w appendRange
+	bra.w done
+invalid
+	moveq #MALFORMED, d0
+done
+	movem.l (sp)+, d1/d3-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; copyRecord
 
 ; A0=Owner,D1=offset. D0/CCR=status,D1/D2=length low/high on success.
 ; Others preserved. Compound scalar lengths saturate at i64::MAX.

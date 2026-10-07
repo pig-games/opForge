@@ -1,8 +1,10 @@
 # Compact frontend: VM boundary correction
 
-Status: BS31 is current. The latest complete native self-host proof is the BS30
+Status: BS32 is current; focused deferred macro operand binding checks pass.
+The latest complete native self-host proof is the BS30
 shared-EXVM result at `09c55688`. The current complete attempt fails with native
-exit 20; the fresh host suite has 49 failures whose inheritance is unqualified.
+exit 20 at the CLI's `lea DosName,a1`; the fresh host suite has 49 failures whose
+inheritance is unqualified.
 Rust has
 one consolidated EXVM v1 grammar/executor; native preparation executes it over
 bound numeric tokens and lowers a transient offset-based tree to ExprVM programs.
@@ -31,10 +33,15 @@ remain. Full language parity is not claimed. The
 fails with native exit 20; focused controls confirm a regression in register-list
 macro argument binding. The previous successful full self-host remains the
 qualified reference.
-The proposed repair must defer register/value selection to the numeric operand
-consumer; macro calls also carry iterator, inherited and forward source values.
-The narrow early-choice experiment was removed after failed native validation.
-See the [self-host investigation](native-runtime-reset.md#bs31-full-self-host-attempt-2026-10-07).
+The BS32 repair retains both a source origin and an optional numeric package
+register facet during tokenization. After packed substitution, structural package
+projections promote register leaves before source-reference accounting; scalar
+leaves keep their source identities until ordinary scope/import resolution.
+Private macro hygiene remains owned by scopes. STVM guards and value constraints
+remain in later assembly selection. The narrow early-choice experiment was
+removed after failed native validation.
+See the [current repair and self-host result](native-runtime-reset.md#deferred-macro-operand-binding-bs32)
+and [preceding investigation](native-runtime-reset.md#bs31-full-self-host-attempt-2026-10-07).
 Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
 still unresolved. BS28 introduced numeric `:=`
 normalization to shared declarations.
@@ -104,8 +111,8 @@ claimed.
 
 Compared with the BS28 full baseline, Hunk grows 3,244 bytes, including 602 package
 bytes, and linked static reservation grows 3,188 bytes. Current executables accept
-only BS31 packages; the BS30 result remains baseline evidence and is not a proof
-for the later executable. Raw CAS2 colon normalization, other path/
+only the current BS32 packages; the BS30 result remains baseline evidence and
+is not a proof for the later executable. Raw CAS2 colon normalization, other path/
 call-child forms, unused extra call-argument preparation and localized
 import-alias/local-struct shadowing remain open.
 
@@ -134,7 +141,7 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The current script validates BS31 package headers, mapped source preamble and
+The current script validates BS32 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. The
 older BS28 bundle is baseline evidence and cannot be used with the current validator.
@@ -149,7 +156,7 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS31 and qualify it before selecting it in the
+instrumented configuration as BS32 and qualify it before selecting it in the
 current hardware runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
@@ -219,11 +226,17 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS31 is the current compact package format; the producer writes `BS31` and the
+BS32 is the current compact package format; the producer writes `BS32` and the
 native package owner checks the matching magic. Only this latest runtime contract
-is supported; packages must be regenerated. Candidate rows are 36 bytes: offsets
+is supported; packages must be regenerated. Candidate rows are 44 bytes: offsets
 0–31 retain their previous fields, byte 32 carries the third-operand form nibble,
-byte 33 the third tuple class (class + 1), and word 34 is reserved zero. Shapes
+byte 33 the third tuple class (class + 1), and word 34 is reserved zero.
+Word 36 holds independent operand-role count, word 38 is reserved zero, and long
+40 is the package-relative offset of a flat 12-byte projection array. An absent
+array has count and offset zero; identical complete arrays share offsets. Roles
+come from canonical selectors before encoding transport drops inputs. Fixed
+opcodes and unsupported encoders can therefore retain structural binding roles.
+Unknown predicates retain no partial role proof. Shapes
 11/12/13 carry direct and immediate three-operand forms; 14 represents
 register/immediate, 15 register/register/direct and 16 register/register/register.
 These are structural distinctions; package projections own classes and semantics.

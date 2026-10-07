@@ -30,7 +30,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     assert!(count > 0);
-    assert_eq!(&valid[..4], b"BS31");
+    assert_eq!(&valid[..4], b"BS32");
     assert!(rows + count * crate::binary_source_experiment::ROW <= valid.len());
     assert_eq!(&valid[rows + 34..rows + 36], &[0, 0]);
     assert!(valid[rows + 32] <= 11);
@@ -43,6 +43,32 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         ("nonzero-row-reserved", reserved, 1),
         ("invalid-third-form", form, 1),
     ];
+    let role_row = (0..count)
+        .map(|index| rows + index * crate::binary_source_experiment::ROW)
+        .find(|row| u16::from_be_bytes(valid[row + 36..row + 38].try_into().unwrap()) != 0)
+        .expect("generated package includes independent operand roles");
+    let mut role_reserved = valid.clone();
+    role_reserved[role_row + 39] = 1;
+    cases.push(("nonzero-role-reserved", role_reserved, 1));
+    let mut role_count = valid.clone();
+    role_count[role_row + 36..role_row + 38].copy_from_slice(&17_u16.to_be_bytes());
+    cases.push(("excessive-role-count", role_count, 1));
+    let mut role_absent = valid.clone();
+    role_absent[role_row + 36..role_row + 38].fill(0);
+    cases.push(("absent-role-nonzero-offset", role_absent, 1));
+    for (name, offset) in [
+        ("role-header-overlap", 4_u32),
+        (
+            "role-odd-offset",
+            u32::from_be_bytes(valid[role_row + 40..role_row + 44].try_into().unwrap()) | 1,
+        ),
+        ("role-out-of-bounds", valid.len() as u32),
+        ("role-span-overflow", u32::MAX),
+    ] {
+        let mut malformed = valid.clone();
+        malformed[role_row + 40..role_row + 44].copy_from_slice(&offset.to_be_bytes());
+        cases.push((name, malformed, 1));
+    }
     for (name, offset, value) in [
         ("expression-absent", 200, 0),
         ("expression-header-overlap", 200, 206),
@@ -90,7 +116,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         cases.push((name, malformed, 1));
     }
     let mut superseded = valid.clone();
-    superseded[..4].copy_from_slice(b"BS30");
+    superseded[..4].copy_from_slice(b"BS31");
     cases.push(("superseded-package", superseded, 1));
     cases.push(("truncated-current-header", valid[..219].to_vec(), 1));
     cases
@@ -174,6 +200,11 @@ PayloadEnd
 "#,
     );
     let directory = root.join("native/motorola68000/amigaos/experimental");
+    source.push_str(
+        &std::fs::read_to_string(root.join("native/motorola68000/amigaos/prvm/prvm_abi.asm"))
+            .unwrap(),
+    );
+    source.push('\n');
     for name in [
         "binary_package.asm",
         "binary_state.asm",
@@ -201,6 +232,11 @@ fn compact_package_validation_component_fixture_contract() {
     let cases = fixtures();
     let valid = &cases[0].1;
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
+    let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
+    let role_row = (0..count)
+        .map(|index| rows + index * crate::binary_source_experiment::ROW)
+        .find(|row| u16::from_be_bytes(valid[row + 36..row + 38].try_into().unwrap()) != 0)
+        .unwrap();
     let loop_offset = u32::from_be_bytes(valid[212..216].try_into().unwrap()) as usize;
     for (name, bytes, expected) in cases.iter().skip(1) {
         let changed = valid
@@ -222,6 +258,12 @@ fn compact_package_validation_component_fixture_contract() {
         let field = match *name {
             "nonzero-row-reserved" => rows + 35..rows + 36,
             "invalid-third-form" => rows + 32..rows + 33,
+            "nonzero-role-reserved" => role_row + 38..role_row + 40,
+            "excessive-role-count" | "absent-role-nonzero-offset" => role_row + 36..role_row + 38,
+            "role-header-overlap"
+            | "role-odd-offset"
+            | "role-out-of-bounds"
+            | "role-span-overflow" => role_row + 40..role_row + 44,
             "expression-absent"
             | "expression-header-overlap"
             | "expression-odd-offset"

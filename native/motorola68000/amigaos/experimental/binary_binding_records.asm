@@ -19,8 +19,11 @@ Padding	.word ?  ; proxy origin lexical scope; zero for ordinary entries
 MemberBase	.word ?  ; qualified proxy's definition-time struct identity+1
 TemplateModule	.word ?  ; declaration ownership independent of the numeric value
 TemplateFlags	.word ?  ; preparation-only declaration and visibility facet
+RegisterName	.word ?  ; original spelling's package register ID+1; zero absent
+RegisterQualifier	.byte ?
+RegisterReserved	.byte ?  ; zero; candidate metadata never follows Target
 .endstruct
-ENTRY_BYTES = Entry.TemplateFlags+2
+ENTRY_BYTES = Entry.RegisterReserved+1
 MUTABLE_BIT = 8
 MUTABLE = 1<<MUTABLE_BIT
 ITERATOR_HIGH_BIT = 2

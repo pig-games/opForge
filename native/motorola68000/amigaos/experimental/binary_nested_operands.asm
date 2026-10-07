@@ -150,7 +150,154 @@ select	.block
 	moveq #2, d0
 	bra.w sequence
 	.bend  ; select
+
+; A0/A1=raw token sequence. D0/CCR=status,A6=first child/operand end.
+; Other registers preserved. The shared bounded scanner owns token framing.
+rawSpan	.block
+	movem.l d1-d7/a2-a5, -(sp)
+	moveq #0, d7
+	bsr.w span
+	movem.l (sp)+, d1-d7/a2-a5
+	tst.l d0
+	rts
+	.bend  ; rawSpan
+
+; A0/A1=bounded raw token. D0/CCR=status,D1=framed bytes.
+; Other registers preserved; payload bytes never become punctuation.
+rawTokenBytes	.block
+	move.l a2, -(sp)
+	movea.l a0, a2
+	bsr.w tokenBytes
+	movea.l (sp)+, a2
+	tst.l d0
+	rts
+	.bend  ; rawTokenBytes
+
+; A0/A1=exact raw tuple,D0=expected arity (0,2,3),D1=child ordinal.
+; D0/CCR=status,A0/A1=selected child,D3=arity. Other registers preserved.
+; A scalar prefix before '(' is child zero, as in prepared tuple transport.
+rawTuple	.block
+	moveq #0, d3
+	bra.w rawView
+	.bend  ; rawTuple
+
+; A0/A1=exact numeric call,D1=argument ordinal. Same outputs as rawTuple.
+; The callee remains opaque; only its numeric name and envelope are checked.
+rawCall	.block
+	moveq #1, d3
+	bra.w rawView
+	.bend  ; rawCall
 	.priv
+
+rawView	.block
+	movem.l d1-d2/d4-d7/a2-a6, -(sp)
+	move.l d1, d6
+	move.l d0, d2
+	move.l d3, d7
+	movea.l a1, a5
+	suba.l a3, a3
+	suba.l a4, a4
+	moveq #0, d4
+	tst.l d7
+	bne.w callHead
+	tst.l d2
+	beq.w tupleHead
+	cmpi.l #2, d2
+	blo.w bad
+	cmpi.l #3, d2
+	bhi.w bad
+tupleHead
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #RAW_PAREN_OPEN, (a0)
+	beq.w opening
+	; Locate the prefix's first outer opening without parsing its expression.
+	movea.l a0, a2
+prefix
+	cmpa.l a1, a2
+	bhs.w bad
+	cmpi.b #RAW_PAREN_OPEN, (a2)
+	beq.w prefixReady
+	bsr.w tokenBytes
+	bne.w bad
+	adda.l d1, a2
+	bra.w prefix
+prefixReady
+	tst.l d6
+	bne.w prefixCount
+	movea.l a0, a3
+	move.l a2, d5
+prefixCount
+	moveq #1, d4
+	movea.l a2, a0
+	bra.w opening
+callHead
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #RAW_MEMBER, (a0)
+	bne.w callName
+	addq.l #1, a0
+callName
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #5, d0
+	blo.w bad
+	cmpi.b #RAW_NAME_MAX, (a0)
+	bhi.w bad
+	tst.b 3(a0)
+	bne.w bad
+	addq.l #4, a0
+opening
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #RAW_PAREN_OPEN, (a0)+
+	bne.w bad
+next
+	bsr.w rawSpan
+	bne.w bad
+	cmpa.l a0, a6
+	beq.w bad
+	cmp.l d6, d4
+	bne.w childReady
+	movea.l a0, a3
+	move.l a6, d5
+childReady
+	addq.l #1, d4
+	cmpa.l a5, a6
+	bhs.w bad
+	movea.l a6, a0
+	move.b (a0)+, d0
+	cmpi.b #RAW_COMMA, d0
+	beq.w next
+	cmpi.b #RAW_PAREN_CLOSE, d0
+	bne.w bad
+	cmpa.l a5, a0
+	bne.w bad
+	tst.l d7
+	bne.w selected
+	cmpi.l #2, d4
+	blo.w bad
+	cmpi.l #3, d4
+	bhi.w bad
+	tst.l d2
+	beq.w selected
+	cmp.l d2, d4
+	bne.w bad
+selected
+	move.l a3, d0
+	beq.w bad
+	movea.l a3, a0
+	movea.l d5, a1
+	move.l d4, d3
+	moveq #STATUS_OK, d0
+	bra.w done
+bad
+	moveq #STATUS_MALFORMED, d0
+done
+	movem.l (sp)+, d1-d2/d4-d7/a2-a6
+	tst.l d0
+	rts
+	.bend  ; rawView
 
 ; D0=minimum child count; otherwise the public select ABI.
 sequence	.block

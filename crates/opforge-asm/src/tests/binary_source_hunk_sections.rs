@@ -121,6 +121,35 @@ fn compact_hunk_instruction_relocation_fs_uae() {
     native_hunk_source(&instruction_reference_source());
 }
 
+// Match the self-host entry's named block, register mask and forward data
+// reference. Large data placement distinguishes relocation from a short value.
+fn block_instruction_reference_source(padding: usize) -> String {
+    let padding = if padding == 0 {
+        String::new()
+    } else {
+        format!(".byte 0\n.align {padding}\n")
+    };
+    format!(".module main\n.cpu m68020\n.section entry,kind=code\n.pub\nstart .block\n movem.l d2-d7/a2-a6,-(sp)\n lea DosName,a1\n rts\n.bend\n.priv\n.endsection\n.section data,kind=data\n{padding}DosName .byte \"dos.library\",0\n.endsection\n.section bss,kind=bss\n.res byte,1\n.endsection\n.output \"build/sections.hunk\",format=hunk,sections=entry,data,bss\n.endmodule\n")
+}
+
+#[test]
+fn compact_hunk_block_instruction_reference_rust_oracles() {
+    for padding in [0, 131072] {
+        let oracle =
+            rust_hunk_source_with_allocation(&block_instruction_reference_source(padding), 4);
+        assert!(oracle.windows(2).any(|bytes| bytes == [0x43, 0xf9]));
+        assert!(contains_hunk_reloc(&oracle, 1, 6));
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; self-host-shaped block and large forward data target"]
+fn compact_hunk_block_instruction_reference_fs_uae() {
+    for padding in [0, 131072] {
+        native_hunk_source_with_allocation(&block_instruction_reference_source(padding), 4);
+    }
+}
+
 fn pc_dispatch_reference_source() -> String {
     SOURCE.replace(
         "entry: .long payload\n RTS",
@@ -378,12 +407,40 @@ fn native_hunk_bytes(source: &str, oracle: &[u8]) {
     let native_root = std::env::var_os("OPFORGE_COMPARE_NATIVE_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(workspace_root);
-    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
-        &native_root,
-        &package,
-        source.as_bytes(),
-        Some(oracle),
-    )
+    let result = if let Some(path) = std::env::var_os("OPFORGE_HUNK_IMAGE") {
+        // Compare the same live oracle under an identified embedded bootstrap;
+        // the case, challenge and guest output still come from this invocation.
+        let image = fs::read(path).unwrap();
+        let files = [crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: "entry.asm",
+            bytes: source.as_bytes(),
+        }];
+        let case = crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "hunk-sections",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("Work:entry.asm --hunk Work:output.hunk"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/output.hunk",
+                rust_oracle: oracle,
+            },
+        };
+        crate::fs_uae_smoke::run_prebuilt_compact_cli_case_from_env(
+            &native_root,
+            &case,
+            &image,
+        )
+    } else {
+        crate::fs_uae_smoke::run_compact_cli_from_env(
+            &native_root,
+            &package,
+            source.as_bytes(),
+            Some(oracle),
+        )
+    }
     .expect("fresh compact CLI exact Hunk comparison");
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("real FS-UAE execution required");

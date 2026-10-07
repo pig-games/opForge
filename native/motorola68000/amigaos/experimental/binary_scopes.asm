@@ -35,7 +35,8 @@ OPTIONAL_REFERENCED = 512; skipped conditional RHS still carries graph reference
 EXPLICIT = 4
 KIND_BLOCK = 1
 KIND_NAMESPACE = 2
-LEXICAL_BLOCK = 128; preparation-only: macro hygiene without a reachability unit
+LEXICAL_BLOCK_BIT = 7
+LEXICAL_BLOCK = 1<<LEXICAL_BLOCK_BIT; preparation-only: macro hygiene without a reachability unit
 KEY_BLOCK = 1
 KEY_ENDBLOCK = 2
 KEY_END = 3
@@ -307,7 +308,20 @@ startLine	.block
 ; D1=numeric ID, D2=preparation-only explicit-name marker. Preserves D3-D7/A2-A6.
 ; Package lookup precedes this callback; only source names arrive here.
 bind	.block
+	moveq #0, d2
+	bra.w bindName
+	.bend  ; bind
+
+; Same lexical inputs as bind; return the original source ID, not Entry.Target.
+; Deferred operand roles retain this identity until register/value selection.
+bindOrigin	.block
+	moveq #1, d2
+	bra.w bindName
+	.bend  ; bindOrigin
+	.priv
+bindName	.block
 	movem.l d3-d7/a2-a6, -(sp)
+	move.l d2, -(sp)
 	movea.l a1, a6
 	moveq #0, d5
 	moveq #0, d3
@@ -363,6 +377,7 @@ stableName
 	clr.w records.Entry.MemberBase(a3)
 	clr.w records.Entry.TemplateModule(a3)
 	clr.w records.Entry.TemplateFlags(a3)
+	clr.l records.Entry.RegisterName(a3)
 	move.w layout.State.Base(a6), d2
 	add.w d1, d2
 	move.w d2, records.Entry.Target(a3)
@@ -394,17 +409,112 @@ found
 	ori.w #EXPLICIT, records.Entry.Flags(a3)
 bound
 	moveq #0, d1
+	tst.l (sp)
+	beq.w canonicalIdentity
+	move.l a3, d1
+	sub.l ENTRIES_POINTER(a6), d1
+	divu.w #records.ENTRY_BYTES, d1
+	andi.l #$ffff, d1
+	add.w layout.State.Base(a6), d1
+	bra.w identityReady
+canonicalIdentity
 	move.w records.Entry.Target(a3), d1
+identityReady
 	move.l d5, d2
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
+	addq.w #4, sp
 	movem.l (sp)+, d3-d7/a2-a6
 	tst.l d0
 	rts
-	.bend  ; bind
+	.bend  ; bindName
+	.pub
+
+CANDIDATE_MATCHED = 0
+CANDIDATE_ABSENT = 1
+CANDIDATE_INVALID = 2
+
+; A0=scope,D0=origin source ID,D1=package register ID,D2=qualifier.
+; D0/CCR=matched or invalid; other registers preserved. Attach atomically;
+; repeated identical candidates succeed, while conflicting candidates reject.
+attachRegister	.block
+	movem.l d1-d4/a1, -(sp)
+	cmpi.l #$ffff, d0
+	bhi.w bad
+	sub.w layout.State.Base(a0), d0
+	bcs.w bad
+	cmp.w layout.State.Count(a0), d0
+	bhs.w bad
+	cmpi.l #$ffff, d1
+	bhi.w bad
+	cmp.w layout.State.Base(a0), d1
+	bhs.w bad
+	cmpi.l #$ff, d2
+	bhi.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a0), a1
+	adda.l d0, a1
+	addq.w #1, d1
+	swap d1
+	lsl.w #8, d2
+	or.l d2, d1
+	move.l records.Entry.RegisterName(a1), d3
+	beq.w attach
+	cmp.l d1, d3
+	bne.w bad
+	bra.w good
+attach
+	move.l d1, records.Entry.RegisterName(a1)
+good
+	moveq #CANDIDATE_MATCHED, d0
+	bra.w done
+bad
+	moveq #CANDIDATE_INVALID, d0
+done
+	movem.l (sp)+, d1-d4/a1
+	tst.l d0
+	rts
+	.bend  ; attachRegister
+
+; A0=scope,D0=origin ID. D0/CCR=matched,absent or invalid;
+; D1/D2=package register ID/qualifier on match. Other registers preserved.
+; Package IDs are absent. Source candidates are read without following Target.
+registerCandidate	.block
+	movem.l d3/a1, -(sp)
+	cmpi.l #$ffff, d0
+	bhi.w bad
+	sub.w layout.State.Base(a0), d0
+	bcs.w absent
+	cmp.w layout.State.Count(a0), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a0), a1
+	adda.l d0, a1
+	moveq #0, d1
+	move.w records.Entry.RegisterName(a1), d1
+	beq.w absent
+	tst.b records.Entry.RegisterReserved(a1)
+	bne.w bad
+	subq.w #1, d1
+	cmp.w layout.State.Base(a0), d1
+	bhs.w bad
+	moveq #0, d2
+	move.b records.Entry.RegisterQualifier(a1), d2
+	moveq #CANDIDATE_MATCHED, d0
+	bra.w done
+absent
+	moveq #CANDIDATE_ABSENT, d0
+	bra.w done
+bad
+	moveq #CANDIDATE_INVALID, d0
+done
+	movem.l (sp)+, d3/a1
+	tst.l d0
+	rts
+	.bend  ; registerCandidate
 
 ; A0/D0=lexical name/bytes,A1=scope state. Probe only active bare values.
 ; D0/CCR=0 matched,1 absent; D1/D2=temporary ID/zero qualifier on match.
@@ -470,6 +580,7 @@ createIterator	.block
 	clr.w records.Entry.MemberBase(a3)
 	clr.w records.Entry.TemplateModule(a3)
 	clr.w records.Entry.TemplateFlags(a3)
+	move.l records.Entry.RegisterName(a2), records.Entry.RegisterName(a3)
 	moveq #0, d1
 	move.w layout.State.Base(a6), d1
 	add.w d7, d1
@@ -1883,6 +1994,7 @@ rebindLocal	.block
 	mulu.w #records.ENTRY_BYTES, d5
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d5, a3
+	move.l records.Entry.RegisterName(a3), d4
 	moveq #0, d2
 	move.w records.Entry.Leaf(a3), d2
 	moveq #0, d0
@@ -1895,7 +2007,33 @@ rebindLocal	.block
 	add.l d2, d3
 	adda.l d3, a0
 	movea.l a6, a1
+	tst.l d4
+	bne.w candidateBinding
 	bsr.w bind
+	bra.w rebindDone
+candidateBinding
+	; Invocation-local iterators win before ordinary local-name rebinding.
+	move.l d0, d5
+	bsr.w probeIterator
+	beq.w attachCandidate
+	move.l d5, d0
+	bsr.w bindOrigin
+	bne.w badRebind
+attachCandidate
+	move.l d1, -(sp)
+	move.l d1, d0
+	move.l d4, d1
+	swap d1
+	andi.l #$ffff, d1
+	subq.w #1, d1
+	move.l d4, d2
+	lsr.w #8, d2
+	andi.l #$ff, d2
+	movea.l a6, a0
+	bsr.w attachRegister
+	move.l (sp)+, d1
+	tst.l d0
+	bne.w badRebind
 	bra.w rebindDone
 unchanged
 	move.l d0, d1

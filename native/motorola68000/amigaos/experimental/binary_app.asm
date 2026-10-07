@@ -76,6 +76,7 @@ PROGRESS_ASSEMBLY_SELECTION = 29
 PROGRESS_PACKAGE = 30
 PROGRESS_RECORD_OUTPUT = 31
 PROGRESS_ASSEMBLY_WORK = 300
+PROGRESS_PREPARATION_FAILURE = 301
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -335,6 +336,7 @@ done
 	.priv
 reportFailure	.block
 	.BINDING_DIAGNOSTIC_REPORT DosBase
+	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, frontend.PreparationStage, Front, frontend.Frame.Output, frontend.Frame.Capacity, frontend.Frame.Used, frontend.Frame.NameCount, #PROGRESS_PREPARATION_FAILURE
 	tst.l InAssembly
 	beq.w located
 	bsr.w locateFailure

@@ -18,7 +18,7 @@ SPEC.loader.exec_module(runner)
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
         package = bytearray(220)
-        package[:4] = b"BS31"
+        package[:4] = b"BS32"
         package[168:172] = (220).to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
         package[176:178] = (2).to_bytes(2, "big")
@@ -105,7 +105,8 @@ class HardwareCompletionTests(unittest.TestCase):
         (root / "manifest.json").write_text(json.dumps(manifest))
 
     def test_runtime_package_rejects_superseded_magic_and_truncated_header(self):
-        for magic, size, error in ((b"BS16", 210, "package mismatch"),
+        for magic, size, error in ((b"BS31", 220, "package mismatch"),
+                                  (b"BS16", 210, "package mismatch"),
                                    (b"BS17", 210, "package mismatch"),
                                    (b"BS19", 210, "package mismatch"),
                                    (b"BS21", 210, "package mismatch"),
@@ -114,7 +115,7 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS26", 210, "package mismatch"),
                                    (b"BS27", 210, "package mismatch"),
                                    (b"BS29", 210, "package mismatch"),
-                                   (b"BS31", 219, "package header")):
+                                   (b"BS32", 219, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -318,7 +319,7 @@ class HardwareCompletionTests(unittest.TestCase):
             ("configured_entry", "native", None, "Current source"),
             ("generated_catalog", None, b'.incbin "/host/package.bin"\n', "catalog"),
             ("generated_catalog", None, b'.incbin "packages/m68020--motorola68k.bin"\n' * 2, "catalog"),
-            ("package_asset", None, b"BS31corrupt", "asset mismatch"),
+            ("package_asset", None, b"BS32corrupt", "asset mismatch"),
         ]
         for origin, replacement_origin, data, error in mutations:
             with self.subTest(origin=origin, error=error), tempfile.TemporaryDirectory() as directory:

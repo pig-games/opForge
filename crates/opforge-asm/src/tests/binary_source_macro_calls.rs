@@ -72,7 +72,7 @@ fn compact_macro_register_list_rust_oracle() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; known macro register-binding regression"]
+#[ignore = "requires configured FS-UAE; consumed macro register-list binding"]
 fn compact_macro_register_list_fs_uae() {
     native_source(register_list_source(false));
     native_source(register_list_source(true));
@@ -92,9 +92,29 @@ fn compact_macro_register_value_rust_oracle() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; consumed register and lexical macro arguments"]
+#[ignore = "requires configured FS-UAE; known loop-dependent conditional gap"]
 fn compact_macro_register_value_fs_uae() {
     native_source(register_value_source());
+}
+
+// Isolate operand binding from the retained loop-dependent conditional gap.
+fn register_iterator_source() -> String {
+    register_value_source().replace(".if d0==2\n.byte 7\n.else\n.byte 8\n.endif\n", "")
+}
+
+#[test]
+fn compact_macro_register_iterator_rust_oracle() {
+    let registers = [0x48, 0xe7, 0x1f, 0x7e, 0x4c, 0xdf, 0x7e, 0xf8];
+    assert_eq!(
+        oracle(&register_iterator_source()),
+        [&[9][..], &registers, &[2], &registers, &[4]].concat()
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; register and value macro composition in loops"]
+fn compact_macro_register_iterator_fs_uae() {
+    native_source(register_iterator_source());
 }
 
 fn inherited_register_value_source(forward: bool) -> String {
@@ -129,9 +149,90 @@ fn compact_macro_dual_role_rust_oracle() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; known destination-role binding gap"]
+#[ignore = "requires configured FS-UAE; one actual consumed as register and value"]
 fn compact_macro_dual_role_fs_uae() {
     native_source(dual_role_source());
+}
+
+fn accumulator_dual_role_source() -> String {
+    ".module probe\n.cpu m6502\nemitBoth .macro value\n\tasl .value\n.byte .value\n.endmacro\n.for a in {2,4}\n.emitBoth a\n.endfor\n.endmodule\n".into()
+}
+
+#[test]
+fn compact_macro_accumulator_dual_role_rust_oracle() {
+    assert_eq!(oracle(&accumulator_dual_role_source()), [0x0a, 2, 0x0a, 4]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; package-owned accumulator and scalar roles"]
+fn compact_macro_accumulator_dual_role_fs_uae() {
+    native_source_for_cpu(accumulator_dual_role_source(), "m6502");
+}
+
+fn register_context_source() -> String {
+    ".module probe\n.cpu m68020\nd0=2\na0=4\nemit .macro displacement,base,value\n\tmove.l #.value,d2\n\tmove.l .displacement(.base),d3\n.endmacro\n.emit d0,a0,d0\n.byte a0,d0\n.endmodule\n".into()
+}
+
+#[test]
+fn compact_macro_register_context_rust_oracle() {
+    assert_eq!(
+        oracle(&register_context_source()),
+        [0x24, 0x3c, 0, 0, 0, 2, 0x26, 0x28, 0, 2, 4, 2]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; scalar immediate/displacement and register base"]
+fn compact_macro_register_context_fs_uae() {
+    native_source(register_context_source());
+}
+
+// STVM state is replayed during assembly, after structural operand binding.
+// The binder must preserve register roles without consulting uninitialized state.
+fn guarded_register_source(macro_call: bool) -> String {
+    let body = if macro_call {
+        "transfer .macro value\n fsincos .value,.pair(fp6,fp7)\n.endmacro\n.transfer fp0\n"
+    } else {
+        " fsincos fp0,.pair(fp6,fp7)\n"
+    };
+    format!(".module probe\n.cpu m68020\n.fpu 68881\n{body}.endmodule\n")
+}
+
+#[test]
+fn compact_macro_guarded_register_rust_oracle() {
+    let direct = oracle(&guarded_register_source(false));
+    assert_eq!(direct.len(), 4);
+    assert_eq!(oracle(&guarded_register_source(true)), direct);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; state-dependent instruction register binding"]
+fn compact_macro_guarded_register_fs_uae() {
+    native_source(guarded_register_source(true));
+}
+
+fn register_import_source(qualified: bool) -> String {
+    let reference = if qualified { ".byte dep.helper\n" } else { "" };
+    format!(".module dep\n.cpu m68020\n.pub\nhelper .block\n.byte $a5\n.bend\n.endmodule\n.module probe\n.cpu m68020\n.use dep (helper as d0)\nsave .macro regs\n\tmovem.l .regs,-(sp)\n.endmacro\n.save d0\n{reference}.endmodule\n")
+}
+
+#[test]
+fn compact_macro_register_import_rust_oracles() {
+    assert_eq!(
+        oracle(&register_import_source(false)),
+        [0x48, 0xe7, 0x80, 0]
+    );
+    assert_eq!(
+        oracle(&register_import_source(true)),
+        [0xa5, 0x48, 0xe7, 0x80, 0, 0]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; register roles exclude imported-block edges"]
+fn compact_macro_register_import_fs_uae() {
+    native_source(register_import_source(false));
+    native_source(register_import_source(true));
 }
 
 fn inactive_header_source() -> String {
@@ -158,12 +259,40 @@ fn native_source_for_cpu(source: String, cpu: &str) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
-    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
-        &workspace_root(),
-        &package,
-        source.as_bytes(),
-        Some(&expected),
-    )
+    let result = if let Some(path) = std::env::var_os("OPFORGE_MACRO_IMAGE") {
+        // Reuse one identified executable within a native test batch. Guest
+        // source, Rust oracle, completion challenge and output remain fresh.
+        let image = fs::read(path).unwrap();
+        let files = [crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: "entry.asm",
+            bytes: source.as_bytes(),
+        }];
+        let case = crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "macro-binding",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("Work:entry.asm --bin Work:output.bin"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/output.bin",
+                rust_oracle: &expected,
+            },
+        };
+        crate::fs_uae_smoke::run_prebuilt_compact_cli_case_from_env(
+            &workspace_root(),
+            &case,
+            &image,
+        )
+    } else {
+        crate::fs_uae_smoke::run_compact_cli_from_env(
+            &workspace_root(),
+            &package,
+            source.as_bytes(),
+            Some(&expected),
+        )
+    }
     .expect("fresh packed macro call comparison");
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("real FS-UAE execution required");

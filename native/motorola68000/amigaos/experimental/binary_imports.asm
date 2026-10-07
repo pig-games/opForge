@@ -715,6 +715,7 @@ proxyNamespaceReady
 	clr.w records.Entry.MemberBase(a3)
 	clr.w records.Entry.TemplateModule(a3)
 	clr.w records.Entry.TemplateFlags(a3)
+	clr.l records.Entry.RegisterName(a3)
 	move.w (a4), records.Entry.Next(a3)
 	move.w d2, d0
 	addq.w #1, d0

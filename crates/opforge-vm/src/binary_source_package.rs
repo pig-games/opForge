@@ -92,6 +92,9 @@ pub struct NumericCandidate {
     /// Known register names that disprove a rejection match conjunct.
     /// Other names and operand forms provide no evidence of a mismatch.
     pub known_name_excluded: Vec<(u8, u16)>,
+    /// Complete numeric operand views from the canonical selector, independent
+    /// of whether its encoding recipe can be transported or executed.
+    pub roles: Vec<Projection>,
     pub recipe: CandidateRecipe,
 }
 
@@ -395,6 +398,9 @@ impl BinarySourcePackage {
             }
         }
         for candidate in &candidates {
+            for role in &candidate.roles {
+                path_qualifiers(role, &names, &mut qualifiers);
+            }
             match &candidate.recipe {
                 CandidateRecipe::SemanticInputs { inputs, .. }
                 | CandidateRecipe::SemanticBranch { inputs, .. } => {
@@ -476,8 +482,48 @@ fn candidate(
         unstable_widen: row.unstable_widen,
         member_excluded: member_excluded(&row.operand_plan),
         known_name_excluded: Vec::new(),
+        roles: role_projections(&row.operand_plan, names),
         recipe: parse_recipe(&row.operand_plan, names),
     }
+}
+
+// Binding needs the selector's structural views even when a missing encoder or
+// fixed table recipe drops execution inputs. Unknown predicates yield no role
+// proof: retaining a known subset would authorize only part of a conjunction.
+fn role_projections(plan: &str, names: &mut NameTable) -> Vec<Projection> {
+    let projections = match parse_recipe(plan, names) {
+        CandidateRecipe::SemanticInputs { inputs, .. }
+        | CandidateRecipe::SemanticBranch { inputs, .. } => inputs,
+        CandidateRecipe::SemanticSequence { stages } => {
+            stages.into_iter().flat_map(|stage| stage.inputs).collect()
+        }
+        CandidateRecipe::Unsupported { .. } if plan.starts_with("semv.reject.v1:") => {
+            let Some(inputs) = match_inputs(plan) else {
+                return Vec::new();
+            };
+            let Some(inputs) = inputs
+                .split(',')
+                .map(|input| parse_projection(input, names))
+                .collect::<Option<Vec<_>>>()
+            else {
+                return Vec::new();
+            };
+            inputs
+        }
+        _ => return Vec::new(),
+    };
+    let mut result = Vec::new();
+    for mut projection in projections {
+        while let Projection::ValueProgram { source, .. }
+        | Projection::RequiredValueProgram { source, .. } = projection
+        {
+            projection = *source;
+        }
+        if !matches!(projection, Projection::Constant(_)) && !result.contains(&projection) {
+            result.push(projection);
+        }
+    }
+    result
 }
 
 /// A deliberately partial proof, not an alternative rejection executor. Matching
@@ -1259,9 +1305,66 @@ impl QualifierTable {
 mod tests {
     use super::{
         known_name_exclusions, member_excluded, parse_member_projection, parse_projection,
-        parse_register_mask, BTreeMap, BTreeSet, CandidateRecipe, NameTable, NumericRegister,
-        Projection,
+        parse_register_mask, role_projections, BTreeMap, BTreeSet, CandidateRecipe, NameTable,
+        NumericRegister, Projection,
     };
+
+    #[test]
+    fn operand_roles_keep_complete_canonical_views_without_value_programs() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+        };
+        let roles = role_projections(
+            "semv.sequence.v1:match:_@indirect_tuple_reg0.item1.class1,indirect_tuple_arity0.value2;encode:future@required_value_program:missing:indirect_tuple_value0.item0,indirect_tuple_reg0.item1.class1",
+            &mut names,
+        );
+        assert_eq!(
+            roles,
+            vec![
+                Projection::TupleRegister {
+                    operand: 0,
+                    item: 1,
+                    class: 1
+                },
+                Projection::TupleArity { operand: 0 },
+                Projection::TupleValue {
+                    operand: 0,
+                    item: 0
+                },
+            ]
+        );
+        assert!(role_projections(
+            "semv.sequence.v1:match:_@reg0.class1;encode:future@unknown_predicate",
+            &mut names,
+        )
+        .is_empty());
+        assert_eq!(
+            role_projections(
+                "semv.sequence.v1:match:_@reg0.class1;encode:future@literal:0;fixup:future@expr1",
+                &mut names,
+            ),
+            vec![
+                Projection::Register {
+                    operand: 0,
+                    class: 1
+                },
+                Projection::Expression(1)
+            ]
+        );
+        assert!(role_projections(
+            "semv.sequence.v1:match:_@reg0.class1;encode:future@literal:0;fixup:future@unknown_predicate",
+            &mut names,
+        ).is_empty());
+        assert!(role_projections(
+            "semv.sequence.v1:match:invalid@reg0.class1;encode:future@literal:0",
+            &mut names,
+        )
+        .is_empty());
+        assert!(role_projections("none", &mut names).is_empty());
+    }
 
     #[test]
     fn immediate_projection_lowers_three_numeric_operand_slots() {

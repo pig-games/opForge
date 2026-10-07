@@ -22,6 +22,7 @@ DECLARED_CANONICAL = 15
 DECLARED_LEAF = 16
 VALUE_DECLARED_BIT = 0
 IMPORT_PROXY_BIT = 3
+ENTRY_CAPACITY = 32; bounded capture includes preparation-only register metadata
 ; Numeric entry bytes are copied without interpreting binding semantics.
 ; No preparation owner is imported by this observer.
 ; Word offsets into the existing owned scope/entry layout. Each diagnostic
@@ -46,7 +47,7 @@ Related	.long ?
 Base	.word ?
 Count	.word ?
 Current	.long ?
-Entry	.res 28
+Entry	.res ENTRY_CAPACITY
 NameBytes	.long ?
 Name	.res 256
 .endstruct
@@ -147,7 +148,7 @@ commit	.block
 	moveq #0, d6
 	move.w View.EntryBytes(a4), d6
 	beq.w done
-	cmpi.l #28, d6
+	cmpi.l #ENTRY_CAPACITY, d6
 	bhi.w done
 	moveq #0, d0
 	move.w View.Name(a4), d0
@@ -498,6 +499,7 @@ reportSnapshot	.block
 	movea.l a6, a0
 	jsr memory_profile.progress
 	lea Snapshot.Entry(a5), a4
+	; Keep the existing seven-long metadata report; newer captured bytes stay opaque.
 	move.l d4, d7
 	addq.l #2, d7
 	moveq #1, d6

@@ -534,6 +534,35 @@ fn native_assembly_position_capture_is_triple_gated_and_byte_transparent() {
 }
 
 #[test]
+fn native_preparation_failure_capture_is_triple_gated() {
+    let baseline = assembly_position_source(false);
+    let source = baseline.replace(
+        "    moveq #7, d0",
+        "    moveq #7, d0\n    .MEMORY_PREPARATION_FAILURE a1, d0, d0, Position, 0, 4, 8, 12, #301",
+    );
+    let gates = [
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_PREPARATION_PROGRESS",
+    ];
+    for mask in 0..8 {
+        let defines = gates
+            .iter()
+            .enumerate()
+            .filter(|(bit, _)| mask & (1 << bit) != 0)
+            .map(|(_, name)| (*name).to_string())
+            .collect::<Vec<_>>();
+        let reference = assemble_memory_telemetry_case("prep-capture-absent", &baseline, &defines);
+        let observed = assemble_memory_telemetry_case("prep-capture-gated", &source, &defines);
+        if mask == 7 {
+            assert!(observed.len() > reference.len());
+        } else {
+            assert_eq!(observed, reference, "missing gates must emit no capture code");
+        }
+    }
+}
+
+#[test]
 fn native_input_macros_are_independently_gated() {
     let source = memory_telemetry_source(true, true);
     let without_input = source

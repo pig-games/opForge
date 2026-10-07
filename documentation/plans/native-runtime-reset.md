@@ -1,13 +1,15 @@
 # Native assembler completion plan
 
-Status: active. BS31 adds statement-time flat lists, compact ranges, numeric
-`.len` and focused iterable `.for` support on the shared EXVM grammar. The
-[full current-source self-host attempt](#bs31-full-self-host-attempt-2026-10-07)
-at `02fc0e41` completes the fresh guest protocol but **fails with native exit 20
-and no output**, after 734.921603416 seconds on 68020/74 MiB. A focused comparison
-confirms that the last binding change regressed register-list macro arguments;
-the complete source uses this pattern in `.EVALUATE`. Repair that boundary and
-repeat the complete run before claiming restored self-host parity.
+Status: active. BS32 repairs deferred macro register/value binding; focused
+qualification passes. The [current complete self-host attempt](#deferred-macro-operand-binding-bs32)
+still **fails with native exit 20 and no output**, after 747.212714458 seconds
+on 68020/74 MiB. The reported record is `lea DosName,a1`, CLI entry file 1,
+line 18. Focused LEA/Hunk and named-block forward-reference controls pass; a
+complete diagnostic capture confirms failure during captured-source preparation,
+before assembly begins. A narrower preparation-stage capture is in progress.
+This is not restored self-host
+parity. BS31 added statement-time flat lists, compact ranges, numeric `.len` and
+focused iterable `.for` support on the shared EXVM grammar.
 
 The [last successful full self-host checkpoint](#shared-exvm-migration-qualification)
 remains BS30 `09c55688`: exact equality for all 538,336 Hunk bytes in
@@ -15,7 +17,7 @@ remains BS30 `09c55688`: exact equality for all 538,336 Hunk bytes in
 has 2,139 passing, 49 failing and 530 ignored tests; the old failure-name list is
 not retained, so the reduced failure count does not establish which cases were
 fixed or newly broken. Scalar `:?=` forward-initializer semantics remain open.
-Current executables require BS31 packages; superseded contracts have no
+Current executables require BS32 packages; superseded contracts have no
 compatibility executor. No new physical A6000 run or qualified replacement
 hardware bundle is claimed.
 
@@ -456,6 +458,82 @@ and native formatting pass. The native runs use FS-UAE 68020/10 MiB and are not
 run is part of this slice. `.bfor`, existing loop-body restrictions, compound
 struct support and wide-literal packing limits are not repaired here; full
 iterator/language parity remains unclaimed.
+
+### Deferred macro operand binding (BS32)
+
+The current repair preserves each register-spelled macro actual's source origin
+alongside its normalized package register ID/qualifier. Preparation-only source
+entries grow from 28 to 32 bytes; no pointers enter persisted source records.
+After binary macro substitution, the consuming package's structural projections
+resolve register leaves before declaration/reference accounting. Scalar operands
+retain their source identities, including iterator, inherited, forward and import
+bindings. Private macro hygiene records remain on the existing scope path.
+
+The canonical selector supplies independent role metadata even when a fixed
+opcode or unsupported encoder has no execution inputs. BS32 rows are 44 bytes;
+complete identical role arrays share immutable offsets. Only the latest package
+format is accepted. State guards, value programs and fixups remain later assembly
+responsibilities; binding does not inspect uninitialized STVM state or claim
+complete instruction acceptance.
+
+Projection paths and register identity products are conservatively unresolved by
+this new role boundary. They are remaining parity work, not alternate parsing or
+CPU-specific fallbacks. Loop-dependent conditionals remain a separate existing
+gap: preparation cannot evaluate an iterator whose value is assigned during
+assembly replay. The full combined macro/loop/conditional regression is retained;
+a separate consumed-argument control isolates binding without that conditional.
+
+Focused qualification passes: 362 Rust binary-source tests; fresh native
+iterator controls on 68020 and 6502; consumed macro register/value, mask,
+displacement/base, inherited/forward and imported-block controls; state-dependent
+FPU binding; ordinary root/nested/conditional macros; and the native package
+validator's valid package plus seven malformed role-table cases. The broader VM
+library suite has 523 passing tests and one inherited diagnostic expectation
+failure: `.pick` reports an unknown compile-time function rather than the older
+unsupported-call diagnostic. The unchanged call path predates this repair.
+
+The unchanged 15,474-byte `aligned-control` source (`fnv1a64:ac05445d958571b5`)
+was measured in alternating uninstrumented FS-UAE runs on 68020/10 MiB. Every
+run has fresh completion, exit zero and exact live Rust output:
+
+| Pair | Before, seconds | After, seconds |
+|---|---:|---:|
+| 1 | 25.218074333 | 25.263499833 |
+| 2 | 25.047818333 | 25.256898583 |
+
+Means are 25.132946333 and 25.260199208 seconds: **+0.127252875 seconds /
++0.5063%**. Two samples support a small observed cost, not a speedup claim or a
+full-workload timing comparison. Before uses the 548,212-byte `02fc0e41` image
+(`fnv1a64:f250dc312d538d98`); after uses the current 590,720-byte image
+(`fnv1a64:8abcc33bcc586d9c`).
+
+The m68020 package grows from 394,962 to 434,326 bytes (**+39,364 / 9.97%**):
+27,088 bytes for wider rows, 12,144 for 308 shared role arrays, and 132 for added
+paths/names. Sharing identical arrays saves 84,084 bytes against storing each
+row's array separately. The executable grows 42,508 bytes; linked static
+reservation grows 42,428 to 610,020 bytes. This is a correctness/storage tradeoff;
+linked reservation is not peak memory.
+
+The fresh complete BS32 release self-host uses 112 mapped inputs /
+1,681,059 bytes on 68020/74 MiB. It completes fresh START/DONE with **exit 20,
+no output**, after **747.212714458 seconds (12m27.21s)**. Its reported record is
+`lea DosName,a1`, CLI entry file 1, line 18. Focused Hunk LEA relocation and
+named-block references to private data at offsets zero and 131,072 all pass.
+The package comparison finds all 3,386 execution rows and 793 program bodies
+unchanged after offset normalization; role transport has not changed the
+instruction execution contracts. The complete instrumented capture fails with
+fresh exit 20 after 771.912019750 seconds, before any assembly or preparation-
+completion marker. It has no binding-finalization snapshot: the failure is in
+captured-source preparation, not instruction selection/emission. Both named-
+block LEA controls also pass using the full 590,720-byte embedded executable.
+A gated preparation-stage and bounded numeric-record capture is in progress.
+Its disabled build remains byte-identical to that release executable.
+
+Source fingerprint is `fnv1a64:1dbf2231e724c77e`; package fingerprint is
+`fnv1a64:98b91e6dc8f6122d`. Bootstrap and fresh Rust oracle both identify the
+590,720-byte Hunk above. No current physical A6000 timing, qualified replacement
+hardware bundle or 2 MiB qualification is claimed. The BS30 full self-host
+remains the last successful complete reference.
 
 ### BS31 full self-host attempt (2026-10-07)
 

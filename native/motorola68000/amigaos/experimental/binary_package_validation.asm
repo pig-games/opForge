@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS31 packages.
+; Shared structural boundary for embedded and external BS32 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -16,11 +16,13 @@ COUNT_LIMIT = 65535
 ROW_BYTES = package.ROW_BYTES
 REGISTER_BYTES = 6
 PROGRAM_BYTES = 12
+ROLE_BYTES = 12
+ROLE_LIMIT = 16
 TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS31 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS32 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -136,6 +138,27 @@ candidateLoop
 	bhi.w bad
 	tst.w package.Row.Reserved(a3)
 	bne.w bad
+	tst.w package.Row.RoleReserved(a3)
+	bne.w bad
+	moveq #0, d1
+	move.w package.Row.RoleCount(a3), d1
+	cmpi.w #ROLE_LIMIT, d1
+	bhi.w bad
+	move.l package.Row.RoleInputs(a3), d0
+	tst.w d1
+	bne.w roleSpan
+	tst.l d0
+	bne.w bad
+	bra.w nextCandidate
+roleSpan
+	btst #0, d0
+	bne.w bad
+	mulu.w #ROLE_BYTES, d1
+	move.l a3, -(sp)
+	bsr.w span
+	movea.l (sp)+, a3
+	bne.w bad
+nextCandidate
 	adda.w #ROW_BYTES, a3
 	subq.l #1, d6
 	bra.w candidateLoop

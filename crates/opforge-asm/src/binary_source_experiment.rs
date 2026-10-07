@@ -18,7 +18,11 @@ use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
 const HEADER: usize = 220;
-pub(crate) const ROW: usize = 36;
+pub(crate) const ROW: usize = 44;
+const ROLE_COUNT: usize = 36;
+const ROLE_RESERVED: usize = 38;
+const ROLE_INPUTS: usize = 40;
+const ROLE_LIMIT: usize = 16;
 const SCALAR_ADDRESS_IDENTITY: u16 = 1;
 
 struct Program<'a> {
@@ -108,6 +112,9 @@ impl<'a> Programs<'a> {
             Ok(())
         }
         for candidate in &package.candidates {
+            for role in &candidate.roles {
+                collect(role, &mut result)?;
+            }
             match &candidate.recipe {
                 CandidateRecipe::SemanticInputs { inputs, .. }
                 | CandidateRecipe::SemanticBranch { inputs, .. } => {
@@ -152,7 +159,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS31 block for one resolved package hierarchy.
+/// Prepare a self-contained BS32 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -219,6 +226,9 @@ pub fn prepare_package(
     }
     let mut qualified_classes = BTreeSet::new();
     for candidate in &package.candidates {
+        for role in &candidate.roles {
+            collect_qualified_classes(role, &mut qualified_classes);
+        }
         match &candidate.recipe {
             CandidateRecipe::SemanticInputs { inputs, .. }
             | CandidateRecipe::SemanticBranch { inputs, .. } => {
@@ -268,6 +278,9 @@ pub fn prepare_package(
         }
     }
     for row in &package.candidates {
+        for role in &row.roles {
+            bind_member(role, &names, &mut dictionary)?;
+        }
         if let CandidateRecipe::SemanticSequence { stages } = &row.recipe {
             for stage in stages {
                 for input in &stage.inputs {
@@ -445,6 +458,7 @@ pub fn prepare_package(
             unstable_widen: false,
             member_excluded: 0,
             known_name_excluded: Vec::new(),
+            roles: Vec::new(),
             recipe: CandidateRecipe::None,
         });
     }
@@ -469,7 +483,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS31");
+    out[..4].copy_from_slice(b"BS32");
     set_word(&mut out, 208, builtin_len);
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
@@ -506,6 +520,7 @@ pub fn prepare_package(
     let programs_offset = out.len();
     reserve(&mut out, programs.rows.len(), 12)?;
     let mut exclusions = BTreeMap::new();
+    let mut role_tables: BTreeMap<Vec<u8>, u32> = BTreeMap::new();
     for (index, candidate) in candidates.iter().enumerate() {
         write_candidate(
             &mut out,
@@ -514,6 +529,23 @@ pub fn prepare_package(
             &names,
             &programs,
         )?;
+        // Identical structural views are common across opcode/width variants.
+        // The role table is the last payload written by write_candidate.
+        let row = rows_offset + index * ROW;
+        let offset = u32::from_be_bytes(
+            out[row + ROLE_INPUTS..row + ROLE_INPUTS + 4]
+                .try_into()
+                .unwrap(),
+        );
+        if offset != 0 {
+            let bytes = out[offset as usize..].to_vec();
+            if let Some(shared) = role_tables.get(&bytes) {
+                set_long(&mut out, row + ROLE_INPUTS, *shared);
+                out.truncate(offset as usize);
+            } else {
+                role_tables.insert(bytes, offset);
+            }
+        }
         // This runtime has at most three operands. Predicates on other operands
         // cannot disprove a candidate here and remain unsupported barriers.
         let supported_exclusions: Vec<_> = candidate
@@ -942,6 +974,35 @@ fn write_candidate(
             MISSING
         },
     );
+    write_roles(out, row, &candidate.roles, programs)?;
+    Ok(())
+}
+
+// Role projections are a complete structural conjunction, independent of
+// execution inputs. A missing transport for any view keeps the entire proof
+// absent; the later encoder still owns rejection and value evaluation.
+fn write_roles(
+    out: &mut Vec<u8>,
+    row: usize,
+    roles: &[Projection],
+    programs: &Programs<'_>,
+) -> Result<(), String> {
+    set_word(out, row + ROLE_COUNT, 0);
+    set_word(out, row + ROLE_RESERVED, 0);
+    set_long(out, row + ROLE_INPUTS, 0);
+    if roles.is_empty() || roles.len() > ROLE_LIMIT {
+        return Ok(());
+    }
+    let start = out.len();
+    let arities = tuple_arities(roles.iter());
+    for role in roles {
+        if !write_bound_projection(out, role, programs, &arities)? {
+            out.truncate(start);
+            return Ok(());
+        }
+    }
+    set_word(out, row + ROLE_COUNT, word(roles.len())?);
+    set_long(out, row + ROLE_INPUTS, long(start)?);
     Ok(())
 }
 
@@ -1754,6 +1815,120 @@ mod dictionary_role_contract_tests {
     use super::*;
 
     #[test]
+    fn accumulator_roles_survive_fixed_opcode_and_unsupported_encoding_recipes() {
+        let mut registry = registry::ModuleRegistry::new();
+        families::register_mos6502_family_stack(&mut registry);
+        let core = RuntimeModelCore::from_registry(&registry).unwrap();
+        let resolved = core.resolve_pipeline("m6502", None).unwrap();
+        let package = BinarySourcePackage::prepare(&core, &resolved).unwrap();
+        let mut names = package.names.clone();
+        let accumulator = package
+            .candidates
+            .iter()
+            .find(|candidate| {
+                names[usize::from(candidate.mnemonic)].eq_ignore_ascii_case("ASL")
+                    && candidate.roles.iter().any(|role| {
+                        matches!(role,
+                    Projection::NamedRegister { operand: 0, name }
+                        if names[usize::from(*name)].eq_ignore_ascii_case("A"))
+                    })
+            })
+            .expect("canonical ASL accumulator selector owns its exact A role");
+        let expected_name = accumulator
+            .roles
+            .iter()
+            .find_map(|role| match role {
+                Projection::NamedRegister { operand: 0, name } => Some(*name),
+                _ => None,
+            })
+            .unwrap();
+        let table_bytes = [vm::bytecode::OP_EMIT_U8, 0x0a, vm::bytecode::OP_END];
+        let mut programs = Programs::default();
+        programs.rows.push(Program {
+            kind: 1,
+            version: 1,
+            bytes: &table_bytes,
+        });
+        programs.tables.insert(
+            (
+                accumulator.mnemonic,
+                accumulator.qualifier,
+                accumulator.mode,
+            ),
+            0,
+        );
+        let mut fixed = accumulator.clone();
+        fixed.recipe = CandidateRecipe::None;
+        let mut wire = vec![0; ROW];
+        write_candidate(&mut wire, 0, &fixed, &names, &programs).unwrap();
+        assert_eq!(wire[5], 0, "fixed opcode execution remains operand-free");
+        assert_eq!(&wire[10..16], &[0; 6]);
+        assert_eq!(
+            u16::from_be_bytes(wire[ROLE_COUNT..ROLE_COUNT + 2].try_into().unwrap()),
+            1
+        );
+        let offset =
+            u32::from_be_bytes(wire[ROLE_INPUTS..ROLE_INPUTS + 4].try_into().unwrap()) as usize;
+        assert_eq!(wire[offset], 4, "role uses the existing named projection");
+        assert_eq!(
+            u16::from_be_bytes(wire[offset + 2..offset + 4].try_into().unwrap()),
+            expected_name
+        );
+        assert_eq!(&wire[offset + 8..offset + 10], &MISSING.to_be_bytes());
+        let unsupported_plan = intern(&mut names, "opaque-future-encoding").unwrap();
+        fixed.recipe = CandidateRecipe::Unsupported {
+            plan: unsupported_plan,
+        };
+        let mut unsupported = vec![0; ROW];
+        write_candidate(&mut unsupported, 0, &fixed, &names, &programs).unwrap();
+        assert_eq!(unsupported[5], 6);
+        assert_eq!(&unsupported[ROLE_COUNT..], &wire[ROLE_COUNT..]);
+
+        let prepared = prepare_package(&core, &resolved).unwrap();
+        assert_eq!(&prepared[..4], b"BS32");
+        let rows = u32::from_be_bytes(prepared[16..20].try_into().unwrap()) as usize;
+        let count = u32::from_be_bytes(prepared[20..24].try_into().unwrap()) as usize;
+        assert!(
+            prepared[rows..rows + count * ROW]
+                .chunks_exact(ROW)
+                .any(|row| {
+                    u16::from_be_bytes(row[..2].try_into().unwrap()) == accumulator.mnemonic
+                        && row[3] == 9
+                        && u16::from_be_bytes(row[ROLE_COUNT..ROLE_COUNT + 2].try_into().unwrap())
+                            == 1
+                }),
+            "generated accumulator row retains independent role metadata"
+        );
+        let mut accumulator_offsets = BTreeSet::new();
+        let mut accumulator_rows = 0;
+        for row in prepared[rows..rows + count * ROW].chunks_exact(ROW) {
+            if u16::from_be_bytes(row[ROLE_COUNT..ROLE_COUNT + 2].try_into().unwrap()) != 1 {
+                continue;
+            }
+            let offset =
+                u32::from_be_bytes(row[ROLE_INPUTS..ROLE_INPUTS + 4].try_into().unwrap()) as usize;
+            if prepared[offset] == 4
+                && prepared[offset + 1] == 0
+                && u16::from_be_bytes(prepared[offset + 2..offset + 4].try_into().unwrap())
+                    == expected_name
+            {
+                accumulator_rows += 1;
+                accumulator_offsets.insert(offset);
+            }
+        }
+        assert!(accumulator_rows > 1);
+        assert_eq!(
+            accumulator_offsets.len(),
+            1,
+            "identical accumulator roles share one immutable table"
+        );
+        eprintln!(
+            "operand-role package m6502: {} bytes, {count} rows",
+            prepared.len()
+        );
+    }
+
+    #[test]
     fn expression_path_wire_validates_bounds_and_framing() {
         use ExpressionPathOperation::*;
         let qualifiers = BTreeMap::from([(12, 3)]);
@@ -2303,6 +2478,7 @@ mod sequence_wire_tests {
             unstable_widen: false,
             member_excluded: 0,
             known_name_excluded: Vec::new(),
+            roles: Vec::new(),
             recipe: CandidateRecipe::Unsupported { plan: 3 },
         };
         let mut wire = vec![0; ROW];

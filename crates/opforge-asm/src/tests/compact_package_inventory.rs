@@ -1,4 +1,4 @@
-//! Host-only BS31 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS32 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -33,10 +33,10 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS31")
+        || bytes.get(..4) != Some(b"BS32")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS31 header".into());
+        return Err("invalid BS32 header".into());
     }
     let loop_offset = number(bytes, 212, 4)?;
     let loop_bytes = number(bytes, 216, 4)?;
@@ -191,6 +191,19 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
         }
     }
     for (index, row) in rows.chunks_exact(ROW).enumerate() {
+        let roles = number(row, super::ROLE_COUNT, 2)?;
+        let offset = number(row, super::ROLE_INPUTS, 4)?;
+        if roles > super::ROLE_LIMIT
+            || number(row, super::ROLE_RESERVED, 2)? != 0
+            || (roles == 0 && offset != 0)
+            || (roles != 0 && (offset < HEADER || offset % 2 != 0))
+            || offset
+                .checked_add(roles * 12)
+                .is_none_or(|end| end > number(bytes, 72, 4).unwrap_or(0))
+        {
+            return Err("invalid operand role table".into());
+        }
+        region(bytes, offset, roles, 12)?;
         *recipes.entry(row[5]).or_default() += 1;
         if row[5] != 6 {
             continue;
@@ -438,7 +451,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS31", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS32", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

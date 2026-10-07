@@ -18,6 +18,18 @@ PROGRESS = re.compile(
     r"^progress p=([0-9a-fA-F]{8}) f=([0-9a-fA-F]{8}) "
     r"l=([0-9a-fA-F]{8}) r=([0-9a-fA-F]{8}) m=([0-9a-fA-F]{8})$"
 )
+PREPARATION_PROGRESS_PREFIX = re.compile(r"^progress p=([0-9a-fA-F]{8})\b")
+PREPARATION_STAGES = {
+    0: "not entered",
+    1: "declaration",
+    2: "conditional",
+    3: "configuration",
+    4: "operand roles",
+    5: "scope",
+    6: "file",
+    7: "data",
+    8: "expression",
+}
 STAGES = {
     1: "lexical scope still open",
     2: "aggregate import completion",
@@ -77,11 +89,20 @@ def _decode_entry(raw: bytes) -> dict[str, object]:
 def decode_binding_diagnostic(text: str) -> dict[str, object]:
     """Decode all phase lines for the first binding snapshot in captured text."""
     groups = {name: {} for name in SNAPSHOT_PHASES}
+    preparation_phases: dict[int, tuple[int, int, int, int]] = {}
     for line in text.splitlines():
         match = PROGRESS.fullmatch(line.strip())
         if not match:
+            candidate = PREPARATION_PROGRESS_PREFIX.match(line.strip())
+            if candidate and int(candidate.group(1), 16) in (301, 302, 303):
+                raise BindingDiagnosticError("malformed preparation failure progress record")
             continue
         phase, *values = (int(part, 16) for part in match.groups())
+        if phase in (301, 302, 303):
+            if phase in preparation_phases:
+                raise BindingDiagnosticError(f"duplicate preparation failure phase {phase}")
+            preparation_phases[phase] = tuple(values)
+            continue
         for name, (metadata, spelling) in SNAPSHOT_PHASES.items():
             normalized = None
             if metadata <= phase < metadata + 5:
@@ -111,6 +132,46 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
               "status": "present" if primary is not None else "absent"}
     if correlations:
         result["correlations"] = correlations
+    if preparation_phases:
+        result["preparation_failure"] = _decode_preparation_failure(preparation_phases)
+    return result
+
+
+def _decode_preparation_failure(
+    phases: dict[int, tuple[int, int, int, int]],
+) -> dict[str, object]:
+    """Decode preparation localization evidence, not a precise callee PC.
+
+    The stage identifies the last attempted boundary; stage zero means no
+    frontend processRecord boundary was entered.
+    """
+    if 301 not in phases:
+        raise BindingDiagnosticError("preparation buffer phases require phase 301")
+    has_first, has_second = 302 in phases, 303 in phases
+    if has_first != has_second:
+        raise BindingDiagnosticError("preparation buffer requires both phases 302 and 303")
+    stage, used, name_count, live_owned = phases[301]
+    if stage not in PREPARATION_STAGES:
+        raise BindingDiagnosticError(f"unknown preparation failure stage {stage}")
+    result: dict[str, object] = {
+        "stage": stage,
+        "stage_meaning": PREPARATION_STAGES[stage],
+        "stage_interpretation": "last attempted boundary",
+        "last_published_used": used,
+        "last_published_name_count": name_count,
+        "live_owned_bytes": live_owned,
+    }
+    if has_first:
+        raw = b"".join(word.to_bytes(4, "big") for phase in (302, 303) for word in phases[phase][:3])
+        extent = raw[0] + 1
+        if extent < 4:
+            raise BindingDiagnosticError(f"preparation record extent {extent} is below 4 bytes")
+        prefix_length = min(extent, len(raw))
+        result.update({
+            "actual_record_extent": extent,
+            "record_prefix_hex": raw[:prefix_length].hex(),
+            "truncated": extent > len(raw),
+        })
     return result
 
 

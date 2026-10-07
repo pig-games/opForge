@@ -318,6 +318,35 @@ ASSEMBLY_FAILURE_STAGE	.macro slot, stage
 .endif
 .endif
 .endmacro
+; Last preparation boundary and bounded opaque writer prefix on failure.
+; Uses three existing progress records, without event/request buffer growth.
+; The caller supplies its frame layout; all registers and CCR are preserved.
+MEMORY_PREPARATION_FAILURE	.macro dosbase, assembling, stage, frame, outputOffset, capacityOffset, usedOffset, countOffset, phase
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0/a0, -(sp)
+	tst.l .assembling
+	bne.w done
+	.MEMORY_PROGRESS .dosbase, .phase, .stage, .frame+.usedOffset, .frame+.countOffset
+	lea .frame, a0
+	cmpi.l #6*4, .capacityOffset(a0)
+	blo.w done
+	movea.l .outputOffset(a0), a0
+	move.l a0, d0
+	beq.w done
+	; Only bytes within byte0+1 belong to the active record. The decoder
+	; discards the rest of this fixed 24-byte observation.
+	.MEMORY_PROGRESS_BLOCK .dosbase, .phase+1, (a0), 0*4, 1*4, 2*4
+	.MEMORY_PROGRESS_BLOCK .dosbase, .phase+2, (a0), 3*4, 4*4, 5*4
+done
+	movem.l (sp)+, d0/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
 MEMORY_PHASE	.macro value
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

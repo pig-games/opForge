@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_members as members
 	.use experimental.amigaos.binary_prepare as prepare
+	.use experimental.amigaos.binary_operand_binding as operand_binding
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_data_prepare as data_prepare
 	.use experimental.amigaos.binary_metadata_prepare as metadata
@@ -56,6 +57,25 @@ Reserved	.word ?
 	.endstruct
 	.pub
 FRAME_BYTES = Frame.Reserved+2
+PREP_DECLARATION = 1
+PREP_CONDITIONAL = 2
+PREP_CONFIGURATION = 3
+PREP_OPERAND_ROLES = 4
+PREP_SCOPE = 5
+PREP_FILE = 6
+PREP_DATA = 7
+PREP_EXPRESSION = 8
+; Last attempted preparation boundary, observed only by the existing gated
+; failure/progress macros. It has no release storage or runtime updates.
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	.section bss, kind=bss
+PreparationStage	.res long, 1
+	.endsection
+.endif
+.endif
+.endif
 	.pub
 GRAPH_BYTES = graph.SCRATCH_BYTES
 GRAPH_SPAN_BYTES = graph.MAX_SPANS*graph.SPAN_BYTES
@@ -1656,6 +1676,7 @@ failed
 ; normal numeric selection, binding and expression path to original or expanded
 ; records. This routine does not tokenize source or advance the physical line.
 processRecord	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DECLARATION
 	movea.l Frame.Output(a5), a0
 	; Scope-private macro records are not portable declaration requests.
 	btst #7, 1(a0)
@@ -1664,6 +1685,7 @@ processRecord	.block
 	jsr declaration.normalize
 	bne.w failed
 declarationReady
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONDITIONAL
 	clr.l Frame.GraphBefore(a5)
 	movea.l Frame.Graph(a5), a0
 	move.l a0, d0
@@ -1703,6 +1725,26 @@ activeLine
 	bne.w conditionReady
 bindLine
 	movea.l Frame.Output(a5), a0
+	; Invocation hygiene is a scope-private record. scopes.line removes its
+	; marker before normal label normalization; operand roles do not apply.
+	btst #scopes.LEXICAL_BLOCK_BIT, 1(a0)
+	bne.w scopeLine
+	lea SCOPE_STATE(a6), a1
+	move.l Frame.Capacity(a5), d0
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONFIGURATION
+	jsr scopes.configurationStatement
+	bne.w failed
+	movea.l Frame.Output(a5), a0
+	movea.l Frame.Package(a5), a1
+	lea SCOPE_STATE(a6), a2
+	.MEMORY_DETAIL_BEGIN #2
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_OPERAND_ROLES
+	jsr operand_binding.line
+	.MEMORY_DETAIL_END #2
+	bne.w failed
+scopeLine
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_SCOPE
+	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
 	move.l Frame.Capacity(a5), d0
 	.MEMORY_DETAIL_BEGIN #2
@@ -1728,6 +1770,7 @@ captureValue
 	bne.w failed
 scalarCaptured
 conditionReady
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FILE
 	.MEMORY_DETAIL_BEGIN #3
 	bsr.w fileLine
 	bne.w failed
@@ -1737,11 +1780,13 @@ conditionReady
 	movea.l Frame.Output(a5), a0
 	movea.l Frame.Package(a5), a1
 	lea SCOPE_STATE(a6), a2
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DATA
 	jsr data_prepare.check
 	bne.w failed
 	movea.l Frame.Output(a5), a0
 	lea PREPARED_LINE(a6), a1
 	movea.l Frame.Package(a5), a2
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_EXPRESSION
 	jsr prepare.line
 	bne.w failed
 	.MEMORY_STAGE #0
@@ -2624,16 +2669,38 @@ entryFound
 	bne.w packageBound
 	btst #package.DICTIONARY_REGISTER_OR_NAMED_BIT, package.DictionaryEntry.Roles(a3)
 	beq.w contextualGrammar
-	; Shared value operands bind source symbols even when their spelling is
-	; also a package register. Instruction register roles retain package IDs.
+	; Value/template operands retain both source and package register facets.
+	; Their consuming numeric operand resolves the role after substitution.
 	movem.l d1-d2/a0-a1, -(sp)
 	movea.l LINE_FRAME+writer.Frame.Output(a6), a0
 	movea.l a5, a1
 	jsr loop_parser.valueContext
 	movem.l (sp)+, d1-d2/a0-a1
 	tst.l d0
-	beq.w findSymbol
+	beq.w sourceCandidate
 	bra.w packageBound
+sourceCandidate
+	moveq #0, d2
+	move.b package.DictionaryEntry.Qualifier(a3), d2
+	movem.l d1-d2, -(sp)  ; immutable package facet from the dictionary hit
+	moveq #1, d4
+	bsr.w sourceName
+	bne.w candidateFailed
+	move.l d1, -(sp)  ; keep origin ID distinct from its eventual value target
+	move.l d1, d0
+	move.l 4(sp), d1
+	move.l 8(sp), d2
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.attachRegister
+	move.l (sp)+, d1
+	adda.w #8, sp
+	tst.l d0
+	bne.w bad
+	moveq #0, d2
+	bra.w good
+candidateFailed
+	adda.w #8, sp
+	bra.w bad
 contextualGrammar
 	; PRVM owns contextual grammar binding; `in` remains a normal source
 	; name everywhere else, including the existing placement grammar.
@@ -2677,6 +2744,12 @@ advance
 	move.l Node.Next(a4), d7
 	bra.w findPackage
 findSymbol
+	moveq #0, d4
+	bsr.w sourceName
+	bra.w done
+; Shared lexical binding. D4 selects origin versus canonical identity; active
+; iterators keep their temporary origin. D3 retains the current struct scope.
+sourceName
 	movea.l a2, a0
 	move.l d6, d0
 	lea SCOPE_STATE(a6), a1
@@ -2684,7 +2757,7 @@ findSymbol
 	bne.w ordinarySourceName
 	jsr scopes.probeIterator
 	tst.l d0
-	beq.w good
+	beq.w sourceDone
 	move.l d6, d0
 ordinarySourceName
 	moveq #0, d3
@@ -2704,11 +2777,18 @@ valueEnvironment
 	; themselves bind within the layout; its total size is assigned at close.
 	move.w structs.State.Parent(a4), layout.State.Current(a1)
 bindScopedName
+	tst.l d4
+	beq.w canonicalSource
+	jsr scopes.bindOrigin
+	bra.w sourceBound
+canonicalSource
 	jsr scopes.bind
+sourceBound
 	lea SCOPE_STATE(a6), a1
 	move.w d3, layout.State.Current(a1)
 	tst.l d0
-	bra.w done
+sourceDone
+	rts
 good
 	moveq #0, d0
 	bra.w done

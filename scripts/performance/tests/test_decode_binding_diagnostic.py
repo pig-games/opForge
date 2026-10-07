@@ -14,6 +14,16 @@ def progress(phase, first=0, second=0, third=0):
     return f"progress p={phase:08x} f={first:08x} l={second:08x} r={third:08x} m=0000000a"
 
 
+def preparation_failure(stage=4, *, used=7, name_count=2, live_owned=99, raw=None):
+    lines = [progress(301, stage, used, name_count).replace("m=0000000a", f"m={live_owned:08x}")]
+    if raw is not None:
+        raw = raw.ljust(24, b"\0")[:24]
+        words = [int.from_bytes(raw[i:i + 4], "big") for i in range(0, 24, 4)]
+        lines.append(progress(302, *words[:3]))
+        lines.append(progress(303, *words[3:]))
+    return "\n".join(lines)
+
+
 def snapshot(name=b"Widget", *, index=1, related=0xFFFFFFFF, stage=5, count=3):
     entry = bytearray(28)
     entry[0:4] = bytes.fromhex("00001000")
@@ -93,6 +103,57 @@ class BindingDiagnosticTests(unittest.TestCase):
     def test_unrelated_progress_phases_are_ignored(self):
         result = decoder.decode_binding_diagnostic(progress(1) + "\n" + snapshot())
         self.assertEqual(result["status"], "present")
+
+    def test_preparation_failure_301_without_buffer_is_localization_only(self):
+        result = decoder.decode_binding_diagnostic(preparation_failure(stage=8))
+        self.assertEqual(result["preparation_failure"], {
+            "stage": 8,
+            "stage_meaning": "expression",
+            "stage_interpretation": "last attempted boundary",
+            "last_published_used": 7,
+            "last_published_name_count": 2,
+            "live_owned_bytes": 99,
+        })
+        self.assertNotIn("preparation_failure", decoder.decode_binding_diagnostic("hello"))
+
+    def test_preparation_stage_zero_means_frontend_boundary_not_entered(self):
+        failure = decoder.decode_binding_diagnostic(
+            preparation_failure(stage=0)
+        )["preparation_failure"]
+        self.assertEqual(failure["stage_meaning"], "not entered")
+        self.assertEqual(failure["stage_interpretation"], "last attempted boundary")
+        self.assertNotIn("actual_record_extent", failure)
+
+    def test_preparation_buffer_uses_actual_extent_and_caps_prefix(self):
+        raw = bytes([48]) + bytes(range(1, 24))
+        failure = decoder.decode_binding_diagnostic(
+            preparation_failure(raw=raw)
+        )["preparation_failure"]
+        self.assertEqual(failure["actual_record_extent"], 49)
+        self.assertEqual(bytes.fromhex(failure["record_prefix_hex"]), raw)
+        self.assertTrue(failure["truncated"])
+
+        raw = bytes([7]) + b"abc" + b"hidden tokens beyond extent"
+        failure = decoder.decode_binding_diagnostic(
+            preparation_failure(raw=raw)
+        )["preparation_failure"]
+        self.assertEqual(failure["actual_record_extent"], 8)
+        self.assertEqual(bytes.fromhex(failure["record_prefix_hex"]), raw[:8])
+        self.assertFalse(failure["truncated"])
+
+    def test_preparation_records_reject_malformed_combinations(self):
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "both phases"):
+            line = preparation_failure(raw=b"\x04abc").splitlines()[0]
+            decoder.decode_binding_diagnostic(line + "\n" + progress(302))
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "duplicate preparation"):
+            line = preparation_failure().splitlines()[0]
+            decoder.decode_binding_diagnostic(line + "\n" + line)
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "unknown preparation"):
+            decoder.decode_binding_diagnostic(preparation_failure(stage=9))
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "malformed preparation"):
+            decoder.decode_binding_diagnostic("progress p=0000012d f=1 l=2 r=3 m=0000000a")
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "below 4"):
+            decoder.decode_binding_diagnostic(preparation_failure(raw=b"\x00abc"))
 
     def test_stage_14_decodes_canonical_import_target_declaration(self):
         result = decoder.decode_binding_diagnostic(snapshot(stage=14))

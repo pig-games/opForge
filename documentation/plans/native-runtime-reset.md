@@ -1,13 +1,12 @@
 # Native assembler completion plan
 
 Status: active. BS30 retains the shared EXVM grammar and extends scalar declaration
-policy with `:?=`. Integration is still being qualified; `:?=` forward-initializer
-semantics remain an open decision. The [last qualified full self-host checkpoint](#full-bs28-self-host-qualification)
-has exact equality for all 535,092 Hunk bytes on 68020/74 MiB in
-1,122.755769250 seconds. No new physical
+policy with `:?=`. The [current full self-host checkpoint](#shared-exvm-migration-qualification)
+has exact equality for all 538,336 Hunk bytes on 68020/74 MiB in
+1,253.615809917 seconds. Scalar `:?=` forward-initializer semantics remain an open
+decision, and broad tests retain 54 inherited failures. No new physical
 A6000 run or complete peak-memory result is claimed. Current executables require
-BS30 packages; superseded contracts have no compatibility executor. The BS28
-result describes the earlier qualified implementation, not the current changes.
+BS30 packages; superseded contracts have no compatibility executor.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -34,8 +33,9 @@ time and image/storage impact. Rerun the complete shared corpus at a meaningful
 completion boundary; focused fixes do not silently update the breadth counts.
 
 The first investigation found that native `binary_expression.compile` owned
-handwritten numeric expression grammar. Its shared-EXVM replacement is now under
-qualification. The approved sequence is:
+handwritten numeric expression grammar. Its shared-EXVM replacement now passes
+focused controls and the complete current self-host; broader limitations remain
+below. The approved sequence is:
 
 1. **Shared expression compilation:** consolidate the current EXVM grammar and
    execute it against packed numeric tokens. Builders consume bound IDs and decoded
@@ -83,7 +83,7 @@ Forward-initializer replay is unresolved: current Rust can retain a pass-one zer
 placeholder or a later mutation, while native preparation resolves forward
 immutable constants first. Do not claim conditional-assignment parity until that
 language choice and the resulting implementation are qualified.
-The compiler-first sequence is approved; implementation and qualification are in progress. CPU-specific
+The compiler-first sequence is approved; remaining language qualification is in progress. CPU-specific
 instruction gaps and promotion of the experimental CLI remain separate work.
 
 ### Shared compiler cost checkpoint
@@ -132,10 +132,55 @@ Focused Rust expression tests (54 passing, two native tests ignored in the host
 batch), constant-dependency tests (24 passing) and repetition tests (20 passing)
 pass. Production-library Clippy, Rust formatting and workflow guards pass.
 Workspace all-target Clippy still fails outside the new compiler tests. The earlier
-broad assembler run had 2,114 passing, 54 failing and 525 ignored tests; no clean
-HEAD comparison has established that every failure predates this work. This is a
-checkpoint, not broad integration qualification. No current BS30 full self-host
-or A6000 run has been completed; the full result remains the BS28 checkpoint above.
+broad assembler run had 2,114 passing, 54 failing and 525 ignored tests. The
+subsequent baseline comparison and complete BS30 self-host result are recorded
+below. These focused timings do not establish broad integration readiness or
+physical A6000 execution.
+
+### Shared EXVM migration qualification
+
+Compare current `09c55688` with isolated pre-migration `29ae7957`, using the same
+54 failing test names from the earlier broad run. Fresh serial execution on both
+revisions fails all 54: no previously passing test among that set became failing.
+Fifty have the same first failure. Four module-surface/iterator tests advance past
+the baseline's statement-AST span divergence and reach later listing assertions
+for missing retained symbols. That is an improvement in the earlier parse boundary,
+not four complete test passes. This comparison alone does not prove a green broad
+suite or classify every later assertion behind an existing first failure.
+
+Current VM and package subsystem suites pass: 519 and 101 tests respectively.
+The fresh complete assembler suite reports 2,117 passing, the same 54 failing,
+and 525 ignored tests. It introduces no additional failing test names beyond the
+compared set. No production repair or expectation change was needed for failure
+attribution; the inherited failures remain unresolved.
+
+The **complete current native BS30 self-host** at `09c55688` finishes on the
+established FS-UAE 68020/74 MiB profile, with release telemetry disabled and a
+one-hour bound. Fresh case-bound START/DONE, explicit native exit zero and exact
+live Rust equality qualify every byte of the 538,336-byte Hunk. The complete
+embedded closure contains 105 mapped inputs totaling 1,535,391 bytes. Bootstrap
+and assembled output embed only the 394,924-byte m68020
+BS30 package, FNV `0e19418331cbd9ca`; source fingerprint is `2c0042c9e4d97975` and
+bootstrap/output-oracle fingerprint is `614c8d71228e52b1`.
+
+Release START-to-DONE is **1,253.615809917 seconds (20m53.62s)**. Compared with the
+previous qualified BS28 full run's 1,122.755769250 seconds, this is +130.860041
+seconds (+11.66%). Each state has one full sample and different source/package
+bytes; this measures the complete checkpoint, not the isolated EXVM compiler
+change. The separate unchanged-control costs above remain the per-change evidence.
+Hunk size grows 3,244 bytes, including 602 package bytes; linked static reservation
+grows 3,188 bytes to 557,480. This reservation is not measured peak RAM.
+
+The qualified bundle is `/tmp/opforge-selfhost-bs30-release-74m-09c55688`, selected
+by `/tmp/opforge-a6000-current`. Local A6000 transfer preparation passes in dry-run
+mode; no remote transfer or physical execution is claimed.
+
+A read-only lifetime review confirms that full `binary_app.execute` preparation
+owns one 5,720-byte expression workspace within its single `PrepBlock`, reused
+across source files. Normal completion and error cleanup invalidate the active
+configuration before freeing the block; assembly passes retain no compiler
+workspace. The two-session harness intentionally overlaps two workspaces, then
+rebinds the active owner. This ownership review is not a full peak-memory capture.
 
 The execution-platform floor remains a 68020 running AmigaOS 3.1 or newer.
 The product goal is full self-assembly within 15 minutes, preferably much faster,

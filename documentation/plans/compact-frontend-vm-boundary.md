@@ -1,17 +1,18 @@
 # Compact frontend: VM boundary correction
 
-Status: BS30 shared EXVM compilation is being integrated and qualified. Rust has
+Status: BS30 shared EXVM compilation passes focused native controls and the
+complete current native self-host. Broad tests retain 54 inherited failures. Rust has
 one consolidated EXVM v1 grammar/executor; native preparation executes it over
 bound numeric tokens and lowers a transient offset-based tree to ExprVM programs.
 Native EXVM has no version argument, field, check or dispatch. Consolidation of
 other VM contracts and retirement of the old native text service remain open.
 Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
-still unresolved. The last qualified BS28 implementation adds numeric `:=`
+still unresolved. BS28 introduced numeric `:=`
 normalization to shared declarations.
 It retains three numeric operands, wrapped call-register children,
 register/immediate pairs and register triples. Same-source PACK/UNPK, LINK and
-CAS checks and transformed CAS2 execution probes pass. The last qualified full
-embedded BS28 compact self-host has exact whole-Hunk Rust/native equality.
+CAS checks and transformed CAS2 execution probes pass. The current complete
+embedded BS30 compact self-host has exact whole-Hunk Rust/native equality.
 This qualifies that implementation and
 case, not whole-language or CPU-family parity. The [active work](native-runtime-reset.md#active-shared-language-completion-work)
 records focused coverage, costs and remaining boundaries.
@@ -52,32 +53,29 @@ Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.
 
-## Most recent full self-host qualification (BS28)
+## Most recent full self-host qualification (BS30)
 
-The complete BS28 embedded implementation at `d7ec7a17` self-assembles in FS-UAE
+The complete BS30 embedded implementation at `09c55688` self-assembles in FS-UAE
 with fresh case-bound START/DONE, native exit zero and exact live Rust equality
-for the entire 535,092-byte Hunk. Bootstrap and output embed only the 394,322-byte
-m68020 package; 103 mapped source/binary inputs total 1,510,690 bytes. Linked
-static reservation is 554,292 bytes, not peak RAM. Source fingerprint is
-`fnv1a64:0b57c01a5a18cfbd`, package fingerprint is `fnv1a64:72fa2a2eee62305d`,
-and bootstrap/output fingerprint is `fnv1a64:ea9e5549c42f7856`.
+for the entire 538,336-byte Hunk. Bootstrap and output embed only the 394,924-byte
+m68020 package; 105 mapped source/binary inputs total 1,535,391 bytes. Linked
+static reservation is 557,480 bytes, not peak RAM. Source fingerprint is
+`fnv1a64:2c0042c9e4d97975`, package fingerprint is `fnv1a64:0e19418331cbd9ca`,
+and bootstrap/output fingerprint is `fnv1a64:614c8d71228e52b1`.
 
-Release START/DONE takes 1122.755769250 seconds (18m42.76s), versus the last
-qualified BS27 full run's 1121.611579667 seconds (18m41.61s): +1.144190 seconds
-(+0.1020%), one full sample per state with different source/package bytes. This
-comparison includes the intervening region/alignment repairs and BS28 scalar
-assignment support. It does not isolate `:=` cost or demonstrate a speed change.
-The separate unchanged-control measurements in the
-[layout](native-runtime-reset.md#native-region-validation-and-alignment-provenance)
-and [assignment](native-runtime-reset.md#mutable-assignment-operators-bs28)
-checkpoints retain their individual change costs on 68020/10 MiB. Full self-host
+Release START/DONE takes 1253.615809917 seconds (20m53.62s), versus the previous
+qualified BS28 full run's 1122.755769250 seconds (18m42.76s): +130.860041 seconds
+(+11.66%), one full sample per state with different source/package bytes. This
+comparison measures the combined checkpoint; it does not isolate EXVM compiler
+cost. The separate unchanged-control measurements in the
+[compiler cost checkpoint](native-runtime-reset.md#shared-compiler-cost-checkpoint)
+retain each change's individual effect on 68020/10 MiB. Full self-host
 uses 68020/74 MiB; no physical A6000 timing, peak-memory capture or 2 MiB fit is
 claimed.
 
-Compared with that BS27 full baseline, Hunk and linked reservation both grow
-128 bytes: 60 bytes for the intervening layout repairs and 68 for BS28 assignment
-support, including its four package bytes. At that checkpoint only BS28 packages were accepted;
-older bundles are baseline evidence. Raw CAS2 colon normalization, other path/
+Compared with the BS28 full baseline, Hunk grows 3,244 bytes, including 602 package
+bytes, and linked static reservation grows 3,188 bytes. Only current BS30 packages
+are accepted; older bundles are baseline evidence. Raw CAS2 colon normalization, other path/
 call-child forms, unused extra call-argument preparation and localized
 import-alias/local-struct shadowing remain open.
 
@@ -92,7 +90,7 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The qualified release bundle `/tmp/opforge-selfhost-bs28-release-74m-d7ec7a17`
+The qualified release bundle `/tmp/opforge-selfhost-bs30-release-74m-09c55688`
 is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both
 embed only `m68020--motorola68k.bin`. The named package is retained for local
 identity verification; no external runtime fallback is used. This bundle has
@@ -109,8 +107,7 @@ timeout. Each invocation creates its own remote directory and local result tree.
 The current script validates BS30 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. The
-retained BS28 bundle must be regenerated and qualified before use with the
-current validator.
+older BS28 bundle is baseline evidence and cannot be used with the current validator.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
@@ -377,8 +374,10 @@ These statements describe the implemented subset. They do not imply complete ass
 - `binary_expression.compile` now runs the shared EXVM program, replacing its
   handwritten precedence parser. Fresh native component, folded-statement and
   session-lifecycle comparisons pass; unchanged-control timing is recorded in the
-  [active plan](native-runtime-reset.md#shared-compiler-cost-checkpoint). Current
-  full self-host and broad integration qualification remain outstanding.
+  [active plan](native-runtime-reset.md#shared-compiler-cost-checkpoint). The
+  complete current self-host passes. Fresh broad host checks retain the same 54
+  inherited failures as the pre-migration baseline; broad integration readiness
+  remains outstanding.
   Ordinary Rust expression handling still uses core token spelling instead of
   portable numeric metadata. Expression-range and operand-wrapper choices in
   preparation need a PRVM/package audit. Other native VM contracts still carry

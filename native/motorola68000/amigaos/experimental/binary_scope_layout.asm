@@ -4,6 +4,7 @@
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_iterator_bindings as iterators
 	.pub
 ; Source IDs remain words; each owned allocation is bounded by memory.LIMIT.
 ; Entry allocation caps identities below wildcard $ffff.
@@ -26,8 +27,10 @@ FileContent	.word ?
 ReserveRoutine	.long ?
 Package	.long ?  ; validated preparation capsule, never serialized
 LoopDepth	.word ?
+LoopBindings	.res iterators.SLOTS_BYTES
 .endstruct
-ENTRIES = State.LoopDepth+2
+ITERATOR_STATE = State.LoopDepth
+ENTRIES = State.LoopBindings+iterators.SLOTS_BYTES
 ENTRIES_POINTER = ENTRIES+memory.Block.Pointer
 BUCKETS = ENTRIES+memory.Block.Used+4
 ARENA = BUCKETS+256*2

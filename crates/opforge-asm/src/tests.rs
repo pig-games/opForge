@@ -42795,3 +42795,6 @@ mod native_telemetry_macros;
 
 #[path = "tests/binary_resource_activity.rs"]
 mod binary_resource_activity;
+
+#[path = "tests/iterable_lexical_bindings.rs"]
+mod iterable_lexical_bindings;

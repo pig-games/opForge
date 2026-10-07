@@ -603,6 +603,11 @@ referenceNamespace	.block
 	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	btst #records.ITERATOR_HIGH_BIT, records.Entry.Flags(a3)
+	bne.w ok  ; a lexical iterator never becomes an import selection/proxy
 	move.w (sp), d0
 	bsr.w selectedTarget
 	bne.w bad

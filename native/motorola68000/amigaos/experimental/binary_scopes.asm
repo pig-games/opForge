@@ -15,6 +15,8 @@
 	.use experimental.amigaos.binary_structs as structs
 	.use experimental.amigaos.binary_package as pkg
 	.use prvm.amigaos.packed_loop as loop_parser
+	.use prvm.amigaos.abi as loop_abi
+	.use experimental.amigaos.binary_iterator_bindings as iterators
 	.pub
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
@@ -29,8 +31,6 @@ MODULE_STATE = layout.MODULE_STATE
 IMPORT_STATE = layout.IMPORT_STATE
 DECLARED = 1
 REFERENCED = 2
-LOOP_BOUND_HIGH_BIT = 2
-LOOP_BOUND = 1<<(LOOP_BOUND_HIGH_BIT+8)
 OPTIONAL_REFERENCED = 512; skipped conditional RHS still carries graph references
 EXPLICIT = 4
 KIND_BLOCK = 1
@@ -405,6 +405,90 @@ done
 	tst.l d0
 	rts
 	.bend  ; bind
+
+; A0/D0=lexical name/bytes,A1=scope state. Probe only active bare values.
+; D0/CCR=0 matched,1 absent; D1/D2=temporary ID/zero qualifier on match.
+; Other registers preserved. Ordinary source-name binding is unchanged.
+probeIterator	.block
+	tst.w layout.State.LoopDepth(a1)
+	beq.w absent
+	movem.l a0-a3, -(sp)
+	movea.l ENTRIES_POINTER(a1), a2
+	movea.l ARENA_POINTER(a1), a3
+	moveq #0, d1
+	move.w layout.State.Base(a1), d1
+	moveq #0, d2
+	move.w layout.State.Current(a1), d2
+	adda.l #layout.ITERATOR_STATE, a1
+	jsr iterators.probe
+	movem.l (sp)+, a0-a3
+	tst.l d0
+	rts
+absent
+	moveq #1, d0
+	rts
+	.bend  ; probeIterator
+	.priv
+; A0=scope state,D0=provisional variable ID. Allocate an unindexed identity
+; sharing only immutable spelling bytes. D0/CCR=status,D1=new ID; others kept.
+; This identity is never an import proxy, declaration or parent-fallback name.
+createIterator	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	sub.w layout.State.Base(a6), d0
+	bcs.w bad
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	move.l d0, d6
+	moveq #0, d7
+	move.w layout.State.Count(a6), d7
+	moveq #0, d1
+	move.w layout.State.Base(a6), d1
+	add.l d7, d1
+	cmpi.l #iterators.COUNTED, d1
+	bhs.w bad
+	move.l d7, d0
+	addq.l #1, d0
+	bsr.w reserveIdentities
+	bne.w bad
+	move.l d6, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a2
+	adda.l d0, a2
+	move.l d7, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	move.l records.Entry.Name(a2), records.Entry.Name(a3)
+	move.w records.Entry.Length(a2), records.Entry.Length(a3)
+	move.w records.Entry.Leaf(a2), records.Entry.Leaf(a3)
+	move.w layout.State.Current(a6), records.Entry.Owner(a3)
+	move.w #records.ITERATOR, records.Entry.Flags(a3)
+	clr.w records.Entry.Next(a3)
+	clr.w records.Entry.ScopeKind(a3)
+	clr.w records.Entry.Padding(a3)
+	clr.w records.Entry.MemberBase(a3)
+	clr.w records.Entry.TemplateModule(a3)
+	clr.w records.Entry.TemplateFlags(a3)
+	moveq #0, d1
+	move.w layout.State.Base(a6), d1
+	add.w d7, d1
+	move.w d1, records.Entry.Target(a3)
+	addq.w #1, layout.State.Count(a6)
+	moveq #0, d0
+	move.w layout.State.Count(a6), d0
+	mulu.w #records.ENTRY_BYTES, d0
+	move.l d0, ENTRIES+memory.Block.Used(a6)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; createIterator
+	.pub
 
 ; A0=writer copy,A1=scope state,D0=buffer capacity. Normalize a canonical label
 ; prefix through the ordinary shared path, without declaring its value.
@@ -810,9 +894,11 @@ directive
 	beq.w loopHeader
 	cmp.w pkg.Header.EndforDirective(a1), d0
 	bne.w ordinaryDirective
-	tst.w layout.State.LoopDepth(a6)
-	beq.w bad
-	subq.w #1, layout.State.LoopDepth(a6)
+	movem.l d0/a0, -(sp)
+	lea layout.ITERATOR_STATE(a6), a0
+	jsr iterators.close
+	movem.l (sp)+, d0/a0
+	bne.w bad
 ordinaryDirective
 	bsr.w keyword
 	cmpi.l #KEY_USE, d0
@@ -856,20 +942,23 @@ loopHeader
 	jsr loop_parser.classify
 	tst.l d0
 	bne.w bad
-	cmpi.w #16, layout.State.LoopDepth(a6)
-	bhs.w bad
-	addq.w #1, layout.State.LoopDepth(a6)
 	tst.l d1
-	bmi.w loopOperand
+	bmi.w countedLoop
 	move.l d1, d0
-	sub.w layout.State.Base(a6), d0
-	bcs.w loopOperand  ; reserved register names can be iterator bindings
-	cmp.w layout.State.Count(a6), d0
-	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
-	ori.w #LOOP_BOUND, records.Entry.Flags(a3)
+	movea.l a6, a0
+	bsr.w createIterator
+	bne.w bad
+	clr.b loop_abi.LoopRecord.VariableKind(a5)
+	move.w d1, loop_abi.LoopRecord.VariableHigh(a5)
+	clr.b loop_abi.LoopRecord.VariableQualifier(a5)
+	move.l d1, d0
+	bra.w openLoop
+countedLoop
+	move.l #iterators.COUNTED, d0
+openLoop
+	lea layout.ITERATOR_STATE(a6), a0
+	jsr iterators.open
+	bne.w bad
 loopOperand
 	movea.l a5, a0
 	adda.l d2, a0
@@ -1053,6 +1142,8 @@ optionalReference
 	ori.w #OPTIONAL_REFERENCED, records.Entry.Flags(a3)
 referenceReady
 	clr.b 3(a0)
+	btst #records.ITERATOR_HIGH_BIT, records.Entry.Flags(a3)
+	bne.w packageName  ; temporary values create no module reachability edge
 	move.l d1, d0
 	move.l a0, -(sp)
 	lea MODULE_STATE(a6), a0
@@ -1114,6 +1205,8 @@ resolve
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a4
 	adda.l d0, a4
+	btst #records.ITERATOR_HIGH_BIT, records.Entry.Flags(a4)
+	bne.w next  ; lexical temporaries never canonicalize through imports/parents
 	move.w records.Entry.Flags(a4), d0
 	andi.w #DECLARED+REFERENCED+OPTIONAL_REFERENCED, d0
 	beq.w next
@@ -1193,8 +1286,6 @@ access
 	bne.w failSaved
 	bra.w next
 unresolvedReference
-	btst #LOOP_BOUND_HIGH_BIT, records.Entry.Flags(a4)
-	bne.w next
 	; Optional skipped RHS names do not require a scalar definition. A later
 	; ordinary reference to the same entry retains the usual hard error.
 	btst #1, records.Entry.Flags+1(a4)

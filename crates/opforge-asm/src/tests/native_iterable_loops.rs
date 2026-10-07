@@ -30,10 +30,20 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("lists", "items={2,4,6}\n.for item in items\n.byte item+1\n.endfor\n.for item in {7,9}\n.byte item*2\n.endfor\n", &[3,5,7,14,18]),
     ("ranges", "span=2..=8:3\n.for item in span\n.byte item\n.endfor\ndescending=7..1:-2\n.for item in descending\n.byte item\n.endfor\n.for item in 7..1:-2\n.byte item\n.endfor\n.for item in 1..4\n.byte item\n.endfor\n", &[2,5,8,7,5,3,7,5,3,1,2,3]),
     ("binding-restoration", "item=19\n.for item in {2,4}\n.byte item\n.for item in {7,8}\n.byte item\n.endfor\n.byte item\n.endfor\n.byte item\n", &[2,7,8,2,4,7,8,4,19]),
+    ("outer-rhs", "items={2,4}\n.for items in items\n.byte items\n.for items in {items+1}\n.byte items\n.endfor\n.byte items\n.endfor\n.byte items[0]\n", &[2,3,2,4,5,4,2]),
+    ("compound-shadow", "items={8,9}\n.for items in {2,4}\n.byte items+1\n.endfor\n.byte items[0]\n", &[3,5,8]),
     ("named-snapshot", "items .var {2,4}\nsaved=items\nitems .set {9,10,11}\n.for item in saved\n.byte item+1\n.endfor\n.for item in items\n.byte item\n.endfor\n", &[3,5,9,10,11]),
     ("nested-count-empty", "item=23\n.for item in {}\n.byte missing\n.endfor\n.for item in 4..4\n.byte missing\n.endfor\n.for item in {2,3}\n.for item\n.byte item+10\n.endfor\n.endfor\n.byte item\n", &[12,12,13,13,13,23]),
 ];
 const BAD: &[(&str, &str)] = &[
+    (
+        "shadowed-list-index",
+        "items={8,9}\n.for items in {2}\n.byte items[0]\n.endfor\n",
+    ),
+    (
+        "shadowed-list-length",
+        "items={8,9}\n.for items in {2}\n.byte .len(items)\n.endfor\n",
+    ),
     (
         "iteration-limit",
         ".for item in 0..=65536\n.byte item\n.endfor\n",
@@ -86,23 +96,50 @@ const BAD: &[(&str, &str)] = &[
     ),
 ];
 fn imported_shadow_source(cpu: &str, qualified: bool) -> String {
-    // These live-oracle probes remain red on native at this checkpoint.
-    // Iterator identities still collapse into imported targets during binding.
+    // Bare iterators have distinct lexical identities; qualified references
+    // still retain the imported block and its relocated address.
     let reference = if qualified { ".word dep.helper\n" } else { "" };
     format!(
         ".module dep\n.cpu {cpu}\n.pub\nhelper .block\n.byte $a5\n.bend\n.endmodule\n.module main\n.cpu {cpu}\n.use dep (helper)\n.for helper in {{2,4}}\n.byte helper\n{reference}.endfor\n.endmodule\n"
     )
 }
 
+fn register_context_source(cpu: &str) -> (String, Vec<u8>) {
+    let (name, instruction, expected) = match cpu {
+        "68020" => ("d0", "moveq #1,d0", vec![2, 0x70, 1, 4, 0x70, 1, 2]),
+        "6502" => ("a", "asl a", vec![2, 0x0a, 4, 0x0a, 2]),
+        _ => panic!("unsupported fixture CPU"),
+    };
+    (
+        source(cpu, &format!("{name}={{2,4}}\n.for {name} in {name}\n.byte {name}\n {instruction}\n.endfor\n.byte {name}[0]\n")),
+        expected,
+    )
+}
+
+fn growth_source(cpu: &str) -> String {
+    let mut body = String::from("item=7\n");
+    for value in 0..192 {
+        body.push_str(&format!(".for item in {{{value}}}\n.byte item\n.endfor\n"));
+    }
+    body.push_str(".byte item\n");
+    source(cpu, &body)
+}
+
 #[test]
 fn native_iterable_loops_imported_shadow_rust_oracles() {
     let dir = scratch();
     for cpu in ["68020", "6502"] {
+        let (source, expected) = register_context_source(cpu);
+        assert_eq!(oracle(&dir.0, &source).unwrap(), expected);
+        let mut expected_growth = (0..192).map(|value| value as u8).collect::<Vec<_>>();
+        expected_growth.push(7);
+        assert_eq!(
+            oracle(&dir.0, &growth_source(cpu)).unwrap(),
+            expected_growth
+        );
         assert_eq!(
             oracle(&dir.0, &imported_shadow_source(cpu, false)).unwrap(),
-            // Current Rust reachability retains the selected block even though
-            // every bare use here executes through the iterator binding.
-            [0xa5, 2, 4],
+            [2, 4],
             "{cpu}/imported-shadow"
         );
         assert_eq!(
@@ -187,7 +224,7 @@ fn native_iterable_loops_host_assembles() {
 }
 
 #[test]
-#[ignore = "requires FS-UAE; imported iterator-shadowing probes have known parity failures"]
+#[ignore = "requires FS-UAE; lexical iterator/import identity comparison"]
 fn native_iterable_loops_fs_uae() {
     let root = root();
     let dir = scratch();
@@ -236,6 +273,15 @@ fn native_iterable_loops_fs_uae() {
     );
     let mut attempted = 0;
     for cpu in cpus {
+        if selected("identity-growth", "positive") {
+            attempted += 1;
+            check("identity-growth", cpu, &growth_source(cpu), false);
+        }
+        if selected("register-context", "positive") {
+            attempted += 1;
+            let (source, _) = register_context_source(cpu);
+            check("register-context", cpu, &source, false);
+        }
         for (name, qualified) in [
             ("imported-shadow", false),
             ("imported-shadow-qualified", true),

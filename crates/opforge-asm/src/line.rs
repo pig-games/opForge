@@ -2029,6 +2029,11 @@ impl<'a> AsmLine<'a> {
     }
 
     pub(crate) fn record_named_reference(&mut self, name: &str) {
+        // An active iterator is a lexical value, not a reference to the
+        // declaration it shadows. Qualified names still resolve normally.
+        if self.lookup_loop_var(name).is_some() {
+            return;
+        }
         let inside_owned_block = self
             .block_unit_stack
             .iter()

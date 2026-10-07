@@ -16,13 +16,17 @@ through imported modules. Native has focused shared-EXVM support for flat lists
 and ranges, with independent offset arenas, `.len`, indexed conditionals and
 `.var`/`.set` snapshots. Native compound-value forwarding through two imported
 modules and repeated equal imports has focused proof. Packed iterable `.for`
-has partial native qualification for eight positive scenarios on each package,
-including a regression check that `in` is contextual rather than globally
-reserved. Imported iterator shadowing still produces incorrect body values.
-The [active checkpoint](native-runtime-reset.md#packed-iterable-for-checkpoint-partial-qualification)
-records the regression-fixed image, exact coverage and next binding-repair
-criteria. Iterable-loop parity and struct behavior are not qualified, and
-existing wide-literal packing limits remain. Full language parity and a new
+has focused native qualification for ten positive scenarios on each package,
+including contextual `in`, nested restoration and evaluation of the iterable
+input before activating its iterator. Fresh loop identities now prevent imported
+shadowing from collapsing into imported declarations. Bare iterator reads omit
+unreferenced imported blocks; qualified references retain them. Six focused Rust
+regressions and fourteen fresh native runs cover this repair, register-name role
+separation, identity-table growth and scalar misuse rejection. The
+[binding repair checkpoint](native-runtime-reset.md#imported-iterator-binding-repair-2026-10-07)
+records the separate comparative measurement. Iterable-loop parity and struct
+behavior are not yet fully qualified, and existing wide-literal packing limits
+remain. Full language parity and a new
 full self-host qualification are not claimed.
 Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
 still unresolved. BS28 introduced numeric `:=`
@@ -354,10 +358,12 @@ forwards owned values through imported modules. Native's focused flat-list/range
 path uses shared EXVM and independent offset arenas, and covers `.len`, indexed
 conditionals and mutable `.var`/`.set` snapshots. Native compound values also
 pass focused forwarding through two imported modules and repeated equal imports.
-Iterable-loop execution has separate partial qualification with an open imported
-iterator-shadowing bug. Struct values and existing wide-literal packing limits
-remain outside this parameter qualification. These focused cases do not establish full Rust/native parity or
-a new full self-host result.
+Iterable-loop execution has separate partial qualification. The previous
+checkpoint exposed imported iterator shadowing; the binding repair now passes
+fresh shadowing, qualified-reference, restoration, register-role and growth
+checks on both packages. Struct values and existing wide-literal packing limits
+remain outside this parameter qualification. These focused cases do not establish full
+Rust/native parity or a new full self-host result.
 
 Macro descriptors preserve definition order, lexical distance, visibility,
 source order and argument spelling. Duplicate definitions and import/value
@@ -413,10 +419,10 @@ These statements describe the implemented subset. They do not imply complete ass
   portable numeric metadata. Expression-range and operand-wrapper choices in
   preparation need a PRVM/package audit. Other native VM contracts still carry
   version fields/checks pending consolidation; their presence is a migration gap.
-- Iterable `.for` has partial qualification: eight positive scenarios pass on both embedded packages, including contextual `in` handling, but imported iterator shadowing is a known mismatch (native emits 0 where Rust emits 2 and 4). The [active checkpoint](native-runtime-reset.md#packed-iterable-for-checkpoint-partial-qualification) records rejection controls, image size, and the next repair criteria. `.bfor` remains unsupported, and labels inside an active unscoped loop reject. Counted packed-loop execution is supported and has focused native/Rust comparison.
+- Iterable `.for` has focused qualification: ten positive scenarios pass on both embedded packages, including contextual `in`, nested restoration and outer input evaluation. Imported-shadow and qualified-reference probes, register-role separation, 192-loop identity growth and scalar misuse rejection also pass on both packages. See the [binding repair checkpoint](native-runtime-reset.md#imported-iterator-binding-repair-2026-10-07). `.bfor` remains unsupported, and labels inside an active unscoped loop reject. Counted packed-loop execution is supported and has focused native/Rust comparison.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
-- `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification with an open imported iterator-shadowing bug. Struct values are not newly qualified, wide-literal packing remains limited, and these cases do not establish full module, parameter or Hunk-expression parity.
+- `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Struct values are not newly qualified, wide-literal packing remains limited, and these cases do not establish full module, parameter or Hunk-expression parity.
 
 For instruction and address selection, required tuple/register classes and
 package predicates remain barriers: native may skip a higher-priority recipe

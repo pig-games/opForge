@@ -2623,7 +2623,18 @@ entryFound
 	tst.l d5
 	bne.w packageBound
 	btst #package.DICTIONARY_REGISTER_OR_NAMED_BIT, package.DictionaryEntry.Roles(a3)
-	bne.w packageBound
+	beq.w contextualGrammar
+	; Shared value operands bind source symbols even when their spelling is
+	; also a package register. Instruction register roles retain package IDs.
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a0
+	movea.l a5, a1
+	jsr loop_parser.valueContext
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	beq.w findSymbol
+	bra.w packageBound
+contextualGrammar
 	; PRVM owns contextual grammar binding; `in` remains a normal source
 	; name everywhere else, including the existing placement grammar.
 	movem.l d1/a0-a2, -(sp)
@@ -2669,6 +2680,13 @@ findSymbol
 	movea.l a2, a0
 	move.l d6, d0
 	lea SCOPE_STATE(a6), a1
+	tst.l d5
+	bne.w ordinarySourceName
+	jsr scopes.probeIterator
+	tst.l d0
+	beq.w good
+	move.l d6, d0
+ordinarySourceName
 	moveq #0, d3
 	move.w layout.State.Current(a1), d3
 	tst.l d5

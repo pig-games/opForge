@@ -389,22 +389,67 @@ component accepts a valid loop plan and rejects its placement at an odd offset.
 Host qualification passes 352 packed-source checks, three PRVM checks, 20
 repetition checks and 24 Python checks.
 
-Imported iterator shadowing remains a confirmed parity bug: focused probes on
+At this checkpoint, imported iterator shadowing was a confirmed parity bug:
+focused probes on
 the 562,412-byte build exit zero but emit body values `0` where Rust emits `2`
 and `4`. These probes precede the contextual-keyword repair and remain explicit
 failing regressions, rather than qualified cases. The
-constant folder does not fold `PUSH_SYMBOL`; investigation confirms canonical
+constant folder did not fold `PUSH_SYMBOL`; investigation confirmed canonical
 identity collapse, so iterator-local identities must be established before
 import canonicalization. Rust also retains an unused selected block when only a
 bare iterator shadow is read, and compound-expression lookup can bypass
-iterator priority. Erik chose this as a checkpoint; binding repair is next.
-That repair must assign fresh iterator identities before import
-canonicalization, distinguish a bare helper temporary from an actual
-`dep.helper` reference, evaluate the outer iterable expression before activating
-its iterator, restore nested bindings, keep register-value binding distinct
-from instruction binding, and fix bare-only block reachability plus compound
-lookup priority in Rust. Iterable-loop parity is therefore incomplete; no broad
-corpus result or full self-host rerun is claimed.
+iterator priority. These findings describe the pre-repair checkpoint.
+The subsequent repair is recorded in the
+[binding repair subsection](#imported-iterator-binding-repair-2026-10-07).
+
+#### Imported iterator binding repair (2026-10-07)
+
+Each packed iterable loop now receives a fresh, unindexed self-target identity
+before import canonicalization. A preparation-only lexical stack holds numeric
+IDs; temporary entries share immutable spelling bytes through arena offsets.
+The loop input is bound before its iterator becomes active. Nested loops restore
+the enclosing binding; qualified spellings retain their ordinary declaration or
+import identity. Temporary identities never become import proxies, parent-name
+fallbacks or module reachability edges. Rust likewise gives active iterator
+values priority over compound values and excludes bare iterator reads from
+imported-block reachability.
+
+The baseline above passed eight positive scenarios per package but failed
+imported shadowing. This repair passes six focused Rust lexical regressions and
+fourteen fresh native runs on the embedded 68020 and 6502 packages. Each package
+passes the combined ten-scenario positive fixture, bare imported shadowing
+(exact `[2, 4]`, unused block absent), qualified imported references (block
+retained), register-name role separation, 192 sequential iterator allocations,
+and two rejection controls for indexing or taking the length of a scalar
+iterator. Successful runs have fresh guest markers, exit zero and exact live
+Rust output; rejection controls complete with the expected native failure.
+
+The native lexical stack adds **32 bytes of fixed preparation scratch** (16
+word IDs). Each iterable loop also adds one ordinary binding entry; spelling
+bytes are shared rather than copied. These storage figures are not peak-memory
+measurements. The release two-package image grows **562,640 → 563,432 bytes**
+(**+792**); linked reservation grows **582,040 → 582,812 bytes** (**+772**).
+
+The unchanged `aligned-control` workload (15,474 source bytes, FNV
+`ac05445d958571b5`) has four alternating release runs without concurrent builds
+or tests. All four complete with fresh guest markers, exit zero and exact live
+Rust output. Baseline samples are **25.057721 / 25.035825 seconds** (mean
+**25.046773**); candidate samples are **25.064970 / 25.337894 seconds** (mean
+**25.201432**). This slice's observed change is **+0.155 seconds / +0.62%**.
+Two samples per build do not establish whether the increase is sustained
+compiler overhead or run variance; no performance gain is claimed. The measured
+one-package images are **547,420 / 548,212 bytes**, with **566,820 / 567,592 bytes**
+linked reservation. Image FNVs are `b3b288b8539b71fb` / `f250dc312d538d98`.
+These figures measure the binding repair separately from preceding changes.
+
+Host qualification passes 16 iterable-related checks (including the six lexical
+regressions), 377 binary checks, 25 reachability checks, 20 repetition checks and
+four PRVM checks. Library Clippy, Rust formatting, native boundary/quality guards
+and native formatting pass. The native runs use FS-UAE 68020/10 MiB and are not
+2 MiB memory qualification or hardware-speed measurements. No full self-host
+run is part of this slice. `.bfor`, existing loop-body restrictions, compound
+struct support and wide-literal packing limits are not repaired here; full
+iterator/language parity remains unclaimed.
 
 ### Shared compiler cost checkpoint
 

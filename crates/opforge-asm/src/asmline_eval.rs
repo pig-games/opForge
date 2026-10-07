@@ -116,6 +116,9 @@ impl<'a> AsmLine<'a> {
     pub fn eval_value_ast(&self, expr: &Expr) -> Result<AsmValue, AstEvalError> {
         match expr {
             Expr::Identifier(name, span) | Expr::Register(name, span) => {
+                if let Some(value) = self.lookup_loop_var(name) {
+                    return Ok(AsmValue::Scalar(i64::from(value)));
+                }
                 if let Some(full_name) = self.resolve_scoped_value_name(name) {
                     if let Some(value) = self.lookup_value_symbol(&full_name) {
                         return Ok(value.clone());
@@ -240,6 +243,12 @@ impl<'a> AsmLine<'a> {
             Expr::Member { base, field, span } => {
                 if let Expr::Identifier(name, name_span) | Expr::Register(name, name_span) = &**base
                 {
+                    if self.lookup_loop_var(name).is_some() {
+                        return Err(AstEvalError::expression(
+                            "Member expression requires struct base value",
+                            *span,
+                        ));
+                    }
                     if let Some(full_name) = self.resolve_scoped_value_name(name) {
                         if let Some(value) = self.lookup_value_symbol(&full_name) {
                             if let Some(field_value) = value.field_value(field) {
@@ -424,6 +433,9 @@ impl<'a> AsmLine<'a> {
         name: &str,
         span: Span,
     ) -> Result<Option<AsmValue>, AstEvalError> {
+        if let Some(value) = self.lookup_loop_var(name) {
+            return Ok(Some(AsmValue::Scalar(i64::from(value))));
+        }
         if let Some(full_name) = self.resolve_scoped_value_name(name) {
             if let Some(value) = self.lookup_value_symbol(&full_name) {
                 return Ok(Some(value.clone()));

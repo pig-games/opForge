@@ -24,16 +24,29 @@ fn valid_program(program: &[u8]) -> bool {
 /// Bind a grammar name while the writer has emitted `.for <bare variable>`.
 /// Its length byte is not final; the slice supplies the current packed extent.
 pub fn context_keyword(program: &[u8], prefix: &[u8], candidate: u16) -> bool {
-    valid_program(program)
+    loop_prefix(program, prefix)
         && prefix.len() == 13
+        && prefix[9] <= 1
+        && prefix[12] == 0
+        && candidate.to_be_bytes() == program[3..5]
+}
+
+fn loop_prefix(program: &[u8], prefix: &[u8]) -> bool {
+    valid_program(program)
+        && (9..=256).contains(&prefix.len())
         && prefix[1] & 0xd8 == 0
         && prefix[4] == 7
         && prefix[5] <= 1
         && prefix[6..8] == program[1..3]
         && prefix[8] == 0
-        && prefix[9] <= 1
-        && prefix[12] == 0
-        && candidate.to_be_bytes() == program[3..5]
+}
+
+/// Shared directives and assignment operands may shadow package register names;
+/// instruction register roles retain their package identity.
+pub fn value_context(prefix: &[u8]) -> bool {
+    prefix.len() >= 9
+        && (prefix[4] == 7
+            || (prefix[4] <= 1 && (prefix[8] == 34 || (prefix[8] == 7 && prefix.len() >= 13))))
 }
 
 /// Classify the envelope only. EXVM owns the complete expression grammar.
@@ -102,6 +115,23 @@ mod tests {
         for length in 0..plan.len() {
             assert!(!context_keyword(&plan[..length], &prefix, 43));
         }
+    }
+    #[test]
+    fn binding_context_preserves_instruction_register_roles() {
+        let prefix = record(&[]);
+        assert!(value_context(&prefix));
+        for length in 0..9 {
+            assert!(!value_context(&prefix[..length]));
+        }
+        let mut instruction = prefix.clone();
+        instruction[4] = 0;
+        assert!(!value_context(&instruction));
+        instruction[8] = 34;
+        assert!(value_context(&instruction));
+        instruction[8] = 7;
+        assert!(!value_context(&instruction));
+        instruction.extend([0, 0, 90, 0]);
+        assert!(value_context(&instruction));
     }
     #[test]
     fn numeric_iterable_identity_and_expression_boundary() {

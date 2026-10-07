@@ -23,6 +23,8 @@ TemplateFlags	.word ?  ; preparation-only declaration and visibility facet
 ENTRY_BYTES = Entry.TemplateFlags+2
 MUTABLE_BIT = 8
 MUTABLE = 1<<MUTABLE_BIT
+ITERATOR_HIGH_BIT = 2
+ITERATOR = 1<<(ITERATOR_HIGH_BIT+8)
 LABEL_VALUE_BIT = 7
 LABEL_VALUE = 1<<LABEL_VALUE_BIT; preparation-time address declaration availability
 STRUCT_TYPE = 32

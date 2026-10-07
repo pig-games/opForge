@@ -18,6 +18,64 @@ CONTEXT_UNSUPPORTED_FLAGS = NON_STATEMENT_FLAGS+UNSUPPORTED_FLAGS
 ; finalized the line-length byte yet; the caller supplies the exact prefix end.
 contextKeyword	.block
 	movem.l d1-d3/a0-a2, -(sp)
+	move.l d0, d3
+	bsr.w prefix
+	bne.w absent
+	cmpi.l #abi.LoopRecord.MarkerKind, d2
+	bne.w absent
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, abi.LoopRecord.VariableKind(a0)
+	bhi.w absent
+	tst.b abi.LoopRecord.VariableQualifier(a0)
+	bne.w absent
+	moveq #0, d2
+	move.b abi.LoopProgram.InHigh(a2), d2
+	lsl.w #8, d2
+	move.b abi.LoopProgram.InLow(a2), d2
+	cmp.l d3, d2
+	bne.w absent
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; contextKeyword
+
+; A0/A1=writer prefix/end. D0/CCR=0 in shared value operands,1 otherwise.
+; Other registers preserved. Instruction register identities stay package-owned.
+valueContext	.block
+	movem.l d1-d2, -(sp)
+	move.l a1, d1
+	sub.l a0, d1
+	cmpi.l #abi.LoopRecord.VariableKind, d1
+	blo.w absent
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a0)
+	beq.w matched
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, abi.LoopRecord.HeadDot(a0)
+	bhi.w absent
+	cmpi.b #abi.PRVM_TOKEN_KIND_OP_EQ, abi.LoopRecord.HeadQualifier(a0)
+	beq.w matched
+	; Named dot statements (such as inline `.var`) also own value operands.
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadQualifier(a0)
+	bne.w absent
+	cmpi.l #abi.LoopRecord.MarkerKind, d1
+	blo.w absent
+matched
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2
+	tst.l d0
+	rts
+	.bend  ; valueContext
+
+	.priv
+; Validate a partial `.for` prefix. D0/CCR=status,D2=extent; D1/D3/A0-A2 kept.
+prefix	.block
 	move.l a0, d2
 	beq.w absent
 	move.l a2, d2
@@ -30,13 +88,14 @@ contextKeyword	.block
 	bne.w absent
 	tst.b abi.LoopProgram.End(a2)
 	bne.w absent
-	move.l d0, d1
 	move.l a1, d2
 	sub.l a0, d2
-	cmpi.l #abi.LoopRecord.MarkerKind, d2
-	bne.w absent
-	move.b abi.LoopRecord.Flags(a0), d3
-	andi.b #CONTEXT_UNSUPPORTED_FLAGS, d3
+	cmpi.l #abi.LoopRecord.VariableKind, d2
+	blo.w absent
+	cmpi.l #MAX_RECORD_BYTES, d2
+	bhi.w absent
+	move.b abi.LoopRecord.Flags(a0), d0
+	andi.b #CONTEXT_UNSUPPORTED_FLAGS, d0
 	bne.w absent
 	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a0)
 	bne.w absent
@@ -44,31 +103,21 @@ contextKeyword	.block
 	bhi.w absent
 	tst.b abi.LoopRecord.HeadQualifier(a0)
 	bne.w absent
-	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, abi.LoopRecord.VariableKind(a0)
-	bhi.w absent
-	tst.b abi.LoopRecord.VariableQualifier(a0)
+	move.b abi.LoopRecord.HeadHigh(a0), d0
+	cmp.b abi.LoopProgram.ForHigh(a2), d0
 	bne.w absent
-	move.b abi.LoopRecord.HeadHigh(a0), d3
-	cmp.b abi.LoopProgram.ForHigh(a2), d3
-	bne.w absent
-	move.b abi.LoopRecord.HeadLow(a0), d3
-	cmp.b abi.LoopProgram.ForLow(a2), d3
-	bne.w absent
-	moveq #0, d2
-	move.b abi.LoopProgram.InHigh(a2), d2
-	lsl.w #8, d2
-	move.b abi.LoopProgram.InLow(a2), d2
-	cmp.l d1, d2
+	move.b abi.LoopRecord.HeadLow(a0), d0
+	cmp.b abi.LoopProgram.ForLow(a2), d0
 	bne.w absent
 	moveq #0, d0
 	bra.w done
 absent
 	moveq #1, d0
 done
-	movem.l (sp)+, d1-d3/a0-a2
 	tst.l d0
 	rts
-	.bend  ; contextKeyword
+	.bend  ; prefix
+	.pub
 
 ; A0=raw writer record,D0=extent,A1=program,D1=program bytes.
 ; D0=matched/ordinary/malformed,D1=variable identity (-1 counted),D2=operand

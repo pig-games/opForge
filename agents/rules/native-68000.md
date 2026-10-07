@@ -17,6 +17,12 @@ assembly is appropriate when it is clearest. Keep expansion and generated size
 understandable. Compile-time abstraction should
 not silently introduce runtime work, extra storage or opaque control flow.
 
+Use named contract constants for VM opcodes and token kinds, and named struct
+fields for record/program offsets. Define layouts at their owning boundary and
+reuse them in consumers and validators. Keep ordinary arithmetic literals when
+their meaning is clear; do not leave binary layouts encoded as unexplained
+numeric offsets throughout routines.
+
 Put telemetry conditionals and preservation inside reusable telemetry macros.
 Call sites should name the measurement, with no repeated conditional/save/restore
 scaffolding. Verify generated code in enabled and disabled builds. When a language

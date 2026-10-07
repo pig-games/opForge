@@ -1636,10 +1636,13 @@ pub fn packed_declaration_program(heads: [u16; 3]) -> Vec<u8> {
 
 /// Shared packed `.for` envelope: numeric directive and grammar-name identities.
 pub fn packed_loop_program(for_directive: u16, in_name: u16) -> Vec<u8> {
-    let mut program = vec![0x99];
+    let mut program = vec![MacroDescriptorOpcode::LoopHeader as u8];
     program.extend_from_slice(&for_directive.to_be_bytes());
     program.extend_from_slice(&in_name.to_be_bytes());
-    program.extend_from_slice(&[0x83, 0]);
+    program.extend_from_slice(&[
+        MacroDescriptorOpcode::Publish as u8,
+        MacroDescriptorOpcode::End as u8,
+    ]);
     program
 }
 
@@ -1728,6 +1731,7 @@ pub enum MacroDescriptorOpcode {
     DataEnvelope = 0x93, // flags:u8 (optional normalized label prefix)
     DataDirective = 0x94, // selected numeric directive:u16 big-endian
     DataOperands = 0x95, // byte/word/long IDs:u16, word bytes:u16
+    LoopHeader = 0x99,   // for directive:u16, contextual in name:u16
 }
 
 pub fn packed_macro_call_program() -> Vec<u8> {

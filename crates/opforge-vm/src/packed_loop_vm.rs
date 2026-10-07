@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Package-owned loop header grammar over immutable packed writer records.
+use package::package::MacroDescriptorOpcode;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoopHeader {
     Matched {
@@ -10,7 +12,13 @@ pub enum LoopHeader {
     Malformed,
 }
 fn valid_program(program: &[u8]) -> bool {
-    program.len() == 7 && program[0] == 0x99 && program[5..] == [0x83, 0]
+    program.len() == 7
+        && program[0] == MacroDescriptorOpcode::LoopHeader as u8
+        && program[5..]
+            == [
+                MacroDescriptorOpcode::Publish as u8,
+                MacroDescriptorOpcode::End as u8,
+            ]
 }
 
 /// Bind a grammar name while the writer has emitted `.for <bare variable>`.

@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_memory as memory
+	.use prvm.amigaos.abi as parser_abi
 	.pub
 SUCCESS = 0
 INVALID = 1
@@ -173,20 +174,20 @@ preparation
 	btst #0, d0
 	bne.w bad
 	move.l package.Header.LoopPlanBytes(a4), d1
-	cmpi.l #7, d1
+	cmpi.l #parser_abi.LOOP_PROGRAM_BYTES, d1
 	bne.w bad
 	bsr.w span
 	bne.w bad
-	cmpi.b #$99, (a3)
+	cmpi.b #parser_abi.OP_LOOP_HEADER, (a3)
 	bne.w bad
-	cmpi.b #$83, 5(a3)
+	cmpi.b #parser_abi.OP_PUBLISH, parser_abi.LoopProgram.Publish(a3)
 	bne.w bad
-	tst.b 6(a3)
+	tst.b parser_abi.LoopProgram.End(a3)
 	bne.w bad
-	move.w 1(a3), d0
+	move.w parser_abi.LoopProgram.ForHigh(a3), d0
 	cmp.w package.Header.ForDirective(a4), d0
 	bne.w bad
-	move.w 3(a3), d0
+	move.w parser_abi.LoopProgram.InHigh(a3), d0
 	cmp.w package.Header.NameCount(a4), d0
 	bhs.w bad
 	move.l package.Header.ExpressionPlan(a4), d0

@@ -129,6 +129,40 @@ PRVM_RESULT_MACRO_DEFAULT = 11
 PRVM_RESULT_MACRO_LABEL = 12
 PRVM_ENTRY_KIND_TARGET_BOOTSTRAP = 8
 PRVM_RESULT_TARGET_BOOTSTRAP = 20
+; Shared packed grammar program opcodes.
+OP_PUBLISH = $83
+OP_LOOP_HEADER = $99
+; Packed fields are bytes so odd-position BE16 identities stay unaligned.
+LoopProgram	.struct
+Opcode	.byte ?
+ForHigh	.byte ?
+ForLow	.byte ?
+InHigh	.byte ?
+InLow	.byte ?
+Publish	.byte ?
+End	.byte ?
+	.endstruct
+LOOP_PROGRAM_BYTES = LoopProgram.End+1
+; Raw writer envelope for `.for <variable> in <expression>`.
+LoopRecord	.struct
+Length	.byte ?
+Flags	.byte ?
+SourceLine	.word ?
+HeadDot	.byte ?
+HeadKind	.byte ?
+HeadHigh	.byte ?
+HeadLow	.byte ?
+HeadQualifier	.byte ?
+VariableKind	.byte ?
+VariableHigh	.byte ?
+VariableLow	.byte ?
+VariableQualifier	.byte ?
+MarkerKind	.byte ?
+MarkerHigh	.byte ?
+MarkerLow	.byte ?
+MarkerQualifier	.byte ?
+	.endstruct
+LOOP_EXPRESSION_OFFSET = LoopRecord.MarkerQualifier+1
 PRVM_LOOP_MATCHED = 0
 PRVM_LOOP_ORDINARY = 1
 PRVM_LOOP_MALFORMED = 2

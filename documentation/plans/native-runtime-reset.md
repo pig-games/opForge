@@ -1,12 +1,14 @@
 # Native assembler completion plan
 
 Status: active. BS30 retains the shared EXVM grammar and extends scalar declaration
-policy with `:?=`. The [current full self-host checkpoint](#shared-exvm-migration-qualification)
+policy with `:?=`. The [last complete full self-host checkpoint](#shared-exvm-migration-qualification)
 has exact equality for all 538,336 Hunk bytes on 68020/74 MiB in
 1,253.615809917 seconds. Scalar `:?=` forward-initializer semantics remain an open
 decision, and broad tests retain 54 inherited failures. No new physical
 A6000 run or complete peak-memory result is claimed. Current executables require
-BS30 packages; superseded contracts have no compatibility executor.
+BS30 packages; superseded contracts have no compatibility executor. The subsequent
+program-fetch register experiment below has focused qualification only; it has
+not rerun the complete self-host or replaced the qualified hardware bundle.
 This remains experimental: full self-host equality does not establish full
 language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
 ownership gaps are tracked in the [compact frontend note](compact-frontend-vm-boundary.md).
@@ -123,10 +125,56 @@ still approximately 19.6% slower on this workload. Its old reference contains
 temporary entry-point scaffolding, so image size is not a clean compiler-only
 comparison. The measured modest gains do not close that remaining overhead.
 Do not add compound-value scope to this performance checkpoint.
-The next bounded overhead candidate is retaining the validated program base and
-length in unused saved registers for bytecode fetch, preserving every PC bounds
-check. CALL also scans active frames to enforce per-target recursion; measure its
+The bounded program-fetch experiment below retains the validated program base and
+length in saved registers, preserving every PC bounds check. CALL also scans active
+frames to enforce per-target recursion; measure its
 cost before replacing that safety mechanism with additional scratch structures.
+
+#### Program-fetch register experiment
+
+Hypothesis: keep the immutable, validated program base/length in A3/A4 for one
+`compile` call, including nested grouping, to remove repeated request loads from
+`programByte` and `target`. Preserve all bounds checks, public register/CCR
+behavior, session isolation and enabled telemetry. Baseline is qualified
+`09c55688`; compare two fresh release samples per state on the identical
+`aligned-control` input and 68020/10 MiB profile, with no concurrent builds/tests.
+Qualify canonical trees/lowering, malformed programs and session switching.
+Retain only a measured benefit without additional workspace or weakened checks;
+if sample variation hides the benefit, stop this experiment and return to breadth.
+The previous complete self-host bundle remains the qualified full-run reference.
+
+Result: retain the cache. Both candidate samples are below all three fresh
+baseline samples; the return-to-baseline run after the candidate pair remains
+consistent with the initial pair. These are small relative emulator gains from
+a few samples, not statistical or physical-hardware qualification.
+
+| State | Release seconds | Mean of initial pair | Storage |
+|---|---|---|---|
+| Qualified baseline `09c55688` | 25.319562417 / 25.330602833 | 25.325082625 | Hunk 538,336; linked reservation 557,480 |
+| Cached program base/length | 25.173530375 / 25.028510250 | 25.101020313 | Both unchanged; workspace still 5,720 |
+| Baseline drift check, run last | 25.342224708 | — | Same baseline image |
+
+The matched pair comparison saves 0.224062313 seconds (**0.88%**). Input remains
+15,474 bytes, FNV `ac05445d958571b5`; baseline image FNV is `614c8d71228e52b1`,
+candidate FNV `c6357c068b0e4acb`. The package and public request layout are unchanged.
+A3/A4 are initialized after validation for each compile, shared by recursive
+grouping execution, and preserved by helpers and enabled telemetry. No cache
+survives in session/global state, and all fetch/target bounds checks remain.
+
+Fresh canonical-tree/lowering and two-session lifecycle native comparisons pass,
+including malformed bytecode, budgets and nested grouping. Two added controls
+reject a missing END at the exact fetch boundary and a jump to one-past-end.
+The initial enlarged batch exceeded the harness's 64-case envelope and exited
+before compilation; its case-count ceiling is now 128, with input/output buffer
+bounds unchanged. The complete 65-case batch then passes exact output comparison.
+Host checks pass two compiler tests and one session test; native/workflow guards
+and formatting pass. Logs, comparative summary and the measured candidate image
+are retained under `/tmp/opforge-exvm-fetch-*`.
+
+No complete self-host or physical A6000 run is claimed for this fetch change.
+The hardware pointer still selects the qualified `09c55688` bundle. Stop this
+bounded overhead work here and return to the approved compound-value slice;
+recursion-counter redesign remains deferred.
 
 Focused Rust expression tests (54 passing, two native tests ignored in the host
 batch), constant-dependency tests (24 passing) and repetition tests (20 passing)

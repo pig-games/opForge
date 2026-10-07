@@ -1,7 +1,9 @@
 # Compact frontend: VM boundary correction
 
-Status: BS30 shared EXVM compilation passes focused native controls and the
-complete current native self-host. Broad tests retain 54 inherited failures. Rust has
+Status: BS30 shared EXVM compilation has complete native self-host proof at
+`09c55688`. Subsequent program-fetch register caching has focused native
+qualification only; that complete self-host has not been rerun. Broad tests
+retain 54 inherited failures. Rust has
 one consolidated EXVM v1 grammar/executor; native preparation executes it over
 bound numeric tokens and lowers a transient offset-based tree to ExprVM programs.
 Native EXVM has no version argument, field, check or dispatch. Consolidation of
@@ -11,7 +13,7 @@ still unresolved. BS28 introduced numeric `:=`
 normalization to shared declarations.
 It retains three numeric operands, wrapped call-register children,
 register/immediate pairs and register triples. Same-source PACK/UNPK, LINK and
-CAS checks and transformed CAS2 execution probes pass. The current complete
+CAS checks and transformed CAS2 execution probes pass. The qualified
 embedded BS30 compact self-host has exact whole-Hunk Rust/native equality.
 This qualifies that implementation and
 case, not whole-language or CPU-family parity. The [active work](native-runtime-reset.md#active-shared-language-completion-work)
@@ -375,7 +377,8 @@ These statements describe the implemented subset. They do not imply complete ass
   handwritten precedence parser. Fresh native component, folded-statement and
   session-lifecycle comparisons pass; unchanged-control timing is recorded in the
   [active plan](native-runtime-reset.md#shared-compiler-cost-checkpoint). The
-  complete current self-host passes. Fresh broad host checks retain the same 54
+  complete self-host at `09c55688` passes; subsequent fetch-register caching has
+  focused qualification only. Fresh broad host checks retain the same 54
   inherited failures as the pre-migration baseline; broad integration readiness
   remains outstanding.
   Ordinary Rust expression handling still uses core token spelling instead of

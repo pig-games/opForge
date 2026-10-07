@@ -155,6 +155,10 @@ clear
 	move.l Request.Arena(a5), d0
 	btst #0, d0
 	bne.w programBad
+	; Immutable for this compile, including nested grouping execution.
+	; Private helpers and enabled telemetry preserve A3/A4.
+	movea.l Request.Program(a5), a3
+	movea.l Request.ProgramBytes(a5), a4
 	bsr.w execute
 	bne.w finish
 	move.l OUTPUTS(a6), Request.Root(a5)
@@ -181,7 +185,8 @@ restore
 	.bend  ; compile
 	.priv
 ; Execute the same canonical program at PC0, with separate output/call barriers.
-; A5=request,A6=scratch. D0=status; other working registers private/clobbered.
+; A3=validated program,A4=length,A5=request,A6=scratch.
+; D0=status; other working registers private/clobbered, A3-A6 preserved.
 execute	.block
 	move.l State.Pc(a6), -(sp)
 	move.w State.Calls(a6), -(sp)
@@ -521,14 +526,14 @@ Dispatch
 	.endfor
 	.word syntaxBad-Dispatch, programBad-Dispatch, syntaxBad-Dispatch
 	.bend  ; execute
-; Fetch one canonical program byte; D1=byte, D0/CCR=status.
+; Fetch one canonical program byte; A3=program,A4=length,A6=scratch.
+; D1=byte, D0/CCR=status; all other registers preserved. Every fetch is bounded.
 programByte	.block
 	move.l State.Pc(a6), d0
-	cmp.l Request.ProgramBytes(a5), d0
+	cmp.l a4, d0
 	bhs.w bad
-	movea.l Request.Program(a5), a0
 	moveq #0, d1
-	move.b 0(a0, d0.l), d1
+	move.b 0(a3, d0.l), d1
 	addq.l #1, State.Pc(a6)
 	moveq #STATUS_OK, d0
 	rts
@@ -537,7 +542,8 @@ bad
 	rts
 	.bend  ; programByte
 
-; Read and validate LE u16 control target. D2=offset; D0/CCR=status.
+; Read and validate LE u16 control target using the same A3/A4 program cache.
+; D2=offset; D0/CCR=status. Preserve A3-A6.
 target	.block
 	bsr.w programByte
 	bne.w done
@@ -546,7 +552,7 @@ target	.block
 	bne.w done
 	lsl.w #8, d1
 	or.w d1, d2
-	cmp.l Request.ProgramBytes(a5), d2
+	cmp.l a4, d2
 	bhs.w bad
 	moveq #STATUS_OK, d0
 	bra.w done

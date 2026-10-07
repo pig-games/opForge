@@ -456,6 +456,21 @@ fn batch() -> (Vec<u8>, Vec<u8>) {
     cases.push(prefix);
     let literal = numeric("1").0;
     cases.push(failure(literal.clone(), vec![4], 768, 8192, 2, 0));
+    // A valid literal followed by ADVANCE exhausts the program without END.
+    // The next fetch must reject at the exact byte boundary, after consuming it.
+    cases.push(failure(
+        literal.clone(),
+        vec![
+            package::ExvmOpcode::BuildNumber as u8,
+            package::ExvmOpcode::Advance as u8,
+        ],
+        768,
+        8192,
+        2,
+        literal.len() as u32,
+    ));
+    // Targets are offsets within the program, never its one-past-end boundary.
+    cases.push(failure(literal.clone(), vec![1, 3, 0], 768, 8192, 2, 0));
     cases.push(failure(literal.clone(), vec![1, 0, 0], 768, 3, 5, 0));
     cases.push(failure(literal.clone(), vec![], 768, 8192, 2, 0));
     // Unassigned opcodes must stay invalid on either side of each table range.

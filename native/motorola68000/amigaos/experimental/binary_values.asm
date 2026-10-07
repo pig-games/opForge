@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_values
 	.cpu 68020
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_ranges as ranges
 	.pub
 Owner	.struct
 Arena	.res memory.Block.Used+4
@@ -157,27 +158,83 @@ done
 	rts
 	.bend  ; appendList
 
-; A0=Owner,D1=offset. D0/CCR=status,D1=length,D2=0 on success.
-; Others preserved. Entire descriptor is validated before reporting its count.
-listLength	.block
+; A0=Owner,A1=external start/end/optional step pairs,D0=canonical flags
+; (bit0 has_step,bit1 inclusive),D1=source bytes (at least16/24).
+; D0/CCR=status,D2=offset on success; others preserved. Source must not alias
+; Arena. Normalization precedes reserve; a range always occupies32bytes.
+appendRange	.block
+	movem.l d1/d3-d6/a0-a3, -(sp)
+	suba.l #ranges.BYTES, sp
+	movea.l a0, a3
+	movea.l sp, a2
+	jsr ranges.normalize
+	bne.w done
+	lea Owner.Arena(a3), a1
+	bsr.w block
+	bne.w done
+	move.l memory.Block.Used(a1), d2
+	move.l d2, d3
+	andi.l #7, d3
+	bne.w invalid
+	move.l d2, d6
+	addi.l #ranges.BYTES, d6
+	bcs.w noSpace
+	cmpi.l #memory.LIMIT, d6
+	bhi.w noSpace
+	movea.l a1, a0
+	move.l d6, d0
+	jsr memory.reserve
+	tst.l d0
+	bne.w noSpace
+	movea.l memory.Block.Pointer(a0), a1
+	adda.l d2, a1
+	moveq #ranges.BYTES/4-1, d4
+copy
+	move.l (a2)+, (a1)+
+	dbf d4, copy
+	move.l d6, memory.Block.Used(a0)
+	moveq #OK, d0
+	bra.w done
+invalid
+	moveq #MALFORMED, d0
+	bra.w done
+noSpace
+	moveq #STORAGE, d0
+done
+	adda.l #ranges.BYTES, sp
+	movem.l (sp)+, d1/d3-d6/a0-a3
+	tst.l d0
+	rts
+	.bend  ; appendRange
+
+; A0=Owner,D1=offset. D0/CCR=status,D1/D2=length low/high on success.
+; Others preserved. Compound scalar lengths saturate at i64::MAX.
+compoundLength	.block
 	movem.l d3/a1, -(sp)
 	bsr.w view
 	bne.w done
+	cmpi.l #RANGE, Record.Kind(a1)
+	beq.w rangeValue
 	move.l Record.Count(a1), d1
 	moveq #0, d2
+	bra.w done
+rangeValue
+	jsr ranges.length
 done
 	movem.l (sp)+, d3/a1
 	tst.l d0
 	rts
-	.bend  ; listLength
+	.bend  ; compoundLength
 
-; A0=Owner,D1=offset,D2=index low,D3=index high.
+; A0=Owner,D1=offset,D2/D3=index low/high.
 ; D0/CCR=status,D1/D2=scalar low/high on success; others preserved.
-listGet	.block
+compoundGet	.block
 	movem.l d3-d4/a1, -(sp)
 	move.l d3, d4
 	bsr.w view
 	bne.w done
+	cmpi.l #RANGE, Record.Kind(a1)
+	beq.w rangeValue
 	tst.l d4
 	bne.w outOfBounds
 	cmp.l Record.Count(a1), d2
@@ -187,18 +244,23 @@ listGet	.block
 	move.l HEADER_BYTES(a1), d1
 	move.l HEADER_BYTES+4(a1), d2
 	bra.w done
+rangeValue
+	move.l d4, d3
+	jsr ranges.get
+	bra.w done
 outOfBounds
 	moveq #BOUNDS, d0
 done
 	movem.l (sp)+, d3-d4/a1
 	tst.l d0
 	rts
-	.bend  ; listGet
+	.bend  ; compoundGet
 
-; A0=Owner,D1=left offset,D2=right offset. D0/CCR=OK only when both
-; complete lists have identical scalar pairs. MALFORMED covers invalid records
-; and unequal values. Other registers preserved; no allocation or arena mutation.
-equalLists	.block
+; A0=Owner,D1=left offset,D2=right offset. D0/CCR=OK iff complete compound
+; values have the same kind and contents. Ranges compare canonical descriptors,
+; matching AsmValue equality; a LIST and RANGE never compare equal.
+; MALFORMED covers invalid/unequal values. Others preserved; no allocation.
+equalValues	.block
 	movem.l d1-d4/a1-a2, -(sp)
 	bsr.w view
 	bne.w done
@@ -206,17 +268,24 @@ equalLists	.block
 	move.l d2, d1
 	bsr.w view
 	bne.w done
+	move.l Record.Kind(a1), d3
+	cmp.l Record.Kind(a2), d3
+	bne.w bad
+	cmpi.l #RANGE, d3
+	beq.w rangeValue
 	move.l Record.Count(a1), d4
 	cmp.l Record.Count(a2), d4
 	bne.w bad
+	add.l d4, d4
+	bra.w contents
+rangeValue
+	moveq #6, d4
+contents
 	lea HEADER_BYTES(a1), a1
 	lea HEADER_BYTES(a2), a2
 	tst.l d4
 	beq.w good
 compare
-	move.l (a1)+, d3
-	cmp.l (a2)+, d3
-	bne.w bad
 	move.l (a1)+, d3
 	cmp.l (a2)+, d3
 	bne.w bad
@@ -231,10 +300,10 @@ done
 	movem.l (sp)+, d1-d4/a1-a2
 	tst.l d0
 	rts
-	.bend  ; equalLists
+	.bend  ; equalValues
 
 ; A0=Owner,D1=symbol ID,D2=kind. D0/CCR=status; others preserved.
-; Scalar writes avoid allocation. RANGE is a reserved tag, with no descriptor API.
+; Scalar writes avoid allocation; compound cells contain arena offsets.
 setKind	.block
 	movem.l d1-d3/a0-a2, -(sp)
 	cmp.l Owner.Count(a0), d1
@@ -352,7 +421,7 @@ done
 	.bend  ; kinds
 
 ; A0=Owner,D1=offset. D0/CCR=status,A1=ephemeral descriptor; clobbers D3.
-; Validates the complete LIST record. Never persists or returns serialized pointers.
+; Validates a complete LIST/RANGE record. No serialized pointers.
 view	.block
 	lea Owner.Arena(a0), a1
 	bsr.w block
@@ -368,6 +437,8 @@ view	.block
 	bhi.w bad
 	movea.l memory.Block.Pointer(a1), a1
 	adda.l d1, a1
+	cmpi.l #RANGE, Record.Kind(a1)
+	beq.w rangeRecord
 	cmpi.l #LIST, Record.Kind(a1)
 	bne.w bad
 	move.l Record.Count(a1), d3
@@ -380,11 +451,20 @@ view	.block
 	bhi.w bad
 	moveq #OK, d0
 	bra.w done
+rangeRecord
+	move.l d1, d3
+	addi.l #ranges.BYTES, d3
+	bcs.w bad
+	cmp.l Owner.Arena+memory.Block.Used(a0), d3
+	bhi.w bad
+	jsr ranges.validate
+	bra.w done
 bad
 	moveq #MALFORMED, d0
 done
 	tst.l d0
 	rts
 	.bend  ; view
+
 	.endsection
 	.endmodule

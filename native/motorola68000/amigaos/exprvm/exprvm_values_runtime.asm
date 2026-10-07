@@ -1,4 +1,4 @@
-; Canonical typed expressions with immutable session-owned list descriptors.
+; Canonical typed expressions with immutable session-owned compound descriptors.
 ; @opforge-owner: exprvm.amigaos.values_runtime
 	.module exprvm.amigaos.values_runtime
 	.cpu 68020
@@ -43,10 +43,10 @@ WORK_BYTES = TEMP+22
 	.section code, kind=code
 
 ; A0/D0=canonical program/bytes,A2=Frame (24 bytes). D0/CCR=status;
-; D1=low,D2=unresolved,D3=kind (0 scalar/1 list),D4=symbol presence.
-; Frame.High receives scalar high (zero for lists). A0=after End on success.
+; D1=low,D2=unresolved,D3=kind (0 scalar/1 list/2 range),D4=symbol presence.
+; Frame.High receives scalar high (zero for compounds). A0=after End on success.
 ; Preserves D5-D7/A1-A6. Scratch lives in Owner.Work, reserved once at entry;
-; list construction grows only Owner.Arena. No program/version selection state.
+; compound construction grows only Owner.Arena. No program/version selection state.
 evaluate	.block
 	movem.l d5-d7/a1-a6, -(sp)
 	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR
@@ -95,13 +95,15 @@ next
 	beq.w binary
 	cmpi.b #$51, d1
 	beq.w list
+	cmpi.b #$52, d1
+	beq.w range
 	cmpi.b #$61, d1
 	beq.w index
 	cmpi.b #$62, d1
 	beq.w builtin
 	cmpi.b #$70, d1
 	beq.w scalar
-	; BuildRange ($52) and all other unsupported shapes fail explicitly.
+	; Other unsupported shapes fail explicitly.
 	bra.w malformed
 literal
 	bsr.w push
@@ -142,7 +144,7 @@ kind
 	jsr values.getKind
 	tst.l d0
 	bne.w malformed
-	cmpi.l #values.LIST, d2
+	cmpi.l #values.RANGE, d2
 	bhi.w malformed
 	move.l d2, Cell.Kind(a1)
 	tst.l d2
@@ -161,9 +163,9 @@ symbolCell
 	beq.w next
 	tst.l Cell.High(a1)
 	bne.w malformed
-	; Defined list aliases must name a complete immutable descriptor.
+	; Compound aliases must name a complete immutable descriptor.
 	move.l Cell.Low(a1), d1
-	jsr values.listLength
+	jsr values.compoundLength
 	tst.l d0
 	bne.w malformed
 	bra.w next
@@ -281,19 +283,65 @@ append
 	clr.l Cell.High(a1)
 	move.l #values.LIST, Cell.Kind(a1)
 	bra.w next
+range
+	bsr.w byte
+	bne.w malformed
+	cmpi.l #3, d1
+	bhi.w malformed
+	move.l d1, State.Operator(a3)
+	moveq #2, d5
+	btst #0, d1
+	beq.w rangeCount
+	addq.l #1, d5
+rangeCount
+	cmp.l d7, d5
+	bhi.w malformed
+	move.l d7, d6
+	sub.l d5, d6
+	move.l d6, d0
+	mulu.w #CELL_BYTES, d0
+	lea STACK(a3), a1
+	adda.l d0, a1
+	lea PACKED(a3), a2
+	move.l d5, State.Count(a3)
+rangePairs
+	tst.l Cell.Kind(a1)
+	bne.w malformed
+	move.l Cell.Low(a1), (a2)+
+	move.l Cell.High(a1), (a2)+
+	adda.l #CELL_BYTES, a1
+	subq.l #1, d5
+	bne.w rangePairs
+	movea.l Frame.Owner(a6), a0
+	lea PACKED(a3), a1
+	move.l State.Operator(a3), d0
+	move.l State.Count(a3), d1
+	lsl.l #3, d1
+	jsr values.appendRange
+	tst.l d0
+	bne.w malformed
+	move.l d6, d7
+	bsr.w push
+	bne.w depth
+	move.l d2, Cell.Low(a1)
+	clr.l Cell.High(a1)
+	move.l #values.RANGE, Cell.Kind(a1)
+	bra.w next
 index
 	cmpi.l #2, d7
 	blo.w malformed
 	bsr.w top
 	tst.l Cell.Kind(a1)
 	bne.w malformed
-	cmpi.l #values.LIST, Cell.Kind-CELL_BYTES(a1)
-	bne.w malformed
+	tst.l Cell.Kind-CELL_BYTES(a1)
+	beq.w malformed
+	cmpi.l #values.RANGE, Cell.Kind-CELL_BYTES(a1)
+	bhi.w malformed
 	move.l Cell.Low(a1), d2
 	move.l Cell.High(a1), d3
 	move.l Cell.Low-CELL_BYTES(a1), d1
 	movea.l Frame.Owner(a6), a0
-	jsr values.listGet
+	jsr values.compoundGet
 	tst.l d0
 	bne.w malformed
 	subq.l #1, d7
@@ -314,15 +362,17 @@ builtin
 	bne.w malformed
 	bsr.w top
 	bne.w malformed
-	cmpi.l #values.LIST, Cell.Kind(a1)
-	bne.w malformed
+	tst.l Cell.Kind(a1)
+	beq.w malformed
+	cmpi.l #values.RANGE, Cell.Kind(a1)
+	bhi.w malformed
 	move.l Cell.Low(a1), d1
 	movea.l Frame.Owner(a6), a0
-	jsr values.listLength
+	jsr values.compoundLength
 	tst.l d0
 	bne.w malformed
 	move.l d1, Cell.Low(a1)
-	clr.l Cell.High(a1)
+	move.l d2, Cell.High(a1)
 	clr.l Cell.Kind(a1)
 	bra.w next
 finish

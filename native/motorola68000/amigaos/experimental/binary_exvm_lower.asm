@@ -1,4 +1,4 @@
-; Lower canonical scalar arena nodes to ExprVM v2 postfix bytes.
+; Lower shared scalar/compound arena nodes to canonical ExprVM postfix bytes.
 ; @opforge-owner: experimental.amigaos.binary_exvm_lower
 	.module experimental.amigaos.binary_exvm_lower
 	.cpu 68020
@@ -32,7 +32,7 @@ lower	.block
 	.bend  ; lower
 
 ; Same buffers as lower; D4=package-bound .len name ID. Emits canonical
-; typed ExprVM operations, with a 128-value bound. Range remains unsupported.
+; typed ExprVM operations, with a 128-value bound and compact range operands.
 lowerValue	.block
 	move.l d3, -(sp)
 	moveq #1, d3
@@ -147,6 +147,8 @@ checked
 	beq.w malformedActive
 	cmpi.b #compiler.KIND_LIST, d2
 	beq.w list
+	cmpi.b #compiler.KIND_RANGE, d2
+	beq.w range
 	cmpi.b #compiler.KIND_CALL, d2
 	beq.w functionCall
 	cmpi.b #compiler.KIND_INDEX, d2
@@ -164,6 +166,46 @@ checked
 	bsr.w room
 	bne.w leave
 	move.b #$61, (a3)+  ; canonical IndexValue
+	bra.w success
+range
+	moveq #0, d2
+	move.b compiler.Node.Operator(a2), d2
+	cmpi.l #3, d2
+	bhi.w malformedActive
+	moveq #2, d0
+	btst #1, d2
+	beq.w rangeCount
+	addq.l #1, d0
+rangeCount
+	cmp.w compiler.Node.Count(a2), d0
+	bne.w malformedActive
+	move.l compiler.Node.First(a2), d1
+	bsr.w node
+	bne.w leave
+	move.l compiler.Node.Second(a2), d1
+	bsr.w node
+	bne.w leave
+	btst #1, compiler.Node.Operator(a2)
+	beq.w rangeTwo
+	move.l compiler.Node.Third(a2), d1
+	bsr.w node
+	bne.w leave
+	subq.l #1, STACK_DEPTH(a5)
+rangeTwo
+	subq.l #1, STACK_DEPTH(a5)
+	moveq #2, d0
+	bsr.w room
+	bne.w leave
+	move.b #$52, (a3)+  ; canonical BuildRange
+	; Tree flags are inclusive/step; ExprVM flags are step/inclusive.
+	moveq #0, d0
+	move.b compiler.Node.Operator(a2), d0
+	move.l d0, d1
+	andi.b #1, d0
+	add.b d0, d0
+	lsr.b #1, d1
+	or.b d1, d0
+	move.b d0, (a3)+
 	bra.w success
 functionCall
 	cmpi.w #1, compiler.Node.Count(a2)

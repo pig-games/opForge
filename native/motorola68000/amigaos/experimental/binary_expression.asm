@@ -262,8 +262,10 @@ EVALUATE	.macro saved, compound=0
 	jsr values.getKind
 	tst.l d0
 	bne.w malformed
-	cmpi.l #values.LIST, d2
-	bne.w scalarValue
+	tst.l d2
+	beq.w scalarValue
+	cmpi.l #values.RANGE, d2
+	bhi.w malformed
 	move.l d2, Frame.Kind(a5)
 	lsl.l #3, d1
 	movea.l Frame.Values(a5), a0
@@ -272,7 +274,7 @@ EVALUATE	.macro saved, compound=0
 	move.l runtime.Value.Low(a0, d1.l), d1
 	movem.l d1-d2/a0, -(sp)
 	movea.l Frame.Owner(a5), a0
-	jsr values.listLength
+	jsr values.compoundLength
 	movem.l (sp)+, d1-d2/a0
 	tst.l d0
 	bne.w malformed
@@ -355,7 +357,7 @@ evaluateWithSymbols	.block
 	.bend  ; evaluateWithSymbols
 
 ; Declaration value variant: Kind is explicit; Low is an arena offset only
-; when Kind=LIST. Scalars retain the original signed64 cell representation.
+; when Kind=LIST/RANGE. Scalars retain the original signed64 cell representation.
 evaluateValue	.block
 	.EVALUATE d3-d7/a1-a6, 1
 	.bend  ; evaluateValue

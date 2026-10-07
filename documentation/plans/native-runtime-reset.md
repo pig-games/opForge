@@ -1,6 +1,6 @@
 # Native assembler completion plan
 
-Status: active. BS31 adds statement-time flat lists and numeric `.len` binding
+Status: active. BS31 adds statement-time flat lists, compact ranges and numeric `.len` binding
 while retaining the shared EXVM grammar and scalar `:?=` policy. The
 [last complete full self-host checkpoint](#shared-exvm-migration-qualification)
 has exact equality for all 538,336 Hunk bytes on 68020/74 MiB in
@@ -190,11 +190,83 @@ the sample ranges overlap, so no clear timing regression is established. This
 is a two-sample relative emulator comparison, not a hardware timing claim. Image grows 4,120 bytes and linked reservation grows 4,024 bytes. Linked
 reservation is not peak RAM; list scratch/arena/kind storage is allocated lazily.
 
-Range descriptors and preparation-time compound values are the next structural
-work before iterable loops. Keep ranges compact, preserve direction/step and
-checked-overflow semantics, and extend dependency/address provenance coherently.
+The next checkpoint below adds compact ranges. Preparation-time compound values
+remain separate work before iterable loops, with dependency/address provenance
+extended coherently.
 Other VM version selectors still need consolidation to the approved single v1
 contract per VM; this slice does not complete that migration.
+
+#### Compact statement-time ranges (BS31)
+
+The existing shared EXVM range tree now lowers to the
+canonical ExprVM range operation. Tree flags and bytecode flags are translated
+at lowering; native execution receives only numeric operands. The package
+container remains BS31, with no new VM version field or runtime selection state.
+
+Ranges occupy fixed 32-byte offset-addressed descriptors containing kind/reserved,
+start, normalized exclusive end and step as signed64 pairs. Shared compound
+length/index/equality operations replace the list-only entry points. Range
+normalization and checked arithmetic live in the dedicated `binary_ranges`
+module; the owner handles allocation and complete-record bounds validation.
+No range is materialized into a list. Length saturates at signed64 maximum;
+indexing preserves Rust's checked intermediate multiplication and addition.
+
+The slice covers statement-time declarations, immutable aliases and mutable
+snapshots/replacements through the packed source path. Preparation snapshots and
+`.use with` currently use scalar tables and scalar parameter entries; extending
+those requires owned compound capture, source-order replacement, reset/cleanup
+and an explicit offset-based transfer contract. Hunk compound provenance,
+instruction operands and iterable loops remain unqualified.
+
+The first wide-range CLI probe exposed an existing packed-source limit: numeric
+literal tokens reject a nonzero high32 half. Full-width arithmetic can still
+construct signed64 values, so range controls use successive shifts of at most
+31 bits rather than claiming wide-literal parsing support. Both reference and
+native currently mask individual scalar shift counts to five bits; this slice
+preserves that existing operator contract. Wide numeric literal packing remains
+a separate frontend gap.
+
+Fresh ordinary CLI comparisons now pass the combined range source under both
+68020 and 6502 packages (2,126 and 2,125 source bytes) on the 68020/10 MiB guest,
+with zero exits and exact live Rust bytes. Twelve invalid-input controls have
+fresh nonzero exits and required diagnostics across the initial batch and three
+corrected boundary reruns: zero steps, direction mismatches, inclusive endpoint
+overflow, negative/out-of-bounds/empty indexing and intermediate product overflow.
+The accepted-expression fixture preserves the intended full signed64 values
+without claiming wide-literal parsing. The host runner's CPU override selects
+the guest platform (68020); source `.cpu` independently selects the assembly target.
+
+The existing mixed-list regression, 101-case compiler oracle and session-isolation
+checks also complete natively. A separate instrumented range run reports 924,096
+peak tracked owned bytes, no profiling errors, zero live owned bytes at cleanup
+and balanced allocated/freed capacity. This is the whole 2,126-byte focused case,
+not incremental range storage, full self-host peak memory or total Amiga RAM.
+The scalar ABI and ordinary release telemetry remain unchanged.
+
+All 351 compact-source host tests pass, as does the final Rust range oracle, native
+engineering gate, formatter and workflow checks. No complete self-host, broad
+language/CPU corpus or physical A6000 run is claimed for this checkpoint.
+
+Separate release comparison against flat-list checkpoint `e130e267`: unchanged
+`aligned-control` source (15,474 bytes, FNV `ac05445d958571b5`), 68020/10 MiB,
+telemetry disabled, alternating before/after images. Every sample has fresh
+START/DONE, exit zero and exact live Rust output. Host-observed guest assembly
+times exclude host image preparation and emulator startup.
+
+| Image | Sample 1 | Sample 2 | Mean |
+| --- | ---: | ---: | ---: |
+| Before ranges | 25.093 s | 25.065 s | 25.079 s |
+| After ranges | 25.055 s | 25.063 s | 25.059 s |
+
+The mean changes by -0.080%, effectively unchanged at this sample count. This
+control checks existing-workload cost, not a range-operation speedup. The
+one-package image grows from 543,124 to 544,420 bytes; linked reservation grows
+from 562,172 to 563,436 bytes. With both tested packages embedded, image size
+grows from 558,320 to 559,616 bytes and linked reservation from 577,368 to
+578,632 bytes: +1,296 image bytes and +1,264 linked bytes in either configuration.
+Linked reservation is not peak RAM. Reproducible comparison uses
+`native_layout_fs_uae` with `OPFORGE_LAYOUT_CASES=aligned-control` and the saved
+before/after release images; range qualification uses `native_ranges_fs_uae`.
 
 ### Shared compiler cost checkpoint
 

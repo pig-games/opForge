@@ -174,6 +174,8 @@ typedOpcode
 	beq.w one
 	cmpi.b #$51, d0
 	beq.w two
+	cmpi.b #$52, d0
+	beq.w one
 	cmpi.b #$61, d0
 	beq.w opcode
 	cmpi.b #$62, d0

@@ -10,9 +10,9 @@ Native EXVM has no version argument, field, check or dispatch. Consolidation of
 other VM contracts and retirement of the old native text service remain open.
 The subsequent compound-tree checkpoint adds list/range/index/call builders
 through the same grammar. BS31 adds typed lowering and session-owned flat-list
-storage/execution;
-its focused scope and remaining boundaries are in the active plan. Ranges and
-preparation-time compound values remain open; full language parity is not claimed.
+and compact-range storage/execution;
+its focused scope and remaining boundaries are in the active plan.
+Preparation-time compound values remain open; full language parity is not claimed.
 Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
 still unresolved. BS28 introduced numeric `:=`
 normalization to shared declarations.

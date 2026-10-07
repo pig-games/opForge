@@ -108,7 +108,7 @@ existing
 	movem.l d1-d2/a0, -(sp)
 	move.l runtime.Value.Low(a5, d5.l), d2
 	movea.l pkg.Context.Owner(a2), a0
-	jsr values.equalLists
+	jsr values.equalValues
 	movem.l (sp)+, d1-d2/a0
 	tst.l d0
 	bne.w bad

@@ -541,7 +541,7 @@ fn native_preparation_failure_capture_is_triple_gated() {
     );
     let source = baseline.replace(
         "    moveq #7, d0",
-        "    moveq #7, d0\n    .MEMORY_PREPARATION_INPUT Position, #32\n    .MEMORY_PREPARATION_FAILURE a1, d0, d0, Position, Position+4, Position+8, Position+12, Position, #301",
+        "    moveq #7, d0\n    .MEMORY_PREPARATION_INPUT Position, #32\n    .MEMORY_PREPARATION_FAILURE a1, d0, d0, Position+8, Position+12, #301\n    .MEMORY_PREPARATION_RECORD a1, d0, d0, Position, Position+4, Position, #301",
     );
     let gates = [
         "OPFORGE_DEBUG_CONTRACTS",

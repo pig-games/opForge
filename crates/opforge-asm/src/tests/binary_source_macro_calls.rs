@@ -327,6 +327,39 @@ fn telemetry_source() -> String {
     format!(".module experimental.amigaos.binary_app\n.cpu m68020\n{telemetry}\nexecute .block\n.MEMORY_PHASE #0\n.byte 1\n.bend\n.byte execute\n.endmodule\n")
 }
 
+// Parse the actual diagnostic call sites, not just their definitions. The former
+// single call exceeded the native argument-spelling pool even though its packed
+// tokens fit; disabled macros must still accept their complete invocation.
+fn preparation_telemetry_source() -> String {
+    let telemetry =
+        include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");
+    let app = include_str!("../../../../native/motorola68000/amigaos/experimental/binary_app.asm");
+    let calls = app
+        .lines()
+        .filter(|line| {
+            line.trim_start()
+                .starts_with(".MEMORY_PREPARATION_FAILURE ")
+                || line.trim_start().starts_with(".MEMORY_PREPARATION_RECORD ")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(calls.len(), 2);
+    format!(
+        ".module proof.frontend\n.cpu m68020\n.pub\nFrame .struct\nOutput .long ?\nCapacity .long ?\nUsed .long ?\nNameCount .long ?\n.endstruct\nPreparationStage=0\nPreparationInput=0\n.endmodule\n.module experimental.amigaos.binary_app\n.cpu m68020\n.use proof.frontend as frontend\nDosBase=0\nInAssembly=0\nFront=0\nPROGRESS_PREPARATION_FAILURE=301\n{telemetry}\nexecute .block\n{}\n.byte 1\n.bend\n.byte execute\n.endmodule\n",
+        calls.join("\n")
+    )
+}
+
+#[test]
+fn compact_preparation_telemetry_rust_oracle() {
+    assert_eq!(oracle(&preparation_telemetry_source()), [1, 0]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; actual disabled preparation diagnostic calls"]
+fn compact_preparation_telemetry_fs_uae() {
+    native_source(preparation_telemetry_source());
+}
+
 fn assembly_telemetry_source() -> String {
     let telemetry =
         include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");

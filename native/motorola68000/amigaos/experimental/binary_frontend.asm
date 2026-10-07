@@ -387,6 +387,7 @@ done
 ; advancing scope/template/graph/line state. D0/CCR=status,D1=record handle;
 ; other registers preserved. Source is used only here, never by replayLine.
 captureLine	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	movea.l a1, a4
@@ -445,6 +446,7 @@ done
 ; No original source is read or re-tokenized. D0/CCR=status; other regs preserved.
 ; Frame.Used/NameCount and nextExpansion retain the direct line API contract.
 replayLine	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	clr.l Frame.Used(a5)
@@ -494,6 +496,7 @@ done
 ; line advancement. D0/CCR=status; other registers preserved. Used/NameCount
 ; are outputs. Configuration owners select records before calling this entry.
 bindCapture	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	clr.l Frame.Used(a5)
@@ -523,11 +526,14 @@ bindCapture	.block
 	clr.l Frame.Source(a5)
 	clr.l Frame.SourceBytes(a5)
 	move.l capture.Record.Count(a4), d1
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_WRITER
 	bsr.w writeTokens
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w written
 	move.l d1, Frame.Used(a5)
 	movea.l Frame.Output(a5), a0
 	movea.l Frame.Package(a5), a1
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DECLARATION
 	jsr declaration.normalize
 	bne.w written
 	moveq #0, d1
@@ -1610,6 +1616,7 @@ generatedRelexExit
 ; line counter remains at the following line. D0/CCR=status.
 	.pub
 nextExpansion	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	clr.l Frame.Used(a5)
@@ -1637,8 +1644,8 @@ nextDone
 ; Reenter template lookup before ordinary preparation; nested calls push a
 ; child frame and resume the parent when that child drains.
 expandRecord	.block
-	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 generatedLoop
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
 	move.l templates.State.Origin(a0), Frame.Origin(a5)
@@ -1657,6 +1664,7 @@ generatedLoop
 	tst.w d1
 	beq.w prepareGenerated
 nextGenerated
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
 	movea.l Frame.Output(a5), a1
@@ -1936,6 +1944,7 @@ done
 ; A0=Frame,D0=nonzero to require explicit modules for file content.
 ; D0/CCR=status, others preserved. Successful EOF resets local lines.
 endFile	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 	movem.l a0-a2, -(sp)
 	movea.l a0, a2
 	movea.l Frame.Scratch(a0), a1
@@ -1943,6 +1952,7 @@ endFile	.block
 	adda.l #TEMPLATE_STATE, a0
 	jsr templates.endFile
 	bne.w done
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONDITIONAL
 	lea SCOPE_STATE(a1), a0
 	adda.l #scopes.SCRATCH_BYTES, a0
 	jsr conditionals.endFile
@@ -1951,6 +1961,7 @@ endFile	.block
 	adda.l #scopes.SCRATCH_BYTES, a0
 	jsr conditionals.begin
 	bne.w done
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_SCOPE
 	lea SCOPE_STATE(a1), a0
 	jsr scopes.endFile
 	bne.w done

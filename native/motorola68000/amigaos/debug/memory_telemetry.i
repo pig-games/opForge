@@ -369,10 +369,10 @@ done
 .endif
 .endmacro
 
-; Last preparation boundary, return status and opaque record prefixes on failure.
-; Uses the existing progress protocol without event/request buffer growth.
-; Nine parameters fit the current native macro contract. All state survives.
-MEMORY_PREPARATION_FAILURE	.macro dosbase, assembling, stage, output, capacity, used, count, snapshot, phase
+; Last preparation boundary and published counters. Keep argument spellings
+; within the current macro limit; record capture is a separate bounded call.
+; Both helpers use existing progress storage and preserve all state.
+MEMORY_PREPARATION_FAILURE	.macro dosbase, assembling, stage, used, count, phase
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
@@ -381,6 +381,23 @@ MEMORY_PREPARATION_FAILURE	.macro dosbase, assembling, stage, output, capacity, 
 	tst.l .assembling
 	bne.w done
 	.MEMORY_PROGRESS .dosbase, .phase, .stage, .used, .count
+done
+	movem.l (sp)+, d0/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
+; Return status and opaque output/input observations for the same failure.
+MEMORY_PREPARATION_RECORD	.macro dosbase, assembling, stage, output, capacity, snapshot, phase
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0/a0, -(sp)
+	tst.l .assembling
+	bne.w done
 	.MEMORY_PROGRESS .dosbase, .phase+7, .snapshot+PreparationPosition.Status, #0, #0
 	cmpi.l #6*4, .capacity
 	blo.w done

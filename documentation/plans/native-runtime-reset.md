@@ -542,7 +542,17 @@ pre-call record belongs to an earlier line and must not diagnose the original
 LEA. The helper now uses nine parameters, with separate writer/template markers
 and captured writer/expression return codes. A fresh native pilot accepts all
 current telemetry definitions and produces the exact two Rust output bytes.
-The corrected complete boundary capture is in progress.
+The corrected boundary capture completes fresh START/DONE after
+1,089.747403167 seconds with exit 20 and no output. It identifies template
+handling of the diagnostic helper call in `binary_app.asm` line 339, not the
+original LEA: its 207 argument-spelling bytes exceed the current 192-byte pool.
+Reporting is now split into six- and seven-argument calls. A focused native test
+uses those actual source call sites and passes with the two exact Rust bytes
+(9.927917917 seconds); all eight host gate combinations also pass. The boundary
+markers now reset on capture/replay entry and cover configuration binding,
+repeated expansion and EOF. A fresh complete capture with only the four needed
+diagnostic defines is in progress; the earlier dense telemetry duration is not
+a release performance measurement.
 All capture code/storage is triple-gated; its disabled build remains
 byte-identical to that release executable. No production repair is claimed yet.
 

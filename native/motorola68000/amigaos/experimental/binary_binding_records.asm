@@ -26,6 +26,7 @@ RegisterReserved	.byte ?  ; zero; candidate metadata never follows Target
 ENTRY_BYTES = Entry.RegisterReserved+1
 REFERENCED = 2
 OPTIONAL_REFERENCED = 512
+CONDITIONAL_VALUE = 1<<11; preparation retains candidate immutable definitions
 MUTABLE_BIT = 8
 MUTABLE = 1<<MUTABLE_BIT
 ITERATOR_HIGH_BIT = 2

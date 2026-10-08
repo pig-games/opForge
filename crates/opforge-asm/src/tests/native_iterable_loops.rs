@@ -420,6 +420,14 @@ pub(super) fn run_case(
             .captured_artifacts
             .get(&PathBuf::from("Work/memory.bin"))
             .expect("fresh instrumented memory record");
+        // Keep gated functional work counters beside the same fresh MEMD proof.
+        for line in runs[0]
+            .stdout
+            .lines()
+            .filter(|line| line.starts_with("progress p="))
+        {
+            eprintln!("ITERABLE_PROGRESS {line}");
+        }
         // Reuse the maintained MEMD decoder and its cleanup/profile checks.
         eprintln!(
             "ITERABLE_MEMORY {}",

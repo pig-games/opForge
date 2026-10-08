@@ -509,19 +509,24 @@ Notes:
   and [BS34 plan](plans/native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
 
   BS35 adds focused native support for anonymous counted `.bfor` on both packages.
-  Twenty-one combined scenarios match live Rust, covering nested local labels and
+  Thirty combined scenarios match live Rust, covering nested local labels and
   constants, forward chains, mutable and compound snapshots, wide/signed values,
-  local macro expansion and zero-count bodies. Per-iteration labels and nested
+  local macro expansion, zero-count bodies and selected conditional constants.
+  Inactive constants do not evaluate unavailable references; selected branches
+  support forward chains, compound constants and mutable snapshots. Duplicate
+  active immutable definitions still reject. Per-iteration labels and nested
   section-relative aliases also match complete Rust Hunk files, including
   relocations. Active missing values, cycles, escaped local names and malformed
   scope boundaries reject. Labeled/indexed and iterable `.bfor`, `.bwhile`, mapped
-  scoped replay, later-local conditions and inactive local constant dependencies
-  remain open; literals above 32 bits also remain a packing limitation. These
-  focused results do not establish complete loop/macro parity. A separate current-
-  source BS35 self-host completes all 121 mapped inputs (1,780,288 bytes) in
+  scoped replay and later-local conditions remain open; literals above 32 bits
+  also remain a packing limitation. These
+  focused results do not establish complete loop/macro parity. The preceding
+  BS35 source checkpoint self-host completes all 121 mapped inputs
+  (1,780,288 bytes) in
   25m22.60s on FS-UAE 68020/74 MiB, with exact equality for the entire 601,196-byte
   Hunk. Full BS35 peak allocation, A6000 timing and 2 MiB fit are not measured.
-  See the [scoped-loop checkpoint](plans/native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification).
+  See the [scoped-loop checkpoint](plans/native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification)
+  and [conditional dependency repair](plans/native-runtime-reset.md#scoped-conditional-dependency-repair-bs35-focused).
 
 
 Scalar `.for` and `.bfor` counts may refer forward to immutable constants whose

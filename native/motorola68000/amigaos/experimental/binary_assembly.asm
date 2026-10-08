@@ -325,6 +325,8 @@ line
 	movea.l a1, a3
 	cmpi.l #2, d0
 	beq.w fail
+	cmpi.l #branches.RESULT_SELECTED, d0
+	beq.w selectedBranch
 	tst.l d0
 	bne.w omitted
 	; Loop traversal precedes output selection, so skipped/repeated bodies also
@@ -342,6 +344,14 @@ line
 	beq.w controlsReady
 	movea.l a0, a4
 	bra.w line
+selectedBranch
+	movea.l a4, a0
+	movea.l a3, a1
+	lea RepeatState, a3
+	jsr repetition.activateBranch
+	movea.l a1, a3
+	bne.w fail
+	bra.w omitted
 controlsReady
 	tst.w d5
 	beq.w stateReady

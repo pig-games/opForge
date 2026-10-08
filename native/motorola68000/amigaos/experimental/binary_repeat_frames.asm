@@ -175,6 +175,25 @@ done
 	rts
 	.bend  ; enter
 
+; A0=state,D0=group offset,D1=selected branch record offset.
+; D0/CCR=status; others preserved. Live iteration cells and private graph states
+; were initialized by enter; activation must not reset other branch roots.
+activate	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	move.l d1, d7
+	bsr.w locate
+	bne.w done
+	bsr.w graphFrame
+	lea State.Graph(a6), a0
+	move.l d7, graph.Frame.Branch(a0)
+	jsr dependencies.activateLocal
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; activate
+
 ; A0=state,D0=group offset,D1=iteration. Retain complete iteration values.
 ; D0/CCR=status; other registers preserved.
 capture	.block

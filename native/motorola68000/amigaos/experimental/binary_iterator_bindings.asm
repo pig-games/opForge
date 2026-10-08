@@ -8,6 +8,7 @@ LIMIT = 16
 COUNTED = $ffff
 FOR = 0
 WHILE = 3
+SCOPED_FOR = 4
 Slot	.struct
 Identity	.word ?
 Kind	.word ?
@@ -62,7 +63,12 @@ close	.block
 	mulu.w #SLOT_BYTES, d2
 	lea State.Slots(a0), a1
 	cmp.w Slot.Kind(a1, d2.w), d1
+	beq.w matched
+	cmpi.w #FOR, d1
 	bne.w bad
+	cmpi.w #SCOPED_FOR, Slot.Kind(a1, d2.w)
+	bne.w bad
+matched
 	subq.w #1, State.Depth(a0)
 	moveq #0, d0
 	bra.w done
@@ -172,5 +178,27 @@ fold	.block
 done
 	rts
 	.bend  ; fold
+	.pub
+; A0=preparation iterator state. D0/CCR=zero only for innermost scoped for.
+; Other registers preserved; declarations in ordinary loops remain forbidden.
+scoped	.block
+	movem.l d1/a1, -(sp)
+	moveq #0, d1
+	move.w State.Depth(a0), d1
+	beq.w absent
+	subq.w #1, d1
+	mulu.w #SLOT_BYTES, d1
+	lea State.Slots(a0), a1
+	cmpi.w #SCOPED_FOR, Slot.Kind(a1, d1.w)
+	bne.w absent
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a1
+	tst.l d0
+	rts
+	.bend  ; scoped
 	.endsection
 	.endmodule

@@ -1891,6 +1891,7 @@ graphBeforeDone
 activeLine
 	movea.l a6, a0
 	adda.l #CONDITION_STATE, a0
+	move.w conditionals.State.Deferred(a0), SCOPE_STATE+layout.State.Deferred(a6)
 	tst.w conditionals.State.Deferred(a0)
 	beq.w activePreparation
 	movea.l Frame.Output(a5), a0

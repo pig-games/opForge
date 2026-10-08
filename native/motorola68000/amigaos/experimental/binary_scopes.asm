@@ -86,6 +86,7 @@ begin	.block
 	clr.w layout.State.Changed(a0)
 	clr.w layout.State.FileContent(a0)
 	clr.w layout.State.LoopDepth(a0)
+	clr.w layout.State.Deferred(a0)
 	clr.l layout.State.Package(a0)
 	clr.l ENTRIES+memory.Block.Pointer(a0)
 	clr.l ENTRIES+memory.Block.Capacity(a0)
@@ -644,6 +645,11 @@ deferredLine	.block
 	blo.w good
 	cmpi.b #loop_abi.PRVM_TOKEN_KIND_REGISTER, branch_parser.Record.Dot(a0)
 	bhi.w directive
+	move.l a0, -(sp)
+	lea layout.ITERATOR_STATE(a6), a0
+	jsr iterators.scoped
+	movea.l (sp)+, a0
+	beq.w good
 	btst #INDENT_FLAG_BIT, branch_parser.Record.Flags(a0)
 	beq.w bad
 	cmpi.b #loop_abi.PRVM_TOKEN_KIND_COLON, branch_parser.Record.Qualifier(a0)
@@ -1185,7 +1191,7 @@ openLoop
 	move.l (sp)+, d1
 	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d1
 	bne.w openKind
-	moveq #iterators.FOR, d1
+	moveq #iterators.SCOPED_FOR, d1
 openKind
 	lea layout.ITERATOR_STATE(a6), a0
 	jsr iterators.open
@@ -1883,10 +1889,32 @@ declare	.block
 	beq.w firstDeclaration
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
 	beq.w ignored
+	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 4(a0)
+	beq.w conditionalCandidate
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	bne.w bad
 	btst #records.MUTABLE_BIT-8, records.Entry.Flags(a3)
 	beq.w bad
+	clr.b 3(a0)
+	moveq #0, d0
+	rts
+conditionalCandidate
+	; Deferred branches may contain alternative definitions. Keep their
+	; shared lexical ID; the runtime inventory rejects duplicate active RHSs.
+	move.l a0, -(sp)
+	lea layout.ITERATOR_STATE(a6), a0
+	jsr iterators.scoped
+	movea.l (sp)+, a0
+	bne.w bad
+	btst #records.MUTABLE_BIT-8, records.Entry.Flags(a3)
+	bne.w bad
+	tst.w layout.State.Deferred(a6)
+	bne.w candidate
+	move.w records.Entry.Flags(a3), d0
+	andi.w #records.CONDITIONAL_VALUE, d0
+	beq.w bad
+candidate
+	ori.w #records.CONDITIONAL_VALUE, records.Entry.Flags(a3)
 	clr.b 3(a0)
 	moveq #0, d0
 	rts
@@ -1898,6 +1926,12 @@ ignored
 firstDeclaration
 	clr.b 3(a0)
 	ori.w #DECLARED, records.Entry.Flags(a3)
+	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 4(a0)
+	bne.w declarationKind
+	tst.w layout.State.Deferred(a6)
+	beq.w declarationKind
+	ori.w #records.CONDITIONAL_VALUE, records.Entry.Flags(a3)
+declarationKind
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
 	beq.w mutableOwnership
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)

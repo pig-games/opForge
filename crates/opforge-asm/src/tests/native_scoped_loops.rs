@@ -19,6 +19,15 @@ fn scratch() -> Scratch {
 }
 
 const POSITIVE: &[(&str, &str, &[u8])] = &[
+    ("selected-compound-local-constant", ".for item in {0,1}\n.bfor 2\n.if item==0\nvalues={2,3}\n.else\nvalues={4,5}\n.endif\n.byte values[0],values[1]\n.endfor\n.endfor\n", &[2,3,2,3,4,5,4,5]),
+    ("selected-forward-mutable-snapshot", ".for item in {0,1}\n.bfor 2\nn .var 2\n.if item==0\nsaved=n+later\nlater=3\n.else\nsaved=n+later\nlater=5\n.endif\nn .set 9\n.byte saved,n\n.endfor\n.endfor\n", &[5,9,5,9,7,9,7,9]),
+    ("inactive-local-before-unconditional", ".bfor 2\n.if 0\nlocal=missing\n.endif\nlocal=7\n.byte local\n.endfor\n", &[7,7]),
+    ("inactive-local-after-unconditional", ".bfor 2\nlocal=8\n.if 0\nlocal=missing\n.endif\n.byte local\n.endfor\n", &[8,8]),
+    ("inactive-local-constant", ".bfor 2\n.if 0\nhidden=missing\n.byte hidden\n.else\n.byte 7\n.endif\n.endfor\n", &[7, 7]),
+    ("nested-inactive-local-declarations", ".bfor 2\n.if 0\n.if missing\nhidden=missing\n.else\nfirst=second\nsecond=first\n.endif\n.else\n.if 0\nhidden=missing\n.elseif 1\nlocal=8\n.byte local\n.else\nhidden=missing\n.endif\n.endif\n.endfor\n", &[8, 8]),
+    ("iterator-selected-local-branches", ".for item in {0,1,2}\n.bfor 2\n.if item==0\nlocal=10\n.elseif item==1\nlocal=11\n.else\nlocal=12\n.endif\n.byte local\n.endfor\n.endfor\n", &[10, 10, 11, 11, 12, 12]),
+    ("iterator-conditional-scoped-body", ".for item in {0,1,2}\n.if item==0\n.bfor 2\nlocal=20\n.byte local\n.endfor\n.elseif item==1\n.bfor 2\n.if 0\nhidden=missing\n.else\nlocal=21\n.byte local\n.endif\n.endfor\n.else\n.bfor 1\nlocal=22\n.byte local\n.endfor\n.endif\n.endfor\n", &[20, 20, 21, 21, 22]),
+    ("selected-forward-local-chain", ".for item in {0,1,2}\n.bfor 2\n.if item==0\n.byte first\nfirst=second+1\nsecond=4\n.elseif item==1\n.byte first\nfirst=second+2\nsecond=5\n.else\n.byte first\nfirst=second+3\nsecond=6\n.endif\n.endfor\n.endfor\n", &[5, 5, 7, 7, 9, 9]),
     ("dormant-local-configuration", "outer=9\n.bfor 0\nouter=missing\n.endfor\n.byte outer\n", &[9]),
     ("scoped-constant-with-while", ".while 0\n.endwhile\n.bfor 2\nvalue=3\n.byte value\n.endfor\n", &[3, 3]),
     ("local-label", ".bfor 2\nlocal .byte 7\n.byte $-local\n.endfor\n", &[7, 1, 7, 1]),
@@ -43,6 +52,22 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
 ];
 const BAD: &[(&str, &str)] = &[
     (
+        "separate-active-duplicate-local-constant",
+        ".bfor 2\n.if 1\nlocal=7\n.endif\n.if 1\nlocal=8\n.endif\n.byte local\n.endfor\n",
+    ),
+    (
+        "active-reference-inactive-local-constant",
+        ".bfor 2\n.if 0\nhidden=7\n.endif\n.byte hidden\n.endfor\n",
+    ),
+    (
+        "selected-branch-missing-constant",
+        ".for item in {0,1}\n.bfor 2\n.if item==0\nlocal=7\n.else\nlocal=missing\n.endif\n.byte local\n.endfor\n.endfor\n",
+    ),
+    (
+        "selected-elseif-local-cycle",
+        ".for item in {0,1}\n.bfor 2\n.if item==0\nlocal=7\n.byte local\n.elseif item==1\nfirst=second\nsecond=first\n.byte first\n.else\n.byte 9\n.endif\n.endfor\n.endfor\n",
+    ),
+    (
         "active-local-missing-constant",
         ".bfor 2\nlocal=missing\n.byte local\n.endfor\n",
     ),
@@ -65,11 +90,6 @@ const GAPS: &[(&str, &str, &[u8])] = &[
         "wide-literal-input",
         ".bfor 2\nwide .var $100000003\n.byte wide&255,(wide>>16)>>16\nwide .set wide+1\n.byte wide&255,(wide>>16)>>16\n.endfor\n",
         &[3, 1, 4, 1, 3, 1, 4, 1],
-    ),
-    (
-        "inactive-local-constant",
-        ".bfor 2\n.if 0\nhidden=missing\n.byte hidden\n.else\n.byte 7\n.endif\n.endfor\n",
-        &[7, 7],
     ),
     (
         "retained-forward-local-conditional",
@@ -112,7 +132,8 @@ fn native_scoped_loops_rust_oracles() {
     for cpu in ["68020", "6502"] {
         for (name, body, expected) in POSITIVE.iter() {
             assert_eq!(
-                oracle(&dir.0, &source(cpu, body)).unwrap(),
+                oracle(&dir.0, &source(cpu, body))
+                    .unwrap_or_else(|error| panic!("Rust oracle {cpu}/{name}: {error}")),
                 *expected,
                 "{cpu}/{name}"
             );

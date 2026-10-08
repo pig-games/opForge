@@ -478,6 +478,34 @@ done
 	rts
 	.bend  ; step
 	.pub
+; A0=selected branch record,A3=loop state. Activate the innermost scoped
+; owner's immutable declarations through shared dependency resolution.
+; D0/CCR=status; other registers kept. Ordinary loops have no local roots.
+activateBranch	.block
+	movem.l d1-d2/a0/a5, -(sp)
+	moveq #0, d2
+	move.w State.Depth(a3), d2
+	beq.w good
+	subq.w #1, d2
+	mulu.w #SLOT_BYTES, d2
+	lea SLOTS(a3), a5
+	adda.w d2, a5
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
+	bne.w good
+	move.l a0, d1
+	sub.l State.SourceBase(a3), d1
+	move.l Slot.ScopeGroup(a5), d0
+	lea State.Scopes(a3), a0
+	jsr frames.activate
+	bra.w done
+good
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d2/a0/a5
+	tst.l d0
+	rts
+	.bend  ; activateBranch
+
 ; A0=record,A2=context,A3=loop state. Record Rust's previous regular-line
 ; start PC, including conditional/empty lines. Driver loop controls do not set it.
 ; D0/CCR=status; others preserved. No text or CPU grammar enters this boundary.

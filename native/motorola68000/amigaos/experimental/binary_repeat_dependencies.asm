@@ -41,7 +41,9 @@ next
 	moveq #graph.MUTABLE, d3
 	cmpi.w #inventory.MUTABLE, inventory.Decl.Kind(a4, d5.l)
 	beq.w state
-	cmpi.w #inventory.IMMUTABLE, inventory.Decl.Kind(a4, d5.l)
+	move.w inventory.Decl.Kind(a4, d5.l), d0
+	andi.w #inventory.KIND_MASK, d0
+	cmpi.w #inventory.IMMUTABLE, d0
 	bne.w bad
 	move.l inventory.Decl.Record(a4, d5.l), d4
 	cmp.l graph.Frame.RecordBytes(a6), d4
@@ -58,6 +60,9 @@ next
 	bhi.w bad
 	cmpi.w #inventory.PackedRecord.Rhs+3, d0
 	blo.w bad
+	move.l d6, d5
+	lsl.l #graph.OFFSET_SHIFT, d5
+	clr.l graph.Offset.Expression(a2, d5.l)
 	moveq #graph.LAYOUT, d3
 	cmpi.b #expression.VALUE_TAG, inventory.PackedRecord.Rhs(a0)
 	beq.w state
@@ -67,8 +72,18 @@ next
 	move.l d6, d5
 	lsl.l #graph.OFFSET_SHIFT, d5
 	move.l d4, graph.Offset.Expression(a2, d5.l)
-	moveq #graph.PENDING, d3
 	addq.l #1, d1
+	move.l d6, d5
+	lsl.l #inventory.DECL_SHIFT, d5
+	move.w inventory.Decl.Kind(a4, d5.l), d0
+	andi.w #inventory.CONDITIONAL, d0
+	beq.w unconditional
+	move.l d6, d5
+	lsl.l #graph.OFFSET_SHIFT, d5
+	clr.l graph.Offset.Expression(a2, d5.l)
+	bra.w state
+unconditional
+	moveq #graph.PENDING, d3
 state
 	move.b d3, 0(a3, d6.l)
 	subq.l #1, d7
@@ -106,7 +121,9 @@ state	.block
 	move.w inventory.Decl.Owner(a0, d1.l), d3
 	cmp.l graph.Frame.Owner(a3), d3
 	bne.w external
-	cmpi.w #inventory.IMMUTABLE, inventory.Decl.Kind(a0, d1.l)
+	move.w inventory.Decl.Kind(a0, d1.l), d3
+	andi.w #inventory.KIND_MASK, d3
+	cmpi.w #inventory.IMMUTABLE, d3
 	bne.w external
 	moveq #0, d2
 	move.b 0(a1, d0.l), d2

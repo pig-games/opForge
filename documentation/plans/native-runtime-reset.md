@@ -5,11 +5,12 @@ completion of the remaining loop and macro functionality. The latest qualified
 full self-host is BS35 (source manifest `54fb484dd0022ab5`): all 121 mapped inputs
 (1,780,288 bytes) assemble natively, with exact bootstrap/native/live Rust equality
 for the entire 601,196-byte Hunk. The uninstrumented release run takes
-1,522.60420225 seconds (25m22.60s) on FS-UAE 68020/74 MiB. This is current-source
-self-host proof, not complete language/family parity, physical A6000 timing or a
-2 MiB qualification. Full BS35 peak allocation is not measured. Its qualified
+1,522.60420225 seconds (25m22.60s) on FS-UAE 68020/74 MiB. This proves that
+identified source checkpoint, not complete language/family parity, physical A6000
+timing or a 2 MiB qualification. Full BS35 peak allocation is not measured. Its qualified
 release bundle is `/tmp/opforge-selfhost-bs35-scoped-release-74m`, matching the
-current BS35 A6000 helper; only the m68020 package is embedded.
+current BS35 A6000 helper; only the m68020 package is embedded. The newer scoped
+conditional repair has focused parity; its full self-host has not been rerun.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -417,11 +418,10 @@ control with explicit prebuilt images. The complete current-source self-host bel
 identical-input performance comparison with the older BS34 source.
 
 Explicit boundaries remain: labeled/indexed iteration scopes, iterable `.bfor`,
-`.bwhile`, mapped scoped replay, conditionals that need a later local mutable's
-retained value, and inactive local immutable declarations whose unavailable
-references would otherwise be resolved eagerly. Safe acceptance of the latter
-requires branch-aware dependency eligibility; missing values must not become
-zero. A current Rust self-initializer probe also exposes a target-dependent
+`.bwhile`, mapped scoped replay and conditionals that need a later local mutable's
+retained value. Conditional immutable dependency eligibility is addressed by the
+focused repair below; missing values must not become zero. A current Rust
+self-initializer probe also exposes a target-dependent
 layout-retry policy: 68020 rejects after unstable retries while 6502 emits the
 retained values. That is a canonical consistency issue, not a CPU-specific native
 language rule. Literal token packing still rejects literals above 32 bits; focused
@@ -441,6 +441,72 @@ Bundle: `/tmp/opforge-selfhost-bs35-scoped-release-74m`; fresh proof log:
 source/package/image, not complete loop/macro parity, hardware timing, full peak
 allocation or 2 MiB fit. The older BS34 full input differs and is not an isolated
 time comparison.
+
+### Scoped conditional dependency repair (BS35, focused)
+
+Scope: anonymous counted `.bfor` immutable declarations in runtime-selected
+`.if`/`.elseif`/`.else` branches. Unconditional constants retain eager forward
+resolution. Conditional candidate definitions retain one lexical ID but remain
+outside eager roots until shared PRVM replay selects their branch. A bounded
+numeric-record walk activates only directly owned constants in that branch;
+nested branches wait for their own selection. The existing constant DFS and EXVM
+evaluator resolve those roots; no native conditional or expression grammar is added.
+
+Preparation now distinguishes scoped from ordinary counted loops and admits
+scoped deferred declarations. Runtime rejects multiple active immutable
+candidates, active missing names and active cycles. Inactive same-name candidates
+may precede or follow an unconditional definition. Compound definitions keep their
+statement-time value model, clearing activation offsets between iterations.
+Declaration records keep their eight-byte layout; an existing kind word records
+conditional eligibility. New graph-frame data is transient, not persisted source
+pointers or a VM-version interface. Gated counters report selected scoped branches
+and activated scalar roots through progress phase 310; release builds omit the
+counter code/storage and reporting.
+
+Thirty combined positive scenarios match live Rust on both m68020 and m6502
+packages, including iterator-selected alternatives, nested inactive errors,
+selected forward chains, compound constants and mutable snapshots. Six focused
+negative cases reject on each package (12 fresh runs), including duplicate active
+immutable definitions, missing active constants and selected cycles. Whole-Hunk
+scoped layout and alias comparisons pass on both packages; global dependency
+success/cycle controls also pass on both. An unchanged unscoped-loop control
+combines 19 scenarios and matches Rust on m68020 (2,741 source bytes, 4.616870417s).
+
+A fresh gated diagnostic run of the 30-case m68020 fixture matches Rust in
+5.924269875s. Phase 310 records 68 selected scoped branches and 60 activated scalar
+roots. MEMD reports 633,344 bytes peak owned allocation, balanced 1,412,920-byte
+allocation/free totals and zero terminal owned bytes. Its larger fixture differs
+from the prior memory control, so this is not an isolated allocation delta.
+
+The unchanged `aligned-control` input (15,474 bytes,
+`fnv1a64:ac05445d958571b5`) was run twice per release image, interleaving before
+and after on FS-UAE 68020/10 MiB. Before: 26.415376833s and 26.668605208s
+(mean 26.541991021s). After: 26.653417500s and 26.554832417s
+(mean 26.604124959s): +0.062133938s, or +0.23%. Every run completed with exact
+live Rust artifact proof. The delta is smaller than the observed run variation;
+these two pairs do not establish a significant speed change. This isolates the
+repair's overhead on an existing workload; new branch cases fail on the baseline
+and therefore have no successful before timing. Commands use
+`native_layout_fs_uae --ignored --nocapture`, `OPFORGE_LAYOUT_CASES=aligned-control`
+and explicit `OPFORGE_LAYOUT_IMAGE` paths. The baseline image is 618,424 bytes
+(`fnv1a64:cd426aec64ef9867`, preceding commit `3ebeb87f`).
+
+The release two-package image is 619,524 bytes (`fnv1a64:65c7a6e36bd062e7`),
++1,100 bytes from the preceding scoped checkpoint; linked static reservation is
+639,084 bytes (+1,128). Package bytes and BS35 format are unchanged.
+
+Validation: focused Rust oracles, library Clippy, Rustfmt, native engineering
+and format guards, compact formatting and workflow checks pass. Broader test
+Clippy reports 22 errors in unchanged tests/harness code; it does not pass.
+No full workspace/reference qualification is claimed for this slice.
+
+This candidate has not had a new full self-host run. The 25m22.60s, 601,196-byte
+full proof above belongs to source `54fb484dd0022ab5`, before this repair; its
+A6000 bundle remains selected. Later-local mutable guards, labeled/indexed scopes,
+iterable `.bfor`, `.bwhile`, mapped replay and remaining macro/file effects remain
+open. A branch-label probe found a separate Rust 6502 layout discrepancy: varying
+branch label extents leave stale `tail-head` differences; 68020 matched. It is not
+used as a positive native parity oracle or repaired by conditional scalar roots.
 
 ### Compound-value checkpoints
 

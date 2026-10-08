@@ -1,7 +1,8 @@
 # Compact frontend: VM boundary correction
 
-Status: BS35 has complete current-source native self-host qualification and
-focused anonymous counted scoped-loop proof. Mapped conditional repetition and
+Status: the preceding BS35 source has complete native self-host qualification.
+The current scoped conditional repair has focused Rust/native proof; its full
+self-host has not been rerun. Mapped conditional repetition and
 remaining loop/macro expansion effects are still open.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
@@ -32,13 +33,20 @@ in 23m53.13s on FS-UAE 68020/74 MiB. The
 [current implementation checkpoint](native-runtime-reset.md#iterator-dependent-conditionals-bs33)
 records the scope and remaining work.
 
-Deferred preparation-only declarations, scopes, configuration, metadata, file
-operations and macro definitions reject. Complete lazy file/reachability parity
+Scoped `.bfor` admits deferred value declarations. Deferred scopes,
+configuration, metadata, file operations and macro definitions still reject;
+ordinary loops retain their declaration restrictions. Complete lazy file/reachability parity
 is not established; complete `.while` and scoped-loop parity remain open.
 BS35 anonymous counted `.bfor` has [focused proof](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification); labeled/iterable
 forms and `.bwhile` remain unsupported. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
 forward-initializer semantics, struct behavior and existing wide-literal packing
 limits also remain unresolved. Full language or CPU-family parity is not claimed.
+
+The [scoped conditional repair](native-runtime-reset.md#scoped-conditional-dependency-repair-bs35-focused)
+activates local immutable roots when shared PRVM replay selects their branch.
+Unconditional forward constants retain the existing eager dependency walk;
+inactive candidates are not evaluated. This focused extension does not complete
+loop/macro parity or replace the identified full self-host proof below.
 
 ## Current breadth parity checkpoint
 

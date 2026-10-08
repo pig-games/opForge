@@ -31,6 +31,7 @@
 	.use prvm.amigaos.abi as parser_abi
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
+	.use experimental.amigaos.binary_repeat_activation as activation
 .ifdef OPFORGE_PREPARATION_PROGRESS
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_encoding as encoding
@@ -78,6 +79,7 @@ PROGRESS_RECORD_OUTPUT = 31
 PROGRESS_ASSEMBLY_RECORD_HEAD = 32
 PROGRESS_ASSEMBLY_WORK = 300
 PROGRESS_PREPARATION_FAILURE = 301
+PROGRESS_SCOPED_ROOTS = 310
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -156,6 +158,8 @@ execute	.block
 	clr.w metadata.Config.HexSet(a1)
 	clr.w metadata.Config.Root(a1)
 	.MEMORY_COUNTER_CLEAR output_spans.Events
+	.MEMORY_COUNTER_CLEAR activation.Selections
+	.MEMORY_COUNTER_CLEAR activation.Roots
 	move.l Frame.ModuleRoots(a0), CliModuleRoots
 	move.l Frame.ModuleCount(a0), CliModuleCount
 	move.l Frame.IncludeRoots(a0), CliIncludeRoots
@@ -1519,6 +1523,7 @@ captureSpans
 assemble
 	jsr assembly.assemble
 	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_WORK, assembly.TraversalPasses, assembly.TraversalRecords, #0
+	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ROOTS, activation.Selections, activation.Roots, #0
 	rts
 bad
 	moveq #1, d0

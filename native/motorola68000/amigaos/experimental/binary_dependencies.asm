@@ -12,6 +12,7 @@
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_repeat_inventory as repeatInventory
 	.use experimental.amigaos.binary_repeat_dependencies as localGraph
+	.use experimental.amigaos.binary_repeat_activation as activation
 	.use experimental.amigaos.binary_dependency_layout as graph
 	.pub
 ABSOLUTE = graph.ABSOLUTE
@@ -21,6 +22,8 @@ VISITING = graph.VISITING
 LAYOUT = graph.LAYOUT
 LABEL = graph.LABEL
 MUTABLE_SNAPSHOT = graph.SNAPSHOT
+MODE_LOCAL = 1
+MODE_BRANCH = 2
 Entry	.struct
 Id	.word ?
 Cursor	.word ?
@@ -342,7 +345,14 @@ localInputs
 	move.l Offsets+memory.Block.Pointer, graph.Frame.Offsets(a0)
 	clr.l RootCursor
 	clr.l Depth
+	cmpi.w #MODE_BRANCH, Mode
+	beq.w activateLocal
 	jsr localGraph.init
+	bra.w localReady
+activateLocal
+	jsr activation.select
+localReady
+	tst.l d0
 	bne.w bad
 	move.l d1, Constants
 	bra.w rootsReady
@@ -359,9 +369,17 @@ release
 ; D0/CCR=status; other registers preserved. Uses the same scalar DFS/evaluator
 ; as resolve; external mutable/label dependencies remain declaration-time work.
 resolveLocal	.block
-	move.w #1, Mode
+	move.w #MODE_LOCAL, Mode
 	bra.w resolve.start
 	.bend  ; resolveLocal
+
+; A0=graph.Frame with selected branch control offset. Activate only directly
+; owned scalar roots in this branch, then reuse the same DFS/evaluator.
+; D0/CCR=status; other registers preserved. No inactive RHS is evaluated.
+activateLocal	.block
+	move.w #MODE_BRANCH, Mode
+	bra.w resolve.start
+	.bend  ; activateLocal
 
 ; Release graph storage after assembly/retry ownership has ended.
 ; Registers preserved; CCR reflects the caller's D0 status.

@@ -6,12 +6,15 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_source as source
+	.use prvm.amigaos.packed_branch as branch
 	.use prvm.amigaos.packed_loop as parser
 	.use prvm.amigaos.abi as abi
 	.pub
 LABEL = 1
 IMMUTABLE = 2
 MUTABLE = 3
+CONDITIONAL = $100; immutable root requires an executed branch
+KIND_MASK = $ff
 Decl	.struct
 Owner	.word ?  ; one-based lexical loop identity; zero is enclosing/global
 Kind	.word ?
@@ -40,9 +43,11 @@ OWNER_SHIFT = 4
 Frame	.struct
 Parent	.word ?
 Kind	.word ?
+BranchBase	.word ?
+Reserved	.word ?
 	.endstruct
-FRAME_BYTES = Frame.Kind+2
-FRAME_SHIFT = 2
+FRAME_BYTES = Frame.Reserved+2
+FRAME_SHIFT = 3
 DEPTH_LIMIT = 16
 State	.struct
 Declarations	.res memory.Block.Used+4
@@ -53,6 +58,8 @@ Symbols	.long ?
 Count	.long ?
 Current	.word ?
 Depth	.word ?
+BranchDepth	.word ?
+BranchBase	.word ?
 Frames	.res DEPTH_LIMIT*FRAME_BYTES
 	.endstruct
 STATE_BYTES = State.Frames+DEPTH_LIMIT*FRAME_BYTES
@@ -71,6 +78,8 @@ prepare	.block
 	clr.l State.Count(a6)
 	clr.w State.Current(a6)
 	clr.w State.Depth(a6)
+	clr.w State.BranchDepth(a6)
+	clr.w State.BranchBase(a6)
 	clr.l State.Owners+memory.Block.Used(a6)
 	clr.l State.Ids+memory.Block.Used(a6)
 	clr.l State.Declarations+memory.Block.Used(a6)
@@ -95,6 +104,8 @@ scan
 	bne.w next
 	cmpi.w #PackedRecord.Rhs, d4
 	blo.w next
+	bsr.w branchDepth
+	bne.w done
 	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, PackedRecord.NameKind(a4)
 	bne.w declaration
 	movea.l a4, a0
@@ -123,6 +134,7 @@ scan
 	adda.w d6, a3
 	move.w State.Current(a6), Frame.Parent(a3)
 	move.w d5, Frame.Kind(a3)
+	move.w State.BranchBase(a6), Frame.BranchBase(a3)
 	addq.w #1, State.Depth(a6)
 	cmpi.l #abi.PRVM_LOOP_BFOR, d5
 	bne.w next
@@ -150,6 +162,7 @@ scan
 	cmpi.l #65535, d6
 	bhi.w bad
 	move.w d6, State.Current(a6)
+	move.w State.BranchDepth(a6), State.BranchBase(a6)
 	bra.w next
 closing
 	moveq #0, d6
@@ -172,6 +185,7 @@ closeWhile
 	bne.w bad
 closed
 	move.w Frame.Parent(a3), State.Current(a6)
+	move.w Frame.BranchBase(a3), State.BranchBase(a6)
 	bra.w next
 declaration
 	tst.w State.Current(a6)
@@ -205,13 +219,43 @@ bind
 	cmp.w Decl.Owner(a3), d0
 	bne.w bad
 	cmpi.w #MUTABLE, d5
+	beq.w repeatedMutable
+	cmpi.w #IMMUTABLE, d5
 	bne.w bad
+	move.w Decl.Kind(a3), d0
+	andi.w #KIND_MASK, d0
+	cmpi.w #IMMUTABLE, d0
+	bne.w bad
+	move.w State.BranchDepth(a6), d0
+	cmp.w State.BranchBase(a6), d0
+	bhi.w alternative
+	cmpi.w #IMMUTABLE+CONDITIONAL, Decl.Kind(a3)
+	bne.w bad
+	; A later unconditional definition is the eager root; earlier conditional
+	; candidates remain deferred and will reject if they are also selected.
+	move.w #IMMUTABLE, Decl.Kind(a3)
+	move.l a4, d0
+	sub.l State.SourceBase(a6), d0
+	move.l d0, Decl.Record(a3)
+	bra.w next
+alternative
+	; Alternatives share a lexical ID. Replay selects one RHS, and rejects
+	; more than one active definition rather than resolving every alternative.
+	bra.w next
+repeatedMutable
 	cmp.w Decl.Kind(a3), d5
 	bne.w bad
 	bra.w next
 first
 	move.w State.Current(a6), Decl.Owner(a3)
 	move.w d5, Decl.Kind(a3)
+	cmpi.w #IMMUTABLE, d5
+	bne.w owned
+	move.w State.BranchDepth(a6), d0
+	cmp.w State.BranchBase(a6), d0
+	bls.w owned
+	ori.w #CONDITIONAL, Decl.Kind(a3)
+owned
 	move.l a4, d0
 	sub.l State.SourceBase(a6), d0
 	move.l d0, Decl.Record(a3)
@@ -227,6 +271,8 @@ next
 	bra.w scan
 scanned
 	tst.w State.Depth(a6)
+	bne.w bad
+	tst.w State.BranchDepth(a6)
 	bne.w bad
 	bsr.w scatter
 	bra.w done
@@ -296,6 +342,41 @@ done
 	rts
 	.bend  ; find
 	.priv
+; A4=bounded compiled record,D4=extent,A2=context,A6=inventory.
+; Track shared PRVM branch ancestry, without evaluating expressions.
+; An enclosing branch is outside a newly opened scoped owner's branch base.
+; D0/CCR=status; other registers preserved.
+branchDepth	.block
+	movem.l d1/a0-a1, -(sp)
+	movea.l a4, a0
+	move.l d4, d0
+	movea.l pkg.Context.Package(a2), a1
+	adda.l pkg.Header.BranchPlan(a1), a1
+	jsr branch.classify
+	bne.w done
+	cmpi.l #branch.IF, d1
+	beq.w opening
+	cmpi.l #branch.ENDIF, d1
+	bne.w good
+	tst.w State.BranchDepth(a6)
+	beq.w bad
+	subq.w #1, State.BranchDepth(a6)
+	bra.w good
+opening
+	cmpi.w #DEPTH_LIMIT, State.BranchDepth(a6)
+	bhs.w bad
+	addq.w #1, State.BranchDepth(a6)
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; branchDepth
+
 ; A6=state. Prefix counts and scatter IDs once into directly-owned ranges.
 ; Clobbers D0-D3/A0-A3; D0/CCR=status.
 scatter	.block

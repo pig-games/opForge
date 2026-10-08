@@ -31,9 +31,10 @@ LoopDepth	.word ?
 LoopBindings	.res iterators.SLOTS_BYTES
 LoopParents	.res iterators.LIMIT*2
 PendingRepeat	.word ?
+Deferred	.word ?  ; shared conditional preparation depth for this record
 .endstruct
 ITERATOR_STATE = State.LoopDepth
-ENTRIES = State.PendingRepeat+2
+ENTRIES = State.Deferred+2
 ENTRIES_POINTER = ENTRIES+memory.Block.Pointer
 BUCKETS = ENTRIES+memory.Block.Used+4
 ARENA = BUCKETS+256*2

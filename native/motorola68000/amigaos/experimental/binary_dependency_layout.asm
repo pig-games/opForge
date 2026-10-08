@@ -20,8 +20,9 @@ Ids	.long ?
 Count	.long ?
 States	.long ?
 Offsets	.long ?
+Branch	.long ?  ; transient selected control offset; not persisted
 	.endstruct
-FRAME_BYTES = Frame.Offsets+4
+FRAME_BYTES = Frame.Branch+4
 Offset	.struct
 Expression	.long ?
 	.endstruct

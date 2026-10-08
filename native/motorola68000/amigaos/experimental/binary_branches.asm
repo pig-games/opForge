@@ -8,6 +8,10 @@
 	.include "memory_telemetry.i"
 	.pub
 LIMIT = 16
+RESULT_ACTIVE = 0
+RESULT_CONSUMED = 1
+RESULT_INVALID = 2
+RESULT_SELECTED = 3
 Slot	.struct
 Parent	.byte ?
 Taken	.byte ?
@@ -41,7 +45,8 @@ done
 	rts
 	.bend  ; end
 ; A0=record,A1=stream end,A2=context,A3=branch state.
-; D0=0 active ordinary,1 consumed/inactive,2 invalid. Other registers kept.
+; D0=0 active ordinary,1 consumed/inactive,2 invalid,3 selected branch.
+; Other registers kept. A selected branch may activate local dependency roots.
 ; Controls retain only numeric heads and EXVM expressions; no source text.
 step	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -89,7 +94,7 @@ step	.block
 	beq.w consumed
 	move.b #1, Slot.Taken(a3)
 	move.w #1, State.Active(a6)
-	bra.w consumed
+	bra.w selected
 terminal
 	move.b #1, Slot.ElseSeen(a3)
 	moveq #0, d0
@@ -98,6 +103,8 @@ terminal
 	and.b Slot.Parent(a3), d0
 	move.w d0, State.Active(a6)
 	move.b #1, Slot.Taken(a3)
+	tst.w State.Active(a6)
+	bne.w selected
 	bra.w consumed
 opening
 	cmpi.w #LIMIT, d6
@@ -119,7 +126,7 @@ opening
 	beq.w consumed
 	move.b #1, Slot.Taken(a3)
 	move.w #1, State.Active(a6)
-	bra.w consumed
+	bra.w selected
 closing
 	subq.w #1, State.Depth(a6)
 	moveq #0, d0
@@ -130,11 +137,15 @@ ordinary
 	moveq #0, d0
 	tst.w State.Active(a6)
 	bne.w done
+	bra.w consumed
+selected
+	moveq #RESULT_SELECTED, d0
+	bra.w done
 consumed
 	moveq #1, d0
 	bra.w done
 bad
-	moveq #2, d0
+	moveq #RESULT_INVALID, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0

@@ -697,6 +697,49 @@ Clippy findings remain unqualified. The last complete BS35 self-host and A6000
 bundle remain selected. Labeled/indexed scoped iteration, `.bwhile`, mapped
 scoped replay and remaining macro/file effects are still open.
 
+### Labeled scoped repetition: characterization and design choice
+
+The next selected capability is labeled/indexed `.bfor`. Rust publishes a list
+of iteration-start addresses and retains each anonymous iteration scope;
+`items[1].entry` selects a local label or scalar member from the second scope.
+The focused fixtures cover counted/list/range loops, nested labeled loops,
+qualified original values, empty/single iterations and bounds/missing-member
+failures. Flat output is the existing canonical behavior, not new native support.
+`cargo test -p asm native_named_scoped_loops_rust_oracles` passes six positives,
+seven negatives and the combined positive fixture for each CPU. Explicitly run
+`cargo test -p asm native_named_scoped_loops_hunk_rust_oracles -- --ignored --nocapture` to see the
+unfixed reference regression; it is ignored by ordinary host qualification.
+
+The unchanged `7afac3da` native image completes a fresh 68020 rejection of
+`items .bfor 2` followed by `items[1]` (exit 20, diagnostic, START/DONE).
+The 33.085819s observation includes emulator startup and is not assembly time.
+Rust flat probes succeed, but `.long items[1].entry` in Hunk output rejects as
+symbolic. The separate ignored Hunk regression requires payload address 3 and
+one code relocation at offset 4; run it explicitly to reproduce the current
+failure. No positive native labeled/indexed coverage or performance gain is claimed.
+
+This exposes an architecture decision before implementation. Rust currently
+reconstructs an iteration scope/member name in `eval_repeat_member_index`, then
+returns an integer without address provenance. Native EXVM handles indexing but
+does not yet implement member evaluation. Extending only that native shortcut
+would reproduce the reference's separation between numeric values and address
+identity, rather than resolving it.
+
+Recommended sequence: represent iteration results through shared typed values,
+then extend native replay. An addressable iteration record should carry a default
+scalar address and numeric member identities; existing `IndexValue`/`GetMember`
+operations can select it without parsing runtime strings. Scalar projection and
+the fixup bridge must retain section identity. Coordinate Rust value construction,
+shared evaluator and native offset-based descriptors under the latest contract;
+do not add legacy executors or native version dispatch. This proposal is not an
+implemented format. A smaller address-list-only native checkpoint remains an
+option while indexed members/provenance follow separately; the split is pending
+discussion with Erik.
+
+This is a characterization checkpoint only. Rustfmt, workflow links, native test
+ownership and fresh-run proof guards pass. Production code/packages, selected
+native image and the previous full self-host/A6000 bundle are unchanged.
+
 ### Compound-value checkpoints
 
 The first checkpoint extends the native EXVM backend's shared grammar actions

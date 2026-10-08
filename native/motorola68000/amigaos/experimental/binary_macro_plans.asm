@@ -10,6 +10,9 @@
 ROW_BYTES = 32
 HEADER_BYTES = 12
 MAX_ROWS = 64
+RECIPE_READY = 0
+RECIPE_ABSENT = 1
+RECIPE_INVALID = 2
 STATE_BYTES = memory.Block.Used+4
 Frame	.struct
 Arena	.long ?
@@ -26,6 +29,10 @@ Plan	.struct
 Count	.long ?
 Bytes	.long ?
 Recipes	.long ?  ; optional arena offset to count + VM fragment rows
+	.endstruct
+RecipeSet	.struct
+Count	.long ?
+Rows	.byte ?
 	.endstruct
 Row	.struct
 Kind	.word ?
@@ -498,6 +505,78 @@ done
 	tst.l d0
 	rts
 	.bend  ; resolve
+; A0=arena,D1=handle. D0/CCR=RECIPE_READY/ABSENT/INVALID.
+; On success A1=bounded recipe rows,D1=count,D2=owned spelling base.
+; Other registers preserved; no pointer survives the arena's next mutation.
+recipeView	.block
+	movem.l d3-d5/a2-a3, -(sp)
+	bsr.w resolve
+	bne.w invalid
+	cmpi.w #abi.PRVM_RESULT_MACRO_LINE, HEADER_BYTES+Row.Kind(a1)
+	bne.w invalid
+	move.l Plan.Recipes(a1), d0
+	beq.w absent
+	move.l Plan.Count(a1), d3
+	lsl.l #5, d3
+	addi.l #HEADER_BYTES, d3
+	add.l d1, d3
+	subq.l #1, d3
+	cmp.l d3, d0
+	blo.w invalid
+	move.l d0, d4
+	addi.l #RecipeSet.Rows, d4
+	bcs.w invalid
+	cmp.l Plan.Bytes(a1), d4
+	bhi.w invalid
+	movea.l memory.Block.Pointer(a0), a2
+	adda.l d0, a2
+	move.l RecipeSet.Count(a2), d1
+	cmpi.l #MAX_ROWS, d1
+	bhi.w invalid
+	move.l d1, d5
+	lsl.l #5, d5
+	add.l d4, d5
+	bcs.w invalid
+	cmp.l Plan.Bytes(a1), d5
+	bhi.w invalid
+	move.l HEADER_BYTES+Row.SpellingStart(a1), d2
+	cmp.l d5, d2
+	blo.w invalid
+	move.l HEADER_BYTES+Row.SpellingEnd(a1), d3
+	cmp.l d2, d3
+	blo.w invalid
+	cmp.l Plan.Bytes(a1), d3
+	bhi.w invalid
+	lea RecipeSet.Rows(a2), a1
+	movea.l a1, a3
+	move.l d1, d4
+row
+	tst.l d4
+	beq.w ready
+	move.l Row.SpellingStart(a3), d5
+	cmp.l d2, d5
+	blo.w invalid
+	move.l Row.SpellingEnd(a3), d0
+	cmp.l d5, d0
+	bls.w invalid
+	cmp.l d3, d0
+	bhi.w invalid
+	adda.w #ROW_BYTES, a3
+	subq.l #1, d4
+	bra.w row
+ready
+	moveq #RECIPE_READY, d0
+	bra.w done
+absent
+	moveq #RECIPE_ABSENT, d0
+	bra.w done
+invalid
+	moveq #RECIPE_INVALID, d0
+done
+	movem.l (sp)+, d3-d5/a2-a3
+	tst.l d0
+	rts
+	.bend  ; recipeView
 	.priv
 ; Normalize VM-selected fragment spans into the same owned spelling region.
 ; A4=arena,A6=initial frame,D2=spelling offset,D3=plan offset. D0=status;

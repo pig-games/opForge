@@ -7,6 +7,9 @@
 	.pub
 MAGIC = $42435031; BCP1, latest capture contract
 TOKEN_LIMIT = 64
+LINE_READY = 0
+LINE_ABSENT = 1
+LINE_INVALID = 2
 Frame	.struct
 Arena	.long ?
 Tokens	.long ?

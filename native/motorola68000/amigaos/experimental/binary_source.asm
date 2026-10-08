@@ -60,7 +60,7 @@ NameDirective	.word ?  ; package ID whose first operand uses the binder; 0 disab
 WidthDirective	.word ?  ; package ID whose first comma-separated operand is a width; 0 disables
 PackedMap	.long ?  ; optional Count+1 u16 packed offsets
 DataWidthDirective	.word ?  ; second configured width operand directive
-HeadToken	.word ?  ; physical TKVM index selected by the package PRVM policy
+HeadToken	.word ?  ; physical head selected by PRVM; Count means values with no head
 MemberBinder	.long ?  ; optional contextual package-member binding callback
 StatePlan	.long ?  ; optional package state plan for first-operand name binding
 	.endstruct
@@ -85,13 +85,14 @@ Length	.long ?
 ; NameDirective is a package-owned directive ID, or zero to disable numeric-name
 ; operands. Its first operand uses the same binder as identifier spellings.
 ; Result: [u8(total length-1), u8(flags), u16 source line], followed by
-; Binder input D2 is 1 for the first name token, 2 for a dotted
+; Binder input D2 is 1 for the first name when a head is selected, 2 for a dotted
 ; statement head, BIND_ROLE_INLINE_HEAD for a head after a leading label,
 ; BIND_ROLE_WIDTH for the first comma-separated WidthDirective operand,
 ; BIND_ROLE_PACKAGE_NAME for the first NameDirective operand (including quoted names),
 ; BIND_ROLE_MEMBER_NAME after a dot outside the statement head,
 ; BIND_ROLE_CALL_NAME for that member when followed by an open parenthesis,
-; otherwise 0. Width names retain package identity; value operands bind normally.
+; otherwise 0. Count as HeadToken binds the first name as a value and excludes
+; statement operand roles. Width names retain package identity.
 ; The callback returns the existing D2 qualifier.
 ; Optional MemberBinder receives A0=Frame,A1=current token. It returns D0=0
 ; with D1=base ID,D2=field ID,D3=base qualifier, 1 for an ordinary name or 2
@@ -110,6 +111,15 @@ Length	.long ?
 ; Returns D0=status, D1=length; Frame.Used equals D1. Preserves other registers.
 ; CCR reflects D0. On failure Used/D1 are zero, and any written prefix is zero
 ; (an invalid record length). Payload bytes and binder side effects may remain.
+; Write an already-selected operand list. Count is the no-head sentinel;
+; members keep their numeric roles, and the first bare name is a value.
+; Same ABI/status/preservation as writeLine; updates Frame.HeadToken.
+writeValues	.block
+	move.l Frame.Count(a0), d0
+	move.w d0, Frame.HeadToken(a0)
+	bra.w writeLine
+	.bend  ; writeValues
+
 writeLine	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a5
@@ -297,6 +307,8 @@ sizeReady
 	beq.w directiveName
 	bra.w memberName
 firstName
+	cmp.w Frame.HeadToken(a5), d7
+	beq.w ordinaryRole
 	moveq #1, d2
 	bra.w bindName
 inlineHead
@@ -461,6 +473,9 @@ done
 ; A3=output cursor,A5=Frame. D0=0 absent,1 CPU,2 state; other registers preserved.
 packageNameOperand	.block
 	movem.l d1-d3/a1, -(sp)
+	move.l Frame.Count(a5), d1
+	cmp.w Frame.HeadToken(a5), d1
+	beq.w absent
 	moveq #0, d2
 	move.w Frame.NameDirective(a5), d2
 	bsr.w nameOperand
@@ -498,6 +513,9 @@ done
 ; Recognize the emitted statement prefix, including an optional leading label.
 nameOperand	.block
 	movem.l d1-d2/a1, -(sp)
+	move.l Frame.Count(a5), d1
+	cmp.w Frame.HeadToken(a5), d1
+	beq.w no
 	tst.w d2
 	beq.w no
 	movea.l Frame.Output(a5), a1

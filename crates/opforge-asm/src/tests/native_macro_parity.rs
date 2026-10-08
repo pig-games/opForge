@@ -23,8 +23,10 @@ const POSITIVE: &[Case] = &[
     Case {
         name: "positional-sigil-boundaries",
         // Positional sigils consume one digit: @0 is literal, @10 is @1 + "0".
-        body: "BOUNDARY .macro first\n.byte \"@0/@10/.10\"\n.byte @10,.10\n.endmacro\n.BOUNDARY 7\n",
-        expected: b"@0/70/70\x46\x46",
+        // Keep sigils on separate lines too: one form must not select the
+        // other's fragment plan. Ordinary numeric lines must stay packed.
+        body: "BOUNDARY .macro first\n.byte \"@0/@10/.10\"\n.byte @10\n.byte .10\n.byte @10,.10\n.byte 100\n.endmacro\n.BOUNDARY 7\n",
+        expected: b"@0/70/70\x46\x46\x46\x46\x64",
     },
     Case {
         name: "namespace-shadow-and-fallback",
@@ -64,8 +66,8 @@ const POSITIVE: &[Case] = &[
     },
     Case {
         name: "zero-parameter-segment-counted-loop",
-        body: "COUNTED .segment\n.for 2\n.byte 7\n.endfor\n.ends\n.COUNTED\n",
-        expected: &[7, 7],
+        body: "COUNTED .segment\n.for 2\n.byte 7\n.endfor\n.byte 100\n.ends\n.COUNTED\n",
+        expected: &[7, 7, 100],
     },
     Case {
         name: "macro-loop-condition-composition",

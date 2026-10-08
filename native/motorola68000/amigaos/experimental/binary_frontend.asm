@@ -67,6 +67,9 @@ PREP_DATA = 7
 PREP_EXPRESSION = 8
 PREP_WRITER = 9
 PREP_TEMPLATE = 10
+PREP_FRAGMENT_BIND = 11
+PREP_FRAGMENT_SUFFIX = 12
+PREP_FRAGMENT_APPEND = 13
 ; Last attempted preparation boundary, observed only by the existing gated
 ; failure/progress macros. It has no release storage or runtime updates.
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -604,26 +607,22 @@ identityMap
 	bne.w bad
 	move.l d5, capture.Frame.HeaderStatus(a4)
 	move.l d6, capture.Frame.HeaderHandle(a4)
-	; Whole-line spelling plans are needed only for template string consumers.
+	; Capture candidate plans for the same VM-token predicate used on replay.
 	moveq #1, d5
 	moveq #0, d6
 	lea TOKENS(a6), a0
 	move.l capture.Frame.Count(a4), d0
-findString
+	bsr.w bodyFragmentCandidate
 	tst.l d0
 	beq.w lineReady
-	cmpi.w #tokenizer.TK_KIND_STRING, (a0)
-	beq.w stringCandidate
-	adda.w #20, a0
-	subq.l #1, d0
-	bra.w findString
-stringCandidate
+	move.l d0, d2  ; candidate role survives until fragment selection
+lineCandidate
 	moveq #3, d4
 	bsr.w captureCandidate
 	bne.w bad
 	tst.l d7
 	beq.w lineReady
-	move.l d7, d5  ; selected string-template replay requires valid recipes
+	moveq #capture.LINE_INVALID, d5  ; retained fragment plans require valid recipes
 lineReady
 	move.l d5, capture.Frame.LineStatus(a4)
 	move.l d6, capture.Frame.LineHandle(a4)
@@ -648,7 +647,7 @@ captureCandidate	.block
 	moveq #0, d6
 	moveq #0, d7
 	cmpi.l #3, d4
-	beq.w stringRows
+	beq.w lineRows
 	bsr.w sourceDescriptors
 	move.l d0, d5
 	bne.w candidateReady
@@ -656,7 +655,7 @@ captureCandidate	.block
 	bne.w rowsReady
 	moveq #1, d5  ; successful grammar no-match has no candidate plan
 	bra.w candidateReady
-stringRows
+lineRows
 	lea MACRO_EVENTS(a6), a1
 	movea.l a1, a0
 	moveq #macro_plans.ROW_BYTES/4-1, d0
@@ -685,7 +684,28 @@ rowsReady
 	beq.w createCandidate
 	bsr.w captureFragments
 	move.l d0, d7
+	bne.w failedRecipes
+	cmpi.l #3, d4
+	bne.w createCandidate
+	cmpi.l #FRAGMENT_NUMERIC, d2
+	bne.w createCandidate
+	move.l a0, -(sp)
+	move.l macro_plans.Frame.RecipeCount(a0), d0
+	movea.l macro_plans.Frame.RecipeEvents(a0), a0
+	moveq #0, d1
+	move.l capture.Frame.Count(a4), d2
+	bsr.w numericSuffixOverlap
+	movea.l (sp)+, a0
+	tst.l d0
 	beq.w createCandidate
+	moveq #capture.LINE_ABSENT, d5  ; ordinary numeric lines retain no plan
+	bra.w candidateReady
+failedRecipes
+	cmpi.l #3, d4
+	bne.w discardRecipes
+	moveq #capture.LINE_INVALID, d5
+	bra.w candidateReady
+discardRecipes
 	clr.l macro_plans.Frame.RecipeEvents(a0)
 	clr.l macro_plans.Frame.RecipeCount(a0)
 createCandidate
@@ -750,7 +770,7 @@ lowerTokens	.block
 	.MEMORY_DETAIL_END #1
 	bne.w failed
 	.MEMORY_DETAIL_BEGIN #4
-	bsr.w stringLinePlan
+	bsr.w fragmentLinePlan
 	.MEMORY_DETAIL_END #4
 	bne.w failed
 	movea.l Frame.Output(a5), a0
@@ -995,10 +1015,46 @@ done
 	rts
 	.bend  ; writeTokens
 
-; Capture pre-decoding spelling for ordinary macro/segment body string lines.
+FRAGMENT_NONE = 0
+FRAGMENT_NUMERIC = 1
+FRAGMENT_STRING = 2
+; A0=TKVM rows,D0=count. D0/CCR=body fragment candidate role; other regs kept.
+; Numeric candidates require positional span overlap later; token kinds/lengths
+; come from TKVM, and no placeholder spelling is inspected here.
+bodyFragmentCandidate	.block
+	movem.l d1-d2/a0, -(sp)
+	move.l d0, d1
+	moveq #FRAGMENT_NONE, d2
+candidate
+	tst.l d1
+	beq.w done
+	cmpi.w #tokenizer.TK_KIND_STRING, writer.Token.Kind(a0)
+	beq.w stringCandidate
+	cmpi.w #tokenizer.TK_KIND_NUMBER, writer.Token.Kind(a0)
+	bne.w next
+	cmpi.l #1, writer.Token.Length(a0)
+	bls.w next
+	moveq #FRAGMENT_NUMERIC, d2
+next
+	adda.w #tokenizer.TOKEN_RECORD_SIZE, a0
+	subq.l #1, d1
+	bra.w candidate
+stringCandidate
+	moveq #FRAGMENT_STRING, d2
+done
+	move.l d2, d0
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	rts
+	.bend  ; bodyFragmentCandidate
+
+SUFFIX_MATCHED = 0
+SUFFIX_ABSENT = 1
+SUFFIX_INVALID = 2
+; Capture VM-selected body strings and numeric-token substitution suffixes.
 ; Known nested calls keep their existing call recipes until that consumer moves.
 ; Token kind is a VM result; no placeholder or quote grammar is inspected here.
-stringLinePlan	.block
+fragmentLinePlan	.block
 	movem.l d1-d7/a0-a4, -(sp)
 	movea.l a6, a2
 	adda.l #TEMPLATE_STATE, a2
@@ -1014,23 +1070,31 @@ stringLinePlan	.block
 	jsr templates.role
 	tst.l d0
 	bne.w ready
-	lea TOKENS(a6), a1
-	move.l LINE_FRAME+writer.Frame.Count(a6), d2
-findString
-	tst.l d2
+	lea TOKENS(a6), a0
+	move.l LINE_FRAME+writer.Frame.Count(a6), d0
+	bsr.w bodyFragmentCandidate
+	tst.l d0
 	beq.w ready
-	cmpi.w #tokenizer.TK_KIND_STRING, (a1)
+	moveq #0, d7
+	cmpi.l #FRAGMENT_NUMERIC, d0
+	bne.w capture
+	moveq #1, d7  ; numeric candidates still require recipe overlap proof
+	move.l CAPTURE_RECORD(a6), d0
 	beq.w capture
-	adda.w #20, a1
-	subq.l #1, d2
-	bra.w findString
+	movea.l d0, a0
+	cmpi.l #capture.LINE_ABSENT, capture.Record.LineStatus(a0)
+	bne.w capture
+	tst.l capture.Record.LineHandle(a0)
+	bne.w bad
+	bra.w ready  ; capture proved there was no numeric positional suffix
 capture
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_BIND
 	tst.l CAPTURE_RECORD(a6)
 	beq.w physicalCapture
-	moveq #0, d4  ; retained whole-line string recipe
+	moveq #0, d4  ; retained whole-line fragment recipe
 	bsr.w bindCapturedPlan
 	bne.w bad
-	bra.w appendCaptured
+	bra.w selectedBodyPlan
 physicalCapture
 	.MEMORY_TEMPLATE_WORK #11, #1
 	lea MACRO_EVENTS(a6), a1
@@ -1056,7 +1120,17 @@ clearRow
 	bne.w bad
 	jsr macro_plans.create
 	bne.w bad
+selectedBodyPlan
+	tst.l d7
+	beq.w appendCaptured
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_SUFFIX
+	bsr.w numericSuffixPlan
+	cmpi.l #SUFFIX_ABSENT, d0
+	beq.w ready
+	tst.l d0
+	bne.w bad
 appendCaptured
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_APPEND
 	lea LINE_FRAME(a6), a0
 	jsr writer.appendPlan
 	bne.w bad
@@ -1073,7 +1147,85 @@ done
 	movem.l (sp)+, d1-d7/a0-a4
 	tst.l d0
 	rts
-	.bend  ; stringLinePlan
+	.bend  ; fragmentLinePlan
+
+; D1=owned whole-line plan,A6=scratch. D0/CCR=0 when a PRVM positional
+; substitution ends inside a TKVM numeric token,1 absent,2 invalid plan.
+; Other registers preserved; malformed owned plans never select packed fallback.
+; Lexical concatenation is selected by VM spans, never marker spelling.
+numericSuffixPlan	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	lea MACRO_PLANS(a6), a0
+	jsr macro_plans.recipeView
+	cmpi.l #macro_plans.RECIPE_ABSENT, d0
+	beq.w absent
+	tst.l d0
+	bne.w invalid
+	movea.l a1, a0
+	move.l d1, d0
+	move.l d2, d1
+	move.l LINE_FRAME+writer.Frame.Count(a6), d2
+	bsr.w numericSuffixOverlap
+	bra.w done
+absent
+	moveq #SUFFIX_ABSENT, d0
+	bra.w done
+invalid
+	moveq #SUFFIX_INVALID, d0
+done
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; numericSuffixPlan
+
+; A0=validated PRVM recipes,D0=count,D1=spelling base,D2=TKVM count,
+; A6=scratch. D0/CCR=SUFFIX_MATCHED/ABSENT; other regs preserved.
+; Used before publication and after binding; only VM spans select concatenation.
+numericSuffixOverlap	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	move.l d0, d7
+	move.l d1, d6
+	movea.l a0, a2
+recipe
+	tst.l d7
+	beq.w absent
+	cmpi.w #parser_abi.PRVM_RESULT_MACRO_POSITIONAL, macro_plans.Row.Kind(a2)
+	bne.w nextRecipe
+	move.l macro_plans.Row.SpellingEnd(a2), d5
+	sub.l d6, d5
+	lea TOKENS(a6), a3
+	move.l d2, d4
+numericToken
+	tst.l d4
+	beq.w nextRecipe
+	cmpi.w #tokenizer.TK_KIND_NUMBER, writer.Token.Kind(a3)
+	bne.w nextNumericToken
+	move.l writer.Token.Start(a3), d0
+	subq.l #1, d0  ; TKVM columns are one-based, recipe spans zero-based
+	cmp.l d0, d5
+	bls.w nextNumericToken
+	move.l writer.Token.End(a3), d0
+	subq.l #1, d0
+	cmp.l d0, d5
+	blo.w matched
+nextNumericToken
+	adda.w #tokenizer.TOKEN_RECORD_SIZE, a3
+	subq.l #1, d4
+	bra.w numericToken
+nextRecipe
+	adda.w #macro_plans.ROW_BYTES, a2
+	subq.l #1, d7
+	bra.w recipe
+matched
+	moveq #SUFFIX_MATCHED, d0
+	bra.w done
+absent
+	moveq #SUFFIX_ABSENT, d0
+done
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; numericSuffixOverlap
 
 ; A0=session,A1=output,A2=definition,A4=invocation,D1=owned recipe handle.
 ; Bind fragments, then let TKVM alone materialize and lex their logical stream.
@@ -1588,7 +1740,8 @@ noStatePlan
 	clr.w writer.Frame.HeadToken(a0)
 	move.l #bindMember, writer.Frame.MemberBinder(a0)
 	clr.l writer.Frame.PackedMap(a0)
-	bsr.w writeWithHeadPolicy
+	; PRVM already selected this operand list; there is no statement head.
+	jsr writer.writeValues
 	bne.w generatedRelexBad
 	move.l d1, d2
 	subq.l #4, d2

@@ -253,14 +253,55 @@ the same package-owned loop classifier: captured loop controls retain their
 packed records instead of acquiring a macro-call recipe that relexes only their
 arguments. A fresh 68020 segment probe matches Rust for both contextual `in` and
 iterator body values. Reduced direct-macro and counted-macro compositions also
-match Rust. A nested macro call within that counted macro still fails.
+match Rust. Nested calls now retain the first argument's iterator identity:
+argument-list replay uses an explicit no-statement-head writer policy, preserving
+ordinary value binding while normal statements retain their PRVM-selected heads.
 
 The expanded macro matrix has twelve positive and nine negative Rust-oracled
-cases on both packages. Full native qualification is pending: the combined
-positive run additionally exposes numeric `@10`/`.10` substitution, where Rust
-consumes the first digit and retains the trailing zero. These are known failures
-in this recovery checkpoint, not completed macro parity. Scoped loops and the
-full macro/reachability matrix remain open.
+cases on both packages. Twenty-four fresh native runs now pass: the combined
+twelve-scenario positive workload, public/private qualified import cases and all
+nine invalid cases on each package. Independent numeric `@10`/`.10` cases also
+pass on both: the shared fragment grammar consumes the first digit and retains
+the trailing zero. Capture and replay share the same VM token/span selection;
+ordinary numeric macro and segment lines retain no whole-line fragment plan.
+Bounds validation stays with the owned recipe arena. The qualified release image
+with both packages is 613,856 bytes; this is focused macro coverage, not complete
+macro parity or a BS34 full self-host result. Scoped loops and the wider
+macro/reachability/effects matrix remain open.
+
+The following repairs have separate measurements on the same unchanged control
+and release profile, alternating three saved states twice with exact Rust output
+and no concurrent host builds/tests:
+
+| State | Samples (seconds) | Mean | Change from preceding state | Single-package Hunk / reservations |
+| --- | --- | --- | --- | --- |
+| `.while` implementation | 25.940655667 / 25.947264458 | 25.943960063 | reference for following repairs | 595,848 / 615,412 bytes |
+| Record-boundary / captured-loop checkpoint | 25.939650250 / 25.928285042 | 25.933967646 | −0.010 s (−0.04%; effectively unchanged) | 596,020 / 615,576 bytes |
+| Nested argument / numeric suffix repair | 26.208778583 / 26.192390459 | 26.200584521 | +0.267 s (+1.03%) | 596,652 / 616,200 bytes |
+
+The last repair adds 632 image bytes and 624 linked reservation bytes. These
+measurements isolate the two following checkpoints; they do not replace the
+earlier BS33→`.while` comparison or claim a full-source timing or memory result.
+
+Complete the remaining coverage by responsibility rather than multiplying every
+macro/loop combination:
+
+- Scoped `.bfor`/`.bwhile` need per-iteration local symbol ownership, then labeled
+  iteration addresses and indexed members. Forward local constants and local
+  mutable availability must retain source-order semantics.
+- Mapped `.while` needs source-order layout observation before output filtering;
+  keep the explicit modes 2/4 rejection until that scheduler exists.
+- Qualify imported selection/aliasing and expansion-produced file, state and
+  output effects with consumed Rust-oracled fixtures. Existing `.incbin` macro
+  fixtures are separate evidence; they do not prove expanded `.include` or
+  `.output` behavior. Selected macro renaming also needs a usable Rust oracle.
+- Patterned `.statement` expansion is a separate shared-language capability,
+  absent from this compact macro matrix. Preserve Rust's rejection of nested
+  macro/segment/statement definitions.
+
+The matrix's fixture count is coverage intent, not proof of native completion.
+Keep each capability's latest fresh native result and remaining restrictions
+explicit while these slices progress.
 
 ### Compound-value checkpoints
 

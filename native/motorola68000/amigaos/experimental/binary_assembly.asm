@@ -788,6 +788,7 @@ directive
 	addq.l #1, a0
 	bsr.w name
 	bne.w bad
+	.ASSEMBLY_FAILURE_STAGE FailureName, d0
 	tst.l d1
 	bne.w bad
 	cmp.w pkg.Header.CpuDirective(a3), d0

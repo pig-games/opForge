@@ -313,6 +313,74 @@ MEMORY_PROGRESS_RECORDS	.macro dosbase, phase, sourceValue, lineValue, base, use
 .endif
 .endmacro
 
+; Read a bounded prepared-record prefix at an assembly failure. The frame
+; fields are supplied by its owner; validate the active extent, then copy at
+; most 24 bytes to a zeroed stack prefix. No following record is observed.
+; Preserves registers/CCR and stack depth; release emits no code or storage.
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+AssemblyRecordPrefix	.struct
+First	.long ?
+Second	.long ?
+Third	.long ?
+Fourth	.long ?
+Fifth	.long ?
+Sixth	.long ?
+	.endstruct
+ASSEMBLY_PREFIX_BYTES = AssemblyRecordPrefix.Sixth+4
+ASSEMBLY_PREFIX_LONGS = ASSEMBLY_PREFIX_BYTES/4
+.endif
+.endif
+.endif
+MEMORY_ASSEMBLY_RECORD	.macro dosbase, phase, frame, recordsOffset, offsetOffset, bytesOffset
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0-d3/a0-a1, -(sp)
+	suba.w #ASSEMBLY_PREFIX_BYTES, sp
+	movea.l sp, a1
+	moveq #ASSEMBLY_PREFIX_LONGS-1, d0
+clearPrefix
+	clr.l (a1)+
+	dbra d0, clearPrefix
+	lea .frame, a1
+	move.l .offsetOffset(a1), d0
+	move.l .bytesOffset(a1), d1
+	cmp.l d1, d0
+	bhs.w done
+	sub.l d0, d1
+	movea.l .recordsOffset(a1), a0
+	move.l a0, d2
+	beq.w done
+	adda.l d0, a0
+	moveq #0, d3
+	move.b (a0), d3
+	addq.l #1, d3
+	cmp.l d1, d3
+	bhi.w done
+	cmpi.l #ASSEMBLY_PREFIX_BYTES, d3
+	bls.w bounded
+	moveq #ASSEMBLY_PREFIX_BYTES, d3
+bounded
+	movea.l sp, a1
+copyPrefix
+	move.b (a0)+, (a1)+
+	subq.l #1, d3
+	bne.w copyPrefix
+	movea.l sp, a0
+	.MEMORY_PROGRESS_BLOCK .dosbase, .phase, (a0), AssemblyRecordPrefix.First, AssemblyRecordPrefix.Second, AssemblyRecordPrefix.Third
+	.MEMORY_PROGRESS_BLOCK .dosbase, .phase+1, (a0), AssemblyRecordPrefix.Fourth, AssemblyRecordPrefix.Fifth, AssemblyRecordPrefix.Sixth
+done
+	adda.w #ASSEMBLY_PREFIX_BYTES, sp
+	movem.l (sp)+, d0-d3/a0-a1
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
 ; Identify the last assembly operation when optional progress diagnostics report
 ; a failure. This preserves registers and CCR and emits nothing in release builds.
 ASSEMBLY_FAILURE_STAGE	.macro slot, stage

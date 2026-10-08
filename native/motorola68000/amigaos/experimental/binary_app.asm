@@ -75,6 +75,7 @@ PROGRESS_ASSEMBLY_SECTIONS = 28
 PROGRESS_ASSEMBLY_SELECTION = 29
 PROGRESS_PACKAGE = 30
 PROGRESS_RECORD_OUTPUT = 31
+PROGRESS_ASSEMBLY_RECORD_HEAD = 32
 PROGRESS_ASSEMBLY_WORK = 300
 PROGRESS_PREPARATION_FAILURE = 301
 STEP_MATERIALIZE = 3
@@ -343,6 +344,7 @@ reportFailure	.block
 	bsr.w locateFailure
 	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_FAILURE, assembly.FailureStage, SourceOrdinal, SourceLine
 	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_NAME, assembly.FailureName, #0, #0
+	.MEMORY_ASSEMBLY_RECORD DosBase, #PROGRESS_ASSEMBLY_RECORD_HEAD, Work, assembly.Frame.Records, assembly.Frame.RecordOffset, assembly.Frame.RecordBytes
 	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_POSITION, assembly.Position, AssemblyPosition.Pass, AssemblyPosition.Sweep, AssemblyPosition.Section
 	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_RECORDS, Work, assembly.Frame.RecordOffset, assembly.Frame.RecordBytes, assembly.Frame.Used
 	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_SECTIONS, assembly.Position, AssemblyPosition.Mode, AssemblyPosition.Count, AssemblyPosition.Pass

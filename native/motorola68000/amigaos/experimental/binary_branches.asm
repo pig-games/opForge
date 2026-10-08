@@ -5,6 +5,8 @@
 	.use experimental.amigaos.binary_package as package
 	.use prvm.amigaos.packed_branch as parser
 	.use opasm.amigaos.binary_expression as expression
+	.use experimental.amigaos.binary_repetition as loops
+	.use experimental.amigaos.binary_branch_trace as trace
 	.include "memory_telemetry.i"
 	.pub
 LIMIT = 16
@@ -23,10 +25,57 @@ SLOT_SHIFT = 2
 State	.struct
 Depth	.word ?
 Active	.word ?
+Strict	.word ?
+Deferred	.word ?
+Loops	.long ?
+Records	.long ?
+Trace	.res trace.STATE_BYTES
 Slots	.res LIMIT*SLOT_BYTES
 	.endstruct
 STATE_BYTES = State.Slots+LIMIT*SLOT_BYTES
 	.section code, kind=code
+; A0=state,A1=loop state,A2=records,D0=strict guard evaluation (0/1).
+; Begin a complete sizing/emission pass; per-sweep branch stacks reset separately.
+; Registers preserved; CCR unspecified. Trace storage is enabled only after
+; an initial sizing guard encounters an unavailable scoped value.
+beginPass	.block
+	move.w d0, State.Strict(a0)
+	clr.w State.Deferred(a0)
+	move.l a1, State.Loops(a0)
+	move.l a2, State.Records(a0)
+	move.l a0, -(sp)
+	lea State.Trace(a0), a0
+	jsr trace.begin
+	movea.l (sp)+, a0
+	rts
+	.bend  ; beginPass
+
+; A0=state. D0/CCR=nonzero if bounded sizing replay is still needed.
+; Other registers preserved; final emission requires a stable decision trace.
+endPass	.block
+	move.l a0, -(sp)
+	lea State.Trace(a0), a0
+	jsr trace.end
+	movea.l (sp)+, a0
+	tst.w State.Deferred(a0)
+	beq.w done
+	moveq #1, d0
+done
+	tst.l d0
+	rts
+	.bend  ; endPass
+
+; A0=state. Release sizing observations on every exit; registers preserved.
+; CCR reflects the caller's D0 after cleanup.
+release	.block
+	move.l a0, -(sp)
+	lea State.Trace(a0), a0
+	jsr trace.release
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; release
+
 ; A0=state. Start an independent source sweep. D0/CCR=status; others kept.
 begin	.block
 	clr.w State.Depth(a0)
@@ -163,8 +212,25 @@ evaluate	.block
 	cmpa.l a1, a0
 	bne.w failed
 	tst.l d2
+	beq.w available
+	tst.w State.Strict(a6)
 	bne.w failed
+	movea.l State.Loops(a6), a0
+	jsr loops.scoped
+	bne.w failed
+	move.w #1, State.Deferred(a6)
+	move.l #1, State.Trace+trace.State.Enabled(a6)
+	.MEMORY_COUNTER_INC DeferredEvaluations
+available
 	or.l package.Context.High(a2), d1
+	tst.l State.Trace+trace.State.Enabled(a6)
+	beq.w evaluated
+	move.l a5, d0
+	sub.l State.Records(a6), d0
+	lea State.Trace(a6), a0
+	jsr trace.observe
+	bne.w failed
+evaluated
 	moveq #0, d0
 	bra.w done
 failed
@@ -180,6 +246,7 @@ done
 	.pub
 	.section bss, kind=bss
 Evaluations	.res long, 1
+DeferredEvaluations	.res long, 1
 	.endsection
 .endif
 .endif

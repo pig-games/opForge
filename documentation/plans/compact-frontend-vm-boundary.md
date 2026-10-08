@@ -1,9 +1,9 @@
 # Compact frontend: VM boundary correction
 
 Status: the preceding BS35 source has complete native self-host qualification.
-The current scoped conditional repair has focused Rust/native proof; its full
-self-host has not been rerun. Mapped conditional repetition and
-remaining loop/macro expansion effects are still open.
+The current scoped conditional and retained-guard repairs have focused
+Rust/native proof; their full self-host has not been rerun. Mapped conditional
+repetition and remaining loop/macro expansion effects are still open.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -47,6 +47,13 @@ activates local immutable roots when shared PRVM replay selects their branch.
 Unconditional forward constants retain the existing eager dependency walk;
 inactive candidates are not evaluated. This focused extension does not complete
 loop/macro parity or replace the identified full self-host proof below.
+
+The subsequent [retained-guard checkpoint](native-runtime-reset.md#scoped-retained-guard-sizing-bs35-focused)
+adds bounded sizing replay for anonymous counted `.bfor` conditions that depend
+on later local mutable values. It reuses retained iteration cells and shared
+EXVM evaluation, then checks strict guard and loop traces before final emission.
+New loop paths and guards without an executed initializer still reject. General
+forward-alias/layout convergence remains outside this focused coverage.
 
 ## Current breadth parity checkpoint
 

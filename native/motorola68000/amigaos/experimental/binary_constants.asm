@@ -16,6 +16,19 @@ LAYOUT = 1
 	.section code, kind=code
 	.pub
 
+; Same inputs/outputs as execute. Strict sizing refreshes a retained statement
+; value; preparation has already checked unique declaration ownership. Preserve
+; Context.Pass for sizing/output consumers and never mutate source record flags.
+replay	.block
+	move.w pkg.Context.Pass(a2), -(sp)
+	move.w #2, pkg.Context.Pass(a2)
+	ori.w #source.FLAG_MUTABLE_SNAPSHOT, d0
+	bsr.w execute
+	move.w (sp)+, pkg.Context.Pass(a2)
+	tst.l d0
+	rts
+	.bend  ; replay
+
 ; A0=name+constant marker+compiled scalar,A1=end,A2=Context,D0=record flags.
 ; D0/CCR=status; other registers preserved. Captures value and source section
 ; without retaining the expression or reevaluating aliases at their use sites.

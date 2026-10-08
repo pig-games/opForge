@@ -10,7 +10,8 @@ identified source checkpoint, not complete language/family parity, physical A600
 timing or a 2 MiB qualification. Full BS35 peak allocation is not measured. Its qualified
 release bundle is `/tmp/opforge-selfhost-bs35-scoped-release-74m`, matching the
 current BS35 A6000 helper; only the m68020 package is embedded. The newer scoped
-conditional repair has focused parity; its full self-host has not been rerun.
+conditional and retained-guard repairs have focused parity; their full self-host
+has not been rerun.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -507,6 +508,73 @@ iterable `.bfor`, `.bwhile`, mapped replay and remaining macro/file effects rema
 open. A branch-label probe found a separate Rust 6502 layout discrepancy: varying
 branch label extents leave stale `tail-head` differences; 68020 matched. It is not
 used as a positive native parity oracle or repaired by conditional scalar roots.
+
+### Scoped retained guard sizing (BS35, focused)
+
+Hypothesis: anonymous counted `.bfor` can evaluate a condition against the final
+mutable value retained for its own iteration, including a declaration later in
+the body, without reparsing text or adding a native condition grammar. The
+preceding `7d102e18` release image rejects the minimal forward-local guard; this
+is new coverage, not a speedup claim for an already supported input.
+
+Initial sizing keeps EXVM's provisional result for an unavailable scoped guard.
+That guard enables numeric decision observations, then triggers bounded sizing
+replay using the existing per-iteration retained cells and strict loop invocation
+trace. Strict replay requires resolved guard values and refreshes statement-time
+constants and label positions before output allocation. Final emission keeps
+the existing value/layout checks and additionally requires stable guard decisions.
+The eight-pass sizing bound rejects nonconvergence; newly introduced loop paths
+or selected guards whose initializer was never executed still reject, matching
+the current Rust contract. This does not establish general forward-alias or
+instruction-size convergence.
+
+Guard decisions live in a separate transient arena as numeric source offsets and
+truth values. Ordinary sources allocate no decision arena. Shared PRVM classifies
+branches and shared EXVM evaluates expressions; BS35 and package bytes are
+unchanged. Gated progress phase 311 reports extra sizing passes and deferred guard
+evaluations; release builds omit those counters and reporting.
+
+Thirty-six combined scenarios match live Rust on both m68020 and m6502 packages
+(4,869/4,868 source bytes; 7.344746458/6.835717875s). Added cases cover final
+mutation rather than initializer values, owner-specific retained cells, elseif
+selection, nested scopes, inactive bodies and short-circuit guards. Four new
+negative cases reject on each package (eight fresh runs): unavailable guard
+values, active missing output values, new loop paths and a newly selected guard
+without an executed initializer. Whole-Hunk forward-guard output and the existing
+nested readonly-alias relocation control match live Rust on both packages.
+
+The gated diagnostic m68020 run of all 36 scenarios completes in 7.858454542s.
+Phase 311 reports two extra sizing passes and 28 deferred guard evaluations;
+phase 310 reports 228 selected scoped branches and 120 activated scalar roots.
+MEMD reports 638,720 bytes peak owned allocation, balanced 1,514,296-byte
+allocation/free totals and zero terminal owned bytes. This larger fixture differs
+from the previous diagnostic input, so the peak is not an isolated memory delta
+or a full self-host memory measurement.
+
+The release two-package image is 620,316 bytes (`fnv1a64:6ae67e84fc5ccd54`),
+792 bytes larger than `7d102e18`; linked static reservation is 639,800 bytes
+(+716). These are image/reservation sizes, not peak memory.
+
+The unchanged 15,474-byte `aligned-control` (`fnv1a64:ac05445d958571b5`) ran
+twice per frozen release image, interleaving before/after on FS-UAE 68020/10 MiB
+without concurrent builds or native runs. Before: 26.562611833/26.568962917s,
+mean 26.565787375s. After: 26.563563375/26.617390667s, mean 26.590477021s.
+The observed delta is +0.024689646s (+0.09%); two pairs do not establish a
+significant slowdown. All four runs complete with exact live Rust artifact proof.
+This isolates overhead on existing input; the new forward-guard case fails on
+the baseline and has no successful before timing. Reproduce with
+`native_layout_fs_uae --ignored --nocapture`, `OPFORGE_LAYOUT_CASES=aligned-control`
+and explicit `OPFORGE_LAYOUT_IMAGE` paths. The baseline is
+`fnv1a64:65c7a6e36bd062e7` at `7d102e18`; the candidate fingerprint is above.
+
+Focused Rust oracles pass (eight tests; five native tests ignored by that host
+command). Library Clippy, Rustfmt, native engineering/format guards, compact
+formatting and workflow checks pass. Broader test Clippy was not rerun; its 22
+previous errors in unchanged tests/harness code remain unqualified. No full
+workspace/reference or full self-host qualification is claimed here. The previous
+complete BS35 proof and A6000 bundle
+remain selected. Labeled/indexed and iterable `.bfor`, `.bwhile`, mapped scoped
+replay, general layout convergence and remaining macro/file effects remain open.
 
 ### Compound-value checkpoints
 

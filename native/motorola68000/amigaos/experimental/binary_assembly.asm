@@ -1,4 +1,4 @@
-; Two bounded assembly passes over binary source, with no source-text interface.
+; Bounded sizing and final emission over binary source, with no text interface.
 ; Mapped Hunk layout first measures concrete prefixes in a disposable pass.
 ; @opforge-owner: experimental.amigaos.binary_assembly
 
@@ -63,6 +63,12 @@ Active
 	.res long, 1
 LayoutRounds
 	.res word, 1
+SizingReplay
+	.res word, 1
+SizingRounds
+	.res word, 1
+BranchChanged
+	.res word, 1
 	.align 4
 DataPc	.res long, 1
 DataBytes
@@ -86,6 +92,8 @@ TraversalPasses
 	.res long, 1
 TraversalRecords
 	.res long, 1
+SizingPasses
+	.res long, 1
 	.priv
 .endif
 .endif
@@ -108,14 +116,16 @@ Position
 	.pub
 
 ; A0=Frame. Context values/defined arrays cover Count entries. The caller owns
-; all buffers. Returns D0=0 only for two complete passes; Used=output bytes.
-; Allocate callback: A0=Frame, D0=pass-one output size; returns D0/CCR status,
-; preserves other registers, supplies Frame.Output/Capacity before pass two.
+; all buffers. Returns D0=0 only after stable sizing and checked final emission;
+; Used=output bytes. Unavailable scoped guards enable bounded retained replay.
+; Allocate callback: A0=Frame, D0=stable sizing output bytes; D0/CCR=status,
+; preserves other registers, supplies Frame.Output/Capacity before final emission.
 ; Optional Emitted(A0=Frame,D1=address,D2=buffer offset,D3=bytes) runs only
 ; for nonempty initialized final-pass emissions, before advancing state. It returns D0/CCR
 ; status and preserves other registers. No text/CPU grammar enters the callback.
 ; Other registers preserved; CCR reflects D0. No text/dictionary pointer enters
-; this module. Variable-size convergence and discontiguous origins are unsupported.
+; this module. General variable-size convergence and discontiguous origins remain
+; unsupported.
 assemble	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
@@ -124,9 +134,15 @@ assemble	.block
 	.ASSEMBLY_POSITION_CLEAR Position
 	.MEMORY_COUNTER_CLEAR TraversalPasses
 	.MEMORY_COUNTER_CLEAR TraversalRecords
+	.MEMORY_COUNTER_CLEAR SizingPasses
+	.MEMORY_COUNTER_CLEAR branches.DeferredEvaluations
 	clr.l Frame.Used(a5)
 	clr.w LayoutRounds
+	clr.w SizingReplay
+	clr.w SizingRounds
 	clr.w Frame.Failure(a5)
+	lea BranchState, a0
+	jsr branches.release
 	lea RepeatState, a0
 	jsr repetition.release
 	jsr dependencies.release
@@ -242,8 +258,26 @@ outputReady
 pass
 	lea RepeatState, a0
 	move.l d7, d0
+	tst.w SizingReplay
+	beq.w repetitionPass
+	moveq #2, d0  ; retain iteration cells; compare the same invocation paths
+repetitionPass
 	jsr repetition.beginPass
 	bne.w fail
+	moveq #0, d0
+	cmpi.w #2, d7
+	beq.w strictBranches
+	tst.w SizingReplay
+	beq.w branchPass
+strictBranches
+	moveq #1, d0
+branchPass
+	movem.l a0-a2, -(sp)
+	lea BranchState, a0
+	lea RepeatState, a1
+	movea.l Frame.Records(a5), a2
+	jsr branches.beginPass
+	movem.l (sp)+, a0-a2
 	move.w d7, pkg.Context.Pass(a6)
 	clr.l pkg.Context.Pc(a6)
 	clr.l Frame.Used(a5)
@@ -547,6 +581,9 @@ sweepDone
 	lea RepeatState, a0
 	jsr repetition.endPass
 	bne.w fail
+	lea BranchState, a0
+	jsr branches.endPass
+	move.w d0, BranchChanged
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #9
 	tst.w d4
 	bne.w fail
@@ -597,7 +634,24 @@ stableLayout
 	bne.w fail
 finishedLayout
 	cmpi.w #1, d7
-	bne.w nextPass
+	bne.w emittedPass
+	tst.w BranchChanged
+	beq.w allocateOutput
+	; Only unresolved scoped guards enable this path. Sizing remains pass one
+	; for emission, while cells/loop identities replay with strict guard values.
+	move.w #1, SizingReplay
+	addq.w #1, SizingRounds
+	cmpi.w #MAX_LAYOUT_ROUNDS, SizingRounds
+	bhs.w fail
+	.MEMORY_COUNTER_INC SizingPasses
+	jsr dependencies.resetLayout
+	bne.w fail
+	bra.w pass
+emittedPass
+	tst.w BranchChanged
+	bne.w fail
+	bra.w nextPass
+allocateOutput
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #18
 	movea.l Frame.Allocate(a5), a1
 	movea.l a5, a0
@@ -615,6 +669,8 @@ fail
 	clr.l Frame.Used(a5)
 	moveq #1, d0
 done
+	lea BranchState, a0
+	jsr branches.release
 	lea RepeatState, a0
 	jsr repetition.release
 	jsr dependencies.release
@@ -734,8 +790,11 @@ labelSectionReady
 	lsl.l #3, d1
 	cmpi.w #1, pkg.Context.Pass(a2)
 	bne.w existingLabel
+	tst.w SizingReplay
+	bne.w storeLabel  ; retained labels are refreshed during strict sizing
 	tst.b 0(a4, d0.l)
 	bne.w bad
+storeLabel
 	move.b #1, 0(a4, d0.l)
 	move.l pkg.Context.Pc(a2), exprvm.Value.Low(a5, d1.l)
 	clr.l exprvm.Value.High(a5, d1.l)
@@ -815,6 +874,13 @@ constant
 	bne.w bad
 	moveq #0, d0
 	move.b -3(a0), d0
+	cmpi.w #1, pkg.Context.Pass(a2)
+	bne.w constantInitial
+	tst.w SizingReplay
+	beq.w constantInitial
+	jsr constants.replay
+	bra.w done
+constantInitial
 	jsr constants.execute
 	bra.w done
 directive

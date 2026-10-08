@@ -19,6 +19,36 @@ fn scratch() -> Scratch {
 }
 
 const POSITIVE: &[(&str, &str, &[u8])] = &[
+    (
+        "retained-forward-local-conditional",
+        ".bfor 2\n.if local\n.byte 5\n.endif\nlocal .var 1\n.endfor\n",
+        &[5, 5],
+    ),
+    (
+        "retained-forward-local-final-mutation",
+        ".bfor 2\n.if local\n.byte 9\n.else\n.byte 3\n.endif\nlocal .var 1\n.byte local\nlocal .set 0\n.endfor\n",
+        &[3, 1, 3, 1],
+    ),
+    (
+        "retained-forward-local-per-iteration",
+        ".for item in {0,1,2}\n.bfor 2\n.if local\n.byte local\n.else\n.byte 7\n.endif\nlocal .var item\n.endfor\n.endfor\n",
+        &[7, 7, 1, 1, 2, 2],
+    ),
+    (
+        "retained-forward-local-elseif-else",
+        ".for item in {0,1,2}\n.bfor 2\n.if local==0\n.byte 3\n.elseif local==1\n.byte 4\n.else\n.byte 5\n.endif\nlocal .var item\n.endfor\n.endfor\n",
+        &[3, 3, 4, 4, 5, 5],
+    ),
+    (
+        "retained-forward-local-nested-scopes",
+        ".bfor 2\n.if local\n.byte local\n.endif\n.bfor 2\n.if local\n.byte local\n.endif\nlocal .var 3\n.endfor\n.if local\n.byte local\n.endif\nlocal .var 1\n.endfor\n",
+        &[1, 3, 3, 1, 1, 3, 3, 1],
+    ),
+    (
+        "retained-forward-local-inactive-and-empty",
+        ".bfor 2\n.if 0\n.if local\n.byte missing\n.endif\n.endif\n.if local\n.byte 5\n.elseif missing\n.byte missing\n.endif\nlocal .var 1\n.endfor\n.bfor 0\n.if local\n.byte missing\n.endif\nlocal .var missing\n.endfor\n.byte 7\n",
+        &[5, 5, 7],
+    ),
     ("selected-compound-local-constant", ".for item in {0,1}\n.bfor 2\n.if item==0\nvalues={2,3}\n.else\nvalues={4,5}\n.endif\n.byte values[0],values[1]\n.endfor\n.endfor\n", &[2,3,2,3,4,5,4,5]),
     ("selected-forward-mutable-snapshot", ".for item in {0,1}\n.bfor 2\nn .var 2\n.if item==0\nsaved=n+later\nlater=3\n.else\nsaved=n+later\nlater=5\n.endif\nn .set 9\n.byte saved,n\n.endfor\n.endfor\n", &[5,9,5,9,7,9,7,9]),
     ("inactive-local-before-unconditional", ".bfor 2\n.if 0\nlocal=missing\n.endif\nlocal=7\n.byte local\n.endfor\n", &[7,7]),
@@ -51,6 +81,22 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("forward-local-mutable-initializer", ".bfor 2\nn .var later\nlater .var 2\n.byte n\n.endfor\n", &[2, 2]),
 ];
 const BAD: &[(&str, &str)] = &[
+    (
+        "retained-forward-new-loop-traversal",
+        ".bfor 1\n.if local\n.for 1\n.byte 5\n.endfor\n.endif\nlocal .var 1\n.endfor\n",
+    ),
+    (
+        "retained-forward-new-guard-without-value",
+        ".bfor 1\n.if outer\n.if inner\n.byte 5\n.endif\ninner .var 1\n.endif\nouter .var 1\n.endfor\n",
+    ),
+    (
+        "retained-forward-local-missing-guard",
+        ".bfor 2\n.if local\n.byte 5\n.endif\nlocal .var missing\n.endfor\n",
+    ),
+    (
+        "retained-forward-local-missing-selected-body",
+        ".bfor 2\n.if local\n.byte missing\n.endif\nlocal .var 1\n.endfor\n",
+    ),
     (
         "separate-active-duplicate-local-constant",
         ".bfor 2\n.if 1\nlocal=7\n.endif\n.if 1\nlocal=8\n.endif\n.byte local\n.endfor\n",
@@ -90,11 +136,6 @@ const GAPS: &[(&str, &str, &[u8])] = &[
         "wide-literal-input",
         ".bfor 2\nwide .var $100000003\n.byte wide&255,(wide>>16)>>16\nwide .set wide+1\n.byte wide&255,(wide>>16)>>16\n.endfor\n",
         &[3, 1, 4, 1, 3, 1, 4, 1],
-    ),
-    (
-        "retained-forward-local-conditional",
-        ".bfor 2\n.if local\n.byte 5\n.endif\nlocal .var 1\n.endfor\n",
-        &[5, 5],
     ),
     (
         "labeled-indexed-scope",
@@ -140,7 +181,8 @@ fn native_scoped_loops_rust_oracles() {
         }
         for (name, body, expected) in GAPS {
             assert_eq!(
-                oracle(&dir.0, &source(cpu, body)).unwrap(),
+                oracle(&dir.0, &source(cpu, body))
+                    .unwrap_or_else(|error| panic!("Rust gap oracle {cpu}/{name}: {error}")),
                 *expected,
                 "Rust gap oracle {cpu}/{name}"
             );

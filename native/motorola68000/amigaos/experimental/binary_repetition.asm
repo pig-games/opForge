@@ -478,6 +478,32 @@ done
 	rts
 	.bend  ; step
 	.pub
+; A0=loop state. D0/CCR=zero when an enclosing scoped for owns live cells.
+; Other registers preserved. Ordinary loops may reference enclosing scoped names.
+scoped	.block
+	movem.l d1/a1, -(sp)
+	moveq #0, d1
+	move.w State.Depth(a0), d1
+	beq.w absent
+	lea SLOTS(a0), a1
+next
+	subq.w #1, d1
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1)
+	beq.w found
+	adda.w #SLOT_BYTES, a1
+	tst.w d1
+	bne.w next
+absent
+	moveq #1, d0
+	bra.w done
+found
+	moveq #0, d0
+done
+	movem.l (sp)+, d1/a1
+	tst.l d0
+	rts
+	.bend  ; scoped
+
 ; A0=selected branch record,A3=loop state. Activate the innermost scoped
 ; owner's immutable declarations through shared dependency resolution.
 ; D0/CCR=status; other registers kept. Ordinary loops have no local roots.

@@ -159,3 +159,51 @@ fn native_scoped_global_graph_fs_uae() {
         }
     }
 }
+
+// Sizing replays must finish before Hunk section extents/output are frozen.
+fn retained_source(cpu: &str) -> String {
+    format!(".module entry\n.cpu {cpu}\n.section code,kind=code\n.bfor 2\n.if local\n.byte 5\n.endif\nlocal .var 1\n.endfor\n.endsection\n.output \"out.hunk\",format=hunk,sections=code\n.endmodule\n")
+}
+
+fn retained_oracle(dir: &Path, cpu: &str) -> Vec<u8> {
+    let bytes = hunk_oracle(dir, &retained_source(cpu));
+    let sections = hunk::segments(&bytes).unwrap();
+    assert_eq!(sections.len(), 1);
+    assert_eq!(sections[0].kind, 0x3e9);
+    assert_eq!(sections[0].payload, [5, 5, 0, 0]);
+    assert!(sections[0].relocations.is_empty());
+    bytes
+}
+
+#[test]
+fn native_scoped_retained_hunk_rust_oracles() {
+    let dir = scratch();
+    for cpu in ["68020", "6502"] {
+        retained_oracle(&dir.0, cpu);
+    }
+}
+
+#[test]
+#[ignore = "requires FS-UAE; retained scoped guards size before Hunk emission"]
+fn native_scoped_retained_hunk_fs_uae() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap();
+    let dir = scratch();
+    let image = std::env::var_os("OPFORGE_SCOPED_IMAGE")
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_else(|| build_image(&root, &dir.0));
+    for cpu in ["68020", "6502"] {
+        let expected = retained_oracle(&dir.0, cpu);
+        native_case(
+            &root,
+            &image,
+            &format!("scoped-retained-hunk-{cpu}"),
+            &retained_source(cpu),
+            "Work:entry.asm --hunk Work:out.hunk",
+            &expected,
+            false,
+        );
+    }
+}

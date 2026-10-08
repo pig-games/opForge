@@ -600,21 +600,59 @@ variation and does not establish a speedup. Final image fingerprint is
 `fnv1a64:a96334c92d3f8614`. Host validation passes the 367-test compact subsystem
 before the final added forward/long-name Rust controls, those focused controls,
 98-file native formatting, Rust formatting, native contracts, instrumentation,
-fresh-proof and workflow/architecture guards. A fresh full retry on 68020/74 MiB
-uses the lightweight diagnostic bootstrap against the uninstrumented live Rust
-output oracle; it is in progress, not qualified.
+fresh-proof and workflow/architecture guards.
+
+The complete current source now self-assembles natively with the lightweight
+diagnostic bootstrap on 68020/74 MiB: fresh START/DONE, exit zero and exact live
+Rust equality for the entire 590,764-byte release Hunk. This is complete native
+assembly, not just preparation. START/DONE takes 1442.638670708 seconds
+(24m02.64s), including instrumentation. Guest phase observations are 850.10
+seconds preparation and 591.06 seconds assembly. Exclusive preparation stages
+record binding/raw records 426.04, tokenization 129.36, expression preparation
+127.22, source I/O/other 77.23, discovery 53.94, finalization 32.71 and package
+setup 3.61 seconds. Do not treat these instrumented values as release timings.
+
+Peak owned allocation is 26,071,352 bytes; prepared/assembly ownership is
+2,695,168 / 4,300,800 bytes. Terminal ownership and profiling errors are zero;
+capacity accounting balances. This is neither total Amiga RAM nor 2 MiB fit.
+The prior failed runs ended earlier and cannot isolate this change's peak-memory
+effect. Instrumented bootstrap is 598,844 bytes, fingerprint
+`fnv1a64:13dce08a5e2bd0dc`; release output is `fnv1a64:a96334c92d3f8614`.
+All 112 mapped inputs / 1,687,745 bytes identify source
+`fnv1a64:f5b5455a5ddaa326`, with the unchanged single m68020 package. Evidence
+and decoded memory record are retained in
+`/tmp/opforge-selfhost-bs32-lexical-field-full-diagnostic-74m`.
+
+A separate complete retry with the uninstrumented release bootstrap also passes:
+fresh START/DONE, exit zero and exact equality of bootstrap, native output and
+live Rust oracle for the 590,764-byte Hunk. START/DONE takes 1400.935415167 seconds
+(23m20.94s) on the same 68020/74 MiB profile. The diagnostic run is 41.703255541
+seconds longer on identical release inputs; these are single samples. The prior
+failed release run stopped before assembly and cannot supply a total-speed
+comparison for this binding repair; the unchanged control above isolates it.
+
+The qualified release bundle
+`/tmp/opforge-selfhost-bs32-lexical-field-full-release-74m` passes local A6000
+transfer preparation and replaces `/tmp/opforge-a6000-current`. The default
+`python3 scripts/performance/run_a6000_selfhost.py` command selects it. Bootstrap
+and output embed only the m68020 package. No remote transfer or physical A6000
+execution was performed for this bundle. Full self-host establishes the current
+implementation's complete self-assembly, not full language/family parity or
+2 MiB fit.
+
 All capture code/storage is triple-gated; its disabled build remains
 byte-identical to the corresponding release executable. The spelling-cap repair
-has focused native proof; the complete run still has a binding-finalization failure.
+has focused native proof; the subsequent dotted-name repair has complete native
+self-host proof with the diagnostic bootstrap.
 
 The original failed release source fingerprint is `fnv1a64:1dbf2231e724c77e`; package fingerprint is
 `fnv1a64:98b91e6dc8f6122d`. Bootstrap and fresh Rust oracle both identify the
 590,720-byte Hunk above. The repaired host export uses source fingerprint
 `fnv1a64:c22a499719730814`, with identical bootstrap/Rust oracle fingerprints
-`fnv1a64:25e4eb7c3a4c83d5` and 610,028 linked reserved bytes. Host export is not
-native completion. No current physical A6000 timing, qualified replacement
-hardware bundle or 2 MiB qualification is claimed. The BS30 full self-host
-remains the last successful complete reference.
+`fnv1a64:25e4eb7c3a4c83d5` and 610,028 linked reserved bytes. Host export alone is
+not native completion. The subsequent complete release proof above supersedes
+BS30 as the current self-host reference. No current physical A6000 timing or
+2 MiB qualification is claimed.
 
 ### BS31 full self-host attempt (2026-10-07)
 

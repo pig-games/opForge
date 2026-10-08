@@ -161,7 +161,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS33 block for one resolved package hierarchy.
+/// Prepare a self-contained BS34 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -320,6 +320,17 @@ pub fn prepare_package(
             DictionaryRoleFlags::CONTEXTUAL,
         )?;
         directive_ids.push(id);
+    }
+    let mut while_heads = [0; 2];
+    for (head, spelling) in while_heads.iter_mut().zip(["while", "endwhile"]) {
+        *head = intern(&mut names, spelling)?;
+        bind(
+            &mut dictionary,
+            spelling.into(),
+            *head,
+            0,
+            DictionaryRoleFlags::CONTEXTUAL,
+        )?;
     }
     let mut branch_heads = [0; 4];
     for (head, spelling) in branch_heads
@@ -499,7 +510,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS33");
+    out[..4].copy_from_slice(b"BS34");
     set_word(&mut out, 208, builtin_len);
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
@@ -626,7 +637,13 @@ pub fn prepare_package(
     out.extend_from_slice(&head_policy);
     align(&mut out);
     let loop_plan_offset = out.len();
-    let loop_plan = packed_loop_program(directive_ids[8], in_name);
+    let loop_plan = packed_loop_program(
+        directive_ids[8],
+        in_name,
+        directive_ids[9],
+        while_heads[0],
+        while_heads[1],
+    );
     out.extend_from_slice(&loop_plan);
     align(&mut out);
     let branch_plan_offset = out.len();
@@ -1907,7 +1924,7 @@ mod dictionary_role_contract_tests {
         assert_eq!(&unsupported[ROLE_COUNT..], &wire[ROLE_COUNT..]);
 
         let prepared = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&prepared[..4], b"BS33");
+        assert_eq!(&prepared[..4], b"BS34");
         let rows = u32::from_be_bytes(prepared[16..20].try_into().unwrap()) as usize;
         let count = u32::from_be_bytes(prepared[20..24].try_into().unwrap()) as usize;
         assert!(

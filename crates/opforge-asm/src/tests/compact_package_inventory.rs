@@ -1,4 +1,4 @@
-//! Host-only BS33 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS34 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -36,24 +36,29 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS33")
+        || bytes.get(..4) != Some(b"BS34")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS33 header".into());
+        return Err("invalid BS34 header".into());
     }
     let loop_offset = number(bytes, 212, 4)?;
     let loop_bytes = number(bytes, 216, 4)?;
     let loop_plan = region(bytes, loop_offset, loop_bytes, 1)?;
+    let loop_name_count = number(bytes, 62, 2)?;
     if loop_offset < HEADER
         || loop_offset % 2 != 0
-        || loop_bytes != 7
+        || loop_bytes != 13
         || loop_offset
             .checked_add(loop_bytes)
             .is_none_or(|end| end > number(bytes, 72, 4).unwrap_or(0))
         || loop_plan[0] != 0x99
-        || loop_plan[5..] != [0x83, 0]
+        || loop_plan[11..] != [0x83, 0]
         || u16::from_be_bytes(loop_plan[1..3].try_into().unwrap()) as usize != number(bytes, 66, 2)?
-        || u16::from_be_bytes(loop_plan[3..5].try_into().unwrap()) as usize >= number(bytes, 62, 2)?
+        || u16::from_be_bytes(loop_plan[5..7].try_into().unwrap()) as usize != number(bytes, 98, 2)?
+        || (0..5).any(|index| {
+            u16::from_be_bytes(loop_plan[1 + index * 2..3 + index * 2].try_into().unwrap()) as usize
+                >= loop_name_count
+        })
     {
         return Err("invalid loop header program".into());
     }
@@ -343,20 +348,29 @@ fn inventory_rejects_loop_plan_corruption_and_bounds() {
     let bytes = prepare_package(&core, &resolved).unwrap();
     let offset = number(&bytes, 212, 4).unwrap();
     assert!(inventory(&bytes, &package).is_ok());
-    for field in [offset, offset + 1, offset + 3, offset + 5, offset + 6] {
+    for field in [
+        offset,
+        offset + 1,
+        offset + 3,
+        offset + 5,
+        offset + 7,
+        offset + 9,
+        offset + 11,
+        offset + 12,
+    ] {
         let mut invalid = bytes.clone();
         invalid[field] = 255;
         assert!(inventory(&invalid, &package).is_err(), "field {field}");
     }
-    for (field, value) in [(212, 216u32), (212, bytes.len() as u32), (216, 6u32)] {
+    for (field, value) in [(212, 216u32), (212, bytes.len() as u32), (216, 12u32)] {
         let mut invalid = bytes.clone();
         invalid[field..field + 4].copy_from_slice(&value.to_be_bytes());
         assert!(inventory(&invalid, &package).is_err(), "field {field}");
     }
     assert!(inventory(&bytes[..219], &package).is_err());
     let mut odd = bytes.clone();
-    let plan = odd[offset..offset + 7].to_vec();
-    odd[offset + 1..offset + 8].copy_from_slice(&plan);
+    let plan = odd[offset..offset + 13].to_vec();
+    odd[offset + 1..offset + 14].copy_from_slice(&plan);
     odd[212..216].copy_from_slice(&((offset + 1) as u32).to_be_bytes());
     assert_eq!(
         inventory(&odd, &package).unwrap_err(),
@@ -478,7 +492,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS33", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS34", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

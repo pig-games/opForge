@@ -214,12 +214,53 @@ state with checked allocation, separate from persisted packed source records.
 
 The first checkpoint targets flat and single-sweep Hunk output. Mapped layout
 modes currently skip nonselected sections without advancing their PC, so they
-cannot safely execute PC-dependent conditional loops. Reject that combination
+cannot safely execute conditional loops. Reject any `.while` in those modes
 explicitly until the shared mapped replay scheduler is repaired; existing mapped
 programs without `.while` remain available. This is an interim coverage boundary,
 not complete `.while` parity. Scoped `.bfor`/`.bwhile`, conditional preparation
 effects and the remaining macro matrix follow. No BS34 validation or performance
-claim has been made yet.
+claim covers complete loop/macro parity or a full self-host run.
+
+Focused native evidence now covers fourteen positive `.while` scenarios on each
+of the 68020 and 6502 packages: thirteen combined address windows plus a separate
+empty-origin case. Eleven malformed, unavailable-value, body-declaration, limit
+and pass-stability cases complete with expected rejection on 68020. Whole-Hunk
+output and two-concrete-section controls with active loops match live Rust;
+mapped modes 2 and 4 retain explicit rejection, including constant-false loops.
+The native package validator also passes one current package and five malformed
+loop-plan controls. A reuse component checks release/reallocation state.
+
+An enabled-telemetry run of the 1,877-byte combined workload matches Rust, peaks
+at 570,112 owned bytes, and allocates/frees 1,112,520 bytes with zero terminal
+ownership and profiling errors. This is a small-workload measurement, not a
+self-host memory result or a 2 MiB product qualification.
+
+The isolated `.while` implementation, before the following preparation/template
+repairs, was measured against BS33 using the unchanged 15,474-byte mixed control
+(`ac05445d958571b5`). Alternating release runs on FS-UAE 68020/10 MiB yielded
+BS33 samples 25.582381292/25.6212625 seconds and BS34 samples
+25.846081333/26.110065542 seconds: means 25.601821896 and 25.978073438 seconds,
+a 0.376251542-second increase (1.47%). Every run completed with exact live Rust
+output, without concurrent host builds/tests. The single-package release Hunk
+grew 592,700→595,848 bytes (+3,148), linked reservations 612,112→615,412 bytes
+(+3,300), and package 434,396→434,428 bytes (+32). These figures isolate that
+implementation; they do not silently include later repairs.
+
+The subsequent placed-section regression was a raw-record boundary error:
+classifiers now receive the saved record base rather than assuming a directive
+starts immediately after its four-byte header. Template role selection now uses
+the same package-owned loop classifier: captured loop controls retain their
+packed records instead of acquiring a macro-call recipe that relexes only their
+arguments. A fresh 68020 segment probe matches Rust for both contextual `in` and
+iterator body values. Reduced direct-macro and counted-macro compositions also
+match Rust. A nested macro call within that counted macro still fails.
+
+The expanded macro matrix has twelve positive and nine negative Rust-oracled
+cases on both packages. Full native qualification is pending: the combined
+positive run additionally exposes numeric `@10`/`.10` substitution, where Rust
+consumes the first digit and retains the trailing zero. These are known failures
+in this recovery checkpoint, not completed macro parity. Scoped loops and the
+full macro/reachability matrix remain open.
 
 ### Compound-value checkpoints
 

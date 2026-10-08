@@ -34,7 +34,8 @@ records the scope and remaining work.
 
 Deferred preparation-only declarations, scopes, configuration, metadata, file
 operations and macro definitions reject. Complete lazy file/reachability parity
-is not established; `.while`, `.bfor` and `.bwhile` remain open. Scalar `:?=`
+is not established; complete `.while` parity and scoped `.bfor`/`.bwhile` remain
+open. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
 forward-initializer semantics, struct behavior and existing wide-literal packing
 limits also remain unresolved. Full language or CPU-family parity is not claimed.
 
@@ -105,12 +106,14 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The latest qualified BS32 release bundle is selected by
-`/tmp/opforge-a6000-current`. Bootstrap and assembled output both
-embed only `m68020--motorola68k.bin`. The named package is retained for local
-identity verification; no external runtime fallback is used. This bundle has
-complete FS-UAE qualification and a passing local transfer-preparation dry run,
-but no physical execution or remote transfer proof.
+The latest qualified release bundle is
+`/tmp/opforge-selfhost-bs33-iterator-conditionals-release-74m`. Bootstrap and
+assembled output both embed only `m68020--motorola68k.bin`. The named package is
+retained for local identity verification; no external runtime fallback is used.
+This bundle has complete FS-UAE qualification, but no physical execution or
+remote transfer proof. The current A6000 helper validates the BS34 package
+contract, so it needs a newly qualified BS34 bundle before hardware execution;
+the BS33 reference cannot be used with that reader.
 Use macOS Terminal, where `ash` and `acp` can reach the A6000:
 
 ```sh
@@ -119,12 +122,10 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The current script is being migrated to BS34 package headers, mapped source preamble and
+The current script validates BS34 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
-before execution. Filename components must fit the 30-byte classic limit. The
-selected BS32 bundle is a qualified reference but cannot be used with the
-current validator. The new BS33 reference is also superseded by this in-progress
-reader migration; a qualified BS34 bundle is required for the current helper.
+before execution. Filename components must fit the 30-byte classic limit. A
+qualified BS34 release bundle is required for the current helper.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
@@ -206,7 +207,7 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS33 is the current compact package format; the producer writes `BS33` and the
+BS34 is the current compact package format; the producer writes `BS34` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Candidate rows are 44 bytes: offsets
 0–31 retain their previous fields, byte 32 carries the third-operand form nibble,
@@ -240,7 +241,7 @@ and encoding; native code only validates the structural wrapper.
 Kind 26 traverses package-owned numeric expression paths. Its Class word is
 path byte length (4–32, a multiple of four), Literal is a package-base-relative
 path offset and Reserved is zero. The standard value-program field remains
-available. Deduplicated path programs occupy the arena between the 220-byte
+available. Deduplicated path programs occupy the arena between the 228-byte
 header and candidate rows; projection descriptor arrays stay contiguous.
 Each step is `opcode:u8, argument:u8, parameter:u16` in big-endian order:
 indirect/bracket unwrap (1/2), tuple child 0–2 (3), register/class (4), qualified
@@ -273,7 +274,7 @@ already-proven complete non-tuple root disproves those rows; unknown structure
 and contradictory predicates remain closed. The represented nested full-extension paths are executable; other path
 operations, terminals and call-child forms remain explicit unsupported boundaries. Typed scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
-or CPU-specific native parsing. Its header is 220 bytes, with
+or CPU-specific native parsing. Its header is 228 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
 offset 124 (length at 128); the preparation-only file plan offset and length are
 at 132 and 136. Built-in `.emit` identity/CPU word width are at 140/142; its
@@ -285,12 +286,14 @@ a zero reserved word at 178. Declaration-plan offset/length are at 180/184, its
 PRVM version at 188 and a zero reserved word at 190. Numeric state-plan
 offset/length are at 192/196. Expression-program offset/length are at 200/204,
 with no EXVM version field. The core `.len` name ID is at 208 and the word at
-210 is reserved zero. The shared numeric PRVM loop plan uses the final eight
-header bytes: offset 212 and length 216 for iterable `.for` envelopes. Dictionary
+210 is reserved zero. The shared numeric PRVM loop plan uses offset 212 and length
+216 for counted/iterable `.for` and conditional `.while` envelopes. The shared
+BranchPlan uses offset 220 and length 224 for `.if`/`.elseif`/`.else`/`.endif`.
+Dictionary
 role bit 3 marks core builtins, excluded from
 ordinary lexical-name lookup. Dot-call binding resolves builtin names before
-EXVM execution; generic call trees still carry opaque numeric IDs. The final word
-of each 32-byte candidate row is a
+EXVM execution; generic call trees still carry opaque numeric IDs. The word at
+offset 30 of each 44-byte candidate row is a
 one-based state guard, zero when unguarded. Dictionary role bit 2 is reserved
 for state-argument spellings and excluded from ordinary name lookup. These
 policies and the state plan stay inside the retained RuntimeBytes prefix.
@@ -411,8 +414,9 @@ These statements describe the implemented subset. They do not imply complete ass
   handwritten precedence parser. Fresh native component, folded-statement and
   session-lifecycle comparisons pass; unchanged-control timing is recorded in the
   [active plan](native-runtime-reset.md#shared-compiler-cost-checkpoint). The
-  latest complete self-host reference is BS32 `cccd66fe`; later BS33 changes
-  have focused qualification only. The historical migration checkpoint recorded
+  latest complete self-host reference is BS33, source manifest
+  `dbc8c7d966b2dec6`; later BS34 work is in development and has not been
+  qualified. The historical migration checkpoint recorded
   54 inherited host failures; that observation does not describe the current
   host suite or establish broad integration readiness.
   Ordinary Rust expression handling still uses core token spelling instead of
@@ -423,8 +427,12 @@ These statements describe the implemented subset. They do not imply complete ass
   coverage [described above](#iterator-dependent-conditionals-bs33-provisional).
   Imported-shadow and qualified-reference probes, register-role separation,
   identity growth and scalar misuse rejection also have focused proof.
-  `.while`, `.bfor` and `.bwhile` remain open, and labels inside an active unscoped
-  loop reject. Counted packed-loop execution has focused native/Rust comparison.
+  BS34 `.while` has focused flat, whole-Hunk and two-concrete-section proof on
+  both packages; see the [provisional scope and measurements](native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
+  Mapped modes 2 and 4 reject any `.while` until source-order traversal is repaired.
+  Scoped `.bfor`/`.bwhile` and broader loop/macro parity remain open; labels inside
+  active unscoped loops reject. Counted packed-loop execution has focused
+  native/Rust comparison.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
 - `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Struct values are not newly qualified, wide-literal packing remains limited, and these cases do not establish full module, parameter or Hunk-expression parity.

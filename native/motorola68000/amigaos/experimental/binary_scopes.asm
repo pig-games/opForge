@@ -1054,10 +1054,29 @@ directive
 	movea.l layout.State.Package(a6), a1
 	move.l a1, d1
 	beq.w ordinaryDirective
-	cmp.w pkg.Header.ForDirective(a1), d0
+	movem.l d0/a0, -(sp)
+	movea.l a5, a0
+	move.l d6, d0
+	move.l pkg.Header.LoopPlanBytes(a1), d1
+	adda.l pkg.Header.LoopPlan(a1), a1
+	jsr loop_parser.classify
+	move.l d0, d3
+	movem.l (sp)+, d0/a0
+	cmpi.l #loop_abi.PRVM_LOOP_MALFORMED, d3
+	beq.w bad
+	cmpi.l #loop_abi.PRVM_LOOP_MATCHED, d3
 	beq.w loopHeader
-	cmp.w pkg.Header.EndforDirective(a1), d0
+	cmpi.l #loop_abi.PRVM_LOOP_WHILE, d3
+	beq.w loopHeader
+	cmpi.l #loop_abi.PRVM_LOOP_ENDFOR, d3
+	beq.w closeFor
+	cmpi.l #loop_abi.PRVM_LOOP_ENDWHILE, d3
 	bne.w ordinaryDirective
+	moveq #iterators.WHILE, d1
+	bra.w closeLoop
+closeFor
+	moveq #iterators.FOR, d1
+closeLoop
 	movem.l d0/a0, -(sp)
 	lea layout.ITERATOR_STATE(a6), a0
 	jsr iterators.close
@@ -1099,19 +1118,13 @@ ordinaryDirective
 	addq.l #5, a0
 	bra.w references
 loopHeader
-	movea.l a5, a0
-	move.l d6, d0
-	move.l pkg.Header.LoopPlanBytes(a1), d1
-	adda.l pkg.Header.LoopPlan(a1), a1
-	jsr loop_parser.classify
-	tst.l d0
-	bne.w bad
+	move.l d3, -(sp)
 	tst.l d1
 	bmi.w countedLoop
 	move.l d1, d0
 	movea.l a6, a0
 	bsr.w createIterator
-	bne.w bad
+	bne.w failedLoopHeader
 	clr.b loop_abi.LoopRecord.VariableKind(a5)
 	move.w d1, loop_abi.LoopRecord.VariableHigh(a5)
 	clr.b loop_abi.LoopRecord.VariableQualifier(a5)
@@ -1120,6 +1133,7 @@ loopHeader
 countedLoop
 	move.l #iterators.COUNTED, d0
 openLoop
+	move.l (sp)+, d1
 	lea layout.ITERATOR_STATE(a6), a0
 	jsr iterators.open
 	bne.w bad
@@ -1127,6 +1141,9 @@ loopOperand
 	movea.l a5, a0
 	adda.l d2, a0
 	bra.w references
+failedLoopHeader
+	addq.l #4, sp
+	bra.w bad
 sectionControl
 	movea.l a5, a0
 	movea.l a6, a1

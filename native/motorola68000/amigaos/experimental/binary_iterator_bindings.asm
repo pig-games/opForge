@@ -6,10 +6,13 @@
 	.pub
 LIMIT = 16
 COUNTED = $ffff
+FOR = 0
+WHILE = 3
 Slot	.struct
 Identity	.word ?
+Kind	.word ?
 	.endstruct
-SLOT_BYTES = Slot.Identity+2
+SLOT_BYTES = Slot.Kind+2
 SLOTS_BYTES = LIMIT*SLOT_BYTES
 State	.struct
 Depth	.word ?
@@ -24,9 +27,10 @@ begin	.block
 	rts
 	.bend  ; begin
 
-; A0=state,D0=temporary source ID or COUNTED. D0/CCR=status; others kept.
+; A0=state,D0=temporary source ID or COUNTED,D1=FOR/WHILE kind. D0/CCR=status; others kept.
 open	.block
-	movem.l d1-d2/a1, -(sp)
+	movem.l d1-d3/a1, -(sp)
+	move.l d1, d3
 	moveq #0, d1
 	move.w State.Depth(a0), d1
 	cmpi.w #LIMIT, d1
@@ -37,27 +41,35 @@ open	.block
 	mulu.w #SLOT_BYTES, d2
 	lea State.Slots(a0), a1
 	move.w d0, Slot.Identity(a1, d2.w)
+	move.w d3, Slot.Kind(a1, d2.w)
 	addq.w #1, State.Depth(a0)
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d1-d2/a1
+	movem.l (sp)+, d1-d3/a1
 	tst.l d0
 	rts
 	.bend  ; open
 
-; A0=state. Pop one lexical loop. D0/CCR=status; others kept.
+; A0=state,D1=expected FOR/WHILE kind. Pop one matching lexical loop. D0/CCR=status; others kept.
 close	.block
-	tst.w State.Depth(a0)
+	movem.l d2/a1, -(sp)
+	move.w State.Depth(a0), d2
 	beq.w bad
+	subq.w #1, d2
+	mulu.w #SLOT_BYTES, d2
+	lea State.Slots(a0), a1
+	cmp.w Slot.Kind(a1, d2.w), d1
+	bne.w bad
 	subq.w #1, State.Depth(a0)
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
+	movem.l (sp)+, d2/a1
 	tst.l d0
 	rts
 	.bend  ; close

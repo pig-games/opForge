@@ -69,7 +69,7 @@ step	.block
 	tst.w d6
 	beq.w bad
 	subq.w #1, d6
-	lsl.w #experimental.amigaos.binary_branches.SLOT_SHIFT, d6
+	lsl.w #SLOT_SHIFT, d6
 	lea State.Slots(a6), a3
 	adda.w d6, a3
 	cmpi.w #parser.ENDIF, d7
@@ -102,7 +102,7 @@ terminal
 opening
 	cmpi.w #LIMIT, d6
 	bhs.w bad
-	lsl.w #experimental.amigaos.binary_branches.SLOT_SHIFT, d6
+	lsl.w #SLOT_SHIFT, d6
 	lea State.Slots(a6), a3
 	adda.w d6, a3
 	move.w State.Active(a6), d0

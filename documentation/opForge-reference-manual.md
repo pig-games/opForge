@@ -490,9 +490,19 @@ Notes:
   numeric branch plans without source parsing. Deferred preparation-only
   declarations, scopes, configuration, metadata, file operations and macro
   definitions reject; complete lazy file/reachability parity is not established.
-  Native `.while`, `.bfor` and `.bwhile` remain open. BS33 has no complete self-host
-  proof yet; the latest qualified reference is BS32. See the
-  [current checkpoint](plans/compact-frontend-vm-boundary.md#iterator-dependent-conditionals-bs33-provisional).
+  BS33 is also the latest full self-host reference: all 114 mapped inputs
+  (1,704,435 bytes) completed on FS-UAE 68020/74 MiB, with exact equality among
+  bootstrap, native output and the live Rust oracle for the 592,700-byte Hunk.
+  The run took 1,433.129872292 seconds (23m53.13s); source and Hunk fingerprints
+  are `dbc8c7d966b2dec6` and `25c27121a3669a35`. This does not establish broad
+  language or CPU-family parity, a full diagnostic memory measurement, A6000
+  timing or 2 MiB fit.
+  BS34 conditional repetition has focused native proof for flat, whole-Hunk and
+  two-concrete-section output on both packages. Mapped modes 2 and 4 reject any
+  `.while`, including constant-false loops, because their filtered traversal
+  does not preserve the PC across skipped sections. Complete `.while` parity
+  and scoped `.bfor`/`.bwhile` remain open. See the [current checkpoint](plans/compact-frontend-vm-boundary.md#iterator-dependent-conditionals-bs33-provisional)
+  and [BS34 plan](plans/native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
 
 
 Scalar `.for` and `.bfor` counts may refer forward to immutable constants whose

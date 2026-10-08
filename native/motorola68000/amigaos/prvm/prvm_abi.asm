@@ -139,6 +139,12 @@ ForHigh	.byte ?
 ForLow	.byte ?
 InHigh	.byte ?
 InLow	.byte ?
+EndforHigh	.byte ?
+EndforLow	.byte ?
+WhileHigh	.byte ?
+WhileLow	.byte ?
+EndwhileHigh	.byte ?
+EndwhileLow	.byte ?
 Publish	.byte ?
 End	.byte ?
 	.endstruct
@@ -166,4 +172,7 @@ LOOP_EXPRESSION_OFFSET = LoopRecord.MarkerQualifier+1
 PRVM_LOOP_MATCHED = 0
 PRVM_LOOP_ORDINARY = 1
 PRVM_LOOP_MALFORMED = 2
+PRVM_LOOP_WHILE = 3
+PRVM_LOOP_ENDFOR = 4
+PRVM_LOOP_ENDWHILE = 5
 	.endmodule

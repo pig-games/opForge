@@ -373,10 +373,17 @@ afterPackage
 	tst.l InAssembly
 	beq.w afterLayout
 	lea Work, a0
+	cmpi.w #assembly.FAILURE_WHILE_LAYOUT, assembly.Frame.Failure(a0)
+	beq.w showWhileLayout
 	cmpi.w #assembly.FAILURE_MUTABLE_LAYOUT, assembly.Frame.Failure(a0)
 	bne.w afterLayout
 	move.l #MutableLayoutFailure, d2
 	move.l #MutableLayoutFailureEnd-MutableLayoutFailure, d3
+	bra.w writeLayoutFailure
+showWhileLayout
+	move.l #WhileLayoutFailure, d2
+	move.l #WhileLayoutFailureEnd-WhileLayoutFailure, d3
+writeLayoutFailure
 	move.l d4, d1
 	jsr DOS_WRITE(a6)
 afterLayout
@@ -1958,6 +1965,8 @@ FailureLine	.byte "00000000", "]", 10
 FailureMessageEnd
 MutableLayoutFailure	.byte "mutable declarations are not supported in mapped outputs until source-order traversal is implemented", 10
 MutableLayoutFailureEnd
+WhileLayoutFailure	.byte ".while is not supported in filtered section layouts until source-order PC replay is implemented", 10
+WhileLayoutFailureEnd
 FailurePrepStep	.byte "preparation step: "
 FailurePrepStepValue	.byte "00000000", 10
 FailurePrepStepEnd

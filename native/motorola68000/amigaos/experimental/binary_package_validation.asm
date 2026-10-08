@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS33 packages.
+; Shared structural boundary for embedded and external BS34 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -23,7 +23,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS33 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS34 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -211,7 +211,25 @@ preparation
 	move.w parser_abi.LoopProgram.ForHigh(a3), d0
 	cmp.w package.Header.ForDirective(a4), d0
 	bne.w bad
-	move.w parser_abi.LoopProgram.InHigh(a3), d0
+	moveq #0, d0
+	move.b parser_abi.LoopProgram.InHigh(a3), d0
+	lsl.w #8, d0
+	move.b parser_abi.LoopProgram.InLow(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	move.b parser_abi.LoopProgram.EndforHigh(a3), d0
+	lsl.w #8, d0
+	move.b parser_abi.LoopProgram.EndforLow(a3), d0
+	cmp.w package.Header.EndforDirective(a4), d0
+	bne.w bad
+	move.b parser_abi.LoopProgram.WhileHigh(a3), d0
+	lsl.w #8, d0
+	move.b parser_abi.LoopProgram.WhileLow(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	move.b parser_abi.LoopProgram.EndwhileHigh(a3), d0
+	lsl.w #8, d0
+	move.b parser_abi.LoopProgram.EndwhileLow(a3), d0
 	cmp.w package.Header.NameCount(a4), d0
 	bhs.w bad
 	move.l package.Header.BranchPlan(a4), d0

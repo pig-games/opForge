@@ -1,4 +1,4 @@
-; Shared package-owned loop envelope; EXVM owns expression syntax.
+; Shared package-owned for/while envelopes; EXVM owns expression syntax.
 ; @opforge-owner: prvm.amigaos.packed_loop
 	.module prvm.amigaos.packed_loop
 	.cpu 68020
@@ -120,7 +120,7 @@ done
 	.pub
 
 ; A0=raw writer record,D0=extent,A1=program,D1=program bytes.
-; D0=matched/ordinary/malformed,D1=variable identity (-1 counted),D2=operand
+; D0=PRVM_LOOP_* role/status,D1=variable identity (-1 counted/while),D2=operand
 ; offset. Preserves D3-D7/A0-A6; CCR reflects D0. No writes to inputs.
 classify	.block
 	movem.l d3/d7/a0-a1, -(sp)
@@ -160,12 +160,53 @@ classify	.block
 	bne.w ordinary
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, abi.LoopRecord.HeadKind(a0)
 	bhi.w ordinary
+	moveq #-1, d1
+	moveq #abi.LoopRecord.VariableKind, d2
 	move.b abi.LoopRecord.HeadHigh(a0), d0
 	cmp.b abi.LoopProgram.ForHigh(a1), d0
-	bne.w ordinary
+	bne.w checkEndfor
 	move.b abi.LoopRecord.HeadLow(a0), d0
 	cmp.b abi.LoopProgram.ForLow(a1), d0
+	beq.w forHead
+checkEndfor
+	move.b abi.LoopRecord.HeadHigh(a0), d0
+	cmp.b abi.LoopProgram.EndforHigh(a1), d0
+	bne.w checkWhile
+	move.b abi.LoopRecord.HeadLow(a0), d0
+	cmp.b abi.LoopProgram.EndforLow(a1), d0
+	bne.w checkWhile
+	moveq #abi.PRVM_LOOP_ENDFOR, d7
+	bra.w closing
+checkWhile
+	move.b abi.LoopRecord.HeadHigh(a0), d0
+	cmp.b abi.LoopProgram.WhileHigh(a1), d0
+	bne.w checkEndwhile
+	move.b abi.LoopRecord.HeadLow(a0), d0
+	cmp.b abi.LoopProgram.WhileLow(a1), d0
+	bne.w checkEndwhile
+	tst.b abi.LoopRecord.HeadQualifier(a0)
+	bne.w malformed
+	cmpi.l #abi.LoopRecord.VariableKind, d3
+	beq.w malformed
+	moveq #abi.PRVM_LOOP_WHILE, d0
+	bra.w done
+checkEndwhile
+	move.b abi.LoopRecord.HeadHigh(a0), d0
+	cmp.b abi.LoopProgram.EndwhileHigh(a1), d0
 	bne.w ordinary
+	move.b abi.LoopRecord.HeadLow(a0), d0
+	cmp.b abi.LoopProgram.EndwhileLow(a1), d0
+	bne.w ordinary
+	moveq #abi.PRVM_LOOP_ENDWHILE, d7
+closing
+	tst.b abi.LoopRecord.HeadQualifier(a0)
+	bne.w malformed
+	cmpi.l #abi.LoopRecord.VariableKind, d3
+	bne.w malformed
+	moveq #0, d2
+	move.l d7, d0
+	bra.w done
+forHead
 	tst.b abi.LoopRecord.HeadQualifier(a0)
 	bne.w malformed
 	cmpi.l #abi.LoopRecord.VariableKind, d3

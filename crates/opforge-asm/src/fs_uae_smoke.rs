@@ -7939,5 +7939,17 @@ mod native_forward_count_parity;
 mod compact_cli_metadata;
 
 #[cfg(test)]
+#[path = "tests/native_guard_reuse.rs"]
+mod native_guard_reuse;
+#[cfg(test)]
 #[path = "tests/native_iterable_loops.rs"]
 mod native_iterable_loops;
+#[cfg(test)]
+#[path = "tests/native_macro_parity.rs"]
+mod native_macro_parity;
+#[cfg(test)]
+#[path = "tests/native_while_layouts.rs"]
+mod native_while_layouts;
+#[cfg(test)]
+#[path = "tests/native_while_loops.rs"]
+mod native_while_loops;

@@ -9,7 +9,7 @@ ELSEIF = 2
 ELSE = 3
 ENDIF = 4
 OPCODE = $9a
-NON_STATEMENT_FLAGS = $18  ; omitted and layout-only packed records
+NON_STATEMENT_FLAGS = $18; omitted and layout-only packed records
 Program	.struct
 Opcode	.byte ?
 Count	.byte ?

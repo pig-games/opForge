@@ -140,7 +140,7 @@ def load_bundle(bundle):
         raise ValueError("Release bootstrap/oracle mismatch")
     # Only the current package contract is supported. This transport verifies
     # assets and header regions; the native runtime interprets VM opcodes.
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS33":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS34":
         raise ValueError("Runtime package mismatch")
     if len(package) < PACKAGE_HEADER_BYTES or int.from_bytes(package[4:8], "big") != len(package):
         raise ValueError("Invalid runtime package header")
@@ -173,8 +173,17 @@ def load_bundle(bundle):
     loop_offset = int.from_bytes(package[212:216], "big")
     loop_size = int.from_bytes(package[216:220], "big")
     if (loop_offset < PACKAGE_HEADER_BYTES or loop_offset % 2
-            or loop_size != 7 or loop_offset + loop_size > runtime_bytes):
+            or loop_size != 13 or loop_offset + loop_size > runtime_bytes):
         raise ValueError("Invalid loop-plan program region")
+    loop = package[loop_offset:loop_offset + loop_size]
+    name_count = int.from_bytes(package[62:64], "big")
+    loop_names = [int.from_bytes(loop[offset:offset + 2], "big")
+                  for offset in (1, 3, 5, 7, 9)]
+    if (loop[0] != 0x99 or loop[11:] != b"\x83\0"
+            or loop_names[0] != int.from_bytes(package[66:68], "big")
+            or loop_names[2] != int.from_bytes(package[98:100], "big")
+            or any(name >= name_count for name in loop_names)):
+        raise ValueError("Invalid loop-plan program")
     branch_offset = int.from_bytes(
         package[BRANCH_PLAN_OFFSET:BRANCH_PLAN_OFFSET + 4], "big"
     )

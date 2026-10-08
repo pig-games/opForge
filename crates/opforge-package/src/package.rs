@@ -1650,10 +1650,19 @@ pub fn packed_branch_program(heads: [u16; 4]) -> Vec<u8> {
 }
 
 /// Shared packed `.for` envelope: numeric directive and grammar-name identities.
-pub fn packed_loop_program(for_directive: u16, in_name: u16) -> Vec<u8> {
+pub fn packed_loop_program(
+    for_directive: u16,
+    in_name: u16,
+    endfor: u16,
+    while_directive: u16,
+    endwhile: u16,
+) -> Vec<u8> {
     let mut program = vec![MacroDescriptorOpcode::LoopHeader as u8];
     program.extend_from_slice(&for_directive.to_be_bytes());
     program.extend_from_slice(&in_name.to_be_bytes());
+    program.extend_from_slice(&endfor.to_be_bytes());
+    program.extend_from_slice(&while_directive.to_be_bytes());
+    program.extend_from_slice(&endwhile.to_be_bytes());
     program.extend_from_slice(&[
         MacroDescriptorOpcode::Publish as u8,
         MacroDescriptorOpcode::End as u8,

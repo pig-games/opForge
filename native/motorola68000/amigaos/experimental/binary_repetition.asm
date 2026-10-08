@@ -1,4 +1,4 @@
-; Counted and iterable preparation-time repetition over packed, compiled records.
+; Counted, iterable and conditional runtime repetition over packed, compiled records.
 ; The source text and package dictionary are absent during both assembly passes.
 ; @opforge-owner: experimental.amigaos.binary_repetition
 	.module experimental.amigaos.binary_repetition
@@ -7,6 +7,10 @@
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_repetition_trace as trace
+	.use experimental.amigaos.binary_guard_values as guards
+	.use prvm.amigaos.packed_loop as parser
+	.use prvm.amigaos.abi as abi
 	.pub
 LIMIT = 16
 MAX_ITERATIONS = 65536
@@ -24,18 +28,37 @@ OldKind	.long ?
 OldDefined	.byte ?
 OldSection	.byte ?
 Padding	.word ?
+Header	.long ?
+Kind	.long ?
+Trace	.long ?
+Iterations	.long ?
 	.endstruct
+SLOT_BYTES = Slot.Iterations+4
+UNSUPPORTED_LAYOUT = 3
+FILTERED_ONE_MAP_MODE = 2
+FILTERED_TWO_MAP_MODE = 4
 State	.struct
 Depth	.word ?
+Padding	.word ?
+ConditionPc	.long ?
+SourceBase	.long ?
+Sweep	.long ?
+PendingTrace	.long ?
+PendingKind	.long ?
+PendingHeader	.long ?
+Guard	.res guards.STATE_BYTES
+Trace	.res trace.STATE_BYTES
+Slots	.res LIMIT*SLOT_BYTES
 	.endstruct
-SLOTS = State.Depth+2
-SLOT_BYTES = Slot.OldSection+3
-STATE_BYTES = SLOTS+LIMIT*SLOT_BYTES
+SLOTS = State.Slots
+STATE_BYTES = State.Slots+LIMIT*SLOT_BYTES
 	.section code, kind=code
 
-; A0=state. Reset the loop stack for one complete source sweep.
+; A0=state,A1=stream base,D0=sweep identity. Start one source sweep.
 begin	.block
 	clr.w State.Depth(a0)
+	move.l a1, State.SourceBase(a0)
+	move.l d0, State.Sweep(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
@@ -69,19 +92,48 @@ step	.block
 	adda.w d0, a4
 	cmpa.l a6, a4
 	bhi.w invalid
-	cmpi.b #7, 4(a5)
-	bne.w ordinary
-	cmpi.b #1, 5(a5)
-	bhi.w ordinary
-	tst.b 8(a5)
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a5)
 	bne.w ordinary
 	movea.l package.Context.Package(a2), a1
-	move.w 6(a5), d1
-	cmp.w package.Header.ForDirective(a1), d1
-	beq.w opening
-	cmp.w package.Header.EndforDirective(a1), d1
-	beq.w closing
-	bra.w ordinary
+	move.l package.Header.LoopPlanBytes(a1), d1
+	adda.l package.Header.LoopPlan(a1), a1
+	movea.l a5, a0
+	jsr parser.classify
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w invalid
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w closingFor
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w closingWhile
+	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	beq.w ordinaryExtent
+	move.l d0, State.PendingKind(a3)
+	move.l a5, State.PendingHeader(a3)
+	bsr.w openObservation
+	bne.w invalid
+	cmpi.l #abi.PRVM_LOOP_WHILE, State.PendingKind(a3)
+	beq.w whileOpening
+	move.l a4, d0
+	sub.l a5, d0
+	bra.w opening
+whileOpening
+	move.w State.Depth(a3), d7
+	cmpi.w #LIMIT, d7
+	bhs.w invalid
+	movea.l a5, a0
+	bsr.w evaluateWhile
+	bne.w invalid
+	tst.l d1
+	beq.w skipBody
+	mulu.w #SLOT_BYTES, d7
+	lea SLOTS(a3), a1
+	adda.w d7, a1
+	clr.l Slot.Iterable(a1)
+	move.l a4, Slot.Body(a1)
+	bsr.w initializeSlot
+	addq.w #1, State.Depth(a3)
+	movea.l a4, a0
+	bra.w consumed
 opening
 	cmpi.w #12, d0
 	blo.w invalid
@@ -109,6 +161,8 @@ opening
 	clr.l Slot.Iterable(a1, d7.w)
 	move.l a4, Slot.Body(a1, d7.w)
 	move.l d1, Slot.Remaining(a1, d7.w)
+	adda.w d7, a1
+	bsr.w initializeSlot
 	addq.w #1, State.Depth(a3)
 	movea.l a4, a0
 	bra.w consumed
@@ -169,7 +223,8 @@ validateElement
 	move.l d4, Slot.Remaining(a5)
 	move.l #1, Slot.Iterable(a5)
 	move.l d5, Slot.Descriptor(a5)
-	clr.l Slot.Index(a5)
+	movea.l a5, a1
+	bsr.w initializeSlot
 	move.l d6, Slot.Variable(a5)
 	move.l d6, d1
 	jsr values.getKind
@@ -190,7 +245,18 @@ validateElement
 	movea.l Slot.Body(a5), a0
 	bra.w consumed
 skipBody
-	moveq #1, d7
+	moveq #0, d1
+	move.l State.PendingTrace(a3), d2
+	bsr.w finishObservation
+	bne.w invalid
+	move.w State.Depth(a3), d7
+	cmpi.w #LIMIT, d7
+	bhs.w invalid
+	move.l d7, d0
+	mulu.w #SLOT_BYTES, d0
+	lea SLOTS(a3), a0
+	move.l State.PendingKind(a3), Slot.Kind(a0, d0.w)
+	addq.w #1, d7
 	movea.l a4, a0
 skipLine
 	cmpa.l a6, a0
@@ -204,24 +270,39 @@ skipLine
 	adda.w d0, a4
 	cmpa.l a6, a4
 	bhi.w invalid
-	cmpi.w #9, d0
-	blo.w skipNext
-	cmpi.b #7, 4(a0)
-	bne.w skipNext
-	cmpi.b #1, 5(a0)
-	bhi.w skipNext
-	tst.b 8(a0)
-	bne.w skipNext
 	movea.l package.Context.Package(a2), a1
-	move.w 6(a0), d0
-	cmp.w package.Header.ForDirective(a1), d0
-	bne.w skipClose
+	move.l package.Header.LoopPlanBytes(a1), d1
+	adda.l package.Header.LoopPlan(a1), a1
+	jsr parser.classify
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w invalid
+	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	beq.w skipNext
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w skipForClose
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w skipWhileClose
+	cmpi.w #LIMIT, d7
+	bhs.w invalid
+	move.l d7, d1
+	mulu.w #SLOT_BYTES, d1
+	lea SLOTS(a3), a1
+	move.l d0, Slot.Kind(a1, d1.w)
 	addq.w #1, d7
 	bra.w skipNext
+skipForClose
+	moveq #abi.PRVM_LOOP_MATCHED, d0
+	bra.w skipClose
+skipWhileClose
+	moveq #abi.PRVM_LOOP_WHILE, d0
 skipClose
-	cmp.w package.Header.EndforDirective(a1), d0
-	bne.w skipNext
 	subq.w #1, d7
+	move.l d7, d1
+	mulu.w #SLOT_BYTES, d1
+	lea SLOTS(a3), a1
+	cmp.l Slot.Kind(a1, d1.w), d0
+	bne.w invalid
+	cmp.w State.Depth(a3), d7
 	beq.w skipped
 skipNext
 	movea.l a4, a0
@@ -229,31 +310,58 @@ skipNext
 skipped
 	movea.l a4, a0
 	bra.w consumed
+closingFor
+	moveq #abi.PRVM_LOOP_MATCHED, d0
+	bra.w closing
+closingWhile
+	moveq #abi.PRVM_LOOP_WHILE, d0
 closing
-	cmpi.w #9, d0
-	bne.w invalid
 	move.w State.Depth(a3), d7
 	beq.w invalid
 	subq.w #1, d7
 	mulu.w #SLOT_BYTES, d7
 	lea SLOTS(a3), a1
+	cmp.l Slot.Kind(a1, d7.w), d0
+	bne.w invalid
+	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	beq.w whileClosing
 	move.l Slot.Remaining(a1, d7.w), d1
 	subq.l #1, d1
 	beq.w exhausted
 	move.l d1, Slot.Remaining(a1, d7.w)
 	movea.l a1, a5
 	adda.w d7, a5
+	addq.l #1, Slot.Index(a5)
+	addq.l #1, Slot.Iterations(a5)
 	tst.l Slot.Iterable(a5)
 	beq.w repeatBody
-	addq.l #1, Slot.Index(a5)
 	bsr.w bindElement
 	bne.w invalid
 repeatBody
 	movea.l Slot.Body(a5), a0
 	bra.w consumed
+whileClosing
+	movea.l a1, a5
+	adda.w d7, a5
+	movea.l Slot.Header(a5), a0
+	bsr.w evaluateWhile
+	bne.w invalid
+	tst.l d1
+	beq.w finishWhile
+	cmpi.l #MAX_ITERATIONS, Slot.Iterations(a5)
+	bhs.w invalid
+	addq.l #1, Slot.Index(a5)
+	addq.l #1, Slot.Iterations(a5)
+	bra.w repeatBody
+finishWhile
+	bsr.w closeObservation
+	bne.w invalid
+	bra.w popLoop
 exhausted
 	movea.l a1, a5
 	adda.w d7, a5
+	bsr.w closeObservation
+	bne.w invalid
 	tst.l Slot.Iterable(a5)
 	beq.w popLoop
 	movea.l package.Context.Owner(a2), a0
@@ -276,8 +384,11 @@ popLoop
 consumed
 	moveq #1, d0
 	bra.w done
+ordinaryExtent
+	move.l a4, d0
+	sub.l a5, d0
 ordinary
-	; Rust's unscoped .for rejects declarations/labels in its body. A
+	; Rust's unscoped loops reject declarations/labels in its body. A
 	; column-one name is a label; explicit ':' and '=' are labels at any indent.
 	tst.w State.Depth(a3)
 	beq.w ordinaryReady
@@ -308,7 +419,247 @@ done
 	tst.l d0
 	rts
 	.bend  ; step
+	.pub
+; A0=record,A2=context,A3=loop state. Record Rust's previous regular-line
+; start PC, including conditional/empty lines. Driver loop controls do not set it.
+; D0/CCR=status; others preserved. No text or CPU grammar enters this boundary.
+observe	.block
+	cmpi.b #8, (a0)
+	blo.w regular
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a0)
+	beq.w directive
+regular
+	move.l package.Context.Pc(a2), State.ConditionPc(a3)
+	moveq #0, d0
+	rts
+directive
+	movem.l d1-d2/a0-a1, -(sp)
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l package.Context.Package(a2), a1
+	move.l package.Header.LoopPlanBytes(a1), d1
+	adda.l package.Header.LoopPlan(a1), a1
+	jsr parser.classify
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w bad
+	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	bne.w ready
+	move.l package.Context.Pc(a2), State.ConditionPc(a3)
+ready
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+	.bend  ; observe
+
+; A0=state,D0=assembly pass. D0/CCR=status; other registers preserved.
+beginPass	.block
+	clr.l State.ConditionPc(a0)
+	move.l a0, -(sp)
+	move.l d0, -(sp)
+	lea State.Guard(a0), a0
+	jsr guards.beginPass
+	move.l (sp)+, d0
+	movea.l (sp)+, a0
+	move.l a0, -(sp)
+	lea State.Trace(a0), a0
+	jsr trace.beginPass
+	movea.l (sp)+, a0
+	rts
+	.bend  ; beginPass
+
+; A0=state. Require the complete captured pass traversal. D0/CCR=status.
+endPass	.block
+	move.l a0, -(sp)
+	lea State.Trace(a0), a0
+	jsr trace.endPass
+	movea.l (sp)+, a0
+	rts
+	.bend  ; endPass
+
+; A0=state. Release transient observations on all assembly exits.
+; All registers preserved; CCR unspecified.
+release	.block
+	move.l a0, -(sp)
+	clr.w State.Depth(a0)
+	move.l a0, -(sp)
+	lea State.Guard(a0), a0
+	jsr guards.release
+	movea.l (sp)+, a0
+	lea State.Trace(a0), a0
+	jsr trace.release
+	movea.l (sp)+, a0
+	rts
+	.bend  ; release
+
+; A0=bounded records,D0=bytes,A2=validated package,D1=section mode.
+; While requires source-order PC replay, absent in filtered mapped layout modes 2/4.
+; D0=0 supported,UNSUPPORTED_LAYOUT present while,1 invalid; D1=offset on error.
+; Other registers preserved. Does not reject filtered layouts without while.
+validateLayout	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	cmpi.l #FILTERED_ONE_MAP_MODE, d1
+	beq.w scan
+	cmpi.l #FILTERED_TWO_MAP_MODE, d1
+	bne.w good
+scan
+	move.l a0, d2
+	add.l d0, d2
+	bcs.w bad
+	movea.l d2, a6
+line
+	cmpa.l a6, a0
+	beq.w good
+	bhi.w bad
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	cmpi.w #4, d0
+	blo.w bad
+	movea.l a0, a4
+	adda.l d0, a4
+	cmpa.l a6, a4
+	bhi.w bad
+	movea.l a2, a1
+	move.l package.Header.LoopPlanBytes(a2), d1
+	adda.l package.Header.LoopPlan(a2), a1
+	jsr parser.classify
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w bad
+	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	beq.w unsupported
+	movea.l a4, a0
+	bra.w line
+unsupported
+	move.l a0, d1
+	sub.l a5, d1
+	moveq #UNSUPPORTED_LAYOUT, d0
+	bra.w done
+good
+	moveq #0, d0
+	bra.w done
+bad
+	move.l a0, d1
+	sub.l a5, d1
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; validateLayout
+
 	.priv
+; A0=while header,A2=context,A3=loop state. Evaluate at the previous
+; regular statement's start PC, matching Rust; restore actual emission PC.
+; D0/CCR=status,D1=truth,D2 scratch; other registers preserved.
+evaluateWhile	.block
+	movem.l a0-a1, -(sp)
+	move.l a0, -(sp)
+	lea State.Guard(a3), a0
+	jsr guards.enter
+	movea.l (sp)+, a0
+	bne.w enterFailed
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l a0, a1
+	adda.l d0, a1
+	lea abi.LoopRecord.VariableKind(a0), a0
+	move.l package.Context.Pc(a2), -(sp)
+	move.l State.ConditionPc(a3), package.Context.Pc(a2)
+	jsr expression.evaluate
+	tst.l d0
+	bne.w failed
+	cmpa.l a1, a0
+	bne.w failed
+	tst.l d2
+	beq.w valueReady
+	cmpi.w #1, package.Context.Pass(a2)
+	bne.w failed
+valueReady
+	or.l package.Context.High(a2), d1
+	moveq #0, d0
+	bra.w restore
+failed
+	moveq #1, d0
+restore
+	move.l (sp)+, package.Context.Pc(a2)
+	lea State.Guard(a3), a0
+	jsr guards.leave
+	bra.w finished
+enterFailed
+	moveq #1, d0
+finished
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; evaluateWhile
+
+; A1=new loop slot,A3=state. Initialize replay/path identity; others kept.
+initializeSlot	.block
+	move.l State.PendingHeader(a3), Slot.Header(a1)
+	move.l State.PendingKind(a3), Slot.Kind(a1)
+	move.l State.PendingTrace(a3), Slot.Trace(a1)
+	move.l #1, Slot.Iterations(a1)
+	clr.l Slot.Index(a1)
+	rts
+	.bend  ; initializeSlot
+
+; A3=state with PendingHeader/Kind. Capture or match numeric ancestry.
+; D0/CCR=status; other registers kept. Root parents carry the sweep identity.
+openObservation	.block
+	movem.l d1-d7/a0-a2, -(sp)
+	move.l State.PendingHeader(a3), d0
+	sub.l State.SourceBase(a3), d0
+	moveq #0, d2
+	move.l State.Sweep(a3), d1
+	ori.l #$ffffff00, d1
+	move.w State.Depth(a3), d3
+	beq.w observe
+	subq.w #1, d3
+	mulu.w #SLOT_BYTES, d3
+	lea SLOTS(a3), a1
+	move.l Slot.Trace(a1, d3.w), d1
+	move.l Slot.Index(a1, d3.w), d2
+observe
+	lea State.Trace(a3), a0
+	jsr trace.open
+	tst.l d0
+	bne.w done
+	move.l d1, State.PendingTrace(a3)
+done
+	movem.l (sp)+, d1-d7/a0-a2
+	tst.l d0
+	rts
+	.bend  ; openObservation
+
+; A5=completed loop slot,A3=state. D0/CCR=status; other registers kept.
+closeObservation	.block
+	movem.l d1-d2, -(sp)
+	move.l Slot.Iterations(a5), d1
+	move.l Slot.Trace(a5), d2
+	bsr.w finishObservation
+	movem.l (sp)+, d1-d2
+	rts
+	.bend  ; closeObservation
+
+; A3=state,D1=count,D2=observation offset. D0/CCR=status; others kept.
+finishObservation	.block
+	movem.l d1-d2/a0, -(sp)
+	move.l d1, d0
+	move.l d2, d1
+	lea State.Trace(a3), a0
+	jsr trace.finish
+	movem.l (sp)+, d1-d2/a0
+	rts
+	.bend  ; finishObservation
+
 ; A5=iterable slot,A2=context. D0/CCR=status; clobbers D1-D3/D6/A0-A1.
 ; The descriptor offset survives arena relocation and body mutations.
 bindElement	.block

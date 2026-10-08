@@ -23,6 +23,7 @@
 	.use experimental.amigaos.binary_hunk_references as hunkrefs
 	.use experimental.amigaos.binary_repetition as repetition
 	.use experimental.amigaos.binary_branches as branches
+	.use experimental.amigaos.binary_guard_values as guards
 	.include "memory_telemetry.i"
 	.pub
 
@@ -51,6 +52,7 @@ OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
 FRAME_BYTES = Frame.Emitted+4
 FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
+FAILURE_WHILE_LAYOUT = 2
 MAX_LAYOUT_ROUNDS = 8
 
 	.section bss, kind=bss
@@ -121,6 +123,8 @@ assemble	.block
 	clr.l Frame.Used(a5)
 	clr.w LayoutRounds
 	clr.w Frame.Failure(a5)
+	lea RepeatState, a0
+	jsr repetition.release
 	move.l #-1, Frame.RecordOffset(a5)
 	movea.l Frame.Context(a5), a6
 	movea.l pkg.Context.Owner(a6), a0
@@ -177,11 +181,25 @@ placementReady
 	lea SectionState, a1
 	move.w sections.State.Mode(a1), d2
 	jsr mutable.validateLayout
-	beq.w layoutReady
+	beq.w loopLayout
 	move.l d1, Frame.RecordOffset(a5)
 	cmpi.l #mutable.UNSUPPORTED_LAYOUT, d0
 	bne.w fail
 	move.w #FAILURE_MUTABLE_LAYOUT, Frame.Failure(a5)
+	bra.w fail
+loopLayout
+	movea.l Frame.Records(a5), a0
+	move.l Frame.RecordBytes(a5), d0
+	movea.l pkg.Context.Package(a6), a2
+	moveq #0, d1
+	move.w SectionState+sections.State.Mode, d1
+	jsr repetition.validateLayout
+	tst.l d0
+	beq.w layoutReady
+	move.l d1, Frame.RecordOffset(a5)
+	cmpi.l #repetition.UNSUPPORTED_LAYOUT, d0
+	bne.w fail
+	move.w #FAILURE_WHILE_LAYOUT, Frame.Failure(a5)
 	bra.w fail
 layoutReady
 	clr.w pkg.Context.Relocatable(a6)
@@ -192,8 +210,19 @@ layoutReady
 	jsr mapping.validate
 	bne.w fail
 outputReady
+	lea RepeatState+repetition.State.Guard, a0
+	movea.l Frame.Records(a5), a1
+	move.l Frame.RecordBytes(a5), d0
+	movea.l a6, a2
+	jsr guards.prepare
+	bne.w fail
+
 	moveq #1, d7
 pass
+	lea RepeatState, a0
+	move.l d7, d0
+	jsr repetition.beginPass
+	bne.w fail
 	move.w d7, pkg.Context.Pass(a6)
 	clr.l pkg.Context.Pc(a6)
 	clr.l Frame.Used(a5)
@@ -224,6 +253,8 @@ sweepRecords
 	.MEMORY_COUNTER_INC TraversalPasses
 	.ASSEMBLY_POSITION Position, d7, d5, SectionState, sections.State.Mode, sections.State.HunkCurrent, sections.State.OrderCount
 	lea RepeatState, a0
+	movea.l Frame.Records(a5), a1
+	move.l d5, d0
 	jsr repetition.begin
 	lea BranchState, a0
 	jsr branches.begin
@@ -254,10 +285,17 @@ line
 	move.b 1(a4), d0
 	cmpi.b #source.FLAG_ALLOWED, d0
 	bhi.w fail
-	btst #4, d0
-	bne.w controlsReady
 	btst #3, d0
 	bne.w omitted
+	movea.l a4, a0
+	movea.l a6, a2
+	movea.l a3, a1
+	lea RepeatState, a3
+	jsr repetition.observe
+	movea.l a1, a3
+	bne.w fail
+	btst #4, 1(a4)
+	bne.w controlsReady
 	movea.l a4, a0
 	movea.l a3, a1
 	movea.l a6, a2
@@ -475,6 +513,9 @@ pairedPassDone
 	addq.w #1, d5
 	bra.w sweep
 sweepDone
+	lea RepeatState, a0
+	jsr repetition.endPass
+	bne.w fail
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #9
 	tst.w d4
 	bne.w fail
@@ -543,6 +584,8 @@ fail
 	clr.l Frame.Used(a5)
 	moveq #1, d0
 done
+	lea RepeatState, a0
+	jsr repetition.release
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -729,6 +772,13 @@ mutableDeclaration
 	bra.w done
 constant
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #15
+	movem.l a0-a3, -(sp)
+	movea.l a0, a1
+	movea.l 4(sp), a3
+	lea RepeatState+repetition.State.Guard, a0
+	jsr guards.declaration
+	movem.l (sp)+, a0-a3
+	bne.w bad
 	moveq #0, d0
 	move.b -3(a0), d0
 	jsr constants.execute
@@ -811,6 +861,7 @@ origin
 	bne.w bad
 setOrigin
 	move.l d1, pkg.Context.Pc(a2)
+	move.l d1, RepeatState+repetition.State.ConditionPc
 	bra.w ok
 end
 	cmpa.l a1, a0

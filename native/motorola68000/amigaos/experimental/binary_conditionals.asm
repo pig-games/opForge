@@ -8,6 +8,8 @@
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_package as package
 	.use prvm.amigaos.packed_branch as branches
+	.use prvm.amigaos.packed_loop as loop_parser
+	.use prvm.amigaos.abi as loop_abi
 	.use prvm.amigaos.abi as abi
 	.pub
 ; No preprocessor define ingress exists in the compact frontend: the namespace
@@ -99,13 +101,13 @@ deferred
 	move.w State.Depth(a4), d2
 	beq.w deferredPolicy
 	subq.w #1, d2
-	lsl.w #experimental.amigaos.binary_conditionals.SLOT_SHIFT, d2
+	lsl.w #SLOT_SHIFT, d2
 	tst.b SLOTS+Slot.Kind(a4, d2.w)
 	beq.w deferredPolicy
 	move.w State.Deferred(a4), d2
 	beq.w preprocessorHead
 	subq.w #1, d2
-	lsl.w #experimental.amigaos.binary_conditionals.DEFERRED_SLOT_SHIFT, d2
+	lsl.w #DEFERRED_SLOT_SHIFT, d2
 	move.w State.Depth(a4), d0
 	cmp.w DEFERRED_SLOTS+DeferredSlot.PreparationDepth(a4, d2.w), d0
 	beq.w deferredPolicy
@@ -142,7 +144,7 @@ deferredPolicy
 	move.w State.Deferred(a4), d2
 	beq.w preparation
 	subq.w #1, d2
-	lsl.w #experimental.amigaos.binary_conditionals.DEFERRED_SLOT_SHIFT, d2
+	lsl.w #DEFERRED_SLOT_SHIFT, d2
 	move.w State.Depth(a4), d0
 	cmp.w DEFERRED_SLOTS+DeferredSlot.PreparationDepth(a4, d2.w), d0
 	bne.w preparation
@@ -159,7 +161,7 @@ deferIf
 	move.w State.Deferred(a4), d2
 	cmpi.w #LIMIT, d2
 	bhs.w bad
-	lsl.w #experimental.amigaos.binary_conditionals.DEFERRED_SLOT_SHIFT, d2
+	lsl.w #DEFERRED_SLOT_SHIFT, d2
 	clr.b DEFERRED_SLOTS+DeferredSlot.ElseSeen(a4, d2.w)
 	move.w layout.State.LoopDepth(a6), DEFERRED_SLOTS+DeferredSlot.LoopDepth(a4, d2.w)
 	move.w State.Depth(a4), DEFERRED_SLOTS+DeferredSlot.PreparationDepth(a4, d2.w)
@@ -188,7 +190,7 @@ deferredOrdinary
 	bne.w preparation
 	move.w State.Deferred(a4), d2
 	subq.w #1, d2
-	lsl.w #experimental.amigaos.binary_conditionals.DEFERRED_SLOT_SHIFT, d2
+	lsl.w #DEFERRED_SLOT_SHIFT, d2
 	move.w layout.State.LoopDepth(a6), d0
 	cmp.w DEFERRED_SLOTS+DeferredSlot.LoopDepth(a4, d2.w), d0
 	beq.w bad
@@ -210,7 +212,7 @@ preparation
 	move.w State.Depth(a4), d2
 	beq.w preparationExpression
 	subq.w #1, d2
-	lsl.w #experimental.amigaos.binary_conditionals.SLOT_SHIFT, d2
+	lsl.w #SLOT_SHIFT, d2
 	tst.b SLOTS+Slot.Kind(a4, d2.w)
 	beq.w preparationExpression
 	jsr branches.select

@@ -10,6 +10,8 @@
 	.use experimental.amigaos.binary_macro_fragments as fragments
 	.use experimental.amigaos.binary_package as package
 	.use prvm.amigaos.packed_branch as branches
+	.use prvm.amigaos.packed_loop as loops
+	.use prvm.amigaos.abi as loop_abi
 	.use experimental.amigaos.binary_state as pkgstate
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
@@ -38,6 +40,11 @@ TEXT_SCRATCH = 42; private placeholder-consumer scratch, never a writer record
 ACTION_REGULAR = 0
 ACTION_CONSUMED = 1
 ACTION_INVOKE = 2
+ValueToken	.struct
+Kind	.byte ?
+Identity	.word ?
+Qualifier	.byte ?
+	.endstruct
 State	.struct
 Count	.word ?
 Open	.word ?
@@ -299,6 +306,17 @@ coreDirective
 	beq.w none
 	cmp.w package.Header.EmitDirective(a3), d4
 	beq.w none
+	; Package loop envelopes preserve contextual grammar identities. They
+	; must not acquire call recipes that relex their RHS without the loop head.
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l a3, a1
+	move.l package.Header.LoopPlanBytes(a1), d1
+	adda.l package.Header.LoopPlan(a1), a1
+	move.l d3, d0
+	jsr loops.classify
+	cmpi.l #loop_abi.PRVM_LOOP_ORDINARY, d0
+	movem.l (sp)+, d1-d2/a0-a1
+	bne.w none
 	; Package-selected conditional heads never become template body calls.
 	movem.l d1/a1, -(sp)
 	movea.l a3, a1
@@ -693,11 +711,6 @@ clearDefaults
 	bsr.w bindHeaderPlan
 	bne.w bad
 parametersDone
-	tst.w d2
-	bne.w parametersValid
-	tst.w Def.ParamCount(a0)
-	beq.w bad  ; zero-parameter segments are outside this bounded slice
-parametersValid
 	; Definitions share lexical IDs with values, but declaration ownership and
 	; visibility live in an independent template facet.
 	subq.l #4, sp
@@ -1601,6 +1614,21 @@ copyToken
 	beq.w rebindToken
 	bra.w copyBytes
 rebindToken
+	; Segment body names predate iterator creation. Resolve live bare values
+	; while preserving the existing macro invocation hygiene path.
+	tst.w Def.Kind(a4)
+	bne.w ordinaryRebind
+	cmpi.b #1, ValueToken.Kind(a3)
+	bhi.w ordinaryRebind
+	moveq #0, d0
+	move.w ValueToken.Identity(a3), d0
+	moveq #0, d1
+	move.b ValueToken.Qualifier(a3), d1
+	movea.l (sp), a0
+	bsr.w replayIterator
+	tst.l d0
+	beq.w writeName
+ordinaryRebind
 	tst.w Def.Kind(a4)
 	beq.w copyBytes
 	cmpi.b #7, (a3)
@@ -1629,6 +1657,7 @@ bindBodyName
 	bhi.w bad
 	cmpi.b #7, (a3)
 	beq.w writeDot
+writeName
 	move.b (a3)+, (a5)+
 	move.w d1, (a5)+
 	addq.l #2, a3
@@ -2330,5 +2359,40 @@ BlockWord
 EndblockWord
 	.byte "endblock"
 	.align 2  ; the next module shares this instruction section
+; A0=scope,D0=source identity,D1=qualifier. Resolve only active bare iterators.
+; D0/CCR=0 matched,1 absent; D1=temporary identity on match. Others preserved.
+; Definition-scope values and dot-prefixed syntax keep their existing binding.
+replayIterator	.block
+	movem.l d2-d4/a0-a3, -(sp)
+	tst.l d1
+	bne.w absent
+	movea.l a0, a1
+	tst.w layout.State.LoopDepth(a1)
+	beq.w absent
+	sub.w layout.State.Base(a1), d0
+	bcs.w absent
+	cmp.w layout.State.Count(a1), d0
+	bhs.w absent
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l scopes.ENTRIES_POINTER(a1), a2
+	adda.l d0, a2
+	moveq #0, d2
+	move.w records.Entry.Leaf(a2), d2
+	moveq #0, d0
+	move.w records.Entry.Length(a2), d0
+	sub.l d2, d0
+	beq.w absent
+	movea.l scopes.ARENA_POINTER(a1), a0
+	adda.l records.Entry.Name(a2), a0
+	adda.l d2, a0
+	jsr scopes.probeIterator
+	bra.w done
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d4/a0-a3
+	tst.l d0
+	rts
+	.bend  ; replayIterator
 	.endsection
 	.endmodule

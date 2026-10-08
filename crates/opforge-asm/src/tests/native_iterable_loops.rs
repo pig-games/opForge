@@ -4,13 +4,13 @@ use crate::native_package_build::{build_native_packages, EmbedSelection};
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 
-struct Scratch(PathBuf);
+pub(super) struct Scratch(pub(super) PathBuf);
 impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
 }
-fn scratch() -> Scratch {
+pub(super) fn scratch() -> Scratch {
     let path = std::env::temp_dir().join(format!(
         "opforge-iterable-{}-{}",
         std::process::id(),
@@ -235,7 +235,7 @@ fn root() -> PathBuf {
         .canonicalize()
         .unwrap()
 }
-fn build_image(root: &Path, dir: &Path) -> Vec<u8> {
+pub(super) fn build_image(root: &Path, dir: &Path) -> Vec<u8> {
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &dir.join("native"),
@@ -249,7 +249,11 @@ fn build_image(root: &Path, dir: &Path) -> Vec<u8> {
 #[test]
 fn native_iterable_loops_host_assembles() {
     let dir = scratch();
-    assert!(!build_image(&root(), &dir.0).is_empty());
+    let image = build_image(&root(), &dir.0);
+    assert!(!image.is_empty());
+    if let Some(path) = std::env::var_os("OPFORGE_ITERABLE_SAVE_IMAGE") {
+        fs::write(path, image).unwrap();
+    }
 }
 
 #[test]
@@ -350,7 +354,7 @@ fn native_iterable_loops_fs_uae() {
     );
 }
 
-fn run_case(
+pub(super) fn run_case(
     root: &Path,
     dir: &Path,
     image: &[u8],

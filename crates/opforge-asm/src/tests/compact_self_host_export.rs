@@ -25,6 +25,53 @@ const INSTRUMENTED_DEFINES: &[&str] = &[
     "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
 ];
 
+fn bounded_text(value: &str, limit: usize) -> String {
+    let mut chars = value.chars();
+    let text: String = chars.by_ref().take(limit).collect();
+    if chars.next().is_some() {
+        format!("{text}…")
+    } else {
+        text
+    }
+}
+
+fn concise_assembly_failure(context: &str, error: cli_core::CliRunError) -> String {
+    match error {
+        cli_core::CliRunError::Assembler { error, .. } => {
+            let diagnostics = error.diagnostics();
+            let details = diagnostics
+                .iter()
+                .take(8)
+                .map(|diagnostic| {
+                    format!(
+                        "{}:{}: {}",
+                        diagnostic.file.as_deref().unwrap_or("<unknown>"),
+                        diagnostic.line,
+                        bounded_text(diagnostic.error.message(), 240)
+                    )
+                })
+                .collect::<Vec<_>>();
+            format!(
+                "{context}: {}; diagnostics: {} total, showing {}: {}",
+                bounded_text(error.summary(), 500),
+                diagnostics.len(),
+                details.len(),
+                details.join(" | ")
+            )
+        }
+        cli_core::CliRunError::Workflow { error, .. } => {
+            format!(
+                "{context}: workflow error: {}",
+                bounded_text(&error.to_string(), 500)
+            )
+        }
+        cli_core::CliRunError::WarningsAsErrors { reports } => format!(
+            "{context}: warnings treated as errors ({} reports)",
+            reports.len()
+        ),
+    }
+}
+
 #[test]
 #[ignore = "host-only export; requires a new OPFORGE_COMPACT_EXPORT_DIR"]
 fn export_compact_self_host_bundle() {
@@ -115,7 +162,12 @@ fn export_bundle(failure_capture: bool) {
         "release oracle requires no defines"
     );
     config.out_dir = Some(scratch.clone());
-    run_with_validated_cli_with_context(&cli, &config).expect("fresh release self-build");
+    run_with_validated_cli_with_context(&cli, &config).unwrap_or_else(|error| {
+        panic!(
+            "{}",
+            concise_assembly_failure("fresh release self-build", error)
+        )
+    });
     let oracle = fs::read(scratch.join("build/opforge_compact")).unwrap();
     let allocation = hunk::allocation(&oracle).expect("strict release Hunk allocation");
     let dependency_text = fs::read_to_string(&dependencies).unwrap();
@@ -161,8 +213,12 @@ fn export_bundle(failure_capture: bool) {
             .iter()
             .map(|name| (*name).to_owned())
             .collect();
-        run_with_validated_cli_with_context(&bootstrap_cli, &config)
-            .expect("fresh configured bootstrap build");
+        run_with_validated_cli_with_context(&bootstrap_cli, &config).unwrap_or_else(|error| {
+            panic!(
+                "{}",
+                concise_assembly_failure("fresh configured bootstrap build", error)
+            )
+        });
         fs::read(scratch.join("build/opforge_compact")).unwrap()
     } else {
         oracle.clone()
@@ -321,7 +377,7 @@ fn export_bundle(failure_capture: bool) {
         "bootstrap_hunk_digest": opforge_self_host_package_digest(&bootstrap),
         "bootstrap_hunk_allocation_bytes": bootstrap_allocation.total(),
         "telemetry_file": instrumented.then_some("memory.bin"),
-        "runtime_package_magic": "BS33",
+        "runtime_package_magic": "BS34",
         "runtime_package_file": package_file,
         "runtime_package_bytes": package.len(),
         "runtime_package_digest": opforge_self_host_package_digest(&package),

@@ -11,6 +11,7 @@
 	.use experimental.amigaos.binary_products as products
 	.use experimental.amigaos.binary_nested_operands as nested
 	.use prvm.amigaos.packed_loop as loop_parser
+	.use prvm.amigaos.abi as loop_abi
 	.use prvm.amigaos.packed_branch as branches
 	.pub
 	.section code, kind=code
@@ -33,11 +34,14 @@ lineUnfolded	.block
 	.bend  ; lineUnfolded
 	.priv
 UNFOLDED = 256
-LINE_SCRATCH_BYTES = UNFOLDED+2
+; Statement heads may follow a nine-byte label prefix, not just the header.
+SOURCE_RECORD = UNFOLDED+2
+LINE_SCRATCH_BYTES = SOURCE_RECORD+4
 lineMode	.block
 	suba.w #LINE_SCRATCH_BYTES, sp
 	movea.l sp, a6
 	move.w d2, UNFOLDED(a6)
+	move.l a0, SOURCE_RECORD(a6)
 	move.l d2, d0
 	jsr expression.deferCompile
 	movea.l a1, a5
@@ -102,7 +106,7 @@ constant
 directive
 	; Numeric PRVM policy owns expression conditional grammar.
 	movem.l d1/a0-a1, -(sp)
-	subq.l #4, a0
+	movea.l SOURCE_RECORD(a6), a0
 	moveq #0, d0
 	move.b (a0), d0
 	addq.w #1, d0
@@ -123,6 +127,37 @@ directive
 	bhs.w noOperands
 	bra.w oneScalar
 ordinaryDirective
+	movem.l d1/a0-a1, -(sp)
+	movea.l SOURCE_RECORD(a6), a0
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l a2, a1
+	move.l package.Header.LoopPlanBytes(a2), d1
+	adda.l package.Header.LoopPlan(a2), a1
+	jsr loop_parser.classify
+	move.l d0, d7
+	movem.l (sp)+, d1/a0-a1
+	cmpi.l #loop_abi.PRVM_LOOP_MALFORMED, d7
+	beq.w bad
+	cmpi.l #loop_abi.PRVM_LOOP_WHILE, d7
+	beq.w scalarLoop
+	cmpi.l #loop_abi.PRVM_LOOP_ENDFOR, d7
+	beq.w closingLoop
+	cmpi.l #loop_abi.PRVM_LOOP_ENDWHILE, d7
+	beq.w closingLoop
+	bra.w ordinaryLoopDirective
+scalarLoop
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	bra.w oneScalar
+closingLoop
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	bra.w noOperands
+ordinaryLoopDirective
 	moveq #1, d6
 	bsr.w copy
 	bne.w bad

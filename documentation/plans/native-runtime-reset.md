@@ -219,7 +219,8 @@ explicitly until the shared mapped replay scheduler is repaired; existing mapped
 programs without `.while` remain available. This is an interim coverage boundary,
 not complete `.while` parity. Scoped `.bfor`/`.bwhile`, conditional preparation
 effects and the remaining macro matrix follow. No BS34 validation or performance
-claim covers complete loop/macro parity or a full self-host run.
+claim covers complete loop/macro parity. The full self-host result below qualifies
+the current-source checkpoint separately from that remaining language coverage.
 
 Focused native evidence now covers fourteen positive `.while` scenarios on each
 of the 68020 and 6502 packages: thirteen combined address windows plus a separate
@@ -266,7 +267,7 @@ the trailing zero. Capture and replay share the same VM token/span selection;
 ordinary numeric macro and segment lines retain no whole-line fragment plan.
 Bounds validation stays with the owned recipe arena. The qualified release image
 with both packages is 613,856 bytes; this is focused macro coverage, not complete
-macro parity or a BS34 full self-host result. Scoped loops and the wider
+macro parity. Scoped loops and the wider
 macro/reachability/effects matrix remain open.
 
 The following repairs have separate measurements on the same unchanged control
@@ -282,6 +283,20 @@ and no concurrent host builds/tests:
 The last repair adds 632 image bytes and 624 linked reservation bytes. These
 measurements isolate the two following checkpoints; they do not replace the
 earlier BS33→`.while` comparison or claim a full-source timing or memory result.
+
+The subsequent full BS34 release self-host completes all 116 mapped source/binary
+inputs (1,739,975 bytes) on FS-UAE 68020/74 MiB. Fresh case-bound START/DONE and
+exit zero establish exact equality among bootstrap, native output and the live
+Rust oracle for the entire 596,652-byte Hunk. Source, package and Hunk fingerprints
+are `6c9adfcf4f1aac2f`, `93ff18aed5760d42` and `5643260ab4b323c7` respectively.
+The embedded m68020 package is 434,428 bytes; linked reservations are 616,200
+bytes. No concurrent host builds/tests or native runs overlapped this release
+measurement: START→DONE takes 1,486.667333375 seconds (24m46.67s).
+BS33's earlier full run took 23m53.13s with a smaller, different source tree;
+that comparison does not isolate any individual repair. The unchanged-control
+measurements above do. No new tracked peak memory, A6000 timing or 2 MiB fit is
+claimed. The qualified bundle is
+`/tmp/opforge-selfhost-bs34-macro-repair-release-74m`.
 
 Complete the remaining coverage by responsibility rather than multiplying every
 macro/loop combination:
@@ -302,6 +317,17 @@ macro/loop combination:
 The matrix's fixture count is coverage intent, not proof of native completion.
 Keep each capability's latest fresh native result and remaining restrictions
 explicit while these slices progress.
+
+The next scoped-loop checkpoint starts with anonymous counted `.bfor`: lexical
+preparation and iteration-local labels/constants/mutables, keyed by the existing
+trace-row offset, iteration ordinal and numeric declaration identity. Anonymous
+scopes do not create independently selectable block units. Preserve forward
+local constant dependencies and source-order mutable availability; reset
+provisional locals whenever sizing retries reset the trace. Labeled loops,
+indexed members, iterable scoped loops and `.bwhile` follow on that ownership
+foundation, with explicit rejection until supported. A focused Rust probe already
+rejects indexed loop-member addresses in Hunk output; do not mistake flat indexed
+value support for relocation support or silently emit an unrelocated address.
 
 ### Compound-value checkpoints
 

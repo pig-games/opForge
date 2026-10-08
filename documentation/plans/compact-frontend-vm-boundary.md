@@ -1,8 +1,8 @@
 # Compact frontend: VM boundary correction
 
-Status: BS33 now has complete native self-host qualification, in addition to its
-focused iterator-conditional proof. The next conditional-loop checkpoint (BS34)
-is under development and is not yet qualified.
+Status: BS34 now has complete native self-host qualification, alongside focused
+conditional-loop and macro proof. Scoped loops, mapped conditional repetition
+and the remaining expansion effects are still under development.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -75,25 +75,26 @@ Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.
 
-## Most recent full self-host qualification (BS33)
+## Most recent full self-host qualification (BS34)
 
-BS33 self-assembles all 114 mapped source/binary inputs (1,704,435
+BS34 self-assembles all 116 mapped source/binary inputs (1,739,975
 bytes) in FS-UAE 68020/74 MiB. Fresh native completion has exit zero and exact
-bootstrap/native/live Rust equality for the entire 592,700-byte Hunk. Its embedded
-m68020 package is 434,396 bytes, fingerprint `fnv1a64:c3b022ce835d4dde`;
-source fingerprint is `fnv1a64:dbc8c7d966b2dec6`, and Hunk fingerprint is
-`fnv1a64:25c27121a3669a35`. Linked static reservation is 612,112 bytes.
+bootstrap/native/live Rust equality for the entire 596,652-byte Hunk. Its embedded
+m68020 package is 434,428 bytes, fingerprint `fnv1a64:93ff18aed5760d42`;
+source fingerprint is `fnv1a64:6c9adfcf4f1aac2f`, and Hunk fingerprint is
+`fnv1a64:5643260ab4b323c7`. Linked static reservation is 616,200 bytes.
 
-The uninstrumented release run takes 1,433.129872292 seconds (23m53.13s). The
+The uninstrumented release run takes 1,486.667333375 seconds (24m46.67s), with
+no concurrent host builds/tests or native runs. The
 earlier BS32 diagnostic run takes 1,442.638670708 seconds and peaks at 26,071,352
 tracked owned bytes, with zero terminal ownership and zero profiling/allocation
 errors. Static reservation and tracked peak allocation describe different costs.
 No physical A6000 timing or 2 MiB fit is claimed. See the
-[complete BS33 result](native-runtime-reset.md#iterator-dependent-conditionals-bs33).
+[complete BS34 result](native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
 
-This is the latest full-qualified reference, not proof for the BS34 work in
-progress. The BS34 source and hardware helper require regenerated current
-packages and a new qualified bundle before hardware execution.
+This qualifies the current-source checkpoint, not complete loop/macro or language
+parity. Later source changes need new proof; do not reuse this result for an
+unqualified executable or package.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
@@ -107,13 +108,13 @@ stored manifests or outputs cannot replace the live oracle.
 ## Physical A6000 execution
 
 The latest qualified release bundle is
-`/tmp/opforge-selfhost-bs33-iterator-conditionals-release-74m`. Bootstrap and
+`/tmp/opforge-selfhost-bs34-macro-repair-release-74m`. Bootstrap and
 assembled output both embed only `m68020--motorola68k.bin`. The named package is
 retained for local identity verification; no external runtime fallback is used.
 This bundle has complete FS-UAE qualification, but no physical execution or
-remote transfer proof. The current A6000 helper validates the BS34 package
-contract, so it needs a newly qualified BS34 bundle before hardware execution;
-the BS33 reference cannot be used with that reader.
+remote transfer proof. It uses the current A6000 helper's BS34 package contract.
+The local current-export link selects this bundle, and the helper's dry run
+validates its exact mapped inputs, package and images without network access.
 Use macOS Terminal, where `ash` and `acp` can reach the A6000:
 
 ```sh
@@ -414,9 +415,9 @@ These statements describe the implemented subset. They do not imply complete ass
   handwritten precedence parser. Fresh native component, folded-statement and
   session-lifecycle comparisons pass; unchanged-control timing is recorded in the
   [active plan](native-runtime-reset.md#shared-compiler-cost-checkpoint). The
-  latest complete self-host reference is BS33, source manifest
-  `dbc8c7d966b2dec6`; later BS34 work is in development and has not been
-  qualified. The historical migration checkpoint recorded
+  latest complete self-host reference is BS34, source manifest
+  `6c9adfcf4f1aac2f`; scoped-loop and wider macro coverage remains open.
+  The historical migration checkpoint recorded
   54 inherited host failures; that observation does not describe the current
   host suite or establish broad integration readiness.
   Ordinary Rust expression handling still uses core token spelling instead of

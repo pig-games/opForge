@@ -490,7 +490,7 @@ Notes:
   numeric branch plans without source parsing. Deferred preparation-only
   declarations, scopes, configuration, metadata, file operations and macro
   definitions reject; complete lazy file/reachability parity is not established.
-  BS33 is also the latest full self-host reference: all 114 mapped inputs
+  BS33 also completed a full self-host reference: all 114 mapped inputs
   (1,704,435 bytes) completed on FS-UAE 68020/74 MiB, with exact equality among
   bootstrap, native output and the live Rust oracle for the 592,700-byte Hunk.
   The run took 1,433.129872292 seconds (23m53.13s); source and Hunk fingerprints
@@ -501,7 +501,11 @@ Notes:
   two-concrete-section output on both packages. Mapped modes 2 and 4 reject any
   `.while`, including constant-false loops, because their filtered traversal
   does not preserve the PC across skipped sections. Complete `.while` parity
-  and scoped `.bfor`/`.bwhile` remain open. See the [current checkpoint](plans/compact-frontend-vm-boundary.md#iterator-dependent-conditionals-bs33-provisional)
+  and scoped `.bfor`/`.bwhile` remain open. The latest BS34 full release self-host
+  completes all 116 mapped inputs (1,739,975 bytes) in 24m46.67s on FS-UAE
+  68020/74 MiB, with exact bootstrap/native/live Rust equality for the entire
+  596,652-byte Hunk. That self-host result does not establish full loop/macro
+  parity, A6000 timing or 2 MiB fit. See the [current checkpoint](plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs34)
   and [BS34 plan](plans/native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
 
 

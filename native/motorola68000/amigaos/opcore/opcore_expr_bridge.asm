@@ -1,7 +1,7 @@
 ; Native scalar-expression frontend for the ExprVM runtime.
 ;
 ; This module has one cohesive responsibility: compile the established bounded
-; scalar-expression text grammar into versioned ExprVM bytecode and execute that
+; scalar-expression text grammar into ExprVM bytecode and execute that
 ; bytecode through exprvm.amigaos.runtime. The tkpkg expression service owns
 ; request envelopes and diagnostic projection; the ExprVM runtime owns bytecode
 ; evaluation. Literal parsing and symbol-name-to-index resolution stay here as
@@ -85,7 +85,6 @@ missing
 ; - D1: number of label entries.
 ; - D2: current assembly PC for '$' current-address terms.
 ; - D4: EXVM parser opcode version.
-; - D5: expression evaluator opcode version (1 or 2).
 ; - D6: current assembler pass number.
 ;
 ; Outputs:
@@ -138,12 +137,6 @@ opcoreExvmEvalOperandCommon	.block
 	movem.l d1-d2/d6-d7/a0-a5, -(sp)
 	clr.w OpcoreExvmLastResultPresent
 	clr.l OpcoreExvmLastResultHigh
-	cmpi.w #2, d5
-	beq.s selectedVersionReady
-	moveq #1, d5
-
-selectedVersionReady
-	move.w d5, runtime.ExprvmSelectedOpcodeVersion
 	clr.l d5
 	clr.b OpcoreExvmSawUnresolvedSymbol
 	move.w d6, runtime.ExprvmCurrentPass
@@ -289,8 +282,6 @@ ensureEndOk
 	movea.l a4, a2
 	move.l d7, d1
 	move.l a5, d2
-	moveq #0, d6
-	move.w runtime.ExprvmSelectedOpcodeVersion, d6
 .ifdef OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS
 	movem.l d0-d2, -(sp)
 	moveq #symbol_expr_profile.OPFORGE_SYMBOL_EXPR_EVENT_EVALUATE, d0
@@ -1328,67 +1319,38 @@ resetProgram	.block
 	rts
 	.bend  ; resetProgram
 
-; Append the final ExprVM end/require-scalar sequence for the selected opcode version.
-; Inputs: runtime.ExprvmSelectedOpcodeVersion = evaluator opcode version.
+; Append the final ExprVM require-scalar/end sequence.
 ; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
 ; Clobbers: D3/D6/CCR.
 ; CCR: reflects D0 on return.
 finalizeProgram	.block
-	move.w runtime.ExprvmSelectedOpcodeVersion, d3
-	cmpi.w #2, d3
-	bne.s version1
-	moveq #runtime.EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6
+	moveq #runtime.EXPRVM_OPCODE_REQUIRE_SCALAR, d6
 	bsr.w emitU8D6
 	bne.s return
-	moveq #runtime.EXPRVM_V2_OPCODE_END, d6
-	bra.s return
-
-version1
 	moveq #runtime.EXPRVM_OPCODE_END, d6
-
-return
 	bsr.w emitU8D6
+return
 	rts
 	.bend  ; finalizeProgram
 
-; Append the selected-version PushCurrentAddress opcode.
-; Inputs: runtime.ExprvmSelectedOpcodeVersion = evaluator opcode version.
+; Append the PushCurrentAddress opcode.
 ; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
 ; Clobbers: D3/D6/CCR.
 ; CCR: reflects D0 on return.
 emitPushCurrent	.block
-	move.w runtime.ExprvmSelectedOpcodeVersion, d3
-	cmpi.w #2, d3
-	bne.w version1
-	moveq #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d6
-	bra.w ready
-
-version1
 	moveq #runtime.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d6
-
-ready
 	bra.w emitU8D6
 	.bend  ; emitPushCurrent
 
-; Append the selected-version unary opcode plus operand kind from D6.
-; Inputs: D6 = ExprVM unary operator id; runtime.ExprvmSelectedOpcodeVersion =
-; evaluator opcode version.
+; Append the unary opcode plus operand kind from D6.
+; Inputs: D6 = ExprVM unary operator id.
 ; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
 ; Clobbers: D3/CCR.
 ; CCR: reflects D0 on return.
 emitApplyUnaryD6	.block
 	movem.l d6, -(sp)
 	move.l d6, d3
-	move.w runtime.ExprvmSelectedOpcodeVersion, d6
-	cmpi.w #2, d6
-	bne.s version1
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d6
-	bra.s ready
-
-version1
 	moveq #runtime.EXPRVM_OPCODE_APPLY_UNARY, d6
-
-ready
 	bsr.w emitU8D6
 	bne.s return
 	move.l d3, d6
@@ -1399,25 +1361,15 @@ return
 	rts
 	.bend  ; emitApplyUnaryD6
 
-; Append the selected-version binary opcode plus operand kind from D6.
-; Inputs: D6 = ExprVM binary operator id; runtime.ExprvmSelectedOpcodeVersion =
-; evaluator opcode version.
+; Append the binary opcode plus operand kind from D6.
+; Inputs: D6 = ExprVM binary operator id.
 ; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
 ; Clobbers: D3/CCR.
 ; CCR: reflects D0 on return.
 emitApplyBinaryD6	.block
 	movem.l d6, -(sp)
 	move.l d6, d3
-	move.w runtime.ExprvmSelectedOpcodeVersion, d6
-	cmpi.w #2, d6
-	bne.s version1
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d6
-	bra.s ready
-
-version1
 	moveq #runtime.EXPRVM_OPCODE_APPLY_BINARY, d6
-
-ready
 	bsr.w emitU8D6
 	bne.s return
 	move.l d3, d6
@@ -1428,24 +1380,14 @@ return
 	rts
 	.bend  ; emitApplyBinaryD6
 
-; Append the selected-version PushSymbol opcode plus the symbol index in D3.
-; Inputs: D3 = symbol index; runtime.ExprvmSelectedOpcodeVersion = evaluator
-; opcode version.
+; Append the PushSymbol opcode plus the symbol index in D3.
+; Inputs: D3 = symbol index.
 ; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
 ; Clobbers: D2/D6/CCR.
 ; CCR: reflects D0 on return.
 emitPushSymbolD3	.block
 	movem.l d2-d3/d6, -(sp)
-	move.w runtime.ExprvmSelectedOpcodeVersion, d6
-	cmpi.w #2, d6
-	bne.s version1
-	moveq #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d6
-	bra.s ready
-
-version1
 	moveq #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d6
-
-ready
 	bsr.w emitU8D6
 	bne.s return
 	movem.l (sp), d2-d3/d6
@@ -1456,24 +1398,14 @@ return
 	rts
 	.bend  ; emitPushSymbolD3
 
-; Append the selected-version PushLiteral opcode plus one signed 64-bit literal.
-; Inputs: D2:D3 = high:low literal bits; runtime.ExprvmSelectedOpcodeVersion =
-; evaluator opcode version.
+; Append the PushLiteral opcode plus one signed 64-bit literal.
+; Inputs: D2:D3 = high:low literal bits.
 ; Outputs: D0 = 0 on success or 1 on program-buffer overflow.
 ; Clobbers: D2/D6/CCR.
 ; CCR: reflects D0 on return.
 emitPushLiteralD3	.block
 	movem.l d2-d3/d6, -(sp)
-	move.w runtime.ExprvmSelectedOpcodeVersion, d6
-	cmpi.w #2, d6
-	bne.s version1
-	moveq #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, d6
-	bra.s ready
-
-version1
 	moveq #runtime.EXPRVM_OPCODE_PUSH_LITERAL, d6
-
-ready
 	bsr.w emitU8D6
 	bne.s return
 	movem.l (sp), d2-d3/d6

@@ -932,7 +932,18 @@ fn parameter_scalar_text(value: i64) -> String {
 
 fn parameter_value_text(value: &AsmValue) -> String {
     match value {
-        AsmValue::Scalar(value) => parameter_scalar_text(*value),
+        AsmValue::Scalar(value) | AsmValue::RelocatableScalar { value, .. } => {
+            parameter_scalar_text(*value)
+        }
+        AsmValue::Record { scalar, .. } => parameter_value_text(scalar),
+        AsmValue::Values(values) => format!(
+            "{{{}}}",
+            values
+                .iter()
+                .map(parameter_value_text)
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
         AsmValue::List(values) => format!(
             "{{{}}}",
             values

@@ -82,7 +82,7 @@ lowerMode	.block
 	moveq #1, d0
 	bsr.w room
 	bne.w finish
-	move.b #runtime.EXPRVM_V2_OPCODE_END, (a3)+
+	move.b #runtime.EXPRVM_OPCODE_END, (a3)+
 	moveq #STATUS_OK, d0
 	bra.w finish
 malformed
@@ -273,7 +273,7 @@ binary
 	bne.w leave
 	subq.l #1, STACK_DEPTH(a5)
 	lea BinaryMap, a1
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d2
+	moveq #runtime.EXPRVM_OPCODE_APPLY_BINARY, d2
 	bra.w operator
 unary
 	cmpi.w #1, compiler.Node.Count(a2)
@@ -282,7 +282,7 @@ unary
 	bsr.w node
 	bne.w leave
 	lea UnaryMap, a1
-	moveq #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d2
+	moveq #runtime.EXPRVM_OPCODE_APPLY_UNARY, d2
 operator
 	moveq #0, d1
 	move.b compiler.Node.Operator(a2), d1
@@ -302,7 +302,7 @@ literal
 	moveq #9, d0
 	bsr.w leafRoom
 	bne.w leave
-	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, (a3)+
+	move.b #runtime.EXPRVM_OPCODE_PUSH_LITERAL, (a3)+
 	move.l compiler.Node.First(a2), d1
 	ror.w #8, d1
 	swap d1
@@ -322,7 +322,7 @@ ordinarySymbol
 	moveq #3, d0
 	bsr.w leafRoom
 	bne.w leave
-	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, (a3)+
+	move.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, (a3)+
 	move.b d1, (a3)+
 	lsr.w #8, d1
 	move.b d1, (a3)+
@@ -331,7 +331,7 @@ current
 	moveq #1, d0
 	bsr.w leafRoom
 	bne.w leave
-	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, (a3)+
+	move.b #runtime.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, (a3)+
 success
 	moveq #STATUS_OK, d0
 	bra.w leave

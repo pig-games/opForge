@@ -401,13 +401,13 @@ The most important reference code is:
 - `crates/opforge-vm/src/execution_model/parser_vm.rs`
   parser VM execution semantics
 - `crates/opforge-vm/src/runtime_expr_parser.rs`
-  authoritative `EXVM v2` parser execution semantics for covered expression grammar
+  authoritative `EXVM v1` parser execution semantics for covered expression grammar
 - `crates/opforge-vm/src/vm_opcore.rs`
   opcore bridge points where assembler/runtime code crosses into `EXVM` and `EXPR`
 - `crates/opforge-vm/src/bytecode.rs`
   encode-bytecode execution semantics
 - `crates/opforge-core/src/expr_vm.rs`
-  portable expression evaluator VM semantics, including `EXPR v2` structural values and explicit scalar-boundary enforcement
+  portable expression evaluator VM semantics, including `EXPR v1` structural values and explicit scalar-boundary enforcement
 
 The target-native implementation should aim to reproduce those semantics, not the Rust source structure.
 
@@ -424,9 +424,9 @@ For an 8-bit-native runtime, the practical component list is:
 - parser VM executor
   run `PRVM` envelopes over the produced token stream and return the expected line shape
 - expression parser VM executor
-  run covered `EXVM v2` programs for bounded expression token ranges and report deterministic unsupported diagnostics for out-of-scope value nodes
+  run covered `EXVM v1` programs for bounded expression token ranges and report deterministic unsupported diagnostics for out-of-scope value nodes
 - expression evaluator VM support
-  run `EXPR v2` programs with typed values and explicit scalar-boundary enforcement for scalar-only callers
+  run `EXPR v1` programs with typed values and explicit scalar-boundary enforcement for scalar-only callers
 - encode bytecode executor
   run the minimal bytecode emitter that produces final instruction bytes from resolved operand byte slices
 - native ABI surface
@@ -453,7 +453,7 @@ For native bring-up, this split matters:
   reference executor: `crates/opforge-vm/src/runtime_expr_parser.rs`
 - Expression evaluator VM (`EXPR`)
   opcode definitions and reference executor: `crates/opforge-core/src/expr_vm.rs`
-  active assembler path: `EXPR v2` with structural values plus explicit `RequireScalar` boundaries for scalar-only callers
+  active assembler path: `EXPR v1` with structural values plus explicit `RequireScalar` boundaries for scalar-only callers
 - Encode bytecode VM
   reference executor: `crates/opforge-vm/src/bytecode.rs`
 - Native 6502 harness surface
@@ -493,18 +493,19 @@ The current architecture still has Rust on the outside:
 - pass 1 / pass 2 orchestration
 - image/list/map/hex/bin/label output emission
 
-One narrow expression carveout also remains host-owned in the current assembler
-boundary: repetition-side-table member/index forms such as
-`repeatLabel[index].field` still reduce through the host because they depend on
-assembler-owned iteration-scope side tables rather than generic `EXPR v2`
-structural values.
+For scoped repetitions, the assembler constructs and snapshots immutable typed
+iteration records when each scope closes, resolving qualified names at that
+boundary. Shared `EXPR v1` then owns index/member selection, scalar projection
+and arithmetic over those records while preserving section provenance.
 
-Outside that carveout, covered authoritative-family expression parse/eval
-failures stay on the VM/contract surface during pass 2 rather than silently
-retrying host AST evaluation. Host scalar evaluation on those families is now
-non-default: it occurs only through the explicit `FORCE_HOST` override controls
-or through the host's provisional pass-1 unresolved-symbol placeholder rules
-when a caller still needs a temporary numeric value before symbol finalization.
+Covered authoritative-family expression parse/eval failures stay on the
+VM/contract surface during pass 2 rather than silently retrying host AST
+evaluation. Host scalar evaluation on those families is now non-default: it
+occurs only through the explicit `FORCE_HOST` override controls or through the
+host's provisional pass-1 unresolved-symbol placeholder rules when a caller
+still needs a temporary numeric value before symbol finalization. Those scalar
+controls do not bypass typed-record selection or provenance semantics for
+scoped repetition values.
 
 The active authoritative expression-family set now includes
 `motorola68000` alongside `mos6502` and `intel8080`. That family claim covers
@@ -537,8 +538,8 @@ The safest order for native bring-up is usually:
 2. implement package loading and pipeline selection
 3. implement tokenizer VM execution
 4. implement parser VM execution
-5. implement expression parser VM execution for the covered `EXVM v2` surface
-6. implement expression evaluation with `EXPR v2`, including explicit scalar-boundary checks for scalar-only callers
+5. implement expression parser VM execution for the covered `EXVM v1` surface
+6. implement expression evaluation with `EXPR v1`, including explicit scalar-boundary checks for scalar-only callers
 7. implement encode-bytecode execution
 8. connect the full `load_package -> set_pipeline -> tokenize -> parse -> encode -> last_error` flow
 

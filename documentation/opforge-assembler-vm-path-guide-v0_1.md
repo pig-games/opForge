@@ -59,7 +59,7 @@ text. Native sizing/emission use that kind to keep directives out of instruction
 selection. Directive expression extensions preserve scoped/imported symbol lookup
 while omitting selected-instruction shape inference. The underlying native scalar
 expression compiler still targets its local EXVM v1 program; this routing boundary
-does not establish equivalence to Rust's EXVM v2 expression grammar. Shared native numeric emission uses the active package's
+does not establish equivalence to Rust's EXVM v1 expression grammar. Shared native numeric emission uses the active package's
 [CPEX v2 data byte order](cpu-execution-properties-v2.md), including after CPU
 switches; Rust shared emission prefers the same property. The
 [boundary plan](plans/package-execution-boundaries.md) records exact native/Rust
@@ -91,7 +91,7 @@ If you are specifically asking whether "`opcore` is VM-backed now," the most acc
 | Area | Current state | Notes |
 |---|---|---|
 | Expression requests | VM-backed path exists | Engine expression routing supports `ExecutionMode::Vm` and `Lockstep` for `opcore` expression requests: [`crates/opforge-engine/src/processing.rs#L62-L123`](../crates/opforge-engine/src/processing.rs#L62-L123) |
-| Expression parse/eval in assembler flow | VM-backed authoritative path exists | On the authoritative `EXVM v2` path, `.opcore` runtime helpers emit `PortableExprProgram` directly for covered forms and hand that tape to `EXPR v2`; the Rust `Expr` backend remains compatibility/debug output rather than the canonical seam. |
+| Expression parse/eval in assembler flow | VM-backed authoritative path exists | On the authoritative `EXVM v1` path, `.opcore` runtime helpers emit `PortableExprProgram` directly for covered forms and hand that tape to `EXPR v1`; the Rust `Expr` backend remains compatibility/debug output rather than the canonical seam. |
 | Module-item routing surface | VM-backed path exists | `route_module_item_line_with_model(...)` and `process_module_item_request_with_model(...)` can recognize module-item forms through the VM-backed line parser: [`crates/opforge-engine/src/processing.rs#L150-L174`](../crates/opforge-engine/src/processing.rs#L150-L174), [`crates/opforge-vm/src/vm_opcore.rs#L115-L152`](../crates/opforge-vm/src/vm_opcore.rs#L115-L152) |
 | Preprocessor | Not VM-backed | Still ordinary host preprocessing: [`crates/opforge-engine/src/lib.rs#L274-L318`](../crates/opforge-engine/src/lib.rs#L274-L318) |
 | Macro expansion | Not VM-backed | Still handled by `AsmMacroProcessor` during graph expansion: [`crates/opforge-engine/src/source_graph.rs#L577-L623`](../crates/opforge-engine/src/source_graph.rs#L577-L623) |
@@ -263,7 +263,7 @@ The default family parser program is generated in [`crates/opforge-vm/src/builde
 Expression work sits in the `.opcore` VM surface, but it is split into two
 separate VM contracts:
 
-- `EXVM` is the expression parser VM. On the authoritative v2 path it consumes
+- `EXVM` is the expression parser VM. On the authoritative v1 path it consumes
     a token slice and emits `PortableExprProgram` directly for the covered
     grammar, while retaining a Rust `Expr` output backend for compatibility,
     debugging, and explicit fallback-only shapes.
@@ -293,30 +293,30 @@ The actual portable expression evaluator VM is implemented in `opcore::expr_vm`:
 
 Covered scalar leaf, unary, arithmetic, shift, comparison, bitwise/logical,
 ternary, string-literal, and transparent scalar-wrapper expressions are now
-lowered directly into `EXPR v2` bytecode and executed by the v2 scalar runtime.
-The default family `EXPR` contract now resolves to `EXPR v2` for that scalar
+lowered directly into `EXPR v1` bytecode and executed by the v1 scalar runtime.
+The default family `EXPR` contract now resolves to `EXPR v1` for that scalar
 coverage.
 
 String-literal reduction still crosses the host boundary through
 `eval_string_literal(...)`, but the bytecode carrier and scalar evaluation
-ownership are now on the `EXPR v2` path. Immediate, indirect, and long-indirect
+ownership are now on the `EXPR v1` path. Immediate, indirect, and long-indirect
 wrapper nodes are treated as transparent scalar wrappers on that path.
 
-Structural value nodes are now part of the landed `EXPR v2` path as well.
+Structural value nodes are now part of the landed `EXPR v1` path as well.
 Lists, ranges, struct types, struct literals, member access, and index access
-can execute as typed values under `EXPR v2`, and shape-preserving evaluation is
+can execute as typed values under `EXPR v1`, and shape-preserving evaluation is
 available when a caller needs the structural result directly.
 
 Scalar-only assembler callers still do not receive implicit structural
-reductions. The v2 scalar path emits an explicit `RequireScalar` boundary, so an
+reductions. The `EXPR v1` scalar path emits an explicit `RequireScalar` boundary, so an
 irreducible list, range, struct type, or struct instance fails with a
 deterministic diagnostic instead of silently falling back to host reduction.
 
 `PRVM` and opasm still own operand-shape parsing outside the pure expression
-token range, and one narrow host carveout remains: repetition-side-table
-member/index forms such as `repeatLabel[index].field` stay on the host because
-their semantics depend on assembler-owned iteration-scope side tables rather
-than the generic `EXPR v2` value model.
+token range. For scoped repetitions, the assembler captures immutable typed
+iteration records at scope close and resolves qualified names there; shared
+`EXPR v1` owns index/member selection, scalar projection and arithmetic over
+those records, preserving section provenance.
 
 This is an important design point: the line parser may still hand expression
 slices to the expression layer, but parsing and evaluation are separate VM
@@ -325,15 +325,15 @@ canonical portable tape directly on the authoritative path, while `EXPR`
 executes that `PortableExprProgram` rather than re-walking the original text or
 requiring a mandatory Rust AST-lowering seam.
 
-On the authoritative `EXVM v2` parser path, covered expression grammar is
-handled by real v2 bytecode rather than by the host-side
+On the authoritative `EXVM v1` parser path, covered expression grammar is
+handled by real v1 bytecode rather than by the host-side
 `RuntimeExpressionParser`. The host parser remains available only for explicit
 legacy compatibility parsing and direct parser tests; it is not authoritative
-for the covered `EXVM v2` grammar surface.
+for the covered `EXVM v1` grammar surface.
 
-On the authoritative `EXVM v2` plus `EXPR v2` path, covered assembler
+On the authoritative `EXVM v1` plus `EXPR v1` path, covered assembler
 program-returning callers now follow `tokens -> EXVM bytecode ->
-PortableExprProgram -> EXPR v2` as their primary seam. The older Rust `Expr`
+PortableExprProgram -> EXPR v1` as their primary seam. The older Rust `Expr`
 backend and legacy core-expression compiler seam remain explicit compatibility
 and debugging paths rather than the default carrier for covered authoritative
 forms. For certified families, pass-2 unknown-symbol, budget, and
@@ -348,7 +348,7 @@ path under their existing legality gates, including the audited `m68080`
 integer, AMMX, Apollo-gated, and `fpu 68080` expression-bearing forms.
 
 Call expressions and placeholder nodes are therefore deterministic out-of-scope
-failures on the authoritative `EXVM v2` path rather than hidden fallbacks into
+failures on the authoritative `EXVM v1` path rather than hidden fallbacks into
 host parsing. PRVM/opasm still owns statement parsing and operand-shape parsing
 outside the pure expression token range.
 
@@ -357,8 +357,11 @@ remaining explicit escape hatches are:
 
 - the `FORCE_HOST` expression-eval override controls,
 - provisional pass-1 unresolved-symbol placeholder evaluation when a caller
-    still needs a temporary numeric value before symbol finalization,
-- and the repetition-side-table member/index carveout described above.
+    still needs a temporary numeric value before symbol finalization.
+
+These scalar controls do not bypass typed-record selection or provenance
+semantics for scoped repetition values; those remain defined by shared
+`EXPR v1`.
 
 ### 4.11 Instruction candidate selection and byte emission
 
@@ -533,11 +536,11 @@ The covered `EXVM` grammar is operand-shape-free expression syntax: literals, sy
 Definition and opcode table: [`crates/opforge-core/src/expr_vm.rs#L11-L128`](../crates/opforge-core/src/expr_vm.rs#L11-L128)  
 Scalar entrypoint: [`crates/opforge-core/src/expr_vm.rs#L529`](../crates/opforge-core/src/expr_vm.rs#L529)  
 Shape-preserving entrypoint: [`crates/opforge-core/src/expr_vm.rs#L541`](../crates/opforge-core/src/expr_vm.rs#L541)  
-Shared v2 execution loop: [`crates/opforge-core/src/expr_vm.rs#L1007`](../crates/opforge-core/src/expr_vm.rs#L1007)
+Shared execution loop: [`crates/opforge-core/src/expr_vm.rs#L1007`](../crates/opforge-core/src/expr_vm.rs#L1007)
 
-The active assembler-default evaluator path is `EXPR_VM_OPCODE_VERSION_V2`.
-Legacy `EXPR v1` remains a versioned compatibility surface, but the covered
-authoritative parser/evaluator path now uses `EXPR v2`.
+The active assembler-default evaluator path is `EXPR_VM_OPCODE_VERSION_V1`.
+`EXPR v1` is the current evaluator contract for the covered authoritative
+parser/evaluator path.
 
 | Opcode | Name | Meaning |
 |---|---|---|
@@ -560,8 +563,8 @@ authoritative parser/evaluator path now uses `EXPR v2`.
 | `0x51` | `BuildList` | Build a list value from stack items. |
 | `0x52` | `BuildRange` | Build a range value from stack items plus encoded flags. |
 | `0x53` | `BuildStructLiteral` | Build a typed struct-instance value. |
-| `0x60` | `GetMember` | Read a member from a struct type or struct instance. |
-| `0x61` | `IndexValue` | Index into a list or range value. |
+| `0x60` | `GetMember` | Read a typed member from a record, struct type or struct instance, preserving provenance. |
+| `0x61` | `IndexValue` | Select a complete list item or range value, retaining record members and provenance. |
 | `0x62` | `CallBuiltin` | Call a builtin helper. Not yet part of the current authoritative assembler eval path. |
 | `0x70` | `RequireScalar` | Enforce the explicit scalar boundary for scalar-only callers. |
 
@@ -597,7 +600,7 @@ Binary sub-opcodes:
 - `18`: logical or
 - `19`: logical xor
 
-`EXPR v2` can carry typed values such as integers, strings, transparent
+`EXPR v1` can carry typed values such as integers, strings, transparent
 wrappers, tuples, lists, ranges, struct types, struct instances, and
 placeholders. Scalar callers compile through the explicit `RequireScalar`
 boundary, while shape-preserving callers can evaluate directly to a structural
@@ -607,10 +610,10 @@ The evaluator is budgeted by contract. The active family can cap program bytes,
 stack depth, symbol refs, and evaluation steps through
 `resolve_expr_budgets(...)`: [`crates/opforge-vm/src/runtime_model_core.rs#L1100`](../crates/opforge-vm/src/runtime_model_core.rs#L1100)
 
-One narrow host-only carveout remains outside the generic `EXPR v2` value model:
-repetition-side-table member/index forms such as `repeatLabel[index].field`
-still evaluate on the host because their semantics depend on assembler-owned
-iteration-scope side tables.
+For scoped repetitions, the assembler captures immutable typed iteration
+records and resolves qualified names at scope close. Shared `EXPR v1` evaluates
+index/member selection, scalar projection and arithmetic over those values,
+preserving section provenance.
 
 ### 6.5 Encode Bytecode VM
 

@@ -73,11 +73,11 @@ next
 	bhs.w bad
 	moveq #0, d3
 	move.b (a0)+, d3
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, d3
+	cmpi.b #runtime.EXPRVM_OPCODE_END, d3
 	beq.w end
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d3
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d3
 	beq.w symbol
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d3
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d3
 	beq.w currentAddress
 	cmpi.b #runtime.COMPACT_I8, d3
 	beq.w byte
@@ -97,9 +97,9 @@ next
 	beq.w subtract
 	cmpi.b #runtime.COMPACT_MULTIPLY, d3
 	beq.w binaryConstant
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d3
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, d3
 	beq.w unary
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d3
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, d3
 	bne.w bad
 	moveq #1, d1
 	bsr.w available
@@ -357,7 +357,7 @@ next
 	bhs.w bad
 	moveq #0, d1
 	move.b (a0)+, d1
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_END, d1
 	beq.w end
 	cmpi.b #runtime.COMPACT_I8, d1
 	beq.w byte
@@ -369,9 +369,9 @@ next
 	beq.w long
 	cmpi.b #runtime.COMPACT_I64, d1
 	beq.w pair
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d1
 	beq.w current
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d1
 	beq.w symbol
 	cmpi.b #runtime.COMPACT_NEGATE, d1
 	beq.w next
@@ -381,9 +381,9 @@ next
 	beq.w next
 	cmpi.b #runtime.COMPACT_MULTIPLY, d1
 	beq.w next
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, d1
 	beq.w byte
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, d1
 	beq.w byte
 	bra.w bad
 current

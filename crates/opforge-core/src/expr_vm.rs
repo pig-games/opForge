@@ -10,58 +10,11 @@ use types::symbol_stability::is_symbol_unstable;
 use types::vm_work::ProgramRun;
 
 pub const EXPR_VM_OPCODE_VERSION_V1: u16 = 0x0001;
-pub const EXPR_VM_OPCODE_VERSION_V2: u16 = 0x0002;
 
-/// Expression VM opcode table and compatibility notes.
-///
-/// Opcode map (`EXPR_VM_OPCODE_VERSION_V1`):
-/// - `0x00`: `End`
-/// - `0x01`: `PushLiteral`
-/// - `0x02`: `PushCurrentAddress`
-/// - `0x03`: `PushSymbol`
-/// - `0x04`: `ApplyUnary`
-/// - `0x05`: `ApplyBinary`
-/// - `0x06`: `SelectTernary`
-/// - `0x07`: `PushStringLiteral`
-///
-/// Compatibility matrix:
-/// - Runtime evaluator supports: `v1`.
-/// - Program decode policy: reject unknown opcode versions; do not silently
-///   reinterpret payloads across versions.
+/// Current expression VM contract. Version mismatches are rejected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ExprVmOpcode {
-    End = 0x00,
-    PushLiteral = 0x01,
-    PushCurrentAddress = 0x02,
-    PushSymbol = 0x03,
-    ApplyUnary = 0x04,
-    ApplyBinary = 0x05,
-    SelectTernary = 0x06,
-    PushStringLiteral = 0x07,
-}
-
-pub type ExprVmOpcodeV1 = ExprVmOpcode;
-
-impl ExprVmOpcode {
-    pub fn from_u8(value: u8) -> Option<Self> {
-        match value {
-            0x00 => Some(Self::End),
-            0x01 => Some(Self::PushLiteral),
-            0x02 => Some(Self::PushCurrentAddress),
-            0x03 => Some(Self::PushSymbol),
-            0x04 => Some(Self::ApplyUnary),
-            0x05 => Some(Self::ApplyBinary),
-            0x06 => Some(Self::SelectTernary),
-            0x07 => Some(Self::PushStringLiteral),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u8)]
-pub enum ExprVmOpcodeV2 {
     End = 0x00,
     EmitDiag = 0x01,
     Fail = 0x02,
@@ -87,7 +40,7 @@ pub enum ExprVmOpcodeV2 {
     RequireScalar = 0x70,
 }
 
-impl ExprVmOpcodeV2 {
+impl ExprVmOpcode {
     pub fn from_u8(value: u8) -> Option<Self> {
         match value {
             0x00 => Some(Self::End),
@@ -307,73 +260,81 @@ pub struct PortableExprRef {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PortableExprProgramV2 {
+pub struct PortableExprTypedProgram {
     pub opcode_version: u16,
     pub code: Vec<u8>,
     pub symbols: Vec<String>,
     pub declared_stack_depth: u16,
-    pub result_mode: PortableExprResultModeV2,
+    pub result_mode: PortableExprResultMode,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PortableExprResultModeV2 {
+pub enum PortableExprResultMode {
     Scalar,
     ShapePreserving,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PortableExprValueV2 {
+pub enum PortableExprValue {
     Int(i64),
+    RelocatableScalar {
+        value: i64,
+        provenance: types::asm_value::ScalarProvenance,
+    },
+    Record {
+        scalar: Box<PortableExprValue>,
+        fields: Vec<PortableExprStructFieldValue>,
+    },
     String(Vec<u8>),
     SymbolRef(u32),
     RegisterRef(u32),
-    Immediate(Box<PortableExprValueV2>),
-    Indirect(Box<PortableExprValueV2>),
-    IndirectLong(Box<PortableExprValueV2>),
-    Tuple(Vec<PortableExprValueV2>),
-    List(Vec<PortableExprValueV2>),
-    Range(PortableExprRangeValueV2),
-    StructType(PortableExprStructTypeValueV2),
-    StructLiteral(PortableExprStructLiteralValueV2),
+    Immediate(Box<PortableExprValue>),
+    Indirect(Box<PortableExprValue>),
+    IndirectLong(Box<PortableExprValue>),
+    Tuple(Vec<PortableExprValue>),
+    List(Vec<PortableExprValue>),
+    Range(PortableExprRangeValue),
+    StructType(PortableExprStructTypeValue),
+    StructLiteral(PortableExprStructLiteralValue),
     Placeholder,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PortableExprRangeValueV2 {
-    pub start: Box<PortableExprValueV2>,
-    pub end: Box<PortableExprValueV2>,
-    pub step: Option<Box<PortableExprValueV2>>,
+pub struct PortableExprRangeValue {
+    pub start: Box<PortableExprValue>,
+    pub end: Box<PortableExprValue>,
+    pub step: Option<Box<PortableExprValue>>,
     pub inclusive: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PortableExprStructFieldValueV2 {
+pub struct PortableExprStructFieldValue {
     pub field_name: String,
-    pub value: PortableExprValueV2,
+    pub value: PortableExprValue,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PortableExprStructLiteralValueV2 {
+pub struct PortableExprStructLiteralValue {
     pub type_name: String,
-    pub fields: Vec<PortableExprStructFieldValueV2>,
+    pub fields: Vec<PortableExprStructFieldValue>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PortableExprStructTypeFieldValueV2 {
+pub struct PortableExprStructTypeFieldValue {
     pub field_name: String,
     pub offset: u32,
     pub size: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PortableExprStructTypeValueV2 {
+pub struct PortableExprStructTypeValue {
     pub type_name: String,
-    pub fields: Vec<PortableExprStructTypeFieldValueV2>,
+    pub fields: Vec<PortableExprStructTypeFieldValue>,
     pub size: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PortableExprBudgetsV2 {
+pub struct PortableExprTypedBudgets {
     pub max_program_bytes: usize,
     pub max_stack_depth: usize,
     pub max_symbol_refs: usize,
@@ -381,7 +342,7 @@ pub struct PortableExprBudgetsV2 {
     pub max_shape_items: usize,
 }
 
-impl Default for PortableExprBudgetsV2 {
+impl Default for PortableExprTypedBudgets {
     fn default() -> Self {
         Self {
             max_program_bytes: 2048,
@@ -394,8 +355,8 @@ impl Default for PortableExprBudgetsV2 {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PortableExprEvaluationV2 {
-    pub value: PortableExprValueV2,
+pub struct PortableExprTypedEvaluation {
+    pub value: PortableExprValue,
     pub has_symbol_refs: bool,
     pub has_unstable_symbols: bool,
 }
@@ -433,8 +394,12 @@ pub trait PortableExprEvalContext {
     fn pass(&self) -> u8;
     fn symbol_is_finalized(&self, name: &str) -> Option<bool>;
 
-    fn lookup_symbol_value(&self, name: &str) -> Option<PortableExprValueV2> {
-        self.lookup_symbol(name).map(PortableExprValueV2::Int)
+    fn lookup_symbol_value(&self, name: &str) -> Option<PortableExprValue> {
+        self.lookup_symbol(name).map(PortableExprValue::Int)
+    }
+
+    fn current_address_value(&self) -> Option<PortableExprValue> {
+        self.current_address().map(PortableExprValue::Int)
     }
 
     fn symbol_exists(&self, name: &str) -> bool {
@@ -487,7 +452,7 @@ impl std::fmt::Display for PortableExprError {
 impl std::error::Error for PortableExprError {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct PortableExprDiagnosticMapV2 {
+pub struct PortableExprDiagnosticMap {
     pub invalid_opcode: String,
     pub stack_underflow: String,
     pub stack_depth_exceeded: String,
@@ -533,7 +498,7 @@ impl PortableExprProgramBuilder {
     pub fn for_scalar(opcode_version: u16) -> Result<Self, PortableExprError> {
         Ok(Self {
             compiler: ExprCompiler::for_opcode_version(opcode_version, ExprCompilerMode::Scalar)?,
-            require_scalar_on_finish: opcode_version == EXPR_VM_OPCODE_VERSION_V2,
+            require_scalar_on_finish: true,
         })
     }
 
@@ -563,12 +528,6 @@ impl PortableExprProgramBuilder {
     }
 
     pub fn emit_list(&mut self, count: usize) -> Result<(), PortableExprError> {
-        if self.compiler.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-            return Err(PortableExprError::new(
-                DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "List cannot be evaluated as scalar expression",
-            ));
-        }
         let count = u16::try_from(count).map_err(|_| {
             PortableExprError::new(
                 DIAG_EXPR_BUDGET_EXCEEDED,
@@ -581,12 +540,6 @@ impl PortableExprProgramBuilder {
     }
 
     pub fn emit_range(&mut self, has_step: bool, inclusive: bool) -> Result<(), PortableExprError> {
-        if self.compiler.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-            return Err(PortableExprError::new(
-                DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "Range cannot be evaluated as scalar expression",
-            ));
-        }
         self.compiler.emit_build_range(has_step, inclusive);
         self.compiler.stack_collapse(if has_step { 3 } else { 2 })?;
         Ok(())
@@ -597,12 +550,6 @@ impl PortableExprProgramBuilder {
         type_name: &str,
         field_names: &[String],
     ) -> Result<(), PortableExprError> {
-        if self.compiler.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-            return Err(PortableExprError::new(
-                DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "Struct literal cannot be evaluated as scalar expression",
-            ));
-        }
         let field_count = u16::try_from(field_names.len()).map_err(|_| {
             PortableExprError::new(
                 DIAG_EXPR_BUDGET_EXCEEDED,
@@ -621,24 +568,12 @@ impl PortableExprProgramBuilder {
     }
 
     pub fn emit_index(&mut self) -> Result<(), PortableExprError> {
-        if self.compiler.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-            return Err(PortableExprError::new(
-                DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "Index expression cannot be evaluated as scalar expression",
-            ));
-        }
         self.compiler.emit_index_value();
         self.compiler.stack_pop()?;
         Ok(())
     }
 
     pub fn emit_member(&mut self, field_name: &str) -> Result<(), PortableExprError> {
-        if self.compiler.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-            return Err(PortableExprError::new(
-                DIAG_EXPR_UNSUPPORTED_FEATURE,
-                "Member expression cannot be evaluated as scalar expression",
-            ));
-        }
         let field_idx = self.compiler.intern_symbol(field_name)?;
         self.compiler.emit_get_member(field_idx);
         Ok(())
@@ -687,9 +622,9 @@ pub fn compile_core_expr_to_portable_program_with_opcode_version(
 
     let mut compiler = ExprCompiler::for_opcode_version(opcode_version, ExprCompilerMode::Scalar)?;
     compiler.compile(expr)?;
-    if opcode_version == EXPR_VM_OPCODE_VERSION_V2 {
-        compiler.emit_require_scalar();
-    }
+
+    compiler.emit_require_scalar();
+
     compiler.emit_end();
     Ok(PortableExprProgram {
         opcode_version: compiler.opcode_version,
@@ -707,9 +642,8 @@ pub fn compile_portable_expr_direct_leaf_to_program_with_opcode_version(
 
     compiler.compile_direct_leaf(leaf)?;
 
-    if opcode_version == EXPR_VM_OPCODE_VERSION_V2 {
-        compiler.emit_require_scalar();
-    }
+    compiler.emit_require_scalar();
+
     compiler.emit_end();
 
     Ok(PortableExprProgram {
@@ -769,9 +703,8 @@ pub fn compile_portable_expr_direct_scalar_to_program_with_opcode_version(
 
     compiler.compile_direct_scalar(expr)?;
 
-    if opcode_version == EXPR_VM_OPCODE_VERSION_V2 {
-        compiler.emit_require_scalar();
-    }
+    compiler.emit_require_scalar();
+
     compiler.emit_end();
 
     Ok(PortableExprProgram {
@@ -812,9 +745,8 @@ pub fn compile_portable_expr_direct_structural_to_program_with_opcode_version(
 
     compiler.compile_direct_structural(expr)?;
 
-    if opcode_version == EXPR_VM_OPCODE_VERSION_V2 {
-        compiler.emit_require_scalar();
-    }
+    compiler.emit_require_scalar();
+
     compiler.emit_end();
 
     Ok(PortableExprProgram {
@@ -844,9 +776,8 @@ pub fn compile_portable_expr_direct_member_index_to_program_with_opcode_version(
 
     compiler.compile_direct_member_index(expr)?;
 
-    if opcode_version == EXPR_VM_OPCODE_VERSION_V2 {
-        compiler.emit_require_scalar();
-    }
+    compiler.emit_require_scalar();
+
     compiler.emit_end();
 
     Ok(PortableExprProgram {
@@ -857,21 +788,21 @@ pub fn compile_portable_expr_direct_member_index_to_program_with_opcode_version(
     })
 }
 
-pub fn compile_core_expr_to_portable_program_v2_shape_preserving(
+pub fn compile_core_expr_to_portable_program_shape_preserving(
     expr: &Expr,
-) -> Result<PortableExprProgramV2, PortableExprError> {
+) -> Result<PortableExprTypedProgram, PortableExprError> {
     let mut compiler = ExprCompiler::for_opcode_version(
-        EXPR_VM_OPCODE_VERSION_V2,
+        EXPR_VM_OPCODE_VERSION_V1,
         ExprCompilerMode::ShapePreserving,
     )?;
     compiler.compile(expr)?;
     compiler.emit_end();
-    Ok(PortableExprProgramV2 {
+    Ok(PortableExprTypedProgram {
         opcode_version: compiler.opcode_version,
         code: compiler.code,
         symbols: compiler.symbols,
         declared_stack_depth: compiler.stack_max as u16,
-        result_mode: PortableExprResultModeV2::ShapePreserving,
+        result_mode: PortableExprResultMode::ShapePreserving,
     })
 }
 
@@ -880,19 +811,15 @@ pub fn eval_portable_expr_program(
     ctx: &dyn PortableExprEvalContext,
     budgets: PortableExprBudgets,
 ) -> Result<PortableExprEvaluation, PortableExprError> {
-    match program.opcode_version {
-        EXPR_VM_OPCODE_VERSION_V1 => eval_portable_expr_program_v1(program, ctx, budgets),
-        EXPR_VM_OPCODE_VERSION_V2 => eval_portable_expr_program_v2_scalar(program, ctx, budgets),
-        other => Err(unsupported_expression_vm_opcode_version(other)),
-    }
+    eval_portable_expr_program_scalar(program, ctx, budgets)
 }
 
-pub fn eval_portable_expr_program_v2(
-    program: &PortableExprProgramV2,
+pub fn eval_portable_expr_typed_program(
+    program: &PortableExprTypedProgram,
     ctx: &dyn PortableExprEvalContext,
-    budgets: PortableExprBudgetsV2,
-) -> Result<PortableExprEvaluationV2, PortableExprError> {
-    let mut evaluation = eval_portable_expr_program_v2_internal(
+    budgets: PortableExprTypedBudgets,
+) -> Result<PortableExprTypedEvaluation, PortableExprError> {
+    let mut evaluation = eval_portable_expr_program_internal(
         program.opcode_version,
         &program.code,
         &program.symbols,
@@ -900,153 +827,18 @@ pub fn eval_portable_expr_program_v2(
         ctx,
         budgets.into(),
     )?;
-    if program.result_mode == PortableExprResultModeV2::Scalar {
-        evaluation.value =
-            PortableExprValueV2::Int(portable_expr_value_to_scalar(&evaluation.value, ctx)?);
+    if program.result_mode == PortableExprResultMode::Scalar {
+        evaluation.value = portable_expr_scalar_projection(&evaluation.value, ctx)?;
     }
     Ok(evaluation)
 }
 
-fn eval_portable_expr_program_v1(
+fn eval_portable_expr_program_scalar(
     program: &PortableExprProgram,
     ctx: &dyn PortableExprEvalContext,
     budgets: PortableExprBudgets,
 ) -> Result<PortableExprEvaluation, PortableExprError> {
-    let work = ProgramRun::new("expression", program.opcode_version, &program.code);
-    enforce_program_budgets_v1(program, budgets)?;
-
-    let mut stack: Vec<i64> = Vec::new();
-    let mut ip = 0usize;
-    let mut steps = 0usize;
-    let mut has_symbol_refs = false;
-    let mut has_unstable_symbols = false;
-
-    while ip < program.code.len() {
-        steps = steps.saturating_add(1);
-        if steps > budgets.max_eval_steps {
-            return Err(PortableExprError::new(
-                DIAG_EXPR_BUDGET_EXCEEDED,
-                format!(
-                    "expression evaluation step budget exceeded ({} > {})",
-                    steps, budgets.max_eval_steps
-                ),
-            ));
-        }
-
-        let opcode_offset = ip;
-        let opcode = read_opcode_v1(&program.code, &mut ip)?;
-        work.step(opcode_offset, opcode as u8);
-        match opcode {
-            ExprVmOpcode::End => break,
-            ExprVmOpcode::PushLiteral => {
-                let value = read_i64_le(&program.code, &mut ip)?;
-                stack.push(value);
-                enforce_stack_budget(&stack, budgets)?;
-            }
-            ExprVmOpcode::PushCurrentAddress => {
-                let value = ctx.current_address().ok_or_else(|| {
-                    PortableExprError::new(
-                        DIAG_EXPR_EVAL_FAILURE,
-                        "current address ($) not available",
-                    )
-                })?;
-                stack.push(value);
-                enforce_stack_budget(&stack, budgets)?;
-            }
-            ExprVmOpcode::PushSymbol => {
-                let symbol_idx = read_u16_le(&program.code, &mut ip)? as usize;
-                let Some(symbol_name) = program.symbols.get(symbol_idx) else {
-                    return Err(PortableExprError::new(
-                        DIAG_EXPR_INVALID_PROGRAM,
-                        format!("symbol index out of range: {}", symbol_idx),
-                    ));
-                };
-
-                has_symbol_refs = true;
-                if is_symbol_unstable(
-                    symbol_name,
-                    ctx.pass(),
-                    |symbol| ctx.symbol_exists(symbol),
-                    |symbol| ctx.symbol_is_finalized(symbol),
-                ) {
-                    has_unstable_symbols = true;
-                }
-
-                let value = ctx.lookup_symbol(symbol_name).ok_or_else(|| {
-                    PortableExprError::new(
-                        DIAG_EXPR_UNKNOWN_SYMBOL,
-                        format!("undefined symbol: {}", symbol_name),
-                    )
-                })?;
-                stack.push(value);
-                enforce_stack_budget(&stack, budgets)?;
-            }
-            ExprVmOpcode::PushStringLiteral => {
-                let len = read_u16_le(&program.code, &mut ip)? as usize;
-                let bytes = read_bytes(&program.code, &mut ip, len)?;
-                let value = ctx
-                    .eval_string_literal(bytes)
-                    .map_err(|message| PortableExprError::new(DIAG_EXPR_EVAL_FAILURE, message))?;
-                stack.push(value);
-                enforce_stack_budget(&stack, budgets)?;
-            }
-            ExprVmOpcode::ApplyUnary => {
-                let unary =
-                    ExprVmUnary::from_u8(read_u8(&program.code, &mut ip)?).ok_or_else(|| {
-                        PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid unary opcode")
-                    })?;
-                let value = pop_value(&mut stack)?;
-                let result = apply_unary(unary.to_core(), value, Span::default())
-                    .map_err(|err| PortableExprError::new(DIAG_EXPR_EVAL_FAILURE, err.message))?;
-                stack.push(result);
-            }
-            ExprVmOpcode::ApplyBinary => {
-                let binary =
-                    ExprVmBinary::from_u8(read_u8(&program.code, &mut ip)?).ok_or_else(|| {
-                        PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid binary opcode")
-                    })?;
-                let right = pop_value(&mut stack)?;
-                let left = pop_value(&mut stack)?;
-                let result = apply_binary(binary.to_core(), left, right, Span::default())
-                    .map_err(|err| PortableExprError::new(DIAG_EXPR_EVAL_FAILURE, err.message))?;
-                stack.push(result);
-            }
-            ExprVmOpcode::SelectTernary => {
-                let else_value = pop_value(&mut stack)?;
-                let then_value = pop_value(&mut stack)?;
-                let cond_value = pop_value(&mut stack)?;
-                stack.push(if cond_value != 0 {
-                    then_value
-                } else {
-                    else_value
-                });
-            }
-        }
-    }
-
-    if stack.len() != 1 {
-        return Err(PortableExprError::new(
-            DIAG_EXPR_INVALID_PROGRAM,
-            format!(
-                "expression VM must finish with exactly one stack value; got {}",
-                stack.len()
-            ),
-        ));
-    }
-
-    Ok(PortableExprEvaluation {
-        value: stack[0],
-        has_symbol_refs,
-        has_unstable_symbols,
-    })
-}
-
-fn eval_portable_expr_program_v2_scalar(
-    program: &PortableExprProgram,
-    ctx: &dyn PortableExprEvalContext,
-    budgets: PortableExprBudgets,
-) -> Result<PortableExprEvaluation, PortableExprError> {
-    let evaluation = eval_portable_expr_program_v2_internal(
+    let evaluation = eval_portable_expr_program_internal(
         program.opcode_version,
         &program.code,
         &program.symbols,
@@ -1067,89 +859,31 @@ pub fn expr_program_has_unstable_symbols(
     ctx: &dyn PortableExprEvalContext,
     budgets: PortableExprBudgets,
 ) -> Result<bool, PortableExprError> {
-    match program.opcode_version {
-        EXPR_VM_OPCODE_VERSION_V1 => expr_program_has_unstable_symbols_v1(program, ctx, budgets),
-        EXPR_VM_OPCODE_VERSION_V2 => {
-            expr_program_has_unstable_symbols_v2_scalar(program, ctx, budgets)
-        }
-        other => Err(unsupported_expression_vm_opcode_version(other)),
-    }
+    expr_program_has_unstable_symbols_scalar(program, ctx, budgets)
 }
 
-fn expr_program_has_unstable_symbols_v1(
+fn expr_program_has_unstable_symbols_scalar(
     program: &PortableExprProgram,
     ctx: &dyn PortableExprEvalContext,
     budgets: PortableExprBudgets,
 ) -> Result<bool, PortableExprError> {
-    enforce_program_budgets_v1(program, budgets)?;
+    enforce_program_budgets_scalar(program, budgets.into())?;
     types::vm_work::event("expression.unstable_scan_calls", 1);
     let mut ip = 0usize;
 
     while ip < program.code.len() {
         types::vm_work::event("expression.unstable_scan_opcodes", 1);
-        let opcode = read_opcode_v1(&program.code, &mut ip)?;
+        let opcode = read_opcode(&program.code, &mut ip)?;
         match opcode {
-            ExprVmOpcode::End => return Ok(false),
+            ExprVmOpcode::End => {
+                require_final_end(ip, program.code.len())?;
+                return Ok(false);
+            }
             ExprVmOpcode::PushLiteral => {
                 read_i64_le(&program.code, &mut ip)?;
             }
             ExprVmOpcode::PushCurrentAddress => {}
             ExprVmOpcode::PushSymbol => {
-                let symbol_idx = read_u16_le(&program.code, &mut ip)? as usize;
-                let Some(symbol_name) = program.symbols.get(symbol_idx) else {
-                    return Err(PortableExprError::new(
-                        DIAG_EXPR_INVALID_PROGRAM,
-                        format!("symbol index out of range: {}", symbol_idx),
-                    ));
-                };
-                if is_symbol_unstable(
-                    symbol_name,
-                    ctx.pass(),
-                    |symbol| ctx.lookup_symbol(symbol).is_some(),
-                    |symbol| ctx.symbol_is_finalized(symbol),
-                ) {
-                    return Ok(true);
-                }
-            }
-            ExprVmOpcode::PushStringLiteral => {
-                let len = read_u16_le(&program.code, &mut ip)? as usize;
-                read_bytes(&program.code, &mut ip, len)?;
-            }
-            ExprVmOpcode::ApplyUnary => {
-                read_u8(&program.code, &mut ip)?;
-            }
-            ExprVmOpcode::ApplyBinary => {
-                read_u8(&program.code, &mut ip)?;
-            }
-            ExprVmOpcode::SelectTernary => {}
-        }
-    }
-
-    Ok(false)
-}
-
-fn expr_program_has_unstable_symbols_v2_scalar(
-    program: &PortableExprProgram,
-    ctx: &dyn PortableExprEvalContext,
-    budgets: PortableExprBudgets,
-) -> Result<bool, PortableExprError> {
-    enforce_program_budgets_v2_scalar(program, budgets.into())?;
-    types::vm_work::event("expression.unstable_scan_calls", 1);
-    let mut ip = 0usize;
-
-    while ip < program.code.len() {
-        types::vm_work::event("expression.unstable_scan_opcodes", 1);
-        let opcode = read_opcode_v2(&program.code, &mut ip)?;
-        match opcode {
-            ExprVmOpcodeV2::End => {
-                require_final_end(ip, program.code.len())?;
-                return Ok(false);
-            }
-            ExprVmOpcodeV2::PushLiteral => {
-                read_i64_le(&program.code, &mut ip)?;
-            }
-            ExprVmOpcodeV2::PushCurrentAddress => {}
-            ExprVmOpcodeV2::PushSymbol => {
                 let symbol_idx = read_u16_le(&program.code, &mut ip)? as usize;
                 let Some(symbol_name) = program.symbols.get(symbol_idx) else {
                     return Err(PortableExprError::new(
@@ -1166,40 +900,40 @@ fn expr_program_has_unstable_symbols_v2_scalar(
                     return Ok(true);
                 }
             }
-            ExprVmOpcodeV2::PushStringLiteral => {
+            ExprVmOpcode::PushStringLiteral => {
                 let len = read_u16_le(&program.code, &mut ip)? as usize;
                 read_bytes(&program.code, &mut ip, len)?;
             }
-            ExprVmOpcodeV2::ApplyUnary => {
+            ExprVmOpcode::ApplyUnary => {
                 ExprVmUnary::from_u8(read_u8(&program.code, &mut ip)?).ok_or_else(|| {
                     PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid unary opcode")
                 })?;
             }
-            ExprVmOpcodeV2::ApplyBinary => {
+            ExprVmOpcode::ApplyBinary => {
                 ExprVmBinary::from_u8(read_u8(&program.code, &mut ip)?).ok_or_else(|| {
                     PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid binary opcode")
                 })?;
             }
-            ExprVmOpcodeV2::SelectTernary => {}
-            ExprVmOpcodeV2::WrapImmediate
-            | ExprVmOpcodeV2::WrapIndirect
-            | ExprVmOpcodeV2::WrapIndirectLong
-            | ExprVmOpcodeV2::IndexValue
-            | ExprVmOpcodeV2::RequireScalar
-            | ExprVmOpcodeV2::PushPlaceholder => {}
-            ExprVmOpcodeV2::BuildTuple | ExprVmOpcodeV2::BuildList => {
+            ExprVmOpcode::SelectTernary => {}
+            ExprVmOpcode::WrapImmediate
+            | ExprVmOpcode::WrapIndirect
+            | ExprVmOpcode::WrapIndirectLong
+            | ExprVmOpcode::IndexValue
+            | ExprVmOpcode::RequireScalar
+            | ExprVmOpcode::PushPlaceholder => {}
+            ExprVmOpcode::BuildTuple | ExprVmOpcode::BuildList => {
                 read_u16_le(&program.code, &mut ip)?;
             }
-            ExprVmOpcodeV2::BuildRange => {
+            ExprVmOpcode::BuildRange => {
                 let flags = read_u8(&program.code, &mut ip)?;
                 if flags & !3 != 0 {
                     return Err(PortableExprError::new(
                         DIAG_EXPR_INVALID_PROGRAM,
-                        "invalid v2 range flags",
+                        "invalid range flags",
                     ));
                 }
             }
-            ExprVmOpcodeV2::BuildStructLiteral => {
+            ExprVmOpcode::BuildStructLiteral => {
                 let type_name_idx = read_u16_le(&program.code, &mut ip)? as usize;
                 let Some(type_name) = program.symbols.get(type_name_idx) else {
                     return Err(PortableExprError::new(
@@ -1220,17 +954,17 @@ fn expr_program_has_unstable_symbols_v2_scalar(
                     read_symbol_name(&program.code, &mut ip, &program.symbols)?;
                 }
             }
-            ExprVmOpcodeV2::GetMember => {
+            ExprVmOpcode::GetMember => {
                 read_symbol_name(&program.code, &mut ip, &program.symbols)?;
             }
-            ExprVmOpcodeV2::CallBuiltin => {
+            ExprVmOpcode::CallBuiltin => {
                 read_builtin(&program.code, &mut ip)?;
             }
-            ExprVmOpcodeV2::EmitDiag | ExprVmOpcodeV2::Fail | ExprVmOpcodeV2::PushRegisterRef => {
+            ExprVmOpcode::EmitDiag | ExprVmOpcode::Fail | ExprVmOpcode::PushRegisterRef => {
                 return Err(PortableExprError::new(
                     DIAG_EXPR_UNSUPPORTED_FEATURE,
                     format!(
-                        "expression VM v2 scalar runtime does not yet support opcode 0x{:02X}",
+                        "expression VM runtime does not yet support opcode 0x{:02X}",
                         opcode as u8
                     ),
                 ));
@@ -1242,7 +976,7 @@ fn expr_program_has_unstable_symbols_v2_scalar(
 }
 
 #[derive(Clone, Copy, Debug)]
-struct PortableExprBudgetLimitsV2 {
+struct PortableExprBudgetLimits {
     max_program_bytes: usize,
     max_stack_depth: usize,
     max_symbol_refs: usize,
@@ -1250,7 +984,7 @@ struct PortableExprBudgetLimitsV2 {
     max_shape_items: usize,
 }
 
-impl From<PortableExprBudgets> for PortableExprBudgetLimitsV2 {
+impl From<PortableExprBudgets> for PortableExprBudgetLimits {
     fn from(value: PortableExprBudgets) -> Self {
         Self {
             max_program_bytes: value.max_program_bytes,
@@ -1262,8 +996,8 @@ impl From<PortableExprBudgets> for PortableExprBudgetLimitsV2 {
     }
 }
 
-impl From<PortableExprBudgetsV2> for PortableExprBudgetLimitsV2 {
-    fn from(value: PortableExprBudgetsV2) -> Self {
+impl From<PortableExprTypedBudgets> for PortableExprBudgetLimits {
+    fn from(value: PortableExprTypedBudgets) -> Self {
         Self {
             max_program_bytes: value.max_program_bytes,
             max_stack_depth: value.max_stack_depth,
@@ -1274,52 +1008,11 @@ impl From<PortableExprBudgetsV2> for PortableExprBudgetLimitsV2 {
     }
 }
 
-fn enforce_program_budgets_v1(
+fn enforce_program_budgets_scalar(
     program: &PortableExprProgram,
-    budgets: PortableExprBudgets,
+    budgets: PortableExprBudgetLimits,
 ) -> Result<(), PortableExprError> {
-    if program.opcode_version != EXPR_VM_OPCODE_VERSION_V1 {
-        return Err(unsupported_expression_vm_opcode_version(
-            program.opcode_version,
-        ));
-    }
-    if program.code.len() > budgets.max_program_bytes {
-        return Err(PortableExprError::new(
-            DIAG_EXPR_BUDGET_EXCEEDED,
-            format!(
-                "expression VM program byte budget exceeded ({} > {})",
-                program.code.len(),
-                budgets.max_program_bytes
-            ),
-        ));
-    }
-    if program.symbols.len() > budgets.max_symbol_refs {
-        return Err(PortableExprError::new(
-            DIAG_EXPR_BUDGET_EXCEEDED,
-            format!(
-                "expression VM symbol reference budget exceeded ({} > {})",
-                program.symbols.len(),
-                budgets.max_symbol_refs
-            ),
-        ));
-    }
-    if (program.declared_stack_depth as usize) > budgets.max_stack_depth {
-        return Err(PortableExprError::new(
-            DIAG_EXPR_BUDGET_EXCEEDED,
-            format!(
-                "expression VM stack depth budget exceeded ({} > {})",
-                program.declared_stack_depth, budgets.max_stack_depth
-            ),
-        ));
-    }
-    Ok(())
-}
-
-fn enforce_program_budgets_v2_scalar(
-    program: &PortableExprProgram,
-    budgets: PortableExprBudgetLimitsV2,
-) -> Result<(), PortableExprError> {
-    enforce_program_budgets_v2_parts(
+    enforce_program_budgets_parts(
         program.opcode_version,
         program.code.len(),
         program.symbols.len(),
@@ -1328,14 +1021,14 @@ fn enforce_program_budgets_v2_scalar(
     )
 }
 
-fn enforce_program_budgets_v2_parts(
+fn enforce_program_budgets_parts(
     opcode_version: u16,
     code_len: usize,
     symbol_len: usize,
     declared_stack_depth: u16,
-    budgets: PortableExprBudgetLimitsV2,
+    budgets: PortableExprBudgetLimits,
 ) -> Result<(), PortableExprError> {
-    if opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
+    if opcode_version != EXPR_VM_OPCODE_VERSION_V1 {
         return Err(unsupported_expression_vm_opcode_version(opcode_version));
     }
     if code_len > budgets.max_program_bytes {
@@ -1368,16 +1061,16 @@ fn enforce_program_budgets_v2_parts(
     Ok(())
 }
 
-fn eval_portable_expr_program_v2_internal(
+fn eval_portable_expr_program_internal(
     opcode_version: u16,
     code: &[u8],
     symbols: &[String],
     declared_stack_depth: u16,
     ctx: &dyn PortableExprEvalContext,
-    budgets: PortableExprBudgetLimitsV2,
-) -> Result<PortableExprEvaluationV2, PortableExprError> {
+    budgets: PortableExprBudgetLimits,
+) -> Result<PortableExprTypedEvaluation, PortableExprError> {
     let work = ProgramRun::new("expression", opcode_version, code);
-    enforce_program_budgets_v2_parts(
+    enforce_program_budgets_parts(
         opcode_version,
         code.len(),
         symbols.len(),
@@ -1385,7 +1078,7 @@ fn eval_portable_expr_program_v2_internal(
         budgets,
     )?;
 
-    let mut stack: Vec<PortableExprValueV2> = Vec::new();
+    let mut stack: Vec<PortableExprValue> = Vec::new();
     let mut ip = 0usize;
     let mut steps = 0usize;
     let mut ended = false;
@@ -1405,29 +1098,29 @@ fn eval_portable_expr_program_v2_internal(
         }
 
         let opcode_offset = ip;
-        let opcode = read_opcode_v2(code, &mut ip)?;
+        let opcode = read_opcode(code, &mut ip)?;
         work.step(opcode_offset, opcode as u8);
         match opcode {
-            ExprVmOpcodeV2::End => {
+            ExprVmOpcode::End => {
                 require_final_end(ip, code.len())?;
                 ended = true;
                 break;
             }
-            ExprVmOpcodeV2::PushLiteral => {
-                stack.push(PortableExprValueV2::Int(read_i64_le(code, &mut ip)?));
-                enforce_stack_budget_v2(&stack, budgets)?;
+            ExprVmOpcode::PushLiteral => {
+                stack.push(PortableExprValue::Int(read_i64_le(code, &mut ip)?));
+                enforce_stack_budget(&stack, budgets)?;
             }
-            ExprVmOpcodeV2::PushCurrentAddress => {
-                let value = ctx.current_address().ok_or_else(|| {
+            ExprVmOpcode::PushCurrentAddress => {
+                let value = ctx.current_address_value().ok_or_else(|| {
                     PortableExprError::new(
                         DIAG_EXPR_EVAL_FAILURE,
                         "current address ($) not available",
                     )
                 })?;
-                stack.push(PortableExprValueV2::Int(value));
-                enforce_stack_budget_v2(&stack, budgets)?;
+                stack.push(value);
+                enforce_stack_budget(&stack, budgets)?;
             }
-            ExprVmOpcodeV2::PushSymbol => {
+            ExprVmOpcode::PushSymbol => {
                 let symbol_name = read_symbol_name(code, &mut ip, symbols)?;
                 track_symbol_reference(
                     symbol_name.as_str(),
@@ -1444,99 +1137,115 @@ fn eval_portable_expr_program_v2_internal(
                         )
                     })?;
                 stack.push(value);
-                enforce_stack_budget_v2(&stack, budgets)?;
+                enforce_stack_budget(&stack, budgets)?;
             }
-            ExprVmOpcodeV2::PushStringLiteral => {
+            ExprVmOpcode::PushStringLiteral => {
                 let len = read_u16_le(code, &mut ip)? as usize;
                 let bytes = read_bytes(code, &mut ip, len)?;
-                stack.push(PortableExprValueV2::String(bytes.to_vec()));
-                enforce_stack_budget_v2(&stack, budgets)?;
+                stack.push(PortableExprValue::String(bytes.to_vec()));
+                enforce_stack_budget(&stack, budgets)?;
             }
-            ExprVmOpcodeV2::ApplyUnary => {
+            ExprVmOpcode::ApplyUnary => {
                 let unary = ExprVmUnary::from_u8(read_u8(code, &mut ip)?).ok_or_else(|| {
                     PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid unary opcode")
                 })?;
-                let value = pop_value_v2(&mut stack)?;
+                let value = pop_value(&mut stack)?;
                 let scalar = portable_expr_value_to_scalar(&value, ctx)?;
                 let result = apply_unary(unary.to_core(), scalar, Span::default())
                     .map_err(|err| PortableExprError::new(DIAG_EXPR_EVAL_FAILURE, err.message))?;
-                stack.push(PortableExprValueV2::Int(result));
+                let provenance = portable_expr_scalar_provenance(&value);
+                let provenance = match unary {
+                    ExprVmUnary::Plus => provenance,
+                    ExprVmUnary::LogicNot => types::asm_value::ScalarProvenance::Absolute,
+                    _ if provenance == types::asm_value::ScalarProvenance::Absolute => provenance,
+                    _ => types::asm_value::ScalarProvenance::Unsupported,
+                };
+                stack.push(scalar_with_provenance(result, provenance));
             }
-            ExprVmOpcodeV2::ApplyBinary => {
+            ExprVmOpcode::ApplyBinary => {
                 let binary = ExprVmBinary::from_u8(read_u8(code, &mut ip)?).ok_or_else(|| {
                     PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid binary opcode")
                 })?;
-                let right = portable_expr_value_to_scalar(&pop_value_v2(&mut stack)?, ctx)?;
-                let left = portable_expr_value_to_scalar(&pop_value_v2(&mut stack)?, ctx)?;
+                let right_value = pop_value(&mut stack)?;
+                let left_value = pop_value(&mut stack)?;
+                let right = portable_expr_value_to_scalar(&right_value, ctx)?;
+                let left = portable_expr_value_to_scalar(&left_value, ctx)?;
                 let result = apply_binary(binary.to_core(), left, right, Span::default())
                     .map_err(|err| PortableExprError::new(DIAG_EXPR_EVAL_FAILURE, err.message))?;
-                stack.push(PortableExprValueV2::Int(result));
+                stack.push(scalar_with_provenance(
+                    result,
+                    binary_scalar_provenance(
+                        binary,
+                        portable_expr_scalar_provenance(&left_value),
+                        portable_expr_scalar_provenance(&right_value),
+                    ),
+                ));
             }
-            ExprVmOpcodeV2::SelectTernary => {
-                let else_value = pop_value_v2(&mut stack)?;
-                let then_value = pop_value_v2(&mut stack)?;
-                let cond_value = portable_expr_value_to_scalar(&pop_value_v2(&mut stack)?, ctx)?;
+            ExprVmOpcode::SelectTernary => {
+                let else_value = pop_value(&mut stack)?;
+                let then_value = pop_value(&mut stack)?;
+                let cond_value = portable_expr_value_to_scalar(&pop_value(&mut stack)?, ctx)?;
                 stack.push(if cond_value != 0 {
                     then_value
                 } else {
                     else_value
                 });
             }
-            ExprVmOpcodeV2::WrapImmediate => {
-                let value = pop_value_v2(&mut stack)?;
-                stack.push(PortableExprValueV2::Immediate(Box::new(value)));
+            ExprVmOpcode::WrapImmediate => {
+                let value = pop_value(&mut stack)?;
+                stack.push(PortableExprValue::Immediate(Box::new(value)));
             }
-            ExprVmOpcodeV2::WrapIndirect => {
-                let value = pop_value_v2(&mut stack)?;
-                stack.push(PortableExprValueV2::Indirect(Box::new(value)));
+            ExprVmOpcode::WrapIndirect => {
+                let value = pop_value(&mut stack)?;
+                stack.push(PortableExprValue::Indirect(Box::new(value)));
             }
-            ExprVmOpcodeV2::WrapIndirectLong => {
-                let value = pop_value_v2(&mut stack)?;
-                stack.push(PortableExprValueV2::IndirectLong(Box::new(value)));
+            ExprVmOpcode::WrapIndirectLong => {
+                let value = pop_value(&mut stack)?;
+                stack.push(PortableExprValue::IndirectLong(Box::new(value)));
             }
-            ExprVmOpcodeV2::PushPlaceholder => {
-                stack.push(PortableExprValueV2::Placeholder);
-                enforce_stack_budget_v2(&stack, budgets)?;
+            ExprVmOpcode::PushPlaceholder => {
+                stack.push(PortableExprValue::Placeholder);
+                enforce_stack_budget(&stack, budgets)?;
             }
-            ExprVmOpcodeV2::BuildTuple => {
+            ExprVmOpcode::BuildTuple => {
                 let count = read_u16_le(code, &mut ip)? as usize;
                 enforce_shape_item_budget(count, budgets)?;
-                let items = pop_values_v2(&mut stack, count)?;
-                stack.push(PortableExprValueV2::Tuple(items));
+                let items = pop_values(&mut stack, count)?;
+                stack.push(PortableExprValue::Tuple(items));
             }
-            ExprVmOpcodeV2::BuildList => {
+            ExprVmOpcode::BuildList => {
                 let count = read_u16_le(code, &mut ip)? as usize;
                 enforce_shape_item_budget(count, budgets)?;
-                let items = pop_values_v2(&mut stack, count)?;
-                stack.push(PortableExprValueV2::List(items));
+                let items = pop_values(&mut stack, count)?;
+                stack.push(PortableExprValue::List(items));
             }
-            ExprVmOpcodeV2::BuildRange => {
+            ExprVmOpcode::BuildRange => {
                 let flags = read_u8(code, &mut ip)?;
                 if flags & !0x03 != 0 {
                     return Err(PortableExprError::new(
                         DIAG_EXPR_INVALID_PROGRAM,
-                        format!("invalid v2 range flags: 0x{flags:02X}"),
+                        format!("invalid range flags: 0x{flags:02X}"),
                     ));
                 }
                 let has_step = flags & 0x01 != 0;
                 let inclusive = flags & 0x02 != 0;
                 let step = if has_step {
-                    Some(Box::new(PortableExprValueV2::Int(
-                        portable_expr_value_to_scalar(&pop_value_v2(&mut stack)?, ctx)?,
+                    Some(Box::new(PortableExprValue::Int(
+                        portable_expr_value_to_scalar(&pop_value(&mut stack)?, ctx)?,
                     )))
                 } else {
                     None
                 };
-                let end = portable_expr_value_to_scalar(&pop_value_v2(&mut stack)?, ctx)?;
-                let start = portable_expr_value_to_scalar(&pop_value_v2(&mut stack)?, ctx)?;
-                stack.push(PortableExprValueV2::Range(PortableExprRangeValueV2 {
-                    start: Box::new(PortableExprValueV2::Int(start)),
-                    end: Box::new(PortableExprValueV2::Int(end)),
+                let end = portable_expr_value_to_scalar(&pop_value(&mut stack)?, ctx)?;
+                let start = portable_expr_value_to_scalar(&pop_value(&mut stack)?, ctx)?;
+                stack.push(PortableExprValue::Range(PortableExprRangeValue {
+                    start: Box::new(PortableExprValue::Int(start)),
+                    end: Box::new(PortableExprValue::Int(end)),
                     step,
                     inclusive,
                 }));
             }
-            ExprVmOpcodeV2::BuildStructLiteral => {
+            ExprVmOpcode::BuildStructLiteral => {
                 let type_name = read_symbol_name(code, &mut ip, symbols)?;
                 track_symbol_reference(
                     type_name.as_str(),
@@ -1550,14 +1259,14 @@ fn eval_portable_expr_program_v2_internal(
                 for _ in 0..field_count {
                     field_names.push(read_symbol_name(code, &mut ip, symbols)?);
                 }
-                let field_values = pop_values_v2(&mut stack, field_count)?;
+                let field_values = pop_values(&mut stack, field_count)?;
                 let struct_type = ctx.lookup_symbol_value(type_name.as_str()).ok_or_else(|| {
                     PortableExprError::new(
                         DIAG_EXPR_EVAL_FAILURE,
                         format!("unknown struct type '{}' for struct literal", type_name),
                     )
                 })?;
-                let PortableExprValueV2::StructType(struct_def) = struct_type else {
+                let PortableExprValue::StructType(struct_def) = struct_type else {
                     return Err(PortableExprError::new(
                         DIAG_EXPR_EVAL_FAILURE,
                         format!("unknown struct type '{}' for struct literal", type_name),
@@ -1590,12 +1299,9 @@ fn eval_portable_expr_program_v2_internal(
                             ),
                         ));
                     }
-                    normalized_fields.push(PortableExprStructFieldValueV2 {
+                    normalized_fields.push(PortableExprStructFieldValue {
                         field_name: def_field.field_name.clone(),
-                        value: PortableExprValueV2::Int(portable_expr_value_to_scalar(
-                            &field_value,
-                            ctx,
-                        )?),
+                        value: portable_expr_scalar_projection(&field_value, ctx)?,
                     });
                 }
 
@@ -1613,18 +1319,28 @@ fn eval_portable_expr_program_v2_internal(
                     }
                 }
 
-                stack.push(PortableExprValueV2::StructLiteral(
-                    PortableExprStructLiteralValueV2 {
+                stack.push(PortableExprValue::StructLiteral(
+                    PortableExprStructLiteralValue {
                         type_name: struct_def.type_name,
                         fields: normalized_fields,
                     },
                 ));
             }
-            ExprVmOpcodeV2::GetMember => {
+            ExprVmOpcode::GetMember => {
                 let field_name = read_symbol_name(code, &mut ip, symbols)?;
-                let base = pop_value_v2(&mut stack)?;
+                let base = pop_value(&mut stack)?;
                 let value = match base {
-                    PortableExprValueV2::StructType(struct_def) => {
+                    PortableExprValue::Record { fields, .. } => fields
+                        .into_iter()
+                        .find(|candidate| candidate.field_name.eq_ignore_ascii_case(&field_name))
+                        .map(|field| field.value)
+                        .ok_or_else(|| {
+                            PortableExprError::new(
+                                DIAG_EXPR_EVAL_FAILURE,
+                                format!("record has no field '{}'", field_name),
+                            )
+                        })?,
+                    PortableExprValue::StructType(struct_def) => {
                         let Some(field) = struct_def.fields.iter().find(|candidate| {
                             candidate
                                 .field_name
@@ -1638,9 +1354,9 @@ fn eval_portable_expr_program_v2_internal(
                                 ),
                             ));
                         };
-                        PortableExprValueV2::Int(i64::from(field.offset))
+                        PortableExprValue::Int(i64::from(field.offset))
                     }
-                    PortableExprValueV2::StructLiteral(instance) => {
+                    PortableExprValue::StructLiteral(instance) => {
                         let Some(field) = instance.fields.iter().find(|candidate| {
                             candidate
                                 .field_name
@@ -1665,8 +1381,8 @@ fn eval_portable_expr_program_v2_internal(
                 };
                 stack.push(value);
             }
-            ExprVmOpcodeV2::IndexValue => {
-                let index = portable_expr_value_to_scalar(&pop_value_v2(&mut stack)?, ctx)?;
+            ExprVmOpcode::IndexValue => {
+                let index = portable_expr_value_to_scalar(&pop_value(&mut stack)?, ctx)?;
                 if index < 0 {
                     return Err(PortableExprError::new(
                         DIAG_EXPR_EVAL_FAILURE,
@@ -1676,11 +1392,11 @@ fn eval_portable_expr_program_v2_internal(
                 let index = usize::try_from(index).map_err(|_| {
                     PortableExprError::new(DIAG_EXPR_EVAL_FAILURE, "Index out of range")
                 })?;
-                let base = pop_value_v2(&mut stack)?;
+                let base = pop_value(&mut stack)?;
                 let value = match base {
-                    PortableExprValueV2::List(items) => items.get(index).cloned(),
-                    PortableExprValueV2::Range(range) => {
-                        range_value_get(&range, index).map(PortableExprValueV2::Int)
+                    PortableExprValue::List(items) => items.get(index).cloned(),
+                    PortableExprValue::Range(range) => {
+                        range_value_get(&range, index).map(PortableExprValue::Int)
                     }
                     _ => None,
                 }
@@ -1689,18 +1405,16 @@ fn eval_portable_expr_program_v2_internal(
                 })?;
                 stack.push(value);
             }
-            ExprVmOpcodeV2::RequireScalar => {
-                let value = pop_value_v2(&mut stack)?;
-                stack.push(PortableExprValueV2::Int(portable_expr_value_to_scalar(
-                    &value, ctx,
-                )?));
+            ExprVmOpcode::RequireScalar => {
+                let value = pop_value(&mut stack)?;
+                stack.push(portable_expr_scalar_projection(&value, ctx)?);
             }
-            ExprVmOpcodeV2::CallBuiltin => {
+            ExprVmOpcode::CallBuiltin => {
                 let builtin = read_builtin(code, &mut ip)?;
-                let value = pop_value_v2(&mut stack)?;
+                let value = pop_value(&mut stack)?;
                 let length = match (builtin, value) {
-                    (ExprBuiltin::Len, PortableExprValueV2::List(items)) => items.len(),
-                    (ExprBuiltin::Len, PortableExprValueV2::Range(range)) => {
+                    (ExprBuiltin::Len, PortableExprValue::List(items)) => items.len(),
+                    (ExprBuiltin::Len, PortableExprValue::Range(range)) => {
                         let start = portable_expr_value_to_scalar(&range.start, ctx)?;
                         let end = portable_expr_value_to_scalar(&range.end, ctx)?;
                         let step = range
@@ -1725,22 +1439,22 @@ fn eval_portable_expr_program_v2_internal(
                         ))
                     }
                 };
-                stack.push(PortableExprValueV2::Int(
+                stack.push(PortableExprValue::Int(
                     i64::try_from(length).unwrap_or(i64::MAX),
                 ));
             }
-            ExprVmOpcodeV2::EmitDiag | ExprVmOpcodeV2::Fail | ExprVmOpcodeV2::PushRegisterRef => {
+            ExprVmOpcode::EmitDiag | ExprVmOpcode::Fail | ExprVmOpcode::PushRegisterRef => {
                 return Err(PortableExprError::new(
                     DIAG_EXPR_UNSUPPORTED_FEATURE,
                     format!(
-                        "expression VM v2 scalar runtime does not yet support opcode 0x{:02X}",
+                        "expression VM runtime does not yet support opcode 0x{:02X}",
                         opcode as u8
                     ),
                 ));
             }
         }
 
-        enforce_stack_budget_v2(&stack, budgets)?;
+        enforce_stack_budget(&stack, budgets)?;
     }
 
     if !ended {
@@ -1756,8 +1470,8 @@ fn eval_portable_expr_program_v2_internal(
         ));
     }
 
-    Ok(PortableExprEvaluationV2 {
-        value: stack.pop().expect("v2 eval should end with one value"),
+    Ok(PortableExprTypedEvaluation {
+        value: stack.pop().expect("evaluation should end with one value"),
         has_symbol_refs,
         has_unstable_symbols,
     })
@@ -1795,43 +1509,114 @@ fn track_symbol_reference(
     }
 }
 
+/// Projects addressable records without discarding their scalar relocation origin.
+pub fn portable_expr_scalar_projection(
+    value: &PortableExprValue,
+    ctx: &dyn PortableExprEvalContext,
+) -> Result<PortableExprValue, PortableExprError> {
+    Ok(scalar_with_provenance(
+        portable_expr_value_to_scalar(value, ctx)?,
+        portable_expr_scalar_provenance(value),
+    ))
+}
+
+pub fn portable_expr_scalar_provenance(
+    value: &PortableExprValue,
+) -> types::asm_value::ScalarProvenance {
+    use types::asm_value::ScalarProvenance;
+    match value {
+        PortableExprValue::RelocatableScalar { provenance, .. } => provenance.clone(),
+        PortableExprValue::Record { scalar, .. }
+        | PortableExprValue::Immediate(scalar)
+        | PortableExprValue::Indirect(scalar)
+        | PortableExprValue::IndirectLong(scalar) => portable_expr_scalar_provenance(scalar),
+        _ => ScalarProvenance::Absolute,
+    }
+}
+
+fn scalar_with_provenance(
+    value: i64,
+    provenance: types::asm_value::ScalarProvenance,
+) -> PortableExprValue {
+    if provenance == types::asm_value::ScalarProvenance::Absolute {
+        PortableExprValue::Int(value)
+    } else {
+        PortableExprValue::RelocatableScalar { value, provenance }
+    }
+}
+
+fn binary_scalar_provenance(
+    op: ExprVmBinary,
+    left: types::asm_value::ScalarProvenance,
+    right: types::asm_value::ScalarProvenance,
+) -> types::asm_value::ScalarProvenance {
+    use types::asm_value::ScalarProvenance::{Absolute, Section, Unsupported};
+    match op {
+        ExprVmBinary::Eq
+        | ExprVmBinary::Ne
+        | ExprVmBinary::Ge
+        | ExprVmBinary::Gt
+        | ExprVmBinary::Le
+        | ExprVmBinary::Lt
+        | ExprVmBinary::LogicAnd
+        | ExprVmBinary::LogicOr
+        | ExprVmBinary::LogicXor => Absolute,
+        ExprVmBinary::Add => match (left, right) {
+            (Absolute, Absolute) => Absolute,
+            (Section(name), Absolute) | (Absolute, Section(name)) => Section(name),
+            _ => Unsupported,
+        },
+        ExprVmBinary::Subtract => match (left, right) {
+            (Absolute, Absolute) => Absolute,
+            (Section(name), Absolute) => Section(name),
+            (Section(left), Section(right)) if left == right => Absolute,
+            _ => Unsupported,
+        },
+        _ if left == Absolute && right == Absolute => Absolute,
+        _ => Unsupported,
+    }
+}
+
 fn portable_expr_value_to_scalar(
-    value: &PortableExprValueV2,
+    value: &PortableExprValue,
     ctx: &dyn PortableExprEvalContext,
 ) -> Result<i64, PortableExprError> {
     match value {
-        PortableExprValueV2::Int(value) => Ok(*value),
-        PortableExprValueV2::String(bytes) => ctx
+        PortableExprValue::Int(value) | PortableExprValue::RelocatableScalar { value, .. } => {
+            Ok(*value)
+        }
+        PortableExprValue::Record { scalar, .. } => portable_expr_value_to_scalar(scalar, ctx),
+        PortableExprValue::String(bytes) => ctx
             .eval_string_literal(bytes)
             .map_err(|message| PortableExprError::new(DIAG_EXPR_EVAL_FAILURE, message)),
-        PortableExprValueV2::Immediate(inner)
-        | PortableExprValueV2::Indirect(inner)
-        | PortableExprValueV2::IndirectLong(inner) => portable_expr_value_to_scalar(inner, ctx),
-        PortableExprValueV2::List(_) => Err(PortableExprError::new(
+        PortableExprValue::Immediate(inner)
+        | PortableExprValue::Indirect(inner)
+        | PortableExprValue::IndirectLong(inner) => portable_expr_value_to_scalar(inner, ctx),
+        PortableExprValue::List(_) => Err(PortableExprError::new(
             DIAG_EXPR_EVAL_FAILURE,
             "List cannot be evaluated as scalar expression",
         )),
-        PortableExprValueV2::Range(_) => Err(PortableExprError::new(
+        PortableExprValue::Range(_) => Err(PortableExprError::new(
             DIAG_EXPR_EVAL_FAILURE,
             "Range cannot be evaluated as scalar expression",
         )),
-        PortableExprValueV2::StructType(_) => Err(PortableExprError::new(
+        PortableExprValue::StructType(_) => Err(PortableExprError::new(
             DIAG_EXPR_EVAL_FAILURE,
             "Struct cannot be evaluated as scalar expression",
         )),
-        PortableExprValueV2::StructLiteral(_) => Err(PortableExprError::new(
+        PortableExprValue::StructLiteral(_) => Err(PortableExprError::new(
             DIAG_EXPR_EVAL_FAILURE,
             "Struct instance cannot be evaluated as scalar expression",
         )),
-        PortableExprValueV2::Tuple(_) => Err(PortableExprError::new(
+        PortableExprValue::Tuple(_) => Err(PortableExprError::new(
             DIAG_EXPR_EVAL_FAILURE,
             "Tuple cannot be evaluated as expression",
         )),
-        PortableExprValueV2::Placeholder => Err(PortableExprError::new(
+        PortableExprValue::Placeholder => Err(PortableExprError::new(
             DIAG_EXPR_EVAL_FAILURE,
             "Placeholder cannot be evaluated as scalar expression",
         )),
-        PortableExprValueV2::SymbolRef(_) | PortableExprValueV2::RegisterRef(_) => {
+        PortableExprValue::SymbolRef(_) | PortableExprValue::RegisterRef(_) => {
             Err(PortableExprError::new(
                 DIAG_EXPR_EVAL_FAILURE,
                 "expression value cannot be reduced to scalar expression",
@@ -1842,7 +1627,7 @@ fn portable_expr_value_to_scalar(
 
 fn enforce_shape_item_budget(
     item_count: usize,
-    budgets: PortableExprBudgetLimitsV2,
+    budgets: PortableExprBudgetLimits,
 ) -> Result<(), PortableExprError> {
     if item_count > budgets.max_shape_items {
         return Err(PortableExprError::new(
@@ -1856,15 +1641,15 @@ fn enforce_shape_item_budget(
     Ok(())
 }
 
-fn range_value_get(range: &PortableExprRangeValueV2, index: usize) -> Option<i64> {
-    let PortableExprValueV2::Int(start) = range.start.as_ref() else {
+fn range_value_get(range: &PortableExprRangeValue, index: usize) -> Option<i64> {
+    let PortableExprValue::Int(start) = range.start.as_ref() else {
         return None;
     };
-    let PortableExprValueV2::Int(end) = range.end.as_ref() else {
+    let PortableExprValue::Int(end) = range.end.as_ref() else {
         return None;
     };
     let step = match range.step.as_deref() {
-        Some(PortableExprValueV2::Int(step)) => *step,
+        Some(PortableExprValue::Int(step)) => *step,
         Some(_) => return None,
         None => {
             if *start <= *end {
@@ -1913,9 +1698,9 @@ fn validate_typed_bytecode(code: &[u8], symbols: &[String]) -> Result<(), Portab
     let mut ip = 0;
     let mut depth = 0usize;
     while ip < code.len() {
-        let opcode = read_opcode_v2(code, &mut ip)?;
+        let opcode = read_opcode(code, &mut ip)?;
         let (consumed, produced) = match opcode {
-            ExprVmOpcodeV2::End => {
+            ExprVmOpcode::End => {
                 if ip != code.len() || depth != 1 {
                     return Err(PortableExprError::new(
                         DIAG_EXPR_INVALID_PROGRAM,
@@ -1924,52 +1709,52 @@ fn validate_typed_bytecode(code: &[u8], symbols: &[String]) -> Result<(), Portab
                 }
                 return Ok(());
             }
-            ExprVmOpcodeV2::PushLiteral => {
+            ExprVmOpcode::PushLiteral => {
                 read_i64_le(code, &mut ip)?;
                 (0, 1)
             }
-            ExprVmOpcodeV2::PushCurrentAddress | ExprVmOpcodeV2::PushPlaceholder => (0, 1),
-            ExprVmOpcodeV2::PushSymbol => {
+            ExprVmOpcode::PushCurrentAddress | ExprVmOpcode::PushPlaceholder => (0, 1),
+            ExprVmOpcode::PushSymbol => {
                 read_symbol_name(code, &mut ip, symbols)?;
                 (0, 1)
             }
-            ExprVmOpcodeV2::PushStringLiteral => {
+            ExprVmOpcode::PushStringLiteral => {
                 let len = read_u16_le(code, &mut ip)? as usize;
                 read_bytes(code, &mut ip, len)?;
                 (0, 1)
             }
-            ExprVmOpcodeV2::ApplyUnary => {
+            ExprVmOpcode::ApplyUnary => {
                 ExprVmUnary::from_u8(read_u8(code, &mut ip)?).ok_or_else(|| {
                     PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid unary opcode")
                 })?;
                 (1, 1)
             }
-            ExprVmOpcodeV2::ApplyBinary => {
+            ExprVmOpcode::ApplyBinary => {
                 ExprVmBinary::from_u8(read_u8(code, &mut ip)?).ok_or_else(|| {
                     PortableExprError::new(DIAG_EXPR_INVALID_OPCODE, "invalid binary opcode")
                 })?;
                 (2, 1)
             }
-            ExprVmOpcodeV2::SelectTernary => (3, 1),
-            ExprVmOpcodeV2::WrapImmediate
-            | ExprVmOpcodeV2::WrapIndirect
-            | ExprVmOpcodeV2::WrapIndirectLong
-            | ExprVmOpcodeV2::RequireScalar => (1, 1),
-            ExprVmOpcodeV2::IndexValue => (2, 1),
-            ExprVmOpcodeV2::BuildTuple | ExprVmOpcodeV2::BuildList => {
+            ExprVmOpcode::SelectTernary => (3, 1),
+            ExprVmOpcode::WrapImmediate
+            | ExprVmOpcode::WrapIndirect
+            | ExprVmOpcode::WrapIndirectLong
+            | ExprVmOpcode::RequireScalar => (1, 1),
+            ExprVmOpcode::IndexValue => (2, 1),
+            ExprVmOpcode::BuildTuple | ExprVmOpcode::BuildList => {
                 (read_u16_le(code, &mut ip)? as usize, 1)
             }
-            ExprVmOpcodeV2::BuildRange => {
+            ExprVmOpcode::BuildRange => {
                 let flags = read_u8(code, &mut ip)?;
                 if flags & !3 != 0 {
                     return Err(PortableExprError::new(
                         DIAG_EXPR_INVALID_PROGRAM,
-                        "invalid v2 range flags",
+                        "invalid range flags",
                     ));
                 }
                 (2 + usize::from(flags & 1 != 0), 1)
             }
-            ExprVmOpcodeV2::BuildStructLiteral => {
+            ExprVmOpcode::BuildStructLiteral => {
                 read_symbol_name(code, &mut ip, symbols)?;
                 let count = read_u16_le(code, &mut ip)? as usize;
                 for _ in 0..count {
@@ -1977,15 +1762,15 @@ fn validate_typed_bytecode(code: &[u8], symbols: &[String]) -> Result<(), Portab
                 }
                 (count, 1)
             }
-            ExprVmOpcodeV2::GetMember => {
+            ExprVmOpcode::GetMember => {
                 read_symbol_name(code, &mut ip, symbols)?;
                 (1, 1)
             }
-            ExprVmOpcodeV2::CallBuiltin => {
+            ExprVmOpcode::CallBuiltin => {
                 read_builtin(code, &mut ip)?;
                 (1, 1)
             }
-            ExprVmOpcodeV2::EmitDiag | ExprVmOpcodeV2::Fail | ExprVmOpcodeV2::PushRegisterRef => {
+            ExprVmOpcode::EmitDiag | ExprVmOpcode::Fail | ExprVmOpcode::PushRegisterRef => {
                 return Err(PortableExprError::new(
                     DIAG_EXPR_UNSUPPORTED_FEATURE,
                     "unsupported expression VM opcode",
@@ -2002,11 +1787,11 @@ fn validate_typed_bytecode(code: &[u8], symbols: &[String]) -> Result<(), Portab
     ))
 }
 
-pub fn validate_portable_expr_program_v2_skeleton(
-    program: &PortableExprProgramV2,
-    budgets: PortableExprBudgetsV2,
+pub fn validate_portable_expr_typed_program_skeleton(
+    program: &PortableExprTypedProgram,
+    budgets: PortableExprTypedBudgets,
 ) -> Result<(), PortableExprError> {
-    if program.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
+    if program.opcode_version != EXPR_VM_OPCODE_VERSION_V1 {
         return Err(PortableExprError::new(
             DIAG_EXPR_INVALID_PROGRAM,
             format!(
@@ -2049,10 +1834,45 @@ pub fn validate_portable_expr_program_v2_skeleton(
     Ok(())
 }
 
+fn enforce_value_shape_budget(
+    value: &PortableExprValue,
+    budgets: PortableExprBudgetLimits,
+) -> Result<(), PortableExprError> {
+    match value {
+        PortableExprValue::List(items) | PortableExprValue::Tuple(items) => {
+            enforce_shape_item_budget(items.len(), budgets)?;
+            for item in items {
+                enforce_value_shape_budget(item, budgets)?;
+            }
+        }
+        PortableExprValue::Record { scalar, fields } => {
+            enforce_shape_item_budget(fields.len(), budgets)?;
+            enforce_value_shape_budget(scalar, budgets)?;
+            for field in fields {
+                enforce_value_shape_budget(&field.value, budgets)?;
+            }
+        }
+        PortableExprValue::StructLiteral(instance) => {
+            enforce_shape_item_budget(instance.fields.len(), budgets)?;
+            for field in &instance.fields {
+                enforce_value_shape_budget(&field.value, budgets)?;
+            }
+        }
+        PortableExprValue::Immediate(inner)
+        | PortableExprValue::Indirect(inner)
+        | PortableExprValue::IndirectLong(inner) => enforce_value_shape_budget(inner, budgets)?,
+        _ => {}
+    }
+    Ok(())
+}
+
 fn enforce_stack_budget(
-    stack: &[i64],
-    budgets: PortableExprBudgets,
+    stack: &[PortableExprValue],
+    budgets: PortableExprBudgetLimits,
 ) -> Result<(), PortableExprError> {
+    for value in stack {
+        enforce_value_shape_budget(value, budgets)?;
+    }
     if stack.len() > budgets.max_stack_depth {
         return Err(PortableExprError::new(
             DIAG_EXPR_STACK_DEPTH_EXCEEDED,
@@ -2066,41 +1886,16 @@ fn enforce_stack_budget(
     Ok(())
 }
 
-fn enforce_stack_budget_v2(
-    stack: &[PortableExprValueV2],
-    budgets: PortableExprBudgetLimitsV2,
-) -> Result<(), PortableExprError> {
-    if stack.len() > budgets.max_stack_depth {
-        return Err(PortableExprError::new(
-            DIAG_EXPR_STACK_DEPTH_EXCEEDED,
-            format!(
-                "expression VM stack depth exceeded ({} > {})",
-                stack.len(),
-                budgets.max_stack_depth
-            ),
-        ));
-    }
-    Ok(())
-}
-
-fn pop_value(stack: &mut Vec<i64>) -> Result<i64, PortableExprError> {
+fn pop_value(stack: &mut Vec<PortableExprValue>) -> Result<PortableExprValue, PortableExprError> {
     stack.pop().ok_or_else(|| {
         PortableExprError::new(DIAG_EXPR_STACK_UNDERFLOW, "expression VM stack underflow")
     })
 }
 
-fn pop_value_v2(
-    stack: &mut Vec<PortableExprValueV2>,
-) -> Result<PortableExprValueV2, PortableExprError> {
-    stack.pop().ok_or_else(|| {
-        PortableExprError::new(DIAG_EXPR_STACK_UNDERFLOW, "expression VM stack underflow")
-    })
-}
-
-fn pop_values_v2(
-    stack: &mut Vec<PortableExprValueV2>,
+fn pop_values(
+    stack: &mut Vec<PortableExprValue>,
     count: usize,
-) -> Result<Vec<PortableExprValueV2>, PortableExprError> {
+) -> Result<Vec<PortableExprValue>, PortableExprError> {
     if count > stack.len() {
         return Err(PortableExprError::new(
             DIAG_EXPR_STACK_UNDERFLOW,
@@ -2111,19 +1906,9 @@ fn pop_values_v2(
     Ok(stack.drain(start..).collect())
 }
 
-fn read_opcode_v1(code: &[u8], ip: &mut usize) -> Result<ExprVmOpcode, PortableExprError> {
+fn read_opcode(code: &[u8], ip: &mut usize) -> Result<ExprVmOpcode, PortableExprError> {
     let opcode = read_u8(code, ip)?;
     ExprVmOpcode::from_u8(opcode).ok_or_else(|| {
-        PortableExprError::new(
-            DIAG_EXPR_INVALID_OPCODE,
-            format!("invalid expression VM opcode: 0x{opcode:02X}"),
-        )
-    })
-}
-
-fn read_opcode_v2(code: &[u8], ip: &mut usize) -> Result<ExprVmOpcodeV2, PortableExprError> {
-    let opcode = read_u8(code, ip)?;
-    ExprVmOpcodeV2::from_u8(opcode).ok_or_else(|| {
         PortableExprError::new(
             DIAG_EXPR_INVALID_OPCODE,
             format!("invalid expression VM opcode: 0x{opcode:02X}"),
@@ -2206,9 +1991,7 @@ impl ExprCompiler {
         opcode_version: u16,
         _mode: ExprCompilerMode,
     ) -> Result<Self, PortableExprError> {
-        if opcode_version != EXPR_VM_OPCODE_VERSION_V1
-            && opcode_version != EXPR_VM_OPCODE_VERSION_V2
-        {
+        if opcode_version != EXPR_VM_OPCODE_VERSION_V1 {
             return Err(unsupported_expression_vm_opcode_version(opcode_version));
         }
         Ok(Self {
@@ -2239,14 +2022,7 @@ impl ExprCompiler {
                 self.stack_push();
                 Ok(())
             }
-            Expr::List(items, span) => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "List cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
+            Expr::List(items, _) => {
                 let item_count = u16::try_from(items.len()).map_err(|_| {
                     PortableExprError::new(
                         DIAG_EXPR_BUDGET_EXCEEDED,
@@ -2260,45 +2036,22 @@ impl ExprCompiler {
                 self.stack_collapse(items.len())?;
                 Ok(())
             }
-            Expr::Index { base, index, span } => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "Index expression cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
+            Expr::Index { base, index, .. } => {
                 self.compile(base)?;
                 self.compile(index)?;
                 self.emit_index_value();
                 self.stack_pop()?;
                 Ok(())
             }
-            Expr::Member { base, field, span } => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "Member expression cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
+            Expr::Member { base, field, .. } => {
                 self.compile(base)?;
                 let field_idx = self.intern_symbol(field)?;
                 self.emit_get_member(field_idx);
                 Ok(())
             }
             Expr::StructLiteral {
-                type_name,
-                fields,
-                span,
+                type_name, fields, ..
             } => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "Struct literal cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
                 let field_count = u16::try_from(fields.len()).map_err(|_| {
                     PortableExprError::new(
                         DIAG_EXPR_BUDGET_EXCEEDED,
@@ -2316,13 +2069,6 @@ impl ExprCompiler {
                 Ok(())
             }
             Expr::Call { name, args, span } => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "Call expression cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
                 let builtin = ExprBuiltin::from_name(name).ok_or_else(|| {
                     PortableExprError::with_span(
                         DIAG_EXPR_EVAL_FAILURE,
@@ -2338,7 +2084,7 @@ impl ExprCompiler {
                     ));
                 }
                 self.compile(&args[0])?;
-                self.code.push(ExprVmOpcodeV2::CallBuiltin as u8);
+                self.code.push(ExprVmOpcode::CallBuiltin as u8);
                 self.code.push(builtin as u8);
                 self.emit_u16(1);
                 Ok(())
@@ -2394,15 +2140,8 @@ impl ExprCompiler {
                 end,
                 step,
                 inclusive,
-                span,
+                ..
             } => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "Range cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
                 self.compile(start)?;
                 self.compile(end)?;
                 let has_step = step.is_some();
@@ -2529,14 +2268,7 @@ impl ExprCompiler {
 
     fn compile_direct_structural(&mut self, expr: &Expr) -> Result<(), PortableExprError> {
         match expr {
-            Expr::List(items, span) => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "List cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
+            Expr::List(items, _) => {
                 let item_count = u16::try_from(items.len()).map_err(|_| {
                     PortableExprError::new(
                         DIAG_EXPR_BUDGET_EXCEEDED,
@@ -2555,15 +2287,8 @@ impl ExprCompiler {
                 end,
                 step,
                 inclusive,
-                span,
+                span: _,
             } => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "Range cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
                 self.compile_direct_structural(start)?;
                 self.compile_direct_structural(end)?;
                 let has_step = step.is_some();
@@ -2577,15 +2302,8 @@ impl ExprCompiler {
             Expr::StructLiteral {
                 type_name,
                 fields,
-                span,
+                span: _,
             } => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "Struct literal cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
                 let field_count = u16::try_from(fields.len()).map_err(|_| {
                     PortableExprError::new(
                         DIAG_EXPR_BUDGET_EXCEEDED,
@@ -2608,28 +2326,14 @@ impl ExprCompiler {
 
     fn compile_direct_member_index(&mut self, expr: &Expr) -> Result<(), PortableExprError> {
         match expr {
-            Expr::Index { base, index, span } => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "Index expression cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
+            Expr::Index { base, index, .. } => {
                 self.compile_direct_member_index(base)?;
                 self.compile_direct_member_index(index)?;
                 self.emit_index_value();
                 self.stack_pop()?;
                 Ok(())
             }
-            Expr::Member { base, field, span } => {
-                if self.opcode_version != EXPR_VM_OPCODE_VERSION_V2 {
-                    return Err(PortableExprError::with_span(
-                        DIAG_EXPR_UNSUPPORTED_FEATURE,
-                        "Member expression cannot be evaluated as scalar expression",
-                        *span,
-                    ));
-                }
+            Expr::Member { base, field, .. } => {
                 self.compile_direct_member_index(base)?;
                 let field_idx = self.intern_symbol(field)?;
                 self.emit_get_member(field_idx);
@@ -2684,84 +2388,46 @@ impl ExprCompiler {
     }
 
     fn emit_end(&mut self) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V1 => ExprVmOpcode::End as u8,
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::End as u8,
-            _ => unreachable!("unsupported expression VM opcode version"),
-        });
+        self.emit_u8(ExprVmOpcode::End as u8);
     }
 
     fn emit_push_literal(&mut self) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V1 => ExprVmOpcode::PushLiteral as u8,
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::PushLiteral as u8,
-            _ => unreachable!("unsupported expression VM opcode version"),
-        });
+        self.emit_u8(ExprVmOpcode::PushLiteral as u8);
     }
 
     fn emit_push_current_address(&mut self) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V1 => ExprVmOpcode::PushCurrentAddress as u8,
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::PushCurrentAddress as u8,
-            _ => unreachable!("unsupported expression VM opcode version"),
-        });
+        self.emit_u8(ExprVmOpcode::PushCurrentAddress as u8);
     }
 
     fn emit_push_symbol(&mut self) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V1 => ExprVmOpcode::PushSymbol as u8,
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::PushSymbol as u8,
-            _ => unreachable!("unsupported expression VM opcode version"),
-        });
+        self.emit_u8(ExprVmOpcode::PushSymbol as u8);
     }
 
     fn emit_push_string_literal(&mut self) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V1 => ExprVmOpcode::PushStringLiteral as u8,
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::PushStringLiteral as u8,
-            _ => unreachable!("unsupported expression VM opcode version"),
-        });
+        self.emit_u8(ExprVmOpcode::PushStringLiteral as u8);
     }
 
     fn emit_apply_unary(&mut self, unary: ExprVmUnary) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V1 => ExprVmOpcode::ApplyUnary as u8,
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::ApplyUnary as u8,
-            _ => unreachable!("unsupported expression VM opcode version"),
-        });
+        self.emit_u8(ExprVmOpcode::ApplyUnary as u8);
         self.emit_u8(unary as u8);
     }
 
     fn emit_apply_binary(&mut self, binary: ExprVmBinary) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V1 => ExprVmOpcode::ApplyBinary as u8,
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::ApplyBinary as u8,
-            _ => unreachable!("unsupported expression VM opcode version"),
-        });
+        self.emit_u8(ExprVmOpcode::ApplyBinary as u8);
         self.emit_u8(binary as u8);
     }
 
     fn emit_select_ternary(&mut self) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V1 => ExprVmOpcode::SelectTernary as u8,
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::SelectTernary as u8,
-            _ => unreachable!("unsupported expression VM opcode version"),
-        });
+        self.emit_u8(ExprVmOpcode::SelectTernary as u8);
     }
 
     fn emit_build_list(&mut self, count: u16) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::BuildList as u8,
-            _ => unreachable!("build-list emission requires expression VM opcode version v2"),
-        });
+        self.emit_u8(ExprVmOpcode::BuildList as u8);
         self.emit_u16(count);
     }
 
     fn emit_build_range(&mut self, has_step: bool, inclusive: bool) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::BuildRange as u8,
-            _ => unreachable!("build-range emission requires expression VM opcode version v2"),
-        });
+        self.emit_u8(ExprVmOpcode::BuildRange as u8);
         let mut flags = 0u8;
         if has_step {
             flags |= 0x01;
@@ -2778,14 +2444,7 @@ impl ExprCompiler {
         field_count: u16,
         field_indices: &[u16],
     ) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::BuildStructLiteral as u8,
-            _ => {
-                unreachable!(
-                    "build-struct-literal emission requires expression VM opcode version v2"
-                )
-            }
-        });
+        self.emit_u8(ExprVmOpcode::BuildStructLiteral as u8);
         self.emit_u16(type_name_idx);
         self.emit_u16(field_count);
         for field_idx in field_indices {
@@ -2794,25 +2453,16 @@ impl ExprCompiler {
     }
 
     fn emit_get_member(&mut self, field_idx: u16) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::GetMember as u8,
-            _ => unreachable!("member emission requires expression VM opcode version v2"),
-        });
+        self.emit_u8(ExprVmOpcode::GetMember as u8);
         self.emit_u16(field_idx);
     }
 
     fn emit_index_value(&mut self) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::IndexValue as u8,
-            _ => unreachable!("index emission requires expression VM opcode version v2"),
-        });
+        self.emit_u8(ExprVmOpcode::IndexValue as u8);
     }
 
     fn emit_require_scalar(&mut self) {
-        self.emit_u8(match self.opcode_version {
-            EXPR_VM_OPCODE_VERSION_V2 => ExprVmOpcodeV2::RequireScalar as u8,
-            _ => unreachable!("require-scalar emission requires expression VM opcode version v2"),
-        });
+        self.emit_u8(ExprVmOpcode::RequireScalar as u8);
     }
 
     fn emit_u8(&mut self, value: u8) {
@@ -2839,7 +2489,7 @@ mod tests {
     #[derive(Default)]
     struct TestCtx {
         symbols: HashMap<String, i64>,
-        values: HashMap<String, PortableExprValueV2>,
+        values: HashMap<String, PortableExprValue>,
         finalized: HashMap<String, bool>,
         addr: Option<i64>,
         pass: u8,
@@ -2850,13 +2500,11 @@ mod tests {
             self.symbols.get(name).copied()
         }
 
-        fn lookup_symbol_value(&self, name: &str) -> Option<PortableExprValueV2> {
-            self.values.get(name).cloned().or_else(|| {
-                self.symbols
-                    .get(name)
-                    .copied()
-                    .map(PortableExprValueV2::Int)
-            })
+        fn lookup_symbol_value(&self, name: &str) -> Option<PortableExprValue> {
+            self.values
+                .get(name)
+                .cloned()
+                .or_else(|| self.symbols.get(name).copied().map(PortableExprValue::Int))
         }
 
         fn current_address(&self) -> Option<i64> {
@@ -2888,16 +2536,16 @@ mod tests {
         }
     }
 
-    fn point_struct_type() -> PortableExprValueV2 {
-        PortableExprValueV2::StructType(PortableExprStructTypeValueV2 {
+    fn point_struct_type() -> PortableExprValue {
+        PortableExprValue::StructType(PortableExprStructTypeValue {
             type_name: "Point".to_string(),
             fields: vec![
-                PortableExprStructTypeFieldValueV2 {
+                PortableExprStructTypeFieldValue {
                     field_name: "x".to_string(),
                     offset: 0,
                     size: 1,
                 },
-                PortableExprStructTypeFieldValueV2 {
+                PortableExprStructTypeFieldValue {
                     field_name: "y".to_string(),
                     offset: 1,
                     size: 1,
@@ -3010,51 +2658,48 @@ mod tests {
     }
 
     #[test]
-    fn expr_vm_v2_skeleton_types_are_constructible() {
-        let program = PortableExprProgramV2 {
-            opcode_version: EXPR_VM_OPCODE_VERSION_V2,
-            code: vec![
-                ExprVmOpcodeV2::PushPlaceholder as u8,
-                ExprVmOpcodeV2::End as u8,
-            ],
+    fn expr_vm_skeleton_types_are_constructible() {
+        let program = PortableExprTypedProgram {
+            opcode_version: EXPR_VM_OPCODE_VERSION_V1,
+            code: vec![ExprVmOpcode::PushPlaceholder as u8, ExprVmOpcode::End as u8],
             symbols: vec!["label".to_string()],
             declared_stack_depth: 1,
-            result_mode: PortableExprResultModeV2::ShapePreserving,
+            result_mode: PortableExprResultMode::ShapePreserving,
         };
-        let budgets = PortableExprBudgetsV2::default();
-        validate_portable_expr_program_v2_skeleton(&program, budgets)
-            .expect("v2 skeleton validation should accept matching version");
+        let budgets = PortableExprTypedBudgets::default();
+        validate_portable_expr_typed_program_skeleton(&program, budgets)
+            .expect("current skeleton validation should accept matching version");
 
-        let value = PortableExprValueV2::StructLiteral(PortableExprStructLiteralValueV2 {
+        let value = PortableExprValue::StructLiteral(PortableExprStructLiteralValue {
             type_name: "Point".to_string(),
-            fields: vec![PortableExprStructFieldValueV2 {
+            fields: vec![PortableExprStructFieldValue {
                 field_name: "items".to_string(),
-                value: PortableExprValueV2::Range(PortableExprRangeValueV2 {
-                    start: Box::new(PortableExprValueV2::Int(1)),
-                    end: Box::new(PortableExprValueV2::Int(4)),
-                    step: Some(Box::new(PortableExprValueV2::Int(2))),
+                value: PortableExprValue::Range(PortableExprRangeValue {
+                    start: Box::new(PortableExprValue::Int(1)),
+                    end: Box::new(PortableExprValue::Int(4)),
+                    step: Some(Box::new(PortableExprValue::Int(2))),
                     inclusive: true,
                 }),
             }],
         });
 
-        let evaluation = PortableExprEvaluationV2 {
+        let evaluation = PortableExprTypedEvaluation {
             value,
             has_symbol_refs: true,
             has_unstable_symbols: false,
         };
 
         match evaluation.value {
-            PortableExprValueV2::StructLiteral(struct_value) => {
+            PortableExprValue::StructLiteral(struct_value) => {
                 assert_eq!(struct_value.type_name, "Point");
                 assert_eq!(struct_value.fields.len(), 1);
             }
-            other => panic!("unexpected v2 value scaffold: {other:?}"),
+            other => panic!("unexpected current value scaffold: {other:?}"),
         }
     }
 
     #[test]
-    fn expr_vm_v2_scalar_programs_execute_through_runtime() {
+    fn expr_vm_scalar_programs_execute_through_runtime() {
         let expr = Expr::Binary {
             op: BinaryOp::Add,
             left: Box::new(Expr::Identifier("value".to_string(), span())),
@@ -3067,29 +2712,29 @@ mod tests {
         };
         let program = compile_core_expr_to_portable_program_with_opcode_version(
             &expr,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
-        .expect("v2 scalar compile should work");
-        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
+        .expect("current scalar compile should work");
+        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V1);
 
         let ctx = TestCtx {
             symbols: HashMap::from([("value".to_string(), 12)]),
             ..Default::default()
         };
         let evaluation = eval_portable_expr_program(&program, &ctx, Default::default())
-            .expect("v2 scalar eval should work");
+            .expect("current scalar eval should work");
         assert_eq!(evaluation.value, 7);
         assert!(evaluation.has_symbol_refs);
     }
 
     #[test]
-    fn expr_vm_v2_scalar_programs_preserve_unstable_symbol_detection() {
+    fn expr_vm_scalar_programs_preserve_unstable_symbol_detection() {
         let expr = Expr::Identifier("label".to_string(), span());
         let program = compile_core_expr_to_portable_program_with_opcode_version(
             &expr,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
-        .expect("v2 scalar compile should work");
+        .expect("current scalar compile should work");
 
         let pass1_unknown = TestCtx {
             pass: 1,
@@ -3097,7 +2742,7 @@ mod tests {
         };
         assert!(
             expr_program_has_unstable_symbols(&program, &pass1_unknown, Default::default())
-                .expect("v2 unstable-symbol scan should work")
+                .expect("current unstable-symbol scan should work")
         );
 
         let pass2_finalized = TestCtx {
@@ -3108,12 +2753,12 @@ mod tests {
         };
         assert!(
             !expr_program_has_unstable_symbols(&program, &pass2_finalized, Default::default())
-                .expect("v2 unstable-symbol scan should work")
+                .expect("current unstable-symbol scan should work")
         );
     }
 
     #[test]
-    fn expr_vm_v2_scalar_compiler_supports_full_scalar_grammar() {
+    fn expr_vm_scalar_compiler_supports_full_scalar_grammar() {
         let cases = [
             (
                 Expr::Binary {
@@ -3180,24 +2825,24 @@ mod tests {
         for (expr, symbols, expected_value) in cases {
             let program = compile_core_expr_to_portable_program_with_opcode_version(
                 &expr,
-                EXPR_VM_OPCODE_VERSION_V2,
+                EXPR_VM_OPCODE_VERSION_V1,
             )
-            .expect("v2 scalar compile should support full scalar grammar");
-            assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
+            .expect("current scalar compile should support full scalar grammar");
+            assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V1);
 
             let ctx = TestCtx {
                 symbols,
                 ..Default::default()
             };
             let evaluation = eval_portable_expr_program(&program, &ctx, Default::default())
-                .expect("v2 scalar eval should support full scalar grammar");
+                .expect("current scalar eval should support full scalar grammar");
             assert_eq!(evaluation.value, expected_value);
         }
     }
 
     #[test]
-    fn expr_vm_v2_shape_preserving_programs_evaluate_structural_values() {
-        let list_program = compile_core_expr_to_portable_program_v2_shape_preserving(&Expr::List(
+    fn expr_vm_shape_preserving_programs_evaluate_structural_values() {
+        let list_program = compile_core_expr_to_portable_program_shape_preserving(&Expr::List(
             vec![
                 Expr::Number("1".to_string(), span()),
                 Expr::Number("2".to_string(), span()),
@@ -3206,22 +2851,19 @@ mod tests {
         ))
         .expect("shape-preserving list compile");
 
-        let list_eval = eval_portable_expr_program_v2(
+        let list_eval = eval_portable_expr_typed_program(
             &list_program,
             &TestCtx::default(),
-            PortableExprBudgetsV2::default(),
+            PortableExprTypedBudgets::default(),
         )
         .expect("shape-preserving list eval");
         assert_eq!(
             list_eval.value,
-            PortableExprValueV2::List(vec![
-                PortableExprValueV2::Int(1),
-                PortableExprValueV2::Int(2),
-            ])
+            PortableExprValue::List(vec![PortableExprValue::Int(1), PortableExprValue::Int(2),])
         );
 
         let struct_program =
-            compile_core_expr_to_portable_program_v2_shape_preserving(&Expr::StructLiteral {
+            compile_core_expr_to_portable_program_shape_preserving(&Expr::StructLiteral {
                 type_name: "Point".to_string(),
                 fields: vec![
                     ("x".to_string(), Expr::Number("4".to_string(), span())),
@@ -3234,14 +2876,14 @@ mod tests {
             values: HashMap::from([("Point".to_string(), point_struct_type())]),
             ..Default::default()
         };
-        let struct_eval = eval_portable_expr_program_v2(
+        let struct_eval = eval_portable_expr_typed_program(
             &struct_program,
             &struct_ctx,
-            PortableExprBudgetsV2::default(),
+            PortableExprTypedBudgets::default(),
         )
         .expect("shape-preserving struct eval");
         match struct_eval.value {
-            PortableExprValueV2::StructLiteral(instance) => {
+            PortableExprValue::StructLiteral(instance) => {
                 assert_eq!(instance.type_name, "Point");
                 assert_eq!(instance.fields.len(), 2);
             }
@@ -3250,21 +2892,21 @@ mod tests {
     }
 
     #[test]
-    fn expr_vm_v2_opcode_from_u8_round_trip_and_unknown_rejection() {
+    fn expr_vm_opcode_from_u8_round_trip_and_unknown_rejection() {
         let opcodes = [
-            (0x00, ExprVmOpcodeV2::End),
-            (0x01, ExprVmOpcodeV2::EmitDiag),
-            (0x02, ExprVmOpcodeV2::Fail),
-            (0x10, ExprVmOpcodeV2::PushLiteral),
-            (0x70, ExprVmOpcodeV2::RequireScalar),
+            (0x00, ExprVmOpcode::End),
+            (0x01, ExprVmOpcode::EmitDiag),
+            (0x02, ExprVmOpcode::Fail),
+            (0x10, ExprVmOpcode::PushLiteral),
+            (0x70, ExprVmOpcode::RequireScalar),
         ];
 
         for (byte, opcode) in opcodes {
-            assert_eq!(ExprVmOpcodeV2::from_u8(byte), Some(opcode));
+            assert_eq!(ExprVmOpcode::from_u8(byte), Some(opcode));
             assert_eq!(opcode as u8, byte);
         }
-        assert_eq!(ExprVmOpcodeV2::from_u8(0x03), None);
-        assert_eq!(ExprVmOpcodeV2::from_u8(0xFF), None);
+        assert_eq!(ExprVmOpcode::from_u8(0x03), None);
+        assert_eq!(ExprVmOpcode::from_u8(0xFF), None);
     }
 
     #[test]
@@ -3356,13 +2998,13 @@ mod tests {
     }
 
     #[test]
-    fn wrapper_expressions_compile_to_inner_program_for_both_versions() {
+    fn wrapper_expressions_compile_to_inner_program_for_current_contract() {
         let inner = Expr::Identifier("label".to_string(), span());
         let expr_indirect = Expr::Indirect(Box::new(inner.clone()), span());
         let expr_indirect_long = Expr::IndirectLong(Box::new(inner.clone()), span());
         let expr_immediate = Expr::Immediate(Box::new(inner), span());
 
-        for opcode_version in [EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2] {
+        for opcode_version in [EXPR_VM_OPCODE_VERSION_V1] {
             let direct_program = compile_core_expr_to_portable_program_with_opcode_version(
                 &Expr::Identifier("label".to_string(), span()),
                 opcode_version,
@@ -3396,66 +3038,21 @@ mod tests {
     #[test]
     fn generic_value_nodes_report_scalar_eval_boundary() {
         let one = || Expr::Number("1".to_string(), span());
-        let compile_reject_cases = vec![
-            (
-                Expr::List(vec![one()], span()),
-                "List cannot be evaluated as scalar expression",
-            ),
-            (
-                Expr::Index {
-                    base: Box::new(Expr::Identifier("arr".to_string(), span())),
-                    index: Box::new(one()),
-                    span: span(),
-                },
-                "Index expression cannot be evaluated as scalar expression",
-            ),
-            (
-                Expr::Member {
-                    base: Box::new(Expr::Identifier("value".to_string(), span())),
-                    field: "field".to_string(),
-                    span: span(),
-                },
-                "Member expression cannot be evaluated as scalar expression",
-            ),
-            (
-                Expr::StructLiteral {
-                    type_name: "Point".to_string(),
-                    fields: vec![("x".to_string(), one())],
-                    span: span(),
-                },
-                "Struct literal cannot be evaluated as scalar expression",
-            ),
-            (
-                Expr::Call {
-                    name: ".pick".to_string(),
-                    args: vec![one()],
-                    span: span(),
-                },
-                "Call expression cannot be evaluated as scalar expression",
-            ),
-            (
-                Expr::Placeholder(span()),
-                "Placeholder cannot be evaluated as scalar expression",
-            ),
-            (
-                Expr::Range {
-                    start: Box::new(one()),
-                    end: Box::new(Expr::Number("4".to_string(), span())),
-                    step: None,
-                    inclusive: false,
-                    span: span(),
-                },
-                "Range cannot be evaluated as scalar expression",
-            ),
-        ];
-
-        for (expr, message) in compile_reject_cases {
-            let err = compile_core_expr_to_portable_program(&expr)
-                .expect_err("generic value node should reject scalar compilation");
-            assert_eq!(err.code, DIAG_EXPR_UNSUPPORTED_FEATURE);
-            assert_eq!(err.message, message);
-            assert_eq!(err.span, Some(span()));
-        }
+        let placeholder = Expr::Placeholder(span());
+        let error = compile_core_expr_to_portable_program(&placeholder).unwrap_err();
+        assert_eq!(error.code, DIAG_EXPR_UNSUPPORTED_FEATURE);
+        assert_eq!(
+            error.message,
+            "Placeholder cannot be evaluated as scalar expression"
+        );
+        let unknown_call = Expr::Call {
+            name: ".pick".into(),
+            args: vec![one()],
+            span: span(),
+        };
+        let error = compile_core_expr_to_portable_program(&unknown_call).unwrap_err();
+        assert_eq!(error.code, DIAG_EXPR_EVAL_FAILURE);
+        assert_eq!(error.message, "Unknown compile-time function call");
 
         let boundary_ctx = TestCtx {
             values: HashMap::from([("Point".to_string(), point_struct_type())]),
@@ -3489,9 +3086,9 @@ mod tests {
         for (expr, message) in boundary_cases {
             let program = compile_core_expr_to_portable_program_with_opcode_version(
                 &expr,
-                EXPR_VM_OPCODE_VERSION_V2,
+                EXPR_VM_OPCODE_VERSION_V1,
             )
-            .expect("v2 scalar compile should succeed for structural expression");
+            .expect("current scalar compile should succeed for structural expression");
             let err = eval_portable_expr_program(&program, &boundary_ctx, Default::default())
                 .expect_err("structural scalar boundary should reject irreducible value");
             assert_eq!(err.code, DIAG_EXPR_EVAL_FAILURE);
@@ -3542,9 +3139,9 @@ mod tests {
         for (expr, expected_value) in reduction_cases {
             let program = compile_core_expr_to_portable_program_with_opcode_version(
                 &expr,
-                EXPR_VM_OPCODE_VERSION_V2,
+                EXPR_VM_OPCODE_VERSION_V1,
             )
-            .expect("v2 scalar compile should support structural reductions");
+            .expect("current scalar compile should support structural reductions");
             let evaluation =
                 eval_portable_expr_program(&program, &boundary_ctx, Default::default())
                     .expect("structural reduction should produce a scalar result");
@@ -3553,10 +3150,10 @@ mod tests {
     }
 
     #[test]
-    fn string_literal_opcode_evaluates_via_context_for_both_versions() {
+    fn string_literal_opcode_evaluates_via_context_for_current_contract() {
         let expr = Expr::String(vec![0x41], span());
 
-        for opcode_version in [EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2] {
+        for opcode_version in [EXPR_VM_OPCODE_VERSION_V1] {
             let program =
                 compile_core_expr_to_portable_program_with_opcode_version(&expr, opcode_version)
                     .expect("compile string");
@@ -3573,24 +3170,24 @@ mod tests {
     }
 
     #[test]
-    fn direct_leaf_program_builder_emits_expected_v2_symbol_program() {
+    fn direct_leaf_program_builder_emits_expected_symbol_program() {
         let program = compile_portable_expr_direct_leaf_to_program_with_opcode_version(
             &PortableExprDirectLeaf::SymbolName("label".to_string()),
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .expect("compile direct symbol leaf");
 
-        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
+        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V1);
         assert_eq!(program.symbols, vec!["label".to_string()]);
         assert_eq!(program.declared_stack_depth, 1);
         assert_eq!(
             program.code,
             vec![
-                ExprVmOpcodeV2::PushSymbol as u8,
+                ExprVmOpcode::PushSymbol as u8,
                 0,
                 0,
-                ExprVmOpcodeV2::RequireScalar as u8,
-                ExprVmOpcodeV2::End as u8,
+                ExprVmOpcode::RequireScalar as u8,
+                ExprVmOpcode::End as u8,
             ]
         );
 
@@ -3618,7 +3215,7 @@ mod tests {
 
         let direct_program = compile_portable_expr_direct_leaf_to_program_with_opcode_version(
             &PortableExprDirectLeaf::NumberText("42".to_string()),
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .expect("direct leaf builder should bypass legacy compiler failpoint");
         let direct_eval = eval_portable_expr_program(
@@ -3631,7 +3228,7 @@ mod tests {
 
         let err = compile_core_expr_to_portable_program_with_opcode_version(
             &Expr::Number("42".to_string(), span()),
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .expect_err("legacy expr compiler failpoint should still trip the legacy compiler path");
         assert_eq!(err.code, DIAG_EXPR_INVALID_PROGRAM);
@@ -3639,7 +3236,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_scalar_program_builder_matches_legacy_v2_program_for_mixed_scalar_expression() {
+    fn direct_scalar_program_builder_matches_legacy_program_for_mixed_scalar_expression() {
         let expr = Expr::Ternary {
             cond: Box::new(Expr::Binary {
                 op: BinaryOp::LogicAnd,
@@ -3672,12 +3269,12 @@ mod tests {
 
         let direct_program = compile_portable_expr_direct_scalar_to_program_with_opcode_version(
             &expr,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .expect("compile direct scalar expression");
         let legacy_program = compile_core_expr_to_portable_program_with_opcode_version(
             &expr,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .expect("compile legacy scalar expression");
 
@@ -3715,7 +3312,7 @@ mod tests {
 
         let direct_program = compile_portable_expr_direct_scalar_to_program_with_opcode_version(
             &expr,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .expect("direct scalar builder should bypass legacy compiler failpoint");
         let direct_eval = eval_portable_expr_program(
@@ -3733,7 +3330,7 @@ mod tests {
 
         let err = compile_core_expr_to_portable_program_with_opcode_version(
             &expr,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .expect_err("legacy expr compiler failpoint should still trip the legacy compiler path");
         assert_eq!(err.code, DIAG_EXPR_INVALID_PROGRAM);
@@ -3741,7 +3338,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_structural_program_builder_matches_legacy_v2_program_for_constructor_cases() {
+    fn direct_structural_program_builder_matches_legacy_program_for_constructor_cases() {
         let cases = [
             Expr::List(
                 vec![
@@ -3779,12 +3376,12 @@ mod tests {
             let direct_program =
                 compile_portable_expr_direct_structural_to_program_with_opcode_version(
                     &expr,
-                    EXPR_VM_OPCODE_VERSION_V2,
+                    EXPR_VM_OPCODE_VERSION_V1,
                 )
                 .expect("compile direct structural expression");
             let legacy_program = compile_core_expr_to_portable_program_with_opcode_version(
                 &expr,
-                EXPR_VM_OPCODE_VERSION_V2,
+                EXPR_VM_OPCODE_VERSION_V1,
             )
             .expect("compile legacy structural expression");
 
@@ -3816,7 +3413,7 @@ mod tests {
         let direct_program =
             compile_portable_expr_direct_structural_to_program_with_opcode_version(
                 &expr,
-                EXPR_VM_OPCODE_VERSION_V2,
+                EXPR_VM_OPCODE_VERSION_V1,
             )
             .expect("direct structural builder should bypass legacy compiler failpoint");
         let err = eval_portable_expr_program(
@@ -3829,7 +3426,7 @@ mod tests {
 
         let legacy_err = compile_core_expr_to_portable_program_with_opcode_version(
             &expr,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .expect_err("legacy expr compiler failpoint should still trip the legacy compiler path");
         assert_eq!(legacy_err.code, DIAG_EXPR_INVALID_PROGRAM);
@@ -3837,7 +3434,7 @@ mod tests {
     }
 
     #[test]
-    fn direct_member_index_program_builder_matches_legacy_v2_program_for_access_cases() {
+    fn direct_member_index_program_builder_matches_legacy_program_for_access_cases() {
         let cases = [
             Expr::Index {
                 base: Box::new(Expr::List(
@@ -3869,12 +3466,12 @@ mod tests {
             let direct_program =
                 compile_portable_expr_direct_member_index_to_program_with_opcode_version(
                     &expr,
-                    EXPR_VM_OPCODE_VERSION_V2,
+                    EXPR_VM_OPCODE_VERSION_V1,
                 )
                 .expect("compile direct member/index expression");
             let legacy_program = compile_core_expr_to_portable_program_with_opcode_version(
                 &expr,
-                EXPR_VM_OPCODE_VERSION_V2,
+                EXPR_VM_OPCODE_VERSION_V1,
             )
             .expect("compile legacy member/index expression");
 
@@ -3911,7 +3508,7 @@ mod tests {
         let direct_program =
             compile_portable_expr_direct_member_index_to_program_with_opcode_version(
                 &expr,
-                EXPR_VM_OPCODE_VERSION_V2,
+                EXPR_VM_OPCODE_VERSION_V1,
             )
             .expect("direct member/index builder should bypass legacy compiler failpoint");
         let direct_eval = eval_portable_expr_program(
@@ -3928,7 +3525,7 @@ mod tests {
 
         let legacy_err = compile_core_expr_to_portable_program_with_opcode_version(
             &expr,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .expect_err("legacy expr compiler failpoint should still trip the legacy compiler path");
         assert_eq!(legacy_err.code, DIAG_EXPR_INVALID_PROGRAM);
@@ -4008,7 +3605,7 @@ mod tests {
             let expr = len_call(argument);
             let program = compile_core_expr_to_portable_program_with_opcode_version(
                 &expr,
-                EXPR_VM_OPCODE_VERSION_V2,
+                EXPR_VM_OPCODE_VERSION_V1,
             )
             .unwrap();
             assert!(program
@@ -4070,7 +3667,7 @@ mod tests {
         ] {
             let program = compile_core_expr_to_portable_program_with_opcode_version(
                 &len_call(argument),
-                EXPR_VM_OPCODE_VERSION_V2,
+                EXPR_VM_OPCODE_VERSION_V1,
             )
             .unwrap();
             assert!(
@@ -4085,7 +3682,7 @@ mod tests {
         let expr = len_call(Expr::List(vec![], span()));
         let valid = compile_core_expr_to_portable_program_with_opcode_version(
             &expr,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .unwrap();
         let call = valid.code.iter().position(|byte| *byte == 0x62).unwrap();
@@ -4119,7 +3716,7 @@ mod tests {
             };
             assert!(compile_core_expr_to_portable_program_with_opcode_version(
                 &call,
-                EXPR_VM_OPCODE_VERSION_V2
+                EXPR_VM_OPCODE_VERSION_V1
             )
             .is_err());
         }
@@ -4128,13 +3725,13 @@ mod tests {
     fn typed_execution_and_scanning_require_final_end() {
         let valid = compile_core_expr_to_portable_program_with_opcode_version(
             &len_call(Expr::List(vec![], span())),
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .unwrap();
         let mut missing = valid.clone();
         missing.code.pop();
         let mut trailing = valid.clone();
-        trailing.code.push(ExprVmOpcodeV2::End as u8);
+        trailing.code.push(ExprVmOpcode::End as u8);
         for program in [missing, trailing] {
             assert!(
                 eval_portable_expr_program(&program, &TestCtx::default(), Default::default())
@@ -4146,20 +3743,164 @@ mod tests {
                 Default::default()
             )
             .is_err());
-            let typed = PortableExprProgramV2 {
+            let typed = PortableExprTypedProgram {
                 opcode_version: program.opcode_version,
                 code: program.code,
                 symbols: program.symbols,
                 declared_stack_depth: program.declared_stack_depth,
-                result_mode: PortableExprResultModeV2::ShapePreserving,
+                result_mode: PortableExprResultMode::ShapePreserving,
             };
+            assert!(eval_portable_expr_typed_program(
+                &typed,
+                &TestCtx::default(),
+                Default::default()
+            )
+            .is_err());
             assert!(
-                eval_portable_expr_program_v2(&typed, &TestCtx::default(), Default::default())
-                    .is_err()
-            );
-            assert!(
-                validate_portable_expr_program_v2_skeleton(&typed, Default::default()).is_err()
+                validate_portable_expr_typed_program_skeleton(&typed, Default::default()).is_err()
             );
         }
+    }
+    fn address_record(value: i64) -> PortableExprValue {
+        PortableExprValue::Record {
+            scalar: Box::new(PortableExprValue::RelocatableScalar {
+                value,
+                provenance: types::asm_value::ScalarProvenance::Section("code".into()),
+            }),
+            fields: vec![PortableExprStructFieldValue {
+                field_name: "next".into(),
+                value: PortableExprValue::Int(9),
+            }],
+        }
+    }
+
+    fn evaluate_record_expr(
+        expr: Expr,
+        max_shape_items: usize,
+    ) -> Result<PortableExprTypedEvaluation, PortableExprError> {
+        let program = compile_core_expr_to_portable_program_shape_preserving(&expr)?;
+        eval_portable_expr_typed_program(
+            &program,
+            &TestCtx {
+                values: HashMap::from([(
+                    "rows".into(),
+                    PortableExprValue::List(vec![address_record(40)]),
+                )]),
+                pass: 2,
+                ..Default::default()
+            },
+            PortableExprTypedBudgets {
+                max_shape_items,
+                ..Default::default()
+            },
+        )
+    }
+
+    fn indexed_record() -> Expr {
+        Expr::Index {
+            base: Box::new(Expr::Identifier("rows".into(), span())),
+            index: Box::new(Expr::Number("0".into(), span())),
+            span: span(),
+        }
+    }
+
+    #[test]
+    fn record_index_and_member_preserve_shape_and_scalar_origin() {
+        use types::asm_value::ScalarProvenance;
+        assert_eq!(
+            evaluate_record_expr(indexed_record(), 256).unwrap().value,
+            address_record(40)
+        );
+        let member = Expr::Member {
+            base: Box::new(indexed_record()),
+            field: "NEXT".into(),
+            span: span(),
+        };
+        assert_eq!(
+            evaluate_record_expr(member, 256).unwrap().value,
+            PortableExprValue::Int(9)
+        );
+        let shifted = Expr::Binary {
+            op: BinaryOp::Add,
+            left: Box::new(indexed_record()),
+            right: Box::new(Expr::Number("2".into(), span())),
+            span: span(),
+        };
+        assert_eq!(
+            evaluate_record_expr(shifted, 256).unwrap().value,
+            PortableExprValue::RelocatableScalar {
+                value: 42,
+                provenance: ScalarProvenance::Section("code".into())
+            }
+        );
+        let ctx = TestCtx::default();
+        assert_eq!(
+            portable_expr_scalar_projection(&address_record(40), &ctx).unwrap(),
+            PortableExprValue::RelocatableScalar {
+                value: 40,
+                provenance: ScalarProvenance::Section("code".into())
+            }
+        );
+    }
+
+    #[test]
+    fn record_access_rejects_bounds_missing_fields_and_imported_shapes_over_budget() {
+        let missing = Expr::Member {
+            base: Box::new(indexed_record()),
+            field: "missing".into(),
+            span: span(),
+        };
+        assert!(evaluate_record_expr(missing, 256)
+            .unwrap_err()
+            .message
+            .contains("no field"));
+        for index in ["-1", "1"] {
+            let expr = Expr::Index {
+                base: Box::new(Expr::Identifier("rows".into(), span())),
+                index: Box::new(Expr::Number(index.into(), span())),
+                span: span(),
+            };
+            assert!(evaluate_record_expr(expr, 256).is_err());
+        }
+        assert_eq!(
+            evaluate_record_expr(indexed_record(), 0).unwrap_err().code,
+            DIAG_EXPR_BUDGET_EXCEEDED
+        );
+    }
+
+    #[test]
+    fn record_arithmetic_retains_numeric_results_and_marks_non_affine_addresses() {
+        use types::asm_value::ScalarProvenance::{Absolute, Section, Unsupported};
+        for (op, expected, provenance) in [
+            (BinaryOp::Add, 80, Unsupported),
+            (BinaryOp::Subtract, 0, Absolute),
+            (BinaryOp::Multiply, 1600, Unsupported),
+            (BinaryOp::Eq, 1, Absolute),
+        ] {
+            let expr = Expr::Binary {
+                op,
+                left: Box::new(indexed_record()),
+                right: Box::new(indexed_record()),
+                span: span(),
+            };
+            let value = evaluate_record_expr(expr, 256).unwrap().value;
+            assert_eq!(
+                portable_expr_value_to_scalar(&value, &TestCtx::default()).unwrap(),
+                expected
+            );
+            assert_eq!(portable_expr_scalar_provenance(&value), provenance);
+        }
+        assert_eq!(
+            binary_scalar_provenance(
+                ExprVmBinary::Subtract,
+                Section("code".into()),
+                Section("data".into())
+            ),
+            Unsupported
+        );
+        assert_eq!(
+            binary_scalar_provenance(ExprVmBinary::Subtract, Absolute, Section("code".into())),
+            Unsupported
+        );
     }
 }

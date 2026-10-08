@@ -156,13 +156,13 @@ opcode
 	beq.w endExpression
 	tst.l d5
 	bne.w typedOpcode
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d0
 	beq.w symbol
 	cmpi.b #runtime.COMPACT_I8, d0
 	beq.w one
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, d0
 	beq.w one
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, d0
 	beq.w one
 	cmpi.b #runtime.COMPACT_I16, d0
 	beq.w two
@@ -172,7 +172,7 @@ opcode
 	beq.w four
 	cmpi.b #runtime.COMPACT_I64, d0
 	beq.w eight
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d0
 	beq.w opcode
 	cmpi.b #runtime.COMPACT_NEGATE, d0
 	beq.w opcode

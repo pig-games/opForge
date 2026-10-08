@@ -1,6 +1,6 @@
 ; Direct typed expression-service boundary proof without package/CPU selection.
 ; This harness sets only the selected-state bit and explicit neutral contract
-; versions; it does not prove the full tkpkg service facade.
+; contract; it does not prove the full tkpkg service facade.
 ; @opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent
 
 	.module main
@@ -82,7 +82,7 @@ fail
 	rts
 	.bend  ; readInput
 
-; Input records: BE version, extension length, expression length, reserved zero,
+; Input records: BE canonical selector, extension length, expression length, reserved zero,
 ; current PC, expression bytes, then one pad byte when needed.
 evaluateCases	.block
 	lea InputBuffer, a3
@@ -110,10 +110,7 @@ caseLoop
 	moveq #0, d6
 	move.w (a3)+, d6
 	cmpi.w #1, d6
-	beq.s versionOk
-	cmpi.w #2, d6
 	bne.w fail
-versionOk
 	moveq #0, d5
 	move.w (a3)+, d5
 	cmpi.w #16, d5
@@ -138,7 +135,6 @@ versionOk
 	bhi.w fail
 	bsr.w prepareBuffers
 	moveq #1, d4
-	move.l d6, d5
 	lea ControlBlock, a0
 	movem.l d6-d7/a3-a5, -(sp)
 	jsr expression.prepareV1
@@ -175,7 +171,6 @@ clearOutputText
 	tst.l d0
 	bne.s recordReady
 	moveq #1, d4
-	move.l d6, d5
 	movem.l d6-d7/a3-a5, -(sp)
 	jsr expression.executePreparedV1
 	movem.l (sp)+, d6-d7/a3-a5

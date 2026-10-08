@@ -96,7 +96,6 @@ fn native_named_scoped_loops_rust_oracles() {
 }
 
 #[test]
-#[ignore = "Rust indexed repetition members currently lose Hunk address provenance"]
 fn native_named_scoped_loops_hunk_rust_oracles() {
     let dir = scratch();
     for cpu in ["68020", "6502"] {

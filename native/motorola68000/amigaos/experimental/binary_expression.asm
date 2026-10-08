@@ -280,7 +280,7 @@ EVALUATE	.macro saved, compound=0
 	blo.w malformed
 	movea.l a0, a4
 	adda.l d3, a4
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, -1(a4)
+	cmpi.b #runtime.EXPRVM_OPCODE_END, -1(a4)
 	bne.w malformed
 	movea.l a2, a5
 	.if .compound
@@ -288,7 +288,7 @@ EVALUATE	.macro saved, compound=0
 	; A bare alias retains its immutable descriptor and explicit kind.
 	cmpi.l #4, d3
 	bne.w scalarValue
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, (a0)
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, (a0)
 	bne.w scalarValue
 	moveq #0, d1
 	move.b 2(a0), d1

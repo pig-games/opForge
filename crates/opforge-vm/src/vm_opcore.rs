@@ -6,17 +6,19 @@
 //! processor domain rather than assembler instruction selection or encoding.
 
 use opcore::expr_vm::{
+    compile_core_expr_to_portable_program_shape_preserving,
     compile_core_expr_to_portable_program_with_opcode_version,
     compile_portable_expr_direct_leaf_to_program_with_opcode_version,
     compile_portable_expr_direct_member_index_to_program_with_opcode_version,
     compile_portable_expr_direct_scalar_to_program_with_opcode_version,
     compile_portable_expr_direct_structural_to_program_with_opcode_version,
-    eval_portable_expr_program, expr_is_supported_by_direct_member_index_lowering,
-    expr_is_supported_by_direct_scalar_lowering, expr_is_supported_by_direct_structural_lowering,
-    expr_program_has_unstable_symbols, PortableExprBudgets, PortableExprDirectLeaf,
-    PortableExprEvalContext, PortableExprEvaluation, PortableExprProgram, PortableExprRangeValueV2,
-    PortableExprRef, PortableExprStructFieldValueV2, PortableExprStructLiteralValueV2,
-    PortableExprStructTypeFieldValueV2, PortableExprStructTypeValueV2, PortableExprValueV2,
+    eval_portable_expr_program, eval_portable_expr_typed_program,
+    expr_is_supported_by_direct_member_index_lowering, expr_is_supported_by_direct_scalar_lowering,
+    expr_is_supported_by_direct_structural_lowering, expr_program_has_unstable_symbols,
+    PortableExprBudgets, PortableExprDirectLeaf, PortableExprEvalContext, PortableExprEvaluation,
+    PortableExprProgram, PortableExprRangeValue, PortableExprRef, PortableExprStructFieldValue,
+    PortableExprStructLiteralValue, PortableExprStructTypeFieldValue, PortableExprStructTypeValue,
+    PortableExprTypedBudgets, PortableExprValue,
 };
 use opcore::parser::{Expr, ParseError, Parser};
 use opcore::tokenizer::{Span, Token, TokenKind};
@@ -515,28 +517,46 @@ impl ExvmExecutionBudgets {
 
 struct RuntimePortableExprEvalContext<'a> {
     assembler_ctx: &'a dyn AssemblerContext,
+    defer_unknown_values: bool,
 }
 
-fn asm_value_to_portable_expr_value(value: AsmValue) -> PortableExprValueV2 {
+fn asm_value_to_portable_expr_value(value: AsmValue) -> PortableExprValue {
     match value {
-        AsmValue::Scalar(value) => PortableExprValueV2::Int(value),
-        AsmValue::Range { start, end, step } => {
-            PortableExprValueV2::Range(PortableExprRangeValueV2 {
-                start: Box::new(PortableExprValueV2::Int(start)),
-                end: Box::new(PortableExprValueV2::Int(end)),
-                step: Some(Box::new(PortableExprValueV2::Int(step))),
-                inclusive: false,
-            })
+        AsmValue::Scalar(value) => PortableExprValue::Int(value),
+        AsmValue::RelocatableScalar { value, provenance } => {
+            PortableExprValue::RelocatableScalar { value, provenance }
         }
+        AsmValue::Values(items) => PortableExprValue::List(
+            items
+                .into_iter()
+                .map(asm_value_to_portable_expr_value)
+                .collect(),
+        ),
+        AsmValue::Record { scalar, fields } => PortableExprValue::Record {
+            scalar: Box::new(asm_value_to_portable_expr_value(*scalar)),
+            fields: fields
+                .into_iter()
+                .map(|(field_name, value)| PortableExprStructFieldValue {
+                    field_name,
+                    value: asm_value_to_portable_expr_value(value),
+                })
+                .collect(),
+        },
+        AsmValue::Range { start, end, step } => PortableExprValue::Range(PortableExprRangeValue {
+            start: Box::new(PortableExprValue::Int(start)),
+            end: Box::new(PortableExprValue::Int(end)),
+            step: Some(Box::new(PortableExprValue::Int(step))),
+            inclusive: false,
+        }),
         AsmValue::List(items) => {
-            PortableExprValueV2::List(items.into_iter().map(PortableExprValueV2::Int).collect())
+            PortableExprValue::List(items.into_iter().map(PortableExprValue::Int).collect())
         }
-        AsmValue::Struct(def) => PortableExprValueV2::StructType(PortableExprStructTypeValueV2 {
+        AsmValue::Struct(def) => PortableExprValue::StructType(PortableExprStructTypeValue {
             type_name: def.name,
             fields: def
                 .fields
                 .into_iter()
-                .map(|field| PortableExprStructTypeFieldValueV2 {
+                .map(|field| PortableExprStructTypeFieldValue {
                     field_name: field.name,
                     offset: field.offset,
                     size: field.size,
@@ -551,13 +571,13 @@ fn asm_value_to_portable_expr_value(value: AsmValue) -> PortableExprValueV2 {
                     .to_ascii_lowercase()
                     .cmp(&right.0.to_ascii_lowercase())
             });
-            PortableExprValueV2::StructLiteral(PortableExprStructLiteralValueV2 {
+            PortableExprValue::StructLiteral(PortableExprStructLiteralValue {
                 type_name: instance.type_name,
                 fields: fields
                     .into_iter()
-                    .map(|(field_name, value)| PortableExprStructFieldValueV2 {
+                    .map(|(field_name, value)| PortableExprStructFieldValue {
                         field_name,
-                        value: PortableExprValueV2::Int(value),
+                        value: PortableExprValue::Int(value),
                     })
                     .collect(),
             })
@@ -568,10 +588,7 @@ fn asm_value_to_portable_expr_value(value: AsmValue) -> PortableExprValueV2 {
 impl PortableExprEvalContext for RuntimePortableExprEvalContext<'_> {
     fn lookup_symbol(&self, name: &str) -> Option<i64> {
         if let Some(value) = self.assembler_ctx.value_symbol(name) {
-            return match value {
-                AsmValue::Scalar(value) => Some(value),
-                _ => None,
-            };
+            return value.as_scalar();
         }
         if !self.assembler_ctx.has_symbol(name) {
             return None;
@@ -581,17 +598,18 @@ impl PortableExprEvalContext for RuntimePortableExprEvalContext<'_> {
             .ok()
     }
 
-    fn lookup_symbol_value(&self, name: &str) -> Option<PortableExprValueV2> {
+    fn lookup_symbol_value(&self, name: &str) -> Option<PortableExprValue> {
         if let Some(value) = self.assembler_ctx.value_symbol(name) {
             return Some(asm_value_to_portable_expr_value(value));
         }
-        if !self.assembler_ctx.has_symbol(name) {
+        let can_defer = self.defer_unknown_values && self.assembler_ctx.pass() <= 1;
+        if !(self.assembler_ctx.has_symbol(name) || can_defer) {
             return None;
         }
         self.assembler_ctx
             .eval_expr(&Expr::Identifier(name.to_string(), Span::default()))
             .ok()
-            .map(PortableExprValueV2::Int)
+            .map(PortableExprValue::Int)
     }
 
     fn symbol_exists(&self, name: &str) -> bool {
@@ -600,6 +618,12 @@ impl PortableExprEvalContext for RuntimePortableExprEvalContext<'_> {
 
     fn current_address(&self) -> Option<i64> {
         Some(self.assembler_ctx.current_address() as i64)
+    }
+
+    fn current_address_value(&self) -> Option<PortableExprValue> {
+        Some(asm_value_to_portable_expr_value(
+            self.assembler_ctx.current_address_value(),
+        ))
     }
 
     fn pass(&self) -> u8 {
@@ -856,7 +880,7 @@ fn compile_expression_program_for_direct_stage(
     expr: &Expr,
     expr_opcode_version: u16,
 ) -> Result<PortableExprProgram, String> {
-    if expr_opcode_version == package::EXPR_VM_OPCODE_VERSION_V2 {
+    if expr_opcode_version == package::EXPR_VM_OPCODE_VERSION_V1 {
         if expr_is_supported_by_direct_scalar_lowering(expr) {
             return compile_portable_expr_direct_scalar_to_program_with_opcode_version(
                 expr,
@@ -901,9 +925,7 @@ pub fn evaluate_expression_for_assembler(
         .as_ref()
         .map(|entry| entry.opcode_version)
         .unwrap_or(package::EXPR_VM_OPCODE_VERSION_V1);
-    if opcode_version != package::EXPR_VM_OPCODE_VERSION_V1
-        && opcode_version != package::EXPR_VM_OPCODE_VERSION_V2
-    {
+    if opcode_version != package::EXPR_VM_OPCODE_VERSION_V1 {
         return Err(format!(
             "unsupported EXPR opcode version {}",
             opcode_version
@@ -921,6 +943,142 @@ pub fn evaluate_expression_for_assembler(
         .map_err(|err| err.to_string())
 }
 
+/// Evaluate an assembler value without discarding members or address provenance.
+/// Grammar and member/index semantics remain in the shared expression VM.
+pub fn evaluate_expression_value_for_assembler(
+    model: &HierarchyExecutionModel,
+    cpu_id: &str,
+    dialect_override: Option<&str>,
+    expr: &Expr,
+    ctx: &dyn AssemblerContext,
+) -> Result<AsmValue, String> {
+    let contract = model
+        .resolve_expr_contract(cpu_id, dialect_override)
+        .map_err(|err| err.to_string())?;
+    if contract
+        .as_ref()
+        .is_some_and(|entry| entry.opcode_version != package::EXPR_VM_OPCODE_VERSION_V1)
+    {
+        return Err("unsupported EXPR opcode version".into());
+    }
+    let program = compile_core_expr_to_portable_program_shape_preserving(expr)
+        .map_err(|err| err.to_string())?;
+    let budgets = model
+        .resolve_expr_budgets(cpu_id, dialect_override)
+        .map_err(|err| err.to_string())?;
+    // Pass-one compound declarations retain their shape while the assembler
+    // supplies provisional forward-symbol values. Defined-symbol preparation
+    // and pass two remain strict; later evaluation supplies actual provenance.
+    let adapter = RuntimePortableExprEvalContext {
+        assembler_ctx: ctx,
+        defer_unknown_values: true,
+    };
+    let evaluation = eval_portable_expr_typed_program(
+        &program,
+        &adapter,
+        PortableExprTypedBudgets {
+            max_program_bytes: budgets.max_program_bytes,
+            max_stack_depth: budgets.max_stack_depth,
+            max_symbol_refs: budgets.max_symbol_refs,
+            max_eval_steps: budgets.max_eval_steps,
+            ..PortableExprTypedBudgets::default()
+        },
+    )
+    .map_err(|err| err.to_string())?;
+    portable_expr_value_to_asm_value(evaluation.value)
+}
+
+/// Integer-only assembler shapes must never erase an address-bearing projection.
+fn portable_expr_value_to_absolute_scalar(value: PortableExprValue) -> Result<i64, String> {
+    let value = portable_expr_value_to_asm_value(value)?;
+    if value.scalar_provenance() != Some(types::asm_value::ScalarProvenance::Absolute) {
+        return Err("integer-only assembler value requires an absolute scalar; address provenance cannot be discarded".into());
+    }
+    value
+        .as_scalar()
+        .ok_or_else(|| "assembler value requires a scalar projection".into())
+}
+
+fn portable_expr_value_to_asm_value(value: PortableExprValue) -> Result<AsmValue, String> {
+    Ok(match value {
+        PortableExprValue::Int(value) => AsmValue::Scalar(value),
+        PortableExprValue::RelocatableScalar { value, provenance } => {
+            AsmValue::RelocatableScalar { value, provenance }
+        }
+        PortableExprValue::Record { scalar, fields } => AsmValue::Record {
+            scalar: Box::new(portable_expr_value_to_asm_value(*scalar)?),
+            fields: fields
+                .into_iter()
+                .map(|field| {
+                    Ok((
+                        field.field_name,
+                        portable_expr_value_to_asm_value(field.value)?,
+                    ))
+                })
+                .collect::<Result<_, String>>()?,
+        },
+        PortableExprValue::Range(range) => {
+            let start = portable_expr_value_to_absolute_scalar(*range.start)?;
+            let end = portable_expr_value_to_absolute_scalar(*range.end)?;
+            let step = range
+                .step
+                .map(|step| portable_expr_value_to_absolute_scalar(*step))
+                .transpose()?;
+            AsmValue::try_range(start, end, range.inclusive, step)
+                .map_err(|error| format!("invalid assembler range: {error:?}"))?
+        }
+        PortableExprValue::StructType(def) => AsmValue::Struct(types::asm_value::StructDef {
+            name: def.type_name,
+            fields: def
+                .fields
+                .into_iter()
+                .map(|field| types::asm_value::StructField {
+                    name: field.field_name,
+                    offset: field.offset,
+                    size: field.size,
+                })
+                .collect(),
+            size: def.size,
+        }),
+        PortableExprValue::StructLiteral(instance) => {
+            AsmValue::StructInstance(types::asm_value::StructInstance {
+                type_name: instance.type_name,
+                fields: instance
+                    .fields
+                    .into_iter()
+                    .map(|field| {
+                        Ok((
+                            field.field_name,
+                            portable_expr_value_to_absolute_scalar(field.value)?,
+                        ))
+                    })
+                    .collect::<Result<_, String>>()?,
+            })
+        }
+        PortableExprValue::List(items) => {
+            let items = items
+                .into_iter()
+                .map(portable_expr_value_to_asm_value)
+                .collect::<Result<Vec<_>, _>>()?;
+            // Assembler lists still require scalar projections. Records and
+            // addresses qualify without flattening; nested lists do not.
+            if items.iter().any(|item| item.as_scalar().is_none()) {
+                return Err("List items must have a scalar projection".into());
+            }
+            if items.iter().all(|item| matches!(item, AsmValue::Scalar(_))) {
+                AsmValue::List(items.iter().filter_map(AsmValue::as_scalar).collect())
+            } else {
+                AsmValue::Values(items)
+            }
+        }
+        _ => {
+            return Err(
+                "expression value cannot be represented as an assembler scalar or record".into(),
+            )
+        }
+    })
+}
+
 /// Runnable `.opcore` VM stage: determine whether an expression still depends
 /// on unstable symbols through the VM-backed portable expression runtime.
 pub fn expression_has_unstable_symbols_for_assembler(
@@ -936,9 +1094,7 @@ pub fn expression_has_unstable_symbols_for_assembler(
         .as_ref()
         .map(|entry| entry.opcode_version)
         .unwrap_or(package::EXPR_VM_OPCODE_VERSION_V1);
-    if opcode_version != package::EXPR_VM_OPCODE_VERSION_V1
-        && opcode_version != package::EXPR_VM_OPCODE_VERSION_V2
-    {
+    if opcode_version != package::EXPR_VM_OPCODE_VERSION_V1 {
         return Err(format!(
             "unsupported EXPR opcode version {}",
             opcode_version
@@ -1389,9 +1545,7 @@ impl HierarchyExecutionModel {
             .as_ref()
             .map(|entry| entry.opcode_version)
             .unwrap_or(package::EXPR_VM_OPCODE_VERSION_V1);
-        if opcode_version != package::EXPR_VM_OPCODE_VERSION_V1
-            && opcode_version != package::EXPR_VM_OPCODE_VERSION_V2
-        {
+        if opcode_version != package::EXPR_VM_OPCODE_VERSION_V1 {
             return Err(ParseError {
                 message: format!("unsupported EXPR opcode version {}", opcode_version),
                 span: end_span,
@@ -1580,7 +1734,7 @@ impl HierarchyExecutionModel {
         }
 
         if opcode_version == package::EXVM_OPCODE_VERSION
-            && expr_opcode_version == package::EXPR_VM_OPCODE_VERSION_V2
+            && expr_opcode_version == package::EXPR_VM_OPCODE_VERSION_V1
             && !tokens_require_ast_portable_program_fallback(&tokens)
         {
             return compile_expression_tokens_to_portable_program_with_opcode_versions(
@@ -1644,7 +1798,10 @@ impl HierarchyExecutionModel {
         budgets: PortableExprBudgets,
         ctx: &dyn AssemblerContext,
     ) -> Result<PortableExprEvaluation, RuntimeBridgeError> {
-        let adapter = RuntimePortableExprEvalContext { assembler_ctx: ctx };
+        let adapter = RuntimePortableExprEvalContext {
+            assembler_ctx: ctx,
+            defer_unknown_values: false,
+        };
         eval_portable_expr_program(program, &adapter, budgets)
             .map_err(|err| RuntimeBridgeError::Resolve(err.to_string()))
     }
@@ -1666,7 +1823,10 @@ impl HierarchyExecutionModel {
         budgets: PortableExprBudgets,
         ctx: &dyn AssemblerContext,
     ) -> Result<bool, RuntimeBridgeError> {
-        let adapter = RuntimePortableExprEvalContext { assembler_ctx: ctx };
+        let adapter = RuntimePortableExprEvalContext {
+            assembler_ctx: ctx,
+            defer_unknown_values: false,
+        };
         expr_program_has_unstable_symbols(program, &adapter, budgets)
             .map_err(|err| RuntimeBridgeError::Resolve(err.to_string()))
     }
@@ -1680,5 +1840,82 @@ impl HierarchyExecutionModel {
     ) -> Result<bool, RuntimeBridgeError> {
         let budgets = self.resolve_expr_budgets(cpu_id, dialect_override)?;
         self.portable_expression_has_unstable_symbols_for_assembler(program, budgets, ctx)
+    }
+}
+
+#[cfg(test)]
+mod value_conversion_tests {
+    use super::*;
+    use types::asm_value::{ScalarProvenance, StructDef, StructField, StructInstance};
+
+    #[test]
+    fn captured_existing_shapes_round_trip_through_portable_records() {
+        let shapes = vec![
+            AsmValue::try_range(2, 8, true, Some(2)).unwrap(),
+            AsmValue::Struct(StructDef {
+                name: "Point".into(),
+                size: 2,
+                fields: vec![StructField {
+                    name: "x".into(),
+                    offset: 0,
+                    size: 2,
+                }],
+            }),
+            AsmValue::StructInstance(StructInstance {
+                type_name: "Point".into(),
+                fields: HashMap::from([("x".into(), 7)]),
+            }),
+        ];
+        for shape in shapes {
+            let record = AsmValue::Record {
+                scalar: Box::new(AsmValue::Scalar(0)),
+                fields: vec![("captured".into(), shape)],
+            };
+            let portable = asm_value_to_portable_expr_value(record.clone());
+            assert_eq!(portable_expr_value_to_asm_value(portable).unwrap(), record);
+        }
+    }
+
+    #[test]
+    fn integer_only_struct_conversion_rejects_address_bearing_fields() {
+        for provenance in [
+            ScalarProvenance::Section("code".into()),
+            ScalarProvenance::Unsupported,
+        ] {
+            let instance = PortableExprValue::StructLiteral(PortableExprStructLiteralValue {
+                type_name: "Point".into(),
+                fields: vec![PortableExprStructFieldValue {
+                    field_name: "x".into(),
+                    value: PortableExprValue::RelocatableScalar {
+                        value: 7,
+                        provenance,
+                    },
+                }],
+            });
+            assert!(portable_expr_value_to_asm_value(instance)
+                .unwrap_err()
+                .contains("address provenance"));
+        }
+    }
+
+    #[test]
+    fn range_conversion_normalizes_inclusive_bounds_and_rejects_zero_step() {
+        let make = |step| {
+            PortableExprValue::Range(PortableExprRangeValue {
+                start: Box::new(PortableExprValue::Int(1)),
+                end: Box::new(PortableExprValue::Int(3)),
+                step: Some(Box::new(PortableExprValue::Int(step))),
+                inclusive: true,
+            })
+        };
+        assert_eq!(
+            portable_expr_value_to_asm_value(make(1)).unwrap(),
+            AsmValue::Range {
+                start: 1,
+                end: 4,
+                step: 1
+            }
+        );
+        assert!(portable_expr_value_to_asm_value(make(0)).is_err());
     }
 }

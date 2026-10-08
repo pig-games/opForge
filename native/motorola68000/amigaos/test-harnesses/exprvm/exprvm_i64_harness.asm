@@ -102,15 +102,13 @@ caseLoop
 	moveq #0, d6
 	move.w (a3)+, d6
 	cmpi.w #1, d6
-	beq.s versionOk
-	cmpi.w #2, d6
-	beq.s versionOk
+	beq.s canonicalSelector
 	; 0x8000 is a harness-only selector for the experimental compact
 	; signed-i64 evaluator. It is not an ExprVM bytecode version.
 	cmpi.w #$8000, d6
 	beq.s compactSelector
 	bra.w fail
-versionOk
+canonicalSelector
 	moveq #0, d5
 	bra.s selectorReady
 compactSelector
@@ -153,7 +151,6 @@ symbolHeaderReady
 	lea SymbolStable, a6
 	tst.l d5
 	bne.s compactEval
-	move.w d6, runtime.ExprvmSelectedOpcodeVersion
 	jsr runtime.exprvmEvalProgramV1
 	bra.s evalComplete
 compactEval

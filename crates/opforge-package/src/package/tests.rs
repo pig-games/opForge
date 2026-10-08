@@ -1909,7 +1909,7 @@ fn base_required_chunks_with_expr(expr_chunk: Vec<u8>) -> Vec<([u8; 4], Vec<u8>)
 #[test]
 fn decode_rejects_expr_contract_with_unsupported_opcode_version() {
     let mut contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2 + 1;
+    contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1 + 1;
 
     let bytes = encode_container(&base_required_chunks_with_expr(
         expr_chunk_with_single_contract(&contract),
@@ -1924,20 +1924,20 @@ fn decode_rejects_expr_contract_with_unsupported_opcode_version() {
 }
 
 #[test]
-fn decode_accepts_expr_contract_with_v2_opcode_version() {
+fn decode_accepts_expr_contract_with_v1_opcode_version() {
     let mut contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
 
     let bytes = encode_container(&base_required_chunks_with_expr(
         expr_chunk_with_single_contract(&contract),
     ))
     .expect("container");
 
-    let decoded = decode_hierarchy_chunks(&bytes).expect("v2 EXPR contract should decode");
+    let decoded = decode_hierarchy_chunks(&bytes).expect("v1 EXPR contract should decode");
     assert_eq!(decoded.expr_contracts.len(), 1);
     assert_eq!(
         decoded.expr_contracts[0].opcode_version,
-        EXPR_VM_OPCODE_VERSION_V2
+        EXPR_VM_OPCODE_VERSION_V1
     );
 }
 

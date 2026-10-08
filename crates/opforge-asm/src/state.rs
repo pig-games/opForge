@@ -43,12 +43,7 @@ impl AsmDiagnosticsState {
 }
 
 /// Frozen relocation meaning of a scalar assignment at its source position.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum SymbolRelocation {
-    Absolute,
-    Section(String),
-    Unsupported,
-}
+pub(crate) use types::asm_value::ScalarProvenance as SymbolRelocation;
 
 #[derive(Debug, Default)]
 pub struct AsmLayoutState {

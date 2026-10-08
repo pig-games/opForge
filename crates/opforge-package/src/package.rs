@@ -159,8 +159,6 @@ pub const DIAG_ASM_IO_ERROR: &str = "asm501";
 /// - `EXVM_OPCODE_VERSION`: expression parser VM (`EXVM`) payloads.
 /// - `EXPR_VM_OPCODE_VERSION_V1`: expression evaluator VM contracts (`EXPR`),
 ///   sourced from `core::expr_vm` to keep runtime/package compatibility strict.
-/// - `EXPR_VM_OPCODE_VERSION_V2`: staged expression evaluator VM v2 contract
-///   payloads.
 /// - `VALUE_VM_OPCODE_VERSION_V1` and `VALUE_VM_OPCODE_VERSION_V2`: scalar
 ///   value materialization (`VALP`) payloads.
 /// - `OPERAND_RECORD_VM_VERSION_V1`: neutral operand-record construction
@@ -223,7 +221,6 @@ pub const EXVM_OPCODE_VERSION: u16 = 0x0001;
 pub const PARSER_GRAMMAR_ID_LINE_V1: &str = "opforge.line.v1";
 pub const PARSER_AST_SCHEMA_ID_LINE_V1: &str = "opforge.ast.line.v1";
 pub const EXPR_VM_OPCODE_VERSION_V1: u16 = super::expr_vm_compat::EXPR_VM_OPCODE_VERSION_V1;
-pub const EXPR_VM_OPCODE_VERSION_V2: u16 = super::expr_vm_compat::EXPR_VM_OPCODE_VERSION_V2;
 pub const DIAG_EXPR_INVALID_OPCODE: &str = super::expr_vm_compat::DIAG_EXPR_INVALID_OPCODE;
 pub const DIAG_EXPR_STACK_UNDERFLOW: &str = super::expr_vm_compat::DIAG_EXPR_STACK_UNDERFLOW;
 pub const DIAG_EXPR_STACK_DEPTH_EXCEEDED: &str =

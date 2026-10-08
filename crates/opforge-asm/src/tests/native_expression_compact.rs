@@ -231,7 +231,7 @@ fn compact_cases() -> Vec<CompactCase> {
         0x1_0000_0001,
         i64::MAX,
     ] {
-        for selector in [COMPACT_SELECTOR, 2, COMPACT_SELECTOR] {
+        for selector in [COMPACT_SELECTOR, 1, COMPACT_SELECTOR] {
             let code = vec![0x12, 0, 0, 0];
             let expected = if selector == COMPACT_SELECTOR {
                 value
@@ -285,7 +285,7 @@ fn compact_cases() -> Vec<CompactCase> {
         ("shift-count-wrap", i64::MIN, 64, 14),
         ("shift-count-negative", i64::MAX, -1, 14),
     ] {
-        for selector in [COMPACT_SELECTOR, 2, COMPACT_SELECTOR] {
+        for selector in [COMPACT_SELECTOR, 1, COMPACT_SELECTOR] {
             let mut code = vec![0x12, 0, 0];
             if selector == COMPACT_SELECTOR {
                 lit64(&mut code, right);
@@ -311,7 +311,7 @@ fn compact_cases() -> Vec<CompactCase> {
         }
     }
     for value in [i64::MIN, i64::MAX, -1] {
-        for selector in [COMPACT_SELECTOR, 2, COMPACT_SELECTOR] {
+        for selector in [COMPACT_SELECTOR, 1, COMPACT_SELECTOR] {
             let left = if selector == COMPACT_SELECTOR {
                 value
             } else {
@@ -372,8 +372,8 @@ fn compact_cases() -> Vec<CompactCase> {
     wide.extend(2i64.to_le_bytes());
     wide.extend([0x21, 6, 0]);
     cases.push(case(
-        "canonical-v2-after-compact",
-        2,
+        "canonical-after-compact",
+        1,
         wide,
         Ok(0x1_0000_0003),
         0,

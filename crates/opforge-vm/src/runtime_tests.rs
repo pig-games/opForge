@@ -102,11 +102,10 @@ use package::{
     DIAG_EXPR_INVALID_PROGRAM, DIAG_EXPR_STACK_DEPTH_EXCEEDED, DIAG_EXPR_STACK_UNDERFLOW,
     DIAG_EXPR_UNKNOWN_SYMBOL, DIAG_EXPR_UNSUPPORTED_FEATURE, DIAG_OPTHREAD_MISSING_VM_PROGRAM,
     DIAG_PARSER_OPASM_V2_SUBCALL_VERSION_MISMATCH, DIAG_PARSER_OPASM_V2_UNKNOWN_SUBCALL_CONTRACT,
-    EXPR_VM_OPCODE_VERSION_V1, EXPR_VM_OPCODE_VERSION_V2, EXVM_OPCODE_VERSION,
-    PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT, SEMANTIC_VM_OPCODE_VERSION_V1,
-    SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3, SEMANTIC_VM_OPCODE_VERSION_V4,
-    SEMANTIC_VM_OPCODE_VERSION_V5, SEMANTIC_VM_OPCODE_VERSION_V6, SEMANTIC_VM_OPCODE_VERSION_V7,
-    SEMANTIC_VM_OPCODE_VERSION_V8, TOKENIZER_VM_OPCODE_VERSION_V1,
+    EXPR_VM_OPCODE_VERSION_V1, EXVM_OPCODE_VERSION, PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
+    SEMANTIC_VM_OPCODE_VERSION_V1, SEMANTIC_VM_OPCODE_VERSION_V2, SEMANTIC_VM_OPCODE_VERSION_V3,
+    SEMANTIC_VM_OPCODE_VERSION_V4, SEMANTIC_VM_OPCODE_VERSION_V5, SEMANTIC_VM_OPCODE_VERSION_V6,
+    SEMANTIC_VM_OPCODE_VERSION_V7, SEMANTIC_VM_OPCODE_VERSION_V8, TOKENIZER_VM_OPCODE_VERSION_V1,
 };
 use registry::cpu::{CpuFamily, CpuType};
 use registry::family::{AssemblerContext, CpuHandler, EncodeResult, FamilyHandler};
@@ -902,8 +901,13 @@ impl AssemblerContext for TestAssemblerContext {
             Expr::Identifier(name, _) | Expr::Register(name, _) => {
                 if let Some(value) = self.value_symbols.get(name) {
                     return match value {
-                        AsmValue::Scalar(value) => Ok(*value),
-                        AsmValue::List(_) => {
+                        AsmValue::Scalar(value) | AsmValue::RelocatableScalar { value, .. } => {
+                            Ok(*value)
+                        }
+                        AsmValue::Record { scalar, .. } => scalar
+                            .as_scalar()
+                            .ok_or_else(|| "record has no scalar projection".to_string()),
+                        AsmValue::List(_) | AsmValue::Values(_) => {
                             Err("List cannot be evaluated as scalar expression".to_string())
                         }
                         AsmValue::Range { .. } => {
@@ -2079,7 +2083,7 @@ fn execution_model_from_registry_exposes_default_family_expr_contract() {
         .resolve_expr_contract("m6502", None)
         .expect("expr contract resolution")
         .expect("expr contract should resolve");
-    assert_eq!(contract.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
+    assert_eq!(contract.opcode_version, EXPR_VM_OPCODE_VERSION_V1);
     assert_eq!(contract.max_program_bytes, 2048);
 
     let budgets = model
@@ -2624,7 +2628,7 @@ fn execution_model_parse_expression_program_v2_direct_leaf_bypasses_legacy_expr_
     parser_contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(parser_contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -2633,7 +2637,7 @@ fn execution_model_parse_expression_program_v2_direct_leaf_bypasses_legacy_expr_
         .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
         .expect("direct leaf compile should bypass legacy expression compiler failpoint");
 
-    assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
+    assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V1);
     assert_eq!(program.symbols, vec!["target".to_string()]);
 
     let mut ctx = TestAssemblerContext::new();
@@ -2670,7 +2674,7 @@ fn execution_model_parse_expression_program_v2_scalar_grammar_bypasses_legacy_ex
     parser_contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(parser_contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -2696,7 +2700,7 @@ fn execution_model_parse_expression_program_v2_scalar_grammar_bypasses_legacy_ex
             });
 
         assert_eq!(
-            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V1,
             "{source}"
         );
 
@@ -2733,7 +2737,7 @@ fn execution_model_parse_expression_program_v2_structural_constructors_bypass_le
     parser_contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(parser_contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -2759,7 +2763,7 @@ fn execution_model_parse_expression_program_v2_structural_constructors_bypass_le
             });
 
         assert_eq!(
-            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V1,
             "{source}"
         );
 
@@ -2799,7 +2803,7 @@ fn execution_model_parse_expression_program_v2_member_index_bypasses_legacy_expr
     parser_contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(parser_contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -2817,7 +2821,7 @@ fn execution_model_parse_expression_program_v2_member_index_bypasses_legacy_expr
                 panic!("{source} should bypass legacy compiler failpoint: {err:?}")
             });
         assert_eq!(
-            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V1,
             "{source}"
         );
 
@@ -2863,7 +2867,7 @@ fn exvm_runtime_portable_program_backend_bypasses_legacy_expr_compiler_failpoint
             end_span,
             None,
             EXVM_OPCODE_VERSION,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .unwrap_or_else(|err| {
             panic!(
@@ -2872,7 +2876,7 @@ fn exvm_runtime_portable_program_backend_bypasses_legacy_expr_compiler_failpoint
         });
 
         assert_eq!(
-            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V1,
             "{source}"
         );
     }
@@ -2892,7 +2896,7 @@ fn execution_model_parse_expression_program_v2_matches_runtime_backend_for_cover
     chunks.expr_parser_contracts.push(parser_contract);
 
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
 
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
@@ -2918,7 +2922,7 @@ fn execution_model_parse_expression_program_v2_matches_runtime_backend_for_cover
             runtime_end_span,
             None,
             EXVM_OPCODE_VERSION,
-            EXPR_VM_OPCODE_VERSION_V2,
+            EXPR_VM_OPCODE_VERSION_V1,
         )
         .unwrap_or_else(|err| panic!("runtime backend should compile {source}: {err:?}"));
 
@@ -3345,15 +3349,17 @@ fn exvm_remaining_value_out_of_scope_compatibility_path_preserves_call_and_place
             "?",
             "Placeholder",
             "Placeholder cannot be evaluated as scalar expression",
+            DIAG_EXPR_UNSUPPORTED_FEATURE,
         ),
         (
             ".pick({1,2},?)",
             "Call(.pick,List(Number,Number),Placeholder)",
-            "Call expression cannot be evaluated as scalar expression",
+            "Unknown compile-time function call",
+            DIAG_EXPR_EVAL_FAILURE,
         ),
     ];
 
-    for (source, expected_shape, expected_compile_message) in cases {
+    for (source, expected_shape, expected_compile_message, expected_code) in cases {
         let expr = parse_exvm_current(source).unwrap_or_else(|err| {
             panic!("parse current shared expression {source}: {}", err.message)
         });
@@ -3366,7 +3372,7 @@ fn exvm_remaining_value_out_of_scope_compatibility_path_preserves_call_and_place
 
         let err = compile_core_expr_to_portable_program(&expr)
             .expect_err("out-of-scope compatibility expression should reject scalar compilation");
-        assert_eq!(err.code, DIAG_EXPR_UNSUPPORTED_FEATURE);
+        assert_eq!(err.code, expected_code);
         assert_eq!(err.message, expected_compile_message);
     }
 }
@@ -4042,7 +4048,7 @@ fn runtime_expression_generic_value_nodes_parse_but_reject_scalar_vm_compile() {
     parser_contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(parser_contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -4719,7 +4725,7 @@ fn runtime_expression_eval_scalar_current_contract_compiles_and_evaluates_arithm
     contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -4739,8 +4745,8 @@ fn runtime_expression_eval_scalar_current_contract_compiles_and_evaluates_arithm
             .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
             .unwrap_or_else(|err| panic!("EXVM current compile {source}: {}", err.message));
         assert_eq!(
-            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
-            "EXPR v2 program version changed for {source}"
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V1,
+            "EXPR v1 program version changed for {source}"
         );
         let evaluation = model
             .evaluate_portable_expression_program_with_contract_for_assembler(
@@ -4768,7 +4774,7 @@ fn runtime_expression_eval_full_scalar_current_contract_compiles_and_evaluates_o
     parser_contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(parser_contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -4795,10 +4801,10 @@ fn runtime_expression_eval_full_scalar_current_contract_compiles_and_evaluates_o
         let (tokens, end_span) = tokenize_core_expr_tokens(source, 1);
         let program = model
             .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
-            .unwrap_or_else(|err| panic!("EXPR v2 full-scalar compile {source}: {}", err.message));
+            .unwrap_or_else(|err| panic!("EXPR v1 full-scalar compile {source}: {}", err.message));
         assert_eq!(
-            program.opcode_version, EXPR_VM_OPCODE_VERSION_V2,
-            "EXPR v2 program version changed for {source}"
+            program.opcode_version, EXPR_VM_OPCODE_VERSION_V1,
+            "EXPR v1 program version changed for {source}"
         );
 
         let mut ctx = TestAssemblerContext::new();
@@ -4807,7 +4813,7 @@ fn runtime_expression_eval_full_scalar_current_contract_compiles_and_evaluates_o
             .evaluate_portable_expression_program_with_contract_for_assembler(
                 "m6502", None, &program, &ctx,
             )
-            .unwrap_or_else(|err| panic!("EXPR v2 full-scalar eval {source}: {err}"));
+            .unwrap_or_else(|err| panic!("EXPR v1 full-scalar eval {source}: {err}"));
         assert_eq!(evaluation.value, expected_value);
     }
 }
@@ -4821,7 +4827,7 @@ fn runtime_expression_eval_direct_stage_preserves_current_address_and_unstable_s
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_contracts.clear();
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -4834,7 +4840,7 @@ fn runtime_expression_eval_direct_stage_preserves_current_address_and_unstable_s
     let mut ctx = TestAssemblerContext::new();
     ctx.addr = 0x2000;
     let value = evaluate_expression_for_assembler(&model, "m6502", None, &expr, &ctx)
-        .expect("direct eval stage should honor EXPR v2 scalar contract");
+        .expect("direct eval stage should honor EXPR v1 scalar contract");
     assert_eq!(value, 0x2001);
 
     let unstable = expression_has_unstable_symbols_for_assembler(
@@ -4844,7 +4850,7 @@ fn runtime_expression_eval_direct_stage_preserves_current_address_and_unstable_s
         &Expr::Identifier("forward_label".to_string(), Span::default()),
         &ctx,
     )
-    .expect("direct unstable-symbol stage should honor EXPR v2 scalar contract");
+    .expect("direct unstable-symbol stage should honor EXPR v1 scalar contract");
     assert!(unstable);
 }
 
@@ -4856,7 +4862,7 @@ fn runtime_expression_eval_direct_stage_supports_full_scalar_grammar_under_expr_
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_contracts.clear();
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -4897,7 +4903,7 @@ fn runtime_expression_eval_direct_stage_supports_full_scalar_grammar_under_expr_
         let mut ctx = TestAssemblerContext::new();
         ctx.values = values;
         let value = evaluate_expression_for_assembler(&model, "m6502", None, &expr, &ctx)
-            .expect("direct eval stage should use EXPR v2 for the full scalar grammar");
+            .expect("direct eval stage should use EXPR v1 for the full scalar grammar");
         assert_eq!(value, expected_value);
     }
 }
@@ -4911,7 +4917,7 @@ fn runtime_expression_eval_direct_stage_supports_structural_reductions_and_bound
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_contracts.clear();
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -4963,7 +4969,7 @@ fn runtime_expression_eval_direct_stage_supports_structural_reductions_and_bound
 
     for (expr, expected_value) in reduction_cases {
         let value = evaluate_expression_for_assembler(&model, "m6502", None, &expr, &ctx)
-            .expect("structural direct-stage reduction should succeed under EXPR v2");
+            .expect("structural direct-stage reduction should succeed under EXPR v1");
         assert_eq!(value, expected_value);
     }
 
@@ -5030,7 +5036,7 @@ fn runtime_expression_direct_stage_v2_bypasses_legacy_expr_compiler_failpoint_fo
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     chunks.expr_contracts.clear();
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -5099,7 +5105,7 @@ fn exvm_operator_current_contract_compiles_and_evaluates_end_to_end() {
     contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -5122,7 +5128,7 @@ fn exvm_operator_current_contract_compiles_and_evaluates_end_to_end() {
             .unwrap_or_else(|err| {
                 panic!("EXVM current operator compile {source}: {}", err.message)
             });
-        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
+        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V1);
         let evaluation = model
             .evaluate_portable_expression_program_with_contract_for_assembler(
                 "m6502", None, &program, &ctx,
@@ -5147,7 +5153,7 @@ fn exvm_ternary_current_contract_compiles_and_evaluates_end_to_end() {
     contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -5166,7 +5172,7 @@ fn exvm_ternary_current_contract_compiles_and_evaluates_end_to_end() {
         let program = model
             .parse_expression_program_for_assembler("m6502", None, tokens, end_span, None)
             .unwrap_or_else(|err| panic!("EXVM current ternary compile {source}: {}", err.message));
-        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V2);
+        assert_eq!(program.opcode_version, EXPR_VM_OPCODE_VERSION_V1);
         let evaluation = model
             .evaluate_portable_expression_program_with_contract_for_assembler(
                 "m6502", None, &program, &ctx,
@@ -5277,7 +5283,7 @@ fn exvm_range_list_current_contract_compiles_and_enforces_scalar_boundary() {
     contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 
@@ -5407,7 +5413,7 @@ fn exvm_struct_access_current_contract_compiles_and_enforces_scalar_boundary() {
     contract.opcode_version = EXVM_OPCODE_VERSION;
     chunks.expr_parser_contracts.push(contract);
     let mut expr_contract = expr_contract_for_test(ScopedOwner::Family("mos6502".to_string()));
-    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V2;
+    expr_contract.opcode_version = EXPR_VM_OPCODE_VERSION_V1;
     chunks.expr_contracts.push(expr_contract);
     let model = HierarchyExecutionModel::from_chunks(chunks).expect("execution model build");
 

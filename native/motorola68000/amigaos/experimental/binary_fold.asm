@@ -36,7 +36,7 @@ prepareMode	.block
 	; A lone literal needs narrowing but no subtree analysis or span map.
 	cmpi.l #10, d0
 	bne.w scratch
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, (a0)
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_LITERAL, (a0)
 	bne.w scratch
 	movea.l a0, a6
 	lea 1(a0), a3
@@ -67,15 +67,15 @@ scan
 	sub.l a4, d6
 	moveq #0, d0
 	move.b (a3)+, d0
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_END, d0
 	beq.w scanned
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_LITERAL, d0
 	beq.w constant
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, d0
 	beq.w unary
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, d0
 	beq.w binary
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d0
 	bne.w dynamic
 	addq.l #2, a3
 dynamic
@@ -132,14 +132,14 @@ next
 	bne.w evaluate
 	move.b (a3)+, d0
 	addq.w #1, d6
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_LITERAL, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_LITERAL, d0
 	beq.w literal
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, d0
 	beq.w negate
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, d0
 	beq.w binaryOperator
 	move.b d0, (a6)+
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d0
 	bne.w next
 	move.b (a3)+, (a6)+
 	move.b (a3)+, (a6)+
@@ -158,7 +158,7 @@ negate
 	move.b #runtime.COMPACT_NEGATE, (a6)+
 	bra.w next
 unaryPair
-	move.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, (a6)+
+	move.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, (a6)+
 	move.b d0, (a6)+
 	bra.w next
 binaryOperator
@@ -173,7 +173,7 @@ binaryOperator
 	move.b #runtime.COMPACT_MULTIPLY, (a6)+
 	bra.w next
 binaryPair
-	move.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, (a6)+
+	move.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, (a6)+
 	move.b d0, (a6)+
 	bra.w next
 add

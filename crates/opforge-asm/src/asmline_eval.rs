@@ -59,46 +59,6 @@ impl<'a> AsmLine<'a> {
         apply_assignment_op(op, left as u32, right as u32, span).map(i64::from)
     }
 
-    fn eval_repeat_member_index(
-        &self,
-        repeat_name: &str,
-        index: &Expr,
-        field: &str,
-        span: Span,
-    ) -> Result<Option<AsmValue>, AstEvalError> {
-        let Some(full_name) = self.resolve_scoped_value_name(repeat_name) else {
-            return Ok(None);
-        };
-        let Some(iteration_scopes) = self.lookup_repeat_iteration_scopes(&full_name) else {
-            return Ok(None);
-        };
-
-        let index_value = self.eval_expr_for_signed_scalar_context(index)?;
-        if index_value < 0 {
-            return Err(AstEvalError::expression("Index cannot be negative", span));
-        }
-        let index_usize = usize::try_from(index_value)
-            .map_err(|_| AstEvalError::expression("Index out of range", span))?;
-        let Some(scope_name) = iteration_scopes.get(index_usize) else {
-            return Err(AstEvalError::expression("Index out of bounds", span));
-        };
-
-        let field_name = format!("{scope_name}.{field}");
-        let Some(entry) = self.symbols.entry(&field_name) else {
-            return Err(AstEvalError::expression(
-                format!("scoped repetition value has no field '{}'", field),
-                span,
-            ));
-        };
-
-        Ok(Some(AsmValue::Scalar(
-            self.scalar_value_symbols
-                .get(&Self::value_symbol_key(&field_name))
-                .copied()
-                .unwrap_or(i64::from(entry.val)),
-        )))
-    }
-
     /// Evaluate a value with undefined-symbol errors instead of pass-one
     /// forward-reference placeholders. Preparation callers must supply only
     /// compile-time bindings and reject address-dependent expressions.
@@ -114,8 +74,16 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn eval_value_ast(&self, expr: &Expr) -> Result<AsmValue, AstEvalError> {
+        if self.expression_uses_typed_value(expr) || matches!(expr, Expr::List(_, _)) {
+            if let Some(result) = self.eval_shared_value(expr) {
+                return result;
+            }
+        }
         match expr {
             Expr::Identifier(name, span) | Expr::Register(name, span) => {
+                if let Some(value) = AssemblerContext::value_symbol(self, name) {
+                    return Ok(value);
+                }
                 if let Some(value) = self.lookup_loop_var(name) {
                     return Ok(AsmValue::Scalar(i64::from(value)));
                 }
@@ -178,8 +146,8 @@ impl<'a> AsmLine<'a> {
                 }
                 let index_usize = usize::try_from(index_value)
                     .map_err(|_| AstEvalError::expression("Index out of range", *span))?;
-                match value.get(index_usize) {
-                    Some(element) => Ok(AsmValue::Scalar(element)),
+                match value.get_value(index_usize) {
+                    Some(element) => Ok(element),
                     None => Err(AstEvalError::expression("Index out of bounds", *span)),
                 }
             }
@@ -300,17 +268,10 @@ impl<'a> AsmLine<'a> {
                     ));
                 }
 
-                if let Expr::Index { base, index, .. } = &**base {
-                    if let Expr::Identifier(name, _) | Expr::Register(name, _) = &**base {
-                        if let Some(value) =
-                            self.eval_repeat_member_index(name, index, field, *span)?
-                        {
-                            return Ok(value);
-                        }
-                    }
-                }
-
                 let base_value = self.eval_value_ast(base)?;
+                if let Some(value) = base_value.field_value_typed(field) {
+                    return Ok(value.clone());
+                }
                 match base_value {
                     AsmValue::Struct(def) => {
                         if let Some(offset) = def
@@ -556,8 +517,13 @@ impl<'a> AsmLine<'a> {
             | Expr::Call { .. } => {
                 let value = self.eval_value_ast(expr)?;
                 match value {
-                    AsmValue::Scalar(value) => Ok(value),
-                    AsmValue::List(_) => Err(AstEvalError::expression(
+                    AsmValue::Scalar(value) | AsmValue::RelocatableScalar { value, .. } => {
+                        Ok(value)
+                    }
+                    AsmValue::Record { scalar, .. } => scalar.as_scalar().ok_or_else(|| {
+                        AstEvalError::expression("record has no scalar projection", expr_span(expr))
+                    }),
+                    AsmValue::List(_) | AsmValue::Values(_) => Err(AstEvalError::expression(
                         "List cannot be evaluated as scalar expression",
                         expr_span(expr),
                     )),
@@ -842,6 +808,10 @@ impl<'a> AssemblerContext for AsmLine<'a> {
         }))
     }
 
+    fn current_address_value(&self) -> AsmValue {
+        self.scalar_with_section(i64::from(self.start_addr), self.current_section_name())
+    }
+
     fn current_address(&self) -> u32 {
         self.start_addr
     }
@@ -902,12 +872,15 @@ impl<'a> AssemblerContext for AsmLine<'a> {
         }
 
         if let Some(value) = self.scalar_value_symbol(name) {
-            return Some(AsmValue::Scalar(value));
+            return Some(self.scalar_with_symbol_provenance(&scoped_name, value));
         }
         // Actual bindings retain precedence, including address labels. Dotted
         // struct fields are semantic scalar leaves even without a symbol entry.
-        if self.has_symbol(name) {
-            return None;
+        if let Some(entry) = self.lookup_scoped_entry(name) {
+            return Some(self.scalar_with_symbol_provenance(&entry.name, i64::from(entry.val)));
+        }
+        if let Some(value) = self.eval_record_member_name(name) {
+            return value.ok();
         }
         self.eval_dotted_identifier_scalar(name, Span::default())
             .and_then(Result::ok)
@@ -945,6 +918,12 @@ impl<'a> AsmLine<'a> {
         }
 
         if let Some(full_name) = self.resolve_scoped_value_name(name) {
+            if let Some(value) = self
+                .lookup_value_symbol(&full_name)
+                .and_then(AsmValue::as_scalar)
+            {
+                return Ok(value);
+            }
             let message = match self.lookup_value_symbol(&full_name) {
                 Some(AsmValue::List(_)) => "List cannot be evaluated as scalar expression",
                 Some(AsmValue::Range { .. }) => "Range cannot be evaluated as scalar expression",
@@ -957,6 +936,12 @@ impl<'a> AsmLine<'a> {
             return Err(message.to_string());
         }
 
+        if let Some(value) = self.eval_record_member_name(name) {
+            return value
+                .map_err(|error| error.error.message().to_string())?
+                .as_scalar()
+                .ok_or_else(|| "record member is not scalar".into());
+        }
         match self.resolve_scoped_name(name) {
             Ok(Some(full_name)) => {
                 let Some(entry) = self.symbols.entry(&full_name) else {
@@ -979,7 +964,7 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    fn normalize_vm_eval_error_message(message: &str) -> String {
+    pub(super) fn normalize_vm_eval_error_message(message: &str) -> String {
         if let Some(name) = Self::vm_unknown_symbol_name(message) {
             return format!("Label not found: {name}");
         }
@@ -1075,9 +1060,7 @@ impl<'a> AsmLine<'a> {
             Expr::Binary { left, right, .. } => {
                 self.expr_requires_host_eval(left) || self.expr_requires_host_eval(right)
             }
-            Expr::Member { base, .. } => {
-                self.expr_is_repeat_member_index(base) || self.expr_requires_host_eval(base)
-            }
+            Expr::Member { base, .. } => self.expr_requires_host_eval(base),
             Expr::List(_, _)
             | Expr::Index { .. }
             | Expr::StructLiteral { .. }
@@ -1090,17 +1073,5 @@ impl<'a> AsmLine<'a> {
             | Expr::Dollar(_)
             | Expr::String(_, _) => false,
         }
-    }
-
-    fn expr_is_repeat_member_index(&self, expr: &Expr) -> bool {
-        let Expr::Index { base, .. } = expr else {
-            return false;
-        };
-        let (Expr::Identifier(name, _) | Expr::Register(name, _)) = &**base else {
-            return false;
-        };
-        self.resolve_scoped_value_name(name)
-            .and_then(|full_name| self.lookup_repeat_iteration_scopes(&full_name))
-            .is_some()
     }
 }

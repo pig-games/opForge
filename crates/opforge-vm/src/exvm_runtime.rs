@@ -1592,11 +1592,11 @@ mod decoded_string_tests {
                 None,
                 crate::vm_opcore::expression_parser_program(),
                 ExvmExecutionBudgets::for_tokens(1),
-                package::EXPR_VM_OPCODE_VERSION_V2,
+                package::EXPR_VM_OPCODE_VERSION_V1,
             )
             .unwrap();
             let mut reference =
-                PortableExprProgramBuilder::for_scalar(package::EXPR_VM_OPCODE_VERSION_V2).unwrap();
+                PortableExprProgramBuilder::for_scalar(package::EXPR_VM_OPCODE_VERSION_V1).unwrap();
             reference
                 .emit_direct_leaf(&PortableExprDirectLeaf::StringLiteral(bytes.to_vec()))
                 .unwrap();
@@ -1699,11 +1699,11 @@ mod shared_primary_tests {
             None,
             crate::vm_opcore::expression_parser_program(),
             ExvmExecutionBudgets::for_tokens(1),
-            package::EXPR_VM_OPCODE_VERSION_V2,
+            package::EXPR_VM_OPCODE_VERSION_V1,
         )
         .unwrap();
         let mut reference =
-            PortableExprProgramBuilder::for_scalar(package::EXPR_VM_OPCODE_VERSION_V2).unwrap();
+            PortableExprProgramBuilder::for_scalar(package::EXPR_VM_OPCODE_VERSION_V1).unwrap();
         reference
             .emit_direct_leaf(&PortableExprDirectLeaf::SymbolName("d0".to_owned()))
             .unwrap();
@@ -1727,7 +1727,7 @@ mod shared_primary_tests {
                 None,
                 crate::vm_opcore::expression_parser_program(),
                 budget,
-                package::EXPR_VM_OPCODE_VERSION_V2,
+                package::EXPR_VM_OPCODE_VERSION_V1,
             )
             .unwrap_err();
             assert_eq!(error.message, message);

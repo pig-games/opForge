@@ -222,10 +222,10 @@ factor	.block
 	subq.l #6, sp
 	move.b #expression.COMPILED_TAG, (sp)
 	move.b #4, 1(sp)
-	move.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, 2(sp)
+	move.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, 2(sp)
 	move.b 2(a0), 3(sp)
 	move.b 1(a0), 4(sp)
-	move.b #runtime.EXPRVM_V2_OPCODE_END, 5(sp)
+	move.b #runtime.EXPRVM_OPCODE_END, 5(sp)
 	movea.l sp, a0
 	lea 6(sp), a1
 	jsr expression.evaluate

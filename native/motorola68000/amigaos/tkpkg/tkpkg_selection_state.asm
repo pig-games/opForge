@@ -31,8 +31,6 @@ EncodeSelectedDeferUnstableBranchTarget
 	.align 2
 EncodeSelectedExvmOpcodeVersion
 	.res word, 1
-EncodeSelectedExprOpcodeVersion
-	.res word, 1
 EncodeSelectedOperandStatus
 	.res word, 1
 EncodeSelectedMselShapePtr

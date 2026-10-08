@@ -6,14 +6,13 @@ use opcore::parser::UnaryOp;
 
 struct ScalarCase {
     name: String,
-    version: u16,
     code: Vec<u8>,
     expected: Result<i64, u32>,
     symbol_refs: u32,
 }
 
-fn literal(code: &mut Vec<u8>, version: u16, value: i64) {
-    code.push(if version == 1 { 1 } else { 0x10 });
+fn literal(code: &mut Vec<u8>, value: i64) {
+    code.push(0x10);
     code.extend(value.to_le_bytes());
 }
 
@@ -51,169 +50,153 @@ fn scalar_cases() -> Vec<ScalarCase> {
         (0, 0),
         (-7, -3),
     ];
-    for version in [1, 2] {
-        for (op, id) in binary_ops {
-            for (left, right) in pairs {
-                let mut code = Vec::new();
-                literal(&mut code, version, left);
-                literal(&mut code, version, right);
-                code.extend([if version == 1 { 5 } else { 0x21 }, id, 0]);
-                cases.push(ScalarCase {
-                    name: format!("v{version} {left} {op:?} {right}"),
-                    version,
-                    code,
-                    expected: apply_binary(op, left, right, Span::default()).map_err(|_| 1),
-                    symbol_refs: 0,
-                });
-            }
-        }
-        for (op, id) in [
-            (UnaryOp::Plus, 0),
-            (UnaryOp::Minus, 1),
-            (UnaryOp::BitNot, 2),
-            (UnaryOp::LogicNot, 3),
-            (UnaryOp::High, 4),
-            (UnaryOp::Low, 5),
-        ] {
-            for value in [0, 0x1_0000_0000, -0x1_0000_0001, i64::MAX] {
-                let mut code = Vec::new();
-                literal(&mut code, version, value);
-                code.extend([if version == 1 { 4 } else { 0x20 }, id, 0]);
-                cases.push(ScalarCase {
-                    name: format!("v{version} {op:?} {value}"),
-                    version,
-                    code,
-                    expected: apply_unary(op, value, Span::default()).map_err(|_| 1),
-                    symbol_refs: 0,
-                });
-            }
-        }
-        for (op, id, left, right) in [
-            (BinaryOp::Shl, 13, 0x1_8000_0001, 0),
-            (BinaryOp::Shl, 13, 0x1_8000_0001, 31),
-            (BinaryOp::Shl, 13, 0x1_8000_0001, 32),
-            (BinaryOp::Shr, 14, -0x1_8000_0001, 0),
-            (BinaryOp::Shr, 14, -0x1_8000_0001, 31),
-            (BinaryOp::Shr, 14, -0x1_8000_0001, 32),
-            (BinaryOp::Power, 3, 2, 63),
-            (BinaryOp::Power, 3, 2, 0x1_0000_0000),
-            (BinaryOp::Multiply, 10, 0xffff_ffff, 0xffff_ffff),
-            (BinaryOp::Divide, 11, i64::MIN, i64::MIN),
-            (BinaryOp::Mod, 12, i64::MIN, 3),
-        ] {
+    for (op, id) in binary_ops {
+        for (left, right) in pairs {
             let mut code = Vec::new();
-            literal(&mut code, version, left);
-            literal(&mut code, version, right);
-            code.extend([if version == 1 { 5 } else { 0x21 }, id, 0]);
+            literal(&mut code, left);
+            literal(&mut code, right);
+            code.extend([0x21, id, 0]);
             cases.push(ScalarCase {
-                name: format!("v{version} boundary {left} {op:?} {right}"),
-                version,
+                name: format!("{left} {op:?} {right}"),
                 code,
                 expected: apply_binary(op, left, right, Span::default()).map_err(|_| 1),
                 symbol_refs: 0,
             });
         }
-        // Both Rust and native reject unrepresentable signed quotient/remainder.
-        for id in [11, 12] {
+    }
+    for (op, id) in [
+        (UnaryOp::Plus, 0),
+        (UnaryOp::Minus, 1),
+        (UnaryOp::BitNot, 2),
+        (UnaryOp::LogicNot, 3),
+        (UnaryOp::High, 4),
+        (UnaryOp::Low, 5),
+    ] {
+        for value in [0, 0x1_0000_0000, -0x1_0000_0001, i64::MAX] {
             let mut code = Vec::new();
-            literal(&mut code, version, i64::MIN);
-            literal(&mut code, version, -1);
-            code.extend([if version == 1 { 5 } else { 0x21 }, id, 0]);
+            literal(&mut code, value);
+            code.extend([0x20, id, 0]);
             cases.push(ScalarCase {
-                name: format!("v{version} overflow guard {id}"),
-                version,
+                name: format!("{op:?} {value}"),
                 code,
-                expected: Err(1),
+                expected: apply_unary(op, value, Span::default()).map_err(|_| 1),
                 symbol_refs: 0,
             });
         }
-        // Both Rust and native fail closed for unrepresentable MIN negation.
+    }
+    for (op, id, left, right) in [
+        (BinaryOp::Shl, 13, 0x1_8000_0001, 0),
+        (BinaryOp::Shl, 13, 0x1_8000_0001, 31),
+        (BinaryOp::Shl, 13, 0x1_8000_0001, 32),
+        (BinaryOp::Shr, 14, -0x1_8000_0001, 0),
+        (BinaryOp::Shr, 14, -0x1_8000_0001, 31),
+        (BinaryOp::Shr, 14, -0x1_8000_0001, 32),
+        (BinaryOp::Power, 3, 2, 63),
+        (BinaryOp::Power, 3, 2, 0x1_0000_0000),
+        (BinaryOp::Multiply, 10, 0xffff_ffff, 0xffff_ffff),
+        (BinaryOp::Divide, 11, i64::MIN, i64::MIN),
+        (BinaryOp::Mod, 12, i64::MIN, 3),
+    ] {
         let mut code = Vec::new();
-        literal(&mut code, version, i64::MIN);
-        code.extend([if version == 1 { 4 } else { 0x20 }, 1, 0]);
+        literal(&mut code, left);
+        literal(&mut code, right);
+        code.extend([0x21, id, 0]);
         cases.push(ScalarCase {
-            name: format!("v{version} minimum unary guard"),
-            version,
+            name: format!("boundary {left} {op:?} {right}"),
+            code,
+            expected: apply_binary(op, left, right, Span::default()).map_err(|_| 1),
+            symbol_refs: 0,
+        });
+    }
+    // Both Rust and native reject unrepresentable signed quotient/remainder.
+    for id in [11, 12] {
+        let mut code = Vec::new();
+        literal(&mut code, i64::MIN);
+        literal(&mut code, -1);
+        code.extend([0x21, id, 0]);
+        cases.push(ScalarCase {
+            name: format!("overflow guard {id}"),
             code,
             expected: Err(1),
             symbol_refs: 0,
         });
-        // The condition has only its high word set. Keep both result words.
-        for condition in [0, 0x1_0000_0000] {
-            let mut code = Vec::new();
-            for value in [condition, 0x2_0000_0001, -0x3_0000_0001] {
-                literal(&mut code, version, value);
-            }
-            code.extend([if version == 1 { 5 } else { 0x21 }, 9, 0]);
-            let expr = Expr::Ternary {
-                cond: Box::new(Expr::Number(condition.to_string(), Span::default())),
-                then_expr: Box::new(Expr::Number("8589934593".into(), Span::default())),
-                else_expr: Box::new(Expr::Number("-12884901889".into(), Span::default())),
-                span: Span::default(),
-            };
-            let context = opcore::expr::SimpleEvalContext::new(|_| None);
-            cases.push(ScalarCase {
-                name: format!("v{version} ternary {condition}"),
-                version,
-                code,
-                expected: opcore::expr::eval_expr(&expr, &context).map_err(|_| 1),
-                symbol_refs: 0,
-            });
-        }
-        // Exercise symbol lookup after arithmetic has overwritten D1 scratch.
+    }
+    // Both Rust and native fail closed for unrepresentable MIN negation.
+    let mut code = Vec::new();
+    literal(&mut code, i64::MIN);
+    code.extend([0x20, 1, 0]);
+    cases.push(ScalarCase {
+        name: "minimum unary guard".into(),
+        code,
+        expected: Err(1),
+        symbol_refs: 0,
+    });
+    // The condition has only its high word set. Keep both result words.
+    for condition in [0, 0x1_0000_0000] {
         let mut code = Vec::new();
-        literal(&mut code, version, 0x1_0000_0001);
-        literal(&mut code, version, 2);
-        code.extend([if version == 1 { 5 } else { 0x21 }, 6]);
-        code.extend([if version == 1 { 3 } else { 0x12 }, 0, 0]);
-        code.extend([if version == 1 { 5 } else { 0x21 }, 6, 0]);
-        cases.push(ScalarCase {
-            name: format!("v{version} arithmetic then unsigned symbol"),
-            version,
-            code,
-            expected: Ok(0x2_0000_0002),
-            symbol_refs: 1,
-        });
-        cases.push(ScalarCase {
-            name: format!("v{version} unsigned current address"),
-            version,
-            code: vec![if version == 1 { 2 } else { 0x11 }, 0],
-            expected: Ok(0xffff_ffff),
-            symbol_refs: 0,
-        });
-        // Native program-boundary contracts. These status values are native ABI
-        // evidence, not a claim of equivalent Rust diagnostic numbering.
-        for (name, code, status) in [
-            ("empty", vec![], 51),
-            ("unknown opcode", vec![0xff], 52),
-            (
-                "truncated literal",
-                vec![if version == 1 { 1 } else { 0x10 }, 0],
-                53,
-            ),
-            ("empty end", vec![0], 56),
-        ] {
-            cases.push(ScalarCase {
-                name: format!("v{version} {name}"),
-                version,
-                code,
-                expected: Err(status),
-                symbol_refs: 0,
-            });
+        for value in [condition, 0x2_0000_0001, -0x3_0000_0001] {
+            literal(&mut code, value);
         }
-        let mut code = Vec::new();
-        for value in 0..9 {
-            literal(&mut code, version, value);
-        }
-        code.push(0);
+        code.extend([0x21, 9, 0]);
+        let expr = Expr::Ternary {
+            cond: Box::new(Expr::Number(condition.to_string(), Span::default())),
+            then_expr: Box::new(Expr::Number("8589934593".into(), Span::default())),
+            else_expr: Box::new(Expr::Number("-12884901889".into(), Span::default())),
+            span: Span::default(),
+        };
+        let context = opcore::expr::SimpleEvalContext::new(|_| None);
         cases.push(ScalarCase {
-            name: format!("v{version} stack overflow"),
-            version,
+            name: format!("ternary {condition}"),
             code,
-            expected: Err(54),
+            expected: opcore::expr::eval_expr(&expr, &context).map_err(|_| 1),
             symbol_refs: 0,
         });
     }
+    // Exercise symbol lookup after arithmetic has overwritten D1 scratch.
+    let mut code = Vec::new();
+    literal(&mut code, 0x1_0000_0001);
+    literal(&mut code, 2);
+    code.extend([0x21, 6]);
+    code.extend([0x12, 0, 0]);
+    code.extend([0x21, 6, 0]);
+    cases.push(ScalarCase {
+        name: "arithmetic then unsigned symbol".into(),
+        code,
+        expected: Ok(0x2_0000_0002),
+        symbol_refs: 1,
+    });
+    cases.push(ScalarCase {
+        name: "unsigned current address".into(),
+        code: vec![0x11, 0],
+        expected: Ok(0xffff_ffff),
+        symbol_refs: 0,
+    });
+    // Native program-boundary contracts. These status values are native ABI
+    // evidence, not a claim of equivalent Rust diagnostic numbering.
+    for (name, code, status) in [
+        ("empty", vec![], 51),
+        ("unknown opcode", vec![0xff], 52),
+        ("truncated literal", vec![0x10, 0], 53),
+        ("empty end", vec![0], 56),
+    ] {
+        cases.push(ScalarCase {
+            name: format!("{name}"),
+            code,
+            expected: Err(status),
+            symbol_refs: 0,
+        });
+    }
+    let mut code = Vec::new();
+    for value in 0..9 {
+        literal(&mut code, value);
+    }
+    code.push(0);
+    cases.push(ScalarCase {
+        name: "stack overflow".into(),
+        code,
+        expected: Err(54),
+        symbol_refs: 0,
+    });
     cases
 }
 
@@ -223,7 +206,8 @@ fn scalar_batch(cases: &[ScalarCase]) -> (Vec<u8>, Vec<u8>) {
     let mut output = Vec::new();
     for case in cases {
         assert!(case.code.len() <= 256, "{}", case.name);
-        input.extend(case.version.to_be_bytes());
+        // Canonical representation selector; compact records use 0x8000.
+        input.extend(1u16.to_be_bytes());
         input.extend((case.code.len() as u16).to_be_bytes());
         input.extend(u32::MAX.to_be_bytes());
         input.extend(u32::MAX.to_be_bytes());
@@ -254,7 +238,7 @@ fn native_expression_i64_live_rust_oracle() {
     // Level A: live Rust arithmetic authority plus bounded harness serialization.
     let cases = scalar_cases();
     let (input, output) = scalar_batch(&cases);
-    assert!(cases.len() > 350);
+    assert!(cases.len() > 175);
     assert_eq!(output.len(), cases.len() * 24);
     assert!(input.len() < 140 * 1024);
     assert!(cases
@@ -301,7 +285,7 @@ fn native_expression_i64_fs_uae() {
                 run.stderr
             );
             eprintln!(
-                "PASS: {} scalar cases, both native opcode versions; live Rust values plus explicit native failure contracts",
+                "PASS: {} scalar cases, current native ExprVM contract; live Rust values plus explicit native failure contracts",
                 cases.len()
             );
         }
@@ -426,27 +410,26 @@ fn rust_scalar_text_result(text: &str) -> Result<i64, opcore::expr::EvalError> {
 
 fn scalar_service_batch() -> (Vec<u8>, Vec<u8>) {
     let mut cases = Vec::new();
-    for version in [1u16, 2] {
-        for len in [16u16, 19, 20, 27, 28, 32, 36] {
-            for text in ["0", "2147483648", "-2147483649", "4294967296"] {
-                cases.push((version, len, text));
-            }
-        }
-        for text in [
-            "2147483647",
-            "-2147483648",
-            "9223372036854775807",
-            "(-9223372036854775807 - 1)",
-        ] {
-            cases.push((version, 28, text));
+    for len in [16u16, 19, 20, 27, 28, 32, 36] {
+        for text in ["0", "2147483648", "-2147483649", "4294967296"] {
+            cases.push((len, text));
         }
     }
-    assert_eq!(cases.len(), 64);
+    for text in [
+        "2147483647",
+        "-2147483648",
+        "9223372036854775807",
+        "(-9223372036854775807 - 1)",
+    ] {
+        cases.push((28, text));
+    }
+    assert_eq!(cases.len(), 32);
+    let expected_bytes = cases.len() * 64;
     let mut input = (cases.len() as u32).to_be_bytes().to_vec();
     let mut output = Vec::new();
-    for (version, len, text) in cases {
+    for (len, text) in cases {
         let value = rust_scalar_text_value(text);
-        for word in [version, len, text.len() as u16, 0] {
+        for word in [1, len, text.len() as u16, 0] {
             input.extend(word.to_be_bytes());
         }
         input.extend(0u32.to_be_bytes());
@@ -475,7 +458,7 @@ fn scalar_service_batch() -> (Vec<u8>, Vec<u8>) {
         output.extend(0xddee_ff00u32.to_be_bytes());
         output.extend(0xa1b2_c3d4u32.to_be_bytes());
     }
-    assert_eq!(output.len(), 64 * 64);
+    assert_eq!(output.len(), expected_bytes);
     (input, output)
 }
 
@@ -487,14 +470,14 @@ fn native_expression_i64_service_rust_oracle() {
         i64::MIN
     );
     let (input, output) = scalar_service_batch();
-    assert_eq!(&input[..4], &64u32.to_be_bytes());
-    assert_eq!(output.len(), 4096);
+    assert_eq!(&input[..4], &32u32.to_be_bytes());
+    assert_eq!(output.len(), 2048);
 }
 
 #[test]
 fn native_expression_i64_service_fs_uae() {
     // Level D boundary proof: valid prepared service envelopes with explicit
-    // contract versions and zero-label context. Checks full text, typed words,
+    // the compiled expression contract and zero-label context. Checks full text, typed words,
     // legacy lengths and canaries; full package/facade integration is separate.
     let (input, expected) = scalar_service_batch();
     match crate::fs_uae_smoke::run_expression_i64_harness_from_env(

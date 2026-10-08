@@ -262,8 +262,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                         lines,
                     )?;
 
-                    let mut iteration_bases = Vec::with_capacity(plan.values.len());
-                    let mut iteration_scopes = Vec::with_capacity(plan.values.len());
+                    let mut iteration_records = Vec::with_capacity(plan.values.len());
                     for (iteration, value) in plan.values.iter().enumerate() {
                         if scoped_repeat {
                             asm_line
@@ -272,16 +271,15 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                                 .push_anonymous_with_kind(ScopeKind::Repeat);
                             asm_line.push_visibility();
                         }
-                        if scoped_repeat && label.is_some() {
+                        let record_origin = (scoped_repeat && label.is_some()).then(|| {
                             let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
-                            iteration_bases.push(i64::from(base_addr));
-                            iteration_scopes.push(
-                                asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .prefix(asm_line.symbol_scope.scope_stack.depth()),
-                            );
-                        }
+                            let section = asm_line.current_section_name().map(str::to_owned);
+                            let scope = asm_line
+                                .symbol_scope
+                                .scope_stack
+                                .prefix(asm_line.symbol_scope.scope_stack.depth());
+                            (base_addr, section, scope)
+                        });
                         if let Some(var_name) = plan.var_name.as_deref() {
                             asm_line.push_loop_var(var_name, *value);
                         }
@@ -301,6 +299,13 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             prepared_source,
                             max_loop_iterations,
                         )?;
+                        if let Some((base_addr, section, scope)) = record_origin {
+                            iteration_records.push(asm_line.capture_repeat_record(
+                                base_addr,
+                                section.as_deref(),
+                                &scope,
+                            ));
+                        }
                         asm_line.repetition_path.pop();
                         if plan.var_name.is_some() {
                             asm_line.pop_loop_var();
@@ -317,8 +322,8 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                     if scoped_repeat {
                         if let Some(loop_label) = label.as_ref() {
                             let full_name = asm_line.scoped_define_name(&loop_label.name);
-                            asm_line.set_value_symbol(&full_name, AsmValue::List(iteration_bases));
-                            asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
+                            asm_line
+                                .set_value_symbol(&full_name, AsmValue::Values(iteration_records));
                         }
                     }
 
@@ -352,8 +357,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
 
                     let mut while_error: Option<AstEvalError> = None;
                     let mut loop_count = 0u32;
-                    let mut iteration_bases = Vec::new();
-                    let mut iteration_scopes = Vec::new();
+                    let mut iteration_records = Vec::new();
 
                     loop {
                         let should_continue =
@@ -387,16 +391,15 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                                 .push_anonymous_with_kind(ScopeKind::Repeat);
                             asm_line.push_visibility();
                         }
-                        if scoped_repeat && label.is_some() {
+                        let record_origin = (scoped_repeat && label.is_some()).then(|| {
                             let base_addr = asm_line.current_addr(*addr).unwrap_or(*addr);
-                            iteration_bases.push(i64::from(base_addr));
-                            iteration_scopes.push(
-                                asm_line
-                                    .symbol_scope
-                                    .scope_stack
-                                    .prefix(asm_line.symbol_scope.scope_stack.depth()),
-                            );
-                        }
+                            let section = asm_line.current_section_name().map(str::to_owned);
+                            let scope = asm_line
+                                .symbol_scope
+                                .scope_stack
+                                .prefix(asm_line.symbol_scope.scope_stack.depth());
+                            (base_addr, section, scope)
+                        });
 
                         asm_line.repetition_path.push((line_num, loop_count - 1));
                         execute_lines(
@@ -415,6 +418,13 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             max_loop_iterations,
                         )?;
 
+                        if let Some((base_addr, section, scope)) = record_origin {
+                            iteration_records.push(asm_line.capture_repeat_record(
+                                base_addr,
+                                section.as_deref(),
+                                &scope,
+                            ));
+                        }
                         asm_line.repetition_path.pop();
                         if scoped_repeat {
                             let _ = asm_line
@@ -449,8 +459,8 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                     if scoped_repeat {
                         if let Some(loop_label) = label.as_ref() {
                             let full_name = asm_line.scoped_define_name(&loop_label.name);
-                            asm_line.set_value_symbol(&full_name, AsmValue::List(iteration_bases));
-                            asm_line.set_repeat_iteration_scopes(&full_name, iteration_scopes);
+                            asm_line
+                                .set_value_symbol(&full_name, AsmValue::Values(iteration_records));
                         }
                     }
 

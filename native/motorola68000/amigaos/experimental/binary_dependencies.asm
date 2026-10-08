@@ -144,10 +144,10 @@ visit
 	moveq #0, d0
 	move.b 0(a0, d3.w), d0
 	beq.w completed
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d0
 	beq.w dependency
 	moveq #1, d1
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d0
 	beq.w current
 	cmpi.b #runtime.COMPACT_NEGATE, d0
 	beq.w advance
@@ -160,9 +160,9 @@ visit
 	moveq #2, d1
 	cmpi.b #runtime.COMPACT_I8, d0
 	beq.w advance
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_UNARY, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, d0
 	beq.w advance
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_APPLY_BINARY, d0
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, d0
 	beq.w advance
 	moveq #3, d1
 	cmpi.b #runtime.COMPACT_I16, d0
@@ -515,7 +515,7 @@ scalarDeclaration
 	addi.w #11, d0
 	cmp.w d6, d0
 	bne.w bad
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, -1(a0, d6.w)
+	cmpi.b #runtime.EXPRVM_OPCODE_END, -1(a0, d6.w)
 	bne.w bad
 	cmpi.b #graph.MUTABLE, d7
 	beq.w next
@@ -534,7 +534,7 @@ compoundDeclaration
 	addi.w #11, d0
 	cmp.w d6, d0
 	bne.w bad
-	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, -1(a0, d6.w)
+	cmpi.b #runtime.EXPRVM_OPCODE_END, -1(a0, d6.w)
 	bne.w bad
 	cmpi.b #graph.MUTABLE, d7
 	beq.w next

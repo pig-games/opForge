@@ -44,9 +44,7 @@ EVAL_EXPR_NEEDS_PIPELINE_TEXT_LEN    = 45
 EVAL_EXPR_FAILED_TEXT_LEN            = 36
 EVAL_EXPR_VALUE_PREFIX_LEN           = 6
 EVAL_EXPR_MIN_I32_TEXT_LEN           = 11
-EVAL_EXPR_MISSING_EXPR_TEXT_LEN      = 45
 EVAL_EXPR_MISSING_EXVM_TEXT_LEN      = 42
-EVAL_EXPR_BAD_EXPR_VERSION_TEXT_LEN  = 46
 EVAL_EXPR_BAD_EXVM_VERSION_TEXT_LEN  = 44
 EVAL_EXPR_ZERO_OUTPUT_TEXT_LEN       = 39
 EVAL_EXPR_OK_ZERO_LEN_TEXT_LEN       = 40
@@ -95,14 +93,8 @@ EvaluateExprNeedsPipelineText
 EvaluateExprFailedText
 	.byte "OTR901: expression evaluation failed", 0
 
-EvaluateExprMissingExprText
-	.byte "OTR001: missing expression evaluator contract", 0
-
 EvaluateExprMissingExvmText
 	.byte "OTR001: missing expression parser contract", 0
-
-EvaluateExprBadExprVersionText
-	.byte "OTR901: unsupported expression contract opcode", 0
 
 EvaluateExprBadExvmVersionText
 	.byte "OTR901: unsupported expression parser opcode", 0
@@ -660,12 +652,10 @@ evaluateExpressionV1	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	jsr expression.prepareV1
 	bne.s return
-	bsr.w resolveExpressionContractVersionsV1
+	bsr.w resolveExvmOpcodeVersionV1
 	bne.s return
 	moveq #0, d4
 	move.w d6, d4
-	moveq #0, d5
-	move.w d7, d5
 .ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	movem.l d0-d1, -(sp)
 	moveq #runtime_profile.OPFORGE_RUNTIME_SERVICE_EXPRESSION, d0
@@ -774,28 +764,6 @@ next
 	rts
 	.bend  ; appendUnsignedDecimalV1
 
-; Resolve both EXVM and ExprVM opcode versions for the current package selection.
-; Inputs: active EXVM/EXPR package locators plus D6 preserved for caller state.
-; Outputs: D0 = 0 on success, nonzero on version lookup failure; D6 restored on success.
-; Clobbers: D0/CCR.
-; CCR: reflects D0 on return.
-resolveExpressionContractVersionsV1	.block
-	bsr.w resolveExvmOpcodeVersionV1
-	bne.s return
-	move.l d6, -(sp)
-	bsr.w resolveExprOpcodeVersionV1
-	bne.s exprFail
-	move.l (sp)+, d6
-	bra.s return
-
-exprFail
-	addq.l #4, sp
-
-return
-	tst.l d0
-	rts
-	.bend  ; resolveExpressionContractVersionsV1
-
 resolveExvmOpcodeVersionV1	.block
 	lea buffers.ActiveDialectBuffer.l, a4
 	tst.b (a4)
@@ -830,44 +798,6 @@ ok
 	moveq #0, d0
 	rts
 	.bend  ; resolveExvmOpcodeVersionV1
-
-resolveExprOpcodeVersionV1	.block
-	lea buffers.ActiveDialectBuffer.l, a4
-	tst.b (a4)
-	beq.s skipDialect
-	moveq #SCOPED_OWNER_DIALECT, d6
-	bsr.w findExprOpcodeVersionV1
-	beq.s found
-
-skipDialect
-	lea buffers.ActiveCpuBuffer.l, a4
-	moveq #SCOPED_OWNER_CPU, d6
-	bsr.w findExprOpcodeVersionV1
-	beq.s found
-	lea buffers.ActiveFamilyBuffer.l, a4
-	moveq #SCOPED_OWNER_FAMILY, d6
-	bsr.w findExprOpcodeVersionV1
-	beq.s found
-	lea EvaluateExprMissingExprText, a1
-	moveq #EVAL_EXPR_MISSING_EXPR_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	rts
-
-found
-	move.w d7, d6
-	cmpi.w #1, d6
-	beq.s ok
-	cmpi.w #2, d6
-	beq.s ok
-	lea EvaluateExprBadExprVersionText, a1
-	moveq #EVAL_EXPR_BAD_EXPR_VERSION_TEXT_LEN, d1
-	moveq #abi.STATUS_RUNTIME_ERROR_V1, d0
-	rts
-
-ok
-	moveq #0, d0
-	rts
-	.bend  ; resolveExprOpcodeVersionV1
 
 findExvmOpcodeVersionV1	.block
 	move.b d6, d5
@@ -918,56 +848,6 @@ readVersion
 	moveq #0, d0
 	rts
 	.bend  ; findExvmOpcodeVersionV1
-
-findExprOpcodeVersionV1	.block
-	move.b d6, d5
-	lea buffers.ExprChunkOffsetLo, a3
-	bsr.w tkpkgServiceChunkPtrFromLocatorV1
-	bne.s missing
-	bsr.w tkpkgServiceReadU32LeLow16V1
-	bne.s missing
-	tst.w d0
-	beq.s missing
-	move.w d0, d7
-	subq.w #1, d7
-	lea 4(a2), a2
-
-loop
-	moveq #1, d0
-	bsr.w tkpkgServiceRequireBytesV1
-	bne.s missing
-	move.b (a2)+, d6
-	bsr.w tkpkgServiceLocateStringV1
-	bne.s missing
-	cmp.b d5, d6
-	bne.s skipEntry
-	move.w d0, d2
-	move.l a2, -(sp)
-	movea.l a1, a3
-	move.w d2, d0
-	movea.l a4, a2
-	bsr.w tkpkgServiceActiveOwnerLenV1
-	movea.l a3, a1
-	bsr.w tkpkgServiceStringEqAsciiCasefoldV1
-	movea.l (sp)+, a2
-	bne.s readVersion
-
-skipEntry
-	bsr.w tkpkgServiceSkipExprEntryTailV1
-	bne.s missing
-	dbf d7, loop
-
-missing
-	moveq #1, d0
-	rts
-
-readVersion
-	bsr.w tkpkgServiceReadU16LeV1
-	bne.s missing
-	move.w d0, d7
-	moveq #0, d0
-	rts
-	.bend  ; findExprOpcodeVersionV1
 
 ; Skip the EXVM entry tail after the owner string.
 ; Inputs: A2/A6 = current EXVM entry cursor/exclusive end.

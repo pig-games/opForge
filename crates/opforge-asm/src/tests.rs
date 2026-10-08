@@ -15735,7 +15735,7 @@ fn motorola68020_embedded_native_cli_package_matches_rust_default_runtime_packag
 #[test]
 fn native_current_cpex_package_uses_exact_package_digest() {
     // Pin the reviewed current package, while also checking live builder equality.
-    const CPEX_PACKAGE_FNV1A64: u64 = 0x110396ddf79794c2;
+    const CPEX_PACKAGE_FNV1A64: u64 = 0x55c3dddef6a9a43b;
     let package_path =
         workspace_root().join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm");
     let embedded_package = fs::read(&package_path).expect("read current embedded package");
@@ -21435,13 +21435,13 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
     assert!(source.contains("opcoreExvmEvalOperandCommon"));
     assert!(source.contains("EXVM_OPCODE_PARSE_EXPRESSION"));
     assert!(source.contains("EXVM_OPCODE_END"));
-    assert!(source.contains("EXPRVM_V2_OPCODE_PUSH_LITERAL"));
-    assert!(source.contains("EXPRVM_V2_OPCODE_REQUIRE_SCALAR"));
+    assert!(source.contains("EXPRVM_OPCODE_PUSH_LITERAL"));
+    assert!(source.contains("EXPRVM_OPCODE_REQUIRE_SCALAR"));
     assert!(source.contains("OpcoreExvmDefaultProgram"));
     assert!(source.contains("D2: current assembly PC for '$' current-address terms."));
     assert!(source.contains("OPCORE_EXPRVM_PROGRAM_CAPACITY"));
     assert!(source.contains("OpcoreExvmSelectedOpcodeVersion"));
-    assert!(source.contains("runtime.ExprvmSelectedOpcodeVersion"));
+    assert!(!source.contains("runtime.ExprvmSelectedOpcodeVersion"));
     assert!(source.contains("runtime.ExprvmCurrentPass"));
     assert!(source.contains("OpcoreExprVmProgramBuffer"));
     assert!(!source.contains("BSR.W opcoreExprBridgeEvalAdditive"));
@@ -21520,8 +21520,6 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         "opcoreExvmEvalOperandCommon",
         &[
             "move.w d4, OpcoreExvmSelectedOpcodeVersion",
-            "cmpi.w #2, d5",
-            "move.w d5, runtime.ExprvmSelectedOpcodeVersion",
             "move.w d6, runtime.ExprvmCurrentPass",
             "bsr.w selectProgram",
             "bsr.w runEvalProgram",
@@ -21658,9 +21656,8 @@ fn motorola68020_opcore_expr_bridge_owns_first_run_scalar_expr_path() {
         &source,
         "finalizeProgram",
         &[
-            "cmpi.w #2, d3",
-            "moveq #runtime.EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6",
-            "moveq #runtime.EXPRVM_V2_OPCODE_END, d6",
+            "moveq #runtime.EXPRVM_OPCODE_REQUIRE_SCALAR, d6",
+            "moveq #runtime.EXPRVM_OPCODE_END, d6",
         ]
     ));
     assert!(routine_contains_in_order(
@@ -21707,8 +21704,8 @@ fn motorola68020_exprvm_runtime_owns_bytecode_evaluator() {
 
     assert!(source.contains(".module exprvm.amigaos.runtime"));
     assert!(source.contains("exprvmEvalProgramV1"));
-    assert!(source.contains("EXPRVM_V2_OPCODE_REQUIRE_SCALAR"));
-    assert!(source.contains("ExprvmSelectedOpcodeVersion"));
+    assert!(source.contains("EXPRVM_OPCODE_REQUIRE_SCALAR"));
+    assert!(!source.contains("ExprvmSelectedOpcodeVersion"));
     assert!(source.contains("ExprvmCurrentPass"));
     assert!(!source.contains("opcoreExvmEvalOperandV1"));
     assert!(!source.contains("OPCORE_EXPRVM_PROGRAM_CAPACITY"));
@@ -24146,7 +24143,7 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     ));
     assert!(tkpkg_source_contains(
         &source,
-        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExpressionContractVersionsV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n        MOVEQ #0,D5\n        MOVE.W D7,D5\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        MOVEM.L D0-D1,-(SP)\n        MOVEQ #runtime_profile.OPFORGE_RUNTIME_SERVICE_EXPRESSION,D0\n        JSR runtime_profile.opforgeRuntimeProfileEnterServiceV1\n        MOVEM.L (SP)+,D0-D1\n.endif\n        JSR expression.executePreparedV1\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        JSR runtime_profile.opforgeRuntimeProfileLeaveServiceV1\n.endif\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
+        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExvmOpcodeVersionV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        MOVEM.L D0-D1,-(SP)\n        MOVEQ #runtime_profile.OPFORGE_RUNTIME_SERVICE_EXPRESSION,D0\n        JSR runtime_profile.opforgeRuntimeProfileEnterServiceV1\n        MOVEM.L (SP)+,D0-D1\n.endif\n        JSR expression.executePreparedV1\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        JSR runtime_profile.opforgeRuntimeProfileLeaveServiceV1\n.endif\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
     ));
     assert!(tkpkg_source_contains(
         &expression,
@@ -24173,10 +24170,10 @@ fn motorola68020_tkpkg_service_writes_little_endian_control_block_bytes() {
     assert!(selection.contains("buildSelectedEnvelopeV1"));
     assert!(encoding.contains("writeCandidateOutputV1"));
     assert!(operand.contains("encodeSelectedOperandV1"));
-    assert!(source.contains("resolveExpressionContractVersionsV1"));
-    assert!(source.contains("resolveExprOpcodeVersionV1"));
+    assert!(!source.contains("resolveExpressionContractVersionsV1"));
+    assert!(!source.contains("resolveExprOpcodeVersionV1"));
     assert!(source.contains("resolveExvmOpcodeVersionV1"));
-    assert!(source.contains("EvaluateExprMissingExprText"));
+    assert!(!source.contains("EvaluateExprMissingExprText"));
     assert!(source.contains("EvaluateExprMissingExvmText"));
     assert!(expression.contains("opcoreExvmEvalOperandV1"));
     assert!(expression.contains("PreparedOperandPtr"));
@@ -24542,7 +24539,7 @@ fn motorola68020_tkpkg_expression_service_has_one_implementation_owner() {
 
     assert!(tkpkg_source_contains(
         &facade,
-        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExpressionContractVersionsV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n        MOVEQ #0,D5\n        MOVE.W D7,D5\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        MOVEM.L D0-D1,-(SP)\n        MOVEQ #runtime_profile.OPFORGE_RUNTIME_SERVICE_EXPRESSION,D0\n        JSR runtime_profile.opforgeRuntimeProfileEnterServiceV1\n        MOVEM.L (SP)+,D0-D1\n.endif\n        JSR expression.executePreparedV1\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        JSR runtime_profile.opforgeRuntimeProfileLeaveServiceV1\n.endif\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
+        "evaluateExpressionV1\t.block\n        MOVEM.L D2-D7/A2-A6,-(SP)\n        JSR expression.prepareV1\n        BNE.S return\n        BSR.W resolveExvmOpcodeVersionV1\n        BNE.S return\n        MOVEQ #0,D4\n        MOVE.W D6,D4\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        MOVEM.L D0-D1,-(SP)\n        MOVEQ #runtime_profile.OPFORGE_RUNTIME_SERVICE_EXPRESSION,D0\n        JSR runtime_profile.opforgeRuntimeProfileEnterServiceV1\n        MOVEM.L (SP)+,D0-D1\n.endif\n        JSR expression.executePreparedV1\n.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS\n        JSR runtime_profile.opforgeRuntimeProfileLeaveServiceV1\n.endif\n\nreturn\n        MOVEM.L (SP)+,D2-D7/A2-A6\n        RTS"
     ));
     assert!(!facade.contains("evaluateExpressionLegacyV1"));
     assert!(tkpkg_source_contains(
@@ -42809,3 +42806,5 @@ mod iterable_lexical_bindings;
 
 #[path = "tests/required_value_deferral.rs"]
 mod required_value_deferral;
+
+mod hunk_repeat_records;

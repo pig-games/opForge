@@ -9,19 +9,13 @@
 	.pub
 	.include "telemetry_macros.i"
 
-EXPRVM_OPCODE_END               = $00
-EXPRVM_OPCODE_PUSH_LITERAL      = $01
-EXPRVM_OPCODE_PUSH_CURRENT_ADDR = $02
-EXPRVM_OPCODE_PUSH_SYMBOL       = $03
-EXPRVM_OPCODE_APPLY_UNARY       = $04
-EXPRVM_OPCODE_APPLY_BINARY      = $05
-EXPRVM_V2_OPCODE_END            = $00
-EXPRVM_V2_OPCODE_PUSH_LITERAL   = $10
-EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR = $11
-EXPRVM_V2_OPCODE_PUSH_SYMBOL    = $12
-EXPRVM_V2_OPCODE_APPLY_UNARY    = $20
-EXPRVM_V2_OPCODE_APPLY_BINARY   = $21
-EXPRVM_V2_OPCODE_REQUIRE_SCALAR = $70
+EXPRVM_OPCODE_END            = $00
+EXPRVM_OPCODE_PUSH_LITERAL   = $10
+EXPRVM_OPCODE_PUSH_CURRENT_ADDR = $11
+EXPRVM_OPCODE_PUSH_SYMBOL    = $12
+EXPRVM_OPCODE_APPLY_UNARY    = $20
+EXPRVM_OPCODE_APPLY_BINARY   = $21
+EXPRVM_OPCODE_REQUIRE_SCALAR = $70
 EXPRVM_UNARY_PLUS               = 0
 EXPRVM_UNARY_MINUS              = 1
 EXPRVM_UNARY_BIT_NOT            = 2
@@ -71,22 +65,14 @@ COMPACT_MULTIPLY = $33
 	.section code, kind=code
 	.pub
 
-; Evaluate an ExprVM v2 program with signed i64 values. The bytecode
-; and tables use the same ABI as exprvmEvalProgramV1; the wrapper selects v2
-; and restores the caller's selected version before returning. A1 is unused;
+; Evaluate canonical ExprVM bytecode with signed i64 values. The bytecode
+; and tables use the same ABI as exprvmEvalProgramV1. A1 is unused;
 ; symbols are numeric IDs. Outputs/clobbers match the shared evaluator below;
 ; CCR reflects D0. No symbol dictionary or preparation storage is accessed.
 evalNumeric64	.block
 	.priv
-	move.l d6, -(sp)
-	move.w ExprvmSelectedOpcodeVersion, d6
-	move.w d6, -(sp)
 	move.w #1, PreparedMode
-	move.w #2, ExprvmSelectedOpcodeVersion
 	jsr exprvmEvalProgramV1
-	move.w (sp)+, d6
-	move.w d6, ExprvmSelectedOpcodeVersion
-	move.l (sp)+, d6
 	clr.w PreparedMode
 	tst.l d0
 	rts
@@ -100,15 +86,8 @@ evalNumeric64	.block
 	.pub
 evalCompact64	.block
 	.priv
-	move.l d6, -(sp)
-	move.w ExprvmSelectedOpcodeVersion, d6
-	move.w d6, -(sp)
 	move.w #2, PreparedMode
-	move.w #2, ExprvmSelectedOpcodeVersion
 	jsr exprvmEvalProgramV1
-	move.w (sp)+, d6
-	move.w d6, ExprvmSelectedOpcodeVersion
-	move.l (sp)+, d6
 	clr.w PreparedMode
 	tst.l d0
 	rts
@@ -156,12 +135,9 @@ exprvmEvalProgramV1	.block
 	clr.l d7
 	; A1 is unused by the scalar ABI and preserved by arithmetic helpers.
 	; Select this call's decoder once instead of checking format per opcode.
-	lea evalLoopV1, a1
+	lea evalCanonical, a1
 	cmpi.w #2, PreparedMode
 	beq.s selectCompact
-	cmpi.w #2, ExprvmSelectedOpcodeVersion
-	bne.s evalLoop
-	lea evalLoopV2, a1
 	bra.s evalLoop
 selectCompact
 	lea evalCompact, a1
@@ -175,7 +151,7 @@ evalLoop
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR
 	jmp (a1)
 
-evalLoopV1
+evalCanonical
 	cmpi.b #EXPRVM_OPCODE_END, d6
 	beq.w opcodeEnd
 	cmpi.b #EXPRVM_OPCODE_PUSH_LITERAL, d6
@@ -188,27 +164,12 @@ evalLoopV1
 	beq.w opcodeApplyUnary
 	cmpi.b #EXPRVM_OPCODE_APPLY_BINARY, d6
 	beq.w opcodeApplyBinary
-	bra.w unknownOpcode
-
-evalLoopV2
-	cmpi.b #EXPRVM_V2_OPCODE_END, d6
-	beq.w opcodeEnd
-	cmpi.b #EXPRVM_V2_OPCODE_PUSH_LITERAL, d6
-	beq.w opcodePushLiteral
-	cmpi.b #EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d6
-	beq.w opcodePushCurrent
-	cmpi.b #EXPRVM_V2_OPCODE_PUSH_SYMBOL, d6
-	beq.w opcodePushSymbol
-	cmpi.b #EXPRVM_V2_OPCODE_APPLY_UNARY, d6
-	beq.w opcodeApplyUnary
-	cmpi.b #EXPRVM_V2_OPCODE_APPLY_BINARY, d6
-	beq.w opcodeApplyBinary
-	cmpi.b #EXPRVM_V2_OPCODE_REQUIRE_SCALAR, d6
+	cmpi.b #EXPRVM_OPCODE_REQUIRE_SCALAR, d6
 	beq.w opcodeRequireScalar
 	bra.w unknownOpcode
 
 evalCompact
-	cmpi.b #EXPRVM_V2_OPCODE_END, d6
+	cmpi.b #EXPRVM_OPCODE_END, d6
 	beq.w opcodeEnd
 	cmpi.b #COMPACT_I8, d6
 	beq.w compactByte
@@ -220,9 +181,9 @@ evalCompact
 	beq.w compactUnsigned
 	cmpi.b #COMPACT_I64, d6
 	beq.w opcodePushLiteral
-	cmpi.b #EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, d6
+	cmpi.b #EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d6
 	beq.w opcodePushCurrent
-	cmpi.b #EXPRVM_V2_OPCODE_PUSH_SYMBOL, d6
+	cmpi.b #EXPRVM_OPCODE_PUSH_SYMBOL, d6
 	beq.w opcodePushSymbol
 	cmpi.b #COMPACT_NEGATE, d6
 	beq.w compactNegate
@@ -232,9 +193,9 @@ evalCompact
 	beq.w compactSubtract
 	cmpi.b #COMPACT_MULTIPLY, d6
 	beq.w compactMultiply
-	cmpi.b #EXPRVM_V2_OPCODE_APPLY_UNARY, d6
+	cmpi.b #EXPRVM_OPCODE_APPLY_UNARY, d6
 	beq.w opcodeApplyUnary
-	cmpi.b #EXPRVM_V2_OPCODE_APPLY_BINARY, d6
+	cmpi.b #EXPRVM_OPCODE_APPLY_BINARY, d6
 	beq.w opcodeApplyBinary
 	bra.w unknownOpcode
 compactMultiply
@@ -813,8 +774,6 @@ readLiteralLong	.block
 
 ExprvmStack
 	.res long, EXPRVM_STACK_CAPACITY*2
-ExprvmSelectedOpcodeVersion
-	.res word, 1
 ExprvmCurrentPass
 	.res word, 1
 ExprvmEvalRemaining

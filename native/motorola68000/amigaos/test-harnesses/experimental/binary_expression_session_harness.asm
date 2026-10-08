@@ -198,8 +198,8 @@ Scalar	.byte tokens.TK_KIND_IDENTIFIER
 	.long 2
 	.byte tokens.TK_KIND_CLOSE_PAREN
 ScalarEnd
-ExpectedCompiled	.byte expression.COMPILED_TAG, 7, runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, 7, 0
-	.byte runtime.COMPACT_I8, 6, runtime.COMPACT_ADD, runtime.EXPRVM_V2_OPCODE_END
+ExpectedCompiled	.byte expression.COMPILED_TAG, 7, runtime.EXPRVM_OPCODE_PUSH_SYMBOL, 7, 0
+	.byte runtime.COMPACT_I8, 6, runtime.COMPACT_ADD, runtime.EXPRVM_OPCODE_END
 ExpectedCompiledEnd
 	.align 2
 Statement	.byte StatementEnd-Statement-1, 0, 0, 0, 7, tokens.TK_KIND_IDENTIFIER
@@ -214,8 +214,8 @@ StatementDirective	.word 0
 StatementEnd
 ExpectedPrepared	.byte ExpectedPreparedEnd-ExpectedPrepared-1, 0, 0, 0, 7, tokens.TK_KIND_IDENTIFIER
 ExpectedDirective	.word 0
-	.byte 0, expression.COMPILED_TAG, 7, runtime.EXPRVM_V2_OPCODE_PUSH_SYMBOL, 7, 3
-	.byte runtime.COMPACT_I8, 6, runtime.COMPACT_ADD, runtime.EXPRVM_V2_OPCODE_END
+	.byte 0, expression.COMPILED_TAG, 7, runtime.EXPRVM_OPCODE_PUSH_SYMBOL, 7, 3
+	.byte runtime.COMPACT_I8, 6, runtime.COMPACT_ADD, runtime.EXPRVM_OPCODE_END
 ExpectedPreparedEnd
 	.align 4
 PackageA	.incbin "package-a.bin"
@@ -235,5 +235,5 @@ SessionB	.res byte, frontend.FRAME_BYTES
 ScratchA	.res byte, 262144
 ScratchB	.res byte, 262144
 	.endsection
-	.output "expression-session.hunk", format=hunk, sections=entry,code,data,bss
+	.output "expression-session.hunk", format=hunk, sections=entry, code, data, bss
 	.endmodule

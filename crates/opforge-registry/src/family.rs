@@ -183,6 +183,10 @@ pub trait AssemblerContext {
         Ok(None)
     }
     fn current_address(&self) -> u32;
+    /// Typed address for shared expression evaluation and relocation propagation.
+    fn current_address_value(&self) -> AsmValue {
+        AsmValue::Scalar(i64::from(self.current_address()))
+    }
     fn pass(&self) -> u8;
 
     fn should_defer_unstable_symbols(&self) -> bool {

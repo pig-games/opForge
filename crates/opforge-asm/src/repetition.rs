@@ -262,38 +262,20 @@ pub fn evaluate_for_plan(
         };
         let iterable = evaluate_for_iterable_value(asm_line, &operands[1])?;
         let mut values = Vec::new();
-        match iterable {
-            AsmValue::List(items) => {
-                for value in items {
-                    let converted = u32::try_from(value).map_err(|_| {
-                        AstEvalError::expression(
-                            "loop iterator value out of supported range",
-                            expr_span(&operands[1]),
-                        )
-                    })?;
-                    values.push(converted);
-                }
-            }
-            AsmValue::Range { start, end, step } => {
-                let iterable = AsmValue::Range { start, end, step };
-                if let Some(iter) = iterable.iter() {
-                    for value in iter {
-                        let converted = u32::try_from(value).map_err(|_| {
-                            AstEvalError::expression(
-                                "loop iterator value out of supported range",
-                                expr_span(&operands[1]),
-                            )
-                        })?;
-                        values.push(converted);
-                    }
-                }
-            }
-            AsmValue::Scalar(_) | AsmValue::Struct(_) | AsmValue::StructInstance(_) => {
-                return Err(AstEvalError::directive(
-                    "expected range or list after 'in', found scalar",
+        let Some(iter) = iterable.iter() else {
+            return Err(AstEvalError::directive(
+                "expected range or list after 'in', found scalar",
+                expr_span(&operands[1]),
+            ));
+        };
+        for value in iter {
+            let converted = u32::try_from(value).map_err(|_| {
+                AstEvalError::expression(
+                    "loop iterator value out of supported range",
                     expr_span(&operands[1]),
-                ));
-            }
+                )
+            })?;
+            values.push(converted);
         }
         (Some(var_name), values)
     } else {

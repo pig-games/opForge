@@ -6,9 +6,29 @@
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScalarProvenance {
+    Absolute,
+    Section(String),
+    Unsupported,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AsmValue {
     Scalar(i64),
-    Range { start: i64, end: i64, step: i64 },
+    RelocatableScalar {
+        value: i64,
+        provenance: ScalarProvenance,
+    },
+    Values(Vec<AsmValue>),
+    Record {
+        scalar: Box<AsmValue>,
+        fields: Vec<(String, AsmValue)>,
+    },
+    Range {
+        start: i64,
+        end: i64,
+        step: i64,
+    },
     List(Vec<i64>),
     Struct(StructDef),
     StructInstance(StructInstance),
@@ -42,6 +62,7 @@ pub enum AsmValueError {
 }
 
 pub enum AsmValueIter<'a> {
+    Values(std::slice::Iter<'a, AsmValue>),
     List(std::iter::Copied<std::slice::Iter<'a, i64>>),
     Range {
         current: i64,
@@ -57,6 +78,7 @@ impl<'a> Iterator for AsmValueIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             AsmValueIter::List(iter) => iter.next(),
+            AsmValueIter::Values(iter) => iter.next().and_then(AsmValue::as_scalar),
             AsmValueIter::Range {
                 current,
                 end,
@@ -116,14 +138,20 @@ impl AsmValue {
 
     pub fn as_scalar(&self) -> Option<i64> {
         match self {
-            AsmValue::Scalar(value) => Some(*value),
+            AsmValue::Scalar(value) | AsmValue::RelocatableScalar { value, .. } => Some(*value),
+            AsmValue::Record { scalar, .. } => scalar.as_scalar(),
             _ => None,
         }
     }
 
     pub fn len(&self) -> Option<usize> {
         match self {
-            AsmValue::Scalar(_) | AsmValue::Struct(_) | AsmValue::StructInstance(_) => None,
+            AsmValue::Scalar(_)
+            | AsmValue::RelocatableScalar { .. }
+            | AsmValue::Record { .. }
+            | AsmValue::Struct(_)
+            | AsmValue::StructInstance(_) => None,
+            AsmValue::Values(items) => Some(items.len()),
             AsmValue::List(items) => Some(items.len()),
             AsmValue::Range { start, end, step } => Some(range_len(*start, *end, *step)),
         }
@@ -135,7 +163,15 @@ impl AsmValue {
 
     pub fn iter(&self) -> Option<AsmValueIter<'_>> {
         match self {
-            AsmValue::Scalar(_) | AsmValue::Struct(_) | AsmValue::StructInstance(_) => None,
+            AsmValue::Scalar(_)
+            | AsmValue::RelocatableScalar { .. }
+            | AsmValue::Record { .. }
+            | AsmValue::Struct(_)
+            | AsmValue::StructInstance(_) => None,
+            AsmValue::Values(items) if items.iter().all(|item| item.as_scalar().is_some()) => {
+                Some(AsmValueIter::Values(items.iter()))
+            }
+            AsmValue::Values(_) => None,
             AsmValue::List(items) => Some(AsmValueIter::List(items.iter().copied())),
             AsmValue::Range { start, end, step } => Some(AsmValueIter::Range {
                 current: *start,
@@ -148,7 +184,12 @@ impl AsmValue {
 
     pub fn get(&self, index: usize) -> Option<i64> {
         match self {
-            AsmValue::Scalar(_) | AsmValue::Struct(_) | AsmValue::StructInstance(_) => None,
+            AsmValue::Scalar(_)
+            | AsmValue::RelocatableScalar { .. }
+            | AsmValue::Record { .. }
+            | AsmValue::Struct(_)
+            | AsmValue::StructInstance(_) => None,
+            AsmValue::Values(items) => items.get(index).and_then(AsmValue::as_scalar),
             AsmValue::List(items) => items.get(index).copied(),
             AsmValue::Range { start, end, step } => {
                 let len = range_len(*start, *end, *step);
@@ -161,8 +202,38 @@ impl AsmValue {
         }
     }
 
+    /// Returns the complete indexed value, retaining record members and provenance.
+    pub fn get_value(&self, index: usize) -> Option<AsmValue> {
+        match self {
+            Self::Values(items) => items.get(index).cloned(),
+            _ => self.get(index).map(Self::Scalar),
+        }
+    }
+
+    pub fn scalar_provenance(&self) -> Option<ScalarProvenance> {
+        match self {
+            Self::Scalar(_) => Some(ScalarProvenance::Absolute),
+            Self::RelocatableScalar { provenance, .. } => Some(provenance.clone()),
+            Self::Record { scalar, .. } => scalar.scalar_provenance(),
+            _ => None,
+        }
+    }
+
+    pub fn field_value_typed(&self, name: &str) -> Option<&AsmValue> {
+        match self {
+            Self::Record { fields, .. } => fields
+                .iter()
+                .find(|(field, _)| field.eq_ignore_ascii_case(name))
+                .map(|(_, value)| value),
+            _ => None,
+        }
+    }
+
     pub fn to_list(&self) -> Option<Vec<i64>> {
-        self.iter().map(|iter| iter.collect())
+        match self {
+            Self::Values(items) => items.iter().map(Self::as_scalar).collect(),
+            _ => self.iter().map(|iter| iter.collect()),
+        }
     }
 
     pub fn field_offset(&self, name: &str) -> Option<u32> {
@@ -178,6 +249,7 @@ impl AsmValue {
 
     pub fn field_value(&self, name: &str) -> Option<i64> {
         match self {
+            Self::Record { .. } => self.field_value_typed(name).and_then(Self::as_scalar),
             AsmValue::StructInstance(instance) => {
                 instance.fields.get(name).copied().or_else(|| {
                     instance
@@ -324,5 +396,31 @@ mod tests {
         assert_eq!(value.field_value("busy"), Some(0));
         assert_eq!(value.field_value("BUSY"), Some(0));
         assert_eq!(value.field_value("missing"), None);
+    }
+    #[test]
+    fn typed_records_preserve_fields_and_address_provenance() {
+        use super::ScalarProvenance;
+        let record = AsmValue::Record {
+            scalar: Box::new(AsmValue::RelocatableScalar {
+                value: 42,
+                provenance: ScalarProvenance::Section("code".into()),
+            }),
+            fields: vec![("next".into(), AsmValue::Scalar(7))],
+        };
+        let values = AsmValue::Values(vec![record.clone()]);
+        assert_eq!(values.get_value(0), Some(record.clone()));
+        assert_eq!(values.get_value(1), None);
+        assert_eq!(values.get(0), Some(42));
+        assert_eq!(values.to_list(), Some(vec![42]));
+        assert_eq!(
+            record.scalar_provenance(),
+            Some(ScalarProvenance::Section("code".into()))
+        );
+        assert_eq!(record.field_value("NEXT"), Some(7));
+        assert_eq!(record.field_value_typed("missing"), None);
+        assert_eq!(
+            AsmValue::Values(vec![AsmValue::List(vec![1])]).to_list(),
+            None
+        );
     }
 }

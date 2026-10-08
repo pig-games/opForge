@@ -283,7 +283,7 @@ fn native_constant(name: &str) -> u8 {
         .unwrap()
 }
 fn postfix(expr: &Expr, bytes: &mut Vec<u8>) {
-    use opcore::expr_vm::{ExprVmOpcodeV2 as O, ExprVmUnary as U};
+    use opcore::expr_vm::{ExprVmOpcode as O, ExprVmUnary as U};
     match expr {
         Expr::Number(text, span) => {
             bytes.push(O::PushLiteral as u8);
@@ -376,7 +376,7 @@ fn success(source: &str) -> Case {
     let mut payload = Vec::new();
     if scalar_tree(&ast) {
         postfix(&ast, &mut payload);
-        payload.push(opcore::expr_vm::ExprVmOpcodeV2::End as u8);
+        payload.push(opcore::expr_vm::ExprVmOpcode::End as u8);
         lower_result(&mut expected, 0, &payload);
     } else {
         // The current scalar lowerer intentionally rejects compound node kinds.

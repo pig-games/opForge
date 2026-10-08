@@ -238,6 +238,9 @@ impl<'a> AsmLine<'a> {
             Ok(scalar) => match self.eval_value_ast(expr) {
                 Ok(
                     value @ (types::asm_value::AsmValue::List(_)
+                    | types::asm_value::AsmValue::Values(_)
+                    | types::asm_value::AsmValue::Record { .. }
+                    | types::asm_value::AsmValue::RelocatableScalar { .. }
                     | types::asm_value::AsmValue::Range { .. }
                     | types::asm_value::AsmValue::Struct(_)
                     | types::asm_value::AsmValue::StructInstance(_)),

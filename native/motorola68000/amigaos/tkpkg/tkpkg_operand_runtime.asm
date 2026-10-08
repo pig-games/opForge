@@ -1125,8 +1125,6 @@ textOk
 	bsr.w encodeSelectedOperandTryLastComponentV1
 	tst.l d7
 	bne.w return
-	moveq #0, d5
-	moveq #1, d5
 	moveq #0, d6
 	move.w state.EncodeSelectedSessionPass.l, d6
 	; Rust resolves every identifier term through the active lexical context,

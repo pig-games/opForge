@@ -196,6 +196,8 @@ pub fn set_host_expr_eval_failpoint_for_tests(enabled: bool) {
     HOST_EXPR_EVAL_FAILPOINT.with(|flag| flag.set(enabled));
 }
 
+#[path = "asmline_records.rs"]
+mod asmline_records;
 #[path = "asmline_relocation.rs"]
 mod asmline_relocation;
 
@@ -238,7 +240,6 @@ pub struct AsmLine<'a> {
     pub(crate) repetition_path: Vec<(u32, u32)>,
     pub(crate) immutable_scalar_constants: HashSet<String>,
     pub(crate) scalar_value_symbols: HashMap<String, i64>,
-    repeat_iteration_scopes: HashMap<String, Vec<String>>,
     active_struct: Option<ActiveStructDefinition>,
     diagnostics: AsmDiagnosticsState,
     current_line_num: u32,
@@ -449,7 +450,6 @@ impl<'a> AsmLine<'a> {
             repetition_path: Vec::new(),
             immutable_scalar_constants: HashSet::new(),
             scalar_value_symbols: HashMap::new(),
-            repeat_iteration_scopes: HashMap::new(),
             active_struct: None,
             diagnostics: AsmDiagnosticsState::new(),
             current_line_num: 1,
@@ -1034,7 +1034,6 @@ impl<'a> AsmLine<'a> {
             self.set_scalar_value_symbol(name, value);
             return;
         }
-        self.clear_repeat_iteration_scopes(name);
         self.scalar_value_symbols
             .remove(&Self::value_symbol_key(name));
         self.value_symbols
@@ -1049,7 +1048,6 @@ impl<'a> AsmLine<'a> {
         self.value_symbols.remove(&Self::value_symbol_key(name));
         self.scalar_value_symbols
             .insert(Self::value_symbol_key(name), value);
-        self.clear_repeat_iteration_scopes(name);
     }
 
     fn has_scalar_value_symbol(&self, name: &str) -> bool {
@@ -1057,32 +1055,14 @@ impl<'a> AsmLine<'a> {
             .contains_key(&Self::value_symbol_key(name))
     }
 
-    pub fn set_repeat_iteration_scopes(&mut self, name: &str, scopes: Vec<String>) {
-        if scopes.is_empty() {
-            self.clear_repeat_iteration_scopes(name);
-            return;
-        }
-        self.repeat_iteration_scopes
-            .insert(Self::value_symbol_key(name), scopes);
-    }
-
-    fn clear_repeat_iteration_scopes(&mut self, name: &str) {
-        self.repeat_iteration_scopes
-            .remove(&Self::value_symbol_key(name));
-    }
-
-    fn lookup_repeat_iteration_scopes(&self, name: &str) -> Option<&[String]> {
-        self.repeat_iteration_scopes
-            .get(&Self::value_symbol_key(name))
-            .map(Vec::as_slice)
-    }
-
     fn scalar_shadow_for_value_symbol(value: &AsmValue) -> u32 {
-        match value {
-            AsmValue::Scalar(value) => *value as u32,
-            AsmValue::Struct(def) => def.size,
-            AsmValue::List(_) | AsmValue::Range { .. } | AsmValue::StructInstance(_) => 0,
-        }
+        value.as_scalar().map_or_else(
+            || match value {
+                AsmValue::Struct(def) => def.size,
+                _ => 0,
+            },
+            |value| value as u32,
+        )
     }
 
     fn sync_value_symbol(&mut self, name: &str, value: &AsmValue) {
@@ -1447,6 +1427,14 @@ impl<'a> AsmLine<'a> {
     }
 
     fn hunk_abs32_target_section_for_expr(&self, expr: &Expr) -> Option<String> {
+        if let Some(provenance) = self.typed_expression_provenance(expr) {
+            return match provenance {
+                crate::state::SymbolRelocation::Section(section) => {
+                    Some(self.hunk_output_section(&section))
+                }
+                _ => None,
+            };
+        }
         let section = match expr {
             Expr::Dollar(_) => self.layout.current_section.clone(),
             Expr::Identifier(name, _) => {
@@ -1538,6 +1526,14 @@ impl<'a> AsmLine<'a> {
     }
 
     fn hunk_abs32_target_section_for_data_expr(&self, expr: &Expr) -> Option<String> {
+        if let Some(provenance) = self.typed_expression_provenance(expr) {
+            return match provenance {
+                crate::state::SymbolRelocation::Section(section) => {
+                    Some(self.hunk_output_section(&section))
+                }
+                _ => None,
+            };
+        }
         let section = match expr {
             Expr::Dollar(_) => self.layout.current_section.clone(),
             Expr::Identifier(name, _) => {
@@ -2702,6 +2698,9 @@ impl<'a> AsmLine<'a> {
                     Ok(scalar) => match self.eval_value_ast(expr) {
                         Ok(
                             value @ (AsmValue::List(_)
+                            | AsmValue::Values(_)
+                            | AsmValue::Record { .. }
+                            | AsmValue::RelocatableScalar { .. }
                             | AsmValue::Range { .. }
                             | AsmValue::Struct(_)
                             | AsmValue::StructInstance(_)),
@@ -2991,6 +2990,9 @@ impl<'a> AsmLine<'a> {
     }
 
     fn expr_is_absolute_constant_symbol_expr(&self, expr: &Expr) -> bool {
+        if let Some(provenance) = self.typed_expression_provenance(expr) {
+            return provenance == crate::state::SymbolRelocation::Absolute;
+        }
         match expr {
             Expr::Number(_, _) | Expr::String(_, _) => true,
             Expr::Dollar(_) => self.layout.current_section.is_none(),

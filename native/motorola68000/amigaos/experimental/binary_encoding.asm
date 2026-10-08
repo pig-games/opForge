@@ -2372,7 +2372,7 @@ exactTarget	.block
 	bne.w plain
 	cmpi.b #2, 1(a0)
 	bne.w bad
-	cmpi.b #exprvm.EXPRVM_V2_OPCODE_PUSH_CURRENT_ADDR, 2(a0)
+	cmpi.b #exprvm.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, 2(a0)
 	bne.w bad
 	tst.b 3(a0)
 	bne.w bad
@@ -2389,7 +2389,7 @@ symbol
 	bne.w plain
 	cmpi.b #4, 1(a0)
 	bne.w bad
-	cmpi.b #exprvm.EXPRVM_V2_OPCODE_PUSH_SYMBOL, 2(a0)
+	cmpi.b #exprvm.EXPRVM_OPCODE_PUSH_SYMBOL, 2(a0)
 	bne.w bad
 	tst.b 5(a0)
 	bne.w bad

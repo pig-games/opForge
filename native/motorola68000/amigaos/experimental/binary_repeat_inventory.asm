@@ -1,0 +1,387 @@
+; Preparation-owned declaration identities for anonymous scoped repetitions.
+; Replay consumes numeric IDs and offsets; lexical spelling stays in preparation.
+; @opforge-owner: experimental.amigaos.binary_repeat_inventory
+	.module experimental.amigaos.binary_repeat_inventory
+	.cpu 68020
+	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_package as pkg
+	.use experimental.amigaos.binary_source as source
+	.use prvm.amigaos.packed_loop as parser
+	.use prvm.amigaos.abi as abi
+	.pub
+LABEL = 1
+IMMUTABLE = 2
+MUTABLE = 3
+Decl	.struct
+Owner	.word ?  ; one-based lexical loop identity; zero is enclosing/global
+Kind	.word ?
+Record	.long ?
+	.endstruct
+DECL_BYTES = Decl.Record+4
+DECL_SHIFT = 3
+PackedRecord	.struct
+Length	.byte ?
+Flags	.byte ?
+SourceLine	.word ?
+NameKind	.byte ?
+NameId	.word ?
+NameQualifier	.byte ?
+Marker	.byte ?
+Rhs	.byte ?
+	.endstruct
+Owner	.struct
+Header	.long ?
+First	.long ?  ; byte offset in contiguous declaration-ID storage
+Count	.long ?
+Cursor	.long ?  ; preparation-only scatter cursor
+	.endstruct
+OWNER_BYTES = Owner.Cursor+4
+OWNER_SHIFT = 4
+Frame	.struct
+Parent	.word ?
+Kind	.word ?
+	.endstruct
+FRAME_BYTES = Frame.Kind+2
+FRAME_SHIFT = 2
+DEPTH_LIMIT = 16
+State	.struct
+Declarations	.res memory.Block.Used+4
+Owners	.res memory.Block.Used+4
+Ids	.res memory.Block.Used+4
+SourceBase	.long ?
+Symbols	.long ?
+Count	.long ?
+Current	.word ?
+Depth	.word ?
+Frames	.res DEPTH_LIMIT*FRAME_BYTES
+	.endstruct
+STATE_BYTES = State.Frames+DEPTH_LIMIT*FRAME_BYTES
+	.section code, kind=code
+; A0=state,A1=compiled records,D0=record bytes,A2=context.
+; D0/CCR=status; other registers preserved. Build once after lexical binding.
+; Direct declarations include nested blocks/namespaces, but a nested scoped
+; repetition owns its own IDs. This creates no collectible block markers.
+prepare	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	movea.l a1, a4
+	movea.l a1, a5
+	adda.l d0, a5
+	move.l a1, State.SourceBase(a6)
+	clr.l State.Count(a6)
+	clr.w State.Current(a6)
+	clr.w State.Depth(a6)
+	clr.l State.Owners+memory.Block.Used(a6)
+	clr.l State.Ids+memory.Block.Used(a6)
+	clr.l State.Declarations+memory.Block.Used(a6)
+	move.l pkg.Context.Count(a2), d0
+	cmpi.l #65536, d0
+	bhi.w bad
+	move.l d0, State.Symbols(a6)
+scan
+	cmpa.l a5, a4
+	beq.w scanned
+	bhi.w bad
+	moveq #0, d4
+	move.b PackedRecord.Length(a4), d4
+	addq.w #1, d4
+	cmpi.w #4, d4
+	blo.w bad
+	move.l a5, d0
+	sub.l a4, d0
+	cmp.l d0, d4
+	bhi.w bad
+	btst #source.FLAG_OMIT_BIT, PackedRecord.Flags(a4)
+	bne.w next
+	cmpi.w #PackedRecord.Rhs, d4
+	blo.w next
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, PackedRecord.NameKind(a4)
+	bne.w declaration
+	movea.l a4, a0
+	move.l d4, d0
+	movea.l pkg.Context.Package(a2), a1
+	move.l pkg.Header.LoopPlanBytes(a1), d1
+	adda.l pkg.Header.LoopPlan(a1), a1
+	jsr parser.classify
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w bad
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
+	beq.w bad
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w closing
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w closing
+	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	beq.w declaration
+	move.l d0, d5
+	moveq #0, d6
+	move.w State.Depth(a6), d6
+	cmpi.w #DEPTH_LIMIT, d6
+	bhs.w bad
+	lsl.w #FRAME_SHIFT, d6
+	lea State.Frames(a6), a3
+	adda.w d6, a3
+	move.w State.Current(a6), Frame.Parent(a3)
+	move.w d5, Frame.Kind(a3)
+	addq.w #1, State.Depth(a6)
+	cmpi.l #abi.PRVM_LOOP_BFOR, d5
+	bne.w next
+	bsr.w declarationMap
+	bne.w done
+	lea State.Owners(a6), a0
+	move.l memory.Block.Used(a0), d6
+	move.l d6, d0
+	addi.l #OWNER_BYTES, d0
+	jsr memory.reserve
+	bne.w done
+	movea.l memory.Block.Pointer(a0), a3
+	adda.l d6, a3
+	move.l d6, d0
+	addi.l #OWNER_BYTES, d0
+	move.l d0, memory.Block.Used(a0)
+	move.l a4, d0
+	sub.l State.SourceBase(a6), d0
+	move.l d0, Owner.Header(a3)
+	clr.l Owner.First(a3)
+	clr.l Owner.Count(a3)
+	clr.l Owner.Cursor(a3)
+	lsr.l #OWNER_SHIFT, d6
+	addq.l #1, d6
+	cmpi.l #65535, d6
+	bhi.w bad
+	move.w d6, State.Current(a6)
+	bra.w next
+closing
+	moveq #0, d6
+	move.w State.Depth(a6), d6
+	beq.w bad
+	subq.w #1, d6
+	move.w d6, State.Depth(a6)
+	lsl.w #FRAME_SHIFT, d6
+	lea State.Frames(a6), a3
+	adda.w d6, a3
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w closeWhile
+	cmpi.w #abi.PRVM_LOOP_MATCHED, Frame.Kind(a3)
+	beq.w closed
+	cmpi.w #abi.PRVM_LOOP_BFOR, Frame.Kind(a3)
+	bne.w bad
+	bra.w closed
+closeWhile
+	cmpi.w #abi.PRVM_LOOP_WHILE, Frame.Kind(a3)
+	bne.w bad
+closed
+	move.w Frame.Parent(a3), State.Current(a6)
+	bra.w next
+declaration
+	tst.w State.Current(a6)
+	beq.w next
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, PackedRecord.NameKind(a4)
+	bhi.w next
+	tst.b PackedRecord.NameQualifier(a4)
+	bne.w bad
+	moveq #LABEL, d5
+	cmpi.b #abi.PRVM_TOKEN_KIND_COLON, PackedRecord.Marker(a4)
+	beq.w bind
+	moveq #IMMUTABLE, d5
+	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, PackedRecord.Marker(a4)
+	beq.w bind
+	moveq #MUTABLE, d5
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, PackedRecord.Marker(a4)
+	beq.w bind
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, PackedRecord.Marker(a4)
+	bne.w next
+bind
+	moveq #0, d6
+	move.w PackedRecord.NameId(a4), d6
+	cmp.l State.Symbols(a6), d6
+	bhs.w bad
+	lsl.l #DECL_SHIFT, d6
+	movea.l State.Declarations+memory.Block.Pointer(a6), a3
+	adda.l d6, a3
+	tst.w Decl.Owner(a3)
+	beq.w first
+	move.w State.Current(a6), d0
+	cmp.w Decl.Owner(a3), d0
+	bne.w bad
+	cmpi.w #MUTABLE, d5
+	bne.w bad
+	cmp.w Decl.Kind(a3), d5
+	bne.w bad
+	bra.w next
+first
+	move.w State.Current(a6), Decl.Owner(a3)
+	move.w d5, Decl.Kind(a3)
+	move.l a4, d0
+	sub.l State.SourceBase(a6), d0
+	move.l d0, Decl.Record(a3)
+	addq.l #1, State.Count(a6)
+	moveq #0, d0
+	move.w State.Current(a6), d0
+	subq.l #1, d0
+	lsl.l #OWNER_SHIFT, d0
+	movea.l State.Owners+memory.Block.Pointer(a6), a3
+	addq.l #1, Owner.Count(a3, d0.l)
+next
+	adda.w d4, a4
+	bra.w scan
+scanned
+	tst.w State.Depth(a6)
+	bne.w bad
+	bsr.w scatter
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; prepare
+
+; A0=state. Release only preparation inventory, independent of runtime cells.
+; Registers preserved; CCR reflects the caller's D0 status after cleanup.
+release	.block
+	movem.l a0, -(sp)
+	jsr memory.release
+	lea State.Owners(a0), a0
+	jsr memory.release
+	movea.l (sp), a0
+	lea State.Ids(a0), a0
+	jsr memory.release
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; release
+
+; A0=state,D0=compiled header offset. D0/CCR=status,D1=owner ordinal,
+; D2=direct declaration count,D3=ID byte offset; other registers preserved.
+; Preparation source order makes owner headers strictly increasing.
+find	.block
+	movem.l d4-d7/a0-a2, -(sp)
+	movea.l State.Owners+memory.Block.Pointer(a0), a1
+	move.l State.Owners+memory.Block.Used(a0), d5
+	lsr.l #OWNER_SHIFT, d5
+	moveq #0, d4
+search
+	cmp.l d5, d4
+	bhs.w bad
+	move.l d4, d6
+	add.l d5, d6
+	lsr.l #1, d6
+	move.l d6, d7
+	lsl.l #OWNER_SHIFT, d7
+	movea.l a1, a2
+	adda.l d7, a2
+	cmp.l Owner.Header(a2), d0
+	beq.w found
+	blo.w lower
+	move.l d6, d4
+	addq.l #1, d4
+	bra.w search
+lower
+	move.l d6, d5
+	bra.w search
+found
+	move.l d6, d1
+	addq.l #1, d1
+	move.l Owner.Count(a2), d2
+	move.l Owner.First(a2), d3
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d4-d7/a0-a2
+	tst.l d0
+	rts
+	.bend  ; find
+	.priv
+; A6=state. Prefix counts and scatter IDs once into directly-owned ranges.
+; Clobbers D0-D3/A0-A3; D0/CCR=status.
+scatter	.block
+	tst.l State.Owners+memory.Block.Used(a6)
+	beq.w good
+	move.l State.Count(a6), d0
+	add.l d0, d0
+	lea State.Ids(a6), a0
+	jsr memory.reserve
+	bne.w done
+	move.l State.Count(a6), d0
+	add.l d0, d0
+	move.l d0, memory.Block.Used(a0)
+	movea.l State.Owners+memory.Block.Pointer(a6), a1
+	move.l State.Owners+memory.Block.Used(a6), d1
+	moveq #0, d2
+prefix
+	tst.l d1
+	beq.w ids
+	move.l d2, Owner.First(a1)
+	move.l d2, Owner.Cursor(a1)
+	move.l Owner.Count(a1), d0
+	add.l d0, d0
+	add.l d0, d2
+	adda.w #OWNER_BYTES, a1
+	subi.l #OWNER_BYTES, d1
+	bra.w prefix
+ids
+	movea.l State.Declarations+memory.Block.Pointer(a6), a0
+	movea.l State.Ids+memory.Block.Pointer(a6), a2
+	moveq #0, d1
+id
+	cmp.l State.Symbols(a6), d1
+	bhs.w good
+	moveq #0, d0
+	move.w Decl.Owner(a0), d0
+	beq.w next
+	subq.l #1, d0
+	lsl.l #OWNER_SHIFT, d0
+	movea.l State.Owners+memory.Block.Pointer(a6), a1
+	adda.l d0, a1
+	move.l Owner.Cursor(a1), d3
+	move.w d1, 0(a2, d3.l)
+	addq.l #2, Owner.Cursor(a1)
+next
+	addq.l #1, d1
+	addq.l #DECL_BYTES, a0
+	bra.w id
+good
+	moveq #0, d0
+done
+	tst.l d0
+	rts
+	.bend  ; scatter
+
+; A6=state. Allocate the direct-ID map only at the first scoped header.
+; Ordinary unscoped programs carry no scoped inventory allocation.
+; D0/CCR=status; other registers preserved.
+declarationMap	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	tst.l State.Declarations+memory.Block.Used(a6)
+	bne.w good
+	move.l State.Symbols(a6), d1
+	beq.w bad
+	move.l d1, d2
+	lsl.l #DECL_SHIFT, d2
+	move.l d2, d0
+	lea State.Declarations(a6), a0
+	jsr memory.reserve
+	bne.w done
+	move.l d2, memory.Block.Used(a0)
+	movea.l memory.Block.Pointer(a0), a1
+clear
+	clr.l (a1)+
+	clr.l (a1)+
+	subq.l #1, d1
+	bne.w clear
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+	.bend  ; declarationMap
+	.endsection
+	.endmodule

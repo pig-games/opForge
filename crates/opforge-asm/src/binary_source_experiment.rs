@@ -161,7 +161,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS34 block for one resolved package hierarchy.
+/// Prepare a self-contained BS35 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -321,8 +321,11 @@ pub fn prepare_package(
         )?;
         directive_ids.push(id);
     }
-    let mut while_heads = [0; 2];
-    for (head, spelling) in while_heads.iter_mut().zip(["while", "endwhile"]) {
+    let mut while_heads = [0; 4];
+    for (head, spelling) in while_heads
+        .iter_mut()
+        .zip(["while", "endwhile", "bfor", "bwhile"])
+    {
         *head = intern(&mut names, spelling)?;
         bind(
             &mut dictionary,
@@ -510,7 +513,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS34");
+    out[..4].copy_from_slice(b"BS35");
     set_word(&mut out, 208, builtin_len);
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
@@ -643,6 +646,8 @@ pub fn prepare_package(
         directive_ids[9],
         while_heads[0],
         while_heads[1],
+        while_heads[2],
+        while_heads[3],
     );
     out.extend_from_slice(&loop_plan);
     align(&mut out);
@@ -1924,7 +1929,7 @@ mod dictionary_role_contract_tests {
         assert_eq!(&unsupported[ROLE_COUNT..], &wire[ROLE_COUNT..]);
 
         let prepared = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&prepared[..4], b"BS34");
+        assert_eq!(&prepared[..4], b"BS35");
         let rows = u32::from_be_bytes(prepared[16..20].try_into().unwrap()) as usize;
         let count = u32::from_be_bytes(prepared[20..24].try_into().unwrap()) as usize;
         assert!(

@@ -12,7 +12,6 @@
 DEFINED = 3
 ; Readonly statement-time scalar proof; unlike dependency ABSOLUTE, recompute.
 SNAPSHOT_ABSOLUTE = 4
-PENDING = 7; dependency indexing only; never an executable availability state
 INVALID_RECORDS = 1
 UNSUPPORTED_LAYOUT = 2
 	.section code, kind=code

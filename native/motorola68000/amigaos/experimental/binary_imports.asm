@@ -2082,7 +2082,15 @@ ordinaryExpressionName
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 registeredExpressionSymbol
-	ori.w #2, records.Entry.Flags(a0)  ; same REFERENCED bit as scopes.line
+	; Snapshot probes share replay's reference availability policy. A loop
+	; body may never execute; its numeric missing IDs fail only when consumed.
+	tst.w layout.State.LoopDepth(a6)
+	bne.w deferredExpressionSymbol
+	ori.w #records.REFERENCED, records.Entry.Flags(a0)
+	bra.w expressionReferenceReady
+deferredExpressionSymbol
+	ori.w #records.OPTIONAL_REFERENCED, records.Entry.Flags(a0)
+expressionReferenceReady
 	clr.b 3(a5)
 	move.l d3, d0
 	lea layout.MODULE_STATE(a6), a0

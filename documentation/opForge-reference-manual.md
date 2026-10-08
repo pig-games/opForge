@@ -501,12 +501,24 @@ Notes:
   two-concrete-section output on both packages. Mapped modes 2 and 4 reject any
   `.while`, including constant-false loops, because their filtered traversal
   does not preserve the PC across skipped sections. Complete `.while` parity
-  and scoped `.bfor`/`.bwhile` remain open. The latest BS34 full release self-host
+  and full scoped `.bfor`/`.bwhile` parity remain open. The latest BS34 full release self-host
   completes all 116 mapped inputs (1,739,975 bytes) in 24m46.67s on FS-UAE
   68020/74 MiB, with exact bootstrap/native/live Rust equality for the entire
   596,652-byte Hunk. That self-host result does not establish full loop/macro
   parity, A6000 timing or 2 MiB fit. See the [current checkpoint](plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs34)
   and [BS34 plan](plans/native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
+
+  BS35 adds focused native support for anonymous counted `.bfor` on both packages.
+  Twenty-one combined scenarios match live Rust, covering nested local labels and
+  constants, forward chains, mutable and compound snapshots, wide/signed values,
+  local macro expansion and zero-count bodies. Per-iteration labels and nested
+  section-relative aliases also match complete Rust Hunk files, including
+  relocations. Active missing values, cycles, escaped local names and malformed
+  scope boundaries reject. Labeled/indexed and iterable `.bfor`, `.bwhile`, mapped
+  scoped replay, later-local conditions and inactive local constant dependencies
+  remain open; literals above 32 bits also remain a packing limitation. These
+  focused results do not qualify a new full self-host or complete loop/macro parity.
+  See the [scoped-loop checkpoint](plans/native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification).
 
 
 Scalar `.for` and `.bfor` counts may refer forward to immutable constants whose

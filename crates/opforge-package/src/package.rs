@@ -1656,6 +1656,8 @@ pub fn packed_loop_program(
     endfor: u16,
     while_directive: u16,
     endwhile: u16,
+    bfor: u16,
+    bwhile: u16,
 ) -> Vec<u8> {
     let mut program = vec![MacroDescriptorOpcode::LoopHeader as u8];
     program.extend_from_slice(&for_directive.to_be_bytes());
@@ -1663,6 +1665,8 @@ pub fn packed_loop_program(
     program.extend_from_slice(&endfor.to_be_bytes());
     program.extend_from_slice(&while_directive.to_be_bytes());
     program.extend_from_slice(&endwhile.to_be_bytes());
+    program.extend_from_slice(&bfor.to_be_bytes());
+    program.extend_from_slice(&bwhile.to_be_bytes());
     program.extend_from_slice(&[
         MacroDescriptorOpcode::Publish as u8,
         MacroDescriptorOpcode::End as u8,

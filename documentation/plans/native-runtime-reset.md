@@ -348,6 +348,96 @@ foundation, with explicit rejection until supported. A focused Rust probe alread
 rejects indexed loop-member addresses in Hunk output; do not mistake flat indexed
 value support for relocation support or silently emit an unrelocated address.
 
+### Anonymous counted scoped repetition (BS35, focused qualification)
+
+BS35 has one current 17-byte LoopPlan with numeric scoped-for/scoped-while
+identities. Package production, Rust classification, native validation and the
+A6000 transport helper migrate together; superseded BS34 packages reject. No
+native VM-version parameter, dispatch or legacy executor is introduced.
+
+The first executable scope is anonymous counted `.bfor`. Preparation binds an
+unspellable lexical scope and inventories numeric declarations. Replay keys each
+invocation by its observation-trace offset and each retained value by iteration
+and declaration ID. Cells keep low/high value words, compound kind, availability
+and section identity. Nested scopes restore their enclosing cells; sizing retries
+discard provisional ownership and cells. These anonymous scopes do not create
+independently selectable block units.
+
+Responsibilities are separate: inventory, full-value storage, invocation frames
+and local root eligibility. The existing shared constant dependency walk resolves
+both global and local immutable chains, using private graph states and expression
+offsets instead of overloading live numeric values. Mutable snapshots and labels
+remain statement-time work. Section-relative enclosing constants also defer to
+statement-time affine relocation proof. Module-static configuration scans exclude
+loop bodies using the same numeric PRVM loop-head selector. RHS snapshot probes
+use the existing deferred-reference policy inside loops, so zero-count bodies do
+not turn unavailable names into preparation errors; active consumption still rejects.
+
+Retained cell storage is 16 × (iterations + one saved enclosing frame) × directly
+owned declarations per invocation. Allocation and arithmetic are checked against
+existing bounded memory blocks. The declaration map is allocated only for scoped
+sources; the shared resolver's state/offset arrays are retained for the assembly.
+These costs require measurement rather than an assumption of a 2 MiB fit.
+
+The candidate's two-package image is 618,424 bytes, with 637,956 linked reservation
+bytes; these are not peak RAM. The m68020 and m6502 packages are 434,454 and 17,230
+bytes respectively, each 26 bytes larger than BS34. The release image fingerprint
+is `fnv1a64:cd426aec64ef9867`.
+
+Twenty-one combined positive scenarios match live Rust on both packages. Direct
+iteration-label and nested readonly-alias tests match the whole Hunk, including
+relocations; enclosing global resolver success/cycle controls also pass. Six
+invalid-input controls and six documented unsupported capabilities per package
+complete with explicit rejection. Rejection completion is not diagnostic parity.
+
+A separate gated diagnostic run matches the 21-case Rust oracle. Its tracked
+owned peak is 628,224 bytes, with balanced allocated/freed totals (1,221,432 bytes),
+zero terminal owned bytes and zero profiling errors. Diagnostic image/static
+reservation is 626,824/648,784 bytes. This small 2,368-byte fixture does not measure
+full self-host peak memory.
+
+Separate release comparisons use the unchanged 15,474-byte aligned control
+(`fnv1a64:ac05445d958571b5`), FS-UAE 68020/10 MiB, two interleaved rounds, no
+concurrent builds or native runs, and fresh exact live-Rust output for every run.
+The first foundation comparison measured BS34/foundation means of
+26.273169/26.304628 seconds (+0.031459 s, +0.12%, within the baseline spread).
+The subsequent isolated steps are:
+
+| Saved state | Mean seconds | Delta from preceding state | Image bytes |
+|---|---:|---:|---:|
+| Lexical foundation | 26.302190 | baseline | 614,348 |
+| Shared graph/inventory | 26.340741 | +0.038551 s (+0.147%) | 615,692 |
+| Iteration replay/provenance | 26.336979 | −0.003761 s (−0.014%) | 618,180 |
+| Numeric configuration/guard repair | 26.380901 | +0.043922 s (+0.167%) | 618,404 |
+| Deferred RHS binding repair | 26.485538 | +0.104637 s (+0.397%) | 618,424 |
+
+Final versus foundation is +0.183348 s (+0.697%) observed. The final pair spans
+26.390311–26.580764 seconds, so small step deltas are not established gains or
+regressions. No improvement is hidden inside an aggregate. Total image/static
+growth from the BS34 two-package reference is 4,568/4,552 bytes. Saved images,
+per-run logs, timings and fingerprints are retained under `/tmp/opforge-bs35-*`;
+`/tmp/opforge-bs35-scoped-control.py` drives the maintained `native_layout_fs_uae`
+control with explicit prebuilt images. A complete current-source self-host is
+being qualified separately; it is not an identical-input performance comparison
+with the older BS34 source.
+
+Explicit boundaries remain: labeled/indexed iteration scopes, iterable `.bfor`,
+`.bwhile`, mapped scoped replay, conditionals that need a later local mutable's
+retained value, and inactive local immutable declarations whose unavailable
+references would otherwise be resolved eagerly. Safe acceptance of the latter
+requires branch-aware dependency eligibility; missing values must not become
+zero. A current Rust self-initializer probe also exposes a target-dependent
+layout-retry policy: 68020 rejects after unstable retries while 6502 emits the
+retained values. That is a canonical consistency issue, not a CPU-specific native
+language rule. Literal token packing still rejects literals above 32 bits; focused
+wide-cell tests construct the same 64-bit value through supported arithmetic.
+Indexed loop-member Hunk relocation remains a coordinated
+Rust/package/native capability, explicitly unsupported in the current Rust probe.
+
+The BS34 full self-host above qualifies only its identified source and image.
+No BS35 full self-host, hardware time, full peak memory or 2 MiB qualification is
+claimed by these component checks.
+
 ### Compound-value checkpoints
 
 The first checkpoint extends the native EXVM backend's shared grammar actions

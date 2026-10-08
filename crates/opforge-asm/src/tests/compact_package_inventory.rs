@@ -1,4 +1,4 @@
-//! Host-only BS34 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS35 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -36,10 +36,10 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS34")
+        || bytes.get(..4) != Some(b"BS35")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS34 header".into());
+        return Err("invalid BS35 header".into());
     }
     let loop_offset = number(bytes, 212, 4)?;
     let loop_bytes = number(bytes, 216, 4)?;
@@ -47,15 +47,15 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
     let loop_name_count = number(bytes, 62, 2)?;
     if loop_offset < HEADER
         || loop_offset % 2 != 0
-        || loop_bytes != 13
+        || loop_bytes != 17
         || loop_offset
             .checked_add(loop_bytes)
             .is_none_or(|end| end > number(bytes, 72, 4).unwrap_or(0))
         || loop_plan[0] != 0x99
-        || loop_plan[11..] != [0x83, 0]
+        || loop_plan[15..] != [0x83, 0]
         || u16::from_be_bytes(loop_plan[1..3].try_into().unwrap()) as usize != number(bytes, 66, 2)?
         || u16::from_be_bytes(loop_plan[5..7].try_into().unwrap()) as usize != number(bytes, 98, 2)?
-        || (0..5).any(|index| {
+        || (0..7).any(|index| {
             u16::from_be_bytes(loop_plan[1 + index * 2..3 + index * 2].try_into().unwrap()) as usize
                 >= loop_name_count
         })
@@ -492,7 +492,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS34", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS35", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

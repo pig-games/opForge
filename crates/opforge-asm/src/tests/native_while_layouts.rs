@@ -9,7 +9,7 @@ fn raw_hunk(cpu: &str) -> String {
     format!(".module entry\n.cpu {cpu}\n.section code,kind=code\n.while $<2\n.byte 1\n.endwhile\n.while 0\n.byte missing\n.endwhile\n.endsection\n.section data,kind=data\n.byte 7\n.endsection\n.output \"out.hunk\",format=hunk,sections=code,data\n.endmodule\n")
 }
 
-fn hunk_oracle(dir: &Path, source: &str) -> Vec<u8> {
+pub(super) fn hunk_oracle(dir: &Path, source: &str) -> Vec<u8> {
     let input = dir.join("entry.asm");
     let output = dir.join("out.hunk");
     fs::write(
@@ -90,7 +90,7 @@ fn native_while_layouts_rust_oracles() {
     }
 }
 
-fn native_case(
+pub(super) fn native_case(
     root: &Path,
     image: &[u8],
     name: &str,

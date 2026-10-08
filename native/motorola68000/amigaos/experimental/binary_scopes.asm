@@ -31,8 +31,8 @@ BUFFER = layout.BUFFER
 MODULE_STATE = layout.MODULE_STATE
 IMPORT_STATE = layout.IMPORT_STATE
 DECLARED = 1
-REFERENCED = 2
-OPTIONAL_REFERENCED = 512; skipped conditional RHS still carries graph references
+REFERENCED = records.REFERENCED
+OPTIONAL_REFERENCED = records.OPTIONAL_REFERENCED; skipped conditional RHS still carries graph references
 EXPLICIT = 4
 KIND_BLOCK = 1
 KIND_NAMESPACE = 2
@@ -959,6 +959,7 @@ bindConfigurationName	.block
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
+	clr.w layout.State.PendingRepeat(a6)
 	movea.l a0, a5
 	move.l d0, d4
 	moveq #0, d5
@@ -1054,6 +1055,16 @@ directive
 	movea.l layout.State.Package(a6), a1
 	move.l a1, d1
 	beq.w ordinaryDirective
+	move.l pkg.Header.LoopPlan(a1), d1
+	adda.l d1, a1
+	cmp.w loop_abi.LoopProgram.BwhileHigh(a1), d0
+	beq.w bad  ; scoped while is not part of counted scoped replay
+	cmp.w loop_abi.LoopProgram.BforHigh(a1), d0
+	bne.w loopPolicy
+	tst.l d7
+	bpl.w bad  ; a labeled head must not bypass the raw-envelope classifier
+loopPolicy
+	movea.l layout.State.Package(a6), a1
 	movem.l d0/a0, -(sp)
 	movea.l a5, a0
 	move.l d6, d0
@@ -1068,6 +1079,10 @@ directive
 	beq.w loopHeader
 	cmpi.l #loop_abi.PRVM_LOOP_WHILE, d3
 	beq.w loopHeader
+	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d3
+	beq.w scopedLoopHeader
+	cmpi.l #loop_abi.PRVM_LOOP_BWHILE, d3
+	beq.w bad
 	cmpi.l #loop_abi.PRVM_LOOP_ENDFOR, d3
 	beq.w closeFor
 	cmpi.l #loop_abi.PRVM_LOOP_ENDWHILE, d3
@@ -1077,11 +1092,23 @@ directive
 closeFor
 	moveq #iterators.FOR, d1
 closeLoop
+	moveq #0, d2
+	move.w layout.State.LoopDepth(a6), d2
+	beq.w bad
+	subq.w #1, d2
+	add.w d2, d2
+	move.w layout.State.LoopParents(a6, d2.w), d2
+	move.w d2, -(sp)
 	movem.l d0/a0, -(sp)
 	lea layout.ITERATOR_STATE(a6), a0
 	jsr iterators.close
 	movem.l (sp)+, d0/a0
-	bne.w bad
+	bne.w failedCloseLoop
+	move.w (sp)+, layout.State.Current(a6)
+	bra.w ordinaryDirective
+failedCloseLoop
+	addq.l #2, sp
+	bra.w bad
 ordinaryDirective
 	bsr.w keyword
 	cmpi.l #KEY_USE, d0
@@ -1117,8 +1144,30 @@ ordinaryDirective
 	; Other directives retain their existing generic preparation/assembly route.
 	addq.l #5, a0
 	bra.w references
+scopedLoopHeader
+	tst.l d7
+	bpl.w bad  ; labeled/indexed repetition remains a separate capability
+	tst.l d1
+	bpl.w bad  ; first slice is counted only
 loopHeader
 	move.l d3, -(sp)
+	moveq #0, d0
+	move.w layout.State.LoopDepth(a6), d0
+	cmpi.w #iterators.LIMIT, d0
+	bhs.w failedLoopHeader
+	add.w d0, d0
+	move.w layout.State.Current(a6), layout.State.LoopParents(a6, d0.w)
+	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d3
+	bne.w loopIdentity
+	bsr.w anonymousRepeat
+	bne.w failedLoopHeader
+	move.w layout.State.Current(a6), layout.State.PendingRepeat(a6)
+	moveq #0, d0
+	move.w layout.State.LoopDepth(a6), d0
+	add.w d0, d0
+	move.w layout.State.LoopParents(a6, d0.w), layout.State.Current(a6)
+	moveq #-1, d1
+loopIdentity
 	tst.l d1
 	bmi.w countedLoop
 	move.l d1, d0
@@ -1134,6 +1183,10 @@ countedLoop
 	move.l #iterators.COUNTED, d0
 openLoop
 	move.l (sp)+, d1
+	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d1
+	bne.w openKind
+	moveq #iterators.FOR, d1
+openKind
 	lea layout.ITERATOR_STATE(a6), a0
 	jsr iterators.open
 	bne.w bad
@@ -1341,6 +1394,13 @@ ok
 bad
 	moveq #1, d0
 done
+	tst.l d0
+	bne.w lineReturn
+	tst.w layout.State.PendingRepeat(a6)
+	beq.w lineReturn
+	move.w layout.State.PendingRepeat(a6), layout.State.Current(a6)
+lineReturn
+	clr.w layout.State.PendingRepeat(a6)
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -1658,6 +1718,51 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; normalizeLabel
+
+; A6=scope state. Create a preparation-only anonymous lexical identity.
+; The spelling cannot occur in TKVM source; only its numeric identity survives.
+; D0/CCR=status; other registers preserved. No reachability marker is emitted.
+anonymousRepeat	.block
+	movem.l d1-d7/a0-a5, -(sp)
+	subq.l #6, sp
+	movea.l sp, a0
+	move.b #'#', (a0)+
+	moveq #0, d1
+	move.w layout.State.Count(a6), d1
+	moveq #3, d2
+hexDigit
+	rol.w #4, d1
+	move.w d1, d3
+	andi.w #15, d3
+	addi.b #'0', d3
+	cmpi.b #'9', d3
+	bls.w digitReady
+	addq.b #7, d3
+digitReady
+	move.b d3, (a0)+
+	dbra d2, hexDigit
+	movea.l sp, a0
+	moveq #5, d0
+	movea.l a6, a1
+	bsr.w bind
+	bne.w done
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	move.w #KIND_NAMESPACE, records.Entry.ScopeKind(a3)
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	addq.w #1, d0
+	move.w d0, layout.State.Current(a6)
+	moveq #0, d0
+done
+	addq.l #6, sp
+	movem.l (sp)+, d1-d7/a0-a5
+	tst.l d0
+	rts
+	.bend  ; anonymousRepeat
 
 ; Shared scope-open boundary. A0=directive,A4=end,A5=record,A6=state,
 ; D7=optional parent-scope label ID (-1 absent), D2=kind. D0/CCR=status;

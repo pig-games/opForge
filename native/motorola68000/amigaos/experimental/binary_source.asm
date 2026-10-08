@@ -16,7 +16,8 @@ MAX_LINE = 256
 FLAG_INDENT = 1
 FLAG_BLOCK_OPEN = 2
 FLAG_BLOCK_CLOSE = 4
-FLAG_OMIT = 8
+FLAG_OMIT_BIT = 3
+FLAG_OMIT = 1<<FLAG_OMIT_BIT
 FLAG_LAYOUT = 16
 FLAG_PLAN = 32
 ; Dependency preparation owns this role on canonical immutable declarations.

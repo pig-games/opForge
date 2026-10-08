@@ -24,6 +24,8 @@
 	.use experimental.amigaos.binary_repetition as repetition
 	.use experimental.amigaos.binary_branches as branches
 	.use experimental.amigaos.binary_guard_values as guards
+	.use experimental.amigaos.binary_repeat_inventory as repeatInventory
+	.use experimental.amigaos.binary_memory as memory
 	.include "memory_telemetry.i"
 	.pub
 
@@ -71,6 +73,8 @@ BranchState
 	.res byte, branches.STATE_BYTES
 RepeatState
 	.res byte, repetition.STATE_BYTES
+InventoryState
+	.res byte, repeatInventory.STATE_BYTES
 HunkInstructionRefs
 	.res word, 1
 HunkInstructionRefCount
@@ -125,6 +129,9 @@ assemble	.block
 	clr.w Frame.Failure(a5)
 	lea RepeatState, a0
 	jsr repetition.release
+	jsr dependencies.release
+	lea InventoryState, a0
+	jsr repeatInventory.release
 	move.l #-1, Frame.RecordOffset(a5)
 	movea.l Frame.Context(a5), a6
 	movea.l pkg.Context.Owner(a6), a0
@@ -153,9 +160,22 @@ clearSymbols
 	movea.l Frame.Records(a5), a0
 	move.l Frame.RecordBytes(a5), d0
 	movea.l a6, a2
+	movea.l a0, a1
+	lea InventoryState, a0
+	jsr repeatInventory.prepare
+	bne.w fail
+	movea.l Frame.Records(a5), a0
+	move.l Frame.RecordBytes(a5), d0
+	movea.l InventoryState+repeatInventory.State.Declarations+memory.Block.Pointer, a1
 	jsr dependencies.resolve
 	tst.l d0
 	bne.w fail
+	lea RepeatState, a0
+	lea InventoryState, a1
+	movea.l a6, a2
+	movea.l Frame.Records(a5), a3
+	move.l Frame.RecordBytes(a5), d0
+	jsr repetition.prepare
 	movea.l Frame.Records(a5), a0
 	move.l Frame.RecordBytes(a5), d0
 	lea SectionState, a1
@@ -214,6 +234,7 @@ outputReady
 	movea.l Frame.Records(a5), a1
 	move.l Frame.RecordBytes(a5), d0
 	movea.l a6, a2
+	movea.l InventoryState+repeatInventory.State.Declarations+memory.Block.Pointer, a3
 	jsr guards.prepare
 	bne.w fail
 
@@ -586,6 +607,9 @@ fail
 done
 	lea RepeatState, a0
 	jsr repetition.release
+	jsr dependencies.release
+	lea InventoryState, a0
+	jsr repeatInventory.release
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts

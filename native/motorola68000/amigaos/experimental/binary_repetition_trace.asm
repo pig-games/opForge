@@ -1,3 +1,4 @@
+; @opforge-owner: experimental.amigaos.binary_repetition_trace
 ; Bounded sparse repetition observations. Parent offsets encode nesting paths.
 	.module experimental.amigaos.binary_repetition_trace
 	.cpu 68020

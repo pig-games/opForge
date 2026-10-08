@@ -162,42 +162,29 @@ classify	.block
 	bhi.w ordinary
 	moveq #-1, d1
 	moveq #abi.LoopRecord.VariableKind, d2
-	move.b abi.LoopRecord.HeadHigh(a0), d0
-	cmp.b abi.LoopProgram.ForHigh(a1), d0
-	bne.w checkEndfor
-	move.b abi.LoopRecord.HeadLow(a0), d0
-	cmp.b abi.LoopProgram.ForLow(a1), d0
+	moveq #0, d0
+	move.w abi.LoopRecord.HeadHigh(a0), d0
+	bsr.w selectIdentity
+	move.l d0, d7
+	cmpi.l #abi.PRVM_LOOP_MATCHED, d0
 	beq.w forHead
-checkEndfor
-	move.b abi.LoopRecord.HeadHigh(a0), d0
-	cmp.b abi.LoopProgram.EndforHigh(a1), d0
-	bne.w checkWhile
-	move.b abi.LoopRecord.HeadLow(a0), d0
-	cmp.b abi.LoopProgram.EndforLow(a1), d0
-	bne.w checkWhile
-	moveq #abi.PRVM_LOOP_ENDFOR, d7
-	bra.w closing
-checkWhile
-	move.b abi.LoopRecord.HeadHigh(a0), d0
-	cmp.b abi.LoopProgram.WhileHigh(a1), d0
-	bne.w checkEndwhile
-	move.b abi.LoopRecord.HeadLow(a0), d0
-	cmp.b abi.LoopProgram.WhileLow(a1), d0
-	bne.w checkEndwhile
+	cmpi.l #abi.PRVM_LOOP_BFOR, d0
+	beq.w bforHead
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w closing
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w closing
+	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	beq.w whileHead
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
+	bne.w ordinary
+whileHead
 	tst.b abi.LoopRecord.HeadQualifier(a0)
 	bne.w malformed
 	cmpi.l #abi.LoopRecord.VariableKind, d3
 	beq.w malformed
-	moveq #abi.PRVM_LOOP_WHILE, d0
+	move.l d7, d0
 	bra.w done
-checkEndwhile
-	move.b abi.LoopRecord.HeadHigh(a0), d0
-	cmp.b abi.LoopProgram.EndwhileHigh(a1), d0
-	bne.w ordinary
-	move.b abi.LoopRecord.HeadLow(a0), d0
-	cmp.b abi.LoopProgram.EndwhileLow(a1), d0
-	bne.w ordinary
-	moveq #abi.PRVM_LOOP_ENDWHILE, d7
 closing
 	tst.b abi.LoopRecord.HeadQualifier(a0)
 	bne.w malformed
@@ -206,7 +193,13 @@ closing
 	moveq #0, d2
 	move.l d7, d0
 	bra.w done
+
 forHead
+	moveq #abi.PRVM_LOOP_MATCHED, d7
+	bra.w countedHead
+bforHead
+	moveq #abi.PRVM_LOOP_BFOR, d7
+countedHead
 	tst.b abi.LoopRecord.HeadQualifier(a0)
 	bne.w malformed
 	cmpi.l #abi.LoopRecord.VariableKind, d3
@@ -237,9 +230,10 @@ forHead
 	move.b abi.LoopRecord.VariableLow(a0), d1
 	moveq #abi.LOOP_EXPRESSION_OFFSET, d2
 matched
+	move.l d7, d3  ; extent is dead; telemetry preserves this role
 	move.l #abi.OP_PUBLISH, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
-	moveq #abi.PRVM_LOOP_MATCHED, d0
+	move.l d3, d0
 	bra.w done
 ordinary
 	moveq #abi.PRVM_LOOP_ORDINARY, d0
@@ -254,5 +248,43 @@ done
 	tst.l d0
 	rts
 	.bend  ; classify
+	.pub
+; A1=validated LoopPlan,D0=numeric head ID. Return the canonical loop role.
+; Read-only preparation hints and complete envelope parsing share this selector.
+; Other registers preserved; CCR reflects the returned role.
+selectIdentity	.block
+	cmp.w abi.LoopProgram.ForHigh(a1), d0
+	beq.w roleFor
+	cmp.w abi.LoopProgram.BforHigh(a1), d0
+	beq.w roleBfor
+	cmp.w abi.LoopProgram.EndforHigh(a1), d0
+	beq.w roleEndfor
+	cmp.w abi.LoopProgram.WhileHigh(a1), d0
+	beq.w roleWhile
+	cmp.w abi.LoopProgram.BwhileHigh(a1), d0
+	beq.w roleBwhile
+	cmp.w abi.LoopProgram.EndwhileHigh(a1), d0
+	beq.w roleEndwhile
+	moveq #abi.PRVM_LOOP_ORDINARY, d0
+	rts
+roleFor
+	moveq #abi.PRVM_LOOP_MATCHED, d0
+	rts
+roleBfor
+	moveq #abi.PRVM_LOOP_BFOR, d0
+	rts
+roleEndfor
+	moveq #abi.PRVM_LOOP_ENDFOR, d0
+	rts
+roleWhile
+	moveq #abi.PRVM_LOOP_WHILE, d0
+	rts
+roleBwhile
+	moveq #abi.PRVM_LOOP_BWHILE, d0
+	rts
+roleEndwhile
+	moveq #abi.PRVM_LOOP_ENDWHILE, d0
+	rts
+	.bend  ; selectIdentity
 	.endsection
 	.endmodule

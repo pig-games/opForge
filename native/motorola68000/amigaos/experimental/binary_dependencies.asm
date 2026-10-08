@@ -10,15 +10,17 @@
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_source as source
-	.use experimental.amigaos.binary_mutable as mutable
+	.use experimental.amigaos.binary_repeat_inventory as repeatInventory
+	.use experimental.amigaos.binary_repeat_dependencies as localGraph
+	.use experimental.amigaos.binary_dependency_layout as graph
 	.pub
-ABSOLUTE = 2
+ABSOLUTE = graph.ABSOLUTE
 	.priv
-PENDING = 3
-VISITING = 4
-LAYOUT = 5
-LABEL = 6
-MUTABLE_SNAPSHOT = 8
+PENDING = graph.PENDING
+VISITING = graph.VISITING
+LAYOUT = graph.LAYOUT
+LABEL = graph.LABEL
+MUTABLE_SNAPSHOT = graph.SNAPSHOT
 Entry	.struct
 Id	.word ?
 Cursor	.word ?
@@ -31,18 +33,32 @@ Base	.res long, 1
 Limit	.res long, 1
 Depth	.res long, 1
 Constants	.res long, 1
+Locals	.res long, 1
+States	.res byte, memory.Block.Used+4
+Offsets	.res byte, memory.Block.Used+4
+Local	.res long, 1
+RootCursor	.res long, 1
+Mode	.res word, 1
+	.align 4
 Scratch	.res byte, memory.Block.Used+4
 	.endsection
 	.section code, kind=code
 	.pub
-; A0=packed records, D0=record bytes, A2=Context with zeroed symbol arrays.
-; D0/CCR=status; other registers preserved. Pending values contain offsets only
-; during this call. Absolute values retain Defined=ABSOLUTE; all other entries
+; A0=packed records,D0=record bytes,A1=optional scoped declaration map,
+; A2=Context with zeroed symbol arrays. Scoped declarations belong to their
+; iteration owner and are excluded from the enclosing eager graph.
+; D0/CCR=status; other registers preserved. Graph states and expression offsets
+; stay in private storage. Absolute values retain Defined=ABSOLUTE; other entries
 ; are cleared before return. Scratch is bounded by source IDs and always freed.
 resolve	.block
+	clr.w Mode
+start
 	movem.l d1-d7/a0-a6, -(sp)
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	tst.w Mode
+	bne.w localInputs
 	move.l a0, Base
+	move.l a1, Locals
 	add.l a0, d0
 	bcs.w bad
 	move.l d0, Limit
@@ -58,11 +74,14 @@ resolve	.block
 	move.w pkg.Header.NameCount(a0), d1
 	sub.l d1, d0
 	bcs.w bad
+	bsr.w graphStorage
+	bne.w bad
 	; Source IDs are bounded by Context.Count; dependency scratch is owned and
 	; grows from the actual number of constants, independently of preparation.
 	bsr.w index
 	tst.l d0
 	bne.w clearFailure
+rootsReady
 	tst.l Constants
 	beq.w success
 	move.l Constants, d0
@@ -70,14 +89,27 @@ resolve	.block
 	lea Scratch, a0
 	jsr memory.reserve
 	bne.w clearFailure
-	movea.l pkg.Context.Values(a6), a4
-	movea.l pkg.Context.Defined(a6), a5
+	movea.l Offsets+memory.Block.Pointer, a4
+	movea.l States+memory.Block.Pointer, a5
 	movea.l pkg.Context.Package(a6), a0
 	moveq #0, d7
 	move.w pkg.Header.NameCount(a0), d7
 root
+	tst.w Mode
+	beq.w globalRoot
+	movea.l Local, a0
+	move.l RootCursor, d0
+	cmp.l graph.Frame.Count(a0), d0
+	bhs.w success
+	add.l d0, d0
+	movea.l graph.Frame.Ids(a0), a0
+	moveq #0, d7
+	move.w 0(a0, d0.l), d7
+	bra.w rootState
+globalRoot
 	cmp.l pkg.Context.Count(a6), d7
 	bhs.w success
+rootState
 	cmpi.b #PENDING, 0(a5, d7.l)
 	bne.w nextRoot
 	move.l d7, d0
@@ -95,8 +127,10 @@ visit
 	move.w Entry.Id(a3), d4
 	move.l d4, d5
 	lsl.l #3, d5
+	move.l d4, d0
+	lsl.l #graph.OFFSET_SHIFT, d0
 	movea.l Base, a0
-	adda.l runtime.Value.Low(a4, d5.l), a0
+	adda.l graph.Offset.Expression(a4, d0.l), a0
 	moveq #0, d6
 	move.b 1(a0), d6
 	addq.w #2, d6
@@ -160,13 +194,20 @@ dependency
 	bhs.w clearFailure
 	moveq #0, d2
 	move.b 0(a5, d0.l), d2
+	tst.w Mode
+	beq.w dependencyState
+	movem.l a0, -(sp)
+	movea.l Local, a0
+	jsr localGraph.state
+	movem.l (sp)+, a0
+dependencyState
 	cmpi.b #PENDING, d2
 	beq.w descend
 	cmpi.b #ABSOLUTE, d2
 	beq.w absoluteDependency
 	cmpi.b #LAYOUT, d2
 	beq.w dependentLayout
-	cmpi.b #mutable.PENDING, d2
+	cmpi.b #graph.MUTABLE, d2
 	beq.w dependentMutable
 	cmpi.b #MUTABLE_SNAPSHOT, d2
 	beq.w dependentMutable
@@ -223,8 +264,11 @@ completed
 	bne.w clearFailure
 	cmpa.l a1, a0
 	bne.w clearFailure
-	move.l d1, runtime.Value.Low(a4, d5.l)
-	move.l pkg.Context.High(a6), runtime.Value.High(a4, d5.l)
+	movea.l pkg.Context.Values(a6), a0
+	move.l d1, runtime.Value.Low(a0, d5.l)
+	move.l pkg.Context.High(a6), runtime.Value.High(a0, d5.l)
+	movea.l pkg.Context.Defined(a6), a0
+	move.b #ABSOLUTE, 0(a0, d4.l)
 	move.b #ABSOLUTE, 0(a5, d4.l)
 	bra.w pop
 deferred
@@ -239,6 +283,11 @@ pop
 	subq.l #1, Depth
 	bra.w visit
 nextRoot
+	tst.w Mode
+	beq.w nextGlobalRoot
+	addq.l #1, RootCursor
+	bra.w root
+nextGlobalRoot
 	addq.l #1, d7
 	bra.w root
 success
@@ -247,6 +296,8 @@ success
 clearFailure
 	moveq #1, d7
 normalize
+	tst.w Mode
+	bne.w normalized
 	movea.l pkg.Context.Package(a6), a0
 	moveq #0, d2
 	move.w pkg.Header.NameCount(a0), d2
@@ -277,6 +328,24 @@ normalized
 	bra.w release
 bad
 	moveq #1, d0
+	bra.w release
+localInputs
+	move.l a0, Local
+	movea.l graph.Frame.Context(a0), a6
+	move.l graph.Frame.Records(a0), Base
+	move.l Base, d0
+	add.l graph.Frame.RecordBytes(a0), d0
+	bcs.w bad
+	move.l d0, Limit
+	move.l graph.Frame.Declarations(a0), Locals
+	move.l States+memory.Block.Pointer, graph.Frame.States(a0)
+	move.l Offsets+memory.Block.Pointer, graph.Frame.Offsets(a0)
+	clr.l RootCursor
+	clr.l Depth
+	jsr localGraph.init
+	bne.w bad
+	move.l d1, Constants
+	bra.w rootsReady
 release
 	lea Scratch, a0
 	jsr memory.release
@@ -285,6 +354,29 @@ release
 	tst.l d0
 	rts
 	.bend  ; resolve
+
+; A0=graph.Frame whose IDs are one prepared owner's directly-owned range.
+; D0/CCR=status; other registers preserved. Uses the same scalar DFS/evaluator
+; as resolve; external mutable/label dependencies remain declaration-time work.
+resolveLocal	.block
+	move.w #1, Mode
+	bra.w resolve.start
+	.bend  ; resolveLocal
+
+; Release graph storage after assembly/retry ownership has ended.
+; Registers preserved; CCR reflects the caller's D0 status.
+release	.block
+	movem.l a0, -(sp)
+	lea States, a0
+	jsr memory.release
+	lea Offsets, a0
+	jsr memory.release
+	lea Scratch, a0
+	jsr memory.release
+	movem.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; release
 
 	.priv
 ; D0=source ID. Mark visiting and append a bounded frame. Other registers saved.
@@ -301,7 +393,7 @@ push	.block
 	move.w #2, Entry.Cursor(a0)
 	clr.w Entry.Flags(a0)
 	clr.w Entry.Reserved(a0)
-	movea.l pkg.Context.Defined(a6), a1
+	movea.l States+memory.Block.Pointer, a1
 	move.b #VISITING, 0(a1, d0.l)
 	addq.l #1, Depth
 	moveq #0, d0
@@ -323,8 +415,8 @@ index	.block
 	movea.l Base, a0
 	movea.l Limit, a1
 	movea.l pkg.Context.Package(a6), a2
-	movea.l pkg.Context.Values(a6), a4
-	movea.l pkg.Context.Defined(a6), a5
+	movea.l Offsets+memory.Block.Pointer, a4
+	movea.l States+memory.Block.Pointer, a5
 line
 	cmpa.l a1, a0
 	beq.w good
@@ -356,7 +448,7 @@ line
 	moveq #PENDING, d7
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 4(a3)
 	beq.w declaration
-	moveq #mutable.PENDING, d7
+	moveq #graph.MUTABLE, d7
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a3)
 	beq.w declaration
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a3)
@@ -370,15 +462,24 @@ declaration
 	blo.w bad
 	cmp.l pkg.Context.Count(a6), d4
 	bhs.w bad
+	move.l Locals, d0
+	beq.w enclosingDeclaration
+	movea.l d0, a3
+	move.l d4, d0
+	lsl.l #repeatInventory.DECL_SHIFT, d0
+	tst.w repeatInventory.Decl.Owner(a3, d0.l)
+	bne.w next
+	lea 4(a0), a3
+enclosingDeclaration
 	tst.b 0(a5, d4.l)
 	beq.w firstDeclaration
-	cmpi.b #mutable.PENDING, d7
+	cmpi.b #graph.MUTABLE, d7
 	bne.w bad
-	cmpi.b #mutable.PENDING, 0(a5, d4.l)
+	cmpi.b #graph.MUTABLE, 0(a5, d4.l)
 	bne.w bad
 firstDeclaration
 	move.b d7, 0(a5, d4.l)
-	cmpi.b #mutable.PENDING, d7
+	cmpi.b #graph.MUTABLE, d7
 	beq.w scalarDeclaration
 	cmpi.b #PENDING, d7
 	bne.w labelTail
@@ -398,12 +499,12 @@ scalarDeclaration
 	bne.w bad
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, -1(a0, d6.w)
 	bne.w bad
-	cmpi.b #mutable.PENDING, d7
+	cmpi.b #graph.MUTABLE, d7
 	beq.w next
 	move.l a3, d0
 	sub.l Base, d0
-	lsl.l #3, d4
-	move.l d0, runtime.Value.Low(a4, d4.l)
+	lsl.l #graph.OFFSET_SHIFT, d4
+	move.l d0, graph.Offset.Expression(a4, d4.l)
 	addq.l #1, Constants
 	bra.w next
 compoundDeclaration
@@ -417,7 +518,7 @@ compoundDeclaration
 	bne.w bad
 	cmpi.b #runtime.EXPRVM_V2_OPCODE_END, -1(a0, d6.w)
 	bne.w bad
-	cmpi.b #mutable.PENDING, d7
+	cmpi.b #graph.MUTABLE, d7
 	beq.w next
 	move.b #LAYOUT, 0(a5, d4.l)
 	bra.w next
@@ -501,5 +602,34 @@ done
 	tst.l d0
 	rts
 	.bend  ; resetLayout
+; A6=context. Allocate private graph state and expression offsets once.
+; Runtime Defined bytes remain exclusively numeric availability state.
+; D0/CCR=status; other registers preserved.
+graphStorage	.block
+	movem.l d1/a0-a1, -(sp)
+	move.l pkg.Context.Count(a6), d1
+	lea States, a0
+	move.l d1, d0
+	jsr memory.reserve
+	bne.w done
+	move.l d1, memory.Block.Used(a0)
+	movea.l memory.Block.Pointer(a0), a0
+	movea.l pkg.Context.Defined(a6), a1
+copy
+	move.b (a1)+, (a0)+
+	subq.l #1, d1
+	bne.w copy
+	move.l pkg.Context.Count(a6), d0
+	lsl.l #graph.OFFSET_SHIFT, d0
+	lea Offsets, a0
+	move.l d0, d1
+	jsr memory.reserve
+	bne.w done
+	move.l d1, memory.Block.Used(a0)
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; graphStorage
 	.endsection
 	.endmodule

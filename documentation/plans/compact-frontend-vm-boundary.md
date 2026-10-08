@@ -1,8 +1,9 @@
 # Compact frontend: VM boundary correction
 
-Status: BS34 now has complete native self-host qualification, alongside focused
-conditional-loop and macro proof. Scoped loops, mapped conditional repetition
-and the remaining expansion effects are still under development.
+Status: BS34 remains the latest complete native self-host qualification. The
+current BS35 source has focused anonymous counted scoped-loop proof; a new full
+self-host is not yet qualified. Mapped conditional repetition and remaining
+expansion effects are still open.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -34,8 +35,9 @@ records the scope and remaining work.
 
 Deferred preparation-only declarations, scopes, configuration, metadata, file
 operations and macro definitions reject. Complete lazy file/reachability parity
-is not established; complete `.while` parity and scoped `.bfor`/`.bwhile` remain
-open. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
+is not established; complete `.while` and scoped-loop parity remain open.
+BS35 anonymous counted `.bfor` has [focused proof](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification); labeled/iterable
+forms and `.bwhile` remain unsupported. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
 forward-initializer semantics, struct behavior and existing wide-literal packing
 limits also remain unresolved. Full language or CPU-family parity is not claimed.
 
@@ -112,10 +114,10 @@ The latest qualified release bundle is
 assembled output both embed only `m68020--motorola68k.bin`. The named package is
 retained for local identity verification; no external runtime fallback is used.
 This bundle has complete FS-UAE qualification, but no physical execution or
-remote transfer proof. It uses the current A6000 helper's BS34 package contract.
-The local current-export link selects this bundle, and the helper's dry run
-validates its exact mapped inputs, package and images without network access.
-Use macOS Terminal, where `ash` and `acp` can reach the A6000:
+remote transfer proof. The current source and A6000 helper have migrated to BS35;
+this older BS34 export cannot be used with the current helper. Regenerate and
+qualify a matching current bundle before invoking the runner. Use macOS Terminal,
+where `ash` and `acp` can reach the A6000:
 
 ```sh
 python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
@@ -123,10 +125,11 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The current script validates BS34 package headers, mapped source preamble and
+The current script validates BS35 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. A
-qualified BS34 release bundle is required for the current helper.
+qualified current BS35 release bundle is required for the current helper; none
+is claimed by the older BS34 proof.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
@@ -208,9 +211,12 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS34 is the current compact package format; the producer writes `BS34` and the
+BS35 is the current compact package format; the producer writes `BS35` and the
 native package owner checks the matching magic. Only this latest runtime contract
-is supported; packages must be regenerated. Candidate rows are 44 bytes: offsets
+is supported; packages must be regenerated. Its 17-byte LoopPlan adds numeric
+scoped-for/scoped-while identities to the current envelope. This is one compiled
+PRVM contract, with no native VM-version dispatch or legacy loop executor.
+Candidate rows are 44 bytes: offsets
 0–31 retain their previous fields, byte 32 carries the third-operand form nibble,
 byte 33 the third tuple class (class + 1), and word 34 is reserved zero.
 Word 36 holds independent operand-role count, word 38 is reserved zero, and long

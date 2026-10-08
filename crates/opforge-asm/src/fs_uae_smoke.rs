@@ -7948,6 +7948,12 @@ mod native_iterable_loops;
 #[path = "tests/native_macro_parity.rs"]
 mod native_macro_parity;
 #[cfg(test)]
+#[path = "tests/native_scoped_layouts.rs"]
+mod native_scoped_layouts;
+#[cfg(test)]
+#[path = "tests/native_scoped_loops.rs"]
+mod native_scoped_loops;
+#[cfg(test)]
 #[path = "tests/native_while_layouts.rs"]
 mod native_while_layouts;
 #[cfg(test)]

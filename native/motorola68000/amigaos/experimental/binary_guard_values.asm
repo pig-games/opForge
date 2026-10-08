@@ -1,3 +1,4 @@
+; @opforge-owner: experimental.amigaos.binary_guard_values
 ; Statement-time immutable snapshots used only by runtime while guards.
 ; Ordinary emission retains the dependency resolver's eager bindings.
 	.module experimental.amigaos.binary_guard_values
@@ -6,6 +7,7 @@
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_repeat_inventory as inventory
 	.use opasm.amigaos.binary_expression as expression
 	.use prvm.amigaos.packed_loop as parser
 	.use prvm.amigaos.abi as abi
@@ -46,11 +48,14 @@ State	.struct
 Pass	.long ?
 Active	.long ?
 Records	.long ?
+Declarations	.long ?
 Block	.res memory.Block.Used+4
 	.endstruct
 STATE_BYTES = State.Block+memory.Block.Used+4
 	.section code, kind=code
-; A0=state,A1=records,D0=bytes,A2=context. Allocate only when while exists.
+; A0=state,A1=records,D0=bytes,A2=context,A3=optional scoped declaration map.
+; Scoped snapshots stay in their live iteration cells, outside global overlays.
+; Allocate only when while exists.
 ; Records have already passed frontend and dependency bounds validation.
 prepare	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -58,6 +63,7 @@ prepare	.block
 	clr.l State.Block+memory.Block.Used(a5)
 	clr.l State.Active(a5)
 	move.l a1, State.Records(a5)
+	move.l a3, State.Declarations(a5)
 	movea.l a1, a4
 	movea.l a1, a6
 	adda.l d0, a6
@@ -76,6 +82,8 @@ scan
 	cmpi.b #1, PackedRecord.NameKind(a4)
 	bhi.w control
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, PackedRecord.Marker(a4)
+	bne.w control
+	bsr.w scoped
 	bne.w control
 	addq.l #1, d7
 control
@@ -121,6 +129,8 @@ fill
 	cmpi.b #1, PackedRecord.NameKind(a4)
 	bhi.w fillNext
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, PackedRecord.Marker(a4)
+	bne.w fillNext
+	bsr.w scoped
 	bne.w fillNext
 	moveq #0, d0
 	move.w PackedRecord.NameId(a4), d0
@@ -266,6 +276,16 @@ declaration	.block
 	movea.l a3, a6
 	moveq #0, d4
 	move.w Decl.NameId(a4), d4
+	; Iteration-owned constants retain snapshots in their full local cells.
+	move.l State.Declarations(a5), d0
+	beq.w globalDeclaration
+	movea.l d0, a0
+	move.l d4, d0
+	lsl.l #inventory.DECL_SHIFT, d0
+	tst.w inventory.Decl.Owner(a0, d0.l)
+	bne.w localDeclaration
+globalDeclaration
+	movea.l a5, a0
 	jsr enter
 	bne.w bad
 	lea Decl.Rhs(a4), a0
@@ -309,6 +329,9 @@ publish
 	move.l d0, Row.Defined(a4)
 	movea.l a5, a0
 	jsr leave
+	moveq #0, d0
+	bra.w done
+localDeclaration
 	moveq #0, d0
 	bra.w done
 leaveBad
@@ -361,5 +384,22 @@ owned
 	jsr values.setKind
 	rts
 	.bend  ; setKind
+; A4=declaration,A5=guard state. D0/CCR=nonzero for iteration-owned IDs.
+; Other registers preserved; global snapshots cannot overwrite scoped cells.
+scoped	.block
+	movem.l d1/a0, -(sp)
+	move.l State.Declarations(a5), d0
+	beq.w done
+	movea.l d0, a0
+	moveq #0, d1
+	move.w PackedRecord.NameId(a4), d1
+	lsl.l #inventory.DECL_SHIFT, d1
+	moveq #0, d0
+	move.w inventory.Decl.Owner(a0, d1.l), d0
+done
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; scoped
 	.endsection
 	.endmodule

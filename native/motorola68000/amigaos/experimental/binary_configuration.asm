@@ -11,14 +11,18 @@
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_memory as memory
+	.use prvm.amigaos.abi as abi
 	.pub
 ASSIGNMENT = 30
+LOOP_OPEN = 31
+LOOP_CLOSE = 32
 Frame	.struct
 Session	.long ?
 Arena	.long ?
 Scope	.long ?
 Graph	.long ?
 BindCapture	.long ?  ; frontend.bindCapture ABI; the selected writer copy only
+LoopRole	.long ?  ; read-only package loop-head selection callback
 DeclarationRole	.long ?  ; read-only package declaration-head selection callback
 Output	.long ?  ; session's caller-owned writer output
 Capacity	.long ?  ; writer output capacity, including shared label normalization
@@ -99,6 +103,14 @@ next
 	tst.l d5
 	bne.w boundary
 controls
+	tst.w Frame.Depth(a6)
+	beq.w moduleControls
+	move.l d3, d1
+	movea.l a6, a0
+	bsr.w trackDepth
+	bmi.w bad
+	bra.w publish
+moduleControls
 	cmpi.l #scopes.KEY_IF, d3
 	blo.w outsideActive
 	cmpi.l #scopes.KEY_IFNDEF, d3
@@ -351,6 +363,15 @@ next
 	movea.l a5, a0
 	bsr.w classify
 	move.l d1, d6
+	; Nested bodies cannot contribute module configuration or guard values.
+	tst.w Frame.Depth(a6)
+	beq.w moduleControls
+	movea.l a6, a0
+	move.l d6, d1
+	bsr.w trackDepth
+	bmi.w bad
+	bra.w advance
+moduleControls
 	cmpi.l #scopes.KEY_IF, d6
 	blo.w active
 	cmpi.l #scopes.KEY_IFNDEF, d6
@@ -469,6 +490,25 @@ directive
 	movea.l (sp)+, a1
 	tst.l d1
 	bne.w done
+	movem.l d0/a1, -(sp)
+	movea.l Frame.LoopRole(a6), a3
+	move.l a3, d2
+	beq.w noLoopRole
+	movea.l Frame.Session(a6), a0
+	jsr (a3)
+	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	beq.w noLoopRole
+	moveq #LOOP_CLOSE, d1
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w loopSelected
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w loopSelected
+	moveq #LOOP_OPEN, d1
+loopSelected
+	movem.l (sp)+, d0/a1
+	bra.w done
+noLoopRole
+	movem.l (sp)+, d0/a1
 	movea.l Frame.DeclarationRole(a6), a3
 	move.l a3, d2
 	beq.w done
@@ -489,6 +529,10 @@ done
 ; A0=Frame,D1=shared directive key. D0=1 structural record consumed,
 ; 0 ordinary record, -1 depth overflow; CCR reflects D0. Other registers kept.
 trackDepth	.block
+	cmpi.l #LOOP_OPEN, d1
+	beq.w openNested
+	cmpi.l #LOOP_CLOSE, d1
+	beq.w closeNested
 	cmpi.l #scopes.KEY_BLOCK, d1
 	beq.w openNested
 	cmpi.l #scopes.KEY_NAMESPACE, d1

@@ -33,7 +33,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     assert!(count > 0);
-    assert_eq!(&valid[..4], b"BS34");
+    assert_eq!(&valid[..4], b"BS35");
     assert!(rows + count * crate::binary_source_experiment::ROW <= valid.len());
     assert_eq!(&valid[rows + 34..rows + 36], &[0, 0]);
     assert!(valid[rows + 32] <= 11);
@@ -94,9 +94,9 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         cases.push((name, malformed, 1));
     }
     let loop_offset = u32::from_be_bytes(valid[212..216].try_into().unwrap()) as usize;
-    assert_eq!(u32::from_be_bytes(valid[216..220].try_into().unwrap()), 13);
+    assert_eq!(u32::from_be_bytes(valid[216..220].try_into().unwrap()), 17);
     let mut odd = valid.clone();
-    odd[loop_offset + 1..loop_offset + 14].copy_from_slice(&valid[loop_offset..loop_offset + 13]);
+    odd[loop_offset + 1..loop_offset + 18].copy_from_slice(&valid[loop_offset..loop_offset + 17]);
     odd[212..216].copy_from_slice(&((loop_offset + 1) as u32).to_be_bytes());
     cases.push(("loop-odd-offset", odd, 1));
     let branch_offset = u32::from_be_bytes(
@@ -153,15 +153,17 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         ("loop-invalid-endfor", loop_offset + 5, 2),
         ("loop-invalid-while", loop_offset + 7, 2),
         ("loop-invalid-endwhile", loop_offset + 9, 2),
-        ("loop-corrupt-return", loop_offset + 11, 1),
-        ("loop-corrupt-stop", loop_offset + 12, 1),
+        ("loop-invalid-bfor", loop_offset + 11, 2),
+        ("loop-invalid-bwhile", loop_offset + 13, 2),
+        ("loop-corrupt-return", loop_offset + 15, 1),
+        ("loop-corrupt-stop", loop_offset + 16, 1),
     ] {
         let mut malformed = valid.clone();
         malformed[offset..offset + width].fill(255);
         cases.push((name, malformed, 1));
     }
     let mut superseded = valid.clone();
-    superseded[..4].copy_from_slice(b"BS33");
+    superseded[..4].copy_from_slice(b"BS34");
     cases.push(("superseded-package", superseded, 1));
     cases.push(("truncated-current-header", valid[..227].to_vec(), 1));
     cases
@@ -305,11 +307,11 @@ fn compact_package_validation_component_fixture_contract() {
         assert_eq!(*expected, 1, "{name}");
         if *name == "loop-odd-offset" {
             assert_eq!(
-                &bytes[loop_offset + 1..loop_offset + 14],
-                &valid[loop_offset..loop_offset + 13]
+                &bytes[loop_offset + 1..loop_offset + 18],
+                &valid[loop_offset..loop_offset + 17]
             );
             assert!(changed.iter().all(|offset| (212..216).contains(offset)
-                || (loop_offset..loop_offset + 14).contains(offset)));
+                || (loop_offset..loop_offset + 18).contains(offset)));
             continue;
         }
         let field = match *name {
@@ -336,8 +338,10 @@ fn compact_package_validation_component_fixture_contract() {
             "loop-invalid-endfor" => loop_offset + 5..loop_offset + 7,
             "loop-invalid-while" => loop_offset + 7..loop_offset + 9,
             "loop-invalid-endwhile" => loop_offset + 9..loop_offset + 11,
-            "loop-corrupt-return" => loop_offset + 11..loop_offset + 12,
-            "loop-corrupt-stop" => loop_offset + 12..loop_offset + 13,
+            "loop-invalid-bfor" => loop_offset + 11..loop_offset + 13,
+            "loop-invalid-bwhile" => loop_offset + 13..loop_offset + 15,
+            "loop-corrupt-return" => loop_offset + 15..loop_offset + 16,
+            "loop-corrupt-stop" => loop_offset + 16..loop_offset + 17,
             "branch-header-overlap"
             | "branch-odd-offset"
             | "branch-out-of-bounds"

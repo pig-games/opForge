@@ -145,6 +145,10 @@ WhileHigh	.byte ?
 WhileLow	.byte ?
 EndwhileHigh	.byte ?
 EndwhileLow	.byte ?
+BforHigh	.byte ?
+BforLow	.byte ?
+BwhileHigh	.byte ?
+BwhileLow	.byte ?
 Publish	.byte ?
 End	.byte ?
 	.endstruct
@@ -175,4 +179,6 @@ PRVM_LOOP_MALFORMED = 2
 PRVM_LOOP_WHILE = 3
 PRVM_LOOP_ENDFOR = 4
 PRVM_LOOP_ENDWHILE = 5
+PRVM_LOOP_BFOR = 6
+PRVM_LOOP_BWHILE = 7
 	.endmodule

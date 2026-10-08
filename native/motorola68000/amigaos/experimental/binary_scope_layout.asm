@@ -29,9 +29,11 @@ ReserveRoutine	.long ?
 Package	.long ?  ; validated preparation capsule, never serialized
 LoopDepth	.word ?
 LoopBindings	.res iterators.SLOTS_BYTES
+LoopParents	.res iterators.LIMIT*2
+PendingRepeat	.word ?
 .endstruct
 ITERATOR_STATE = State.LoopDepth
-ENTRIES = State.LoopBindings+iterators.SLOTS_BYTES
+ENTRIES = State.PendingRepeat+2
 ENTRIES_POINTER = ENTRIES+memory.Block.Pointer
 BUCKETS = ENTRIES+memory.Block.Used+4
 ARENA = BUCKETS+256*2

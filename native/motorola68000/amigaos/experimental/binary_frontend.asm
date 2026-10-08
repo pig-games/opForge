@@ -538,6 +538,7 @@ bindCapture	.block
 	movea.l Frame.Package(a5), a1
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DECLARATION
 	jsr declaration.normalize
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w written
 	moveq #0, d1
 	move.b (a0), d1
@@ -1861,6 +1862,7 @@ processRecord	.block
 	bne.w declarationReady
 	movea.l Frame.Package(a5), a1
 	jsr declaration.normalize
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w failed
 declarationReady
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONDITIONAL
@@ -2738,6 +2740,30 @@ done
 	tst.l d0
 	rts
 	.bend  ; declarationRole
+; A0=session,A1=bounded directive leaf,D0=bytes. Canonical package loop role.
+; Read-only selection shares the PRVM envelope selector; no expression parsing.
+loopRole	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l a1, a0
+	movea.l Frame.Scratch(a2), a1
+	bsr.w lookupPackage
+	bne.w absent
+	tst.l d2
+	bne.w absent
+	movea.l Frame.Package(a2), a1
+	move.l package.Header.LoopPlan(a1), d0
+	adda.l d0, a1
+	move.l d1, d0
+	jsr loop_parser.selectIdentity
+	bra.w done
+absent
+	moveq #parser_abi.PRVM_LOOP_ORDINARY, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; loopRole
 	.priv
 
 ; Writer's optional member callback: A0=writer.Frame,A1=current token.

@@ -24,6 +24,8 @@ RegisterQualifier	.byte ?
 RegisterReserved	.byte ?  ; zero; candidate metadata never follows Target
 .endstruct
 ENTRY_BYTES = Entry.RegisterReserved+1
+REFERENCED = 2
+OPTIONAL_REFERENCED = 512
 MUTABLE_BIT = 8
 MUTABLE = 1<<MUTABLE_BIT
 ITERATOR_HIGH_BIT = 2

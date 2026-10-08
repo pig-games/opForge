@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_repetition_trace as trace
 	.use experimental.amigaos.binary_guard_values as guards
+	.use experimental.amigaos.binary_repeat_frames as frames
 	.use prvm.amigaos.packed_loop as parser
 	.use prvm.amigaos.abi as abi
 	.pub
@@ -32,8 +33,9 @@ Header	.long ?
 Kind	.long ?
 Trace	.long ?
 Iterations	.long ?
+ScopeGroup	.long ?
 	.endstruct
-SLOT_BYTES = Slot.Iterations+4
+SLOT_BYTES = Slot.ScopeGroup+4
 UNSUPPORTED_LAYOUT = 3
 FILTERED_ONE_MAP_MODE = 2
 FILTERED_TWO_MAP_MODE = 4
@@ -48,11 +50,22 @@ PendingKind	.long ?
 PendingHeader	.long ?
 Guard	.res guards.STATE_BYTES
 Trace	.res trace.STATE_BYTES
+Scopes	.res frames.STATE_BYTES
 Slots	.res LIMIT*SLOT_BYTES
 	.endstruct
 SLOTS = State.Slots
 STATE_BYTES = State.Slots+LIMIT*SLOT_BYTES
 	.section code, kind=code
+
+; A0=state,A1=inventory,A2=context,A3=records,D0=bytes. Initialize scoped
+; replay ownership after preparation. Registers preserved; CCR unspecified.
+prepare	.block
+	move.l a0, -(sp)
+	lea State.Scopes(a0), a0
+	jsr frames.prepare
+	movea.l (sp)+, a0
+	rts
+	.bend  ; prepare
 
 ; A0=state,A1=stream base,D0=sweep identity. Start one source sweep.
 begin	.block
@@ -107,6 +120,8 @@ step	.block
 	beq.w closingWhile
 	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
 	beq.w ordinaryExtent
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
+	beq.w invalid
 	move.l d0, State.PendingKind(a3)
 	move.l a5, State.PendingHeader(a3)
 	bsr.w openObservation
@@ -163,6 +178,11 @@ opening
 	move.l d1, Slot.Remaining(a1, d7.w)
 	adda.w d7, a1
 	bsr.w initializeSlot
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1)
+	bne.w countedReady
+	bsr.w openScope
+	bne.w invalid
+countedReady
 	addq.w #1, State.Depth(a3)
 	movea.l a4, a0
 	bra.w consumed
@@ -300,8 +320,14 @@ skipClose
 	move.l d7, d1
 	mulu.w #SLOT_BYTES, d1
 	lea SLOTS(a3), a1
+	cmpi.l #abi.PRVM_LOOP_MATCHED, d0
+	bne.w skipKind
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1, d1.w)
+	beq.w skipMatched
+skipKind
 	cmp.l Slot.Kind(a1, d1.w), d0
 	bne.w invalid
+skipMatched
 	cmp.w State.Depth(a3), d7
 	beq.w skipped
 skipNext
@@ -321,10 +347,23 @@ closing
 	subq.w #1, d7
 	mulu.w #SLOT_BYTES, d7
 	lea SLOTS(a3), a1
+	cmpi.l #abi.PRVM_LOOP_MATCHED, d0
+	bne.w closingKind
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1, d7.w)
+	bne.w closingKind
+	moveq #abi.PRVM_LOOP_BFOR, d0
+closingKind
 	cmp.l Slot.Kind(a1, d7.w), d0
 	bne.w invalid
 	cmpi.l #abi.PRVM_LOOP_WHILE, d0
 	beq.w whileClosing
+	movea.l a1, a5
+	adda.w d7, a5
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
+	bne.w captured
+	bsr.w captureScope
+	bne.w invalid
+captured
 	move.l Slot.Remaining(a1, d7.w), d1
 	subq.l #1, d1
 	beq.w exhausted
@@ -333,6 +372,12 @@ closing
 	adda.w d7, a5
 	addq.l #1, Slot.Index(a5)
 	addq.l #1, Slot.Iterations(a5)
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
+	bne.w countedNext
+	bsr.w enterScope
+	bne.w invalid
+	bra.w repeatBody
+countedNext
 	tst.l Slot.Iterable(a5)
 	beq.w repeatBody
 	bsr.w bindElement
@@ -362,6 +407,12 @@ exhausted
 	adda.w d7, a5
 	bsr.w closeObservation
 	bne.w invalid
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
+	bne.w ordinaryExhausted
+	bsr.w closeScope
+	bne.w invalid
+	bra.w popLoop
+ordinaryExhausted
 	tst.l Slot.Iterable(a5)
 	beq.w popLoop
 	movea.l package.Context.Owner(a2), a0
@@ -391,6 +442,13 @@ ordinary
 	; Rust's unscoped loops reject declarations/labels in its body. A
 	; column-one name is a label; explicit ':' and '=' are labels at any indent.
 	tst.w State.Depth(a3)
+	beq.w ordinaryReady
+	moveq #0, d1
+	move.w State.Depth(a3), d1
+	subq.w #1, d1
+	mulu.w #SLOT_BYTES, d1
+	lea SLOTS(a3), a1
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1, d1.w)
 	beq.w ordinaryReady
 	cmpi.w #9, d0
 	blo.w ordinaryReady
@@ -470,6 +528,14 @@ beginPass	.block
 	lea State.Trace(a0), a0
 	jsr trace.beginPass
 	movea.l (sp)+, a0
+	bne.w failed
+	move.l a0, -(sp)
+	moveq #0, d0
+	move.w State.Trace+trace.State.Mode(a0), d0
+	lea State.Scopes(a0), a0
+	jsr frames.beginPass
+	movea.l (sp)+, a0
+failed
 	rts
 	.bend  ; beginPass
 
@@ -485,15 +551,35 @@ endPass	.block
 ; A0=state. Release transient observations on all assembly exits.
 ; All registers preserved; CCR unspecified.
 release	.block
-	move.l a0, -(sp)
+	movem.l d0-d3/a0-a3/a5, -(sp)
+	movea.l a0, a3
+	moveq #0, d3
+	move.w State.Depth(a3), d3
+restore
+	tst.w d3
+	beq.w restored
+	subq.w #1, d3
+	move.l d3, d0
+	mulu.w #SLOT_BYTES, d0
+	lea SLOTS(a3), a5
+	adda.w d0, a5
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
+	bne.w restore
+	bsr.w closeScope
+	bra.w restore
+restored
+	movea.l a3, a0
 	clr.w State.Depth(a0)
 	move.l a0, -(sp)
 	lea State.Guard(a0), a0
 	jsr guards.release
-	movea.l (sp)+, a0
+	movea.l (sp), a0
 	lea State.Trace(a0), a0
 	jsr trace.release
 	movea.l (sp)+, a0
+	lea State.Scopes(a0), a0
+	jsr frames.release
+	movem.l (sp)+, d0-d3/a0-a3/a5
 	rts
 	.bend  ; release
 
@@ -533,6 +619,8 @@ line
 	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
 	beq.w bad
 	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	beq.w unsupported
+	cmpi.l #abi.PRVM_LOOP_BFOR, d0
 	beq.w unsupported
 	movea.l a4, a0
 	bra.w line
@@ -608,8 +696,63 @@ initializeSlot	.block
 	move.l State.PendingTrace(a3), Slot.Trace(a1)
 	move.l #1, Slot.Iterations(a1)
 	clr.l Slot.Index(a1)
+	clr.l Slot.ScopeGroup(a1)
 	rts
 	.bend  ; initializeSlot
+
+; A1=new scoped slot,A3=replay state. D0/CCR=status; other registers kept.
+openScope	.block
+	movem.l d1-d3/a0/a5, -(sp)
+	movea.l a1, a5
+	move.l Slot.Trace(a5), d0
+	move.l Slot.Header(a5), d1
+	sub.l State.SourceBase(a3), d1
+	move.l Slot.Remaining(a5), d2
+	lea State.Scopes(a3), a0
+	jsr frames.open
+	bne.w done
+	move.l d3, Slot.ScopeGroup(a5)
+	bsr.w enterScope
+done
+	movem.l (sp)+, d1-d3/a0/a5
+	tst.l d0
+	rts
+	.bend  ; openScope
+
+; A5=scoped slot,A3=replay state. D0/CCR=status; other registers kept.
+enterScope	.block
+	movem.l d1/a0, -(sp)
+	move.l Slot.ScopeGroup(a5), d0
+	move.l Slot.Index(a5), d1
+	lea State.Scopes(a3), a0
+	jsr frames.enter
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; enterScope
+
+; A5=scoped slot,A3=replay state. D0/CCR=status; other registers kept.
+captureScope	.block
+	movem.l d1/a0, -(sp)
+	move.l Slot.ScopeGroup(a5), d0
+	move.l Slot.Index(a5), d1
+	lea State.Scopes(a3), a0
+	jsr frames.capture
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; captureScope
+
+; A5=scoped slot,A3=replay state. D0/CCR=status; other registers kept.
+closeScope	.block
+	move.l a0, -(sp)
+	move.l Slot.ScopeGroup(a5), d0
+	lea State.Scopes(a3), a0
+	jsr frames.close
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; closeScope
 
 ; A3=state with PendingHeader/Kind. Capture or match numeric ancestry.
 ; D0/CCR=status; other registers kept. Root parents carry the sweep identity.

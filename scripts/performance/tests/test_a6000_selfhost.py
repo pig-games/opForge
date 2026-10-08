@@ -17,8 +17,8 @@ SPEC.loader.exec_module(runner)
 
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
-        package = bytearray(294)
-        package[:4] = b"BS34"
+        package = bytearray(298)
+        package[:4] = b"BS35"
         package[62:64] = (5).to_bytes(2, "big")
         package[168:172] = (228).to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
@@ -27,12 +27,12 @@ class HardwareCompletionTests(unittest.TestCase):
         package[184:188] = (23).to_bytes(4, "big")
         package[188:190] = (2).to_bytes(2, "big")
         package[160:164] = (256).to_bytes(4, "big")
-        package[200:204] = (292).to_bytes(4, "big")
+        package[200:204] = (296).to_bytes(4, "big")
         package[204:208] = (1).to_bytes(4, "big")
         package[212:216] = (258).to_bytes(4, "big")
-        package[216:220] = (13).to_bytes(4, "big")
-        package[220:224] = (272).to_bytes(4, "big")
-        branch_plan_offset = 272
+        package[216:220] = (17).to_bytes(4, "big")
+        package[220:224] = (276).to_bytes(4, "big")
+        branch_plan_offset = 276
         package[220:224] = branch_plan_offset.to_bytes(4, "big")
         branch_plan = bytearray((0x9A, 4))
         for index in range(4):
@@ -40,8 +40,8 @@ class HardwareCompletionTests(unittest.TestCase):
             branch_plan.extend((index + 1, int(index < 2)))
         branch_plan.extend((0x83, 0))
         package[224:228] = len(branch_plan).to_bytes(4, "big")
-        package[258:271] = b"\x99\0\0\0\1\0\0\0\2\0\3\x83\0"
-        package[292] = 0
+        package[258:275] = b"\x99\0\0\0\1\0\0\0\2\0\3\0\3\0\4\x83\0"
+        package[296] = 0
         package[branch_plan_offset:branch_plan_offset + len(branch_plan)] = branch_plan
         if target:
             package[124:128] = len(package).to_bytes(4, "big")
@@ -117,6 +117,7 @@ class HardwareCompletionTests(unittest.TestCase):
         for magic, size, error in ((b"BS31", 228, "package mismatch"),
                                   (b"BS32", 228, "package mismatch"),
                                   (b"BS33", 294, "package mismatch"),
+                                  (b"BS34", 298, "package mismatch"),
                                   (b"BS16", 210, "package mismatch"),
                                    (b"BS17", 210, "package mismatch"),
                                    (b"BS19", 210, "package mismatch"),
@@ -126,7 +127,7 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS26", 210, "package mismatch"),
                                    (b"BS27", 210, "package mismatch"),
                                    (b"BS29", 210, "package mismatch"),
-                                  (b"BS34", 227, "package header")):
+                                  (b"BS35", 227, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -141,13 +142,13 @@ class HardwareCompletionTests(unittest.TestCase):
         mutations = [
             (4, 4, 209, "package header"),
             (72, 4, 198, "package region"),
-            (72, 4, 296, "package region"),
+            (72, 4, 300, "package region"),
             (72, 4, 209, "package region"),
             (160, 4, 168, "member-binding table"),
             (160, 4, 201, "member-binding table"),
             (184, 4, 13, "declaration"),
             (160, 4, 219, "member-binding table"),
-            (164, 4, 5, "member-binding table"),
+            (164, 4, 6, "member-binding table"),
             (164, 4, 0xFFFFFFFF, "member-binding table"),
             (200, 4, 0, "expression program"),
             (200, 4, 206, "expression program"),
@@ -346,7 +347,7 @@ class HardwareCompletionTests(unittest.TestCase):
             ("configured_entry", "native", None, "Current source"),
             ("generated_catalog", None, b'.incbin "/host/package.bin"\n', "catalog"),
             ("generated_catalog", None, b'.incbin "packages/m68020--motorola68k.bin"\n' * 2, "catalog"),
-            ("package_asset", None, b"BS34corrupt", "asset mismatch"),
+            ("package_asset", None, b"BS35corrupt", "asset mismatch"),
         ]
         for origin, replacement_origin, data, error in mutations:
             with self.subTest(origin=origin, error=error), tempfile.TemporaryDirectory() as directory:

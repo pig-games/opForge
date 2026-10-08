@@ -11,15 +11,22 @@ pub enum LoopHeader {
     While {
         operand_offset: usize,
     },
+    ScopedFor {
+        variable: Option<u16>,
+        operand_offset: usize,
+    },
+    ScopedWhile {
+        operand_offset: usize,
+    },
     Endfor,
     Endwhile,
     Ordinary,
     Malformed,
 }
 fn valid_program(program: &[u8]) -> bool {
-    program.len() == 13
+    program.len() == 17
         && program[0] == MacroDescriptorOpcode::LoopHeader as u8
-        && program[11..]
+        && program[15..]
             == [
                 MacroDescriptorOpcode::Publish as u8,
                 MacroDescriptorOpcode::End as u8,
@@ -77,6 +84,10 @@ pub fn execute(program: &[u8], source: &[u8]) -> LoopHeader {
         2
     } else if head == &program[9..11] {
         3
+    } else if head == &program[11..13] {
+        4
+    } else if head == &program[13..15] {
+        5
     } else {
         return Ordinary;
     };
@@ -95,8 +106,12 @@ pub fn execute(program: &[u8], source: &[u8]) -> LoopHeader {
     if source.len() == 9 {
         return Malformed;
     }
-    if role == 2 {
-        return While { operand_offset: 9 };
+    if role == 2 || role == 5 {
+        return if role == 2 {
+            While { operand_offset: 9 }
+        } else {
+            ScopedWhile { operand_offset: 9 }
+        };
     }
     // Only two consecutive bare name tokens establish the iterable form.
     // Other expressions, including a single name, go to counted EXVM.
@@ -104,14 +119,29 @@ pub fn execute(program: &[u8], source: &[u8]) -> LoopHeader {
         if source[12] != 0 || source[16] != 0 || source.len() == 17 {
             return Malformed;
         }
-        return Matched {
-            variable: Some(u16::from_be_bytes([source[10], source[11]])),
-            operand_offset: 17,
+        let variable = Some(u16::from_be_bytes([source[10], source[11]]));
+        return if role == 4 {
+            ScopedFor {
+                variable,
+                operand_offset: 17,
+            }
+        } else {
+            Matched {
+                variable,
+                operand_offset: 17,
+            }
         };
     }
-    Matched {
-        variable: None,
-        operand_offset: 9,
+    if role == 4 {
+        ScopedFor {
+            variable: None,
+            operand_offset: 9,
+        }
+    } else {
+        Matched {
+            variable: None,
+            operand_offset: 9,
+        }
     }
 }
 #[cfg(test)]
@@ -126,7 +156,7 @@ mod tests {
     }
     #[test]
     fn contextual_binding_does_not_reserve_other_statement_names() {
-        let plan = packed_loop_program(42, 43, 44, 45, 46);
+        let plan = packed_loop_program(42, 43, 44, 45, 46, 47, 48);
         let mut prefix = record(&[0, 0, 90, 0]);
         prefix[0] = 0; // The writer has not finalized the length.
         assert!(context_keyword(&plan, &prefix, 43));
@@ -162,7 +192,7 @@ mod tests {
     }
     #[test]
     fn numeric_iterable_identity_and_expression_boundary() {
-        let plan = packed_loop_program(42, 43, 44, 45, 46);
+        let plan = packed_loop_program(42, 43, 44, 45, 46, 47, 48);
         for variable in [0u16, 255, 256, 65535] {
             let [hi, lo] = variable.to_be_bytes();
             for expression in [&[2, 0, 0, 0, 3][..], &[12, 13][..], &[255][..]] {
@@ -195,7 +225,7 @@ mod tests {
     }
     #[test]
     fn while_and_matching_closing_roles_are_numeric() {
-        let plan = packed_loop_program(42, 43, 44, 45, 46);
+        let plan = packed_loop_program(42, 43, 44, 45, 46, 47, 48);
         let mut header = record(&[2, 0, 0, 0, 1]);
         header[7] = 45;
         assert_eq!(
@@ -215,8 +245,35 @@ mod tests {
         assert_eq!(execute(&plan, &header), LoopHeader::Malformed);
     }
     #[test]
+    fn scoped_roles_retain_numeric_operand_boundaries() {
+        let plan = packed_loop_program(42, 43, 44, 45, 46, 47, 48);
+        let mut header = record(&[2, 0, 0, 0, 2]);
+        header[7] = 47;
+        assert_eq!(
+            execute(&plan, &header),
+            LoopHeader::ScopedFor {
+                variable: None,
+                operand_offset: 9
+            }
+        );
+        header[7] = 48;
+        assert_eq!(
+            execute(&plan, &header),
+            LoopHeader::ScopedWhile { operand_offset: 9 }
+        );
+        let mut iterable = record(&[0, 0, 90, 0, 0, 0, 43, 0, 2]);
+        iterable[7] = 47;
+        assert_eq!(
+            execute(&plan, &iterable),
+            LoopHeader::ScopedFor {
+                variable: Some(90),
+                operand_offset: 17
+            }
+        );
+    }
+    #[test]
     fn program_and_record_bounds_are_atomic() {
-        let plan = packed_loop_program(42, 43, 44, 45, 46);
+        let plan = packed_loop_program(42, 43, 44, 45, 46, 47, 48);
         let record = record(&[2]);
         for length in 0..plan.len() {
             assert_eq!(execute(&plan[..length], &record), LoopHeader::Malformed);
@@ -224,13 +281,13 @@ mod tests {
         for length in 0..record.len() {
             assert_eq!(execute(&plan, &record[..length]), LoopHeader::Malformed);
         }
-        for index in [0, 11, 12] {
+        for index in [0, 15, 16] {
             let mut corrupt = plan.clone();
             corrupt[index] ^= 1;
             assert_eq!(execute(&corrupt, &record), LoopHeader::Malformed);
         }
         let mut ordinary = record.clone();
-        ordinary[7] = 47;
+        ordinary[7] = 49;
         assert_eq!(execute(&plan, &ordinary), LoopHeader::Ordinary);
         for flags in [8, 16] {
             ordinary = record.clone();

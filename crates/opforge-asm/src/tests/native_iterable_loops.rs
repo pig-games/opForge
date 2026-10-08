@@ -11,8 +11,10 @@ impl Drop for Scratch {
     }
 }
 pub(super) fn scratch() -> Scratch {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let serial = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let path = std::env::temp_dir().join(format!(
-        "opforge-iterable-{}-{}",
+        "opforge-iterable-{}-{}-{serial}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -243,7 +245,20 @@ pub(super) fn build_image(root: &Path, dir: &Path) -> Vec<u8> {
         &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
     )
     .unwrap();
-    super::compact_cli_input::assemble_cli(root, &build)
+    if std::env::var("OPFORGE_ITERABLE_MEMORY").as_deref() == Ok("1") {
+        super::compact_cli_input::assemble_cli_with_defines(
+            root,
+            &build,
+            &[
+                "OPFORGE_DEBUG_CONTRACTS",
+                "OPFORGE_MEMORY_TELEMETRY",
+                "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+                "OPFORGE_PREPARATION_PROGRESS",
+            ],
+        )
+    } else {
+        super::compact_cli_input::assemble_cli(root, &build)
+    }
 }
 
 #[test]

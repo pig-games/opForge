@@ -142,6 +142,10 @@ ordinaryDirective
 	beq.w bad
 	cmpi.l #loop_abi.PRVM_LOOP_WHILE, d7
 	beq.w scalarLoop
+	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d7
+	beq.w scalarLoop
+	cmpi.l #loop_abi.PRVM_LOOP_BWHILE, d7
+	beq.w bad
 	cmpi.l #loop_abi.PRVM_LOOP_ENDFOR, d7
 	beq.w closingLoop
 	cmpi.l #loop_abi.PRVM_LOOP_ENDWHILE, d7

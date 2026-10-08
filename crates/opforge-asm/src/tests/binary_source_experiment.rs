@@ -138,7 +138,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS34");
+        assert_eq!(&bytes[..4], b"BS35");
         let expression_offset = long(200);
         let expression_bytes = long(204);
         assert!(expression_offset >= PACKAGE_HEADER_BYTES && expression_offset % 2 == 0);
@@ -155,12 +155,12 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         assert_eq!(word(190), 0);
         let loop_offset = long(212);
         assert!(loop_offset >= PACKAGE_HEADER_BYTES && loop_offset + long(216) <= runtime_bytes);
-        assert_eq!(long(216), 13);
+        assert_eq!(long(216), 17);
         let branch_offset = long(BRANCH_PLAN_OFFSET);
         let branch_bytes = long(BRANCH_PLAN_BYTES_OFFSET);
         assert!(branch_bytes == 0 || branch_offset >= PACKAGE_HEADER_BYTES);
         assert!(branch_bytes == 0 || branch_offset + branch_bytes <= runtime_bytes);
-        let loop_names = (0..5)
+        let loop_names = (0..7)
             .map(|index| {
                 u16::from_be_bytes(
                     bytes[loop_offset + 1 + index * 2..loop_offset + 3 + index * 2]
@@ -173,13 +173,15 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         assert_eq!(loop_names[2], word(98));
         assert!(loop_names.iter().all(|name| *name < word(62)));
         assert_eq!(
-            &bytes[loop_offset..loop_offset + 13],
+            &bytes[loop_offset..loop_offset + 17],
             package::packed_loop_program(
                 loop_names[0],
                 loop_names[1],
                 loop_names[2],
                 loop_names[3],
-                loop_names[4]
+                loop_names[4],
+                loop_names[5],
+                loop_names[6]
             )
         );
         let declaration_offset = long(180);
@@ -220,7 +222,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
             package::inline_head_policy_program()
         );
         assert_eq!(long(212), long(168) + long(172));
-        assert_eq!(long(216), 13);
+        assert_eq!(long(216), 17);
         assert_eq!(long(BRANCH_PLAN_OFFSET), (long(212) + long(216) + 1) & !1);
         assert_eq!(long(BRANCH_PLAN_BYTES_OFFSET), 20);
         assert_eq!(
@@ -287,7 +289,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS34");
+        assert_eq!(&bytes[..4], b"BS35");
         assert_eq!(long(&bytes, 4), bytes.len());
         let builtin_len = u16::from_be_bytes(bytes[208..210].try_into().unwrap());
         assert!(builtin_len < u16::from_be_bytes(bytes[62..64].try_into().unwrap()));

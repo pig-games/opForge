@@ -184,14 +184,9 @@ fn native_scoped_retained_hunk_rust_oracles() {
 }
 
 fn iterable_source(cpu: &str) -> String {
-    // The current Rust Hunk writer rejects `.byte item` as symbolic. Consume
-    // the iterator through branch selection while retaining the label control.
     source(cpu)
         .replace(".bfor 2", ".bfor item in {2,3}")
-        .replace(
-            "start .byte 7",
-            "start\n.if item==2\n.byte 2\n.else\n.byte 3\n.endif",
-        )
+        .replace("start .byte 7", "start .byte item")
 }
 
 fn iterable_oracle(dir: &Path, cpu: &str) -> Vec<u8> {
@@ -214,6 +209,83 @@ fn native_scoped_iterable_hunk_rust_oracles() {
     let dir = scratch();
     for cpu in ["68020", "6502"] {
         iterable_oracle(&dir.0, cpu);
+    }
+}
+
+fn iterator_provenance_source(cpu: &str) -> String {
+    format!(".module entry\n.cpu {cpu}\n.section data,kind=data\n.long 0\nIndex .long 0\n.endsection\n.section code,kind=code\n.for index in {{1,2}}\n.byte INDEX\n.word index\n.long index,entry.Index\n.endfor\n.long index\n.bfor item in {{1,2}}\nsnapshot .const item+1\n.byte snapshot\n.word item\n.long snapshot\n.endfor\n.for outer in {{1,2}}\n.long OUTER\n.bfor outer in {{3,4}}\n.long outer\n.endfor\n.long outer\n.endfor\n.endsection\n.output \"out.hunk\",format=hunk,sections=code,data\n.endmodule\n")
+}
+
+fn iterator_provenance_oracle(dir: &Path, cpu: &str) -> Vec<u8> {
+    let bytes = hunk_oracle(dir, &iterator_provenance_source(cpu));
+    let sections = hunk::segments(&bytes).unwrap();
+    let mut expected = Vec::new();
+    let word = |value: u16| {
+        if cpu == "6502" {
+            value.to_le_bytes()
+        } else {
+            value.to_be_bytes()
+        }
+    };
+    let long = |value: u32| {
+        if cpu == "6502" {
+            value.to_le_bytes()
+        } else {
+            value.to_be_bytes()
+        }
+    };
+    for value in [1u32, 2] {
+        expected.push(value as u8);
+        expected.extend(word(value as u16));
+        expected.extend(long(value));
+        expected.extend(long(4));
+    }
+    expected.extend(long(4));
+    for value in [1u32, 2] {
+        expected.push((value + 1) as u8);
+        expected.extend(word(value as u16));
+        expected.extend(long(value + 1));
+    }
+    for value in [1, 3, 4, 1, 2, 3, 4, 2] {
+        expected.extend(long(value));
+    }
+    assert_eq!(sections[0].payload, expected);
+    assert_eq!(sections[0].relocations, [(7, 1), (18, 1), (22, 1)]);
+    assert_eq!(sections[1].payload, [0; 8]);
+    assert!(sections[1].relocations.is_empty());
+    bytes
+}
+
+#[test]
+fn native_scoped_iterator_provenance_rust_oracles() {
+    let dir = scratch();
+    for cpu in ["68020", "6502"] {
+        iterator_provenance_oracle(&dir.0, cpu);
+    }
+}
+
+#[test]
+#[ignore = "requires FS-UAE; scalar iterators must not inherit shadowed address relocations"]
+fn native_scoped_iterator_provenance_fs_uae() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap();
+    let dir = scratch();
+    let image = std::env::var_os("OPFORGE_SCOPED_IMAGE")
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_else(|| build_image(&root, &dir.0));
+    for cpu in ["68020", "6502"] {
+        let expected = iterator_provenance_oracle(&dir.0, cpu);
+        native_case(
+            &root,
+            &image,
+            &format!("scoped-iterator-provenance-{cpu}"),
+            &iterator_provenance_source(cpu),
+            "Work:entry.asm --hunk Work:out.hunk",
+            &expected,
+            false,
+        );
     }
 }
 

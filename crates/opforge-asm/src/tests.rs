@@ -145,6 +145,9 @@ use vm::rollout::{
 #[path = "tests/hunk_value_provenance.rs"]
 mod hunk_value_provenance;
 
+#[path = "tests/hunk_iterator_provenance.rs"]
+mod hunk_iterator_provenance;
+
 #[path = "tests/hunk_data_offsets.rs"]
 mod hunk_data_offsets;
 

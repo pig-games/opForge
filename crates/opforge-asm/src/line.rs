@@ -1456,6 +1456,9 @@ impl<'a> AsmLine<'a> {
                         field.eq_ignore_ascii_case("W") || field.eq_ignore_ascii_case("L")
                     })
                     .map_or(name.as_str(), |(base, _)| base);
+                if self.lookup_loop_var(relocation_name).is_some() {
+                    return None;
+                }
                 let resolved_name = self.resolve_symbol_name_for_relocation(relocation_name)?;
                 if self
                     .layout
@@ -1538,6 +1541,9 @@ impl<'a> AsmLine<'a> {
         let section = match expr {
             Expr::Dollar(_) => self.layout.current_section.clone(),
             Expr::Identifier(name, _) => {
+                if self.lookup_loop_var(name).is_some() {
+                    return None;
+                }
                 let resolved_name = self.resolve_symbol_name_for_relocation(name)?;
                 if self
                     .layout
@@ -2953,6 +2959,11 @@ impl<'a> AsmLine<'a> {
     }
 
     fn is_absolute_symbol(&self, name: &str) -> bool {
+        // Match expression evaluation: the active iterator shadows ordinary
+        // symbols, while qualified references retain their section identity.
+        if self.lookup_loop_var(name).is_some() {
+            return true;
+        }
         if let Some(resolved) = self.resolve_symbol_name_for_relocation(name) {
             if let Some(provenance) = self.layout.symbol_relocations.get(&resolved) {
                 return *provenance == crate::state::SymbolRelocation::Absolute;

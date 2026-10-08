@@ -525,9 +525,11 @@ Notes:
   scope boundaries reject. Iterable expressions keep a frozen snapshot, bind each
   element before resolving local constants and restore iterator bindings at close.
   Current iterable elements are nonnegative 32-bit scalars; negative/wider and
-  compound elements remain unsupported. Hunk iterator selection and per-iteration
-  relocations are verified; direct iterator data is blocked by the Rust Hunk
-  classification issue recorded in the checkpoint. Labeled/indexed `.bfor`, `.bwhile`, mapped
+  compound elements remain unsupported. Hunk direct iterator data, iterator-derived
+  scalar constants and per-iteration relocations have focused proof on both packages.
+  An iterator can shadow a section label without inheriting its relocation;
+  a qualified reference to the original label retains its fixup.
+  Labeled/indexed `.bfor`, `.bwhile`, mapped
   scoped replay and general forward-alias/layout convergence remain open;
   literals above 32 bits also remain a packing limitation. These
   focused results do not establish complete loop/macro parity. The preceding

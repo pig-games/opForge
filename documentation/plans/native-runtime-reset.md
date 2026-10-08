@@ -641,8 +641,9 @@ No full workspace/reference qualification is claimed.
 
 Scope limits: existing iterable element support accepts nonnegative 32-bit scalar
 elements, not negative/wider or compound elements. Labeled/indexed iteration,
-`.bwhile`, mapped scoped replay and other loop/macro gaps remain open. A Rust Hunk
-probe rejects direct `.byte item` inside iterable `.bfor` as symbolic; the Hunk
+`.bwhile`, mapped scoped replay and other loop/macro gaps remain open. At this
+checkpoint, a Rust Hunk probe rejects direct `.byte item` inside iterable `.bfor`
+as symbolic; the Hunk
 fixture consumes the iterator through conditional selection and keeps the
 per-iteration label/relocation checks. That canonical Hunk classification issue
 is recorded, not repaired or counted as native positive coverage here. Static
@@ -652,6 +653,49 @@ provenance and ABS32 target selection before extending this Hunk coverage.
 
 No new full self-host or hardware qualification is claimed. The prior complete
 BS35 source proof and A6000 bundle remain selected.
+
+### Iterator Hunk provenance (Rust repair)
+
+The `2c7db448` Rust baseline rejects direct iterator `.byte`/`.word`/`.long`
+data and iterator-derived scoped constants as symbolic Hunk expressions. When
+an iterator shadows a section label, it instead attaches the original label's
+section fixup to the scalar iterator value. All five initial regression cases
+fail on that baseline, including two spurious relocations in the shadowing case.
+
+Shared Rust relocation classification now checks the active iterator overlay
+before ordinary symbol lookup, matching expression evaluation. Scalar eligibility,
+captured constant provenance, ABS32 data/instruction target selection and VM
+target-reference queries agree. Case-insensitive inner bindings win; qualified
+original addresses retain their section identity and ordinary label lookup returns
+after the loop. No package grammar, native executor or BS35 layout changes.
+
+Six Rust regression cases cover both data endiannesses, ordinary/scoped iterable
+loops, captured constants, nested shadowing/restoration, qualified addresses and
+M68K immediate/absolute-long instruction fixups. The existing iterable Hunk fixture
+now emits `.byte item` directly rather than selecting literal bytes in branches.
+Fresh runs on the unchanged release image match its entire 108-byte Rust Hunk on
+68020/6502 in 1.522163875/0.765060667s, including four per-iteration fixups.
+A combined 453/452-byte provenance source matches the complete 160-byte Rust
+Hunk on both packages in 1.778919709/1.268335542s: byte/word/long iterator data,
+scoped constants, nested same-name bindings and exactly three genuine address
+relocations. Every run has fresh START/DONE, zero exit and an in-memory live Rust
+oracle; parsed payload and relocation assertions independently check the oracle.
+
+The native executable remains byte-identical to the selected `2c7db448` release
+image: 620,380 bytes, `fnv1a64:ad7f8aa6002c3a1f`, linked static reservation
+639,864 bytes. There is no native production change to measure a before/after
+speed or memory delta for; the focused completion times above are correctness
+run observations, not isolated performance comparisons.
+
+Affected host qualification passes 239 Hunk tests and 28 loop tests; 58 and six
+tests respectively are ignored. Environment-gated native tests skipped by those
+host commands are not native proof. The two explicitly enabled native tests above
+provide four fresh positive comparisons. Library Clippy, Rustfmt, workflow checks
+and the native engineering/format gate pass. Full workspace/reference and full
+self-host qualification were not rerun; the prior 22 unchanged test/harness
+Clippy findings remain unqualified. The last complete BS35 self-host and A6000
+bundle remain selected. Labeled/indexed scoped iteration, `.bwhile`, mapped
+scoped replay and remaining macro/file effects are still open.
 
 ### Compound-value checkpoints
 

@@ -61,6 +61,11 @@ iterator identities and binding before local constant resolution. The existing
 nonnegative 32-bit scalar element boundary remains; negative/wider and compound
 elements, labeled/indexed scopes and `.bwhile` are not qualified by this slice.
 
+The [Rust iterator Hunk repair](native-runtime-reset.md#iterator-hunk-provenance-rust-repair)
+aligns relocation classification with active iterator lookup. Direct iterator
+data and captured scalar constants no longer inherit a shadowed section label's
+fixup; qualified original addresses still relocate. Native/package code is unchanged.
+
 ## Current breadth parity checkpoint
 
 The [BS27 corpus checkpoint](native-runtime-reset.md#current-breadth-parity-checkpoint)

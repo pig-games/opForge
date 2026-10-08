@@ -769,6 +769,9 @@ impl<'a> AssemblerContext for AsmLine<'a> {
     }
 
     fn symbol_is_target_reference(&self, name: &str) -> bool {
+        if self.lookup_loop_var(name).is_some() {
+            return false;
+        }
         let Some(resolved) = self.resolve_symbol_name_for_relocation(name) else {
             return false;
         };

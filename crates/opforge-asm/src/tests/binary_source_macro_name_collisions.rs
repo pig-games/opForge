@@ -83,7 +83,7 @@ fn imported_template_only_source(body: &str) -> String {
         .replace("SHARED = 3\n", "")
 }
 
-fn imported_positive_cases() -> [(&'static str, String, [u8; 4]); 7] {
+fn imported_positive_cases() -> [(&'static str, String, [u8; 4]); 8] {
     [
         (
             "qualified",
@@ -136,8 +136,18 @@ fn imported_positive_cases() -> [(&'static str, String, [u8; 4]); 7] {
             [3, 0xa5, 0, 0],
         ),
         (
-            "selected_template_original",
-            imported_template_only_source(" .SHARED 7\n.byte $a5\n"),
+            "selected_value_and_template_alias",
+            imported_facets_source(
+                ".use dual (SHARED as picked)",
+                true,
+                true,
+                ".byte picked\n .picked 7\n",
+            ),
+            [3, 7, 0, 0],
+        ),
+        (
+            "selected_template_alias",
+            imported_template_only_source(" .picked 7\n.byte $a5\n"),
             [7, 0xa5, 0, 0],
         ),
     ]
@@ -153,8 +163,8 @@ fn negative_facet_cases() -> [(&'static str, String); 10] {
         ("selected_private_template", imported_facets_source(".use dual (SHARED) as d", true, false, " .d.SHARED 7\n")),
         ("template_only_numeric", hunk_source("SHARED .macro arg\n.byte .arg\n.endmacro\n.byte SHARED\n")),
         ("selected_alias_private_value", imported_facets_source(".use dual (SHARED as picked)", false, true, ".byte $a5\n")),
-        ("selected_alias_template", imported_facets_source(".use dual (SHARED as picked)", true, true, " .picked 7\n")),
-        ("selected_alias_template_only", imported_template_only_source(" .picked 7\n")),
+        ("selected_alias_original_template", imported_facets_source(".use dual (SHARED as picked)", true, true, " .SHARED 7\n")),
+        ("selected_alias_original_template_only", imported_template_only_source(" .SHARED 7\n")),
     ]
 }
 
@@ -261,8 +271,8 @@ fn compact_macro_name_value_template_rejections_rust_oracle() {
                 }
                 "private_template"
                 | "selected_private_template"
-                | "selected_alias_template"
-                | "selected_alias_template_only" => "Unknown directive",
+                | "selected_alias_original_template"
+                | "selected_alias_original_template_only" => "Unknown directive",
                 "template_only_numeric" => "Label not found",
                 _ => unreachable!("unknown facet rejection"),
             };

@@ -3,6 +3,7 @@
 	.module exprvm.amigaos.values_runtime
 	.cpu 68020
 	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_record_values as records
 	.use experimental.amigaos.binary_memory as memory
 	.use exprvm.amigaos.runtime as runtime
 	.include "telemetry_macros.i"
@@ -21,19 +22,27 @@ Count	.long ?
 Pc	.long ?
 High	.long ?
 Owner	.long ?
+Kind	.long ?
+SectionIds	.long ?
+CurrentSection	.word ?
+Reserved	.word ?
+Provenance	.long ?
 .endstruct
 Cell	.struct
 Low	.long ?
 High	.long ?
 Kind	.long ?
+Provenance	.long ?
 .endstruct
-CELL_BYTES = 12
+CELL_BYTES = 16
 State	.struct
 Unresolved	.long ?
 Symbols	.long ?
 Steps	.long ?
 Operator	.long ?
 Count	.long ?
+Provenance	.long ?
+Compact	.long ?
 ArenaStart	.long ?
 .endstruct
 STACK = State.ArenaStart+4
@@ -42,12 +51,26 @@ TEMP = PACKED+MAX_DEPTH*values.ELEMENT_BYTES
 WORK_BYTES = TEMP+22
 	.section code, kind=code
 
-; A0/D0=canonical program/bytes,A2=Frame (24 bytes). D0/CCR=status;
-; D1=low,D2=unresolved,D3=kind (0 scalar/1 list/2 range),D4=symbol presence.
+; A0/D0=canonical program/bytes,A2=Frame (40 bytes). D0/CCR=status;
+; D1=low,D2=unresolved,D3=kind (values.SCALAR through ADDRESS_RECORD),
+; D4=symbol presence. Frame.Provenance receives section identity or -1 unsafe.
 ; Frame.High receives scalar high (zero for compounds). A0=after End on success.
 ; Preserves D5-D7/A1-A6. Scratch lives in Owner.Work, reserved once at entry;
 ; compound construction grows only Owner.Arena. No program/version selection state.
 evaluate	.block
+	moveq #0, d4
+	bra.w evaluateMode
+	.bend  ; evaluate
+
+; Same ABI as evaluate; compact scalar literals/operators retain typed symbol cells.
+; Compound defaults are projected by the shared arithmetic boundary.
+evaluateCompact	.block
+	moveq #1, d4
+	bra.w evaluateMode
+	.bend  ; evaluateCompact
+
+	.priv
+evaluateMode	.block
 	movem.l d5-d7/a1-a6, -(sp)
 	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR
 	movea.l a0, a4
@@ -67,11 +90,13 @@ evaluate	.block
 	bne.w storage
 	movea.l memory.Block.Pointer(a0), a3
 	move.l #WORK_BYTES, memory.Block.Used(a0)
+	move.l d4, State.Compact(a3)
 	clr.l State.Unresolved(a3)
 	clr.l State.Symbols(a3)
 	clr.l State.Steps(a3)
 	movea.l Frame.Owner(a6), a0
 	move.l values.Owner.Arena+memory.Block.Used(a0), State.ArenaStart(a3)
+	clr.l Frame.Provenance(a6)
 	clr.l Frame.High(a6)
 	moveq #0, d7
 next
@@ -97,14 +122,87 @@ next
 	beq.w list
 	cmpi.b #$52, d1
 	beq.w range
+	cmpi.b #runtime.EXPRVM_OPCODE_GET_MEMBER, d1
+	beq.w member
 	cmpi.b #$61, d1
 	beq.w index
 	cmpi.b #$62, d1
 	beq.w builtin
 	cmpi.b #$70, d1
 	beq.w scalar
-	; Other unsupported shapes fail explicitly.
+	tst.l State.Compact(a3)
+	beq.w malformed
+	cmpi.b #runtime.COMPACT_I8, d1
+	beq.w compactByte
+	cmpi.b #runtime.COMPACT_I16, d1
+	beq.w compactWord
+	cmpi.b #runtime.COMPACT_I32, d1
+	beq.w compactLong
+	cmpi.b #runtime.COMPACT_U32, d1
+	beq.w compactUnsigned
+	cmpi.b #runtime.COMPACT_I64, d1
+	beq.w literal
+	cmpi.b #runtime.COMPACT_NEGATE, d1
+	beq.w compactNegate
+	cmpi.b #runtime.COMPACT_ADD, d1
+	beq.w compactAdd
+	cmpi.b #runtime.COMPACT_SUBTRACT, d1
+	beq.w compactSubtract
+	cmpi.b #runtime.COMPACT_MULTIPLY, d1
+	beq.w compactMultiply
 	bra.w malformed
+compactByte
+	bsr.w push
+	bne.w depth
+	bsr.w byte
+	bne.w malformed
+	ext.w d1
+	ext.l d1
+	bra.w compactSigned
+compactWord
+	bsr.w push
+	bne.w depth
+	bsr.w wordLe
+	bne.w malformed
+	ext.l d1
+	bra.w compactSigned
+compactLong
+	bsr.w push
+	bne.w depth
+	bsr.w longLe
+	bne.w malformed
+compactSigned
+	move.l d1, Cell.Low(a1)
+	moveq #0, d0
+	tst.l d1
+	bpl.w compactHigh
+	moveq #-1, d0
+compactHigh
+	move.l d0, Cell.High(a1)
+	bra.w next
+compactUnsigned
+	bsr.w push
+	bne.w depth
+	bsr.w longLe
+	bne.w malformed
+	move.l d1, Cell.Low(a1)
+	clr.l Cell.High(a1)
+	bra.w next
+compactNegate
+	moveq #1, d6
+	moveq #runtime.EXPRVM_UNARY_MINUS, d1
+	bra.w arithmeticKnown
+compactAdd
+	moveq #runtime.EXPRVM_BINARY_ADD, d1
+	bra.w compactBinary
+compactSubtract
+	moveq #runtime.EXPRVM_BINARY_SUBTRACT, d1
+	bra.w compactBinary
+compactMultiply
+	moveq #runtime.EXPRVM_BINARY_MULTIPLY, d1
+compactBinary
+	moveq #2, d6
+	bra.w arithmeticKnown
 literal
 	bsr.w push
 	bne.w depth
@@ -120,6 +218,9 @@ pushPc
 	bne.w depth
 	move.l Frame.Pc(a6), Cell.Low(a1)
 	clr.l Cell.High(a1)
+	moveq #0, d0
+	move.w Frame.CurrentSection(a6), d0
+	move.l d0, Cell.Provenance(a1)
 	bra.w next
 symbol
 	bsr.w wordLe
@@ -134,7 +235,7 @@ symbol
 	movea.l Frame.Defined(a6), a2
 	move.l a2, d0
 	beq.w malformed
-	tst.b (a2, d6.l)
+	tst.b 0(a2, d6.l)
 	bne.w kind
 	moveq #1, d0
 	move.l d0, State.Unresolved(a3)
@@ -144,15 +245,31 @@ kind
 	jsr values.getKind
 	tst.l d0
 	bne.w malformed
-	cmpi.l #values.RANGE, d2
+	cmpi.l #records.ADDRESS_RECORD, d2
 	bhi.w malformed
 	move.l d2, Cell.Kind(a1)
 	tst.l d2
 	bne.w symbolCell
 	movea.l Frame.Defined(a6), a2
-	tst.b (a2, d6.l)
+	tst.b 0(a2, d6.l)
 	beq.w unresolved
 symbolCell
+	movea.l Frame.Defined(a6), a2
+	tst.b 0(a2, d6.l)
+	beq.w symbolValues
+	movea.l Frame.SectionIds(a6), a2
+	move.l a2, d0
+	beq.w symbolValues
+	moveq #0, d0
+	move.b 0(a2, d6.l), d0
+	ext.w d0
+	ext.l d0
+	move.l d0, Cell.Provenance(a1)
+symbolValues
+	tst.l Cell.Kind(a1)
+	beq.w symbolScalar
+	clr.l Cell.Provenance(a1)
+symbolScalar
 	movea.l Frame.Values(a6), a2
 	move.l a2, d0
 	beq.w malformed
@@ -163,6 +280,13 @@ symbolCell
 	beq.w next
 	tst.l Cell.High(a1)
 	bne.w malformed
+	cmpi.l #records.TYPED_LIST, Cell.Kind(a1)
+	blo.w legacyCompound
+	jsr records.validateCell
+	tst.l d0
+	bne.w malformed
+	bra.w next
+legacyCompound
 	; Compound aliases must name a complete immutable descriptor.
 	move.l Cell.Low(a1), d1
 	jsr values.compoundLength
@@ -176,7 +300,7 @@ unresolved
 scalar
 	bsr.w top
 	bne.w malformed
-	tst.l Cell.Kind(a1)
+	bsr.w project
 	bne.w malformed
 	bra.w next
 unary
@@ -187,16 +311,22 @@ binary
 arithmetic
 	bsr.w byte
 	bne.w malformed
+arithmeticKnown
 	move.l d1, State.Operator(a3)
 	cmp.l d6, d7
 	blo.w malformed
 	bsr.w top
-	tst.l Cell.Kind(a1)
+	bsr.w project
 	bne.w malformed
 	cmpi.l #2, d6
-	bne.w prepare
-	tst.l Cell.Kind-CELL_BYTES(a1)
+	bne.w provenance
+	suba.l #CELL_BYTES, a1
+	bsr.w project
+	adda.l #CELL_BYTES, a1
+	tst.l d0
 	bne.w malformed
+provenance
+	bsr.w arithmeticProvenance
 prepare
 	lea TEMP(a3), a2
 	cmpi.l #2, d6
@@ -242,6 +372,7 @@ arithmeticResult
 	bsr.w top
 	move.l d5, Cell.Low(a1)
 	move.l d2, Cell.High(a1)
+	move.l State.Provenance(a3), Cell.Provenance(a1)
 	bra.w next
 list
 	bsr.w wordLe
@@ -260,6 +391,8 @@ list
 	tst.l d5
 	beq.w append
 pack
+	tst.l Cell.Provenance(a1)
+	bne.w malformed
 	tst.l Cell.Kind(a1)
 	bne.w malformed
 	move.l Cell.Low(a1), (a2)+
@@ -305,6 +438,8 @@ rangeCount
 	lea PACKED(a3), a2
 	move.l d5, State.Count(a3)
 rangePairs
+	tst.l Cell.Provenance(a1)
+	bne.w malformed
 	tst.l Cell.Kind(a1)
 	bne.w malformed
 	move.l Cell.Low(a1), (a2)+
@@ -327,12 +462,31 @@ rangePairs
 	clr.l Cell.High(a1)
 	move.l #values.RANGE, Cell.Kind(a1)
 	bra.w next
+member
+	bsr.w wordLe
+	bne.w malformed
+	move.l d1, d6
+	bsr.w top
+	bne.w malformed
+	cmpi.l #records.ADDRESS_RECORD, Cell.Kind(a1)
+	bne.w malformed
+	move.l Cell.Low(a1), d0
+	move.l d6, d1
+	movea.l Frame.Owner(a6), a0
+	jsr records.member
+	bra.w recordResult
 index
 	cmpi.l #2, d7
 	blo.w malformed
 	bsr.w top
-	tst.l Cell.Kind(a1)
+	bsr.w project
 	bne.w malformed
+	tst.l Cell.High(a1)
+	bne.w malformed
+	tst.l Cell.Provenance(a1)
+	bne.w malformed
+	cmpi.l #records.TYPED_LIST, Cell.Kind-CELL_BYTES(a1)
+	beq.w typedIndex
 	tst.l Cell.Kind-CELL_BYTES(a1)
 	beq.w malformed
 	cmpi.l #values.RANGE, Cell.Kind-CELL_BYTES(a1)
@@ -344,12 +498,28 @@ index
 	jsr values.compoundGet
 	tst.l d0
 	bne.w malformed
+	move.l d2, d3
+	move.l d1, d2
+	moveq #0, d4
+	moveq #0, d5
+	bra.w elementResult
+typedIndex
+	move.l Cell.Low(a1), d1
+	move.l Cell.Low-CELL_BYTES(a1), d0
+	movea.l Frame.Owner(a6), a0
+	jsr records.get
+elementResult
+	tst.l d0
+	bne.w malformed
 	subq.l #1, d7
-	move.l d1, d5
 	bsr.w top
-	move.l d5, Cell.Low(a1)
-	move.l d2, Cell.High(a1)
-	clr.l Cell.Kind(a1)
+recordResult
+	tst.l d0
+	bne.w malformed
+	move.l d2, Cell.Low(a1)
+	move.l d3, Cell.High(a1)
+	move.l d4, Cell.Kind(a1)
+	move.l d5, Cell.Provenance(a1)
 	bra.w next
 builtin
 	bsr.w byte
@@ -364,7 +534,7 @@ builtin
 	bne.w malformed
 	tst.l Cell.Kind(a1)
 	beq.w malformed
-	cmpi.l #values.RANGE, Cell.Kind(a1)
+	cmpi.l #records.TYPED_LIST, Cell.Kind(a1)
 	bhi.w malformed
 	move.l Cell.Low(a1), d1
 	movea.l Frame.Owner(a6), a0
@@ -374,6 +544,7 @@ builtin
 	move.l d1, Cell.Low(a1)
 	move.l d2, Cell.High(a1)
 	clr.l Cell.Kind(a1)
+	clr.l Cell.Provenance(a1)
 	bra.w next
 finish
 	cmpa.l a5, a4
@@ -384,6 +555,7 @@ finish
 	move.l Cell.Low(a1), d1
 	move.l Cell.High(a1), Frame.High(a6)
 	move.l Cell.Kind(a1), d3
+	move.l Cell.Provenance(a1), Frame.Provenance(a6)
 	tst.l d3
 	bne.w retained
 	bsr.w discard
@@ -419,7 +591,7 @@ done
 	movem.l (sp)+, d5-d7/a1-a6
 	tst.l d0
 	rts
-	.bend  ; evaluate
+	.bend  ; evaluateMode
 
 	.priv
 ; Rewind only transient descriptor bytes. Arena allocation may have moved;
@@ -456,12 +628,91 @@ push	.block
 	addq.l #1, d7
 	bsr.w top
 	clr.l Cell.Kind(a1)
+	clr.l Cell.Provenance(a1)
 	moveq #STATUS_OK, d0
 	rts
 bad
 	moveq #STATUS_DEPTH, d0
 	rts
 	.bend  ; push
+
+; A1=cell,A6=Frame. Project address record default; reject other compounds.
+; D0/CCR=status. Preserves D1-D7/A0-A2, including arithmetic arity.
+project	.block
+	tst.l Cell.Kind(a1)
+	beq.w ok
+	cmpi.l #records.ADDRESS_RECORD, Cell.Kind(a1)
+	bne.w bad
+	movem.l d1-d7/a0-a2, -(sp)
+	move.l Cell.Low(a1), d0
+	movea.l Frame.Owner(a6), a0
+	jsr records.project
+	tst.l d0
+	bne.w restored
+	move.l d2, Cell.Low(a1)
+	move.l d3, Cell.High(a1)
+	move.l d4, Cell.Kind(a1)
+	move.l d5, Cell.Provenance(a1)
+restored
+	movem.l (sp)+, d1-d7/a0-a2
+	tst.l d0
+	rts
+ok
+	moveq #STATUS_OK, d0
+	rts
+bad
+	moveq #STATUS_MALFORMED, d0
+	rts
+	.bend  ; project
+
+; A1=right/top cell,D6=arity. Stores scalar provenance; preserves inputs.
+arithmeticProvenance	.block
+	movem.l d0-d2, -(sp)
+	move.l Cell.Provenance(a1), d0
+	moveq #0, d2
+	cmpi.l #2, d6
+	bne.w unary
+	move.l Cell.Provenance-CELL_BYTES(a1), d1
+	move.l d0, d2
+	or.l d1, d2
+	beq.w done
+	moveq #-1, d2
+	cmpi.l #runtime.EXPRVM_BINARY_ADD, State.Operator(a3)
+	beq.w add
+	cmpi.l #runtime.EXPRVM_BINARY_SUBTRACT, State.Operator(a3)
+	bne.w done
+	tst.l d0
+	beq.w left
+	cmp.l d0, d1
+	bne.w done
+	tst.l d0
+	bmi.w done
+	moveq #0, d2
+	bra.w done
+add
+	tst.l d0
+	beq.w left
+	tst.l d1
+	bne.w done
+	move.l d0, d2
+	bra.w done
+left
+	move.l d1, d2
+	bra.w done
+unary
+	tst.l d0
+	beq.w done
+	cmpi.l #runtime.EXPRVM_UNARY_PLUS, State.Operator(a3)
+	bne.w unsupportedUnary
+	move.l d0, d2
+	bra.w done
+unsupportedUnary
+	moveq #-1, d2
+done
+	move.l d2, State.Provenance(a3)
+	movem.l (sp)+, d0-d2
+	rts
+	.bend  ; arithmeticProvenance
 
 ; A4/A5=cursor/end. D0/CCR=status,D1=unsigned byte,A4 advances on success.
 byte	.block

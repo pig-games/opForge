@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_exvm_lower as lowering
 	.use exprvm.amigaos.values_runtime as typed
 	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_record_values as records
 	.use experimental.amigaos.binary_memory as memory
 	.include "telemetry_macros.i"
 	.include "memory_telemetry.i"
@@ -33,8 +34,12 @@ Pc	.long ?
 High	.long ?
 Owner	.long ?
 Kind	.long ?
+SectionIds	.long ?
+CurrentSection	.word ?
+Reserved	.word ?
+Provenance	.long ?
 	.endstruct
-FRAME_BYTES = Frame.Kind+4
+FRAME_BYTES = Frame.Provenance+4
 	.section code, kind=code
 	.pub
 ; Install validated package grammar and session-owned transient workspace.
@@ -254,7 +259,131 @@ restore
 	rts
 	.bend  ; compileMode
 
+	.pub
+; A0/A1=bounded wrapper/end,A2=Frame. D0/CCR=0 scalar,1 typed,2 malformed.
+; Preserves every other register and the wrapper cursor. Typed wrappers and
+; compact references to compound descriptors share one runtime-owned predicate.
+requiresTyped	.block
+	movem.l d1/d3/a0/a4-a5, -(sp)
+	move.l a1, d0
+	sub.l a0, d0
+	bcs.w bad
+	cmpi.l #3, d0
+	blo.w bad
+	cmpi.b #VALUE_TAG, (a0)
+	beq.w typed
+	cmpi.b #COMPILED_TAG, (a0)
+	bne.w bad
+	movea.l a2, a5
+	movea.l Frame.Owner(a5), a4
+	move.l a4, d0
+	beq.w scalar
+	tst.l values.Owner.Kinds+memory.Block.Pointer(a4)
+	beq.w scalar
+	moveq #0, d3
+	move.b 1(a0), d3
+	beq.w bad
+	addq.l #2, a0
+	movea.l a0, a4
+	adda.l d3, a4
+	cmpa.l a1, a4
+	bhi.w bad
+	bsr.w compoundSymbols
+	bra.w done
+typed
+	moveq #1, d0
+	bra.w done
+scalar
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #2, d0
+done
+	movem.l (sp)+, d1/d3/a0/a4-a5
+	tst.l d0
+	rts
+	.bend  ; requiresTyped
+
 	.priv
+; A0/A4=compact payload/end,A5=Frame. D0=0 scalar,1 compound,2 malformed.
+; Preserve inputs; scan only owners with allocated compound-kind storage.
+compoundSymbols	.block
+	movem.l d1-d3/a0-a2, -(sp)
+next
+	cmpa.l a4, a0
+	bhs.w bad
+	moveq #0, d0
+	move.b (a0)+, d0
+	beq.w scalar
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d0
+	beq.w symbol
+	moveq #0, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d0
+	beq.w skip
+	cmpi.b #runtime.COMPACT_NEGATE, d0
+	beq.w skip
+	cmpi.b #runtime.COMPACT_ADD, d0
+	beq.w skip
+	cmpi.b #runtime.COMPACT_SUBTRACT, d0
+	beq.w skip
+	cmpi.b #runtime.COMPACT_MULTIPLY, d0
+	beq.w skip
+	moveq #1, d1
+	cmpi.b #runtime.COMPACT_I8, d0
+	beq.w skip
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, d0
+	beq.w skip
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, d0
+	beq.w skip
+	moveq #2, d1
+	cmpi.b #runtime.COMPACT_I16, d0
+	beq.w skip
+	moveq #4, d1
+	cmpi.b #runtime.COMPACT_I32, d0
+	beq.w skip
+	cmpi.b #runtime.COMPACT_U32, d0
+	beq.w skip
+	moveq #8, d1
+	cmpi.b #runtime.COMPACT_I64, d0
+	bne.w bad
+skip
+	adda.l d1, a0
+	cmpa.l a4, a0
+	bhs.w bad
+	bra.w next
+symbol
+	move.l a4, d0
+	sub.l a0, d0
+	cmpi.l #3, d0
+	blo.w bad
+	moveq #0, d1
+	move.b 1(a0), d1
+	lsl.w #8, d1
+	move.b (a0), d1
+	addq.l #2, a0
+	move.l a0, -(sp)
+	movea.l Frame.Owner(a5), a0
+	jsr values.getKind
+	movea.l (sp)+, a0
+	tst.l d0
+	bne.w bad
+	tst.l d2
+	beq.w next
+	moveq #1, d0
+	bra.w done
+scalar
+	cmpa.l a4, a0
+	bne.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; compoundSymbols
+
 ; Generate both entry points from one body. The ordinary evaluator retains
 ; its register ABI and instruction sequence; the target predicate additionally
 ; consumes the symbol-presence result already computed by ExprVM.
@@ -283,6 +412,54 @@ EVALUATE	.macro saved, compound=0
 	cmpi.b #runtime.EXPRVM_OPCODE_END, -1(a4)
 	bne.w malformed
 	movea.l a2, a5
+	clr.l Frame.Provenance(a5)
+	.if .compound == 0
+	; Compact bare record aliases project their canonical default cell.
+	cmpi.l #4, d3
+	bne.w compactScalar
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, (a0)
+	bne.w compactScalar
+	moveq #0, d1
+	move.b 2(a0), d1
+	lsl.w #8, d1
+	move.b 1(a0), d1
+	cmp.l Frame.Count(a5), d1
+	bhs.w malformed
+	movem.l d1/d3/a0, -(sp)
+	movea.l Frame.Owner(a5), a0
+	move.l a0, d0
+	beq.w compactAliasChecked
+	jsr values.getKind
+	tst.l d0
+	bne.w compactAliasChecked
+	cmpi.l #records.ADDRESS_RECORD, d2
+	bne.w compactAliasChecked
+	movea.l Frame.Defined(a5), a6
+	moveq #0, d6
+	move.b 0(a6, d1.l), d6
+	lsl.l #3, d1
+	movea.l Frame.Values(a5), a6
+	move.l runtime.Value.Low(a6, d1.l), d0
+	jsr records.project
+	tst.l d0
+	bne.w compactAliasChecked
+	move.l d3, Frame.High(a5)
+	move.l d5, Frame.Provenance(a5)
+	move.l d2, d7
+	movem.l (sp)+, d1/d3/a0
+	move.l d7, d1
+	moveq #0, d2
+	tst.l d6
+	bne.w compactAliasResolved
+	moveq #1, d2
+compactAliasResolved
+	moveq #1, d4  ; evaluateWithSymbols exposes the compact alias symbol read
+	movea.l a4, a0
+	bra.w done
+compactAliasChecked
+	movem.l (sp)+, d1/d3/a0
+compactScalar
+	.endif
 	.if .compound
 	clr.l Frame.Kind(a5)
 	; A bare alias retains its immutable descriptor and explicit kind.
@@ -307,7 +484,7 @@ EVALUATE	.macro saved, compound=0
 	bne.w malformed
 	tst.l d2
 	beq.w scalarValue
-	cmpi.l #values.RANGE, d2
+	cmpi.l #records.ADDRESS_RECORD, d2
 	bhi.w malformed
 	move.l d2, Frame.Kind(a5)
 	lsl.l #3, d1
@@ -317,7 +494,14 @@ EVALUATE	.macro saved, compound=0
 	move.l runtime.Value.Low(a0, d1.l), d1
 	movem.l d1-d2/a0, -(sp)
 	movea.l Frame.Owner(a5), a0
+	cmpi.l #records.TYPED_LIST, d2
+	blo.w aliasLegacy
+	move.l d1, d0
+	jsr records.validate
+	bra.w aliasValidated
+aliasLegacy
 	jsr values.compoundLength
+aliasValidated
 	movem.l (sp)+, d1-d2/a0
 	tst.l d0
 	bne.w malformed
@@ -334,6 +518,33 @@ scalarValue
 	movea.l a4, a0
 	suba.l d3, a0
 	.endif
+	; Scalar-only owners keep the existing compact evaluator path.
+	movea.l Frame.Owner(a5), a0
+	move.l a0, d0
+	beq.w compactNumeric
+	tst.l values.Owner.Kinds+memory.Block.Pointer(a0)
+	beq.w compactNumeric
+	movea.l a4, a0
+	suba.l d3, a0
+	bsr.w compoundSymbols
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	beq.w compactNumeric
+	move.l d3, d0
+	jsr typed.evaluateCompact
+	tst.l d0
+	bne.w done
+	.if .compound
+	move.l d3, Frame.Kind(a2)
+	.else
+	tst.l d3
+	bne.w malformed
+	.endif
+	bra.w done
+compactNumeric
+	movea.l a4, a0
+	suba.l d3, a0
 	move.l d3, d0
 	move.l Frame.Count(a5), d1
 	move.l Frame.Pc(a5), d2
@@ -369,11 +580,27 @@ typedValue
 	.if .compound
 	move.l d3, Frame.Kind(a2)
 	.else
+	cmpi.l #records.ADDRESS_RECORD, d3
+	bne.w typedNotRecord
+	movem.l d1-d2/d5/a0, -(sp)
+	move.l d1, d0
+	movea.l Frame.Owner(a2), a0
+	jsr records.project
+	move.l d3, Frame.High(a2)
+	move.l d5, Frame.Provenance(a2)
+	move.l d2, d3
+	movem.l (sp)+, d1-d2/d5/a0
+	move.l d3, d1
+	tst.l d0
+	bne.w done
+	bra.w typedScalar
+typedNotRecord
 	tst.l d3
 	beq.w typedScalar
 	move.l d5, values.Owner.Arena+memory.Block.Used(a6)
 	bra.w malformed
 typedScalar
+	move.l d5, values.Owner.Arena+memory.Block.Used(a6)
 	.endif
 	bra.w done
 malformed
@@ -399,8 +626,8 @@ evaluateWithSymbols	.block
 	.EVALUATE d3/d5-d7/a1-a6
 	.bend  ; evaluateWithSymbols
 
-; Declaration value variant: Kind is explicit; Low is an arena offset only
-; when Kind=LIST/RANGE. Scalars retain the original signed64 cell representation.
+; Declaration value variant: Kind is explicit; Low is an arena offset for
+; compounds. Scalars retain the original signed64 cell representation.
 evaluateValue	.block
 	.EVALUATE d3-d7/a1-a6, 1
 	.bend  ; evaluateValue

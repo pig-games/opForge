@@ -38,6 +38,9 @@ next
 	moveq #graph.LABEL, d3
 	cmpi.w #inventory.LABEL, inventory.Decl.Kind(a4, d5.l)
 	beq.w state
+	moveq #graph.LAYOUT, d3
+	cmpi.w #inventory.COLLECTION, inventory.Decl.Kind(a4, d5.l)
+	beq.w state
 	moveq #graph.MUTABLE, d3
 	cmpi.w #inventory.MUTABLE, inventory.Decl.Kind(a4, d5.l)
 	beq.w state

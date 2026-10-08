@@ -15,6 +15,7 @@
 	.use experimental.amigaos.binary_metadata_prepare as metadata
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_binding_records as binding_records
 	.use experimental.amigaos.binary_structs as structs
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_templates as templates
@@ -263,6 +264,54 @@ graphDone
 	tst.l d0
 	rts
 	.bend  ; beginGraph
+
+; A0=frontend Frame,A1=external u16 table,D0=table capacity in bytes.
+; Copy immutable member keys indexed by actual symbol ID; no allocation/binding.
+; D0/CCR=status. Other registers preserved; Frame.NameCount refreshed.
+copyMemberKeys	.block
+	movem.l d1-d5/a0-a3, -(sp)
+	movea.l a0, a3
+	movea.l Frame.Scratch(a3), a2
+	lea SCOPE_STATE(a2), a2
+	moveq #0, d1
+	move.w layout.State.Base(a2), d1
+	moveq #0, d2
+	move.w layout.State.Count(a2), d2
+	move.l d1, d3
+	add.l d2, d3
+	move.l d3, Frame.NameCount(a3)
+	add.l d3, d3
+	cmp.l d3, d0
+	blo.w bad
+	move.l a1, d0
+	beq.w bad
+	movea.l a1, a0
+	move.l d1, d4
+reserved
+	tst.l d4
+	beq.w entries
+	move.w #$ffff, (a0)+
+	subq.l #1, d4
+	bra.w reserved
+entries
+	movea.l layout.ENTRIES_POINTER(a2), a1
+copy
+	tst.l d2
+	beq.w ok
+	move.w binding_records.Entry.MemberId(a1), (a0)+
+	adda.w #binding_records.ENTRY_BYTES, a1
+	subq.l #1, d2
+	bra.w copy
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d5/a0-a3
+	tst.l d0
+	rts
+	.bend  ; copyMemberKeys
 
 ; A0=Frame,A1=file basename,D0=name bytes. Enter file-derived module ownership
 ; before lowering physical lines. D0/CCR=status; other registers preserved.
@@ -2849,7 +2898,7 @@ bind	.block
 	cmpi.l #writer.BIND_ROLE_STATE_ARGUMENT, d2
 	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d2
-	beq.w packageName
+	beq.w findSymbol
 	cmpi.l #writer.BIND_ROLE_CALL_NAME, d2
 	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_INLINE_HEAD, d2
@@ -3010,6 +3059,12 @@ sourceName
 ordinarySourceName
 	moveq #0, d3
 	move.w layout.State.Current(a1), d3
+	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d5
+	bne.w lexicalSourceName
+	clr.w layout.State.Current(a1)
+	moveq #1, d4  ; member keys retain their global origin identity
+	bra.w bindScopedName
+lexicalSourceName
 	tst.l d5
 	beq.w valueEnvironment
 	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d5

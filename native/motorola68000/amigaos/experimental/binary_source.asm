@@ -34,6 +34,16 @@ TOKEN_CONDITIONAL_DECLARATION = 44
 TOKEN_IGNORED_DECLARATION = 45
 ; Prepared-only loop envelope: BE16 iterator identity, followed by EXVM value.
 TOKEN_ITERATOR_BINDING = $84
+NameToken	.struct
+Kind	.byte ?
+Id	.word ?
+Qualifier	.byte ?
+.endstruct
+IteratorToken	.struct
+Kind	.byte ?
+Id	.word ?
+Value	.byte ?
+.endstruct
 BIND_ROLE_WIDTH = 3
 BIND_ROLE_PACKAGE_NAME = 4
 BIND_ROLE_MEMBER_NAME = 5

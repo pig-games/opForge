@@ -2185,6 +2185,10 @@ expressionCompiled
 	lea KNOWN_OWNER(a4), a0
 	move.l a0, expression.Frame.Owner(a2)
 	clr.l expression.Frame.Kind(a2)
+	clr.l expression.Frame.SectionIds(a2)
+	clr.w expression.Frame.CurrentSection(a2)
+	clr.w expression.Frame.Reserved(a2)
+	clr.l expression.Frame.Provenance(a2)
 	movea.l a5, a0
 	movea.l a3, a1
 	jsr expression.evaluateValue

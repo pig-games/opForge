@@ -15,6 +15,8 @@ OWNER_BYTES = 40
 SCALAR = 0
 LIST = 1
 RANGE = 2
+TYPED_LIST = 3
+ADDRESS_RECORD = 4
 OK = 0
 MALFORMED = 1
 STORAGE = 2
@@ -23,6 +25,19 @@ Record	.struct
 Kind	.long ?
 Count	.long ?
 .endstruct
+Cell	.struct
+Low	.long ?
+High	.long ?
+Kind	.long ?
+Provenance	.long ?
+.endstruct
+Field	.struct
+Member	.long ?
+Value	.res 16
+.endstruct
+CELL_BYTES = 16
+FIELD_BYTES = 20
+RECORD_BASE_BYTES = 24
 HEADER_BYTES = 8
 ELEMENT_BYTES = 8
 MAX_ELEMENTS = (memory.LIMIT-HEADER_BYTES)/ELEMENT_BYTES
@@ -291,10 +306,11 @@ done
 copyRecord	.block
 	movem.l d1/d3-d7/a0-a3, -(sp)
 	move.l d3, d7
+	beq.w invalid
 	cmpi.l #LIST, d7
 	beq.w kindReady
-	cmpi.l #RANGE, d7
-	bne.w invalid
+	cmpi.l #ADDRESS_RECORD, d7
+	bhi.w invalid
 kindReady
 	move.l d0, d4
 	cmpi.l #memory.LIMIT, d4
@@ -330,6 +346,8 @@ separate
 	adda.l d1, a1
 	cmp.l Record.Kind(a1), d7
 	bne.w invalid
+	cmpi.l #TYPED_LIST, d7
+	bhs.w typedRecord
 	cmpi.l #RANGE, d7
 	beq.w rangeRecord
 	subi.l #HEADER_BYTES, d4
@@ -343,6 +361,70 @@ separate
 	lea HEADER_BYTES(a1), a1
 	move.l d4, d1
 	bsr.w appendList
+	bra.w done
+typedRecord
+	bsr.w descriptorBytes
+	bne.w done
+	cmp.l d4, d2
+	bhi.w invalid
+	move.l d2, d6
+	movea.l a1, a2
+	move.l Record.Count(a1), d4
+	lea HEADER_BYTES(a1), a3
+	cmpi.l #ADDRESS_RECORD, d7
+	bne.w typedCells
+	tst.l Cell.Kind(a3)
+	bne.w invalid
+	cmpi.l #-1, Cell.Provenance(a3)
+	beq.w defaultReady
+	cmpi.l #8, Cell.Provenance(a3)
+	bhi.w invalid
+defaultReady
+	adda.l #CELL_BYTES, a3
+typedCells
+	tst.l d4
+	beq.w typedAllocate
+	cmpi.l #ADDRESS_RECORD, d7
+	bne.w importCell
+	addq.l #4, a3
+importCell
+	tst.l Cell.Kind(a3)
+	bne.w invalid
+	cmpi.l #-1, Cell.Provenance(a3)
+	beq.w importReady
+	cmpi.l #8, Cell.Provenance(a3)
+	bhi.w invalid
+importReady
+	adda.l #CELL_BYTES, a3
+	subq.l #1, d4
+	bra.w typedCells
+typedAllocate
+	lea Owner.Arena(a0), a0
+	move.l memory.Block.Used(a0), d2
+	move.l d2, d0
+	andi.l #7, d0
+	bne.w invalid
+	move.l d2, d5
+	add.l d6, d5
+	bcs.w invalid
+	cmpi.l #memory.LIMIT, d5
+	bhi.w invalid
+	move.l d5, d0
+	jsr memory.reserve
+	tst.l d0
+	bne.w noSpace
+	movea.l memory.Block.Pointer(a0), a1
+	adda.l d2, a1
+	lsr.l #2, d6
+rawCopy
+	move.l (a2)+, (a1)+
+	subq.l #1, d6
+	bne.w rawCopy
+	move.l d5, memory.Block.Used(a0)
+	moveq #OK, d0
+	bra.w done
+noSpace
+	moveq #STORAGE, d0
 	bra.w done
 rangeRecord
 	cmpi.l #ranges.BYTES, d4
@@ -370,8 +452,13 @@ compoundLength	.block
 	bne.w done
 	cmpi.l #RANGE, Record.Kind(a1)
 	beq.w rangeValue
+	cmpi.l #ADDRESS_RECORD, Record.Kind(a1)
+	beq.w invalid
 	move.l Record.Count(a1), d1
 	moveq #0, d2
+	bra.w done
+invalid
+	moveq #MALFORMED, d0
 	bra.w done
 rangeValue
 	jsr ranges.length
@@ -390,14 +477,31 @@ compoundGet	.block
 	bne.w done
 	cmpi.l #RANGE, Record.Kind(a1)
 	beq.w rangeValue
+	cmpi.l #ADDRESS_RECORD, Record.Kind(a1)
+	beq.w invalid
 	tst.l d4
 	bne.w outOfBounds
 	cmp.l Record.Count(a1), d2
 	bhs.w outOfBounds
+	cmpi.l #TYPED_LIST, Record.Kind(a1)
+	beq.w typedValue
 	lsl.l #3, d2
 	adda.l d2, a1
 	move.l HEADER_BYTES(a1), d1
 	move.l HEADER_BYTES+4(a1), d2
+	bra.w done
+typedValue
+	lsl.l #4, d2
+	adda.l d2, a1
+	tst.l HEADER_BYTES+Cell.Kind(a1)
+	bne.w invalid
+	tst.l HEADER_BYTES+Cell.Provenance(a1)
+	bne.w invalid
+	move.l HEADER_BYTES+Cell.Low(a1), d1
+	move.l HEADER_BYTES+Cell.High(a1), d2
+	bra.w done
+invalid
+	moveq #MALFORMED, d0
 	bra.w done
 rangeValue
 	move.l d4, d3
@@ -431,7 +535,23 @@ equalValues	.block
 	move.l Record.Count(a1), d4
 	cmp.l Record.Count(a2), d4
 	bne.w bad
+	cmpi.l #TYPED_LIST, d3
+	beq.w typedContents
+	cmpi.l #ADDRESS_RECORD, d3
+	beq.w typedContents
 	add.l d4, d4
+	bra.w contents
+typedContents
+	bsr.w descriptorBytes
+	bne.w done
+	move.l Record.Count(a1), d4
+	cmpi.l #TYPED_LIST, Record.Kind(a1)
+	beq.w typedListContents
+	mulu.l #FIELD_BYTES/4, d4
+	addi.l #CELL_BYTES/4, d4
+	bra.w contents
+typedListContents
+	lsl.l #2, d4
 	bra.w contents
 rangeValue
 	moveq #6, d4
@@ -463,7 +583,7 @@ setKind	.block
 	movem.l d1-d3/a0-a2, -(sp)
 	cmp.l Owner.Count(a0), d1
 	bhs.w outOfBounds
-	cmpi.l #RANGE, d2
+	cmpi.l #ADDRESS_RECORD, d2
 	bhi.w invalid
 	movea.l a0, a2
 	lea Owner.Kinds(a0), a1
@@ -512,7 +632,7 @@ getKind	.block
 	beq.w good
 	movea.l memory.Block.Pointer(a1), a1
 	move.b 0(a1, d1.l), d2
-	cmpi.l #RANGE, d2
+	cmpi.l #ADDRESS_RECORD, d2
 	bhi.w invalid
 good
 	moveq #OK, d0
@@ -530,6 +650,7 @@ done
 	.priv
 
 ; A1=Block. D0/CCR=status; clobbers D3. Reject inconsistent outOfBounds/pointers.
+	.pub
 block	.block
 	move.l memory.Block.Capacity(a1), d3
 	cmpi.l #memory.LIMIT, d3
@@ -556,6 +677,7 @@ bad
 	rts
 	.bend  ; block
 
+	.priv
 ; A0=Owner,A1=Kinds. D0/CCR=status; clobbers D3.
 kinds	.block
 	bsr.w block
@@ -575,6 +697,7 @@ done
 	rts
 	.bend  ; kinds
 
+	.pub
 ; A0=Owner,D1=offset. D0/CCR=status,A1=ephemeral descriptor; clobbers D3.
 ; Validates a complete LIST/RANGE record. No serialized pointers.
 view	.block
@@ -594,6 +717,10 @@ view	.block
 	adda.l d1, a1
 	cmpi.l #RANGE, Record.Kind(a1)
 	beq.w rangeRecord
+	cmpi.l #TYPED_LIST, Record.Kind(a1)
+	beq.w typedRecord
+	cmpi.l #ADDRESS_RECORD, Record.Kind(a1)
+	beq.w typedRecord
 	cmpi.l #LIST, Record.Kind(a1)
 	bne.w bad
 	move.l Record.Count(a1), d3
@@ -602,6 +729,19 @@ view	.block
 	lsl.l #3, d3
 	add.l d1, d3
 	addi.l #HEADER_BYTES, d3
+	cmp.l Owner.Arena+memory.Block.Used(a0), d3
+	bhi.w bad
+	moveq #OK, d0
+	bra.w done
+typedRecord
+	move.l d2, -(sp)
+	bsr.w descriptorBytes
+	move.l d2, d3
+	move.l (sp)+, d2
+	tst.l d0
+	bne.w done
+	add.l d1, d3
+	bcs.w bad
 	cmp.l Owner.Arena+memory.Block.Used(a0), d3
 	bhi.w bad
 	moveq #OK, d0
@@ -620,6 +760,40 @@ done
 	tst.l d0
 	rts
 	.bend  ; view
+
+; A1=header already bounded to8bytes. D0/CCR=status,D2=aligned record bytes.
+; Others preserved. Structural sizing only; callers validate extent and cells.
+descriptorBytes	.block
+	move.l d3, -(sp)
+	move.l Record.Count(a1), d2
+	cmpi.l #TYPED_LIST, Record.Kind(a1)
+	beq.w listSize
+	cmpi.l #ADDRESS_RECORD, Record.Kind(a1)
+	bne.w bad
+	cmpi.l #(memory.LIMIT-RECORD_BASE_BYTES)/FIELD_BYTES, d2
+	bhi.w bad
+	move.l d2, d3
+	lsl.l #4, d2
+	lsl.l #2, d3
+	add.l d3, d2
+	addi.l #RECORD_BASE_BYTES+7, d2
+	andi.l #$fffffff8, d2
+	bra.w good
+listSize
+	cmpi.l #(memory.LIMIT-HEADER_BYTES)/CELL_BYTES, d2
+	bhi.w bad
+	lsl.l #4, d2
+	addi.l #HEADER_BYTES, d2
+good
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #MALFORMED, d0
+done
+	move.l (sp)+, d3
+	tst.l d0
+	rts
+	.bend  ; descriptorBytes
 
 	.endsection
 	.endmodule

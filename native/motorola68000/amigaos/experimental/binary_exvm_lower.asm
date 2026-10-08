@@ -151,6 +151,8 @@ checked
 	beq.w range
 	cmpi.b #compiler.KIND_CALL, d2
 	beq.w functionCall
+	cmpi.b #compiler.KIND_MEMBER, d2
+	beq.w member
 	cmpi.b #compiler.KIND_INDEX, d2
 	bne.w malformedActive
 	cmpi.w #2, compiler.Node.Count(a2)
@@ -166,6 +168,23 @@ checked
 	bsr.w room
 	bne.w leave
 	move.b #$61, (a3)+  ; canonical IndexValue
+	bra.w success
+member
+	cmpi.w #1, compiler.Node.Count(a2)
+	bne.w malformedActive
+	cmpi.l #65535, compiler.Node.Second(a2)
+	bhi.w malformedActive
+	move.l compiler.Node.First(a2), d1
+	bsr.w node
+	bne.w leave
+	moveq #3, d0
+	bsr.w room
+	bne.w leave
+	move.b #runtime.EXPRVM_OPCODE_GET_MEMBER, (a3)+  ; canonical GetMember, numeric identity u16 LE
+	move.l compiler.Node.Second(a2), d1
+	move.b d1, (a3)+
+	lsr.w #8, d1
+	move.b d1, (a3)+
 	bra.w success
 range
 	moveq #0, d2

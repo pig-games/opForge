@@ -84,6 +84,7 @@ KIND_RANGE = 6
 KIND_LIST = 7
 KIND_INDEX = 8
 KIND_CALL = 9
+KIND_MEMBER = 10
 	.priv
 Sequence	.struct
 Start	.long ?
@@ -523,12 +524,21 @@ structCheck
 postfixCheck
 	bsr.w token
 	bne.w done
+	cmpi.w #tokens.TK_KIND_DOT, d1
+	beq.w memberCheck
 	cmpi.w #tokens.TK_KIND_OPEN_BRACKET, d1
 	bne.w next
 	move.w State.Outputs(a6), d0
 	cmp.w (sp), d0
 	bls.w syntaxBad
 	bsr.w parseIndex
+	bne.w done
+	bra.w postfixCheck
+memberCheck
+	move.w State.Outputs(a6), d0
+	cmp.w (sp), d0
+	bls.w syntaxBad
+	bsr.w parseMember
 	bne.w done
 	bra.w postfixCheck
 list
@@ -745,6 +755,44 @@ done
 	tst.l d0
 	rts
 	.bend  ; parseIndex
+
+; Parse a numeric bare member after a postfix dot; base is already on OUTPUTS.
+; D0/CCR=status; preserve A3-A6. Member IDs share the bound identifier namespace.
+parseMember	.block
+	add.l d2, State.Cursor(a6)
+	bsr.w token
+	bne.w done
+	cmpi.w #1, d1
+	bhi.w syntaxBad
+	tst.l d2
+	beq.w syntaxBad
+	tst.b 3(a0)
+	bne.w syntaxBad
+	moveq #0, d4
+	move.w 1(a0), d4
+	add.l d2, State.Cursor(a6)
+	bsr.w allocate
+	bne.w done
+	move.b #KIND_MEMBER, Node.Kind(a1)
+	move.w #1, Node.Count(a1)
+	move.l d4, Node.Second(a1)
+	move.l d7, d6
+	bsr.w pop
+	move.l d1, Node.First(a1)
+	movea.l Request.Arena(a5), a0
+	adda.l d1, a0
+	move.w Node.SpanStart(a0), Node.SpanStart(a1)
+	move.l State.Cursor(a6), d0
+	move.w d0, Node.SpanEnd(a1)
+	move.l d6, d7
+	bsr.w push
+	bra.w done
+syntaxBad
+	moveq #STATUS_SYNTAX, d0
+done
+	tst.l d0
+	rts
+	.bend  ; parseMember
 
 ; Fetch one canonical program byte; A3=program,A4=length,A6=scratch.
 ; D1=byte, D0/CCR=status; all other registers preserved. Every fetch is bounded.

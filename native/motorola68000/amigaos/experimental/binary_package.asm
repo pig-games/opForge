@@ -135,6 +135,10 @@ Pc	.long ?
 High	.long ?
 Owner	.long ?
 Kind	.long ?
+SectionIds	.long ?
+CurrentSection	.word ?
+Reserved	.word ?
+Provenance	.long ?
 Package	.long ?
 Pass	.word ?
 Relocatable	.word ?  ; nonzero for section-relative Hunk output
@@ -142,8 +146,6 @@ Parameters	.long ?
 ParameterCount	.long ?
 ParameterBytes	.long ?  ; bounded table followed by immutable compound payload
 RetainedValues	.long ?  ; assembly owner prefix retained across layout replay
-SectionIds	.long ?
-CurrentSection	.word ?  ; one-based active Hunk section; zero outside sections
 SectionBases	.long ?  ; optional eight canonical Hunk origins; zero means unplaced
 	.endstruct
 CONTEXT_BYTES = Context.SectionBases+4

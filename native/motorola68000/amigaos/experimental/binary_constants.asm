@@ -78,8 +78,14 @@ execute	.block
 resolved
 	tst.l pkg.Context.Kind(a2)
 	beq.w scalarProof
+	; Typed records retain address identity inside their immutable cells.
+	; Legacy scalar compounds keep the existing Hunk boundary.
 	tst.w pkg.Context.Relocatable(a2)
-	bne.w bad  ; compound address provenance is not qualified yet
+	beq.w store
+	cmpi.l #values.TYPED_LIST, pkg.Context.Kind(a2)
+	blo.w bad
+	cmpi.l #values.ADDRESS_RECORD, pkg.Context.Kind(a2)
+	bhi.w bad
 	bra.w store
 scalarProof
 	tst.w pkg.Context.Relocatable(a2)

@@ -1851,8 +1851,11 @@ targetName
 	beq.w exactIdentity
 	; The generic postfix proof transports one base through absolute addends.
 	; Numeric evaluation still belongs to ExprVM; unsafe address algebra fails.
+	cmpi.b #expression.VALUE_TAG, (a0)
+	beq.w affineIdentity
 	cmpi.b #expression.COMPILED_TAG, (a0)
 	bne.w targetReady
+affineIdentity
 	jsr references.affineTarget
 	cmpi.l #references.STATUS_BAD, d0
 	beq.w bad
@@ -1975,8 +1978,11 @@ target
 	beq.w exact
 	tst.w Unresolved
 	bne.w absent
+	cmpi.b #expression.VALUE_TAG, (a0)
+	beq.w affineIdentity
 	cmpi.b #expression.COMPILED_TAG, (a0)
 	bne.w exact
+affineIdentity
 	jsr references.affineTarget
 	cmpi.l #references.STATUS_BAD, d0
 	beq.w bad

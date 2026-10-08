@@ -43,6 +43,7 @@ RecordOffset	.long ?
 Sections	.long ?
 AddReloc	.long ?
 Emitted	.long ?
+MemberKeys	.long ?  ; bounded numeric field IDs, indexed by context symbol
 	.endstruct
 
 OutputReloc	.struct
@@ -51,7 +52,7 @@ Target	.long ?
 Offset	.long ?
 	.endstruct
 OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
-FRAME_BYTES = Frame.Emitted+4
+FRAME_BYTES = Frame.MemberKeys+4
 FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
 FAILURE_WHILE_LAYOUT = 2
@@ -179,6 +180,7 @@ clearSymbols
 	move.l Frame.RecordBytes(a5), d0
 	movea.l a6, a2
 	movea.l a0, a1
+	movea.l Frame.MemberKeys(a5), a3
 	lea InventoryState, a0
 	jsr repeatInventory.prepare
 	bne.w fail

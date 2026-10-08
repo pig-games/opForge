@@ -529,7 +529,11 @@ Notes:
   scalar constants and per-iteration relocations have focused proof on both packages.
   An iterator can shadow a section label without inheriting its relocation;
   a qualified reference to the original label retains its fixup.
-  Labeled/indexed `.bfor`, `.bwhile`, mapped
+  Labeled counted/list/range `.bfor` now has separate focused coverage for indexed
+  addresses, immediate members, nested collections and grouped record aliases,
+  including Hunk relocations. Plain dotted record aliases remain a compact
+  frontend gap. See the [labeled-repetition checkpoint](plans/native-runtime-reset.md#native-labeled-repetition-focused-checkpoint).
+  `.bwhile`, mapped
   scoped replay and general forward-alias/layout convergence remain open;
   literals above 32 bits also remain a packing limitation. These
   focused results do not establish complete loop/macro parity. The preceding

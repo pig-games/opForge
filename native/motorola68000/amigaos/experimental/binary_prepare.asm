@@ -239,8 +239,7 @@ oneScalar
 loopHeader
 	; PRVM selects the envelope; EXVM compiles its complete value expression.
 	movem.l d1-d2/a0-a1, -(sp)
-	movea.l 8(sp), a0
-	suba.w #9, a0
+	movea.l SOURCE_RECORD(a6), a0
 	moveq #0, d0
 	move.b (a0), d0
 	addq.w #1, d0
@@ -257,8 +256,7 @@ classifiedLoop
 	bmi.w countedLoop
 	move.b #source.TOKEN_ITERATOR_BINDING, (a3)+
 	move.w d1, (a3)+
-	movea.l 8(sp), a0
-	suba.w #9, a0
+	movea.l SOURCE_RECORD(a6), a0
 	adda.l d2, a0
 	movea.l 12(sp), a1
 	tst.w UNFOLDED(a6)

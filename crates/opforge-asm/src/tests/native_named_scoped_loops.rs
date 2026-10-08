@@ -10,6 +10,9 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("range-and-single", "start\nitems .bfor item in 1..=3:2\nentry .byte item\n.endfor\none .bfor item in {0}\nvalue .const item+6\nentry .byte value\n.endfor\n.byte items[1]-start,one[0]-start,one[0].entry-start,one[0].value\n", &[1,3,6,1,2,2,6]),
     ("nested-labeled", "start\nouter .bfor item in {2,4}\nentry .byte item\ninner .bfor child in {7,8}\nentry .byte child\nvalue .const item+child\n.endfor\n.byte inner[1]-entry,inner[1].entry-entry,inner[1].value\n.endfor\n.byte outer[1]-start,outer[1].entry-start\n", &[2,7,8,2,2,10,4,7,8,2,2,12,6,6]),
     ("qualified-original-binding", "original=19\nitems .bfor original in {2,4}\nvalue .const original\n.byte original,main.original\n.endfor\n.byte original,items[1].value\n", &[2,19,4,19,19,4]),
+    ("record-alias", "start\nitems .bfor item in {2,4}\nentry .byte item\nvalue .const item+10\n.endfor\nsaved .const items[0]\n.byte saved-start,(saved).entry-start,(saved).value,items[1].value\n", &[2,4,0,0,12,14]),
+    ("nested-member-chain", "outer .bfor item in {2,4}\ninner .bfor child in {7,8}\nvalue .const item+child\n.byte value\n.endfor\n.endfor\n.byte outer[0].inner[1].value,outer[1].inner[0].value\n", &[9,10,11,12,10,11]),
+    ("conditional-members", "items .bfor item in {0,1}\n.if item==0\nvalue .const 10\n.else\nvalue .const 20\n.endif\n.byte value\n.endfor\n.byte items[0].value,items[1].value\n", &[10,20,10,20]),
     ("empty-labeled", "empty .bfor 0\n.byte missing\n.endfor\nnone .bfor item in {}\n.byte missing\n.endfor\n.byte 7\n", &[7]),
 ];
 
@@ -44,6 +47,10 @@ const BAD: &[(&str, &str)] = &[
     ),
 ];
 
+// Unchanged anonymous scalar workload for isolated before/after measurements.
+// Selecting this test fixture never changes production behavior.
+const SCALAR_CONTROL: &str = "start\n.bfor item in 0..1024\nentry\n.if item&1\nvalue .const item+3\n.else\nvalue .const item+5\n.endif\n.byte value&255\n.word entry-start\n moveq #item&127,d0\n nop\n.endfor\n";
+
 fn source(cpu: &str, body: &str) -> String {
     format!(".module main\n.cpu {cpu}\n{body}.endmodule\n")
 }
@@ -66,6 +73,13 @@ fn combined_positive() -> (String, Vec<u8>) {
 
 fn raw_hunk(cpu: &str) -> String {
     format!(".module main\n.cpu {cpu}\n.section code,kind=code\nitems .bfor item in {{2,4}}\n.byte item\nentry .byte item+1\nvalue .const item+10\n.endfor\n.long items[1].entry\n.byte items[1].value\n.endsection\n.section data,kind=data\n.byte 9\n.endsection\n.output \"out.hunk\",format=hunk,sections=code,data\n.endmodule\n")
+}
+
+fn alias_hunk(cpu: &str) -> String {
+    raw_hunk(cpu).replace(
+        ".long items[1].entry\n",
+        ".long items[1].entry\nsaved .const items[1]\n.long saved+4\n.long (saved).entry+1\n",
+    )
 }
 
 #[test]
@@ -117,6 +131,26 @@ fn native_named_scoped_loops_hunk_rust_oracles() {
         assert_eq!(segments[0].relocations, [(4, 0)]);
         assert_eq!(segments[1].payload, [9, 0, 0, 0]);
         assert!(segments[1].relocations.is_empty());
+
+        let image = hunk_oracle(&dir.0, &alias_hunk(cpu));
+        let segments = hunk::segments(&image).unwrap();
+        let word = |value: u32| {
+            if cpu == "6502" {
+                value.to_le_bytes()
+            } else {
+                value.to_be_bytes()
+            }
+        };
+        let expected: Vec<_> = [2, 3, 4, 5]
+            .into_iter()
+            .chain(word(3))
+            .chain(word(6))
+            .chain(word(4))
+            .chain([14, 0, 0, 0])
+            .collect();
+        assert_eq!(segments[0].payload, expected);
+        assert_eq!(segments[0].relocations, [(4, 0), (8, 0), (12, 0)]);
+        assert_eq!(segments[1].payload, [9, 0, 0, 0]);
     }
 }
 
@@ -172,15 +206,20 @@ fn native_named_scoped_loops_fs_uae() {
                 failures.push(format!("{cpu}/{name}"));
             }
         }
-        if selected("raw-hunk") {
+        for (name, source) in [
+            ("raw-hunk", raw_hunk(cpu)),
+            ("raw-alias-hunk", alias_hunk(cpu)),
+        ] {
+            if !selected(name) {
+                continue;
+            }
             attempted += 1;
             if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let source = raw_hunk(cpu);
                 let expected = hunk_oracle(&dir.0, &source);
                 native_case(
                     &root,
                     &image,
-                    &format!("named-scoped-{cpu}/raw-hunk"),
+                    &format!("named-scoped-{cpu}/{name}"),
                     &source,
                     "Work:entry.asm --hunk Work:out.hunk",
                     &expected,
@@ -189,7 +228,25 @@ fn native_named_scoped_loops_fs_uae() {
             }))
             .is_err()
             {
-                failures.push(format!("{cpu}/raw-hunk"));
+                failures.push(format!("{cpu}/{name}"));
+            }
+        }
+        if cpu == "68020" && !filter.is_empty() && selected("scalar-control") {
+            attempted += 1;
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_case(
+                    &root,
+                    &dir.0,
+                    &image,
+                    "named-scoped-scalar-control",
+                    cpu,
+                    &source(cpu, SCALAR_CONTROL),
+                    false,
+                );
+            }))
+            .is_err()
+            {
+                failures.push("68020/scalar-control".into());
             }
         }
     }
@@ -201,4 +258,44 @@ fn native_named_scoped_loops_fs_uae() {
         failures.is_empty(),
         "named scoped cases failed: {failures:?}; all selected cases were attempted"
     );
+}
+
+// A contiguous dotted name remains a qualified-symbol token in the compact
+// frontend. Grouping the base reaches shared postfix parsing; the plain spelling
+// is retained separately until qualified/member binding is consolidated.
+fn dotted_alias_source(cpu: &str) -> String {
+    source(cpu, "items .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[0]\n.byte saved.value\n")
+}
+
+#[test]
+fn native_named_record_dotted_alias_rust_oracle() {
+    let dir = scratch();
+    for cpu in ["68020", "6502"] {
+        assert_eq!(
+            oracle(&dir.0, &dotted_alias_source(cpu)).unwrap(),
+            [2, 4, 12]
+        );
+    }
+}
+
+#[test]
+#[ignore = "known compact frontend gap: contiguous dotted record aliases bind as qualified symbols"]
+fn native_named_record_dotted_alias_fs_uae() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap();
+    let dir = scratch();
+    let image = build_image(&root, &dir.0);
+    for cpu in ["68020", "6502"] {
+        run_case(
+            &root,
+            &dir.0,
+            &image,
+            "dotted-record-alias",
+            cpu,
+            &dotted_alias_source(cpu),
+            false,
+        );
+    }
 }

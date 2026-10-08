@@ -1,4 +1,4 @@
-; Preparation-owned declaration identities for anonymous scoped repetitions.
+; Preparation-owned declaration identities for scoped repetitions.
 ; Replay consumes numeric IDs and offsets; lexical spelling stays in preparation.
 ; @opforge-owner: experimental.amigaos.binary_repeat_inventory
 	.module experimental.amigaos.binary_repeat_inventory
@@ -13,6 +13,7 @@
 LABEL = 1
 IMMUTABLE = 2
 MUTABLE = 3
+COLLECTION = 4
 CONDITIONAL = $100; immutable root requires an executed branch
 KIND_MASK = $ff
 Decl	.struct
@@ -54,6 +55,7 @@ Declarations	.res memory.Block.Used+4
 Owners	.res memory.Block.Used+4
 Ids	.res memory.Block.Used+4
 SourceBase	.long ?
+MemberKeys	.long ?  ; borrowed u16 canonical member key per actual symbol ID
 Symbols	.long ?
 Count	.long ?
 Current	.word ?
@@ -64,7 +66,7 @@ Frames	.res DEPTH_LIMIT*FRAME_BYTES
 	.endstruct
 STATE_BYTES = State.Frames+DEPTH_LIMIT*FRAME_BYTES
 	.section code, kind=code
-; A0=state,A1=compiled records,D0=record bytes,A2=context.
+; A0=state,A1=compiled records,D0=record bytes,A2=context,A3=MemberKeys.
 ; D0/CCR=status; other registers preserved. Build once after lexical binding.
 ; Direct declarations include nested blocks/namespaces, but a nested scoped
 ; repetition owns its own IDs. This creates no collectible block markers.
@@ -75,6 +77,7 @@ prepare	.block
 	movea.l a1, a5
 	adda.l d0, a5
 	move.l a1, State.SourceBase(a6)
+	move.l a3, State.MemberKeys(a6)
 	clr.l State.Count(a6)
 	clr.w State.Current(a6)
 	clr.w State.Depth(a6)
@@ -106,8 +109,6 @@ scan
 	blo.w next
 	bsr.w branchDepth
 	bne.w done
-	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, PackedRecord.NameKind(a4)
-	bne.w declaration
 	movea.l a4, a0
 	move.l d4, d0
 	movea.l pkg.Context.Package(a2), a1
@@ -125,6 +126,11 @@ scan
 	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
 	beq.w declaration
 	move.l d0, d5
+	cmpi.l #abi.PRVM_LOOP_BFOR, d5
+	bne.w frameReady
+	bsr.w bindCollection
+	bne.w done
+frameReady
 	moveq #0, d6
 	move.w State.Depth(a6), d6
 	cmpi.w #DEPTH_LIMIT, d6
@@ -342,6 +348,51 @@ done
 	rts
 	.bend  ; find
 	.priv
+; Register a nested labeled bfor as a direct collection in its enclosing owner.
+; A4=header,A6=inventory. D0/CCR=status; other registers preserved.
+bindCollection	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	tst.w State.Current(a6)
+	beq.w good
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, PackedRecord.NameKind(a4)
+	bhi.w good
+	cmpi.b #abi.PRVM_TOKEN_KIND_COLON, PackedRecord.Marker(a4)
+	bne.w good
+	tst.b PackedRecord.NameQualifier(a4)
+	bne.w bad
+	bsr.w declarationMap
+	bne.w done
+	moveq #0, d1
+	move.w PackedRecord.NameId(a4), d1
+	cmp.l State.Symbols(a6), d1
+	bhs.w bad
+	lsl.l #DECL_SHIFT, d1
+	movea.l State.Declarations+memory.Block.Pointer(a6), a0
+	adda.l d1, a0
+	tst.w Decl.Owner(a0)
+	bne.w bad
+	move.w State.Current(a6), Decl.Owner(a0)
+	move.w #COLLECTION, Decl.Kind(a0)
+	move.l a4, d0
+	sub.l State.SourceBase(a6), d0
+	move.l d0, Decl.Record(a0)
+	addq.l #1, State.Count(a6)
+	moveq #0, d1
+	move.w State.Current(a6), d1
+	subq.l #1, d1
+	lsl.l #OWNER_SHIFT, d1
+	movea.l State.Owners+memory.Block.Pointer(a6), a0
+	addq.l #1, Owner.Count(a0, d1.l)
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+	.bend  ; bindCollection
 ; A4=bounded compiled record,D4=extent,A2=context,A6=inventory.
 ; Track shared PRVM branch ancestry, without evaluating expressions.
 ; An enclosing branch is outside a newly opened scoped owner's branch base.

@@ -740,7 +740,7 @@ Focused regressions cover both CPU families, placed/unplaced sections, scalar
 members, cross-section address members, snapshots, whole-record aliases, nested
 index/member chains, `.bwhile`, same-section subtraction and unsafe arithmetic.
 The formerly ignored indexed-member Hunk oracle is now an ordinary passing test.
-Native descriptor construction/replay is the next logical parity slice. No new
+Native descriptor construction/replay follows in the checkpoint below. No new
 full self-host completion or performance gain is established by this foundation.
 
 Qualification: 15 record/Hunk checks pass, including forward-list rebinding and
@@ -759,6 +759,83 @@ bytes, 156 bytes below the previous 620,380-byte image. START-to-DONE observatio
 are 1.785194583/1.011650250 seconds respectively; no isolated before/after timing
 comparison was made. These controls preserve existing native scalar behavior,
 not native labeled-loop support or a new full self-host completion.
+
+### Native labeled repetition (focused checkpoint)
+
+Native now constructs typed iteration records for labeled counted/list/range
+`.bfor`. At scope close, the label publishes a list of immutable records. Each
+record retains its iteration-start address and immediate local bindings;
+nested named repetitions are typed members. Shared EXVM postfix parsing and
+ExprVM evaluation own indexing, member selection, record scalar projection and
+address provenance. The native frontend supplies numeric member identities;
+runtime records retain arena-relative offsets, never serialized pointers.
+
+Record storage and scope capture have separate owners in `binary_record_values`
+and `binary_repeat_records`. Existing scalar-list/range descriptors remain
+unchanged. Typed cells contain low/high value words, kind and section provenance;
+member entries pair a numeric key with a cell. A temporary construction buffer
+is reused, and release builds contain no telemetry calls or storage from the
+measurement framework.
+The member-key table adds two bytes per bound symbol during assembly, and the
+preparation binding entry grows from 32 to 36 bytes. A named collection uses an
+8-byte list header plus 16 bytes per iteration; each captured record uses 24
+bytes plus 20 per retained member. This describes representation costs, not a
+measured peak or proof of the 2 MiB product budget.
+
+Readonly record aliases preserve their shape. Compact arithmetic referencing
+compound symbols uses the shared typed evaluator, so a record's storage offset
+cannot be mistaken for its default address. Scalar-only owners retain the
+existing compact evaluator. A bounded linear kind scan is needed for compact
+expressions in owners that contain compounds; it does not parse source text.
+
+The focused fixture includes counted/list/range and empty/single loops, nested
+collections, nested index/member chains, qualified original bindings, conditional
+members and grouped record aliases. Plain contiguous dotted aliases such as
+`saved.value` still bind as qualified names in the compact frontend; their Rust
+oracle and explicit native failing characterization are retained. This spelling
+is not qualified by the grouped `(saved).value` checks. `.bwhile`, mapped scoped
+replay, negative/wide/compound iterable elements and general forward-layout
+convergence remain open. This checkpoint is not a new full self-host result or
+complete loop/macro parity.
+
+Qualification: the nine-scenario combined fixture matches the live 61-byte Rust
+artifact on both 68020 and 6502 packages. Final-image START-to-DONE observations
+are 3.343929666 and 2.309468333 seconds. Hunk checks match complete 104-byte Rust
+files, including indexed members, saved-record arithmetic and three code-section
+relocation entries at offsets 4, 8 and 12; observations are 1.798816625 and
+1.021726 seconds. A fresh native component matches all 372 contract bytes,
+covering 14 record/projection/provenance cases, ordinary scalar projection,
+section identity and rejection of an invalid bare descriptor. Unsupported
+provenance remains -1 and cannot cancel to absolute by subtraction.
+
+Three selected native rejection cases per package completed on the initial
+candidate: out-of-bounds member access, missing members and indexing an empty
+collection. Missing-member rejection is also reconfirmed on the final 68020
+image. Rust checks cover the other four retained negative scenarios.
+Host expression checks, native assembly, Rustfmt, workflow/architecture checks
+and the deterministic native porting gate pass. The optional whole-tree
+redundant-test check still reports 13 pre-existing autofixable sites; the clean
+baseline reproduced those sites. The new storage/capture modules have none.
+
+The dual-package release executable grows from 620,224 bytes at `d5a88292` to
+625,904 bytes: +5,680 bytes (+0.92%). The isolated unchanged flat scalar control
+in `native_named_scoped_loops.rs` runs 1,024 anonymous iterations with conditional
+constants, local addresses, data and instructions. Both versions match their
+live Rust artifact. Same FS-UAE 68020/10 MiB profile, no telemetry:
+
+| Image | START-to-DONE seconds, two fresh runs | Mean |
+|---|---|---|
+| Foundation baseline (`d5a88292`, 620,224 bytes) | 36.088537542, 36.035704750 | 36.062121146 |
+| Final labeled-record implementation (625,904 bytes) | 36.291731083, 36.107997250 | 36.199864167 |
+
+The observed +0.137743021 seconds (+0.38%) is a small cost on this control,
+not a statistically qualified regression or an optimization gain. It does not
+measure Hunk workload overhead, full self-host performance or A6000 timing.
+Reproduce the fixture with `OPFORGE_NAMED_SCOPED_FILTER=scalar-control` and
+`OPFORGE_NAMED_SCOPED_CPUS=68020`; `OPFORGE_NAMED_SCOPED_IMAGE` selects the
+frozen candidate in the test harness only. Use the normal FS-UAE environment
+and `cargo test -p asm native_named_scoped_loops_fs_uae -- --ignored --nocapture
+--test-threads=1`.
 
 ### Compound-value checkpoints
 

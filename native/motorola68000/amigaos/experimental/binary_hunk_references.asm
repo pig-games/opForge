@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_hunk_references
 	.cpu 68020
 	.use exprvm.amigaos.runtime as runtime
+	.use opasm.amigaos.binary_expression as expr
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_mutable as mutable
@@ -13,6 +14,7 @@ STATUS_SECTION = 1
 STATUS_BAD = 2
 WRAPPER = $81
 NO_BASE = $ffffffff
+SECTION_ID_BASE = $10010; canonical section identities occupy +1 through +8
 CURRENT_PC_BASE = $10000; distinct from every encoded 16-bit symbol ID
 	.section code, kind=code
 
@@ -21,6 +23,18 @@ CURRENT_PC_BASE = $10000; distinct from every encoded 16-bit symbol ID
 ; 2 if malformed. D1.W is section-reference count, capped at two. A0 advances
 ; past the wrapper. Other registers are preserved.
 expression	.block
+	jsr expr.requiresTyped
+	tst.l d0
+	beq.w compact
+	bsr.w typedTarget
+	moveq #0, d1
+	cmpi.l #STATUS_SECTION, d0
+	bne.w typedDone
+	moveq #1, d1
+typedDone
+	tst.l d0
+	rts
+compact
 	move.l d7, -(sp)
 	moveq #0, d7
 	bsr.w scanExpression
@@ -32,6 +46,18 @@ expression	.block
 ; The same bounded scan, classifying any nonabsolute symbol as a target.
 ; D0/CCR=0 clear, 1 target, 2 malformed; D1.W=count capped at two.
 targets	.block
+	jsr expr.requiresTyped
+	tst.l d0
+	beq.w compact
+	bsr.w typedTarget
+	moveq #0, d1
+	cmpi.l #STATUS_SECTION, d0
+	bne.w typedDone
+	moveq #1, d1
+typedDone
+	tst.l d0
+	rts
+compact
 	move.l d7, -(sp)
 	moveq #1, d7
 	bsr.w scanExpression
@@ -50,6 +76,10 @@ targets	.block
 ; absolute+base, base-absolute and unary plus preserve a base. Subtracting
 ; two symbols with the same nonzero section provenance cancels their bases.
 affineTarget	.block
+	jsr expr.requiresTyped
+	tst.l d0
+	bne.w typedTarget
+compact
 	movem.l d2-d7/a1-a6, -(sp)
 	suba.w #runtime.EXPRVM_STACK_CAPACITY*4, sp
 	movea.l sp, a5
@@ -280,6 +310,13 @@ done
 ; or STATUS_BAD when no section provenance is available. Other registers preserved.
 baseSection	.block
 	move.l a3, -(sp)
+	cmpi.l #SECTION_ID_BASE+1, d1
+	blo.w encoded
+	cmpi.l #SECTION_ID_BASE+8, d1
+	bhi.w bad
+	subi.l #SECTION_ID_BASE, d1
+	bra.w ready
+encoded
 	cmpi.l #CURRENT_PC_BASE, d1
 	beq.w current
 	cmp.l pkg.Context.Count(a2), d1
@@ -297,6 +334,8 @@ current
 ready
 	tst.l d1
 	beq.w bad
+	cmpi.l #8, d1
+	bhi.w bad
 	moveq #STATUS_CLEAR, d0
 	bra.w done
 bad
@@ -334,6 +373,40 @@ done
 	rts
 	.bend  ; sectionBase
 	.priv
+; Canonical typed wrappers derive relocation solely from shared ExprVM execution.
+; A0/A1=bounded wrapper/end,A2=Context. D0/CCR=status,D1=affine identity.
+; A0 advances on success; all remaining registers are preserved.
+typedTarget	.block
+	movem.l d2-d7/a1-a6, -(sp)
+	jsr expr.evaluate
+	tst.l d0
+	bne.w bad
+	tst.l d2
+	beq.w resolved
+	cmpi.w #1, pkg.Context.Pass(a2)
+	bne.w bad
+	bra.w absolute
+resolved
+	move.l pkg.Context.Provenance(a2), d1
+	beq.w absolute
+	cmpi.l #8, d1
+	bhi.w bad
+	addi.l #SECTION_ID_BASE, d1
+	moveq #STATUS_SECTION, d0
+	bra.w done
+absolute
+	move.l #NO_BASE, d1
+	moveq #STATUS_CLEAR, d0
+	bra.w done
+bad
+	move.l #NO_BASE, d1
+	moveq #STATUS_BAD, d0
+done
+	movem.l (sp)+, d2-d7/a1-a6
+	tst.l d0
+	rts
+	.bend  ; typedTarget
+
 scanExpression	.block
 	movem.l d2-d7/a1-a6, -(sp)
 	moveq #0, d6
@@ -451,6 +524,8 @@ next
 	moveq #0, d1
 	move.b (a0)+, d1
 	cmpi.b #WRAPPER, d1
+	beq.w wrapped
+	cmpi.b #expr.VALUE_TAG, d1
 	beq.w wrapped
 	cmpi.b #1, d1
 	bls.w name

@@ -22,8 +22,10 @@ TemplateFlags	.word ?  ; preparation-only declaration and visibility facet
 RegisterName	.word ?  ; original spelling's package register ID+1; zero absent
 RegisterQualifier	.byte ?
 RegisterReserved	.byte ?  ; zero; candidate metadata never follows Target
+MemberId	.word ?  ; immutable global bare field key; $ffff until declared
+MemberPadding	.word ?
 .endstruct
-ENTRY_BYTES = Entry.RegisterReserved+1
+ENTRY_BYTES = Entry.MemberPadding+2
 REFERENCED = 2
 OPTIONAL_REFERENCED = 512
 CONDITIONAL_VALUE = 1<<11; preparation retains candidate immutable definitions
@@ -33,6 +35,7 @@ ITERATOR_HIGH_BIT = 2
 ITERATOR = 1<<(ITERATOR_HIGH_BIT+8)
 LABEL_VALUE_BIT = 7
 LABEL_VALUE = 1<<LABEL_VALUE_BIT; preparation-time address declaration availability
+COMPOUND_LABEL = 1<<12; collection identity, distinct from an address label
 STRUCT_TYPE = 32
 TEMPLATE_PROXY_BIT = 6
 TEMPLATE_PROXY = 1<<TEMPLATE_PROXY_BIT
@@ -198,6 +201,8 @@ typedOpcode
 	beq.w two
 	cmpi.b #$52, d0
 	beq.w one
+	cmpi.b #runtime.EXPRVM_OPCODE_GET_MEMBER, d0
+	beq.w two  ; immutable global bare member identity
 	cmpi.b #$61, d0
 	beq.w opcode
 	cmpi.b #$62, d0

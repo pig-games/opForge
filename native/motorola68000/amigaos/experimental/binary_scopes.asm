@@ -321,6 +321,66 @@ bindOrigin	.block
 	moveq #1, d2
 	bra.w bindName
 	.bend  ; bindOrigin
+; Preparation-only field key for a declared numeric identity.
+; A0=scope state,D0=declaration ID. D0/CCR=status,D1=global bare member ID.
+; Other registers preserved; lexical/line binding metadata survives lookup.
+memberIdentity	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	sub.w layout.State.Base(a6), d0
+	bcs.w bad
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	move.l d0, d7
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	moveq #0, d2
+	move.w records.Entry.Leaf(a3), d2
+	moveq #0, d0
+	move.w records.Entry.Length(a3), d0
+	sub.w d2, d0
+	bls.w bad
+	movea.l ARENA_POINTER(a6), a0
+	adda.l records.Entry.Name(a3), a0
+	adda.l d2, a0
+	; Explicitly qualified declarations may have Leaf=0. Select their last
+	; lexical component here, while spelling is still preparation-owned.
+	movea.l a0, a2
+	move.l d0, d3
+component
+	cmpi.b #'.', (a2)+
+	bne.w nextByte
+	movea.l a2, a0
+	move.l d3, d0
+	subq.l #1, d0
+nextByte
+	subq.l #1, d3
+	bne.w component
+	tst.l d0
+	beq.w bad
+	move.w layout.State.Current(a6), -(sp)
+	move.w layout.State.FirstBound(a6), -(sp)
+	move.w layout.State.FirstExplicit(a6), -(sp)
+	clr.w layout.State.Current(a6)
+	movea.l a6, a1
+	bsr.w bindOrigin
+	move.w (sp)+, layout.State.FirstExplicit(a6)
+	move.w (sp)+, layout.State.FirstBound(a6)
+	move.w (sp)+, layout.State.Current(a6)
+	tst.l d0
+	bne.w done
+	mulu.w #records.ENTRY_BYTES, d7
+	movea.l ENTRIES_POINTER(a6), a3
+	move.w d1, records.Entry.MemberId(a3, d7.l)
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; memberIdentity
 	.priv
 bindName	.block
 	movem.l d3-d7/a2-a6, -(sp)
@@ -382,6 +442,8 @@ stableName
 	clr.w records.Entry.TemplateModule(a3)
 	clr.w records.Entry.TemplateFlags(a3)
 	clr.l records.Entry.RegisterName(a3)
+	move.w #$ffff, records.Entry.MemberId(a3)
+	clr.w records.Entry.MemberPadding(a3)
 	move.w layout.State.Base(a6), d2
 	add.w d1, d2
 	move.w d2, records.Entry.Target(a3)
@@ -585,6 +647,8 @@ createIterator	.block
 	clr.w records.Entry.TemplateModule(a3)
 	clr.w records.Entry.TemplateFlags(a3)
 	move.l records.Entry.RegisterName(a2), records.Entry.RegisterName(a3)
+	move.w records.Entry.MemberId(a2), records.Entry.MemberId(a3)
+	clr.w records.Entry.MemberPadding(a3)
 	moveq #0, d1
 	move.w layout.State.Base(a6), d1
 	add.w d7, d1
@@ -1065,10 +1129,6 @@ directive
 	adda.l d1, a1
 	cmp.w loop_abi.LoopProgram.BwhileHigh(a1), d0
 	beq.w bad  ; scoped while is not part of counted scoped replay
-	cmp.w loop_abi.LoopProgram.BforHigh(a1), d0
-	bne.w loopPolicy
-	tst.l d7
-	bpl.w bad  ; a labeled head must not bypass the raw-envelope classifier
 loopPolicy
 	movea.l layout.State.Package(a6), a1
 	movem.l d0/a0, -(sp)
@@ -1152,7 +1212,16 @@ ordinaryDirective
 	bra.w references
 scopedLoopHeader
 	tst.l d7
-	bpl.w bad  ; labeled/indexed repetition remains a separate capability
+	bmi.w loopHeader
+	movem.l d0-d2/a0-a1, -(sp)
+	move.l d7, d0
+	sub.w layout.State.Base(a6), d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a1
+	adda.l d0, a1
+	andi.w #$ffff-records.LABEL_VALUE, records.Entry.Flags(a1)
+	ori.w #records.COMPOUND_LABEL, records.Entry.Flags(a1)
+	movem.l (sp)+, d0-d2/a0-a1
 loopHeader
 	move.l d3, -(sp)
 	moveq #0, d0
@@ -1177,9 +1246,13 @@ loopIdentity
 	movea.l a6, a0
 	bsr.w createIterator
 	bne.w failedLoopHeader
-	clr.b loop_abi.LoopRecord.VariableKind(a5)
-	move.w d1, loop_abi.LoopRecord.VariableHigh(a5)
-	clr.b loop_abi.LoopRecord.VariableQualifier(a5)
+	; Iterator occupies the bare name immediately before the `in` token.
+	movea.l a5, a0
+	adda.l d2, a0
+	suba.w #loop_abi.LOOP_EXPRESSION_OFFSET-loop_abi.LoopRecord.VariableKind, a0
+	clr.b source.NameToken.Kind(a0)
+	move.w d1, source.NameToken.Id(a0)
+	clr.b source.NameToken.Qualifier(a0)
 	move.l d1, d0
 	bra.w openLoop
 countedLoop
@@ -1339,17 +1412,15 @@ string
 	blo.w bad
 	adda.l d0, a0
 	bra.w references
-; A dotted call head names syntax, not an address dependency. Keep its
-; numeric identity opaque; argument names still pass through normal binding.
+; Dotted calls and postfix members carry keys, not address dependencies.
+; Keep numeric identities opaque; argument names retain normal binding.
 callHead
 	move.l a4, d1
 	sub.l a0, d1
-	cmpi.l #6, d1
+	cmpi.l #5, d1
 	blo.w punctuation
 	cmpi.b #1, 1(a0)
 	bhi.w punctuation
-	cmpi.b #14, 5(a0)
-	bne.w punctuation
 	addq.l #5, a0
 	bra.w references
 punctuation
@@ -1936,6 +2007,22 @@ declarationKind
 mutableOwnership
 	ori.w #records.MUTABLE, records.Entry.Flags(a3)
 ownershipReady
+	; Only declarations collectible by scoped replay need global field keys.
+	; Ordinary files retain their existing identity count and binding cost.
+	move.l a0, -(sp)
+	lea layout.ITERATOR_STATE(a6), a0
+	jsr iterators.scoped
+	movea.l (sp)+, a0
+	bne.w declarationOwnership
+	movem.l d1-d2/a0-a3, -(sp)
+	moveq #0, d0
+	move.w 1(a0), d0
+	movea.l a6, a0
+	bsr.w memberIdentity
+	movem.l (sp)+, d1-d2/a0-a3
+	tst.l d0
+	bne.w bad
+declarationOwnership
 	move.l d1, d0
 	move.l a0, -(sp)
 	lea MODULE_STATE(a6), a0

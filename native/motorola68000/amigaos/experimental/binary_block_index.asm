@@ -643,6 +643,8 @@ typedOpcode
 	beq.w two
 	cmpi.b #$52, d1
 	beq.w one
+	cmpi.b #runtime.EXPRVM_OPCODE_GET_MEMBER, d1
+	beq.w two
 	cmpi.b #$61, d1
 	beq.w opcode
 	cmpi.b #$62, d1

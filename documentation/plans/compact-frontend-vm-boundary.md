@@ -37,8 +37,10 @@ Scoped `.bfor` admits deferred value declarations. Deferred scopes,
 configuration, metadata, file operations and macro definitions still reject;
 ordinary loops retain their declaration restrictions. Complete lazy file/reachability parity
 is not established; complete `.while` and scoped-loop parity remain open.
-BS35 anonymous counted `.bfor` has [focused proof](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification); labeled/indexed
-forms and `.bwhile` remain unsupported. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
+BS35 anonymous counted `.bfor` has [focused proof](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification).
+The subsequent [labeled-repetition checkpoint](native-runtime-reset.md#native-labeled-repetition-focused-checkpoint)
+adds typed iteration records and shared VM index/member evaluation; `.bwhile`
+remains unsupported. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
 forward-initializer semantics, struct behavior and existing wide-literal packing
 limits also remain unresolved. Full language or CPU-family parity is not claimed.
 
@@ -59,7 +61,8 @@ The subsequent [iterable scoped checkpoint](native-runtime-reset.md#anonymous-it
 extends the same owners to anonymous list/range `.bfor`, with independent lexical
 iterator identities and binding before local constant resolution. The existing
 nonnegative 32-bit scalar element boundary remains; negative/wider and compound
-elements, labeled/indexed scopes and `.bwhile` are not qualified by this slice.
+elements and `.bwhile` are not qualified by this slice. Labeled/indexed scopes
+have separate focused coverage in the checkpoint linked above.
 
 The [Rust iterator Hunk repair](native-runtime-reset.md#iterator-hunk-provenance-rust-repair)
 aligns relocation classification with active iterator lookup. Direct iterator

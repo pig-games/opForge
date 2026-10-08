@@ -294,6 +294,8 @@ freeBlocks
 	jsr memory.release
 	lea ValueOwner, a0
 	jsr values.release
+	lea MemberKeys, a0
+	jsr memory.release
 	lea Parameters, a0
 	jsr memory.release
 	lea Output, a0
@@ -1049,6 +1051,19 @@ blocksSelected
 	jsr frontend.copyParameters
 	bne.w completionBad
 parametersSaved
+	; Export field identities before discarding the lexical binding arena.
+	move.l NameCount, d0
+	add.l d0, d0
+	lea MemberKeys, a0
+	jsr memory.reserve
+	bne.w completionBad
+	movea.l memory.Block.Pointer(a0), a1
+	move.l NameCount, d0
+	add.l d0, d0
+	move.l d0, memory.Block.Used(a0)
+	lea Front, a0
+	jsr frontend.copyMemberKeys
+	bne.w completionBad
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_PARAMETERS, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	bsr.w clearIncludeText
 	lea Front, a0
@@ -1514,6 +1529,8 @@ run	.block
 	move.l #Context, assembly.Frame.Context(a0)
 	move.l #allocateOutput, assembly.Frame.Allocate(a0)
 	move.l #appendReloc, assembly.Frame.AddReloc(a0)
+	lea MemberKeys, a1
+	move.l memory.Block.Pointer(a1), assembly.Frame.MemberKeys(a0)
 	clr.l assembly.Frame.Emitted(a0)
 	cmpi.w #record_output.HEX, CliOutputKind
 	beq.w captureSpans
@@ -2090,6 +2107,7 @@ RuntimeBlock	.res byte, memory.Block.Used+4
 PrepBlock	.res byte, memory.Block.Used+4
 Records	.res byte, memory.Block.Used+4
 Symbols	.res byte, memory.Block.Used+4
+MemberKeys	.res byte, memory.Block.Used+4
 Parameters	.res byte, memory.Block.Used+4
 ParameterBytes	.res long, 1
 ParameterCount	.res long, 1

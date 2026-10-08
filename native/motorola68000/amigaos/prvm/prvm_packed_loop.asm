@@ -6,6 +6,8 @@
 	.include "telemetry_macros.i"
 	.priv
 MAX_RECORD_BYTES = 256
+NAME_TOKEN_BYTES = 4
+LABEL_TOKEN_BYTES = NAME_TOKEN_BYTES+1
 NON_STATEMENT_FLAGS = $18; omitted and layout-only records
 UNSUPPORTED_FLAGS = $c0; preparation-only and reserved flags
 CONTEXT_UNSUPPORTED_FLAGS = NON_STATEMENT_FLAGS+UNSUPPORTED_FLAGS
@@ -74,7 +76,8 @@ done
 	.bend  ; valueContext
 
 	.priv
-; Validate a partial for/bfor prefix. D0/CCR=status,D2=extent; D1/D3/A0-A2 kept.
+; Validate a partial for/bfor prefix. D0/CCR=status,D2=normalized extent.
+; A0 advances past an optional collection label; D1/D3/A1-A2 are preserved.
 prefix	.block
 	move.l a0, d2
 	beq.w absent
@@ -98,7 +101,25 @@ prefix	.block
 	andi.b #CONTEXT_UNSUPPORTED_FLAGS, d0
 	bne.w absent
 	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a0)
+	beq.w bareHead
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, abi.LoopRecord.HeadDot(a0)
+	bhi.w absent
+	tst.b abi.LoopRecord.HeadDot+3(a0)
 	bne.w absent
+	subi.l #NAME_TOKEN_BYTES, d2
+	cmpi.l #abi.LoopRecord.VariableKind, d2
+	blo.w absent
+	adda.w #NAME_TOKEN_BYTES, a0
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a0)
+	bne.w absent
+	; Only scoped repetition can publish a collection label.
+	move.b abi.LoopRecord.HeadHigh(a0), d0
+	cmp.b abi.LoopProgram.BforHigh(a2), d0
+	bne.w absent
+	move.b abi.LoopRecord.HeadLow(a0), d0
+	cmp.b abi.LoopProgram.BforLow(a2), d0
+	bne.w absent
+bareHead
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, abi.LoopRecord.HeadKind(a0)
 	bhi.w absent
 	tst.b abi.LoopRecord.HeadQualifier(a0)
@@ -129,9 +150,11 @@ done
 
 ; A0=raw writer record,D0=extent,A1=program,D1=program bytes.
 ; D0=PRVM_LOOP_* role/status,D1=variable identity (-1 counted/while),D2=operand
-; offset. Preserves D3-D7/A0-A6; CCR reflects D0. No writes to inputs.
+; offset in the original record, including a possible leading collection label.
+; Preserves D3-D7/A0-A6; CCR reflects D0. No writes to inputs.
 classify	.block
-	movem.l d3/d7/a0-a1, -(sp)
+	movem.l d3-d4/d7/a0-a1, -(sp)
+	moveq #0, d4
 	move.l d0, d3
 	move.l a0, d0
 	beq.w malformed
@@ -165,7 +188,30 @@ classify	.block
 	cmpi.l #abi.LoopRecord.VariableKind, d3
 	blo.w ordinary
 	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a0)
+	beq.w bareHead
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, abi.LoopRecord.HeadDot(a0)
+	bhi.w ordinary
+	tst.b abi.LoopRecord.HeadDot+3(a0)
 	bne.w ordinary
+	subi.l #NAME_TOKEN_BYTES, d3
+	cmpi.l #abi.LoopRecord.VariableKind, d3
+	blo.w ordinary
+	adda.w #NAME_TOKEN_BYTES, a0
+	cmpi.b #abi.PRVM_TOKEN_KIND_COLON, abi.LoopRecord.HeadDot(a0)
+	beq.w colonHead
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a0)
+	bne.w ordinary
+	moveq #NAME_TOKEN_BYTES, d4
+	bra.w bareHead
+colonHead
+	subi.l #1, d3
+	cmpi.l #abi.LoopRecord.VariableKind, d3
+	blo.w ordinary
+	addq.l #1, a0
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a0)
+	bne.w ordinary
+	moveq #LABEL_TOKEN_BYTES, d4
+bareHead
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, abi.LoopRecord.HeadKind(a0)
 	bhi.w ordinary
 	moveq #-1, d1
@@ -174,6 +220,11 @@ classify	.block
 	move.w abi.LoopRecord.HeadHigh(a0), d0
 	bsr.w selectIdentity
 	move.l d0, d7
+	tst.l d4
+	beq.w roleReady
+	cmpi.l #abi.PRVM_LOOP_BFOR, d0
+	bne.w ordinary
+roleReady
 	cmpi.l #abi.PRVM_LOOP_MATCHED, d0
 	beq.w forHead
 	cmpi.l #abi.PRVM_LOOP_BFOR, d0
@@ -238,6 +289,7 @@ countedHead
 	move.b abi.LoopRecord.VariableLow(a0), d1
 	moveq #abi.LOOP_EXPRESSION_OFFSET, d2
 matched
+	add.l d4, d2
 	move.l d7, d3  ; extent is dead; telemetry preserves this role
 	move.l #abi.OP_PUBLISH, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
@@ -252,7 +304,7 @@ empty
 	moveq #-1, d1
 	moveq #0, d2
 done
-	movem.l (sp)+, d3/d7/a0-a1
+	movem.l (sp)+, d3-d4/d7/a0-a1
 	tst.l d0
 	rts
 	.bend  ; classify

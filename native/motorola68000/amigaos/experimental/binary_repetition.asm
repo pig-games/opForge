@@ -9,6 +9,9 @@
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_repetition_trace as trace
 	.use experimental.amigaos.binary_guard_values as guards
+	.use experimental.amigaos.binary_repeat_records as snapshots
+	.use experimental.amigaos.binary_record_values as records
+	.use experimental.amigaos.binary_repeat_inventory as inventory
 	.use experimental.amigaos.binary_repeat_frames as frames
 	.use prvm.amigaos.packed_loop as parser
 	.use prvm.amigaos.abi as abi
@@ -35,8 +38,12 @@ Kind	.long ?
 Trace	.long ?
 Iterations	.long ?
 ScopeGroup	.long ?
+Label	.long ?  ; -1 for anonymous repetition
+Records	.long ?  ; typed list arena offset, published only after close
+StartPc	.long ?
+StartSection	.long ?
 	.endstruct
-SLOT_BYTES = Slot.ScopeGroup+4
+SLOT_BYTES = Slot.StartSection+4
 UNSUPPORTED_LAYOUT = 3
 FILTERED_ONE_MAP_MODE = 2
 FILTERED_TWO_MAP_MODE = 4
@@ -49,8 +56,10 @@ Sweep	.long ?
 PendingTrace	.long ?
 PendingKind	.long ?
 PendingHeader	.long ?
+PendingOperand	.long ?
 Guard	.res guards.STATE_BYTES
 Trace	.res trace.STATE_BYTES
+Snapshots	.res snapshots.STATE_BYTES
 Scopes	.res frames.STATE_BYTES
 Slots	.res LIMIT*SLOT_BYTES
 	.endstruct
@@ -106,8 +115,6 @@ step	.block
 	adda.w d0, a4
 	cmpa.l a6, a4
 	bhi.w invalid
-	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a5)
-	bne.w ordinary
 	movea.l package.Context.Package(a2), a1
 	move.l package.Header.LoopPlanBytes(a1), d1
 	adda.l package.Header.LoopPlan(a1), a1
@@ -123,6 +130,7 @@ step	.block
 	beq.w ordinaryExtent
 	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
 	beq.w invalid
+	move.l d2, State.PendingOperand(a3)
 	move.l d0, State.PendingKind(a3)
 	move.l a5, State.PendingHeader(a3)
 	bsr.w openObservation
@@ -147,18 +155,22 @@ whileOpening
 	clr.l Slot.Iterable(a1)
 	move.l a4, Slot.Body(a1)
 	bsr.w initializeSlot
+	bne.w invalid
 	addq.w #1, State.Depth(a3)
 	movea.l a4, a0
 	bra.w consumed
 opening
-	cmpi.w #12, d0
+	move.l State.PendingOperand(a3), d3
+	addq.l #3, d3
+	cmp.l d3, d0
 	blo.w invalid
+	subq.l #3, d3
+	lea 0(a5, d3.l), a0
 	move.w State.Depth(a3), d7
 	cmpi.w #LIMIT, d7
 	bhs.w invalid
-	cmpi.b #source.TOKEN_ITERATOR_BINDING, 9(a5)
+	cmpi.b #source.TOKEN_ITERATOR_BINDING, (a0)
 	beq.w iterableOpening
-	lea 9(a5), a0
 	movea.l a4, a1
 	jsr expression.evaluate
 	bne.w invalid
@@ -179,6 +191,7 @@ opening
 	move.l d1, Slot.Remaining(a1, d7.w)
 	adda.w d7, a1
 	bsr.w initializeSlot
+	bne.w invalid
 	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1)
 	bne.w countedReady
 	bsr.w openScope
@@ -188,13 +201,14 @@ countedReady
 	movea.l a4, a0
 	bra.w consumed
 iterableOpening
-	cmpi.w #15, d0
+	addq.l #6, d3
+	cmp.l d3, d0
 	blo.w invalid
 	moveq #0, d6
-	move.w 10(a5), d6
+	move.w source.IteratorToken.Id(a0), d6
 	cmp.l package.Context.Count(a2), d6
 	bhs.w invalid
-	lea 12(a5), a0
+	adda.w #source.IteratorToken.Value, a0
 	movea.l a4, a1
 	jsr expression.evaluateValue
 	bne.w invalid
@@ -246,6 +260,7 @@ validateElement
 	move.l d5, Slot.Descriptor(a5)
 	movea.l a5, a1
 	bsr.w initializeSlot
+	bne.w invalid
 	move.l d6, Slot.Variable(a5)
 	move.l d6, d1
 	jsr values.getKind
@@ -275,6 +290,8 @@ iterableReady
 	movea.l Slot.Body(a5), a0
 	bra.w consumed
 skipBody
+	bsr.w emptyCollection
+	bne.w invalid
 	moveq #0, d1
 	move.l State.PendingTrace(a3), d2
 	bsr.w finishObservation
@@ -639,9 +656,13 @@ restored
 	movea.l (sp), a0
 	lea State.Trace(a0), a0
 	jsr trace.release
-	movea.l (sp)+, a0
+	movea.l (sp), a0
+	lea State.Snapshots(a0), a0
+	jsr snapshots.release
+	movea.l (sp), a0
 	lea State.Scopes(a0), a0
 	jsr frames.release
+	movea.l (sp)+, a0
 	movem.l (sp)+, d0-d3/a0-a3/a5
 	rts
 	.bend  ; release
@@ -760,6 +781,30 @@ initializeSlot	.block
 	move.l #1, Slot.Iterations(a1)
 	clr.l Slot.Index(a1)
 	clr.l Slot.ScopeGroup(a1)
+	moveq #-1, d0
+	move.l d0, Slot.Label(a1)
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1)
+	bne.w ready
+	movem.l d1-d2/a0, -(sp)
+	movea.l Slot.Header(a1), a0
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, inventory.PackedRecord.NameKind(a0)
+	bhi.w anonymous
+	moveq #0, d1
+	move.w inventory.PackedRecord.NameId(a0), d1
+	move.l d1, Slot.Label(a1)
+	movea.l package.Context.Owner(a2), a0
+	move.l Slot.Remaining(a1), d0
+	jsr records.createList
+	move.l d2, Slot.Records(a1)
+	bra.w allocated
+anonymous
+	moveq #0, d0
+allocated
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	rts
+ready
+	moveq #0, d0
 	rts
 	.bend  ; initializeSlot
 
@@ -784,6 +829,10 @@ done
 
 ; A5=scoped slot,A3=replay state. D0/CCR=status; other registers kept.
 enterScope	.block
+	move.l package.Context.Pc(a2), Slot.StartPc(a5)
+	moveq #0, d0
+	move.w package.Context.CurrentSection(a2), d0
+	move.l d0, Slot.StartSection(a5)
 	movem.l d1/a0, -(sp)
 	move.l Slot.ScopeGroup(a5), d0
 	move.l Slot.Index(a5), d1
@@ -796,12 +845,35 @@ enterScope	.block
 
 ; A5=scoped slot,A3=replay state. D0/CCR=status; other registers kept.
 captureScope	.block
-	movem.l d1/a0, -(sp)
+	movem.l d1-d5/a0-a1, -(sp)
 	move.l Slot.ScopeGroup(a5), d0
 	move.l Slot.Index(a5), d1
 	lea State.Scopes(a3), a0
 	jsr frames.capture
-	movem.l (sp)+, d1/a0
+	bne.w done
+	tst.l Slot.Label(a5)
+	bmi.w done
+	move.l Slot.Header(a5), d0
+	sub.l State.SourceBase(a3), d0
+	move.l Slot.StartPc(a5), d1
+	move.l Slot.StartSection(a5), d2
+	movea.l State.Scopes+frames.State.Inventory(a3), a1
+	lea State.Snapshots(a3), a0
+	jsr snapshots.capture
+	bne.w done
+	suba.w #values.CELL_BYTES, sp
+	move.l d3, values.Cell.Low(sp)
+	clr.l values.Cell.High(sp)
+	move.l #records.ADDRESS_RECORD, values.Cell.Kind(sp)
+	clr.l values.Cell.Provenance(sp)
+	movea.l sp, a1
+	movea.l package.Context.Owner(a2), a0
+	move.l Slot.Records(a5), d0
+	move.l Slot.Index(a5), d1
+	jsr records.set
+	adda.w #values.CELL_BYTES, sp
+done
+	movem.l (sp)+, d1-d5/a0-a1
 	tst.l d0
 	rts
 	.bend  ; captureScope
@@ -812,10 +884,76 @@ closeScope	.block
 	move.l Slot.ScopeGroup(a5), d0
 	lea State.Scopes(a3), a0
 	jsr frames.close
+	bne.w done
+	tst.l Slot.Label(a5)
+	bmi.w done
+	movem.l d1-d2, -(sp)
+	move.l Slot.Label(a5), d1
+	move.l Slot.Records(a5), d2
+	bsr.w publishCollection
+	movem.l (sp)+, d1-d2
+done
 	movea.l (sp)+, a0
 	tst.l d0
 	rts
 	.bend  ; closeScope
+
+; Publish completed collection D1=id,D2=descriptor. A2=context.
+; D0/CCR=status; other registers preserved. No body cell escapes its owner.
+publishCollection	.block
+	movem.l d1-d4/a0-a1, -(sp)
+	cmp.l package.Context.Count(a2), d1
+	bhs.w bad
+	move.l d1, d3
+	move.l d2, d4
+	movea.l package.Context.Owner(a2), a0
+	moveq #records.TYPED_LIST, d2
+	jsr values.setKind
+	bne.w done
+	move.l d3, d0
+	lsl.l #3, d0
+	movea.l package.Context.Values(a2), a0
+	move.l d4, 0(a0, d0.l)
+	clr.l 4(a0, d0.l)
+	movea.l package.Context.Defined(a2), a0
+	move.b #SNAPSHOT_ABSOLUTE+(1<<expression.COMPOUND_BIT), 0(a0, d3.l)
+	movea.l package.Context.SectionIds(a2), a0
+	clr.b 0(a0, d3.l)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1
+	tst.l d0
+	rts
+	.bend  ; publishCollection
+
+; A3=pending empty loop. Publish an empty typed list only for a labeled bfor.
+; D0/CCR=status; all other registers preserved.
+emptyCollection	.block
+	movem.l d1-d3/a0, -(sp)
+	cmpi.l #abi.PRVM_LOOP_BFOR, State.PendingKind(a3)
+	bne.w ordinary
+	movea.l State.PendingHeader(a3), a0
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, inventory.PackedRecord.NameKind(a0)
+	bhi.w ordinary
+	moveq #0, d3
+	move.w inventory.PackedRecord.NameId(a0), d3
+	movea.l package.Context.Owner(a2), a0
+	moveq #0, d0
+	jsr records.createList
+	bne.w done
+	move.l d3, d1
+	bsr.w publishCollection
+	bra.w done
+ordinary
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0
+	tst.l d0
+	rts
+	.bend  ; emptyCollection
 
 ; A3=state with PendingHeader/Kind. Capture or match numeric ancestry.
 ; D0/CCR=status; other registers kept. Root parents carry the sweep identity.

@@ -303,14 +303,21 @@ impl MacroProcessor {
         self
     }
 
-    /// Inject selected exports by name (for selective `.use` imports).
-    pub fn inject_from(&mut self, exports: &MacroExports, names: &[String]) {
-        for name in names {
+    /// Inject public exports under their paired caller-visible names.
+    /// The caller resolves item aliases and module qualifiers from `.use`.
+    pub fn inject_from(
+        &mut self,
+        exports: &MacroExports,
+        names: &[String],
+        imported_names: &[String],
+    ) {
+        for (name, imported_name) in names.iter().zip(imported_names) {
             let upper = name.to_ascii_uppercase();
             if let Some(def) = exports.macros.get(&upper) {
                 if def.visibility.is_public() {
-                    self.injected_names.insert(upper.clone());
-                    self.macros.insert(upper.clone(), def.clone());
+                    let imported = imported_name.to_ascii_uppercase();
+                    self.injected_names.insert(imported.clone());
+                    self.macros.insert(imported, def.clone());
                 }
             }
         }
@@ -352,14 +359,16 @@ impl MacroProcessor {
         &mut self,
         exports: &[NativeStatementExport],
         names: &[String],
+        imported_names: &[String],
     ) {
-        for name in names {
+        for (name, imported_name) in names.iter().zip(imported_names) {
             let upper = name.to_ascii_uppercase();
+            let imported = imported_name.to_ascii_uppercase();
             let public_defs: Vec<StatementDef> = exports
                 .iter()
                 .filter(|def| def.keyword == upper && def.visibility.is_public())
                 .map(|def| StatementDef {
-                    keyword: def.keyword.clone(),
+                    keyword: imported.clone(),
                     signature: def.signature.clone(),
                     body: def.body.clone(),
                     origins: def.origins.clone(),
@@ -367,12 +376,12 @@ impl MacroProcessor {
                 })
                 .collect();
             if !public_defs.is_empty() {
-                self.injected_names.insert(upper.clone());
+                self.injected_names.insert(imported.clone());
                 self.statement_support
                     .as_mut()
                     .expect("statement support enabled")
                     .defs
-                    .insert(upper, public_defs);
+                    .insert(imported, public_defs);
             }
         }
     }

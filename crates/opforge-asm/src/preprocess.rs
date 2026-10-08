@@ -88,10 +88,15 @@ impl AsmMacroProcessor {
         result
     }
 
-    pub fn inject_from(&mut self, exports: &AsmMacroExports, names: &[String]) {
-        self.inner.inject_from(&exports.core, names);
+    pub fn inject_from(
+        &mut self,
+        exports: &AsmMacroExports,
+        names: &[String],
+        imported_names: &[String],
+    ) {
+        self.inner.inject_from(&exports.core, names, imported_names);
         self.inner
-            .inject_statement_defs_from(&exports.statements, names);
+            .inject_statement_defs_from(&exports.statements, names, imported_names);
     }
 
     pub fn inject_all(&mut self, exports: &AsmMacroExports) {

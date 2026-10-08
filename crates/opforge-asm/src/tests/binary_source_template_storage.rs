@@ -166,13 +166,28 @@ fn native_expected(sources: &[(&str, &[u8])], cpu: &str, expected: &[u8]) {
     }
 }
 
+fn renamed_source(cpu: &str) -> String {
+    format!(".module provider\n.pub\nforeign .macro value=7\n.byte .value\n.endmacro\ninline .segment value=9\n.byte .value\n.ends\nplain .macro\n.byte 8\n.endmacro\n.endmodule\n.module app\n.cpu {cpu}\n.use provider (foreign as renamed, inline as renamed_segment, plain)\n.use provider (foreign) as selected\nforeign .macro\n.byte 42\n.endmacro\n.ReNaMeD 3\n.renamed\n.renamed_segment 4\n.renamed_segment\n.plain\n.selected.foreign 5\n.foreign\n.endmodule\n.end\n")
+}
+
 #[test]
-#[ignore = "requires configured FS-UAE; native rename regression, Rust does not expand selected rename"]
+fn compact_template_index_rename_rust_oracle() {
+    for cpu in ["m68020", "m6502"] {
+        let source = renamed_source(cpu);
+        assert_eq!(
+            oracle(&[("input.asm", source.as_bytes())], cpu),
+            [3, 7, 4, 9, 8, 5, 42]
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; selected macro/segment aliases consume a live Rust oracle"]
 fn compact_template_index_rename_regression_fs_uae() {
-    let source = ".module provider\n.pub\nforeign .macro value\n.byte .value\n.endmacro\n.endmodule\n.module app\n.cpu m68020\n.use provider (foreign as renamed)\n.renamed 3\n.endmodule\n.end\n";
-    // An independent one-byte expectation preserves the previous native behavior;
-    // this is not a claim of Rust parity for its missing renamed-macro expansion.
-    native_expected(&[("input.asm", source.as_bytes())], "m68020", &[3]);
+    for cpu in ["m68020", "m6502"] {
+        let source = renamed_source(cpu);
+        native(&[("input.asm", source.as_bytes())], cpu);
+    }
 }
 
 #[test]

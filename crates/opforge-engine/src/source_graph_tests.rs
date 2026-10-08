@@ -29,6 +29,45 @@ mod tests {
     }
 
     #[test]
+    fn selected_template_aliases_expand_without_importing_original_names() {
+        let project = temp_dir();
+        let root = project.join("main.asm");
+        fs::write(&root, ".module main\n.use dep (EMIT as renamed, INLINE as segment_alias, WORD as statement_alias, HIDDEN as hidden_alias)\n.use dep (EMIT, WORD) as q\n.q.EMIT 6\n    q.WORD 7\n.renamed 3\n.segment_alias 4\n    statement_alias 5\n.EMIT 9\n.INLINE 9\n    WORD 9\n.hidden_alias\n.endmodule\n").unwrap();
+        fs::write(project.join("dep.asm"), ".module dep\n.pub\nEMIT .macro value\n.byte .value\n.endmacro\nINLINE .segment value\n.byte .value\n.ends\n.statement WORD byte:value\n.byte .value\n.endstatement\n.priv\nHIDDEN .macro\n.byte 99\n.endmacro\n.endmodule\n").unwrap();
+        let root_lines = crate::expand_source_file(&root, &[], &[], 64).unwrap();
+        let graph = load_module_graph(&root, root_lines, &[], &[], &[], 64).unwrap();
+        for value in [3, 4, 5, 6, 7] {
+            assert!(
+                graph
+                    .lines
+                    .iter()
+                    .any(|line| line.trim() == format!(".byte {value}")),
+                "value {value}: {:?}",
+                graph.lines
+            );
+        }
+        for unimported in [".EMIT 9", ".INLINE 9", "WORD 9", ".hidden_alias"] {
+            assert!(graph.lines.iter().any(|line| line.trim() == unimported));
+        }
+        let expanded = graph
+            .lines
+            .iter()
+            .position(|line| line.trim() == ".byte 3")
+            .unwrap();
+        let origin = &graph.source_map.origins()[expanded];
+        assert_eq!(
+            origin.file.as_deref(),
+            Some(project.join("dep.asm").to_str().unwrap())
+        );
+        assert_eq!(origin.line, 4);
+        assert!(
+            graph.module_macro_names["main"].is_empty(),
+            "imported aliases must not become native exports"
+        );
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
     fn module_search_root_uses_current_dir_for_bare_filename() {
         assert_eq!(
             module_search_root(Path::new("main.asm")),

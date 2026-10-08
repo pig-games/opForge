@@ -309,7 +309,12 @@ macro/loop combination:
 - Qualify imported selection/aliasing and expansion-produced file, state and
   output effects with consumed Rust-oracled fixtures. Existing `.incbin` macro
   fixtures are separate evidence; they do not prove expanded `.include` or
-  `.output` behavior. Selected macro renaming also needs a usable Rust oracle.
+  `.output` behavior. Rust selected macro/segment aliases and qualified
+  selections now retain their import names through expansion; the strengthened
+  fixture consumes defaults and local original-name reuse on both packages.
+  Shared Rust graph checks also cover statement aliases, private visibility,
+  definition-site origins and exclusion of imported aliases from native exports.
+  The expanded native import fixture still needs a fresh differential run.
 - Patterned `.statement` expansion is a separate shared-language capability,
   absent from this compact macro matrix. Preserve Rust's rejection of nested
   macro/segment/statement definitions.

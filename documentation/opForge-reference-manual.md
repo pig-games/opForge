@@ -759,6 +759,9 @@ Notes:
 - Direct selective imports without a module qualifier import names into the
   current module scope, and may use per-item aliases: `.use util.math (add16 as
   add)`.
+  Public macro, segment and statement exports use these selected names too;
+  macro/segment defaults remain attached to the imported definition. An aliased
+  selection does not additionally import its original unqualified name.
 - `(*)` makes all public names directly available. Importing or selecting a
   name does not by itself include its `.block`; a reference from retained code
   or data to the block (or a label within it) makes that imported block live.

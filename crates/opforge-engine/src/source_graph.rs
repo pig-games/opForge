@@ -1202,7 +1202,19 @@ pub(crate) fn load_module_graph_contextual(
                 if is_wildcard_selective(&import.items) {
                     mp.inject_all(dep_exports);
                 } else if !import.items.is_empty() {
-                    mp.inject_from(dep_exports, &import.items);
+                    let imported_names = import
+                        .items
+                        .iter()
+                        .zip(&import.item_aliases)
+                        .map(|(name, alias)| {
+                            let local = alias.as_deref().unwrap_or(name);
+                            match import.alias.as_deref() {
+                                Some(qualifier) => format!("{qualifier}.{local}"),
+                                None => local.to_string(),
+                            }
+                        })
+                        .collect::<Vec<_>>();
+                    mp.inject_from(dep_exports, &import.items, &imported_names);
                 } else {
                     mp.inject_qualified(dep_exports, &import.module_id);
                     if let Some(alias) = import.alias.as_deref() {

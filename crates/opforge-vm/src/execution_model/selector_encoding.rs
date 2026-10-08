@@ -1773,6 +1773,15 @@ fn semantic_plan_inputs(
                     "semantic value-program source '{source}' has an empty program id"
                 ));
             }
+            let project_value = |expr: &Expr| -> Result<Option<i64>, String> {
+                if required
+                    && expr_ctx.assembler_ctx.should_defer_unstable_symbols()
+                    && expr_ctx.has_unstable_symbols(expr)?
+                {
+                    return Ok(None);
+                }
+                expr_ctx.eval_expr(expr).map(Some)
+            };
             let projected = if let Some(index) = projected_source.strip_prefix("expr") {
                 let index = index.parse::<usize>().map_err(|_| {
                     format!("semantic value-program source '{source}' has an invalid expression")
@@ -1780,7 +1789,7 @@ fn semantic_plan_inputs(
                 let Some(expr) = exprs.get(index).copied().flatten() else {
                     return Ok(None);
                 };
-                expr_ctx.eval_expr(expr)?
+                project_value(expr)?
             } else if let Some(index) =
                 projected_source.strip_prefix(MODE_SELECTOR_PLAN_SCALAR_EXPR_PREFIX)
             {
@@ -1793,7 +1802,7 @@ fn semantic_plan_inputs(
                 if !plain_scalar_projection(expr) {
                     return Ok(None);
                 }
-                expr_ctx.eval_expr(expr)?
+                project_value(expr)?
             } else if let Some(index) =
                 projected_source.strip_prefix(MODE_SELECTOR_PLAN_INDIRECT_VALUE_PREFIX)
             {
@@ -1806,7 +1815,7 @@ fn semantic_plan_inputs(
                 if !plain_scalar_projection(inner) {
                     return Ok(None);
                 }
-                expr_ctx.eval_expr(inner)?
+                project_value(inner)?
             } else if let Some(member_spec) =
                 projected_source.strip_prefix(MODE_SELECTOR_PLAN_MEMBER_PREFIX)
             {
@@ -1828,7 +1837,7 @@ fn semantic_plan_inputs(
                         if !field.eq_ignore_ascii_case(expected_field) {
                             return Ok(None);
                         }
-                        expr_ctx.eval_expr(base)?
+                        project_value(base)?
                     }
                     Expr::Identifier(qualified, span) => {
                         let Some((base, field)) = qualified.rsplit_once('.') else {
@@ -1837,7 +1846,7 @@ fn semantic_plan_inputs(
                         if !field.eq_ignore_ascii_case(expected_field) {
                             return Ok(None);
                         }
-                        expr_ctx.eval_expr(&Expr::Identifier(base.to_string(), *span))?
+                        project_value(&Expr::Identifier(base.to_string(), *span))?
                     }
                     _ => return Ok(None),
                 }
@@ -1869,11 +1878,18 @@ fn semantic_plan_inputs(
                 if matches!(item, Expr::Placeholder(_) | Expr::Member { .. }) {
                     return Ok(None);
                 }
-                expr_ctx.eval_expr(item)?
+                project_value(item)?
             } else {
                 return Err(format!(
                     "semantic value-program source '{source}' uses an unsupported v1 projection"
                 ));
+            };
+            let Some(projected) = projected else {
+                // Required scalar constraints cannot select an alternative shape.
+                // Keep a provisional encoded field until the lexical binding is
+                // resolved; later passes run the value program and its constraints.
+                values.push(0);
+                continue;
             };
             match expr_ctx
                 .model

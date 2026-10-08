@@ -4506,35 +4506,38 @@ fn execution_model_motorola68000_authoritative_parser_reports_deterministic_non_
         (
             "m68000",
             "?",
+            DIAG_EXPR_UNSUPPORTED_FEATURE,
             "Placeholder cannot be evaluated as scalar expression",
         ),
         (
             "m68000",
             ".pick({1,2},?)",
-            "Call expression cannot be evaluated as scalar expression",
+            DIAG_EXPR_EVAL_FAILURE,
+            "Unknown compile-time function call",
         ),
         (
             "m68080",
             "?",
+            DIAG_EXPR_UNSUPPORTED_FEATURE,
             "Placeholder cannot be evaluated as scalar expression",
         ),
         (
             "m68080",
             ".pick({1,2},?)",
-            "Call expression cannot be evaluated as scalar expression",
+            DIAG_EXPR_EVAL_FAILURE,
+            "Unknown compile-time function call",
         ),
     ];
 
-    for (cpu_id, expr_source, expected_message) in cases {
+    for (cpu_id, expr_source, expected_code, expected_message) in cases {
         let (tokens, end_span) = tokenize_core_expr_tokens(expr_source, 1);
         let err = model
             .compile_expression_program_for_assembler(cpu_id, None, tokens, end_span, None)
             .expect_err("authoritative motorola68000 parser should keep non-goals explicit");
 
-        assert!(
-            err.message
-                .starts_with(&format!("{}: ", DIAG_EXPR_UNSUPPORTED_FEATURE))
-                && err.message.ends_with(expected_message),
+        assert_eq!(
+            err.message,
+            format!("{expected_code}: {expected_message}"),
             "motorola68000 non-goal diagnostic changed for {} expr {:?}: {}",
             cpu_id,
             expr_source,

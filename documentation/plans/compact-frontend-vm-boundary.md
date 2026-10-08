@@ -1,8 +1,8 @@
 # Compact frontend: VM boundary correction
 
-Status: BS33 is the selected provisional checkpoint. The latest complete native
-self-host qualification remains BS32 `cccd66fe`; BS33 has focused parity evidence
-and has not yet run complete self-host qualification.
+Status: BS33 now has complete native self-host qualification, in addition to its
+focused iterator-conditional proof. The next conditional-loop checkpoint (BS34)
+is under development and is not yet qualified.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -27,7 +27,8 @@ Nineteen combined positive scenarios per 68020 and 6502 package match live Rust,
 including nine new iterator-conditional cases. Twelve negative cases complete
 with the expected rejection. The original macro register/value regression again
 matches the exact 21-byte Rust output; its native run takes 1.77477925 seconds.
-These focused results do not qualify a complete BS33 self-host. The
+The subsequent full BS33 release self-host matches the entire 592,700-byte Hunk
+in 23m53.13s on FS-UAE 68020/74 MiB. The
 [current implementation checkpoint](native-runtime-reset.md#iterator-dependent-conditionals-bs33)
 records the scope and remaining work.
 
@@ -73,25 +74,25 @@ Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.
 
-## Most recent full self-host qualification (BS32)
+## Most recent full self-host qualification (BS33)
 
-BS32 `cccd66fe` self-assembles all 112 mapped source/binary inputs (1,687,745
+BS33 self-assembles all 114 mapped source/binary inputs (1,704,435
 bytes) in FS-UAE 68020/74 MiB. Fresh native completion has exit zero and exact
-bootstrap/native/live Rust equality for the entire 590,764-byte Hunk. Its embedded
-m68020 package is 434,326 bytes, fingerprint `fnv1a64:98b91e6dc8f6122d`;
-source fingerprint is `fnv1a64:f5b5455a5ddaa326`, and Hunk fingerprint is
-`fnv1a64:a96334c92d3f8614`. Linked static reservation is 610,064 bytes.
+bootstrap/native/live Rust equality for the entire 592,700-byte Hunk. Its embedded
+m68020 package is 434,396 bytes, fingerprint `fnv1a64:c3b022ce835d4dde`;
+source fingerprint is `fnv1a64:dbc8c7d966b2dec6`, and Hunk fingerprint is
+`fnv1a64:25c27121a3669a35`. Linked static reservation is 612,112 bytes.
 
-The uninstrumented release run takes 1,400.935415167 seconds (23m20.94s). The
-separate diagnostic run takes 1,442.638670708 seconds and peaks at 26,071,352
+The uninstrumented release run takes 1,433.129872292 seconds (23m53.13s). The
+earlier BS32 diagnostic run takes 1,442.638670708 seconds and peaks at 26,071,352
 tracked owned bytes, with zero terminal ownership and zero profiling/allocation
 errors. Static reservation and tracked peak allocation describe different costs.
 No physical A6000 timing or 2 MiB fit is claimed. See the
-[complete BS32 result](native-runtime-reset.md#deferred-macro-operand-binding-bs32).
+[complete BS33 result](native-runtime-reset.md#iterator-dependent-conditionals-bs33).
 
-This is the latest full-qualified reference, not proof for the later BS33
-implementation. Current executables accept only BS33 packages; regenerate and
-qualify a BS33 bundle before using it with the current hardware helper.
+This is the latest full-qualified reference, not proof for the BS34 work in
+progress. The BS34 source and hardware helper require regenerated current
+packages and a new qualified bundle before hardware execution.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
@@ -118,11 +119,12 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The current script validates BS33 package headers, mapped source preamble and
+The current script is being migrated to BS34 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. The
 selected BS32 bundle is a qualified reference but cannot be used with the
-current validator; a newly qualified BS33 bundle is required.
+current validator. The new BS33 reference is also superseded by this in-progress
+reader migration; a qualified BS34 bundle is required for the current helper.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
@@ -134,7 +136,7 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS33 and qualify it before selecting it in the
+instrumented configuration as the current package format and qualify it before selecting it in the
 current hardware runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed

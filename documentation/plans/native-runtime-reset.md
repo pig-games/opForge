@@ -2,13 +2,16 @@
 
 Status: active. Erik selected iterator-dependent conditionals first, followed by
 completion of the remaining loop and macro functionality. The latest qualified
-full self-host reference is BS32 `cccd66fe`: all 112 mapped inputs assemble
+full self-host reference is BS33 (source manifest `dbc8c7d966b2dec6`): all 114
+mapped inputs assemble
 natively, and bootstrap, native output and live Rust oracle match for the entire
-590,764-byte Hunk. The uninstrumented release run takes 1,400.935415167 seconds
-(23m20.94s) on FS-UAE 68020/74 MiB. The separate diagnostic run peaks at
-26,071,352 owned bytes. These are self-host results, not broad language/family
-parity, physical A6000 timing or 2 MiB qualification. The qualified release bundle
-is selected by `/tmp/opforge-a6000-current`.
+592,700-byte Hunk. The uninstrumented release run takes 1,433.129872292 seconds
+(23m53.13s) on FS-UAE 68020/74 MiB. The earlier BS32 diagnostic run peaks at
+26,071,352 owned bytes; BS33 has no full diagnostic memory measurement yet.
+These are self-host results, not broad language/family parity, physical A6000
+timing or 2 MiB qualification. The qualified BS33 release bundle is
+`/tmp/opforge-selfhost-bs33-iterator-conditionals-release-74m`. BS34 source work
+is in progress and needs its own qualification.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -165,15 +168,30 @@ rather than execute speculatively. Textual macro expansion is still preparation
 work; references in both runtime branches may conservatively retain imported
 blocks. `.match` replay, conditional declaration effects, `.while`, scoped loops,
 full macro edge coverage and full lazy preparation/reachability parity remain
-open. There is no full BS33 self-host claim yet; the qualified BS32 result remains
-the complete reference.
+open. A full BS33 release self-host subsequently completes all 114 inputs
+(1,704,435 bytes): native output, bootstrap and live Rust oracle match the entire
+592,700-byte Hunk (`fnv1a64:25c27121a3669a35`). Fresh protocol completion and
+assembler exit zero are recorded in the qualified bundle manifest. Package
+identity is `c3b022ce835d4dde`; source manifest is `dbc8c7d966b2dec6`.
+The uninstrumented FS-UAE 68020/74 MiB run takes **1,433.129872292 seconds**
+(23m53.13s). Compared with the previous complete BS32 run, that is +32.194457
+seconds (+2.30%), but the source set grows from 112 to 114 inputs. This is not
+an isolated change measurement; the unchanged-control comparison above is.
+The runtime clock starts at the fresh guest START marker, after one pre-start
+boot reset; there are no concurrent builds/tests or emulator controls during
+START–DONE. This proves current self-hosting, not complete loop/macro parity.
 
 Symbolic shift strides exposed an existing Rust required-value constraint gap:
 bare enclosing constants deliberately defer in a block's first pass to preserve
 forward local shadows, but the shift-count ValueVM validates the placeholder
 zero too early. This checkpoint uses explicit qualification, preserving bytes.
-The next shared repair must defer required scalar value validation without
-loosening scope lookup, structural projections or optional encoding selection.
+The following shared value-transport repair defers required scalar validation
+until bindings resolve, preserving lexical shadowing, structural projections and
+optional encoding selection. Three new regression groups and 36 existing constant/
+scope regressions pass, as do all 198 execution-model tests. Shift/ADDQ inherited
+and forward counts match literal or
+qualified controls; invalid final counts and missing names still reject. Native
+shift references can again remain short, with no package or runtime change.
 
 Focused host validation: 369 binary-source tests, three conditional evaluation
 tests, two BranchPlan classifier tests and 24 A6000 transport tests pass.
@@ -183,6 +201,25 @@ whole-workspace qualification. Eight fresh native validator component cases cove
 branch-plan bounds/rows and superseded magic. The enabled telemetry build also
 completes the nineteen-scenario 68020 fixture with exact bytes, balanced cleanup
 and zero profile errors; its time is reported separately from release comparisons.
+
+### Conditional repetition checkpoint (BS34, in development)
+
+Extend the existing package-owned LoopPlan with numeric `.while` and `.endwhile`
+roles and compile the condition once through shared EXVM. Reevaluate it during
+binary replay, preserving Rust's previous-statement-start address observation,
+mixed nested matching, inactive-body skipping, iteration limits and pass stability.
+An offset-based, parent-linked observation trace distinguishes repeated openings
+of the same source record under different parent iterations. The trace is runtime
+state with checked allocation, separate from persisted packed source records.
+
+The first checkpoint targets flat and single-sweep Hunk output. Mapped layout
+modes currently skip nonselected sections without advancing their PC, so they
+cannot safely execute PC-dependent conditional loops. Reject that combination
+explicitly until the shared mapped replay scheduler is repaired; existing mapped
+programs without `.while` remain available. This is an interim coverage boundary,
+not complete `.while` parity. Scoped `.bfor`/`.bwhile`, conditional preparation
+effects and the remaining macro matrix follow. No BS34 validation or performance
+claim has been made yet.
 
 ### Compound-value checkpoints
 

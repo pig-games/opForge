@@ -316,7 +316,12 @@ macro/loop combination:
   fixture consumes defaults and local original-name reuse on both packages.
   Shared Rust graph checks also cover statement aliases, private visibility,
   definition-site origins and exclusion of imported aliases from native exports.
-  The expanded native import fixture still needs a fresh differential run.
+  The expanded native import fixture now has a fresh completed failure at
+  `.use provider (foreign as renamed, inline as renamed_segment, plain)` on the
+  saved BS34 two-package image: exit 20 during preparation, while live Rust
+  accepts. This particular combination remains a native gap; it does not prove
+  that every selected alias form fails. The first failure prevents qualification
+  of the later qualified call in that combined fixture.
   The Rust effects probe confirms expansion-produced `.org`, sections/output and
   parameter-selected conditional loops. Static `.include` currently opens files
   inside unused macros and does not substitute the tested macro filename

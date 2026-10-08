@@ -184,9 +184,47 @@ fn compact_template_index_rename_rust_oracle() {
 #[test]
 #[ignore = "requires configured FS-UAE; selected macro/segment aliases consume a live Rust oracle"]
 fn compact_template_index_rename_regression_fs_uae() {
+    use crate::fs_uae_smoke::{
+        run_prebuilt_compact_cli_case_from_env, OpforgeNativeCliGuestFile,
+        OpforgeNativeCliPackageMode, OpforgeNativeCliParityCase, OpforgeNativeCliProof,
+    };
+    let prebuilt = std::env::var_os("OPFORGE_TEMPLATE_IMAGE")
+        .map(|path| fs::read(path).expect("read selected template comparison image"));
     for cpu in ["m68020", "m6502"] {
         let source = renamed_source(cpu);
-        native(&[("input.asm", source.as_bytes())], cpu);
+        if let Some(image) = &prebuilt {
+            let expected = oracle(&[("input.asm", source.as_bytes())], cpu);
+            let files = [OpforgeNativeCliGuestFile {
+                relative_path: "input.asm",
+                bytes: source.as_bytes(),
+            }];
+            // The fixture declares its provider first; select the package
+            // explicitly, as the external-package runner does.
+            let command = format!("--cpu {cpu} Work:input.asm --bin Work:out.bin");
+            let case = OpforgeNativeCliParityCase {
+                name: &format!("selected-template-aliases-{cpu}"),
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(source.as_bytes()),
+                command_template: Some(&command),
+                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: &files,
+                proof: OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/out.bin",
+                    rust_oracle: &expected,
+                },
+            };
+            let outcome = run_prebuilt_compact_cli_case_from_env(&workspace_root(), &case, image)
+                .expect("fresh selected template comparison");
+            let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+                panic!("real native execution required");
+            };
+            assert_eq!(runs.len(), 1);
+            assert!(runs[0].protocol_completed && runs[0].success);
+            assert_eq!(runs[0].exit_code, Some(0));
+        } else {
+            native(&[("input.asm", source.as_bytes())], cpu);
+        }
     }
 }
 

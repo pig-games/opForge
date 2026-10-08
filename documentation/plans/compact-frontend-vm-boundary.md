@@ -1,9 +1,8 @@
 # Compact frontend: VM boundary correction
 
-Status: BS34 remains the latest complete native self-host qualification. The
-current BS35 source has focused anonymous counted scoped-loop proof; a new full
-self-host is not yet qualified. Mapped conditional repetition and remaining
-expansion effects are still open.
+Status: BS35 has complete current-source native self-host qualification and
+focused anonymous counted scoped-loop proof. Mapped conditional repetition and
+remaining loop/macro expansion effects are still open.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -77,26 +76,26 @@ Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.
 
-## Most recent full self-host qualification (BS34)
+## Most recent full self-host qualification (BS35)
 
-BS34 self-assembles all 116 mapped source/binary inputs (1,739,975
-bytes) in FS-UAE 68020/74 MiB. Fresh native completion has exit zero and exact
-bootstrap/native/live Rust equality for the entire 596,652-byte Hunk. Its embedded
-m68020 package is 434,428 bytes, fingerprint `fnv1a64:93ff18aed5760d42`;
-source fingerprint is `fnv1a64:6c9adfcf4f1aac2f`, and Hunk fingerprint is
-`fnv1a64:5643260ab4b323c7`. Linked static reservation is 616,200 bytes.
+BS35 self-assembles all 121 mapped source/binary inputs (1,780,288 bytes) in
+FS-UAE 68020/74 MiB. Fresh START/DONE and native exit zero prove completion;
+bootstrap, native output and the live Rust oracle exactly match the entire
+601,196-byte Hunk. Its single embedded m68020 package is 434,454 bytes,
+fingerprint `fnv1a64:fa2f68cc934984a1`; source fingerprint is
+`fnv1a64:54fb484dd0022ab5` and Hunk fingerprint `fnv1a64:f03d432ace77a0c2`.
+Linked static reservation is 620,728 bytes.
 
-The uninstrumented release run takes 1,486.667333375 seconds (24m46.67s), with
-no concurrent host builds/tests or native runs. The
-earlier BS32 diagnostic run takes 1,442.638670708 seconds and peaks at 26,071,352
-tracked owned bytes, with zero terminal ownership and zero profiling/allocation
-errors. Static reservation and tracked peak allocation describe different costs.
-No physical A6000 timing or 2 MiB fit is claimed. See the
-[complete BS34 result](native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
+The uninstrumented release run takes 1,522.60420225 seconds (25m22.60s), with no
+concurrent host builds/tests or native runs. The earlier BS34 full source differs;
+these whole-run times do not isolate the latest implementation changes. Separate
+unchanged-input [step measurements](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification)
+record those costs. Full BS35 peak allocation, physical A6000 timing and 2 MiB fit
+are not measured. The small focused scoped-loop diagnostic peak is separate.
 
-This qualifies the current-source checkpoint, not complete loop/macro or language
-parity. Later source changes need new proof; do not reuse this result for an
-unqualified executable or package.
+This qualifies the identified current-source checkpoint, not complete loop/macro
+or language parity. Later source changes need new proof; do not reuse this result
+for an unqualified executable or package.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
@@ -110,14 +109,14 @@ stored manifests or outputs cannot replace the live oracle.
 ## Physical A6000 execution
 
 The latest qualified release bundle is
-`/tmp/opforge-selfhost-bs34-macro-repair-release-74m`. Bootstrap and
+`/tmp/opforge-selfhost-bs35-scoped-release-74m`. Bootstrap and
 assembled output both embed only `m68020--motorola68k.bin`. The named package is
 retained for local identity verification; no external runtime fallback is used.
 This bundle has complete FS-UAE qualification, but no physical execution or
-remote transfer proof. The current source and A6000 helper have migrated to BS35;
-this older BS34 export cannot be used with the current helper. Regenerate and
-qualify a matching current bundle before invoking the runner. Use macOS Terminal,
-where `ash` and `acp` can reach the A6000:
+remote transfer proof. The current source and A6000 helper share its BS35
+contract. The local current-export link selects this qualified bundle and the
+helper dry run validates its exact source/package/image inputs without network
+access. Use macOS Terminal, where `ash` and `acp` can reach the A6000:
 
 ```sh
 python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
@@ -128,8 +127,7 @@ timeout. Each invocation creates its own remote directory and local result tree.
 The current script validates BS35 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. A
-qualified current BS35 release bundle is required for the current helper; none
-is claimed by the older BS34 proof.
+qualified matching BS35 release bundle is required for the current helper.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout

@@ -2,18 +2,14 @@
 
 Status: active. Erik selected iterator-dependent conditionals first, followed by
 completion of the remaining loop and macro functionality. The latest qualified
-full self-host reference is BS34 (source manifest `6c9adfcf4f1aac2f`): all 116
-mapped inputs assemble
-natively, and bootstrap, native output and live Rust oracle match for the entire
-596,652-byte Hunk. The uninstrumented release run takes 1,486.667333375 seconds
-(24m46.67s) on FS-UAE 68020/74 MiB. The earlier BS32 diagnostic run peaks at
-26,071,352 owned bytes; BS34 has no full diagnostic memory measurement yet.
-These are self-host results, not broad language/family parity, physical A6000
-timing or 2 MiB qualification. The qualified BS34 release bundle is
-`/tmp/opforge-selfhost-bs34-macro-repair-release-74m`. Active scoped-loop source
-and package changes are not covered by that proof. The A6000 helper and source
-freshness checks now follow those changes, so regenerate and qualify a matching
-bundle before using the current helper; it cannot run the older BS34 export.
+full self-host is BS35 (source manifest `54fb484dd0022ab5`): all 121 mapped inputs
+(1,780,288 bytes) assemble natively, with exact bootstrap/native/live Rust equality
+for the entire 601,196-byte Hunk. The uninstrumented release run takes
+1,522.60420225 seconds (25m22.60s) on FS-UAE 68020/74 MiB. This is current-source
+self-host proof, not complete language/family parity, physical A6000 timing or a
+2 MiB qualification. Full BS35 peak allocation is not measured. Its qualified
+release bundle is `/tmp/opforge-selfhost-bs35-scoped-release-74m`, matching the
+current BS35 A6000 helper; only the m68020 package is embedded.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -417,9 +413,8 @@ regressions. No improvement is hidden inside an aggregate. Total image/static
 growth from the BS34 two-package reference is 4,568/4,552 bytes. Saved images,
 per-run logs, timings and fingerprints are retained under `/tmp/opforge-bs35-*`;
 `/tmp/opforge-bs35-scoped-control.py` drives the maintained `native_layout_fs_uae`
-control with explicit prebuilt images. A complete current-source self-host is
-being qualified separately; it is not an identical-input performance comparison
-with the older BS34 source.
+control with explicit prebuilt images. The complete current-source self-host below is a separate qualification, not an
+identical-input performance comparison with the older BS34 source.
 
 Explicit boundaries remain: labeled/indexed iteration scopes, iterable `.bfor`,
 `.bwhile`, mapped scoped replay, conditionals that need a later local mutable's
@@ -434,9 +429,18 @@ wide-cell tests construct the same 64-bit value through supported arithmetic.
 Indexed loop-member Hunk relocation remains a coordinated
 Rust/package/native capability, explicitly unsupported in the current Rust probe.
 
-The BS34 full self-host above qualifies only its identified source and image.
-No BS35 full self-host, hardware time, full peak memory or 2 MiB qualification is
-claimed by these component checks.
+The subsequent full release self-host completes all 121 mapped inputs
+(1,780,288 bytes) on FS-UAE 68020/74 MiB, with fresh START/DONE, exit zero and
+exact bootstrap/native/live Rust equality for the entire 601,196-byte Hunk.
+Uninstrumented time is 1,522.60420225 seconds (25m22.60s), with no concurrent
+builds/tests or native runs. Its single embedded m68020 package is 434,454 bytes;
+linked static reservation is 620,728 bytes. Fingerprints are source
+`54fb484dd0022ab5`, package `fa2f68cc934984a1` and Hunk `f03d432ace77a0c2`.
+Bundle: `/tmp/opforge-selfhost-bs35-scoped-release-74m`; fresh proof log:
+`/tmp/opforge-bs35-full-selfhost-release.log`. This qualifies this identified
+source/package/image, not complete loop/macro parity, hardware timing, full peak
+allocation or 2 MiB fit. The older BS34 full input differs and is not an isolated
+time comparison.
 
 ### Compound-value checkpoints
 

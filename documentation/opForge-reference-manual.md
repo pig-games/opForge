@@ -501,11 +501,11 @@ Notes:
   two-concrete-section output on both packages. Mapped modes 2 and 4 reject any
   `.while`, including constant-false loops, because their filtered traversal
   does not preserve the PC across skipped sections. Complete `.while` parity
-  and full scoped `.bfor`/`.bwhile` parity remain open. The latest BS34 full release self-host
+  and full scoped `.bfor`/`.bwhile` parity remain open. The BS34 full release self-host
   completes all 116 mapped inputs (1,739,975 bytes) in 24m46.67s on FS-UAE
   68020/74 MiB, with exact bootstrap/native/live Rust equality for the entire
   596,652-byte Hunk. That self-host result does not establish full loop/macro
-  parity, A6000 timing or 2 MiB fit. See the [current checkpoint](plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs34)
+  parity, A6000 timing or 2 MiB fit. See the [current checkpoint](plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs35)
   and [BS34 plan](plans/native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
 
   BS35 adds focused native support for anonymous counted `.bfor` on both packages.
@@ -517,7 +517,10 @@ Notes:
   scope boundaries reject. Labeled/indexed and iterable `.bfor`, `.bwhile`, mapped
   scoped replay, later-local conditions and inactive local constant dependencies
   remain open; literals above 32 bits also remain a packing limitation. These
-  focused results do not qualify a new full self-host or complete loop/macro parity.
+  focused results do not establish complete loop/macro parity. A separate current-
+  source BS35 self-host completes all 121 mapped inputs (1,780,288 bytes) in
+  25m22.60s on FS-UAE 68020/74 MiB, with exact equality for the entire 601,196-byte
+  Hunk. Full BS35 peak allocation, A6000 timing and 2 MiB fit are not measured.
   See the [scoped-loop checkpoint](plans/native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification).
 
 

@@ -92,12 +92,12 @@ fn compact_macro_register_value_rust_oracle() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; known loop-dependent conditional gap"]
+#[ignore = "requires configured FS-UAE; consumed macro arguments and iterator branches"]
 fn compact_macro_register_value_fs_uae() {
     native_source(register_value_source());
 }
 
-// Isolate operand binding from the retained loop-dependent conditional gap.
+// Keep an independent operand-binding control without conditional replay.
 fn register_iterator_source() -> String {
     register_value_source().replace(".if d0==2\n.byte 7\n.else\n.byte 8\n.endif\n", "")
 }

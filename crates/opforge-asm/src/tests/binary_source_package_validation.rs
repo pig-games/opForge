@@ -2,6 +2,9 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
+const BRANCH_PLAN_OFFSET: usize = 220;
+const BRANCH_PLAN_BYTES_OFFSET: usize = 224;
+
 struct Scratch(PathBuf);
 impl Scratch {
     fn new() -> Self {
@@ -30,7 +33,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     assert!(count > 0);
-    assert_eq!(&valid[..4], b"BS32");
+    assert_eq!(&valid[..4], b"BS33");
     assert!(rows + count * crate::binary_source_experiment::ROW <= valid.len());
     assert_eq!(&valid[rows + 34..rows + 36], &[0, 0]);
     assert!(valid[rows + 32] <= 11);
@@ -95,6 +98,44 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     odd[loop_offset + 1..loop_offset + 8].copy_from_slice(&valid[loop_offset..loop_offset + 7]);
     odd[212..216].copy_from_slice(&((loop_offset + 1) as u32).to_be_bytes());
     cases.push(("loop-odd-offset", odd, 1));
+    let branch_offset = u32::from_be_bytes(
+        valid[BRANCH_PLAN_OFFSET..BRANCH_PLAN_OFFSET + 4]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    let branch_bytes = u32::from_be_bytes(
+        valid[BRANCH_PLAN_BYTES_OFFSET..BRANCH_PLAN_BYTES_OFFSET + 4]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    assert_eq!(branch_bytes, 20);
+    for (name, offset) in [
+        ("branch-header-overlap", 4_u32),
+        ("branch-odd-offset", (branch_offset as u32) | 1),
+        ("branch-out-of-bounds", valid.len() as u32),
+        ("branch-span-overflow", u32::MAX),
+    ] {
+        let mut malformed = valid.clone();
+        malformed[BRANCH_PLAN_OFFSET..BRANCH_PLAN_OFFSET + 4]
+            .copy_from_slice(&offset.to_be_bytes());
+        cases.push((name, malformed, 1));
+    }
+    for (name, byte) in [
+        ("branch-corrupt-opcode", 0),
+        ("branch-corrupt-count", 1),
+        ("branch-invalid-name", 3),
+        ("branch-invalid-role", 4),
+        ("branch-invalid-expression-policy", 5),
+        ("branch-corrupt-end", 19),
+    ] {
+        let mut malformed = valid.clone();
+        malformed[branch_offset + byte] = 0xff;
+        cases.push((name, malformed, 1));
+    }
+    let mut branch_truncated = valid.clone();
+    branch_truncated[BRANCH_PLAN_BYTES_OFFSET..BRANCH_PLAN_BYTES_OFFSET + 4]
+        .copy_from_slice(&19_u32.to_be_bytes());
+    cases.push(("branch-truncated-program", branch_truncated, 1));
     for (name, offset, value) in [
         ("loop-header-overlap", 212, 216u32),
         ("loop-out-of-bounds", 212, valid.len() as u32),
@@ -116,9 +157,9 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         cases.push((name, malformed, 1));
     }
     let mut superseded = valid.clone();
-    superseded[..4].copy_from_slice(b"BS31");
+    superseded[..4].copy_from_slice(b"BS32");
     cases.push(("superseded-package", superseded, 1));
-    cases.push(("truncated-current-header", valid[..219].to_vec(), 1));
+    cases.push(("truncated-current-header", valid[..227].to_vec(), 1));
     cases
 }
 
@@ -205,6 +246,13 @@ PayloadEnd
             .unwrap(),
     );
     source.push('\n');
+    source.push_str(
+        &std::fs::read_to_string(
+            root.join("native/motorola68000/amigaos/prvm/prvm_packed_branch.asm"),
+        )
+        .unwrap(),
+    );
+    source.push('\n');
     for name in [
         "binary_package.asm",
         "binary_state.asm",
@@ -238,6 +286,11 @@ fn compact_package_validation_component_fixture_contract() {
         .find(|row| u16::from_be_bytes(valid[row + 36..row + 38].try_into().unwrap()) != 0)
         .unwrap();
     let loop_offset = u32::from_be_bytes(valid[212..216].try_into().unwrap()) as usize;
+    let branch_offset = u32::from_be_bytes(
+        valid[BRANCH_PLAN_OFFSET..BRANCH_PLAN_OFFSET + 4]
+            .try_into()
+            .unwrap(),
+    ) as usize;
     for (name, bytes, expected) in cases.iter().skip(1) {
         let changed = valid
             .iter()
@@ -278,10 +331,21 @@ fn compact_package_validation_component_fixture_contract() {
             "loop-name-out-of-bounds" => loop_offset + 3..loop_offset + 5,
             "loop-corrupt-return" => loop_offset + 5..loop_offset + 6,
             "loop-corrupt-stop" => loop_offset + 6..loop_offset + 7,
+            "branch-header-overlap"
+            | "branch-odd-offset"
+            | "branch-out-of-bounds"
+            | "branch-span-overflow" => BRANCH_PLAN_OFFSET..BRANCH_PLAN_OFFSET + 4,
+            "branch-truncated-program" => BRANCH_PLAN_BYTES_OFFSET..BRANCH_PLAN_BYTES_OFFSET + 4,
+            "branch-corrupt-opcode" => branch_offset..branch_offset + 1,
+            "branch-corrupt-count" => branch_offset + 1..branch_offset + 2,
+            "branch-invalid-name" => branch_offset + 3..branch_offset + 4,
+            "branch-invalid-role" => branch_offset + 4..branch_offset + 5,
+            "branch-invalid-expression-policy" => branch_offset + 5..branch_offset + 6,
+            "branch-corrupt-end" => branch_offset + 19..branch_offset + 20,
             "superseded-package" => 0..4,
             "truncated-current-header" => {
-                assert_eq!(bytes.len(), 219);
-                assert_eq!(bytes, &valid[..219]);
+                assert_eq!(bytes.len(), 227);
+                assert_eq!(bytes, &valid[..227]);
                 assert!(changed.is_empty());
                 continue;
             }

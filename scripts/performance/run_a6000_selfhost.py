@@ -25,7 +25,9 @@ INSTRUMENTATION_DEFINES = {
     "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
 }
-PACKAGE_HEADER_BYTES = 220
+PACKAGE_HEADER_BYTES = 228
+BRANCH_PLAN_OFFSET = 220
+BRANCH_PLAN_BYTES_OFFSET = 224
 
 
 def fnv(data):
@@ -138,7 +140,7 @@ def load_bundle(bundle):
         raise ValueError("Release bootstrap/oracle mismatch")
     # Only the current package contract is supported. This transport verifies
     # assets and header regions; the native runtime interprets VM opcodes.
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS32":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS33":
         raise ValueError("Runtime package mismatch")
     if len(package) < PACKAGE_HEADER_BYTES or int.from_bytes(package[4:8], "big") != len(package):
         raise ValueError("Invalid runtime package header")
@@ -173,6 +175,24 @@ def load_bundle(bundle):
     if (loop_offset < PACKAGE_HEADER_BYTES or loop_offset % 2
             or loop_size != 7 or loop_offset + loop_size > runtime_bytes):
         raise ValueError("Invalid loop-plan program region")
+    branch_offset = int.from_bytes(
+        package[BRANCH_PLAN_OFFSET:BRANCH_PLAN_OFFSET + 4], "big"
+    )
+    branch_size = int.from_bytes(
+        package[BRANCH_PLAN_BYTES_OFFSET:BRANCH_PLAN_BYTES_OFFSET + 4], "big"
+    )
+    if (branch_offset < PACKAGE_HEADER_BYTES or branch_offset % 2
+            or branch_size != 20 or branch_offset + branch_size > runtime_bytes):
+        raise ValueError("Invalid branch-plan program region")
+    branch = package[branch_offset:branch_offset + branch_size]
+    name_count = int.from_bytes(package[62:64], "big")
+    if branch[:2] != b"\x9a\x04" or branch[18:] != b"\x83\0":
+        raise ValueError("Invalid branch-plan program")
+    for index in range(4):
+        row = branch[2 + index * 4:6 + index * 4]
+        if (int.from_bytes(row[:2], "big") >= name_count
+                or row[2] != index + 1 or row[3] != int(index < 2)):
+            raise ValueError("Invalid branch-plan program")
     files["opforge"] = bootstrap
     if storage == "embedded":
         offset = int.from_bytes(package[124:128], "big")

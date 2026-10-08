@@ -17,23 +17,32 @@ SPEC.loader.exec_module(runner)
 
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
-        package = bytearray(220)
-        package[:4] = b"BS32"
-        package[168:172] = (220).to_bytes(4, "big")
+        package = bytearray(288)
+        package[:4] = b"BS33"
+        package[62:64] = (5).to_bytes(2, "big")
+        package[168:172] = (228).to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
         package[176:178] = (2).to_bytes(2, "big")
-        package.extend(b"\0" * 4)
-        package[180:184] = (224).to_bytes(4, "big")
+        package[180:184] = (232).to_bytes(4, "big")
         package[184:188] = (23).to_bytes(4, "big")
         package[188:190] = (2).to_bytes(2, "big")
-        package.extend(b"\0" * 24)
-        package[160:164] = (220).to_bytes(4, "big")
-        package[200:204] = len(package).to_bytes(4, "big")
+        package[160:164] = (256).to_bytes(4, "big")
+        package[200:204] = (286).to_bytes(4, "big")
         package[204:208] = (1).to_bytes(4, "big")
-        package.extend(b"\0\0")
-        package[212:216] = len(package).to_bytes(4, "big")
+        package[212:216] = (258).to_bytes(4, "big")
         package[216:220] = (7).to_bytes(4, "big")
-        package.extend(b"\0" * 8)
+        package[220:224] = (266).to_bytes(4, "big")
+        branch_plan_offset = 266
+        package[220:224] = branch_plan_offset.to_bytes(4, "big")
+        branch_plan = bytearray((0x9A, 4))
+        for index in range(4):
+            branch_plan.extend((index).to_bytes(2, "big"))
+            branch_plan.extend((index + 1, int(index < 2)))
+        branch_plan.extend((0x83, 0))
+        package[224:228] = len(branch_plan).to_bytes(4, "big")
+        package[258:265] = b"\x99\0\0\0\0\x83\0"
+        package[266:286] = branch_plan
+        package[286] = 0
         if target:
             package[124:128] = len(package).to_bytes(4, "big")
             package[128:130] = len(target).to_bytes(2, "big")
@@ -105,7 +114,8 @@ class HardwareCompletionTests(unittest.TestCase):
         (root / "manifest.json").write_text(json.dumps(manifest))
 
     def test_runtime_package_rejects_superseded_magic_and_truncated_header(self):
-        for magic, size, error in ((b"BS31", 220, "package mismatch"),
+        for magic, size, error in ((b"BS31", 228, "package mismatch"),
+                                  (b"BS32", 228, "package mismatch"),
                                   (b"BS16", 210, "package mismatch"),
                                    (b"BS17", 210, "package mismatch"),
                                    (b"BS19", 210, "package mismatch"),
@@ -115,7 +125,7 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS26", 210, "package mismatch"),
                                    (b"BS27", 210, "package mismatch"),
                                    (b"BS29", 210, "package mismatch"),
-                                   (b"BS32", 219, "package header")):
+                                   (b"BS33", 227, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -130,7 +140,7 @@ class HardwareCompletionTests(unittest.TestCase):
         mutations = [
             (4, 4, 209, "package header"),
             (72, 4, 198, "package region"),
-            (72, 4, 260, "package region"),
+            (72, 4, 290, "package region"),
             (72, 4, 209, "package region"),
             (160, 4, 168, "member-binding table"),
             (160, 4, 201, "member-binding table"),
@@ -141,25 +151,38 @@ class HardwareCompletionTests(unittest.TestCase):
             (200, 4, 0, "expression program"),
             (200, 4, 206, "expression program"),
             (200, 4, 257, "expression program"),
-            (200, 4, 258, "expression program"),
+            (200, 4, 287, "expression program"),
             (204, 4, 0, "expression program"),
             (204, 4, 65536, "expression program"),
             (204, 4, 11, "expression program"),
             (212, 4, 212, "loop-plan program"),
             (212, 4, 251, "loop-plan program"),
-            (212, 4, 254, "loop-plan program"),
+            (212, 4, 284, "loop-plan program"),
             (216, 4, 0, "loop-plan program"),
             (216, 4, 8, "loop-plan program"),
+            (220, 4, 4, "branch-plan program"),
+            (220, 4, 259, "branch-plan program"),
+            (220, 4, 0xFFFFFFFF, "branch-plan program"),
+            (224, 4, 0, "branch-plan program"),
+            (224, 4, 19, "branch-plan program"),
+            (224, 4, 0xFFFFFFFF, "branch-plan program"),
         ]
         for start, label in ((168, "head-policy"), (180, "declaration")):
             mutations.extend([
                 (start, 4, 168, label),
                 (start, 4, 201, label),
-                (start, 4, 258, label),
+                (start, 4, 227, label),
                 (start + 4, 4, 0, label),
                 (start + 8, 2, 1, label),
                 (start + 10, 2, 1, label),
             ])
+        for offset, value in ((0, 0xFF), (1, 0xFF), (3, 0xFF), (4, 0xFF), (5, 0xFF), (19, 0xFF)):
+            mutations.append((
+                int.from_bytes(self.package()[220:224], "big") + offset,
+                1,
+                value,
+                "branch-plan program",
+            ))
         for offset, width, value, error in mutations:
             with self.subTest(offset=offset, value=value), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -188,7 +211,7 @@ class HardwareCompletionTests(unittest.TestCase):
                 runner.load_bundle(root)
 
     def test_embedded_target_must_be_inside_runtime_region_after_current_header(self):
-        for offset, runtime in ((168, 258), (258, 258)):
+        for offset, runtime in ((168, 288), (288, 288)):
             with self.subTest(offset=offset, runtime=runtime), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.embedded_bundle(root)
@@ -319,7 +342,7 @@ class HardwareCompletionTests(unittest.TestCase):
             ("configured_entry", "native", None, "Current source"),
             ("generated_catalog", None, b'.incbin "/host/package.bin"\n', "catalog"),
             ("generated_catalog", None, b'.incbin "packages/m68020--motorola68k.bin"\n' * 2, "catalog"),
-            ("package_asset", None, b"BS32corrupt", "asset mismatch"),
+            ("package_asset", None, b"BS33corrupt", "asset mismatch"),
         ]
         for origin, replacement_origin, data, error in mutations:
             with self.subTest(origin=origin, error=error), tempfile.TemporaryDirectory() as directory:

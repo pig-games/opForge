@@ -14,6 +14,7 @@
 	.use experimental.amigaos.binary_section_prepare as sections
 	.use experimental.amigaos.binary_structs as structs
 	.use experimental.amigaos.binary_package as pkg
+	.use prvm.amigaos.packed_branch as branch_parser
 	.use prvm.amigaos.packed_loop as loop_parser
 	.use prvm.amigaos.abi as loop_abi
 	.use experimental.amigaos.binary_iterator_bindings as iterators
@@ -37,6 +38,7 @@ KIND_BLOCK = 1
 KIND_NAMESPACE = 2
 LEXICAL_BLOCK_BIT = 7
 LEXICAL_BLOCK = 1<<LEXICAL_BLOCK_BIT; preparation-only: macro hygiene without a reachability unit
+INDENT_FLAG_BIT = source.FLAG_INDENT-1
 KEY_BLOCK = 1
 KEY_ENDBLOCK = 2
 KEY_END = 3
@@ -625,6 +627,56 @@ done
 	tst.l d0
 	rts
 	.bend  ; configurationStatement
+
+; A0=writer record,A1=scope. Reject preparation effects inside deferred
+; branch envelopes. Ordinary numeric data/instructions/loop controls remain.
+; Scope directive identities use the existing shared scope policy.
+; D0/CCR=status; other registers preserved. Does not mutate source or scope.
+deferredLine	.block
+	movem.l d1-d3/a0-a2/a6, -(sp)
+	movea.l a1, a6
+	btst #LEXICAL_BLOCK_BIT, 1(a0)
+	bne.w good
+	moveq #0, d1
+	move.b (a0), d1
+	addq.w #1, d1
+	cmpi.w #branch_parser.Record.Operand, d1
+	blo.w good
+	cmpi.b #loop_abi.PRVM_TOKEN_KIND_REGISTER, branch_parser.Record.Dot(a0)
+	bhi.w directive
+	btst #INDENT_FLAG_BIT, branch_parser.Record.Flags(a0)
+	beq.w bad
+	cmpi.b #loop_abi.PRVM_TOKEN_KIND_COLON, branch_parser.Record.Qualifier(a0)
+	beq.w bad
+	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, branch_parser.Record.Qualifier(a0)
+	beq.w bad
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, branch_parser.Record.Qualifier(a0)
+	blo.w good
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, branch_parser.Record.Qualifier(a0)
+	bls.w bad
+	bra.w good
+directive
+	cmpi.b #loop_abi.PRVM_TOKEN_KIND_DOT, branch_parser.Record.Dot(a0)
+	bne.w good
+	moveq #0, d0
+	move.w branch_parser.Record.Head(a0), d0
+	bsr.w keyword
+	tst.l d0
+	beq.w good
+	cmpi.w #KEY_IF, d0
+	blo.w bad
+	cmpi.w #KEY_IFNDEF, d0
+	bhi.w bad
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2/a6
+	tst.l d0
+	rts
+	.bend  ; deferredLine
 
 ; A0=bound configuration record,A1=scope state,D0=buffer capacity.
 ; Process only module boundaries,

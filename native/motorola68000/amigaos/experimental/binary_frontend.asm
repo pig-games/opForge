@@ -1184,6 +1184,15 @@ initialPlan	.block
 	tst.l d0
 	beq.w ready
 	move.l d0, d4
+	cmpi.l #2, d4
+	blo.w templateRoleReady
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	tst.w conditionals.State.Deferred(a0)
+	bne.w bad
+	tst.w SCOPE_STATE+layout.State.LoopDepth(a6)
+	bne.w bad
+templateRoleReady
 	tst.l CAPTURE_RECORD(a6)
 	beq.w physicalPlan
 	bsr.w bindCapturedPlan
@@ -1725,6 +1734,24 @@ graphBeforeDone
 	clr.b 1(a0)
 	bra.w conditionReady
 activeLine
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	tst.w conditionals.State.Deferred(a0)
+	beq.w activePreparation
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	jsr scopes.deferredLine
+	bne.w failed
+	btst #scopes.LEXICAL_BLOCK_BIT, 1(a0)
+	bne.w bindLine
+	; Null destination rejects selected metadata before applying any event.
+	movea.l Frame.Package(a5), a1
+	lea SCOPE_STATE(a6), a2
+	suba.l a3, a3
+	moveq #0, d1
+	jsr metadata.check
+	bne.w failed
+activePreparation
 	movea.l Frame.Output(a5), a0
 	; Private macro hygiene markers belong to scopes, not portable PRVM records.
 	move.b 1(a0), d0
@@ -1797,14 +1824,26 @@ conditionReady
 	movea.l Frame.Package(a5), a1
 	lea SCOPE_STATE(a6), a2
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DATA
+	tst.w SCOPE_STATE+layout.State.LoopDepth(a6)
+	bne.w dataPrepared
 	jsr data_prepare.check
 	bne.w failed
+dataPrepared
 	movea.l Frame.Output(a5), a0
 	lea PREPARED_LINE(a6), a1
 	movea.l Frame.Package(a5), a2
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_EXPRESSION
 	.MEMORY_PREPARATION_INPUT PreparationInput, Frame.Capacity(a5)
+	movea.l a6, a4
+	adda.l #CONDITION_STATE, a4
+	move.w conditionals.State.Deferred(a4), d0
+	or.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	beq.w prepareOrdinary
+	jsr prepare.lineUnfolded
+	bra.w preparedExpression
+prepareOrdinary
 	jsr prepare.line
+preparedExpression
 	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w failed
 	.MEMORY_STAGE #0
@@ -1920,6 +1959,10 @@ clear
 	beq.w good
 	cmpi.l #1, d1
 	bne.w bad
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	tst.w conditionals.State.Deferred(a0)
+	bne.w bad  ; deferred branches cannot perform preparation-time file I/O
 	move.l Frame.FileInclude(a5), d0
 	beq.w bad  ; stand-alone frontends must explicitly supply file I/O
 	movea.l d0, a2
@@ -2440,6 +2483,10 @@ validateMacroPrograms	.block
 	move.l #HEADER_BYTES, d3
 	lea package.Header.LoopPlan(a4), a0
 	bsr.w region
+	bne.w retainedDone
+	lea package.Header.BranchPlan(a4), a0
+	bsr.w region
+retainedDone
 	move.l (sp)+, d7
 	bra.w done
 region

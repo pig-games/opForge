@@ -1,25 +1,26 @@
 # Native assembler completion plan
 
-Status: active. BS32 repairs deferred macro register/value binding; focused
-qualification passes. The [current complete self-host attempt](#deferred-macro-operand-binding-bs32)
-still **fails with native exit 20 and no output**, after 747.212714458 seconds
-on 68020/74 MiB. The reported record is `lea DosName,a1`, CLI entry file 1,
-line 18. Focused LEA/Hunk and named-block forward-reference controls pass; a
-complete diagnostic capture confirms failure during captured-source preparation,
-before assembly begins. The narrower stage marker could remain stale across
-writer/template failures; a corrected boundary capture is in progress. This is not restored self-host
-parity. BS31 added statement-time flat lists, compact ranges, numeric `.len` and
-focused iterable `.for` support on the shared EXVM grammar.
+Status: active. Erik selected iterator-dependent conditionals first, followed by
+completion of the remaining loop and macro functionality. The latest qualified
+full self-host reference is BS32 `cccd66fe`: all 112 mapped inputs assemble
+natively, and bootstrap, native output and live Rust oracle match for the entire
+590,764-byte Hunk. The uninstrumented release run takes 1,400.935415167 seconds
+(23m20.94s) on FS-UAE 68020/74 MiB. The separate diagnostic run peaks at
+26,071,352 owned bytes. These are self-host results, not broad language/family
+parity, physical A6000 timing or 2 MiB qualification. The qualified release bundle
+is selected by `/tmp/opforge-a6000-current`.
 
-The [last successful full self-host checkpoint](#shared-exvm-migration-qualification)
-remains BS30 `09c55688`: exact equality for all 538,336 Hunk bytes in
-1,253.615809917 seconds on 68020/74 MiB. The fresh current host assembler suite
-has 2,139 passing, 49 failing and 530 ignored tests; the old failure-name list is
-not retained, so the reduced failure count does not establish which cases were
-fixed or newly broken. Scalar `:?=` forward-initializer semantics remain open.
-Current executables require BS32 packages; superseded contracts have no
-compatibility executor. No new physical A6000 run or qualified replacement
-hardware bundle is claimed.
+BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
+iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
+iterator identities, deferred macro register/value binding and complete lexical
+dotted-name lookup. The [complete BS32 result](#deferred-macro-operand-binding-bs32)
+supersedes its earlier failed captures. Subsequent source/package changes require
+new native proof; the reference bundle does not qualify later implementation.
+
+The broad corpus inventory remains the BS27 observation below. Later focused
+repairs do not update its counts. Scalar `:?=` forward-initializer semantics and
+other shared-language gaps remain open. Current contracts have no compatibility
+executor.
 
 This remains experimental: even successful self-host equality does not establish
 full language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
@@ -99,6 +100,89 @@ immutable constants first. Do not claim conditional-assignment parity until that
 language choice and the resulting implementation are qualified.
 The compiler-first sequence is approved; remaining language qualification is in progress. CPU-specific
 instruction gaps and promotion of the experimental CLI remain separate work.
+
+### Selected loop and macro completion sequence
+
+1. **Iterator-dependent conditionals:** retain package-selected numeric
+   `.if`/`.elseif`/`.else`/`.endif` controls inside loop envelopes and evaluate
+   compiled EXVM conditions during assembly replay. Preserve current early
+   selection outside loops. Prove both branches, nested and empty loops,
+   short-circuit selection, consumed macro arguments, inactive evaluation errors,
+   malformed envelopes and iterator restoration on 68020 and 6502 packages.
+   Preparation-only effects must not execute speculatively in deferred branches;
+   any interim unsupported effects remain explicit gaps.
+2. **Remaining loop semantics:** complete condition-based and scoped forms,
+   per-iteration symbol/address identities, nested matching, limits and traversal
+   stability using existing Rust semantics. Choose checkpoint boundaries from
+   their shared responsibilities rather than individual example failures.
+3. **Macro completion:** audit and qualify the current argument/default,
+   substitution, lexical hygiene, visibility, nested expansion and loop/control
+   interactions. Remove residual text-driven expansion where the binary path
+   still lacks a package-selected representation. Preserve the approved embedded
+   substitutions rather than narrowing the language.
+
+Each coherent checkpoint compares against live Rust with fresh native completion,
+records its own unchanged-control time and footprint, and identifies remaining
+limits. At completion, rerun the affected unchanged corpus and full self-host;
+focused controls alone do not establish full loop/macro parity. Pause for a brief
+architecture/size/runtime direction review after a few checkpoints.
+
+### Iterator-dependent conditionals (BS33)
+
+The package-owned BranchPlan now selects `.if`, `.elseif`, `.else` and `.endif`
+by numeric identity. Loop bodies retain those controls and shared EXVM expressions;
+assembly selects a branch after assigning the iterator, before loop/state/emission
+work. Outside loops, existing preparation-time selection remains. The 228-byte
+BS33 header adds a bounded 20-byte plan; no native VM version dispatch is added.
+Only current packages are accepted and assets must be regenerated.
+
+Fresh combined native fixtures cover the ten preceding iterator scenarios and
+nine new conditional scenarios on **both 68020 and 6502 packages**, with exact
+live Rust bytes. Coverage includes each branch, nested iteration/conditions,
+inactive inner loops, short-circuit errors, empty loops, macro arguments,
+parent restoration, wide truth values and preprocessor nesting. Twelve malformed
+or unavailable controls complete with expected nonzero exits and diagnostics;
+this is rejection coverage, not exact diagnostic parity. The original consumed
+macro/register-value regression now completes with the exact 21-byte Rust output.
+Rust also skips evaluating inactive or already-taken branch expressions while
+preserving structural errors, including `.match`/`.case` short-circuiting.
+
+The unchanged 15,474-byte `aligned-control` source (`fnv1a64:ac05445d958571b5`)
+has two alternating release samples per state on FS-UAE 68020/10 MiB, without
+concurrent builds or tests. BS32: **25.346212125 / 25.323025416 seconds**, mean
+**25.334618771**. BS33: **25.595911208 / 25.637647708 seconds**, mean
+**25.616779458**. All four have fresh completion, exit zero and exact live Rust
+output. The observed **+0.282161 seconds (+1.11%)** is this repair's incremental
+cost, based on two samples per state; it is not a broad statistical estimate.
+One-package release Hunk grows **590,764 → 592,700 bytes (+1,936)**, linked static
+reservation **610,064 → 612,112 (+2,048)**, and package **434,326 → 434,396 (+70)**.
+Image identities are `a96334c92d3f8614` and `25c27121a3669a35` respectively.
+The subsequent symbolic layout cleanup produces the same release image bytes.
+
+This is a focused replay checkpoint. Deferred preparation-only declarations,
+scopes, configuration/metadata, file operations and macro definitions reject
+rather than execute speculatively. Textual macro expansion is still preparation
+work; references in both runtime branches may conservatively retain imported
+blocks. `.match` replay, conditional declaration effects, `.while`, scoped loops,
+full macro edge coverage and full lazy preparation/reachability parity remain
+open. There is no full BS33 self-host claim yet; the qualified BS32 result remains
+the complete reference.
+
+Symbolic shift strides exposed an existing Rust required-value constraint gap:
+bare enclosing constants deliberately defer in a block's first pass to preserve
+forward local shadows, but the shift-count ValueVM validates the placeholder
+zero too early. This checkpoint uses explicit qualification, preserving bytes.
+The next shared repair must defer required scalar value validation without
+loosening scope lookup, structural projections or optional encoding selection.
+
+Focused host validation: 369 binary-source tests, three conditional evaluation
+tests, two BranchPlan classifier tests and 24 A6000 transport tests pass.
+Production-library Clippy passes for package/VM/assembler. `--all-targets` reports
+22 pre-existing test-harness warnings outside this change; it is not a clean
+whole-workspace qualification. Eight fresh native validator component cases cover the valid package, malformed
+branch-plan bounds/rows and superseded magic. The enabled telemetry build also
+completes the nineteen-scenario 68020 fixture with exact bytes, balanced cleanup
+and zero profile errors; its time is reported separately from release comparisons.
 
 ### Compound-value checkpoints
 

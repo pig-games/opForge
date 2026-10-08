@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS32 packages.
+; Shared structural boundary for embedded and external BS33 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_memory as memory
 	.use prvm.amigaos.abi as parser_abi
+	.use prvm.amigaos.packed_branch as branches
 	.pub
 SUCCESS = 0
 INVALID = 1
@@ -22,7 +23,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS32 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS33 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -213,6 +214,41 @@ preparation
 	move.w parser_abi.LoopProgram.InHigh(a3), d0
 	cmp.w package.Header.NameCount(a4), d0
 	bhs.w bad
+	move.l package.Header.BranchPlan(a4), d0
+	btst #0, d0
+	bne.w bad
+	move.l package.Header.BranchPlanBytes(a4), d1
+	cmpi.l #branches.PROGRAM_BYTES, d1
+	bne.w bad
+	bsr.w span
+	bne.w bad
+	cmpi.b #branches.OPCODE, branches.Program.Opcode(a3)
+	bne.w bad
+	cmpi.b #4, branches.Program.Count(a3)
+	bne.w bad
+	cmpi.b #parser_abi.OP_PUBLISH, branches.Program.Publish(a3)
+	bne.w bad
+	tst.b branches.Program.End(a3)
+	bne.w bad
+	lea branches.Program.Rows(a3), a2
+	moveq #1, d6
+branchRows
+	move.w (a2), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	cmp.b branches.Row.Role(a2), d6
+	bne.w bad
+	moveq #0, d0
+	cmpi.w #2, d6
+	bhi.w branchPolicy
+	moveq #1, d0
+branchPolicy
+	cmp.b branches.Row.Expression(a2), d0
+	bne.w bad
+	addq.w #1, d6
+	adda.w #branches.ROW_BYTES, a2
+	cmpi.w #5, d6
+	blo.w branchRows
 	move.l package.Header.ExpressionPlan(a4), d0
 	btst #0, d0
 	bne.w bad

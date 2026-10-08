@@ -68,7 +68,7 @@ pub(crate) fn linked_static_bytes(image: &[u8]) -> u64 {
         .sum()
 }
 
-fn memory(bytes: &[u8]) -> Value {
+pub(crate) fn memory(bytes: &[u8]) -> Value {
     assert_eq!(bytes.len(), 2280, "current MEMD record size");
     let words: Vec<_> = bytes
         .chunks_exact(4)
@@ -208,7 +208,7 @@ fn native_package_loading_performance() {
                 b"BS24".as_slice(),
                 b"BS25".as_slice(),
                 b"BS26".as_slice(),
-                b"BS32".as_slice()
+                b"BS33".as_slice()
             ]
             .contains(&package.get(..4).unwrap_or(&[])),
             "baseline must carry its own known frozen native contract"

@@ -34,6 +34,15 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("compound-shadow", "items={8,9}\n.for items in {2,4}\n.byte items+1\n.endfor\n.byte items[0]\n", &[3,5,8]),
     ("named-snapshot", "items .var {2,4}\nsaved=items\nitems .set {9,10,11}\n.for item in saved\n.byte item+1\n.endfor\n.for item in items\n.byte item\n.endfor\n", &[3,5,9,10,11]),
     ("nested-count-empty", "item=23\n.for item in {}\n.byte missing\n.endfor\n.for item in 4..4\n.byte missing\n.endfor\n.for item in {2,3}\n.for item\n.byte item+10\n.endfor\n.endfor\n.byte item\n", &[12,12,13,13,13,23]),
+    ("iterator-branches", ".for item in {0,1,2}\n.if item==0\n.byte 10\n.elseif item==1\n.byte 11\n.else\n.byte 12\n.endif\n.endfor\n", &[10, 11, 12]),
+    ("nested-iterator-conditions", "outer=9\n.for outer in {1,2}\n.for inner in {2,1}\n.if outer==inner\n.byte 20+outer\n.else\n.byte 30+inner\n.endif\n.endfor\n.endfor\n.byte outer\n", &[32, 21, 22, 31, 9]),
+    ("inactive-conditional-loops", ".for item in {1,2}\n.if item==0\n.for 1/0\n.byte missing\n.endfor\n.else\n.for 2\n.if item==1\n.byte 3\n.else\n.byte 4\n.endif\n.endfor\n.endif\n.endfor\n", &[3, 3, 4, 4]),
+    ("conditional-short-circuit", ".for item in {1,2}\n.if item\n.byte item\n.elseif 1/0\n.byte missing\n.else\n.byte 99\n.endif\n.if item==0\n.byte 1/0\n.endif\n.endfor\n", &[1, 2]),
+    ("empty-conditional-loop", ".for item in {}\n.if missing\n.byte 99\n.else\n.byte 1/0\n.endif\n.endfor\n.byte 7\n", &[7]),
+    ("macro-iterator-condition", "pick .macro value\n.if .value==2\n.byte .value+10\n.else\n.byte .value+20\n.endif\n.endmacro\n.for item in {2,4}\n.pick item\n.endfor\n", &[12, 24]),
+    ("conditional-parent-restoration", ".if 1\n.for item in {1,2}\n.if item==1\n.if 0\n.byte 99\n.else\n.byte 5\n.endif\n.else\n.byte 6\n.endif\n.endfor\n.byte 7\n.else\n.byte 99\n.endif\n", &[5, 6, 7]),
+    ("conditional-wide-truth", ".for item in {0,1}\n.if item+((1<<16)<<16)\n.byte 8\n.else\n.byte 99\n.endif\n.endfor\n", &[8,8]),
+    ("conditional-preprocessor", ".for item in {1,2}\n.if item==1\n.ifdef absent\n.byte missing\n.else\n.byte 7\n.endif\n.else\n.ifndef absent\n.byte 8\n.endif\n.endif\n.endfor\n", &[7,8]),
 ];
 const BAD: &[(&str, &str)] = &[
     (
@@ -93,6 +102,26 @@ const BAD: &[(&str, &str)] = &[
     (
         "binding-does-not-leak",
         ".for item in {1,2}\n.byte item\n.endfor\n.byte item\n",
+    ),
+    (
+        "conditional-double-else",
+        ".for item in {1}\n.if item\n.byte 1\n.else\n.byte 2\n.else\n.byte 3\n.endif\n.endfor\n",
+    ),
+    (
+        "conditional-unmatched-end",
+        ".for item in {1}\n.endif\n.endfor\n",
+    ),
+    (
+        "conditional-missing-end",
+        ".for item in {1}\n.if item\n.byte 1\n.endfor\n",
+    ),
+    (
+        "conditional-active-error",
+        ".for item in {1}\n.if item\n.byte 1/0\n.endif\n.endfor\n",
+    ),
+    (
+        "conditional-unavailable",
+        ".for item in {1}\n.if missing\n.byte 1\n.endif\n.endfor\n",
     ),
 ];
 fn imported_shadow_source(cpu: &str, qualified: bool) -> String {
@@ -367,6 +396,17 @@ fn run_case(
     assert!(runs[0].protocol_completed);
     assert_eq!(runs[0].success, !failure);
     assert_eq!(runs[0].exit_code, Some(if failure { 20 } else { 0 }));
+    if std::env::var("OPFORGE_ITERABLE_MEMORY").as_deref() == Ok("1") {
+        let bytes = runs[0]
+            .captured_artifacts
+            .get(&PathBuf::from("Work/memory.bin"))
+            .expect("fresh instrumented memory record");
+        // Reuse the maintained MEMD decoder and its cleanup/profile checks.
+        eprintln!(
+            "ITERABLE_MEMORY {}",
+            super::native_package_loading_performance::memory(bytes)
+        );
+    }
     eprintln!(
         "ITERABLE_CASE name={name} cpu={cpu} failure={failure} source_bytes={} seconds={:?} image_bytes={}",
         source.len(), runs[0].start_to_done_host_seconds, image.len()

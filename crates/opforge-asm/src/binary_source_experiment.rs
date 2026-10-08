@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use package::{
     decode_encoding_program, inline_head_policy_program, macro_descriptor_program,
-    macro_fragment_program, macro_spelling_program, packed_data_program,
+    macro_fragment_program, macro_spelling_program, packed_branch_program, packed_data_program,
     packed_declaration_program, packed_file_program, packed_loop_program,
     packed_macro_call_program, packed_metadata_program, validate_fixup_program, EncodingStep,
 };
@@ -17,7 +17,9 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 220;
+const HEADER: usize = 228;
+const BRANCH_PLAN: usize = 220;
+const BRANCH_PLAN_BYTES: usize = 224;
 pub(crate) const ROW: usize = 44;
 const ROLE_COUNT: usize = 36;
 const ROLE_RESERVED: usize = 38;
@@ -159,7 +161,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS32 block for one resolved package hierarchy.
+/// Prepare a self-contained BS33 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -318,6 +320,20 @@ pub fn prepare_package(
             DictionaryRoleFlags::CONTEXTUAL,
         )?;
         directive_ids.push(id);
+    }
+    let mut branch_heads = [0; 4];
+    for (head, spelling) in branch_heads
+        .iter_mut()
+        .zip(["if", "elseif", "else", "endif"])
+    {
+        *head = intern(&mut names, spelling)?;
+        bind(
+            &mut dictionary,
+            spelling.into(),
+            *head,
+            0,
+            DictionaryRoleFlags::CONTEXTUAL,
+        )?;
     }
     let in_name = intern(&mut names, "in")?;
     bind(
@@ -483,7 +499,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS32");
+    out[..4].copy_from_slice(b"BS33");
     set_word(&mut out, 208, builtin_len);
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
@@ -612,6 +628,10 @@ pub fn prepare_package(
     let loop_plan_offset = out.len();
     let loop_plan = packed_loop_program(directive_ids[8], in_name);
     out.extend_from_slice(&loop_plan);
+    align(&mut out);
+    let branch_plan_offset = out.len();
+    let branch_plan = packed_branch_program(branch_heads);
+    out.extend_from_slice(&branch_plan);
     align(&mut out);
     let declaration_plan_offset = out.len();
     let declaration_plan = packed_declaration_program(declaration_heads);
@@ -748,6 +768,8 @@ pub fn prepare_package(
         (156, long(metadata_plan.len())?),
         (212, long(loop_plan_offset)?),
         (216, long(loop_plan.len())?),
+        (BRANCH_PLAN, long(branch_plan_offset)?),
+        (BRANCH_PLAN_BYTES, long(branch_plan.len())?),
     ] {
         set_long(&mut out, offset, value);
     }
@@ -1885,7 +1907,7 @@ mod dictionary_role_contract_tests {
         assert_eq!(&unsupported[ROLE_COUNT..], &wire[ROLE_COUNT..]);
 
         let prepared = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&prepared[..4], b"BS32");
+        assert_eq!(&prepared[..4], b"BS33");
         let rows = u32::from_be_bytes(prepared[16..20].try_into().unwrap()) as usize;
         let count = u32::from_be_bytes(prepared[20..24].try_into().unwrap()) as usize;
         assert!(

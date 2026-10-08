@@ -1,57 +1,41 @@
 # Compact frontend: VM boundary correction
 
-Status: BS32 is current; focused deferred macro operand binding checks pass.
-The latest complete native self-host proof is the BS30
-shared-EXVM result at `09c55688`. The current complete attempt fails with native
-exit 20 at the CLI's `lea DosName,a1`; the fresh host suite has 49 failures whose
-inheritance is unqualified.
-Rust has
-one consolidated EXVM v1 grammar/executor; native preparation executes it over
-bound numeric tokens and lowers a transient offset-based tree to ExprVM programs.
-Native EXVM has no version argument, field, check or dispatch. Consolidation of
-other VM contracts and retirement of the old native text service remain open.
-The subsequent compound-tree checkpoint adds list/range/index/call builders
-through the same grammar. The current preparation slice evaluates known
-source-site scalar, flat-list and range values for `.use ... with (...)` in Rust,
-snapshots mutable assignments at the import site, and forwards owned values
-through imported modules. Native has focused shared-EXVM support for flat lists
-and ranges, with independent offset arenas, `.len`, indexed conditionals and
-`.var`/`.set` snapshots. Native compound-value forwarding through two imported
-modules and repeated equal imports has focused proof. Packed iterable `.for`
-has focused native qualification for ten positive scenarios on each package,
-including contextual `in`, nested restoration and evaluation of the iterable
-input before activating its iterator. Fresh loop identities now prevent imported
-shadowing from collapsing into imported declarations. Bare iterator reads omit
-unreferenced imported blocks; qualified references retain them. Six focused Rust
-regressions and fourteen fresh native runs cover this repair, register-name role
-separation, identity-table growth and scalar misuse rejection. The
-[binding repair checkpoint](native-runtime-reset.md#imported-iterator-binding-repair-2026-10-07)
-records the separate comparative measurement. Iterable-loop parity and struct
-behavior are not yet fully qualified, and existing wide-literal packing limits
-remain. Full language parity is not claimed. The
-[current full self-host attempt](native-runtime-reset.md#bs31-full-self-host-attempt-2026-10-07)
-fails with native exit 20; focused controls confirm a regression in register-list
-macro argument binding. The previous successful full self-host remains the
-qualified reference.
-The BS32 repair retains both a source origin and an optional numeric package
-register facet during tokenization. After packed substitution, structural package
-projections promote register leaves before source-reference accounting; scalar
-leaves keep their source identities until ordinary scope/import resolution.
-Private macro hygiene remains owned by scopes. STVM guards and value constraints
-remain in later assembly selection. The narrow early-choice experiment was
-removed after failed native validation.
-See the [current repair and self-host result](native-runtime-reset.md#deferred-macro-operand-binding-bs32)
-and [preceding investigation](native-runtime-reset.md#bs31-full-self-host-attempt-2026-10-07).
-Scalar `:?=` has a package-owned envelope, with forward-initializer semantics
-still unresolved. BS28 introduced numeric `:=`
-normalization to shared declarations.
-It retains three numeric operands, wrapped call-register children,
-register/immediate pairs and register triples. Same-source PACK/UNPK, LINK and
-CAS checks and transformed CAS2 execution probes pass. The qualified
-embedded BS30 compact self-host has exact whole-Hunk Rust/native equality.
-This qualifies that implementation and
-case, not whole-language or CPU-family parity. The [active work](native-runtime-reset.md#active-shared-language-completion-work)
-records focused coverage, costs and remaining boundaries.
+Status: BS33 is the selected provisional checkpoint. The latest complete native
+self-host qualification remains BS32 `cccd66fe`; BS33 has focused parity evidence
+and has not yet run complete self-host qualification.
+
+Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
+it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
+programs; native EXVM has no version argument, field, check or dispatch. Known
+source-site scalar, flat-list and range `.use ... with (...)` values, mutable
+snapshots, compound forwarding and packed iterable `.for` have focused coverage.
+BS32 repairs imported iterator identities, deferred macro register/value binding
+and lexical dotted-name lookup. Its complete qualification supersedes the earlier
+failed BS31/BS32 captures. See the
+[BS32 reference](native-runtime-reset.md#deferred-macro-operand-binding-bs32).
+
+## Iterator-dependent conditionals (BS33, provisional)
+
+BS33 extends the compact header from 220 to 228 bytes and adds a 20-byte
+BranchPlan after LoopPlan. Package opcode `0x9a` publishes four numeric
+head/role/expression-flag rows for IF, ELSEIF, ELSE and ENDIF, then ends. Packed
+replay uses this package-owned envelope without parsing source text. Rust skips
+conditional expression evaluation under inactive parents and after an earlier
+branch wins; conditional syntax and branch structure remain checked.
+
+Nineteen combined positive scenarios per 68020 and 6502 package match live Rust,
+including nine new iterator-conditional cases. Twelve negative cases complete
+with the expected rejection. The original macro register/value regression again
+matches the exact 21-byte Rust output; its native run takes 1.77477925 seconds.
+These focused results do not qualify a complete BS33 self-host. The
+[current implementation checkpoint](native-runtime-reset.md#iterator-dependent-conditionals-bs33)
+records the scope and remaining work.
+
+Deferred preparation-only declarations, scopes, configuration, metadata, file
+operations and macro definitions reject. Complete lazy file/reachability parity
+is not established; `.while`, `.bfor` and `.bwhile` remain open. Scalar `:?=`
+forward-initializer semantics, struct behavior and existing wide-literal packing
+limits also remain unresolved. Full language or CPU-family parity is not claimed.
 
 ## Current breadth parity checkpoint
 
@@ -89,32 +73,25 @@ Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
 syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
 Current full self-host proof remains the separate result below.
 
-## Most recent full self-host qualification (BS30)
+## Most recent full self-host qualification (BS32)
 
-The complete BS30 embedded implementation at `09c55688` self-assembles in FS-UAE
-with fresh case-bound START/DONE, native exit zero and exact live Rust equality
-for the entire 538,336-byte Hunk. Bootstrap and output embed only the 394,924-byte
-m68020 package; 105 mapped source/binary inputs total 1,535,391 bytes. Linked
-static reservation is 557,480 bytes, not peak RAM. Source fingerprint is
-`fnv1a64:2c0042c9e4d97975`, package fingerprint is `fnv1a64:0e19418331cbd9ca`,
-and bootstrap/output fingerprint is `fnv1a64:614c8d71228e52b1`.
+BS32 `cccd66fe` self-assembles all 112 mapped source/binary inputs (1,687,745
+bytes) in FS-UAE 68020/74 MiB. Fresh native completion has exit zero and exact
+bootstrap/native/live Rust equality for the entire 590,764-byte Hunk. Its embedded
+m68020 package is 434,326 bytes, fingerprint `fnv1a64:98b91e6dc8f6122d`;
+source fingerprint is `fnv1a64:f5b5455a5ddaa326`, and Hunk fingerprint is
+`fnv1a64:a96334c92d3f8614`. Linked static reservation is 610,064 bytes.
 
-Release START/DONE takes 1253.615809917 seconds (20m53.62s), versus the previous
-qualified BS28 full run's 1122.755769250 seconds (18m42.76s): +130.860041 seconds
-(+11.66%), one full sample per state with different source/package bytes. This
-comparison measures the combined checkpoint; it does not isolate EXVM compiler
-cost. The separate unchanged-control measurements in the
-[compiler cost checkpoint](native-runtime-reset.md#shared-compiler-cost-checkpoint)
-retain each change's individual effect on 68020/10 MiB. Full self-host
-uses 68020/74 MiB; no physical A6000 timing, peak-memory capture or 2 MiB fit is
-claimed.
+The uninstrumented release run takes 1,400.935415167 seconds (23m20.94s). The
+separate diagnostic run takes 1,442.638670708 seconds and peaks at 26,071,352
+tracked owned bytes, with zero terminal ownership and zero profiling/allocation
+errors. Static reservation and tracked peak allocation describe different costs.
+No physical A6000 timing or 2 MiB fit is claimed. See the
+[complete BS32 result](native-runtime-reset.md#deferred-macro-operand-binding-bs32).
 
-Compared with the BS28 full baseline, Hunk grows 3,244 bytes, including 602 package
-bytes, and linked static reservation grows 3,188 bytes. Current executables accept
-only the current BS32 packages; the BS30 result remains baseline evidence and
-is not a proof for the later executable. Raw CAS2 colon normalization, other path/
-call-child forms, unused extra call-argument preparation and localized
-import-alias/local-struct shadowing remain open.
+This is the latest full-qualified reference, not proof for the later BS33
+implementation. Current executables accept only BS33 packages; regenerate and
+qualify a BS33 bundle before using it with the current hardware helper.
 
 The maintained full embedded proof uses `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
@@ -127,8 +104,8 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The qualified release bundle `/tmp/opforge-selfhost-bs30-release-74m-09c55688`
-is selected by `/tmp/opforge-a6000-current`. Bootstrap and assembled output both
+The latest qualified BS32 release bundle is selected by
+`/tmp/opforge-a6000-current`. Bootstrap and assembled output both
 embed only `m68020--motorola68k.bin`. The named package is retained for local
 identity verification; no external runtime fallback is used. This bundle has
 complete FS-UAE qualification and a passing local transfer-preparation dry run,
@@ -141,10 +118,11 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The current script validates BS32 package headers, mapped source preamble and
+The current script validates BS33 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. The
-older BS28 bundle is baseline evidence and cannot be used with the current validator.
+selected BS32 bundle is a qualified reference but cannot be used with the
+current validator; a newly qualified BS33 bundle is required.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
@@ -156,7 +134,7 @@ completes its entire BS20 baseline self-host with fresh exact live Rust output, 
 peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
 allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
 execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as BS32 and qualify it before selecting it in the
+instrumented configuration as BS33 and qualify it before selecting it in the
 current hardware runner; the stored BS20 bundle is baseline evidence only.
 It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
 binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
@@ -226,7 +204,7 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS32 is the current compact package format; the producer writes `BS32` and the
+BS33 is the current compact package format; the producer writes `BS33` and the
 native package owner checks the matching magic. Only this latest runtime contract
 is supported; packages must be regenerated. Candidate rows are 44 bytes: offsets
 0–31 retain their previous fields, byte 32 carries the third-operand form nibble,
@@ -431,15 +409,20 @@ These statements describe the implemented subset. They do not imply complete ass
   handwritten precedence parser. Fresh native component, folded-statement and
   session-lifecycle comparisons pass; unchanged-control timing is recorded in the
   [active plan](native-runtime-reset.md#shared-compiler-cost-checkpoint). The
-  complete self-host at `09c55688` passes; subsequent fetch-register caching has
-  focused qualification only. Fresh broad host checks retain the same 54
-  inherited failures as the pre-migration baseline; broad integration readiness
-  remains outstanding.
+  latest complete self-host reference is BS32 `cccd66fe`; later BS33 changes
+  have focused qualification only. The historical migration checkpoint recorded
+  54 inherited host failures; that observation does not describe the current
+  host suite or establish broad integration readiness.
   Ordinary Rust expression handling still uses core token spelling instead of
   portable numeric metadata. Expression-range and operand-wrapper choices in
   preparation need a PRVM/package audit. Other native VM contracts still carry
   version fields/checks pending consolidation; their presence is a migration gap.
-- Iterable `.for` has focused qualification: ten positive scenarios pass on both embedded packages, including contextual `in`, nested restoration and outer input evaluation. Imported-shadow and qualified-reference probes, register-role separation, 192-loop identity growth and scalar misuse rejection also pass on both packages. See the [binding repair checkpoint](native-runtime-reset.md#imported-iterator-binding-repair-2026-10-07). `.bfor` remains unsupported, and labels inside an active unscoped loop reject. Counted packed-loop execution is supported and has focused native/Rust comparison.
+- Iterable `.for` and iterator-dependent conditionals have the focused BS33
+  coverage [described above](#iterator-dependent-conditionals-bs33-provisional).
+  Imported-shadow and qualified-reference probes, register-role separation,
+  identity growth and scalar misuse rejection also have focused proof.
+  `.while`, `.bfor` and `.bwhile` remain open, and labels inside an active unscoped
+  loop reject. Counted packed-loop execution has focused native/Rust comparison.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
 - `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Struct values are not newly qualified, wide-literal packing remains limited, and these cases do not establish full module, parameter or Hunk-expression parity.

@@ -16,6 +16,12 @@ impl<'a> AsmLine<'a> {
 
         match kind {
             ConditionalKind::If => {
+                if skipping {
+                    if let Some(ctx) = self.cond_stack.last_mut() {
+                        ctx.skip_level = ctx.skip_level.saturating_add(1);
+                    }
+                    return LineStatus::Skip;
+                }
                 let val = match exprs.first() {
                     Some(expr) => match self.eval_expr_for_signed_scalar_context(expr) {
                         Ok(v) => v,
@@ -31,12 +37,6 @@ impl<'a> AsmLine<'a> {
                     },
                     None => 0,
                 };
-                if skipping {
-                    if let Some(ctx) = self.cond_stack.last_mut() {
-                        ctx.skip_level = ctx.skip_level.saturating_add(1);
-                    }
-                    return LineStatus::Skip;
-                }
                 let prev = self.cond_stack.last();
                 let mut ctx = ConditionalContext::new(prev, ConditionalBlockKind::If);
                 if val != 0 {
@@ -47,6 +47,12 @@ impl<'a> AsmLine<'a> {
                 self.cond_stack.push(ctx);
             }
             ConditionalKind::Switch => {
+                if skipping {
+                    if let Some(ctx) = self.cond_stack.last_mut() {
+                        ctx.skip_level = ctx.skip_level.saturating_add(1);
+                    }
+                    return LineStatus::Skip;
+                }
                 let val = match exprs.first() {
                     Some(expr) => match self.eval_expr_for_scalar_context(expr) {
                         Ok(v) => v,
@@ -62,12 +68,6 @@ impl<'a> AsmLine<'a> {
                     },
                     None => 0,
                 };
-                if skipping {
-                    if let Some(ctx) = self.cond_stack.last_mut() {
-                        ctx.skip_level = ctx.skip_level.saturating_add(1);
-                    }
-                    return LineStatus::Skip;
-                }
                 let prev = self.cond_stack.last();
                 let mut ctx = ConditionalContext::new(prev, ConditionalBlockKind::Switch);
                 ctx.switch_value = Some(val);
@@ -123,7 +123,27 @@ impl<'a> AsmLine<'a> {
                         err_span,
                     );
                 }
-                let val = if kind == ConditionalKind::Else {
+                if self
+                    .cond_stack
+                    .last()
+                    .is_some_and(|ctx| ctx.sub_type == ConditionalSubType::Else)
+                {
+                    let err_span = if kind == ConditionalKind::ElseIf {
+                        expr_err_span
+                    } else {
+                        end_span
+                    };
+                    return self.failure_at_span(
+                        LineStatus::Error,
+                        AsmErrorKind::Conditional,
+                        ".else or .elseif cannot follow .else",
+                        None,
+                        err_span,
+                    );
+                }
+                let val = if self.cond_stack.last().is_some_and(|ctx| ctx.matched) {
+                    0
+                } else if kind == ConditionalKind::Else {
                     1
                 } else {
                     match exprs.first() {
@@ -156,20 +176,6 @@ impl<'a> AsmLine<'a> {
                         err_span,
                     );
                 };
-                if ctx.sub_type == ConditionalSubType::Else {
-                    let err_span = if kind == ConditionalKind::ElseIf {
-                        expr_err_span
-                    } else {
-                        end_span
-                    };
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Conditional,
-                        ".else or .elseif cannot follow .else",
-                        None,
-                        err_span,
-                    );
-                }
                 let sub_type = if kind == ConditionalKind::Else {
                     ConditionalSubType::Else
                 } else {
@@ -177,12 +183,11 @@ impl<'a> AsmLine<'a> {
                 };
                 if !ctx.skipping {
                     ctx.skipping = true;
-                    ctx.sub_type = sub_type;
                 } else if !ctx.matched && val != 0 {
                     ctx.matched = true;
                     ctx.skipping = false;
-                    ctx.sub_type = sub_type;
                 }
+                ctx.sub_type = sub_type;
             }
             ConditionalKind::Case => {
                 if self.cond_stack.is_empty() {
@@ -253,23 +258,26 @@ impl<'a> AsmLine<'a> {
                         expr_err_span,
                     );
                 }
+                let matched = self.cond_stack.last().is_some_and(|ctx| ctx.matched);
                 let mut case_match = false;
-                for expr in exprs.iter() {
-                    match self.eval_expr_for_scalar_context(expr) {
-                        Ok(val) => {
-                            if val == switch_val {
-                                case_match = true;
-                                break;
+                if !matched {
+                    for expr in exprs {
+                        match self.eval_expr_for_scalar_context(expr) {
+                            Ok(val) => {
+                                if val == switch_val {
+                                    case_match = true;
+                                    break;
+                                }
                             }
-                        }
-                        Err(err) => {
-                            return self.failure_at_span(
-                                LineStatus::Error,
-                                ast_eval_error_kind_to_asm(err.error.kind()),
-                                err.error.message(),
-                                None,
-                                err.span,
-                            );
+                            Err(err) => {
+                                return self.failure_at_span(
+                                    LineStatus::Error,
+                                    ast_eval_error_kind_to_asm(err.error.kind()),
+                                    err.error.message(),
+                                    None,
+                                    err.span,
+                                );
+                            }
                         }
                     }
                 }

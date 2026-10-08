@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_macro_plans as plans
 	.use experimental.amigaos.binary_macro_fragments as fragments
 	.use experimental.amigaos.binary_package as package
+	.use prvm.amigaos.packed_branch as branches
 	.use experimental.amigaos.binary_state as pkgstate
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
@@ -298,6 +299,15 @@ coreDirective
 	beq.w none
 	cmp.w package.Header.EmitDirective(a3), d4
 	beq.w none
+	; Package-selected conditional heads never become template body calls.
+	movem.l d1/a1, -(sp)
+	movea.l a3, a1
+	adda.l package.Header.BranchPlan(a1), a1
+	move.l d3, d0
+	jsr branches.classify
+	tst.w d1
+	movem.l (sp)+, d1/a1
+	bne.w none
 	; Package state directives are ordinary statements even inside templates.
 	movem.l a0/a2, -(sp)
 	movea.l a3, a2

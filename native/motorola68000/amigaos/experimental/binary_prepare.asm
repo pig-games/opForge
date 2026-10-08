@@ -11,6 +11,7 @@
 	.use experimental.amigaos.binary_products as products
 	.use experimental.amigaos.binary_nested_operands as nested
 	.use prvm.amigaos.packed_loop as loop_parser
+	.use prvm.amigaos.packed_branch as branches
 	.pub
 	.section code, kind=code
 
@@ -20,8 +21,25 @@
 ; Label/statement names and register/member wrappers remain numeric tokens.
 line	.block
 	movem.l d2-d7/a0-a6, -(sp)
-	suba.w #256, sp
+	moveq #0, d2
+	bra.w lineMode
+	.bend  ; line
+
+; Same ABI; defer all constant evaluation to runtime branch selection.
+lineUnfolded	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	moveq #1, d2
+	bra.w lineMode
+	.bend  ; lineUnfolded
+	.priv
+UNFOLDED = 256
+LINE_SCRATCH_BYTES = UNFOLDED+2
+lineMode	.block
+	suba.w #LINE_SCRATCH_BYTES, sp
 	movea.l sp, a6
+	move.w d2, UNFOLDED(a6)
+	move.l d2, d0
+	jsr expression.deferCompile
 	movea.l a1, a5
 	movea.l a1, a3
 	lea 256(a1), a4
@@ -82,6 +100,29 @@ constant
 	bne.w bad
 	bra.w complete
 directive
+	; Numeric PRVM policy owns expression conditional grammar.
+	movem.l d1/a0-a1, -(sp)
+	subq.l #4, a0
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l a2, a1
+	adda.l package.Header.BranchPlan(a2), a1
+	jsr branches.classify
+	move.l d1, d7
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	bne.w bad
+	tst.l d7
+	beq.w ordinaryDirective
+	move.l d7, d4
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	cmpi.w #branches.ELSE, d4
+	bhs.w noOperands
+	bra.w oneScalar
+ordinaryDirective
 	moveq #1, d6
 	bsr.w copy
 	bne.w bad
@@ -173,11 +214,21 @@ loopHeader
 	suba.w #9, a0
 	adda.l d2, a0
 	movea.l 12(sp), a1
+	tst.w UNFOLDED(a6)
+	beq.w ordinaryLoopValue
+	jsr expression.compileValueUnfolded
+	bra.w loopCompiled
+ordinaryLoopValue
 	jsr expression.compileValue
 	bra.w loopCompiled
 countedLoop
 	movea.l 8(sp), a0
 	movea.l 12(sp), a1
+	tst.w UNFOLDED(a6)
+	beq.w ordinaryLoopCount
+	jsr expression.compileUnfolded
+	bra.w loopCompiled
+ordinaryLoopCount
 	jsr expression.compile
 loopCompiled
 	tst.l d0
@@ -444,11 +495,15 @@ bad
 	moveq #0, d1
 	moveq #1, d0
 done
-	adda.w #256, sp
+	move.l d0, -(sp)
+	moveq #0, d0
+	jsr expression.deferCompile
+	move.l (sp)+, d0
+	adda.w #LINE_SCRATCH_BYTES, sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; line
+	.bend  ; lineMode
 	.priv
 
 ; Copy D6 bounded input bytes; advances A0/A3, clobbers D0/D6. CCR=status.
@@ -750,12 +805,15 @@ compile	.block
 	movem.l a3-a4, -(sp)
 	movea.l a6, a3
 	lea 256(a6), a4
+	tst.w UNFOLDED(a6)
+	bne.w unfoldedCompile
 	; Ignored declarations retain checked compact syntax and references, but
 	; their RHS must never be evaluated, including during constant folding.
 	cmpi.b #1, 4(a5)
 	bhi.w ordinaryCompile
 	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 8(a5)
 	bne.w ordinaryCompile
+unfoldedCompile
 	jsr expression.compileUnfolded
 	bra.w compiled
 ordinaryCompile

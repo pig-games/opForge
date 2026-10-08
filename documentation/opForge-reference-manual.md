@@ -419,7 +419,10 @@ Compound assignment operators (`+=`, `-=`, etc.) are scalar-only and reject non-
 
 `.if` and `.elseif` test the full scalar value: zero is false and any nonzero
 value is true, including values whose low 32 bits are zero. For example,
-`.if $ffffffff+1` selects its branch.
+`.if $ffffffff+1` selects its branch. Conditional expressions inside inactive
+parents, and `.elseif` expressions after an earlier branch wins, are not
+evaluated. Syntax and branch structure remain checked: `.else` or `.elseif`
+after `.else` is invalid even when its expression would otherwise be skipped.
 
 #### 3.7.1 Match expressions
 
@@ -435,7 +438,8 @@ value is true, including values whose low 32 bits are zero. For example,
 ```
 
 The match expression is evaluated once; the first matching `.case` wins, and
-`.default` is used if no case matches.
+`.default` is used if no case matches. Later `.case` expressions are not evaluated
+after a case wins; `.case` after `.default` remains invalid.
 
 #### 3.7.2 Structured repetition
 
@@ -475,13 +479,21 @@ Notes:
 - Inline iterable range/list expressions are evaluated as full signed assembler values, like named snapshots. The iterator value must still fit the unsigned 32-bit loop-value limit.
 - In iterable `.for` syntax, `in` is a contextual marker and is not globally
   reserved as a name.
-- The packed native iterable `.for` has focused qualification: ten positive
-  scenarios pass on each embedded package. An active iterator shadows bare
-  imported names without retaining an unused imported block; qualified imported
-  references remain bound to their declarations. Fresh native checks also cover
-  nested restoration, input evaluation before iterator activation, register-name
-  role separation, identity-table growth and scalar misuse rejection. These
-  checks do not establish full iterator parity or a new full self-host result.
+- The experimental BS33 packed native iterable `.for` and iterator-dependent
+  `.if`/`.elseif`/`.else` have focused qualification: nineteen combined positive
+  scenarios per 68020 and 6502 package match live Rust, including nine conditional
+  cases; twelve negative cases complete with expected rejection. An active
+  iterator shadows bare imported names without retaining an unused imported
+  block; qualified imported references remain bound to their declarations.
+  Nested restoration, input evaluation before iterator activation, register/value
+  binding and scalar misuse have focused checks. Replay uses package-owned
+  numeric branch plans without source parsing. Deferred preparation-only
+  declarations, scopes, configuration, metadata, file operations and macro
+  definitions reject; complete lazy file/reachability parity is not established.
+  Native `.while`, `.bfor` and `.bwhile` remain open. BS33 has no complete self-host
+  proof yet; the latest qualified reference is BS32. See the
+  [current checkpoint](plans/compact-frontend-vm-boundary.md#iterator-dependent-conditionals-bs33-provisional).
+
 
 Scalar `.for` and `.bfor` counts may refer forward to immutable constants whose
 dependencies are independent of labels, the program counter, mutable values and

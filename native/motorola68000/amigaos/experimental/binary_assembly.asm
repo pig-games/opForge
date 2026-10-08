@@ -22,6 +22,7 @@
 	.use experimental.amigaos.binary_hunk_placement as placement
 	.use experimental.amigaos.binary_hunk_references as hunkrefs
 	.use experimental.amigaos.binary_repetition as repetition
+	.use experimental.amigaos.binary_branches as branches
 	.include "memory_telemetry.i"
 	.pub
 
@@ -64,6 +65,8 @@ DataBytes
 	.res byte, 4
 SectionState
 	.res byte, sections.SCRATCH_BYTES
+BranchState
+	.res byte, branches.STATE_BYTES
 RepeatState
 	.res byte, repetition.STATE_BYTES
 HunkInstructionRefs
@@ -222,6 +225,8 @@ sweepRecords
 	.ASSEMBLY_POSITION Position, d7, d5, SectionState, sections.State.Mode, sections.State.HunkCurrent, sections.State.OrderCount
 	lea RepeatState, a0
 	jsr repetition.begin
+	lea BranchState, a0
+	jsr branches.begin
 	movea.l Frame.Records(a5), a4
 	move.l a4, d0
 	add.l Frame.RecordBytes(a5), d0
@@ -252,6 +257,16 @@ line
 	btst #4, d0
 	bne.w controlsReady
 	btst #3, d0
+	bne.w omitted
+	movea.l a4, a0
+	movea.l a3, a1
+	movea.l a6, a2
+	lea BranchState, a3
+	jsr branches.step
+	movea.l a1, a3
+	cmpi.l #2, d0
+	beq.w fail
+	tst.l d0
 	bne.w omitted
 	; Loop traversal precedes output selection, so skipped/repeated bodies also
 	; govern state directives in every mapped sweep.
@@ -439,6 +454,9 @@ passDone
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #7
 	lea RepeatState, a0
 	jsr repetition.end
+	bne.w fail
+	lea BranchState, a0
+	jsr branches.end
 	bne.w fail
 	; Continue the same assembly pass at the current PC/output offset.
 	cmpi.w #3, d5

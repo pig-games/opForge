@@ -1634,6 +1634,21 @@ pub fn packed_declaration_program(heads: [u16; 3]) -> Vec<u8> {
     program
 }
 
+/// Numeric shared conditional policy: expression openings/branches and operandless controls.
+pub const PACKED_BRANCH_OPCODE: u8 = 0x9a;
+pub fn packed_branch_program(heads: [u16; 4]) -> Vec<u8> {
+    let mut program = vec![PACKED_BRANCH_OPCODE, 4];
+    for (index, head) in heads.into_iter().enumerate() {
+        program.extend(head.to_be_bytes());
+        program.extend([index as u8 + 1, u8::from(index < 2)]);
+    }
+    program.extend([
+        MacroDescriptorOpcode::Publish as u8,
+        MacroDescriptorOpcode::End as u8,
+    ]);
+    program
+}
+
 /// Shared packed `.for` envelope: numeric directive and grammar-name identities.
 pub fn packed_loop_program(for_directive: u16, in_name: u16) -> Vec<u8> {
     let mut program = vec![MacroDescriptorOpcode::LoopHeader as u8];

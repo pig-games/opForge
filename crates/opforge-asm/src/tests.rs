@@ -1,3 +1,6 @@
+#[path = "tests/conditional_short_circuit.rs"]
+mod conditional_short_circuit;
+
 #[path = "tests/compact_mos_corpus.rs"]
 mod compact_mos_corpus;
 

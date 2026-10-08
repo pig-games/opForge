@@ -45,9 +45,19 @@ configure	.block
 	move.l d0, ProgramBytes
 	move.l a1, Workspace
 	move.l d1, WorkspaceBytes
+	clr.w DeferredCompile
 	moveq #0, d0
 	rts
 	.bend  ; configure
+
+; D0=zero normal folding,nonzero defer evaluation for this preparation line.
+; Session-exclusive policy also covers nested/product compiler consumers.
+; D0/CCR=0; other registers preserved. Caller resets on every exit path.
+deferCompile	.block
+	move.w d0, DeferredCompile
+	moveq #0, d0
+	rts
+	.bend  ; deferCompile
 
 ; D0=validated package .len numeric name ID, or -1 when clearing a session.
 ; Preserves other registers; D0/CCR=0. No lexical name reaches evaluation.
@@ -97,6 +107,11 @@ compileValue	.block
 	bra.w compileMode
 	.bend  ; compileValue
 
+; Typed lowering with all scalar constant evaluation deferred.
+compileValueUnfolded	.block
+	moveq #3, d0
+	bra.w compileMode
+	.bend  ; compileValueUnfolded
 	.priv
 compileMode	.block
 	movem.l d1-d7/a1-a2/a4-a6, -(sp)
@@ -111,6 +126,10 @@ compileMode	.block
 	add.l a2, d1
 	bcs.w unavailable
 	move.l d0, d4
+	tst.w DeferredCompile
+	beq.w modeReady
+	bset #0, d4
+modeReady
 	movea.l a0, a5
 	movea.l a3, a6
 	clr.l compiler.Request.Consumed(a2)
@@ -388,6 +407,9 @@ evaluateValue	.block
 
 	.endsection
 	.section bss, kind=bss
+DeferredCompile
+	.res word, 1
+	.align 4
 Program
 	.res long, 1
 ProgramBytes

@@ -6,6 +6,9 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_imports as imports
+	.use experimental.amigaos.binary_package as package
+	.use prvm.amigaos.packed_branch as branches
+	.use prvm.amigaos.abi as abi
 	.pub
 ; No preprocessor define ingress exists in the compact frontend: the namespace
 ; is empty. Assembler declarations and templates never populate it.
@@ -22,15 +25,28 @@ Kind	.byte ?
 State	.struct
 Depth	.word ?
 Active	.word ?
+Deferred	.word ?
 Static	.word ?  ; configuration discovery treats unavailable expressions as false
 	.endstruct
 SLOTS = State.Static+2
-SCRATCH_BYTES = SLOTS+LIMIT*4
+SLOT_BYTES = Slot.Kind+1
+SLOT_SHIFT = 2
+DEFERRED_SLOTS = SLOTS+LIMIT*SLOT_BYTES
+DeferredSlot	.struct
+LoopDepth	.word ?
+PreparationDepth	.word ?
+ElseSeen	.byte ?
+Padding	.res 3
+	.endstruct
+DEFERRED_SLOT_BYTES = DeferredSlot.Padding+3
+DEFERRED_SLOT_SHIFT = 3
+SCRATCH_BYTES = DEFERRED_SLOTS+LIMIT*DEFERRED_SLOT_BYTES
 	.section code, kind=code
 
 ; A0=state. Start a strict semantic source with no open conditionals.
 begin	.block
 	clr.w State.Depth(a0)
+	clr.w State.Deferred(a0)
 	move.w #1, State.Active(a0)
 	clr.w State.Static(a0)
 	moveq #0, d0
@@ -50,8 +66,11 @@ beginStatic	.block
 ; A0=state. D0/CCR=status; reject a conditional crossing a file boundary.
 endFile	.block
 	moveq #0, d0
+	tst.w State.Deferred(a0)
+	bne.w unbalanced
 	tst.w State.Depth(a0)
 	beq.w done
+unbalanced
 	moveq #1, d0
 done
 	tst.l d0
@@ -66,6 +85,150 @@ line	.block
 	movea.l a0, a5
 	movea.l a1, a6
 	movea.l a2, a4
+	; An active loop retains expression conditionals for replay. Outer static
+	; inactive regions still use normal preparation filtering.
+	tst.w State.Active(a4)
+	beq.w preparation
+	tst.w layout.State.LoopDepth(a6)
+	bne.w deferred
+	tst.w State.Deferred(a4)
+	beq.w preparation
+deferred
+	; Preprocessor controls own branch operands while their preparation frame
+	; is innermost; expression conditionals nested there are prepared normally.
+	move.w State.Depth(a4), d2
+	beq.w deferredPolicy
+	subq.w #1, d2
+	lsl.w #experimental.amigaos.binary_conditionals.SLOT_SHIFT, d2
+	tst.b SLOTS+Slot.Kind(a4, d2.w)
+	beq.w deferredPolicy
+	move.w State.Deferred(a4), d2
+	beq.w preprocessorHead
+	subq.w #1, d2
+	lsl.w #experimental.amigaos.binary_conditionals.DEFERRED_SLOT_SHIFT, d2
+	move.w State.Depth(a4), d0
+	cmp.w DEFERRED_SLOTS+DeferredSlot.PreparationDepth(a4, d2.w), d0
+	beq.w deferredPolicy
+preprocessorHead
+	movea.l layout.State.Package(a6), a1
+	move.l a1, d0
+	beq.w preparation
+	adda.l package.Header.BranchPlan(a1), a1
+	moveq #0, d0
+	move.b (a5), d0
+	addq.w #1, d0
+	movea.l a5, a0
+	jsr branches.select
+	bne.w bad
+	cmpi.w #branches.IF, d1
+	bne.w preparation
+deferredPolicy
+	movea.l layout.State.Package(a6), a1
+	move.l a1, d0
+	beq.w legacyPreparation
+	adda.l package.Header.BranchPlan(a1), a1
+	moveq #0, d0
+	move.b (a5), d0
+	addq.w #1, d0
+	movea.l a5, a0
+	jsr branches.classify
+	bne.w bad
+	; Static preprocessor controls retain the preparation stack. A closing
+	; control belongs to it when that stack is deeper than the deferred opener.
+	tst.w d1
+	beq.w deferredOrdinary
+	cmpi.w #branches.IF, d1
+	beq.w deferIf
+	move.w State.Deferred(a4), d2
+	beq.w preparation
+	subq.w #1, d2
+	lsl.w #experimental.amigaos.binary_conditionals.DEFERRED_SLOT_SHIFT, d2
+	move.w State.Depth(a4), d0
+	cmp.w DEFERRED_SLOTS+DeferredSlot.PreparationDepth(a4, d2.w), d0
+	bne.w preparation
+	cmpi.w #branches.ENDIF, d1
+	beq.w deferEndif
+	tst.b DEFERRED_SLOTS+DeferredSlot.ElseSeen(a4, d2.w)
+	bne.w bad
+	cmpi.w #branches.ELSE, d1
+	bne.w deferredReady
+	move.b #1, DEFERRED_SLOTS+DeferredSlot.ElseSeen(a4, d2.w)
+	bra.w deferredReady
+deferIf
+	moveq #0, d2
+	move.w State.Deferred(a4), d2
+	cmpi.w #LIMIT, d2
+	bhs.w bad
+	lsl.w #experimental.amigaos.binary_conditionals.DEFERRED_SLOT_SHIFT, d2
+	clr.b DEFERRED_SLOTS+DeferredSlot.ElseSeen(a4, d2.w)
+	move.w layout.State.LoopDepth(a6), DEFERRED_SLOTS+DeferredSlot.LoopDepth(a4, d2.w)
+	move.w State.Depth(a4), DEFERRED_SLOTS+DeferredSlot.PreparationDepth(a4, d2.w)
+	addq.w #1, State.Deferred(a4)
+	bra.w deferredReady
+deferEndif
+	tst.w State.Deferred(a4)
+	beq.w bad
+	move.w layout.State.LoopDepth(a6), d0
+	cmp.w DEFERRED_SLOTS+DeferredSlot.LoopDepth(a4, d2.w), d0
+	bne.w bad
+	subq.w #1, State.Deferred(a4)
+	bra.w deferredReady
+deferredOrdinary
+	; A conditional may surround nested loops, but may not cross its own
+	; containing loop's boundary.
+	tst.w State.Deferred(a4)
+	beq.w preparation
+	movea.l layout.State.Package(a6), a1
+	cmpi.b #branches.Record.Operand-1, (a5)
+	blo.w deferredReady
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, branches.Record.Dot(a5)
+	bne.w deferredReady
+	move.w branches.Record.Head(a5), d0
+	cmp.w package.Header.EndforDirective(a1), d0
+	bne.w preparation
+	move.w State.Deferred(a4), d2
+	subq.w #1, d2
+	lsl.w #experimental.amigaos.binary_conditionals.DEFERRED_SLOT_SHIFT, d2
+	move.w layout.State.LoopDepth(a6), d0
+	cmp.w DEFERRED_SLOTS+DeferredSlot.LoopDepth(a4, d2.w), d0
+	beq.w bad
+deferredReady
+	moveq #1, d1
+	moveq #0, d0
+	bra.w done
+preparation
+	; Shared expression heads are package numeric identities in all regions.
+	; Preprocessor name controls retain their existing preparation-only path.
+	movea.l layout.State.Package(a6), a1
+	move.l a1, d0
+	beq.w legacyPreparation
+	adda.l package.Header.BranchPlan(a1), a1
+	moveq #0, d0
+	move.b (a5), d0
+	addq.w #1, d0
+	movea.l a5, a0
+	move.w State.Depth(a4), d2
+	beq.w preparationExpression
+	subq.w #1, d2
+	lsl.w #experimental.amigaos.binary_conditionals.SLOT_SHIFT, d2
+	tst.b SLOTS+Slot.Kind(a4, d2.w)
+	beq.w preparationExpression
+	jsr branches.select
+	bra.w preparationSelected
+preparationExpression
+	jsr branches.classify
+preparationSelected
+	bne.w bad
+	moveq #EXPRESSION, d7
+	cmpi.w #branches.IF, d1
+	beq.w ifLine
+	cmpi.w #branches.ELSEIF, d1
+	beq.w elseifLine
+	cmpi.w #branches.ELSE, d1
+	beq.w elseLine
+	cmpi.w #branches.ENDIF, d1
+	beq.w endifLine
+legacyPreparation
 	moveq #0, d1
 	move.b (a5), d1
 	addq.w #1, d1

@@ -2439,7 +2439,7 @@ next
 	.bend  ; entryLeaf
 
 ; A2/D6=raw dotted spelling,D5=first dot,A3=origin proxy,A6=scope.
-; Exact names retain priority. Otherwise a bare struct base is looked up from
+; Exact lexical names retain priority. Otherwise a bare struct base is looked up from
 ; the captured lexical scope, checking its definition-time struct identity.
 ; Dotted bases remain absolute/imported, matching Rust member-base resolution.
 ; D0=1 when recording availability, 0 at completion. D0=status,D1=target,
@@ -2451,15 +2451,17 @@ resolveStructMember	.block
 	movea.l a2, a4
 	moveq #0, d7
 	move.w records.Entry.Padding(a3), d7
-	movea.l a4, a0
-	move.l d6, d0
-	bsr.w findDeclared
-	beq.w exactFound
+	move.l d6, d3  ; first search complete dotted names, then bare bases
+	bra.w ancestor
+memberFallback
 	tst.l d2
 	bne.w available
 	tst.w records.Entry.MemberBase(a3)
 	beq.w bad
 available
+	move.l d5, d3
+	moveq #0, d7
+	move.w records.Entry.Padding(a3), d7
 	move.l d5, d0
 	addq.l #1, d0
 singleField
@@ -2500,21 +2502,33 @@ base
 	move.l d4, d0
 	add.l d6, d0
 	cmpi.l #layout.NAME_BYTES-1, d0
-	bhi.w bad
+	bls.w candidateFits
+	cmp.l d6, d3
+	bne.w bad  ; preserve member-base validation
+	tst.l d4
+	beq.w bad  ; even the unqualified spelling exceeds the bound
+	bra.w ancestor  ; an oversized inner exact candidate cannot hide ancestors
+candidateFits
 	movea.l a4, a0
-	move.l d5, d0
+	move.l d3, d0
 copyBase
 	move.b (a0)+, (a1)+
 	subq.l #1, d0
 	bne.w copyBase
-	add.l d5, d4
+	add.l d3, d4
 	lea layout.BUFFER(a6), a0
 	move.l d4, d0
 	bsr.w findDeclared
-	beq.w member
-	cmp.l d5, d4
-	beq.w bad  ; the global bare base was the final candidate
-	bra.w ancestor
+	bne.w missingCandidate
+	cmp.l d6, d3
+	beq.w exactFound
+	bra.w member
+missingCandidate
+	cmp.l d3, d4
+	bne.w ancestor
+	cmp.l d6, d3
+	beq.w memberFallback
+	bra.w bad  ; the global bare base was the final candidate
 member
 	btst #5, records.Entry.Flags+1(a0)
 	beq.w bad  ; a nearer nonstruct declaration shadows outer struct types
@@ -2545,7 +2559,10 @@ copyField
 	bsr.w findDeclared
 	bra.w done  ; a missing member must not fall back to an outer struct
 exactFound
+	; Exact scalar symbols, including generated offsets, permit forward lookup.
+	; Definition-time identity checks belong only to member-base evaluation.
 	moveq #0, d2
+	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0

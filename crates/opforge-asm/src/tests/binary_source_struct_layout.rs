@@ -289,15 +289,106 @@ fn compact_struct_scoped_field_fs_uae() {
     }
 }
 
-#[test]
-#[ignore = "requires configured FS-UAE; field owner must be available at use"]
-fn compact_struct_forward_field_rejection_fs_uae() {
-    let source = scoped_field_source(true).replace(
+fn forward_field_source() -> String {
+    scoped_field_source(true).replace(
         "routine .block\nCell .struct\nPad .long ?\nHigh .word ?\n.endstruct\n.namespace inner\n.long Cell.High\n.endnamespace\n",
         "routine .block\n.namespace inner\n.long Cell.High\n.endnamespace\nCell .struct\nPad .long ?\nHigh .word ?\n.endstruct\n",
+    )
+}
+
+#[test]
+fn compact_struct_forward_field_rust_oracle() {
+    assert_eq!(
+        oracle(&forward_field_source(), "68020").unwrap(),
+        [0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 1],
     );
-    assert!(oracle(&source, "68020").is_err());
-    native_rejection_for_cpu(&source, "m68020");
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; forward exact field symbols retain lexical priority"]
+fn compact_struct_forward_field_fs_uae() {
+    native(&forward_field_source(), "m68020");
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; missing members and nonstruct bases remain errors"]
+fn compact_struct_member_rejection_fs_uae() {
+    for declaration in ["Cell = 41\n", "Cell .struct\nHigh .word ?\n.endstruct\n"] {
+        let source = format!(".module app\n.cpu m68020\n{declaration}routine .block\n.word Cell.Missing\n.bend\n.word routine\n.endmodule\n");
+        assert!(oracle(&source, "68020").is_err());
+        native_rejection_for_cpu(&source, "m68020");
+    }
+}
+
+fn exact_field_sources() -> Vec<(String, Vec<u8>)> {
+    // `slot` is a normal loop label. Its bare spelling must not prevent lookup
+    // of the complete `Slot.Identity` field in an enclosing lexical scope.
+    let layout = "Slot .struct\nPad .byte ?\nIdentity .word ?\n.endstruct\n";
+    let body = "slot\n.word Slot.Identity\n";
+    let block = |body: &str| format!("probe .block\n{body}.bend\n.word probe\n");
+    let module =
+        |body: &str| format!(".module app\n.cpu m68020\n.org 0\n{layout}{body}.endmodule\n.end\n");
+    vec![
+        (
+            format!(".cpu m68020\n.org 0\n{layout}{}.end\n", block(body)),
+            vec![0, 1, 0, 0],
+        ),
+        (module(&block(body)), vec![0, 1, 0, 0]),
+        (
+            module(&block(&format!(".namespace inner\n{body}.endnamespace\n"))),
+            vec![0, 1, 0, 0],
+        ),
+        (
+            module(&format!(
+                "emit .macro\n{body}.endmacro\n{}",
+                block(".emit\n")
+            )),
+            vec![0, 1, 0, 0],
+        ),
+        (
+            format!(
+                ".cpu m68020\n.org 0\nSlot.Identity = 7\nSlot = 41\n{}.end\n",
+                block(".namespace inner\n.word Slot.Identity\n.endnamespace\n"),
+            ),
+            vec![0, 7, 0, 0],
+        ),
+    ]
+}
+
+#[test]
+fn compact_struct_exact_field_rust_oracles() {
+    for (source, expected) in exact_field_sources() {
+        assert_eq!(oracle(&source, "68020").unwrap(), expected, "{source}");
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; complete dotted names precede bare member bases"]
+fn compact_struct_exact_field_fs_uae() {
+    for (source, _) in exact_field_sources() {
+        native(&source, "m68020");
+    }
+}
+
+fn long_exact_field_source() -> String {
+    // The inner candidate needs 256 bytes, while the stored scope/label names
+    // and the ancestor's complete field name fit the 255-byte spelling bound.
+    let scope = "n".repeat(238);
+    format!(".module app\n.cpu m68020\nSlot .struct\nPad .byte ?\nIdentity .word ?\n.endstruct\n{scope} .block\nslot\n.word Slot.Identity\n.bend\n.word {scope}\n.endmodule\n")
+}
+
+#[test]
+fn compact_struct_long_exact_field_rust_oracle() {
+    assert_eq!(
+        oracle(&long_exact_field_source(), "68020").unwrap(),
+        [0, 1, 0, 0],
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; oversized inner candidate does not hide an ancestor"]
+fn compact_struct_long_exact_field_fs_uae() {
+    native(&long_exact_field_source(), "m68020");
 }
 
 fn oracle(source: &str, cpu: &str) -> Result<Vec<u8>, String> {
@@ -345,12 +436,41 @@ fn native(source: &str, cpu: &str) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
-    let result = crate::fs_uae_smoke::run_compact_cli_from_env(
-        &workspace_root(),
-        &package,
-        source.as_bytes(),
-        Some(&expected),
-    )
+    let result = if let Some(path) = std::env::var_os("OPFORGE_STRUCT_IMAGE") {
+        // Reuse an identified executable within this batch; the source, live
+        // Rust oracle, guest completion challenge and output remain fresh.
+        assert!(matches!(cpu, "68020" | "m68020"));
+        let image = fs::read(path).unwrap();
+        let files = [crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+            relative_path: "entry.asm",
+            bytes: source.as_bytes(),
+        }];
+        let case = crate::fs_uae_smoke::OpforgeNativeCliParityCase {
+            name: "struct-binding",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some("Work:entry.asm --bin Work:output.bin"),
+            package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &files,
+            proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/output.bin",
+                rust_oracle: &expected,
+            },
+        };
+        crate::fs_uae_smoke::run_prebuilt_compact_cli_case_from_env(
+            &workspace_root(),
+            &case,
+            &image,
+        )
+    } else {
+        crate::fs_uae_smoke::run_compact_cli_from_env(
+            &workspace_root(),
+            &package,
+            source.as_bytes(),
+            Some(&expected),
+        )
+    }
     .expect("fresh native struct layout comparison");
     let FsUaeSmokeOutcome::Completed { runs } = result else {
         panic!("real FS-UAE execution required");

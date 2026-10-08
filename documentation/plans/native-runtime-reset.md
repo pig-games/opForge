@@ -569,10 +569,43 @@ grows by eight bytes to 590,728; the package remains 434,326 bytes. The unchange
 aligned control passes exact native output before/after at 25.478647167 /
 25.207140416 seconds on 68020/10 MiB, both release builds. This one pair is
 0.271506751 seconds faster (1.066%); it does not establish a speedup beyond normal
-run variation. Full current self-host qualification is in progress on 68020/74 MiB.
+run variation. The fresh repaired full release self-host completes START/DONE
+with exit 20 and no output after 779.813308333 seconds on 68020/74 MiB. It reaches
+preparation step 2 (`frontend.complete` / `scopes.finish`), after captured-source
+processing and dependency ordering; its error position is file 0 / line 0.
+This is progress to identity finalization, not completed assembly. The fresh gated
+binding capture completes with exit 20 after 811.710025791 seconds. It identifies
+an unresolved import proxy `slot.identity` (stage 13), not a register-role failure.
+The corresponding iterator module declares `Slot.Identity` as a struct field and
+also has an ordinary local loop label `slot`. Rust looks up the complete dotted
+name through lexical scopes before trying member-base resolution; native tried
+the bare base first and stopped at the local label. A repair now searches whole
+lexical names first. Exact scalar symbols, including generated field offsets,
+retain Rust's forward lookup; captured struct-owner checks remain only in actual
+member-base evaluation. The older forward-field rejection test had an incorrect
+premise: the live Rust oracle accepts it and emits the later local offset 4.
+It is replaced with exact-output proof, alongside missing-member/nonstruct-base
+rejection controls. Fresh native proof passes five exact-name cases (implicit and
+explicit modules, namespace, macro, ordinary dotted constant), the forward field,
+two local-struct shadowing controls and both member-error rejections. A separately
+reproduced boundary failure also passes after oversized inner exact candidates
+are skipped in favor of fitting ancestor candidates.
+
+The final repair adds 36 Hunk/static bytes (590,764 / 610,064 total), with no new
+layout or workspace; the package remains 434,326 bytes. On the unchanged
+15,474-byte `aligned-control` (`ac05445d958571b5`), release START/DONE changes from
+25.427972125 to 25.173747166 seconds on 68020/10 MiB: -0.254224959 seconds
+(-0.9998%). Both have exact live Rust output; this single pair is within ordinary
+variation and does not establish a speedup. Final image fingerprint is
+`fnv1a64:a96334c92d3f8614`. Host validation passes the 367-test compact subsystem
+before the final added forward/long-name Rust controls, those focused controls,
+98-file native formatting, Rust formatting, native contracts, instrumentation,
+fresh-proof and workflow/architecture guards. A fresh full retry on 68020/74 MiB
+uses the lightweight diagnostic bootstrap against the uninstrumented live Rust
+output oracle; it is in progress, not qualified.
 All capture code/storage is triple-gated; its disabled build remains
 byte-identical to the corresponding release executable. The spelling-cap repair
-has focused native proof; its role in the complete failure is not yet established.
+has focused native proof; the complete run still has a binding-finalization failure.
 
 The original failed release source fingerprint is `fnv1a64:1dbf2231e724c77e`; package fingerprint is
 `fnv1a64:98b91e6dc8f6122d`. Bootstrap and fresh Rust oracle both identify the

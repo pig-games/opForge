@@ -143,7 +143,7 @@ ordinaryDirective
 	cmpi.l #loop_abi.PRVM_LOOP_WHILE, d7
 	beq.w scalarLoop
 	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d7
-	beq.w scalarLoop
+	beq.w valueLoop
 	cmpi.l #loop_abi.PRVM_LOOP_BWHILE, d7
 	beq.w bad
 	cmpi.l #loop_abi.PRVM_LOOP_ENDFOR, d7
@@ -151,6 +151,11 @@ ordinaryDirective
 	cmpi.l #loop_abi.PRVM_LOOP_ENDWHILE, d7
 	beq.w closingLoop
 	bra.w ordinaryLoopDirective
+valueLoop
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	bra.w loopHeader
 scalarLoop
 	moveq #5, d6
 	bsr.w copy
@@ -243,8 +248,11 @@ loopHeader
 	adda.l package.Header.LoopPlan(a2), a1
 	move.l package.Header.LoopPlanBytes(a2), d1
 	jsr loop_parser.classify
-	tst.l d0
+	cmpi.l #loop_abi.PRVM_LOOP_MATCHED, d0
+	beq.w classifiedLoop
+	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d0
 	bne.w loopFailed
+classifiedLoop
 	tst.l d1
 	bmi.w countedLoop
 	move.b #source.TOKEN_ITERATOR_BINDING, (a3)+

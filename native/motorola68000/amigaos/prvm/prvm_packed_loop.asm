@@ -13,7 +13,7 @@ CONTEXT_UNSUPPORTED_FLAGS = NON_STATEMENT_FLAGS+UNSUPPORTED_FLAGS
 	.section code, kind=code
 ; Base pointers address LoopRecord.Length / LoopProgram.Opcode directly.
 ; A0/A1=writer prefix/end,A2/D1=program/bytes,D0=candidate numeric name.
-; Bind the contextual grammar word only after `.for <bare variable>`.
+; Bind the contextual grammar word after `.for`/`.bfor <bare variable>`.
 ; D0/CCR=0 matched,1 absent; other registers preserved. The writer has not
 ; finalized the line-length byte yet; the caller supplies the exact prefix end.
 contextKeyword	.block
@@ -74,7 +74,7 @@ done
 	.bend  ; valueContext
 
 	.priv
-; Validate a partial `.for` prefix. D0/CCR=status,D2=extent; D1/D3/A0-A2 kept.
+; Validate a partial for/bfor prefix. D0/CCR=status,D2=extent; D1/D3/A0-A2 kept.
 prefix	.block
 	move.l a0, d2
 	beq.w absent
@@ -105,10 +105,18 @@ prefix	.block
 	bne.w absent
 	move.b abi.LoopRecord.HeadHigh(a0), d0
 	cmp.b abi.LoopProgram.ForHigh(a2), d0
-	bne.w absent
+	bne.w scopedPrefix
 	move.b abi.LoopRecord.HeadLow(a0), d0
 	cmp.b abi.LoopProgram.ForLow(a2), d0
+	beq.w matched
+scopedPrefix
+	move.b abi.LoopRecord.HeadHigh(a0), d0
+	cmp.b abi.LoopProgram.BforHigh(a2), d0
 	bne.w absent
+	move.b abi.LoopRecord.HeadLow(a0), d0
+	cmp.b abi.LoopProgram.BforLow(a2), d0
+	bne.w absent
+matched
 	moveq #0, d0
 	bra.w done
 absent

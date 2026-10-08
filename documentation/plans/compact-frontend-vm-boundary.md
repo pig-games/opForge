@@ -1,7 +1,7 @@
 # Compact frontend: VM boundary correction
 
 Status: the preceding BS35 source has complete native self-host qualification.
-The current scoped conditional and retained-guard repairs have focused
+The current scoped conditional, retained-guard and iterable repairs have focused
 Rust/native proof; their full self-host has not been rerun. Mapped conditional
 repetition and remaining loop/macro expansion effects are still open.
 
@@ -37,7 +37,7 @@ Scoped `.bfor` admits deferred value declarations. Deferred scopes,
 configuration, metadata, file operations and macro definitions still reject;
 ordinary loops retain their declaration restrictions. Complete lazy file/reachability parity
 is not established; complete `.while` and scoped-loop parity remain open.
-BS35 anonymous counted `.bfor` has [focused proof](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification); labeled/iterable
+BS35 anonymous counted `.bfor` has [focused proof](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification); labeled/indexed
 forms and `.bwhile` remain unsupported. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
 forward-initializer semantics, struct behavior and existing wide-literal packing
 limits also remain unresolved. Full language or CPU-family parity is not claimed.
@@ -54,6 +54,12 @@ on later local mutable values. It reuses retained iteration cells and shared
 EXVM evaluation, then checks strict guard and loop traces before final emission.
 New loop paths and guards without an executed initializer still reject. General
 forward-alias/layout convergence remains outside this focused coverage.
+
+The subsequent [iterable scoped checkpoint](native-runtime-reset.md#anonymous-iterable-scoped-repetition-bs35-focused)
+extends the same owners to anonymous list/range `.bfor`, with independent lexical
+iterator identities and binding before local constant resolution. The existing
+nonnegative 32-bit scalar element boundary remains; negative/wider and compound
+elements, labeled/indexed scopes and `.bwhile` are not qualified by this slice.
 
 ## Current breadth parity checkpoint
 

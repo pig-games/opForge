@@ -183,6 +183,65 @@ fn native_scoped_retained_hunk_rust_oracles() {
     }
 }
 
+fn iterable_source(cpu: &str) -> String {
+    // The current Rust Hunk writer rejects `.byte item` as symbolic. Consume
+    // the iterator through branch selection while retaining the label control.
+    source(cpu)
+        .replace(".bfor 2", ".bfor item in {2,3}")
+        .replace(
+            "start .byte 7",
+            "start\n.if item==2\n.byte 2\n.else\n.byte 3\n.endif",
+        )
+}
+
+fn iterable_oracle(dir: &Path, cpu: &str) -> Vec<u8> {
+    let bytes = hunk_oracle(dir, &iterable_source(cpu));
+    let sections = hunk::segments(&bytes).unwrap();
+    assert_eq!(sections.len(), 2);
+    let expected = match cpu {
+        "68020" => [2, 0, 0, 0, 0, 0, 0, 0, 9, 3, 0, 0, 0, 9, 0, 0, 0, 18, 0, 0],
+        "6502" => [2, 0, 0, 0, 0, 9, 0, 0, 0, 3, 9, 0, 0, 0, 18, 0, 0, 0, 0, 0],
+        _ => panic!("unsupported scoped Hunk fixture CPU {cpu}"),
+    };
+    assert_eq!(sections[0].payload, expected);
+    assert_eq!(sections[0].relocations, [(1, 0), (5, 0), (10, 0), (14, 0)]);
+    assert_eq!(sections[1].payload, [9, 0, 0, 0]);
+    bytes
+}
+
+#[test]
+fn native_scoped_iterable_hunk_rust_oracles() {
+    let dir = scratch();
+    for cpu in ["68020", "6502"] {
+        iterable_oracle(&dir.0, cpu);
+    }
+}
+
+#[test]
+#[ignore = "requires FS-UAE; iterable scoped labels retain complete Hunk relocations"]
+fn native_scoped_iterable_hunk_fs_uae() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap();
+    let dir = scratch();
+    let image = std::env::var_os("OPFORGE_SCOPED_IMAGE")
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_else(|| build_image(&root, &dir.0));
+    for cpu in ["68020", "6502"] {
+        let expected = iterable_oracle(&dir.0, cpu);
+        native_case(
+            &root,
+            &image,
+            &format!("scoped-iterable-hunk-{cpu}"),
+            &iterable_source(cpu),
+            "Work:entry.asm --hunk Work:out.hunk",
+            &expected,
+            false,
+        );
+    }
+}
+
 #[test]
 #[ignore = "requires FS-UAE; retained scoped guards size before Hunk emission"]
 fn native_scoped_retained_hunk_fs_uae() {

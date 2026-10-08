@@ -10,8 +10,8 @@ identified source checkpoint, not complete language/family parity, physical A600
 timing or a 2 MiB qualification. Full BS35 peak allocation is not measured. Its qualified
 release bundle is `/tmp/opforge-selfhost-bs35-scoped-release-74m`, matching the
 current BS35 A6000 helper; only the m68020 package is embedded. The newer scoped
-conditional and retained-guard repairs have focused parity; their full self-host
-has not been rerun.
+conditional, retained-guard and iterable scoped-loop repairs have focused parity;
+their full self-host has not been rerun.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -575,6 +575,83 @@ workspace/reference or full self-host qualification is claimed here. The previou
 complete BS35 proof and A6000 bundle
 remain selected. Labeled/indexed and iterable `.bfor`, `.bwhile`, mapped scoped
 replay, general layout convergence and remaining macro/file effects remain open.
+
+### Anonymous iterable scoped repetition (BS35, focused)
+
+Hypothesis: anonymous iterable `.bfor` can reuse the existing `.for` list/range
+snapshot machinery and scoped declaration overlays without a new grammar or
+persisted layout. The `6d6948b0` release baseline completes a fresh run with exit
+20 for `.bfor item in {2,3}`; the candidate matches Rust on both packages.
+
+The shared PRVM packed loop helper binds contextual `in` for both for roles.
+Preparation preserves the enclosing binding of the iterable expression, creates
+an independent iterator identity, then opens the anonymous lexical body. EXVM
+compiles the value expression. Runtime validates the immutable descriptor before
+executing a body, binds each element before local constant resolution and closes
+the scoped overlay before restoring the iterator's enclosing value/kind/state.
+Descriptor offsets remain valid across body mutations and arena relocation.
+This extends existing owners; no duplicate iterator executor, CPU-specific rule,
+new BS35 field, package change or VM-version awareness is added.
+
+Forty-three combined scenarios match live Rust on m68020/m6502 (5,817/5,816
+source bytes; 8.612424750/7.837819208s). Seven iterable cases cover lists, ranges,
+local constants and mutable snapshots, nested same-name iterators, frozen source
+values, empty/zero-valued iteration and retained forward guards. Rust confirms
+that scoped body mutation of an outer mutable value is restored at close. The
+existing 36 scoped cases remain in the same combined regression input.
+
+Two new negative cases reject on both packages (four fresh runs): a scalar
+iterable and an escaped iterator name. The conditional-literal Hunk fixture
+matches the entire 108-byte Rust Hunk on both packages, including four
+per-iteration relocations (1.526282208/0.758180209s).
+The unchanged ordinary-iterator combined fixture also matches Rust on m68020
+(2,962 source bytes, 4.293239334s), checking the shared replay owner's prior path.
+
+Gated progress phase 312 reports nonempty scoped iterable opens and all iterable
+element bindings across passes. Release counter calls, storage and imports emit
+nothing; adding these probes leaves the release image byte-identical. A fresh
+diagnostic run of the 43-case m68020 input matches Rust in 8.863058958s. MEMD
+phase 312 reports 36 scoped iterable opens and 148 element bindings; phase 311
+reports two extra sizing passes and 30 deferred guard evaluations. Allocation
+reports 641,536 bytes peak owned allocation, balanced 1,540,920-byte
+allocation/free totals and zero terminal owned bytes. This larger fixture is not
+an isolated memory delta or a full self-host RAM measurement.
+
+The two-package release image is 620,380 bytes (`fnv1a64:ad7f8aa6002c3a1f`),
+64 bytes larger than `6d6948b0`; linked static reservation grows by the same
+64 bytes to 639,864. Package bytes and source layout are unchanged.
+
+Isolated release timing uses the unchanged 15,474-byte `aligned-control`
+(`fnv1a64:ac05445d958571b5`) on FS-UAE 68020/10 MiB, with two interleaved
+before/after pairs and no concurrent builds/native runs. Baseline `6d6948b0`
+(`fnv1a64:6ae67e84fc5ccd54`): 26.542933208/26.602675250s, mean 26.572804229s.
+Candidate: 26.561105750/26.639434875s, mean 26.600270313s. The observed delta
+is +0.027466084s (+0.10%), within the observed sample variation; two pairs do
+not establish a meaningful slowdown. All four runs complete with exact live
+Rust output proof. This measures overhead on existing input; the new iterable
+scope is rejected by the baseline, so it has no successful before timing.
+Commands use `native_layout_fs_uae --ignored --nocapture`,
+`OPFORGE_LAYOUT_CASES=aligned-control` and explicit `OPFORGE_LAYOUT_IMAGE` paths.
+
+Focused Rust qualification passes nine tests, with six native tests ignored by
+the host command. Library Clippy, Rustfmt, native engineering/format guards,
+compact formatting and workflow checks pass. Broader test Clippy remains
+unqualified (the previous 22 errors in unchanged tests/harness were not rerun).
+No full workspace/reference qualification is claimed.
+
+Scope limits: existing iterable element support accepts nonnegative 32-bit scalar
+elements, not negative/wider or compound elements. Labeled/indexed iteration,
+`.bwhile`, mapped scoped replay and other loop/macro gaps remain open. A Rust Hunk
+probe rejects direct `.byte item` inside iterable `.bfor` as symbolic; the Hunk
+fixture consumes the iterator through conditional selection and keeps the
+per-iteration label/relocation checks. That canonical Hunk classification issue
+is recorded, not repaired or counted as native positive coverage here. Static
+review points to shared Rust relocation leaf classification ignoring active
+iterator bindings; repair that ownership coherently for direct data, constant
+provenance and ABS32 target selection before extending this Hunk coverage.
+
+No new full self-host or hardware qualification is claimed. The prior complete
+BS35 source proof and A6000 bundle remain selected.
 
 ### Compound-value checkpoints
 

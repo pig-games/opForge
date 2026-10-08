@@ -508,9 +508,10 @@ Notes:
   parity, A6000 timing or 2 MiB fit. See the [current checkpoint](plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs35)
   and [BS34 plan](plans/native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
 
-  BS35 adds focused native support for anonymous counted `.bfor` on both packages.
-  Thirty-six combined scenarios match live Rust, covering nested local labels and
-  constants, forward chains, mutable and compound snapshots, wide/signed values,
+  BS35 adds focused native support for anonymous counted and list/range iterable
+  `.bfor` on both packages. Forty-three combined scenarios match live Rust,
+  covering nested local labels and constants, forward chains, mutable and
+  compound snapshots, wide/signed values,
   local macro expansion, zero-count bodies and selected conditional constants.
   Inactive constants do not evaluate unavailable references; selected branches
   support forward chains, compound constants and mutable snapshots. Duplicate
@@ -521,7 +522,12 @@ Notes:
   reject. Per-iteration labels and nested
   section-relative aliases also match complete Rust Hunk files, including
   relocations. Active missing values, cycles, escaped local names and malformed
-  scope boundaries reject. Labeled/indexed and iterable `.bfor`, `.bwhile`, mapped
+  scope boundaries reject. Iterable expressions keep a frozen snapshot, bind each
+  element before resolving local constants and restore iterator bindings at close.
+  Current iterable elements are nonnegative 32-bit scalars; negative/wider and
+  compound elements remain unsupported. Hunk iterator selection and per-iteration
+  relocations are verified; direct iterator data is blocked by the Rust Hunk
+  classification issue recorded in the checkpoint. Labeled/indexed `.bfor`, `.bwhile`, mapped
   scoped replay and general forward-alias/layout convergence remain open;
   literals above 32 bits also remain a packing limitation. These
   focused results do not establish complete loop/macro parity. The preceding
@@ -531,7 +537,8 @@ Notes:
   Hunk. Full BS35 peak allocation, A6000 timing and 2 MiB fit are not measured.
   See the [scoped-loop checkpoint](plans/native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification)
   and [conditional dependency repair](plans/native-runtime-reset.md#scoped-conditional-dependency-repair-bs35-focused),
-  followed by the [retained-guard repair](plans/native-runtime-reset.md#scoped-retained-guard-sizing-bs35-focused).
+  followed by the [retained-guard repair](plans/native-runtime-reset.md#scoped-retained-guard-sizing-bs35-focused)
+  and [iterable scoped checkpoint](plans/native-runtime-reset.md#anonymous-iterable-scoped-repetition-bs35-focused).
 
 
 Scalar `.for` and `.bfor` counts may refer forward to immutable constants whose

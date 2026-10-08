@@ -12,6 +12,7 @@
 	.use experimental.amigaos.binary_repeat_frames as frames
 	.use prvm.amigaos.packed_loop as parser
 	.use prvm.amigaos.abi as abi
+	.include "memory_telemetry.i"
 	.pub
 LIMIT = 16
 MAX_ITERATIONS = 65536
@@ -261,6 +262,15 @@ validateElement
 	move.b 0(a1, d6.l), Slot.OldSection(a5)
 	bsr.w bindElement
 	bne.w invalid
+	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
+	bne.w iterableReady
+	; Bind before local roots are resolved; the iterator has its own lexical ID
+	; and is not part of the owned declaration cells restored by enterScope.
+	movea.l a5, a1
+	bsr.w openScope
+	bne.w invalid
+	.MEMORY_COUNTER_INC IterableScopes
+iterableReady
 	addq.w #1, State.Depth(a3)
 	movea.l Slot.Body(a5), a0
 	bra.w consumed
@@ -372,16 +382,16 @@ captured
 	adda.w d7, a5
 	addq.l #1, Slot.Index(a5)
 	addq.l #1, Slot.Iterations(a5)
+	tst.l Slot.Iterable(a5)
+	beq.w nextScope
+	bsr.w bindElement
+	bne.w invalid
+nextScope
 	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
-	bne.w countedNext
+	bne.w repeatBody
 	bsr.w enterScope
 	bne.w invalid
 	bra.w repeatBody
-countedNext
-	tst.l Slot.Iterable(a5)
-	beq.w repeatBody
-	bsr.w bindElement
-	bne.w invalid
 repeatBody
 	movea.l Slot.Body(a5), a0
 	bra.w consumed
@@ -411,7 +421,6 @@ exhausted
 	bne.w ordinaryExhausted
 	bsr.w closeScope
 	bne.w invalid
-	bra.w popLoop
 ordinaryExhausted
 	tst.l Slot.Iterable(a5)
 	beq.w popLoop
@@ -882,6 +891,7 @@ bindElement	.block
 	move.b #SNAPSHOT_ABSOLUTE, 0(a1, d6.l)
 	movea.l package.Context.SectionIds(a2), a1
 	clr.b 0(a1, d6.l)
+	.MEMORY_COUNTER_INC IterableBindings
 	moveq #0, d0
 	bra.w done
 bad
@@ -891,4 +901,13 @@ done
 	rts
 	.bend  ; bindElement
 	.endsection
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	.pub
+	.section bss, kind=bss
+IterableScopes	.res long, 1
+IterableBindings	.res long, 1
+	.endsection
+.endif
+.endif
 	.endmodule

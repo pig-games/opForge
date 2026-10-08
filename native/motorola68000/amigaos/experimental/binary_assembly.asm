@@ -136,6 +136,8 @@ assemble	.block
 	.MEMORY_COUNTER_CLEAR TraversalRecords
 	.MEMORY_COUNTER_CLEAR SizingPasses
 	.MEMORY_COUNTER_CLEAR branches.DeferredEvaluations
+	.MEMORY_COUNTER_CLEAR repetition.IterableScopes
+	.MEMORY_COUNTER_CLEAR repetition.IterableBindings
 	clr.l Frame.Used(a5)
 	clr.w LayoutRounds
 	clr.w SizingReplay

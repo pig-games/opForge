@@ -1153,8 +1153,6 @@ ordinaryDirective
 scopedLoopHeader
 	tst.l d7
 	bpl.w bad  ; labeled/indexed repetition remains a separate capability
-	tst.l d1
-	bpl.w bad  ; first slice is counted only
 loopHeader
 	move.l d3, -(sp)
 	moveq #0, d0
@@ -1172,7 +1170,6 @@ loopHeader
 	move.w layout.State.LoopDepth(a6), d0
 	add.w d0, d0
 	move.w layout.State.LoopParents(a6, d0.w), layout.State.Current(a6)
-	moveq #-1, d1
 loopIdentity
 	tst.l d1
 	bmi.w countedLoop

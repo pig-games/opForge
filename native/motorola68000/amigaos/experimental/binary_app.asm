@@ -33,6 +33,7 @@
 .ifdef OPFORGE_MEMORY_TELEMETRY
 	.use experimental.amigaos.binary_repeat_activation as activation
 	.use experimental.amigaos.binary_branches as branches
+	.use experimental.amigaos.binary_repetition as repetition
 .ifdef OPFORGE_PREPARATION_PROGRESS
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_encoding as encoding
@@ -82,6 +83,7 @@ PROGRESS_ASSEMBLY_WORK = 300
 PROGRESS_PREPARATION_FAILURE = 301
 PROGRESS_SCOPED_ROOTS = 310
 PROGRESS_SCOPED_SIZING = 311
+PROGRESS_SCOPED_ITERABLE = 312
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -1527,6 +1529,7 @@ assemble
 	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_WORK, assembly.TraversalPasses, assembly.TraversalRecords, #0
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ROOTS, activation.Selections, activation.Roots, #0
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_SIZING, assembly.SizingPasses, branches.DeferredEvaluations, #0
+	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ITERABLE, repetition.IterableScopes, repetition.IterableBindings, #0
 	rts
 bad
 	moveq #1, d0

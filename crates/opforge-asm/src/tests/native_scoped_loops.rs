@@ -1,5 +1,6 @@
-//! Anonymous counted scoped repetition; indexed/labeled and iterable scopes
-//! remain separate capabilities. Native positives always use live Rust output.
+//! Anonymous counted and iterable scoped repetition; indexed/labeled and while
+//! scopes remain separate capabilities. Native positives always use live Rust
+//! output.
 use super::native_iterable_loops::{build_image, oracle, run_case, Scratch};
 use super::*;
 
@@ -79,6 +80,37 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("wide-local-values", ".bfor 2\nwide .var $ffffffff+4\n.byte wide&255,(wide>>16)>>16\nwide .set wide+1\n.byte wide&255,(wide>>16)>>16\n.endfor\n", &[3,1,4,1,3,1,4,1]),
     ("signed-local-snapshot", ".bfor 2\nn .var -17\nsaved .const n\nn .set 7\n.byte -(saved/7),-(saved%7),n\n.endfor\n", &[2,3,7,2,3,7]),
     ("forward-local-mutable-initializer", ".bfor 2\nn .var later\nlater .var 2\n.byte n\n.endfor\n", &[2, 2]),
+    (
+        "iterable-list-local-mutable-and-constant",
+        "values={2,4}\n.bfor item in values\nlocal .var item\nsnapshot .const local+10\n.byte item,local,snapshot\nlocal .set local+1\n.byte local\n.endfor\n",
+        &[2,2,12,3,4,4,14,5],
+    ),
+    (
+        "iterable-range-local-constant",
+        "span=1..=5:2\n.bfor item in span\nbase .const item+3\n.byte item,base\n.endfor\n",
+        &[1,4,3,6,5,8],
+    ),
+    (
+        "iterable-nested-shadow-restoration",
+        "item=19\n.bfor item in {2,4}\n.byte item\n.bfor item in {7,8}\n.byte item\n.endfor\n.byte item\n.endfor\n.byte item\n",
+        &[2,7,8,2,4,7,8,4,19],
+    ),
+    (
+        "iterable-frozen-source-through-body-mutation",
+        "items .var {2,4}\n.bfor item in items\nitems .set {9,10,11}\n.byte item\n.endfor\n.byte items[0]\n",
+        &[2,4,2],
+    ),
+    (
+        "iterable-empty-and-zero-element",
+        ".bfor item in {}\n.byte missing\n.endfor\n.bfor item in {0}\n.byte item\n.endfor\n.bfor item in 5..5\n.byte missing\n.endfor\n.byte 7\n",
+        &[0,7],
+    ),
+    (
+        "iterable-retained-forward-local-guard",
+        ".bfor item in {0,1}\n.if local\n.byte local\n.else\n.byte 7\n.endif\nlocal .var item+1\n.endfor\n",
+        &[1,2],
+    ),
+    ("scoped-iterable", ".bfor item in {2,3}\n.byte item\n.endfor\n", &[2, 3]),
 ];
 const BAD: &[(&str, &str)] = &[
     (
@@ -128,9 +160,18 @@ const BAD: &[(&str, &str)] = &[
         ".bfor 2\nfirst=second\nsecond=first\n.byte first\n.endfor\n",
     ),
     ("local-escape", ".bfor 2\nlocal=3\n.endfor\n.byte local\n"),
+    (
+        "iterable-scalar-source",
+        ".bfor item in 3\n.byte item\n.endfor\n",
+    ),
+    (
+        "iterable-local-iterator-escape",
+        ".bfor item in {2,3}\n.byte item\n.endfor\n.byte item\n",
+    ),
 ];
 // These sources are accepted by Rust; native completion must explicitly reject
-// capabilities outside the anonymous counted checkpoint, not claim Rust parity.
+// capabilities outside the anonymous counted and iterable checkpoint, not claim
+// Rust parity.
 const GAPS: &[(&str, &str, &[u8])] = &[
     (
         "wide-literal-input",
@@ -141,11 +182,6 @@ const GAPS: &[(&str, &str, &[u8])] = &[
         "labeled-indexed-scope",
         "items .bfor 2\nentry .byte 1\n.endfor\n.byte items[1]\n",
         &[1, 1, 1],
-    ),
-    (
-        "scoped-iterable",
-        ".bfor item in {2,3}\n.byte item\n.endfor\n",
-        &[2, 3],
     ),
     (
         "scoped-while",

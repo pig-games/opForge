@@ -2,16 +2,18 @@
 
 Status: active. Erik selected iterator-dependent conditionals first, followed by
 completion of the remaining loop and macro functionality. The latest qualified
-full self-host reference is BS33 (source manifest `dbc8c7d966b2dec6`): all 114
+full self-host reference is BS34 (source manifest `6c9adfcf4f1aac2f`): all 116
 mapped inputs assemble
 natively, and bootstrap, native output and live Rust oracle match for the entire
-592,700-byte Hunk. The uninstrumented release run takes 1,433.129872292 seconds
-(23m53.13s) on FS-UAE 68020/74 MiB. The earlier BS32 diagnostic run peaks at
-26,071,352 owned bytes; BS33 has no full diagnostic memory measurement yet.
+596,652-byte Hunk. The uninstrumented release run takes 1,486.667333375 seconds
+(24m46.67s) on FS-UAE 68020/74 MiB. The earlier BS32 diagnostic run peaks at
+26,071,352 owned bytes; BS34 has no full diagnostic memory measurement yet.
 These are self-host results, not broad language/family parity, physical A6000
-timing or 2 MiB qualification. The qualified BS33 release bundle is
-`/tmp/opforge-selfhost-bs33-iterator-conditionals-release-74m`. BS34 source work
-is in progress and needs its own qualification.
+timing or 2 MiB qualification. The qualified BS34 release bundle is
+`/tmp/opforge-selfhost-bs34-macro-repair-release-74m`. Active scoped-loop source
+and package changes are not covered by that proof. The A6000 helper and source
+freshness checks now follow those changes, so regenerate and qualify a matching
+bundle before using the current helper; it cannot run the older BS34 export.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -315,6 +317,13 @@ macro/loop combination:
   Shared Rust graph checks also cover statement aliases, private visibility,
   definition-site origins and exclusion of imported aliases from native exports.
   The expanded native import fixture still needs a fresh differential run.
+  The Rust effects probe confirms expansion-produced `.org`, sections/output and
+  parameter-selected conditional loops. Static `.include` currently opens files
+  inside unused macros and does not substitute the tested macro filename
+  placeholders. The agreed file-effects slice changes both implementations to
+  load only active/expanded includes, including substituted filenames; it must
+  preserve definition-relative paths, discovery, dependency tracking and fresh
+  packed-source preparation. This is intended behavior, not implemented parity.
 - Patterned `.statement` expansion is a separate shared-language capability,
   absent from this compact macro matrix. Preserve Rust's rejection of nested
   macro/segment/statement definitions.

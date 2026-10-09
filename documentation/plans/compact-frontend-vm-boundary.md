@@ -396,16 +396,20 @@ string lookup. Fresh exact Rust/native cases include missing and ambiguous
 imports, cycles, private names, invalid include paths, aliases, and imported
 macro calls.
 
-`.use ... with (...)` preparation evaluates known source-site scalar, flat-list
-and range values. Rust snapshots mutable assignments at the import site and
-forwards owned values through imported modules. Native's focused flat-list/range
+`.use ... with (...)` Rust preparation evaluates known source-site scalar,
+flat-list, range, struct type and struct-instance values. It captures schemas
+through ordinary struct handling and carries typed snapshots into dependency
+assembly, preserving nominal identity without generated assignment text.
+Schemas with unknown sizes or conditional choices cannot supply parameters.
+Native's focused flat-list/range
 path uses shared EXVM and independent offset arenas, and covers `.len`, indexed
 conditionals and mutable `.var`/`.set` snapshots. Native compound values also
 pass focused forwarding through two imported modules and repeated equal imports.
 Iterable-loop execution has separate partial qualification. The previous
 checkpoint exposed imported iterator shadowing; the binding repair now passes
 fresh shadowing, qualified-reference, restoration, register-role and growth
-checks on both packages. Struct values remain outside this parameter
+checks on both packages. Fresh struct type, instance and forwarding probes reject
+at native import preparation; struct values remain outside native parameter
 qualification. Direct wide literal transport has separate focused qualification
 below. These focused cases do not establish full
 Rust/native parity or a new full self-host result.
@@ -478,7 +482,7 @@ These statements describe the implemented subset. They do not imply complete ass
   native/Rust comparison.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
-- `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Struct values are not newly qualified, and these cases do not establish full module, parameter or Hunk-expression parity. The signed scalar iterable checkpoint below covers negative/wide elements separately.
+- `.use ... with (...)` Rust preparation supports known source-site scalar, flat-list, range, struct type and struct-instance values. Typed snapshots preserve schema identity across dependency ordering. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Native struct parameters reject during import preparation, and these cases do not establish full module, parameter or Hunk-expression parity. The signed scalar iterable checkpoint below covers negative/wide elements separately.
 
 For instruction and address selection, required tuple/register classes and
 package predicates remain barriers: native may skip a higher-priority recipe

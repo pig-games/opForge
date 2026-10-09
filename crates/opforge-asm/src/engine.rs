@@ -65,6 +65,7 @@ pub struct Assembler {
     pub registry: ModuleRegistry,
     pub root_metadata: RootMetadata,
     pub module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    pub module_parameters: types::asm_value::ModuleParameters,
     pub loop_iteration_trace_pass1: Vec<(u32, u32)>,
     pub max_loop_iterations: u32,
     pub opasm_package_path: Option<std::path::PathBuf>,
@@ -544,6 +545,7 @@ qualified_share={:.2}%",
                 runtime_execution_model,
             );
             asm_line.set_binary_resources(self.binary_resources.clone());
+            asm_line.set_module_parameters(self.module_parameters.clone());
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
             asm_line.set_reachable_block_relayout(self.block_relayout.clone());
             asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));
@@ -1017,6 +1019,7 @@ qualified_share={:.2}%",
             registry,
             root_metadata: RootMetadata::default(),
             module_macro_names: HashMap::new(),
+            module_parameters: HashMap::new(),
             loop_iteration_trace_pass1: Vec::new(),
             max_loop_iterations: repetition::DEFAULT_MAX_LOOP_ITERATIONS,
             opasm_package_path: None,
@@ -1548,6 +1551,7 @@ qualified_share={:.2}%",
         replay.implicit_hunk_output_requested = self.implicit_hunk_output_requested;
         replay.prepared_source = self.prepared_source.take();
         replay.binary_resources = self.binary_resources.clone();
+        replay.module_parameters = self.module_parameters.clone();
         replay.block_relayout = Some(Rc::new(plan));
         let result = replay.pass1(lines);
         *self = replay;
@@ -1581,6 +1585,7 @@ qualified_share={:.2}%",
             runtime_execution_model,
         );
         asm_line.set_binary_resources(self.binary_resources.clone());
+        asm_line.set_module_parameters(self.module_parameters.clone());
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
         asm_line.set_reachable_block_relayout(self.block_relayout.clone());
         asm_line.set_runtime_parse_cache(Some(self.runtime_parse_cache.clone()));

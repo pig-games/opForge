@@ -848,14 +848,25 @@ Notes:
   values include preceding compound updates such as `+=` and are snapshotted
   at that site, so later replacements do not alter the imported value. Each
   parameter becomes a private constant in the imported module. Repeated imports of one module must agree on their complete values.
-  Strings are not symbol values. Rust supports scalar, flat-list and range values
-  at this graph boundary; other compound forms remain outside this slice.
-  The experimental compact native path has focused matching coverage for these
-  values, `.len`, indexing, `.var`/`.set` snapshots and forwarding through imported
-  modules, including two-module forwarding and repeated equal imports. Native
+  Strings are not symbol values. Rust supports scalar, flat-list, range, struct
+  type and struct-instance values at this graph boundary. Struct parameters
+  preserve the declaring module's nominal type identity and field geometry;
+  an incoming type or its alias can construct instances in the dependency.
+  A schema must have known field sizes and conditional choices when passed.
+  Schemas and value declarations inside runtime loop bodies are unavailable
+  during preparation; values potentially changed by those bodies cannot supply
+  later parameters. Earlier read-only snapshots remain available.
+  Earlier instances and their members can also supply parameters. Preparation
+  carries captured values directly into assembly, so dependency ordering does
+  not require the caller's type declaration to have assembled first. Generated
+  parameter assignment lines no longer appear in source listings.
+  The experimental compact native path has focused matching coverage for scalar,
+  flat-list and range values, `.len`, indexing, `.var`/`.set` snapshots and
+  forwarding through imported modules, including two-module forwarding and
+  repeated equal imports. Native
   iterable `.for` has focused coverage, including imported-name shadowing,
   qualified-reference preservation and nested restoration on both packages.
-  Struct values are not newly qualified;
+  Native struct parameters currently reject during import preparation;
   wide numeric literal packing remains limited. These focused checks do not
   establish complete module or assembler-language parity.
 - A `map { logical -> concrete }` clause maps logical sections declared by the

@@ -868,6 +868,7 @@ pub struct PreparedAssemblySession {
     source_map: SourceMap,
     dependency_files: Vec<PathBuf>,
     module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    module_parameters: types::asm_value::ModuleParameters,
 }
 
 pub struct PreparedAssemblyExecutionRequest<'a> {
@@ -881,6 +882,7 @@ pub struct PreparedAssemblyExecutionRequest<'a> {
     pub source_map: SourceMap,
     pub dependency_files: Vec<PathBuf>,
     pub module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    pub module_parameters: types::asm_value::ModuleParameters,
     pub out_dir: Option<&'a Path>,
     pub debug_conditionals: bool,
     pub tab_size: Option<usize>,
@@ -915,6 +917,7 @@ struct PreparedAssemblyRuntime {
     source_map: SourceMap,
     dependency_files: Vec<PathBuf>,
     module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    module_parameters: types::asm_value::ModuleParameters,
 }
 
 struct AssemblerExecutionGuard<'a> {
@@ -1012,6 +1015,7 @@ pub type PreparedAssemblySessionParts = (
     SourceMap,
     Vec<PathBuf>,
     HashMap<String, HashMap<String, SymbolVisibility>>,
+    types::asm_value::ModuleParameters,
 );
 
 pub struct AssemblyPreparationRequest<'a> {
@@ -1143,6 +1147,10 @@ impl PreparedAssemblySession {
         &self.module_macro_names
     }
 
+    pub fn module_parameters(&self) -> &types::asm_value::ModuleParameters {
+        &self.module_parameters
+    }
+
     pub fn into_parts(self) -> PreparedAssemblySessionParts {
         (
             self.session,
@@ -1151,6 +1159,7 @@ impl PreparedAssemblySession {
             self.source_map,
             self.dependency_files,
             self.module_macro_names,
+            self.module_parameters,
         )
     }
 }
@@ -1331,6 +1340,7 @@ pub fn prepare_assembly_session(
         source_map: graph.source_map,
         dependency_files,
         module_macro_names: graph.module_macro_names,
+        module_parameters: graph.module_parameters,
     })
 }
 
@@ -1589,8 +1599,15 @@ pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunRepor
         max_loop_iterations: request.max_loop_iterations,
         source_provider: request.source_provider,
     })?;
-    let (session, root_module_id, prepared_lines, source_map, dependency_files, module_macro_names) =
-        prepared.into_parts();
+    let (
+        session,
+        root_module_id,
+        prepared_lines,
+        source_map,
+        dependency_files,
+        module_macro_names,
+        module_parameters,
+    ) = prepared.into_parts();
     let expanded_lines = Arc::new(prepared_lines);
     let (cpu, registry, max_loop_iterations) = session.into_parts();
     let result = run_assembly_with_prepared(
@@ -1604,6 +1621,7 @@ pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunRepor
             source_map,
             dependency_files,
             module_macro_names,
+            module_parameters,
         },
         output_sink,
         request,
@@ -1635,6 +1653,7 @@ pub fn run_prepared_assembly(
             source_map: request.source_map,
             dependency_files: request.dependency_files,
             module_macro_names: request.module_macro_names,
+            module_parameters: request.module_parameters,
         },
         output_sink,
         AssemblyExecutionRequest {
@@ -1695,6 +1714,7 @@ fn run_assembly_with_prepared(
         source_map,
         dependency_files,
         module_macro_names,
+        module_parameters,
     } = runtime;
     let mut assembler = AssemblerExecutionGuard::new(
         Assembler::with_cpu_and_registry(cpu, registry),
@@ -1706,6 +1726,7 @@ fn run_assembly_with_prepared(
     assembler.opasm_package_path = opasm_package_path;
     assembler.root_metadata.root_module_id = Some(root_module_id);
     assembler.module_macro_names = module_macro_names;
+    assembler.module_parameters = module_parameters;
     assembler.set_implicit_hunk_output_requested(request.hunk_name_override.is_some());
     let remap_diags = |mut diagnostics: Vec<Diagnostic>| {
         remap_diagnostics_with_source_map(&mut diagnostics, &source_map);
@@ -3938,6 +3959,7 @@ mod tests {
             source_map,
             dependency_files,
             module_macro_names,
+            module_parameters,
         ) = prepared.into_parts();
         let (cpu, registry, max_loop_iterations) = session.into_parts();
         let report = run_prepared_assembly(PreparedAssemblyExecutionRequest {
@@ -3951,6 +3973,7 @@ mod tests {
             source_map,
             dependency_files,
             module_macro_names,
+            module_parameters,
             out_dir: None,
             debug_conditionals: false,
             tab_size: None,

@@ -8,6 +8,62 @@ use types::asm_value::StructDef;
 use types::symbol::SymbolTableResult;
 
 impl<'a> AsmLine<'a> {
+    /// Capture a schema using the ordinary shared struct handlers, without
+    /// pass-one placeholders or an assembly address for field sizes.
+    pub fn capture_compile_time_struct_ast(
+        &mut self,
+        ast: &LineAst,
+        line_num: u32,
+    ) -> Result<Option<StructDef>, AsmError> {
+        if matches!(ast, LineAst::Empty) {
+            return Ok(None);
+        }
+        let LineAst::Statement(statement) = ast else {
+            return Err(AsmError::new(
+                AsmErrorKind::Directive,
+                "invalid field directive in struct body",
+                None,
+            ));
+        };
+        if statement.operands.iter().any(|expr| {
+            opcore::expression::expression_contains(expr, |node| matches!(node, Expr::Dollar(_)))
+        }) {
+            return Err(AsmError::new(
+                AsmErrorKind::Expression,
+                "Current address ($) not available",
+                None,
+            ));
+        }
+        self.current_line_num = line_num;
+        self.label = statement.label.as_ref().map(|label| label.name.clone());
+        self.mnemonic = statement.mnemonic.clone();
+        self.diagnostics.last_error = None;
+        let active_name = self
+            .active_struct
+            .as_ref()
+            .map(|active| active.name.clone());
+        let saved_requirement = self.require_defined_symbols;
+        self.require_defined_symbols = true;
+        let status = if self.in_struct_definition() {
+            self.process_struct_mode_statement_ast(
+                statement.label.as_ref(),
+                statement.mnemonic.as_deref(),
+                &statement.operands,
+            )
+        } else {
+            self.begin_struct_directive_ast(&statement.operands)
+        };
+        self.require_defined_symbols = saved_requirement;
+        if status == LineStatus::Error {
+            return Err(self.error().expect("struct handler supplies error").clone());
+        }
+        Ok(active_name.and_then(|name| {
+            (!self.in_struct_definition())
+                .then(|| self.struct_table.get(&name).cloned())
+                .flatten()
+        }))
+    }
+
     pub fn route_scope_directive_ast(
         &mut self,
         directive: &str,
@@ -200,10 +256,10 @@ impl<'a> AsmLine<'a> {
             );
         }
         self.push_visibility();
-        self.symbol_scope.module_active = Some(module_id);
+        self.symbol_scope.module_active = Some(module_id.clone());
         self.symbol_scope.module_scope_depth = self.symbol_scope.scope_stack.depth();
         self.reset_text_encoding_profile();
-        LineStatus::Ok
+        self.bind_module_parameters(&module_id)
     }
 
     pub fn end_module_directive_ast(&mut self, operands: &[Expr]) -> LineStatus {
@@ -461,11 +517,17 @@ impl<'a> AsmLine<'a> {
         };
 
         let struct_def = StructDef {
-            name: active_struct.name.clone(),
-            fields: active_struct.fields.clone(),
+            name: active_struct.name,
+            fields: active_struct.fields,
             size: active_struct.size,
         };
-        if let Err(err) = self.struct_table.register(struct_def) {
+        self.register_struct_definition(struct_def)
+    }
+
+    /// Install captured layout metadata with the same scalar size and field
+    /// symbols as an ordinary declaration; aliases remain typed value bindings.
+    pub fn register_struct_definition(&mut self, struct_def: StructDef) -> LineStatus {
+        if let Err(err) = self.struct_table.register(struct_def.clone()) {
             let message = match err {
                 StructTableError::Duplicate(name) => {
                     format!("struct has already been defined: {name}")
@@ -474,12 +536,11 @@ impl<'a> AsmLine<'a> {
             return self.failure(LineStatus::Error, AsmErrorKind::Directive, &message, None);
         }
 
-        if let Some(status) = self.define_struct_symbol_ast(&active_struct.name, active_struct.size)
-        {
+        if let Some(status) = self.define_struct_symbol_ast(&struct_def.name, struct_def.size) {
             return status;
         }
-        for field in &active_struct.fields {
-            let field_name = format!("{}.{}", active_struct.name, field.name);
+        for field in &struct_def.fields {
+            let field_name = format!("{}.{}", struct_def.name, field.name);
             if let Some(status) = self.define_struct_symbol_ast(&field_name, field.offset) {
                 return status;
             }

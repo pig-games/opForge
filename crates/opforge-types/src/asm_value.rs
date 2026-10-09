@@ -5,6 +5,9 @@
 
 use std::collections::HashMap;
 
+/// Captured readonly values for each canonical module ID.
+pub type ModuleParameters = HashMap<String, HashMap<String, AsmValue>>;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScalarProvenance {
     Absolute,

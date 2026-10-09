@@ -48,14 +48,28 @@ impl<'a> AsmLine<'a> {
         &mut self,
         expr: &Expr,
     ) -> Result<AsmValue, AstEvalError> {
-        let saved_pass = self.pass;
-        self.pass = 2;
+        let saved_requirement = self.require_defined_symbols;
+        self.require_defined_symbols = true;
         let result = self.eval_value_ast(expr);
-        self.pass = saved_pass;
+        self.require_defined_symbols = saved_requirement;
+        result
+    }
+
+    pub fn eval_scalar_ast_requiring_defined_symbols(
+        &mut self,
+        expr: &Expr,
+    ) -> Result<i64, AstEvalError> {
+        let saved_requirement = self.require_defined_symbols;
+        self.require_defined_symbols = true;
+        let result = self.eval_expr_for_signed_scalar_context(expr);
+        self.require_defined_symbols = saved_requirement;
         result
     }
 
     pub fn eval_value_ast(&self, expr: &Expr) -> Result<AsmValue, AstEvalError> {
+        if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
+            return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
+        }
         if self.expression_uses_typed_value(expr) || matches!(expr, Expr::List(_, _)) {
             if let Some(result) = self.eval_shared_value(expr) {
                 return result;
@@ -683,7 +697,9 @@ impl<'a> AssemblerContext for AsmLine<'a> {
                         Ok(value) => return Ok(value),
                         Err(err) => {
                             let message = err.to_string();
-                            if self.pass <= 1 && Self::is_vm_unknown_symbol_error(&message) {
+                            if AssemblerContext::pass(self) <= 1
+                                && Self::is_vm_unknown_symbol_error(&message)
+                            {
                                 return self
                                     .eval_signed_host_expr(expr)
                                     .map_err(|e| e.error.message().to_string());
@@ -799,14 +815,19 @@ impl<'a> AssemblerContext for AsmLine<'a> {
     }
 
     fn pass(&self) -> u8 {
-        self.pass
+        if self.require_defined_symbols {
+            2
+        } else {
+            self.pass
+        }
     }
 
     fn should_defer_unstable_symbols(&self) -> bool {
         // Direct AsmLine callers set the pass without an engine profile phase.
         // Pass2 must evaluate, while engine stabilization keeps its own deferral.
-        self.profile_phase == AsmProfilePhase::LayoutStabilization
-            || (self.pass == 1 && self.profile_phase == AsmProfilePhase::Pass1)
+        !self.require_defined_symbols
+            && (self.profile_phase == AsmProfilePhase::LayoutStabilization
+                || (self.pass == 1 && self.profile_phase == AsmProfilePhase::Pass1))
     }
 
     fn should_defer_unstable_branch_target(&self) -> bool {
@@ -936,7 +957,7 @@ impl<'a> AsmLine<'a> {
                     return result.map_err(|err| err.error.message().to_string());
                 }
 
-                if self.pass > 1 {
+                if AssemblerContext::pass(self) > 1 {
                     Err(format!("Label not found: {name}"))
                 } else {
                     Ok(0)

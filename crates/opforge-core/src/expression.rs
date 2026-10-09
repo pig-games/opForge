@@ -6,6 +6,36 @@
 use crate::parser::{AssignOp, BinaryOp, Expr, UnaryOp};
 use crate::tokenizer::Span;
 
+/// Visit expression nodes without imposing evaluation or grammar rules.
+pub fn expression_contains(expr: &Expr, predicate: fn(&Expr) -> bool) -> bool {
+    if predicate(expr) {
+        return true;
+    }
+    let contains = |expr: &Expr| expression_contains(expr, predicate);
+    match expr {
+        Expr::List(items, _) | Expr::Tuple(items, _) => items.iter().any(contains),
+        Expr::Index { base, index, .. } => contains(base) || contains(index),
+        Expr::Member { base, .. }
+        | Expr::Indirect(base, _)
+        | Expr::Immediate(base, _)
+        | Expr::IndirectLong(base, _)
+        | Expr::Unary { expr: base, .. } => contains(base),
+        Expr::StructLiteral { fields, .. } => fields.iter().any(|(_, value)| contains(value)),
+        Expr::Call { args, .. } => args.iter().any(contains),
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+            ..
+        } => contains(cond) || contains(then_expr) || contains(else_expr),
+        Expr::Binary { left, right, .. } => contains(left) || contains(right),
+        Expr::Range {
+            start, end, step, ..
+        } => contains(start) || contains(end) || step.as_deref().is_some_and(contains),
+        _ => false,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AstEvalErrorKind {
     Expression,

@@ -17,6 +17,7 @@ fn positive_cases(cpu: &str) -> Vec<Case> {
         ("type-parameter", source(cpu, "Alias=TYPE\np=Alias{x:2,y:4}\n.pub\nresult=p.x+p.y+TYPE.y\n", ".use dep as imported with (TYPE=Point)\n.byte imported.result\n"), &[7]),
         ("inline-instance", source(cpu, instance, ".use dep as imported with (VALUE=Point{x:2,y:4})\n.byte imported.result\n"), &[6]),
         ("existing-instance-member", source(cpu, ".pub\nresult=VALUE.x+VALUE.y+SCALAR\n", "p=Point{x:2,y:4}\n.use dep as imported with (VALUE=p, SCALAR=p.x)\n.byte imported.result\n"), &[8]),
+        ("referenced-block-parameters", source(cpu, ".pub\nentry .block\nAlias=TYPE\nmade=Alias{x:VALUE.x+1,y:VALUE.y+2}\n.byte TYPE.y,made.x,made.y\n.bend\n", "p=Point{x:2,y:4}\n.use dep (entry) as imported with (TYPE=Point, VALUE=p)\n.word imported.entry\n"), &[1,3,6,0,0]),
         ("combined-forwarding-snapshots-reimports", combined_source(cpu), &[32,32,8,4,99,20,40,5,8]),
     ]
 }
@@ -145,6 +146,28 @@ fn negative_source(cpu: &str, body: &str) -> String {
     source(cpu, ".pub\nresult=1\n", &format!("{OTHER}{body}"))
 }
 
+fn binding_rejections(cpu: &str) -> Vec<(&'static str, String, &'static str)> {
+    let import =
+        ".use dep as imported with (TYPE=Point, VALUE=Point{x:2,y:4})\n.byte imported.result\n";
+    vec![
+        (
+            "readonly-instance-parameter",
+            source(cpu, "VALUE .set TYPE{x:8,y:9}\n.pub\nresult=VALUE.x\n", import),
+            "symbol has already been defined",
+        ),
+        (
+            "conflicting-parameter-declaration",
+            source(cpu, "VALUE=TYPE{x:8,y:9}\n.pub\nresult=VALUE.x\n", import),
+            "symbol has already been defined",
+        ),
+        (
+            "private-instance-parameter",
+            source(cpu, ".pub\nresult=VALUE.x\n", ".use dep as imported with (TYPE=Point, VALUE=Point{x:2,y:4})\n.byte imported.VALUE.x\n"),
+            "Symbol is private",
+        ),
+    ]
+}
+
 #[test]
 fn native_struct_parameters_rust_oracles() {
     let dir = scratch();
@@ -162,8 +185,7 @@ fn native_struct_parameters_rust_oracles() {
 }
 
 #[test]
-#[ignore = "known Rust gaps: source-site schema collection and typed struct transfer into earlier dependencies"]
-fn native_struct_parameters_rust_known_gaps() {
+fn native_struct_parameters_struct_rust_oracles() {
     let dir = scratch();
     let mut failures = Vec::new();
     for cpu in ["68020", "6502"] {
@@ -175,8 +197,12 @@ fn native_struct_parameters_rust_known_gaps() {
                 ));
             }
         }
-        for (name, body, diagnostic) in STRUCT_REJECTIONS {
-            match oracle(&dir.0, &negative_source(cpu, body)) {
+        for (name, input, diagnostic) in STRUCT_REJECTIONS
+            .iter()
+            .map(|(name, body, diagnostic)| (*name, negative_source(cpu, body), *diagnostic))
+            .chain(binding_rejections(cpu))
+        {
+            match oracle(&dir.0, &input) {
                 Err(error) if error.contains(diagnostic) => {}
                 actual => failures.push(format!(
                     "{cpu}/{name}: expected diagnostic {diagnostic:?}, got {actual:?}"
@@ -202,6 +228,9 @@ fn native_struct_parameters_fs_uae() {
     let image = std::env::var_os("OPFORGE_STRUCT_PARAMETER_IMAGE")
         .map(|path| fs::read(path).unwrap())
         .unwrap_or_else(|| build_image(&root, &dir.0));
+    if let Some(path) = std::env::var_os("OPFORGE_STRUCT_PARAMETER_SAVE_IMAGE") {
+        fs::write(path, &image).unwrap();
+    }
     let filter = std::env::var("OPFORGE_STRUCT_PARAMETER_FILTER").unwrap_or_default();
     let selected =
         |name: &str| filter.is_empty() || filter.split(',').any(|item| name.contains(item.trim()));
@@ -225,6 +254,11 @@ fn native_struct_parameters_fs_uae() {
                     .map(|(name, body, diagnostic)| {
                         (*name, negative_source(cpu, body), Some(*diagnostic))
                     }),
+            )
+            .chain(
+                binding_rejections(cpu)
+                    .into_iter()
+                    .map(|(name, input, diagnostic)| (name, input, Some(diagnostic))),
             );
         for (name, input, diagnostic) in cases {
             if !selected(name) {

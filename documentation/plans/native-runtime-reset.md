@@ -19,6 +19,9 @@ The [scalar-update checkpoint](#scalar-compound-updates-current-slice) adds the
 and configuration snapshots. The subsequent typed-list, ternary and
 [struct-literal checkpoints](#struct-literal-construction-checkpoint) extend
 shared compound expression execution; these also have focused proof only.
+The [typed configuration repair](#typed-struct-configuration-rust-repair-checkpoint)
+preserves Rust struct schemas and snapshots across `.use`; native struct parameters
+still reject during import preparation.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -1133,58 +1136,80 @@ slowdown. The newly supported feature cases have no successful native baseline
 for a speed comparison. Frozen images, logs, hashes and reproduction settings
 remain outside `target` in `/tmp/opforge-typed-list-measurements.json`.
 
-### Struct configuration investigation
+### Typed struct configuration: Rust repair checkpoint
 
-Next candidate: pass struct types and instances through `.use … with (…)`,
-construct from incoming types, forward snapshots, and compare complete values on
-repeated imports. The starting reference is `20cf264e`; use identical source and
-live Rust oracles for both target packages. Do not add first-class string symbols,
-a separate struct grammar, or a source-text fallback to native execution.
+The reference is `20cf264e`. The investigation found two Rust prerequisites:
+source-site configuration skipped struct definitions, and generated parameter
+assignment text could not carry caller-owned schemas into dependencies assembled
+before the caller. Checkpoint `2a7ffd17` preserves those failing probes.
 
-The focused investigation found a Rust prerequisite, rather than a native-only
-gap:
+Rust now captures available schemas through ordinary shared struct handlers and
+carries captured `AsmValue`s through graph preparation, the public prepared APIs
+and assembly. Module entry binds private read-only parameters through ordinary
+symbol declaration logic on every pass and relayout replay. Generated parameter
+assignment lines are removed. Qualified nominal identity, field geometry,
+source-site snapshots, forwarding and complete-value import conflicts survive
+transport. Typed member and constructor references respect the source binding's
+visibility; public aliases of private nominal types remain usable.
 
-- `source_graph::collect_configured_uses` records earlier assignments but skips
-  struct definitions. Types, literals and saved instances therefore fail at the
-  `.use` site before dependency execution.
-- Dependency configuration is currently turned into assignment text by
-  `parameter_value_text`. Its struct arms refer to the caller's type name;
-  dependencies assemble before that declaration, and a bare name cannot carry
-  schema identity and geometry across scopes.
+Schema capture is best effort, not a new layout pass. Only module-scope schemas
+with known sizes and conditional choices can supply configuration. Unknown
+conditional writes invalidate affected known values rather than retaining stale
+snapshots. Known inactive branches, short-circuited alternatives, local bindings
+and previously captured read-only snapshots are preserved. Ordinary assembly
+retains its forward/imported layout behavior when the schema is not configured.
+Runtime repetition bodies cannot certify source-site schemas or values; possible
+mutable writes make later configuration unavailable. Earlier schemas and read-only
+snapshots survive. This conservative boundary avoids pretending preparation has
+executed the assembler's repetition driver.
+No new struct grammar, first-class string symbols or native text fallback is added.
 
-`native_struct_parameters.rs` keeps the intended positive and nominal/value
-conflict cases in an explicitly ignored known-gap test. Running that test is a
-deliberate failing probe, not a qualification command. Nonignored controls cover
-the existing scalar/list/range behavior and source-site availability restrictions.
-The native matrix has CPU, case and frozen-image selectors for bounded runs;
-it requires a matching live Rust oracle before each fresh guest comparison.
+The active Rust oracle tests pass both target packages: types, inline and saved
+instances, members, retained blocks, combined forwarding, mutable snapshots and
+repeated equal imports. Negative cases distinguish true nominal/value conflicts
+from unavailable types, enforce private/read-only bindings and reject forward,
+local or assembly-time configuration. The source-graph suite passes 31 tests,
+including implicit modules, schema geometry and unresolved-conditional guards.
+Before the final conservative repetition guard, all workspace targets were
+exercised across separate commands: 3,924 passed,
+55 failed and 571 were ignored. All 55 failures reproduce at `20cf264e`, including
+stale example/listing/label expectations, native contract checks and existing
+CLI/LSP failures. This establishes no newly observed broad failures, not a green
+workspace qualification. Formatting, workspace clippy, audit and workflow checks
+pass. `make quality-gate` itself stops at 13 pre-existing autofixable native
+redundant-`tst` findings in unchanged source. The final review also preserves
+ordinary assignment's relocation-before-value-sync order; its 12 focused tests
+and both configuration oracle tests pass afterward. Both public prepared APIs
+have a regression proving typed snapshot reuse across repeated assembly.
+After the final repetition guard, the complete engine suite passes 88 tests;
+configuration oracles pass 2/2 and named-loop Rust oracles pass 4/4. Final
+formatting, workspace clippy and workflow checks also pass. The complete workspace
+suite was not repeated after that guard.
 
-Approved next repair: collect source-site schemas
-through ordinary shared struct processing, then carry captured `AsmValue`s as
-module configuration metadata through preparation and assembly. Bind them at
-module entry using the same declaration logic as ordinary read-only assignment,
-on every pass and relayout replay. Preserve qualified nominal identity, private
-visibility, source-site snapshots, complete-value conflict checks and symbol-table
-bounds. A raw `set_value_symbol` call is insufficient because it bypasses those
-declaration responsibilities. Do not emit duplicate synthetic struct declarations.
+Fresh native comparisons attempted all five positive scenarios with both the
+68020 and 6502 packages. All ten reject at the importing `.use` during preparation
+(exit 20); native struct-parameter parity is not implemented or qualified by this
+Rust repair. The next native slice must trace numeric configuration capture and
+carry schemas/instances through parameter arenas, replay and binding with full
+nominal identity. The assembly parameter loader also still limits kinds to range;
+that later limit alone does not explain the earlier preparation failures.
 
-Success requires the four positive configuration scenarios and true struct
-conflicts to pass in Rust, followed by identical-source native comparisons on
-68020 and 6502. Keep forward, inactive/local and assembly-time inputs unavailable.
-Then measure the unchanged scalar control and image/static-allocation changes
-separately. No struct-parameter implementation or new full self-host result is
-claimed by this investigation.
-
-The existing compound configuration control passes its seven-byte live Rust
-oracle in fresh native runs with both packages: 2.288 s (68020 target) and 1.513 s
-(6502 target), host-observed guest START/DONE on `68020-10m`. These are different
-target workloads, not an optimization comparison. The nonignored host controls
-pass for both CPUs; the intended struct matrix reproduces the Rust failures.
-The isolated unchanged scalar baseline is 36.486 s. The frozen dual-package
-image remains 639,736 bytes with 659,100 bytes linked static reservation;
-there are no production changes or performance gains in this investigation.
-Logs and frozen-image identity are retained outside `target` in
-`/tmp/opforge-struct-parameters-investigation.json`.
+The existing scalar/list/range configuration control passes its seven-byte live
+Rust oracle in fresh native runs with both packages: 2.288 s (68020 target) and
+1.513 s (6502 target), host-observed guest START/DONE on `68020-10m`. These are
+different target workloads, not an optimization comparison. The isolated
+unchanged scalar control is 36.486 s before and 36.262 s after, with exact matching
+7,168-byte output. That 0.6% variation on identical executable bytes is not a
+measured optimization. The freshly built native dual-package image
+is byte-for-byte identical to the baseline: 639,736 bytes, SHA-256
+`750a4caace802178539f2b59f1a9bcb1de09a804fb7bf3f44df38da92d0212c5`,
+with 659,100 bytes linked static reservation. No native speedup, memory peak or
+new full self-host result is claimed. Logs and frozen images remain outside
+`target` in `/tmp/opforge-struct-parameters-investigation.json`.
+Baseline snapshot compilation unexpectedly reused a test executable in the shared
+Cargo cache. The final focused proofs were rebuilt from an empty `target`, and the
+isolated control was repeated against the verified current Rust executable.
+Future baseline builds need separate cache directories beneath `target`.
 
 ### Struct literal construction checkpoint
 

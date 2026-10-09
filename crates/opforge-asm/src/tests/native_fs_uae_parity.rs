@@ -1985,6 +1985,7 @@ fn rust_module_preprocessor_export_bytes(root_source: &str, case_name: &str) -> 
         .expect("root module id"),
     );
     assembler.module_macro_names = graph.module_macro_names;
+    assembler.module_parameters = graph.module_parameters;
     let pass1 = assembler.pass1(&graph.lines);
     let mut listing_bytes = Vec::new();
     let mut listing = ListingWriter::new(&mut listing_bytes, false);

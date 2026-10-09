@@ -14,6 +14,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
+    use types::asm_value::AsmValue;
 
     fn temp_dir() -> PathBuf {
         static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -482,11 +483,9 @@ mod tests {
             let graph = compound_graph(&format!(
                 ".module main\nn .var {left}\nn {op} {right}\n.if n==({expected})\n.use dep with (FEATURE=n)\n.else\n.use missing\n.endif\n.endmodule\n.module dep\n.byte FEATURE\n.endmodule\n"
             )).unwrap_or_else(|error| panic!("{op}: {error:?}"));
-            assert!(
-                graph
-                    .lines
-                    .iter()
-                    .any(|line| line == &format!("FEATURE = {expected}")),
+            assert_eq!(
+                graph.module_parameters["dep"]["FEATURE"],
+                AsmValue::Scalar(expected.parse().unwrap()),
                 "{op}"
             );
         }
@@ -527,24 +526,28 @@ mod tests {
             ".module leaf\n.endmodule\n"
         ))
         .unwrap();
+        for module in ["middle", "leaf"] {
+            assert_eq!(
+                graph.module_parameters[module]["ITEMS"],
+                AsmValue::List(vec![2, 4, 6])
+            );
+            assert_eq!(
+                graph.module_parameters[module]["RANGE"],
+                AsmValue::Range {
+                    start: 3,
+                    end: 10,
+                    step: 3
+                }
+            );
+        }
         assert_eq!(
-            graph
-                .lines
-                .iter()
-                .filter(|line| *line == "ITEMS = {2,4,6}")
-                .count(),
-            2
+            graph.module_parameters["middle"]["SCALAR"],
+            AsmValue::Scalar(17)
         );
         assert_eq!(
-            graph
-                .lines
-                .iter()
-                .filter(|line| *line == "RANGE = 3..10:3")
-                .count(),
-            2
+            graph.module_parameters["leaf"]["COUNT"],
+            AsmValue::Scalar(3)
         );
-        assert!(graph.lines.iter().any(|line| line == "SCALAR = 17"));
-        assert!(graph.lines.iter().any(|line| line == "COUNT = 3"));
         assert_eq!(graph.lines.len(), graph.source_map.origins().len());
     }
 
@@ -594,7 +597,10 @@ mod tests {
             ".endmodule\n.module dep\n.endmodule\n"
         ))
         .unwrap();
-        assert!(graph.lines.iter().any(|line| line == "ITEMS = {1,2}"));
+        assert_eq!(
+            graph.module_parameters["dep"]["ITEMS"],
+            AsmValue::List(vec![1, 2])
+        );
         let error = compound_graph(concat!(
             ".module main\nvalues .var {1,2}\nvalues .set missing\n",
             ".use dep with (ITEMS=values)\n.endmodule\n.module dep\n.endmodule\n"
@@ -668,13 +674,299 @@ mod tests {
             .map(String::as_str)
             .collect();
         assert_eq!(modules, [".module leaf", ".module middle", ".module main"]);
-        assert_eq!(
-            graph
-                .lines
-                .iter()
-                .filter(|line| *line == "ITEMS = {2,4}")
-                .count(),
-            2
+        for module in ["middle", "leaf"] {
+            assert_eq!(
+                graph.module_parameters[module]["ITEMS"],
+                AsmValue::List(vec![2, 4])
+            );
+        }
+    }
+
+    fn assemble_graph(graph: crate::source_graph::ModuleGraphResult) -> Result<Vec<u8>, String> {
+        let mut assembler = asm::engine::Assembler::with_cpu_and_registry(
+            crate::default_cpu(),
+            crate::build_default_asm_registry(),
         );
+        assembler.module_parameters = graph.module_parameters;
+        assembler.module_macro_names = graph.module_macro_names;
+        assembler.set_source_resources(graph.source_map);
+        let first = assembler.pass1(&graph.lines);
+        if first.errors != 0 {
+            return Err(format!("{:?}", assembler.diagnostics));
+        }
+        let mut listing = asm::listing::ListingWriter::new(Vec::new(), false);
+        let second = assembler.pass2(&graph.lines, &mut listing).unwrap();
+        if second.errors != 0 {
+            return Err(format!("{:?}", assembler.diagnostics));
+        }
+        Ok(assembler
+            .image
+            .entries()
+            .unwrap()
+            .into_iter()
+            .map(|(_, value)| value)
+            .collect())
+    }
+
+    #[test]
+    fn configured_structs_keep_nominal_module_identity() {
+        for value in ["Point", "Point{x:3}"] {
+            let error = compound_graph(&format!(
+                ".module first\nPoint .struct\nx .byte ?\n.endstruct\n.use dep with (TYPE={value})\n.endmodule\n.module second\nPoint .struct\nx .byte ?\n.endstruct\n.use dep with (TYPE={value})\n.endmodule\n.module dep\n.endmodule\n"
+            )).unwrap_err();
+            assert!(
+                error
+                    .error()
+                    .message()
+                    .contains("conflicting .use parameters"),
+                "{error:?}"
+            );
+        }
+        let project = temp_dir();
+        let root = project.join("implicit.asm");
+        let source =
+            "Point .struct\nx .byte ?\n.endstruct\n.use dep with (TYPE=Point)\n.byte dep.result\n";
+        fs::write(&root, source).unwrap();
+        fs::write(
+            project.join("dep.asm"),
+            "made=TYPE{x:7}\n.pub\nresult=made.x\n",
+        )
+        .unwrap();
+        let graph = load_module_graph(
+            &root,
+            source.lines().map(str::to_owned).collect(),
+            &[],
+            &[],
+            &[],
+            64,
+        )
+        .unwrap();
+        let AsmValue::Struct(definition) = &graph.module_parameters["dep"]["TYPE"] else {
+            panic!("type lost")
+        };
+        assert_eq!(definition.name, "implicit.Point");
+        assert_eq!(graph.lines.len(), graph.source_map.origins().len());
+        assert_eq!(assemble_graph(graph).unwrap(), [7]);
+        fs::remove_dir_all(project).unwrap();
+    }
+
+    #[test]
+    fn configured_struct_geometry_requires_available_sizes() {
+        let graph = compound_graph(concat!(
+            ".module main\n",
+            "width .var 3\nPoint .struct\nx .byte ?\ny .res width\n.endstruct\n",
+            "Holder .struct\ncontents .res Point\n.endstruct\nwidth .set 9\n",
+            ".if Point\n.use dep with (TYPE=Holder)\n.else\n.use missing\n.endif\n",
+            ".byte Point,Holder,dep.result\n.endmodule\n.module dep\n.pub\nresult=TYPE.contents\n.endmodule\n"
+        )).unwrap();
+        let AsmValue::Struct(definition) = &graph.module_parameters["dep"]["TYPE"] else {
+            panic!("type lost")
+        };
+        assert_eq!(definition.name, "main.Holder");
+        assert_eq!(definition.size, 4);
+        assert_eq!(assemble_graph(graph).unwrap(), [4, 4, 0]);
+        for size in ["later", "$", "0?$:3"] {
+            let error = compound_graph(&format!(
+                ".module main\nPoint .struct\nx .res {size}\n.endstruct\n.use dep with (TYPE=Point)\nlater=3\n.endmodule\n.module dep\n.endmodule\n"
+            )).unwrap_err();
+            assert!(
+                error.error().message().contains(".use parameter TYPE"),
+                "{size}: {error:?}"
+            );
+        }
+        // Capturing is best effort: ordinary assembly retains its own forward
+        // and imported-symbol layout processing when no schema is configured.
+        for size in ["later", "dep.Span"] {
+            let graph = compound_graph(&format!(
+                ".module main\n.use dep\nPoint .struct\nx .res {size}\n.endstruct\nlater=3\n.byte Point\n.endmodule\n.module dep\n.pub\nSpan=3\n.endmodule\n"
+            )).unwrap();
+            assert_eq!(assemble_graph(graph).unwrap(), [3], "{size}");
+        }
+    }
+
+    #[test]
+    fn configured_struct_geometry_never_guesses_conditional_branches() {
+        for body in [
+            ".if later\nPoint .struct\nx .byte ?\n.endstruct\n.else\nPoint .struct\nx .long ?\n.endstruct\n.endif\n",
+            "Point .struct\n.if later\nx .byte ?\n.else\nx .long ?\n.endif\n.endstruct\n",
+            ".match later\n.case 1\nPoint .struct\nx .byte ?\n.endstruct\n.default\nPoint .struct\nx .long ?\n.endstruct\n.endmatch\n",
+        ] {
+            let error = compound_graph(&format!(".module main\n{body}.use dep with (TYPE=Point)\nlater=1\n.endmodule\n.module dep\n.endmodule\n")).unwrap_err();
+            assert!(error.error().message().contains(".use parameter TYPE"), "{error:?}");
+        }
+        for body in [
+            ".if 0\n.if missing\nOther .struct\nx .long ?\n.endstruct\n.endif\n.else\nPoint .struct\nx .byte ?\n.endstruct\n.endif\n",
+            ".if 1\nPoint .struct\nx .byte ?\n.endstruct\n.elseif missing\nOther .struct\nx .long ?\n.endstruct\n.endif\n",
+            ".match 1\n.case 1,missing\nPoint .struct\nx .byte ?\n.endstruct\n.default\nOther .struct\nx .long ?\n.endstruct\n.endmatch\n",
+        ] {
+            let graph = compound_graph(&format!(".module main\n{body}.use dep with (TYPE=Point)\n.endmodule\n.module dep\n.endmodule\n")).unwrap();
+            let AsmValue::Struct(definition) = &graph.module_parameters["dep"]["TYPE"] else { panic!("type lost") };
+            assert_eq!(definition.size, 1);
+        }
+    }
+
+    #[test]
+    fn configured_struct_geometry_invalidates_uncertain_value_writes() {
+        for writes in [
+            ".if later\nwidth .set 1\n.else\nwidth .set 4\n.endif\n",
+            ".if later\nwidth .set 1\n.endif\n",
+            ".if later\nwidth += 1\n.endif\n",
+            ".if later\nwidth := 1\n.endif\n",
+            ".if later\n.if 1\nwidth .set 1\n.endif\n.endif\n",
+            ".match later\n.case 1\nwidth .set 1\n.default\nwidth .set 4\n.endmatch\n",
+            ".match 1\n.case later\nwidth .set 1\n.endmatch\n",
+            ".if later\nwidth .set 1\n.endif\nwidth :?= 7\n",
+        ] {
+            let error = compound_graph(&format!(
+                ".module main\nwidth .var 3\n{writes}Point .struct\nx .res width\n.endstruct\n.use dep with (TYPE=Point)\nlater=1\n.endmodule\n.module dep\n.endmodule\n"
+            )).unwrap_err();
+            assert!(
+                error.error().message().contains(".use parameter TYPE"),
+                "{writes}: {error:?}"
+            );
+        }
+        for (writes, size) in [
+            (".if 0\nwidth .set 1\n.endif\n", 3),
+            (".if later\n.if 0\nwidth .set 1\n.endif\n.endif\n", 3),
+            (".if 1\n.elseif later\nwidth .set 1\n.endif\n", 3),
+            (
+                ".match 1\n.case 1,later\n.case later\nwidth .set 1\n.endmatch\n",
+                3,
+            ),
+            (
+                ".match 1\n.case later\n.case 2\nwidth .set 1\n.endmatch\n",
+                3,
+            ),
+            (".if later\nlocal .block\nwidth .var 1\n.bend\n.endif\n", 3),
+            (".if later\nwidth :?= 7\n.endif\n", 3),
+            (".if later\nwidth .set 1\n.endif\nwidth .set 5\n", 5),
+        ] {
+            let graph = compound_graph(&format!(
+                ".module main\nwidth .var 3\n{writes}Point .struct\nx .res width\n.endstruct\n.use dep with (TYPE=Point)\nlater=1\n.endmodule\n.module dep\n.endmodule\n"
+            )).unwrap();
+            let AsmValue::Struct(definition) = &graph.module_parameters["dep"]["TYPE"] else {
+                panic!("type lost")
+            };
+            assert_eq!(definition.size, size, "{writes}");
+        }
+        let graph = compound_graph(concat!(
+            ".module main\nwidth .var 3\nsaved=width\n",
+            ".if later\nwidth .set 1\n.endif\n",
+            "Point .struct\nx .res saved\n.endstruct\n",
+            ".use dep with (TYPE=Point)\nlater=1\n.endmodule\n.module dep\n.endmodule\n"
+        ))
+        .unwrap();
+        let AsmValue::Struct(definition) = &graph.module_parameters["dep"]["TYPE"] else {
+            panic!("type lost")
+        };
+        assert_eq!(definition.size, 3);
+    }
+
+    #[test]
+    fn configured_struct_capture_does_not_execute_runtime_repetition() {
+        for repetition in [
+            ".for item in {}\nPoint .struct\nx .byte ?\n.endstruct\n.endfor\n",
+            ".for item in {1}\nPoint .struct\nx .byte ?\n.endstruct\n.endfor\n",
+            ".bfor item in {}\nPoint .struct\nx .byte ?\n.endstruct\n.endfor\n",
+            ".bfor item in {1}\nPoint .struct\nx .byte ?\n.endstruct\n.endfor\n",
+            ".while 0\nPoint .struct\nx .byte ?\n.endstruct\n.endwhile\n",
+            "Point .struct\n.for 0\nx .byte ?\n.endfor\n.endstruct\n",
+        ] {
+            let error = compound_graph(&format!(
+                ".module main\n{repetition}.use dep with (TYPE=Point)\n.endmodule\n.module dep\n.endmodule\n"
+            )).unwrap_err();
+            assert!(
+                error.error().message().contains(".use parameter TYPE"),
+                "{repetition}: {error:?}"
+            );
+        }
+        for repetition in [
+            ".for item in {}\nwidth += 1\n.endfor\n",
+            ".for item in {1}\nwidth += 1\n.endfor\n",
+            ".while 0\nwidth += 1\n.endwhile\n",
+            ".bwhile 0\nmain.width .set 1\n.endwhile\n",
+            ".bfor item in {1}\nmain.width .set 1\n.endfor\n",
+            ".for item in {1}\n.if item\nwidth += 1\n.endif\n.endfor\n",
+        ] {
+            let error = compound_graph(&format!(
+                ".module main\nwidth .var 3\nitem=0\n{repetition}Point .struct\nx .res width\n.endstruct\n.use dep with (TYPE=Point)\n.endmodule\n.module dep\n.endmodule\n"
+            )).unwrap_err();
+            assert!(
+                error.error().message().contains(".use parameter TYPE"),
+                "{repetition}: {error:?}"
+            );
+        }
+        let graph = compound_graph(concat!(
+            ".module main\nwidth .var 3\nsaved=width\nPoint .struct\nx .res width\n.endstruct\n",
+            ".bfor width in {1}\nwidth .var 7\n.endfor\n",
+            ".use dep with (TYPE=Point,SIZE=width,SNAPSHOT=saved)\n.endmodule\n",
+            ".module dep\n.byte TYPE.x,SIZE,SNAPSHOT\n.endmodule\n"
+        ))
+        .unwrap();
+        let AsmValue::Struct(definition) = &graph.module_parameters["dep"]["TYPE"] else {
+            panic!("type lost")
+        };
+        assert_eq!(definition.size, 3);
+        assert_eq!(graph.module_parameters["dep"]["SIZE"], AsmValue::Scalar(3));
+        assert_eq!(
+            graph.module_parameters["dep"]["SNAPSHOT"],
+            AsmValue::Scalar(3)
+        );
+        assert_eq!(assemble_graph(graph).unwrap(), [0, 3, 3]);
+
+        let graph = compound_graph(concat!(
+            ".module main\nwidth .var 3\nsaved=width\nPoint .struct\nx .res width\n.endstruct\n",
+            ".bfor item in {1}\nmain.width .set 1\n.endfor\n",
+            ".use dep with (TYPE=Point,SNAPSHOT=saved)\n.endmodule\n",
+            ".module dep\n.byte TYPE.x,SNAPSHOT\n.endmodule\n"
+        ))
+        .unwrap();
+        let AsmValue::Struct(definition) = &graph.module_parameters["dep"]["TYPE"] else {
+            panic!("type lost")
+        };
+        assert_eq!(definition.size, 3);
+        assert_eq!(assemble_graph(graph).unwrap(), [0, 3]);
+
+        let error = compound_graph(concat!(
+            ".module main\nPoint .struct\nx .byte ?\n.endstruct\nTYPE=Point\n",
+            ".for TYPE in {1}\n.use dep with (VALUE=TYPE{x:1})\n.endfor\n",
+            ".endmodule\n.module dep\n.endmodule\n"
+        ))
+        .unwrap_err();
+        assert!(
+            error.error().message().contains(".use parameter VALUE"),
+            "{error:?}"
+        );
+        let graph = compound_graph(concat!(
+            ".module main\nPoint .struct\nx .byte ?\n.endstruct\nTYPE=Point\n",
+            ".for TYPE in {1}\n.for TYPE in {2}\n.byte TYPE\n.endfor\n.byte TYPE\n.endfor\n",
+            ".use dep with (VALUE=TYPE{x:7})\n.endmodule\n.module dep\n.byte VALUE.x\n.endmodule\n"
+        ))
+        .unwrap();
+        assert_eq!(assemble_graph(graph).unwrap(), [7, 2, 1]);
+
+        // Ordinary assembly still executes repetition and its local declarations.
+        let graph = compound_graph(".module main\nitems .bfor item in {1,2}\nPoint .struct\nx .byte ?\n.endstruct\n.byte item,Point\n.endfor\n.endmodule\n").unwrap();
+        assert_eq!(assemble_graph(graph).unwrap(), [1, 1, 2, 1]);
+    }
+
+    #[test]
+    fn ordinary_typed_bindings_obey_visibility_at_the_source_binding() {
+        let definition = ".module dep\nShape .struct\nx .byte ?\n.endstruct\nHidden=Shape\nsecret=Shape{x:3}\n.pub\nAlias=Shape\nvisible=secret\n.endmodule\n";
+        for body in [
+            "leak=d.Hidden\n",
+            "made=d.Hidden{x:7}\n",
+            "leak=d.secret\n",
+            ".byte d.secret.x\n",
+        ] {
+            let graph = compound_graph(&format!(
+                "{definition}.module main\n.use dep as d\n{body}.endmodule\n"
+            ))
+            .unwrap();
+            let error = assemble_graph(graph).unwrap_err();
+            assert!(error.contains("Symbol is private"), "{body}: {error}");
+        }
+        let graph = compound_graph(&format!("{definition}.module main\n.use dep as d\nmade=d.Alias{{x:7}}\n.byte made.x,d.visible.x\n.endmodule\n")).unwrap();
+        assert_eq!(assemble_graph(graph).unwrap(), [7, 3]);
     }
 }

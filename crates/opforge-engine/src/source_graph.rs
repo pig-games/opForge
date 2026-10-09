@@ -8,7 +8,9 @@ use asm::error::{AsmError, AsmErrorKind, AsmRunError, Diagnostic, Severity};
 use asm::line::AsmLine;
 use asm::phase_profile::{self, PhaseBucket};
 use asm::preprocess::{AsmMacroExports, AsmMacroProcessor};
+use asm::repetition;
 use opcore::expr::{eval_expr as eval_core_expr, EvalContext};
+use opcore::expression::expression_contains;
 use opcore::macro_processor::CompileTimeVisibility;
 use opcore::modules::{expr_to_ident, extract_module_block, UseDirectiveSpec};
 use opcore::parser::{Expr, LineAst, Parser};
@@ -39,6 +41,7 @@ struct ModuleIndex {
 
 #[derive(Debug, Clone)]
 struct ModuleSource {
+    module_id: String,
     path: PathBuf,
     lines: Vec<String>,
     first_line: u32,
@@ -132,17 +135,27 @@ struct ActiveConditionalFrame {
     current_active: bool,
     switch_value: Option<i64>,
     uncertain: bool,
+    unresolved: bool,
 }
 
 #[derive(Debug, Default)]
 struct StaticConditionalEvalContext {
     values: HashMap<String, AsmValue>,
     mutable: HashSet<String>,
+    module_id: Option<String>,
+    struct_body: Vec<LineAst>,
+    invalid_struct: bool,
+    schemas: HashSet<String>,
+    unavailable_iterators: HashSet<String>,
 }
 
 impl EvalContext for StaticConditionalEvalContext {
     fn lookup_symbol(&self, name: &str) -> Option<i64> {
-        match self.values.get(&name.to_ascii_uppercase()) {
+        let key = name.to_ascii_uppercase();
+        if self.unavailable_iterators.contains(&key) {
+            return None;
+        }
+        match self.values.get(&key) {
             Some(AsmValue::Scalar(value)) => Some(*value),
             _ => None,
         }
@@ -165,9 +178,23 @@ impl StaticConditionalEvalContext {
         }
         // Use the ordinary assembler value evaluator with only values already
         // known at this source site. No labels or assembly address are supplied.
+        self.with_evaluator(|evaluator| {
+            evaluator
+                .eval_value_ast_requiring_defined_symbols(expr)
+                .map_err(|error| error.error.message().to_owned())
+        })
+    }
+
+    fn with_evaluator<T>(
+        &self,
+        action: impl FnOnce(&mut AsmLine<'_>) -> Result<T, String>,
+    ) -> Result<T, String> {
         let registry = ModuleRegistry::new();
         let mut symbols = SymbolTable::new();
         for (name, value) in &self.values {
+            if self.schemas.contains(name) || self.unavailable_iterators.contains(name) {
+                continue;
+            }
             let scalar = match value {
                 AsmValue::Scalar(value) => *value as u32,
                 _ => 0,
@@ -179,19 +206,100 @@ impl StaticConditionalEvalContext {
             }
         }
         let mut evaluator = AsmLine::new(&mut symbols, &registry);
-        for (name, value) in &self.values {
-            evaluator.set_value_symbol(name, value.clone());
+        if let Some(module_id) = &self.module_id {
+            let operand = Expr::Identifier(module_id.clone(), Span::default());
+            if evaluator.begin_module_directive_ast(&[operand]) == asm::error::LineStatus::Error {
+                return Err(evaluator
+                    .error()
+                    .expect("module error")
+                    .message()
+                    .to_owned());
+            }
         }
-        evaluator
-            .eval_value_ast_requiring_defined_symbols(expr)
-            .map_err(|error| error.error.message().to_owned())
+        for (name, value) in &self.values {
+            if self.unavailable_iterators.contains(name) {
+                continue;
+            }
+            if self.schemas.contains(name) {
+                let AsmValue::Struct(definition) = value else {
+                    unreachable!("schemas carry struct definitions")
+                };
+                if evaluator.register_struct_definition(definition.clone())
+                    == asm::error::LineStatus::Error
+                {
+                    return Err(evaluator
+                        .error()
+                        .expect("struct error")
+                        .message()
+                        .to_owned());
+                }
+            } else {
+                evaluator.set_value_symbol(name, value.clone());
+            }
+        }
+        action(&mut evaluator)
+    }
+
+    fn record_struct(&mut self, ast: &LineAst, scope_depth: usize) {
+        let mnemonic = match ast {
+            LineAst::Statement(statement) => statement.mnemonic.as_deref(),
+            _ => None,
+        };
+        if self.struct_body.is_empty() {
+            if scope_depth != 0
+                || !mnemonic.is_some_and(|name| name.eq_ignore_ascii_case(".struct"))
+            {
+                return;
+            }
+            self.invalid_struct = false;
+        }
+        self.struct_body.push(ast.clone());
+        if !mnemonic.is_some_and(|name| name.eq_ignore_ascii_case(".endstruct")) {
+            return;
+        }
+        let body = std::mem::take(&mut self.struct_body);
+        if self.invalid_struct {
+            return;
+        }
+        let definition = self.with_evaluator(|evaluator| {
+            let mut definition = None;
+            for (index, ast) in body.iter().enumerate() {
+                definition = evaluator
+                    .capture_compile_time_struct_ast(ast, index as u32 + 1)
+                    .map_err(|error| error.message().to_owned())?;
+            }
+            definition.ok_or_else(|| "incomplete struct definition".into())
+        });
+        if let Ok(definition) = definition {
+            let name = match &self.module_id {
+                Some(module_id) => definition
+                    .name
+                    .strip_prefix(&format!("{module_id}."))
+                    .unwrap_or(&definition.name),
+                None => &definition.name,
+            }
+            .to_ascii_uppercase();
+            // Failed/repeated declarations are diagnosed by ordinary assembly;
+            // preparation must not replace an established readonly binding.
+            if !self.values.contains_key(&name) {
+                self.schemas.insert(name.clone());
+                self.values.insert(name, AsmValue::Struct(definition));
+            }
+        }
     }
 
     fn evaluate_scalar(&self, expr: &Expr) -> Result<i64, String> {
-        match self.evaluate(expr)? {
-            AsmValue::Scalar(value) => Ok(value),
-            _ => Err("Compound value cannot be evaluated as scalar expression".into()),
+        if contains_current_address(expr) {
+            return Err("Current address ($) not available".into());
         }
+        if let Ok(value) = eval_core_expr(expr, self) {
+            return Ok(value);
+        }
+        self.with_evaluator(|evaluator| {
+            evaluator
+                .eval_scalar_ast_requiring_defined_symbols(expr)
+                .map_err(|error| error.error.message().to_owned())
+        })
     }
 }
 
@@ -207,6 +315,15 @@ fn eval_static_condition(expr: &Expr, values: &StaticConditionalEvalContext) -> 
 }
 
 fn record_compile_time_value(ast: &LineAst, values: &mut StaticConditionalEvalContext) {
+    if let LineAst::Statement(statement) = ast {
+        if statement
+            .mnemonic
+            .as_deref()
+            .is_some_and(|name| name.eq_ignore_ascii_case(".module"))
+        {
+            values.module_id = statement.operands.first().and_then(expr_to_ident);
+        }
+    }
     if let LineAst::Assignment(assignment) = ast {
         if !matches!(
             assignment.op,
@@ -242,7 +359,28 @@ fn record_compile_time_value(ast: &LineAst, values: &mut StaticConditionalEvalCo
             return;
         }
     }
-    let (name, expr, mutable, only_if_undefined) = match ast {
+    let Some((name, expr, mutable, only_if_undefined)) = compile_time_declaration(ast) else {
+        return;
+    };
+    let key = name.to_ascii_uppercase();
+    if only_if_undefined && (values.values.contains_key(&key) || values.mutable.contains(&key)) {
+        return;
+    }
+    if values.values.contains_key(&key) && !values.mutable.contains(&key) {
+        return;
+    }
+    if mutable {
+        values.mutable.insert(key.clone());
+    }
+    if let Ok(value) = values.evaluate(expr) {
+        values.values.insert(key, value);
+    } else {
+        values.values.remove(&key);
+    }
+}
+
+fn compile_time_declaration(ast: &LineAst) -> Option<(&str, &Expr, bool, bool)> {
+    Some(match ast {
         LineAst::Assignment(assignment)
             if matches!(
                 assignment.op,
@@ -259,68 +397,80 @@ fn record_compile_time_value(ast: &LineAst, values: &mut StaticConditionalEvalCo
             )
         }
         LineAst::Statement(statement) if statement.operands.len() == 1 => {
-            let Some(label) = &statement.label else {
-                return;
-            };
-            let Some(mnemonic) = statement.mnemonic.as_deref() else {
-                return;
-            };
+            let label = statement.label.as_ref()?;
+            let mnemonic = statement.mnemonic.as_deref()?;
             if mnemonic.eq_ignore_ascii_case(".const") {
                 (&label.name, &statement.operands[0], false, false)
             } else if mnemonic.eq_ignore_ascii_case(".var") || mnemonic.eq_ignore_ascii_case(".set")
             {
                 (&label.name, &statement.operands[0], true, false)
             } else {
-                return;
+                return None;
             }
         }
-        _ => return,
+        _ => return None,
+    })
+}
+
+fn invalidate_compile_time_write(ast: &LineAst, values: &mut StaticConditionalEvalContext) {
+    let binding_key = |name: &str| {
+        let key = name.to_ascii_uppercase();
+        if values.values.contains_key(&key) || values.mutable.contains(&key) {
+            return key;
+        }
+        // An explicit current-module qualifier still names a module binding
+        // inside local scopes. Exact dotted binding names retain precedence.
+        values
+            .module_id
+            .as_ref()
+            .and_then(|module_id| {
+                key.strip_prefix(&format!("{}.", module_id.to_ascii_uppercase()))
+                    .filter(|name| values.mutable.contains(*name))
+                    .map(str::to_owned)
+            })
+            .unwrap_or(key)
     };
-    let key = name.to_ascii_uppercase();
-    if only_if_undefined && values.values.contains_key(&key) {
-        return;
-    }
-    if values.values.contains_key(&key) && !values.mutable.contains(&key) {
-        return;
-    }
-    if mutable {
-        values.mutable.insert(key.clone());
-    }
-    if let Ok(value) = values.evaluate(expr) {
-        values.values.insert(key, value);
+    let key = if let Some((name, _, mutable, only_if_undefined)) = compile_time_declaration(ast) {
+        let key = binding_key(name);
+        if (only_if_undefined && values.mutable.contains(&key))
+            || (values.values.contains_key(&key)
+                && (only_if_undefined || !values.mutable.contains(&key)))
+        {
+            return;
+        }
+        if mutable {
+            values.mutable.insert(key.clone());
+        }
+        key
+    } else if let LineAst::Assignment(assignment) = ast {
+        let key = binding_key(&assignment.label.name);
+        if !values.mutable.contains(&key) {
+            return;
+        }
+        key
     } else {
-        values.values.remove(&key);
-    }
+        return;
+    };
+    values.values.remove(&key);
 }
 
 fn parse_graph_line(line: &str, line_num: u32) -> Option<LineAst> {
     match Parser::process_opcore_line_request(line, line_num) {
         ProcessingOutcome::Done(ast) => Some(ast),
-        ProcessingOutcome::Return(_)
-            if line
-                .as_bytes()
-                .windows(6)
-                .any(|part| part.eq_ignore_ascii_case(b".const"))
-                || line.as_bytes().windows(4).any(|part| {
-                    part.eq_ignore_ascii_case(b".var") || part.eq_ignore_ascii_case(b".set")
-                })
-                || line
-                    .as_bytes()
-                    .windows(5)
-                    .any(|part| part.eq_ignore_ascii_case(b".bend")) =>
-        {
+        ProcessingOutcome::Return(_) => {
+            if !line.as_bytes().contains(&b'.') {
+                return None;
+            }
             let ast = Parser::from_line(line, line_num)
                 .ok()?
                 .parse_compat_mixed_line()
                 .ok()?;
             match &ast {
                 LineAst::Statement(statement)
-                    if statement.mnemonic.as_deref().is_some_and(|name| {
-                        name.eq_ignore_ascii_case(".const")
-                            || name.eq_ignore_ascii_case(".bend")
-                            || name.eq_ignore_ascii_case(".var")
-                            || name.eq_ignore_ascii_case(".set")
-                    }) =>
+                    if statement
+                        .mnemonic
+                        .as_deref()
+                        .is_some_and(|name| name.starts_with('.')) =>
                 {
                     Some(ast)
                 }
@@ -374,35 +524,6 @@ fn contains_current_address(expr: &Expr) -> bool {
     expression_contains(expr, |expr| matches!(expr, Expr::Dollar(_)))
 }
 
-fn expression_contains(expr: &Expr, predicate: fn(&Expr) -> bool) -> bool {
-    if predicate(expr) {
-        return true;
-    }
-    let contains = |expr: &Expr| expression_contains(expr, predicate);
-    match expr {
-        Expr::List(items, _) | Expr::Tuple(items, _) => items.iter().any(contains),
-        Expr::Index { base, index, .. } => contains(base) || contains(index),
-        Expr::Member { base, .. }
-        | Expr::Indirect(base, _)
-        | Expr::Immediate(base, _)
-        | Expr::IndirectLong(base, _)
-        | Expr::Unary { expr: base, .. } => contains(base),
-        Expr::StructLiteral { fields, .. } => fields.iter().any(|(_, value)| contains(value)),
-        Expr::Call { args, .. } => args.iter().any(contains),
-        Expr::Ternary {
-            cond,
-            then_expr,
-            else_expr,
-            ..
-        } => contains(cond) || contains(then_expr) || contains(else_expr),
-        Expr::Binary { left, right, .. } => contains(left) || contains(right),
-        Expr::Range {
-            start, end, step, ..
-        } => contains(start) || contains(end) || step.as_deref().is_some_and(contains),
-        _ => false,
-    }
-}
-
 fn apply_conditional_ast(
     stack: &mut Vec<ActiveConditionalFrame>,
     kind: ConditionalKind,
@@ -425,6 +546,7 @@ fn apply_conditional_ast(
                 current_active: branch_active,
                 switch_value: None,
                 uncertain,
+                unresolved: parent_active && condition.is_none(),
             });
         }
         ConditionalKind::ElseIf => {
@@ -443,6 +565,7 @@ fn apply_conditional_ast(
             frame.current_active = branch_active;
             frame.branch_taken |= branch_active && !uncertain;
             frame.uncertain |= uncertain;
+            frame.unresolved |= frame.parent_active && !frame.branch_taken && condition.is_none();
         }
         ConditionalKind::Else => {
             let Some(frame) = stack.last_mut() else {
@@ -478,6 +601,7 @@ fn apply_conditional_ast(
                 current_active: false,
                 switch_value,
                 uncertain: include_unknown && switch_value.is_none(),
+                unresolved: parent_active && switch_value.is_none(),
             });
         }
         ConditionalKind::Case => {
@@ -487,18 +611,30 @@ fn apply_conditional_ast(
             if frame.kind != ActiveConditionalKind::Switch {
                 return;
             }
+            let mut case_match = false;
+            let mut case_unknown = frame.switch_value.is_none();
+            if frame.parent_active && !frame.branch_taken && frame.switch_value.is_some() {
+                for expr in exprs {
+                    match values.evaluate_scalar(expr) {
+                        Ok(value) if Some(value) == frame.switch_value => {
+                            case_match = true;
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(_) => {
+                            frame.unresolved = true;
+                            case_unknown = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            frame.uncertain |= include_unknown && case_unknown;
             let branch_active = frame.parent_active
                 && !frame.branch_taken
-                && (frame.uncertain
-                    || exprs.iter().any(|expr| {
-                        values
-                            .evaluate_scalar(expr)
-                            .ok()
-                            .zip(frame.switch_value)
-                            .is_some_and(|(value, switch)| value == switch)
-                    }));
+                && (case_match || (include_unknown && case_unknown));
             frame.current_active = branch_active;
-            frame.branch_taken |= branch_active && !frame.uncertain;
+            frame.branch_taken |= branch_active && !case_unknown;
         }
         ConditionalKind::Default => {
             let Some(frame) = stack.last_mut() else {
@@ -522,6 +658,80 @@ fn apply_conditional_ast(
     }
 }
 
+// Follow unresolved branches and runtime repetition only to discard values a
+// write could change. Local declarations and known inactive branches cannot
+// poison module values; repetition is executed later by the ordinary assembler.
+#[derive(Default)]
+struct UncertainWrites {
+    stack: Vec<ActiveConditionalFrame>,
+    scope_depth: usize,
+    repetitions: Vec<(bool, Option<String>)>,
+}
+
+impl UncertainWrites {
+    fn in_runtime_repetition(&self) -> bool {
+        !self.repetitions.is_empty()
+    }
+
+    fn observe(&mut self, ast: &LineAst, values: &mut StaticConditionalEvalContext) {
+        if let LineAst::Conditional(cond) = ast {
+            apply_conditional_ast(&mut self.stack, cond.kind, &cond.exprs, values, true);
+        } else if current_branch_is_active(&self.stack) {
+            if let LineAst::Statement(statement) = ast {
+                if let Some(name) = statement.mnemonic.as_deref() {
+                    if repetition::is_for_like_directive_name(name)
+                        || repetition::is_while_like_directive_name(name)
+                    {
+                        let scoped = repetition::is_scoped_for_directive_name(name)
+                            || repetition::is_scoped_while_directive_name(name);
+                        let iterator = (repetition::is_for_like_directive_name(name)
+                            && statement.operands.len() == 2)
+                            .then(|| expr_to_ident(&statement.operands[0]))
+                            .flatten()
+                            .map(|name| name.to_ascii_uppercase());
+                        if let Some(iterator) = &iterator {
+                            values.unavailable_iterators.insert(iterator.clone());
+                        }
+                        self.repetitions.push((scoped, iterator));
+                        self.scope_depth += usize::from(scoped);
+                        if !values.struct_body.is_empty() {
+                            values.invalid_struct = true;
+                        }
+                        return;
+                    }
+                    if repetition::is_endfor_directive_name(name)
+                        || repetition::is_endwhile_directive_name(name)
+                    {
+                        if let Some((scoped, _)) = self.repetitions.pop() {
+                            self.scope_depth = self.scope_depth.saturating_sub(usize::from(scoped));
+                        }
+                        values.unavailable_iterators = self
+                            .repetitions
+                            .iter()
+                            .filter_map(|(_, iterator)| iterator.clone())
+                            .collect();
+                        return;
+                    }
+                }
+            }
+            update_nested_scope_depth(ast, &mut self.scope_depth);
+            if self.in_runtime_repetition() || self.stack.iter().any(|frame| frame.unresolved) {
+                let module_write = values.module_id.as_ref().is_some_and(|module_id| {
+                    repetition::line_label(ast).is_some_and(|label| {
+                        label
+                            .name
+                            .to_ascii_uppercase()
+                            .starts_with(&format!("{}.", module_id.to_ascii_uppercase()))
+                    })
+                });
+                if self.scope_depth == 0 || module_write {
+                    invalidate_compile_time_write(ast, values);
+                }
+            }
+        }
+    }
+}
+
 fn scan_active_module_items_with_values(
     lines: &[String],
     values: StaticConditionalEvalContext,
@@ -538,17 +748,37 @@ fn scan_module_items(
     let mut out = Vec::new();
     let mut stack = Vec::new();
     let mut scope_depth = 0;
+    let mut uncertain_writes = UncertainWrites::default();
     for (idx, line) in lines.iter().enumerate() {
         let Some(ast) = parse_graph_line(line, idx as u32 + 1) else {
+            if !values.struct_body.is_empty() {
+                values.invalid_struct = true;
+            }
             continue;
         };
+        uncertain_writes.observe(&ast, &mut values);
         if let LineAst::Conditional(cond) = &ast {
             apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values, potential);
+            if !values.struct_body.is_empty() && stack.iter().any(|frame| frame.unresolved) {
+                values.invalid_struct = true;
+            }
             continue;
         }
         if current_branch_is_active(&stack) {
+            if !uncertain_writes.in_runtime_repetition()
+                && !stack
+                    .iter()
+                    .any(|frame| frame.uncertain || frame.unresolved)
+            {
+                values.record_struct(&ast, scope_depth);
+            }
             update_nested_scope_depth(&ast, &mut scope_depth);
-            if scope_depth == 0 && !stack.iter().any(|frame| frame.uncertain) {
+            if scope_depth == 0
+                && !uncertain_writes.in_runtime_repetition()
+                && !stack
+                    .iter()
+                    .any(|frame| frame.uncertain || frame.unresolved)
+            {
                 record_compile_time_value(&ast, &mut values);
             }
             if !potential || scope_depth == 0 {
@@ -607,23 +837,45 @@ fn collect_configured_uses(source: &ModuleSource) -> Result<Vec<ModuleUseRef>, A
     let mut values = StaticConditionalEvalContext {
         values: source.params.clone(),
         mutable: HashSet::new(),
+        module_id: Some(source.module_id.clone()),
+        ..StaticConditionalEvalContext::default()
     };
     let mut stack = Vec::new();
     let mut scope_depth = 0;
+    let mut uncertain_writes = UncertainWrites::default();
     let mut uses = Vec::new();
     for (idx, line) in source.lines.iter().enumerate() {
         let Some(ast) = parse_graph_line(line, idx as u32 + 1) else {
+            if !values.struct_body.is_empty() {
+                values.invalid_struct = true;
+            }
             continue;
         };
+        uncertain_writes.observe(&ast, &mut values);
         if let LineAst::Conditional(cond) = &ast {
             apply_conditional_ast(&mut stack, cond.kind, &cond.exprs, &values, false);
+            if !values.struct_body.is_empty() && stack.iter().any(|frame| frame.unresolved) {
+                values.invalid_struct = true;
+            }
             continue;
         }
         if !current_branch_is_active(&stack) {
             continue;
         }
+        if !uncertain_writes.in_runtime_repetition()
+            && !stack
+                .iter()
+                .any(|frame| frame.uncertain || frame.unresolved)
+        {
+            values.record_struct(&ast, scope_depth);
+        }
         update_nested_scope_depth(&ast, &mut scope_depth);
-        if scope_depth == 0 {
+        if scope_depth == 0
+            && !uncertain_writes.in_runtime_repetition()
+            && !stack
+                .iter()
+                .any(|frame| frame.uncertain || frame.unresolved)
+        {
             record_compile_time_value(&ast, &mut values);
         }
         if let LineAst::Use(use_ast) = ast {
@@ -682,6 +934,8 @@ fn collect_use_directives_with_items_from_processing(
     let values = StaticConditionalEvalContext {
         values: source.params.clone(),
         mutable: HashSet::new(),
+        module_id: Some(source.module_id.clone()),
+        ..StaticConditionalEvalContext::default()
     };
     for ast in scan_active_module_items_with_values(&source.lines, values) {
         let LineAst::Use(use_ast) = ast else {
@@ -933,6 +1187,7 @@ fn load_module_recursive(
             .position(|window| window == module_lines.as_slice())
             .map_or(1, |offset| offset as u32 + 1);
         ModuleSource {
+            module_id: module_id.to_owned(),
             path: info.path.clone(),
             origins: source_origins
                 [(first_line - 1) as usize..(first_line - 1) as usize + module_lines.len()]
@@ -957,60 +1212,6 @@ fn load_module_recursive(
     Ok(())
 }
 
-fn parameter_scalar_text(value: i64) -> String {
-    if value == i64::MIN {
-        "(-9223372036854775807-1)".into()
-    } else {
-        value.to_string()
-    }
-}
-
-fn parameter_value_text(value: &AsmValue) -> String {
-    match value {
-        AsmValue::Scalar(value) | AsmValue::RelocatableScalar { value, .. } => {
-            parameter_scalar_text(*value)
-        }
-        AsmValue::Record { scalar, .. } => parameter_value_text(scalar),
-        AsmValue::Values(values) => format!(
-            "{{{}}}",
-            values
-                .iter()
-                .map(parameter_value_text)
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-        AsmValue::List(values) => format!(
-            "{{{}}}",
-            values
-                .iter()
-                .map(|value| parameter_scalar_text(*value))
-                .collect::<Vec<_>>()
-                .join(",")
-        ),
-        // AsmValue stores the normalized exclusive bound; preserve it directly.
-        AsmValue::Range { start, end, step } => format!(
-            "{}..{}:{}",
-            parameter_scalar_text(*start),
-            parameter_scalar_text(*end),
-            parameter_scalar_text(*step)
-        ),
-        AsmValue::Struct(def) => def.name.clone(),
-        AsmValue::StructInstance(instance) => {
-            let mut fields: Vec<_> = instance.fields.iter().collect();
-            fields.sort_by_key(|(name, _)| *name);
-            format!(
-                "{}{{{}}}",
-                instance.type_name,
-                fields
-                    .into_iter()
-                    .map(|(name, value)| format!("{name}:{}", parameter_scalar_text(*value)))
-                    .collect::<Vec<_>>()
-                    .join(",")
-            )
-        }
-    }
-}
-
 fn module_import_error(
     message: &str,
     param: Option<&str>,
@@ -1032,6 +1233,7 @@ pub struct ModuleGraphResult {
     pub source_map: SourceMap,
     pub dependency_files: Vec<PathBuf>,
     pub module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    pub module_parameters: types::asm_value::ModuleParameters,
 }
 
 pub fn module_search_root_for_path(root_path: &Path) -> PathBuf {
@@ -1136,6 +1338,7 @@ pub(crate) fn load_module_graph_contextual(
         entry_modules.insert(
             canonical_module_id(&id),
             ModuleSource {
+                module_id: id.clone(),
                 path: root_path.to_path_buf(),
                 lines: root_lines.clone(),
                 origins: root_origins.clone(),
@@ -1166,10 +1369,11 @@ pub(crate) fn load_module_graph_contextual(
                     root_lines,
                 ));
             }
-            entry_order.push(id);
+            entry_order.push(id.clone());
             entry_modules.insert(
                 canonical,
                 ModuleSource {
+                    module_id: id,
                     path: root_path.to_path_buf(),
                     origins: root_origins[block_start..end].to_vec(),
                     lines: root_lines[block_start..end].to_vec(),
@@ -1306,38 +1510,12 @@ pub(crate) fn load_module_graph_contextual(
                 source.first_line,
             ));
         }
-        let mut parameter_lines: Vec<_> = source.params.iter().collect();
-        parameter_lines.sort_by_key(|(name, _)| *name);
-        if implicit {
-            for (name, value) in &parameter_lines {
-                combined.push(format!("{name} = {}", parameter_value_text(value)));
-                origins.push(SourceOrigin::new(
-                    Some(file_name.clone()),
-                    source.first_line,
-                ));
-            }
-        }
         let line_count = source.lines.len() as u32;
         for (idx, line) in source.lines.into_iter().enumerate() {
-            let starts_module = !implicit
-                && matches!(
-                    Parser::process_opcore_line_request(&line, idx as u32 + 1),
-                    ProcessingOutcome::Done(LineAst::Statement(statement))
-                        if statement.mnemonic.as_deref().is_some_and(|name| name.eq_ignore_ascii_case(".module"))
-                );
             combined.push(line);
             origins.push(source.origins.get(idx).cloned().unwrap_or_else(|| {
                 SourceOrigin::new(Some(file_name.clone()), source.first_line + idx as u32)
             }));
-            if starts_module {
-                for (name, value) in &parameter_lines {
-                    combined.push(format!("{name} = {}", parameter_value_text(value)));
-                    origins.push(SourceOrigin::new(
-                        Some(file_name.clone()),
-                        source.first_line + idx as u32,
-                    ));
-                }
-            }
         }
         if implicit {
             combined.push(".endmodule".to_owned());
@@ -1386,5 +1564,6 @@ pub(crate) fn load_module_graph_contextual(
             files
         },
         module_macro_names,
+        module_parameters: configurations,
     })
 }

@@ -233,12 +233,14 @@ pub struct AsmLine<'a> {
     pub layout: AsmLayoutState,
     struct_table: StructTable,
     value_symbols: HashMap<String, AsmValue>,
+    module_parameters: types::asm_value::ModuleParameters,
     constant_definitions: Vec<asmline_constants::Definition>,
     pub(crate) loop_observations: Vec<crate::engine::repetition_trace::LoopObservation>,
     pub(crate) repetition_path: Vec<(u32, u32)>,
     pub(crate) immutable_scalar_constants: HashSet<String>,
     pub(crate) scalar_value_symbols: HashMap<String, i64>,
     active_struct: Option<ActiveStructDefinition>,
+    require_defined_symbols: bool,
     diagnostics: AsmDiagnosticsState,
     current_line_num: u32,
     binary_resources: Option<Rc<std::cell::RefCell<crate::binary_resources::BinaryResources>>>,
@@ -443,12 +445,14 @@ impl<'a> AsmLine<'a> {
             layout: AsmLayoutState::new(),
             struct_table: StructTable::new(),
             value_symbols: HashMap::new(),
+            module_parameters: HashMap::new(),
             constant_definitions: Vec::new(),
             loop_observations: Vec::new(),
             repetition_path: Vec::new(),
             immutable_scalar_constants: HashSet::new(),
             scalar_value_symbols: HashMap::new(),
             active_struct: None,
+            require_defined_symbols: false,
             diagnostics: AsmDiagnosticsState::new(),
             current_line_num: 1,
             binary_resources: None,
@@ -1040,6 +1044,10 @@ impl<'a> AsmLine<'a> {
             .remove(&Self::value_symbol_key(name));
         self.value_symbols
             .insert(Self::value_symbol_key(name), value);
+    }
+
+    pub fn set_module_parameters(&mut self, parameters: types::asm_value::ModuleParameters) {
+        self.module_parameters = parameters;
     }
 
     fn lookup_value_symbol(&self, name: &str) -> Option<&AsmValue> {
@@ -2662,6 +2670,110 @@ impl<'a> AsmLine<'a> {
         None
     }
 
+    /// Bind an already evaluated declaration using ordinary scope, symbol and
+    /// readonly rules. Expression dependency bookkeeping stays with its caller.
+    fn bind_declared_value(
+        &mut self,
+        label: &Label,
+        value: &AsmValue,
+        is_rw: bool,
+    ) -> Result<(String, u32), LineStatus> {
+        let full_name = self.scoped_define_name(&label.name);
+        let scalar_val = Self::scalar_shadow_for_value_symbol(value);
+        if self.pass == 1 && self.selective_import_conflict(&label.name) {
+            return Err(self.failure_at_span(
+                LineStatus::Error,
+                AsmErrorKind::Symbol,
+                "Symbol conflicts with selective import",
+                Some(&label.name),
+                label.span,
+            ));
+        }
+        let res = if self.pass == 1 {
+            self.symbols.add(
+                &full_name,
+                scalar_val,
+                is_rw,
+                self.current_visibility(),
+                self.symbol_scope.module_active.as_deref(),
+            )
+        } else {
+            match self.symbols.entry_mut(&full_name) {
+                Some(entry) if entry.rw && !is_rw => SymbolTableResult::Duplicate,
+                Some(entry) => {
+                    entry.val = scalar_val;
+                    entry.updated = true;
+                    SymbolTableResult::Ok
+                }
+                None => self.symbols.add(
+                    &full_name,
+                    scalar_val,
+                    is_rw,
+                    self.current_visibility(),
+                    self.symbol_scope.module_active.as_deref(),
+                ),
+            }
+        };
+        if res == SymbolTableResult::Duplicate {
+            return Err(self.failure_at(
+                LineStatus::Error,
+                AsmErrorKind::Symbol,
+                "symbol has already been defined",
+                Some(&label.name),
+                Some(1),
+            ));
+        } else if res == SymbolTableResult::TableFull {
+            return Err(self.failure_at(
+                LineStatus::Error,
+                AsmErrorKind::Symbol,
+                "could not add symbol, table full",
+                Some(&label.name),
+                Some(1),
+            ));
+        }
+        self.aux_value = scalar_val;
+        Ok((full_name, scalar_val))
+    }
+
+    fn bind_module_parameters(&mut self, module_id: &str) -> LineStatus {
+        let Some(parameters) = self.module_parameters.get(&module_id.to_ascii_lowercase()) else {
+            return LineStatus::Ok;
+        };
+        let mut parameters: Vec<_> = parameters
+            .iter()
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect();
+        parameters.sort_by(|left, right| left.0.cmp(&right.0));
+        for (name, value) in parameters {
+            let label = Label {
+                name,
+                span: Span {
+                    line: self.current_line_num,
+                    col_start: 1,
+                    col_end: 1,
+                },
+            };
+            let (full_name, _) = match self.bind_declared_value(&label, &value, false) {
+                Ok(binding) => binding,
+                Err(status) => return status,
+            };
+            self.sync_value_symbol(&full_name, &value);
+            self.layout.symbol_relocations.remove(&full_name);
+            if matches!(
+                value.scalar_provenance(),
+                Some(types::asm_value::ScalarProvenance::Absolute)
+            ) {
+                self.layout
+                    .absolute_constant_symbols
+                    .insert(full_name.clone());
+                self.immutable_scalar_constants.insert(full_name);
+            } else {
+                self.layout.absolute_constant_symbols.remove(&full_name);
+            }
+        }
+        LineStatus::Ok
+    }
+
     fn process_assignment_ast(
         &mut self,
         label: &Label,
@@ -2724,59 +2836,11 @@ impl<'a> AsmLine<'a> {
                         }
                     },
                 };
-                let scalar_val = Self::scalar_shadow_for_value_symbol(&value);
                 let is_rw = op != AssignOp::Const;
-                if self.pass == 1 && self.selective_import_conflict(&label.name) {
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        AsmErrorKind::Symbol,
-                        "Symbol conflicts with selective import",
-                        Some(&label.name),
-                        label.span,
-                    );
-                }
-                let res = if self.pass == 1 {
-                    self.symbols.add(
-                        &full_name,
-                        scalar_val,
-                        is_rw,
-                        self.current_visibility(),
-                        self.symbol_scope.module_active.as_deref(),
-                    )
-                } else {
-                    match self.symbols.entry_mut(&full_name) {
-                        Some(entry) if entry.rw && !is_rw => SymbolTableResult::Duplicate,
-                        Some(entry) => {
-                            entry.val = scalar_val;
-                            entry.updated = true;
-                            SymbolTableResult::Ok
-                        }
-                        None => self.symbols.add(
-                            &full_name,
-                            scalar_val,
-                            is_rw,
-                            self.current_visibility(),
-                            self.symbol_scope.module_active.as_deref(),
-                        ),
-                    }
+                let (full_name, scalar_val) = match self.bind_declared_value(label, &value, is_rw) {
+                    Ok(binding) => binding,
+                    Err(status) => return status,
                 };
-                if res == SymbolTableResult::Duplicate {
-                    return self.failure_at(
-                        LineStatus::Error,
-                        AsmErrorKind::Symbol,
-                        "symbol has already been defined",
-                        Some(&label.name),
-                        Some(1),
-                    );
-                } else if res == SymbolTableResult::TableFull {
-                    return self.failure_at(
-                        LineStatus::Error,
-                        AsmErrorKind::Symbol,
-                        "could not add symbol, table full",
-                        Some(&label.name),
-                        Some(1),
-                    );
-                }
                 self.record_symbol_relocation(&full_name, expr);
                 self.sync_value_symbol(&full_name, &value);
                 if op == AssignOp::Const {
@@ -3264,18 +3328,35 @@ impl<'a> AsmLine<'a> {
         self.eval_expr_for_scalar_context(expr)
     }
 
+    fn find_private_symbol_name(&self, name: &str, span: Span) -> Option<(String, Span)> {
+        if self.lookup_loop_var(name).is_some() {
+            return None;
+        }
+        if let Some(entry) = self.lookup_scoped_entry(name) {
+            return (!self.entry_is_visible(entry)).then(|| (name.to_owned(), span));
+        }
+        // A dotted typed member has no scalar symbol entry of its
+        // own. Its owning value still carries module visibility.
+        let mut base = name;
+        while let Some((parent, _)) = base.rsplit_once('.') {
+            if self.lookup_loop_var(parent).is_some() {
+                return None;
+            }
+            if let Some(entry) = self.lookup_scoped_entry(parent) {
+                if !self.entry_is_visible(entry) {
+                    return Some((parent.to_owned(), span));
+                }
+                break;
+            }
+            base = parent;
+        }
+        None
+    }
+
     fn find_private_symbol_in_expr(&self, expr: &Expr) -> Option<(String, Span)> {
         match expr {
             Expr::Identifier(name, span) | Expr::Register(name, span) => {
-                if self.lookup_loop_var(name).is_some() {
-                    return None;
-                }
-                if let Some(entry) = self.lookup_scoped_entry(name) {
-                    if !self.entry_is_visible(entry) {
-                        return Some((name.clone(), *span));
-                    }
-                }
-                None
+                self.find_private_symbol_name(name, *span)
             }
             Expr::Indirect(inner, _)
             | Expr::IndirectLong(inner, _)
@@ -3288,9 +3369,15 @@ impl<'a> AsmLine<'a> {
                 .find_private_symbol_in_expr(base)
                 .or_else(|| self.find_private_symbol_in_expr(index)),
             Expr::Member { base, .. } => self.find_private_symbol_in_expr(base),
-            Expr::StructLiteral { fields, .. } => fields
-                .iter()
-                .find_map(|(_, value)| self.find_private_symbol_in_expr(value)),
+            Expr::StructLiteral {
+                type_name,
+                fields,
+                span,
+            } => self.find_private_symbol_name(type_name, *span).or_else(|| {
+                fields
+                    .iter()
+                    .find_map(|(_, value)| self.find_private_symbol_in_expr(value))
+            }),
             Expr::Call { args, .. } => args
                 .iter()
                 .find_map(|arg| self.find_private_symbol_in_expr(arg)),

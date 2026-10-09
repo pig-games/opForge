@@ -1809,6 +1809,7 @@ struct PreparedAssemblyCore {
     dependency_files: Vec<PathBuf>,
     module_macro_names:
         std::collections::HashMap<String, std::collections::HashMap<String, SymbolVisibility>>,
+    module_parameters: ::types::asm_value::ModuleParameters,
 }
 
 struct PreparedExecutionCoreRef<'a> {
@@ -1822,6 +1823,7 @@ struct PreparedExecutionCoreRef<'a> {
     dependency_files: &'a [PathBuf],
     module_macro_names:
         &'a std::collections::HashMap<String, std::collections::HashMap<String, SymbolVisibility>>,
+    module_parameters: &'a ::types::asm_value::ModuleParameters,
 }
 
 fn effective_prepare_config<'a>(
@@ -1855,8 +1857,15 @@ fn prepare_public_assembly<'a>(
         max_loop_iterations: request.max_loop_iterations,
         source_provider: request.source_provider,
     })?;
-    let (session, root_module_id, expanded_lines, source_map, dependency_files, module_macro_names) =
-        prepared.into_parts();
+    let (
+        session,
+        root_module_id,
+        expanded_lines,
+        source_map,
+        dependency_files,
+        module_macro_names,
+        module_parameters,
+    ) = prepared.into_parts();
     let (cpu, registry, max_loop_iterations) = session.into_parts();
 
     Ok((
@@ -1869,6 +1878,7 @@ fn prepare_public_assembly<'a>(
             source_map,
             dependency_files,
             module_macro_names,
+            module_parameters,
         },
         effective,
     ))
@@ -1888,6 +1898,7 @@ fn run_public_prepared_assembly(
         source_map: prepared.source_map.clone(),
         dependency_files: prepared.dependency_files.to_vec(),
         module_macro_names: prepared.module_macro_names.clone(),
+        module_parameters: prepared.module_parameters.clone(),
         out_dir: options.out_dir,
         debug_conditionals: options.debug_conditionals,
         tab_size: options.tab_size,
@@ -3140,6 +3151,7 @@ pub struct PreparedAssemblySession {
     dependency_files: Vec<PathBuf>,
     module_macro_names:
         std::collections::HashMap<String, std::collections::HashMap<String, SymbolVisibility>>,
+    module_parameters: ::types::asm_value::ModuleParameters,
 }
 
 #[derive(Clone)]
@@ -3167,6 +3179,7 @@ pub struct PreparedAssembly<'a> {
     dependency_files: Vec<PathBuf>,
     module_macro_names:
         std::collections::HashMap<String, std::collections::HashMap<String, SymbolVisibility>>,
+    module_parameters: ::types::asm_value::ModuleParameters,
 }
 
 impl<'a> Assembler<'a> {
@@ -3257,6 +3270,7 @@ impl<'a> Assembler<'a> {
             source_map: prepared.source_map,
             dependency_files: prepared.dependency_files,
             module_macro_names: prepared.module_macro_names,
+            module_parameters: prepared.module_parameters,
         })
     }
 
@@ -3352,6 +3366,7 @@ impl AssemblerSession {
             source_map: prepared.source_map,
             dependency_files: prepared.dependency_files,
             module_macro_names: prepared.module_macro_names,
+            module_parameters: prepared.module_parameters,
         })
     }
 
@@ -3429,6 +3444,7 @@ impl<'a> PreparedAssembly<'a> {
                 source_map: &self.source_map,
                 dependency_files: &self.dependency_files,
                 module_macro_names: &self.module_macro_names,
+                module_parameters: &self.module_parameters,
             },
             self.config.clone().into(),
         )
@@ -3494,6 +3510,7 @@ impl PreparedAssemblySession {
                 source_map: &self.source_map,
                 dependency_files: &self.dependency_files,
                 module_macro_names: &self.module_macro_names,
+                module_parameters: &self.module_parameters,
             },
             borrowed,
         )
@@ -3890,6 +3907,51 @@ mod tests {
         assert!(listing.contains(".byte $00"), "listing:\n{listing}");
         let hex = expect_text(&output_sink, "/virtual/main.hex");
         assert!(hex.contains(":0100000000FF"));
+    }
+
+    #[test]
+    fn public_prepared_apis_reuse_typed_configuration_snapshots() {
+        let source_provider = io::MemorySourceProvider::new().with_file(
+            "/virtual/main.asm",
+            concat!(
+                ".module dep\n.cpu 6502\n",
+                "made=TYPE{x:3}\n.pub\nresult=made.x+VALUE.x\n.endmodule\n",
+                ".module main\n.cpu 6502\nPoint .struct\nx .byte ?\n.endstruct\n",
+                "value .var Point{x:1}\n",
+                ".use dep as imported with (TYPE=Point, VALUE=value)\n",
+                "value .set Point{x:9}\n.byte imported.result,value.x\n.endmodule\n"
+            ),
+        );
+        let output_sink = io::MemoryOutputSink::new();
+        let bin_specs = vec![asm::BinOutputSpec {
+            name: Some("/virtual/result.bin".into()),
+            range: None,
+        }];
+        let borrowed = Assembler::builder(Path::new("/virtual/main.asm"))
+            .source_provider(&source_provider)
+            .output_sink(&output_sink)
+            .bin_specs(&bin_specs)
+            .default_outputs(false)
+            .build()
+            .prepare()
+            .expect("borrowed typed preparation");
+        for _ in 0..2 {
+            let report = borrowed.assemble().expect("reuse borrowed typed state");
+            assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
+            assert_eq!(output_sink.bytes("/virtual/result.bin"), Some(vec![4, 9]));
+        }
+        let owned = AssemblerSession::builder("/virtual/main.asm")
+            .source_provider(source_provider)
+            .output_sink(output_sink.clone())
+            .bin_specs(bin_specs)
+            .default_outputs(false)
+            .prepare()
+            .expect("owned typed preparation");
+        for _ in 0..2 {
+            let report = owned.assemble().expect("reuse owned typed state");
+            assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
+            assert_eq!(output_sink.bytes("/virtual/result.bin"), Some(vec![4, 9]));
+        }
     }
 
     #[test]

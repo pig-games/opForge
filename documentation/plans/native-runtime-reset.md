@@ -1133,6 +1133,59 @@ slowdown. The newly supported feature cases have no successful native baseline
 for a speed comparison. Frozen images, logs, hashes and reproduction settings
 remain outside `target` in `/tmp/opforge-typed-list-measurements.json`.
 
+### Struct configuration investigation
+
+Next candidate: pass struct types and instances through `.use … with (…)`,
+construct from incoming types, forward snapshots, and compare complete values on
+repeated imports. The starting reference is `20cf264e`; use identical source and
+live Rust oracles for both target packages. Do not add first-class string symbols,
+a separate struct grammar, or a source-text fallback to native execution.
+
+The focused investigation found a Rust prerequisite, rather than a native-only
+gap:
+
+- `source_graph::collect_configured_uses` records earlier assignments but skips
+  struct definitions. Types, literals and saved instances therefore fail at the
+  `.use` site before dependency execution.
+- Dependency configuration is currently turned into assignment text by
+  `parameter_value_text`. Its struct arms refer to the caller's type name;
+  dependencies assemble before that declaration, and a bare name cannot carry
+  schema identity and geometry across scopes.
+
+`native_struct_parameters.rs` keeps the intended positive and nominal/value
+conflict cases in an explicitly ignored known-gap test. Running that test is a
+deliberate failing probe, not a qualification command. Nonignored controls cover
+the existing scalar/list/range behavior and source-site availability restrictions.
+The native matrix has CPU, case and frozen-image selectors for bounded runs;
+it requires a matching live Rust oracle before each fresh guest comparison.
+
+Approved next repair: collect source-site schemas
+through ordinary shared struct processing, then carry captured `AsmValue`s as
+module configuration metadata through preparation and assembly. Bind them at
+module entry using the same declaration logic as ordinary read-only assignment,
+on every pass and relayout replay. Preserve qualified nominal identity, private
+visibility, source-site snapshots, complete-value conflict checks and symbol-table
+bounds. A raw `set_value_symbol` call is insufficient because it bypasses those
+declaration responsibilities. Do not emit duplicate synthetic struct declarations.
+
+Success requires the four positive configuration scenarios and true struct
+conflicts to pass in Rust, followed by identical-source native comparisons on
+68020 and 6502. Keep forward, inactive/local and assembly-time inputs unavailable.
+Then measure the unchanged scalar control and image/static-allocation changes
+separately. No struct-parameter implementation or new full self-host result is
+claimed by this investigation.
+
+The existing compound configuration control passes its seven-byte live Rust
+oracle in fresh native runs with both packages: 2.288 s (68020 target) and 1.513 s
+(6502 target), host-observed guest START/DONE on `68020-10m`. These are different
+target workloads, not an optimization comparison. The nonignored host controls
+pass for both CPUs; the intended struct matrix reproduces the Rust failures.
+The isolated unchanged scalar baseline is 36.486 s. The frozen dual-package
+image remains 639,736 bytes with 659,100 bytes linked static reservation;
+there are no production changes or performance gains in this investigation.
+Logs and frozen-image identity are retained outside `target` in
+`/tmp/opforge-struct-parameters-investigation.json`.
+
 ### Struct literal construction checkpoint
 
 Hypothesis: retain numeric struct schemas and execute the shared EXVM struct-literal

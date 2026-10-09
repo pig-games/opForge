@@ -7991,6 +7991,8 @@ mod native_scoped_layouts;
 mod native_scoped_loops;
 #[path = "tests/native_struct_literal_values.rs"]
 mod native_struct_literal_values;
+#[path = "tests/native_struct_parameters.rs"]
+mod native_struct_parameters;
 #[path = "tests/native_struct_vm.rs"]
 mod native_struct_vm;
 #[path = "tests/native_ternary_values.rs"]

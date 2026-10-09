@@ -21,8 +21,9 @@ and configuration snapshots. The subsequent typed-list, ternary and
 shared compound expression execution; these also have focused proof only.
 The [typed configuration repairs](#typed-struct-configuration-native-checkpoint)
 preserve schemas and snapshots across `.use` in Rust and the focused native subset.
-Top-level forward expression conditions with mutable branch updates remain a
-native gap.
+The [forward-branch checkpoint](#forward-opening-guards-and-mutable-effects)
+retains unavailable opening guards for numeric replay and selected mutable effects.
+Preparation-only effects inside retained envelopes remain restricted.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -1137,6 +1138,67 @@ slowdown. The newly supported feature cases have no successful native baseline
 for a speed comparison. Frozen images, logs, hashes and reproduction settings
 remain outside `target` in `/tmp/opforge-typed-list-measurements.json`.
 
+### Forward opening guards and mutable effects
+
+Baseline: `aa30b167`. Unavailable top-level opening `.if` expressions retain
+existing numeric branch envelopes. Shared EXVM/PRVM replay selects their effects;
+no source-text executor, new VM contract, or CPU-specific path is introduced.
+Mutable `.var`/`.set` records and punctuation updates execute in selected branches.
+Deferred missing references remain optional until used by an active expression;
+an ordinary reference outside the envelope still makes the identity required.
+Read-only values keep their dependency owner and snapshots, even if an inactive
+branch attempts replacement. Active replacement must still reject.
+
+Fresh release comparisons with both the 68020 and 6502 packages match live Rust
+output for 13 scenarios in one combined input: true/false scalar guards, nested
+and short-circuited alternatives, list/range/struct replacement and saved values,
+branch-local mutable declarations, inactive invalid expressions, inactive read-only
+writes, and an expanded macro with a qualified update target. Unqualified updates
+from a root macro retain their existing separate gap. Known preparation-selected
+branches and ordinary-loop declaration/update policies retain their prior behavior.
+Immutable declarations, schema/scope changes and other preparation-only effects
+inside a retained top-level branch remain outside this slice. An unavailable
+`.elseif` following a preparation-selected opening guard also remains unsupported;
+this checkpoint retains the envelope only when its opening expression is unavailable.
+
+Rust's two declaration paths now reject changing immutable ownership to mutable
+on later passes, matching their first-pass policy. Native dependency inventory
+preserves the original read-only owner until selected runtime execution validates
+a replacement. Diagnostics no longer display a stale preparation step for an
+assembly failure without a source location. Existing gated branch counters were
+used during localization; temporary export probes were removed.
+
+The expanded nine-scenario struct configuration matrix also matches live Rust
+with both packages, including the formerly failing saved-struct/forward-guard
+case. Six selected 68020 negative cases complete with fresh exit 20 and a diagnostic:
+active missing values, unresolved guards, scalar and struct read-only replacements,
+unbalanced branches, and a required reference outside an inactive branch. One
+scalar rejection attempt stalled before guest START; its successful fresh retry
+supplies the proof. Negative checks do not qualify Rust/native diagnostic wording.
+
+Isolated unchanged scalar control, FS-UAE `68020-10m`, dual-package release images
+with telemetry disabled, 200-byte source and exact matching 7,168-byte output:
+
+| Measurement | Before | After | Change |
+|---|---:|---:|---:|
+| Host-observed guest START/DONE | 36.268 s | 36.260 s | -0.009 s (-0.02%) |
+| Release image | 641,040 bytes | 641,172 bytes | +132 bytes (+0.02%) |
+| Linked static reservation | 660,344 bytes | 660,472 bytes | +128 bytes (+0.02%) |
+
+This single pair shows no meaningful timing change; it does not measure the cost
+of newly accepted retained branches. Frozen images, hashes, logs and reproduction
+settings are outside `target` in `/tmp/opforge-forward-branches-measurements.json`.
+The control also rechecks 1,024 iterations of the existing scoped conditional path.
+
+Rust forward/configuration/loop oracles, assignment checks and all 88 engine tests
+pass. Formatting, workspace library Clippy, workflow and native proof guards pass.
+Test-target Clippy reports 23 findings in existing code, outside the new branch
+tests. The changed native area retains two existing autofixable redundant-`tst`
+findings. Broad workspace qualification was not repeated.
+
+This is focused language coverage. No full self-host, physical A6000 timing,
+peak-memory or 2 MiB qualification is claimed for this checkpoint.
+
 ### Typed struct configuration: native checkpoint
 
 Baseline: `f5fbc4a0`. Native configuration now captures available module-scope
@@ -1181,15 +1243,13 @@ may merit later profiling; no speedup is claimed. Frozen images, hashes and
 reproduction settings remain outside `target` in
 `/tmp/opforge-native-struct-configuration-measurements.json`.
 
-The retained `readonly-uncertain-snapshot` regression still fails natively at
-its top-level forward `.if later`, before its `.use`. Supporting that branch and
-its mutable update requires a separate shared-language repair. The full native
-parameter test therefore retains this known failing case; the successful matrix
-is explicitly limited to the eight scenarios above. Select
-`OPFORGE_STRUCT_PARAMETER_FILTER=combined-positive-matrix,compound-control`
+The forward-branch checkpoint above supersedes the previous failure of
+`readonly-uncertain-snapshot`. It is now part of the ordinary positive matrix,
+which contains nine scenarios. Select
+`OPFORGE_STRUCT_PARAMETER_FILTER=combined-positive-matrix`
 with `OPFORGE_STRUCT_PARAMETER_CPUS=68020,6502` and run
 `cargo test -p asm native_struct_parameters_fs_uae -- --ignored --nocapture --test-threads=1`
-under the configured FS-UAE environment to repeat that qualified subset.
+under the configured FS-UAE environment to repeat the expanded matrix.
 Runtime repetition writes also remain outside complete native configuration parity.
 There is no new full self-host, hardware timing, peak-memory or 2 MiB qualification
 from this slice.

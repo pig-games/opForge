@@ -412,8 +412,11 @@ checks on both packages. Native configuration captures available schemas through
 shared struct lowering. Types and instances cross independent offset arenas;
 nominal and field identities are rebound before semantic replay. Source-site
 member operands use the same numeric occurrence plans as ordinary expressions,
-with visibility checked before publication. Top-level forward expression
-conditions with mutable branch updates remain a separate native preparation gap.
+with visibility checked before publication. Top-level forward opening expression
+guards now retain numeric branch envelopes for shared runtime replay. Mutable
+replacements and updates execute only in selected branches; read-only dependency
+ownership survives an inactive attempted replacement. Preparation-only effects
+and the existing ordinary-loop restrictions remain unchanged.
 Direct wide literal transport has separate focused qualification below. These
 focused cases do not establish full Rust/native parity or a new full self-host
 result. See the [native configuration checkpoint](native-runtime-reset.md#typed-struct-configuration-native-checkpoint).
@@ -486,7 +489,7 @@ These statements describe the implemented subset. They do not imply complete ass
   native/Rust comparison.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
-- `.use ... with (...)` Rust preparation supports known source-site scalar, flat-list, range, struct type and struct-instance values. Typed snapshots preserve schema identity across dependency ordering. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Native struct configuration has focused type/instance, member, snapshot and forwarding proof; top-level forward conditions with mutable updates remain unsupported. These cases do not establish full module, parameter or Hunk-expression parity. The signed scalar iterable checkpoint below covers negative/wide elements separately.
+- `.use ... with (...)` Rust preparation supports known source-site scalar, flat-list, range, struct type and struct-instance values. Typed snapshots preserve schema identity across dependency ordering. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Native struct configuration has focused type/instance, member, snapshot and forwarding proof; top-level forward opening guards and selected mutable updates now have focused numeric replay coverage. These cases do not establish full module, parameter or Hunk-expression parity. The signed scalar iterable checkpoint below covers negative/wide elements separately.
 
 For instruction and address selection, required tuple/register classes and
 package predicates remain barriers: native may skip a higher-priority recipe

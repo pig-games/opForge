@@ -22,14 +22,6 @@ fn positive_cases(cpu: &str) -> Vec<Case> {
         ("parameter-dependent-schema", parameter_schema_source(cpu), &[1,4,7]),
         ("inactive-schema-alternative", source(cpu, "Alias=TYPE\np=Alias{x:3,y:4}\n.pub\nresult=TYPE.y+p.x+p.y\n", ".if 0\nUnused .struct\nbad .res missing\n.endstruct\n.else\n.use dep as imported with (TYPE=Point)\n.endif\n.byte imported.result\n"), &[8]),
         ("register-field-configuration", source(cpu, ".pub\nresult=VALUE.a+VALUE.d0+VALUE.sp+TYPE.d0\n", "Registers .struct\na .byte ?\nd0 .byte ?\nsp .byte ?\n.endstruct\n.use dep as imported with (TYPE=Registers, VALUE=Registers{sp:12,d0:2,a:8})\n.byte imported.result\n"), &[23]),
-    ]
-}
-
-// Retain a selectable native failure for the separate shared-language gap:
-// top-level forward conditions with mutable updates cannot yet be deferred.
-fn forward_conditional_cases(cpu: &str) -> Vec<Case> {
-    let instance = ".pub\nresult=VALUE.x+VALUE.y\n";
-    vec![
         ("readonly-uncertain-snapshot", source(cpu, instance, "p .var Point{x:2,y:4}\nsaved=p\n.if later\np .set Point{x:8,y:9}\n.endif\n.use dep as imported with (VALUE=saved)\nlater=1\n.byte imported.result,p.x\n"), &[6,8]),
     ]
 }
@@ -238,10 +230,7 @@ fn native_struct_parameters_struct_rust_oracles() {
         let entry = if cpu == "68020" { [0, 3] } else { [3, 0] };
         expected[6..8].copy_from_slice(&entry);
         assert_eq!(oracle(&dir.0, &input).unwrap(), expected, "{cpu}/matrix");
-        for (name, input, expected) in positive_cases(cpu)
-            .into_iter()
-            .chain(forward_conditional_cases(cpu))
-        {
+        for (name, input, expected) in positive_cases(cpu) {
             let actual = oracle(&dir.0, &input);
             if actual.as_deref() != Ok(expected) {
                 failures.push(format!(
@@ -294,7 +283,6 @@ fn native_struct_parameters_fs_uae() {
         assert!(matches!(cpu, "68020" | "6502"));
         let cases = positive_cases(cpu)
             .into_iter()
-            .chain(forward_conditional_cases(cpu))
             .map(|(name, input, _)| (name, input, None))
             .chain(std::iter::once((
                 "combined-positive-matrix",

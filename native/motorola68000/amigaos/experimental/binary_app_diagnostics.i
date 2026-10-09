@@ -55,6 +55,9 @@ writeLayoutFailure
 afterLayout
 	tst.l SourceOrdinal
 	bne.w sourcePath
+	; Preparation state is stale after the assembly owner starts.
+	tst.l InAssembly
+	bne.w done
 	tst.w PrepStep
 	beq.w done
 	moveq #0, d0

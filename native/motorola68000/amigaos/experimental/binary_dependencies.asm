@@ -531,7 +531,10 @@ enclosingDeclaration
 	cmpi.b #graph.MUTABLE, d7
 	bne.w bad
 	cmpi.b #graph.MUTABLE, 0(a5, d4.l)
-	bne.w bad
+	; A retained branch may replace a readonly identity. Preserve its original
+	; dependency ownership; selected runtime mutable execution rejects the write.
+	; Still validate the replacement's numeric expression envelope below.
+	bne.w declarationKind
 firstDeclaration
 	move.b d7, 0(a5, d4.l)
 	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a3)

@@ -7974,6 +7974,8 @@ mod compact_cli_metadata;
 
 #[path = "tests/native_data_narrowing.rs"]
 mod native_data_narrowing;
+#[path = "tests/native_forward_branches.rs"]
+mod native_forward_branches;
 #[cfg(test)]
 #[path = "tests/native_guard_reuse.rs"]
 mod native_guard_reuse;

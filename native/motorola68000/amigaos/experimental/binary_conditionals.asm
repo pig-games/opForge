@@ -1,6 +1,6 @@
-; Preparation-only conditional selection over numeric writer records.
-; Filtered lines become empty records before binding and expression lowering.
-; @opforge-owner: experimental.amigaos.binary_conditionals
+; Conditional preparation selection over numeric writer records. Unavailable
+; opening guards retain branch envelopes for shared numeric runtime replay;
+; selected preparation controls become empty records before expression lowering.
 	.module experimental.amigaos.binary_conditionals
 	.cpu 68020
 	.use experimental.amigaos.binary_scope_layout as layout
@@ -355,7 +355,16 @@ ifExpression
 	bra.w ifValue
 evaluateIf
 	bsr.w evaluateCondition
+	beq.w ifValue
+	; An unavailable opening guard cannot select preparation effects. Retain
+	; its numeric envelope for the shared runtime expression/branch replay.
+	; Static discovery keeps its separate uncertainty policy above.
+	tst.w State.Static(a4)
 	bne.w bad
+	movea.l layout.State.Package(a6), a1
+	move.l a1, d0
+	beq.w bad
+	bra.w deferIf
 ifValue
 	tst.l d1
 	beq.w ifStored

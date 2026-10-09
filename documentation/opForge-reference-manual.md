@@ -397,6 +397,8 @@ Compound assignment operators:
 ```
 
 `.const` and `.var` mirror `=` and `:=` semantics; `.set` is an alias for `.var`.
+A declared symbol cannot switch between read-only and mutable ownership, including
+when a conditional declaration is first reached on a later assembly pass.
 Whitespace before `:=` or `:?=` is optional: `n:=1` is a mutable assignment,
 not a label followed by immutable `=`. An ordinary label colon remains supported,
 for example `entry: .byte 1`.
@@ -866,9 +868,11 @@ Notes:
   repeated equal imports. Native struct configuration now captures available
   schemas through shared struct handling and transports types and instances
   through numeric parameter arenas. Focused coverage includes aliases, members,
-  forwarding, snapshots and retained blocks. Top-level forward `.if` conditions
-  with mutable branch updates remain unsupported in native; this also limits
-  configuration cases containing those branches.
+  forwarding, snapshots and retained blocks. Native now retains top-level forward
+  `.if` guards for shared numeric replay, including selected mutable replacements
+  and updates. Earlier read-only snapshots remain independent. Preparation-only
+  declarations and scope changes inside such retained branches remain restricted;
+  values potentially changed by an unavailable guard cannot supply configuration.
   Native iterable `.for` has focused coverage, including imported-name shadowing,
   qualified-reference preservation and nested restoration on both packages.
   Wide numeric literal packing remains limited. These focused checks do not

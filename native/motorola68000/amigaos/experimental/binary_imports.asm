@@ -17,6 +17,7 @@
 	.use experimental.amigaos.binary_struct_values as structs
 	.use exprvm.amigaos.runtime as runtime
 	.use exprvm.amigaos.assignment as assignment
+	.use prvm.amigaos.packed_branch as branches
 	.pub
 Item	.struct
 Target	.word ?
@@ -277,9 +278,20 @@ scalarValue
 	bhs.w scalarMetadataInvalid
 	mulu.w #records.ENTRY_BYTES, d1
 	movea.l layout.ENTRIES_POINTER(a6), a0
+	tst.w layout.State.Deferred(a6)
+	beq.w markMutable
+	; A deferred readonly replacement is retained solely for runtime rejection
+	; if selected. It cannot invalidate or acquire mutable preparation ownership.
+	move.w records.Entry.Flags(a0, d1.l), d2
+	andi.w #records.MUTABLE, d2
+	beq.w deferredReadonly
+markMutable
 	ori.w #records.MUTABLE, records.Entry.Flags(a0, d1.l)
 	movea.l (sp)+, a0
 	bra.w scalarMetadataReady
+deferredReadonly
+	movea.l (sp)+, a0
+	bra.w constantOk
 scalarMetadataInvalid
 	movea.l (sp)+, a0
 	bra.w constantOk
@@ -288,6 +300,14 @@ scalarMetadataReady
 	adda.l d0, a1
 	moveq #0, d7
 	move.w 5(a0), d7
+	; A retained mutable assignment owns selection at runtime. Its replacement
+	; may change this cell, so later preparation snapshots cannot assume its RHS.
+	; Other declaration kinds retain their existing scoped preparation policy.
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, branches.Record.Qualifier(a0)
+	bne.w scalarExpression
+	tst.w layout.State.Deferred(a6)
+	bne.w constantUnknown
+scalarExpression
 	lea 9(a0), a0
 	bsr.w evaluateValue
 	bne.w constantUnknown

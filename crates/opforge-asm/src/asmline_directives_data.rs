@@ -284,7 +284,7 @@ impl<'a> AsmLine<'a> {
             )
         } else {
             match self.symbols.entry_mut(&full_name) {
-                Some(entry) if entry.rw && !is_rw => types::symbol::SymbolTableResult::Duplicate,
+                Some(entry) if entry.rw != is_rw => types::symbol::SymbolTableResult::Duplicate,
                 Some(entry) => {
                     entry.val = scalar_val;
                     entry.updated = true;

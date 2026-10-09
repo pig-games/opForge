@@ -1150,7 +1150,8 @@ done
 	.bend  ; abandonConfigurationStruct
 
 ; A0=writer record,A1=scope. Reject preparation effects inside deferred
-; branch envelopes. Ordinary numeric data/instructions/loop controls remain.
+; branch envelopes. Mutable assignment/update records replay in source order;
+; immutable declarations and scope changes still belong to preparation.
 ; Scope directive identities use the existing shared scope policy.
 ; D0/CCR=status; other registers preserved. Does not mutate source or scope.
 deferredLine	.block
@@ -1170,6 +1171,17 @@ deferredLine	.block
 	jsr iterators.scoped
 	movea.l (sp)+, a0
 	beq.w good
+	; Ordinary loops keep their existing declaration/update restrictions.
+	; The extension here belongs to a top-level retained branch envelope.
+	tst.w layout.State.LoopDepth(a6)
+	bne.w declarationPolicy
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, branch_parser.Record.Qualifier(a0)
+	beq.w good
+	cmpi.b #source.TOKEN_UPDATE_FIRST, branch_parser.Record.Qualifier(a0)
+	blo.w declarationPolicy
+	cmpi.b #source.TOKEN_UPDATE_LAST, branch_parser.Record.Qualifier(a0)
+	bls.w good
+declarationPolicy
 	btst #INDENT_FLAG_BIT, branch_parser.Record.Flags(a0)
 	beq.w bad
 	cmpi.b #loop_abi.PRVM_TOKEN_KIND_COLON, branch_parser.Record.Qualifier(a0)
@@ -2023,6 +2035,10 @@ sourceReference
 	adda.l d0, a3
 	tst.w layout.State.LoopDepth(a6)
 	bne.w optionalReference
+	; Retained branches validate availability only for selected numeric records.
+	; A later ordinary use still upgrades this identity to a required reference.
+	tst.w layout.State.Deferred(a6)
+	bne.w optionalReference
 	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 8(a5)
 	beq.w optionalReference
 	ori.w #REFERENCED, records.Entry.Flags(a3)
@@ -2799,8 +2815,13 @@ declare	.block
 	beq.w conditionalCandidate
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
 	bne.w bad
+	; Retained branches validate replacement ownership only when selected.
+	; Keep readonly metadata intact; runtime mutable execution rejects it.
+	tst.w layout.State.Deferred(a6)
+	bne.w deferredReplacement
 	btst #records.MUTABLE_BIT-8, records.Entry.Flags(a3)
 	beq.w bad
+deferredReplacement
 	clr.b 3(a0)
 	moveq #0, d0
 	rts

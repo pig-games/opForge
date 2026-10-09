@@ -107,9 +107,9 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
         || declaration_offset + declaration_bytes > number(bytes, 72, 4)?
         || number(bytes, 188, 2)? != package::PARSER_VM_MACRO_VERSION as usize
         || number(bytes, 190, 2)? != 0
-        || declaration.len() != 23
+        || declaration.len() != package::packed_declaration_program([0, 1, 2]).len()
         || declaration[..2] != [0x98, 3]
-        || declaration[11..] != [2, 2, 2, 5, 34, 3, 3, 5, 9, 34, 0x83, 0]
+        || declaration[11..] != package::packed_declaration_program([0, 1, 2])[11..]
         || declaration[2..11].chunks_exact(3).any(|row| {
             !(1..=2).contains(&row[2])
                 || u16::from_be_bytes(row[..2].try_into().unwrap()) as usize

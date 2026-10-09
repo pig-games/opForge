@@ -15,6 +15,7 @@ captureFileBegin .block
 	move.l memory.Block.Pointer(a1), configuration.Frame.Graph(a0)
 	move.l #frontend.bindCapture, configuration.Frame.BindCapture(a0)
 	move.l #frontend.declarationRole, configuration.Frame.DeclarationRole(a0)
+	move.l #frontend.updateRole, configuration.Frame.UpdateRole(a0)
 	move.l #frontend.loopRole, configuration.Frame.LoopRole(a0)
 	lea Front, a1
 	move.l frontend.Frame.Output(a1), configuration.Frame.Output(a0)

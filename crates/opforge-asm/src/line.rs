@@ -42,9 +42,7 @@ use families::m68k::FamilyOperand as M68KFamilyOperand;
 use families::mos6502::module::FAMILY_ID as MOS6502_FAMILY_ID;
 use opcore::conditional::{ConditionalBlockKind, ConditionalSubType};
 use opcore::conditional::{ConditionalContext, ConditionalStack};
-use opcore::expression::{
-    apply_assignment_op, expr_span, parse_number_text, AstEvalError, AstEvalErrorKind,
-};
+use opcore::expression::{expr_span, parse_number_text, AstEvalError, AstEvalErrorKind};
 use opcore::imports::module_import_from_parser;
 use opcore::parser as asm_parser;
 use opcore::parser::{AssignOp, Expr, Label, LineAst, ParseError};

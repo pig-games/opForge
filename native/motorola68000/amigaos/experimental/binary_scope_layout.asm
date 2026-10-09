@@ -32,9 +32,10 @@ LoopBindings	.res iterators.SLOTS_BYTES
 LoopParents	.res iterators.LIMIT*2
 PendingRepeat	.word ?
 Deferred	.word ?  ; shared conditional preparation depth for this record
+EarlierReference	.long ?  ; preparation-only lexical snapshot binder
 .endstruct
 ITERATOR_STATE = State.LoopDepth
-ENTRIES = State.Deferred+2
+ENTRIES = State.EarlierReference+4
 ENTRIES_POINTER = ENTRIES+memory.Block.Pointer
 BUCKETS = ENTRIES+memory.Block.Used+4
 ARENA = BUCKETS+256*2

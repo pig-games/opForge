@@ -77,9 +77,18 @@ clear
 	beq.w roleReady
 	cmpi.w #abi.PRVM_DECLARATION_MUTABLE, Frame.Result+abi.PRVM_DECLARATION_ROLE(a3)
 	beq.w mutableRole
+	cmpi.w #abi.PRVM_DECLARATION_UPDATE, Frame.Result+abi.PRVM_DECLARATION_ROLE(a3)
+	beq.w updateRole
 	cmpi.w #abi.PRVM_DECLARATION_CONDITIONAL, Frame.Result+abi.PRVM_DECLARATION_ROLE(a3)
 	bne.w bad
 	moveq #source.TOKEN_CONDITIONAL_DECLARATION, d2
+	bra.w roleReady
+updateRole
+	moveq #0, d2
+	move.w Frame.Result+abi.PRVM_DECLARATION_UPDATE_ACTION(a3), d2
+	cmpi.w #source.UPDATE_ACTION_MAX, d2
+	bhi.w bad
+	addi.w #source.TOKEN_UPDATE_FIRST, d2
 	bra.w roleReady
 mutableRole
 	moveq #source.TOKEN_MUTABLE_DECLARATION, d2

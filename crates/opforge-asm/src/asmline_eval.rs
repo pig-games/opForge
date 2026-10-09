@@ -38,25 +38,7 @@ impl<'a> AsmLine<'a> {
         right: i64,
         span: Span,
     ) -> Result<i64, AstEvalError> {
-        // Bit operations and packed concat/repeat retain their established u32 domain.
-        let binary = match op {
-            AssignOp::Add => Some(BinaryOp::Add),
-            AssignOp::Sub => Some(BinaryOp::Subtract),
-            AssignOp::Mul => Some(BinaryOp::Multiply),
-            AssignOp::Div => Some(BinaryOp::Divide),
-            AssignOp::Mod => Some(BinaryOp::Mod),
-            AssignOp::Pow => Some(BinaryOp::Power),
-            AssignOp::Min => return Ok(left.min(right)),
-            AssignOp::Max => return Ok(left.max(right)),
-            AssignOp::Member | AssignOp::Const | AssignOp::Var | AssignOp::VarIfUndef => {
-                return Ok(right)
-            }
-            _ => None,
-        };
-        if let Some(binary) = binary {
-            return self.apply_signed_binary_op(binary, left, right, span);
-        }
-        apply_assignment_op(op, left as u32, right as u32, span).map(i64::from)
+        opcore::expression::apply_scalar_assignment_op(op, left, right, span)
     }
 
     /// Evaluate a value with undefined-symbol errors instead of pass-one

@@ -809,9 +809,9 @@ Notes:
 - `with (NAME=expression, ...)` evaluates each value in the importing module at
   the `.use` site. Numeric literals, earlier module-scope values and incoming
   parameters are available; forward or assembly-time values are errors. Mutable
-  values are snapshotted at that site, so later replacements do not alter the
-  imported value. Each parameter becomes a private constant in the imported
-  module. Repeated imports of one module must agree on their complete values.
+  values include preceding compound updates such as `+=` and are snapshotted
+  at that site, so later replacements do not alter the imported value. Each
+  parameter becomes a private constant in the imported module. Repeated imports of one module must agree on their complete values.
   Strings are not symbol values. Rust supports scalar, flat-list and range values
   at this graph boundary; other compound forms remain outside this slice.
   The experimental compact native path has focused matching coverage for these

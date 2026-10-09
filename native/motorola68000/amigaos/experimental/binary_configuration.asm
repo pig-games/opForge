@@ -24,6 +24,7 @@ Graph	.long ?
 BindCapture	.long ?  ; frontend.bindCapture ABI; the selected writer copy only
 LoopRole	.long ?  ; read-only package loop-head selection callback
 DeclarationRole	.long ?  ; read-only package declaration-head selection callback
+UpdateRole	.long ?  ; shared numeric compound-update selection callback
 Output	.long ?  ; session's caller-owned writer output
 Capacity	.long ?  ; writer output capacity, including shared label normalization
 Cursor	.long ?  ; local capture offset, independent of the graph's logical offset
@@ -460,6 +461,15 @@ classify	.block
 	lea capture.HEADER_BYTES(a4), a2
 	cmpi.w #1, source.Token.Kind(a2)
 	bhi.w directive
+	movea.l Frame.UpdateRole(a6), a3
+	move.l a3, d2
+	beq.w ordinaryAssignment
+	movea.l Frame.Session(a6), a0
+	movea.l a4, a1
+	jsr (a3)
+	tst.l d0
+	bne.w assignmentRecord
+ordinaryAssignment
 	cmpi.w #34, 20+source.Token.Kind(a2)
 	beq.w assignmentRecord
 	adda.w #20, a2

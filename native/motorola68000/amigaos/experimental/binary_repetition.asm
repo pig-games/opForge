@@ -529,7 +529,7 @@ ordinary
 	beq.w invalid
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a5)
 	blo.w ordinaryReady
-	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 8(a5)
+	cmpi.b #source.TOKEN_UPDATE_LAST, 8(a5)
 	bls.w invalid
 ordinaryReady
 	movea.l a5, a0

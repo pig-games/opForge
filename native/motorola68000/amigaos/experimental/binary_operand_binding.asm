@@ -92,6 +92,10 @@ declaration
 	beq.w done
 	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
 	beq.w done
+	cmpi.b #source.TOKEN_UPDATE_FIRST, 4(a0)
+	blo.w head
+	cmpi.b #source.TOKEN_UPDATE_LAST, 4(a0)
+	bls.w done
 head
 	move.l a1, d0
 	sub.l a0, d0

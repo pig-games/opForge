@@ -207,6 +207,41 @@ fn eval_static_condition(expr: &Expr, values: &StaticConditionalEvalContext) -> 
 }
 
 fn record_compile_time_value(ast: &LineAst, values: &mut StaticConditionalEvalContext) {
+    if let LineAst::Assignment(assignment) = ast {
+        if !matches!(
+            assignment.op,
+            opcore::parser::AssignOp::Const
+                | opcore::parser::AssignOp::Var
+                | opcore::parser::AssignOp::VarIfUndef
+        ) {
+            let key = assignment.label.name.to_ascii_uppercase();
+            // Preserve constants; ordinary assembly reports attempted readonly updates.
+            if !values.mutable.contains(&key) {
+                return;
+            }
+            let updated = values
+                .values
+                .get(&key)
+                .and_then(AsmValue::as_scalar)
+                .and_then(|left| {
+                    let right = values.evaluate_scalar(&assignment.expr).ok()?;
+                    opcore::expression::apply_scalar_assignment_op(
+                        assignment.op,
+                        left,
+                        right,
+                        assignment.span,
+                    )
+                    .ok()
+                });
+            if let Some(value) = updated {
+                values.values.insert(key, AsmValue::Scalar(value));
+            } else {
+                // A failed update must not leave stale input for a later .use.
+                values.values.remove(&key);
+            }
+            return;
+        }
+    }
     let (name, expr, mutable, only_if_undefined) = match ast {
         LineAst::Assignment(assignment)
             if matches!(

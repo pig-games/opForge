@@ -331,6 +331,44 @@ pub fn apply_assignment_op(
     Ok(val)
 }
 
+/// Apply scalar assignment semantics: arithmetic is signed 64-bit; bit,
+/// logical, shift and packed operations retain their established u32 domain.
+pub fn apply_scalar_assignment_op(
+    op: AssignOp,
+    left: i64,
+    right: i64,
+    span: Span,
+) -> Result<i64, AstEvalError> {
+    let binary = match op {
+        AssignOp::Add => Some(BinaryOp::Add),
+        AssignOp::Sub => Some(BinaryOp::Subtract),
+        AssignOp::Mul => Some(BinaryOp::Multiply),
+        AssignOp::Div => Some(BinaryOp::Divide),
+        AssignOp::Mod => Some(BinaryOp::Mod),
+        AssignOp::Pow => Some(BinaryOp::Power),
+        AssignOp::Min => return Ok(left.min(right)),
+        AssignOp::Max => return Ok(left.max(right)),
+        AssignOp::Member | AssignOp::Const | AssignOp::Var | AssignOp::VarIfUndef => {
+            return Ok(right);
+        }
+        _ => None,
+    };
+    if let Some(binary) = binary {
+        if matches!(binary, BinaryOp::Divide | BinaryOp::Mod) && right == 0 {
+            return Err(AstEvalError::expression("Divide by zero", span));
+        }
+        if binary == BinaryOp::Power && !(0..=63).contains(&right) {
+            return Err(AstEvalError::expression(
+                "Exponent out of range for integer power",
+                span,
+            ));
+        }
+        return crate::expr::apply_binary(binary, left, right, span)
+            .map_err(|error| AstEvalError::expression(error.message, error.span.unwrap_or(span)));
+    }
+    apply_assignment_op(op, left as u32, right as u32, span).map(i64::from)
+}
+
 /// Evaluate a unary operator.
 pub fn eval_unary_op(op: UnaryOp, inner: u32) -> u32 {
     match op {

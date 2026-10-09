@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.packed_branch as branches
+	.use prvm.amigaos.packed_declaration as declarations
 	.pub
 SUCCESS = 0
 INVALID = 1
@@ -295,24 +296,11 @@ branchPolicy
 	btst #0, d0
 	bne.w bad
 	move.l package.Header.DeclarationPlanBytes(a4), d1
-	cmpi.l #23, d1
-	bne.w bad
 	bsr.w span
 	bne.w bad
-	cmpi.b #$98, (a3)
-	bne.w bad
-	cmpi.b #3, 1(a3)
-	bne.w bad
-	; Exact latest policy: mutable and conditional operator rows.
-	cmpi.l #$02020205, 11(a3)
-	bne.w bad
-	cmpi.l #$22030305, 15(a3)
-	bne.w bad
-	cmpi.w #$0922, 19(a3)
-	bne.w bad
-	cmpi.b #$83, 21(a3)
-	bne.w bad
-	tst.b 22(a3)
+	movea.l a3, a0
+	move.l package.Header.DeclarationPlanBytes(a4), d0
+	jsr declarations.validateProgram
 	bne.w bad
 	addq.l #2, a3
 	moveq #2, d6

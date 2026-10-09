@@ -74,6 +74,11 @@ lineMode	.block
 	beq.w constant
 	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
 	beq.w constant
+	cmpi.b #source.TOKEN_UPDATE_FIRST, 4(a0)
+	blo.w prefixLabel
+	cmpi.b #source.TOKEN_UPDATE_LAST, 4(a0)
+	bls.w constant
+prefixLabel
 	cmpi.b #5, 4(a0)
 	bne.w statement
 	moveq #5, d6

@@ -1615,19 +1615,42 @@ pub const PARSER_VM_PACKED_METADATA_ENTRY: u16 = 7;
 pub const PARSER_VM_TARGET_BOOTSTRAP_ENTRY: u16 = 8;
 pub const PARSER_VM_PACKED_DECLARATION_ENTRY: u16 = 9;
 
-/// Shared scalar declaration heads and mutability; operands stay expression-owned.
-/// Row roles are 1 immutable, 2 mutable. Both mutable spellings share one role.
-/// Three directive rows are followed by mutable and conditional operator rows.
-/// Each row contains its role, token count, and numeric operator tokens. The
-/// packed service consumes this numeric policy before label-colon handling;
-/// it never evaluates the declaration value.
+/// Numeric declaration policy, including bounded compound-update token recipes.
+pub const PACKED_DECLARATION_OPERATORS: usize = 11;
+pub const PACKED_DECLARATION_RECIPES: usize = 22;
+pub const PACKED_DECLARATION_RECIPE_BYTES: usize = 5;
+pub const PACKED_DECLARATION_UPDATE_RECIPES: [[u8; 5]; 18] = [
+    [0, 2, 18, 34, 0],
+    [1, 2, 19, 34, 0],
+    [2, 2, 20, 34, 0],
+    [3, 2, 22, 34, 0],
+    [4, 2, 23, 34, 0],
+    [5, 2, 21, 34, 0],
+    [6, 2, 29, 34, 0],
+    [7, 2, 30, 34, 0],
+    [8, 2, 28, 34, 0],
+    [9, 2, 32, 34, 0],
+    [10, 2, 31, 34, 0],
+    [11, 2, 24, 34, 0],
+    [12, 2, 25, 34, 0],
+    [13, 1, 17, 0, 0],
+    [13, 3, 7, 7, 34],
+    [14, 3, 39, 9, 34],
+    [15, 3, 37, 9, 34],
+    [16, 2, 7, 34, 0],
+];
 pub fn packed_declaration_program(heads: [u16; 3]) -> Vec<u8> {
     let mut program = vec![0x98, 3];
     for (head, role) in heads.into_iter().zip([1, 2, 2]) {
         program.extend(head.to_be_bytes());
         program.push(role);
     }
-    program.extend([2, 2, 2, 5, 34, 3, 3, 5, 9, 34, 0x83, 0]);
+    program.extend([2, 2, 2, 5, 34, 3, 3, 5, 9, 34]);
+    program.push(PACKED_DECLARATION_UPDATE_RECIPES.len() as u8);
+    for row in PACKED_DECLARATION_UPDATE_RECIPES {
+        program.extend(row);
+    }
+    program.extend([0x83, 0]);
     program
 }
 

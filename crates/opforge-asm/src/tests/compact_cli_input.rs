@@ -273,7 +273,11 @@ pub(crate) fn assemble_cli_with_defines(
     config.out_dir = Some(build.output_dir.clone());
     run_with_validated_cli_with_context(&cli, &config).unwrap_or_else(|error| match error {
         cli_core::CliRunError::Assembler { error, .. } => {
-            panic!("assemble current compact CLI: {:?}", error.diagnostics())
+            panic!(
+                "assemble current compact CLI: {}; diagnostics: {:?}",
+                error.error(),
+                error.diagnostics()
+            )
         }
         cli_core::CliRunError::Workflow { error, .. } => {
             panic!("assemble current compact CLI: {error}")

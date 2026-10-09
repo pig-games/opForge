@@ -42,7 +42,7 @@ The subsequent [labeled-repetition checkpoint](native-runtime-reset.md#native-la
 adds typed iteration records and shared VM index/member evaluation. The
 [scoped-condition checkpoint](native-runtime-reset.md#scoped-condition-repetition-focused-checkpoint)
 adds anonymous and labeled `.bwhile`, fresh local scopes, nested loop composition
-and retained iteration records; compound assignment operators and mapped scoped
+and retained iteration records; identifier-spelled `x=` updates and mapped scoped
 replay remain open. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
 forward-initializer semantics, struct behavior and existing wide-literal packing
 limits also remain unresolved. Full language or CPU-family parity is not claimed.
@@ -337,17 +337,20 @@ policies and the state plan stay inside the retained RuntimeBytes prefix.
 Shared PRVM entry 9 validates the labelled
 scalar declaration envelope using the package-supplied `.const`/`.var`/`.set`
 identity-to-role table and the numeric colon/equal operator policy, returning
-operand spans plus immutable/mutable/conditional ownership. The retained program is 23 bytes;
+operand spans plus immutable/mutable/conditional/update roles. The retained program
+is 114 bytes, with 18 packed recipes for 17 punctuation update actions;
 `:=`, `.var` and `.set` share the mutable role. Operator matching precedes the
 optional label colon and consumes the complete packed record, independently of
 the two-token physical-head hint. Scalar `:?=` is under qualification and has an
-unresolved forward-initializer semantic choice; compound assignment remains open. A generic adapter lowers the record after template
+unresolved forward-initializer semantic choice. The punctuation compound updates
+are covered by the shared declaration policy described below; `x=` remains open. A generic adapter lowers the record after template
 expansion and before scope/conditional processing; configuration capture lowers
 its private writer record before import-parameter evaluation. Discovery selects
 declaration roles through package identity before that materialization; it does
 not decide declaration grammar. Scalar compilation and binding remain shared. Immutable graph evaluation
 and layout consistency remain with the assignment/dependency owners; mutable
-records (tag 43) execute at their statement positions and overwrite both signed64
+records (tag 43, or update markers 46–62) execute at their statement positions
+and overwrite both signed64
 words. Existing Defined byte states distinguish mutable ownership (3) from
 precomputed absolute immutable values (2) and resolved runtime absolute snapshots
 (4), without a new per-name allocation. Dependency
@@ -529,6 +532,12 @@ References: [portable token contract](../../crates/opforge-vm/src/portable_contr
 <a id="macro-descriptor-service-checkpoint"></a>
 
 Macro definitions and calls use package-selected PRVM services and bounded offset-only descriptor/fragment records. Generated calls re-tokenize selected argument fragments; the residual decoded-string fallback above remains. Preserve lexical hygiene, source order, visibility and the separation between macro identity and numeric value identity.
+
+Punctuation compound assignments use the shared PRVM declaration policy and
+numeric update markers. They reference existing mutable scalar identities,
+including earlier lexical ancestors; they do not declare new locals. Arithmetic
+and preparation snapshots share the ExprVM assignment service. Identifier-spelled
+`x=` remains open.
 
 ## Current implementation owners
 

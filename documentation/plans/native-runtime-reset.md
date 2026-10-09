@@ -14,6 +14,8 @@ conditional, retained-guard and iterable scoped-loop repairs have focused parity
 their full self-host has not been rerun. The subsequent
 [scoped-condition checkpoint](#scoped-condition-repetition-focused-checkpoint)
 adds anonymous and labeled `.bwhile` with focused package/native comparisons.
+The [scalar-update checkpoint](#scalar-compound-updates-current-slice) adds the
+17 punctuation compound operators, including scope and configuration snapshots.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -996,9 +998,74 @@ native porting gate. `cargo clippy -p asm --tests -- -D warnings` still reports
 confirms all reported source areas are unchanged. This focused qualification
 does not claim a clean whole-project test-target Clippy result.
 
-Compound update operators such as `+=`, negative/wide/compound iterable elements,
-mapped scoped replay and general forward-layout convergence remain separate gaps.
+At that checkpoint, compound update operators were still open; the slice below
+closes the punctuation forms. Negative/wide/compound iterable elements, mapped
+scoped replay and general forward-layout convergence remain separate gaps.
 No full corpus, full self-host or A6000 run is implied by these focused checks.
+
+### Scalar compound updates (current slice)
+
+The compact path recognizes punctuation-based updates through the shared PRVM
+packed declaration policy: `+=`, `-=`, `*=`, `/=`, `%=`, `**=`, `|=`, `^=`,
+`&=`, `||=`, `&&=`, `<<=`, `>>=`, `..=`, `<?=`, `>?=` and `.=`. A single
+normalized marker carries the numeric action; the expression remains shared
+EXVM/ExprVM work. No source spelling is needed at execution. The identifier-based
+`x=` repetition operator remains a separate tokenizer/binding task.
+
+An update refers to existing mutable scalar storage instead of declaring a new
+symbol in the current scope. Earlier lexical ancestors are selected before
+preparation snapshots, so a later local declaration cannot retroactively capture
+the update. Scoped replay retains/restores directly owned locals; updates to
+outer cells remain outer updates. Inside a block (including macro expansion),
+unqualified update targets may reach enclosing namespaces but not module/global
+storage; qualified targets such as `main.n` can select that storage. Ordinary
+macro RHS expressions retain outer lookup. Ordinary unscoped loops
+still reject symbol mutation.
+
+Signed arithmetic, minimum/maximum and replacement operate on signed64 values.
+Bitwise, logical, shift and concatenation updates follow Rust's u32 domain,
+including masked shift counts and zero-extended results. Arithmetic uses the
+shared ExprVM backend; assignment-specific concatenation and signed comparisons
+live in its assignment service. Known preparation values are refreshed through
+that same service; unknown or deferred updates invalidate the snapshot.
+
+Rust configuration scanning now uses that same scalar assignment helper, fixing
+`.use ... with (...)` receiving a stale value after a preceding compound update.
+Packed numeric literals still have a u32 extent; wide scalar values in this
+qualification are constructed through arithmetic. Direct 64-bit literals remain
+a separate tokenizer/representation gap.
+
+Focused qualification:
+
+- Live Rust oracles pass all 16 positive scenarios, their combined 57-byte output,
+  the configuration-use case and 13 rejection cases on both CPU selections.
+- Fresh final native 68020 and 6502 runs match the combined 57-byte output and
+  the configured-module output `[3]`; both reject the unqualified macro/module
+  update. Separate final 68020 probes preserve outer macro RHS lookup and reject
+  the equivalent named-block update. Eleven arithmetic/ownership/unscoped-loop
+  rejection probes passed on the preceding arithmetic candidate; the subsequent
+  repair changes update target lookup, not arithmetic.
+- Core (210), engine (82) and VM (535) subsystem tests, library Clippy,
+  Rust/native formatting and deterministic native/workflow guards pass.
+- The full assembler unit suite reports 2,208 passes, 50 failures and 562 ignored
+  tests. Four representative functional failures reproduce with identical
+  assertions on unchanged `e0d66861`; sampled legacy source assertions also read
+  unchanged files. These include existing reference/label/layout and legacy native
+  test debt. The broad suite is not green, and this slice does not qualify full
+  language parity, a new full self-host or an A6000 run.
+
+Isolated unchanged 1,024-iteration scalar control, FS-UAE `68020-10m`, release
+native image with telemetry disabled, exact live Rust output in both runs:
+
+| Measurement | Before (`e0d66861`) | After | Change |
+|---|---:|---:|---:|
+| Fresh host-observed guest START/DONE | 36.270 s | 36.237 s | -0.033 s (-0.09%) |
+| Dual-package executable bytes | 630,340 | 632,460 | +2,120 (+0.34%) |
+
+This one before/after pair shows essentially unchanged time, not a measurable
+speedup. It does not measure peak memory or qualify 2 MiB hardware. Logs, frozen
+images and the reproducible measurement summary remain outside `target` at
+`/tmp/opforge-compound-measurements.json`.
 
 ### Compound-value checkpoints
 

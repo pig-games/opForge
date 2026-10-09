@@ -14,8 +14,19 @@ STATE_BYTES = State.Stage+32
 ROLE = State.Stage+abi.PRVM_DECLARATION_ROLE
 VALUE_OFFSET = State.Stage+abi.PRVM_DECLARATION_VALUE_OFFSET
 VALUE_BYTES = State.Stage+abi.PRVM_DECLARATION_VALUE_BYTES
-; Latest policy: two operator rows, with role and bounded numeric tokens.
-MUTABLE_POLICY = $02020205
+UPDATE_ACTION = State.Stage+abi.PRVM_DECLARATION_UPDATE_ACTION
+PLAN_OPERATOR_ROWS = 11
+PLAN_RECIPE_COUNT = 21
+PLAN_RECIPES = 22
+PLAN_RECIPE_BYTES = 5
+PLAN_RECIPE_ACTION = 0
+PLAN_RECIPE_COUNT_FIELD = 1
+PLAN_RECIPE_TOKENS = 2
+PLAN_BYTES = 114
+PLAN_MUTABLE_ROLE = 12
+PLAN_MUTABLE_TOKENS = 14
+PLAN_CONDITIONAL_ROLE = 16
+PLAN_CONDITIONAL_TOKENS = 18
 
 	.section code, kind=code
 ; A0=request,D0=available bytes; standard PRVM status/count/offset/bytes.
@@ -70,48 +81,10 @@ run	.block
 	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	beq.w invalidFrame
 	movea.l d0, a5
-	cmpi.l #23, abi.PRVM_FRAME_PROGRAM_LEN(a4)
+	movea.l a5, a0
+	move.l abi.PRVM_FRAME_PROGRAM_LEN(a4), d0
+	bsr.w validateProgram
 	bne.w invalidProgram
-	cmpi.b #$98, (a5)
-	bne.w invalidProgram
-	cmpi.l #MUTABLE_POLICY, 11(a5)
-	bne.w invalidProgram
-	cmpi.l #$22030305, 15(a5)
-	bne.w invalidProgram
-	cmpi.w #$0922, 19(a5)
-	bne.w invalidProgram
-	cmpi.b #$83, 21(a5)
-	bne.w invalidProgram
-	tst.b 22(a5)
-	bne.w invalidProgram
-	cmpi.b #3, 1(a5)
-	bne.w invalidProgram
-	lea 2(a5), a0
-	moveq #2, d1
-validateRole
-	cmpi.b #1, 2(a0)
-	blo.w invalidProgram
-	cmpi.b #2, 2(a0)
-	bhi.w invalidProgram
-	lea 2(a5), a1
-	moveq #0, d2
-	move.b (a0), d2
-	lsl.w #8, d2
-	move.b 1(a0), d2
-validateUnique
-	cmpa.l a0, a1
-	beq.w nextRole
-	moveq #0, d3
-	move.b (a1), d3
-	lsl.w #8, d3
-	move.b 1(a1), d3
-	cmp.w d2, d3
-	beq.w invalidProgram
-	addq.l #3, a1
-	bra.w validateUnique
-nextRole
-	addq.l #3, a0
-	dbra d1, validateRole
 	suba.w #STATE_BYTES, sp
 	movea.l sp, a3
 	movea.l a3, a0
@@ -128,36 +101,49 @@ clear
 	move.b 1(a6), d0
 	andi.b #24, d0
 	bne.w noMatch
-	cmpi.l #10, d6
+	cmpi.l #9, d6
 	blo.w noMatch
 	cmpi.b #1, 4(a6)
 	bhi.w noMatch
 	moveq #8, d2
-	; The plan owns the numeric mutable operator, before optional label colon.
-	move.b 0(a6, d2.l), d0
-	cmp.b 14(a5), d0
+	lea 8(a6), a0
+	move.l d6, d0
+	subq.l #8, d0
+	movea.l a5, a1
+	bsr.w classifyUpdate
+	tst.l d0
+	beq.w ordinaryOperator
+	move.w d1, UPDATE_ACTION(a3)
+	move.l d2, d4
+	moveq #8, d2
+	moveq #abi.PRVM_DECLARATION_UPDATE, d0
+	bra.w matched
+ordinaryOperator
+	moveq #8, d2
+	; Ordinary declaration operators precede optional label colon handling.
+	cmpi.l #10, d6
+	blo.w directive
+	move.b 8(a6), d0
+	cmp.b PLAN_MUTABLE_TOKENS(a5), d0
 	bne.w directive
-	move.b 1(a6, d2.l), d0
-	cmp.b 15(a5), d0
+	move.b 9(a6), d0
+	cmp.b PLAN_MUTABLE_TOKENS+1(a5), d0
 	bne.w conditionalOperator
 	moveq #0, d0
-	move.b 12(a5), d0
+	move.b PLAN_MUTABLE_ROLE(a5), d0
 	moveq #2, d4
 	bra.w matched
 conditionalOperator
 	cmpi.l #11, d6
 	blo.w directive
-	move.b 8(a6), d0
-	cmp.b 18(a5), d0
-	bne.w directive
 	move.b 9(a6), d0
-	cmp.b 19(a5), d0
+	cmp.b PLAN_CONDITIONAL_TOKENS+1(a5), d0
 	bne.w directive
 	move.b 10(a6), d0
-	cmp.b 20(a5), d0
+	cmp.b PLAN_CONDITIONAL_TOKENS+2(a5), d0
 	bne.w directive
 	moveq #0, d0
-	move.b 16(a5), d0
+	move.b PLAN_CONDITIONAL_ROLE(a5), d0
 	moveq #3, d4
 	bra.w matched
 directive
@@ -254,6 +240,130 @@ done
 	tst.l d0
 	rts
 	.bend  ; run
+; A0=bounded numeric token bytes,D0=count,A1=validated current plan.
+; D0/CCR=matched1/0,D1=action,D2=consumed width; other registers kept.
+; The same package recipes select configuration records and packed updates.
+classifyUpdate	.block
+	movem.l d3-d6/a0-a3, -(sp)
+	movea.l a0, a3
+	move.l d0, d6
+	lea PLAN_RECIPES(a1), a0
+	moveq #0, d5
+	move.b PLAN_RECIPE_COUNT(a1), d5
+	subq.w #1, d5
+recipe
+	moveq #0, d2
+	move.b PLAN_RECIPE_COUNT_FIELD(a0), d2
+	cmp.l d2, d6
+	blo.w next
+	lea PLAN_RECIPE_TOKENS(a0), a1
+	movea.l a3, a2
+	move.l d2, d3
+	subq.w #1, d3
+token
+	move.b (a2)+, d0
+	cmp.b (a1)+, d0
+	bne.w next
+	dbra d3, token
+	moveq #0, d1
+	move.b PLAN_RECIPE_ACTION(a0), d1
+	moveq #1, d0
+	bra.w done
+next
+	addq.l #PLAN_RECIPE_BYTES, a0
+	dbra d5, recipe
+	moveq #0, d0
+	moveq #0, d1
+	moveq #0, d2
+done
+	movem.l (sp)+, d3-d6/a0-a3
+	tst.l d0
+	rts
+	.bend  ; classifyUpdate
+; Same bounded token/plan inputs as classifyUpdate; D0/CCR=assignment1/0.
+; All other registers preserved. Includes mutable and conditional plan rows.
+classifyAssignment	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	move.l d0, d3
+	bsr.w classifyUpdate
+	tst.l d0
+	bne.w done
+	cmpi.l #2, d3
+	blo.w done
+	move.b (a0), d1
+	cmp.b PLAN_MUTABLE_TOKENS(a1), d1
+	bne.w done
+	move.b 1(a0), d1
+	cmp.b PLAN_MUTABLE_TOKENS+1(a1), d1
+	beq.w matched
+	cmpi.l #3, d3
+	blo.w done
+	cmp.b PLAN_CONDITIONAL_TOKENS+1(a1), d1
+	bne.w done
+	move.b 2(a0), d1
+	cmp.b PLAN_CONDITIONAL_TOKENS+2(a1), d1
+	bne.w done
+matched
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; classifyAssignment
+; A0=readable program,D0=byte count. D0/CCR=status; other registers kept.
+; Validate the current numeric declaration policy without executing source.
+validateProgram	.block
+	movem.l d1-d3/a0-a1/a5, -(sp)
+	movea.l a0, a5
+	cmpi.l #PLAN_BYTES, d0
+	bne.w bad
+	cmpi.b #$98, (a5)
+	bne.w bad
+	lea PLAN_OPERATOR_ROWS(a5), a0
+	lea PolicyTail, a1
+	moveq #PLAN_BYTES-PLAN_OPERATOR_ROWS-1, d1
+validatePolicy
+	move.b (a0)+, d0
+	cmp.b (a1)+, d0
+	bne.w bad
+	dbra d1, validatePolicy
+	cmpi.b #3, 1(a5)
+	bne.w bad
+	lea 2(a5), a0
+	moveq #2, d1
+validateRole
+	cmpi.b #1, 2(a0)
+	blo.w bad
+	cmpi.b #2, 2(a0)
+	bhi.w bad
+	lea 2(a5), a1
+	moveq #0, d2
+	move.b (a0), d2
+	lsl.w #8, d2
+	move.b 1(a0), d2
+validateUnique
+	cmpa.l a0, a1
+	beq.w nextRole
+	moveq #0, d3
+	move.b (a1), d3
+	lsl.w #8, d3
+	move.b 1(a1), d3
+	cmp.w d2, d3
+	beq.w bad
+	addq.l #3, a1
+	bra.w validateUnique
+nextRole
+	addq.l #3, a0
+	dbra d1, validateRole
+	moveq #abi.PRVM_STATUS_OK, d0
+	bra.w done
+bad
+	moveq #abi.PRVM_STATUS_INVALID_PROGRAM, d0
+done
+	movem.l (sp)+, d1-d3/a0-a1/a5
+	tst.l d0
+	rts
+	.bend  ; validateProgram
 ; A0=validated declaration program,D0=numeric package head identity.
 ; D0/CCR=immutable/mutable role,0 otherwise; other registers preserved.
 ; Selection is a hint only; run retains authoritative declaration grammar.
@@ -293,5 +403,15 @@ exhausted
 	moveq #abi.PRVM_STATUS_BUDGET_EXCEEDED, d0
 	rts
 	.bend  ; tick
+PolicyTail
+	.byte 2, 2, 2, 5, 34, 3, 3, 5, 9, 34, 18
+	.byte 0, 2, 18, 34, 0, 1, 2, 19, 34, 0, 2, 2, 20, 34, 0
+	.byte 3, 2, 22, 34, 0, 4, 2, 23, 34, 0, 5, 2, 21, 34, 0
+	.byte 6, 2, 29, 34, 0, 7, 2, 30, 34, 0, 8, 2, 28, 34, 0
+	.byte 9, 2, 32, 34, 0, 10, 2, 31, 34, 0, 11, 2, 24, 34, 0
+	.byte 12, 2, 25, 34, 0, 13, 1, 17, 0, 0, 13, 3, 7, 7, 34
+	.byte 14, 3, 39, 9, 34, 15, 3, 37, 9, 34, 16, 2, 7, 34, 0
+	.byte $83, 0
+	.align 2
 	.endsection
 	.endmodule

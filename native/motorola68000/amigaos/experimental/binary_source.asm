@@ -32,6 +32,9 @@ TOKEN_CONSTANT_DECLARATION = 34
 TOKEN_MUTABLE_DECLARATION = 43
 TOKEN_CONDITIONAL_DECLARATION = 44
 TOKEN_IGNORED_DECLARATION = 45
+TOKEN_UPDATE_FIRST = 46
+TOKEN_UPDATE_LAST = TOKEN_UPDATE_FIRST+16
+UPDATE_ACTION_MAX = 16
 ; Prepared-only loop envelope: BE16 iterator identity, followed by EXVM value.
 TOKEN_ITERATOR_BINDING = $84
 NameToken	.struct
@@ -39,6 +42,9 @@ Kind	.byte ?
 Id	.word ?
 Qualifier	.byte ?
 .endstruct
+; Normalized assignment prefix, relative to its NameToken.
+DECLARATION_MARKER = NameToken.Qualifier+1
+DECLARATION_VALUE = DECLARATION_MARKER+1
 IteratorToken	.struct
 Kind	.byte ?
 Id	.word ?

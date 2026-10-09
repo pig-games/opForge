@@ -106,6 +106,8 @@ begin	.block
 	clr.l ENTRIES+memory.Block.Used(a0)
 	lea reserveIdentities, a1
 	move.l a1, layout.State.ReserveRoutine(a0)
+	lea earlierReference, a1
+	move.l a1, layout.State.EarlierReference(a0)
 	movea.l a0, a1
 	clr.w layout.State.Count(a0)
 	clr.w layout.State.Current(a0)
@@ -1086,7 +1088,7 @@ deferredLine	.block
 	beq.w bad
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, branch_parser.Record.Qualifier(a0)
 	blo.w good
-	cmpi.b #source.TOKEN_IGNORED_DECLARATION, branch_parser.Record.Qualifier(a0)
+	cmpi.b #source.TOKEN_UPDATE_LAST, branch_parser.Record.Qualifier(a0)
 	bls.w bad
 	bra.w good
 directive
@@ -1141,10 +1143,18 @@ configurationLine	.block
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
 	beq.w scalarDeclaration
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
+	beq.w scalarDeclaration
+	cmpi.b #source.TOKEN_UPDATE_FIRST, 4(a0)
+	blo.w bad
+	cmpi.b #source.TOKEN_UPDATE_LAST, 4(a0)
+	bhi.w bad
+	bsr.w bindUpdate
 	bne.w bad
+	bra.w captureAssignment
 scalarDeclaration
 	bsr.w declare
 	bne.w bad
+captureAssignment
 	movea.l a5, a0
 	movea.l a6, a1
 	jsr imports.captureValue
@@ -1433,6 +1443,11 @@ line	.block
 	beq.w declaration
 	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
 	beq.w declaration
+	cmpi.b #source.TOKEN_UPDATE_FIRST, 4(a0)
+	blo.w prefixLabel
+	cmpi.b #source.TOKEN_UPDATE_LAST, 4(a0)
+	bls.w updateReference
+prefixLabel
 	cmpi.b #5, 4(a0)
 	beq.w declaration
 	bra.w statement
@@ -1460,6 +1475,10 @@ declaration
 	movem.l (sp)+, a0/d0
 	addq.l #5, a0
 	bra.w statement
+updateReference
+	bsr.w bindUpdate
+	bne.w bad
+	bra.w references
 assignment
 	addq.l #5, a0
 	bra.w references
@@ -1864,6 +1883,153 @@ lineReturn
 	rts
 	.bend  ; line
 
+; A0=owned name-token copy,A1=scope. Resolve an earlier lexical binding
+; for a preparation snapshot. D0/CCR=status; all other registers preserved.
+; Missing earlier declarations retain the token identity and return success.
+earlierReference	.block
+	move.l a6, -(sp)
+	movea.l a1, a6
+	bsr.w bindEarlier
+	movea.l (sp)+, a6
+	rts
+	.bend  ; earlierReference
+
+; A0=update target token,A6=scope. Prefer an earlier declared lexical
+; ancestor now, before preparation-time snapshots and later local declarations.
+; An unknown target remains a reference and is rejected only if executed.
+; D0/CCR=status; all other registers kept. No new declaration is manufactured.
+bindUpdate	.block
+	movem.l d1-d3/a0-a3, -(sp)
+	moveq #0, d0
+	move.w source.NameToken.Id(a0), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w resolve
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a2
+	adda.l d0, a2
+	btst #2, records.Entry.Flags+1(a2)
+	bne.w resolve
+	moveq #0, d3
+	move.w records.Entry.Owner(a2), d3
+owner
+	tst.w d3
+	beq.w resolve
+	move.l d3, d0
+	subq.w #1, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	move.w records.Entry.ScopeKind(a3), d0
+	andi.w #$ff, d0
+	cmpi.w #KIND_BLOCK, d0
+	beq.w local
+	move.w records.Entry.Owner(a3), d3
+	bra.w owner
+local
+	; Rust's first-pass update lookup excludes module/global values whenever
+	; a block is active. Enclosing namespaces and scoped loops remain visible.
+	ori.w #records.UPDATE_LOCAL, records.Entry.Flags(a2)
+resolve
+	bsr.w bindEarlier
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a3
+	tst.l d0
+	rts
+	.bend  ; bindUpdate
+
+; Earlier value lookup shares the ancestor search, but only update targets
+; carry the first-pass block restriction. Ordinary RHS names keep late binding.
+bindEarlier	.block
+	movem.l d1-d7/a0-a5, -(sp)
+	movea.l a0, a5
+	moveq #0, d0
+	move.w source.NameToken.Id(a0), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w good
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a4
+	adda.l d0, a4
+	btst #0, records.Entry.Flags+1(a4)
+	bne.w good
+	btst #2, records.Entry.Flags+1(a4)
+	bne.w good
+	moveq #0, d3
+	move.w records.Entry.Owner(a4), d3
+parent
+	tst.w d3
+	beq.w good
+	move.l d3, d0
+	subq.w #1, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	moveq #0, d3
+	move.w records.Entry.Owner(a3), d3
+	btst #records.UPDATE_LOCAL_HIGH_BIT, records.Entry.Flags(a4)
+	beq.w parentVisible
+	bsr.w updateParentVisible
+	bne.w good
+parentVisible
+	movea.l ARENA_POINTER(a6), a0
+	adda.l records.Entry.Name(a4), a0
+	moveq #0, d0
+	move.w records.Entry.Leaf(a4), d0
+	adda.l d0, a0
+	moveq #0, d0
+	move.w records.Entry.Length(a4), d0
+	sub.w records.Entry.Leaf(a4), d0
+	bsr.w compose
+	bne.w bad
+	bsr.w lookup
+	bne.w parent
+	btst #0, records.Entry.Flags+1(a3)
+	beq.w parent
+	move.w records.Entry.Target(a3), source.NameToken.Id(a5)
+	clr.b source.NameToken.Qualifier(a5)
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a5
+	tst.l d0
+	rts
+	.bend  ; bindEarlier
+
+; A4=target entry,D3=next ancestor scope,A6=state. D0/CCR=visible.
+; Other registers preserved; scope metadata is preparation-only.
+updateParentVisible	.block
+	movem.l d1/a2, -(sp)
+	tst.w d3
+	beq.w hidden
+	move.l d3, d0
+	subq.w #1, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a2
+	adda.l d0, a2
+	move.w records.Entry.ScopeKind(a2), d1
+	andi.w #$ff, d1
+	cmpi.w #modules.KIND_MODULE, d1
+	beq.w hidden
+visible
+	moveq #0, d0
+	bra.w done
+hidden
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a2
+	tst.l d0
+	rts
+	.bend  ; updateParentVisible
+
 ; A0=packed records, D0=bytes, A1=state. Complete binding then patch IDs in
 ; records and compact expressions. D0/CCR=status; other registers preserved.
 ; No source string survives this preparation boundary.
@@ -1955,6 +2121,11 @@ parent
 	adda.l d0, a3
 	moveq #0, d3
 	move.w records.Entry.Owner(a3), d3
+	btst #records.UPDATE_LOCAL_HIGH_BIT, records.Entry.Flags(a4)
+	beq.w parentVisible
+	bsr.w updateParentVisible
+	bne.w unresolvedReference
+parentVisible
 	movea.l ARENA_POINTER(a6), a0
 	moveq #0, d0
 	move.l records.Entry.Name(a4), d0
@@ -2150,6 +2321,11 @@ normalizeLabel	.block
 	beq.w ok
 	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 8(a0)
 	beq.w ok
+	cmpi.b #source.TOKEN_UPDATE_FIRST, 8(a0)
+	blo.w prefixLabel
+	cmpi.b #source.TOKEN_UPDATE_LAST, 8(a0)
+	bls.w ok
+prefixLabel
 	cmpi.b #5, 8(a0)
 	bne.w indentation
 	tst.b 1(a0)

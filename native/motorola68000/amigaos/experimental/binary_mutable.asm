@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use opasm.amigaos.binary_expression as expression
 	.use exprvm.amigaos.runtime as runtime
+	.use exprvm.amigaos.assignment as assignment
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_source as source
 	.pub
@@ -14,6 +15,13 @@ DEFINED = 3
 SNAPSHOT_ABSOLUTE = 4
 INVALID_RECORDS = 1
 UNSUPPORTED_LAYOUT = 2
+UpdateFrame	.struct
+LeftLow	.long ?
+LeftHigh	.long ?
+Action	.long ?
+Identity	.long ?
+	.endstruct
+UPDATE_BYTES = UpdateFrame.Identity+4
 	.section code, kind=code
 ; Reject scalar mutations before layouts that execute filtered record sweeps.
 ; A0=packed records, D0=record bytes, D2=layout mode. D0/CCR=status;
@@ -61,6 +69,11 @@ record
 	beq.w unsupported
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
 	beq.w unsupported
+	cmpi.b #source.TOKEN_UPDATE_FIRST, 8(a0)
+	blo.w next
+	cmpi.b #source.TOKEN_UPDATE_LAST, 8(a0)
+	bls.w unsupported
+
 next
 	adda.l d3, a0
 	bra.w record
@@ -167,5 +180,73 @@ done
 	tst.l d0
 	rts
 	.bend  ; execute
+; A0=name+update marker+compiled RHS,A1=end,A2=Context.
+; Resolve only an already initialized mutable scalar. The shared ExprVM owner
+; computes the update; neither a new local declaration nor a typed value is made.
+; D0/CCR=status; all other registers preserved. Commit the cell after validation.
+update	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #UPDATE_BYTES, sp
+	movea.l sp, a5
+	tst.b source.NameToken.Qualifier(a0)
+	bne.w bad
+	moveq #0, d4
+	move.w source.NameToken.Id(a0), d4
+	move.l d4, UpdateFrame.Identity(a5)
+	movea.l package.Context.Package(a2), a3
+	cmp.w package.Header.NameCount(a3), d4
+	blo.w bad
+	cmp.l package.Context.Count(a2), d4
+	bhs.w bad
+	movea.l package.Context.Defined(a2), a3
+	cmpi.b #DEFINED, 0(a3, d4.l)
+	bne.w bad
+	movea.l package.Context.Values(a2), a3
+	lsl.l #3, d4
+	move.l runtime.Value.Low(a3, d4.l), UpdateFrame.LeftLow(a5)
+	move.l runtime.Value.High(a3, d4.l), UpdateFrame.LeftHigh(a5)
+	moveq #0, d0
+	move.b source.DECLARATION_MARKER(a0), d0
+	subi.w #source.TOKEN_UPDATE_FIRST, d0
+	cmpi.w #source.TOKEN_UPDATE_LAST-source.TOKEN_UPDATE_FIRST, d0
+	bhi.w bad
+	move.l d0, UpdateFrame.Action(a5)
+	addq.l #source.DECLARATION_VALUE, a0
+	movea.l a2, a6
+	jsr expression.evaluateValue
+	movea.l a6, a2
+	tst.l d0
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	tst.l package.Context.Kind(a2)
+	bne.w bad
+	tst.l d2
+	beq.w resolved
+	cmpi.w #1, package.Context.Pass(a2)
+	bne.w bad
+resolved
+	move.l d1, d3
+	move.l package.Context.High(a2), d4
+	move.l UpdateFrame.LeftLow(a5), d1
+	move.l UpdateFrame.LeftHigh(a5), d2
+	move.l UpdateFrame.Action(a5), d0
+	jsr assignment.apply
+	bne.w bad
+	move.l UpdateFrame.Identity(a5), d4
+	lsl.l #3, d4
+	movea.l package.Context.Values(a2), a3
+	move.l d1, runtime.Value.Low(a3, d4.l)
+	move.l d2, runtime.Value.High(a3, d4.l)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	adda.w #UPDATE_BYTES, sp
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; update
 	.endsection
 	.endmodule

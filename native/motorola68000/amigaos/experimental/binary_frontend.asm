@@ -2021,7 +2021,11 @@ scopeLine
 	cmpi.b #writer.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
 	beq.w captureValue
 	cmpi.b #writer.TOKEN_MUTABLE_DECLARATION, 8(a0)
-	bne.w scalarCaptured
+	beq.w captureValue
+	cmpi.b #writer.TOKEN_UPDATE_FIRST, 8(a0)
+	blo.w scalarCaptured
+	cmpi.b #writer.TOKEN_UPDATE_LAST, 8(a0)
+	bhi.w scalarCaptured
 captureValue
 	lea SCOPE_STATE(a6), a1
 	.MEMORY_DETAIL_BEGIN #2
@@ -2776,6 +2780,50 @@ done
 	.bend  ; validateMemberBindings
 
 	.pub
+; A0=session,A1=validated immutable capture record. D0/CCR=assignment hint1/0.
+; Translate at most three TKVM kinds; shared PRVM owns all operator recipes.
+; All other registers preserved; no binding, values or source mutation.
+updateRole	.block
+	movem.l d1-d4/a0-a3, -(sp)
+	subq.l #4, sp
+	movea.l a0, a3
+	move.l capture.Record.Count(a1), d4
+	cmpi.l #2, d4
+	blo.w absent
+	lea capture.HEADER_BYTES(a1), a0
+	cmpi.w #1, writer.Token.Kind(a0)
+	bhi.w absent
+	adda.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, a0
+	subq.l #1, d4
+	cmpi.l #3, d4
+	bls.w countReady
+	moveq #3, d4
+countReady
+	movea.l sp, a2
+	move.l d4, d3
+	subq.w #1, d3
+kind
+	move.w writer.Token.Kind(a0), d0
+	cmpi.w #255, d0
+	bhi.w absent
+	move.b d0, (a2)+
+	adda.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, a0
+	dbra d3, kind
+	movea.l Frame.Package(a3), a1
+	move.l package.Header.DeclarationPlan(a1), d0
+	adda.l d0, a1
+	movea.l sp, a0
+	move.l d4, d0
+	jsr declaration_parser.classifyAssignment
+	bra.w done
+absent
+	moveq #0, d0
+done
+	addq.l #4, sp
+	movem.l (sp)+, d1-d4/a0-a3
+	tst.l d0
+	rts
+	.bend  ; updateRole
 ; A0=session,A1=bounded directive leaf,D0=bytes. D0/CCR=declaration role
 ; (immutable/mutable),0 other. Other registers preserved; dictionary lookup is read-only.
 ; Configuration selection uses package identity only; PRVM still parses the

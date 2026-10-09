@@ -771,6 +771,11 @@ statement	.block
 	beq.w mutableDeclaration
 	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
 	beq.w ok
+	cmpi.b #source.TOKEN_UPDATE_FIRST, 4(a0)
+	blo.w labelPrefix
+	cmpi.b #source.TOKEN_UPDATE_LAST, 4(a0)
+	bls.w compoundUpdate
+labelPrefix
 	cmpi.b #5, 4(a0)
 	bne.w dispatch
 	lea SectionState, a4
@@ -863,6 +868,9 @@ instructionReady
 	move.l d1, d0
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #17
 	bsr.w emit
+	bra.w done
+compoundUpdate
+	jsr mutable.update
 	bra.w done
 mutableDeclaration
 	jsr mutable.execute

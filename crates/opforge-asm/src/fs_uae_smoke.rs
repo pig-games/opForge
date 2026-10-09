@@ -7955,6 +7955,9 @@ mod native_scoped_layouts;
 mod native_scoped_loops;
 
 #[cfg(test)]
+#[path = "tests/native_compound_updates.rs"]
+mod native_compound_updates;
+#[cfg(test)]
 #[path = "tests/native_expression_records.rs"]
 mod native_expression_records;
 #[cfg(test)]

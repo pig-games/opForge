@@ -459,6 +459,61 @@ mod tests {
     }
 
     #[test]
+    fn configured_scalar_updates_follow_source_order() {
+        for (op, left, right, expected) in [
+            ("+=", "1", "2", "3"),
+            ("-=", "4294967297", "2", "4294967295"),
+            ("*=", "4294967297", "-2", "-8589934594"),
+            ("/=", "-8589934601", "3", "-2863311533"),
+            ("%=", "-8589934601", "3", "-2"),
+            ("**=", "3", "21", "10460353203"),
+            ("|=", "4294967296", "1", "1"),
+            ("^=", "4294967297", "1", "0"),
+            ("&=", "-1", "4294967296", "0"),
+            ("||=", "4294967296", "4294967296", "0"),
+            ("&&=", "4294967296", "1", "0"),
+            ("<<=", "1", "33", "2"),
+            (">>=", "2147483648", "33", "1073741824"),
+            ("..=", "18", "0", "4608"),
+            ("<?=", "4294967300", "-4294967301", "-4294967301"),
+            (">?=", "-4294967301", "4294967300", "4294967300"),
+            (".=", "1", "-8589934593", "-8589934593"),
+        ] {
+            let graph = compound_graph(&format!(
+                ".module main\nn .var {left}\nn {op} {right}\n.if n==({expected})\n.use dep with (FEATURE=n)\n.else\n.use missing\n.endif\n.endmodule\n.module dep\n.byte FEATURE\n.endmodule\n"
+            )).unwrap_or_else(|error| panic!("{op}: {error:?}"));
+            assert!(
+                graph
+                    .lines
+                    .iter()
+                    .any(|line| line == &format!("FEATURE = {expected}")),
+                "{op}"
+            );
+        }
+    }
+
+    #[test]
+    fn configured_failed_updates_invalidate_mutable_values() {
+        for (left, update) in [
+            ("1", "/= 0"),
+            ("1", "%= 0"),
+            ("1", "**= -1"),
+            ("1", "**= 64"),
+            ("1", "+= {1,2}"),
+            ("{1,2}", "+= 1"),
+            ("1", "+= missing"),
+        ] {
+            let error = compound_graph(&format!(
+                ".module main\nn .var {left}\nn {update}\n.use dep with (FEATURE=n)\n.endmodule\n.module dep\n.endmodule\n"
+            )).err().unwrap_or_else(|| panic!("accepted {left}/{update}"));
+            assert!(
+                error.error().message().contains(".use parameter FEATURE"),
+                "{error:?}"
+            );
+        }
+    }
+
+    #[test]
     fn configured_compounds_snapshot_and_chain() {
         let graph = compound_graph(concat!(
             ".module main\n",

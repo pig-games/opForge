@@ -14,6 +14,7 @@
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_values as values
 	.use exprvm.amigaos.runtime as runtime
+	.use exprvm.amigaos.assignment as assignment
 	.pub
 Item	.struct
 Target	.word ?
@@ -182,7 +183,67 @@ captureValue	.block
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
 	beq.w scalarValue
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a0)
-	bne.w constantOk
+	beq.w scalarValue
+	cmpi.b #source.TOKEN_UPDATE_FIRST, 8(a0)
+	blo.w constantOk
+	cmpi.b #source.TOKEN_UPDATE_LAST, 8(a0)
+	bls.w updateValue
+	bra.w constantOk
+updateValue
+	movea.l a0, a1
+	adda.l d0, a1
+	movea.l a0, a5
+	moveq #0, d7
+	move.w 5(a0), d7
+	moveq #0, d5
+	move.b 8(a0), d5
+	subi.w #source.TOKEN_UPDATE_FIRST, d5
+	move.l d7, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w constantOk
+	andi.l #$ffff, d0
+	cmp.w layout.State.Count(a6), d0
+	bhs.w constantOk
+	; Deferred or repeated records have no single preparation-time value.
+	tst.w layout.State.LoopDepth(a6)
+	bne.w constantUnknown
+	tst.w layout.State.Deferred(a6)
+	bne.w constantUnknown
+	move.l d0, d6
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a0
+	move.w records.Entry.Flags(a0, d0.l), d2
+	andi.w #records.MUTABLE, d2
+	beq.w constantUnknown
+	lea layout.IMPORT_STATE(a6), a0
+	movea.l KNOWN_DEFINED_POINTER(a0), a2
+	tst.b 0(a2, d6.l)
+	beq.w constantUnknown
+	movea.l KNOWN_VALUES_POINTER(a0), a4
+	lea KNOWN_OWNER(a0), a0
+	move.l d7, d1
+	jsr values.getKind
+	bne.w constantUnknown
+	tst.l d2
+	bne.w constantUnknown
+	lsl.l #3, d6
+	move.l runtime.Value.High(a4, d6.l), d4
+	move.l runtime.Value.Low(a4, d6.l), d6
+	lea 9(a5), a0
+	bsr.w evaluateValue
+	bne.w constantUnknown
+	tst.l d3
+	bne.w constantUnknown
+	move.l d1, d3
+	move.l d2, d0
+	move.l d6, d1
+	move.l d4, d2
+	move.l d0, d4
+	move.l d5, d0
+	jsr assignment.apply
+	bne.w constantUnknown
+	moveq #0, d3
+	bra.w storeValue
 scalarValue
 	movea.l a0, a1
 	adda.l d0, a1
@@ -191,6 +252,7 @@ scalarValue
 	lea 9(a0), a0
 	bsr.w evaluateValue
 	bne.w constantUnknown
+storeValue
 	move.l d7, d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w constantOk
@@ -2082,6 +2144,33 @@ ordinaryExpressionName
 	movea.l layout.ENTRIES_POINTER(a6), a0
 	adda.l d0, a0
 registeredExpressionSymbol
+	; This token belongs to the owned expression copy, never runtime source.
+	; Resolve earlier lexical ancestors after registering import availability.
+	movem.l a0-a2, -(sp)
+	movea.l layout.State.EarlierReference(a6), a2
+	move.l a2, d0
+	beq.s earlierReady
+	movea.l a5, a0
+	movea.l a6, a1
+	jsr (a2)
+	bra.s earlierDone
+earlierReady
+	moveq #0, d0
+earlierDone
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	bne.w rangeBad
+	moveq #0, d0
+	move.w source.NameToken.Id(a5), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w rangeBad
+	andi.l #$ffff, d0
+	cmp.w layout.State.Count(a6), d0
+	bhs.w rangeBad
+	move.l d0, d3
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a0
+	adda.l d0, a0
 	; Snapshot probes share replay's reference availability policy. A loop
 	; body may never execute; its numeric missing IDs fail only when consumed.
 	tst.w layout.State.LoopDepth(a6)

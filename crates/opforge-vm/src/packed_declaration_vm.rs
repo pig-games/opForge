@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Shared scalar declaration envelope over packed source records.
 use crate::macro_descriptor_vm::DescriptorError;
-use package::package::{PARSER_VM_MACRO_VERSION, PARSER_VM_PACKED_DECLARATION_ENTRY};
+use package::package::{
+    packed_declaration_program, PACKED_DECLARATION_RECIPES, PACKED_DECLARATION_RECIPE_BYTES,
+    PARSER_VM_MACRO_VERSION, PARSER_VM_PACKED_DECLARATION_ENTRY,
+};
 pub const RESULT_KIND: u16 = 20;
 pub const ROLE_OFFSET: usize = 2;
 pub const VALUE_OFFSET: usize = 4;
 pub const VALUE_BYTES: usize = 8;
+pub const UPDATE_ACTION: usize = 12;
+pub const UPDATE_ROLE: u16 = 4;
 fn error(status: u32, offset: usize, message: &'static str) -> DescriptorError {
     DescriptorError {
         status,
@@ -26,17 +31,17 @@ pub fn execute(
     if entry != PARSER_VM_PACKED_DECLARATION_ENTRY || version != PARSER_VM_MACRO_VERSION {
         return Err(error(4, 0, "Invalid packed declaration entry or version"));
     }
-    if program.len() != 23
-        || program[..2] != [0x98, 3]
-        || program[11..] != [2, 2, 2, 5, 34, 3, 3, 5, 9, 34, 0x83, 0]
-        || program[2..11]
-            .chunks_exact(3)
-            .any(|row| !(1..=2).contains(&row[2]))
-        || (0..3).any(|index| {
-            (0..index).any(|other| {
-                program[2 + index * 3..4 + index * 3] == program[2 + other * 3..4 + other * 3]
-            })
-        })
+    let heads = if program.len() >= 11 {
+        [
+            u16::from_be_bytes([program[2], program[3]]),
+            u16::from_be_bytes([program[5], program[6]]),
+            u16::from_be_bytes([program[8], program[9]]),
+        ]
+    } else {
+        return Err(error(6, 0, "Invalid packed declaration program"));
+    };
+    if program != packed_declaration_program(heads)
+        || (0..3).any(|i| heads[..i].contains(&heads[i]))
     {
         return Err(error(6, 0, "Invalid packed declaration program"));
     }
@@ -50,10 +55,19 @@ pub fn execute(
     if steps == 0 {
         return Err(error(12, 0, "Step budget exceeded"));
     }
-    if source[1] & (8 | 16) != 0 || source.len() < 10 || source[4] > 1 {
+    if source[1] & (8 | 16) != 0 || source.len() < 9 || source[4] > 1 {
         return Ok(vec![]);
     }
-    let (role, match_head, head) = if source.get(8..11) == Some(&program[18..21]) {
+    let update = program[PACKED_DECLARATION_RECIPES..program.len() - 2]
+        .chunks_exact(PACKED_DECLARATION_RECIPE_BYTES)
+        .find(|row| {
+            source.get(8..8 + usize::from(row[1])) == Some(&row[2..2 + usize::from(row[1])])
+        });
+    let mut action = 0;
+    let (role, match_head, head) = if let Some(row) = update {
+        action = u16::from(row[0]);
+        (UPDATE_ROLE as u8, 8, 8 + usize::from(row[1]))
+    } else if source.get(8..11) == Some(&program[18..21]) {
         (program[16], 8, 11)
     } else if source.get(8..10) == Some(&program[14..16]) {
         (program[12], 8, 10)
@@ -80,7 +94,7 @@ pub fn execute(
     if steps < 2 {
         return Err(error(12, match_head, "Step budget exceeded"));
     }
-    if source[7] != 0 {
+    if source[7] > 1 {
         return Err(error(5, 7, "Qualified scalar declaration"));
     }
     if capacity < 32 {
@@ -91,6 +105,7 @@ pub fn execute(
     }
     let mut row = [0; 32];
     row[ROLE_OFFSET..ROLE_OFFSET + 2].copy_from_slice(&u16::from(role).to_be_bytes());
+    row[UPDATE_ACTION..UPDATE_ACTION + 2].copy_from_slice(&action.to_be_bytes());
     row[..2].copy_from_slice(&RESULT_KIND.to_be_bytes());
     row[VALUE_OFFSET..VALUE_OFFSET + 4].copy_from_slice(&(head as u32).to_be_bytes());
     row[VALUE_BYTES..VALUE_BYTES + 4]
@@ -124,6 +139,40 @@ mod tests {
         r.extend(value);
         r[0] = (r.len() - 1) as u8;
         r
+    }
+    #[test]
+    fn update_recipes_return_actions_and_atomic_operand_spans() {
+        for recipe in package::package::PACKED_DECLARATION_UPDATE_RECIPES {
+            for qualifier in [0, 1] {
+                let mut source = vec![0, 1, 0, 7, 0, 0, 90, qualifier];
+                source.extend_from_slice(&recipe[2..2 + usize::from(recipe[1])]);
+                let head = source.len();
+                source.extend([2, 0, 0, 0, 3]);
+                source[0] = (source.len() - 1) as u8;
+                let rows = run(&source, 32, 3).unwrap();
+                assert_eq!(
+                    u16::from_be_bytes(rows[0][ROLE_OFFSET..ROLE_OFFSET + 2].try_into().unwrap()),
+                    UPDATE_ROLE
+                );
+                assert_eq!(
+                    u16::from_be_bytes(
+                        rows[0][UPDATE_ACTION..UPDATE_ACTION + 2]
+                            .try_into()
+                            .unwrap()
+                    ),
+                    u16::from(recipe[0])
+                );
+                assert_eq!(
+                    u32::from_be_bytes(rows[0][VALUE_OFFSET..VALUE_OFFSET + 4].try_into().unwrap())
+                        as usize,
+                    head
+                );
+                assert_eq!(run(&source, 31, 3).unwrap_err().status, 7);
+                assert_eq!(run(&source, 32, 2).unwrap_err().status, 12);
+                source[7] = 2;
+                assert_eq!(run(&source, 32, 3).unwrap_err().status, 5);
+            }
+        }
     }
     #[test]
     fn declaration_spans_preserve_scalar_and_compound_inputs() {
@@ -235,7 +284,7 @@ mod tests {
             assert_eq!(run(&source, 32, budget).unwrap_err().status, 12);
         }
         assert_eq!(run(&source, 31, 3).unwrap_err().status, 7);
-        source[7] = 1;
+        source[7] = 2;
         assert_eq!(run(&source, 32, 3).unwrap_err().status, 5);
         source[7] = 0;
         for flags in [8, 16] {
@@ -279,7 +328,7 @@ mod tests {
         let mut r = record(false, &[2, 0, 0, 0, 3]);
         assert_eq!(run(&r, 31, 3).unwrap_err().status, 7);
         assert_eq!(run(&r, 32, 2).unwrap_err().status, 12);
-        r[7] = 1;
+        r[7] = 2;
         assert_eq!(run(&r, 32, 3).unwrap_err().status, 5);
         r[7] = 0;
         r[11] = 45;

@@ -28,9 +28,10 @@ State	.struct
 Depth	.word ?
 Active	.word ?
 Deferred	.word ?
-Static	.word ?  ; configuration discovery treats unavailable expressions as false
+Static	.word ?  ; configuration discovery can retain unavailable controls
+Uncertain	.word ?  ; earliest unavailable conditional depth+1, zero when known
 	.endstruct
-SLOTS = State.Static+2
+SLOTS = State.Uncertain+2
 SLOT_BYTES = Slot.Kind+1
 SLOT_SHIFT = 2
 DEFERRED_SLOTS = SLOTS+LIMIT*SLOT_BYTES
@@ -51,6 +52,7 @@ begin	.block
 	clr.w State.Deferred(a0)
 	move.w #1, State.Active(a0)
 	clr.w State.Static(a0)
+	clr.w State.Uncertain(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
@@ -439,6 +441,11 @@ endifLine
 	move.w State.Depth(a4), d2
 	beq.w bad
 	subq.w #1, State.Depth(a4)
+	move.w State.Depth(a4), d0
+	cmp.w State.Uncertain(a4), d0
+	bhs.w uncertaintyRetained
+	clr.w State.Uncertain(a4)
+uncertaintyRetained
 	subq.w #1, d2
 	lsl.w #2, d2
 	lea SLOTS(a4), a2
@@ -478,6 +485,15 @@ evaluateCondition	.block
 	beq.w known
 	tst.w State.Static(a4)
 	beq.w failed
+	tst.w State.Uncertain(a4)
+	bne.w unavailable
+	move.w State.Depth(a4), d2
+	tst.w d7
+	bne.w uncertaintyDepthReady
+	addq.w #1, d2
+uncertaintyDepthReady
+	move.w d2, State.Uncertain(a4)
+unavailable
 	moveq #0, d1
 	moveq #0, d0
 	bra.w done

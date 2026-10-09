@@ -599,6 +599,13 @@ component
 	move.l d1, d0
 	jsr modules.reference
 	move.l (sp)+, d0
+	move.l d0, -(sp)
+	move.l d0, d1
+	jsr modules.check
+	move.l (sp)+, d1
+	tst.l d0
+	bne.w bad
+	move.l d1, d0
 	moveq #0, d1
 	move.w layout.State.Base(a6), d1
 	add.l d1, d0
@@ -809,8 +816,8 @@ owner
 	bne.w absent
 	bsr.w lookup
 	bne.w relative
-	btst #0, records.Entry.Flags+1(a3)
-	bne.w found
+	bsr.w availableConfigurationName
+	beq.w found
 relative
 	tst.l d5
 	beq.w parent
@@ -846,8 +853,8 @@ suffix
 	lea BUFFER(a6), a2
 	bsr.w lookup
 	bne.w parent
-	btst #0, records.Entry.Flags+1(a3)
-	bne.w found
+	bsr.w availableConfigurationName
+	beq.w found
 parent
 	tst.l d3
 	beq.w absent
@@ -869,6 +876,28 @@ done
 	tst.l d0
 	rts
 	.bend  ; declaredName
+
+; A3=entry,A6=scope. Declared symbols and earlier known configuration snapshots
+; can provide a dotted prefix. D0/CCR=0 when available; other registers kept.
+availableConfigurationName	.block
+	btst #0, records.Entry.Flags+1(a3)
+	bne.w good
+	movem.l d1/a0, -(sp)
+	move.l a3, d1
+	sub.l ENTRIES_POINTER(a6), d1
+	divu.w #records.ENTRY_BYTES, d1
+	andi.l #$ffff, d1
+	movea.l IMPORT_STATE+imports.KNOWN_DEFINED_POINTER(a6), a0
+	tst.b 0(a0, d1.l)
+	movem.l (sp)+, d1/a0
+	beq.w bad
+good
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; availableConfigurationName
 	.pub
 
 CANDIDATE_MATCHED = 0
@@ -1049,6 +1078,17 @@ configurationStatement	.block
 	movea.l a1, a6
 	bsr.w normalizeLabel
 	bne.w done
+	move.l a0, -(sp)
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l a0, a1
+	adda.l d0, a1
+	addq.l #4, a0
+	lea memberIdentity, a2
+	jsr expr.bindFields
+	movea.l (sp)+, a0
+	bne.w done
 	moveq #4, d1
 	cmpi.b #8, (a0)
 	blo.w good
@@ -1064,6 +1104,50 @@ done
 	tst.l d0
 	rts
 	.bend  ; configurationStatement
+
+; A0=bound writer record,A1=scope,D0=capacity. Capture an available schema
+; through shared struct lowering without declaring ordinary assembly symbols.
+; D0/CCR=status; other registers preserved. Unknown geometry is unavailable.
+configurationStruct	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	movea.l a0, a5
+	move.l d0, d4
+	bsr.w normalizeLabel
+	bne.w done
+	movea.l a5, a0
+	movea.l a6, a1
+	movea.l a6, a2
+	adda.l #STRUCT_STATE, a2
+	lea keyword, a3
+	move.l d4, d0
+	jsr structs.line
+	bne.w done
+	movea.l a5, a0
+	movea.l a6, a1
+	jsr imports.captureValue
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; configurationStruct
+
+; A0=scope. Abandon unavailable configuration geometry, restoring its parent.
+; D0/CCR=0; other registers preserved. Ordinary preparation validates it later.
+abandonConfigurationStruct	.block
+	move.l a1, -(sp)
+	movea.l a0, a1
+	adda.l #STRUCT_STATE, a1
+	tst.w structs.State.Active(a1)
+	beq.w done
+	move.w structs.State.Parent(a1), layout.State.Current(a0)
+	clr.w structs.State.Active(a1)
+	clr.l structs.State.Fields+memory.Block.Used(a1)
+done
+	movea.l (sp)+, a1
+	moveq #0, d0
+	rts
+	.bend  ; abandonConfigurationStruct
 
 ; A0=writer record,A1=scope. Reject preparation effects inside deferred
 ; branch envelopes. Ordinary numeric data/instructions/loop controls remain.
@@ -1290,6 +1374,7 @@ next
 	lea IMPORT_STATE+imports.PARAM_OWNER+values.Owner.Arena(a5), a1
 	move.l memory.Block.Used(a1), d6
 	movea.l memory.Block.Pointer(a1), a1
+	lea remapConfigurationRecord, a2
 	jsr imports.seedParameter
 	bne.w bad
 	adda.w #imports.PARAM_BYTES, a4
@@ -1306,6 +1391,67 @@ done
 	rts
 	.bend  ; seedConfiguration
 	.priv
+; A0=destination Owner,D2=copied offset,A5=configuration scope,A6=semantic
+; scope. Bind every nominal and member key before publishing the snapshot.
+; D0/CCR=status; other registers preserved. Geometry and scalar cells are retained.
+remapConfigurationRecord	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	move.l d2, d1
+	jsr values.view
+	bne.w done
+	move.l values.Record.Kind(a1), d4
+	cmpi.l #values.STRUCT_TYPE, d4
+	blo.w good
+	cmpi.l #values.STRUCT_LITERAL, d4
+	bhi.w bad
+	movea.l a1, a2
+	move.l values.StructRecord.Nominal(a2), d0
+	bsr.w bindConfigurationId
+	bne.w done
+	move.l d1, values.StructRecord.Nominal(a2)
+	move.l values.Record.Count(a2), d7
+	lea values.STRUCT_BASE_BYTES(a2), a2
+	moveq #values.STRUCT_FIELD_BYTES, d6
+	cmpi.l #values.STRUCT_TYPE, d4
+	beq.w field
+	moveq #values.FIELD_BYTES, d6
+field
+	tst.l d7
+	beq.w good
+	move.l (a2), d0
+	bsr.w bindConfigurationId
+	bne.w done
+	move.l d1, (a2)
+	adda.l d6, a2
+	subq.l #1, d7
+	bra.w field
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; remapConfigurationRecord
+
+; D0=configuration identity,A5=source,A6=destination. D0/CCR=status,
+; D1=rebound identity; A0/A1/A3 scratch, other registers preserved.
+bindConfigurationId	.block
+	sub.w layout.State.Base(a5), d0
+	bcs.w bad
+	cmp.w layout.State.Count(a5), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a5), a3
+	adda.l d0, a3
+	bra.w bindConfigurationName
+bad
+	moveq #1, d0
+	rts
+	.bend  ; bindConfigurationId
+
 ; A5=configuration scope,A6=fresh semantic scope. Rebind bounded map fields
 ; before any dependency section is lowered. Owner/module are entry indices+1;
 ; logical/concrete are source IDs. No configuration identity survives.
@@ -1916,13 +2062,68 @@ lineReturn
 	.bend  ; line
 
 ; A0=owned name-token copy,A1=scope. Resolve an earlier lexical binding
-; for a preparation snapshot. D0/CCR=status; all other registers preserved.
-; Missing earlier declarations retain the token identity and return success.
+; for a preparation snapshot, including shared dotted-member occurrence plans.
+; D0/CCR=status; all other registers preserved. Missing earlier declarations
+; retain the token identity and return success. New plans are installed before VM use.
 earlierReference	.block
-	move.l a6, -(sp)
+	movem.l d1-d3/a0-a3/a6, -(sp)
+	suba.w #layout.NAME_BYTES, sp
 	movea.l a1, a6
+	movea.l a0, a2
 	bsr.w bindEarlier
-	movea.l (sp)+, a6
+	bne.w done
+	moveq #0, d1
+	move.w source.NameToken.Id(a2), d1
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w good
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	move.w records.Entry.Flags(a3), d0
+	andi.w #records.BINDING_PROXY, d0
+	bne.w publishBinding
+	move.l d1, d3
+	movea.l ARENA_POINTER(a6), a0
+	adda.l records.Entry.Name(a3), a0
+	moveq #0, d0
+	move.w records.Entry.Length(a3), d0
+	beq.w bad
+	cmpi.l #layout.NAME_BYTES-1, d0
+	bhi.w bad
+	move.l d0, d2
+	movea.l sp, a1
+copySpelling
+	move.b (a0)+, (a1)+
+	subq.l #1, d2
+	bne.w copySpelling
+	movea.l sp, a0
+	movea.l a6, a1
+	bsr.w captureBinding
+	bne.w done
+	cmp.l d3, d1
+	beq.w good
+	move.w d1, source.NameToken.Id(a2)
+	clr.b source.NameToken.Qualifier(a2)
+publishBinding
+	; Ordinary binding may have created this proxy since the last owner export.
+	; Publish its numeric plan before configuration/replay evaluation consumes it.
+	movea.l a6, a0
+	movea.l a6, a1
+	adda.l #IMPORT_STATE+imports.KNOWN_OWNER, a1
+	bsr.w exportBindings
+	bra.w done
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	adda.w #layout.NAME_BYTES, sp
+	movem.l (sp)+, d1-d3/a0-a3/a6
+	tst.l d0
 	rts
 	.bend  ; earlierReference
 

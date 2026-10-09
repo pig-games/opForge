@@ -19,7 +19,47 @@ fn positive_cases(cpu: &str) -> Vec<Case> {
         ("existing-instance-member", source(cpu, ".pub\nresult=VALUE.x+VALUE.y+SCALAR\n", "p=Point{x:2,y:4}\n.use dep as imported with (VALUE=p, SCALAR=p.x)\n.byte imported.result\n"), &[8]),
         ("referenced-block-parameters", source(cpu, ".pub\nentry .block\nAlias=TYPE\nmade=Alias{x:VALUE.x+1,y:VALUE.y+2}\n.byte TYPE.y,made.x,made.y\n.bend\n", "p=Point{x:2,y:4}\n.use dep (entry) as imported with (TYPE=Point, VALUE=p)\n.word imported.entry\n"), &[1,3,6,0,0]),
         ("combined-forwarding-snapshots-reimports", combined_source(cpu), &[32,32,8,4,99,20,40,5,8]),
+        ("parameter-dependent-schema", parameter_schema_source(cpu), &[1,4,7]),
+        ("inactive-schema-alternative", source(cpu, "Alias=TYPE\np=Alias{x:3,y:4}\n.pub\nresult=TYPE.y+p.x+p.y\n", ".if 0\nUnused .struct\nbad .res missing\n.endstruct\n.else\n.use dep as imported with (TYPE=Point)\n.endif\n.byte imported.result\n"), &[8]),
+        ("register-field-configuration", source(cpu, ".pub\nresult=VALUE.a+VALUE.d0+VALUE.sp+TYPE.d0\n", "Registers .struct\na .byte ?\nd0 .byte ?\nsp .byte ?\n.endstruct\n.use dep as imported with (TYPE=Registers, VALUE=Registers{sp:12,d0:2,a:8})\n.byte imported.result\n"), &[23]),
     ]
+}
+
+// Retain a selectable native failure for the separate shared-language gap:
+// top-level forward conditions with mutable updates cannot yet be deferred.
+fn forward_conditional_cases(cpu: &str) -> Vec<Case> {
+    let instance = ".pub\nresult=VALUE.x+VALUE.y\n";
+    vec![
+        ("readonly-uncertain-snapshot", source(cpu, instance, "p .var Point{x:2,y:4}\nsaved=p\n.if later\np .set Point{x:8,y:9}\n.endif\n.use dep as imported with (VALUE=saved)\nlater=1\n.byte imported.result,p.x\n"), &[6,8]),
+    ]
+}
+
+// Keep each scenario's declarations/imports separate while qualifying them in
+// one fresh guest run. This avoids repeated emulator startup for tiny inputs.
+fn positive_matrix(cpu: &str) -> (String, Vec<u8>) {
+    let mut input = String::new();
+    let mut expected = Vec::new();
+    for (index, (_, source, bytes)) in positive_cases(cpu).into_iter().enumerate() {
+        for line in source.lines() {
+            if line.starts_with(".module ") || line.starts_with(".use ") {
+                let (directive, rest) = line.split_once(' ').unwrap();
+                input.push_str(&format!("{directive} case{index}.{rest}\n"));
+            } else {
+                input.push_str(line);
+                input.push('\n');
+            }
+        }
+        expected.extend_from_slice(bytes);
+    }
+    (input, expected)
+}
+
+// A dependency constructs a schema from an incoming scalar, then forwards its
+// type and instance. Both nominal and member IDs cross configuration scopes.
+fn parameter_schema_source(cpu: &str) -> String {
+    format!(
+        ".module leaf\n.cpu {cpu}\nAlias=TYPE\nmade=Alias{{head:4,body:7}}\n.pub\nresult=TYPE.body\nhead=made.head\nbody=VALUE.body\n.endmodule\n.module middle\n.cpu {cpu}\nPacket .struct\nhead .byte ?\nbody .res WIDTH\n.endstruct\nsaved=Packet{{head:2,body:7}}\n.use leaf as child with (TYPE=Packet, VALUE=saved)\n.pub\nresult=child.result\nhead=child.head\nbody=child.body\n.endmodule\n.module main\n.cpu {cpu}\n.use middle as imported with (WIDTH=3)\n.byte imported.result,imported.head,imported.body\n.endmodule\n"
+    )
 }
 
 fn combined_source(cpu: &str) -> String {
@@ -102,6 +142,10 @@ const STRUCT_REJECTIONS: &[(&str, &str, &str)] = &[
     ("instance-type-conflict", ".use dep as first with (VALUE=Point{x:2,y:4})\n.use dep as second with (VALUE=Other{x:2,y:4})\n", "conflicting .use parameters"),
     ("instance-scalar-type-conflict", ".use dep as first with (VALUE=Point{x:2,y:4})\n.use dep as second with (VALUE=2)\n", "conflicting .use parameters"),
     ("assembly-address-member", "here:\n.use dep with (VALUE=Point{x:here,y:4})\n", "Label not found: here"),
+    ("uncertain-schema-choice", ".if later\nChoice .struct\nx .byte ?\n.endstruct\n.else\nChoice .struct\nx .long ?\n.endstruct\n.endif\n.use dep with (VALUE=Choice)\nlater=1\n", "Label not found: Choice"),
+    ("unavailable-schema-extent", "Choice .struct\nx .res later\n.endstruct\n.use dep with (VALUE=Choice)\nlater=3\n", "Label not found: Choice"),
+    ("uncertain-schema-body", "Choice .struct\n.if later\nx .byte ?\n.else\nx .long ?\n.endif\n.endstruct\n.use dep with (VALUE=Choice)\nlater=1\n", "Label not found: Choice"),
+    ("uncertain-instance-write", "p .var Point{x:2,y:4}\n.if later\np .set Point{x:8,y:9}\n.endif\n.use dep with (VALUE=p)\nlater=1\n", "Label not found: p"),
 ];
 
 const BAD: &[(&str, &str, &str)] = &[
@@ -189,7 +233,15 @@ fn native_struct_parameters_struct_rust_oracles() {
     let dir = scratch();
     let mut failures = Vec::new();
     for cpu in ["68020", "6502"] {
-        for (name, input, expected) in positive_cases(cpu) {
+        let (input, mut expected) = positive_matrix(cpu);
+        // Three preceding one-byte roots move the referenced block to $0003.
+        let entry = if cpu == "68020" { [0, 3] } else { [3, 0] };
+        expected[6..8].copy_from_slice(&entry);
+        assert_eq!(oracle(&dir.0, &input).unwrap(), expected, "{cpu}/matrix");
+        for (name, input, expected) in positive_cases(cpu)
+            .into_iter()
+            .chain(forward_conditional_cases(cpu))
+        {
             let actual = oracle(&dir.0, &input);
             if actual.as_deref() != Ok(expected) {
                 failures.push(format!(
@@ -242,7 +294,13 @@ fn native_struct_parameters_fs_uae() {
         assert!(matches!(cpu, "68020" | "6502"));
         let cases = positive_cases(cpu)
             .into_iter()
+            .chain(forward_conditional_cases(cpu))
             .map(|(name, input, _)| (name, input, None))
+            .chain(std::iter::once((
+                "combined-positive-matrix",
+                positive_matrix(cpu).0,
+                None,
+            )))
             .chain(std::iter::once((
                 "compound-control",
                 compound_control(cpu),

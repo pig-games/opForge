@@ -863,11 +863,15 @@ Notes:
   The experimental compact native path has focused matching coverage for scalar,
   flat-list and range values, `.len`, indexing, `.var`/`.set` snapshots and
   forwarding through imported modules, including two-module forwarding and
-  repeated equal imports. Native
-  iterable `.for` has focused coverage, including imported-name shadowing,
+  repeated equal imports. Native struct configuration now captures available
+  schemas through shared struct handling and transports types and instances
+  through numeric parameter arenas. Focused coverage includes aliases, members,
+  forwarding, snapshots and retained blocks. Top-level forward `.if` conditions
+  with mutable branch updates remain unsupported in native; this also limits
+  configuration cases containing those branches.
+  Native iterable `.for` has focused coverage, including imported-name shadowing,
   qualified-reference preservation and nested restoration on both packages.
-  Native struct parameters currently reject during import preparation;
-  wide numeric literal packing remains limited. These focused checks do not
+  Wide numeric literal packing remains limited. These focused checks do not
   establish complete module or assembler-language parity.
 - A `map { logical -> concrete }` clause maps logical sections declared by the
   imported module into concrete sections in the importing/root module. Map

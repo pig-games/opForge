@@ -10,12 +10,15 @@
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_imports as imports
+	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_memory as memory
 	.use prvm.amigaos.abi as abi
 	.pub
 ASSIGNMENT = 30
 LOOP_OPEN = 31
 LOOP_CLOSE = 32
+SCHEMA_ACTIVE = 1
+SCHEMA_UNAVAILABLE = 2
 Frame	.struct
 Session	.long ?
 Arena	.long ?
@@ -33,6 +36,7 @@ IndexModule	.long ?  ; source binding index+1, no module semantic state
 Binding	.long ?  ; requested graph binding for configure
 Depth	.word ?
 Priority	.word ?  ; physical entry only: static incoming-use root priority
+Schema	.word ?  ; zero idle; shared capture or unavailable body
 Reserved	.word ?
 	.endstruct
 CONDITIONS = Frame.Reserved+2
@@ -43,6 +47,7 @@ FRAME_BYTES = CONDITIONS+conditionals.SCRATCH_BYTES
 begin	.block
 	clr.l Frame.IndexModule(a0)
 	clr.w Frame.Depth(a0)
+	clr.w Frame.Schema(a0)
 	clr.w Frame.Reserved(a0)
 	move.l a0, -(sp)
 	lea CONDITIONS(a0), a0
@@ -82,10 +87,13 @@ done
 ; A0=Frame. Index [Cursor,End) capture boundaries without binding body records.
 ; graph.Cursor advances in logical capture bytes; local Cursor addresses Arena.
 ; BindCapture serves module names and the entry-only static priority subset.
+; Reference origins use the indexed module, with Active restored on return.
 ; D0/CCR=status; other registers preserved.
 index	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
+	movea.l Frame.Scope(a6), a0
+	move.w layout.MODULE_STATE+modules.State.Active(a0), -(sp)
 next
 	bsr.w resolveNext
 	bne.w bad
@@ -96,6 +104,8 @@ next
 	movea.l a5, a0
 	bsr.w classify
 	move.l d1, d3
+	movea.l Frame.Scope(a6), a0
+	move.w Frame.IndexModule+2(a6), layout.MODULE_STATE+modules.State.Active(a0)
 	moveq #0, d4
 	move.l Frame.IndexModule(a6), d5
 	move.l d5, d6
@@ -104,6 +114,8 @@ next
 	tst.l d5
 	bne.w boundary
 controls
+	tst.w Frame.Schema(a6)
+	bne.w indexSchema
 	tst.w Frame.Depth(a6)
 	beq.w moduleControls
 	move.l d3, d1
@@ -126,6 +138,16 @@ moduleControls
 	moveq #1, d4
 	bra.w publish
 outsideActive
+	tst.w CONDITIONS+conditionals.State.Uncertain(a6)
+	beq.w indexCertaintyReady
+	cmpi.l #ASSIGNMENT, d3
+	bne.w indexCertaintyReady
+	bsr.w bindIndexRecord
+	bne.w bad
+	bsr.w invalidateConditionalWrite
+	bne.w bad
+	bra.w publish
+indexCertaintyReady
 	tst.w CONDITIONS+conditionals.State.Active(a6)
 	bne.w boundary
 	moveq #1, d4
@@ -135,6 +157,8 @@ boundary
 	beq.w statement
 	tst.l d5
 	beq.w statement
+	cmpi.l #scopes.KEY_STRUCT, d3
+	beq.w indexSchemaOpen
 	move.l d3, d1
 	movea.l a6, a0
 	bsr.w trackDepth
@@ -148,6 +172,11 @@ boundary
 	bne.w bad
 	movea.l Frame.Output(a6), a0
 	movea.l Frame.Scope(a6), a1
+	move.l Frame.Capacity(a6), d0
+	jsr scopes.configurationStatement
+	bne.w bad
+	bsr.w installConfigurationBindings
+	bne.w bad
 	jsr imports.captureValue
 	bra.w publish
 importTarget
@@ -163,12 +192,22 @@ importTarget
 	adda.l d1, a0
 	addq.l #5, a0
 	lea scopes.bind, a2
+	bsr.w installConfigurationBindings
+	bne.w bad
 	jsr imports.configurationTarget
 	bne.w bad
 	movea.l Frame.Graph(a6), a0
 	movea.l Frame.Scope(a6), a1
 	jsr graph.entryTarget
 	bne.w bad
+	bra.w publish
+indexSchemaOpen
+	movea.l Frame.Scope(a6), a0
+	move.w Frame.IndexModule+2(a6), layout.State.Current(a0)
+	move.w #SCHEMA_ACTIVE, Frame.Schema(a6)
+indexSchema
+	move.l d3, d1
+	bsr.w captureSchema
 	bra.w publish
 statement
 	move.l d3, d1
@@ -266,6 +305,8 @@ good
 bad
 	moveq #1, d0
 done
+	movea.l Frame.Scope(a6), a0
+	move.w (sp)+, layout.MODULE_STATE+modules.State.Active(a0)
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -340,6 +381,8 @@ done
 ; D0/CCR=status; other registers preserved. Scope is already opened if implicit.
 beginConfiguration	.block
 	clr.w Frame.Depth(a0)
+	clr.w Frame.Schema(a0)
+	clr.w Frame.Priority(a0)
 	move.l a0, -(sp)
 	lea CONDITIONS(a0), a0
 	jsr conditionals.beginStatic
@@ -364,6 +407,12 @@ next
 	movea.l a5, a0
 	bsr.w classify
 	move.l d1, d6
+	tst.w Frame.Schema(a6)
+	beq.w ordinaryDepth
+	move.l d6, d1
+	bsr.w captureSchema
+	bra.w advance
+ordinaryDepth
 	; Nested bodies cannot contribute module configuration or guard values.
 	tst.w Frame.Depth(a6)
 	beq.w moduleControls
@@ -386,12 +435,24 @@ moduleControls
 	bne.w bad
 	bra.w advance
 active
+	tst.w CONDITIONS+conditionals.State.Uncertain(a6)
+	beq.w configurationCertaintyReady
+	cmpi.l #ASSIGNMENT, d6
+	bne.w configurationCertaintyReady
+	bsr.w bindRecord
+	bne.w bad
+	bsr.w invalidateConditionalWrite
+	bne.w bad
+	bra.w advance
+configurationCertaintyReady
 	tst.w CONDITIONS+conditionals.State.Active(a6)
 	beq.w advance
 	cmpi.l #scopes.KEY_MODULE, d6
 	beq.w moduleBoundary
 	cmpi.l #scopes.KEY_ENDMODULE, d6
 	beq.w moduleBoundary
+	cmpi.l #scopes.KEY_STRUCT, d6
+	beq.w schemaOpen
 	movea.l a6, a0
 	move.l d6, d1
 	bsr.w trackDepth
@@ -406,6 +467,11 @@ active
 	tst.w Frame.Depth(a6)
 	bne.w advance
 	bra.w selected
+schemaOpen
+	move.w #SCHEMA_ACTIVE, Frame.Schema(a6)
+	move.l d6, d1
+	bsr.w captureSchema
+	bra.w advance
 moduleBoundary
 	clr.w Frame.Depth(a6)
 selected
@@ -413,6 +479,9 @@ selected
 	bne.w bad
 	movea.l Frame.Output(a6), a0
 	movea.l Frame.Scope(a6), a1
+	move.l Frame.Capacity(a6), d0
+	bsr.w installConfigurationBindings
+	bne.w bad
 	move.l Frame.Capacity(a6), d0
 	jsr scopes.configurationLine
 	bne.w bad
@@ -447,6 +516,79 @@ done
 	tst.l d0
 	rts
 	.bend  ; endConfiguration
+
+; A6=Frame with selected bound assignment. Invalidate only mutable snapshots
+; affected by an unavailable conditional choice. D0/CCR=status; others kept.
+invalidateConditionalWrite	.block
+	movem.l d1/a0-a1, -(sp)
+	movea.l Frame.Output(a6), a0
+	movea.l Frame.Scope(a6), a1
+	move.l Frame.Capacity(a6), d0
+	jsr scopes.configurationStatement
+	bne.w done
+	jsr imports.invalidateMutable
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; invalidateConditionalWrite
+
+; A6=Frame. Install the current numeric occurrence plans before snapshot VM
+; evaluation. D0/CCR=status; other registers preserved.
+installConfigurationBindings	.block
+	movem.l a0-a1, -(sp)
+	movea.l Frame.Scope(a6), a0
+	movea.l a0, a1
+	adda.l #layout.IMPORT_STATE+imports.KNOWN_OWNER, a1
+	jsr scopes.exportBindings
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; installConfigurationBindings
+
+; A6=Frame,A5=capture record,D1=shared directive key. Best-effort schema
+; capture uses the ordinary numeric binder and struct handler. A failed geometry
+; is skipped through the shared end key; ordinary preparation remains decisive.
+; D0/CCR=0; other registers preserved.
+captureSchema	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	move.l d1, d3
+	tst.w CONDITIONS+conditionals.State.Uncertain(a6)
+	beq.w certaintyReady
+	move.w #SCHEMA_UNAVAILABLE, Frame.Schema(a6)
+certaintyReady
+	cmpi.w #SCHEMA_UNAVAILABLE, Frame.Schema(a6)
+	beq.w unavailable
+	bsr.w bindRecord
+	bne.w abandon
+	movea.l Frame.Output(a6), a0
+	movea.l Frame.Scope(a6), a1
+	move.l Frame.Capacity(a6), d0
+	bsr.w installConfigurationBindings
+	bne.w abandon
+	move.l Frame.Capacity(a6), d0
+	jsr scopes.configurationStruct
+	beq.w available
+abandon
+	movea.l Frame.Scope(a6), a0
+	jsr scopes.abandonConfigurationStruct
+	move.w #SCHEMA_UNAVAILABLE, Frame.Schema(a6)
+unavailable
+	cmpi.l #scopes.KEY_ENDSTRUCT, d3
+	bne.w done
+available
+	cmpi.l #scopes.KEY_ENDSTRUCT, d3
+	bne.w done
+	clr.w Frame.Schema(a6)
+	tst.w Frame.Priority(a6)
+	beq.w done
+	movea.l Frame.Scope(a6), a0
+	clr.w layout.State.Current(a0)
+done
+	moveq #0, d0
+	movem.l (sp)+, d1-d3/a0-a1
+	rts
+	.bend  ; captureSchema
 
 ; A0=validated capture.Record. D0=0,D1=shared directive key/ASSIGNMENT/zero;
 ; all other registers preserved. Read TKVM structural rows only; identifier

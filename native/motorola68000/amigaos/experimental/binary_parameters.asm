@@ -54,8 +54,10 @@ next
 	bne.w bad
 	moveq #0, d5
 	move.w pkg.Parameter.Kind(a3), d5
-	cmpi.l #values.RANGE, d5
+	cmpi.l #values.STRUCT_LITERAL, d5
 	bhi.w bad
+	cmpi.l #values.ADDRESS_RECORD, d5
+	beq.w bad
 	move.l pkg.Parameter.Low(a3), d1
 	move.l pkg.Parameter.High(a3), d2
 	tst.l d5

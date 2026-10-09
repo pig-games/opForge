@@ -19,9 +19,10 @@ The [scalar-update checkpoint](#scalar-compound-updates-current-slice) adds the
 and configuration snapshots. The subsequent typed-list, ternary and
 [struct-literal checkpoints](#struct-literal-construction-checkpoint) extend
 shared compound expression execution; these also have focused proof only.
-The [typed configuration repair](#typed-struct-configuration-rust-repair-checkpoint)
-preserves Rust struct schemas and snapshots across `.use`; native struct parameters
-still reject during import preparation.
+The [typed configuration repairs](#typed-struct-configuration-native-checkpoint)
+preserve schemas and snapshots across `.use` in Rust and the focused native subset.
+Top-level forward expression conditions with mutable branch updates remain a
+native gap.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -1136,6 +1137,69 @@ slowdown. The newly supported feature cases have no successful native baseline
 for a speed comparison. Frozen images, logs, hashes and reproduction settings
 remain outside `target` in `/tmp/opforge-typed-list-measurements.json`.
 
+### Typed struct configuration: native checkpoint
+
+Baseline: `f5fbc4a0`. Native configuration now captures available module-scope
+schemas through the ordinary shared struct handler, then carries types and
+instances through its offset-based parameter arenas. Nominal and field identities
+are rebound into the semantic scope before replay. Incoming type aliases can
+construct dependency instances; earlier instances and members can supply
+parameters. The assembly loader accepts these kinds while rejecting address
+records. No new grammar, VM contract version or text execution path is introduced.
+
+The repair also separates physical-index module ownership from dependency
+configuration, annotates inline field keys through shared EXVM binding, and
+publishes numeric member plans before source-site evaluation. Plan-backed member
+references respect module visibility. Potential writes in unavailable static
+branches invalidate mutable configuration snapshots; read-only snapshots remain
+available. Ordinary forward-branch execution is not added by that capture rule.
+
+Fresh release CLI comparisons cover eight combined scenarios with the 68020 and
+6502 packages: types and aliases, inline/saved instances, member-valued parameters,
+retained blocks, mutable snapshots, forwarding and repeated equal imports,
+parameter-dependent geometry, inactive unavailable schemas, and field names
+resembling registers. Each run compares every output byte against its live Rust
+oracle. The existing scalar/list/range forwarding control is checked separately.
+Six selected 68020 rejection checks cover nominal/value conflicts, private/read-only
+bindings and unavailable configuration. The existing nine-scenario struct-expression
+matrix also matches fresh Rust output with both packages. Native rejection proof
+requires exit 20 and a fresh diagnostic; it does not establish matching Rust
+diagnostic wording.
+
+Isolated unchanged scalar control, FS-UAE `68020-10m`, release images with telemetry
+disabled, 200-byte source and exact matching 7,168-byte output in each run:
+
+| Measurement | Before | After | Change |
+|---|---:|---:|---:|
+| Host-observed guest START/DONE | 36.202 s | 36.399 s | +0.196 s (+0.54%) |
+| Dual-package release image | 639,736 bytes | 641,040 bytes | +1,304 bytes (+0.20%) |
+| Linked static reservation | 659,100 bytes | 660,344 bytes | +1,244 bytes (+0.19%) |
+
+One pair establishes no meaningful measured performance change. It does not
+measure configuration-heavy workloads. Whole-table occurrence-plan publication
+may merit later profiling; no speedup is claimed. Frozen images, hashes and
+reproduction settings remain outside `target` in
+`/tmp/opforge-native-struct-configuration-measurements.json`.
+
+The retained `readonly-uncertain-snapshot` regression still fails natively at
+its top-level forward `.if later`, before its `.use`. Supporting that branch and
+its mutable update requires a separate shared-language repair. The full native
+parameter test therefore retains this known failing case; the successful matrix
+is explicitly limited to the eight scenarios above. Select
+`OPFORGE_STRUCT_PARAMETER_FILTER=combined-positive-matrix,compound-control`
+with `OPFORGE_STRUCT_PARAMETER_CPUS=68020,6502` and run
+`cargo test -p asm native_struct_parameters_fs_uae -- --ignored --nocapture --test-threads=1`
+under the configured FS-UAE environment to repeat that qualified subset.
+Runtime repetition writes also remain outside complete native configuration parity.
+There is no new full self-host, hardware timing, peak-memory or 2 MiB qualification
+from this slice.
+
+Rust configuration oracles and the source-graph suite pass. Formatting, workspace
+library Clippy and workflow guards pass. All-targets Clippy still reports two
+unchanged single-element-loop findings in `crates/opforge-core/src/expr_vm.rs`; the
+changed native files retain two unchanged autofixable redundant-`tst` findings.
+Broad workspace qualification was not repeated for this native checkpoint.
+
 ### Typed struct configuration: Rust repair checkpoint
 
 The reference is `20cf264e`. The investigation found two Rust prerequisites:
@@ -1186,13 +1250,10 @@ configuration oracles pass 2/2 and named-loop Rust oracles pass 4/4. Final
 formatting, workspace clippy and workflow checks also pass. The complete workspace
 suite was not repeated after that guard.
 
-Fresh native comparisons attempted all five positive scenarios with both the
-68020 and 6502 packages. All ten reject at the importing `.use` during preparation
-(exit 20); native struct-parameter parity is not implemented or qualified by this
-Rust repair. The next native slice must trace numeric configuration capture and
-carry schemas/instances through parameter arenas, replay and binding with full
-nominal identity. The assembly parameter loader also still limits kinds to range;
-that later limit alone does not explain the earlier preparation failures.
+At this Rust-only checkpoint, all five positive native scenarios rejected at
+`.use` preparation with both target packages (exit 20). The native configuration
+checkpoint above supersedes that result; this Rust repair alone did not implement
+native capture, arena transport or assembly-loader support.
 
 The existing scalar/list/range configuration control passes its seven-byte live
 Rust oracle in fresh native runs with both packages: 2.288 s (68020 target) and

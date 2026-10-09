@@ -12,6 +12,7 @@
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_numeric_bindings as bindings
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_struct_values as structs
 	.use exprvm.amigaos.runtime as runtime
@@ -264,6 +265,25 @@ typeValue
 	bra.w storeValue
 
 scalarValue
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a0)
+	bne.w scalarMetadataReady
+	move.l a0, -(sp)
+	moveq #0, d1
+	move.w 5(a0), d1
+	sub.w layout.State.Base(a6), d1
+	bcs.w scalarMetadataInvalid
+	andi.l #$ffff, d1
+	cmp.w layout.State.Count(a6), d1
+	bhs.w scalarMetadataInvalid
+	mulu.w #records.ENTRY_BYTES, d1
+	movea.l layout.ENTRIES_POINTER(a6), a0
+	ori.w #records.MUTABLE, records.Entry.Flags(a0, d1.l)
+	movea.l (sp)+, a0
+	bra.w scalarMetadataReady
+scalarMetadataInvalid
+	movea.l (sp)+, a0
+	bra.w constantOk
+scalarMetadataReady
 	movea.l a0, a1
 	adda.l d0, a1
 	moveq #0, d7
@@ -322,6 +342,40 @@ constantDone
 	tst.l d0
 	rts
 	.bend  ; captureValue
+
+; A0=normalized assignment,A1=scope. A possible conditional write makes an
+; earlier mutable snapshot unavailable. Read-only snapshots retain their value.
+; D0/CCR=status; other registers preserved.
+invalidateMutable	.block
+	movem.l d1-d3/a0-a3, -(sp)
+	moveq #0, d1
+	move.w source.NameToken.Id+4(a0), d1
+	move.l d1, d3
+	sub.w layout.State.Base(a1), d1
+	bcs.w good
+	cmp.w layout.State.Count(a1), d1
+	bhs.w good
+	move.l d1, d2
+	mulu.w #records.ENTRY_BYTES, d2
+	movea.l layout.ENTRIES_POINTER(a1), a2
+	move.w records.Entry.Flags(a2, d2.l), d2
+	andi.w #records.MUTABLE, d2
+	beq.w good
+	lea layout.IMPORT_STATE(a1), a3
+	movea.l KNOWN_DEFINED_POINTER(a3), a2
+	clr.b 0(a2, d1.l)
+	lea KNOWN_OWNER(a3), a0
+	move.l d3, d1
+	moveq #0, d2
+	jsr values.setKind
+	bra.w done
+good
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a3
+	tst.l d0
+	rts
+	.bend  ; invalidateMutable
 
 ; A0=first .use target token,A1=scope,A2=ordinary binder callback.
 ; Resolve only its shared canonical module identity; no suffix, parameters or
@@ -1867,6 +1921,7 @@ done
 	.pub
 ; A0=destination scope,D0=canonical parameter ID,D1=module source index+1,
 ; D2=low,D3=high,D4=kind,A1=source parameter arena,D6=arena bytes.
+; A2=descriptor identity callback (A0=Owner,D2=offset; D0/CCR=status).
 ; Copy a private parameter before dependency body replay.
 ; Identities must already be bound in this scope. D0/CCR=status; other registers
 ; preserved. A conflict leaves this caller-owned preparation state releasable.
@@ -1886,6 +1941,8 @@ seedParameter	.block
 	jsr values.copyRecord
 	move.l (sp)+, d3
 	tst.l d0
+	bne.w bad
+	jsr (a2)
 	bne.w bad
 scalarSeed
 	move.l d2, d6
@@ -2145,6 +2202,34 @@ validateExpressionToken
 	moveq #1, d7
 	bra.w nextExpressionToken
 ordinaryExpressionName
+	movem.l d1-d2/a0-a2, -(sp)
+	movea.l layout.State.EarlierReference(a6), a2
+	move.l a2, d0
+	beq.w earlierReady
+	movea.l a5, a0
+	movea.l a6, a1
+	jsr (a2)
+	bra.w earlierDone
+earlierReady
+	moveq #0, d0
+earlierDone
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	bne.w rangeBad
+	moveq #0, d1
+	move.w source.NameToken.Id(a5), d1
+	movem.l d1-d2/a1, -(sp)
+	lea KNOWN_OWNER(a3), a0
+	jsr bindings.getBinding
+	movem.l (sp)+, d1-d2/a1
+	tst.l d0
+	bne.w ordinaryValueName
+	; A numeric plan has completed lexical binding, including existing proxies.
+	; The shared compiler accepts only normalized identifier qualifiers.
+	clr.b source.NameToken.Qualifier(a5)
+	moveq #1, d7
+	bra.w nextExpressionToken
+ordinaryValueName
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w rangeBad
@@ -2176,21 +2261,7 @@ ordinaryExpressionName
 	adda.l d0, a0
 registeredExpressionSymbol
 	; This token belongs to the owned expression copy, never runtime source.
-	; Resolve earlier lexical ancestors after registering import availability.
-	movem.l a0-a2, -(sp)
-	movea.l layout.State.EarlierReference(a6), a2
-	move.l a2, d0
-	beq.s earlierReady
-	movea.l a5, a0
-	movea.l a6, a1
-	jsr (a2)
-	bra.s earlierDone
-earlierReady
-	moveq #0, d0
-earlierDone
-	movem.l (sp)+, a0-a2
-	tst.l d0
-	bne.w rangeBad
+	; Earlier lexical/member binding already ran on this owned copy.
 	moveq #0, d0
 	move.w source.NameToken.Id(a5), d0
 	sub.w layout.State.Base(a6), d0

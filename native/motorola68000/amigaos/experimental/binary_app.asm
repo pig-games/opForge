@@ -133,7 +133,7 @@ StartSet	.word ?
 Start	.long ?
 OutputBase	.long ?  ; Shell input basename, independent of source selection
 OutputDefault	.word ?  ; CLI output filename was omitted
-Reserved	.word ?
+WarningsAsErrors	.word ?
 LowerLine	.long ?  ; temporary capture proof callback; zero uses frontend.line
 	.endstruct
 FRAME_BYTES = Frame.LowerLine+4
@@ -146,6 +146,7 @@ execute	.block
 	move.l Frame.PackagePath(a0), InputName
 	move.l Frame.OutputPath(a0), OutputName
 	move.w Frame.Mode(a0), CliMode
+	move.w Frame.WarningsAsErrors(a0), CliWarningsAsErrors
 	move.l Frame.LowerLine(a0), LowerLineRoutine
 	move.w Frame.OutputKind(a0), CliOutputKind
 	move.w Frame.StartSet(a0), OutputStartSet
@@ -254,6 +255,16 @@ outputsReady
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_OUTPUT, #0, #0, Records, memory.Block.Used
 	bsr.w writeOutputs
 	bne.w outputFailed
+	tst.w CliWarningsAsErrors
+	beq.w warningsReady
+	lea Work, a0
+	tst.l assembly.Frame.Warnings(a0)
+	beq.w warningsReady
+	movea.l DosBase, a6
+	move.l #WarningsFailure, d1
+	jsr DOS_PUT_STR(a6)
+	bra.w cleanup
+warningsReady
 	clr.l ReturnCode
 	bra.w cleanup
 outputFailed
@@ -345,240 +356,7 @@ done
 	rts
 	.bend  ; execute
 	.priv
-reportFailure	.block
-	.BINDING_DIAGNOSTIC_REPORT DosBase
-	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, frontend.PreparationStage, Front+frontend.Frame.Used, Front+frontend.Frame.NameCount, #PROGRESS_PREPARATION_FAILURE
-	.MEMORY_PREPARATION_RECORD DosBase, InAssembly, frontend.PreparationStage, Front+frontend.Frame.Output, Front+frontend.Frame.Capacity, frontend.PreparationInput, #PROGRESS_PREPARATION_FAILURE
-	tst.l InAssembly
-	beq.w located
-	bsr.w locateFailure
-	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_FAILURE, assembly.FailureStage, SourceOrdinal, SourceLine
-	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_NAME, assembly.FailureName, #0, #0
-	.MEMORY_ASSEMBLY_RECORD DosBase, #PROGRESS_ASSEMBLY_RECORD_HEAD, Work, assembly.Frame.Records, assembly.Frame.RecordOffset, assembly.Frame.RecordBytes
-	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_POSITION, assembly.Position, AssemblyPosition.Pass, AssemblyPosition.Sweep, AssemblyPosition.Section
-	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_RECORDS, Work, assembly.Frame.RecordOffset, assembly.Frame.RecordBytes, assembly.Frame.Used
-	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_SECTIONS, assembly.Position, AssemblyPosition.Mode, AssemblyPosition.Count, AssemblyPosition.Pass
-	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_ASSEMBLY_SELECTION, encoding.Selection, SelectionPosition.Priority, SelectionPosition.Recipe, SelectionPosition.Projection
-located
-	move.l SourceOrdinal, d0
-	lea FailureFile, a0
-	bsr.w hexField
-	move.l SourceLine, d0
-	lea FailureLine, a0
-	bsr.w hexField
-	movea.l DosBase, a6
-	jsr DOS_OUTPUT(a6)
-	move.l d0, d1
-	beq.w done
-	move.l d1, d4
-	move.l #FailureMessage, d2
-	move.l #FailureMessageEnd, d3
-	sub.l d2, d3
-	jsr DOS_WRITE(a6)
-	tst.l PackageStatus
-	beq.w afterPackage
-	move.l #PackageFailure, d2
-	move.l #PackageFailureEnd-PackageFailure, d3
-	move.l d4, d1
-	jsr DOS_WRITE(a6)
-afterPackage
-	tst.l InAssembly
-	beq.w afterLayout
-	lea Work, a0
-	cmpi.w #assembly.FAILURE_WHILE_LAYOUT, assembly.Frame.Failure(a0)
-	beq.w showWhileLayout
-	cmpi.w #assembly.FAILURE_MUTABLE_LAYOUT, assembly.Frame.Failure(a0)
-	bne.w afterLayout
-	move.l #MutableLayoutFailure, d2
-	move.l #MutableLayoutFailureEnd-MutableLayoutFailure, d3
-	bra.w writeLayoutFailure
-showWhileLayout
-	move.l #WhileLayoutFailure, d2
-	move.l #WhileLayoutFailureEnd-WhileLayoutFailure, d3
-writeLayoutFailure
-	move.l d4, d1
-	jsr DOS_WRITE(a6)
-afterLayout
-	tst.l SourceOrdinal
-	bne.w sourcePath
-	tst.w PrepStep
-	beq.w done
-	moveq #0, d0
-	move.w PrepStep, d0
-	lea FailurePrepStepValue, a0
-	bsr.w hexField
-	move.l d4, d1
-	move.l #FailurePrepStep, d2
-	move.l #FailurePrepStepEnd, d3
-	sub.l d2, d3
-	jsr DOS_WRITE(a6)
-	bra.w done
-sourcePath
-	bsr.w sourceOriginPath
-	bne.w done
-	move.l d3, d5
-	move.l a0, d6
-	move.l d4, d1
-	move.l #FailurePath, d2
-	moveq #8, d3
-	jsr DOS_WRITE(a6)
-	move.l d4, d1
-	move.l d6, d2
-	move.l d5, d3
-	jsr DOS_WRITE(a6)
-	move.l d4, d1
-	move.l #FailureNewline, d2
-	moveq #1, d3
-	jsr DOS_WRITE(a6)
-	; The capture line buffer is no longer the source of an assembly record.
-	tst.l InAssembly
-	bne.w done
-	move.l LineUsed, d5
-	beq.w done
-	cmpi.l #LINE_BYTES, d5
-	bhi.w done
-	move.l LineBuffer, d6
-	beq.w done
-	move.l d4, d1
-	move.l #FailureSourceLine, d2
-	moveq #6, d3
-	jsr DOS_WRITE(a6)
-	move.l d4, d1
-	move.l d6, d2
-	move.l d5, d3
-	jsr DOS_WRITE(a6)
-	move.l d4, d1
-	move.l #FailureNewline, d2
-	moveq #1, d3
-	jsr DOS_WRITE(a6)
-done
-	rts
-	.bend  ; reportFailure
-
-; Resolve the diagnostic identity without borrowing capture/discovery views.
-; Retained origin slots contain owned bytes; zero-filled unused slots permit
-; physical candidate fallback before retention. A0=path,D3=bounded length,
-; D0/CCR=status; other registers preserved. Missing/invalid paths are omitted.
-sourceOriginPath	.block
-	movem.l d1-d2/a1, -(sp)
-	move.l SourceOrdinal, d1
-	beq.w bad
-	cmpi.l #ORIGIN_LIMIT, d1
-	bhi.w candidate
-	lsl.l #8, d1
-	move.l d1, d2
-	addi.l #PATH_BYTES, d2
-	lea OriginPaths, a1
-	cmp.l memory.Block.Used(a1), d2
-	bhi.w candidate
-	cmp.l memory.Block.Capacity(a1), d2
-	bhi.w candidate
-	move.l memory.Block.Pointer(a1), d0
-	beq.w candidate
-	add.l d1, d0
-	bcs.w bad
-	movea.l d0, a0
-	tst.b (a0)
-	bne.w measure
-candidate
-	tst.l DiscoverMode
-	beq.w working
-	move.l SourceOrdinal, d1
-	cmp.l CandidateCount, d1
-	bhi.w bad
-	cmpi.l #DISCOVERY_LIMIT, d1
-	bhi.w bad
-	lsl.l #8, d1
-	move.l d1, d2
-	addi.l #discovery.SCRATCH_BYTES, d2
-	lea DiscoveryBlock, a1
-	cmp.l memory.Block.Capacity(a1), d2
-	bhi.w bad
-	move.l memory.Block.Pointer(a1), d0
-	beq.w bad
-	subi.l #PATH_BYTES, d2
-	add.l d2, d0
-	bcs.w bad
-	movea.l d0, a0
-	bra.w measure
-working
-	lea SourcePath, a0
-measure
-	moveq #0, d3
-length
-	tst.b 0(a0, d3.w)
-	beq.w ready
-	addq.w #1, d3
-	cmpi.w #PATH_BYTES, d3
-	blo.w length
-bad
-	moveq #1, d0
-	bra.w done
-ready
-	tst.l d3
-	beq.w bad
-	moveq #0, d0
-done
-	movem.l (sp)+, d1-d2/a1
-	tst.l d0
-	rts
-	.bend  ; sourceOriginPath
-
-; Locate the failing record in numeric provenance only; no source strings survive.
-; A missing location (e.g. failure before dispatch) reports file/line zero.
-locateFailure	.block
-	clr.l SourceOrdinal
-	clr.l SourceLine
-	lea Work, a0
-	move.l assembly.Frame.RecordOffset(a0), d4
-	lea Records, a0
-	move.l d4, d0
-	addq.l #4, d0
-	bcs.w done
-	cmp.l memory.Block.Used(a0), d0
-	bhi.w done
-	movea.l memory.Block.Pointer(a0), a2
-	adda.l d4, a2
-	move.l OriginCount, d3
-	lea OriginSpans, a0
-	movea.l memory.Block.Pointer(a0), a0
-loop
-	tst.l d3
-	beq.w done
-	cmp.l Span.Start(a0), d4
-	blo.w next
-	cmp.l Span.End(a0), d4
-	bhs.w next
-	move.l Span.File(a0), SourceOrdinal
-	moveq #0, d0
-	move.w 2(a2), d0
-	move.l d0, SourceLine
-	rts
-next
-	adda.w #SPAN_BYTES, a0
-	subq.l #1, d3
-	bra.w loop
-done
-	rts
-	.bend  ; locateFailure
-
-; Render a fixed-width hexadecimal diagnostic field. D0=value,A0=8 byte field.
-; Clobbers D0-D2/A0/CCR; normal failure formatting, not instrumentation.
-hexField	.block
-	moveq #7, d2
-loop
-	rol.l #4, d0
-	move.l d0, d1
-	andi.l #15, d1
-	cmpi.b #9, d1
-	bls.w digit
-	addq.b #7, d1
-digit
-	addi.b #'0', d1
-	move.b d1, (a0)+
-	dbra d2, loop
-	rts
-	.bend  ; hexField
+	.include "binary_app_diagnostics.i"
 
 ; Read exactly D3 bytes into D2 from the open InputHandle. D0/CCR=status.
 ; Preserves all other registers. No seek, whole-source buffer or byte-at-a-time I/O.
@@ -1538,6 +1316,7 @@ run	.block
 	move.l #Context, assembly.Frame.Context(a0)
 	move.l #allocateOutput, assembly.Frame.Allocate(a0)
 	move.l #appendReloc, assembly.Frame.AddReloc(a0)
+	move.l #reportByteWarning, assembly.Frame.Warn(a0)
 	lea MemberKeys, a1
 	move.l memory.Block.Pointer(a1), assembly.Frame.MemberKeys(a0)
 	clr.l assembly.Frame.Emitted(a0)
@@ -1992,11 +1771,17 @@ done
 	.section data, kind=data
 GoFailure	.byte "compact CLI: --go requires Hex or S-record output (CLI or metadata)", 10, 0
 DosName	.byte "dos.library", 0
+WarningsFailure	.byte "--Werror: warnings treated as errors", 10, 0
 OutputFailure	.byte "compact CLI: output failed", 10, 0
 PackageFailure	.byte "package: missing, invalid or incompatible runtime package", 10
 PackageFailureEnd
 SelectedModuleKeyword	.byte "module"
 SelectedEndmoduleKeyword	.byte "endmodule"
+WarningMessage	.byte "warning: Value truncated to byte [file "
+WarningFile	.byte "00000000"
+	.byte ", line "
+WarningLine	.byte "00000000", "]", 10
+WarningMessageEnd
 FailureMessage	.byte "binary source: unsupported or invalid input [file "
 FailureFile	.byte "00000000"
 	.byte ", line "
@@ -2028,6 +1813,7 @@ InputName	.res long, 1
 OutputName	.res long, 1
 CliMode	.res word, 1
 CliOutputKind	.res word, 1
+CliWarningsAsErrors	.res word, 1
 LowerLineRoutine	.res long, 1
 	.align 4
 CliModuleRoots	.res long, 1

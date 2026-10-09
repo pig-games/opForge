@@ -29,7 +29,7 @@ Status	.word ?
 Help	.word ?
 Version	.word ?
 EndOptions	.word ?
-Reserved	.word ?
+WarningsAsErrors	.word ?
 ModuleCount	.long ?
 IncludeCount	.long ?
 Input	.res PATH_BYTES
@@ -59,6 +59,7 @@ K_UNSUPPORTED = 9
 K_HEX = 10
 K_SREC = 11
 K_GO = 12
+K_WERROR = 13
 Record	.struct
 Short	.word ?
 Kind	.word ?
@@ -174,12 +175,21 @@ selected
 	beq.w output
 	cmpi.w #K_GO, d2
 	beq.w go
+	cmpi.w #K_WERROR, d2
+	beq.w werror
 	movea.l a4, a6
 	adda.w Record.Dest(a5), a6
 	tst.b (a6)
 	bne.w rejectDuplicate
 	bsr.w required
 	bne.w done
+	bra.w next
+werror
+	move.l a2, d0
+	bne.w rejectMalformed
+	tst.w State.WarningsAsErrors(a4)
+	bne.w rejectDuplicate
+	move.w #1, State.WarningsAsErrors(a4)
 	bra.w next
 infile
 	cmpi.w #1, State.InputStyle(a4)
@@ -613,7 +623,7 @@ Options
 	.long Name20
 	.word 0, K_UNSUPPORTED, 0, 0
 	.long Name21
-	.word 0, K_UNSUPPORTED, 0, 0
+	.word 0, K_WERROR, 0, 0
 	.long Name22
 	.word 0, K_UNSUPPORTED, 0, 0
 	.long Name23

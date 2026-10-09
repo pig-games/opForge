@@ -44,6 +44,8 @@ Sections	.long ?
 AddReloc	.long ?
 Emitted	.long ?
 MemberKeys	.long ?  ; bounded numeric field IDs, indexed by context symbol
+Warn	.long ?  ; optional byte-truncation diagnostic callback
+Warnings	.long ?  ; final-pass warning events, without per-event allocation
 	.endstruct
 
 OutputReloc	.struct
@@ -52,7 +54,7 @@ Target	.long ?
 Offset	.long ?
 	.endstruct
 OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
-FRAME_BYTES = Frame.MemberKeys+4
+FRAME_BYTES = Frame.Warnings+4
 FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
 FAILURE_WHILE_LAYOUT = 2
@@ -124,6 +126,8 @@ Position
 ; Optional Emitted(A0=Frame,D1=address,D2=buffer offset,D3=bytes) runs only
 ; for nonempty initialized final-pass emissions, before advancing state. It returns D0/CCR
 ; status and preserves other registers. No text/CPU grammar enters the callback.
+; Optional Warn(A0=Frame,D1=low-u32 value) reports final-pass byte truncation;
+; D0/CCR=status, other registers preserved. Warnings counts all such events.
 ; Other registers preserved; CCR reflects D0. No text/dictionary pointer enters
 ; this module. General variable-size convergence and discontiguous origins remain
 ; unsupported.
@@ -140,6 +144,7 @@ assemble	.block
 	.MEMORY_COUNTER_CLEAR repetition.IterableScopes
 	.MEMORY_COUNTER_CLEAR repetition.IterableBindings
 	clr.l Frame.Used(a5)
+	clr.l Frame.Warnings(a5)
 	clr.w LayoutRounds
 	clr.w SizingReplay
 	clr.w SizingRounds
@@ -1109,31 +1114,16 @@ dataExpression
 	moveq #0, d1
 	bra.w dataEmitValue
 dataValue
-	cmpi.w #4, d6
-	beq.w dataRangeOk
-	; Word data accepts a signed 16-bit value or an unsigned 16-bit value.
-	move.l pkg.Context.High(a2), d0
-	beq.w unsignedData
-	cmpi.l #-1, d0
-	bne.w bad
-	cmpi.w #2, d6
-	bne.w bad
-	tst.l d1
-	bpl.w bad
-	cmpi.l #-32768, d1
-	blt.w bad
-	bra.w dataRangeOk
-unsignedData
-	tst.l d1
-	bmi.w bad
+	; Shared data directives narrow to low u32, then to their output width.
+	; Only byte truncation warns; .emit has its separate strict unit checks.
 	cmpi.w #1, d6
-	bne.w wordRange
+	bne.w dataRangeOk
 	cmpi.l #255, d1
-	bhi.w bad
-	bra.w dataRangeOk
-wordRange
-	cmpi.l #65535, d1
-	bhi.w bad
+	bls.w dataRangeOk
+	cmpi.w #2, pkg.Context.Pass(a2)
+	bne.w dataRangeOk
+	bsr.w warnByte
+	bne.w bad
 dataRangeOk
 	bsr.w markDataReloc
 	bne.w bad
@@ -1183,6 +1173,26 @@ done
 	tst.l d0
 	rts
 	.bend  ; statement
+
+; D1=low-u32 byte value. Report one final-pass warning through its owner.
+; D0/CCR=status; other registers preserved. No allocation or source parsing.
+warnByte	.block
+	movem.l a0-a1, -(sp)
+	movea.l Active, a0
+	addq.l #1, Frame.Warnings(a0)
+	bcs.w bad
+	movea.l Frame.Warn(a0), a1
+	move.l a1, d0
+	beq.w done
+	jsr (a1)
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; warnByte
 
 ; Translate package-VM absolute-long output fixups to section-offset Hunk
 ; records. Instruction bytes and their fixup offsets came from the selected

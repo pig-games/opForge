@@ -61,6 +61,7 @@ outputDefaultReady
 	lea args.State.OutputBase(a2), a1
 	move.l a1, app.Frame.OutputBase(a0)
 	move.w args.State.OutputDefault(a2), app.Frame.OutputDefault(a0)
+	move.w args.State.WarningsAsErrors(a2), app.Frame.WarningsAsErrors(a0)
 	move.w #2, app.Frame.Mode(a0)
 	move.w args.State.OutputKind(a2), app.Frame.OutputKind(a0)
 	bne.w outputConfigured
@@ -157,6 +158,7 @@ UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "  -I, --include-path DIR Additional include search root (repeatable)", 10
 	.byte "  -P, --package-path DIR Package directory", 10
 	.byte "  -d, --dialect NAME    Package dialect", 10
+	.byte "      --Werror         Return failure if warnings occurred", 10
 	.byte "  -h, --help           This help", 10
 	.byte "  -V, --version        Build identity", 10
 	.byte "Root-file directory is the default module/include search root.", 10

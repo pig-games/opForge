@@ -325,6 +325,15 @@ The important constraints are:
 - `.res` is only allowed in `kind=bss` sections.
 - For `word`, unit size follows current CPU word size.
 - String operands in `.byte`/`.db` are encoded using the active text encoding.
+- Scalar `.byte`, `.word` and `.long` operands first retain their low 32 bits.
+  `.byte` warns when that value exceeds 255 and still emits its low byte; every
+  following operand is processed. `.word` and `.long` retain their low 16 and
+  32 bits respectively without a truncation warning. For example,
+  `.byte -1,256,3` emits `FF 00 03` with two warnings.
+- `.emit` and `.fill` retain their strict unit-fit checks: values outside the
+  selected unit's range after low-32-bit scalar conversion are errors rather
+  than truncated emissions.
+- `--Werror` treats warnings as a failure after writing the requested outputs.
 - `.null` is strict: it errors if the encoded source text already contains byte `0`.
 
 #### 3.5.1 Text encoding directives

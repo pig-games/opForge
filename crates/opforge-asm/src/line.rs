@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-use crate::error::{AsmError, AsmErrorKind, Fixit, LineStatus};
+use crate::error::{AsmError, AsmErrorKind, Diagnostic, Fixit, LineStatus, Severity};
 use crate::opasm::{self, StatementRequest};
 use crate::output::{
     format_addr, section_kind_name, BinOutputSpec, ExportSectionsDirective, ExportSectionsFormat,
@@ -766,6 +766,10 @@ impl<'a> AsmLine<'a> {
             }
         }
         errors
+    }
+
+    pub(crate) fn line_warnings(&self) -> &[Diagnostic] {
+        &self.diagnostics.line_warnings
     }
 
     pub fn error(&self) -> Option<&AsmError> {
@@ -2261,6 +2265,7 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn process(&mut self, line: &str, line_num: u32, addr: u32, pass: u8) -> LineStatus {
+        self.diagnostics.line_warnings.clear();
         self.diagnostics.last_error = None;
         self.diagnostics.last_error_column = None;
         self.diagnostics.last_error_help = None;
@@ -2291,6 +2296,7 @@ impl<'a> AsmLine<'a> {
         parsed_line: CachedRuntimeParseResult,
         prepared_line: Option<&PreparedLine>,
     ) -> LineStatus {
+        self.diagnostics.line_warnings.clear();
         self.diagnostics.last_error = None;
         self.diagnostics.last_error_column = None;
         self.diagnostics.last_error_help = None;
@@ -3884,11 +3890,19 @@ impl<'a> AsmLine<'a> {
                     && !(self.should_defer_unstable_symbols()
                         && registry::family::expr_has_unstable_symbols(expr, self))
                 {
-                    return self.failure(
-                        LineStatus::Warning,
-                        AsmErrorKind::Expression,
-                        "Value truncated to byte",
-                        None,
+                    let span = expr_span(expr);
+                    self.diagnostics.line_warnings.push(
+                        Diagnostic::new(
+                            self.current_line_num,
+                            Severity::Warning,
+                            AsmError::new(
+                                AsmErrorKind::Expression,
+                                "Value truncated to byte",
+                                None,
+                            ),
+                        )
+                        .with_column(Some(span.col_start))
+                        .with_col_end(Some(span.col_end)),
                     );
                 }
                 self.bytes.push((val & 0xff) as u8);
@@ -3947,7 +3961,13 @@ impl<'a> AsmLine<'a> {
             self.mark_current_section_hunk_relocatable();
         }
 
-        LineStatus::Ok
+        if let Some(warning) = self.diagnostics.line_warnings.first() {
+            self.diagnostics.last_error = Some(warning.error.clone());
+            self.diagnostics.last_error_column = warning.column;
+            LineStatus::Warning
+        } else {
+            LineStatus::Ok
+        }
     }
 }
 

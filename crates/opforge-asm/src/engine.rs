@@ -2436,6 +2436,12 @@ qualified_share={:.2}%",
             listing_started_at.elapsed(),
         );
 
+        for warning in asm_line.line_warnings() {
+            diagnostics.push(warning.clone());
+            listing.write_diagnostic_with_annotations(warning, all_lines)?;
+            counts.warnings += 1;
+        }
+
         match status {
             LineStatus::Error | LineStatus::Pass1Error => {
                 if let Some(err) = asm_line.error() {
@@ -2456,7 +2462,7 @@ qualified_share={:.2}%",
                 }
                 counts.errors += 1;
             }
-            LineStatus::Warning => {
+            LineStatus::Warning if asm_line.line_warnings().is_empty() => {
                 if let Some(err) = asm_line.error() {
                     diagnostics.push(Self::diagnostic_from_asmline(
                         asm_line,

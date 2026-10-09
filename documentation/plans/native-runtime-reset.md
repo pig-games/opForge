@@ -1070,6 +1070,58 @@ speedup. It does not measure peak memory or qualify 2 MiB hardware. Logs, frozen
 images and the reproducible measurement summary remain outside `target` at
 `/tmp/opforge-compound-measurements.json`.
 
+### Shared narrow-output checkpoint
+
+The approved policy repairs Rust `.byte` layout loss: keep the existing low-u32
+scalar conversion, warn for each resulting value above 255, emit its low byte
+and continue every operand. `.word` retains low 16 bits and `.long` low 32 bits
+without warnings; `.emit`/`.fill` keep their strict unit-fit policy. The compact
+native data writer now follows these shared rules, independent of target package.
+This closes the direct scalar data differences observed in the preceding
+[signed iterable checkpoint](#signed-scalar-iterable-checkpoint).
+
+Hypothesis: a final-pass warning callback can preserve numeric provenance and
+layout without per-warning native allocation or grammar changes. Baseline is
+`dde445da`; success requires exact same-input Rust/native bytes, warning counts,
+following-label layout, strict rejection controls and a separately timed unchanged
+control. Stop to diagnose any mismatch or material control regression.
+
+Rust queues operand warnings independently of line failure, so an error in a
+later operand does not hide an earlier warning. The native assembly frame adds
+an optional diagnostic callback and an eight-byte callback/count pair. Application
+diagnostics live in a separate include; they resolve retained source identities
+rather than parse source text. Native `--Werror` writes requested outputs before
+returning failure, matching Rust.
+
+Focused qualification:
+
+- Rust checks cover emitted bytes, following-label addresses and operand warning
+  spans on three target families, warnings before a later expression error, the
+  explicit 31-byte matrix on both target packages, and output retained under
+  `--Werror`. The 17 affected `.emit` tests pass (three native tests remain ignored
+  in that host invocation).
+- Five fresh FS-UAE cases pass: the 31-byte matrix on both 68020 and 6502 target
+  packages with seven warnings each, a warning promoted to exit 20 with its
+  one-byte output retained, and strict byte/word `.emit` overflow rejection.
+  Warnings identify a nonzero source line and the retained source path. This
+  is a 68020-host comparison of target packages, not 6502-host execution.
+- Library Clippy, Rust/native formatting and deterministic native/workflow guards
+  pass. This does not clear the previously recorded broad-suite failures or
+  qualify every diagnostic/output format, a full self-host, A6000 or 2 MiB fit.
+
+Isolated unchanged 1,024-iteration scalar control, FS-UAE `68020-10m`, release
+images with telemetry disabled, exact live Rust output in both fresh runs:
+
+| Measurement | Before (`dde445da`) | After | Change |
+|---|---:|---:|---:|
+| Host-observed guest START/DONE | 36.225 s | 36.419 s | +0.194 s (+0.54%) |
+| Dual-package release image | 633,500 bytes | 634,020 bytes | +520 bytes (+0.08%) |
+| Control source / output | 200 / 7,168 bytes | 200 / 7,168 bytes | unchanged |
+
+One pair does not establish a timing change. No peak-memory measurement is
+claimed. Frozen images, logs, hashes and the reproduction command are retained
+outside `target` in `/tmp/opforge-narrow-output-measurements.json`.
+
 ### Signed scalar iterable checkpoint
 
 Hypothesis: retaining signed i64 elements in Rust's loop plan/binding and both
@@ -1086,11 +1138,12 @@ target packages and a separately measured final control. Stop to diagnose any
 mismatch or material control regression. Compound elements, general output
 narrowing policy and a fresh full self-host remain outside this slice.
 
-Both implementations retain their existing data-output policy. A direct Rust
+At this checkpoint both implementations retained their existing data-output policy. A direct Rust
 `.byte -1` raises a truncation warning and emits no byte for that statement.
 Rust `.byte 4294967296` instead narrows to zero; a fresh native comparison
 rejects that wide-byte statement. These differences were exposed after removing
-the iterator restriction and remain narrow-output/diagnostic parity issues.
+the iterator restriction; the later [narrow-output checkpoint](#shared-narrow-output-checkpoint)
+repairs these scalar data and warning differences.
 Signed iterator transport is proved with explicit masked projections, full-value comparisons,
 snapshots and branches; those are not proof of direct negative-byte parity.
 Shift counts also retain the existing 0–31 masking contract, so high-word

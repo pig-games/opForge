@@ -3936,6 +3936,7 @@ fn run_with_cli_werror_fails_when_warning_is_emitted() {
     let dir = create_temp_dir("werror-warning");
     let input = dir.join("warn.asm");
     let list = dir.join("warn.lst");
+    let output = dir.join("warn.bin");
     write_file(&input, ".byte 300\n");
 
     let cli = Cli::parse_from([
@@ -3944,6 +3945,8 @@ fn run_with_cli_werror_fails_when_warning_is_emitted() {
         input.to_string_lossy().as_ref(),
         "-l",
         list.to_string_lossy().as_ref(),
+        "--bin",
+        output.to_string_lossy().as_ref(),
         "--Werror",
     ]);
 
@@ -3955,6 +3958,11 @@ fn run_with_cli_werror_fails_when_warning_is_emitted() {
         }
         other => panic!("expected Werror reports, got {other:?}"),
     }
+    assert_eq!(fs::read(output).unwrap(), [44]);
+    assert!(fs::read_to_string(list)
+        .unwrap()
+        .contains("Value truncated to byte"));
+    fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]

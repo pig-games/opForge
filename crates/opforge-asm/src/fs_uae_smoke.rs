@@ -7938,6 +7938,8 @@ mod native_forward_count_parity;
 #[path = "tests/compact_cli_metadata.rs"]
 mod compact_cli_metadata;
 
+#[path = "tests/native_data_narrowing.rs"]
+mod native_data_narrowing;
 #[cfg(test)]
 #[path = "tests/native_guard_reuse.rs"]
 mod native_guard_reuse;

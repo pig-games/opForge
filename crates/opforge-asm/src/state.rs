@@ -10,7 +10,7 @@ use registry::syntax::{register_checker_none, RegisterChecker};
 use types::asm_value::StructField;
 use types::symbol::SymbolVisibility;
 
-use crate::error::{AsmError, Fixit};
+use crate::error::{AsmError, Diagnostic, Fixit};
 use crate::output::{PlacementDirective, RegionState, RootMetadata, SectionState};
 use opcore::parser::ParseError;
 
@@ -22,6 +22,7 @@ pub struct EncodingScopeState {
 
 #[derive(Debug, Default)]
 pub struct AsmDiagnosticsState {
+    pub line_warnings: Vec<Diagnostic>,
     pub last_error: Option<AsmError>,
     pub last_error_column: Option<usize>,
     pub last_error_help: Option<String>,
@@ -33,6 +34,7 @@ impl AsmDiagnosticsState {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            line_warnings: Vec::new(),
             last_error: None,
             last_error_column: None,
             last_error_help: None,

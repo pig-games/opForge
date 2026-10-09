@@ -9,6 +9,7 @@ use vm::portable_contract::{PortableOperatorKind, PortableToken, PortableTokenKi
 use vm::runtime_portable_types::{PortableTokenizeRequest, PortableTokenizerByteStream};
 
 const NODE_BYTES: usize = 24;
+const TYPED_LOWER: u16 = 9;
 struct Case {
     tokens: Vec<u8>,
     program: Vec<u8>,
@@ -211,6 +212,17 @@ fn tree(expr: &Expr, nodes: &mut Vec<u8>) -> u32 {
             let second = tree(right, nodes);
             (5, binary(*op), 2, first, second, *span)
         }
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+            span,
+        } => {
+            let first = tree(cond, nodes);
+            let second = tree(then_expr, nodes);
+            third = tree(else_expr, nodes);
+            (11, 0, 3, first, second, *span)
+        }
         Expr::Range {
             start,
             end,
@@ -378,7 +390,7 @@ fn success(source: &str) -> Case {
         payload.push(opcore::expr_vm::ExprVmOpcode::End as u8);
         lower_result(&mut expected, 0, &payload);
     } else {
-        // The current scalar lowerer intentionally rejects compound node kinds.
+        // Ternary and compound trees use canonical typed lowering.
         lower_result(&mut expected, 1, &[]);
     }
     Case {
@@ -389,6 +401,46 @@ fn success(source: &str) -> Case {
         lower_mode: 0,
         expected,
     }
+}
+fn typed_success(source: &str) -> Case {
+    let mut case = success(source);
+    let used = u32::from_be_bytes(case.expected[12..16].try_into().unwrap()) as usize;
+    case.expected.truncate(16 + used);
+    let (_, core) = numeric(source);
+    let ast = vm::vm_opcore::parse_expression_tokens(core, Span::default(), None).unwrap();
+    let program =
+        opcore::expr_vm::compile_core_expr_to_portable_program_shape_preserving(&ast).unwrap();
+    // Every lexical name is bound to numeric ID7 by this representation adapter.
+    let code = &program.code;
+    use opcore::expr_vm::ExprVmOpcode as O;
+    let mut payload = Vec::new();
+    let mut ip = 0;
+    while ip < code.len() {
+        let op = code[ip];
+        payload.push(op);
+        ip += 1;
+        let opcode = O::from_u8(op).unwrap();
+        let width = match opcode {
+            O::PushLiteral => 8,
+            O::PushSymbol | O::BuildList => 2,
+            O::ApplyUnary | O::ApplyBinary | O::BuildRange => 1,
+            O::End
+            | O::PushCurrentAddress
+            | O::SelectTernary
+            | O::IndexValue
+            | O::RequireScalar => 0,
+            _ => panic!("unsupported typed oracle opcode {opcode:?}"),
+        };
+        if opcode == O::PushSymbol {
+            payload.extend(7u16.to_le_bytes());
+        } else {
+            payload.extend(&code[ip..ip + width]);
+        }
+        ip += width;
+    }
+    lower_result(&mut case.expected, 0, &payload);
+    case.lower_mode = TYPED_LOWER;
+    case
 }
 fn failure(
     tokens: Vec<u8>,
@@ -585,12 +637,32 @@ fn batch() -> (Vec<u8>, Vec<u8>) {
         4,
         17,
     ));
+    for expression in [
+        "1?2:3",
+        "0?1:0?2:3",
+        "1?0?4:5:6",
+        "1||0?2+3:4*5",
+        "value?{1,2}:{3}",
+        "(value?{1}:{2})[0]",
+    ] {
+        cases.push(success(expression));
+    }
+    for expression in [
+        "1?2:3",
+        "0?1:0?2:3",
+        "value?{1,2}:{3}",
+        "(value?{1}:{2})[0]",
+        "value?(1..=3):(9..3:-2)",
+    ] {
+        cases.push(typed_success(expression));
+    }
+    // Ternary owns a fourth node after its three leaves.
     cases.push(failure(
         numeric("1?2:3").0,
         canonical.clone(),
-        768,
+        72,
         8192,
-        6,
+        3,
         17,
     ));
     cases.push(failure(
@@ -677,8 +749,12 @@ fn batch() -> (Vec<u8>, Vec<u8>) {
         }
         expected.extend(case.expected);
     }
-    assert!(input.len() <= 65536);
-    assert!(expected.len() <= 16384);
+    assert!(input.len() <= 98304, "compiler input bytes={}", input.len());
+    assert!(
+        expected.len() <= 16384,
+        "compiler output bytes={}",
+        expected.len()
+    );
     (input, expected)
 }
 

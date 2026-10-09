@@ -171,6 +171,8 @@ opcode
 	moveq #0, d0
 	move.b (a0)+, d0
 	beq.w endExpression
+	cmpi.b #runtime.SELECT, d0
+	beq.w opcode
 	tst.l d5
 	bne.w typedOpcode
 	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d0

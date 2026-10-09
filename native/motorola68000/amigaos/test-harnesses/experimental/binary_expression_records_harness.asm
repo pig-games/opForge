@@ -30,6 +30,14 @@ EQUALITY_CHILD_MEMBER = 7
 PLAN_6_CANDIDATES = 1
 PLAN_7_CANDIDATES = 2
 BINDING_TRUNCATED_BYTES = BindingPlansEnd-BindingPlans-1
+ScalarCase	.struct
+Program	.long ?
+End	.long ?
+Compact	.long ?
+	.endstruct
+SCALAR_CASE_BYTES = ScalarCase.Compact+4
+SCALAR_RESULT_BYTES = 12
+TYPED_RESULT_BYTES = 24
 
 	.section entry, kind=code
 	.pub
@@ -229,6 +237,45 @@ nextEquality
 	move.l d0, (a5)+
 	move.l d1, (a5)+
 	move.l d3, (a5)+
+	; Exercise both scalar decoder entry points independently of VALUE_TAG.
+	lea ScalarCases, a4
+	moveq #SCALAR_CASE_COUNT-1, d7
+nextScalar
+	movea.l ScalarCase.Program(a4), a0
+	move.l ScalarCase.End(a4), d0
+	sub.l a0, d0
+	moveq #0, d1
+	moveq #0, d2
+	suba.l a2, a2
+	suba.l a6, a6
+	tst.l ScalarCase.Compact(a4)
+	bne.w compactScalar
+	jsr runtime.evalNumeric64
+	bra.w scalarResult
+compactScalar
+	jsr runtime.evalCompact64
+scalarResult
+	move.l d0, (a5)+
+	move.l d3, (a5)+
+	jsr runtime.exprvmGetLastResultHighV1
+	move.l d1, (a5)+
+	adda.l #SCALAR_CASE_BYTES, a4
+	dbra d7, nextScalar
+	lea SelectCases, a4
+	moveq #SELECT_CASE_COUNT-1, d7
+nextSelect
+	movea.l (a4)+, a0
+	move.l (a4)+, d0
+	sub.l a0, d0
+	lea Context, a2
+	jsr typed.evaluate
+	move.l d0, (a5)+
+	move.l d1, (a5)+
+	move.l package.Context.High(a2), (a5)+
+	move.l d3, (a5)+
+	move.l package.Context.Provenance(a2), (a5)+
+	move.l d2, (a5)+
+	dbra d7, nextSelect
 	lea Owner, a0
 	jsr values.release
 	move.l #OUTPUT_BYTES, OutputLength
@@ -339,7 +386,65 @@ Cases	.long Alias, AliasEnd, Index, IndexEnd, Member, MemberEnd
 	.long CompactLoadSymbol7AddOne, CompactLoadSymbol7AddOneEnd
 CASE_COUNT = 17
 EQUALITY_CASE_COUNT = 5
-OUTPUT_BYTES = CASE_COUNT*24+36+EQUALITY_CASE_COUNT*4+12
+SCALAR_CASE_COUNT = 4
+SELECT_CASE_COUNT = 8
+OUTPUT_BYTES = CASE_COUNT*24+36+EQUALITY_CASE_COUNT*4+12+SCALAR_CASE_COUNT*SCALAR_RESULT_BYTES+SELECT_CASE_COUNT*TYPED_RESULT_BYTES
+
+ScalarCases
+	.long SelectHigh, SelectHighEnd, 0
+	.long SelectZero, SelectZeroEnd, 0
+	.long CompactHigh, CompactHighEnd, 1
+	.long CompactZero, CompactZeroEnd, 1
+SelectCases
+	.long SelectHigh, SelectHighEnd, SelectZero, SelectZeroEnd
+	.long SelectEmpty, SelectEmptyEnd, SelectOne, SelectOneEnd
+	.long SelectTwo, SelectTwoEnd, SelectList, SelectListEnd
+	.long SelectHigh, SelectWithoutEnd, SelectHigh, SelectTrailingEnd
+
+; Low-zero/high-nonzero truth selects a full-width then value; false selects -7.
+SelectHigh
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 0, 0, 0, 0, 1, 0, 0, 0
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 0, 0, 0, 0, 2, 0, 0, 0
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, $f9, $ff, $ff, $ff, $ff, $ff, $ff, $ff
+	.byte runtime.SELECT
+SelectWithoutEnd
+	.byte runtime.EXPRVM_OPCODE_END
+SelectHighEnd
+	.byte runtime.SELECT
+SelectTrailingEnd
+SelectZero
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 0, 0, 0, 0, 0, 0, 0, 0
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 0, 0, 0, 0, 2, 0, 0, 0
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, $f9, $ff, $ff, $ff, $ff, $ff, $ff, $ff
+	.byte runtime.SELECT, runtime.EXPRVM_OPCODE_END
+SelectZeroEnd
+CompactHigh
+	.byte runtime.COMPACT_I64, 0, 0, 0, 0, 1, 0, 0, 0
+	.byte runtime.COMPACT_I64, 0, 0, 0, 0, 2, 0, 0, 0
+	.byte runtime.COMPACT_I8, $f9, runtime.SELECT, runtime.EXPRVM_OPCODE_END
+CompactHighEnd
+CompactZero
+	.byte runtime.COMPACT_I8, 0
+	.byte runtime.COMPACT_I64, 0, 0, 0, 0, 2, 0, 0, 0
+	.byte runtime.COMPACT_I8, $f9, runtime.SELECT, runtime.EXPRVM_OPCODE_END
+CompactZeroEnd
+; Every insufficient arity, a non-scalar condition and bad termination fail.
+SelectTwo
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 0, 0, 0, 0, 0, 0, 0, 0
+SelectOne
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 7, 0, 0, 0, 0, 0, 0, 0
+SelectEmpty
+	.byte runtime.SELECT, runtime.EXPRVM_OPCODE_END
+SelectEmptyEnd
+SelectOneEnd
+SelectTwoEnd
+SelectList
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 1, 0, 0, 0, 0, 0, 0, 0
+	.byte runtime.EXPRVM_OPCODE_BUILD_LIST, 1, 0
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 2, 0, 0, 0, 0, 0, 0, 0
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 3, 0, 0, 0, 0, 0, 0, 0
+	.byte runtime.SELECT, runtime.EXPRVM_OPCODE_END
+SelectListEnd
 
 NestedLength
 	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 7, 0, 0, 0, 0, 0, 0, 0

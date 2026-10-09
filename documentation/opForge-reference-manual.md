@@ -153,6 +153,14 @@ The ternary operator `?:` is supported with standard precedence rules:
 flag ? value_if_true : value_if_false
 ```
 
+The condition must have a scalar value (including a record's default value).
+Zero selects the false arm; any nonzero signed 64-bit value selects the true arm.
+The selected value retains its shape, members and relocation identity.
+
+Both arms are evaluated before selection. An error or unresolved symbol in the
+unchosen arm still prevents successful evaluation; this operator does not
+short-circuit expression evaluation.
+
 ### 2.8 Compound values
 
 opForge supports compile-time compound values in expressions:

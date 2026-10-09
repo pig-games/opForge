@@ -6,6 +6,22 @@ fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+struct Context;
+impl opcore::expr_vm::PortableExprEvalContext for Context {
+    fn lookup_symbol(&self, _: &str) -> Option<i64> {
+        None
+    }
+    fn current_address(&self) -> Option<i64> {
+        None
+    }
+    fn pass(&self) -> u8 {
+        2
+    }
+    fn symbol_is_finalized(&self, _: &str) -> Option<bool> {
+        None
+    }
+}
+
 fn oracle() -> Vec<u8> {
     let cases: [[u32; 6]; 17] = [
         [0, 0, 0, 4, 0, 0],          // retained compact record alias
@@ -32,6 +48,7 @@ fn oracle() -> Vec<u8> {
         .chain([0, 40, 0, 2, 1, 0x10012, 0, 2, 1]) // invalid bare record descriptor
         .chain([0, 1, 1, 1, 1]) // nested equality: equal, changed, provenance, truncated, cycle
         .chain([0, raw_nested_length(), 0]) // shared VM shapes stay distinct from assembler lists
+        .chain(raw_selection()) // independent scalar decoders and typed selector validation
         .flat_map(u32::to_be_bytes)
         .collect()
 }
@@ -39,25 +56,9 @@ fn oracle() -> Vec<u8> {
 fn raw_nested_length() -> u32 {
     use opcore::expr_vm::{
         compile_core_expr_to_portable_program, eval_portable_expr_program, PortableExprBudgets,
-        PortableExprEvalContext,
     };
     use opcore::parser::Expr;
     use opcore::tokenizer::Span;
-    struct Context;
-    impl PortableExprEvalContext for Context {
-        fn lookup_symbol(&self, _: &str) -> Option<i64> {
-            None
-        }
-        fn current_address(&self) -> Option<i64> {
-            None
-        }
-        fn pass(&self) -> u8 {
-            2
-        }
-        fn symbol_is_finalized(&self, _: &str) -> Option<bool> {
-            None
-        }
-    }
     let span = Span {
         line: 1,
         col_start: 1,
@@ -80,6 +81,88 @@ fn raw_nested_length() -> u32 {
         .value;
     assert_eq!(result, 2);
     result as u32
+}
+
+fn raw_selection() -> Vec<u32> {
+    use opcore::expr_vm::{
+        eval_portable_expr_program, eval_portable_expr_typed_program, ExprVmOpcode as O,
+        PortableExprProgram, PortableExprResultMode, PortableExprTypedProgram, PortableExprValue,
+        EXPR_VM_OPCODE_VERSION_V1,
+    };
+    fn literal(code: &mut Vec<u8>, value: i64) {
+        code.push(O::PushLiteral as u8);
+        code.extend_from_slice(&value.to_le_bytes());
+    }
+    fn selection(condition: i64) -> Vec<u8> {
+        let mut code = Vec::new();
+        for value in [condition, 1i64 << 33, -7] {
+            literal(&mut code, value);
+        }
+        code.extend([O::SelectTernary as u8, O::End as u8]);
+        code
+    }
+    let cases = [selection(1i64 << 32), selection(0)];
+    let mut expected = Vec::new();
+    // Both native scalar formats represent these same canonical programs.
+    for code in cases.iter().cycle().take(4) {
+        let program = PortableExprProgram {
+            opcode_version: EXPR_VM_OPCODE_VERSION_V1,
+            code: code.clone(),
+            symbols: Vec::new(),
+            declared_stack_depth: 3,
+        };
+        let result = eval_portable_expr_program(&program, &Context, Default::default())
+            .expect("live scalar selection oracle")
+            .value;
+        expected.extend([0, result as u32, (result >> 32) as u32]);
+    }
+    let mut typed_cases = cases.to_vec();
+    let insufficient: &[&[i64]] = &[&[], &[7], &[0, 7]];
+    for operands in insufficient {
+        let mut code = Vec::new();
+        for &value in *operands {
+            literal(&mut code, value);
+        }
+        code.extend([O::SelectTernary as u8, O::End as u8]);
+        typed_cases.push(code);
+    }
+    let mut list_condition = Vec::new();
+    literal(&mut list_condition, 1);
+    list_condition.extend([O::BuildList as u8, 1, 0]);
+    literal(&mut list_condition, 2);
+    literal(&mut list_condition, 3);
+    list_condition.extend([O::SelectTernary as u8, O::End as u8]);
+    typed_cases.push(list_condition);
+    let mut missing_end = cases[0].clone();
+    missing_end.pop();
+    typed_cases.push(missing_end);
+    let mut trailing = cases[0].clone();
+    trailing.push(O::SelectTernary as u8);
+    typed_cases.push(trailing);
+    for (index, code) in typed_cases.into_iter().enumerate() {
+        let program = PortableExprTypedProgram {
+            opcode_version: EXPR_VM_OPCODE_VERSION_V1,
+            code,
+            symbols: Vec::new(),
+            declared_stack_depth: 3,
+            result_mode: PortableExprResultMode::ShapePreserving,
+        };
+        let result = eval_portable_expr_typed_program(&program, &Context, Default::default());
+        if index < 2 {
+            let PortableExprValue::Int(value) = result.expect("live typed selection oracle").value
+            else {
+                panic!("scalar selection changed shape");
+            };
+            expected.extend([0, value as u32, (value >> 32) as u32, 0, 0, 0]);
+        } else {
+            assert!(
+                result.is_err(),
+                "Rust accepted malformed selector case {index}"
+            );
+            expected.extend([1, 0, 0, 0, 0, 0]);
+        }
+    }
+    expected
 }
 
 struct Scratch(PathBuf);
@@ -136,7 +219,7 @@ fn assemble(root: &Path) -> (Scratch, Vec<u8>, String) {
 
 #[test]
 fn native_expression_records_host_assembles() {
-    assert_eq!(oracle().len(), 17 * 24 + 36 + 5 * 4 + 12);
+    assert_eq!(oracle().len(), 17 * 24 + 36 + 5 * 4 + 12 + 4 * 12 + 8 * 24);
     assert!(!assemble(&workspace_root()).1.is_empty());
 }
 

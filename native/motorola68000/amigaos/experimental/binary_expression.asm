@@ -191,8 +191,8 @@ bounded
 	cmpi.l #lowering.STATUS_MALFORMED, d0
 	bne.w lowerFailed
 lowerValue
-	; Keep scalar compilation/folding intact; compound trees use canonical
-	; typed operations and never pass through the scalar constant folder.
+	; Value selection and compound trees use canonical typed operations;
+	; these preserve cell kind/provenance and bypass scalar constant folding.
 	lea 2(a6), a3
 	movea.l compiler.Request.Arena(a2), a0
 	move.l compiler.Request.Used(a2), d0
@@ -331,6 +331,8 @@ next
 	cmpi.b #runtime.COMPACT_SUBTRACT, d0
 	beq.w skip
 	cmpi.b #runtime.COMPACT_MULTIPLY, d0
+	beq.w skip
+	cmpi.b #runtime.SELECT, d0
 	beq.w skip
 	moveq #1, d1
 	cmpi.b #runtime.COMPACT_I8, d0

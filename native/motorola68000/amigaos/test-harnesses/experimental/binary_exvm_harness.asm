@@ -17,7 +17,9 @@ MODE_OLDFILE = 1005
 MODE_NEWFILE = 1006
 RETURN_FAIL = 20
 CASE_CAPACITY = 128
-INPUT_CAPACITY = 65536
+TYPED_LOWER = 9
+LEN_NAME_ID = 8
+INPUT_CAPACITY = 98304
 INPUT_BUFFER_BYTES = INPUT_CAPACITY+1
 OUTPUT_CAPACITY = 16384
 ARENA_CAPACITY = 3072
@@ -84,7 +86,7 @@ caseLoop
 	move.l d3, compiler.Request.ArenaBytes(a0)
 	move.w (a3)+, d0
 	move.w d0, (LowerMode).l
-	cmpi.w #8, (LowerMode).l
+	cmpi.w #TYPED_LOWER, (LowerMode).l
 	bhi.w fail
 	move.l (a3)+, compiler.Request.StepBudget(a0)
 	move.l #NodeArena, compiler.Request.Arena(a0)
@@ -165,12 +167,12 @@ copied
 cycleMode
 	cmpi.w #2, d2
 	bne.w arityMode
-	lea 0(a0,d1.l), a2
+	lea 0(a0, d1.l), a2
 	move.l d1, compiler.Node.First(a2)
 arityMode
 	cmpi.w #3, d2
 	bne.w capacityMode
-	lea 0(a0,d1.l), a2
+	lea 0(a0, d1.l), a2
 	clr.w compiler.Node.Count(a2)
 capacityMode
 	cmpi.w #4, d2
@@ -179,7 +181,14 @@ capacityMode
 callLower
 	lea CompilerScratch, a1
 	move.l #compiler.SCRATCH_BYTES, d2
+	cmpi.w #TYPED_LOWER, (LowerMode).l
+	bne.w scalarLower
+	moveq #LEN_NAME_ID, d4
+	jsr lowering.lowerValue
+	bra.w lowered
+scalarLower
 	jsr lowering.lower
+lowered
 	moveq #0, d2
 	tst.l d0
 	bne.w lowerDone

@@ -1131,6 +1131,69 @@ slowdown. The newly supported feature cases have no successful native baseline
 for a speed comparison. Frozen images, logs, hashes and reproduction settings
 remain outside `target` in `/tmp/opforge-typed-list-measurements.json`.
 
+### Ternary value selection checkpoint
+
+Hypothesis: the shared EXVM ternary action and existing ExprVM selector can close
+conditional value selection without another source parser or runtime layout.
+Baseline is `7ed327a0`. Success requires exact live Rust/native scalar and whole
+Hunk results, shape/error controls, compiler/runtime component comparisons and
+an isolated timing comparison on the unchanged scalar workload. Investigate any
+mismatch or material control regression before integrating.
+
+`condition ? then : else` preserves the chosen scalar, list, range or retained
+record, including members and section identity. Conditions use full signed
+64-bit truth and project record defaults. Nested ternaries follow shared grammar
+precedence. Both arms evaluate eagerly, matching Rust: unavailable symbols and
+arithmetic failures in an unchosen arm still reject. Unsupported address algebra
+in an unchosen arm does not contaminate the chosen Hunk relocation.
+
+The compiler reuses the existing 24-byte node and its three child offsets.
+Ternary trees use the existing canonical typed wrapper and selector; ordinary
+scalar trees retain compact lowering and folding. Native selector evaluation
+reuses sixteen-byte cells and bounds recursive record-default projection. No
+serialized layout, package contract or VM version changes. The test-only compiler
+input buffer grows to 96 KiB for the enlarged comparison batch; production
+buffers are unchanged.
+
+Focused qualification:
+
+- Twenty fresh CLI runs pass across the 68020 and 6502 target packages: the
+  28-byte scalar/list/range/record matrix, five invalid/eager-error controls per
+  package, Hunk selection and selected-unsafe rejection, plus strengthened Hunk
+  positives and negatives on both packages. The strengthened positives match
+  each complete 128-byte Rust file with five relocations, including selection
+  across sections and discarded unsafe provenance; the negatives reject the
+  selected unsafe arm. Both target packages execute on the 68020 host.
+- The shared compiler's 125-case native batch matches its 16,246-byte live Rust
+  tree/lowering oracle, retaining existing capacity, malformed and depth checks.
+- The raw expression component matches its enlarged 716-byte oracle. It adds
+  direct canonical/compact scalar selection, high-word truth/results, typed
+  underflow and invalid-condition/termination checks while retaining existing
+  record/member/provenance/equality and nested-list controls.
+- Host checks pass both-package ternary and typed-list oracles, 34 ExprVM tests,
+  14 Hunk value-provenance checks and 10 iterator-provenance checks (including
+  three parser controls). Library Clippy, Rust/native formatting and engineering
+  guards pass. Independent review found no production issue and strengthened
+  the unchosen-arm Hunk control.
+
+This is focused ternary parity, not complete expression/assembler parity or a
+new full self-host/A6000 qualification. Struct-literal construction remains a
+shared-expression gap. No peak-memory or 2 MiB fit is claimed.
+
+Isolated unchanged 1,024-iteration scalar control on FS-UAE `68020-10m`, release
+images with telemetry disabled and exact live Rust output in both fresh runs:
+
+| Measurement | Before (`7ed327a0`) | After | Change |
+|---|---:|---:|---:|
+| Host-observed guest START/DONE | 36.156 s | 36.457 s | +0.301 s (+0.83%) |
+| Dual-package release image | 634,312 bytes | 634,616 bytes | +304 bytes (+0.05%) |
+| Control source / output | 200 / 7,168 bytes | 200 / 7,168 bytes | unchanged |
+
+This single pair records a small increase; it does not establish a reliable
+slowdown. Newly supported ternaries have no successful native baseline for a
+speed comparison. Frozen images, logs, hashes and reproduction settings remain
+outside `target` in `/tmp/opforge-ternary-measurements.json`.
+
 ### Shared narrow-output checkpoint
 
 The approved policy repairs Rust `.byte` layout loss: keep the existing low-u32

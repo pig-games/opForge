@@ -158,6 +158,8 @@ visit
 	beq.w advance
 	cmpi.b #runtime.COMPACT_MULTIPLY, d0
 	beq.w advance
+	cmpi.b #runtime.SELECT, d0
+	beq.w advance
 	moveq #2, d1
 	cmpi.b #runtime.COMPACT_I8, d0
 	beq.w advance

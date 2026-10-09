@@ -551,6 +551,19 @@ the referenced VM sources.
 
 References: [portable token contract](../../crates/opforge-vm/src/portable_contract.rs), [Rust tokenizer helpers](../../crates/opforge-vm/src/tokenizer_runtime_utils.rs), [native scanner](../../native/motorola68000/amigaos/tkvm/tkvm_scanner.asm), and [package generation](../../crates/opforge-vm/src/builder.rs).
 
+### Ternary expression selection
+
+The compact path now compiles `condition ? then : else` through the shared EXVM
+ternary action and the existing canonical ExprVM selector. It retains the
+selected scalar, list, range or record shape and its section provenance. Both
+arms are evaluated eagerly, matching Rust; invalid conditions, unavailable
+symbols and arithmetic errors still reject. Ternaries use the existing typed
+wrapper, while ordinary scalar expressions retain their compact folding path.
+No node/cell layout or package contract changes. Focused native qualification
+and the separate unchanged-control measurement are recorded in the
+[ternary checkpoint](native-runtime-reset.md#ternary-value-selection-checkpoint).
+Full expression, assembler and self-host qualification are separate claims.
+
 ### Signed scalar iterable checkpoint
 
 Iterable `.for` and `.bfor` bind both words of the existing signed i64 scalar

@@ -145,6 +145,8 @@ checked
 	beq.w binary
 	tst.l MODE(a5)
 	beq.w malformedActive
+	cmpi.b #compiler.KIND_TERNARY, d2
+	beq.w ternary
 	cmpi.b #compiler.KIND_LIST, d2
 	beq.w list
 	cmpi.b #compiler.KIND_RANGE, d2
@@ -280,6 +282,28 @@ count
 	move.b d2, (a3)+
 	lsr.w #8, d2
 	move.b d2, (a3)+
+	bra.w success
+ternary
+	; Selection may retain any value kind or section identity. Ordinary
+	; preparation therefore falls back to the existing canonical value wrapper.
+	cmpi.w #3, compiler.Node.Count(a2)
+	bne.w malformedActive
+	tst.b compiler.Node.Operator(a2)
+	bne.w malformedActive
+	move.l compiler.Node.First(a2), d1
+	bsr.w node
+	bne.w leave
+	move.l compiler.Node.Second(a2), d1
+	bsr.w node
+	bne.w leave
+	move.l compiler.Node.Third(a2), d1
+	bsr.w node
+	bne.w leave
+	subq.l #2, STACK_DEPTH(a5)
+	moveq #1, d0
+	bsr.w room
+	bne.w leave
+	move.b #runtime.SELECT, (a3)+
 	bra.w success
 binary
 	cmpi.w #2, compiler.Node.Count(a2)

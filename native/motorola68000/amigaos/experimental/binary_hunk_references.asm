@@ -128,6 +128,10 @@ next
 	beq.w subtract
 	cmpi.b #runtime.COMPACT_MULTIPLY, d3
 	beq.w binaryConstant
+	; Ternary trees use canonical typed wrappers and shared ExprVM provenance.
+	; A compact selector cannot prove an affine base without evaluating values.
+	cmpi.b #runtime.SELECT, d3
+	beq.w bad
 	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, d3
 	beq.w unary
 	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, d3
@@ -454,6 +458,8 @@ next
 	cmpi.b #runtime.COMPACT_SUBTRACT, d1
 	beq.w next
 	cmpi.b #runtime.COMPACT_MULTIPLY, d1
+	beq.w next
+	cmpi.b #runtime.SELECT, d1
 	beq.w next
 	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_UNARY, d1
 	beq.w byte

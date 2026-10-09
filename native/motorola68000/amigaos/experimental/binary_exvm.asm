@@ -86,6 +86,7 @@ KIND_LIST = 7
 KIND_INDEX = 8
 KIND_CALL = 9
 KIND_MEMBER = 10
+KIND_TERNARY = 11
 	.priv
 Sequence	.struct
 Start	.long ?
@@ -127,7 +128,8 @@ SCRATCH_BYTES = SPANS+OUTPUT_LIMIT*4
 ; Packed DOT7 begins a call envelope selected by the shared EXVM action.
 ; Success nodes contain arena offsets only. Literal First=low32, Second=high32,
 ; symbol First=u16
-; ID; unary First=child; binary/index First/Second=children. Range Third=step
+; ID; unary First=child; binary/index First/Second=children. Ternary
+; First/Second/Third=condition/then/else. Range Third=step
 ; or NONE, Operator=canonical flags. List First=head; call First=function ID,
 ; Second=argument head. Child-root Next links siblings. Count=child arity.
 ; Request.Scratch owns SCRATCH_BYTES reusable work; only call frames use stack.
@@ -311,6 +313,8 @@ consumeKind
 	bne.w done
 	tst.w State.Predicate(a6)
 	beq.w syntaxBad
+	cmpi.w #tokens.TK_KIND_QUESTION, d1
+	beq.w buildSpan
 	bra.w advance
 consumeOperator
 	bsr.w programByte
@@ -319,6 +323,7 @@ consumeOperator
 	bne.w done
 	tst.w State.Predicate(a6)
 	beq.w syntaxBad
+buildSpan
 	moveq #0, d0
 	move.w State.Spans(a6), d0
 	cmpi.w #OUTPUT_LIMIT, d0
@@ -416,6 +421,12 @@ unary
 binary
 	moveq #2, d5
 	moveq #KIND_BINARY, d3
+	bra.w operation
+ternary
+	moveq #3, d5
+	moveq #KIND_TERNARY, d3
+	moveq #0, d1
+	bra.w operatorReady
 operation
 	bsr.w programByte
 	bne.w done
@@ -456,8 +467,13 @@ operatorReady
 	move.l d7, d6
 	bsr.w pop
 	move.l d1, Node.First(a1)
-	cmpi.w #2, d5
-	bne.w childReady
+	cmpi.w #1, d5
+	beq.w childReady
+	cmpi.w #3, d5
+	bne.w binaryChild
+	move.l d1, Node.Third(a1)
+	bsr.w pop
+binaryChild
 	move.l d1, Node.Second(a1)
 	bsr.w pop
 	move.l d1, Node.First(a1)
@@ -640,7 +656,7 @@ Dispatch
 	.for OP_BUILD_UNARY-OP_LOAD_TOKEN_TEXT-1
 	.word programBad-Dispatch
 	.endfor
-	.word unary-Dispatch, binary-Dispatch, unsupported-Dispatch, range-Dispatch
+	.word unary-Dispatch, binary-Dispatch, ternary-Dispatch, range-Dispatch
 	.for OP_BUILD_IDENTIFIER-OP_BUILD_RANGE-1
 	.word programBad-Dispatch
 	.endfor

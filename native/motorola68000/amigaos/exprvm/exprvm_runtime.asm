@@ -15,6 +15,7 @@ EXPRVM_OPCODE_PUSH_CURRENT_ADDR = $11
 EXPRVM_OPCODE_PUSH_SYMBOL    = $12
 EXPRVM_OPCODE_APPLY_UNARY    = $20
 EXPRVM_OPCODE_APPLY_BINARY   = $21
+SELECT = $22
 EXPRVM_OPCODE_BUILD_LIST = $51
 EXPRVM_OPCODE_BUILD_RANGE = $52
 EXPRVM_OPCODE_GET_MEMBER = $60
@@ -169,6 +170,8 @@ evalCanonical
 	beq.w opcodeApplyUnary
 	cmpi.b #EXPRVM_OPCODE_APPLY_BINARY, d6
 	beq.w opcodeApplyBinary
+	cmpi.b #SELECT, d6
+	beq.w opcodeSelect
 	cmpi.b #EXPRVM_OPCODE_REQUIRE_SCALAR, d6
 	beq.w opcodeRequireScalar
 	bra.w unknownOpcode
@@ -202,6 +205,8 @@ evalCompact
 	beq.w opcodeApplyUnary
 	cmpi.b #EXPRVM_OPCODE_APPLY_BINARY, d6
 	beq.w opcodeApplyBinary
+	cmpi.b #SELECT, d6
+	beq.w opcodeSelect
 	bra.w unknownOpcode
 compactMultiply
 	moveq #EXPRVM_BINARY_MULTIPLY, d6
@@ -355,6 +360,9 @@ applyUnaryDone
 	move.l ExprvmEvalRemaining, d0
 	bra.w evalLoop
 
+opcodeSelect
+	moveq #EXPRVM_TERNARY_SELECT, d6
+	bra.w binaryReady
 opcodeApplyBinary
 	bsr.w readU8
 	bmi.w fail

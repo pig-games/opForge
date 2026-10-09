@@ -128,6 +128,8 @@ next
 	beq.w unary
 	cmpi.b #$21, d1
 	beq.w binary
+	cmpi.b #runtime.SELECT, d1
+	beq.w select
 	cmpi.b #runtime.EXPRVM_OPCODE_BUILD_LIST, d1
 	beq.w list
 	cmpi.b #runtime.EXPRVM_OPCODE_BUILD_RANGE, d1
@@ -317,6 +319,35 @@ scalar
 	bne.w malformed
 	bsr.w project
 	bne.w malformed
+	bra.w next
+select
+	cmpi.l #3, d7
+	blo.w malformed
+	bsr.w top
+	suba.l #2*CELL_BYTES, a1
+	; Project only the condition, including nested record defaults. Branch
+	; cells retain their kind, descriptor offset and section provenance.
+	move.l #MAX_DEPTH, d6
+condition
+	bsr.w project
+	bne.w malformed
+	tst.l Cell.Kind(a1)
+	beq.w truth
+	subq.l #1, d6
+	beq.w malformed
+	bra.w condition
+truth
+	lea CELL_BYTES(a1), a2
+	move.l Cell.Low(a1), d0
+	or.l Cell.High(a1), d0
+	bne.w selected
+	adda.l #CELL_BYTES, a2
+selected
+	move.l Cell.Low(a2), Cell.Low(a1)
+	move.l Cell.High(a2), Cell.High(a1)
+	move.l Cell.Kind(a2), Cell.Kind(a1)
+	move.l Cell.Provenance(a2), Cell.Provenance(a1)
+	subq.l #2, d7
 	bra.w next
 unary
 	moveq #1, d6

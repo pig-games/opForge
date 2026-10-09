@@ -224,7 +224,7 @@ validateCell	.block
 	move.l values.Cell.Provenance(a1), d0
 	cmpi.l #-1, d0
 	beq.w provenanceReady
-	cmpi.l #8, d0
+	cmpi.l #values.MAX_SECTION_ID, d0
 	bhi.w invalid
 provenanceReady
 	tst.l values.Cell.Kind(a1)

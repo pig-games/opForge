@@ -84,6 +84,9 @@ clear
 mutableRole
 	moveq #source.TOKEN_MUTABLE_DECLARATION, d2
 roleReady
+	; Qualification is now represented by the complete numeric identity.
+	; Scope metadata retains the explicit-name marker for lexical resolution.
+	clr.b abi.PackedLabel.Qualifier(a5)
 	move.b d2, (a1)+
 copy
 	tst.l d1

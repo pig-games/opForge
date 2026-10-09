@@ -9,6 +9,7 @@
 	.use exprvm.amigaos.values_runtime as typed
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_record_values as records
+	.use experimental.amigaos.binary_numeric_bindings as bindings
 	.use experimental.amigaos.binary_memory as memory
 	.include "telemetry_macros.i"
 	.include "memory_telemetry.i"
@@ -279,7 +280,10 @@ requiresTyped	.block
 	move.l a4, d0
 	beq.w scalar
 	tst.l values.Owner.Kinds+memory.Block.Pointer(a4)
+	bne.w haveTypedStorage
+	tst.l values.Owner.Bindings+memory.Block.Used(a4)
 	beq.w scalar
+haveTypedStorage
 	moveq #0, d3
 	move.b 1(a0), d3
 	beq.w bad
@@ -368,7 +372,21 @@ symbol
 	tst.l d0
 	bne.w bad
 	tst.l d2
+	bne.w typedSymbol
+	movea.l Frame.Defined(a5), a2
+	move.l a2, d0
+	beq.w bad
+	tst.b 0(a2, d1.l)
+	bne.w next
+	movem.l a0-a1, -(sp)
+	movea.l Frame.Owner(a5), a0
+	jsr bindings.getBinding
+	movem.l (sp)+, a0-a1
+	cmpi.l #values.BOUNDS, d0
 	beq.w next
+	tst.l d0
+	bne.w bad
+typedSymbol
 	moveq #1, d0
 	bra.w done
 scalar
@@ -523,7 +541,10 @@ scalarValue
 	move.l a0, d0
 	beq.w compactNumeric
 	tst.l values.Owner.Kinds+memory.Block.Pointer(a0)
+	bne.w compactTypedStorage
+	tst.l values.Owner.Bindings+memory.Block.Used(a0)
 	beq.w compactNumeric
+compactTypedStorage
 	movea.l a4, a0
 	suba.l d3, a0
 	bsr.w compoundSymbols
@@ -531,17 +552,15 @@ scalarValue
 	beq.w malformed
 	tst.l d0
 	beq.w compactNumeric
+	.if .compound == 0
+	movea.l Frame.Owner(a2), a6
+	move.l values.Owner.Arena+memory.Block.Used(a6), d5
+	.endif
 	move.l d3, d0
 	jsr typed.evaluateCompact
 	tst.l d0
 	bne.w done
-	.if .compound
-	move.l d3, Frame.Kind(a2)
-	.else
-	tst.l d3
-	bne.w malformed
-	.endif
-	bra.w done
+	bra.w typedResult
 compactNumeric
 	movea.l a4, a0
 	suba.l d3, a0
@@ -577,6 +596,7 @@ typedValue
 	jsr typed.evaluate
 	tst.l d0
 	bne.w done
+typedResult
 	.if .compound
 	move.l d3, Frame.Kind(a2)
 	.else

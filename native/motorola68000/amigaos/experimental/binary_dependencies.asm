@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_numeric_bindings as bindings
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_source as source
@@ -195,6 +196,20 @@ dependency
 	move.b 1(a0, d3.w), d0
 	cmp.l pkg.Context.Count(a6), d0
 	bhs.w clearFailure
+	; A member proxy depends on a layout-produced record, outside the scalar DAG.
+	move.l d0, -(sp)
+	bsr.w memberPlan
+	cmpi.l #values.BOUNDS, d0
+	beq.w ordinaryDependency
+	tst.l d0
+	beq.w memberDependency
+	addq.l #4, sp
+	bra.w clearFailure
+memberDependency
+	move.l (sp)+, d0
+	bra.w dependentLayout
+ordinaryDependency
+	move.l (sp)+, d0
 	moveq #0, d2
 	move.b 0(a5, d0.l), d2
 	tst.w Mode
@@ -397,6 +412,24 @@ release	.block
 	.bend  ; release
 
 	.priv
+; D0=source ID. D0/CCR=OK for a numeric member plan, BOUNDS absent,
+; MALFORMED invalid. No values are evaluated during scalar dependency discovery.
+memberPlan	.block
+	movem.l d1-d2/a0-a2, -(sp)
+	move.l d0, d1
+	movea.l pkg.Context.Owner(a6), a0
+	move.l a0, d0
+	beq.w absent
+	jsr bindings.getBinding
+	bra.w done
+absent
+	moveq #values.BOUNDS, d0
+done
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; memberPlan
+
 ; D0=source ID. Mark visiting and append a bounded frame. Other registers saved.
 push	.block
 	movem.l d1-d2/a0-a1, -(sp)

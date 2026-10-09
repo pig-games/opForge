@@ -75,6 +75,10 @@ fn raw_hunk(cpu: &str) -> String {
     format!(".module main\n.cpu {cpu}\n.section code,kind=code\nitems .bfor item in {{2,4}}\n.byte item\nentry .byte item+1\nvalue .const item+10\n.endfor\n.long items[1].entry\n.byte items[1].value\n.endsection\n.section data,kind=data\n.byte 9\n.endsection\n.output \"out.hunk\",format=hunk,sections=code,data\n.endmodule\n")
 }
 
+fn dotted_hunk(cpu: &str) -> String {
+    alias_hunk(cpu).replace("(saved).entry", "saved.entry")
+}
+
 fn alias_hunk(cpu: &str) -> String {
     raw_hunk(cpu).replace(
         ".long items[1].entry\n",
@@ -132,7 +136,8 @@ fn native_named_scoped_loops_hunk_rust_oracles() {
         assert_eq!(segments[1].payload, [9, 0, 0, 0]);
         assert!(segments[1].relocations.is_empty());
 
-        let image = hunk_oracle(&dir.0, &alias_hunk(cpu));
+        let image = hunk_oracle(&dir.0, &dotted_hunk(cpu));
+        assert_eq!(image, hunk_oracle(&dir.0, &alias_hunk(cpu)));
         let segments = hunk::segments(&image).unwrap();
         let word = |value: u32| {
             if cpu == "6502" {
@@ -209,6 +214,7 @@ fn native_named_scoped_loops_fs_uae() {
         for (name, source) in [
             ("raw-hunk", raw_hunk(cpu)),
             ("raw-alias-hunk", alias_hunk(cpu)),
+            ("raw-dotted-alias-hunk", dotted_hunk(cpu)),
         ] {
             if !selected(name) {
                 continue;
@@ -260,42 +266,132 @@ fn native_named_scoped_loops_fs_uae() {
     );
 }
 
-// A contiguous dotted name remains a qualified-symbol token in the compact
-// frontend. Grouping the base reaches shared postfix parsing; the plain spelling
-// is retained separately until qualified/member binding is consolidated.
-fn dotted_alias_source(cpu: &str) -> String {
-    source(cpu, "items .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[0]\n.byte saved.value\n")
+// Dotted aliases lower to the shared numeric postfix grammar. Complete qualified
+// declarations retain priority; grouping explicitly requests member semantics.
+const DOTTED_POSITIVE: &[(&str, &str, &[u8])] = &[
+    ("lexical-aliases", ".namespace first\nitems .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nsaved .const items[0]\n.byte saved.value\n.endnamespace\n.namespace second\nitems .bfor 1\nvalue .const 24\n.byte 3\n.endfor\nsaved .const items[0]\n.byte saved.value\n.endnamespace\n", &[2,12,3,24]),
+    ("inactive-forward", ".if 0\n.byte saved.value\n.endif\nitems .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nsaved .const items[0]\n.byte saved.value\n", &[2,12]),
+    ("plain-record", "items .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[0]\n.byte saved.value\n", &[2,4,12]),
+    ("namespace-record", ".namespace library\nitems .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[1]\n.endnamespace\n.byte library.saved.value,main.library.saved.value\n", &[2,4,14,14]),
+    ("nested-record", "start\nouter .bfor item in {2,4}\ninner .bfor child in {7,8}\nentry .byte child\nvalue .const item+child\n.endfor\n.endfor\nsaved .const outer[1]\nchild .const saved.inner[1]\n.byte saved.inner[0].value,child.value,child.entry-start\n", &[7,8,7,8,11,12,3]),
+    ("scalar-prefix-record-fallback", "items .bfor 1\ninner .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nchild .const inner[0]\n.endfor\nsaved .const items[0]\nsaved.child .const 5\n.byte saved.child.value\n", &[2,12]),
+    ("qualified-scalar", "scalar .const 5\nscalar.child .const 17\n.byte scalar.child\n", &[17]),
+    ("record-qualified-collision", "items .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nsaved .const items[0]\nsaved.value .const 99\n.byte saved.value,(saved).value\n", &[2,99,12]),
+    ("forward-qualified-record", "items .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nsaved .const items[0]\n.byte saved.value,(saved).value\nsaved.value .const 99\n", &[2,99,12]),
+    ("forward-qualified-scalar", "scalar .const 5\n.byte scalar.child\nscalar.child .const 17\n", &[17]),
+];
+
+const DOTTED_BAD: &[(&str, &str)] = &[
+    ("missing-record-member", "items .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nsaved .const items[0]\n.byte saved.missing\n"),
+    ("longest-record-missing-member", "items .bfor 1\ninner .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nchild .const inner[0]\n.endfor\nother .bfor 1\nother_value .const 9\n.byte 3\n.endfor\nsaved .const items[0]\nsaved.child .const other[0]\n.byte saved.child.value\n"),
+];
+
+const FORWARD_RECORD: &str = ".byte saved.value\nitems .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[0]\n";
+
+fn combined_dotted() -> (String, Vec<u8>) {
+    let mut body = String::new();
+    let mut expected = Vec::new();
+    for (index, (_, scenario, bytes)) in DOTTED_POSITIVE.iter().enumerate() {
+        let scenario = scenario
+            .replace("main.", &format!("main.dotted_case_{index}."))
+            .replace("scalar", &format!("scalar_case_{index}"))
+            .replace("saved", &format!("saved_case_{index}"));
+        body.push_str(&format!(
+            ".namespace dotted_case_{index}\n{scenario}.endnamespace\n"
+        ));
+        expected.extend_from_slice(bytes);
+    }
+    (body, expected)
 }
 
 #[test]
 fn native_named_record_dotted_alias_rust_oracle() {
     let dir = scratch();
     for cpu in ["68020", "6502"] {
-        assert_eq!(
-            oracle(&dir.0, &dotted_alias_source(cpu)).unwrap(),
-            [2, 4, 12]
-        );
+        for (name, body, expected) in DOTTED_POSITIVE {
+            assert_eq!(
+                oracle(&dir.0, &source(cpu, body))
+                    .unwrap_or_else(|error| panic!("{cpu}/{name}: {error}")),
+                *expected,
+                "{cpu}/{name}"
+            );
+        }
+        for (name, body) in DOTTED_BAD {
+            assert!(
+                oracle(&dir.0, &source(cpu, body)).is_err(),
+                "Rust accepted {cpu}/{name}"
+            );
+        }
+        let (body, expected) = combined_dotted();
+        assert_eq!(oracle(&dir.0, &source(cpu, &body)).unwrap(), expected);
     }
 }
 
 #[test]
-#[ignore = "known compact frontend gap: contiguous dotted record aliases bind as qualified symbols"]
+fn native_named_record_forward_binding_rust_oracle() {
+    let dir = scratch();
+    for cpu in ["68020", "6502"] {
+        let error = oracle(&dir.0, &source(cpu, FORWARD_RECORD)).unwrap_err();
+        assert!(error.contains("Label not found: saved.value"), "{error}");
+        let body = "scalar .const 5\n.byte scalar.child\nscalar.child .const 17\n";
+        assert_eq!(oracle(&dir.0, &source(cpu, body)).unwrap(), [17]);
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; dotted aliases and qualified symbol priority"]
 fn native_named_record_dotted_alias_fs_uae() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
         .unwrap();
     let dir = scratch();
-    let image = build_image(&root, &dir.0);
-    for cpu in ["68020", "6502"] {
-        run_case(
-            &root,
-            &dir.0,
-            &image,
-            "dotted-record-alias",
-            cpu,
-            &dotted_alias_source(cpu),
-            false,
-        );
+    let image = std::env::var_os("OPFORGE_NAMED_SCOPED_IMAGE")
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_else(|| build_image(&root, &dir.0));
+    let filter = std::env::var("OPFORGE_NAMED_SCOPED_FILTER").unwrap_or_default();
+    let cpus = std::env::var("OPFORGE_NAMED_SCOPED_CPUS").unwrap_or_else(|_| "68020,6502".into());
+    let selected =
+        |name: &str| filter.is_empty() || filter.split(',').any(|part| name.contains(part.trim()));
+    let (combined, _) = combined_dotted();
+    let mut failures = Vec::new();
+    let mut attempted = 0;
+    for cpu in cpus.split(',').map(str::trim) {
+        assert!(matches!(cpu, "68020" | "6502"));
+        for (name, body, bad) in std::iter::once(("combined-dotted", combined.as_str(), false))
+            .chain(
+                DOTTED_POSITIVE
+                    .iter()
+                    .filter(|_| !filter.is_empty())
+                    .map(|(n, b, _)| (*n, *b, false)),
+            )
+            .chain(DOTTED_BAD.iter().map(|(n, b)| (*n, *b, true)))
+            .chain(std::iter::once(("forward-record", FORWARD_RECORD, true)))
+        {
+            if !selected(name) {
+                continue;
+            }
+            attempted += 1;
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_case(
+                    &root,
+                    &dir.0,
+                    &image,
+                    &format!("dotted-{cpu}/{name}"),
+                    cpu,
+                    &source(cpu, body),
+                    bad,
+                );
+            }))
+            .is_err()
+            {
+                failures.push(format!("{cpu}/{name}"));
+            }
+        }
     }
+    assert!(attempted > 0, "dotted filter selected no cases: {filter}");
+    assert!(
+        failures.is_empty(),
+        "dotted cases failed: {failures:?}; all selected cases were attempted"
+    );
 }

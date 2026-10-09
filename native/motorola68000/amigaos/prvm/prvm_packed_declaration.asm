@@ -188,9 +188,9 @@ matched
 	move.w d0, ROLE(a3)
 	bsr.w tick
 	bne.w failure
-	tst.b 7(a6)
-	beq.w operand
-	moveq #7, d2
+	cmpi.b #abi.PRVM_SOURCE_NAME_EXPLICIT, abi.PackedLabel.Qualifier(a6)
+	bls.w operand
+	moveq #abi.PackedLabel.Qualifier, d2
 	bra.w tokenFailure
 operand
 	add.l d4, d2

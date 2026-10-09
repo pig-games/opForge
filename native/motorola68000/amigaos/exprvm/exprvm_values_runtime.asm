@@ -4,6 +4,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_record_values as records
+	.use experimental.amigaos.binary_numeric_bindings as bindings
 	.use experimental.amigaos.binary_memory as memory
 	.use exprvm.amigaos.runtime as runtime
 	.include "telemetry_macros.i"
@@ -237,6 +238,11 @@ symbol
 	beq.w malformed
 	tst.b 0(a2, d6.l)
 	bne.w kind
+	bsr.w bindingSymbol
+	tst.l d0
+	beq.w next
+	cmpi.l #values.BOUNDS, d0
+	bne.w malformed
 	moveq #1, d0
 	move.l d0, State.Unresolved(a3)
 kind
@@ -635,6 +641,114 @@ bad
 	moveq #STATUS_DEPTH, d0
 	rts
 	.bend  ; push
+
+; A1=destination cell,D6=undefined full ID,A6=Frame,A3=active VM scratch.
+; D0/CCR=OK resolved,BOUNDS unavailable,MALFORMED invalid plan. Others preserved.
+; Execute numeric member chains on this VM stack; never re-enter Owner.Work.
+bindingSymbol	.block
+	movem.l d1-d7/a0-a5, -(sp)
+	movea.l Frame.Owner(a6), a0
+	move.l d6, d1
+	move.l a1, -(sp)
+	jsr bindings.getBinding
+	movea.l a1, a2
+	movea.l (sp)+, a1
+	tst.l d0
+	bne.w done
+	cmpi.l #bindings.HEADER_BYTES, d2
+	blo.w bad
+	move.l a2, d0
+	add.l d2, d0
+	bcs.w bad
+	movea.l d0, a4
+	moveq #0, d0
+	move.w (a2)+, d0
+	cmp.l d6, d0
+	bne.w bad
+	moveq #0, d6
+	move.w (a2)+, d6
+	beq.w bad
+	cmp.l (a2)+, d2
+	bne.w bad
+candidate
+	addq.l #1, State.Steps(a3)
+	cmpi.l #STEP_LIMIT, State.Steps(a3)
+	bhi.w bad
+	move.l a4, d0
+	sub.l a2, d0
+	cmpi.l #bindings.CANDIDATE_BYTES, d0
+	blo.w bad
+	moveq #0, d1
+	move.w (a2)+, d1
+	cmp.l Frame.Count(a6), d1
+	bhs.w bad
+	moveq #0, d7
+	move.w (a2)+, d7
+	beq.w bad
+	move.l d7, d0
+	add.l d0, d0
+	add.l a2, d0
+	bcs.w bad
+	movea.l d0, a5
+	cmpa.l a4, a5
+	bhi.w bad
+	movea.l Frame.Defined(a6), a0
+	move.l a0, d0
+	beq.w bad
+	tst.b 0(a0, d1.l)
+	beq.w nextCandidate
+	movea.l Frame.Owner(a6), a0
+	jsr values.getKind
+	tst.l d0
+	bne.w bad
+	cmpi.l #records.ADDRESS_RECORD, d2
+	bne.w nextCandidate
+	lsl.l #3, d1
+	movea.l Frame.Values(a6), a0
+	move.l a0, d0
+	beq.w bad
+	tst.l runtime.Value.High(a0, d1.l)
+	bne.w bad
+	move.l runtime.Value.Low(a0, d1.l), d2
+	moveq #records.ADDRESS_RECORD, d4
+member
+	; The longest actual record prefix commits resolution; a missing member
+	; cannot be reinterpreted through a shorter prefix.
+	addq.l #1, State.Steps(a3)
+	cmpi.l #STEP_LIMIT, State.Steps(a3)
+	bhi.w bad
+	cmpi.l #records.ADDRESS_RECORD, d4
+	bne.w bad
+	move.l d2, d0
+	moveq #0, d1
+	move.w (a2)+, d1
+	movea.l Frame.Owner(a6), a0
+	jsr records.member
+	tst.l d0
+	bne.w bad
+	subq.l #1, d7
+	bne.w member
+	move.l d2, Cell.Low(a1)
+	move.l d3, Cell.High(a1)
+	move.l d4, Cell.Kind(a1)
+	move.l d5, Cell.Provenance(a1)
+	jsr records.validateCell
+	bra.w done
+nextCandidate
+	movea.l a5, a2
+	subq.l #1, d6
+	bne.w candidate
+	cmpa.l a4, a2
+	bne.w bad
+	moveq #values.BOUNDS, d0
+	bra.w done
+bad
+	moveq #values.MALFORMED, d0
+done
+	movem.l (sp)+, d1-d7/a0-a5
+	tst.l d0
+	rts
+	.bend  ; bindingSymbol
 
 ; A1=cell,A6=Frame. Project address record default; reject other compounds.
 ; D0/CCR=status. Preserves D1-D7/A0-A2, including arithmetic arity.

@@ -18,6 +18,8 @@
 	.use prvm.amigaos.packed_loop as loop_parser
 	.use prvm.amigaos.abi as loop_abi
 	.use experimental.amigaos.binary_iterator_bindings as iterators
+	.use experimental.amigaos.binary_binding_plans as plans
+	.use experimental.amigaos.binary_numeric_bindings as bindings
 	.pub
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
@@ -34,6 +36,9 @@ DECLARED = 1
 REFERENCED = records.REFERENCED
 OPTIONAL_REFERENCED = records.OPTIONAL_REFERENCED; skipped conditional RHS still carries graph references
 EXPLICIT = 4
+FIELD_BUFFER_BYTES = layout.NAME_BYTES
+SAVED_FIELD_STATE_BYTES = 3*2
+SAVED_BASE_BYTES = 4
 KIND_BLOCK = 1
 KIND_NAMESPACE = 2
 LEXICAL_BLOCK_BIT = 7
@@ -70,7 +75,8 @@ KEY_IFDEF = 28
 KEY_IFNDEF = 29
 SECTION_STATE = IMPORT_STATE+imports.SCRATCH_BYTES
 STRUCT_STATE = SECTION_STATE+sections.SCRATCH_BYTES
-SCRATCH_BYTES = STRUCT_STATE+structs.SCRATCH_BYTES
+BINDING_PLANS = STRUCT_STATE+structs.SCRATCH_BYTES
+SCRATCH_BYTES = BINDING_PLANS+plans.STATE_BYTES
 	.section code, kind=code
 
 ; A0=zero-initialized caller-owned SCRATCH_BYTES (or released prior session),
@@ -88,6 +94,13 @@ begin	.block
 	clr.w layout.State.LoopDepth(a0)
 	clr.w layout.State.Deferred(a0)
 	clr.l layout.State.Package(a0)
+	move.l a0, -(sp)
+	adda.l #BINDING_PLANS, a0
+	clr.l memory.Block.Pointer(a0)
+	clr.l memory.Block.Capacity(a0)
+	clr.l memory.Block.Used(a0)
+	clr.l plans.State.Current(a0)
+	movea.l (sp)+, a0
 	clr.l ENTRIES+memory.Block.Pointer(a0)
 	clr.l ENTRIES+memory.Block.Capacity(a0)
 	clr.l ENTRIES+memory.Block.Used(a0)
@@ -151,6 +164,10 @@ release	.block
 	lea IMPORT_STATE(a1), a0
 	jsr imports.release
 	lea ARENA(a1), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l a1, a0
+	adda.l #BINDING_PLANS, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
 	movem.l (sp)+, a0-a1
@@ -443,7 +460,7 @@ stableName
 	clr.w records.Entry.TemplateFlags(a3)
 	clr.l records.Entry.RegisterName(a3)
 	move.w #$ffff, records.Entry.MemberId(a3)
-	clr.w records.Entry.MemberPadding(a3)
+	clr.w records.Entry.OriginalId(a3)
 	move.w layout.State.Base(a6), d2
 	add.w d1, d2
 	move.w d2, records.Entry.Target(a3)
@@ -497,6 +514,353 @@ done
 	tst.l d0
 	rts
 	.bend  ; bindName
+	.pub
+
+; A0=scope,A1=configured values Owner. Copy finalized numeric plans.
+; D0/CCR=status; others preserved. Names and preparation storage never escape.
+exportBindings	.block
+	movem.l d1/a0-a2, -(sp)
+	movea.l a1, a2
+	adda.l #BINDING_PLANS, a0
+	movea.l memory.Block.Pointer(a0), a1
+	move.l memory.Block.Used(a0), d0
+	movea.l a2, a0
+	jsr bindings.install
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	rts
+	.bend  ; exportBindings
+
+; A0/D0=full value spelling,A1=scope,D1=bound full origin ID.
+; Capture earlier declared value prefixes longest first. Entire ordinary name
+; remains bound; shared ExprVM selects actual records at execution.
+; D0/CCR=status,D1=occurrence proxy ID when candidates exist, else original ID.
+; Other registers preserved. Earlier ordinary references keep their own IDs.
+captureBinding	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	suba.w #FIELD_BUFFER_BYTES, sp
+	movea.l a1, a6
+	movea.l a0, a4
+	move.l d0, d4
+	move.l d1, d7
+	cmpi.l #3, d4
+	blo.w good
+	cmpi.l #layout.NAME_BYTES-1, d4
+	bhi.w bad
+	movea.l a4, a2
+	move.l d4, d5
+hasDot
+	cmpi.b #'.', (a2)+
+	beq.w dotted
+	subq.l #1, d5
+	bne.w hasDot
+	bra.w good
+dotted
+	move.l d7, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w good
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	btst #0, records.Entry.Flags+1(a3)
+	bne.w good
+	moveq #0, d6
+	move.l d4, d5
+component
+	subq.l #1, d5
+	beq.w good
+	cmpi.b #'.', 0(a4, d5.l)
+	bne.w component
+	movea.l a4, a0
+	move.l d5, d0
+	bsr.w declaredName
+	bne.w component
+	tst.w records.Entry.ScopeKind(a3)
+	bne.w component
+	move.l a3, d0
+	sub.l ENTRIES_POINTER(a6), d0
+	divu.w #records.ENTRY_BYTES, d0
+	andi.l #$ffff, d0
+	move.l d0, -(sp)
+	ori.w #REFERENCED, records.Entry.Flags(a3)
+	move.l d0, d1
+	movea.l a6, a0
+	adda.l #MODULE_STATE, a0
+	move.l d1, d0
+	jsr modules.reference
+	move.l (sp)+, d0
+	moveq #0, d1
+	move.w layout.State.Base(a6), d1
+	add.l d1, d0
+	move.l d0, -(sp)
+	tst.l d6
+	bne.w collect
+	move.l d7, d0
+	bsr.w createBindingProxy
+	bne.w failedBase
+	move.l d1, d7
+	movea.l a6, a0
+	adda.l #BINDING_PLANS, a0
+	move.l d7, d0
+	jsr plans.start
+	bne.w failedBase
+	moveq #1, d6
+collect
+	move.w layout.State.Current(a6), -(sp)
+	move.w layout.State.FirstBound(a6), -(sp)
+	move.w layout.State.FirstExplicit(a6), -(sp)
+	clr.w layout.State.Current(a6)
+	lea 1(a4, d5.l), a2
+	move.l d4, d2
+	sub.l d5, d2
+	subq.l #1, d2
+	movea.l sp, a5
+	adda.w #SAVED_FIELD_STATE_BYTES+SAVED_BASE_BYTES, a5
+	moveq #0, d3
+field
+	movea.l a2, a3
+	moveq #0, d1
+scanField
+	tst.l d2
+	beq.w bindField
+	cmpi.b #'.', (a3)
+	beq.w bindField
+	addq.l #1, a3
+	addq.l #1, d1
+	subq.l #1, d2
+	bra.w scanField
+bindField
+	tst.l d1
+	beq.w failedField
+	move.l d2, -(sp)
+	movea.l a2, a0
+	move.l d1, d0
+	movea.l a6, a1
+	bsr.w bindOrigin
+	move.l (sp)+, d2
+	tst.l d0
+	bne.w failedField
+	move.w d1, (a5)+
+	addq.l #1, d3
+	tst.l d2
+	beq.w append
+	lea 1(a3), a2
+	subq.l #1, d2
+	bra.w field
+append
+	move.w (sp)+, layout.State.FirstExplicit(a6)
+	move.w (sp)+, layout.State.FirstBound(a6)
+	move.w (sp)+, layout.State.Current(a6)
+	move.l (sp)+, d0
+	move.l d3, d1
+	movea.l sp, a1
+	movea.l a6, a0
+	adda.l #BINDING_PLANS, a0
+	jsr plans.append
+	bne.w bad
+	bra.w component
+failedField
+	move.w (sp)+, layout.State.FirstExplicit(a6)
+	move.w (sp)+, layout.State.FirstBound(a6)
+	move.w (sp)+, layout.State.Current(a6)
+failedBase
+	addq.l #SAVED_BASE_BYTES, sp
+bad
+	moveq #1, d0
+	bra.w done
+good
+	move.l d7, d1
+	moveq #0, d0
+done
+	adda.w #FIELD_BUFFER_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; captureBinding
+	.priv
+; A6=scope,D0=original full ID. D0/CCR=status,D1=new unlinked proxy ID.
+; Proxy names share stable arena bytes; only numeric origin/context differ.
+createBindingProxy	.block
+	movem.l d2-d5/a0-a3, -(sp)
+	move.l d0, d5
+	moveq #0, d4
+	move.w layout.State.Count(a6), d4
+	move.l d4, d0
+	addq.l #1, d0
+	movea.l a6, a0
+	bsr.w reserveIdentities
+	bne.w done
+	move.l d5, d0
+	sub.w layout.State.Base(a6), d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a2
+	adda.l d0, a2
+	move.l d4, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	movea.l a3, a1
+	moveq #records.ENTRY_BYTES/4-1, d2
+copy
+	move.l (a2)+, (a1)+
+	dbf d2, copy
+	move.w layout.State.Current(a6), records.Entry.Owner(a3)
+	move.w #records.BINDING_PROXY+EXPLICIT, records.Entry.Flags(a3)
+	clr.w records.Entry.Next(a3)
+	clr.w records.Entry.ScopeKind(a3)
+	move.w d5, records.Entry.Target(a3)
+	move.w d5, records.Entry.OriginalId(a3)
+	move.w #$ffff, records.Entry.MemberId(a3)
+	moveq #0, d1
+	move.w layout.State.Base(a6), d1
+	add.l d4, d1
+	addq.w #1, layout.State.Count(a6)
+	move.l d4, d0
+	addq.l #1, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	move.l d0, ENTRIES+memory.Block.Used(a6)
+	move.w #1, layout.State.Changed(a6)
+	moveq #0, d0
+done
+	movem.l (sp)+, d2-d5/a0-a3
+	tst.l d0
+	rts
+	.bend  ; createBindingProxy
+
+; A6=scope. Prefer complete declared names, otherwise retain each proxy ID.
+; D0/CCR=status; other registers preserved. Called after normal target binding.
+finalizeBindingProxies	.block
+	movem.l d1-d7/a0-a5, -(sp)
+	moveq #0, d7
+scan
+	cmp.w layout.State.Count(a6), d7
+	bhs.w good
+	move.l d7, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a4
+	adda.l d0, a4
+	move.w records.Entry.Flags(a4), d0
+	andi.w #records.BINDING_PROXY, d0
+	beq.w next
+	moveq #0, d0
+	move.w records.Entry.OriginalId(a4), d0
+	sub.w layout.State.Base(a6), d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	movea.l ARENA_POINTER(a6), a0
+	adda.l records.Entry.Name(a3), a0
+	moveq #0, d0
+	move.w records.Entry.Length(a3), d0
+	move.w layout.State.Current(a6), -(sp)
+	move.w records.Entry.Owner(a4), layout.State.Current(a6)
+	bsr.w declaredName
+	move.w (sp)+, layout.State.Current(a6)
+	tst.l d0
+	bne.w fallback
+	move.w records.Entry.Target(a3), records.Entry.Target(a4)
+	move.l d7, d0
+	moveq #0, d1
+	move.w records.Entry.Target(a4), d1
+	sub.w layout.State.Base(a6), d1
+	lea MODULE_STATE(a6), a0
+	jsr modules.check
+	bne.w done
+	bra.w next
+fallback
+	moveq #0, d0
+	move.w layout.State.Base(a6), d0
+	add.l d7, d0
+	move.w d0, records.Entry.Target(a4)
+next
+	addq.w #1, d7
+	bra.w scan
+good
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d7/a0-a5
+	tst.l d0
+	rts
+	.bend  ; finalizeBindingProxies
+
+; A0/D0=spelling,A6=scope. D0/CCR=0 declared,A3=entry,1 absent.
+; Search current then enclosing owners without allocating provisional identities.
+; Preserves D4-D7/A4-A6; clobbers D1-D3/A0-A2.
+declaredName	.block
+	movem.l d4-d7/a4-a5, -(sp)
+	movea.l a0, a4
+	movea.l d0, a5
+	moveq #0, d3
+	move.w layout.State.Current(a6), d3
+owner
+	movea.l a4, a0
+	move.l a5, d0
+	bsr.w compose
+	bne.w absent
+	bsr.w lookup
+	bne.w relative
+	btst #0, records.Entry.Flags+1(a3)
+	bne.w found
+relative
+	tst.l d5
+	beq.w parent
+	tst.l d3
+	beq.w parent
+	move.l d3, d0
+	subq.l #1, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	moveq #0, d4
+	move.w records.Entry.Length(a3), d4
+	move.l a5, d6
+	add.l d4, d6
+	addq.l #1, d6
+	cmpi.l #layout.NAME_BYTES-1, d6
+	bhi.w parent
+	movea.l ARENA_POINTER(a6), a0
+	adda.l records.Entry.Name(a3), a0
+	lea BUFFER(a6), a1
+	move.l d4, d0
+prefix
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w prefix
+	move.b #'.', (a1)+
+	movea.l a4, a0
+	move.l a5, d0
+suffix
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w suffix
+	lea BUFFER(a6), a2
+	bsr.w lookup
+	bne.w parent
+	btst #0, records.Entry.Flags+1(a3)
+	bne.w found
+parent
+	tst.l d3
+	beq.w absent
+	move.l d3, d0
+	subq.l #1, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	moveq #0, d3
+	move.w records.Entry.Owner(a3), d3
+	bra.w owner
+found
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d4-d7/a4-a5
+	tst.l d0
+	rts
+	.bend  ; declaredName
 	.pub
 
 CANDIDATE_MATCHED = 0
@@ -648,7 +1012,7 @@ createIterator	.block
 	clr.w records.Entry.TemplateFlags(a3)
 	move.l records.Entry.RegisterName(a2), records.Entry.RegisterName(a3)
 	move.w records.Entry.MemberId(a2), records.Entry.MemberId(a3)
-	clr.w records.Entry.MemberPadding(a3)
+	clr.w records.Entry.OriginalId(a3)
 	moveq #0, d1
 	move.w layout.State.Base(a6), d1
 	add.w d7, d1
@@ -1427,9 +1791,25 @@ punctuation
 	addq.l #1, a0
 	bra.w references
 reference
+	; A numeric fallback proxy already owns its occurrence and full-name
+	; resolution. Import wrapping would discard that plan identity.
+	moveq #0, d0
+	move.w source.NameToken.Id(a0), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w importReference
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	move.w records.Entry.Flags(a3), d0
+	andi.w #records.BINDING_PROXY, d0
+	bne.w sourceReference
+importReference
 	movea.l a6, a1
 	jsr imports.reference
 	bne.w bad
+sourceReference
 	moveq #0, d0
 	move.w 1(a0), d0
 	sub.w layout.State.Base(a6), d0
@@ -1520,6 +1900,9 @@ resolve
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a4
 	adda.l d0, a4
+	move.w records.Entry.Flags(a4), d0
+	andi.w #records.BINDING_PROXY, d0
+	bne.w next
 	btst #records.ITERATOR_HIGH_BIT, records.Entry.Flags(a4)
 	bne.w next  ; lexical temporaries never canonicalize through imports/parents
 	move.w records.Entry.Flags(a4), d0
@@ -1609,6 +1992,8 @@ next
 	addq.w #1, d7
 	bra.w resolve
 rewrite
+	bsr.w finalizeBindingProxies
+	bne.w failSaved
 	move.l (sp)+, d0
 	tst.w layout.State.Changed(a6)
 	beq.w unchanged
@@ -1620,9 +2005,16 @@ rewrite
 	move.w layout.State.Count(a6), d2
 	.BINDING_ATTEMPT #binding_diagnostic.REMAP, #-1, #-1
 	jsr records.remap
-	bra.w done
+	bne.w done
 unchanged
+	movea.l a6, a0
+	adda.l #BINDING_PLANS, a0
+	movea.l ENTRIES_POINTER(a6), a1
 	moveq #0, d0
+	move.w layout.State.Base(a6), d0
+	moveq #0, d1
+	move.w layout.State.Count(a6), d1
+	jsr plans.finalize
 	bra.w done
 failSaved
 	addq.l #4, sp

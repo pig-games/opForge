@@ -313,6 +313,18 @@ done
 	rts
 	.bend  ; copyMemberKeys
 
+; A0=frontend Frame,A1=configured values Owner. Copy finalized numeric plans.
+; D0/CCR=status; all other registers preserved. Call before frontend release.
+exportBindings	.block
+	movem.l a0, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	adda.l #SCOPE_STATE, a0
+	jsr scopes.exportBindings
+	movem.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; exportBindings
+
 ; A0=Frame,A1=file basename,D0=name bytes. Enter file-derived module ownership
 ; before lowering physical lines. D0/CCR=status; other registers preserved.
 beginFileDerived	.block
@@ -3089,6 +3101,15 @@ canonicalSource
 sourceBound
 	lea SCOPE_STATE(a6), a1
 	move.w d3, layout.State.Current(a1)
+	tst.l d0
+	bne.w sourceDone
+	tst.l d5
+	bne.w sourceDone
+	move.l d2, -(sp)
+	movea.l a2, a0
+	move.l d6, d0
+	jsr scopes.captureBinding
+	move.l (sp)+, d2
 	tst.l d0
 sourceDone
 	rts

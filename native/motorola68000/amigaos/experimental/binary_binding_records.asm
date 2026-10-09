@@ -23,9 +23,9 @@ RegisterName	.word ?  ; original spelling's package register ID+1; zero absent
 RegisterQualifier	.byte ?
 RegisterReserved	.byte ?  ; zero; candidate metadata never follows Target
 MemberId	.word ?  ; immutable global bare field key; $ffff until declared
-MemberPadding	.word ?
+OriginalId	.word ?  ; original complete name ID for BINDING_PROXY
 .endstruct
-ENTRY_BYTES = Entry.MemberPadding+2
+ENTRY_BYTES = Entry.OriginalId+2
 REFERENCED = 2
 OPTIONAL_REFERENCED = 512
 CONDITIONAL_VALUE = 1<<11; preparation retains candidate immutable definitions
@@ -35,6 +35,7 @@ ITERATOR_HIGH_BIT = 2
 ITERATOR = 1<<(ITERATOR_HIGH_BIT+8)
 LABEL_VALUE_BIT = 7
 LABEL_VALUE = 1<<LABEL_VALUE_BIT; preparation-time address declaration availability
+BINDING_PROXY = 1<<13; per-occurrence numeric dotted-value origin
 COMPOUND_LABEL = 1<<12; collection identity, distinct from an address label
 STRUCT_TYPE = 32
 TEMPLATE_PROXY_BIT = 6

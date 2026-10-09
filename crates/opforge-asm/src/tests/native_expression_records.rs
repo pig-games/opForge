@@ -7,7 +7,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn oracle() -> Vec<u8> {
-    let cases: [[u32; 6]; 14] = [
+    let cases: [[u32; 6]; 17] = [
         [0, 0, 0, 4, 0, 0],          // retained compact record alias
         [0, 0, 0, 4, 0, 0],          // typed list index retains record
         [0, 7, 0, 0, 0, 0],          // numeric member identity
@@ -22,11 +22,15 @@ fn oracle() -> Vec<u8> {
         [0, 40, 0, 0, 2, 0],         // explicit scalar boundary projects default
         [0, 45, 0, 0, 2, 0],         // compact arithmetic projects record default
         [0, 0, 0, 0, u32::MAX, 0],   // two unsafe tags cannot cancel provenance
+        [0, 7, 0, 0, 0, 0],          // canonical undefined symbol numeric binding
+        [0, 44, 0, 0, 2, 0],         // compact undefined symbol numeric binding
+        [0, 45, 0, 0, 2, 0],         // compact numeric binding plus absolute
     ];
     cases
         .into_iter()
         .flatten()
         .chain([0, 40, 0, 2, 1, 0x10012, 0, 2, 1]) // invalid bare record descriptor
+        .chain([0, 1, 1, 1, 1]) // nested equality: equal, changed, provenance, truncated, cycle
         .flat_map(u32::to_be_bytes)
         .collect()
 }
@@ -85,7 +89,7 @@ fn assemble(root: &Path) -> (Scratch, Vec<u8>, String) {
 
 #[test]
 fn native_expression_records_host_assembles() {
-    assert_eq!(oracle().len(), 14 * 24 + 36);
+    assert_eq!(oracle().len(), 17 * 24 + 36 + 5 * 4);
     assert!(!assemble(&workspace_root()).1.is_empty());
 }
 

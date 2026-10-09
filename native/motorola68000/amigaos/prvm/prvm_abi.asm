@@ -65,6 +65,17 @@ PRVM_TOKEN_KIND_COLON = 5
 PRVM_TOKEN_KIND_OP_PLUS = 18
 PRVM_TOKEN_KIND_OP_MULTIPLY = 20
 PRVM_TOKEN_KIND_OP_EQ = 34
+; Preparation-owned source-name qualification; canonical declarations clear it.
+PRVM_SOURCE_NAME_EXPLICIT = 1
+; Packed source header followed by its numeric declaration label.
+PackedLabel	.struct
+Length	.byte ?
+Flags	.byte ?
+SourceLine	.word ?
+Kind	.byte ?
+Id	.word ?
+Qualifier	.byte ?
+.endstruct
 PRVM_RESULT_BEGIN_STATEMENT = 1
 PRVM_RESULT_LABEL_TEXT = 2
 PRVM_RESULT_MNEMONIC_TEXT = 3

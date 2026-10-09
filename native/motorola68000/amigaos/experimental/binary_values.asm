@@ -10,8 +10,9 @@ Arena	.res memory.Block.Used+4
 Kinds	.res memory.Block.Used+4
 Count	.long ?
 Work	.res memory.Block.Used+4
+Bindings	.res memory.Block.Used+4  ; optional immutable numeric fallback plans
 .endstruct
-OWNER_BYTES = 40
+OWNER_BYTES = Owner.Bindings+memory.Block.Used+4
 SCALAR = 0
 LIST = 1
 RANGE = 2
@@ -41,10 +42,13 @@ RECORD_BASE_BYTES = 24
 HEADER_BYTES = 8
 ELEMENT_BYTES = 8
 MAX_ELEMENTS = (memory.LIMIT-HEADER_BYTES)/ELEMENT_BYTES
+MAX_SECTION_ID = 8; scalar provenance uses zero=absolute, -1=unsafe
+EQUALITY_DEPTH_LIMIT = 32
+EQUALITY_WORK_LIMIT = memory.LIMIT
 	.section code, kind=code
 
-; A0=zeroed/released Owner,D0=symbol count. D0/CCR=status; others preserved.
-; Initializes only Count; caller must release an existing owner first.
+; A0=Owner,D0=symbol count. D0/CCR=status; others preserved.
+; Sets Count only; caller owns existing storage lifecycle and retained references.
 init	.block
 	cmpi.l #memory.LIMIT, d0
 	bhi.w bad
@@ -133,7 +137,8 @@ done
 	rts
 	.bend  ; rewind
 
-; A0=Owner. D0/CCR=status; others preserved. Retains allocations, clears kinds.
+; A0=Owner. D0/CCR=status; others preserved.
+; Retains allocations and numeric binding plans, clears kinds.
 reset	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	lea Owner.Arena(a0), a1
@@ -173,10 +178,14 @@ release	.block
 	movea.l (sp), a0
 	lea Owner.Work(a0), a0
 	jsr memory.release
+	movea.l (sp), a0
+	lea Owner.Bindings(a0), a0
+	jsr memory.release
 	movea.l (sp)+, a0
 	clr.l Owner.Arena+memory.Block.Used(a0)
 	clr.l Owner.Kinds+memory.Block.Used(a0)
 	clr.l Owner.Work+memory.Block.Used(a0)
+	clr.l Owner.Bindings+memory.Block.Used(a0)
 	clr.l Owner.Count(a0)
 	moveq #OK, d0
 	rts
@@ -377,7 +386,7 @@ typedRecord
 	bne.w invalid
 	cmpi.l #-1, Cell.Provenance(a3)
 	beq.w defaultReady
-	cmpi.l #8, Cell.Provenance(a3)
+	cmpi.l #MAX_SECTION_ID, Cell.Provenance(a3)
 	bhi.w invalid
 defaultReady
 	adda.l #CELL_BYTES, a3
@@ -392,7 +401,7 @@ importCell
 	bne.w invalid
 	cmpi.l #-1, Cell.Provenance(a3)
 	beq.w importReady
-	cmpi.l #8, Cell.Provenance(a3)
+	cmpi.l #MAX_SECTION_ID, Cell.Provenance(a3)
 	bhi.w invalid
 importReady
 	adda.l #CELL_BYTES, a3
@@ -516,66 +525,173 @@ done
 	.bend  ; compoundGet
 
 ; A0=Owner,D1=left offset,D2=right offset. D0/CCR=OK iff complete compound
-; values have the same kind and contents. Ranges compare canonical descriptors,
-; matching AsmValue equality; a LIST and RANGE never compare equal.
-; MALFORMED covers invalid/unequal values. Others preserved; no allocation.
+; values have the same kind and contents; MALFORMED covers invalid/unequal values.
+; Others preserved; no allocation. Child descriptors compare by value, not offset.
+; Depth32 and a shared comparison budget bound cyclic/malicious graphs. Each
+; nested descriptor/cell pair saves56bytes plus8 return bytes: at most2048bytes,
+; plus public/leaf helper saves (under2200bytes total), without Owner.Work/VM.
 equalValues	.block
-	movem.l d1-d4/a1-a2, -(sp)
+	movem.l d1-d7/a1-a3, -(sp)
+	moveq #EQUALITY_DEPTH_LIMIT, d6
+	move.l #EQUALITY_WORK_LIMIT, d7
+	bsr.w equalRecord
+	movem.l (sp)+, d1-d7/a1-a3
+	tst.l d0
+	rts
+	.bend  ; equalValues
+	.priv
+; A0=Owner,D1/D2=offsets,D6=remaining depth,D7=shared remaining work.
+; D0/CCR=status,D7=remaining work; other registers preserved.
+equalRecord	.block
+	movem.l d1-d6/a1-a3, -(sp)
+	tst.l d6
+	beq.w bad
+	tst.l d7
+	beq.w bad
+	subq.l #1, d6
+	subq.l #1, d7
 	bsr.w view
 	bne.w done
 	movea.l a1, a2
 	move.l d2, d1
 	bsr.w view
 	bne.w done
-	move.l Record.Kind(a1), d3
-	cmp.l Record.Kind(a2), d3
+	move.l Record.Kind(a1), d5
+	cmp.l Record.Kind(a2), d5
 	bne.w bad
-	cmpi.l #RANGE, d3
+	cmpi.l #RANGE, d5
 	beq.w rangeValue
 	move.l Record.Count(a1), d4
 	cmp.l Record.Count(a2), d4
 	bne.w bad
-	cmpi.l #TYPED_LIST, d3
-	beq.w typedContents
-	cmpi.l #ADDRESS_RECORD, d3
-	beq.w typedContents
-	add.l d4, d4
-	bra.w contents
-typedContents
-	bsr.w descriptorBytes
-	bne.w done
-	move.l Record.Count(a1), d4
-	cmpi.l #TYPED_LIST, Record.Kind(a1)
-	beq.w typedListContents
-	mulu.l #FIELD_BYTES/4, d4
-	addi.l #CELL_BYTES/4, d4
-	bra.w contents
-typedListContents
-	lsl.l #2, d4
-	bra.w contents
-rangeValue
-	moveq #6, d4
-contents
 	lea HEADER_BYTES(a1), a1
 	lea HEADER_BYTES(a2), a2
+	cmpi.l #TYPED_LIST, d5
+	beq.w cells
+	cmpi.l #ADDRESS_RECORD, d5
+	beq.w addressRecord
+	; Legacy lists still compare their scalar64 pairs in stored order.
+	add.l d4, d4
+	bra.w words
+rangeValue
+	lea HEADER_BYTES(a1), a1
+	lea HEADER_BYTES(a2), a2
+	moveq #6, d4
+words
 	tst.l d4
 	beq.w good
-compare
+	tst.l d7
+	beq.w bad
+	subq.l #1, d7
 	move.l (a1)+, d3
 	cmp.l (a2)+, d3
 	bne.w bad
 	subq.l #1, d4
-	bne.w compare
+	bra.w words
+addressRecord
+	bsr.w equalCell
+	bne.w done
+	adda.l #CELL_BYTES, a1
+	adda.l #CELL_BYTES, a2
+fields
+	tst.l d4
+	beq.w good
+	move.l Field.Member(a1), d3
+	cmp.l Field.Member(a2), d3
+	bne.w bad
+	lea Field.Value(a1), a1
+	lea Field.Value(a2), a2
+	bsr.w equalCell
+	bne.w done
+	adda.l #CELL_BYTES, a1
+	adda.l #CELL_BYTES, a2
+	subq.l #1, d4
+	bra.w fields
+cells
+	tst.l d4
+	beq.w good
+	bsr.w equalCell
+	bne.w done
+	adda.l #CELL_BYTES, a1
+	adda.l #CELL_BYTES, a2
+	subq.l #1, d4
+	bra.w cells
 good
 	moveq #OK, d0
 	bra.w done
 bad
 	moveq #MALFORMED, d0
 done
-	movem.l (sp)+, d1-d4/a1-a2
+	movem.l (sp)+, d1-d6/a1-a3
 	tst.l d0
 	rts
-	.bend  ; equalValues
+	.bend  ; equalRecord
+; A0=Owner,A1/A2=bounded Cell16,D6=remaining depth,D7=remaining work.
+; D0/CCR=status,D7=remaining work; other registers preserved. Compound cells
+; require descriptor offsets with zero high/provenance; scalars retain signed64.
+equalCell	.block
+	movem.l d1-d3/a1-a2, -(sp)
+	tst.l d7
+	beq.w bad
+	subq.l #1, d7
+	move.l Cell.Kind(a1), d3
+	cmp.l Cell.Kind(a2), d3
+	bne.w bad
+	cmpi.l #ADDRESS_RECORD, d3
+	bhi.w bad
+	move.l Cell.Provenance(a1), d0
+	cmp.l Cell.Provenance(a2), d0
+	bne.w bad
+	tst.l d3
+	bne.w compound
+	cmpi.l #-1, d0
+	beq.w scalar
+	cmpi.l #MAX_SECTION_ID, d0
+	bhi.w bad
+scalar
+	move.l Cell.Low(a1), d1
+	cmp.l Cell.Low(a2), d1
+	bne.w bad
+	move.l Cell.High(a1), d2
+	cmp.l Cell.High(a2), d2
+	bne.w bad
+	moveq #OK, d0
+	bra.w done
+compound
+	tst.l d0
+	bne.w bad
+	tst.l Cell.High(a1)
+	bne.w bad
+	tst.l Cell.High(a2)
+	bne.w bad
+	move.l Cell.Low(a1), d1
+	move.l Cell.Low(a2), d2
+	; Match each cell's declared kind to its actual bounded descriptor.
+	movem.l d1/d3, -(sp)
+	bsr.w view
+	movem.l (sp)+, d1/d3
+	tst.l d0
+	bne.w done
+	cmp.l Record.Kind(a1), d3
+	bne.w bad
+	movem.l d1/d3, -(sp)
+	move.l d2, d1
+	bsr.w view
+	movem.l (sp)+, d1/d3
+	tst.l d0
+	bne.w done
+	cmp.l Record.Kind(a1), d3
+	bne.w bad
+	bsr.w equalRecord
+	bra.w done
+bad
+	moveq #MALFORMED, d0
+done
+	movem.l (sp)+, d1-d3/a1-a2
+	tst.l d0
+	rts
+	.bend  ; equalCell
+	.pub
 
 ; A0=Owner,D1=symbol ID,D2=kind. D0/CCR=status; others preserved.
 ; Scalar writes avoid allocation; compound cells contain arena offsets.

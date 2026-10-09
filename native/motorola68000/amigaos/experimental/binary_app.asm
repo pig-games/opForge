@@ -1051,6 +1051,15 @@ blocksSelected
 	jsr frontend.copyParameters
 	bne.w completionBad
 parametersSaved
+	; Numeric member fallbacks outlive preparation; values own their copied plans.
+	lea ValueOwner, a0
+	move.l NameCount, d0
+	jsr values.init
+	bne.w completionBad
+	lea Front, a0
+	lea ValueOwner, a1
+	jsr frontend.exportBindings
+	bne.w completionBad
 	; Export field identities before discarding the lexical binding arena.
 	move.l NameCount, d0
 	add.l d0, d0

@@ -791,11 +791,9 @@ expressions in owners that contain compounds; it does not parse source text.
 The focused fixture includes counted/list/range and empty/single loops, nested
 collections, nested index/member chains, qualified original bindings, conditional
 members and grouped record aliases. Plain contiguous dotted aliases such as
-`saved.value` still bind as qualified names in the compact frontend; their Rust
-oracle and explicit native failing characterization are retained. This spelling
-is not qualified by the grouped `(saved).value` checks. `.bwhile`, mapped scoped
-replay, negative/wide/compound iterable elements and general forward-layout
-convergence remain open. This checkpoint is not a new full self-host result or
+`saved.value` now have the separate numeric-binding qualification below. `.bwhile`,
+mapped scoped replay, negative/wide/compound iterable elements and general
+forward-layout convergence remain open. This checkpoint is not a new full self-host result or
 complete loop/macro parity.
 
 Qualification: the nine-scenario combined fixture matches the live 61-byte Rust
@@ -836,6 +834,81 @@ Reproduce the fixture with `OPFORGE_NAMED_SCOPED_FILTER=scalar-control` and
 frozen candidate in the test harness only. Use the normal FS-UAE environment
 and `cargo test -p asm native_named_scoped_loops_fs_uae -- --ignored --nocapture
 --test-threads=1`.
+
+### Numeric dotted record bindings (focused checkpoint)
+
+Plain `saved.value` resolves through a numeric occurrence binding when an earlier
+value prefix exists. Preparation retains complete qualified-name identity and
+binds alternative value bases and bare member IDs, longest prefix first. A full
+qualified declaration wins, including a later scalar declaration; otherwise
+shared typed ExprVM selects the longest actual record base and executes numeric
+member lookups. Missing members after that selection reject. Scalar prefixes
+cannot steal a valid record chain. No value-type guesses, new VM opcode, source
+text lookup or retained name strings are introduced in execution. Grouping
+`(saved).value` still explicitly selects member semantics. Dotted definitions
+retain their complete spelling, as in Rust; enclosing namespaces do not rename
+them.
+
+Each reference occurrence has its own numeric identity so different lexical
+owners can use the same spelling. Import binding preserves these identities;
+normal qualified references retain ordinary import and visibility checks. Earlier
+unresolved record aliases remain errors, and skipped statements remain inactive.
+Preparation exports bounded plans before releasing its name storage. One shared
+layout defines an 8-byte plan header, 4-byte candidate header and two bytes per
+member ID. Plans contain IDs and byte extents, never pointers, and survive value
+arena rewinds. The owner grows from 40 to 52 bytes; each fallback occurrence adds
+a 36-byte preparation identity and its variable plan. Full declarations discard
+their fallback plans. Lookup is currently linear and installation checks duplicate
+IDs quadratically; large reference inventories need measurement before optimizing
+this sparse representation. This is not a measured peak-memory claim.
+
+The combined ten-scenario fixture matches live Rust output on both 68020 and
+6502 packages: 30 bytes, including lexical aliases, nested record/list chains,
+scalar-prefix fallbacks, qualified declaration collisions and forward qualified
+scalars. Fresh final-image START-to-DONE observations are 3.038765209 and
+2.282553 seconds. The nested fixture also exposed shallow immutable-value
+comparison during pass two. Compound equality now compares nested contents,
+kinds, ordered member keys and provenance rather than child arena offsets. It
+allocates nothing and uses a 32-descriptor depth limit plus a shared work budget;
+cycles and malformed children reject. Worst-case comparison stack is under
+2.2 KiB. The nesting limit is an explicit native resource boundary.
+
+The previous nine-scenario labeled-loop regression also matches all 61 live
+Rust bytes on both packages (3.030622125 and 2.278499 seconds). Dotted saved
+record addresses and arithmetic match complete 104-byte Hunk files, including
+section relocation entries at offsets 4, 8 and 12 (1.518802750 and 0.774811125
+seconds). The fresh native component matches all 464 contract bytes: 17 typed
+expression/provenance cases, the retained malformed descriptor tail, and five
+structural equality cases for independent equal trees, changed scalar values,
+changed provenance, a truncated child and a cyclic graph. Selected native
+missing-member, longest-record-prefix and forward-record rejection cases completed
+on both packages before the equality repair. Final-image longest-prefix rejection
+is checked separately because its fixture contains nested aliases.
+Host oracles/assembly, Rustfmt, the native porting gate and workflow/architecture
+guards pass. No reference outputs or VM/package versions change.
+
+The unchanged 1,024-iteration scalar control isolates the costs of this slice.
+Same FS-UAE 68020/10 MiB profile, release images, no telemetry, fresh exact live
+Rust comparisons; each row below is one run, not a statistically qualified result:
+
+| Image | Bytes | START-to-DONE seconds | Change from preceding row |
+|---|---:|---:|---:|
+| Before numeric bindings (`41178d12`) | 625,904 | 36.215410458 | — |
+| Numeric bindings, before structural equality | 628,612 | 36.242908750 | +0.027498292 (+0.076%) |
+| Final numeric bindings and structural equality | 628,928 | 36.236243833 | -0.006664917 (-0.018%) |
+
+Overall observation: +0.020833375 seconds (+0.058%). These tiny single-run
+changes do not establish a gain or regression. They measure this flat scalar
+control, not costs in a large dotted-reference or nested-value workload. The
+binding implementation adds 2,708 executable bytes; structural equality adds
+316, for +3,024 total (+0.48%) over the previous checkpoint. This separates the
+last repair from the preceding binding change instead of folding both into an
+older cumulative performance claim. Reuse the scalar-control command above and
+select the frozen image through `OPFORGE_NAMED_SCOPED_IMAGE`.
+
+This is focused alias/binding coverage, not full loop/macro parity, a full corpus
+rerun, a new self-host result or A6000 timing. `.bwhile` and the other labeled-loop
+boundaries above remain open.
 
 ### Compound-value checkpoints
 

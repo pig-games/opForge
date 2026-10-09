@@ -42,7 +42,7 @@ The subsequent [labeled-repetition checkpoint](native-runtime-reset.md#native-la
 adds typed iteration records and shared VM index/member evaluation. The
 [scoped-condition checkpoint](native-runtime-reset.md#scoped-condition-repetition-focused-checkpoint)
 adds anonymous and labeled `.bwhile`, fresh local scopes, nested loop composition
-and retained iteration records; identifier-spelled `x=` updates and mapped scoped
+and retained iteration records; mapped scoped
 replay remain open. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
 forward-initializer semantics, struct behavior and existing wide-literal packing
 limits also remain unresolved. Full language or CPU-family parity is not claimed.
@@ -338,18 +338,19 @@ Shared PRVM entry 9 validates the labelled
 scalar declaration envelope using the package-supplied `.const`/`.var`/`.set`
 identity-to-role table and the numeric colon/equal operator policy, returning
 operand spans plus immutable/mutable/conditional/update roles. The retained program
-is 114 bytes, with 18 packed recipes for 17 punctuation update actions;
+is 116 bytes, with 18 packed recipes for 17 punctuation update actions and
+one contextual package-name identity for scalar `x=` repetition;
 `:=`, `.var` and `.set` share the mutable role. Operator matching precedes the
 optional label colon and consumes the complete packed record, independently of
 the two-token physical-head hint. Scalar `:?=` is under qualification and has an
 unresolved forward-initializer semantic choice. The punctuation compound updates
-are covered by the shared declaration policy described below; `x=` remains open. A generic adapter lowers the record after template
+and scalar `x=` are covered by the shared declaration policy described below. A generic adapter lowers the record after template
 expansion and before scope/conditional processing; configuration capture lowers
 its private writer record before import-parameter evaluation. Discovery selects
 declaration roles through package identity before that materialization; it does
 not decide declaration grammar. Scalar compilation and binding remain shared. Immutable graph evaluation
 and layout consistency remain with the assignment/dependency owners; mutable
-records (tag 43, or update markers 46–62) execute at their statement positions
+records (tag 43, or update markers 46–63) execute at their statement positions
 and overwrite both signed64
 words. Existing Defined byte states distinguish mutable ownership (3) from
 precomputed absolute immutable values (2) and resolved runtime absolute snapshots
@@ -533,11 +534,19 @@ References: [portable token contract](../../crates/opforge-vm/src/portable_contr
 
 Macro definitions and calls use package-selected PRVM services and bounded offset-only descriptor/fragment records. Generated calls re-tokenize selected argument fragments; the residual decoded-string fallback above remains. Preserve lexical hygiene, source order, visibility and the separation between macro identity and numeric value identity.
 
-Punctuation compound assignments use the shared PRVM declaration policy and
+Scalar compound assignments use the shared PRVM declaration policy and
 numeric update markers. They reference existing mutable scalar identities,
 including earlier lexical ancestors; they do not declare new locals. Arithmetic
-and preparation snapshots share the ExprVM assignment service. Identifier-spelled
-`x=` remains open.
+and preparation snapshots share the ExprVM assignment service. Dictionary role
+bit 4 marks the package-owned `x` grammar word; the shared PRVM recognizes it only
+after an update target and before an equals token. The writer supplies raw
+lookahead metadata, and binding retains ordinary source/register/member facets
+elsewhere, including extended precision `.x`. Assignment RHS contexts use that
+same classifier, so register-named symbols can remain lexical values.
+Immutable configuration captures marshal that same numeric identity into the
+shared classifier. No frontend spelling comparison or execution-time text lookup
+is added. Repeat execution uses the left scalar's low byte, repeats it up to four
+times using the RHS low-u32 count, and returns a zero-extended u32.
 
 ## Current implementation owners
 

@@ -152,6 +152,8 @@ impl DictionaryRoleFlags {
     const STATE_ARGUMENT: Self = Self(4);
     // Core call names retain identity only before a call argument list.
     const BUILTIN: Self = Self(8);
+    // Shared PRVM decides when a word is an assignment operator.
+    const ASSIGNMENT_WORD: Self = Self(16);
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -356,6 +358,14 @@ pub fn prepare_package(
         in_name,
         0,
         DictionaryRoleFlags::CONTEXTUAL,
+    )?;
+    let repeat_name = intern(&mut names, "x")?;
+    bind(
+        &mut dictionary,
+        "x".into(),
+        repeat_name,
+        0,
+        DictionaryRoleFlags::ASSIGNMENT_WORD,
     )?;
     let mut declaration_heads = [0; 3];
     for (head, spelling) in declaration_heads.iter_mut().zip(["const", "var", "set"]) {
@@ -656,7 +666,7 @@ pub fn prepare_package(
     out.extend_from_slice(&branch_plan);
     align(&mut out);
     let declaration_plan_offset = out.len();
-    let declaration_plan = packed_declaration_program(declaration_heads);
+    let declaration_plan = packed_declaration_program(declaration_heads, repeat_name);
     out.extend_from_slice(&declaration_plan);
     align(&mut out);
     align(&mut out);

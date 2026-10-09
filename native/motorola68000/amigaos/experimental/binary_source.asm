@@ -33,8 +33,8 @@ TOKEN_MUTABLE_DECLARATION = 43
 TOKEN_CONDITIONAL_DECLARATION = 44
 TOKEN_IGNORED_DECLARATION = 45
 TOKEN_UPDATE_FIRST = 46
-TOKEN_UPDATE_LAST = TOKEN_UPDATE_FIRST+16
-UPDATE_ACTION_MAX = 16
+TOKEN_UPDATE_LAST = TOKEN_UPDATE_FIRST+17
+UPDATE_ACTION_MAX = 17
 ; Prepared-only loop envelope: BE16 iterator identity, followed by EXVM value.
 TOKEN_ITERATOR_BINDING = $84
 NameToken	.struct
@@ -80,8 +80,9 @@ DataWidthDirective	.word ?  ; second configured width operand directive
 HeadToken	.word ?  ; physical head selected by PRVM; Count means values with no head
 MemberBinder	.long ?  ; optional contextual package-member binding callback
 StatePlan	.long ?  ; optional package state plan for first-operand name binding
+NextKind	.long ?  ; raw lookahead for contextual binder; $ffff at the line end
 	.endstruct
-FRAME_BYTES = Frame.StatePlan+4
+FRAME_BYTES = Frame.NextKind+4
 
 Token	.struct
 Kind	.word ?
@@ -422,6 +423,13 @@ callBinder
 ordinaryMember
 	move.l (sp)+, d3
 ordinaryName
+	move.l #$ffff, Frame.NextKind(a5)
+	cmpi.l #2, d7
+	blo.w lookaheadReady
+	moveq #0, d0
+	move.w Token.Kind+Token.Length+4(a2), d0
+	move.l d0, Frame.NextKind(a5)
+lookaheadReady
 	movea.l Frame.Binder(a5), a6
 	move.l d6, d0
 	jsr (a6)

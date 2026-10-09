@@ -15,18 +15,28 @@ ROLE = State.Stage+abi.PRVM_DECLARATION_ROLE
 VALUE_OFFSET = State.Stage+abi.PRVM_DECLARATION_VALUE_OFFSET
 VALUE_BYTES = State.Stage+abi.PRVM_DECLARATION_VALUE_BYTES
 UPDATE_ACTION = State.Stage+abi.PRVM_DECLARATION_UPDATE_ACTION
-PLAN_OPERATOR_ROWS = 11
-PLAN_RECIPE_COUNT = 21
-PLAN_RECIPES = 22
+TOKEN_NAME_LAST = 1
+TOKEN_EQUALS = abi.PRVM_TOKEN_KIND_OP_EQ
+ACTION_REPEAT = 17
+ASSIGNMENT_PREFIX_BYTES = abi.PackedLabel.Qualifier+1
+REPEAT_BYTES = 5
+REPEAT_NAME_HIGH = 1
+REPEAT_NAME_LOW = 2
+REPEAT_QUALIFIER = 3
+REPEAT_OPERATOR = 4
+PLAN_REPEAT_NAME = 11
+PLAN_OPERATOR_ROWS = 13
+PLAN_RECIPE_COUNT = 23
+PLAN_RECIPES = 24
 PLAN_RECIPE_BYTES = 5
 PLAN_RECIPE_ACTION = 0
 PLAN_RECIPE_COUNT_FIELD = 1
 PLAN_RECIPE_TOKENS = 2
-PLAN_BYTES = 114
-PLAN_MUTABLE_ROLE = 12
-PLAN_MUTABLE_TOKENS = 14
-PLAN_CONDITIONAL_ROLE = 16
-PLAN_CONDITIONAL_TOKENS = 18
+PLAN_BYTES = 116
+PLAN_MUTABLE_ROLE = 14
+PLAN_MUTABLE_TOKENS = 16
+PLAN_CONDITIONAL_ROLE = 18
+PLAN_CONDITIONAL_TOKENS = 20
 
 	.section code, kind=code
 ; A0=request,D0=available bytes; standard PRVM status/count/offset/bytes.
@@ -247,6 +257,29 @@ classifyUpdate	.block
 	movem.l d3-d6/a0-a3, -(sp)
 	movea.l a0, a3
 	move.l d0, d6
+	cmpi.l #REPEAT_BYTES, d6
+	blo.w punctuation
+	cmpi.b #TOKEN_NAME_LAST, (a3)
+	bhi.w punctuation
+	moveq #0, d3
+	move.b REPEAT_NAME_HIGH(a3), d3
+	lsl.w #8, d3
+	move.b REPEAT_NAME_LOW(a3), d3
+	moveq #0, d4
+	move.b PLAN_REPEAT_NAME(a1), d4
+	lsl.w #8, d4
+	move.b PLAN_REPEAT_NAME+1(a1), d4
+	cmp.w d3, d4
+	bne.w punctuation
+	tst.b REPEAT_QUALIFIER(a3)
+	bne.w punctuation
+	cmpi.b #TOKEN_EQUALS, REPEAT_OPERATOR(a3)
+	bne.w punctuation
+	moveq #ACTION_REPEAT, d1
+	moveq #REPEAT_BYTES, d2
+	moveq #1, d0
+	bra.w done
+punctuation
 	lea PLAN_RECIPES(a1), a0
 	moveq #0, d5
 	move.b PLAN_RECIPE_COUNT(a1), d5
@@ -355,6 +388,21 @@ validateUnique
 nextRole
 	addq.l #3, a0
 	dbra d1, validateRole
+	moveq #0, d2
+	move.b PLAN_REPEAT_NAME(a5), d2
+	lsl.w #8, d2
+	move.b PLAN_REPEAT_NAME+1(a5), d2
+	lea 2(a5), a0
+	moveq #2, d1
+repeatUnique
+	moveq #0, d3
+	move.b (a0), d3
+	lsl.w #8, d3
+	move.b 1(a0), d3
+	cmp.w d2, d3
+	beq.w bad
+	addq.l #3, a0
+	dbra d1, repeatUnique
 	moveq #abi.PRVM_STATUS_OK, d0
 	bra.w done
 bad
@@ -364,6 +412,64 @@ done
 	tst.l d0
 	rts
 	.bend  ; validateProgram
+	.pub
+; A0=packed prefix,A1=current cursor,A2=plan,D0=name ID,D1=plan bytes.
+; D2=next raw TKVM kind; recognition requires an equals token.
+; D0/CCR=0 contextual repeat name,1 absent; all other registers preserved.
+contextKeyword	.block
+	movem.l d1-d3, -(sp)
+	cmpi.l #PLAN_BYTES, d1
+	bne.w absent
+	cmpi.l #TOKEN_EQUALS, d2
+	bne.w absent
+	move.l a1, d1
+	sub.l a0, d1
+	cmpi.l #ASSIGNMENT_PREFIX_BYTES, d1
+	bne.w absent
+	cmpi.b #TOKEN_NAME_LAST, abi.PackedLabel.Kind(a0)
+	bhi.w absent
+	moveq #0, d2
+	move.b PLAN_REPEAT_NAME(a2), d2
+	lsl.w #8, d2
+	move.b PLAN_REPEAT_NAME+1(a2), d2
+	cmp.l d2, d0
+	bne.w absent
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3
+	tst.l d0
+	rts
+	.bend  ; contextKeyword
+; A0/A1=packed prefix/end,A2=validated plan,D1=plan bytes.
+; D0/CCR=0 assignment value context,1 absent; all other registers preserved.
+; Partial RHS prefixes use the same classifier as materialized declarations.
+valueContext	.block
+	movem.l d1-d2/a0-a2, -(sp)
+	cmpi.l #PLAN_BYTES, d1
+	bne.w absent
+	move.l a1, d0
+	sub.l a0, d0
+	sub.l #ASSIGNMENT_PREFIX_BYTES, d0
+	bcs.w absent
+	cmpi.b #TOKEN_NAME_LAST, abi.PackedLabel.Kind(a0)
+	bhi.w absent
+	adda.w #ASSIGNMENT_PREFIX_BYTES, a0
+	movea.l a2, a1
+	bsr.w classifyAssignment
+	tst.l d0
+	beq.w absent
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; valueContext
 ; A0=validated declaration program,D0=numeric package head identity.
 ; D0/CCR=immutable/mutable role,0 otherwise; other registers preserved.
 ; Selection is a hint only; run retains authoritative declaration grammar.

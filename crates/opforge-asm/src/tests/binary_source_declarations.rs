@@ -967,7 +967,7 @@ fn compact_conditional_policy_matches_live_tkvm_punctuation() {
     packed.extend(punctuation);
     packed.extend([2, 0, 0, 0, 3]);
     packed[0] = (packed.len() - 1) as u8;
-    let plan = package::package::packed_declaration_program([42, 43, 44]);
+    let plan = package::package::packed_declaration_program([42, 43, 44], 93);
     let rows = vm::packed_declaration_vm::execute(9, 2, &plan, &packed, 32, 3).unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(u16::from_be_bytes(rows[0][2..4].try_into().unwrap()), 3);

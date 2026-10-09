@@ -317,6 +317,12 @@ declarationRow
 	bhi.w bad
 	addq.l #3, a3
 	dbra d6, declarationRow
+	moveq #0, d0
+	move.b (a3), d0
+	lsl.w #8, d0
+	move.b 1(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
 	cmpi.w #2, package.Header.HeadPolicyVersion(a4)
 	bne.w bad
 	tst.w package.Header.Reserved(a4)

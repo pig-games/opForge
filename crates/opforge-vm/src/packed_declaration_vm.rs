@@ -31,7 +31,7 @@ pub fn execute(
     if entry != PARSER_VM_PACKED_DECLARATION_ENTRY || version != PARSER_VM_MACRO_VERSION {
         return Err(error(4, 0, "Invalid packed declaration entry or version"));
     }
-    let heads = if program.len() >= 11 {
+    let heads = if program.len() >= 13 {
         [
             u16::from_be_bytes([program[2], program[3]]),
             u16::from_be_bytes([program[5], program[6]]),
@@ -40,7 +40,9 @@ pub fn execute(
     } else {
         return Err(error(6, 0, "Invalid packed declaration program"));
     };
-    if program != packed_declaration_program(heads)
+    let repeat_name = u16::from_be_bytes([program[11], program[12]]);
+    if program != packed_declaration_program(heads, repeat_name)
+        || heads.contains(&repeat_name)
         || (0..3).any(|i| heads[..i].contains(&heads[i]))
     {
         return Err(error(6, 0, "Invalid packed declaration program"));
@@ -63,14 +65,22 @@ pub fn execute(
         .find(|row| {
             source.get(8..8 + usize::from(row[1])) == Some(&row[2..2 + usize::from(row[1])])
         });
+    let repeat = source.len() >= 13
+        && source[8] <= 1
+        && source[9..11] == program[11..13]
+        && source[11] == 0
+        && source[12] == 34;
     let mut action = 0;
-    let (role, match_head, head) = if let Some(row) = update {
+    let (role, match_head, head) = if repeat {
+        action = 17;
+        (UPDATE_ROLE as u8, 8, 13)
+    } else if let Some(row) = update {
         action = u16::from(row[0]);
         (UPDATE_ROLE as u8, 8, 8 + usize::from(row[1]))
-    } else if source.get(8..11) == Some(&program[18..21]) {
-        (program[16], 8, 11)
-    } else if source.get(8..10) == Some(&program[14..16]) {
-        (program[12], 8, 10)
+    } else if source.get(8..11) == Some(&program[20..23]) {
+        (program[18], 8, 11)
+    } else if source.get(8..10) == Some(&program[16..18]) {
+        (program[14], 8, 10)
     } else {
         let mut head = 8;
         if source.get(head) == Some(&5) {
@@ -124,7 +134,7 @@ mod tests {
         execute(
             9,
             2,
-            &packed_declaration_program([42, 43, 44]),
+            &packed_declaration_program([42, 43, 44], 93),
             source,
             capacity,
             budget,
@@ -172,6 +182,22 @@ mod tests {
                 source[7] = 2;
                 assert_eq!(run(&source, 32, 3).unwrap_err().status, 5);
             }
+        }
+    }
+    #[test]
+    fn repeat_matches_only_the_unqualified_package_operator_identity() {
+        for kind in [0, 1] {
+            let mut source = vec![0, 1, 0, 7, 0, 0, 90, 0, kind, 0, 93, 0, 34];
+            source.extend([2, 0, 0, 0, 3]);
+            source[0] = (source.len() - 1) as u8;
+            let rows = run(&source, 32, 3).unwrap();
+            assert_eq!(u16::from_be_bytes(rows[0][12..14].try_into().unwrap()), 17);
+            assert_eq!(u32::from_be_bytes(rows[0][4..8].try_into().unwrap()), 13);
+            source[11] = 1;
+            assert!(run(&source, 32, 3).unwrap().is_empty());
+            source[11] = 0;
+            source[10] = 94;
+            assert!(run(&source, 32, 3).unwrap().is_empty());
         }
     }
     #[test]
@@ -301,7 +327,7 @@ mod tests {
             assert_eq!(u16::from_be_bytes(rows[0][2..4].try_into().unwrap()), role);
         }
         let source = record(false, &[2, 0, 0, 0, 1]);
-        let valid = packed_declaration_program([42, 43, 44]);
+        let valid = packed_declaration_program([42, 43, 44], 93);
         for program in [
             valid[..16].to_vec(),
             valid[..11].iter().copied().chain([0x83, 0]).collect(),
@@ -310,7 +336,8 @@ mod tests {
                 p[15] = 35;
                 p
             },
-            packed_declaration_program([42, 42, 44]),
+            packed_declaration_program([42, 42, 44], 93),
+            packed_declaration_program([42, 43, 44], 42),
             {
                 let mut p = valid.clone();
                 p[4] = 3;

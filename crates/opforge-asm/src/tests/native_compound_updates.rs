@@ -1,4 +1,4 @@
-//! Punctuation updates use live Rust output, including full-width comparisons.
+//! Scalar updates use live Rust output, including contextual words and full-width comparisons.
 use super::native_iterable_loops::{build_image, oracle, run_case, scratch};
 use super::*;
 
@@ -90,6 +90,37 @@ n .set $12
 n ..= $89abcdef
 .byte n==$89abcdef
 "#, &[1; 3]),
+    ("byte-repeat-bounds", r#"n .var $12
+n X = 0
+.byte n==0
+n .set $12
+n X = 1
+.byte n==$12
+n X = 2
+.byte n==$1212
+n X = 3
+.byte n==$121212
+n X = 4
+.byte n==$12121212
+n X = 5
+.byte n==$12121212
+n X = -1
+.byte n==$12121212
+wide .const (1<<16)<<16
+n X = wide
+.byte n==0
+n .set $12
+n X = wide+2
+.byte n==$1212
+n .set (wide+258)
+n X = 2
+.byte n==$202
+"#, &[1; 10]),
+    ("byte-repeat-ordinary-rhs", "x .var 2\nn .var $12\nn X = x\n.byte n==$1212,x\nn += x\n.byte n==$1214\n", &[1, 2, 1]),
+    ("byte-repeat-namespace-rhs-shadow", "x .var 2\n.namespace inner\nx .var 3\nn .var $12\nn X = x\n.byte n==$121212\n.endnamespace\n", &[1]),
+    ("byte-repeat-macro-qualified-target", "copybytes .macro count\nmain.n X = .count\n.endmacro\nn .var $12\n.copybytes 2\n.byte n==$1212\n", &[1]),
+    ("byte-repeat-scoped-loop", "n .var $12\n.bfor count in {1,2}\nn X = count\n.byte n==$1212\n.endfor\n", &[0, 1]),
+    ("byte-repeat-inactive-undefined", ".if 0\nmissing X = 2\n.endif\n.byte 7\n", &[7]),
     ("signed-min-max-member", r#"wide .const (1<<16)<<16
 n .var (wide+4)
 n <?= -(wide+5)
@@ -129,9 +160,11 @@ const BAD: &[(&str, &str)] = &[
         "wide .const (1<<16)<<16\nn .var -(wide*2147483647+4294967295)-1\nn %= -1\n.byte 0\n",
     ),
     ("readonly", "n .const 2\nn += 1\n.byte n\n"),
+    ("repeat-readonly", "n .const 2\nn X = 2\n.byte n\n"),
     ("undefined", "missing += 1\n.byte 0\n"),
     ("typed-lhs", "n .var {1,2}\nn += 1\n.byte 0\n"),
     ("typed-rhs", "n .var 1\nn += {1,2}\n.byte n\n"),
+    ("repeat-invalid-rhs", "n .var 1\nn X = {1,2}\n.byte n\n"),
     ("zero-divisor", "n .var 7\nn /= 0\n.byte n\n"),
     ("zero-modulus", "n .var 7\nn %= 0\n.byte n\n"),
     ("negative-power", "n .var 7\nn **= -1\n.byte n\n"),
@@ -139,6 +172,10 @@ const BAD: &[(&str, &str)] = &[
     (
         "ordinary-for-update",
         "n .var 0\n.for item in {1,2}\nn += item\n.endfor\n.byte n\n",
+    ),
+    (
+        "ordinary-for-repeat-update",
+        "n .var 1\n.for item in {1,2}\nn X = item\n.endfor\n.byte n\n",
     ),
 ];
 
@@ -148,6 +185,21 @@ fn source(cpu: &str, body: &str) -> String {
 
 fn configuration_source(cpu: &str) -> String {
     format!(".module dep\n.cpu {cpu}\n.byte FEATURE\n.endmodule\n.module main\n.cpu {cpu}\nn .var 1\nn += 2\n.use dep with (FEATURE=n)\n.endmodule\n")
+}
+
+fn repeat_configuration_source(cpu: &str) -> String {
+    format!(".module dep\n.cpu {cpu}\n.byte FEATURE==$1212\n.endmodule\n.module main\n.cpu {cpu}\nn .var $12\nn x=2\n.use dep with (FEATURE=n)\n.endmodule\n")
+}
+
+fn ordinary_operand(cpu: &str) -> (&'static str, &'static [u8]) {
+    match cpu {
+        "6502" => ("    lda $12\n    lda $20,x\n", &[0xa5, 0x12, 0xb5, 0x20]),
+        "68020" => (
+            "x .const 4\n    bra.s x\n    nop\n.fpu 68881\n    fmove.x -(a1),fp5\n",
+            &[0x60, 0x02, 0x4e, 0x71, 0xf2, 0x21, 0x4a, 0x80],
+        ),
+        _ => unreachable!(),
+    }
 }
 
 fn combined() -> (String, Vec<u8>) {
@@ -176,6 +228,17 @@ fn native_compound_updates_rust_oracles() {
             oracle(&dir.0, &configuration_source(cpu)).unwrap(),
             [3],
             "{cpu}/configuration-use"
+        );
+        assert_eq!(
+            oracle(&dir.0, &repeat_configuration_source(cpu)).unwrap(),
+            [1],
+            "{cpu}/repeat-configuration-use"
+        );
+        let (operand, expected) = ordinary_operand(cpu);
+        assert_eq!(
+            oracle(&dir.0, &source(cpu, operand)).unwrap(),
+            expected,
+            "{cpu}/ordinary-x-operand"
         );
         for (name, body, expected) in POSITIVE {
             assert_eq!(
@@ -207,7 +270,7 @@ fn native_compound_updates_host_assembles() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; punctuation compound update parity"]
+#[ignore = "requires configured FS-UAE; scalar compound update parity"]
 fn native_compound_updates_fs_uae() {
     let root = root();
     let dir = scratch();
@@ -223,6 +286,30 @@ fn native_compound_updates_fs_uae() {
     let mut attempted = 0;
     for cpu in cpus.split(',').map(str::trim) {
         assert!(matches!(cpu, "68020" | "6502"));
+        for (name, input) in [
+            ("repeat-configuration-use", repeat_configuration_source(cpu)),
+            ("ordinary-x-operand", source(cpu, ordinary_operand(cpu).0)),
+        ] {
+            if !selected(name) {
+                continue;
+            }
+            attempted += 1;
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_case(
+                    &root,
+                    &dir.0,
+                    &image,
+                    &format!("compound-{cpu}/{name}"),
+                    cpu,
+                    &input,
+                    false,
+                );
+            }))
+            .is_err()
+            {
+                failures.push(format!("{cpu}/{name}"));
+            }
+        }
         if selected("configuration-use") {
             attempted += 1;
             if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

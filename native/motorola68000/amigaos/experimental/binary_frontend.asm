@@ -2781,12 +2781,14 @@ done
 
 	.pub
 ; A0=session,A1=validated immutable capture record. D0/CCR=assignment hint1/0.
-; Translate at most three TKVM kinds; shared PRVM owns all operator recipes.
+; Translate bounded TKVM punctuation or a dictionary name; shared PRVM owns
+; operator recognition. The capture remains immutable and unbound.
 ; All other registers preserved; no binding, values or source mutation.
 updateRole	.block
 	movem.l d1-d4/a0-a3, -(sp)
-	subq.l #4, sp
+	subq.l #8, sp
 	movea.l a0, a3
+	movea.l a1, a2
 	move.l capture.Record.Count(a1), d4
 	cmpi.l #2, d4
 	blo.w absent
@@ -2795,6 +2797,8 @@ updateRole	.block
 	bhi.w absent
 	adda.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, a0
 	subq.l #1, d4
+	cmpi.w #1, writer.Token.Kind(a0)
+	bls.w namedOperator
 	cmpi.l #3, d4
 	bls.w countReady
 	moveq #3, d4
@@ -2809,6 +2813,7 @@ kind
 	move.b d0, (a2)+
 	adda.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, a0
 	dbra d3, kind
+classify
 	movea.l Frame.Package(a3), a1
 	move.l package.Header.DeclarationPlan(a1), d0
 	adda.l d0, a1
@@ -2816,10 +2821,41 @@ kind
 	move.l d4, d0
 	jsr declaration_parser.classifyAssignment
 	bra.w done
+namedOperator
+	cmpi.l #2, d4
+	blo.w absent
+	moveq #0, d4
+	move.w writer.Token.Kind+parser_abi.PRVM_TOKEN_RECORD_SIZE(a0), d4
+	tst.w writer.Token.Reserved(a0)
+	bne.w absent
+	move.l writer.Token.Offset(a0), d1
+	move.l capture.Record.LexemeBytes(a2), d2
+	sub.l d1, d2
+	bcs.w absent
+	move.l writer.Token.Length(a0), d0
+	cmp.l d0, d2
+	blo.w absent
+	move.l capture.Record.Count(a2), d2
+	mulu.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, d2
+	adda.l #capture.HEADER_BYTES, a2
+	adda.l d2, a2
+	adda.l d1, a2
+	movea.l a2, a0
+	movea.l Frame.Scratch(a3), a1
+	bsr.w lookupPackage
+	bne.w absent
+	tst.l d2
+	bne.w absent
+	clr.b (sp)
+	move.w d1, writer.NameToken.Id(sp)
+	clr.b writer.NameToken.Qualifier(sp)
+	move.b d4, writer.DECLARATION_MARKER(sp)
+	moveq #writer.DECLARATION_VALUE, d4
+	bra.w classify
 absent
 	moveq #0, d0
 done
-	addq.l #4, sp
+	addq.l #8, sp
 	movem.l (sp)+, d1-d4/a0-a3
 	tst.l d0
 	rts
@@ -3018,6 +3054,9 @@ ordinaryPackageEntry
 entryFound
 	moveq #0, d1
 	move.w 2(a3), d1
+	btst #package.DICTIONARY_ASSIGNMENT_WORD_BIT, package.DictionaryEntry.Roles(a3)
+	bne.w assignmentWord
+ordinaryBoundName
 	; Package metadata owns operand identities. Statement-only spellings
 	; bind as source symbols when they occur in ordinary value operands.
 	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d5
@@ -3028,11 +3067,18 @@ entryFound
 	beq.w contextualGrammar
 	; Value/template operands retain both source and package register facets.
 	; Their consuming numeric operand resolves the role after substitution.
-	movem.l d1-d2/a0-a1, -(sp)
+	movem.l d1-d2/a0-a2, -(sp)
 	movea.l LINE_FRAME+writer.Frame.Output(a6), a0
 	movea.l a5, a1
 	jsr loop_parser.valueContext
-	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	beq.w valueContextReady
+	movea.l PACKAGE_BASE(a6), a2
+	move.l package.Header.DeclarationPlanBytes(a2), d1
+	adda.l package.Header.DeclarationPlan(a2), a2
+	jsr declaration_parser.valueContext
+valueContextReady
+	movem.l (sp)+, d1-d2/a0-a2
 	tst.l d0
 	beq.w sourceCandidate
 	bra.w packageBound
@@ -3058,6 +3104,28 @@ sourceCandidate
 candidateFailed
 	adda.w #8, sp
 	bra.w bad
+assignmentWord
+	movem.l d1-d2/a0-a2, -(sp)
+	move.l d1, d0
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a0
+	movea.l a5, a1
+	move.l LINE_FRAME+writer.Frame.NextKind(a6), d2
+	movea.l PACKAGE_BASE(a6), a2
+	move.l package.Header.DeclarationPlanBytes(a2), d1
+	adda.l package.Header.DeclarationPlan(a2), a2
+	jsr declaration_parser.contextKeyword
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	beq.w packageBound
+	; Keep package member/register facets outside the update position; names
+	; without an applicable facet continue through ordinary source binding.
+	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d5
+	beq.w memberBound
+	cmpi.l #writer.BIND_ROLE_WIDTH, d5
+	beq.w memberBound
+	btst #package.DICTIONARY_REGISTER_OR_NAMED_BIT, package.DictionaryEntry.Roles(a3)
+	beq.w findSymbol
+	bra.w ordinaryBoundName
 contextualGrammar
 	; PRVM owns contextual grammar binding; `in` remains a normal source
 	; name everywhere else, including the existing placement grammar.

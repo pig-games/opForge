@@ -15,7 +15,8 @@ their full self-host has not been rerun. The subsequent
 [scoped-condition checkpoint](#scoped-condition-repetition-focused-checkpoint)
 adds anonymous and labeled `.bwhile` with focused package/native comparisons.
 The [scalar-update checkpoint](#scalar-compound-updates-current-slice) adds the
-17 punctuation compound operators, including scope and configuration snapshots.
+17 punctuation compound operators and scalar `x=` repetition, including scope
+and configuration snapshots.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -1010,7 +1011,9 @@ packed declaration policy: `+=`, `-=`, `*=`, `/=`, `%=`, `**=`, `|=`, `^=`,
 `&=`, `||=`, `&&=`, `<<=`, `>>=`, `..=`, `<?=`, `>?=` and `.=`. A single
 normalized marker carries the numeric action; the expression remains shared
 EXVM/ExprVM work. No source spelling is needed at execution. The identifier-based
-`x=` repetition operator remains a separate tokenizer/binding task.
+`x=` repetition operator now uses a contextual package dictionary facet and the
+same PRVM declaration classifier. Ordinary `x` source references and package
+register/member facets remain available outside that operator position.
 
 An update refers to existing mutable scalar storage instead of declaring a new
 symbol in the current scope. Earlier lexical ancestors are selected before
@@ -1035,7 +1038,7 @@ Packed numeric literals still have a u32 extent; wide scalar values in this
 qualification are constructed through arithmetic. Direct 64-bit literals remain
 a separate tokenizer/representation gap.
 
-Focused qualification:
+Punctuation checkpoint qualification:
 
 - Live Rust oracles pass all 16 positive scenarios, their combined 57-byte output,
   the configuration-use case and 13 rejection cases on both CPU selections.
@@ -1066,6 +1069,66 @@ This one before/after pair shows essentially unchanged time, not a measurable
 speedup. It does not measure peak memory or qualify 2 MiB hardware. Logs, frozen
 images and the reproducible measurement summary remain outside `target` at
 `/tmp/opforge-compound-measurements.json`.
+
+### Contextual byte-repeat update checkpoint
+
+Hypothesis: the package dictionary can supply the `x` operator identity without
+reserving that name or adding another handwritten grammar path. Compare with
+`79001877` on the unchanged scalar control; accept only exact live Rust/native
+behavior, preserved ordinary name/register binding, and a bounded implementation
+cost. A mismatch or material control regression requires diagnosis before this
+capability is treated as qualified.
+
+The retained declaration policy grows from 114 to 116 bytes. Shared PRVM owns
+operator-position recognition and emits action 17; the ExprVM assignment service
+also refreshes known preparation snapshots. The writer carries four extra bytes
+of transient raw-token lookahead metadata. Packed source records and scalar cells
+do not grow. Repetition takes the left scalar's low byte and the RHS low-u32
+count, caps it at four bytes, and zero-extends the result. Negative counts follow
+Rust's unsigned conversion, so `-1` repeats four times. Wider count high bits are
+ignored. This adds no legacy policy or executor.
+
+The first native combined 6502 run exposed register-named RHS values being bound
+as registers (`n x= x` after `x .var 2`). Shared PRVM assignment-context
+classification now selects lexical value facets for both repeat and punctuation
+updates. Package member and width facets also retain their ordinary contextual
+binding, including 68020 extended precision `.x`. Rust still rejects a 6502
+instruction address written as `lda x` when `x` is a symbol; this slice does not
+change that existing language behavior.
+
+Focused repeat qualification:
+
+- Live Rust oracles pass 22 positive scenarios and their combined 75-byte output,
+  16 rejection scenarios, both configuration controls and ordinary instruction
+  operands on each of the 68020 and 6502 target selections.
+- Fresh final native runs match the combined 75-byte matrix, repeat-configured
+  module output `[1]`, 6502 indexed `,x`, ordinary 68020 `x` references and FPU
+  `.x` suffixes. Both targets reject readonly repeat updates, aggregate RHS values
+  and mutations inside ordinary unscoped loops. The final 68020 combined run
+  stalled before START once, then passed a separate fresh retry; that startup
+  attempt supplies no assembly or timing evidence.
+- The 10 declaration-VM tests, 37 host declaration tests, two package inventory
+  tests and package-generation checks pass, as do library Clippy, formatting and
+  deterministic native/workflow guards. Independent review checks the contextual
+  binder and assignment-context ABI. The prior broad-suite failures above remain
+  recorded; that broad suite was not rerun for this bounded slice.
+
+This qualifies focused scalar update behavior. It does not qualify full loop/macro
+parity, a new full self-host, A6000 timing, peak memory or the 2 MiB product goal.
+
+The unchanged 1,024-iteration scalar control uses the same 200-byte source and
+7,168-byte live Rust output, FS-UAE `68020-10m`, telemetry disabled, with no UI
+intervention during either control:
+
+| Measurement | Before (`79001877`) | After | Change |
+|---|---:|---:|---:|
+| Fresh host-observed guest START/DONE | 36.212530042 s | 36.220070958 s | +0.007540916 s (+0.02%) |
+| Dual-package executable bytes | 632,460 | 633,092 | +632 (+0.10%) |
+
+This single pair shows essentially unchanged runtime. It measures the cost on an
+unchanged control, not the speed of repeated-byte assignment or full self-hosting.
+Frozen images, logs, source/output hashes and reproduction settings remain outside
+`target` in `/tmp/opforge-repeat-measurements.json`.
 
 ### Compound-value checkpoints
 

@@ -22,6 +22,7 @@ CONCAT = 13
 MIN = 14
 MAX = 15
 MEMBER = 16
+REPEAT = 17
 OK = 0
 ERROR = 1
 
@@ -54,8 +55,10 @@ apply	.block
 	.priv
 	movem.l d3-d7/a0-a6, -(sp)
 	move.l d0, d7
-	cmpi.l #MEMBER, d7
+	cmpi.l #REPEAT, d7
 	bhi.w failure
+	beq.w repeatValue
+	cmpi.l #MEMBER, d7
 	beq.w right
 	cmpi.l #MIN, d7
 	bhs.w minMax
@@ -145,6 +148,10 @@ appendRight
 	move.l d3, d1
 appendDone
 	moveq #0, d2
+	bra.w success
+repeatValue
+	bsr.w repeatBytes
+	bra.w success
 success
 	moveq #OK, d0
 	bra.w done
@@ -154,6 +161,31 @@ done
 	movem.l (sp)+, d3-d7/a0-a6
 	rts
 	.bend  ; apply
+
+; Repeat the low byte of the left scalar up to four times. The RHS low 32 bits
+; are an unsigned count; larger values are capped at the u32 result width.
+; Inputs: D1=left low 32 bits, D3=right low 32 bits. Outputs: D1=result, D2=0.
+; Clobbers: D5-D6/CCR.
+repeatBytes	.block
+	andi.l #$ff, d1
+	move.l d3, d5
+	cmpi.l #4, d5
+	bls.w repeatCountReady
+	moveq #4, d5
+repeatCountReady
+	moveq #0, d6
+repeatByteLoop
+	tst.l d5
+	beq.w repeatBytesDone
+	lsl.l #8, d6
+	or.b d1, d6
+	subq.l #1, d5
+	bra.w repeatByteLoop
+repeatBytesDone
+	move.l d6, d1
+	moveq #0, d2
+	rts
+	.bend  ; repeatBytes
 
 ; Emit one canonical literal. Inputs: A0=Literal slot, D6:D5=value.
 ; Clobbers: D0/D5-D6/A0/CCR. Payload is little-endian regardless of host.

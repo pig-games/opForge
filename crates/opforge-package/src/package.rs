@@ -1616,8 +1616,8 @@ pub const PARSER_VM_TARGET_BOOTSTRAP_ENTRY: u16 = 8;
 pub const PARSER_VM_PACKED_DECLARATION_ENTRY: u16 = 9;
 
 /// Numeric declaration policy, including bounded compound-update token recipes.
-pub const PACKED_DECLARATION_OPERATORS: usize = 11;
-pub const PACKED_DECLARATION_RECIPES: usize = 22;
+pub const PACKED_DECLARATION_OPERATORS: usize = 13;
+pub const PACKED_DECLARATION_RECIPES: usize = 24;
 pub const PACKED_DECLARATION_RECIPE_BYTES: usize = 5;
 pub const PACKED_DECLARATION_UPDATE_RECIPES: [[u8; 5]; 18] = [
     [0, 2, 18, 34, 0],
@@ -1639,12 +1639,13 @@ pub const PACKED_DECLARATION_UPDATE_RECIPES: [[u8; 5]; 18] = [
     [15, 3, 37, 9, 34],
     [16, 2, 7, 34, 0],
 ];
-pub fn packed_declaration_program(heads: [u16; 3]) -> Vec<u8> {
+pub fn packed_declaration_program(heads: [u16; 3], repeat_name: u16) -> Vec<u8> {
     let mut program = vec![0x98, 3];
     for (head, role) in heads.into_iter().zip([1, 2, 2]) {
         program.extend(head.to_be_bytes());
         program.push(role);
     }
+    program.extend(repeat_name.to_be_bytes());
     program.extend([2, 2, 2, 5, 34, 3, 3, 5, 9, 34]);
     program.push(PACKED_DECLARATION_UPDATE_RECIPES.len() as u8);
     for row in PACKED_DECLARATION_UPDATE_RECIPES {

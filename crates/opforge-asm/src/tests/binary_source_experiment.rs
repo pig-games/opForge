@@ -192,7 +192,12 @@ fn binary_source_runtime_target_identity_is_relocatable() {
                     .unwrap(),
             )
         });
-        let declaration_program = package::packed_declaration_program(heads);
+        let repeat_name = u16::from_be_bytes(
+            bytes[declaration_offset + 11..declaration_offset + 13]
+                .try_into()
+                .unwrap(),
+        );
+        let declaration_program = package::packed_declaration_program(heads, repeat_name);
         assert_eq!(long(184), declaration_program.len());
         assert_eq!(
             &bytes[declaration_offset..declaration_offset + declaration_program.len()],
@@ -294,8 +299,15 @@ fn binary_source_packages_prepare() {
         let builtin_len = u16::from_be_bytes(bytes[208..210].try_into().unwrap());
         assert!(builtin_len < u16::from_be_bytes(bytes[62..64].try_into().unwrap()));
         assert_eq!(&bytes[210..212], &[0, 0]);
+        let declaration = long(&bytes, 180);
+        let repeat_id = u16::from_be_bytes(
+            bytes[declaration + 11..declaration + 13]
+                .try_into()
+                .unwrap(),
+        );
         let mut entry = long(&bytes, 8);
         let mut builtin_count = 0;
+        let mut repeat_count = 0;
         for _ in 0..long(&bytes, 12) {
             let length = usize::from(u16::from_be_bytes(
                 bytes[entry..entry + 2].try_into().unwrap(),
@@ -309,9 +321,28 @@ fn binary_source_packages_prepare() {
                 assert_eq!(&bytes[entry + 6..entry + 6 + length], b"len");
                 builtin_count += 1;
             }
+            if bytes[entry + 5] & 16 != 0 {
+                assert_eq!(&bytes[entry + 6..entry + 6 + length], b"x");
+                assert_eq!(
+                    u16::from_be_bytes(bytes[entry + 2..entry + 4].try_into().unwrap()),
+                    repeat_id
+                );
+                assert_eq!(bytes[entry + 4], 0);
+                assert_eq!(
+                    bytes[entry + 5],
+                    match cpu {
+                        "m6502" => 17,
+                        "m68080" => 18,
+                        _ => 16,
+                    },
+                    "{cpu}"
+                );
+                repeat_count += 1;
+            }
             entry = (entry + 6 + length + 1) & !1;
         }
         assert_eq!(builtin_count, 1);
+        assert_eq!(repeat_count, 1);
 
         let runtime_bytes = long(&bytes, 72);
         assert!((PACKAGE_HEADER_BYTES..=bytes.len()).contains(&runtime_bytes));

@@ -1778,13 +1778,24 @@ references
 	bls.w reference
 	cmpi.b #2, d0
 	beq.w literal
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
+	beq.w wideLiteral
 	cmpi.b #3, d0
 	beq.w string
 	cmpi.b #7, d0
 	beq.w callHead
 	bra.w punctuation
 literal
-	addq.l #5, a0
+	moveq #source.NUMBER_BYTES, d0
+	bra.w literalPayload
+wideLiteral
+	moveq #source.WIDE_NUMBER_BYTES, d0
+literalPayload
+	move.l a4, d1
+	sub.l a0, d1
+	cmp.l d0, d1
+	blo.w bad
+	adda.l d0, a0
 	bra.w references
 string
 	move.l a4, d1

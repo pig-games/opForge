@@ -4,7 +4,7 @@ use super::*;
 const LITERALS: &str = ".cpu m68020\n.long $7fffffff,$80000000,$fffffffe,$ffffffff\n.long 2147483648,4_294_967_294,0x80000000,0XFF_FF_FF_FF\n.long %11111111111111111111111111111110\n.long +$ffffffff,-$ffffffff,~$fffffffe\n.long ($7fffffff+1)-$7fffffff,(50000*50000)*0\n.long -(-$7fffffff-1)+(-$7fffffff-1)\n.end\n";
 const SYMBOLS: &str = ".module app\n.cpu m68020\nmask=$fffffffe\nwide=$ffffffff+1\nnegative=-$ffffffff\nforward=late/2\n.if wide\n.long mask/2,mask>>1\n.else\n.long 99\n.endif\nlate=$fffffffe\n.long mask,wide,negative,forward\n.long (wide+5)/wide,negative/3,~mask\n.if 0\n.long 99\n.elseif negative-1\n.long 7\n.else\n.long 88\n.endif\nemit .macro value\n.long .value/2\n.endmacro\n.emit mask\n\tandi.l #mask,d1\n.endmodule\n.end\n";
 const NARROW_SIGNED: &str = ".cpu m68020\nNEG = -534\n.word NEG\n.word -32768\n.word 65535\n.end\n";
-const MAIN: &str = ".module app\n.cpu m68020\n.use dep with (Mask=$fffffffe,Wide=$ffffffff+1,Negative=-$ffffffff)\n.long dep.item\n.endmodule\n.end\n";
+const MAIN: &str = ".module app\n.cpu m68020\n.use dep with (Mask=$fffffffe,Wide=$100000000,Negative=-$ffffffff)\n.long dep.item\n.endmodule\n.end\n";
 const DEP: &str = ".module dep\n.cpu m68020\n.pub\nitem .block\n.if Wide\n.long Mask/2,Negative/3,Wide+5\n.else\n.long 99\n.endif\n.bend\n.endmodule\n.end\n";
 
 fn oracle(files: &[(&str, &str)], roots: &[&str]) -> Vec<u8> {
@@ -122,15 +122,10 @@ fn compact_full_width_parameters_fs_uae() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; source numeric payload remains bounded to u32"]
-fn compact_full_width_scanner_bound_fs_uae() {
-    for value in [
-        "4294967296",
-        "$100000000",
-        "%100000000000000000000000000000000",
-    ] {
-        let source = format!(".cpu m68020\n.long {value}\n.end\n");
-        assert!(!oracle(&[("input.asm", &source)], &[]).is_empty());
-        assert_native_rejection(&source, "m68020");
-    }
+#[ignore = "requires configured FS-UAE; direct wide source literals preserve low output bits"]
+fn compact_full_width_direct_literals_fs_uae() {
+    let source =
+        ".cpu m68020\n.long 4294967296,$100000000,%100000000000000000000000000000000\n.end\n";
+    assert_eq!(oracle(&[("input.asm", source)], &[]), [0; 12]);
+    native(&[("input.asm", source)], &[]);
 }

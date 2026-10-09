@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_exvm
 	.cpu 68020
 	.use tkvm.amigaos.runtime as tokens
+	.use experimental.amigaos.binary_source as source
 	.include "telemetry_macros.i"
 	.pub
 STATUS_OK = 0
@@ -124,7 +125,8 @@ SCRATCH_BYTES = SPANS+OUTPUT_LIMIT*4
 ; failure Root=NONE, Used=0; Consumed is the exact bounded numeric cursor.
 ; Success returns the consumed prefix; owners validate required delimiters/end.
 ; Packed DOT7 begins a call envelope selected by the shared EXVM action.
-; Success nodes contain arena offsets only. Literal First=u32, symbol First=u16
+; Success nodes contain arena offsets only. Literal First=low32, Second=high32,
+; symbol First=u16
 ; ID; unary First=child; binary/index First/Second=children. Range Third=step
 ; or NONE, Operator=canonical flags. List First=head; call First=function ID,
 ; Second=argument head. Child-root Next links siblings. Count=child arity.
@@ -354,8 +356,19 @@ number
 	bne.w done
 	cmpi.w #tokens.TK_KIND_NUMBER, d1
 	bne.w syntaxBad
-	move.l 1(a0), d4
+	cmpi.w #source.WIDE_NUMBER_BYTES, d2
+	beq.w wideNumber
+	move.l source.NumberToken.Value(a0), d4
 	bra.w literalReady
+wideNumber
+	move.l source.WideNumberToken.High(a0), d5
+	bmi.w syntaxBad
+	move.l source.WideNumberToken.Low(a0), d4
+	bsr.w allocate
+	bne.w done
+	move.l d5, Node.Second(a1)
+	moveq #KIND_LITERAL, d3
+	bra.w leafReady
 string
 	bsr.w token
 	bne.w done
@@ -386,6 +399,7 @@ current
 leaf
 	bsr.w allocate
 	bne.w done
+leafReady
 	move.b d3, Node.Kind(a1)
 	move.l d4, Node.First(a1)
 	move.l State.Cursor(a6), d4
@@ -853,6 +867,8 @@ decode
 	beq.w end
 	moveq #0, d1
 	move.b (a0), d1
+	cmpi.w #source.TOKEN_WIDE_NUMBER, d1
+	beq.w wideNumber
 	cmpi.w #40, d1
 	bhi.w bad
 	cmpi.w #1, d1
@@ -867,7 +883,11 @@ name
 	moveq #4, d0
 	bra.w bounded
 number
-	moveq #5, d0
+	moveq #source.NUMBER_BYTES, d0
+	bra.w bounded
+wideNumber
+	moveq #tokens.TK_KIND_NUMBER, d1
+	moveq #source.WIDE_NUMBER_BYTES, d0
 	bra.w bounded
 string
 	cmpi.l #2, d2

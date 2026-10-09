@@ -630,13 +630,18 @@ closing
 	subq.w #1, d4
 token
 	moveq #1, d1
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
+	beq.w wideNumber
 	cmpi.b #2, d0
 	beq.w number
 	bhi.w string
 	moveq #4, d1
 	bra.w bounded
 number
-	moveq #5, d1
+	moveq #source.NUMBER_BYTES, d1
+	bra.w bounded
+wideNumber
+	moveq #source.WIDE_NUMBER_BYTES, d1
 	bra.w bounded
 string
 	cmpi.b #3, d0

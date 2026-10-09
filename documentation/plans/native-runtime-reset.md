@@ -1070,6 +1070,74 @@ speedup. It does not measure peak memory or qualify 2 MiB hardware. Logs, frozen
 images and the reproducible measurement summary remain outside `target` at
 `/tmp/opforge-compound-measurements.json`.
 
+### Direct wide literal checkpoint
+
+Hypothesis: preserving the tokenizer's normalized high word in a nine-byte raw
+numeric token closes direct i64 literal parity without enlarging ordinary
+five-byte u32 tokens, scalar cells or EXVM tree nodes. Shared EXVM maps both
+transport forms to its existing numeric terminal; no grammar or VM version is
+added. Every raw walker must preserve the payload and its bounds.
+
+Compare against `00622a44` using the unchanged 1,024-iteration scalar control,
+FS-UAE `68020-10m`, release images with telemetry disabled. The fresh before run
+took 36.241 s with the 633,092-byte dual-package image. Success requires exact
+live Rust/native positive and negative comparisons, preserved small literals,
+bounded malformed-token rejection and a separately measured implementation cost.
+Stop to diagnose a mismatch or material control regression. This slice does not
+remove the separate wide/negative iterable-consumer restriction or qualify a
+full self-host run.
+
+The retained transport is `[2, BE u32]` for a zero high word and
+`[64, BE u64]` otherwise. Wide tokens cost four extra bytes per literal; small
+tokens, scalar cells, compiler tree nodes and work frames retain their sizes.
+The PRVM ABI owns named tags and widths. Shared EXVM stores literal low/high
+words in existing node fields, then lowers both to the existing i64 evaluator.
+The writer preserves valid unsigned metadata, including inside unused macros;
+active EXVM numeric construction enforces Rust's signed i64 literal limit.
+The minimum signed value remains expressible as `-9223372036854775807-1`.
+
+The first native matrix stopped at `.if 4294967296`: a preparation-time
+condition/parameter walker still rejected the new tag. That walker is repaired.
+The wider review also updated shared PRVM data-unit and generated-macro boundary
+scans, including their Rust counterparts. Numeric payload bytes remain opaque
+to dependency, binding, operand, template and relocation scanners; no spelling
+parser or CPU-specific branch was added.
+
+Focused qualification:
+
+- Live Rust oracles pass five positive groups, their combined 65-byte output,
+  and 13 rejection cases on each target selection. Cases cover radix edges,
+  signed arithmetic, mutable updates, list/range values, macros/defaults,
+  positional arguments, inactive branches and `.long` low-word output.
+- Fresh native 68020 and 6502 runs match the complete 65-byte matrix. Both
+  reject a direct literal above `i64::MAX`. These target packages are assembled
+  by the same 68020 guest executable; they are not 6502-host execution claims.
+- Fresh native comparisons match 114 canonical EXVM tree/lowering cases,
+  including every truncated wide payload and the signed-limit rejection;
+  28 packed macro-boundary cases, including delimiter-like payload bytes and
+  truncation; and the 16-byte module-parameter oracle using `$100000000` directly.
+- All 41 Rust packed-VM tests pass, as do affected scalar-update/full-width
+  oracles, library Clippy, formatting and deterministic native/workflow guards.
+  The previously recorded broad-suite failures remain; that suite was not rerun.
+
+This checkpoint qualifies direct wide literal transport and the listed
+consumers. Wide/negative iterable elements, broader narrow-output policy,
+arbitrary struct/nested compound construction and the remaining expression
+provenance gaps are separate work. No full self-host or A6000 run was performed.
+
+Isolated unchanged control, exact live Rust output in both runs:
+
+| Measurement | Before (`00622a44`) | After | Change |
+|---|---:|---:|---:|
+| Fresh host-observed guest START/DONE | 36.241 s | 36.286 s | +0.045 s (+0.12%) |
+| Dual-package executable bytes | 633,092 | 633,516 | +424 (+0.07%) |
+
+One pair shows essentially unchanged time, not a speedup or a statistically
+established regression. It measures the capability's cost on the existing
+small-literal control, not wide-heavy throughput, peak RAM or 2 MiB feasibility.
+Reproduction settings, source/output/image hashes and fresh logs remain outside
+`target` in `/tmp/opforge-wide-measurements.json`.
+
 ### Contextual byte-repeat update checkpoint
 
 Hypothesis: the package dictionary can supply the `x` operator identity without

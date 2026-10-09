@@ -52,6 +52,7 @@ pub fn execute(
         let len = match kind {
             0 | 1 => 4,
             2 => 5,
+            64 => 9, // Wide numeric payload remains opaque to boundary parsing.
             3 | 41 => {
                 if p + 2 > end {
                     return Err(error(5, p, "Truncated packed payload"));
@@ -270,6 +271,20 @@ mod tests {
             64,
             1000,
         )
+    }
+    #[test]
+    fn wide_numbers_preserve_payload_and_reject_truncation() {
+        let head = [7, 1, 0, 1, 0];
+        let wide = [64, 4, 14, 15, 10, 11, 12, 13, 4];
+        let mut payload = head.to_vec();
+        payload.extend(wide);
+        let rows = run(&payload).unwrap();
+        assert_eq!((rows[1].source_start, rows[1].source_end), (9, 18));
+        for length in 1..wide.len() {
+            let mut truncated = head.to_vec();
+            truncated.extend(&wide[..length]);
+            assert_eq!(run(&truncated).unwrap_err().status, 5);
+        }
     }
     #[test]
     fn nested_and_matched_boundaries() {

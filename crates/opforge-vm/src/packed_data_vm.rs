@@ -86,6 +86,7 @@ pub fn execute(
         let len = match kind {
             0 | 1 => 4,
             2 => 5,
+            64 => 9, // Wide numeric payload remains opaque to boundary parsing.
             3 if comma.is_some() => {
                 let len = *source
                     .get(p + 1)
@@ -203,6 +204,24 @@ mod tests {
     }
     fn field(row: &[u8; 32], at: usize) -> u32 {
         u32::from_be_bytes(row[at..at + 4].try_into().unwrap())
+    }
+    #[test]
+    fn wide_numbers_preserve_payload_and_reject_truncation() {
+        let wide = [64, 4, 14, 15, 10, 11, 12, 13, 4];
+        let mut operand = wide.to_vec();
+        operand.push(4);
+        operand.extend(wide);
+        let rows = run(&record(false, &operand), 2, 32, 1000).unwrap();
+        assert_eq!(field(&rows[0], UNIT_BYTES), 9);
+        assert_eq!(field(&rows[0], VALUES_BYTES), 9);
+        for length in 1..wide.len() {
+            assert_eq!(
+                run(&record(false, &wide[..length]), 2, 32, 1000)
+                    .unwrap_err()
+                    .status,
+                5
+            );
+        }
     }
     #[test]
     fn fixed_and_expression_units() {

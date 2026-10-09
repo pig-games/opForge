@@ -4,6 +4,7 @@
 	.cpu 68020
 	.use opasm.amigaos.binary_expression as expression
 	.use exprvm.amigaos.runtime as runtime
+	.use experimental.amigaos.binary_source as source
 	.pub
 BINARY_TAG = $82
 MULTIPLY = 20
@@ -341,7 +342,10 @@ next
 	moveq #4, d5
 	cmpi.b #RAW_NAME_MAX, d1
 	bls.w primary
-	moveq #5, d5
+	moveq #source.WIDE_NUMBER_BYTES, d5
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d1
+	beq.w primary
+	moveq #source.NUMBER_BYTES, d5
 	cmpi.b #RAW_LITERAL, d1
 	beq.w primary
 	cmpi.b #RAW_STRING, d1

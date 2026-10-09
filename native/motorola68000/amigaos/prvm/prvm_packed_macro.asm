@@ -120,8 +120,10 @@ validate
 	move.w d2, 0(a2, d1.l)
 	cmpi.b #1, d0
 	bls.w name
-	cmpi.b #2, d0
+	cmpi.b #abi.PRVM_TOKEN_KIND_NUMBER, d0
 	beq.w number
+	cmpi.b #abi.PRVM_TOKEN_KIND_WIDE_NUMBER, d0
+	beq.w wideNumberToken
 	cmpi.b #3, d0
 	beq.w payload
 	cmpi.b #41, d0
@@ -134,7 +136,10 @@ name
 	addq.l #4, d2
 	bra.w extent
 number
-	addq.l #5, d2
+	addq.l #abi.PRVM_NUMBER_BYTES, d2
+	bra.w extent
+wideNumberToken
+	addi.l #abi.PRVM_WIDE_NUMBER_BYTES, d2
 	bra.w extent
 payload
 	move.l d2, d5

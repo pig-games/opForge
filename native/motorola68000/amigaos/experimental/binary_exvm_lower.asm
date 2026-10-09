@@ -327,7 +327,11 @@ literal
 	swap d1
 	ror.w #8, d1
 	move.l d1, (a3)+
-	clr.l (a3)+
+	move.l compiler.Node.Second(a2), d1
+	ror.w #8, d1
+	swap d1
+	ror.w #8, d1
+	move.l d1, (a3)+
 	bra.w success
 symbol
 	move.l compiler.Node.First(a2), d1

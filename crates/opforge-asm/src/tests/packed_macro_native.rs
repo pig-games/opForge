@@ -58,6 +58,13 @@ fn batch() -> (Vec<u8>, Vec<u8>, usize) {
         tokens.extend(args);
         cases.push((line(&tokens), 64, 4096, 0));
     }
+    // Payload bytes that look like syntax remain inside one wide numeric token.
+    let wide = [64, 4, 14, 15, 10, 11, 12, 13, 4];
+    for length in std::iter::once(wide.len()).chain(1..wide.len()) {
+        let mut tokens = head.to_vec();
+        tokens.extend(&wide[..length]);
+        cases.push((line(&tokens), 64, 4096, 0));
+    }
     let count = cases.len();
     let mut input = (count as u32).to_be_bytes().to_vec();
     let mut oracle = vec![];
@@ -111,7 +118,7 @@ fn batch() -> (Vec<u8>, Vec<u8>, usize) {
 fn packed_macro_live_oracle() {
     let (_, oracle, count) = batch();
     assert_eq!(oracle.len(), count * (16 + RESULT_BYTES));
-    let successes = [0, 1, 2, 3, 5, 9, 10, 15];
+    let successes = [0, 1, 2, 3, 5, 9, 10, 15, 19];
     for (index, output) in oracle.chunks_exact(16 + RESULT_BYTES).enumerate() {
         assert_eq!(
             output[..4] == [0; 4],

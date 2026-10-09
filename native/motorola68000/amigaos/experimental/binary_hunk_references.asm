@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_mutable as mutable
+	.use experimental.amigaos.binary_source as source
 	.pub
 STATUS_CLEAR = 0
 STATUS_SECTION = 1
@@ -531,6 +532,8 @@ next
 	bls.w name
 	cmpi.b #2, d1
 	beq.w number
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d1
+	beq.w wideNumber
 	cmpi.b #3, d1
 	beq.w string
 	cmpi.b #4, d1
@@ -581,7 +584,10 @@ name
 	bne.w bad
 	bra.w next
 number
-	moveq #4, d1
+	moveq #source.NUMBER_BYTES-1, d1
+	bra.w skipToken
+wideNumber
+	moveq #source.WIDE_NUMBER_BYTES-1, d1
 	bra.w skipToken
 string
 	moveq #1, d1

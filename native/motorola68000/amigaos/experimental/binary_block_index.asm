@@ -534,6 +534,8 @@ token
 	bls.w name
 	cmpi.b #2, d1
 	beq.w literal
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d1
+	beq.w wideLiteral
 	cmpi.b #3, d1
 	beq.w string
 	cmpi.b #expr.COMPILED_TAG, d1
@@ -554,7 +556,16 @@ iterator
 	addq.l #2, a0
 	bra.w token
 literal
-	addq.l #4, a0
+	moveq #source.NUMBER_BYTES-1, d0
+	bra.w literalPayload
+wideLiteral
+	moveq #source.WIDE_NUMBER_BYTES-1, d0
+literalPayload
+	move.l a1, d1
+	sub.l a0, d1
+	cmp.l d0, d1
+	blo.w bad
+	adda.l d0, a0
 	bra.w token
 string
 	cmpa.l a1, a0

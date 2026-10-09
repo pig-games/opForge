@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_imports as imports
 	.use prvm.amigaos.abi as abi
 	.use prvm.amigaos.macro_runtime as parser
+	.use experimental.amigaos.binary_source as source
 	.pub
 Frame	.struct
 Request	.res abi.PRVM_REQUEST_FRAME_SIZE
@@ -92,10 +93,21 @@ unitToken
 	bls.w name
 	cmpi.b #2, d0
 	beq.w literal
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
+	beq.w wideLiteral
 	addq.l #1, a5
 	bra.w unitToken
 literal
-	addq.l #5, a5
+	moveq #source.NUMBER_BYTES, d0
+	bra.w literalPayload
+wideLiteral
+	moveq #source.WIDE_NUMBER_BYTES, d0
+literalPayload
+	move.l a6, d1
+	sub.l a5, d1
+	cmp.l d0, d1
+	blo.w failed
+	adda.l d0, a5
 	bra.w unitToken
 name
 	move.l (a5), Frame.Name(a3)

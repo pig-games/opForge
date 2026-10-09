@@ -7,6 +7,7 @@
 	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_state as state
+	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_shapes as shapes
 	.use experimental.amigaos.binary_operand_wrappers as wrappers
 	.use experimental.amigaos.binary_tuples as tuples
@@ -958,12 +959,17 @@ skipToken	.block
 	beq.w compiled
 	cmpi.b #3, d0
 	beq.w string
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
+	beq.w wideNumber
 	cmpi.b #2, d0
 	bhi.w ok
 	moveq #3, d1
 	cmpi.b #2, d0
 	blo.w sized
 	moveq #4, d1
+	bra.w sized
+wideNumber
+	moveq #source.WIDE_NUMBER_BYTES-1, d1
 	bra.w sized
 compiled
 	cmpa.l a1, a3

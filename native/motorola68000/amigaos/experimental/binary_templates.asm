@@ -17,6 +17,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_template_index as index
+	.use experimental.amigaos.binary_source as source
 	.pub
 ARG_LIMIT = 192
 TEXT_LIMIT = 192
@@ -1380,6 +1381,8 @@ tokenContextReady
 	bls.w name
 	cmpi.b #2, d0
 	beq.w number
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
+	beq.w wideNumber
 	cmpi.b #3, d0
 	beq.w stringToken
 	cmpi.b #TOKEN_COMPOSITE, d0
@@ -1431,6 +1434,8 @@ findParameter
 	addq.w #1, d7
 	bra.w findParameter
 positionalParameter
+	cmpi.b #source.TOKEN_WIDE_NUMBER, 1(a3)
+	beq.w widePositionalParameter
 	cmpi.b #2, 1(a3)
 	bne.w bad
 	lea 6(a3), a0
@@ -1471,6 +1476,11 @@ findBracedParameter
 	addq.w #1, d7
 	bra.w findBracedParameter
 atParameter
+	lea 2(a3), a0
+	cmpa.l a2, a0
+	bhi.w bad
+	cmpi.b #source.TOKEN_WIDE_NUMBER, 1(a3)
+	beq.w widePositionalParameter
 	moveq #6, d4
 	moveq #6, d5
 	lea 6(a3), a0
@@ -1479,6 +1489,20 @@ atParameter
 	cmpi.b #2, 1(a3)
 	bne.w copyToken
 	move.l 2(a3), d7
+	subq.l #1, d7
+	cmpi.l #PARAM_LIMIT, d7
+	bhs.w copyToken
+	bra.w substituteParameter
+widePositionalParameter
+	moveq #source.WIDE_NUMBER_BYTES+1, d4
+	move.w d4, d5
+	lea source.WIDE_NUMBER_BYTES+1(a3), a0
+	cmpa.l a2, a0
+	bhi.w bad
+	; Positional indices remain bounded scalars; preserve oversized tokens.
+	tst.l source.WideNumberToken.High+1(a3)
+	bne.w copyToken
+	move.l source.WideNumberToken.Low+1(a3), d7
 	subq.l #1, d7
 	cmpi.l #PARAM_LIMIT, d7
 	bhs.w copyToken
@@ -1541,6 +1565,8 @@ defaultValue
 	moveq #1, d6
 	cmpi.b #2, d0
 	beq.w defaultNumberToken
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
+	beq.w defaultWideNumberToken
 	cmpi.b #3, d0
 	bne.w defaultTokenReady
 	cmpi.w #2, d4
@@ -1550,7 +1576,10 @@ defaultValue
 	addq.w #2, d6
 	bra.w defaultTokenReady
 defaultNumberToken
-	moveq #5, d6
+	moveq #source.NUMBER_BYTES, d6
+	bra.w defaultTokenReady
+defaultWideNumberToken
+	moveq #source.WIDE_NUMBER_BYTES, d6
 defaultTokenReady
 	cmp.w d6, d4
 	blo.w bad
@@ -1606,7 +1635,10 @@ name
 	moveq #4, d4
 	bra.w copyToken
 number
-	moveq #5, d4
+	moveq #source.NUMBER_BYTES, d4
+	bra.w copyToken
+wideNumber
+	moveq #source.WIDE_NUMBER_BYTES, d4
 	bra.w copyToken
 stringToken
 	tst.w SIDE_BYTES(a6)
@@ -1665,6 +1697,8 @@ ordinaryRebind
 	cmpi.b #7, (a3)
 	bne.w rebindName
 	cmpi.b #2, 1(a3)
+	beq.w copyBytes
+	cmpi.b #source.TOKEN_WIDE_NUMBER, 1(a3)
 	beq.w copyBytes
 	bra.w rebindDot
 rebindName

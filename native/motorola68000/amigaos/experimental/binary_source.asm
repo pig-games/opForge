@@ -5,6 +5,7 @@
 	.cpu 68020
 	.use tkvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_state as state
+	.use prvm.amigaos.abi as abi
 	.pub
 
 STATUS_OK = 0
@@ -35,6 +36,19 @@ TOKEN_IGNORED_DECLARATION = 45
 TOKEN_UPDATE_FIRST = 46
 TOKEN_UPDATE_LAST = TOKEN_UPDATE_FIRST+17
 UPDATE_ACTION_MAX = 17
+; Raw numeric transport; small values retain the original compact form.
+TOKEN_WIDE_NUMBER = abi.PRVM_TOKEN_KIND_WIDE_NUMBER
+NUMBER_BYTES = abi.PRVM_NUMBER_BYTES
+WIDE_NUMBER_BYTES = abi.PRVM_WIDE_NUMBER_BYTES
+NumberToken	.struct
+Kind	.byte ?
+Value	.long ?
+	.endstruct
+WideNumberToken	.struct
+Kind	.byte ?
+High	.long ?
+Low	.long ?
+	.endstruct
 ; Prepared-only loop envelope: BE16 iterator identity, followed by EXVM value.
 TOKEN_ITERATOR_BINDING = $84
 NameToken	.struct
@@ -115,7 +129,8 @@ Length	.long ?
 ; Optional MemberBinder receives A0=Frame,A1=current token. It returns D0=0
 ; with D1=base ID,D2=field ID,D3=base qualifier, 1 for an ordinary name or 2
 ; for invalid binding. It preserves D4-D7/A2-A6. Zero disables this callback.
-; TKVM kind bytes: kinds 0/1 have u16 ID,u8 qualifier; kind2 has u32 value;
+; TKVM kind bytes: kinds 0/1 have u16 ID,u8 qualifier; kind2 has BE u32 value;
+; TOKEN_WIDE_NUMBER has BE u64 bits, emitted only for a nonzero high word.
 ; kind 3 has [u8 decoded byte count, decoded bytes]. Kinds 4..40 have no
 ; payload. Kind 41 is a bounded composite recipe:
 ; [41, payload byte count, logical kind (0/1), fragment count, fragments].
@@ -453,10 +468,20 @@ numeric
 	blo.w invalid
 	adda.l d6, a0
 	move.l (a0)+, d1
-	bne.w invalid
+	bne.w wideNumber
 	move.l (a0), d1
 	move.b d3, (a3)+
 	move.l d1, (a3)+
+	bra.w next
+wideNumber
+	; Preserve normalized u64 transport; shared EXVM owns scalar range checks.
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #WIDE_NUMBER_BYTES, d0
+	blo.w overflow
+	move.b #TOKEN_WIDE_NUMBER, (a3)+
+	move.l d1, (a3)+
+	move.l (a0), (a3)+
 	bra.w next
 punctuation
 	move.b d3, (a3)+

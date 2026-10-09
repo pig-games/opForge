@@ -5,6 +5,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_products as products
 	.use opasm.amigaos.binary_expression as expression
+	.use experimental.amigaos.binary_source as source
 	.pub
 STATUS_OK = 0
 STATUS_MALFORMED = 1
@@ -595,9 +596,14 @@ tokenBytes	.block
 	moveq #4, d1
 	bra.w bounded
 literal
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
+	beq.w wideNumber
 	cmpi.b #RAW_NUMBER, d0
 	bne.w string
-	moveq #5, d1
+	moveq #source.NUMBER_BYTES, d1
+	bra.w bounded
+wideNumber
+	moveq #source.WIDE_NUMBER_BYTES, d1
 	bra.w bounded
 string
 	cmpi.b #expression.COMPILED_TAG, d0

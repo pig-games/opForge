@@ -171,8 +171,10 @@ scan
 	move.b 0(a6, d2.l), d0
 	cmpi.b #1, d0
 	bls.w nameToken
-	cmpi.b #2, d0
+	cmpi.b #abi.PRVM_TOKEN_KIND_NUMBER, d0
 	beq.w numberToken
+	cmpi.b #abi.PRVM_TOKEN_KIND_WIDE_NUMBER, d0
+	beq.w wideNumberToken
 	cmpi.b #3, d0
 	beq.w stringToken
 	cmpi.b #$81, d0
@@ -202,7 +204,10 @@ nameToken
 	addq.l #4, d2
 	bra.w extent
 numberToken
-	addq.l #5, d2
+	addq.l #abi.PRVM_NUMBER_BYTES, d2
+	bra.w extent
+wideNumberToken
+	addi.l #abi.PRVM_WIDE_NUMBER_BYTES, d2
 	bra.w extent
 stringToken
 	tst.l State.Comma(a3)

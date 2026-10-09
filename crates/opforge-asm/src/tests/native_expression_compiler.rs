@@ -123,8 +123,14 @@ fn numeric(source: &str) -> (Vec<u8>, Vec<opcore::tokenizer::Token>) {
                 token.kind = TokenKind::Identifier("bound".to_owned());
             }
             PortableTokenKind::Number { text, .. } => {
-                let value = opcore::expression::parse_number_text(text, token.span).unwrap();
-                packed.extend(value.to_be_bytes());
+                let value = opcore::expr::parse_number(text).unwrap() as u64;
+                if let Ok(small) = u32::try_from(value) {
+                    packed.extend(small.to_be_bytes());
+                } else {
+                    // Raw transport tag, independent of the canonical grammar category.
+                    *packed.last_mut().unwrap() = 64;
+                    packed.extend(value.to_be_bytes());
+                }
             }
             PortableTokenKind::String { bytes, .. } => {
                 packed.push(u8::try_from(bytes.len()).unwrap());
@@ -181,14 +187,10 @@ fn binary(op: BinaryOp) -> u8 {
 fn tree(expr: &Expr, nodes: &mut Vec<u8>) -> u32 {
     let mut third = 0;
     let (kind, op, count, first, second, span) = match expr {
-        Expr::Number(text, span) => (
-            1,
-            0,
-            0,
-            opcore::expression::parse_number_text(text, *span).unwrap(),
-            0,
-            *span,
-        ),
+        Expr::Number(text, span) => {
+            let value = opcore::expr::parse_number(text).unwrap() as u64;
+            (1, 0, 0, value as u32, (value >> 32) as u32, *span)
+        }
         Expr::String(bytes, span) => {
             assert!((1..=2).contains(&bytes.len()));
             let scalar = bytes
@@ -285,12 +287,9 @@ fn native_constant(name: &str) -> u8 {
 fn postfix(expr: &Expr, bytes: &mut Vec<u8>) {
     use opcore::expr_vm::{ExprVmOpcode as O, ExprVmUnary as U};
     match expr {
-        Expr::Number(text, span) => {
+        Expr::Number(text, _) => {
             bytes.push(O::PushLiteral as u8);
-            bytes.extend(
-                i64::from(opcore::expression::parse_number_text(text, *span).unwrap())
-                    .to_le_bytes(),
-            );
+            bytes.extend(opcore::expr::parse_number(text).unwrap().to_le_bytes());
         }
         Expr::String(value, _) => {
             assert!((1..=2).contains(&value.len()));
@@ -437,6 +436,10 @@ fn batch() -> (Vec<u8>, Vec<u8>) {
         "1^^2",
         "1<<2|3&4^5",
         "4294967295",
+        "4294967296",
+        "$123456789abcdef",
+        "9223372036854775807-4294967296",
+        "-9223372036854775807-1",
         "'A'",
         "'AB'",
         "'\\n'",
@@ -466,6 +469,21 @@ fn batch() -> (Vec<u8>, Vec<u8>) {
         cases.push(case);
     }
     let canonical = vm::vm_opcore::expression_parser_program().to_vec();
+    // Every truncated wide payload rejects before the grammar consumes it.
+    let wide = numeric("4294967296").0;
+    for length in 1..wide.len() {
+        cases.push(failure(
+            wide[..length].to_vec(),
+            canonical.clone(),
+            768,
+            8192,
+            1,
+            0,
+        ));
+    }
+    let mut overflowing = vec![64];
+    overflowing.extend((i64::MAX as u64 + 1).to_be_bytes());
+    cases.push(failure(overflowing, canonical.clone(), 768, 8192, 1, 0));
     // Missing, odd, short and wrapping workspace must fail before use.
     for mode in 5..=8 {
         let mut case = failure(numeric("1").0, canonical.clone(), 768, 8192, 3, 0);

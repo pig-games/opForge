@@ -2317,6 +2317,8 @@ nextParameterToken	.block
 	bls.w nameToken
 	cmpi.w #2, d1
 	beq.w numberToken
+	cmpi.w #source.TOKEN_WIDE_NUMBER, d1
+	beq.w wideNumberToken
 	cmpi.w #4, d1
 	blo.w badToken
 	cmpi.w #39, d1
@@ -2327,7 +2329,10 @@ nameToken
 	addq.l #4, a0
 	bra.w tokenBounds
 numberToken
-	addq.l #5, a0
+	adda.w #source.NUMBER_BYTES, a0
+	bra.w tokenBounds
+wideNumberToken
+	adda.w #source.WIDE_NUMBER_BYTES, a0
 tokenBounds
 	cmpa.l a4, a0
 	bhi.w badToken

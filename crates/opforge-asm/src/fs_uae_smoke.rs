@@ -7972,3 +7972,6 @@ mod native_while_layouts;
 #[cfg(test)]
 #[path = "tests/native_while_loops.rs"]
 mod native_while_loops;
+#[cfg(test)]
+#[path = "tests/native_wide_literals.rs"]
+mod native_wide_literals;

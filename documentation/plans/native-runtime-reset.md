@@ -1070,6 +1070,67 @@ speedup. It does not measure peak memory or qualify 2 MiB hardware. Logs, frozen
 images and the reproducible measurement summary remain outside `target` at
 `/tmp/opforge-compound-measurements.json`.
 
+### Typed list construction checkpoint
+
+Hypothesis: constructing lists from the existing typed ExprVM cells closes
+record-member and address-provenance loss without adding a representation or
+expanding ordinary scalar storage. The baseline is `0ef68fc7`; success requires
+exact same-input Rust/native scalar and Hunk output, invalid-shape controls and
+a separately timed unchanged scalar workload. Stop to investigate any mismatch
+or material control regression.
+
+Absolute scalar lists retain eight-byte elements. A list containing an address
+or retained loop record uses the existing sixteen-byte typed cells and immutable
+owner-relative descriptors. Indexing preserves record members and section identity;
+mutable replacement and aliases retain immutable snapshots. Iterable `.for` and
+`.bfor` deliberately bind signed scalar projections without members or section
+identity, matching Rust's assembler iterator. No serialized layout, owner/loop
+slot size, package contract or VM version changes.
+
+The assembler evaluation adapter rejects nested lists or ranges as list elements,
+including temporary expressions. Raw shared ExprVM evaluation retains its broader
+compound-value semantics. Flat lists/ranges are absolute by construction; typed
+cells retain their own provenance. Hunk declarations therefore no longer impose
+a blanket rejection of flat compounds or compound mutable values. Unsafe address
+arithmetic must still fail when consumed by relocatable output.
+
+Focused qualification:
+
+- Fourteen fresh native CLI cases pass across the 68020 and 6502 target packages:
+  the 20-byte record/member/snapshot/ordinary-and-scoped-iteration matrix, four
+  invalid-shape controls per package, complete 128-byte Hunk equality with three
+  relocations, and rejection of unsafe address arithmetic. Hunk coverage includes
+  immutable address snapshots, typed-to-flat mutable replacement and flat
+  list/range constants. These packages run on the 68020 host, not a 6502 host.
+- The existing raw typed-expression component matches its 476-byte Rust oracle,
+  retaining record/member/provenance/equality controls and proving that raw
+  `.len({{7},9})` still yields two while the assembler rejects nested elements.
+- All 23 existing iterable positive scenarios also match live Rust in a fresh
+  combined run per package, including flat lists, ranges, shadowing, restoration,
+  snapshots, conditional bodies and macro arguments.
+- Host checks pass the two-package typed-list oracles, 34 ExprVM tests, 14 Hunk
+  provenance checks and the existing iterable-loop oracles. Library Clippy,
+  Rust/native formatting and native/workflow guards pass; independent static
+  review found no actionable issue. Test-target Clippy still reports 23 findings
+  in unchanged test code. Previous broad-suite failures are not cleared.
+
+This is focused expression/iteration parity, not complete assembler parity or a
+new full self-host/A6000 qualification. No peak-memory or 2 MiB fit is claimed.
+
+Isolated unchanged 1,024-iteration scalar control on FS-UAE `68020-10m`, release
+images with telemetry disabled and exact live Rust output in both fresh runs:
+
+| Measurement | Before (`0ef68fc7`) | After | Change |
+|---|---:|---:|---:|
+| Host-observed guest START/DONE | 36.164 s | 36.193 s | +0.028 s (+0.08%) |
+| Dual-package release image | 634,020 bytes | 634,312 bytes | +292 bytes (+0.05%) |
+| Control source / output | 200 / 7,168 bytes | 200 / 7,168 bytes | unchanged |
+
+One pair shows essentially unchanged control time, not a measured speedup or
+slowdown. The newly supported feature cases have no successful native baseline
+for a speed comparison. Frozen images, logs, hashes and reproduction settings
+remain outside `target` in `/tmp/opforge-typed-list-measurements.json`.
+
 ### Shared narrow-output checkpoint
 
 The approved policy repairs Rust `.byte` layout loss: keep the existing low-u32

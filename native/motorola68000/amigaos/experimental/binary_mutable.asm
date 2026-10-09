@@ -131,11 +131,8 @@ evaluate
 resolved
 	cmpa.l a1, a0
 	bne.w bad
-	tst.l package.Context.Kind(a2)
-	beq.w kindStore
-	tst.w package.Context.Relocatable(a2)
-	bne.w bad
-kindStore
+	; ExprVM validates descriptors: flat lists/ranges are absolute, while
+	; typed compounds retain address proof in their immutable cells.
 	movem.l d1-d2/a0, -(sp)
 	movea.l package.Context.Owner(a2), a0
 	move.l a0, d0

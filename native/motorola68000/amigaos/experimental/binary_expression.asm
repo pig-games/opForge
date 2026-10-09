@@ -593,7 +593,7 @@ typedValue
 	move.l values.Owner.Arena+memory.Block.Used(a6), d5
 	.endif
 	move.l d3, d0
-	jsr typed.evaluate
+	jsr typed.evaluateAssembler
 	tst.l d0
 	bne.w done
 typedResult
@@ -648,6 +648,8 @@ evaluateWithSymbols	.block
 
 ; Declaration value variant: Kind is explicit; Low is an arena offset for
 ; compounds. Scalars retain the original signed64 cell representation.
+; Lists must have scalar-projectable items at this assembler boundary; shared
+; ExprVM construction retains nested shapes for intermediate expressions.
 evaluateValue	.block
 	.EVALUATE d3-d7/a1-a6, 1
 	.bend  ; evaluateValue

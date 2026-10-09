@@ -7955,6 +7955,8 @@ mod native_scoped_layouts;
 #[cfg(test)]
 #[path = "tests/native_scoped_loops.rs"]
 mod native_scoped_loops;
+#[path = "tests/native_typed_list_values.rs"]
+mod native_typed_list_values;
 #[path = "tests/native_wide_iterables.rs"]
 mod native_wide_iterables;
 

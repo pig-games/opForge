@@ -559,7 +559,14 @@ scalar kind/provenance and obtains each element. The loop consumer no longer
 rejects nonzero high words or clears them during binding. Saved outer iterator
 cells and scoped value snapshots already retain both words, so their layouts
 do not grow. Descriptor offsets and the 65,536-iteration bound remain unchanged.
-Compound elements remain outside this scalar-only slice. Focused proof and
+That checkpoint covers scalar elements. The subsequent typed-list slice preserves
+members and section identity when indexed, then projects record/address elements
+to absolute scalar iterator bindings in `.for` and `.bfor`. Absolute scalar lists
+remain compact; descriptors, owner-relative offsets and loop-slot sizes are unchanged.
+The assembler adapter rejects nested list/range elements while raw shared ExprVM
+evaluation retains compound shapes. See the
+[typed-list checkpoint](native-runtime-reset.md#typed-list-construction-checkpoint).
+Focused scalar proof and
 isolated timing are recorded in the
 [active plan](native-runtime-reset.md#signed-scalar-iterable-checkpoint).
 

@@ -168,6 +168,12 @@ flattening everything into scalar constants.
 - Typed struct literals: `TypeName { field: expr, ... }`.
 - Builtin length: `.len(expr)` for range/list values.
 
+List elements must have a scalar projection: numbers, addresses and retained
+loop records are supported; nested lists or ranges as list elements are rejected,
+including temporary list expressions. Indexing preserves a retained record's
+members and an address's section identity. Iterating a list instead binds each
+element's signed 64-bit scalar projection, without members or relocation identity.
+
 Dotted-name resolution order is:
 1. exact dotted symbol lookup in the normal symbol namespace/scope;
 2. typed member fallback (`base.field`) when no exact dotted symbol exists and `base` is struct-typed.
@@ -535,8 +541,11 @@ Notes:
   relocations. Active missing values, cycles, escaped local names and malformed
   scope boundaries reject. Iterable expressions keep a frozen snapshot, bind each
   element before resolving local constants and restore iterator bindings at close.
-  Current iterable elements are nonnegative 32-bit scalars; negative/wider and
-  compound elements remain unsupported. Hunk direct iterator data, iterator-derived
+  Subsequent focused checkpoints add signed 64-bit iterable elements and scalar
+  projections of retained records/addresses. Indexed list elements preserve
+  members and relocation identity; iterator bindings discard both, matching Rust.
+  See the [typed-list checkpoint](plans/native-runtime-reset.md#typed-list-construction-checkpoint).
+  Hunk direct iterator data, iterator-derived
   scalar constants and per-iteration relocations have focused proof on both packages.
   An iterator can shadow a section label without inheriting its relocation;
   a qualified reference to the original label retains its fixup.

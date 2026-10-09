@@ -16,6 +16,8 @@ STATUS_DEPTH = 3
 MAX_DEPTH = 128
 STEP_LIMIT = 65536
 LEN_ID = 1
+MODE_COMPACT_BIT = 0
+MODE_ASSEMBLER_BIT = 1
 Frame	.struct
 Values	.long ?
 Defined	.long ?
@@ -43,7 +45,7 @@ Steps	.long ?
 Operator	.long ?
 Count	.long ?
 Provenance	.long ?
-Compact	.long ?
+Mode	.long ?
 ArenaStart	.long ?
 .endstruct
 STACK = State.ArenaStart+4
@@ -70,6 +72,13 @@ evaluateCompact	.block
 	bra.w evaluateMode
 	.bend  ; evaluateCompact
 
+; Same ABI as evaluate. Enforces assembler list scalar projections when built,
+; including temporary lists. Raw shared evaluation retains unrestricted shapes.
+evaluateAssembler	.block
+	moveq #1<<MODE_ASSEMBLER_BIT, d4
+	bra.w evaluateMode
+	.bend  ; evaluateAssembler
+
 	.priv
 evaluateMode	.block
 	movem.l d5-d7/a1-a6, -(sp)
@@ -91,7 +100,7 @@ evaluateMode	.block
 	bne.w storage
 	movea.l memory.Block.Pointer(a0), a3
 	move.l #WORK_BYTES, memory.Block.Used(a0)
-	move.l d4, State.Compact(a3)
+	move.l d4, State.Mode(a3)
 	clr.l State.Unresolved(a3)
 	clr.l State.Symbols(a3)
 	clr.l State.Steps(a3)
@@ -119,19 +128,19 @@ next
 	beq.w unary
 	cmpi.b #$21, d1
 	beq.w binary
-	cmpi.b #$51, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_BUILD_LIST, d1
 	beq.w list
-	cmpi.b #$52, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_BUILD_RANGE, d1
 	beq.w range
 	cmpi.b #runtime.EXPRVM_OPCODE_GET_MEMBER, d1
 	beq.w member
-	cmpi.b #$61, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_INDEX_VALUE, d1
 	beq.w index
-	cmpi.b #$62, d1
+	cmpi.b #runtime.EXPRVM_OPCODE_CALL_BUILTIN, d1
 	beq.w builtin
 	cmpi.b #$70, d1
 	beq.w scalar
-	tst.l State.Compact(a3)
+	btst #MODE_COMPACT_BIT, State.Mode+3(a3)
 	beq.w malformed
 	cmpi.b #runtime.COMPACT_I8, d1
 	beq.w compactByte
@@ -386,6 +395,7 @@ list
 	cmp.l d7, d1
 	bhi.w malformed
 	move.l d1, State.Count(a3)
+	clr.l State.Operator(a3)
 	move.l d7, d6
 	sub.l d1, d6
 	move.l d6, d0
@@ -396,11 +406,20 @@ list
 	move.l d1, d5
 	tst.l d5
 	beq.w append
-pack
+classify
 	tst.l Cell.Provenance(a1)
-	bne.w malformed
+	bne.w typedList
 	tst.l Cell.Kind(a1)
-	bne.w malformed
+	bne.w typedList
+	adda.l #CELL_BYTES, a1
+	subq.l #1, d5
+	bne.w classify
+	move.l d6, d0
+	mulu.w #CELL_BYTES, d0
+	lea STACK(a3), a1
+	adda.l d0, a1
+	move.l State.Count(a3), d5
+pack
 	move.l Cell.Low(a1), (a2)+
 	move.l Cell.High(a1), (a2)+
 	adda.l #CELL_BYTES, a1
@@ -413,6 +432,25 @@ append
 	move.l d0, d1
 	lsl.l #3, d1
 	jsr values.appendList
+	bra.w listReady
+typedList
+	btst #MODE_ASSEMBLER_BIT, State.Mode+3(a3)
+	beq.w typedAppend
+	bsr.w listProjection
+	bne.w malformed
+typedAppend
+	; Work storage never aliases Arena; child descriptors remain owner offsets.
+	move.l d6, d0
+	mulu.w #CELL_BYTES, d0
+	lea STACK(a3), a1
+	adda.l d0, a1
+	movea.l Frame.Owner(a6), a0
+	move.l #records.TYPED_LIST, State.Operator(a3)
+	move.l State.Count(a3), d0
+	move.l d0, d1
+	lsl.l #4, d1
+	jsr records.appendList
+listReady
 	tst.l d0
 	bne.w storage
 	move.l d6, d7
@@ -421,6 +459,9 @@ append
 	move.l d2, Cell.Low(a1)
 	clr.l Cell.High(a1)
 	move.l #values.LIST, Cell.Kind(a1)
+	tst.l State.Operator(a3)
+	beq.w next
+	move.l #records.TYPED_LIST, Cell.Kind(a1)
 	bra.w next
 range
 	bsr.w byte
@@ -895,5 +936,49 @@ emitLong	.block
 	move.b d1, (a2)+
 	rts
 	.bend  ; emitLong
+; A3=Work,A6=Frame,D6=first cell index. D0/CCR=status; others preserved.
+; Validate assembler list projections without flattening cells or allocating.
+listProjection	.block
+	movem.l d1-d5/a0-a1, -(sp)
+	move.l d6, d0
+	mulu.w #CELL_BYTES, d0
+	lea STACK(a3), a1
+	adda.l d0, a1
+	move.l State.Count(a3), d1
+	movea.l Frame.Owner(a6), a0
+scan
+	tst.l d1
+	beq.w good
+	move.l Cell.Low(a1), d2
+	move.l Cell.Kind(a1), d4
+	move.l #MAX_DEPTH, d5
+project
+	tst.l d4
+	beq.w advance
+	cmpi.l #records.ADDRESS_RECORD, d4
+	bne.w bad
+	subq.l #1, d5
+	beq.w bad
+	move.l d5, -(sp)
+	move.l d2, d0
+	jsr records.project
+	move.l (sp)+, d5
+	tst.l d0
+	bne.w done
+	bra.w project
+advance
+	adda.l #CELL_BYTES, a1
+	subq.l #1, d1
+	bra.w scan
+good
+	moveq #STATUS_OK, d0
+	bra.w done
+bad
+	moveq #STATUS_MALFORMED, d0
+done
+	movem.l (sp)+, d1-d5/a0-a1
+	tst.l d0
+	rts
+	.bend  ; listProjection
 	.endsection
 	.endmodule

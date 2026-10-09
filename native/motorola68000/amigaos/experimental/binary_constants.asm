@@ -78,14 +78,8 @@ execute	.block
 resolved
 	tst.l pkg.Context.Kind(a2)
 	beq.w scalarProof
-	; Typed records retain address identity inside their immutable cells.
-	; Legacy scalar compounds keep the existing Hunk boundary.
-	tst.w pkg.Context.Relocatable(a2)
-	beq.w store
-	cmpi.l #values.TYPED_LIST, pkg.Context.Kind(a2)
-	blo.w bad
-	cmpi.l #values.ADDRESS_RECORD, pkg.Context.Kind(a2)
-	bhi.w bad
+	; ExprVM validates descriptors: flat lists/ranges are absolute, while
+	; typed compounds retain address proof in their immutable cells.
 	bra.w store
 scalarProof
 	tst.w pkg.Context.Relocatable(a2)

@@ -31,8 +31,55 @@ fn oracle() -> Vec<u8> {
         .flatten()
         .chain([0, 40, 0, 2, 1, 0x10012, 0, 2, 1]) // invalid bare record descriptor
         .chain([0, 1, 1, 1, 1]) // nested equality: equal, changed, provenance, truncated, cycle
+        .chain([0, raw_nested_length(), 0]) // shared VM shapes stay distinct from assembler lists
         .flat_map(u32::to_be_bytes)
         .collect()
+}
+
+fn raw_nested_length() -> u32 {
+    use opcore::expr_vm::{
+        compile_core_expr_to_portable_program, eval_portable_expr_program, PortableExprBudgets,
+        PortableExprEvalContext,
+    };
+    use opcore::parser::Expr;
+    use opcore::tokenizer::Span;
+    struct Context;
+    impl PortableExprEvalContext for Context {
+        fn lookup_symbol(&self, _: &str) -> Option<i64> {
+            None
+        }
+        fn current_address(&self) -> Option<i64> {
+            None
+        }
+        fn pass(&self) -> u8 {
+            2
+        }
+        fn symbol_is_finalized(&self, _: &str) -> Option<bool> {
+            None
+        }
+    }
+    let span = Span {
+        line: 1,
+        col_start: 1,
+        col_end: 1,
+    };
+    let expr = Expr::Call {
+        name: ".len".into(),
+        args: vec![Expr::List(
+            vec![
+                Expr::List(vec![Expr::Number("7".into(), span)], span),
+                Expr::Number("9".into(), span),
+            ],
+            span,
+        )],
+        span,
+    };
+    let program = compile_core_expr_to_portable_program(&expr).unwrap();
+    let result = eval_portable_expr_program(&program, &Context, PortableExprBudgets::default())
+        .unwrap()
+        .value;
+    assert_eq!(result, 2);
+    result as u32
 }
 
 struct Scratch(PathBuf);
@@ -89,7 +136,7 @@ fn assemble(root: &Path) -> (Scratch, Vec<u8>, String) {
 
 #[test]
 fn native_expression_records_host_assembles() {
-    assert_eq!(oracle().len(), 17 * 24 + 36 + 5 * 4);
+    assert_eq!(oracle().len(), 17 * 24 + 36 + 5 * 4 + 12);
     assert!(!assemble(&workspace_root()).1.is_empty());
 }
 

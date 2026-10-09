@@ -24,7 +24,7 @@ SNAPSHOT_ABSOLUTE = 4
 Slot	.struct
 Body	.long ?
 Remaining	.long ?
-Iterable	.long ?
+Iterable	.long ?  ; zero for counted loops, otherwise immutable descriptor kind
 Descriptor	.long ?
 Index	.long ?
 Variable	.long ?
@@ -228,7 +228,7 @@ iterableOpening
 	bne.w invalid
 	tst.l package.Context.Kind(a2)
 	beq.w invalid
-	cmpi.l #values.RANGE, package.Context.Kind(a2)
+	cmpi.l #values.TYPED_LIST, package.Context.Kind(a2)
 	bhi.w invalid
 	move.l d1, d5
 	movea.l package.Context.Owner(a2), a0
@@ -250,7 +250,8 @@ validateElement
 	move.l d3, -(sp)
 	moveq #0, d3
 	move.l d5, d1
-	jsr values.compoundGet
+	move.l package.Context.Kind(a2), d0
+	bsr.w element
 	move.l (sp)+, d3
 	tst.l d0
 	bne.w invalid
@@ -262,7 +263,7 @@ validateElement
 	adda.w d7, a5
 	move.l a4, Slot.Body(a5)
 	move.l d4, Slot.Remaining(a5)
-	move.l #1, Slot.Iterable(a5)
+	move.l package.Context.Kind(a2), Slot.Iterable(a5)
 	move.l d5, Slot.Descriptor(a5)
 	movea.l a5, a1
 	bsr.w initializeSlot
@@ -1136,16 +1137,58 @@ finishObservation	.block
 	rts
 	.bend  ; finishObservation
 
+; A0=Owner,D0=known descriptor kind,D1=descriptor,D2/D3=index low/high.
+; D0/CCR=status,D1/D2=scalar low/high; others preserved. Iterator bindings
+; discard shape and section identity, matching the assembler value iterator.
+element	.block
+	cmpi.l #values.TYPED_LIST, d0
+	beq.w typed
+	; Legacy descriptors keep their single validated view inside compoundGet.
+	jmp values.compoundGet
+typed
+	movem.l d3-d6/a1, -(sp)
+	move.l d1, d6
+	tst.l d3
+	bne.w bad
+	move.l d2, d1
+	move.l d6, d0
+	jsr records.get
+	bne.w done
+	moveq #expression.MAX_DEPTH, d6
+project
+	tst.l d4
+	beq.w scalar
+	cmpi.l #records.ADDRESS_RECORD, d4
+	bne.w bad
+	subq.l #1, d6
+	beq.w bad
+	move.l d2, d0
+	jsr records.project
+	bne.w done
+	bra.w project
+scalar
+	move.l d2, d1
+	move.l d3, d2
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #values.MALFORMED, d0
+done
+	movem.l (sp)+, d3-d6/a1
+	tst.l d0
+	rts
+	.bend  ; element
+
 ; A5=iterable slot,A2=context. D0/CCR=status; clobbers D1-D3/D6/A0-A1.
 ; The descriptor offset survives arena relocation and body mutations.
-; Scalar elements retain both signed i64 words; kind/provenance validation
-; belongs to compoundGet, independently of the bounded iteration count.
+; Elements project to absolute scalar bindings at the assembler iterator boundary.
 bindElement	.block
 	movea.l package.Context.Owner(a2), a0
 	move.l Slot.Descriptor(a5), d1
 	move.l Slot.Index(a5), d2
 	moveq #0, d3
-	jsr values.compoundGet
+	move.l Slot.Iterable(a5), d0
+	bsr.w element
 	bne.w done
 	move.l d1, d3
 	move.l d2, d6

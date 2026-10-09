@@ -5,6 +5,7 @@
 	.cpu 68020
 	.use opasm.amigaos.binary_expression as expression
 	.use exprvm.amigaos.runtime as runtime
+	.use exprvm.amigaos.values_runtime as typed
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_record_values as records
 	.use experimental.amigaos.binary_hunk_references as references
@@ -219,6 +220,15 @@ nextEquality
 	jsr values.equalValues
 	move.l d0, (a5)+
 	dbra d7, nextEquality
+	; Raw shared VM construction supports shapes which the assembler adapter
+	; rejects. The live Rust VM oracle evaluates .len({{7},9}) to two.
+	lea NestedLength, a0
+	move.l #NestedLengthEnd-NestedLength, d0
+	lea Context, a2
+	jsr typed.evaluate
+	move.l d0, (a5)+
+	move.l d1, (a5)+
+	move.l d3, (a5)+
 	lea Owner, a0
 	jsr values.release
 	move.l #OUTPUT_BYTES, OutputLength
@@ -329,7 +339,16 @@ Cases	.long Alias, AliasEnd, Index, IndexEnd, Member, MemberEnd
 	.long CompactLoadSymbol7AddOne, CompactLoadSymbol7AddOneEnd
 CASE_COUNT = 17
 EQUALITY_CASE_COUNT = 5
-OUTPUT_BYTES = CASE_COUNT*24+36+EQUALITY_CASE_COUNT*4
+OUTPUT_BYTES = CASE_COUNT*24+36+EQUALITY_CASE_COUNT*4+12
+
+NestedLength
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 7, 0, 0, 0, 0, 0, 0, 0
+	.byte runtime.EXPRVM_OPCODE_BUILD_LIST, 1, 0
+	.byte runtime.EXPRVM_OPCODE_PUSH_LITERAL, 9, 0, 0, 0, 0, 0, 0, 0
+	.byte runtime.EXPRVM_OPCODE_BUILD_LIST, 2, 0
+	.byte runtime.EXPRVM_OPCODE_CALL_BUILTIN, typed.LEN_ID, 1, 0
+	.byte runtime.EXPRVM_OPCODE_END
+NestedLengthEnd
 ; Compact aliases retain the record in evaluateValue and project in evaluate.
 Alias	.byte expression.COMPILED_TAG, AliasEnd-Alias-2, runtime.EXPRVM_OPCODE_PUSH_SYMBOL, 0, 0, runtime.EXPRVM_OPCODE_END
 AliasEnd

@@ -1070,6 +1070,68 @@ speedup. It does not measure peak memory or qualify 2 MiB hardware. Logs, frozen
 images and the reproducible measurement summary remain outside `target` at
 `/tmp/opforge-compound-measurements.json`.
 
+### Signed scalar iterable checkpoint
+
+Hypothesis: retaining signed i64 elements in Rust's loop plan/binding and both
+words of the native iterator cell closes negative/wide scalar iterable support
+without changing the shared VM grammar, native allocation or serialization.
+Counts stay bounded independently of element magnitude. Rust must reject excess
+iterations while gathering a range rather than allocate its entire contents.
+
+Baseline is `af414c77`, the release dual-package image, and the unchanged
+1,024-iteration scalar control on FS-UAE `68020-10m`. A fresh baseline completed
+in 36.212089875 seconds with exact live Rust/native output. Success requires
+matching signed-limit/list/range/restoration/scoped-snapshot cases on both
+target packages and a separately measured final control. Stop to diagnose any
+mismatch or material control regression. Compound elements, general output
+narrowing policy and a fresh full self-host remain outside this slice.
+
+Both implementations retain their existing data-output policy. A direct Rust
+`.byte -1` raises a truncation warning and emits no byte for that statement.
+Rust `.byte 4294967296` instead narrows to zero; a fresh native comparison
+rejects that wide-byte statement. These differences were exposed after removing
+the iterator restriction and remain narrow-output/diagnostic parity issues.
+Signed iterator transport is proved with explicit masked projections, full-value comparisons,
+snapshots and branches; those are not proof of direct negative-byte parity.
+Shift counts also retain the existing 0–31 masking contract, so high-word
+projections use successive 16-bit shifts rather than a single shift by 32.
+
+Focused qualification:
+
+- Nine signed-scalar scenarios produce the explicitly checked 240-byte live
+  Rust/native matrix on both 68020 and 6502 target packages. Coverage includes
+  i64 endpoints, negative/cross-zero/wide ranges and steps, nested iterator
+  restoration, immutable list snapshots, labeled iteration members, scoped
+  mutable/constant cells, conditional truth and macro arguments. The guest
+  executable runs on 68020; these are target-package comparisons, not 6502-host
+  execution claims.
+- All 23 existing/extended iterable positive cases match live Rust in a fresh
+  combined run per package. A range spanning more than eight billion elements
+  completes with expected rejection on both packages. Four former negative
+  cases now exercise legal signed/wide iteration with explicit byte projections.
+- Host checks pass 20 repetition tests, four loop-oracle groups, the new signed
+  matrix and the previous wide-literal oracle. Library Clippy, Rust/native
+  formatting, native porting and workflow/architecture guards pass. Existing
+  broad-suite failures are not cleared or requalified by these focused checks.
+
+Native value cells, descriptor/snapshot layouts, loop slots and allocation policy
+are unchanged. Rust loop-plan elements grow from u32 to i64. The dual-package
+release image shrinks from 633,516 to 633,500 bytes. No peak-memory measurement,
+2 MiB fit, full self-host or A6000 run is claimed for this checkpoint.
+
+Isolated unchanged control, exact live Rust output in both release runs:
+
+| Measurement | Before (`af414c77`) | After | Change |
+|---|---:|---:|---:|
+| Fresh host-observed guest START/DONE | 36.212 s | 36.146 s | -0.066 s (-0.18%) |
+| Dual-package release image | 633,516 bytes | 633,500 bytes | -16 bytes |
+| Control source / output | 200 / 7,168 bytes | 200 / 7,168 bytes | unchanged |
+
+One pair on the same `68020-10m` profile with telemetry disabled does not
+establish a speedup. It shows no material regression on this control. Frozen
+images, logs, hashes and the reproduction command remain outside `target` in
+`/tmp/opforge-iterable-width-measurements.json`.
+
 ### Direct wide literal checkpoint
 
 Hypothesis: preserving the tokenizer's normalized high word in a nine-byte raw

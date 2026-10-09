@@ -478,7 +478,7 @@ These statements describe the implemented subset. They do not imply complete ass
   native/Rust comparison.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
 - Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
-- `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Struct values are not newly qualified, wide/negative iterable elements retain separate consumer limits, and these cases do not establish full module, parameter or Hunk-expression parity.
+- `.use ... with (...)` preparation now supports known source-site scalar, flat-list and range values. Rust snapshots mutable assignments at the import site and forwards owned values through imported modules. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Struct values are not newly qualified, and these cases do not establish full module, parameter or Hunk-expression parity. The signed scalar iterable checkpoint below covers negative/wide elements separately.
 
 For instruction and address selection, required tuple/register classes and
 package predicates remain barriers: native may skip a higher-priority recipe
@@ -537,14 +537,26 @@ not grow. All serialized references remain offsets or numeric identities.
 
 Preserve numeric-looking names and substitution syntax until context establishes
 that a value is required. Direct positive literals end at `i64::MAX`; the minimum
-signed value can be expressed as `-9223372036854775807-1`. Wider/negative iterable
-consumers and general narrow-output policy remain separate parity gaps. Focused
-proof and isolated control measurements are recorded in the
+signed value can be expressed as `-9223372036854775807-1`. General narrow-output
+policy remains a separate parity gap. Focused proof and isolated control
+measurements are recorded in the
 [active plan](native-runtime-reset.md#direct-wide-literal-checkpoint).
 The portable token record layout and package opcode contract are documented in
 the referenced VM sources.
 
 References: [portable token contract](../../crates/opforge-vm/src/portable_contract.rs), [Rust tokenizer helpers](../../crates/opforge-vm/src/tokenizer_runtime_utils.rs), [native scanner](../../native/motorola68000/amigaos/tkvm/tkvm_scanner.asm), and [package generation](../../crates/opforge-vm/src/builder.rs).
+
+### Signed scalar iterable checkpoint
+
+Iterable `.for` and `.bfor` bind both words of the existing signed i64 scalar
+cell. Shared EXVM constructs lists/ranges; the existing value service validates
+scalar kind/provenance and obtains each element. The loop consumer no longer
+rejects nonzero high words or clears them during binding. Saved outer iterator
+cells and scoped value snapshots already retain both words, so their layouts
+do not grow. Descriptor offsets and the 65,536-iteration bound remain unchanged.
+Compound elements remain outside this scalar-only slice. Focused proof and
+isolated timing are recorded in the
+[active plan](native-runtime-reset.md#signed-scalar-iterable-checkpoint).
 
 ### Macro descriptor service checkpoint
 

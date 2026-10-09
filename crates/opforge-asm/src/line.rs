@@ -277,7 +277,7 @@ pub struct AsmLine<'a> {
     text_encoding_registry: TextEncodingRegistry,
     active_text_encoding: String,
     encoding_scope_stack: Vec<EncodingScopeState>,
-    loop_vars: Vec<(String, u32)>,
+    loop_vars: Vec<(String, i64)>,
     statement_depth: usize,
 }
 
@@ -1134,7 +1134,7 @@ impl<'a> AsmLine<'a> {
             .then_some(candidate)
     }
 
-    pub fn push_loop_var(&mut self, name: &str, value: u32) {
+    pub fn push_loop_var(&mut self, name: &str, value: i64) {
         self.loop_vars.push((name.to_string(), value));
     }
 
@@ -1142,7 +1142,7 @@ impl<'a> AsmLine<'a> {
         let _ = self.loop_vars.pop();
     }
 
-    fn lookup_loop_var(&self, name: &str) -> Option<u32> {
+    fn lookup_loop_var(&self, name: &str) -> Option<i64> {
         self.loop_vars
             .iter()
             .rev()

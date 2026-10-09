@@ -476,7 +476,9 @@ Notes:
 - Labels on `.endfor`/`.endwhile` are rejected.
 - Loop iteration counts must be stable between the accepted sizing traversal and emission.
 - Loop execution is guarded by `--max-loop-iterations` (default `65536`, env override `OPFORGE_MAX_LOOP_ITERATIONS`).
-- Inline iterable range/list expressions are evaluated as full signed assembler values, like named snapshots. The iterator value must still fit the unsigned 32-bit loop-value limit.
+- Inline iterable range/list expressions are evaluated as full signed assembler
+  values, like named snapshots. Scalar iterator elements retain their signed
+  64-bit values; the iteration-count limit is independent of element magnitude.
 - In iterable `.for` syntax, `in` is a contextual marker and is not globally
   reserved as a name.
 - The experimental BS33 packed native iterable `.for` and iterator-dependent

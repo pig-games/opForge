@@ -254,8 +254,6 @@ validateElement
 	move.l (sp)+, d3
 	tst.l d0
 	bne.w invalid
-	tst.l d2
-	bne.w invalid
 	addq.l #1, d3
 	cmp.l d4, d3
 	blo.w validateElement
@@ -1140,6 +1138,8 @@ finishObservation	.block
 
 ; A5=iterable slot,A2=context. D0/CCR=status; clobbers D1-D3/D6/A0-A1.
 ; The descriptor offset survives arena relocation and body mutations.
+; Scalar elements retain both signed i64 words; kind/provenance validation
+; belongs to compoundGet, independently of the bounded iteration count.
 bindElement	.block
 	movea.l package.Context.Owner(a2), a0
 	move.l Slot.Descriptor(a5), d1
@@ -1147,27 +1147,23 @@ bindElement	.block
 	moveq #0, d3
 	jsr values.compoundGet
 	bne.w done
-	tst.l d2
-	bne.w bad
 	move.l d1, d3
+	move.l d2, d6
 	move.l Slot.Variable(a5), d1
 	moveq #values.SCALAR, d2
 	jsr values.setKind
 	bne.w done
-	move.l d1, d6
+	move.l d1, d2
 	lsl.l #3, d1
 	movea.l package.Context.Values(a2), a1
 	move.l d3, 0(a1, d1.l)
-	clr.l 4(a1, d1.l)
+	move.l d6, 4(a1, d1.l)
 	movea.l package.Context.Defined(a2), a1
-	move.b #SNAPSHOT_ABSOLUTE, 0(a1, d6.l)
+	move.b #SNAPSHOT_ABSOLUTE, 0(a1, d2.l)
 	movea.l package.Context.SectionIds(a2), a1
-	clr.b 0(a1, d6.l)
+	clr.b 0(a1, d2.l)
 	.MEMORY_COUNTER_INC IterableBindings
 	moveq #0, d0
-	bra.w done
-bad
-	moveq #1, d0
 done
 	tst.l d0
 	rts

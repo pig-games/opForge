@@ -44,6 +44,12 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("macro-iterator-condition", "pick .macro value\n.if .value==2\n.byte .value+10\n.else\n.byte .value+20\n.endif\n.endmacro\n.for item in {2,4}\n.pick item\n.endfor\n", &[12, 24]),
     ("conditional-parent-restoration", ".if 1\n.for item in {1,2}\n.if item==1\n.if 0\n.byte 99\n.else\n.byte 5\n.endif\n.else\n.byte 6\n.endif\n.endfor\n.byte 7\n.else\n.byte 99\n.endif\n", &[5, 6, 7]),
     ("conditional-wide-truth", ".for item in {0,1}\n.if item+((1<<16)<<16)\n.byte 8\n.else\n.byte 99\n.endif\n.endfor\n", &[8,8]),
+    // Test iterator transport with legal byte values, independently of the
+    // existing Rust/native narrow-output policy differences.
+    ("inline-wide-iterator", "wideUnit=((1<<16)<<16)\n.for item in {wideUnit}\n.byte item&255\n.endfor\n", &[0]),
+    ("named-wide-iterator", "wideUnit=((1<<16)<<16)\nitems={wideUnit}\n.for item in items\n.byte item&255\n.endfor\n", &[0]),
+    ("inline-negative-iterator", ".for item in {-1,2}\n.byte item&255\n.endfor\n", &[255,2]),
+    ("named-negative-iterator", "items={-1,2}\n.for item in items\n.byte item&255\n.endfor\n", &[255,2]),
     ("conditional-preprocessor", ".for item in {1,2}\n.if item==1\n.ifdef absent\n.byte missing\n.else\n.byte 7\n.endif\n.else\n.ifndef absent\n.byte 8\n.endif\n.endif\n.endfor\n", &[7,8]),
 ];
 const BAD: &[(&str, &str)] = &[
@@ -58,6 +64,10 @@ const BAD: &[(&str, &str)] = &[
     (
         "iteration-limit",
         ".for item in 0..=65536\n.byte item\n.endfor\n",
+    ),
+    (
+        "wide-range-iteration-limit",
+        ".for item in -4294967296..4294967296\n.byte 0\n.endfor\n",
     ),
     (
         "indented-mutable-body",
@@ -75,22 +85,6 @@ const BAD: &[(&str, &str)] = &[
     (
         "unavailable-iterator",
         ".for item in missing\n.byte item\n.endfor\n",
-    ),
-    (
-        "inline-negative-iterator",
-        ".for item in {-1,2}\n.byte item\n.endfor\n",
-    ),
-    (
-        "named-negative-iterator",
-        "items={-1,2}\n.for item in items\n.byte item\n.endfor\n",
-    ),
-    (
-        "inline-wide-iterator",
-        "wideUnit=((1<<16)<<16)\n.for item in {wideUnit}\n.byte item\n.endfor\n",
-    ),
-    (
-        "named-wide-iterator",
-        "wideUnit=((1<<16)<<16)\nitems={wideUnit}\n.for item in items\n.byte item\n.endfor\n",
     ),
     ("zero-step", ".for item in 1..4:0\n.byte item\n.endfor\n"),
     (

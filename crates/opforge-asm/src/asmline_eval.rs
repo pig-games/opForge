@@ -67,7 +67,7 @@ impl<'a> AsmLine<'a> {
                     return Ok(value);
                 }
                 if let Some(value) = self.lookup_loop_var(name) {
-                    return Ok(AsmValue::Scalar(i64::from(value)));
+                    return Ok(AsmValue::Scalar(value));
                 }
                 if let Some(full_name) = self.resolve_scoped_value_name(name) {
                     if let Some(value) = self.lookup_value_symbol(&full_name) {
@@ -377,7 +377,7 @@ impl<'a> AsmLine<'a> {
         span: Span,
     ) -> Result<Option<AsmValue>, AstEvalError> {
         if let Some(value) = self.lookup_loop_var(name) {
-            return Ok(Some(AsmValue::Scalar(i64::from(value))));
+            return Ok(Some(AsmValue::Scalar(value)));
         }
         if let Some(full_name) = self.resolve_scoped_value_name(name) {
             if let Some(value) = self.lookup_value_symbol(&full_name) {
@@ -832,7 +832,7 @@ impl<'a> AssemblerContext for AsmLine<'a> {
 
     fn value_symbol(&self, name: &str) -> Option<AsmValue> {
         if let Some(value) = self.lookup_loop_var(name) {
-            return Some(AsmValue::Scalar(i64::from(value)));
+            return Some(AsmValue::Scalar(value));
         }
 
         if let Some(full_name) = self.resolve_scoped_value_name(name) {
@@ -893,7 +893,7 @@ impl<'a> AsmLine<'a> {
 
     fn eval_symbol_leaf_for_vm_bridge(&self, name: &str, span: Span) -> Result<i64, String> {
         if let Some(value) = self.lookup_loop_var(name) {
-            return Ok(i64::from(value));
+            return Ok(value);
         }
         if let Some(value) = self.scalar_value_symbol(name) {
             return Ok(value);

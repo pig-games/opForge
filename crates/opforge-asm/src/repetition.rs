@@ -11,7 +11,7 @@ pub const DEFAULT_MAX_LOOP_ITERATIONS: u32 = 65_536;
 
 pub struct ForPlan {
     pub var_name: Option<String>,
-    pub values: Vec<u32>,
+    pub values: Vec<i64>,
 }
 
 pub fn parse_line_ast_for_repetition(
@@ -248,7 +248,7 @@ pub fn evaluate_for_plan(
                 expr_span(&operands[0]),
             ));
         }
-        let values = (0..count).collect::<Vec<_>>();
+        let values = (0..count).map(i64::from).collect::<Vec<_>>();
         (None, values)
     } else if operands.len() == 2 {
         let var_name = match &operands[0] {
@@ -269,13 +269,13 @@ pub fn evaluate_for_plan(
             ));
         };
         for value in iter {
-            let converted = u32::try_from(value).map_err(|_| {
-                AstEvalError::expression(
-                    "loop iterator value out of supported range",
+            if values.len() >= max_loop_iterations as usize {
+                return Err(AstEvalError::directive(
+                    format!("loop exceeded maximum iteration limit ({max_loop_iterations})"),
                     expr_span(&operands[1]),
-                )
-            })?;
-            values.push(converted);
+                ));
+            }
+            values.push(value);
         }
         (Some(var_name), values)
     } else {
@@ -301,7 +301,7 @@ fn evaluate_for_iterable_value(
     expr: &Expr,
 ) -> Result<AsmValue, AstEvalError> {
     // Preserve signed list elements and range steps identically for inline
-    // expressions and named snapshots. Iterator conversion happens once above.
+    // expressions, named snapshots and the lexical iterator binding.
     asm_line.eval_value_ast(expr)
 }
 

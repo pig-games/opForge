@@ -39,8 +39,11 @@ ordinary loops retain their declaration restrictions. Complete lazy file/reachab
 is not established; complete `.while` and scoped-loop parity remain open.
 BS35 anonymous counted `.bfor` has [focused proof](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification).
 The subsequent [labeled-repetition checkpoint](native-runtime-reset.md#native-labeled-repetition-focused-checkpoint)
-adds typed iteration records and shared VM index/member evaluation; `.bwhile`
-remains unsupported. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
+adds typed iteration records and shared VM index/member evaluation. The
+[scoped-condition checkpoint](native-runtime-reset.md#scoped-condition-repetition-focused-checkpoint)
+adds anonymous and labeled `.bwhile`, fresh local scopes, nested loop composition
+and retained iteration records; compound assignment operators and mapped scoped
+replay remain open. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
 forward-initializer semantics, struct behavior and existing wide-literal packing
 limits also remain unresolved. Full language or CPU-family parity is not claimed.
 
@@ -61,8 +64,8 @@ The subsequent [iterable scoped checkpoint](native-runtime-reset.md#anonymous-it
 extends the same owners to anonymous list/range `.bfor`, with independent lexical
 iterator identities and binding before local constant resolution. The existing
 nonnegative 32-bit scalar element boundary remains; negative/wider and compound
-elements and `.bwhile` are not qualified by this slice. Labeled/indexed scopes
-have separate focused coverage in the checkpoint linked above.
+elements are not qualified by this slice. Labeled/indexed scopes and `.bwhile`
+have subsequent focused coverage in the checkpoints linked above.
 
 The [Rust iterator Hunk repair](native-runtime-reset.md#iterator-hunk-provenance-rust-repair)
 aligns relocation classification with active iterator lookup. Direct iterator
@@ -464,7 +467,8 @@ These statements describe the implemented subset. They do not imply complete ass
   BS34 `.while` has focused flat, whole-Hunk and two-concrete-section proof on
   both packages; see the [provisional scope and measurements](native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
   Mapped modes 2 and 4 reject any `.while` until source-order traversal is repaired.
-  Scoped `.bfor`/`.bwhile` and broader loop/macro parity remain open; labels inside
+  Scoped `.bfor`/`.bwhile` have subsequent focused coverage linked above; broader
+  loop/macro parity remains open. Labels inside
   active unscoped loops reject. Counted packed-loop execution has focused
   native/Rust comparison.
 - Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.

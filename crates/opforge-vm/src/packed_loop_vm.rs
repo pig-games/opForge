@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Package-owned loop header grammar over immutable packed writer records.
 use package::package::MacroDescriptorOpcode;
+const PREPARED_MUTABLE_SNAPSHOT_FLAG: u8 = 0x40;
+const PREPARED_RECORD_RESERVED_FLAGS: u8 = !(0x3f | PREPARED_MUTABLE_SNAPSHOT_FLAG);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoopHeader {
@@ -36,21 +38,42 @@ fn valid_program(program: &[u8]) -> bool {
 /// Bind a grammar name while the writer has emitted `.for <bare variable>`.
 /// Its length byte is not final; the slice supplies the current packed extent.
 pub fn context_keyword(program: &[u8], prefix: &[u8], candidate: u16) -> bool {
-    loop_prefix(program, prefix)
-        && prefix.len() == 13
+    let Some(offset) = loop_prefix(program, prefix) else {
+        return false;
+    };
+    let prefix = &prefix[offset..];
+    prefix.len() == 13
         && prefix[9] <= 1
         && prefix[12] == 0
         && candidate.to_be_bytes() == program[3..5]
 }
 
-fn loop_prefix(program: &[u8], prefix: &[u8]) -> bool {
-    valid_program(program)
-        && (9..=256).contains(&prefix.len())
-        && prefix[1] & 0xd8 == 0
-        && prefix[4] == 7
-        && prefix[5] <= 1
-        && prefix[6..8] == program[1..3]
-        && prefix[8] == 0
+fn loop_prefix(program: &[u8], prefix: &[u8]) -> Option<usize> {
+    if !valid_program(program) || !(9..=256).contains(&prefix.len()) || prefix[1] & 0xd8 != 0 {
+        return None;
+    }
+    let offset = label_prefix(prefix);
+    let prefix = &prefix[offset..];
+    if prefix.len() < 9 || prefix[4] != 7 || prefix[5] > 1 || prefix[8] != 0 {
+        return None;
+    }
+    let scoped = prefix[6..8] == program[11..13];
+    if !scoped && (offset != 0 || prefix[6..8] != program[1..3]) {
+        return None;
+    }
+    Some(offset)
+}
+
+fn label_prefix(source: &[u8]) -> usize {
+    if source.len() >= 13 && source[4] <= 1 && source[7] == 0 {
+        if source[8] == 5 {
+            5
+        } else {
+            4
+        }
+    } else {
+        0
+    }
 }
 
 /// Shared directives and assignment operands may shadow package register names;
@@ -68,11 +91,17 @@ pub fn execute(program: &[u8], source: &[u8]) -> LoopHeader {
         || source.len() < 4
         || source.len() > 256
         || usize::from(source[0]) + 1 != source.len()
-        || source[1] & !63 != 0
+        || source[1] & PREPARED_RECORD_RESERVED_FLAGS != 0
     {
         return Malformed;
     }
-    if source[1] & 24 != 0 || source.len() < 9 || source[4] != 7 || source[5] > 1 {
+    // Bit 6 is prepared mutable-snapshot metadata, not statement grammar.
+    if source[1] & 24 != 0 || source.len() < 9 {
+        return Ordinary;
+    }
+    let prefix = label_prefix(source);
+    let source = &source[prefix..];
+    if source.len() < 9 || source[4] != 7 || source[5] > 1 {
         return Ordinary;
     }
     let head = &source[6..8];
@@ -91,6 +120,9 @@ pub fn execute(program: &[u8], source: &[u8]) -> LoopHeader {
     } else {
         return Ordinary;
     };
+    if prefix != 0 && role != 4 && role != 5 {
+        return Ordinary;
+    }
     if source[8] != 0 {
         return Malformed;
     }
@@ -108,9 +140,13 @@ pub fn execute(program: &[u8], source: &[u8]) -> LoopHeader {
     }
     if role == 2 || role == 5 {
         return if role == 2 {
-            While { operand_offset: 9 }
+            While {
+                operand_offset: 9 + prefix,
+            }
         } else {
-            ScopedWhile { operand_offset: 9 }
+            ScopedWhile {
+                operand_offset: 9 + prefix,
+            }
         };
     }
     // Only two consecutive bare name tokens establish the iterable form.
@@ -123,24 +159,24 @@ pub fn execute(program: &[u8], source: &[u8]) -> LoopHeader {
         return if role == 4 {
             ScopedFor {
                 variable,
-                operand_offset: 17,
+                operand_offset: 17 + prefix,
             }
         } else {
             Matched {
                 variable,
-                operand_offset: 17,
+                operand_offset: 17 + prefix,
             }
         };
     }
     if role == 4 {
         ScopedFor {
             variable: None,
-            operand_offset: 9,
+            operand_offset: 9 + prefix,
         }
     } else {
         Matched {
             variable: None,
-            operand_offset: 9,
+            operand_offset: 9 + prefix,
         }
     }
 }
@@ -189,6 +225,25 @@ mod tests {
         assert!(!value_context(&instruction));
         instruction.extend([0, 0, 90, 0]);
         assert!(value_context(&instruction));
+    }
+    #[test]
+    fn contextual_binding_supports_bare_and_labeled_scoped_for() {
+        let plan = packed_loop_program(42, 43, 44, 45, 46, 47, 48);
+        let mut header = record(&[0, 0, 90, 0]);
+        header[7] = 47;
+        header[0] = 0;
+        assert!(context_keyword(&plan, &header, 43));
+        for colon in [false, true] {
+            let mut labeled = vec![0, 0, 0, 1, 0, 0, 91, 0];
+            if colon {
+                labeled.push(5);
+            }
+            labeled.extend_from_slice(&header[4..]);
+            assert!(context_keyword(&plan, &labeled, 43));
+            let head = if colon { 12 } else { 11 };
+            labeled[head] = 42;
+            assert!(!context_keyword(&plan, &labeled, 43));
+        }
     }
     #[test]
     fn numeric_iterable_identity_and_expression_boundary() {
@@ -270,6 +325,65 @@ mod tests {
                 operand_offset: 17
             }
         );
+    }
+    #[test]
+    fn labeled_scoped_roles_preserve_record_relative_operand_offsets() {
+        let plan = packed_loop_program(42, 43, 44, 45, 46, 47, 48);
+        for colon in [false, true] {
+            let prefix = if colon { 5 } else { 4 };
+            for (head, operand, role) in [
+                (
+                    47,
+                    vec![2, 0, 0, 0, 2],
+                    LoopHeader::ScopedFor {
+                        variable: None,
+                        operand_offset: 9 + prefix,
+                    },
+                ),
+                (
+                    47,
+                    vec![0, 0, 90, 0, 0, 0, 43, 0, 2],
+                    LoopHeader::ScopedFor {
+                        variable: Some(90),
+                        operand_offset: 17 + prefix,
+                    },
+                ),
+                (
+                    48,
+                    vec![2, 0, 0, 0, 2],
+                    LoopHeader::ScopedWhile {
+                        operand_offset: 9 + prefix,
+                    },
+                ),
+            ] {
+                let mut header = record(&operand);
+                header[7] = head;
+                let mut labeled = vec![0, 0, 0, 1, 0, 0, 91, 0];
+                if colon {
+                    labeled.push(5);
+                }
+                labeled.extend_from_slice(&header[4..]);
+                labeled[0] = (labeled.len() - 1) as u8;
+                assert_eq!(execute(&plan, &labeled), role);
+                // Complete bounds validation still uses the original record.
+                labeled[0] -= 1;
+                assert_eq!(execute(&plan, &labeled), LoopHeader::Malformed);
+            }
+        }
+    }
+    #[test]
+    fn prepared_snapshot_metadata_does_not_change_statement_classification() {
+        let plan = packed_loop_program(42, 43, 44, 45, 46, 47, 48);
+        let mut ordinary = record(&[2]);
+        ordinary[4] = 0;
+        ordinary[1] = PREPARED_MUTABLE_SNAPSHOT_FLAG;
+        assert_eq!(execute(&plan, &ordinary), LoopHeader::Ordinary);
+        ordinary[1] = PREPARED_RECORD_RESERVED_FLAGS;
+        assert_eq!(execute(&plan, &ordinary), LoopHeader::Malformed);
+        let mut writer = record(&[0, 0, 90, 0]);
+        writer[0] = 0;
+        writer[1] = PREPARED_MUTABLE_SNAPSHOT_FLAG;
+        assert!(!context_keyword(&plan, &writer, 43));
     }
     #[test]
     fn program_and_record_bounds_are_atomic() {

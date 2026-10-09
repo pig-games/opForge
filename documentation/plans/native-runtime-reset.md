@@ -11,7 +11,9 @@ timing or a 2 MiB qualification. Full BS35 peak allocation is not measured. Its 
 release bundle is `/tmp/opforge-selfhost-bs35-scoped-release-74m`, matching the
 current BS35 A6000 helper; only the m68020 package is embedded. The newer scoped
 conditional, retained-guard and iterable scoped-loop repairs have focused parity;
-their full self-host has not been rerun.
+their full self-host has not been rerun. The subsequent
+[scoped-condition checkpoint](#scoped-condition-repetition-focused-checkpoint)
+adds anonymous and labeled `.bwhile` with focused package/native comparisons.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -907,8 +909,96 @@ older cumulative performance claim. Reuse the scalar-control command above and
 select the frozen image through `OPFORGE_NAMED_SCOPED_IMAGE`.
 
 This is focused alias/binding coverage, not full loop/macro parity, a full corpus
-rerun, a new self-host result or A6000 timing. `.bwhile` and the other labeled-loop
-boundaries above remain open.
+rerun, a new self-host result or A6000 timing. The following checkpoint covers
+anonymous and labeled `.bwhile`; other remaining boundaries are recorded there.
+
+### Scoped condition repetition (focused checkpoint)
+
+Anonymous and labeled `.bwhile` use the existing shared PRVM envelope and EXVM
+condition evaluator. Each traversal enters a fresh local scope, retains its
+executed declaration cells, restores enclosing values before reevaluating the
+condition, and checks the same iteration trace during final emission. `$` retains
+Rust's previous ordinary statement-start semantics. Named loops publish a typed
+list of completed address/member records after the final false guard; a zero-trip
+loop publishes an empty list. Qualified updates to enclosing mutable symbols
+remain enclosing updates and are not collected as iteration members.
+
+Unknown iteration counts use forward-linked 8-byte rows and a separate 16-byte
+cursor per dynamic invocation. The original 16-byte fixed-count group and its
+capacity remain unchanged. Cursor storage uses trace offsets, so its reserved
+extent includes intervening fixed groups when dynamic groups follow them. Each
+executed dynamic iteration retains 16 bytes per directly owned declaration;
+a named loop additionally buffers one 16-byte record cell before publishing its
+list. Sixteen transient loop slots each gain a 12-byte buffer descriptor.
+All binary representation links are offsets; cleanup releases temporary buffers
+on successful and failed exits. These layout costs are not a product-memory
+qualification.
+
+The finalized shared loop classifier now accepts existing prepared mutable
+snapshot metadata, while raw writer contexts still reject it. Rust and native
+classifiers agree on bare and colon-labeled scoped headers and return original
+record-relative expression offsets. Package programs and per-VM contracts do not
+change version. Macro formal substitution matches preparation-owned lexical
+leaves when globally bound dot keys differ from header formal identities;
+unmatched postfix member keys preserve their numeric member identity through
+expansion. Matching formals still take priority, including Rust's existing member
+name/formal collision behavior. This does not add runtime string lookup or
+CPU-specific grammar.
+
+The final twelve-scenario matrix in `native_scoped_while.rs` matches all 59
+live Rust bytes on both 68020 and 6502 packages, including nested scoped loops,
+branch members, named macro binding boundaries, nested record access and
+colon-labeled headers. Fresh START-to-DONE observations are 4.049836666 and
+3.300858542 seconds. The preceding loop candidate also matches the 258-byte
+anonymous/named growth case and complete 96-byte Hunk files on both packages;
+Hunk code has two relocations at offsets 0 and 4. Selected empty-index,
+outer-mutable/member and formal/member-collision cases complete with expected
+nonzero exits. On the final image, the previous nine-scenario labeled `.bfor`
+matrix again matches all 61 live Rust bytes on both packages, and the existing
+macro matrix also matches its complete live oracle. Formal/member collisions
+and mismatched scoped-loop closing statements complete with expected nonzero
+exits on both packages. These are fresh focused proofs, not diagnostic-message
+parity or a complete loop/macro qualification.
+
+A separately instrumented final 68020 growth run matches the live Rust artifact.
+Owned allocation peaks at 665,600 bytes; allocated and freed totals both equal
+1,087,384 bytes, with zero owned bytes live after cleanup. This is the tracked
+allocator for this small case, excluding executable/linker reservations and OS
+memory; it is not the full self-host peak or a 2 MiB qualification. Instrumented
+runtime is not used in the release performance comparison.
+
+The unchanged 1,024-iteration scalar control isolates this slice. Same FS-UAE
+68020/10 MiB environment, dual-package release images, telemetry disabled,
+fresh exact live Rust comparisons. Each row is one observation:
+
+| State | Executable bytes | START-to-DONE seconds | Change from preceding row |
+|---|---:|---:|---:|
+| Baseline (`300ec9f5`) | 628,928 | 36.139653500 | — |
+| Scoped while and finalized-record repair | 630,184 | 36.266622041 | +0.126968541 (+0.351%) |
+| Final macro formal/member repair and header alignment | 630,340 | 36.226351375 | -0.040270666 (-0.111%) |
+
+Overall observation is +0.086697875 seconds (+0.240%) and +1,412 executable
+bytes (+0.225%). The loop/record work adds 1,256 bytes; subsequent macro/header
+repairs add 156. These tiny single-run timing changes do not establish a gain or
+regression, and do not measure overhead within a large dynamic-loop workload.
+Macro token-context state adds six bytes per invocation frame (384 bytes over
+its 64-frame native bound). Reproduce the scalar control with the command in
+the preceding checkpoint; select the frozen image using the test-only
+`OPFORGE_NAMED_SCOPED_IMAGE` variable. Scoped while checks use
+`OPFORGE_SCOPED_WHILE_IMAGE`, optional `OPFORGE_SCOPED_WHILE_CPUS` and
+`OPFORGE_SCOPED_WHILE_FILTER`, and `cargo test -p asm native_scoped_while_fs_uae
+-- --ignored --nocapture --test-threads=1` with the normal FS-UAE environment.
+
+All 534 VM tests and 22 scoped host checks pass, as do the macro Rust oracles,
+Rustfmt, library Clippy checks, workflow/architecture guards and deterministic
+native porting gate. `cargo clippy -p asm --tests -- -D warnings` still reports
+23 errors in pre-existing test/harness code: comparison against `300ec9f5`
+confirms all reported source areas are unchanged. This focused qualification
+does not claim a clean whole-project test-target Clippy result.
+
+Compound update operators such as `+=`, negative/wide/compound iterable elements,
+mapped scoped replay and general forward-layout convergence remain separate gaps.
+No full corpus, full self-host or A6000 run is implied by these focused checks.
 
 ### Compound-value checkpoints
 

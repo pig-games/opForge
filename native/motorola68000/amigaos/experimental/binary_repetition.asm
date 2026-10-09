@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_repetition
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_memory as memory
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_source as source
@@ -42,8 +43,9 @@ Label	.long ?  ; -1 for anonymous repetition
 Records	.long ?  ; typed list arena offset, published only after close
 StartPc	.long ?
 StartSection	.long ?
+RecordCells	.res memory.Block.Used+4  ; provisional unknown-count collection
 	.endstruct
-SLOT_BYTES = Slot.StartSection+4
+SLOT_BYTES = Slot.RecordCells+memory.Block.Used+4
 UNSUPPORTED_LAYOUT = 3
 FILTERED_ONE_MAP_MODE = 2
 FILTERED_TWO_MAP_MODE = 4
@@ -128,14 +130,14 @@ step	.block
 	beq.w closingWhile
 	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
 	beq.w ordinaryExtent
-	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
-	beq.w invalid
 	move.l d2, State.PendingOperand(a3)
 	move.l d0, State.PendingKind(a3)
 	move.l a5, State.PendingHeader(a3)
 	bsr.w openObservation
 	bne.w invalid
 	cmpi.l #abi.PRVM_LOOP_WHILE, State.PendingKind(a3)
+	beq.w whileOpening
+	cmpi.l #abi.PRVM_LOOP_BWHILE, State.PendingKind(a3)
 	beq.w whileOpening
 	move.l a4, d0
 	sub.l a5, d0
@@ -153,9 +155,15 @@ whileOpening
 	lea SLOTS(a3), a1
 	adda.w d7, a1
 	clr.l Slot.Iterable(a1)
+	move.l #frames.DYNAMIC_ITERATIONS, Slot.Remaining(a1)
 	move.l a4, Slot.Body(a1)
 	bsr.w initializeSlot
 	bne.w invalid
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a1)
+	bne.w whileReady
+	bsr.w openScope
+	bne.w invalid
+whileReady
 	addq.w #1, State.Depth(a3)
 	movea.l a4, a0
 	bra.w consumed
@@ -352,6 +360,11 @@ skipClose
 	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1, d1.w)
 	beq.w skipMatched
 skipKind
+	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	bne.w skipOrdinaryKind
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a1, d1.w)
+	beq.w skipMatched
+skipOrdinaryKind
 	cmp.l Slot.Kind(a1, d1.w), d0
 	bne.w invalid
 skipMatched
@@ -380,9 +393,17 @@ closing
 	bne.w closingKind
 	moveq #abi.PRVM_LOOP_BFOR, d0
 closingKind
+	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	bne.w closingOrdinaryKind
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a1, d7.w)
+	bne.w closingOrdinaryKind
+	moveq #abi.PRVM_LOOP_BWHILE, d0
+closingOrdinaryKind
 	cmp.l Slot.Kind(a1, d7.w), d0
 	bne.w invalid
 	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	beq.w whileClosing
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
 	beq.w whileClosing
 	movea.l a1, a5
 	adda.w d7, a5
@@ -415,6 +436,14 @@ repeatBody
 whileClosing
 	movea.l a1, a5
 	adda.w d7, a5
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a5)
+	bne.w whileGuard
+	bsr.w captureScope
+	bne.w invalid
+	; Guards see only enclosing cells, after capturing the completed iteration.
+	bsr.w restoreScope
+	bne.w invalid
+whileGuard
 	movea.l Slot.Header(a5), a0
 	bsr.w evaluateWhile
 	bne.w invalid
@@ -424,9 +453,17 @@ whileClosing
 	bhs.w invalid
 	addq.l #1, Slot.Index(a5)
 	addq.l #1, Slot.Iterations(a5)
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a5)
+	bne.w repeatBody
+	bsr.w enterScope
+	bne.w invalid
 	bra.w repeatBody
 finishWhile
 	bsr.w closeObservation
+	bne.w invalid
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a5)
+	bne.w popLoop
+	bsr.w closeScope
 	bne.w invalid
 	bra.w popLoop
 exhausted
@@ -476,6 +513,8 @@ ordinary
 	lea SLOTS(a3), a1
 	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1, d1.w)
 	beq.w ordinaryReady
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a1, d1.w)
+	beq.w ordinaryReady
 	cmpi.w #9, d0
 	blo.w ordinaryReady
 	cmpi.b #1, 4(a5)
@@ -504,7 +543,7 @@ done
 	rts
 	.bend  ; step
 	.pub
-; A0=loop state. D0/CCR=zero when an enclosing scoped for owns live cells.
+; A0=loop state. D0/CCR=zero when an enclosing scoped repetition owns live cells.
 ; Other registers preserved. Ordinary loops may reference enclosing scoped names.
 scoped	.block
 	movem.l d1/a1, -(sp)
@@ -515,6 +554,8 @@ scoped	.block
 next
 	subq.w #1, d1
 	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1)
+	beq.w found
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a1)
 	beq.w found
 	adda.w #SLOT_BYTES, a1
 	tst.w d1
@@ -543,7 +584,10 @@ activateBranch	.block
 	lea SLOTS(a3), a5
 	adda.w d2, a5
 	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
+	beq.w activate
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a5)
 	bne.w good
+activate
 	move.l a0, d1
 	sub.l State.SourceBase(a3), d1
 	move.l Slot.ScopeGroup(a5), d0
@@ -644,10 +688,21 @@ restore
 	lea SLOTS(a3), a5
 	adda.w d0, a5
 	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
+	beq.w restoreScoped
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a5)
 	bne.w restore
-	bsr.w closeScope
+restoreScoped
+	bsr.w restoreScope
 	bra.w restore
 restored
+	moveq #LIMIT-1, d3
+	lea SLOTS(a3), a5
+releaseCells
+	lea Slot.RecordCells(a5), a0
+	jsr memory.release
+	clr.l Slot.RecordCells+memory.Block.Used(a5)
+	adda.w #SLOT_BYTES, a5
+	dbra d3, releaseCells
 	movea.l a3, a0
 	clr.w State.Depth(a0)
 	move.l a0, -(sp)
@@ -706,6 +761,8 @@ line
 	beq.w unsupported
 	cmpi.l #abi.PRVM_LOOP_BFOR, d0
 	beq.w unsupported
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
+	beq.w unsupported
 	movea.l a4, a0
 	bra.w line
 unsupported
@@ -731,8 +788,21 @@ done
 ; regular statement's start PC, matching Rust; restore actual emission PC.
 ; D0/CCR=status,D1=truth,D2 scratch; other registers preserved.
 evaluateWhile	.block
-	movem.l a0-a1, -(sp)
+	movem.l d3/a0-a1, -(sp)
 	move.l a0, -(sp)
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l package.Context.Package(a2), a1
+	move.l package.Header.LoopPlanBytes(a1), d1
+	adda.l package.Header.LoopPlan(a1), a1
+	jsr parser.classify
+	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	beq.w classified
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
+	bne.w classifyFailed
+classified
+	move.l d2, d3
 	lea State.Guard(a3), a0
 	jsr guards.enter
 	movea.l (sp)+, a0
@@ -742,7 +812,7 @@ evaluateWhile	.block
 	addq.w #1, d0
 	movea.l a0, a1
 	adda.l d0, a1
-	lea abi.LoopRecord.VariableKind(a0), a0
+	adda.l d3, a0
 	move.l package.Context.Pc(a2), -(sp)
 	move.l State.ConditionPc(a3), package.Context.Pc(a2)
 	jsr expression.evaluate
@@ -765,10 +835,12 @@ restore
 	lea State.Guard(a3), a0
 	jsr guards.leave
 	bra.w finished
+classifyFailed
+	movea.l (sp)+, a0
 enterFailed
 	moveq #1, d0
 finished
-	movem.l (sp)+, a0-a1
+	movem.l (sp)+, d3/a0-a1
 	tst.l d0
 	rts
 	.bend  ; evaluateWhile
@@ -784,7 +856,11 @@ initializeSlot	.block
 	moveq #-1, d0
 	move.l d0, Slot.Label(a1)
 	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a1)
+	beq.w scopedSlot
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a1)
 	bne.w ready
+scopedSlot
+	clr.l Slot.RecordCells+memory.Block.Used(a1)
 	movem.l d1-d2/a0, -(sp)
 	movea.l Slot.Header(a1), a0
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, inventory.PackedRecord.NameKind(a0)
@@ -792,6 +868,8 @@ initializeSlot	.block
 	moveq #0, d1
 	move.w inventory.PackedRecord.NameId(a0), d1
 	move.l d1, Slot.Label(a1)
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a1)
+	beq.w anonymous
 	movea.l package.Context.Owner(a2), a0
 	move.l Slot.Remaining(a1), d0
 	jsr records.createList
@@ -870,7 +948,13 @@ captureScope	.block
 	movea.l package.Context.Owner(a2), a0
 	move.l Slot.Records(a5), d0
 	move.l Slot.Index(a5), d1
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a5)
+	beq.w dynamicRecord
 	jsr records.set
+	bra.w recordStored
+dynamicRecord
+	bsr.w appendRecordCell
+recordStored
 	adda.w #values.CELL_BYTES, sp
 done
 	movem.l (sp)+, d1-d5/a0-a1
@@ -881,22 +965,69 @@ done
 ; A5=scoped slot,A3=replay state. D0/CCR=status; other registers kept.
 closeScope	.block
 	move.l a0, -(sp)
-	move.l Slot.ScopeGroup(a5), d0
-	lea State.Scopes(a3), a0
-	jsr frames.close
+	bsr.w restoreScope
 	bne.w done
 	tst.l Slot.Label(a5)
 	bmi.w done
-	movem.l d1-d2, -(sp)
+	movem.l d1-d2/a1, -(sp)
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a5)
+	bne.w collectionReady
+	movea.l Slot.RecordCells+memory.Block.Pointer(a5), a1
+	move.l Slot.RecordCells+memory.Block.Used(a5), d1
+	move.l Slot.Iterations(a5), d0
+	movea.l package.Context.Owner(a2), a0
+	jsr records.appendList
+	bne.w collectionDone
+	move.l d2, Slot.Records(a5)
+collectionReady
 	move.l Slot.Label(a5), d1
 	move.l Slot.Records(a5), d2
 	bsr.w publishCollection
-	movem.l (sp)+, d1-d2
+collectionDone
+	movem.l (sp)+, d1-d2/a1
 done
 	movea.l (sp)+, a0
 	tst.l d0
 	rts
 	.bend  ; closeScope
+
+; A5=scoped slot,A3=state. Restore only enclosing cells; publication waits
+; until the final guard is false. D0/CCR=status; other registers preserved.
+restoreScope	.block
+	move.l a0, -(sp)
+	move.l Slot.ScopeGroup(a5), d0
+	lea State.Scopes(a3), a0
+	jsr frames.close
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; restoreScope
+
+; A5=dynamic slot,A1=external typed Cell. Append a provisional record cell.
+; D0/CCR=status; other registers preserved. No arena descriptor is published.
+appendRecordCell	.block
+	movem.l d1-d2/a0-a2, -(sp)
+	movea.l a1, a2
+	lea Slot.RecordCells(a5), a0
+	move.l memory.Block.Used(a0), d2
+	move.l d2, d0
+	addi.l #values.CELL_BYTES, d0
+	jsr memory.reserve
+	bne.w done
+	movea.l memory.Block.Pointer(a0), a1
+	adda.l d2, a1
+	move.l (a2)+, (a1)+
+	move.l (a2)+, (a1)+
+	move.l (a2)+, (a1)+
+	move.l (a2)+, (a1)+
+	addi.l #values.CELL_BYTES, d2
+	move.l d2, memory.Block.Used(a0)
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; appendRecordCell
 
 ; Publish completed collection D1=id,D2=descriptor. A2=context.
 ; D0/CCR=status; other registers preserved. No body cell escapes its owner.
@@ -929,12 +1060,15 @@ done
 	rts
 	.bend  ; publishCollection
 
-; A3=pending empty loop. Publish an empty typed list only for a labeled bfor.
+; A3=pending empty loop. Publish an empty typed list only for a labeled scoped loop.
 ; D0/CCR=status; all other registers preserved.
 emptyCollection	.block
 	movem.l d1-d3/a0, -(sp)
 	cmpi.l #abi.PRVM_LOOP_BFOR, State.PendingKind(a3)
+	beq.w scopedEmpty
+	cmpi.l #abi.PRVM_LOOP_BWHILE, State.PendingKind(a3)
 	bne.w ordinary
+scopedEmpty
 	movea.l State.PendingHeader(a3), a0
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, inventory.PackedRecord.NameKind(a0)
 	bhi.w ordinary

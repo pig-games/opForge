@@ -170,23 +170,13 @@ const BAD: &[(&str, &str)] = &[
     ),
 ];
 // These sources are accepted by Rust; native completion must explicitly reject
-// capabilities outside the anonymous counted and iterable checkpoint, not claim
-// Rust parity.
+// wide literal packing outside this checkpoint, not claim Rust parity.
+// Labeled/indexed repetition and bwhile have dedicated qualified test owners.
 const GAPS: &[(&str, &str, &[u8])] = &[
     (
         "wide-literal-input",
         ".bfor 2\nwide .var $100000003\n.byte wide&255,(wide>>16)>>16\nwide .set wide+1\n.byte wide&255,(wide>>16)>>16\n.endfor\n",
         &[3, 1, 4, 1, 3, 1, 4, 1],
-    ),
-    (
-        "labeled-indexed-scope",
-        "items .bfor 2\nentry .byte 1\n.endfor\n.byte items[1]\n",
-        &[1, 1, 1],
-    ),
-    (
-        "scoped-while",
-        ".org 0\n.bwhile $<1\nentry .byte 4\n.endwhile\n",
-        &[4, 4],
     ),
 ];
 fn source(cpu: &str, body: &str) -> String {

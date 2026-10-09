@@ -9,6 +9,7 @@ COUNTED = $ffff
 FOR = 0
 WHILE = 3
 SCOPED_FOR = 4
+SCOPED_WHILE = 5
 Slot	.struct
 Identity	.word ?
 Kind	.word ?
@@ -64,9 +65,15 @@ close	.block
 	lea State.Slots(a0), a1
 	cmp.w Slot.Kind(a1, d2.w), d1
 	beq.w matched
+	cmpi.w #WHILE, d1
+	beq.w closeScopedWhile
 	cmpi.w #FOR, d1
 	bne.w bad
 	cmpi.w #SCOPED_FOR, Slot.Kind(a1, d2.w)
+	bne.w bad
+	bra.w matched
+closeScopedWhile
+	cmpi.w #SCOPED_WHILE, Slot.Kind(a1, d2.w)
 	bne.w bad
 matched
 	subq.w #1, State.Depth(a0)
@@ -179,7 +186,7 @@ done
 	rts
 	.bend  ; fold
 	.pub
-; A0=preparation iterator state. D0/CCR=zero only for innermost scoped for.
+; A0=preparation iterator state. D0/CCR=zero only for innermost scoped repetition.
 ; Other registers preserved; declarations in ordinary loops remain forbidden.
 scoped	.block
 	movem.l d1/a1, -(sp)
@@ -190,7 +197,10 @@ scoped	.block
 	mulu.w #SLOT_BYTES, d1
 	lea State.Slots(a0), a1
 	cmpi.w #SCOPED_FOR, Slot.Kind(a1, d1.w)
+	beq.w found
+	cmpi.w #SCOPED_WHILE, Slot.Kind(a1, d1.w)
 	bne.w absent
+found
 	moveq #0, d0
 	bra.w done
 absent

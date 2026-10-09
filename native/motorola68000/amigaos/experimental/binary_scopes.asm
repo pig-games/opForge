@@ -1489,10 +1489,6 @@ directive
 	movea.l layout.State.Package(a6), a1
 	move.l a1, d1
 	beq.w ordinaryDirective
-	move.l pkg.Header.LoopPlan(a1), d1
-	adda.l d1, a1
-	cmp.w loop_abi.LoopProgram.BwhileHigh(a1), d0
-	beq.w bad  ; scoped while is not part of counted scoped replay
 loopPolicy
 	movea.l layout.State.Package(a6), a1
 	movem.l d0/a0, -(sp)
@@ -1512,7 +1508,7 @@ loopPolicy
 	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d3
 	beq.w scopedLoopHeader
 	cmpi.l #loop_abi.PRVM_LOOP_BWHILE, d3
-	beq.w bad
+	beq.w scopedLoopHeader
 	cmpi.l #loop_abi.PRVM_LOOP_ENDFOR, d3
 	beq.w closeFor
 	cmpi.l #loop_abi.PRVM_LOOP_ENDWHILE, d3
@@ -1595,7 +1591,10 @@ loopHeader
 	add.w d0, d0
 	move.w layout.State.Current(a6), layout.State.LoopParents(a6, d0.w)
 	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d3
+	beq.w scopedIdentity
+	cmpi.l #loop_abi.PRVM_LOOP_BWHILE, d3
 	bne.w loopIdentity
+scopedIdentity
 	bsr.w anonymousRepeat
 	bne.w failedLoopHeader
 	move.w layout.State.Current(a6), layout.State.PendingRepeat(a6)
@@ -1624,7 +1623,12 @@ countedLoop
 openLoop
 	move.l (sp)+, d1
 	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d1
+	beq.w openScopedFor
+	cmpi.l #loop_abi.PRVM_LOOP_BWHILE, d1
 	bne.w openKind
+	moveq #iterators.SCOPED_WHILE, d1
+	bra.w openKind
+openScopedFor
 	moveq #iterators.SCOPED_FOR, d1
 openKind
 	lea layout.ITERATOR_STATE(a6), a0

@@ -17,6 +17,20 @@ Cells	.long ?  ; first iteration cell offset
 Saved	.long ?  ; enclosing lexical values
 	.endstruct
 GROUP_BYTES = Group.Saved+4
+DYNAMIC_ITERATIONS = -1
+DYNAMIC_CELLS = -1
+Cursor	.struct
+First	.long ?  ; first forward-linked dynamic row, -1 when empty
+Current	.long ?  ; replay cursor row offset
+Index	.long ?  ; replay cursor iteration
+Reserved	.long ?
+	.endstruct
+CURSOR_BYTES = Cursor.Reserved+4
+Row	.struct
+Next	.long ?
+Cells	.long ?
+	.endstruct
+ROW_BYTES = Row.Cells+4
 State	.struct
 Inventory	.long ?
 Context	.long ?
@@ -24,6 +38,8 @@ Records	.long ?
 RecordBytes	.long ?
 Pass	.long ?
 Groups	.res memory.Block.Used+4
+Cursors	.res memory.Block.Used+4
+Rows	.res memory.Block.Used+4
 Cells	.res cells.STATE_BYTES
 Graph	.res graph.FRAME_BYTES
 	.endstruct
@@ -52,6 +68,8 @@ beginPass	.block
 capture
 	move.l d0, State.Pass(a0)
 	clr.l State.Groups+memory.Block.Used(a0)
+	clr.l State.Cursors+memory.Block.Used(a0)
+	clr.l State.Rows+memory.Block.Used(a0)
 	move.l a0, -(sp)
 	lea State.Cells(a0), a0
 	jsr cells.reset
@@ -62,15 +80,15 @@ bad
 	rts
 	.bend  ; beginPass
 
-; A0=state,D0=trace row offset,D1=header offset,D2=iteration count.
+; A0=state,D0=trace row offset,D1=header offset,D2=iteration count or DYNAMIC_ITERATIONS.
 ; D0/CCR=status,D3=group byte offset. Other registers preserved.
-; Group and trace row sizes coincide: direct lookup needs no linear search.
+; Groups map directly from trace offsets; dynamic counts retain forward-linked rows.
 open	.block
 	movem.l d1-d2/d4-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	move.l d0, d4
 	move.l d2, d7
-	andi.l #GROUP_BYTES-1, d0
+	andi.l #trace.RECORD_BYTES-1, d0
 	bne.w bad
 	cmpi.l #memory.LIMIT-GROUP_BYTES, d4
 	bhi.w bad
@@ -109,12 +127,23 @@ allocated
 	move.w d5, Group.Owner(a5)
 	move.w d6, Group.Declarations(a5)
 	move.l d7, Group.Iterations(a5)
+	clr.l Group.Cells(a5)
+	cmpi.l #DYNAMIC_ITERATIONS, d7
+	bne.w fixedAllocation
+	move.l #DYNAMIC_CELLS, Group.Cells(a5)
+	clr.l Group.Iterations(a5)
+	bsr.w createCursor
+	bne.w done
+	moveq #0, d7
+fixedAllocation
 	lea State.Cells(a6), a0
 	move.l d7, d1
 	move.l d6, d2
 	jsr cells.append
 	bne.w done
 	move.l d3, Group.Saved(a5)
+	tst.l Group.Cells(a5)
+	bmi.w save
 	move.l d6, d0
 	lsl.l #cells.CELL_SHIFT, d0
 	add.l d3, d0
@@ -131,9 +160,25 @@ compare
 	bne.w bad
 	cmp.w Group.Declarations(a5), d6
 	bne.w bad
+	cmpi.l #DYNAMIC_ITERATIONS, d7
+	beq.w compareDynamic
+	tst.l Group.Cells(a5)
+	bmi.w bad
 	cmp.l Group.Iterations(a5), d7
 	bne.w bad
+	bra.w save
+compareDynamic
+	tst.l Group.Cells(a5)
+	bpl.w bad
 save
+	tst.l Group.Cells(a5)
+	bpl.w saveCells
+	bsr.w locateCursor
+	bne.w done
+	moveq #-1, d0
+	move.l d0, Cursor.Current(a3)
+	move.l d0, Cursor.Index(a3)
+saveCells
 	move.l Group.Saved(a5), d0
 	moveq #0, d2
 	bsr.w transfer
@@ -154,6 +199,17 @@ done
 enter	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
+	move.l d0, d7
+	bsr.w locate
+	bne.w done
+	tst.l Group.Cells(a5)
+	bpl.w enterFixed
+	bsr.w locateCursor
+	bne.w done
+	bsr.w advance
+	bne.w done
+enterFixed
+	move.l d7, d0
 	bsr.w iteration
 	bne.w done
 	moveq #1, d2
@@ -232,6 +288,12 @@ release	.block
 	lea State.Groups(a0), a0
 	jsr memory.release
 	movea.l (sp), a0
+	lea State.Cursors(a0), a0
+	jsr memory.release
+	movea.l (sp), a0
+	lea State.Rows(a0), a0
+	jsr memory.release
+	movea.l (sp), a0
 	lea State.Cells(a0), a0
 	jsr cells.release
 	movea.l (sp)+, a0
@@ -267,6 +329,20 @@ iteration	.block
 	bne.w bad
 	cmp.l Group.Iterations(a5), d1
 	bhs.w bad
+	tst.l Group.Cells(a5)
+	bpl.w fixed
+	bsr.w locateCursor
+	bne.w bad
+	cmp.l Cursor.Index(a3), d1
+	bne.w bad
+	move.l Cursor.Current(a3), d3
+	bsr.w locateRow
+	bne.w bad
+	move.l Row.Cells(a4), d0
+	moveq #0, d3
+	tst.l d3
+	rts
+fixed
 	moveq #0, d3
 	move.w Group.Declarations(a5), d3
 	move.l d1, d4
@@ -281,6 +357,150 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; iteration
+
+; A6=state,A5=dynamic group,D1=next iteration. Append zeroed capture cells
+; in pass one; replay the retained forward link in pass two. D0/CCR=status.
+; A3=cursor sidecar. Clobbers D2-D4/A0/A4; duplicate entry is invalid.
+advance	.block
+	move.l Cursor.Index(a3), d3
+	addq.l #1, d3
+	cmp.l d3, d1
+	bne.w bad
+	cmpi.l #trace.MODE_CAPTURE, State.Pass(a6)
+	bne.w compare
+	cmp.l Group.Iterations(a5), d1
+	bne.w bad
+	moveq #0, d2
+	move.w Group.Declarations(a5), d2
+	move.l d1, -(sp)
+	moveq #0, d1
+	lea State.Cells(a6), a0
+	jsr cells.append
+	move.l (sp)+, d1
+	tst.l d0
+	bne.w done
+	move.l d3, d4
+	lea State.Rows(a6), a0
+	move.l memory.Block.Used(a0), d2
+	move.l d2, d0
+	addi.l #ROW_BYTES, d0
+	jsr memory.reserve
+	bne.w done
+	move.l d2, d0
+	addi.l #ROW_BYTES, d0
+	move.l d0, memory.Block.Used(a0)
+	movea.l memory.Block.Pointer(a0), a4
+	adda.l d2, a4
+	move.l #-1, Row.Next(a4)
+	move.l d4, Row.Cells(a4)
+	move.l Cursor.Current(a3), d3
+	bmi.w first
+	bsr.w locateRow
+	bne.w done
+	move.l d2, Row.Next(a4)
+	bra.w appended
+first
+	move.l d2, Cursor.First(a3)
+appended
+	addq.l #1, Group.Iterations(a5)
+	bra.w ready
+compare
+	cmp.l Group.Iterations(a5), d1
+	bhs.w bad
+	move.l Cursor.First(a3), d2
+	move.l Cursor.Current(a3), d3
+	bmi.w ready
+	bsr.w locateRow
+	bne.w done
+	move.l Row.Next(a4), d2
+ready
+	move.l d2, d3
+	bsr.w locateRow
+	bne.w done
+	move.l d2, Cursor.Current(a3)
+	move.l d1, Cursor.Index(a3)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	tst.l d0
+	rts
+	.bend  ; advance
+
+; A6=state,A5=group,D4=trace/group offset. Allocate a dynamic-only
+; cursor at the same offset; fixed groups retain their original capacity.
+; D0/CCR=status; clobbers D1-D3/A0/A3. Group storage cannot relocate here.
+createCursor	.block
+	lea State.Cursors(a6), a0
+	move.l memory.Block.Used(a0), d2
+	move.l d4, d0
+	addi.l #CURSOR_BYTES, d0
+	move.l d0, d1
+	jsr memory.reserve
+	bne.w done
+	movea.l memory.Block.Pointer(a0), a3
+	adda.l d2, a3
+	move.l d1, d3
+	sub.l d2, d3
+	bcs.w bad
+	move.l d1, memory.Block.Used(a0)
+clear
+	tst.l d3
+	beq.w allocated
+	clr.l (a3)+
+	subq.l #4, d3
+	bra.w clear
+allocated
+	movea.l memory.Block.Pointer(a0), a3
+	adda.l d4, a3
+	move.l #-1, Cursor.First(a3)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	tst.l d0
+	rts
+	.bend  ; createCursor
+
+; A6=state,A5=group. D0/CCR=status,A3=cursor; clobbers D3.
+; Both tables use trace offsets and 16-byte rows, preserving their full bound.
+locateCursor	.block
+	move.l a5, d3
+	sub.l State.Groups+memory.Block.Pointer(a6), d3
+	move.l d3, d0
+	addi.l #CURSOR_BYTES, d0
+	bcs.w bad
+	cmp.l State.Cursors+memory.Block.Used(a6), d0
+	bhi.w bad
+	movea.l State.Cursors+memory.Block.Pointer(a6), a3
+	adda.l d3, a3
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; locateCursor
+
+; A6=state,D3=row offset. D0/CCR=status,A4=row; other registers preserved.
+locateRow	.block
+	move.l d3, d0
+	andi.l #ROW_BYTES-1, d0
+	bne.w bad
+	move.l d3, d0
+	addi.l #ROW_BYTES, d0
+	bcs.w bad
+	cmp.l State.Rows+memory.Block.Used(a6), d0
+	bhi.w bad
+	movea.l State.Rows+memory.Block.Pointer(a6), a4
+	adda.l d3, a4
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; locateRow
 
 ; A6=state,A5=group,D0=cell offset,D2=direction. D0/CCR=status.
 ; D1/A0-A2 scratch; other registers preserved.

@@ -94,7 +94,10 @@ control
 	adda.l pkg.Header.LoopPlan(a1), a1
 	jsr parser.classify
 	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	beq.w whilePresent
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
 	bne.w next
+whilePresent
 	moveq #1, d6
 next
 	adda.l d5, a4

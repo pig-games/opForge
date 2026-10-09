@@ -1,5 +1,5 @@
 //! Bounded macro parity matrix. Every native positive consumes a live Rust oracle.
-//! Scoped .bfor/.bwhile composition remains future coverage, not a parity claim.
+//! Focused scoped-loop composition lives in native_scoped_while; broader gaps remain.
 use super::native_iterable_loops::{build_image, oracle, run_case, scratch};
 use super::*;
 

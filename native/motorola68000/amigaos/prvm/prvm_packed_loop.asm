@@ -9,8 +9,9 @@ MAX_RECORD_BYTES = 256
 NAME_TOKEN_BYTES = 4
 LABEL_TOKEN_BYTES = NAME_TOKEN_BYTES+1
 NON_STATEMENT_FLAGS = $18; omitted and layout-only records
-UNSUPPORTED_FLAGS = $c0; preparation-only and reserved flags
-CONTEXT_UNSUPPORTED_FLAGS = NON_STATEMENT_FLAGS+UNSUPPORTED_FLAGS
+COMPILED_UNSUPPORTED_FLAGS = $80; reserved in finalized numeric records
+WRITER_UNSUPPORTED_FLAGS = $c0; raw prefixes exclude preparation metadata
+CONTEXT_UNSUPPORTED_FLAGS = NON_STATEMENT_FLAGS+WRITER_UNSUPPORTED_FLAGS
 	.pub
 	.section code, kind=code
 ; Base pointers address LoopRecord.Length / LoopProgram.Opcode directly.
@@ -110,6 +111,13 @@ prefix	.block
 	cmpi.l #abi.LoopRecord.VariableKind, d2
 	blo.w absent
 	adda.w #NAME_TOKEN_BYTES, a0
+	cmpi.b #abi.PRVM_TOKEN_KIND_COLON, abi.LoopRecord.HeadDot(a0)
+	bne.w labelHead
+	subq.l #1, d2
+	cmpi.l #abi.LoopRecord.VariableKind, d2
+	blo.w absent
+	addq.l #1, a0
+labelHead
 	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, abi.LoopRecord.HeadDot(a0)
 	bne.w absent
 	; Only scoped repetition can publish a collection label.
@@ -148,7 +156,8 @@ done
 	.bend  ; prefix
 	.pub
 
-; A0=raw writer record,D0=extent,A1=program,D1=program bytes.
+; A0=complete numeric record,D0=extent,A1=program,D1=program bytes.
+; Prepared records may retain the mutable-snapshot metadata bit ($40).
 ; D0=PRVM_LOOP_* role/status,D1=variable identity (-1 counted/while),D2=operand
 ; offset in the original record, including a possible leading collection label.
 ; Preserves D3-D7/A0-A6; CCR reflects D0. No writes to inputs.
@@ -178,7 +187,7 @@ classify	.block
 	cmp.l d3, d0
 	bne.w malformed
 	move.b abi.LoopRecord.Flags(a0), d0
-	andi.b #UNSUPPORTED_FLAGS, d0
+	andi.b #COMPILED_UNSUPPORTED_FLAGS, d0
 	bne.w malformed
 	move.l #abi.OP_LOOP_HEADER, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
@@ -223,6 +232,8 @@ bareHead
 	tst.l d4
 	beq.w roleReady
 	cmpi.l #abi.PRVM_LOOP_BFOR, d0
+	beq.w roleReady
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
 	bne.w ordinary
 roleReady
 	cmpi.l #abi.PRVM_LOOP_MATCHED, d0
@@ -238,6 +249,7 @@ roleReady
 	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
 	bne.w ordinary
 whileHead
+	add.l d4, d2
 	tst.b abi.LoopRecord.HeadQualifier(a0)
 	bne.w malformed
 	cmpi.l #abi.LoopRecord.VariableKind, d3

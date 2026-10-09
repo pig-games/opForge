@@ -117,8 +117,6 @@ scan
 	jsr parser.classify
 	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
 	beq.w bad
-	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
-	beq.w bad
 	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
 	beq.w closing
 	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
@@ -127,7 +125,10 @@ scan
 	beq.w declaration
 	move.l d0, d5
 	cmpi.l #abi.PRVM_LOOP_BFOR, d5
+	beq.w collection
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d5
 	bne.w frameReady
+collection
 	bsr.w bindCollection
 	bne.w done
 frameReady
@@ -143,7 +144,10 @@ frameReady
 	move.w State.BranchBase(a6), Frame.BranchBase(a3)
 	addq.w #1, State.Depth(a6)
 	cmpi.l #abi.PRVM_LOOP_BFOR, d5
+	beq.w owner
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d5
 	bne.w next
+owner
 	bsr.w declarationMap
 	bne.w done
 	lea State.Owners(a6), a0
@@ -188,6 +192,8 @@ closing
 	bra.w closed
 closeWhile
 	cmpi.w #abi.PRVM_LOOP_WHILE, Frame.Kind(a3)
+	beq.w closed
+	cmpi.w #abi.PRVM_LOOP_BWHILE, Frame.Kind(a3)
 	bne.w bad
 closed
 	move.w Frame.Parent(a3), State.Current(a6)
@@ -223,7 +229,15 @@ bind
 	beq.w first
 	move.w State.Current(a6), d0
 	cmp.w Decl.Owner(a3), d0
+	beq.w sameOwner
+	; Qualified updates retain the enclosing mutable owner. They are not
+	; fresh declarations in the child iteration and cannot be restored by it.
+	cmpi.w #MUTABLE, d5
 	bne.w bad
+	cmp.w Decl.Kind(a3), d5
+	bne.w bad
+	bra.w next
+sameOwner
 	cmpi.w #MUTABLE, d5
 	beq.w repeatedMutable
 	cmpi.w #IMMUTABLE, d5
@@ -253,6 +267,18 @@ repeatedMutable
 	bne.w bad
 	bra.w next
 first
+	cmpi.w #MUTABLE, d5
+	bne.w claim
+	move.l State.MemberKeys(a6), d0
+	beq.w claim
+	movea.l d0, a0
+	move.l d6, d0
+	lsr.l #DECL_SHIFT-1, d0
+	; Fresh scoped declarations acquire a member key during lexical binding.
+	; An outer mutable update keeps the existing noncollectible identity.
+	cmpi.w #$ffff, 0(a0, d0.l)
+	beq.w next
+claim
 	move.w State.Current(a6), Decl.Owner(a3)
 	move.w d5, Decl.Kind(a3)
 	cmpi.w #IMMUTABLE, d5
@@ -348,7 +374,7 @@ done
 	rts
 	.bend  ; find
 	.priv
-; Register a nested labeled bfor as a direct collection in its enclosing owner.
+; Register a nested labeled scoped repetition as a direct collection in its enclosing owner.
 ; A4=header,A6=inventory. D0/CCR=status; other registers preserved.
 bindCollection	.block
 	movem.l d1-d2/a0-a1, -(sp)

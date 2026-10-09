@@ -23,6 +23,7 @@ TEXT_LIMIT = 192
 PARAM_LIMIT = 9
 DEPTH_LIMIT = 64
 TOKEN_COMMA = 4
+TOKEN_DOT = 7
 TOKEN_EQ = 34
 TOKEN_OPEN_BRACKET = 10
 TOKEN_CLOSE_BRACKET = 11
@@ -85,6 +86,9 @@ CallLabel	.long ?
 CallLabelPresent	.word ?
 CallPhase	.word ?
 CallName	.word ?  ; source ID records the invocation scope origin
+TokenKind	.word ?  ; current original body token, before substitution
+PreviousToken	.word ?  ; postfix member context belongs to captured source
+PostfixKey	.word ?  ; carry an already-recognized dot-key suffix
 Argument	.byte ?
 	.endstruct
 TEXT_PAREN = CallFrame.Argument+ARG_LIMIT
@@ -1322,6 +1326,8 @@ tokenBody
 	move.w d0, SIDE_BYTES(a6)
 	movea.l a0, a2
 bodyTextReady
+	move.w #-1, CallFrame.TokenKind(a6)
+	clr.w CallFrame.PostfixKey(a6)
 	lea 256(a5), a1
 	move.w (a3)+, (a5)+
 	move.w CallFrame.CallLine(a6), (a5)+
@@ -1363,6 +1369,12 @@ tokens
 	beq.w complete
 	moveq #0, d0
 	move.b (a3), d0
+	move.w CallFrame.TokenKind(a6), CallFrame.PreviousToken(a6)
+	move.w d0, CallFrame.TokenKind(a6)
+	cmpi.b #TOKEN_DOT, d0
+	beq.w tokenContextReady
+	clr.w CallFrame.PostfixKey(a6)
+tokenContextReady
 	moveq #1, d4
 	cmpi.b #1, d0
 	bls.w name
@@ -1374,8 +1386,19 @@ tokens
 	beq.w compositeToken
 	cmpi.b #TOKEN_AT, d0
 	beq.w atParameter
-	cmpi.b #7, d0
+	cmpi.b #TOKEN_DOT, d0
 	bne.w copyToken
+	; Retain original postfix context even when this key is a formal that
+	; substitutes before a later, nonformal key in the same member chain.
+	cmpi.w #TOKEN_CLOSE_PAREN, CallFrame.PreviousToken(a6)
+	beq.w postfixContext
+	cmpi.w #TOKEN_CLOSE_BRACKET, CallFrame.PreviousToken(a6)
+	beq.w postfixContext
+	cmpi.w #TOKEN_CLOSE_BRACE, CallFrame.PreviousToken(a6)
+	bne.w dotContextReady
+postfixContext
+	move.w #1, CallFrame.PostfixKey(a6)
+dotContextReady
 	lea 2(a3), a0
 	cmpa.l a2, a0
 	bhi.w bad
@@ -1399,7 +1422,11 @@ findParameter
 	bhs.w copyToken
 	move.w d7, d6
 	add.w d6, d6
-	cmp.w Def.Parameter(a4, d6.w), d0
+	movem.l d1/a0, -(sp)
+	move.w Def.Parameter(a4, d6.w), d1
+	movea.l 8(sp), a0  ; scope saved by next
+	bsr.w parameterEqual
+	movem.l (sp)+, d1/a0
 	beq.w substituteParameter
 	addq.w #1, d7
 	bra.w findParameter
@@ -1435,7 +1462,11 @@ findBracedParameter
 	bhs.w copyToken
 	move.w d7, d6
 	add.w d6, d6
-	cmp.w Def.Parameter(a4, d6.w), d0
+	movem.l d1/a0, -(sp)
+	move.w Def.Parameter(a4, d6.w), d1
+	movea.l 8(sp), a0  ; scope saved by next
+	bsr.w parameterEqual
+	movem.l (sp)+, d1/a0
 	beq.w substituteParameter
 	addq.w #1, d7
 	bra.w findBracedParameter
@@ -1643,6 +1674,10 @@ rebindName
 	move.b 3(a3), d1
 	bra.w bindBodyName
 rebindDot
+	; Shared writer bindings already gave postfix keys their global identity.
+	; Formal substitution above has priority, matching Rust's macro rules.
+	tst.w CallFrame.PostfixKey(a6)
+	bne.w copyBytes
 	moveq #0, d0
 	move.w 2(a3), d0
 	moveq #0, d1
@@ -1830,6 +1865,19 @@ done
 	.bend  ; next
 
 	.priv
+; A0=scope,D0=unqualified body name,D1=header formal. CCR=equal/missing;
+; all registers preserved. Field keys may bind globally while header formals
+; bind lexically; template substitution owns their preparation-time leaf match.
+parameterEqual	.block
+	cmp.w d1, d0
+	beq.w done
+	move.l d0, -(sp)
+	jsr scopes.templateLeafEqual
+	movem.l (sp)+, d0
+done
+	rts
+	.bend  ; parameterEqual
+
 ; A0=session,A4=definition,A6=invocation,D1=captured handle.
 ; D0/CCR=status; preserves other registers. Scratch frame lives on the stack.
 copyCapturedCall	.block

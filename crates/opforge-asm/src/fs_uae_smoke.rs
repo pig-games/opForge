@@ -7961,6 +7961,9 @@ mod native_expression_records;
 #[path = "tests/native_named_scoped_loops.rs"]
 mod native_named_scoped_loops;
 #[cfg(test)]
+#[path = "tests/native_scoped_while.rs"]
+mod native_scoped_while;
+#[cfg(test)]
 #[path = "tests/native_while_layouts.rs"]
 mod native_while_layouts;
 #[cfg(test)]

@@ -838,6 +838,8 @@ parametersSaved
 	lea ValueOwner, a1
 	jsr frontend.exportBindings
 	bne.w completionBad
+	jsr frontend.exportSeeds
+	bne.w completionBad
 	; Export field identities before discarding the lexical binding arena.
 	move.l NameCount, d0
 	add.l d0, d0

@@ -8,6 +8,7 @@
 	.use exprvm.amigaos.runtime as runtime
 	.use exprvm.amigaos.assignment as assignment
 	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_struct_values as structs
 	.use experimental.amigaos.binary_source as source
 	.pub
 DEFINED = 3
@@ -131,6 +132,16 @@ evaluate
 resolved
 	cmpa.l a1, a0
 	bne.w bad
+	cmpi.l #values.STRUCT_LITERAL, package.Context.Kind(a2)
+	bne.w captureReady
+	movem.l d1-d2/a0, -(sp)
+	move.l d1, d0
+	movea.l package.Context.Owner(a2), a0
+	jsr structs.assemblerLiteral
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	bne.w bad
+captureReady
 	; ExprVM validates descriptors: flat lists/ranges are absolute, while
 	; typed compounds retain address proof in their immutable cells.
 	movem.l d1-d2/a0, -(sp)

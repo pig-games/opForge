@@ -13,6 +13,7 @@
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_struct_values as structs
 	.use exprvm.amigaos.runtime as runtime
 	.use exprvm.amigaos.assignment as assignment
 	.pub
@@ -178,6 +179,8 @@ captureValue	.block
 	blo.w constantOk
 	cmpi.b #1, 4(a0)
 	bhi.w constantOk
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 8(a0)
+	beq.w typeValue
 	cmpi.b #34, 8(a0)
 	beq.w scalarValue
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
@@ -244,6 +247,22 @@ updateValue
 	bne.w constantUnknown
 	moveq #0, d3
 	bra.w storeValue
+typeValue
+	moveq #0, d7
+	move.w 5(a0), d7
+	cmpi.l #13, d0
+	bne.w constantUnknown
+	move.l 9(a0), d1
+	movea.l a6, a0
+	adda.l #layout.IMPORT_STATE+KNOWN_OWNER, a0
+	jsr structs.materialize
+	tst.l d0
+	bne.w constantUnknown
+	move.l d2, d1
+	moveq #0, d2
+	moveq #values.STRUCT_TYPE, d3
+	bra.w storeValue
+
 scalarValue
 	movea.l a0, a1
 	adda.l d0, a1
@@ -1862,7 +1881,8 @@ seedParameter	.block
 	move.l d2, d1
 	move.l d4, d3
 	move.l d6, d0
-	lea layout.IMPORT_STATE+KNOWN_OWNER(a6), a0
+	movea.l a6, a0
+	adda.l #layout.IMPORT_STATE+KNOWN_OWNER, a0
 	jsr values.copyRecord
 	move.l (sp)+, d3
 	tst.l d0
@@ -2053,7 +2073,8 @@ leafReady
 	.pub
 evaluateRange	.block
 	move.l d3, -(sp)
-	bsr.w evaluateValue
+	moveq #1, d0  ; scalar consumers use the shared scalar adapter
+	bsr.w evaluateValueMode
 	bne.w done
 	tst.l d3
 	beq.w done
@@ -2064,9 +2085,17 @@ done
 	rts
 	.bend  ; evaluateRange
 
-; Same validated token binding, with D3=SCALAR/LIST/RANGE and owned offsets.
+; Same validated token binding, preserving compound values and owned offsets.
 evaluateValue	.block
+	moveq #0, d0
+	bra.w evaluateValueMode
+	.bend  ; evaluateValue
+	.priv
+
+; D0=nonzero for a scalar consumer; binding and frame setup remain shared.
+evaluateValueMode	.block
 	movem.l d4-d7/a0-a6, -(sp)
+	move.l d0, d6
 	subq.l #4, sp
 	clr.l (sp)
 	move.l a1, d0
@@ -2103,6 +2132,8 @@ validateExpressionToken
 	sub.l a5, d0
 	cmpi.l #4, d0
 	blo.w rangeBad
+	cmpi.b #source.FIELD_KEY_QUALIFIER, 3(a5)
+	beq.w nextExpressionToken
 	cmpi.b #1, 3(a5)
 	bhi.w rangeBad
 	moveq #0, d0
@@ -2280,7 +2311,13 @@ expressionCompiled
 	clr.l expression.Frame.Provenance(a2)
 	movea.l a5, a0
 	movea.l a3, a1
+	tst.l d6
+	beq.w evaluateCompound
+	jsr expression.evaluate
+	bra.w expressionEvaluated
+evaluateCompound
 	jsr expression.evaluateValue
+expressionEvaluated
 	tst.l d0
 	bne.w evaluatedBad
 	tst.l d2
@@ -2289,6 +2326,17 @@ expressionCompiled
 	bne.w evaluatedBad
 	move.l expression.Frame.High(a2), d2
 	move.l expression.Frame.Kind(a2), d3
+	cmpi.l #values.STRUCT_LITERAL, d3
+	bne.w capturedValue
+	movem.l d1-d3/a0, -(sp)
+	move.l d1, d0
+	movea.l a6, a0
+	adda.l #layout.IMPORT_STATE+KNOWN_OWNER, a0
+	jsr structs.assemblerLiteral
+	movem.l (sp)+, d1-d3/a0
+	tst.l d0
+	bne.w evaluatedBad
+capturedValue
 	adda.w #expression.FRAME_BYTES, sp
 	moveq #0, d0
 	bra.w rangeDone
@@ -2303,7 +2351,7 @@ rangeDone
 	movem.l (sp)+, d4-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; evaluateValue
+	.bend  ; evaluateValueMode
 	.priv
 
 ; A0=token,A4=end. Advance one packed source token without inspecting its

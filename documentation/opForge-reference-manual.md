@@ -640,6 +640,14 @@ Struct literal validation rules:
 - fields must be declared on the struct type;
 - all fields must appear exactly once (no missing or duplicate fields).
 
+Field names are case-insensitive; their order in a literal is unrestricted.
+Instances retain their values when copied to another symbol. Instances are not
+implicit numbers and do not support `.len`. Scalar directives can use an original
+struct name as its byte size (for example, `.byte Point`). Assignments preserve
+the type; typed aliases and compound expressions do not implicitly convert it
+to a number. Derive numeric extents from field offsets when size arithmetic is
+needed.
+
 Member resolution keeps a unified namespace:
 - exact dotted symbols are resolved first;
 - typed member access fallback is applied only when no exact dotted symbol exists.

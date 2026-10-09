@@ -11,13 +11,16 @@ Kinds	.res memory.Block.Used+4
 Count	.long ?
 Work	.res memory.Block.Used+4
 Bindings	.res memory.Block.Used+4  ; optional immutable numeric fallback plans
+Seeds	.res memory.Block.Used+4  ; immutable struct schemas retained across replay
 .endstruct
-OWNER_BYTES = Owner.Bindings+memory.Block.Used+4
+OWNER_BYTES = Owner.Seeds+memory.Block.Used+4
 SCALAR = 0
 LIST = 1
 RANGE = 2
 TYPED_LIST = 3
 ADDRESS_RECORD = 4
+STRUCT_TYPE = 5
+STRUCT_LITERAL = 6
 OK = 0
 MALFORMED = 1
 STORAGE = 2
@@ -36,6 +39,19 @@ Field	.struct
 Member	.long ?
 Value	.res 16
 .endstruct
+StructRecord	.struct
+Kind	.long ?
+Count	.long ?
+Nominal	.long ?
+Size	.long ?  ; zero for a literal
+.endstruct
+StructField	.struct
+Member	.long ?
+Offset	.long ?
+Size	.long ?
+.endstruct
+STRUCT_BASE_BYTES = StructRecord.Size+4
+STRUCT_FIELD_BYTES = StructField.Size+4
 CELL_BYTES = 16
 FIELD_BYTES = 20
 RECORD_BASE_BYTES = 24
@@ -181,11 +197,15 @@ release	.block
 	movea.l (sp), a0
 	lea Owner.Bindings(a0), a0
 	jsr memory.release
+	movea.l (sp), a0
+	lea Owner.Seeds(a0), a0
+	jsr memory.release
 	movea.l (sp)+, a0
 	clr.l Owner.Arena+memory.Block.Used(a0)
 	clr.l Owner.Kinds+memory.Block.Used(a0)
 	clr.l Owner.Work+memory.Block.Used(a0)
 	clr.l Owner.Bindings+memory.Block.Used(a0)
+	clr.l Owner.Seeds+memory.Block.Used(a0)
 	clr.l Owner.Count(a0)
 	moveq #OK, d0
 	rts
@@ -318,7 +338,7 @@ copyRecord	.block
 	beq.w invalid
 	cmpi.l #LIST, d7
 	beq.w kindReady
-	cmpi.l #ADDRESS_RECORD, d7
+	cmpi.l #STRUCT_LITERAL, d7
 	bhi.w invalid
 kindReady
 	move.l d0, d4
@@ -376,10 +396,22 @@ typedRecord
 	bne.w done
 	cmp.l d4, d2
 	bhi.w invalid
+	cmpi.l #STRUCT_TYPE, d7
+	blo.w typedShapeReady
+	bsr.w validateStruct
+	bne.w done
+typedShapeReady
 	move.l d2, d6
 	movea.l a1, a2
 	move.l Record.Count(a1), d4
+	cmpi.l #STRUCT_TYPE, d7
+	beq.w typedAllocate
 	lea HEADER_BYTES(a1), a3
+	cmpi.l #STRUCT_LITERAL, d7
+	bne.w addressDefault
+	lea STRUCT_BASE_BYTES(a1), a3
+	bra.w typedCells
+addressDefault
 	cmpi.l #ADDRESS_RECORD, d7
 	bne.w typedCells
 	tst.l Cell.Kind(a3)
@@ -393,8 +425,8 @@ defaultReady
 typedCells
 	tst.l d4
 	beq.w typedAllocate
-	cmpi.l #ADDRESS_RECORD, d7
-	bne.w importCell
+	cmpi.l #TYPED_LIST, d7
+	beq.w importCell
 	addq.l #4, a3
 importCell
 	tst.l Cell.Kind(a3)
@@ -463,6 +495,8 @@ compoundLength	.block
 	beq.w rangeValue
 	cmpi.l #ADDRESS_RECORD, Record.Kind(a1)
 	beq.w invalid
+	cmpi.l #STRUCT_TYPE, Record.Kind(a1)
+	bhs.w invalid
 	move.l Record.Count(a1), d1
 	moveq #0, d2
 	bra.w done
@@ -564,6 +598,10 @@ equalRecord	.block
 	move.l Record.Count(a1), d4
 	cmp.l Record.Count(a2), d4
 	bne.w bad
+	cmpi.l #STRUCT_TYPE, d5
+	beq.w structType
+	cmpi.l #STRUCT_LITERAL, d5
+	beq.w structLiteral
 	lea HEADER_BYTES(a1), a1
 	lea HEADER_BYTES(a2), a2
 	cmpi.l #TYPED_LIST, d5
@@ -573,6 +611,44 @@ equalRecord	.block
 	; Legacy lists still compare their scalar64 pairs in stored order.
 	add.l d4, d4
 	bra.w words
+structType
+	lea StructRecord.Nominal(a1), a1
+	lea StructRecord.Nominal(a2), a2
+	mulu.l #STRUCT_FIELD_BYTES/4, d4
+	addq.l #2, d4
+	bra.w words
+structLiteral
+	move.l StructRecord.Nominal(a1), d3
+	cmp.l StructRecord.Nominal(a2), d3
+	bne.w bad
+	lea STRUCT_BASE_BYTES(a1), a1
+	lea STRUCT_BASE_BYTES(a2), a2
+	movea.l a2, a3
+structFields
+	tst.l d4
+	beq.w good
+	movea.l a3, a2
+	move.l Field.Member(a1), d3
+	move.l Record.Count-STRUCT_BASE_BYTES(a3), d5
+findStructField
+	tst.l d5
+	beq.w bad
+	tst.l d7
+	beq.w bad
+	subq.l #1, d7
+	cmp.l Field.Member(a2), d3
+	beq.w structFieldFound
+	adda.l #FIELD_BYTES, a2
+	subq.l #1, d5
+	bra.w findStructField
+structFieldFound
+	lea Field.Value(a1), a1
+	lea Field.Value(a2), a2
+	bsr.w equalCell
+	bne.w done
+	adda.l #CELL_BYTES, a1
+	subq.l #1, d4
+	bra.w structFields
 rangeValue
 	lea HEADER_BYTES(a1), a1
 	lea HEADER_BYTES(a2), a2
@@ -637,7 +713,7 @@ equalCell	.block
 	move.l Cell.Kind(a1), d3
 	cmp.l Cell.Kind(a2), d3
 	bne.w bad
-	cmpi.l #ADDRESS_RECORD, d3
+	cmpi.l #STRUCT_LITERAL, d3
 	bhi.w bad
 	move.l Cell.Provenance(a1), d0
 	cmp.l Cell.Provenance(a2), d0
@@ -699,7 +775,7 @@ setKind	.block
 	movem.l d1-d3/a0-a2, -(sp)
 	cmp.l Owner.Count(a0), d1
 	bhs.w outOfBounds
-	cmpi.l #ADDRESS_RECORD, d2
+	cmpi.l #STRUCT_LITERAL, d2
 	bhi.w invalid
 	movea.l a0, a2
 	lea Owner.Kinds(a0), a1
@@ -748,7 +824,7 @@ getKind	.block
 	beq.w good
 	movea.l memory.Block.Pointer(a1), a1
 	move.b 0(a1, d1.l), d2
-	cmpi.l #ADDRESS_RECORD, d2
+	cmpi.l #STRUCT_LITERAL, d2
 	bhi.w invalid
 good
 	moveq #OK, d0
@@ -837,6 +913,10 @@ view	.block
 	beq.w typedRecord
 	cmpi.l #ADDRESS_RECORD, Record.Kind(a1)
 	beq.w typedRecord
+	cmpi.l #STRUCT_TYPE, Record.Kind(a1)
+	beq.w typedRecord
+	cmpi.l #STRUCT_LITERAL, Record.Kind(a1)
+	beq.w typedRecord
 	cmpi.l #LIST, Record.Kind(a1)
 	bne.w bad
 	move.l Record.Count(a1), d3
@@ -860,6 +940,11 @@ typedRecord
 	bcs.w bad
 	cmp.l Owner.Arena+memory.Block.Used(a0), d3
 	bhi.w bad
+	cmpi.l #STRUCT_TYPE, Record.Kind(a1)
+	blo.w typedReady
+	bsr.w validateStruct
+	bra.w done
+typedReady
 	moveq #OK, d0
 	bra.w done
 rangeRecord
@@ -882,18 +967,46 @@ done
 descriptorBytes	.block
 	move.l d3, -(sp)
 	move.l Record.Count(a1), d2
+	cmpi.l #LIST, Record.Kind(a1)
+	beq.w scalarListSize
+	cmpi.l #RANGE, Record.Kind(a1)
+	beq.w rangeSize
 	cmpi.l #TYPED_LIST, Record.Kind(a1)
 	beq.w listSize
 	cmpi.l #ADDRESS_RECORD, Record.Kind(a1)
+	beq.w recordSize
+	cmpi.l #STRUCT_TYPE, Record.Kind(a1)
+	beq.w typeSize
+	cmpi.l #STRUCT_LITERAL, Record.Kind(a1)
 	bne.w bad
+	cmpi.l #(memory.LIMIT-STRUCT_BASE_BYTES)/FIELD_BYTES, d2
+	bhi.w bad
+	mulu.w #FIELD_BYTES, d2
+	addi.l #STRUCT_BASE_BYTES, d2
+	bra.w aligned
+typeSize
+	cmpi.l #(memory.LIMIT-STRUCT_BASE_BYTES)/STRUCT_FIELD_BYTES, d2
+	bhi.w bad
+	mulu.l #STRUCT_FIELD_BYTES, d2
+	addi.l #STRUCT_BASE_BYTES, d2
+	bra.w aligned
+recordSize
 	cmpi.l #(memory.LIMIT-RECORD_BASE_BYTES)/FIELD_BYTES, d2
 	bhi.w bad
-	move.l d2, d3
-	lsl.l #4, d2
-	lsl.l #2, d3
-	add.l d3, d2
-	addi.l #RECORD_BASE_BYTES+7, d2
+	mulu.w #FIELD_BYTES, d2
+	addi.l #RECORD_BASE_BYTES, d2
+aligned
+	addq.l #7, d2
 	andi.l #$fffffff8, d2
+	bra.w good
+scalarListSize
+	cmpi.l #MAX_ELEMENTS, d2
+	bhi.w bad
+	lsl.l #3, d2
+	addi.l #HEADER_BYTES, d2
+	bra.w good
+rangeSize
+	moveq #ranges.BYTES, d2
 	bra.w good
 listSize
 	cmpi.l #(memory.LIMIT-HEADER_BYTES)/CELL_BYTES, d2
@@ -910,6 +1023,73 @@ done
 	tst.l d0
 	rts
 	.bend  ; descriptorBytes
+
+	.priv
+; A1=complete bounded type/literal. Validate nominal keys, geometry and cells.
+; D0/CCR=status; other registers preserved. No allocation or child recursion.
+validateStruct	.block
+	movem.l d1-d7/a1-a3, -(sp)
+	cmpi.l #65535, StructRecord.Nominal(a1)
+	bhi.w bad
+	move.l Record.Kind(a1), d7
+	move.l Record.Count(a1), d6
+	move.l StructRecord.Size(a1), d5
+	moveq #STRUCT_FIELD_BYTES, d4
+	cmpi.l #STRUCT_TYPE, d7
+	beq.w fields
+	cmpi.l #STRUCT_LITERAL, d7
+	bne.w bad
+	tst.l d5
+	bne.w bad
+	moveq #FIELD_BYTES, d4
+fields
+	lea STRUCT_BASE_BYTES(a1), a1
+	movea.l a1, a3
+field
+	tst.l d6
+	beq.w good
+	move.l (a1), d3
+	cmpi.l #65535, d3
+	bhi.w bad
+	movea.l a3, a2
+unique
+	cmpa.l a1, a2
+	beq.w value
+	cmp.l (a2), d3
+	beq.w bad
+	adda.l d4, a2
+	bra.w unique
+value
+	cmpi.l #STRUCT_TYPE, d7
+	bne.w scalar
+	move.l StructField.Offset(a1), d3
+	add.l StructField.Size(a1), d3
+	bcs.w bad
+	cmp.l d5, d3
+	bhi.w bad
+	bra.w next
+scalar
+	tst.l Field.Value+Cell.Kind(a1)
+	bne.w bad
+	move.l Field.Value+Cell.Provenance(a1), d3
+	cmpi.l #-1, d3
+	beq.w next
+	cmpi.l #MAX_SECTION_ID, d3
+	bhi.w bad
+next
+	adda.l d4, a1
+	subq.l #1, d6
+	bra.w field
+good
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #MALFORMED, d0
+done
+	movem.l (sp)+, d1-d7/a1-a3
+	tst.l d0
+	rts
+	.bend  ; validateStruct
 
 	.endsection
 	.endmodule

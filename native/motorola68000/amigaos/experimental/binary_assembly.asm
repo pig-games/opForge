@@ -768,6 +768,8 @@ statement	.block
 	blo.w dispatch
 	cmpi.b #1, (a0)
 	bhi.w dispatch
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a0)
+	beq.w structDeclaration
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 4(a0)
 	beq.w constant
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
@@ -879,6 +881,11 @@ compoundUpdate
 	bra.w done
 mutableDeclaration
 	jsr mutable.execute
+	bra.w done
+structDeclaration
+	moveq #0, d0
+	move.b -3(a0), d0
+	jsr constants.execute
 	bra.w done
 constant
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #15

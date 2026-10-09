@@ -210,6 +210,8 @@ declaration
 	cmpi.b #abi.PRVM_TOKEN_KIND_COLON, PackedRecord.Marker(a4)
 	beq.w bind
 	moveq #IMMUTABLE, d5
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, PackedRecord.Marker(a4)
+	beq.w bind
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, PackedRecord.Marker(a4)
 	beq.w bind
 	moveq #MUTABLE, d5

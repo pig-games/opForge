@@ -4,6 +4,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_record_values as records
+	.use experimental.amigaos.binary_struct_values as structs
 	.use experimental.amigaos.binary_numeric_bindings as bindings
 	.use experimental.amigaos.binary_memory as memory
 	.use exprvm.amigaos.runtime as runtime
@@ -47,15 +48,17 @@ Count	.long ?
 Provenance	.long ?
 Mode	.long ?
 ArenaStart	.long ?
+TypeOffset	.long ?
+Nominal	.long ?
 .endstruct
-STACK = State.ArenaStart+4
+STACK = State.Nominal+4
 PACKED = STACK+MAX_DEPTH*CELL_BYTES
-TEMP = PACKED+MAX_DEPTH*values.ELEMENT_BYTES
+TEMP = PACKED+MAX_DEPTH*values.FIELD_BYTES
 WORK_BYTES = TEMP+22
 	.section code, kind=code
 
 ; A0/D0=canonical program/bytes,A2=Frame (40 bytes). D0/CCR=status;
-; D1=low,D2=unresolved,D3=kind (values.SCALAR through ADDRESS_RECORD),
+; D1=low,D2=unresolved,D3=kind (values.SCALAR through STRUCT_LITERAL),
 ; D4=symbol presence. Frame.Provenance receives section identity or -1 unsafe.
 ; Frame.High receives scalar high (zero for compounds). A0=after End on success.
 ; Preserves D5-D7/A1-A6. Scratch lives in Owner.Work, reserved once at entry;
@@ -72,8 +75,9 @@ evaluateCompact	.block
 	bra.w evaluateMode
 	.bend  ; evaluateCompact
 
-; Same ABI as evaluate. Enforces assembler list scalar projections when built,
-; including temporary lists. Raw shared evaluation retains unrestricted shapes.
+; Same ABI as evaluate. Enforces assembler list scalar projections when built
+; and absolute fields on a captured final struct instance. Raw evaluation
+; retains unrestricted list shapes and projected scalar provenance.
 evaluateAssembler	.block
 	moveq #1<<MODE_ASSEMBLER_BIT, d4
 	bra.w evaluateMode
@@ -134,6 +138,8 @@ next
 	beq.w list
 	cmpi.b #runtime.EXPRVM_OPCODE_BUILD_RANGE, d1
 	beq.w range
+	cmpi.b #runtime.EXPRVM_OPCODE_BUILD_STRUCT, d1
+	beq.w structLiteral
 	cmpi.b #runtime.EXPRVM_OPCODE_GET_MEMBER, d1
 	beq.w member
 	cmpi.b #runtime.EXPRVM_OPCODE_INDEX_VALUE, d1
@@ -262,7 +268,7 @@ kind
 	jsr values.getKind
 	tst.l d0
 	bne.w malformed
-	cmpi.l #records.ADDRESS_RECORD, d2
+	cmpi.l #structs.LITERAL, d2
 	bhi.w malformed
 	move.l d2, Cell.Kind(a1)
 	tst.l d2
@@ -357,6 +363,17 @@ binary
 arithmetic
 	bsr.w byte
 	bne.w malformed
+	btst #MODE_COMPACT_BIT, State.Mode+3(a3)
+	bne.w arithmeticKnown
+	cmpi.l #2, d6
+	bne.w arithmeticKnown
+	; Canonical typed operands have Rust's dense binary IDs. The internal
+	; scalar calculator consumes the compact/native IDs; provenance shares
+	; that calculator boundary after this one bounded translation.
+	cmpi.l #runtime.CAN_BINARY_COUNT, d1
+	bhs.w malformed
+	lea CanonicalBinaryMap, a0
+	move.b 0(a0, d1.l), d1
 arithmeticKnown
 	move.l d1, State.Operator(a3)
 	cmp.l d6, d7
@@ -494,6 +511,112 @@ listReady
 	beq.w next
 	move.l #records.TYPED_LIST, Cell.Kind(a1)
 	bra.w next
+structLiteral
+	; Resolve the nominal schema through the same typed symbol table as aliases.
+	bsr.w wordLe
+	bne.w malformed
+	cmp.l Frame.Count(a6), d1
+	bhs.w malformed
+	move.l d1, d6
+	moveq #1, d0
+	move.l d0, State.Symbols(a3)
+	movea.l Frame.Defined(a6), a0
+	move.l a0, d0
+	beq.w malformed
+	tst.b 0(a0, d6.l)
+	beq.w malformed
+	movea.l Frame.Owner(a6), a0
+	jsr values.getKind
+	tst.l d0
+	bne.w malformed
+	cmpi.l #structs.TYPE, d2
+	bne.w malformed
+	movea.l Frame.Values(a6), a1
+	move.l a1, d0
+	beq.w malformed
+	lsl.l #3, d6
+	tst.l runtime.Value.High(a1, d6.l)
+	bne.w malformed
+	move.l runtime.Value.Low(a1, d6.l), d1
+	move.l d1, State.TypeOffset(a3)
+	move.l d1, d0
+	jsr records.validate
+	tst.l d0
+	bne.w malformed
+	jsr values.view
+	tst.l d0
+	bne.w malformed
+	cmpi.l #structs.TYPE, values.StructRecord.Kind(a1)
+	bne.w malformed
+	move.l values.StructRecord.Nominal(a1), State.Nominal(a3)
+	move.l values.StructRecord.Count(a1), d5
+	bsr.w wordLe
+	bne.w malformed
+	cmp.l d5, d1
+	bne.w malformed
+	cmp.l d7, d1
+	bhi.w malformed
+	move.l d1, State.Count(a3)
+	move.l d7, d6
+	sub.l d1, d6
+	move.l d6, d0
+	mulu.w #CELL_BYTES, d0
+	lea STACK(a3), a1
+	adda.l d0, a1
+	lea PACKED(a3), a2
+	tst.l d5
+	beq.w structAppend
+structField
+	bsr.w wordLe
+	bne.w malformed
+	move.l d1, values.Field.Member(a2)
+	; Membership plus exact count and constructor uniqueness proves completeness.
+	movem.l d2-d5/a1-a2, -(sp)
+	movea.l Frame.Owner(a6), a0
+	move.l State.TypeOffset(a3), d0
+	jsr structs.member
+	movem.l (sp)+, d2-d5/a1-a2
+	tst.l d0
+	bne.w malformed
+	move.l #MAX_DEPTH, d2
+structProjection
+	bsr.w project
+	bne.w malformed
+	tst.l Cell.Kind(a1)
+	beq.w structScalar
+	subq.l #1, d2
+	beq.w malformed
+	bra.w structProjection
+structScalar
+	move.l Cell.Low(a1), values.Field.Value+values.Cell.Low(a2)
+	move.l Cell.High(a1), values.Field.Value+values.Cell.High(a2)
+	clr.l values.Field.Value+values.Cell.Kind(a2)
+	move.l Cell.Provenance(a1), values.Field.Value+values.Cell.Provenance(a2)
+	adda.l #CELL_BYTES, a1
+	adda.l #values.FIELD_BYTES, a2
+	subq.l #1, d5
+	bne.w structField
+structAppend
+	movea.l Frame.Owner(a6), a0
+	lea PACKED(a3), a1
+	move.l State.Nominal(a3), d0
+	move.l State.Count(a3), d1
+	move.l d1, d3
+	mulu.w #values.FIELD_BYTES, d3
+	jsr structs.appendLiteral
+	tst.l d0
+	beq.w structReady
+	cmpi.l #values.STORAGE, d0
+	beq.w storage
+	bra.w malformed
+structReady
+	move.l d6, d7
+	bsr.w push
+	bne.w depth
+	move.l d2, Cell.Low(a1)
+	clr.l Cell.High(a1)
+	move.l #structs.LITERAL, Cell.Kind(a1)
+	bra.w next
 range
 	bsr.w byte
 	bne.w malformed
@@ -546,11 +669,19 @@ member
 	move.l d1, d6
 	bsr.w top
 	bne.w malformed
-	cmpi.l #records.ADDRESS_RECORD, Cell.Kind(a1)
-	bne.w malformed
 	move.l Cell.Low(a1), d0
 	move.l d6, d1
 	movea.l Frame.Owner(a6), a0
+	cmpi.l #records.ADDRESS_RECORD, Cell.Kind(a1)
+	beq.w addressMember
+	cmpi.l #structs.TYPE, Cell.Kind(a1)
+	beq.w structMember
+	cmpi.l #structs.LITERAL, Cell.Kind(a1)
+	bne.w malformed
+structMember
+	jsr structs.member
+	bra.w recordResult
+addressMember
 	jsr records.member
 	bra.w recordResult
 index
@@ -630,6 +761,18 @@ finish
 	cmpi.l #1, d7
 	bne.w malformed
 	bsr.w top
+	btst #MODE_ASSEMBLER_BIT, State.Mode+3(a3)
+	beq.w captureReady
+	cmpi.l #structs.LITERAL, Cell.Kind(a1)
+	bne.w captureReady
+	; Conversion to an assembler instance requires absolute final fields;
+	; temporary member access above retains the raw scalar provenance.
+	movea.l Frame.Owner(a6), a0
+	move.l Cell.Low(a1), d0
+	jsr structs.assemblerLiteral
+	tst.l d0
+	bne.w malformed
+captureReady
 	move.l Cell.Low(a1), d1
 	move.l Cell.High(a1), Frame.High(a6)
 	move.l Cell.Kind(a1), d3
@@ -774,7 +917,13 @@ candidate
 	tst.l d0
 	bne.w bad
 	cmpi.l #records.ADDRESS_RECORD, d2
+	beq.w candidateKind
+	cmpi.l #structs.TYPE, d2
+	beq.w candidateKind
+	cmpi.l #structs.LITERAL, d2
 	bne.w nextCandidate
+candidateKind
+	move.l d2, d4
 	lsl.l #3, d1
 	movea.l Frame.Values(a6), a0
 	move.l a0, d0
@@ -782,20 +931,28 @@ candidate
 	tst.l runtime.Value.High(a0, d1.l)
 	bne.w bad
 	move.l runtime.Value.Low(a0, d1.l), d2
-	moveq #records.ADDRESS_RECORD, d4
 member
-	; The longest actual record prefix commits resolution; a missing member
+	; The longest actual compound prefix commits resolution; a missing member
 	; cannot be reinterpreted through a shorter prefix.
 	addq.l #1, State.Steps(a3)
 	cmpi.l #STEP_LIMIT, State.Steps(a3)
 	bhi.w bad
-	cmpi.l #records.ADDRESS_RECORD, d4
-	bne.w bad
 	move.l d2, d0
 	moveq #0, d1
 	move.w (a2)+, d1
 	movea.l Frame.Owner(a6), a0
+	cmpi.l #records.ADDRESS_RECORD, d4
+	beq.w addressMember
+	cmpi.l #structs.TYPE, d4
+	beq.w structMember
+	cmpi.l #structs.LITERAL, d4
+	bne.w bad
+structMember
+	jsr structs.member
+	bra.w memberResult
+addressMember
 	jsr records.member
+memberResult
 	tst.l d0
 	bne.w bad
 	subq.l #1, d7
@@ -1011,5 +1168,18 @@ done
 	tst.l d0
 	rts
 	.bend  ; listProjection
+	.endsection
+	.section data, kind=data
+CanonicalBinaryMap
+	.byte runtime.EXPRVM_BINARY_MULTIPLY, runtime.EXPRVM_BINARY_DIVIDE
+	.byte runtime.EXPRVM_BINARY_MOD, runtime.EXPRVM_BINARY_POWER
+	.byte runtime.EXPRVM_BINARY_SHIFT_LEFT, runtime.EXPRVM_BINARY_SHIFT_RIGHT
+	.byte runtime.EXPRVM_BINARY_ADD, runtime.EXPRVM_BINARY_SUBTRACT
+	.byte runtime.EXPRVM_BINARY_EQ, runtime.EXPRVM_BINARY_NE
+	.byte runtime.EXPRVM_BINARY_GE, runtime.EXPRVM_BINARY_GT
+	.byte runtime.EXPRVM_BINARY_LE, runtime.EXPRVM_BINARY_LT
+	.byte runtime.EXPRVM_BINARY_BIT_AND, runtime.EXPRVM_BINARY_BIT_OR
+	.byte runtime.EXPRVM_BINARY_BIT_XOR, runtime.EXPRVM_BINARY_LOGIC_AND
+	.byte runtime.EXPRVM_BINARY_LOGIC_OR, runtime.EXPRVM_BINARY_LOGIC_XOR
 	.endsection
 	.endmodule

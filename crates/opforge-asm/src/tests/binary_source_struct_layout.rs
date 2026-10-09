@@ -244,9 +244,10 @@ fn compact_struct_reservation_rejections_fs_uae() {
 
 #[test]
 fn compact_package_layout_rust_oracle() {
+    // Package follows the existing section/provenance fields in Context.
     assert_eq!(
         oracle(&package_layout_source(), "68020").unwrap(),
-        [0, 0, 0, 12, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 4, 0, 0, 0, 8]
+        [0, 0, 0, 12, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 4, 0, 0, 0, 8]
     );
 }
 

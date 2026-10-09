@@ -564,6 +564,35 @@ and the separate unchanged-control measurement are recorded in the
 [ternary checkpoint](native-runtime-reset.md#ternary-value-selection-checkpoint).
 Full expression, assembler and self-host qualification are separate claims.
 
+### Struct schemas and literal construction
+
+The shared EXVM struct production identifies field keys before ordinary reference
+binding. Accepted FIELD nodes annotate numeric keys; source lookahead only selects
+candidates for that grammar. Keys do not acquire import or reachability edges.
+Literal lowering emits the existing canonical ExprVM struct constructor with a
+nominal type ID and bare member IDs. Canonical binary operands map to the native
+calculator at the typed evaluator boundary; private compact operands retain their
+existing representation. This is a representation distinction, not VM version
+selection.
+
+`binary_struct_values` owns schema/literal construction and member validation.
+Schemas retain numeric nominal identity, total size and field geometry. Literal
+fields retain signed scalar cells and raw VM provenance. Both use owner-relative
+arena offsets; neither is an address record with an implicit default. Immutable
+schema seeds survive value rewind/reset and are released with their owner.
+Declarations publish types in source order through an explicit private packed
+marker. Copies retain nominal identity; final binding remaps type IDs and preserves
+bare member IDs.
+
+Assembler capture rejects relocatable instance fields, matching the current Rust
+value model; temporary member access in the raw typed VM retains provenance.
+Scalar preparation and execution share the original-definition size leaf rule,
+while typed aliases and compound expressions remain non-scalar. Focused evidence
+and the separate control measurement are recorded in the
+[struct checkpoint](native-runtime-reset.md#struct-literal-construction-checkpoint).
+This does not establish complete expression/assembler parity or fresh self-host
+qualification.
+
 ### Signed scalar iterable checkpoint
 
 Iterable `.for` and `.bfor` bind both words of the existing signed i64 scalar

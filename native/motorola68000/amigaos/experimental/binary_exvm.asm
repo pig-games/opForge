@@ -87,6 +87,8 @@ KIND_INDEX = 8
 KIND_CALL = 9
 KIND_MEMBER = 10
 KIND_TERNARY = 11
+KIND_STRUCT = 12
+KIND_FIELD = 13
 	.priv
 Sequence	.struct
 Start	.long ?
@@ -132,6 +134,8 @@ SCRATCH_BYTES = SPANS+OUTPUT_LIMIT*4
 ; First/Second/Third=condition/then/else. Range Third=step
 ; or NONE, Operator=canonical flags. List First=head; call First=function ID,
 ; Second=argument head. Child-root Next links siblings. Count=child arity.
+; Struct reuses its identifier: First=type ID, Second=field head, Count=fields.
+; Field First=bare member ID, Second=value child, Count=1; Next links fields.
 ; Request.Scratch owns SCRATCH_BYTES reusable work; only call frames use stack.
 compile	.block
 	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_EXVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_FRONTEND
@@ -549,7 +553,20 @@ structCheck
 	bsr.w token
 	bne.w done
 	cmpi.w #tokens.TK_KIND_OPEN_BRACE, d1
-	beq.w unsupported
+	bne.w next
+	move.w State.Outputs(a6), d0
+	cmp.w (sp), d0
+	bls.w syntaxBad
+	subq.w #1, d0
+	lsl.w #2, d0
+	lea OUTPUTS(a6), a0
+	move.l 0(a0, d0.w), d0
+	movea.l Request.Arena(a5), a0
+	adda.l d0, a0
+	cmpi.b #KIND_SYMBOL, Node.Kind(a0)
+	bne.w next  ; the shared action only consumes identifier/register bases
+	bsr.w parseStruct
+	bne.w done
 	bra.w next
 postfixCheck
 	bsr.w token
@@ -742,6 +759,107 @@ depthBad
 	moveq #STATUS_DEPTH, d0
 	rts
 	.bend  ; parseSequence
+
+; Parse a struct envelope after the shared grammar built its identifier.
+; D2=open token width; D0/CCR=status, A3-A6 preserved. Values recurse through
+; the canonical EXVM program. Bare field IDs never become symbol references.
+parseStruct	.block
+	cmpi.w #MAX_DEPTH, State.Depth(a6)
+	bhs.w depthBad
+	addq.w #1, State.Depth(a6)
+	suba.l #SEQUENCE_BYTES, sp
+	move.l #NONE, Sequence.Head(sp)
+	move.l #NONE, Sequence.Tail(sp)
+	clr.l Sequence.Count(sp)
+	bsr.w pop
+	move.l d1, Sequence.Name(sp)
+	movea.l Request.Arena(a5), a0
+	adda.l d1, a0
+	cmpi.b #KIND_SYMBOL, Node.Kind(a0)
+	bne.w syntaxBad
+	add.l d2, State.Cursor(a6)
+	bsr.w token
+	bne.w done
+	cmpi.w #tokens.TK_KIND_CLOSE_BRACE, d1
+	beq.w closed
+field
+	cmpi.w #1, d1
+	bhi.w syntaxBad
+	tst.b 3(a0)
+	beq.w fieldName
+	cmpi.b #source.FIELD_KEY_QUALIFIER, 3(a0)
+	bne.w syntaxBad
+fieldName
+	move.l State.Cursor(a6), Sequence.Start(sp)
+	moveq #0, d0
+	move.w 1(a0), d0
+	move.l d0, Sequence.Kind(sp)
+	add.l d2, State.Cursor(a6)
+	bsr.w token
+	bne.w done
+	cmpi.w #tokens.TK_KIND_COLON, d1
+	bne.w syntaxBad
+	add.l d2, State.Cursor(a6)
+	bsr.w execute
+	bne.w done
+	bsr.w pop
+	move.l d1, d4
+	bsr.w allocate
+	bne.w done
+	move.b #KIND_FIELD, Node.Kind(a1)
+	move.w #1, Node.Count(a1)
+	move.l Sequence.Kind(sp), Node.First(a1)
+	move.l d4, Node.Second(a1)
+	move.w Sequence.Start+2(sp), Node.SpanStart(a1)
+	movea.l Request.Arena(a5), a0
+	adda.l d4, a0
+	move.w Node.SpanEnd(a0), Node.SpanEnd(a1)
+	move.l Sequence.Tail(sp), d0
+	cmpi.l #NONE, d0
+	beq.w first
+	movea.l Request.Arena(a5), a0
+	adda.l d0, a0
+	move.l d7, Node.Next(a0)
+	bra.w linked
+first
+	move.l d7, Sequence.Head(sp)
+linked
+	move.l d7, Sequence.Tail(sp)
+	addq.l #1, Sequence.Count(sp)
+	bsr.w token
+	bne.w done
+	cmpi.w #tokens.TK_KIND_COMMA, d1
+	bne.w requireClose
+	add.l d2, State.Cursor(a6)
+	bsr.w token
+	bne.w done
+	bra.w field
+requireClose
+	cmpi.w #tokens.TK_KIND_CLOSE_BRACE, d1
+	bne.w syntaxBad
+closed
+	add.l d2, State.Cursor(a6)
+	move.l Sequence.Name(sp), d7
+	movea.l Request.Arena(a5), a1
+	adda.l d7, a1
+	move.b #KIND_STRUCT, Node.Kind(a1)
+	move.w Sequence.Count+2(sp), Node.Count(a1)
+	move.l Sequence.Head(sp), Node.Second(a1)
+	move.l State.Cursor(a6), d0
+	move.w d0, Node.SpanEnd(a1)
+	bsr.w push
+	bra.w done
+syntaxBad
+	moveq #STATUS_SYNTAX, d0
+done
+	adda.l #SEQUENCE_BYTES, sp
+	subq.w #1, State.Depth(a6)
+	tst.l d0
+	rts
+depthBad
+	moveq #STATUS_DEPTH, d0
+	rts
+	.bend  ; parseStruct
 
 ; Parse one index envelope, with the base already on OUTPUTS.
 ; D0/CCR=status; preserve A3-A6. Nested EXVM execution owns index precedence.

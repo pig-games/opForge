@@ -219,7 +219,7 @@ done
 ; Compound cells name an existing descriptor in this Owner, with no provenance.
 validateCell	.block
 	movem.l d1-d3/a1, -(sp)
-	cmpi.l #ADDRESS_RECORD, values.Cell.Kind(a1)
+	cmpi.l #values.STRUCT_LITERAL, values.Cell.Kind(a1)
 	bhi.w invalid
 	move.l values.Cell.Provenance(a1), d0
 	cmpi.l #-1, d0
@@ -257,6 +257,8 @@ validate	.block
 	jsr values.view
 	bne.w done
 	move.l values.Record.Kind(a1), d7
+	cmpi.l #values.STRUCT_TYPE, d7
+	bhs.w good
 	move.l values.Record.Count(a1), d6
 	lea values.HEADER_BYTES(a1), a1
 	cmpi.l #TYPED_LIST, d7

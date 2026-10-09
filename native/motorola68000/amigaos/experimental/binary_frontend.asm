@@ -27,6 +27,7 @@
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_struct_values as struct_values
 	.use tkvm.amigaos.runtime as tokenizer
 	.use tkvm.amigaos.fragments as fragment_tokenizer
 	.use experimental.amigaos.binary_macro_fragments as fragment_binding
@@ -324,6 +325,23 @@ exportBindings	.block
 	tst.l d0
 	rts
 	.bend  ; exportBindings
+
+; A0=frontend Frame,A1=configured values Owner. Copy retained schemas.
+; D0/CCR=status; others preserved. Seeds outlive all preparation metadata.
+EXPORTED_SEEDS = SCOPE_STATE+scopes.IMPORT_STATE+imports.KNOWN_OWNER+values.Owner.Seeds
+exportSeeds	.block
+	movem.l d1/a0-a2, -(sp)
+	movea.l a1, a2
+	movea.l Frame.Scratch(a0), a0
+	adda.l #EXPORTED_SEEDS, a0
+	move.l memory.Block.Used(a0), d0
+	movea.l memory.Block.Pointer(a0), a1
+	movea.l a2, a0
+	jsr struct_values.installSeeds
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	rts
+	.bend  ; exportSeeds
 
 ; A0=Frame,A1=file basename,D0=name bytes. Enter file-derived module ownership
 ; before lowering physical lines. D0/CCR=status; other registers preserved.
@@ -2016,6 +2034,8 @@ scopeLine
 	move.b (a0), d0
 	cmpi.w #9, d0
 	blo.w scalarCaptured
+	cmpi.b #writer.TOKEN_STRUCT_DECLARATION, 8(a0)
+	beq.w captureValue
 	cmpi.b #34, 8(a0)
 	beq.w captureValue
 	cmpi.b #writer.TOKEN_CONDITIONAL_DECLARATION, 8(a0)

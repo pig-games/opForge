@@ -10,9 +10,11 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_values as values
+	.use opasm.amigaos.binary_expression as expr
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_section_prepare as sections
 	.use experimental.amigaos.binary_structs as structs
+	.use experimental.amigaos.binary_struct_values as struct_values
 	.use experimental.amigaos.binary_package as pkg
 	.use prvm.amigaos.packed_branch as branch_parser
 	.use prvm.amigaos.packed_loop as loop_parser
@@ -135,6 +137,7 @@ clear
 	movea.l a1, a0
 	adda.l #STRUCT_STATE, a0
 	jsr structs.begin
+	move.l #memberIdentity, structs.State.FieldBinder(a0)
 	moveq #0, d0
 	bra.w done
 bad
@@ -165,6 +168,9 @@ release	.block
 	jsr modules.release
 	lea IMPORT_STATE(a1), a0
 	jsr imports.release
+	movea.l a1, a0
+	adda.l #STRUCT_STATE, a0
+	jsr structs.release
 	lea ARENA(a1), a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -1424,6 +1430,15 @@ line	.block
 	move.l d4, d0
 	jsr structs.line
 	bne.w bad
+	moveq #0, d0
+	move.b (a5), d0
+	addq.w #1, d0
+	movea.l a5, a1
+	adda.l d0, a1
+	lea 4(a5), a0
+	lea memberIdentity, a2
+	jsr expr.bindFields
+	bne.w bad
 	moveq #0, d6
 	move.b (a5), d6
 	addq.w #1, d6
@@ -1435,6 +1450,8 @@ line	.block
 	blo.w ok
 	cmpi.b #1, (a0)
 	bhi.w statement
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a0)
+	beq.w declaration
 	cmpi.b #34, 4(a0)
 	beq.w declaration
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
@@ -1454,6 +1471,8 @@ prefixLabel
 declaration
 	bsr.w declare
 	bne.w bad
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a0)
+	beq.w ok
 	moveq #0, d7
 	move.w 1(a0), d7
 	cmpi.b #34, 4(a0)
@@ -1825,6 +1844,8 @@ punctuation
 	addq.l #1, a0
 	bra.w references
 reference
+	cmpi.b #source.FIELD_KEY_QUALIFIER, 3(a0)
+	beq.w packageName
 	; A numeric fallback proxy already owns its occurrence and full-name
 	; resolution. Import wrapping would discard that plan identity.
 	moveq #0, d0
@@ -2201,6 +2222,15 @@ unchanged
 	moveq #0, d1
 	move.w layout.State.Count(a6), d1
 	jsr plans.finalize
+	bne.w done
+	movea.l a6, a0
+	adda.l #IMPORT_STATE+imports.KNOWN_OWNER, a0
+	lea structNominal, a1
+	jsr struct_values.remapNominals
+	bne.w done
+	movea.l a6, a0
+	adda.l #IMPORT_STATE+imports.PARAM_OWNER, a0
+	jsr struct_values.remapNominals
 	bra.w done
 failSaved
 	addq.l #4, sp
@@ -2214,6 +2244,30 @@ done
 	rts
 	.bend  ; finish
 	.priv
+
+; D0=preparation nominal ID,A6=scope. D0/CCR=status,D1=canonical ID;
+; other registers preserved. Bare field keys have a separate immutable identity.
+structNominal	.block
+	movem.l d2/a0, -(sp)
+	move.l d0, d1
+	sub.w layout.State.Base(a6), d0
+	bcs.w good
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a0
+	moveq #0, d1
+	move.w records.Entry.Target(a0, d0.l), d1
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2/a0
+	tst.l d0
+	rts
+	.bend  ; structNominal
 
 ; Classify the whole statement before declaring an optional label. Module
 ; boundary directives and .end may carry labels without becoming outside content.

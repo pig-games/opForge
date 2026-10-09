@@ -499,6 +499,8 @@ line
 	cmpi.b #5, 4(a3)
 	beq.w declaration
 	moveq #PENDING, d7
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a3)
+	beq.w declaration
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 4(a3)
 	beq.w declaration
 	moveq #graph.MUTABLE, d7
@@ -532,6 +534,13 @@ enclosingDeclaration
 	bne.w bad
 firstDeclaration
 	move.b d7, 0(a5, d4.l)
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a3)
+	bne.w declarationKind
+	cmpi.w #13, d6
+	bne.w bad
+	move.b #LAYOUT, 0(a5, d4.l)
+	bra.w next
+declarationKind
 	cmpi.b #graph.MUTABLE, d7
 	beq.w scalarDeclaration
 	cmpi.b #PENDING, d7

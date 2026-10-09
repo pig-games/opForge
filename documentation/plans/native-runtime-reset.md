@@ -16,7 +16,9 @@ their full self-host has not been rerun. The subsequent
 adds anonymous and labeled `.bwhile` with focused package/native comparisons.
 The [scalar-update checkpoint](#scalar-compound-updates-current-slice) adds the
 17 punctuation compound operators and scalar `x=` repetition, including scope
-and configuration snapshots.
+and configuration snapshots. The subsequent typed-list, ternary and
+[struct-literal checkpoints](#struct-literal-construction-checkpoint) extend
+shared compound expression execution; these also have focused proof only.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
@@ -1131,6 +1133,81 @@ slowdown. The newly supported feature cases have no successful native baseline
 for a speed comparison. Frozen images, logs, hashes and reproduction settings
 remain outside `target` in `/tmp/opforge-typed-list-measurements.json`.
 
+### Struct literal construction checkpoint
+
+Hypothesis: retain numeric struct schemas and execute the shared EXVM struct-literal
+production through canonical ExprVM construction, closing this expression gap
+without reintroducing source-text parsing or address-record defaults. Baseline is
+`dd68bfe6`. Success requires live Rust/native field/member and snapshot comparisons,
+malformed/schema controls, canonical compiler/runtime component comparisons, and
+an isolated unchanged-control timing comparison. Investigate mismatches or a
+material regression before integration. Full self-host qualification is separate.
+
+Numeric schemas now survive preparation and replay as retained owner-relative
+seeds. Source-order declarations materialize them into the value arena. The shared
+EXVM production binds exact field keys; canonical ExprVM construction validates
+nominal types and field sets. Copies and mutations preserve immutable snapshots.
+Type members yield geometry; instance members yield signed scalar values.
+Schemas and instances have no implicit address-record default. The existing Rust
+rule allowing an original bare struct name as its size is retained in scalar
+consumers; aliases and compound type expressions remain non-scalar.
+
+`binary_struct_values` owns schema/literal storage and validation. Generic binding
+walkers skip grammar-identified keys, so a key does not become an import or
+reachability reference. Literal arithmetic also exposed and repaired a canonical
+binary-operand mapping mismatch at the typed VM boundary; compact programs keep
+their existing private operand representation. No new VM opcode, VM version,
+CPU-specific grammar or serialized pointer is introduced.
+
+Focused qualification:
+
+- The nine-case source matrix matches live Rust on both 68020 and 6502 packages,
+  covering definition sizes/conditions, mutable snapshot copies, case/order,
+  aliases, ternaries, macros, geometry, register-like keys and empty instances.
+  The final image also passes unused/imported-block field-key controls and
+  qualified-key rejection on both packages.
+- Fifteen additional malformed/type/value controls completed with expected
+  nonzero native exits on the preceding image. The final binding guard and
+  full-width size repair have their own fresh controls; those fifteen cases were
+  not rerun after the final corrections.
+- The 40-case shared compiler comparison matches its 4,708-byte live Rust
+  tree/lowering oracle. The raw typed VM matches 22 cases/1,056 bytes, retaining
+  signed64 cells, nominal identity and raw member provenance; its final harness
+  also checks the 65,536-field size calculation and rejects a header-only arena.
+- Host qualification passes 121 struct checks (37 native tests ignored), 34
+  ExprVM checks, library Clippy and Rust/native formatting. Native/workflow
+  engineering guards pass. Previous broad-suite limitations are not cleared.
+- Existing native regressions pass: the 125-case compiler matches its 16,246-byte
+  live Rust oracle, the expression-record component matches 716 bytes, and the
+  imported package-layout probe matches 20 bytes. The final release binary is
+  unchanged by the named-offset cleanup; the named-layout raw harness was rerun.
+
+Isolated unchanged 1,024-iteration scalar control on FS-UAE `68020-10m`, release
+images with telemetry disabled and exact live Rust output in both fresh runs:
+
+| Measurement | Before (`dd68bfe6`) | After | Change |
+|---|---:|---:|---:|
+| Host-observed guest START/DONE | 36.184 s | 36.224 s | +0.040 s (+0.11%) |
+| Dual-package release image | 634,616 bytes | 639,736 bytes | +5,120 bytes (+0.81%) |
+| Linked static reservation | 654,172 bytes | 659,100 bytes | +4,928 bytes (+0.75%) |
+| Control source / output | 200 / 7,168 bytes | 200 / 7,168 bytes | unchanged |
+
+One pair suggests essentially unchanged control time; it is not an established
+speedup or slowdown. Newly supported literals have no successful native baseline.
+Frozen images, logs, hashes and reproduction settings remain outside `target` in
+`/tmp/opforge-struct-measurements.json`.
+
+The shared value owner grows by 12 bytes for its seed block, struct preparation
+state by 16 bytes, typed VM state by 8 bytes, and its field scratch by 512 bytes.
+Schema and instance arena allocation depends on the source. The corrected
+package-layout oracle uses the pre-existing Context.Package offset 40; it does
+not indicate new Context growth.
+A separate CLI edge remains: a same-file multi-module probe whose first module
+has no `.cpu` stopped at native package selection, although Rust accepted the later
+root module's `.cpu`. The field-key controls declare the CPU in both modules to
+isolate binding/reachability; they do not qualify that CPU-discovery behavior.
+No fresh full self-host, physical A6000 timing, peak-memory or 2 MiB fit is claimed.
+
 ### Ternary value selection checkpoint
 
 Hypothesis: the shared EXVM ternary action and existing ExprVM selector can close
@@ -1177,8 +1254,9 @@ Focused qualification:
   the unchosen-arm Hunk control.
 
 This is focused ternary parity, not complete expression/assembler parity or a
-new full self-host/A6000 qualification. Struct-literal construction remains a
-shared-expression gap. No peak-memory or 2 MiB fit is claimed.
+new full self-host/A6000 qualification. Struct-literal construction was still open
+at that checkpoint; the struct checkpoint above now covers its focused native
+path. No peak-memory or 2 MiB fit is claimed.
 
 Isolated unchanged 1,024-iteration scalar control on FS-UAE `68020-10m`, release
 images with telemetry disabled and exact live Rust output in both fresh runs:

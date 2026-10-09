@@ -51,11 +51,16 @@ Low	.long ?
 	.endstruct
 ; Prepared-only loop envelope: BE16 iterator identity, followed by EXVM value.
 TOKEN_ITERATOR_BINDING = $84
+; Preparation-owned nominal type declaration: BE32 retained schema offset.
+TOKEN_STRUCT_DECLARATION = $85
+; Accepted shared EXVM field metadata; consumed before canonical preparation.
+FIELD_KEY_QUALIFIER = $fe
 NameToken	.struct
 Kind	.byte ?
 Id	.word ?
 Qualifier	.byte ?
 .endstruct
+NAME_TOKEN_BYTES = NameToken.Qualifier+1
 ; Normalized assignment prefix, relative to its NameToken.
 DECLARATION_MARKER = NameToken.Qualifier+1
 DECLARATION_VALUE = DECLARATION_MARKER+1
@@ -70,6 +75,7 @@ BIND_ROLE_MEMBER_NAME = 5
 BIND_ROLE_INLINE_HEAD = 6
 BIND_ROLE_STATE_ARGUMENT = 7
 BIND_ROLE_CALL_NAME = 8
+TOKEN_OPEN_BRACE = 12
 TOKEN_OPEN_PAREN = 14
 TOKEN_COMMA = 4
 

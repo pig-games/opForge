@@ -66,6 +66,8 @@ lineMode	.block
 	blo.w statement
 	cmpi.b #1, (a0)
 	bhi.w statement
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a0)
+	beq.w structDeclaration
 	cmpi.b #34, 4(a0)
 	beq.w constant
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
@@ -95,6 +97,14 @@ statement
 layoutControl
 	move.l a1, d6
 	sub.l a0, d6
+	bsr.w copy
+	bne.w bad
+	bra.w complete
+structDeclaration
+	move.l a1, d6
+	sub.l a0, d6
+	cmpi.l #9, d6
+	bne.w bad
 	bsr.w copy
 	bne.w bad
 	bra.w complete

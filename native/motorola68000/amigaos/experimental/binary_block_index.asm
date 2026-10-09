@@ -418,6 +418,8 @@ ownerLine
 	beq.w ownerDeclaration
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 8(a4)
 	beq.w ownerDeclaration
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 8(a4)
+	beq.w ownerDeclaration
 	cmpi.b #34, 8(a4)
 	bne.w ownerAdvance
 ownerDeclaration
@@ -542,6 +544,8 @@ token
 	beq.w compactExpression
 	cmpi.b #expr.VALUE_TAG, d1
 	beq.w typedExpression
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, d1
+	beq.w schema
 	cmpi.b #source.TOKEN_ITERATOR_BINDING, d1
 	beq.w iterator
 	cmpi.b #41, d1
@@ -560,6 +564,9 @@ literal
 	bra.w literalPayload
 wideLiteral
 	moveq #source.WIDE_NUMBER_BYTES-1, d0
+	bra.w literalPayload
+schema
+	moveq #4, d0  ; declaration seed offsets are not emitted-code references
 literalPayload
 	move.l a1, d1
 	sub.l a0, d1
@@ -583,10 +590,13 @@ name
 	sub.l a0, d0
 	cmpi.l #3, d0
 	blo.w bad
+	cmpi.b #source.FIELD_KEY_QUALIFIER, 2(a0)
+	beq.w bareField
 	moveq #0, d0
 	move.w (a0), d0
 	bsr.w mark
 	bne.w bad
+bareField
 	addq.l #3, a0
 	bra.w token
 compactExpression
@@ -656,6 +666,8 @@ typedOpcode
 	beq.w two
 	cmpi.b #$52, d1
 	beq.w one
+	cmpi.b #runtime.EXPRVM_OPCODE_BUILD_STRUCT, d1
+	beq.w struct
 	cmpi.b #runtime.EXPRVM_OPCODE_GET_MEMBER, d1
 	beq.w two
 	cmpi.b #$61, d1
@@ -665,6 +677,29 @@ typedOpcode
 	cmpi.b #$70, d1
 	beq.w opcode
 	bra.w bad
+struct
+	move.l a5, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	blo.w bad
+	moveq #0, d0
+	move.b 1(a0), d0
+	lsl.w #8, d0
+	move.b (a0), d0
+	bsr.w mark  ; only the nominal type is a symbol reference
+	bne.w bad
+	moveq #0, d2
+	move.b 3(a0), d2
+	lsl.w #8, d2
+	move.b 2(a0), d2
+	add.l d2, d2
+	addq.l #4, d2
+	move.l a5, d0
+	sub.l a0, d0
+	cmp.l d2, d0
+	blo.w bad
+	adda.l d2, a0
+	bra.w opcode
 three
 	addq.l #3, a0
 	bra.w opcode

@@ -11,6 +11,7 @@
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_struct_values as structs
 	.priv
 LAYOUT = 1
 	.section code, kind=code
@@ -47,8 +48,11 @@ execute	.block
 	bhi.w bad
 	tst.b 3(a0)
 	bne.w bad
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a0)
+	beq.w markerReady
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 4(a0)
 	bne.w bad
+markerReady
 	moveq #0, d4
 	move.w 1(a0), d4
 	movea.l pkg.Context.Package(a2), a3
@@ -59,6 +63,8 @@ execute	.block
 	movea.l pkg.Context.Defined(a2), a4
 	cmpi.b #dependencies.ABSOLUTE, 0(a4, d4.l)
 	beq.w good  ; preparation already validated and evaluated this definition
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a0)
+	beq.w typeDeclaration
 	addq.l #5, a0
 	move.l a0, -(sp)
 	jsr expr.evaluateValue
@@ -67,6 +73,16 @@ execute	.block
 	bne.w bad
 	cmpa.l a1, a0
 	bne.w bad
+	cmpi.l #values.STRUCT_LITERAL, pkg.Context.Kind(a2)
+	bne.w valueReady
+	movem.l d1-d2/a0, -(sp)
+	move.l d1, d0
+	movea.l pkg.Context.Owner(a2), a0
+	jsr structs.assemblerLiteral
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	bne.w bad
+valueReady
 	moveq #LAYOUT, d7
 	moveq #0, d3
 	tst.l d2
@@ -74,6 +90,25 @@ execute	.block
 	cmpi.w #1, pkg.Context.Pass(a2)
 	bne.w bad
 	moveq #0, d7  ; placeholders must not appear resolved to their consumers
+	bra.w store
+typeDeclaration
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #9, d0
+	bne.w bad
+	movem.l a0/d2, -(sp)
+	move.l 5(a0), d1
+	movea.l pkg.Context.Owner(a2), a0
+	jsr structs.materialize
+	move.l d2, d1
+	movem.l (sp)+, a0/d2
+	tst.l d0
+	bne.w bad
+	clr.l pkg.Context.High(a2)
+	move.l #values.STRUCT_TYPE, pkg.Context.Kind(a2)
+	moveq #0, d2
+	moveq #0, d3
+	moveq #LAYOUT, d7
 	bra.w store
 resolved
 	tst.l pkg.Context.Kind(a2)

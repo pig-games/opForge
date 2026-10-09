@@ -92,6 +92,8 @@ token
 	beq.w compactExpression
 	cmpi.b #expr.VALUE_TAG, d0
 	beq.w typedExpression
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, d0
+	beq.w schema
 	cmpi.b #source.TOKEN_ITERATOR_BINDING, d0
 	beq.w iterator
 	cmpi.b #2, d0
@@ -119,6 +121,9 @@ literal
 	bra.w literalPayload
 wideLiteral
 	moveq #source.WIDE_NUMBER_BYTES-1, d0
+	bra.w literalPayload
+schema
+	moveq #4, d0  ; opaque BE32 value-seed offset
 literalPayload
 	move.l a4, d1
 	sub.l a0, d1
@@ -131,11 +136,14 @@ name
 	sub.l a0, d0
 	cmpi.l #3, d0
 	blo.w bad
+	cmpi.b #source.FIELD_KEY_QUALIFIER, 2(a0)
+	beq.w bareField
 	moveq #0, d0
 	move.w (a0), d0
 	bsr.w identity
 	bne.w bad
 	move.w d1, (a0)
+bareField
 	addq.l #3, a0
 	bra.w token
 iterator
@@ -217,6 +225,8 @@ typedOpcode
 	beq.w two
 	cmpi.b #$52, d0
 	beq.w one
+	cmpi.b #runtime.EXPRVM_OPCODE_BUILD_STRUCT, d0
+	beq.w struct
 	cmpi.b #runtime.EXPRVM_OPCODE_GET_MEMBER, d0
 	beq.w two  ; immutable global bare member identity
 	cmpi.b #$61, d0
@@ -226,6 +236,32 @@ typedOpcode
 	cmpi.b #$70, d0
 	beq.w opcode
 	bra.w bad
+struct
+	move.l a3, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	blo.w bad
+	moveq #0, d0
+	move.b 1(a0), d0
+	lsl.w #8, d0
+	move.b (a0), d0
+	bsr.w identity
+	bne.w bad
+	move.b d1, (a0)+
+	lsr.w #8, d1
+	move.b d1, (a0)+
+	moveq #0, d2
+	move.b 1(a0), d2
+	lsl.w #8, d2
+	move.b (a0), d2
+	add.l d2, d2
+	addq.l #2, d2  ; count plus immutable bare member IDs
+	move.l a3, d0
+	sub.l a0, d0
+	cmp.l d2, d0
+	blo.w bad
+	adda.l d2, a0
+	bra.w opcode
 three
 	addq.l #3, a0
 	bra.w opcode

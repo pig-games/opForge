@@ -1,5 +1,5 @@
-; Shared scalar layout preparation. State contains numeric identities and offsets;
-; field and size records are ordinary numeric assignments, never emitted storage.
+; Shared struct layout preparation; geometric fields remain scalar constants.
+; Closing declarations retain nominal schemas and never emit storage.
 ; @opforge-owner: experimental.amigaos.binary_structs
 	.module experimental.amigaos.binary_structs
 	.cpu 68020
@@ -7,6 +7,10 @@
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_imports as imports
+	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_struct_values as structs
+	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_source as source
 	.pub
 State	.struct
 Active	.word ?
@@ -18,8 +22,10 @@ LongId	.word ?
 ResId	.word ?
 Reserved	.word ?
 Size	.long ?
+Fields	.res memory.Block.Used+4
+FieldBinder	.long ?  ; scope-owned bare member identity callback
 	.endstruct
-SCRATCH_BYTES = State.Size+4
+SCRATCH_BYTES = State.FieldBinder+4
 KEY_STRUCT = 20
 KEY_ENDSTRUCT = 21
 KEY_DB = 22
@@ -29,6 +35,9 @@ KEY_DW = 23
 begin	.block
 	clr.w State.Active(a0)
 	clr.l State.Size(a0)
+	clr.l State.Fields+memory.Block.Pointer(a0)
+	clr.l State.Fields+memory.Block.Capacity(a0)
+	clr.l State.Fields+memory.Block.Used(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
@@ -40,6 +49,15 @@ configure	.block
 	move.w package.Header.ResDirective(a1), State.ResId(a0)
 	rts
 	.bend  ; configure
+; A0=state. Release transient field construction storage; other registers preserved.
+release	.block
+	move.l a0, -(sp)
+	lea State.Fields(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp)+, a0
+	rts
+	.bend  ; release
 ; D0=record capacity; A0=normalized record,A1=scope state,A2=layout state,
 ; A3=scope keyword
 ; callback (D0=id,A6=scope). D0/CCR=status; all other registers preserved.
@@ -133,8 +151,33 @@ reserveBad
 field
 	move.l State.Size(a4), d1
 	add.l d4, State.Size(a4)
-	bvs.w bad
+	bcs.w bad
+	move.l d1, -(sp)
+	movea.l State.FieldBinder(a4), a2
+	move.l a2, d0
+	beq.w fieldBad
+	movea.l a6, a0
+	move.l d7, d0
+	jsr (a2)
+	tst.l d0
+	bne.w fieldBad
+	move.l d1, d5
+	lea State.Fields(a4), a0
+	move.l memory.Block.Used(a0), d0
+	addi.l #values.STRUCT_FIELD_BYTES, d0
+	jsr memory.reserve
+	bne.w fieldBad
+	movea.l State.Fields+memory.Block.Pointer(a4), a0
+	adda.l State.Fields+memory.Block.Used(a4), a0
+	move.l d5, values.StructField.Member(a0)
+	move.l (sp)+, d1
+	move.l d1, values.StructField.Offset(a0)
+	move.l d4, values.StructField.Size(a0)
+	addi.l #values.STRUCT_FIELD_BYTES, State.Fields+memory.Block.Used(a4)
 	bra.w assignment
+fieldBad
+	addq.l #4, sp
+	bra.w bad
 open
 	tst.w State.Active(a4)
 	bne.w bad
@@ -175,6 +218,7 @@ enter
 	move.w d0, layout.State.Current(a6)
 	move.w #1, State.Active(a4)
 	clr.l State.Size(a4)
+	clr.l State.Fields+memory.Block.Used(a4)
 	bra.w consume
 close
 	tst.w State.Active(a4)
@@ -188,7 +232,31 @@ close
 	clr.w State.Active(a4)
 	moveq #0, d7
 	move.w State.Name(a4), d7
+	cmpi.l #13, d2
+	blo.w bad
 	move.l State.Size(a4), d1
+	movea.l State.Fields+memory.Block.Pointer(a4), a1
+	move.l State.Fields+memory.Block.Used(a4), d4
+	move.l d4, d3
+	divu.w #values.STRUCT_FIELD_BYTES, d3
+	andi.l #$ffff, d3
+	movea.l a6, a0
+	adda.l #layout.IMPORT_STATE+imports.KNOWN_OWNER, a0
+	move.l d7, d0
+	jsr structs.appendSeed
+	tst.l d0
+	bne.w bad
+	; The seed offset is the only declaration payload; geometry stays in Seeds.
+	move.b #12, (a5)
+	move.b #1, 4(a5)
+	move.l d7, d0
+	lsr.w #8, d0
+	move.b d0, 5(a5)
+	move.b d7, 6(a5)
+	clr.b 7(a5)
+	move.b #source.TOKEN_STRUCT_DECLARATION, 8(a5)
+	move.l d2, 9(a5)
+	bra.w ok
 assignment
 	cmpi.l #14, d2
 	blo.w bad

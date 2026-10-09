@@ -155,6 +155,10 @@ checked
 	beq.w functionCall
 	cmpi.b #compiler.KIND_MEMBER, d2
 	beq.w member
+	cmpi.b #compiler.KIND_STRUCT, d2
+	beq.w struct
+	cmpi.b #compiler.KIND_FIELD, d2
+	beq.w field
 	cmpi.b #compiler.KIND_INDEX, d2
 	bne.w malformedActive
 	cmpi.w #2, compiler.Node.Count(a2)
@@ -171,6 +175,33 @@ checked
 	bne.w leave
 	move.b #$61, (a3)+  ; canonical IndexValue
 	bra.w success
+field
+	; Field wrappers are only valid as direct children of a struct envelope.
+	cmpi.l #2, d6
+	blo.w malformedActive
+	move.l d6, d3
+	subq.l #2, d3
+	lsl.l #2, d3
+	move.l 0(a5, d3.l), d3
+	lea 0(a0, d3.l), a1
+	cmpi.b #compiler.KIND_STRUCT, compiler.Node.Kind(a1)
+	bne.w malformedActive
+	cmpi.w #1, compiler.Node.Count(a2)
+	bne.w malformedActive
+	cmpi.l #65535, compiler.Node.First(a2)
+	bhi.w malformedActive
+	move.l compiler.Node.Second(a2), d1
+	bsr.w node
+	bra.w leave
+struct
+	cmpi.l #65535, compiler.Node.First(a2)
+	bhi.w malformedActive
+	moveq #0, d2
+	move.w compiler.Node.Count(a2), d2
+	cmpi.l #NODE_LIMIT, d2
+	bhi.w depth
+	move.l compiler.Node.Second(a2), d1
+	bra.w sequence
 member
 	cmpi.w #1, compiler.Node.Count(a2)
 	bne.w malformedActive
@@ -247,6 +278,20 @@ sequence
 	tst.l d2
 	beq.w sequenceEnd
 item
+	cmpi.b #compiler.KIND_STRUCT, compiler.Node.Kind(a2)
+	bne.w itemReady
+	; Validate the wrapper before following its value child.
+	cmp.l d5, d1
+	bcc.w malformedActive
+	move.l d1, d0
+	divu.w #compiler.NODE_BYTES, d0
+	swap d0
+	tst.w d0
+	bne.w malformedActive
+	lea 0(a0, d1.l), a1
+	cmpi.b #compiler.KIND_FIELD, compiler.Node.Kind(a1)
+	bne.w malformedActive
+itemReady
 	move.l d1, -(sp)
 	bsr.w node
 	move.l (sp)+, d1
@@ -265,6 +310,8 @@ sequenceEnd
 	addq.l #1, STACK_DEPTH(a5)
 	cmpi.l #NODE_LIMIT, STACK_DEPTH(a5)
 	bhi.w depth
+	cmpi.b #compiler.KIND_STRUCT, compiler.Node.Kind(a2)
+	beq.w emitStruct
 	cmpi.b #compiler.KIND_CALL, compiler.Node.Kind(a2)
 	beq.w emitCall
 	moveq #3, d0
@@ -282,6 +329,34 @@ count
 	move.b d2, (a3)+
 	lsr.w #8, d2
 	move.b d2, (a3)+
+	bra.w success
+emitStruct
+	move.l d2, d0
+	add.l d0, d0
+	addq.l #5, d0
+	bsr.w room
+	bne.w leave
+	move.b #runtime.EXPRVM_OPCODE_BUILD_STRUCT, (a3)+
+	move.l compiler.Node.First(a2), d1
+	move.b d1, (a3)+
+	lsr.w #8, d1
+	move.b d1, (a3)+
+	move.b d2, (a3)+
+	move.l d2, d1
+	lsr.w #8, d1
+	move.b d1, (a3)+
+	move.l compiler.Node.Second(a2), d1
+	tst.l d2
+	beq.w success
+memberId
+	lea 0(a0, d1.l), a1
+	move.l compiler.Node.First(a1), d1
+	move.b d1, (a3)+
+	lsr.w #8, d1
+	move.b d1, (a3)+
+	move.l compiler.Node.Next(a1), d1
+	subq.l #1, d2
+	bne.w memberId
 	bra.w success
 ternary
 	; Selection may retain any value kind or section identity. Ordinary
@@ -316,6 +391,10 @@ binary
 	bne.w leave
 	subq.l #1, STACK_DEPTH(a5)
 	lea BinaryMap, a1
+	tst.l MODE(a5)
+	beq.w binaryMapReady
+	lea CanonicalBinaryMap, a1
+binaryMapReady
 	moveq #runtime.EXPRVM_OPCODE_APPLY_BINARY, d2
 	bra.w operator
 unary
@@ -455,6 +534,18 @@ BinaryMap
 	.byte runtime.EXPRVM_BINARY_BIT_AND, runtime.EXPRVM_BINARY_BIT_OR
 	.byte runtime.EXPRVM_BINARY_BIT_XOR, runtime.EXPRVM_BINARY_LOGIC_AND
 	.byte runtime.EXPRVM_BINARY_LOGIC_OR, runtime.EXPRVM_BINARY_LOGIC_XOR
+	.byte $ff, $ff
+CanonicalBinaryMap
+	.byte $ff, runtime.CAN_BINARY_ADD, runtime.CAN_BINARY_SUBTRACT
+	.byte runtime.CAN_BINARY_MULTIPLY, runtime.CAN_BINARY_DIVIDE
+	.byte runtime.CAN_BINARY_MOD, runtime.CAN_BINARY_POWER, $ff, $ff
+	.byte runtime.CAN_BINARY_LT, runtime.CAN_BINARY_GT
+	.byte runtime.CAN_BINARY_SHIFT_LEFT, runtime.CAN_BINARY_SHIFT_RIGHT
+	.byte runtime.CAN_BINARY_EQ, runtime.CAN_BINARY_NE
+	.byte runtime.CAN_BINARY_GE, runtime.CAN_BINARY_LE
+	.byte runtime.CAN_BINARY_BIT_AND, runtime.CAN_BINARY_BIT_OR
+	.byte runtime.CAN_BINARY_BIT_XOR, runtime.CAN_BINARY_LOGIC_AND
+	.byte runtime.CAN_BINARY_LOGIC_OR, runtime.CAN_BINARY_LOGIC_XOR
 	.byte $ff, $ff
 	.align 2  ; keep following modules word-aligned
 	.endsection

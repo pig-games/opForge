@@ -2281,6 +2281,15 @@ fn verify_exact_native_cli_artifacts(
             continue;
         };
         if actual != artifact.rust_oracle {
+            #[cfg(test)]
+            if let Err(error) = save_mismatch_diagnostic(
+                case.name,
+                &relative_output_path,
+                &actual,
+                artifact.rust_oracle,
+            ) {
+                errors.push(error);
+            }
             errors.push(format!(
                 "{}: native output ({} bytes) differs from the in-memory Rust oracle ({} bytes); {}",
                 relative_output_path.display(),
@@ -2312,6 +2321,31 @@ fn verify_exact_native_cli_artifacts(
         ));
     }
     run.verified_output = first_verified;
+    Ok(())
+}
+
+// Optional test diagnostics copy only the freshly captured mismatched bytes.
+// The normal run tree is still removed and exact proof still fails unchanged.
+#[cfg(test)]
+fn save_mismatch_diagnostic(
+    case_name: &str,
+    relative_path: &Path,
+    actual: &[u8],
+    expected: &[u8],
+) -> Result<(), String> {
+    let Some(directory) = std::env::var_os("OPFORGE_NATIVE_MISMATCH_DIR") else {
+        return Ok(());
+    };
+    let path = PathBuf::from(directory).join(case_name).join(relative_path);
+    let parent = path.parent().ok_or("mismatch diagnostic has no parent")?;
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("create mismatch diagnostic {}: {error}", parent.display()))?;
+    for (suffix, bytes) in [("native", actual), ("rust", expected)] {
+        let output = path.with_extension(suffix);
+        fs::write(&output, bytes)
+            .map_err(|error| format!("write mismatch diagnostic {}: {error}", output.display()))?;
+    }
+    eprintln!("fresh mismatch diagnostics: {}", path.display());
     Ok(())
 }
 
@@ -7955,6 +7989,10 @@ mod native_scoped_layouts;
 #[cfg(test)]
 #[path = "tests/native_scoped_loops.rs"]
 mod native_scoped_loops;
+#[path = "tests/native_struct_literal_values.rs"]
+mod native_struct_literal_values;
+#[path = "tests/native_struct_vm.rs"]
+mod native_struct_vm;
 #[path = "tests/native_ternary_values.rs"]
 mod native_ternary_values;
 #[path = "tests/native_typed_list_values.rs"]

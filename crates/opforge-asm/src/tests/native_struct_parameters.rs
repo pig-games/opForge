@@ -23,6 +23,7 @@ fn positive_cases(cpu: &str) -> Vec<Case> {
         ("inactive-schema-alternative", source(cpu, "Alias=TYPE\np=Alias{x:3,y:4}\n.pub\nresult=TYPE.y+p.x+p.y\n", ".if 0\nUnused .struct\nbad .res missing\n.endstruct\n.else\n.use dep as imported with (TYPE=Point)\n.endif\n.byte imported.result\n"), &[8]),
         ("register-field-configuration", source(cpu, ".pub\nresult=VALUE.a+VALUE.d0+VALUE.sp+TYPE.d0\n", "Registers .struct\na .byte ?\nd0 .byte ?\nsp .byte ?\n.endstruct\n.use dep as imported with (TYPE=Registers, VALUE=Registers{sp:12,d0:2,a:8})\n.byte imported.result\n"), &[23]),
         ("readonly-uncertain-snapshot", source(cpu, instance, "p .var Point{x:2,y:4}\nsaved=p\n.if later\np .set Point{x:8,y:9}\n.endif\n.use dep as imported with (VALUE=saved)\nlater=1\n.byte imported.result,p.x\n"), &[6,8]),
+        ("readonly-elseif-snapshot", source(cpu, instance, "p .var Point{x:2,y:4}\nsaved=p\n.if 0\np .set missing\n.elseif later\np .set Point{x:8,y:9}\n.endif\n.use dep as imported with (VALUE=saved)\nlater=1\n.byte imported.result,p.x\n"), &[6,8]),
     ]
 }
 
@@ -138,6 +139,7 @@ const STRUCT_REJECTIONS: &[(&str, &str, &str)] = &[
     ("unavailable-schema-extent", "Choice .struct\nx .res later\n.endstruct\n.use dep with (VALUE=Choice)\nlater=3\n", "Label not found: Choice"),
     ("uncertain-schema-body", "Choice .struct\n.if later\nx .byte ?\n.else\nx .long ?\n.endif\n.endstruct\n.use dep with (VALUE=Choice)\nlater=1\n", "Label not found: Choice"),
     ("uncertain-instance-write", "p .var Point{x:2,y:4}\n.if later\np .set Point{x:8,y:9}\n.endif\n.use dep with (VALUE=p)\nlater=1\n", "Label not found: p"),
+    ("uncertain-elseif-instance-write", "p .var Point{x:2,y:4}\n.if 0\np .set missing\n.elseif later\np .set Point{x:8,y:9}\n.endif\n.use dep with (VALUE=p)\nlater=1\n", "Label not found: p"),
 ];
 
 const BAD: &[(&str, &str, &str)] = &[

@@ -16,6 +16,17 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("inactive-readonly-struct", "Point .struct\nx .byte ?\n.endstruct\np .var Point{x:2}\nsaved=p\n.if later\nsaved .set Point{x:8}\n.endif\nlater=0\n.byte saved.x,p.x\n", &[2,2]),
     ("inactive-readonly-struct-two-fields", "Point .struct\nx .byte ?\ny .byte ?\n.endstruct\np .var Point{x:2,y:4}\nsaved=p\n.if later\nsaved .set Point{x:8,y:9}\n.endif\nlater=0\n.byte saved.x,p.x\n", &[2,2]),
     ("expanded-macro-update", "bump .macro\nmain.n+=3\n.endmacro\nn .var 2\n.if later\n.bump\n.endif\nlater=1\n.byte n\n", &[5]),
+    ("forward-elseif-true", "n .var 2\nsaved=n\n.if 0\nn .set missing\n.elseif later\nn .set 9\n.byte n\n.else\nn .set 3\n.byte n\n.endif\nlater=1\n.byte saved,n\n", &[9,2,9]),
+    ("forward-elseif-false", "n .var 2\n.if 0\nn .set missing\n.elseif later\nn .set 9\n.else\nn+=3\n.endif\nlater=0\n.byte n\n", &[5]),
+    ("forward-elseif-chain", "n .var 1\n.if 0\nn .set missing\n.elseif 0\nn .set missing\n.elseif first\nn .set 4\n.elseif second\nn .set 7\n.else\nn .set 9\n.endif\nfirst=0\nsecond=1\n.byte n\n", &[7]),
+    ("forward-elseif-no-else", "n .var 2\n.if 0\nn .set missing\n.elseif later\nn .set 9\n.endif\nlater=0\n.byte n\n", &[2]),
+    ("forward-elseif-declarations", ".if 0\nn .var missing\n.elseif later\nn .var 3\n.else\nn .var 4\n.endif\nlater=1\n.byte n\n", &[3]),
+    ("forward-elseif-compound-snapshot", "items .var {2,3}\nsaved=items\n.if 0\nitems .set missing\n.elseif later\nitems .set {8,9}\n.else\nitems .set {10,11}\n.endif\nlater=1\n.byte saved[0],items[1]\n", &[2,9]),
+    ("forward-elseif-parent-restoration", "n .var 1\n.if 1\n.if 0\nn .set missing\n.elseif later\nn+=4\n.else\nn .set 8\n.endif\n.byte n\n.else\n.byte missing\n.endif\nlater=1\n.byte n\n", &[5,5]),
+    ("forward-elseif-inactive-parent", ".if 0\n.if 0\n.byte missing\n.elseif missing\n.byte missing\n.else\n.byte missing\n.endif\n.else\n.byte 7\n.endif\n", &[7]),
+    ("forward-elseif-short-circuit", ".if 1\n.byte 7\n.elseif missing\n.byte missing\n.else\n.byte missing\n.endif\n", &[7]),
+    ("forward-elseif-preprocessor", ".if 0\n.byte missing\n.elseif later\n.ifdef absent\n.byte missing\n.else\n.byte 7\n.endif\n.else\n.byte 8\n.endif\nlater=1\n", &[7]),
+    ("forward-elseif-sequential", ".if 0\n.byte missing\n.elseif first\n.byte 3\n.endif\n.if 0\n.byte missing\n.elseif second\n.byte 4\n.else\n.byte 5\n.endif\nfirst=1\nsecond=0\n.byte 6\n", &[3,5,6]),
 ];
 
 const BAD: &[(&str, &str)] = &[
@@ -27,6 +38,10 @@ const BAD: &[(&str, &str)] = &[
     ("active-readonly-assignment", "fixed=1\n.if later\nfixed:=3\n.endif\nlater=1\n.byte fixed\n"),
     ("active-readonly-const-directive", "fixed .const 1\n.if later\nfixed .var 3\n.endif\nlater=1\n.byte fixed\n"),
     ("unclosed-branch", "n .var 2\n.if later\nn .set 3\nlater=1\n.byte n\n"),
+    ("forward-elseif-unresolved", ".if 0\n.byte 1\n.elseif missing\n.byte 2\n.else\n.byte 3\n.endif\n"),
+    ("forward-elseif-readonly", "fixed=1\n.if 0\n.byte 1\n.elseif later\nfixed .set 3\n.endif\nlater=1\n.byte fixed\n"),
+    ("forward-elseif-double-else", ".if 0\n.byte 1\n.elseif later\n.byte 2\n.else\n.byte 3\n.else\n.byte 4\n.endif\nlater=1\n"),
+    ("forward-elseif-after-else", ".if 0\n.byte 1\n.elseif later\n.byte 2\n.else\n.byte 3\n.elseif 1\n.byte 4\n.endif\nlater=1\n"),
 ];
 
 fn source(cpu: &str, name: &str, body: &str) -> String {

@@ -1,5 +1,5 @@
 ; Conditional preparation selection over numeric writer records. Unavailable
-; opening guards retain branch envelopes for shared numeric runtime replay;
+; guards retain remaining branch envelopes for shared numeric runtime replay;
 ; selected preparation controls become empty records before expression lowering.
 	.module experimental.amigaos.binary_conditionals
 	.cpu 68020
@@ -434,12 +434,34 @@ expressionBranch
 	tst.b Slot.Taken(a2)
 	bne.w consumed
 	bsr.w evaluateCondition
-	bne.w bad
+	bne.w deferElseif
 	tst.l d1
 	beq.w consumed
 	move.b #1, Slot.Taken(a2)
 	move.w #1, State.Active(a4)
 	bra.w consumed
+deferElseif
+	; Earlier false arms have been consumed. The unavailable arm now opens
+	; the remaining runtime envelope using the package-owned IF identity.
+	movea.l layout.State.Package(a6), a1
+	move.l a1, d0
+	beq.w bad
+	adda.l package.Header.BranchPlan(a1), a1
+	lea branches.Program.Rows(a1), a1
+	moveq #3, d3
+ifHead
+	cmpi.b #branches.IF, branches.Row.Role(a1)
+	beq.w promoteElseif
+	adda.w #branches.ROW_BYTES, a1
+	dbra d3, ifHead
+	bra.w bad
+promoteElseif
+	move.w branches.Row.Head(a1), branches.Record.Head(a5)
+	subq.w #1, State.Depth(a4)
+	moveq #0, d0
+	move.b Slot.Parent(a2), d0
+	move.w d0, State.Active(a4)
+	bra.w deferIf
 
 endifLine
 	moveq #0, d0

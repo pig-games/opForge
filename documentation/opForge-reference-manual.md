@@ -869,8 +869,9 @@ Notes:
   schemas through shared struct handling and transports types and instances
   through numeric parameter arenas. Focused coverage includes aliases, members,
   forwarding, snapshots and retained blocks. Native now retains top-level forward
-  `.if` guards for shared numeric replay, including selected mutable replacements
-  and updates. Earlier read-only snapshots remain independent. Preparation-only
+  `.if` guards and unresolved `.elseif` arms following known false arms for
+  shared numeric replay, including selected mutable replacements and updates.
+  Earlier read-only snapshots remain independent. Preparation-only
   declarations and scope changes inside such retained branches remain restricted;
   values potentially changed by an unavailable guard cannot supply configuration.
   Native iterable `.for` has focused coverage, including imported-name shadowing,

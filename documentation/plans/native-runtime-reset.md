@@ -23,6 +23,8 @@ The [typed configuration repairs](#typed-struct-configuration-native-checkpoint)
 preserve schemas and snapshots across `.use` in Rust and the focused native subset.
 The [forward-branch checkpoint](#forward-opening-guards-and-mutable-effects)
 retains unavailable opening guards for numeric replay and selected mutable effects.
+The [forward-alternative checkpoint](#forward-alternative-replay) extends that
+replay to unavailable `.elseif` arms after known false preparation-selected arms.
 Preparation-only effects inside retained envelopes remain restricted.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
@@ -1138,6 +1140,62 @@ slowdown. The newly supported feature cases have no successful native baseline
 for a speed comparison. Frozen images, logs, hashes and reproduction settings
 remain outside `target` in `/tmp/opforge-typed-list-measurements.json`.
 
+### Forward alternative replay
+
+Baseline: `979f33c5`. When all earlier preparation-selected arms are false and
+an expression `.elseif` is unavailable, the remaining chain now uses the existing
+numeric runtime envelope. The package's BranchPlan supplies the IF head identity;
+only that packed head is changed, preserving the operand and source provenance.
+The false preparation frame is replaced by a deferred frame, restoring its parent
+activity and recording the remaining preparation and loop depths. Taken arms and
+inactive parents still short-circuit without evaluating later guards. Configuration
+discovery retains its separate uncertainty policy.
+
+The expanded branch matrix contains 24 positive scenarios, including true/false
+forward alternatives, several preceding false arms, later alternatives, no else,
+branch-local mutable declarations, compound snapshots, nested parent restoration,
+inactive parents, short-circuited missing guards, nested preprocessor controls and
+consecutive promoted chains. Rust also checks 12 rejection cases for each package.
+
+Fresh release runs match live Rust for the full branch matrix with both the
+68020 and 6502 packages. Four new rejection scenarios also complete with fresh
+exit 20 and a diagnostic on each package: unresolved guards, selected read-only
+replacement, duplicate else and elseif after else. These checks do not establish
+matching diagnostic wording.
+
+The expanded ten-case struct configuration matrix also matches live Rust with
+both packages, including the saved struct after a forward alternative. Passing
+the potentially changed mutable instance itself remains rejected: its new 68020
+negative control completes with fresh exit 20 and a diagnostic. Earlier snapshots
+and uncertain mutable values therefore retain their separate preparation policies.
+
+Isolated unchanged scalar control on FS-UAE `68020-10m`, dual-package release
+images with telemetry disabled, 200-byte source and matching 7,168-byte output:
+
+| Measurement | Before | After | Change |
+|---|---:|---:|---:|
+| Host-observed guest START/DONE | 36.303 s | 36.475 s | +0.172 s (+0.47%) |
+| Release image | 641,172 bytes | 641,240 bytes | +68 bytes (+0.01%) |
+| Linked static reservation | 660,472 bytes | 660,540 bytes | +68 bytes (+0.01%) |
+
+This single pair does not establish a systematic slowdown or measure the cost
+of the newly accepted branch forms. Images, hashes, logs and reproduction settings
+remain outside `target` in `/tmp/opforge-forward-elseif-measurements.json`. The
+control also rechecks the existing 1,024-iteration scoped conditional path.
+
+Rust branch, struct configuration and existing iterable/scoped loop oracles pass;
+the updated native release image assembles. Rust/native formatting, workflow and
+native proof guards pass. Broad workspace qualification and the existing
+test-target Clippy findings were not rerun. No new full self-host, physical A6000
+timing, peak-memory or 2 MiB qualification is claimed.
+
+A broader probe remains deferred: Rust rejects a loop first activated by a forward
+guard during a later pass with `loop iteration count changed between passes` and
+`unexpected loop during emission`. For example, `.if 0` / `.elseif later` around
+`.bfor item in {1,2}`, followed by `later=1`, fails its traversal consistency check.
+This checkpoint does not repair that separate loop scheduling issue or lift the
+preparation-only declaration/scope restrictions inside retained envelopes.
+
 ### Forward opening guards and mutable effects
 
 Baseline: `aa30b167`. Unavailable top-level opening `.if` expressions retain
@@ -1157,9 +1215,10 @@ writes, and an expanded macro with a qualified update target. Unqualified update
 from a root macro retain their existing separate gap. Known preparation-selected
 branches and ordinary-loop declaration/update policies retain their prior behavior.
 Immutable declarations, schema/scope changes and other preparation-only effects
-inside a retained top-level branch remain outside this slice. An unavailable
-`.elseif` following a preparation-selected opening guard also remains unsupported;
-this checkpoint retains the envelope only when its opening expression is unavailable.
+inside a retained top-level branch remain outside this slice. This checkpoint
+retains the envelope only when its opening expression is unavailable; the subsequent
+[forward-alternative checkpoint](#forward-alternative-replay) handles unresolved
+`.elseif` arms following known false arms.
 
 Rust's two declaration paths now reject changing immutable ownership to mutable
 on later passes, matching their first-pass policy. Native dependency inventory

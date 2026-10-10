@@ -44,6 +44,7 @@ impl<'a> AsmLine<'a> {
                 } else {
                     ctx.skipping = true;
                 }
+                self.observe_guard_branch(exprs.first(), val != 0, true);
                 self.cond_stack.push(ctx);
             }
             ConditionalKind::Switch => {
@@ -72,6 +73,9 @@ impl<'a> AsmLine<'a> {
                 let mut ctx = ConditionalContext::new(prev, ConditionalBlockKind::Switch);
                 ctx.switch_value = Some(val);
                 ctx.skipping = true;
+                if !matches!(self.profile_phase, AsmProfilePhase::Pass2) {
+                    self.guard_stack.push(None);
+                }
                 self.cond_stack.push(ctx);
             }
             ConditionalKind::Else | ConditionalKind::ElseIf => {
@@ -188,6 +192,16 @@ impl<'a> AsmLine<'a> {
                     ctx.skipping = false;
                 }
                 ctx.sub_type = sub_type;
+                let active = !ctx.skipping;
+                self.observe_guard_branch(
+                    if kind == ConditionalKind::ElseIf {
+                        exprs.first()
+                    } else {
+                        None
+                    },
+                    active,
+                    false,
+                );
             }
             ConditionalKind::Case => {
                 if self.cond_stack.is_empty() {
@@ -399,6 +413,7 @@ impl<'a> AsmLine<'a> {
                     );
                 }
                 self.cond_stack.pop();
+                self.guard_stack.pop();
                 if self.cond_stack.skipping() {
                     return LineStatus::Skip;
                 }
@@ -439,6 +454,7 @@ impl<'a> AsmLine<'a> {
                     );
                 }
                 self.cond_stack.pop();
+                self.guard_stack.pop();
                 if self.cond_stack.skipping() {
                     return LineStatus::Skip;
                 }

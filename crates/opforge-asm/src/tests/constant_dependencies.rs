@@ -319,3 +319,71 @@ fn constant_dependencies_count_keeps_iterator_shadowing() {
 fn constant_dependencies_scoped_constants_keep_iterator_snapshots() {
     assert_eq!(bytes(".bfor index in {0,1}\nsaved .const index\n.byte saved\n.for saved\n.byte 7\n.endfor\n.endfor\nindex = 2\ntrigger = tail+1\ntail = 1"), [0,1,7]);
 }
+
+#[test]
+fn constant_dependencies_forward_guards_replay_loop_branches() {
+    for cpu in ["m6502", "m68000", "m68020"] {
+        for directive in [".for", ".bfor"] {
+            for header in ["2", "item in {1,2}"] {
+                for guard in [
+                    ".if later",
+                    ".if 0\n.elseif later",
+                    ".if 0\n.elseif 0\n.elseif later",
+                ] {
+                    assert_eq!(bytes(&format!(".cpu {cpu}\n{guard}\n{directive} {header}\n.byte 7\n.endfor\n.else\n.for 1\n.byte 8\n.endfor\n.endif\nlater=1\n.byte 9")), [7,7,9]);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn constant_dependencies_forward_guards_nested_scoped_constants() {
+    assert_eq!(bytes(".module main\n.if later\n.if 1\n.bfor item in {1,2}\nsaved=item\n.byte saved\n.for 1\n.byte 7\n.endfor\n.endfor\n.endif\n.endif\nlater=1\n.byte 9\n.endmodule"), [1,7,2,7,9]);
+    assert_eq!(bytes("local .block\n.if later\n.for 2\n.byte 7\n.endfor\n.endif\nlater=1\n.endblock\n.byte 9"), [7,7,9]);
+}
+
+#[test]
+fn constant_dependencies_forward_guards_remove_loops() {
+    assert_eq!(bytes(".if later==0\n.for 2\n.byte 7\n.endfor\n.else\n.for 1\n.byte 8\n.endfor\n.endif\nlater=1\n.byte 9"), [8,9]);
+}
+
+#[test]
+fn constant_dependencies_forward_guard_replay_retains_contextual_count_checks() {
+    let assembler = run_pass1(&[
+        ".cpu m68020",
+        ".if later",
+        ".byte 1",
+        ".for end",
+        ".byte 7",
+        ".endfor",
+        ".endif",
+        "later=1",
+        "end:",
+        ".byte 9",
+    ]);
+    assert!(assembler.diagnostics.iter().any(|diagnostic| diagnostic
+        .error
+        .message()
+        .contains("loop iteration count changed between passes")));
+}
+
+#[test]
+fn constant_dependencies_contextual_guards_cannot_certify_new_loops() {
+    for source in [
+        ".cpu m68020\n.for index in {0,1}\n.if index==last\n.for 1\n.byte 7\n.endfor\n.endif\n.endfor\nlast=1\n.byte 9",
+        ".cpu m68020\n.byte 1\n.if later\n.if 1\n.for 1\n.byte 7\n.endfor\n.endif\n.endif\nlater:\n.byte 9",
+        ".cpu m68020\n.byte 1\n.if later\n.for 1\n.byte 7\n.endfor\n.endif\nlater:\n.byte 9",
+        ".cpu m68020\n.if later\n.for 1\n.byte 7\n.endfor\n.endif\nlater:=1\n.byte 9",
+        ".cpu m68020\n.if later\n.for 1\n.byte 7\n.endfor\n.endif\nlater=$+1\n.byte 9",
+    ] {
+        let assembler = run_pass1(&source.lines().collect::<Vec<_>>());
+        assert!(
+            assembler.diagnostics.iter().any(|diagnostic| diagnostic
+                .error
+                .message()
+                .contains("loop iteration count changed between passes")),
+            "contextual guard accepted: {source}"
+        );
+    }
+}

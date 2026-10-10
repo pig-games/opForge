@@ -64,6 +64,12 @@ impl AsmLine<'_> {
         }
         self.loop_observations.push(LoopObservation {
             line,
+            guards: self
+                .guard_stack
+                .iter()
+                .flatten()
+                .map(|index| self.guard_observations[*index].key.clone())
+                .collect(),
             count,
             original_count: count,
             path: self.repetition_path.clone(),
@@ -329,7 +335,7 @@ impl AsmLine<'_> {
 /// Collect dependencies even in layout-dependent expressions, so adding PC to
 /// a cycle cannot hide it. Only scalar operations with no contextual inputs are
 /// eligible for early evaluation; structured values keep their normal semantics.
-fn scalar_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) -> bool {
+pub(super) fn scalar_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) -> bool {
     match expr {
         Expr::Number(_, _) => true,
         Expr::Identifier(name, _) | Expr::Register(name, _) => {

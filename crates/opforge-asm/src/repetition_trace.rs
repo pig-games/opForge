@@ -6,9 +6,23 @@ use super::*;
 use crate::state::AsmSymbolScopeState;
 use opcore::parser::Expr;
 
+pub(crate) type GuardKey = (u32, Vec<(u32, u32)>);
+
+#[derive(Clone)]
+pub(crate) struct GuardObservation {
+    pub key: GuardKey,
+    pub tests: Vec<Expr>,
+    pub last_test_positive: bool,
+    pub active: bool,
+    pub scope: AsmSymbolScopeState,
+    pub cpu: CpuType,
+    pub loop_variable_dependent: bool,
+}
+
 #[derive(Clone)]
 pub(crate) struct LoopObservation {
     pub line: u32,
+    pub guards: Vec<GuardKey>,
     pub count: u32,
     pub original_count: u32,
     pub path: Vec<(u32, u32)>,
@@ -23,6 +37,8 @@ pub(crate) struct LoopObservation {
 #[derive(Default)]
 pub(crate) struct LoopReplayState {
     pub loop_observations: Vec<LoopObservation>,
+    pub activated_guards: HashSet<GuardKey>,
+    pub deactivated_guards: HashSet<GuardKey>,
     pub immutable_count_replay: bool,
     pub executed_constant_names: HashSet<(String, u32)>,
     pub immutable_scalar_constants: HashSet<String>,
@@ -39,6 +55,22 @@ impl LoopReplayState {
         counts: &mut PassCounts,
     ) {
         self.immutable_scalar_constants = asm_line.immutable_scalar_constants.clone();
+        if pass_num == 1 {
+            self.activated_guards.clear();
+            self.deactivated_guards.clear();
+            for guard in std::mem::take(&mut asm_line.guard_observations) {
+                if let Some(active) = asm_line.immutable_guard_activity(&guard) {
+                    if active != guard.active {
+                        *constant_layout_changed = true;
+                        if active {
+                            self.activated_guards.insert(guard.key);
+                        } else {
+                            self.deactivated_guards.insert(guard.key);
+                        }
+                    }
+                }
+            }
+        }
         let mut observations = std::mem::take(&mut asm_line.loop_observations);
         if pass_num > 1
             && self.immutable_count_replay
@@ -90,19 +122,23 @@ impl LoopReplayState {
                     previous_by_key.get(&(observation.line, observation.path.as_slice()));
                 let valid = previous.is_some_and(|previous| previous.count == observation.count)
                     || (previous.is_none()
-                        && allow_new
-                        && observation.immutable
-                        && observation.path.iter().enumerate().any(
-                            |(depth, (line, iteration))| {
-                                previous_by_key
-                                    .get(&(*line, &observation.path[..depth]))
-                                    .is_some_and(|parent| {
-                                        parent.immutable
-                                            && *iteration >= parent.original_count
-                                            && *iteration < parent.count
-                                    })
-                            },
-                        ));
+                        && ((observation
+                            .guards
+                            .iter()
+                            .any(|key| self.activated_guards.contains(key)))
+                            || (allow_new
+                                && observation.immutable
+                                && observation.path.iter().enumerate().any(
+                                    |(depth, (line, iteration))| {
+                                        previous_by_key
+                                            .get(&(*line, &observation.path[..depth]))
+                                            .is_some_and(|parent| {
+                                                parent.immutable
+                                                    && *iteration >= parent.original_count
+                                                    && *iteration < parent.count
+                                            })
+                                    },
+                                ))));
                 if !valid {
                     diagnostics.push(Diagnostic::new(
                         observation.line,
@@ -132,7 +168,11 @@ impl LoopReplayState {
                                         && *iteration >= parent.count
                                 })
                         });
-                if !present && !removed_iteration {
+                let removed_branch = previous
+                    .guards
+                    .iter()
+                    .any(|key| self.deactivated_guards.contains(key));
+                if !present && !removed_iteration && !removed_branch {
                     diagnostics.push(Diagnostic::new(
                         previous.line,
                         Severity::Error,
@@ -147,5 +187,9 @@ impl LoopReplayState {
             }
         }
         self.loop_observations = observations;
+        if pass_num > 1 {
+            self.activated_guards.clear();
+            self.deactivated_guards.clear();
+        }
     }
 }

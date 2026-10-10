@@ -25,6 +25,8 @@ The [forward-branch checkpoint](#forward-opening-guards-and-mutable-effects)
 retains unavailable opening guards for numeric replay and selected mutable effects.
 The [forward-alternative checkpoint](#forward-alternative-replay) extends that
 replay to unavailable `.elseif` arms after known false preparation-selected arms.
+The [immutable forward-guard loop repair](#immutable-forward-guards-and-loop-layout)
+lets Rust stabilize loops selected by those scalar guards before emission.
 Preparation-only effects inside retained envelopes remain restricted.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
@@ -1189,12 +1191,55 @@ native proof guards pass. Broad workspace qualification and the existing
 test-target Clippy findings were not rerun. No new full self-host, physical A6000
 timing, peak-memory or 2 MiB qualification is claimed.
 
-A broader probe remains deferred: Rust rejects a loop first activated by a forward
-guard during a later pass with `loop iteration count changed between passes` and
-`unexpected loop during emission`. For example, `.if 0` / `.elseif later` around
-`.bfor item in {1,2}`, followed by `later=1`, fails its traversal consistency check.
-This checkpoint does not repair that separate loop scheduling issue or lift the
-preparation-only declaration/scope restrictions inside retained envelopes.
+The loop scheduling issue found at this checkpoint is repaired for immutable
+scalar guards by the [following Rust repair](#immutable-forward-guards-and-loop-layout).
+Preparation-only declaration/scope restrictions inside retained native envelopes
+remain unchanged.
+
+### Immutable forward guards and loop layout
+
+Baseline: `d3058698`. Rust captures expression branch predicates, lexical scope
+and repetition identity during sizing. After resolving executed immutable scalar
+constants, it certifies which branches changed activity. The first sizing replay
+may add or remove loops under those certified branches. Counts of retained loops
+must still match, the exception ends after that replay, and final emission must
+match the accepted traversal. Labels, PC values, mutable values and iterator
+predicates cannot certify a traversal change. The helper reuses shared expression
+dependency analysis; it adds no separate expression grammar or CPU behavior.
+
+Focused Rust coverage adds opening/alternative branches, counted and iterable
+`.for`/`.bfor`, else removal, nested scopes and loop-local constants. All 29
+constant-dependency tests pass, including contextual and iterator rejection
+controls. The branch oracle now checks 29 positive scenarios and 12 rejection
+scenarios for each target package. Fresh FS-UAE release runs of the combined
+positive matrix match live Rust with both the 68020 and 6502 packages (4,195 and
+4,166 source bytes; START/DONE 8.724 and 7.684 seconds respectively).
+
+There are no native production changes: rebuilding yields the identical
+641,240-byte executable, SHA-256
+`1fb879ceb334a21784efc78b59df1e309911704611e8786bf9237fe0463b7c9d`.
+Linked static reservation remains 660,540 bytes. Native timing of this unchanged
+image is not presented as a before/after performance measurement.
+
+Frozen Rust test binaries use the same optimized test profile. Unchanged controls
+pass with both binaries; measurements exclude compilation:
+
+| Control | Before median | After median | Change |
+|---|---:|---:|---:|
+| 4,096 nested literal counted iterations; assembly time, five warm samples | 0.221330 s | 0.223923 s | +0.002593 s (+1.17%) |
+| Iterable/conditional oracle suite; whole-process time, three alternating pairs | 10.646854 s | 10.699142 s | +0.052288 s (+0.49%) |
+
+These small differences do not establish a systematic slowdown. The second
+control includes test startup, temporary file I/O and correctness checks; it is
+not an isolated assembler phase measurement. Images, frozen binaries, logs and
+reproduction details remain outside `target` in
+`/tmp/opforge-forward-guard-loops-measurements.json`.
+
+The 20 selected repetition tests, nine conditional tests, struct configuration
+oracle and all 88 engine tests pass, as do library Clippy, Rust formatting,
+workflow/architecture checks and fresh-native proof guards. This does not qualify
+compound forward predicates, combined forward-count/new-declaration convergence,
+full loop/macro parity, a new full self-host, A6000 timing, peak memory or 2 MiB fit.
 
 ### Forward opening guards and mutable effects
 

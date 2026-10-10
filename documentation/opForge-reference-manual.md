@@ -596,6 +596,14 @@ guessing its dependency semantics. Mutable and loop-variable snapshots retain
 source-order evaluation; layout-dependent count changes still reject. This
 replay does not enable forward `.while` limits or general deferred iterable values.
 
+Loops selected by forward immutable scalar expression guards can also settle
+before emission. For example, `.if enabled` around `.bfor item in {1,2}`, followed
+by `enabled=1`, emits both iterations. This applies to scalar predicates independent
+of labels, the program counter, mutable values and active iterator values. Loop
+counts must remain stable once selected, and emission must match the accepted
+sizing traversal. It does not enable general compound or layout-dependent guard
+convergence.
+
 ### 3.8 Struct definitions
 
 Struct definitions declare field offsets and total size:

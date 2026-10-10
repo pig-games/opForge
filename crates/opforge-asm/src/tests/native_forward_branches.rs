@@ -27,6 +27,11 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("forward-elseif-short-circuit", ".if 1\n.byte 7\n.elseif missing\n.byte missing\n.else\n.byte missing\n.endif\n", &[7]),
     ("forward-elseif-preprocessor", ".if 0\n.byte missing\n.elseif later\n.ifdef absent\n.byte missing\n.else\n.byte 7\n.endif\n.else\n.byte 8\n.endif\nlater=1\n", &[7]),
     ("forward-elseif-sequential", ".if 0\n.byte missing\n.elseif first\n.byte 3\n.endif\n.if 0\n.byte missing\n.elseif second\n.byte 4\n.else\n.byte 5\n.endif\nfirst=1\nsecond=0\n.byte 6\n", &[3,5,6]),
+    ("forward-opening-iterable-loop", ".if later\n.bfor item in {1,2}\n.byte item\n.endfor\n.else\n.byte 8\n.endif\nlater=1\n.byte 9\n", &[1,2,9]),
+    ("forward-elseif-scoped-loop", ".if 0\n.byte missing\n.elseif later\n.bfor item in {1,2}\n.if item==1\n.byte 7\n.else\n.byte 8\n.endif\n.endfor\n.else\n.byte missing\n.endif\nlater=1\n.byte 9\n", &[7,8,9]),
+    ("forward-opening-counted-loop", ".if later\n.for 2\n.byte 7\n.endfor\n.else\n.byte 8\n.endif\nlater=1\n.byte 9\n", &[7,7,9]),
+    ("forward-else-loop-removal", ".if later\n.byte 7\n.else\n.bfor item in {1,2}\n.byte item\n.endfor\n.endif\nlater=1\n.byte 9\n", &[7,9]),
+    ("forward-nested-loop-constant", ".if later\n.if enabled\n.bfor item in {1,2}\nvalue .const item+3\n.byte value\n.endfor\n.else\n.byte 8\n.endif\n.endif\nlater=1\nenabled=1\n.byte 9\n", &[4,5,9]),
 ];
 
 const BAD: &[(&str, &str)] = &[

@@ -218,6 +218,8 @@ mod asmline_directives_scope;
 mod asmline_directives_text;
 #[path = "asmline_eval.rs"]
 mod asmline_eval;
+#[path = "asmline_guard_replay.rs"]
+mod asmline_guard_replay;
 #[path = "asmline_instruction.rs"]
 mod asmline_instruction;
 #[path = "repetition.rs"]
@@ -228,6 +230,8 @@ pub struct AsmLine<'a> {
     pub symbols: &'a mut SymbolTable,
     registry: &'a ModuleRegistry,
     pub cond_stack: ConditionalStack,
+    pub(crate) guard_observations: Vec<crate::engine::repetition_trace::GuardObservation>,
+    pub(crate) guard_stack: Vec<Option<usize>>,
     pub symbol_scope: AsmSymbolScopeState,
     pub output_state: AsmOutputState,
     pub layout: AsmLayoutState,
@@ -440,6 +444,8 @@ impl<'a> AsmLine<'a> {
             symbols,
             registry,
             cond_stack: ConditionalStack::new(),
+            guard_observations: Vec::new(),
+            guard_stack: Vec::new(),
             symbol_scope: AsmSymbolScopeState::new(),
             output_state: AsmOutputState::new(root_metadata),
             layout: AsmLayoutState::new(),
@@ -837,6 +843,7 @@ impl<'a> AsmLine<'a> {
 
     pub fn clear_conditionals(&mut self) {
         self.cond_stack.clear();
+        self.guard_stack.clear();
     }
 
     pub fn clear_scopes(&mut self) {

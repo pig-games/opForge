@@ -32,6 +32,10 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("forward-opening-counted-loop", ".if later\n.for 2\n.byte 7\n.endfor\n.else\n.byte 8\n.endif\nlater=1\n.byte 9\n", &[7,7,9]),
     ("forward-else-loop-removal", ".if later\n.byte 7\n.else\n.bfor item in {1,2}\n.byte item\n.endfor\n.endif\nlater=1\n.byte 9\n", &[7,9]),
     ("forward-nested-loop-constant", ".if later\n.if enabled\n.bfor item in {1,2}\nvalue .const item+3\n.byte value\n.endfor\n.else\n.byte 8\n.endif\n.endif\nlater=1\nenabled=1\n.byte 9\n", &[4,5,9]),
+    ("forward-count-guard-local-constant", ".for count\n.byte 1\n.endfor\ncount=2\n.if enabled\n.bfor item in {1,2}\nvalue .const item+3\n.byte value\n.endfor\n.endif\nenabled=1\n.byte 9\n", &[1,1,4,5,9]),
+    ("forward-guard-local-count", ".if enabled\n.for count\n.byte 7\n.endfor\ncount=2\n.endif\nenabled=1\n.byte 9\n", &[7,7,9]),
+    ("forward-guard-local-nested-counts", ".if enabled\n.for outer\n.for inner\n.byte 3\n.endfor\n.endfor\nouter=2\ninner=2\n.endif\nenabled=1\n.byte 9\n", &[3,3,3,3,9]),
+    ("forward-guard-local-dag-count", ".if enabled\n.for count\n.byte 7\n.endfor\ncount=base+1\nbase=1\n.endif\nenabled=1\n.byte 9\n", &[7,7,9]),
 ];
 
 const BAD: &[(&str, &str)] = &[

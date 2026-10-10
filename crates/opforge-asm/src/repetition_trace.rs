@@ -72,28 +72,53 @@ impl LoopReplayState {
             }
         }
         let mut observations = std::mem::take(&mut asm_line.loop_observations);
-        if pass_num > 1
-            && self.immutable_count_replay
-            && !asm_line
-                .executed_constant_names()
-                .is_subset(&self.executed_constant_names)
-        {
-            diagnostics.push(Diagnostic::new(
-                1,
-                Severity::Error,
-                AsmError::new(
-                    AsmErrorKind::Directive,
-                    "immutable-count replay activated a new constant definition",
-                    None,
-                ),
-            ));
-            counts.errors += 1;
+        if pass_num > 1 {
+            let (any_new, certified) = asm_line.certified_new_constant_definitions(
+                &self.executed_constant_names,
+                &self.activated_guards,
+            );
+            if any_new
+                && !certified
+                && (self.immutable_count_replay
+                    || self
+                        .loop_observations
+                        .iter()
+                        .any(|previous| previous.original_count != previous.count))
+            {
+                diagnostics.push(Diagnostic::new(
+                    1,
+                    Severity::Error,
+                    AsmError::new(
+                        AsmErrorKind::Directive,
+                        "immutable-count replay activated a new constant definition",
+                        None,
+                    ),
+                ));
+                counts.errors += 1;
+            } else if any_new && certified {
+                // Admit one graph batch under predicates certified by the initial
+                // traversal. Subsequent count-expanded definitions still fail
+                // closed after those guard certificates have been consumed.
+                self.executed_constant_names = asm_line.executed_constant_names();
+                match asm_line.resolve_absolute_constants() {
+                    Ok(changed) => *constant_layout_changed |= changed,
+                    Err((line, error)) => {
+                        diagnostics.push(Diagnostic::new(line, Severity::Error, error));
+                        counts.errors += 1;
+                    }
+                }
+                self.immutable_scalar_constants = asm_line.immutable_scalar_constants.clone();
+            }
         }
         for observation in &mut observations {
             match asm_line.immutable_loop_count(observation, max_loop_iterations) {
                 Ok(Some(count)) => {
                     observation.immutable = true;
-                    if pass_num == 1 && observation.count != count {
+                    let activated = observation
+                        .guards
+                        .iter()
+                        .any(|key| self.activated_guards.contains(key));
+                    if (pass_num == 1 || activated) && observation.count != count {
                         self.immutable_count_replay = true;
                         *constant_layout_changed = true;
                         observation.count = count;
@@ -107,7 +132,11 @@ impl LoopReplayState {
             }
         }
         if pass_num > 1 {
-            let allow_new = self.immutable_count_replay;
+            let allow_new = self.immutable_count_replay
+                || self
+                    .loop_observations
+                    .iter()
+                    .any(|previous| previous.original_count != previous.count);
             let previous_by_key: HashMap<_, _> = self
                 .loop_observations
                 .iter()

@@ -562,6 +562,7 @@ qualified_share={:.2}%",
                 asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
                 asm_line.layout.symbol_relocations = self.symbol_relocations.clone();
                 asm_line.scalar_value_symbols = self.scalar_value_symbols.clone();
+                asm_line.activated_guard_certificates = self.loop_replay.activated_guards.clone();
                 asm_line.immutable_scalar_constants =
                     self.loop_replay.immutable_scalar_constants.clone();
             }

@@ -387,3 +387,176 @@ fn constant_dependencies_contextual_guards_cannot_certify_new_loops() {
         );
     }
 }
+
+#[test]
+fn constant_dependencies_forward_guards_compose_with_count_replay() {
+    for cpu in ["m6502", "m68000", "m68020"] {
+        assert_eq!(bytes(&format!(".cpu {cpu}\n.for count\n.byte 7\n.endfor\ncount=2\n.if enabled\n.bfor item in {{1,2}}\nlocal .const item+3\n.byte local\n.endfor\n.endif\nenabled=1")), [7,7,4,5]);
+        assert_eq!(
+            bytes(&format!(
+                ".cpu {cpu}\n.if enabled\n.for count\n.byte 7\n.endfor\ncount=2\n.endif\nenabled=1"
+            )),
+            [7, 7]
+        );
+        assert_eq!(bytes(&format!(".cpu {cpu}\n.if enabled\n.for outer\n.for inner\n.byte 7\n.endfor\n.endfor\nouter=2\ninner=2\n.endif\nenabled=1")), [7,7,7,7]);
+    }
+}
+
+#[test]
+fn constant_dependencies_guard_count_second_retry_definitions_fail_closed() {
+    let assembler = run_pass1(&[
+        ".if enabled",
+        ".bfor count",
+        "local .const 3",
+        ".byte local",
+        ".endfor",
+        "count=2",
+        ".endif",
+        "enabled=1",
+    ]);
+    assert!(
+        assembler.diagnostics.iter().any(|d| d
+            .error
+            .message()
+            .contains("activated a new constant definition")),
+        "{:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn constant_dependencies_guard_activated_graph_rejects_cycles() {
+    let assembler = run_pass1(&[
+        ".if enabled",
+        "left=right+1",
+        "right=left+1",
+        ".for left",
+        ".byte 7",
+        ".endfor",
+        ".endif",
+        "enabled=1",
+    ]);
+    assert!(
+        assembler.diagnostics.iter().any(|d| d
+            .error
+            .message()
+            .contains("cyclic immutable constant dependency")),
+        "{:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn constant_dependencies_guard_activated_count_limit_checked() {
+    let mut assembler = Assembler::new();
+    assembler.max_loop_iterations = 1;
+    let lines = [
+        ".if enabled",
+        ".for count",
+        ".byte 7",
+        ".endfor",
+        "count=2",
+        ".endif",
+        "enabled=1",
+    ]
+    .map(str::to_string);
+    assert!(assembler.pass1(&lines).errors > 0);
+    assert!(assembler
+        .diagnostics
+        .iter()
+        .any(|d| d.error.message().contains("maximum iteration limit")));
+}
+
+#[test]
+fn constant_dependencies_guard_activated_definition_preserves_mutable_ownership() {
+    let assembler = run_pass1(&[
+        "value:=1",
+        ".if enabled",
+        "value .const 2",
+        ".for 1",
+        ".byte value",
+        ".endfor",
+        ".endif",
+        "enabled=1",
+    ]);
+    assert!(
+        assembler.diagnostics.iter().any(|d| d
+            .error
+            .message()
+            .contains("symbol has already been defined")),
+        "{:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn constant_dependencies_guard_activated_scalar_dag_count() {
+    assert_eq!(bytes(".if enabled\n.for count\n.byte 7\n.endfor\ncount=middle+1\nmiddle=base+1\nbase=0\n.endif\nenabled=1"), [7,7]);
+}
+
+#[test]
+fn constant_dependencies_guard_activated_missing_constant_stays_error() {
+    let assembler = run_pass1(&[
+        ".if enabled",
+        "count=missing+1",
+        ".for count",
+        ".byte 7",
+        ".endfor",
+        ".endif",
+        "enabled=1",
+    ]);
+    assert!(
+        assembler
+            .diagnostics
+            .iter()
+            .any(|d| d.error.message().contains("Label not found: missing")),
+        "{:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn constant_dependencies_guard_activated_output_is_not_provisional() {
+    let assembler = run_pass1(&[
+        ".if enabled",
+        ".byte missing",
+        ".for 1",
+        ".byte 7",
+        ".endfor",
+        ".endif",
+        "enabled=1",
+    ]);
+    assert!(
+        assembler
+            .diagnostics
+            .iter()
+            .any(|d| d.error.message().contains("Label not found: missing")),
+        "{:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn constant_dependencies_guard_contextual_replacement_loses_certificate() {
+    let assembler = run_pass1(&[
+        ".cpu m68020",
+        ".if enabled",
+        "count=finish+1",
+        ".for count",
+        ".byte 7",
+        ".endfor",
+        ".else",
+        "count=2",
+        ".endif",
+        "enabled=1",
+        "finish:",
+    ]);
+    assert!(
+        assembler.diagnostics.iter().any(|d| d
+            .error
+            .message()
+            .contains("loop iteration count changed between passes")),
+        "{:?}",
+        assembler.diagnostics
+    );
+}

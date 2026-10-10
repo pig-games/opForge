@@ -232,6 +232,7 @@ pub struct AsmLine<'a> {
     pub cond_stack: ConditionalStack,
     pub(crate) guard_observations: Vec<crate::engine::repetition_trace::GuardObservation>,
     pub(crate) guard_stack: Vec<Option<usize>>,
+    pub(crate) activated_guard_certificates: HashSet<crate::engine::repetition_trace::GuardKey>,
     pub symbol_scope: AsmSymbolScopeState,
     pub output_state: AsmOutputState,
     pub layout: AsmLayoutState,
@@ -446,6 +447,7 @@ impl<'a> AsmLine<'a> {
             cond_stack: ConditionalStack::new(),
             guard_observations: Vec::new(),
             guard_stack: Vec::new(),
+            activated_guard_certificates: HashSet::new(),
             symbol_scope: AsmSymbolScopeState::new(),
             output_state: AsmOutputState::new(root_metadata),
             layout: AsmLayoutState::new(),
@@ -2817,31 +2819,17 @@ impl<'a> AsmLine<'a> {
                         return LineStatus::DirEqu;
                     }
                 }
-                let value = match self.eval_expr_for_signed_scalar_context(expr) {
-                    Ok(scalar) => match self.eval_value_ast(expr) {
-                        Ok(
-                            value @ (AsmValue::List(_)
-                            | AsmValue::Values(_)
-                            | AsmValue::Record { .. }
-                            | AsmValue::RelocatableScalar { .. }
-                            | AsmValue::Range { .. }
-                            | AsmValue::Struct(_)
-                            | AsmValue::StructInstance(_)),
-                        ) => value,
-                        Ok(AsmValue::Scalar(_)) | Err(_) => AsmValue::Scalar(scalar),
-                    },
-                    Err(scalar_err) => match self.eval_value_ast(expr) {
-                        Ok(value) => value,
-                        Err(_) => {
-                            return self.failure_at_span(
-                                LineStatus::Error,
-                                ast_eval_error_kind_to_asm(scalar_err.error.kind()),
-                                scalar_err.error.message(),
-                                None,
-                                scalar_err.span,
-                            )
-                        }
-                    },
+                let value = match self.eval_constant_definition_value(expr, op == AssignOp::Const) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        return self.failure_at_span(
+                            LineStatus::Error,
+                            ast_eval_error_kind_to_asm(error.error.kind()),
+                            error.error.message(),
+                            None,
+                            error.span,
+                        )
+                    }
                 };
                 let is_rw = op != AssignOp::Const;
                 let (full_name, scalar_val) = match self.bind_declared_value(label, &value, is_rw) {

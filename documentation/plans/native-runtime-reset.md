@@ -27,6 +27,8 @@ The [forward-alternative checkpoint](#forward-alternative-replay) extends that
 replay to unavailable `.elseif` arms after known false preparation-selected arms.
 The [immutable forward-guard loop repair](#immutable-forward-guards-and-loop-layout)
 lets Rust stabilize loops selected by those scalar guards before emission.
+The Rust [guard/count composition repair](#forward-guard-and-count-composition) adds
+one certified batch of branch-local scalar dependencies and forward counts.
 Preparation-only effects inside retained envelopes remain restricted.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
@@ -1238,8 +1240,66 @@ reproduction details remain outside `target` in
 The 20 selected repetition tests, nine conditional tests, struct configuration
 oracle and all 88 engine tests pass, as do library Clippy, Rust formatting,
 workflow/architecture checks and fresh-native proof guards. This does not qualify
-compound forward predicates, combined forward-count/new-declaration convergence,
-full loop/macro parity, a new full self-host, A6000 timing, peak memory or 2 MiB fit.
+compound forward predicates or general forward-count/new-declaration convergence.
+The following [composition repair](#forward-guard-and-count-composition) qualifies
+one certified case. Neither checkpoint establishes full loop/macro parity, a new
+full self-host, A6000 timing, peak memory or 2 MiB fit.
+
+### Forward guard and count composition
+
+Baseline: `bfec701d`. In Rust, a certified forward guard admits one newly executed
+constant batch even when an unrelated immutable count also needs replay. New
+constant records carry the guard provenance. Only unresolved scalar immutable
+definitions and counts inside that first certified replay may remain provisional;
+normal output operands stay strict. The existing dependency graph then resolves
+the admitted batch, and subsequent sizing must match the corrected loop counts.
+No evaluator pass is changed. Directive and assignment definition-value handling
+now share one helper, preserving typed values and diagnostic selection.
+
+This covers branch-local literal counts, scalar dependency chains and nested
+counts, alongside the unrelated count plus scoped iterator snapshot combination.
+Cycles, count limits, mutable ownership, contextual replacement and final emission
+checks remain enforced. Declarations first exposed by a following count expansion,
+or newly introduced forward guards needing another activation certificate, remain
+unsupported. This is bounded composition coverage, not general convergence.
+
+Validation: 38 constant-dependency tests and 12 existing definition-value controls
+pass under delegated Sol checks. Root checks pass for the 33-positive/12-negative
+branch oracle on both packages, 20 repetition tests, 11 assignment tests, nine
+conditional tests, struct configuration, all 88 engine tests, library Clippy,
+formatting and workflow/native-proof guards. Fresh combined native runs on both
+packages complete with exit 20 at the first branch-local `count=2` declaration
+(line 418). Thus the expanded 33-case matrix does **not** have native parity.
+The separate unrelated-count plus guarded scoped-local snapshot case matches
+live Rust in fresh runs with both packages (167/166 source bytes; START/DONE
+1.549/0.768 seconds). These timings describe that focused case, not a full build.
+
+Native preparation rejects top-level immutable declarations inside retained
+branches in `binary_scopes.deferredLine`. Existing immutable replay assumes proved
+ownership, and selected graph activation belongs to scoped `.bfor`/`.bwhile`
+frames. Removing the rejection alone would bypass that boundary. The next native
+slice must track branch-owned declaration candidates, select owners after numeric
+guard evaluation, resolve the selected scalar graph and feed corrected counts
+into checked sizing replay. Keep this work in shared core processing, preserve
+inactive-arm suppression and selected duplicate/cycle/missing-value rejection,
+and use the four new cases plus existing branch/loop/configuration controls as
+acceptance tests.
+
+Unchanged Rust controls, frozen optimized test binaries, compilation excluded:
+
+| Control | Before median | After median | Change |
+|---|---:|---:|---:|
+| Literal counted-loop assembly; five warm samples | 0.225014 s | 0.225239 s | +0.000225 s (+0.10%) |
+| Iterable/conditional oracle suite; three alternating process pairs | 10.828993 s | 10.885964 s | +0.056971 s (+0.53%) |
+
+The suite measurement includes test startup, temporary files and correctness
+checks. These small samples show no meaningful speed change. The rebuilt native
+image is byte-identical to baseline: 641,240 bytes, linked static reservation
+660,540 bytes, SHA-256
+`1fb879ceb334a21784efc78b59df1e309911704611e8786bf9237fe0463b7c9d`.
+Measurements and reproduction details are retained outside `target` in
+`/tmp/opforge-guard-count-measurements.json`. No new full self-host, physical
+A6000 timing, peak-memory or 2 MiB qualification is claimed.
 
 ### Forward opening guards and mutable effects
 

@@ -3,7 +3,7 @@
 
 //! Resolve immutable scalar dependencies independently of assembly pass count.
 use super::*;
-use crate::engine::repetition_trace::LoopObservation;
+use crate::engine::repetition_trace::{GuardKey, LoopObservation};
 use std::collections::HashSet;
 
 pub(super) struct Definition {
@@ -13,6 +13,7 @@ pub(super) struct Definition {
     cpu: CpuType,
     line: u32,
     loop_dependencies: Vec<String>,
+    guards: Vec<GuardKey>,
 }
 
 impl AsmLine<'_> {
@@ -22,7 +23,7 @@ impl AsmLine<'_> {
         &self,
         expr: &Expr,
     ) -> Result<bool, AstEvalError> {
-        if self.pass != 1 {
+        if self.pass != 1 && !self.in_certified_activated_guard() {
             return Ok(false);
         }
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
@@ -45,11 +46,80 @@ impl AsmLine<'_> {
         Ok(unresolved)
     }
 
+    pub(crate) fn in_certified_activated_guard(&self) -> bool {
+        self.guard_stack.iter().flatten().any(|index| {
+            self.activated_guard_certificates
+                .contains(&self.guard_observations[*index].key)
+        })
+    }
+
+    /// A newly activated scalar constant may be collected before its lexical
+    /// dependencies exist. Defer the whole value, never arbitrary evaluation
+    /// failures or ordinary data/instruction operands.
+    pub(crate) fn certified_constant_is_provisional(
+        &self,
+        expr: &Expr,
+    ) -> Result<bool, AstEvalError> {
+        if !self.in_certified_activated_guard() {
+            return Ok(false);
+        }
+        self.counted_loop_has_provisional_dependencies(expr)
+    }
+
+    pub(super) fn eval_constant_definition_value(
+        &self,
+        expr: &Expr,
+        immutable: bool,
+    ) -> Result<types::asm_value::AsmValue, AstEvalError> {
+        use types::asm_value::AsmValue;
+        if immutable && self.certified_constant_is_provisional(expr)? {
+            return Ok(AsmValue::Scalar(0));
+        }
+        match self.eval_expr_for_signed_scalar_context(expr) {
+            Ok(scalar) => match self.eval_value_ast(expr) {
+                Ok(
+                    value @ (AsmValue::List(_)
+                    | AsmValue::Values(_)
+                    | AsmValue::Record { .. }
+                    | AsmValue::RelocatableScalar { .. }
+                    | AsmValue::Range { .. }
+                    | AsmValue::Struct(_)
+                    | AsmValue::StructInstance(_)),
+                ) => Ok(value),
+                Ok(AsmValue::Scalar(_)) | Err(_) => Ok(AsmValue::Scalar(scalar)),
+            },
+            Err(scalar_error) => self.eval_value_ast(expr).map_err(|_| scalar_error),
+        }
+    }
+
     pub(crate) fn executed_constant_names(&self) -> HashSet<(String, u32)> {
         self.constant_definitions
             .iter()
             .map(|definition| (definition.name.clone(), definition.line))
             .collect()
+    }
+
+    /// New definitions can enter the graph only through a branch whose
+    /// immutable predicate was certified before the retry. Count expansion by
+    /// itself is deliberately insufficient proof of a new graph's ownership.
+    pub(crate) fn certified_new_constant_definitions(
+        &self,
+        previous: &HashSet<(String, u32)>,
+        activated_guards: &HashSet<GuardKey>,
+    ) -> (bool, bool) {
+        let mut any = false;
+        let mut certified = true;
+        for definition in &self.constant_definitions {
+            if previous.contains(&(definition.name.clone(), definition.line)) {
+                continue;
+            }
+            any = true;
+            certified &= definition
+                .guards
+                .iter()
+                .any(|key| activated_guards.contains(key));
+        }
+        (any, certified)
     }
 
     pub(crate) fn observe_repetition(
@@ -168,6 +238,12 @@ impl AsmLine<'_> {
             cpu: self.cpu,
             line: self.current_line_num,
             loop_dependencies,
+            guards: self
+                .guard_stack
+                .iter()
+                .flatten()
+                .map(|index| self.guard_observations[*index].key.clone())
+                .collect(),
         });
     }
 
@@ -186,6 +262,11 @@ impl AsmLine<'_> {
         // The full symbol table now exists: use normal finalized scope/import
         // lookup rather than pass-one provisional block-local lookup.
         self.pass = 2;
+        // Recertify each executed owner: a newly selected contextual definition
+        // must not inherit a same-name immutable certificate from an old branch.
+        for definition in &definitions {
+            self.immutable_scalar_constants.remove(&definition.name);
+        }
         let result = self.resolve_constant_graph(&definitions);
         self.symbol_scope = saved_scope;
         self.cpu = saved_cpu;

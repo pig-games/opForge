@@ -234,33 +234,17 @@ impl<'a> AsmLine<'a> {
             }
         };
         let is_rw = directive == "SET" || directive == "VAR";
-        let value = match self.eval_expr_for_signed_scalar_context(expr) {
-            Ok(scalar) => match self.eval_value_ast(expr) {
-                Ok(
-                    value @ (types::asm_value::AsmValue::List(_)
-                    | types::asm_value::AsmValue::Values(_)
-                    | types::asm_value::AsmValue::Record { .. }
-                    | types::asm_value::AsmValue::RelocatableScalar { .. }
-                    | types::asm_value::AsmValue::Range { .. }
-                    | types::asm_value::AsmValue::Struct(_)
-                    | types::asm_value::AsmValue::StructInstance(_)),
-                ) => value,
-                Ok(types::asm_value::AsmValue::Scalar(_)) | Err(_) => {
-                    types::asm_value::AsmValue::Scalar(scalar)
-                }
-            },
-            Err(scalar_err) => match self.eval_value_ast(expr) {
-                Ok(value) => value,
-                Err(_) => {
-                    return self.failure_at_span(
-                        LineStatus::Error,
-                        ast_eval_error_kind_to_asm(scalar_err.error.kind()),
-                        scalar_err.error.message(),
-                        None,
-                        scalar_err.span,
-                    )
-                }
-            },
+        let value = match self.eval_constant_definition_value(expr, directive == "CONST") {
+            Ok(value) => value,
+            Err(error) => {
+                return self.failure_at_span(
+                    LineStatus::Error,
+                    ast_eval_error_kind_to_asm(error.error.kind()),
+                    error.error.message(),
+                    None,
+                    error.span,
+                )
+            }
         };
         let scalar_val = Self::scalar_shadow_for_value_symbol(&value);
         let label = self.label.clone().unwrap_or_default();

@@ -7999,6 +7999,9 @@ mod native_struct_literal_values;
 mod native_struct_parameters;
 #[path = "tests/native_struct_vm.rs"]
 mod native_struct_vm;
+#[cfg(test)]
+#[path = "tests/native_template_imports.rs"]
+mod native_template_imports;
 #[path = "tests/native_ternary_values.rs"]
 mod native_ternary_values;
 #[path = "tests/native_typed_list_values.rs"]

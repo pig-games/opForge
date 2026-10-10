@@ -767,7 +767,6 @@ referenceNamespace	.block
 	adda.l d0, a3
 	btst #records.ITERATOR_HIGH_BIT, records.Entry.Flags(a3)
 	bne.w ok  ; a lexical iterator never becomes an import selection/proxy
-	move.w (sp), d0
 	bsr.w selectedTarget
 	bne.w bad
 	tst.w d4
@@ -921,13 +920,12 @@ done
 	rts
 	.bend  ; referenceNamespace
 
-; A5=unqualified name token,A6=scope state,D7=active module,D0=namespace.
-; Templates retain selected original names; per-item aliases expose values.
+; A5=unqualified name token,A6=scope state,D7=active module.
+; Values and templates use the exposed leaf; Name retains the canonical target.
 ; D4=selected
 ; target index+1 (zero when not imported), D0/CCR=status. Other registers kept.
 selectedTarget	.block
 	movem.l d1-d3/d5-d7/a0-a4, -(sp)
-	move.w d0, -(sp)
 	lea layout.IMPORT_STATE(a6), a4
 	move.l d7, d0
 	subq.w #1, d0
@@ -975,8 +973,6 @@ selected
 	move.w Selection.Next(a1), d2
 	moveq #0, d3
 	move.w Selection.Name(a1), d3
-	tst.w (sp)
-	bne.w originalLeaf
 	moveq #0, d0
 	move.w Selection.Alias(a1), d0
 	beq.w originalLeaf
@@ -1011,7 +1007,6 @@ ok
 bad
 	moveq #1, d0
 done
-	addq.l #2, sp
 	movem.l (sp)+, d1-d3/d5-d7/a0-a4
 	tst.l d0
 	rts
@@ -1273,7 +1268,6 @@ templateAliasTarget	.block
 	clr.b 3(sp)
 	movea.l sp, a5
 	moveq #0, d4
-	moveq #records.NAMESPACE_TEMPLATE, d0
 	bsr.w selectedTarget
 	addq.l #4, sp
 	bne.w missing
@@ -1319,7 +1313,6 @@ templateAliasCandidate	.block
 	clr.b 3(sp)
 	movea.l sp, a5
 	moveq #0, d4
-	moveq #records.NAMESPACE_TEMPLATE, d0
 	bsr.w selectedTarget
 	addq.l #4, sp
 	bne.w aliasMissing

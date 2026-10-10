@@ -445,7 +445,7 @@ anonymous macro scopes remain a distinct Rust/native selection edge.
 - Preparation binds scopes, module identities, selected imports, visibility and supported scalar/flat-list/range parameters before assembly. Selected-file discovery and dependency order, common `.use` forms, selected includes and numeric import identities have fresh focused native/Rust coverage.
 - Counted packed `.for` replay passes focused real-native comparison. Package-selected branch width, supported register masks, scalar roots, predicates, and supported instruction/data Hunk relocations are exercised by exact focused native/Rust comparisons.
 - Imported anonymous macro invocation scopes carry a preparation-only marker so their expansions remain reachable without creating a named reachability span. The marker does not enter runtime records or change the package format.
-- Template declarations and numeric value declarations have independent ownership and visibility. Per-item selection aliases currently rename values; selected macro calls retain their declared name. Module aliases and qualified macro calls are separate supported forms.
+- Template declarations and numeric value declarations have independent ownership and visibility. Per-item selection aliases expose the renamed spelling for both values and templates while retaining the canonical target identity. Module aliases and qualified selected macro calls remain separate forms. The [selected-template alias checkpoint](native-runtime-reset.md#selected-template-alias-checkpoint) records focused proof and its limits.
 
 The compact path has no general capability claim from those examples. Each
 instruction recipe, expression form, import form and layout behavior needs

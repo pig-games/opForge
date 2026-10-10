@@ -340,12 +340,10 @@ macro/loop combination:
   fixture consumes defaults and local original-name reuse on both packages.
   Shared Rust graph checks also cover statement aliases, private visibility,
   definition-site origins and exclusion of imported aliases from native exports.
-  The expanded native import fixture now has a fresh completed failure at
-  `.use provider (foreign as renamed, inline as renamed_segment, plain)` on the
-  saved BS34 two-package image: exit 20 during preparation, while live Rust
-  accepts. This particular combination remains a native gap; it does not prove
-  that every selected alias form fails. The first failure prevents qualification
-  of the later qualified call in that combined fixture.
+  The selected-template alias checkpoint below repairs exposed-name lookup;
+  the strengthened macro/segment fixture now matches live Rust on both packages.
+  The previous preparation failure was the renamed invocation, not parsing of
+  the `.use` selection list. Qualified selected calls are consumed in that proof.
   The Rust effects probe confirms expansion-produced `.org`, sections/output and
   parameter-selected conditional loops. Static `.include` currently opens files
   inside unused macros and does not substitute the tested macro filename
@@ -1446,6 +1444,68 @@ with `python3 /tmp/opforge-guarded-iterables-performance.py`.
 
 No new full self-host, physical A6000 timing, peak-memory or 2 MiB qualification
 is claimed. The previous BS35 complete source proof and bundle remain selected.
+
+
+### Selected-template alias checkpoint
+
+Baseline: `acf7c2f6`. Selected `.use` items already store separate canonical
+and exposed identities, but native template lookup ignored the alias and searched
+the original leaf. The original combined fixture stopped at `.ReNaMeD 3`
+(line `$14`, decimal 20), not at the `.use` declaration. A minimal renamed macro
+call also completed with exit 20 on the baseline image.
+
+The shared preparation import resolver now matches the exposed leaf for values
+and templates alike, returning the original numeric definition. Namespace-specific
+proxies, visibility and selected-target validation remain separate and unchanged.
+No CPU-specific handling, text-based expansion, VM/package contract change or
+new storage is introduced. The obsolete namespace argument and stack slot are
+removed from the common lookup. Independent review found no correctness or ABI
+issue and prompted a consumed value/template facet control.
+
+The original mixed selection fixture now completes with explicit native exit
+zero and exact seven-byte live Rust equality on both target packages, including
+macro/segment defaults, case folding, multiple selections, qualified selection
+and local original-name reuse. Strengthened lexical/facet cases match the full
+nine-byte live Rust output on both packages (508/506 source bytes): an alias
+supplies both a value and a macro, survives namespace lookup and nested macro
+expansion, and coexists with a local original-name template. Four rejection cases
+per package complete with explicit exit 20 and a diagnostic: hidden original
+macro and segment spellings, a private aliased template, and an unselected
+qualified template. These prove their own cases, not full macro parity.
+
+The Rust oracle matrix, 13 graph tests, eight value/template collision tests,
+three template-storage tests and the macro parity oracle pass. Assembler library
+Clippy, Rust formatting and deterministic native/workflow guards pass. The broader
+`cargo clippy -p asm --tests -- -D warnings` check still fails on 23 findings in
+existing files outside this change; none is in the new fixture. Full workspace
+and reference qualification was not run.
+
+The unchanged selected-import control consumes 1,200 numeric macro arguments
+and emits 1,200 bytes. Serialized release runs use identical input, embedded
+packages and the 68020/10 MiB profile; telemetry is disabled. ABBA observations
+exclude concurrent builds/tests and compare fresh START-to-DONE host intervals
+(guest I/O, preparation, assembly and output included; emulator boot excluded):
+
+| Image | Observations | Median |
+|---|---|---:|
+| Baseline `acf7c2f6` | 26.371430 s, 26.418410 s | 26.394920 s |
+| Repaired | 26.436028 s, 26.632785 s | 26.534406 s |
+
+The observed change is +0.139487 s (+0.53%). Two observations per image cannot
+reliably separate this small difference from host/emulator variation; no speedup
+or robust slowdown claim is made. The previously rejected alias cases have no
+successful baseline assembly time. Frozen images, fixture, optimized test binary,
+logs and settings remain outside `target` in
+`/tmp/opforge-template-alias-measurements.json`. Reproduce with
+`python3 /tmp/opforge-template-alias-performance.py`.
+
+The dual embedded release image is 641,860 bytes, down 16 bytes; linked static
+reservation is 661,100 bytes, also down 16 bytes. Image SHA-256:
+`a6429beeceaa0fdf7a08e8006f492c10db99338cd5d11906047cf9597aa7578a`.
+Static reservation is not peak RAM. No new full self-host, A6000 timing or
+2 MiB qualification is claimed; the BS35 full-source result remains the latest.
+Active/expanded `.include`, remaining mapped repetition scheduling and the
+residual decoded-string template fallback remain separate work.
 
 
 ### Forward opening guards and mutable effects

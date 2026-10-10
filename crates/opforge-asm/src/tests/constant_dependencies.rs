@@ -604,3 +604,167 @@ fn constant_dependencies_guard_contextual_replacement_loses_certificate() {
         assembler.diagnostics
     );
 }
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_owner_replays() {
+    for (selected, initial, expected) in [
+        ("{2,4}", "{6}", vec![2, 4]),
+        ("{6}", "{2,4}", vec![6]),
+        ("{}", "{2,4}", vec![]),
+        ("{2,4}", "{}", vec![2, 4]),
+        ("2..5", "6..7", vec![2, 3, 4]),
+        ("6..7", "2..5", vec![6]),
+    ] {
+        for directive in [".for", ".bfor"] {
+            assert_eq!(bytes(&format!(".module main\n.cpu 68020\n.if enabled\nitems={selected}\n.else\nitems={initial}\n.endif\nenabled=1\n{directive} item in items\n.byte item\n.endfor\n.endmodule")), expected);
+        }
+    }
+}
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_aliases_keep_provenance() {
+    assert_eq!(bytes(".cpu 68020\nseed=2\n.if enabled\nitems={seed,seed+2}\n.else\nitems={6}\n.endif\nalias=items\nnested=alias\nenabled=1\n.for item in nested\n.byte item\n.endfor"), [2,4]);
+}
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_inactive_invalid_is_ignored() {
+    assert_eq!(bytes(".cpu 68020\n.if enabled\nitems={2,4}\n.else\nitems={6}\n.endif\nenabled=1\n.if 0\nbad={absent}\n.endif\n.for item in items\n.byte item\n.endfor"), [2,4]);
+}
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_contextual_owners_stay_strict() {
+    for definitions in [
+        ".if enabled\nitems={variable,4}\n.else\nitems={6}\n.endif",
+        "snapshot=variable\n.if enabled\nitems={snapshot,4}\n.else\nitems={6}\n.endif",
+        ".if enabled\nitems={$,4}\n.else\nitems={6}\n.endif",
+    ] {
+        let source = format!(".cpu 68020\nvariable := 2\n{definitions}\nenabled=1\n.for item in items\n.byte item\n.endfor");
+        let assembler = run_pass1(&source.lines().collect::<Vec<_>>());
+        assert!(
+            assembler.diagnostics.iter().any(|d| d
+                .error
+                .message()
+                .contains("loop iteration count changed between passes")),
+            "{source}: {:?}",
+            assembler.diagnostics
+        );
+    }
+}
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_nested_loop_membership() {
+    for (selected, initial, expected) in [
+        ("{2,4}", "{6}", vec![2, 2, 4, 4]),
+        ("{6}", "{2,4}", vec![6, 6]),
+    ] {
+        assert_eq!(bytes(&format!(".cpu 68020\n.if enabled\nitems={selected}\n.else\nitems={initial}\n.endif\nenabled=1\n.for item in items\n.for 2\n.byte item\n.endfor\n.endfor")), expected);
+    }
+}
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_count_expanded_definitions_fail_closed() {
+    let assembler = run_pass1(&[
+        ".cpu 68020",
+        ".if enabled",
+        "items={2,4}",
+        ".else",
+        "items={6}",
+        ".endif",
+        "enabled=1",
+        ".bfor item in items",
+        "local=item",
+        ".byte local",
+        ".endfor",
+    ]);
+    assert!(
+        assembler.diagnostics.iter().any(|d| d
+            .error
+            .message()
+            .contains("activated a new constant definition")),
+        "{:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_rejects_prior_owner_certificate() {
+    let assembler = run_pass1(&[
+        ".cpu 68020",
+        "variable := 2",
+        ".if enabled",
+        "items={snapshot,4}",
+        "snapshot=variable",
+        ".else",
+        "snapshot=2",
+        "items={6}",
+        ".endif",
+        "enabled=1",
+        ".for item in items",
+        ".byte item",
+        ".endfor",
+    ]);
+    assert!(
+        assembler.diagnostics.iter().any(|d| d
+            .error
+            .message()
+            .contains("loop iteration count changed between passes")),
+        "{:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_rejects_future_contextual_owner() {
+    let assembler = run_pass1(&[
+        ".cpu 68020",
+        ".if enabled",
+        "items={snapshot,4}",
+        "snapshot=$",
+        ".else",
+        "snapshot=2",
+        "items={6}",
+        ".endif",
+        "enabled=1",
+        ".for item in items",
+        ".byte item",
+        ".endfor",
+    ]);
+    assert!(
+        assembler.diagnostics.iter().any(|d| d
+            .error
+            .message()
+            .contains("loop iteration count changed between passes")),
+        "{:?}",
+        assembler.diagnostics
+    );
+}
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_nested_literal_iterables() {
+    for (selected, initial, expected) in [
+        ("{2,4}", "{6}", vec![2, 2, 4, 4]),
+        ("{6}", "{2,4}", vec![6, 6]),
+    ] {
+        for nested in ["sub in {1,2}", "sub in 1..3"] {
+            for directive in [".for", ".bfor"] {
+                assert_eq!(bytes(&format!(".cpu 68020\n.if enabled\nitems={selected}\n.else\nitems={initial}\n.endif\nenabled=1\n.for item in items\n{directive} {nested}\n.byte item\n.endfor\n.endfor")), expected);
+            }
+        }
+    }
+}
+
+#[test]
+fn constant_dependencies_guard_selected_iterable_nested_contextual_iterables_stay_strict() {
+    for nested in ["sub in {item}", "sub in {variable}"] {
+        let source = format!(".cpu 68020\nvariable := 1\n.if enabled\nitems={{2,4}}\n.else\nitems={{6}}\n.endif\nenabled=1\n.for item in items\n.for {nested}\n.byte sub\n.endfor\n.endfor");
+        let assembler = run_pass1(&source.lines().collect::<Vec<_>>());
+        assert!(
+            assembler.diagnostics.iter().any(|d| d
+                .error
+                .message()
+                .contains("loop iteration count changed between passes")),
+            "{source}: {:?}",
+            assembler.diagnostics
+        );
+    }
+}

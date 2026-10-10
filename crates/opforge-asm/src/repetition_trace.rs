@@ -31,6 +31,7 @@ pub(crate) struct LoopObservation {
     pub cpu: CpuType,
     pub counted: bool,
     pub immutable: bool,
+    pub value_owner_replay: bool,
     pub loop_variable_dependent: bool,
 }
 
@@ -73,6 +74,23 @@ impl LoopReplayState {
         }
         let mut observations = std::mem::take(&mut asm_line.loop_observations);
         if pass_num > 1 {
+            // A certified typed owner authorizes the parent traversal extent for
+            // this retry. Keep its original extent for membership checks, and
+            // apply the same fail-closed definition checks as scalar replay.
+            for observation in &observations {
+                if !observation.value_owner_replay {
+                    continue;
+                }
+                if let Some(previous) = self.loop_observations.iter_mut().find(|previous| {
+                    previous.line == observation.line && previous.path == observation.path
+                }) {
+                    if previous.count != observation.count {
+                        self.immutable_count_replay = true;
+                        previous.immutable = true;
+                        previous.count = observation.count;
+                    }
+                }
+            }
             let (any_new, certified) = asm_line.certified_new_constant_definitions(
                 &self.executed_constant_names,
                 &self.activated_guards,
@@ -149,25 +167,26 @@ impl LoopReplayState {
             for observation in &observations {
                 let previous =
                     previous_by_key.get(&(observation.line, observation.path.as_slice()));
-                let valid = previous.is_some_and(|previous| previous.count == observation.count)
-                    || (previous.is_none()
-                        && ((observation
-                            .guards
-                            .iter()
-                            .any(|key| self.activated_guards.contains(key)))
-                            || (allow_new
-                                && observation.immutable
-                                && observation.path.iter().enumerate().any(
-                                    |(depth, (line, iteration))| {
-                                        previous_by_key
-                                            .get(&(*line, &observation.path[..depth]))
-                                            .is_some_and(|parent| {
-                                                parent.immutable
-                                                    && *iteration >= parent.original_count
-                                                    && *iteration < parent.count
-                                            })
-                                    },
-                                ))));
+                let valid = previous.is_some_and(|previous| {
+                    previous.count == observation.count || observation.value_owner_replay
+                }) || (previous.is_none()
+                    && ((observation
+                        .guards
+                        .iter()
+                        .any(|key| self.activated_guards.contains(key)))
+                        || (allow_new
+                            && observation.immutable
+                            && observation.path.iter().enumerate().any(
+                                |(depth, (line, iteration))| {
+                                    previous_by_key
+                                        .get(&(*line, &observation.path[..depth]))
+                                        .is_some_and(|parent| {
+                                            parent.immutable
+                                                && *iteration >= parent.original_count
+                                                && *iteration < parent.count
+                                        })
+                                },
+                            ))));
                 if !valid {
                     diagnostics.push(Diagnostic::new(
                         observation.line,

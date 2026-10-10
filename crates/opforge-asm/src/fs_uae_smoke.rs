@@ -7979,6 +7979,8 @@ mod native_forward_branches;
 #[cfg(test)]
 #[path = "tests/native_guard_reuse.rs"]
 mod native_guard_reuse;
+#[path = "tests/native_guarded_iterables.rs"]
+mod native_guarded_iterables;
 #[cfg(test)]
 #[path = "tests/native_iterable_loops.rs"]
 mod native_iterable_loops;

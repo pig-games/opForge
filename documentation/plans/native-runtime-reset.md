@@ -33,6 +33,12 @@ one certified batch of branch-local scalar dependencies and forward counts. The
 that focused branch/count coverage to numeric native execution.
 Preparation-only effects inside retained envelopes remain restricted.
 
+The [typed-owner checkpoint](#selected-immutable-iterable-owners) extends that
+coverage to source-order immutable lists/ranges selected by certified guards and
+consumed by iterable loops after the branch. Typed provenance stays separate
+from the scalar dependency graph; general forward-value convergence and another
+guard-activation retry remain outside this capability.
+
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
 iterable `.for` support on the shared EXVM grammar. BS32 repaired imported
 iterator identities, deferred macro register/value binding and complete lexical
@@ -1372,6 +1378,75 @@ binaries, hashes, logs and reproduction settings are outside `target` in
 
 No new full self-host, A6000 timing or 2 MiB qualification is claimed. The prior
 complete BS35 source proof and bundle remain selected.
+
+### Selected immutable iterable owners
+
+Baseline: `25c396e3`. A forward scalar guard could select an immutable list with
+another length, while Rust kept the following iterable loop's provisional sizing
+count. The clean baseline `{6}` → `{2,4}` case rejected with count 1 → 2 even
+though the native engine already supported the final source-order value.
+
+Rust now captures typed immutable ownership at the definition's source position,
+propagates the initially certified guard origins through aliases, and authorizes
+the consuming loop's extent in the first sizing retry. Nested literal counted
+and iterable loops follow that corrected extent through the existing traversal
+membership checks. Compounds retain ordinary evaluation and do not enter the
+scalar DAG. Dependency discovery uses the same expression walker; the small
+`asmline_value_replay` module owns provenance, separate from loop scheduling.
+Ordinary assembly skips this bookkeeping when no certified guard retry is active.
+
+Current-traversal owners are required: a previous traversal's scalar certificate
+cannot authorize a dependency whose newly selected owner has not yet executed.
+Review identified and tests confirmed that stale-certificate hole; it now rejects,
+as does the equivalent forward PC-owner case. Mutable snapshots, PC/label and
+iterator dependencies stay strict. Count-expanded new definitions, general
+forward compounds, additional guard-activation chains and premature downstream
+indexing diagnostics remain open. Newly encountered nested iterables depending
+on an active iterator or mutable value still reject this replay authorization.
+
+All 50 constant-dependency tests and the 15-positive/3-negative Rust oracle
+matrix pass. Fresh native combined comparisons on both target packages match
+the full 36-byte live Rust oracle (2,181/2,166 source bytes), on the 68020/10 MiB
+emulator host. Selected missing values, duplicate immutable owners and invalid
+range steps each complete on both packages with explicit exit 20 and a diagnostic
+(six fresh negative runs). This proves those cases, not execution on a physical 6502.
+Existing forward-branch, iterable, scoped and named-scoped oracles pass, along
+with 20 repetition, 12 assignment, 31 conditional and eight signed-scalar tests;
+nine native conditional tests are ignored in that host selection. All 88 engine
+tests, assembler library Clippy, Rust formatting and deterministic native/workflow
+checks pass. A focused independent review found no remaining must-fix after the
+stale-owner repair; coordinator qualification also closes the initially omitted
+nested literal iterable case. Full workspace/reference qualification was not run.
+
+Rebuilding with the corrected Rust assembler gives the byte-identical 641,876-byte
+native release executable (linked static reservation 661,116 bytes). SHA-256:
+`b0b6f4f19bc5a77ee9a89efec1b11bbd7d0daa737bb454dd21b63adbb43c9173`.
+There are no native production, package, instrumentation or format changes in
+this slice, so no native speedup or regression is attributed to it. Focused
+native guest times are correctness-run observations, including concurrent host
+qualification, rather than isolated performance measurements.
+
+Frozen optimized Rust test binaries compare the unchanged controls without any
+concurrent builds, tests, native runs or UI intervention. Compilation is excluded;
+warmups are excluded from the samples:
+
+| Control | Before median | After median | Change |
+|---|---:|---:|---:|
+| 10,000 counted-loop observations; internal assembly helper, five alternating pairs | 0.235830 s | 0.236513 s | +0.000684 s (+0.29%) |
+| Iterable oracle suite; whole process, three alternating pairs | 10.929469 s | 10.892768 s | -0.036701 s (-0.34%) |
+
+The first control checks the expected output length; the second includes test
+startup, temporary file I/O and exact output/error comparisons. These small mixed
+sample differences do not establish a meaningful slowdown or speedup. Feature
+inputs reject on the baseline Rust assembler, so they have no successful before
+time. The images, frozen binaries, logs, hashes and reproduction settings remain
+outside `target` in `/tmp/opforge-guarded-iterables-measurements.json`. Reproduce
+with `python3 /tmp/opforge-guarded-iterables-performance.py`.
+
+
+No new full self-host, physical A6000 timing, peak-memory or 2 MiB qualification
+is claimed. The previous BS35 complete source proof and bundle remain selected.
+
 
 ### Forward opening guards and mutable effects
 

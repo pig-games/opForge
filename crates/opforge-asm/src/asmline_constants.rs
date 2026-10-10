@@ -140,6 +140,9 @@ impl AsmLine<'_> {
         if matches!(self.profile_phase, AsmProfilePhase::Pass2) {
             return;
         }
+        let value_certificate = (counted && operands.len() == 2)
+            .then(|| self.value_replay_certificate(&operands[1]))
+            .flatten();
         self.loop_observations.push(LoopObservation {
             line,
             guards: self
@@ -155,7 +158,8 @@ impl AsmLine<'_> {
             scope: self.symbol_scope.clone(),
             cpu: self.cpu,
             counted,
-            immutable: false,
+            immutable: value_certificate.is_some(),
+            value_owner_replay: value_certificate.is_some_and(|guards| !guards.is_empty()),
             loop_variable_dependent: operands.iter().any(|expr| {
                 let mut names = Vec::new();
                 scalar_dependencies(expr, &mut names);
@@ -239,6 +243,7 @@ impl AsmLine<'_> {
             .filter(|name| self.lookup_loop_var(name).is_some())
             .map(str::to_string)
             .collect();
+        self.capture_value_replay_certificate(name, expr);
         self.constant_definitions.push(Definition {
             name: name.into(),
             expr: expr.clone(),
@@ -425,6 +430,14 @@ impl AsmLine<'_> {
 /// a cycle cannot hide it. Only scalar operations with no contextual inputs are
 /// eligible for early evaluation; structured values keep their normal semantics.
 pub(super) fn scalar_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) -> bool {
+    expression_dependencies(expr, names, false)
+}
+
+pub(super) fn value_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) -> bool {
+    expression_dependencies(expr, names, true)
+}
+
+fn expression_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>, structured: bool) -> bool {
     match expr {
         Expr::Number(_, _) => true,
         Expr::Identifier(name, _) | Expr::Register(name, _) => {
@@ -434,10 +447,10 @@ pub(super) fn scalar_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) 
         Expr::Indirect(inner, _)
         | Expr::IndirectLong(inner, _)
         | Expr::Immediate(inner, _)
-        | Expr::Unary { expr: inner, .. } => scalar_dependencies(inner, names),
+        | Expr::Unary { expr: inner, .. } => expression_dependencies(inner, names, structured),
         Expr::Binary { left, right, .. } => {
-            let left = scalar_dependencies(left, names);
-            let right = scalar_dependencies(right, names);
+            let left = expression_dependencies(left, names, structured);
+            let right = expression_dependencies(right, names, structured);
             left && right
         }
         Expr::Ternary {
@@ -446,26 +459,24 @@ pub(super) fn scalar_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) 
             else_expr,
             ..
         } => {
-            let cond = scalar_dependencies(cond, names);
-            let then_expr = scalar_dependencies(then_expr, names);
-            let else_expr = scalar_dependencies(else_expr, names);
+            let cond = expression_dependencies(cond, names, structured);
+            let then_expr = expression_dependencies(then_expr, names, structured);
+            let else_expr = expression_dependencies(else_expr, names, structured);
             cond && then_expr && else_expr
         }
         Expr::List(items, _) | Expr::Tuple(items, _) => {
+            let mut eligible = structured;
             for item in items {
-                scalar_dependencies(item, names);
+                eligible &= expression_dependencies(item, names, structured);
             }
-            false
+            eligible
         }
         Expr::Index { base, index, .. } => {
-            scalar_dependencies(base, names);
-            scalar_dependencies(index, names);
-            false
+            let base = expression_dependencies(base, names, structured);
+            let index = expression_dependencies(index, names, structured);
+            structured && base && index
         }
-        Expr::Member { base, .. } => {
-            scalar_dependencies(base, names);
-            false
-        }
+        Expr::Member { base, .. } => expression_dependencies(base, names, structured) && structured,
         Expr::StructLiteral { fields, .. } => {
             for (_, value) in fields {
                 scalar_dependencies(value, names);
@@ -481,12 +492,12 @@ pub(super) fn scalar_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) 
         Expr::Range {
             start, end, step, ..
         } => {
-            scalar_dependencies(start, names);
-            scalar_dependencies(end, names);
-            if let Some(step) = step {
-                scalar_dependencies(step, names);
-            }
-            false
+            let start = expression_dependencies(start, names, structured);
+            let end = expression_dependencies(end, names, structured);
+            let step = step
+                .as_ref()
+                .is_none_or(|step| expression_dependencies(step, names, structured));
+            structured && start && end && step
         }
         _ => false,
     }

@@ -611,6 +611,30 @@ branch-local scalar constants, dependency chains and nested forward counts. Only
 selected declarations claim ownership: inactive alternatives do not evaluate missing
 values, while duplicate active immutable definitions reject.
 
+An immutable list or range selected by a certified forward scalar guard can also
+change the count of a following iterable `.for` or `.bfor`, including after
+`.endif`. Source-order aliases preserve this proof:
+
+```
+.if enabled
+    items = {2,4}
+.else
+    items = {6}
+.endif
+saved = items
+enabled = 1
+.for item in saved
+    .byte item             ; emits 2,4
+.endfor
+```
+
+This permits one checked sizing retry. Dependencies must have immutable owners
+already executed in that retry; mutable snapshots, labels, the program counter
+and active iterator values cannot authorize a count change. Nested literal loops
+follow the corrected parent extent, but newly count-expanded definitions remain
+restricted. It does not enable general forward compound values or additional
+guard activation chains.
+
 ### 3.8 Struct definitions
 
 Struct definitions declare field offsets and total size:

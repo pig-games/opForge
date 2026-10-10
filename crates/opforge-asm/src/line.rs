@@ -201,6 +201,8 @@ mod asmline_relocation;
 
 #[path = "asmline_constants.rs"]
 mod asmline_constants;
+#[path = "asmline_value_replay.rs"]
+mod asmline_value_replay;
 
 #[path = "asmline_conditionals.rs"]
 mod asmline_conditionals;
@@ -240,6 +242,8 @@ pub struct AsmLine<'a> {
     value_symbols: HashMap<String, AsmValue>,
     module_parameters: types::asm_value::ModuleParameters,
     constant_definitions: Vec<asmline_constants::Definition>,
+    value_replay_owners:
+        HashMap<String, Option<HashSet<crate::engine::repetition_trace::GuardKey>>>,
     active_constant_owners: HashSet<String>,
     pub(crate) loop_observations: Vec<crate::engine::repetition_trace::LoopObservation>,
     pub(crate) repetition_path: Vec<(u32, u32)>,
@@ -460,6 +464,7 @@ impl<'a> AsmLine<'a> {
             loop_observations: Vec::new(),
             repetition_path: Vec::new(),
             immutable_scalar_constants: HashSet::new(),
+            value_replay_owners: HashMap::new(),
             scalar_value_symbols: HashMap::new(),
             active_struct: None,
             require_defined_symbols: false,

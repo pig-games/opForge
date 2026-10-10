@@ -39,6 +39,21 @@ MEMORY_COUNTER_INC	.macro counter
 .endif
 .endmacro
 
+; Count a zero-valued owner without keeping its selection branch in release code.
+; No register or CCR effect; ordinary builds emit no code.
+MEMORY_COUNTER_INC_ZERO	.macro counter, value
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+	move.w ccr, -(sp)
+	tst.l .value
+	bne.w done
+	addq.l #1, .counter
+done
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
 MEMORY_COUNTER_ADD	.macro counter, amount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

@@ -363,7 +363,7 @@ fn compact_preparation_telemetry_fs_uae() {
 fn assembly_telemetry_source() -> String {
     let telemetry =
         include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");
-    format!(".module app\n.cpu m68020\n{telemetry}\nMissing=0\n.ASSEMBLY_FAILURE_STAGE Missing,#1\n.byte 1\n.endmodule\n")
+    format!(".module app\n.cpu m68020\n{telemetry}\nMissing=0\n.ASSEMBLY_FAILURE_STAGE Missing,#1\n.MEMORY_COUNTER_INC_ZERO UndefinedCounter,#0\n.MEMORY_COUNTER_INC_ZERO UndefinedCounter,#1\n.byte 1\n.endmodule\n")
 }
 
 #[test]

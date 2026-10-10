@@ -1,4 +1,4 @@
-; Preparation-owned declaration identities for scoped repetitions.
+; Preparation-owned declaration identities for scoped repetitions and selected globals.
 ; Replay consumes numeric IDs and offsets; lexical spelling stays in preparation.
 ; @opforge-owner: experimental.amigaos.binary_repeat_inventory
 	.module experimental.amigaos.binary_repeat_inventory
@@ -14,6 +14,7 @@ LABEL = 1
 IMMUTABLE = 2
 MUTABLE = 3
 COLLECTION = 4
+UNCONDITIONAL = $200; eager global owner also exists; selected replacement rejects
 CONDITIONAL = $100; immutable root requires an executed branch
 KIND_MASK = $ff
 Decl	.struct
@@ -58,6 +59,7 @@ SourceBase	.long ?
 MemberKeys	.long ?  ; borrowed u16 canonical member key per actual symbol ID
 Symbols	.long ?
 Count	.long ?
+Globals	.long ?  ; global IDs with conditional immutable candidates
 Current	.word ?
 Depth	.word ?
 BranchDepth	.word ?
@@ -79,6 +81,7 @@ prepare	.block
 	move.l a1, State.SourceBase(a6)
 	move.l a3, State.MemberKeys(a6)
 	clr.l State.Count(a6)
+	clr.l State.Globals(a6)
 	clr.w State.Current(a6)
 	clr.w State.Depth(a6)
 	clr.w State.BranchDepth(a6)
@@ -201,7 +204,16 @@ closed
 	bra.w next
 declaration
 	tst.w State.Current(a6)
+	bne.w declarationOwned
+	tst.w State.BranchDepth(a6)
 	beq.w next
+	tst.w State.Depth(a6)
+	bne.w next
+	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, PackedRecord.Marker(a4)
+	bne.w next
+	bsr.w declarationMap
+	bne.w done
+declarationOwned
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, PackedRecord.NameKind(a4)
 	bhi.w next
 	tst.b PackedRecord.NameQualifier(a4)
@@ -227,7 +239,7 @@ bind
 	lsl.l #DECL_SHIFT, d6
 	movea.l State.Declarations+memory.Block.Pointer(a6), a3
 	adda.l d6, a3
-	tst.w Decl.Owner(a3)
+	tst.w Decl.Kind(a3)
 	beq.w first
 	move.w State.Current(a6), d0
 	cmp.w Decl.Owner(a3), d0
@@ -293,6 +305,11 @@ owned
 	move.l a4, d0
 	sub.l State.SourceBase(a6), d0
 	move.l d0, Decl.Record(a3)
+	tst.w State.Current(a6)
+	bne.w scopedClaim
+	addq.l #1, State.Globals(a6)
+	bra.w next
+scopedClaim
 	addq.l #1, State.Count(a6)
 	moveq #0, d0
 	move.w State.Current(a6), d0
@@ -511,8 +528,8 @@ done
 	rts
 	.bend  ; scatter
 
-; A6=state. Allocate the direct-ID map only at the first scoped header.
-; Ordinary unscoped programs carry no scoped inventory allocation.
+; A6=state. Allocate the direct-ID map at the first scoped header or global
+; conditional immutable candidate. Ordinary programs need no inventory map.
 ; D0/CCR=status; other registers preserved.
 declarationMap	.block
 	movem.l d1-d2/a0-a1, -(sp)

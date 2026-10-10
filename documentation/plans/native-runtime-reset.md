@@ -28,7 +28,9 @@ replay to unavailable `.elseif` arms after known false preparation-selected arms
 The [immutable forward-guard loop repair](#immutable-forward-guards-and-loop-layout)
 lets Rust stabilize loops selected by those scalar guards before emission.
 The Rust [guard/count composition repair](#forward-guard-and-count-composition) adds
-one certified batch of branch-local scalar dependencies and forward counts.
+one certified batch of branch-local scalar dependencies and forward counts. The
+[native selected-constant checkpoint](#selected-global-constant-activation) extends
+that focused branch/count coverage to numeric native execution.
 Preparation-only effects inside retained envelopes remain restricted.
 
 BS31 added statement-time flat lists, compact ranges, numeric `.len` and focused
@@ -1274,16 +1276,10 @@ The separate unrelated-count plus guarded scoped-local snapshot case matches
 live Rust in fresh runs with both packages (167/166 source bytes; START/DONE
 1.549/0.768 seconds). These timings describe that focused case, not a full build.
 
-Native preparation rejects top-level immutable declarations inside retained
-branches in `binary_scopes.deferredLine`. Existing immutable replay assumes proved
-ownership, and selected graph activation belongs to scoped `.bfor`/`.bwhile`
-frames. Removing the rejection alone would bypass that boundary. The next native
-slice must track branch-owned declaration candidates, select owners after numeric
-guard evaluation, resolve the selected scalar graph and feed corrected counts
-into checked sizing replay. Keep this work in shared core processing, preserve
-inactive-arm suppression and selected duplicate/cycle/missing-value rejection,
-and use the four new cases plus existing branch/loop/configuration controls as
-acceptance tests.
+At this Rust checkpoint, native preparation still rejected top-level immutable
+declarations inside retained branches; selected activation belonged to scoped
+`.bfor`/`.bwhile` frames. The following native checkpoint adds preparation-owned
+candidates and runtime selection rather than merely removing that rejection.
 
 Unchanged Rust controls, frozen optimized test binaries, compilation excluded:
 
@@ -1300,6 +1296,82 @@ image is byte-identical to baseline: 641,240 bytes, linked static reservation
 Measurements and reproduction details are retained outside `target` in
 `/tmp/opforge-guard-count-measurements.json`. No new full self-host, physical
 A6000 timing, peak-memory or 2 MiB qualification is claimed.
+
+### Selected global constant activation
+
+Baseline: `0d55eef0`. Preparation now retains top-level immutable candidates
+inside numeric branch envelopes without capturing their RHS values. PRVM selects
+an arm; the existing shared dependency resolver activates only that arm's scalar
+roots. Preparation-owned inventory distinguishes eager unconditional owners from
+conditional alternatives. Each source sweep resets selected ownership while
+keeping prior live values for retained forward guards. No source-text parser,
+CPU-specific behavior, persisted layout or VM-version field is added.
+
+The Rust oracle repair also checks immutable ownership per traversal for both
+`=` and `.const`. A different selected alternative may replace the previous
+traversal's value, but two active owners in one traversal reject. This closes
+both emission-only and sizing-replay collisions without broadening certification.
+
+The 39-positive branch matrix matches the 81-byte live Rust oracle on both
+68020 and 6502 packages (5,484/5,445 source bytes). It includes branch-local
+literal/DAG/nested forward counts, both alternatives, inactive missing values,
+inactive immutable replacement and existing scoped-loop/mutable snapshot cases.
+Rust checks all 16 negative matrix cases per package and 40 constant-dependency
+regressions. Five native rejection scenarios per package complete with explicit
+exit 20 and a diagnostic: selected readonly update, immutable replacement,
+duplicate immutable owner, cycle and missing count dependency. One initial
+68020 duplicate run had no completion and supplies no proof; its fresh retry
+passes. The final release image separately qualifies both combined positives and
+selected duplicate rejection. The existing ten-case configuration matrix also
+matches Rust on 68020. Disabled telemetry macro expansion emits only the expected
+single byte despite undeclared counter operands. Affected repetition, assignment,
+conditional, signed-value and configuration host checks, all 88 engine tests,
+library Clippy, Rust/native formatting and workflow/native guards pass. A focused
+independent Sol review found no must-fix issue. Full workspace/reference and
+broader test-target Clippy qualification were not rerun.
+
+Additional count-expanded definitions, new forward-guard activation
+chains, general layout convergence and preparation-only effects remain open.
+This is focused coverage, not full loop/macro or assembler parity.
+
+Gated phase 310 reports selected branch calls, activated scalar roots and global
+selections in its three work fields. `MEMORY_COUNTER_INC_ZERO` keeps selection
+and CCR preservation inside the reusable macro. Removing the new telemetry calls
+and storage produces a byte-identical release image. A fresh instrumented run of
+the 39-case 68020 matrix matches Rust and reports
+74 selections, 20 scalar roots and 70 global selections. MEMD reports 645,632
+bytes peak owned allocation, balanced 1,515,272-byte allocation/free totals and
+zero terminal owned bytes. This larger fixture is not an isolated memory delta
+or a full self-host working-set measurement. Instrumented measurements remain
+separate from release timings.
+
+The dual-package release image is 641,876 bytes (+636); linked static reservation
+is 661,116 bytes (+576). These are image/static sizes, not peak allocation or the
+2 MiB working-set budget. Release SHA-256:
+`b0b6f4f19bc5a77ee9a89efec1b11bbd7d0daa737bb454dd21b63adbb43c9173`.
+
+
+Isolated release timing uses the unchanged 200-byte, 1,024-iteration scalar
+control with its 7,168-byte live Rust output on FS-UAE `68020-10m`. No other
+builds, tests, native runs or UI intervention overlap either alternating pair:
+
+| Measurement | Before | After | Change |
+|---|---:|---:|---:|
+| Fresh START/DONE samples | 36.459674 / 36.133330 s | 36.430195 / 36.395343 s | mixed pair differences |
+| Mean START/DONE time | 36.296502 s | 36.412769 s | +0.116267 s (+0.32%) |
+| Release image | 641,240 bytes | 641,876 bytes | +636 bytes |
+| Linked static reservation | 660,540 bytes | 661,116 bytes | +576 bytes |
+
+Two pairs do not establish a meaningful slowdown. This measures overhead on an
+existing workload; the newly supported global branch/count cases reject on the
+baseline, so they have no successful before time. The initial control sample
+that overlapped host qualification is excluded. Frozen images, optimized test
+binaries, hashes, logs and reproduction settings are outside `target` in
+`/tmp/opforge-native-guard-measurements.json`; the serialized command is
+`python3 /tmp/opforge-native-guard-performance.py`.
+
+No new full self-host, A6000 timing or 2 MiB qualification is claimed. The prior
+complete BS35 source proof and bundle remain selected.
 
 ### Forward opening guards and mutable effects
 

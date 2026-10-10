@@ -602,12 +602,14 @@ by `enabled=1`, emits both iterations. This applies to scalar predicates indepen
 of labels, the program counter, mutable values and active iterator values. Loop
 counts must remain stable once selected, and emission must match the accepted
 sizing traversal. It does not enable general compound or layout-dependent guard
-convergence. In Rust, one newly activated branch may introduce scalar immutable
+convergence. One newly activated branch may introduce scalar immutable
 dependency chains used by its forward loop counts. This also works alongside an unrelated
 forward-count replay. Declarations exposed only by an additional count expansion,
 and new forward guards needing another branch activation, remain unsupported.
-The experimental native path still rejects top-level immutable declarations inside
-a retained forward conditional; branch-local forward counts are not yet qualified.
+The experimental native path has focused 68020/6502 package coverage for selected
+branch-local scalar constants, dependency chains and nested forward counts. Only
+selected declarations claim ownership: inactive alternatives do not evaluate missing
+values, while duplicate active immutable definitions reject.
 
 ### 3.8 Struct definitions
 

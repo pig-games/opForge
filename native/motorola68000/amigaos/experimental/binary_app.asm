@@ -165,6 +165,7 @@ execute	.block
 	.MEMORY_COUNTER_CLEAR output_spans.Events
 	.MEMORY_COUNTER_CLEAR activation.Selections
 	.MEMORY_COUNTER_CLEAR activation.Roots
+	.MEMORY_COUNTER_CLEAR activation.GlobalSelections
 	move.l Frame.ModuleRoots(a0), CliModuleRoots
 	move.l Frame.ModuleCount(a0), CliModuleCount
 	move.l Frame.IncludeRoots(a0), CliIncludeRoots
@@ -1334,7 +1335,7 @@ captureSpans
 assemble
 	jsr assembly.assemble
 	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_WORK, assembly.TraversalPasses, assembly.TraversalRecords, #0
-	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ROOTS, activation.Selections, activation.Roots, #0
+	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ROOTS, activation.Selections, activation.Roots, activation.GlobalSelections
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_SIZING, assembly.SizingPasses, branches.DeferredEvaluations, #0
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ITERABLE, repetition.IterableScopes, repetition.IterableBindings, #0
 	rts

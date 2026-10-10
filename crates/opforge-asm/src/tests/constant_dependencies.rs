@@ -495,6 +495,50 @@ fn constant_dependencies_guard_activated_scalar_dag_count() {
 }
 
 #[test]
+fn constant_dependencies_guard_activated_rejects_active_immutable_owners() {
+    for source in [
+        "fixed=1\n.if enabled\nfixed=2\n.endif\nenabled=1\n.byte fixed",
+        ".if enabled\nvalue=2\nvalue=3\n.endif\nenabled=1\n.byte value",
+        "value .const 1\n.if enabled\nvalue .const 2\n.endif\nenabled=1",
+        "fixed=1\n.if enabled\nfixed=2\n.for 1\n.byte fixed\n.endfor\n.endif\nenabled=1",
+        ".if enabled\nvalue=2\nvalue=3\n.for 1\n.byte value\n.endfor\n.endif\nenabled=1",
+    ] {
+        let lines = source.lines().map(str::to_string).collect::<Vec<_>>();
+        let mut assembler = Assembler::new();
+        let pass1 = assembler.pass1(&lines);
+        if pass1.errors == 0 {
+            let mut listing_out = Vec::new();
+            let mut listing = ListingWriter::new(&mut listing_out, false);
+            assembler.pass2(&lines, &mut listing).expect("pass2");
+        }
+        assert!(
+            assembler.diagnostics.iter().any(|diagnostic| diagnostic
+                .error
+                .message()
+                .contains("symbol has already been defined")),
+            "active immutable owner accepted: {source}\n{:?}",
+            assembler.diagnostics
+        );
+    }
+}
+
+#[test]
+fn constant_dependencies_guard_activated_allows_alternative_immutable_owner() {
+    for inactive_value in ["3", "missing"] {
+        assert_eq!(
+            bytes(&format!(
+                ".if enabled\nvalue=2\n.else\nvalue={inactive_value}\n.endif\nenabled=1\n.byte value"
+            )),
+            [2]
+        );
+    }
+    assert_eq!(
+        bytes(".if enabled\nleft .block\nvalue=2\n.byte value\n.endblock\nright .block\nvalue=3\n.byte value\n.endblock\n.endif\nenabled=1"),
+        [2, 3]
+    );
+}
+
+#[test]
 fn constant_dependencies_guard_activated_missing_constant_stays_error() {
     let assembler = run_pass1(&[
         ".if enabled",

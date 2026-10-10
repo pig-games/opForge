@@ -258,6 +258,15 @@ impl<'a> AsmLine<'a> {
             );
         }
         let full_name = self.scoped_define_name(&label);
+        if !is_rw && !self.claim_constant_owner(&full_name) {
+            return self.failure_at(
+                LineStatus::Error,
+                AsmErrorKind::Symbol,
+                "symbol has already been defined",
+                Some(&label),
+                Some(1),
+            );
+        }
         let res = if self.pass == 1 {
             self.symbols.add(
                 &full_name,

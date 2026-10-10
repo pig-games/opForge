@@ -192,6 +192,7 @@ clearSymbols
 	movea.l Frame.Records(a5), a0
 	move.l Frame.RecordBytes(a5), d0
 	movea.l InventoryState+repeatInventory.State.Declarations+memory.Block.Pointer, a1
+	move.l InventoryState+repeatInventory.State.Globals, d1
 	jsr dependencies.resolve
 	tst.l d0
 	bne.w fail

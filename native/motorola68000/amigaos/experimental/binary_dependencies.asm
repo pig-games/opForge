@@ -15,6 +15,7 @@
 	.use experimental.amigaos.binary_repeat_dependencies as localGraph
 	.use experimental.amigaos.binary_repeat_activation as activation
 	.use experimental.amigaos.binary_dependency_layout as graph
+	.use prvm.amigaos.packed_branch as branch
 	.pub
 ABSOLUTE = graph.ABSOLUTE
 	.priv
@@ -25,6 +26,7 @@ LABEL = graph.LABEL
 MUTABLE_SNAPSHOT = graph.SNAPSHOT
 MODE_LOCAL = 1
 MODE_BRANCH = 2
+MODE_GLOBAL_BRANCH = 3
 Entry	.struct
 Id	.word ?
 Cursor	.word ?
@@ -38,19 +40,21 @@ Limit	.res long, 1
 Depth	.res long, 1
 Constants	.res long, 1
 Locals	.res long, 1
+GlobalCandidates	.res long, 1
 States	.res byte, memory.Block.Used+4
 Offsets	.res byte, memory.Block.Used+4
 Local	.res long, 1
 RootCursor	.res long, 1
 Mode	.res word, 1
+BranchDepth	.res word, 1
 	.align 4
 Scratch	.res byte, memory.Block.Used+4
 	.endsection
 	.section code, kind=code
 	.pub
-; A0=packed records,D0=record bytes,A1=optional scoped declaration map,
-; A2=Context with zeroed symbol arrays. Scoped declarations belong to their
-; iteration owner and are excluded from the enclosing eager graph.
+; A0=packed records,D0=record bytes,A1=optional declaration map,
+; D1=global conditional ID count,A2=Context with zeroed symbol arrays.
+; Scoped declarations belong to their iteration owner, outside the eager graph.
 ; D0/CCR=status; other registers preserved. Graph states and expression offsets
 ; stay in private storage. Absolute values retain Defined=ABSOLUTE; other entries
 ; are cleared before return. Scratch is bounded by source IDs and always freed.
@@ -63,6 +67,7 @@ start
 	bne.w localInputs
 	move.l a0, Base
 	move.l a1, Locals
+	move.l d1, GlobalCandidates
 	add.l a0, d0
 	bcs.w bad
 	move.l d0, Limit
@@ -100,6 +105,8 @@ rootsReady
 	move.w pkg.Header.NameCount(a0), d7
 root
 	tst.w Mode
+	beq.w globalRoot
+	cmpi.w #MODE_GLOBAL_BRANCH, Mode
 	beq.w globalRoot
 	movea.l Local, a0
 	move.l RootCursor, d0
@@ -305,6 +312,8 @@ pop
 nextRoot
 	tst.w Mode
 	beq.w nextGlobalRoot
+	cmpi.w #MODE_GLOBAL_BRANCH, Mode
+	beq.w nextGlobalRoot
 	addq.l #1, RootCursor
 	bra.w root
 nextGlobalRoot
@@ -362,8 +371,8 @@ localInputs
 	move.l Offsets+memory.Block.Pointer, graph.Frame.Offsets(a0)
 	clr.l RootCursor
 	clr.l Depth
-	cmpi.w #MODE_BRANCH, Mode
-	beq.w activateLocal
+	cmpi.w #MODE_LOCAL, Mode
+	bne.w activateLocal
 	jsr localGraph.init
 	bra.w localReady
 activateLocal
@@ -397,6 +406,47 @@ activateLocal	.block
 	move.w #MODE_BRANCH, Mode
 	bra.w resolve.start
 	.bend  ; activateLocal
+
+; A0=global owner Frame with selected control offset. Selected roots share the
+; scalar DFS, while root traversal covers numeric source IDs rather than a loop.
+; D0/CCR=status; other registers preserved.
+activateGlobal	.block
+	move.w #MODE_GLOBAL_BRANCH, Mode
+	bra.w resolve.start
+	.bend  ; activateGlobal
+
+; A0=global owner Frame. Begin one source sweep: discard selected ownership
+; offsets without discarding prior live values needed by forward guards.
+; D0/CCR=0; other registers preserved.
+beginGlobal	.block
+	movem.l d1-d3/a0-a3, -(sp)
+	movea.l graph.Frame.Declarations(a0), a1
+	move.l a1, d0
+	beq.w done
+	movea.l graph.Frame.Context(a0), a2
+	move.l pkg.Context.Count(a2), d2
+	movea.l States+memory.Block.Pointer, a2
+	movea.l Offsets+memory.Block.Pointer, a3
+	moveq #0, d1
+next
+	cmpi.w #repeatInventory.IMMUTABLE+repeatInventory.CONDITIONAL, repeatInventory.Decl.Kind(a1)
+	bne.w advance
+	tst.w repeatInventory.Decl.Owner(a1)
+	bne.w advance
+	move.b #LAYOUT, 0(a2, d1.l)
+	move.l d1, d3
+	lsl.l #graph.OFFSET_SHIFT, d3
+	clr.l graph.Offset.Expression(a3, d3.l)
+advance
+	addq.l #repeatInventory.DECL_BYTES, a1
+	addq.l #1, d1
+	cmp.l d2, d1
+	blo.w next
+done
+	moveq #0, d0
+	movem.l (sp)+, d1-d3/a0-a3
+	rts
+	.bend  ; beginGlobal
 
 ; Release graph storage after assembly/retry ownership has ended.
 ; Registers preserved; CCR reflects the caller's D0 status.
@@ -470,6 +520,7 @@ index	.block
 	movea.l pkg.Context.Package(a6), a2
 	movea.l Offsets+memory.Block.Pointer, a4
 	movea.l States+memory.Block.Pointer, a5
+	clr.w BranchDepth
 line
 	cmpa.l a1, a0
 	beq.w good
@@ -487,6 +538,11 @@ line
 	bhi.w bad
 	btst #3, 1(a0)
 	bne.w next
+	tst.l GlobalCandidates
+	beq.w rolesReady
+	bsr.w indexBranch
+	bne.w bad
+rolesReady
 	cmpi.w #9, d6
 	blo.w next
 	lea 4(a0), a3
@@ -524,6 +580,25 @@ declaration
 	lsl.l #repeatInventory.DECL_SHIFT, d0
 	tst.w repeatInventory.Decl.Owner(a3, d0.l)
 	bne.w next
+	move.w repeatInventory.Decl.Kind(a3, d0.l), d1
+	andi.w #repeatInventory.CONDITIONAL, d1
+	beq.w knownOwnership
+	tst.w BranchDepth
+	beq.w unconditionalOwner
+	tst.b 0(a5, d4.l)
+	bne.w next
+	move.b #LAYOUT, 0(a5, d4.l)
+	bra.w next
+unconditionalOwner
+	move.w repeatInventory.Decl.Kind(a3, d0.l), d1
+	andi.w #repeatInventory.UNCONDITIONAL, d1
+	bne.w knownOwnership
+	cmpi.b #LAYOUT, 0(a5, d4.l)
+	bne.w eagerOwner
+	clr.b 0(a5, d4.l)
+eagerOwner
+	ori.w #repeatInventory.UNCONDITIONAL, repeatInventory.Decl.Kind(a3, d0.l)
+knownOwnership
 	lea 4(a0), a3
 enclosingDeclaration
 	tst.b 0(a5, d4.l)
@@ -619,6 +694,36 @@ done
 	tst.l d0
 	rts
 	.bend  ; index
+
+; A0=bounded record,D6=extent,A2=package. Track branch ancestry through PRVM.
+; D0/CCR=status; other registers preserved.
+indexBranch	.block
+	movem.l d1/a0-a1, -(sp)
+	move.l d6, d0
+	movea.l a2, a1
+	adda.l pkg.Header.BranchPlan(a1), a1
+	jsr branch.classify
+	bne.w done
+	cmpi.l #branch.IF, d1
+	beq.w opening
+	cmpi.l #branch.ENDIF, d1
+	bne.w good
+	tst.w BranchDepth
+	beq.w bad
+	subq.w #1, BranchDepth
+	bra.w good
+opening
+	addq.w #1, BranchDepth
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; indexBranch
 
 	.pub
 ; A1=Context. Discard provisional label/alias and mutable values before a fresh

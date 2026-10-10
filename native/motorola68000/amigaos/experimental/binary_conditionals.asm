@@ -1,6 +1,7 @@
 ; Conditional preparation selection over numeric writer records. Unavailable
 ; guards retain remaining branch envelopes for shared numeric runtime replay;
 ; selected preparation controls become empty records before expression lowering.
+; @opforge-owner: experimental.amigaos.binary_conditionals
 	.module experimental.amigaos.binary_conditionals
 	.cpu 68020
 	.use experimental.amigaos.binary_scope_layout as layout

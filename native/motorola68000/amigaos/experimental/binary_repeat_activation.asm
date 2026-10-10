@@ -21,6 +21,7 @@ select	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	.MEMORY_COUNTER_INC Selections
 	movea.l a0, a6
+	.MEMORY_COUNTER_INC_ZERO GlobalSelections, graph.Frame.Owner(a6)
 	movea.l graph.Frame.Context(a6), a2
 	movea.l graph.Frame.Records(a6), a4
 	movea.l a4, a5
@@ -150,6 +151,7 @@ done
 	.section bss, kind=bss
 Selections	.res long, 1
 Roots	.res long, 1
+GlobalSelections	.res long, 1
 	.endsection
 .endif
 .endif

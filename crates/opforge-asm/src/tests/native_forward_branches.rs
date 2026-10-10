@@ -1,4 +1,4 @@
-//! Forward opening guards replay numeric branches and selected mutable effects.
+//! Forward branches select mutable effects and immutable count dependencies.
 use super::native_iterable_loops::{build_image, oracle, run_case, scratch};
 use super::*;
 
@@ -36,6 +36,12 @@ const POSITIVE: &[(&str, &str, &[u8])] = &[
     ("forward-guard-local-count", ".if enabled\n.for count\n.byte 7\n.endfor\ncount=2\n.endif\nenabled=1\n.byte 9\n", &[7,7,9]),
     ("forward-guard-local-nested-counts", ".if enabled\n.for outer\n.for inner\n.byte 3\n.endfor\n.endfor\nouter=2\ninner=2\n.endif\nenabled=1\n.byte 9\n", &[3,3,3,3,9]),
     ("forward-guard-local-dag-count", ".if enabled\n.for count\n.byte 7\n.endfor\ncount=base+1\nbase=1\n.endif\nenabled=1\n.byte 9\n", &[7,7,9]),
+    ("guarded-constant-alternative-true", ".if enabled\nvalue=3\n.else\nvalue=4\n.endif\nenabled=1\n.byte value\n", &[3]),
+    ("guarded-constant-alternative-false", ".if enabled\nvalue=missing+1\n.else\nvalue=4\n.endif\nenabled=0\n.byte value\n", &[4]),
+    ("guarded-constant-inactive-replacement", "fixed=1\n.if enabled\nfixed=missing+1\n.endif\nenabled=0\n.byte fixed\n", &[1]),
+    ("guarded-count-alternative-true", ".if enabled\n.for count\n.byte 7\n.endfor\ncount=2\n.else\n.for count\n.byte 8\n.endfor\ncount=3\n.endif\nenabled=1\n.byte 9\n", &[7,7,9]),
+    ("guarded-count-alternative-false", ".if enabled\n.for count\n.byte missing\n.endfor\ncount=missing+1\n.else\n.for count\n.byte 8\n.endfor\ncount=2\n.endif\nenabled=0\n.byte 9\n", &[8,8,9]),
+    ("guarded-elseif-constant", ".if 0\nvalue=missing\n.elseif enabled\nvalue=7\n.else\nvalue=missing\n.endif\nenabled=1\n.byte value\n", &[7]),
 ];
 
 const BAD: &[(&str, &str)] = &[
@@ -51,6 +57,10 @@ const BAD: &[(&str, &str)] = &[
     ("forward-elseif-readonly", "fixed=1\n.if 0\n.byte 1\n.elseif later\nfixed .set 3\n.endif\nlater=1\n.byte fixed\n"),
     ("forward-elseif-double-else", ".if 0\n.byte 1\n.elseif later\n.byte 2\n.else\n.byte 3\n.else\n.byte 4\n.endif\nlater=1\n"),
     ("forward-elseif-after-else", ".if 0\n.byte 1\n.elseif later\n.byte 2\n.else\n.byte 3\n.elseif 1\n.byte 4\n.endif\nlater=1\n"),
+    ("guarded-constant-selected-replacement", "fixed=1\n.if enabled\nfixed=2\n.endif\nenabled=1\n.byte fixed\n"),
+    ("guarded-constant-selected-duplicate", ".if enabled\nvalue=2\nvalue=3\n.endif\nenabled=1\n.byte value\n"),
+    ("guarded-constant-selected-cycle", ".if enabled\nleft=right+1\nright=left+1\n.for left\n.byte 7\n.endfor\n.endif\nenabled=1\n"),
+    ("guarded-count-selected-missing", ".if enabled\ncount=missing+1\n.for count\n.byte 7\n.endfor\n.endif\nenabled=1\n"),
 ];
 
 fn source(cpu: &str, name: &str, body: &str) -> String {
@@ -97,7 +107,7 @@ fn native_forward_branches_rust_oracles() {
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; forward branches and selected mutable effects"]
+#[ignore = "requires configured FS-UAE; selected branch effects and constant/count replay"]
 fn native_forward_branches_fs_uae() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")

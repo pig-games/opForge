@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_repeat_frames
 	.cpu 68020
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_repeat_inventory as inventory
 	.use experimental.amigaos.binary_repeat_cells as cells
 	.use experimental.amigaos.binary_repetition_trace as trace
@@ -54,6 +55,39 @@ prepare	.block
 	move.l d0, State.RecordBytes(a0)
 	rts
 	.bend  ; prepare
+
+; A0=state. Reset global selected declaration ownership for one source sweep.
+; D0/CCR=status; other registers preserved. Reuses preparation-owned storage.
+beginGlobal	.block
+	movem.l d1/a0-a2/a6, -(sp)
+	movea.l a0, a6
+	bsr.w globalFrame
+	lea State.Graph(a6), a0
+	jsr dependencies.beginGlobal
+	movem.l (sp)+, d1/a0-a2/a6
+	tst.l d0
+	rts
+	.bend  ; beginGlobal
+
+; A0=state,D1=selected branch offset. Activate global conditional scalar roots.
+; D0/CCR=status; other registers preserved. No map means no selected globals.
+activateGlobal	.block
+	movem.l d1/a0-a2/a6, -(sp)
+	movea.l a0, a6
+	bsr.w globalFrame
+	lea State.Graph(a6), a0
+	move.l d1, graph.Frame.Branch(a0)
+	tst.l graph.Frame.Declarations(a0)
+	beq.w good
+	jsr dependencies.activateGlobal
+	bra.w done
+good
+	moveq #0, d0
+done
+	movem.l (sp)+, d1/a0-a2/a6
+	tst.l d0
+	rts
+	.bend  ; activateGlobal
 
 ; A0=state,D0=pass1/2. D0/CCR=status; other registers preserved.
 ; Retry discards provisional ownership/cells alongside the observation trace.
@@ -522,6 +556,26 @@ transfer	.block
 	jsr cells.transfer
 	rts
 	.bend  ; transfer
+
+; A6=frame state. Fill the transient global graph owner from session storage.
+; D1 preserved; clobbers A0-A2. Packed declarations retain numeric offsets.
+globalFrame	.block
+	lea State.Graph(a6), a2
+	move.l State.Records(a6), graph.Frame.Records(a2)
+	move.l State.RecordBytes(a6), graph.Frame.RecordBytes(a2)
+	move.l State.Context(a6), graph.Frame.Context(a2)
+	movea.l State.Inventory(a6), a0
+	clr.l graph.Frame.Declarations(a2)
+	tst.l inventory.State.Globals(a0)
+	beq.w context
+	move.l inventory.State.Declarations+memory.Block.Pointer(a0), graph.Frame.Declarations(a2)
+context
+	clr.l graph.Frame.Owner(a2)
+	clr.l graph.Frame.Ids(a2)
+	movea.l State.Context(a6), a0
+	move.l pkg.Context.Count(a0), graph.Frame.Count(a2)
+	rts
+	.bend  ; globalFrame
 
 ; A6=state,A5=group. Populate the transient shared-DFS call frame.
 ; Clobbers D0/A0-A2; no retained pointers are persisted into groups/cells.

@@ -84,7 +84,10 @@ begin	.block
 	clr.w State.Depth(a0)
 	move.l a1, State.SourceBase(a0)
 	move.l d0, State.Sweep(a0)
-	moveq #0, d0
+	move.l a0, -(sp)
+	lea State.Scopes(a0), a0
+	jsr frames.beginGlobal
+	movea.l (sp)+, a0
 	rts
 	.bend  ; begin
 
@@ -570,14 +573,14 @@ done
 	rts
 	.bend  ; scoped
 
-; A0=selected branch record,A3=loop state. Activate the innermost scoped
-; owner's immutable declarations through shared dependency resolution.
+; A0=selected branch record,A3=loop state. Activate global or innermost scoped
+; immutable declarations through shared dependency resolution.
 ; D0/CCR=status; other registers kept. Ordinary loops have no local roots.
 activateBranch	.block
 	movem.l d1-d2/a0/a5, -(sp)
 	moveq #0, d2
 	move.w State.Depth(a3), d2
-	beq.w good
+	beq.w global
 	subq.w #1, d2
 	mulu.w #SLOT_BYTES, d2
 	lea SLOTS(a3), a5
@@ -592,6 +595,12 @@ activate
 	move.l Slot.ScopeGroup(a5), d0
 	lea State.Scopes(a3), a0
 	jsr frames.activate
+	bra.w done
+global
+	move.l a0, d1
+	sub.l State.SourceBase(a3), d1
+	lea State.Scopes(a3), a0
+	jsr frames.activateGlobal
 	bra.w done
 good
 	moveq #0, d0

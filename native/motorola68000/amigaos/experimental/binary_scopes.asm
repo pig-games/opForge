@@ -1151,7 +1151,7 @@ done
 
 ; A0=writer record,A1=scope. Reject preparation effects inside deferred
 ; branch envelopes. Mutable assignment/update records replay in source order;
-; immutable declarations and scope changes still belong to preparation.
+; immutable scalar ownership is selected by the packed declaration inventory.
 ; Scope directive identities use the existing shared scope policy.
 ; D0/CCR=status; other registers preserved. Does not mutate source or scope.
 deferredLine	.block
@@ -1175,6 +1175,8 @@ deferredLine	.block
 	; The extension here belongs to a top-level retained branch envelope.
 	tst.w layout.State.LoopDepth(a6)
 	bne.w declarationPolicy
+	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, branch_parser.Record.Qualifier(a0)
+	beq.w good
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, branch_parser.Record.Qualifier(a0)
 	beq.w good
 	cmpi.b #source.TOKEN_UPDATE_FIRST, branch_parser.Record.Qualifier(a0)
@@ -2832,7 +2834,10 @@ conditionalCandidate
 	lea layout.ITERATOR_STATE(a6), a0
 	jsr iterators.scoped
 	movea.l (sp)+, a0
+	beq.w conditionalOwnership
+	tst.w layout.State.LoopDepth(a6)
 	bne.w bad
+conditionalOwnership
 	btst #records.MUTABLE_BIT-8, records.Entry.Flags(a3)
 	bne.w bad
 	tst.w layout.State.Deferred(a6)

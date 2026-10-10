@@ -308,6 +308,10 @@ scalarMetadataReady
 	tst.w layout.State.Deferred(a6)
 	bne.w constantUnknown
 scalarExpression
+	; Selected immutable ownership belongs to replay. A dormant candidate
+	; neither probes its RHS nor replaces an earlier eager configuration cell.
+	tst.w layout.State.Deferred(a6)
+	bne.w constantOk
 	lea 9(a0), a0
 	bsr.w evaluateValue
 	bne.w constantUnknown

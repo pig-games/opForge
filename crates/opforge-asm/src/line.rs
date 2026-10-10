@@ -240,6 +240,7 @@ pub struct AsmLine<'a> {
     value_symbols: HashMap<String, AsmValue>,
     module_parameters: types::asm_value::ModuleParameters,
     constant_definitions: Vec<asmline_constants::Definition>,
+    active_constant_owners: HashSet<String>,
     pub(crate) loop_observations: Vec<crate::engine::repetition_trace::LoopObservation>,
     pub(crate) repetition_path: Vec<(u32, u32)>,
     pub(crate) immutable_scalar_constants: HashSet<String>,
@@ -455,6 +456,7 @@ impl<'a> AsmLine<'a> {
             value_symbols: HashMap::new(),
             module_parameters: HashMap::new(),
             constant_definitions: Vec::new(),
+            active_constant_owners: HashSet::new(),
             loop_observations: Vec::new(),
             repetition_path: Vec::new(),
             immutable_scalar_constants: HashSet::new(),
@@ -2696,6 +2698,15 @@ impl<'a> AsmLine<'a> {
                 "Symbol conflicts with selective import",
                 Some(&label.name),
                 label.span,
+            ));
+        }
+        if !is_rw && !self.claim_constant_owner(&full_name) {
+            return Err(self.failure_at(
+                LineStatus::Error,
+                AsmErrorKind::Symbol,
+                "symbol has already been defined",
+                Some(&label.name),
+                Some(1),
             ));
         }
         let res = if self.pass == 1 {

@@ -17,6 +17,14 @@ pub(super) struct Definition {
 }
 
 impl AsmLine<'_> {
+    /// A previous traversal may have selected a different conditional owner.
+    /// Permit that replacement, but never two immutable owners executed in
+    /// this traversal, including owners newly activated by guard replay.
+    pub(super) fn claim_constant_owner(&mut self, name: &str) -> bool {
+        self.active_constant_owners
+            .insert(Self::value_symbol_key(name))
+    }
+
     /// Defer the whole scalar count, rather than evaluating unknown leaves as
     /// zero. Captured loop observations resolve its final lexical owner later.
     pub(crate) fn counted_loop_has_provisional_dependencies(

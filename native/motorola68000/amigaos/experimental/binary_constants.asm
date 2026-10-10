@@ -18,8 +18,8 @@ LAYOUT = 1
 	.pub
 
 ; Same inputs/outputs as execute. Strict sizing refreshes a retained statement
-; value; preparation has already checked unique declaration ownership. Preserve
-; Context.Pass for sizing/output consumers and never mutate source record flags.
+; value; prepared inventory and selected graph activation checked ownership.
+; Preserve Context.Pass for sizing/output consumers and never mutate record flags.
 replay	.block
 	move.w pkg.Context.Pass(a2), -(sp)
 	move.w #2, pkg.Context.Pass(a2)
@@ -34,7 +34,7 @@ replay	.block
 ; D0/CCR=status; other registers preserved. Captures value and source section
 ; without retaining the expression or reevaluating aliases at their use sites.
 ; Pass-one unresolved values remain unavailable; pass two must resolve them.
-; Dependency preparation already checked declaration ownership. Unsupported
+; The dependency owner already checked active declaration ownership. Unsupported
 ; address algebra retains no section proof, so a later Hunk use fails closed.
 execute	.block
 	movem.l d1-d7/a0-a6, -(sp)

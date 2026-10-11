@@ -8,6 +8,7 @@
 	.use prvm.amigaos.packed_file as file
 	.use prvm.amigaos.packed_declaration as declaration
 	.use prvm.amigaos.packed_data as data
+	.use prvm.amigaos.packed_text as text
 	.use prvm.amigaos.packed_metadata as metadata
 	.use prvm.amigaos.target_bootstrap as bootstrap
 	.use prvm.amigaos.macro_fragments as fragments
@@ -15,7 +16,7 @@
 	.section code, kind=code
 	.pub
 
-; Execute package-selected entries 2 through 9; each executor owns its request/program validation.
+; Execute package-selected entries 2 through 10; each executor owns request/program validation.
 ; Inputs: A0 request frame, D0 available frame bytes.
 ; Outputs: D0 status, D1 record count, D2 error offset, D3 published bytes.
 ; Clobbers: A0-A3; preserves D4-D7/A4-A6. Executors stage atomic publication.
@@ -27,6 +28,8 @@ run	.block
 	beq invalidArgument
 	cmpi.l #abi.PRVM_REQUEST_FRAME_SIZE, d0
 	blt invalidArgument
+	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_TEXT, abi.PRVM_FRAME_ENTRY_KIND(a0)
+	beq textEntry
 	cmpi.w #abi.PRVM_ENTRY_KIND_PACKED_DECLARATION, abi.PRVM_FRAME_ENTRY_KIND(a0)
 	beq declarationEntry
 	cmpi.w #abi.PRVM_ENTRY_KIND_TARGET_BOOTSTRAP, abi.PRVM_FRAME_ENTRY_KIND(a0)
@@ -47,6 +50,9 @@ run	.block
 	bra done
 declarationEntry
 	jsr declaration.run
+	bra done
+textEntry
+	jsr text.run
 	bra done
 bootstrapEntry
 	jsr bootstrap.run

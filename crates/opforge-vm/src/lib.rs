@@ -37,6 +37,8 @@ pub(crate) mod output_hunk;
 pub mod output_model;
 pub mod packed_branch_vm;
 pub mod packed_data_vm;
+pub mod packed_text_vm;
+pub mod packed_source_layout;
 pub mod packed_declaration_vm;
 pub mod packed_file_vm;
 pub mod packed_loop_vm;

@@ -1614,6 +1614,30 @@ pub const PARSER_VM_PACKED_DATA_ENTRY: u16 = 6;
 pub const PARSER_VM_PACKED_METADATA_ENTRY: u16 = 7;
 pub const PARSER_VM_TARGET_BOOTSTRAP_ENTRY: u16 = 8;
 pub const PARSER_VM_PACKED_DECLARATION_ENTRY: u16 = 9;
+pub const PARSER_VM_PACKED_TEXT_ENTRY: u16 = 10;
+
+pub const PACKED_TEXT_HEAD_COUNT: usize = 10;
+pub const PACKED_TEXT_PROGRAM_HEADER: usize = 2;
+pub const PACKED_TEXT_DIRECTIVE_BYTES: usize = 3;
+pub const PACKED_TEXT_DIRECTIVE_ID: usize = 0;
+pub const PACKED_TEXT_DIRECTIVE_ACTION: usize = 2;
+pub const PACKED_TEXT_PROGRAM_BYTES: usize =
+    PACKED_TEXT_PROGRAM_HEADER + PACKED_TEXT_HEAD_COUNT * PACKED_TEXT_DIRECTIVE_BYTES + 2;
+
+/// Shared text directive grammar. IDs are tokenizer-interned names, in order:
+/// enc, encoding, encode, endencode, cdef, tdef, edef, text, null, ptext.
+pub fn packed_text_program(heads: [u16; PACKED_TEXT_HEAD_COUNT]) -> Vec<u8> {
+    let mut program = vec![
+        MacroDescriptorOpcode::TextDirectives as u8,
+        PACKED_TEXT_HEAD_COUNT as u8,
+    ];
+    for (head, action) in heads.into_iter().zip([1, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+        program.extend(head.to_be_bytes());
+        program.push(action);
+    }
+    program.extend([0x83, 0]);
+    program
+}
 
 /// Numeric declaration policy, including bounded compound-update token recipes.
 pub const PACKED_DECLARATION_OPERATORS: usize = 13;
@@ -1803,6 +1827,7 @@ pub enum MacroDescriptorOpcode {
     DataDirective = 0x94, // selected numeric directive:u16 big-endian
     DataOperands = 0x95, // byte/word/long IDs:u16, word bytes:u16
     LoopHeader = 0x99,   // for directive:u16, contextual in name:u16
+    TextDirectives = 0xa5, // count:u8, numeric head:u16/action:u8 rows
 }
 
 pub fn packed_macro_call_program() -> Vec<u8> {

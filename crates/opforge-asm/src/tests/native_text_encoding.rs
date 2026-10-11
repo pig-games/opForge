@@ -60,12 +60,16 @@ fn workspace_root() -> PathBuf {
 }
 
 fn image(root: &Path, scratch: &Path) -> Vec<u8> {
+    image_named(root, scratch, HARNESS, "text-component.hunk")
+}
+
+fn image_named(root: &Path, scratch: &Path, harness: &str, artifact: &str) -> Vec<u8> {
     let output = scratch.join("component");
     fs::create_dir_all(&output).unwrap();
     let dir = output.as_path();
     // The common Rust CLI resolves the real owner modules. All generated
     // outputs, including the source .output request, stay in disposable scratch.
-    let source = fs::read_to_string(root.join(HARNESS)).unwrap();
+    let source = fs::read_to_string(root.join(harness)).unwrap();
     let input = dir.join("component.asm");
     fs::write(&input, source).unwrap();
     let amiga = root.join("native/motorola68000/amigaos");
@@ -82,7 +86,7 @@ fn image(root: &Path, scratch: &Path) -> Vec<u8> {
     let mut config = validate_cli(&cli).expect("validate text component assembly");
     config.out_dir = Some(dir.to_path_buf());
     run_with_validated_cli_with_context(&cli, &config).expect("assemble real text owner modules");
-    fs::read(dir.join("text-component.hunk")).expect("component Hunk in scratch")
+    fs::read(dir.join(artifact)).expect("component Hunk in scratch")
 }
 
 #[test]
@@ -130,6 +134,118 @@ fn native_text_encoding_component_fs_uae() {
         .expect("fresh text component completion");
     let FsUaeSmokeOutcome::Completed { runs } = outcome else {
         panic!("real native execution required")
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+    assert!(runs[0].success, "{}\n{}", runs[0].stdout, runs[0].stderr);
+}
+
+const GRAMMAR_HARNESS: &str =
+    "native/motorola68000/amigaos/test-harnesses/experimental/binary_text_grammar_harness.asm";
+fn grammar_oracle() -> Vec<u8> {
+    use package::{packed_text_program, PARSER_VM_MACRO_VERSION, PARSER_VM_PACKED_TEXT_ENTRY};
+    use vm::packed_source_layout as layout;
+    let program = packed_text_program([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    // Same immutable .edef record as the native request-frame component:
+    // delimiter-looking pattern bytes, empty replacement, scalar replacement.
+    let mut record = vec![
+        0,
+        layout::FLAG_INDENT,
+        0,
+        1,
+        layout::TOKEN_DOT,
+        layout::TOKEN_IDENTIFIER,
+        0,
+        7,
+        0,
+        layout::TOKEN_STRING,
+        3,
+        layout::TOKEN_COMMA,
+        layout::TOKEN_OPEN_BRACKET,
+        layout::TOKEN_CLOSE_PAREN,
+        layout::TOKEN_COMMA,
+        layout::TOKEN_STRING,
+        0,
+        layout::TOKEN_COMMA,
+        layout::TOKEN_NUMBER,
+        0,
+        0,
+        0,
+        9,
+    ];
+    record[layout::RECORD_LENGTH] = (record.len() - 1) as u8;
+    let mut bytes = Vec::new();
+    for flag in [0, layout::FLAG_MUTABLE_SNAPSHOT, layout::FLAG_PLAN] {
+        record[layout::RECORD_FLAGS] = layout::FLAG_INDENT | flag;
+        let rows = vm::packed_text_vm::execute(
+            PARSER_VM_PACKED_TEXT_ENTRY,
+            PARSER_VM_MACRO_VERSION,
+            &program,
+            &record,
+            128,
+            100,
+        )
+        .expect("live shared text grammar oracle");
+        assert_eq!(rows.len(), 4);
+        bytes.extend(rows.into_iter().flatten());
+    }
+    bytes
+}
+fn grammar_oracle_source(expected: &[u8]) -> String {
+    let mut source = String::from(".cpu 68020\n");
+    // Keep each generated statement within the normal tokenizer budget.
+    for row in expected.chunks(32) {
+        source.push_str(".byte ");
+        source.push_str(&row.iter().map(u8::to_string).collect::<Vec<_>>().join(","));
+        source.push('\n');
+    }
+    source
+}
+
+#[test]
+fn native_text_grammar_component_host_contract() {
+    let dir = scratch();
+    let expected = grammar_oracle();
+    assert_eq!(expected.len(), 384);
+    assert_eq!(
+        oracle(&dir.0, &grammar_oracle_source(&expected)).unwrap(),
+        expected
+    );
+    assert!(!image_named(
+        &workspace_root(),
+        &dir.0,
+        GRAMMAR_HARNESS,
+        "text-grammar.hunk"
+    )
+    .is_empty());
+}
+#[test]
+#[ignore = "requires configured FS-UAE; fresh shared text grammar component proof"]
+fn native_text_grammar_component_fs_uae() {
+    let dir = scratch();
+    let root = workspace_root();
+    let expected = grammar_oracle();
+    let source = grammar_oracle_source(&expected);
+    assert_eq!(oracle(&dir.0, &source).unwrap(), expected);
+    let executable = image_named(&root, &dir.0, GRAMMAR_HARNESS, "text-grammar.hunk");
+    let case = OpforgeNativeCliParityCase {
+        name: "text-grammar-component",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("--cpu 68020 Work:main.asm"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/build/text-grammar.bin",
+            rust_oracle: &expected,
+        },
+    };
+    let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &executable)
+        .expect("fresh text grammar component completion");
+    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+        panic!("real native execution required");
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].protocol_completed);

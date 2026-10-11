@@ -194,6 +194,18 @@ impl CpuModule for M6502CpuModule {
         DIALECT_TRANSPARENT
     }
 
+    fn instruction_programs(
+        &self,
+    ) -> Result<Vec<package::VmProgramDescriptor>, package::OpcpuCodecError> {
+        Ok(super::package_programs::force_rejection_instruction_programs())
+    }
+
+    fn mode_selectors(
+        &self,
+    ) -> Result<Vec<package::ModeSelectorDescriptor>, package::OpcpuCodecError> {
+        Ok(super::package_programs::force_rejection_mode_selectors())
+    }
+
     fn handler(&self) -> Box<dyn CpuHandlerDyn> {
         Box::new(M6502CpuHandler::new())
     }

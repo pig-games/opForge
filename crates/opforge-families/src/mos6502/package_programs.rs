@@ -24,6 +24,61 @@ pub const ENCODING_NONE: &str = "enc.none";
 pub const ENCODING_UNSIGNED_BYTE: &str = "enc.u8";
 pub const ENCODING_UNSIGNED_WORD: &str = "enc.u16le";
 
+fn base_rejection_modes(
+) -> std::collections::BTreeMap<&'static str, &'static super::table::FamilyInstructionEntry> {
+    let mut entries = std::collections::BTreeMap::new();
+    for entry in super::table::FAMILY_INSTRUCTION_TABLE {
+        entries.entry(entry.mnemonic).or_insert(entry);
+    }
+    entries
+}
+
+/// Rejection selectors need an owned mode in the package lookup table. Reuse a
+/// genuine base instruction mode and its exact encoding, never an operand-only
+/// placeholder or a new fallback mode. CPU lookup cannot broaden this table.
+pub fn force_rejection_instruction_programs() -> Vec<package::VmProgramDescriptor> {
+    base_rejection_modes()
+        .into_iter()
+        .map(|(mnemonic, entry)| {
+            let mut program = vec![package::SEMANTIC_VM_OP_EMIT_U8, entry.opcode];
+            if entry.mode.operand_size() > 0 {
+                program.extend([package::SEMANTIC_VM_OP_EMIT_OPERAND, 0]);
+            }
+            program.push(package::SEMANTIC_VM_OP_END);
+            package::VmProgramDescriptor {
+                owner: ScopedOwner::Cpu(super::module::CPU_ID.as_str().to_owned()),
+                mnemonic: mnemonic.to_owned(),
+                mode_key: format!("{:?}", entry.mode),
+                program,
+            }
+        })
+        .collect()
+}
+
+/// Base-CPU raw source projection retains suffix identifiers. Package-owned
+/// predicates preserve the canonical 65816-only diagnostic without stripping
+/// operands or teaching the shared selector about MOS addressing syntax.
+pub fn force_rejection_mode_selectors() -> Vec<package::ModeSelectorDescriptor> {
+    base_rejection_modes()
+        .into_iter()
+        .flat_map(|(mnemonic, entry)| {
+            ["D", "B", "K", "L"].map(|suffix| package::ModeSelectorDescriptor {
+                owner: ScopedOwner::Cpu(super::module::CPU_ID.as_str().to_owned()),
+                mnemonic: mnemonic.to_owned(),
+                shape_key: "direct_direct".to_owned(),
+                mode_key: format!("{:?}", entry.mode),
+                operand_plan: format!(
+                    "semv.reject.v1:{}@named_register1={suffix}",
+                    package::DIAG_OPTHREAD_FORCE_UNSUPPORTED_6502
+                ),
+                priority: 0,
+                unstable_widen: false,
+                width_rank: 0,
+            })
+        })
+        .collect()
+}
+
 fn input_program(id: &str, bits: u8) -> Result<ValueProgramDescriptor, OpcpuCodecError> {
     Ok(ValueProgramDescriptor {
         owner: ScopedOwner::Family("mos6502".to_string()),

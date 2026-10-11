@@ -1,5 +1,204 @@
 use super::*;
 
+#[test]
+fn mos6502_force_rejection_preserves_canonical_diagnostics_and_valid_encodings() {
+    let registry = mos6502_family_registry();
+    let chunks = build_hierarchy_chunks_from_registry(&registry).unwrap();
+    let bytes = encode_hierarchy_chunks_from_chunks(&chunks).unwrap();
+    let models = [
+        HierarchyExecutionModel::from_chunks(chunks).unwrap(),
+        HierarchyExecutionModel::from_package_bytes(&bytes).unwrap(),
+    ];
+    let mut ctx = TestAssemblerContext::new();
+    ctx.cpu_flags.insert(state::DIRECT_PAGE_KEY.into(), 0);
+    ctx.cpu_flags.insert(state::DIRECT_PAGE_KNOWN_KEY.into(), 1);
+    for model in &models {
+        for suffix in ["d", "D", "b", "B", "k", "K", "l", "L"] {
+            for operand in [
+                Expr::Identifier(suffix.into(), Span::default()),
+                Expr::Register(suffix.into(), Span::default()),
+            ] {
+                let error = model
+                    .encode_instruction_from_exprs(
+                        "m6502",
+                        None,
+                        "LDA",
+                        &[Expr::Number("16".into(), Span::default()), operand],
+                        &ctx,
+                    )
+                    .expect_err("base CPU must reject every explicit bank/width suffix");
+                assert_eq!(
+                    error,
+                    RuntimeBridgeError::Resolve(
+                        "65816-only addressing mode not supported on base 6502".into()
+                    )
+                );
+            }
+        }
+        // An unrelated identifier is not an override and must not acquire OTR004.
+        assert_eq!(
+            model
+                .encode_instruction_from_exprs(
+                    "m6502",
+                    None,
+                    "LDA",
+                    &[
+                        Expr::Number("16".into(), Span::default()),
+                        Expr::Identifier("other".into(), Span::default())
+                    ],
+                    &ctx,
+                )
+                .unwrap(),
+            None
+        );
+        for (mnemonic, value, register, expected) in [
+            ("LDA", "16", "X", vec![0xb5, 0x10]),
+            ("LDA", "16", "Y", vec![0xb9, 0x10, 0]),
+            ("LDX", "16", "Y", vec![0xb6, 0x10]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        "m6502",
+                        None,
+                        mnemonic,
+                        &indexed(value, register),
+                        &ctx,
+                    )
+                    .unwrap(),
+                Some(expected)
+            );
+        }
+        for (mnemonic, operands, expected) in [
+            ("NOP", vec![], vec![0xea]),
+            ("RTS", vec![], vec![0x60]),
+            (
+                "ASL",
+                vec![Expr::Register("A".into(), Span::default())],
+                vec![0x0a],
+            ),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs("m6502", None, mnemonic, &operands, &ctx,)
+                    .unwrap(),
+                Some(expected)
+            );
+        }
+        let scalar = || Expr::Number("16".into(), Span::default());
+        let name = |value: &str| Expr::Identifier(value.into(), Span::default());
+        for (mnemonic, operands) in [
+            ("BRA", vec![scalar()]),
+            ("BRA", vec![scalar(), name("d")]),
+            ("STZ", vec![scalar()]),
+            ("STZ", vec![scalar(), name("l")]),
+            ("LDA", vec![]),
+            ("LDA", vec![scalar(), name("d"), scalar()]),
+            ("NOP", vec![scalar()]),
+            ("NOP", vec![scalar(), name("other")]),
+            ("ASL", vec![name("other")]),
+            (
+                "LDA",
+                vec![Expr::Tuple(vec![scalar(), scalar()], Span::default())],
+            ),
+        ] {
+            assert!(
+                !matches!(
+                    model.encode_instruction_from_exprs("m6502", None, mnemonic, &operands, &ctx,),
+                    Ok(Some(_))
+                ),
+                "invalid base form {mnemonic} {operands:?} encoded"
+            );
+        }
+        for (mnemonic, suffix, expected) in [
+            ("LDA", "d", vec![0xa5, 0x10]),
+            ("LDA", "b", vec![0xad, 0x10, 0]),
+            ("JMP", "k", vec![0x4c, 0x10, 0]),
+            ("LDA", "l", vec![0xaf, 0x10, 0, 0]),
+        ] {
+            assert_eq!(
+                model
+                    .encode_instruction_from_exprs(
+                        "65816",
+                        None,
+                        mnemonic,
+                        &indexed("16", suffix),
+                        &ctx,
+                    )
+                    .unwrap(),
+                Some(expected),
+                "65816 {mnemonic} ,{suffix}"
+            );
+        }
+    }
+}
+
+#[test]
+fn mos6502_force_rejection_compact_package_retains_exact_predicates() {
+    use crate::binary_source_package::{BinarySourcePackage, CandidateRecipe, Projection};
+    use crate::runtime_model_core::RuntimeModelCore;
+    let chunks = build_hierarchy_chunks_from_registry(&mos6502_family_registry()).unwrap();
+    let cpu_programs: Vec<_> = chunks
+        .tables
+        .iter()
+        .filter(|row| row.owner == ScopedOwner::Cpu("m6502".into()))
+        .collect();
+    assert!(!cpu_programs.is_empty());
+    for row in cpu_programs {
+        let original = chunks
+            .tables
+            .iter()
+            .find(|family| {
+                family.owner == ScopedOwner::Family("mos6502".into())
+                    && family.mnemonic.eq_ignore_ascii_case(&row.mnemonic)
+                    && family.mode_key.eq_ignore_ascii_case(&row.mode_key)
+            })
+            .expect("every CPU rejection mode must already exist in the base table");
+        assert_eq!(
+            row.program, original.program,
+            "{} {}",
+            row.mnemonic, row.mode_key
+        );
+    }
+    let bytes = encode_hierarchy_chunks_from_chunks(&chunks).unwrap();
+    let canonical = RuntimeModelCore::from_chunks(chunks).unwrap();
+    let decoded = RuntimeModelCore::from_package_bytes(&bytes).unwrap();
+    let prepare = |core: &RuntimeModelCore| {
+        let resolved = core.resolve_pipeline("m6502", None).unwrap();
+        BinarySourcePackage::prepare(core, &resolved).unwrap()
+    };
+    let numeric = prepare(&canonical);
+    assert_eq!(numeric, prepare(&decoded));
+    let rows: Vec<_> = numeric.candidates.iter().filter(|row| {
+        numeric.names[row.mnemonic as usize] == "lda"
+            && matches!(row.recipe, CandidateRecipe::Unsupported { plan }
+                if numeric.names[plan as usize].to_ascii_lowercase().starts_with("semv.reject.v1:otr004@"))
+    }).collect();
+    assert_eq!(rows.len(), 4);
+    for suffix in ["d", "b", "k", "l"] {
+        let row = rows
+            .iter()
+            .find(|row| {
+                matches!(row.recipe, CandidateRecipe::Unsupported { plan }
+                if numeric.names[plan as usize].eq_ignore_ascii_case(
+                    &format!("semv.reject.v1:OTR004@named_register1={suffix}")))
+            })
+            .unwrap();
+        assert_eq!(numeric.names[row.shape as usize], "direct_direct");
+        let name = numeric
+            .names
+            .iter()
+            .position(|name| name == suffix)
+            .unwrap() as u16;
+        assert_eq!(
+            row.roles,
+            vec![Projection::NamedRegister { operand: 1, name }]
+        );
+        // Compact transport retains the exact predicate and explicit unsupported
+        // barrier. Legal X/Y forms use direct_register, outside this row's shape.
+    }
+}
+
 fn indexed(value: &str, register: &str) -> [Expr; 2] {
     [
         Expr::Number(value.to_string(), Span::default()),

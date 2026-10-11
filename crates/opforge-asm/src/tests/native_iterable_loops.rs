@@ -258,7 +258,12 @@ pub(super) fn build_image(root: &Path, dir: &Path) -> Vec<u8> {
 #[test]
 fn native_iterable_loops_host_assembles() {
     let dir = scratch();
-    let image = build_image(&root(), &dir.0);
+    // An explicit source snapshot lets comparative runs regenerate identical
+    // current packages for the old native code without disturbing this checkout.
+    let source_root = std::env::var_os("OPFORGE_ITERABLE_BUILD_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(root);
+    let image = build_image(&source_root, &dir.0);
     assert!(!image.is_empty());
     if let Some(path) = std::env::var_os("OPFORGE_ITERABLE_SAVE_IMAGE") {
         fs::write(path, image).unwrap();

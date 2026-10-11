@@ -8059,8 +8059,8 @@ mod compact_cli_metadata;
 #[path = "tests/native_active_includes.rs"]
 mod native_active_includes;
 #[cfg(test)]
-#[path = "tests/native_text_encoding.rs"]
-mod native_text_encoding;
+#[path = "tests/native_binding_owner_states.rs"]
+mod native_binding_owner_states;
 #[cfg(test)]
 #[path = "tests/native_composed_include_binding.rs"]
 mod native_composed_include_binding;
@@ -8102,6 +8102,9 @@ mod native_struct_vm;
 mod native_template_imports;
 #[path = "tests/native_ternary_values.rs"]
 mod native_ternary_values;
+#[cfg(test)]
+#[path = "tests/native_text_encoding.rs"]
+mod native_text_encoding;
 #[path = "tests/native_typed_list_values.rs"]
 mod native_typed_list_values;
 #[path = "tests/native_wide_iterables.rs"]

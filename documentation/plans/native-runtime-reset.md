@@ -38,8 +38,14 @@ typed-member references: 18 positive controls match live Rust and two malformed
 `@0` controls reject freshly on 68020 and 6502. Unknown/mutable prefixes retain
 possible owners; a common owner is indexed once, while differing owners reject
 only when reached. Runtime block marking remains O(1), with no new heap allocation.
-Forward fields and mutable-kind changes have focused coverage; forward compound
-aliases and dynamic selection between different physical owners remain unqualified.
+A subsequent five-scenario matrix matches forward fields, forward compound
+aliases and mutable-kind changes on both targets (eight exact positive cases).
+The longer unknown prefix declared in another physical block still rejects on
+both targets; native dynamic selection between those owners remains pending.
+Rust now resolves actual declaration ownership, carries typed aliases through
+layout stabilization, and preserves used finalized schemas without retaining
+pruned code. Its focused member/schema controls pass; the native owner matrix
+continues to require the valid different-owner case to succeed.
 The current acquired-include regression passes all ten positive behaviors on
 each package (20 fresh exact cases), including inactive composed block references.
 That matrix is separate from the composed-member controls. Named acquired
@@ -60,7 +66,10 @@ unmeasured. See the maintained [self-host proof](compact-frontend-vm-boundary.md
 
 The separate shared text-owner component matches its complete live Rust artifact
 in a fresh native run. This covers builtin/custom maps, variable escapes, cloning
-and lifecycle APIs; compact source grammar and data-emitter integration are pending.
+and lifecycle APIs. The shared packed text-grammar component separately matches
+its complete 384-byte live Rust artifact, including planned/snapshot record flags
+and malformed-input rejection. Source directive/emitter and EXVM encoded-string
+provider integration remain pending; component proof does not qualify those paths.
 
 Source-session restructuring is in progress; its frozen-input lifecycle has
 focused native proof and is now the sole assembly driver. It does not yet support

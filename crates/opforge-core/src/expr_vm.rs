@@ -3004,35 +3004,34 @@ mod tests {
         let expr_indirect_long = Expr::IndirectLong(Box::new(inner.clone()), span());
         let expr_immediate = Expr::Immediate(Box::new(inner), span());
 
-        for opcode_version in [EXPR_VM_OPCODE_VERSION_V1] {
-            let direct_program = compile_core_expr_to_portable_program_with_opcode_version(
-                &Expr::Identifier("label".to_string(), span()),
-                opcode_version,
-            )
-            .expect("compile direct identifier");
-            let indirect_program = compile_core_expr_to_portable_program_with_opcode_version(
-                &expr_indirect,
-                opcode_version,
-            )
-            .expect("compile indirect");
-            let indirect_long_program = compile_core_expr_to_portable_program_with_opcode_version(
-                &expr_indirect_long,
-                opcode_version,
-            )
-            .expect("compile indirect long");
-            let immediate_program = compile_core_expr_to_portable_program_with_opcode_version(
-                &expr_immediate,
-                opcode_version,
-            )
-            .expect("compile immediate");
+        let opcode_version = EXPR_VM_OPCODE_VERSION_V1;
+        let direct_program = compile_core_expr_to_portable_program_with_opcode_version(
+            &Expr::Identifier("label".to_string(), span()),
+            opcode_version,
+        )
+        .expect("compile direct identifier");
+        let indirect_program = compile_core_expr_to_portable_program_with_opcode_version(
+            &expr_indirect,
+            opcode_version,
+        )
+        .expect("compile indirect");
+        let indirect_long_program = compile_core_expr_to_portable_program_with_opcode_version(
+            &expr_indirect_long,
+            opcode_version,
+        )
+        .expect("compile indirect long");
+        let immediate_program = compile_core_expr_to_portable_program_with_opcode_version(
+            &expr_immediate,
+            opcode_version,
+        )
+        .expect("compile immediate");
 
-            assert_eq!(indirect_program.code, direct_program.code);
-            assert_eq!(indirect_program.symbols, direct_program.symbols);
-            assert_eq!(indirect_long_program.code, direct_program.code);
-            assert_eq!(indirect_long_program.symbols, direct_program.symbols);
-            assert_eq!(immediate_program.code, direct_program.code);
-            assert_eq!(immediate_program.symbols, direct_program.symbols);
-        }
+        assert_eq!(indirect_program.code, direct_program.code);
+        assert_eq!(indirect_program.symbols, direct_program.symbols);
+        assert_eq!(indirect_long_program.code, direct_program.code);
+        assert_eq!(indirect_long_program.symbols, direct_program.symbols);
+        assert_eq!(immediate_program.code, direct_program.code);
+        assert_eq!(immediate_program.symbols, direct_program.symbols);
     }
 
     #[test]
@@ -3153,20 +3152,19 @@ mod tests {
     fn string_literal_opcode_evaluates_via_context_for_current_contract() {
         let expr = Expr::String(vec![0x41], span());
 
-        for opcode_version in [EXPR_VM_OPCODE_VERSION_V1] {
-            let program =
-                compile_core_expr_to_portable_program_with_opcode_version(&expr, opcode_version)
-                    .expect("compile string");
+        let opcode_version = EXPR_VM_OPCODE_VERSION_V1;
+        let program =
+            compile_core_expr_to_portable_program_with_opcode_version(&expr, opcode_version)
+                .expect("compile string");
 
-            let result = eval_portable_expr_program(
-                &program,
-                &TestCtx::default(),
-                PortableExprBudgets::default(),
-            )
-            .expect("eval string literal");
+        let result = eval_portable_expr_program(
+            &program,
+            &TestCtx::default(),
+            PortableExprBudgets::default(),
+        )
+        .expect("eval string literal");
 
-            assert_eq!(result.value, 0x41);
-        }
+        assert_eq!(result.value, 0x41);
     }
 
     #[test]

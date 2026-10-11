@@ -10,7 +10,7 @@ are product/runtime code whose host environment is itself an opForge target.
 The AmigaOS tree retains the legacy CLI and the compact experimental replacement.
 The compact implementation uses packed source and package-backed VM execution;
 its current capability and qualification are tracked in the
-[runtime reset plan](../documentation/plans/native-runtime-reset.md).
+[completion plan](../documentation/plans/native-runtime-reset.md).
 Neither path is a claim of full Rust language, target or output parity.
 
 ## Compact CLI input and output checkpoints (experimental)
@@ -39,9 +39,12 @@ one recursive module root and one include root for the bare debug header names:
 opforge -i src/experimental/opforge_compact_cli.asm --hunk output.hunk -M src -I src/debug
 ```
 
-The entry's `.cpu 68020` selects the embedded package. The current BS17 sources
-complete a fresh native self-host with exact Rust Hunk equality; see the
-[full result and A6000 bundle](../documentation/plans/native-runtime-reset.md#current-bs17-full-self-host-and-search-roots).
+The entry's `.cpu 68020` selects the embedded package. The latest full native
+self-host proof is the identified BS35 source checkpoint, with exact live Rust
+Hunk equality; see the [self-host
+evidence](../documentation/plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs35).
+Later focused repairs have no new full self-host proof, physical A6000 timing or
+2 MiB qualification.
 Assembly errors now retain source filenames alongside numeric line provenance,
 without retaining source text for execution.
 
@@ -50,9 +53,10 @@ all 151 instructions in the canonical all-modes example, including accumulators,
 indirect forms, relative branches and forward-width selection. A prepared
 `m6502--transparent.bin` works independently of the source project; place it in a
 `-P` package root. For example, `.cpu 6502` in the root preamble selects it with
-`opforge_compact main.asm --bin output.bin -P packages`. Regenerate packages for
-BS17. This focused matrix is separate from full language/output and CPU-variant
-qualification; see the [checkpoint](../documentation/plans/native-runtime-reset.md#base-6502-package-parity-checkpoint).
+`opforge_compact main.asm --bin output.bin -P packages`. Regenerate packages for the
+current executable contract. This focused matrix is separate from full language/output
+and CPU-variant
+qualification; see the [current completion status](../documentation/plans/native-runtime-reset.md).
 
 An initial `--cpu` or `--runtime-package` is optional. The compact CLI can select
 its package from `.cpu NAME` in the unconditional root preamble, after comments,
@@ -60,7 +64,7 @@ blank lines and `.module NAME`. Numeric aliases and quoted names are accepted;
 explicit CLI selection takes precedence. If the preamble contains no `.cpu`, the
 generated engine default is used. Discovery stops at the first other statement;
 it does not inspect includes or conditional/macro bodies. Later package switching
-remains unsupported. See [initial package selection](../documentation/plans/native-runtime-reset.md#source-selected-initial-package--initial-preamble-qualified)
+remains unsupported. See [frontend boundaries](../documentation/plans/compact-frontend-vm-boundary.md)
 for bounds and fresh qualification. With no output
 request, the compact CLI validates the assembly and writes no artifact. An
 omitted output filename derives from the input basename unless output metadata
@@ -101,17 +105,14 @@ imported modules and nested scopes cannot set root output metadata. Descriptive
 `.meta.name "..."` and `.meta.version "..."` are accepted without an output effect.
 This is an inline quoted subset: unquoted values, configuration blocks, CPU
 metadata overrides, source BIN/FILL/S-record metadata, listings, defines and general source-dependent
-CPU switching remain future work. The BS17 runtime package option is distinct from
+CPU switching remain future work. The compact runtime package option is distinct from
 Rust's canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.
 
-The preparation-order repair captures unbound binary records before
-configuration/dependency scanning, then performs semantic preparation in dependency
-order. Checkpoint `76a1d11e` has complete fresh self-host proof with an exact
-442,140-byte Rust Hunk artifact under an expanded-memory investigation profile;
-this is not a 2 MiB or full feature-parity qualification. The subsequent initial
-CPU-selection change has focused native proof, but no repeated full self-host run.
-See the runtime reset plan for current evidence.
+Preparation captures unbound binary records before configuration/dependency
+scanning, then performs semantic preparation in dependency order. Current
+qualification and remaining source-acquisition gaps are in the
+[completion plan](../documentation/plans/native-runtime-reset.md).
 
 ## Current Layout
 

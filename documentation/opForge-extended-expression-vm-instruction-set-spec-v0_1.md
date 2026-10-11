@@ -100,8 +100,6 @@ identities. Shared evaluation selects members and projects record defaults while
 preserving section provenance, including compact arithmetic over record aliases.
 Plain dotted aliases use numeric occurrence bindings: complete qualified names
 retain priority, while unresolved alternatives select actual record values in
-shared evaluation. The [focused numeric-binding checkpoint](plans/native-runtime-reset.md#numeric-dotted-record-bindings-focused-checkpoint)
-records this native subset and its resource bounds.
-The [focused labeled-repetition checkpoint](plans/native-runtime-reset.md#native-labeled-repetition-focused-checkpoint)
-defines the qualified native subset and remaining frontend/replay boundaries;
-this does not establish complete labeled-loop parity.
+shared evaluation. The [native frontend boundary](plans/compact-frontend-vm-boundary.md)
+describes the supported subset, resource bounds and remaining frontend/replay
+limits; this does not establish complete labeled-loop parity.

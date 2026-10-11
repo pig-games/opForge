@@ -10,103 +10,72 @@ it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
 programs; native EXVM has no version argument, field, check or dispatch. Known
 source-site scalar, flat-list and range `.use ... with (...)` values, mutable
 snapshots, compound forwarding and packed iterable `.for` have focused coverage.
-BS32 repairs imported iterator identities, deferred macro register/value binding
-and lexical dotted-name lookup. Its complete qualification supersedes the earlier
-failed BS31/BS32 captures. See the
-[BS32 reference](native-runtime-reset.md#deferred-macro-operand-binding-bs32).
+Imported iterator identities, deferred macro register/value binding and lexical
+dotted-name lookup have focused native coverage.
 
-## Iterator-dependent conditionals (BS33, provisional)
+## Repetition and conditional execution
 
-BS33 extends the compact header from 220 to 228 bytes and adds a 20-byte
-BranchPlan after LoopPlan. Package opcode `0x9a` publishes four numeric
-head/role/expression-flag rows for IF, ELSEIF, ELSE and ENDIF, then ends. Packed
-replay uses this package-owned envelope without parsing source text. Rust skips
-conditional expression evaluation under inactive parents and after an earlier
-branch wins; conditional syntax and branch structure remain checked.
+Packed replay uses package-owned numeric BranchPlan/LoopPlan roles without
+parsing source text. Rust skips expression evaluation under inactive parents and
+after an earlier branch wins, while checking syntax and branch structure.
+Iterator-dependent conditionals, shadowing/restoration and register/value binding
+have focused live Rust comparisons on 68020 and 6502.
 
-Nineteen combined positive scenarios per 68020 and 6502 package match live Rust,
-including nine new iterator-conditional cases. Twelve negative cases complete
-with the expected rejection. The original macro register/value regression again
-matches the exact 21-byte Rust output; its native run takes 1.77477925 seconds.
-The subsequent full BS33 release self-host matches the entire 592,700-byte Hunk
-in 23m53.13s on FS-UAE 68020/74 MiB. The
-[current implementation checkpoint](native-runtime-reset.md#iterator-dependent-conditionals-bs33)
-records the scope and remaining work.
+Anonymous and labeled counted/list/range `.bfor`, and anonymous/labeled `.bwhile`,
+have focused coverage for fresh local scopes, nested composition and retained
+iteration records. Scoped `.bfor` admits deferred value declarations; deferred
+scopes, configuration, metadata, file operations and macro definitions still
+reject. Ordinary loops retain their declaration restrictions. Complete lazy
+file/reachability parity and mapped scoped replay remain open.
 
-Scoped `.bfor` admits deferred value declarations. Deferred scopes,
-configuration, metadata, file operations and macro definitions still reject;
-ordinary loops retain their declaration restrictions. Complete lazy file/reachability parity
-is not established; complete `.while` and scoped-loop parity remain open.
-BS35 anonymous counted `.bfor` has [focused proof](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification).
-The subsequent [labeled-repetition checkpoint](native-runtime-reset.md#native-labeled-repetition-focused-checkpoint)
-adds typed iteration records and shared VM index/member evaluation. The
-[scoped-condition checkpoint](native-runtime-reset.md#scoped-condition-repetition-focused-checkpoint)
-adds anonymous and labeled `.bwhile`, fresh local scopes, nested loop composition
-and retained iteration records; mapped scoped
-replay remain open. The focused BS34 `.while` coverage is recorded below. Scalar `:?=`
-forward-initializer semantics, struct behavior and existing wide-literal packing
-limits also remain unresolved. Full language or CPU-family parity is not claimed.
+Local immutable roots activate when shared PRVM replay selects their branch.
+Unconditional forward constants retain eager dependency traversal; inactive
+candidates do not evaluate. Bounded sizing replay uses retained iteration cells
+and shared EXVM evaluation for conditions against later local mutable values;
+final emission checks strict guard and loop traces. New loop paths and guards
+without an executed initializer reject. Iterable snapshots bind each element
+before resolving local constants and restore iterator bindings at close.
+General forward-alias/layout convergence remains outside this coverage.
 
-The [scoped conditional repair](native-runtime-reset.md#scoped-conditional-dependency-repair-bs35-focused)
-activates local immutable roots when shared PRVM replay selects their branch.
-Unconditional forward constants retain the existing eager dependency walk;
-inactive candidates are not evaluated. This focused extension does not complete
-loop/macro parity or replace the identified full self-host proof below.
+Rust relocation classification follows active iterator lookup. Direct iterator
+data and captured scalar constants do not inherit a shadowed section label's
+fixup; qualified original addresses still relocate.
 
-The subsequent [retained-guard checkpoint](native-runtime-reset.md#scoped-retained-guard-sizing-bs35-focused)
-adds bounded sizing replay for anonymous counted `.bfor` conditions that depend
-on later local mutable values. It reuses retained iteration cells and shared
-EXVM evaluation, then checks strict guard and loop traces before final emission.
-New loop paths and guards without an executed initializer still reject. General
-forward-alias/layout convergence remains outside this focused coverage.
+## Current opcore breadth and acquisition boundary
 
-The subsequent [iterable scoped checkpoint](native-runtime-reset.md#anonymous-iterable-scoped-repetition-bs35-focused)
-extends the same owners to anonymous list/range `.bfor`, with independent lexical
-iterator identities and binding before local constant resolution. The existing
-nonnegative 32-bit scalar element boundary remains; negative/wider and compound
-elements are not qualified by this slice. Labeled/indexed scopes and `.bwhile`
-have subsequent focused coverage in the checkpoints linked above.
+The fresh correctness-only 86-root opcore audit completes every guest protocol:
+27 exact positive outputs, 36 negative rejection controls, and 23 positive roots
+rejected with exit 20. There are no timeouts. Negative rejection does not qualify
+exact diagnostic parity. The current [completion plan](native-runtime-reset.md)
+records the ordered work and evidence limits; this audit supersedes the earlier
+selected opcore corpus observation, without updating CPU-family qualification.
 
-The [Rust iterator Hunk repair](native-runtime-reset.md#iterator-hunk-provenance-rust-repair)
-aligns relocation classification with active iterator lookup. Direct iterator
-data and captured scalar constants no longer inherit a shadowed section label's
-fixup; qualified original addresses still relocate. Native/package code is unchanged.
+The source cursor traverses physical records or the currently expanded numeric
+template body. Previews reuse normal substitution, restore invocation state and
+use a separate output buffer. Loop records retain their owning stream identity;
+a nested expansion cannot close its parent's loop. Shared source control detects
+file actions reached through known template calls. Ordinary forward-count calls
+without acquisition retain numeric runtime execution; anonymous scoped iterations
+keep their lexical owner. Rust relayout preserves module template visibility and
+captured definitions needed by active includes while rebuilding emitted state.
 
-## Current breadth parity checkpoint
+Preview borrows the source session and suppresses reference/register publication,
+restoring pending binding state. Scratch identity interning remains monotonic.
+TKVM's invalid-composed annotation and PRVM positional spans select whole-line
+substitution before ordinary operand lowering. The package-selected numeric head
+binds immediately; generated operands bind after shared fragment tokenization.
+Inactive generated records intern identities without publishing semantic references
+or retaining imported blocks; borrowed binding mode restores on success and failure.
 
-The [BS27 corpus checkpoint](native-runtime-reset.md#current-breadth-parity-checkpoint)
-records all 167 selected roots: MOS 20/39 exact positives, M68K 21/36 and opcore
-17/49 (four opcore positives cannot produce a live Rust oracle). Of 43 expected
-errors, 41 have completed native rejection observations; undefined-region
-placement and a forward-count loop are accepted
-by native while Rust rejects them. Negative completion is not diagnostic parity.
-The corpus exposes two exit-zero positive Hex mismatches: MOS branch offsets and
-opcore alignment gaps. No production semantics or references change in the audit.
-
-The subsequent Rust qualified-scope repair restores all four original CLI roots;
-it changes shared Rust lookup and deferred reachability, with no native/package
-changes or new native coverage. The corpus counts above remain its original
-observations. The subsequent
-[native layout checkpoint](native-runtime-reset.md#native-region-validation-and-alignment-provenance)
-qualifies fifteen fresh focused cases: undefined regions reject, forward region
-declarations remain valid, flat alignment gaps stay sparse in Hex/S-record, and
-placed payload padding remains initialized as in Rust. Bin/Hunk and 6502 package
-checks pass. The original corpus counts above are not a rerun of the full inventory.
-The subsequent [immutable-count repair](native-runtime-reset.md#immutable-forward-loop-counts)
-aligns Rust with native acceptance of graph-proven forward scalar counted loops.
-It preserves strict traversal checks for layout-dependent changes, source-order
-snapshots and iterator shadowing. Newly activated constant declarations still
-reject; forward `.while` limits and deferred iterables are outside that slice.
-The freshly Rust-built native executable exactly matches the layout checkpoint's
-535,024-byte image. At that checkpoint, seven focused native cases qualified across the initial
-batch and a snapshot rerun using `.var`/`.set`; the initial `:=` control exposed
-a separate unsupported native assignment form. The subsequent
-[BS28 scalar-assignment repair](native-runtime-reset.md#mutable-assignment-operators-bs28)
-qualifies that original snapshot and tight/spaced updates on both packages.
-These follow-ups have no new full native self-host run.
-Complete PFLUSH/FPU and full-extension sources now match; original colon-pair
-syntax still blocks DIVS/CAS2 and the MOVE16 carry-forward example before MOVE16.
-Current full self-host proof remains the separate result below.
+Nine active-acquisition behaviors on each of 68020 and 6502 pass after a fresh
+retry of one pre-START stall (18 positives total). Missing active files, include
+cycles, unavailable forward guards and acquired/expanded module graph changes
+have seven fresh rejection controls. Inactive composed qualified members now pass
+both packages, and malformed ordinary `@0` rejects. Active imported typed members
+still fail during native assembly. Named acquired collections, PC-dependent
+acquisition and graph-changing includes remain unqualified; the
+[source-session design](native-source-execution.md) addresses the pending structural
+work. These focused results do not establish complete opcore or a new self-host.
 
 ## Most recent full self-host qualification (BS35)
 
@@ -121,8 +90,9 @@ Linked static reservation is 620,728 bytes.
 The uninstrumented release run takes 1,522.60420225 seconds (25m22.60s), with no
 concurrent host builds/tests or native runs. The earlier BS34 full source differs;
 these whole-run times do not isolate the latest implementation changes. Separate
-unchanged-input [step measurements](native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification)
-record those costs. Full BS35 peak allocation, physical A6000 timing and 2 MiB fit
+unchanged-input measurements belong in the
+[performance guide](../performance/vm-efficiency.md). Full BS35 peak allocation,
+physical A6000 timing and 2 MiB fit
 are not measured. The small focused scoped-loop diagnostic peak is separate.
 
 This qualifies the identified current-source checkpoint, not complete loop/macro
@@ -165,35 +135,23 @@ host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
 can leave a guest command running: inspect that run before retrying.
 
-The separate historical instrumented bundle `/tmp/opforge-selfhost-bs20-instrumented`
-completes its entire BS20 baseline self-host with fresh exact live Rust output, in
-1,147.941797667 seconds. Preparation is 665.36 seconds, assembly 481.54 seconds;
-peak tracked allocation is 22,380,568 bytes with zero terminal ownership, balanced
-allocated/freed capacity and zero profiling/allocation errors. Two source sweeps
-execute 122,798 record visits. Its transfer dry run also passed at that checkpoint. Regenerate this
-instrumented configuration as the current package format and qualify it before selecting it in the
-current hardware runner; the stored BS20 bundle is baseline evidence only.
-It targets the identical release output and source/package case, enabling memory, phase/progress, sampled
-binding, template and input probes. `OPFORGE_PHASE_ONLY=1` excludes detailed
-per-opcode tokenizer probes. The exporter retains fresh native stdout/stderr and
-`memory.bin`, enabling traversal-counter decoding after ephemeral runner cleanup.
-Instrumentation time is reported separately from release time. Hardware results
-separate assembly success from telemetry validity; balanced ownership, zero
-profiling/allocation errors and valid clocks are required for valid measurements.
-Nested binding/input observations must not be added to exclusive stage totals.
-
-The earlier physical baseline remains useful context: the 61-file implementation
-produced the exact 89,880-byte Rust Hunk twice in 15 seconds at one-second guest
-resolution. Its full-token instrumented run completed in 58 seconds, measuring
-49.16 seconds preparation, 8.82 seconds assembly and 5,222,440 bytes peak tracked
-ownership with balanced cleanup and no profiling/allocation errors. Those inputs,
-packages and probe settings differ from BS20, so they do not establish a code-change
-speedup or current memory needs. Detailed superseded captures and export instructions
-remain in Git history.
+Instrumented configurations must be regenerated for the current package format
+and qualified before hardware selection. Use separate release and instrumented
+runs against identical source/package cases. `OPFORGE_PHASE_ONLY=1` excludes
+detailed per-opcode tokenizer probes; retained stdout/stderr and `memory.bin`
+allow counter decoding after ephemeral runner cleanup. Balanced ownership, zero
+profiling/allocation errors and valid clocks are required for telemetry validity.
+Do not add nested binding/input observations to exclusive stage totals. Historical
+physical timings and peak-memory captures describe different inputs and packages;
+they do not qualify current memory needs or 2 MiB fit.
 
 ## Ownership and representation contracts
 
-The compact path is a package-directed execution path. Rust and the canonical package define semantic behavior; native code executes bounded shared primitives and package-selected operations. Update package producers and consumers together and retain only the latest supported format; version identifiers detect mismatches and do not require compatibility executors.
+The compact path is a package-directed execution path. Rust and the canonical package
+define semantic behavior; native code executes bounded shared primitives and
+package-selected operations. Update package producers and consumers together and retain
+only the latest supported format; version identifiers detect mismatches and do not
+require compatibility executors.
 
 | Responsibility | Contract |
 | --- | --- |
@@ -202,9 +160,16 @@ The compact path is a package-directed execution path. Rust and the canonical pa
 | EXVM | Own expression parsing and evaluation for covered expressions. Native code may write or execute the selected expression program; a native precedence parser is not proof of VM ownership. |
 | Native writer / assembler | Consume numeric identities, structured values, bounded expression programs and offset-based records. Preserve source provenance for diagnostics. Keep immutable preparation separate from mutable pass/layout state. |
 
-Bootstrap and macro expansion may have host-owned steps where the VM boundary protocol allows them. The relevant contract is which component selects the grammar and owns its behavior, not whether native routines contain branches.
+Bootstrap and macro expansion may have host-owned steps where the VM boundary protocol
+allows them. The relevant contract is which component selects the grammar and owns its
+behavior, not whether native routines contain branches.
 
-Persist offsets and numeric IDs, never process pointers. Every stored offset has an explicit base and validated bounds; moving a block must not require patching stored records. Scratch preparation storage is released before assembly. Hunk fixups retain complete symbol and section identity through stabilization and output; unsafe arithmetic and unsupported provenance fail closed. Generic directives and CPU/family semantics remain in their established shared or package-owned layers.
+Persist offsets and numeric IDs, never process pointers. Every stored offset has an
+explicit base and validated bounds; moving a block must not require patching stored
+records. Scratch preparation storage is released before assembly. Hunk fixups retain
+complete symbol and section identity through stabilization and output; unsafe arithmetic
+and unsupported provenance fail closed. Generic directives and CPU/family semantics
+remain in their established shared or package-owned layers.
 
 ## Portable token and package details
 
@@ -263,7 +228,8 @@ wrapped register child from call argument 0/1 on operand 0–2, using the same
 class/value-program/argument fields as kind 24; no callee or opcode spelling is
 interpreted by native transport. Raw colon normalization remains unsupported.
 Target flags at 130 request structural
-wrapper preservation (bit 0) and nested preparation (bit 1) from canonical projections. Tuple register/value/qualified projections use kinds 11/12/13. Descriptor
+wrapper preservation (bit 0) and nested preparation (bit 1) from canonical projections.
+Tuple register/value/qualified projections use kinds 11/12/13. Descriptor
 bytes 10/11 hold arity and item index: arity 2/3 is exact, while 0 allows only
 actual arity 2/3 when the canonical plan has no explicit arity predicate.
 Kind 24 selects argument 0/1 from a complete dotted numeric call, preserving
@@ -308,8 +274,10 @@ strict barrier rather than authorizing left fallback. All 64 bits matter.
 Unsupported rows retain exact canonical match arity through RequiredForms
 nibbles 10/11 (two/three items). A complete tuple with a different arity or an
 already-proven complete non-tuple root disproves those rows; unknown structure
-and contradictory predicates remain closed. The represented nested full-extension paths are executable; other path
-operations, terminals and call-child forms remain explicit unsupported boundaries. Typed scalar/wrapped-value and
+and contradictory predicates remain closed. The represented nested full-extension paths
+are executable; other path
+operations, terminals and call-child forms remain explicit unsupported boundaries. Typed
+scalar/wrapped-value and
 numeric tuple-name projections retain addressing predicates without source text
 or CPU-specific native parsing. Its header is 228 bytes, with
 big-endian block-relative fields. The canonical target identity remains at
@@ -344,7 +312,8 @@ one contextual package-name identity for scalar `x=` repetition;
 optional label colon and consumes the complete packed record, independently of
 the two-token physical-head hint. Scalar `:?=` is under qualification and has an
 unresolved forward-initializer semantic choice. The punctuation compound updates
-and scalar `x=` are covered by the shared declaration policy described below. A generic adapter lowers the record after template
+and scalar `x=` are covered by the shared declaration policy described below. A generic
+adapter lowers the record after template
 expansion and before scope/conditional processing; configuration capture lowers
 its private writer record before import-parameter evaluation. Discovery selects
 declaration roles through package identity before that materialization; it does
@@ -358,18 +327,16 @@ precomputed absolute immutable values (2) and resolved runtime absolute snapshot
 preparation alone may set record flag 64 on immutable declarations whose graph
 reaches a mutable value; their expressions/bodies remain unchanged. Only these
 readonly snapshots can retain unresolved pass-one placeholders and refresh in
-pass two. Ordinary immutable layout checks stay strict. Complete lexical instruction operands are normalized before binding
+pass two. Ordinary immutable layout checks stay strict. Complete lexical instruction
+operands are normalized before binding
 using those package-supplied field identities; shared directives and exact
 register spellings retain their identities. MemberShape predicates and TargetMember
 fixups operate on numeric wrappers without source text. Shared PRVM entry 7
 selects output/descriptive roles and bounded decoded-string spans. Rust
 preparation expands only active `.incbin` statements for
 the quoted relative native subset, using definition-file-relative roots
-and the explicit supported cases. [Focused native qualification](native-runtime-reset.md#bs13-binary-inclusion-qualification)
-passes; BS13 embedded-config self-hosting is qualified in the current plan.
-The BS20 baseline embedded full self-host is qualified on the expanded investigation
-profile; per-record origins for macro bodies drawn from several physical files
-remain unqualified. Unsupported candidate recipes stay explicit rows rather than
+and the explicit supported cases. Per-record origins for macro bodies drawn
+from several physical files remain unqualified. Unsupported candidate recipes stay explicit rows rather than
 becoming silent omissions. Package rows select package-owned recipes, numeric
 projections and literal constants, including instruction encodings. Generic
 native executes them without inventing CPU/family semantics. Preparation-only
@@ -419,7 +386,7 @@ ownership survives an inactive attempted replacement. Preparation-only effects
 and the existing ordinary-loop restrictions remain unchanged.
 Direct wide literal transport has separate focused qualification below. These
 focused cases do not establish full Rust/native parity or a new full self-host
-result. See the [native configuration checkpoint](native-runtime-reset.md#typed-struct-configuration-native-checkpoint).
+result; complete configuration parity remains unqualified.
 
 Macro descriptors preserve definition order, lexical distance, visibility,
 source order and argument spelling. Duplicate definitions and import/value
@@ -437,15 +404,52 @@ anonymous macro scopes remain a distinct Rust/native selection edge.
 
 ## Implemented behavior retained
 
-- BS18 selects ordinary and dotted heads after bare/adjacent-colon labels through shared PRVM policy before binding. Focused split/bare/colon controls pass on 6502 and 68020; member Hunk, composed macro label and register-spelling label regressions also pass. The [current checkpoint](native-runtime-reset.md#bs18-shared-instruction-heads--focused-parity) records the selected corpus results and isolated time/size cost. This does not establish complete family or language parity.
-- Parent-path resolution recognizes Amiga volume separators, allowing textual and binary inclusion from a volume-root entry such as `Work:main.asm`. Root lookup, normalization and authorization retain their existing boundaries. The [focused checkpoint](native-runtime-reset.md#bs18-volume-root-includes--focused-parity) records the original include proof and the subsequent `.const` stops; the BS19 checkpoint below records their retry.
-- BS19 lowers labelled scalar `.const` through shared PRVM into immutable assignment records, including configuration-time import parameters. The [focused checkpoint](native-runtime-reset.md#bs19-shared-scalar-declarations--focused-parity) records the controls, selected real-example retries, contract migration and remaining compound-value/8085 gaps.
-- BS20 adds shared scalar `.var`/`.set` declaration roles and statement-time signed64 storage with readonly snapshot tracking. [Focused proof](native-runtime-reset.md#bs20-scalar-mutable-declarations--single-sweep-checkpoint) covers flat outputs, both label styles, conditionals, macro locals and instruction operands. Single-source-sweep concrete layouts remain supported. [Hunk traversal](native-runtime-reset.md#bs20-source-order-hunk-traversal) now executes statements once per pass in source order, with bounded section-local cursors and independent output ordering. Unselected sections execute state without contributing output. Only resolved, proven-absolute readonly snapshots acquire runtime absolute state 4; their values and proof refresh each pass. One/two-map layouts still reject active mutations before filtered sweeps can reorder state, with dedicated-diagnostic controls. [Mapped preparation](native-runtime-reset.md#bs20-mapped-preparation--configuration-transfer-repair) now transfers discovered maps with canonical identity rebinding and lexical ownership before dependency bodies run; readonly mapped output, parameterized imports and inactive imports pass. Each seeded map must match its ordinary import replay once. The native two-map limit and late-map rejection remain explicit gaps. Mapped source-order traversal remains a separate structural slice. Compound values are covered by the later compound-expression checkpoints; shared scalar data narrowing is covered by the [narrow-output checkpoint](native-runtime-reset.md#shared-narrow-output-checkpoint).
-- TKVM-selected number normalization, composed-name recipes, and ordinary macro/segment string fragment recipes are implemented. Generated-call argument fragments are re-tokenized under VM control. Macro descriptor services use the compact PRVM boundary and offset-only fragment records.
-- Preparation binds scopes, module identities, selected imports, visibility and supported scalar/flat-list/range parameters before assembly. Selected-file discovery and dependency order, common `.use` forms, selected includes and numeric import identities have fresh focused native/Rust coverage.
-- Counted packed `.for` replay passes focused real-native comparison. Package-selected branch width, supported register masks, scalar roots, predicates, and supported instruction/data Hunk relocations are exercised by exact focused native/Rust comparisons.
-- Imported anonymous macro invocation scopes carry a preparation-only marker so their expansions remain reachable without creating a named reachability span. The marker does not enter runtime records or change the package format.
-- Template declarations and numeric value declarations have independent ownership and visibility. Per-item selection aliases expose the renamed spelling for both values and templates while retaining the canonical target identity. Module aliases and qualified selected macro calls remain separate forms. The [selected-template alias checkpoint](native-runtime-reset.md#selected-template-alias-checkpoint) records focused proof and its limits.
+- BS18 selects ordinary and dotted heads after bare/adjacent-colon labels through shared
+  PRVM policy before binding. Focused split/bare/colon controls pass on 6502 and 68020;
+  member Hunk, composed macro label and register-spelling label regressions also pass.
+  This does not establish complete family or language parity.
+- Parent-path resolution recognizes Amiga volume separators, allowing textual and binary
+  inclusion from a volume-root entry such as `Work:main.asm`. Root lookup, normalization
+  and authorization retain their existing boundaries. Definition-relative acquisition
+  remains bounded by the source-control subset above.
+- BS19 lowers labelled scalar `.const` through shared PRVM into immutable assignment
+  records, including configuration-time import parameters. This does not establish full
+  declaration or 8085 parity.
+- BS20 adds shared scalar `.var`/`.set` declaration roles and statement-time signed64
+  storage with readonly snapshot tracking. Focused proof covers flat outputs, both label
+  styles, conditionals, macro locals and instruction operands. Single-source-sweep
+  concrete layouts remain supported. Hunk traversal now executes statements once per
+  pass in source order, with bounded section-local cursors and independent output
+  ordering. Unselected sections execute state without contributing output. Only
+  resolved, proven-absolute readonly snapshots acquire runtime absolute state 4; their
+  values and proof refresh each pass. One/two-map layouts still reject active mutations
+  before filtered sweeps can reorder state, with dedicated-diagnostic controls. Mapped
+  preparation now transfers discovered maps with canonical identity rebinding and
+  lexical ownership before dependency bodies run; readonly mapped output, parameterized
+  imports and inactive imports pass. Each seeded map must match its ordinary import
+  replay once. The native two-map limit and late-map rejection remain explicit gaps.
+  Mapped source-order traversal remains a separate structural slice. Compound-expression
+  and scalar narrowing behavior are described below.
+- TKVM-selected number normalization, composed-name recipes, and ordinary macro/segment
+  string fragment recipes are implemented. Generated-call argument fragments are
+  re-tokenized under VM control. Macro descriptor services use the compact PRVM boundary
+  and offset-only fragment records.
+- Preparation binds scopes, module identities, selected imports, visibility and
+  supported scalar/flat-list/range parameters before assembly. Selected-file discovery
+  and dependency order, common `.use` forms, selected includes and numeric import
+  identities have fresh focused native/Rust coverage.
+- Counted packed `.for` replay passes focused real-native comparison. Package-selected
+  branch width, supported register masks, scalar roots, predicates, and supported
+  instruction/data Hunk relocations are exercised by exact focused native/Rust
+  comparisons.
+- Imported anonymous macro invocation scopes carry a preparation-only marker so their
+  expansions remain reachable without creating a named reachability span. The marker
+  does not enter runtime records or change the package format.
+- Template declarations and numeric value declarations have independent ownership and
+  visibility. Per-item selection aliases expose the renamed spelling for both values and
+  templates while retaining the canonical target identity. Module aliases and qualified
+  selected macro calls remain separate forms. Focused coverage does not establish
+  general module-alias parity.
 
 The compact path has no general capability claim from those examples. Each
 instruction recipe, expression form, import form and layout behavior needs
@@ -457,39 +461,73 @@ These statements describe the implemented subset. They do not imply complete ass
 
 ## Remaining boundary gaps and explicit limitations
 
-- The [current breadth checkpoint](native-runtime-reset.md#current-breadth-parity-checkpoint) qualifies complete FPU all-modes, instruction catalog, FPU registers, full-extension and PFLUSH/FPU Hex examples. Other path operations and terminals remain bounded by the numeric-path contract; these files do not establish whole-family parity.
-- BS27 supports three top-level operands and indirect-register call-child projections. Transformed CAS2 execution probes match Rust, but the original colon-pair syntax still needs package/VM-owned normalization. These probes do not qualify unchanged-source CAS2 parity.
+- Focused comparisons qualify complete FPU all-modes, instruction catalog, FPU
+  registers, full-extension and PFLUSH/FPU Hex examples. Other path operations and
+  terminals remain bounded by the numeric-path contract; these files do not establish
+  whole-family parity.
+- BS27 supports three top-level operands and indirect-register call-child projections.
+  Transformed CAS2 execution probes match Rust, but the original colon-pair syntax still
+  needs package/VM-owned normalization. These probes do not qualify unchanged-source
+  CAS2 parity.
 
-- Dotted call preparation compiles extra argument leaves that canonical call-register projections ignore. Unused nested calls, long strings or unresolved names can reject. BS24 covers selected register arguments and supported extra scalar/register leaves, not general call-expression parity.
+- Dotted call preparation compiles extra argument leaves that canonical call-register
+  projections ignore. Unused nested calls, long strings or unresolved names can reject.
+  BS24 covers selected register arguments and supported extra scalar/register leaves,
+  not general call-expression parity.
 
-- `binary_templates.rewriteCallText` still consumes decoded-string bytes in the residual body-token fallback. Replace this last caller with explicit VM-selected recipes before claiming complete string-boundary migration; keep decoded-string provenance for diagnostics and generated spelling.
+- `binary_templates.rewriteCallText` still consumes decoded-string bytes in the residual
+  body-token fallback. Replace this last caller with explicit VM-selected recipes before
+  claiming complete string-boundary migration; keep decoded-string provenance for
+  diagnostics and generated spelling.
 - `binary_expression.compile` now runs the shared EXVM program, replacing its
   handwritten precedence parser. Fresh native component, folded-statement and
-  session-lifecycle comparisons pass; unchanged-control timing is recorded in the
-  [active plan](native-runtime-reset.md#shared-compiler-cost-checkpoint). The
-  latest complete self-host reference is BS34, source manifest
-  `6c9adfcf4f1aac2f`; scoped-loop and wider macro coverage remains open.
-  The historical migration checkpoint recorded
-  54 inherited host failures; that observation does not describe the current
-  host suite or establish broad integration readiness.
+  session-lifecycle comparisons pass. Current full self-host evidence is the
+  identified BS35 source above; later source changes have focused proof only.
   Ordinary Rust expression handling still uses core token spelling instead of
   portable numeric metadata. Expression-range and operand-wrapper choices in
   preparation need a PRVM/package audit. Other native VM contracts still carry
   version fields/checks pending consolidation; their presence is a migration gap.
 - Iterable `.for` and iterator-dependent conditionals have the focused BS33
-  coverage [described above](#iterator-dependent-conditionals-bs33-provisional).
+  coverage [described above](#repetition-and-conditional-execution).
   Imported-shadow and qualified-reference probes, register-role separation,
   identity growth and scalar misuse rejection also have focused proof.
   BS34 `.while` has focused flat, whole-Hunk and two-concrete-section proof on
-  both packages; see the [provisional scope and measurements](native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
+  both packages.
   Mapped modes 2 and 4 reject any `.while` until source-order traversal is repaired.
-  Scoped `.bfor`/`.bwhile` have subsequent focused coverage linked above; broader
+  Scoped `.bfor`/`.bwhile` have subsequent focused coverage described above; broader
   loop/macro parity remains open. Labels inside
   active unscoped loops reject. Counted packed-loop execution has focused
   native/Rust comparison.
-- Named blocks inside anonymous macro scopes remain a separate Rust/native selection edge. Preserve the focused controls when changing macro selection.
-- Compact projections remain bounded: supported fixups retain one section base plus an absolute addend; multi-base, non-affine or section-dependent addend algebra and genuine unsupported member-form targets must reject. Non-absolute layout aliases retain relocation identity and reject when output cannot represent them. Do not broaden expression or member behavior through a generic native shortcut.
-- `.use ... with (...)` Rust preparation supports known source-site scalar, flat-list, range, struct type and struct-instance values. Typed snapshots preserve schema identity across dependency ordering. Native has focused flat-list/range coverage using shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set` snapshots; compound forwarding through two imported modules and repeated equal imports have focused native coverage. Iterable-loop execution has separate partial qualification; the imported-shadow repair has fresh matching probes on both packages, including qualified-reference preservation. Native struct configuration has focused type/instance, member, snapshot and forwarding proof; top-level forward opening guards, unresolved alternatives following known false arms, and selected mutable updates now use numeric replay. Rust also stabilizes loop presence under certified immutable scalar forward guards before emission; contextual guards and retained-loop count changes keep their strict checks. See the [focused loop-layout repair](native-runtime-reset.md#immutable-forward-guards-and-loop-layout). The Rust [guard/count repair](native-runtime-reset.md#forward-guard-and-count-composition) admits one certified branch-local scalar dependency batch; later count-expanded declarations and new guard activation chains remain unsupported. Native now reuses numeric PRVM branch selection and the shared scalar dependency resolver for top-level conditional declarations, with focused two-package guard/count coverage. Inactive alternatives remain dormant; selected duplicate ownership rejects. The [typed-owner checkpoint](native-runtime-reset.md#selected-immutable-iterable-owners) also qualifies lists/ranges and source-order aliases consumed by iterable loops after a certified forward guard, including corrected nested literal traversal. Mutable/contextual dependencies and further guard activation remain restricted. These cases do not establish full module, parameter or Hunk-expression parity. The signed scalar iterable checkpoint below covers negative/wide elements separately.
+- Named blocks inside anonymous macro scopes remain a separate Rust/native selection
+  edge. Preserve the focused controls when changing macro selection.
+- Compact projections remain bounded: supported fixups retain one section base plus an
+  absolute addend; multi-base, non-affine or section-dependent addend algebra and
+  genuine unsupported member-form targets must reject. Non-absolute layout aliases
+  retain relocation identity and reject when output cannot represent them. Do not
+  broaden expression or member behavior through a generic native shortcut.
+- `.use ... with (...)` Rust preparation supports known source-site scalar, flat-list,
+  range, struct type and struct-instance values. Typed snapshots preserve schema
+  identity across dependency ordering. Native has focused flat-list/range coverage using
+  shared EXVM, independent offset arenas, `.len`, indexed conditionals and `.var`/`.set`
+  snapshots; compound forwarding through two imported modules and repeated equal imports
+  have focused native coverage. Iterable-loop execution has separate partial
+  qualification; the imported-shadow repair has fresh matching probes on both packages,
+  including qualified-reference preservation. Native struct configuration has focused
+  type/instance, member, snapshot and forwarding proof; top-level forward opening
+  guards, unresolved alternatives following known false arms, and selected mutable
+  updates now use numeric replay. Rust also stabilizes loop presence under certified
+  immutable scalar forward guards before emission; contextual guards and retained-loop
+  count changes keep their strict checks. Rust guard/count resolution admits one
+  certified branch-local scalar dependency batch; later count-expanded declarations and
+  new guard activation chains remain unsupported. Native now reuses numeric PRVM branch
+  selection and the shared scalar dependency resolver for top-level conditional
+  declarations, with focused two-package guard/count coverage. Inactive alternatives
+  remain dormant; selected duplicate ownership rejects. Focused typed-owner coverage
+  also qualifies lists/ranges and source-order aliases consumed by iterable loops after
+  a certified forward guard, including corrected nested literal traversal.
+  Mutable/contextual dependencies and further guard activation remain restricted. These
+  cases do not establish full module, parameter or Hunk-expression parity. The signed
+  scalar iterable checkpoint below covers negative/wide elements separately.
 
 For instruction and address selection, required tuple/register classes and
 package predicates remain barriers: native may skip a higher-priority recipe
@@ -530,7 +568,8 @@ contract; they are not successful artifact parity.
 
 ## Stable correction anchors
 
-The following anchors remain for active documentation links. They summarize current behavior rather than preserving the old checkpoint narrative.
+The following anchors remain for active documentation links. They summarize current
+behavior rather than preserving the old checkpoint narrative.
 
 ### Numeric normalization checkpoint
 
@@ -553,14 +592,14 @@ narrowing now matches Rust: low-u32 conversion precedes byte/word/long emission;
 byte truncation warns and retains layout, while `.emit` remains strict. The
 application reports final-pass warnings through retained numeric provenance,
 and `--Werror` fails after writing outputs. This does not qualify all diagnostics
-or output formats. See the [narrow-output checkpoint](native-runtime-reset.md#shared-narrow-output-checkpoint).
-Focused numeric-token proof and isolated control
-measurements are recorded in the
-[active plan](native-runtime-reset.md#direct-wide-literal-checkpoint).
+or output formats.
 The portable token record layout and package opcode contract are documented in
 the referenced VM sources.
 
-References: [portable token contract](../../crates/opforge-vm/src/portable_contract.rs), [Rust tokenizer helpers](../../crates/opforge-vm/src/tokenizer_runtime_utils.rs), [native scanner](../../native/motorola68000/amigaos/tkvm/tkvm_scanner.asm), and [package generation](../../crates/opforge-vm/src/builder.rs).
+References: [portable token contract](../../crates/opforge-vm/src/portable_contract.rs),
+[Rust tokenizer helpers](../../crates/opforge-vm/src/tokenizer_runtime_utils.rs),
+[native scanner](../../native/motorola68000/amigaos/tkvm/tkvm_scanner.asm), and [package
+generation](../../crates/opforge-vm/src/builder.rs).
 
 ### Ternary expression selection
 
@@ -570,9 +609,7 @@ selected scalar, list, range or record shape and its section provenance. Both
 arms are evaluated eagerly, matching Rust; invalid conditions, unavailable
 symbols and arithmetic errors still reject. Ternaries use the existing typed
 wrapper, while ordinary scalar expressions retain their compact folding path.
-No node/cell layout or package contract changes. Focused native qualification
-and the separate unchanged-control measurement are recorded in the
-[ternary checkpoint](native-runtime-reset.md#ternary-value-selection-checkpoint).
+No node/cell layout or package contract changes. This has focused native coverage.
 Full expression, assembler and self-host qualification are separate claims.
 
 ### Struct schemas and literal construction
@@ -598,9 +635,7 @@ bare member IDs.
 Assembler capture rejects relocatable instance fields, matching the current Rust
 value model; temporary member access in the raw typed VM retains provenance.
 Scalar preparation and execution share the original-definition size leaf rule,
-while typed aliases and compound expressions remain non-scalar. Focused evidence
-and the separate control measurement are recorded in the
-[struct checkpoint](native-runtime-reset.md#struct-literal-construction-checkpoint).
+while typed aliases and compound expressions remain non-scalar. This has focused native coverage.
 This does not establish complete expression/assembler parity or fresh self-host
 qualification.
 
@@ -617,17 +652,16 @@ members and section identity when indexed, then projects record/address elements
 to absolute scalar iterator bindings in `.for` and `.bfor`. Absolute scalar lists
 remain compact; descriptors, owner-relative offsets and loop-slot sizes are unchanged.
 The assembler adapter rejects nested list/range elements while raw shared ExprVM
-evaluation retains compound shapes. See the
-[typed-list checkpoint](native-runtime-reset.md#typed-list-construction-checkpoint).
-Focused scalar proof and
-isolated timing are recorded in the
-[active plan](native-runtime-reset.md#signed-scalar-iterable-checkpoint).
+evaluation retains compound shapes. This has focused native coverage.
 
 ### Macro descriptor service checkpoint
 
 <a id="macro-descriptor-service-checkpoint"></a>
 
-Macro definitions and calls use package-selected PRVM services and bounded offset-only descriptor/fragment records. Generated calls re-tokenize selected argument fragments; the residual decoded-string fallback above remains. Preserve lexical hygiene, source order, visibility and the separation between macro identity and numeric value identity.
+Macro definitions and calls use package-selected PRVM services and bounded offset-only
+descriptor/fragment records. Generated calls re-tokenize selected argument fragments;
+the residual decoded-string fallback above remains. Preserve lexical hygiene, source
+order, visibility and the separation between macro identity and numeric value identity.
 
 Scalar compound assignments use the shared PRVM declaration policy and
 numeric update markers. They reference existing mutable scalar identities,
@@ -662,11 +696,19 @@ fall through to instruction handling.
 
 ### Native proof boundary
 
-The maintained proof contract is [native Rust parity](../../agents/rules/native-rust-parity-porting.md). Fresh guest completion is mandatory: timeout, crash, partial capture, or launcher success is not completion. Compare against a live Rust build from identical source bytes. The full run recorded at the top qualifies that earlier source state; later source changes require a fresh full proof.
+The maintained proof contract is [native Rust
+parity](../../agents/rules/native-rust-parity-porting.md). Fresh guest completion is
+mandatory: timeout, crash, partial capture, or launcher success is not completion.
+Compare against a live Rust build from identical source bytes. The full run recorded at
+the top qualifies that earlier source state; later source changes require a fresh full
+proof.
 
 ## Related current documentation
 
-- [Native assembler completion plan](native-runtime-reset.md) owns the 68020 / 2 MiB product goal, memory direction and broader integration boundaries.
+- [Native assembler completion plan](native-runtime-reset.md) owns the 68020 / 2 MiB
+  product goal, memory direction and broader integration boundaries.
 - [Workflow guide](../workflow/README.md) describes validation and artifact lifecycle.
-- [Canonical VM boundary](../vm-boundary-protocol-v1.md#3-canonical-boundary-matrix) defines which VM owns each grammar and operation.
-- [Package execution boundaries](package-execution-boundaries.md#outcome-and-scope) defines permitted shared execution primitives and package ownership.
+- [Canonical VM boundary](../vm-boundary-protocol-v1.md#3-canonical-boundary-matrix)
+  defines which VM owns each grammar and operation.
+- [Package execution boundaries](package-execution-boundaries.md#outcome-and-scope)
+  defines permitted shared execution primitives and package ownership.

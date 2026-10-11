@@ -238,7 +238,8 @@ Notes:
   require its binary file to exist. Relative paths in a definition use that
   definition's source-file directory; bytes are reused across assembly passes.
 - Include resolution is constrained to the including-file directory and explicit `-I/--include-path` roots.
-- Absolute include paths and parent-relative traversals are accepted only when they resolve inside those allowed roots.
+- Absolute include paths and parent-relative traversals are accepted only when they
+  resolve inside those allowed roots.
 
 ### 3.2 Program counter and alignment
 
@@ -320,7 +321,8 @@ the placed sections must line up and what metadata is emitted alongside them.
 
 Output mode rules:
 - Default output mode is contiguous (`contiguous=true`): selected sections must be adjacent.
-- Image output mode (`image=...` + `fill=...`) allows sparse placement within the configured span (wide addresses supported).
+- Image output mode (`image=...` + `fill=...`) allows sparse placement within the
+  configured span (wide addresses supported).
 - PRG output prefixes a 2-byte little-endian load address (`loadaddr=` optional, must fit in 16 bits).
 - Hunk output emits AmigaOS executable hunks. With explicit sections,
   `sections=` preserves the emitted Hunk segment order; without explicit
@@ -402,7 +404,8 @@ Definition rules:
 - `.cdef`/`.tdef`/`.edef` are only valid inside `.encode ... .endencode`.
 
 Compatibility notes:
-- opForge follows 64tass-style encoding-definition directives, but keeps `.byte` string operands encoding-aware (no split behavior between `.byte` and `.text`).
+- opForge follows 64tass-style encoding-definition directives, but keeps `.byte` string
+  operands encoding-aware (no split behavior between `.byte` and `.text`).
 - `.null` is strict: if encoded input already contains `0`, assembly fails.
 
 ### 3.6 Symbols and assignments
@@ -454,7 +457,8 @@ expressions. An expression that already errors during the initial pass, such as
 division by an unresolved zero-valued symbol, still rejects. Forward constants
 do not provide a separate pre-evaluation phase for conditional assembly or loops.
 
-For `=`, `:=`, `:?=`, `.const`, `.var`, and `.set`, symbol values may be scalar, list, or struct-instance values.
+For `=`, `:=`, `:?=`, `.const`, `.var`, and `.set`, symbol values may be scalar, list,
+or struct-instance values.
 Compound assignment operators (`+=`, `-=`, etc.) are scalar-only and reject non-scalar symbols.
 
 ### 3.7 Conditional assembly
@@ -524,7 +528,8 @@ Notes:
 - Labels inside unscoped `.for`/`.while` bodies are rejected (use `.bfor`/`.bwhile`).
 - Labels on `.endfor`/`.endwhile` are rejected.
 - Loop iteration counts must be stable between the accepted sizing traversal and emission.
-- Loop execution is guarded by `--max-loop-iterations` (default `65536`, env override `OPFORGE_MAX_LOOP_ITERATIONS`).
+- Loop execution is guarded by `--max-loop-iterations` (default `65536`, env override
+  `OPFORGE_MAX_LOOP_ITERATIONS`).
 - Inline iterable range/list expressions are evaluated as full signed assembler
   values, like named snapshots. Scalar iterator elements retain their signed
   64-bit values; the iteration-count limit is independent of element magnitude.
@@ -541,23 +546,12 @@ Notes:
   numeric branch plans without source parsing. Deferred preparation-only
   declarations, scopes, configuration, metadata, file operations and macro
   definitions reject; complete lazy file/reachability parity is not established.
-  BS33 also completed a full self-host reference: all 114 mapped inputs
-  (1,704,435 bytes) completed on FS-UAE 68020/74 MiB, with exact equality among
-  bootstrap, native output and the live Rust oracle for the 592,700-byte Hunk.
-  The run took 1,433.129872292 seconds (23m53.13s); source and Hunk fingerprints
-  are `dbc8c7d966b2dec6` and `25c27121a3669a35`. This does not establish broad
-  language or CPU-family parity, a full diagnostic memory measurement, A6000
-  timing or 2 MiB fit.
   BS34 conditional repetition has focused native proof for flat, whole-Hunk and
   two-concrete-section output on both packages. Mapped modes 2 and 4 reject any
   `.while`, including constant-false loops, because their filtered traversal
   does not preserve the PC across skipped sections. Complete `.while` parity
-  and full scoped `.bfor`/`.bwhile` parity remain open. The BS34 full release self-host
-  completes all 116 mapped inputs (1,739,975 bytes) in 24m46.67s on FS-UAE
-  68020/74 MiB, with exact bootstrap/native/live Rust equality for the entire
-  596,652-byte Hunk. That self-host result does not establish full loop/macro
-  parity, A6000 timing or 2 MiB fit. See the [current checkpoint](plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs35)
-  and [BS34 plan](plans/native-runtime-reset.md#conditional-repetition-checkpoint-bs34-in-development).
+  and full scoped `.bfor`/`.bwhile` parity remain open. Current evidence is in
+  the [native frontend boundary](plans/compact-frontend-vm-boundary.md).
 
   BS35 adds focused native support for anonymous counted and list/range iterable
   `.bfor` on both packages. Forty-three combined scenarios match live Rust,
@@ -578,28 +572,23 @@ Notes:
   Subsequent focused checkpoints add signed 64-bit iterable elements and scalar
   projections of retained records/addresses. Indexed list elements preserve
   members and relocation identity; iterator bindings discard both, matching Rust.
-  See the [typed-list checkpoint](plans/native-runtime-reset.md#typed-list-construction-checkpoint).
+  See the [native frontend boundary](plans/compact-frontend-vm-boundary.md).
   Hunk direct iterator data, iterator-derived
   scalar constants and per-iteration relocations have focused proof on both packages.
   An iterator can shadow a section label without inheriting its relocation;
   a qualified reference to the original label retains its fixup.
   Labeled counted/list/range `.bfor` now has separate focused coverage for indexed
   addresses, immediate members, nested collections and grouped record aliases,
-  including Hunk relocations. Plain dotted record aliases remain a compact
-  frontend gap. See the [labeled-repetition checkpoint](plans/native-runtime-reset.md#native-labeled-repetition-focused-checkpoint).
-  `.bwhile`, mapped
-  scoped replay and general forward-alias/layout convergence remain open;
-  literals above 32 bits also remain a packing limitation. These
-  focused results do not establish complete loop/macro parity. The preceding
-  BS35 source checkpoint self-host completes all 121 mapped inputs
-  (1,780,288 bytes) in
-  25m22.60s on FS-UAE 68020/74 MiB, with exact equality for the entire 601,196-byte
-  Hunk. Full BS35 peak allocation, A6000 timing and 2 MiB fit are not measured.
-  See the [scoped-loop checkpoint](plans/native-runtime-reset.md#anonymous-counted-scoped-repetition-bs35-focused-qualification)
-  and [conditional dependency repair](plans/native-runtime-reset.md#scoped-conditional-dependency-repair-bs35-focused),
-  followed by the [retained-guard repair](plans/native-runtime-reset.md#scoped-retained-guard-sizing-bs35-focused)
-  and [iterable scoped checkpoint](plans/native-runtime-reset.md#anonymous-iterable-scoped-repetition-bs35-focused).
-
+  including Hunk relocations. Plain dotted record aliases use shared numeric occurrence bindings; active
+  composed imported members remain a separate native gap. See the [native frontend
+  boundary](plans/compact-frontend-vm-boundary.md).
+  Anonymous and labeled `.bwhile` also have focused native coverage. Full
+  `.bwhile` parity, mapped scoped replay and general forward-value/layout
+  convergence remain open. These
+  focused results do not establish complete loop/macro parity. The latest full
+  self-host proof covers an earlier identified BS35 source; later focused repairs
+  require a new full run. See the [self-host qualification and
+  limits](plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs35).
 
 Scalar `.for` and `.bfor` counts may refer forward to immutable constants whose
 dependencies are independent of labels, the program counter, mutable values and
@@ -717,7 +706,8 @@ Member resolution keeps a unified namespace:
 - exact dotted symbols are resolved first;
 - typed member access fallback is applied only when no exact dotted symbol exists.
 
-Reference example: [examples/struct_literal_instance_basic.asm](../examples/opcore/struct_literal_instance_basic.asm)
+Reference example:
+[examples/struct_literal_instance_basic.asm](../examples/opcore/struct_literal_instance_basic.asm)
 
 ### 3.9 Scopes
 
@@ -912,7 +902,8 @@ Notes:
   parameters are available; forward or assembly-time values are errors. Mutable
   values include preceding compound updates such as `+=` and are snapshotted
   at that site, so later replacements do not alter the imported value. Each
-  parameter becomes a private constant in the imported module. Repeated imports of one module must agree on their complete values.
+  parameter becomes a private constant in the imported module. Repeated imports of one
+  module must agree on their complete values.
   Strings are not symbol values. Rust supports scalar, flat-list, range, struct
   type and struct-instance values at this graph boundary. Struct parameters
   preserve the declaring module's nominal type identity and field geometry;
@@ -1100,9 +1091,12 @@ extensions.
 
 65816 support includes the phase-1 instruction set and phase-2 24-bit addressing work:
 - Implements selected 65816 mnemonics and operand forms.
-- Includes long memory forms for `ORA`, `AND`, `EOR`, `ADC`, `STA`, `LDA`, `CMP`, and `SBC` (`$llhhhh` and `$llhhhh,X`).
-- Includes stack-relative forms (`d,S` and `(d,S),Y`) for `ORA`, `AND`, `EOR`, `ADC`, `STA`, `LDA`, `CMP`, and `SBC`.
-- Includes wide-address output/layout workflows (`.org`, `.region`, `.place`, `.output image=...`, HEX/BIN emission).
+- Includes long memory forms for `ORA`, `AND`, `EOR`, `ADC`, `STA`, `LDA`, `CMP`, and
+  `SBC` (`$llhhhh` and `$llhhhh,X`).
+- Includes stack-relative forms (`d,S` and `(d,S),Y`) for `ORA`, `AND`, `EOR`, `ADC`,
+  `STA`, `LDA`, `CMP`, and `SBC`.
+- Includes wide-address output/layout workflows (`.org`, `.region`, `.place`, `.output
+  image=...`, HEX/BIN emission).
 - Includes `REP`/`SEP`-driven M/X width-state tracking for supported width-sensitive immediate mnemonics.
 
 **`.assume` directive:**
@@ -1145,8 +1139,10 @@ Migration note:
 
 Current 65816 limits:
 - PRG load-address prefix remains 16-bit.
-- Full automatic banked-state inference is not implemented (`.assume` plus explicit overrides provide control).
-- Uses checked address arithmetic and explicit diagnostics for overflow/underflow paths in placement, linking, and image emission.
+- Full automatic banked-state inference is not implemented (`.assume` plus explicit
+  overrides provide control).
+- Uses checked address arithmetic and explicit diagnostics for overflow/underflow paths
+  in placement, linking, and image emission.
 
 #### 3.11.3 Motorola 6800 family
 
@@ -1365,10 +1361,15 @@ Rules:
 
 Capture types (built-in):
 - `byte`, `word`, `long`, `char`, `str`
-- `byte` matches a single token that is either a numeric literal in `-128..=255`, an identifier/register, or a 1-byte quoted string.
-- `word` matches a single token that is either a numeric literal in `-32768..=65535`, an identifier/register, or a 1-2 byte quoted string.
-- `long` matches a single token that is either a numeric literal in `-2147483648..=4294967295` or an identifier/register. Quoted strings do not match `long`.
-- Capture matching is single-token only. Multi-token expressions such as `label+4` or `1<<24` do not match `long` captures.
+- `byte` matches a single token that is either a numeric literal in `-128..=255`, an
+  identifier/register, or a 1-byte quoted string.
+- `word` matches a single token that is either a numeric literal in `-32768..=65535`, an
+  identifier/register, or a 1-2 byte quoted string.
+- `long` matches a single token that is either a numeric literal in
+  `-2147483648..=4294967295` or an identifier/register. Quoted strings do not match
+  `long`.
+- Capture matching is single-token only. Multi-token expressions such as `label+4` or
+  `1<<24` do not match `long` captures.
 
 Reference example: [examples/statement_expansion.asm](../examples/opcore/statement_expansion.asm)
 
@@ -1438,17 +1439,24 @@ is produced, how diagnostics are rendered, and a smaller set of switches that
 adjust assembler behavior.
 
 Inputs:
-- `[INPUT]...`: one positional input is treated like `-i INPUT`; multiple positional inputs require explicit `-i/--infile`. `.` selects the current directory; omitted input also defaults to `.`.
-- `-i, --infile <FILE|FOLDER>`: input `.asm` file or folder (repeatable). Folder inputs must contain exactly one `main.*` root module.
-- `-I, --include-path <DIR>`: additional include search roots (repeatable). Include resolution order: including-file directory, root-file directory, then explicit include roots in CLI order.
-- `-M, --module-path <DIR>`: additional module search roots (repeatable). Module resolution order: input root directory, then module roots in CLI order.
+- `[INPUT]...`: one positional input is treated like `-i INPUT`; multiple positional
+  inputs require explicit `-i/--infile`. `.` selects the current directory; omitted
+  input also defaults to `.`.
+- `-i, --infile <FILE|FOLDER>`: input `.asm` file or folder (repeatable). Folder inputs
+  must contain exactly one `main.*` root module.
+- `-I, --include-path <DIR>`: additional include search roots (repeatable). Include
+  resolution order: including-file directory, root-file directory, then explicit include
+  roots in CLI order.
+- `-M, --module-path <DIR>`: additional module search roots (repeatable). Module
+  resolution order: input root directory, then module roots in CLI order.
 
 Outputs:
 - `-l, --list [FILE]`: listing output (optional filename).
 - `-x, --hex [FILE]`: Intel HEX output (optional filename).
 - `-s, --srec [FILE]`: Motorola S-record output (optional filename).
 - `--hunk [FILE]`: AmigaOS Hunk executable output (optional filename).
-- `-b, --bin [FILE:ssss:eeee|ssss:eeee|FILE]`: binary image with optional range(s), repeatable (`ssss`/`eeee` are 4-8 hex digits).
+- `-b, --bin [FILE:ssss:eeee|ssss:eeee|FILE]`: binary image with optional range(s),
+  repeatable (`ssss`/`eeee` are 4-8 hex digits).
 - `--dependencies <FILE>`: write Makefile-compatible dependency rules.
 - `--dependencies-append`: append dependency rules to an existing dependency file.
 - `--make-phony`: emit phony targets for dependency paths.
@@ -1470,25 +1478,31 @@ Diagnostics:
 Other options:
 - `-o, --outfile <BASE>`: output base name if output filename omitted.
 - `-f, --fill <hh>`: fill byte for binary output (hex). Requires binary output. Defaults to `FF`.
-- `-g, --go <aaaa>`: execution start address in HEX/S-record output (4-8 hex digits). Requires HEX or S-record output.
+- `-g, --go <aaaa>`: execution start address in HEX/S-record output (4-8 hex digits).
+  Requires HEX or S-record output.
 - `-D, --define <NAME[=VAL]>`: predefine macro (repeatable).
 - `-c, --cond-debug`: include conditional state in listing.
 - `--line-numbers`: listing compatibility flag for line-number column (enabled by default).
 - `--tab-size <N>`: expand tab characters in listing source column.
 - `--verbose-list`: listing compatibility flag (reserved for expanded listing sections).
-- `--fmt`: format input files in place (shorthand for `--fmt-write`). Folder inputs and root source-file inputs also include linked module files.
-- `--fmt-check`: check formatting for input files without writing changes. Folder inputs and root source-file inputs include linked module files.
-- `--fmt-write`: apply formatter changes in place for input files. Folder inputs and root source-file inputs include linked module files.
+- `--fmt`: format input files in place (shorthand for `--fmt-write`). Folder inputs and
+  root source-file inputs also include linked module files.
+- `--fmt-check`: check formatting for input files without writing changes. Folder inputs
+  and root source-file inputs include linked module files.
+- `--fmt-write`: apply formatter changes in place for input files. Folder inputs and
+  root source-file inputs include linked module files.
 - `--fmt-stdout`: format exactly one input file and write the result to stdout.
 - `--fmt-config <FILE>`: formatter config file path (requires a formatter mode flag).
 - `--cpu <ID>`: select the initial CPU before source parsing (`.cpu` in source
   can still override later). It uses the same case-insensitive canonical names
   and registered aliases as `.cpu`; for example, `6502` resolves to `m6502`.
-- `--opasm-package <FILE>`: load runtime `.opasm` package from FILE and prefer it over artifact/bundled package sources.
+- `--opasm-package <FILE>`: load runtime `.opasm` package from FILE and prefer it over
+  artifact/bundled package sources.
 - `--print-capabilities`: print deterministic capability metadata and exit.
 - `--print-cpusupport`: print deterministic CPU support metadata and exit.
 - `--pp-macro-depth <N>`: maximum preprocessor macro expansion depth (default `64`, minimum `1`).
-- `--max-loop-iterations <N>`: maximum `.for`/`.while` iterations before emitting an error (default `65536`, minimum `1`).
+- `--max-loop-iterations <N>`: maximum `.for`/`.while` iterations before emitting an
+  error (default `65536`, minimum `1`).
 - `--input-asm-ext <EXT>`: additional accepted source-file extension for direct file inputs.
 - `--input-inc-ext <EXT>`: additional accepted root-module extension for folder inputs.
 - `-h, --help`: print help.
@@ -1510,11 +1524,14 @@ The following rules are the ones most likely to affect day-to-day invocation:
   file's directory. A literal path in a source `.output` directive is relative
   to the process working directory, or to the configured output directory when
   one is set.
-- Formatter mode (`--fmt`, `--fmt-check`, `--fmt-write`, `--fmt-stdout`) requires at least one input and cannot be combined with assembler output flags or fixit options.
+- Formatter mode (`--fmt`, `--fmt-check`, `--fmt-write`, `--fmt-stdout`) requires at
+  least one input and cannot be combined with assembler output flags or fixit options.
 - `--fmt-stdout` requires exactly one input.
 - `-b` without a range emits a binary that spans the emitted output.
-- For Intel HEX, `-g` writes a Start Segment Address record for 16-bit values and a Start Linear Address record for wider values.
-- For S-record output, `-g` writes the start address into the S7/S8/S9 termination record; without `-g`, the termination address is zero.
+- For Intel HEX, `-g` writes a Start Segment Address record for 16-bit values and a
+  Start Linear Address record for wider values.
+- For S-record output, `-g` writes the start address into the S7/S8/S9 termination
+  record; without `-g`, the termination address is zero.
 - `--hunk` does not currently consume `-g`; AmigaOS executable hunks remain
   loader-relocatable and use the Hunk segment/relocation records emitted by
   the Hunk writer.
@@ -1531,7 +1548,8 @@ is predictable cleanup of layout and casing, not large-scale source rewriting.
 
 Project-mode formatter resolution:
 - `--fmt`, `--fmt-check`, and `--fmt-write` expand directory inputs exactly as before.
-- The same three modes now also expand root source-file inputs through the linked module graph, so formatting one root module can cover its companion module files.
+- The same three modes now also expand root source-file inputs through the linked module
+  graph, so formatting one root module can cover its companion module files.
 - `--fmt-stdout` remains single-file only and does not expand linked modules.
 
 Formatter config (`--fmt-config`) currently supports these keys:
@@ -1567,8 +1585,11 @@ Validation is strict:
 
 Label-casing behavior:
 - `label_case` applies as the generic fallback for label definitions.
-- `routine_label_case`, `data_label_case`, and `constant_label_case` override `label_case` for symbol-aware formatter runs when a label can be classified by role.
-- Formatter rewrites now update matching same-file label usages, and project-mode formatter runs also rewrite selective `.use module (item)` imports plus imported symbol references when the defining module changes case.
+- `routine_label_case`, `data_label_case`, and `constant_label_case` override
+  `label_case` for symbol-aware formatter runs when a label can be classified by role.
+- Formatter rewrites now update matching same-file label usages, and project-mode
+  formatter runs also rewrite selective `.use module (item)` imports plus imported
+  symbol references when the defining module changes case.
 
 Example repository formatter config for native Motorola 68000 work:
 
@@ -1757,7 +1778,8 @@ encoding.
 #### VM hierarchy bridge (v1)
 
 See also:
-- [VM Boundary & Protocol Specification (v1)](vm-boundary-protocol-v1.md) (host/VM boundary + strictness rules)
+- [VM Boundary & Protocol Specification (v1)](vm-boundary-protocol-v1.md) (host/VM
+  boundary + strictness rules)
 - [VM Ultimate64 ABI Contract (v1)](vm-ultimate64-abi-contract-v1.md) (constrained-runtime ABI for `*.opasm`)
 
 - The VM runtime bridge provides host-facing target selection:
@@ -1769,8 +1791,10 @@ See also:
 
 #### VM runtime package source selection
 
-- The CLI supports explicit VM runtime package loading with `--opasm-package <FILE>` (or `OPFORGE_OPASM_PACKAGE`).
-- The high-level assembly/session path accepts the same kind of explicit `.opasm` package override through its request/config surface.
+- The CLI supports explicit VM runtime package loading with `--opasm-package <FILE>` (or
+  `OPFORGE_OPASM_PACKAGE`).
+- The high-level assembly/session path accepts the same kind of explicit `.opasm`
+  package override through its request/config surface.
 - Package source precedence for those paths is:
   1. explicit package path
   2. default artifact path `target/vm/opforge-vm-runtime.opasm` (when `vm-runtime-opasm-artifact` is enabled)
@@ -1778,10 +1802,19 @@ See also:
 - In `vm-runtime-only` + `vm-runtime-opasm-unbundled` builds, runtime package sourcing is mandatory:
   - either provide `--opasm-package <FILE>`
   - or enable artifact mode and provide the default artifact file
-- Runtime packages may carry optional [CPU execution properties (`CPEX` v2)](cpu-execution-properties-v2.md), including canonical CPU word size, address bounds and data byte order. Earlier CPEX versions are rejected; regenerate packages with the current builder. Missing metadata remains explicit, and native numeric data emission requires it. This metadata transport alone does not add reservation behavior.
-- Lower-level engine/editor helpers such as `libopforge::processing`, `editor_parse_line`, and `editor_route_line` do not broaden this into CLI-style fallback behavior.
-- In `vm-runtime-only` mode, those helpers should be called with an explicit runtime model via the `*_with_model` entrypoints, or with the default artifact file present when `vm-runtime-opasm-artifact` is enabled.
-- If neither an explicit model nor the default artifact is available, those helpers report an unavailable runtime model instead of generating or bundling one implicitly.
+- Runtime packages may carry optional [CPU execution properties (`CPEX`
+  v2)](cpu-execution-properties-v2.md), including canonical CPU word size, address
+  bounds and data byte order. Earlier CPEX versions are rejected; regenerate packages
+  with the current builder. Missing metadata remains explicit, and native numeric data
+  emission requires it. This metadata transport alone does not add reservation behavior.
+- Lower-level engine/editor helpers such as `libopforge::processing`,
+  `editor_parse_line`, and `editor_route_line` do not broaden this into CLI-style
+  fallback behavior.
+- In `vm-runtime-only` mode, those helpers should be called with an explicit runtime
+  model via the `*_with_model` entrypoints, or with the default artifact file present
+  when `vm-runtime-opasm-artifact` is enabled.
+- If neither an explicit model nor the default artifact is available, those helpers
+  report an unavailable runtime model instead of generating or bundling one implicitly.
 
 ### VM boundary (certified families)
 

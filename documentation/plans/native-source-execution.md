@@ -2,7 +2,7 @@
 
 Status: proposed implementation sequence within the active opcore parity work.
 The interfaces below are private design targets, not implemented capabilities.
-The [completion plan](native-runtime-reset.md) records qualified checkpoints.
+The [completion plan](native-runtime-reset.md) records current evidence and completion order.
 
 ## Responsibility boundary
 

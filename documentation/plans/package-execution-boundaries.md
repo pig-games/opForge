@@ -1,6 +1,6 @@
 # Package-controlled execution: Rust and native
 
-Status: B3 checkpoint; directive ownership implemented, native data parity still incomplete. Companion to [the runtime reset](native-runtime-reset.md),
+Status: B3 checkpoint; directive ownership implemented, native data parity still incomplete. Companion to [the completion plan](native-runtime-reset.md),
 following W3's measurements. The active [AGENTS.md](../../AGENTS.md) remains binding.
 
 ## Outcome and scope

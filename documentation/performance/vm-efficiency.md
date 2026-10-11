@@ -224,7 +224,7 @@ scratch and the OS, so it is neither a peak estimate nor proof of fitting 2 MB.
 The next representation experiment must account for those missing terms.
 
 The current work and brief decision are tracked in the
-[reset plan](../plans/native-runtime-reset.md), not in this tool guide.
+[completion plan](../plans/native-runtime-reset.md), not in this tool guide.
 
 ## Minimal Rust/native comparison
 
@@ -274,7 +274,7 @@ cycles or calibrated speed ratios. The summary records the template and the
 runner's effective 64 MiB Zorro III memory override. Neither this emulator setup
 nor package file size establishes 68020/2 MB feasibility. Peak RAM and native
 VM-work counts are unmeasured. Current findings and the next decision belong in
-the [reset plan](../plans/native-runtime-reset.md).
+the [completion plan](../plans/native-runtime-reset.md).
 
 For a native before/after comparison, use `--blocks 8` and pass
 `--native-source-root <snapshot-root>` for the baseline. The snapshot must contain
@@ -293,3 +293,23 @@ non-overflowing records from the same fresh successful guest. `--native-profile 
 selects all existing counter families for explicit diagnosis; that combination
 failed the initial mixed-workload checks during expression compilation and has
 not been requalified after the macro conversion; it is not valid attribution evidence. It must not be silently substituted for release behavior.
+
+
+## Current composed-binding control measurements
+
+The release controls at `fd6e848f` use identical 11,592-byte source with 1,200
+macro invocations, both embedded packages and FS-UAE 68020/10 MiB. Every sample
+checks the entire output against live Rust. Instrumentation is excluded.
+
+| State | START-to-DONE seconds | Image bytes | Linked reservation bytes |
+|---|---:|---:|---:|
+| Preview-isolated baseline | 26.894099 | 646,244 | 670,620 |
+| Capture ordering | 26.860895 | 646,860 | 671,212 |
+| Inactive generated-record isolation | 26.907188 | 646,920 | 671,272 |
+
+One sample per state supports no meaningful timing difference. The overall image
+grows 676 bytes and linked static reservation grows 652 bytes. Static reservation
+excludes runtime heap; peak allocation and 2 MiB fit were not measured. A sample
+that overlapped a host build was discarded and repeated. Focused behavior and
+remaining active-member failure belong in the
+[frontend boundary](../plans/compact-frontend-vm-boundary.md#current-opcore-breadth-and-acquisition-boundary).

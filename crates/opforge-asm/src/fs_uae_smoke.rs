@@ -15,12 +15,32 @@ use types::lockstep::ContinuationHead;
 use vm::builder::{build_hierarchy_chunks_from_registry, build_hierarchy_package_from_registry};
 use vm::output_model::BinOutputSpec;
 
+#[path = "fs_uae_smoke/breadth_runner.rs"]
+mod breadth_runner;
+pub(crate) use breadth_runner::BreadthCaseResult;
+
 #[path = "tests/binary_source_hunk.rs"]
 mod hunk;
 
 #[cfg(test)]
 #[path = "tests/compact_self_host_export.rs"]
 mod compact_self_host_export;
+
+pub(crate) struct FsUaeNativeCliSmokeLock(std::sync::Mutex<()>);
+
+impl FsUaeNativeCliSmokeLock {
+    pub(crate) fn lock(&self) -> Result<std::sync::MutexGuard<'_, ()>, std::convert::Infallible> {
+        Ok(match self.0.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        })
+    }
+}
+
+pub(crate) fn fs_uae_native_cli_smoke_lock() -> &'static FsUaeNativeCliSmokeLock {
+    static LOCK: std::sync::OnceLock<FsUaeNativeCliSmokeLock> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| FsUaeNativeCliSmokeLock(std::sync::Mutex::new(())))
+}
 
 const FS_UAE_BIN_ENV: &str = "OPFORGE_FS_UAE_BIN";
 const FS_UAE_ARGS_ENV: &str = "OPFORGE_FS_UAE_ARGS";
@@ -1422,6 +1442,17 @@ pub(crate) fn run_prebuilt_compact_cli_case_from_env(
         NativeCliParityExecutable::CompactCli,
         Some(bootstrap),
     )
+}
+
+/// Correctness-only frozen-image breadth audit. Each indexed result retains
+/// its completed run and independent proof error; this API reports no timings.
+pub(crate) fn run_prebuilt_compact_cli_breadth_from_env(
+    workspace_root: &Path,
+    cases: &[OpforgeNativeCliParityCase<'_>],
+    bootstrap: &[u8],
+    batch_size: usize,
+) -> Result<Vec<BreadthCaseResult>, String> {
+    breadth_runner::run_from_env(workspace_root, cases, bootstrap, batch_size)
 }
 
 /// Exercise the standalone Shell entry with a plain BSP3 package and one source.
@@ -8007,6 +8038,9 @@ mod compact_cli_metadata;
 #[cfg(test)]
 #[path = "tests/native_active_includes.rs"]
 mod native_active_includes;
+#[cfg(test)]
+#[path = "tests/native_composed_include_binding.rs"]
+mod native_composed_include_binding;
 #[path = "tests/native_data_narrowing.rs"]
 mod native_data_narrowing;
 #[path = "tests/native_forward_branches.rs"]
@@ -8016,6 +8050,9 @@ mod native_forward_branches;
 mod native_guard_reuse;
 #[path = "tests/native_guarded_iterables.rs"]
 mod native_guarded_iterables;
+#[cfg(test)]
+#[path = "tests/native_include_collections.rs"]
+mod native_include_collections;
 #[cfg(test)]
 #[path = "tests/native_iterable_loops.rs"]
 mod native_iterable_loops;

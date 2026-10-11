@@ -4,10 +4,27 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from check_native_fs_uae_proof_contract import ROOT, RUNNER, validate
+from check_native_fs_uae_proof_contract import ROOT, RUNNER, BREADTH_RUNNER, validate
 
 
 class NativeFsUaeProofContractTests(unittest.TestCase):
+    def copy_breadth_runner(self, root):
+        breadth = root / BREADTH_RUNNER
+        breadth.parent.mkdir(parents=True, exist_ok=True)
+        breadth.write_text((ROOT / BREADTH_RUNNER).read_text(encoding="utf-8"))
+
+    def test_breadth_isolation_and_fresh_proof_remain_required(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runner = root / RUNNER
+            runner.parent.mkdir(parents=True)
+            runner.write_text((ROOT / RUNNER).read_text(encoding="utf-8"))
+            self.copy_breadth_runner(root)
+            breadth = root / BREADTH_RUNNER
+            source = breadth.read_text()
+            breadth.write_text(source.replace("verify_native_cli_case_proof(case, &mut run)", "unchecked(case, &mut run)"))
+            self.assertTrue(any("breadth safeguard" in error for error in validate(root)))
+
     def test_repository_contract_passes(self):
         self.assertEqual(validate(), [])
 
@@ -18,6 +35,7 @@ class NativeFsUaeProofContractTests(unittest.TestCase):
             runner.parent.mkdir(parents=True)
             source = (ROOT / RUNNER).read_text(encoding="utf-8")
             runner.write_text(source)
+            self.copy_breadth_runner(root)
             case = root / "crates/opforge-asm/src/tests/case.rs"
             case.parent.mkdir(parents=True)
             case.write_text("// structural fixture: poisoned.into_inner()\n")
@@ -53,6 +71,7 @@ class NativeFsUaeProofContractTests(unittest.TestCase):
             runner = root / RUNNER
             runner.parent.mkdir(parents=True)
             runner.write_text((ROOT / RUNNER).read_text(encoding="utf-8"))
+            self.copy_breadth_runner(root)
             case = root / "crates/opforge-asm/src/tests/case.rs"
             case.parent.mkdir(parents=True)
             for fields in ('name: "case", proof: mode,', 'name, proof,'):

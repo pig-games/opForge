@@ -62,6 +62,38 @@ markers, logs and derived evidence are removed before the runner returns on
 success, failure, timeout, crash or unwind. This retention policy remains in force;
 it is separate from the conditions that make a result valid.
 
+The correctness-only [breadth runner](../../crates/opforge-asm/src/fs_uae_smoke/breadth_runner.rs)
+accepts one frozen compact executable and cases with their live Rust oracles.
+Each case has an isolated directory assigned as guest `Work:`, including absolute
+output paths, and fresh identity-bound START/DONE and exit evidence. The separate
+mounted `OPForgeBatch` volume keeps the executable and startup script outside
+those case roots. A breadth-only ephemeral copy of the directory system drive
+prepends the initial `Work:` assign to `S/user-startup` before the standard smoke
+hook. Its generated drive label prevents `Work:` from being an immutable mounted
+volume; saved system scripts/configuration and single-case runners stay unchanged.
+Completed results, including failed artifact proofs, remain in memory after interruption.
+Only unfinished work resumes: the interrupted case receives one isolated retry,
+then failure is recorded and every later case is attempted. Capture occurs after
+emulator shutdown and before ephemeral cleanup. This API records no performance
+timing; existing single-case timing and diagnostic paths remain authoritative. The
+API `run_prebuilt_compact_cli_breadth_from_env` owns the shared serial coordinator
+lock. Its known-good invocation requires `OPFORGE_FS_UAE_SMOKE=1` plus canonical
+generated-config arguments;
+callers must not hold the coordinator lock while invoking it. Its host recovery
+and isolation tests are in `breadth_runner_tests.rs`. The ignored
+`native_compact_breadth_correctness` test supplies two independently assembled
+live Rust hex oracles, current packages, and `OPFORGE_CORPUS_IMAGE` to the API.
+Run that real-native check with `--ignored --test-threads=1`; host structural
+checks do not qualify its guest volume assignments or native execution.
+
+The compact family/opcore corpus audits use this runner when
+`OPFORGE_CORPUS_BATCH_SIZE` is explicitly set to `1..64`. Unset retains the
+single-case timing/diagnostic path. Batch mode prepares unchanged source trees,
+current packages and live Rust oracles before execution, preserves original case
+indices and host preparation errors, and records both timing fields as null.
+A negative case with a fresh rejection and diagnostic is still marked as
+unqualified for exact diagnostic parity; an absent requested artifact is a gap.
+
 The [structural check](../../scripts/workflow/check_native_fs_uae_proof_contract.py)
 checks runner safeguards. It is not execution proof. For commands and environment,
 use the [FS-UAE guide](fs-uae.md); for investigation, use [failure triage](native-parity-failure-triage.md).

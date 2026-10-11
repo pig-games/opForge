@@ -171,21 +171,7 @@ fn external_fs_uae_hunk_smoke() {
     }
 }
 
-struct FsUaeNativeCliSmokeLock(std::sync::Mutex<()>);
-
-impl FsUaeNativeCliSmokeLock {
-    fn lock(&self) -> Result<std::sync::MutexGuard<'_, ()>, std::convert::Infallible> {
-        Ok(match self.0.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        })
-    }
-}
-
-fn fs_uae_native_cli_smoke_lock() -> &'static FsUaeNativeCliSmokeLock {
-    static LOCK: std::sync::OnceLock<FsUaeNativeCliSmokeLock> = std::sync::OnceLock::new();
-    LOCK.get_or_init(|| FsUaeNativeCliSmokeLock(std::sync::Mutex::new(())))
-}
+use crate::fs_uae_smoke::fs_uae_native_cli_smoke_lock;
 
 fn assert_current_cli_package(package: &[u8]) {
     let current = build_hierarchy_package_from_registry(&default_registry())

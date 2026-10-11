@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNNER = Path("crates/opforge-asm/src/fs_uae_smoke.rs")
+BREADTH_RUNNER = Path("crates/opforge-asm/src/fs_uae_smoke/breadth_runner.rs")
 TEST_ROOT = Path("crates/opforge-asm/src/tests")
 
 
@@ -46,6 +47,26 @@ def validate(root: Path = ROOT) -> list[str]:
         runner = runner_path.read_text(encoding="utf-8")
     except OSError as error:
         return [f"cannot read {RUNNER}: {error}"]
+
+    try:
+        breadth = (root / BREADTH_RUNNER).read_text(encoding="utf-8")
+    except OSError as error:
+        errors.append(f"cannot read {BREADTH_RUNNER}: {error}")
+        breadth = ""
+    for token in (
+        "recover_cases", "results[index].is_none()", "interrupted[unfinished] = true",
+        "if retry { 1 } else { batch_size }", "C:Assign Work: OPForgeBatch:cases/",
+        "opforge_native_cli_case_identity", "opforge_native_cli_run_challenge",
+        "clear_capture_files", "clear_declared_outputs", "EphemeralArtifactDir", "capture_artifact_files",
+        "OPFORGE_FS_UAE_SMOKE", "fs_uae_native_cli_smoke_lock()", "launch.shutdown_confirmed",
+        "Ok(actual) if actual == image",
+        "hard_drive_1_label = OPForgeBatch", "C:Assign Work: OPForgeBatch:",
+        "prepare_breadth_config", "copy_system_directory",
+        "verify_native_cli_case_proof(case, &mut run)",
+        "start_to_done_host_seconds: None", "drop(ephemeral_artifact_dir)",
+    ):
+        if token not in breadth:
+            errors.append(f"{BREADTH_RUNNER}: missing breadth safeguard {token!r}")
 
     required_runner_tokens = (
         "OPFORGE-FS-UAE-PROOF-V1 START",
@@ -83,7 +104,7 @@ def validate(root: Path = ROOT) -> list[str]:
         "FS_UAE_LAST_GREEN",
         "last_green.txt",
     )
-    searchable_paths = [runner_path, *(root.glob("crates/opforge-asm/src/tests/**/*.rs"))]
+    searchable_paths = [runner_path, *(root.glob("crates/opforge-asm/src/fs_uae_smoke/**/*.rs")), *(root.glob("crates/opforge-asm/src/tests/**/*.rs"))]
     searchable_source = ""
     for path in searchable_paths:
         try:

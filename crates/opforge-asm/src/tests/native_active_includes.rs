@@ -63,7 +63,7 @@ fn native_active_include_control_fs_uae() {
     );
 }
 
-fn selected_names(variable: &str, available: &[&'static str]) -> Vec<&'static str> {
+pub(super) fn selected_names(variable: &str, available: &[&'static str]) -> Vec<&'static str> {
     let Some(value) = std::env::var_os(variable) else {
         return available.to_vec();
     };
@@ -233,7 +233,7 @@ fn oracle_result(dir: &Path, files: &[(&str, String)]) -> Result<Vec<u8>, String
     oracle(dir, &files[0].1)
 }
 
-fn live_oracle(dir: &Path, files: &[(&str, String)]) -> Vec<u8> {
+pub(super) fn live_oracle(dir: &Path, files: &[(&str, String)]) -> Vec<u8> {
     oracle_result(dir, files).expect("live active-include Rust oracle")
 }
 
@@ -345,6 +345,56 @@ fn native_active_includes_rust_oracles() {
     );
 }
 
+pub(super) fn run_binary_files(
+    root: &Path,
+    image: &[u8],
+    name: &str,
+    cpu: &str,
+    files: &[(&str, String)],
+    expected_bytes: &[u8],
+) {
+    let oracle_dir = scratch();
+    let rust_oracle = live_oracle(&oracle_dir.0, files);
+    assert_eq!(rust_oracle, expected_bytes, "{name} cpu={cpu}");
+    let guest_files = files
+        .iter()
+        .map(|(path, text)| OpforgeNativeCliGuestFile {
+            relative_path: path,
+            bytes: text.as_bytes(),
+        })
+        .collect::<Vec<_>>();
+    let case = OpforgeNativeCliParityCase {
+        name,
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(files[0].1.as_bytes()),
+        command_template: Some("Work:entry.asm --bin Work:out.bin"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &guest_files,
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/out.bin",
+            rust_oracle: &rust_oracle,
+        },
+    };
+    let outcome = run_prebuilt_compact_cli_case_from_env(root, &case, image)
+        .expect("fresh active-include CLI completion");
+    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+        panic!("real native execution required")
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(
+        runs[0].protocol_completed,
+        "{cpu}: missing fresh completion"
+    );
+    assert!(runs[0].success, "{cpu}: {}", runs[0].stdout);
+    assert_eq!(runs[0].exit_code, Some(0));
+    eprintln!(
+        "ACTIVE_INCLUDE_CASE name={name} cpu={cpu} seconds={:?} image_bytes={}",
+        runs[0].start_to_done_host_seconds,
+        image.len()
+    );
+}
+
 #[test]
 #[ignore = "requires configured FS-UAE; active expanded source acquisition"]
 fn native_active_includes_fs_uae() {
@@ -367,46 +417,7 @@ fn native_active_includes_fs_uae() {
             }
             attempted += 1;
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let oracle_dir = scratch();
-                let rust_oracle = live_oracle(&oracle_dir.0, &files);
-                assert_eq!(rust_oracle, expected_bytes, "{name} cpu={cpu}");
-                let guest_files = files
-                    .iter()
-                    .map(|(path, text)| OpforgeNativeCliGuestFile {
-                        relative_path: path,
-                        bytes: text.as_bytes(),
-                    })
-                    .collect::<Vec<_>>();
-                let case = OpforgeNativeCliParityCase {
-                    name,
-                    cpu_override: "68020",
-                    extra_assembly_defines: &[],
-                    source_override: Some(files[0].1.as_bytes()),
-                    command_template: Some("Work:entry.asm --bin Work:out.bin"),
-                    package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-                    extra_guest_files: &guest_files,
-                    proof: OpforgeNativeCliProof::ExactArtifact {
-                        relative_path: "Work/out.bin",
-                        rust_oracle: &rust_oracle,
-                    },
-                };
-                let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &image)
-                    .expect("fresh active-include CLI completion");
-                let FsUaeSmokeOutcome::Completed { runs } = outcome else {
-                    panic!("real native execution required")
-                };
-                assert_eq!(runs.len(), 1);
-                assert!(
-                    runs[0].protocol_completed,
-                    "{cpu}: missing fresh completion"
-                );
-                assert!(runs[0].success, "{cpu}: {}", runs[0].stdout);
-                assert_eq!(runs[0].exit_code, Some(0));
-                eprintln!(
-                    "ACTIVE_INCLUDE_CASE name={name} cpu={cpu} seconds={:?} image_bytes={}",
-                    runs[0].start_to_done_host_seconds,
-                    image.len()
-                );
+                run_binary_files(&root, &image, name, cpu, &files, &expected_bytes);
             }));
             if result.is_err() {
                 failures.push(format!("{name} cpu={cpu}"));
@@ -420,6 +431,47 @@ fn native_active_includes_fs_uae() {
     assert!(
         failures.is_empty(),
         "active include native proof failures: {failures:?}"
+    );
+}
+
+pub(super) fn run_rejected_files(root: &Path, image: &[u8], name: &str, files: &[(&str, String)]) {
+    let oracle_dir = scratch();
+    assert!(
+        oracle_result(&oracle_dir.0, files).is_err(),
+        "Rust accepted {name}"
+    );
+    let guest_files = files
+        .iter()
+        .map(|(path, text)| OpforgeNativeCliGuestFile {
+            relative_path: path,
+            bytes: text.as_bytes(),
+        })
+        .collect::<Vec<_>>();
+    let case = OpforgeNativeCliParityCase {
+        name,
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(files[0].1.as_bytes()),
+        command_template: Some("Work:entry.asm --bin Work:out.bin"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &guest_files,
+        proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
+    };
+    let outcome = run_prebuilt_compact_cli_case_from_env(root, &case, image)
+        .expect("fresh active-include rejection completion");
+    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+        panic!("real native execution required")
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(
+        runs[0].protocol_completed,
+        "{name}: missing fresh completion"
+    );
+    assert!(!runs[0].success, "{name}: native unexpectedly succeeded");
+    assert_eq!(runs[0].exit_code, Some(20));
+    eprintln!(
+        "ACTIVE_INCLUDE_FAILURE name={name} seconds={:?}",
+        runs[0].start_to_done_host_seconds
     );
 }
 
@@ -445,44 +497,7 @@ fn native_active_includes_failures_fs_uae() {
         }
         attempted += 1;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let oracle_dir = scratch();
-            assert!(
-                oracle_result(&oracle_dir.0, &files).is_err(),
-                "Rust accepted {name}"
-            );
-            let guest_files = files
-                .iter()
-                .map(|(path, text)| OpforgeNativeCliGuestFile {
-                    relative_path: path,
-                    bytes: text.as_bytes(),
-                })
-                .collect::<Vec<_>>();
-            let case = OpforgeNativeCliParityCase {
-                name,
-                cpu_override: "68020",
-                extra_assembly_defines: &[],
-                source_override: Some(files[0].1.as_bytes()),
-                command_template: Some("Work:entry.asm --bin Work:out.bin"),
-                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-                extra_guest_files: &guest_files,
-                proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
-            };
-            let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &image)
-                .expect("fresh active-include rejection completion");
-            let FsUaeSmokeOutcome::Completed { runs } = outcome else {
-                panic!("real native execution required")
-            };
-            assert_eq!(runs.len(), 1);
-            assert!(
-                runs[0].protocol_completed,
-                "{name}: missing fresh completion"
-            );
-            assert!(!runs[0].success, "{name}: native unexpectedly succeeded");
-            assert_eq!(runs[0].exit_code, Some(20));
-            eprintln!(
-                "ACTIVE_INCLUDE_FAILURE name={name} seconds={:?}",
-                runs[0].start_to_done_host_seconds
-            );
+            run_rejected_files(&root, &image, name, &files);
         }));
         if result.is_err() {
             failures.push(name);

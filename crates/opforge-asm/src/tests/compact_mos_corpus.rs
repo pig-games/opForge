@@ -3,7 +3,8 @@
 use super::*;
 use crate::fs_uae_smoke::{
     compact_cli_input::assemble_cli, opforge_self_host_package_digest,
-    run_prebuilt_compact_cli_case_from_env, FsUaeSmokeOutcome, OpforgeNativeCliGuestFile,
+    run_prebuilt_compact_cli_breadth_from_env, run_prebuilt_compact_cli_case_from_env,
+    BreadthCaseResult, FsUaeSmokeOutcome, FsUaeSmokeRun, OpforgeNativeCliGuestFile,
     OpforgeNativeCliPackageMode, OpforgeNativeCliParityCase, OpforgeNativeCliProof,
 };
 use crate::native_package_build::{build_native_packages, EmbedSelection};
@@ -396,7 +397,156 @@ fn compact_motorola68000_corpus_fs_uae() {
     run_compact_corpus(&M68K_AUDIT, motorola68000_instruction_corpus(&root));
 }
 
+// Unset keeps the existing one-case timing/diagnostic runner. Any explicit
+// value opts into correctness-only batching, including a batch size of one.
+fn parse_corpus_batch_size(value: Option<&str>) -> Result<Option<usize>, String> {
+    value
+        .map(|text| {
+            let size = text
+                .parse::<usize>()
+                .map_err(|_| "OPFORGE_CORPUS_BATCH_SIZE must be an integer in 1..=64".to_owned())?;
+            if !(1..=64).contains(&size) {
+                return Err("OPFORGE_CORPUS_BATCH_SIZE must be in 1..=64".into());
+            }
+            Ok(size)
+        })
+        .transpose()
+}
+
+struct PreparedCorpusCase {
+    row_index: usize,
+    name: String,
+    bytes: Vec<u8>,
+    guest: Vec<(String, Vec<u8>)>,
+    command: String,
+    outputs: BTreeMap<PathBuf, Vec<u8>>,
+    negative: bool,
+    oracle_ok: bool,
+    oracle_matches_reference: bool,
+}
+
+impl PreparedCorpusCase {
+    fn native_case<'a>(
+        &'a self,
+        files: &'a [OpforgeNativeCliGuestFile<'a>],
+    ) -> OpforgeNativeCliParityCase<'a> {
+        OpforgeNativeCliParityCase {
+            name: &self.name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(&self.bytes),
+            command_template: Some(&self.command),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: files,
+            proof: if self.negative || !self.oracle_ok {
+                OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
+            } else if let Some(hex) = self.outputs.get(Path::new("audit.hex")) {
+                OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/audit.hex",
+                    rust_oracle: hex,
+                }
+            } else {
+                // Observation only; record_native_run cannot qualify absent hex.
+                OpforgeNativeCliProof::SuccessfulExitContaining("")
+            },
+        }
+    }
+}
+
+fn corpus_guest_files<'a>(
+    prepared: &'a PreparedCorpusCase,
+    packages: &'a [(String, &[u8])],
+) -> Vec<OpforgeNativeCliGuestFile<'a>> {
+    prepared
+        .guest
+        .iter()
+        .map(|(path, bytes)| OpforgeNativeCliGuestFile {
+            relative_path: path,
+            bytes,
+        })
+        .chain(
+            packages
+                .iter()
+                .map(|(path, bytes)| OpforgeNativeCliGuestFile {
+                    relative_path: path,
+                    bytes,
+                }),
+        )
+        .collect()
+}
+
+fn record_native_run(
+    row: &mut Value,
+    prepared: &PreparedCorpusCase,
+    run: &FsUaeSmokeRun,
+) -> Result<(), String> {
+    let negative = prepared.negative;
+    let outputs = &prepared.outputs;
+    let hex = outputs.get(Path::new("audit.hex"));
+    row["native_stdout"] = json!(run.stdout);
+    row["native_stderr"] = json!(run.stderr);
+    row["exit_code"] = json!(run.exit_code);
+    row["protocol_completed"] = json!(run.protocol_completed);
+    row["native_seconds"] = json!(run.start_to_done_host_seconds);
+    row["native_exact_hex_ok"] =
+        json!(!negative && hex.is_some() && prepared.oracle_ok && run.success);
+    row["native_negative_rejection_ok"] =
+        json!(negative && run.protocol_completed && run.exit_code.is_some_and(|exit| exit != 0));
+    row["diagnostic_parity"] = json!(if negative {
+        "unqualified: rejection with diagnostic only"
+    } else {
+        "not applicable"
+    });
+    let gaps = if negative {
+        Vec::new()
+    } else {
+        outputs
+            .iter()
+            .filter_map(|(path, expected)| {
+                match run.captured_artifacts.get(&Path::new("Work").join(path)) {
+                    Some(actual) if equal_artifact(path, actual, expected) => None,
+                    Some(_) => Some(format!("{}: bytes differ", path.display())),
+                    None => Some(format!("{}: missing", path.display())),
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    row["output_gaps"] = json!(gaps);
+    if !prepared.oracle_matches_reference
+        || (!negative && hex.is_none())
+        || (!negative && !run.success)
+        || !run.protocol_completed
+        || (!negative && run.exit_code != Some(0))
+        || (negative && !run.exit_code.is_some_and(|exit| exit != 0))
+        || !gaps.is_empty()
+    {
+        Err("native completion/artifact parity failed".into())
+    } else {
+        Ok(())
+    }
+}
+
+fn apply_batch_result(
+    rows: &mut [Value],
+    prepared: &PreparedCorpusCase,
+    result: BreadthCaseResult,
+) {
+    let row = &mut rows[prepared.row_index];
+    let evaluated = match result.run {
+        Some(run) => record_native_run(row, prepared, &run),
+        None => Err("native case did not complete".into()),
+    };
+    let error = result.error.or_else(|| evaluated.err());
+    row["native_ok"] = json!(error.is_none());
+    row["error"] = json!(error);
+    row["native_seconds"] = Value::Null;
+    row["elapsed_seconds"] = Value::Null;
+}
+
 fn run_compact_corpus(audit: &CorpusAudit, cases: Vec<Case>) {
+    let batch_size_value = std::env::var("OPFORGE_CORPUS_BATCH_SIZE").ok();
+    let batch_size =
+        parse_corpus_batch_size(batch_size_value.as_deref()).expect("valid corpus execution mode");
     let root = workspace_root();
     let scratch = scratch();
     let _cleanup = ScratchCleanup(scratch.clone());
@@ -417,8 +567,13 @@ fn run_compact_corpus(audit: &CorpusAudit, cases: Vec<Case>) {
         None => assemble_cli(&root, &build),
     };
     let packages = tree_files(&build.output_dir.join("packages"));
+    let package_guest: Vec<_> = packages
+        .iter()
+        .map(|(path, bytes)| (format!("packages/{}", path.display()), bytes.as_slice()))
+        .collect();
     let selection = std::env::var(audit.cases_env).ok();
     let mut rows = Vec::new();
+    let mut pending = Vec::new();
     for (index, case) in cases.iter().enumerate() {
         if selection
             .as_ref()
@@ -427,14 +582,21 @@ fn run_compact_corpus(audit: &CorpusAudit, cases: Vec<Case>) {
             continue;
         }
         let started = Instant::now();
-        let bytes = fs::read(&case.source).unwrap();
-        let cpu = initial_cpu(&bytes);
-        let reference = reference_check(case, &scratch.join(format!("reference-{index}")));
-        let mut row = json!({"case": case.name, "cpu": cpu, "source_digest": opforge_self_host_package_digest(&bytes),
-            "source_bytes": bytes.len(), "rust_reference_ok": reference.is_ok(), "rust_reference_error": reference.err(),
-            "native_ok": false, "image_digest": opforge_self_host_package_digest(&image)});
+        let mut row = json!({"case": case.name, "case_index": index, "rust_reference_ok": false,
+            "native_ok": false, "image_digest": opforge_self_host_package_digest(&image),
+            "execution_mode": if batch_size.is_some() { "batch-correctness-only" } else { "sequential" },
+            "batch_size": batch_size, "native_seconds": null, "elapsed_seconds": null});
         row["image_path"] = json!(image_path.as_ref().map(|path| path.to_string_lossy()));
-        let outcome = (|| -> Result<(), String> {
+        let prepared = (|| -> Result<PreparedCorpusCase, String> {
+            let bytes = fs::read(&case.source)
+                .map_err(|error| format!("read source {}: {error}", case.source.display()))?;
+            let cpu = initial_cpu(&bytes);
+            let reference = reference_check(case, &scratch.join(format!("reference-{index}")));
+            row["cpu"] = json!(cpu);
+            row["source_digest"] = json!(opforge_self_host_package_digest(&bytes));
+            row["source_bytes"] = json!(bytes.len());
+            row["rust_reference_ok"] = json!(reference.is_ok());
+            row["rust_reference_error"] = json!(reference.err());
             let dir = scratch.join(format!("case-{index}"));
             let (entry, inputs) = stage(case, &dir)?;
             let mut argv = vec![
@@ -485,21 +647,9 @@ fn run_compact_corpus(audit: &CorpusAudit, cases: Vec<Case>) {
                 .into_iter()
                 .filter(|(path, _)| !inputs.contains_key(path))
                 .collect::<BTreeMap<_, _>>();
-            let mut guest = inputs
+            let guest = inputs
                 .iter()
                 .map(|(p, b)| (p.to_string_lossy().into_owned(), b.clone()))
-                .collect::<Vec<_>>();
-            guest.extend(
-                packages
-                    .iter()
-                    .map(|(p, b)| (format!("packages/{}", p.display()), b.clone())),
-            );
-            let files = guest
-                .iter()
-                .map(|(p, b)| OpforgeNativeCliGuestFile {
-                    relative_path: p,
-                    bytes: b,
-                })
                 .collect::<Vec<_>>();
             let command = format!(
                 "--cpu {cpu} -P Work:packages -I Work: -M Work: Work:{entry} --hex Work:audit.hex"
@@ -512,87 +662,92 @@ fn run_compact_corpus(audit: &CorpusAudit, cases: Vec<Case>) {
                     opforge_self_host_package_digest(b)
                 ))
                 .collect::<BTreeMap<_, _>>());
-            let hex = outputs.get(Path::new("audit.hex"));
-            let native = OpforgeNativeCliParityCase {
-                name: &case.name,
-                cpu_override: "68020",
-                extra_assembly_defines: &[],
-                source_override: Some(&bytes),
-                command_template: Some(&command),
-                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-                extra_guest_files: &files,
-                proof: if negative || oracle.is_err() {
-                    OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
-                } else if let Some(hex) = hex {
-                    OpforgeNativeCliProof::ExactArtifact {
-                        relative_path: "Work/audit.hex",
-                        rust_oracle: hex,
+
+            Ok(PreparedCorpusCase {
+                row_index: rows.len(),
+                name: case.name.clone(),
+                bytes,
+                guest,
+                command,
+                outputs,
+                negative,
+                oracle_ok: oracle.is_ok(),
+                oracle_matches_reference,
+            })
+        })();
+        match prepared {
+            Err(error) => {
+                row["error"] = json!(error);
+                row["preparation_failed"] = json!(true);
+            }
+            Ok(prepared) if batch_size.is_some() => {
+                row["native_pending"] = json!(true);
+                pending.push(prepared);
+            }
+            Ok(prepared) => {
+                let files = corpus_guest_files(&prepared, &package_guest);
+                let native = prepared.native_case(&files);
+                let outcome = match run_prebuilt_compact_cli_case_from_env(&root, &native, &image) {
+                    Err(error) => Err(error),
+                    Ok(FsUaeSmokeOutcome::Skipped(reason)) => Err(format!("skipped: {reason}")),
+                    Ok(FsUaeSmokeOutcome::Completed { runs }) if runs.len() == 1 => {
+                        record_native_run(&mut row, &prepared, &runs[0])
                     }
-                } else {
-                    // Observe fresh completion, but never qualify missing hex evidence.
-                    OpforgeNativeCliProof::SuccessfulExitContaining("")
-                },
-            };
-            match run_prebuilt_compact_cli_case_from_env(&root, &native, &image)? {
-                FsUaeSmokeOutcome::Skipped(reason) => Err(format!("skipped: {reason}")),
-                FsUaeSmokeOutcome::Completed { runs } => {
-                    if runs.len() != 1 {
-                        return Err(format!("expected one run, got {}", runs.len()));
+                    Ok(FsUaeSmokeOutcome::Completed { runs }) => {
+                        Err(format!("expected one run, got {}", runs.len()))
                     }
-                    let run = &runs[0];
-                    row["native_stdout"] = json!(run.stdout);
-                    row["native_stderr"] = json!(run.stderr);
-                    row["exit_code"] = json!(run.exit_code);
-                    row["protocol_completed"] = json!(run.protocol_completed);
-                    row["native_seconds"] = json!(run.start_to_done_host_seconds);
-                    row["native_exact_hex_ok"] =
-                        json!(!negative && hex.is_some() && oracle.is_ok() && run.success);
-                    row["native_negative_rejection_ok"] = json!(
-                        negative
-                            && run.protocol_completed
-                            && run.exit_code.is_some_and(|exit| exit != 0)
+                };
+                row["native_ok"] = json!(outcome.is_ok());
+                row["error"] = json!(outcome.err());
+            }
+        }
+        if batch_size.is_none() {
+            row["elapsed_seconds"] = json!(started.elapsed().as_secs_f64());
+        }
+        rows.push(row);
+        save_report(audit, "compact-native", &selection, cases.len(), &rows);
+    }
+    if let Some(batch_size) = batch_size {
+        if !pending.is_empty() {
+            let guest_files: Vec<Vec<_>> = pending
+                .iter()
+                .map(|prepared| corpus_guest_files(prepared, &package_guest))
+                .collect();
+            let native_cases: Vec<_> = pending
+                .iter()
+                .zip(&guest_files)
+                .map(|(prepared, files)| prepared.native_case(files))
+                .collect();
+            match run_prebuilt_compact_cli_breadth_from_env(
+                &root,
+                &native_cases,
+                &image,
+                batch_size,
+            ) {
+                Ok(results) => {
+                    assert_eq!(
+                        results.len(),
+                        pending.len(),
+                        "breadth API must return every requested case"
                     );
-                    row["diagnostic_parity"] = json!(if negative {
-                        "unqualified: rejection with diagnostic only"
-                    } else {
-                        "not applicable"
-                    });
-                    let gaps = if negative {
-                        Vec::new()
-                    } else {
-                        outputs
-                            .iter()
-                            .filter_map(|(path, expected)| {
-                                match run.captured_artifacts.get(&Path::new("Work").join(path)) {
-                                    Some(actual) if equal_artifact(path, actual, expected) => None,
-                                    Some(_) => Some(format!("{}: bytes differ", path.display())),
-                                    None => Some(format!("{}: missing", path.display())),
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                    };
-                    row["output_gaps"] = json!(gaps);
-                    if !oracle_matches_reference
-                        || (!negative && hex.is_none())
-                        || (!negative && !run.success)
-                        || !run.protocol_completed
-                        || (!negative && run.exit_code != Some(0))
-                        || (negative && !run.exit_code.is_some_and(|exit| exit != 0))
-                        || !gaps.is_empty()
-                    {
-                        Err("native completion/artifact parity failed".into())
-                    } else {
-                        Ok(())
+                    for (prepared, result) in pending.iter().zip(results) {
+                        apply_batch_result(&mut rows, prepared, result);
+                    }
+                }
+                Err(error) => {
+                    for prepared in &pending {
+                        rows[prepared.row_index]["error"] = json!(error);
                     }
                 }
             }
-        })();
-        row["native_ok"] = json!(outcome.is_ok());
-        row["error"] = json!(outcome.err());
-        row["elapsed_seconds"] = json!(started.elapsed().as_secs_f64());
-        eprintln!("{}: {}", case.name, row["native_ok"]);
-        rows.push(row);
+            for prepared in &pending {
+                rows[prepared.row_index]["native_pending"] = json!(false);
+            }
+        }
         save_report(audit, "compact-native", &selection, cases.len(), &rows);
+    }
+    for row in &rows {
+        eprintln!("{}: {}", row["case"], row["native_ok"]);
     }
     assert!(!rows.is_empty(), "no corpus cases selected");
     assert!(
@@ -647,5 +802,148 @@ fn compact_family_corpus_staging_preserves_source_bytes() {
             assert_eq!(inputs.len(), 1);
             assert_eq!(inputs[Path::new(&entry)], fs::read(&case.source).unwrap());
         }
+    }
+}
+
+#[test]
+fn compact_corpus_batch_size_is_explicit_and_bounded() {
+    assert_eq!(parse_corpus_batch_size(None).unwrap(), None);
+    assert_eq!(parse_corpus_batch_size(Some("1")).unwrap(), Some(1));
+    assert_eq!(parse_corpus_batch_size(Some("64")).unwrap(), Some(64));
+    for invalid in ["", "0", "65", "-1", "sequential"] {
+        assert!(parse_corpus_batch_size(Some(invalid)).is_err(), "{invalid}");
+    }
+}
+
+fn report_test_prepared(row_index: usize) -> PreparedCorpusCase {
+    PreparedCorpusCase {
+        row_index,
+        name: "same display name".into(),
+        bytes: b"actual source".to_vec(),
+        guest: vec![("entry.asm".into(), b"actual source".to_vec())],
+        command: "Work:entry.asm --hex Work:audit.hex".into(),
+        outputs: BTreeMap::from([(PathBuf::from("audit.hex"), b"live oracle".to_vec())]),
+        negative: false,
+        oracle_ok: true,
+        oracle_matches_reference: true,
+    }
+}
+
+fn report_test_run(exit_code: i32) -> FsUaeSmokeRun {
+    FsUaeSmokeRun {
+        example_name: "host report adapter",
+        source_path: PathBuf::from("source"),
+        artifact_dir: PathBuf::from("ephemeral"),
+        hunk_path: PathBuf::from("frozen"),
+        stdout: "guest diagnostic".into(),
+        stderr: String::new(),
+        exit_code: Some(exit_code),
+        protocol_completed: true,
+        start_to_done_host_seconds: Some(12.0),
+        native_image_digest: Some("frozen digest".into()),
+        success: exit_code == 0,
+        verified_output: None,
+        captured_artifacts: BTreeMap::from([(
+            PathBuf::from("Work/audit.hex"),
+            b"live oracle".to_vec(),
+        )]),
+    }
+}
+
+#[test]
+fn compact_corpus_batch_results_preserve_original_rows_and_host_errors() {
+    // Selected original indices contain a host preparation error between two
+    // native cases. Names deliberately coincide; only the stored row index maps results.
+    let mut rows = vec![
+        json!({"case_index": 2, "native_ok": false}),
+        json!({"case_index": 7, "native_ok": false, "error": "host oracle error"}),
+        json!({"case_index": 8, "native_ok": false}),
+    ];
+    apply_batch_result(
+        &mut rows,
+        &report_test_prepared(0),
+        BreadthCaseResult {
+            run: None,
+            error: Some("timeout after isolated retry".into()),
+        },
+    );
+    apply_batch_result(
+        &mut rows,
+        &report_test_prepared(2),
+        BreadthCaseResult {
+            run: Some(report_test_run(0)),
+            error: None,
+        },
+    );
+    assert_eq!(rows[0]["case_index"], 2);
+    assert_eq!(rows[0]["native_ok"], false);
+    assert_eq!(rows[0]["error"], "timeout after isolated retry");
+    assert_eq!(rows[1]["error"], "host oracle error");
+    assert_eq!(rows[2]["case_index"], 8);
+    assert_eq!(rows[2]["native_ok"], true);
+    assert_eq!(rows[2]["native_exact_hex_ok"], true);
+    for index in [0, 2] {
+        assert!(rows[index]["native_seconds"].is_null());
+        assert!(rows[index]["elapsed_seconds"].is_null());
+    }
+}
+
+#[test]
+fn compact_corpus_batch_adapter_never_qualifies_failed_proof_or_oracle() {
+    let mut prepared = report_test_prepared(0);
+    prepared.negative = true;
+    prepared.oracle_ok = false;
+    let mut rows = vec![json!({"native_ok": false})];
+    apply_batch_result(
+        &mut rows,
+        &prepared,
+        BreadthCaseResult {
+            run: Some(report_test_run(20)),
+            error: Some("missing fresh diagnostic evidence".into()),
+        },
+    );
+    assert_eq!(rows[0]["native_ok"], false);
+    assert_eq!(rows[0]["error"], "missing fresh diagnostic evidence");
+    prepared.oracle_matches_reference = false;
+    rows[0]["rust_cli_matches_reference_status"] = json!(false);
+    apply_batch_result(
+        &mut rows,
+        &prepared,
+        BreadthCaseResult {
+            run: Some(report_test_run(20)),
+            error: None,
+        },
+    );
+    assert_eq!(rows[0]["native_ok"], false);
+    assert_eq!(rows[0]["rust_cli_matches_reference_status"], false);
+    assert_eq!(
+        rows[0]["diagnostic_parity"],
+        "unqualified: rejection with diagnostic only"
+    );
+}
+
+#[test]
+fn compact_corpus_cases_borrow_current_packages_and_live_oracle_directly() {
+    let prepared = report_test_prepared(0);
+    let packages = vec![("packages/current.opk".into(), b"current package".as_slice())];
+    let files = corpus_guest_files(&prepared, &packages);
+    assert_eq!(files.len(), 2);
+    assert_eq!(files[0].bytes, prepared.bytes);
+    assert_eq!(files[1].bytes.as_ptr(), packages[0].1.as_ptr());
+    let case = prepared.native_case(&files);
+    assert_eq!(case.source_override, Some(prepared.bytes.as_slice()));
+    assert_eq!(case.command_template, Some(prepared.command.as_str()));
+    match case.proof {
+        OpforgeNativeCliProof::ExactArtifact {
+            relative_path,
+            rust_oracle,
+        } => {
+            assert_eq!(relative_path, "Work/audit.hex");
+            assert_eq!(
+                rust_oracle.as_ptr(),
+                prepared.outputs[Path::new("audit.hex")].as_ptr()
+            );
+        }
+        _ => panic!("positive live oracle must require exact artifact proof"),
     }
 }

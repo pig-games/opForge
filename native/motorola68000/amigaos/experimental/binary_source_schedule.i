@@ -160,12 +160,17 @@ fits
 	move.l d0, CaptureBytes
 	bsr.w currentCaptureRegion
 	move.l CaptureBytes, CaptureRegion.End(a0)
+	tst.l AcquiringSource
+	bne.w capturedOnly
 	lea CaptureRegion.Arena(a0), a1
 	lea ConfigScan, a0
 	move.l a1, configuration.Frame.Arena(a0)
 	move.l d6, configuration.Frame.Cursor(a0)
 	move.l memory.Block.Used(a1), configuration.Frame.End(a0)
 	jsr configuration.index
+	bra.w done
+capturedOnly
+	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
@@ -415,6 +420,9 @@ beginCapturedReplay .block
 	move.l #1, FrontStarted
 	jsr frontend.begin
 	bne.w bad
+	move.l #source_control.line, frontend.Frame.SourceControl(a0)
+	jsr source_control.begin
+	bne.w bad
 	lea ConfigFront, a0
 	movea.l frontend.Frame.Scratch(a0), a0
 	adda.l #frontend.SCOPE_STATE, a0
@@ -509,52 +517,13 @@ nextSpan
 	jsr frontend.beginFileDerived
 	bne.w bad
 nextRecord
-	move.l ScheduleCursor, d1
-	cmp.l ScheduleEnd, d1
-	beq.w endSpan
-	bsr.w locateCapture
-	bne.w bad
-	sub.l CaptureRegion.Base(a0), d1
-	addq.l #1, d1
-	lea CaptureRegion.Arena(a0), a4
-	movea.l a4, a0
-	jsr capture.resolve
-	bne.w bad
-	move.l capture.Record.Bytes(a1), d7
-	move.l ScheduleEnd, d0
-	sub.l ScheduleCursor, d0
-	cmp.l d7, d0
-	blo.w bad
-	move.l capture.Record.Origin(a1), OriginId
-	move.l capture.Record.Line(a1), SourceLine
-	move.l capture.Record.Origin(a1), d2
-	move.l d1, d6
-	move.l d2, d1
-	bsr.w captureSourcePath
-	bne.w bad
-	move.l d6, d1
+	move.l ScheduleCursor, SourceCursorState.Start+SourceCursorData
+	move.l ScheduleEnd, SourceCursorState.End+SourceCursorData
+	clr.l TemplateFloor
 	lea Front, a0
-	movea.l a4, a1
-	jsr frontend.replayLine
+	clr.w frontend.Frame.SourceOwned(a0)
+	bsr.w replaySourceSlice
 	bne.w bad
-	.MEMORY_DETAIL_BEGIN #3
-	bsr.w appendPrepared
-	.MEMORY_DETAIL_END #3
-	bne.w bad
-expanded
-	lea Front, a0
-	jsr frontend.nextExpansion
-	bne.w bad
-	tst.l frontend.Frame.Used(a0)
-	beq.w recordDone
-	.MEMORY_DETAIL_BEGIN #3
-	bsr.w appendPrepared
-	.MEMORY_DETAIL_END #3
-	bne.w bad
-	bra.w expanded
-recordDone
-	add.l d7, ScheduleCursor
-	bra.w nextRecord
 endSpan
 	lea Front, a0
 	jsr frontend.endFileDerived

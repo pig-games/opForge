@@ -350,7 +350,8 @@ macro/loop combination:
   The agreed file-effects slice changes both implementations to
   load only active/expanded includes, including substituted filenames; it must
   preserve definition-relative paths, discovery, dependency tracking and fresh
-  packed-source preparation. Native parity for this behavior remains pending.
+  packed-source preparation. The native checkpoint below covers a subset of this
+  behavior; complete native include parity remains pending.
   Erik approved splitting current-module execution from includes that change
   module/`.use` discovery. The current-module repair starts at Rust's actual
   conditional/repetition traversal: structurally deferred includes must not be
@@ -386,6 +387,53 @@ macro/loop combination:
   Three isolated host preparation/build samples have medians 17.10 s before and
   17.11 s after (Cargo test opt-level 1, package generation included, native guest
   execution excluded). The ranges overlap; no meaningful timing change is claimed.
+  The native current-module checkpoint removes the eager text include scanner.
+  The package FilePlan now selects numeric binary/source actions from a bounded
+  table; Rust and native consumers migrate together. The result's action field
+  is at byte offset 16. Regenerate prepared CPU packages with this CLI: superseded
+  single-action programs are rejected, with no compatibility executor.
+  Acquisition suspends the caller's packed cursor or
+  template expansion, captures the child once through TKVM, prepares it in the
+  current module, then resumes the caller before binding/layout freeze. Cursors
+  retain offsets; paths remain preparation/diagnostic resources. Loop selection
+  reuses package PRVM classification and strict known EXVM evaluation, while
+  iterator identities and graph byte ownership remain with their existing owners.
+  Empty macro/segment definitions are now accepted, including an empty nested
+  expansion followed by another source action.
+  Native qualification: eight fresh positive cases across 68020 and 6502 match
+  their live Rust bytes, and seven fresh negative cases complete with exit 20
+  and diagnostics. These cover acquired constants/templates, substituted and
+  definition-relative paths, nested/repeated acquisition, iterator branches,
+  inactive malformed/missing operands, cycles, unavailable guards and acquired
+  or expanded graph changes. The combined source/binary case verifies the other
+  FilePlan action and definition-relative binary filename arguments. Two combined
+  ordinary-loop controls also match Rust.
+  The emulator profile is 68020/10 MiB. The larger timing control failed with
+  2 MiB on the frozen baseline too; these runs do not qualify a 2 MiB budget.
+  The release image grows from 641,860 to 645,396 bytes (+3,536); linked Hunk
+  reservation grows from 661,100 to 669,744 bytes (+8,644), excluding runtime heap.
+  A fresh release comparison on the unchanged 11,592-byte, 1,200-call imported
+  macro control takes 26.320 s before and 26.840 s after (+0.520 s, +2.0%). Both
+  runs complete and match Rust. This is one paired sample, not a statistical
+  regression claim. The baseline is the frozen native image at `144362d7`;
+  the input SHA256 is
+  `389d599e990455313064e23ab3d7cbf57ced5ecf45601f04421533eb393f12bd`.
+  Reproduce with the configured FS-UAE environment, memory profile
+  `68020-10m`, `OPFORGE_TEMPLATE_IMAGE` selecting each image, and
+  `cargo test -p asm native_active_include_control_fs_uae -- --ignored --nocapture --test-threads=1`.
+  The standalone Rust control test can export identical source through
+  `OPFORGE_INCLUDE_CONTROL_SOURCE`; the test helper now uses the supplied image
+  directly instead of rebuilding current native sources before a baseline run.
+  All 540 VM tests, 101 package tests, affected production-library Clippy and
+  native engineering guards pass. The packed-source experiment suite has 315
+  passes, 467 ignored and the same two pre-existing failures (preparation telemetry
+  oracle and mnemonic dictionary role flags). This is not a green broad gate.
+  Remaining native source work: expanded-template and scoped repetition,
+  acquisition hidden behind calls in physical loop bodies, assembly-dependent
+  controls (a separate Rust oracle covers `.while $ < 2`), cross-stream repetition
+  envelopes, and graph-changing includes. Unify source/expansion execution cursors
+  before adding exceptions for those cases. This checkpoint has not run a full
+  current-source native self-host; earlier self-host qualification covers older code.
 - Patterned `.statement` expansion is a separate shared-language capability,
   absent from this compact macro matrix. Preserve Rust's rejection of nested
   macro/segment/statement definitions.

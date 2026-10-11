@@ -1738,10 +1738,32 @@ pub fn packed_metadata_program(heads: [u16; 6]) -> Vec<u8> {
     program
 }
 
-/// Package-owned directive identity for one decoded file operand.
-pub fn packed_file_program(directive: u16) -> Vec<u8> {
-    let [high, low] = directive.to_be_bytes();
-    vec![0x90, 1, 0x91, high, low, 0x92, 0x83, 0]
+pub const FILE_ACTION_BINARY: u8 = 1;
+pub const FILE_ACTION_SOURCE: u8 = 2;
+pub const FILE_OP_ENVELOPE: u8 = 0x90;
+pub const FILE_OP_SELECT: u8 = 0x91;
+pub const FILE_OP_OPERAND: u8 = 0x92;
+pub const FILE_OP_PUBLISH: u8 = 0x83;
+pub const FILE_OP_END: u8 = 0;
+pub const FILE_PROGRAM_SELECT: usize = 2;
+pub const FILE_PROGRAM_FLAGS: usize = 1;
+pub const FILE_PROGRAM_COUNT: usize = 3;
+pub const FILE_PROGRAM_ROWS: usize = 4;
+pub const FILE_PROGRAM_ROW_BYTES: usize = 3;
+pub const FILE_ROW_DIRECTIVE: usize = 0;
+pub const FILE_ROW_ACTION: usize = 2;
+pub const FILE_PROGRAM_FIXED_BYTES: usize = 7;
+
+/// Package-owned numeric directive/action table for decoded file operands.
+pub fn packed_file_program(directives: &[(u16, u8)]) -> Vec<u8> {
+    assert!(!directives.is_empty() && directives.len() <= u8::MAX as usize);
+    let mut program = vec![FILE_OP_ENVELOPE, 1, FILE_OP_SELECT, directives.len() as u8];
+    for &(directive, action) in directives {
+        program.extend(directive.to_be_bytes());
+        program.push(action);
+    }
+    program.extend([FILE_OP_OPERAND, FILE_OP_PUBLISH, FILE_OP_END]);
+    program
 }
 
 /// Shared built-in data directive grammar; identities and word width are package inputs.

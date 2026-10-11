@@ -1,0 +1,305 @@
+; Selected source acquisition and resumable token cursors. Included by binary_app.
+; Callbacks only queue a bounded request; no frontend routine reenters itself.
+SourceCursorState .struct
+Start .long ?
+Offset .long ?
+Next .long ?
+End .long ?
+.endstruct
+SOURCE_CURSOR_BYTES = SourceCursorState.End+4
+SourceResume .struct
+Cursor .res SOURCE_CURSOR_BYTES
+ScheduleCursor .long ?
+ScheduleEnd .long ?
+CaptureRegion .long ?
+CaptureDerived .long ?
+TemplateFloor .long ?
+Owned .word ?
+RootFile .word ?
+ExpansionFloor .word ?
+Padding .word ?
+.endstruct
+SOURCE_RESUME_BYTES = SourceResume.Padding+2
+
+; A0=session,D0=0 view / 1 seek,D1=logical capture offset for seek.
+; D0/CCR=status,D1=current offset,D2=end. Other registers preserved.
+sourceCursor .block
+	cmpi.l #1, d0
+	beq.w seek
+	tst.l d0
+	bne.w bad
+	bra.w view
+seek
+	cmp.l SourceCursorState.Start+SourceCursorData, d1
+	blo.w bad
+	cmp.l SourceCursorState.End+SourceCursorData, d1
+	bhi.w bad
+	move.l d1, SourceCursorState.Next+SourceCursorData
+view
+	move.l SourceCursorState.Offset+SourceCursorData, d1
+	move.l SourceCursorState.End+SourceCursorData, d2
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend ; sourceCursor
+
+; A0=session,D1=logical capture offset. D0/CCR=status,A1=numeric writer
+; preview,D1=next offset. Other registers preserved. Next peek replaces the view.
+sourcePeek .block
+	movem.l d2-d7/a0/a2-a6, -(sp)
+	cmp.l SourceCursorState.Start+SourceCursorData, d1
+	blo.w bad
+	cmp.l SourceCursorState.End+SourceCursorData, d1
+	bhs.w bad
+	move.l d1, d6
+	bsr.w locateCapture
+	bne.w bad
+	sub.l CaptureRegion.Base(a0), d1
+	addq.l #1, d1
+	move.l d1, d5
+	lea CaptureRegion.Arena(a0), a4
+	movea.l a4, a0
+	jsr capture.resolve
+	bne.w bad
+	move.l capture.Record.Bytes(a1), d7
+	add.l d6, d7
+	bcs.w bad
+	cmp.l SourceCursorState.End+SourceCursorData, d7
+	bhi.w bad
+	lea Front, a0
+	movea.l a4, a1
+	move.l d5, d1
+	lea PeekRecord, a2
+	jsr frontend.previewCapture
+	bne.w bad
+	move.l d7, d1
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0/a2-a6
+	tst.l d0
+	rts
+	.bend ; sourcePeek
+
+; Drain the current frontend result and expansions above TemplateFloor.
+; Selected child sources run before the suspended caller template resumes.
+; D0/CCR=status; other registers preserved.
+drainPrepared .block
+	movem.l d1-d7/a0-a6, -(sp)
+published
+	lea Front, a0
+	tst.w frontend.Frame.SourcePending(a0)
+	beq.w append
+	bsr.w materializePendingSource
+	bne.w bad
+	bra.w expansion
+append
+	tst.l frontend.Frame.Used(a0)
+	beq.w expansion
+	.MEMORY_DETAIL_BEGIN #3
+	bsr.w appendPrepared
+	.MEMORY_DETAIL_END #3
+	bne.w bad
+expansion
+	lea Front, a0
+	jsr frontend.expansionDepth
+	cmp.l TemplateFloor, d0
+	bls.w good
+	lea Front, a0
+	jsr frontend.nextExpansion
+	bne.w bad
+	bra.w published
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend ; drainPrepared
+
+; Replay [ScheduleCursor,ScheduleEnd) using owned captures, never original text.
+; SourceCursorData is the active bounded frontier. D0/CCR=status; others preserved.
+replaySourceSlice .block
+	movem.l d1-d7/a0-a6, -(sp)
+next
+	move.l ScheduleCursor, d1
+	cmp.l ScheduleEnd, d1
+	beq.w good
+	bhi.w bad
+	move.l d1, SourceCursorState.Offset+SourceCursorData
+	bsr.w locateCapture
+	bne.w bad
+	sub.l CaptureRegion.Base(a0), d1
+	addq.l #1, d1
+	lea CaptureRegion.Arena(a0), a4
+	movea.l a4, a0
+	jsr capture.resolve
+	bne.w bad
+	move.l capture.Record.Bytes(a1), d7
+	move.l ScheduleCursor, d0
+	add.l d7, d0
+	bcs.w bad
+	cmp.l ScheduleEnd, d0
+	bhi.w bad
+	move.l d0, SourceCursorState.Next+SourceCursorData
+	move.l capture.Record.Origin(a1), OriginId
+	move.l capture.Record.Line(a1), SourceLine
+	move.l d1, d6
+	move.l OriginId, d1
+	bsr.w captureSourcePath
+	bne.w bad
+	move.l d6, d1
+	lea Front, a0
+	movea.l a4, a1
+	jsr frontend.replayLine
+	bne.w bad
+	bsr.w drainPrepared
+	bne.w bad
+	move.l SourceCursorState.Next+SourceCursorData, ScheduleCursor
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend ; replaySourceSlice
+
+; Acquire one selected request, capture its entire token frontier, then prepare
+; it in the caller's current module/scope. Registers and parent cursor survive.
+; D0/CCR=status. Handles close on success; execute owns failure cleanup.
+materializePendingSource .block
+	movem.l d1-d7/a0-a6, -(sp)
+	suba.l #SOURCE_RESUME_BYTES, sp
+	movea.l sp, a5
+	lea SourceCursorData, a0
+	lea SourceResume.Cursor(a5), a1
+	moveq #SOURCE_CURSOR_BYTES, d0
+	bsr.w copy
+	move.l ScheduleCursor, SourceResume.ScheduleCursor(a5)
+	move.l ScheduleEnd, SourceResume.ScheduleEnd(a5)
+	move.l CaptureRegionCurrent, SourceResume.CaptureRegion(a5)
+	move.l CaptureDerived, SourceResume.CaptureDerived(a5)
+	move.l TemplateFloor, SourceResume.TemplateFloor(a5)
+	lea Front, a0
+	move.w frontend.Frame.SourceOwned(a0), SourceResume.Owned(a5)
+	move.w frontend.Frame.RootFile(a0), SourceResume.RootFile(a5)
+	move.w frontend.Frame.ExpansionFloor(a0), SourceResume.ExpansionFloor(a5)
+	jsr frontend.expansionDepth
+	move.l d0, TemplateFloor
+	move.w d0, frontend.Frame.ExpansionFloor(a0)
+	cmpi.l #INCLUDE_DEPTH, IncludeDepthNow
+	bhs.w bad
+	move.l PendingOrigin, d0
+	lsl.l #8, d0
+	lea OriginPaths, a0
+	cmp.l memory.Block.Used(a0), d0
+	bhs.w bad
+	movea.l memory.Block.Pointer(a0), a2
+	adda.l d0, a2
+	lea PendingName, a0
+	lea IncludeName, a1
+	move.w #PATH_BYTES/4-1, d0
+name
+	move.l (a0)+, (a1)+
+	dbra d0, name
+	movea.l a2, a0
+	lea IncludePath, a1
+	bsr.w parentPath
+	bne.w bad
+	bsr.w openIncludedFrom
+	beq.w opened
+	bmi.w bad
+	moveq #0, d5
+root
+	cmp.l RootCount, d5
+	bhs.w bad
+	move.l d5, d0
+	lsl.l #8, d0
+	lea RootPaths, a0
+	movea.l memory.Block.Pointer(a0), a0
+	adda.l d0, a0
+	lea IncludePath, a1
+	bsr.w copyIncludeBase
+	bne.w bad
+	bsr.w openIncludedFrom
+	beq.w opened
+	bmi.w bad
+	addq.l #1, d5
+	bra.w root
+opened
+	lea Front, a0
+	clr.w frontend.Frame.SourcePending(a0)
+	move.w #1, frontend.Frame.SourceOwned(a0)
+	move.l CaptureBytes, ScheduleCursor
+	clr.l CaptureDerived
+	bsr.w newCaptureRegion
+	bne.w bad
+	move.l #1, AcquiringSource
+read
+	lea Stream, a0
+	movea.l LineBuffer, a1
+	move.l #LINE_BYTES, d0
+	jsr line_input.next
+	move.l d1, LineUsed
+	cmpi.l #line_input.EOF, d0
+	beq.w captured
+	tst.l d0
+	bne.w bad
+	bsr.w capturePhysicalLine
+	bne.w bad
+	addq.l #1, SourceLine
+	bra.w read
+captured
+	tst.l LineUsed
+	beq.w close
+	bsr.w capturePhysicalLine
+	bne.w bad
+close
+	clr.l AcquiringSource
+	bsr.w closeSource
+	bne.w bad
+	move.l CaptureBytes, ScheduleEnd
+	move.l ScheduleCursor, SourceCursorState.Start+SourceCursorData
+	move.l ScheduleEnd, SourceCursorState.End+SourceCursorData
+	bsr.w replaySourceSlice
+	bne.w bad
+	bsr.w popInclude
+	bne.w bad
+	moveq #0, d0
+	bra.w restore
+bad
+	clr.l AcquiringSource
+	moveq #1, d0
+restore
+	move.l d0, d7
+	lea SourceResume.Cursor(a5), a0
+	lea SourceCursorData, a1
+	moveq #SOURCE_CURSOR_BYTES, d0
+	bsr.w copy
+	move.l SourceResume.ScheduleCursor(a5), ScheduleCursor
+	move.l SourceResume.ScheduleEnd(a5), ScheduleEnd
+	move.l SourceResume.CaptureRegion(a5), CaptureRegionCurrent
+	move.l SourceResume.CaptureDerived(a5), CaptureDerived
+	move.l SourceResume.TemplateFloor(a5), TemplateFloor
+	lea Front, a0
+	move.w SourceResume.Owned(a5), frontend.Frame.SourceOwned(a0)
+	move.w SourceResume.RootFile(a5), frontend.Frame.RootFile(a0)
+	move.w SourceResume.ExpansionFloor(a5), frontend.Frame.ExpansionFloor(a0)
+	clr.l frontend.Frame.Used(a0)
+	move.l d7, d0
+	adda.l #SOURCE_RESUME_BYTES, sp
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend ; materializePendingSource

@@ -9,6 +9,7 @@
 State	.struct
 Budget	.long ?
 Prefix	.long ?
+Action	.long ?
 Stage	.res 32
 	.endstruct
 STATE_BYTES = State.Stage+32
@@ -68,20 +69,61 @@ run	.block
 	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	beq.w invalidFrame
 	movea.l d0, a5
-	cmpi.l #8, abi.PRVM_FRAME_PROGRAM_LEN(a4)
+	cmpi.l #abi.FILE_PROGRAM_FIXED_BYTES+abi.FILE_PROGRAM_ROW_BYTES, abi.PRVM_FRAME_PROGRAM_LEN(a4)
+	blo.w invalidProgram
+	cmpi.b #abi.FILE_OP_ENVELOPE, (a5)
 	bne.w invalidProgram
-	cmpi.b #$90, (a5)
-	bne.w invalidProgram
-	move.b 1(a5), d0
+	move.b abi.FILE_PROGRAM_FLAGS(a5), d0
 	andi.b #$fe, d0
 	bne.w invalidProgram
-	cmpi.b #$91, 2(a5)
+	cmpi.b #abi.FILE_OP_SELECT, abi.FILE_PROGRAM_SELECT(a5)
 	bne.w invalidProgram
-	cmpi.b #$92, 5(a5)
+	moveq #0, d4
+	move.b abi.FILE_PROGRAM_COUNT(a5), d4
+	beq.w invalidProgram
+	move.l d4, d0
+	mulu.w #abi.FILE_PROGRAM_ROW_BYTES, d0
+	add.l #abi.FILE_PROGRAM_FIXED_BYTES, d0
+	cmp.l abi.PRVM_FRAME_PROGRAM_LEN(a4), d0
 	bne.w invalidProgram
-	cmpi.b #$83, 6(a5)
+	lea abi.FILE_PROGRAM_ROWS(a5), a0
+	moveq #0, d5
+validateRows
+	moveq #0, d0
+	move.b abi.FILE_ROW_ACTION(a0), d0
+	cmpi.b #abi.FILE_ACTION_BINARY, d0
+	beq.w validAction
+	cmpi.b #abi.FILE_ACTION_SOURCE, d0
 	bne.w invalidProgram
-	tst.b 7(a5)
+validAction
+	moveq #0, d0
+	move.b (a0), d0
+	lsl.w #8, d0
+	move.b 1(a0), d0
+	lea abi.FILE_PROGRAM_ROWS(a5), a1
+	move.l d5, d7
+validateUnique
+	tst.l d7
+	beq.w nextValidated
+	moveq #0, d1
+	move.b (a1), d1
+	lsl.w #8, d1
+	move.b 1(a1), d1
+	cmp.w d1, d0
+	beq.w invalidProgram
+	addq.l #abi.FILE_PROGRAM_ROW_BYTES, a1
+	subq.l #1, d7
+	bra.w validateUnique
+nextValidated
+	addq.l #abi.FILE_PROGRAM_ROW_BYTES, a0
+	addq.l #1, d5
+	cmp.l d4, d5
+	blo.w validateRows
+	cmpi.b #abi.FILE_OP_OPERAND, (a0)
+	bne.w invalidProgram
+	cmpi.b #abi.FILE_OP_PUBLISH, 1(a0)
+	bne.w invalidProgram
+	tst.b 2(a0)
 	bne.w invalidProgram
 	suba.w #STATE_BYTES, sp
 	movea.l sp, a3
@@ -94,7 +136,7 @@ clear
 	clr.l d2
 	bsr.w tick
 	bne.w failure
-	move.l #$90, d7
+	move.l #abi.FILE_OP_ENVELOPE, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	move.b 1(a6), d0
 	andi.b #24, d0
@@ -102,7 +144,7 @@ clear
 	cmpi.l #4, d6
 	beq.w noMatch
 	moveq #4, d2
-	btst #0, 1(a5)
+	btst #0, abi.FILE_PROGRAM_FLAGS(a5)
 	beq.w matchHead
 	cmpi.l #9, d6
 	blo.w matchHead
@@ -115,7 +157,7 @@ clear
 matchHead
 	bsr.w tick
 	bne.w failure
-	move.l #$91, d7
+	move.l #abi.FILE_OP_SELECT, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	move.l d6, d0
 	sub.l d2, d0
@@ -131,12 +173,24 @@ matchHead
 	move.b 2(a6, d2.l), d0
 	lsl.w #8, d0
 	move.b 3(a6, d2.l), d0
+	lea abi.FILE_PROGRAM_ROWS(a5), a0
+	moveq #0, d4
+	move.b abi.FILE_PROGRAM_COUNT(a5), d4
+selectRow
 	moveq #0, d1
-	move.b 3(a5), d1
+	move.b (a0), d1
 	lsl.w #8, d1
-	move.b 4(a5), d1
+	move.b 1(a0), d1
 	cmp.w d1, d0
-	bne.w noMatch
+	beq.w selectedRow
+	addq.l #abi.FILE_PROGRAM_ROW_BYTES, a0
+	subq.l #1, d4
+	bne.w selectRow
+	bra.w noMatch
+selectedRow
+	moveq #0, d1
+	move.b abi.FILE_ROW_ACTION(a0), d1
+	move.l d1, State.Action(a3)
 	tst.l State.Prefix(a3)
 	beq.w operand
 	tst.b 7(a6)
@@ -147,7 +201,7 @@ operand
 	addq.l #5, d2
 	bsr.w tick
 	bne.w failure
-	move.l #$92, d7
+	move.l #abi.FILE_OP_OPERAND, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	move.l d6, d0
 	sub.l d2, d0
@@ -166,7 +220,7 @@ operand
 	bne.w tokenFailure
 	bsr.w tick
 	bne.w failure
-	move.l #$83, d7
+	move.l #abi.FILE_OP_PUBLISH, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	cmpi.l #32, abi.PRVM_FRAME_RESULT_CAPACITY(a4)
 	blo.w overflow
@@ -182,6 +236,7 @@ operand
 	move.l d2, PATH_OFFSET(a3)
 	move.l d5, PATH_BYTES(a3)
 	move.l State.Prefix(a3), PREFIX_BYTES(a3)
+	move.l State.Action(a3), State.Stage+abi.PRVM_FILE_ACTION(a3)
 	lea State.Stage(a3), a0
 	movea.l abi.PRVM_FRAME_RESULT_PTR(a4), a1
 	moveq #7, d0

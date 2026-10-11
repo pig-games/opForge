@@ -210,7 +210,8 @@ updateValue
 	cmp.w layout.State.Count(a6), d0
 	bhs.w constantOk
 	; Deferred or repeated records have no single preparation-time value.
-	tst.w layout.State.LoopDepth(a6)
+	move.w layout.State.LoopDepth(a6), d1
+	cmp.w layout.State.MaterializedLoops(a6), d1
 	bne.w constantUnknown
 	tst.w layout.State.Deferred(a6)
 	bne.w constantUnknown
@@ -2159,6 +2160,50 @@ done
 	rts
 	.bend  ; evaluateRange
 
+	.pub
+; A0=raw packed expression,A1=end,A2=scope. D0/CCR=status,D1/D2=value
+; low/high,D3=kind. Strict known values only; no address/forward placeholders.
+evaluateKnown .block
+	move.l a6, -(sp)
+	movea.l a2, a6
+	bsr.w evaluateValue
+	movea.l (sp)+, a6
+	tst.l d0
+	rts
+	.bend ; evaluateKnown
+
+; A0=scope,D0=bound scalar identity,D1/D2=low/high,D3=defined (0/1).
+; Set a temporary preparation cell; numeric output must materialize its value.
+; D0/CCR=status. Other registers preserved. No persistent declaration is added.
+setKnownScalar .block
+	movem.l d1-d5/a0-a3, -(sp)
+	move.l d0, d5
+	sub.w layout.State.Base(a0), d0
+	bcs.w bad
+	andi.l #$ffff, d0
+	cmp.w layout.State.Count(a0), d0
+	bhs.w bad
+	lea layout.IMPORT_STATE(a0), a3
+	movea.l KNOWN_DEFINED_POINTER(a3), a1
+	move.b d3, 0(a1, d0.l)
+	lsl.l #3, d0
+	movea.l KNOWN_VALUES_POINTER(a3), a1
+	move.l d1, runtime.Value.Low(a1, d0.l)
+	move.l d2, runtime.Value.High(a1, d0.l)
+	lea KNOWN_OWNER(a3), a0
+	move.l d5, d1
+	moveq #0, d2
+	jsr values.setKind
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d5/a0-a3
+	tst.l d0
+	rts
+	.bend ; setKnownScalar
+	.priv
+
 ; Same validated token binding, preserving compound values and owned offsets.
 evaluateValue	.block
 	moveq #0, d0
@@ -2292,7 +2337,8 @@ registeredExpressionSymbol
 	adda.l d0, a0
 	; Snapshot probes share replay's reference availability policy. A loop
 	; body may never execute; its numeric missing IDs fail only when consumed.
-	tst.w layout.State.LoopDepth(a6)
+	move.w layout.State.LoopDepth(a6), d0
+	cmp.w layout.State.MaterializedLoops(a6), d0
 	bne.w deferredExpressionSymbol
 	ori.w #records.REFERENCED, records.Entry.Flags(a0)
 	bra.w expressionReferenceReady

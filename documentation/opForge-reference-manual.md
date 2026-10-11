@@ -220,8 +220,15 @@ Notes:
   controlling deferred acquisition must already have known values: forward
   dependent guards are diagnosed before opening the file. Repetition opening and
   closing directives must remain in the same source stream; splitting them
-  across a deferred include boundary is not yet supported. The compact native
-  implementation does not yet provide this behavior.
+  across a deferred include boundary is not yet supported.
+- The compact native checkpoint now acquires active current-module includes,
+  including macro/segment filename arguments, definitions introduced by includes,
+  nested acquisition and definition-relative imported templates. Physical counted
+  and scalar list/range loops with directly visible file actions are selected
+  before acquisition. Expanded-template loops, scoped loops, file actions hidden
+  behind loop-body macro calls, and assembly-dependent acquisition controls
+  such as `.while $ < 2` remain unsupported. This is partial native coverage;
+  includes that change module discovery remain separate work.
 - `.incbin` includes the raw bytes of a binary file at the current program counter.
 - Binary files are loaded only for active `.incbin` statements, including expanded
   macros or segments. An inactive conditional or an unused definition does not

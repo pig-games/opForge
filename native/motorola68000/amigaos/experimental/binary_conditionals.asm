@@ -31,8 +31,9 @@ Active	.word ?
 Deferred	.word ?
 Static	.word ?  ; configuration discovery can retain unavailable controls
 Uncertain	.word ?  ; earliest unavailable conditional depth+1, zero when known
+Materializing	.word ?  ; selected source iterations evaluate current known guards
 	.endstruct
-SLOTS = State.Uncertain+2
+SLOTS = State.Materializing+2
 SLOT_BYTES = Slot.Kind+1
 SLOT_SHIFT = 2
 DEFERRED_SLOTS = SLOTS+LIMIT*SLOT_BYTES
@@ -54,6 +55,7 @@ begin	.block
 	move.w #1, State.Active(a0)
 	clr.w State.Static(a0)
 	clr.w State.Uncertain(a0)
+	clr.w State.Materializing(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
@@ -94,8 +96,11 @@ line	.block
 	; inactive regions still use normal preparation filtering.
 	tst.w State.Active(a4)
 	beq.w preparation
+	tst.w State.Materializing(a4)
+	bne.w sourceSelection
 	tst.w layout.State.LoopDepth(a6)
 	bne.w deferred
+sourceSelection
 	tst.w State.Deferred(a4)
 	beq.w preparation
 deferred

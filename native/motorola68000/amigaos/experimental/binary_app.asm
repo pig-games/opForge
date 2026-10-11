@@ -40,6 +40,7 @@
 .endif
 .endif
 .endif
+	.use experimental.amigaos.binary_source_control as source_control
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
 	.include "binding_telemetry.i"
@@ -428,10 +429,21 @@ load
 	adda.l #LINE_BYTES, a1
 	move.l a1, frontend.Frame.Output(a0)
 	move.l #RECORD_BYTES, frontend.Frame.Capacity(a0)
-	move.l #includeBinary, frontend.Frame.FileInclude(a0)
+	move.l #includeSelected, frontend.Frame.FileInclude(a0)
+	move.l #sourceCursor, frontend.Frame.SourceCursor(a0)
+	move.l #sourcePeek, frontend.Frame.SourcePeek(a0)
+	move.l #source_control.line, frontend.Frame.SourceControl(a0)
+	clr.l SourceCursorState.Start+SourceCursorData
+	clr.l SourceCursorState.Offset+SourceCursorData
+	clr.l SourceCursorState.Next+SourceCursorData
+	clr.l SourceCursorState.End+SourceCursorData
+	clr.l TemplateFloor
+	clr.l AcquiringSource
 	move.l #MetadataConfig, frontend.Frame.Metadata(a0)
 	move.l #1, FrontStarted
 	jsr frontend.begin
+	bne.w closeBad
+	jsr source_control.begin
 	bne.w closeBad
 	.MEMORY_STAGE #0
 	cmpi.w #2, CliMode
@@ -740,8 +752,8 @@ sourcesPrepared
 	clr.l DiscoveryScratch
 	clr.l DiscoveryPaths
 pathsCleared
-	lea RootPaths, a0
-	jsr memory.release
+	; Active source acquisition may still need roots during semantic replay.
+
 	cmpi.w #1, CliMode
 	bne.w graphReady
 	lea GraphBlock, a0
@@ -855,6 +867,8 @@ parametersSaved
 	jsr frontend.copyMemberKeys
 	bne.w completionBad
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_PARAMETERS, SourceOrdinal, SourceLine, Records, memory.Block.Used
+	lea RootPaths, a0
+	jsr memory.release
 	bsr.w clearIncludeText
 	lea Front, a0
 	jsr frontend.finish
@@ -1170,10 +1184,6 @@ done
 	.bend  ; readByte
 
 lowerLine	.block
-	bsr.w handleInclude
-	tst.l d0
-	bmi.w bad
-	bne.w included
 	bsr.w selectLine
 	tst.l d0
 	bmi.w bad
@@ -1208,28 +1218,11 @@ streamedLine
 	jsr frontend.line
 lineReady
 	bne.w bad
-	.MEMORY_DETAIL_BEGIN #3
-	bsr.w appendPrepared
-	.MEMORY_DETAIL_END #3
+	bsr.w drainPrepared
 	bne.w bad
-expanded
-	lea Front, a0
-	jsr frontend.nextExpansion
-	bne.w bad
-	move.l frontend.Frame.Used(a0), d0
-	beq.w lowered
-	.MEMORY_DETAIL_BEGIN #3
-	bsr.w appendPrepared
-	.MEMORY_DETAIL_END #3
-	bne.w bad
-	bra.w expanded
 lowered
 	clr.l LineUsed
 	addq.l #1, SourceLine
-	moveq #0, d0
-	rts
-included
-	clr.l LineUsed
 	moveq #0, d0
 	rts
 skipped
@@ -1770,6 +1763,7 @@ done
 	.include "binary_source_selection.i"
 	.include "binary_source_includes.i"
 	.include "binary_source_assets.i"
+	.include "binary_source_cursor.i"
 	.endsection
 	.section data, kind=data
 GoFailure	.byte "compact CLI: --go requires Hex or S-record output (CLI or metadata)", 10, 0
@@ -1860,6 +1854,12 @@ ScheduleCursor	.res long, 1
 ScheduleEnd	.res long, 1
 ScheduleFile	.res long, 1
 ScheduleDerived	.res long, 1
+SourceCursorData	.res byte, SOURCE_CURSOR_BYTES
+TemplateFloor	.res long, 1
+AcquiringSource	.res long, 1
+PendingOrigin	.res long, 1
+PendingName	.res byte, PATH_BYTES
+PeekRecord	.res byte, RECORD_BYTES
 ConfigFront	.res byte, frontend.FRAME_BYTES
 ConfigFrontStarted	.res long, 1
 SemanticScratch	.res byte, memory.Block.Used+4

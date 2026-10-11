@@ -539,7 +539,10 @@ fn binary_source_packages_prepare() {
         assert!(macro_spelling + macro_spelling_bytes <= bytes.len());
         let file_plan = long(&bytes, 132);
         let file_plan_bytes = long(&bytes, 136);
-        assert_eq!(file_plan_bytes, package::packed_file_program(0).len());
+        assert_eq!(
+            file_plan_bytes,
+            package::packed_file_program(&[(0, 1), (1, 2)]).len()
+        );
         assert!(file_plan >= macro_spelling + macro_spelling_bytes);
         assert!(file_plan + file_plan_bytes <= bytes.len());
         assert!(dictionary >= runtime_bytes);

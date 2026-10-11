@@ -65,6 +65,8 @@ GeneratedPlan	.long ?
 ActivePlan	.long ?
 Package	.long ?  ; session capsule supplies shared core directive identities
 FragmentLine	.long ?  ; VM-owned whole-line expansion callback
+Floor	.word ?  ; source cursor protects suspended parent invocation frames
+Padding	.word ?
 Origin	.long ?  ; opaque application source identity
 	.endstruct
 CallFrame	.struct
@@ -185,6 +187,7 @@ begin	.block
 	clr.w State.Skipping(a0)
 	clr.l State.Used(a0)
 	clr.w State.Depth(a0)
+	clr.w State.Floor(a0)
 	clr.l State.Origin(a0)
 	clr.l DEFAULT_USED(a0)
 	clr.l DEFAULT_TEXT_USED(a0)
@@ -776,8 +779,8 @@ closeOpen
 	cmp.w Def.Kind(a0), d2
 	bne.w bad
 	move.l State.Used(a6), d0
-	cmp.l Def.First(a0), d0
-	beq.w bad  ; an invocation must yield at least one record
+	; Empty definitions still open and close their invocation scope. The cursor
+	; owner emits those envelopes even when First equals Last.
 	move.l State.Used(a6), Def.Last(a0)
 	clr.w State.Open(a6)
 	bra.w consumed
@@ -1193,7 +1196,8 @@ nextFrame
 	moveq #0, d1
 	movea.l 4(sp), a0
 	move.w State.Depth(a0), d0
-	beq.w noFrames
+	cmp.w State.Floor(a0), d0
+	bls.w noFrames
 	subq.w #1, d0
 	mulu.w #FRAME_BYTES, d0
 	lea FRAMES(a0), a6

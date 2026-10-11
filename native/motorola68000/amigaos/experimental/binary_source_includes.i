@@ -22,154 +22,6 @@ bad
 	rts
 	.bend ; saveRoot
 
-; D0=0 ordinary line, 1 opened include, -1 malformed or unresolved include.
-; Only a whole-line generic .include directive is handled at this boundary.
-handleInclude .block
-	movem.l d1-d7/a0-a6, -(sp)
-	movea.l LineBuffer, a0
-	move.l LineUsed, d7
-	beq.w ordinary
-	cmpi.b #13, -1(a0,d7.l)
-	bne.w scan
-	subq.l #1, d7
-scan
-	moveq #0, d6
-white
-	cmp.l d7, d6
-	bhs.w ordinary
-	move.b 0(a0,d6.l), d0
-	cmpi.b #' ', d0
-	beq.w skip
-	cmpi.b #9, d0
-	bne.w dot
-skip
-	addq.l #1, d6
-	bra.w white
-dot
-	cmpi.b #'.', d0
-	bne.w ordinary
-	addq.l #1, d6
-	lea includeKeyword, a1
-keyword
-	move.b (a1)+, d1
-	beq.w keywordEnd
-	cmp.l d7, d6
-	bhs.w ordinary
-	move.b 0(a0,d6.l), d0
-	bsr.w foldInclude
-	cmp.b d1, d0
-	bne.w ordinary
-	addq.l #1, d6
-	bra.w keyword
-keywordEnd
-	cmp.l d7, d6
-	bhs.w invalid
-	move.b 0(a0,d6.l), d0
-	cmpi.b #' ', d0
-	beq.w afterKeyword
-	cmpi.b #9, d0
-	bne.w ordinary
-afterKeyword
-	addq.l #1, d6
-skipBeforeQuote
-	cmp.l d7, d6
-	bhs.w invalid
-	move.b 0(a0,d6.l), d0
-	cmpi.b #' ', d0
-	beq.w nextBefore
-	cmpi.b #9, d0
-	bne.w quote
-nextBefore
-	addq.l #1, d6
-	bra.w skipBeforeQuote
-quote
-	cmpi.b #'"', d0
-	bne.w invalid
-	addq.l #1, d6
-	lea IncludeName, a1
-	moveq #0, d5
-name
-	cmp.l d7, d6
-	bhs.w invalid
-	move.b 0(a0,d6.l), d0
-	cmpi.b #'"', d0
-	beq.w nameEnd
-	cmpi.b #33, d0
-	blo.w invalid
-	cmpi.b #126, d0
-	bhi.w invalid
-	cmpi.b #':', d0
-	beq.w invalid
-	cmpi.b #'\\', d0
-	beq.w invalid
-	cmpi.l #PATH_BYTES-1, d5
-	bhs.w invalid
-	move.b d0, (a1)+
-	addq.l #1, d5
-	addq.l #1, d6
-	bra.w name
-nameEnd
-	tst.l d5
-	beq.w invalid
-	clr.b (a1)
-	addq.l #1, d6
-tail
-	cmp.l d7, d6
-	bhs.w resolve
-	move.b 0(a0,d6.l), d0
-	cmpi.b #';', d0
-	beq.w resolve
-	cmpi.b #' ', d0
-	beq.w tailNext
-	cmpi.b #9, d0
-	bne.w invalid
-tailNext
-	addq.l #1, d6
-	bra.w tail
-resolve
-	cmpi.l #INCLUDE_DEPTH, IncludeDepthNow
-	bhs.w invalid
-	; First try the including file's directory, then configured roots.
-	lea SourcePath, a0
-	lea IncludePath, a1
-	bsr.w parentPath
-	bne.w invalid
-	bsr.w openIncludedPath
-	beq.w included
-	bmi.w invalid
-	moveq #0, d5
-roots
-	cmp.l RootCount, d5
-	bhs.w invalid
-	move.l d5, d0
-	lsl.l #8, d0
-	lea RootPaths, a0
-	movea.l memory.Block.Pointer(a0), a0
-	adda.l d0, a0
-	lea IncludePath, a1
-	bsr.w copyIncludeBase
-	bne.w invalid
-	bsr.w openIncludedPath
-	beq.w included
-	bmi.w invalid
-	addq.l #1, d5
-	bra.w roots
-included
-	moveq #1, d0
-	bra.w done
-ordinary
-	moveq #0, d0
-	bra.w done
-invalid
-	moveq #-1, d0
-done
-	movem.l (sp)+, d1-d7/a0-a6
-	tst.l d0
-	rts
-	.bend ; handleInclude
-
-includeKeyword .byte "include", 0
-
 ; A0=current path, A1=destination. Copy through its final directory or volume
 ; separator. D0/CCR=status; preserves other registers. A bare filename rejects.
 parentPath .block
@@ -373,8 +225,18 @@ done
 
 ; Enter an authorized source include; path construction is shared with assets.
 openIncludedPath .block
+	move.l a2, -(sp)
+	lea SourcePath, a2
+	bsr.w openIncludedFrom
+	movea.l (sp)+, a2
+	rts
+	.bend ; openIncludedPath
+
+; A2=definition source path, IncludePath=prefix, IncludeName=relative name.
+; D0/CCR=0 entered,1 missing/denied,-1 invalid. Other registers preserved.
+openIncludedFrom .block
 	movem.l d1-d7/a0-a6, -(sp)
-	bsr.w resolveIncludedPath
+	bsr.w resolveIncludeFrom
 	bne.w openDone
 	; A repeated active path is a cycle, even if AmigaDOS would open it.
 	lea IncludePath, a0
@@ -416,7 +278,7 @@ openDone
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; openIncludedPath
+	.bend ; openIncludedFrom
 
 ; A0=NUL path. Collapse separator and dot components in place. D0=0/1.
 ; A parent component cannot move above an Amiga volume or relative-path start.
@@ -665,7 +527,6 @@ pushInclude .block
 	move.l IoBuffer, IncludeFrame.Buffer(a2)
 	move.l IoCursor, IncludeFrame.Cursor(a2)
 	move.l IoEnd, IncludeFrame.End(a2)
-	addq.l #1, SourceLine
 	move.l SourceLine, IncludeFrame.Line(a2)
 	move.l OriginId, IncludeFrame.Origin(a2)
 	lea SourcePath, a0

@@ -394,6 +394,14 @@ pub fn prepare_package(
         0,
         DictionaryRoleFlags::CONTEXTUAL,
     )?;
+    let source_file_id = intern(&mut names, "include")?;
+    bind(
+        &mut dictionary,
+        "include".into(),
+        source_file_id,
+        0,
+        DictionaryRoleFlags::CONTEXTUAL,
+    )?;
     let mut metadata_heads = [0; 6];
     for (slot, spelling) in metadata_heads.iter_mut().zip([
         "meta.output.name",
@@ -746,7 +754,10 @@ pub fn prepare_package(
     let macro_fragment_length = macro_fragment.len();
     align(&mut out);
     let file_offset = out.len();
-    let file_plan = packed_file_program(file_id);
+    let file_plan = packed_file_program(&[
+        (file_id, package::package::FILE_ACTION_BINARY),
+        (source_file_id, package::package::FILE_ACTION_SOURCE),
+    ]);
     out.extend_from_slice(&file_plan);
     align(&mut out);
     let metadata_offset = out.len();

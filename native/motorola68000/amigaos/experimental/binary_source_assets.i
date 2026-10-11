@@ -3,6 +3,56 @@
 ; and packed data materialization in binary_file_data.
 ORIGIN_LIMIT = memory.LIMIT/PATH_BYTES-1
 
+; A0=frontend session,A1=VM-selected file action. D0/CCR=status;
+; other registers preserved. Source requests only copy bounded request data:
+; acquisition and frontend reentry belong to the caller's preparation cursor.
+includeSelected .block
+	cmpi.l #parser_abi.FILE_ACTION_BINARY, parser_abi.PRVM_FILE_ACTION(a1)
+	beq.w includeBinary
+	cmpi.l #parser_abi.FILE_ACTION_SOURCE, parser_abi.PRVM_FILE_ACTION(a1)
+	beq.w queueSource
+	moveq #1, d0
+	rts
+	.bend ; includeSelected
+
+queueSource .block
+	movem.l d1-d3/a0-a2, -(sp)
+	tst.w frontend.Frame.SourcePending(a0)
+	bne.w bad
+	move.l frontend.Frame.Origin(a0), PendingOrigin
+	beq.w bad
+	move.l parser_abi.PRVM_FILE_PATH_BYTES(a1), d0
+	beq.w bad
+	cmpi.l #PATH_BYTES-1, d0
+	bhi.w bad
+	movea.l frontend.Frame.Output(a0), a2
+	adda.l parser_abi.PRVM_FILE_PATH_OFFSET(a1), a2
+	lea PendingName, a1
+copy
+	move.b (a2)+, d1
+	cmpi.b #32, d1
+	blo.w bad
+	cmpi.b #126, d1
+	bhi.w bad
+	cmpi.b #':', d1
+	beq.w bad
+	cmpi.b #'\\', d1
+	beq.w bad
+	move.b d1, (a1)+
+	subq.l #1, d0
+	bne.w copy
+	clr.b (a1)
+	move.w #1, frontend.Frame.SourcePending(a0)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend ; queueSource
+
 ; A0=frontend session,A1=PRVM file plan. The path view is preparation-only.
 ; D0/CCR=status; preserves other registers. Always closes its asset handle.
 includeBinary .block

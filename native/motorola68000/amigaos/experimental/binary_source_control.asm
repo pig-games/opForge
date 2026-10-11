@@ -1,0 +1,519 @@
+; Strict source selection before active acquisition and binding export.
+; Package PRVMs classify records; EXVM evaluates preparation-known operands.
+; @opforge-owner: experimental.amigaos.binary_source_control
+	.module experimental.amigaos.binary_source_control
+	.cpu 68020
+	.use experimental.amigaos.binary_frontend as frontend
+	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_scopes as scopes
+	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_conditionals as conditionals
+	.use experimental.amigaos.binary_imports as imports
+	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_source as source
+	.use prvm.amigaos.packed_loop as loops
+	.use prvm.amigaos.abi as abi
+	.pub
+LIMIT = 16
+MAX_ITERATIONS = 65536
+Slot .struct
+Body .long ?
+Close .long ?
+After .long ?
+StreamEnd .long ?
+Remaining .long ?
+Index .long ?
+Variable .long ?
+Descriptor .long ?
+Kind .long ?
+Header .res source.MAX_LINE
+.endstruct
+SLOT_BYTES = Slot.Header+source.MAX_LINE
+	.section code, kind=code
+
+; A0=session. Reset caller-owned assembly preparation traversal. D0/CCR=0;
+; other registers preserved. Compound descriptors remain in the scope owner.
+begin .block
+	clr.w Depth
+	clr.w frontend.Frame.SourceIteration(a0)
+	moveq #0, d0
+	rts
+	.bend ; begin
+
+; A0=session,A1=writer record. D0/CCR=status,D1=1 consumed / 0 ordinary.
+; Other registers preserved. Only physical capture loops containing file actions
+; are flattened. Template loop bodies retain existing runtime rejection of I/O.
+line .block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a4
+	; Template invocation scope envelopes are private records, consumed by the
+	; existing scope owner rather than the portable source-control grammar.
+	btst #scopes.LEXICAL_BLOCK_BIT, 1(a4)
+	bne.w ordinary
+	jsr frontend.conditionalState
+	tst.w conditionals.State.Active(a1)
+	beq.w ordinary
+	tst.w conditionals.State.Deferred(a1)
+	bne.w ordinary
+	movea.l a5, a0
+	jsr frontend.scopeState
+	movea.l a1, a6
+	tst.w frontend.Frame.SourceOwned(a5)
+	bne.w acquiredGraph
+	movea.l a5, a0
+	jsr frontend.expansionDepth
+	cmp.w frontend.Frame.ExpansionFloor(a5), d0
+	bls.w selected
+acquiredGraph
+	movea.l a4, a0
+	movea.l a6, a1
+	jsr scopes.statementRole
+	cmpi.l #scopes.KEY_MODULE, d0
+	beq.w bad
+	cmpi.l #scopes.KEY_ENDMODULE, d0
+	beq.w bad
+	cmpi.l #scopes.KEY_USE, d0
+	beq.w bad
+selected
+	movea.l a4, a0
+	bsr.w classifyLoop
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w bad
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w closing
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w closing
+	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	beq.w ordinary
+	move.l d0, PendingKind
+	move.l d1, PendingVariable
+	movea.l a5, a0
+	jsr frontend.expansionDepth
+	cmp.w frontend.Frame.ExpansionFloor(a5), d0
+	bhi.w ordinary  ; generated template records have no physical cursor
+	move.l frontend.Frame.SourceCursor(a5), d0
+	beq.w ordinary
+	movea.l d0, a2
+	movea.l a5, a0
+	moveq #0, d0
+	jsr (a2)
+	bne.w bad
+	cmp.l d1, d2
+	bls.w ordinary  ; direct streaming root has no capture frontier
+	move.l d2, PendingStreamEnd
+	move.l d1, PendingHeader
+	bsr.w scanBody
+	bne.w bad
+	tst.l FoundFile
+	beq.w ordinary
+	cmpi.l #abi.PRVM_LOOP_BFOR, PendingKind
+	beq.w bad
+	cmpi.l #abi.PRVM_LOOP_BWHILE, PendingKind
+	beq.w bad
+	moveq #0, d0
+	move.w Depth, d0
+	cmpi.w #LIMIT, d0
+	bhs.w bad
+	mulu.w #SLOT_BYTES, d0
+	lea Slots, a3
+	adda.l d0, a3
+	move.l PendingBody, Slot.Body(a3)
+	move.l PendingClose, Slot.Close(a3)
+	move.l PendingAfter, Slot.After(a3)
+	move.l PendingStreamEnd, Slot.StreamEnd(a3)
+	move.l PendingKind, Slot.Kind(a3)
+	move.l PendingVariable, Slot.Variable(a3)
+	clr.l Slot.Descriptor(a3)
+	clr.l Slot.Index(a3)
+	moveq #0, d0
+	move.b (a4), d0
+	addq.l #1, d0
+	movea.l a4, a0
+	lea Slot.Header(a3), a1
+copyHeader
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copyHeader
+	bsr.w evaluateHeader
+	bne.w bad
+	tst.l d1
+	beq.w skipLoop
+	move.l d1, Slot.Remaining(a3)
+	addq.w #1, Depth
+	move.w Depth, layout.State.MaterializedLoops(a6)
+	move.w Depth, frontend.Frame.SourceIteration(a5)
+	bsr.w openIteration
+	bne.w bad
+	bsr.w selectIterator
+	bne.w bad
+	move.l Slot.Body(a3), d1
+	bsr.w seek
+	bne.w bad
+	bra.w consumed
+skipLoop
+	move.l Slot.After(a3), d1
+	bsr.w seek
+	bne.w bad
+	bra.w consumed
+closing
+	tst.w Depth
+	beq.w ordinary
+	moveq #0, d0
+	move.w Depth, d0
+	subq.w #1, d0
+	mulu.w #SLOT_BYTES, d0
+	lea Slots, a3
+	adda.l d0, a3
+	move.l frontend.Frame.SourceCursor(a5), d0
+	movea.l d0, a2
+	movea.l a5, a0
+	moveq #0, d0
+	jsr (a2)
+	bne.w bad
+	cmp.l Slot.StreamEnd(a3), d2
+	bne.w ordinary
+	cmp.l Slot.Close(a3), d1
+	bne.w ordinary
+	movea.l a4, a0
+	movea.l a6, a1
+	move.l #source.MAX_LINE, d0
+	jsr scopes.line
+	bne.w bad
+	cmpi.l #abi.PRVM_LOOP_WHILE, Slot.Kind(a3)
+	beq.w nextWhile
+	subq.l #1, Slot.Remaining(a3)
+	beq.w finished
+	addq.l #1, Slot.Index(a3)
+	bra.w repeat
+nextWhile
+	addq.l #1, Slot.Index(a3)
+	cmpi.l #MAX_ITERATIONS, Slot.Index(a3)
+	bhs.w bad
+	bsr.w evaluateHeader
+	bne.w bad
+	tst.l d1
+	beq.w finished
+repeat
+	bsr.w openIteration
+	bne.w bad
+	bsr.w selectIterator
+	bne.w bad
+	move.l Slot.Body(a3), d1
+	bsr.w seek
+	bne.w bad
+	bra.w consumed
+finished
+	subq.w #1, Depth
+	move.w Depth, layout.State.MaterializedLoops(a6)
+	move.w Depth, frontend.Frame.SourceIteration(a5)
+	bra.w consumed
+ordinary
+	moveq #0, d0
+	moveq #0, d1
+	bra.w done
+consumed
+	moveq #0, d0
+	moveq #1, d1
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend ; line
+
+	.priv
+; A0=writer record. Return the shared package loop classifier result.
+; A5=session. D0=role,D1=variable,D2=operand offset; preserves other registers.
+classifyLoop .block
+	movem.l a1, -(sp)
+	moveq #0, d0
+	move.b (a0), d0
+	addq.l #1, d0
+	movea.l frontend.Frame.Package(a5), a1
+	move.l package.Header.LoopPlanBytes(a1), d1
+	adda.l package.Header.LoopPlan(a1), a1
+	jsr loops.classify
+	movea.l (sp)+, a1
+	rts
+	.bend ; classifyLoop
+
+; Scan owned numeric previews for matching controls and package file actions.
+; Definitions are skipped by the normal shared scope directive role resolver.
+scanBody .block
+	movem.l d3-d7/a0-a3, -(sp)
+	clr.l FoundFile
+	move.l PendingHeader, d1
+	bsr.w peek
+	bne.w bad
+	move.l d1, PendingBody
+	moveq #1, d7
+	move.l PendingKind, ScanKinds
+	moveq #0, d6
+next
+	cmp.l PendingStreamEnd, d1
+	bhs.w bad
+	move.l d1, d5
+	bsr.w peek
+	bne.w bad
+	move.l d1, d4
+	movea.l a1, a0
+	movea.l a6, a1
+	jsr scopes.statementRole
+	cmpi.l #scopes.KEY_MACRO, d0
+	beq.w definition
+	cmpi.l #scopes.KEY_SEGMENT, d0
+	beq.w definition
+	cmpi.l #scopes.KEY_ENDMACRO, d0
+	beq.w endDefinition
+	cmpi.l #scopes.KEY_ENDSEGMENT, d0
+	beq.w endDefinition
+	tst.l d6
+	bne.w advance
+	move.l d5, d1
+	bsr.w peek
+	bne.w bad
+	movea.l a1, a0
+	bsr.w classifyLoop
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w bad
+	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	beq.w file
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w close
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w close
+	cmpi.l #LIMIT, d7
+	bhs.w bad
+	move.l d7, d3
+	lsl.l #2, d3
+	lea ScanKinds, a0
+	move.l d0, 0(a0, d3.l)
+	addq.l #1, d7
+	bra.w advance
+close
+	move.l d0, d3
+	move.l d7, d0
+	subq.l #1, d0
+	lsl.l #2, d0
+	lea ScanKinds, a0
+	move.l 0(a0, d0.l), d0
+	cmpi.l #abi.PRVM_LOOP_WHILE, d0
+	beq.w whileClose
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
+	beq.w whileClose
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d3
+	bne.w bad
+	bra.w matchedClose
+whileClose
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d3
+	bne.w bad
+matchedClose
+	subq.l #1, d7
+	bne.w advance
+	move.l d5, PendingClose
+	move.l d4, PendingAfter
+	moveq #0, d0
+	bra.w done
+file
+	move.l d5, d1
+	bsr.w peek
+	bne.w bad
+	movea.l a1, a0
+	bsr.w fileAction
+	bne.w bad
+	tst.l d1
+	beq.w advance
+	move.l #1, FoundFile
+	bra.w advance
+definition
+	addq.l #1, d6
+	bra.w advance
+endDefinition
+	tst.l d6
+	beq.w bad
+	subq.l #1, d6
+advance
+	move.l d4, d1
+	bra.w next
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d3-d7/a0-a3
+	tst.l d0
+	rts
+	.bend ; scanBody
+
+; A3=slot,A6=scope. D0/status,D1=count or while activity. Strict EXVM.
+evaluateHeader .block
+	movem.l d4-d7/a0-a2, -(sp)
+	lea Slot.Header(a3), a0
+	bsr.w classifyLoop
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w bad
+	move.l d0, d7
+	movea.l a0, a1
+	moveq #0, d0
+	move.b (a0), d0
+	addq.l #1, d0
+	adda.l d0, a1
+	adda.l d2, a0
+	movea.l a6, a2
+	jsr imports.evaluateKnown
+	bne.w bad
+	cmpi.l #abi.PRVM_LOOP_WHILE, d7
+	beq.w whileValue
+	tst.l Slot.Variable(a3)
+	bmi.w countValue
+	cmpi.l #values.LIST, d3
+	blo.w bad
+	cmpi.l #values.TYPED_LIST, d3
+	bhi.w bad
+	move.l d1, Slot.Descriptor(a3)
+	lea layout.IMPORT_STATE+imports.KNOWN_OWNER(a6), a0
+	jsr values.compoundLength
+	bne.w bad
+	bra.w countBounds
+whileValue
+	tst.l d3
+	bne.w bad
+	or.l d2, d1
+	beq.w good
+	moveq #1, d1
+	bra.w good
+countValue
+	tst.l d3
+	bne.w bad
+countBounds
+	tst.l d2
+	bne.w bad
+	cmpi.l #MAX_ITERATIONS, d1
+	bhi.w bad
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d4-d7/a0-a2
+	tst.l d0
+	rts
+	.bend ; evaluateHeader
+
+; A3=slot,A6=scope. Seed the fresh iterator scalar for normal preparation.
+selectIterator .block
+	movem.l d1-d3/a0, -(sp)
+	tst.l Slot.Variable(a3)
+	bmi.w good
+	lea layout.IMPORT_STATE+imports.KNOWN_OWNER(a6), a0
+	move.l Slot.Descriptor(a3), d1
+	move.l Slot.Index(a3), d2
+	moveq #0, d3
+	jsr values.compoundGet
+	bne.w done
+	movea.l a6, a0
+	move.l Slot.Variable(a3), d0
+	moveq #1, d3
+	jsr imports.setKnownScalar
+	bne.w done
+	movea.l a5, a0
+	move.l Slot.Variable(a3), d0
+	jsr frontend.sourceScalar
+	bra.w done
+good
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0
+	tst.l d0
+	rts
+	.bend ; selectIterator
+
+; A5=session,D1=logical capture offset. Numeric callbacks preserve our state.
+peek .block
+	move.l a2, -(sp)
+	movea.l frontend.Frame.SourcePeek(a5), a2
+	move.l a2, d0
+	beq.w bad
+	movea.l a5, a0
+	jsr (a2)
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movea.l (sp)+, a2
+	tst.l d0
+	rts
+	.bend ; peek
+
+seek .block
+	move.l a2, -(sp)
+	movea.l frontend.Frame.SourceCursor(a5), a2
+	movea.l a5, a0
+	moveq #1, d0
+	jsr (a2)
+	movea.l (sp)+, a2
+	tst.l d0
+	rts
+	.bend ; seek
+
+; A0=raw record,A5=session. D0/status,D1=selected file action (0 absent).
+fileAction .block
+	movem.l a0-a1, -(sp)
+	movea.l a0, a1
+	movea.l a5, a0
+	jsr frontend.classifyFile
+	cmpi.l #abi.PRVM_STATUS_INVALID_TOKEN, d0
+	bne.w done
+	moveq #1, d1  ; potentially selected file; validate only when active
+	moveq #0, d0
+done
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend ; fileAction
+
+; Bind a fresh iterator identity for this selected iteration through scopes.
+openIteration .block
+	movem.l d1-d3/a0-a2, -(sp)
+	lea Slot.Header(a3), a0
+	lea Opening, a1
+	moveq #0, d0
+	move.b (a0), d0
+copy
+	move.b (a0)+, (a1)+
+	dbf d0, copy
+	lea Opening, a0
+	movea.l a6, a1
+	move.l #source.MAX_LINE, d0
+	jsr scopes.line
+	bne.w done
+	lea Opening, a0
+	bsr.w classifyLoop
+	move.l d1, Slot.Variable(a3)
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend ; openIteration
+
+	.endsection
+	.section bss, kind=bss
+Depth .res word, 1
+.align 4
+PendingKind .res long, 1
+PendingVariable .res long, 1
+PendingStreamEnd .res long, 1
+PendingHeader .res long, 1
+PendingBody .res long, 1
+PendingClose .res long, 1
+PendingAfter .res long, 1
+FoundFile .res long, 1
+ScanKinds .res long, LIMIT
+Slots .res byte, LIMIT*SLOT_BYTES
+Opening .res byte, source.MAX_LINE
+	.endsection
+	.endmodule

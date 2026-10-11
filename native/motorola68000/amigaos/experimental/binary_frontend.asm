@@ -55,6 +55,13 @@ FileInclude	.long ?  ; optional preparation callback, A0=Frame,A1=PRVM file plan
 Origin	.long ?  ; opaque application source identity for file callbacks
 Metadata	.long ?  ; optional metadata.Config, retained outside execution records
 RootFile	.word ?  ; current source belongs to the entry file (includes inherit it)
+SourcePending	.word ?  ; selected source request awaits caller cursor ownership
+SourceOwned	.word ?  ; current cursor was acquired by an active source include
+ExpansionFloor	.word ?  ; protect suspended parent template frames
+SourceIteration	.word ?  ; selected preparation iteration flattens runtime controls
+SourceControl	.long ?  ; optional packed source-control callback before preparation
+SourceCursor	.long ?  ; caller-owned captured cursor view/seek callback
+SourcePeek	.long ?  ; caller-owned transient capture view callback
 Reserved	.word ?
 	.endstruct
 	.pub
@@ -188,6 +195,10 @@ begin	.block
 	movea.l a0, a5
 	clr.l Frame.Used(a5)
 	clr.l Frame.NameCount(a5)
+	clr.w Frame.SourcePending(a5)
+	clr.w Frame.SourceOwned(a5)
+	clr.w Frame.ExpansionFloor(a5)
+	clr.w Frame.SourceIteration(a5)
 	clr.l Frame.Graph(a5)
 	movea.l Frame.Scratch(a5), a6
 	move.l a6, d0
@@ -573,6 +584,50 @@ done
 	rts
 	.bend  ; replayLine
 
+Preview .struct
+Output .long ?
+Used .long ?
+Origin .long ?
+Names .long ?
+Line .long ?
+Root .word ?
+.endstruct
+PREVIEW_BYTES = Preview.Root+2
+
+; A0=session,A1=capture block,D1=handle,A2=disjoint MAX_LINE destination.
+; Bind a numeric preview without executing semantics. D0/CCR=status,A1=preview,
+; D1=bytes. Other registers preserved. Names may be interned by the binder;
+; no scope, template, graph or known-value action is performed.
+previewCapture .block
+	movem.l d2-d7/a0/a2-a6, -(sp)
+	suba.w #PREVIEW_BYTES, sp
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	move.l a2, d7
+	move.l Frame.Output(a5), Preview.Output(sp)
+	move.l Frame.Used(a5), Preview.Used(sp)
+	move.l Frame.Origin(a5), Preview.Origin(sp)
+	move.l Frame.NameCount(a5), Preview.Names(sp)
+	move.l LINE_NUMBER(a6), Preview.Line(sp)
+	move.w Frame.RootFile(a5), Preview.Root(sp)
+	move.l a2, Frame.Output(a5)
+	bsr.w bindCapture
+	move.l d0, d6
+	move.l Frame.Used(a5), d1
+	move.l Preview.Output(sp), Frame.Output(a5)
+	move.l Preview.Used(sp), Frame.Used(a5)
+	move.l Preview.Origin(sp), Frame.Origin(a5)
+	move.l Preview.Names(sp), Frame.NameCount(a5)
+	move.l Preview.Line(sp), LINE_NUMBER(a6)
+	move.w Preview.Root(sp), Frame.RootFile(a5)
+	movea.l d7, a1
+	move.l d6, d0
+	adda.w #PREVIEW_BYTES, sp
+	movem.l (sp)+, d2-d7/a0/a2-a6
+	tst.l d0
+	rts
+	.bend ; previewCapture
+
 ; A0=session,A1=capture memory.Block,D1=record handle. Materialize only the
 ; writer record with the current binder. No plans/templates/scope semantics or
 ; line advancement. D0/CCR=status; other registers preserved. Used/NameCount
@@ -876,15 +931,18 @@ lowerTokens	.block
 	movea.l Frame.Output(a5), a1
 	lea SCOPE_STATE(a6), a2
 	.MEMORY_DETAIL_BEGIN #6
-	jsr templates.next
+	bsr.w nextTemplate
 	.MEMORY_DETAIL_END #6
 	bne.w failed
 	tst.l d1
-	beq.w failed
+	beq.w segmentConsumed
 	bsr.w expandRecord
 	bne.w failed
+	tst.w Frame.SourcePending(a5)
+	bne.w expansionPublished  ; suspended include owns the next publication
 	tst.l Frame.Used(a5)
 	beq.w segmentConsumed
+expansionPublished
 	addq.l #1, LINE_NUMBER(a6)
 	moveq #0, d0
 	bra.w done
@@ -1422,7 +1480,8 @@ initialPlan	.block
 	adda.l #CONDITION_STATE, a0
 	tst.w conditionals.State.Deferred(a0)
 	bne.w bad
-	tst.w SCOPE_STATE+layout.State.LoopDepth(a6)
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	cmp.w Frame.SourceIteration(a5), d0
 	bne.w bad
 templateRoleReady
 	tst.l CAPTURE_RECORD(a6)
@@ -1857,17 +1916,44 @@ generatedRelexExit
 ; A0=Frame. Used=0 when the invocation is exhausted; the physical source
 ; line counter remains at the following line. D0/CCR=status.
 	.pub
+; A0=session. D0=current template depth; other registers preserved. CCR unspecified.
+expansionDepth	.block
+	move.l a1, -(sp)
+	movea.l Frame.Scratch(a0), a1
+	moveq #0, d0
+	adda.l #TEMPLATE_STATE, a1
+	move.w templates.State.Depth(a1), d0
+	movea.l (sp)+, a1
+	rts
+	.bend ; expansionDepth
+
+; A0=session. A1=current preparation scope; other registers preserved.
+scopeState	.block
+	movea.l Frame.Scratch(a0), a1
+	adda.l #SCOPE_STATE, a1
+	rts
+	.bend ; scopeState
+
+; A0=session. A1=current conditional state; other registers preserved.
+conditionalState	.block
+	movea.l Frame.Scratch(a0), a1
+	adda.l #CONDITION_STATE, a1
+	rts
+	.bend ; conditionalState
+
 nextExpansion	.block
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	clr.l Frame.Used(a5)
+	tst.w Frame.SourcePending(a5)
+	bne.w nextDone
 	movea.l Frame.Scratch(a5), a6
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
 	movea.l Frame.Output(a5), a1
 	lea SCOPE_STATE(a6), a2
-	jsr templates.next
+	bsr.w nextTemplate
 	bne.w nextFailed
 	tst.l d1
 	beq.w nextDone
@@ -1882,6 +1968,13 @@ nextDone
 	.bend  ; nextExpansion
 
 	.priv
+; A0=template state,A1=output,A2=scope; A5=session.
+; Protect parent frames suspended by a selected source cursor. Same ABI as next.
+nextTemplate .block
+	move.w Frame.ExpansionFloor(a5), templates.State.Floor(a0)
+	jmp templates.next
+	.bend ; nextTemplate
+
 ; A5=Frame,A6=Scratch. The output holds one generated packed record.
 ; Reenter template lookup before ordinary preparation; nested calls push a
 ; child frame and resume the parent when that child drains.
@@ -1911,7 +2004,7 @@ nextGenerated
 	adda.l #TEMPLATE_STATE, a0
 	movea.l Frame.Output(a5), a1
 	lea SCOPE_STATE(a6), a2
-	jsr templates.next
+	bsr.w nextTemplate
 	bne.w failed
 	tst.l d1
 	bne.w generatedLoop
@@ -1921,6 +2014,8 @@ nextGenerated
 prepareGenerated
 	bsr.w processRecord
 	bne.w failed
+	tst.w Frame.SourcePending(a5)
+	bne.w sourceSuspended
 	tst.l Frame.Used(a5)
 	beq.w nextGenerated  ; streamed actions publish directly; keep draining the call
 	moveq #0, d0  ; return status flags after testing the published byte count
@@ -1928,12 +2023,41 @@ prepareGenerated
 failed
 	moveq #1, d0
 	rts
+sourceSuspended
+	moveq #0, d0
+	rts
 	.bend  ; expandRecord
 
 ; A5=Frame,A6=Scratch, Frame.Output contains one writer record. Apply the
 ; normal numeric selection, binding and expression path to original or expanded
 ; records. This routine does not tokenize source or advance the physical line.
 processRecord	.block
+	clr.l Frame.Used(a5)
+	; Source-control publications need the same current-module ownership as
+	; ordinary records before they can return through the consumed path.
+	clr.l Frame.GraphBefore(a5)
+	movea.l Frame.Graph(a5), a0
+	move.l a0, d0
+	beq.w sourceGraphReady
+	moveq #0, d0
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a6), d0
+	move.l d0, Frame.GraphBefore(a5)
+sourceGraphReady
+	move.l Frame.SourceControl(a5), d0
+	beq.w sourceControlReady
+	movea.l d0, a2
+	movea.l a5, a0
+	movea.l Frame.Output(a5), a1
+	jsr (a2)
+	bne.w failed
+	tst.l d1
+	beq.w sourceControlReady
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a5)
+	moveq #0, d0
+	rts
+sourceControlReady
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DECLARATION
 	movea.l Frame.Output(a5), a0
 	; Scope-private macro records are not portable declaration requests.
@@ -1945,19 +2069,17 @@ processRecord	.block
 	bne.w failed
 declarationReady
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONDITIONAL
-	clr.l Frame.GraphBefore(a5)
-	movea.l Frame.Graph(a5), a0
-	move.l a0, d0
-	beq.w graphBeforeDone
-	moveq #0, d0
-	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a6), d0
-	move.l d0, Frame.GraphBefore(a5)
-graphBeforeDone
 	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
 	lea SCOPE_STATE(a6), a2
 	adda.l #scopes.SCRATCH_BYTES, a2
 	.MEMORY_DETAIL_BEGIN #2
+	move.w Frame.SourceIteration(a5), conditionals.State.Materializing(a2)
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	cmp.w Frame.SourceIteration(a5), d0
+	beq.w sourceGuardMode
+	clr.w conditionals.State.Materializing(a2)
+sourceGuardMode
 	jsr conditionals.line
 	.MEMORY_DETAIL_END #2
 	bne.w failed
@@ -2065,7 +2187,8 @@ conditionReady
 	movea.l Frame.Package(a5), a1
 	lea SCOPE_STATE(a6), a2
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DATA
-	tst.w SCOPE_STATE+layout.State.LoopDepth(a6)
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	cmp.w Frame.SourceIteration(a5), d0
 	bne.w dataPrepared
 	jsr data_prepare.check
 	bne.w failed
@@ -2077,8 +2200,9 @@ dataPrepared
 	.MEMORY_PREPARATION_INPUT PreparationInput, Frame.Capacity(a5)
 	movea.l a6, a4
 	adda.l #CONDITION_STATE, a4
-	move.w conditionals.State.Deferred(a4), d0
-	or.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	sub.w Frame.SourceIteration(a5), d0
+	or.w conditionals.State.Deferred(a4), d0
 	beq.w prepareOrdinary
 	jsr prepare.lineUnfolded
 	bra.w preparedExpression
@@ -2161,12 +2285,69 @@ done
 	tst.l d0
 	rts
 	.bend  ; data
+ ; A0=session,D0=bound iterator ID,D1/D2=scalar low/high. Prepare its
+; numeric initializer through the normal shared assignment expression compiler.
+ScalarInitializer .struct
+Length .byte ?
+Flags .byte ?
+Line .word ?
+Name .res writer.NAME_TOKEN_BYTES
+Declaration .byte ?
+Value .res writer.WIDE_NUMBER_BYTES
+.endstruct
+SCALAR_INITIALIZER_BYTES = ScalarInitializer.Value+writer.WIDE_NUMBER_BYTES
+sourceScalar .block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	movea.l Frame.Output(a5), a0
+	move.b #SCALAR_INITIALIZER_BYTES-1, ScalarInitializer.Length(a0)
+	andi.b #writer.FLAG_INDENT, ScalarInitializer.Flags(a0)
+	clr.b ScalarInitializer.Name+writer.NameToken.Kind(a0)
+	move.w d0, ScalarInitializer.Name+writer.NameToken.Id(a0)
+	clr.b ScalarInitializer.Name+writer.NameToken.Qualifier(a0)
+	move.b #writer.TOKEN_CONSTANT_DECLARATION, ScalarInitializer.Declaration(a0)
+	move.b #writer.TOKEN_WIDE_NUMBER, ScalarInitializer.Value+writer.WideNumberToken.Kind(a0)
+	move.l d2, ScalarInitializer.Value+writer.WideNumberToken.High(a0)
+	move.l d1, ScalarInitializer.Value+writer.WideNumberToken.Low(a0)
+	lea PREPARED_LINE(a6), a1
+	movea.l Frame.Package(a5), a2
+	jsr prepare.line
+	bne.w done
+	; Publish through the shared numeric-data owner so graph spans count the
+	; initializer exactly as they count the following selected body records.
+	move.l d1, d0
+	movea.l a5, a0
+	lea PREPARED_LINE(a6), a1
+	bsr.w data
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend ; sourceScalar
+
+; A0=session,A1=numeric writer. D0/CCR=status,D1=selected action (0 absent).
+; Read-only classification through the same FilePlan owner; no I/O callback.
+classifyFile .block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	move.l Frame.Output(a5), -(sp)
+	move.l a1, Frame.Output(a5)
+	bsr.w runFilePlan
+	move.l (sp)+, Frame.Output(a5)
+	tst.l d0
+	bne.w done
+	tst.l d1
+	beq.w done
+	move.l MACRO_EVENTS+parser_abi.PRVM_FILE_ACTION(a6), d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend ; classifyFile
 	.priv
-; PRVM selects a file action from active packed records; native code only
-; delegates the resulting bounded path/prefix view to caller-owned I/O.
-; A5=session,A6=scratch. D0/CCR=status,D1=handled; preserves other registers.
-fileLine	.block
-	movem.l d2-d7/a0-a4, -(sp)
+runFilePlan .block
 	lea MACRO_REQUEST(a6), a0
 	movea.l a0, a1
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
@@ -2195,6 +2376,15 @@ clear
 	move.l #1024, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr macro_runtime.run
+	rts
+	.bend ; runFilePlan
+	.priv
+; PRVM selects a file action from active packed records; native code only
+; delegates the resulting bounded path/prefix view to caller-owned I/O.
+; A5=session,A6=scratch. D0/CCR=status,D1=handled; preserves other registers.
+fileLine	.block
+	movem.l d2-d7/a0-a4, -(sp)
+	bsr.w runFilePlan
 	bne.w bad
 	tst.l d1
 	beq.w good
@@ -2204,6 +2394,12 @@ clear
 	adda.l #CONDITION_STATE, a0
 	tst.w conditionals.State.Deferred(a0)
 	bne.w bad  ; deferred branches cannot perform preparation-time file I/O
+	cmpi.l #parser_abi.FILE_ACTION_SOURCE, MACRO_EVENTS+parser_abi.PRVM_FILE_ACTION(a6)
+	bne.w fileSelected
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	cmp.w Frame.SourceIteration(a5), d0
+	bne.w bad  ; unmaterialized loop bodies cannot authorize source acquisition
+fileSelected
 	move.l Frame.FileInclude(a5), d0
 	beq.w bad  ; stand-alone frontends must explicitly supply file I/O
 	movea.l d0, a2

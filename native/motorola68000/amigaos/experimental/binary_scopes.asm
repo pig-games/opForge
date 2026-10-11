@@ -93,6 +93,7 @@ begin	.block
 	move.w d1, layout.State.EndDirective(a0)
 	clr.w layout.State.Changed(a0)
 	clr.w layout.State.FileContent(a0)
+	clr.w layout.State.MaterializedLoops(a0)
 	clr.w layout.State.LoopDepth(a0)
 	clr.w layout.State.Deferred(a0)
 	clr.l layout.State.Package(a0)
@@ -2035,7 +2036,8 @@ sourceReference
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
-	tst.w layout.State.LoopDepth(a6)
+	move.w layout.State.LoopDepth(a6), d0
+	cmp.w layout.State.MaterializedLoops(a6), d0
 	bne.w optionalReference
 	; Retained branches validate availability only for selected numeric records.
 	; A later ordinary use still upgrades this identity to a required reference.
@@ -3533,6 +3535,48 @@ resolveTemplate	.block
 	tst.l d0
 	rts
 	.bend  ; resolveTemplate
+	.pub
+; A0=numeric writer record,A1=scope. D0=existing shared scope KEY_* role;
+; other registers preserved. Read-only: reuse the normal directive resolver.
+statementRole .block
+	movem.l d1-d3/a0-a2/a6, -(sp)
+	movea.l a1, a6
+	moveq #0, d1
+	move.b (a0), d1
+	addq.w #1, d1
+	cmpi.w #9, d1
+	blo.w absent
+	lea 4(a0), a2
+	cmpi.b #1, (a2)
+	bhi.w head
+	cmpi.b #7, 4(a2)
+	beq.w namedHead
+	cmpi.b #5, 4(a2)
+	bne.w absent
+	cmpi.w #14, d1
+	blo.w absent
+	addq.w #5, a2
+	bra.w head
+namedHead
+	cmpi.w #13, d1
+	blo.w absent
+	addq.w #4, a2
+head
+	cmpi.b #7, (a2)
+	bne.w absent
+	cmpi.b #1, 1(a2)
+	bhi.w absent
+	moveq #0, d0
+	move.w 2(a2), d0
+	bsr.w keyword
+	bra.w done
+absent
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2/a6
+	rts
+	.bend ; statementRole
+	.priv
 	.priv
 Words
 	.byte KEY_END, 3, "end"

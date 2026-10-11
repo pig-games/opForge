@@ -3258,6 +3258,17 @@ fn run_native_cli_parity_batch_cases(
     executable: NativeCliParityExecutable,
     bootstrap_executable: Option<&[u8]>,
 ) -> Result<FsUaeSmokeOutcome, String> {
+    let live_capture = std::env::var("OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE").as_deref() == Ok("1");
+    let prebuilt_compact_cli = if matches!(executable, NativeCliParityExecutable::CompactCli) {
+        bootstrap_executable
+    } else {
+        None
+    };
+    if prebuilt_compact_cli.is_some() && live_capture {
+        return Err(
+            "prebuilt compact CLI does not provide host-generated live labels for capture".into(),
+        );
+    }
     if cases.len() > 1 {
         let mut runs = Vec::with_capacity(cases.len());
         let mut proof_errors = Vec::new();
@@ -3629,62 +3640,83 @@ fn run_native_cli_parity_batch_cases(
             )?
         }
     };
-    let live_capture = std::env::var("OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE").as_deref() == Ok("1");
     let live_labels_path = artifact_dir.join("live-labels.txt");
-    run_assembly(AssemblyExecutionRequest {
-        root_path: &source_path,
-        input_base: example_name,
-        defines: &assembly_defines,
-        include_paths: &include_paths,
-        module_paths: &module_paths,
-        pp_macro_depth: 64,
-        cpu_override: Some("68020"),
-        default_cpu: default_cpu(),
-        max_loop_iterations: 1000,
-        opasm_package_path: None,
-        out_dir: Some(&artifact_dir),
-        debug_conditionals: false,
-        tab_size: None,
-        output_format: EngineOutputFormat::Text,
-        go_addr: None,
-        bin_specs: &[] as &[BinOutputSpec],
-        fill_byte: 0xff,
-        fill_byte_set: false,
-        default_outputs: false,
-        labels_file: live_capture.then_some(live_labels_path.as_path()),
-        label_output_format: CliLabelOutputFormat::Default,
-        dependency_output: None,
-        outfile_override: None,
-        list_name_override: None,
-        hex_name_override: None,
-        srec_name_override: None,
-        hunk_name_override: None,
-        header_title: "opForge Assembler FS-UAE smoke",
-        output_sink: None,
-        source_provider: None,
-        execution_mode: ExecutionMode::Lockstep {
-            continuation_head: ContinuationHead::Vm,
-        },
-        collect_runtime_traces: true,
-        suppress_outputs: false,
-    })
-    .map_err(|err| {
-        format!(
-            "assemble FS-UAE smoke example {} from {}: {}; diagnostics: {:#?}",
-            example_name,
-            source_path.display(),
-            err.summary(),
-            err.diagnostics()
-        )
-    })?;
+    let hunk_path = if let Some(bytes) = prebuilt_compact_cli {
+        let hunk_path = generated_hunk_artifact_path(&artifact_dir, example_name);
+        if let Some(parent) = hunk_path.parent() {
+            fs::create_dir_all(parent).map_err(|err| {
+                format!(
+                    "create canonical prebuilt Hunk directory {}: {err}",
+                    parent.display()
+                )
+            })?;
+        }
+        fs::write(&hunk_path, bytes).map_err(|err| {
+            format!(
+                "stage prebuilt compact CLI as canonical Hunk at {}: {err}",
+                hunk_path.display()
+            )
+        })?;
+        hunk_path
+    } else {
+        run_assembly(AssemblyExecutionRequest {
+            root_path: &source_path,
+            input_base: example_name,
+            defines: &assembly_defines,
+            include_paths: &include_paths,
+            module_paths: &module_paths,
+            pp_macro_depth: 64,
+            cpu_override: Some("68020"),
+            default_cpu: default_cpu(),
+            max_loop_iterations: 1000,
+            opasm_package_path: None,
+            out_dir: Some(&artifact_dir),
+            debug_conditionals: false,
+            tab_size: None,
+            output_format: EngineOutputFormat::Text,
+            go_addr: None,
+            bin_specs: &[] as &[BinOutputSpec],
+            fill_byte: 0xff,
+            fill_byte_set: false,
+            default_outputs: false,
+            labels_file: live_capture.then_some(live_labels_path.as_path()),
+            label_output_format: CliLabelOutputFormat::Default,
+            dependency_output: None,
+            outfile_override: None,
+            list_name_override: None,
+            hex_name_override: None,
+            srec_name_override: None,
+            hunk_name_override: None,
+            header_title: "opForge Assembler FS-UAE smoke",
+            output_sink: None,
+            source_provider: None,
+            execution_mode: ExecutionMode::Lockstep {
+                continuation_head: ContinuationHead::Vm,
+            },
+            collect_runtime_traces: true,
+            suppress_outputs: false,
+        })
+        .map_err(|err| {
+            format!(
+                "assemble FS-UAE smoke example {} from {}: {}; diagnostics: {:#?}",
+                example_name,
+                source_path.display(),
+                err.summary(),
+                err.diagnostics()
+            )
+        })?;
 
-    let hunk_path = generated_hunk_artifact_path(&artifact_dir, example_name);
-    if !hunk_path.is_file() {
-        return Err(format!(
-            "expected generated Hunk artifact at {}",
-            hunk_path.display()
-        ));
-    }
+        // Source-directed output may use a literal extensionless filename.
+        // Resolve it after assembly; before then neither candidate exists.
+        let hunk_path = generated_hunk_artifact_path(&artifact_dir, example_name);
+        if !hunk_path.is_file() {
+            return Err(format!(
+                "expected generated Hunk artifact at {}",
+                hunk_path.display()
+            ));
+        }
+        hunk_path
+    };
     let mounted_hunk_alias_path = match executable {
         NativeCliParityExecutable::OpforgeCli => mounted_work_dir.join("build/opforge_cli"),
         NativeCliParityExecutable::OpforgeSelfHostGenerationOne => mounted_work_dir.join("opforge"),
@@ -7972,6 +8004,9 @@ mod native_forward_count_parity;
 #[path = "tests/compact_cli_metadata.rs"]
 mod compact_cli_metadata;
 
+#[cfg(test)]
+#[path = "tests/native_active_includes.rs"]
+mod native_active_includes;
 #[path = "tests/native_data_narrowing.rs"]
 mod native_data_narrowing;
 #[path = "tests/native_forward_branches.rs"]

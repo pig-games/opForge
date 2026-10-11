@@ -1,42 +1,44 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Macro syntax examples
-----                                2  
-----    EQU 2000                    3          .org 2000h
-----                                4  
+----                                1  .module macro_syntax
+----                                2  ; Macro syntax examples
+----                                3  
+----    EQU 2000                    4          .org 2000h
 ----                                5  
 ----                                6  
 ----                                7  
 ----                                8  
 ----                                9  
-----                               10          .block
-2000    3A 12 00                   11          lda $12
-2003    32 34 00                   12          sta $34
-----                               13          .endblock
-----                               14          .block
-2006    01 02                      15          .byte 1, 2
-----                               16          .endblock
-----                               17          .block
-2008    03                         18          .byte 1+2
-2009    03 00                      19          .word 1+2
-----                               20          .endblock
-200B    07                         21          .byte 7
-----                               22  
-----                               23  foo .block
-----    EQU 0009                   24  local   .const 9
-----                               25  .endblock
-200C    09 00                      26          .word foo.local
-----                               27          .end
+----                               10  
+----                               11          .block
+2000    3A 12 00                   12          lda $12
+2003    32 34 00                   13          sta $34
+----                               14          .endblock
+----                               15          .block
+2006    01 02                      16          .byte 1, 2
+----                               17          .endblock
+----                               18          .block
+2008    03                         19          .byte 1+2
+2009    03 00                      20          .word 1+2
+----                               21          .endblock
+200B    07                         22          .byte 7
+----                               23  
+----                               24  foo .block
+----    EQU 0009                   25  local   .const 9
+----                               26  .endblock
+200C    09 00                      27          .word foo.local
+----                               28          .end
+----                               29  .endmodule
 
-Lines: 27  Errors: 0  Warnings: 0
+Lines: 29  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-foo              200C      prv  lbl 
-foo.local        0009      prv  lbl 
+macro_syntax.foo  200C      prv  lbl 
+macro_syntax.foo.local  0009      prv  lbl 
 
 Total memory is 14 bytes
 

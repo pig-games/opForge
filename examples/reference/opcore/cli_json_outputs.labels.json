@@ -2,17 +2,17 @@
   "labels": [
     {
       "address": "002A",
-      "name": "INIT_VALUE",
+      "name": "cli_json_outputs.INIT_VALUE",
       "value": 42
     },
     {
       "address": "2000",
-      "name": "START",
+      "name": "cli_json_outputs.START",
       "value": 8192
     },
     {
       "address": "2001",
-      "name": "VALUE",
+      "name": "cli_json_outputs.VALUE",
       "value": 8193
     }
   ]

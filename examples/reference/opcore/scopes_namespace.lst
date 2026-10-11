@@ -1,37 +1,39 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Namespace scopes and 64tass-compatible close aliases
-----                                2  
-----    EQU 1000                    3          .org 1000h
-----                                4  
-----    EQU 0001                    5  VALUE   .const 1
-----                                6  
-----                                7          .namespace outer
-----                                8          .namespace inner
-----    EQU 0005                    9  VALUE   .const 5
-----                               10          .endn
-----                               11          .endnamespace
-----                               12  
-----                               13  SCOPE   .block
-----    EQU 0009                   14  LOCAL   .const 9
-----                               15          .bend
-----                               16  
-1000    01 00                      17          .word VALUE
-1002    05 00                      18          .word outer.inner.VALUE
-1004    09 00                      19          .word SCOPE.LOCAL
-----                               20          .end
+----                                1  .module scopes_namespace
+----                                2  ; Namespace scopes and 64tass-compatible close aliases
+----                                3  
+----    EQU 1000                    4          .org 1000h
+----                                5  
+----    EQU 0001                    6  VALUE   .const 1
+----                                7  
+----                                8          .namespace outer
+----                                9          .namespace inner
+----    EQU 0005                   10  VALUE   .const 5
+----                               11          .endn
+----                               12          .endnamespace
+----                               13  
+----                               14  SCOPE   .block
+----    EQU 0009                   15  LOCAL   .const 9
+----                               16          .bend
+----                               17  
+1000    01 00                      18          .word VALUE
+1002    05 00                      19          .word outer.inner.VALUE
+1004    09 00                      20          .word SCOPE.LOCAL
+----                               21          .end
+----                               22  .endmodule
 
-Lines: 20  Errors: 0  Warnings: 0
+Lines: 22  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-outer.inner.VALUE  0005      prv  lbl 
-SCOPE            1000      prv  lbl 
-SCOPE.LOCAL      0009      prv  lbl 
-VALUE            0001      prv  lbl 
+scopes_namespace.outer.inner.VALUE  0005      prv  lbl 
+scopes_namespace.SCOPE  1000      prv  lbl 
+scopes_namespace.SCOPE.LOCAL  0009      prv  lbl 
+scopes_namespace.VALUE  0001      prv  lbl 
 
 Total memory is 6 bytes
 

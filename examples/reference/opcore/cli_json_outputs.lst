@@ -1,22 +1,24 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; CLI JSON output fixture for labels/dependencies
-----    EQU 002A                    2  INIT_VALUE .const $2A
-----                                3  
-----    EQU 2000                    4  .org $2000
-2000    00                          5  START  nop
-2001    2A                          6  VALUE  .byte INIT_VALUE
+----                                1  .module cli_json_outputs
+----                                2  ; CLI JSON output fixture for labels/dependencies
+----    EQU 002A                    3  INIT_VALUE .const $2A
+----                                4  
+----    EQU 2000                    5  .org $2000
+2000    00                          6  START  nop
+2001    2A                          7  VALUE  .byte INIT_VALUE
+----                                8  .endmodule
 
-Lines: 6  Errors: 0  Warnings: 0
+Lines: 8  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-INIT_VALUE       002A      prv  lbl 
-START            2000      prv  lbl 
-VALUE            2001      prv  lbl 
+cli_json_outputs.INIT_VALUE  002A      prv  lbl 
+cli_json_outputs.START  2000      prv  lbl 
+cli_json_outputs.VALUE  2001      prv  lbl 
 
 Total memory is 2 bytes
 

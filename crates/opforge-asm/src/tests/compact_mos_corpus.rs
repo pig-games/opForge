@@ -54,6 +54,13 @@ fn motorola68000_instruction_corpus(root: &Path) -> Vec<Case> {
 
 fn corpus(root: &Path) -> Vec<Case> {
     let mut cases = family_corpus(root, "mos6502");
+    cases.extend(opcore_corpus(root));
+    cases.sort_by(|a, b| a.name.cmp(&b.name));
+    cases
+}
+
+fn opcore_corpus(root: &Path) -> Vec<Case> {
+    let mut cases = Vec::new();
     for assignment in NATIVE_OPCORE_ASSIGNMENTS {
         let NativeOpcoreRole::Root { reference_stem } = assignment.role else {
             continue;
@@ -243,6 +250,13 @@ fn compact_mos_corpus_rust_references() {
 }
 
 #[test]
+#[ignore = "full opcore Rust reference audit; existing corpus/reference regressions need classification"]
+fn compact_opcore_corpus_rust_references() {
+    let root = workspace_root();
+    run_rust_reference_audit(&OPCORE_AUDIT, opcore_corpus(&root));
+}
+
+#[test]
 #[ignore = "full Rust reference audit; existing corpus/reference regressions need classification"]
 fn compact_motorola68000_corpus_rust_references() {
     let root = workspace_root();
@@ -346,6 +360,12 @@ const MOS_AUDIT: CorpusAudit = CorpusAudit {
     cases_env: "OPFORGE_MOS_CORPUS_CASES",
     report_env: "OPFORGE_MOS_CORPUS_REPORT",
 };
+const OPCORE_AUDIT: CorpusAudit = CorpusAudit {
+    slug: "opcore",
+    label: "opcore",
+    cases_env: "OPFORGE_OPCORE_CORPUS_CASES",
+    report_env: "OPFORGE_OPCORE_CORPUS_REPORT",
+};
 const M68K_AUDIT: CorpusAudit = CorpusAudit {
     slug: "m68k",
     label: "motorola68000",
@@ -358,6 +378,13 @@ const M68K_AUDIT: CorpusAudit = CorpusAudit {
 fn compact_mos_corpus_fs_uae() {
     let root = workspace_root();
     run_compact_corpus(&MOS_AUDIT, corpus(&root));
+}
+
+#[test]
+#[ignore = "full opcore fresh compact-native audit; requires configured FS-UAE"]
+fn compact_opcore_corpus_fs_uae() {
+    let root = workspace_root();
+    run_compact_corpus(&OPCORE_AUDIT, opcore_corpus(&root));
 }
 
 /// Audit all top-level instruction fixtures, including expected-error cases.

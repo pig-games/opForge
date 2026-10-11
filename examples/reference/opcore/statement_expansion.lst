@@ -1,41 +1,43 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Demonstrate .statement expansion.
-----                                2  
+----                                1  .module statement_expansion
+----                                2  ; Demonstrate .statement expansion.
 ----                                3  
 ----                                4  
 ----                                5  
 ----                                6  
 ----                                7  
-----                                8  start
-0000    07                          9      .byte 7
-0001    FF                         10      .byte $ff
-0002    0A                         11      .byte %1010
-0003    FF                         12      .byte 0ffh
-0004    05                         13      .byte $05
-0005    62                         14      .byte 'b'
-0006    64 00                      15      .byte 'd', 0
-0008    64 02                      16      .byte 'd', 2
-000A    6C                         17      .byte 'l'
-000B    64 00                      18      .byte 'd', 0
-000D    64 02                      19      .byte 'd', 2
-000F    6C                         20      .byte 'l'
-0010    78 56 34 12                21      .long $12345678
-0014    64 00                      22      .byte 'd', 0
-----    EQU 048D159E               23  label = $12345678 >> 2
-0016    6C                         24      .byte 'l'
-0017    9E 15 8D 04                25      .long label
-001B    64 00                      26      .byte 'd', 0
+----                                8  
+----                                9  start
+0000    07                         10      .byte 7
+0001    FF                         11      .byte $ff
+0002    0A                         12      .byte %1010
+0003    FF                         13      .byte 0ffh
+0004    05                         14      .byte $05
+0005    62                         15      .byte 'b'
+0006    64 00                      16      .byte 'd', 0
+0008    64 02                      17      .byte 'd', 2
+000A    6C                         18      .byte 'l'
+000B    64 00                      19      .byte 'd', 0
+000D    64 02                      20      .byte 'd', 2
+000F    6C                         21      .byte 'l'
+0010    78 56 34 12                22      .long $12345678
+0014    64 00                      23      .byte 'd', 0
+----    EQU 048D159E               24  label = $12345678 >> 2
+0016    6C                         25      .byte 'l'
+0017    9E 15 8D 04                26      .long label
+001B    64 00                      27      .byte 'd', 0
+----                               28  .endmodule
 
-Lines: 26  Errors: 0  Warnings: 0
+Lines: 28  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-label            048D159E  prv  lbl 
-start            0000      prv  lbl 
+statement_expansion.label  048D159E  prv  lbl 
+statement_expansion.start  0000      prv  lbl 
 
 Total memory is 29 bytes
 

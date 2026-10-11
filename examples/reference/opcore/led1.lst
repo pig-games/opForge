@@ -1,52 +1,54 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; 65C02 memory-mapped LED blink example.
-----                                2  ;
-----                                3  ; This keeps the original corpus case's layout purpose: code is assembled at
-----                                4  ; a ROM address, enters through a reset-style jump, toggles an output, uses
-----                                5  ; nested delay loops, and repeats forever.
-----                                6  
-----                                7          .cpu 65c02
-----    EQU 8000                    8          .org $8000
-----                                9  
-8000    4C 03 80                   10          jmp START
-----                               11  
-----    EQU 4000                   12  LED_PORT .const $4000
-----                               13  
-8003    A9 01                      14  START   lda #$01        ; LED on
-8005    8D 00 40                   15          sta LED_PORT
-----                               16  
-8008    A2 FF                      17          ldx #$ff        ; Delay
-800A    A0 FF                      18  D1_OUT  ldy #$ff
-800C    88                         19  D1_IN   dey
-800D    D0 FD                      20          bne D1_IN
-800F    CA                         21          dex
-8010    D0 F8                      22          bne D1_OUT
-----                               23  
-8012    9C 00 40                   24          stz LED_PORT    ; LED off
-----                               25  
-8015    A2 FF                      26          ldx #$ff        ; Delay
-8017    A0 FF                      27  D2_OUT  ldy #$ff
-8019    88                         28  D2_IN   dey
-801A    D0 FD                      29          bne D2_IN
-801C    CA                         30          dex
-801D    D0 F8                      31          bne D2_OUT
-----                               32  
-801F    80 E2                      33          bra START       ; Loop forever
+----                                1  .module led1
+----                                2  ; 65C02 memory-mapped LED blink example.
+----                                3  ;
+----                                4  ; This keeps the original corpus case's layout purpose: code is assembled at
+----                                5  ; a ROM address, enters through a reset-style jump, toggles an output, uses
+----                                6  ; nested delay loops, and repeats forever.
+----                                7  
+----                                8          .cpu 65c02
+----    EQU 8000                    9          .org $8000
+----                               10  
+8000    4C 03 80                   11          jmp START
+----                               12  
+----    EQU 4000                   13  LED_PORT .const $4000
+----                               14  
+8003    A9 01                      15  START   lda #$01        ; LED on
+8005    8D 00 40                   16          sta LED_PORT
+----                               17  
+8008    A2 FF                      18          ldx #$ff        ; Delay
+800A    A0 FF                      19  D1_OUT  ldy #$ff
+800C    88                         20  D1_IN   dey
+800D    D0 FD                      21          bne D1_IN
+800F    CA                         22          dex
+8010    D0 F8                      23          bne D1_OUT
+----                               24  
+8012    9C 00 40                   25          stz LED_PORT    ; LED off
+----                               26  
+8015    A2 FF                      27          ldx #$ff        ; Delay
+8017    A0 FF                      28  D2_OUT  ldy #$ff
+8019    88                         29  D2_IN   dey
+801A    D0 FD                      30          bne D2_IN
+801C    CA                         31          dex
+801D    D0 F8                      32          bne D2_OUT
+----                               33  
+801F    80 E2                      34          bra START       ; Loop forever
+----                               35  .endmodule
 
-Lines: 33  Errors: 0  Warnings: 0
+Lines: 35  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-D1_IN            800C      prv  lbl 
-D1_OUT           800A      prv  lbl 
-D2_IN            8019      prv  lbl 
-D2_OUT           8017      prv  lbl 
-LED_PORT         4000      prv  lbl 
-START            8003      prv  lbl 
+led1.D1_IN       800C      prv  lbl 
+led1.D1_OUT      800A      prv  lbl 
+led1.D2_IN       8019      prv  lbl 
+led1.D2_OUT      8017      prv  lbl 
+led1.LED_PORT    4000      prv  lbl 
+led1.START       8003      prv  lbl 
 
 Total memory is 33 bytes
 

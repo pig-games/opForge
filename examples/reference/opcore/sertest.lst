@@ -1,63 +1,65 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; 65C02 test program to bit-bang one character through a memory-mapped port.
-----                                2  ;
-----                                3  ; The byte is framed with a start bit and stop bits, shifted least-significant
-----                                4  ; bit first, delayed between writes, and sent repeatedly.
-----                                5  
-----                                6          .cpu 65c02
-----    EQU 0800                    7          .org $0800
-----                                8  
-----    EQU 4001                    9  SERIAL_PORT .const $4001
-----    EQU 0013                   10  BITTIME     .const $13
-----    EQU 000B                   11  OUTBITS     .const 11
-----    EQU 0020                   12  TXBYTE      .const $20
-----                               13  
-0800    A9 54                      14  START   lda #'T'
-0802    85 20                      15          sta TXBYTE
-0804    78                         16          sei
-0805    A2 0B                      17          ldx #OUTBITS
-0807    18                         18          clc                     ; Start bit
-----                               19  
-----                               20  SEND_BIT
-0808    A9 00                      21          lda #$00
-080A    6A                         22          ror a                   ; Carry becomes the output bit
-080B    8D 01 40                   23          sta SERIAL_PORT
-----                               24  
-080E    A0 13                      25          ldy #BITTIME
-----                               26  BIT_DELAY
-0810    88                         27          dey
-0811    D0 FD                      28          bne BIT_DELAY
-----                               29  
-0813    38                         30          sec                     ; Shift in stop bits behind the character
-0814    A5 20                      31          lda TXBYTE
-0816    6A                         32          ror a                   ; Next data bit moves into carry
-0817    85 20                      33          sta TXBYTE
-0819    CA                         34          dex
-081A    D0 EC                      35          bne SEND_BIT
-081C    58                         36          cli
-----                               37  
-081D    A2 FF                      38          ldx #$ff
-----                               39  CHAR_DELAY
-081F    CA                         40          dex
-0820    D0 FD                      41          bne CHAR_DELAY
-0822    80 DC                      42          bra START
+----                                1  .module sertest
+----                                2  ; 65C02 test program to bit-bang one character through a memory-mapped port.
+----                                3  ;
+----                                4  ; The byte is framed with a start bit and stop bits, shifted least-significant
+----                                5  ; bit first, delayed between writes, and sent repeatedly.
+----                                6  
+----                                7          .cpu 65c02
+----    EQU 0800                    8          .org $0800
+----                                9  
+----    EQU 4001                   10  SERIAL_PORT .const $4001
+----    EQU 0013                   11  BITTIME     .const $13
+----    EQU 000B                   12  OUTBITS     .const 11
+----    EQU 0020                   13  TXBYTE      .const $20
+----                               14  
+0800    A9 54                      15  START   lda #'T'
+0802    85 20                      16          sta TXBYTE
+0804    78                         17          sei
+0805    A2 0B                      18          ldx #OUTBITS
+0807    18                         19          clc                     ; Start bit
+----                               20  
+----                               21  SEND_BIT
+0808    A9 00                      22          lda #$00
+080A    6A                         23          ror a                   ; Carry becomes the output bit
+080B    8D 01 40                   24          sta SERIAL_PORT
+----                               25  
+080E    A0 13                      26          ldy #BITTIME
+----                               27  BIT_DELAY
+0810    88                         28          dey
+0811    D0 FD                      29          bne BIT_DELAY
+----                               30  
+0813    38                         31          sec                     ; Shift in stop bits behind the character
+0814    A5 20                      32          lda TXBYTE
+0816    6A                         33          ror a                   ; Next data bit moves into carry
+0817    85 20                      34          sta TXBYTE
+0819    CA                         35          dex
+081A    D0 EC                      36          bne SEND_BIT
+081C    58                         37          cli
+----                               38  
+081D    A2 FF                      39          ldx #$ff
+----                               40  CHAR_DELAY
+081F    CA                         41          dex
+0820    D0 FD                      42          bne CHAR_DELAY
+0822    80 DC                      43          bra START
+----                               44  .endmodule
 
-Lines: 42  Errors: 0  Warnings: 0
+Lines: 44  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-BITTIME          0013      prv  lbl 
-BIT_DELAY        0810      prv  lbl 
-CHAR_DELAY       081F      prv  lbl 
-OUTBITS          000B      prv  lbl 
-SEND_BIT         0808      prv  lbl 
-SERIAL_PORT      4001      prv  lbl 
-START            0800      prv  lbl 
-TXBYTE           0020      prv  lbl 
+sertest.BITTIME  0013      prv  lbl 
+sertest.BIT_DELAY  0810      prv  lbl 
+sertest.CHAR_DELAY  081F      prv  lbl 
+sertest.OUTBITS  000B      prv  lbl 
+sertest.SEND_BIT  0808      prv  lbl 
+sertest.SERIAL_PORT  4001      prv  lbl 
+sertest.START    0800      prv  lbl 
+sertest.TXBYTE   0020      prv  lbl 
 
 Total memory is 36 bytes
 

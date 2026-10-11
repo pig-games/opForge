@@ -1,12 +1,12 @@
-opForge Assembler v0.9.5
+opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  .module util
-----                                2      .pub
-----    EQU 002A                    3  VALUE .const 42
-----                                4  .endmodule
-----                                5  ; Root-folder example with a single root module.
-----                                6  
+----                                1  ; Root-folder example with a single root module.
+----                                2  
+----                                3  .module util
+----                                4      .pub
+----    EQU 002A                    5  VALUE .const 42
+----                                6  .endmodule
 ----                                7  .module main
 ----                                8      .use util
 ----    EQU 0000                    9      .org 0000h

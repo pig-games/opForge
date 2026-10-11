@@ -1,344 +1,346 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; The assembler runs two passes over the source file.  The first pass builds
-----                                2  ; the symbol table and the second emits the hex file and list file.
-----                                3  ;
-----                                4  ; Note that the assembler is case-insensitive for instructions, directives,
-----                                5  ; register names, and labels.  The labels "label2" and "LABEL2" are the same,
-----                                6  ; and an error would be thrown if both were defined.
-----                                7          .cpu 65c02
-----                                8   
-----                                9  ; The .org directive sets the current address for assembly.  A file can
-----                               10  ; contain more than one .org.  The assembler does not detect overlapping
-----                               11  ; .org directives and will silently overwrite output in that case.
-----    EQU 2000                   12          .org     RAMST + 02000h
-----                               13  
+----                                1  .module syntax
+----                                2  ; The assembler runs two passes over the source file.  The first pass builds
+----                                3  ; the symbol table and the second emits the hex file and list file.
+----                                4  ;
+----                                5  ; Note that the assembler is case-insensitive for instructions, directives,
+----                                6  ; register names, and labels.  The labels "label2" and "LABEL2" are the same,
+----                                7  ; and an error would be thrown if both were defined.
+----                                8          .cpu 65c02
+----                                9   
+----                               10  ; The .org directive sets the current address for assembly.  A file can
+----                               11  ; contain more than one .org.  The assembler does not detect overlapping
+----                               12  ; .org directives and will silently overwrite output in that case.
+----    EQU 2000                   13          .org     RAMST + 02000h
 ----                               14  
-----                               15  ; Column one must contain whitespace or a label or a comment start.
-----                               16  ; Labels can be up to 32 characters and must start with an alpha.  
-----                               17  ; Numbers and the underscore character are permitted in a label.
-----                               18  ; Labels can end with a colon, but the colon is optional.
-2000    7B                         19  LABEL1 .byte      123             ; labels can be on the same line as code
-----                               20  LABEL2
-2001    68                         21          pla                     ; or the label can be before the code
-2002    48                         22  NOSPACE pha                     ; a space is not required after a label
-----                               23  VeryVeryVeryLongLabel
-2003    4C 61 62 65 6C 73 20 63 61 6E 20 62 65 20 75 70 20 74 6F 20 33 32 20 63 68 61 72 61 63 74 65 72 73 20 26 26 20 6D 75 73 74 20 73 74 61 72 74 20 77 69 74 68 20 61 6E 20 61 6C 70 68 61 2E    24      .byte  "Labels can be up to 32 characters && must start with an alpha."
-----                               25  
-----                               26  ; Expression operators are symbolic, so names like HIGH, LOW, AND, or OR can be
-----                               27  ; used as labels if desired.
-----                               28  
-----                               29  ; The .const directive is used to define a constant value.  It does not emit
-----                               30  ; any code.  The label colon is optional for .const, and the label must be
-----                               31  ; followed by whitespace.
-----    EQU 0000                   32  RAMST   .const     00000h          
-----    EQU C000                   33  ROMST   .const     0c000h         
-----                               34  
-----                               35  ; Constants can be decimal, binary, hex, or octal.  Binary is indicated with a
-----                               36  ; trailing 'b' hex with a trailing 'h', and octal with a trailing 'o' or 'q'
-----                               37  ; character.  Decimal constants can have a trailing 'd' character, but it is
-----                               38  ; not required.  All constants must start with a numeric character, so hex 
-----                               39  ; values starting with A-F must have a leading zero.
-----    EQU 0037                   40  num0    .const     55              ; Decimal constant
-----    EQU 0037                   41  num1    .const     55D             ; Decimal constant with optional suffix
-----    EQU 00A6                   42  num3    .const     0a6h            ; Hex with leading zero
-----    EQU 1AB4                   43  num4    .const     1AB4H           ; Hex without leading zero
-----    EQU 0065                   44  num5    .const     01100101b       ; Binary
-----    EQU 02EF                   45  num6    .const     1357o           ; Octal with trailing 'o'
-----    EQU 0209                   46  num7    .const     1011Q           ; Octal with trailing 'q'
-----                               47  
-----                               48  ; The .byte directive places one or more bytes of data in the output.
-2041    05                         49  d1     .byte      5               ; single byte
-2042    12 34 56 78                50  d2     .byte      12h,34h,56h,78h ; multiple bytes
-2046    05 2A 0B                   51  d3     .byte      5, 02Ah, 1011B  ; Mixed decimal, hex, and binary
-----                               52  
-----                               53  ; The .byte directive can also be used with strings.  Each octet in the string
-----                               54  ; generates one octet of output.  Strings and numeric constants can be mixed
-----                               55  ; in a single directive.
-2049    54                         56  str1   .byte      'T'             ; Single character constant
-204A    57 65 6C 63 6F 6D 65       57  str2   .byte      "Welcome"       ; String constant
-2051    72 65 64 67 72 65 65 6E    58  str3   .byte      "red","green"   ; Multiple strings
-2059    03 72 65 64 04 62 6C 75 65    59  str4   .byte      3,"red",4,"blue"; Mixed strings and numerics
-----                               60  
-----                               61  ; Note that a single character string can also be used anywhere a numeric
-----                               62  ; would be allowed.  It evaluates to the ASCII value of the single character.
-2062    A9 41                      63          lda #65                 ; Move the letter 'A' into the accumulator.
-2064    A9 41                      64          lda #041H               ; Move the letter 'A' into the accumulator.
-2066    A9 41                      65          lda #'A'                ; Move the letter 'A' into the accumulator.
-----                               66  
-----                               67  ; A two character string can also be used anywhere a numeric would be allowed.
-----                               68  ; It evaluates to the 16-bit value of ASCII value of the two characters, where
-----                               69  ; the MSB is the first char and the LSB is the second.
-2068    42 41                      70          .word 04142H            ; All of these evaluate to 4142H
-206A    41 42                      71          .word 'AB'              ; All of these evaluate to 4142H
-206C    41 42                      72          .word "AB"              ; All of these evaluate to 4142H
-206E    42 41                      73          .word 'A'*256 | 'B'     ; All of these evaluate to 4142H
-----                               74  
+----                               15  
+----                               16  ; Column one must contain whitespace or a label or a comment start.
+----                               17  ; Labels can be up to 32 characters and must start with an alpha.  
+----                               18  ; Numbers and the underscore character are permitted in a label.
+----                               19  ; Labels can end with a colon, but the colon is optional.
+2000    7B                         20  LABEL1 .byte      123             ; labels can be on the same line as code
+----                               21  LABEL2
+2001    68                         22          pla                     ; or the label can be before the code
+2002    48                         23  NOSPACE pha                     ; a space is not required after a label
+----                               24  VeryVeryVeryLongLabel
+2003    4C 61 62 65 6C 73 20 63 61 6E 20 62 65 20 75 70 20 74 6F 20 33 32 20 63 68 61 72 61 63 74 65 72 73 20 26 26 20 6D 75 73 74 20 73 74 61 72 74 20 77 69 74 68 20 61 6E 20 61 6C 70 68 61 2E    25      .byte  "Labels can be up to 32 characters && must start with an alpha."
+----                               26  
+----                               27  ; Expression operators are symbolic, so names like HIGH, LOW, AND, or OR can be
+----                               28  ; used as labels if desired.
+----                               29  
+----                               30  ; The .const directive is used to define a constant value.  It does not emit
+----                               31  ; any code.  The label colon is optional for .const, and the label must be
+----                               32  ; followed by whitespace.
+----    EQU 0000                   33  RAMST   .const     00000h          
+----    EQU C000                   34  ROMST   .const     0c000h         
+----                               35  
+----                               36  ; Constants can be decimal, binary, hex, or octal.  Binary is indicated with a
+----                               37  ; trailing 'b' hex with a trailing 'h', and octal with a trailing 'o' or 'q'
+----                               38  ; character.  Decimal constants can have a trailing 'd' character, but it is
+----                               39  ; not required.  All constants must start with a numeric character, so hex 
+----                               40  ; values starting with A-F must have a leading zero.
+----    EQU 0037                   41  num0    .const     55              ; Decimal constant
+----    EQU 0037                   42  num1    .const     55D             ; Decimal constant with optional suffix
+----    EQU 00A6                   43  num3    .const     0a6h            ; Hex with leading zero
+----    EQU 1AB4                   44  num4    .const     1AB4H           ; Hex without leading zero
+----    EQU 0065                   45  num5    .const     01100101b       ; Binary
+----    EQU 02EF                   46  num6    .const     1357o           ; Octal with trailing 'o'
+----    EQU 0209                   47  num7    .const     1011Q           ; Octal with trailing 'q'
+----                               48  
+----                               49  ; The .byte directive places one or more bytes of data in the output.
+2041    05                         50  d1     .byte      5               ; single byte
+2042    12 34 56 78                51  d2     .byte      12h,34h,56h,78h ; multiple bytes
+2046    05 2A 0B                   52  d3     .byte      5, 02Ah, 1011B  ; Mixed decimal, hex, and binary
+----                               53  
+----                               54  ; The .byte directive can also be used with strings.  Each octet in the string
+----                               55  ; generates one octet of output.  Strings and numeric constants can be mixed
+----                               56  ; in a single directive.
+2049    54                         57  str1   .byte      'T'             ; Single character constant
+204A    57 65 6C 63 6F 6D 65       58  str2   .byte      "Welcome"       ; String constant
+2051    72 65 64 67 72 65 65 6E    59  str3   .byte      "red","green"   ; Multiple strings
+2059    03 72 65 64 04 62 6C 75 65    60  str4   .byte      3,"red",4,"blue"; Mixed strings and numerics
+----                               61  
+----                               62  ; Note that a single character string can also be used anywhere a numeric
+----                               63  ; would be allowed.  It evaluates to the ASCII value of the single character.
+2062    A9 41                      64          lda #65                 ; Move the letter 'A' into the accumulator.
+2064    A9 41                      65          lda #041H               ; Move the letter 'A' into the accumulator.
+2066    A9 41                      66          lda #'A'                ; Move the letter 'A' into the accumulator.
+----                               67  
+----                               68  ; A two character string can also be used anywhere a numeric would be allowed.
+----                               69  ; It evaluates to the 16-bit value of ASCII value of the two characters, where
+----                               70  ; the MSB is the first char and the LSB is the second.
+2068    42 41                      71          .word 04142H            ; All of these evaluate to 4142H
+206A    41 42                      72          .word 'AB'              ; All of these evaluate to 4142H
+206C    41 42                      73          .word "AB"              ; All of these evaluate to 4142H
+206E    42 41                      74          .word 'A'*256 | 'B'     ; All of these evaluate to 4142H
 ----                               75  
-----                               76  ; Some common C-style string escapes are supported: CR, LF, tab, NULL, and
-----                               77  ; hex value.  Hex escapes can use upper or lower case and must be 2 digits.
-2070    0D 0A 09 2A 2B 00          78      .byte  "\r\n\t\x2a\x2B\0"
-----                               79  
-----                               80  ; The backslash can also be used to escape quotes or the backslash character
-----                               81  ; itself.  Embedded quotes can also be handled by placing double quotes
-----                               82  ; inside single quotes or single quotes inside double quotes.
-2076    5C                         83      .byte  '\\'                    ; Backslash character.
-2077    27                         84      .byte  '\''                    ; Single quote character.
-2078    27                         85      .byte  "'"                     ; Same string using double quotes.
-2079    41 20 22 71 75 6F 74 65 64 22 20 73 74 72 69 6E 67    86      .byte  "A \"quoted\" string"   ; Quotes within quotes.
-208A    41 20 22 71 75 6F 74 65 64 22 20 73 74 72 69 6E 67    87      .byte  'A "quoted" string'     ; Same string using single quotes.
-209B    54 68 69 73 20 69 73 6E 27 74 20 62 61 64    88      .byte  "This isn't bad"        ; Single quote in double quotes.
-----                               89      
-----                               90  ; The following .byte directives are all equivalent  
-----    EQU 000D                   91  CR  .const 13
-----    EQU 000A                   92  LF  .const '\n'
-20A9    41 42 43 31 32 33 0D 0A    93      .byte  "ABC123\r\n"
-20B1    41 42 43 31 32 33 0D 0A    94      .byte  "ABC123",CR,LF
-20B9    41 42 43 31 32 33 0D 0A    95      .byte  "ABC123",13,10
-20C1    41 42 43 31 32 33 0D 0A    96      .byte  'A','B','C','1','2','3','\r','\n'
-20C9    41 42 43 31 32 33 0D 0A    97      .byte  "ABC",31h,32h,"3",'\r',LF
-----                               98  
-----                               99  ; The .word directive stores one or more 16 bit values.
-20D1    03 02                     100  words1 .word      0203h           ; One word value in hex
-20D3    B4 1A                     101  words2 .word      num4            ; One word value in decimal
-20D5    55 AA                     102  words3 .word      1010101001010101B ; One word value in binary
-20D7    02 00 03 00               103  words4 .word      02h, 03h        ; Two word values
-20DB    02 00 03 00 FF 04         104  words5 .word      02h, 03, 04ffh  ; Three word values
-----                              105  
-----                              106  ; Note that .word stores the two octet values in 6502 little-endian order, so
-----                              107  ; the following two declarations are equivalent:
-20E1    34 12                     108          .word      01234h
-20E3    34 12                     109          .byte      034h, 012h
-----                              110  
-----                              111  ; The .ds directive reserves space, but does not generate any output.  It
-----                              112  ; simply advances the target address for the next code or data.
-----    EQU 0020                  113  StrSize .const     32
-20E5    +0080                     114  buffer .ds  StrSize * 4     ; Reserve space for 4 strings
-----                              115  
-----                              116  ; Expressions can be used in place of any numeric constant.
-2165    00 0C                     117  t      .word      1024 * 3
-2167    82 00                     118          .word 32 * 4 + 2
-2169    5E 20                     119          .word str4 + 5
-216B    05 21                     120          .word buffer + StrSize
-216D    39                        121          .byte      7+7*7+7/(7+7-7)
-216E    A9 61                     122          lda #'A' | 020H
-2170    A9 41                     123          lda #'a' & 11011111b
-----                              124  
-----                              125  ; Operators and precedence (highest to lowest):
-----                              126  ;   unary: + - ~ ! < >
-----                              127  ;   power: **
-----                              128  ;   * / %
-----                              129  ;   + -
-----                              130  ;   shifts: << >>
-----                              131  ;   comparisons: == != <> < <= > >= (also =)
-----                              132  ;   bitwise: & ^ |
-----                              133  ;   logical: && ^^ ||
-----                              134  ;   ternary: ?:
-----                              135  PREC
-2172    0F 00                     136          .word      (8+7)           ; Parenthesis have highest precedence
-2174    FF FF                     137          .word      -1              ; unary plus/minus
-2176    02                        138          .byte      >512            ; high byte
-2177    00                        139          .byte      <512            ; low byte
-2178    08 00                     140          .word      2 ** 3          ; power
-217A    02 00                     141          .word      100 / 10 % 4    ; multiply/divide/mod
-217C    09 00                     142          .word      2 + 8 - 1       ; add/subtract
-217E    01 00                     143          .word      2 <= 3          ; comparisons
-2180    03 00                     144          .word      23H & 0FH       ; bitwise AND
-2182    F3 00                     145          .word      23H | 0FH ^ 0FFH; bitwise OR/XOR
-2184    01 00                     146          .word      !0              ; logical NOT
-2186    00 00                     147          .word      1 && 0          ; logical AND
-2188    01 00                     148          .word      1 ^^ 0          ; logical XOR
-218A    02 00                     149          .word      1 ? 2 : 3       ; ternary
-----                              150  
-----                              151  ; Logical operators treat any non-zero value as TRUE and return 1 (true) or 0 (false).
-218C    01                        152          .byte      !0              ; TRUE
-218D    00                        153          .byte      !1              ; FALSE
-218E    01                        154          .byte      2 && 3          ; TRUE
-218F    01                        155          .byte      0 || 4          ; TRUE
-2190    00                        156          .byte      2 ^^ 3          ; FALSE
-----                              157  
-----                              158  ; Address
-----                              159  ; The $ symbol is used in an expression to represent the current address.
-----                              160  ; This is useful for calculating the size of objects
-2191    48 65 6C 6C 6F 2C 20 77 6F 72 6C 64   161  hello  .byte  "Hello, world"
-----    EQU 000C                  162  strLen  .const     $ - hello       ; Length of the string
-----                              163  
-----                              164  jump_tab                       ; Jump table.  Each entry is 3 octets.
-219D    61                        165          .byte      'a'             ; ADD command
-219E    00 01                     166          .word      0100h           ; Handler address
-21A0    65                        167          .byte      'e'             ; EXAMINE command
-21A1    42 01                     168          .word      0142h
-21A3    70                        169          .byte      'p'             ; PRINT command
-21A4    20 02                     170          .word      0220h
-21A6    73                        171          .byte      's'             ; STEP command
-21A7    34 03                     172          .word      0334h
-21A9    78                        173          .byte      'x'             ; EXIT command
-21AA    34 04                     174          .word      0434h
-----    EQU 0005                  175  entries .const     ($-jump_tab) / 3 ; Number of entries in the table
-----                              176  
+----                               76  
+----                               77  ; Some common C-style string escapes are supported: CR, LF, tab, NULL, and
+----                               78  ; hex value.  Hex escapes can use upper or lower case and must be 2 digits.
+2070    0D 0A 09 2A 2B 00          79      .byte  "\r\n\t\x2a\x2B\0"
+----                               80  
+----                               81  ; The backslash can also be used to escape quotes or the backslash character
+----                               82  ; itself.  Embedded quotes can also be handled by placing double quotes
+----                               83  ; inside single quotes or single quotes inside double quotes.
+2076    5C                         84      .byte  '\\'                    ; Backslash character.
+2077    27                         85      .byte  '\''                    ; Single quote character.
+2078    27                         86      .byte  "'"                     ; Same string using double quotes.
+2079    41 20 22 71 75 6F 74 65 64 22 20 73 74 72 69 6E 67    87      .byte  "A \"quoted\" string"   ; Quotes within quotes.
+208A    41 20 22 71 75 6F 74 65 64 22 20 73 74 72 69 6E 67    88      .byte  'A "quoted" string'     ; Same string using single quotes.
+209B    54 68 69 73 20 69 73 6E 27 74 20 62 61 64    89      .byte  "This isn't bad"        ; Single quote in double quotes.
+----                               90      
+----                               91  ; The following .byte directives are all equivalent  
+----    EQU 000D                   92  CR  .const 13
+----    EQU 000A                   93  LF  .const '\n'
+20A9    41 42 43 31 32 33 0D 0A    94      .byte  "ABC123\r\n"
+20B1    41 42 43 31 32 33 0D 0A    95      .byte  "ABC123",CR,LF
+20B9    41 42 43 31 32 33 0D 0A    96      .byte  "ABC123",13,10
+20C1    41 42 43 31 32 33 0D 0A    97      .byte  'A','B','C','1','2','3','\r','\n'
+20C9    41 42 43 31 32 33 0D 0A    98      .byte  "ABC",31h,32h,"3",'\r',LF
+----                               99  
+----                              100  ; The .word directive stores one or more 16 bit values.
+20D1    03 02                     101  words1 .word      0203h           ; One word value in hex
+20D3    B4 1A                     102  words2 .word      num4            ; One word value in decimal
+20D5    55 AA                     103  words3 .word      1010101001010101B ; One word value in binary
+20D7    02 00 03 00               104  words4 .word      02h, 03h        ; Two word values
+20DB    02 00 03 00 FF 04         105  words5 .word      02h, 03, 04ffh  ; Three word values
+----                              106  
+----                              107  ; Note that .word stores the two octet values in 6502 little-endian order, so
+----                              108  ; the following two declarations are equivalent:
+20E1    34 12                     109          .word      01234h
+20E3    34 12                     110          .byte      034h, 012h
+----                              111  
+----                              112  ; The .ds directive reserves space, but does not generate any output.  It
+----                              113  ; simply advances the target address for the next code or data.
+----    EQU 0020                  114  StrSize .const     32
+20E5    +0080                     115  buffer .ds  StrSize * 4     ; Reserve space for 4 strings
+----                              116  
+----                              117  ; Expressions can be used in place of any numeric constant.
+2165    00 0C                     118  t      .word      1024 * 3
+2167    82 00                     119          .word 32 * 4 + 2
+2169    5E 20                     120          .word str4 + 5
+216B    05 21                     121          .word buffer + StrSize
+216D    39                        122          .byte      7+7*7+7/(7+7-7)
+216E    A9 61                     123          lda #'A' | 020H
+2170    A9 41                     124          lda #'a' & 11011111b
+----                              125  
+----                              126  ; Operators and precedence (highest to lowest):
+----                              127  ;   unary: + - ~ ! < >
+----                              128  ;   power: **
+----                              129  ;   * / %
+----                              130  ;   + -
+----                              131  ;   shifts: << >>
+----                              132  ;   comparisons: == != <> < <= > >= (also =)
+----                              133  ;   bitwise: & ^ |
+----                              134  ;   logical: && ^^ ||
+----                              135  ;   ternary: ?:
+----                              136  PREC
+2172    0F 00                     137          .word      (8+7)           ; Parenthesis have highest precedence
+2174    FF FF                     138          .word      -1              ; unary plus/minus
+2176    02                        139          .byte      >512            ; high byte
+2177    00                        140          .byte      <512            ; low byte
+2178    08 00                     141          .word      2 ** 3          ; power
+217A    02 00                     142          .word      100 / 10 % 4    ; multiply/divide/mod
+217C    09 00                     143          .word      2 + 8 - 1       ; add/subtract
+217E    01 00                     144          .word      2 <= 3          ; comparisons
+2180    03 00                     145          .word      23H & 0FH       ; bitwise AND
+2182    F3 00                     146          .word      23H | 0FH ^ 0FFH; bitwise OR/XOR
+2184    01 00                     147          .word      !0              ; logical NOT
+2186    00 00                     148          .word      1 && 0          ; logical AND
+2188    01 00                     149          .word      1 ^^ 0          ; logical XOR
+218A    02 00                     150          .word      1 ? 2 : 3       ; ternary
+----                              151  
+----                              152  ; Logical operators treat any non-zero value as TRUE and return 1 (true) or 0 (false).
+218C    01                        153          .byte      !0              ; TRUE
+218D    00                        154          .byte      !1              ; FALSE
+218E    01                        155          .byte      2 && 3          ; TRUE
+218F    01                        156          .byte      0 || 4          ; TRUE
+2190    00                        157          .byte      2 ^^ 3          ; FALSE
+----                              158  
+----                              159  ; Address
+----                              160  ; The $ symbol is used in an expression to represent the current address.
+----                              161  ; This is useful for calculating the size of objects
+2191    48 65 6C 6C 6F 2C 20 77 6F 72 6C 64   162  hello  .byte  "Hello, world"
+----    EQU 000C                  163  strLen  .const     $ - hello       ; Length of the string
+----                              164  
+----                              165  jump_tab                       ; Jump table.  Each entry is 3 octets.
+219D    61                        166          .byte      'a'             ; ADD command
+219E    00 01                     167          .word      0100h           ; Handler address
+21A0    65                        168          .byte      'e'             ; EXAMINE command
+21A1    42 01                     169          .word      0142h
+21A3    70                        170          .byte      'p'             ; PRINT command
+21A4    20 02                     171          .word      0220h
+21A6    73                        172          .byte      's'             ; STEP command
+21A7    34 03                     173          .word      0334h
+21A9    78                        174          .byte      'x'             ; EXIT command
+21AA    34 04                     175          .word      0434h
+----    EQU 0005                  176  entries .const     ($-jump_tab) / 3 ; Number of entries in the table
 ----                              177  
-----                              178  ; It is legal, though probably not wise, to have a label with the same name
-----                              179  ; as a register.  This looks confusing, but it will work.  All of the examples
-----                              180  ; below emit the address of the word at label "SP". None of these have any
-----                              181  ; relation to the 65C02 stack pointer.
-21AC    00 01                     182  SP     .word      256             ; define a word at location named SP
-21AE    AC 21                     183          .word SP                ; store address of "SP" word
-21B0    AC 21                     184          .word SP+0
-21B2    AC 21                     185          .word 0+SP
-----                              186  
+----                              178  
+----                              179  ; It is legal, though probably not wise, to have a label with the same name
+----                              180  ; as a register.  This looks confusing, but it will work.  All of the examples
+----                              181  ; below emit the address of the word at label "SP". None of these have any
+----                              182  ; relation to the 65C02 stack pointer.
+21AC    00 01                     183  SP     .word      256             ; define a word at location named SP
+21AE    AC 21                     184          .word SP                ; store address of "SP" word
+21B0    AC 21                     185          .word SP+0
+21B2    AC 21                     186          .word 0+SP
 ----                              187  
-----                              188  ; Conditional directives
-----    EQU 0001                  189  YES         .const 1
-----    EQU FFFF                  190  TRUE        .const 0ffffh
-----    EQU 0000                  191  NO          .const 0
-----    EQU 0000                  192  FALSE       .const 0
-----                              193  
-----                              194  ; simple .if/.else conditional
-----                              195          .if TRUE                        ; match - all code in this block is included
-----    EQU 4000                  196                  .org 4000h               ; all labels, directives, and code included
-----    EQU 1234                  197  EX1AVAR         .const 1234h
-4000    34 12                     198  EX1ADATA       .word  EX1AVAR
-4002    AA                        199  EX1A           tax
-----                              200  
-----                              201          .else                           ; skip - no code in this block is included
-----                              202                  .org 8000h               ; all labels, directives, and code skipped
-----                              203  EX1BVAR         .const 5678h
-----                              204  EX1BDATA       .word  EX1VAR
-----                              205  EX1B           tax
-----                              206          .endif                          ; END conditional block
-----                              207  
+----                              188  
+----                              189  ; Conditional directives
+----    EQU 0001                  190  YES         .const 1
+----    EQU FFFF                  191  TRUE        .const 0ffffh
+----    EQU 0000                  192  NO          .const 0
+----    EQU 0000                  193  FALSE       .const 0
+----                              194  
+----                              195  ; simple .if/.else conditional
+----                              196          .if TRUE                        ; match - all code in this block is included
+----    EQU 4000                  197                  .org 4000h               ; all labels, directives, and code included
+----    EQU 1234                  198  EX1AVAR         .const 1234h
+4000    34 12                     199  EX1ADATA       .word  EX1AVAR
+4002    AA                        200  EX1A           tax
+----                              201  
+----                              202          .else                           ; skip - no code in this block is included
+----                              203                  .org 8000h               ; all labels, directives, and code skipped
+----                              204  EX1BVAR         .const 5678h
+----                              205  EX1BDATA       .word  EX1VAR
+----                              206  EX1B           tax
+----                              207          .endif                          ; END conditional block
 ----                              208  
-----                              209  ; .if/.elseif/.else
-----    EQU 1000                  210                  .org 1000h
-----                              211          .if YES == NO                   ; skip FALSE
-----                              212                  tax
-----                              213          .elseif !TRUE                   ; skip FALSE
-----                              214                  tax
-----                              215          .elseif !FALSE                  ; match TRUE
-1000    AA                        216                  tax
-----                              217          .elseif TRUE                    ; skip - already matched a previous block
-----                              218                  tax
-----                              219          .else                           ; skip - already matched a previous block
-----                              220                  tax
-----                              221          .endif
-----                              222  
+----                              209  
+----                              210  ; .if/.elseif/.else
+----    EQU 1000                  211                  .org 1000h
+----                              212          .if YES == NO                   ; skip FALSE
+----                              213                  tax
+----                              214          .elseif !TRUE                   ; skip FALSE
+----                              215                  tax
+----                              216          .elseif !FALSE                  ; match TRUE
+1000    AA                        217                  tax
+----                              218          .elseif TRUE                    ; skip - already matched a previous block
+----                              219                  tax
+----                              220          .else                           ; skip - already matched a previous block
+----                              221                  tax
+----                              222          .endif
 ----                              223  
-----                              224  ; TRUE/FALSE values in conditionals
-----                              225  ; Any non-zero value is TRUE, zero is FALSE.
-----                              226          .if 0                           ; FALSE
-----                              227                  adc #11h
-----                              228          .elseif 4                       ; TRUE
-1001    69 22                     229                  adc #22h
-----                              230          .elseif 4-4                     ; skipped (previous branch matched)
-----                              231                  adc #33h
-----                              232          .endif
-----                              233  
+----                              224  
+----                              225  ; TRUE/FALSE values in conditionals
+----                              226  ; Any non-zero value is TRUE, zero is FALSE.
+----                              227          .if 0                           ; FALSE
+----                              228                  adc #11h
+----                              229          .elseif 4                       ; TRUE
+1001    69 22                     230                  adc #22h
+----                              231          .elseif 4-4                     ; skipped (previous branch matched)
+----                              232                  adc #33h
+----                              233          .endif
 ----                              234  
-----                              235  ; nested conditionals
-----    EQU F000                  236                  .org 0f000h
-----                              237          .if FALSE                       ; level 1 - skip
-----                              238            .if 0 != 1                    ; level 2 - skip
-----                              239  LABEL1         ora #03h                ; label and code skipped
-----                              240                  jmp 45
-----                              241            .elseif FALSE                 ; level 2 - skip
-----                              242  LABEL1         ora #30h                ; label and code included
-----                              243                  jmp 67
-----                              244            .else                         ; level 2 - skip
-----                              245                  jmp 12
-----                              246            .endif                        ; end level 2
-----                              247  
-----                              248          .elseif YES                     ; level 1 - match
-F000    4C B3 15                  249                  jmp 5555
-----                              250            .if !FALSE                    ; level 2 - match
-F003    4C 0A 1A                  251                  jmp 6666
-----                              252              .if 0                       ; level 3 - skip
-----                              253                  jmp 2222
-----                              254              .else                       ; level 3 match
-F006    AA                        255                  tax
-F007    4C 05 0D                  256                  jmp 3333
-----                              257              .endif                      ; end level 3
-F00A    A9 11                     258                  lda #11h                ; included in level 2 match
-F00C    A9 22                     259                  lda #22h                ; included in level 2 match
-----                              260  
-----                              261            .else                         ; level 2 - skip
-----                              262                  jmp 4444
-----                              263            .endif                        ; end level 2
-F00E    A9 66                     264                  lda #66h                ; included in level 1 match
-F010    A9 77                     265                  lda #77h
-----                              266          .else                           ; level 1 - skip
-----                              267                  lda #66h
-----                              268                  lda #77h
-----                              269                  jmp 12                  ; skipped from level 1 .else
-----                              270          .endif                          ; end level 1
-----                              271  
+----                              235  
+----                              236  ; nested conditionals
+----    EQU F000                  237                  .org 0f000h
+----                              238          .if FALSE                       ; level 1 - skip
+----                              239            .if 0 != 1                    ; level 2 - skip
+----                              240  LABEL1         ora #03h                ; label and code skipped
+----                              241                  jmp 45
+----                              242            .elseif FALSE                 ; level 2 - skip
+----                              243  LABEL1         ora #30h                ; label and code included
+----                              244                  jmp 67
+----                              245            .else                         ; level 2 - skip
+----                              246                  jmp 12
+----                              247            .endif                        ; end level 2
+----                              248  
+----                              249          .elseif YES                     ; level 1 - match
+F000    4C B3 15                  250                  jmp 5555
+----                              251            .if !FALSE                    ; level 2 - match
+F003    4C 0A 1A                  252                  jmp 6666
+----                              253              .if 0                       ; level 3 - skip
+----                              254                  jmp 2222
+----                              255              .else                       ; level 3 match
+F006    AA                        256                  tax
+F007    4C 05 0D                  257                  jmp 3333
+----                              258              .endif                      ; end level 3
+F00A    A9 11                     259                  lda #11h                ; included in level 2 match
+F00C    A9 22                     260                  lda #22h                ; included in level 2 match
+----                              261  
+----                              262            .else                         ; level 2 - skip
+----                              263                  jmp 4444
+----                              264            .endif                        ; end level 2
+F00E    A9 66                     265                  lda #66h                ; included in level 1 match
+F010    A9 77                     266                  lda #77h
+----                              267          .else                           ; level 1 - skip
+----                              268                  lda #66h
+----                              269                  lda #77h
+----                              270                  jmp 12                  ; skipped from level 1 .else
+----                              271          .endif                          ; end level 1
 ----                              272  
-----                              273  ; Labels and conditionals
-----                              274  ; Any of the conditional directives (.if/.elseif/.else/.endif) can have a label.
-----                              275  ; This label will be included in the symbol table as long as the directive is
-----                              276  ; processed.  It does not matter if the directive evaluates to TRUE.
-----                              277  ; A label will not be included in the symbol table if the directive is nested
-----                              278  ; within another .if block that is false because the nested directive is not
-----                              279  ; evaluated in that case.
-----                              280  IFLAB  .if TRUE                        ; label included
-F012    4C 0A 1A                  281                  jmp 6666
-----                              282  ELSELAB .else                           ; label included
-----                              283                  tax
-----                              284  NOLAB1         jmp 3333                ; labels ignored because they are nested in
-----                              285  NOLAB2   .if YES                       ; the .else above that did not match
-----                              286  NOLAB3         jmp 1111
-----                              287  NOLAB4   .endif
-----                              288  ENDLAB .endif                          ; label included
+----                              273  
+----                              274  ; Labels and conditionals
+----                              275  ; Any of the conditional directives (.if/.elseif/.else/.endif) can have a label.
+----                              276  ; This label will be included in the symbol table as long as the directive is
+----                              277  ; processed.  It does not matter if the directive evaluates to TRUE.
+----                              278  ; A label will not be included in the symbol table if the directive is nested
+----                              279  ; within another .if block that is false because the nested directive is not
+----                              280  ; evaluated in that case.
+----                              281  IFLAB  .if TRUE                        ; label included
+F012    4C 0A 1A                  282                  jmp 6666
+----                              283  ELSELAB .else                           ; label included
+----                              284                  tax
+----                              285  NOLAB1         jmp 3333                ; labels ignored because they are nested in
+----                              286  NOLAB2   .if YES                       ; the .else above that did not match
+----                              287  NOLAB3         jmp 1111
+----                              288  NOLAB4   .endif
+----                              289  ENDLAB .endif                          ; label included
+----                              290  .endmodule
 
-Lines: 288  Errors: 0  Warnings: 0
+Lines: 290  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-buffer           20E5      prv  lbl 
-CR               000D      prv  lbl 
-d1               2041      prv  lbl 
-d2               2042      prv  lbl 
-d3               2046      prv  lbl 
-entries          0005      prv  lbl 
-EX1A             4002      prv  lbl 
-EX1ADATA         4000      prv  lbl 
-EX1AVAR          1234      prv  lbl 
-FALSE            0000      prv  lbl 
-hello            2191      prv  lbl 
-jump_tab         219D      prv  lbl 
-LABEL1           2000      prv  lbl 
-LABEL2           2001      prv  lbl 
-LF               000A      prv  lbl 
-NO               0000      prv  lbl 
-NOSPACE          2002      prv  lbl 
-num0             0037      prv  lbl 
-num1             0037      prv  lbl 
-num3             00A6      prv  lbl 
-num4             1AB4      prv  lbl 
-num5             0065      prv  lbl 
-num6             02EF      prv  lbl 
-num7             0209      prv  lbl 
-PREC             2172      prv  lbl 
-RAMST            0000      prv  lbl 
-ROMST            C000      prv  lbl 
-SP               21AC      prv  lbl 
-str1             2049      prv  lbl 
-str2             204A      prv  lbl 
-str3             2051      prv  lbl 
-str4             2059      prv  lbl 
-strLen           000C      prv  lbl 
-StrSize          0020      prv  lbl 
-t                2165      prv  lbl 
-TRUE             FFFF      prv  lbl 
-VeryVeryVeryLongLabel  2003      prv  lbl 
-words1           20D1      prv  lbl 
-words2           20D3      prv  lbl 
-words3           20D5      prv  lbl 
-words4           20D7      prv  lbl 
-words5           20DB      prv  lbl 
-YES              0001      prv  lbl 
+syntax.buffer    20E5      prv  lbl 
+syntax.CR        000D      prv  lbl 
+syntax.d1        2041      prv  lbl 
+syntax.d2        2042      prv  lbl 
+syntax.d3        2046      prv  lbl 
+syntax.entries   0005      prv  lbl 
+syntax.EX1A      4002      prv  lbl 
+syntax.EX1ADATA  4000      prv  lbl 
+syntax.EX1AVAR   1234      prv  lbl 
+syntax.FALSE     0000      prv  lbl 
+syntax.hello     2191      prv  lbl 
+syntax.jump_tab  219D      prv  lbl 
+syntax.LABEL1    2000      prv  lbl 
+syntax.LABEL2    2001      prv  lbl 
+syntax.LF        000A      prv  lbl 
+syntax.NO        0000      prv  lbl 
+syntax.NOSPACE   2002      prv  lbl 
+syntax.num0      0037      prv  lbl 
+syntax.num1      0037      prv  lbl 
+syntax.num3      00A6      prv  lbl 
+syntax.num4      1AB4      prv  lbl 
+syntax.num5      0065      prv  lbl 
+syntax.num6      02EF      prv  lbl 
+syntax.num7      0209      prv  lbl 
+syntax.PREC      2172      prv  lbl 
+syntax.RAMST     0000      prv  lbl 
+syntax.ROMST     C000      prv  lbl 
+syntax.SP        21AC      prv  lbl 
+syntax.str1      2049      prv  lbl 
+syntax.str2      204A      prv  lbl 
+syntax.str3      2051      prv  lbl 
+syntax.str4      2059      prv  lbl 
+syntax.strLen    000C      prv  lbl 
+syntax.StrSize   0020      prv  lbl 
+syntax.t         2165      prv  lbl 
+syntax.TRUE      FFFF      prv  lbl 
+syntax.VeryVeryVeryLongLabel  2003      prv  lbl 
+syntax.words1    20D1      prv  lbl 
+syntax.words2    20D3      prv  lbl 
+syntax.words3    20D5      prv  lbl 
+syntax.words4    20D7      prv  lbl 
+syntax.words5    20DB      prv  lbl 
+syntax.YES       0001      prv  lbl 
 
 Total memory is 335 bytes
 

@@ -1,73 +1,75 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Conditional assembly (.if/.elseif/.else/.endif) coverage
-----    EQU 2000                    2          .org     2000h
-----                                3  
-----    EQU 0001                    4  TRUE    .const     1
-----    EQU 0000                    5  FALSE   .const     0
-----                                6  
-----                                7  ; simple if/else
-----                                8          .if TRUE
-2000    01                          9                  .byte 1
-----                               10          .else
-----                               11                  .byte 2
-----                               12          .endif
-----                               13  
-----                               14  ; elseif chain
-----                               15          .if 0
-----                               16                  .byte 3
-----                               17          .elseif 0
-----                               18                  .byte 4
-----                               19          .elseif 5
-2001    05                         20                  .byte 5
-----                               21          .else
-----                               22                  .byte 6
-----                               23          .endif
-----                               24  
-----                               25  ; nested conditionals
-----                               26          .if 1
-----                               27                  .if 0
-----                               28                          .byte 7
-----                               29                  .else
-2002    08                         30                          .byte 8
-----                               31                  .endif
-----                               32          .else
-----                               33                  .byte 9
-----                               34          .endif
-----                               35  
-----                               36  ; labels on conditionals
-----                               37  LABIF  .if TRUE
-2003    0A                         38                  .byte 10
-----                               39  LABELSE .else
-----                               40                  .byte 11
-----                               41  LABEND .endif
-----                               42  
-----                               43  ; match/case/default
-----                               44          .match 2
-----                               45          .case 1
-----                               46                  .byte 12
-----                               47          .case 2, 3
-2004    0D                         48                  .byte 13
-----                               49          .default
-----                               50                  .byte 14
-----                               51          .endmatch
-----                               52  
-----                               53          .match 9
-----                               54          .case 1, 2
-----                               55                  .byte 15
-----                               56          .default
-2005    10                         57                  .byte 16
-----                               58          .endmatch
+----                                1  .module cond_syntax
+----                                2  ; Conditional assembly (.if/.elseif/.else/.endif) coverage
+----    EQU 2000                    3          .org     2000h
+----                                4  
+----    EQU 0001                    5  TRUE    .const     1
+----    EQU 0000                    6  FALSE   .const     0
+----                                7  
+----                                8  ; simple if/else
+----                                9          .if TRUE
+2000    01                         10                  .byte 1
+----                               11          .else
+----                               12                  .byte 2
+----                               13          .endif
+----                               14  
+----                               15  ; elseif chain
+----                               16          .if 0
+----                               17                  .byte 3
+----                               18          .elseif 0
+----                               19                  .byte 4
+----                               20          .elseif 5
+2001    05                         21                  .byte 5
+----                               22          .else
+----                               23                  .byte 6
+----                               24          .endif
+----                               25  
+----                               26  ; nested conditionals
+----                               27          .if 1
+----                               28                  .if 0
+----                               29                          .byte 7
+----                               30                  .else
+2002    08                         31                          .byte 8
+----                               32                  .endif
+----                               33          .else
+----                               34                  .byte 9
+----                               35          .endif
+----                               36  
+----                               37  ; labels on conditionals
+----                               38  LABIF  .if TRUE
+2003    0A                         39                  .byte 10
+----                               40  LABELSE .else
+----                               41                  .byte 11
+----                               42  LABEND .endif
+----                               43  
+----                               44  ; match/case/default
+----                               45          .match 2
+----                               46          .case 1
+----                               47                  .byte 12
+----                               48          .case 2, 3
+2004    0D                         49                  .byte 13
+----                               50          .default
+----                               51                  .byte 14
+----                               52          .endmatch
+----                               53  
+----                               54          .match 9
+----                               55          .case 1, 2
+----                               56                  .byte 15
+----                               57          .default
+2005    10                         58                  .byte 16
+----                               59          .endmatch
+----                               60  .endmodule
 
-Lines: 58  Errors: 0  Warnings: 0
+Lines: 60  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-FALSE            0000      prv  lbl 
-TRUE             0001      prv  lbl 
+cond_syntax.FALSE  0000      prv  lbl 
+cond_syntax.TRUE  0001      prv  lbl 
 
 Total memory is 6 bytes
 

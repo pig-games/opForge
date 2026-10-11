@@ -1,14 +1,16 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; grouping.asm - Test generic grouping functionality
-----                                2  ; This ensures that (1+2) is evaluated as math, not indirect addressing
-----                                3      .cpu 65c02
-----    EQU 0100                    4      .org $100
-0100    A9 03                       5      lda #(1+2)
-0102    69 0A                       6      adc #(5*2)
+----                                1  .module grouping
+----                                2  ; grouping.asm - Test generic grouping functionality
+----                                3  ; This ensures that (1+2) is evaluated as math, not indirect addressing
+----                                4      .cpu 65c02
+----    EQU 0100                    5      .org $100
+0100    A9 03                       6      lda #(1+2)
+0102    69 0A                       7      adc #(5*2)
+----                                8  .endmodule
 
-Lines: 6  Errors: 0  Warnings: 0
+Lines: 8  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 

@@ -1,5 +1,45 @@
 # Native assembler completion plan
 
+## Current autonomous assignment
+
+Erik selected completion of shared opcore parity, followed in order by the
+6502 family, the complete 68000 family (including FPU, MMU, AMMX and
+68080/Apollo extensions), i8080, RISC-V and 6809. Cover the current Rust
+assembler language, packages and assembly CLI/output behavior; developer tools
+remain separate. Repair newly discovered Rust defects before qualifying the
+corresponding native behavior. Keep target semantics in their package owners.
+
+Continue through coherent committed checkpoints without routine approval
+requests. Record each checkpoint's unchanged-input release time, executable and
+linked-storage change; use separate instrumented runs for heap/phase evidence.
+Investigate unexpected costs and consult Erik if performance or memory use
+regresses dramatically. Review responsibility boundaries, growing files and
+source documentation during the sequence. Preserve fresh-run proof; a focused
+case does not establish a whole family's parity. After completing the sequence,
+report the remaining limits and wait before beginning optimization rounds.
+
+The next shared-language work extends active acquisition across expanded and
+scoped repetition, then closes the remaining macro/statement, expression,
+layout, directive and CLI/output gaps. Use complete unchanged corpus roots to
+recheck historical observations. Repeat broad shared and family qualification
+at their completion boundaries, plus a fresh full current-source self-host.
+The detailed checkpoints below are evidence for identified states, not a
+substitute for those reruns.
+
+The current Rust opcore reference audit covers 86 assigned roots. After repairs
+to stale module/qualified-label and mapped-section expectations, 81 match their
+references. Five expected-error roots produce no partial artifacts; the canonical
+reference test permits that omission, but the stricter audit still reports the
+missing comparison evidence and exits nonzero. Thirty-two listings, one Hex
+file and one labels JSON were refreshed after exact output review. Only the
+mapped-section Hex payload changed: `$1000` now calls the actual `$1004` entry
+and retains code after both bare labels. A bare label is not a removable block.
+The preceding full host baseline has 2,259 passes, 47 failures and 579 ignored
+tests in the assembler crate; it stops there. Focused expectation/inventory
+repairs pass, while old native source assertions, other-family references and
+the 6502 override diagnostic remain unqualified. This is not a green workspace
+gate or native breadth proof.
+
 Status: active. Erik selected iterator-dependent conditionals first, followed by
 completion of the remaining loop and macro functionality. The latest qualified
 full self-host is BS35 (source manifest `54fb484dd0022ab5`): all 121 mapped inputs

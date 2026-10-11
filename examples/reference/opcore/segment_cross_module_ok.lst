@@ -1,17 +1,17 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  .module segment.export.lib
-----                                2      .pub
-----    EQU 0042                    3  LIBVAL  .const $42
-----                                4  
+----                                1  ; Test: successful cross-module segment import on 65C02.
+----                                2  ;
+----                                3  ; When EMIT_BYTE is explicitly listed in the .use import list, the segment
+----                                4  ; defined in the library module becomes available beside an imported const.
 ----                                5  
-----                                6  .endmodule
-----                                7  ; Test: successful cross-module segment import on 65C02.
-----                                8  ;
-----                                9  ; When EMIT_BYTE is explicitly listed in the .use import list, the segment
-----                               10  ; defined in the library module becomes available beside an imported const.
-----                               11  
+----                                6  .module segment.export.lib
+----                                7      .pub
+----    EQU 0042                    8  LIBVAL  .const $42
+----                                9  
+----                               10  
+----                               11  .endmodule
 ----                               12  .module segment.cross.ok.app
 ----                               13      .cpu 65c02
 ----                               14  

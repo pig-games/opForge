@@ -1,25 +1,27 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1          .cpu 65c02
-0000    07 00                       2          .word TAB2-1
-0002    EA                          3          nop	
-0003    4C 06 00                    4          JMP  EXEC
-----                                5  
-0006    EA                          6  EXEC   nop
-0007    60                          7  CHKIO  rts
-----                                8  
-0008    61 62 63 64                 9  TAB2   .byte      'abcd'
+----                                1  .module testexpr
+----                                2          .cpu 65c02
+0000    07 00                       3          .word TAB2-1
+0002    EA                          4          nop	
+0003    4C 06 00                    5          JMP  EXEC
+----                                6  
+0006    EA                          7  EXEC   nop
+0007    60                          8  CHKIO  rts
+----                                9  
+0008    61 62 63 64                10  TAB2   .byte      'abcd'
+----                               11  .endmodule
 
-Lines: 9  Errors: 0  Warnings: 0
+Lines: 11  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-CHKIO            0007      prv  lbl 
-EXEC             0006      prv  lbl 
-TAB2             0008      prv  lbl 
+testexpr.CHKIO   0007      prv  lbl 
+testexpr.EXEC    0006      prv  lbl 
+testexpr.TAB2    0008      prv  lbl 
 
 Total memory is 12 bytes
 

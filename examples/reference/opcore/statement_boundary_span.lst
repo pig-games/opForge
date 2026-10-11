@@ -1,16 +1,18 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Boundary span example for .statement signatures
-----                                2  
-----                                3          .cpu 65c02
-----    EQU 2000                    4          .org $2000
-----                                5  
+----                                1  .module statement_boundary_span
+----                                2  ; Boundary span example for .statement signatures
+----                                3  
+----                                4          .cpu 65c02
+----    EQU 2000                    5          .org $2000
 ----                                6  
-2000    01                          7          .byte 1
-----                                8          .end
+----                                7  
+2000    01                          8          .byte 1
+----                                9          .end
+----                               10  .endmodule
 
-Lines: 8  Errors: 0  Warnings: 0
+Lines: 10  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 

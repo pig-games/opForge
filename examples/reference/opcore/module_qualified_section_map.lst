@@ -8,9 +8,9 @@ ADDR    BYTES                    LINE  SOURCE
 ----                                5      .pub
 ----                                6      .section code, kind=code, logical  ; [section code]
 ----                                7  sessionPass  ; [section code]
-0000    60                          8      rts  ; [section code]
+1004    60                          8      rts  ; [section code]
 ----                                9  unusedPass  ; [section code]
-0001    60                         10      rts  ; [section code]
+1005    60                         10      rts  ; [section code]
 ----                               11      .endsection
 ----                               12  .endmodule
 ----                               13  
@@ -20,7 +20,7 @@ ADDR    BYTES                    LINE  SOURCE
 ----                               17      .use opasm.amigaos.engine as engine map { code -> app_code }
 ----                               18      .section app_code, kind=code  ; [section app_code]
 ----                               19  start  ; [section app_code]
-1000    20 00 00                   20      jsr engine.sessionPass  ; [section app_code]
+1000    20 04 10                   20      jsr engine.sessionPass  ; [section app_code]
 1003    60                         21      rts  ; [section app_code]
 ----                               22      .endsection
 ----                               23      .place app_code in rom
@@ -35,13 +35,13 @@ SYMBOL TABLE
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
 app.main.start   1000      prv  lbl 
-opasm.amigaos.engine.sessionPass  0000      pub  lbl 
-opasm.amigaos.engine.unusedPass  0001      pub  lbl 
+opasm.amigaos.engine.sessionPass  1004      pub  lbl 
+opasm.amigaos.engine.unusedPass  1005      pub  lbl 
 
-Total memory is 5 bytes
+Total memory is 6 bytes
 
 GENERATED OUTPUT
 
 ADDR    BYTES
 ------  -----------------------
-1000    20 00 00 60 60
+1000    20 04 10 60 60 60

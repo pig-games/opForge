@@ -257,6 +257,7 @@ pub(crate) const NATIVE_OPCORE_ASSIGNMENTS: &[NativeOpcoreAssignment] = &[
     opcore_root!("for_collection_basic", SyntaxExpression, DirectCpuNeutral),
     opcore_root!("for_counter_basic", SyntaxExpression, DirectCpuNeutral),
     opcore_root!("grouping", SyntaxExpression, DirectMos65c02),
+    opcore_root!("loop_forward_constant", SyntaxExpression, DirectCpuNeutral),
     opcore_root!("ranges_lists_basic", SyntaxExpression, DirectCpuNeutral),
     opcore_root!("scopes", SyntaxExpression, DirectCpuNeutral),
     opcore_root!("scopes_namespace", SyntaxExpression, DirectCpuNeutral),

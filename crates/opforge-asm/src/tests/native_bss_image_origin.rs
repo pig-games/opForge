@@ -12,7 +12,10 @@ const MAPPED_LOGICAL: &[u8] =
 
 const EXPECTED_CODE_ONLY: &[u8] = &[0xaa];
 const EXPECTED_ORDINARY_ORIGINS: &[u8] = &[0x11, 0x33, 0x22];
-const EXPECTED_MAPPED_LOGICAL: &[u8] = &[0x20, 0x00, 0x00, 0x60, 0x60];
+// The importing section occupies $1000..$1003; its dependency follows at $1004.
+// Both dependency labels are bare labels in one section, so retain their
+// complete section rather than treating them as independently reachable blocks.
+const EXPECTED_MAPPED_LOGICAL: &[u8] = &[0x20, 0x04, 0x10, 0x60, 0x60, 0x60];
 
 #[test]
 fn native_bss_image_origin_live_rust_bss_align_pad() {

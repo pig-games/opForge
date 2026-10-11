@@ -9455,24 +9455,21 @@ fn native_macro_syntax_segment_fs_uae() {
     let root = workspace_root();
     let source_path = root.join("examples/opcore/macro_syntax.asm");
     let source = fs::read(&source_path).expect("read canonical macro syntax source");
-    let root_lines = expand_source_file(&source_path, &[], &[], 64)
-        .expect("preprocess canonical macro syntax for Rust authority");
-    let module_paths = example_module_paths(&source_path);
-    let graph = load_module_graph(&source_path, root_lines, &[], &[], &module_paths, 64)
-        .expect("expand canonical macro syntax graph for Rust authority");
-    let mut rust_lines = vec![".cpu 65c02".to_string()];
-    rust_lines.extend(graph.lines);
-    let rust_line_refs = rust_lines.iter().map(String::as_str).collect::<Vec<_>>();
-    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&rust_line_refs, true)
-        .expect("Rust canonical macro syntax authority");
-    assert!(
-        diagnostics.is_empty(),
-        "Rust macro syntax diagnostics: {diagnostics:?}"
-    );
-    let rust = entries
-        .into_iter()
-        .map(|(_, byte)| byte)
-        .collect::<Vec<_>>();
+    // Apply the target through the CLI contract so it belongs to the input
+    // module rather than becoming top-level text before its implicit wrapper.
+    let case_dir = create_temp_dir("macro-syntax-segment-rust");
+    let _cleanup = NativeCpuOracleDir(case_dir.clone());
+    let rust_bin_path = case_dir.join("rust.bin");
+    let cli = Cli::parse_from([
+        "opForge",
+        source_path.to_string_lossy().as_ref(),
+        "--bin",
+        rust_bin_path.to_string_lossy().as_ref(),
+        "--cpu",
+        "65c02",
+    ]);
+    run_with_cli_with_context(&cli).expect("Rust canonical macro syntax authority");
+    let rust = fs::read(&rust_bin_path).expect("read canonical Rust macro syntax bytes");
     let package = item6_mos_package_bytes();
     let cases = [crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
         name: "macro-syntax-segment",

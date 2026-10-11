@@ -1,39 +1,41 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Scoped repetition with inferred struct fields and indexed member access.
-----                                2  .cpu 6502
-----                                3  
-----                                4  Point .struct
-----                                5  x .byte ?
-----                                6  y .byte ?
-----                                7  .endstruct
-----                                8  
-0000    00                         10  x .byte i
-0001    0A                         11  y .byte i + 10
-0002    01                         10  x .byte i
-0003    0B                         11  y .byte i + 10
-0004    02                         10  x .byte i
-0005    0C                         11  y .byte i + 10
-----                               13  
-0006    02 00                      14  .word points[1].x
-0008    03 00                      15  .word points[1].y
+----                                1  .module bfor_labeled_struct_basic
+----                                2  ; Scoped repetition with inferred struct fields and indexed member access.
+----                                3  .cpu 6502
+----                                4  
+----                                5  Point .struct
+----                                6  x .byte ?
+----                                7  y .byte ?
+----                                8  .endstruct
+----                                9  
+0000    00                         11  x .byte i
+0001    0A                         12  y .byte i + 10
+0002    01                         11  x .byte i
+0003    0B                         12  y .byte i + 10
+0004    02                         11  x .byte i
+0005    0C                         12  y .byte i + 10
+----                               14  
+0006    02 00                      15  .word points[1].x
+0008    03 00                      16  .word points[1].y
+----                               17  .endmodule
 
-Lines: 15  Errors: 0  Warnings: 0
+Lines: 17  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-Point            0002      prv  lbl 
-Point.x          0000      prv  lbl 
-Point.y          0001      prv  lbl 
-__scope1.x       0000      prv  lbl 
-__scope1.y       0001      prv  lbl 
-__scope2.x       0002      prv  lbl 
-__scope2.y       0003      prv  lbl 
-__scope3.x       0004      prv  lbl 
-__scope3.y       0005      prv  lbl 
+bfor_labeled_struct_basic.Point  0002      prv  lbl 
+bfor_labeled_struct_basic.Point.x  0000      prv  lbl 
+bfor_labeled_struct_basic.Point.y  0001      prv  lbl 
+bfor_labeled_struct_basic.__scope1.x  0000      prv  lbl 
+bfor_labeled_struct_basic.__scope1.y  0001      prv  lbl 
+bfor_labeled_struct_basic.__scope2.x  0002      prv  lbl 
+bfor_labeled_struct_basic.__scope2.y  0003      prv  lbl 
+bfor_labeled_struct_basic.__scope3.x  0004      prv  lbl 
+bfor_labeled_struct_basic.__scope3.y  0005      prv  lbl 
 
 Total memory is 10 bytes
 

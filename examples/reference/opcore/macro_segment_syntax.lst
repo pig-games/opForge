@@ -1,35 +1,37 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Macro and segment syntax example
-----                                2  ; Demonstrates directive-first and name-first macro forms,
-----                                3  ; parenthesized macro calls, and segment symbol visibility.
-----                                4  
-----                                5          .cpu 65c02
-----    EQU 2000                    6          .org $2000
-----                                7  
+----                                1  .module macro_segment_syntax
+----                                2  ; Macro and segment syntax example
+----                                3  ; Demonstrates directive-first and name-first macro forms,
+----                                4  ; parenthesized macro calls, and segment symbol visibility.
+----                                5  
+----                                6          .cpu 65c02
+----    EQU 2000                    7          .org $2000
 ----                                8  
 ----                                9  
 ----                               10  
-----                               11          .block
-2000    01 02                      12          .byte 1, 2
-----                               13          .endblock
-----                               14          .block
-2002    03                         15          .byte 3
-----                               16          .endblock
-----    EQU 0007                   17  VAL     .const 7
-2003    07                         18          .byte 7
-2004    07 00                      19          .word VAL
-----                               20  
-----                               21          .end
+----                               11  
+----                               12          .block
+2000    01 02                      13          .byte 1, 2
+----                               14          .endblock
+----                               15          .block
+2002    03                         16          .byte 3
+----                               17          .endblock
+----    EQU 0007                   18  VAL     .const 7
+2003    07                         19          .byte 7
+2004    07 00                      20          .word VAL
+----                               21  
+----                               22          .end
+----                               23  .endmodule
 
-Lines: 21  Errors: 0  Warnings: 0
+Lines: 23  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-VAL              0007      prv  lbl 
+macro_segment_syntax.VAL  0007      prv  lbl 
 
 Total memory is 6 bytes
 

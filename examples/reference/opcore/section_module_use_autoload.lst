@@ -1,15 +1,15 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  .module example.section.lib
-----                                2      .pub
-----    EQU 0004                    3  LIBVAL  .const 4
-----                                4      .section data  ; [section data]
-1000    02 03                       5      .byte 2, 3  ; [section data]
-----                                6      .endsection
-----                                7  .endmodule
-----                                8  ; Section data across modules with autoload
-----                                9  
+----                                1  ; Section data across modules with autoload
+----                                2  
+----                                3  .module example.section.lib
+----                                4      .pub
+----    EQU 0004                    5  LIBVAL  .const 4
+----                                6      .section data  ; [section data]
+1000    02 03                       7      .byte 2, 3  ; [section data]
+----                                8      .endsection
+----                                9  .endmodule
 ----                               10  .module example.section.app
 ----                               11      .use example.section.lib (LIBVAL)
 ----                               12      .region ram, $1000, $10ff

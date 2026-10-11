@@ -1,17 +1,17 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  .module statement.export.lib
-----                                2      .pub
-----    EQU 0042                    3  LIBVAL  .const $42
-----                                4  
+----                                1  ; Test: successful cross-module statement import
+----                                2  ;
+----                                3  ; When PUSHB is explicitly listed in the .use import list,
+----                                4  ; the statement defined in the library module becomes available.
 ----                                5  
-----                                6  .endmodule
-----                                7  ; Test: successful cross-module statement import
-----                                8  ;
-----                                9  ; When PUSHB is explicitly listed in the .use import list,
-----                               10  ; the statement defined in the library module becomes available.
-----                               11  
+----                                6  .module statement.export.lib
+----                                7      .pub
+----    EQU 0042                    8  LIBVAL  .const $42
+----                                9  
+----                               10  
+----                               11  .endmodule
 ----                               12  .module statement.cross.ok.app
 ----                               13      .cpu 65c02
 ----                               14  

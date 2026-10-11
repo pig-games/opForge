@@ -1,38 +1,40 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; Typed struct literals assigned to const/var symbols with member value access.
-----                                2  .cpu 6502
-----                                3  
-----                                4  Point .struct
-----                                5  x .byte ?
-----                                6  y .byte ?
-----                                7  .endstruct
-----                                8  
-----    EQU 0000                    9  p0 .const Point { x: 24, y: 50 }
-----    EQU 0000                   10  p1 .var Point { x: 40, y: 60 }
-----                               11  
-0000    18                         12  .byte p0.x
-0001    32                         13  .byte p0.y
-0002    28                         14  .byte p1.x
-0003    3C                         15  .byte p1.y
-----                               16  
-----    EQU 0000                   17  p1 .set Point { x: 41, y: 61 }
-----                               18  
-0004    29                         19  .byte p1.x
-0005    3D                         20  .byte p1.y
+----                                1  .module struct_literal_instance_basic
+----                                2  ; Typed struct literals assigned to const/var symbols with member value access.
+----                                3  .cpu 6502
+----                                4  
+----                                5  Point .struct
+----                                6  x .byte ?
+----                                7  y .byte ?
+----                                8  .endstruct
+----                                9  
+----    EQU 0000                   10  p0 .const Point { x: 24, y: 50 }
+----    EQU 0000                   11  p1 .var Point { x: 40, y: 60 }
+----                               12  
+0000    18                         13  .byte p0.x
+0001    32                         14  .byte p0.y
+0002    28                         15  .byte p1.x
+0003    3C                         16  .byte p1.y
+----                               17  
+----    EQU 0000                   18  p1 .set Point { x: 41, y: 61 }
+----                               19  
+0004    29                         20  .byte p1.x
+0005    3D                         21  .byte p1.y
+----                               22  .endmodule
 
-Lines: 20  Errors: 0  Warnings: 0
+Lines: 22  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-p0               0000      prv  lbl 
-p1               0000      prv  var 
-Point            0002      prv  lbl 
-Point.x          0000      prv  lbl 
-Point.y          0001      prv  lbl 
+struct_literal_instance_basic.p0  0000      prv  lbl 
+struct_literal_instance_basic.p1  0000      prv  var 
+struct_literal_instance_basic.Point  0002      prv  lbl 
+struct_literal_instance_basic.Point.x  0000      prv  lbl 
+struct_literal_instance_basic.Point.y  0001      prv  lbl 
 
 Total memory is 6 bytes
 

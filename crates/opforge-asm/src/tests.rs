@@ -4222,7 +4222,7 @@ fn run_with_cli_writes_vice_labels_file() {
 
     let content = fs::read_to_string(&labels).expect("read labels file");
     assert!(
-        content.contains("al C:$0000 .START"),
+        content.contains("al C:$0000 .labels.START"),
         "missing vice label export: {content}"
     );
 }
@@ -4249,7 +4249,7 @@ fn run_with_cli_writes_ctags_labels_file() {
 
     let content = fs::read_to_string(&labels).expect("read labels file");
     assert!(
-        content.contains("START\tlabels\t/^START$/;\"\tv"),
+        content.contains("labels.START\tlabels\t/^labels.START$/;\"\tv"),
         "missing ctags label export: {content}"
     );
 }
@@ -4425,7 +4425,9 @@ fn run_with_cli_writes_labels_as_json_in_json_mode() {
     let content = fs::read_to_string(&labels).expect("read labels json");
     let value: serde_json::Value = serde_json::from_str(&content).expect("labels json parse");
     let labels_array = value["labels"].as_array().expect("labels array");
-    assert!(labels_array.iter().any(|entry| entry["name"] == "START"));
+    assert!(labels_array
+        .iter()
+        .any(|entry| entry["name"] == "labels_json.START"));
 }
 
 #[test]
@@ -26518,9 +26520,14 @@ fn motorola68020_item31_native_m68080_ammx_package_boundary_matches_rust() {
         "tkpkg_operand_record_service.asm",
     ] {
         let source = tkpkg_amigaos_source(source_name).to_ascii_lowercase();
+        // Compare complete assembly tokens: FixupAddends contains "padd"
+        // across its word boundary but carries no AMMX instruction identity.
+        let tokens = source
+            .split(|ch: char| !(ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')))
+            .collect::<HashSet<_>>();
         for forbidden in ["ammx", "padd", "vperm", "minterm", "tex8", "e0-e23"] {
             assert!(
-                !source.contains(forbidden),
+                !tokens.contains(forbidden),
                 "generic native {source_name} must not own AMMX spelling {forbidden}"
             );
         }
@@ -34658,6 +34665,11 @@ fn integrated_output_retains_unowned_code_after_ordinary_labels() {
         ".endsection",
         ".place app_code in rom",
         ".use dep (entry) as d map { code -> app_code }",
+        // Imports expose names; an expression reference makes the dependency
+        // reachable. Bare labels then retain the complete dependency section.
+        ".section refs, kind=data",
+        "    .word d.entry",
+        ".endsection",
         ".output \"build/app.bin\", format=bin, sections=app_code",
         ".endmodule",
     ]);
@@ -34669,6 +34681,14 @@ fn integrated_output_retains_unowned_code_after_ordinary_labels() {
     let payload = build_linker_output_payload(output, assembler.sections()).expect("bin payload");
 
     assert_eq!(payload, vec![0x11, 0x22]);
+    assert_eq!(
+        assembler.sections().get("app_code").unwrap().base_addr,
+        Some(0x1000)
+    );
+    assert_eq!(
+        assembler.sections().get("refs").unwrap().bytes,
+        vec![0, 0x10]
+    );
 }
 
 fn hunk_output_directive(

@@ -1,26 +1,28 @@
 opForge Assembler v0.9.7
 ADDR    BYTES                    LINE  SOURCE
 ------  -----------------------  ----  ------
-----                                1  ; 65C02 preprocessor branch-selection coverage (no source .define).
-----                                2  ; Preprocessor symbols are provided via -D/--define.
-----                                3  
-----                                4  .cpu 65c02
-----                                5  
-0000    A9 42                       6          lda #$42
-----                                7  
-0002    8D 00 02                    8          sta $0200
-----                                9  
-----                               10  ; 65C02 support included by preproc_syntax.asm
-----    EQU 0005                   11  INCVAL .const 5
-0005    A9 05                      12          lda #INCVAL
+----                                1  .module preproc_syntax
+----                                2  ; 65C02 preprocessor branch-selection coverage (no source .define).
+----                                3  ; Preprocessor symbols are provided via -D/--define.
+----                                4  
+----                                5  .cpu 65c02
+----                                6  
+0000    A9 42                       7          lda #$42
+----                                8  
+0002    8D 00 02                    9          sta $0200
+----                               10  
+----                               11  ; 65C02 support included by preproc_syntax.asm
+----    EQU 0005                   12  INCVAL .const 5
+0005    A9 05                      13          lda #INCVAL
+----                               14  .endmodule
 
-Lines: 12  Errors: 0  Warnings: 0
+Lines: 14  Errors: 0  Warnings: 0
 
 SYMBOL TABLE
 
 NAME             VALUE     VIS  KIND
 ---------------  --------  ---  ----
-INCVAL           0005      prv  lbl 
+preproc_syntax.INCVAL  0005      prv  lbl 
 
 Total memory is 7 bytes
 

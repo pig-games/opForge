@@ -184,6 +184,9 @@ Tokenizer name roles come from that descriptor. Frontend preparation registers
 global ASCII/PETSCII source-origin IDs and normalizes encoding names once using
 UTF-8 lossy decoding, Unicode trimming and ASCII lowercase. This normalizer has
 host structural assembly evidence only; its native behavior is not qualified.
+Rust macro preprocessing now preserves UTF-8 characters instead of reconstructing
+each byte as a character; all 26 preprocessing tests and the five pinned text
+controls pass, including Unicode whitespace around encoding names.
 
 Pending work: relay the frontend numeric builtin IDs to assembly; retain every
 standalone decoded string length until encoding determines scalar versus raw

@@ -279,7 +279,7 @@ impl<'a> MacroExpander<'a> {
         let bytes = code.as_bytes();
         let mut i = 0usize;
         while i < bytes.len() {
-            let c = bytes[i] as char;
+            let c = code[i..].chars().next().expect("valid UTF-8 cursor");
             match c {
                 '\'' if !in_double => in_single = !in_single,
                 '"' if !in_single => in_double = !in_double,
@@ -302,7 +302,7 @@ impl<'a> MacroExpander<'a> {
                 i = j;
             } else {
                 out.push(c);
-                i += 1;
+                i += c.len_utf8();
             }
         }
         out
@@ -347,7 +347,7 @@ impl<'a> MacroExpander<'a> {
         let mut in_double = false;
         let mut i = 0usize;
         while i < bytes.len() {
-            let c = bytes[i] as char;
+            let c = expanded[i..].chars().next().expect("valid UTF-8 cursor");
             match c {
                 '\'' if !in_double => in_single = !in_single,
                 '"' if !in_single => in_double = !in_double,
@@ -385,18 +385,18 @@ impl<'a> MacroExpander<'a> {
                             let mut s_in_double = false;
                             let mut esc = false;
                             while p < bytes.len() {
-                                let ch = bytes[p] as char;
+                                let ch = expanded[p..].chars().next().expect("valid UTF-8 cursor");
                                 match ch {
                                     _ if esc => {
                                         args_str.push(ch);
                                         esc = false;
-                                        p += 1;
+                                        p += ch.len_utf8();
                                         continue;
                                     }
                                     '\\' => {
                                         esc = true;
                                         args_str.push(ch);
-                                        p += 1;
+                                        p += ch.len_utf8();
                                         continue;
                                     }
                                     '\'' if !s_in_double => {
@@ -410,7 +410,7 @@ impl<'a> MacroExpander<'a> {
                                             args_str.push(ch);
                                         }
                                         paren += 1;
-                                        p += 1;
+                                        p += ch.len_utf8();
                                         continue;
                                     }
                                     ')' if !s_in_single && !s_in_double => {
@@ -424,7 +424,7 @@ impl<'a> MacroExpander<'a> {
                                 if paren > 0 {
                                     args_str.push(ch);
                                 }
-                                p += 1;
+                                p += ch.len_utf8();
                             }
                             if p >= bytes.len() {
                                 if let Some(last) = out_lines.last_mut() {
@@ -524,7 +524,7 @@ impl<'a> MacroExpander<'a> {
                         "Internal preprocessor error: output buffer unexpectedly empty",
                     ));
                 }
-                i += 1;
+                i += c.len_utf8();
             }
         }
         if !comment.is_empty() {
@@ -540,7 +540,7 @@ impl<'a> MacroExpander<'a> {
         let bytes = m.body.as_bytes();
         let mut i = 0usize;
         while i < bytes.len() {
-            let c = bytes[i] as char;
+            let c = m.body[i..].chars().next().expect("valid UTF-8 cursor");
             match c {
                 '\'' if !in_double => in_single = !in_single,
                 '"' if !in_single => in_double = !in_double,
@@ -569,7 +569,7 @@ impl<'a> MacroExpander<'a> {
                 i = j;
             } else {
                 out.push(c);
-                i += 1;
+                i += c.len_utf8();
             }
         }
         out
@@ -1327,6 +1327,37 @@ mod tests {
         let mut pp = Preprocessor::new();
         let err = pp.process_file(path.to_str().unwrap()).unwrap_err();
         assert_eq!(err.message(), "Preprocessor directives must use '.'");
+    }
+
+    #[test]
+    fn macro_expansion_preserves_utf8_text() {
+        let mut macros = HashMap::new();
+        macros.insert(
+            "PROFILE".to_string(),
+            MacroDef {
+                is_function: false,
+                params: vec![],
+                body: "\" PeTsCiI \"".to_string(),
+            },
+        );
+        macros.insert(
+            "SELECT".to_string(),
+            MacroDef {
+                is_function: true,
+                params: vec!["X".to_string()],
+                body: ".encoding X ; café".to_string(),
+            },
+        );
+        let expander = MacroExpander::new(&macros, 8);
+        for source in [
+            ".encoding \" PeTsCiI \"",
+            ".encoding PROFILE",
+            "SELECT(\" PeTsCiI \")",
+        ] {
+            let expanded = expander.expand_line(source, 0).unwrap();
+            assert_eq!(expanded.len(), 1);
+            assert!(expanded[0].contains("\" PeTsCiI \""), "{expanded:?}");
+        }
     }
 
     #[test]

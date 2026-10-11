@@ -12,6 +12,7 @@ pub const DEFAULT_MAX_LOOP_ITERATIONS: u32 = 65_536;
 pub struct ForPlan {
     pub var_name: Option<String>,
     pub values: Vec<i64>,
+    pub provisional_count: bool,
 }
 
 pub fn parse_line_ast_for_repetition(
@@ -236,8 +237,10 @@ pub fn evaluate_for_plan(
         ));
     }
 
+    let provisional_count =
+        operands.len() == 1 && asm_line.counted_loop_has_provisional_dependencies(&operands[0])?;
     let (var_name, values) = if operands.len() == 1 {
-        let count = if asm_line.counted_loop_has_provisional_dependencies(&operands[0])? {
+        let count = if provisional_count {
             0
         } else {
             asm_line.eval_expr_for_non_negative_directive(&operands[0], ".for count")?
@@ -293,7 +296,11 @@ pub fn evaluate_for_plan(
         ));
     }
 
-    Ok(ForPlan { var_name, values })
+    Ok(ForPlan {
+        var_name,
+        values,
+        provisional_count,
+    })
 }
 
 fn evaluate_for_iterable_value(

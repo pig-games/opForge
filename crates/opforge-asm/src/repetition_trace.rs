@@ -31,6 +31,7 @@ pub(crate) struct LoopObservation {
     pub scope: AsmSymbolScopeState,
     pub cpu: CpuType,
     pub counted: bool,
+    pub provisional_count: bool,
     pub immutable: bool,
     pub value_owner_replay: bool,
     pub loop_variable_dependent: bool,
@@ -149,6 +150,14 @@ impl LoopReplayState {
                     counts.errors += 1;
                 }
             }
+            // An unavailable count's zero is only a placeholder. Absolute
+            // certificates can authorize replay above; other forward counts
+            // still need a sizing traversal to verify their original extent.
+            // Emission alone may read the same stale scalar before its later
+            // source-order definition refreshes it.
+            if pass_num == 1 && observation.provisional_count && !observation.immutable {
+                *constant_layout_changed = true;
+            }
         }
         if pass_num > 1 {
             let allow_new = self.immutable_count_replay
@@ -189,14 +198,19 @@ impl LoopReplayState {
                                 },
                             ))));
                 if !valid {
+                    let message = previous.map_or_else(
+                        || "loop iteration count changed between passes".to_string(),
+                        |previous| {
+                            format!(
+                                "loop iteration count changed between passes (pass1: {}, pass2: {})",
+                                previous.count, observation.count
+                            )
+                        },
+                    );
                     diagnostics.push(Diagnostic::new(
                         observation.line,
                         Severity::Error,
-                        AsmError::new(
-                            AsmErrorKind::Directive,
-                            "loop iteration count changed between passes",
-                            None,
-                        ),
+                        AsmError::new(AsmErrorKind::Directive, &message, None),
                     ));
                     counts.errors += 1;
                 }

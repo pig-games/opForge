@@ -528,6 +528,9 @@ Notes:
 - Labels inside unscoped `.for`/`.while` bodies are rejected (use `.bfor`/`.bwhile`).
 - Labels on `.endfor`/`.endwhile` are rejected.
 - Loop iteration counts must be stable between the accepted sizing traversal and emission.
+- An unavailable counted-loop value is provisional, not a known zero. Forward
+  immutable counts can resolve during sizing; layout-dependent counts must still
+  match the observed traversal on every target CPU.
 - Loop execution is guarded by `--max-loop-iterations` (default `65536`, env override
   `OPFORGE_MAX_LOOP_ITERATIONS`).
 - Inline iterable range/list expressions are evaluated as full signed assembler

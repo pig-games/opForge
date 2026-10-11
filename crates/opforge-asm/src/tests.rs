@@ -40,6 +40,8 @@ mod generic_statement_boundary;
 mod constant_dependencies;
 #[path = "tests/member_bindings.rs"]
 mod member_bindings;
+#[path = "tests/provisional_loop_counts.rs"]
+mod provisional_loop_counts;
 
 #[path = "tests/signed_scalar_values.rs"]
 mod signed_scalar_values;
@@ -2512,14 +2514,7 @@ fn repetition_for_loop_reports_pass_stability_mismatch() {
     ];
 
     let pass1 = assembler.pass1(&lines);
-    assert_eq!(pass1.errors, 0);
-
-    let mut listing_out = Vec::new();
-    let mut listing = ListingWriter::new(&mut listing_out, false);
-    let pass2 = assembler
-        .pass2(&lines, &mut listing)
-        .expect("pass2 should execute");
-    assert!(pass2.errors > 0, "pass2 should report loop instability");
+    assert!(pass1.errors > 0, "sizing should report loop instability");
     assert!(
         assembler.diagnostics.iter().any(|diag| diag
             .error

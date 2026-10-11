@@ -246,6 +246,7 @@ impl AsmLine<'_> {
         count: u32,
         operands: &[Expr],
         counted: bool,
+        provisional_count: bool,
     ) {
         if matches!(self.profile_phase, AsmProfilePhase::Pass2) {
             return;
@@ -268,6 +269,7 @@ impl AsmLine<'_> {
             scope: self.symbol_scope.clone(),
             cpu: self.cpu,
             counted,
+            provisional_count,
             immutable: value_certificate.is_some(),
             value_owner_replay: value_certificate.is_some_and(|guards| !guards.is_empty()),
             loop_variable_dependent: operands.iter().any(|expr| {

@@ -433,6 +433,7 @@ fn execute_lines_with_base<C: RepetitionPass>(
                         plan.values.len() as u32,
                         &operands,
                         true,
+                        plan.provisional_count,
                     );
                     ctx.observe_loop_iterations(
                         line_num,
@@ -644,7 +645,7 @@ fn execute_lines_with_base<C: RepetitionPass>(
                         continue;
                     }
 
-                    asm_line.observe_repetition(line_num, loop_count, &operands, false);
+                    asm_line.observe_repetition(line_num, loop_count, &operands, false, false);
                     ctx.observe_loop_iterations(line_num, loop_count, lines)?;
 
                     if scoped_repeat {

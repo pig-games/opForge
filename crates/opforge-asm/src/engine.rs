@@ -524,6 +524,8 @@ qualified_share={:.2}%",
         };
         let uses_implicit_hunk_code_section =
             Self::uses_implicit_hunk_code_section(lines, self.implicit_hunk_output_requested);
+        // Reachability describes this executed layout, including forward guards.
+        self.symbols.clear_reachability_references();
         self.sections.clear();
         self.regions.clear();
         self.concrete_section_declarations.clear();
@@ -533,7 +535,7 @@ qualified_share={:.2}%",
             .unwrap_or(u32::MAX.saturating_sub(1))
             .saturating_add(1);
         let mut counts = PassCounts::new();
-        let mut pending_unit_references = Vec::new();
+        let pending_unit_references;
         self.prepare_runtime_execution_model();
         let diagnostics = &mut self.diagnostics;
 
@@ -847,18 +849,12 @@ qualified_share={:.2}%",
             self.immutable_value_symbols = asm_line.resolved_immutable_values();
             self.scalar_value_symbols = std::mem::take(&mut asm_line.scalar_value_symbols);
             self.root_metadata = asm_line.take_root_metadata();
-            if pass_num > 1 {
-                asm_line.refresh_schema_replay_uses(&mut self.schema_replay_uses);
-            }
             self.sections = asm_line.take_sections();
             self.regions = asm_line.take_regions();
-            if pass_num == 1 {
-                self.schema_replay_uses = std::mem::take(&mut asm_line.schema_replay_uses);
-                self.declaration_block_owners =
-                    std::mem::take(&mut asm_line.declaration_block_owners);
-                self.reachable_blocks = std::mem::take(&mut asm_line.reachable_blocks);
-                pending_unit_references = std::mem::take(&mut asm_line.pending_unit_references);
-            }
+            self.schema_replay_uses = std::mem::take(&mut asm_line.schema_replay_uses);
+            self.declaration_block_owners = std::mem::take(&mut asm_line.declaration_block_owners);
+            self.reachable_blocks = std::mem::take(&mut asm_line.reachable_blocks);
+            pending_unit_references = std::mem::take(&mut asm_line.pending_unit_references);
             self.runtime_execution_model = asm_line.opthread_execution_model.take();
         }
 

@@ -18,16 +18,8 @@ pub(crate) struct SchemaReplayUse {
 }
 
 impl AsmLine<'_> {
-    pub(crate) fn refresh_schema_replay_uses(&self, uses: &mut [SchemaReplayUse]) {
-        for usage in uses {
-            if let Some(definition) = self.struct_table.get(&usage.snapshot.definition.name) {
-                usage.snapshot.definition = definition.clone();
-            }
-        }
-    }
-
     pub(super) fn record_schema_replay_use(&mut self, name: &str, span: Span) {
-        if self.pass != 1 {
+        if matches!(self.profile_phase, AsmProfilePhase::Pass2) {
             return;
         }
         let Ok(definition) = self.resolve_struct_def_for_literal(name, span) else {

@@ -430,6 +430,15 @@ impl SymbolTable {
         }
     }
 
+    /// Replace executed reference provenance at the start of a layout pass.
+    pub fn clear_reachability_references(&mut self) {
+        for module in &mut self.module_info {
+            module.symbol_references.clear();
+            module.unowned_references.clear();
+        }
+        self.output_root_references.clear();
+    }
+
     pub fn record_unowned_reference(
         &mut self,
         module: &str,

@@ -278,6 +278,10 @@ pub struct AsmLine<'a> {
     seeded_schema_names: HashSet<String>,
     pub(crate) schema_layout_pending: bool,
     pub(crate) schema_replay_uses: Vec<SchemaReplayUse>,
+    // Provisional bindings are unavailable values, never executed ownership or
+    // immutable replay certificates. Both sets belong to this layout traversal.
+    pub(crate) deferred_value_names: HashSet<String>,
+    pub(crate) deferred_declaration_names: HashSet<String>,
     pub(crate) declaration_block_owners: HashMap<String, Option<String>>,
     pub(crate) reachable_blocks: Vec<ReachableBlock>,
     pub(crate) pending_unit_references: Vec<PendingUnitReference>,
@@ -501,6 +505,8 @@ impl<'a> AsmLine<'a> {
             seeded_schema_names: HashSet::new(),
             schema_layout_pending: false,
             schema_replay_uses: Vec::new(),
+            deferred_value_names: HashSet::new(),
+            deferred_declaration_names: HashSet::new(),
             declaration_block_owners: HashMap::new(),
             reachable_blocks: Vec::new(),
             pending_unit_references: Vec::new(),
@@ -909,6 +915,8 @@ impl<'a> AsmLine<'a> {
         self.seeded_schema_names.clear();
         self.schema_layout_pending = false;
         self.schema_replay_uses.clear();
+        self.deferred_value_names.clear();
+        self.deferred_declaration_names.clear();
         self.declaration_block_owners.clear();
         self.reachable_blocks.clear();
         self.pending_unit_references.clear();
@@ -2013,7 +2021,7 @@ impl<'a> AsmLine<'a> {
     }
 
     fn record_operand_references(&mut self, operands: &[Expr]) {
-        if self.pass != 1 {
+        if matches!(self.profile_phase, AsmProfilePhase::Pass2) {
             return;
         }
         for operand in operands {
@@ -2625,6 +2633,23 @@ impl<'a> AsmLine<'a> {
                 self.mnemonic = mnemonic.clone();
 
                 if self.cond_stack.skipping() {
+                    // Only immutable .const statements participate here. This
+                    // is a possible future binding under an unresolved guard,
+                    // never a declaration, visibility grant or executed owner.
+                    if mnemonic
+                        .as_deref()
+                        .is_some_and(|name| name.eq_ignore_ascii_case(".const"))
+                        && self
+                            .guard_stack
+                            .iter()
+                            .flatten()
+                            .any(|index| self.guard_observations[*index].unresolved_at_observation)
+                    {
+                        if let Some(label) = &label {
+                            self.deferred_declaration_names
+                                .insert(self.scoped_define_name(&label.name).to_ascii_uppercase());
+                        }
+                    }
                     if let Some(name) = mnemonic.as_deref() {
                         if is_scope_directive(name) {
                             return self.process_directive_ast(name, &operands);
@@ -2868,7 +2893,7 @@ impl<'a> AsmLine<'a> {
         match op {
             AssignOp::Const | AssignOp::Var | AssignOp::VarIfUndef => {
                 let full_name = self.scoped_define_name(&label.name);
-                if self.pass == 1 {
+                if !matches!(self.profile_phase, AsmProfilePhase::Pass2) {
                     if self.block_unit_stack.is_empty() {
                         self.current_unit_symbol = Some(full_name.clone());
                     }
@@ -3332,6 +3357,10 @@ impl<'a> AsmLine<'a> {
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
             return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
         }
+        if self.pass == 1 && !self.require_defined_symbols && self.member_binding_is_deferred(expr)
+        {
+            return Ok(0);
+        }
 
         match AssemblerContext::eval_expr(self, expr) {
             Ok(value) => {
@@ -3366,6 +3395,10 @@ impl<'a> AsmLine<'a> {
         let _expr_eval_scope = self.pass_expr_eval_scope();
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
             return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
+        }
+        if self.pass == 1 && !self.require_defined_symbols && self.member_binding_is_deferred(expr)
+        {
+            return Ok(0);
         }
 
         if let Expr::Identifier(name, _) | Expr::Register(name, _) = expr {

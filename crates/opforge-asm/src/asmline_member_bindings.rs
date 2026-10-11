@@ -6,7 +6,7 @@ use super::*;
 
 impl AsmLine<'_> {
     pub(super) fn track_declaration_block_owner(&mut self, name: &str) {
-        if self.pass != 1 {
+        if matches!(self.profile_phase, AsmProfilePhase::Pass2) {
             return;
         }
         let owner = self.block_unit_stack.iter().rev().find_map(|(index, _)| {
@@ -62,6 +62,65 @@ impl AsmLine<'_> {
             }
             prefix = prefix.rsplit_once('.')?.0;
         }
+    }
+
+    /// A longer skipped declaration can postpone owner selection only while
+    /// its guard is unresolved. It does not provide a symbol or typed value.
+    pub(super) fn member_binding_is_deferred(&self, expr: &Expr) -> bool {
+        if self.deferred_declaration_names.is_empty() && self.deferred_value_names.is_empty() {
+            return false;
+        }
+        let Some(path) = Self::member_path(expr) else {
+            return match expr {
+                Expr::Binary { left, right, .. }
+                | Expr::Index {
+                    base: left,
+                    index: right,
+                    ..
+                } => {
+                    self.member_binding_is_deferred(left) || self.member_binding_is_deferred(right)
+                }
+                Expr::Unary { expr, .. }
+                | Expr::Immediate(expr, _)
+                | Expr::Indirect(expr, _)
+                | Expr::IndirectLong(expr, _) => self.member_binding_is_deferred(expr),
+                Expr::List(items, _) | Expr::Tuple(items, _) | Expr::Call { args: items, .. } => {
+                    items
+                        .iter()
+                        .any(|item| self.member_binding_is_deferred(item))
+                }
+                Expr::StructLiteral { fields, .. } => fields
+                    .iter()
+                    .any(|(_, value)| self.member_binding_is_deferred(value)),
+                _ => false,
+            };
+        };
+        let path = path.to_ascii_uppercase();
+        let owner_expr = self.member_owner_expression(&path, expr_span(expr));
+        let mut base = owner_expr.as_ref();
+        while let Some(Expr::Member { base: inner, .. }) = base {
+            base = Some(inner);
+        }
+        let owner = match base {
+            Some(Expr::Identifier(owner, _)) => owner.as_str(),
+            _ => "",
+        };
+        if self
+            .deferred_value_names
+            .contains(&owner.to_ascii_uppercase())
+        {
+            return true;
+        }
+        self.qualified_name_candidates(&path)
+            .is_ok_and(|candidates| {
+                candidates.into_iter().any(|candidate| {
+                    let candidate = candidate.to_ascii_uppercase();
+                    self.deferred_declaration_names.iter().any(|name| {
+                        name.len() > owner.len()
+                            && (candidate == *name || candidate.starts_with(&format!("{name}.")))
+                    })
+                })
+            })
     }
 
     pub(super) fn normalize_member_bindings(&self, expr: &mut Expr) {

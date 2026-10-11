@@ -63,7 +63,10 @@ impl AsmLine<'_> {
                             .constant_definition_indices
                             .get(&Self::value_symbol_key(&resolved))
                         {
-                            if (base != name || structured)
+                            if !self
+                                .deferred_value_names
+                                .contains(&resolved.to_ascii_uppercase())
+                                && (base != name || structured)
                                 && !self
                                     .immutable_value_constants
                                     .contains(&self.constant_definitions[index].name)
@@ -343,11 +346,12 @@ impl AsmLine<'_> {
         if matches!(self.profile_phase, AsmProfilePhase::Pass2) {
             return;
         }
-        if self.pass == 1 {
-            // Guard replay can select another executed immutable declaration.
-            self.declaration_block_owners
-                .remove(&name.to_ascii_uppercase());
-            self.track_declaration_block_owner(name);
+        // Guard replay can select another executed immutable declaration.
+        self.declaration_block_owners
+            .remove(&name.to_ascii_uppercase());
+        self.track_declaration_block_owner(name);
+        if self.member_binding_is_deferred(expr) {
+            self.deferred_value_names.insert(name.to_ascii_uppercase());
         }
         let mut names = Vec::new();
         immutable_dependencies(expr, &mut names);
@@ -423,7 +427,10 @@ impl AsmLine<'_> {
             let mut names = Vec::new();
             let mut dependency_expr = definition.expr.clone();
             self.normalize_member_bindings(&mut dependency_expr);
-            absolute[index] = immutable_dependencies(&dependency_expr, &mut names);
+            absolute[index] = immutable_dependencies(&dependency_expr, &mut names)
+                && !self
+                    .deferred_value_names
+                    .contains(&definition.name.to_ascii_uppercase());
             for name in names {
                 if definition
                     .loop_dependencies

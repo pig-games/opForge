@@ -67,8 +67,15 @@ impl<'a> AsmLine<'a> {
     }
 
     pub fn eval_value_ast(&self, expr: &Expr) -> Result<AsmValue, AstEvalError> {
+        // A skipped declaration behind an unresolved guard may replace this
+        // shorter owner. Initial layout uses the same unavailable scalar as a
+        // forward symbol; strict evaluation and final emission must resolve it.
         if let Some((name, span)) = self.find_private_symbol_in_expr(expr) {
             return Err(ast_eval_from_asm_error(self.visibility_error(&name), span));
+        }
+        if self.pass == 1 && !self.require_defined_symbols && self.member_binding_is_deferred(expr)
+        {
+            return Ok(AsmValue::Scalar(0));
         }
         if self.expression_uses_typed_value(expr) || matches!(expr, Expr::List(_, _)) {
             if let Some(result) = self.eval_shared_value(expr) {

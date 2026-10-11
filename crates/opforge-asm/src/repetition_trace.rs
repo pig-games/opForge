@@ -14,6 +14,7 @@ pub(crate) struct GuardObservation {
     pub tests: Vec<Expr>,
     pub last_test_positive: bool,
     pub active: bool,
+    pub unresolved_at_observation: bool,
     pub scope: AsmSymbolScopeState,
     pub cpu: CpuType,
     pub loop_variable_dependent: bool,

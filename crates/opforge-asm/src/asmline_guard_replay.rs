@@ -38,12 +38,17 @@ impl AsmLine<'_> {
                 .any(|name| self.lookup_loop_var(name).is_some());
             tests.push(expr.clone());
         }
+        let unresolved_at_observation = tests.iter().any(|test| {
+            self.eval_scalar_ast_requiring_defined_symbols(test)
+                .is_err()
+        });
         let index = self.guard_observations.len();
         self.guard_observations.push(GuardObservation {
             key: (self.current_line_num, self.repetition_path.clone()),
             tests,
             last_test_positive: expr.is_some(),
             active,
+            unresolved_at_observation,
             scope: self.symbol_scope.clone(),
             cpu: self.cpu,
             loop_variable_dependent,

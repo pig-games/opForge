@@ -81,8 +81,11 @@ on both packages, including nested rebasing, truncated headers, overflow/null
 bases, unchanged views after rejected refresh and one-record lifecycle traversal.
 The production candidate host-assembles at 663,456 image bytes and 688,164
 linked static bytes (504 more than the matching storage checkpoint). Its separate
-native matrix, paired release timing and peak heap remain pending. No incremental inventory or source acquisition
-is enabled, and the public session still rejects a changed record allocation.
+native matrix passes twelve exact positives and two expected rejections on both
+packages. The unchanged release control takes 26.848584 seconds before and
+27.116166 after (+1.00%, one sample). Peak heap remains unmeasured. No incremental
+inventory or source acquisition is enabled, and the public session still rejects
+a changed record allocation.
 
 Separate incremental binding publication from final source sealing. Already
 consumed references must not be redirected by later import/ancestor rewriting.
@@ -170,7 +173,7 @@ resumes, sizing rounds, captures and peak owned bytes through existing macros.
 Retained captures and live context overlap until sealing, so heap growth needs
 actual measurement; image reservation alone cannot establish peak memory.
 
-### Paused text integration checkpoint (2026-10-11)
+### Text integration in progress
 
 The bounded text owner (`3377a53d`) and shared packed text grammar
 (`8d5cff22`) have separate fresh native component proofs. They do not establish
@@ -192,12 +195,21 @@ length and decoded bytes) and Rust eval_string_literal context provide the
 contract for native runtime encoding; no replacement opcode is needed.
 Neither that native provider nor assembly/emitter integration has landed.
 
-### Paused binding ownership checkpoint
+### Conditional binding ownership
 
 The unconditional longest-declaration repair and schema-only code pruning are
-saved with host assembly evidence, but have no fresh native proof yet. A new
-positive Rust control fails when a forward-enabled conditional introduces the
-longer dotted declaration only on a later pass. Its expected output remains
-`[22, 66]`; repair Rust execution/replay ownership before qualifying that native
-case. This does not invalidate the separately qualified unconditional Rust
-member/schema repair. The new control remains failing in this recovery checkpoint.
+saved with host assembly evidence, but have no fresh native proof yet.
+Rust now rebuilds executed declaration owners, references, reachable blocks and
+schema uses on each layout pass. A forward-enabled conditional introducing the
+longer dotted declaration on a later pass produces `[22, 66]`, retaining its
+physical owner's code and preserving the pruned schema metadata. An inactive
+longer declaration cannot retain ownership or references from an earlier pass.
+
+Possible longer `.const` bindings behind unresolved guards remain separate from
+executed declarations. Initial sizing may defer their values, including arithmetic
+and typed aliases; they grant no visibility or immutable certificate. Stable
+scalar-member errors and final evaluation stay strict. This provisional capture
+currently covers `.const`, not skipped assignment or schema declarations.
+Ninety-eight focused Rust tests pass across member/schema, constant dependencies,
+reachability and owner controls. The native counterpart, shared opcore completion
+and a new full current-source self-host remain unqualified.

@@ -1,6 +1,6 @@
 //! Exact native descriptor proof from live generic TKVM spans and Rust PRVM.
-use crate::fs_uae_smoke::hunk;
 use super::*;
+use crate::fs_uae_smoke::hunk;
 use package::package::{macro_descriptor_program, PARSER_VM_MACRO_ENTRY, PARSER_VM_MACRO_VERSION};
 use vm::macro_descriptor_vm::{execute, TokenSpan};
 use vm::portable_contract::{PortableOperatorKind, PortableTokenKind};

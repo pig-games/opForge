@@ -232,3 +232,53 @@ fn member_bindings_schema_dimensions_keep_forward_and_local_shadow_rules() {
 fn member_bindings_longer_record_owner_precedes_shorter_struct() {
     assert_eq!(bytes("items .bfor 1\nvalue .const 66\n.endfor\nInfo .struct\nvalue .byte ?\n.endstruct\nsaved .const Info {value:7}\nsaved.value .const items[0]\n.byte saved.value.value"), [66]);
 }
+
+#[test]
+fn member_bindings_forward_guard_can_select_longer_physical_owner() {
+    for body in [
+        "other .block\n.if enabled\nprovider.routine.saved.value .const provider.routine.Info {value:66}\n.endif\nenabled .const 1\n.byte 22\n.bend",
+        ".if enabled\nother .block\nprovider.routine.saved.value .const provider.routine.Info {value:66}\n.byte 22\n.bend\n.endif\nenabled .const 1",
+    ] {
+        let source = format!(".module provider\n.pub\nroutine .block\nInfo .struct\nvalue .byte ?\n.endstruct\nsaved .const Info {{value:7}}\n.byte 11\n.bend\n{body}\n.endmodule\n.module app\n.use provider as lib\n.byte lib.routine.saved.value.value\n.endmodule");
+        assert_eq!(bytes(&source), [22, 66]);
+        let arithmetic = source.replace(".byte lib.routine.saved.value.value", ".byte lib.routine.saved.value.value+1");
+        assert_eq!(bytes(&arithmetic), [22, 67]);
+        let alias = source.replace(".byte lib.routine.saved.value.value", "alias .const lib.routine.saved.value\n.byte alias.value");
+        assert_eq!(bytes(&alias), [22, 66]);
+    }
+}
+
+#[test]
+fn member_bindings_deferred_possible_owner_never_certifies_scalar_member() {
+    for guard in ["0", "enabled"] {
+        let source = format!("Info .struct\nvalue .byte ?\n.endstruct\nsaved .const Info {{value:7}}\n.if {guard}\nsaved.value .const Info {{value:66}}\n.endif\nenabled .const 0\n.byte saved.value.value");
+        let lines = source.lines().map(str::to_owned).collect::<Vec<_>>();
+        let mut assembler = Assembler::new();
+        let first = assembler.pass1(&lines);
+        if first.errors == 0 {
+            let mut output = Vec::new();
+            let mut listing = ListingWriter::new(&mut output, false);
+            assert!(assembler.pass2(&lines, &mut listing).unwrap().errors > 0);
+        }
+        assert!(assembler.diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .error
+                .message()
+                .contains("Member expression requires struct base value")
+        }));
+    }
+    let source = "saved .const 66\n.if enabled\nunrelated .const 1\n.endif\nenabled .const 1\n.byte saved.value";
+    let assembler = run_pass1(&source.lines().collect::<Vec<_>>());
+    assert!(assembler.diagnostics.iter().any(|diagnostic| {
+        diagnostic
+            .error
+            .message()
+            .contains("Member expression requires struct base value")
+    }));
+}
+
+#[test]
+fn member_bindings_forward_guard_removes_inactive_longer_owner_and_references() {
+    let source = ".module provider\n.pub\nroutine .block\nInfo .struct\nvalue .byte ?\n.endstruct\nsaved .const Info {value:7}\n.byte 11\n.bend\nother .block\n.if !enabled\nprovider.routine.saved.value .const 66\n.endif\nenabled .const 1\n.byte 22\n.bend\n.endmodule\n.module app\n.use provider\n.byte provider.routine.saved.value\n.endmodule";
+    assert_eq!(bytes(source), [11, 7]);
+}

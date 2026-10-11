@@ -358,7 +358,10 @@ impl<'a> AsmLine<'a> {
                 .scope_stack
                 .push_anonymous_with_kind(ScopeKind::Block);
         }
-        let unit_index = if self.pass == 1 && !outer_block {
+        let unit_index = if !matches!(self.profile_phase, AsmProfilePhase::Pass2)
+            && !self.cond_stack.skipping()
+            && !outer_block
+        {
             block_symbol.as_ref().and_then(|symbol| {
                 let section = self.layout.current_section.as_ref().and_then(|section| {
                     self.layout
@@ -387,7 +390,7 @@ impl<'a> AsmLine<'a> {
         };
         self.block_unit_stack
             .push((unit_index, if outer_block { enclosing_unit } else { None }));
-        if self.pass == 1 && !outer_block && unit_index.is_some() {
+        if !outer_block && unit_index.is_some() {
             self.current_unit_symbol = block_symbol;
         }
         self.push_visibility();

@@ -83,12 +83,12 @@ bounds	.block
 	blo.w bad
 	cmpi.b #OPEN, (a0)+
 	bne.w bad
-	cmpi.b #expression.COMPILED_TAG, (a0)
+	move.l d1, -(sp)
+	jsr expression.capsuleSpan
+	move.l d1, d2
+	move.l (sp)+, d1
+	tst.l d0
 	bne.w bad
-	moveq #0, d2
-	move.b 1(a0), d2
-	beq.w bad
-	addq.l #2, d2
 	move.l d2, d0
 	add.l d3, d0
 	addq.l #1, d0

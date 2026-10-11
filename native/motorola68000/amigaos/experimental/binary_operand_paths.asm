@@ -289,8 +289,12 @@ scalar	.block
 	sub.l a0, d0
 	cmpi.l #3, d0
 	blo.w bad
-	cmpi.b #expression.COMPILED_TAG, (a0)
+	jsr expression.capsuleSpan
 	beq.w compiled
+	cmpi.l #expression.STATUS_NOT_CAPSULE, d0
+	bne.w bad
+	move.l a1, d0
+	sub.l a0, d0
 	cmpi.l #4, d0
 	bne.w bad
 	cmpi.b #nested.RAW_NAME_MAX, (a0)

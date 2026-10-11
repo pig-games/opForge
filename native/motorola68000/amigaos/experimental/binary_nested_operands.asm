@@ -143,6 +143,47 @@ done
 	rts
 	.bend  ; unwrap
 
+; A0/A1=exact prepared child. Expose a capsule beneath complete single-child
+; parenthesis wrappers. D0/CCR=status; success A0/A1=capsule bounds, failure
+; retains the input bounds. Other registers saved. Existing framing validates
+; every wrapper; tuple containers and wrapped names never become capsules.
+capsuleView	.block
+	movem.l d1-d2/a2-a3, -(sp)
+	movea.l a0, a2
+	movea.l a1, a3
+	moveq #0, d2
+next
+	jsr expression.capsuleSpan
+	tst.l d0
+	beq.w complete
+	cmpi.l #expression.STATUS_NOT_CAPSULE, d0
+	bne.w bad
+	cmpi.b #RAW_PAREN_OPEN, (a0)
+	bne.w bad
+	addq.l #1, d2
+	cmpi.l #MAX_DEPTH, d2
+	bhi.w bad
+	moveq #RAW_PAREN_OPEN, d1
+	bsr.w unwrap
+	bne.w bad
+	bra.w next
+complete
+	move.l a1, d0
+	sub.l a0, d0
+	cmp.l d1, d0
+	bne.w bad
+	moveq #STATUS_OK, d0
+	bra.w done
+bad
+	movea.l a2, a0
+	movea.l a3, a1
+	moveq #STATUS_MALFORMED, d0
+done
+	movem.l (sp)+, d1-d2/a2-a3
+	tst.l d0
+	rts
+	.bend  ; capsuleView
+
 ; A0/A1=prepared comma sequence interior,D1=zero-based child ordinal.
 ; D0/CCR=status; success A0/A1=exact selected child. Other regs preserved.
 ; Requires at least two children (Tuple/List); every child is framed and
@@ -588,6 +629,14 @@ done
 
 ; A2/A1 bounded raw token. D1=byte count, D0/CCR=status.
 tokenBytes	.block
+	move.l a0, -(sp)
+	movea.l a2, a0
+	jsr expression.capsuleSpan
+	movea.l (sp)+, a0
+	tst.l d0
+	beq.w ready
+	cmpi.l #expression.STATUS_NOT_CAPSULE, d0
+	bne.w bad
 	moveq #1, d1
 	moveq #0, d0
 	move.b (a2), d0
@@ -606,8 +655,6 @@ wideNumber
 	moveq #source.WIDE_NUMBER_BYTES, d1
 	bra.w bounded
 string
-	cmpi.b #expression.COMPILED_TAG, d0
-	beq.w payload
 	cmpi.b #products.BINARY_TAG, d0
 	beq.w payload
 	cmpi.b #RAW_STRING, d0
@@ -625,6 +672,7 @@ bounded
 	sub.l a2, d0
 	cmp.l d1, d0
 	blo.w bad
+ready
 	moveq #STATUS_OK, d0
 	rts
 bad

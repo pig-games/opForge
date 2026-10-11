@@ -256,6 +256,8 @@ fn native_text_grammar_component_fs_uae() {
 // Full compact-source integration. Each native case is compared with its own
 // current Rust execution, including module selection and decoded-string policy.
 const INTEGRATED_POSITIVE: &[(&str, &str)] = &[
+    ("character-bitwise-ascii", ".module main\n.cpu 68020\n.byte ('A' | $20),('a' & $df),('A' ^ $20)\n.endmodule\n"),
+    ("character-bitwise-profiles", ".module main\n.cpu 68020\n.enc petscii\n.byte ('A' | $20),('a' & $df)\n.enc ascii\n.byte ('A' | $20),('a' & $df)\n.endmodule\n"),
     ("nested-definitions-close-in-module", ".module main\n.cpu 68020\n.encode outer\n.cdef \"A\",\"A\",1\n.encode inner\n.cdef \"B\",\"B\",2\n.endencode\n.cdef \"C\",\"C\",3\n.endencode\n.enc outer\n.text \"AC\"\n.enc inner\n.text \"B\"\n.endmodule\n"),
     ("registry-replay-and-modules", ORACLE),
     ("forward-definition-values", ".module main\n.cpu 68020\n.encode ranges\n.cdef \"A\",\"B\",CODE\n.endencode\n.enc ranges\n.text \"AB\"\n.encode tables\n.tdef \"AB\",CODE\n.endencode\n.enc tables\n.text \"AB\"\n.encode escapes\n.edef \"{x}\",CODE\n.endencode\n.enc escapes\n.text \"{x}\"\nCODE .const 7\n.endmodule\n"),
@@ -439,6 +441,8 @@ fn native_text_integration_live_rust_controls() {
         let actual = oracle(&dir.0, source)
             .unwrap_or_else(|error| panic!("positive control {name}: {error}"));
         let pinned: Option<&[u8]> = match *name {
+            "character-bitwise-ascii" => Some(&[97, 65, 97]),
+            "character-bitwise-profiles" => Some(&[225, 65, 97, 65]),
             "forward-definition-values" => Some(&[7, 8, 7, 8, 7]),
             "nested-definitions-close-in-module" => Some(&[1, 3, 2]),
             "scalar-data-and-padding" => Some(&[
@@ -548,5 +552,190 @@ fn native_text_forward_definition_live_controls() {
     ] {
         let source = format!(".module main\n.cpu 68020\n{body}.endmodule\n");
         assert_eq!(oracle(&dir.0, &source).unwrap(), expected, "forward {name}");
+    }
+}
+
+fn scalar_capsule_cases() -> Vec<super::native_source_cases::Case> {
+    use super::native_source_cases::Case;
+    let mut cases = Vec::new();
+    for (name, profile, expected) in [
+        (
+            "character-immediate-ascii",
+            "ascii",
+            vec![0xa9, 97, 0xa9, 65],
+        ),
+        (
+            "character-immediate-petscii",
+            "petscii",
+            vec![0xa9, 225, 0xa9, 65],
+        ),
+    ] {
+        cases.push(Case {
+            name: name.into(),
+            cpu: "6502".into(),
+            files: vec![(
+                "entry.asm",
+                format!(
+                    ".cpu 6502\n.org 0\n.enc {profile}\n lda #'A' | 020H\n lda #'a' & 11011111b\n"
+                ),
+            )],
+            expected: Some(expected),
+        });
+    }
+    for (name, declaration) in [
+        ("mapped-imported-label", "sessionPass:\n rts\n"),
+        ("mapped-imported-block", "sessionPass .block\n rts\n.bend\n"),
+    ] {
+        cases.push(Case {
+            name: name.into(),
+            cpu: "65c02".into(),
+            files: vec![("entry.asm", format!(".module opasm.amigaos.engine\n.cpu 65c02\n.pub\n.section code,kind=code,logical\n{declaration}.endsection\n.endmodule\n.module app.main\n.cpu 65c02\n.region rom,$1000,$10ff\n.use opasm.amigaos.engine as engine map {{ code -> app_code }}\n.section app_code,kind=code\n jsr engine.sessionPass\n rts\n.endsection\n.place app_code in rom\n.endmodule\n"))],
+            expected: Some(vec![0x20, 4, 0x10, 0x60, 0x60]),
+        });
+    }
+    cases
+}
+
+#[test]
+fn native_scalar_capsule_live_rust_controls() {
+    let dir = scratch();
+    assert!(!scalar_capsule_65c02_package().is_empty());
+    for case in scalar_capsule_cases() {
+        assert_eq!(
+            oracle(&dir.0, &case.files[0].1).unwrap(),
+            case.expected.unwrap(),
+            "{}",
+            case.name
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; fresh scalar capsule instruction proof"]
+fn native_scalar_capsule_fs_uae() {
+    run_scalar_capsule_cases(scalar_capsule_cases());
+}
+
+fn structural_capsule_cases() -> Vec<super::native_source_cases::Case> {
+    use super::native_source_cases::Case;
+    let mut cases: Vec<_> = [
+        (
+            "typed-displacement",
+            "MOVE.W ('A'|$20)(A2),D3",
+            vec![0x36, 0x2a, 0, 0x61],
+        ),
+        (
+            "typed-tuple",
+            "MOVE.W (('A'|$20),A2),D3",
+            vec![0x36, 0x2a, 0, 0x61],
+        ),
+        (
+            "numeric-tuple",
+            "MOVE.W (97,A2),D3",
+            vec![0x36, 0x2a, 0, 0x61],
+        ),
+        (
+            "grouped-numeric-tuple",
+            "MOVE.W ((97),A2),D3",
+            vec![0x36, 0x2a, 0, 0x61],
+        ),
+        (
+            "typed-product",
+            "MOVE.W 0(A3,D4.W*('A'&3)),D5",
+            vec![0x3a, 0x33, 0x40, 0],
+        ),
+        (
+            "typed-tuple-extra-parentheses",
+            "MOVE.W (((('A'|$20))),A2),D3",
+            vec![0x36, 0x2a, 0, 0x61],
+        ),
+        ("grouped-register", "MOVE.W (A2),D3", vec![0x36, 0x12]),
+    ]
+    .into_iter()
+    .map(|(name, instruction, expected)| Case {
+        name: name.into(),
+        cpu: "68020".into(),
+        files: vec![("entry.asm", format!(".cpu 68020\n.org 0\n {instruction}\n"))],
+        expected: Some(expected),
+    })
+    .collect();
+    for (name, instruction) in [
+        ("incomplete-tuple-wrapper", "MOVE.W (('A'|$20),A2,D3"),
+        ("unbalanced-tuple-wrapper", "MOVE.W (('A'|$20),A2)),D3"),
+    ] {
+        cases.push(Case {
+            name: name.into(),
+            cpu: "68020".into(),
+            files: vec![("entry.asm", format!(".cpu 68020\n.org 0\n {instruction}\n"))],
+            expected: None,
+        });
+    }
+    cases
+}
+
+#[test]
+fn native_scalar_capsule_structural_live_rust_controls() {
+    let dir = scratch();
+    for case in structural_capsule_cases() {
+        let actual = oracle(&dir.0, &case.files[0].1);
+        if let Some(expected) = case.expected {
+            assert_eq!(actual.unwrap(), expected, "{}", case.name);
+        } else {
+            assert!(actual.is_err(), "Rust accepted {}", case.name);
+        }
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; fresh typed displacement/tuple/product proof"]
+fn native_scalar_capsule_structural_fs_uae() {
+    run_scalar_capsule_cases(structural_capsule_cases());
+}
+
+fn scalar_capsule_65c02_package() -> Vec<u8> {
+    let core = vm::runtime_model_core::RuntimeModelCore::from_registry(
+        &engine::build_default_asm_registry(),
+    )
+    .expect("current CPU package registry");
+    let pipeline = core
+        .resolve_pipeline("65c02", None)
+        .expect("actual 65C02 pipeline");
+    crate::binary_source_experiment::prepare_package(&core, &pipeline)
+        .expect("current 65C02 package")
+}
+
+fn run_scalar_capsule_cases(mut cases: Vec<super::native_source_cases::Case>) {
+    use super::native_iterable_loops::build_image;
+    use super::native_source_cases;
+    let dir = scratch();
+    let root = workspace_root();
+    let executable = std::env::var_os("OPFORGE_TEXT_IMAGE")
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_else(|| build_image(&root, &dir.0));
+    let selected = std::env::var("OPFORGE_TEXT_CASE").ok();
+    cases.retain(|case| selected.as_deref().is_none_or(|name| name == case.name));
+    assert!(
+        !cases.is_empty(),
+        "scalar capsule localization selected no cases"
+    );
+    for case in &mut cases {
+        if case.expected.is_some() {
+            case.expected =
+                Some(oracle(&dir.0, &case.files[0].1).expect("current scalar capsule oracle"));
+        }
+    }
+    if cases.iter().any(|case| case.cpu == "65c02") {
+        let package = scalar_capsule_65c02_package();
+        native_source_cases::run_with_packages(
+            &root,
+            &executable,
+            &cases,
+            &[OpforgeNativeCliGuestFile {
+                relative_path: "packages/65c02--transparent.bin",
+                bytes: &package,
+            }],
+        );
+    } else {
+        native_source_cases::run(&root, &executable, &cases);
     }
 }

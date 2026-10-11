@@ -4,6 +4,7 @@
 	.cpu 68020
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_products as products
+	.use experimental.amigaos.binary_nested_operands as nested
 	.priv
 NAME_MAX = 1
 COMMA = 4
@@ -82,7 +83,10 @@ expectedReady
 	cmpi.b #OPEN, (a2)
 	beq.w opening
 	; Displacement-style syntax retains its scalar before the opening token.
-	cmpi.b #expression.COMPILED_TAG, (a2)
+	move.l d1, -(sp)
+	jsr expression.capsuleSpan
+	move.l (sp)+, d1
+	tst.l d0
 	bne.w bad
 	bsr.w leaf
 	bne.w bad
@@ -168,17 +172,34 @@ count	.block
 ; Advance over one numeric name or compiled scalar; retain selected bounds.
 ; D0/CCR=status; A2,D4-D5/A4-A5 are scratch owned by select.
 leaf	.block
+	movem.l d1/a0-a1, -(sp)
+	movea.l a2, a0
+	movea.l a3, a1
+	jsr expression.capsuleSpan
+	move.l d1, d5
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	bne.w ordinary
+	move.l a3, d0
+	sub.l a2, d0
+	bra.w length
+ordinary
+	cmpi.l #expression.STATUS_NOT_CAPSULE, d0
+	bne.w bad
 	move.l a3, d0
 	sub.l a2, d0
 	cmpi.l #2, d0
 	blo.w bad
 	moveq #4, d5
-	cmpi.b #expression.COMPILED_TAG, (a2)
-	beq.w sized
 	cmpi.b #products.BINARY_TAG, (a2)
 	beq.w sized
 	cmpi.b #OPEN, (a2)
 	bne.w name
+	bsr.w groupedCapsule
+	tst.l d0
+	beq.w advance
+	move.l a3, d0
+	sub.l a2, d0
 	; Only calls carry preserved indirect register children. Ordinary tuple
 	; views keep their existing leaf grammar and expected arity checks.
 	tst.l d2
@@ -218,5 +239,33 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; leaf
+
+; A2/A3=remaining sequence. Preserve the outer child extent in D5, but a
+; selected scalar grouping exposes only its capsule bounds in A4/A5.
+; D0/CCR=status; other leaf inputs saved. No capsule payload is inspected.
+groupedCapsule	.block
+	movem.l d1/a0-a1/a6, -(sp)
+	movea.l a2, a0
+	movea.l a3, a1
+	jsr nested.rawSpan
+	tst.l d0
+	bne.w done
+	movea.l a6, a1
+	jsr nested.capsuleView
+	tst.l d0
+	bne.w done
+	move.l a6, d5
+	sub.l a2, d5
+	cmp.l d1, d4
+	bne.w ready
+	movea.l a0, a4
+	movea.l a1, a5
+ready
+	moveq #0, d0
+done
+	movem.l (sp)+, d1/a0-a1/a6
+	tst.l d0
+	rts
+	.bend  ; groupedCapsule
 	.endsection
 	.endmodule

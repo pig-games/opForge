@@ -730,8 +730,9 @@ wrappedFirstItem
 	; Preserve the unsupported barrier for names and other unknown forms.
 	cmpi.l #7, d4
 	bne.w otherStructuredRoot
-	cmpi.b #expression.COMPILED_TAG, (a0)
-	beq.w mismatch
+	jsr shapes.isScalar
+	tst.l d0
+	bne.w mismatch
 	; A complete indirect/update wrapper is not a bare named root either.
 	jsr shapes.isWrappedName
 	tst.l d0
@@ -889,12 +890,11 @@ tupleOperandClass	.block
 	sub.l a0, d0
 	cmpi.l #9, d0
 	blo.w unknown
-	cmpi.b #expression.COMPILED_TAG, (a0)
+	jsr expression.capsuleSpan
+	tst.l d0
 	bne.w unknown
-	moveq #0, d1
-	move.b 1(a0), d1
-	beq.w unknown
-	addq.l #2, d1
+	move.l a1, d0
+	sub.l a0, d0
 	sub.l d1, d0
 	cmpi.l #6, d0
 	beq.w oneName
@@ -949,12 +949,21 @@ result
 
 ; Advance A3 over one bounded binary token.
 skipToken	.block
+	move.l a0, -(sp)
+	movea.l a3, a0
+	jsr expression.capsuleSpan
+	movea.l (sp)+, a0
+	tst.l d0
+	bne.w ordinary
+	adda.l d1, a3
+	rts
+ordinary
+	cmpi.l #expression.STATUS_NOT_CAPSULE, d0
+	bne.w bad
 	cmpa.l a1, a3
 	bhs.w bad
 	moveq #0, d0
 	move.b (a3)+, d0
-	cmpi.b #expression.COMPILED_TAG, d0
-	beq.w compiled
 	cmpi.b #products.BINARY_TAG, d0
 	beq.w compiled
 	cmpi.b #3, d0

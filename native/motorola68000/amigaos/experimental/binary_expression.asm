@@ -29,6 +29,13 @@ STATUS_OK = 0
 STATUS_MALFORMED = 1
 STATUS_OUTPUT = 2
 STATUS_DEPTH = 3
+STATUS_NOT_CAPSULE = 4
+Capsule	.struct
+Tag	.byte ?
+Length	.byte ?
+Payload	.byte ?
+	.endstruct
+CAPSULE_HEADER_BYTES = Capsule.Payload
 Frame	.struct
 Values	.long ?
 Defined	.long ?
@@ -88,6 +95,41 @@ unknown
 	moveq #1, d0
 	rts
 	.bend  ; isBuiltin
+
+; A0/A1=bounded prepared token/end. D0/CCR=status, D1=total capsule bytes
+; on success. STATUS_NOT_CAPSULE selects ordinary tokens; recognized but
+; truncated/empty capsules are malformed. Other registers and cursors saved.
+; Both scalar and typed payloads remain opaque; evaluation owns their kinds.
+capsuleSpan	.block
+	moveq #0, d1
+	move.l a1, d0
+	sub.l a0, d0
+	bcs.w bad
+	beq.w bad
+	cmpi.b #COMPILED_TAG, Capsule.Tag(a0)
+	beq.w capsule
+	cmpi.b #VALUE_TAG, Capsule.Tag(a0)
+	bne.w absent
+capsule
+	cmpi.l #CAPSULE_HEADER_BYTES+1, d0
+	blo.w bad
+	move.b Capsule.Length(a0), d1
+	beq.w bad
+	addq.l #CAPSULE_HEADER_BYTES, d1
+	cmp.l d0, d1
+	bhi.w bad
+	moveq #STATUS_OK, d0
+	bra.w done
+absent
+	moveq #STATUS_NOT_CAPSULE, d0
+	bra.w done
+bad
+	moveq #0, d1
+	moveq #STATUS_MALFORMED, d0
+done
+	tst.l d0
+	rts
+	.bend  ; capsuleSpan
 
 ; A0/A1=bounded raw tokens,A2=bare-member callback,A6=callback context.
 ; Callback: A0=context,D0=source ID => D0=status,D1=global member ID;

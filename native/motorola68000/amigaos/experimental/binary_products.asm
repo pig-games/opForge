@@ -212,8 +212,12 @@ factor	.block
 	bcs.w bad
 	cmpi.l #3, d0
 	blo.w bad
-	cmpi.b #expression.COMPILED_TAG, (a0)
+	jsr expression.capsuleSpan
 	beq.w compiled
+	cmpi.l #expression.STATUS_NOT_CAPSULE, d0
+	bne.w bad
+	move.l a1, d0
+	sub.l a0, d0
 	cmpi.l #4, d0
 	bne.w bad
 	cmpi.b #RAW_NAME_MAX, (a0)
@@ -297,30 +301,35 @@ bad
 ; A2/A3=exact prepared child span. D0/CCR=status; D2 scratch.
 ; The compiled payload remains opaque and must be nonempty.
 preparedLeaf	.block
+	movem.l d1/a0-a1, -(sp)
+	movea.l a2, a0
+	movea.l a3, a1
+	jsr expression.capsuleSpan
+	tst.l d0
+	bne.w ordinary
+	move.l d1, d2
 	move.l a3, d0
 	sub.l a2, d0
-	bcs.w bad
-	cmpi.l #3, d0
-	blo.w bad
-	cmpi.b #RAW_NAME_MAX, (a2)
-	bls.w name
-	cmpi.b #expression.COMPILED_TAG, (a2)
-	bne.w bad
-	moveq #0, d2
-	move.b 1(a2), d2
-	beq.w bad
-	addq.l #2, d2
 	cmp.l d2, d0
 	bne.w bad
 	bra.w ok
-name
+ordinary
+	cmpi.l #expression.STATUS_NOT_CAPSULE, d0
+	bne.w bad
+	move.l a3, d0
+	sub.l a2, d0
 	cmpi.l #4, d0
 	bne.w bad
+	cmpi.b #RAW_NAME_MAX, (a2)
+	bhi.w bad
 ok
 	moveq #STATUS_OK, d0
-	rts
+	bra.w done
 bad
 	moveq #STATUS_MALFORMED, d0
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
 	rts
 	.bend  ; preparedLeaf
 

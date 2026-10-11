@@ -12,22 +12,16 @@ MINUS = 19
 DIVIDE = 22
 	.section code, kind=code
 	.pub
-; A0/A1=bounded operand. D0=1 for one complete compiled scalar wrapper.
+; A0/A1=bounded operand. D0=1 for one complete expression capsule.
 ; All other registers are preserved. This proves its root shape only; the
-; compiler/evaluator own expression validity, and no payload byte is decoded.
+; compiler/evaluator own validity and value kind; no payload byte is decoded.
 isScalar	.block
 	movem.l d1-d2, -(sp)
-	move.l a1, d1
-	sub.l a0, d1
-	bcs.w no
-	cmpi.l #3, d1
-	blo.w no
-	cmpi.b #expression.COMPILED_TAG, (a0)
+	jsr expression.capsuleSpan
+	tst.l d0
 	bne.w no
-	moveq #0, d2
-	move.b 1(a0), d2
-	beq.w no
-	addq.l #2, d2
+	move.l a1, d2
+	sub.l a0, d2
 	cmp.l d1, d2
 	bne.w no
 	moveq #1, d0
@@ -63,13 +57,9 @@ isMember	.block
 	bne.w no
 	; A compiled expression is opaque: literal bytes must never be scanned
 	; as punctuation or symbol tokens.
-	cmpi.b #expression.COMPILED_TAG, (a0)+
+	jsr expression.capsuleSpan
+	tst.l d0
 	bne.w no
-	cmpa.l a2, a0
-	bhs.w no
-	moveq #0, d1
-	move.b (a0)+, d1
-	beq.w no
 	adda.l d1, a0
 	cmpa.l a2, a0
 	bne.w no

@@ -824,7 +824,12 @@ pub(super) fn parse_compat_mixed_line(parser: &mut Parser) -> Result<LineAst, Pa
                 span: parser.tokens[parser.index].span,
             });
         }
-        return Ok(LineAst::Conditional(ConditionalAst { kind, exprs, span }));
+        return Ok(LineAst::Conditional(ConditionalAst {
+            label,
+            kind,
+            exprs,
+            span,
+        }));
     }
 
     let mnemonic = match parser.next() {

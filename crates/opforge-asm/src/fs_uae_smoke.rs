@@ -8140,3 +8140,7 @@ mod native_while_loops;
 #[cfg(test)]
 #[path = "tests/native_wide_literals.rs"]
 mod native_wide_literals;
+
+#[cfg(test)]
+#[path = "tests/native_labeled_conditionals.rs"]
+mod native_labeled_conditionals;

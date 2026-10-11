@@ -477,6 +477,19 @@ parents, and `.elseif` expressions after an earlier branch wins, are not
 evaluated. Syntax and branch structure remain checked: `.else` or `.elseif`
 after `.else` is invalid even when its expression would otherwise be skipped.
 
+A label on `.if`, `.elseif`, `.else` or `.endif` names the current address
+before that control is evaluated. Its visibility follows the enclosing branch:
+an active parent publishes the label even when this control selects no body;
+an inactive parent publishes none of its nested control labels. The ordinary
+readonly ownership and scope rules apply. Both canonical colonless labels and
+explicit-colon labels are accepted:
+
+```asm
+opening .if opening == $
+    .byte 1
+closing .endif
+```
+
 #### 3.7.1 Match expressions
 
 ```

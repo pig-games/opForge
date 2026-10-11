@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ConditionalAst<TKind, TExpr, TSpan> {
+pub struct ConditionalAst<TKind, TExpr, TSpan, TLabel> {
+    pub label: Option<TLabel>,
     pub kind: TKind,
     pub exprs: Vec<TExpr>,
     pub span: TSpan,

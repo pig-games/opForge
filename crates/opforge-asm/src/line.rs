@@ -2518,6 +2518,26 @@ impl<'a> AsmLine<'a> {
         match ast {
             LineAst::Empty => LineStatus::NothingDone,
             LineAst::Conditional(conditional) => {
+                // A control label belongs to the enclosing activity, before its
+                // guard reads the current PC. Nested skipped controls share the
+                // outer context's skip_level and never publish their prefixes.
+                let parent_active = match conditional.kind {
+                    ConditionalKind::If => !self.cond_stack.skipping(),
+                    ConditionalKind::ElseIf | ConditionalKind::Else | ConditionalKind::EndIf => {
+                        self.cond_stack
+                            .last()
+                            .is_some_and(|ctx| ctx.skip_level == 0)
+                    }
+                    _ => false,
+                };
+                if parent_active {
+                    if let Some(label) = &conditional.label {
+                        self.label = Some(label.name.clone());
+                        if let Some(status) = self.define_statement_label(label) {
+                            return status;
+                        }
+                    }
+                }
                 self.process_conditional_ast(conditional.kind, &conditional.exprs, conditional.span)
             }
             LineAst::Use(use_ast) => {

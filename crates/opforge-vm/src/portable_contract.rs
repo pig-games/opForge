@@ -743,6 +743,7 @@ impl PortableAstStatementSignature {
 pub enum PortableLineAst {
     Empty,
     Conditional {
+        label: Option<PortableAstLabel>,
         kind: ConditionalKind,
         exprs: Vec<PortableAstExpr>,
         span: PortableSpan,
@@ -791,7 +792,13 @@ impl PortableLineAst {
     pub fn from_core_line_ast(value: &LineAst) -> Self {
         match value {
             LineAst::Empty => Self::Empty,
-            LineAst::Conditional(ConditionalAst { kind, exprs, span }) => Self::Conditional {
+            LineAst::Conditional(ConditionalAst {
+                label,
+                kind,
+                exprs,
+                span,
+            }) => Self::Conditional {
+                label: label.as_ref().map(PortableAstLabel::from_core_label),
                 kind: *kind,
                 exprs: exprs.iter().map(PortableAstExpr::from_core_expr).collect(),
                 span: (*span).into(),
@@ -881,7 +888,13 @@ impl PortableLineAst {
     pub fn to_core_line_ast(&self) -> LineAst {
         match self {
             Self::Empty => LineAst::Empty,
-            Self::Conditional { kind, exprs, span } => LineAst::Conditional(ConditionalAst {
+            Self::Conditional {
+                label,
+                kind,
+                exprs,
+                span,
+            } => LineAst::Conditional(ConditionalAst {
+                label: label.as_ref().map(PortableAstLabel::to_core_label),
                 kind: *kind,
                 exprs: exprs.iter().map(PortableAstExpr::to_core_expr).collect(),
                 span: (*span).into(),

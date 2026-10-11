@@ -226,6 +226,7 @@ pub(crate) fn parse_dot_directive_line_from_tokens(
             }
         }
         return Ok(LineAst::Conditional(ConditionalAst {
+            label,
             kind,
             exprs,
             span: name_span,

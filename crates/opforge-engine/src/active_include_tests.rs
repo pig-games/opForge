@@ -231,7 +231,7 @@ fn active_include_streams_namespace_state_across_file_and_macro_boundaries() {
 fn active_include_rejects_unresolved_activity_before_acquisition() {
     for condition in ["later == 0", "later"] {
         let provider = MemorySourceProvider::default()
-            .with_file("/virtual/main.asm", &format!(".module main\n.if {condition}\n.include \"unread.inc\"\n.endif\nlater = 1\n.endmodule\n"))
+            .with_file("/virtual/main.asm", format!(".module main\n.if {condition}\n.include \"unread.inc\"\n.endif\nlater = 1\n.endmodule\n"))
             .with_file("/virtual/unread.inc", ".byte 4\n");
         let (assembler, _, _) = assemble(&provider, &[]);
         assert!(

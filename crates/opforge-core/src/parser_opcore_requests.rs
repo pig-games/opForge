@@ -220,7 +220,12 @@ pub(super) fn process_opcore_statement_request(
                 span: parser.tokens[parser.index].span,
             });
         }
-        return ProcessingOutcome::Done(LineAst::Conditional(ConditionalAst { kind, exprs, span }));
+        return ProcessingOutcome::Done(LineAst::Conditional(ConditionalAst {
+            label,
+            kind,
+            exprs,
+            span,
+        }));
     }
 
     asm_statement_request()

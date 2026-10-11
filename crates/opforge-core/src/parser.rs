@@ -52,7 +52,7 @@ pub struct ParseError {
 #[derive(Debug, Clone)]
 pub enum LineAst {
     Empty,
-    Conditional(ConditionalAst<ConditionalKind, Expr, Span>),
+    Conditional(ConditionalAst<ConditionalKind, Expr, Span, Label>),
     Place(PlaceAst<Expr, Span>),
     Pack(PackAst<Span>),
     Use(UseAst<UseItem, UseParam, Span>),

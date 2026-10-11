@@ -1826,6 +1826,10 @@ fn portable_line_ast_contract_round_trips_core_line_model() {
     let line_cases = vec![
         LineAst::Empty,
         LineAst::Conditional(ConditionalAst {
+            label: Some(Label {
+                name: "control_pc".to_string(),
+                span,
+            }),
             kind: ConditionalKind::If,
             exprs: vec![binary_expr.clone()],
             span,

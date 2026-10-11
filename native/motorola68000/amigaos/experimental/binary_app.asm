@@ -19,6 +19,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_package_loader as loader
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_symbol_storage as storage
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_discovery as discovery
 	.use experimental.amigaos.binary_input_plan as inputs
@@ -303,12 +304,10 @@ freeBlocks
 	jsr memory.release
 	lea Records, a0
 	jsr memory.release
-	lea Symbols, a0
-	jsr memory.release
+	lea SymbolStorage, a0
+	jsr storage.release
 	lea ValueOwner, a0
 	jsr values.release
-	lea MemberKeys, a0
-	jsr memory.release
 	lea Parameters, a0
 	jsr memory.release
 	lea Output, a0
@@ -856,7 +855,7 @@ parametersSaved
 	; Export field identities before discarding the lexical binding arena.
 	move.l NameCount, d0
 	add.l d0, d0
-	lea MemberKeys, a0
+	lea SymbolStorage+storage.State.MemberKeys, a0
 	jsr memory.reserve
 	bne.w completionBad
 	movea.l memory.Block.Pointer(a0), a1
@@ -1274,29 +1273,10 @@ run	.block
 	beq.w bad
 	cmpi.l #65536, d0
 	bhi.w bad
-	move.l d0, d1
-	lsl.l #3, d0
-	add.l d1, d0
-	add.l d1, d0  ; one section identity byte per numeric symbol
-	lea Symbols, a0
-	jsr memory.reserve
-	bne.w bad
-	lea Context, a0
-	lea Symbols, a1
-	movea.l memory.Block.Pointer(a1), a2
-	move.l a2, package.Context.Values(a0)
-	move.l NameCount, d0
-	lsl.l #3, d0
-	adda.l d0, a2
-	lea Context, a0
-	move.l a2, package.Context.Defined(a0)
-	adda.l NameCount, a2
-	move.l a2, package.Context.SectionIds(a0)
-	move.l NameCount, package.Context.Count(a0)
-	move.l #ValueOwner, package.Context.Owner(a0)
-	lea ValueOwner, a0
-	move.l NameCount, d0
-	jsr values.init
+	lea Context, a1
+	move.l #ValueOwner, package.Context.Owner(a1)
+	lea SymbolStorage, a0
+	jsr storage.grow
 	bne.w bad
 	lea Context, a0
 	lea Parameters, a1
@@ -1313,7 +1293,7 @@ run	.block
 	move.l #allocateOutput, assembly.Frame.Allocate(a0)
 	move.l #appendReloc, assembly.Frame.AddReloc(a0)
 	move.l #reportByteWarning, assembly.Frame.Warn(a0)
-	lea MemberKeys, a1
+	lea SymbolStorage+storage.State.MemberKeys, a1
 	move.l memory.Block.Pointer(a1), assembly.Frame.MemberKeys(a0)
 	clr.l assembly.Frame.Emitted(a0)
 	cmpi.w #record_output.HEX, CliOutputKind
@@ -1904,8 +1884,7 @@ PackageStatus	.res long, 1
 RuntimeBlock	.res byte, memory.Block.Used+4
 PrepBlock	.res byte, memory.Block.Used+4
 Records	.res byte, memory.Block.Used+4
-Symbols	.res byte, memory.Block.Used+4
-MemberKeys	.res byte, memory.Block.Used+4
+SymbolStorage	.res byte, storage.STATE_BYTES
 Parameters	.res byte, memory.Block.Used+4
 ParameterBytes	.res long, 1
 ParameterCount	.res long, 1

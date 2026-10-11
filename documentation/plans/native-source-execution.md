@@ -49,11 +49,27 @@ on 68020 and 6502. The isolated unchanged release control adds 0.76% on one
 sample and 952 bytes of linked static storage; peak heap and a current full
 self-host are unmeasured. These checks do not qualify actual-state acquisition.
 
-Values, Defined and SectionIds currently share Count-dependent allocation slices.
-Give them independent owned blocks, preserving existing cells and initializing
-only appended cells. Grow typed values and member keys coherently, then publish
-Context pointers and Count together. Allocation failure must not expose a partial
-context. Preserve the 65,536 numeric identity bound.
+`binary_symbol_storage` now owns Values, Defined, SectionIds and canonical
+member keys independently. Growth stages only required replacement blocks,
+including an allocated typed-kinds table. It reserves all storage before copying
+and committing views and Count; failure releases staged blocks and preserves the
+published context. Existing cells survive and only appended bytes are cleared.
+Kinds remain lazy when absent. Preparation-exported keys and kinds can precede
+the first scalar allocation. Count remains bounded at 65,536. A caller-provided
+reserve callback follows the normal block allocation ABI and permits component
+failure injection; production uses bounded geometric block growth.
+
+The CLI uses this owner, but frozen sessions still reject changed Count or views.
+Growing source publication is not enabled. The callable component probe covers
+small initial allocations, each of five allocation failures with unchanged
+published cells/pointers/counts, prepared keys/kinds, lazy kinds, unchanged and
+shrinking counts, successful maximum-count growth and repeated release. Fresh
+component and production matrices each pass twelve exact positive cases and two
+expected malformed-input rejections. The unchanged release control takes
+27.064863 seconds before and 26.944213 after (-0.45%, one sample); linked static
+reservation grows by 568 bytes. Peak heap and current full self-host are
+unmeasured. Preparation retention and incremental inventory/binding publication
+remain necessary before actual-state acquisition can use these growing buffers.
 
 Separate incremental binding publication from final source sealing. Already
 consumed references must not be redirected by later import/ancestor rewriting.

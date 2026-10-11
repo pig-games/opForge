@@ -360,3 +360,16 @@ SHA-256 `9d1206f0d9fbdb120c482bc29188f9e6bfb5c424559a36d17ebe317fab34fedc`.
 Relative to the collection checkpoint, this adds 888 code bytes and 64 BSS bytes,
 with unchanged package data. This measures lifecycle overhead on frozen input;
 it does not measure growing-source acquisition, peak heap or full self-hosting.
+
+The independent symbol-storage checkpoint uses the same 11,592-byte control,
+1,200 macro calls, FS-UAE 68020/10 MiB and disabled telemetry. Host builds were
+paused for the fresh pair: 27.064863 seconds before and 26.944213 after (-0.45%,
+one sample), with complete live Rust equality in both runs. This attribution
+baseline already includes the packed-text PRVM dispatch; package data is
+identical. The new image is 662,904 bytes, linked static reservation 687,660,
+SHA-256 `344bd882beac24844abe1353102d9f5ceea85499c2066d5428837d4eeb9ff55a`.
+Compared with that 662,380-byte combined baseline, this adds 536 code bytes and
+32 BSS bytes (568 linked bytes). Twelve positive and two malformed negative
+cases pass freshly for both the production image and the allocation-failure
+probe. This measures unchanged-path storage overhead, not growing-source
+acquisition, peak heap or a new full self-host run.

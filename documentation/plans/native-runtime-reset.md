@@ -75,6 +75,15 @@ Source-session restructuring is in progress; its frozen-input lifecycle has
 focused native proof and is now the sole assembly driver. It does not yet support
 growing records or actual-state acquisition. Its isolated unchanged release
 control adds 0.76% on one sample and 952 bytes linked static storage.
+Independent symbol buffers now stage allocation and commit their views/count
+atomically. Fresh component and production matrices each pass twelve exact
+positive cases and two malformed rejections. Stress controls preserve cells and
+pointers across all five injected allocation failures, support prepared keys and
+lazy kinds, and exercise the 65,536-symbol bound. The unchanged release control
+changes from 27.064863 to 26.944213 seconds (-0.45%, one sample), with 568 more
+linked static bytes. Frozen session pins remain; actual-state acquisition,
+relocatable source views and peak heap are not yet qualified.
+
 VM-contract consolidation remains a separate pending design.
 Consolidate each VM's current capabilities into its own
 v1 contract, remove superseded formats and native VM version fields/checks/dispatch,

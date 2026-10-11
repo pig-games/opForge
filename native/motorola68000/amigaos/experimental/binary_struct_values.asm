@@ -187,6 +187,158 @@ done
 	tst.l d0
 	rts
 	.bend  ; materialize
+; A0=Owner,D1=seed offset. Retain eligibility independently of schema geometry.
+; Only the preparation owner may certify an established, nondeferred schema.
+; D0/CCR=status; others preserved. Storage is lazy and bounded by memory.LIMIT.
+ReplayEntry	.struct
+Offset	.long ?
+.endstruct
+REPLAY_ENTRY_BYTES = ReplayEntry.Offset+4
+captureReplaySeed	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	move.l d1, d4
+	move.l d4, d0
+	andi.l #7, d0
+	bne.w invalid
+	lea values.Owner.Seeds(a0), a1
+	; values.block clobbers D3; semantic offset/count lives in D4.
+	jsr values.block
+	bne.w done
+	move.l memory.Block.Used(a1), d0
+	sub.l d4, d0
+	bcs.w invalid
+	cmpi.l #HEADER_BYTES, d0
+	blo.w invalid
+	movea.l memory.Block.Pointer(a1), a2
+	cmpi.l #TYPE, values.Record.Kind(a2, d4.l)
+	bne.w invalid
+	lea values.Owner.SchemaReplay(a0), a0
+	move.l memory.Block.Used(a0), d2
+	move.l d2, d0
+	andi.l #REPLAY_ENTRY_BYTES-1, d0
+	bne.w invalid
+	move.l d2, d0
+	addq.l #REPLAY_ENTRY_BYTES, d0
+	bcs.w invalid
+	jsr memory.reserve
+	bne.w done
+	movea.l memory.Block.Pointer(a0), a1
+	move.l d4, 0(a1, d2.l)
+	addq.l #REPLAY_ENTRY_BYTES, memory.Block.Used(a0)
+	moveq #values.OK, d0
+	bra.w done
+invalid
+	moveq #values.MALFORMED, d0
+done
+	movem.l (sp)+, d1-d4/a0-a2
+	tst.l d0
+	rts
+	.bend  ; captureReplaySeed
+
+; A0=Owner,A1=external eligibility offsets,D0=bytes. Seeds must be installed.
+; Copies numeric offsets without source pointers; reset/rewind retain this set.
+; D0/CCR=status; others preserved. Invalid/partial installation aborts the owner.
+installReplaySeeds	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	move.l d0, d4
+	cmpi.l #memory.LIMIT, d4
+	bhi.w invalid
+	andi.l #REPLAY_ENTRY_BYTES-1, d0
+	bne.w invalid
+	movea.l a1, a2
+	tst.l d4
+	beq.w clear
+	move.l a2, d2
+	beq.w invalid
+	btst #0, d2
+	bne.w invalid
+	add.l d4, d2
+	bcs.w invalid
+	lea values.Owner.SchemaReplay(a0), a1
+	; values.block clobbers D3; semantic offset/count lives in D4.
+	jsr values.block
+	bne.w done
+	move.l memory.Block.Pointer(a1), d0
+	beq.w clear
+	cmp.l d0, d2
+	bls.w clear
+	add.l memory.Block.Capacity(a1), d0
+	cmp.l a2, d0
+	bhi.w invalid
+clear
+	clr.l values.Owner.SchemaReplay+memory.Block.Used(a0)
+	tst.l d4
+	beq.w good
+entry
+	move.l (a2)+, d1
+	bsr.w captureReplaySeed
+	bne.w done
+	subq.l #REPLAY_ENTRY_BYTES, d4
+	bne.w entry
+good
+	moveq #values.OK, d0
+	bra.w done
+invalid
+	moveq #values.MALFORMED, d0
+done
+	movem.l (sp)+, d1-d4/a0-a2
+	tst.l d0
+	rts
+	.bend  ; installReplaySeeds
+
+; A0=Owner,D1=final numeric nominal ID. D0/CCR=status,D2=Arena type offset.
+; Demand-copy only certified metadata; never publish a declaration symbol.
+; Seeds include conditional schemas, but only actual execution can expose those.
+materializeNominal	.block
+	movem.l d1/d3-d5/a1-a3, -(sp)
+	move.l d1, d5
+	cmp.l values.Owner.Count(a0), d5
+	bhs.w invalid
+	lea values.Owner.SchemaReplay(a0), a1
+	jsr values.block
+	bne.w done
+	move.l memory.Block.Used(a1), d4
+	move.l d4, d0
+	andi.l #REPLAY_ENTRY_BYTES-1, d0
+	bne.w invalid
+	movea.l memory.Block.Pointer(a1), a3
+	lea values.Owner.Seeds(a0), a1
+	jsr values.block
+	bne.w done
+	move.l memory.Block.Used(a1), d3
+	movea.l memory.Block.Pointer(a1), a2
+entry
+	tst.l d4
+	beq.w unavailable
+	move.l (a3)+, d1
+	move.l d1, d0
+	andi.l #7, d0
+	bne.w invalid
+	move.l d3, d0
+	sub.l d1, d0
+	bcs.w invalid
+	cmpi.l #HEADER_BYTES, d0
+	blo.w invalid
+	cmpi.l #TYPE, values.Record.Kind(a2, d1.l)
+	bne.w invalid
+	cmp.l NOMINAL(a2, d1.l), d5
+	beq.w found
+	subq.l #REPLAY_ENTRY_BYTES, d4
+	bra.w entry
+found
+	bsr.w materialize
+	bra.w done
+unavailable
+	moveq #values.BOUNDS, d0
+	bra.w done
+invalid
+	moveq #values.MALFORMED, d0
+done
+	movem.l (sp)+, d1/d3-d5/a1-a3
+	tst.l d0
+	rts
+	.bend  ; materializeNominal
+
 ; A0=Owner,D0=descriptor offset,D1=member ID. D0/CCR=status,D2-D5=Cell;
 ; others preserved. Types yield absolute offsets; literals yield scalar cells.
 member	.block

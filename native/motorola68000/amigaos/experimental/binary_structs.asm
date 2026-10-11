@@ -20,7 +20,7 @@ ByteId	.word ?
 WordId	.word ?
 LongId	.word ?
 ResId	.word ?
-Reserved	.word ?
+ReplayEligible	.word ?  ; schema completed outside deferred/unmaterialized scopes
 Size	.long ?
 Fields	.res memory.Block.Used+4
 FieldBinder	.long ?  ; scope-owned bare member identity callback
@@ -199,6 +199,14 @@ labeledOpen
 	cmpa.l a1, a0
 	bne.w bad
 enter
+	clr.w State.ReplayEligible(a4)
+	tst.w layout.State.Deferred(a6)
+	bne.w replayEligibilityReady
+	move.w layout.State.LoopDepth(a6), d0
+	cmp.w layout.State.MaterializedLoops(a6), d0
+	bne.w replayEligibilityReady
+	move.w #1, State.ReplayEligible(a4)
+replayEligibilityReady
 	move.l d7, d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w bad
@@ -246,6 +254,12 @@ close
 	jsr structs.appendSeed
 	tst.l d0
 	bne.w bad
+	tst.w State.ReplayEligible(a4)
+	beq.w seedReady
+	move.l d2, d1
+	jsr structs.captureReplaySeed
+	bne.w bad
+seedReady
 	; The seed offset is the only declaration payload; geometry stays in Seeds.
 	move.b #12, (a5)
 	move.b #1, 4(a5)

@@ -12,8 +12,9 @@ Count	.long ?
 Work	.res memory.Block.Used+4
 Bindings	.res memory.Block.Used+4  ; optional immutable numeric fallback plans
 Seeds	.res memory.Block.Used+4  ; immutable struct schemas retained across replay
+SchemaReplay	.res memory.Block.Used+4  ; eligible seed offsets, retained across reset/rewind
 .endstruct
-OWNER_BYTES = Owner.Seeds+memory.Block.Used+4
+OWNER_BYTES = Owner.SchemaReplay+memory.Block.Used+4
 SCALAR = 0
 LIST = 1
 RANGE = 2
@@ -200,12 +201,16 @@ release	.block
 	movea.l (sp), a0
 	lea Owner.Seeds(a0), a0
 	jsr memory.release
+	movea.l (sp), a0
+	lea Owner.SchemaReplay(a0), a0
+	jsr memory.release
 	movea.l (sp)+, a0
 	clr.l Owner.Arena+memory.Block.Used(a0)
 	clr.l Owner.Kinds+memory.Block.Used(a0)
 	clr.l Owner.Work+memory.Block.Used(a0)
 	clr.l Owner.Bindings+memory.Block.Used(a0)
 	clr.l Owner.Seeds+memory.Block.Used(a0)
+	clr.l Owner.SchemaReplay+memory.Block.Used(a0)
 	clr.l Owner.Count(a0)
 	moveq #OK, d0
 	rts

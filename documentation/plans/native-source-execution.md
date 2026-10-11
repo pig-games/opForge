@@ -206,13 +206,33 @@ opcore parity or a new full current-source self-host.
 
 ### Conditional binding ownership
 
-The unconditional longest-declaration repair and schema-only code pruning are
-saved with host assembly evidence. The conditional Rust ownership repair is
-committed as `aaca8086`; 98 focused tests pass. A fresh native batch reports 22
-controls: 10 positive exact matches, 10 positive failures and two expected
-nonzero results, without exact diagnostic matching. Native repair and unconditional
-dotted longer-declaration execution remain pending, as do full opcore qualification
-and a new full current-source self-host.
+The conditional Rust ownership repair is committed as `aaca8086`; 98 focused
+tests pass. Native now retains eligible schema seed offsets independently of
+block code. A forward initializer can demand-copy an established nominal schema
+without publishing its declaration or keeping its unreferenced code. Known-inactive
+and deferred schemas receive no replay eligibility; their descriptor alone cannot
+make them visible. Reset/rewind preserve this metadata and owner release frees it.
+
+A fresh native owner matrix reports 26 controls across 68020 and 6502: 14 positive
+exact matches, six expected diagnostic rejections and six positive failures.
+The formerly failing unconditional longer declaration now produces `[22, 66]`,
+keeping its physical owner and pruning the shorter owner's code. The remaining
+positive failures are forward-enabled direct/arithmetic member references and
+forward-disabled direct references. The enabled typed alias already matches.
+Expected rejections do not establish exact diagnostic parity or prove that scalar
+member rejection reaches the intended runtime boundary. Full opcore qualification
+and a new full current-source self-host remain pending.
+
+For this schema repair alone, the unchanged 11,592-byte/1,200-call release control
+changes from 33.112641 to 32.804228 seconds (-0.9%, one comparison, not evidence of
+a speedup). The executable grows from 670,280 to 670,868 bytes; linked storage
+grows from 703,488 to 704,052 bytes (+564). This comparison uses the same
+`68020-10m` profile and fresh complete artifact proof, without telemetry.
+The separate instrumented control reports owned-memory peak 1,282,280 → 1,282,328
+bytes (+48), 3,182,104 bytes allocated and freed, and zero live owned bytes after
+cleanup. This control has no schema declarations, so it measures owner-layout
+growth, not the lazy schema-offset table's worst-case cost; it does not qualify
+the 2 MiB product budget.
 Rust now rebuilds executed declaration owners, references, reachable blocks and
 schema uses on each layout pass. A forward-enabled conditional introducing the
 longer dotted declaration on a later pass produces `[22, 66]`, retaining its

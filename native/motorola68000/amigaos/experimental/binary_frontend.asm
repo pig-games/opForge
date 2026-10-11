@@ -369,6 +369,15 @@ exportSeeds	.block
 	movea.l memory.Block.Pointer(a0), a1
 	movea.l a2, a0
 	jsr struct_values.installSeeds
+	bne.w done
+	movea.l 4(sp), a0  ; saved frontend Frame, independent of copied seed storage
+	movea.l Frame.Scratch(a0), a0
+	adda.l #EXPORTED_SEEDS+values.Owner.SchemaReplay-values.Owner.Seeds, a0
+	move.l memory.Block.Used(a0), d0
+	movea.l memory.Block.Pointer(a0), a1
+	movea.l a2, a0
+	jsr struct_values.installReplaySeeds
+done
 	movem.l (sp)+, d1/a0-a2
 	tst.l d0
 	rts

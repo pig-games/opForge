@@ -549,7 +549,7 @@ structLiteral
 	move.l a0, d0
 	beq.w malformed
 	tst.b 0(a0, d6.l)
-	beq.w malformed
+	beq.w replaySchema
 	movea.l Frame.Owner(a6), a0
 	jsr values.getKind
 	tst.l d0
@@ -563,6 +563,17 @@ structLiteral
 	tst.l runtime.Value.High(a1, d6.l)
 	bne.w malformed
 	move.l runtime.Value.Low(a1, d6.l), d1
+	bra.w schemaReady
+replaySchema
+	; Pruned code does not execute its declaration. Only preparation-certified
+	; nominal metadata may be copied, without publishing a symbol or owner.
+	movea.l Frame.Owner(a6), a0
+	move.l d6, d1
+	jsr structs.materializeNominal
+	tst.l d0
+	bne.w malformed
+	move.l d2, d1
+schemaReady
 	move.l d1, State.TypeOffset(a3)
 	move.l d1, d0
 	jsr records.validate

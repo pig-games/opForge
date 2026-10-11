@@ -93,7 +93,12 @@ Rust conditional declaration ownership is repaired in `aaca8086`: each layout pa
 rebuilds executed ownership, references, reachability and schema uses. Ninety-eight
 focused tests pass. Possible longer `.const` declarations under unresolved guards
 can defer initial evaluation without granting executed ownership or visibility.
-The native executed-owner counterpart remains pending. UTF-8 preservation in Rust
+The native schema replay repair qualifies unconditional longer declarations while
+pruning their unused schema-owning code. Its fresh 26-case matrix has 14 positive
+exact matches, six diagnostic rejections and six remaining forward-guarded positive
+failures; executed conditional ownership remains pending. This repair alone changes
+the unchanged release control from 33.11 to 32.80 seconds (-0.9%, one comparison),
+with 564 more linked bytes. UTF-8 preservation in Rust
 macro preprocessing is repaired in `a616140f`, with all 26 preprocessing tests and
 all 211 opcore library tests passing. BS36 text emission/provider integration passes 52 fresh native controls: 24 exact
 positive artifacts and 28 diagnostic rejections across 68020 and 6502. Its isolated

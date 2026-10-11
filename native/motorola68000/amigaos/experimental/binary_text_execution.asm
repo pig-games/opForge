@@ -1,4 +1,5 @@
 ; Assembly-owned execution of validated numeric text spans. No source-name lookup.
+; @opforge-owner: experimental.amigaos.binary_text_execution
 	.module experimental.amigaos.binary_text_execution
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package

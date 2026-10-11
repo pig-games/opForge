@@ -1,6 +1,7 @@
 ; Shared byte mapping owner. Inputs are decoded private-token values; this module
 ; never consults source text or package instruction encoders. Rust reference:
 ; crates/opforge-types/src/text_encoding.rs (7-bit builtin maps and custom definitions).
+; @opforge-owner: experimental.amigaos.binary_text
 	.module experimental.amigaos.binary_text
 	.cpu 68020
 	.use experimental.amigaos.binary_text_layout as layout

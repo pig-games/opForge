@@ -1,4 +1,5 @@
 ; Session provider for decoded text bytes and canonical ExprVM string scalars.
+; @opforge-owner: experimental.amigaos.binary_string_provider
 	.module experimental.amigaos.binary_string_provider
 	.cpu 68020
 	.use experimental.amigaos.binary_text as text

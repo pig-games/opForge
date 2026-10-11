@@ -147,15 +147,16 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Public entries: `bootstrapV1` and `dispatchV1`.
 - Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle,
   status-projection, parser-adapter, expression-service, and selection-service
-  owners; operand-record service, engine, expression bridge, package loader,
+  owners; operand-record and encoding services, expression bridge, package loader,
   pipeline, and tokenizer VM; plus the default-off runtime observer.
-  The expression service now reaches pass/finalization state only through the
-  neutral `tkpkg.amigaos.runtime_context` façade.
+  The expression service reaches pass/finalization state only through the
+  neutral `tkpkg.amigaos.runtime_context` façade. ExprVM evaluation uses the
+  compiled current contract without evaluator-version lookup or dispatch.
 - Mutable state: request/control-block pointers, output and last-error buffers,
   and service result fields.
 - Routine responsibility groups: bootstrap/request validation; status and
-  diagnostic projection; parser route adaptation; transitional expression
-  contract validation; selected-envelope encoding/output construction; and the
+  diagnostic projection; parser route adaptation; EXVM parser-contract
+  lookup and validation; selected-envelope encoding/output construction; and the
   retained package contract/locator helpers.
 - Inbound users: the opasm tkpkg bridge is the principal facade caller.
 
@@ -178,7 +179,8 @@ scope, validation and completion. No future feature or migration is scheduled he
   duplicate, and distinct-register detection; direct and indirect call-argument
   register projection; neutral tuple identity-scale projection; candidate
   construction; package-declared named-register comparison and signed
-  out-of-range rejection projection; dialect-CPU-family
+  out-of-range rejection projection; EXVM parser-contract lookup without
+  ExprVM evaluator-version state; dialect-CPU-family
   rejection precedence; selected-output diagnostic selection; and standard
   scalar capture rendering; package-declared bounded-register projection; and
   propagation of engine-owned label target-reference metadata into fixups.
@@ -188,7 +190,8 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm`.
 - Public entry: `tkpkgMselTryBuildCandidateV1`.
 - Imports/outbound dependencies: tkpkg buffers, private selection state, neutral
-  runtime context, and the expression bridge transition boundary.
+  runtime context, the expression bridge transition boundary, and the
+  default-off platform observer.
 - Mutable state: reads and writes the preserved selection-state scratch layout;
   it does not own package selection or selected-output diagnostics.
 - Routine responsibility groups: plan-tag dispatch, operand-span normalization,
@@ -210,7 +213,8 @@ scope, validation and completion. No future feature or migration is scheduled he
 - Mutable state: writes the same existing package-service output buffer; it does
   not own interpreter state, pipeline selection, package loading, or status
   projection. A module-local execution context projects the existing buffers
-  and counters for each interpreter call.
+  and counters for each interpreter call, clears position-proof output, and
+  marks optional scalar target identity absent.
 - Routine responsibility groups: selected-envelope encoding, legacy
   package-table lookup, neutral CSEM owner/program lookup, execution-context
   preparation, compact fixed-row delegation, fixup side-channel adaptation,
@@ -220,16 +224,22 @@ scope, validation and completion. No future feature or migration is scheduled he
 
 - Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encoding_execution.asm`.
 - Public entries: `semantic`, `normalizeFixupLength`, and `table`; `Context` is
-  the 56-byte caller-owned runtime-state contract used by each entry.
+  the 62-byte caller-owned runtime-state contract used by each entry.
 - Imports/outbound dependencies: only the default-off runtime observer through
   its telemetry macro include. It imports no service, assembler, package-loader,
   or selection globals.
 - Owned mutable state: none. Callers supply bounded input records, output storage,
   current pass/PC/branch state, and optional parallel fixup arrays in `Context`.
+  Position-proof count/target and optional exact input-target identity also live
+  in that context; there is no new global storage or inferred target identity.
 - Routine responsibility groups: canonical TABL byte/operand execution;
   CSEM/SEMV v2/v6 encoding, v5 branch, and v4/v7 fixup interpretation;
   width/range/endianness validation; bounded byte emission; fixup recording and
-  output-length normalization; and branch-range diagnostic rendering.
+  output-length normalization; branch-range diagnostic rendering; and bounded
+  position-proof projection for successful resolved branches or positional,
+  target-aware steps without relocation. END-only encoding programs explicitly
+  succeed with zero output. Proof and output are usable only after successful
+  execution; these mechanisms add no directive-name or CPU-specific dispatch.
 - Inbound users: the encode-service adapter and the experimental
   binary-source encoder. The latter owns its runtime buffers while serialized
   binary package records remain offset-only.
@@ -384,14 +394,15 @@ scope, validation and completion. No future feature or migration is scheduled he
   symbol/expression observer and the runtime observer imported conditionally by
   `debug/telemetry_macros.i`. The frontend uses reusable VM enter/opcode/leave
   macros; the include owns gates and CCR/register preservation.
-- Mutable state: selected opcode version, private ExprVM program length and
+- Mutable state: private ExprVM program length and
   byte buffer, and a private four-byte last-result high word plus two-byte
   availability marker. Parser cursor, paired literal value, and symbol index
   are bounded call-local register state; evaluator state belongs to ExprVM.
 - Routine responsibility groups: bounded scalar grammar/literal/symbol-index
-  compilation into versioned ExprVM bytecode, optional neutral
+  compilation into the current ExprVM v1 bytecode contract, optional neutral
   lexical-context resolution before immutable-snapshot fallback, default EXVM
-  program selection, and invocation of the ExprVM runtime.
+  parser-program selection, and invocation of the ExprVM runtime without
+  evaluator-version parameters, state, checks, or dispatch.
 - Inbound users: the tkpkg expression service and operand runtime through the
   evaluation entries; typed consumers read the explicit high-result accessor.
 
@@ -415,7 +426,10 @@ scope, validation and completion. No future feature or migration is scheduled he
   statement fields, and expression resume state.
 - Routine responsibility groups: bytecode execution, token access,
   checkpointing, statement-result construction, and expression suspension/
-  resume. Macro descriptor execution is delegated to its own bounded service.
+  resume. Optional labels accept identifier or register-kind name tokens in
+  column one, with an optional adjacent colon; register spelling remains
+  tokenizer/package data. Macro
+  descriptor execution is delegated to its own bounded service.
 - Inbound users: tkpkg service through the line router. Compact preparation and
   generated-spelling preparation use `prvm.amigaos.macro_runtime.run` directly,
   preserving frame validation and telemetry without linking statement execution.

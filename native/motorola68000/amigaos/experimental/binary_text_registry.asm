@@ -1,6 +1,7 @@
 ; Dynamic text definitions. All links are arena offsets plus one (zero is empty).
 ; A single arena bounds combined entries, scopes, patterns and replacements.
 ; Names are normalized tokenizer identities, never looked up as source strings.
+; @opforge-owner: experimental.amigaos.binary_text_registry
 	.module experimental.amigaos.binary_text_registry
 	.cpu 68020
 	.use experimental.amigaos.binary_text_layout as layout

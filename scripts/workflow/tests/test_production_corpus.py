@@ -19,7 +19,16 @@ class ProductionCorpusTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.frozen = corpus.manifest()
-        cls.candidate = corpus.ROOT / "scripts/performance/fixtures/cpex-candidate-manifest.json"
+        # Candidate package identity must match this checkout. The checked-in
+        # candidate manifest is an artifact from an earlier package build and
+        # intentionally fails the production stale-manifest guard today.
+        cls.candidate_dir = tempfile.TemporaryDirectory(prefix="opforge-corpus-manifest-")
+        cls.candidate = Path(cls.candidate_dir.name) / "candidate.json"
+        cls.candidate.write_text(json.dumps(cls.frozen, sort_keys=True))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.candidate_dir.cleanup()
 
     def result(self, runs=7):
         frozen = self.frozen

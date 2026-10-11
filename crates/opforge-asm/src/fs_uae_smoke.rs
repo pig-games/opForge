@@ -8085,6 +8085,9 @@ mod native_scoped_layouts;
 #[cfg(test)]
 #[path = "tests/native_scoped_loops.rs"]
 mod native_scoped_loops;
+#[cfg(test)]
+#[path = "tests/native_source_cases.rs"]
+mod native_source_cases;
 #[path = "tests/native_struct_literal_values.rs"]
 mod native_struct_literal_values;
 #[path = "tests/native_struct_parameters.rs"]

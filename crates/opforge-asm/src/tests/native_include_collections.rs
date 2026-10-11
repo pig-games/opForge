@@ -1,6 +1,7 @@
 //! File acquisition must preserve typed iteration collections, addresses and members.
-use super::native_active_includes::{live_oracle, run_binary_files, selected_names};
+use super::native_active_includes::{live_oracle, selected_names};
 use super::native_iterable_loops::{build_image, scratch};
+use super::native_source_cases::{self, Case as SourceCase};
 use super::*;
 
 struct Case {
@@ -178,27 +179,16 @@ fn native_include_collections_fs_uae() {
     let image = std::env::var_os("OPFORGE_TEMPLATE_IMAGE")
         .map(|path| fs::read(path).unwrap())
         .unwrap_or_else(|| build_image(&root, &dir.0));
-    let mut failures = Vec::new();
-    for cpu in selected_cpus() {
-        for case in selected_cases() {
-            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_binary_files(
-                    &root,
-                    &image,
-                    case.name,
-                    cpu,
-                    &files(case, cpu),
-                    case.expected,
-                );
-            }))
-            .is_err()
-            {
-                failures.push(format!("{} cpu={cpu}", case.name));
-            }
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "named acquisition failures: {failures:?}"
-    );
+    let cases = selected_cpus()
+        .into_iter()
+        .flat_map(|cpu| {
+            selected_cases().into_iter().map(move |case| SourceCase {
+                name: format!("{}-{cpu}", case.name),
+                cpu: cpu.into(),
+                files: files(case, cpu),
+                expected: Some(case.expected.to_vec()),
+            })
+        })
+        .collect::<Vec<_>>();
+    native_source_cases::run(&root, &image, &cases);
 }

@@ -47,9 +47,35 @@ fn assemble_with_depth(
 }
 
 #[test]
+fn active_include_and_macro_templates_survive_unreferenced_block_relayout() {
+    let provider = MemorySourceProvider::default()
+        .with_file(
+            "/virtual/main.asm",
+            ".module main\n.use provider\nSCAN .macro suffix\n.for 1\n.if 0\n.byte provider.routine.saved@1\n.endif\n.include \"leaf.inc\"\n.endfor\n.endmacro\n.SCAN 1\n.endmodule\n",
+        )
+        .with_file(
+            "/virtual/provider.asm",
+            ".module provider\n.pub\nroutine .block\nsaved1 .const 66\n.byte 99\n.bend\n.endmodule\n",
+        )
+        .with_file("/virtual/leaf.inc", ".byte 60\n");
+    let (assembler, _, _) = assemble(&provider, &[]);
+    assert!(
+        assembler.diagnostics.is_empty(),
+        "{:?}",
+        assembler.diagnostics
+    );
+    assert_eq!(assembler.image().entries().unwrap(), vec![(0, 60)]);
+    assert_eq!(
+        assembler.binary_resource_dependencies(),
+        vec![PathBuf::from("/virtual/leaf.inc")]
+    );
+}
+
+#[test]
 fn active_include_executes_only_selected_statements_and_introduces_templates_and_constants() {
     let provider = MemorySourceProvider::default()
-        .with_file("/virtual/main.asm", ".module main\n.org 0\nEMIT .macro value\n.byte .value\n.endmacro\n.include \"defs/templates.inc\"\n.LOAD \"data.inc\"\n.dynamic 9\n.if VALUE\n.include \"loop.inc\"\n.endif\n.for 2\n.include \"loop.inc\"\n.endfor\n.if 0\n.include \"missing-if.inc\"\n.endif\n.for 0\n.include \"missing-for.inc\"\n.endfor\n.while 0\n.include \"missing-while.inc\"\n.endwhile\n.endmodule\n")
+        .with_file("/virtual/main.asm", ".module main\n.use provider\n.org 0\nEMIT .macro value\n.byte .value\n.endmacro\n.include \"defs/templates.inc\"\n.LOAD \"data.inc\"\n.dynamic 9\n.if VALUE\n.include \"loop.inc\"\n.endif\n.for 2\n.include \"loop.inc\"\n.endfor\n.if 0\n.include \"missing-if.inc\"\n.endif\n.for 0\n.include \"missing-for.inc\"\n.endfor\n.while 0\n.include \"missing-while.inc\"\n.endwhile\n.endmodule\n")
+        .with_file("/virtual/provider.asm", ".module provider\n.pub\nunused .block\n.byte 99\n.bend\n.endmodule\n")
         .with_file("/virtual/defs/templates.inc", "LOAD .segment file\n.include .file\n.endsegment\nUNUSED .macro\n.include \"missing-unused.inc\"\n.endmacro\n")
         .with_file("/virtual/defs/data.inc", "VALUE .const 1\n.emit 7\nDYNAMIC .macro value\n.byte .value\n.endmacro\n")
         .with_file("/virtual/loop.inc", ".byte 3\n");

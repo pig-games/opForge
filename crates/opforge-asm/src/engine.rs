@@ -1563,6 +1563,10 @@ qualified_share={:.2}%",
         replay.implicit_hunk_output_requested = self.implicit_hunk_output_requested;
         replay.prepared_source = self.prepared_source.take();
         replay.binary_resources = self.binary_resources.clone();
+        // Replay rebuilds emitted state, but must retain graph-derived template
+        // visibility and origins for active includes in macros and segments.
+        replay.module_macro_names = self.module_macro_names.clone();
+        replay.module_template_seeds = self.module_template_seeds.clone();
         replay.module_parameters = self.module_parameters.clone();
         replay.block_relayout = Some(Rc::new(plan));
         let result = replay.pass1(lines);

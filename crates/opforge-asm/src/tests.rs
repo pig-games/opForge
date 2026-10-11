@@ -40,6 +40,8 @@ mod generic_statement_boundary;
 mod conditional_symbol_activity;
 #[path = "tests/constant_dependencies.rs"]
 mod constant_dependencies;
+#[path = "tests/match_guard_replay.rs"]
+mod match_guard_replay;
 #[path = "tests/member_bindings.rs"]
 mod member_bindings;
 #[path = "tests/provisional_loop_counts.rs"]

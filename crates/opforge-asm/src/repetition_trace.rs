@@ -9,10 +9,22 @@ use opcore::parser::Expr;
 pub(crate) type GuardKey = (u32, Vec<(u32, u32)>);
 
 #[derive(Clone)]
+pub(crate) enum GuardPredicate {
+    If {
+        tests: Vec<Expr>,
+        last_test_positive: bool,
+    },
+    Match {
+        selector: Option<Expr>,
+        cases: Vec<Vec<Expr>>,
+        last_case_positive: bool,
+    },
+}
+
+#[derive(Clone)]
 pub(crate) struct GuardObservation {
     pub key: GuardKey,
-    pub tests: Vec<Expr>,
-    pub last_test_positive: bool,
+    pub predicate: GuardPredicate,
     pub active: bool,
     pub unresolved_at_observation: bool,
     pub scope: AsmSymbolScopeState,

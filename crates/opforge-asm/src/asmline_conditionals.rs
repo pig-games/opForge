@@ -96,9 +96,7 @@ impl<'a> AsmLine<'a> {
                 }
                 ctx.switch_value = Some(val);
                 ctx.skipping = true;
-                if !matches!(self.profile_phase, AsmProfilePhase::Pass2) {
-                    self.guard_stack.push(None);
-                }
+                self.observe_match_opening(exprs.first());
                 self.cond_stack.push(ctx);
             }
             ConditionalKind::Else | ConditionalKind::ElseIf => {
@@ -350,6 +348,8 @@ impl<'a> AsmLine<'a> {
                     ctx.sub_type = sub_type;
                 }
                 ctx.source_activity_resolved &= source_activity_resolved;
+                let active = !ctx.skipping;
+                self.observe_match_arm(Some(exprs), active);
             }
             ConditionalKind::Default => {
                 if self.cond_stack.is_empty() {
@@ -411,6 +411,8 @@ impl<'a> AsmLine<'a> {
                     ctx.matched = true;
                     ctx.skipping = false;
                 }
+                let active = !ctx.skipping;
+                self.observe_match_arm(None, active);
             }
             ConditionalKind::EndIf => {
                 if self.cond_stack.is_empty() {

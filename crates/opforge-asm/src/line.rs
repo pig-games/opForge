@@ -2522,13 +2522,16 @@ impl<'a> AsmLine<'a> {
                 // guard reads the current PC. Nested skipped controls share the
                 // outer context's skip_level and never publish their prefixes.
                 let parent_active = match conditional.kind {
-                    ConditionalKind::If => !self.cond_stack.skipping(),
-                    ConditionalKind::ElseIf | ConditionalKind::Else | ConditionalKind::EndIf => {
-                        self.cond_stack
-                            .last()
-                            .is_some_and(|ctx| ctx.skip_level == 0)
-                    }
-                    _ => false,
+                    ConditionalKind::If | ConditionalKind::Switch => !self.cond_stack.skipping(),
+                    ConditionalKind::ElseIf
+                    | ConditionalKind::Else
+                    | ConditionalKind::EndIf
+                    | ConditionalKind::Case
+                    | ConditionalKind::Default
+                    | ConditionalKind::EndSwitch => self
+                        .cond_stack
+                        .last()
+                        .is_some_and(|ctx| ctx.skip_level == 0),
                 };
                 if parent_active {
                     if let Some(label) = &conditional.label {

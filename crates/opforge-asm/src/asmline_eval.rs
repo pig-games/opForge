@@ -357,7 +357,7 @@ impl<'a> AsmLine<'a> {
         }
     }
 
-    fn resolve_struct_def_for_literal(
+    pub(super) fn resolve_struct_def_for_literal(
         &self,
         type_name: &str,
         span: Span,

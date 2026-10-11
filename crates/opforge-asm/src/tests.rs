@@ -38,6 +38,8 @@ mod generic_statement_boundary;
 
 #[path = "tests/constant_dependencies.rs"]
 mod constant_dependencies;
+#[path = "tests/member_bindings.rs"]
+mod member_bindings;
 
 #[path = "tests/signed_scalar_values.rs"]
 mod signed_scalar_values;

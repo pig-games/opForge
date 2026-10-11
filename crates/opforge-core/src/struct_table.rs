@@ -33,6 +33,10 @@ impl StructTable {
         Ok(())
     }
 
+    pub fn remove(&mut self, name: &str) -> Option<StructDef> {
+        self.defs.remove(&canonical_key(name))
+    }
+
     pub fn contains(&self, name: &str) -> bool {
         self.defs.contains_key(&canonical_key(name))
     }

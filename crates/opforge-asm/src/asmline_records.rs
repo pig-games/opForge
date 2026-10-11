@@ -125,32 +125,21 @@ impl AsmLine<'_> {
         }
     }
 
-    // A dotted spelling can denote a qualified symbol or a member. Resolve the
-    // longest actual record binding at compilation; GetMember owns evaluation.
+    // Qualified declaration ownership precedes remaining member operations.
     pub(super) fn record_member_expression(&self, name: &str) -> Option<Expr> {
-        let parts: Vec<_> = name.split('.').collect();
-        for split in (1..parts.len()).rev() {
-            let base = parts[..split].join(".");
-            let Some(full) = self.resolve_scoped_value_name(&base) else {
-                continue;
-            };
-            if !matches!(
-                self.lookup_value_symbol(&full),
-                Some(AsmValue::Record { .. })
-            ) {
-                continue;
-            }
-            let mut expr = Expr::Identifier(base, Span::default());
-            for field in &parts[split..] {
-                expr = Expr::Member {
-                    base: Box::new(expr),
-                    field: field.to_string(),
-                    span: Span::default(),
-                };
-            }
-            return Some(expr);
+        if !name.contains('.') {
+            return None;
         }
-        None
+        let expr = self.member_owner_expression(name, Span::default())?;
+        if let Expr::Identifier(owner, _) = &expr {
+            if !matches!(
+                self.lookup_value_symbol(owner),
+                Some(AsmValue::Record { .. } | AsmValue::StructInstance(_) | AsmValue::Struct(_))
+            ) {
+                return None;
+            }
+        }
+        Some(expr)
     }
 
     pub(super) fn eval_record_member_name(
@@ -162,6 +151,8 @@ impl AsmLine<'_> {
 
     pub(super) fn eval_shared_value(&self, expr: &Expr) -> Option<Result<AsmValue, AstEvalError>> {
         let model = self.opthread_execution_model.as_ref()?;
+        let mut normalized = expr.clone();
+        self.normalize_member_bindings(&mut normalized);
         // Typed record operations have one shared semantic implementation, even
         // when the scalar/operand comparison route is explicitly host-forced.
         Some(
@@ -169,7 +160,7 @@ impl AsmLine<'_> {
                 model,
                 self.cpu.as_str(),
                 None,
-                expr,
+                &normalized,
                 self,
             )
             .map_err(|message| {

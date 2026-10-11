@@ -194,6 +194,11 @@ pub fn set_host_expr_eval_failpoint_for_tests(enabled: bool) {
     HOST_EXPR_EVAL_FAILPOINT.with(|flag| flag.set(enabled));
 }
 
+#[path = "asmline_schema_replay.rs"]
+mod asmline_schema_replay;
+pub(crate) use asmline_schema_replay::{SchemaReplaySnapshot, SchemaReplayUse};
+#[path = "asmline_member_bindings.rs"]
+mod asmline_member_bindings;
 #[path = "asmline_records.rs"]
 mod asmline_records;
 #[path = "asmline_relocation.rs"]
@@ -270,6 +275,10 @@ pub struct AsmLine<'a> {
     label: Option<String>,
     mnemonic: Option<String>,
     pub(crate) current_unit_symbol: Option<String>,
+    seeded_schema_names: HashSet<String>,
+    pub(crate) schema_layout_pending: bool,
+    pub(crate) schema_replay_uses: Vec<SchemaReplayUse>,
+    pub(crate) declaration_block_owners: HashMap<String, Option<String>>,
     pub(crate) reachable_blocks: Vec<ReachableBlock>,
     pub(crate) pending_unit_references: Vec<PendingUnitReference>,
     block_unit_stack: Vec<(Option<usize>, Option<String>)>,
@@ -489,6 +498,10 @@ impl<'a> AsmLine<'a> {
             label: None,
             mnemonic: None,
             current_unit_symbol: None,
+            seeded_schema_names: HashSet::new(),
+            schema_layout_pending: false,
+            schema_replay_uses: Vec::new(),
+            declaration_block_owners: HashMap::new(),
             reachable_blocks: Vec::new(),
             pending_unit_references: Vec::new(),
             block_unit_stack: Vec::new(),
@@ -893,6 +906,10 @@ impl<'a> AsmLine<'a> {
         self.symbol_scope.saw_explicit_module = false;
         self.symbol_scope.top_level_content_seen = false;
         self.current_unit_symbol = None;
+        self.seeded_schema_names.clear();
+        self.schema_layout_pending = false;
+        self.schema_replay_uses.clear();
+        self.declaration_block_owners.clear();
         self.reachable_blocks.clear();
         self.pending_unit_references.clear();
         self.block_unit_stack.clear();
@@ -1687,6 +1704,7 @@ impl<'a> AsmLine<'a> {
     }
 
     fn track_section_symbol(&mut self, full_name: &str) {
+        self.track_declaration_block_owner(full_name);
         if let Some(section_name) = self.layout.current_section.as_ref() {
             if let Some(section) = self.layout.sections.get(section_name) {
                 self.section_symbol_starts
@@ -2004,9 +2022,10 @@ impl<'a> AsmLine<'a> {
     }
 
     fn record_expr_references(&mut self, expr: &Expr) {
-        if let Some(name) = opcore::expression::expr_text(expr) {
-            if name.contains('.') {
-                self.record_named_reference(&name);
+        if let Some(path) = Self::member_path(expr) {
+            if path.contains('.') {
+                self.record_member_path_reference(&path);
+                return;
             }
         }
         match expr {
@@ -2025,7 +2044,12 @@ impl<'a> AsmLine<'a> {
                 }
                 self.record_expr_references(base);
             }
-            Expr::StructLiteral { fields, .. } => {
+            Expr::StructLiteral {
+                type_name,
+                fields,
+                span,
+            } => {
+                self.record_schema_replay_use(type_name, *span);
                 for (_, value) in fields {
                     self.record_expr_references(value);
                 }
@@ -2141,6 +2165,7 @@ impl<'a> AsmLine<'a> {
 
     fn defer_outer_lookup_for_active_block_pass1(&self) -> bool {
         self.pass == 1
+            && !(self.require_defined_symbols && self.in_struct_definition())
             && self
                 .symbol_scope
                 .scope_stack
@@ -2775,6 +2800,7 @@ impl<'a> AsmLine<'a> {
                 Some(1),
             ));
         }
+        self.track_declaration_block_owner(&full_name);
         self.aux_value = scalar_val;
         Ok((full_name, scalar_val))
     }

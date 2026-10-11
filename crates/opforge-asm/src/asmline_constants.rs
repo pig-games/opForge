@@ -51,8 +51,10 @@ impl AsmLine<'_> {
         let mut roots = HashSet::new();
         for expr in operands {
             let mut names = Vec::new();
-            immutable_dependencies(expr, &mut names);
-            let structured = !scalar_dependencies(expr, &mut Vec::new());
+            let mut normalized = expr.clone();
+            self.normalize_member_bindings(&mut normalized);
+            immutable_dependencies(&normalized, &mut names);
+            let structured = !scalar_dependencies(&normalized, &mut Vec::new());
             for name in names {
                 let mut base = name;
                 loop {
@@ -63,8 +65,10 @@ impl AsmLine<'_> {
                         {
                             if (base != name || structured)
                                 && !self
-                                    .layout
-                                    .absolute_constant_symbols
+                                    .immutable_value_constants
+                                    .contains(&self.constant_definitions[index].name)
+                                && !self
+                                    .immutable_scalar_constants
                                     .contains(&self.constant_definitions[index].name)
                             {
                                 roots.insert(index);
@@ -96,7 +100,9 @@ impl AsmLine<'_> {
             self.symbol_scope = definition.scope.clone();
             self.cpu = definition.cpu;
             let mut names = Vec::new();
-            immutable_dependencies(&definition.expr, &mut names);
+            let mut dependency_expr = definition.expr.clone();
+            self.normalize_member_bindings(&mut dependency_expr);
+            immutable_dependencies(&dependency_expr, &mut names);
             for name in names {
                 if let Ok(Some(resolved)) = self.resolve_scoped_name(name) {
                     if let Some(&child) = self
@@ -337,6 +343,12 @@ impl AsmLine<'_> {
         if matches!(self.profile_phase, AsmProfilePhase::Pass2) {
             return;
         }
+        if self.pass == 1 {
+            // Guard replay can select another executed immutable declaration.
+            self.declaration_block_owners
+                .remove(&name.to_ascii_uppercase());
+            self.track_declaration_block_owner(name);
+        }
         let mut names = Vec::new();
         immutable_dependencies(expr, &mut names);
         let loop_dependencies = names
@@ -409,7 +421,9 @@ impl AsmLine<'_> {
             self.symbol_scope = definition.scope.clone();
             self.cpu = definition.cpu;
             let mut names = Vec::new();
-            absolute[index] = immutable_dependencies(&definition.expr, &mut names);
+            let mut dependency_expr = definition.expr.clone();
+            self.normalize_member_bindings(&mut dependency_expr);
+            absolute[index] = immutable_dependencies(&dependency_expr, &mut names);
             for name in names {
                 if definition
                     .loop_dependencies

@@ -309,6 +309,7 @@ impl<'a> AsmLine<'a> {
                 Some(1),
             );
         }
+        self.track_declaration_block_owner(&full_name);
         self.record_symbol_relocation(&full_name, expr);
         self.sync_value_symbol(&full_name, &value);
         if directive == "CONST" {

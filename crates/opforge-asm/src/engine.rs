@@ -86,6 +86,9 @@ pub struct Assembler {
     loop_replay: LoopReplayState,
     qualified_reachability_profile: QualifiedReachabilityProfile,
     module_timing_profile: ModuleTimingProfile,
+    schema_replay_uses: Vec<crate::line::SchemaReplayUse>,
+    pruned_schemas: Vec<crate::line::SchemaReplaySnapshot>,
+    declaration_block_owners: HashMap<String, Option<String>>,
     reachable_blocks: Vec<ReachableBlock>,
     block_relayout: Option<Rc<ReachableBlockRelayout>>,
 }
@@ -574,6 +577,12 @@ qualified_share={:.2}%",
                 asm_line.immutable_scalar_constants =
                     self.loop_replay.immutable_scalar_constants.clone();
             }
+            if let Err(error) = asm_line.seed_schema_replay(&self.pruned_schemas) {
+                diagnostics.push(Diagnostic::new(0, Severity::Error, error));
+                let mut counts = PassCounts::new();
+                counts.errors = 1;
+                return counts;
+            }
             if let Some(concrete_section_declarations) = seeded_concrete_section_declarations {
                 asm_line.layout.concrete_section_declarations = concrete_section_declarations;
             }
@@ -621,6 +630,7 @@ qualified_share={:.2}%",
                 }
             }
 
+            self.constant_layout_changed |= asm_line.schema_layout_pending;
             self.loop_replay.resolve_loop_observations(
                 &mut asm_line,
                 pass_num,
@@ -629,6 +639,20 @@ qualified_share={:.2}%",
                 diagnostics,
                 &mut counts,
             );
+
+            if pass_num > 1 && counts.errors == 0 {
+                // Validate newly executed loop owners before recertifying this
+                // traversal's cache; a retry must not enroll itself implicitly.
+                match asm_line.resolve_absolute_constants() {
+                    Ok(changed) => self.constant_layout_changed |= changed,
+                    Err((line, error)) => {
+                        diagnostics.push(Diagnostic::new(line, Severity::Error, error));
+                        counts.errors += 1;
+                    }
+                }
+                self.loop_replay.immutable_scalar_constants =
+                    asm_line.immutable_scalar_constants.clone();
+            }
 
             if capture_runtime_trace {
                 if self.collect_runtime_traces {
@@ -823,9 +847,15 @@ qualified_share={:.2}%",
             self.immutable_value_symbols = asm_line.resolved_immutable_values();
             self.scalar_value_symbols = std::mem::take(&mut asm_line.scalar_value_symbols);
             self.root_metadata = asm_line.take_root_metadata();
+            if pass_num > 1 {
+                asm_line.refresh_schema_replay_uses(&mut self.schema_replay_uses);
+            }
             self.sections = asm_line.take_sections();
             self.regions = asm_line.take_regions();
             if pass_num == 1 {
+                self.schema_replay_uses = std::mem::take(&mut asm_line.schema_replay_uses);
+                self.declaration_block_owners =
+                    std::mem::take(&mut asm_line.declaration_block_owners);
                 self.reachable_blocks = std::mem::take(&mut asm_line.reachable_blocks);
                 pending_unit_references = std::mem::take(&mut asm_line.pending_unit_references);
             }
@@ -1048,6 +1078,9 @@ qualified_share={:.2}%",
             loop_replay: LoopReplayState::default(),
             qualified_reachability_profile: QualifiedReachabilityProfile::default(),
             module_timing_profile: ModuleTimingProfile::default(),
+            schema_replay_uses: Vec::new(),
+            pruned_schemas: Vec::new(),
+            declaration_block_owners: HashMap::new(),
             reachable_blocks: Vec::new(),
             block_relayout: None,
         }
@@ -1376,8 +1409,22 @@ qualified_share={:.2}%",
     }
 
     fn record_reachability_edges(&mut self) {
+        let declared_edges: Vec<_> = self
+            .declaration_block_owners
+            .iter()
+            .filter_map(|(name, owner)| {
+                Some((
+                    self.symbols.entry(name)?.name.clone(),
+                    owner.as_ref()?.clone(),
+                ))
+            })
+            .collect();
+        for (name, owner) in declared_edges {
+            self.symbols.record_symbol_reference(&name, &owner);
+        }
         // A qualified reference to any symbol inside a block retains the block,
         // including its fall-through code and the block's outgoing dependencies.
+        let declared_owners = &self.declaration_block_owners;
         let ownership_edges: Vec<_> = self
             .reachable_blocks
             .iter()
@@ -1386,7 +1433,10 @@ qualified_share={:.2}%",
                 self.symbols
                     .entries()
                     .iter()
-                    .filter(move |entry| entry.name.to_ascii_uppercase().starts_with(&prefix))
+                    .filter(move |entry| {
+                        !declared_owners.contains_key(&entry.name.to_ascii_uppercase())
+                            && entry.name.to_ascii_uppercase().starts_with(&prefix)
+                    })
                     .map(move |entry| (entry.name.clone(), block.symbol.clone()))
             })
             .collect();
@@ -1511,7 +1561,10 @@ qualified_share={:.2}%",
             }
             let symbol = block.symbol.to_ascii_uppercase();
             let prefix = format!("{symbol}.");
-            if reachable.contains(&symbol) || reachable.iter().any(|name| name.starts_with(&prefix))
+            if reachable.contains(&symbol)
+                || reachable.iter().any(|name| {
+                    !self.declaration_block_owners.contains_key(name) && name.starts_with(&prefix)
+                })
             {
                 continue;
             }
@@ -1574,6 +1627,37 @@ qualified_share={:.2}%",
         replay.module_macro_names = self.module_macro_names.clone();
         replay.module_template_seeds = self.module_template_seeds.clone();
         replay.module_parameters = self.module_parameters.clone();
+        let skipped_owners: HashSet<_> = self
+            .reachable_blocks
+            .iter()
+            .filter(|block| plan.skipped_lines.contains(&block.first_line))
+            .map(|block| block.symbol.to_ascii_uppercase())
+            .collect();
+        let mut retained: HashSet<_> = self
+            .pruned_schemas
+            .iter()
+            .map(|snapshot| snapshot.definition.name.to_ascii_uppercase())
+            .collect();
+        replay.pruned_schemas = self.pruned_schemas.clone();
+        for usage in &self.schema_replay_uses {
+            if usage
+                .owner
+                .as_ref()
+                .is_some_and(|owner| skipped_owners.contains(&owner.to_ascii_uppercase()))
+            {
+                continue;
+            }
+            let name = usage.snapshot.definition.name.to_ascii_uppercase();
+            if self
+                .declaration_block_owners
+                .get(&name)
+                .and_then(Option::as_ref)
+                .is_some_and(|owner| skipped_owners.contains(&owner.to_ascii_uppercase()))
+                && retained.insert(name)
+            {
+                replay.pruned_schemas.push(usage.snapshot.clone());
+            }
+        }
         replay.block_relayout = Some(Rc::new(plan));
         let result = replay.pass1(lines);
         *self = replay;
@@ -1624,6 +1708,13 @@ qualified_share={:.2}%",
         asm_line.layout.symbol_relocations = self.symbol_relocations.clone();
         asm_line.scalar_value_symbols = self.scalar_value_symbols.clone();
         asm_line.seed_immutable_values(self.immutable_value_symbols.clone());
+        if let Err(error) = asm_line.seed_schema_replay(&self.pruned_schemas) {
+            self.diagnostics
+                .push(Diagnostic::new(0, Severity::Error, error));
+            let mut counts = PassCounts::new();
+            counts.errors = 1;
+            return Ok(counts);
+        }
         // Seed pass2 with pass1 placement/layout state so section-local encoding
         // (especially relative branches) uses rebased absolute addresses even if
         // .place/.pack directives appear later in source order.

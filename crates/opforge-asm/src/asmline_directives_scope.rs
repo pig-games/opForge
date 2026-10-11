@@ -370,6 +370,8 @@ impl<'a> AsmLine<'a> {
                 let module = self.symbol_scope.module_active.clone();
                 (section.is_some() || module.is_some()).then(|| {
                     let index = self.reachable_blocks.len();
+                    self.declaration_block_owners
+                        .insert(symbol.to_ascii_uppercase(), Some(symbol.clone()));
                     self.reachable_blocks.push(crate::state::ReachableBlock {
                         symbol: symbol.clone(),
                         module,
@@ -527,6 +529,14 @@ impl<'a> AsmLine<'a> {
     /// Install captured layout metadata with the same scalar size and field
     /// symbols as an ordinary declaration; aliases remain typed value bindings.
     pub fn register_struct_definition(&mut self, struct_def: StructDef) -> LineStatus {
+        let replaces_snapshot = self
+            .seeded_schema_names
+            .contains(&struct_def.name.to_ascii_uppercase());
+        if replaces_snapshot {
+            // An executed declaration supersedes carried compile-time metadata.
+            let previous = self.struct_table.remove(&struct_def.name);
+            debug_assert!(previous.is_some());
+        }
         if let Err(err) = self.struct_table.register(struct_def.clone()) {
             let message = match err {
                 StructTableError::Duplicate(name) => {
@@ -544,6 +554,11 @@ impl<'a> AsmLine<'a> {
             if let Some(status) = self.define_struct_symbol_ast(&field_name, field.offset) {
                 return status;
             }
+        }
+        if replaces_snapshot {
+            self.seeded_schema_names
+                .remove(&struct_def.name.to_ascii_uppercase());
+            self.set_value_symbol(&struct_def.name.clone(), AsmValue::Struct(struct_def));
         }
         LineStatus::Ok
     }
@@ -611,7 +626,23 @@ impl<'a> AsmLine<'a> {
                         );
                     }
                 };
-                match self.eval_expr_for_non_negative_directive(expr, ".res field size") {
+                // Known schema dimensions use ordinary lexical bindings, not
+                // instruction operand placeholders. Forward dimensions still
+                // stabilize before any schema metadata can survive code pruning.
+                self.schema_layout_pending |= self.pass == 1
+                    && opcore::expression::expression_contains(expr, |node| {
+                        matches!(node, Expr::Identifier(_, _) | Expr::Register(_, _))
+                    });
+                let saved_requirement = self.require_defined_symbols;
+                self.require_defined_symbols = true;
+                let size = self.eval_expr_for_non_negative_directive(expr, ".res field size");
+                self.require_defined_symbols = saved_requirement;
+                let size = if size.is_err() && self.pass == 1 && !saved_requirement {
+                    self.eval_expr_for_non_negative_directive(expr, ".res field size")
+                } else {
+                    size
+                };
+                match size {
                     Ok(value) => value,
                     Err(err) => {
                         return self.failure_at_span(
@@ -685,7 +716,24 @@ impl<'a> AsmLine<'a> {
     }
 
     fn define_struct_symbol_ast(&mut self, name: &str, value: u32) -> Option<LineStatus> {
-        let result = if self.pass == 1 {
+        let result = if self.pass == 1
+            && self
+                .seeded_schema_names
+                .contains(&name.to_ascii_uppercase())
+        {
+            let visibility = self.current_visibility();
+            let module = self.symbol_scope.module_active.clone();
+            match self.symbols.entry_mut(name) {
+                Some(entry) => {
+                    entry.val = value;
+                    entry.updated = true;
+                    entry.visibility = visibility;
+                    entry.module_id = module;
+                    SymbolTableResult::Ok
+                }
+                None => SymbolTableResult::NotFound,
+            }
+        } else if self.pass == 1 {
             self.symbols.add(
                 name,
                 value,
@@ -749,6 +797,7 @@ impl<'a> AsmLine<'a> {
             }
         };
         if status.is_none() {
+            self.track_declaration_block_owner(name);
             if let Some(entry) = self.symbols.entry(name) {
                 self.layout
                     .absolute_constant_symbols

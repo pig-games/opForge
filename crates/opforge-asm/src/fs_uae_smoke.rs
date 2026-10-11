@@ -8059,6 +8059,9 @@ mod compact_cli_metadata;
 #[path = "tests/native_active_includes.rs"]
 mod native_active_includes;
 #[cfg(test)]
+#[path = "tests/native_text_encoding.rs"]
+mod native_text_encoding;
+#[cfg(test)]
 #[path = "tests/native_composed_include_binding.rs"]
 mod native_composed_include_binding;
 #[path = "tests/native_data_narrowing.rs"]

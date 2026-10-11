@@ -482,13 +482,13 @@ line	.block
 	cmpi.w #4, d2
 	blo.w bad
 	lea 0(a5, d2.w), a0
-	cmpi.w #6, d0
+	cmpi.w #source.PLAN_TOKEN_BYTES, d0
 	bne.w bad
-	cmpi.b #TOKEN_LINE_PLAN, (a0)
+	cmpi.b #TOKEN_LINE_PLAN, source.PlanToken.Kind(a0)
 	beq.w lineRecipe
-	cmpi.b #TOKEN_PLAN, (a0)
+	cmpi.b #TOKEN_PLAN, source.PlanToken.Kind(a0)
 	bne.w bad
-	move.l 1(a0), d1
+	move.l source.PlanToken.Handle(a0), d1
 	movea.l State.Plans(a6), a0
 	jsr plans.resolve
 	bne.w bad
@@ -1375,13 +1375,13 @@ bodyAvailable
 	clr.w SIDE_BYTES(a6)
 	btst #LINE_PLAN_BIT, 1(a3)
 	beq.w tokenBody
-	cmpi.w #10, d5
+	cmpi.w #source.RECORD_HEADER_BYTES+source.PLAN_TOKEN_BYTES, d5
 	blo.w bad
-	cmpi.b #TOKEN_LINE_PLAN, -6(a2)
+	cmpi.b #TOKEN_LINE_PLAN, source.PlanToken.Kind-source.PLAN_TOKEN_BYTES(a2)
 	bne.w bad
-	cmpi.b #6, -1(a2)
+	cmpi.b #source.PLAN_TOKEN_BYTES, source.PlanToken.Bytes-source.PLAN_TOKEN_BYTES(a2)
 	bne.w bad
-	move.l -5(a2), d1
+	move.l source.PlanToken.Handle-source.PLAN_TOKEN_BYTES(a2), d1
 	moveq #0, d2
 	cmp.l Def.First(a4), d0
 	bne.w fragmentLabelReady
@@ -1454,13 +1454,13 @@ tokenBody
 	beq.w bodyTextReady
 	moveq #0, d0
 	move.b -1(a2), d0
-	cmpi.w #6, d0
+	cmpi.w #source.PLAN_TOKEN_BYTES, d0
 	bne.w bad
 	movea.l a2, a0
 	suba.w d0, a0
 	cmpa.l a3, a0
 	bls.w bad
-	cmpi.b #TOKEN_PLAN, (a0)
+	cmpi.b #TOKEN_PLAN, source.PlanToken.Kind(a0)
 	bne.w bad
 	move.w d0, SIDE_BYTES(a6)
 	movea.l a0, a2

@@ -40,6 +40,19 @@ UPDATE_ACTION_MAX = 17
 TOKEN_WIDE_NUMBER = abi.PRVM_TOKEN_KIND_WIDE_NUMBER
 NUMBER_BYTES = abi.PRVM_NUMBER_BYTES
 WIDE_NUMBER_BYTES = abi.PRVM_WIDE_NUMBER_BYTES
+; Shared packed record and typed plan-trailer layouts; no alignment padding.
+RecordHeader .struct
+Length .byte ?
+Flags .byte ?
+Line .word ?
+.endstruct
+RECORD_HEADER_BYTES = RecordHeader.Line+2
+PlanToken .struct
+Kind .byte ?
+Handle .long ?
+Bytes .byte ?
+.endstruct
+PLAN_TOKEN_BYTES = PlanToken.Bytes+1
 NumberToken	.struct
 Kind	.byte ?
 Value	.long ?
@@ -651,22 +664,22 @@ appendPlan	.block
 	beq.w bad
 	moveq #0, d2
 	move.w Frame.Used(a0), d2
-	addq.l #6, d2
+	addq.l #PLAN_TOKEN_BYTES, d2
 	cmpi.l #MAX_LINE, d2
 	bhi.w bad
 	cmp.l Frame.Capacity(a0), d2
 	bhi.w bad
 	movea.l Frame.Output(a0), a1
 	adda.w Frame.Used(a0), a1
-	move.b #MACRO_PLAN, (a1)+
-	move.l d1, (a1)+
-	move.b #6, (a1)
+	move.b #MACRO_PLAN, PlanToken.Kind(a1)
+	move.l d1, PlanToken.Handle(a1)
+	move.b #PLAN_TOKEN_BYTES, PlanToken.Bytes(a1)
 	move.w d2, Frame.Used(a0)
 	movea.l Frame.Output(a0), a1
-	ori.b #FLAG_PLAN, 1(a1)
+	ori.b #FLAG_PLAN, RecordHeader.Flags(a1)
 	move.l d2, d1
 	subq.w #1, d2
-	move.b d2, (a1)
+	move.b d2, RecordHeader.Length(a1)
 	moveq #0, d0
 	bra.w done
 bad

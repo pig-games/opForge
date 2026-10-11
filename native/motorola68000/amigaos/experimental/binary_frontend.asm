@@ -62,7 +62,7 @@ SourceIteration	.word ?  ; selected preparation iteration flattens runtime contr
 SourceControl	.long ?  ; optional packed source-control callback before preparation
 SourceCursor	.long ?  ; caller-owned captured cursor view/seek callback
 SourcePeek	.long ?  ; caller-owned transient capture view callback
-PreviewMode	.word ?  ; bind-only cursor previews suppress semantic references
+PreviewMode	.word ?  ; identity-only binding suppresses semantic references
 	.endstruct
 	.pub
 FRAME_BYTES = Frame.PreviewMode+2
@@ -913,6 +913,12 @@ lowerTokens	.block
 	.MEMORY_STAGE #3
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.startLine
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_BIND
+	bsr.w retainedFragmentBody
+	bne.w failed
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_WRITER
+	tst.l d2
+	bne.w templateDispatch
 	bsr.w writeTokens
 	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w failed
@@ -925,6 +931,7 @@ lowerTokens	.block
 	bsr.w fragmentLinePlan
 	.MEMORY_DETAIL_END #4
 	bne.w failed
+templateDispatch
 	movea.l Frame.Output(a5), a0
 	movea.l a6, a1
 	adda.l #TEMPLATE_STATE, a1
@@ -985,7 +992,18 @@ done
 ; A0=initialized writer Frame,A5=session. Run package PRVM over the unbound
 ; logical prefix and pass its physical head index to the generic writer.
 ; D0/CCR=status,D1=record bytes; preserves other registers.
-writeWithHeadPolicy	.block
+writeWithHeadPolicy .block
+	bsr.w selectHeadPolicy
+	bne.w done
+	jsr writer.writeLine
+done
+	tst.l d0
+	rts
+	.bend ; writeWithHeadPolicy
+
+; A0=writer Frame. Select its numeric head using the package PRVM policy;
+; no writer or binder runs. D0/CCR=status; other registers except D1 preserved.
+selectHeadPolicy .block
 	movem.l d2-d7/a0-a6, -(sp)
 	suba.w #HEAD_WORK_BYTES, sp
 	movea.l a0, a4
@@ -1110,8 +1128,7 @@ headClear
 	lea HEAD_MAP(sp), a1
 	move.w 0(a1, d2.w), d2
 	move.w d2, writer.Frame.HeadToken(a4)
-	movea.l a4, a0
-	jsr writer.writeLine
+	moveq #0, d0
 	bra.w headDone
 headBad
 	moveq #1, d0
@@ -1121,13 +1138,32 @@ headDone
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; writeWithHeadPolicy
+	.bend  ; selectHeadPolicy
 
 ; A5=session,A6=scratch,D1=count,D3=lexeme bytes. Write current lexical
 ; rows with current binder; no semantic processing or source parsing.
 ; D0/CCR=status,D1=writer record bytes; other registers preserved.
 writeTokens	.block
 	movem.l d2-d7/a0-a6, -(sp)
+	bsr.w configureWriter
+	.MEMORY_DETAIL_BEGIN #0
+	bsr.w writeWithHeadPolicy
+	.MEMORY_DETAIL_END #0
+	bne.w failed
+	bra.w done
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; writeTokens
+
+; A5=session,A6=scratch,D1=TKVM count,D3=lexeme bytes.
+; A0=writer Frame. Configure its borrowed input without writing or binding.
+; Other registers except D0 preserved; CCR unspecified.
+configureWriter .block
+	movem.l a1, -(sp)
 	lea LINE_FRAME(a6), a0
 	lea TOKENS(a6), a1
 	move.l a1, writer.Frame.Tokens(a0)
@@ -1157,25 +1193,17 @@ noStatePlan
 	move.l #bindMember, writer.Frame.MemberBinder(a0)
 	lea PACKED_MAP(a6), a1
 	move.l a1, writer.Frame.PackedMap(a0)
-	.MEMORY_DETAIL_BEGIN #0
-	bsr.w writeWithHeadPolicy
-	.MEMORY_DETAIL_END #0
-	bne.w failed
-	bra.w done
-failed
-	moveq #1, d0
-done
-	movem.l (sp)+, d2-d7/a0-a6
-	tst.l d0
+	movea.l (sp)+, a1
 	rts
-	.bend  ; writeTokens
+	.bend ; configureWriter
 
 FRAGMENT_NONE = 0
 FRAGMENT_NUMERIC = 1
 FRAGMENT_STRING = 2
+FRAGMENT_COMPOSED = 3  ; VM-invalid name annotation may require whole-line substitution
 ; A0=TKVM rows,D0=count. D0/CCR=body fragment candidate role; other regs kept.
-; Numeric candidates require positional span overlap later; token kinds/lengths
-; come from TKVM, and no placeholder spelling is inspected here.
+; Numeric suffixes and invalid composed annotations require positional span
+; overlap later. All candidate kinds and annotations come from TKVM.
 bodyFragmentCandidate	.block
 	movem.l d1-d2/a0, -(sp)
 	move.l d0, d1
@@ -1183,25 +1211,184 @@ bodyFragmentCandidate	.block
 candidate
 	tst.l d1
 	beq.w done
+	move.w writer.Token.Reserved(a0), d0
+	andi.w #tokenizer.TOKEN_RECIPE_INVALID, d0
+	bne.w composedCandidate
 	cmpi.w #tokenizer.TK_KIND_STRING, writer.Token.Kind(a0)
 	beq.w stringCandidate
 	cmpi.w #tokenizer.TK_KIND_NUMBER, writer.Token.Kind(a0)
 	bne.w next
 	cmpi.l #1, writer.Token.Length(a0)
 	bls.w next
+	tst.l d2
+	bne.w next
 	moveq #FRAGMENT_NUMERIC, d2
 next
 	adda.w #tokenizer.TOKEN_RECORD_SIZE, a0
 	subq.l #1, d1
 	bra.w candidate
 stringCandidate
+	cmpi.l #FRAGMENT_COMPOSED, d2
+	beq.w next
 	moveq #FRAGMENT_STRING, d2
+	bra.w next
+composedCandidate
+	moveq #FRAGMENT_COMPOSED, d2
+	bra.w next
 done
 	move.l d2, d0
 	movem.l (sp)+, d1-d2/a0
 	tst.l d0
 	rts
 	.bend  ; bodyFragmentCandidate
+
+; A5=session,A6=scratch,D1=TKVM count,D3=lexeme bytes.
+; D0/CCR=status,D2=1 retained body / 0 ordinary; other registers preserved.
+; Whole-line positional recipes own suffixes inside numeric or composed tokens.
+; Select them before an unexpanded operand reaches the ordinary writer. Only
+; the package-selected numeric head is bound; operands belong to FragmentLine.
+retainedFragmentBody .block
+	movem.l d1/d3-d7/a0-a4, -(sp)
+	move.l d1, d7
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	tst.w templates.State.Open(a0)
+	beq.w ordinary
+	lea TOKENS(a6), a0
+	move.l d7, d0
+	bsr.w bodyFragmentCandidate
+	cmpi.l #FRAGMENT_NUMERIC, d0
+	beq.w candidateReady
+	cmpi.l #FRAGMENT_COMPOSED, d0
+	bne.w ordinary
+candidateReady
+	move.l d0, d4
+	moveq #0, d6
+	move.l CAPTURE_RECORD(a6), d0
+	beq.w physical
+	movea.l d0, a1
+	tst.l capture.Record.LineStatus(a1)
+	bne.w ordinary
+	move.l capture.Record.LineHandle(a1), d6
+	beq.w bad
+	suba.w #memory.Block.Used+4, sp
+	jsr capture.planView
+	move.l a0, memory.Block.Pointer(sp)
+	move.l d0, memory.Block.Capacity(sp)
+	move.l d0, memory.Block.Used(sp)
+	movea.l sp, a0
+	move.l d6, d1
+	jsr macro_plans.recipeView
+	move.l d0, d5
+	movea.l a1, a0
+	move.l d1, d0
+	move.l d2, d1
+	move.l d7, d2
+	tst.l d5
+	bne.w capturedProof
+	bsr.w retainedSuffixOverlap
+	move.l d0, d5
+capturedProof
+	adda.w #memory.Block.Used+4, sp
+	cmpi.l #macro_plans.RECIPE_INVALID, d5
+	beq.w bad
+	tst.l d5
+	bne.w ordinary
+	bra.w selected
+physical
+	; The physical entry uses the same PRVM recipe capture as retained input.
+	move.l d7, LINE_FRAME+writer.Frame.Count(a6)
+	bsr.w physicalLineRecipe
+	bne.w ordinary
+	move.l macro_plans.Frame.RecipeCount(a0), d0
+	movea.l macro_plans.Frame.RecipeEvents(a0), a0
+	moveq #0, d1
+	move.l d7, d2
+	bsr.w retainedSuffixOverlap
+	tst.l d0
+	bne.w ordinary
+selected
+	move.l d7, d1
+	bsr.w configureWriter
+	bsr.w selectHeadPolicy
+	bne.w bad
+	moveq #0, d4
+	move.w writer.Frame.HeadToken(a0), d4
+	cmp.l d7, d4
+	bhi.w bad
+	beq.w noHead
+	move.l d4, d0
+	mulu.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, d0
+	lea TOKENS(a6), a1
+	adda.l d0, a1
+	addq.l #1, d4
+	cmpi.w #parser_abi.PRVM_TOKEN_KIND_DOT, writer.Token.Kind(a1)
+	bne.w headReady
+	addq.l #1, d4
+	bra.w headReady
+noHead
+	clr.l d4
+headReady
+	cmp.l d7, d4
+	bhi.w bad
+	lea LINE_FRAME(a6), a0
+	move.l d4, writer.Frame.Count(a0)
+	jsr writer.writeLine
+	bne.w bad
+	; Retained operands have no packed representation yet. Their lexical
+	; boundaries map to the numeric head frontier until fragment expansion.
+	lea PACKED_MAP(a6), a1
+	move.l d4, d0
+	add.l d0, d0
+	adda.l d0, a1
+	move.l d7, d0
+	sub.l d4, d0
+mapTail
+	move.w d1, (a1)+
+	dbra d0, mapTail
+	move.l d7, LINE_FRAME+writer.Frame.Count(a6)
+	; Known/body calls and template headers keep their existing call/header
+	; descriptor owner. This path supplies ordinary retained body recipes.
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	movea.l a6, a2
+	adda.l #TEMPLATE_STATE, a2
+	jsr templates.role
+	tst.l d0
+	bne.w ordinary
+	tst.l d6
+	beq.w createPhysical
+	moveq #0, d4
+	bsr.w bindCapturedPlan
+	bne.w bad
+	bra.w append
+createPhysical
+	lea MACRO_FRAME(a6), a0
+	jsr macro_plans.create
+	bne.w bad
+append
+	lea LINE_FRAME(a6), a0
+	jsr writer.appendPlan
+	bne.w bad
+	movea.l Frame.Output(a5), a0
+	andi.b #$ff-writer.FLAG_PLAN, writer.RecordHeader.Flags(a0)
+	ori.b #templates.LINE_PLAN_FLAG, writer.RecordHeader.Flags(a0)
+	move.b #templates.TOKEN_LINE_PLAN, writer.PlanToken.Kind-writer.PLAN_TOKEN_BYTES(a0, d1.l)
+	moveq #1, d2
+	moveq #0, d0
+	bra.w done
+ordinary
+	moveq #0, d2
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #0, d2
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/d3-d7/a0-a4
+	tst.l d0
+	rts
+	.bend ; retainedFragmentBody
 
 SUFFIX_MATCHED = 0
 SUFFIX_ABSENT = 1
@@ -1252,26 +1439,7 @@ capture
 	bra.w selectedBodyPlan
 physicalCapture
 	.MEMORY_TEMPLATE_WORK #11, #1
-	lea MACRO_EVENTS(a6), a1
-	movea.l a1, a0
-	moveq #macro_plans.ROW_BYTES/4-1, d0
-clearRow
-	clr.l (a0)+
-	dbra d0, clearRow
-	move.w #parser_abi.PRVM_RESULT_MACRO_LINE, macro_plans.Row.Kind(a1)
-	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Row.PackedEnd(a1)
-	move.l Frame.SourceBytes(a5), macro_plans.Row.SpellingEnd(a1)
-	lea MACRO_FRAME(a6), a0
-	lea MACRO_PLANS(a6), a2
-	move.l a2, macro_plans.Frame.Arena(a0)
-	move.l a1, macro_plans.Frame.Events(a0)
-	move.l #1, macro_plans.Frame.Count(a0)
-	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
-	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
-	lea PACKED_MAP(a6), a1
-	move.l a1, macro_plans.Frame.PackedMap(a0)
-	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Frame.TokenCount(a0)
-	bsr.w captureFragments
+	bsr.w physicalLineRecipe
 	bne.w bad
 	jsr macro_plans.create
 	bne.w bad
@@ -1290,9 +1458,9 @@ appendCaptured
 	jsr writer.appendPlan
 	bne.w bad
 	movea.l Frame.Output(a5), a0
-	andi.b #$ff-writer.FLAG_PLAN, 1(a0)
-	ori.b #templates.LINE_PLAN_FLAG, 1(a0)
-	move.b #templates.TOKEN_LINE_PLAN, -6(a0, d1.l)
+	andi.b #$ff-writer.FLAG_PLAN, writer.RecordHeader.Flags(a0)
+	ori.b #templates.LINE_PLAN_FLAG, writer.RecordHeader.Flags(a0)
+	move.b #templates.TOKEN_LINE_PLAN, writer.PlanToken.Kind-writer.PLAN_TOKEN_BYTES(a0, d1.l)
 ready
 	moveq #0, d0
 	bra.w done
@@ -1336,7 +1504,27 @@ done
 ; A0=validated PRVM recipes,D0=count,D1=spelling base,D2=TKVM count,
 ; A6=scratch. D0/CCR=SUFFIX_MATCHED/ABSENT; other regs preserved.
 ; Used before publication and after binding; only VM spans select concatenation.
-numericSuffixOverlap	.block
+numericSuffixOverlap .block
+	move.l d3, -(sp)
+	moveq #FRAGMENT_NUMERIC, d3
+	bsr.w fragmentSuffixOverlap
+	move.l (sp)+, d3
+	tst.l d0
+	rts
+	.bend ; numericSuffixOverlap
+
+; Same proof ABI, D4=retained numeric/composed candidate role. Preserve D3.
+retainedSuffixOverlap .block
+	move.l d3, -(sp)
+	move.l d4, d3
+	bsr.w fragmentSuffixOverlap
+	move.l (sp)+, d3
+	tst.l d0
+	rts
+	.bend ; retainedSuffixOverlap
+
+; Existing span proof with D3 selecting the VM-owned token annotation/class.
+fragmentSuffixOverlap .block
 	movem.l d1-d7/a0-a3, -(sp)
 	move.l d0, d7
 	move.l d1, d6
@@ -1353,8 +1541,16 @@ recipe
 numericToken
 	tst.l d4
 	beq.w nextRecipe
+	cmpi.l #FRAGMENT_COMPOSED, d3
+	beq.w composedToken
 	cmpi.w #tokenizer.TK_KIND_NUMBER, writer.Token.Kind(a3)
 	bne.w nextNumericToken
+	bra.w tokenSelected
+composedToken
+	move.w writer.Token.Reserved(a3), d0
+	andi.w #tokenizer.TOKEN_RECIPE_INVALID, d0
+	beq.w nextNumericToken
+tokenSelected
 	move.l writer.Token.Start(a3), d0
 	subq.l #1, d0  ; TKVM columns are one-based, recipe spans zero-based
 	cmp.l d0, d5
@@ -1380,15 +1576,33 @@ done
 	movem.l (sp)+, d1-d7/a0-a3
 	tst.l d0
 	rts
-	.bend  ; numericSuffixOverlap
+	.bend  ; fragmentSuffixOverlap
 
 ; A0=session,A1=output,A2=definition,A4=invocation,D1=owned recipe handle.
 ; Bind fragments, then let TKVM alone materialize and lex their logical stream.
 ; Returns only a packed line. No original/expanded text enters writer interfaces.
+FragmentBindingPolicy .struct
+Mode .word ?
+BindingMode .word ?
+.endstruct
+FRAGMENT_BINDING_POLICY_BYTES = FragmentBindingPolicy.BindingMode+2
+
 fragmentLine	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	movea.l Frame.Scratch(a5), a6
+	suba.w #FRAGMENT_BINDING_POLICY_BYTES, sp
+	move.w Frame.PreviewMode(a5), FragmentBindingPolicy.Mode(sp)
+	move.w SCOPE_STATE+layout.State.PreviewBinding(a6), FragmentBindingPolicy.BindingMode(sp)
+	; Substitution still interns stable numeric names in inactive records,
+	; but only selected records may publish semantic reference metadata.
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	tst.w conditionals.State.Active(a0)
+	bne.w bindingReady
+	move.w #1, Frame.PreviewMode(a5)
+	move.w #1, SCOPE_STATE+layout.State.PreviewBinding(a6)
+bindingReady
 	move.l a1, -(sp)
 	suba.w #FRAGMENT_SCRATCH, sp
 	movea.l sp, a0
@@ -1470,6 +1684,9 @@ bad
 	moveq #0, d1
 done
 	adda.w #FRAGMENT_SCRATCH+4, sp
+	move.w FragmentBindingPolicy.Mode(sp), Frame.PreviewMode(a5)
+	move.w FragmentBindingPolicy.BindingMode(sp), SCOPE_STATE+layout.State.PreviewBinding(a6)
+	adda.w #FRAGMENT_BINDING_POLICY_BYTES, sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -1608,6 +1825,36 @@ done
 	tst.l d0
 	rts
 	.bend  ; bindCapturedPlan
+
+; A5=session,A6=scratch. Capture a whole physical line through the shared
+; fragment PRVM. A0=initialized macro Frame,D0/CCR=status; others preserved.
+; Packed offsets are bound only after the selected numeric head is written.
+physicalLineRecipe .block
+	movem.l d1-d2/a1-a2, -(sp)
+	lea MACRO_EVENTS(a6), a1
+	movea.l a1, a0
+	moveq #macro_plans.ROW_BYTES/4-1, d0
+clearRow
+	clr.l (a0)+
+	dbra d0, clearRow
+	move.w #parser_abi.PRVM_RESULT_MACRO_LINE, macro_plans.Row.Kind(a1)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Row.PackedEnd(a1)
+	move.l Frame.SourceBytes(a5), macro_plans.Row.SpellingEnd(a1)
+	lea MACRO_FRAME(a6), a0
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l #1, macro_plans.Frame.Count(a0)
+	lea MACRO_PLANS(a6), a1
+	move.l a1, macro_plans.Frame.Arena(a0)
+	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, macro_plans.Frame.PackedMap(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Frame.TokenCount(a0)
+	bsr.w captureFragments
+	movem.l (sp)+, d1-d2/a1-a2
+	tst.l d0
+	rts
+	.bend ; physicalLineRecipe
 
 ; A5=session,A6=scratch,D4=call(1) or header role. Existing shared PRVM
 ; reads the physical line only during direct preparation or initial capture.

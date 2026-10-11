@@ -88,8 +88,10 @@ new native proof; the reference bundle does not qualify later implementation.
 
 The broad corpus inventory remains the BS27 observation below. Later focused
 repairs do not update its counts. Scalar `:?=` forward-initializer semantics and
-other shared-language gaps remain open. Current contracts have no compatibility
-executor.
+other shared-language gaps remain open. The current VM pipeline still dispatches actual VALUE/OPRD alternatives and
+conflates semantic kind with version. Consolidating those capabilities and
+removing native version awareness is pending
+[shared contract work](native-vm-consolidation.md).
 
 This remains experimental: even successful self-host equality does not establish
 full language, CPU, CLI/output parity or the 2 MiB product goal. Remaining frontend
@@ -99,6 +101,46 @@ Git retains superseded experiments and measurements. The
 [workflow](../workflow/README.md) and
 [native parity contract](../../agents/rules/native-rust-parity-porting.md)
 govern execution; a future plan item alone does not authorize implementation.
+
+## Composed macro binding — focused checkpoint
+
+Retained positional recipes are now selected before ordinary operand lowering.
+TKVM's invalid-composed annotation and PRVM's positional spans jointly select
+whole-line substitution; no marker spelling is parsed in the native frontend.
+The package-selected numeric head is bound immediately, while generated operands
+are bound after shared fragment tokenization. Inactive generated records intern
+identities without publishing semantic references or retaining imported blocks.
+The borrowed binding mode is restored on both success and failure.
+
+The previously failing inactive qualified struct-member case now completes
+freshly on both 68020 and 6502, emitting exactly the live Rust `[60]` result.
+Both ordinary malformed `@0` controls also complete with a nonzero exit and
+diagnostic. Active member controls pass live Rust but still reject at the
+expanded native call; they remain visible pending regressions. This is a focused
+repair, not complete include/opcore parity or a new full self-host.
+
+Serialized release controls use the same 11,592-byte, 1,200-invocation input,
+both embedded packages and FS-UAE 68020/10 MiB. Each validates all output bytes
+against live Rust. Capture ordering includes the named packed-header/trailer
+layout change; the final state adds only inactive generated-record binding
+isolation.
+
+| State | START-to-DONE seconds | Image bytes | Linked reservation bytes |
+|---|---:|---:|---:|
+| Preview-isolated baseline | 26.894099 | 646,244 | 670,620 |
+| Capture ordering | 26.860895 | 646,860 | 671,212 |
+| Inactive generated-record isolation | 26.907188 | 646,920 | 671,272 |
+
+Capture ordering changes the sample by -0.033204 seconds (-0.123%); inactive
+isolation changes it by +0.046293 seconds (+0.172%). One sample per state supports
+no meaningful timing difference. A capture-order sample overlapping a host build
+was discarded and repeated. The executable grows by 676 bytes and linked static
+reservation by 652 bytes overall; runtime peak heap was not measured.
+
+Final candidate SHA-256:
+`20f242541633ef4170915e7305433809ed7d6a222730aeb3e77a5a02f4d19de6`.
+The native engineering gate passes. Named acquisition collections and actual
+assembly-state acquisition follow the [source-session plan](native-source-execution.md).
 
 ## Expanded repetition with active acquisition — focused checkpoint
 
@@ -120,7 +162,9 @@ passed a fresh retry. A further composed qualified-member macro case passes Rust
 but rejects natively at the macro body: it remains a visible pending case, so the
 complete 20-case suite is not green. Negative acquisition controls cover missing
 active files, include cycles, unavailable forward guards and acquired/expanded
-module graph changes. The engineering gate and host fixture oracles pass.
+module graph changes. All seven complete freshly on the final preview candidate
+with explicit nonzero exit and required diagnostic. The engineering gate and host
+fixture oracles pass.
 This does not qualify named collection acquisition, PC-dependent acquisition,
 graph-changing includes, all opcore roots or a new full self-host.
 

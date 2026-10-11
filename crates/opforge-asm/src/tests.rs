@@ -13653,7 +13653,13 @@ fn item6_mos_package_bytes_with_tabl_program(
         build_hierarchy_chunks_from_registry(&registry).expect("build Item 6 MOS chunks");
     let mut patched = false;
     for table in &mut chunks.tables {
-        let is_mos_owner = matches!(&table.owner, ScopedOwner::Family(owner) if owner.eq_ignore_ascii_case("mos6502"));
+        // CPU-owned rejection selector modes can override the family encoding.
+        // Mutate both layers so this package exercises the supplied program.
+        let is_mos_owner = match &table.owner {
+            ScopedOwner::Family(owner) => owner.eq_ignore_ascii_case("mos6502"),
+            ScopedOwner::Cpu(owner) => owner.eq_ignore_ascii_case(m6502_cpu_id.as_str()),
+            _ => false,
+        };
         if is_mos_owner
             && table.mnemonic.eq_ignore_ascii_case(mnemonic)
             && table.mode_key.eq_ignore_ascii_case(mode_key)
@@ -39112,13 +39118,19 @@ fn vm_runtime_mos6502_missing_tabl_program_errors_instead_of_fallback() {
 
     let mut chunks =
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
+    let original_table_count = chunks.tables.len();
     chunks.tables.retain(|program| {
-        let is_mos6502_owner =
-            matches!(&program.owner, ScopedOwner::Family(owner) if owner.eq_ignore_ascii_case("mos6502"));
+        // Remove every active scope, including CPU-owned selector encodings.
+        let is_mos6502_owner = match &program.owner {
+            ScopedOwner::Family(owner) => owner.eq_ignore_ascii_case("mos6502"),
+            ScopedOwner::Cpu(owner) => owner.eq_ignore_ascii_case(m6502_cpu_id.as_str()),
+            _ => false,
+        };
         !(is_mos6502_owner
             && program.mnemonic.eq_ignore_ascii_case("lda")
             && program.mode_key.eq_ignore_ascii_case("immediate"))
     });
+    assert!(chunks.tables.len() < original_table_count);
     asm.opthread_execution_model = Some(load_opasm_model_from_chunks(chunks));
     asm.clear_conditionals();
     asm.clear_scopes();
@@ -42562,3 +42574,6 @@ mod iterable_lexical_bindings;
 mod required_value_deferral;
 
 mod hunk_repeat_records;
+
+#[path = "tests/labeled_conditionals.rs"]
+mod labeled_conditionals;

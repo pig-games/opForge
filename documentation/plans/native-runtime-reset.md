@@ -100,6 +100,69 @@ Git retains superseded experiments and measurements. The
 [native parity contract](../../agents/rules/native-rust-parity-porting.md)
 govern execution; a future plan item alone does not authorize implementation.
 
+## Expanded repetition with active acquisition — focused checkpoint
+
+The owned source cursor now traverses physical records or the currently expanded
+numeric template body. Template previews reuse normal substitution, restore the
+invocation state and use a separate output buffer. Loop records retain their
+owning stream identity so a nested expansion cannot close its parent loop.
+Shared source control detects file actions reached through known template calls;
+ordinary forward-count calls without file acquisition retain numeric runtime
+execution. Anonymous scoped iterations keep their existing lexical owner.
+No package layout or CPU semantics change in this checkpoint.
+
+Fresh native comparisons cover nine behaviors on each of the 68020 and 6502
+packages (18 positive cases), including definition-relative acquisition, empty
+and nested expansion, hidden macro file effects, anonymous iterable scoped loops,
+mutable scoped while controls, and inactive missing files. Seventeen completed
+in the final candidate's matrix; one stalled before guest START and subsequently
+passed a fresh retry. A further composed qualified-member macro case passes Rust
+but rejects natively at the macro body: it remains a visible pending case, so the
+complete 20-case suite is not green. Negative acquisition controls cover missing
+active files, include cycles, unavailable forward guards and acquired/expanded
+module graph changes. The engineering gate and host fixture oracles pass.
+This does not qualify named collection acquisition, PC-dependent acquisition,
+graph-changing includes, all opcore roots or a new full self-host.
+
+Preview now borrows its source session explicitly and suppresses reference and
+register publication, while restoring pending binding state. Scratch identity
+interning remains monotonic. This prevents lookahead from marking an inactive
+reference as a reason to retain an imported block. The composed-member case
+above still needs a separate binding repair.
+
+The same fixture exposed a Rust relayout defect: replay discarded module template
+visibility and captured definitions needed to execute active includes. Commit
+`51299820` preserves that context while rebuilding emitted state. Seventeen
+active-include and 23 reachable-block relayout tests pass after the repair.
+
+A serialized release comparison uses the identical 11,592-byte selected-import
+control with 1,200 macro invocations, both embedded packages and FS-UAE
+68020/10 MiB. Each sample compares the complete 1,200-byte output with live Rust.
+
+| State | START-to-DONE seconds | Image bytes | Linked reservation bytes |
+|---|---:|---:|---:|
+| Previous partial include path | 26.814290 | 645,396 | 669,744 |
+| Expanded repetition | 26.833538 | 646,092 | 670,468 |
+| Preview binding isolation | 26.711923 | 646,244 | 670,620 |
+
+The repetition change adds 0.019248 seconds (+0.072%); the preview repair removes
+0.121615 seconds from that sample (-0.453%). One sample per state establishes no
+meaningful timing change. The final image grows by 848 bytes and linked static
+reservation by 876 bytes over the baseline. Static reservation excludes runtime
+heap; peak allocation and a 2 MiB fit were not measured.
+
+Final frozen candidate SHA-256:
+`eee9c622779353969df7f5f89fe324acac1ca04d9d7b796558493ea479dc14d1`.
+Fixtures and native proof are in
+`crates/opforge-asm/src/tests/native_active_includes.rs`. Images and logs remain
+outside the build cache under `/tmp/opforge-opcore-include-*`, with final preview
+matrix, retry and timing logs identified by `preview` in their filenames.
+
+The next structural work is described in the
+[resumable source execution plan](native-source-execution.md). It reuses the
+assembly owners for actual PC-dependent acquisition and mapped execution rather
+than extending preparation into a second assembler.
+
 ## Product outcome and scope
 
 Provide the current Rust assembler language, all registered source CPU/dialect

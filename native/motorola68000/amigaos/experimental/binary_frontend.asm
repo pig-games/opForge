@@ -62,10 +62,10 @@ SourceIteration	.word ?  ; selected preparation iteration flattens runtime contr
 SourceControl	.long ?  ; optional packed source-control callback before preparation
 SourceCursor	.long ?  ; caller-owned captured cursor view/seek callback
 SourcePeek	.long ?  ; caller-owned transient capture view callback
-Reserved	.word ?
+PreviewMode	.word ?  ; bind-only cursor previews suppress semantic references
 	.endstruct
 	.pub
-FRAME_BYTES = Frame.Reserved+2
+FRAME_BYTES = Frame.PreviewMode+2
 PREP_DECLARATION = 1
 PREP_CONDITIONAL = 2
 PREP_CONFIGURATION = 3
@@ -105,7 +105,8 @@ PACKAGE_END = 16
 LINE_NUMBER = 20
 NEXT_ID = 24
 CAPTURE_RECORD = 28
-LINE_FRAME = CAPTURE_RECORD+4
+SESSION_FRAME = CAPTURE_RECORD+4  ; borrowed owner for binder preview policy
+LINE_FRAME = SESSION_FRAME+4
 TOKENS = LINE_FRAME+writer.FRAME_BYTES
 TOKEN_CAPACITY = 64
 LEXICAL_BYTES = 1024
@@ -199,6 +200,7 @@ begin	.block
 	clr.w Frame.SourceOwned(a5)
 	clr.w Frame.ExpansionFloor(a5)
 	clr.w Frame.SourceIteration(a5)
+	clr.w Frame.PreviewMode(a5)
 	clr.l Frame.Graph(a5)
 	movea.l Frame.Scratch(a5), a6
 	move.l a6, d0
@@ -206,6 +208,7 @@ begin	.block
 	move.l a6, d0
 	andi.l #3, d0
 	bne.w failed
+	move.l a5, SESSION_FRAME(a6)
 	clr.l CAPTURE_RECORD(a6)
 	lea PACKAGE_BUCKETS(a6), a0
 	move.l #256-1, d0
@@ -591,8 +594,12 @@ Origin .long ?
 Names .long ?
 Line .long ?
 Root .word ?
+Mode .word ?
+FirstBound .word ?
+FirstExplicit .word ?
+BindingMode .word ?
 .endstruct
-PREVIEW_BYTES = Preview.Root+2
+PREVIEW_BYTES = Preview.BindingMode+2
 
 ; A0=session,A1=capture block,D1=handle,A2=disjoint MAX_LINE destination.
 ; Bind a numeric preview without executing semantics. D0/CCR=status,A1=preview,
@@ -610,6 +617,12 @@ previewCapture .block
 	move.l Frame.NameCount(a5), Preview.Names(sp)
 	move.l LINE_NUMBER(a6), Preview.Line(sp)
 	move.w Frame.RootFile(a5), Preview.Root(sp)
+	move.w Frame.PreviewMode(a5), Preview.Mode(sp)
+	move.w SCOPE_STATE+layout.State.FirstBound(a6), Preview.FirstBound(sp)
+	move.w SCOPE_STATE+layout.State.FirstExplicit(a6), Preview.FirstExplicit(sp)
+	move.w SCOPE_STATE+layout.State.PreviewBinding(a6), Preview.BindingMode(sp)
+	move.w #1, SCOPE_STATE+layout.State.PreviewBinding(a6)
+	move.w #1, Frame.PreviewMode(a5)
 	move.l a2, Frame.Output(a5)
 	bsr.w bindCapture
 	move.l d0, d6
@@ -620,6 +633,10 @@ previewCapture .block
 	move.l Preview.Names(sp), Frame.NameCount(a5)
 	move.l Preview.Line(sp), LINE_NUMBER(a6)
 	move.w Preview.Root(sp), Frame.RootFile(a5)
+	move.w Preview.BindingMode(sp), SCOPE_STATE+layout.State.PreviewBinding(a6)
+	move.w Preview.Mode(sp), Frame.PreviewMode(a5)
+	move.w Preview.FirstBound(sp), SCOPE_STATE+layout.State.FirstBound(a6)
+	move.w Preview.FirstExplicit(sp), SCOPE_STATE+layout.State.FirstExplicit(a6)
 	movea.l d7, a1
 	move.l d6, d0
 	adda.w #PREVIEW_BYTES, sp
@@ -1926,6 +1943,77 @@ expansionDepth	.block
 	movea.l (sp)+, a1
 	rts
 	.bend ; expansionDepth
+
+; A0=session,D0=cursor operation,D1=seek offset. Same outputs as templates.cursor.
+; Active template source owns its body cursor; parent invocations remain suspended.
+expansionCursor .block
+	move.l a0, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.cursor
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend ; expansionCursor
+
+; A0=session,A1=numeric writer. D0=existing template role, no semantic action.
+templateRole .block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a1
+	adda.l #TEMPLATE_STATE, a2
+	jsr templates.role
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend ; templateRole
+
+; A0=session,D1=template body offset,A2=disjoint MAX_LINE output.
+; D0/CCR=status,A1=preview,D1=next body offset. Other registers preserved.
+; No semantic scope action; shared template substitution and binder own the view.
+previewExpansion .block
+	movem.l d2-d7/a0/a2-a6, -(sp)
+	suba.w #PREVIEW_BYTES, sp
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	move.l a2, d7
+	move.l Frame.Output(a5), Preview.Output(sp)
+	move.l Frame.Used(a5), Preview.Used(sp)
+	move.l Frame.Origin(a5), Preview.Origin(sp)
+	move.l Frame.NameCount(a5), Preview.Names(sp)
+	move.l LINE_NUMBER(a6), Preview.Line(sp)
+	move.w Frame.RootFile(a5), Preview.Root(sp)
+	move.w Frame.PreviewMode(a5), Preview.Mode(sp)
+	move.w SCOPE_STATE+layout.State.FirstBound(a6), Preview.FirstBound(sp)
+	move.w SCOPE_STATE+layout.State.FirstExplicit(a6), Preview.FirstExplicit(sp)
+	move.w SCOPE_STATE+layout.State.PreviewBinding(a6), Preview.BindingMode(sp)
+	move.w #1, SCOPE_STATE+layout.State.PreviewBinding(a6)
+	move.w #1, Frame.PreviewMode(a5)
+	move.l a2, Frame.Output(a5)
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	movea.l a2, a1
+	lea SCOPE_STATE(a6), a2
+	jsr templates.preview
+	move.l d0, d6
+	move.l Preview.Output(sp), Frame.Output(a5)
+	move.l Preview.Used(sp), Frame.Used(a5)
+	move.l Preview.Origin(sp), Frame.Origin(a5)
+	move.l Preview.Names(sp), Frame.NameCount(a5)
+	move.l Preview.Line(sp), LINE_NUMBER(a6)
+	move.w Preview.Root(sp), Frame.RootFile(a5)
+	move.w Preview.BindingMode(sp), SCOPE_STATE+layout.State.PreviewBinding(a6)
+	move.w Preview.Mode(sp), Frame.PreviewMode(a5)
+	move.w Preview.FirstBound(sp), SCOPE_STATE+layout.State.FirstBound(a6)
+	move.w Preview.FirstExplicit(sp), SCOPE_STATE+layout.State.FirstExplicit(a6)
+	movea.l d7, a1
+	move.l d6, d0
+	adda.w #PREVIEW_BYTES, sp
+	movem.l (sp)+, d2-d7/a0/a2-a6
+	tst.l d0
+	rts
+	.bend ; previewExpansion
 
 ; A0=session. A1=current preparation scope; other registers preserved.
 scopeState	.block
@@ -3436,6 +3524,9 @@ sourceBound
 	tst.l d0
 	bne.w sourceDone
 	tst.l d5
+	bne.w sourceDone
+	movea.l SESSION_FRAME(a6), a4
+	tst.w Frame.PreviewMode(a4)
 	bne.w sourceDone
 	move.l d2, -(sp)
 	movea.l a2, a0

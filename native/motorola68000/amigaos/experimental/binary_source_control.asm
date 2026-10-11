@@ -16,11 +16,14 @@
 	.pub
 LIMIT = 16
 MAX_ITERATIONS = 65536
+EFFECT_FILE = 1
+EFFECT_CALL = 2
 Slot .struct
 Body .long ?
 Close .long ?
 After .long ?
 StreamEnd .long ?
+StreamKey .long ?
 Remaining .long ?
 Index .long ?
 Variable .long ?
@@ -41,8 +44,8 @@ begin .block
 	.bend ; begin
 
 ; A0=session,A1=writer record. D0/CCR=status,D1=1 consumed / 0 ordinary.
-; Other registers preserved. Only physical capture loops containing file actions
-; are flattened. Template loop bodies retain existing runtime rejection of I/O.
+; Other registers preserved. Owned physical or template loops with potential
+; acquisition are selected before records and lexical identities are frozen.
 line .block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a5
@@ -88,10 +91,6 @@ selected
 	beq.w ordinary
 	move.l d0, PendingKind
 	move.l d1, PendingVariable
-	movea.l a5, a0
-	jsr frontend.expansionDepth
-	cmp.w frontend.Frame.ExpansionFloor(a5), d0
-	bhi.w ordinary  ; generated template records have no physical cursor
 	move.l frontend.Frame.SourceCursor(a5), d0
 	beq.w ordinary
 	movea.l d0, a2
@@ -101,16 +100,13 @@ selected
 	bne.w bad
 	cmp.l d1, d2
 	bls.w ordinary  ; direct streaming root has no capture frontier
+	move.l d3, PendingStreamKey
 	move.l d2, PendingStreamEnd
 	move.l d1, PendingHeader
 	bsr.w scanBody
 	bne.w bad
-	tst.l FoundFile
+	tst.l Effects
 	beq.w ordinary
-	cmpi.l #abi.PRVM_LOOP_BFOR, PendingKind
-	beq.w bad
-	cmpi.l #abi.PRVM_LOOP_BWHILE, PendingKind
-	beq.w bad
 	moveq #0, d0
 	move.w Depth, d0
 	cmpi.w #LIMIT, d0
@@ -122,6 +118,7 @@ selected
 	move.l PendingClose, Slot.Close(a3)
 	move.l PendingAfter, Slot.After(a3)
 	move.l PendingStreamEnd, Slot.StreamEnd(a3)
+	move.l PendingStreamKey, Slot.StreamKey(a3)
 	move.l PendingKind, Slot.Kind(a3)
 	move.l PendingVariable, Slot.Variable(a3)
 	clr.l Slot.Descriptor(a3)
@@ -136,7 +133,7 @@ copyHeader
 	subq.l #1, d0
 	bne.w copyHeader
 	bsr.w evaluateHeader
-	bne.w bad
+	bne.w unavailableHeader
 	tst.l d1
 	beq.w skipLoop
 	move.l d1, Slot.Remaining(a3)
@@ -171,6 +168,8 @@ closing
 	moveq #0, d0
 	jsr (a2)
 	bne.w bad
+	cmp.l Slot.StreamKey(a3), d3
+	bne.w ordinary
 	cmp.l Slot.StreamEnd(a3), d2
 	bne.w ordinary
 	cmp.l Slot.Close(a3), d1
@@ -181,6 +180,8 @@ closing
 	jsr scopes.line
 	bne.w bad
 	cmpi.l #abi.PRVM_LOOP_WHILE, Slot.Kind(a3)
+	beq.w nextWhile
+	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a3)
 	beq.w nextWhile
 	subq.l #1, Slot.Remaining(a3)
 	beq.w finished
@@ -208,6 +209,11 @@ finished
 	move.w Depth, layout.State.MaterializedLoops(a6)
 	move.w Depth, frontend.Frame.SourceIteration(a5)
 	bra.w consumed
+unavailableHeader
+	move.l Effects, d0
+	andi.l #EFFECT_FILE, d0
+	bne.w bad  ; direct file actions require strict known selection
+	bra.w ordinary
 ordinary
 	moveq #0, d0
 	moveq #0, d1
@@ -241,11 +247,11 @@ classifyLoop .block
 	rts
 	.bend ; classifyLoop
 
-; Scan owned numeric previews for matching controls and package file actions.
+; Scan owned numeric previews for matching controls and potential acquisition.
 ; Definitions are skipped by the normal shared scope directive role resolver.
 scanBody .block
 	movem.l d3-d7/a0-a3, -(sp)
-	clr.l FoundFile
+	clr.l Effects
 	move.l PendingHeader, d1
 	bsr.w peek
 	bne.w bad
@@ -322,12 +328,20 @@ file
 	move.l d5, d1
 	bsr.w peek
 	bne.w bad
-	movea.l a1, a0
+	move.l a1, -(sp)
+	movea.l a5, a0
+	jsr frontend.templateRole
+	cmpi.l #1, d0
+	movea.l (sp)+, a0
+	beq.w potentialCall
 	bsr.w fileAction
 	bne.w bad
 	tst.l d1
 	beq.w advance
-	move.l #1, FoundFile
+	ori.l #EFFECT_FILE, Effects
+	bra.w advance
+potentialCall
+	ori.l #EFFECT_CALL, Effects
 	bra.w advance
 definition
 	addq.l #1, d6
@@ -365,6 +379,8 @@ evaluateHeader .block
 	jsr imports.evaluateKnown
 	bne.w bad
 	cmpi.l #abi.PRVM_LOOP_WHILE, d7
+	beq.w whileValue
+	cmpi.l #abi.PRVM_LOOP_BWHILE, d7
 	beq.w whileValue
 	tst.l Slot.Variable(a3)
 	bmi.w countValue
@@ -431,7 +447,7 @@ done
 	rts
 	.bend ; selectIterator
 
-; A5=session,D1=logical capture offset. Numeric callbacks preserve our state.
+; A5=session,D1=owned source offset. Numeric callbacks preserve our state.
 peek .block
 	move.l a2, -(sp)
 	movea.l frontend.Frame.SourcePeek(a5), a2
@@ -507,11 +523,12 @@ Depth .res word, 1
 PendingKind .res long, 1
 PendingVariable .res long, 1
 PendingStreamEnd .res long, 1
+PendingStreamKey .res long, 1
 PendingHeader .res long, 1
 PendingBody .res long, 1
 PendingClose .res long, 1
 PendingAfter .res long, 1
-FoundFile .res long, 1
+Effects .res long, 1
 ScanKinds .res long, LIMIT
 Slots .res byte, LIMIT*SLOT_BYTES
 Opening .res byte, source.MAX_LINE

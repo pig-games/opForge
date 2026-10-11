@@ -22,8 +22,22 @@ Padding .word ?
 SOURCE_RESUME_BYTES = SourceResume.Padding+2
 
 ; A0=session,D0=0 view / 1 seek,D1=logical capture offset for seek.
-; D0/CCR=status,D1=current offset,D2=end. Other registers preserved.
+; D0/CCR=status,D1=current offset,D2=end,D3=stream identity (0 physical).
+; Other registers preserved.
 sourceCursor .block
+	move.l d4, -(sp)
+	move.l d0, d4
+	jsr frontend.expansionDepth
+	cmp.w frontend.Frame.ExpansionFloor(a0), d0
+	bls.w physical
+	move.l d4, d0
+	jsr frontend.expansionCursor
+	move.l (sp)+, d4
+	tst.l d0
+	rts
+physical
+	move.l d4, d0
+	move.l (sp)+, d4
 	cmpi.l #1, d0
 	beq.w seek
 	tst.l d0
@@ -36,6 +50,7 @@ seek
 	bhi.w bad
 	move.l d1, SourceCursorState.Next+SourceCursorData
 view
+	moveq #0, d3
 	move.l SourceCursorState.Offset+SourceCursorData, d1
 	move.l SourceCursorState.End+SourceCursorData, d2
 	moveq #0, d0
@@ -49,6 +64,13 @@ bad
 ; preview,D1=next offset. Other registers preserved. Next peek replaces the view.
 sourcePeek .block
 	movem.l d2-d7/a0/a2-a6, -(sp)
+	jsr frontend.expansionDepth
+	cmp.w frontend.Frame.ExpansionFloor(a0), d0
+	bls.w physical
+	lea PeekRecord, a2
+	jsr frontend.previewExpansion
+	bra.w done
+physical
 	cmp.l SourceCursorState.Start+SourceCursorData, d1
 	blo.w bad
 	cmp.l SourceCursorState.End+SourceCursorData, d1

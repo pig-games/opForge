@@ -33,6 +33,7 @@ LoopParents	.res iterators.LIMIT*2
 PendingRepeat	.word ?
 Deferred	.word ?  ; shared conditional preparation depth for this record
 MaterializedLoops	.word ?  ; physical preparation loops with selected iterations
+PreviewBinding	.word ?  ; identity-only preview forbids candidate publication
 EarlierReference	.long ?  ; preparation-only lexical snapshot binder
 .endstruct
 ITERATOR_STATE = State.LoopDepth

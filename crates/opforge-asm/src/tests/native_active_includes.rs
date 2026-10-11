@@ -7,6 +7,12 @@ const POSITIVE_CASE_NAMES: &[&str] = &[
     "nested-repeated-empty-expansion-includes",
     "inactive-malformed-loop-include",
     "source-and-binary-actions",
+    "template-loop-acquisition",
+    "physical-loop-hidden-acquisition",
+    "scoped-loop-acquisition",
+    "scoped-while-acquisition",
+    "inactive-composed-block-reference",
+    "ordinary-template-forward-count",
 ];
 const POSITIVE_CPUS: &[&str] = &["68020", "6502"];
 
@@ -153,6 +159,54 @@ fn positive_cases(cpu: &str) -> Vec<(&'static str, Vec<(&'static str, String)>, 
                 ("assets.bin", "cd".into()),
             ],
             vec![b'a', b'b', 27],
+        ),
+        (
+            "template-loop-acquisition",
+            vec![
+                ("entry.asm", format!(".module app\n.cpu {cpu}\n.include \"templates/loops.inc\"\n.REPEAT 2,\"data.inc\"\n.REPEAT 0,\"missing.inc\"\n.SELECT \"data.inc\"\n.endmodule\n")),
+                ("templates/loops.inc", "REPEAT .macro times,file\n.for .times\n.include .file\n.endfor\n.endmacro\nSELECT .segment file\n.for item in {0,1}\n.if item\n.include .file\n.else\n.byte 0\n.endif\n.endfor\n.endsegment\n".into()),
+                ("templates/data.inc", ".byte 31\n".into()),
+                ("data.inc", ".byte 99\n".into()),
+            ],
+            vec![31, 31, 0, 31],
+        ),
+        (
+            "physical-loop-hidden-acquisition",
+            vec![
+                ("entry.asm", format!(".module app\n.cpu {cpu}\nLOAD .macro file\n.include .file\n.endmacro\n.for item in {{0,1,2}}\n.if item\n.LOAD \"leaf.inc\"\n.else\n.byte 0\n.endif\n.endfor\n.for 0\n.LOAD \"missing.inc\"\n.endfor\n.endmodule\n")),
+                ("leaf.inc", ".byte item+34\n".into()),
+            ],
+            vec![0, 35, 36],
+        ),
+        (
+            "scoped-loop-acquisition",
+            vec![
+                ("entry.asm", format!(".module app\n.cpu {cpu}\n.bfor index in {{1,2}}\n.include \"scoped.inc\"\n.endfor\n.bfor 0\n.include \"missing.inc\"\n.endfor\n.endmodule\n")),
+                ("scoped.inc", "value=index+40\n.byte value\n".into()),
+            ],
+            vec![41, 42],
+        ),
+        (
+            "ordinary-template-forward-count",
+            vec![("entry.asm", format!(".module app\n.cpu {cpu}\nEMIT .macro value\n.byte .value\n.endmacro\n.for later\n.EMIT 43\n.endfor\nlater=2\n.endmodule\n"))],
+            vec![43, 43],
+        ),
+        (
+            "inactive-composed-block-reference",
+            vec![
+                ("entry.asm", format!(".module app\n.cpu {cpu}\n.use provider\nSCAN .macro suffix\n.for 1\n.if 0\n.byte provider.routine.saved@1.value\n.endif\n.include \"leaf.inc\"\n.endfor\n.endmacro\n.SCAN 1\n.endmodule\n")),
+                ("provider.asm", format!(".module provider\n.cpu {cpu}\n.pub\nroutine .block\nInfo .struct\nvalue .byte ?\n.endstruct\nsaved1 .const Info {{value:66}}\n.byte 99\n.bend\n.endmodule\n")),
+                ("leaf.inc", ".byte 60\n".into()),
+            ],
+            vec![60],
+        ),
+        (
+            "scoped-while-acquisition",
+            vec![
+                ("entry.asm", format!(".module app\n.cpu {cpu}\nn .var 0\n.bwhile n<2\n.include \"while.inc\"\napp.n .set app.n+1\n.endwhile\n.bwhile 0\n.include \"missing.inc\"\n.endwhile\n.byte n\n.endmodule\n")),
+                ("while.inc", "value .const n+44\n.byte value\n".into()),
+            ],
+            vec![44, 45, 2],
         ),
     ]
 }

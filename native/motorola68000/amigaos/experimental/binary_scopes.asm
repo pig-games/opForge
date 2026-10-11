@@ -119,6 +119,7 @@ begin	.block
 	clr.l ARENA+memory.Block.Pointer(a0)
 	clr.l ARENA+memory.Block.Capacity(a0)
 	clr.l ARENA+memory.Block.Used(a0)
+	clr.w layout.State.PreviewBinding(a0)
 	clr.w layout.State.FirstBound(a0)
 	clr.w layout.State.FirstExplicit(a0)
 	lea BUCKETS(a0), a0
@@ -935,6 +936,8 @@ attachRegister	.block
 	bne.w bad
 	bra.w good
 attach
+	tst.w layout.State.PreviewBinding(a0)
+	bne.w good
 	move.l d1, records.Entry.RegisterName(a1)
 good
 	moveq #CANDIDATE_MATCHED, d0

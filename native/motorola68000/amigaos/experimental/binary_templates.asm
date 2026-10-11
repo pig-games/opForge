@@ -66,7 +66,8 @@ ActivePlan	.long ?
 Package	.long ?  ; session capsule supplies shared core directive identities
 FragmentLine	.long ?  ; VM-owned whole-line expansion callback
 Floor	.word ?  ; source cursor protects suspended parent invocation frames
-Padding	.word ?
+RecordDepth	.word ?  ; invocation owning the last returned body record
+RecordOffset	.long ?  ; numeric body offset, never a pointer
 Origin	.long ?  ; opaque application source identity
 	.endstruct
 CallFrame	.struct
@@ -188,6 +189,8 @@ begin	.block
 	clr.l State.Used(a0)
 	clr.w State.Depth(a0)
 	clr.w State.Floor(a0)
+	clr.w State.RecordDepth(a0)
+	clr.l State.RecordOffset(a0)
 	clr.l State.Origin(a0)
 	clr.l DEFAULT_USED(a0)
 	clr.l DEFAULT_TEXT_USED(a0)
@@ -1182,6 +1185,135 @@ done
 
 	.bend  ; line
 
+; A0=state,D0=0 view / 1 seek,D1=body offset for seek.
+; D0/CCR=status,D1=current record offset,D2=body end,D3=invocation depth.
+; Other registers preserved. Only the currently returning invocation is seekable.
+cursor .block
+	movem.l d4/a1-a2, -(sp)
+	move.l d0, d4
+	moveq #0, d3
+	move.w State.Depth(a0), d3
+	beq.w bad
+	cmp.w State.RecordDepth(a0), d3
+	bne.w bad
+	move.l d3, d0
+	subq.l #1, d0
+	mulu.w #FRAME_BYTES, d0
+	lea FRAMES(a0), a1
+	adda.l d0, a1
+	moveq #0, d0
+	move.w CallFrame.Definition(a1), d0
+	mulu.w #DEF_BYTES, d0
+	movea.l DEFS+memory.Block.Pointer(a0), a2
+	adda.l d0, a2
+	move.l Def.Last(a2), d2
+	tst.l d4
+	beq.w view
+	cmpi.l #1, d4
+	bne.w bad
+	cmp.l Def.First(a2), d1
+	blo.w bad
+	cmp.l d2, d1
+	bhi.w bad
+	move.l d1, CallFrame.Cursor(a1)
+view
+	move.l State.RecordOffset(a0), d1
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d4/a1-a2
+	tst.l d0
+	rts
+	.bend ; cursor
+
+CursorSnapshot .struct
+State .res State.Origin+4
+Frame .res FRAME_BYTES
+.endstruct
+PREVIEW_BYTES = CursorSnapshot.Frame+FRAME_BYTES
+; A0=state,A1=disjoint output,A2=scope,D1=body offset.
+; D0/CCR=status,D1=next body offset. Other registers preserved.
+; Uses the existing numeric substitution owner, restoring all invocation state.
+preview .block
+	movem.l d2-d7/a0-a6, -(sp)
+	suba.l #PREVIEW_BYTES, sp
+	movea.l sp, a5
+	movea.l a0, a6
+	movea.l a1, a3
+	movea.l a2, a4
+	move.l d1, d7
+	moveq #0, d0
+	move.w State.Depth(a6), d0
+	beq.w bad
+	subq.l #1, d0
+	move.l d0, d6
+	mulu.w #FRAME_BYTES, d0
+	lea FRAMES(a6), a2
+	adda.l d0, a2
+	movea.l a2, a1
+	lea CursorSnapshot.Frame(a5), a0
+	move.l #FRAME_BYTES, d0
+	bsr.w savePreview
+	movea.l a6, a1
+	lea CursorSnapshot.State(a5), a0
+	move.l #State.Origin+4, d0
+	bsr.w savePreview
+	move.l d7, CallFrame.Cursor(a2)
+	move.w #2, CallFrame.CallPhase(a2)
+	move.w d6, State.Floor(a6)
+	movea.l a6, a0
+	movea.l a3, a1
+	movea.l a4, a2
+	bsr.w next
+	move.l d0, d5
+	move.l d6, d0
+	mulu.w #FRAME_BYTES, d0
+	lea FRAMES(a6), a2
+	adda.l d0, a2
+	move.l CallFrame.Cursor(a2), d7
+	movea.l a2, a0
+	lea CursorSnapshot.Frame(a5), a1
+	move.l #FRAME_BYTES, d0
+	bsr.w savePreview
+	movea.l a6, a0
+	lea CursorSnapshot.State(a5), a1
+	move.l #State.Origin+4, d0
+	bsr.w savePreview
+	move.l d7, d1
+	move.l d5, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	adda.l #PREVIEW_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend ; preview
+	.priv
+; A0=destination,A1=source,D0=bytes. Preserve pointers and other registers.
+savePreview .block
+	movem.l a0-a1, -(sp)
+words
+	cmpi.l #4, d0
+	blo.w tail
+	move.l (a1)+, (a0)+
+	subq.l #4, d0
+	bra.w words
+tail
+	tst.l d0
+	beq.w done
+	move.b (a1)+, (a0)+
+	subq.l #1, d0
+	bra.w tail
+done
+	movem.l (sp)+, a0-a1
+	rts
+	.bend ; savePreview
+	.pub
+
 ; A0=template state,A1=distinct 256-byte output,A2=scope state.
 ; D0/CCR=status;
 ; D1=expanded raw record length, zero when the queued call is exhausted.
@@ -1227,6 +1359,8 @@ bodyRecord
 	bra.w macroClose
 bodyAvailable
 	movea.l 4(sp), a3
+	move.l d0, State.RecordOffset(a3)
+	move.w State.Depth(a3), State.RecordDepth(a3)
 	movea.l BODY+memory.Block.Pointer(a3), a3
 	adda.l d0, a3
 	moveq #0, d5

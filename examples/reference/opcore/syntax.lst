@@ -303,12 +303,15 @@ syntax.CR        000D      prv  lbl
 syntax.d1        2041      prv  lbl 
 syntax.d2        2042      prv  lbl 
 syntax.d3        2046      prv  lbl 
+syntax.ELSELAB   F015      prv  lbl 
+syntax.ENDLAB    F015      prv  lbl 
 syntax.entries   0005      prv  lbl 
 syntax.EX1A      4002      prv  lbl 
 syntax.EX1ADATA  4000      prv  lbl 
 syntax.EX1AVAR   1234      prv  lbl 
 syntax.FALSE     0000      prv  lbl 
 syntax.hello     2191      prv  lbl 
+syntax.IFLAB     F012      prv  lbl 
 syntax.jump_tab  219D      prv  lbl 
 syntax.LABEL1    2000      prv  lbl 
 syntax.LABEL2    2001      prv  lbl 

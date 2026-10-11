@@ -504,8 +504,22 @@ closing .endif
 ```
 
 The match expression is evaluated once; the first matching `.case` wins, and
-`.default` is used if no case matches. Later `.case` expressions are not evaluated
-after a case wins; `.case` after `.default` remains invalid.
+`.default` is used if no case matches. Match and case values compare their low
+32 bits: `-1` matches `$ffffffff`, and `$ffffffff+1` matches `0`. Each `.case`
+evaluates its expressions in order and stops at its first match. Later `.case`
+expressions are not evaluated after a case wins; `.case` after `.default`
+remains invalid. The opening `.match` requires exactly one scalar expression.
+
+Labels on `.match`, `.case`, `.default` and `.endmatch` follow the enclosing
+activity and current-address rules described above for `.if` controls. Both
+colonless and explicit-colon labels are accepted; inactive parents publish no
+nested control labels.
+
+Forward immutable selectors and case values participate in guarded loop-layout
+replay. The selected case or default arm owns its executed immutable declarations
+and repetitions, so an initially provisional choice can resolve to another arm
+before emission. Mutable values, labels and iterator-dependent predicates retain
+the normal layout-instability checks; they do not certify a changed traversal.
 
 #### 3.7.2 Structured repetition
 

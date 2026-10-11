@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Fresh CLI record artifacts; flat data/adjacent sections only, not sparse .org parity.
+//! Fresh CLI record artifacts, including mapped ranges visited out of address order.
+//! Sparse .org execution remains a separate assembly gap.
 use super::*;
 use crate::native_package_build::{build_native_packages, EmbedSelection};
 use clap::Parser;
@@ -75,6 +76,69 @@ fn cases() -> Vec<RecordCase> {
         path: "entry.hex", data_prefix: ":041000001122334442", source_bin: true,
         source: ".module main\n.cpu 68020\n.region first,$1000,$1001\n.region second,$1002,$10ff\n.section code,kind=code\n.byte $11,$22\n.endsection\n.section data,kind=data\n.byte $33,$44\n.endsection\n.place code in first\n.place data in second\n.output \"source-image\",format=bin,sections=code,data\n.endmodule\n".into(),
     });
+    for (cpu, prefix) in [
+        ("6502", ":06100000041011223344"),
+        ("68020", ":06100000100411223344"),
+    ] {
+        for (flag, path, name) in [
+            ("--hex", "entry.hex", "hex-mapped-producer-first"),
+            ("--srec", "entry.srec", "srec-mapped-producer-first"),
+        ] {
+            result.push(RecordCase {
+                name: match (cpu, flag) {
+                    ("6502", "--hex") => "hex-mapped-producer-first-6502",
+                    ("6502", _) => "srec-mapped-producer-first-6502",
+                    ("68020", "--hex") => "hex-mapped-producer-first-68020",
+                    _ => "srec-mapped-producer-first-68020",
+                },
+                cpu,
+                flag,
+                filename: None,
+                go: None,
+                path,
+                data_prefix: if name.starts_with("hex") {
+                    prefix
+                } else {
+                    "S1091000"
+                },
+                source_bin: false,
+                source: format!(".module provider\n.cpu {cpu}\n.pub\n.section logical,kind=code,logical\nentry .block\n.byte $33,$44\n.bend\n.endsection\n.endmodule\n.module main\n.cpu {cpu}\n.use provider map {{ logical -> code }}\n.region ram,$1000,$10ff\n.section header,kind=data\n.word provider.entry\n.byte $11,$22\n.endsection\n.section code,kind=code\n.endsection\n.place header in ram\n.place code in ram\n.endmodule\n"),
+            });
+        }
+    }
+    // Dependency execution visits high, low, then middle. This exercises both
+    // front and interior insertion without changing the payload's source order.
+    for (cpu, name, prefix) in [
+        ("6502", "hex-mapped-three-ranges-6502", ":06100000110510001044"),
+        ("68020", "hex-mapped-three-ranges-68020", ":06100000111005100044"),
+    ] {
+        result.push(RecordCase {
+            name, cpu, flag: "--hex", filename: None, go: None,
+            path: "entry.hex", data_prefix: prefix, source_bin: false,
+            source: format!(".module high\n.cpu {cpu}\n.pub\n.section upper,kind=code,logical\nentry .block\n.byte $44\n.bend\n.endsection\n.endmodule\n.module low\n.cpu {cpu}\n.pub\n.section lower,kind=code,logical\nentry .block\n.byte $11\n.bend\n.endsection\n.endmodule\n.module main\n.cpu {cpu}\n.use high map {{ upper -> high_code }}\n.use low map {{ lower -> low_code }}\n.region low_slot,$1000,$1000\n.region header_slot,$1001,$1004\n.region high_slot,$1005,$1005\n.section low_code,kind=code\n.endsection\n.section header,kind=data\n.word high.entry,low.entry\n.endsection\n.section high_code,kind=code\n.endsection\n.place low_code in low_slot\n.place header in header_slot\n.place high_code in high_slot\n.endmodule\n"),
+        });
+        // Placement must reserve mapped bytes before placing the next section.
+        // Keep this distinct from the fixed-slot insertion control above.
+        let mut placed = result.last().unwrap().source.clone();
+        placed = placed.replace(
+            ".region low_slot,$1000,$1000\n.region header_slot,$1001,$1004\n.region high_slot,$1005,$1005\n",
+            ".region ram,$1000,$10ff\n",
+        );
+        placed = placed
+            .replace(" in low_slot", " in ram")
+            .replace(" in header_slot", " in ram")
+            .replace(" in high_slot", " in ram");
+        result.push(RecordCase {
+            name: if cpu == "6502" {
+                "hex-mapped-growth-placement-6502"
+            } else {
+                "hex-mapped-growth-placement-68020"
+            },
+            cpu, flag: "--hex", filename: None, go: None,
+            path: "entry.hex", data_prefix: prefix, source_bin: false,
+            source: placed,
+        });
+    }
     result
 }
 
@@ -195,16 +259,20 @@ fn compact_cli_hex_and_srec_records() {
         .unwrap();
     let dir = scratch();
     let _cleanup = EphemeralArtifactDir(dir.clone());
-    let registry = engine::build_default_asm_registry();
-    let build = build_native_packages(
-        &registry,
-        &dir.join("native"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
-        &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
-    )
-    .unwrap();
     let defines = telemetry_defines();
-    let image = super::compact_cli_input::assemble_cli_with_defines(&root, &build, &defines);
+    let image = std::env::var_os("OPFORGE_CLI_RECORD_IMAGE")
+        .map(|path| fs::read(path).expect("read identified compact CLI image"))
+        .unwrap_or_else(|| {
+            let registry = engine::build_default_asm_registry();
+            let build = build_native_packages(
+                &registry,
+                &dir.join("native"),
+                &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+                &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
+            )
+            .unwrap();
+            super::compact_cli_input::assemble_cli_with_defines(&root, &build, &defines)
+        });
     let cases = cases();
     let negatives = [
         ("reject-go-short", "--hex --go 123"),

@@ -209,6 +209,46 @@ stays unchanged for the latter, with zero live bytes after cleanup.
 BS35 remains the latest full self-host
 proof; these controls make no complete-opcore or 2 MiB claim.
 
+## Current integration checkpoint
+
+Rust match replay now records arm guards and executed ownership, including
+forward case-local loop counts and parent-active control labels (`fae73e68`).
+Mapped placement now reserves retained imported extents before later sections,
+replays changed geometry and preserves the unchanged-layout reachability budget
+(`3306a443`). Focused regressions pass. Full current host subsystem results are
+211 shared-core, 101 package and 549 VM unit tests passing; VM integration tests
+also pass. A stale authority test now mutates the effective CPU-owned table.
+
+Native match handling uses one current eight-head shared branch program, typed
+frames and existing guard observations. The earlier fresh matrix passed 30 exact
+positives and 32 expected diagnostic rejections across both packages. Integration
+review then found colliding configuration classification IDs; private roles now
+occupy a disjoint negative domain. Four additional discovery controls pass Rust,
+but the expanded 70-case native matrix still needs fresh execution. Preparation
+only effects inside retained match envelopes remain a separate language gap.
+
+Scalar and typed expression capsules now share bounded opaque framing across
+operand transport. Displacement and product controls match freshly; grouped tuple
+expressions still reject on native despite valid Rust output. Their draft transport
+repair is not qualified. The 65C02 external-package harness setup was corrected;
+its four-case native matrix needs rerunning with the actual registry ID/package.
+
+Sorted disjoint emission spans repair dependency execution that visits higher
+addresses before lower addresses. Six earlier Hex/S-record controls passed freshly
+on 6502 and 68020. The latest inserted-span coalescing has three fresh exact cases;
+its eight-case matrix was interrupted when the Mac locked, so five cases remain
+unqualified, including the stronger single-region mapped-growth controls. The
+[separate release measurements](../performance/vm-efficiency.md#match-controls-and-packed-expression-framing)
+predate those latest repairs. Their current release and heap impacts are pending.
+These are integration checkpoints, not complete opcore or current self-host proof.
+
+Resume native validation after desktop unlock, then re-audit all unchanged opcore
+roots before updating the historical corpus totals above. Next structural work is
+static included-source module/use discovery before dependency ordering, preserving
+current rejection of runtime/expanded graph-changing includes. Capture and graph
+owners must acquire/index the static child stream once; do not relax the runtime
+source-control guard or add another syntax parser.
+
 ## Immediate shared-language sequence
 
 1. Ordinary-loop declaration activity now has the focused coverage above. Extend

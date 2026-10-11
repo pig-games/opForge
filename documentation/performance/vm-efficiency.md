@@ -506,3 +506,32 @@ Frozen inputs, images, logs and the five-run measurement summary are retained at
 log are at `/tmp/opforge-labeled-controls-20261011`. The measurement helper runs
 release states first and telemetry states separately; all five runs require fresh
 completion and exact Rust output before recording a time.
+
+## Match controls and packed expression framing
+
+The unchanged imported-macro control above was run serially on FS-UAE
+`68020-10m`, with telemetry disabled and builds held. Every frozen state
+completed freshly and matched its live Rust artifact exactly. The source and
+settings are unchanged; the results isolate each measured change.
+
+| State | Release seconds | Change from preceding state | Image bytes | Linked bytes |
+|---|---:|---:|---:|---:|
+| Current forward/member baseline | 33.496751000 | — | 678,952 | 712,060 |
+| Initial scalar-capsule extent repair | 33.321528125 | -0.52% | 678,984 | 712,092 |
+| Sorted disjoint output spans | 33.527695042 | +0.62% | 679,148 | 712,252 |
+| Central opaque capsule framing | 33.563650125 | +0.11% | 679,340 | 712,396 |
+| Shared match controls | 33.742193500 | +0.53% | 680,696 | 714,308 |
+
+These are single samples; differences under 0.7% do not establish a speed
+change. They measure unchanged-path cost, not the speed of new match syntax.
+The match image predates the configuration classification-collision repair.
+The table also excludes later grouped-tuple transport and inserted-span
+coalescing changes. Its exact results remain valid for this control, but do not
+qualify those subsequent changes or complete opcore parity. Heap impact requires
+separate instrumented runs. BS35 remains the latest full current-source self-host
+proof; these measurements establish neither a new self-host nor 2 MiB fit.
+
+The frozen images, hashes and linked reservations are recorded in
+`/tmp/opforge-opcore-controls-20261011.json`; per-state logs are
+`/tmp/opforge-opcore-<state>-20261011.log`. The run helper is
+`/tmp/opforge-measure-opcore-controls-20261011.py`.

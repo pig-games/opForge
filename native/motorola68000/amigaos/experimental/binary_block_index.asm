@@ -13,6 +13,8 @@
 	.use experimental.amigaos.binary_materialized_scope as materialized
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
+	.use experimental.amigaos.binary_owner_guards as guards
+	.use experimental.amigaos.binary_binding_plans as plans
 	.pub
 LIMIT = 1024
 Span	.struct
@@ -37,6 +39,8 @@ Count	.res word, 1
 Head	.res word, 1
 Tail	.res word, 1
 Owners	.res byte, memory.Block.Used+4
+Guards	.res byte, guards.STATE_BYTES
+GuardActive	.res word, 1
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 	.pub
@@ -200,6 +204,34 @@ select	.block
 	.MEMORY_COUNTER_CLEAR QueueAdds
 	.MEMORY_COUNTER_CLEAR Scanned
 	.MEMORY_COUNTER_CLEAR Marks
+	clr.w GuardActive
+	move.l a4, -(sp)  ; source-session package survives the predicate call
+	movea.l Scope, a0
+	movea.l layout.ENTRIES_POINTER(a0), a1
+	moveq #0, d0
+	moveq #0, d1
+	move.w layout.State.Base(a0), d0
+	move.w layout.State.Count(a0), d1
+	adda.l #scopes.BINDING_PLANS, a0
+	jsr plans.needsGuards
+	movea.l (sp)+, a3
+	bne.w invalid
+	tst.l d2
+	beq.w guardsReady
+	move.w #1, GuardActive
+	lea Guards, a0
+	movea.l Base, a1
+	move.l EndRecords, d0
+	sub.l a1, d0
+	movea.l Scope, a2
+	jsr guards.prepare
+	bne.w invalid
+	movea.l Scope, a0
+	adda.l #scopes.BINDING_PLANS, a0
+	lea Guards, a1
+	jsr plans.seal
+	bne.w invalid
+guardsReady
 	bsr.w indexOwners
 	bne.w invalid
 	moveq #0, d7
@@ -212,6 +244,11 @@ root
 	adda.l d0, a4
 	tst.w Span.Parent(a4)
 	bne.w nextRoot
+	move.l Span.Start(a4), d0
+	lea Guards, a0
+	jsr guards.activity
+	cmpi.l #guards.INACTIVE, d0
+	beq.w nextRoot
 	moveq #0, d0
 	move.w Span.Entry(a4), d0
 	movea.l Scope, a5
@@ -349,6 +386,8 @@ selected
 invalid
 	moveq #1, d0
 doneSelect
+	lea Guards, a0
+	jsr guards.release
 	lea Owners, a0
 	jsr memory.release
 	movem.l (sp)+, d1-d7/a0-a6
@@ -389,6 +428,11 @@ ownerSpan
 	adda.l d1, a3
 	tst.w Span.Parent(a3)
 	bne.w ownerNext
+	move.l Span.Start(a3), d0
+	lea Guards, a0
+	jsr guards.activity
+	cmpi.l #guards.INACTIVE, d0
+	beq.w ownerNext
 	moveq #0, d0
 	move.w Span.Entry(a3), d0
 	bsr.w saveOwner
@@ -410,6 +454,12 @@ ownerLine
 	sub.l a4, d0
 	cmp.l d0, d6
 	bhi.w ownerBad
+	move.l a4, d0
+	sub.l Base, d0
+	lea Guards, a0
+	jsr guards.activity
+	cmpi.l #guards.INACTIVE, d0
+	beq.w ownerAdvance
 	cmpi.w #materialized.Record.Kind+1, d6
 	blo.w ownerAdvance
 	cmpi.b #materialized.TOKEN, materialized.Record.Kind(a4)
@@ -462,6 +512,11 @@ ownerGood
 	movea.l Owners+memory.Block.Pointer, a1
 	moveq #0, d0
 	move.w layout.State.Count(a0), d0
+	moveq #0, d2
+	tst.w GuardActive
+	beq.w certificateReady
+	move.l #Guards, d2
+certificateReady
 	jsr scopes.indexBindingOwners
 	bra.w ownerDone
 ownerBad
@@ -513,6 +568,12 @@ scanLine	.block
 	cmp.l d0, d6
 	bhi.w scanBad
 	.MEMORY_COUNTER_INC Scanned
+	move.l a4, d0
+	sub.l Base, d0
+	lea Guards, a0
+	jsr guards.activity
+	cmpi.l #guards.INACTIVE, d0
+	beq.w scanNext
 	btst #4, 1(a4)
 	bne.w scanNext
 	lea 4(a4), a0

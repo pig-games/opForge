@@ -935,7 +935,6 @@ candidate
 	bhs.w bad
 	moveq #0, d7
 	move.w (a2)+, d7
-	beq.w bad
 	move.l d7, d0
 	add.l d0, d0
 	add.l a2, d0
@@ -947,26 +946,48 @@ candidate
 	move.l a0, d0
 	beq.w bad
 	tst.b 0(a0, d1.l)
-	beq.w nextCandidate
+	bne.w availableCandidate
+	tst.l d7
+	beq.w unavailableWhole  ; an uncertified exact declaration cannot fall through
+	bra.w nextCandidate
+availableCandidate
 	movea.l Frame.Owner(a6), a0
 	jsr values.getKind
 	tst.l d0
 	bne.w bad
+	tst.l d7
+	beq.w candidateKind
 	cmpi.l #records.ADDRESS_RECORD, d2
 	beq.w candidateKind
 	cmpi.l #structs.TYPE, d2
 	beq.w candidateKind
 	cmpi.l #structs.LITERAL, d2
-	bne.w nextCandidate
+	bne.w bad  ; an available longest scalar commits; never shorten by kind
 candidateKind
 	move.l d2, d4
+	moveq #0, d5
+	tst.l d4
+	bne.w candidateValues
+	movea.l Frame.SectionIds(a6), a0
+	move.l a0, d0
+	beq.w candidateValues
+	move.b 0(a0, d1.l), d5
+	ext.w d5
+	ext.l d5
+candidateValues
 	lsl.l #3, d1
 	movea.l Frame.Values(a6), a0
 	move.l a0, d0
 	beq.w bad
+	tst.l d7
+	beq.w wholeValues
 	tst.l runtime.Value.High(a0, d1.l)
 	bne.w bad
+wholeValues
 	move.l runtime.Value.Low(a0, d1.l), d2
+	move.l runtime.Value.High(a0, d1.l), d3
+	tst.l d7
+	beq.w membersReady
 member
 	; The longest actual compound prefix commits resolution; a missing member
 	; cannot be reinterpreted through a shorter prefix.
@@ -993,11 +1014,16 @@ memberResult
 	bne.w bad
 	subq.l #1, d7
 	bne.w member
+membersReady
 	move.l d2, Cell.Low(a1)
 	move.l d3, Cell.High(a1)
 	move.l d4, Cell.Kind(a1)
 	move.l d5, Cell.Provenance(a1)
+	movea.l Frame.Owner(a6), a0  ; whole values did not call a member accessor
 	jsr records.validateCell
+	bra.w done
+unavailableWhole
+	moveq #values.BOUNDS, d0
 	bra.w done
 nextCandidate
 	movea.l a5, a2

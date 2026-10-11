@@ -29,6 +29,7 @@ Strict	.word ?
 Deferred	.word ?
 Loops	.long ?
 Records	.long ?
+Proof	.long ?  ; optional preparation provenance veto; zero during normal execution
 Trace	.res trace.STATE_BYTES
 Slots	.res LIMIT*SLOT_BYTES
 	.endstruct
@@ -41,6 +42,7 @@ STATE_BYTES = State.Slots+LIMIT*SLOT_BYTES
 beginPass	.block
 	move.w d0, State.Strict(a0)
 	clr.w State.Deferred(a0)
+	clr.l State.Proof(a0)
 	move.l a1, State.Loops(a0)
 	move.l a2, State.Records(a0)
 	move.l a0, -(sp)
@@ -213,6 +215,19 @@ done
 evaluate	.block
 	movem.l a0-a1, -(sp)
 	.MEMORY_COUNTER_INC Evaluations
+	; A proof callback receives the bounded operand before EXVM reads values.
+	; D0/CCR=zero certified; all other registers preserved. Runtime leaves it zero.
+	move.l State.Proof(a6), d0
+	beq.w evaluateOperand
+	move.l a3, -(sp)
+	movea.l d0, a3
+	lea parser.Record.Operand(a5), a0
+	movea.l a4, a1
+	jsr (a3)
+	movea.l (sp)+, a3
+	tst.l d0
+	bne.w failed
+evaluateOperand
 	lea parser.Record.Operand(a5), a0
 	movea.l a4, a1
 	jsr expression.evaluate

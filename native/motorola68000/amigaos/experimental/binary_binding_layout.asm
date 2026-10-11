@@ -11,7 +11,7 @@ Bytes	.long ?
 HEADER_BYTES = Plan.Bytes+4
 Candidate	.struct
 Base	.word ?
-MemberCount	.word ?
+MemberCount	.word ?  ; zero selects the whole declared value, without projection
 .endstruct
 CANDIDATE_HEADER_BYTES = Candidate.MemberCount+2
 	.endmodule

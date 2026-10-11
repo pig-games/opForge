@@ -99,23 +99,36 @@ exact collection cases and two malformed-input rejections through the production
 CLI. The unchanged release control changes from 26.848584 to 27.116166 seconds
 (+1.00%, one sample), with 504 more linked static bytes.
 
-Rust conditional declaration ownership is repaired in `aaca8086`: each layout pass
-rebuilds executed ownership, references, reachability and schema uses. Ninety-eight
-focused tests pass. Possible longer `.const` declarations under unresolved guards
-can defer initial evaluation without granting executed ownership or visibility.
-The native schema replay repair qualifies unconditional longer declarations while
-pruning their unused schema-owning code. Its fresh 26-case matrix has 14 positive
-exact matches, six diagnostic rejections and six remaining forward-guarded positive
-failures; executed conditional ownership remains pending. This repair alone changes
-the unchanged release control from 33.11 to 32.80 seconds (-0.9%, one comparison),
-with 564 more linked bytes. UTF-8 preservation in Rust
+Rust conditional declaration ownership is repaired in `aaca8086`; 98 focused tests
+pass. Native adds recursive shared-EXVM certification/evaluation for immutable
+scalar closures in private arrays, without publishing values globally. Four focused
+fresh positives match exactly across both CPUs, including transitive references
+and sign handling. The v3 feature control assembles 384 source bytes into 268 packed
+bytes in 1.801896042 s of release execution. Separate MEMD telemetry reports a
+641,792-byte peak, 1,031,784 bytes allocated and freed, and zero live bytes after
+cleanup. The unchanged 1,200-call release control changes from 33.089063959 to
+33.094098333 s (+0.02%, one pair; no measurable change).
+The repair retains whole-value conditional candidates and no kind fallback after a
+longer scalar selection. V4 additionally retains readonly declarations in deferred
+ordinary-loop branches; unknown/mutable, PC-dependent and loop-dependent values
+remain conservative. The full v4 matrix completes 50 fresh cases: 30 positive exact
+artifact matches, 16 expected diagnostic rejections and four positive failures
+(inactive ordinary-loop declarations, single/repeated, on both CPUs). Rejections
+do not establish exact diagnostic parity; 242.91 seconds is correctness-only
+harness duration. Frozen v4 release size is 674,344 bytes and linked size 707,612
+bytes (+3,476 and +3,560 over committed `271fa942`). V4's instrumented unchanged
+control retains a 1,282,328-byte owned-memory peak, 3,182,104 bytes allocated/freed
+and zero live bytes; it skips the lazy guard table. These `68020-10m` checks do
+not qualify the 2 MiB product target. The earlier schema-replay-only comparison
+(33.112641 to 32.804228 s, -0.9%, with 564 more linked bytes) predates this
+repair. UTF-8 preservation in Rust
 macro preprocessing is repaired in `a616140f`, with all 26 preprocessing tests and
 all 211 opcore library tests passing. BS36 text emission/provider integration passes 52 fresh native controls: 24 exact
 positive artifacts and 28 diagnostic rejections across 68020 and 6502. Its isolated
 unchanged release control grows from 27.42 s to 33.11 s (+20.8%, one pair); linked
 storage grows 13,464 bytes (+2.0%), and instrumented owned-memory peak is unchanged.
 See [source execution](native-source-execution.md) for scope and measurement limits.
-No new full self-host or complete opcore claim is made.
+The latest qualified full self-host remains BS35; no complete opcore claim is made.
 
 VM-contract consolidation remains a separate pending design.
 Consolidate each VM's current capabilities into its own

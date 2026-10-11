@@ -683,7 +683,11 @@ dotted
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
 	btst #0, records.Entry.Flags+1(a3)
-	bne.w good
+	beq.w capturePrefixes
+	move.w records.Entry.Flags(a3), d0
+	andi.w #records.CONDITIONAL_VALUE, d0
+	beq.w good
+capturePrefixes
 	moveq #0, d6
 	move.l d4, d5
 component
@@ -885,7 +889,27 @@ scan
 	move.w (sp)+, layout.State.Current(a6)
 	tst.l d0
 	bne.w fallback
-	move.w records.Entry.Target(a3), records.Entry.Target(a4)
+	moveq #0, d1
+	move.w records.Entry.Target(a3), d1
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a2
+	move.w records.Entry.Flags(a2, d0.l), d0
+	andi.w #records.CONDITIONAL_VALUE, d0
+	beq.w completeDeclaration
+	move.l d7, d0
+	add.w layout.State.Base(a6), d0
+	movea.l a6, a0
+	adda.l #BINDING_PLANS, a0
+	jsr plans.prependWhole
+	bne.w done
+	tst.l d2
+	beq.w fallback
+	move.w #1, layout.State.Changed(a6)
+	bra.w fallback
+completeDeclaration
+	move.w d1, records.Entry.Target(a4)
 	move.l d7, d0
 	moveq #0, d1
 	move.w records.Entry.Target(a4), d1
@@ -1283,12 +1307,13 @@ deferredLine	.block
 	jsr iterators.scoped
 	movea.l (sp)+, a0
 	beq.w good
-	; Ordinary loops keep their existing declaration/update restrictions.
-	; The extension here belongs to a top-level retained branch envelope.
-	tst.w layout.State.LoopDepth(a6)
-	bne.w declarationPolicy
+	; Retain readonly candidates inside deferred branches. Ordinary-loop
+	; execution rejects declarations only after its branch has selected them.
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, branch_parser.Record.Qualifier(a0)
 	beq.w good
+	; Other ordinary-loop declaration/update restrictions remain unchanged.
+	tst.w layout.State.LoopDepth(a6)
+	bne.w declarationPolicy
 	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, branch_parser.Record.Qualifier(a0)
 	beq.w good
 	cmpi.b #source.TOKEN_UPDATE_FIRST, branch_parser.Record.Qualifier(a0)
@@ -2947,6 +2972,8 @@ deferredReplacement
 conditionalCandidate
 	; Deferred branches may contain alternative definitions. Keep their
 	; shared lexical ID; the runtime inventory rejects duplicate active RHSs.
+	tst.w layout.State.Deferred(a6)
+	bne.w conditionalOwnership
 	move.l a0, -(sp)
 	lea layout.ITERATOR_STATE(a6), a0
 	jsr iterators.scoped

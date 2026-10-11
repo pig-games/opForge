@@ -3049,8 +3049,9 @@ indexDone
 ; from numeric references while the preparation metadata and graph still exist.
 ; D0/CCR=status; other registers preserved.
 selectBlocks	.block
-	movem.l d2/a0-a3, -(sp)
+	movem.l d2/a0-a4, -(sp)
 	movea.l Frame.Scratch(a0), a2
+	movea.l Frame.Package(a0), a4
 	movea.l Frame.Graph(a0), a3
 	move.l a3, d2
 	beq.w selectBad
@@ -3062,7 +3063,7 @@ selectBlocks	.block
 selectBad
 	moveq #1, d0
 selectDone
-	movem.l (sp)+, d2/a0-a3
+	movem.l (sp)+, d2/a0-a4
 	tst.l d0
 	rts
 	.bend  ; selectBlocks

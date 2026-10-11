@@ -75,6 +75,15 @@ Id	.word ?
 Qualifier	.byte ?
 .endstruct
 NAME_TOKEN_BYTES = NameToken.Qualifier+1
+ ; Declaration records retain the common header, numeric name, and marker.
+DeclarationRecord	.struct
+Header	.res RECORD_HEADER_BYTES
+Name	.res NAME_TOKEN_BYTES
+Marker	.byte ?
+Rhs	.byte ?
+.endstruct
+DECLARATION_HEADER_BYTES = DeclarationRecord.Rhs
+TOKEN_LABEL_DECLARATION = 5
 ; Normalized assignment prefix, relative to its NameToken.
 DECLARATION_MARKER = NameToken.Qualifier+1
 DECLARATION_VALUE = DECLARATION_MARKER+1

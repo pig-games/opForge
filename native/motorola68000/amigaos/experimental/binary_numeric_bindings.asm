@@ -142,7 +142,7 @@ validatePlan	.block
 	cmpi.l #HEADER_BYTES, d2
 	blo.w invalid
 	move.l layout.Plan.Bytes(a1), d3
-	cmpi.l #HEADER_BYTES+CANDIDATE_BYTES+2, d3
+	cmpi.l #HEADER_BYTES+CANDIDATE_BYTES, d3
 	blo.w invalid
 	cmp.l d2, d3
 	bhi.w invalid
@@ -169,7 +169,6 @@ candidate
 	beq.w invalid
 	moveq #0, d6
 	move.w layout.Candidate.MemberCount(a2), d6
-	beq.w invalid
 	adda.l #CANDIDATE_BYTES, a2
 	subi.l #CANDIDATE_BYTES, d5
 	move.l d6, d7
@@ -177,6 +176,8 @@ candidate
 	cmp.l d5, d7
 	bhi.w invalid
 	sub.l d7, d5
+	tst.l d6
+	beq.w membersReady
 member
 	moveq #0, d0
 	move.w (a2)+, d0
@@ -184,6 +185,7 @@ member
 	bhs.w invalid
 	subq.l #1, d6
 	bne.w member
+membersReady
 	subq.l #1, d4
 	bne.w candidate
 	tst.l d5

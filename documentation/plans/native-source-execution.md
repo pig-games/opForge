@@ -215,41 +215,45 @@ opcore parity or a new full current-source self-host.
 
 ### Conditional binding ownership
 
-The conditional Rust ownership repair is committed as `aaca8086`; 98 focused
-tests pass. Native now retains eligible schema seed offsets independently of
-block code. A forward initializer can demand-copy an established nominal schema
-without publishing its declaration or keeping its unreferenced code. Known-inactive
-and deferred schemas receive no replay eligibility; their descriptor alone cannot
-make them visible. Reset/rewind preserve this metadata and owner release frees it.
+The Rust conditional ownership repair is committed as `aaca8086`; 98 focused tests
+pass. Each Rust layout pass rebuilds executed owners, references, reachability and
+schema uses. Unresolved longer `.const` candidates may defer initial evaluation;
+they grant no executed visibility or immutable certificate. Native adds recursive
+shared-EXVM certification and evaluation for an
+immutable scalar closure held in private arrays. It does not publish those values
+to global symbols. Lazy records retain 18 bytes per source ID plus boundaries.
+Four focused fresh positives match exactly across both CPUs, including transitive
+references and sign handling. The v3 feature control assembles
+384 source bytes into 268 packed bytes in 1.801896042 s of release execution.
+Separate MEMD telemetry reports a 641,792-byte peak, 1,031,784 bytes allocated and
+freed, and zero live bytes after cleanup.
 
-A fresh native owner matrix reports 26 controls across 68020 and 6502: 14 positive
-exact matches, six expected diagnostic rejections and six positive failures.
-The formerly failing unconditional longer declaration now produces `[22, 66]`,
-keeping its physical owner and pruning the shorter owner's code. The remaining
-positive failures are forward-enabled direct/arithmetic member references and
-forward-disabled direct references. The enabled typed alias already matches.
-Expected rejections do not establish exact diagnostic parity or prove that scalar
-member rejection reaches the intended runtime boundary. Full opcore qualification
-and a new full current-source self-host remain pending.
+The repair retains whole-value conditional candidates and prevents kind fallback
+after selecting a longer scalar declaration. V4 additionally retains readonly
+declarations in deferred ordinary-loop branches for runtime selection. Unknown or
+mutable bindings, PC-dependent values and loop-dependent values remain conservative.
+The full v4 matrix completes 50 fresh cases: 30 positive exact artifact matches,
+16 expected diagnostic
+rejections and four positive failures. Those failures are inactive ordinary-loop
+declarations, with one or repeated occurrences, on both CPUs. Expected rejection
+does not establish exact diagnostic parity. Its 242.91-second harness duration is
+correctness-only. Frozen v4 release size is 674,344 bytes, with 707,612 linked bytes,
+respectively 3,476 and 3,560
+bytes above committed `271fa942`. The unchanged 11,592-byte/1,200-call release
+control changes from 33.089063959 to 33.094098333 seconds (+0.02%, one pair;
+no measurable change). Separate v4 telemetry reports unchanged owned-memory peak
+1,282,328 bytes, 3,182,104 bytes allocated and freed, and zero live owned bytes.
+This control skips guard allocation; the smaller v3 feature control exercises it.
+These measurements use `68020-10m`, not a qualification of the 2 MiB product budget.
 
-For this schema repair alone, the unchanged 11,592-byte/1,200-call release control
-changes from 33.112641 to 32.804228 seconds (-0.9%, one comparison, not evidence of
-a speedup). The executable grows from 670,280 to 670,868 bytes; linked storage
-grows from 703,488 to 704,052 bytes (+564). This comparison uses the same
-`68020-10m` profile and fresh complete artifact proof, without telemetry.
-The separate instrumented control reports owned-memory peak 1,282,280 → 1,282,328
-bytes (+48), 3,182,104 bytes allocated and freed, and zero live owned bytes after
-cleanup. This control has no schema declarations, so it measures owner-layout
-growth, not the lazy schema-offset table's worst-case cost; it does not qualify
-the 2 MiB product budget.
-Rust now rebuilds executed declaration owners, references, reachable blocks and
-schema uses on each layout pass. A forward-enabled conditional introducing the
-longer dotted declaration on a later pass produces `[22, 66]`, retaining its
-physical owner's code and preserving the pruned schema metadata. An inactive
-longer declaration cannot retain ownership or references from an earlier pass.
+Schema replay metadata remains independent of pruned block code: only eligible
+established schema seeds can be demand-copied. Retained metadata cannot publish
+an inactive declaration. Dynamic conditional ownership still needs executed
+occurrence activity from assembly traversal; an undefined cell alone cannot prove
+inactivity. Loop candidates currently enter eager dependency indexing, explaining
+the remaining scalar-member and duplicate-declaration failures.
 
-Possible longer `.const` bindings behind unresolved guards remain separate from
-executed declarations. Initial sizing may defer their values, including arithmetic
-and typed aliases; they grant no visibility or immutable certificate. Stable
-scalar-member errors and final evaluation stay strict. This provisional capture
-currently covers `.const`, not skipped assignment or schema declarations.
+The earlier schema-replay-only checkpoint measured 32.804228 s against 33.112641 s
+(-0.9%, one comparison), with 564 more linked bytes; it predates this conditional
+repair and is not its performance result. Full opcore parity and a fresh full
+current-source self-host remain pending; BS35 is the latest qualified self-host.

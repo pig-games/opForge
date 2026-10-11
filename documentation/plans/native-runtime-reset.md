@@ -21,17 +21,27 @@ then report remaining limits and wait.
 
 ## Current evidence and limits
 
-The fresh correctness-only opcore audit completed all 86 roots with explicit
-guest completion and no timeout: 27 positive roots match exact live Rust outputs,
-36 expected-negative roots reject, and 23 positive roots reject with exit 20.
-Exact negative diagnostic parity is unqualified. This exposes current native gaps;
-it does not qualify opcore completion or CPU-family breadth. Failing roots span
-shared expression/conditional grammar, macros and typed statements, module/import
-closure, section/linker/output behavior, metadata, text encoding and include/CLI
-side products. These are triage categories, not established root causes. The Rust reference
-audit matches 81 roots; five expected-error roots produce no partial artifacts
-and therefore lack the stricter audit's artifact comparison evidence. This is
-not a green whole-workspace qualification.
+The fresh frozen-image BS36/schema correctness-only opcore audit completed all 86
+roots under the fresh-run protocol: 29 positive roots match all requested live
+Rust artifacts exactly, 36 expected-negative roots reject with diagnostics (not
+exact diagnostic parity), and 21 positive roots exit 20. Compared with the prior
+full audit, exactly `text_encoding.asm` and `text_encoding_definitions.asm`
+improved; no previously passing positive root regressed. The 370.69-second
+correctness-batch duration includes harness overhead and is not a performance
+measurement. This does not qualify complete opcore or CPU-family parity. The Rust
+reference audit matches 81 roots; five expected-error roots lack comparable
+partial artifacts for the stricter audit.
+
+The 21 remaining positive failures group by fixture: five statement signature or
+expansion roots (`statement_boundary_span`, `statement_capture_types`,
+`statement_cross_module_ok`, `statement_expansion`, `statement_signatures`); four
+linker/output-policy roots (`linker_regions_full`, `linker_regions_minimal`,
+`linker_regions_no_dsection`, `linker_regions_pack_no_dsection`); three metadata
+roots (`module_metadata_block`, `module_metadata_output`,
+`module_metadata_outputs`); and nine roots across include/CLI, conditional and
+expression syntax, macros, modules/imports and general syntax. These are observed
+failure groups, not established causes. Source/session behavior and dynamic
+binding ownership still require separate focused controls outside this corpus.
 
 The numeric proxy-ownership repair qualifies direct and composed imported
 typed-member references: 18 positive controls match live Rust and two malformed

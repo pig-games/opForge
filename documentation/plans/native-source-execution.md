@@ -5,6 +5,15 @@ lifecycle have focused native proof. Growing-source execution remains a design
 target.
 The [completion plan](native-runtime-reset.md) records current evidence and completion order.
 
+The latest frozen BS36/schema opcore audit completed all 86 roots: 29 positive
+roots matched requested Rust artifacts exactly, 36 expected negatives rejected
+with diagnostics (without exact diagnostic parity), and 21 positive roots exited
+20. Only the two text-encoding roots improved from the preceding audit, with no
+regression among prior positive passes. Its 370.69-second batch includes harness
+overhead and is not performance evidence. This corpus result does not qualify
+growing-source acquisition, live-PC/placement controls or dynamic binding ownership;
+those remain separate focused proof requirements.
+
 ## Responsibility boundary
 
 Active acquisition must use real assembly state when its guards depend on the

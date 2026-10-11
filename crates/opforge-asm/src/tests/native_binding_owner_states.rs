@@ -158,6 +158,192 @@ fn cases(cpu: &str) -> Vec<Case> {
             "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {1}\n.if flag\nprovider.routine.saved1.value .const 66\n.endif\n.if flag\nprovider.routine.saved1.value .const 67\n.endif\n.endfor\n.byte 11\n",
             None,
         ),
+        (
+            "unmaterialized-loop-zero-unguarded-longer-keeps-shorter",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for 0\nprovider.routine.saved1.value .const missing\n.endfor\n.byte 11\n",
+            Some(&[11, 7]),
+        ),
+        (
+            "unmaterialized-loop-zero-repeated-unguarded-keeps-shorter",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for 0\nprovider.routine.saved1.value .const missing\nprovider.routine.saved1.value .const missing+1\n.endfor\n.byte 11\n",
+            Some(&[11, 7]),
+        ),
+        (
+            "unmaterialized-loop-active-unguarded-scalar-rejects-fallback",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for 1\nprovider.routine.saved1.value .const 66\n.endfor\n.byte 11\n",
+            None,
+        ),
+        (
+            "unmaterialized-loop-active-whole-constant-rejects-label",
+            ".byte provider.routine.saved1.value\n",
+            "saved1 .const Info {value:7}\n.for 1\nprovider.routine.saved1.value .const 66\n.endfor\n.byte 11\n",
+            None,
+        ),
+        (
+            "unmaterialized-loop-mixed-whole-assignment-rejects-label",
+            ".byte provider.routine.saved1.value\n",
+            "saved1 .const Info {value:7}\n.for flag in {0,1}\n.if flag\nprovider.routine.saved1.value = 66\n.endif\n.endfor\n.byte 11\n",
+            None,
+        ),
+        (
+            "unmaterialized-loop-zero-assignment-keeps-shorter",
+            ".byte provider.routine.saved1.value\n",
+            "saved1 .const Info {value:7}\n.for 0\nprovider.routine.saved1.value = missing\n.endfor\n.byte 11\n",
+            Some(&[11, 7]),
+        ),
+        (
+            "unmaterialized-loop-inactive-active-rejects-executed-label",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {0,1}\n.if flag\nprovider.routine.saved1.value .const Info {value:66}\n.endif\n.endfor\n.byte 11\n",
+            None,
+        ),
+        (
+            "unmaterialized-loop-active-inactive-rejects-executed-label",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {1,0}\n.if flag\nprovider.routine.saved1.value .const Info {value:66}\n.endif\n.endfor\n.byte 11\n",
+            None,
+        ),
+        (
+            "unmaterialized-loop-two-active-iterations-rejects-duplicate",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {1,1}\n.if flag\nprovider.routine.saved1.value .const Info {value:66}\n.endif\n.endfor\n.byte 11\n",
+            None,
+        ),
+        (
+            "selected-branch-unentered-loop-keeps-shorter",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.if 1\n.for 0\nprovider.routine.saved1.value .const missing\n.endfor\n.endif\n.byte 11\n",
+            Some(&[11, 7]),
+        ),
+        (
+            "unmaterialized-loop-exclusive-longer-same-id",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {1}\n.if flag\nprovider.routine.saved1.value .const Info {value:66}\n.else\nprovider.routine.saved1.value .const missing\n.endif\n.endfor\n.byte 11\n",
+            None,
+        ),
+        (
+            "unmaterialized-loop-member-alias",
+            "saved .const provider.routine.saved1.value\n.byte saved.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {0}\n.if flag\nprovider.routine.saved1.value .const Info {value:66}\n.endif\n.endfor\n.byte 11\n",
+            Some(&[11, 7]),
+        ),
+        (
+            "unmaterialized-loop-inactive-member-arithmetic",
+            ".byte provider.routine.saved1.value.value+1\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {0}\n.if flag\nprovider.routine.saved1.value .const 66\n.endif\n.endfor\n.byte 11\n",
+            Some(&[11, 8]),
+        ),
+        (
+            "unmaterialized-loop-forward-member-list",
+            ".byte .len({provider.routine.saved1.value.value,1})\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {0}\n.if flag\nprovider.routine.saved1.value .const Info {value:66}\n.endif\n.endfor\n.byte 11\n",
+            Some(&[11, 2]),
+        ),
+        (
+            "unmaterialized-loop-forward-member-constructor",
+            "picked .const provider.routine.Info {value:provider.routine.saved1.value.value}\n.byte picked.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {0}\n.if flag\nprovider.routine.saved1.value .const Info {value:66}\n.endif\n.endfor\n.byte 11\n",
+            Some(&[11, 7]),
+        ),
+        (
+            "unmaterialized-loop-inactive-member-range",
+            ".byte .len(1..=provider.routine.saved1.value.value)\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.for flag in {0}\n.if flag\nprovider.routine.saved1.value .const 66\n.endif\n.endfor\n.byte 11\n",
+            Some(&[11, 7]),
+        ),
+        (
+            "unresolved-outer-guard-unentered-loop-keeps-shorter",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.byte 11\n.if enabled\n.for 1\nprovider.routine.saved1.value .const missing\n.endfor\n.endif\nenabled .const start-start\nstart:\n.byte 0\nfinish:\n",
+            Some(&[11, 0, 7]),
+        ),
+        (
+            "observed-active-global-guard-loop-label-rejects",
+            ".byte provider.routine.saved1.value\n",
+            "saved1 .const Info {value:7}\n.byte 11\n.if enabled\n.for 1\nprovider.routine.saved1.value .const 66\n.endfor\n.endif\nenabled .const start-start+1\nstart:\n.byte 0\n",
+            None,
+        ),
+        (
+            "observed-unresolved-global-guard-rejects",
+            ".byte provider.routine.saved1.value\n",
+            "saved1 .const Info {value:7}\n.byte 11\n.if enabled\n.for 1\nprovider.routine.saved1.value .const 66\n.endfor\n.endif\nenabled .const start-start\n.if 0\nstart:\n.endif\n.byte 0\n",
+            None,
+        ),
+        (
+            "observed-forward-label-value-changes",
+            ".byte provider.routine.saved1.value.value\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.byte 11\n.if enabled\n.byte 22\n.endif\n.for 0\nprovider.routine.saved1.value .const missing\n.endfor\nenabled .const start>0\nstart:\n.byte 0\n",
+            Some(&[11, 22, 0, 7]),
+        ),
+        (
+            "observed-scalar-label-becomes-inactive",
+            ".byte provider.routine.saved1.value.value,provider.routine.stale\n",
+            "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n.byte 11\n.if !enabled\nstale:\n.byte 22\n.endif\n.for 0\nprovider.routine.saved1.value .const missing\n.endfor\nenabled .const start>0\nstart:\n.byte 0\n",
+            None,
+        ),
+        (
+            "observed-forward-while-still-unresolved-rejects",
+            ".byte provider.routine.saved1.value\n",
+            "saved1 .const Info {value:7}\n.byte 11\n.while enabled\nprovider.routine.saved1.value .const missing\n.endwhile\nenabled .const start-start\n.if 0\nstart:\n.endif\n.byte 0\n",
+            None,
+        ),
+        (
+            "forward-immutable-zero-loop-declaration-keeps-shorter",
+            ".byte provider.routine.saved1.value\n",
+            "saved1 .const Info {value:7}\n.for count\nprovider.routine.saved1.value .const missing\n.endfor\ncount .const base-1\nbase .const 1\n.byte 11\n",
+            Some(&[11, 7]),
+        ),
+        (
+            "unresolved-while-guard-keeps-shorter",
+            ".byte provider.routine.saved1.value\n",
+            "saved1 .const Info {value:7}\n.byte 11\n.while enabled\nprovider.routine.saved1.value .const missing\n.endwhile\nenabled .const start-start\nstart:\n.byte 0\n",
+            Some(&[11, 0, 7]),
+        ),
+        (
+            "unresolved-while-guard-without-binding-query",
+            ".byte provider.routine\n",
+            "saved1 .const Info {value:7}\n.byte 11\n.while enabled\nprovider.routine.saved1.value .const missing\n.endwhile\nenabled .const start-start\nstart:\n.byte 0\n",
+            Some(&[11, 0, 0]),
+        ),
+        (
+            "active-while-whole-constant-rejects-label",
+            ".byte provider.routine.saved1.value\n",
+            "saved1 .const Info {value:7}\n.while 1\nprovider.routine.saved1.value .const 66\n.endwhile\n.byte 11\n",
+            None,
+        ),
+        (
+            "mapped-early-region-baseline",
+            ".section code,kind=code\n.byte provider.routine.saved1.value\n.endsection\n.section data,kind=data\n.byte 9\n.endsection\n.place code in ram\n.place data in ram\n.output \"out.bin\",format=bin,sections=code,data\n",
+            "saved1 .const Info {value:7}\n.byte 11\n",
+            Some(&[7, 9, 11]),
+        ),
+        (
+            "mapped-early-region-zero-loop-declaration-keeps-shorter",
+            ".section code,kind=code\n.byte provider.routine.saved1.value\n.endsection\n.section data,kind=data\n.byte 9\n.endsection\n.place code in ram\n.place data in ram\n.output \"out.bin\",format=bin,sections=code,data\n",
+            "saved1 .const Info {value:7}\n.for 0\nprovider.routine.saved1.value .const missing\n.endfor\n.byte 11\n",
+            Some(&[7, 9, 11]),
+        ),
+        (
+            "mapped-early-region-inactive-loop-declaration-keeps-shorter",
+            ".section code,kind=code\n.byte provider.routine.saved1.value\n.endsection\n.section data,kind=data\n.byte 9\n.endsection\n.place code in ram\n.place data in ram\n.output \"out.bin\",format=bin,sections=code,data\n",
+            "saved1 .const Info {value:7}\n.for flag in {0}\n.if flag\nprovider.routine.saved1.value .const 66\n.endif\n.endfor\n.byte 11\n",
+            Some(&[7, 9, 11]),
+        ),
+        (
+            "mapped-zero-loop-declaration-keeps-shorter",
+            ".section code,kind=code\n.byte provider.routine.saved1.value\n.endsection\n.section data,kind=data\n.byte 9\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"out.bin\",format=bin,sections=code,data\n",
+            "saved1 .const Info {value:7}\n.for 0\nprovider.routine.saved1.value .const missing\n.endfor\n.byte 11\n",
+            Some(&[7, 9, 11]),
+        ),
+        (
+            "mapped-inactive-loop-declaration-keeps-shorter",
+            ".section code,kind=code\n.byte provider.routine.saved1.value\n.endsection\n.section data,kind=data\n.byte 9\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"out.bin\",format=bin,sections=code,data\n",
+            "saved1 .const Info {value:7}\n.for flag in {0}\n.if flag\nprovider.routine.saved1.value .const 66\n.endif\n.endfor\n.byte 11\n",
+            Some(&[7, 9, 11]),
+        ),
         // A shorter address record has a valid nested member path. Selecting
         // the longer scalar must reject rather than fall back to that record.
         (
@@ -172,15 +358,23 @@ fn cases(cpu: &str) -> Vec<Case> {
     entries
         .iter()
         .filter(|entry| selected.contains(&entry.0))
-        .map(|(name, body, declarations, expected)| Case {
+        .map(|(name, body, declarations, expected)| {
+            let mapped = name.starts_with("mapped-");
+            // Compare preparation order independently of the ownership body.
+            // The original late-region cases remain valid Rust positives.
+            let early_region = if name.starts_with("mapped-early-region-") { ".region ram,0,$ffff\n" } else { "" };
+            let import = if mapped { ".use provider map { logical -> data }" } else { ".use provider" };
+            let section = if mapped { ".section logical,kind=data,logical\n" } else { "" };
+            let end_section = if mapped { ".endsection\n" } else { "" };
+            Case {
             name: format!("{name}-{cpu}"),
             cpu: cpu.into(),
             files: vec![
-                ("entry.asm", format!(".module app\n.cpu {cpu}\n.use provider\n{body}.endmodule\n")),
-                ("provider.asm", format!(".module provider\n.cpu {cpu}\n.pub\nroutine .block\nInfo .struct\nvalue .byte ?\n.endstruct\n{declarations}.bend\n.endmodule\n")),
+                ("entry.asm", format!(".module app\n.cpu {cpu}\n{early_region}{import}\n{body}.endmodule\n")),
+                ("provider.asm", format!(".module provider\n.cpu {cpu}\n.pub\n{section}routine .block\nInfo .struct\nvalue .byte ?\n.endstruct\n{declarations}.bend\n{end_section}.endmodule\n")),
             ],
             expected: expected.map(|bytes| bytes.to_vec()),
-        })
+        }})
         .collect()
 }
 
@@ -190,6 +384,43 @@ fn control_source() -> String {
     format!(
         ".module app\n.cpu 68020\n.use provider\n.byte provider.routine.saved1.value.value\n.endmodule\n.module provider\n.cpu 68020\n.pub\nroutine .block\nInfo .struct\nvalue .byte ?\n.endstruct\n{SIGNED_GUARD_DECLARATIONS}.bend\n.endmodule\n"
     )
+}
+
+fn activity_control_source() -> &'static str {
+    concat!(
+        ".module app\n.cpu 68020\n.use provider\n.byte provider.routine.saved1.value.value\n.endmodule\n",
+        ".module provider\n.cpu 68020\n.pub\nroutine .block\nInfo .struct\nvalue .byte ?\n.endstruct\n",
+        "items .bfor 1\nvalue .const Info {value:7}\n.endfor\nsaved1 .const items[0]\n",
+        ".for flag in {0}\n.if flag\nprovider.routine.saved1.value .const 66\n.endif\n.endfor\n.byte 11\n.bend\n.endmodule\n",
+    )
+}
+
+#[test]
+fn native_binding_owner_activity_control_rust_oracle() {
+    let dir = scratch();
+    assert_eq!(oracle(&dir.0, activity_control_source()).unwrap(), [11, 7]);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; MEMD control allocating declaration activity maps"]
+fn native_binding_owner_activity_control_fs_uae() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap();
+    let dir = scratch();
+    let image = std::env::var_os("OPFORGE_TEMPLATE_IMAGE")
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_else(|| build_image(&root, &dir.0));
+    run_case(
+        &root,
+        &dir.0,
+        &image,
+        "declaration-activity-control",
+        "68020",
+        activity_control_source(),
+        false,
+    );
 }
 
 #[test]
@@ -233,9 +464,10 @@ fn native_binding_owner_states_rust_oracles() {
                     for (path, source) in &case.files {
                         fs::write(dir.0.join(path), source).unwrap();
                     }
+                    let result = oracle(&dir.0, &case.files[0].1);
                     assert!(
-                        oracle(&dir.0, &case.files[0].1).is_err(),
-                        "Rust accepted expected rejection {}",
+                        result.is_err(),
+                        "Rust accepted expected rejection {}: {result:?}",
                         case.name
                     );
                 }

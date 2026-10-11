@@ -170,7 +170,8 @@ done
 ; A0=State,A1=Entry array,D0=source base,D1=count. Finalize once after binding.
 ; Remove plans with resolved full declarations; remap bases via Entry.Target.
 ; A longest unconditional declaration fixes binding before its value kind exists.
-; Compact that plan to one candidate; dormant conditional candidates stay deferred.
+; Compact that plan to one candidate; dormant branch/loop candidates stay deferred.
+; Runtime declaration activity must select those candidates before value/kind.
 ; D0/CCR=status; others preserved. Member IDs retain their bare global identity.
 FinalizeFrame	.struct
 Output	.long ?

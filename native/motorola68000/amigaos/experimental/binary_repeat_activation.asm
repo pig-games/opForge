@@ -9,6 +9,8 @@
 	.use experimental.amigaos.binary_source as source
 	.use opasm.amigaos.binary_expression as expression
 	.use prvm.amigaos.packed_branch as branch
+	.use prvm.amigaos.packed_loop as loopParser
+	.use prvm.amigaos.abi as abi
 	.include "memory_telemetry.i"
 	.pub
 	.section code, kind=code
@@ -42,10 +44,13 @@ selected
 	adda.l d4, a4
 	moveq #0, d7
 	moveq #0, d2
+	moveq #0, d3  ; unentered nested loops cannot contribute selected roots
 next
 	cmpa.l a5, a4
 	bhs.w bad
 	bsr.w classify
+	bne.w done
+	bsr.w loopDepth
 	bne.w done
 	cmpi.l #branch.IF, d1
 	beq.w opening
@@ -56,6 +61,8 @@ next
 	cmpi.l #branch.ELSE, d1
 	beq.w sibling
 	tst.l d7
+	bne.w advance
+	tst.l d3
 	bne.w advance
 	cmpi.l #inventory.PackedRecord.Rhs+3, d4
 	blo.w advance
@@ -74,7 +81,9 @@ next
 	move.w inventory.Decl.Owner(a0, d5.l), d0
 	cmp.l graph.Frame.Owner(a6), d0
 	bne.w advance
-	cmpi.w #inventory.IMMUTABLE+inventory.CONDITIONAL, inventory.Decl.Kind(a0, d5.l)
+	move.w inventory.Decl.Kind(a0, d5.l), d0
+	andi.w #inventory.KIND_MASK+inventory.CONDITIONAL, d0
+	cmpi.w #inventory.IMMUTABLE+inventory.CONDITIONAL, d0
 	bne.w bad
 	move.l a4, d0
 	sub.l graph.Frame.Records(a6), d0
@@ -144,6 +153,43 @@ done
 	tst.l d0
 	rts
 	.bend  ; classify
+
+; A4/D4=record/extent,A2=context,D3=nested unentered loop depth.
+; D0/CCR=status,D3=updated; others preserved. Shared PRVM alone supplies roles.
+loopDepth	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l a4, a0
+	move.l d4, d0
+	movea.l pkg.Context.Package(a2), a1
+	move.l pkg.Header.LoopPlanBytes(a1), d1
+	adda.l pkg.Header.LoopPlan(a1), a1
+	jsr loopParser.classify
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w bad
+	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	beq.w good
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w closing
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w closing
+	cmpi.l #inventory.DEPTH_LIMIT, d3
+	bhs.w bad
+	addq.l #1, d3
+	bra.w good
+closing
+	tst.l d3
+	beq.w bad
+	subq.l #1, d3
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+	.bend  ; loopDepth
 	.endsection
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

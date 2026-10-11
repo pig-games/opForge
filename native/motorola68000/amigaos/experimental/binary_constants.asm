@@ -14,16 +14,18 @@
 	.use experimental.amigaos.binary_struct_values as structs
 	.priv
 LAYOUT = 1
+OBSERVATION_FLAG = $100; register-only refresh role, never a source-record flag
 	.section code, kind=code
 	.pub
 
-; Same inputs/outputs as execute. Strict sizing refreshes a retained statement
-; value; prepared inventory and selected graph activation checked ownership.
+; Same inputs/outputs as execute. Provisional sizing refreshes a retained
+; statement value; completed scalar observations decide whether it converged.
+; Prepared inventory and selected graph activation checked ownership.
 ; Preserve Context.Pass for sizing/output consumers and never mutate record flags.
 replay	.block
 	move.w pkg.Context.Pass(a2), -(sp)
-	move.w #2, pkg.Context.Pass(a2)
-	ori.w #source.FLAG_MUTABLE_SNAPSHOT, d0
+	move.w #1, pkg.Context.Pass(a2)
+	ori.w #OBSERVATION_FLAG, d0
 	bsr.w execute
 	move.w (sp)+, pkg.Context.Pass(a2)
 	tst.l d0
@@ -141,6 +143,8 @@ store
 	lsl.l #3, d5
 	cmpi.w #1, pkg.Context.Pass(a2)
 	bne.w existing
+	btst #8, d6  ; sizing refresh is independent of prior numeric availability
+	bne.w write
 	tst.b 0(a4, d4.l)
 	bne.w bad
 	bra.w write

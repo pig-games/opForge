@@ -16,6 +16,8 @@
 	.use experimental.amigaos.binary_repeat_activation as activation
 	.use experimental.amigaos.binary_dependency_layout as graph
 	.use prvm.amigaos.packed_branch as branch
+	.use prvm.amigaos.packed_loop as loopParser
+	.use prvm.amigaos.abi as abi
 	.pub
 ABSOLUTE = graph.ABSOLUTE
 	.priv
@@ -47,6 +49,7 @@ Local	.res long, 1
 RootCursor	.res long, 1
 Mode	.res word, 1
 BranchDepth	.res word, 1
+LoopDepth	.res word, 1
 	.align 4
 Scratch	.res byte, memory.Block.Used+4
 	.endsection
@@ -429,8 +432,12 @@ beginGlobal	.block
 	movea.l Offsets+memory.Block.Pointer, a3
 	moveq #0, d1
 next
-	cmpi.w #repeatInventory.IMMUTABLE+repeatInventory.CONDITIONAL, repeatInventory.Decl.Kind(a1)
-	bne.w advance
+	move.w repeatInventory.Decl.Kind(a1), d3
+	andi.w #repeatInventory.CONDITIONAL, d3
+	beq.w advance
+	move.w repeatInventory.Decl.Kind(a1), d3
+	andi.w #repeatInventory.UNCONDITIONAL, d3
+	bne.w advance  ; its eager root remains the unconditional duplicate guard
 	tst.w repeatInventory.Decl.Owner(a1)
 	bne.w advance
 	move.b #LAYOUT, 0(a2, d1.l)
@@ -462,6 +469,35 @@ release	.block
 	tst.l d0
 	rts
 	.bend  ; release
+
+; Borrow the completed global graph's numeric metadata for scalar observation.
+; A1=context. A2=declarations (optional),A3=states,A4=expression offsets,
+; D0/CCR=status. Metadata extents must cover the complete symbol universe.
+; Views expire at release; callers neither mutate nor reinterpret ownership.
+	.pub
+observationMetadata	.block
+	move.l pkg.Context.Count(a1), d0
+	cmp.l States+memory.Block.Used, d0
+	bne.w bad
+	lsl.l #graph.OFFSET_SHIFT, d0
+	cmp.l Offsets+memory.Block.Used, d0
+	bne.w bad
+	movea.l Locals, a2
+	movea.l States+memory.Block.Pointer, a3
+	movea.l Offsets+memory.Block.Pointer, a4
+	moveq #0, d0
+	move.l a3, d0
+	beq.w bad
+	move.l a4, d0
+	beq.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	tst.l d0
+	rts
+	.bend  ; observationMetadata
 
 	.priv
 ; D0=source ID. D0/CCR=OK for a numeric member plan, BOUNDS absent,
@@ -521,6 +557,7 @@ index	.block
 	movea.l Offsets+memory.Block.Pointer, a4
 	movea.l States+memory.Block.Pointer, a5
 	clr.w BranchDepth
+	clr.w LoopDepth
 line
 	cmpa.l a1, a0
 	beq.w good
@@ -541,6 +578,8 @@ line
 	tst.l GlobalCandidates
 	beq.w rolesReady
 	bsr.w indexBranch
+	bne.w bad
+	bsr.w indexLoop
 	bne.w bad
 rolesReady
 	cmpi.w #9, d6
@@ -584,7 +623,10 @@ declaration
 	andi.w #repeatInventory.CONDITIONAL, d1
 	beq.w knownOwnership
 	tst.w BranchDepth
+	bne.w deferredOwner
+	tst.w LoopDepth
 	beq.w unconditionalOwner
+deferredOwner
 	tst.b 0(a5, d4.l)
 	bne.w next
 	move.b #LAYOUT, 0(a5, d4.l)
@@ -725,6 +767,44 @@ done
 	rts
 	.bend  ; indexBranch
 
+; A0=bounded record,D6=extent,A2=package. Shared PRVM owns loop roles.
+; Depth tracks unexecuted source regions only; the eager DAG cannot claim roots
+; from an ordinary loop, including an unguarded body which may execute zero times.
+; D0/CCR=status; other registers preserved.
+indexLoop	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	move.l d6, d0
+	movea.l a2, a1
+	move.l pkg.Header.LoopPlanBytes(a1), d1
+	adda.l pkg.Header.LoopPlan(a1), a1
+	jsr loopParser.classify
+	cmpi.l #abi.PRVM_LOOP_MALFORMED, d0
+	beq.w bad
+	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	beq.w good
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w closing
+	cmpi.l #abi.PRVM_LOOP_ENDWHILE, d0
+	beq.w closing
+	cmpi.w #repeatInventory.DEPTH_LIMIT, LoopDepth
+	bhs.w bad
+	addq.w #1, LoopDepth
+	bra.w good
+closing
+	tst.w LoopDepth
+	beq.w bad
+	subq.w #1, LoopDepth
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+	.bend  ; indexLoop
+
 	.pub
 ; Clear transient DFS borrowed views between complete assembly records.
 ; Every graph entry reconstructs these from its stable owner before use.
@@ -763,7 +843,21 @@ ownerReady
 	moveq #0, d4
 symbol
 	cmpi.b #ABSOLUTE, (a3)
+	bne.w clearSymbol
+	; An ordinary-loop scalar root is absolute only for its executed owner.
+	; Replayed selection must not inherit an earlier loop's value or kind.
+	move.l Locals, d0
 	beq.w retained
+	move.l a0, -(sp)
+	movea.l d0, a0
+	move.l d4, d0
+	lsl.l #repeatInventory.DECL_SHIFT, d0
+	move.w repeatInventory.Decl.Kind(a0, d0.l), d0
+	movea.l (sp)+, a0
+	andi.w #repeatInventory.LOOP_CONTROLLED+repeatInventory.UNCONDITIONAL, d0
+	cmpi.w #repeatInventory.LOOP_CONTROLLED, d0
+	bne.w retained
+clearSymbol
 	clr.l (a2)
 	clr.l 4(a2)
 	clr.b (a3)

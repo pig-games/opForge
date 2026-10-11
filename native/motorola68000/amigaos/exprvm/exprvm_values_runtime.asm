@@ -16,6 +16,7 @@ STATUS_STORAGE = 2
 STATUS_DEPTH = 3
 MAX_DEPTH = 128
 STEP_LIMIT = 65536
+UNAVAILABLE_KIND = -1; private stack cell; never published as a values Kind
 LEN_ID = 1
 MODE_COMPACT_BIT = 0
 MODE_ASSEMBLER_BIT = 1
@@ -275,18 +276,35 @@ symbol
 	move.l d0, State.Symbols(a3)
 	bsr.w push
 	bne.w depth
-	movea.l Frame.Defined(a6), a2
-	move.l a2, d0
-	beq.w malformed
-	tst.b 0(a2, d6.l)
-	bne.w kind
+	movea.l Frame.Owner(a6), a0
+	move.l d6, d1
+	jsr bindings.declaration
+	tst.l d0
+	bne.w malformed
+	cmpi.l #bindings.ACTIVE, d2
+	bne.w unavailableSymbol
+	; A retained proxy plan owns resolution even if a previous traversal left
+	; a numeric cell. Select its actual declaration before availability/kind.
+	move.l a1, -(sp)
+	jsr bindings.getBinding
+	movea.l (sp)+, a1
+	cmpi.l #values.BOUNDS, d0
+	beq.w ordinarySymbol
+	tst.l d0
+	bne.w malformed
 	bsr.w bindingSymbol
 	tst.l d0
 	beq.w next
 	cmpi.l #values.BOUNDS, d0
 	bne.w malformed
-	moveq #1, d0
-	move.l d0, State.Unresolved(a3)
+	bra.w unavailableSymbol
+ordinarySymbol
+	movea.l Frame.Defined(a6), a2
+	move.l a2, d0
+	beq.w malformed
+	tst.b 0(a2, d6.l)
+	bne.w kind
+	bra.w unavailableSymbol
 kind
 	movea.l Frame.Owner(a6), a0
 	move.l d6, d1
@@ -345,6 +363,13 @@ unresolved
 	clr.l Cell.Low(a1)
 	clr.l Cell.High(a1)
 	bra.w next
+unavailableSymbol
+	move.l #1, State.Unresolved(a3)
+	clr.l Cell.Low(a1)
+	clr.l Cell.High(a1)
+	clr.l Cell.Provenance(a1)
+	move.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	bra.w next
 scalar
 	bsr.w top
 	bne.w malformed
@@ -360,6 +385,8 @@ select
 	; cells retain their kind, descriptor offset and section provenance.
 	move.l #MAX_DEPTH, d6
 condition
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	beq.w unavailableSelect
 	bsr.w project
 	bne.w malformed
 	tst.l Cell.Kind(a1)
@@ -380,6 +407,9 @@ selected
 	move.l Cell.Provenance(a2), Cell.Provenance(a1)
 	subq.l #2, d7
 	bra.w next
+unavailableSelect
+	subq.l #2, d7
+	bra.w unavailableSymbol
 unary
 	moveq #1, d6
 	bra.w arithmetic
@@ -404,6 +434,13 @@ arithmeticKnown
 	cmp.l d6, d7
 	blo.w malformed
 	bsr.w top
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	beq.w unavailableArithmetic
+	cmpi.l #2, d6
+	bne.w arithmeticOperands
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind-CELL_BYTES(a1)
+	beq.w unavailableArithmetic
+arithmeticOperands
 	bsr.w project
 	bne.w malformed
 	cmpi.l #2, d6
@@ -462,6 +499,12 @@ arithmeticResult
 	move.l d2, Cell.High(a1)
 	move.l State.Provenance(a3), Cell.Provenance(a1)
 	bra.w next
+unavailableArithmetic
+	cmpi.l #2, d6
+	bne.w unavailableSymbol
+	subq.l #1, d7
+	bsr.w top
+	bra.w unavailableSymbol
 list
 	bsr.w wordLe
 	bne.w malformed
@@ -479,6 +522,8 @@ list
 	move.l d1, d5
 	tst.l d5
 	beq.w append
+	bsr.w unavailableChildren
+	bne.w unavailableAggregate
 classify
 	tst.l Cell.Provenance(a1)
 	bne.w typedList
@@ -600,6 +645,7 @@ schemaReady
 	lea STACK(a3), a1
 	adda.l d0, a1
 	lea PACKED(a3), a2
+	clr.l State.Operator(a3)  ; unresolved children defer the complete constructor
 	tst.l d5
 	beq.w structAppend
 structField
@@ -616,6 +662,8 @@ structField
 	bne.w malformed
 	move.l #MAX_DEPTH, d2
 structProjection
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	beq.w unavailableField
 	bsr.w project
 	bne.w malformed
 	tst.l Cell.Kind(a1)
@@ -628,11 +676,17 @@ structScalar
 	move.l Cell.High(a1), values.Field.Value+values.Cell.High(a2)
 	clr.l values.Field.Value+values.Cell.Kind(a2)
 	move.l Cell.Provenance(a1), values.Field.Value+values.Cell.Provenance(a2)
+	bra.w nextField
+unavailableField
+	move.l #1, State.Operator(a3)
+nextField
 	adda.l #CELL_BYTES, a1
 	adda.l #values.FIELD_BYTES, a2
 	subq.l #1, d5
 	bne.w structField
 structAppend
+	tst.l State.Operator(a3)
+	bne.w unavailableAggregate
 	movea.l Frame.Owner(a6), a0
 	lea PACKED(a3), a1
 	move.l State.Nominal(a3), d0
@@ -674,6 +728,8 @@ rangeCount
 	adda.l d0, a1
 	lea PACKED(a3), a2
 	move.l d5, State.Count(a3)
+	bsr.w unavailableChildren
+	bne.w unavailableAggregate
 rangePairs
 	tst.l Cell.Provenance(a1)
 	bne.w malformed
@@ -699,12 +755,21 @@ rangePairs
 	clr.l Cell.High(a1)
 	move.l #values.RANGE, Cell.Kind(a1)
 	bra.w next
+unavailableAggregate
+	; Consume the operands without publishing a descriptor containing unknown
+	; kinds. The program's member/constructor envelopes were still validated.
+	move.l d6, d7
+	bsr.w push
+	bne.w depth
+	bra.w unavailableSymbol
 member
 	bsr.w wordLe
 	bne.w malformed
 	move.l d1, d6
 	bsr.w top
 	bne.w malformed
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	beq.w next  ; defer only this unresolved member base, never unrelated cells
 	move.l Cell.Low(a1), d0
 	move.l d6, d1
 	movea.l Frame.Owner(a6), a0
@@ -724,6 +789,10 @@ index
 	cmpi.l #2, d7
 	blo.w malformed
 	bsr.w top
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	beq.w unavailableIndex
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind-CELL_BYTES(a1)
+	beq.w unavailableIndex
 	bsr.w project
 	bne.w malformed
 	tst.l Cell.High(a1)
@@ -766,6 +835,10 @@ recordResult
 	move.l d4, Cell.Kind(a1)
 	move.l d5, Cell.Provenance(a1)
 	bra.w next
+unavailableIndex
+	subq.l #1, d7
+	bsr.w top
+	bra.w unavailableSymbol
 builtin
 	bsr.w byte
 	bne.w malformed
@@ -777,6 +850,8 @@ builtin
 	bne.w malformed
 	bsr.w top
 	bne.w malformed
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	beq.w next
 	tst.l Cell.Kind(a1)
 	beq.w malformed
 	cmpi.l #records.TYPED_LIST, Cell.Kind(a1)
@@ -809,6 +884,10 @@ finish
 	tst.l d0
 	bne.w malformed
 captureReady
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	bne.w availableResult
+	clr.l Cell.Kind(a1)
+availableResult
 	move.l Cell.Low(a1), d1
 	move.l Cell.High(a1), Frame.High(a6)
 	move.l Cell.Kind(a1), d3
@@ -942,14 +1021,20 @@ candidate
 	movea.l d0, a5
 	cmpa.l a4, a5
 	bhi.w bad
+	movea.l Frame.Owner(a6), a0
+	jsr bindings.declaration
+	tst.l d0
+	bne.w bad
+	cmpi.l #bindings.INACTIVE, d2
+	beq.w nextCandidate
+	cmpi.l #bindings.UNKNOWN, d2
+	beq.w unavailableWhole
 	movea.l Frame.Defined(a6), a0
 	move.l a0, d0
 	beq.w bad
 	tst.b 0(a0, d1.l)
 	bne.w availableCandidate
-	tst.l d7
-	beq.w unavailableWhole  ; an uncertified exact declaration cannot fall through
-	bra.w nextCandidate
+	bra.w unavailableWhole  ; the active declaration commits before availability
 availableCandidate
 	movea.l Frame.Owner(a6), a0
 	jsr values.getKind
@@ -1041,9 +1126,35 @@ done
 	rts
 	.bend  ; bindingSymbol
 
+; A1=first operand,D5=operand count. D0/CCR=0 available,1 unavailable.
+; Other registers preserved. Unknown child cells never enter descriptor arenas.
+unavailableChildren	.block
+	movem.l d1/a1, -(sp)
+	move.l d5, d1
+next
+	tst.l d1
+	beq.w good
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	beq.w unknown
+	adda.l #CELL_BYTES, a1
+	subq.l #1, d1
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+unknown
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a1
+	tst.l d0
+	rts
+	.bend  ; unavailableChildren
+
 ; A1=cell,A6=Frame. Project address record default; reject other compounds.
 ; D0/CCR=status. Preserves D1-D7/A0-A2, including arithmetic arity.
 project	.block
+	cmpi.l #UNAVAILABLE_KIND, Cell.Kind(a1)
+	beq.w ok
 	tst.l Cell.Kind(a1)
 	beq.w ok
 	cmpi.l #records.ADDRESS_RECORD, Cell.Kind(a1)

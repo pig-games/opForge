@@ -13,8 +13,9 @@ Work	.res memory.Block.Used+4
 Bindings	.res memory.Block.Used+4  ; optional immutable numeric fallback plans
 Seeds	.res memory.Block.Used+4  ; immutable struct schemas retained across replay
 SchemaReplay	.res memory.Block.Used+4  ; eligible seed offsets, retained across reset/rewind
+DeclarationActivity	.long ?  ; borrowed execution owner; detached before its maps release
 .endstruct
-OWNER_BYTES = Owner.SchemaReplay+memory.Block.Used+4
+OWNER_BYTES = Owner.DeclarationActivity+4
 SCALAR = 0
 LIST = 1
 RANGE = 2
@@ -65,11 +66,13 @@ EQUALITY_WORK_LIMIT = memory.LIMIT
 	.section code, kind=code
 
 ; A0=Owner,D0=symbol count. D0/CCR=status; others preserved.
-; Sets Count only; caller owns existing storage lifecycle and retained references.
+; Sets Count and clears the transient execution hook. Caller owns existing
+; storage lifecycle and retained references; initialize outside active assembly.
 init	.block
 	cmpi.l #memory.LIMIT, d0
 	bhi.w bad
 	move.l d0, Owner.Count(a0)
+	clr.l Owner.DeclarationActivity(a0)
 	moveq #OK, d0
 	rts
 bad
@@ -212,6 +215,7 @@ release	.block
 	clr.l Owner.Seeds+memory.Block.Used(a0)
 	clr.l Owner.SchemaReplay+memory.Block.Used(a0)
 	clr.l Owner.Count(a0)
+	clr.l Owner.DeclarationActivity(a0)
 	moveq #OK, d0
 	rts
 	.bend  ; release

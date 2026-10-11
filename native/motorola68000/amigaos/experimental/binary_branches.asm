@@ -38,7 +38,7 @@ STATE_BYTES = State.Slots+LIMIT*SLOT_BYTES
 ; A0=state,A1=loop state,A2=records,D0=strict guard evaluation (0/1).
 ; Begin a complete sizing/emission pass; per-sweep branch stacks reset separately.
 ; Registers preserved; CCR unspecified. Trace storage is enabled only after
-; an initial sizing guard encounters an unavailable scoped value.
+; a sizing guard encounters an unavailable value with retained control ownership.
 beginPass	.block
 	move.w d0, State.Strict(a0)
 	clr.w State.Deferred(a0)
@@ -239,7 +239,7 @@ evaluateOperand
 	tst.w State.Strict(a6)
 	bne.w failed
 	movea.l State.Loops(a6), a0
-	jsr loops.scoped
+	jsr loops.provisionalControls
 	bne.w failed
 	move.w #1, State.Deferred(a6)
 	move.l #1, State.Trace+trace.State.Enabled(a6)

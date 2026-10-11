@@ -580,6 +580,14 @@ symbol
 	lsl.w #8, d1
 	move.b (a0), d1
 	addq.l #2, a0
+	movem.l d1/a0-a1, -(sp)
+	movea.l Frame.Owner(a5), a0
+	jsr bindings.getBinding
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	beq.w typedSymbol
+	cmpi.l #values.BOUNDS, d0
+	bne.w bad
 	move.l a0, -(sp)
 	movea.l Frame.Owner(a5), a0
 	jsr values.getKind
@@ -588,19 +596,7 @@ symbol
 	bne.w bad
 	tst.l d2
 	bne.w typedSymbol
-	movea.l Frame.Defined(a5), a2
-	move.l a2, d0
-	beq.w bad
-	tst.b 0(a2, d1.l)
-	bne.w next
-	movem.l a0-a1, -(sp)
-	movea.l Frame.Owner(a5), a0
-	jsr bindings.getBinding
-	movem.l (sp)+, a0-a1
-	cmpi.l #values.BOUNDS, d0
-	beq.w next
-	tst.l d0
-	bne.w bad
+	bra.w next
 typedSymbol
 	moveq #1, d0
 	bra.w done

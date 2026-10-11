@@ -17,6 +17,7 @@ MUTABLE = 3
 COLLECTION = 4
 UNCONDITIONAL = $200; eager global owner also exists; selected replacement rejects
 CONDITIONAL = $100; immutable root requires an executed branch
+LOOP_CONTROLLED = $400; global immutable root requires ordinary-loop execution
 KIND_MASK = $ff
 Decl	.struct
 Owner	.word ?  ; one-based lexical loop identity; zero is enclosing/global
@@ -69,6 +70,7 @@ MemberKeys	.long ?  ; borrowed u16 canonical member key per actual symbol ID
 Symbols	.long ?
 Count	.long ?
 Globals	.long ?  ; global IDs with conditional immutable candidates
+DynamicGlobals	.long ?  ; global IDs requiring executed ordinary-loop activity
 Current	.word ?
 Depth	.word ?
 BranchDepth	.word ?
@@ -94,6 +96,7 @@ prepare	.block
 	move.l a3, State.MemberKeys(a6)
 	clr.l State.Count(a6)
 	clr.l State.Globals(a6)
+	clr.l State.DynamicGlobals(a6)
 	clr.w State.Current(a6)
 	clr.w State.Depth(a6)
 	clr.w State.CollectionDepth(a6)
@@ -295,9 +298,10 @@ declaration
 	tst.w State.Current(a6)
 	bne.w declarationOwned
 	tst.w State.BranchDepth(a6)
-	beq.w next
+	bne.w globalCandidate
 	tst.w State.Depth(a6)
-	bne.w next
+	beq.w next
+globalCandidate
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, PackedRecord.Marker(a4)
 	bne.w next
 	bsr.w declarationMap
@@ -349,14 +353,34 @@ sameOwner
 	andi.w #KIND_MASK, d0
 	cmpi.w #IMMUTABLE, d0
 	bne.w bad
+	tst.w State.Current(a6)
+	bne.w branchAlternative
+	tst.w State.Depth(a6)
+	beq.w branchAlternative
+	move.w Decl.Kind(a3), d0
+	andi.w #LOOP_CONTROLLED, d0
+	bne.w alternative
+	ori.w #LOOP_CONTROLLED+CONDITIONAL, Decl.Kind(a3)
+	addq.l #1, State.DynamicGlobals(a6)
+	bra.w alternative
+branchAlternative
 	move.w State.BranchDepth(a6), d0
 	cmp.w State.BranchBase(a6), d0
 	bhi.w alternative
-	cmpi.w #IMMUTABLE+CONDITIONAL, Decl.Kind(a3)
-	bne.w bad
+	move.w Decl.Kind(a3), d0
+	andi.w #CONDITIONAL, d0
+	beq.w bad
 	; A later unconditional definition is the eager root; earlier conditional
 	; candidates remain deferred and will reject if they are also selected.
-	move.w #IMMUTABLE, Decl.Kind(a3)
+	move.w Decl.Kind(a3), d0
+	andi.w #LOOP_CONTROLLED, d0
+	beq.w eagerKind
+	ori.w #IMMUTABLE+CONDITIONAL, d0
+	bra.w storeEagerKind
+eagerKind
+	moveq #IMMUTABLE, d0
+storeEagerKind
+	move.w d0, Decl.Kind(a3)
 	move.l a4, d0
 	sub.l State.SourceBase(a6), d0
 	move.l d0, Decl.Record(a3)
@@ -386,6 +410,13 @@ claim
 	move.w d5, Decl.Kind(a3)
 	cmpi.w #IMMUTABLE, d5
 	bne.w owned
+	tst.w State.Current(a6)
+	bne.w branchOwned
+	tst.w State.Depth(a6)
+	beq.w branchOwned
+	ori.w #LOOP_CONTROLLED+CONDITIONAL, Decl.Kind(a3)
+	addq.l #1, State.DynamicGlobals(a6)
+branchOwned
 	move.w State.BranchDepth(a6), d0
 	cmp.w State.BranchBase(a6), d0
 	bls.w owned

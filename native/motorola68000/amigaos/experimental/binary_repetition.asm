@@ -14,6 +14,7 @@
 	.use experimental.amigaos.binary_repeat_records as snapshots
 	.use experimental.amigaos.binary_record_values as records
 	.use experimental.amigaos.binary_repeat_inventory as inventory
+	.use experimental.amigaos.binary_declaration_activity as activity
 	.use experimental.amigaos.binary_repeat_frames as frames
 	.use prvm.amigaos.packed_loop as parser
 	.use prvm.amigaos.abi as abi
@@ -55,7 +56,7 @@ FILTERED_ONE_MAP_MODE = 2
 FILTERED_TWO_MAP_MODE = 4
 State	.struct
 Depth	.word ?
-Padding	.word ?
+Deferred	.word ?  ; unresolved while observations cannot prove nonexecution
 ConditionPc	.long ?
 SourceBase	.long ?  ; transient borrowed view refreshed between records
 SourceBytes	.long ?
@@ -68,6 +69,7 @@ Guard	.res guards.STATE_BYTES
 Trace	.res trace.STATE_BYTES
 Snapshots	.res snapshots.STATE_BYTES
 Scopes	.res frames.STATE_BYTES
+Activity	.res activity.STATE_BYTES
 Slots	.res LIMIT*SLOT_BYTES
 	.endstruct
 SLOTS = State.Slots
@@ -75,7 +77,7 @@ STATE_BYTES = State.Slots+LIMIT*SLOT_BYTES
 	.section code, kind=code
 
 ; A0=state,A1=inventory,A2=context,A3=records,D0=bytes. Initialize scoped
-; replay ownership after preparation. Registers preserved; CCR unspecified.
+; replay ownership after preparation. D0/CCR=status; other registers preserved.
 prepare	.block
 	move.l d0, State.SourceBytes(a0)
 	move.l a3, State.SourceBase(a0)
@@ -83,6 +85,11 @@ prepare	.block
 	lea State.Scopes(a0), a0
 	jsr frames.prepare
 	movea.l (sp)+, a0
+	move.l a0, -(sp)
+	lea State.Activity(a0), a0
+	jsr activity.prepare
+	movea.l (sp)+, a0
+	tst.l d0
 	rts
 	.bend  ; prepare
 
@@ -156,21 +163,35 @@ done
 ; A0=state,A1=stream base,D0=sweep identity. Start one source sweep.
 begin	.block
 	clr.w State.Depth(a0)
+	clr.w State.Deferred(a0)
 	move.l a1, State.SourceBase(a0)
 	move.l d0, State.Sweep(a0)
 	move.l a0, -(sp)
 	lea State.Scopes(a0), a0
 	jsr frames.beginGlobal
+	movea.l (sp), a0
+	bne.w done
+	lea State.Activity(a0), a0
+	jsr activity.beginSweep
+done
 	movea.l (sp)+, a0
+	tst.l d0
 	rts
 	.bend  ; begin
 
-; A0=state. A source sweep must not end inside a repetition loop.
+; A0=state,D0=branch control uncertainty. A complete source sweep must not end
+; inside a repetition loop. D0/CCR=status; other registers preserved.
 end	.block
-	moveq #0, d0
 	tst.w State.Depth(a0)
-	beq.w done
+	beq.w complete
 	moveq #1, d0
+	bra.w done
+complete
+	or.w State.Deferred(a0), d0
+	move.l a0, -(sp)
+	lea State.Activity(a0), a0
+	jsr activity.endSweep
+	movea.l (sp)+, a0
 done
 	tst.l d0
 	rts
@@ -794,22 +815,41 @@ done
 	rts
 	.bend  ; scoped
 
+; A0=loop state. D0/CCR=zero when bounded sizing can observe an unavailable
+; guard. Retained global declaration activity provides the same pending proof
+; as an enclosing scoped loop; final branch evaluation remains strict.
+	.pub
+provisionalControls	.block
+	tst.l State.Activity+activity.State.Count(a0)
+	beq.w scopedOnly
+	moveq #0, d0
+	rts
+scopedOnly
+	bra.w scoped
+	.bend  ; provisionalControls
+
 ; A0=selected branch record,A3=loop state. Activate global or innermost scoped
-; immutable declarations through shared dependency resolution.
-; D0/CCR=status; other registers kept. Ordinary loops have no local roots.
+; immutable declarations through shared dependency resolution. Ordinary loops
+; retain the nearest enclosing scoped owner, or the enclosing global owner.
+; D0/CCR=status; other registers kept.
 activateBranch	.block
 	movem.l d1-d2/a0/a5, -(sp)
 	moveq #0, d2
 	move.w State.Depth(a3), d2
 	beq.w global
+owner
 	subq.w #1, d2
-	mulu.w #SLOT_BYTES, d2
+	move.l d2, d1
+	mulu.w #SLOT_BYTES, d1
 	lea SLOTS(a3), a5
-	adda.w d2, a5
+	adda.w d1, a5
 	cmpi.l #abi.PRVM_LOOP_BFOR, Slot.Kind(a5)
 	beq.w activate
 	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a5)
-	bne.w good
+	beq.w activate
+	tst.w d2
+	bne.w owner
+	bra.w global
 activate
 	move.l a0, d1
 	sub.l State.SourceBase(a3), d1
@@ -823,8 +863,6 @@ global
 	lea State.Scopes(a3), a0
 	jsr frames.activateGlobal
 	bra.w done
-good
-	moveq #0, d0
 done
 	movem.l (sp)+, d1-d2/a0/a5
 	tst.l d0
@@ -871,6 +909,14 @@ done
 ; A0=state,D0=assembly pass. D0/CCR=status; other registers preserved.
 beginPass	.block
 	clr.l State.ConditionPc(a0)
+	movem.l d1/a0, -(sp)
+	move.l d0, d1
+	lea State.Activity(a0), a0
+	jsr activity.beginPass
+	tst.l d0
+	bne.w activityFailed
+	move.l d1, d0
+	movem.l (sp)+, d1/a0
 	move.l a0, -(sp)
 	move.l d0, -(sp)
 	lea State.Guard(a0), a0
@@ -890,7 +936,33 @@ beginPass	.block
 	movea.l (sp)+, a0
 failed
 	rts
+activityFailed
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
 	.bend  ; beginPass
+
+; A0=active bounded record,A1=end,A2=context,A3=repetition state.
+; D0/CCR=status; other registers preserved. Selection precedes ownership claims.
+claim	.block
+	move.l a3, -(sp)
+	lea State.Activity(a3), a3
+	jsr activity.claim
+	movea.l (sp)+, a3
+	tst.l d0
+	rts
+	.bend  ; claim
+
+; A0=repetition state. D0/CCR=status,D1=changed/pending declaration owners.
+; Other registers preserved. Complete sweep observations must precede this call.
+activityChanged	.block
+	move.l a0, -(sp)
+	lea State.Activity(a0), a0
+	jsr activity.endPass
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; activityChanged
 
 ; A0=state. Require the complete captured pass traversal. D0/CCR=status.
 endPass	.block
@@ -951,6 +1023,9 @@ releaseCells
 	movea.l (sp), a0
 	lea State.Scopes(a0), a0
 	jsr frames.release
+	movea.l (sp), a0
+	lea State.Activity(a0), a0
+	jsr activity.release
 	movea.l (sp)+, a0
 	movem.l (sp)+, d0-d3/a0-a3/a5
 	rts
@@ -1061,6 +1136,7 @@ classified
 	beq.w valueReady
 	cmpi.w #1, package.Context.Pass(a2)
 	bne.w failed
+	move.w #1, State.Deferred(a3)
 valueReady
 	or.l package.Context.High(a2), d1
 	moveq #0, d0

@@ -15,6 +15,7 @@
 	.use prvm.amigaos.macro_runtime as datavm
 	.use experimental.amigaos.binary_encoding as encoding
 	.use experimental.amigaos.binary_dependencies as dependencies
+	.use experimental.amigaos.binary_scalar_observations as scalarObservations
 	.use experimental.amigaos.binary_mutable as mutable
 	.use experimental.amigaos.binary_constants as constants
 	.use experimental.amigaos.binary_source as source
@@ -99,6 +100,8 @@ RepeatState
 	.res byte, repetition.STATE_BYTES
 InventoryState
 	.res byte, repeatInventory.STATE_BYTES
+ScalarObservations
+	.res byte, scalarObservations.STATE_BYTES
 HunkInstructionRefs
 	.res word, 1
 HunkInstructionRefCount
@@ -385,6 +388,9 @@ validFrozenBase
 	.MEMORY_COUNTER_CLEAR branches.DeferredEvaluations
 	.MEMORY_COUNTER_CLEAR repetition.IterableScopes
 	.MEMORY_COUNTER_CLEAR repetition.IterableBindings
+	.MEMORY_COUNTER_CLEAR scalarObservations.ActivePasses
+	.MEMORY_COUNTER_CLEAR scalarObservations.ChangedRows
+	.MEMORY_COUNTER_CLEAR scalarObservations.RestoredRows
 	clr.l Frame.Used(a5)
 	clr.l Frame.Warnings(a5)
 	clr.w LayoutRounds
@@ -395,6 +401,8 @@ validFrozenBase
 	jsr branches.release
 	lea RepeatState, a0
 	jsr repetition.release
+	lea ScalarObservations, a0
+	jsr scalarObservations.release
 	jsr dependencies.release
 	lea InventoryState, a0
 	jsr repeatInventory.release
@@ -444,6 +452,7 @@ clearSymbols
 	movea.l Frame.Records(a5), a3
 	move.l Frame.RecordBytes(a5), d0
 	jsr repetition.prepare
+	bne.w fail
 	movea.l Frame.Records(a5), a0
 	move.l Frame.RecordBytes(a5), d0
 	lea SectionState, a1
@@ -508,6 +517,8 @@ outputReady
 
 	moveq #1, d7
 pass
+	lea ScalarObservations, a0
+	jsr scalarObservations.beginPass
 	lea RepeatState, a0
 	move.l d7, d0
 	tst.w SizingReplay
@@ -519,8 +530,7 @@ repetitionPass
 	moveq #0, d0
 	cmpi.w #2, d7
 	beq.w strictBranches
-	tst.w SizingReplay
-	beq.w branchPass
+	bra.w branchPass
 strictBranches
 	moveq #1, d0
 branchPass
@@ -576,6 +586,7 @@ sweepRecords
 	movea.l Frame.Records(a5), a1
 	move.l d5, d0
 	jsr repetition.begin
+	bne.w fail
 	lea BranchState, a0
 	jsr branches.begin
 	movea.l Frame.Records(a5), a4
@@ -668,6 +679,22 @@ selectedBranch
 	bne.w fail
 	bra.w omitted
 controlsReady
+	; Declaration execution follows shared control selection, before independent
+	; section sweeps filter emission. Each sweep owns a fresh immutable claim set.
+	movea.l a4, a0
+	movea.l a3, a1
+	movea.l a6, a2
+	lea RepeatState, a3
+	jsr repetition.claim
+	movea.l a1, a3
+	bne.w fail
+	movem.l a0-a2, -(sp)
+	lea ScalarObservations, a0
+	movea.l a4, a1
+	movea.l a3, a2
+	jsr scalarObservations.mark
+	movem.l (sp)+, a0-a2
+	bne.w fail
 	; Text controls execute for active source records before section filtering.
 	movem.l a0-a2, -(sp)
 	lea TextExecution, a0
@@ -884,6 +911,8 @@ passDone
 	bne.w fail
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #7
 	lea RepeatState, a0
+	moveq #0, d0
+	move.w BranchState+branches.State.Deferred, d0
 	jsr repetition.end
 	bne.w fail
 	lea BranchState, a0
@@ -912,6 +941,14 @@ sweepDone
 	lea BranchState, a0
 	jsr branches.endPass
 	move.w d0, BranchChanged
+	lea RepeatState, a0
+	jsr repetition.activityChanged
+	bne.w fail
+	or.w d1, BranchChanged
+	lea ScalarObservations, a0
+	jsr scalarObservations.endPass
+	bne.w fail
+	or.w d1, BranchChanged
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #9
 	tst.w d4
 	bne.w fail
@@ -965,15 +1002,23 @@ finishedLayout
 	bne.w emittedPass
 	tst.w BranchChanged
 	beq.w allocateOutput
-	; Only unresolved scoped guards enable this path. Sizing remains pass one
-	; for emission, while cells/loop identities replay with strict guard values.
+	; Deferred controls or changed owner/value observations require bounded
+	; sizing before allocation. Only numeric scalar history survives the compound
+	; rewind; final emission remains strict and reproduces the completed controls.
 	move.w #1, SizingReplay
 	addq.w #1, SizingRounds
 	cmpi.w #MAX_LAYOUT_ROUNDS, SizingRounds
 	bhs.w fail
 	.MEMORY_COUNTER_INC SizingPasses
+	lea ScalarObservations, a0
+	movea.l a6, a1
+	jsr scalarObservations.prepare
+	bne.w fail
+	movea.l a6, a1
 	jsr dependencies.resetLayout
 	bne.w fail
+	lea ScalarObservations, a0
+	jsr scalarObservations.restore
 	bra.w pass
 emittedPass
 	tst.w BranchChanged
@@ -1015,6 +1060,8 @@ cleanup
 	jsr branches.release
 	lea RepeatState, a0
 	jsr repetition.release
+	lea ScalarObservations, a0
+	jsr scalarObservations.release
 	jsr dependencies.release
 	lea InventoryState, a0
 	jsr repeatInventory.release

@@ -5,14 +5,15 @@ lifecycle have focused native proof. Growing-source execution remains a design
 target.
 The [completion plan](native-runtime-reset.md) records current evidence and completion order.
 
-The latest frozen BS36/schema opcore audit completed all 86 roots: 29 positive
-roots matched requested Rust artifacts exactly, 36 expected negatives rejected
-with diagnostics (without exact diagnostic parity), and 21 positive roots exited
-20. Only the two text-encoding roots improved from the preceding audit, with no
-regression among prior positive passes. Its 370.69-second batch includes harness
-overhead and is not performance evidence. This corpus result does not qualify
-growing-source acquisition, live-PC/placement controls or dynamic binding ownership;
-those remain separate focused proof requirements.
+The latest frozen BS37/reservation opcore audit completed all 86 roots: 29
+positive roots matched requested Rust artifacts exactly, 36 expected negatives
+rejected with diagnostics (without exact diagnostic parity), and 21 positive
+roots exited 20. No pass/rejection status changed from the BS36/schema audit;
+`syntax.asm` advances from its reservation on line 114 to a labeled conditional
+on line 280. Its 371.93-second batch includes harness overhead and is not
+performance evidence. This corpus result does not qualify growing-source
+acquisition, live-PC/placement controls or dynamic binding ownership; those remain
+separate focused proof requirements.
 
 ## Responsibility boundary
 
@@ -228,30 +229,40 @@ references and sign handling. The v3 feature control assembles
 Separate MEMD telemetry reports a 641,792-byte peak, 1,031,784 bytes allocated and
 freed, and zero live bytes after cleanup.
 
-The repair retains whole-value conditional candidates and prevents kind fallback
-after selecting a longer scalar declaration. V4 additionally retains readonly
-declarations in deferred ordinary-loop branches for runtime selection. Unknown or
-mutable bindings, PC-dependent values and loop-dependent values remain conservative.
-The full v4 matrix completes 50 fresh cases: 30 positive exact artifact matches,
-16 expected diagnostic
-rejections and four positive failures. Those failures are inactive ordinary-loop
-declarations, with one or repeated occurrences, on both CPUs. Expected rejection
-does not establish exact diagnostic parity. Its 242.91-second harness duration is
-correctness-only. Frozen v4 release size is 674,344 bytes, with 707,612 linked bytes,
-respectively 3,476 and 3,560
-bytes above committed `271fa942`. The unchanged 11,592-byte/1,200-call release
-control changes from 33.089063959 to 33.094098333 seconds (+0.02%, one pair;
-no measurable change). Separate v4 telemetry reports unchanged owned-memory peak
-1,282,328 bytes, 3,182,104 bytes allocated and freed, and zero live owned bytes.
-This control skips guard allocation; the smaller v3 feature control exercises it.
-These measurements use `68020-10m`, not a qualification of the 2 MiB product budget.
+The current execution-activity repair separates immutable declaration ownership
+from value availability. Ordinary-loop candidates stay out of eager dependency
+indexing. Each completed traversal records executed owners; only a proven inactive
+longer owner permits shorter member fallback. Unknown owners defer, and active
+scalar or unavailable owners retain ownership. Lazy numeric scalar observations
+survive sizing resets independently of compound descriptor arenas. Final emission
+remains strict; no compound pointer or immutable certificate is restored from an
+observation.
+
+The final 112-case matrix completes freshly across 68020 and 6502: 62 exact
+positive artifacts and 40 expected diagnostic rejections. Ten positive mapped
+section cases still fail before execution, including the no-loop baseline; their
+output-resolution repair is the next slice. Expected rejections do not qualify
+exact diagnostic text. The 523.12-second batch duration is correctness-only.
+Rust commit `7073f2de` also removes readonly source symbols that become inactive
+following sizing convergence while retaining incoming configuration and schema
+metadata. This corrects a target-dependent stale-label result.
+
+The unchanged release control takes 33.291479875 s versus the BS37 baseline's
+32.955889917 s (+1.02%, one sample per state). The release image is 677,860 bytes,
+linked reservation 710,968 bytes (+3,092 and +2,960). Telemetry macros add no bytes
+to that release image. Separate telemetry reports an unchanged-control peak of
+1,282,360 bytes (+16), with zero live bytes after cleanup. The 356-byte activity
+control exercises the lazy maps and scalar rows, peaks at 690,392 bytes and frees
+all 1,079,392 allocated bytes. Its counters report two passes with observations,
+zero changed rows and one restored row. See the
+[separate measurements](../performance/vm-efficiency.md#executed-declaration-activity-and-scalar-observations).
+These `68020-10m` checks do not qualify the 2 MiB product budget or a new full
+current-source self-host.
 
 Schema replay metadata remains independent of pruned block code: only eligible
 established schema seeds can be demand-copied. Retained metadata cannot publish
-an inactive declaration. Dynamic conditional ownership still needs executed
-occurrence activity from assembly traversal; an undefined cell alone cannot prove
-inactivity. Loop candidates currently enter eager dependency indexing, explaining
-the remaining scalar-member and duplicate-declaration failures.
+an inactive declaration. Cross-physical-block conditional selection and forward
+variable-width repetition/reservation layout still require further qualification.
 
 The earlier schema-replay-only checkpoint measured 32.804228 s against 33.112641 s
 (-0.9%, one comparison), with 564 more linked bytes; it predates this conditional
@@ -270,5 +281,5 @@ The 24-case native matrix passes on 68020/6502 (12 exact positives, 12 expected
 rejections); six final Bin/Hex/S-record controls and the prior Hunk BSS regression
 match live Rust. The complete original syntax root remains incomplete at its
 labeled conditional on line 280. [Separate timing and memory measurements](../performance/vm-efficiency.md#shared-byte-reservations-bs37)
-show no material unchanged-path regression. Dynamic ownership and full self-host
-qualification remain pending.
+show no material unchanged-path regression. The expanded ownership matrix and full current-source self-host
+qualification have separate coverage; no full opcore claim is made.

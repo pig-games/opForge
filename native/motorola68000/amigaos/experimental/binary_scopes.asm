@@ -2970,9 +2970,12 @@ deferredReplacement
 	moveq #0, d0
 	rts
 conditionalCandidate
-	; Deferred branches may contain alternative definitions. Keep their
-	; shared lexical ID; the runtime inventory rejects duplicate active RHSs.
+	; Branches and unmaterialized loops may contain alternative definitions.
+	; Keep their shared lexical ID; replay rejects duplicate actual executions.
 	tst.w layout.State.Deferred(a6)
+	bne.w conditionalOwnership
+	move.w layout.State.LoopDepth(a6), d0
+	cmp.w layout.State.MaterializedLoops(a6), d0
 	bne.w conditionalOwnership
 	move.l a0, -(sp)
 	lea layout.ITERATOR_STATE(a6), a0
@@ -2985,6 +2988,9 @@ conditionalOwnership
 	btst #records.MUTABLE_BIT-8, records.Entry.Flags(a3)
 	bne.w bad
 	tst.w layout.State.Deferred(a6)
+	bne.w candidate
+	move.w layout.State.LoopDepth(a6), d0
+	cmp.w layout.State.MaterializedLoops(a6), d0
 	bne.w candidate
 	move.w records.Entry.Flags(a3), d0
 	andi.w #records.CONDITIONAL_VALUE, d0
@@ -3005,7 +3011,11 @@ firstDeclaration
 	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 4(a0)
 	bne.w declarationKind
 	tst.w layout.State.Deferred(a6)
+	bne.w firstControlled
+	move.w layout.State.LoopDepth(a6), d0
+	cmp.w layout.State.MaterializedLoops(a6), d0
 	beq.w declarationKind
+firstControlled
 	ori.w #records.CONDITIONAL_VALUE, records.Entry.Flags(a3)
 declarationKind
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)

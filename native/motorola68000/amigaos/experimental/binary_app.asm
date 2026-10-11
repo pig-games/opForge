@@ -35,6 +35,7 @@
 	.use experimental.amigaos.binary_repeat_activation as activation
 	.use experimental.amigaos.binary_branches as branches
 	.use experimental.amigaos.binary_repetition as repetition
+	.use experimental.amigaos.binary_scalar_observations as scalar_observations
 .ifdef OPFORGE_PREPARATION_PROGRESS
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_encoding as encoding
@@ -86,6 +87,7 @@ PROGRESS_PREPARATION_FAILURE = 301
 PROGRESS_SCOPED_ROOTS = 310
 PROGRESS_SCOPED_SIZING = 311
 PROGRESS_SCOPED_ITERABLE = 312
+PROGRESS_SCALAR_OBSERVATIONS = 313
 STEP_MATERIALIZE = 3
 STEP_INDEX = 4
 STEP_SELECT = 5
@@ -1323,6 +1325,7 @@ assemble
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ROOTS, activation.Selections, activation.Roots, activation.GlobalSelections
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_SIZING, assembly.SizingPasses, branches.DeferredEvaluations, #0
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ITERABLE, repetition.IterableScopes, repetition.IterableBindings, #0
+	.MEMORY_PROGRESS DosBase, #PROGRESS_SCALAR_OBSERVATIONS, scalar_observations.ActivePasses, scalar_observations.ChangedRows, scalar_observations.RestoredRows
 	rts
 bad
 	moveq #1, d0

@@ -5,9 +5,13 @@
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_binding_layout as layout
+	.use experimental.amigaos.binary_declaration_activity as activity
 	.pub
 HEADER_BYTES = layout.HEADER_BYTES
 CANDIDATE_BYTES = layout.CANDIDATE_HEADER_BYTES
+ACTIVE = activity.ACTIVE
+INACTIVE = activity.INACTIVE
+UNKNOWN = activity.UNKNOWN
 	.section code, kind=code
 ; A0=Owner,A1=external concatenated BE plans,D0=bytes. D0/CCR=status.
 ; Other registers preserved. Validate before reserve/copy; source cannot alias
@@ -134,6 +138,13 @@ clear	.block
 	moveq #values.OK, d0
 	rts
 	.bend  ; clear
+
+; A0=Owner,D1=canonical candidate ID. D0/CCR=status,D2=declaration activity.
+; Completed execution, rather than Defined or Kind, decides candidate priority.
+; Other registers preserved. This does not evaluate any candidate expression.
+declaration	.block
+	jmp activity.declaration
+	.bend  ; declaration
 	.priv
 ; A0=Owner,A1=bounded header,D2=remaining bytes. D0/CCR=status,D2=planbytes.
 ; Other registers preserved. Bounds every chain before reading its numeric IDs.

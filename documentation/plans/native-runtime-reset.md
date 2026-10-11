@@ -21,16 +21,16 @@ then report remaining limits and wait.
 
 ## Current evidence and limits
 
-The fresh frozen-image BS36/schema correctness-only opcore audit completed all 86
-roots under the fresh-run protocol: 29 positive roots match all requested live
-Rust artifacts exactly, 36 expected-negative roots reject with diagnostics (not
-exact diagnostic parity), and 21 positive roots exit 20. Compared with the prior
-full audit, exactly `text_encoding.asm` and `text_encoding_definitions.asm`
-improved; no previously passing positive root regressed. The 370.69-second
-correctness-batch duration includes harness overhead and is not a performance
-measurement. This does not qualify complete opcore or CPU-family parity. The Rust
-reference audit matches 81 roots; five expected-error roots lack comparable
-partial artifacts for the stricter audit.
+The fresh frozen-image BS37/reservation correctness-only opcore audit completed
+all 86 roots under the fresh-run protocol: 29 positive roots match all requested
+live Rust artifacts exactly, 36 expected-negative roots reject with diagnostics
+(not exact diagnostic parity), and 21 positive roots exit 20. No pass/rejection
+status changed from the BS36/schema audit. The large `syntax.asm` root advances
+from `.ds` on line 114 to a labeled conditional on line 280; it remains failing.
+The 371.93-second correctness batch includes harness overhead and is not a
+performance measurement. This does not qualify complete opcore or CPU-family
+parity. The Rust reference audit matches 81 roots; five expected-error roots lack
+comparable partial artifacts for the stricter audit.
 
 The 21 remaining positive failures group by fixture: five statement signature or
 expansion roots (`statement_boundary_span`, `statement_capture_types`,
@@ -108,18 +108,29 @@ bytes in 1.801896042 s of release execution. Separate MEMD telemetry reports a
 641,792-byte peak, 1,031,784 bytes allocated and freed, and zero live bytes after
 cleanup. The unchanged 1,200-call release control changes from 33.089063959 to
 33.094098333 s (+0.02%, one pair; no measurable change).
-The repair retains whole-value conditional candidates and no kind fallback after a
-longer scalar selection. V4 additionally retains readonly declarations in deferred
-ordinary-loop branches; unknown/mutable, PC-dependent and loop-dependent values
-remain conservative. The full v4 matrix completes 50 fresh cases: 30 positive exact
-artifact matches, 16 expected diagnostic rejections and four positive failures
-(inactive ordinary-loop declarations, single/repeated, on both CPUs). Rejections
-do not establish exact diagnostic parity; 242.91 seconds is correctness-only
-harness duration. Frozen v4 release size is 674,344 bytes and linked size 707,612
-bytes (+3,476 and +3,560 over committed `271fa942`). V4's instrumented unchanged
-control retains a 1,282,328-byte owned-memory peak, 3,182,104 bytes allocated/freed
-and zero live bytes; it skips the lazy guard table. These `68020-10m` checks do
-not qualify the 2 MiB product target. The earlier schema-replay-only comparison
+The current native repair separates executed immutable declaration activity from
+stored values. Ordinary-loop candidates no longer enter eager dependency indexing;
+unknown owners defer, only completed inactive owners allow shorter-name fallback,
+and an active owner retains its identity before value availability. Private scalar
+observations preserve numeric layout history across sizing resets without retaining
+compound pointers or granting immutable certificates.
+
+The expanded matrix completes 112 fresh cases on both CPUs: 62 exact positive
+artifacts, 40 expected diagnostic rejections and ten positive mapped-section
+failures. The mapped no-loop baseline fails too; its output-resolution defect is
+independent of activity and remains the next repair. The 523.12-second batch is
+correctness-only and does not qualify exact diagnostic text. Rust `7073f2de`
+reconciles inactive readonly source symbols after completed sizing convergence.
+
+The isolated unchanged release control takes 33.291479875 s versus BS37's
+32.955889917 s (+1.02%, one sample each). Image and linked reservation grow 3,092
+and 2,960 bytes. Separate telemetry increases unchanged-control peak owned memory
+by 16 bytes; all allocations are freed. The activity feature control peaks at
+690,392 bytes and exercises two observation passes and one restored scalar row.
+[Measurement details](../performance/vm-efficiency.md#executed-declaration-activity-and-scalar-observations)
+identify the frozen artifacts and limits. These `68020-10m` checks do not qualify
+the 2 MiB product target or a fresh full current-source self-host.
+The earlier schema-replay-only comparison
 (33.112641 to 32.804228 s, -0.9%, with 564 more linked bytes) predates this
 repair. UTF-8 preservation in Rust
 macro preprocessing is repaired in `a616140f`, with all 26 preprocessing tests and
@@ -152,6 +163,28 @@ one sample per state), with 424 more executable bytes and 396 more linked bytes.
 Separate telemetry reports only 16 additional owned bytes at peak and zero live
 bytes after cleanup. See the [measurement details](../performance/vm-efficiency.md#shared-byte-reservations-bs37).
 No new full current-source self-host or 2 MiB qualification is claimed.
+
+## Immediate shared-language sequence
+
+1. Ordinary-loop declaration activity now has the focused coverage above. Extend
+   coverage independently of stored values where further gaps appear.
+   Only a completed inactive occurrence permits shorter member-name fallback;
+   unresolved activity defers and an executed longer owner keeps ownership even
+   before its value is available. Retain numeric scalar layout observations
+   separately where forward label-dependent conditions need another sizing sweep.
+2. Repair flat output selection/layout for ordinary sections alongside mapped
+   imported sections. The reduced no-loop example fails at output resolution:
+   the current mapped lookup ignores ordinary section names. This is separate
+   from declaration activity; retain the valid Rust cases during the repair.
+3. Normalize optional leading labels in shared packed conditional classification.
+   Publish a control-line label when its parent is active, including an unselected
+   `.if`/`.elseif`/`.else`; suppress nested labels beneath inactive parents. Cover
+   canonical colonless labels and colon forms without source-text fallbacks.
+
+Each outcome needs fresh positive and negative native controls, separate release
+and memory measurements, and a review of numeric execution ownership. Continue
+through the remaining shared-language gaps after these repairs; optimization
+shortcuts remain deferred until parity qualification.
 
 ## Complete and qualify a slice
 

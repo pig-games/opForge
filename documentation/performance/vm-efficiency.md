@@ -398,3 +398,43 @@ totals both rise from 3,182,104 to 3,182,120. Terminal live bytes remain zero. P
 source stays 27,022 bytes; runtime prefix changes from 425,504 to 425,506. The
 instrumented 34.231945625-second result is not release timing. These measurements
 do not qualify physical A6000 speed, full current-source self-hosting or 2 MiB fit.
+
+## Executed declaration activity and scalar observations
+
+This repair separates executed immutable owners from value availability and
+retains private numeric layout observations across bounded sizing retries.
+Measurements use the same 11,592-byte/1,200-call control, both embedded packages,
+FS-UAE `68020-10m`, and disabled telemetry. Host builds were paused for the final
+release sample. Each timed run completes freshly and matches the live Rust output.
+
+| State | START-to-DONE seconds | Image bytes | Linked reservation bytes |
+|---|---:|---:|---:|
+| BS37 reservation baseline | 32.955889917 | 674,768 | 708,008 |
+| Execution activity, before scalar observations | 33.160440833 | 676,792 | 709,968 |
+| Execution activity plus scalar observations | 33.291479875 | 677,860 | 710,968 |
+
+Activity alone adds 0.62%; the subsequent scalar-observation change adds 0.40%
+relative to that intermediate state. The combined difference is +1.02% over
+BS37. One sample per state supports no material regression, not a precise speed
+claim. Final executable and linked storage grow 3,092 and 2,960 bytes over BS37.
+Release SHA-256:
+`a4323bcf85b64ce761d10c8b928a74b10c75175c4fc1d16d80f4205118c355ca`.
+The new gated work counters leave this release image byte-identical.
+The optional labeled-conditional PRVM classifier change was excluded from this
+frozen source build; its consumer integration and costs remain a separate slice.
+
+Separate instrumented unchanged-control proof reports peak owned memory 1,282,360
+bytes (+16 over BS37), allocated/freed 3,182,136 bytes and zero live bytes. Packed
+source remains 27,022 bytes; runtime prefix remains 425,506 bytes. Its
+34.597685583-second result is instrumented timing, not release performance.
+
+A separate 356-byte feature source produces 278 packed bytes and exercises the
+lazy activity maps and scalar rows. It peaks at 690,392 owned bytes, allocates and
+frees 1,079,392 bytes, and leaves zero live bytes. Compared with the intermediate
+activity-only feature run, peak increases 27,928 bytes (+4.22%). Aggregate phase
+313 reports two passes with observation rows, zero changed rows and one restored
+row. The instrumented 2.042653542-second result is not release performance; the
+old baseline rejected this feature, so no feature speedup comparison is claimed.
+Instrumented image SHA-256:
+`f648d3d690526866d86e032c9fc11290e6ef4116db13f9882a9e3452b58f0e5d`.
+No physical A6000 speed, full current-source self-host or 2 MiB fit is claimed.

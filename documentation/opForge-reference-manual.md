@@ -1026,6 +1026,10 @@ section exists and has a compatible kind. Use an explicit map entry when section
 names differ, when routing dependencies from one reusable module to another, or
 when you want to route the imported material elsewhere.
 
+Placement reserves reachable mapped bytes after the concrete section's own
+content before placing later sections. Pruned blocks consume no region space;
+region capacity and alignment checks apply to the combined extent.
+
 Each logical section currently has one concrete target per assembly. Distinct
 logical sections cannot yet share a mapped target; these cases report an error
 instead of emitting overlapping addresses.

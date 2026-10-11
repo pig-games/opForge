@@ -7476,8 +7476,10 @@ fn execution_model_uses_package_tabl_programs_for_vm_encode() {
         build_hierarchy_chunks_from_registry(&registry).expect("hierarchy chunks build");
     let mut patched = false;
     for program in &mut chunks.tables {
-        let is_mos6502_family_owner = matches!(&program.owner, ScopedOwner::Family(owner) if owner.eq_ignore_ascii_case("mos6502"));
-        if is_mos6502_family_owner
+        // CPU-owned tables override family rows. Mutate the row this resolved
+        // pipeline actually selects, so the assertion proves package authority.
+        let is_m6502_cpu_owner = matches!(&program.owner, ScopedOwner::Cpu(owner) if owner.eq_ignore_ascii_case("m6502"));
+        if is_m6502_cpu_owner
             && program.mnemonic.eq_ignore_ascii_case("lda")
             && program.mode_key.eq_ignore_ascii_case("immediate")
         {

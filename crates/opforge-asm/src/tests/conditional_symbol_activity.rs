@@ -104,3 +104,55 @@ fn conditional_symbol_activity_preserves_incoming_readonly_configuration() {
         vec![(0, 9), (1, 22), (2, 0)]
     );
 }
+
+#[test]
+fn conditional_symbol_activity_typed_observations_follow_executed_owner() {
+    for cpu in ["6502", "68020"] {
+        for replacement in ["", "saved .const 5\n"] {
+            let source = format!(".cpu {cpu}\n.byte saved.value\nitems .bfor 1\nvalue .const 12\n.endfor\n.if !enabled\nsaved .const items[0]\n.else\n{replacement}.endif\nenabled .const start>0\n.byte 0\nstart\n");
+            let lines = source.lines().map(str::to_string).collect::<Vec<_>>();
+            let mut assembler = Assembler::new();
+            let first = assembler.pass1(&lines);
+            if first.errors == 0 {
+                let mut output = Vec::new();
+                let mut listing = ListingWriter::new(&mut output, false);
+                assert!(
+                    assembler.pass2(&lines, &mut listing).unwrap().errors > 0,
+                    "{cpu}: stale typed observation survived replacement {replacement:?}"
+                );
+            }
+            assert!(
+                assembler
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.severity == Severity::Error),
+                "{cpu}: obsolete record owner accepted: {:?}",
+                assembler.diagnostics
+            );
+        }
+    }
+}
+
+#[test]
+fn conditional_symbol_activity_forward_import_replaces_scalar_prefix() {
+    let source = ".module app\n.cpu 6502\napp.pick .const 1\n.byte pick.value+1\n.use provider as pick\n.endmodule\n.module provider\n.pub\nvalue .const 7\n.endmodule";
+    let assembler = run_passes(&source.lines().collect::<Vec<_>>());
+    assert_eq!(assembler.image().entries().unwrap(), vec![(0, 8)]);
+
+    let source = ".cpu 6502\nscalar .const 1\n.byte scalar.value+1";
+    let lines = source.lines().map(str::to_string).collect::<Vec<_>>();
+    let mut assembler = Assembler::new();
+    if assembler.pass1(&lines).errors == 0 {
+        let mut output = Vec::new();
+        let mut listing = ListingWriter::new(&mut output, false);
+        assert!(assembler.pass2(&lines, &mut listing).unwrap().errors > 0);
+    }
+    assert!(
+        assembler
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.severity == Severity::Error),
+        "{:?}",
+        assembler.diagnostics
+    );
+}

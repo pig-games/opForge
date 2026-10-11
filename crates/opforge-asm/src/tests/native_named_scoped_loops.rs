@@ -274,7 +274,6 @@ const DOTTED_POSITIVE: &[(&str, &str, &[u8])] = &[
     ("plain-record", "items .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[0]\n.byte saved.value\n", &[2,4,12]),
     ("namespace-record", ".namespace library\nitems .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[1]\n.endnamespace\n.byte library.saved.value,main.library.saved.value\n", &[2,4,14,14]),
     ("nested-record", "start\nouter .bfor item in {2,4}\ninner .bfor child in {7,8}\nentry .byte child\nvalue .const item+child\n.endfor\n.endfor\nsaved .const outer[1]\nchild .const saved.inner[1]\n.byte saved.inner[0].value,child.value,child.entry-start\n", &[7,8,7,8,11,12,3]),
-    ("scalar-prefix-record-fallback", "items .bfor 1\ninner .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nchild .const inner[0]\n.endfor\nsaved .const items[0]\nsaved.child .const 5\n.byte saved.child.value\n", &[2,12]),
     ("qualified-scalar", "scalar .const 5\nscalar.child .const 17\n.byte scalar.child\n", &[17]),
     ("record-qualified-collision", "items .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nsaved .const items[0]\nsaved.value .const 99\n.byte saved.value,(saved).value\n", &[2,99,12]),
     ("forward-qualified-record", "items .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nsaved .const items[0]\n.byte saved.value,(saved).value\nsaved.value .const 99\n", &[2,99,12]),
@@ -282,6 +281,7 @@ const DOTTED_POSITIVE: &[(&str, &str, &[u8])] = &[
 ];
 
 const DOTTED_BAD: &[(&str, &str)] = &[
+    ("scalar-prefix-owner-rejects-member", "items .bfor 1\ninner .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nchild .const inner[0]\n.endfor\nsaved .const items[0]\nsaved.child .const 5\n.byte saved.child.value\n"),
     ("missing-record-member", "items .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nsaved .const items[0]\n.byte saved.missing\n"),
     ("longest-record-missing-member", "items .bfor 1\ninner .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nchild .const inner[0]\n.endfor\nother .bfor 1\nother_value .const 9\n.byte 3\n.endfor\nsaved .const items[0]\nsaved.child .const other[0]\n.byte saved.child.value\n"),
 ];
@@ -331,8 +331,10 @@ fn native_named_record_dotted_alias_rust_oracle() {
 fn native_named_record_forward_binding_rust_oracle() {
     let dir = scratch();
     for cpu in ["68020", "6502"] {
-        let error = oracle(&dir.0, &source(cpu, FORWARD_RECORD)).unwrap_err();
-        assert!(error.contains("Label not found: saved.value"), "{error}");
+        assert_eq!(
+            oracle(&dir.0, &source(cpu, FORWARD_RECORD)).unwrap(),
+            [12, 2, 4]
+        );
         let body = "scalar .const 5\n.byte scalar.child\nscalar.child .const 17\n";
         assert_eq!(oracle(&dir.0, &source(cpu, body)).unwrap(), [17]);
     }
@@ -366,7 +368,7 @@ fn native_named_record_dotted_alias_fs_uae() {
                     .map(|(n, b, _)| (*n, *b, false)),
             )
             .chain(DOTTED_BAD.iter().map(|(n, b)| (*n, *b, true)))
-            .chain(std::iter::once(("forward-record", FORWARD_RECORD, true)))
+            .chain(std::iter::once(("forward-record", FORWARD_RECORD, false)))
         {
             if !selected(name) {
                 continue;

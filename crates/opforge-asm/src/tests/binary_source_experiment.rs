@@ -9,6 +9,8 @@ use crate::binary_source_experiment::prepare_package;
 const PACKAGE_HEADER_BYTES: usize = crate::binary_source_experiment::HEADER;
 const BRANCH_PLAN_OFFSET: usize = 220;
 const BRANCH_PLAN_BYTES_OFFSET: usize = 224;
+const TEXT_PLAN_OFFSET: usize = 228;
+const TEXT_PLAN_BYTES_OFFSET: usize = 232;
 use crate::fs_uae_smoke::FsUaeSmokeOutcome;
 use vm::runtime_model_core::RuntimeModelCore;
 
@@ -230,8 +232,12 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         assert_eq!(long(BRANCH_PLAN_OFFSET), (long(212) + long(216) + 1) & !1);
         assert_eq!(long(BRANCH_PLAN_BYTES_OFFSET), 20);
         assert_eq!(
-            long(180),
+            long(TEXT_PLAN_OFFSET),
             (long(BRANCH_PLAN_OFFSET) + long(BRANCH_PLAN_BYTES_OFFSET) + 1) & !1
+        );
+        assert_eq!(
+            long(180),
+            (long(TEXT_PLAN_OFFSET) + long(TEXT_PLAN_BYTES_OFFSET) + 1) & !1
         );
         let declaration_end = (long(180) + long(184) + 1) & !1;
         let state_end = if long(192) == 0 {

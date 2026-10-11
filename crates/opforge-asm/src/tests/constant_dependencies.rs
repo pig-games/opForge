@@ -61,14 +61,16 @@ fn constant_dependencies_forward_typed_alias_errors_are_not_placeholders() {
         "Info .struct\nvalue .byte ?\n.endstruct\nfirst .const second\nsecond .var Info {value:66}\n.byte first.value",
         "Info .struct\nvalue .byte ?\n.endstruct\nfirst .const second\nsecond .const Info {value:$}\n.byte first.value",
     ] {
-        let mut assembler = run_pass1(&body.lines().collect::<Vec<_>>());
-        if !assembler.diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error) {
-            let lines = body.lines().map(str::to_owned).collect::<Vec<_>>();
-            let mut output = Vec::new();
-            let mut listing = ListingWriter::new(&mut output, false);
-            let _ = assembler.pass2(&lines, &mut listing);
+        for body in [body.to_owned(), format!(".module main\n{body}\n.endmodule")] {
+            let mut assembler = run_pass1(&body.lines().collect::<Vec<_>>());
+            if !assembler.diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error) {
+                let lines = body.lines().map(str::to_owned).collect::<Vec<_>>();
+                let mut output = Vec::new();
+                let mut listing = ListingWriter::new(&mut output, false);
+                let _ = assembler.pass2(&lines, &mut listing);
+            }
+            assert!(assembler.diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error), "invalid alias accepted: {body}");
         }
-        assert!(assembler.diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error), "invalid alias accepted: {body}");
     }
 }
 

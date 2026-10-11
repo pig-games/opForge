@@ -64,11 +64,30 @@ impl AsmLine<'_> {
         }
     }
 
-    /// A longer skipped declaration can postpone owner selection only while
-    /// its guard is unresolved. It does not provide a symbol or typed value.
+    /// Unresolved guards and forward module qualifiers can postpone owner
+    /// selection during collection without providing a symbol or typed value.
     pub(super) fn member_binding_is_deferred(&self, expr: &Expr) -> bool {
-        if self.deferred_declaration_names.is_empty() && self.deferred_value_names.is_empty() {
-            return false;
+        // A forward import qualifier may later replace a scalar lexical prefix.
+        // Defer this incomplete path during collection; finalized evaluation
+        // must resolve the actual qualified owner or reject scalar members.
+        if self.pass == 1 && self.symbol_scope.module_active.is_some() {
+            if let Some(path) = Self::member_path(expr) {
+                if path.contains('.') && self.resolve_scoped_name(&path).ok().flatten().is_none() {
+                    if let Some(owner_expr) = self.member_owner_expression(&path, expr_span(expr)) {
+                        let mut base = &owner_expr;
+                        while let Expr::Member { base: inner, .. } = base {
+                            base = inner;
+                        }
+                        if let Expr::Identifier(owner, _) = base {
+                            if self.symbols.entry(owner).is_some()
+                                && self.lookup_value_symbol(owner).is_none()
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
         }
         let Some(path) = Self::member_path(expr) else {
             return match expr {

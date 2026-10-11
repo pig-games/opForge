@@ -269,6 +269,15 @@ The earlier schema-replay-only checkpoint measured 32.804228 s against 33.112641
 repair and is not its performance result. Full opcore parity and a fresh full
 current-source self-host remain pending; BS35 is the latest qualified self-host.
 
+Rust forward named iteration records now retain observations from executed
+immutable owners independently of dependency-graph certification. Ordinary
+contextual typed aliases still require their existing certificate; inactive or
+replaced owners cannot retain a stale record. Forward module import qualifiers
+can defer incomplete scalar-prefix lookup during collection, with strict final
+resolution. The older scalar-prefix fallback oracle now expects rejection from
+its executed longer owner. Focused host coverage passes; native forward-record
+parity is a separate pending positive case.
+
 ### Shared reservation checkpoint
 
 BS37 adds numeric `.ds` binding to shared expression preparation and the assembly

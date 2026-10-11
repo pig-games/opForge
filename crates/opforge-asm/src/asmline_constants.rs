@@ -18,24 +18,27 @@ pub(super) struct Definition {
 }
 
 impl AsmLine<'_> {
-    pub(crate) fn seed_immutable_values(&mut self, values: HashMap<String, AsmValue>) {
+    // Previous executed typed owners seed forward references as observations,
+    // without certifying their dependencies or current traversal ownership.
+    pub(crate) fn seed_typed_value_observations(&mut self, values: HashMap<String, AsmValue>) {
         self.value_symbols.extend(values);
     }
-    pub(crate) fn resolved_immutable_values(&self) -> HashMap<String, AsmValue> {
+    pub(crate) fn executed_typed_value_observations(&self) -> HashMap<String, AsmValue> {
         self.constant_definitions
             .iter()
             .filter(|definition| {
-                self.immutable_value_constants.contains(&definition.name)
-                    && self
-                        .active_constant_owners
-                        .contains(&Self::value_symbol_key(&definition.name))
+                self.active_constant_owners
+                    .contains(&Self::value_symbol_key(&definition.name))
             })
             .filter_map(|definition| {
                 let key = Self::value_symbol_key(&definition.name);
-                self.value_symbols
-                    .get(&key)
-                    .cloned()
-                    .map(|value| (key, value))
+                let value = self.value_symbols.get(&key)?;
+                // Iteration records are finalized lexical observations, even
+                // when their producers depend on layout or iterator bindings.
+                // Other contextual typed aliases retain source-order semantics.
+                (self.immutable_value_constants.contains(&definition.name)
+                    || matches!(value, AsmValue::Record { .. }))
+                .then(|| (key, value.clone()))
             })
             .collect()
     }

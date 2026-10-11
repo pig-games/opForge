@@ -154,8 +154,23 @@ Reuse mapping freeze/check/merge, placement, section bounds and relocation owner
 Preserve section provenance through values and repetition records. A provisional
 numeric address is not automatically absolute. Mapping changes require another
 bounded complete sizing round, never prefix reassembly after each statement.
-Remove existing mapped-loop capability rejections only after positive and
-negative fresh native proof for the replacement.
+The focused mapped-loop capability rejections are removed after positive fresh
+native proof; the mapped-flat repair results follow.
+
+The focused mapped-flat output repair now passes all ten former mapped owner
+cases freshly and exactly on 6502 and 68020. Seven mapped Hunk controls are also
+exact, covering reversed output selection, dependency-first assembly and two
+logical destinations; Hunk BSS instruction relocation matches exactly. The
+implementation resolves slots from actual geometry, orders concrete first
+declarations, tracks logical alias destinations, selects contiguous flat output,
+and keeps BSS `initializedLimit` separate from `size`. Map v2/v3 are byte-identical;
+the v3 image is 678,120 bytes and linked reservation 711,228 bytes (+260 versus
+activity v7), with no state memory growth. This focused result does not establish
+a fresh full self-host or 2 MiB fit.
+
+The separate 24-case `.ds` matrix passes with 12 exact artifacts and 12 expected
+rejections across both CPUs. The unchanged `syntax.asm` still rejects at labeled
+`.if` line 280; this is not a full corpus qualification.
 
 ## Implementation and evidence
 
@@ -238,11 +253,11 @@ survive sizing resets independently of compound descriptor arenas. Final emissio
 remains strict; no compound pointer or immutable certificate is restored from an
 observation.
 
-The final 112-case matrix completes freshly across 68020 and 6502: 62 exact
-positive artifacts and 40 expected diagnostic rejections. Ten positive mapped
-section cases still fail before execution, including the no-loop baseline; their
-output-resolution repair is the next slice. Expected rejections do not qualify
-exact diagnostic text. The 523.12-second batch duration is correctness-only.
+The activity checkpoint's 112-case matrix completed across 68020 and 6502: 62
+exact positive artifacts, 40 expected diagnostic rejections and ten mapped
+section failures. The counts are historical; that matrix was not rerun after the
+mapped-flat repair. Expected rejections do not qualify exact diagnostic text.
+The 523.12-second batch duration is correctness-only.
 Rust commit `7073f2de` also removes readonly source symbols that become inactive
 following sizing convergence while retaining incoming configuration and schema
 metadata. This corrects a target-dependent stale-label result.

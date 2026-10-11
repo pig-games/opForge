@@ -115,12 +115,12 @@ and an active owner retains its identity before value availability. Private scal
 observations preserve numeric layout history across sizing resets without retaining
 compound pointers or granting immutable certificates.
 
-The expanded matrix completes 112 fresh cases on both CPUs: 62 exact positive
-artifacts, 40 expected diagnostic rejections and ten positive mapped-section
-failures. The mapped no-loop baseline fails too; its output-resolution defect is
-independent of activity and remains the next repair. The 523.12-second batch is
-correctness-only and does not qualify exact diagnostic text. Rust `7073f2de`
-reconciles inactive readonly source symbols after completed sizing convergence.
+The activity checkpoint's 112-case matrix completed on both CPUs: 62 exact
+positive artifacts, 40 expected diagnostic rejections and ten mapped-section
+failures. Those counts remain historical; the matrix was not rerun after the
+mapped-flat repair. The 523.12-second batch is correctness-only and does not
+qualify exact diagnostic text. Rust `7073f2de` reconciles inactive readonly
+source symbols after completed sizing convergence.
 
 The isolated unchanged release control takes 33.291479875 s versus BS37's
 32.955889917 s (+1.02%, one sample each). Image and linked reservation grow 3,092
@@ -130,6 +130,21 @@ by 16 bytes; all allocations are freed. The activity feature control peaks at
 [Measurement details](../performance/vm-efficiency.md#executed-declaration-activity-and-scalar-observations)
 identify the frozen artifacts and limits. These `68020-10m` checks do not qualify
 the 2 MiB product target or a fresh full current-source self-host.
+
+The mapped-flat repair now passes all ten former mapped owner cases freshly and
+exactly across 6502 and 68020. Seven mapped Hunk cases also match exactly,
+including reversed output selection, dependency-first assembly and two logical
+destinations; the Hunk BSS instruction-relocation regression is exact. The repair
+uses actual-geometry slot lookup, concrete first-declaration ordering, logical
+alias destinations and contiguous-flat selection, with BSS `initializedLimit`
+kept separate from `size`. It adds no state memory growth. Map v2 and v3 outputs
+are byte-identical. The v3 image is 678,120 bytes with 711,228 linked bytes
+(+260 bytes versus activity v7). No fresh full self-host or 2 MiB claim follows.
+The unchanged release control is 33.330524583 s versus 33.291479875 s (+0.12%,
+one pair); separate MEMD unchanged-control telemetry is unchanged from activity:
+1,282,360-byte peak, 3,182,136 allocated and freed, zero live, 27,022 packed
+bytes and a 425,506-byte prefix. The 34.441206458 s instrumented run is not
+release timing. See [mapped-flat measurements](../performance/vm-efficiency.md#mapped-flat-repair).
 The earlier schema-replay-only comparison
 (33.112641 to 32.804228 s, -0.9%, with 564 more linked bytes) predates this
 repair. UTF-8 preservation in Rust
@@ -172,10 +187,9 @@ No new full current-source self-host or 2 MiB qualification is claimed.
    unresolved activity defers and an executed longer owner keeps ownership even
    before its value is available. Retain numeric scalar layout observations
    separately where forward label-dependent conditions need another sizing sweep.
-2. Repair flat output selection/layout for ordinary sections alongside mapped
-   imported sections. The reduced no-loop example fails at output resolution:
-   the current mapped lookup ignores ordinary section names. This is separate
-   from declaration activity; retain the valid Rust cases during the repair.
+2. The mapped-flat output selection/layout repair is complete for its focused
+   cases above. Broaden ordinary and mapped section coverage during the next
+   source-order qualification; the old 112-case matrix was not rerun.
 3. Normalize optional leading labels in shared packed conditional classification.
    Publish a control-line label when its parent is active, including an unselected
    `.if`/`.elseif`/`.else`; suppress nested labels beneath inactive parents. Cover

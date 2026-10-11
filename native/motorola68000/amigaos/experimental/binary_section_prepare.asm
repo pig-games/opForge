@@ -41,10 +41,14 @@ REGION_NAMES = OUTPUT_SLOTS+8
 SCRATCH_BYTES = REGION_NAMES+8*2
 ; Seen bits: first logical/concrete/region/place, second concrete/region/place,
 ; second logical. Packed control opcodes 10/11 are second logical/concrete.
+SEEN_FIRST_LOGICAL = 1 << 0
 SEEN_FIRST_CONCRETE = 1 << 1
 SEEN_FIRST_PLACE = 1 << 3
 SEEN_SECOND_CONCRETE = 1 << 4
 SEEN_SECOND_PLACE = 1 << 6
+SEEN_SECOND_LOGICAL = 1 << 7
+SEEN_FIRST_MAPPED_DECLARATIONS = SEEN_FIRST_LOGICAL+SEEN_FIRST_CONCRETE
+SEEN_SECOND_MAPPED_DECLARATIONS = SEEN_SECOND_LOGICAL+SEEN_SECOND_CONCRETE
 SEEN_BOTH_CONCRETE_AND_PLACES = SEEN_FIRST_CONCRETE+SEEN_FIRST_PLACE+SEEN_SECOND_CONCRETE+SEEN_SECOND_PLACE
 CONTROL_SECTION = 1
 CONTROL_ENDSECTION = 2
@@ -85,8 +89,9 @@ clearMaps
 	.bend  ; begin
 
 ; A0=writer record,A1=scope state,A2=section state,D0=1..4.
-; Flat placement supports two mapped pairs or adjacent concrete regions; Hunk
-; layout shares eight source slots across concrete and mapped logical sections.
+; Legacy flat placement retains two adjacent concrete regions. Mapped layouts
+; share eight source slots across concrete and logical sections; numeric targets
+; select geometry independently of artifact format or map declaration order.
 ; Concrete opens carry [header,opcode,kind,slot,u32 alignment]; mapped
 ; logical opens append a destination slot before the alignment. Unmapped flat
 ; logical opens retain [header,opcode,kind]. Region/place controls carry
@@ -750,7 +755,7 @@ mapDone
 	rts
 	.bend  ; importMap
 
-	; Resolve flat output references after declarations, without allocating layout
+; Resolve flat output references after declarations, without allocating layout
 ; identities. A0=packed records,D0=bytes,A1=scope state,A2=section state.
 ; Numeric u16 source IDs become u16 runtime slots in place; record size is stable.
 ; D0/CCR=status; other registers preserved. Hunk records already contain slots.
@@ -836,42 +841,30 @@ finish	.block
 	bra.w finished
 flatFinish
 	move.w State.MapCount(a0), d1
-	cmpi.w #2, d1
-	bne.w secondCheck
-	tst.w State.Second(a0)
-	beq.w badFinish
-secondCheck
+	beq.w legacyFlatFinish
+	move.w State.Seen(a0), d0
+	andi.w #SEEN_FIRST_MAPPED_DECLARATIONS, d0
+	cmpi.w #SEEN_FIRST_MAPPED_DECLARATIONS, d0
+	bne.w badFinish
+	cmpi.w #1, d1
+	beq.w finished
+	move.w State.Seen(a0), d0
+	andi.w #SEEN_SECOND_MAPPED_DECLARATIONS, d0
+	cmpi.w #SEEN_SECOND_MAPPED_DECLARATIONS, d0
+	bne.w badFinish
+	bra.w finished
+legacyFlatFinish
 	tst.w State.Second(a0)
 	beq.w noSecond
 	move.w State.Seen(a0), d0
-	; Both placements may share a region. Referenced region identities were
-	; already checked against their declarations above.
 	andi.w #SEEN_BOTH_CONCRETE_AND_PLACES, d0
 	cmpi.w #SEEN_BOTH_CONCRETE_AND_PLACES, d0
 	bne.w badFinish
 noSecond
 	tst.w State.SecondRegion(a0)
-	beq.w mapFinish
-	tst.w State.Second(a0)
-	beq.w badFinish
-mapFinish
-	tst.w d1
 	beq.w finished
-	move.w State.Seen(a0), d0
-	andi.w #3, d0
-	cmpi.w #3, d0
-	bne.w badFinish
-	cmpi.w #1, d1
-	beq.w oneMap
-	cmpi.w #2, d1
-	bne.w badFinish
-	move.w State.Seen(a0), d0
-	btst #7, d0
-	beq.w badFinish
-	bra.w finished
-oneMap
 	tst.w State.Second(a0)
-	bne.w badFinish
+	beq.w badFinish
 finished
 	moveq #0, d0
 	bra.w finishDone
@@ -885,19 +878,20 @@ finishDone
 	.bend  ; finish
 
 	.priv
-	; D1=section name,A4=section state,A6=scope state. Return placed slot 0/1
-; or -1. Output references never create sections or change declaration order.
+; D1=section name,A4=section state,A6=scope state. Return its shared
+; geometry slot or -1. Logical aliases select their concrete destination.
+; References never create sections or change declaration order.
 flatSlot	.block
 	movem.l d1-d5/a0, -(sp)
 	move.w d1, d5
 	tst.w State.MapCount(a4)
-	bne.w mapped
+	bne.w mappedSlots
 	moveq #0, d0
 	move.w State.Concrete(a4), d0
-	beq.w second
+	beq.w legacySecond
 	bsr.w sameLeaf
-	beq.w first
-second
+	beq.w legacyFirst
+legacySecond
 	moveq #0, d0
 	move.w State.Second(a4), d0
 	beq.w missing
@@ -905,33 +899,48 @@ second
 	bne.w missing
 	moveq #1, d0
 	bra.w done
-first
+legacyFirst
 	moveq #0, d0
 	bra.w done
-mapped
+mappedSlots
 	moveq #0, d4
 mapSlot
 	cmp.w State.MapCount(a4), d4
-	bhs.w missing
+	bhs.w lookup
 	move.l d4, d0
 	lsl.l #3, d0
 	lea MAPS(a4), a0
 	adda.l d0, a0
 	moveq #0, d0
-	move.w Map.Concrete(a0), d0
-	move.w d5, d1
-	bsr.w sameLeaf
-	beq.w found
-	moveq #0, d0
 	move.w Map.Logical(a0), d0
 	move.w d5, d1
 	bsr.w sameLeaf
-	beq.w found
+	bne.w nextMap
+	move.w Map.Concrete(a0), d5
+	bra.w lookup
+nextMap
 	addq.w #1, d4
 	bra.w mapSlot
-found
+lookup
+	moveq #0, d4
+slotName
+	cmp.w State.SlotCount(a4), d4
+	bhs.w missing
+	move.w d4, d2
+	add.w d2, d2
+	moveq #0, d0
+	move.w SLOT_NAMES(a4, d2.w), d0
+	move.w d5, d1
+	bsr.w sameLeaf
+	bne.w nextSlot
+	move.w State.Declared(a4), d0
+	btst d4, d0
+	beq.w missing
 	move.l d4, d0
 	bra.w done
+nextSlot
+	addq.w #1, d4
+	bra.w slotName
 missing
 	moveq #-1, d0
 done

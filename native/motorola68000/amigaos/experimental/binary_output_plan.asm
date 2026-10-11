@@ -123,22 +123,24 @@ done
 	rts
 	.bend  ; next
 
-; Resolve a bin/PRG selection against completed placed layout, never Hunk PCs.
+; Resolve bin/PRG selections against completed initialized payload geometry.
 ; A0=sections.State,A1=u16 slot words,D0=count,D1=total flat buffer bytes.
 ; Returns D0/CCR=status,D1=buffer offset,D2=bytes,D3=load address. Preserves
-; D4-D7/A0-A6. Only one/two placed contiguous sections exist in this subset.
+; D4-D7/A0-A6. Fragment geometry and legacy placed geometry share this API.
 range	.block
 	movem.l d4-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	move.l d1, d7
 	move.l d0, d6
 	beq.w bad
-	cmpi.w #2, d6
+	cmpi.w #sections.HUNK_SLOT_COUNT, d6
 	bhi.w bad
 	move.w sections.State.Mode(a6), d0
 	beq.w bad
 	cmpi.w #sections.HUNK_MODE, d0
-	beq.w bad
+	beq.w fragments
+	cmpi.w #2, d6
+	bhi.w bad
 	moveq #0, d4
 	moveq #0, d5
 	moveq #0, d3
@@ -191,6 +193,80 @@ size
 	cmp.l d7, d0
 	bhi.w bad
 	move.l d4, d1
+	moveq #0, d0
+	bra.w done
+fragments
+	; Limit freezes initialized Used bytes; BSS reservation changes Size only.
+	; Concrete ranges include their mapped initialized suffixes. Selection
+	; order must remain contiguous in both payload and logical address space.
+	moveq #0, d4  ; first payload offset
+	moveq #0, d5  ; initialized selection size
+	moveq #0, d3  ; load address
+	moveq #0, d0
+	movea.l d0, a4  ; first selection flag
+fragment
+	moveq #0, d0
+	move.w (a1)+, d0
+	cmpi.w #sections.HUNK_SLOT_COUNT, d0
+	bhs.w bad
+	move.l d0, d1
+	addq.w #1, d1  ; one-based mapped target
+	mulu.w #sections.HUNK_SLOT_BYTES, d0
+	lea sections.HUNK_SLOTS(a6), a0
+	adda.l d0, a0
+	tst.w sections.HunkSlot.Seen(a0)
+	beq.w bad
+	tst.w sections.HunkSlot.Target(a0)
+	bne.w bad
+	move.l sections.HunkSlot.Start(a0), d0
+	add.l sections.HunkSlot.Limit(a0), d0
+	bcs.w bad
+	lea sections.HUNK_SLOTS(a6), a2
+	lea sections.HUNK_SLOTS+sections.HUNK_SLOT_COUNT*sections.HUNK_SLOT_BYTES(a6), a3
+mappedExtent
+	cmp.w sections.HunkSlot.Target(a2), d1
+	bne.w nextExtent
+	move.l sections.HunkSlot.Start(a2), d2
+	add.l sections.HunkSlot.Limit(a2), d2
+	bcs.w bad
+	cmp.l d0, d2
+	bls.w nextExtent
+	move.l d2, d0
+nextExtent
+	adda.w #sections.HUNK_SLOT_BYTES, a2
+	cmpa.l a3, a2
+	blo.w mappedExtent
+	cmpa.w #0, a4
+	bne.w fragmentContinuation
+	movea.w #1, a4
+	move.l sections.HunkSlot.Start(a0), d4
+	move.l sections.HunkSlot.Origin(a0), d3
+	bra.w fragmentSize
+fragmentContinuation
+	move.l d4, d1
+	add.l d5, d1
+	bcs.w bad
+	cmp.l sections.HunkSlot.Start(a0), d1
+	bne.w bad
+	move.l d3, d1
+	add.l d5, d1
+	bcs.w bad
+	cmp.l sections.HunkSlot.Origin(a0), d1
+	bne.w bad
+fragmentSize
+	sub.l sections.HunkSlot.Start(a0), d0
+	bcs.w bad
+	add.l d0, d5
+	bcs.w bad
+	subq.w #1, d6
+	bne.w fragment
+	move.l d4, d0
+	add.l d5, d0
+	bcs.w bad
+	cmp.l d7, d0
+	bhi.w bad
+	move.l d4, d1
+	move.l d5, d2
 	moveq #0, d0
 	bra.w done
 bad

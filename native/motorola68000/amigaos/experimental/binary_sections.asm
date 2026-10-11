@@ -6,9 +6,11 @@
 	.use experimental.amigaos.binary_package as pkg
 	.pub
 KIND_BSS = 3
+CONTROL_LOGICAL_SECTION = 1
 CONTROL_FIRST_SECTION = 2
 CONTROL_MAPPED_CONCRETE = 6
 CONTROL_SECOND_SECTION = 7
+CONTROL_SECOND_LOGICAL_SECTION = 10
 CONTROL_SECOND_MAPPED_CONCRETE = 11
 CONTROL_EXTRA_SECTION = 12
 CONTROL_OUTPUT = 20
@@ -19,6 +21,10 @@ SourceLine	.word ?
 Opcode	.byte ?
 Kind	.byte ?
 	.endstruct
+; Mapped opens extend the common prefix with source and destination byte slots,
+; then one u32 alignment. The record length includes its four-byte header.
+MAPPED_CONTROL_ALIGNMENT = ControlRecord.Kind+3
+MAPPED_CONTROL_BYTES = MAPPED_CONTROL_ALIGNMENT+4
 Slot	.struct
 Base	.long ?
 End	.long ?
@@ -134,6 +140,15 @@ findLayout
 	blo.w bad
 	cmpi.b #CONTROL_OUTPUT, ControlRecord.Opcode(a4)
 	beq.w fragmentLayout
+	; Mapped controls carry actual source/destination slots. Their geometry
+	; must share the ordinary section table, independent of map ordinal.
+	cmpi.w #MAPPED_CONTROL_BYTES, d0
+	bne.w concreteLayout
+	cmpi.b #CONTROL_LOGICAL_SECTION, ControlRecord.Opcode(a4)
+	beq.w fragmentLayout
+	cmpi.b #CONTROL_SECOND_LOGICAL_SECTION, ControlRecord.Opcode(a4)
+	beq.w fragmentLayout
+concreteLayout
 	cmpi.w #ControlRecord.Kind+1, d0
 	blo.w nextLayout
 	moveq #0, d1
@@ -284,21 +299,9 @@ complete
 	bne.w fragmentComplete
 	tst.w State.HunkLayout(a6)
 	beq.w flatComplete
-	; No explicit artifact order: numeric slots were allocated in declaration
-	; order. Include BSS geometry while its initialized payload remains empty.
-	lea HUNK_SLOTS(a6), a5
-	lea ORDER(a6), a4
-	moveq #0, d2
-defaultOrder
-	tst.w HunkSlot.Seen(a5)
-	beq.w nextDefault
-	move.b d2, (a4)+
-	addq.w #1, State.OrderCount(a6)
-nextDefault
-	adda.w #HUNK_SLOT_BYTES, a5
-	addq.w #1, d2
-	cmpi.w #HUNK_SLOT_COUNT, d2
-	blo.w defaultOrder
+	; Without Hunk serialization, scanHunkControl retains concrete declaration
+	; order. Map destinations may reserve slots before ordinary declarations,
+	; so numeric source-slot order is not payload order.
 fragmentComplete
 	tst.w State.HunkInvalid(a6)
 	bne.w bad
@@ -440,6 +443,17 @@ storeAlign
 firstKind
 	move.w d3, HunkSlot.Kind(a5)
 	move.w #1, HunkSlot.Seen(a5)
+	tst.w State.OutputSeen(a6)
+	bne.w ok
+	tst.w HunkSlot.Target(a5)
+	bne.w ok
+	moveq #0, d0
+	move.w State.OrderCount(a6), d0
+	cmpi.w #HUNK_SLOT_COUNT, d0
+	bhs.w bad
+	lea ORDER(a6), a4
+	move.b d2, 0(a4, d0.w)
+	addq.w #1, State.OrderCount(a6)
 	bra.w ok
 output
 	cmpi.w #8, d0

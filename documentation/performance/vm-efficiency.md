@@ -438,3 +438,28 @@ old baseline rejected this feature, so no feature speedup comparison is claimed.
 Instrumented image SHA-256:
 `f648d3d690526866d86e032c9fc11290e6ef4116db13f9882a9e3452b58f0e5d`.
 No physical A6000 speed, full current-source self-host or 2 MiB fit is claimed.
+
+## Mapped-flat repair
+
+The mapped-flat v3 release-control image is 678,120 bytes with 711,228 linked
+reservation bytes, 260 bytes above activity v7. Map v2 and v3 artifacts are
+byte-identical. All ten former mapped owner cases pass freshly and exactly on
+6502 and 68020. Seven mapped Hunk cases match exactly, including reversed output
+selection, dependency-first assembly and two logical destinations; the Hunk BSS
+instruction-relocation case also matches. The focused repair covers actual-geometry
+slot lookup, concrete first-declaration ordering, logical alias destinations,
+contiguous-flat selection and separate BSS `initializedLimit`/`size`. It adds no
+state memory growth.
+
+The unchanged release control takes 33.330524583 s versus 33.291479875 s for
+activity (+0.12%, one pair). Separate MEMD unchanged-control telemetry is
+unchanged: 1,282,360-byte peak, 3,182,136 bytes allocated and freed, zero live
+bytes, 27,022 packed bytes and 425,506-byte runtime prefix. The 34.441206458 s
+instrumented run is not release timing. The existing 112-case activity matrix
+was not rerun; these focused results do not qualify a fresh full self-host or
+2 MiB fit. Logs: `/tmp/opforge-mapped-flat-v3-release-control.log`,
+`/tmp/opforge-mapped-flat-v3-memory-control.log`,
+`/tmp/opforge-mapped-flat-v3-ds-native.log`,
+`/tmp/opforge-mapped-flat-v3-hunk-bss.log`,
+`/tmp/opforge-mapped-flat-v3-hunk-mapped-native.log`; prior ten-case proof:
+`/tmp/opforge-mapped-flat-v2-mapped-native.log`.

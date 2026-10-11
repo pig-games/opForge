@@ -746,10 +746,15 @@ indexBranch	.block
 	adda.l pkg.Header.BranchPlan(a1), a1
 	jsr branch.classify
 	bne.w done
+	cmpi.l #branch.MATCH, d1
+	beq.w opening
 	cmpi.l #branch.IF, d1
 	beq.w opening
+	cmpi.l #branch.ENDMATCH, d1
+	beq.w closing
 	cmpi.l #branch.ENDIF, d1
 	bne.w good
+closing
 	tst.w BranchDepth
 	beq.w bad
 	subq.w #1, BranchDepth

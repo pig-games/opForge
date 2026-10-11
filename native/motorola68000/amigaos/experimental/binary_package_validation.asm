@@ -255,7 +255,7 @@ preparation
 	bne.w bad
 	cmpi.b #branches.OPCODE, branches.Program.Opcode(a3)
 	bne.w bad
-	cmpi.b #4, branches.Program.Count(a3)
+	cmpi.b #branches.HEAD_COUNT, branches.Program.Count(a3)
 	bne.w bad
 	cmpi.b #parser_abi.OP_PUBLISH, branches.Program.Publish(a3)
 	bne.w bad
@@ -270,15 +270,20 @@ branchRows
 	cmp.b branches.Row.Role(a2), d6
 	bne.w bad
 	moveq #0, d0
-	cmpi.w #2, d6
+	cmpi.w #branches.MATCH, d6
+	beq.w branchExpression
+	cmpi.w #branches.CASE, d6
+	beq.w branchExpression
+	cmpi.w #branches.ELSEIF, d6
 	bhi.w branchPolicy
+branchExpression
 	moveq #1, d0
 branchPolicy
 	cmp.b branches.Row.Expression(a2), d0
 	bne.w bad
 	addq.w #1, d6
 	adda.w #branches.ROW_BYTES, a2
-	cmpi.w #5, d6
+	cmpi.w #branches.HEAD_COUNT+1, d6
 	blo.w branchRows
 	move.l package.Header.TextPlan(a4), d0
 	btst #0, d0

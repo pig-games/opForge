@@ -230,7 +230,10 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         assert_eq!(long(212), long(168) + long(172));
         assert_eq!(long(216), 17);
         assert_eq!(long(BRANCH_PLAN_OFFSET), (long(212) + long(216) + 1) & !1);
-        assert_eq!(long(BRANCH_PLAN_BYTES_OFFSET), 20);
+        assert_eq!(
+            long(BRANCH_PLAN_BYTES_OFFSET),
+            package::PACKED_BRANCH_PROGRAM_BYTES
+        );
         assert_eq!(
             long(TEXT_PLAN_OFFSET),
             (long(BRANCH_PLAN_OFFSET) + long(BRANCH_PLAN_BYTES_OFFSET) + 1) & !1

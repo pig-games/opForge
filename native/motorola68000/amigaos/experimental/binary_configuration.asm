@@ -14,9 +14,12 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use prvm.amigaos.abi as abi
 	.pub
-ASSIGNMENT = 30
-LOOP_OPEN = 31
-LOOP_CLOSE = 32
+; Private classification roles are negative longs; shared directive keys are
+; positive. Exact comparisons and moveq retain them, while unsigned keyword
+; interval tests exclude them at the upper bound in both discovery sweeps.
+ASSIGNMENT = -1
+LOOP_OPEN = -2
+LOOP_CLOSE = -3
 SCHEMA_ACTIVE = 1
 SCHEMA_UNAVAILABLE = 2
 Frame	.struct
@@ -126,7 +129,7 @@ controls
 moduleControls
 	cmpi.l #scopes.KEY_IF, d3
 	blo.w outsideActive
-	cmpi.l #scopes.KEY_IFNDEF, d3
+	cmpi.l #scopes.KEY_ENDMATCH, d3
 	bhi.w outsideActive
 	bsr.w bindIndexRecord
 	bne.w bad
@@ -424,7 +427,7 @@ ordinaryDepth
 moduleControls
 	cmpi.l #scopes.KEY_IF, d6
 	blo.w active
-	cmpi.l #scopes.KEY_IFNDEF, d6
+	cmpi.l #scopes.KEY_ENDMATCH, d6
 	bhi.w active
 	bsr.w bindRecord
 	bne.w bad

@@ -8,6 +8,12 @@ IF = 1
 ELSEIF = 2
 ELSE = 3
 ENDIF = 4
+MATCH = 5
+CASE = 6
+DEFAULT = 7
+ENDMATCH = 8
+HEAD_COUNT = 8
+COMMA_TOKEN = abi.PRVM_TOKEN_KIND_COMMA
 OPCODE = $9a
 NON_STATEMENT_FLAGS = $18; omitted and layout-only packed records
 NAME_TOKEN_BYTES = 4
@@ -15,7 +21,7 @@ LABEL_TOKEN_BYTES = NAME_TOKEN_BYTES+1
 Program	.struct
 Opcode	.byte ?
 Count	.byte ?
-Rows	.res 16
+Rows	.res HEAD_COUNT*4
 Publish	.byte ?
 End	.byte ?
 	.endstruct
@@ -114,7 +120,7 @@ bareHead
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, Record.Kind(a0)
 	bhi.w done
 	lea Program.Rows(a1), a2
-	moveq #3, d3
+	moveq #HEAD_COUNT-1, d3
 rows
 	move.w Record.Head(a0), d2
 	cmp.w Row.Head(a2), d2

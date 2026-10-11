@@ -76,6 +76,10 @@ KEY_ELSEIF = 26
 KEY_ENDIF = 27
 KEY_IFDEF = 28
 KEY_IFNDEF = 29
+KEY_MATCH = 30
+KEY_CASE = 31
+KEY_DEFAULT = 32
+KEY_ENDMATCH = 33
 SECTION_STATE = IMPORT_STATE+imports.SCRATCH_BYTES
 STRUCT_STATE = SECTION_STATE+sections.SCRATCH_BYTES
 BINDING_PLANS = STRUCT_STATE+structs.SCRATCH_BYTES
@@ -1364,7 +1368,7 @@ directive
 	beq.w good
 	cmpi.w #KEY_IF, d0
 	blo.w bad
-	cmpi.w #KEY_IFNDEF, d0
+	cmpi.w #KEY_ENDMATCH, d0
 	bhi.w bad
 good
 	moveq #0, d0
@@ -3889,6 +3893,10 @@ Words
 	.byte KEY_ENDIF, 5, "endif"
 	.byte KEY_IFDEF, 5, "ifdef"
 	.byte KEY_IFNDEF, 6, "ifndef"
+	.byte KEY_MATCH, 5, "match"
+	.byte KEY_CASE, 4, "case"
+	.byte KEY_DEFAULT, 7, "default"
+	.byte KEY_ENDMATCH, 8, "endmatch"
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.endsection

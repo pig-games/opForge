@@ -69,7 +69,7 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
     let branch_bytes = number(bytes, BRANCH_PLAN_BYTES_OFFSET, 4)?;
     if branch_offset < HEADER
         || branch_offset % 2 != 0
-        || branch_bytes != 20
+        || branch_bytes != package::PACKED_BRANCH_PROGRAM_BYTES
         || branch_offset
             .checked_add(branch_bytes)
             .is_none_or(|end| end > number(bytes, 72, 4).unwrap_or(0))
@@ -77,14 +77,18 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
         return Err("invalid branch plan program".into());
     }
     let branch = region(bytes, branch_offset, branch_bytes, 1)?;
-    if branch[..2] != [package::PACKED_BRANCH_OPCODE, 4]
-        || branch[18..] != [0x83, 0]
-        || (0..4).any(|index| {
+    if branch[..2]
+        != [
+            package::PACKED_BRANCH_OPCODE,
+            package::PACKED_BRANCH_HEAD_COUNT as u8,
+        ]
+        || branch[branch_bytes - 2..] != [0x83, 0]
+        || (0..package::PACKED_BRANCH_HEAD_COUNT).any(|index| {
             let row = &branch[2 + index * 4..6 + index * 4];
             let head = u16::from_be_bytes([row[0], row[1]]) as usize;
             head >= number(bytes, 62, 2).unwrap_or(0)
                 || row[2] != index as u8 + 1
-                || row[3] != u8::from(index < 2)
+                || row[3] != u8::from(matches!(index, 0 | 1 | 4 | 5))
         })
     {
         return Err("invalid branch plan program".into());

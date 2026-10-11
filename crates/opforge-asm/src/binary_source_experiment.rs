@@ -341,11 +341,10 @@ pub fn prepare_package(
             DictionaryRoleFlags::CONTEXTUAL,
         )?;
     }
-    let mut branch_heads = [0; 4];
-    for (head, spelling) in branch_heads
-        .iter_mut()
-        .zip(["if", "elseif", "else", "endif"])
-    {
+    let mut branch_heads = [0; package::package::PACKED_BRANCH_HEAD_COUNT];
+    for (head, spelling) in branch_heads.iter_mut().zip([
+        "if", "elseif", "else", "endif", "match", "case", "default", "endmatch",
+    ]) {
         *head = intern(&mut names, spelling)?;
         bind(
             &mut dictionary,

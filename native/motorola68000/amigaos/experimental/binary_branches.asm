@@ -18,10 +18,13 @@ Slot	.struct
 Parent	.byte ?
 Taken	.byte ?
 ElseSeen	.byte ?
-Padding	.byte ?
+Kind	.byte ?
+ValueLow	.long ?
+Reserved	.long ?
+Unavailable	.long ?
 	.endstruct
-SLOT_BYTES = Slot.Padding+1
-SLOT_SHIFT = 2
+SLOT_BYTES = Slot.Unavailable+4
+SLOT_SHIFT = 4
 State	.struct
 Depth	.word ?
 Active	.word ?
@@ -124,6 +127,8 @@ prefix	.block
 	bne.w bad
 	tst.l d1
 	beq.w absent
+	cmpi.w #parser.MATCH, d1
+	beq.w opening
 	cmpi.w #parser.IF, d1
 	beq.w opening
 	moveq #0, d2
@@ -175,11 +180,13 @@ step	.block
 	jsr parser.classifyDetailed
 	bne.w bad
 	move.w d2, State.OperandOffset(a6)
+	move.l d1, d7
 	tst.l d1
 	beq.w ordinary
-	move.l d1, d7
 	moveq #0, d6
 	move.w State.Depth(a6), d6
+	cmpi.w #parser.MATCH, d7
+	beq.w opening
 	cmpi.w #parser.IF, d7
 	beq.w opening
 	tst.w d6
@@ -188,8 +195,16 @@ step	.block
 	lsl.w #SLOT_SHIFT, d6
 	lea State.Slots(a6), a3
 	adda.w d6, a3
+	cmpi.w #parser.ENDMATCH, d7
+	beq.w matchClosing
 	cmpi.w #parser.ENDIF, d7
-	beq.w closing
+	beq.w ifClosing
+	cmpi.w #parser.CASE, d7
+	beq.w matchBranch
+	cmpi.w #parser.DEFAULT, d7
+	beq.w matchBranch
+	cmpi.b #parser.IF, Slot.Kind(a3)
+	bne.w bad
 	tst.b Slot.ElseSeen(a3)
 	bne.w bad
 	clr.w State.Active(a6)
@@ -227,9 +242,14 @@ opening
 	move.b d0, Slot.Parent(a3)
 	clr.b Slot.Taken(a3)
 	clr.b Slot.ElseSeen(a3)
+	move.b d7, Slot.Kind(a3)
+	clr.l Slot.Unavailable(a3)
 	addq.w #1, State.Depth(a6)
+	clr.w State.Active(a6)
 	tst.w d0
 	beq.w consumed
+	cmpi.w #parser.MATCH, d7
+	beq.w matchValue
 	bsr.w evaluate
 	bne.w bad
 	clr.w State.Active(a6)
@@ -238,6 +258,59 @@ opening
 	move.b #1, Slot.Taken(a3)
 	move.w #1, State.Active(a6)
 	bra.w selected
+matchBranch
+	cmpi.b #parser.MATCH, Slot.Kind(a3)
+	bne.w bad
+	tst.b Slot.ElseSeen(a3)
+	bne.w bad
+	clr.w State.Active(a6)
+	cmpi.w #parser.DEFAULT, d7
+	beq.w terminal
+	tst.b Slot.Parent(a3)
+	beq.w consumed
+	tst.b Slot.Taken(a3)
+	bne.w consumed
+	moveq #0, d0
+	move.w State.OperandOffset(a6), d0
+	lea 0(a5, d0.w), a0
+	movea.l a4, a1
+caseValue
+	bsr.w evaluateScalar
+	bne.w bad
+	tst.l Slot.Unavailable(a3)
+	bne.w nextCase
+	tst.l d2
+	bne.w nextCase
+	cmp.l Slot.ValueLow(a3), d1
+	bne.w nextCase
+	move.b #1, Slot.Taken(a3)
+	move.w #1, State.Active(a6)
+	bra.w selected
+nextCase
+	cmpa.l a1, a0
+	beq.w consumed
+	cmpi.b #parser.COMMA_TOKEN, (a0)+  ; shared packed comma between scalar wrappers
+	bne.w bad
+	bra.w caseValue
+matchValue
+	moveq #0, d0
+	move.w State.OperandOffset(a6), d0
+	lea 0(a5, d0.w), a0
+	movea.l a4, a1
+	bsr.w evaluateScalar
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	move.l d1, Slot.ValueLow(a3)
+	move.l d2, Slot.Unavailable(a3)
+	bra.w consumed
+matchClosing
+	cmpi.b #parser.MATCH, Slot.Kind(a3)
+	bne.w bad
+	bra.w closing
+ifClosing
+	cmpi.b #parser.IF, Slot.Kind(a3)
+	bne.w bad
 closing
 	subq.w #1, State.Depth(a6)
 	moveq #0, d0
@@ -250,9 +323,13 @@ ordinary
 	bne.w done
 	bra.w consumed
 selected
+	bsr.w observeMatch
+	bne.w bad
 	moveq #RESULT_SELECTED, d0
 	bra.w done
 consumed
+	bsr.w observeMatch
+	bne.w bad
 	moveq #1, d0
 	bra.w done
 bad
@@ -263,6 +340,77 @@ done
 	rts
 	.bend  ; step
 	.priv
+; Record final match-arm activity in the existing convergence trace.
+; A5=record,A6=state,D7=role. D0/CCR=status; other registers preserved.
+observeMatch	.block
+	movem.l d1/a0, -(sp)
+	cmpi.w #parser.MATCH, d7
+	blo.w done
+	cmpi.w #parser.DEFAULT, d7
+	bhi.w done
+	tst.l State.Trace+trace.State.Enabled(a6)
+	beq.w done
+	moveq #0, d1
+	move.w State.Active(a6), d1
+	move.l a5, d0
+	sub.l State.Records(a6), d0
+	lea State.Trace(a6), a0
+	jsr trace.observe
+	bra.w restore
+done
+	moveq #0, d0
+restore
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; observeMatch
+
+; A0..A1=compiled scalar wrapper,A2=context,A6=state.
+; D0/CCR=status,D1=low,D2=unavailable,A0=after wrapper; high in context.
+; D3-D7/A1-A6 preserved. Certify exactly the consumed wrapper for owner replay.
+evaluateScalar	.block
+	movem.l d3/a3-a4, -(sp)
+	.MEMORY_COUNTER_INC Evaluations
+	movea.l a0, a4
+	jsr expression.evaluate
+	bne.w failed
+	move.l State.Proof(a6), d0
+	beq.w certified
+	movea.l d0, a3
+	movem.l a0-a1, -(sp)
+	movea.l a0, a1
+	movea.l a4, a0
+	jsr (a3)
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	bne.w failed
+certified
+	tst.l d2
+	beq.w available
+	tst.w State.Strict(a6)
+	bne.w failed
+	movem.l a0/d2, -(sp)
+	movea.l State.Loops(a6), a0
+	jsr loops.provisionalControls
+	movem.l (sp)+, a0/d2
+	tst.l d0
+	bne.w failed
+	move.w #1, State.Deferred(a6)
+	move.l #1, State.Trace+trace.State.Enabled(a6)
+	.MEMORY_COUNTER_INC DeferredEvaluations
+available
+	; The case truth observations determine selection. A changing unresolved
+	; scalar also requests another sizing pass via Deferred above.
+	moveq #0, d0
+	bra.w done
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, d3/a3-a4
+	tst.l d0
+	rts
+	.bend  ; evaluateScalar
+
 ; A5=record,A4=record end,A2=context. D0/CCR=status,D1=truth; D2 scratch.
 evaluate	.block
 	movem.l a0-a1, -(sp)

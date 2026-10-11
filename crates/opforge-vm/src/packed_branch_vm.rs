@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Shared package-owned conditional heads; expressions remain EXVM-owned.
-use package::package::PACKED_BRANCH_OPCODE;
+use package::package::{PACKED_BRANCH_HEAD_COUNT, PACKED_BRANCH_OPCODE};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Branch {
@@ -9,8 +9,15 @@ pub enum Branch {
     Elseif,
     Else,
     Endif,
+    Match,
+    Case,
+    Default,
+    Endmatch,
     Malformed,
 }
+
+const ROWS_END: usize = 2 + PACKED_BRANCH_HEAD_COUNT * 4;
+const PROGRAM_BYTES: usize = ROWS_END + 2;
 
 const RECORD_HEADER_BYTES: usize = 4;
 const NAME_TOKEN_BYTES: usize = 4;
@@ -45,13 +52,15 @@ pub fn execute(program: &[u8], record: &[u8]) -> Branch {
 
 /// Classify the bounded record envelope; EXVM owns expression syntax.
 pub fn classify(program: &[u8], record: &[u8]) -> Classification {
-    if program.len() != 20
-        || program[..2] != [PACKED_BRANCH_OPCODE, 4]
-        || program[18..] != [0x83, 0]
-        || program[2..18]
+    if program.len() != PROGRAM_BYTES
+        || program[..2] != [PACKED_BRANCH_OPCODE, PACKED_BRANCH_HEAD_COUNT as u8]
+        || program[ROWS_END..] != [0x83, 0]
+        || program[2..ROWS_END]
             .chunks_exact(4)
             .enumerate()
-            .any(|(index, row)| row[2] != index as u8 + 1 || row[3] != u8::from(index < 2))
+            .any(|(index, row)| {
+                row[2] != index as u8 + 1 || row[3] != u8::from(matches!(index, 0 | 1 | 4 | 5))
+            })
         || !(4..=256).contains(&record.len())
         || usize::from(record[0]) + 1 != record.len()
     {
@@ -73,7 +82,7 @@ pub fn classify(program: &[u8], record: &[u8]) -> Classification {
     if head.len() < HEAD_OPERAND_OFFSET || head[4] != TOKEN_DOT || head[5] > 1 {
         return Classification::unselected(Branch::Ordinary);
     }
-    let Some(row) = program[2..18]
+    let Some(row) = program[2..ROWS_END]
         .chunks_exact(4)
         .find(|row| row[..2] == head[6..8])
     else {
@@ -87,6 +96,10 @@ pub fn classify(program: &[u8], record: &[u8]) -> Classification {
         2 => Branch::Elseif,
         3 => Branch::Else,
         4 => Branch::Endif,
+        5 => Branch::Match,
+        6 => Branch::Case,
+        7 => Branch::Default,
+        8 => Branch::Endmatch,
         _ => Branch::Malformed,
     };
     Classification {
@@ -111,12 +124,16 @@ mod tests {
     }
     #[test]
     fn roles_and_operand_policies_are_numeric() {
-        let program = packed_branch_program([256, 257, 258, 259]);
+        let program = packed_branch_program([256, 257, 258, 259, 260, 261, 262, 263]);
         for (head, role, expression) in [
             (256, Branch::If, true),
             (257, Branch::Elseif, true),
             (258, Branch::Else, false),
             (259, Branch::Endif, false),
+            (260, Branch::Match, true),
+            (261, Branch::Case, true),
+            (262, Branch::Default, false),
+            (263, Branch::Endmatch, false),
         ] {
             assert_eq!(execute(&program, &record(head, expression)), role);
             assert_eq!(
@@ -124,7 +141,7 @@ mod tests {
                 Branch::Malformed
             );
         }
-        assert_eq!(execute(&program, &record(260, true)), Branch::Ordinary);
+        assert_eq!(execute(&program, &record(264, true)), Branch::Ordinary);
         let mut private = record(256, true);
         private[1] = 128;
         assert_eq!(execute(&program, &private), Branch::If);
@@ -149,12 +166,16 @@ mod tests {
 
     #[test]
     fn leading_numeric_labels_preserve_roles_and_original_operand_offsets() {
-        let program = packed_branch_program([256, 257, 258, 259]);
+        let program = packed_branch_program([256, 257, 258, 259, 260, 261, 262, 263]);
         for (head, branch, expression) in [
             (256, Branch::If, true),
             (257, Branch::Elseif, true),
             (258, Branch::Else, false),
             (259, Branch::Endif, false),
+            (260, Branch::Match, true),
+            (261, Branch::Case, true),
+            (262, Branch::Default, false),
+            (263, Branch::Endmatch, false),
         ] {
             for colon in [false, true] {
                 let prefix = NAME_TOKEN_BYTES + usize::from(colon);
@@ -199,7 +220,7 @@ mod tests {
 
     #[test]
     fn label_normalization_is_bounded_and_rejects_noncanonical_prefixes() {
-        let program = packed_branch_program([256, 257, 258, 259]);
+        let program = packed_branch_program([256, 257, 258, 259, 260, 261, 262, 263]);
         for colon in [false, true] {
             let bytes = labelled_record(256, true, colon);
             for end in 0..bytes.len() {
@@ -241,7 +262,7 @@ mod tests {
 
     #[test]
     fn program_and_record_fail_atomically() {
-        let program = packed_branch_program([1, 2, 3, 4]);
+        let program = packed_branch_program([1, 2, 3, 4, 5, 6, 7, 8]);
         let bytes = record(1, true);
         for length in 0..program.len() {
             assert_eq!(execute(&program[..length], &bytes), Branch::Malformed);
@@ -249,7 +270,9 @@ mod tests {
         for length in 0..bytes.len() {
             assert_eq!(execute(&program, &bytes[..length]), Branch::Malformed);
         }
-        for offset in [0, 1, 4, 5, 8, 9, 12, 13, 16, 17, 18, 19] {
+        for offset in (0..PROGRAM_BYTES)
+            .filter(|offset| *offset < 2 || *offset >= ROWS_END || (*offset - 2) % 4 >= 2)
+        {
             let mut bad = program.clone();
             bad[offset] ^= 1;
             assert_eq!(execute(&bad, &bytes), Branch::Malformed);

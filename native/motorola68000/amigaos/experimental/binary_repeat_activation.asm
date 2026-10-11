@@ -34,6 +34,10 @@ select	.block
 	adda.l d0, a4
 	bsr.w classify
 	bne.w done
+	cmpi.l #branch.CASE, d1
+	beq.w selected
+	cmpi.l #branch.DEFAULT, d1
+	beq.w selected
 	cmpi.l #branch.IF, d1
 	beq.w selected
 	cmpi.l #branch.ELSEIF, d1
@@ -52,10 +56,18 @@ next
 	bne.w done
 	bsr.w loopDepth
 	bne.w done
+	cmpi.l #branch.MATCH, d1
+	beq.w opening
 	cmpi.l #branch.IF, d1
 	beq.w opening
+	cmpi.l #branch.ENDMATCH, d1
+	beq.w closing
 	cmpi.l #branch.ENDIF, d1
 	beq.w closing
+	cmpi.l #branch.CASE, d1
+	beq.w sibling
+	cmpi.l #branch.DEFAULT, d1
+	beq.w sibling
 	cmpi.l #branch.ELSEIF, d1
 	beq.w sibling
 	cmpi.l #branch.ELSE, d1

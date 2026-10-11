@@ -1681,11 +1681,13 @@ pub fn packed_declaration_program(heads: [u16; 3], repeat_name: u16) -> Vec<u8> 
 
 /// Numeric shared conditional policy: expression openings/branches and operandless controls.
 pub const PACKED_BRANCH_OPCODE: u8 = 0x9a;
-pub fn packed_branch_program(heads: [u16; 4]) -> Vec<u8> {
-    let mut program = vec![PACKED_BRANCH_OPCODE, 4];
+pub const PACKED_BRANCH_HEAD_COUNT: usize = 8;
+pub const PACKED_BRANCH_PROGRAM_BYTES: usize = 2 + PACKED_BRANCH_HEAD_COUNT * 4 + 2;
+pub fn packed_branch_program(heads: [u16; PACKED_BRANCH_HEAD_COUNT]) -> Vec<u8> {
+    let mut program = vec![PACKED_BRANCH_OPCODE, PACKED_BRANCH_HEAD_COUNT as u8];
     for (index, head) in heads.into_iter().enumerate() {
         program.extend(head.to_be_bytes());
-        program.extend([index as u8 + 1, u8::from(index < 2)]);
+        program.extend([index as u8 + 1, u8::from(matches!(index, 0 | 1 | 4 | 5))]);
     }
     program.extend([
         MacroDescriptorOpcode::Publish as u8,

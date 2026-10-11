@@ -140,6 +140,10 @@ directive
 	moveq #5, d6
 	bsr.w copy
 	bne.w bad
+	cmpi.w #branches.CASE, d4
+	beq.w scalar
+	cmpi.w #branches.MATCH, d4
+	beq.w oneScalar
 	cmpi.w #branches.ELSE, d4
 	bhs.w noOperands
 	bra.w oneScalar
@@ -369,6 +373,8 @@ scalarTail
 	moveq #1, d6
 	bsr.w copy
 	bne.w bad
+	cmpi.w #branches.CASE, d4
+	beq.w scalar
 	cmp.w package.Header.OrgDirective(a2), d4
 	beq.w scalar
 	; .emit consumes scalar VM values, including encoded string literals.

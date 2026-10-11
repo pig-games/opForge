@@ -115,7 +115,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
             .try_into()
             .unwrap(),
     ) as usize;
-    assert_eq!(branch_bytes, 20);
+    assert_eq!(branch_bytes, package::package::PACKED_BRANCH_PROGRAM_BYTES);
     for (name, offset) in [
         ("branch-header-overlap", 4_u32),
         ("branch-odd-offset", (branch_offset as u32) | 1),
@@ -133,7 +133,11 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         ("branch-invalid-name", 3),
         ("branch-invalid-role", 4),
         ("branch-invalid-expression-policy", 5),
-        ("branch-corrupt-end", 19),
+        ("match-invalid-role", 2 + 4 * 4 + 2),
+        ("match-invalid-expression-policy", 2 + 4 * 4 + 3),
+        ("case-invalid-expression-policy", 2 + 5 * 4 + 3),
+        ("default-invalid-expression-policy", 2 + 6 * 4 + 3),
+        ("branch-corrupt-end", branch_bytes - 1),
     ] {
         let mut malformed = valid.clone();
         malformed[branch_offset + byte] = 0xff;
@@ -141,7 +145,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     }
     let mut branch_truncated = valid.clone();
     branch_truncated[BRANCH_PLAN_BYTES_OFFSET..BRANCH_PLAN_BYTES_OFFSET + 4]
-        .copy_from_slice(&19_u32.to_be_bytes());
+        .copy_from_slice(&((branch_bytes - 1) as u32).to_be_bytes());
     cases.push(("branch-truncated-program", branch_truncated, 1));
     for (name, offset, value) in [
         ("loop-header-overlap", 212, 216u32),
@@ -366,7 +370,14 @@ fn compact_package_validation_component_fixture_contract() {
             "branch-invalid-name" => branch_offset + 3..branch_offset + 4,
             "branch-invalid-role" => branch_offset + 4..branch_offset + 5,
             "branch-invalid-expression-policy" => branch_offset + 5..branch_offset + 6,
-            "branch-corrupt-end" => branch_offset + 19..branch_offset + 20,
+            "match-invalid-role" => branch_offset + 20..branch_offset + 21,
+            "match-invalid-expression-policy" => branch_offset + 21..branch_offset + 22,
+            "case-invalid-expression-policy" => branch_offset + 25..branch_offset + 26,
+            "default-invalid-expression-policy" => branch_offset + 29..branch_offset + 30,
+            "branch-corrupt-end" => {
+                branch_offset + package::package::PACKED_BRANCH_PROGRAM_BYTES - 1
+                    ..branch_offset + package::package::PACKED_BRANCH_PROGRAM_BYTES
+            }
             "invalid-ds-directive-id" => {
                 crate::binary_source_experiment::DS_DIRECTIVE
                     ..crate::binary_source_experiment::DS_DIRECTIVE + 2

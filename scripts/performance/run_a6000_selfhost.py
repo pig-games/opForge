@@ -25,9 +25,12 @@ INSTRUMENTATION_DEFINES = {
     "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
 }
-PACKAGE_HEADER_BYTES = 228
+PACKAGE_HEADER_BYTES = 236
 BRANCH_PLAN_OFFSET = 220
 BRANCH_PLAN_BYTES_OFFSET = 224
+TEXT_PLAN_OFFSET = 228
+TEXT_PLAN_BYTES_OFFSET = 232
+TEXT_PLAN_BYTES = 34
 
 
 def fnv(data):
@@ -140,7 +143,7 @@ def load_bundle(bundle):
         raise ValueError("Release bootstrap/oracle mismatch")
     # Only the current package contract is supported. This transport verifies
     # assets and header regions; the native runtime interprets VM opcodes.
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS35":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS36":
         raise ValueError("Runtime package mismatch")
     if len(package) < PACKAGE_HEADER_BYTES or int.from_bytes(package[4:8], "big") != len(package):
         raise ValueError("Invalid runtime package header")
@@ -202,6 +205,15 @@ def load_bundle(bundle):
         if (int.from_bytes(row[:2], "big") >= name_count
                 or row[2] != index + 1 or row[3] != int(index < 2)):
             raise ValueError("Invalid branch-plan program")
+    text_offset = int.from_bytes(
+        package[TEXT_PLAN_OFFSET:TEXT_PLAN_OFFSET + 4], "big"
+    )
+    text_size = int.from_bytes(
+        package[TEXT_PLAN_BYTES_OFFSET:TEXT_PLAN_BYTES_OFFSET + 4], "big"
+    )
+    if (text_offset < PACKAGE_HEADER_BYTES or text_offset % 2
+            or text_size != TEXT_PLAN_BYTES or text_offset + text_size > runtime_bytes):
+        raise ValueError("Invalid text-plan program region")
     files["opforge"] = bootstrap
     if storage == "embedded":
         offset = int.from_bytes(package[124:128], "big")

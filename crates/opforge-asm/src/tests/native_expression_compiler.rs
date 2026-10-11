@@ -192,13 +192,14 @@ fn tree(expr: &Expr, nodes: &mut Vec<u8>, core: &[opcore::tokenizer::Token]) -> 
             let value = opcore::expr::parse_number(text).unwrap() as u64;
             (1, 0, 0, value as u32, (value >> 32) as u32, *span)
         }
-        Expr::String(bytes, span) => {
-            assert!((1..=2).contains(&bytes.len()));
-            let scalar = bytes
-                .iter()
-                .fold(0u32, |value, byte| (value << 8) | u32::from(*byte));
-            (1, 0, 0, scalar, 0, *span)
-        }
+        Expr::String(bytes, span) => (
+            14,
+            0,
+            0,
+            (span.col_start + 2) as u32,
+            bytes.len() as u32,
+            *span,
+        ),
         Expr::Identifier(_, span) => (2, 0, 0, 7, 0, *span),
         Expr::Dollar(span) => (3, 0, 0, 0, 0, *span),
         Expr::Unary { op, expr, span } => (4, unary(*op), 1, tree(expr, nodes, core), 0, *span),
@@ -337,7 +338,8 @@ fn children(items: &[Expr], nodes: &mut Vec<u8>, core: &[opcore::tokenizer::Toke
 }
 fn scalar_tree(expr: &Expr) -> bool {
     match expr {
-        Expr::Number(..) | Expr::String(..) | Expr::Identifier(..) | Expr::Dollar(..) => true,
+        Expr::Number(..) | Expr::Identifier(..) | Expr::Dollar(..) => true,
+        Expr::String(..) => false,
         Expr::Unary { expr, .. } => scalar_tree(expr),
         Expr::Binary { left, right, .. } => scalar_tree(left) && scalar_tree(right),
         _ => false,
@@ -480,6 +482,9 @@ fn typed_success(source: &str) -> Case {
         let opcode = O::from_u8(op).unwrap();
         let width = match opcode {
             O::PushLiteral => 8,
+            O::PushStringLiteral => {
+                2 + usize::from(u16::from_le_bytes(code[ip..ip + 2].try_into().unwrap()))
+            }
             O::PushSymbol | O::BuildList | O::GetMember => 2,
             O::BuildStructLiteral => {
                 let count = u16::from_le_bytes(code[ip + 2..ip + 4].try_into().unwrap());
@@ -610,7 +615,7 @@ fn batch() -> (Vec<u8>, Vec<u8>) {
         case.lower_mode = mode;
         cases.push(case);
     }
-    for (source, cursor) in [("1+", 6), ("(1", 6), ("'ABC'", 0), ("''", 0)] {
+    for (source, cursor) in [("1+", 6), ("(1", 6)] {
         cases.push(failure(
             numeric(source).0,
             canonical.clone(),
@@ -829,6 +834,24 @@ fn pack_batch(cases: Vec<Case>) -> (Vec<u8>, Vec<u8>) {
     (input, expected)
 }
 
+// String payload boundary controls have their own fresh bounded batch.
+fn string_batch() -> (Vec<u8>, Vec<u8>) {
+    let mut cases = Vec::new();
+    for source in ["'A'", "'AB'", "''", "'ABC'", "'A'+1", "{1,'AB'}[1]"] {
+        cases.push(typed_success(source));
+    }
+    // Offset/length corruption and absent/wrapping token regions reject before copying.
+    for mode in 10..=13 {
+        let mut case = typed_success("'AB'");
+        let used = u32::from_be_bytes(case.expected[12..16].try_into().unwrap()) as usize;
+        case.expected.truncate(16 + used);
+        lower_result(&mut case.expected, 1, &[]);
+        case.lower_mode = mode;
+        cases.push(case);
+    }
+    pack_batch(cases)
+}
+
 // Separate bounded batch: the existing scalar/compound oracle fills its harness.
 fn struct_batch() -> (Vec<u8>, Vec<u8>) {
     let mut cases: Vec<_> = [
@@ -1038,6 +1061,17 @@ fn native_expression_compiler_live_canonical_tree_oracle() {
     assert!(
         matches!(vm::vm_opcore::parse_expression_tokens(core, Span::default(), None).unwrap(), Expr::String(bytes, _) if bytes == b"AB")
     );
+}
+#[test]
+fn native_expression_compiler_string_boundaries_host_assembles() {
+    let (input, expected) = string_batch();
+    assert!(!expected.is_empty());
+    assert!(!assemble(&workspace_root(), &input).1.is_empty());
+}
+#[test]
+#[ignore = "requires configured FS-UAE; fresh string offset/bounds compiler batch"]
+fn native_expression_compiler_string_boundaries_fs_uae() {
+    run_native_batch(string_batch(), "canonical-exvm-string-boundaries");
 }
 #[test]
 fn native_expression_compiler_host_assembles() {

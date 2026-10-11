@@ -344,6 +344,9 @@ freeBlocks
 	jsr memory.release
 	lea OrderedFiles, a0
 	jsr memory.release
+	lea ModuleStarts, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	.MEMORY_PHASE #3
 	move.l DosBase, d0
 	beq.w done
@@ -799,6 +802,7 @@ orderReady
 	move.l #OrderedRecords, ordered.Frame.OrderedRecords(a0)
 	move.l #OrderedFiles, ordered.Frame.OrderedOrigins(a0)
 	move.l #RECORD_LIMIT, ordered.Frame.RecordLimit(a0)
+	move.l #ModuleStarts, ordered.Frame.ModuleStarts(a0)
 	jsr ordered.materialize
 	bne.w completionBad
 	move.l ordered.Frame.OriginCount(a0), OriginCount
@@ -1289,10 +1293,18 @@ run	.block
 	lea Records, a1
 	move.l memory.Block.Pointer(a1), assembly.Frame.Records(a0)
 	move.l memory.Block.Used(a1), assembly.Frame.RecordBytes(a0)
+	lea ModuleStarts, a1
+	move.l memory.Block.Pointer(a1), assembly.Frame.ModuleStarts(a0)
+	move.l memory.Block.Used(a1), d0
+	lsr.l #2, d0
+	move.l d0, assembly.Frame.ModuleCount(a0)
 	move.l #Context, assembly.Frame.Context(a0)
 	move.l #allocateOutput, assembly.Frame.Allocate(a0)
 	move.l #appendReloc, assembly.Frame.AddReloc(a0)
 	move.l #reportByteWarning, assembly.Frame.Warn(a0)
+	lea Front, a1
+	move.w frontend.Frame.AsciiName(a1), assembly.Frame.AsciiName(a0)
+	move.w frontend.Frame.PetsciiName(a1), assembly.Frame.PetsciiName(a0)
 	lea SymbolStorage+storage.State.MemberKeys, a1
 	move.l memory.Block.Pointer(a1), assembly.Frame.MemberKeys(a0)
 	clr.l assembly.Frame.Emitted(a0)
@@ -1846,6 +1858,7 @@ SemanticScratch	.res byte, memory.Block.Used+4
 OrderFrame	.res byte, ordered.FRAME_BYTES
 OrderedRecords	.res byte, memory.Block.Used+4
 OrderedFiles	.res byte, memory.Block.Used+4
+ModuleStarts	.res byte, memory.Block.Used+4
 OriginSpans	.res byte, memory.Block.Used+4
 OriginCount	.res long, 1
 RootPaths	.res byte, memory.Block.Used+4

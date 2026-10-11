@@ -128,6 +128,11 @@ next
 	beq.w pushPc
 	cmpi.b #$12, d1
 	beq.w symbol
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL, d1
+	bne.w notString
+	btst #MODE_COMPACT_BIT, State.Mode+3(a3)
+	beq.w stringLiteral
+notString
 	cmpi.b #$20, d1
 	beq.w unary
 	cmpi.b #$21, d1
@@ -221,6 +226,26 @@ compactMultiply
 compactBinary
 	moveq #2, d6
 	bra.w arithmeticKnown
+stringLiteral
+	bsr.w wordLe
+	bne.w malformed
+	move.l a5, d0
+	sub.l a4, d0
+	cmp.l d1, d0
+	blo.w malformed
+	move.l d1, d6
+	movea.l a4, a0
+	jsr runtime.evaluateString
+	tst.l d0
+	bne.w malformed
+	adda.l d6, a4
+	move.l d1, d6
+	bsr.w push
+	bne.w depth
+	move.l d6, Cell.Low(a1)
+	clr.l Cell.High(a1)
+	bra.w next
+
 literal
 	bsr.w push
 	bne.w depth

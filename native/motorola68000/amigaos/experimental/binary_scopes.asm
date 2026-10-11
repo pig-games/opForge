@@ -120,6 +120,7 @@ begin	.block
 	clr.l ARENA+memory.Block.Pointer(a0)
 	clr.l ARENA+memory.Block.Capacity(a0)
 	clr.l ARENA+memory.Block.Used(a0)
+	clr.w layout.State.BindingNamespace(a0)
 	clr.w layout.State.PreviewBinding(a0)
 	clr.w layout.State.FirstBound(a0)
 	clr.w layout.State.FirstExplicit(a0)
@@ -349,6 +350,28 @@ bindOrigin	.block
 	moveq #1, d2
 	bra.w bindName
 	.bend  ; bindOrigin
+; A0/D0=normalized encoding bytes,A1=scope. Allocate a stable global identity
+; in a separate non-value namespace; preserve lexical owner and line metadata.
+; D0=status,D1=id,D2=zero; D3-D7/A2-A6 preserved, CCR reflects D0.
+bindEncodingName	.block
+	movem.l d3-d7/a2-a6, -(sp)
+	movea.l a1, a6
+	move.w layout.State.Current(a6), -(sp)
+	move.w layout.State.BindingNamespace(a6), -(sp)
+	move.w layout.State.FirstBound(a6), -(sp)
+	move.w layout.State.FirstExplicit(a6), -(sp)
+	clr.w layout.State.Current(a6)
+	move.w #1, layout.State.BindingNamespace(a6)
+	bsr.w bindOrigin
+	move.w (sp)+, layout.State.FirstExplicit(a6)
+	move.w (sp)+, layout.State.FirstBound(a6)
+	move.w (sp)+, layout.State.BindingNamespace(a6)
+	move.w (sp)+, layout.State.Current(a6)
+	clr.l d2
+	movem.l (sp)+, d3-d7/a2-a6
+	tst.l d0
+	rts
+	.bend  ; bindEncodingName
 ; Preparation-only field key for a declared numeric identity.
 ; A0=scope state,D0=declaration ID. D0/CCR=status,D1=global bare member ID.
 ; Other registers preserved; lexical/line binding metadata survives lookup.
@@ -464,6 +487,10 @@ stableName
 	move.w d3, records.Entry.Owner(a3)
 	move.w d7, records.Entry.Leaf(a3)
 	clr.w records.Entry.Flags(a3)
+	tst.w layout.State.BindingNamespace(a6)
+	beq.w ordinaryIdentity
+	move.w #records.ENCODING_NAME, records.Entry.Flags(a3)
+ordinaryIdentity
 	clr.w records.Entry.ScopeKind(a3)
 	clr.w records.Entry.Padding(a3)
 	clr.w records.Entry.MemberBase(a3)
@@ -2102,6 +2129,8 @@ reference
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
+	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a3)
+	bne.w packageName
 	move.w records.Entry.Flags(a3), d0
 	andi.w #records.BINDING_PROXY, d0
 	bne.w sourceReference
@@ -2407,6 +2436,8 @@ resolve
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a4
 	adda.l d0, a4
+	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a4)
+	bne.w next  ; text identities never canonicalize through value owners
 	move.w records.Entry.Flags(a4), d0
 	andi.w #records.BINDING_PROXY, d0
 	bne.w next
@@ -2996,6 +3027,8 @@ compose	.block
 	beq.w bad
 	cmpi.l #layout.NAME_BYTES-1, d0
 	bhi.w bad
+	tst.w layout.State.BindingNamespace(a6)
+	bne.w ready  ; encoding spelling has no lexical/member qualification
 scan
 	cmpi.b #'.', (a0)+
 	beq.w qualified
@@ -3075,6 +3108,13 @@ chain
 	mulu.w #records.ENTRY_BYTES, d2
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d2, a3
+	moveq #0, d0
+	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a3)
+	beq.w namespaceReady
+	moveq #1, d0
+namespaceReady
+	cmp.w layout.State.BindingNamespace(a6), d0
+	bne.w next
 	cmp.w records.Entry.Length(a3), d6
 	bne.w next
 	movea.l ARENA_POINTER(a6), a1
@@ -3222,7 +3262,7 @@ classifyDirective	.block
 ; A0=scope state,D0=definition-time source ID,D1=original qualifier.
 ; D0/CCR=status,D1=call-scope ID. Qualified names retain their identity;
 ; unqualified source names bind from their lexical leaf in the active scope.
-; Other registers preserved. Package IDs are returned unchanged.
+; Other registers preserved. Package and encoding IDs are returned unchanged.
 rebindLocal	.block
 	movem.l d2-d5/a0-a3/a6, -(sp)
 	move.l a1, -(sp)
@@ -3237,6 +3277,10 @@ rebindLocal	.block
 	mulu.w #records.ENTRY_BYTES, d5
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d5, a3
+	; Encoding identities are global non-value names. Macro hygiene must
+	; preserve their facet and ID instead of creating a call-local symbol.
+	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a3)
+	bne.w unchanged
 	move.l records.Entry.RegisterName(a3), d4
 	moveq #0, d2
 	move.w records.Entry.Leaf(a3), d2

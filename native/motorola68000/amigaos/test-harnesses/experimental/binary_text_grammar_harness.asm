@@ -31,6 +31,44 @@ done
 .section code, kind=code
 .priv
 exercise	.block
+	; Preparation must recognize every shared text head before macro recipes.
+	moveq #1, d7
+ownedHead
+	lea Program, a0
+	move.l #ProgramEnd-Program, d0
+	move.l d7, d1
+	jsr text.headAction
+	tst.l d0
+	bne.w failed
+	move.l d7, d2
+	subq.l #1, d2
+	beq.w selectedAlias
+	cmpi.l #2, d7
+	bne.w compareAction
+selectedAlias
+	moveq #text.SELECT, d2
+compareAction
+	cmp.l d2, d1
+	bne.w failed
+	addq.l #1, d7
+	cmpi.l #text.HEAD_COUNT, d7
+	bls.w ownedHead
+	lea Program, a0
+	move.l #ProgramEnd-Program, d0
+	moveq #50, d1
+	jsr text.headAction
+	tst.l d0
+	bne.w failed
+	tst.l d1
+	bne.w failed
+	lea Program, a0
+	move.l #ProgramEnd-Program-1, d0
+	moveq #1, d1
+	jsr text.headAction
+	cmpi.l #abi.PRVM_STATUS_INVALID_PROGRAM, d0
+	bne.w failed
+	tst.l d1
+	bne.w failed
 	lea Frame, a0
 	move.l #abi.PRVM_MAGIC_OPRP, abi.PRVM_FRAME_MAGIC(a0)
 	move.w #abi.PRVM_REQUEST_FRAME_SIZE, abi.PRVM_FRAME_FRAME_SIZE(a0)

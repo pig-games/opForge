@@ -27,6 +27,10 @@ Defined	.long ?
 SectionIds	.long ?
 Owner	.long ?
 MemberKeys	.long ?
+ModuleStarts	.long ?
+ModuleCount	.long ?
+AsciiName	.word ?
+PetsciiName	.word ?
 Cursor	.long ?
 Published	.long ?
 Budget	.long ?

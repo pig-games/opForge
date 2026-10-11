@@ -151,8 +151,9 @@ ParameterCount	.long ?
 ParameterBytes	.long ?  ; bounded table followed by immutable compound payload
 RetainedValues	.long ?  ; assembly owner prefix retained across layout replay
 SectionBases	.long ?  ; optional eight canonical Hunk origins; zero means unplaced
+TextState	.long ?  ; session-owned shared text encoding state
 	.endstruct
-CONTEXT_BYTES = Context.SectionBases+4
+CONTEXT_BYTES = Context.TextState+4
 
 Parameter	.struct
 Id	.word ?

@@ -18,6 +18,11 @@ MODE_NEWFILE = 1006
 RETURN_FAIL = 20
 CASE_CAPACITY = 128
 TYPED_LOWER = 9
+STRING_BAD_OFFSET = 10
+STRING_BAD_LENGTH = 11
+STRING_NULL_REGION = 12
+STRING_WRAPPING_REGION = 13
+MAX_LOWER_MODE = STRING_WRAPPING_REGION
 LEN_NAME_ID = 8
 INPUT_CAPACITY = 98304
 INPUT_BUFFER_BYTES = INPUT_CAPACITY+1
@@ -86,7 +91,7 @@ caseLoop
 	move.l d3, compiler.Request.ArenaBytes(a0)
 	move.w (a3)+, d0
 	move.w d0, (LowerMode).l
-	cmpi.w #TYPED_LOWER, (LowerMode).l
+	cmpi.w #MAX_LOWER_MODE, (LowerMode).l
 	bhi.w fail
 	move.l (a3)+, compiler.Request.StepBudget(a0)
 	move.l #NodeArena, compiler.Request.Arena(a0)
@@ -179,12 +184,33 @@ capacityMode
 	bne.w callLower
 	lea LowerBuffer+1, a4
 callLower
+	cmpi.w #STRING_BAD_OFFSET, d2
+	bne.w badLength
+	lea 0(a0, d1.l), a2
+	move.l #$ffffffff, compiler.Node.First(a2)
+badLength
+	cmpi.w #STRING_BAD_LENGTH, d2
+	bne.w wrappingRegion
+	lea 0(a0, d1.l), a2
+	move.l #$ffffffff, compiler.Node.Second(a2)
+wrappingRegion
+	cmpi.w #STRING_WRAPPING_REGION, d2
+	bne.w modesReady
+	move.l #$fffffffe, CompileRequest+compiler.Request.Tokens
+modesReady
 	lea CompilerScratch, a1
 	move.l #compiler.SCRATCH_BYTES, d2
 	cmpi.w #TYPED_LOWER, (LowerMode).l
-	bne.w scalarLower
+	blo.w scalarLower
 	moveq #LEN_NAME_ID, d4
+	move.l a6, -(sp)
+	lea CompileRequest, a6
+	cmpi.w #STRING_NULL_REGION, (LowerMode).l
+	bne.w haveRegion
+	suba.l a6, a6
+haveRegion
 	jsr lowering.lowerValue
+	movea.l (sp)+, a6
 	bra.w lowered
 scalarLower
 	jsr lowering.lower

@@ -26,6 +26,10 @@
 	.use experimental.amigaos.binary_branches as branches
 	.use experimental.amigaos.binary_guard_values as guards
 	.use experimental.amigaos.binary_repeat_inventory as repeatInventory
+	.use experimental.amigaos.binary_text_execution as textExecution
+	.use experimental.amigaos.binary_text as text
+	.use experimental.amigaos.binary_text_layout as textLayout
+	.use experimental.amigaos.binary_string_provider as stringProvider
 	.use experimental.amigaos.binary_memory as memory
 	.include "memory_telemetry.i"
 	.pub
@@ -47,6 +51,10 @@ Emitted	.long ?
 MemberKeys	.long ?  ; bounded numeric field IDs, indexed by context symbol
 Warn	.long ?  ; optional byte-truncation diagnostic callback
 Warnings	.long ?  ; final-pass warning events, without per-event allocation
+AsciiName	.word ?  ; prepared global source-origin encoding IDs
+PetsciiName	.word ?
+ModuleStarts	.long ?  ; ordered-relative numeric module boundaries
+ModuleCount	.long ?
 	.endstruct
 
 OutputReloc	.struct
@@ -55,7 +63,7 @@ Target	.long ?
 Offset	.long ?
 	.endstruct
 OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
-FRAME_BYTES = Frame.Warnings+4
+FRAME_BYTES = Frame.ModuleCount+4
 FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
 FAILURE_WHILE_LAYOUT = 2
@@ -63,6 +71,11 @@ MAX_LAYOUT_ROUNDS = 8
 
 	.section bss, kind=bss
 	.priv
+TextExecution
+	.res byte, textExecution.FRAME_BYTES
+ModuleCursor	.res long, 1
+TextState
+	.res byte, textLayout.STATE_BYTES
 Session
 	.res byte, session.STATE_BYTES
 LayoutRounds
@@ -250,6 +263,18 @@ execute	.block
 	move.l Frame.MemberKeys(a5), d3
 	cmp.l Session+session.State.MemberKeys, d3
 	bne.w invalidApi
+	move.l Frame.ModuleStarts(a5), d3
+	cmp.l Session+session.State.ModuleStarts, d3
+	bne.w invalidApi
+	move.l Frame.ModuleCount(a5), d3
+	cmp.l Session+session.State.ModuleCount, d3
+	bne.w invalidApi
+	move.w Frame.AsciiName(a5), d3
+	cmp.w Session+session.State.AsciiName, d3
+	bne.w invalidApi
+	move.w Frame.PetsciiName(a5), d3
+	cmp.w Session+session.State.PetsciiName, d3
+	bne.w invalidApi
 	move.l d0, -(sp)
 	bsr.w refreshViews
 	tst.l d0
@@ -308,6 +333,9 @@ releaseSession
 	cmpa.l Session+session.State.Frame, a0
 	bne.w invalidApi
 	move.w #session.RELEASE, Session+session.State.Operation
+	; Release uses the captured semantic owner, independent of caller registers
+	; and of a Frame that may have been modified after a rejected advance.
+	movea.l Session+session.State.Context, a6
 	moveq #0, d0
 	bra.w cleanup
 released
@@ -335,6 +363,10 @@ validFrozenBase
 	move.l pkg.Context.SectionIds(a6), Session+session.State.SectionIds
 	move.l pkg.Context.Owner(a6), Session+session.State.Owner
 	move.l Frame.MemberKeys(a5), Session+session.State.MemberKeys
+	move.l Frame.ModuleStarts(a5), Session+session.State.ModuleStarts
+	move.l Frame.ModuleCount(a5), Session+session.State.ModuleCount
+	move.w Frame.AsciiName(a5), Session+session.State.AsciiName
+	move.w Frame.PetsciiName(a5), Session+session.State.PetsciiName
 	move.w #session.BEGIN, Session+session.State.Operation
 	move.w #session.SIZING, Session+session.State.Phase
 	move.l a0, Session+session.State.Frame
@@ -519,6 +551,18 @@ oneMap
 sweep
 	moveq #0, d4  ; section selection state for mapped sweeps
 sweepRecords
+	; A complete replay rebuilds definitions; suspended advances retain them.
+	lea TextState, a0
+	jsr text.release
+	moveq #0, d1
+	moveq #0, d2
+	move.w Frame.AsciiName(a5), d1
+	move.w Frame.PetsciiName(a5), d2
+	jsr text.init
+	bne.w fail
+	move.l #TextState, pkg.Context.TextState(a6)
+	jsr stringProvider.configure
+	clr.l ModuleCursor
 	movem.l a2, -(sp)
 	movea.l pkg.Context.Package(a6), a2
 	jsr state.reset
@@ -556,6 +600,8 @@ executeRecord
 	move.l a4, d0
 	sub.l Frame.Records(a5), d0
 	move.l d0, Frame.RecordOffset(a5)
+	bsr.w moduleEntries
+	bne.w fail
 	cmpa.l a3, a4
 	beq.w passDone
 	bhi.w fail
@@ -620,6 +666,17 @@ selectedBranch
 	bne.w fail
 	bra.w omitted
 controlsReady
+	; Text controls execute for active source records before section filtering.
+	movem.l a0-a2, -(sp)
+	lea TextExecution, a0
+	move.l #TextState, textExecution.Frame.State(a0)
+	move.l a6, textExecution.Frame.Context(a0)
+	move.l a4, textExecution.Frame.Record(a0)
+	move.l d6, textExecution.Frame.Bytes(a0)
+	move.l #emitBytes, textExecution.Frame.Emit(a0)
+	jsr textExecution.prepare
+	movem.l (sp)+, a0-a2
+	bne.w fail
 	tst.w d5
 	beq.w stateReady
 	; Replay state in source order even when section sweeps filter byte emission.
@@ -761,6 +818,29 @@ selected
 	btst #3, d0
 	bne.w omitted
 ordinaryStatement
+	tst.l TextExecution+textExecution.Frame.Action
+	beq.w ordinaryNonText
+	; Publish a grammar-validated label prefix through the shared statement owner.
+	move.l TextExecution+textExecution.Frame.Results+dataabi.PRVM_TEXT_PREFIX_BYTES, d0
+	beq.w textLabelReady
+	lea source.RECORD_HEADER_BYTES(a4), a0
+	movea.l a0, a1
+	adda.l d0, a1
+	movea.l a6, a2
+	moveq #0, d0
+	bsr.w statement
+	bne.w fail
+textLabelReady
+	cmpi.l #textExecution.TEXT, TextExecution+textExecution.Frame.Action
+	blo.w omitted
+	lea SectionState, a0
+	jsr sections.checkInitialized
+	bne.w fail
+	lea TextExecution, a0
+	jsr textExecution.emit
+	bne.w fail
+	bra.w omitted
+ordinaryNonText
 	moveq #0, d0
 	move.b 1(a4), d0
 	andi.w #source.FLAG_INDENT, d0
@@ -793,6 +873,13 @@ omitted
 	adda.l d6, a4
 	bra.w line
 passDone
+	; The last module (or a component replay without a module schedule)
+	; must close every definition scope before this traversal completes.
+	tst.l TextState+textLayout.State.Scopes
+	bne.w fail
+	move.l ModuleCursor, d0
+	cmp.l Frame.ModuleCount(a5), d0
+	bne.w fail
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #7
 	lea RepeatState, a0
 	jsr repetition.end
@@ -912,6 +999,15 @@ fail
 	clr.l Frame.Used(a5)
 	moveq #1, d0
 cleanup
+	; Provider borrows TextState only while this assembly session owns it.
+	move.l d0, -(sp)
+	lea TextState, a0
+	jsr text.release
+	jsr stringProvider.release
+	suba.l a0, a0
+	jsr stringProvider.configure
+	clr.l pkg.Context.TextState(a6)
+	move.l (sp)+, d0
 	clr.w Session+session.State.Phase
 	lea BranchState, a0
 	jsr branches.release
@@ -945,6 +1041,58 @@ suspend
 	moveq #0, d0
 	bra.w apiDone
 	.bend  ; execute
+
+; A5=Frame. Consume validated ordered-relative module entries at this frontier.
+; Empty modules can share a boundary. Entries inside a record reject on the next
+; complete frontier; source/file origins do not affect encoding selection.
+; D0/CCR=status, all other registers preserved.
+moduleEntries	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	move.l Frame.ModuleCount(a5), d2
+	cmpi.l #512, d2
+	bhi.w bad
+	move.l ModuleCursor, d1
+	cmp.l d2, d1
+	bhi.w bad
+	beq.w good
+	move.l Frame.ModuleStarts(a5), d3
+	beq.w bad
+	btst #0, d3
+	bne.w bad
+	movea.l d3, a1
+	move.l d2, d0
+	lsl.l #2, d0
+	add.l d3, d0
+	bcs.w bad
+loop
+	move.l d1, d3
+	lsl.l #2, d3
+	move.l 0(a1, d3.l), d3
+	cmp.l Frame.RecordBytes(a5), d3
+	bhi.w bad
+	cmp.l Frame.RecordOffset(a5), d3
+	blo.w bad
+	bhi.w good
+	; Validate closure before resetting selection, including adjacent empty
+	; modules. Reset must never erase evidence of an unclosed definition.
+	tst.l TextState+textLayout.State.Scopes
+	bne.w bad
+	lea TextState, a0
+	jsr text.resetProfile
+	addq.l #1, d1
+	move.l d1, ModuleCursor
+	cmp.l d2, d1
+	blo.w loop
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a1
+	tst.l d0
+	rts
+	.bend  ; moduleEntries
 
 ; A5=frozen Frame,A6=Context. Refresh owner-borrowed views at a complete
 ; record boundary, after frozen identity checks. No source publication occurs.
@@ -1363,26 +1511,38 @@ dataValueStart
 	bne.w dataExpression
 	move.l a1, d0
 	sub.l a0, d0
-	cmpi.l #3, d0
+	cmpi.l #2, d0
 	blo.w bad
-	moveq #0, d5
-	move.b 1(a0), d5
-	cmpi.w #2, d5
-	blo.w bad  ; one-byte strings were lowered to scalar expressions
-	move.l d5, d1
-	addq.l #2, d1
-	cmp.l d1, d0
+	moveq #0, d1
+	move.b 1(a0), d1
+	move.l d1, d5
+	addq.l #2, d5
+	cmp.l d5, d0
 	blo.w bad
 	movea.l a0, a5
-	lea 2(a0), a0
-	move.l d5, d0
+	adda.l d5, a5  ; source continuation survives encoding buffer ownership
+	movem.l a1-a3, -(sp)
+	lea 2(a0), a1
+	lea TextState, a0
+	jsr stringProvider.encode
+	movea.l a1, a4
+	movem.l (sp)+, a1-a3
+	bne.w bad
+	tst.l d1
+	beq.w bad
+	cmpi.l #1, d1
+	beq.w dataStringScalar
+	move.l d1, d0
+	movea.l a4, a0
 	bsr.w emitBytes
-	tst.l d0
 	bne.w bad
 	movea.l a5, a0
-	adda.l d5, a0
-	addq.l #2, a0
 	bra.w dataNext
+dataStringScalar
+	moveq #0, d1
+	move.b (a4), d1
+	movea.l a5, a0
+	bra.w dataEmitValue
 dataExpression
 	movea.l a0, a5
 	movea.l a2, a6

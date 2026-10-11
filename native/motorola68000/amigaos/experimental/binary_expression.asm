@@ -392,7 +392,10 @@ lowerValue
 	move.l #compiler.SCRATCH_BYTES, d2
 	move.l d4, -(sp)
 	move.l LenName, d4
+	move.l a6, -(sp)
+	movea.l a2, a6
 	jsr lowering.lowerValue
+	movea.l (sp)+, a6
 	move.l (sp)+, d4
 	tst.l d0
 	bne.w lowerFailed

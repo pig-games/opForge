@@ -1,5 +1,5 @@
-//! Component proof for numeric text-owner APIs. This does not qualify the
-//! compact source parser or directive execution integration.
+//! Component and compact CLI proofs for shared numeric text encoding.
+//! Focused controls do not establish complete source-language parity.
 use super::native_iterable_loops::{oracle, scratch};
 use super::*;
 use clap::Parser;
@@ -251,4 +251,302 @@ fn native_text_grammar_component_fs_uae() {
     assert!(runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(0));
     assert!(runs[0].success, "{}\n{}", runs[0].stdout, runs[0].stderr);
+}
+
+// Full compact-source integration. Each native case is compared with its own
+// current Rust execution, including module selection and decoded-string policy.
+const INTEGRATED_POSITIVE: &[(&str, &str)] = &[
+    ("nested-definitions-close-in-module", ".module main\n.cpu 68020\n.encode outer\n.cdef \"A\",\"A\",1\n.encode inner\n.cdef \"B\",\"B\",2\n.endencode\n.cdef \"C\",\"C\",3\n.endencode\n.enc outer\n.text \"AC\"\n.enc inner\n.text \"B\"\n.endmodule\n"),
+    ("registry-replay-and-modules", ORACLE),
+    ("forward-definition-values", ".module main\n.cpu 68020\n.encode ranges\n.cdef \"A\",\"B\",CODE\n.endencode\n.enc ranges\n.text \"AB\"\n.encode tables\n.tdef \"AB\",CODE\n.endencode\n.enc tables\n.text \"AB\"\n.encode escapes\n.edef \"{x}\",CODE\n.endencode\n.enc escapes\n.text \"{x}\"\nCODE .const 7\n.endmodule\n"),
+    ("scalar-data-and-padding", ".module main\n.cpu 68020\n.emit byte,0,255\n.emit word,$1234\n.emit long,$12345678\n.emit 3,$abcdef\n.emit 8,$12345678\n.endmodule\n"),
+    (
+        "encoded-data-policy",
+        r#".module main
+.cpu 68020
+.enc petscii
+.byte "A"
+.word "a"
+.long "AB"
+.text "a", "A"
+.text ""
+.null ""
+.ptext "ab"
+.emit byte, "a"
+.emit word, "AB"
+.endmodule
+"#,
+    ),
+    (
+        "escapes-scalar-and-empty",
+        r#".module main
+.cpu 68020
+.encode custom
+.cdef "A", "B", 1+1
+.edef "{empty}", ""
+.edef "{one}", 7
+.edef "{two}", 1, 2
+.edef "{raw}", "az", 0
+.endencode
+.enc custom
+.byte "{one}"
+.word "{one}"
+.long "{two}"
+.null "{empty}"
+.ptext "{empty}"
+.emit word, "{two}"
+.text "AB{raw}"
+.endmodule
+"#,
+    ),
+    (
+        "inactive-controls-and-labels",
+        r#".module dep
+.cpu 68020
+.pub
+entry .block
+.byte 7
+.bend
+unused .block
+.enc petscii
+.bend
+.text "A"
+.endmodule
+.module main
+.cpu 68020
+.use dep (entry)
+.if 0
+.enc petscii
+.encode ignored
+.cdef "A", "A", 1
+.endencode
+.endif
+first: .text "A"
+.null "a"
+.word first
+.word dep.entry
+.endmodule
+"#,
+    ),
+    (
+        "normalized-global-names",
+        r#".module main
+.cpu 68020
+petscii .const 17
+.encoding " PeTsCiI "
+.byte "A"
+.encode " GaMe "
+.cdef "A", "A", 9
+.endencode
+.enc "game"
+.text "A"
+.byte petscii
+.endmodule
+"#,
+    ),
+    (
+        "bare-encoding-names-in-macros",
+        r#".module main
+.cpu 68020
+select .macro
+.enc petscii
+.endmacro
+create .macro
+.encode custom
+.cdef "A","B",7
+.endencode
+.endmacro
+.create
+.enc custom
+.text "AB"
+.select
+.text "A"
+.endmodule
+"#,
+    ),
+    (
+        "parameterized-encoding-definitions",
+        r#".module main
+.cpu 68020
+create .macro name,start
+.encode .name
+.cdef "A","B",.start
+.endencode
+.endmacro
+select .macro name
+.enc .name
+.endmacro
+.namespace scoped
+.create "game",7
+.select "game"
+.text "AB"
+.endnamespace
+.endmodule
+"#,
+    ),
+    (
+        "encoded-expression-values",
+        r#".module main
+.cpu 68020
+.enc petscii
+saved .const "A"
+.byte saved, "a"+1
+.word "AB"+1
+.enc ascii
+.byte "A",saved
+.endmodule
+"#,
+    ),
+    (
+        "encoding-names-through-macro-namespace",
+        r#".module main
+.cpu 68020
+choose .macro
+.enc " petscii "
+.endmacro
+.namespace scoped
+petscii .const 17
+.choose
+.text "A"
+.byte petscii
+.endnamespace
+.text "a"
+.endmodule
+"#,
+    ),
+];
+const INTEGRATED_NEGATIVE: &[(&str, &str)] = &[
+    ("unmatched-endencode", ".endencode\n"),
+    ("unclosed-encode-at-module-end", ".encode custom\n.cdef \"A\",\"A\",1\n"),
+    ("unclosed-encode-before-next-module", ".encode custom\n.cdef \"A\",\"A\",1\n.endmodule\n.module next\n.byte 1\n"),
+    ("unknown-profile", ".enc missing\n.text \"A\"\n"),
+    ("definition-outside-scope", ".cdef \"A\",\"B\",1\n"),
+    ("duplicate-character", ".encode custom\n.tdef \"aa\",1\n.endencode\n"),
+    ("unmapped-character", ".encode custom\n.cdef \"A\",\"A\",1\n.endencode\n.enc custom\n.text \"B\"\n"),
+    ("empty-data", ".byte \"\"\n"),
+    ("non-string-text", ".text 1\n"),
+    ("empty-text-in-bss", ".region image,0,15,align=1\n.section data,kind=bss\n.text \"\"\n.endsection\n.place data in image\n"),
+    ("null-zero-payload", ".null \"\\0\"\n"),
+    ("null-zero-mapping", ".encode custom\n.cdef \"a\",\"a\",0\n.endencode\n.enc custom\n.null \"a\"\n"),
+    ("oversized-string-scalar", ".emit byte,\"ABC\"\n"),
+    ("replacement-byte-range", ".encode custom\n.edef \"{x}\",256\n.endencode\n"),
+];
+
+#[test]
+fn native_text_integration_live_rust_controls() {
+    let dir = scratch();
+    for (name, source) in INTEGRATED_POSITIVE {
+        let actual = oracle(&dir.0, source)
+            .unwrap_or_else(|error| panic!("positive control {name}: {error}"));
+        let pinned: Option<&[u8]> = match *name {
+            "forward-definition-values" => Some(&[7, 8, 7, 8, 7]),
+            "nested-definitions-close-in-module" => Some(&[1, 3, 2]),
+            "scalar-data-and-padding" => Some(&[
+                0, 255, 0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0xab, 0xcd, 0xef, 0, 0, 0, 0, 0x12,
+                0x34, 0x56, 0x78,
+            ]),
+            "encoded-data-policy" => {
+                Some(&[193, 0, 65, 193, 194, 65, 193, 0, 2, 65, 66, 65, 193, 194])
+            }
+            "escapes-scalar-and-empty" => Some(&[7, 0, 7, 1, 2, 0, 0, 1, 2, 2, 3, 97, 122, 0]),
+            "inactive-controls-and-labels" => Some(&[7, 65, 65, 97, 0, 0, 2, 0, 0]),
+            "normalized-global-names" => Some(&[193, 9, 17]),
+            "encoding-names-through-macro-namespace" => Some(&[193, 17, 65]),
+            "encoded-expression-values" => Some(&[193, 66, 193, 195, 65, 193]),
+            "parameterized-encoding-definitions" => Some(&[7, 8]),
+            "bare-encoding-names-in-macros" => Some(&[7, 8, 193]),
+            _ => None,
+        };
+        if let Some(expected) = pinned {
+            assert_eq!(actual, expected, "pinned control {name}");
+        }
+    }
+    for (name, body) in INTEGRATED_NEGATIVE {
+        let source = format!(".module main\n.cpu 68020\n{body}.endmodule\n");
+        assert!(oracle(&dir.0, &source).is_err(), "negative control {name}");
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; fresh compact text integration proof"]
+fn native_text_integration_fs_uae() {
+    use super::native_iterable_loops::{build_image, run_case};
+    use super::native_source_cases::{self, Case};
+    let dir = scratch();
+    let root = workspace_root();
+    let executable = std::env::var_os("OPFORGE_TEXT_IMAGE")
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_else(|| build_image(&root, &dir.0));
+    let selected_case = std::env::var("OPFORGE_TEXT_CASE").ok();
+    let selected_cpu = std::env::var("OPFORGE_TEXT_CPU").ok();
+    let mut cases = Vec::new();
+    for cpu in ["68020", "6502"] {
+        if selected_cpu
+            .as_deref()
+            .is_some_and(|selected| selected != cpu)
+        {
+            continue;
+        }
+        for (name, source) in INTEGRATED_POSITIVE {
+            if selected_case
+                .as_deref()
+                .is_some_and(|selected| selected != *name)
+            {
+                continue;
+            }
+            let source = source.replace(".cpu 68020", &format!(".cpu {cpu}"));
+            let expected = oracle(&dir.0, &source).expect("current positive text oracle");
+            cases.push(Case {
+                name: format!("{name}-{cpu}"),
+                cpu: cpu.into(),
+                files: vec![("entry.asm", source)],
+                expected: Some(expected),
+            });
+        }
+        for (name, body) in INTEGRATED_NEGATIVE {
+            if selected_case
+                .as_deref()
+                .is_some_and(|selected| selected != *name)
+            {
+                continue;
+            }
+            let source = format!(".module main\n.cpu {cpu}\n{body}.endmodule\n");
+            cases.push(Case {
+                name: format!("{name}-{cpu}"),
+                cpu: cpu.into(),
+                files: vec![("entry.asm", source)],
+                expected: None,
+            });
+        }
+    }
+    assert!(!cases.is_empty(), "text localization selected no cases");
+    if std::env::var("OPFORGE_ITERABLE_MEMORY").as_deref() == Ok("1") {
+        // Keep isolated diagnostic/timing runs separate from correctness batches.
+        for case in cases {
+            run_case(
+                &root,
+                &dir.0,
+                &executable,
+                &case.name,
+                &case.cpu,
+                &case.files[0].1,
+                case.expected.is_none(),
+            );
+        }
+    } else {
+        native_source_cases::run(&root, &executable, &cases);
+    }
+}
+
+#[test]
+fn native_text_forward_definition_live_controls() {
+    let dir = scratch();
+    for (name, body, expected) in [
+        ("cdef", ".encode custom\n.cdef \"A\",\"B\",CODE\n.endencode\n.enc custom\n.text \"AB\"\nCODE .const 7\n", &[7, 8][..]),
+        ("tdef", ".encode custom\n.tdef \"AB\",CODE\n.endencode\n.enc custom\n.text \"AB\"\nCODE .const 7\n", &[7, 8][..]),
+        ("edef", ".encode custom\n.edef \"{x}\",CODE\n.endencode\n.enc custom\n.text \"{x}\"\nCODE .const 7\n", &[7][..]),
+    ] {
+        let source = format!(".module main\n.cpu 68020\n{body}.endmodule\n");
+        assert_eq!(oracle(&dir.0, &source).unwrap(), expected, "forward {name}");
+    }
 }

@@ -89,6 +89,9 @@ KIND_MEMBER = 10
 KIND_TERNARY = 11
 KIND_STRUCT = 12
 KIND_FIELD = 13
+; String nodes retain First=decoded offset in Request.Tokens, Second=byte length only
+; until lowering copies the immutable token bytes into canonical VM payloads.
+KIND_STRING = 14
 	.priv
 Sequence	.struct
 Start	.long ?
@@ -383,18 +386,17 @@ string
 	bne.w done
 	cmpi.w #tokens.TK_KIND_STRING, d1
 	bne.w syntaxBad
-	moveq #0, d4
-	move.b 1(a0), d4
-	beq.w syntaxBad
-	cmpi.w #2, d4
-	bhi.w syntaxBad
-	moveq #0, d4
-	move.b 2(a0), d4
-	cmpi.w #4, d2
-	bne.w literalReady
-	lsl.w #8, d4
-	move.b 3(a0), d4
-	bra.w literalReady
+	; Preserve tokenizer-decoded bytes until runtime profile selection.
+	move.l State.Cursor(a6), d4
+	addq.l #2, d4
+	bsr.w allocate
+	bne.w done
+	moveq #0, d5
+	move.b 1(a0), d5
+	move.l d5, Node.Second(a1)
+	moveq #KIND_STRING, d3
+	bra.w leafReady
+
 literalReady
 	moveq #KIND_LITERAL, d3
 	bra.w leaf

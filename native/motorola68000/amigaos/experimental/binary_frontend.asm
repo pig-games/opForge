@@ -40,6 +40,7 @@
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.macro_spelling as spelling
 	.use experimental.amigaos.binary_text_names as textNames
+	.use prvm.amigaos.packed_text as text
 	.pub
 Frame	.struct
 Package	.long ?
@@ -782,7 +783,15 @@ identityMap
 	move.l capture.Frame.Count(a4), d0
 	bsr.w bodyFragmentCandidate
 	tst.l d0
+	bne.w lineSelected
+	; Capture unresolved named formals before contextual binding. Replay
+	; still selects their recipe only when its numeric envelope requires it.
+	lea TOKENS(a6), a0
+	move.l capture.Frame.Count(a4), d0
+	bsr.w namedFragmentCandidate
+	tst.l d0
 	beq.w lineReady
+lineSelected
 	move.l d0, d2  ; candidate role survives until fragment selection
 lineCandidate
 	moveq #3, d4
@@ -1175,6 +1184,38 @@ done
 	rts
 	.bend  ; writeTokens
 
+; A0=TKVM rows,D0=count. Retain possible named substitution recipes
+; after the leading head tokens. This is capture metadata, not value binding.
+; D0/CCR=FRAGMENT_STRING or zero; other registers preserved.
+namedFragmentCandidate	.block
+	movem.l d1-d2/a0, -(sp)
+	move.l d0, d1
+	cmpi.l #4, d1
+	blo.w ordinary
+	adda.w #2*tokenizer.TOKEN_RECORD_SIZE, a0
+	subq.l #2, d1
+next
+	cmpi.l #2, d1
+	blo.w ordinary
+	cmpi.w #tokenizer.TK_KIND_DOT, writer.Token.Kind(a0)
+	bne.w advance
+	cmpi.w #tokenizer.TK_KIND_IDENTIFIER, writer.Token.Kind+tokenizer.TOKEN_RECORD_SIZE(a0)
+	beq.w selected
+advance
+	adda.w #tokenizer.TOKEN_RECORD_SIZE, a0
+	subq.l #1, d1
+	bra.w next
+selected
+	moveq #FRAGMENT_STRING, d0
+	bra.w done
+ordinary
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	rts
+	.bend  ; namedFragmentCandidate
+
 ; A5=session,A6=scratch,D1=TKVM count,D3=lexeme bytes.
 ; A0=writer Frame. Configure its borrowed input without writing or binding.
 ; Other registers except D0 preserved; CCR unspecified.
@@ -1436,7 +1477,13 @@ fragmentLinePlan	.block
 	move.l LINE_FRAME+writer.Frame.Count(a6), d0
 	bsr.w bodyFragmentCandidate
 	tst.l d0
+	bne.w candidateReady
+	; Encoding-name formals must be rebound after textual substitution,
+	; even when the original line contains no string literal.
+	bsr.w textNameBody
+	tst.l d0
 	beq.w ready
+candidateReady
 	moveq #0, d7
 	cmpi.l #FRAGMENT_NUMERIC, d0
 	bne.w capture
@@ -1491,6 +1538,53 @@ done
 	tst.l d0
 	rts
 	.bend  ; fragmentLinePlan
+
+; A5=session,A6=scratch. Return FRAGMENT_STRING for a shared text-name
+; envelope with a named first-operand formal, otherwise zero. Use the writer's
+; numeric head frontier and TKVM token kinds, never spelling lookup.
+; D0/CCR=result; other registers preserved.
+textNameBody	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	moveq #0, d0
+	move.w LINE_FRAME+writer.Frame.HeadToken(a6), d0
+	addq.l #2, d0
+	move.l d0, d2
+	addq.l #2, d2
+	cmp.l LINE_FRAME+writer.Frame.Count(a6), d2
+	bhi.w ordinary
+	move.l d0, d2
+	mulu.w #tokenizer.TOKEN_RECORD_SIZE, d2
+	lea TOKENS(a6), a0
+	adda.l d2, a0
+	cmpi.w #tokenizer.TK_KIND_DOT, writer.Token.Kind(a0)
+	bne.w ordinary
+	cmpi.w #tokenizer.TK_KIND_IDENTIFIER, writer.Token.Kind+tokenizer.TOKEN_RECORD_SIZE(a0)
+	bne.w ordinary
+	add.l d0, d0
+	lea PACKED_MAP(a6), a1
+	moveq #0, d1
+	move.w 0(a1, d0.l), d1
+	cmp.l Frame.Capacity(a5), d1
+	bhi.w ordinary
+	move.l d1, d0
+	movea.l Frame.Output(a5), a0
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.TextPlanBytes(a1), d1
+	adda.l package.Header.TextPlan(a1), a1
+	jsr text.nameRole
+	tst.l d0
+	bne.w ordinary
+	cmpi.l #1, d1
+	bne.w ordinary
+	moveq #FRAGMENT_STRING, d0
+	bra.w done
+ordinary
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a1
+	tst.l d0
+	rts
+	.bend  ; textNameBody
 
 ; D1=owned whole-line plan,A6=scratch. D0/CCR=0 when a PRVM positional
 ; substitution ends inside a TKVM numeric token,1 absent,2 invalid plan.
@@ -1691,10 +1785,10 @@ bindingReady
 	add.l a3, d0
 noStatePlan
 	move.l d0, writer.Frame.StatePlan(a0)
-	move.l package.Header.TextPlan(a1), d0
-	add.l a1, d0
+	move.l package.Header.TextPlan(a3), d0
+	add.l a3, d0
 	move.l d0, writer.Frame.TextPlan(a0)
-	move.l package.Header.TextPlanBytes(a1), writer.Frame.TextPlanBytes(a0)
+	move.l package.Header.TextPlanBytes(a3), writer.Frame.TextPlanBytes(a0)
 	move.w package.Header.ResDirective(a3), writer.Frame.WidthDirective(a0)
 	move.w package.Header.EmitDirective(a3), writer.Frame.DataWidthDirective(a0)
 	clr.w writer.Frame.HeadToken(a0)
@@ -3848,18 +3942,13 @@ bindTextName	.block
 	movea.l a6, a0
 	adda.l #TEXT_NAME_BUFFER, a0
 	lea SCOPE_STATE(a6), a1
-	moveq #0, d3
-	move.w layout.State.Current(a1), d3
-	clr.w layout.State.Current(a1)
-	jsr scopes.bindOrigin
-	lea SCOPE_STATE(a6), a1
-	move.w d3, layout.State.Current(a1)
+	jsr scopes.bindEncodingName
 done
 	clr.l d2
 	movem.l (sp)+, d3-d7/a2-a6
 	tst.l d0
 	rts
-	.bend
+	.bend  ; bindTextName
 ; Probe only a declared template; a failed probe retains the package identity.
 ; A2/D6=lexeme,A6=session scratch. D0=status,D1/D2=source ID/qualifier.
 templateIdentity	.block

@@ -13,6 +13,8 @@
 	.use prvm.amigaos.packed_loop as loop_parser
 	.use prvm.amigaos.abi as loop_abi
 	.use prvm.amigaos.packed_branch as branches
+	.use prvm.amigaos.packed_text as textGrammar
+	.use prvm.amigaos.macro_runtime as textVm
 	.pub
 	.section code, kind=code
 
@@ -182,6 +184,11 @@ closingLoop
 	bne.w bad
 	bra.w noOperands
 ordinaryLoopDirective
+	bsr.w prepareTextDirective
+	cmpi.l #2, d0
+	beq.w bad
+	tst.l d0
+	bne.w complete
 	moveq #1, d6
 	bsr.w copy
 	bne.w bad
@@ -361,6 +368,10 @@ scalarTail
 	bsr.w copy
 	bne.w bad
 	cmp.w package.Header.OrgDirective(a2), d4
+	beq.w scalar
+	; .emit consumes scalar VM values, including encoded string literals.
+	; Aggregate string preservation belongs only to .byte/.word/.long.
+	cmp.w package.Header.EmitDirective(a2), d4
 	beq.w scalar
 	bra.w dataScalar
 operands
@@ -826,13 +837,104 @@ done
 	rts
 	.bend  ; packageRegister
 
-; Keep a decoded string of two or more bytes as a data operand. A one-byte
-; string uses shared scalar compilation. No source text is consulted.
+; Shared TextPlan owns operand roles before runtime encoding.
+; D0=0 no match,1 prepared,2 malformed. A0/A3 advance for a match only.
+prepareTextDirective	.block
+	movem.l d1-d7/a1-a2/a4-a6, -(sp)
+	move.l a0, -(sp)
+	lea TextRequest, a0
+	move.l #loop_abi.PRVM_MAGIC_OPRP, loop_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #loop_abi.PRVM_REQUEST_FRAME_SIZE, loop_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #loop_abi.PRVM_ENTRY_KIND_PACKED_TEXT, loop_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.l SOURCE_RECORD(a6), loop_abi.PRVM_FRAME_SOURCE_PTR(a0)
+	movea.l SOURCE_RECORD(a6), a1
+	moveq #0, d0
+	move.b (a1), d0
+	addq.l #1, d0
+	move.l d0, loop_abi.PRVM_FRAME_SOURCE_LEN(a0)
+	adda.l d0, a1
+	move.l package.Header.TextPlan(a2), d0
+	add.l a2, d0
+	move.l d0, loop_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	move.l package.Header.TextPlanBytes(a2), loop_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	move.l #TextResults, loop_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #TEXT_RESULT_BYTES, loop_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	move.l #65536, loop_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	move.l #loop_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	movem.l a1-a2, -(sp)
+	jsr textVm.run
+	movem.l (sp)+, a1-a2
+	movea.l (sp)+, a0
+	bne.w bad
+	tst.l d1
+	beq.w noMatch
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	move.l TextResults+loop_abi.PRVM_TEXT_OPERAND_COUNT, d4
+	moveq #0, d7
+loop
+	movea.l SOURCE_RECORD(a6), a1
+	moveq #0, d0
+	move.b (a1), d0
+	addq.l #1, d0
+	adda.l d0, a1
+	cmp.l d4, d7
+	bcc.w prepared
+	tst.l d7
+	beq.w span
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+span
+	move.l d7, d0
+	addq.l #1, d0
+	lsl.l #5, d0
+	lea TextResults, a1
+	adda.l d0, a1
+	move.l loop_abi.PRVM_TEXT_OPERAND_BYTES(a1), d6
+	cmpi.w #textGrammar.EXPRESSION, loop_abi.PRVM_TEXT_OPERAND_TYPE(a1)
+	beq.w expression
+	movea.l a0, a1
+	adda.l d6, a1
+	bsr.w copy
+	bne.w bad
+	bra.w next
+expression
+	movea.l a0, a1
+	adda.l d6, a1
+	movem.l d4/d7/a1, -(sp)
+	bsr.w compile
+	move.l d0, d1
+	movem.l (sp)+, d4/d7/a1
+	tst.l d1
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+next
+	addq.l #1, d7
+	bra.w loop
+prepared
+	moveq #1, d0
+	bra.w done
+noMatch
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d7/a1-a2/a4-a6
+	tst.l d0
+	rts
+	.bend  ; prepareTextDirective
+
+; Keep every complete decoded string as a data operand. Runtime text policy
+; owns empty strings and one-byte strings as well. No source text is consulted.
 ; A0 advances over the complete bounded string token.
 string	.block
 	move.l a1, d0
 	sub.l a0, d0
-	cmpi.l #3, d0
+	cmpi.l #2, d0
 	blo.w bad
 	moveq #0, d6
 	move.b 1(a0), d6
@@ -840,19 +942,9 @@ string	.block
 	addq.l #2, d1
 	cmp.l d1, d0
 	blo.w bad
-	tst.w d6
-	beq.w bad
-	cmpi.w #1, d6
-	beq.w scalarByte
 	move.l d1, d6
 	bra.w copy
-scalarByte
-	; Shared scalar leaves compile directly from their bounded owned tokens.
-	bsr.w compile
-	tst.l d0
-	bne.w bad
-	moveq #0, d0
-	rts
+
 bad
 	moveq #1, d0
 	rts
@@ -932,5 +1024,10 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; compile
+	.endsection
+	.section bss, kind=bss
+TEXT_RESULT_BYTES = (textGrammar.MAX_OPERANDS+1)*loop_abi.PRVM_RESULT_RECORD_SIZE
+TextRequest	.res byte, loop_abi.PRVM_REQUEST_FRAME_SIZE
+TextResults	.res byte, TEXT_RESULT_BYTES
 	.endsection
 	.endmodule

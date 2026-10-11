@@ -27,6 +27,8 @@ MemberId	.word ?  ; immutable global bare field key; $ffff until declared
 OriginalId	.word ?  ; original complete name ID for BINDING_PROXY
 .endstruct
 ENTRY_BYTES = Entry.OriginalId+2
+ENCODING_NAME_HIGH_BIT = 7
+ENCODING_NAME = 1<<(ENCODING_NAME_HIGH_BIT+8); independent non-value identity namespace
 REFERENCED = 2
 OPTIONAL_REFERENCED = 512
 CONDITIONAL_VALUE = 1<<11; preparation retains candidate immutable definitions

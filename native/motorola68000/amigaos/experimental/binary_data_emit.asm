@@ -10,11 +10,17 @@ Cursor	.long ?
 Pc	.long ?  ; one statement-start PC for every value on this line
 	.endstruct
 DATA_CALL_BYTES = DataCall.Pc+4
+DATA_STAGE_GRAMMAR = 40
+DATA_STAGE_SPANS = 41
+DATA_STAGE_VALUE = 42
+DATA_STAGE_RANGE = 43
+DATA_STAGE_OUTPUT = 44
 
 ; A0=.emit operands,A1=bounded end,A2=Context,A3=package.
 ; D0/CCR=status; all other registers preserved. Uses bounded stack scratch.
 emitData	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #DATA_STAGE_GRAMMAR
 	suba.w #DATA_CALL_BYTES, sp
 	movea.l sp, a6
 	move.l pkg.Context.Pc(a2), DataCall.Pc(a6)
@@ -64,6 +70,7 @@ clearRequest
 	jsr datavm.run
 	movem.l (sp)+, a2-a3
 	bne.w bad
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #DATA_STAGE_SPANS
 	cmpi.l #1, d1
 	bne.w bad
 	cmpi.l #32, d3
@@ -119,6 +126,7 @@ unitReady
 	move.l d1, d6
 widthReady
 value
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #DATA_STAGE_VALUE
 	movea.l DataCall.Cursor(a6), a0
 	movea.l DataCall.End(a6), a1
 	movea.l a0, a5
@@ -128,6 +136,7 @@ value
 	move.l (sp)+, pkg.Context.Pc(a2)
 	tst.l d0
 	bne.w bad
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #DATA_STAGE_RANGE
 	tst.l d2
 	beq.w resolved
 	cmpi.w #1, pkg.Context.Pass(a2)
@@ -198,16 +207,17 @@ scalarReady
 	bne.w writeScalar
 	suba.l a0, a0
 	move.l d7, d0
-	bsr.w emit
+	bsr.w emitBytes
 	bne.w bad
 writeScalar
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #DATA_STAGE_OUTPUT
 	move.l d6, d0
 	cmpi.l #4, d0
 	bls.w scalarCount
 	moveq #4, d0
 scalarCount
 	lea DataBytes, a0
-	bsr.w emit
+	bsr.w emitBytes
 	bne.w bad
 	cmpi.l #4, d6
 	bls.w next
@@ -215,7 +225,7 @@ scalarCount
 	beq.w next
 	suba.l a0, a0
 	move.l d7, d0
-	bsr.w emit
+	bsr.w emitBytes
 	bne.w bad
 next
 	movea.l DataCall.Cursor(a6), a0

@@ -930,6 +930,23 @@ done
 	rts
 	.bend  ; reserve
 
+; A0=State. Validate an initialized-data statement independently of its byte
+; count: even an empty .text is invalid in BSS. D0/CCR=status; others preserved.
+checkInitialized	.block
+	tst.w State.Mode(a0)
+	beq.w good
+	tst.w State.Active(a0)
+	beq.w bad
+	cmpi.w #3, State.ActiveKind(a0)
+	beq.w bad
+good
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; checkInitialized
+
 ; A0=State,A1=Context,D0=emitted byte count. Reject output outside the
 ; active section or beyond its placed region. D0/CCR=status; others preserved.
 checkEmit	.block

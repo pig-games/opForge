@@ -13,6 +13,7 @@ EXPRVM_OPCODE_END            = $00
 EXPRVM_OPCODE_PUSH_LITERAL   = $10
 EXPRVM_OPCODE_PUSH_CURRENT_ADDR = $11
 EXPRVM_OPCODE_PUSH_SYMBOL    = $12
+EXPRVM_OPCODE_PUSH_STRING_LITERAL = $13
 EXPRVM_OPCODE_APPLY_UNARY    = $20
 EXPRVM_OPCODE_APPLY_BINARY   = $21
 SELECT = $22
@@ -93,6 +94,34 @@ COMPACT_MULTIPLY = $33
 
 	.section code, kind=code
 	.pub
+
+; A0=callback,A1=user context, or A0=zero to clear. D0/CCR=0;
+; others preserved. Callback A0/D1=decoded bytes/length,A1=context returns
+; D0=status,D1=scalar. Providers may clobber other registers.
+configureStringProvider	.block
+	move.l a0, StringCallback
+	move.l a1, StringContext
+	moveq #0, d0
+	rts
+	.bend  ; configureStringProvider
+
+; Invoke the configured session provider. A0/D1=decoded bytes/length.
+; D0=status,D1=scalar; all other registers preserved; CCR reflects D0.
+evaluateString	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	move.l StringCallback, d0
+	beq.w absent
+	movea.l d0, a2
+	movea.l StringContext, a1
+	jsr (a2)
+	bra.w done
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; evaluateString
 
 ; Evaluate canonical ExprVM bytecode with signed i64 values. The bytecode
 ; and tables use the same ABI as exprvmEvalProgramV1. A1 is unused;
@@ -183,6 +212,8 @@ evalLoop
 evalCanonical
 	cmpi.b #EXPRVM_OPCODE_END, d6
 	beq.w opcodeEnd
+	cmpi.b #EXPRVM_OPCODE_PUSH_STRING_LITERAL, d6
+	beq.w opcodePushString
 	cmpi.b #EXPRVM_OPCODE_PUSH_LITERAL, d6
 	beq.w opcodePushLiteral
 	cmpi.b #EXPRVM_OPCODE_PUSH_CURRENT_ADDR, d6
@@ -270,6 +301,30 @@ compactSigned
 	tst.l d3
 	bpl.w literalReady
 	moveq #-1, d2
+	bra.w literalReady
+
+opcodePushString
+	cmpi.l #2, d0
+	blo.w fail
+	moveq #0, d1
+	move.b 1(a0), d1
+	lsl.w #8, d1
+	move.b (a0), d1
+	addq.l #2, a0
+	subq.l #2, d0
+	cmp.l d1, d0
+	blo.w fail
+	sub.l d1, d0
+	move.l d0, ExprvmEvalRemaining
+	move.l d1, -(sp)
+	jsr evaluateString
+	move.l (sp)+, d2
+	adda.l d2, a0
+	tst.l d0
+	bne.w fail
+	move.l d1, d3
+	moveq #0, d2
+	move.l ExprvmEvalRemaining, d0
 	bra.w literalReady
 
 opcodePushLiteral
@@ -805,6 +860,8 @@ readLiteralLong	.block
 	.endsection
 
 	.section bss, kind=bss
+StringCallback	.res long, 1
+StringContext	.res long, 1
 
 	.pub
 

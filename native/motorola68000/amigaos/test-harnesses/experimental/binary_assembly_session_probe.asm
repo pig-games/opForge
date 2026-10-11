@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_package as package
 	.pub
 MAX_STEPS = 1048576
+GUARD = $c0decafe
 Saved	.struct
 Count	.long ?
 Base	.long ?
@@ -18,7 +19,7 @@ SAVED_BYTES = Saved.Steps+4
 ; A0=Frame. D0/CCR=status; other registers preserved. Expected API rejections
 ; must preserve the active owner, and strict emission must use that same owner.
 run	.block
-	movem.l d1-d4/a0-a2/a5, -(sp)
+	movem.l d1-d4/a0-a2/a5-a6, -(sp)
 	suba.w #SAVED_BYTES, sp
 	movea.l a0, a5
 	movea.l assembly.Frame.Context(a5), a1
@@ -35,6 +36,23 @@ run	.block
 	tst.l d0
 	beq.w bad
 	jsr assembly.release
+	bne.w bad
+	jsr assembly.beginSizing
+	bne.w bad
+	; Release an actual suspended traversal with an unrelated A6. It must clear
+	; the captured Context's text borrow, preserving this caller-owned sentinel.
+	move.l assembly.Frame.RecordBytes(a5), d0
+	moveq #1, d1
+	jsr assembly.advance
+	bne.w bad
+	move.l #GUARD, GuardContext+package.Context.TextState
+	lea GuardContext, a6
+	jsr assembly.release
+	bne.w bad
+	cmpi.l #GUARD, GuardContext+package.Context.TextState
+	bne.w bad
+	movea.l assembly.Frame.Context(a5), a1
+	tst.l package.Context.TextState(a1)
 	bne.w bad
 	jsr assembly.beginSizing
 	bne.w bad
@@ -92,9 +110,12 @@ bad
 	moveq #1, d0
 done
 	adda.w #SAVED_BYTES, sp
-	movem.l (sp)+, d1-d4/a0-a2/a5
+	movem.l (sp)+, d1-d4/a0-a2/a5-a6
 	tst.l d0
 	rts
 	.bend  ; run
+	.endsection
+	.section bss, kind=bss
+GuardContext	.res byte, package.CONTEXT_BYTES
 	.endsection
 	.endmodule

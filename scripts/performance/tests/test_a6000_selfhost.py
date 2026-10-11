@@ -17,22 +17,22 @@ SPEC.loader.exec_module(runner)
 
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
-        package = bytearray(298)
-        package[:4] = b"BS35"
+        package = bytearray(364)
+        package[:4] = b"BS36"
         package[62:64] = (5).to_bytes(2, "big")
-        package[168:172] = (228).to_bytes(4, "big")
+        package[168:172] = (236).to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
         package[176:178] = (2).to_bytes(2, "big")
-        package[180:184] = (232).to_bytes(4, "big")
+        package[180:184] = (240).to_bytes(4, "big")
         package[184:188] = (23).to_bytes(4, "big")
         package[188:190] = (2).to_bytes(2, "big")
-        package[160:164] = (256).to_bytes(4, "big")
-        package[200:204] = (296).to_bytes(4, "big")
+        package[160:164] = (356).to_bytes(4, "big")
+        package[200:204] = (362).to_bytes(4, "big")
         package[204:208] = (1).to_bytes(4, "big")
-        package[212:216] = (258).to_bytes(4, "big")
+        package[212:216] = (264).to_bytes(4, "big")
         package[216:220] = (17).to_bytes(4, "big")
-        package[220:224] = (276).to_bytes(4, "big")
-        branch_plan_offset = 276
+        package[220:224] = (282).to_bytes(4, "big")
+        branch_plan_offset = 282
         package[220:224] = branch_plan_offset.to_bytes(4, "big")
         branch_plan = bytearray((0x9A, 4))
         for index in range(4):
@@ -40,8 +40,9 @@ class HardwareCompletionTests(unittest.TestCase):
             branch_plan.extend((index + 1, int(index < 2)))
         branch_plan.extend((0x83, 0))
         package[224:228] = len(branch_plan).to_bytes(4, "big")
-        package[258:275] = b"\x99\0\0\0\1\0\0\0\2\0\3\0\3\0\4\x83\0"
-        package[296] = 0
+        package[228:232] = (302).to_bytes(4, "big")
+        package[232:236] = runner.TEXT_PLAN_BYTES.to_bytes(4, "big")
+        package[264:281] = b"\x99\0\0\0\1\0\0\0\2\0\3\0\3\0\4\x83\0"
         package[branch_plan_offset:branch_plan_offset + len(branch_plan)] = branch_plan
         if target:
             package[124:128] = len(package).to_bytes(4, "big")
@@ -127,7 +128,8 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS26", 210, "package mismatch"),
                                    (b"BS27", 210, "package mismatch"),
                                    (b"BS29", 210, "package mismatch"),
-                                  (b"BS35", 227, "package header")):
+                                  (b"BS35", 236, "package mismatch"),
+                                  (b"BS36", 235, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -142,7 +144,7 @@ class HardwareCompletionTests(unittest.TestCase):
         mutations = [
             (4, 4, 209, "package header"),
             (72, 4, 198, "package region"),
-            (72, 4, 300, "package region"),
+            (72, 4, 400, "package region"),
             (72, 4, 209, "package region"),
             (160, 4, 168, "member-binding table"),
             (160, 4, 201, "member-binding table"),
@@ -168,6 +170,11 @@ class HardwareCompletionTests(unittest.TestCase):
             (224, 4, 0, "branch-plan program"),
             (224, 4, 19, "branch-plan program"),
             (224, 4, 0xFFFFFFFF, "branch-plan program"),
+            (228, 4, 228, "text-plan program"),
+            (228, 4, 0xFFFFFFFF, "text-plan program"),
+            (232, 4, 0, "text-plan program"),
+            (232, 4, 33, "text-plan program"),
+            (232, 4, 0xFFFFFFFF, "text-plan program"),
         ]
         for start, label in ((168, "head-policy"), (180, "declaration")):
             mutations.extend([

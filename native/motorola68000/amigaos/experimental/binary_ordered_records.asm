@@ -17,8 +17,9 @@ OriginCount	.long ?
 OrderedRecords	.long ?
 OrderedOrigins	.long ?
 RecordLimit	.long ?
+ModuleStarts	.long ?  ; caller-owned Block of ordered-relative BE32 offsets
 .endstruct
-FRAME_BYTES = Frame.RecordLimit+4
+FRAME_BYTES = Frame.ModuleStarts+4
 	.section code, kind=code
 
 ; A0=Frame. Span fields are offsets in the original packed Records block;
@@ -28,13 +29,15 @@ FRAME_BYTES = Frame.RecordLimit+4
 ; updates Frame.OriginCount, and clears temporary ownership. D0/CCR=status;
 ; other registers preserved. Source text is never consulted.
 ; Frame.RecordLimit bounds the temporary packed-record allocation; origins
-; retain the memory module's ordinary limit.
+; retain the memory module's ordinary limit. ModuleStarts records actual module
+; boundaries, independently of physical files/includes. Empty modules may share
+; a boundary. Its Used/count is published only with the completed materialization.
 materialize	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	move.l Frame.OrderCount(a6), d7
 	beq.w bad
-	cmpi.l #$ffff, d7
+	cmpi.l #graph.MAX_SPANS, d7
 	bhi.w bad
 	move.l d7, d0
 	mulu.w #graph.SPAN_BYTES, d0
@@ -120,11 +123,24 @@ spanValid
 	bne.w bad
 	clr.l memory.Block.Used(a0)
 	movea.l memory.Block.Pointer(a0), a5
+	movea.l Frame.ModuleStarts(a6), a0
+	clr.l memory.Block.Used(a0)
+	move.l Frame.OrderCount(a6), d0
+	lsl.l #2, d0
+	jsr memory.reserve
+	bne.w bad
 	movea.l Frame.Spans(a6), a0
 	movea.l memory.Block.Pointer(a0), a4
 	move.l Frame.OrderCount(a6), d7
 	moveq #0, d6
 copySpan
+	movea.l Frame.ModuleStarts(a6), a0
+	movea.l memory.Block.Pointer(a0), a2
+	move.l Frame.OrderCount(a6), d0
+	sub.l d7, d0
+	lsl.l #2, d0
+	adda.l d0, a2
+	move.l d6, (a2)
 	move.l d6, d4
 	move.l graph.Span.End(a4), d5
 	sub.l graph.Span.Start(a4), d5
@@ -188,6 +204,10 @@ originsDone
 	move.l memory.Block.Used(a0), d0
 	divu.w #graph.SPAN_BYTES, d0
 	move.l d0, Frame.OriginCount(a6)
+	movea.l Frame.ModuleStarts(a6), a0
+	move.l Frame.OrderCount(a6), d0
+	lsl.l #2, d0
+	move.l d0, memory.Block.Used(a0)
 	moveq #0, d0
 	bra.w done
 bad

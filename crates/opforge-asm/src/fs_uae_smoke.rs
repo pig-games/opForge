@@ -8059,6 +8059,9 @@ mod compact_cli_metadata;
 #[path = "tests/native_active_includes.rs"]
 mod native_active_includes;
 #[cfg(test)]
+#[path = "tests/native_assembly_session_probe.rs"]
+mod native_assembly_session_probe;
+#[cfg(test)]
 #[path = "tests/native_binding_owner_states.rs"]
 mod native_binding_owner_states;
 #[cfg(test)]

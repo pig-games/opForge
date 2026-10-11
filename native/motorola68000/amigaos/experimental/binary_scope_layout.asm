@@ -34,6 +34,7 @@ PendingRepeat	.word ?
 Deferred	.word ?  ; shared conditional preparation depth for this record
 MaterializedLoops	.word ?  ; physical preparation loops with selected iterations
 PreviewBinding	.word ?  ; identity-only preview forbids candidate publication
+BindingNamespace	.word ?  ; zero=value/template spelling, one=encoding name
 EarlierReference	.long ?  ; preparation-only lexical snapshot binder
 .endstruct
 ITERATOR_STATE = State.LoopDepth

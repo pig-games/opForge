@@ -10,6 +10,7 @@
 	.use experimental.amigaos.binary_macro_fragments as fragments
 	.use experimental.amigaos.binary_package as package
 	.use prvm.amigaos.packed_branch as branches
+	.use prvm.amigaos.packed_text as text
 	.use prvm.amigaos.packed_loop as loops
 	.use prvm.amigaos.abi as loop_abi
 	.use experimental.amigaos.binary_state as pkgstate
@@ -336,6 +337,17 @@ coreDirective
 	jsr branches.classify
 	tst.w d1
 	movem.l (sp)+, d1/a1
+	bne.w none
+	; Text directives retain their statement envelope during whole-line
+	; substitution; treating them as deferred calls loses encoding-name roles.
+	movem.l d1/a0, -(sp)
+	movea.l a3, a0
+	move.l package.Header.TextPlanBytes(a0), d0
+	adda.l package.Header.TextPlan(a0), a0
+	move.l d4, d1
+	jsr text.headAction
+	tst.l d1
+	movem.l (sp)+, d1/a0
 	bne.w none
 	; Package state directives are ordinary statements even inside templates.
 	movem.l a0/a2, -(sp)

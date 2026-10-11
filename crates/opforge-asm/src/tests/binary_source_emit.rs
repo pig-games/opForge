@@ -1,5 +1,9 @@
 //! Built-in shared .emit parity; macros named emit retain their precedence.
 use super::*;
+use crate::fs_uae_smoke::{
+    run_prebuilt_compact_cli_case_from_env, OpforgeNativeCliGuestFile, OpforgeNativeCliPackageMode,
+    OpforgeNativeCliParityCase, OpforgeNativeCliProof,
+};
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 
@@ -85,19 +89,54 @@ fn binary_emit_rust_oracles() {
 fn native(cpu: &str, source: &str, hunk: bool, valid: bool) {
     let expected = oracle(cpu, source, hunk);
     assert_eq!(expected.is_ok(), valid, "{source}: {expected:?}");
-    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
-    let resolved = core.resolve_pipeline(cpu, None).unwrap();
-    let package = prepare_package(&core, &resolved).unwrap();
-    let outcome = crate::fs_uae_smoke::run_compact_cli_files_from_env(
-        &workspace_root(),
-        &package,
-        &[("main.asm", source.as_bytes())],
-        &[],
-        &[],
-        expected.as_deref().ok(),
-        false,
-    )
-    .expect("fresh .emit native completion");
+    let outcome = if let Some(path) = std::env::var_os("OPFORGE_EMIT_IMAGE") {
+        let image = fs::read(path).expect("read frozen compact CLI image");
+        let guest = [OpforgeNativeCliGuestFile {
+            relative_path: "main.asm",
+            bytes: source.as_bytes(),
+        }];
+        let command = if hunk {
+            format!("--cpu {cpu} Work:main.asm")
+        } else {
+            format!("--cpu {cpu} Work:main.asm --bin Work:output.bin")
+        };
+        let case = OpforgeNativeCliParityCase {
+            name: "binary-emit",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source.as_bytes()),
+            command_template: Some(&command),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &guest,
+            proof: match &expected {
+                Ok(bytes) => OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: if hunk {
+                        "Work/build/sections.hunk"
+                    } else {
+                        "Work/output.bin"
+                    },
+                    rust_oracle: bytes,
+                },
+                Err(_) => OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
+            },
+        };
+        run_prebuilt_compact_cli_case_from_env(&workspace_root(), &case, &image)
+            .expect("fresh frozen-image .emit native completion")
+    } else {
+        let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+        let resolved = core.resolve_pipeline(cpu, None).unwrap();
+        let package = prepare_package(&core, &resolved).unwrap();
+        crate::fs_uae_smoke::run_compact_cli_files_from_env(
+            &workspace_root(),
+            &package,
+            &[("main.asm", source.as_bytes())],
+            &[],
+            &[],
+            expected.as_deref().ok(),
+            false,
+        )
+        .expect("fresh .emit native completion")
+    };
     let FsUaeSmokeOutcome::Completed { runs } = outcome else {
         panic!("real native run required")
     };

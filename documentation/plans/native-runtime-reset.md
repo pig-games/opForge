@@ -84,13 +84,23 @@ changes from 27.064863 to 26.944213 seconds (-0.45%, one sample), with 568 more
 linked static bytes. Frozen session pins remain; actual-state acquisition,
 relocatable source views and peak heap are not yet qualified.
 
-The next recovery checkpoint saves record-relative loop positions and refreshed
-owner views, with twelve fresh exact collection cases through its isolated BS35
-component probe. Production matrix and paired timing are pending. It also saves
-unfinished BS36 text-name/capsule work and native declaration-owner changes.
-BS36 text emission/provider integration has not landed. A new deferred-active
-longer-declaration control fails in Rust; that repair comes before corresponding
-native parity. No new full self-host or complete opcore claim is made.
+Record-relative loop positions and refreshed owner views now pass twelve fresh
+exact collection cases and two malformed-input rejections through the production
+CLI. The unchanged release control changes from 26.848584 to 27.116166 seconds
+(+1.00%, one sample), with 504 more linked static bytes.
+
+Rust conditional declaration ownership is repaired in `aaca8086`: each layout pass
+rebuilds executed ownership, references, reachability and schema uses. Ninety-eight
+focused tests pass. Possible longer `.const` declarations under unresolved guards
+can defer initial evaluation without granting executed ownership or visibility.
+The native executed-owner counterpart remains pending. UTF-8 preservation in Rust
+macro preprocessing is repaired in `a616140f`, with all 26 preprocessing tests and
+all 211 opcore library tests passing. BS36 text emission/provider integration passes 52 fresh native controls: 24 exact
+positive artifacts and 28 diagnostic rejections across 68020 and 6502. Its isolated
+unchanged release control grows from 27.42 s to 33.11 s (+20.8%, one pair); linked
+storage grows 13,464 bytes (+2.0%), and instrumented owned-memory peak is unchanged.
+See [source execution](native-source-execution.md) for scope and measurement limits.
+No new full self-host or complete opcore claim is made.
 
 VM-contract consolidation remains a separate pending design.
 Consolidate each VM's current capabilities into its own

@@ -173,35 +173,46 @@ resumes, sizing rounds, captures and peak owned bytes through existing macros.
 Retained captures and live context overlap until sealing, so heap growth needs
 actual measurement; image reservation alone cannot establish peak memory.
 
-### Text integration in progress
+### Text integration checkpoint
 
-The bounded text owner (`3377a53d`) and shared packed text grammar
-(`8d5cff22`) have separate fresh native component proofs. They do not establish
-compact CLI text-directive parity. The current recovery work migrates the capsule
-to BS36, appending TextPlan at byte 228 and TextPlanBytes at byte 232, for a
-236-byte header. BS35 consumers and generated packages are incompatible.
-Tokenizer name roles come from that descriptor. Frontend preparation registers
-global ASCII/PETSCII source-origin IDs and normalizes encoding names once using
-UTF-8 lossy decoding, Unicode trimming and ASCII lowercase. This normalizer has
-host structural assembly evidence only; its native behavior is not qualified.
-Rust macro preprocessing now preserves UTF-8 characters instead of reconstructing
-each byte as a character; all 26 preprocessing tests and the five pinned text
-controls pass, including Unicode whitespace around encoding names.
+The native compact assembler now executes validated BS36 text spans through the
+shared numeric text grammar and text registry. The 236-byte capsule header carries
+TextPlan at byte 228 and TextPlanBytes at byte 232; BS35 consumers and generated
+packages are incompatible. Preparation supplies global ASCII/PETSCII source-origin
+IDs, and encoding names are normalized once into global numeric IDs. Assembly
+handles literal, macro and parameterized text directives, plus string operands in
+`.emit` byte/word forms. Definitions rebuild on complete replay, selection resets
+at module entry, and the string provider grows its output buffer lazily and releases
+it during cleanup. Macro preprocessing preserves UTF-8 characters; the Rust
+controls include Unicode whitespace around encoding names.
 
-Pending work: relay the frontend numeric builtin IDs to assembly; retain every
-standalone decoded string length until encoding determines scalar versus raw
-aggregate emission; execute validated text spans; rebuild definitions on every
-complete source replay, reset selection only on module entry, and release state
-on every exit. String-expression preparation still erases decoded bytes.
-The existing shared ExprVM PushStringLiteral opcode (0x13, little-endian u16
-length and decoded bytes) and Rust eval_string_literal context provide the
-contract for native runtime encoding; no replacement opcode is needed.
-Neither that native provider nor assembly/emitter integration has landed.
+Fresh native checks complete 52 controls across 68020 and 6502: 24 positive
+artifacts match their live Rust oracles exactly; 28 invalid inputs reject with
+fresh completion and a diagnostic (not exact diagnostic parity). They cover
+registry replay, forward definition values, nested definitions and module closure,
+scalar/aggregate emission, escapes, active branches, normalized names and macro
+substitution. Separate component checks cover decoded-string offsets and bounds,
+the shared text grammar, and assembly-session suspend/release/restart cleanup.
+
+For this text integration alone, the unchanged 11,592-byte imported-macro control
+on FS-UAE `68020-10m` takes 27.420387375 s before and 33.112640750 s after
+(+20.8%, one release pair without telemetry). Linked storage grows from 690,024
+to 703,488 bytes (+13,464, +2.0%); executable size is 670,280 bytes. Separate
+instrumented before/after runs both peak at 1,282,280 owned bytes and finish at
+zero live bytes, with all allocations freed. This peak excludes linked storage;
+it does not establish the 2 MiB product target. The text dispatch cost remains
+visible for later optimization. These focused results do not establish complete
+opcore parity or a new full current-source self-host.
 
 ### Conditional binding ownership
 
 The unconditional longest-declaration repair and schema-only code pruning are
-saved with host assembly evidence, but have no fresh native proof yet.
+saved with host assembly evidence. The conditional Rust ownership repair is
+committed as `aaca8086`; 98 focused tests pass. A fresh native batch reports 22
+controls: 10 positive exact matches, 10 positive failures and two expected
+nonzero results, without exact diagnostic matching. Native repair and unconditional
+dotted longer-declaration execution remain pending, as do full opcore qualification
+and a new full current-source self-host.
 Rust now rebuilds executed declaration owners, references, reachable blocks and
 schema uses on each layout pass. A forward-enabled conditional introducing the
 longer dotted declaration on a later pass produces `[22, 66]`, retaining its
@@ -213,6 +224,3 @@ executed declarations. Initial sizing may defer their values, including arithmet
 and typed aliases; they grant no visibility or immutable certificate. Stable
 scalar-member errors and final evaluation stay strict. This provisional capture
 currently covers `.const`, not skipped assignment or schema declarations.
-Ninety-eight focused Rust tests pass across member/schema, constant dependencies,
-reachability and owner controls. The native counterpart, shared opcore completion
-and a new full current-source self-host remain unqualified.

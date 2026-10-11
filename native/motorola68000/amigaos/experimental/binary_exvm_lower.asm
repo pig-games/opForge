@@ -14,7 +14,9 @@ PATH_BYTES = NODE_LIMIT*4
 STACK_DEPTH = PATH_BYTES
 MODE = STACK_DEPTH+4
 LEN_NAME = MODE+4
-SCRATCH_BYTES = LEN_NAME+4
+TOKEN_BASE = LEN_NAME+4
+TOKEN_BYTES = TOKEN_BASE+4
+SCRATCH_BYTES = TOKEN_BYTES+4
 	.section code, kind=code
 ; A0=even arena, D0=used bytes, D1=root offset, A3=output, A4=exclusive end.
 ; A1=even caller-owned scratch, D2=capacity >= SCRATCH_BYTES; disjoint buffers.
@@ -31,7 +33,10 @@ lower	.block
 	rts
 	.bend  ; lower
 
-; Same buffers as lower; D4=package-bound .len name ID. Emits canonical
+; Same buffers as lower; D4=package-bound .len name ID. A6=compiler.Request
+; with bounded immutable Tokens/TokenBytes (or zero for non-string trees).
+; String node First offsets are checked against that region before copying.
+; Emits canonical
 ; typed ExprVM operations, with a 128-value bound and compact range operands.
 lowerValue	.block
 	move.l d3, -(sp)
@@ -55,6 +60,20 @@ lowerMode	.block
 	bcs.w malformed
 	move.l d3, MODE(a5)
 	move.l d4, LEN_NAME(a5)
+	clr.l TOKEN_BASE(a5)
+	clr.l TOKEN_BYTES(a5)
+	tst.l d3
+	beq.w regionReady
+	move.l a6, d7
+	beq.w regionReady
+	btst #0, d7
+	bne.w malformed
+	move.l compiler.Request.Tokens(a6), TOKEN_BASE(a5)
+	move.l compiler.Request.TokenBytes(a6), TOKEN_BYTES(a5)
+	move.l TOKEN_BASE(a5), d7
+	add.l TOKEN_BYTES(a5), d7
+	bcs.w malformed
+regionReady
 	clr.l STACK_DEPTH(a5)
 	move.l d0, d5
 	beq.w malformed
@@ -133,6 +152,8 @@ checked
 	lea 0(a0, d1.l), a2
 	moveq #0, d2
 	move.b compiler.Node.Kind(a2), d2
+	cmpi.b #compiler.KIND_STRING, d2
+	beq.w stringLiteral
 	cmpi.b #compiler.KIND_LITERAL, d2
 	beq.w literal
 	cmpi.b #compiler.KIND_SYMBOL, d2
@@ -420,6 +441,41 @@ operator
 	move.b d2, (a3)+
 	move.b d4, (a3)+
 	bra.w success
+stringLiteral
+	; Scalar folding cannot select a session text profile during preparation.
+	tst.l MODE(a5)
+	beq.w malformedActive
+	tst.l TOKEN_BASE(a5)
+	beq.w malformedActive
+	move.l compiler.Node.First(a2), d1
+	cmp.l TOKEN_BYTES(a5), d1
+	bhi.w malformedActive
+	move.l TOKEN_BYTES(a5), d0
+	sub.l d1, d0
+	move.l compiler.Node.Second(a2), d1
+	cmpi.l #65535, d1
+	bhi.w malformedActive
+	cmp.l d1, d0
+	blo.w malformedActive
+	move.l d1, d0
+	addq.l #3, d0
+	bsr.w leafRoom
+	bne.w leave
+	move.b #runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL, (a3)+
+	move.l compiler.Node.Second(a2), d1
+	move.b d1, (a3)+
+	lsr.w #8, d1
+	move.b d1, (a3)+
+	movea.l TOKEN_BASE(a5), a1
+	adda.l compiler.Node.First(a2), a1
+	move.l compiler.Node.Second(a2), d1
+copyString
+	tst.l d1
+	beq.w success
+	move.b (a1)+, (a3)+
+	subq.l #1, d1
+	bra.w copyString
+
 literal
 	moveq #9, d0
 	bsr.w leafRoom

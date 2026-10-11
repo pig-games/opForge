@@ -462,6 +462,44 @@ done
 	tst.l d0
 	rts
 	.bend  ; run
+; A0=compiled descriptor,D0=descriptor bytes,D1=numeric head.
+; D0/CCR=status,D1=action (zero for an ordinary head); other registers kept.
+; Preparation uses this same ownership query before choosing template recipes.
+headAction	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	move.l d1, d7
+	move.l d0, d1
+	move.l a5, d0
+	beq.w invalid
+	bsr.w validateProgram
+	bne.w failure
+	moveq #PROGRAM_HEADER, d5
+find
+	bsr.w programId
+	cmp.l d1, d7
+	beq.w found
+	addq.l #DIRECTIVE_BYTES, d5
+	cmpi.l #PROGRAM_HEADER+HEAD_COUNT*DIRECTIVE_BYTES, d5
+	blo.w find
+	clr.l d1
+	bra.w success
+found
+	moveq #0, d1
+	move.b DIRECTIVE_ACTION(a5, d5.l), d1
+success
+	moveq #0, d0
+	bra.w done
+invalid
+	moveq #abi.PRVM_STATUS_INVALID_ARGUMENT, d0
+failure
+	clr.l d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; headAction
+
 ; Tokenizer-boundary contextual name role from already-emitted bounded prefix.
 ; A0=prefix,D0=bytes,A1=compiled text descriptor,D1=descriptor bytes.
 ; D0=status,D1=next encoding-name slot (0 ordinary,1 first,2 base).

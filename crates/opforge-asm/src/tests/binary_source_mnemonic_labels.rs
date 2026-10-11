@@ -109,7 +109,12 @@ fn compact_mnemonic_dictionary_roles() {
     for spelling in ["on", "off", "68881"] {
         assert_eq!(wire[offsets[spelling] + 5], 4, "{spelling} is state-only");
     }
-    assert!(offsets.values().all(|offset| wire[offset + 5] & !15 == 0));
+    assert_eq!(
+        wire[offsets["x"] + 5],
+        16,
+        "x owns assignment-word identity in parser context"
+    );
+    assert!(offsets.values().all(|offset| wire[offset + 5] & !31 == 0));
     assert_eq!(wire[offsets["len"] + 5], 8, "shared builtin role only");
 }
 
@@ -149,7 +154,7 @@ fn reject_wire(wire: &[u8]) {
 fn compact_mnemonic_unknown_dictionary_role_fs_uae() {
     let mut wire = wire();
     let reset = dictionary_offsets(&wire)["reset"];
-    wire[reset + 5] = 4;
+    wire[reset + 5] = 32;
     // RESET never occurs in reject_wire's valid source; validate the whole dictionary.
     reject_wire(&wire);
 }

@@ -333,8 +333,9 @@ fn telemetry_source() -> String {
 fn preparation_telemetry_source() -> String {
     let telemetry =
         include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");
-    let app = include_str!("../../../../native/motorola68000/amigaos/experimental/binary_app.asm");
-    let calls = app
+    let diagnostics =
+        include_str!("../../../../native/motorola68000/amigaos/experimental/binary_app_diagnostics.i");
+    let calls = diagnostics
         .lines()
         .filter(|line| {
             line.trim_start()

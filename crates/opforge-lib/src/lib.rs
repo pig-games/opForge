@@ -1809,6 +1809,8 @@ struct PreparedAssemblyCore {
     dependency_files: Vec<PathBuf>,
     module_macro_names:
         std::collections::HashMap<String, std::collections::HashMap<String, SymbolVisibility>>,
+    module_template_seeds:
+        std::collections::HashMap<String, ::opcore::macro_processor::MacroProcessor>,
     module_parameters: ::types::asm_value::ModuleParameters,
 }
 
@@ -1823,6 +1825,8 @@ struct PreparedExecutionCoreRef<'a> {
     dependency_files: &'a [PathBuf],
     module_macro_names:
         &'a std::collections::HashMap<String, std::collections::HashMap<String, SymbolVisibility>>,
+    module_template_seeds:
+        &'a std::collections::HashMap<String, ::opcore::macro_processor::MacroProcessor>,
     module_parameters: &'a ::types::asm_value::ModuleParameters,
 }
 
@@ -1864,6 +1868,7 @@ fn prepare_public_assembly<'a>(
         source_map,
         dependency_files,
         module_macro_names,
+        module_template_seeds,
         module_parameters,
     ) = prepared.into_parts();
     let (cpu, registry, max_loop_iterations) = session.into_parts();
@@ -1878,6 +1883,7 @@ fn prepare_public_assembly<'a>(
             source_map,
             dependency_files,
             module_macro_names,
+            module_template_seeds,
             module_parameters,
         },
         effective,
@@ -1898,6 +1904,7 @@ fn run_public_prepared_assembly(
         source_map: prepared.source_map.clone(),
         dependency_files: prepared.dependency_files.to_vec(),
         module_macro_names: prepared.module_macro_names.clone(),
+        module_template_seeds: prepared.module_template_seeds.clone(),
         module_parameters: prepared.module_parameters.clone(),
         out_dir: options.out_dir,
         debug_conditionals: options.debug_conditionals,
@@ -3151,6 +3158,8 @@ pub struct PreparedAssemblySession {
     dependency_files: Vec<PathBuf>,
     module_macro_names:
         std::collections::HashMap<String, std::collections::HashMap<String, SymbolVisibility>>,
+    module_template_seeds:
+        std::collections::HashMap<String, ::opcore::macro_processor::MacroProcessor>,
     module_parameters: ::types::asm_value::ModuleParameters,
 }
 
@@ -3179,6 +3188,8 @@ pub struct PreparedAssembly<'a> {
     dependency_files: Vec<PathBuf>,
     module_macro_names:
         std::collections::HashMap<String, std::collections::HashMap<String, SymbolVisibility>>,
+    module_template_seeds:
+        std::collections::HashMap<String, ::opcore::macro_processor::MacroProcessor>,
     module_parameters: ::types::asm_value::ModuleParameters,
 }
 
@@ -3270,6 +3281,7 @@ impl<'a> Assembler<'a> {
             source_map: prepared.source_map,
             dependency_files: prepared.dependency_files,
             module_macro_names: prepared.module_macro_names,
+            module_template_seeds: prepared.module_template_seeds,
             module_parameters: prepared.module_parameters,
         })
     }
@@ -3366,6 +3378,7 @@ impl AssemblerSession {
             source_map: prepared.source_map,
             dependency_files: prepared.dependency_files,
             module_macro_names: prepared.module_macro_names,
+            module_template_seeds: prepared.module_template_seeds,
             module_parameters: prepared.module_parameters,
         })
     }
@@ -3444,6 +3457,7 @@ impl<'a> PreparedAssembly<'a> {
                 source_map: &self.source_map,
                 dependency_files: &self.dependency_files,
                 module_macro_names: &self.module_macro_names,
+                module_template_seeds: &self.module_template_seeds,
                 module_parameters: &self.module_parameters,
             },
             self.config.clone().into(),
@@ -3510,6 +3524,7 @@ impl PreparedAssemblySession {
                 source_map: &self.source_map,
                 dependency_files: &self.dependency_files,
                 module_macro_names: &self.module_macro_names,
+                module_template_seeds: &self.module_template_seeds,
                 module_parameters: &self.module_parameters,
             },
             borrowed,
@@ -4233,6 +4248,40 @@ mod tests {
             .directories()
             .iter()
             .any(|path| path == &PathBuf::from("/virtual/out/build/minimal_sections")));
+    }
+
+    #[test]
+    fn prepared_session_repeats_active_include_execution_without_leaking_templates() {
+        let source_provider = io::MemorySourceProvider::new()
+            .with_file(
+                "/virtual/main.asm",
+                ".module main\n.if 1\n.include \"defs.inc\"\n.endif\n.show 7\n.endmodule\n",
+            )
+            .with_file(
+                "/virtual/defs.inc",
+                "show .macro value\n.byte .value\n.endmacro\n",
+            );
+        let output_sink = io::MemoryOutputSink::new();
+        let prepared = AssemblerSession::builder("/virtual/main.asm")
+            .output_base("/virtual/main")
+            .source_provider(source_provider)
+            .output_sink(output_sink.clone())
+            .default_outputs(false)
+            .bin_specs(vec![asm::BinOutputSpec {
+                name: Some("/virtual/result.bin".into()),
+                range: None,
+            }])
+            .prepare()
+            .unwrap();
+
+        assert!(!prepared
+            .dependency_files()
+            .contains(&PathBuf::from("/virtual/defs.inc")));
+        for _ in 0..2 {
+            let report = prepared.assemble().unwrap();
+            assert_eq!(report.error_count(), 0, "{:?}", report.diagnostics());
+            assert_eq!(output_sink.bytes("/virtual/result.bin"), Some(vec![7]));
+        }
     }
 
     #[test]

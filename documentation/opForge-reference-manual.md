@@ -208,6 +208,20 @@ tuples, code blocks, and type values.
 
 Notes:
 - `.include` is literal text inclusion only; it does not participate in module loading.
+- Rust currently executes includes inside assembly conditionals, repetitions,
+  macros, segments and statements only when reached on an active path. Unused
+  definitions and zero-iteration loops do not require their included files to
+  exist. Included constants and templates become available to subsequent lines;
+  template filename parameters are substituted before acquisition, and relative
+  paths use the template definition's directory.
+- This active-include checkpoint is limited to the current module. An acquired
+  file introducing `.module`, `.endmodule` or `.use` is rejected; deferred
+  acquisition that affects module discovery remains separate work. Conditions
+  controlling deferred acquisition must already have known values: forward
+  dependent guards are diagnosed before opening the file. Repetition opening and
+  closing directives must remain in the same source stream; splitting them
+  across a deferred include boundary is not yet supported. The compact native
+  implementation does not yet provide this behavior.
 - `.incbin` includes the raw bytes of a binary file at the current program counter.
 - Binary files are loaded only for active `.incbin` statements, including expanded
   macros or segments. An inactive conditional or an unused definition does not
@@ -1240,6 +1254,9 @@ Preprocessor directives are dot-prefixed:
 Notes:
 - `#` is used for immediate operands; preprocessor directives must use dot form.
 - Preprocessor directives run before macro expansion.
+- Assembly `.if`/`.match` and repetition activity is owned by assembly traversal,
+  not the preprocessor. Rust retains deferred includes for that traversal rather
+  than opening them while preprocessing a dormant definition or branch.
 - Preprocessor symbols are provided via the `-D/--define` command-line option.
 - The native 68020 AmigaOS CLI's current 6502/65C02 parity subset consumes
   `.ifdef`, `.ifndef`, `.elseif`, `.else`, and `.endif` before macro, include,

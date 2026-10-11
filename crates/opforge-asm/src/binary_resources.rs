@@ -8,19 +8,85 @@ use std::{
 use types::source_map::SourceMap;
 pub(crate) struct BinaryResources {
     source_map: SourceMap,
+    original_line_count: usize,
     cache: HashMap<PathBuf, Arc<Vec<u8>>>,
     resolved: HashMap<(u32, String), Arc<Vec<u8>>>,
+    sources: HashMap<
+        (u32, String, Vec<types::source_map::SourceOrigin>),
+        Arc<crate::active_sources::RuntimeSource>,
+    >,
 }
 impl BinaryResources {
     pub(crate) fn new(source_map: SourceMap) -> Self {
+        let original_line_count = source_map.origins().len();
         Self {
             source_map,
+            original_line_count,
             cache: HashMap::new(),
             resolved: HashMap::new(),
+            sources: HashMap::new(),
         }
     }
     pub(crate) fn dependencies(&self) -> Vec<PathBuf> {
         self.cache.keys().cloned().collect()
+    }
+    pub(crate) fn acquired_source_map(&self) -> Option<SourceMap> {
+        (self.source_map.origins().len() > self.original_line_count)
+            .then(|| self.source_map.clone())
+    }
+    pub(crate) fn is_acquired_line(&self, line: u32) -> bool {
+        line as usize > self.original_line_count
+    }
+
+    pub(crate) fn origin(&self, line: u32) -> Option<types::source_map::SourceOrigin> {
+        self.source_map.origin_for_line(line).cloned()
+    }
+
+    pub(crate) fn intern_source(
+        &mut self,
+        key: (u32, String),
+        lines: Vec<String>,
+        origins: Vec<types::source_map::SourceOrigin>,
+    ) -> Arc<crate::active_sources::RuntimeSource> {
+        // Equal emitted text can originate in different template overloads.
+        // Keep definition-site authority and diagnostics in the cache identity.
+        let key = (key.0, key.1, origins.clone());
+        if let Some(source) = self.sources.get(&key) {
+            return source.clone();
+        }
+        let first_line = self.source_map.append_origins(&origins);
+        let source = Arc::new(crate::active_sources::RuntimeSource { lines, first_line });
+        self.sources.insert(key, source.clone());
+        source
+    }
+
+    pub(crate) fn include_reader(
+        &self,
+    ) -> Result<Arc<dyn types::binary_resource::BinaryResourceReader>, String> {
+        self.source_map
+            .binary_reader
+            .clone()
+            .ok_or_else(|| "INCLUDE source provider has no owned reader".into())
+    }
+
+    pub(crate) fn source_config(&self) -> (usize, Vec<String>) {
+        (
+            self.source_map.source_max_depth,
+            self.source_map.preprocess_defines.clone(),
+        )
+    }
+
+    pub(crate) fn include_bytes(&mut self, path: &Path) -> Result<Arc<Vec<u8>>, String> {
+        if let Some(bytes) = self.cache.get(path) {
+            return Ok(bytes.clone());
+        }
+        let bytes = Arc::new(
+            self.include_reader()?
+                .read_bytes(path)
+                .map_err(|err| format!("Error opening source file {}: {err}", path.display()))?,
+        );
+        self.cache.insert(path.to_path_buf(), bytes.clone());
+        Ok(bytes)
     }
     pub(crate) fn load(&mut self, line: u32, filename: &str) -> Result<Arc<Vec<u8>>, String> {
         if filename.is_empty() || filename.contains('\0') {
@@ -92,6 +158,26 @@ mod tests {
         binary_resource::{BinaryResourceContext, BinaryResourceReader},
         source_map::SourceOrigin,
     };
+    #[test]
+    fn acquired_source_identity_retains_definition_origins() {
+        let mut resources = BinaryResources::new(SourceMap::default());
+        let key = (1, "expansion:.byte 7".into());
+        let origin = SourceOrigin::new(Some("first.i".into()), 4);
+        let first =
+            resources.intern_source(key.clone(), vec![".byte 7".into()], vec![origin.clone()]);
+        let replay = resources.intern_source(key.clone(), vec![".byte 7".into()], vec![origin]);
+        assert!(Arc::ptr_eq(&first, &replay));
+        let second = resources.intern_source(
+            key,
+            vec![".byte 7".into()],
+            vec![SourceOrigin::new(Some("second.i".into()), 8)],
+        );
+        assert_ne!(first.first_line, second.first_line);
+        assert_eq!(
+            resources.origin(second.first_line).unwrap().file.as_deref(),
+            Some("second.i")
+        );
+    }
     #[derive(Debug)]
     struct Reader {
         reads: Arc<AtomicUsize>,

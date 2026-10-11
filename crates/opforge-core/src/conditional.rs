@@ -31,6 +31,8 @@ pub struct ConditionalContext {
     pub matched: bool,
     pub skipping: bool,
     pub switch_value: Option<u32>,
+    /// Source acquisition cannot use provisional forward-reference values.
+    pub source_activity_resolved: bool,
 }
 
 impl ConditionalContext {
@@ -51,6 +53,7 @@ impl ConditionalContext {
             matched: false,
             skipping: false,
             switch_value: None,
+            source_activity_resolved: prev.is_none_or(|previous| previous.source_activity_resolved),
         }
     }
 }
@@ -94,6 +97,12 @@ impl ConditionalStack {
             .last()
             .map(|context| context.skipping)
             .unwrap_or(false)
+    }
+
+    pub fn source_activity_resolved(&self) -> bool {
+        self.stack
+            .iter()
+            .all(|context| context.source_activity_resolved)
     }
 }
 

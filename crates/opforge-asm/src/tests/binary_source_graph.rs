@@ -376,6 +376,7 @@ fn oracle_entries_with_search_roots(
             runtime_enabled_execution_mode(true),
         )));
         assembler.module_macro_names = graph.module_macro_names;
+        assembler.module_template_seeds = graph.module_template_seeds;
         assembler.module_parameters = graph.module_parameters;
         let pass1 = assembler.pass1(&graph.lines);
         let mut listing_out = Vec::new();

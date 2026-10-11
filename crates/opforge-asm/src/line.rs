@@ -254,6 +254,7 @@ pub struct AsmLine<'a> {
     diagnostics: AsmDiagnosticsState,
     current_line_num: u32,
     binary_resources: Option<Rc<std::cell::RefCell<crate::binary_resources::BinaryResources>>>,
+    pub(crate) active_sources: crate::active_sources::ActiveSources,
     current_source_line: Option<String>,
     line_end_span: Option<Span>,
     line_end_token: Option<String>,
@@ -471,6 +472,7 @@ impl<'a> AsmLine<'a> {
             diagnostics: AsmDiagnosticsState::new(),
             current_line_num: 1,
             binary_resources: None,
+            active_sources: crate::active_sources::ActiveSources::default(),
             current_source_line: None,
             line_end_span: None,
             line_end_token: None,
@@ -837,6 +839,16 @@ impl<'a> AsmLine<'a> {
 
     pub fn pass_number(&self) -> u8 {
         self.pass
+    }
+
+    pub(crate) fn source_resources(
+        &self,
+    ) -> Option<Rc<std::cell::RefCell<crate::binary_resources::BinaryResources>>> {
+        self.binary_resources.clone()
+    }
+
+    pub(crate) fn current_source_text(&self) -> Option<&str> {
+        self.current_source_line.as_deref()
     }
 
     pub fn aux_value(&self) -> u32 {

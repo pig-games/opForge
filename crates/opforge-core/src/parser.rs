@@ -137,12 +137,12 @@ pub enum Expr {
 pub type UseItem = UseItemAst<Span>;
 pub type UseParam = UseParamAst<Expr, Span>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StatementSignature {
     pub atoms: Vec<SignatureAtom>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SignatureAtom {
     Literal(Vec<u8>, Span),
     Capture {

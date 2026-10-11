@@ -1233,6 +1233,7 @@ pub struct ModuleGraphResult {
     pub source_map: SourceMap,
     pub dependency_files: Vec<PathBuf>,
     pub module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    pub module_template_seeds: HashMap<String, opcore::macro_processor::MacroProcessor>,
     pub module_parameters: types::asm_value::ModuleParameters,
 }
 
@@ -1437,6 +1438,7 @@ pub(crate) fn load_module_graph_contextual(
     }
 
     let mut module_exports: HashMap<String, AsmMacroExports> = HashMap::new();
+    let mut module_template_seeds = HashMap::new();
     let mut expanded_deps: Vec<(String, ModuleSource)> = Vec::new();
 
     for (module_id, source) in &order {
@@ -1476,6 +1478,12 @@ pub(crate) fn load_module_graph_contextual(
 
         let (expanded, expanded_origins) =
             expand_with_processor(&mut mp, module_lines, &source.origins)?;
+        if expanded
+            .iter()
+            .any(|line| opcore::preprocess::parse_include_target_from_source_line(line).is_some())
+        {
+            module_template_seeds.insert(canonical.clone(), mp.source_execution_seed());
+        }
         module_exports.insert(canonical, mp.take_native_exports());
         expanded_deps.push((
             module_id.clone(),
@@ -1555,6 +1563,8 @@ pub(crate) fn load_module_graph_contextual(
 
     let mut source_map = SourceMap::new(origins);
     source_map.binary_reader = source_provider.owned_binary_reader();
+    source_map.preprocess_defines = defines.to_vec();
+    source_map.source_max_depth = pp_macro_depth;
     Ok(ModuleGraphResult {
         lines: combined,
         source_map,
@@ -1564,6 +1574,7 @@ pub(crate) fn load_module_graph_contextual(
             files
         },
         module_macro_names,
+        module_template_seeds,
         module_parameters: configurations,
     })
 }

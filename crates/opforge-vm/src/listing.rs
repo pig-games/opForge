@@ -147,7 +147,7 @@ impl<W: Write> ListingWriter<W> {
         writeln!(self.out, "{kind}: {msg}")
     }
 
-    pub fn write_diagnostic_with_annotations(
+    pub fn write_primary_diagnostic(
         &mut self,
         diagnostic: &Diagnostic,
         source_lines: &[String],
@@ -156,14 +156,39 @@ impl<W: Write> ListingWriter<W> {
             Severity::Warning => "WARNING",
             Severity::Error => "ERROR",
         };
-        self.write_diagnostic(
-            kind,
-            diagnostic.error.message(),
-            diagnostic.line,
-            diagnostic.column,
-            source_lines,
-            None,
-        )?;
+        if let Some(source) = diagnostic.source.as_deref() {
+            if self.enabled {
+                let context = build_context_lines(
+                    diagnostic.line,
+                    diagnostic.column,
+                    Some(source_lines),
+                    Some(source),
+                    false,
+                );
+                for line in context {
+                    writeln!(self.out, "{}", strip_ansi_sgr(&line))?;
+                }
+                writeln!(self.out, "{kind}: {}", diagnostic.error.message())?;
+            }
+        } else {
+            self.write_diagnostic(
+                kind,
+                diagnostic.error.message(),
+                diagnostic.line,
+                diagnostic.column,
+                source_lines,
+                None,
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn write_diagnostic_with_annotations(
+        &mut self,
+        diagnostic: &Diagnostic,
+        source_lines: &[String],
+    ) -> std::io::Result<()> {
+        self.write_primary_diagnostic(diagnostic, source_lines)?;
         for item in diagnostic.help() {
             writeln!(self.out, "help: {}", strip_ansi_sgr(item))?;
         }
@@ -421,6 +446,30 @@ fn write_cond<W: Write>(out: &mut W, ctx: &ConditionalContext) -> std::io::Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn acquired_source_diagnostic_uses_its_source_instead_of_root_lines() {
+        let diagnostic = Diagnostic::new(
+            2,
+            Severity::Error,
+            types::diagnostics::AsmError::new(
+                types::diagnostics::AsmErrorKind::Symbol,
+                "Unknown symbol",
+                None,
+            ),
+        )
+        .with_source(Some(".byte missing".into()));
+        let mut output = Vec::new();
+        ListingWriter::new(&mut output, false)
+            .write_diagnostic_with_annotations(
+                &diagnostic,
+                &[".cpu 6502".into(), ".include \"defs.i\"".into()],
+            )
+            .unwrap();
+        let text = String::from_utf8(output).unwrap();
+        assert!(text.contains("2 | .byte missing"), "{text}");
+        assert!(!text.contains(".include"), "{text}");
+    }
 
     #[test]
     fn disabled_listing_writer_suppresses_all_listing_text() {

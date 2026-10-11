@@ -689,6 +689,7 @@ mod tests {
         );
         assembler.module_parameters = graph.module_parameters;
         assembler.module_macro_names = graph.module_macro_names;
+        assembler.module_template_seeds = graph.module_template_seeds;
         assembler.set_source_resources(graph.source_map);
         let first = assembler.pass1(&graph.lines);
         if first.errors != 0 {

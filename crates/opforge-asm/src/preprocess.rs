@@ -44,6 +44,7 @@ impl AsmMacroExports {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct AsmMacroProcessor {
     inner: MacroProcessor,
     runtime_processing_traces: Vec<(u8, u32, LineProcessingTrace)>,
@@ -55,6 +56,17 @@ thread_local! {
 }
 
 impl AsmMacroProcessor {
+    pub(crate) fn for_source_execution(max_depth: usize) -> Self {
+        let mut processor = Self::new(max_depth);
+        processor.inner = processor.inner.with_runtime_streaming();
+        processor
+    }
+    pub fn source_execution_seed(&self) -> MacroProcessor {
+        self.inner.clone()
+    }
+    pub(crate) fn seed_templates_from(&mut self, seed: &MacroProcessor) {
+        self.inner.seed_templates_from(seed);
+    }
     pub fn new(max_depth: usize) -> Self {
         Self {
             inner: MacroProcessor::new()

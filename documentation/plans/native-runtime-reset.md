@@ -345,12 +345,47 @@ macro/loop combination:
   The previous preparation failure was the renamed invocation, not parsing of
   the `.use` selection list. Qualified selected calls are consumed in that proof.
   The Rust effects probe confirms expansion-produced `.org`, sections/output and
-  parameter-selected conditional loops. Static `.include` currently opens files
-  inside unused macros and does not substitute the tested macro filename
-  placeholders. The agreed file-effects slice changes both implementations to
+  parameter-selected conditional loops. The earlier Rust probe exposed static
+  `.include` reads inside unused macros and missing filename substitution.
+  The agreed file-effects slice changes both implementations to
   load only active/expanded includes, including substituted filenames; it must
   preserve definition-relative paths, discovery, dependency tracking and fresh
-  packed-source preparation. This is intended behavior, not implemented parity.
+  packed-source preparation. Native parity for this behavior remains pending.
+  Erik approved splitting current-module execution from includes that change
+  module/`.use` discovery. The current-module repair starts at Rust's actual
+  conditional/repetition traversal: structurally deferred includes must not be
+  acquired by an approximate preparation-time condition evaluator. Acquired
+  definitions must be available to subsequent lines, with stable line identities,
+  definition-relative paths, cycle/depth checks and active dependency reporting.
+  Native needs source-semantic materialization before freezing numeric context,
+  dependencies and layout inventory; an assembly file callback alone is too late
+  for newly included macro definitions. Reuse the package-selected file grammar
+  and numeric branch/repetition owners rather than adding another text parser.
+  The Rust current-module checkpoint now executes deferred includes and later
+  template definitions in source order, using the existing conditional and loop
+  traversal. It covers macro/segment/statement substitution, imported aliases,
+  namespace state across files, inactive branches/loops/definitions, CLI defines,
+  cycle/depth checks, stable replay identities and included-file diagnostics.
+  Forward-dependent acquisition/loop controls are rejected before reads. Active
+  acquired or expanded `.module`, `.endmodule` and `.use` are rejected; templates
+  introduced at runtime are not discovered as imports for other modules. Loop
+  delimiters cannot span separate acquired source streams. These limitations need
+  source-stream/discovery work, not native parser exceptions.
+  Qualification: 980 core/engine/library/types/VM tests pass, including 16 focused
+  include regressions and reusable prepared-session execution. The assembler
+  suite reports 2,251 passed, 51 failed and 574 ignored; all 51 failure names also
+  fail with the frozen pre-change binary. This is not a green broad quality gate.
+  Affected production libraries pass Clippy with warnings denied. Workflow guards
+  and five cleanup-helper tests pass; the broad workflow suite has one stale
+  native inventory failure and two stale diagnostic-manifest errors, whose inputs
+  are unchanged from the pre-change commit.
+  A Rust-first checkpoint does not establish native include parity or change the
+  latest qualified self-host. The unchanged dual-package native CLI host build
+  produces the identical 641,860-byte image (SHA256
+  `a6429beeceaa0fdf7a08e8006f492c10db99338cd5d11906047cf9597aa7578a`).
+  Three isolated host preparation/build samples have medians 17.10 s before and
+  17.11 s after (Cargo test opt-level 1, package generation included, native guest
+  execution excluded). The ranges overlap; no meaningful timing change is claimed.
 - Patterned `.statement` expansion is a separate shared-language capability,
   absent from this compact macro matrix. Preserve Rust's rejection of nested
   macro/segment/statement definitions.

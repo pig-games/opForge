@@ -65,6 +65,7 @@ pub struct Assembler {
     pub registry: ModuleRegistry,
     pub root_metadata: RootMetadata,
     pub module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    pub module_template_seeds: HashMap<String, opcore::macro_processor::MacroProcessor>,
     pub module_parameters: types::asm_value::ModuleParameters,
     pub loop_iteration_trace_pass1: Vec<(u32, u32)>,
     pub max_loop_iterations: u32,
@@ -545,6 +546,9 @@ qualified_share={:.2}%",
                 runtime_execution_model,
             );
             asm_line.set_binary_resources(self.binary_resources.clone());
+            asm_line
+                .active_sources
+                .set_seeds(self.module_template_seeds.clone());
             asm_line.set_module_parameters(self.module_parameters.clone());
             asm_line.set_runtime_line_router(self.runtime_line_router.clone());
             asm_line.set_reachable_block_relayout(self.block_relayout.clone());
@@ -1020,6 +1024,7 @@ qualified_share={:.2}%",
             registry,
             root_metadata: RootMetadata::default(),
             module_macro_names: HashMap::new(),
+            module_template_seeds: HashMap::new(),
             module_parameters: HashMap::new(),
             loop_iteration_trace_pass1: Vec::new(),
             max_loop_iterations: repetition::DEFAULT_MAX_LOOP_ITERATIONS,
@@ -1047,6 +1052,12 @@ qualified_share={:.2}%",
             .as_ref()
             .map(|resources| resources.borrow().dependencies())
             .unwrap_or_default()
+    }
+
+    pub fn acquired_source_map(&self) -> Option<types::source_map::SourceMap> {
+        self.binary_resources
+            .as_ref()
+            .and_then(|resources| resources.borrow().acquired_source_map())
     }
 
     pub fn set_source_resources(&mut self, source_map: types::source_map::SourceMap) {
@@ -1586,6 +1597,9 @@ qualified_share={:.2}%",
             runtime_execution_model,
         );
         asm_line.set_binary_resources(self.binary_resources.clone());
+        asm_line
+            .active_sources
+            .set_seeds(self.module_template_seeds.clone());
         asm_line.set_module_parameters(self.module_parameters.clone());
         asm_line.set_runtime_line_router(self.runtime_line_router.clone());
         asm_line.set_reachable_block_relayout(self.block_relayout.clone());
@@ -2384,20 +2398,14 @@ qualified_share={:.2}%",
             Ok(line_addr) => line_addr,
             Err(()) => {
                 if let Some(err) = asm_line.error() {
-                    diagnostics.push(Self::diagnostic_from_asmline(
+                    let diagnostic = Self::diagnostic_from_asmline(
                         asm_line,
                         line_num,
                         Severity::Error,
                         err.clone(),
-                    ));
-                    listing.write_diagnostic(
-                        "ERROR",
-                        err.message(),
-                        line_num,
-                        asm_line.error_column(),
-                        all_lines,
-                        asm_line.parser_error_ref(),
-                    )?;
+                    );
+                    listing.write_primary_diagnostic(&diagnostic, all_lines)?;
+                    diagnostics.push(diagnostic);
                 }
                 counts.errors += 1;
                 *addr
@@ -2427,12 +2435,22 @@ qualified_share={:.2}%",
         }
 
         let listing_started_at = Instant::now();
+        let display_line = asm_line
+            .source_resources()
+            .and_then(|resources| {
+                let resources = resources.borrow();
+                resources
+                    .is_acquired_line(line_num)
+                    .then(|| resources.origin(line_num))
+                    .flatten()
+            })
+            .map_or(line_num, |origin| origin.line);
         listing.write_line(ListingLine {
             addr: line_addr,
             bytes,
             status,
             aux: asm_line.aux_value(),
-            line_num,
+            line_num: display_line,
             source: src,
             section: asm_line.current_section_name(),
             cond: asm_line.cond_last(),
@@ -2451,39 +2469,27 @@ qualified_share={:.2}%",
         match status {
             LineStatus::Error | LineStatus::Pass1Error => {
                 if let Some(err) = asm_line.error() {
-                    diagnostics.push(Self::diagnostic_from_asmline(
+                    let diagnostic = Self::diagnostic_from_asmline(
                         asm_line,
                         line_num,
                         Severity::Error,
                         err.clone(),
-                    ));
-                    listing.write_diagnostic(
-                        "ERROR",
-                        err.message(),
-                        line_num,
-                        asm_line.error_column(),
-                        all_lines,
-                        asm_line.parser_error_ref(),
-                    )?;
+                    );
+                    listing.write_primary_diagnostic(&diagnostic, all_lines)?;
+                    diagnostics.push(diagnostic);
                 }
                 counts.errors += 1;
             }
             LineStatus::Warning if asm_line.line_warnings().is_empty() => {
                 if let Some(err) = asm_line.error() {
-                    diagnostics.push(Self::diagnostic_from_asmline(
+                    let diagnostic = Self::diagnostic_from_asmline(
                         asm_line,
                         line_num,
                         Severity::Warning,
                         err.clone(),
-                    ));
-                    listing.write_diagnostic(
-                        "WARNING",
-                        err.message(),
-                        line_num,
-                        asm_line.error_column(),
-                        all_lines,
-                        asm_line.parser_error_ref(),
-                    )?;
+                    );
+                    listing.write_primary_diagnostic(&diagnostic, all_lines)?;
+                    diagnostics.push(diagnostic);
                 }
                 counts.warnings += 1;
             }
@@ -2492,20 +2498,10 @@ qualified_share={:.2}%",
 
         if asm_line.update_addresses(addr, status).is_err() {
             if let Some(err) = asm_line.error() {
-                diagnostics.push(Self::diagnostic_from_asmline(
-                    asm_line,
-                    line_num,
-                    Severity::Error,
-                    err.clone(),
-                ));
-                listing.write_diagnostic(
-                    "ERROR",
-                    err.message(),
-                    line_num,
-                    asm_line.error_column(),
-                    all_lines,
-                    None,
-                )?;
+                let diagnostic =
+                    Self::diagnostic_from_asmline(asm_line, line_num, Severity::Error, err.clone());
+                listing.write_primary_diagnostic(&diagnostic, all_lines)?;
+                diagnostics.push(diagnostic);
             }
             counts.errors += 1;
         }
@@ -2549,6 +2545,16 @@ qualified_share={:.2}%",
         }
         for fixit in asm_line.error_fixits() {
             diagnostic = diagnostic.with_fixit(fixit.clone());
+        }
+        if let Some(resources) = asm_line.source_resources() {
+            let resources = resources.borrow();
+            if resources.is_acquired_line(line_num) {
+                diagnostic.source = asm_line.current_source_text().map(str::to_string);
+                if let Some(origin) = resources.origin(line_num) {
+                    diagnostic.file = origin.file;
+                    diagnostic.line = origin.line;
+                }
+            }
         }
         diagnostic
     }

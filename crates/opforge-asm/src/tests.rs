@@ -3227,6 +3227,7 @@ fn assemble_example_entries_with_runtime_mode(
     assembler.root_metadata.root_module_id =
         Some(root_module_id_from_lines(asm_path, &root_lines).map_err(|err| err.to_string())?);
     assembler.module_macro_names = graph.module_macro_names;
+    assembler.module_template_seeds = graph.module_template_seeds;
     assembler.module_parameters = graph.module_parameters;
     assembler.clear_diagnostics();
 
@@ -22061,6 +22062,7 @@ fn motorola68020_opforge_native_cli_hunk_sections_have_relocation_evidence() {
         root_module_id_from_lines(&asm_path, &root_lines).expect("resolve native CLI root module"),
     );
     assembler.module_macro_names = graph.module_macro_names;
+    assembler.module_template_seeds = graph.module_template_seeds;
     assembler.module_parameters = graph.module_parameters;
     assembler.clear_diagnostics();
 

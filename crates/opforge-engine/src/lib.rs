@@ -2,6 +2,8 @@
 
 //! Assembly session orchestration for libopforge.
 
+#[cfg(test)]
+mod active_include_tests;
 mod io;
 mod processing;
 mod source_graph;
@@ -868,6 +870,7 @@ pub struct PreparedAssemblySession {
     source_map: SourceMap,
     dependency_files: Vec<PathBuf>,
     module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    module_template_seeds: HashMap<String, opcore::macro_processor::MacroProcessor>,
     module_parameters: types::asm_value::ModuleParameters,
 }
 
@@ -882,6 +885,7 @@ pub struct PreparedAssemblyExecutionRequest<'a> {
     pub source_map: SourceMap,
     pub dependency_files: Vec<PathBuf>,
     pub module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    pub module_template_seeds: HashMap<String, opcore::macro_processor::MacroProcessor>,
     pub module_parameters: types::asm_value::ModuleParameters,
     pub out_dir: Option<&'a Path>,
     pub debug_conditionals: bool,
@@ -917,6 +921,7 @@ struct PreparedAssemblyRuntime {
     source_map: SourceMap,
     dependency_files: Vec<PathBuf>,
     module_macro_names: HashMap<String, HashMap<String, SymbolVisibility>>,
+    module_template_seeds: HashMap<String, opcore::macro_processor::MacroProcessor>,
     module_parameters: types::asm_value::ModuleParameters,
 }
 
@@ -1015,6 +1020,7 @@ pub type PreparedAssemblySessionParts = (
     SourceMap,
     Vec<PathBuf>,
     HashMap<String, HashMap<String, SymbolVisibility>>,
+    HashMap<String, opcore::macro_processor::MacroProcessor>,
     types::asm_value::ModuleParameters,
 );
 
@@ -1159,6 +1165,7 @@ impl PreparedAssemblySession {
             self.source_map,
             self.dependency_files,
             self.module_macro_names,
+            self.module_template_seeds,
             self.module_parameters,
         )
     }
@@ -1340,6 +1347,7 @@ pub fn prepare_assembly_session(
         source_map: graph.source_map,
         dependency_files,
         module_macro_names: graph.module_macro_names,
+        module_template_seeds: graph.module_template_seeds,
         module_parameters: graph.module_parameters,
     })
 }
@@ -1606,6 +1614,7 @@ pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunRepor
         source_map,
         dependency_files,
         module_macro_names,
+        module_template_seeds,
         module_parameters,
     ) = prepared.into_parts();
     let expanded_lines = Arc::new(prepared_lines);
@@ -1621,6 +1630,7 @@ pub fn run_assembly(request: AssemblyExecutionRequest<'_>) -> Result<AsmRunRepor
             source_map,
             dependency_files,
             module_macro_names,
+            module_template_seeds,
             module_parameters,
         },
         output_sink,
@@ -1653,6 +1663,7 @@ pub fn run_prepared_assembly(
             source_map: request.source_map,
             dependency_files: request.dependency_files,
             module_macro_names: request.module_macro_names,
+            module_template_seeds: request.module_template_seeds,
             module_parameters: request.module_parameters,
         },
         output_sink,
@@ -1714,6 +1725,7 @@ fn run_assembly_with_prepared(
         source_map,
         dependency_files,
         module_macro_names,
+        module_template_seeds,
         module_parameters,
     } = runtime;
     let mut assembler = AssemblerExecutionGuard::new(
@@ -1726,10 +1738,16 @@ fn run_assembly_with_prepared(
     assembler.opasm_package_path = opasm_package_path;
     assembler.root_metadata.root_module_id = Some(root_module_id);
     assembler.module_macro_names = module_macro_names;
+    assembler.module_template_seeds = module_template_seeds;
     assembler.module_parameters = module_parameters;
     assembler.set_implicit_hunk_output_requested(request.hunk_name_override.is_some());
-    let remap_diags = |mut diagnostics: Vec<Diagnostic>| {
-        remap_diagnostics_with_source_map(&mut diagnostics, &source_map);
+    let remap_diags = |assembler: &mut Assembler| {
+        let mut diagnostics = assembler.take_diagnostics();
+        if let Some(map) = assembler.acquired_source_map() {
+            remap_diagnostics_with_source_map(&mut diagnostics, &map);
+        } else {
+            remap_diagnostics_with_source_map(&mut diagnostics, &source_map);
+        }
         diagnostics
     };
 
@@ -1741,7 +1759,7 @@ fn run_assembly_with_prepared(
     types::target_callbacks::check().map_err(|message| {
         AsmRunError::new(
             AsmError::new(AsmErrorKind::Instruction, &message, None),
-            remap_diags(assembler.take_diagnostics()),
+            remap_diags(&mut assembler),
             expanded_lines.clone(),
         )
     })?;
@@ -1817,7 +1835,7 @@ fn run_assembly_with_prepared(
                 let traces = assembler.runtime_processing_traces().to_vec();
                 return Err(AsmRunError::new_with_traces(
                     AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                    remap_diags(assembler.take_diagnostics()),
+                    remap_diags(&mut assembler),
                     expanded_lines.clone(),
                     traces,
                 ));
@@ -1826,7 +1844,7 @@ fn run_assembly_with_prepared(
         types::target_callbacks::check().map_err(|message| {
             AsmRunError::new(
                 AsmError::new(AsmErrorKind::Instruction, &message, None),
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
             )
         })?;
@@ -1834,7 +1852,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
                 AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             )
@@ -1849,7 +1867,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             return Err(AsmRunError::new_with_traces(
                 AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             ));
@@ -1862,7 +1880,7 @@ fn run_assembly_with_prepared(
     list_output.flush().map_err(|err| {
         AsmRunError::new_with_traces(
             AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-            remap_diags(assembler.take_diagnostics()),
+            remap_diags(&mut assembler),
             expanded_lines.clone(),
             assembler.runtime_processing_traces().to_vec(),
         )
@@ -1874,7 +1892,7 @@ fn run_assembly_with_prepared(
         let traces = assembler.runtime_processing_traces().to_vec();
         return Err(AsmRunError::new_with_traces(
             AsmError::new(AsmErrorKind::Assembler, "Errors detected in source.", None),
-            remap_diags(assembler.take_diagnostics()),
+            remap_diags(&mut assembler),
             expanded_lines.clone(),
             traces,
         ));
@@ -1886,7 +1904,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
                 err,
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             )
@@ -1899,7 +1917,7 @@ fn run_assembly_with_prepared(
                     "Error opening file for write",
                     Some(hex_path),
                 ),
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             )
@@ -1909,7 +1927,7 @@ fn run_assembly_with_prepared(
                 let traces = assembler.runtime_processing_traces().to_vec();
                 AsmRunError::new_with_traces(
                     AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                    remap_diags(assembler.take_diagnostics()),
+                    remap_diags(&mut assembler),
                     expanded_lines.clone(),
                     traces,
                 )
@@ -1918,7 +1936,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             return Err(AsmRunError::new_with_traces(
                 AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             ));
@@ -1932,7 +1950,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
                 err,
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             )
@@ -1945,7 +1963,7 @@ fn run_assembly_with_prepared(
                     "Error opening file for write",
                     Some(srec_path),
                 ),
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             )
@@ -1955,7 +1973,7 @@ fn run_assembly_with_prepared(
                 let traces = assembler.runtime_processing_traces().to_vec();
                 AsmRunError::new_with_traces(
                     AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                    remap_diags(assembler.take_diagnostics()),
+                    remap_diags(&mut assembler),
                     expanded_lines.clone(),
                     traces,
                 )
@@ -1964,7 +1982,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             return Err(AsmRunError::new_with_traces(
                 AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             ));
@@ -1976,7 +1994,7 @@ fn run_assembly_with_prepared(
         let traces = assembler.runtime_processing_traces().to_vec();
         AsmRunError::new_with_traces(
             AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-            remap_diags(assembler.take_diagnostics()),
+            remap_diags(&mut assembler),
             expanded_lines.clone(),
             traces,
         )
@@ -1987,7 +2005,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
                 AsmError::new(AsmErrorKind::Cli, &err, None),
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             )
@@ -1999,7 +2017,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
                 err,
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             )
@@ -2014,7 +2032,7 @@ fn run_assembly_with_prepared(
                         "Error opening file for write",
                         Some(&bin_output.path),
                     ),
-                    remap_diags(assembler.take_diagnostics()),
+                    remap_diags(&mut assembler),
                     expanded_lines.clone(),
                     traces,
                 ));
@@ -2031,7 +2049,7 @@ fn run_assembly_with_prepared(
                 let traces = assembler.runtime_processing_traces().to_vec();
                 AsmRunError::new_with_traces(
                     AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                    remap_diags(assembler.take_diagnostics()),
+                    remap_diags(&mut assembler),
                     expanded_lines.clone(),
                     traces,
                 )
@@ -2040,7 +2058,7 @@ fn run_assembly_with_prepared(
                 let traces = assembler.runtime_processing_traces().to_vec();
                 return Err(AsmRunError::new_with_traces(
                     AsmError::new(AsmErrorKind::Io, &err.to_string(), None),
-                    remap_diags(assembler.take_diagnostics()),
+                    remap_diags(&mut assembler),
                     expanded_lines.clone(),
                     traces,
                 ));
@@ -2058,7 +2076,7 @@ fn run_assembly_with_prepared(
                 let traces = assembler.runtime_processing_traces().to_vec();
                 AsmRunError::new_with_traces(
                     err,
-                    remap_diags(assembler.take_diagnostics()),
+                    remap_diags(&mut assembler),
                     expanded_lines.clone(),
                     traces,
                 )
@@ -2075,7 +2093,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
                 err,
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             )
@@ -2086,7 +2104,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             AsmRunError::new_with_traces(
                 err,
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             )
@@ -2104,7 +2122,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             return Err(AsmRunError::new_with_traces(
                 err,
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             ));
@@ -2120,7 +2138,7 @@ fn run_assembly_with_prepared(
                 let traces = assembler.runtime_processing_traces().to_vec();
                 return Err(AsmRunError::new_with_traces(
                     err,
-                    remap_diags(assembler.take_diagnostics()),
+                    remap_diags(&mut assembler),
                     expanded_lines.clone(),
                     traces,
                 ));
@@ -2135,7 +2153,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             return Err(AsmRunError::new_with_traces(
                 err,
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             ));
@@ -2151,7 +2169,7 @@ fn run_assembly_with_prepared(
             let traces = assembler.runtime_processing_traces().to_vec();
             return Err(AsmRunError::new_with_traces(
                 err,
-                remap_diags(assembler.take_diagnostics()),
+                remap_diags(&mut assembler),
                 expanded_lines.clone(),
                 traces,
             ));
@@ -2186,7 +2204,7 @@ fn run_assembly_with_prepared(
     }
 
     Ok(AsmRunReport::new(
-        remap_diags(assembler.take_diagnostics()),
+        remap_diags(&mut assembler),
         expanded_lines,
         assembler.runtime_processing_traces().to_vec(),
     )
@@ -3959,6 +3977,7 @@ mod tests {
             source_map,
             dependency_files,
             module_macro_names,
+            module_template_seeds,
             module_parameters,
         ) = prepared.into_parts();
         let (cpu, registry, max_loop_iterations) = session.into_parts();
@@ -3973,6 +3992,7 @@ mod tests {
             source_map,
             dependency_files,
             module_macro_names,
+            module_template_seeds,
             module_parameters,
             out_dir: None,
             debug_conditionals: false,

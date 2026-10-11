@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
+use crate::active_sources::SourceAcquisitionError;
 use crate::error::{AsmError, AsmErrorKind, Diagnostic};
 use crate::line::{repetition, AsmLine, CachedRuntimeParseResult, RuntimeParseCache};
 use crate::prepared_line::{PreparedLine, PreparedLoopKind, PreparedSource};
@@ -71,12 +72,173 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
     prepared_source: Option<&PreparedSource>,
     max_loop_iterations: u32,
 ) -> Result<(), C::Error> {
+    execute_lines_with_base(
+        ctx,
+        lines,
+        start_idx,
+        end_idx_exclusive,
+        asm_line,
+        addr,
+        unscoped_repeat_kind,
+        prepared_source,
+        max_loop_iterations,
+        1,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_lines_with_base<C: RepetitionPass>(
+    ctx: &mut C,
+    lines: &[String],
+    start_idx: usize,
+    end_idx_exclusive: usize,
+    asm_line: &mut AsmLine<'_>,
+    addr: &mut u32,
+    unscoped_repeat_kind: Option<UnscopedRepeatKind>,
+    prepared_source: Option<&PreparedSource>,
+    max_loop_iterations: u32,
+    first_line: u32,
+) -> Result<(), C::Error> {
+    let source_mode = asm_line.active_sources.configured();
     let mut idx = start_idx;
     while idx < end_idx_exclusive {
         let line_num = u32::try_from(idx)
             .unwrap_or(u32::MAX.saturating_sub(1))
-            .saturating_add(1);
+            .saturating_add(first_line);
         let src = &lines[idx];
+        if source_mode {
+            let directive = opcore::preprocess::parse_asm_directive_name(src);
+            if directive
+                .as_deref()
+                .is_some_and(|name| matches!(name, "MODULE" | "USE" | "ENDMODULE"))
+                && asm_line
+                    .source_resources()
+                    .is_some_and(|resources| resources.borrow().is_acquired_line(line_num))
+            {
+                if !asm_line.cond_stack.skipping() {
+                    emit_source_error(ctx, asm_line, line_num, src, "INCLUDE introducing .module/.use requires module discovery support; active includes currently execute within the current module", lines)?;
+                }
+                idx += 1;
+                continue;
+            }
+            if directive
+                .as_deref()
+                .is_some_and(|name| matches!(name, "MACRO" | "SEGMENT" | "STATEMENT"))
+            {
+                let end = (idx + 1..end_idx_exclusive).find(|position| {
+                    opcore::preprocess::parse_asm_directive_name(&lines[*position])
+                        .as_deref()
+                        .is_some_and(|name| {
+                            matches!(
+                                name,
+                                "ENDMACRO" | "ENDM" | "ENDSEGMENT" | "ENDS" | "ENDSTATEMENT"
+                            )
+                        })
+                });
+                let end = end.unwrap_or(end_idx_exclusive.saturating_sub(1));
+                if !asm_line.cond_stack.skipping()
+                    && asm_line
+                        .active_sources
+                        .captured_definitions
+                        .insert(line_num)
+                {
+                    if let Err(message) =
+                        asm_line.capture_active_definition(&lines[idx..=end], line_num)
+                    {
+                        emit_source_error(ctx, asm_line, line_num, src, &message, lines)?;
+                    }
+                }
+                idx = end + 1;
+                continue;
+            }
+            let include_target = opcore::preprocess::parse_include_target_from_source_line(src);
+            if include_target.is_some() {
+                asm_line.begin_source_execution();
+            }
+            if include_target.is_some()
+                && (asm_line.active_sources.activity_failed
+                    || !asm_line.cond_stack.source_activity_resolved())
+            {
+                emit_source_error(ctx, asm_line, line_num, src,
+                "INCLUDE activity depends on unresolved symbols; forward-dependent source acquisition is not supported", lines)?;
+                idx += 1;
+                continue;
+            }
+            if asm_line.cond_stack.skipping() && include_target.is_some() {
+                idx += 1;
+                continue;
+            }
+
+            if !asm_line.cond_stack.skipping() {
+                let expanded = if let Some(filename) = include_target {
+                    asm_line
+                        .acquire_include(line_num, &filename)
+                        .map(|(path, source)| (Some(path), Some(source)))
+                } else {
+                    asm_line
+                        .expand_active_invocation(line_num, src)
+                        .map(|source| (None, source))
+                        .map_err(SourceAcquisitionError::from)
+                };
+                match expanded {
+                    Ok((path, Some(source))) => {
+                        let mut root_frame = false;
+                        if path.is_some() && asm_line.active_sources.include_stack.is_empty() {
+                            if let Some(resources) = asm_line.source_resources() {
+                                let borrowed = resources.borrow();
+                                if let (Some(origin), Ok(reader)) =
+                                    (borrowed.origin(line_num), borrowed.include_reader())
+                                {
+                                    if let Some(root) = origin.file.and_then(|file| {
+                                        reader.canonicalize(std::path::Path::new(&file)).ok()
+                                    }) {
+                                        asm_line.active_sources.include_stack.push(root);
+                                        root_frame = true;
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(path) = path.as_ref() {
+                            asm_line.active_sources.include_stack.push(path.clone());
+                        }
+                        asm_line.active_sources.expansion_depth += 1;
+                        let result = execute_lines_with_base(
+                            ctx,
+                            &source.lines,
+                            0,
+                            source.lines.len(),
+                            asm_line,
+                            addr,
+                            unscoped_repeat_kind,
+                            None,
+                            max_loop_iterations,
+                            source.first_line,
+                        );
+                        asm_line.active_sources.expansion_depth -= 1;
+                        if path.is_some() {
+                            asm_line.active_sources.include_stack.pop();
+                        }
+                        if root_frame {
+                            asm_line.active_sources.include_stack.pop();
+                        }
+                        result?;
+                        idx += 1;
+                        continue;
+                    }
+                    Err(SourceAcquisitionError::Message(message)) => {
+                        emit_source_error(ctx, asm_line, line_num, src, &message, lines)?;
+                        idx += 1;
+                        continue;
+                    }
+                    Err(SourceAcquisitionError::Diagnostic(diagnostic)) => {
+                        ctx.emit_error(*diagnostic, lines)?;
+                        idx += 1;
+                        continue;
+                    }
+                    Ok((_, None)) => {}
+                }
+            }
+        }
 
         let prepared_line = prepared_source.and_then(|source| source.get(idx));
         let parsed_line = parse_or_prepare_line(asm_line, src, line_num, prepared_line);
@@ -225,6 +387,22 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                         return Ok(());
                     };
 
+                    let activity_operands = if operands.len() == 2 {
+                        &operands[1..]
+                    } else {
+                        &operands[..]
+                    };
+                    if asm_line.active_sources.enabled()
+                        && activity_operands.iter().any(|expr| {
+                            asm_line
+                                .eval_value_ast_requiring_defined_symbols(expr)
+                                .is_err()
+                        })
+                    {
+                        emit_source_error(ctx, asm_line, line_num, src, "Loop activity depends on unresolved symbols; forward-dependent source acquisition is not supported", lines)?;
+                        idx = end_idx + 1;
+                        continue;
+                    }
                     let plan = match repetition::evaluate_for_plan(
                         asm_line,
                         &operands,
@@ -284,7 +462,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             asm_line.push_loop_var(var_name, *value);
                         }
                         asm_line.repetition_path.push((line_num, iteration as u32));
-                        execute_lines(
+                        execute_lines_with_base(
                             ctx,
                             lines,
                             idx.saturating_add(1),
@@ -298,6 +476,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             },
                             prepared_source,
                             max_loop_iterations,
+                            first_line,
                         )?;
                         if let Some((base_addr, section, scope)) = record_origin {
                             iteration_records.push(asm_line.capture_repeat_record(
@@ -355,6 +534,17 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                         return Ok(());
                     };
 
+                    if asm_line.active_sources.enabled()
+                        && operands.iter().any(|expr| {
+                            asm_line
+                                .eval_value_ast_requiring_defined_symbols(expr)
+                                .is_err()
+                        })
+                    {
+                        emit_source_error(ctx, asm_line, line_num, src, "Loop activity depends on unresolved symbols; forward-dependent source acquisition is not supported", lines)?;
+                        idx = end_idx + 1;
+                        continue;
+                    }
                     let mut while_error: Option<AstEvalError> = None;
                     let mut loop_count = 0u32;
                     let mut iteration_records = Vec::new();
@@ -402,7 +592,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                         });
 
                         asm_line.repetition_path.push((line_num, loop_count - 1));
-                        execute_lines(
+                        execute_lines_with_base(
                             ctx,
                             lines,
                             idx.saturating_add(1),
@@ -416,6 +606,7 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
                             },
                             prepared_source,
                             max_loop_iterations,
+                            first_line,
                         )?;
 
                         if let Some((base_addr, section, scope)) = record_origin {
@@ -487,6 +678,29 @@ pub(crate) fn execute_lines<C: RepetitionPass>(
     Ok(())
 }
 
+fn emit_source_error<C: RepetitionPass>(
+    ctx: &mut C,
+    asm_line: &AsmLine<'_>,
+    line: u32,
+    source: &str,
+    message: &str,
+    lines: &[String],
+) -> Result<(), C::Error> {
+    let mut diagnostic = Diagnostic::new(
+        line,
+        crate::error::Severity::Error,
+        AsmError::new(AsmErrorKind::Preprocess, message, None),
+    )
+    .with_source(Some(source.to_string()));
+    if let Some(resources) = asm_line.source_resources() {
+        if let Some(origin) = resources.borrow().origin(line) {
+            diagnostic.file = origin.file;
+            diagnostic.line = origin.line;
+        }
+    }
+    ctx.emit_error(diagnostic, lines)
+}
+
 fn parse_or_prepare_line(
     asm_line: &AsmLine<'_>,
     src: &str,
@@ -529,12 +743,35 @@ fn find_matching_prepared_loop(
 
     let mut depth = 1usize;
     let mut found = None;
+    let mut in_definition = false;
+    let source_mode = asm_line.active_sources.configured();
     for (idx, src) in lines
         .iter()
         .enumerate()
         .take(end_idx_exclusive)
         .skip(start_idx)
     {
+        if source_mode {
+            let directive = opcore::preprocess::parse_asm_directive_name(src);
+            if in_definition {
+                if directive.as_deref().is_some_and(|name| {
+                    matches!(
+                        name,
+                        "ENDMACRO" | "ENDM" | "ENDSEGMENT" | "ENDS" | "ENDSTATEMENT"
+                    )
+                }) {
+                    in_definition = false;
+                }
+                continue;
+            }
+            if directive
+                .as_deref()
+                .is_some_and(|name| matches!(name, "MACRO" | "SEGMENT" | "STATEMENT"))
+            {
+                in_definition = true;
+                continue;
+            }
+        }
         let line_num = u32::try_from(idx)
             .unwrap_or(u32::MAX.saturating_sub(1))
             .saturating_add(1);

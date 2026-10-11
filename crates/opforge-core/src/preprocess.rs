@@ -583,6 +583,10 @@ pub struct Preprocessor {
     lines: Vec<String>,
     origins: Vec<types::source_map::SourceOrigin>,
     in_asm_macro: bool,
+    runtime_blocks: Vec<String>,
+    conditional_owners: Vec<bool>,
+    defer_all_includes: bool,
+    runtime_include_seen: bool,
     include_roots: Vec<PathBuf>,
     seen_files: HashSet<PathBuf>,
     include_stack: Vec<PathBuf>,
@@ -601,6 +605,10 @@ impl Preprocessor {
             lines: Vec::new(),
             origins: Vec::new(),
             in_asm_macro: false,
+            runtime_blocks: Vec::new(),
+            conditional_owners: Vec::new(),
+            defer_all_includes: false,
+            runtime_include_seen: false,
             include_roots: Vec::new(),
             seen_files: HashSet::new(),
             include_stack: Vec::new(),
@@ -610,6 +618,11 @@ impl Preprocessor {
 
     pub fn add_include_root(&mut self, root: PathBuf) {
         self.include_roots.push(root);
+    }
+
+    /// Acquired runtime sources retain all nested includes for active traversal.
+    pub fn defer_all_includes(&mut self) {
+        self.defer_all_includes = true;
     }
 
     pub fn define(&mut self, name: &str, value: &str) {
@@ -635,6 +648,9 @@ impl Preprocessor {
         self.origins.clear();
         self.cond_state.clear();
         self.in_asm_macro = false;
+        self.runtime_blocks.clear();
+        self.conditional_owners.clear();
+        self.runtime_include_seen = false;
         self.seen_files.clear();
         self.include_stack.clear();
         self.process_file_internal(Path::new(path), loader)
@@ -758,6 +774,58 @@ impl Preprocessor {
         let rest = trim(&trimmed[pos..]);
         let column = leading.saturating_add(start).saturating_add(1);
 
+        // Track ownership, never evaluate assembly conditions here. Mixed
+        // preprocessor/assembler nesting must preserve the assembler delimiters.
+        let mut assembler_conditional = false;
+        let runtime_directive = parse_asm_directive_name(trimmed);
+        if runtime_directive.is_some() && !self.in_asm_macro {
+            let runtime_token = runtime_directive.as_deref().unwrap_or(&token);
+            match runtime_token {
+                "IFDEF" | "IFNDEF" => self.conditional_owners.push(true),
+                "IF" => {
+                    self.conditional_owners.push(false);
+                    self.runtime_blocks.push("ENDIF".into());
+                }
+                "SWITCH" => self.runtime_blocks.push("ENDSWITCH".into()),
+                "MATCH" => self.runtime_blocks.push("ENDMATCH".into()),
+                "FOR" | "BFOR" => self.runtime_blocks.push("ENDFOR".into()),
+                "WHILE" | "BWHILE" => self.runtime_blocks.push("ENDWHILE".into()),
+                "ENDIF" => {
+                    assembler_conditional = self.conditional_owners.pop() == Some(false);
+                    if assembler_conditional
+                        && self.runtime_blocks.last().is_some_and(|end| end == "ENDIF")
+                    {
+                        self.runtime_blocks.pop();
+                    }
+                }
+                "ELSE" | "ELSEIF" => {
+                    assembler_conditional = self.conditional_owners.last() == Some(&false)
+                }
+                "ENDSWITCH" | "ENDMATCH" | "ENDFOR" | "ENDWHILE"
+                    if self
+                        .runtime_blocks
+                        .last()
+                        .is_some_and(|end| end == runtime_token) =>
+                {
+                    self.runtime_blocks.pop();
+                }
+                _ => {}
+            }
+        }
+        if is_dot_directive
+            && token == "INCLUDE"
+            && (self.in_asm_macro
+                || !self.runtime_blocks.is_empty()
+                || self.defer_all_includes
+                || self.runtime_include_seen)
+        {
+            if self.is_active() {
+                self.push_source_line(line.to_string(), base_dir, line_num, file_path);
+                self.runtime_include_seen = true;
+            }
+            return Ok(());
+        }
+
         let is_else_directive = token == "ELSE" || token == "ELSEIF" || token == "ENDIF";
         let is_pp_directive =
             token == "IFDEF" || token == "IFNDEF" || token == "INCLUDE" || is_else_directive;
@@ -766,7 +834,7 @@ impl Preprocessor {
             return Err(err.with_context(line_num, Some(column), line, Some(file_path)));
         }
         if is_dot_directive && is_pp_directive {
-            if is_else_directive && self.cond_state.is_empty() {
+            if is_else_directive && (assembler_conditional || self.cond_state.is_empty()) {
                 // Pass through .else/.elseif/.endif for assembler conditionals.
             } else {
                 return self
@@ -967,6 +1035,10 @@ impl Default for Preprocessor {
             lines: Vec::new(),
             origins: Vec::new(),
             in_asm_macro: false,
+            runtime_blocks: Vec::new(),
+            conditional_owners: Vec::new(),
+            defer_all_includes: false,
+            runtime_include_seen: false,
             include_roots: Vec::new(),
             seen_files: HashSet::new(),
             include_stack: Vec::new(),
@@ -1025,6 +1097,17 @@ enum AsmMacroDirective {
 }
 
 fn parse_asm_macro_directive(trimmed: &str) -> Option<AsmMacroDirective> {
+    let directive = parse_asm_directive_name(trimmed)?;
+    match directive.as_str() {
+        "MACRO" | "SEGMENT" | "STATEMENT" => Some(AsmMacroDirective::Start),
+        "ENDMACRO" | "ENDM" | "ENDSEGMENT" | "ENDS" | "ENDSTATEMENT" => {
+            Some(AsmMacroDirective::End)
+        }
+        _ => None,
+    }
+}
+
+pub fn parse_asm_directive_name(trimmed: &str) -> Option<String> {
     let mut cursor = Cursor::new(trimmed);
     cursor.skip_ws();
     cursor.peek()?;
@@ -1049,14 +1132,7 @@ fn parse_asm_macro_directive(trimmed: &str) -> Option<AsmMacroDirective> {
     }
 
     cursor.skip_ws();
-    let directive = cursor.take_ident()?.to_ascii_uppercase();
-    match directive.as_str() {
-        "MACRO" | "SEGMENT" | "STATEMENT" => Some(AsmMacroDirective::Start),
-        "ENDMACRO" | "ENDM" | "ENDSEGMENT" | "ENDS" | "ENDSTATEMENT" => {
-            Some(AsmMacroDirective::End)
-        }
-        _ => None,
-    }
+    Some(cursor.take_ident()?.to_ascii_uppercase())
 }
 
 // Syntax-only transport of established filename spellings to the shared parser.

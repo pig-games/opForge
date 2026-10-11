@@ -10,7 +10,7 @@ pub trait BinaryResourceReader: Debug + Send + Sync {
     fn is_file(&self, path: &Path) -> bool;
     fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BinaryResourceContext {
     pub base_dir: PathBuf,
     pub allowed_roots: Vec<PathBuf>,

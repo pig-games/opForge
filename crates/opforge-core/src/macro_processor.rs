@@ -241,7 +241,10 @@ impl NativeStatementExport {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct MacroProcessor {
+    runtime_streaming: bool,
+    runtime_tail: bool,
     macros: HashMap<String, MacroDef>,
     statement_support: Option<StatementSupport>,
     injected_names: HashSet<String>,
@@ -259,8 +262,34 @@ impl Default for MacroProcessor {
 }
 
 impl MacroProcessor {
+    /// Make existing templates available in source order while execution owns
+    /// the current lexical scope and newly acquired definitions.
+    pub fn seed_templates_from(&mut self, seed: &Self) {
+        for (name, def) in &seed.macros {
+            self.macros
+                .entry(name.clone())
+                .or_insert_with(|| def.clone());
+        }
+        if let (Some(target), Some(source)) = (&mut self.statement_support, &seed.statement_support)
+        {
+            for (name, defs) in &source.defs {
+                for def in defs {
+                    let current = target.defs.entry(name.clone()).or_default();
+                    if !current.iter().any(|existing| {
+                        existing.signature == def.signature
+                            && existing.body == def.body
+                            && existing.origins == def.origins
+                    }) {
+                        current.push(def.clone());
+                    }
+                }
+            }
+        }
+    }
     pub fn new() -> Self {
         Self {
+            runtime_streaming: false,
+            runtime_tail: false,
             macros: HashMap::new(),
             statement_support: None,
             injected_names: HashSet::new(),
@@ -279,6 +308,12 @@ impl MacroProcessor {
     /// the preprocessor.
     pub fn with_max_depth(mut self, depth: usize) -> Self {
         self.max_depth = depth;
+        self
+    }
+
+    /// Runtime traversal owns activity and visits substituted bodies in order.
+    pub fn with_runtime_streaming(mut self) -> Self {
+        self.runtime_streaming = true;
         self
     }
 
@@ -496,6 +531,10 @@ impl MacroProcessor {
         origins: &[types::source_map::SourceOrigin],
         depth: usize,
     ) -> Result<Vec<String>, MacroError> {
+        if self.runtime_streaming {
+            self.statement_output_origins = origins.to_vec();
+            return Ok(lines.to_vec());
+        }
         let (lines, origins) = self.expand_contextual(lines, origins, depth)?;
         self.statement_output_origins = origins;
         Ok(lines)
@@ -657,6 +696,11 @@ impl MacroProcessor {
                 .cloned()
                 .unwrap_or_else(|| types::source_map::SourceOrigin::new(None, line_num));
             let (code, _) = crate::text_utils::split_comment(line);
+            if self.runtime_tail && !self.runtime_streaming {
+                out.push(line.clone());
+                out_origins.push(origin);
+                continue;
+            }
 
             if current.is_none() && current_statement.is_none() && !skip_statement_body {
                 if let Some(directive) = parse_visibility_directive(code) {
@@ -858,8 +902,11 @@ impl MacroProcessor {
                         expanded_origins.push(origin.clone());
                     }
                 }
-                let (nested, nested_origins) =
-                    self.expand_contextual(&expanded, &expanded_origins, depth + 1)?;
+                let (nested, nested_origins) = if self.runtime_streaming {
+                    (expanded, expanded_origins)
+                } else {
+                    self.expand_contextual(&expanded, &expanded_origins, depth + 1)?
+                };
                 out.extend(nested);
                 out_origins.extend(nested_origins);
                 continue;
@@ -883,6 +930,11 @@ impl MacroProcessor {
                 crate::preprocess::normalize_incbin_filename(line).unwrap_or_else(|| line.clone()),
             );
             out_origins.push(origin.clone());
+            if !self.runtime_streaming
+                && crate::preprocess::parse_include_target_from_source_line(line).is_some()
+            {
+                self.runtime_tail = true;
+            }
         }
 
         if let Some((_name, _def, kind)) = current {

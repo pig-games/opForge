@@ -3,7 +3,7 @@
 
 //! Source map support for mapping expanded assembler lines back to origin files.
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SourceOrigin {
     pub file: Option<String>,
     pub line: u32,
@@ -21,11 +21,13 @@ impl SourceOrigin {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SourceMap {
     origins: Vec<SourceOrigin>,
     /// Owned capability; diagnostic-map equality compares origins, not handles.
     pub binary_reader: Option<std::sync::Arc<dyn crate::binary_resource::BinaryResourceReader>>,
+    pub preprocess_defines: Vec<String>,
+    pub source_max_depth: usize,
 }
 
 impl PartialEq for SourceMap {
@@ -35,16 +37,31 @@ impl PartialEq for SourceMap {
 }
 impl Eq for SourceMap {}
 
+impl Default for SourceMap {
+    fn default() -> Self {
+        Self::new(Vec::new())
+    }
+}
+
 impl SourceMap {
     pub fn new(origins: Vec<SourceOrigin>) -> Self {
         Self {
             origins,
             binary_reader: None,
+            preprocess_defines: Vec::new(),
+            source_max_depth: 64,
         }
     }
 
     pub fn origins(&self) -> &[SourceOrigin] {
         &self.origins
+    }
+
+    /// Allocate stable statement identities for sources acquired during execution.
+    pub fn append_origins(&mut self, origins: &[SourceOrigin]) -> u32 {
+        let first = self.origins.len() as u32 + 1;
+        self.origins.extend_from_slice(origins);
+        first
     }
 
     pub fn origin_for_line(&self, line: u32) -> Option<&SourceOrigin> {

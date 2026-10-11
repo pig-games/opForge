@@ -10,6 +10,19 @@ impl<'a> AsmLine<'a> {
         exprs: &[Expr],
         span: Span,
     ) -> LineStatus {
+        let status = self.process_conditional_ast_inner(kind, exprs, span);
+        if matches!(status, LineStatus::Error | LineStatus::Pass1Error) {
+            self.active_sources.activity_failed = true;
+        }
+        status
+    }
+
+    fn process_conditional_ast_inner(
+        &mut self,
+        kind: ConditionalKind,
+        exprs: &[Expr],
+        span: Span,
+    ) -> LineStatus {
         let skipping = self.cond_stack.skipping();
         let end_span = self.line_end_span.unwrap_or(span);
         let expr_err_span = exprs.first().map(expr_span).unwrap_or(end_span);
@@ -39,6 +52,11 @@ impl<'a> AsmLine<'a> {
                 };
                 let prev = self.cond_stack.last();
                 let mut ctx = ConditionalContext::new(prev, ConditionalBlockKind::If);
+                if self.active_sources.enabled() {
+                    ctx.source_activity_resolved &= exprs.first().is_none_or(|expr| {
+                        self.eval_scalar_ast_requiring_defined_symbols(expr).is_ok()
+                    });
+                }
                 if val != 0 {
                     ctx.matched = true;
                 } else {
@@ -71,6 +89,11 @@ impl<'a> AsmLine<'a> {
                 };
                 let prev = self.cond_stack.last();
                 let mut ctx = ConditionalContext::new(prev, ConditionalBlockKind::Switch);
+                if self.active_sources.enabled() {
+                    ctx.source_activity_resolved &= exprs.first().is_none_or(|expr| {
+                        self.eval_scalar_ast_requiring_defined_symbols(expr).is_ok()
+                    });
+                }
                 ctx.switch_value = Some(val);
                 ctx.skipping = true;
                 if !matches!(self.profile_phase, AsmProfilePhase::Pass2) {
@@ -166,6 +189,11 @@ impl<'a> AsmLine<'a> {
                         None => 0,
                     }
                 };
+                let source_activity_resolved = !self.active_sources.enabled()
+                    || self.cond_stack.last().is_some_and(|ctx| ctx.matched)
+                    || exprs.first().is_none_or(|expr| {
+                        self.eval_scalar_ast_requiring_defined_symbols(expr).is_ok()
+                    });
                 let Some(ctx) = self.cond_stack.last_mut() else {
                     let err_span = if kind == ConditionalKind::ElseIf {
                         expr_err_span
@@ -192,6 +220,7 @@ impl<'a> AsmLine<'a> {
                     ctx.skipping = false;
                 }
                 ctx.sub_type = sub_type;
+                ctx.source_activity_resolved &= source_activity_resolved;
                 let active = !ctx.skipping;
                 self.observe_guard_branch(
                     if kind == ConditionalKind::ElseIf {
@@ -296,6 +325,11 @@ impl<'a> AsmLine<'a> {
                     }
                 }
                 let sub_type = ConditionalSubType::Case;
+                let source_activity_resolved = !self.active_sources.enabled()
+                    || self.cond_stack.last().is_some_and(|ctx| ctx.matched)
+                    || exprs
+                        .iter()
+                        .all(|expr| self.eval_value_ast_requiring_defined_symbols(expr).is_ok());
                 let Some(ctx) = self.cond_stack.last_mut() else {
                     return self.failure_at_span(
                         LineStatus::Error,
@@ -315,6 +349,7 @@ impl<'a> AsmLine<'a> {
                 } else {
                     ctx.sub_type = sub_type;
                 }
+                ctx.source_activity_resolved &= source_activity_resolved;
             }
             ConditionalKind::Default => {
                 if self.cond_stack.is_empty() {

@@ -311,5 +311,29 @@ One sample per state supports no meaningful timing difference. The overall image
 grows 676 bytes and linked static reservation grows 652 bytes. Static reservation
 excludes runtime heap; peak allocation and 2 MiB fit were not measured. A sample
 that overlapped a host build was discarded and repeated. Focused behavior and
-remaining active-member failure belong in the
+the subsequently repaired active-member behavior belong in the
 [frontend boundary](../plans/compact-frontend-vm-boundary.md#current-opcore-breadth-and-acquisition-boundary).
+
+The first numeric proxy-owner repair uses the same unchanged control and
+profile. A fresh baseline takes 26.936725 seconds; the repaired image takes
+26.910136 seconds. One sample per state supports no meaningful timing difference.
+The repair adds 500 image bytes and 480 linked reservation bytes, reaching
+647,420 and 671,752 respectively; it reuses the existing owner-index allocation.
+The repaired image SHA-256 is
+`7137c1c147b58b85c06826a5542811388f55eefe08f5e3174e0018783e0b8df6`.
+Twelve positive member-binding controls and two malformed-name rejection controls
+pass freshly. These are focused correctness results, not a full self-host or
+general compound-ownership qualification. Runtime heap peak remains unmeasured.
+
+The conservative owner policy adds forward-field and mutable-kind controls. A
+fresh uncontended pair on the same unchanged release control takes 26.873247
+seconds before and 26.896839 seconds after (+0.088%, within single-sample noise).
+The current image is 657,484 bytes with 681,816 bytes linked static reservation,
+SHA-256 `8bdcba82d219e3d392d6968eb05ec0e138267f8cad6527968a99e6cd7b6c09c0`.
+Of the 10,064-byte increase, 128 bytes are code and 9,936 bytes are regenerated
+package data, including the separate 6502 force-suffix diagnostic repair. BSS is
+unchanged; the owner policy adds no heap allocation. Eighteen positive controls
+and two malformed-name rejection controls pass freshly across 68020 and 6502.
+Different possible physical owners remain an explicit reachable-use rejection
+until selection can run against the actual assembly state. These focused results
+are not a current-source full self-host or peak-memory qualification.

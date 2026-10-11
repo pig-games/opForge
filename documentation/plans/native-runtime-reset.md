@@ -33,16 +33,21 @@ audit matches 81 roots; five expected-error roots produce no partial artifacts
 and therefore lack the stricter audit's artifact comparison evidence. This is
 not a green whole-workspace qualification.
 
-At `fd6e848f`, the inactive composed qualified-member case passes freshly on both
-68020 and 6502; ordinary malformed `@0` controls reject. The active imported
-typed-member case still fails during native assembly, after preparation. Proxy
-ownership/liveness is a hypothesis pending fresh controls. Expanded repetition
+The numeric proxy-ownership repair qualifies direct and composed imported
+typed-member references: 18 positive controls match live Rust and two malformed
+`@0` controls reject freshly on 68020 and 6502. Unknown/mutable prefixes retain
+possible owners; a common owner is indexed once, while differing owners reject
+only when reached. Runtime block marking remains O(1), with no new heap allocation.
+Forward fields and mutable-kind changes have focused coverage; forward compound
+aliases and dynamic selection between different physical owners remain unqualified.
+Expanded repetition
 with active acquisition has nine positive behaviors on each package (18 cases
 total): 17 completed in the original matrix and the pre-START stall passed a
-fresh retry. That result excludes the separate failing active composed-member
-case. Named acquired collections and actual assembly-state/PC-dependent
-acquisition remain pending. Current executable size is 646,920 bytes and linked
-static reservation is 671,272 bytes; neither is peak RAM.
+fresh retry. That matrix is separate from the composed-member controls. A named-collection
+candidate passes twelve fresh exact controls, including colonless and explicit-colon
+labels; defensive publication/marker review is ongoing before its checkpoint. Actual assembly-state/
+PC-dependent acquisition also remains pending. The identified proxy-repair image
+is 657,484 bytes with 681,816 bytes linked static reservation; neither is peak RAM.
 
 The latest full self-host proof is BS35, source manifest `54fb484dd0022ab5`:
 121 mapped inputs (1,780,288 bytes), with exact bootstrap/native/live Rust equality
@@ -51,6 +56,10 @@ for the entire 601,196-byte Hunk. The uninstrumented release run took
 checkpoint only. Later changes have focused evidence, with no new full self-host
 proof. Full BS35 peak allocation, physical A6000 timing and 2 MiB fit remain
 unmeasured. See the maintained [self-host proof](compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs35).
+
+The separate shared text-owner component matches its complete live Rust artifact
+in a fresh native run. This covers builtin/custom maps, variable escapes, cloning
+and lifecycle APIs; compact source grammar and data-emitter integration are pending.
 
 Source-session restructuring and VM-contract consolidation are separate pending
 implementation designs. Consolidate each VM's current capabilities into its own

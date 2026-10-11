@@ -26,6 +26,7 @@
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
 ENTRY_BYTES = records.ENTRY_BYTES
+AMBIGUOUS_BINDING_OWNER = plans.AMBIGUOUS_OWNER
 ENTRIES = layout.ENTRIES
 ENTRIES_POINTER = layout.ENTRIES_POINTER
 BUCKETS = layout.BUCKETS
@@ -540,6 +541,51 @@ exportBindings	.block
 	tst.l d0
 	rts
 	.bend  ; exportBindings
+
+; A0=completed scope,A1=source-indexed owner slots,D0=slot count.
+; The finalized numeric plan owner maps occurrence proxies once, after all
+; declaration owners are known. Unknown/mutable prefixes retain possible
+; owners; differing possibilities reject only if the proxy becomes reachable.
+; D0/CCR=status; other registers preserved. No borrowed pointer is retained.
+indexBindingOwners .block
+	movem.l d1/a0-a4, -(sp)
+	moveq #0, d1
+	move.w layout.State.Count(a0), d1
+	cmp.l d1, d0
+	bne.w bad
+	move.l d1, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	cmp.l ENTRIES+memory.Block.Used(a0), d0
+	bhi.w bad
+	movea.l ENTRIES_POINTER(a0), a4
+	tst.l d1
+	beq.w entriesReady
+	move.l a4, d0
+	beq.w bad
+entriesReady
+	movea.l a1, a2
+	lea IMPORT_STATE(a0), a1
+	cmp.l imports.KNOWN_DEFINED+memory.Block.Used(a1), d1
+	bhi.w bad
+	movea.l imports.KNOWN_DEFINED_POINTER(a1), a3
+	tst.l d1
+	beq.w definedReady
+	move.l a3, d0
+	beq.w bad
+definedReady
+	adda.l #imports.KNOWN_OWNER, a1
+	moveq #0, d0
+	move.w layout.State.Base(a0), d0
+	adda.l #BINDING_PLANS, a0
+	jsr plans.indexOwners
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/a0-a4
+	tst.l d0
+	rts
+	.bend ; indexBindingOwners
 
 ; A0/D0=full value spelling,A1=scope,D1=bound full origin ID.
 ; Capture earlier declared value prefixes longest first. Entire ordinary name

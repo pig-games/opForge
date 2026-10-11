@@ -71,8 +71,15 @@ Nine active-acquisition behaviors on each of 68020 and 6502 pass after a fresh
 retry of one pre-START stall (18 positives total). Missing active files, include
 cycles, unavailable forward guards and acquired/expanded module graph changes
 have seven fresh rejection controls. Inactive composed qualified members now pass
-both packages, and malformed ordinary `@0` rejects. Active imported typed members
-still fail during native assembly. Named acquired collections, PC-dependent
+both packages, and malformed ordinary `@0` rejects. Direct and composed imported
+typed-member controls now pass through numeric proxy owner indexing: finalized
+plans retain possible unknown/mutable prefixes and stop at a known immutable
+compound. A common possible block owner is indexed once; differing owners reject
+only when reached. Eighteen positive controls and two rejection controls pass
+freshly across both packages, including forward fields and mutable-kind changes.
+Forward compound aliases and dynamic selection between different physical owners
+remain unqualified. A named acquired-collection candidate passes twelve fresh
+exact controls; defensive publication and marker review continues. PC-dependent
 acquisition and graph-changing includes remain unqualified; the
 [source-session design](native-source-execution.md) addresses the pending structural
 work. These focused results do not establish complete opcore or a new self-host.

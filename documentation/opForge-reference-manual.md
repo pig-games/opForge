@@ -579,8 +579,10 @@ Notes:
   a qualified reference to the original label retains its fixup.
   Labeled counted/list/range `.bfor` now has separate focused coverage for indexed
   addresses, immediate members, nested collections and grouped record aliases,
-  including Hunk relocations. Plain dotted record aliases use shared numeric occurrence bindings; active
-  composed imported members remain a separate native gap. See the [native frontend
+  including Hunk relocations. Plain dotted record aliases use shared numeric
+  occurrence bindings. Active composed imported members have focused coverage for
+  known immutable compounds, forward fields and mutable compound kinds.
+  General dynamic ownership and forward compound aliases remain unqualified. See the [native frontend
   boundary](plans/compact-frontend-vm-boundary.md).
   Anonymous and labeled `.bwhile` also have focused native coverage. Full
   `.bwhile` parity, mapped scoped replay and general forward-value/layout

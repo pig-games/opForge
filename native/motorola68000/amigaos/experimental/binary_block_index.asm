@@ -4,6 +4,7 @@
 	.cpu 68020
 	.include "memory_telemetry.i"
 	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_imports as imports
@@ -434,7 +435,13 @@ ownerNext
 	addq.w #1, d7
 	bra.w ownerSpan
 ownerGood
+	; Proxy occurrences have no declaration record. Resolve their selected
+	; numeric prefix to this same table once; each later mark remains O(1).
+	movea.l Scope, a0
+	movea.l Owners+memory.Block.Pointer, a1
 	moveq #0, d0
+	move.w layout.State.Count(a0), d0
+	jsr scopes.indexBindingOwners
 	bra.w ownerDone
 ownerBad
 	moveq #1, d0
@@ -766,6 +773,8 @@ mark	.block
 	moveq #0, d2
 	move.w 0(a2, d0.l), d2
 	beq.w doneMark
+	cmpi.w #scopes.AMBIGUOUS_BINDING_OWNER, d2
+	beq.w ambiguousOwner
 	subq.w #1, d2
 	move.l d2, d1
 	mulu.w #SPAN_BYTES, d1
@@ -777,6 +786,9 @@ markRoot
 	move.w #1, Span.Live(a3)
 	move.l d2, d0
 	bsr.w enqueue
+	bra.w markExit
+ambiguousOwner
+	moveq #1, d0
 	bra.w markExit
 doneMark
 	moveq #0, d0

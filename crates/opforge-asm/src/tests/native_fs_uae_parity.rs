@@ -26625,10 +26625,15 @@ fn external_fs_uae_native_opforge_full_product_artifact_parity() {
         .collect::<Vec<_>>();
     assert_eq!(
         guest_files.len(),
-        101,
+        128,
         "measured canonical product staging set changed"
     );
     for bridge_file in [
+        "prvm/prvm_abi.asm",
+        "prvm/prvm_runtime.asm",
+        "prvm/prvm_line_router.asm",
+        "prvm/prvm_packed_declaration.asm",
+        "prvm/prvm_macro_descriptors.asm",
         "opasm/opasm_progress.asm",
         "debug/opforge_symbol_expr_profile.asm",
         "debug/opforge_runtime_profile.asm",

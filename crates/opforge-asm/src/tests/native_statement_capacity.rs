@@ -63,11 +63,19 @@ fn native_item38_full_product_source_line_budget_contract() {
     );
 
     let main_path = amigaos.join("main.asm");
-    let root_lines =
-        expand_source_file(&main_path, &[], &[], 64).expect("expand canonical native product root");
+    let include_paths = example_include_paths(&main_path);
+    let root_lines = expand_source_file(&main_path, &[], &include_paths, 64)
+        .expect("expand canonical native product root");
     let module_paths = example_module_paths(&main_path);
-    let graph = load_module_graph(&main_path, root_lines, &[], &[], &module_paths, 64)
-        .expect("load canonical native product graph");
+    let graph = load_module_graph(
+        &main_path,
+        root_lines,
+        &[],
+        &include_paths,
+        &module_paths,
+        64,
+    )
+    .expect("load canonical native product graph");
     assert!(
         graph.lines.len() < 100_000,
         "product rows exceed native source-record capacity"
@@ -223,7 +231,11 @@ fn native_item38_full_product_module_resolve_depth_budget_contract() {
     }
     let mut maximum = Vec::new();
     visit("main", &uses, &mut Vec::new(), &mut maximum);
-    assert_eq!(maximum.len(), 19, "canonical module depth changed");
+    // Compact table preparation now has its own module in this dependency chain.
+    assert_eq!(maximum.len(), 20, "canonical module depth changed");
+    assert!(maximum
+        .iter()
+        .any(|module| module == "tkpkg.amigaos.compact_prepare"));
     assert_eq!(maximum.first().map(String::as_str), Some("main"));
     assert_eq!(
         maximum.last().map(String::as_str),
@@ -236,8 +248,8 @@ fn native_item38_full_product_module_resolve_depth_budget_contract() {
         &rust,
         &[
             "ctx.stack.push(module_id.to_string());",
-            "for dep in collect_use_directives_from_processing(&module_lines)",
-            "load_module_recursive(&dep, ctx, &info.path, &module_lines)?;",
+            "for dep in collect_configured_uses(&source)?",
+            "load_module_recursive(&dep, ctx, &source.path, &source.lines)?;",
             "ctx.stack.pop();",
         ]
     ));

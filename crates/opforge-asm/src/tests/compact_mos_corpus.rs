@@ -408,7 +408,14 @@ fn run_compact_corpus(audit: &CorpusAudit, cases: Vec<Case>) {
         &EmbedSelection::Targets(vec!["68020".into()]),
     )
     .unwrap();
-    let image = assemble_cli(&root, &build);
+    // A breadth audit may freeze the executable while packages and each Rust
+    // oracle remain freshly generated from the current registry and source.
+    let image_path = std::env::var_os("OPFORGE_CORPUS_IMAGE").map(PathBuf::from);
+    let image = match &image_path {
+        Some(path) => fs::read(path)
+            .unwrap_or_else(|err| panic!("read corpus executable {}: {err}", path.display())),
+        None => assemble_cli(&root, &build),
+    };
     let packages = tree_files(&build.output_dir.join("packages"));
     let selection = std::env::var(audit.cases_env).ok();
     let mut rows = Vec::new();
@@ -426,6 +433,7 @@ fn run_compact_corpus(audit: &CorpusAudit, cases: Vec<Case>) {
         let mut row = json!({"case": case.name, "cpu": cpu, "source_digest": opforge_self_host_package_digest(&bytes),
             "source_bytes": bytes.len(), "rust_reference_ok": reference.is_ok(), "rust_reference_error": reference.err(),
             "native_ok": false, "image_digest": opforge_self_host_package_digest(&image)});
+        row["image_path"] = json!(image_path.as_ref().map(|path| path.to_string_lossy()));
         let outcome = (|| -> Result<(), String> {
             let dir = scratch.join(format!("case-{index}"));
             let (entry, inputs) = stage(case, &dir)?;

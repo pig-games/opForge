@@ -40,10 +40,10 @@ possible owners; a common owner is indexed once, while differing owners reject
 only when reached. Runtime block marking remains O(1), with no new heap allocation.
 Forward fields and mutable-kind changes have focused coverage; forward compound
 aliases and dynamic selection between different physical owners remain unqualified.
-Expanded repetition
-with active acquisition has nine positive behaviors on each package (18 cases
-total): 17 completed in the original matrix and the pre-START stall passed a
-fresh retry. That matrix is separate from the composed-member controls. Named acquired collections pass twelve fresh exact controls, including colonless
+The current acquired-include regression passes all ten positive behaviors on
+each package (20 fresh exact cases), including inactive composed block references.
+That matrix is separate from the composed-member controls. Named acquired
+collections pass twelve fresh exact controls, including colonless
 and explicit-colon labels. The final candidate checks bounded batch publication
 and independently validates marker nesting and balance in inventory and runtime. Actual assembly-state/
 PC-dependent acquisition also remains pending. The identified proxy-repair image
@@ -62,8 +62,12 @@ The separate shared text-owner component matches its complete live Rust artifact
 in a fresh native run. This covers builtin/custom maps, variable escapes, cloning
 and lifecycle APIs; compact source grammar and data-emitter integration are pending.
 
-Source-session restructuring and VM-contract consolidation are separate pending
-implementation designs. Consolidate each VM's current capabilities into its own
+Source-session restructuring is in progress; its frozen-input lifecycle has
+focused native proof and is now the sole assembly driver. It does not yet support
+growing records or actual-state acquisition. Its isolated unchanged release
+control adds 0.76% on one sample and 952 bytes linked static storage.
+VM-contract consolidation remains a separate pending design.
+Consolidate each VM's current capabilities into its own
 v1 contract, remove superseded formats and native VM version fields/checks/dispatch,
 while preserving package/container integrity and bounds validation.
 

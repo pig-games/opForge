@@ -349,3 +349,14 @@ linked static reservation 684,524 bytes, SHA-256
 Against the conservative-owner checkpoint this adds 1,984 code bytes and 724 BSS
 bytes, with unchanged package data. Twelve fresh exact collection controls pass
 across both packages. Peak runtime heap and a new full self-host remain unmeasured.
+
+The frozen-input assembly lifecycle uses the same unchanged release control and
+memory profile. A fresh pair with host builds paused takes 26.651326 seconds
+before and 26.853994 seconds after (+0.76%, one sample); both match the complete
+live Rust output. The attribution build excludes the concurrent packed-text PRVM
+dispatch, using a separate source snapshot with the checkpoint dispatcher.
+Its image is 660,760 bytes and linked static reservation is 685,476 bytes,
+SHA-256 `9d1206f0d9fbdb120c482bc29188f9e6bfb5c424559a36d17ebe317fab34fedc`.
+Relative to the collection checkpoint, this adds 888 code bytes and 64 BSS bytes,
+with unchanged package data. This measures lifecycle overhead on frozen input;
+it does not measure growing-source acquisition, peak heap or full self-hosting.

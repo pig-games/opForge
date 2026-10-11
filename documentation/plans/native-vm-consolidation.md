@@ -21,9 +21,9 @@ formats. Its values must not all be treated as obsolete historical programs:
 | 4, 7 | Fixup | Current transformed layout, with explicit identity transforms where appropriate |
 | 5 | Branch | Current branch operations |
 
-Introduce a package-owned semantic kind enum. Each kind has its own current v1
-format. Dispatch by kind at the generic boundary; individual VM execution APIs
-take current bytecode and inputs, without a version parameter.
+Introduce a package-owned semantic kind enum. SEMV has one current v1 contract
+covering all these kinds. Dispatch by kind at the generic boundary; individual
+VM execution APIs take current bytecode and inputs, without a version parameter.
 
 VALUE v1/v2 and OPRD v1/v2/v3 are real retained alternatives. Consolidate all
 current operations into their respective v1 contracts. PRVM v1 must contain the

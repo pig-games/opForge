@@ -1,8 +1,8 @@
 # Resumable native source execution
 
-Status: named preparation-known acquisition has focused native proof; resumable
-assembly lifecycle remains proposed. The session interfaces below are private
-design targets, not implemented capabilities.
+Status: named preparation-known acquisition and the private frozen-input assembly
+lifecycle have focused native proof. Growing-source execution remains a design
+target.
 The [completion plan](native-runtime-reset.md) records current evidence and completion order.
 
 ## Responsibility boundary
@@ -31,6 +31,23 @@ after callers migrate.
 Store cursors, loop headers/bodies and inventory references as offsets. Sessions
 borrow allocation owners and refresh interior views after growth. Never leave
 an expression VM or encoder suspended across record relocation.
+
+The first lifecycle checkpoint pins the full record allocation and assembly
+context, including count, value/defined/section buffers, typed owner and member
+keys. It stores the traversal cursor as an offset and permits record-budget
+yield/resume only against the complete frozen frontier. It rejects a changed
+base, partial frontier or relocated context before using borrowed views. This
+checkpoint does not support incremental publication or relocation; the existing
+branch, repetition and inventory views must migrate before either is allowed.
+
+The sole `assemble` driver now uses these lifecycle APIs; the temporary reference
+entry and mode are removed. Twelve fresh collection cases exercise one-record
+yield/resume, failed initialization cleanup, premature sealing, invalid
+base/frontier, rejection without stealing an active owner and repeated release.
+Twelve composed-binding positives and two malformed-name rejections also pass
+on 68020 and 6502. The isolated unchanged release control adds 0.76% on one
+sample and 952 bytes of linked static storage; peak heap and a current full
+self-host are unmeasured. These checks do not qualify actual-state acquisition.
 
 Values, Defined and SectionIds currently share Count-dependent allocation slices.
 Give them independent owned blocks, preserving existing cells and initializing
@@ -103,8 +120,10 @@ negative fresh native proof for the replacement.
 1. Preserve the focused composed-binding and named-acquisition checkpoints;
    dynamic physical binding ownership remains a source-session gap.
 2. Extract lifecycle and offset traversal with unchanged frozen-input behavior.
-   Force small allocation capacities to exercise growth with live nested controls.
+   Qualify budgeted yield/resume, invalid base/frontier, premature sealing and
+   failure cleanup, then compare the complete CLI with the preserved reference.
 3. Publish actual assembly context while retaining frontend/captures until seal.
+   Force small allocation capacities to exercise growth with live nested controls.
    Qualify flat strict acquisition. First pin Rust for `.org 0`, `.while $<2`,
    `.include "one.inc"`, `.endwhile`, with `.byte 7` in the leaf. The expected
    statement-start result is three bytes; the live oracle must establish it.

@@ -5,6 +5,7 @@
 	.module experimental.amigaos.binary_assembly
 	.cpu 68020
 	.use experimental.amigaos.binary_package as pkg
+	.use experimental.amigaos.binary_assembly_session as session
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_parameters as parameters
 	.use experimental.amigaos.binary_state as state
@@ -62,8 +63,8 @@ MAX_LAYOUT_ROUNDS = 8
 
 	.section bss, kind=bss
 	.priv
-Active
-	.res long, 1
+Session
+	.res byte, session.STATE_BYTES
 LayoutRounds
 	.res word, 1
 SizingReplay
@@ -118,6 +119,87 @@ Position
 	.section code, kind=code
 	.pub
 
+; Frozen-input lifecycle. Interior views in inventory/branches/repetition remain
+; pinned to the same Frame.Records and RecordBytes until release. Advance uses
+; that complete frozen frontier; relocation or partial publication is rejected.
+; Context/count/cell buffers/member keys are likewise pinned until release.
+; A0=Frame. Initialize semantic owners once and start sizing, without execution.
+beginSizing	.block
+	move.l d2, -(sp)
+	moveq #session.BEGIN, d2
+	bsr.w execute
+	move.l (sp)+, d2
+	tst.l d0
+	rts
+	.bend  ; beginSizing
+; A0=Frame,D0=published bytes,D1=record budget (zero drains the frontier).
+; D0/CCR=status,D1=ADVANCED/FRONTIER/TERMINATED. Suspend only after a complete
+; record/control. An unfinished branch or repetition at frontier is not EOF.
+advance	.block
+	move.l d2, -(sp)
+	moveq #session.ADVANCE, d2
+	bsr.w execute
+	move.l (sp)+, d2
+	moveq #0, d1
+	move.w Session+session.State.Result, d1
+	tst.l d0
+	rts
+	.bend  ; advance
+; A0=Frame. Seal the sizing frontier and run existing bounded convergence;
+; allocate output only after stable geometry/branch observations.
+finishSizing	.block
+	move.l d2, -(sp)
+	moveq #session.FINISH, d2
+	bsr.w execute
+	move.l (sp)+, d2
+	tst.l d0
+	rts
+	.bend  ; finishSizing
+; A0=Frame. Strict final emission after successful finishSizing.
+emit	.block
+	move.l d2, -(sp)
+	moveq #session.EMIT, d2
+	bsr.w execute
+	move.l (sp)+, d2
+	tst.l d0
+	rts
+	.bend  ; emit
+; A0=Frame. Idempotent release of session semantic owners; caller buffers remain.
+release	.block
+	move.l d2, -(sp)
+	moveq #session.RELEASE, d2
+	bsr.w execute
+	move.l (sp)+, d2
+	tst.l d0
+	rts
+	.bend  ; release
+; Complete frozen-input driver using the same public session lifecycle.
+assemble	.block
+	movem.l d1/a0, -(sp)
+	bsr.w beginSizing
+	bne.w return
+	move.l Frame.RecordBytes(a0), d0
+	moveq #0, d1
+	bsr.w advance
+	bne.w done
+	bsr.w finishSizing
+	bne.w done
+	bsr.w emit
+done
+	move.l d0, -(sp)
+	bsr.w release
+	tst.l (sp)
+	beq.w releaseResult
+	move.l (sp), d0
+releaseResult
+	addq.l #4, sp
+return
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; assemble
+
+	.priv
 ; A0=Frame. Context values/defined arrays cover Count entries. The caller owns
 ; all buffers. Returns D0=0 only after stable sizing and checked final emission;
 ; Used=output bytes. Unavailable scoped guards enable bounded retained replay.
@@ -131,10 +213,132 @@ Position
 ; Other registers preserved; CCR reflects D0. No text/dictionary pointer enters
 ; this module. General variable-size convergence and discontiguous origins remain
 ; unsupported.
-assemble	.block
+execute	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
-	move.l a0, Active
+	cmpi.w #session.BEGIN, d2
+	beq.w startSession
+	cmpi.w #session.RELEASE, d2
+	beq.w releaseSession
+	move.w d2, Session+session.State.Operation
+	cmpa.l Session+session.State.Frame, a0
+	bne.w invalidApi
+	move.l Frame.Records(a5), d3
+	cmp.l Session+session.State.Base, d3
+	bne.w invalidApi
+	move.l Frame.RecordBytes(a5), d3
+	cmp.l Session+session.State.Bytes, d3
+	bne.w invalidApi
+	movea.l Frame.Context(a5), a6
+	cmpa.l Session+session.State.Context, a6
+	bne.w invalidApi
+	move.l pkg.Context.Count(a6), d3
+	cmp.l Session+session.State.Count, d3
+	bne.w invalidApi
+	move.l pkg.Context.Values(a6), d3
+	cmp.l Session+session.State.Values, d3
+	bne.w invalidApi
+	move.l pkg.Context.Defined(a6), d3
+	cmp.l Session+session.State.Defined, d3
+	bne.w invalidApi
+	move.l pkg.Context.SectionIds(a6), d3
+	cmp.l Session+session.State.SectionIds, d3
+	bne.w invalidApi
+	move.l pkg.Context.Owner(a6), d3
+	cmp.l Session+session.State.Owner, d3
+	bne.w invalidApi
+	move.l Frame.MemberKeys(a5), d3
+	cmp.l Session+session.State.MemberKeys, d3
+	bne.w invalidApi
+	cmpi.w #session.EMIT, d2
+	beq.w startEmission
+	cmpi.w #session.SIZING, Session+session.State.Phase
+	bne.w invalidApi
+	moveq #0, d7
+	move.w Session+session.State.Pass, d7
+	moveq #0, d5
+	move.w Session+session.State.Sweep, d5
+	moveq #0, d4
+	move.w Session+session.State.Selection, d4
+	movea.l Frame.Records(a5), a4
+	adda.l Session+session.State.Cursor, a4
+	cmpi.w #session.FINISH, d2
+	beq.w sealSizing
+	cmpi.w #session.ADVANCE, d2
+	bne.w invalidApi
+	cmp.l Session+session.State.Bytes, d0
+	bne.w invalidApi
+	cmp.l Session+session.State.Cursor, d0
+	blo.w invalidApi
+	move.l d0, Session+session.State.Published
+	move.l d1, Session+session.State.Budget
+	clr.w Session+session.State.Unlimited
+	tst.l d1
+	bne.w boundedAdvance
+	move.w #1, Session+session.State.Unlimited
+boundedAdvance
+	movea.l Frame.Records(a5), a3
+	adda.l d0, a3
+	bra.w line
+sealSizing
+	tst.w Session+session.State.Ended
+	bne.w sizingSealed
+	move.l Session+session.State.Bytes, d0
+	cmp.l Session+session.State.Published, d0
+	bne.w invalidApi
+	cmp.l Session+session.State.Cursor, d0
+	bne.w invalidApi
+sizingSealed
+	movea.l Frame.Records(a5), a3
+	adda.l Frame.RecordBytes(a5), a3
+	bra.w passDone
+startEmission
+	cmpi.w #session.SIZED, Session+session.State.Phase
+	bne.w invalidApi
+	moveq #2, d7
+	bra.w pass
+releaseSession
+	tst.w Session+session.State.Phase
+	beq.w released
+	cmpa.l Session+session.State.Frame, a0
+	bne.w invalidApi
+	move.w #session.RELEASE, Session+session.State.Operation
+	moveq #0, d0
+	bra.w cleanup
+released
+	moveq #0, d0
+	bra.w apiDone
+startSession
+	tst.w Session+session.State.Phase
+	bne.w invalidApi
+	move.l Frame.RecordBytes(a5), d3
+	move.l Frame.Records(a5), d4
+	tst.l d3
+	beq.w validFrozenBase
+	tst.l d4
+	beq.w invalidApi
+validFrozenBase
+	add.l d3, d4
+	bcs.w invalidApi
+	movea.l Frame.Context(a5), a6
+	move.l a6, d3
+	beq.w invalidApi
+	move.l a6, Session+session.State.Context
+	move.l pkg.Context.Count(a6), Session+session.State.Count
+	move.l pkg.Context.Values(a6), Session+session.State.Values
+	move.l pkg.Context.Defined(a6), Session+session.State.Defined
+	move.l pkg.Context.SectionIds(a6), Session+session.State.SectionIds
+	move.l pkg.Context.Owner(a6), Session+session.State.Owner
+	move.l Frame.MemberKeys(a5), Session+session.State.MemberKeys
+	move.w #session.BEGIN, Session+session.State.Operation
+	move.w #session.SIZING, Session+session.State.Phase
+	move.l a0, Session+session.State.Frame
+	move.l Frame.Records(a5), Session+session.State.Base
+	move.l Frame.RecordBytes(a5), Session+session.State.Bytes
+	clr.l Session+session.State.Cursor
+	clr.l Session+session.State.Published
+	clr.w Session+session.State.Ended
+	move.l a0, Session+session.State.Frame
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #0
 	.ASSEMBLY_POSITION_CLEAR Position
 	.MEMORY_COUNTER_CLEAR TraversalPasses
@@ -329,6 +533,20 @@ sweepRecords
 	bcs.w fail
 	movea.l d0, a3
 line
+	cmpi.w #session.BEGIN, Session+session.State.Operation
+	beq.w suspendAdvanced
+	cmpi.w #session.ADVANCE, Session+session.State.Operation
+	bne.w executeRecord
+	tst.w Session+session.State.Ended
+	bne.w suspendTerminated
+	cmpa.l a3, a4
+	beq.w suspendFrontier
+	tst.w Session+session.State.Unlimited
+	bne.w executeRecord
+	tst.l Session+session.State.Budget
+	beq.w suspendAdvanced
+	subq.l #1, Session+session.State.Budget
+executeRecord
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #1
 	move.l a4, d0
 	sub.l Frame.Records(a5), d0
@@ -548,10 +766,16 @@ ordinaryStatement
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #5
 	bsr.w statement
 	cmpi.l #2, d0
-	beq.w passDone
+	beq.w statementEnded
 	tst.l d0
 	bne.w fail
 	bra.w omitted
+statementEnded
+	cmpi.w #session.ADVANCE, Session+session.State.Operation
+	bne.w passDone
+	move.w #1, Session+session.State.Ended
+	adda.l d6, a4
+	bra.w suspendTerminated
 layoutControl
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #6
 	lea SectionState, a0
@@ -670,15 +894,20 @@ allocateOutput
 	tst.l d0
 	bne.w fail
 nextPass
-	addq.w #1, d7
-	cmpi.w #3, d7
-	blo.w pass
+	cmpi.w #session.FINISH, Session+session.State.Operation
+	bne.w emittedComplete
+	move.w #session.SIZED, Session+session.State.Phase
 	moveq #0, d0
-	bra.w done
+	bra.w apiDone
+emittedComplete
+	moveq #0, d0
+	move.w #session.EMITTED, Session+session.State.Phase
+	bra.w apiDone
 fail
 	clr.l Frame.Used(a5)
 	moveq #1, d0
-done
+cleanup
+	clr.w Session+session.State.Phase
 	lea BranchState, a0
 	jsr branches.release
 	lea RepeatState, a0
@@ -686,10 +915,31 @@ done
 	jsr dependencies.release
 	lea InventoryState, a0
 	jsr repeatInventory.release
+apiDone
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; assemble
+invalidApi
+	moveq #1, d0
+	bra.w apiDone
+suspendFrontier
+	move.w #session.FRONTIER, Session+session.State.Result
+	bra.w suspend
+suspendTerminated
+	move.w #session.TERMINATED, Session+session.State.Result
+	bra.w suspend
+suspendAdvanced
+	move.w #session.ADVANCED, Session+session.State.Result
+suspend
+	move.l a4, d0
+	sub.l Frame.Records(a5), d0
+	move.l d0, Session+session.State.Cursor
+	move.w d7, Session+session.State.Pass
+	move.w d5, Session+session.State.Sweep
+	move.w d4, Session+session.State.Selection
+	moveq #0, d0
+	bra.w apiDone
+	.bend  ; execute
 
 	.priv
 
@@ -875,7 +1125,7 @@ instructionReady
 	movea.l a1, a0
 	move.l d1, d0
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #17
-	bsr.w emit
+	bsr.w emitBytes
 	bra.w done
 compoundUpdate
 	jsr mutable.update
@@ -980,7 +1230,7 @@ origin
 	bne.w bad
 	cmp.l pkg.Header.MaxAddress(a3), d1
 	bhi.w bad
-	movea.l Active, a4
+	movea.l Session+session.State.Frame, a4
 	tst.l Frame.Used(a4)
 	beq.w setOrigin
 	cmp.l pkg.Context.Pc(a2), d1
@@ -1096,7 +1346,7 @@ dataValueStart
 	movea.l a0, a5
 	lea 2(a0), a0
 	move.l d5, d0
-	bsr.w emit
+	bsr.w emitBytes
 	tst.l d0
 	bne.w bad
 	movea.l a5, a0
@@ -1161,7 +1411,7 @@ bigLoop
 dataReady
 	lea DataBytes, a0
 	move.l d6, d0
-	bsr.w emit
+	bsr.w emitBytes
 	tst.l d0
 	bne.w bad
 	movea.l a5, a0
@@ -1186,7 +1436,7 @@ done
 ; D0/CCR=status; other registers preserved. No allocation or source parsing.
 warnByte	.block
 	movem.l a0-a1, -(sp)
-	movea.l Active, a0
+	movea.l Session+session.State.Frame, a0
 	addq.l #1, Frame.Warnings(a0)
 	bcs.w bad
 	movea.l Frame.Warn(a0), a1
@@ -1287,7 +1537,7 @@ nextFixup
 	move.l d4, d1
 	moveq #0, d0
 	move.w sections.State.HunkCurrent(a4), d0
-	movea.l Active, a0
+	movea.l Session+session.State.Frame, a0
 	movea.l Frame.AddReloc(a0), a1
 	move.l a1, d3
 	beq.w bad
@@ -1358,7 +1608,7 @@ markDataReloc	.block
 	subq.l #1, d1
 	moveq #0, d0
 	move.w sections.State.HunkCurrent(a4), d0
-	movea.l Active, a0
+	movea.l Session+session.State.Frame, a0
 	movea.l Frame.AddReloc(a0), a1
 	move.l a1, d3
 	beq.w bad
@@ -1405,14 +1655,14 @@ emitGap	.block
 	tst.l d0
 	beq.w done
 	movem.l d1/a0-a1, -(sp)
-	movea.l Active, a1
+	movea.l Session+session.State.Frame, a1
 	move.l Frame.Emitted(a1), d1
 	tst.w SectionState+sections.State.Mode
 	bne.w sectionPadding
 	clr.l Frame.Emitted(a1)
 sectionPadding
 	suba.l a0, a0
-	bsr.w emit
+	bsr.w emitBytes
 	move.l d1, Frame.Emitted(a1)
 	movem.l (sp)+, d1/a0-a1
 done
@@ -1423,7 +1673,7 @@ done
 ; A0=initialized bytes (zero means initialized zero-fill),D0=count,A2=Context.
 ; Updates PC and Used; only pass two copies output.
 ; D0=status; other registers preserved. CCR reflects D0.
-emit	.block
+emitBytes	.block
 	movem.l d1-d4/a0-a3, -(sp)
 	movea.l a0, a3
 	move.l d0, d4
@@ -1433,7 +1683,7 @@ emit	.block
 	bne.w fail
 	movea.l a3, a0
 	move.l d4, d0
-	movea.l Active, a3
+	movea.l Session+session.State.Frame, a3
 	move.l Frame.Used(a3), d1
 	lea SectionState, a1
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a1)

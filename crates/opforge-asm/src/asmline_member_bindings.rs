@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Erik van der Tier
 
 //! Select actual symbol owners before interpreting remaining member operations.
+use super::asmline_constants::value_dependencies;
 use super::*;
 
 impl AsmLine<'_> {
@@ -91,6 +92,13 @@ impl AsmLine<'_> {
         }
         let Some(path) = Self::member_path(expr) else {
             return match expr {
+                Expr::Member { base, .. } => {
+                    // Non-name bases retain expression semantics. An unknown
+                    // base has no scalar/record kind yet; defer it only while
+                    // collecting provisional layout.
+                    self.member_binding_is_deferred(base)
+                        || self.member_base_has_undefined_dependencies(base)
+                }
                 Expr::Binary { left, right, .. }
                 | Expr::Index {
                     base: left,
@@ -116,6 +124,13 @@ impl AsmLine<'_> {
         };
         let path = path.to_ascii_uppercase();
         let owner_expr = self.member_owner_expression(&path, expr_span(expr));
+        if owner_expr.is_none() {
+            if let Expr::Member { base, .. } = expr {
+                if self.member_base_has_undefined_dependencies(base) {
+                    return true;
+                }
+            }
+        }
         let mut base = owner_expr.as_ref();
         while let Some(Expr::Member { base: inner, .. }) = base {
             base = Some(inner);
@@ -139,6 +154,18 @@ impl AsmLine<'_> {
                             && (candidate == *name || candidate.starts_with(&format!("{name}.")))
                     })
                 })
+            })
+    }
+
+    fn member_base_has_undefined_dependencies(&self, base: &Expr) -> bool {
+        if self.pass != 1 {
+            return false;
+        }
+        let mut names = Vec::new();
+        value_dependencies(base, &mut names)
+            && names.into_iter().any(|name| {
+                self.lookup_loop_var(name).is_none()
+                    && matches!(self.resolve_scoped_name(name), Ok(None))
             })
     }
 

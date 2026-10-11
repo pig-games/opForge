@@ -45,6 +45,7 @@ release:
 clean:
 	cargo clean --manifest-path "$(REPO_ROOT)/Cargo.toml" --target-dir "$(REPO_ROOT)/target" --offline
 	mkdir -p "$(REPO_ROOT)/target"
+	python3 "$(REPO_ROOT)/scripts/workflow/clean_crate_targets.py" "$(REPO_ROOT)"
 
 fmt:
 	cargo fmt --all

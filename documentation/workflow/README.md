@@ -114,11 +114,14 @@ handing the work back. Coordinate with active builds, tests or native runs shari
 This generated-artifact cleanup is already authorized and does not need repeated
 approval. Cleaning removes cached outputs, so a later build or test will recompile.
 
-`make clean` removes all local `target` contents, including release and
-custom-profile artifacts, then leaves an empty `target` directory. Cleanup is
-scoped to this repository. The existing general and reference test cleanup recipes
-use it; direct Cargo commands and other
-multi-command batches need the same explicit cleanup at their end.
+`make clean` removes root `target` contents, including release and custom-profile
+artifacts, and clears direct crate-local `crates/*/target` artifact directories,
+leaving those directories in place. It skips symlinked crate and target paths so
+cleanup cannot escape the repository or remove another project's artifacts. The
+root `target` directory is left empty. Cleanup is scoped to this repository.
+The existing general and reference test cleanup recipes use it; direct Cargo
+commands and other multi-command batches need the same explicit cleanup at their
+end.
 
 ## Spend effort where it changes the result
 

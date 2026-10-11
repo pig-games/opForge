@@ -26,7 +26,26 @@ class WorkflowHelpersTests(unittest.TestCase):
             for path in (repo, peer, tools):
                 path.mkdir()
             shutil.copyfile(ROOT / "Makefile", repo / "Makefile")
+            workflow = repo / "scripts/workflow"
+            workflow.mkdir(parents=True)
+            shutil.copyfile(ROOT / "scripts/workflow/clean_crate_targets.py",
+                            workflow / "clean_crate_targets.py")
             (peer / "keep").write_text("unrelated work")
+            local_target = repo / "crates/asm/target/debug"
+            local_target.mkdir(parents=True)
+            (local_target / "artifact").write_text("generated")
+            peer_target = peer / "target"
+            peer_target.mkdir()
+            (peer_target / "keep").write_text("foreign artifact")
+            (local_target / "foreign-link").symlink_to(peer_target / "keep")
+            linked_crate = repo / "crates/linked"
+            linked_crate.mkdir()
+            (linked_crate / "target").symlink_to(peer_target, target_is_directory=True)
+            foreign_crate = peer / "crate"
+            foreign_crate.mkdir()
+            (foreign_crate / "target").mkdir()
+            (foreign_crate / "target/keep").write_text("symlinked crate artifact")
+            (repo / "crates/foreign").symlink_to(foreign_crate, target_is_directory=True)
             command_log = root / "cargo-arguments"
             cargo = tools / "cargo"
             cargo.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CLEAN_COMMAND_LOG"\n')
@@ -41,6 +60,12 @@ class WorkflowHelpersTests(unittest.TestCase):
                 "--target-dir", str(repo / "target"), "--offline",
             ])
             self.assertEqual((peer / "keep").read_text(), "unrelated work")
+            self.assertEqual(list((repo / "crates/asm/target").iterdir()), [])
+            self.assertEqual((peer_target / "keep").read_text(), "foreign artifact")
+            self.assertTrue((linked_crate / "target").is_symlink())
+            self.assertEqual((foreign_crate / "target/keep").read_text(),
+                             "symlinked crate artifact")
+            self.assertTrue((repo / "crates/foreign").is_symlink())
             self.assertTrue((repo / "target").is_dir())
             self.assertEqual(list((repo / "target").iterdir()), [])
 

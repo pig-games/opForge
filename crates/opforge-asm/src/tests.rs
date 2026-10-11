@@ -36,6 +36,8 @@ mod native_shared_directive_boundary;
 #[path = "tests/generic_statement_boundary.rs"]
 mod generic_statement_boundary;
 
+#[path = "tests/conditional_symbol_activity.rs"]
+mod conditional_symbol_activity;
 #[path = "tests/constant_dependencies.rs"]
 mod constant_dependencies;
 #[path = "tests/member_bindings.rs"]

@@ -83,6 +83,7 @@ pub struct Assembler {
     pub runtime_lockstep_report: LockstepReport,
     implicit_hunk_output_requested: bool,
     constant_layout_changed: bool,
+    input_symbol_names: HashSet<String>,
     loop_replay: LoopReplayState,
     qualified_reachability_profile: QualifiedReachabilityProfile,
     module_timing_profile: ModuleTimingProfile,
@@ -412,19 +413,21 @@ qualified_share={:.2}%",
         }
     }
 
-    fn prepare_stabilization_symbols(&mut self) {
-        let names = self
+    fn prepare_stabilization_symbols(&mut self) -> Vec<String> {
+        let mut names = self
             .symbols
             .entries()
             .iter()
             .filter(|entry| !entry.rw)
             .map(|entry| entry.name.clone())
             .collect::<Vec<_>>();
-        for name in names {
-            if let Some(entry) = self.symbols.entry_mut(&name) {
+        for name in &names {
+            if let Some(entry) = self.symbols.entry_mut(name) {
                 entry.updated = false;
             }
         }
+        names.retain(|name| !self.input_symbol_names.contains(&name.to_ascii_uppercase()));
+        names
     }
 
     fn capture_layout_snapshot(&self) -> LayoutStabilitySnapshot {
@@ -501,9 +504,11 @@ qualified_share={:.2}%",
         finalize_section_symbols: bool,
         loop_trace: &mut Vec<(u32, u32)>,
     ) -> PassCounts {
-        if pass_num > 1 {
-            self.prepare_stabilization_symbols();
-        }
+        let previous_source_symbols = if pass_num > 1 {
+            self.prepare_stabilization_symbols()
+        } else {
+            Vec::new()
+        };
         if self.prepared_source.is_none() {
             self.prepared_source = Some(PreparedSource::from_lines(lines));
         }
@@ -859,6 +864,29 @@ qualified_share={:.2}%",
         }
 
         let _ = diagnostics;
+        // Old addresses may seed forward guards during sizing, but only this
+        // traversal's executed definitions remain available after it completes.
+        // Incoming configuration symbols and explicitly replayed schema metadata
+        // retain their independent lifetimes.
+        let inactive: HashSet<_> = previous_source_symbols
+            .into_iter()
+            .filter(|name| self.symbols.entry(name).is_some_and(|entry| !entry.updated))
+            .map(|name| name.to_ascii_uppercase())
+            .collect();
+        if !inactive.is_empty() {
+            self.symbols
+                .retain_entries(|entry| !inactive.contains(&entry.name.to_ascii_uppercase()));
+            self.scalar_value_symbols
+                .retain(|name, _| !inactive.contains(name));
+            self.immutable_value_symbols
+                .retain(|name, _| !inactive.contains(name));
+            self.section_symbol_sections
+                .retain(|name, _| !inactive.contains(&name.to_ascii_uppercase()));
+            self.absolute_constant_symbols
+                .retain(|name| !inactive.contains(&name.to_ascii_uppercase()));
+            self.symbol_relocations
+                .retain(|name, _| !inactive.contains(&name.to_ascii_uppercase()));
+        }
         for PendingUnitReference {
             source,
             name,
@@ -1071,6 +1099,7 @@ qualified_share={:.2}%",
             runtime_lockstep_report: LockstepReport::default(),
             implicit_hunk_output_requested: false,
             constant_layout_changed: false,
+            input_symbol_names: HashSet::new(),
             loop_replay: LoopReplayState::default(),
             qualified_reachability_profile: QualifiedReachabilityProfile::default(),
             module_timing_profile: ModuleTimingProfile::default(),
@@ -1215,6 +1244,12 @@ qualified_share={:.2}%",
             self.prepared_source = Some(PreparedSource::from_lines(lines));
         }
         self.constant_layout_changed = false;
+        self.input_symbol_names = self
+            .symbols
+            .entries()
+            .iter()
+            .map(|entry| entry.name.to_ascii_uppercase())
+            .collect();
         self.loop_replay.loop_observations.clear();
         self.loop_replay.immutable_count_replay = false;
         self.loop_replay.executed_constant_names.clear();

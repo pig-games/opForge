@@ -1023,6 +1023,19 @@ impl SymbolTable {
         &self.entries
     }
 
+    /// Retain available symbols while preserving module/import metadata and
+    /// entry order. Rebuild lookup indices only when availability changes.
+    pub fn retain_entries(&mut self, retain: impl FnMut(&SymbolTableEntry) -> bool) {
+        let previous_len = self.entries.len();
+        self.entries.retain(retain);
+        if self.entries.len() != previous_len {
+            self.index.clear();
+            for (index, entry) in self.entries.iter().enumerate() {
+                self.index.insert(entry.name.to_ascii_uppercase(), index);
+            }
+        }
+    }
+
     pub fn dump<W: Write>(&self, mut out: W) -> io::Result<()> {
         for entry in &self.entries {
             writeln!(out, "{:<16}: {:04x} ({})", entry.name, entry.val, entry.val)?;
@@ -1075,6 +1088,35 @@ mod tests {
         );
         assert_eq!(table.lookup("foo"), Some(0x10));
         assert_eq!(table.lookup("FOO"), Some(0x10));
+    }
+
+    #[test]
+    fn retain_entries_rebuilds_lookup_and_preserves_module_metadata() {
+        let mut table = SymbolTable::new();
+        assert_eq!(table.register_module("main"), SymbolTableResult::Ok);
+        for (name, value) in [("main.First", 1), ("main.Stale", 2), ("main.Last", 3)] {
+            assert_eq!(
+                table.add(name, value, false, SymbolVisibility::Public, Some("main")),
+                SymbolTableResult::Ok
+            );
+        }
+        table.retain_entries(|entry| !entry.name.ends_with("Stale"));
+        assert_eq!(table.lookup("MAIN.FIRST"), Some(1));
+        assert_eq!(table.lookup("main.stale"), None);
+        assert_eq!(table.lookup("main.last"), Some(3));
+        assert_eq!(table.entries()[1].name, "main.Last");
+        assert!(table.has_module("MAIN"));
+        assert_eq!(
+            table.add(
+                "main.Stale",
+                4,
+                false,
+                SymbolVisibility::Public,
+                Some("main")
+            ),
+            SymbolTableResult::Ok
+        );
+        assert_eq!(table.lookup("MAIN.STALE"), Some(4));
     }
 
     #[test]

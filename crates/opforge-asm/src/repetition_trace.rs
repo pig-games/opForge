@@ -62,6 +62,10 @@ impl LoopReplayState {
             self.activated_guards.clear();
             self.deactivated_guards.clear();
             for guard in std::mem::take(&mut asm_line.guard_observations) {
+                // A provisional guard may depend on layout rather than an
+                // absolute constant certificate. Verify its final selection
+                // with sizing before emission on every target.
+                *constant_layout_changed |= guard.unresolved_at_observation;
                 if let Some(active) = asm_line.immutable_guard_activity(&guard) {
                     if active != guard.active {
                         *constant_layout_changed = true;

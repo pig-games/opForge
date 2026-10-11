@@ -632,6 +632,12 @@ branch-local scalar constants, dependency chains and nested forward counts. Only
 selected declarations claim ownership: inactive alternatives do not evaluate missing
 values, while duplicate active immutable definitions reject.
 
+Initially unresolved guards require sizing verification before emission on every
+target. Readonly definitions, including labels, that disappear from the final
+sizing traversal are unavailable; earlier provisional addresses cannot keep them
+visible. Incoming configuration symbols and retained schema metadata keep their
+independent lifetimes.
+
 An immutable list or range selected by a certified forward scalar guard can also
 change the count of a following iterable `.for` or `.bfor`, including after
 `.endif`. Source-order aliases preserve this proof:

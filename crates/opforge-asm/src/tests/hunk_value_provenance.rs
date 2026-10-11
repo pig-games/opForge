@@ -4,8 +4,7 @@
 //! Numeric values alone cannot distinguish addresses from scalar snapshots.
 use super::*;
 
-#[path = "binary_source_hunk.rs"]
-mod hunk;
+use crate::fs_uae_smoke::hunk;
 
 fn assemble(body: &str, placed: bool) -> Assembler {
     let placement = if placed {

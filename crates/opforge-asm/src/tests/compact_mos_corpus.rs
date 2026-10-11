@@ -517,7 +517,7 @@ fn record_native_run(
         || (!negative && !run.success)
         || !run.protocol_completed
         || (!negative && run.exit_code != Some(0))
-        || (negative && !run.exit_code.is_some_and(|exit| exit != 0))
+        || (negative && run.exit_code.is_none_or(|exit| exit == 0))
         || !gaps.is_empty()
     {
         Err("native completion/artifact parity failed".into())

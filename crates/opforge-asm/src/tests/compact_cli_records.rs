@@ -239,96 +239,97 @@ fn compact_cli_hex_and_srec_records() {
     };
     let mut failures = Vec::new();
     let mut attempted = 0;
-    let mut run =
-        |name: &str, source: &[u8], command: &str, proof: OpforgeNativeCliProof<'_>, exit| {
-            attempted += 1;
-            let files = [OpforgeNativeCliGuestFile {
-                relative_path: "entry.asm",
-                bytes: source,
-            }];
-            let case = OpforgeNativeCliParityCase {
-                name,
-                // Guest executable architecture; assembly target comes from the CLI/source.
-                cpu_override: "68020",
-                extra_assembly_defines: &defines,
-                source_override: Some(source),
-                command_template: Some(command),
-                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-                extra_guest_files: &files,
-                proof: proof,
+    {
+        let mut run =
+            |name: &str, source: &[u8], command: &str, proof: OpforgeNativeCliProof<'_>, exit| {
+                attempted += 1;
+                let files = [OpforgeNativeCliGuestFile {
+                    relative_path: "entry.asm",
+                    bytes: source,
+                }];
+                let case = OpforgeNativeCliParityCase {
+                    name,
+                    // Guest executable architecture; assembly target comes from the CLI/source.
+                    cpu_override: "68020",
+                    extra_assembly_defines: &defines,
+                    source_override: Some(source),
+                    command_template: Some(command),
+                    package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+                    extra_guest_files: &files,
+                    proof,
+                };
+                match run_prebuilt_compact_cli_case_from_env(&root, &case, &image) {
+                    Ok(FsUaeSmokeOutcome::Completed { runs })
+                        if runs.len() == 1
+                            && runs[0].protocol_completed
+                            && runs[0].exit_code == Some(exit) =>
+                    {
+                        eprintln!("{name}: fresh native completion, exit {exit}")
+                    }
+                    Ok(FsUaeSmokeOutcome::Completed { runs }) => failures.push(format!(
+                        "{name}: invalid completion/exit; {} runs",
+                        runs.len()
+                    )),
+                    Ok(FsUaeSmokeOutcome::Skipped(reason)) => {
+                        failures.push(format!("{name}: skipped: {reason}"))
+                    }
+                    Err(error) => failures.push(format!("{name}: {error}")),
+                }
             };
-            match run_prebuilt_compact_cli_case_from_env(&root, &case, &image) {
-                Ok(FsUaeSmokeOutcome::Completed { runs })
-                    if runs.len() == 1
-                        && runs[0].protocol_completed
-                        && runs[0].exit_code == Some(exit) =>
-                {
-                    eprintln!("{name}: fresh native completion, exit {exit}")
-                }
-                Ok(FsUaeSmokeOutcome::Completed { runs }) => failures.push(format!(
-                    "{name}: invalid completion/exit; {} runs",
-                    runs.len()
-                )),
-                Ok(FsUaeSmokeOutcome::Skipped(reason)) => {
-                    failures.push(format!("{name}: skipped: {reason}"))
-                }
-                Err(error) => failures.push(format!("{name}: {error}")),
+        for case in cases.iter().filter(|case| wanted(case.name)) {
+            let oracle = std::panic::catch_unwind(|| rust_oracle(&dir, case));
+            let Ok(oracle) = oracle else {
+                // Oracle failures do not stop later native cases from obtaining fresh evidence.
+                eprintln!("{}: live Rust oracle failed", case.name);
+                continue;
+            };
+            let mut command = format!("--cpu {} Work:entry.asm {}", case.cpu, case.flag);
+            if let Some(name) = case.filename {
+                command.push_str(&format!(" Work:{name}"));
             }
-        };
-    for case in cases.iter().filter(|case| wanted(case.name)) {
-        let oracle = std::panic::catch_unwind(|| rust_oracle(&dir, case));
-        let Ok(oracle) = oracle else {
-            // Oracle failures do not stop later native cases from obtaining fresh evidence.
-            eprintln!("{}: live Rust oracle failed", case.name);
-            continue;
-        };
-        let mut command = format!("--cpu {} Work:entry.asm {}", case.cpu, case.flag);
-        if let Some(name) = case.filename {
-            command.push_str(&format!(" Work:{name}"));
+            if let Some(go) = case.go {
+                command.push_str(&format!(" -g {go}"));
+            }
+            let path = format!("Work/{}", case.path);
+            let mut artifacts = vec![OpforgeNativeCliExpectedArtifact {
+                relative_path: &path,
+                rust_oracle: &oracle[0],
+            }];
+            if case.source_bin {
+                artifacts.push(OpforgeNativeCliExpectedArtifact {
+                    relative_path: "Work/source-image",
+                    rust_oracle: &oracle[1],
+                });
+            }
+            run(
+                case.name,
+                case.source.as_bytes(),
+                &command,
+                OpforgeNativeCliProof::ExactArtifacts(&artifacts),
+                0,
+            );
         }
-        if let Some(go) = case.go {
-            command.push_str(&format!(" -g {go}"));
+        for (name, flags) in negatives.iter().filter(|(name, _)| wanted(name)) {
+            run(
+                name,
+                b".module main\n.cpu 68020\n.byte $12\n.endmodule\n",
+                &format!("--cpu 68020 Work:entry.asm {flags}"),
+                OpforgeNativeCliProof::ExpectedFailureContaining(
+                    "compact CLI: invalid or unsupported arguments",
+                ),
+                20,
+            );
         }
-        let path = format!("Work/{}", case.path);
-        let mut artifacts = vec![OpforgeNativeCliExpectedArtifact {
-            relative_path: &path,
-            rust_oracle: &oracle[0],
-        }];
-        if case.source_bin {
-            artifacts.push(OpforgeNativeCliExpectedArtifact {
-                relative_path: "Work/source-image",
-                rust_oracle: &oracle[1],
-            });
+        for (name, source, flags) in output_failures.iter().filter(|(name, _, _)| wanted(name)) {
+            run(
+                name,
+                source.as_bytes(),
+                &format!("--cpu 68020 Work:entry.asm {flags}"),
+                OpforgeNativeCliProof::ExpectedFailureContaining("compact CLI: output failed"),
+                20,
+            );
         }
-        run(
-            case.name,
-            case.source.as_bytes(),
-            &command,
-            OpforgeNativeCliProof::ExactArtifacts(&artifacts),
-            0,
-        );
     }
-    for (name, flags) in negatives.iter().filter(|(name, _)| wanted(name)) {
-        run(
-            name,
-            b".module main\n.cpu 68020\n.byte $12\n.endmodule\n",
-            &format!("--cpu 68020 Work:entry.asm {flags}"),
-            OpforgeNativeCliProof::ExpectedFailureContaining(
-                "compact CLI: invalid or unsupported arguments",
-            ),
-            20,
-        );
-    }
-    for (name, source, flags) in output_failures.iter().filter(|(name, _, _)| wanted(name)) {
-        run(
-            name,
-            source.as_bytes(),
-            &format!("--cpu 68020 Work:entry.asm {flags}"),
-            OpforgeNativeCliProof::ExpectedFailureContaining("compact CLI: output failed"),
-            20,
-        );
-    }
-    drop(run);
     // Every selected positive must have produced a live oracle and a native attempt.
     let expected = cases.iter().filter(|case| wanted(case.name)).count()
         + negatives.iter().filter(|(name, _)| wanted(name)).count()

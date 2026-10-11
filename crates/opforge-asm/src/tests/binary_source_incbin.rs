@@ -5,8 +5,7 @@ use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 use vm::runtime_model_core::RuntimeModelCore;
 
-#[path = "binary_source_hunk.rs"]
-mod hunk;
+use crate::fs_uae_smoke::hunk;
 
 struct Scratch(PathBuf);
 impl Scratch {

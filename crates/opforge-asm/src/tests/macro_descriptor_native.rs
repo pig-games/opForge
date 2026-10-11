@@ -1,6 +1,5 @@
 //! Exact native descriptor proof from live generic TKVM spans and Rust PRVM.
-#[path = "binary_source_hunk.rs"]
-mod hunk;
+use crate::fs_uae_smoke::hunk;
 use super::*;
 use package::package::{macro_descriptor_program, PARSER_VM_MACRO_ENTRY, PARSER_VM_MACRO_VERSION};
 use vm::macro_descriptor_vm::{execute, TokenSpan};
@@ -176,7 +175,7 @@ fn batch() -> (Vec<u8>, Vec<u8>, usize) {
         input.extend((spans.len() as u16).to_be_bytes());
         input.extend(PARSER_VM_MACRO_ENTRY.to_be_bytes());
         input.extend(&program);
-        if program.len() % 2 != 0 {
+        if !program.len().is_multiple_of(2) {
             input.push(0);
         }
         input.extend(source.as_bytes());

@@ -240,7 +240,7 @@ fn median_us(samples: &mut [f64]) -> f64 {
 #[ignore = "bounded manual source preparation/replay comparison"]
 fn prepared_source_experiment_benchmark() {
     assert!(
-        !vm::prepared_encoding::TELEMETRY_ENABLED,
+        !std::hint::black_box(vm::prepared_encoding::TELEMETRY_ENABLED),
         "measure counters in a separate run"
     );
     let package = vm::builder::build_hierarchy_package_from_registry(&registry()).unwrap();

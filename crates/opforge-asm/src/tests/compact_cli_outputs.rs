@@ -238,7 +238,7 @@ fn compact_cli_source_outputs_and_validation() {
             }),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &files,
-            proof: proof,
+            proof,
         };
         match run_prebuilt_compact_cli_case_from_env(&root, &case, &image) {
             Ok(FsUaeSmokeOutcome::Completed { runs })

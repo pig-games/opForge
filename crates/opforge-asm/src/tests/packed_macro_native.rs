@@ -82,7 +82,7 @@ fn batch() -> (Vec<u8>, Vec<u8>, usize) {
         input.extend(0u16.to_be_bytes());
         input.extend(PARSER_VM_PACKED_MACRO_ENTRY.to_be_bytes());
         input.extend(&program);
-        if program.len() % 2 != 0 {
+        if !program.len().is_multiple_of(2) {
             input.push(0);
         }
         input.extend(&source);

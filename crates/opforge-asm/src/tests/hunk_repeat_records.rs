@@ -4,8 +4,7 @@
 //! Indexed repetition records preserve scalar and section-address identity.
 use super::*;
 
-#[path = "binary_source_hunk.rs"]
-mod hunk;
+use crate::fs_uae_smoke::hunk;
 
 fn assemble(cpu: &str, body: &str, placed: bool, format: &str) -> Assembler {
     let placement = if placed {

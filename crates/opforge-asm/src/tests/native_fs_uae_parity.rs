@@ -16441,7 +16441,7 @@ fn external_fs_uae_native_m68030_m68040_integer_mmu_parity() {
     .expect("read exact Item 26 package");
     assert_current_cli_package(&package);
 
-    let positive_definitions = vec![
+    let positive_definitions = [
         (
             "item26-m68030-carry-forward",
             "m68030",
@@ -23903,7 +23903,7 @@ fn external_fs_uae_native_item35_ordered_segment_hunk_parity() {
         words
             .iter()
             .copied()
-            .filter(|word| matches!(*word, 0x3e9 | 0x3ea | 0x3eb))
+            .filter(|word| matches!(*word, 0x3e9..=0x3eb))
             .collect::<Vec<_>>(),
         [0x3e9, 0x3eb, 0x3ea]
     );
@@ -23996,7 +23996,7 @@ fn external_fs_uae_native_hunk_segment_surface_parity() {
         words
             .iter()
             .copied()
-            .filter(|word| matches!(*word, 0x3e9 | 0x3ea | 0x3eb))
+            .filter(|word| matches!(*word, 0x3e9..=0x3eb))
             .collect::<Vec<_>>(),
         [0x3e9, 0x3ea, 0x3eb]
     );

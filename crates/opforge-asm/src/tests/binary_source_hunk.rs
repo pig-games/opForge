@@ -2,7 +2,7 @@
 //! This reads HUNK_HEADER reservations, not file size, live heap or peak RAM.
 
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(super) struct Allocation {
+pub(crate) struct Allocation {
     pub code: u64,
     pub data: u64,
     pub bss: u64,
@@ -10,7 +10,7 @@ pub(super) struct Allocation {
 }
 
 #[derive(Debug)]
-pub(super) struct Segment<'a> {
+pub(crate) struct Segment<'a> {
     pub kind: u32,
     pub reserved_bytes: u64,
     pub payload: &'a [u8],
@@ -48,7 +48,7 @@ impl Reader<'_> {
     }
 }
 
-pub(super) fn allocation(bytes: &[u8]) -> Result<Allocation, &'static str> {
+pub(crate) fn allocation(bytes: &[u8]) -> Result<Allocation, &'static str> {
     let segments = segments(bytes)?;
     let mut result = Allocation {
         segments: segments.len() as u32,
@@ -65,7 +65,7 @@ pub(super) fn allocation(bytes: &[u8]) -> Result<Allocation, &'static str> {
     Ok(result)
 }
 
-pub(super) fn segments(bytes: &[u8]) -> Result<Vec<Segment<'_>>, &'static str> {
+pub(crate) fn segments(bytes: &[u8]) -> Result<Vec<Segment<'_>>, &'static str> {
     let mut r = Reader { bytes, offset: 0 };
     if r.word()? != 0x3f3 {
         return Err("missing HUNK_HEADER");

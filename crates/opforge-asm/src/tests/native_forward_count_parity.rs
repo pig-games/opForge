@@ -207,7 +207,7 @@ fn native_forward_count_fs_uae() {
             .as_ref()
             .is_none_or(|names| names.split(',').any(|name| name == case.name))
     }) {
-        let oracle = oracle(&dir, &case);
+        let oracle = oracle(&dir, case);
         let mut files = vec![OpforgeNativeCliGuestFile {
             relative_path: "entry.asm",
             bytes: case.source.as_bytes(),

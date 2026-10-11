@@ -20,7 +20,7 @@ mod breadth_runner;
 pub(crate) use breadth_runner::BreadthCaseResult;
 
 #[path = "tests/binary_source_hunk.rs"]
-mod hunk;
+pub(crate) mod hunk;
 
 #[cfg(test)]
 #[path = "tests/compact_self_host_export.rs"]
@@ -634,7 +634,7 @@ fn run_hunk_smoke_cases_from_env(
             relative_source_path,
             cpu_override,
         )? {
-            ExampleSmokeResult::Run(run) => runs.push(run),
+            ExampleSmokeResult::Run(run) => runs.push(*run),
             ExampleSmokeResult::Skipped(reason) => return Ok(FsUaeSmokeOutcome::Skipped(reason)),
         }
     }
@@ -663,7 +663,7 @@ pub(crate) fn run_native_debug_contract_from_env(
         "68020",
         &["OPFORGE_DEBUG_CONTRACTS"],
     )? {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![*run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
 }
@@ -690,7 +690,7 @@ pub(crate) fn run_native_memory_budget_from_env(
         "native/motorola68000/amigaos/test-harnesses/experimental/binary_memory_budget_harness.asm",
         "68020",
     )? {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![*run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
 }
@@ -734,7 +734,7 @@ pub(crate) fn run_native_session_init_harness_from_env(
                     "SESSION_INIT_MODE {mode}: protocol={} exit={:?}",
                     run.protocol_completed, run.exit_code
                 );
-                runs.push(run);
+                runs.push(*run);
             }
             Ok(ExampleSmokeResult::Skipped(reason)) => {
                 errors.push(format!("{mode}: skipped: {reason}"))
@@ -812,7 +812,7 @@ fn run_native_progress_harness_with_platform_from_env(
         "68020",
         &defines,
     )? {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![*run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
 }
@@ -959,7 +959,7 @@ pub(crate) fn run_native_cli_debug_event_from_env(
             "OPFORGE_DEBUG_CONTRACTS",
         ],
     )? {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![*run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
 }
@@ -1110,7 +1110,7 @@ pub(crate) fn run_native_macro_preprocessor_harness_from_env(
         FS_UAE_MACRO_PREPROCESSOR_HARNESS_SOURCE_PATH,
         "68020",
     )? {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![*run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
 }
@@ -1135,7 +1135,7 @@ pub(crate) fn run_native_pipeline_select_harness_from_env(
         "68020",
         &["OPFORGE_DEBUG_CONTRACTS"],
     )? {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![*run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
 }
@@ -1163,7 +1163,7 @@ pub(crate) fn run_native_macro_cli_debug_event_harness_from_env(
             FS_UAE_OPFORGE_NATIVE_CLI_MACRO_DEBUG_DEFINE,
         ],
     )? {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![*run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
 }
@@ -1416,9 +1416,7 @@ pub(crate) fn run_binary_source_harness_from_env(
         sources,
         Some(expected),
         None,
-        false,
-        None,
-        &[],
+        BinarySourceSearch::ordered(),
     )
 }
 
@@ -1613,9 +1611,7 @@ pub(crate) fn run_binary_source_rejection_from_env(
         sources,
         None,
         diagnostic,
-        false,
-        None,
-        &[],
+        BinarySourceSearch::ordered(),
     )
 }
 
@@ -1634,9 +1630,10 @@ pub(crate) fn run_binary_graph_from_env(
         sources,
         expected,
         diagnostic,
-        true,
-        None,
-        &[],
+        BinarySourceSearch {
+            graph: true,
+            ..BinarySourceSearch::ordered()
+        },
     )
 }
 
@@ -1657,10 +1654,30 @@ pub(crate) fn run_binary_discovery_with_includes_from_env(
         sources,
         expected,
         diagnostic,
-        true,
-        Some(module_roots),
-        include_roots,
+        BinarySourceSearch {
+            graph: true,
+            module_roots: Some(module_roots),
+            include_roots,
+        },
     )
+}
+
+/// Acquisition settings stay together so ordered, graph and discovery callers
+/// cannot accidentally exchange the two search root sets.
+struct BinarySourceSearch<'a> {
+    graph: bool,
+    module_roots: Option<&'a [&'a str]>,
+    include_roots: &'a [&'a str],
+}
+
+impl BinarySourceSearch<'_> {
+    fn ordered() -> Self {
+        Self {
+            graph: false,
+            module_roots: None,
+            include_roots: &[],
+        }
+    }
 }
 
 fn run_binary_source_files_from_env(
@@ -1669,10 +1686,13 @@ fn run_binary_source_files_from_env(
     sources: &[(&str, &[u8])],
     expected: Option<&[u8]>,
     diagnostic: Option<&str>,
-    graph: bool,
-    module_roots: Option<&[&str]>,
-    include_roots: &[&str],
+    search: BinarySourceSearch<'_>,
 ) -> Result<FsUaeSmokeOutcome, String> {
+    let BinarySourceSearch {
+        graph,
+        module_roots,
+        include_roots,
+    } = search;
     let args = std::env::var(FS_UAE_ARGS_ENV).map_err(|err| err.to_string())?;
     let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
     let count = u16::try_from(sources.len()).map_err(|_| "too many source files")?;
@@ -4232,7 +4252,7 @@ fn run_tkpkg_debug_cli_input_mode_with_optional_package_from_env<'a>(
     };
     let run = run_example_smoke_with_guest_input(workspace_root, &fs_uae_bin, &args_text, &spec)?;
     match run {
-        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![run] }),
+        ExampleSmokeResult::Run(run) => Ok(FsUaeSmokeOutcome::Completed { runs: vec![*run] }),
         ExampleSmokeResult::Skipped(reason) => Ok(FsUaeSmokeOutcome::Skipped(reason)),
     }
 }
@@ -4741,7 +4761,7 @@ fn tkpkg_pipeline_define_for_cpu(cpu_id: &str) -> Result<&'static str, String> {
 }
 
 enum ExampleSmokeResult {
-    Run(FsUaeSmokeRun),
+    Run(Box<FsUaeSmokeRun>),
     Skipped(String),
 }
 
@@ -5790,7 +5810,7 @@ fn run_example_smoke_with_request(
         &run.stdout,
         &run.stderr,
     )?;
-    Ok(ExampleSmokeResult::Run(run))
+    Ok(ExampleSmokeResult::Run(Box::new(run)))
 }
 
 fn run_example_smoke_with_guest_input(
@@ -6071,7 +6091,7 @@ fn run_example_smoke_with_guest_input(
         &run.stdout,
         &run.stderr,
     )?;
-    Ok(ExampleSmokeResult::Run(run))
+    Ok(ExampleSmokeResult::Run(Box::new(run)))
 }
 
 fn generated_hunk_artifact_path(artifact_dir: &Path, example_name: &str) -> PathBuf {

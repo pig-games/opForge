@@ -1,8 +1,7 @@
 //! Hunk serialization order must not reorder statement-time state.
 use super::*;
 
-#[path = "binary_source_hunk.rs"]
-mod hunk;
+use crate::fs_uae_smoke::hunk;
 
 #[path = "binary_source_hunk_placement.rs"]
 mod placement;

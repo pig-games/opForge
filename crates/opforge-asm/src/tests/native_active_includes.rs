@@ -132,7 +132,10 @@ fn pc_bounded_while_include_tree(cpu: &str) -> Vec<(&'static str, String)> {
     ]
 }
 
-fn positive_cases(cpu: &str) -> Vec<(&'static str, Vec<(&'static str, String)>, Vec<u8>)> {
+type SourceTree = Vec<(&'static str, String)>;
+type PositiveCase = (&'static str, SourceTree, Vec<u8>);
+
+fn positive_cases(cpu: &str) -> Vec<PositiveCase> {
     vec![
         (
             "active-expanded-includes",

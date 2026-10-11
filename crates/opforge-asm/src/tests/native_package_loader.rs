@@ -47,6 +47,15 @@ fn oracle(scratch: &Path, cpu: &str, source: &[u8]) -> Vec<u8> {
     fs::read(output).unwrap()
 }
 
+type PackageLoaderCase<'a> = (
+    &'a str,
+    &'a [u8],
+    &'a [u8],
+    &'a str,
+    Option<(&'a str, &'a [u8])>,
+    Option<&'a [u8]>,
+);
+
 #[test]
 #[ignore = "real FS-UAE proof; requires OPFORGE_FS_UAE_ARGS and configured emulator"]
 fn native_package_loader_selection_and_rejections() {
@@ -123,14 +132,7 @@ fn native_package_loader_selection_and_rejections() {
     let binary = std::env::var(FS_UAE_BIN_ENV).unwrap_or_else(|_| "fs-uae".into());
     // The runner mounts the executable in Work:build: its default PROGDIR:packages
     // therefore exercises the same sibling layout as the distributed executable.
-    let cases: [(
-        &str,
-        &[u8],
-        &[u8],
-        &str,
-        Option<(&str, &[u8])>,
-        Option<&[u8]>,
-    ); 10] = [
+    let cases: [PackageLoaderCase<'_>; 10] = [
         (
             "named-alias-default",
             &external_cli,

@@ -219,185 +219,188 @@ fn compact_cli_inline_source_metadata() {
     let mut failures = Vec::new();
     let mut oracle_failures = Vec::new();
     let mut attempted = 0;
-    let mut run = |name: &str,
-                   source: &str,
-                   flags: &str,
-                   imported: Option<&str>,
-                   proof: OpforgeNativeCliProof<'_>,
-                   exit,
-                   outputs: Option<&[&str]>| {
-        attempted += 1;
-        let command = format!(
-            "--cpu 68020 Work:entry.asm {}",
-            flags.replace("@ROOT@", "Work:")
-        );
-        let mut files = vec![OpforgeNativeCliGuestFile {
-            relative_path: "entry.asm",
-            bytes: source.as_bytes(),
-        }];
-        if let Some(imported) = imported {
-            files.push(OpforgeNativeCliGuestFile {
-                relative_path: "imported.asm",
-                bytes: imported.as_bytes(),
-            });
-        }
-        let case = OpforgeNativeCliParityCase {
-            name: name,
-            cpu_override: "68020",
-            extra_assembly_defines: &defines,
-            source_override: Some(source.as_bytes()),
-            command_template: Some(&command),
-            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-            extra_guest_files: &files,
-            proof: proof,
-        };
-        match run_prebuilt_compact_cli_case_from_env(&root, &case, &image) {
-            Ok(FsUaeSmokeOutcome::Completed { runs })
-                if runs.len() == 1
-                    && runs[0].protocol_completed
-                    && runs[0].exit_code == Some(exit) =>
-            {
-                if telemetry && exit == 0 {
-                    let Some(memory) = runs[0]
-                        .captured_artifacts
-                        .get(&PathBuf::from("Work/memory.bin"))
-                    else {
-                        failures.push(format!("{name}: missing memory telemetry"));
-                        return;
-                    };
-                    if memory.len() != 2280 || &memory[..4] != b"MEMD" {
-                        failures.push(format!("{name}: invalid memory telemetry record"));
-                        return;
-                    }
-                    let word = |index: usize| {
-                        u32::from_be_bytes(memory[index * 4..index * 4 + 4].try_into().unwrap())
-                    };
-                    if word(1) != 0
-                        || word(3) != word(4)
-                        || word(11) != 0
-                        || word(29) != 0
-                        || word(524) != 0
-                    {
-                        failures.push(format!(
-                            "{name}: telemetry ownership, allocation or profiling failure"
-                        ));
-                        return;
-                    }
-                }
-                if let Some(outputs) = outputs {
-                    // The runner stages input.bin for CompactCli and the startup
-                    // alias named by FS_UAE_STARTUP_HUNK_ALIAS. Exclude only those
-                    // exact inputs; assembler output must never collide with them.
-                    let staged = [
-                        PathBuf::from("Work/input.bin"),
-                        PathBuf::from("Work").join(FS_UAE_STARTUP_HUNK_ALIAS),
-                    ];
-                    assert!(outputs
-                        .iter()
-                        .all(|name| !staged.contains(&PathBuf::from("Work").join(name))));
-                    // Include every emitted output class, including unwanted defaults.
-                    let actual: Vec<_> = runs[0]
-                        .captured_artifacts
-                        .keys()
-                        .filter(|path| {
-                            !staged.contains(path)
-                                && matches!(
-                                    path.extension().and_then(|ext| ext.to_str()),
-                                    Some("hex" | "srec" | "lst" | "bin" | "hunk")
-                                )
-                        })
-                        .filter(|path| !telemetry || **path != PathBuf::from("Work/memory.bin"))
-                        .map(|path| path.to_string_lossy().into_owned())
-                        .collect();
-                    let mut expected: Vec<_> =
-                        outputs.iter().map(|name| format!("Work/{name}")).collect();
-                    expected.sort();
-                    if actual != expected {
-                        failures.push(format!(
-                            "{name}: guest output inventory {actual:?}, expected {expected:?}"
-                        ));
-                    }
-                }
-                eprintln!("{name}: fresh native completion, exit {exit}");
+    {
+        let mut run = |name: &str,
+                       source: &str,
+                       flags: &str,
+                       imported: Option<&str>,
+                       proof: OpforgeNativeCliProof<'_>,
+                       exit,
+                       outputs: Option<&[&str]>| {
+            attempted += 1;
+            let command = format!(
+                "--cpu 68020 Work:entry.asm {}",
+                flags.replace("@ROOT@", "Work:")
+            );
+            let mut files = vec![OpforgeNativeCliGuestFile {
+                relative_path: "entry.asm",
+                bytes: source.as_bytes(),
+            }];
+            if let Some(imported) = imported {
+                files.push(OpforgeNativeCliGuestFile {
+                    relative_path: "imported.asm",
+                    bytes: imported.as_bytes(),
+                });
             }
-            Ok(FsUaeSmokeOutcome::Completed { runs }) => failures.push(format!(
-                "{name}: invalid completion/exit ({} runs)",
-                runs.len()
-            )),
-            Ok(FsUaeSmokeOutcome::Skipped(reason)) => {
-                failures.push(format!("{name}: skipped: {reason}"))
+            let case = OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &defines,
+                source_override: Some(source.as_bytes()),
+                command_template: Some(&command),
+                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: &files,
+                proof,
+            };
+            match run_prebuilt_compact_cli_case_from_env(&root, &case, &image) {
+                Ok(FsUaeSmokeOutcome::Completed { runs })
+                    if runs.len() == 1
+                        && runs[0].protocol_completed
+                        && runs[0].exit_code == Some(exit) =>
+                {
+                    if telemetry && exit == 0 {
+                        let Some(memory) = runs[0]
+                            .captured_artifacts
+                            .get(&PathBuf::from("Work/memory.bin"))
+                        else {
+                            failures.push(format!("{name}: missing memory telemetry"));
+                            return;
+                        };
+                        if memory.len() != 2280 || &memory[..4] != b"MEMD" {
+                            failures.push(format!("{name}: invalid memory telemetry record"));
+                            return;
+                        }
+                        let word = |index: usize| {
+                            u32::from_be_bytes(memory[index * 4..index * 4 + 4].try_into().unwrap())
+                        };
+                        if word(1) != 0
+                            || word(3) != word(4)
+                            || word(11) != 0
+                            || word(29) != 0
+                            || word(524) != 0
+                        {
+                            failures.push(format!(
+                                "{name}: telemetry ownership, allocation or profiling failure"
+                            ));
+                            return;
+                        }
+                    }
+                    if let Some(outputs) = outputs {
+                        // The runner stages input.bin for CompactCli and the startup
+                        // alias named by FS_UAE_STARTUP_HUNK_ALIAS. Exclude only those
+                        // exact inputs; assembler output must never collide with them.
+                        let staged = [
+                            PathBuf::from("Work/input.bin"),
+                            PathBuf::from("Work").join(FS_UAE_STARTUP_HUNK_ALIAS),
+                        ];
+                        assert!(outputs
+                            .iter()
+                            .all(|name| !staged.contains(&PathBuf::from("Work").join(name))));
+                        // Include every emitted output class, including unwanted defaults.
+                        let actual: Vec<_> = runs[0]
+                            .captured_artifacts
+                            .keys()
+                            .filter(|path| {
+                                !staged.contains(path)
+                                    && matches!(
+                                        path.extension().and_then(|ext| ext.to_str()),
+                                        Some("hex" | "srec" | "lst" | "bin" | "hunk")
+                                    )
+                            })
+                            .filter(|path| {
+                                !telemetry || path.as_path() != Path::new("Work/memory.bin")
+                            })
+                            .map(|path| path.to_string_lossy().into_owned())
+                            .collect();
+                        let mut expected: Vec<_> =
+                            outputs.iter().map(|name| format!("Work/{name}")).collect();
+                        expected.sort();
+                        if actual != expected {
+                            failures.push(format!(
+                                "{name}: guest output inventory {actual:?}, expected {expected:?}"
+                            ));
+                        }
+                    }
+                    eprintln!("{name}: fresh native completion, exit {exit}");
+                }
+                Ok(FsUaeSmokeOutcome::Completed { runs }) => failures.push(format!(
+                    "{name}: invalid completion/exit ({} runs)",
+                    runs.len()
+                )),
+                Ok(FsUaeSmokeOutcome::Skipped(reason)) => {
+                    failures.push(format!("{name}: skipped: {reason}"))
+                }
+                Err(error) => failures.push(format!("{name}: {error}")),
             }
-            Err(error) => failures.push(format!("{name}: {error}")),
+        };
+        for case in positive.iter().filter(|case| wanted(case.name)) {
+            let oracle = std::panic::catch_unwind(|| rust_oracle(&dir, case));
+            let Ok(oracle) = oracle else {
+                oracle_failures.push(format!("{}: live Rust oracle failed", case.name));
+                continue;
+            };
+            let paths: Vec<_> = case
+                .outputs
+                .iter()
+                .map(|name| format!("Work/{name}"))
+                .collect();
+            let artifacts: Vec<_> = paths
+                .iter()
+                .zip(&oracle)
+                .map(|(path, bytes)| OpforgeNativeCliExpectedArtifact {
+                    relative_path: path,
+                    rust_oracle: bytes,
+                })
+                .collect();
+            let absent = [
+                "Work/entry.hex",
+                "Work/entry.bin",
+                "Work/entry.srec",
+                "Work/entry.lst",
+                "Work/base.hex",
+                "Work/base.bin",
+                "Work/base.srec",
+            ];
+            let proof = if artifacts.is_empty() {
+                OpforgeNativeCliProof::SuccessfulExitWithoutArtifacts(&absent)
+            } else {
+                OpforgeNativeCliProof::ExactArtifacts(&artifacts)
+            };
+            run(
+                case.name,
+                &source(case.metadata, "Work:"),
+                case.flags,
+                None,
+                proof,
+                0,
+                Some(case.outputs),
+            );
         }
-    };
-    for case in positive.iter().filter(|case| wanted(case.name)) {
-        let oracle = std::panic::catch_unwind(|| rust_oracle(&dir, case));
-        let Ok(oracle) = oracle else {
-            oracle_failures.push(format!("{}: live Rust oracle failed", case.name));
-            continue;
-        };
-        let paths: Vec<_> = case
-            .outputs
-            .iter()
-            .map(|name| format!("Work/{name}"))
-            .collect();
-        let artifacts: Vec<_> = paths
-            .iter()
-            .zip(&oracle)
-            .map(|(path, bytes)| OpforgeNativeCliExpectedArtifact {
-                relative_path: path,
-                rust_oracle: bytes,
-            })
-            .collect();
-        let absent = [
-            "Work/entry.hex",
-            "Work/entry.bin",
-            "Work/entry.srec",
-            "Work/entry.lst",
-            "Work/base.hex",
-            "Work/base.bin",
-            "Work/base.srec",
-        ];
-        let proof = if artifacts.is_empty() {
-            OpforgeNativeCliProof::SuccessfulExitWithoutArtifacts(&absent)
-        } else {
-            OpforgeNativeCliProof::ExactArtifacts(&artifacts)
-        };
-        run(
-            case.name,
-            &source(case.metadata, "Work:"),
-            case.flags,
-            None,
-            proof,
-            0,
-            Some(case.outputs),
-        );
+        for (name, source, imported) in negatives.iter().filter(|case| wanted(case.0)) {
+            run(
+                name,
+                source,
+                "",
+                *imported,
+                OpforgeNativeCliProof::ExpectedFailureContaining(
+                    "binary source: unsupported or invalid input",
+                ),
+                20,
+                None,
+            );
+        }
+        if wanted("metadata-reject-go-without-record-output") {
+            run(
+                "metadata-reject-go-without-record-output",
+                &source("", "Work:"),
+                "--go 1234",
+                None,
+                OpforgeNativeCliProof::ExpectedFailureContaining("compact CLI:"),
+                20,
+                None,
+            );
+        }
     }
-    for (name, source, imported) in negatives.iter().filter(|case| wanted(case.0)) {
-        run(
-            name,
-            source,
-            "",
-            *imported,
-            OpforgeNativeCliProof::ExpectedFailureContaining(
-                "binary source: unsupported or invalid input",
-            ),
-            20,
-            None,
-        );
-    }
-    if wanted("metadata-reject-go-without-record-output") {
-        run(
-            "metadata-reject-go-without-record-output",
-            &source("", "Work:"),
-            "--go 1234",
-            None,
-            OpforgeNativeCliProof::ExpectedFailureContaining("compact CLI:"),
-            20,
-            None,
-        );
-    }
-    drop(run);
     failures.extend(oracle_failures);
     let expected = positive.iter().filter(|case| wanted(case.name)).count()
         + negatives.iter().filter(|case| wanted(case.0)).count()

@@ -180,7 +180,7 @@ fn scalar_cases() -> Vec<ScalarCase> {
         ("empty end", vec![0], 56),
     ] {
         cases.push(ScalarCase {
-            name: format!("{name}"),
+            name: name.to_string(),
             code,
             expected: Err(status),
             symbol_refs: 0,

@@ -4,8 +4,7 @@
 //! Active iterator bindings are scalars, including when they shadow addresses.
 use super::*;
 
-#[path = "binary_source_hunk.rs"]
-mod hunk;
+use crate::fs_uae_smoke::hunk;
 
 fn image(cpu: &str, body: &str) -> Vec<u8> {
     let source = format!(

@@ -36,7 +36,7 @@ fn sources(cpu: &str) -> [String; 3] {
     ]
 }
 
-fn files<'a>(sources: &'a [String; 3]) -> [(&'static str, &'a str); 3] {
+fn files(sources: &[String; 3]) -> [(&'static str, &str); 3] {
     [
         ("main.asm", &sources[0]),
         ("library/dep_a.asm", &sources[1]),
@@ -102,7 +102,7 @@ fn mixed_sources_variant(
     ([main, worker], expected)
 }
 
-fn mixed_files<'a>(sources: &'a [String; 2]) -> [(&'static str, &'a str); 2] {
+fn mixed_files(sources: &[String; 2]) -> [(&'static str, &str); 2] {
     [
         ("main.asm", &sources[0]),
         ("library/worker.asm", &sources[1]),

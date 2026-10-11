@@ -12,8 +12,7 @@ const BRANCH_PLAN_BYTES_OFFSET: usize = 224;
 use crate::fs_uae_smoke::FsUaeSmokeOutcome;
 use vm::runtime_model_core::RuntimeModelCore;
 
-#[path = "binary_source_hunk.rs"]
-mod hunk;
+use crate::fs_uae_smoke::hunk;
 
 #[path = "binary_source_hunk_data_relocations.rs"]
 mod hunk_data_relocations;

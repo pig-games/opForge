@@ -112,7 +112,6 @@ fn batch() -> (Vec<u8>, Vec<u8>, usize) {
     let mut oracle = Vec::with_capacity(count * (16 + RESULT_BYTES));
     for item in cases {
         assert!(item.source.len() <= 1025);
-        assert!(RESULT_BYTES <= 2048);
         input.extend((item.budget as u32).to_be_bytes());
         input.extend((item.capacity as u32 * 32).to_be_bytes());
         input.extend((item.source.len() as u16).to_be_bytes());

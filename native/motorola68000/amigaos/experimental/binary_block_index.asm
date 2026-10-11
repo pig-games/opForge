@@ -10,6 +10,7 @@
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_materialized_scope as materialized
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.pub
@@ -409,6 +410,10 @@ ownerLine
 	sub.l a4, d0
 	cmp.l d0, d6
 	bhi.w ownerBad
+	cmpi.w #materialized.Record.Kind+1, d6
+	blo.w ownerAdvance
+	cmpi.b #materialized.TOKEN, materialized.Record.Kind(a4)
+	beq.w materializedOwner
 	cmpi.w #9, d6
 	blo.w ownerAdvance
 	cmpi.b #1, 4(a4)
@@ -421,8 +426,24 @@ ownerLine
 	beq.w ownerDeclaration
 	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 8(a4)
 	beq.w ownerDeclaration
-	cmpi.b #34, 8(a4)
+	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 8(a4)
+	beq.w ownerDeclaration
+	bra.w ownerAdvance
+materializedOwner
+	movea.l a4, a0
+	movea.l a6, a1
+	jsr materialized.validate
+	bne.w ownerBad
+	cmpi.b #materialized.COLLECTION_OPEN, materialized.Record.Action(a4)
 	bne.w ownerAdvance
+	moveq #0, d0
+	move.w materialized.Record.Label(a4), d0
+	cmpi.l #materialized.ANONYMOUS, d0
+	beq.w ownerAdvance
+	bsr.w saveOwner
+	bne.w ownerBad
+	bra.w ownerAdvance
+
 ownerDeclaration
 	moveq #0, d0
 	move.w 5(a4), d0
@@ -551,6 +572,8 @@ token
 	beq.w compactExpression
 	cmpi.b #expr.VALUE_TAG, d1
 	beq.w typedExpression
+	cmpi.b #materialized.TOKEN, d1
+	beq.w materializedPayload
 	cmpi.b #source.TOKEN_STRUCT_DECLARATION, d1
 	beq.w schema
 	cmpi.b #source.TOKEN_ITERATOR_BINDING, d1
@@ -581,6 +604,14 @@ literalPayload
 	blo.w bad
 	adda.l d0, a0
 	bra.w token
+materializedPayload
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #materialized.RECORD_BYTES-materialized.Record.Action, d0
+	bne.w bad
+	movea.l a1, a0
+	bra.w token
+
 string
 	cmpa.l a1, a0
 	bhs.w bad

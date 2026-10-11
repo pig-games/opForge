@@ -8,6 +8,7 @@
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_materialized_scope as materialized
 	.use experimental.amigaos.binary_repetition_trace as trace
 	.use experimental.amigaos.binary_guard_values as guards
 	.use experimental.amigaos.binary_repeat_records as snapshots
@@ -43,6 +44,9 @@ Label	.long ?  ; -1 for anonymous repetition
 Records	.long ?  ; typed list arena offset, published only after close
 StartPc	.long ?
 StartSection	.long ?
+Materialized	.word ?
+IterationActive	.word ?
+CollectionTrace	.long ?
 RecordCells	.res memory.Block.Used+4  ; provisional unknown-count collection
 	.endstruct
 SLOT_BYTES = Slot.RecordCells+memory.Block.Used+4
@@ -120,6 +124,8 @@ step	.block
 	adda.w d0, a4
 	cmpa.l a6, a4
 	bhi.w invalid
+	cmpi.b #materialized.TOKEN, materialized.Record.Kind(a5)
+	beq.w materializedRecord
 	movea.l package.Context.Package(a2), a1
 	move.l package.Header.LoopPlanBytes(a1), d1
 	adda.l package.Header.LoopPlan(a1), a1
@@ -500,6 +506,139 @@ popLoop
 consumed
 	moveq #1, d0
 	bra.w done
+; Private source materialization is one-way: each iteration body is already
+; present once. The existing trace/frame/snapshot owners retain pass parity
+; and actual assembly addresses; collection cells accumulate until close.
+materializedRecord
+	movea.l a5, a0
+	movea.l a6, a1
+	jsr materialized.validate
+	bne.w invalid
+	moveq #0, d0
+	move.b materialized.Record.Action(a5), d0
+	cmpi.l #materialized.COLLECTION_OPEN, d0
+	beq.w materializedCollectionOpen
+	moveq #0, d7
+	move.w State.Depth(a3), d7
+	beq.w invalid
+	subq.l #1, d7
+	mulu.w #SLOT_BYTES, d7
+	lea SLOTS(a3), a1
+	adda.w d7, a1
+	tst.w Slot.Materialized(a1)
+	beq.w invalid
+	moveq #0, d1
+	move.w materialized.Record.Label(a5), d1
+	cmpi.l #materialized.ANONYMOUS, d1
+	bne.w markerNamed
+	moveq #-1, d1
+markerNamed
+	cmp.l Slot.Label(a1), d1
+	bne.w invalid
+	move.l a5, State.PendingHeader(a3)
+	movea.l a1, a5
+	cmpi.l #materialized.ITERATION_OPEN, d0
+	beq.w materializedIterationOpen
+	cmpi.l #materialized.ITERATION_CLOSE, d0
+	beq.w materializedIterationClose
+	bra.w materializedCollectionClose
+materializedCollectionOpen
+	moveq #0, d7
+	move.w State.Depth(a3), d7
+	cmpi.l #LIMIT, d7
+	bhs.w invalid
+	tst.l materialized.Record.Index(a5)
+	bne.w invalid
+	move.l a5, State.PendingHeader(a3)
+	bsr.w openObservation
+	bne.w invalid
+	mulu.w #SLOT_BYTES, d7
+	lea SLOTS(a3), a1
+	adda.w d7, a1
+	move.w #1, Slot.Materialized(a1)
+	clr.w Slot.IterationActive(a1)
+	move.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a1)
+	clr.l Slot.ScopeGroup(a1)
+	clr.l Slot.Index(a1)
+	clr.l Slot.Iterations(a1)
+	clr.l Slot.RecordCells+memory.Block.Used(a1)
+	move.l State.PendingTrace(a3), Slot.Trace(a1)
+	move.l State.PendingTrace(a3), Slot.CollectionTrace(a1)
+	moveq #0, d1
+	move.w materialized.Record.Label(a5), d1
+	cmpi.l #materialized.ANONYMOUS, d1
+	bne.w materializedLabel
+	moveq #-1, d1
+materializedLabel
+	move.l d1, Slot.Label(a1)
+	addq.w #1, State.Depth(a3)
+	bra.w materializedConsumed
+materializedIterationOpen
+	tst.w Slot.IterationActive(a5)
+	bne.w invalid
+	movea.l State.PendingHeader(a3), a0
+	move.l materialized.Record.Index(a0), d0
+	cmp.l Slot.Iterations(a5), d0
+	bne.w invalid
+	cmpi.l #MAX_ITERATIONS, d0
+	bhs.w invalid
+	bsr.w openObservation
+	bne.w invalid
+	move.l State.PendingTrace(a3), Slot.Trace(a5)
+	move.l State.PendingHeader(a3), Slot.Header(a5)
+	move.l #1, Slot.Remaining(a5)
+	clr.l Slot.Index(a5)
+	movea.l a5, a1
+	bsr.w openScope
+	bne.w invalid
+	move.w #1, Slot.IterationActive(a5)
+	bra.w materializedConsumed
+materializedIterationClose
+	tst.w Slot.IterationActive(a5)
+	beq.w invalid
+	movea.l State.PendingHeader(a3), a0
+	move.l materialized.Record.Index(a0), d0
+	cmp.l Slot.Iterations(a5), d0
+	bne.w invalid
+	bsr.w captureScope
+	bne.w invalid
+	bsr.w restoreScope
+	bne.w invalid
+	moveq #1, d1
+	move.l Slot.Trace(a5), d2
+	bsr.w finishObservation
+	bne.w invalid
+	clr.w Slot.IterationActive(a5)
+	addq.l #1, Slot.Iterations(a5)
+	move.l Slot.Iterations(a5), Slot.Index(a5)
+	move.l Slot.CollectionTrace(a5), Slot.Trace(a5)
+	bra.w materializedConsumed
+materializedCollectionClose
+	tst.w Slot.IterationActive(a5)
+	bne.w invalid
+	movea.l State.PendingHeader(a3), a0
+	move.l materialized.Record.Index(a0), d0
+	cmp.l Slot.Iterations(a5), d0
+	bne.w invalid
+	tst.l Slot.Label(a5)
+	bmi.w materializedAnonymous
+	movea.l Slot.RecordCells+memory.Block.Pointer(a5), a1
+	move.l Slot.RecordCells+memory.Block.Used(a5), d1
+	move.l Slot.Iterations(a5), d0
+	movea.l package.Context.Owner(a2), a0
+	jsr records.appendList
+	bne.w invalid
+	move.l Slot.Label(a5), d1
+	bsr.w publishCollection
+	bne.w invalid
+materializedAnonymous
+	bsr.w closeObservation
+	bne.w invalid
+	subq.w #1, State.Depth(a3)
+materializedConsumed
+	movea.l a4, a0
+	bra.w consumed
+
 ordinaryExtent
 	move.l a4, d0
 	sub.l a5, d0
@@ -700,6 +839,11 @@ restore
 	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a5)
 	bne.w restore
 restoreScoped
+	tst.w Slot.Materialized(a5)
+	beq.w restoreActive
+	tst.w Slot.IterationActive(a5)
+	beq.w restore
+restoreActive
 	bsr.w restoreScope
 	bra.w restore
 restored
@@ -759,6 +903,8 @@ line
 	adda.l d0, a4
 	cmpa.l a6, a4
 	bhi.w bad
+	cmpi.b #materialized.TOKEN, materialized.Record.Kind(a0)
+	beq.w materializedAdvance
 	movea.l a2, a1
 	move.l package.Header.LoopPlanBytes(a2), d1
 	adda.l package.Header.LoopPlan(a2), a1
@@ -771,6 +917,7 @@ line
 	beq.w unsupported
 	cmpi.l #abi.PRVM_LOOP_BWHILE, d0
 	beq.w unsupported
+materializedAdvance
 	movea.l a4, a0
 	bra.w line
 unsupported
@@ -855,6 +1002,8 @@ finished
 
 ; A1=new loop slot,A3=state. Initialize replay/path identity; others kept.
 initializeSlot	.block
+	clr.w Slot.Materialized(a1)
+	clr.w Slot.IterationActive(a1)
 	move.l State.PendingHeader(a3), Slot.Header(a1)
 	move.l State.PendingKind(a3), Slot.Kind(a1)
 	move.l State.PendingTrace(a3), Slot.Trace(a1)

@@ -547,7 +547,7 @@ exportBindings	.block
 ; declaration owners are known. Unknown/mutable prefixes retain possible
 ; owners; differing possibilities reject only if the proxy becomes reachable.
 ; D0/CCR=status; other registers preserved. No borrowed pointer is retained.
-indexBindingOwners .block
+indexBindingOwners	.block
 	movem.l d1/a0-a4, -(sp)
 	moveq #0, d1
 	move.w layout.State.Count(a0), d1
@@ -585,7 +585,42 @@ done
 	movem.l (sp)+, d1/a0-a4
 	tst.l d0
 	rts
-	.bend ; indexBindingOwners
+	.bend  ; indexBindingOwners
+
+; A0=bound scoped-loop header,A1=scope. Declare its collection once, even
+; when no iterations are selected. D0/CCR=status,D1=label or $ffff.
+materializedCollection	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	move.l #source.MAX_LINE, d0
+	bsr.w normalizeLabel
+	bne.w done
+	moveq #0, d0
+	move.b source.RecordHeader.Length(a0), d0
+	cmpi.l #9, d0
+	blo.w bad
+	lea source.RECORD_HEADER_BYTES(a0), a0
+	move.l #$ffff, d1
+	cmpi.b #1, source.NameToken.Kind(a0)
+	bhi.w good
+	cmpi.b #5, source.DECLARATION_MARKER(a0)
+	bne.w good
+	bsr.w declare
+	bne.w done
+	moveq #0, d1
+	move.w source.NameToken.Id(a0), d1
+	andi.w #$ffff-records.LABEL_VALUE, records.Entry.Flags(a3)
+	ori.w #records.COMPOUND_LABEL, records.Entry.Flags(a3)
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; materializedCollection
 
 ; A0/D0=full value spelling,A1=scope,D1=bound full origin ID.
 ; Capture earlier declared value prefixes longest first. Entire ordinary name
@@ -3587,7 +3622,7 @@ resolveTemplate	.block
 	.pub
 ; A0=numeric writer record,A1=scope. D0=existing shared scope KEY_* role;
 ; other registers preserved. Read-only: reuse the normal directive resolver.
-statementRole .block
+statementRole	.block
 	movem.l d1-d3/a0-a2/a6, -(sp)
 	movea.l a1, a6
 	moveq #0, d1
@@ -3624,7 +3659,7 @@ absent
 done
 	movem.l (sp)+, d1-d3/a0-a2/a6
 	rts
-	.bend ; statementRole
+	.bend  ; statementRole
 	.priv
 	.priv
 Words

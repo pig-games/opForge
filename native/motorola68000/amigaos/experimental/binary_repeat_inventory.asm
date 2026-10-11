@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_materialized_scope as materialized
 	.use prvm.amigaos.packed_branch as branch
 	.use prvm.amigaos.packed_loop as parser
 	.use prvm.amigaos.abi as abi
@@ -51,6 +52,14 @@ Reserved	.word ?
 FRAME_BYTES = Frame.Reserved+2
 FRAME_SHIFT = 3
 DEPTH_LIMIT = 16
+MaterializedFrame	.struct
+Label	.word ?
+Active	.word ?
+Index	.long ?
+OwnerDepth	.word ?
+Padding	.word ?
+.endstruct
+MATERIALIZED_FRAME_BYTES = MaterializedFrame.Padding+2
 State	.struct
 Declarations	.res memory.Block.Used+4
 Owners	.res memory.Block.Used+4
@@ -65,8 +74,11 @@ Depth	.word ?
 BranchDepth	.word ?
 BranchBase	.word ?
 Frames	.res DEPTH_LIMIT*FRAME_BYTES
+CollectionDepth	.word ?
+CollectionPadding	.word ?
+Collections	.res DEPTH_LIMIT*MATERIALIZED_FRAME_BYTES
 	.endstruct
-STATE_BYTES = State.Frames+DEPTH_LIMIT*FRAME_BYTES
+STATE_BYTES = State.Collections+DEPTH_LIMIT*MATERIALIZED_FRAME_BYTES
 	.section code, kind=code
 ; A0=state,A1=compiled records,D0=record bytes,A2=context,A3=MemberKeys.
 ; D0/CCR=status; other registers preserved. Build once after lexical binding.
@@ -84,6 +96,7 @@ prepare	.block
 	clr.l State.Globals(a6)
 	clr.w State.Current(a6)
 	clr.w State.Depth(a6)
+	clr.w State.CollectionDepth(a6)
 	clr.w State.BranchDepth(a6)
 	clr.w State.BranchBase(a6)
 	clr.l State.Owners+memory.Block.Used(a6)
@@ -108,6 +121,10 @@ scan
 	bhi.w bad
 	btst #source.FLAG_OMIT_BIT, PackedRecord.Flags(a4)
 	bne.w next
+	cmpi.w #materialized.Record.Kind+1, d4
+	blo.w next
+	cmpi.b #materialized.TOKEN, materialized.Record.Kind(a4)
+	beq.w materializedRecord
 	cmpi.w #PackedRecord.Rhs, d4
 	blo.w next
 	bsr.w branchDepth
@@ -177,6 +194,78 @@ owner
 	move.w d6, State.Current(a6)
 	move.w State.BranchDepth(a6), State.BranchBase(a6)
 	bra.w next
+materializedRecord
+	movea.l a4, a0
+	movea.l a5, a1
+	jsr materialized.validate
+	bne.w bad
+	moveq #0, d0
+	move.b materialized.Record.Action(a4), d0
+	moveq #0, d6
+	move.w State.CollectionDepth(a6), d6
+	cmpi.l #materialized.COLLECTION_OPEN, d0
+	beq.w materializedCollection
+	tst.l d6
+	beq.w bad
+	subq.l #1, d6
+	mulu.w #MATERIALIZED_FRAME_BYTES, d6
+	lea State.Collections(a6), a3
+	adda.w d6, a3
+	move.w materialized.Record.Label(a4), d1
+	cmp.w MaterializedFrame.Label(a3), d1
+	bne.w bad
+	move.l materialized.Record.Index(a4), d1
+	cmp.l MaterializedFrame.Index(a3), d1
+	bne.w bad
+	moveq #0, d6
+	move.w MaterializedFrame.OwnerDepth(a3), d6
+	cmpi.l #materialized.ITERATION_OPEN, d0
+	beq.w materializedOwner
+	cmpi.l #materialized.ITERATION_CLOSE, d0
+	beq.w materializedClosing
+	tst.w MaterializedFrame.Active(a3)
+	bne.w bad
+	cmp.w State.Depth(a6), d6
+	bne.w bad
+	subq.w #1, State.CollectionDepth(a6)
+	bra.w next
+materializedOwner
+	tst.w MaterializedFrame.Active(a3)
+	bne.w bad
+	cmp.w State.Depth(a6), d6
+	bne.w bad
+	move.w #1, MaterializedFrame.Active(a3)
+	moveq #abi.PRVM_LOOP_BWHILE, d5
+	bra.w frameReady
+materializedClosing
+	tst.w MaterializedFrame.Active(a3)
+	beq.w bad
+	addq.w #1, d6
+	cmp.w State.Depth(a6), d6
+	bne.w bad
+	clr.w MaterializedFrame.Active(a3)
+	addq.l #1, MaterializedFrame.Index(a3)
+	moveq #abi.PRVM_LOOP_ENDWHILE, d0
+	bra.w closing
+materializedCollection
+	cmpi.w #DEPTH_LIMIT, d6
+	bhs.w bad
+	mulu.w #MATERIALIZED_FRAME_BYTES, d6
+	lea State.Collections(a6), a3
+	adda.w d6, a3
+	move.w materialized.Record.Label(a4), MaterializedFrame.Label(a3)
+	clr.w MaterializedFrame.Active(a3)
+	clr.l MaterializedFrame.Index(a3)
+	move.w State.Depth(a6), MaterializedFrame.OwnerDepth(a3)
+	addq.w #1, State.CollectionDepth(a6)
+	moveq #0, d1
+	move.w materialized.Record.Label(a4), d1
+	cmpi.l #materialized.ANONYMOUS, d1
+	beq.w next
+	bsr.w bindCollectionId
+	bne.w done
+	bra.w next
+
 closing
 	moveq #0, d6
 	move.w State.Depth(a6), d6
@@ -321,6 +410,8 @@ next
 	adda.w d4, a4
 	bra.w scan
 scanned
+	tst.w State.CollectionDepth(a6)
+	bne.w bad
 	tst.w State.Depth(a6)
 	bne.w bad
 	tst.w State.BranchDepth(a6)
@@ -404,11 +495,31 @@ bindCollection	.block
 	cmpi.b #abi.PRVM_TOKEN_KIND_COLON, PackedRecord.Marker(a4)
 	bne.w good
 	tst.b PackedRecord.NameQualifier(a4)
-	bne.w bad
+	bne.w invalid
 	bsr.w declarationMap
 	bne.w done
 	moveq #0, d1
 	move.w PackedRecord.NameId(a4), d1
+	bsr.w bindCollectionId
+	bra.w done
+good
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+invalid
+	moveq #1, d0
+	bra.w done
+	.bend  ; bindCollection
+
+; D1=collection identity; register the same direct inventory ownership as loops.
+bindCollectionId	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	tst.w State.Current(a6)
+	beq.w good
+	bsr.w declarationMap
+	bne.w done
 	cmp.l State.Symbols(a6), d1
 	bhs.w bad
 	lsl.l #DECL_SHIFT, d1
@@ -437,7 +548,7 @@ done
 	movem.l (sp)+, d1-d2/a0-a1
 	tst.l d0
 	rts
-	.bend  ; bindCollection
+	.bend  ; bindCollectionId
 ; A4=bounded compiled record,D4=extent,A2=context,A6=inventory.
 ; Track shared PRVM branch ancestry, without evaluating expressions.
 ; An enclosing branch is outside a newly opened scoped owner's branch base.

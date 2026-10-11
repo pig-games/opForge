@@ -5,6 +5,7 @@
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_materialized_scope as materialized
 	.pub
 Entry	.struct
 Name	.long ?
@@ -79,6 +80,14 @@ line
 	movea.l a4, a0
 	bra.w line
 tokens
+	cmpa.l a4, a0
+	beq.w bad
+	move.l a4, d0
+	sub.l a0, d0
+	cmpi.l #source.RECORD_HEADER_BYTES, d0
+	beq.w emptyRecord
+	cmpi.b #materialized.TOKEN, materialized.Record.Kind(a0)
+	beq.w materializedRecord
 	addq.l #4, a0
 token
 	cmpa.l a4, a0
@@ -131,6 +140,22 @@ literalPayload
 	blo.w bad
 	adda.l d0, a0
 	bra.w token
+materializedRecord
+	movea.l a4, a1
+	jsr materialized.validate
+	bne.w bad
+	moveq #0, d0
+	move.w materialized.Record.Label(a0), d0
+	cmpi.l #materialized.ANONYMOUS, d0
+	beq.w markerDone
+	bsr.w identity
+	bne.w bad
+	move.w d1, materialized.Record.Label(a0)
+markerDone
+emptyRecord
+	movea.l a4, a0
+	bra.w line
+
 name
 	move.l a4, d0
 	sub.l a0, d0

@@ -43,11 +43,12 @@ aliases and dynamic selection between different physical owners remain unqualifi
 Expanded repetition
 with active acquisition has nine positive behaviors on each package (18 cases
 total): 17 completed in the original matrix and the pre-START stall passed a
-fresh retry. That matrix is separate from the composed-member controls. A named-collection
-candidate passes twelve fresh exact controls, including colonless and explicit-colon
-labels; defensive publication/marker review is ongoing before its checkpoint. Actual assembly-state/
+fresh retry. That matrix is separate from the composed-member controls. Named acquired collections pass twelve fresh exact controls, including colonless
+and explicit-colon labels. The final candidate checks bounded batch publication
+and independently validates marker nesting and balance in inventory and runtime. Actual assembly-state/
 PC-dependent acquisition also remains pending. The identified proxy-repair image
-is 657,484 bytes with 681,816 bytes linked static reservation; neither is peak RAM.
+is 657,484 bytes with 681,816 bytes linked static reservation. The subsequent
+collection image is 659,608 bytes with 684,524 bytes linked static reservation; neither is peak RAM.
 
 The latest full self-host proof is BS35, source manifest `54fb484dd0022ab5`:
 121 mapped inputs (1,780,288 bytes), with exact bootstrap/native/live Rust equality

@@ -337,3 +337,15 @@ and two malformed-name rejection controls pass freshly across 68020 and 6502.
 Different possible physical owners remain an explicit reachable-use rejection
 until selection can run against the actual assembly state. These focused results
 are not a current-source full self-host or peak-memory qualification.
+
+The following acquired-collection checkpoint uses the same 11,592-byte release
+control (1,200 macro calls), FS-UAE 68020/10 MiB and telemetry disabled. With host
+builds paused, a fresh paired control takes 26.817550 seconds before and
+26.851802 seconds after (+0.13%, within single-sample noise); both complete and
+match the entire live Rust output. This measures unchanged-path overhead, not
+speedup of a formerly rejected collection case. The final image is 659,608 bytes,
+linked static reservation 684,524 bytes, SHA-256
+`831e4c1c8700d5ca3ac22a326cc49251285c58ea32d1f4248574303f7b0e2cdc`.
+Against the conservative-owner checkpoint this adds 1,984 code bytes and 724 BSS
+bytes, with unchanged package data. Twelve fresh exact collection controls pass
+across both packages. Peak runtime heap and a new full self-host remain unmeasured.

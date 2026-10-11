@@ -13,6 +13,22 @@ struct Case {
 
 const CASES: &[Case] = &[
     Case {
+        name: "explicit-colon-collection",
+        source: r#".module main
+.cpu @CPU@
+empty: .bfor 0
+.include "missing.inc"
+.endfor
+items: .bfor 2
+.include "item.inc"
+.endfor
+.byte .len(empty),.len(items),items[0].value,items[1].value
+.endmodule
+"#,
+        support: &[("item.inc", ".byte 7\nvalue .const 9\n")],
+        expected: &[7, 7, 0, 2, 9, 9],
+    },
+    Case {
         name: "counted-and-iterable-members",
         source: r#".module main
 .cpu @CPU@

@@ -582,7 +582,10 @@ Notes:
   including Hunk relocations. Plain dotted record aliases use shared numeric
   occurrence bindings. Active composed imported members have focused coverage for
   known immutable compounds, forward fields and mutable compound kinds.
-  General dynamic ownership and forward compound aliases remain unqualified. See the [native frontend
+  General dynamic ownership and forward compound aliases remain unqualified.
+  Active includes within preparation-known named loops have focused coverage for
+  empty results, iterable/count/while snapshots and nested acquired collections;
+  PC-dependent acquisition remains a separate gap. See the [native frontend
   boundary](plans/compact-frontend-vm-boundary.md).
   Anonymous and labeled `.bwhile` also have focused native coverage. Full
   `.bwhile` parity, mapped scoped replay and general forward-value/layout

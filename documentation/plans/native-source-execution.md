@@ -1,7 +1,8 @@
 # Resumable native source execution
 
-Status: proposed implementation sequence within the active opcore parity work.
-The interfaces below are private design targets, not implemented capabilities.
+Status: named preparation-known acquisition has focused native proof; resumable
+assembly lifecycle remains proposed. The session interfaces below are private
+design targets, not implemented capabilities.
 The [completion plan](native-runtime-reset.md) records current evidence and completion order.
 
 ## Responsibility boundary
@@ -61,8 +62,12 @@ source layout. Centralize their named fields, actions and bounds validation.
 Inventory and repetition/snapshot owners consume them; source control schedules
 them without implementing another collection system. Publish each bounded record
 batch once. Already expanded bodies must not be repeated again during assembly.
-Initially, preparation-known acquisition can use these boundaries; actual
-assembly-dependent guards require the session above.
+Preparation-known acquisition now uses these boundaries. Twelve fresh exact
+controls cover counted/list/while/empty/nested collections, macro/segment includes
+and colonless/explicit-colon labels on both 68020 and 6502 packages. Inventory and
+runtime independently validate nesting, labels, iteration indices and balanced
+boundaries. Initializers compile into full scratch storage before a bounded batch
+copy. Actual assembly-dependent guards still require the session above.
 
 ## PC and replay semantics
 
@@ -95,8 +100,8 @@ negative fresh native proof for the replacement.
 
 ## Implementation and evidence
 
-1. Preserve current include checkpoint, then complete composed binding and named
-   acquisition collections using existing expression/repetition owners.
+1. Preserve the focused composed-binding and named-acquisition checkpoints;
+   dynamic physical binding ownership remains a source-session gap.
 2. Extract lifecycle and offset traversal with unchanged frozen-input behavior.
    Force small allocation capacities to exercise growth with live nested controls.
 3. Publish actual assembly context while retaining frontend/captures until seal.

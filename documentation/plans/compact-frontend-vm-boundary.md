@@ -78,8 +78,12 @@ compound. A common possible block owner is indexed once; differing owners reject
 only when reached. Eighteen positive controls and two rejection controls pass
 freshly across both packages, including forward fields and mutable-kind changes.
 Forward compound aliases and dynamic selection between different physical owners
-remain unqualified. A named acquired-collection candidate passes twelve fresh
-exact controls; defensive publication and marker review continues. PC-dependent
+remain unqualified. Named acquired collections pass twelve fresh exact controls, including empty,
+counted/iterable/while snapshots, nesting, definition-relative macro/segment
+includes and colonless/explicit-colon labels. Private numeric boundaries publish
+complete bounded batches; inventory and repetition owners independently validate
+label/index/nesting/balance and accumulate actual assembly address records without
+rerunning already materialized bodies. PC-dependent
 acquisition and graph-changing includes remain unqualified; the
 [source-session design](native-source-execution.md) addresses the pending structural
 work. These focused results do not establish complete opcore or a new self-host.

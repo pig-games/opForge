@@ -6,6 +6,7 @@
 	.use tkvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_state as state
 	.use prvm.amigaos.abi as abi
+	.use prvm.amigaos.packed_text as text
 	.pub
 
 STATUS_OK = 0
@@ -41,16 +42,16 @@ TOKEN_WIDE_NUMBER = abi.PRVM_TOKEN_KIND_WIDE_NUMBER
 NUMBER_BYTES = abi.PRVM_NUMBER_BYTES
 WIDE_NUMBER_BYTES = abi.PRVM_WIDE_NUMBER_BYTES
 ; Shared packed record and typed plan-trailer layouts; no alignment padding.
-RecordHeader .struct
-Length .byte ?
-Flags .byte ?
-Line .word ?
+RecordHeader	.struct
+Length	.byte ?
+Flags	.byte ?
+Line	.word ?
 .endstruct
 RECORD_HEADER_BYTES = RecordHeader.Line+2
-PlanToken .struct
-Kind .byte ?
-Handle .long ?
-Bytes .byte ?
+PlanToken	.struct
+Kind	.byte ?
+Handle	.long ?
+Bytes	.byte ?
 .endstruct
 PLAN_TOKEN_BYTES = PlanToken.Bytes+1
 NumberToken	.struct
@@ -88,6 +89,7 @@ BIND_ROLE_MEMBER_NAME = 5
 BIND_ROLE_INLINE_HEAD = 6
 BIND_ROLE_STATE_ARGUMENT = 7
 BIND_ROLE_CALL_NAME = 8
+BIND_ROLE_TEXT_NAME = 9
 TOKEN_OPEN_BRACE = 12
 TOKEN_OPEN_PAREN = 14
 TOKEN_COMMA = 4
@@ -114,8 +116,10 @@ HeadToken	.word ?  ; physical head selected by PRVM; Count means values with no 
 MemberBinder	.long ?  ; optional contextual package-member binding callback
 StatePlan	.long ?  ; optional package state plan for first-operand name binding
 NextKind	.long ?  ; raw lookahead for contextual binder; $ffff at the line end
+TextPlan	.long ?  ; compiled shared text grammar
+TextPlanBytes	.long ?
 	.endstruct
-FRAME_BYTES = Frame.NextKind+4
+FRAME_BYTES = Frame.TextPlanBytes+4
 
 Token	.struct
 Kind	.word ?
@@ -387,6 +391,8 @@ bindName
 	moveq #0, d2
 	tst.l d0
 	beq.w widthOperand
+	cmpi.l #3, d0
+	beq.w textIdentity
 	moveq #BIND_ROLE_PACKAGE_NAME, d2
 	cmpi.l #2, d0
 	bne.w restoreLength
@@ -412,6 +418,9 @@ widthOperand
 	beq.w restoreLength
 widthIdentity
 	moveq #BIND_ROLE_WIDTH, d2
+	bra.w restoreLength
+textIdentity
+	moveq #BIND_ROLE_TEXT_NAME, d2
 restoreLength
 	move.l d6, d0
 callBinder
@@ -545,6 +554,23 @@ packageNameOperand	.block
 	move.l Frame.Count(a5), d1
 	cmp.w Frame.HeadToken(a5), d1
 	beq.w absent
+	move.l Frame.TextPlan(a5), d0
+	beq.w ordinaryNameOperand
+	movem.l a0, -(sp)
+	movea.l d0, a1
+	move.l Frame.TextPlanBytes(a5), d1
+	movea.l Frame.Output(a5), a0
+	move.l a3, d0
+	sub.l a0, d0
+	jsr text.nameRole
+	movem.l (sp)+, a0
+	tst.l d0
+	bne.w absent
+	tst.l d1
+	beq.w ordinaryNameOperand
+	moveq #3, d0
+	bra.w done
+ordinaryNameOperand
 	moveq #0, d2
 	move.w Frame.NameDirective(a5), d2
 	bsr.w nameOperand

@@ -84,6 +84,14 @@ changes from 27.064863 to 26.944213 seconds (-0.45%, one sample), with 568 more
 linked static bytes. Frozen session pins remain; actual-state acquisition,
 relocatable source views and peak heap are not yet qualified.
 
+The next recovery checkpoint saves record-relative loop positions and refreshed
+owner views, with twelve fresh exact collection cases through its isolated BS35
+component probe. Production matrix and paired timing are pending. It also saves
+unfinished BS36 text-name/capsule work and native declaration-owner changes.
+BS36 text emission/provider integration has not landed. A new deferred-active
+longer-declaration control fails in Rust; that repair comes before corresponding
+native parity. No new full self-host or complete opcore claim is made.
+
 VM-contract consolidation remains a separate pending design.
 Consolidate each VM's current capabilities into its own
 v1 contract, remove superseded formats and native VM version fields/checks/dispatch,

@@ -51,8 +51,8 @@ self-host are unmeasured. These checks do not qualify actual-state acquisition.
 
 `binary_symbol_storage` now owns Values, Defined, SectionIds and canonical
 member keys independently. Growth stages only required replacement blocks,
-including an allocated typed-kinds table. It reserves all storage before copying
-and committing views and Count; failure releases staged blocks and preserves the
+including an allocated typed-kinds table. It stages allocations and copies before
+committing views and Count; failure releases staged blocks and preserves the
 published context. Existing cells survive and only appended bytes are cleared.
 Kinds remain lazy when absent. Preparation-exported keys and kinds can precede
 the first scalar allocation. Count remains bounded at 65,536. A caller-provided
@@ -70,6 +70,19 @@ expected malformed-input rejections. The unchanged release control takes
 reservation grows by 568 bytes. Peak heap and current full self-host are
 unmeasured. Preparation retention and incremental inventory/binding publication
 remain necessary before actual-state acquisition can use these growing buffers.
+
+Retained repetition headers and bodies now use offsets, including the pending
+header. The PRVM operand was already header-relative. Guard declarations are
+reacquired through the stable inventory owner; transient dependency frames are
+reconstructed per call. Resume refreshes borrowed views after the existing
+frozen-frame checks. Active header spans and body/frontier limits are checked
+before publication. The isolated BS35 probe passes twelve fresh collection cases
+on both packages, including nested rebasing, truncated headers, overflow/null
+bases, unchanged views after rejected refresh and one-record lifecycle traversal.
+The production candidate host-assembles at 663,456 image bytes and 688,164
+linked static bytes (504 more than the matching storage checkpoint). Its separate
+native matrix, paired release timing and peak heap remain pending. No incremental inventory or source acquisition
+is enabled, and the public session still rejects a changed record allocation.
 
 Separate incremental binding publication from final source sealing. Already
 consumed references must not be redirected by later import/ancestor rewriting.
@@ -156,3 +169,35 @@ release time separately from telemetry. Instrument published records, cursor
 resumes, sizing rounds, captures and peak owned bytes through existing macros.
 Retained captures and live context overlap until sealing, so heap growth needs
 actual measurement; image reservation alone cannot establish peak memory.
+
+### Paused text integration checkpoint (2026-10-11)
+
+The bounded text owner (`3377a53d`) and shared packed text grammar
+(`8d5cff22`) have separate fresh native component proofs. They do not establish
+compact CLI text-directive parity. The current recovery work migrates the capsule
+to BS36, appending TextPlan at byte 228 and TextPlanBytes at byte 232, for a
+236-byte header. BS35 consumers and generated packages are incompatible.
+Tokenizer name roles come from that descriptor. Frontend preparation registers
+global ASCII/PETSCII source-origin IDs and normalizes encoding names once using
+UTF-8 lossy decoding, Unicode trimming and ASCII lowercase. This normalizer has
+host structural assembly evidence only; its native behavior is not qualified.
+
+Pending work: relay the frontend numeric builtin IDs to assembly; retain every
+standalone decoded string length until encoding determines scalar versus raw
+aggregate emission; execute validated text spans; rebuild definitions on every
+complete source replay, reset selection only on module entry, and release state
+on every exit. String-expression preparation still erases decoded bytes.
+The existing shared ExprVM PushStringLiteral opcode (0x13, little-endian u16
+length and decoded bytes) and Rust eval_string_literal context provide the
+contract for native runtime encoding; no replacement opcode is needed.
+Neither that native provider nor assembly/emitter integration has landed.
+
+### Paused binding ownership checkpoint
+
+The unconditional longest-declaration repair and schema-only code pruning are
+saved with host assembly evidence, but have no fresh native proof yet. A new
+positive Rust control fails when a forward-enabled conditional introduces the
+longer dotted declaration only on a later pass. Its expected output remains
+`[22, 66]`; repair Rust execution/replay ownership before qualifying that native
+case. This does not invalidate the separately qualified unconditional Rust
+member/schema repair. The new control remains failing in this recovery checkpoint.

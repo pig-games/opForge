@@ -7,7 +7,8 @@ use package::{
     decode_encoding_program, inline_head_policy_program, macro_descriptor_program,
     macro_fragment_program, macro_spelling_program, packed_branch_program, packed_data_program,
     packed_declaration_program, packed_file_program, packed_loop_program,
-    packed_macro_call_program, packed_metadata_program, validate_fixup_program, EncodingStep,
+    packed_macro_call_program, packed_metadata_program, packed_text_program,
+    validate_fixup_program, EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -17,7 +18,9 @@ use vm::binary_source_package::{
 use vm::runtime_model_core::RuntimeModelCore;
 
 const MISSING: u16 = u16::MAX;
-const HEADER: usize = 228;
+const TEXT_PLAN: usize = 228;
+const TEXT_PLAN_BYTES: usize = 232;
+pub(crate) const HEADER: usize = TEXT_PLAN_BYTES + 4;
 const BRANCH_PLAN: usize = 220;
 const BRANCH_PLAN_BYTES: usize = 224;
 pub(crate) const ROW: usize = 44;
@@ -163,7 +166,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS35 block for one resolved package hierarchy.
+/// Prepare a self-contained BS36 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -342,6 +345,28 @@ pub fn prepare_package(
         .iter_mut()
         .zip(["if", "elseif", "else", "endif"])
     {
+        *head = intern(&mut names, spelling)?;
+        bind(
+            &mut dictionary,
+            spelling.into(),
+            *head,
+            0,
+            DictionaryRoleFlags::CONTEXTUAL,
+        )?;
+    }
+    let mut text_heads = [0; package::package::PACKED_TEXT_HEAD_COUNT];
+    for (head, spelling) in text_heads.iter_mut().zip([
+        "enc",
+        "encoding",
+        "encode",
+        "endencode",
+        "cdef",
+        "tdef",
+        "edef",
+        "text",
+        "null",
+        "ptext",
+    ]) {
         *head = intern(&mut names, spelling)?;
         bind(
             &mut dictionary,
@@ -531,7 +556,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS35");
+    out[..4].copy_from_slice(b"BS36");
     set_word(&mut out, 208, builtin_len);
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
@@ -673,6 +698,10 @@ pub fn prepare_package(
     let branch_plan = packed_branch_program(branch_heads);
     out.extend_from_slice(&branch_plan);
     align(&mut out);
+    let text_plan_offset = out.len();
+    let text_plan = packed_text_program(text_heads);
+    out.extend_from_slice(&text_plan);
+    align(&mut out);
     let declaration_plan_offset = out.len();
     let declaration_plan = packed_declaration_program(declaration_heads, repeat_name);
     out.extend_from_slice(&declaration_plan);
@@ -813,6 +842,8 @@ pub fn prepare_package(
         (216, long(loop_plan.len())?),
         (BRANCH_PLAN, long(branch_plan_offset)?),
         (BRANCH_PLAN_BYTES, long(branch_plan.len())?),
+        (TEXT_PLAN, long(text_plan_offset)?),
+        (TEXT_PLAN_BYTES, long(text_plan.len())?),
     ] {
         set_long(&mut out, offset, value);
     }
@@ -1950,7 +1981,7 @@ mod dictionary_role_contract_tests {
         assert_eq!(&unsupported[ROLE_COUNT..], &wire[ROLE_COUNT..]);
 
         let prepared = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&prepared[..4], b"BS35");
+        assert_eq!(&prepared[..4], b"BS36");
         let rows = u32::from_be_bytes(prepared[16..20].try_into().unwrap()) as usize;
         let count = u32::from_be_bytes(prepared[20..24].try_into().unwrap()) as usize;
         assert!(

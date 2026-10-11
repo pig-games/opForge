@@ -85,18 +85,29 @@ done
 	.bend  ; append
 ; A0=State,A1=Entry array,D0=source base,D1=count. Finalize once after binding.
 ; Remove plans with resolved full declarations; remap bases via Entry.Target.
+; A longest unconditional declaration fixes binding before its value kind exists.
+; Compact that plan to one candidate; dormant conditional candidates stay deferred.
 ; D0/CCR=status; others preserved. Member IDs retain their bare global identity.
+FinalizeFrame	.struct
+Output	.long ?
+.endstruct
+FINALIZE_FRAME_BYTES = FinalizeFrame.Output+4
 finalize	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #FINALIZE_FRAME_BYTES, sp
 	movea.l a0, a6
 	movea.l a1, a5
 	move.l d0, d6
 	move.l d1, d7
+	move.l d6, d5
+	add.l d7, d5
+	bcs.w invalid
 	movea.l memory.Block.Pointer(a6), a0
 	movea.l a0, a3
 	movea.l a0, a4
 	adda.l memory.Block.Used(a6), a4
 plan
+	moveq #0, d2
 	cmpa.l a4, a0
 	beq.w complete
 	moveq #0, d0
@@ -104,70 +115,151 @@ plan
 	bsr.w entry
 	bne.w done
 	btst #0, records.Entry.Flags+1(a1)
-	bne.w skip
+	bne.w discard
 	moveq #0, d0
 	move.w records.Entry.Target(a1), d0
 	bsr.w entry
 	bne.w done
 	btst #0, records.Entry.Flags+1(a1)
-	bne.w skip
-	move.l layout.Plan.Bytes(a0), d5
+	bne.w discard
+shape
+	move.l layout.Plan.Bytes(a0), d1
+	cmpi.l #PLAN_BYTES+CANDIDATE_BYTES+2, d1
+	blo.w invalid
 	movea.l a0, a2
-	adda.l d5, a2
+	adda.l d1, a2
+	cmpa.l a4, a2
+	bhi.w invalid
 	moveq #0, d4
 	move.w layout.Plan.CandidateCount(a0), d4
+	beq.w invalid
+	cmpi.l #3, d2  ; discarded full declarations still validate every candidate
+	beq.w selectionReady
+	; zero=alternatives, one=selected first, two=tail validation
+	moveq #0, d0
+	move.w PLAN_BYTES+layout.Candidate.Base(a0), d0
+	bsr.w entry
+	bne.w done
+	moveq #0, d0
+	move.w records.Entry.Target(a1), d0
+	bsr.w entry
+	bne.w done
+	btst #0, records.Entry.Flags+1(a1)
+	beq.w selectionReady
+	move.w records.Entry.Flags(a1), d0
+	andi.w #records.CONDITIONAL_VALUE, d0
+	bne.w selectionReady
+	moveq #1, d2
+selectionReady
+	cmpi.l #3, d2
+	beq.w candidateStart
+	move.l a3, FinalizeFrame.Output(sp)
 	move.w layout.Plan.FullId(a0), (a3)+
 	move.w d4, (a3)+
-	move.l d5, (a3)+
+	move.l d1, (a3)+
+candidateStart
 	adda.w #PLAN_BYTES, a0
 candidate
+	move.l a2, d0
+	sub.l a0, d0
+	cmpi.l #CANDIDATE_BYTES, d0
+	blo.w invalid
 	moveq #0, d0
 	move.w layout.Candidate.Base(a0), d0
 	bsr.w entry
 	bne.w done
-	move.w records.Entry.Target(a1), (a3)+
+	moveq #0, d0
+	move.w records.Entry.Target(a1), d0
+	move.l d0, d1
+	bsr.w entry
+	bne.w done
+	cmpi.l #2, d2
+	bhs.w memberHeader
+	move.w d1, (a3)+
+memberHeader
 	moveq #0, d3
 	move.w layout.Candidate.MemberCount(a0), d3
+	beq.w invalid
+	cmpi.l #MAX_MEMBERS, d3
+	bhi.w invalid
+	cmpi.l #2, d2
+	bhs.w memberBounds
 	move.w d3, (a3)+
+memberBounds
 	adda.w #CANDIDATE_BYTES, a0
+	move.l d3, d0
+	add.l d0, d0
+	add.l a0, d0
+	bcs.w invalid
+	cmp.l a2, d0
+	bhi.w invalid
 member
-	move.w (a0)+, (a3)+
+	moveq #0, d0
+	move.w (a0)+, d0
+	cmp.l d5, d0
+	bhs.w invalid
+	cmpi.l #2, d2
+	bhs.w nextMember
+	move.w d0, (a3)+
+nextMember
 	subq.l #1, d3
 	bne.w member
+	cmpi.l #1, d2
+	bne.w nextCandidate
+	moveq #2, d2
+nextCandidate
 	subq.l #1, d4
 	bne.w candidate
+	cmpa.l a2, a0
+	bne.w invalid
+	cmpi.l #3, d2
+	beq.w nextPlan
+	movea.l FinalizeFrame.Output(sp), a1
+	cmpi.l #2, d2
+	bne.w planBytes
+	move.w #1, layout.Plan.CandidateCount(a1)
+planBytes
+	move.l a3, d0
+	sub.l a1, d0
+	move.l d0, layout.Plan.Bytes(a1)
+nextPlan
 	movea.l a2, a0
 	bra.w plan
-skip
-	adda.l layout.Plan.Bytes(a0), a0
-	bra.w plan
+discard
+	moveq #3, d2
+	bra.w shape
 complete
 	move.l a3, d0
 	sub.l memory.Block.Pointer(a6), d0
 	move.l d0, memory.Block.Used(a6)
 	moveq #0, d0
+	bra.w done
+invalid
+	moveq #1, d0
 done
+	adda.w #FINALIZE_FRAME_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
 	.bend  ; finalize
 
-OwnerIndexFrame .struct
-Defined .long ?
-Entries .long ?
-Committed .word ?
-Ambiguous .word ?
+OwnerIndexFrame	.struct
+Defined	.long ?
+Entries	.long ?
+Committed	.word ?
+Ambiguous	.word ?
 .endstruct
 OWNER_INDEX_FRAME_BYTES = OwnerIndexFrame.Ambiguous+2
 ; A0=finalized State,A1=known values Owner,A2=source-indexed BE16 owner slots,
 ; A3=source-indexed defined cells,A4=source Entry array,D0=base,D1=count.
-; Unknown and mutable prefixes remain possible selections. Immutable scalar
-; prefixes are excluded; an immutable compound ends the candidate search.
+; An unconditional declaration commits ownership regardless of current value
+; kind. Non-declaration snapshots and dormant conditional prefixes retain the
+; conservative possible-owner check; a known immutable compound ends it.
 ; Publish a common possible owner, or AMBIGUOUS_OWNER for selection-time rejection.
 ; Full declarations already won in finalize. A zero owner is a real possibility.
 ; Validate every numeric boundary, including unselected tails. No allocation.
 ; D0/CCR=status; other registers preserved. Run once after declaration indexing.
-indexOwners .block
+indexOwners	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.w #OWNER_INDEX_FRAME_BYTES, sp
 	move.l a3, OwnerIndexFrame.Defined(sp)
@@ -264,6 +356,14 @@ member
 	movea.l OwnerIndexFrame.Entries(sp), a0
 	mulu.w #records.ENTRY_BYTES, d0
 	move.w records.Entry.Flags(a0, d0.l), d2
+	btst #0, d2
+	beq.w dynamicOwner
+	andi.w #records.CONDITIONAL_VALUE, d2
+	bne.w dynamicOwner
+	move.w #1, OwnerIndexFrame.Committed(sp)
+	bra.w possibleOwner
+dynamicOwner
+	move.w records.Entry.Flags(a0, d0.l), d2
 	andi.w #records.MUTABLE, d2
 	bne.w possibleOwner
 	move.l d1, d0
@@ -319,7 +419,7 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; indexOwners
+	.bend  ; indexOwners
 	.priv
 ; D0=source ID,D6=base,D7=count,A5=entries. D0/CCR=status,A1=Entry.
 entry	.block

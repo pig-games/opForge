@@ -56,6 +56,23 @@ prepare	.block
 	rts
 	.bend  ; prepare
 
+; A0=state,A1=current complete records,D0=bytes. Other registers kept.
+; Refresh the record allocation view without resetting groups or iteration
+; cells. The DFS frame is transient and reconstructed for every graph call.
+refresh	.block
+	movem.l d1/a0-a1, -(sp)
+	move.l a1, State.Records(a0)
+	move.l d0, State.RecordBytes(a0)
+	lea State.Graph(a0), a0
+	moveq #graph.FRAME_BYTES/4-1, d1
+clearGraph
+	clr.l (a0)+
+	dbra d1, clearGraph
+	movem.l (sp)+, d1/a0-a1
+	moveq #0, d0
+	rts
+	.bend  ; refresh
+
 ; A0=state. Reset global selected declaration ownership for one source sweep.
 ; D0/CCR=status; other registers preserved. Reuses preparation-owned storage.
 beginGlobal	.block

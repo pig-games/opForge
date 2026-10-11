@@ -8083,6 +8083,9 @@ mod native_iterable_loops;
 #[path = "tests/native_macro_parity.rs"]
 mod native_macro_parity;
 #[cfg(test)]
+#[path = "tests/native_member_owner_controls.rs"]
+mod native_member_owner_controls;
+#[cfg(test)]
 #[path = "tests/native_scoped_layouts.rs"]
 mod native_scoped_layouts;
 #[cfg(test)]

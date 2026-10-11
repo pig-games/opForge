@@ -726,6 +726,18 @@ done
 	.bend  ; indexBranch
 
 	.pub
+; Clear transient DFS borrowed views between complete assembly records.
+; Every graph entry reconstructs these from its stable owner before use.
+; Private states/expression offsets remain owned. D0/CCR=status; others kept.
+discardViews	.block
+	clr.l Base
+	clr.l Limit
+	clr.l Locals
+	clr.l Local
+	moveq #0, d0
+	rts
+	.bend  ; discardViews
+
 ; A1=Context. Discard provisional label/alias and mutable values before a fresh
 ; layout replay. Compile-time constants and incoming parameters are retained.
 ; Incoming compound parameters occupy a retained immutable owner prefix.

@@ -1,4 +1,4 @@
-//! Host-only BS35 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS36 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -36,10 +36,10 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS35")
+        || bytes.get(..4) != Some(b"BS36")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS35 header".into());
+        return Err("invalid BS36 header".into());
     }
     let loop_offset = number(bytes, 212, 4)?;
     let loop_bytes = number(bytes, 216, 4)?;
@@ -86,6 +86,19 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
     {
         return Err("invalid branch plan program".into());
     }
+    let text_offset = number(bytes, super::TEXT_PLAN, 4)?;
+    let text_bytes = number(bytes, super::TEXT_PLAN_BYTES, 4)?;
+    if text_offset < HEADER
+        || text_offset % 2 != 0
+        || text_bytes != package::package::PACKED_TEXT_PROGRAM_BYTES
+        || text_offset
+            .checked_add(text_bytes)
+            .is_none_or(|end| end > number(bytes, 72, 4).unwrap_or(0))
+    {
+        return Err("invalid text plan region".into());
+    }
+    let text = region(bytes, text_offset, text_bytes, 1)?;
+    vm::packed_text_vm::name_role(text, &[]).map_err(|_| "invalid text plan program")?;
     let expression_offset = number(bytes, 200, 4)?;
     let expression_bytes = number(bytes, 204, 4)?;
     if expression_offset < HEADER
@@ -493,7 +506,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS35", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS36", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

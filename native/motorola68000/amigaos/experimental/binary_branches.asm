@@ -50,6 +50,14 @@ beginPass	.block
 	rts
 	.bend  ; beginPass
 
+; A0=state,A1=current records. Trace rows retain offsets, never source views.
+; Other registers preserved; D0/CCR=status.
+refresh	.block
+	move.l a1, State.Records(a0)
+	moveq #0, d0
+	rts
+	.bend  ; refresh
+
 ; A0=state. D0/CCR=nonzero if bounded sizing replay is still needed.
 ; Other registers preserved; final emission requires a stable decision trace.
 endPass	.block

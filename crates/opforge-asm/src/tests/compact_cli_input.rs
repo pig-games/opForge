@@ -403,7 +403,7 @@ fn compact_cli_input_defaults_and_argument_integration() {
             "--help",
             "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY",
         ),
-        ("version-success", "-V", "opForge compact native | BS35"),
+        ("version-success", "-V", "opForge compact native | BS36"),
     ] {
         run(
             name,

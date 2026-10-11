@@ -23,7 +23,7 @@ LIMIT = 16
 MAX_ITERATIONS = 65536
 SNAPSHOT_ABSOLUTE = 4
 Slot	.struct
-Body	.long ?
+Body	.long ?  ; offset from current SourceBase
 Remaining	.long ?
 Iterable	.long ?  ; zero for counted loops, otherwise immutable descriptor kind
 Descriptor	.long ?
@@ -35,7 +35,7 @@ OldKind	.long ?
 OldDefined	.byte ?
 OldSection	.byte ?
 Padding	.word ?
-Header	.long ?
+Header	.long ?  ; offset from current SourceBase
 Kind	.long ?
 Trace	.long ?
 Iterations	.long ?
@@ -57,12 +57,13 @@ State	.struct
 Depth	.word ?
 Padding	.word ?
 ConditionPc	.long ?
-SourceBase	.long ?
+SourceBase	.long ?  ; transient borrowed view refreshed between records
+SourceBytes	.long ?
 Sweep	.long ?
 PendingTrace	.long ?
 PendingKind	.long ?
-PendingHeader	.long ?
-PendingOperand	.long ?
+PendingHeader	.long ?  ; offset from current SourceBase
+PendingOperand	.long ?  ; PRVM operand offset within PendingHeader
 Guard	.res guards.STATE_BYTES
 Trace	.res trace.STATE_BYTES
 Snapshots	.res snapshots.STATE_BYTES
@@ -76,12 +77,81 @@ STATE_BYTES = State.Slots+LIMIT*SLOT_BYTES
 ; A0=state,A1=inventory,A2=context,A3=records,D0=bytes. Initialize scoped
 ; replay ownership after preparation. Registers preserved; CCR unspecified.
 prepare	.block
+	move.l d0, State.SourceBytes(a0)
+	move.l a3, State.SourceBase(a0)
 	move.l a0, -(sp)
 	lea State.Scopes(a0), a0
 	jsr frames.prepare
 	movea.l (sp)+, a0
 	rts
 	.bend  ; prepare
+
+; A0=state,A1=current records,D0=complete published bytes. Other registers
+; preserved; D0/CCR=status. Offsets survive relocation; active envelope views
+; are validated before rebasing. This does not publish inventory declarations.
+refresh	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	move.l a1, d1
+	tst.l d0
+	beq.w baseReady
+	tst.l d1
+	beq.w bad
+baseReady
+	add.l d0, d1
+	bcs.w bad
+	moveq #0, d2
+	move.w State.Depth(a0), d2
+	cmpi.w #LIMIT, d2
+	bhi.w bad
+	lea SLOTS(a0), a2
+next
+	tst.w d2
+	beq.w publish
+	tst.w Slot.Materialized(a2)
+	beq.w envelope
+	tst.w Slot.IterationActive(a2)
+	beq.w following
+envelope
+	cmp.l Slot.Header(a2), d0
+	bls.w bad
+	move.l Slot.Header(a2), d1
+	moveq #0, d3
+	move.b 0(a1, d1.l), d3
+	addq.l #1, d3
+	add.l d1, d3
+	bcs.w bad
+	cmp.l d3, d0
+	blo.w bad
+	tst.w Slot.Materialized(a2)
+	bne.w following
+	move.l Slot.Body(a2), d1
+	cmp.l d3, d1
+	blo.w bad
+	cmp.l Slot.Body(a2), d0
+	blo.w bad
+following
+	adda.w #SLOT_BYTES, a2
+	subq.w #1, d2
+	bra.w next
+publish
+	move.l a1, State.SourceBase(a0)
+	move.l d0, State.SourceBytes(a0)
+	move.l a0, -(sp)
+	lea State.Scopes(a0), a0
+	jsr frames.refresh
+	movea.l (sp)+, a0
+	move.l State.SourceBytes(a0), d0
+	lea State.Guard(a0), a0
+	jsr guards.refresh
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; refresh
 
 ; A0=state,A1=stream base,D0=sweep identity. Start one source sweep.
 begin	.block
@@ -141,7 +211,7 @@ step	.block
 	beq.w ordinaryExtent
 	move.l d2, State.PendingOperand(a3)
 	move.l d0, State.PendingKind(a3)
-	move.l a5, State.PendingHeader(a3)
+	bsr.w captureHeader
 	bsr.w openObservation
 	bne.w invalid
 	cmpi.l #abi.PRVM_LOOP_WHILE, State.PendingKind(a3)
@@ -165,7 +235,9 @@ whileOpening
 	adda.w d7, a1
 	clr.l Slot.Iterable(a1)
 	move.l #frames.DYNAMIC_ITERATIONS, Slot.Remaining(a1)
-	move.l a4, Slot.Body(a1)
+	move.l a4, d0
+	sub.l State.SourceBase(a3), d0
+	move.l d0, Slot.Body(a1)
 	bsr.w initializeSlot
 	bne.w invalid
 	cmpi.l #abi.PRVM_LOOP_BWHILE, Slot.Kind(a1)
@@ -204,7 +276,9 @@ opening
 	mulu.w #SLOT_BYTES, d7
 	lea SLOTS(a3), a1
 	clr.l Slot.Iterable(a1, d7.w)
-	move.l a4, Slot.Body(a1, d7.w)
+	move.l a4, d0
+	sub.l State.SourceBase(a3), d0
+	move.l d0, Slot.Body(a1, d7.w)
 	move.l d1, Slot.Remaining(a1, d7.w)
 	adda.w d7, a1
 	bsr.w initializeSlot
@@ -270,7 +344,9 @@ validateElement
 	mulu.w #SLOT_BYTES, d7
 	lea SLOTS(a3), a5
 	adda.w d7, a5
-	move.l a4, Slot.Body(a5)
+	move.l a4, d0
+	sub.l State.SourceBase(a3), d0
+	move.l d0, Slot.Body(a5)
 	move.l d4, Slot.Remaining(a5)
 	move.l package.Context.Kind(a2), Slot.Iterable(a5)
 	move.l d5, Slot.Descriptor(a5)
@@ -303,7 +379,8 @@ validateElement
 	.MEMORY_COUNTER_INC IterableScopes
 iterableReady
 	addq.w #1, State.Depth(a3)
-	movea.l Slot.Body(a5), a0
+	movea.l State.SourceBase(a3), a0
+	adda.l Slot.Body(a5), a0
 	bra.w consumed
 skipBody
 	bsr.w emptyCollection
@@ -439,7 +516,8 @@ nextScope
 	bne.w invalid
 	bra.w repeatBody
 repeatBody
-	movea.l Slot.Body(a5), a0
+	movea.l State.SourceBase(a3), a0
+	adda.l Slot.Body(a5), a0
 	bra.w consumed
 whileClosing
 	movea.l a1, a5
@@ -452,7 +530,8 @@ whileClosing
 	bsr.w restoreScope
 	bne.w invalid
 whileGuard
-	movea.l Slot.Header(a5), a0
+	movea.l State.SourceBase(a3), a0
+	adda.l Slot.Header(a5), a0
 	bsr.w evaluateWhile
 	bne.w invalid
 	tst.l d1
@@ -535,7 +614,7 @@ materializedRecord
 markerNamed
 	cmp.l Slot.Label(a1), d1
 	bne.w invalid
-	move.l a5, State.PendingHeader(a3)
+	bsr.w captureHeader
 	movea.l a1, a5
 	cmpi.l #materialized.ITERATION_OPEN, d0
 	beq.w materializedIterationOpen
@@ -549,7 +628,7 @@ materializedCollectionOpen
 	bhs.w invalid
 	tst.l materialized.Record.Index(a5)
 	bne.w invalid
-	move.l a5, State.PendingHeader(a3)
+	bsr.w captureHeader
 	bsr.w openObservation
 	bne.w invalid
 	mulu.w #SLOT_BYTES, d7
@@ -576,7 +655,8 @@ materializedLabel
 materializedIterationOpen
 	tst.w Slot.IterationActive(a5)
 	bne.w invalid
-	movea.l State.PendingHeader(a3), a0
+	movea.l State.SourceBase(a3), a0
+	adda.l State.PendingHeader(a3), a0
 	move.l materialized.Record.Index(a0), d0
 	cmp.l Slot.Iterations(a5), d0
 	bne.w invalid
@@ -596,7 +676,8 @@ materializedIterationOpen
 materializedIterationClose
 	tst.w Slot.IterationActive(a5)
 	beq.w invalid
-	movea.l State.PendingHeader(a3), a0
+	movea.l State.SourceBase(a3), a0
+	adda.l State.PendingHeader(a3), a0
 	move.l materialized.Record.Index(a0), d0
 	cmp.l Slot.Iterations(a5), d0
 	bne.w invalid
@@ -616,7 +697,8 @@ materializedIterationClose
 materializedCollectionClose
 	tst.w Slot.IterationActive(a5)
 	bne.w invalid
-	movea.l State.PendingHeader(a3), a0
+	movea.l State.SourceBase(a3), a0
+	adda.l State.PendingHeader(a3), a0
 	move.l materialized.Record.Index(a0), d0
 	cmp.l Slot.Iterations(a5), d0
 	bne.w invalid
@@ -1019,7 +1101,8 @@ initializeSlot	.block
 scopedSlot
 	clr.l Slot.RecordCells+memory.Block.Used(a1)
 	movem.l d1-d2/a0, -(sp)
-	movea.l Slot.Header(a1), a0
+	movea.l State.SourceBase(a3), a0
+	adda.l Slot.Header(a1), a0
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, inventory.PackedRecord.NameKind(a0)
 	bhi.w anonymous
 	moveq #0, d1
@@ -1049,7 +1132,6 @@ openScope	.block
 	movea.l a1, a5
 	move.l Slot.Trace(a5), d0
 	move.l Slot.Header(a5), d1
-	sub.l State.SourceBase(a3), d1
 	move.l Slot.Remaining(a5), d2
 	lea State.Scopes(a3), a0
 	jsr frames.open
@@ -1089,7 +1171,6 @@ captureScope	.block
 	tst.l Slot.Label(a5)
 	bmi.w done
 	move.l Slot.Header(a5), d0
-	sub.l State.SourceBase(a3), d0
 	move.l Slot.StartPc(a5), d1
 	move.l Slot.StartSection(a5), d2
 	movea.l State.Scopes+frames.State.Inventory(a3), a1
@@ -1226,7 +1307,8 @@ emptyCollection	.block
 	cmpi.l #abi.PRVM_LOOP_BWHILE, State.PendingKind(a3)
 	bne.w ordinary
 scopedEmpty
-	movea.l State.PendingHeader(a3), a0
+	movea.l State.SourceBase(a3), a0
+	adda.l State.PendingHeader(a3), a0
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, inventory.PackedRecord.NameKind(a0)
 	bhi.w ordinary
 	moveq #0, d3
@@ -1246,12 +1328,21 @@ done
 	rts
 	.bend  ; emptyCollection
 
+; A5=current complete record,A3=state. Preserve the classified action.
+captureHeader	.block
+	move.l d0, -(sp)
+	move.l a5, d0
+	sub.l State.SourceBase(a3), d0
+	move.l d0, State.PendingHeader(a3)
+	movem.l (sp)+, d0
+	rts
+	.bend  ; captureHeader
+
 ; A3=state with PendingHeader/Kind. Capture or match numeric ancestry.
 ; D0/CCR=status; other registers kept. Root parents carry the sweep identity.
 openObservation	.block
 	movem.l d1-d7/a0-a2, -(sp)
 	move.l State.PendingHeader(a3), d0
-	sub.l State.SourceBase(a3), d0
 	moveq #0, d2
 	move.l State.Sweep(a3), d1
 	ori.l #$ffffff00, d1

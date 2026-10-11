@@ -250,6 +250,11 @@ execute	.block
 	move.l Frame.MemberKeys(a5), d3
 	cmp.l Session+session.State.MemberKeys, d3
 	bne.w invalidApi
+	move.l d0, -(sp)
+	bsr.w refreshViews
+	tst.l d0
+	movem.l (sp)+, d0
+	bne.w invalidApi
 	cmpi.w #session.EMIT, d2
 	beq.w startEmission
 	cmpi.w #session.SIZING, Session+session.State.Phase
@@ -464,7 +469,7 @@ outputReady
 	movea.l Frame.Records(a5), a1
 	move.l Frame.RecordBytes(a5), d0
 	movea.l a6, a2
-	movea.l InventoryState+repeatInventory.State.Declarations+memory.Block.Pointer, a3
+	lea InventoryState, a3
 	jsr guards.prepare
 	bne.w fail
 
@@ -940,6 +945,31 @@ suspend
 	moveq #0, d0
 	bra.w apiDone
 	.bend  ; execute
+
+; A5=frozen Frame,A6=Context. Refresh owner-borrowed views at a complete
+; record boundary, after frozen identity checks. No source publication occurs.
+; D0/CCR=status; other registers preserved. DFS calls are never suspended.
+refreshViews	.block
+	movem.l d1-d3/a0-a3, -(sp)
+	lea InventoryState, a0
+	movea.l Frame.Records(a5), a1
+	movea.l a6, a2
+	movea.l Frame.MemberKeys(a5), a3
+	move.l Frame.RecordBytes(a5), d0
+	jsr repeatInventory.refresh
+	bne.w done
+	lea RepeatState, a0
+	move.l Frame.RecordBytes(a5), d0
+	jsr repetition.refresh
+	bne.w done
+	lea BranchState, a0
+	jsr branches.refresh
+	jsr dependencies.discardViews
+done
+	movem.l (sp)+, d1-d3/a0-a3
+	tst.l d0
+	rts
+	.bend  ; refreshViews
 
 	.priv
 

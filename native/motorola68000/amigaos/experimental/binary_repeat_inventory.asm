@@ -441,6 +441,40 @@ release	.block
 	rts
 	.bend  ; release
 
+; A0=inventory,A1=current records,A2=context,A3=current member keys,D0=bytes.
+; Refresh borrowed views only; declaration identities/count remain sealed.
+; Publication of new symbols requires the later append API, not this hook.
+; Other registers preserved; D0/CCR=status.
+refresh	.block
+	movem.l d1, -(sp)
+	move.l a1, d1
+	tst.l d0
+	beq.w baseReady
+	tst.l d1
+	beq.w bad
+baseReady
+	add.l d0, d1
+	bcs.w bad
+	move.l pkg.Context.Count(a2), d1
+	cmp.l State.Symbols(a0), d1
+	bne.w bad
+	tst.l d1
+	beq.w publish
+	move.l a3, d1
+	beq.w bad
+publish
+	move.l a1, State.SourceBase(a0)
+	move.l a3, State.MemberKeys(a0)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1
+	tst.l d0
+	rts
+	.bend  ; refresh
+
 ; A0=state,D0=compiled header offset. D0/CCR=status,D1=owner ordinal,
 ; D2=direct declaration count,D3=ID byte offset; other registers preserved.
 ; Preparation source order makes owner headers strictly increasing.

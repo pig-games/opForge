@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533335; BS35
+MAGIC = $42533336; BS36
 TARGET_PRESERVE_WRAPPERS = 1
 TARGET_NESTED_PATHS = 2
 DICTIONARY_REGISTER_OR_NAMED = 1
@@ -115,8 +115,10 @@ LoopPlan	.long ?
 LoopPlanBytes	.long ?
 BranchPlan	.long ?
 BranchPlanBytes	.long ?
+TextPlan	.long ?
+TextPlanBytes	.long ?
 	.endstruct
-HEADER_BYTES = Header.BranchPlanBytes+4
+HEADER_BYTES = Header.TextPlanBytes+4
 
 ; Contextual member forms are derived from canonical selector projections,
 ; including unsupported candidates. Field meanings remain package-owned.

@@ -724,8 +724,16 @@ struct
 	move.b 1(a0), d0
 	lsl.w #8, d0
 	move.b (a0), d0
-	bsr.w mark  ; only the nominal type is a symbol reference
-	bne.w bad
+	; The nominal schema is immutable metadata, not a reference to its
+	; declaration's emitted code. Keep numeric bounds validation independent.
+	movea.l Scope, a2
+	moveq #0, d1
+	move.w layout.State.Base(a2), d1
+	moveq #0, d2
+	move.w layout.State.Count(a2), d2
+	add.l d2, d1
+	cmp.l d1, d0
+	bhs.w bad
 	moveq #0, d2
 	move.b 3(a0), d2
 	lsl.w #8, d2

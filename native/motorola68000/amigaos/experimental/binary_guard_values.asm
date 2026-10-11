@@ -48,12 +48,12 @@ State	.struct
 Pass	.long ?
 Active	.long ?
 Records	.long ?
-Declarations	.long ?
+Inventory	.long ?  ; stable inventory owner; acquire declaration view per call
 Block	.res memory.Block.Used+4
 	.endstruct
 STATE_BYTES = State.Block+memory.Block.Used+4
 	.section code, kind=code
-; A0=state,A1=records,D0=bytes,A2=context,A3=optional scoped declaration map.
+; A0=state,A1=records,D0=bytes,A2=context,A3=optional stable inventory owner.
 ; Scoped snapshots stay in their live iteration cells, outside global overlays.
 ; Allocate only when while exists.
 ; Records have already passed frontend and dependency bounds validation.
@@ -63,7 +63,7 @@ prepare	.block
 	clr.l State.Block+memory.Block.Used(a5)
 	clr.l State.Active(a5)
 	move.l a1, State.Records(a5)
-	move.l a3, State.Declarations(a5)
+	move.l a3, State.Inventory(a5)
 	movea.l a1, a4
 	movea.l a1, a6
 	adda.l d0, a6
@@ -156,6 +156,15 @@ done
 	tst.l d0
 	rts
 	.bend  ; prepare
+; A0=state,A1=current records,D0=bytes. No guard is suspended across calls;
+; snapshots own values, while the preparation-only record view is refreshed.
+; Other registers preserved; D0/CCR=status.
+refresh	.block
+	move.l a1, State.Records(a0)
+	moveq #0, d0
+	rts
+	.bend  ; refresh
+
 ; A0=state,D0=pass. Reset provisional capture; retain pass-one snapshots for pass two.
 beginPass	.block
 	tst.l State.Pass(a0)
@@ -280,9 +289,10 @@ declaration	.block
 	moveq #0, d4
 	move.w Decl.NameId(a4), d4
 	; Iteration-owned constants retain snapshots in their full local cells.
-	move.l State.Declarations(a5), d0
+	move.l State.Inventory(a5), d0
 	beq.w globalDeclaration
 	movea.l d0, a0
+	movea.l inventory.State.Declarations+memory.Block.Pointer(a0), a0
 	move.l d4, d0
 	lsl.l #inventory.DECL_SHIFT, d0
 	tst.w inventory.Decl.Owner(a0, d0.l)
@@ -391,9 +401,10 @@ owned
 ; Other registers preserved; global snapshots cannot overwrite scoped cells.
 scoped	.block
 	movem.l d1/a0, -(sp)
-	move.l State.Declarations(a5), d0
+	move.l State.Inventory(a5), d0
 	beq.w done
 	movea.l d0, a0
+	movea.l inventory.State.Declarations+memory.Block.Pointer(a0), a0
 	moveq #0, d1
 	move.w PackedRecord.NameId(a4), d1
 	lsl.l #inventory.DECL_SHIFT, d1

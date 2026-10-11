@@ -1,5 +1,5 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS35 packages.
+; Shared structural boundary for embedded and external BS36 packages.
 ; This checks identity, regions and table records, not VM opcode semantics;
 ; execution engines retain their independent operand/opcode and step bounds.
 	.module experimental.amigaos.binary_package_validation
@@ -10,6 +10,7 @@
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.packed_branch as branches
 	.use prvm.amigaos.packed_declaration as declarations
+	.use prvm.amigaos.packed_text as text
 	.pub
 SUCCESS = 0
 INVALID = 1
@@ -24,7 +25,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS35 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS36 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -276,6 +277,33 @@ branchPolicy
 	adda.w #branches.ROW_BYTES, a2
 	cmpi.w #5, d6
 	blo.w branchRows
+	move.l package.Header.TextPlan(a4), d0
+	btst #0, d0
+	bne.w bad
+	move.l package.Header.TextPlanBytes(a4), d1
+	cmpi.l #text.PROGRAM_BYTES, d1
+	bne.w bad
+	bsr.w span
+	bne.w bad
+	movem.l d2-d7/a0-a2, -(sp)
+	movea.l a3, a1
+	moveq #0, d0
+	suba.l a0, a0
+	jsr text.nameRole
+	movem.l (sp)+, d2-d7/a0-a2
+	tst.l d0
+	bne.w bad
+	lea text.PROGRAM_HEADER(a3), a2
+	moveq #text.HEAD_COUNT-1, d6
+textNames
+	moveq #0, d0
+	move.b text.DIRECTIVE_ID(a2), d0
+	lsl.w #8, d0
+	move.b text.DIRECTIVE_ID+1(a2), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	adda.w #text.DIRECTIVE_BYTES, a2
+	dbra d6, textNames
 	move.l package.Header.ExpressionPlan(a4), d0
 	btst #0, d0
 	bne.w bad

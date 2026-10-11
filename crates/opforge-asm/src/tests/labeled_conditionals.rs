@@ -57,3 +57,27 @@ fn labeled_conditionals_preserve_readonly_label_ownership() {
             .any(|d| d.message().contains("defined more than once")));
     }
 }
+
+pub(crate) fn mapped_source(cpu: &str, colon: &str) -> String {
+    format!(".module main\n.cpu {cpu}\n.use provider map {{ logical -> code }}\n.region ram,0,$ffff\n.section data,kind=data\n.byte 9,provider.opening,provider.closing\n.endsection\n.section code,kind=code\n.byte 1\n.endsection\n.place data in ram\n.place code in ram\n.endmodule\n.module provider\n.cpu {cpu}\n.pub\n.section logical,kind=code,logical\nopening{colon} .if opening == $\n.byte 2\nalternative{colon} .elseif 1\n.byte 99\nterminal{colon} .else\n.byte 98\nclosing{colon} .endif\n.byte opening,alternative,terminal,closing\n.endsection\n.endmodule\n")
+}
+
+#[test]
+fn labeled_conditionals_mapped_self_reference_preserves_section_pc() {
+    for cpu in ["6502", "68020"] {
+        for colon in ["", ":"] {
+            let source = mapped_source(cpu, colon);
+            let assembler = run_passes(&source.lines().collect::<Vec<_>>());
+            let expected = vec![9, 4, 5, 1, 2, 4, 5, 5, 5];
+            assert_eq!(
+                assembler.image().entries().unwrap(),
+                expected
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, b)| (i as u32, b))
+                    .collect::<Vec<_>>(),
+                "{cpu} {colon:?}"
+            );
+        }
+    }
+}

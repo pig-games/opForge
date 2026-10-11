@@ -20,9 +20,10 @@ PROXY = 13
 TARGET_DECLARATION = 14
 DECLARED_CANONICAL = 15
 DECLARED_LEAF = 16
+MEMBER_ACQUISITION = 17
 VALUE_DECLARED_BIT = 0
 IMPORT_PROXY_BIT = 3
-ENTRY_CAPACITY = 32; bounded capture includes preparation-only register metadata
+ENTRY_CAPACITY = 32; bounded prefix through preparation-only register metadata
 ; Numeric entry bytes are copied without interpreting binding semantics.
 ; No preparation owner is imported by this observer.
 ; Word offsets into the existing owned scope/entry layout. Each diagnostic
@@ -148,8 +149,6 @@ commit	.block
 	moveq #0, d6
 	move.w View.EntryBytes(a4), d6
 	beq.w done
-	cmpi.l #ENTRY_CAPACITY, d6
-	bhi.w done
 	moveq #0, d0
 	move.w View.Name(a4), d0
 	addq.l #4, d0
@@ -206,6 +205,10 @@ clearPayload
 	dbra d0, clearPayload
 	moveq #0, d6
 	move.w View.EntryBytes(a4), d6
+	cmpi.l #ENTRY_CAPACITY, d6
+	bls.w prefixReady
+	moveq #ENTRY_CAPACITY, d6
+prefixReady
 	movea.l a3, a0
 	lea Snapshot.Entry(a6), a2
 entryLoop

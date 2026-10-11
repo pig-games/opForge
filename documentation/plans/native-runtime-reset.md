@@ -179,6 +179,36 @@ Separate telemetry reports only 16 additional owned bytes at peak and zero live
 bytes after cleanup. See the [measurement details](../performance/vm-efficiency.md#shared-byte-reservations-bs37).
 No new full current-source self-host or 2 MiB qualification is claimed.
 
+The combined native forward/member matrix passes 16 fresh cases on 68020 and
+6502: ten exact positives and six expected rejections, covering forward
+scenarios, composed controls, and missing-member/scalar-prefix/longest-owner
+negatives. Numeric member-plan acquisition runs after declarations in
+`imports.finish`, retaining importing lexical/module owners; final frontend name
+counts refresh before exported values, plans and member keys. Ordinary
+contextual aliases in Rust still require their existing immutable certificate. The
+combined frozen image is 678,952 bytes with 712,060 bytes linked; see the
+[measurement record](../performance/vm-efficiency.md#control-labels-and-forward-member-preparation)
+for separate timing and heap results.
+
+Frozen source-policy v5 passes eight Hunk policy cases across both CPUs (two
+exact long-relocation outputs and six expected rejections). Narrow source Hunk
+references reject, as does CLI-only Hunk selection without source policy even
+with mapped geometry. Flat geometry is independent from output relocation
+policy; source `.output ...,format=hunk,sections=...` sets `Context.Relocatable`, with mapping
+validation retained. The combined `68020-10m` labeled-control/address matrix passes 24
+cases (22 exact positives and two expected diagnostic rejections), including
+conditional labels, parent-active publication, named iteration records and
+logical mapped sections, plus placed-word imported routine addresses at $0902.
+
+The native source path remains experimental. `.statement` signature matching and
+capture expansion are not implemented in that path; the historical corpus audit
+does not establish those capabilities. The unchanged release control rises
+separately by 0.73% for labels/output policy and 0.20% for forward preparation
+(one sample each). Owned-memory peak increases by 16 bytes for the former and
+stays unchanged for the latter, with zero live bytes after cleanup.
+BS35 remains the latest full self-host
+proof; these controls make no complete-opcore or 2 MiB claim.
+
 ## Immediate shared-language sequence
 
 1. Ordinary-loop declaration activity now has the focused coverage above. Extend

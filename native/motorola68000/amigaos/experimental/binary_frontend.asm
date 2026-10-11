@@ -2552,6 +2552,16 @@ sourceGuardMode
 	tst.l d1
 	bne.w activeLine
 	movea.l Frame.Output(a5), a0
+	moveq #0, d0
+	move.w conditionals.State.PublishBytes(a2), d0
+	beq.w consumedWithoutLabel
+	; One consumed control becomes its VM-validated numeric label record.
+	; Ordinary binding owns lexical identity, readonly checks and normalization.
+	addi.w #writer.RECORD_HEADER_BYTES-1, d0
+	move.b d0, (a0)
+	clr.b 1(a0)
+	bra.w activeLine
+consumedWithoutLabel
 	move.b #3, (a0)
 	clr.b 1(a0)
 	bra.w conditionReady
@@ -2958,6 +2968,17 @@ complete	.block
 	jsr scopes.finish
 	movem.l (sp)+, a0-a2
 	tst.l d0
+	bne.w done
+	; Final member acquisition can add numeric identities after the last line.
+	; Publish the complete universe before values/plans/member keys are exported.
+	move.l a0, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	lea SCOPE_STATE(a0), a0
+	jsr scopes.count
+	movea.l (sp)+, a0
+	move.l d0, Frame.NameCount(a0)
+	moveq #0, d0
+done
 	rts
 	.bend  ; complete
 ; A0=Frame. D0=serialized table/payload bytes,D1=parameter count.

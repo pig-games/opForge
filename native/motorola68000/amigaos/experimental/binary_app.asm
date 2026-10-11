@@ -1563,9 +1563,13 @@ selectOutput	.block
 	movea.l assembly.Frame.Sections(a5), a6
 	cmpi.w #1, SelectedOutputKind
 	beq.w requireFlat
-	cmpi.w #2, SelectedOutputKind
+	cmpi.w #output_plan.HUNK, SelectedOutputKind
 	bne.w sourceFormat
-	cmpi.w #5, sections.State.Mode(a6)
+	; CLI Hunk output still needs the source-owned section selection.
+	; Mapped flat geometry must not silently provide an implicit selection.
+	tst.w sections.State.OutputSeen(a6)
+	beq.w badSelect
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a6)
 	bne.w badSelect
 	bra.w sourceFormat
 requireFlat

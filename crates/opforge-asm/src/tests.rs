@@ -42576,7 +42576,7 @@ mod required_value_deferral;
 mod hunk_repeat_records;
 
 #[path = "tests/labeled_conditionals.rs"]
-mod labeled_conditionals;
+pub(crate) mod labeled_conditionals;
 
 #[path = "tests/grouped_member_forward.rs"]
 mod grouped_member_forward;

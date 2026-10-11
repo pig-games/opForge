@@ -30,6 +30,7 @@ Deferred	.word ?
 Loops	.long ?
 Records	.long ?
 Proof	.long ?  ; optional preparation provenance veto; zero during normal execution
+OperandOffset	.word ?  ; original record operand, supplied by packed PRVM
 Trace	.res trace.STATE_BYTES
 Slots	.res LIMIT*SLOT_BYTES
 	.endstruct
@@ -104,6 +105,56 @@ done
 	rts
 	.bend  ; end
 ; A0=record,A1=stream end,A2=context,A3=branch state.
+; D0/CCR=status,D1=parent-active numeric label prefix bytes; others preserved.
+; Publish before step evaluates the guard so a control can reference its own PC.
+; PRVM owns the bounded syntax; this owner consults only the enclosing activity.
+prefix	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a3, a6
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l a0, a4
+	adda.l d0, a4
+	cmpa.l a1, a4
+	bhi.w bad
+	movea.l package.Context.Package(a2), a1
+	adda.l package.Header.BranchPlan(a1), a1
+	jsr parser.classifyDetailed
+	bne.w bad
+	tst.l d1
+	beq.w absent
+	cmpi.w #parser.IF, d1
+	beq.w opening
+	moveq #0, d2
+	move.w State.Depth(a6), d2
+	beq.w bad
+	subq.w #1, d2
+	lsl.w #SLOT_SHIFT, d2
+	tst.b State.Slots+Slot.Parent(a6, d2.w)
+	beq.w absent
+	bra.w present
+opening
+	tst.w State.Active(a6)
+	beq.w absent
+present
+	move.l d3, d1
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #0, d1
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #0, d1
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; prefix
+
+; A0=record,A1=stream end,A2=context,A3=branch state.
 ; D0=0 active ordinary,1 consumed/inactive,2 invalid,3 selected branch.
 ; Other registers kept. A selected branch may activate local dependency roots.
 ; Controls retain only numeric heads and EXVM expressions; no source text.
@@ -121,8 +172,9 @@ step	.block
 	movea.l package.Context.Package(a2), a1
 	adda.l package.Header.BranchPlan(a1), a1
 	move.l d4, d0
-	jsr parser.classify
+	jsr parser.classifyDetailed
 	bne.w bad
+	move.w d2, State.OperandOffset(a6)
 	tst.l d1
 	beq.w ordinary
 	move.l d1, d7
@@ -221,14 +273,18 @@ evaluate	.block
 	beq.w evaluateOperand
 	move.l a3, -(sp)
 	movea.l d0, a3
-	lea parser.Record.Operand(a5), a0
+	moveq #0, d0
+	move.w State.OperandOffset(a6), d0
+	lea 0(a5, d0.w), a0
 	movea.l a4, a1
 	jsr (a3)
 	movea.l (sp)+, a3
 	tst.l d0
 	bne.w failed
 evaluateOperand
-	lea parser.Record.Operand(a5), a0
+	moveq #0, d0
+	move.w State.OperandOffset(a6), d0
+	lea 0(a5, d0.w), a0
 	movea.l a4, a1
 	jsr expression.evaluate
 	bne.w failed

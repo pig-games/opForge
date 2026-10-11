@@ -117,9 +117,8 @@ clearRequest
 	bne.w bad
 	tst.l d1
 	beq.w bad
-	lea SectionState, a4
-	cmpi.w #5, sections.State.Mode(a4)
-	bne.w unitReady
+	tst.w pkg.Context.Relocatable(a2)
+	beq.w unitReady
 	tst.l d4
 	bne.w bad
 unitReady
@@ -158,9 +157,8 @@ reloc
 	; of an arbitrary positive u32 unit into a legacy word-sized unit.
 	cmpi.l #4, d6
 	beq.w mark
-	lea SectionState, a4
-	cmpi.w #5, sections.State.Mode(a4)
-	bne.w rangeReady
+	tst.w pkg.Context.Relocatable(a2)
+	beq.w rangeReady
 	movem.l d1/a0, -(sp)
 	movea.l a5, a0
 	jsr hunkrefs.affineTarget

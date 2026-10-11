@@ -1013,11 +1013,21 @@ done
 	rts
 	.bend  ; selectedTarget
 
-; A0=scope state,A1=binder callback. Validate forward modules and resolve every
-; proxy after all imports are known. D0/CCR=status; other registers preserved.
+; A0=scope state,A1=binder callback,A2=numeric member acquisition callback.
+; Validate forward modules and resolve every proxy after all imports are known.
+; Acquisition: A6=scope,D7=proxy index; D0=status,D1=acquired; all others kept.
+; It redirects the owned Entry.Target when acquired and may relocate entries.
+; Existing captured member plans never enter this import-proxy scan.
+; D0/CCR=status; other registers preserved.
 	.pub
+FinishFrame	.struct
+Acquire	.long ?
+.endstruct
+FINISH_FRAME_BYTES = FinishFrame.Acquire+4
 finish	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #FINISH_FRAME_BYTES, sp
+	move.l a2, FinishFrame.Acquire(sp)
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
 	movea.l a0, a6
 	movea.l a1, a5
@@ -1121,6 +1131,18 @@ loop
 	suba.l d0, a0
 	beq.w next
 resolveProxy
+	.BINDING_ATTEMPT #binding_diagnostic.MEMBER_ACQUISITION, d7, #-1
+	movea.l FinishFrame.Acquire(sp), a0
+	jsr (a0)
+	tst.l d0
+	bne.w bad
+	tst.l d1
+	bne.w next
+	; Acquisition can grow the entry arena even without publishing a plan.
+	move.l d7, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
 	.BINDING_ATTEMPT #binding_diagnostic.PROXY, d7, #-1
 	bsr.w resolve
 	bne.w bad
@@ -1142,6 +1164,7 @@ bad
 done
 	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
 	.TELEMETRY_SERVICE_LEAVE
+	adda.w #FINISH_FRAME_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -2163,19 +2186,19 @@ done
 	.pub
 ; A0=raw packed expression,A1=end,A2=scope. D0/CCR=status,D1/D2=value
 ; low/high,D3=kind. Strict known values only; no address/forward placeholders.
-evaluateKnown .block
+evaluateKnown	.block
 	move.l a6, -(sp)
 	movea.l a2, a6
 	bsr.w evaluateValue
 	movea.l (sp)+, a6
 	tst.l d0
 	rts
-	.bend ; evaluateKnown
+	.bend  ; evaluateKnown
 
 ; A0=scope,D0=bound scalar identity,D1/D2=low/high,D3=defined (0/1).
 ; Set a temporary preparation cell; numeric output must materialize its value.
 ; D0/CCR=status. Other registers preserved. No persistent declaration is added.
-setKnownScalar .block
+setKnownScalar	.block
 	movem.l d1-d5/a0-a3, -(sp)
 	move.l d0, d5
 	sub.w layout.State.Base(a0), d0
@@ -2201,7 +2224,7 @@ done
 	movem.l (sp)+, d1-d5/a0-a3
 	tst.l d0
 	rts
-	.bend ; setKnownScalar
+	.bend  ; setKnownScalar
 	.priv
 
 ; Same validated token binding, preserving compound values and owned offsets.

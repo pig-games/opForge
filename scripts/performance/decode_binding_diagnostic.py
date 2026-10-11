@@ -49,6 +49,7 @@ STAGES = {
     14: "canonical import target declaration",
     15: "declared canonical target found by linear scan",
     16: "first declared spelling with same leaf",
+    17: "forward numeric member acquisition",
 }
 ENTRY_FIELDS = (
     (0, 4, "name_offset", "u32"),

@@ -226,7 +226,9 @@ therefore captures the composed canonical name and its declaration flags.
 `BINDING_DIAGNOSTIC_CLEAR` starts one completion. At the existing routine return,
 `BINDING_DIAGNOSTIC_COMMIT(status, scope, view)` latches only a nonzero status;
 the first actual failure wins, including a nested import failure before outer
-scope completion. The descriptor supplies word offsets for count, base, current,
+scope completion. Stage 17 identifies final numeric member-plan acquisition for
+an imported forward occurrence; stage 13 remains ordinary import resolution.
+The descriptor supplies word offsets for count, base, current,
 entries pointer, arena pointer/used extent, entry stride and name offset/length,
 plus flags and owner offsets. `DECLARED` is bit zero of the current shared entry
 ABI; the owner is a one-based source-entry index, with zero meaning absent.
@@ -266,7 +268,10 @@ Its hexadecimal `f`, `l`, `r` fields have these diagnostic meanings:
 
 Name chunks are big-endian byte groups; concatenate phases 64–85 in order and
 truncate to the phase-33 byte count. Raw entry fields follow the current
-`binary_binding_records.Entry` layout. The ordinary progress `m` field still
+`binary_binding_records.Entry` layout. The owner-supplied entry width determines
+the array stride and field bounds even when it exceeds the observer's 32-byte
+capture prefix. Enlarged entries therefore retain the same bounded diagnostic
+schema and canonical-name capture. The ordinary progress `m` field still
 reports tracked live allocation bytes.
 
 Optional correlation views use the identical row schema at distinct phase bases:
@@ -299,6 +304,7 @@ Numeric failure stages are:
 | 14 | canonical import target is undeclared |
 | 15 | declared canonical target found by linear scan |
 | 16 | first declared spelling with the same leaf component |
+| 17 | forward numeric member acquisition |
 
 All macros and passive helper APIs preserve D0–D7, A0–A6, CCR and stack depth;
 argument setup is inside the preserving wrappers. No production request, VM or

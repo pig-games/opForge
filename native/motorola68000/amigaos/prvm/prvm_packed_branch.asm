@@ -10,6 +10,8 @@ ELSE = 3
 ENDIF = 4
 OPCODE = $9a
 NON_STATEMENT_FLAGS = $18; omitted and layout-only packed records
+NAME_TOKEN_BYTES = 4
+LABEL_TOKEN_BYTES = NAME_TOKEN_BYTES+1
 Program	.struct
 Opcode	.byte ?
 Count	.byte ?
@@ -39,22 +41,40 @@ Operand	.byte ?
 ; D0/CCR=0 valid,1 malformed; D1=role (zero ordinary). Others preserved.
 ; Expression syntax is EXVM-owned; the plan selects only its required extent.
 classify	.block
-	movem.l d2-d5/a0-a2, -(sp)
-	moveq #0, d5
-	bra.w classifyMode
+	movem.l d2-d3, -(sp)
+	bsr.w classifyDetailed
+	movem.l (sp)+, d2-d3
+	rts
 	.bend  ; classify
 
-; Same ABI; select the shared head/role before preparation-only preprocessor
-; branch operand policy. The enclosing preprocessor kind owns those operands.
+; Same ABI; preparation-only branch operands belong to the preprocessor kind.
 select	.block
-	movem.l d2-d5/a0-a2, -(sp)
+	movem.l d2-d3, -(sp)
+	bsr.w selectDetailed
+	movem.l (sp)+, d2-d3
+	rts
+	.bend  ; select
+
+; Same inputs as classify. D2=operand offset from original record start,
+; D3=label prefix bytes. Both zero for ordinary/malformed. Others preserved.
+; D0/CCR=status and D1=role as above.
+classifyDetailed	.block
+	movem.l d4-d6/a0-a2, -(sp)
+	moveq #0, d5
+	bra.w classifyMode
+	.bend  ; classifyDetailed
+
+; Same detailed ABI; preparation-only operand policy as select.
+selectDetailed	.block
+	movem.l d4-d6/a0-a2, -(sp)
 	moveq #1, d5
 	bra.w classifyMode
-	.bend  ; select
+	.bend  ; selectDetailed
 	.priv
 classifyMode	.block
 	move.l d0, d4
 	moveq #0, d1
+	moveq #0, d6
 	cmpi.l #Record.Dot, d4
 	blo.w bad
 	cmpi.l #256, d4
@@ -70,7 +90,27 @@ classifyMode	.block
 	cmpi.l #Record.Operand, d4
 	blo.w done
 	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, Record.Dot(a0)
+	beq.w bareHead
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, Record.Dot(a0)
+	bhi.w done
+	tst.b Record.Dot+NAME_TOKEN_BYTES-1(a0)
 	bne.w done
+	subi.l #NAME_TOKEN_BYTES, d4
+	cmpi.l #Record.Operand, d4
+	blo.w done
+	adda.w #NAME_TOKEN_BYTES, a0
+	moveq #NAME_TOKEN_BYTES, d6
+	cmpi.b #abi.PRVM_TOKEN_KIND_COLON, Record.Dot(a0)
+	bne.w labelHead
+	subq.l #1, d4
+	cmpi.l #Record.Operand, d4
+	blo.w done
+	addq.l #1, a0
+	moveq #LABEL_TOKEN_BYTES, d6
+labelHead
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, Record.Dot(a0)
+	bne.w done
+bareHead
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, Record.Kind(a0)
 	bhi.w done
 	lea Program.Rows(a1), a2
@@ -103,7 +143,15 @@ bad
 	moveq #1, d0
 	moveq #0, d1
 finish
-	movem.l (sp)+, d2-d5/a0-a2
+	moveq #0, d2
+	moveq #0, d3
+	tst.l d1
+	beq.w restore
+	moveq #Record.Operand, d2
+	add.l d6, d2
+	move.l d6, d3
+restore
+	movem.l (sp)+, d4-d6/a0-a2
 	tst.l d0
 	rts
 	.bend  ; classifyMode

@@ -286,12 +286,43 @@ current-source self-host remain pending; BS35 is the latest qualified self-host.
 
 Rust forward named iteration records now retain observations from executed
 immutable owners independently of dependency-graph certification. Ordinary
-contextual typed aliases still require their existing certificate; inactive or
-replaced owners cannot retain a stale record. Forward module import qualifiers
-can defer incomplete scalar-prefix lookup during collection, with strict final
-resolution. The older scalar-prefix fallback oracle now expects rejection from
-its executed longer owner. Focused host coverage passes; native forward-record
-parity is a separate pending positive case.
+contextual typed aliases still require their existing immutable certificate;
+inactive or replaced owners cannot retain a stale record. Forward module import
+qualifiers defer incomplete scalar-prefix lookup during collection, with strict
+final resolution. Rust also defers unavailable grouped member bases during sizing,
+with strict final type and member checks. Native preparation acquires numeric
+member plans after all declarations are known, preserving importing lexical/module
+owners. Final frontend name counts refresh before values, plans and member keys
+are exported. No text fallback or additional typed-record cache is needed.
+
+The combined native forward/member matrix passes 16 fresh cases on 68020 and
+6502: ten exact positives and six expected rejections. It covers four forward
+scenarios, a composed nine-scenario positive set, and missing-member,
+scalar-prefix and longest-owner negatives. Forward numeric member plans
+are acquired in `imports.finish`; ordinary contextual aliases in Rust
+continue to rely on their existing certificate. The combined frozen current image
+is 678,952 bytes with 712,060 bytes linked. See the
+[current measurements](../performance/vm-efficiency.md#control-labels-and-forward-member-preparation):
+the unchanged release control rises separately by 0.73% for labels/output policy
+and 0.20% for forward preparation (one sample each). Owned-memory peak grows by
+16 bytes, then stays unchanged; all allocations are freed. No full-opcore, new
+full-self-host or 2 MiB claim follows. BS35
+remains the latest full self-host proof.
+
+The frozen source-policy v5 matrix passed eight Hunk policy cases: two exact
+long-relocation outputs and six expected rejections across both CPUs. Narrow
+source Hunk references reject, and CLI-only Hunk selection without source policy
+rejects even when geometry is mapped. Flat geometry is now independent of output
+relocation policy; source `.output ...,format=hunk,sections=...` sets `Context.Relocatable`,
+while mapping validation remains in force.
+
+The combined `68020-10m` labeled-control/address matrix passes 24 cases: 22 exact
+positives and two expected diagnostic rejections. It includes canonical and
+colon labels on `.if`, `.elseif`, `.else` and `.endif`, parent-active label
+publication, named iteration records and logical mapped sections. Two additional placed-word controls encode imported
+routine addresses at $0902 in the target byte order. These focused
+controls do not qualify complete opcore parity or a fresh full current-source
+self-host.
 
 ### Shared reservation checkpoint
 

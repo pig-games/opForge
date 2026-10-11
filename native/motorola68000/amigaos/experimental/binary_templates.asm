@@ -1202,7 +1202,7 @@ done
 ; A0=state,D0=0 view / 1 seek,D1=body offset for seek.
 ; D0/CCR=status,D1=current record offset,D2=body end,D3=invocation depth.
 ; Other registers preserved. Only the currently returning invocation is seekable.
-cursor .block
+cursor	.block
 	movem.l d4/a1-a2, -(sp)
 	move.l d0, d4
 	moveq #0, d3
@@ -1240,17 +1240,17 @@ done
 	movem.l (sp)+, d4/a1-a2
 	tst.l d0
 	rts
-	.bend ; cursor
+	.bend  ; cursor
 
-CursorSnapshot .struct
-State .res State.Origin+4
-Frame .res FRAME_BYTES
+CursorSnapshot	.struct
+State	.res State.Origin+4
+Frame	.res FRAME_BYTES
 .endstruct
 PREVIEW_BYTES = CursorSnapshot.Frame+FRAME_BYTES
 ; A0=state,A1=disjoint output,A2=scope,D1=body offset.
 ; D0/CCR=status,D1=next body offset. Other registers preserved.
 ; Uses the existing numeric substitution owner, restoring all invocation state.
-preview .block
+preview	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	suba.l #PREVIEW_BYTES, sp
 	movea.l sp, a5
@@ -1305,10 +1305,10 @@ done
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; preview
+	.bend  ; preview
 	.priv
 ; A0=destination,A1=source,D0=bytes. Preserve pointers and other registers.
-savePreview .block
+savePreview	.block
 	movem.l a0-a1, -(sp)
 words
 	cmpi.l #4, d0
@@ -1325,7 +1325,7 @@ tail
 done
 	movem.l (sp)+, a0-a1
 	rts
-	.bend ; savePreview
+	.bend  ; savePreview
 	.pub
 
 ; A0=template state,A1=distinct 256-byte output,A2=scope state.

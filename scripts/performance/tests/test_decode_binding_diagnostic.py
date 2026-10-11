@@ -254,6 +254,12 @@ class BindingDiagnosticTests(unittest.TestCase):
                 self.assertEqual(result["snapshot"]["stage_meaning"], meaning)
                 self.assertEqual(result["snapshot"]["related_entry_index"], 0)
 
+    def test_stage_17_decodes_forward_member_acquisition(self):
+        result = decoder.decode_binding_diagnostic(snapshot(stage=17))
+        self.assertEqual(
+            result["snapshot"]["stage_meaning"], "forward numeric member acquisition"
+        )
+
     def test_absent_is_distinct_from_incomplete(self):
         result = decoder.decode_binding_diagnostic("hello\n" + progress(1))
         self.assertEqual(result, {"localization_only": True, "snapshot": None, "status": "absent"})

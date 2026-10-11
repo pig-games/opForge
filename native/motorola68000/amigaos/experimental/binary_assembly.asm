@@ -69,6 +69,14 @@ FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
 FAILURE_WHILE_LAYOUT = 2
 MAX_LAYOUT_ROUNDS = 8
+FAILURE_DATA_EVALUATION = 19
+FAILURE_DATA_RELOCATION = 20
+FAILURE_DATA_EMISSION = 21
+SWEEP_ALL = 0
+SWEEP_CONCRETE = 1
+SWEEP_LOGICAL = 2
+SWEEP_PAIRED_FIRST = 3
+SWEEP_OUTSIDE_SECTIONS = 7
 
 	.section bss, kind=bss
 	.priv
@@ -503,7 +511,12 @@ layoutReady
 	lea SectionState, a0
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
 	bne.w outputReady
+	; Independent section geometry also serves placed flat output. Only an
+	; actual Hunk artifact requests section-relative values and relocations.
+	tst.w sections.State.OutputSeen(a0)
+	beq.w validateMapping
 	move.w #1, pkg.Context.Relocatable(a6)
+validateMapping
 	jsr mapping.validate
 	bne.w fail
 outputReady
@@ -647,6 +660,24 @@ executeRecord
 	movea.l a3, a1
 	movea.l a6, a2
 	lea BranchState, a3
+	jsr branches.prefix
+	bne.w fail
+	tst.l d1
+	beq.w branchPrefixReady
+	bsr.w statementSelected
+	beq.w branchPrefixReady
+	; The shared statement owner publishes the prepared lexical identity at PC
+	; before the guard, including controls whose own arm will be unselected.
+	movem.l d1-d7/a0-a6, -(sp)
+	lea source.RECORD_HEADER_BYTES(a4), a0
+	movea.l a0, a1
+	adda.l d1, a1
+	movea.l a6, a2
+	moveq #0, d0
+	bsr.w statement
+	movem.l (sp)+, d1-d7/a0-a6
+	bne.w fail
+branchPrefixReady
 	jsr branches.step
 	movea.l a1, a3
 	cmpi.l #2, d0
@@ -753,14 +784,8 @@ selectOther
 	bne.w omitted
 	bra.w selected
 selectStatement
-	cmpi.w #1, d5
-	bne.w selectRemaining
-	tst.w d4
+	bsr.w statementSelected
 	beq.w omitted
-	bra.w selected
-selectRemaining
-	tst.w d4
-	bne.w omitted
 	bra.w selected
 pairedSelect
 	btst #4, 1(a4)
@@ -827,12 +852,8 @@ pairedClose
 	beq.w selected
 	bra.w omitted
 pairedStatement
-	cmpi.w #1, d4
-	beq.w selected
-	cmpi.w #7, d5
-	bne.w omitted
-	tst.w d4
-	bne.w omitted
+	bsr.w statementSelected
+	beq.w omitted
 	bra.w selected
 selected
 	.MEMORY_COUNTER_INC TraversalRecords
@@ -1232,6 +1253,39 @@ done
 	rts
 	.bend  ; stateRecord
 
+; D4=current section selection, D5=sweep. D0/CCR=1 selected, 0 omitted.
+; Preserves all other registers. Control labels and ordinary statements share
+; this policy: controls still traverse every sweep, but labels publish only
+; where their section owns the PC and emission.
+statementSelected	.block
+	cmpi.w #SWEEP_ALL, d5
+	beq.w selected
+	cmpi.w #SWEEP_PAIRED_FIRST, d5
+	bhs.w paired
+	cmpi.w #SWEEP_CONCRETE, d5
+	bne.w logical
+	tst.w d4
+	bne.w selected
+	bra.w omitted
+logical
+	tst.w d4
+	beq.w selected
+	bra.w omitted
+paired
+	cmpi.w #1, d4  ; selected section in the paired traversal
+	beq.w selected
+	cmpi.w #SWEEP_OUTSIDE_SECTIONS, d5
+	bne.w omitted
+	tst.w d4
+	beq.w selected
+omitted
+	moveq #0, d0
+	rts
+selected
+	moveq #1, d0
+	rts
+	.bend  ; statementSelected
+
 ; A0/A1=bounded token range, A2=Context, D0=indent flag. D0 status, 2=.end.
 statement	.block
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #10
@@ -1322,9 +1376,8 @@ dispatch
 	; Name returns the numeric identity and qualifier without source reconstruction.
 	clr.w HunkInstructionRefs
 	clr.w HunkInstructionRefCount
-	lea SectionState, a4
-	cmpi.w #5, sections.State.Mode(a4)
-	bne.w instructionReady
+	tst.w pkg.Context.Relocatable(a2)
+	beq.w instructionReady
 	cmpi.w #2, pkg.Context.Pass(a2)
 	bne.w instructionReady
 	move.l d0, d5
@@ -1612,6 +1665,7 @@ dataStringScalar
 	movea.l a5, a0
 	bra.w dataEmitValue
 dataExpression
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #FAILURE_DATA_EVALUATION
 	movea.l a0, a5
 	movea.l a2, a6
 	move.l pkg.Context.Pc(a2), -(sp)
@@ -1641,6 +1695,7 @@ dataValue
 	bsr.w warnByte
 	bne.w bad
 dataRangeOk
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #FAILURE_DATA_RELOCATION
 	bsr.w markDataReloc
 	bne.w bad
 dataEmitValue
@@ -1667,6 +1722,7 @@ bigLoop
 	subq.w #1, d5
 	bne.w bigLoop
 dataReady
+	.ASSEMBLY_FAILURE_STAGE FailureStage, #FAILURE_DATA_EMISSION
 	lea DataBytes, a0
 	move.l d6, d0
 	bsr.w emitBytes
@@ -1716,9 +1772,9 @@ done
 ; A2=Context,D5=instruction bytes,A5=output. Preserves caller registers.
 markInstructionRelocs	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	tst.w pkg.Context.Relocatable(a2)
+	beq.w good
 	lea SectionState, a4
-	cmpi.w #5, sections.State.Mode(a4)
-	bne.w good
 	cmpi.w #2, pkg.Context.Pass(a2)
 	bne.w good
 	tst.w sections.State.HunkSelected(a4)
@@ -1829,9 +1885,9 @@ done
 ; ExprVM evaluation and unresolved handling stay caller-owned.
 markDataReloc	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	tst.w pkg.Context.Relocatable(a2)
+	beq.w good
 	lea SectionState, a4
-	cmpi.w #5, sections.State.Mode(a4)
-	bne.w good
 	; Unselected sections evaluate data normally but have no Hunk payload.
 	tst.w sections.State.HunkSelected(a4)
 	beq.w good

@@ -75,7 +75,7 @@ Id	.word ?
 Qualifier	.byte ?
 .endstruct
 NAME_TOKEN_BYTES = NameToken.Qualifier+1
- ; Declaration records retain the common header, numeric name, and marker.
+	; Declaration records retain the common header, numeric name, and marker.
 DeclarationRecord	.struct
 Header	.res RECORD_HEADER_BYTES
 Name	.res NAME_TOKEN_BYTES

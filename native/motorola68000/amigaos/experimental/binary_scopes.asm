@@ -1295,6 +1295,28 @@ deferredLine	.block
 	movea.l a1, a6
 	btst #LEXICAL_BLOCK_BIT, 1(a0)
 	bne.w good
+	; Shared control labels publish under their enclosing activity; they are
+	; not branch-body declarations. PRVM alone identifies that bounded prefix.
+	movea.l layout.State.Package(a6), a1
+	move.l a1, d0
+	beq.w ordinaryDeferred
+	adda.l pkg.Header.BranchPlan(a1), a1
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	jsr branch_parser.classifyDetailed
+	bne.w bad
+	tst.l d1
+	beq.w ordinaryDeferred
+	tst.l d3
+	beq.w good
+	tst.w layout.State.LoopDepth(a6)
+	beq.w good
+	lea layout.ITERATOR_STATE(a6), a0
+	jsr iterators.scoped
+	beq.w good
+	bra.w bad  ; ordinary repetition cannot redeclare a control label
+ordinaryDeferred
 	moveq #0, d1
 	move.b (a0), d1
 	addq.w #1, d1
@@ -2438,6 +2460,7 @@ finish	.block
 	move.l d0, -(sp)
 	movea.l a6, a0
 	lea bind, a1
+	lea forwardBinding, a2
 	.BINDING_ATTEMPT #binding_diagnostic.IMPORTS, #-1, #-1
 	jsr imports.finish
 	bne.w failSaved
@@ -2605,6 +2628,95 @@ done
 	rts
 	.bend  ; finish
 	.priv
+
+; Imports.finish callback: D7=unresolved proxy index,A6=scope.
+; D0/CCR=status,D1=acquired (0/1). Resolve only identities without an earlier
+; occurrence plan, after declarations are known. Copy spelling
+; before capture can grow either owner arena; rebuild Entry views afterwards.
+; Other registers preserved, including the enclosing finish scan's A4.
+forwardBinding	.block
+	movem.l d2-d6/a0-a5, -(sp)
+	suba.w #layout.NAME_BYTES, sp
+	move.l d7, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	movea.l ARENA_POINTER(a6), a0
+	adda.l records.Entry.Name(a3), a0
+	moveq #0, d2
+	move.w records.Entry.Length(a3), d2
+	beq.w bad
+	cmpi.l #layout.NAME_BYTES-1, d2
+	bhi.w bad
+	move.l d2, d0
+	move.l d2, d5
+	movea.l sp, a1
+copy
+	move.b (a0)+, (a1)+
+	subq.l #1, d2
+	bne.w copy
+	move.w layout.State.Current(a6), -(sp)
+	move.w records.Entry.Owner(a3), layout.State.Current(a6)
+	btst #records.IMPORT_PROXY_BIT, records.Entry.Flags+1(a3)
+	beq.w lexicalOwner
+	move.w records.Entry.Padding(a3), layout.State.Current(a6)
+lexicalOwner
+	; A complete unconditional declaration retains priority over every prefix.
+	; Conditional complete declarations still need the ordinary alternatives.
+	lea 2(sp), a0
+	move.l d5, d0
+	bsr.w declaredName
+	tst.l d0
+	bne.w capture
+	move.w records.Entry.Flags(a3), d0
+	andi.w #records.CONDITIONAL_VALUE, d0
+	bne.w capture
+	move.w (sp)+, layout.State.Current(a6)
+	bra.w absent
+capture
+	; Completion runs after .endmodule. Prefix reachability and private access
+	; must still use the importing occurrence's module, not the closed session.
+	move.l d7, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	move.w MODULE_STATE+modules.State.Active(a6), -(sp)
+	move.w records.Entry.Owner(a3), MODULE_STATE+modules.State.Active(a6)
+	move.l d7, d1
+	add.w layout.State.Base(a6), d1
+	move.l d1, d6
+	lea 4(sp), a0
+	move.l d5, d0
+	movea.l a6, a1
+	bsr.w captureBinding
+	move.w (sp)+, MODULE_STATE+modules.State.Active(a6)
+	move.w (sp)+, layout.State.Current(a6)
+	tst.l d0
+	bne.w done
+	cmp.l d6, d1
+	beq.w absent
+	move.l d7, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l ENTRIES_POINTER(a6), a3
+	adda.l d0, a3
+	move.w d1, records.Entry.Target(a3)
+	andi.w #$ffff-REFERENCED-OPTIONAL_REFERENCED-records.IMPORT_PROXY, records.Entry.Flags(a3)
+	move.w #1, layout.State.Changed(a6)
+	moveq #1, d1
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #0, d1
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	adda.w #layout.NAME_BYTES, sp
+	movem.l (sp)+, d2-d6/a0-a5
+	tst.l d0
+	rts
+	.bend  ; forwardBinding
 
 ; D0=preparation nominal ID,A6=scope. D0/CCR=status,D1=canonical ID;
 ; other registers preserved. Bare field keys have a separate immutable identity.

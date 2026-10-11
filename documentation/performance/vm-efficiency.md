@@ -463,3 +463,46 @@ was not rerun; these focused results do not qualify a fresh full self-host or
 `/tmp/opforge-mapped-flat-v3-hunk-bss.log`,
 `/tmp/opforge-mapped-flat-v3-hunk-mapped-native.log`; prior ten-case proof:
 `/tmp/opforge-mapped-flat-v2-mapped-native.log`.
+
+## Control labels and forward member preparation
+
+The unchanged 11,592-byte imported-macro control was run serially on
+FS-UAE `68020-10m`, with no concurrent builds and telemetry disabled. Each state
+used a frozen executable and matched the same live Rust output exactly. Source
+SHA-256: `389d599e990455313064e23ab3d7cbf57ced5ecf45601f04421533eb393f12bd`.
+
+| State | Release seconds | Change from preceding state | Image bytes | Linked bytes |
+|---|---:|---:|---:|---:|
+| Mapped-flat baseline, fresh repeat | 33.154801958 | — | 678,120 | 711,228 |
+| Control labels and output policy | 33.395505458 | +0.73% | 678,624 | 711,740 |
+| Forward member acquisition/count publication | 33.462413125 | +0.20% | 678,952 | 712,060 |
+
+These are single samples, not statistically established slowdowns. The repeated
+baseline differs from its earlier 33.330524583 s result, illustrating run variation.
+Label publication uses shared packed PRVM classification and enclosing activity;
+section geometry alone no longer enables Hunk relocation restrictions. Forward
+acquisition creates numeric member plans after declarations and refreshes the
+exported identity count. It adds no text fallback or typed observation cache.
+
+Separate instrumented controls both peak at 1,282,376 owned bytes: +16 bytes for
+labels/output policy versus the earlier mapped baseline, then no additional peak
+growth for forward acquisition. Both allocate/free 3,182,152 bytes and finish at
+zero live bytes. Packed source remains 27,022 bytes and runtime prefix 425,506
+bytes. Their 34.670518959 s and 34.769237875 s times include instrumentation and
+are not release measurements. Linked reservation is separate from owned heap;
+these controls do not qualify the 2 MiB budget or a new full current-source
+self-host.
+
+The combined image passes 24 labeled-control/address cases (22 exact artifacts, two
+expected diagnostic rejections) and 16 forward/member cases (ten exact artifacts,
+six expected rejections) across 6502 and 68020. The prior frozen output-policy
+image separately passes eight Hunk cases (two exact long-relocation artifacts,
+six expected rejections). Rejection results do not establish exact diagnostic
+text parity. Two additional placed-word controls were qualified in a separate fresh batch;
+the main label matrix contains 22 cases. Full opcore coverage remains pending.
+
+Frozen inputs, images, logs and the five-run measurement summary are retained at
+`/tmp/opforge-shared-bindings-combined-20261011`; the output-policy image and Hunk
+log are at `/tmp/opforge-labeled-controls-20261011`. The measurement helper runs
+release states first and telemetry states separately; all five runs require fresh
+completion and exact Rust output before recording a time.

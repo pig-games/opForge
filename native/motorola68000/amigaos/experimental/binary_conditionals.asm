@@ -32,8 +32,12 @@ Deferred	.word ?
 Static	.word ?  ; configuration discovery can retain unavailable controls
 Uncertain	.word ?  ; earliest unavailable conditional depth+1, zero when known
 Materializing	.word ?  ; selected source iterations evaluate current known guards
+OperandOffset	.word ?  ; shared PRVM offset from the original record
+LabelBytes	.word ?  ; validated numeric label prefix, including optional colon
+LabelParent	.word ?  ; enclosing branch activity before this control
+PublishBytes	.word ?  ; consumed control prefix for ordinary scope preparation
 	.endstruct
-SLOTS = State.Materializing+2
+SLOTS = State.PublishBytes+2
 SLOT_BYTES = Slot.Kind+1
 SLOT_SHIFT = 2
 DEFERRED_SLOTS = SLOTS+LIMIT*SLOT_BYTES
@@ -92,6 +96,10 @@ line	.block
 	movea.l a0, a5
 	movea.l a1, a6
 	movea.l a2, a4
+	move.w #branches.Record.Operand, State.OperandOffset(a4)
+	clr.w State.LabelBytes(a4)
+	clr.w State.LabelParent(a4)
+	clr.w State.PublishBytes(a4)
 	; An active loop retains expression conditionals for replay. Outer static
 	; inactive regions still use normal preparation filtering.
 	tst.w State.Active(a4)
@@ -128,7 +136,7 @@ preprocessorHead
 	move.b (a5), d0
 	addq.w #1, d0
 	movea.l a5, a0
-	jsr branches.select
+	jsr branches.selectDetailed
 	bne.w bad
 	cmpi.w #branches.IF, d1
 	bne.w preparation
@@ -141,7 +149,7 @@ deferredPolicy
 	move.b (a5), d0
 	addq.w #1, d0
 	movea.l a5, a0
-	jsr branches.classify
+	jsr branches.classifyDetailed
 	bne.w bad
 	; Static preprocessor controls retain the preparation stack. A closing
 	; control belongs to it when that stack is deeper than the deferred opener.
@@ -223,12 +231,18 @@ preparation
 	lsl.w #SLOT_SHIFT, d2
 	tst.b SLOTS+Slot.Kind(a4, d2.w)
 	beq.w preparationExpression
-	jsr branches.select
+	jsr branches.selectDetailed
 	bra.w preparationSelected
 preparationExpression
-	jsr branches.classify
+	jsr branches.classifyDetailed
 preparationSelected
 	bne.w bad
+	move.w d2, State.OperandOffset(a4)
+	move.w d3, State.LabelBytes(a4)
+	tst.l d1
+	bne.w preparationRole
+	move.w #branches.Record.Operand, State.OperandOffset(a4)
+preparationRole
 	moveq #EXPRESSION, d7
 	cmpi.w #branches.IF, d1
 	beq.w ifLine
@@ -334,6 +348,7 @@ checkEndif
 	bne.w ordinary
 	bra.w endifLine
 ifLine
+	move.w State.Active(a4), State.LabelParent(a4)
 	tst.w d7
 	beq.w ifExpression
 	bsr.w definedOperand
@@ -407,8 +422,11 @@ branchLine
 	tst.b Slot.ElseSeen(a2)
 	bne.w bad
 	moveq #0, d0
+	move.b Slot.Parent(a2), d0
+	move.w d0, State.LabelParent(a4)
 	move.b (a5), d0
-	cmpi.w #8, d0
+	addq.w #1, d0
+	cmp.w State.OperandOffset(a4), d0
 	beq.w terminalBranch
 	tst.b Slot.Kind(a2)
 	beq.w expressionBranch
@@ -462,7 +480,10 @@ ifHead
 	dbra d3, ifHead
 	bra.w bad
 promoteElseif
-	move.w branches.Row.Head(a1), branches.Record.Head(a5)
+	moveq #0, d0
+	move.w State.OperandOffset(a4), d0
+	subq.w #branches.Record.Operand-branches.Record.Head, d0
+	move.w branches.Row.Head(a1), 0(a5, d0.w)
 	subq.w #1, State.Depth(a4)
 	moveq #0, d0
 	move.b Slot.Parent(a2), d0
@@ -472,7 +493,8 @@ promoteElseif
 endifLine
 	moveq #0, d0
 	move.b (a5), d0
-	cmpi.w #8, d0
+	addq.w #1, d0
+	cmp.w State.OperandOffset(a4), d0
 	bne.w bad  ; no operands
 	moveq #0, d2
 	move.w State.Depth(a4), d2
@@ -489,12 +511,17 @@ uncertaintyRetained
 	moveq #0, d0
 	move.b Slot.Parent(a2, d2.w), d0
 	move.w d0, State.Active(a4)
+	move.w d0, State.LabelParent(a4)
 	bra.w consumed
 ordinary
 	move.w State.Active(a4), d1
 	moveq #0, d0
 	bra.w done
 consumed
+	tst.w State.LabelParent(a4)
+	beq.w consumedReady
+	move.w State.LabelBytes(a4), State.PublishBytes(a4)
+consumedReady
 	moveq #0, d1
 	moveq #0, d0
 	bra.w done
@@ -516,7 +543,9 @@ evaluateCondition	.block
 	moveq #0, d0
 	move.b (a0), d0
 	lea 1(a0, d0.w), a1
-	lea 9(a0), a0
+	moveq #0, d0
+	move.w State.OperandOffset(a4), d0
+	adda.w d0, a0
 	movea.l a6, a2
 	jsr imports.evaluateScoped
 	beq.w known

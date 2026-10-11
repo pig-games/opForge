@@ -287,6 +287,14 @@ const DOTTED_BAD: &[(&str, &str)] = &[
 ];
 
 const FORWARD_RECORD: &str = ".byte saved.value\nitems .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[0]\n";
+const FORWARD_GROUPED_RECORD: &str = ".byte (saved).value\nitems .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[0]\n";
+
+const FORWARD_BINDINGS: &[(&str, &str, &[u8])] = &[
+    ("forward-record", FORWARD_RECORD, &[12, 2, 4]),
+    ("forward-record-grouped", FORWARD_GROUPED_RECORD, &[12, 2, 4]),
+    ("forward-record-qualified-priority", ".byte saved.value\nitems .bfor item in {2,4}\nvalue .const item+10\n.byte item\n.endfor\nsaved .const items[0]\nsaved.value .const 99\n", &[99,2,4]),
+    ("forward-record-longest-owner", ".byte saved.child.value\nitems .bfor 1\nvalue .const 12\n.byte 2\n.endfor\nsaved .const items[0]\nsaved.child .const items[0]\n", &[12,2]),
+];
 
 fn combined_dotted() -> (String, Vec<u8>) {
     let mut body = String::new();
@@ -331,13 +339,61 @@ fn native_named_record_dotted_alias_rust_oracle() {
 fn native_named_record_forward_binding_rust_oracle() {
     let dir = scratch();
     for cpu in ["68020", "6502"] {
-        assert_eq!(
-            oracle(&dir.0, &source(cpu, FORWARD_RECORD)).unwrap(),
-            [12, 2, 4]
-        );
+        for (name, body, expected) in FORWARD_BINDINGS {
+            assert_eq!(
+                oracle(&dir.0, &source(cpu, body)).unwrap(),
+                *expected,
+                "{cpu}/{name}"
+            );
+        }
         let body = "scalar .const 5\n.byte scalar.child\nscalar.child .const 17\n";
         assert_eq!(oracle(&dir.0, &source(cpu, body)).unwrap(), [17]);
     }
+}
+
+#[test]
+fn native_named_record_forward_grouped_rust_oracle() {
+    let dir = scratch();
+    for cpu in ["68020", "6502"] {
+        assert_eq!(
+            oracle(&dir.0, &source(cpu, FORWARD_GROUPED_RECORD)).unwrap(),
+            [12, 2, 4]
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires fresh FS-UAE numeric forward-binding and ownership proofs"]
+fn native_named_record_forward_binding_batch_fs_uae() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = scratch();
+    let image = std::env::var_os("OPFORGE_NAMED_SCOPED_IMAGE")
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_else(|| build_image(&root, &dir.0));
+    let (combined, expected) = combined_dotted();
+    let mut cases = Vec::new();
+    for cpu in ["68020", "6502"] {
+        for (name, body, bytes) in std::iter::once((
+            "combined-dotted",
+            combined.as_str(),
+            Some(expected.as_slice()),
+        ))
+        .chain(
+            FORWARD_BINDINGS
+                .iter()
+                .map(|(name, body, bytes)| (*name, *body, Some(*bytes))),
+        )
+        .chain(DOTTED_BAD.iter().map(|(name, body)| (*name, *body, None)))
+        {
+            cases.push(super::native_source_cases::Case {
+                name: format!("forward-binding-{cpu}-{name}"),
+                cpu: cpu.into(),
+                files: vec![("entry.asm", source(cpu, body))],
+                expected: bytes.map(<[u8]>::to_vec),
+            });
+        }
+    }
+    super::native_source_cases::run(&root, &image, &cases);
 }
 
 #[test]
@@ -368,7 +424,11 @@ fn native_named_record_dotted_alias_fs_uae() {
                     .map(|(n, b, _)| (*n, *b, false)),
             )
             .chain(DOTTED_BAD.iter().map(|(n, b)| (*n, *b, true)))
-            .chain(std::iter::once(("forward-record", FORWARD_RECORD, false)))
+            .chain(
+                FORWARD_BINDINGS
+                    .iter()
+                    .map(|(name, body, _)| (*name, *body, false)),
+            )
         {
             if !selected(name) {
                 continue;

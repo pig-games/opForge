@@ -552,16 +552,19 @@ fn mapped_block_must_fit_placed_region_after_relayout() {
     .map(str::to_string)
     .collect();
     let mut assembler = Assembler::new();
-    assert_eq!(assembler.pass1(&lines).errors, 0);
-    let mut listing_output = Vec::new();
-    let mut listing = ListingWriter::new(&mut listing_output, false);
-    let pass2 = assembler.pass2(&lines, &mut listing).expect("pass2");
-
-    assert_eq!(pass2.errors, 1);
-    assert!(assembler.diagnostics.iter().any(|diagnostic| diagnostic
-        .error
-        .message()
-        .contains("Mapped section exceeds its placed region")));
+    assert_eq!(assembler.pass1(&lines).errors, 1);
+    assert!(
+        assembler
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.line == 13
+                && diagnostic
+                    .error
+                    .message()
+                    .contains("Section placement overflows region")),
+        "expected early .place capacity rejection: {:?}",
+        assembler.diagnostics
+    );
 }
 
 #[test]

@@ -585,6 +585,35 @@ impl<'a> AsmLine<'a> {
                     )
                 }
             };
+        // Reachable logical bodies are appended after emission, but occupy the
+        // target region during sizing and placement already.
+        let mapped_size = self.relayout.as_ref().map_or(Some(0), |plan| {
+            plan.mapped_sections
+                .iter()
+                .filter(|(source, target)| {
+                    !source.eq_ignore_ascii_case(target)
+                        && target.eq_ignore_ascii_case(section_name)
+                })
+                .try_fold(0u32, |size, (source, _)| {
+                    size.checked_add(
+                        self.layout
+                            .sections
+                            .get(source)
+                            .map_or(0, SectionState::size_bytes),
+                    )
+                })
+        });
+        let Some(section_size) = mapped_size.and_then(|growth| section_size.checked_add(growth))
+        else {
+            return self.failure_at_span(
+                LineStatus::Error,
+                AsmErrorKind::Directive,
+                "Mapped section size overflows address range",
+                Some(section_name),
+                span,
+            );
+        };
+
         if section_placed {
             if self.pass > 1 {
                 return LineStatus::Ok;

@@ -74,6 +74,62 @@ pub(crate) struct ReachableBlockRelayout {
     pub skipped_lines: HashSet<u32>,
     pub virtual_origins: HashMap<String, u32>,
     pub mapped_sections: HashMap<String, String>,
+    // Concrete bases from the previous sizing traversal, including sections
+    // without a mapped source whose labels may move after an earlier target grows.
+    pub placement_bases: HashMap<String, u32>,
+}
+
+impl ReachableBlockRelayout {
+    // Retain symbol seeds, but recompute retained extents and region placement.
+    // Previous high-water marks must not reserve bytes pruned by this replay.
+    pub fn reset_mapped_placement(
+        &self,
+        sections: &mut HashMap<String, SectionState>,
+        regions: &mut HashMap<String, RegionState>,
+    ) {
+        if self.mapped_sections.is_empty() {
+            return;
+        }
+        for region in regions.values_mut() {
+            region.cursor = region.start;
+            region.placed.clear();
+        }
+        for (name, section) in sections {
+            section.max_pc = 0;
+            section.layout_placed = false;
+            section.base_addr = None;
+            if section.logical {
+                if let Some(origin) = self.virtual_origins.get(name) {
+                    section.start_pc = *origin;
+                }
+            }
+        }
+    }
+
+    // Only changed geometry requests another bounded layout pass. Unchanged
+    // mappings keep the existing one-pass path and its reachability budget.
+    pub fn refresh_mapped_origins(&mut self, sections: &HashMap<String, SectionState>) -> bool {
+        if self.mapped_sections.is_empty() {
+            return false;
+        }
+        let mut changed = false;
+        for (name, section) in sections {
+            if let Some(base) = section.base_addr {
+                changed |= self.placement_bases.insert(name.clone(), base) != Some(base);
+            }
+        }
+        for (source, target) in &self.mapped_sections {
+            if source.eq_ignore_ascii_case(target) {
+                continue;
+            }
+            if let Some(section) = sections.get(target) {
+                if let Some(origin) = section.base_addr.unwrap_or(0).checked_add(section.max_pc) {
+                    changed |= self.virtual_origins.insert(source.clone(), origin) != Some(origin);
+                }
+            }
+        }
+        changed
+    }
 }
 
 #[derive(Debug, Clone)]

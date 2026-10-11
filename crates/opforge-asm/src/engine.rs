@@ -596,6 +596,12 @@ qualified_share={:.2}%",
             if let (Some(sections), Some(regions)) = (seeded_sections, seeded_regions) {
                 asm_line.layout.sections = sections;
                 asm_line.layout.regions = regions;
+                if let Some(plan) = &self.block_relayout {
+                    plan.reset_mapped_placement(
+                        &mut asm_line.layout.sections,
+                        &mut asm_line.layout.regions,
+                    );
+                }
                 for section in asm_line.layout.sections.values_mut() {
                     section.pc = 0;
                     section.bytes.clear();
@@ -856,6 +862,10 @@ qualified_share={:.2}%",
             self.root_metadata = asm_line.take_root_metadata();
             self.sections = asm_line.take_sections();
             self.regions = asm_line.take_regions();
+            if let Some(plan) = &mut self.block_relayout {
+                self.constant_layout_changed |=
+                    Rc::make_mut(plan).refresh_mapped_origins(&self.sections);
+            }
             self.schema_replay_uses = std::mem::take(&mut asm_line.schema_replay_uses);
             self.declaration_block_owners = std::mem::take(&mut asm_line.declaration_block_owners);
             self.reachable_blocks = std::mem::take(&mut asm_line.reachable_blocks);
@@ -1605,6 +1615,11 @@ qualified_share={:.2}%",
         if plan.mapped_sections.is_empty() && plan.skipped_lines.is_empty() {
             return counts;
         }
+        plan.placement_bases = self
+            .sections
+            .iter()
+            .filter_map(|(name, section)| section.base_addr.map(|base| (name.clone(), base)))
+            .collect();
         let mut source_by_target = HashMap::new();
         for (source, target) in &plan.mapped_sections {
             if source.eq_ignore_ascii_case(target) {
@@ -2172,8 +2187,8 @@ qualified_share={:.2}%",
             return Ok(());
         };
         let started_at = Instant::now();
-        // Placement used concrete sizes before reachable logical content was
-        // appended. Check projected spans before mutating sections or the image.
+        // Placement reserves retained logical extents during layout replay.
+        // Check final projected spans before mutating sections or the image.
         for region in self.regions.values() {
             for pair in region.placed.windows(2) {
                 let Some(first) = self.sections.get(&pair[0].name) else {

@@ -42,6 +42,8 @@ mod conditional_symbol_activity;
 mod constant_dependencies;
 #[path = "tests/match_guard_replay.rs"]
 mod match_guard_replay;
+#[path = "tests/mapped_placement.rs"]
+mod mapped_placement;
 #[path = "tests/member_bindings.rs"]
 mod member_bindings;
 #[path = "tests/provisional_loop_counts.rs"]

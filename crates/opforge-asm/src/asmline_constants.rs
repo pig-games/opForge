@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Erik van der Tier
 
-//! Resolve immutable scalar dependencies independently of assembly pass count.
+//! Resolve immutable value dependencies independently of assembly pass count.
 use super::*;
 use crate::engine::repetition_trace::{GuardKey, LoopObservation};
 use std::collections::HashSet;
 
+#[derive(Clone)]
 pub(super) struct Definition {
     name: String,
     expr: Expr,
@@ -17,6 +18,106 @@ pub(super) struct Definition {
 }
 
 impl AsmLine<'_> {
+    pub(crate) fn seed_immutable_values(&mut self, values: HashMap<String, AsmValue>) {
+        self.value_symbols.extend(values);
+    }
+    pub(crate) fn resolved_immutable_values(&self) -> HashMap<String, AsmValue> {
+        self.constant_definitions
+            .iter()
+            .filter(|definition| {
+                self.immutable_value_constants.contains(&definition.name)
+                    && self
+                        .active_constant_owners
+                        .contains(&Self::value_symbol_key(&definition.name))
+            })
+            .filter_map(|definition| {
+                let key = Self::value_symbol_key(&definition.name);
+                self.value_symbols
+                    .get(&key)
+                    .cloned()
+                    .map(|value| (key, value))
+            })
+            .collect()
+    }
+    /// A typed operand cannot consume a forward alias's scalar ABI placeholder.
+    /// Resolve its captured immutable owner before ordinary statement evaluation.
+    pub(super) fn resolve_pending_typed_operands(
+        &mut self,
+        operands: &[Expr],
+    ) -> Result<(), (u32, AsmError)> {
+        if self.pass != 1 || self.constant_definitions.is_empty() {
+            return Ok(());
+        }
+        let mut roots = HashSet::new();
+        for expr in operands {
+            let mut names = Vec::new();
+            immutable_dependencies(expr, &mut names);
+            let structured = !scalar_dependencies(expr, &mut Vec::new());
+            for name in names {
+                let mut base = name;
+                loop {
+                    if let Ok(Some(resolved)) = self.resolve_scoped_name(base) {
+                        if let Some(&index) = self
+                            .constant_definition_indices
+                            .get(&Self::value_symbol_key(&resolved))
+                        {
+                            if (base != name || structured)
+                                && !self
+                                    .layout
+                                    .absolute_constant_symbols
+                                    .contains(&self.constant_definitions[index].name)
+                            {
+                                roots.insert(index);
+                            }
+                        }
+                    }
+                    let Some((parent, _)) = base.rsplit_once('.') else {
+                        break;
+                    };
+                    base = parent;
+                }
+            }
+        }
+        if roots.is_empty() {
+            return Ok(());
+        }
+        let saved_scope = self.symbol_scope.clone();
+        let saved_cpu = self.cpu;
+        let saved_pass = self.pass;
+        self.pass = 2;
+        let mut closure = Vec::new();
+        let mut stack: Vec<_> = roots.into_iter().collect();
+        let mut visited = HashSet::new();
+        while let Some(index) = stack.pop() {
+            if !visited.insert(index) {
+                continue;
+            }
+            let definition = self.constant_definitions[index].clone();
+            self.symbol_scope = definition.scope.clone();
+            self.cpu = definition.cpu;
+            let mut names = Vec::new();
+            immutable_dependencies(&definition.expr, &mut names);
+            for name in names {
+                if let Ok(Some(resolved)) = self.resolve_scoped_name(name) {
+                    if let Some(&child) = self
+                        .constant_definition_indices
+                        .get(&Self::value_symbol_key(&resolved))
+                    {
+                        stack.push(child);
+                    }
+                }
+            }
+            self.immutable_scalar_constants.remove(&definition.name);
+            self.immutable_value_constants.remove(&definition.name);
+            closure.push(definition);
+        }
+        let result = self.resolve_constant_graph(&closure);
+        self.symbol_scope = saved_scope;
+        self.cpu = saved_cpu;
+        self.pass = saved_pass;
+        result?;
+        Ok(())
+    }
     /// A previous traversal may have selected a different conditional owner.
     /// Permit that replacement, but never two immutable owners executed in
     /// this traversal, including owners newly activated by guard replay.
@@ -237,13 +338,17 @@ impl AsmLine<'_> {
             return;
         }
         let mut names = Vec::new();
-        scalar_dependencies(expr, &mut names);
+        immutable_dependencies(expr, &mut names);
         let loop_dependencies = names
             .into_iter()
             .filter(|name| self.lookup_loop_var(name).is_some())
             .map(str::to_string)
             .collect();
         self.capture_value_replay_certificate(name, expr);
+        self.constant_definition_indices.insert(
+            Self::value_symbol_key(name),
+            self.constant_definitions.len(),
+        );
         self.constant_definitions.push(Definition {
             name: name.into(),
             expr: expr.clone(),
@@ -260,8 +365,8 @@ impl AsmLine<'_> {
         });
     }
 
-    /// Resolve only context-independent scalar DAGs. Definitions involving PC,
-    /// labels, mutable values or structured values retain source-order behavior.
+    /// Resolve context-independent immutable value DAGs. Definitions involving
+    /// PC, labels or mutable values retain source-order snapshot behavior.
     /// The graph is built from executed definitions, so inactive source and macro
     /// expansion do not require a second parser or another assembly traversal.
     pub(crate) fn resolve_absolute_constants(&mut self) -> Result<bool, (u32, AsmError)> {
@@ -279,8 +384,10 @@ impl AsmLine<'_> {
         // must not inherit a same-name immutable certificate from an old branch.
         for definition in &definitions {
             self.immutable_scalar_constants.remove(&definition.name);
+            self.immutable_value_constants.remove(&definition.name);
         }
         let result = self.resolve_constant_graph(&definitions);
+        self.constant_definitions = definitions;
         self.symbol_scope = saved_scope;
         self.cpu = saved_cpu;
         self.pass = saved_pass;
@@ -302,7 +409,7 @@ impl AsmLine<'_> {
             self.symbol_scope = definition.scope.clone();
             self.cpu = definition.cpu;
             let mut names = Vec::new();
-            absolute[index] = scalar_dependencies(&definition.expr, &mut names);
+            absolute[index] = immutable_dependencies(&definition.expr, &mut names);
             for name in names {
                 if definition
                     .loop_dependencies
@@ -371,20 +478,11 @@ impl AsmLine<'_> {
                 }
                 absolute[node] &= edges[node].iter().all(|&child| absolute[child]);
                 let definition = &definitions[node];
-                let needs_evaluation = !self
-                    .layout
-                    .absolute_constant_symbols
-                    .contains(&definition.name)
-                    || edges[node].iter().any(|&child| repaired[child]);
                 if absolute[node] {
-                    self.immutable_scalar_constants
-                        .insert(definition.name.clone());
-                }
-                if absolute[node] && needs_evaluation {
                     self.symbol_scope = definition.scope.clone();
                     self.cpu = definition.cpu;
                     let value = self
-                        .eval_expr_for_signed_scalar_context(&definition.expr)
+                        .eval_constant_definition_value(&definition.expr, true)
                         .map_err(|error| {
                             (
                                 definition.line,
@@ -399,15 +497,23 @@ impl AsmLine<'_> {
                         .symbols
                         .entry_mut(&definition.name)
                         .expect("captured constant has a symbol entry");
-                    repaired[node] = self
-                        .scalar_value_symbols
-                        .get(&Self::value_symbol_key(&definition.name))
-                        .copied()
-                        != Some(value);
-                    entry.val = value as u32;
+                    repaired[node] = match &value {
+                        AsmValue::Scalar(scalar) => {
+                            self.scalar_value_symbols
+                                .get(&Self::value_symbol_key(&definition.name))
+                                .copied()
+                                != Some(*scalar)
+                        }
+                        _ => {
+                            self.value_symbols
+                                .get(&Self::value_symbol_key(&definition.name))
+                                != Some(&value)
+                        }
+                    };
+                    entry.val = Self::scalar_shadow_for_value_symbol(&value);
                     entry.updated = true;
                     // Keep the signed semantic value and ABI shadow synchronized.
-                    self.sync_value_symbol(&definition.name, &AsmValue::Scalar(value));
+                    self.sync_value_symbol(&definition.name, &value);
                     repaired[node] |= self
                         .layout
                         .absolute_constant_symbols
@@ -417,6 +523,14 @@ impl AsmLine<'_> {
                         crate::state::SymbolRelocation::Absolute,
                     );
                     changed |= repaired[node];
+                }
+                if absolute[node] && self.has_scalar_value_symbol(&definition.name) {
+                    self.immutable_scalar_constants
+                        .insert(definition.name.clone());
+                }
+                if absolute[node] && self.lookup_value_symbol(&definition.name).is_some() {
+                    self.immutable_value_constants
+                        .insert(definition.name.clone());
                 }
                 states[node] = 2;
                 stack.pop();
@@ -428,16 +542,27 @@ impl AsmLine<'_> {
 
 /// Collect dependencies even in layout-dependent expressions, so adding PC to
 /// a cycle cannot hide it. Only scalar operations with no contextual inputs are
-/// eligible for early evaluation; structured values keep their normal semantics.
+/// eligible for scalar certificates; typed owners use the normal value evaluator.
 pub(super) fn scalar_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) -> bool {
-    expression_dependencies(expr, names, false)
+    expression_dependencies(expr, names, false, false)
 }
 
 pub(super) fn value_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) -> bool {
-    expression_dependencies(expr, names, true)
+    expression_dependencies(expr, names, true, false)
 }
 
-fn expression_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>, structured: bool) -> bool {
+/// Typed immutable values share the dependency graph, but do not certify scalar
+/// loop counts. Mutable and layout-dependent leaves still exclude their owners.
+fn immutable_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) -> bool {
+    expression_dependencies(expr, names, true, true)
+}
+
+fn expression_dependencies<'a>(
+    expr: &'a Expr,
+    names: &mut Vec<&'a str>,
+    structured: bool,
+    struct_literals: bool,
+) -> bool {
     match expr {
         Expr::Number(_, _) => true,
         Expr::Identifier(name, _) | Expr::Register(name, _) => {
@@ -447,10 +572,12 @@ fn expression_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>, structu
         Expr::Indirect(inner, _)
         | Expr::IndirectLong(inner, _)
         | Expr::Immediate(inner, _)
-        | Expr::Unary { expr: inner, .. } => expression_dependencies(inner, names, structured),
+        | Expr::Unary { expr: inner, .. } => {
+            expression_dependencies(inner, names, structured, struct_literals)
+        }
         Expr::Binary { left, right, .. } => {
-            let left = expression_dependencies(left, names, structured);
-            let right = expression_dependencies(right, names, structured);
+            let left = expression_dependencies(left, names, structured, struct_literals);
+            let right = expression_dependencies(right, names, structured, struct_literals);
             left && right
         }
         Expr::Ternary {
@@ -459,29 +586,32 @@ fn expression_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>, structu
             else_expr,
             ..
         } => {
-            let cond = expression_dependencies(cond, names, structured);
-            let then_expr = expression_dependencies(then_expr, names, structured);
-            let else_expr = expression_dependencies(else_expr, names, structured);
+            let cond = expression_dependencies(cond, names, structured, struct_literals);
+            let then_expr = expression_dependencies(then_expr, names, structured, struct_literals);
+            let else_expr = expression_dependencies(else_expr, names, structured, struct_literals);
             cond && then_expr && else_expr
         }
         Expr::List(items, _) | Expr::Tuple(items, _) => {
             let mut eligible = structured;
             for item in items {
-                eligible &= expression_dependencies(item, names, structured);
+                eligible &= expression_dependencies(item, names, structured, struct_literals);
             }
             eligible
         }
         Expr::Index { base, index, .. } => {
-            let base = expression_dependencies(base, names, structured);
-            let index = expression_dependencies(index, names, structured);
+            let base = expression_dependencies(base, names, structured, struct_literals);
+            let index = expression_dependencies(index, names, structured, struct_literals);
             structured && base && index
         }
-        Expr::Member { base, .. } => expression_dependencies(base, names, structured) && structured,
+        Expr::Member { base, .. } => {
+            expression_dependencies(base, names, structured, struct_literals) && structured
+        }
         Expr::StructLiteral { fields, .. } => {
+            let mut eligible = struct_literals;
             for (_, value) in fields {
-                scalar_dependencies(value, names);
+                eligible &= expression_dependencies(value, names, structured, struct_literals);
             }
-            false
+            eligible
         }
         Expr::Call { args, .. } => {
             for arg in args {
@@ -492,11 +622,11 @@ fn expression_dependencies<'a>(expr: &'a Expr, names: &mut Vec<&'a str>, structu
         Expr::Range {
             start, end, step, ..
         } => {
-            let start = expression_dependencies(start, names, structured);
-            let end = expression_dependencies(end, names, structured);
-            let step = step
-                .as_ref()
-                .is_none_or(|step| expression_dependencies(step, names, structured));
+            let start = expression_dependencies(start, names, structured, struct_literals);
+            let end = expression_dependencies(end, names, structured, struct_literals);
+            let step = step.as_ref().is_none_or(|step| {
+                expression_dependencies(step, names, structured, struct_literals)
+            });
             structured && start && end && step
         }
         _ => false,

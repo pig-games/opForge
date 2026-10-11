@@ -60,6 +60,9 @@ pub struct Assembler {
     pub absolute_constant_symbols: HashSet<String>,
     symbol_relocations: HashMap<String, crate::state::SymbolRelocation>,
     scalar_value_symbols: HashMap<String, i64>,
+    // Only executed owners certified by the immutable dependency graph cross
+    // passes. Mutable and contextual compound snapshots stay source ordered.
+    immutable_value_symbols: HashMap<String, types::asm_value::AsmValue>,
     pub diagnostics: Vec<Diagnostic>,
     pub cpu: CpuType,
     pub registry: ModuleRegistry,
@@ -566,6 +569,7 @@ qualified_share={:.2}%",
                 asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
                 asm_line.layout.symbol_relocations = self.symbol_relocations.clone();
                 asm_line.scalar_value_symbols = self.scalar_value_symbols.clone();
+                asm_line.seed_immutable_values(self.immutable_value_symbols.clone());
                 asm_line.activated_guard_certificates = self.loop_replay.activated_guards.clone();
                 asm_line.immutable_scalar_constants =
                     self.loop_replay.immutable_scalar_constants.clone();
@@ -816,6 +820,7 @@ qualified_share={:.2}%",
                 asm_line.layout.concrete_section_declarations.clone();
             self.absolute_constant_symbols = asm_line.layout.absolute_constant_symbols.clone();
             self.symbol_relocations = asm_line.layout.symbol_relocations.clone();
+            self.immutable_value_symbols = asm_line.resolved_immutable_values();
             self.scalar_value_symbols = std::mem::take(&mut asm_line.scalar_value_symbols);
             self.root_metadata = asm_line.take_root_metadata();
             self.sections = asm_line.take_sections();
@@ -1019,6 +1024,7 @@ qualified_share={:.2}%",
             absolute_constant_symbols: HashSet::new(),
             symbol_relocations: HashMap::new(),
             scalar_value_symbols: HashMap::new(),
+            immutable_value_symbols: HashMap::new(),
             diagnostics: Vec::new(),
             cpu,
             registry,
@@ -1617,6 +1623,7 @@ qualified_share={:.2}%",
         asm_line.layout.absolute_constant_symbols = self.absolute_constant_symbols.clone();
         asm_line.layout.symbol_relocations = self.symbol_relocations.clone();
         asm_line.scalar_value_symbols = self.scalar_value_symbols.clone();
+        asm_line.seed_immutable_values(self.immutable_value_symbols.clone());
         // Seed pass2 with pass1 placement/layout state so section-local encoding
         // (especially relative branches) uses rebased absolute addresses even if
         // .place/.pack directives appear later in source order.

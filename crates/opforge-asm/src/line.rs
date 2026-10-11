@@ -242,12 +242,14 @@ pub struct AsmLine<'a> {
     value_symbols: HashMap<String, AsmValue>,
     module_parameters: types::asm_value::ModuleParameters,
     constant_definitions: Vec<asmline_constants::Definition>,
+    constant_definition_indices: HashMap<String, usize>,
     value_replay_owners:
         HashMap<String, Option<HashSet<crate::engine::repetition_trace::GuardKey>>>,
     active_constant_owners: HashSet<String>,
     pub(crate) loop_observations: Vec<crate::engine::repetition_trace::LoopObservation>,
     pub(crate) repetition_path: Vec<(u32, u32)>,
     pub(crate) immutable_scalar_constants: HashSet<String>,
+    immutable_value_constants: HashSet<String>,
     pub(crate) scalar_value_symbols: HashMap<String, i64>,
     active_struct: Option<ActiveStructDefinition>,
     require_defined_symbols: bool,
@@ -461,10 +463,12 @@ impl<'a> AsmLine<'a> {
             value_symbols: HashMap::new(),
             module_parameters: HashMap::new(),
             constant_definitions: Vec::new(),
+            constant_definition_indices: HashMap::new(),
             active_constant_owners: HashSet::new(),
             loop_observations: Vec::new(),
             repetition_path: Vec::new(),
             immutable_scalar_constants: HashSet::new(),
+            immutable_value_constants: HashSet::new(),
             value_replay_owners: HashMap::new(),
             scalar_value_symbols: HashMap::new(),
             active_struct: None,
@@ -2626,6 +2630,9 @@ impl<'a> AsmLine<'a> {
                     }
                 }
 
+                if let Err((_, error)) = self.resolve_pending_typed_operands(&operands) {
+                    return self.failure(LineStatus::Error, error.kind(), error.message(), None);
+                }
                 self.record_operand_references(&operands);
                 let mut status = self.process_directive_ast(&mnemonic, &operands);
                 if status == LineStatus::NothingDone {

@@ -21,6 +21,58 @@ fn constant_dependencies_mixed_definition_forms() {
 }
 
 #[test]
+fn constant_dependencies_forward_typed_immutable_aliases() {
+    assert_eq!(bytes("Info .struct\nvalue .byte ?\n.endstruct\nfirst .const second\nsecond .const third\nthird .const Info {value:later}\nlater .const 66\n.byte first.value,second.value,third.value"), [66,66,66]);
+    assert_eq!(bytes("Info .struct\nvalue .byte ?\n.endstruct\nfirst .const second\nsecond .const {7,8}\n.byte first[1]"), [8]);
+    // Ordinary scalar forward aliases retain their existing semantics.
+    assert_eq!(
+        bytes("first .const second\nsecond .const 66\n.byte first"),
+        [66]
+    );
+    assert_eq!(bytes("first .const second/2\nremainder .const second%2\nsecond .const -5\n.byte first&255,remainder&255"), [254,255]);
+}
+
+#[test]
+fn constant_dependencies_typed_snapshots_remain_source_ordered() {
+    assert_eq!(bytes("Info .struct\nvalue .byte ?\n.endstruct\nvariable := 7\nsaved .const Info {value:variable}\nvariable := 9\n.byte saved.value,variable"), [7,9]);
+    assert_eq!(bytes("Info .struct\nvalue .byte ?\n.endstruct\n.org 3\nsaved .const Info {value:$}\n.byte 0,saved.value"), [0,3]);
+    // Struct declarations have no defaults: literal fields are mandatory.
+    for body in [
+        "Info .struct\nvalue .byte ?\n.endstruct\nfirst .const second\nsecond .const Info {}\n.byte first.value",
+        "Info .struct\nvalue .byte 7\n.endstruct",
+    ] {
+        let assembler = run_pass1(&body.lines().collect::<Vec<_>>());
+        assert!(assembler.diagnostics.iter().any(|d| d.severity == Severity::Error), "unsupported struct default accepted: {body}");
+    }
+}
+
+#[test]
+fn constant_dependencies_forward_typed_alias_retains_imported_block() {
+    let source = ".module provider\n.pub\nroutine .block\nInfo .struct\nvalue .byte ?\n.endstruct\nsaved1 .const later\nlater .const Info {value:66}\n.byte 11\n.bend\nunused .block\n.byte 99\n.bend\n.endmodule\n.module app\n.use provider as lib\ncopy .const lib.routine.saved1\n.byte copy.value,provider.routine.saved1.value\n.endmodule";
+    assert_eq!(bytes(source), [11, 66, 66]);
+}
+
+#[test]
+fn constant_dependencies_forward_typed_alias_errors_are_not_placeholders() {
+    for body in [
+        "first .const second\nsecond .const first\n.byte first.value",
+        "first .const missing\n.byte first.value",
+        "Info .struct\nvalue .byte ?\n.endstruct\nfirst .const second\nsecond .const Info {value:missing}\n.byte first.value",
+        "Info .struct\nvalue .byte ?\n.endstruct\nfirst .const second\nsecond .var Info {value:66}\n.byte first.value",
+        "Info .struct\nvalue .byte ?\n.endstruct\nfirst .const second\nsecond .const Info {value:$}\n.byte first.value",
+    ] {
+        let mut assembler = run_pass1(&body.lines().collect::<Vec<_>>());
+        if !assembler.diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error) {
+            let lines = body.lines().map(str::to_owned).collect::<Vec<_>>();
+            let mut output = Vec::new();
+            let mut listing = ListingWriter::new(&mut output, false);
+            let _ = assembler.pass2(&lines, &mut listing);
+        }
+        assert!(assembler.diagnostics.iter().any(|diagnostic| diagnostic.severity == Severity::Error), "invalid alias accepted: {body}");
+    }
+}
+
+#[test]
 fn constant_dependencies_refresh_instruction_width_and_labels() {
     assert_eq!(bytes(".cpu m6502\n.org $1000\naddress = base+offset\nbase = page<<8\npage = 2\noffset = 4\nstart:\n lda address\nfinish:\n.word finish,start,finish-start"),
         [0xad,4,2,3,0x10,0,0x10,3,0]);

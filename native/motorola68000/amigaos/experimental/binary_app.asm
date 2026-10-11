@@ -1335,8 +1335,8 @@ bad
 appendEmission	.block
 	movem.l a0-a1, -(sp)
 	movea.l assembly.Frame.Sections(a0), a1
-	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a1)
-	beq.w relocatable
+	tst.w sections.State.OutputSeen(a1)
+	bne.w relocatable
 	lea EmissionSpans, a0
 	jsr output_spans.append
 	bra.w done
@@ -1513,8 +1513,8 @@ writeSelected	.block
 writeRecords	.block
 	lea Work, a0
 	movea.l assembly.Frame.Sections(a0), a1
-	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a1)
-	beq.w bad
+	tst.w sections.State.OutputSeen(a1)
+	bne.w bad
 	lea TextBuffer, a0
 	move.l #4096, d0
 	jsr memory.reserveExact
@@ -1566,8 +1566,11 @@ selectOutput	.block
 	bne.w badSelect
 	bra.w sourceFormat
 requireFlat
-	cmpi.w #5, sections.State.Mode(a6)
-	beq.w badSelect
+	; Fragment geometry alone does not choose a Hunk artifact. Without a
+	; source Hunk descriptor, Bin owns only the initialized assembly buffer.
+	tst.w sections.State.OutputSeen(a6)
+	bne.w badSelect
+	bra.w selected
 sourceFormat
 	cmpi.w #5, sections.State.Mode(a6)
 	bne.w selected

@@ -25,12 +25,14 @@ INSTRUMENTATION_DEFINES = {
     "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
 }
-PACKAGE_HEADER_BYTES = 236
+PACKAGE_HEADER_BYTES = 238
+PACKAGE_MAGIC = b"BS37"
 BRANCH_PLAN_OFFSET = 220
 BRANCH_PLAN_BYTES_OFFSET = 224
 TEXT_PLAN_OFFSET = 228
 TEXT_PLAN_BYTES_OFFSET = 232
 TEXT_PLAN_BYTES = 34
+NAMED_DS_DIRECTIVE_OFFSET = 236
 
 
 def fnv(data):
@@ -143,7 +145,7 @@ def load_bundle(bundle):
         raise ValueError("Release bootstrap/oracle mismatch")
     # Only the current package contract is supported. This transport verifies
     # assets and header regions; the native runtime interprets VM opcodes.
-    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != b"BS36":
+    if fnv(package) != manifest["runtime_package_digest"] or package[:4] != PACKAGE_MAGIC:
         raise ValueError("Runtime package mismatch")
     if len(package) < PACKAGE_HEADER_BYTES or int.from_bytes(package[4:8], "big") != len(package):
         raise ValueError("Invalid runtime package header")
@@ -180,6 +182,11 @@ def load_bundle(bundle):
         raise ValueError("Invalid loop-plan program region")
     loop = package[loop_offset:loop_offset + loop_size]
     name_count = int.from_bytes(package[62:64], "big")
+    ds_directive_id = int.from_bytes(
+        package[NAMED_DS_DIRECTIVE_OFFSET:NAMED_DS_DIRECTIVE_OFFSET + 2], "big"
+    )
+    if ds_directive_id >= name_count:
+        raise ValueError("Invalid named DS directive ID")
     loop_names = [int.from_bytes(loop[offset:offset + 2], "big")
                   for offset in (1, 3, 5, 7, 9, 11, 13)]
     if (loop[0] != 0x99 or loop[15:] != b"\x83\0"

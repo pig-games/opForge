@@ -8065,6 +8065,9 @@ mod native_assembly_session_probe;
 #[path = "tests/native_binding_owner_states.rs"]
 mod native_binding_owner_states;
 #[cfg(test)]
+#[path = "tests/native_compact_reservation.rs"]
+mod native_compact_reservation;
+#[cfg(test)]
 #[path = "tests/native_composed_include_binding.rs"]
 mod native_composed_include_binding;
 #[path = "tests/native_data_narrowing.rs"]

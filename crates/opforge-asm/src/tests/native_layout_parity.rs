@@ -26,6 +26,8 @@ fn cases() -> Vec<LayoutCase> {
     }];
     for (name, source, outputs) in [
         ("align-original-hex", include_str!("../../../../examples/opcore/align_simple.asm").to_string(), &["image.hex"][..]),
+        ("ds-bss-records", ".module main\n.cpu 68020\n.region ram,$1000,$10ff\n.region rom,$2000,$20ff\n.section vars,kind=bss\nbegin:\n.ds 4\nfinish:\n.endsection\n.section data,kind=data\n.byte finish-begin\n.endsection\n.place vars in ram\n.place data in rom\n.endmodule\n".into(), &["image.bin", "image.hex", "image.srec"][..]),
+        ("ds-flat-records", ".module main\n.cpu 68020\n.org $1000\n.ds 3\n.byte 1\n.ds 4\n.byte 2\n.ds 5\n.endmodule\n".into(), &["image.bin", "image.hex", "image.srec"][..]),
         ("align-flat-records", ".module main\n.cpu 68020\n.org $1000\n.byte 1\n.align 16\n.align 16\n.byte 2\n.endmodule\n".into(), &["image.bin", "image.hex", "image.srec"][..]),
         ("align-mos-records", ".module main\n.cpu 6502\n.org $1000\n.byte 1\n.align 4\n.byte 2\n.endmodule\n".into(), &["image.bin", "image.hex", "image.srec"][..]),
         ("forward-region-placed-records", ".module main\n.cpu 68020\n.section code,kind=code\n.byte 1\n.align 4\n.byte 2\n.endsection\n.place code in ram\n.region ram,$1000,$10ff\n.endmodule\n".into(), &["image.bin", "image.hex", "image.srec"][..]),
@@ -126,6 +128,20 @@ fn native_layout_rust_oracles() {
         let outputs = oracle(&dir, &case);
         if case.name == "align-flat-records-bin" {
             assert_eq!(outputs[0], [&[1][..], &[0; 15][..], &[2][..]].concat());
+        }
+        if case.name == "ds-bss-records-bin" {
+            assert_eq!(outputs[0], [4]);
+        }
+        if case.name == "ds-bss-records-hex" {
+            let hex = String::from_utf8(outputs[0].clone()).unwrap();
+            assert_eq!(hex, ":0120000004DB\n:00000001FF\n");
+        }
+        if case.name == "ds-flat-records-bin" {
+            assert_eq!(outputs[0], [1, 0, 0, 0, 0, 2]);
+        }
+        if case.name == "ds-flat-records-hex" {
+            let hex = String::from_utf8(outputs[0].clone()).unwrap();
+            assert!(hex.contains(":0110030001EB\n:0110080002E5\n"));
         }
         if case.name == "align-flat-records-hex" {
             let hex = String::from_utf8(outputs[0].clone()).unwrap();

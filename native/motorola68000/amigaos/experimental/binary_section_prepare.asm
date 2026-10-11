@@ -41,6 +41,11 @@ REGION_NAMES = OUTPUT_SLOTS+8
 SCRATCH_BYTES = REGION_NAMES+8*2
 ; Seen bits: first logical/concrete/region/place, second concrete/region/place,
 ; second logical. Packed control opcodes 10/11 are second logical/concrete.
+SEEN_FIRST_CONCRETE = 1 << 1
+SEEN_FIRST_PLACE = 1 << 3
+SEEN_SECOND_CONCRETE = 1 << 4
+SEEN_SECOND_PLACE = 1 << 6
+SEEN_BOTH_CONCRETE_AND_PLACES = SEEN_FIRST_CONCRETE+SEEN_FIRST_PLACE+SEEN_SECOND_CONCRETE+SEEN_SECOND_PLACE
 CONTROL_SECTION = 1
 CONTROL_ENDSECTION = 2
 CONTROL_REGION = 3
@@ -839,8 +844,10 @@ secondCheck
 	tst.w State.Second(a0)
 	beq.w noSecond
 	move.w State.Seen(a0), d0
-	andi.w #$007a, d0  ; both concrete sections, second region and both places
-	cmpi.w #$007a, d0
+	; Both placements may share a region. Referenced region identities were
+	; already checked against their declarations above.
+	andi.w #SEEN_BOTH_CONCRETE_AND_PLACES, d0
+	cmpi.w #SEEN_BOTH_CONCRETE_AND_PLACES, d0
 	bne.w badFinish
 noSecond
 	tst.w State.SecondRegion(a0)

@@ -316,6 +316,8 @@ coreDirective
 	beq.w none
 	cmp.w package.Header.ResDirective(a3), d4
 	beq.w none
+	cmp.w package.Header.DsDirective(a3), d4
+	beq.w none
 	cmp.w package.Header.EmitDirective(a3), d4
 	beq.w none
 	; Package loop envelopes preserve contextual grammar identities. They

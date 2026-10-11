@@ -373,3 +373,28 @@ Compared with that 662,380-byte combined baseline, this adds 536 code bytes and
 cases pass freshly for both the production image and the allocation-failure
 probe. This measures unchanged-path storage overhead, not growing-source
 acquisition, peak heap or a new full self-host run.
+
+## Shared byte reservations (BS37)
+
+The shared `.ds`/BSS slice uses the unchanged 11,592-byte source with 1,200 macro
+calls, both embedded packages and FS-UAE `68020-10m`. Both release samples complete
+freshly and match the entire live Rust output; telemetry is disabled. The baseline
+is the final conditional-owner image, before this reservation change.
+
+| State | START-to-DONE seconds | Image bytes | Linked reservation bytes |
+|---|---:|---:|---:|
+| Conditional-owner baseline | 33.094098333 | 674,344 | 707,612 |
+| Shared reservations | 32.955889917 | 674,768 | 708,008 |
+
+The difference is -0.42% from one sample per state, supporting no material timing
+change. The executable grows 424 bytes and linked storage grows 396 bytes. The
+final release SHA-256 is
+`12e51f1f0eb0b2a506cb03c4c4f4fa9f6363a434056de1651a3c0f8f315ea72a`.
+This measures unchanged-path overhead, not a speedup of previously rejected BSS.
+
+A separate instrumented run of the same source matches the full Rust artifact.
+Owned-memory peak rises from 1,282,328 to 1,282,344 bytes (+16); allocated and freed
+totals both rise from 3,182,104 to 3,182,120. Terminal live bytes remain zero. Packed
+source stays 27,022 bytes; runtime prefix changes from 425,504 to 425,506. The
+instrumented 34.231945625-second result is not release timing. These measurements
+do not qualify physical A6000 speed, full current-source self-hosting or 2 MiB fit.

@@ -5,6 +5,20 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_package as pkg
 	.pub
+KIND_BSS = 3
+CONTROL_FIRST_SECTION = 2
+CONTROL_MAPPED_CONCRETE = 6
+CONTROL_SECOND_SECTION = 7
+CONTROL_SECOND_MAPPED_CONCRETE = 11
+CONTROL_EXTRA_SECTION = 12
+CONTROL_OUTPUT = 20
+ControlRecord	.struct
+Length	.byte ?
+Flags	.byte ?
+SourceLine	.word ?
+Opcode	.byte ?
+Kind	.byte ?
+	.endstruct
 Slot	.struct
 Base	.long ?
 End	.long ?
@@ -63,6 +77,8 @@ PLACEMENT_SCRATCH = ORDER+8
 PLACEMENT_BYTES = 256
 SCRATCH_BYTES = PLACEMENT_SCRATCH+PLACEMENT_BYTES
 HUNK_MODE = 5
+; Legacy name for independent fragment/placement geometry. Serialization is
+; chosen elsewhere; this also supports flat artifacts with nonpayload BSS.
 ; Modes 3/4 use two placed slots, without/with two imported maps.
 ; Started/Placed use one bit per slot; After retains its last completed PC.
 	.section code, kind=code
@@ -116,8 +132,26 @@ findLayout
 	beq.w nextLayout
 	cmpi.w #5, d0
 	blo.w bad
-	cmpi.b #20, 4(a4)
+	cmpi.b #CONTROL_OUTPUT, ControlRecord.Opcode(a4)
+	beq.w fragmentLayout
+	cmpi.w #ControlRecord.Kind+1, d0
+	blo.w nextLayout
+	moveq #0, d1
+	move.b ControlRecord.Opcode(a4), d1
+	cmpi.w #CONTROL_FIRST_SECTION, d1
+	beq.w layoutKind
+	cmpi.w #CONTROL_MAPPED_CONCRETE, d1
+	beq.w layoutKind
+	cmpi.w #CONTROL_SECOND_SECTION, d1
+	beq.w layoutKind
+	cmpi.w #CONTROL_SECOND_MAPPED_CONCRETE, d1
+	beq.w layoutKind
+	cmpi.w #CONTROL_EXTRA_SECTION, d1
 	bne.w nextLayout
+layoutKind
+	cmpi.b #KIND_BSS, ControlRecord.Kind(a4)
+	bne.w nextLayout
+fragmentLayout
 	move.w #1, State.HunkLayout(a6)
 nextLayout
 	adda.l d0, a4
@@ -247,7 +281,25 @@ hunkScanBad
 	bra.w bad
 complete
 	tst.w State.OutputSeen(a6)
+	bne.w fragmentComplete
+	tst.w State.HunkLayout(a6)
 	beq.w flatComplete
+	; No explicit artifact order: numeric slots were allocated in declaration
+	; order. Include BSS geometry while its initialized payload remains empty.
+	lea HUNK_SLOTS(a6), a5
+	lea ORDER(a6), a4
+	moveq #0, d2
+defaultOrder
+	tst.w HunkSlot.Seen(a5)
+	beq.w nextDefault
+	move.b d2, (a4)+
+	addq.w #1, State.OrderCount(a6)
+nextDefault
+	adda.w #HUNK_SLOT_BYTES, a5
+	addq.w #1, d2
+	cmpi.w #HUNK_SLOT_COUNT, d2
+	blo.w defaultOrder
+fragmentComplete
 	tst.w State.HunkInvalid(a6)
 	bne.w bad
 	move.w State.OrderCount(a6), d3

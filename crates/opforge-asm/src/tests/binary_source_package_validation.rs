@@ -33,16 +33,22 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     assert!(count > 0);
-    assert_eq!(&valid[..4], b"BS36");
+    assert_eq!(&valid[..4], b"BS37");
     assert!(rows + count * crate::binary_source_experiment::ROW <= valid.len());
     assert_eq!(&valid[rows + 34..rows + 36], &[0, 0]);
     assert!(valid[rows + 32] <= 11);
+    let mut invalid_ds = valid.clone();
+    let name_count = u16::from_be_bytes(valid[62..64].try_into().unwrap());
+    invalid_ds[crate::binary_source_experiment::DS_DIRECTIVE
+        ..crate::binary_source_experiment::DS_DIRECTIVE + 2]
+        .copy_from_slice(&name_count.to_be_bytes());
     let mut reserved = valid.clone();
     reserved[rows + 35] = 1;
     let mut form = valid.clone();
     form[rows + 32] = 12;
     let mut cases = vec![
         ("valid-package", valid.clone(), 0),
+        ("invalid-ds-directive-id", invalid_ds, 1),
         ("nonzero-row-reserved", reserved, 1),
         ("invalid-third-form", form, 1),
     ];
@@ -163,9 +169,13 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         cases.push((name, malformed, 1));
     }
     let mut superseded = valid.clone();
-    superseded[..4].copy_from_slice(b"BS34");
+    superseded[..4].copy_from_slice(b"BS36");
     cases.push(("superseded-package", superseded, 1));
-    cases.push(("truncated-current-header", valid[..227].to_vec(), 1));
+    cases.push((
+        "truncated-current-header",
+        valid[..crate::binary_source_experiment::HEADER - 1].to_vec(),
+        1,
+    ));
     cases
 }
 
@@ -247,18 +257,22 @@ PayloadEnd
 "#,
     );
     let directory = root.join("native/motorola68000/amigaos/experimental");
-    source.push_str(
-        &std::fs::read_to_string(root.join("native/motorola68000/amigaos/prvm/prvm_abi.asm"))
-            .unwrap(),
-    );
-    source.push('\n');
-    source.push_str(
-        &std::fs::read_to_string(
-            root.join("native/motorola68000/amigaos/prvm/prvm_packed_branch.asm"),
-        )
-        .unwrap(),
-    );
-    source.push('\n');
+    let telemetry =
+        std::fs::read_to_string(root.join("native/motorola68000/amigaos/debug/telemetry_macros.i"))
+            .unwrap();
+    for name in [
+        "prvm_abi.asm",
+        "prvm_packed_branch.asm",
+        "prvm_packed_declaration.asm",
+        "prvm_packed_text.asm",
+    ] {
+        source.push_str(
+            &std::fs::read_to_string(root.join("native/motorola68000/amigaos/prvm").join(name))
+                .unwrap()
+                .replace(".include \"telemetry_macros.i\"", &telemetry),
+        );
+        source.push('\n');
+    }
     for name in [
         "binary_package.asm",
         "binary_state.asm",
@@ -353,10 +367,14 @@ fn compact_package_validation_component_fixture_contract() {
             "branch-invalid-role" => branch_offset + 4..branch_offset + 5,
             "branch-invalid-expression-policy" => branch_offset + 5..branch_offset + 6,
             "branch-corrupt-end" => branch_offset + 19..branch_offset + 20,
+            "invalid-ds-directive-id" => {
+                crate::binary_source_experiment::DS_DIRECTIVE
+                    ..crate::binary_source_experiment::DS_DIRECTIVE + 2
+            }
             "superseded-package" => 0..4,
             "truncated-current-header" => {
-                assert_eq!(bytes.len(), 227);
-                assert_eq!(bytes, &valid[..227]);
+                assert_eq!(bytes.len(), crate::binary_source_experiment::HEADER - 1);
+                assert_eq!(bytes, &valid[..crate::binary_source_experiment::HEADER - 1]);
                 assert!(changed.is_empty());
                 continue;
             }
@@ -371,6 +389,27 @@ fn compact_package_validation_component_fixture_contract() {
         assert_eq!(&bytes[..field.start], &valid[..field.start], "{name}");
         assert_eq!(&bytes[field.end..], &valid[field.end..], "{name}");
     }
+}
+
+#[test]
+fn compact_package_validation_component_host_assembles() {
+    use clap::Parser;
+    use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
+    let scratch = Scratch::new();
+    let input = scratch.0.join("entry.asm");
+    std::fs::write(&input, source(&workspace_root())).unwrap();
+    std::fs::write(scratch.0.join("package.bin"), &fixtures()[0].1).unwrap();
+    let cli = Cli::parse_from(["opForge", input.to_str().unwrap(), "--cpu", "68020"]);
+    let mut config = validate_cli(&cli).unwrap();
+    config.out_dir = Some(scratch.0.clone());
+    run_with_validated_cli_with_context(&cli, &config)
+        .expect("assemble current validator and its shared packed dependencies");
+    assert!(
+        std::fs::metadata(scratch.0.join("validation-probe.hunk"))
+            .unwrap()
+            .len()
+            > 0
+    );
 }
 
 #[test]

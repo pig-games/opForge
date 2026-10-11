@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533336; BS36
+MAGIC = $42533337; BS37
 TARGET_PRESERVE_WRAPPERS = 1
 TARGET_NESTED_PATHS = 2
 DICTIONARY_REGISTER_OR_NAMED = 1
@@ -117,8 +117,9 @@ BranchPlan	.long ?
 BranchPlanBytes	.long ?
 TextPlan	.long ?
 TextPlanBytes	.long ?
+DsDirective	.word ?  ; shared byte reservation, one scalar count
 	.endstruct
-HEADER_BYTES = Header.TextPlanBytes+4
+HEADER_BYTES = Header.DsDirective+2
 
 ; Contextual member forms are derived from canonical selector projections,
 ; including unsupported candidates. Field meanings remain package-owned.

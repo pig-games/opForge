@@ -17,22 +17,23 @@ SPEC.loader.exec_module(runner)
 
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
-        package = bytearray(364)
-        package[:4] = b"BS36"
+        package = bytearray(366)
+        package[:4] = runner.PACKAGE_MAGIC
         package[62:64] = (5).to_bytes(2, "big")
-        package[168:172] = (236).to_bytes(4, "big")
+        package[runner.NAMED_DS_DIRECTIVE_OFFSET:runner.NAMED_DS_DIRECTIVE_OFFSET + 2] = (4).to_bytes(2, "big")
+        package[168:172] = runner.PACKAGE_HEADER_BYTES.to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
         package[176:178] = (2).to_bytes(2, "big")
-        package[180:184] = (240).to_bytes(4, "big")
+        package[180:184] = (242).to_bytes(4, "big")
         package[184:188] = (23).to_bytes(4, "big")
         package[188:190] = (2).to_bytes(2, "big")
-        package[160:164] = (356).to_bytes(4, "big")
-        package[200:204] = (362).to_bytes(4, "big")
+        package[160:164] = (358).to_bytes(4, "big")
+        package[200:204] = (364).to_bytes(4, "big")
         package[204:208] = (1).to_bytes(4, "big")
-        package[212:216] = (264).to_bytes(4, "big")
+        package[212:216] = (266).to_bytes(4, "big")
         package[216:220] = (17).to_bytes(4, "big")
         package[220:224] = (282).to_bytes(4, "big")
-        branch_plan_offset = 282
+        branch_plan_offset = 284
         package[220:224] = branch_plan_offset.to_bytes(4, "big")
         branch_plan = bytearray((0x9A, 4))
         for index in range(4):
@@ -40,9 +41,9 @@ class HardwareCompletionTests(unittest.TestCase):
             branch_plan.extend((index + 1, int(index < 2)))
         branch_plan.extend((0x83, 0))
         package[224:228] = len(branch_plan).to_bytes(4, "big")
-        package[228:232] = (302).to_bytes(4, "big")
+        package[228:232] = (304).to_bytes(4, "big")
         package[232:236] = runner.TEXT_PLAN_BYTES.to_bytes(4, "big")
-        package[264:281] = b"\x99\0\0\0\1\0\0\0\2\0\3\0\3\0\4\x83\0"
+        package[266:283] = b"\x99\0\0\0\1\0\0\0\2\0\3\0\3\0\4\x83\0"
         package[branch_plan_offset:branch_plan_offset + len(branch_plan)] = branch_plan
         if target:
             package[124:128] = len(package).to_bytes(4, "big")
@@ -129,7 +130,8 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS27", 210, "package mismatch"),
                                    (b"BS29", 210, "package mismatch"),
                                   (b"BS35", 236, "package mismatch"),
-                                  (b"BS36", 235, "package header")):
+                                  (b"BS36", 366, "package mismatch"),
+                                  (b"BS37", 237, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -139,6 +141,16 @@ class HardwareCompletionTests(unittest.TestCase):
                 self.replace_package(root, package)
                 with self.assertRaisesRegex(ValueError, error):
                     runner.load_bundle(root)
+
+    def test_named_ds_directive_id_must_reference_a_package_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.bundle(root, False)
+            package = bytearray(self.package())
+            package[runner.NAMED_DS_DIRECTIVE_OFFSET:runner.NAMED_DS_DIRECTIVE_OFFSET + 2] = (5).to_bytes(2, "big")
+            self.replace_package(root, package)
+            with self.assertRaisesRegex(ValueError, "named DS directive ID"):
+                runner.load_bundle(root)
 
     def test_current_header_rejects_invalid_regions_versions_and_reserved_words(self):
         mutations = [

@@ -135,6 +135,24 @@ Consolidate each VM's current capabilities into its own
 v1 contract, remove superseded formats and native VM version fields/checks/dispatch,
 while preserving package/container integrity and bounds validation.
 
+The BS37 shared reservation slice adds `.ds count` through numeric directive
+binding, shared expression preparation and assembly-owned output. Flat leading
+and trailing reservations produce no payload; internal holes retain zero-filled
+Bin storage and separate addressed Hex/S-record spans. Initialized sections retain
+padding, while BSS uses the existing independent fragment/placement geometry and
+produces no initialized bytes. Layout mode no longer selects Hunk serialization;
+explicit source Hunk descriptors retain that policy. Both shared and separate
+regions have focused proof. All 24 fresh reservation cases pass: 12 exact positive
+artifacts and 12 expected diagnostic rejections across 68020 and 6502. Six final
+Bin/Hex/S-record controls and the existing Hunk BSS regression also match exactly.
+The complete unchanged `syntax.asm` still rejects, now at labeled `.if` line 280
+instead of `.ds` line 114. This does not change the full corpus qualification claim.
+The unchanged release control takes 32.955889917 s versus 33.094098333 s (-0.42%,
+one sample per state), with 424 more executable bytes and 396 more linked bytes.
+Separate telemetry reports only 16 additional owned bytes at peak and zero live
+bytes after cleanup. See the [measurement details](../performance/vm-efficiency.md#shared-byte-reservations-bs37).
+No new full current-source self-host or 2 MiB qualification is claimed.
+
 ## Complete and qualify a slice
 
 Use current live Rust oracles, fresh case-bound guest completion, explicit exit

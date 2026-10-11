@@ -20,7 +20,8 @@ use vm::runtime_model_core::RuntimeModelCore;
 const MISSING: u16 = u16::MAX;
 const TEXT_PLAN: usize = 228;
 const TEXT_PLAN_BYTES: usize = 232;
-pub(crate) const HEADER: usize = TEXT_PLAN_BYTES + 4;
+pub(crate) const DS_DIRECTIVE: usize = TEXT_PLAN_BYTES + 4;
+pub(crate) const HEADER: usize = DS_DIRECTIVE + 2;
 const BRANCH_PLAN: usize = 220;
 const BRANCH_PLAN_BYTES: usize = 224;
 pub(crate) const ROW: usize = 44;
@@ -166,7 +167,7 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS36 block for one resolved package hierarchy.
+/// Prepare a self-contained BS37 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
@@ -314,7 +315,7 @@ pub fn prepare_package(
     }
     let mut directive_ids = Vec::new();
     for directive in [
-        "cpu", "org", "byte", "word", "long", "end", "align", "res", "for", "endfor",
+        "cpu", "org", "byte", "word", "long", "end", "align", "res", "for", "endfor", "ds",
     ] {
         let id = intern(&mut names, directive)?;
         bind(
@@ -556,7 +557,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS36");
+    out[..4].copy_from_slice(b"BS37");
     set_word(&mut out, 208, builtin_len);
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
@@ -853,6 +854,7 @@ pub fn prepare_package(
             6..=7 => 76 + (index - 6) * 2,
             8 => 66,
             9 => 98,
+            10 => DS_DIRECTIVE,
             _ => unreachable!(),
         };
         set_word(&mut out, offset, *id);
@@ -1981,7 +1983,7 @@ mod dictionary_role_contract_tests {
         assert_eq!(&unsupported[ROLE_COUNT..], &wire[ROLE_COUNT..]);
 
         let prepared = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&prepared[..4], b"BS36");
+        assert_eq!(&prepared[..4], b"BS37");
         let rows = u32::from_be_bytes(prepared[16..20].try_into().unwrap()) as usize;
         let count = u32::from_be_bytes(prepared[20..24].try_into().unwrap()) as usize;
         assert!(

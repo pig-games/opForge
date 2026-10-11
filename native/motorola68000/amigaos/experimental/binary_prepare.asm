@@ -207,6 +207,8 @@ ordinaryLoopDirective
 	beq.w scalar
 	cmp.w package.Header.AlignDirective(a2), d7
 	beq.w oneScalar
+	cmp.w package.Header.DsDirective(a2), d7
+	beq.w oneScalar
 	cmp.w package.Header.ResDirective(a2), d7
 	beq.w reserve
 	cmp.w package.Header.EmitDirective(a2), d7

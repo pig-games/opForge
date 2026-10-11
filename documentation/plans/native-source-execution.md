@@ -184,10 +184,10 @@ actual measurement; image reservation alone cannot establish peak memory.
 
 ### Text integration checkpoint
 
-The native compact assembler now executes validated BS36 text spans through the
-shared numeric text grammar and text registry. The 236-byte capsule header carries
-TextPlan at byte 228 and TextPlanBytes at byte 232; BS35 consumers and generated
-packages are incompatible. Preparation supplies global ASCII/PETSCII source-origin
+The BS36 text checkpoint added validated spans through the shared numeric text
+grammar and text registry. TextPlan remains at byte 228 and TextPlanBytes at byte
+232; the current BS37 header extends this layout to 238 bytes with the DS directive
+ID. Only current packages are supported. Preparation supplies global ASCII/PETSCII source-origin
 IDs, and encoding names are normalized once into global numeric IDs. Assembly
 handles literal, macro and parameterized text directives, plus string operands in
 `.emit` byte/word forms. Definitions rebuild on complete replay, selection resets
@@ -257,3 +257,18 @@ The earlier schema-replay-only checkpoint measured 32.804228 s against 33.112641
 (-0.9%, one comparison), with 564 more linked bytes; it predates this conditional
 repair and is not its performance result. Full opcore parity and a fresh full
 current-source self-host remain pending; BS35 is the latest qualified self-host.
+
+### Shared reservation checkpoint
+
+BS37 adds numeric `.ds` binding to shared expression preparation and the assembly
+output owner. Flat internal gaps are deferred until the next initialized emission;
+leading/trailing reservations create no payload or record spans. BSS sections reuse
+the existing independent fragment placement and reservation lifecycle, including
+two sections in one region. Artifact policy distinguishes explicit Hunk descriptors
+from this layout machinery, so flat outputs retain initialized payload and addresses.
+The 24-case native matrix passes on 68020/6502 (12 exact positives, 12 expected
+rejections); six final Bin/Hex/S-record controls and the prior Hunk BSS regression
+match live Rust. The complete original syntax root remains incomplete at its
+labeled conditional on line 280. [Separate timing and memory measurements](../performance/vm-efficiency.md#shared-byte-reservations-bs37)
+show no material unchanged-path regression. Dynamic ownership and full self-host
+qualification remain pending.

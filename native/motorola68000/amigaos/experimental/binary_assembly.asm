@@ -88,6 +88,7 @@ BranchChanged
 	.res word, 1
 	.align 4
 DataPc	.res long, 1
+PendingFlatGap	.res long, 1
 DataBytes
 	.res byte, 4
 SectionState
@@ -532,6 +533,7 @@ branchPass
 	move.w d7, pkg.Context.Pass(a6)
 	clr.l pkg.Context.Pc(a6)
 	clr.l Frame.Used(a5)
+	clr.l PendingFlatGap
 	lea SectionState, a0
 	movea.l a6, a1
 	jsr sections.beginPass
@@ -1352,6 +1354,8 @@ directive
 	beq.w end
 	cmp.w pkg.Header.AlignDirective(a3), d0
 	beq.w align
+	cmp.w pkg.Header.DsDirective(a3), d0
+	beq.w reserveByteCount
 	cmp.w pkg.Header.ResDirective(a3), d0
 	beq.w reserve
 	cmp.w pkg.Header.EmitDirective(a3), d0
@@ -1458,6 +1462,23 @@ align
 	bra.w done
 alignBytes
 	bsr.w emitGap
+	bra.w done
+reserveByteCount
+	movea.l a2, a6
+	jsr expr.evaluate
+	movea.l a6, a2
+	tst.l d0
+	bne.w bad
+	tst.l d2
+	bne.w bad
+	tst.l pkg.Context.High(a2)
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	tst.l pkg.Context.Kind(a2)
+	bne.w bad
+	move.l d1, d0
+	bsr.w reserveDataBytes
 	bra.w done
 reserve
 	bsr.w name
@@ -1837,6 +1858,8 @@ fail
 	rts
 	.bend  ; name
 
+	.include "binary_data_reserve.asm"
+
 ; D0=padding count,A2=Context. Flat address gaps are uninitialized; placed
 ; section payloads retain initialized padding, as in Rust's section replay.
 ; Bin/Hunk storage stays zero-filled. D0/CCR=status; other registers preserved.
@@ -1865,6 +1888,18 @@ done
 ; D0=status; other registers preserved. CCR reflects D0.
 emitBytes	.block
 	movem.l d1-d4/a0-a3, -(sp)
+	tst.l d0
+	beq.w noPendingGap
+	tst.l PendingFlatGap
+	beq.w noPendingGap
+	movem.l d0/a0, -(sp)
+	move.l PendingFlatGap, d0
+	clr.l PendingFlatGap
+	sub.l d0, pkg.Context.Pc(a2)
+	bsr.w emitGap
+	movem.l (sp)+, d0/a0
+	bne.w fail
+noPendingGap
 	movea.l a0, a3
 	move.l d0, d4
 	lea SectionState, a0

@@ -137,7 +137,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let target_bytes = usize::from(word(128));
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
-        assert_eq!(&bytes[..4], b"BS36");
+        assert_eq!(&bytes[..4], b"BS37");
         let expression_offset = long(200);
         let expression_bytes = long(204);
         assert!(expression_offset >= PACKAGE_HEADER_BYTES && expression_offset % 2 == 0);
@@ -293,7 +293,7 @@ fn binary_source_packages_prepare() {
     for cpu in ["m6502", "m68000", "m68040", "m68080"] {
         let resolved = core.resolve_pipeline(cpu, None).unwrap();
         let bytes = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&bytes[..4], b"BS36");
+        assert_eq!(&bytes[..4], b"BS37");
         assert_eq!(long(&bytes, 4), bytes.len());
         let builtin_len = u16::from_be_bytes(bytes[208..210].try_into().unwrap());
         assert!(builtin_len < u16::from_be_bytes(bytes[62..64].try_into().unwrap()));

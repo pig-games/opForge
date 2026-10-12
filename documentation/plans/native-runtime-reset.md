@@ -526,9 +526,25 @@ assembly candidates, exceeding the CLI's former fixed 128-path bound. Package
 load and frontend setup succeed in the bounded gated setup capture. This is an
 early preparation failure, not completed assembly or a new self-host proof.
 The repair separates stationary traversal scratch from a growing owned path
-table; duplicate search paths must not consume extra slots. Fresh controls at
-127, 129 and 200 files, followed by full current-source self-host, qualify this
-repair before any completion claim.
+table. Fresh native controls at 127, 129 and 200 files pass with exact live Rust
+bytes, including duplicate search roots. The 162.97-second batch is correctness
+evidence, not a comparative performance result. At 159 candidates the path and
+traversal owners need 69,936 steady bytes and 102,704 bytes during geometric
+growth; these are calculated storage bounds, not measured whole-process peaks.
+The ordinary release image grows 132 bytes. The full native run on manifest
+`b653d92c5f9df3ce` (188 files, 2,085,468 source bytes, 248,200-byte live Rust
+Hunk) passes discovery but later exits 20 at `binary_block_index.asm`, line 7.
+Its fresh START/DONE interval is 669.041911792 seconds; total native harness
+work is 719.094207792 seconds. Those are failed-run durations, not successful
+assembly performance. This checkpoint does not qualify full self-host, 2 MiB
+fit or opcore completion; localize the later assembly failure independently.
+The isolated unchanged 68020/10 MiB release control measures 36.243138208 to
+36.274235083 seconds (+0.086%, single samples), with 132 more image bytes and
+120 more linked reserved bytes. Separate instrumented accounting reduces peak
+owned heap from 1,285,768 to 1,253,256 bytes and total allocation/free from
+3,189,896 to 3,157,384 bytes; both runs end at zero live ownership. These heap
+figures describe the small control, not the full self-host. The receipt is
+`/tmp/opforge-discovery-paths-cost-20261012.json`.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

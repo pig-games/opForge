@@ -55,7 +55,7 @@ INCLUDE_DEPTH = 8
 LINE_BYTES = 4096
 RECORD_BYTES = 256
 RECORD_LIMIT = 2*memory.LIMIT
-DISCOVERY_LIMIT = 128
+CANDIDATE_LIMIT = graph.LIMIT; discovery shares the module-graph upper bound
 PATH_BYTES = 256
 DOS_OUTPUT = -60
 DOS_WRITE = -48
@@ -88,6 +88,13 @@ PROGRESS_ASSEMBLY_RECORD_HEAD = 32
 PROGRESS_ASSEMBLY_WORK = 300
 PROGRESS_PREPARATION_FAILURE = 301
 PROGRESS_STATEMENT_FAILURE = 316
+; Bounded setup observations precede source provenance. No release emission.
+PROGRESS_FRONTEND_SIZE = 330
+PROGRESS_FRONTEND_STORAGE = 331
+PROGRESS_FRONTEND_BEGIN = 332
+PROGRESS_SOURCE_CONTROL_BEGIN = 333
+PROGRESS_INPUT_DISCOVERY = 334
+PROGRESS_INPUT_CANDIDATES = 335
 PROGRESS_SCOPED_ROOTS = 310
 PROGRESS_SCOPED_SIZING = 311
 PROGRESS_SCOPED_ITERABLE = 312
@@ -341,8 +348,13 @@ freeBlocks
 	clr.l memory.Block.Used(a0)
 	lea RootPaths, a0
 	jsr memory.release
+	lea CandidatePaths, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	clr.l CandidateCount
 	lea DiscoveryBlock, a0
 	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	lea DeclarationBlock, a0
 	jsr memory.release
 	lea GraphBlock, a0
@@ -418,12 +430,14 @@ load
 	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_PACKAGE, PackageSource, loader.Frame.Storage, loader.Frame.Bytes, loader.Frame.ReadCalls
 	movea.l a4, a0
 	jsr frontend.scratchSize
+	.MEMORY_SETUP_RESULT DosBase, #PROGRESS_FRONTEND_SIZE
 	bne.w closeBad
 	move.l d1, d0
 	addi.l #IO_SCRATCH_BYTES, d0
 	bcs.w closeBad
 	lea PrepBlock, a0
 	jsr memory.reserveExact
+	.MEMORY_SETUP_RESULT DosBase, #PROGRESS_FRONTEND_STORAGE
 	bne.w closeBad
 	lea PrepBlock, a0
 	movea.l memory.Block.Pointer(a0), a1
@@ -454,8 +468,10 @@ load
 	move.l #MetadataConfig, frontend.Frame.Metadata(a0)
 	move.l #1, FrontStarted
 	jsr frontend.begin
+	.MEMORY_SETUP_RESULT DosBase, #PROGRESS_FRONTEND_BEGIN
 	bne.w closeBad
 	jsr source_control.begin
+	.MEMORY_SETUP_RESULT DosBase, #PROGRESS_SOURCE_CONTROL_BEGIN
 	bne.w closeBad
 	.MEMORY_STAGE #0
 	cmpi.w #2, CliMode
@@ -469,6 +485,8 @@ load
 cliDiscovery
 	.MEMORY_STAGE #6
 	bsr.w prepareCliInputs
+	.MEMORY_SETUP_RESULT DosBase, #PROGRESS_INPUT_DISCOVERY
+	.MEMORY_PROGRESS DosBase, #PROGRESS_INPUT_CANDIDATES, CandidateCount, #0, #0
 	.MEMORY_STAGE #0
 	bne.w closeBad
 	bra.w rootsDone
@@ -494,14 +512,13 @@ readManifest
 	cmpi.l #2, d0
 	blo.w closeBad
 	move.l d0, SearchPathCount
-	move.l #discovery.SCRATCH_BYTES+DISCOVERY_LIMIT*PATH_BYTES, d0
+	move.l #discovery.SCRATCH_BYTES, d0
 	lea DiscoveryBlock, a0
 	jsr memory.reserveExact
 	bne.w closeBad
 	movea.l memory.Block.Pointer(a0), a1
+	move.l #discovery.SCRATCH_BYTES, memory.Block.Used(a0)
 	move.l a1, DiscoveryScratch
-	adda.l #discovery.SCRATCH_BYTES, a1
-	move.l a1, DiscoveryPaths
 	bsr.w readManifestPath
 	bne.w closeBad
 	lea SourcePath, a0
@@ -761,10 +778,14 @@ sourcesPrepared
 	bne.w bad
 	tst.l DiscoverMode
 	beq.w pathsCleared
+	lea CandidatePaths, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	clr.l CandidateCount
 	lea DiscoveryBlock, a0
 	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	clr.l DiscoveryScratch
-	clr.l DiscoveryPaths
 pathsCleared
 	; Active source acquisition may still need roots during semantic replay.
 
@@ -957,14 +978,13 @@ bad
 prepareCliInputs	.block
 	move.l #1, GraphMode
 	move.l #1, DiscoverMode
-	move.l #discovery.SCRATCH_BYTES+DISCOVERY_LIMIT*PATH_BYTES, d0
+	move.l #discovery.SCRATCH_BYTES, d0
 	lea DiscoveryBlock, a0
 	jsr memory.reserveExact
 	bne.w bad
 	movea.l memory.Block.Pointer(a0), a1
+	move.l #discovery.SCRATCH_BYTES, memory.Block.Used(a0)
 	move.l a1, DiscoveryScratch
-	adda.l #discovery.SCRATCH_BYTES, a1
-	move.l a1, DiscoveryPaths
 	lea InputPlan, a0
 	move.l #SourcePath, inputs.Frame.Entry(a0)
 	move.l CliModuleRoots, inputs.Frame.Roots(a0)
@@ -1002,7 +1022,8 @@ openSource	.block
 	move.l SourceOrdinal, d0
 	subq.l #1, d0
 	lsl.l #8, d0
-	movea.l DiscoveryPaths, a0
+	lea CandidatePaths, a0
+	movea.l memory.Block.Pointer(a0), a0
 	adda.l d0, a0
 	lea SourcePath, a1
 	move.w #PATH_BYTES/4-1, d0
@@ -1066,18 +1087,33 @@ bad
 	.bend  ; readManifestPath
 
 ; A0=temporary discovered path, A1=unused callback context. Record each
-; physical file once in the preparation-only path list. D0/CCR=status;
+; physical file once in the dynamically owned preparation-only path list.
+; Invalid names, capacity rejection, and allocation failure publish no new slot.
+; D0/CCR=status;
 ; preserves D3-D7/A2-A6 as required by discovery.scan.
 appendCandidate	.block
 	movem.l d1-d3/a0-a3, -(sp)
 	movea.l a0, a3
+	; Validate the complete name before comparing or growing owned storage.
+	moveq #0, d2
+measurePath
+	cmpi.l #PATH_BYTES, d2
+	bhs.w bad
+	tst.b 0(a3, d2.l)
+	beq.w pathReady
+	addq.l #1, d2
+	bra.w measurePath
+pathReady
+	tst.l d2
+	beq.w bad
 	moveq #0, d3
 findPath
 	cmp.l CandidateCount, d3
 	bhs.w addPath
 	move.l d3, d0
 	lsl.l #8, d0
-	movea.l DiscoveryPaths, a1
+	lea CandidatePaths, a1
+	movea.l memory.Block.Pointer(a1), a1
 	adda.l d0, a1
 	movea.l a3, a0
 comparePath
@@ -1092,21 +1128,31 @@ nextPath
 	addq.l #1, d3
 	bra.w findPath
 addPath
-	cmpi.l #DISCOVERY_LIMIT, d3
+	cmpi.l #CANDIDATE_LIMIT, d3
 	bhs.w bad
+	; Discovery's traversal scratch cannot move while its callback runs.
+	; Only the independent path block grows, retaining its initialized prefix.
+	move.l d3, d0
+	addq.l #1, d0
+	lsl.l #8, d0
+	move.l #CANDIDATE_LIMIT*PATH_BYTES, d1
+	lea CandidatePaths, a0
+	jsr memory.reserveBounded
+	bne.w bad
+	movea.l memory.Block.Pointer(a0), a1
 	move.l d3, d0
 	lsl.l #8, d0
-	movea.l DiscoveryPaths, a1
 	adda.l d0, a1
-	move.w #PATH_BYTES-1, d2
 	movea.l a3, a0
+	; Length and NUL are already proved; publication cannot fail after growth.
+	addq.l #1, d2
 copyPath
 	move.b (a0)+, (a1)+
-	beq.w added
-	dbra d2, copyPath
-	bra.w bad
-added
+	subq.l #1, d2
+	bne.w copyPath
 	addq.l #1, CandidateCount
+	lea CandidatePaths, a0
+	addi.l #PATH_BYTES, memory.Block.Used(a0)
 	moveq #0, d0
 	bra.w done
 bad
@@ -1888,7 +1934,7 @@ SearchPathCount	.res long, 1
 CandidateCount	.res long, 1
 DiscoveryBlock	.res byte, memory.Block.Used+4
 DiscoveryScratch	.res long, 1
-DiscoveryPaths	.res long, 1
+CandidatePaths	.res byte, memory.Block.Used+4
 DeclarationBlock	.res byte, memory.Block.Used+4
 IndexOverflow	.res long, 1
 RequestedModule	.res long, 1

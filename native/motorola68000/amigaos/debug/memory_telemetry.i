@@ -147,6 +147,25 @@ MEMORY_PROGRESS	.macro dosbase, phase, source, line, records
 .endif
 .endmacro
 
+; Capture D0/D1 before MEMORY_PROGRESS uses them to stage its arguments.
+; Setup callers use D0=status and D1=detail; flags and all registers survive.
+; Phase is immediate; DosBase is memory or an address register, not D4/D5.
+MEMORY_SETUP_RESULT	.macro dosbase, phase
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d4-d5, -(sp)
+	move.l d0, d4
+	move.l d1, d5
+	.MEMORY_PROGRESS .dosbase, .phase, d4, d5, #0
+	movem.l (sp)+, d4-d5
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
 ; Snapshot a bounded assembly sweep, not each record. Word-valued section state
 ; is zero-extended. Capture storage and this type require the same three gates.
 .ifdef OPFORGE_DEBUG_CONTRACTS

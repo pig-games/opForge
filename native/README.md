@@ -31,6 +31,9 @@ is the default module/include search root; an include first searches its own
 directory. Additional `-M`/`-I` roots retain command order. Root input anchors
 discovery, not module execution order. Quoted Amiga Shell paths, `--name=value`,
 attached short values and `--` are supported. Help/version need no package/input.
+Discovery retains candidate paths in a growing table, independently of traversal
+scratch, up to the module graph's 512-file bound. Repeated search roots do not
+consume extra slots. Only reachable files enter assembly execution.
 
 The configured self-host bundle keeps its entry below the project root. It needs
 one recursive module root and one include root for the bare debug header names:

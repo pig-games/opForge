@@ -410,8 +410,12 @@ fn native_template_work_macro_is_independently_gated() {
 
 #[test]
 fn native_memory_progress_requires_its_extra_gate() {
-    let with_progress = memory_telemetry_source(true, true);
-    let without_progress = with_progress.replace("    .MEMORY_PROGRESS a1, #1, d1, d2, d3\n", "");
+    let site = "    .MEMORY_PROGRESS a1, #1, d1, d2, d3\n";
+    let with_progress = memory_telemetry_source(true, true)
+        .replace(site, &format!("{site}    .MEMORY_SETUP_RESULT a1, #330\n"));
+    let without_progress = with_progress
+        .replace(site, "")
+        .replace("    .MEMORY_SETUP_RESULT a1, #330\n", "");
     let defines = [
         "OPFORGE_DEBUG_CONTRACTS".to_string(),
         "OPFORGE_MEMORY_TELEMETRY".to_string(),

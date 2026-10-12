@@ -144,12 +144,13 @@ candidate
 	move.l SourceOrdinal, d1
 	cmp.l CandidateCount, d1
 	bhi.w bad
-	cmpi.l #DISCOVERY_LIMIT, d1
+	cmpi.l #CANDIDATE_LIMIT, d1
 	bhi.w bad
 	lsl.l #8, d1
 	move.l d1, d2
-	addi.l #discovery.SCRATCH_BYTES, d2
-	lea DiscoveryBlock, a1
+	lea CandidatePaths, a1
+	cmp.l memory.Block.Used(a1), d2
+	bhi.w bad
 	cmp.l memory.Block.Capacity(a1), d2
 	bhi.w bad
 	move.l memory.Block.Pointer(a1), d0

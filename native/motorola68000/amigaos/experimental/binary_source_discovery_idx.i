@@ -1,7 +1,7 @@
 ; Preparation-only discovery selection. Every candidate is read once for
 ; declaration names; only reachable files enter the binary frontend.
 
-; D0/CCR=status; other registers preserved. Paths remain owned by DiscoveryBlock.
+; D0/CCR=status; other registers preserved. Paths remain owned by CandidatePaths, independently of stationary traversal scratch.
 indexCandidates .block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l #1, SourceOrdinal

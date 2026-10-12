@@ -1,6 +1,56 @@
 //! File-derived module identity and discovery parity.
 use super::*;
 
+// Search sees every candidate before reachability selects the one dependency.
+// Repeat the same root to ensure duplicate paths do not consume table slots.
+fn discovery_growth_files(count: usize) -> Vec<(String, String)> {
+    assert!(count > 1);
+    let last = count - 2;
+    let mut files = vec![(
+        "main.asm".into(),
+        format!(".module app\n.cpu m6502\n.use dep{last} as selected\n.byte selected.value\n.endmodule\n.end\n"),
+    )];
+    files.extend((0..count - 1).map(|index| {
+        (
+            format!("library/dep{index:03}.asm"),
+            format!(".module dep{index}\n.cpu m6502\n.pub\nvalue = 7\n.endmodule\n"),
+        )
+    }));
+    files
+}
+
+#[test]
+fn compact_cli_discovery_growth_rust_oracle() {
+    for count in [127, 129, 200] {
+        let files = discovery_growth_files(count);
+        let refs = files
+            .iter()
+            .map(|(path, source)| (path.as_str(), source.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            oracle_with_roots(&refs, &["library", "library"]).unwrap(),
+            [7],
+            "count={count}"
+        );
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; candidate path growth across former 128-file limit"]
+fn compact_cli_discovery_growth_fs_uae() {
+    for count in [127, 129, 200] {
+        let files = discovery_growth_files(count);
+        let refs = files
+            .iter()
+            .map(|(path, source)| (path.as_str(), source.as_str()))
+            .collect::<Vec<_>>();
+        let expected = oracle_with_roots(&refs, &["library", "library"]).unwrap();
+        assert_eq!(expected, [7]);
+        eprintln!("COMPACT_DISCOVERY_GROWTH files={count}");
+        compact_cli(&refs, &["library", "library"], &[], Some(&expected), false);
+    }
+}
+
 const IMPLICIT_FILE_MODULE: &[(&str, &str)] = &[
     (
         "main.asm",

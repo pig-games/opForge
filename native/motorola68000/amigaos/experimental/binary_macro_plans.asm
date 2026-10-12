@@ -10,6 +10,9 @@
 ROW_BYTES = 32
 HEADER_BYTES = 12
 MAX_ROWS = 64
+; Plan extents and offset+1 handles are unsigned longs. Align to two bytes;
+; grow only as needed, rather than imposing the shared scratch-block budget.
+ARENA_LIMIT = $fffffffe
 RECIPE_READY = 0
 RECIPE_ABSENT = 1
 RECIPE_INVALID = 2
@@ -655,16 +658,25 @@ reservePlan	.block
 	move.l d7, d6
 	lsl.l #5, d6
 	add.l #HEADER_BYTES, d6
+	bcs.w bad
 	add.l d5, d6
+	bcs.w bad
 	add.l d1, d6
+	bcs.w bad
 	addq.l #1, d6
+	bcs.w bad
 	andi.l #$fffffffe, d6
 	move.l memory.Block.Used(a4), d3
 	add.l d3, d6
 	bcs.w bad
 	move.l d6, d0
 	movea.l a4, a0
-	jsr memory.reserve
+	; D1 remains the recipe-region byte count after reserving the whole arena.
+	move.l d1, -(sp)
+	move.l #ARENA_LIMIT, d1
+	jsr memory.reserveBounded
+	move.l (sp)+, d1
+	tst.l d0
 	bne.w bad
 	movea.l memory.Block.Pointer(a4), a3
 	adda.l d3, a3

@@ -647,6 +647,22 @@ of the snapshot code/storage. Whole-source stress cases with 12,000/24,000
 ordinary macro-body lines are accepted by live Rust; their native growth proof
 is pending. These diagnostics and controls are not full self-host completion.
 
+The growth probes both reject at line 6,476 with captured line status zero,
+handle 1 and 162-byte plan storage. Destination usage is 1,048,508 bytes and
+binding returns failure: the next ordinary macro-body plan exceeds the shared
+1 MiB scratch-block cap. This reproduces stage 11 independently of CCR syntax.
+Macro-plan storage now grows through `reserveBounded` under its own largest even
+unsigned-long extent (`$fffffffe`), rather than changing shared scratch policy.
+Growth allocates only requested capacity, keeps offset handles, preserves old
+storage on allocation failure and checks every size-addition carry before
+publication. All five complete native source controls now match live Rust,
+including unused/invoked CCR macros and 4,000/12,000/24,000-line bodies. The
+four direct preallocation-overflow cases now pass fresh native execution,
+including nonzero status/CCR, zero handle, unchanged arena/content and preserved
+register checks. The large-source batch is correctness evidence, not a speed
+comparison. Full current-source self-host equality remains pending.
+The diagnostic-only snapshot leaves the release image byte-for-byte unchanged.
+
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
 unchanged release control and a separate instrumented heap run against the saved

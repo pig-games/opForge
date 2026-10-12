@@ -721,7 +721,7 @@ impl PortableAstStatementSignature {
     pub fn from_core_signature(signature: &StatementSignature) -> Self {
         Self {
             atoms: signature
-                .atoms
+                .atoms()
                 .iter()
                 .map(PortableAstSignatureAtom::from_core_atom)
                 .collect(),
@@ -729,13 +729,14 @@ impl PortableAstStatementSignature {
     }
 
     pub fn to_core_signature(&self) -> StatementSignature {
-        StatementSignature {
-            atoms: self
-                .atoms
+        let signature = StatementSignature::new(
+            self.atoms
                 .iter()
                 .map(PortableAstSignatureAtom::to_core_atom)
                 .collect(),
-        }
+        );
+        let plan = crate::packed_statement_vm::lower_signature(&signature);
+        signature.with_prepared_plan(plan.0)
     }
 }
 

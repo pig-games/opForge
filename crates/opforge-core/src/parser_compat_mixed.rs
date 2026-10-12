@@ -1129,7 +1129,7 @@ fn parse_statement_signature(
             span: parser.end_span,
         });
     }
-    Ok(StatementSignature { atoms })
+    Ok(StatementSignature::new(atoms))
 }
 
 fn expect_next<F>(parser: &mut Parser, message: F) -> Result<Token, ParseError>

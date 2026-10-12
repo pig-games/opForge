@@ -4,5 +4,6 @@
 
 mod expr_vm_compat;
 pub mod package;
+pub mod statement_program;
 
 pub use package::*;

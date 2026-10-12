@@ -137,9 +137,51 @@ pub enum Expr {
 pub type UseItem = UseItemAst<Span>;
 pub type UseParam = UseParamAst<Expr, Span>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub struct StatementSignature {
-    pub atoms: Vec<SignatureAtom>,
+    atoms: Vec<SignatureAtom>,
+    prepared_plan: Option<std::sync::Arc<[u8]>>,
+}
+impl std::fmt::Debug for StatementSignature {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StatementSignature")
+            .field("atoms", &self.atoms)
+            .finish()
+    }
+}
+
+impl StatementSignature {
+    pub fn new(atoms: Vec<SignatureAtom>) -> Self {
+        Self {
+            atoms,
+            prepared_plan: None,
+        }
+    }
+    pub fn atoms(&self) -> &[SignatureAtom] {
+        &self.atoms
+    }
+    pub fn into_atoms(self) -> Vec<SignatureAtom> {
+        self.atoms
+    }
+    /// Semantic replacement invalidates the opaque runtime preparation.
+    pub fn replace_atoms(&mut self, atoms: Vec<SignatureAtom>) {
+        self.atoms = atoms;
+        self.prepared_plan = None;
+    }
+    /// The runtime adapter attaches a plan for these sealed semantic atoms.
+    pub fn with_prepared_plan(mut self, plan: std::sync::Arc<[u8]>) -> Self {
+        self.prepared_plan = Some(plan);
+        self
+    }
+    pub fn prepared_plan(&self) -> Option<&std::sync::Arc<[u8]>> {
+        self.prepared_plan.as_ref()
+    }
+}
+impl PartialEq for StatementSignature {
+    fn eq(&self, other: &Self) -> bool {
+        self.atoms == other.atoms
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

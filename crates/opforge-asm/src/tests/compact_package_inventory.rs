@@ -1,4 +1,4 @@
-//! Host-only BS37 inventory; generation and explicit rejection rows are not native proof.
+//! Host-only BS38 inventory; generation and explicit rejection rows are not native proof.
 use super::{prepare_package, DS_DIRECTIVE, HEADER, ROW};
 use serde_json::{json, Value};
 use std::{
@@ -36,13 +36,49 @@ fn region(bytes: &[u8], offset: usize, count: usize, width: usize) -> Result<&[u
 
 fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, String> {
     if bytes.len() < HEADER
-        || bytes.get(..4) != Some(b"BS37")
+        || bytes.get(..4) != Some(b"BS38")
         || number(bytes, 4, 4)? != bytes.len()
     {
-        return Err("invalid BS37 header".into());
+        return Err("invalid BS38 header".into());
     }
     if number(bytes, DS_DIRECTIVE, 2)? >= number(bytes, 62, 2)? {
         return Err("invalid DS directive ID".into());
+    }
+    let runtime_bytes = number(bytes, 72, 4)?;
+    let span = opcore::tokenizer::Span {
+        line: 0,
+        col_start: 0,
+        col_end: 0,
+    };
+    for (field, validate) in [
+        (
+            super::STATEMENT_COMPILE,
+            vm::packed_statement_vm::validate_compile_program
+                as fn(&[u8], opcore::tokenizer::Span) -> Result<(), opcore::parser::ParseError>,
+        ),
+        (
+            super::STATEMENT_MATCH,
+            vm::packed_statement_vm::validate_match_program,
+        ),
+        (
+            super::STATEMENT_HEAD,
+            vm::packed_statement_vm::validate_head_program,
+        ),
+    ] {
+        let offset = number(bytes, field, 4)?;
+        let length = number(bytes, field + 4, 4)?;
+        if offset < runtime_bytes || offset % 2 != 0 || length == 0 {
+            return Err("invalid statement preparation region".into());
+        }
+        let program = region(bytes, offset, length, 1)?;
+        validate(program, span).map_err(|_| "invalid statement preparation program")?;
+        if field == super::STATEMENT_HEAD
+            && [number(program, 2, 2)?, number(program, 4, 2)?]
+                .iter()
+                .any(|id| *id >= number(bytes, 62, 2).unwrap_or(0))
+        {
+            return Err("invalid statement head identities".into());
+        }
     }
     let loop_offset = number(bytes, 212, 4)?;
     let loop_bytes = number(bytes, 216, 4)?;
@@ -343,6 +379,55 @@ fn inventory(bytes: &[u8], package: &BinarySourcePackage) -> Result<Value, Strin
 
 // Provisional readable filenames suitable for classic Amiga directory entries.
 #[test]
+fn inventory_rejects_statement_program_corruption_and_bounds() {
+    let core = RuntimeModelCore::from_registry(&engine::build_default_asm_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    let package = BinarySourcePackage::prepare(&core, &resolved).unwrap();
+    let bytes = prepare_package(&core, &resolved).unwrap();
+    assert!(inventory(&bytes, &package).is_ok());
+    for field in [
+        super::STATEMENT_COMPILE,
+        super::STATEMENT_MATCH,
+        super::STATEMENT_HEAD,
+    ] {
+        let program = number(&bytes, field, 4).unwrap();
+        let length = number(&bytes, field + 4, 4).unwrap();
+        for (offset, value) in [
+            (field, (program as u32) | 1),
+            (field, HEADER as u32),
+            (field + 4, 0),
+            (field + 4, u32::MAX),
+        ] {
+            let mut invalid = bytes.clone();
+            invalid[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
+            assert!(
+                inventory(&invalid, &package).is_err(),
+                "region {field}:{offset}"
+            );
+        }
+        for offset in [program, program + length - 1] {
+            let mut invalid = bytes.clone();
+            invalid[offset] = 0xff;
+            assert!(
+                inventory(&invalid, &package).is_err(),
+                "program {field}:{offset}"
+            );
+        }
+    }
+    let head = number(&bytes, super::STATEMENT_HEAD, 4).unwrap();
+    let names = number(&bytes, 62, 2).unwrap() as u16;
+    for offset in [head + 2, head + 4] {
+        let mut invalid = bytes.clone();
+        invalid[offset..offset + 2].copy_from_slice(&names.to_be_bytes());
+        assert_eq!(
+            inventory(&invalid, &package).unwrap_err(),
+            "invalid statement head identities"
+        );
+    }
+}
+
+// Provisional readable filenames suitable for classic Amiga directory entries.
+#[test]
 fn inventory_accepts_current_target_policy_bits_and_rejects_unknown_bits() {
     let core = RuntimeModelCore::from_registry(&engine::build_default_asm_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
@@ -369,19 +454,15 @@ fn inventory_rejects_loop_plan_corruption_and_bounds() {
     let bytes = prepare_package(&core, &resolved).unwrap();
     let offset = number(&bytes, 212, 4).unwrap();
     assert!(inventory(&bytes, &package).is_ok());
-    for field in [
-        offset,
-        offset + 1,
-        offset + 3,
-        offset + 5,
-        offset + 7,
-        offset + 9,
-        offset + 11,
-        offset + 12,
-    ] {
+    for field in [offset, offset + 15, offset + 16] {
         let mut invalid = bytes.clone();
         invalid[field] = 255;
         assert!(inventory(&invalid, &package).is_err(), "field {field}");
+    }
+    for field in (offset + 1..offset + 15).step_by(2) {
+        let mut invalid = bytes.clone();
+        invalid[field..field + 2].copy_from_slice(&u16::MAX.to_be_bytes());
+        assert!(inventory(&invalid, &package).is_err(), "name field {field}");
     }
     for (field, value) in [(212, 216u32), (212, bytes.len() as u32), (216, 12u32)] {
         let mut invalid = bytes.clone();
@@ -513,7 +594,7 @@ fn compact_package_inventory_export() {
             targets.push(target);
         }
     }
-    let report = json!({"format": "BS37", "scope": "host generation only; no native execution or parity claim",
+    let report = json!({"format": "BS38", "scope": "host generation only; no native execution or parity claim",
         "unsupported_reason_note": "Final recipe 6 rows are rejection barriers. Nonempty matches consisting entirely of Unsupported semv.reject.v1 declarations identify package rejections. Other or unclassified barriers do not prove gaps in legal instruction support. Empty plans can mean later wire lowering rejected the form. Zero candidates means no compact instruction coverage, not complete support.",
         "summary": {"targets": targets.len(), "generated": successful, "failed": targets.len()-successful,
             "canonical_cpus": registry.cpu_ids().len(), "pipelines_without_instruction_candidates": empty_pipelines,

@@ -204,8 +204,10 @@ actual measurement; image reservation alone cannot establish peak memory.
 
 The BS36 text checkpoint added validated spans through the shared numeric text
 grammar and text registry. TextPlan remains at byte 228 and TextPlanBytes at byte
-232; the current BS37 header extends this layout to 238 bytes with the DS directive
-ID. Only current packages are supported. Preparation supplies global ASCII/PETSCII source-origin
+232; BS37 extended this layout to 238 bytes with the DS directive ID. BS38
+retains those fields and extends the header to 262 bytes for the shared statement
+compiler, matcher and head programs. Only current packages are supported.
+Preparation supplies global ASCII/PETSCII source-origin
 IDs, and encoding names are normalized once into global numeric IDs. Assembly
 handles literal, macro and parameterized text directives, plus string operands in
 `.emit` byte/word forms. Definitions rebuild on complete replay, selection resets

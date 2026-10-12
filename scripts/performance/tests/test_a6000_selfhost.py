@@ -17,42 +17,64 @@ SPEC.loader.exec_module(runner)
 
 class HardwareCompletionTests(unittest.TestCase):
     def package(self, target=b""):
-        package = bytearray(366)
+        package = bytearray(runner.PACKAGE_HEADER_BYTES)
         package[:4] = runner.PACKAGE_MAGIC
-        package[62:64] = (5).to_bytes(2, "big")
+        package[62:64] = (10).to_bytes(2, "big")
         package[runner.NAMED_DS_DIRECTIVE_OFFSET:runner.NAMED_DS_DIRECTIVE_OFFSET + 2] = (4).to_bytes(2, "big")
-        package[168:172] = runner.PACKAGE_HEADER_BYTES.to_bytes(4, "big")
-        package[172:176] = (4).to_bytes(4, "big")
-        package[176:178] = (2).to_bytes(2, "big")
-        package[180:184] = (242).to_bytes(4, "big")
-        package[184:188] = (23).to_bytes(4, "big")
-        package[188:190] = (2).to_bytes(2, "big")
-        package[160:164] = (358).to_bytes(4, "big")
-        package[200:204] = (364).to_bytes(4, "big")
-        package[204:208] = (1).to_bytes(4, "big")
-        package[212:216] = (266).to_bytes(4, "big")
-        package[216:220] = (17).to_bytes(4, "big")
-        package[220:224] = (282).to_bytes(4, "big")
-        branch_plan_offset = 284
-        package[220:224] = branch_plan_offset.to_bytes(4, "big")
-        branch_plan = bytearray((0x9A, 4))
-        for index in range(4):
-            branch_plan.extend((index).to_bytes(2, "big"))
-            branch_plan.extend((index + 1, int(index < 2)))
-        branch_plan.extend((0x83, 0))
-        package[224:228] = len(branch_plan).to_bytes(4, "big")
-        package[228:232] = (304).to_bytes(4, "big")
-        package[232:236] = runner.TEXT_PLAN_BYTES.to_bytes(4, "big")
-        package[266:283] = b"\x99\0\0\0\1\0\0\0\2\0\3\0\3\0\4\x83\0"
-        package[branch_plan_offset:branch_plan_offset + len(branch_plan)] = branch_plan
-        if target:
-            package[124:128] = len(package).to_bytes(4, "big")
-            package[128:130] = len(target).to_bytes(2, "big")
-            package.extend(target)
+
+        def append_aligned(data):
             if len(package) % 2:
                 package.append(0)
+            offset = len(package)
+            package.extend(data)
+            return offset
+
+        package[160:164] = runner.PACKAGE_HEADER_BYTES.to_bytes(4, "big")
+        package[164:168] = (0).to_bytes(4, "big")
+        head_offset = append_aligned(b"HEAD")
+        package[168:172] = head_offset.to_bytes(4, "big")
+        package[172:176] = (4).to_bytes(4, "big")
+        package[176:178] = (2).to_bytes(2, "big")
+        declaration_offset = append_aligned(b"D" * 23)
+        package[180:184] = declaration_offset.to_bytes(4, "big")
+        package[184:188] = (23).to_bytes(4, "big")
+        package[188:190] = (2).to_bytes(2, "big")
+        expression_offset = append_aligned(b"E")
+        package[200:204] = expression_offset.to_bytes(4, "big")
+        package[204:208] = (1).to_bytes(4, "big")
+        loop_offset = append_aligned(b"\x99\0\0\0\1\0\0\0\2\0\3\0\3\0\4\x83\0")
+        package[212:216] = loop_offset.to_bytes(4, "big")
+        package[216:220] = (17).to_bytes(4, "big")
+        branch_plan = bytearray((0x9A, 8))
+        for index in range(8):
+            branch_plan.extend((index).to_bytes(2, "big"))
+            branch_plan.extend((index + 1, int(index in (0, 1, 4, 5))))
+        branch_plan.extend((0x83, 0))
+        branch_offset = append_aligned(branch_plan)
+        package[runner.BRANCH_PLAN_OFFSET:runner.BRANCH_PLAN_OFFSET + 4] = branch_offset.to_bytes(4, "big")
+        package[runner.BRANCH_PLAN_BYTES_OFFSET:runner.BRANCH_PLAN_BYTES_OFFSET + 4] = len(branch_plan).to_bytes(4, "big")
+        text_offset = append_aligned(b"T" * runner.TEXT_PLAN_BYTES)
+        package[runner.TEXT_PLAN_OFFSET:runner.TEXT_PLAN_OFFSET + 4] = text_offset.to_bytes(4, "big")
+        package[runner.TEXT_PLAN_BYTES_OFFSET:runner.TEXT_PLAN_BYTES_OFFSET + 4] = runner.TEXT_PLAN_BYTES.to_bytes(4, "big")
+        if target:
+            target_offset = append_aligned(target)
+            package[124:128] = target_offset.to_bytes(4, "big")
+            package[128:130] = len(target).to_bytes(2, "big")
+        if len(package) % 2:
+            package.append(0)
+        runtime_bytes = len(package)
+        for header_offset, program in (
+            (runner.STATEMENT_COMPILE_OFFSET, b"COMPILE"),
+            (runner.STATEMENT_MATCH_OFFSET, b"MATCH"),
+            (runner.STATEMENT_HEAD_OFFSET, b"HEADS"),
+        ):
+            program_offset = append_aligned(program)
+            package[header_offset:header_offset + 4] = program_offset.to_bytes(4, "big")
+            package[header_offset + 4:header_offset + 8] = len(program).to_bytes(4, "big")
+        if len(package) % 2:
+            package.append(0)
         package[4:8] = len(package).to_bytes(4, "big")
-        package[72:76] = len(package).to_bytes(4, "big")
+        package[72:76] = runtime_bytes.to_bytes(4, "big")
         return bytes(package)
 
     def bundle(self, root, instrumented):
@@ -131,7 +153,8 @@ class HardwareCompletionTests(unittest.TestCase):
                                    (b"BS29", 210, "package mismatch"),
                                   (b"BS35", 236, "package mismatch"),
                                   (b"BS36", 366, "package mismatch"),
-                                  (b"BS37", 237, "package header")):
+                                  (b"BS37", runner.PACKAGE_HEADER_BYTES, "package mismatch"),
+                                  (runner.PACKAGE_MAGIC, runner.PACKAGE_HEADER_BYTES - 1, "package header")):
             with self.subTest(magic=magic, size=size), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 self.bundle(root, False)
@@ -147,22 +170,37 @@ class HardwareCompletionTests(unittest.TestCase):
             root = Path(directory)
             self.bundle(root, False)
             package = bytearray(self.package())
-            package[runner.NAMED_DS_DIRECTIVE_OFFSET:runner.NAMED_DS_DIRECTIVE_OFFSET + 2] = (5).to_bytes(2, "big")
+            package[runner.NAMED_DS_DIRECTIVE_OFFSET:runner.NAMED_DS_DIRECTIVE_OFFSET + 2] = (10).to_bytes(2, "big")
             self.replace_package(root, package)
             with self.assertRaisesRegex(ValueError, "named DS directive ID"):
                 runner.load_bundle(root)
+
+    def test_statement_program_regions_may_follow_runtime_region(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.bundle(root, False)
+            package = (root / "p.bin").read_bytes()
+            runtime_bytes = int.from_bytes(package[72:76], "big")
+            for header_offset in (
+                runner.STATEMENT_COMPILE_OFFSET,
+                runner.STATEMENT_MATCH_OFFSET,
+                runner.STATEMENT_HEAD_OFFSET,
+            ):
+                program_offset = int.from_bytes(package[header_offset:header_offset + 4], "big")
+                self.assertGreaterEqual(program_offset, runtime_bytes)
+            runner.load_bundle(root)
 
     def test_current_header_rejects_invalid_regions_versions_and_reserved_words(self):
         mutations = [
             (4, 4, 209, "package header"),
             (72, 4, 198, "package region"),
-            (72, 4, 400, "package region"),
+            (72, 4, 0xFFFFFFFF, "package region"),
             (72, 4, 209, "package region"),
             (160, 4, 168, "member-binding table"),
             (160, 4, 201, "member-binding table"),
             (184, 4, 13, "declaration"),
             (160, 4, 219, "member-binding table"),
-            (164, 4, 6, "member-binding table"),
+            (164, 4, 6, "member-binding"),
             (164, 4, 0xFFFFFFFF, "member-binding table"),
             (200, 4, 0, "expression program"),
             (200, 4, 206, "expression program"),
@@ -170,23 +208,22 @@ class HardwareCompletionTests(unittest.TestCase):
             (200, 4, 287, "expression program"),
             (204, 4, 0, "expression program"),
             (204, 4, 65536, "expression program"),
-            (204, 4, 11, "expression program"),
             (212, 4, 212, "loop-plan program"),
             (212, 4, 251, "loop-plan program"),
             (212, 4, 284, "loop-plan program"),
             (216, 4, 0, "loop-plan program"),
             (216, 4, 12, "loop-plan program"),
-            (220, 4, 4, "branch-plan program"),
-            (220, 4, 259, "branch-plan program"),
-            (220, 4, 0xFFFFFFFF, "branch-plan program"),
-            (224, 4, 0, "branch-plan program"),
-            (224, 4, 19, "branch-plan program"),
-            (224, 4, 0xFFFFFFFF, "branch-plan program"),
-            (228, 4, 228, "text-plan program"),
-            (228, 4, 0xFFFFFFFF, "text-plan program"),
-            (232, 4, 0, "text-plan program"),
-            (232, 4, 33, "text-plan program"),
-            (232, 4, 0xFFFFFFFF, "text-plan program"),
+            (runner.BRANCH_PLAN_OFFSET, 4, 4, "branch-plan program"),
+            (runner.BRANCH_PLAN_OFFSET, 4, 259, "branch-plan program"),
+            (runner.BRANCH_PLAN_OFFSET, 4, 0xFFFFFFFF, "branch-plan program"),
+            (runner.BRANCH_PLAN_BYTES_OFFSET, 4, 0, "branch-plan program"),
+            (runner.BRANCH_PLAN_BYTES_OFFSET, 4, 20, "branch-plan program"),
+            (runner.BRANCH_PLAN_BYTES_OFFSET, 4, 0xFFFFFFFF, "branch-plan program"),
+            (runner.TEXT_PLAN_OFFSET, 4, 228, "text-plan program"),
+            (runner.TEXT_PLAN_OFFSET, 4, 0xFFFFFFFF, "text-plan program"),
+            (runner.TEXT_PLAN_BYTES_OFFSET, 4, 0, "text-plan program"),
+            (runner.TEXT_PLAN_BYTES_OFFSET, 4, 33, "text-plan program"),
+            (runner.TEXT_PLAN_BYTES_OFFSET, 4, 0xFFFFFFFF, "text-plan program"),
         ]
         for start, label in ((168, "head-policy"), (180, "declaration")):
             mutations.extend([
@@ -197,9 +234,22 @@ class HardwareCompletionTests(unittest.TestCase):
                 (start + 8, 2, 1, label),
                 (start + 10, 2, 1, label),
             ])
-        for offset, value in ((0, 0xFF), (1, 0xFF), (3, 0xFF), (4, 0xFF), (5, 0xFF), (19, 0xFF)):
+        for header_offset, label in (
+            (runner.STATEMENT_COMPILE_OFFSET, "statement-compile"),
+            (runner.STATEMENT_MATCH_OFFSET, "statement-match"),
+            (runner.STATEMENT_HEAD_OFFSET, "statement-head"),
+        ):
+            mutations.extend([
+                (header_offset, 4, runner.PACKAGE_HEADER_BYTES - 2, f"{label} program"),
+                (header_offset, 4, 0xFFFFFFFF, f"{label} program"),
+                (header_offset + 4, 4, 0, f"{label} program"),
+                (header_offset + 4, 4, 0xFFFFFFFF, f"{label} program"),
+            ])
+            valid_offset = int.from_bytes(self.package()[header_offset:header_offset + 4], "big")
+            mutations.append((header_offset, 4, valid_offset + 1, f"{label} program"))
+        for offset, value in ((0, 0xFF), (1, 0xFF), (3, 0xFF), (4, 0xFF), (5, 0xFF), (35, 0xFF)):
             mutations.append((
-                int.from_bytes(self.package()[220:224], "big") + offset,
+                int.from_bytes(self.package()[runner.BRANCH_PLAN_OFFSET:runner.BRANCH_PLAN_OFFSET + 4], "big") + offset,
                 1,
                 value,
                 "branch-plan program",

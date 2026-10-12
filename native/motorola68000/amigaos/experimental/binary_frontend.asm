@@ -1752,7 +1752,13 @@ bindingReady
 	lea FRAGMENT_VIEWS(sp), a3
 	move.l a3, fragment_binding.Frame.Output(a0)
 	move.l #64*fragment_binding.FRAGMENT_BYTES, fragment_binding.Frame.Capacity(a0)
+	cmpi.w #templates.KIND_EXTERNAL, templates.Def.Kind(a2)
+	bne.w ordinaryFragments
+	jsr fragment_binding.runFragmentsLastNamed
+	bra.w fragmentsReady
+ordinaryFragments
 	jsr fragment_binding.runFragments
+fragmentsReady
 	bne.w bad
 	lea FRAGMENT_REQUEST(sp), a0
 	move.l a3, fragment_tokenizer.Frame.Fragments(a0)

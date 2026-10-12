@@ -42584,3 +42584,12 @@ pub(crate) mod labeled_conditionals;
 
 #[path = "tests/grouped_member_forward.rs"]
 mod grouped_member_forward;
+
+#[path = "tests/prvm_statement.rs"]
+mod prvm_statement;
+
+#[path = "tests/native_prvm_statement.rs"]
+mod native_prvm_statement;
+
+#[path = "tests/native_statement_facets.rs"]
+mod native_statement_facets;

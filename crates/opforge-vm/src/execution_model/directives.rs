@@ -1,13 +1,12 @@
 use opcore::parser::{Expr, Label, LineAst, ParseError};
 use opcore::tokenizer::{ConditionalKind, OperatorKind, Span, Token, TokenKind};
-use registry::{
-    parse_pack_directive_from_tokens, parse_place_directive_from_tokens_with,
-    parse_statement_signature_from_tokens,
-};
+use registry::{parse_pack_directive_from_tokens, parse_place_directive_from_tokens_with};
 use types::line_ast::{
     ConditionalAst, StatementAst, StatementDefAst, StatementEndAst, UseAst, UseItemAst,
     UseParamAst, UseSectionMapAst,
 };
+
+use crate::packed_statement_vm::parse_statement_signature_from_tokens;
 
 use crate::vm_opasm::{
     parse_operand_expr_range, split_top_level_comma_ranges, update_group_depths_for_token,

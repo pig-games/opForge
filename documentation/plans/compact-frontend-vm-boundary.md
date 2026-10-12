@@ -131,11 +131,11 @@ The latest qualified release bundle is
 assembled output both embed only `m68020--motorola68k.bin`. The named package is
 retained for local identity verification; no external runtime fallback is used.
 This historical bundle has complete FS-UAE qualification, but no physical
-execution or remote transfer proof. Current source and the A6000 helper use BS37
-and require a newly qualified BS37 bundle. The existing current-export link still
+execution or remote transfer proof. Current source and the A6000 helper use BS38
+and require a newly qualified BS38 bundle. The existing current-export link still
 selects the older BS35 bundle and is rejected by the current helper; do not treat
 it as a current executable qualification. Once the link points to a qualified
-BS37 bundle, use macOS Terminal, where `ash` and `acp` can reach the A6000:
+BS38 bundle, use macOS Terminal, where `ash` and `acp` can reach the A6000:
 
 ```sh
 python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
@@ -143,10 +143,10 @@ python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 
 Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
 timeout. Each invocation creates its own remote directory and local result tree.
-The current script validates BS37 package headers, mapped source preamble and
+The current script validates BS38 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. A
-qualified matching BS37 release bundle is required for the current helper.
+qualified matching BS38 release bundle is required for the current helper.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
@@ -223,11 +223,18 @@ adjacent-colon decisions. The native adapter presents two logical tokens and
 maps the returned cursor to a physical token index, including composed-name
 recipes; the writer uses that index to distinguish package heads from values.
 
-BS37 is the current compact package format; the producer writes `BS37` and the
+BS38 is the current compact package format; the producer writes `BS38` and the
 native package owner checks the matching magic. Only this latest runtime contract
-is supported; packages must be regenerated. Its 238-byte header appends TextPlan
+is supported; packages must be regenerated. Its 262-byte header retains TextPlan
 and TextPlanBytes at offsets 228 and 232, followed by the named DS directive ID
-as a u16 at offset 236. The shared 34-byte TextPlan supplies
+as a u16 at offset 236. It appends three preparation-only offset/extent pairs:
+statement compilation at 238/242, matching at 246/250 and head selection at
+254/258. Their bounded programs lie after `RuntimeBytes`; package validation
+checks each program through its owning shared PRVM validator and checks head
+identities against the package name table. They do not select CPU semantics or
+introduce native VM version dispatch. CLI statement routing is still pending
+until the component and template integration work is qualified.
+The shared 34-byte TextPlan supplies
 numeric text directive actions and encoding-name roles. Its 17-byte LoopPlan retains numeric
 scoped-for/scoped-while identities to the current envelope. This is one compiled
 PRVM contract, with no native VM-version dispatch or legacy loop executor.
@@ -274,7 +281,7 @@ and encoding; native code only validates the structural wrapper.
 Kind 26 traverses package-owned numeric expression paths. Its Class word is
 path byte length (4–32, a multiple of four), Literal is a package-base-relative
 path offset and Reserved is zero. The standard value-program field remains
-available. Deduplicated path programs occupy the arena between the 238-byte
+available. Deduplicated path programs occupy the arena between the 262-byte
 header and candidate rows; projection descriptor arrays stay contiguous.
 Each step is `opcode:u8, argument:u8, parameter:u16` in big-endian order:
 indirect/bracket unwrap (1/2), tuple child 0–2 (3), register/class (4), qualified

@@ -5,7 +5,7 @@
 	.cpu 68020
 	.pub
 
-MAGIC = $42533337; BS37
+MAGIC = $42533338; BS38
 TARGET_PRESERVE_WRAPPERS = 1
 TARGET_NESTED_PATHS = 2
 DICTIONARY_REGISTER_OR_NAMED = 1
@@ -118,8 +118,20 @@ BranchPlanBytes	.long ?
 TextPlan	.long ?
 TextPlanBytes	.long ?
 DsDirective	.word ?  ; shared byte reservation, one scalar count
+StatementCompile	.long ?
+StatementCompileBytes	.long ?
+StatementMatch	.long ?
+StatementMatchBytes	.long ?
+StatementHead	.long ?
+StatementHeadBytes	.long ?
 	.endstruct
-HEADER_BYTES = Header.DsDirective+2
+HEADER_BYTES = Header.StatementHeadBytes+4
+
+; Adjacent preparation-program fields share this bounded offset/extent pair.
+PreparationProgram	.struct
+Offset	.long ?
+Bytes	.long ?
+	.endstruct
 
 ; Contextual member forms are derived from canonical selector projections,
 ; including unsupported candidates. Field meanings remain package-owned.

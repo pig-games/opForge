@@ -174,5 +174,39 @@ doneFind
 	tst.w d1
 	rts
 	.bend  ; find
+
+; A0=state,D1=exact cursor from find/nextExact. D1=next same-name cursor,
+; or zero. Other registers preserved; CCR reflects D1. Hash collisions are
+; skipped against the original full ID, allowing multiple definitions per name.
+nextExact	.block
+	movem.l d0/d2-d3/a1, -(sp)
+	tst.w d1
+	beq.w endChain
+	cmp.w State.Count(a0), d1
+	bhi.w endChain
+	moveq #0, d2
+	move.w d1, d2
+	subq.w #1, d2
+	mulu.w #NODE_BYTES, d2
+	movea.l NODES+memory.Block.Pointer(a0), a1
+	move.w Node.Name(a1, d2.l), d3
+scan
+	moveq #0, d1
+	move.w Node.ExactNext(a1, d2.l), d1
+	beq.w done
+	moveq #0, d2
+	move.w d1, d2
+	subq.w #1, d2
+	mulu.w #NODE_BYTES, d2
+	cmp.w Node.Name(a1, d2.l), d3
+	bne.w scan
+	bra.w done
+endChain
+	moveq #0, d1
+done
+	movem.l (sp)+, d0/d2-d3/a1
+	tst.w d1
+	rts
+	.bend  ; nextExact
 	.endsection
 	.endmodule

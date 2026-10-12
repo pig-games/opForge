@@ -21,7 +21,13 @@ const MISSING: u16 = u16::MAX;
 const TEXT_PLAN: usize = 228;
 const TEXT_PLAN_BYTES: usize = 232;
 pub(crate) const DS_DIRECTIVE: usize = TEXT_PLAN_BYTES + 4;
-pub(crate) const HEADER: usize = DS_DIRECTIVE + 2;
+pub(crate) const STATEMENT_COMPILE: usize = DS_DIRECTIVE + 2;
+pub(crate) const STATEMENT_COMPILE_BYTES: usize = STATEMENT_COMPILE + 4;
+pub(crate) const STATEMENT_MATCH: usize = STATEMENT_COMPILE_BYTES + 4;
+pub(crate) const STATEMENT_MATCH_BYTES: usize = STATEMENT_MATCH + 4;
+pub(crate) const STATEMENT_HEAD: usize = STATEMENT_MATCH_BYTES + 4;
+pub(crate) const STATEMENT_HEAD_BYTES: usize = STATEMENT_HEAD + 4;
+pub(crate) const HEADER: usize = STATEMENT_HEAD_BYTES + 4;
 const BRANCH_PLAN: usize = 220;
 const BRANCH_PLAN_BYTES: usize = 224;
 pub(crate) const ROW: usize = 44;
@@ -445,6 +451,20 @@ pub fn prepare_package(
             DictionaryRoleFlags::CONTEXTUAL,
         )?;
     }
+    let mut statement_heads = [0; 2];
+    for (slot, spelling) in statement_heads
+        .iter_mut()
+        .zip(package::statement_program::HEAD_SPELLINGS)
+    {
+        *slot = intern(&mut names, spelling)?;
+        bind(
+            &mut dictionary,
+            spelling.into(),
+            *slot,
+            0,
+            DictionaryRoleFlags::CONTEXTUAL,
+        )?;
+    }
     let cpu_id = intern(&mut names, &resolved.cpu_id)?;
     bind(
         &mut dictionary,
@@ -556,7 +576,7 @@ pub fn prepare_package(
         )
     });
     let mut out = vec![0; HEADER];
-    out[..4].copy_from_slice(b"BS37");
+    out[..4].copy_from_slice(b"BS38");
     set_word(&mut out, 208, builtin_len);
     // Structural policies come from canonical projections, never CPU identities.
     let retain_indirect = package
@@ -793,6 +813,18 @@ pub fn prepare_package(
     let metadata_plan = packed_metadata_program(metadata_heads);
     out.extend_from_slice(&metadata_plan);
     align(&mut out);
+    let statement_compile_offset = out.len();
+    let statement_compile = package::statement_program::compile_program();
+    out.extend_from_slice(&statement_compile);
+    align(&mut out);
+    let statement_match_offset = out.len();
+    let statement_match = package::statement_program::match_program();
+    out.extend_from_slice(&statement_match);
+    align(&mut out);
+    let statement_head_offset = out.len();
+    let statement_head = package::statement_program::head_program(statement_heads);
+    out.extend_from_slice(&statement_head);
+    align(&mut out);
     let total = long(out.len())?;
     for (offset, value) in [
         (4, total),
@@ -844,6 +876,12 @@ pub fn prepare_package(
         (BRANCH_PLAN_BYTES, long(branch_plan.len())?),
         (TEXT_PLAN, long(text_plan_offset)?),
         (TEXT_PLAN_BYTES, long(text_plan.len())?),
+        (STATEMENT_COMPILE, long(statement_compile_offset)?),
+        (STATEMENT_COMPILE_BYTES, long(statement_compile.len())?),
+        (STATEMENT_MATCH, long(statement_match_offset)?),
+        (STATEMENT_MATCH_BYTES, long(statement_match.len())?),
+        (STATEMENT_HEAD, long(statement_head_offset)?),
+        (STATEMENT_HEAD_BYTES, long(statement_head.len())?),
     ] {
         set_long(&mut out, offset, value);
     }

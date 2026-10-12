@@ -43,6 +43,7 @@ pub mod packed_loop_vm;
 pub mod packed_macro_vm;
 pub mod packed_metadata_vm;
 pub mod packed_source_layout;
+pub mod packed_statement_vm;
 pub mod packed_text_vm;
 pub mod portable_contract;
 pub mod prepared_encoding;

@@ -2,17 +2,17 @@
 
 use opcore::macro_processor::{
     substitute_macro_line_with_named_args, CompileTimeVisibility, MacroError, MacroExports,
-    MacroProcessor, NativeStatementExport, StatementDirectiveKind, StatementSupportHooks,
+    MacroProcessor, NativeStatementExport, StatementSupportHooks,
 };
-use opcore::parser::{
-    select_and_match_statement_signature_texts, StatementCaptureText, StatementSignature,
-};
+use opcore::parser::{StatementCaptureText, StatementSignature};
 use opcore::text_utils::{is_ident_start, to_upper, Cursor};
 use opcore::tokenizer::{NumberLiteral, Span, Token, TokenKind, Tokenizer};
-use registry::parse_statement_definition_from_line;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use types::processing::{LineProcessingTrace, ProcessingRequestKind};
+use vm::packed_statement_vm::{
+    parse_statement_definition_from_line, select_and_match_statement_signature_texts,
+};
 
 pub type AsmMacroError = MacroError;
 
@@ -72,7 +72,7 @@ impl AsmMacroProcessor {
             inner: MacroProcessor::new()
                 .with_max_depth(max_depth)
                 .with_statement_support_hooks(StatementSupportHooks {
-                    classify_directive: asm_classify_statement_directive,
+                    classify_directive: vm::packed_statement_vm::classify_directive,
                     parse_definition: asm_parse_statement_definition,
                     expand_invocation: asm_expand_statement_invocation,
                 }),
@@ -150,30 +150,6 @@ fn record_preprocess_runtime_trace(line_num: u32, kind: &str) {
     });
     PREPROCESS_RUNTIME_PROCESSING_TRACES
         .with(|traces| traces.borrow_mut().push((0, line_num, trace)));
-}
-
-fn asm_classify_statement_directive(code: &str) -> Option<StatementDirectiveKind> {
-    let mut cursor = Cursor::new(code);
-    cursor.skip_ws();
-    if let Some(label) = cursor.take_ident() {
-        if cursor.peek() == Some(b':') {
-            cursor.next();
-            cursor.skip_ws();
-        } else {
-            let _ = label;
-        }
-    }
-    if cursor.peek() != Some(b'.') {
-        return None;
-    }
-    cursor.next();
-    cursor.skip_ws();
-    let directive = cursor.take_ident()?.to_ascii_uppercase();
-    match directive.as_str() {
-        "STATEMENT" => Some(StatementDirectiveKind::Def),
-        "ENDSTATEMENT" => Some(StatementDirectiveKind::End),
-        _ => None,
-    }
 }
 
 fn asm_parse_statement_definition(
@@ -481,5 +457,88 @@ mod tests {
         assert!(out.contains(&"    .byte 'b'".to_string()));
         assert!(out.contains(&"    .byte 'd', 0".to_string()));
         assert!(out.contains(&"    .byte 'd', 2".to_string()));
+    }
+
+    #[test]
+    fn prvm_statement_production_definition_labels_reject_and_end_labels_close() {
+        for definition in ["label .statement N byte:x", "label: .statement N byte:x"] {
+            let error = AsmMacroProcessor::new(64)
+                .expand(&[definition.into(), ".endstatement".into()])
+                .unwrap_err();
+            assert_eq!(error.message(), "Expected .statement definition");
+        }
+        for end in [
+            ".endstatement",
+            "label .endstatement",
+            "label: .endstatement",
+            ".endstatement extra",
+        ] {
+            let out = AsmMacroProcessor::new(64)
+                .expand(&[
+                    ".statement N byte:x".into(),
+                    ".byte .x".into(),
+                    end.into(),
+                    "    N 7".into(),
+                ])
+                .unwrap();
+            assert_eq!(out, vec![".byte 7"]);
+        }
+    }
+
+    #[test]
+    fn prvm_statement_expansion_retains_label_definition_origin_and_export_plan() {
+        use types::source_map::SourceOrigin;
+        let mut producer = AsmMacroProcessor::new(64);
+        let lines: Vec<String> = [".pub", ".statement N byte:x", ".byte .x", ".endstatement"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        let origins: Vec<_> = (1..=4)
+            .map(|line| SourceOrigin::new(Some("defs/library.asm".into()), line))
+            .collect();
+        producer.expand_with_origins(&lines, &origins).unwrap();
+        let exports = producer.take_native_exports();
+        let retained = exports.statements[0]
+            .signature()
+            .prepared_plan()
+            .unwrap()
+            .clone();
+        let mut consumer = AsmMacroProcessor::new(64);
+        consumer.inject_all(&exports);
+        let imported = consumer.inner.statement_defs();
+        assert!(std::sync::Arc::ptr_eq(
+            &retained,
+            imported[0].signature().prepared_plan().unwrap()
+        ));
+        let (out, out_origins) = consumer
+            .expand_with_origins(
+                &["here: N $ff".into()],
+                &[SourceOrigin::new(Some("app/main.asm".into()), 9)],
+            )
+            .unwrap();
+        assert_eq!(out, vec!["here .byte $ff"]);
+        assert_eq!(out_origins, vec![origins[2].clone()]);
+    }
+
+    #[test]
+    fn prvm_statement_empty_body_label_uses_invocation_origin() {
+        use types::source_map::SourceOrigin;
+        let mut processor = AsmMacroProcessor::new(64);
+        let definition = vec![".statement EMPTY".into(), ".endstatement".into()];
+        processor
+            .expand_with_origins(
+                &definition,
+                &[
+                    SourceOrigin::new(Some("defs/library.asm".into()), 1),
+                    SourceOrigin::new(Some("defs/library.asm".into()), 2),
+                ],
+            )
+            .unwrap();
+        let caller = SourceOrigin::new(Some("app/main.asm".into()), 9);
+        let (lines, origins) = processor
+            .expand_with_origins(&["here: EMPTY".into()], std::slice::from_ref(&caller))
+            .unwrap();
+        assert_eq!(lines, vec!["here"]);
+        assert_eq!(origins, vec![caller]);
     }
 }

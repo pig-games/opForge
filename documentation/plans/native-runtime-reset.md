@@ -263,6 +263,70 @@ or 2 MiB proof. The complete current opcore audit is reported above.
 
 ## Immediate shared-language sequence
 
+### Active statement slice
+
+The five unchanged statement fixtures define the next structural gap. Move
+signature compilation, typed token matching and definition-head policy into
+shared PRVM services, retaining one immutable offset-based signature plan across
+Rust imports and clones. Native preparation supplies normalized lexical facets;
+it must not recreate signature syntax or instruction-specific register parsing.
+Keep overload selection, literal adjacency, numeric ranges, letter/digit fallback,
+caller labels and definition-relative provenance covered against the independent
+core reference behavior.
+
+First qualify the compiler/matcher components and package boundary. Then connect
+numeric statement storage to the existing template cursor and substitution owner,
+rather than adding another expansion engine. Component completion alone does not
+add `.statement` support to the compact CLI. The new BS38 preparation programs
+have no native VM-version fields or dispatch; this does not complete the pending
+consolidation of older VM contracts.
+
+The initial shared-service component qualifies 187 cases in one fresh native
+run: exact live Rust plan/capture/status output, explicit zero guest exit and
+completed protocol. It covers signature syntax, typed matching, head modes,
+UTF-8 normalization and atomic capacity/budget failures. Start-to-completion was
+5.054530 seconds on FS-UAE 68020/10 MiB; the 27.95-second host test also includes
+assembly and runner overhead and is not CLI assembly timing. All five unchanged
+Rust statement fixtures still match their Hex and normalized listings, including
+cross-module use. Rust now retains invocation provenance for a label emitted by
+an empty statement body; opaque preparation caches stay out of semantic equality
+and AST debug representation.
+
+Native template storage now exposes a numeric external-definition facade, and a
+separate adapter stages normalized facets from owned TKVM records. Those helpers
+do not yet connect statement invocation to the compact CLI. Invocation-prefix
+selection, overload dispatch and generic letter/digit fallback must also remain
+shared VM responsibilities; an unregistered draft is not implementation proof.
+The adapter separately qualifies 96 cases against live Rust facet output,
+including numeric suffixes and overflow, canonical punctuation, decoded/lossy
+UTF-8, name IDs, bounds and atomic publication failures. Its fresh native
+start-to-completion time is 6.335172417 seconds. This is the owned-record boundary,
+not complete TKVM-to-statement CLI execution. Disabled statement telemetry builds
+are byte-identical to removed calls under all three incomplete gate combinations;
+enabled telemetry assembles and has static ABI-preservation checks, without a
+claim of enabled native execution.
+The native package boundary qualifies all 68 current cases through one frozen
+validator and isolated case inputs: the valid package returns zero and 67
+malformed packages return the exact expected nonzero status, each with fresh
+completion and zero harness exit. The correctness test takes 105.96 seconds
+including assembly and two emulator boots; it is not assembler timing. Two old
+name-ID mutations now replace the complete 16-bit field with an out-of-bounds
+ID, rather than relying on a low byte that became valid as the name table grew.
+
+The unchanged release macro control changes separately from 34.697495584 to
+34.898929042 seconds (+0.58%, one sample each); peak owned storage rises by
+32 bytes, with zero live owned allocations on exit. Release image growth is
+2,872 bytes and linked reservation growth is 2,832 bytes. See the
+[foundation comparison](../performance/vm-efficiency.md#shared-statement-preparation-foundation-bs38).
+None of these component/control results adds CLI statement invocation or a new
+full self-host claim.
+
+Correctness requires fresh component comparison, unchanged local and cross-module
+fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
+unchanged release control and a separate instrumented heap run against the saved
+BS37 image/package before claiming the integrated cost. Keep current-module and
+graph-changing source acquisition boundaries explicit.
+
 1. Use the complete current opcore audit to choose the next structural language
    gap. Known candidates include statement signatures/expansion, metadata,
    linker output policies and sparse output. Keep CPU-specific failures in their

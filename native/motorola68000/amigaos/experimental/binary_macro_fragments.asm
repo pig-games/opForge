@@ -27,6 +27,10 @@ Pointer	.long ?
 Bytes	.long ?
 	.endstruct
 FRAGMENT_BYTES = Fragment.Bytes+4
+MODE_FRAGMENTS = 1
+MODE_LAST_NAMED = 2
+FRAGMENTS_BIT = 0
+LAST_NAMED_BIT = 1
 	.section code, kind=code
 ; A0=Frame. D0/CCR=status, Frame.Used=payload bytes on success.
 ; Preserves other registers. All arena spans must belong to their selected plan.
@@ -39,9 +43,21 @@ run	.block
 ; Frame.Used=descriptor bytes; preserves other registers. On failure D1/D2=0.
 ; Pointers borrow arena/call buffers and are valid only while those stay alive.
 runFragments	.block
-	moveq #1, d0
+	moveq #MODE_FRAGMENTS, d0
 	bra.w bind
 	.bend  ; runFragments
+; Same output contracts as run/runFragments. Shared statement signatures permit
+; repeated capture names: named substitution selects the last capture, while
+; positional substitution retains source order. Ordinary macro callers keep
+; their first-name policy through the existing entry points.
+runLastNamed	.block
+	moveq #MODE_LAST_NAMED, d0
+	bra.w bind
+	.bend  ; runLastNamed
+runFragmentsLastNamed	.block
+	moveq #MODE_FRAGMENTS+MODE_LAST_NAMED, d0
+	bra.w bind
+	.bend  ; runFragmentsLastNamed
 	.priv
 Locals	.struct
 Mode	.long ?
@@ -178,6 +194,14 @@ named
 	bhi.w bad
 	lea plans.HEADER_BYTES+plans.ROW_BYTES(a1), a4
 	moveq #0, d2
+	btst #LAST_NAMED_BIT, Locals.Mode+3(sp)  ; low byte of the BE32 mode
+	beq.w formal
+	move.l Frame.FormalCount(a6), d2
+	beq.w unresolved
+	subq.l #1, d2
+	move.l d2, d0
+	mulu.w #plans.ROW_BYTES, d0
+	adda.l d0, a4
 formal
 	cmp.l Frame.FormalCount(a6), d2
 	bhs.w unresolved
@@ -227,6 +251,13 @@ rightReady
 	addq.l #1, d7
 	bra.w compare
 nextFormal
+	btst #LAST_NAMED_BIT, Locals.Mode+3(sp)
+	beq.w nextFirst
+	subq.l #1, d2
+	bmi.w unresolved
+	suba.w #plans.ROW_BYTES, a4
+	bra.w formal
+nextFirst
 	adda.w #plans.ROW_BYTES, a4
 	addq.l #1, d2
 	bra.w formal
@@ -235,7 +266,7 @@ unresolved
 	move.l plans.Row.SpellingEnd(a2), d1
 	bra.w literal
 copy
-	tst.l Locals.Mode(sp)
+	btst #FRAGMENTS_BIT, Locals.Mode+3(sp)
 	beq.w copyText
 	tst.l d3
 	beq.w advance
@@ -280,7 +311,7 @@ success
 bad
 	moveq #1, d0
 done
-	tst.l Locals.Mode(sp)
+	btst #FRAGMENTS_BIT, Locals.Mode+3(sp)
 	beq.w restore
 	moveq #0, d1
 	moveq #0, d2

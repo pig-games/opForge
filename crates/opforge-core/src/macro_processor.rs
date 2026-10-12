@@ -535,8 +535,16 @@ impl MacroProcessor {
             self.statement_output_origins = origins.to_vec();
             return Ok(lines.to_vec());
         }
-        let (lines, origins) = self.expand_contextual(lines, origins, depth)?;
-        self.statement_output_origins = origins;
+        let has_definition_origins = !origins.is_empty();
+        let (lines, nested_origins) = self.expand_contextual(lines, origins, depth)?;
+        // A label synthesized for an empty body has no definition-site origin.
+        // Leave it absent so the invocation owner applies its caller origin,
+        // just as the streaming path does, rather than publishing None/line 1.
+        self.statement_output_origins = if has_definition_origins {
+            nested_origins
+        } else {
+            Vec::new()
+        };
         Ok(lines)
     }
 

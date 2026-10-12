@@ -1,4 +1,4 @@
-; Preparation-only macro and segment templates over numeric writer records.
+; Preparation-only macro, segment and external templates over numeric records.
 ; Bodies/default expressions use records and IDs; explicit textual substitution
 ; retains its bounded spelling bytes in a separate preparation-only pool.
 ; @opforge-owner: experimental.amigaos.binary_templates
@@ -161,6 +161,7 @@ Origin	.long ?  ; definition source identity, never a path or pointer
 DEF_BYTES = Def.Origin+4
 KIND_SEGMENT = 0
 KIND_MACRO = 1
+KIND_EXTERNAL = 2
 BLOCK_BYTES = memory.Block.Used+4
 DEFS = State.Origin+4
 DEFAULTS = DEFS+BLOCK_BYTES
@@ -174,6 +175,7 @@ HEADER_FRAME = COMPOSITE_TEXT+256
 CANDIDATES = HEADER_FRAME+FRAME_BYTES
 SCRATCH_BYTES = CANDIDATES+index.SCRATCH_BYTES
 	.section code, kind=code
+	.include "binary_template_external.i"
 
 ; A0=caller-owned zero-initialized state, or a previously begun session.
 ; Frees prior pools and clears definitions for a new assembly session.
@@ -390,6 +392,8 @@ next
 	mulu.w #DEF_BYTES, d0
 	movea.l DEFS+memory.Block.Pointer(a2), a3
 	adda.l d0, a3
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a3)
+	beq.w candidateMiss
 	move.l d4, d0
 	moveq #0, d1
 	move.w Def.Name(a3), d1
@@ -450,7 +454,7 @@ aliasDefinition	.block
 	move.l d1, d0
 	movea.l a1, a0
 	adda.l #CANDIDATES, a0
-	jsr index.find
+	bsr.w findInternal
 	tst.w d1
 	beq.w missing
 	moveq #0, d0
@@ -607,6 +611,8 @@ findCall
 	mulu.w #DEF_BYTES, d0
 	movea.l DEFS+memory.Block.Pointer(a6), a1
 	adda.l d0, a1
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a1)
+	beq.w nextCall
 	moveq #0, d0
 	move.w d5, d0
 	moveq #0, d1
@@ -654,7 +660,7 @@ resolveImportedCall
 	move.l d1, d0
 	movea.l a6, a0
 	adda.l #CANDIDATES, a0
-	jsr index.find
+	bsr.w findInternal
 	tst.w d1
 	beq.w ordinary
 	move.w d1, d4
@@ -713,63 +719,15 @@ checkedHeader
 	moveq #0, d4
 	move.w State.Count(a6), d4
 newDefinition
-	moveq #0, d0
-	move.w d4, d0
-	addq.l #1, d0
-	mulu.w #DEF_BYTES, d0
-	movem.l d0/a0, -(sp)
-	lea DEFS(a6), a0
-	jsr memory.reserve
-	movem.l (sp)+, d0/a0
+	bsr.w reserveDefinition
 	bne.w bad
-	move.l d0, DEFS+memory.Block.Used(a6)
-	move.w d4, d0
-	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
-	adda.l d0, a0
-	clr.w Def.ParamCount(a0)
-	lea Def.DefaultStart0(a0), a4
-	moveq #36-1, d0
-clearDefaults
-	clr.l (a4)+
-	dbra d0, clearDefaults
 	bsr.w bindHeaderPlan
 	bne.w bad
 parametersDone
-	; Definitions share lexical IDs with values, but declaration ownership and
-	; visibility live in an independent template facet.
-	subq.l #4, sp
-	clr.b (sp)
-	move.w d5, 1(sp)
-	clr.b 3(sp)
-	movea.l sp, a0
-	movea.l 4(sp), a1
-	jsr scopes.declareTemplate
-	addq.l #4, sp
+	movea.l (sp), a1
+	moveq #1, d3
+	bsr.w publishDefinition
 	bne.w bad
-	move.w d4, d0
-	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
-	adda.l d0, a0
-	move.l State.Origin(a6), Def.Origin(a0)
-	move.w d5, Def.Name(a0)
-	move.l State.Used(a6), Def.First(a0)
-	move.l State.Used(a6), Def.Last(a0)
-	move.w d2, Def.Kind(a0)
-	moveq #0, d0
-	move.w d5, d0
-	movea.l (sp), a0
-	jsr scopes.templateKey
-	bne.w bad
-	moveq #0, d0
-	move.w d5, d0
-	movea.l a6, a0
-	adda.l #CANDIDATES, a0
-	jsr index.add
-	bne.w bad
-	addq.w #1, State.Count(a6)
-	addq.w #1, d4
-	move.w d4, State.Open(a6)
 	bra.w consumed
 skipDefinition
 	move.w #1, State.Skipping(a6)
@@ -808,26 +766,8 @@ capture
 	.MEMORY_TEMPLATE_WORK #8, #1
 	moveq #0, d6
 	move.w State.RawBytes(a6), d6
-	moveq #0, d0
-	move.l State.Used(a6), d0
-	add.l d6, d0
-	movem.l d0/a0, -(sp)
-	lea BODY(a6), a0
-	jsr memory.reserve
-	movem.l (sp)+, d0/a0
+	bsr.w storeBody
 	bne.w bad
-	movea.l BODY+memory.Block.Pointer(a6), a0
-	moveq #0, d4
-	move.l State.Used(a6), d4
-	adda.l d4, a0
-	movea.l a5, a1
-	move.w d6, d4
-copyBody
-	move.b (a1)+, (a0)+
-	subq.w #1, d4
-	bne.w copyBody
-	move.l d0, State.Used(a6)
-	move.l d0, BODY+memory.Block.Used(a6)
 	bra.w consumed
 call
 	.MEMORY_TEMPLATE_WORK #6, #1
@@ -838,29 +778,8 @@ call
 	btst #0, 1(a5)
 	bne.w bad
 callSyntax
-	moveq #0, d0
-	move.w State.Depth(a6), d0
-	mulu.w #FRAME_BYTES, d0
-	lea FRAMES(a6), a4
-	adda.l d0, a4
-	move.w d4, CallFrame.Definition(a4)
-	move.w d5, CallFrame.CallName(a4)
-	move.l State.CallLabel(a6), CallFrame.CallLabel(a4)
-	move.w State.CallLabelPresent(a6), CallFrame.CallLabelPresent(a4)
-	move.w d4, d0
-	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
-	adda.l d0, a0
-	move.w Def.ParamCount(a0), d5
-	clr.w CallFrame.DefaultMask(a4)
-	clr.w TEXT_PAREN(a4)
-	clr.w TEXT_BYTES(a4)
-	clr.w FULL_BYTES(a4)
-	lea CallFrame.ArgEnd0(a4), a0
-	moveq #PARAM_LIMIT-1, d0
-clearArgumentEnds
-	clr.w (a0)+
-	dbra d0, clearArgumentEnds
+	bsr.w startCall
+	bne.w bad
 	bsr.w bindCallPlan
 	bne.w bad
 	moveq #0, d1
@@ -930,14 +849,9 @@ omittedEnd
 	addq.w #1, d7
 	bra.w fillOmitted
 argumentsBound
-	move.l Def.First(a0), CallFrame.Cursor(a4)
-	clr.w CallFrame.CallPhase(a4)
-	tst.w Def.Kind(a0)
-	beq.w callQueued
-	move.w #1, CallFrame.CallPhase(a4)
-callQueued
-	addq.w #1, State.Depth(a6)
-	move.w 2(a5), CallFrame.CallLine(a4)
+	moveq #0, d1
+	move.w 2(a5), d1
+	bsr.w queueCall
 	moveq #ACTION_INVOKE, d1
 	bra.w ok
 ordinary
@@ -967,35 +881,6 @@ done
 	addq.l #4, sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
-	rts
-; A1..A0 is one nonempty argument in the source record. Append its packed
-; tokens and record its cumulative end offset. D1 is the current argument count.
-appendArgument
-	move.l a0, d0
-	sub.l a1, d0
-	beq.w argumentBad
-	cmpi.w #PARAM_LIMIT, d1
-	bhs.w argumentBad
-	moveq #0, d6
-	move.w CallFrame.ArgBytes(a4), d6
-	add.l d0, d6
-	cmpi.l #ARG_LIMIT, d6
-	bhi.w argumentBad
-	lea CallFrame.Argument(a4), a2
-	adda.w CallFrame.ArgBytes(a4), a2
-argumentCopy
-	move.b (a1)+, (a2)+
-	subq.l #1, d0
-	bne.w argumentCopy
-	move.w d6, CallFrame.ArgBytes(a4)
-	move.w d1, d0
-	add.w d0, d0
-	move.w d6, CallFrame.ArgEnd0(a4, d0.w)
-	addq.w #1, d1
-	moveq #0, d0
-	rts
-argumentBad
-	moveq #1, d0
 	rts
 
 	; VM rows select packed and spelling spans. These helpers only bind/copy.
@@ -1354,8 +1239,8 @@ nextFrame
 	movea.l DEFS+memory.Block.Pointer(a0), a4
 	adda.l d0, a4
 	move.l Def.Origin(a4), State.Origin(a0)
-	tst.w Def.Kind(a4)
-	beq.w bodyRecord
+	cmpi.w #KIND_MACRO, Def.Kind(a4)
+	bne.w bodyRecord
 	cmpi.w #1, CallFrame.CallPhase(a6)
 	beq.w macroOpen
 	cmpi.w #3, CallFrame.CallPhase(a6)
@@ -1367,6 +1252,8 @@ bodyRecord
 	move.l CallFrame.Cursor(a6), d0
 	cmp.l Def.Last(a4), d0
 	blo.w bodyAvailable
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	beq.w externalExhausted
 	tst.w Def.Kind(a4)
 	beq.w exhausted
 	move.w #3, CallFrame.CallPhase(a6)
@@ -1399,8 +1286,8 @@ bodyAvailable
 	moveq #0, d2
 	cmp.l Def.First(a4), d0
 	bne.w fragmentLabelReady
-	tst.w Def.Kind(a4)
-	bne.w fragmentLabelReady
+	cmpi.w #KIND_MACRO, Def.Kind(a4)
+	beq.w fragmentLabelReady
 	tst.w CallFrame.CallLabelPresent(a6)
 	beq.w fragmentLabelReady
 	moveq #1, d2
@@ -1485,10 +1372,12 @@ bodyTextReady
 	move.w (a3)+, (a5)+
 	move.w CallFrame.CallLine(a6), (a5)+
 	addq.l #2, a3  ; source line is replaced by the invocation line
+	movea.l 4(sp), a0
+	move.l State.RecordOffset(a0), d0
 	cmp.l Def.First(a4), d0
 	bne.w tokens
-	tst.w Def.Kind(a4)
-	bne.w tokens
+	cmpi.w #KIND_MACRO, Def.Kind(a4)
+	beq.w tokens
 	tst.w CallFrame.CallLabelPresent(a6)
 	beq.w tokens
 	; The first body record cannot already declare an entry label.
@@ -1572,7 +1461,13 @@ dotContextReady
 	bne.w copyToken
 	move.w 2(a3), d0
 	moveq #0, d7
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w findParameter
+	move.w Def.ParamCount(a4), d7
+	subq.w #1, d7
 findParameter
+	tst.w d7
+	bmi.w copyToken
 	cmp.w Def.ParamCount(a4), d7
 	bhs.w copyToken
 	move.w d7, d6
@@ -1583,6 +1478,11 @@ findParameter
 	bsr.w parameterEqual
 	movem.l (sp)+, d1/a0
 	beq.w substituteParameter
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w findParameterForward
+	subq.w #1, d7
+	bra.w findParameter
+findParameterForward
 	addq.w #1, d7
 	bra.w findParameter
 positionalParameter
@@ -1614,7 +1514,13 @@ bracedParameter
 	moveq #7, d5
 	move.w 3(a3), d0
 	moveq #0, d7
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w findBracedParameter
+	move.w Def.ParamCount(a4), d7
+	subq.w #1, d7
 findBracedParameter
+	tst.w d7
+	bmi.w copyToken
 	cmp.w Def.ParamCount(a4), d7
 	bhs.w copyToken
 	move.w d7, d6
@@ -1625,6 +1531,11 @@ findBracedParameter
 	bsr.w parameterEqual
 	movem.l (sp)+, d1/a0
 	beq.w substituteParameter
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w findBracedParameterForward
+	subq.w #1, d7
+	bra.w findBracedParameter
+findBracedParameterForward
 	addq.w #1, d7
 	bra.w findBracedParameter
 atParameter
@@ -2030,6 +1941,25 @@ completeLength
 	move.b d0, (a0)
 	moveq #0, d0
 	bra.w done
+externalExhausted
+	; Caller-scope templates have no envelopes. Preserve an entry label even
+	; when their body contains no records, and emit it exactly once.
+	cmpi.w #4, CallFrame.CallPhase(a6)
+	beq.w exhausted
+	move.w #4, CallFrame.CallPhase(a6)
+	move.l Def.First(a4), d1
+	cmp.l Def.Last(a4), d1
+	bne.w exhausted
+	tst.w CallFrame.CallLabelPresent(a6)
+	beq.w exhausted
+	move.b #8, (a5)
+	clr.b 1(a5)
+	move.w CallFrame.CallLine(a6), 2(a5)
+	move.l CallFrame.CallLabel(a6), 4(a5)
+	move.b #5, 8(a5)
+	moveq #9, d1
+	moveq #0, d0
+	bra.w done
 exhausted
 	movea.l 4(sp), a0
 	subq.w #1, State.Depth(a0)
@@ -2051,6 +1981,238 @@ done
 	.bend  ; next
 
 	.priv
+; A1..A0 is one nonempty argument in the source record. Append its packed
+; tokens and record its cumulative end offset. A4=frame,D1=current count.
+; D0/CCR=status,D1 increments on success; clobbers D6/A1-A2.
+appendArgument	.block
+	move.l a0, d0
+	sub.l a1, d0
+	beq.w argumentBad
+	cmpi.w #PARAM_LIMIT, d1
+	bhs.w argumentBad
+	moveq #0, d6
+	move.w CallFrame.ArgBytes(a4), d6
+	add.l d0, d6
+	cmpi.l #ARG_LIMIT, d6
+	bhi.w argumentBad
+	lea CallFrame.Argument(a4), a2
+	adda.w CallFrame.ArgBytes(a4), a2
+argumentCopy
+	move.b (a1)+, (a2)+
+	subq.l #1, d0
+	bne.w argumentCopy
+	move.w d6, CallFrame.ArgBytes(a4)
+	move.w d1, d0
+	add.w d0, d0
+	move.w d6, CallFrame.ArgEnd0(a4, d0.w)
+	addq.w #1, d1
+	moveq #0, d0
+	rts
+argumentBad
+	moveq #1, d0
+	rts
+
+	.bend  ; appendArgument
+
+; A6=state,D4=next zero-based definition index. D0/CCR=status,A0=cleared Def.
+; Other registers preserved. Reserve does not publish Count or index chains.
+reserveDefinition	.block
+	movem.l d1-d2/a1, -(sp)
+	cmpi.w #65535, d4
+	beq.w bad
+	moveq #0, d0
+	move.w d4, d0
+	addq.l #1, d0
+	mulu.w #DEF_BYTES, d0
+	move.l d0, d2
+	lea DEFS(a6), a0
+	jsr memory.reserve
+	bne.w bad
+	move.l d2, DEFS+memory.Block.Used(a6)
+	moveq #0, d0
+	move.w d4, d0
+	mulu.w #DEF_BYTES, d0
+	movea.l DEFS+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
+	movea.l a0, a1
+	move.w #DEF_BYTES/2-1, d1
+clear
+	clr.w (a1)+
+	dbra d1, clear
+	moveq #STATUS_OK, d0
+	bra.w done
+bad
+	moveq #STATUS_BAD, d0
+done
+	movem.l (sp)+, d1-d2/a1
+	tst.l d0
+	rts
+	.bend  ; reserveDefinition
+
+; A6=state,A0=unpublished Def,A1=scope,D4=index,D5=name,D2=kind,
+; D3=declare facet flag. D0/CCR=status; other registers preserved.
+; A successful publication appends exactly one Node and opens the new body.
+publishDefinition	.block
+	movem.l d1/a0-a2, -(sp)
+	movea.l a0, a2
+	tst.l d3
+	beq.w declared
+	subq.l #4, sp
+	clr.b (sp)
+	move.w d5, 1(sp)
+	clr.b 3(sp)
+	movea.l sp, a0
+	jsr scopes.declareTemplate
+	addq.l #4, sp
+	bne.w bad
+declared
+	move.l State.Origin(a6), Def.Origin(a2)
+	move.w d5, Def.Name(a2)
+	move.l State.Used(a6), Def.First(a2)
+	move.l State.Used(a6), Def.Last(a2)
+	move.w d2, Def.Kind(a2)
+	moveq #0, d0
+	move.w d5, d0
+	movea.l a1, a0
+	jsr scopes.templateKey
+	bne.w bad
+	moveq #0, d0
+	move.w d5, d0
+	movea.l a6, a0
+	adda.l #CANDIDATES, a0
+	jsr index.add
+	bne.w bad
+	addq.w #1, State.Count(a6)
+	move.w State.Count(a6), State.Open(a6)
+	moveq #STATUS_OK, d0
+	bra.w done
+bad
+	moveq #STATUS_BAD, d0
+done
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	rts
+	.bend  ; publishDefinition
+
+; A6=state,A5=record,D6=record bytes. D0/CCR=status; others preserved.
+; Complete records share the relocatable BODY pool for every template kind.
+storeBody	.block
+	movem.l d1-d2/a0-a1, -(sp)
+	move.l State.Used(a6), d2
+	move.l d2, d0
+	add.l d6, d0
+	bcs.w bad
+	move.l d0, d1
+	lea BODY(a6), a0
+	jsr memory.reserve
+	bne.w bad
+	movea.l BODY+memory.Block.Pointer(a6), a0
+	adda.l d2, a0
+	movea.l a5, a1
+	move.l d6, d2
+copy
+	move.b (a1)+, (a0)+
+	subq.l #1, d2
+	bne.w copy
+	move.l d1, State.Used(a6)
+	move.l d1, BODY+memory.Block.Used(a6)
+	moveq #STATUS_OK, d0
+	bra.w done
+bad
+	moveq #STATUS_BAD, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	rts
+	.bend  ; storeBody
+
+; A6=state,D4=definition index,D5=call name. D0/CCR=status,A4=next frame,
+; A0=Def,D5=formal count; others preserved. Does not publish invocation depth.
+startCall	.block
+	cmpi.w #DEPTH_LIMIT, State.Depth(a6)
+	bhs.w bad
+	moveq #0, d0
+	move.w State.Depth(a6), d0
+	mulu.w #FRAME_BYTES, d0
+	lea FRAMES(a6), a4
+	adda.l d0, a4
+	move.w d4, CallFrame.Definition(a4)
+	move.w d5, CallFrame.CallName(a4)
+	move.l State.CallLabel(a6), CallFrame.CallLabel(a4)
+	move.w State.CallLabelPresent(a6), CallFrame.CallLabelPresent(a4)
+	moveq #0, d0
+	move.w d4, d0
+	mulu.w #DEF_BYTES, d0
+	movea.l DEFS+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
+	move.w Def.ParamCount(a0), d5
+	clr.w CallFrame.DefaultMask(a4)
+	clr.w CallFrame.ArgBytes(a4)
+	clr.w CallFrame.ArgCount(a4)
+	clr.w TEXT_PAREN(a4)
+	clr.w TEXT_BYTES(a4)
+	clr.w FULL_BYTES(a4)
+	movem.l d1/a1, -(sp)
+	lea CallFrame.ArgEnd0(a4), a1
+	moveq #PARAM_LIMIT-1, d1
+clearPacked
+	clr.w (a1)+
+	dbra d1, clearPacked
+	lea TEXT_END0(a4), a1
+	moveq #PARAM_LIMIT-1, d1
+clearText
+	clr.w (a1)+
+	dbra d1, clearText
+	movem.l (sp)+, d1/a1
+	moveq #STATUS_OK, d0
+	rts
+bad
+	moveq #STATUS_BAD, d0
+	rts
+	.bend  ; startCall
+
+; A6=state,A4=bound frame,A0=Def,D1=call line. No failure; other registers
+; preserved. CCR unspecified. Only macros receive lexical scope envelopes.
+queueCall	.block
+	move.l Def.First(a0), CallFrame.Cursor(a4)
+	clr.w CallFrame.CallPhase(a4)
+	cmpi.w #KIND_MACRO, Def.Kind(a0)
+	bne.w queued
+	move.w #1, CallFrame.CallPhase(a4)
+queued
+	move.w d1, CallFrame.CallLine(a4)
+	addq.w #1, State.Depth(a6)
+	rts
+	.bend  ; queueCall
+
+; A0=index state,D0=exact name. D1=internal definition cursor or zero.
+; Other registers preserved; CCR reflects D1. Every Def remains indexed,
+; while external bodies are intentionally invisible to dot-macro lookup.
+findInternal	.block
+	movem.l d2/a1-a2, -(sp)
+	movea.l a0, a2
+	jsr index.find
+next
+	tst.w d1
+	beq.w done
+	moveq #0, d2
+	move.w d1, d2
+	subq.w #1, d2
+	mulu.w #DEF_BYTES, d2
+	movea.l a2, a1
+	suba.l #CANDIDATES, a1
+	movea.l DEFS+memory.Block.Pointer(a1), a1
+	adda.l d2, a1
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a1)
+	bne.w done
+	jsr index.nextExact
+	bra.w next
+done
+	movem.l (sp)+, d2/a1-a2
+	tst.w d1
+	rts
+	.bend  ; findInternal
+
 ; A0=scope,D0=unqualified body name,D1=header formal. CCR=equal/missing;
 ; all registers preserved. Field keys may bind globally while header formals
 ; bind lexically; template substitution owns their preparation-time leaf match.
@@ -2095,7 +2257,13 @@ copyCapturedCall	.block
 	move.l a1, fragments.Frame.Output(a3)
 	move.l #252, fragments.Frame.Capacity(a3)
 	movea.l a3, a0
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	beq.w lastNamed
 	jsr fragments.run
+	bra.w bound
+lastNamed
+	jsr fragments.runLastNamed
+bound
 	bne.w done
 	move.l fragments.Frame.Used(a3), d2
 	move.b d2, 1(a2)
@@ -2207,8 +2375,15 @@ rewriteNameReady
 	bne.w rewriteLiteral
 rewriteFormalBegin
 	moveq #0, d7
+	movea.l 4(sp), a4
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w rewriteFormal
+	move.w Def.ParamCount(a4), d7
+	subq.w #1, d7
 rewriteFormal
 	movea.l 4(sp), a4
+	tst.w d7
+	bmi.w rewriteLiteral
 	cmp.w Def.ParamCount(a4), d7
 	bhs.w rewriteLiteral
 	move.l Def.HeaderPlan(a4), d4
@@ -2265,6 +2440,12 @@ rewriteMatched
 	addq.w #1, d6
 	bra.w rewriteArgument
 rewriteNextFormal
+	movea.l 4(sp), a4
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w rewriteFormalForward
+	subq.w #1, d7
+	bra.w rewriteFormal
+rewriteFormalForward
 	addq.w #1, d7
 	bra.w rewriteFormal
 rewriteArgument
@@ -2280,7 +2461,12 @@ rewriteFirst
 	moveq #0, d5
 rewriteTextReady
 	sub.w d5, d4
-	beq.w rewriteBad
+	bne.w rewriteTextPresent
+	movea.l 4(sp), a4
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w rewriteBad
+	bra.w rewriteTextDone
+rewriteTextPresent
 	movea.l a5, a4
 	adda.w d4, a4
 	cmpa.l a1, a4
@@ -2291,12 +2477,12 @@ rewriteTextCopy
 	move.b (a4)+, (a5)+
 	subq.w #1, d4
 	bne.w rewriteTextCopy
+rewriteTextDone
 	adda.w d6, a2
 	bra.w rewriteByte
 rewriteAllArguments
 	moveq #0, d4
 	move.w FULL_BYTES(a6), d4
-	tst.w d4
 	beq.w rewriteAllDone
 	movea.l a5, a4
 	adda.w d4, a4

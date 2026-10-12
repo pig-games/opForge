@@ -589,3 +589,36 @@ stops on failure while retaining the partial report. The present identified
 images and receipts are in `/tmp/opforge-separate-controls-20261012.json`, with
 logs in `/tmp/opforge-separate-controls-20261012-logs`. These controls do not
 establish full opcore parity or a new self-host result.
+The helper executes images serially and passes `--test-threads=1` to the saved
+test executable. The `cargo test --no-run` command above only builds that
+executable; it launches no emulator. Keep the normal runner's single-instance
+configuration for each real-native measurement.
+
+### Shared statement preparation foundation (BS38)
+
+The 2026-10-12 foundation adds shared PRVM signature/head/matcher services,
+validated preparation programs and numeric template interfaces. The unchanged
+11,592-byte two-module control expands 1,200 macro invocations into 1,200 bytes;
+it does not exercise statement invocation, whose CLI integration is pending.
+Both release runs have fresh exact output and zero guest exit on FS-UAE
+68020/10 MiB, with instrumentation disabled.
+
+| Measure | Before (BS37) | After (BS38 foundation) | Separate delta |
+|---|---:|---:|---:|
+| Release START-to-DONE seconds | 34.697495584 | 34.898929042 | +0.201433458 (+0.58%) |
+| Release Hunk bytes | 682,492 | 685,364 | +2,872 |
+| Linked reserved bytes | 716,320 | 719,152 | +2,832 |
+| Peak owned bytes, separate instrumented run | 1,282,840 | 1,282,872 | +32 |
+| Total allocated / freed bytes | 3,182,616 / 3,182,616 | 3,182,648 / 3,182,648 | +32 / +32 |
+| Live owned bytes after cleanup | 0 | 0 | 0 |
+| Runtime prefix bytes | 425,522 | 425,546 | +24 |
+| Packed source bytes | 27,022 | 27,022 | 0 |
+
+These are single samples; the small timing change does not establish a stable
+regression. Linked reservations and peak owned storage are different measures;
+OS costs are excluded, so this is not 2 MiB qualification. Instrumented timings
+(35.924272334 and 35.905929458 seconds) are not release performance results.
+Image/test hashes, environment and decoded memory receipts are retained in
+`/tmp/opforge-statement-foundation-costs-20261012.json`, with per-run logs beside
+it. Statement-execution timing, complete opcore and current full self-host remain
+pending.

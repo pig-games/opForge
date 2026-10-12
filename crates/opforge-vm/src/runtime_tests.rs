@@ -1863,20 +1863,18 @@ fn portable_line_ast_contract_round_trips_core_line_model() {
         }),
         LineAst::StatementDef(types::line_ast::StatementDefAst {
             keyword: "op".to_string(),
-            signature: StatementSignature {
-                atoms: vec![
-                    SignatureAtom::Literal(b"op".to_vec(), span),
-                    SignatureAtom::Capture {
-                        type_name: "word".to_string(),
-                        name: "arg".to_string(),
-                        span,
-                    },
-                    SignatureAtom::Boundary {
-                        atoms: vec![SignatureAtom::Literal(b",".to_vec(), span)],
-                        span,
-                    },
-                ],
-            },
+            signature: StatementSignature::new(vec![
+                SignatureAtom::Literal(b"op".to_vec(), span),
+                SignatureAtom::Capture {
+                    type_name: "word".to_string(),
+                    name: "arg".to_string(),
+                    span,
+                },
+                SignatureAtom::Boundary {
+                    atoms: vec![SignatureAtom::Literal(b",".to_vec(), span)],
+                    span,
+                },
+            ]),
             span,
         }),
         LineAst::StatementEnd(types::line_ast::StatementEndAst { span }),

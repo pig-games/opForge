@@ -33,7 +33,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     assert!(count > 0);
-    assert_eq!(&valid[..4], b"BS37");
+    assert_eq!(&valid[..4], b"BS38");
     assert!(rows + count * crate::binary_source_experiment::ROW <= valid.len());
     assert_eq!(&valid[rows + 34..rows + 36], &[0, 0]);
     assert!(valid[rows + 32] <= 11);
@@ -130,7 +130,6 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     for (name, byte) in [
         ("branch-corrupt-opcode", 0),
         ("branch-corrupt-count", 1),
-        ("branch-invalid-name", 3),
         ("branch-invalid-role", 4),
         ("branch-invalid-expression-policy", 5),
         ("match-invalid-role", 2 + 4 * 4 + 2),
@@ -143,6 +142,9 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         malformed[branch_offset + byte] = 0xff;
         cases.push((name, malformed, 1));
     }
+    let mut branch_name = valid.clone();
+    branch_name[branch_offset + 2..branch_offset + 4].copy_from_slice(&u16::MAX.to_be_bytes());
+    cases.push(("branch-invalid-name", branch_name, 1));
     let mut branch_truncated = valid.clone();
     branch_truncated[BRANCH_PLAN_BYTES_OFFSET..BRANCH_PLAN_BYTES_OFFSET + 4]
         .copy_from_slice(&((branch_bytes - 1) as u32).to_be_bytes());
@@ -173,8 +175,73 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         cases.push((name, malformed, 1));
     }
     let mut superseded = valid.clone();
-    superseded[..4].copy_from_slice(b"BS36");
+    superseded[..4].copy_from_slice(b"BS37");
     cases.push(("superseded-package", superseded, 1));
+    use crate::binary_source_experiment::{STATEMENT_COMPILE, STATEMENT_HEAD, STATEMENT_MATCH};
+    for (field, names) in [
+        (
+            STATEMENT_COMPILE,
+            [
+                "statement-compile-overlap",
+                "statement-compile-odd",
+                "statement-compile-empty",
+                "statement-compile-overflow",
+                "statement-compile-opcode",
+            ],
+        ),
+        (
+            STATEMENT_MATCH,
+            [
+                "statement-match-overlap",
+                "statement-match-odd",
+                "statement-match-empty",
+                "statement-match-overflow",
+                "statement-match-opcode",
+            ],
+        ),
+        (
+            STATEMENT_HEAD,
+            [
+                "statement-head-overlap",
+                "statement-head-odd",
+                "statement-head-empty",
+                "statement-head-overflow",
+                "statement-head-opcode",
+            ],
+        ),
+    ] {
+        let program = u32::from_be_bytes(valid[field..field + 4].try_into().unwrap());
+        for (name, offset, value) in [
+            (
+                names[0],
+                field,
+                crate::binary_source_experiment::HEADER as u32,
+            ),
+            (names[1], field, program | 1),
+            (names[2], field + 4, 0),
+            (names[3], field + 4, u32::MAX),
+        ] {
+            let mut malformed = valid.clone();
+            malformed[offset..offset + 4].copy_from_slice(&value.to_be_bytes());
+            cases.push((name, malformed, 1));
+        }
+        let mut malformed = valid.clone();
+        malformed[program as usize] = 0xff;
+        cases.push((names[4], malformed, 1));
+    }
+    let head = u32::from_be_bytes(
+        valid[STATEMENT_HEAD..STATEMENT_HEAD + 4]
+            .try_into()
+            .unwrap(),
+    ) as usize;
+    for (name, offset) in [
+        ("statement-definition-id", head + 2),
+        ("statement-end-id", head + 4),
+    ] {
+        let mut malformed = valid.clone();
+        malformed[offset..offset + 2].copy_from_slice(&name_count.to_be_bytes());
+        cases.push((name, malformed, 1));
+    }
     cases.push((
         "truncated-current-header",
         valid[..crate::binary_source_experiment::HEADER - 1].to_vec(),
@@ -192,19 +259,17 @@ EXEC_OPEN_LIBRARY = -552
 EXEC_CLOSE_LIBRARY = -414
 DOS_OPEN = -30
 DOS_CLOSE = -36
+DOS_READ = -42
 DOS_WRITE = -48
 MODE_NEWFILE = 1006
+MODE_OLDFILE = 1005
+PACKAGE_CAPACITY = 1048576
 .section entry,kind=code
 .pub
 ; Shell entry; preserve D2-D7/A2-A6. Status artifact is the validator's D0,
 ; while a nonzero Shell exit means the harness could not publish that result.
 start .block
  movem.l d2-d7/a2-a6,-(sp)
- lea Payload,a0
- move.l #PayloadEnd-Payload,d0
- suba.l a1,a1
- jsr validation.validate
- move.l d0,Result
  lea DosName,a1
  moveq #36,d0
  movea.l 4.w,a6
@@ -213,6 +278,32 @@ start .block
  beq.w unavailable
  movea.l d0,a5
  movea.l a5,a6
+ ; One frozen validator receives the actual isolated case's input bytes.
+ ; Read failure cannot publish a validator result or supply native proof.
+ move.l #InputName,d1
+ move.l #MODE_OLDFILE,d2
+ jsr DOS_OPEN(a6)
+ tst.l d0
+ beq.w failed
+ move.l d0,d4
+ move.l d4,d1
+ move.l #Payload,d2
+ move.l #PACKAGE_CAPACITY,d3
+ jsr DOS_READ(a6)
+ move.l d0,d5
+ move.l d4,d1
+ jsr DOS_CLOSE(a6)
+ tst.l d0
+ beq.w failed
+ tst.l d5
+ bmi.w failed
+ cmpi.l #PACKAGE_CAPACITY,d5
+ bhs.w failed
+ lea Payload,a0
+ move.l d5,d0
+ suba.l a1,a1
+ jsr validation.validate
+ move.l d0,Result
  move.l #OutputName,d1
  move.l #MODE_NEWFILE,d2
  jsr DOS_OPEN(a6)
@@ -250,11 +341,13 @@ done
 .endsection
 .section data,kind=data
 DosName .byte "dos.library",0
+InputName .byte "Work:input.bin",0
 OutputName .byte "Work:validation.bin",0
 .align 2
 Result .long 0
-Payload .incbin "package.bin"
-PayloadEnd
+.endsection
+.section bss,kind=bss
+Payload .res byte,PACKAGE_CAPACITY
 .endsection
 .output "validation-probe.hunk",format=hunk,sections=entry,code,data,bss
 .endmodule
@@ -269,6 +362,16 @@ PayloadEnd
         "prvm_packed_branch.asm",
         "prvm_packed_declaration.asm",
         "prvm_packed_text.asm",
+        "prvm_statement_abi.asm",
+        "prvm_statement_inputs.asm",
+        "prvm_statement_text.asm",
+        "prvm_statement_facets.asm",
+        "prvm_statement_policy.asm",
+        "prvm_statement_request.asm",
+        "prvm_statement_plan.asm",
+        "prvm_statement_compile.asm",
+        "prvm_statement_match.asm",
+        "prvm_statement_head.asm",
     ] {
         source.push_str(
             &std::fs::read_to_string(root.join("native/motorola68000/amigaos/prvm").join(name))
@@ -367,7 +470,7 @@ fn compact_package_validation_component_fixture_contract() {
             "branch-truncated-program" => BRANCH_PLAN_BYTES_OFFSET..BRANCH_PLAN_BYTES_OFFSET + 4,
             "branch-corrupt-opcode" => branch_offset..branch_offset + 1,
             "branch-corrupt-count" => branch_offset + 1..branch_offset + 2,
-            "branch-invalid-name" => branch_offset + 3..branch_offset + 4,
+            "branch-invalid-name" => branch_offset + 2..branch_offset + 4,
             "branch-invalid-role" => branch_offset + 4..branch_offset + 5,
             "branch-invalid-expression-policy" => branch_offset + 5..branch_offset + 6,
             "match-invalid-role" => branch_offset + 20..branch_offset + 21,
@@ -383,6 +486,31 @@ fn compact_package_validation_component_fixture_contract() {
                     ..crate::binary_source_experiment::DS_DIRECTIVE + 2
             }
             "superseded-package" => 0..4,
+            name if name.starts_with("statement-") => {
+                use crate::binary_source_experiment::{
+                    STATEMENT_COMPILE, STATEMENT_HEAD, STATEMENT_MATCH,
+                };
+                let field = if name.starts_with("statement-compile-") {
+                    STATEMENT_COMPILE
+                } else if name.starts_with("statement-match-") {
+                    STATEMENT_MATCH
+                } else {
+                    STATEMENT_HEAD
+                };
+                let program =
+                    u32::from_be_bytes(valid[field..field + 4].try_into().unwrap()) as usize;
+                if name.ends_with("opcode") {
+                    program..program + 1
+                } else if name == "statement-definition-id" {
+                    program + 2..program + 4
+                } else if name == "statement-end-id" {
+                    program + 4..program + 6
+                } else if name.ends_with("empty") || name.ends_with("overflow") {
+                    field + 4..field + 8
+                } else {
+                    field..field + 4
+                }
+            }
             "truncated-current-header" => {
                 assert_eq!(bytes.len(), crate::binary_source_experiment::HEADER - 1);
                 assert_eq!(bytes, &valid[..crate::binary_source_experiment::HEADER - 1]);
@@ -409,7 +537,6 @@ fn compact_package_validation_component_host_assembles() {
     let scratch = Scratch::new();
     let input = scratch.0.join("entry.asm");
     std::fs::write(&input, source(&workspace_root())).unwrap();
-    std::fs::write(scratch.0.join("package.bin"), &fixtures()[0].1).unwrap();
     let cli = Cli::parse_from(["opForge", input.to_str().unwrap(), "--cpu", "68020"]);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(scratch.0.clone());
@@ -427,7 +554,7 @@ fn compact_package_validation_component_host_assembles() {
 #[ignore = "requires configured FS-UAE; actual native validator component status, not full CLI parity"]
 fn compact_package_validation_component_fs_uae() {
     use crate::fs_uae_smoke::{
-        run_prebuilt_compact_cli_case_from_env, OpforgeNativeCliPackageMode,
+        run_prebuilt_compact_cli_breadth_from_env, OpforgeNativeCliPackageMode,
         OpforgeNativeCliParityCase, OpforgeNativeCliProof,
     };
     use clap::Parser;
@@ -438,53 +565,67 @@ fn compact_package_validation_component_fs_uae() {
     let source = source(&root);
     let input = scratch.0.join("entry.asm");
     std::fs::write(&input, &source).unwrap();
-    let mut failures = Vec::new();
-    let cases = fixtures();
+    let mut cases = fixtures();
     let selected = std::env::var("OPFORGE_PACKAGE_VALIDATION_CASES").ok();
     if let Some(names) = &selected {
         assert!(names
             .split(',')
             .all(|name| cases.iter().any(|case| case.0 == name)));
     }
-    for (name, package, expected_status) in cases.into_iter().filter(|case| {
+    cases.retain(|case| {
         selected
             .as_ref()
             .is_none_or(|names| names.split(',').any(|name| name == case.0))
-    }) {
-        std::fs::write(scratch.0.join("package.bin"), &package).unwrap();
-        let cli = Cli::parse_from(["opForge", input.to_str().unwrap(), "--cpu", "68020"]);
-        let mut config = validate_cli(&cli).unwrap();
-        config.out_dir = Some(scratch.0.clone());
-        run_with_validated_cli_with_context(&cli, &config)
-            .expect("assemble actual native package validation component");
-        let image = std::fs::read(scratch.0.join("validation-probe.hunk")).unwrap();
-        let expected = expected_status.to_be_bytes();
-        let case = OpforgeNativeCliParityCase {
-            name,
-            cpu_override: "68020",
-            extra_assembly_defines: &[],
-            source_override: Some(&package),
-            command_template: Some(""),
-            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-            extra_guest_files: &[],
-            proof: OpforgeNativeCliProof::ExactArtifact {
-                relative_path: "Work/validation.bin",
-                rust_oracle: &expected,
+    });
+    assert!(!cases.is_empty());
+    assert!(cases.iter().all(|case| case.1.len() < 1048576));
+    let cli = Cli::parse_from(["opForge", input.to_str().unwrap(), "--cpu", "68020"]);
+    let mut config = validate_cli(&cli).unwrap();
+    config.out_dir = Some(scratch.0.clone());
+    run_with_validated_cli_with_context(&cli, &config)
+        .expect("assemble one native package validator for all isolated cases");
+    let image = std::fs::read(scratch.0.join("validation-probe.hunk")).unwrap();
+    let expected: Vec<_> = cases.iter().map(|case| case.2.to_be_bytes()).collect();
+    let requests: Vec<_> = cases
+        .iter()
+        .zip(&expected)
+        .map(
+            |((name, package, _), expected)| OpforgeNativeCliParityCase {
+                name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(package),
+                command_template: Some(""),
+                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: &[],
+                proof: OpforgeNativeCliProof::ExactArtifact {
+                    relative_path: "Work/validation.bin",
+                    rust_oracle: expected,
+                },
             },
-        };
-        match run_prebuilt_compact_cli_case_from_env(&root, &case, &image) {
-            Ok(FsUaeSmokeOutcome::Completed { runs }) => {
-                assert_eq!(runs.len(), 1);
-                assert!(runs[0].protocol_completed);
-                assert_eq!(runs[0].exit_code, Some(0));
-                assert!(runs[0].success);
+        )
+        .collect();
+    let results = run_prebuilt_compact_cli_breadth_from_env(&root, &requests, &image, 64)
+        .expect("fresh native package validation batch");
+    assert_eq!(results.len(), cases.len());
+    let failures: Vec<_> = cases
+        .iter()
+        .zip(&results)
+        .filter_map(|(case, result)| match &result.run {
+            Some(run)
+                if result.error.is_none()
+                    && run.protocol_completed
+                    && run.exit_code == Some(0)
+                    && run.success =>
+            {
+                None
             }
-            Ok(_) => failures.push(format!("{name}: native execution required")),
-            Err(error) => failures.push(format!("{name}: {error}")),
-        }
-    }
+            _ => Some(format!("{}: {:?}", case.0, result.error)),
+        })
+        .collect();
     assert!(
         failures.is_empty(),
         "validator component failures: {failures:?}"
     );
+    eprintln!("PACKAGE_VALIDATOR cases={} fresh_exact=true", cases.len());
 }

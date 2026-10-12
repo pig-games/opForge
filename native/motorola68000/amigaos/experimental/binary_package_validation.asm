@@ -1,7 +1,7 @@
 ; @opforge-owner: experimental.amigaos.binary_package_validation
-; Shared structural boundary for embedded and external BS37 packages.
-; This checks identity, regions and table records, not VM opcode semantics;
-; execution engines retain their independent operand/opcode and step bounds.
+; Shared structural boundary for embedded and external BS38 packages.
+; Checks identity, regions and table records. Preparation policy validation is
+; delegated to its shared VM owner; runtime engines retain execution bounds.
 	.module experimental.amigaos.binary_package_validation
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package
@@ -11,6 +11,10 @@
 	.use prvm.amigaos.packed_branch as branches
 	.use prvm.amigaos.packed_declaration as declarations
 	.use prvm.amigaos.packed_text as text
+	.use prvm.amigaos.statement_abi as statement_abi
+	.use prvm.amigaos.statement_compile as statement_compile
+	.use prvm.amigaos.statement_match as statement_match
+	.use prvm.amigaos.statement_head as statement_head
 	.pub
 SUCCESS = 0
 INVALID = 1
@@ -25,7 +29,7 @@ TOKENIZER_MIN_BYTES = 16
 TOKENIZER_VERSION = 1
 MACRO_VERSION = 2
 	.section code, kind=code
-; A0=BS37 bytes,D0=readable length,A1=optional expected canonical NUL key.
+; A0=BS38 bytes,D0=readable length,A1=optional expected canonical NUL key.
 ; D0/CCR=status. Preserves all other registers; no allocation or mutation.
 ; Readable length is trusted; every package read stays inside that span.
 validate	.block
@@ -478,6 +482,30 @@ tokenizer
 	lea package.Header.MetadataPlan(a4), a2
 	bsr.w macro
 	bne.w bad
+	lea package.Header.StatementCompile(a4), a2
+	bsr.w preparationProgram
+	bne.w bad
+	move.l d1, d0
+	jsr statement_compile.validateProgram
+	bne.w bad
+	lea package.Header.StatementMatch(a4), a2
+	bsr.w preparationProgram
+	bne.w bad
+	move.l d1, d0
+	jsr statement_match.validateProgram
+	bne.w bad
+	lea package.Header.StatementHead(a4), a2
+	bsr.w preparationProgram
+	bne.w bad
+	move.l d1, d0
+	jsr statement_head.validateProgram
+	bne.w bad
+	move.w statement_abi.HeadProgram.Definition(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	move.w statement_abi.HeadProgram.EndMarker(a3), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
 	moveq #SUCCESS, d0
 	bra.w done
 bad
@@ -510,6 +538,24 @@ bad
 	moveq #INVALID, d0
 	rts
 	.bend  ; macro
+; A2=program offset/length pair; D3/D4=preparation bounds.
+; D0/CCR=status; A0/D1=checked program pointer/length for its VM validator.
+; A3 is the checked span; other span-helper clobbers are D1/D2.
+preparationProgram	.block
+	move.l (a2), d0  ; package.PreparationProgram.Offset (zero offset)
+	btst #0, d0
+	bne.w bad
+	move.l package.PreparationProgram.Bytes(a2), d1
+	beq.w bad
+	bsr.w span
+	bne.w bad
+	movea.l a3, a0
+	moveq #SUCCESS, d0
+	rts
+bad
+	moveq #INVALID, d0
+	rts
+	.bend  ; preparationProgram
 ; D0=offset,D1=bytes,D3=lower bound,D4=upper bound. A3=checked span.
 ; Subtraction avoids overflow in offset+length. D5-D7 and D1 preserved.
 span	.block

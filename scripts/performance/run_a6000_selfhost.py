@@ -25,14 +25,17 @@ INSTRUMENTATION_DEFINES = {
     "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
 }
-PACKAGE_HEADER_BYTES = 238
-PACKAGE_MAGIC = b"BS37"
+PACKAGE_HEADER_BYTES = 262
+PACKAGE_MAGIC = b"BS38"
 BRANCH_PLAN_OFFSET = 220
 BRANCH_PLAN_BYTES_OFFSET = 224
 TEXT_PLAN_OFFSET = 228
 TEXT_PLAN_BYTES_OFFSET = 232
 TEXT_PLAN_BYTES = 34
 NAMED_DS_DIRECTIVE_OFFSET = 236
+STATEMENT_COMPILE_OFFSET = 238
+STATEMENT_MATCH_OFFSET = 246
+STATEMENT_HEAD_OFFSET = 254
 
 
 def fnv(data):
@@ -201,16 +204,17 @@ def load_bundle(bundle):
         package[BRANCH_PLAN_BYTES_OFFSET:BRANCH_PLAN_BYTES_OFFSET + 4], "big"
     )
     if (branch_offset < PACKAGE_HEADER_BYTES or branch_offset % 2
-            or branch_size != 20 or branch_offset + branch_size > runtime_bytes):
+            or branch_size != 36 or branch_offset + branch_size > runtime_bytes):
         raise ValueError("Invalid branch-plan program region")
     branch = package[branch_offset:branch_offset + branch_size]
     name_count = int.from_bytes(package[62:64], "big")
-    if branch[:2] != b"\x9a\x04" or branch[18:] != b"\x83\0":
+    if branch[:2] != b"\x9a\x08" or branch[34:] != b"\x83\0":
         raise ValueError("Invalid branch-plan program")
-    for index in range(4):
+    expression_flags = (1, 1, 0, 0, 1, 1, 0, 0)
+    for index in range(8):
         row = branch[2 + index * 4:6 + index * 4]
         if (int.from_bytes(row[:2], "big") >= name_count
-                or row[2] != index + 1 or row[3] != int(index < 2)):
+                or row[2] != index + 1 or row[3] != expression_flags[index]):
             raise ValueError("Invalid branch-plan program")
     text_offset = int.from_bytes(
         package[TEXT_PLAN_OFFSET:TEXT_PLAN_OFFSET + 4], "big"
@@ -221,6 +225,16 @@ def load_bundle(bundle):
     if (text_offset < PACKAGE_HEADER_BYTES or text_offset % 2
             or text_size != TEXT_PLAN_BYTES or text_offset + text_size > runtime_bytes):
         raise ValueError("Invalid text-plan program region")
+    for label, header_offset in (
+        ("statement-compile", STATEMENT_COMPILE_OFFSET),
+        ("statement-match", STATEMENT_MATCH_OFFSET),
+        ("statement-head", STATEMENT_HEAD_OFFSET),
+    ):
+        offset = int.from_bytes(package[header_offset:header_offset + 4], "big")
+        size = int.from_bytes(package[header_offset + 4:header_offset + 8], "big")
+        if (offset < PACKAGE_HEADER_BYTES or offset % 2 or size == 0
+                or offset + size > len(package)):
+            raise ValueError(f"Invalid {label} program region")
     files["opforge"] = bootstrap
     if storage == "embedded":
         offset = int.from_bytes(package[124:128], "big")

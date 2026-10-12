@@ -687,3 +687,13 @@ throughput, full self-host or hardware/2 MiB qualification. Receipts and per-ima
 logs are outside the build cache at
 `/tmp/opforge-statements-expanded-cost-20261012.json`; reproduce with the same
 image-build and control-measurement commands above.
+
+The subsequent empty-token body guard is measured separately against `a7b15d6e`
+on that same unchanged release control: 36.251036417 to 36.245907375 seconds
+(-0.005129042 seconds, effectively unchanged single samples). Hunk size is
+707,856 to 707,864 bytes; linked reservation is 740,812 to 740,820 bytes.
+The guard adds no allocations or layout fields; heap use was not remeasured.
+Fresh native comparison covers the original `statement_boundary_span` example
+and a focused blank/comment-only body, including a comment without whitespace
+after its semicolon. Receipt:
+`/tmp/opforge-statement-empty-cost-20261012.json`.

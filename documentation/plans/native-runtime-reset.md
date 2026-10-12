@@ -395,8 +395,20 @@ rejection/diagnostics (no exact diagnostic-text claim). Fifteen positive cases
 remain: CLI JSON, expressions, four linker cases, macro/module syntax, three
 metadata cases, three statement fixtures and general syntax. All current Rust
 reference oracles pass. This raises positive coverage from 32 to 35; it does not
-close opcore parity. The statement fixtures include comment-only/empty bodies
-and ordinary labels/instructions, so they take precedence over new breadth.
+close opcore parity. A subsequent focused repair qualifies the unchanged
+`statement_boundary_span` fixture and a blank/comment-only body control, including
+`;without a space`. Empty token lists now bypass optional body-recipe generation.
+This raises the individually qualified positive total to 36, with 14 remaining;
+the complete audit has not been rerun on that image. Instrumented localization
+places `statement_capture_types` and `statement_signatures` at 8085 NOP emission,
+after successful preparation. Their prepared package omits a numeric candidate
+for the structured no-operand table mode; keep that work in the i8080 family
+phase rather than changing these original examples.
+
+The empty-body repair separately measures 36.251036417 to 36.245907375 seconds
+on the unchanged release control (single samples, effectively unchanged).
+Image and linked reservation grow by eight bytes. It adds no allocation or
+layout fields; heap use was not remeasured for this focused guard.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

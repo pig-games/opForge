@@ -2,6 +2,7 @@
 use super::native_iterable_loops::{build_image, oracle, run_case, scratch};
 use super::*;
 const CASES: &[(&str, &str, &[u8])] = &[
+    ("statement-comment-only-body", ".statement EMPTY\n    ; body comment\n;without a space\n\n.endstatement\n EMPTY\n.byte 1\n", &[1]),
     ("statement-packed-macro-no-definitions", "PLAIN .macro\n.byte 3\n.endmacro\n .PLAIN\n", &[3]),
     ("statement-byte", ".statement LOAD byte:x\n.byte .x\n.endstatement\n LOAD 7\n", &[7]),
     ("statement-word-overload", ".statement LOAD byte:x\n.byte 1\n.endstatement\n.statement LOAD word:x\n.byte 2\n.endstatement\n LOAD 256\n", &[2]),

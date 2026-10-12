@@ -855,6 +855,8 @@ identityMap
 	bne.w lineSelected
 	tst.l Frame.CaptureBody(a5)
 	beq.w lineReady
+	tst.l capture.Frame.Count(a4)
+	beq.w lineReady  ; blank/comment-only bodies have no matching facets
 	moveq #FRAGMENT_NONE, d0  ; whole-line body without a substitution marker
 lineSelected
 	move.l d0, d2  ; candidate role survives until fragment selection

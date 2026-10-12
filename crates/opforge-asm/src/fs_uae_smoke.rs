@@ -8094,6 +8094,9 @@ mod native_match_controls;
 #[path = "tests/native_member_owner_controls.rs"]
 mod native_member_owner_controls;
 #[cfg(test)]
+#[path = "tests/native_package_heads.rs"]
+mod native_package_heads;
+#[cfg(test)]
 #[path = "tests/native_scoped_layouts.rs"]
 mod native_scoped_layouts;
 #[cfg(test)]

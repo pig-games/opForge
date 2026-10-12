@@ -16,6 +16,7 @@
 	.use experimental.amigaos.binary_structs as structs
 	.use experimental.amigaos.binary_struct_values as struct_values
 	.use experimental.amigaos.binary_package as pkg
+	.use experimental.amigaos.binary_package_names as package_names
 	.use prvm.amigaos.packed_branch as branch_parser
 	.use prvm.amigaos.packed_loop as loop_parser
 	.use prvm.amigaos.abi as loop_abi
@@ -3323,8 +3324,10 @@ keyword	.block
 	movem.l d1-d4/a0-a3, -(sp)
 	cmp.w layout.State.EndDirective(a6), d0
 	beq.w end
+	moveq #0, d2
+	move.w d0, d2
 	sub.w layout.State.Base(a6), d0
-	bcs.w none
+	bcs.w packageName
 	cmp.w layout.State.Count(a6), d0
 	bhs.w none
 	mulu.w #records.ENTRY_BYTES, d0
@@ -3336,6 +3339,20 @@ keyword	.block
 	adda.l d0, a0
 	moveq #0, d4
 	move.w records.Entry.Length(a3), d4
+	bra.w leaf
+packageName
+	; A contextual package head can also name a shared source directive.
+	; Classify its package spelling witness like a source-bound identity;
+	; metadata processing has already consumed heads in its active context.
+	movea.l layout.State.Package(a6), a0
+	move.l a0, d0
+	beq.w none
+	move.l d2, d0
+	jsr package_names.spelling
+	bne.w none
+	movea.l a1, a0
+	move.l d1, d4
+leaf
 	movea.l a0, a1
 	move.l d4, d0
 leafScan

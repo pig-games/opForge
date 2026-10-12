@@ -614,6 +614,20 @@ seconds; this single sample does not establish a speedup. Image/reservation grow
 (1,234,376 to 1,240,696), with matching allocation/free totals and zero live
 ownership. The receipt is `/tmp/opforge-metadata-target-cost-20261012.json`.
 
+The subsequent full current-source run exits 20 after 2,279.485857750 seconds
+of fresh START/DONE observation. Its 190-file manifest is
+`fnv1a64:435058d5c2c55ee5` (2,104,038 source bytes; live Rust Hunk 250,200
+bytes). `debug/telemetry_macros.i:105` is the reported location, not an established
+cause. No current-source self-host equality is qualified by that failed run.
+A reduced descriptor-module probe separately exposes ordinary `.output` reaching
+expression preparation: metadata acquisition now gives the head a package identity,
+while shared source keyword classification formerly accepted only source identities.
+Preparation now resolves both identity domains through a bounded package spelling
+view; numeric runtime records stay unchanged. The reduced complete 72-byte Hunk
+matches live Rust freshly after this repair. Eight new positive/negative host
+controls cover ordinary and metadata-context `.output` on both CPUs; their native
+matrix, isolated cost and full self-host qualification are still pending.
+
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
 unchanged release control and a separate instrumented heap run against the saved

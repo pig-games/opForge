@@ -2130,7 +2130,7 @@ mod dictionary_role_contract_tests {
         assert_eq!(&unsupported[ROLE_COUNT..], &wire[ROLE_COUNT..]);
 
         let prepared = prepare_package(&core, &resolved).unwrap();
-        assert_eq!(&prepared[..4], b"BS37");
+        assert_eq!(&prepared[..4], b"BS38");
         let rows = u32::from_be_bytes(prepared[16..20].try_into().unwrap()) as usize;
         let count = u32::from_be_bytes(prepared[20..24].try_into().unwrap()) as usize;
         assert!(

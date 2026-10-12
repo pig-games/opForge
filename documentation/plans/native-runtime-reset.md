@@ -504,6 +504,28 @@ domain must not become a union lexer. Measure pool/capsule storage before wiring
 the new contract; avoid a full frontend/EXVM workspace per CPU. VM consolidation
 and remaining source/output gaps remain independent completion requirements.
 
+The host-only name-domain experiment establishes that the existing runtime
+model already supplies a catalog-wide prefix: 2,039 identities and 24,020 UTF-8
+spelling bytes. All 16 registered numeric pipelines together contain 3,229
+identities and 311,439 spelling bytes; internal plan identities account for much
+of that growth. A hypothetical eight-byte offset/length table adds 25,832 bytes,
+with two more bytes per local-to-domain mapping entry. These are measured host
+storage counts, not native allocations or a proposed union lexer. Three focused
+tests qualify deterministic mapping, capacity and the common model prefix.
+Acquisition-only identities are not exposed by their owner yet. Extract that
+complete vector with unchanged emitted-package bytes before choosing a production
+domain layout; do not infer missing identities from dictionary spellings.
+
+The full current-source self-host attempt after the BIN/FILL checkpoint fails
+in input discovery before its first source record: 188 staged files include 159
+assembly candidates, exceeding the CLI's former fixed 128-path bound. Package
+load and frontend setup succeed in the bounded gated setup capture. This is an
+early preparation failure, not completed assembly or a new self-host proof.
+The repair separates stationary traversal scratch from a growing owned path
+table; duplicate search paths must not consume extra slots. Fresh controls at
+127, 129 and 200 files, followed by full current-source self-host, qualify this
+repair before any completion claim.
+
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
 unchanged release control and a separate instrumented heap run against the saved

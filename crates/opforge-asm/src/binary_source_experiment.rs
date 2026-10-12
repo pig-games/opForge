@@ -3,6 +3,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+// Host-only identity-domain experiment; no BS38 acquisition/runtime wiring.
+#[cfg(test)]
+mod name_domain;
+
 use package::{
     decode_encoding_program, inline_head_policy_program, macro_descriptor_program,
     macro_fragment_program, macro_spelling_program, packed_branch_program, packed_data_program,

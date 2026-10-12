@@ -389,6 +389,56 @@ fn z80_half_index_prefix_key(prefix: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn no_operand_selectors_lower_to_encodable_numeric_package_candidates() {
+        use crate::binary_source_package::{BinarySourcePackage, CandidateRecipe};
+        use crate::runtime_model_core::RuntimeModelCore;
+
+        let mut registry = registry::ModuleRegistry::new();
+        families::register_intel8080_family_stack(&mut registry);
+        let core = RuntimeModelCore::from_registry(&registry).unwrap();
+        drop(registry);
+        for cpu in ["8085", "z80"] {
+            let resolved = core.resolve_pipeline(cpu, None).unwrap();
+            let package = BinarySourcePackage::prepare(&core, &resolved).unwrap();
+            for (mnemonic, opcode) in [("nop", 0x00), ("rim", 0x20), ("sim", 0x30)] {
+                let candidates = package
+                    .candidates
+                    .iter()
+                    .filter(|candidate| package.names[usize::from(candidate.mnemonic)] == mnemonic)
+                    .collect::<Vec<_>>();
+                if cpu == "z80" && mnemonic != "nop" {
+                    assert!(candidates.is_empty(), "{mnemonic} must remain 8085-only");
+                    assert!(!package.table_programs.iter().any(|program| {
+                        package.names[usize::from(program.mnemonic)] == mnemonic
+                    }));
+                    continue;
+                }
+                assert_eq!(candidates.len(), 1, "{cpu} {mnemonic}");
+                let candidate = candidates[0];
+                assert_eq!(package.names[usize::from(candidate.shape)], "implied");
+                assert_eq!(
+                    package.names[usize::from(candidate.mode)],
+                    "p=none;n=0;r1=_;r2=_;a=none"
+                );
+                assert_eq!(candidate.recipe, CandidateRecipe::None);
+                let program = package
+                    .table_programs
+                    .iter()
+                    .find(|program| {
+                        program.mnemonic == candidate.mnemonic
+                            && program.mode == candidate.mode
+                            && program.owner_rank == candidate.owner_rank
+                    })
+                    .expect("selected numeric mode must have an owned encoding program");
+                assert_eq!(
+                    crate::bytecode::execute_program(&program.bytes, &[]).unwrap(),
+                    vec![opcode]
+                );
+            }
+        }
+    }
+
     use super::*;
 
     #[test]

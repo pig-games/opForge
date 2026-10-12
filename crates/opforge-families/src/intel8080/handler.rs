@@ -895,7 +895,7 @@ fn needs_16bit_immediate(mnemonic: &str) -> bool {
 mod tests {
     use super::*;
     use opcore::tokenizer::Span;
-    use registry::family::{AssemblerContext, EncodeResult, FamilyHandler};
+    use registry::family::{AssemblerContext, CpuHandler, EncodeResult, FamilyHandler};
     use types::symbol::SymbolTable;
 
     struct DummyCtx {
@@ -1032,6 +1032,81 @@ mod tests {
 
         let encoded = handler.encode_instruction("MOV", &operands, &ctx);
         assert!(matches!(encoded, EncodeResult::NotFound));
+    }
+
+    #[test]
+    fn no_operand_package_modes_match_rust_encoding() {
+        let ctx = DummyCtx::new();
+        for (mnemonic, opcode) in [
+            ("CMA", 0x2f),
+            ("CMC", 0x3f),
+            ("DAA", 0x27),
+            ("DI", 0xf3),
+            ("EI", 0xfb),
+            ("HLT", 0x76),
+            ("NOP", 0x00),
+            ("PCHL", 0xe9),
+            ("RAL", 0x17),
+            ("RAR", 0x1f),
+            ("RC", 0xd8),
+            ("RET", 0xc9),
+            ("RLC", 0x07),
+            ("RM", 0xf8),
+            ("RNC", 0xd0),
+            ("RNZ", 0xc0),
+            ("RP", 0xf0),
+            ("RPE", 0xe8),
+            ("RPO", 0xe0),
+            ("RRC", 0x0f),
+            ("RZ", 0xc8),
+            ("SPHL", 0xf9),
+            ("STC", 0x37),
+            ("XCHG", 0xeb),
+            ("XTHL", 0xe3),
+        ] {
+            match Intel8080FamilyHandler.encode_instruction(mnemonic, &[], &ctx) {
+                EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![opcode], "{mnemonic}"),
+                other => panic!("expected {mnemonic} encoding, got {other:?}"),
+            }
+            for cpu in ["8085", "z80"] {
+                let candidate = super::super::selector::candidate_from_resolved_operands(
+                    mnemonic,
+                    cpu,
+                    &[],
+                    &ctx,
+                )
+                .unwrap();
+                assert_eq!(candidate.mode_key, "p=none;n=0;r1=_;r2=_;a=none");
+                assert!(candidate.operand_bytes.is_empty());
+            }
+        }
+        for (mnemonic, opcode) in [("RIM", 0x20), ("SIM", 0x30)] {
+            let candidate = super::super::selector::candidate_from_resolved_operands(
+                mnemonic,
+                "8085",
+                &[],
+                &ctx,
+            )
+            .unwrap();
+            assert_eq!(candidate.mode_key, "p=none;n=0;r1=_;r2=_;a=none");
+            assert!(candidate.operand_bytes.is_empty());
+            for cpu in ["8080", "z80"] {
+                assert!(
+                    super::super::selector::candidate_from_resolved_operands(
+                        mnemonic,
+                        cpu,
+                        &[],
+                        &ctx,
+                    )
+                    .is_none(),
+                    "{mnemonic} must remain 8085-only"
+                );
+            }
+            match crate::i8085::I8085CpuHandler::new().encode_instruction(mnemonic, &[], &ctx) {
+                EncodeResult::Ok(bytes) => assert_eq!(bytes, vec![opcode], "{mnemonic}"),
+                other => panic!("expected {mnemonic} encoding, got {other:?}"),
+            }
+        }
     }
 
     #[test]

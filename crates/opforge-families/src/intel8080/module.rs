@@ -61,6 +61,15 @@ impl FamilyModule for Intel8080FamilyModule {
         family_form_mnemonics()
     }
 
+    fn mode_selectors(
+        &self,
+    ) -> Result<Vec<package::ModeSelectorDescriptor>, package::OpcpuCodecError> {
+        Ok(super::package_programs::no_operand_mode_selectors(
+            types::hierarchy::ScopedOwner::Family(FAMILY_ID.as_str().to_owned()),
+            super::FAMILY_INSTRUCTION_TABLE,
+        ))
+    }
+
     fn value_programs(
         &self,
     ) -> Result<Vec<package::ValueProgramDescriptor>, package::OpcpuCodecError> {

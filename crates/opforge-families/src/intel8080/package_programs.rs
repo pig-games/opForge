@@ -26,6 +26,28 @@ pub const ENCODING_RESTART_VECTOR: &str = "enc.restart-vector";
 pub const FIXUP_Z80_RELATIVE_BYTE: &str = "fix.rel8";
 pub const SELECTOR_ZILOG_EXACT_ALIASES: &str = "aliases.exact";
 
+/// Empty source operands select genuine table modes, retaining each table's
+/// family or CPU ownership so extensions cannot leak into sibling CPUs.
+pub(crate) fn no_operand_mode_selectors(
+    owner: ScopedOwner,
+    entries: &[super::table::InstructionEntry],
+) -> Vec<package::ModeSelectorDescriptor> {
+    entries
+        .iter()
+        .filter(|entry| entry.num_regs == 0 && entry.arg_type == super::table::ArgType::None)
+        .map(|entry| package::ModeSelectorDescriptor {
+            owner: owner.clone(),
+            mnemonic: entry.mnemonic.to_owned(),
+            shape_key: "implied".to_owned(),
+            mode_key: super::selector::mode_key_for_instruction_entry(entry),
+            operand_plan: "none".to_owned(),
+            priority: 0,
+            unstable_widen: false,
+            width_rank: 0,
+        })
+        .collect()
+}
+
 fn value(id: &str, bits: u8) -> Result<ValueProgramDescriptor, OpcpuCodecError> {
     Ok(ValueProgramDescriptor {
         owner: ScopedOwner::Family("intel8080".to_string()),
@@ -151,6 +173,47 @@ pub fn semantic_programs() -> Result<Vec<SemanticProgramDescriptor>, OpcpuCodecE
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn no_operand_table_forms_have_owned_package_selectors() {
+        use registry::registry::{CpuModule, FamilyModule};
+        let family = super::super::module::Intel8080FamilyModule
+            .mode_selectors()
+            .unwrap();
+        let cpu = crate::i8085::module::I8085CpuModule
+            .mode_selectors()
+            .unwrap();
+        for (entries, selectors, owner) in [
+            (
+                super::super::FAMILY_INSTRUCTION_TABLE,
+                family,
+                types::hierarchy::ScopedOwner::Family("intel8080".into()),
+            ),
+            (
+                crate::i8085::I8085_EXTENSION_TABLE,
+                cpu,
+                types::hierarchy::ScopedOwner::Cpu("8085".into()),
+            ),
+        ] {
+            let entries = entries
+                .iter()
+                .filter(|entry| {
+                    entry.num_regs == 0 && entry.arg_type == super::super::ArgType::None
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(selectors.len(), entries.len());
+            for entry in entries {
+                let selector = selectors
+                    .iter()
+                    .find(|selector| selector.mnemonic == entry.mnemonic)
+                    .unwrap();
+                assert_eq!(selector.owner, owner);
+                assert_eq!(selector.shape_key, "implied");
+                assert_eq!(selector.mode_key, "p=none;n=0;r1=_;r2=_;a=none");
+                assert_eq!(selector.operand_plan, "none");
+            }
+        }
+    }
+
     #[test]
     fn exact_no_operand_aliases_are_package_selector_candidates() {
         let programs = super::selector_programs().expect("compile exact Zilog aliases");

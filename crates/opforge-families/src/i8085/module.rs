@@ -47,6 +47,17 @@ impl CpuModule for I8085CpuModule {
         cpu_form_mnemonics()
     }
 
+    fn mode_selectors(
+        &self,
+    ) -> Result<Vec<package::ModeSelectorDescriptor>, package::OpcpuCodecError> {
+        Ok(
+            crate::intel8080::package_programs::no_operand_mode_selectors(
+                types::hierarchy::ScopedOwner::Cpu(CPU_ID.as_str().to_owned()),
+                super::I8085_EXTENSION_TABLE,
+            ),
+        )
+    }
+
     fn handler(&self) -> Box<dyn CpuHandlerDyn> {
         Box::new(I8085CpuHandler::new())
     }

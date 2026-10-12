@@ -636,7 +636,7 @@ fn is_register_a(operand: &Operand) -> bool {
     matches!(operand, Operand::Register(name, _) if name.eq_ignore_ascii_case("a"))
 }
 
-fn mode_key_for_instruction_entry(entry: &InstructionEntry) -> String {
+pub(super) fn mode_key_for_instruction_entry(entry: &InstructionEntry) -> String {
     format!(
         "p={};n={};r1={};r2={};a={}",
         prefix_key(entry.prefix),

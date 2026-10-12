@@ -235,12 +235,62 @@ fn successful_isolated_retry_resumes_at_first_unstarted_case() {
 }
 
 fn scratch() -> EphemeralArtifactDir {
-    let path = std::env::temp_dir().join(format!(
-        "opforge-breadth-host-{}",
-        opforge_native_cli_run_challenge()
-    ));
-    fs::create_dir_all(&path).expect("create breadth scratch parent before package generation");
-    EphemeralArtifactDir(path)
+    scratch_with_challenge(&opforge_native_cli_run_challenge())
+}
+
+fn scratch_with_challenge(challenge: &str) -> EphemeralArtifactDir {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT_SCRATCH: AtomicU64 = AtomicU64::new(0);
+    loop {
+        let path = std::env::temp_dir().join(format!(
+            "opforge-breadth-host-{}-{}",
+            challenge,
+            NEXT_SCRATCH.fetch_add(1, Ordering::Relaxed)
+        ));
+        // Cleanup owns only a directory this invocation created exclusively.
+        // Clock resolution cannot make parallel tests share an owned tree.
+        match fs::create_dir(&path) {
+            Ok(()) => return EphemeralArtifactDir(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                panic!("create breadth scratch parent before package generation: {error}")
+            }
+        }
+    }
+}
+
+#[test]
+fn parallel_scratch_cleanup_preserves_other_owned_trees() {
+    // Force identical clock-derived challenges to reproduce the former alias.
+    let challenge = opforge_native_cli_run_challenge();
+    let owners = std::thread::scope(|scope| {
+        let workers = (0..16)
+            .map(|_| scope.spawn(|| scratch_with_challenge(&challenge)))
+            .collect::<Vec<_>>();
+        workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+    let mut paths = owners
+        .iter()
+        .map(|owner| owner.0.clone())
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+    assert_eq!(paths.len(), owners.len());
+    for owner in &owners {
+        fs::write(owner.0.join("owned"), b"live").unwrap();
+    }
+    let mut owners = owners;
+    while let Some(owner) = owners.pop() {
+        let removed = owner.0.clone();
+        drop(owner);
+        assert!(!removed.exists());
+        for survivor in &owners {
+            assert_eq!(fs::read(survivor.0.join("owned")).unwrap(), b"live");
+        }
+    }
 }
 
 fn case<'a>(

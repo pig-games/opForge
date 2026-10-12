@@ -398,16 +398,22 @@ fn compact_hunk_placement_high_water_rust_oracles() {
                 }
             }
             "odd-align-mapped-fragment" => {
-                assert_eq!(parts[0].payload, [1, 0, 0, 2, 0, 0, 0, 0, 5, 0, 0, 0]);
-                assert_eq!(parts[0].reserved_bytes, 12);
-                assert_eq!(parts[0].relocations, [(5, 0)]);
-                assert_eq!(parts[1].payload, [0, 0, 0, 5]);
+                // Absolute alignment leaves the concrete prefix at $2001..$2004.
+                // Mapped replay recomputes its extent before appending the long;
+                // the initial sizing pass's extra high-water byte is not retained.
+                let prefix_size = 0x2005u32 - 0x2001;
+                let mut expected = vec![1, 0, 0, 2];
+                expected.extend_from_slice(&prefix_size.to_be_bytes());
+                assert_eq!(parts[0].payload, expected);
+                assert_eq!(parts[0].reserved_bytes, 8);
+                assert_eq!(parts[0].relocations, [(prefix_size, 0)]);
+                assert_eq!(parts[1].payload, prefix_size.to_be_bytes());
                 assert_eq!(parts[1].reserved_bytes, 4);
                 assert_eq!(parts[1].relocations, [(0, 0)]);
                 for label in [
                     "main.start = $2001",
                     "main.aligned = $2004",
-                    "placement_dep.entry = $2006",
+                    "placement_dep.entry = $2005",
                 ] {
                     assert!(
                         labels.lines().any(|line| line == label),

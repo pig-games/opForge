@@ -779,17 +779,48 @@ const TWO_MAPPED_SECTIONS: &[(&str, &str)] = &[
 ];
 
 #[test]
-fn binary_graph_two_mapped_sections_overlap_rejected() {
-    assert!(oracle_with_roots(TWO_MAPPED_SECTIONS, &["library"])
-        .unwrap_err()
-        .contains("Mapped section overlaps the next placed section"));
+fn binary_graph_two_mapped_sections_reserve_retained_extents() {
+    // Each concrete prefix is three bytes, followed by its retained two-byte
+    // logical body. Dead blocks reserve nothing; the second section begins at
+    // $1005 and both pointers address the entry after the logical prefix byte.
+    let mut entries =
+        oracle_entries_with_search_roots(TWO_MAPPED_SECTIONS, &["library"], &[]).unwrap();
+    entries.sort_unstable_by_key(|(address, _)| *address);
+    let left_entry = 0x1000u16 + 3 + 1;
+    let right_entry = 0x1000u16 + 5 + 3 + 1;
+    let mut expected = vec![0xa0];
+    expected.extend_from_slice(&left_entry.to_le_bytes());
+    expected.extend_from_slice(&[0xb0, 0x10, 0xa1]);
+    expected.extend_from_slice(&right_entry.to_le_bytes());
+    expected.extend_from_slice(&[0xc0, 0x20]);
+    assert_eq!(entries, (0x1000..).zip(expected).collect::<Vec<_>>());
 }
 
 #[test]
-#[ignore = "requires configured FS-UAE; two maps cannot share one region"]
-fn compact_cli_two_mapped_sections_overlap_fs_uae() {
-    assert!(oracle_with_roots(TWO_MAPPED_SECTIONS, &["library"]).is_err());
-    compact_cli(TWO_MAPPED_SECTIONS, &["library"], &[], None, false);
+fn binary_graph_two_mapped_sections_reject_insufficient_region_capacity() {
+    let root = TWO_MAPPED_SECTIONS[0].1.replace("$10ff", "$1008");
+    let files = [
+        ("main.asm", root.as_str()),
+        TWO_MAPPED_SECTIONS[1],
+        TWO_MAPPED_SECTIONS[2],
+    ];
+    assert!(oracle_with_roots(&files, &["library"])
+        .unwrap_err()
+        .contains("overflows region"));
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; two mapped sections share one region"]
+fn compact_cli_two_mapped_sections_fs_uae() {
+    let expected = oracle_address_ordered_with_roots(TWO_MAPPED_SECTIONS, &["library"])
+        .expect("live Rust two-map shared-region oracle");
+    compact_cli(
+        TWO_MAPPED_SECTIONS,
+        &["library"],
+        &[],
+        Some(&expected),
+        false,
+    );
 }
 
 const TWO_MAPPED_REGIONS: &[(&str, &str)] = &[

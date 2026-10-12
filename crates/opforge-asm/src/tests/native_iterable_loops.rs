@@ -211,15 +211,30 @@ fn native_iterable_loops_rust_oracles() {
 }
 
 pub(super) fn oracle(dir: &Path, source: &str) -> Result<Vec<u8>, String> {
+    oracle_with_module_roots(dir, source, &[])
+}
+
+pub(super) fn oracle_with_module_roots(
+    dir: &Path,
+    source: &str,
+    roots: &[&str],
+) -> Result<Vec<u8>, String> {
     let input = dir.join("entry.asm");
     let output = dir.join("out.bin");
     fs::write(&input, source).unwrap();
-    let cli = Cli::parse_from([
+    let mut args = vec![
         "opForge".to_owned(),
         input.to_string_lossy().into_owned(),
         "--bin".to_owned(),
         output.to_string_lossy().into_owned(),
-    ]);
+    ];
+    for root in roots {
+        args.extend([
+            "-M".to_owned(),
+            dir.join(root).to_string_lossy().into_owned(),
+        ]);
+    }
+    let cli = Cli::parse_from(args);
     let config = validate_cli(&cli).map_err(|error| format!("{error:?}"))?;
     run_with_validated_cli_with_context(&cli, &config).map_err(|error| format!("{error:?}"))?;
     fs::read(output).map_err(|error| error.to_string())

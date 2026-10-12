@@ -22,6 +22,18 @@ const CASES: &[Case<'static>] = &[
         rejection: None,
     },
     Case {
+        name: "inactive-preamble-cpu-does-not-select",
+        source: ".ifdef ABSENT\n.cpu\n.endif\n.cpu 6502\n nop\n",
+        command: "Work:main.asm --bin Work:output.bin -P Work:packages",
+        rejection: None,
+    },
+    Case {
+        name: "nested-conditional-preamble-does-not-select",
+        source: ".if 0\n.if 1\n.cpu nonexistent\n.endif\n.endif\n.cpu 6502\n nop\n",
+        command: "Work:main.asm --bin Work:output.bin -P Work:packages",
+        rejection: None,
+    },
+    Case {
         name: "qualified-module-quoted-alias",
         source: ".module app.main\n.CPU \"m68020\"\n moveq #42,d0\n rts\n.endmodule\n",
         command: "Work:main.asm --bin Work:output.bin",

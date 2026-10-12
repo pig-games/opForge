@@ -1,30 +1,30 @@
 ; Selected source acquisition and resumable token cursors. Included by binary_app.
 ; Callbacks only queue a bounded request; no frontend routine reenters itself.
-SourceCursorState .struct
-Start .long ?
-Offset .long ?
-Next .long ?
-End .long ?
+SourceCursorState	.struct
+Start	.long ?
+Offset	.long ?
+Next	.long ?
+End	.long ?
 .endstruct
 SOURCE_CURSOR_BYTES = SourceCursorState.End+4
-SourceResume .struct
-Cursor .res SOURCE_CURSOR_BYTES
-ScheduleCursor .long ?
-ScheduleEnd .long ?
-CaptureRegion .long ?
-CaptureDerived .long ?
-TemplateFloor .long ?
-Owned .word ?
-RootFile .word ?
-ExpansionFloor .word ?
-Padding .word ?
+SourceResume	.struct
+Cursor	.res SOURCE_CURSOR_BYTES
+ScheduleCursor	.long ?
+ScheduleEnd	.long ?
+CaptureRegion	.long ?
+CaptureDerived	.long ?
+TemplateFloor	.long ?
+Owned	.word ?
+RootFile	.word ?
+ExpansionFloor	.word ?
+Padding	.word ?
 .endstruct
 SOURCE_RESUME_BYTES = SourceResume.Padding+2
 
 ; A0=session,D0=0 view / 1 seek,D1=logical capture offset for seek.
 ; D0/CCR=status,D1=current offset,D2=end,D3=stream identity (0 physical).
 ; Other registers preserved.
-sourceCursor .block
+sourceCursor	.block
 	move.l d4, -(sp)
 	move.l d0, d4
 	jsr frontend.expansionDepth
@@ -58,11 +58,11 @@ view
 bad
 	moveq #1, d0
 	rts
-	.bend ; sourceCursor
+	.bend  ; sourceCursor
 
 ; A0=session,D1=logical capture offset. D0/CCR=status,A1=numeric writer
 ; preview,D1=next offset. Other registers preserved. Next peek replaces the view.
-sourcePeek .block
+sourcePeek	.block
 	movem.l d2-d7/a0/a2-a6, -(sp)
 	jsr frontend.expansionDepth
 	cmp.w frontend.Frame.ExpansionFloor(a0), d0
@@ -105,12 +105,12 @@ done
 	movem.l (sp)+, d2-d7/a0/a2-a6
 	tst.l d0
 	rts
-	.bend ; sourcePeek
+	.bend  ; sourcePeek
 
 ; Drain the current frontend result and expansions above TemplateFloor.
 ; Selected child sources run before the suspended caller template resumes.
 ; D0/CCR=status; other registers preserved.
-drainPrepared .block
+drainPrepared	.block
 	movem.l d1-d7/a0-a6, -(sp)
 published
 	lea Front, a0
@@ -144,11 +144,11 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; drainPrepared
+	.bend  ; drainPrepared
 
 ; Replay [ScheduleCursor,ScheduleEnd) using owned captures, never original text.
 ; SourceCursorData is the active bounded frontier. D0/CCR=status; others preserved.
-replaySourceSlice .block
+replaySourceSlice	.block
 	movem.l d1-d7/a0-a6, -(sp)
 next
 	move.l ScheduleCursor, d1
@@ -195,12 +195,12 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; replaySourceSlice
+	.bend  ; replaySourceSlice
 
 ; Acquire one selected request, capture its entire token frontier, then prepare
 ; it in the caller's current module/scope. Registers and parent cursor survive.
 ; D0/CCR=status. Handles close on success; execute owns failure cleanup.
-materializePendingSource .block
+materializePendingSource	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.l #SOURCE_RESUME_BYTES, sp
 	movea.l sp, a5
@@ -220,46 +220,8 @@ materializePendingSource .block
 	jsr frontend.expansionDepth
 	move.l d0, TemplateFloor
 	move.w d0, frontend.Frame.ExpansionFloor(a0)
-	cmpi.l #INCLUDE_DEPTH, IncludeDepthNow
-	bhs.w bad
-	move.l PendingOrigin, d0
-	lsl.l #8, d0
-	lea OriginPaths, a0
-	cmp.l memory.Block.Used(a0), d0
-	bhs.w bad
-	movea.l memory.Block.Pointer(a0), a2
-	adda.l d0, a2
-	lea PendingName, a0
-	lea IncludeName, a1
-	move.w #PATH_BYTES/4-1, d0
-name
-	move.l (a0)+, (a1)+
-	dbra d0, name
-	movea.l a2, a0
-	lea IncludePath, a1
-	bsr.w parentPath
+	bsr.w enterPendingSource
 	bne.w bad
-	bsr.w openIncludedFrom
-	beq.w opened
-	bmi.w bad
-	moveq #0, d5
-root
-	cmp.l RootCount, d5
-	bhs.w bad
-	move.l d5, d0
-	lsl.l #8, d0
-	lea RootPaths, a0
-	movea.l memory.Block.Pointer(a0), a0
-	adda.l d0, a0
-	lea IncludePath, a1
-	bsr.w copyIncludeBase
-	bne.w bad
-	bsr.w openIncludedFrom
-	beq.w opened
-	bmi.w bad
-	addq.l #1, d5
-	bra.w root
-opened
 	lea Front, a0
 	clr.w frontend.Frame.SourcePending(a0)
 	move.w #1, frontend.Frame.SourceOwned(a0)
@@ -324,4 +286,4 @@ restore
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; materializePendingSource
+	.bend  ; materializePendingSource

@@ -5,13 +5,15 @@ lifecycle have focused native proof. Growing-source execution remains a design
 target.
 The [completion plan](native-runtime-reset.md) records current evidence and completion order.
 
-The latest frozen BS37/reservation opcore audit completed all 86 roots: 29
-positive roots matched requested Rust artifacts exactly, 36 expected negatives
-rejected with diagnostics (without exact diagnostic parity), and 21 positive
-roots exited 20. No pass/rejection status changed from the BS36/schema audit;
-`syntax.asm` advances from its reservation on line 114 to a labeled conditional
-on line 280. Its 371.93-second batch includes harness overhead and is not
-performance evidence. This corpus result does not qualify growing-source
+The 2026-10-12 frozen static-acquisition image completed all 86 unchanged opcore
+roots: 32 positive roots matched every requested Rust artifact exactly, 36
+expected negatives rejected with diagnostics (without exact diagnostic parity),
+and 18 positive roots exited 20. Four roots improve over the prior combined
+binding audit and none regress. Static includes now contribute module declarations
+and `.use` edges before graph ordering; runtime/expanded graph changes still reject.
+`syntax.asm` reaches sparse `.org` emission on line 196. The 174.33-second test
+includes host preparation and harness overhead and is not performance evidence.
+This corpus result does not qualify growing-source
 acquisition, live-PC/placement controls or dynamic binding ownership; those remain
 separate focused proof requirements.
 
@@ -169,8 +171,8 @@ activity v7), with no state memory growth. This focused result does not establis
 a fresh full self-host or 2 MiB fit.
 
 The separate 24-case `.ds` matrix passes with 12 exact artifacts and 12 expected
-rejections across both CPUs. The unchanged `syntax.asm` still rejects at labeled
-`.if` line 280; this is not a full corpus qualification.
+rejections across both CPUs. The latest unchanged `syntax.asm` reaches sparse
+`.org` line 196; it still rejects. This is not a full language qualification.
 
 ## Implementation and evidence
 

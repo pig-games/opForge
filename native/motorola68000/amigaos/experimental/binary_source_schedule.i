@@ -3,7 +3,7 @@
 
 ; Prepare the selected physical file's capture region and index-only boundary.
 ; D0/CCR=status; other registers preserved. No module body is prepared here.
-captureFileBegin .block
+captureFileBegin	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea ConfigScan, a0
 	move.l #Front, configuration.Frame.Session(a0)
@@ -17,6 +17,7 @@ captureFileBegin .block
 	move.l #frontend.declarationRole, configuration.Frame.DeclarationRole(a0)
 	move.l #frontend.updateRole, configuration.Frame.UpdateRole(a0)
 	move.l #frontend.loopRole, configuration.Frame.LoopRole(a0)
+	move.l #frontend.fileRole, configuration.Frame.FileRole(a0)
 	lea Front, a1
 	move.l frontend.Frame.Output(a1), configuration.Frame.Output(a0)
 	move.l frontend.Frame.Capacity(a1), configuration.Frame.Capacity(a0)
@@ -26,6 +27,8 @@ captureFileBegin .block
 	move.w #1, configuration.Frame.Priority(a0)
 indexMode
 	jsr configuration.begin
+	bne.w bad
+	bsr.w staticCaptureBegin
 	bne.w bad
 	clr.l CaptureDerived
 	lea GraphBlock, a0
@@ -57,11 +60,11 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; captureFileBegin
+	.bend  ; captureFileBegin
 
 ; Allocate a descriptor, initially empty. Arenas grow only up to memory.LIMIT.
 ; D0/CCR=status; other registers preserved. Descriptors contain offsets only.
-newCaptureRegion .block
+newCaptureRegion	.block
 	movem.l d1-d3/a0-a2, -(sp)
 	lea CaptureRegions, a0
 	move.l memory.Block.Used(a0), d0
@@ -89,23 +92,23 @@ done
 	movem.l (sp)+, d1-d3/a0-a2
 	tst.l d0
 	rts
-	.bend ; newCaptureRegion
+	.bend  ; newCaptureRegion
 
 ; D0=current descriptor index, A0=descriptor; no allocation occurs here.
 ; Clobbers D0/A0/CCR. The caller reacquires this view after table growth.
-currentCaptureRegion .block
+currentCaptureRegion	.block
 	move.l CaptureRegionCurrent, d0
 	mulu.w #CAPTURE_REGION_BYTES, d0
 	lea CaptureRegions, a0
 	movea.l memory.Block.Pointer(a0), a0
 	adda.l d0, a0
 	rts
-	.bend ; currentCaptureRegion
+	.bend  ; currentCaptureRegion
 
 ; Capture one already selected physical line. The temporary line arena makes
 ; rollover independent of allocator failures. It is copied once, then reused.
 ; D0/CCR=status; other registers preserved; SourceLine remains caller-owned.
-capturePhysicalLine .block
+capturePhysicalLine	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea Front, a0
 	move.l OriginId, frontend.Frame.Origin(a0)
@@ -127,6 +130,13 @@ trimmed
 	move.l #CaptureLine, capture.Frame.Arena(a1)
 	jsr frontend.captureLine
 	bne.w bad
+	tst.l AcquiringSource
+	bne.w capturedPolicy
+	bsr.w staticCaptureLine
+	bne.w bad
+	tst.l d1
+	bne.w capturedOnly
+capturedPolicy
 	lea CaptureLine, a0
 	move.l memory.Block.Used(a0), d7
 	bsr.w currentCaptureRegion
@@ -178,10 +188,10 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; capturePhysicalLine
+	.bend  ; capturePhysicalLine
 
 ; End one physical capture file. D0/CCR=status; other registers preserved.
-captureFileEnd .block
+captureFileEnd	.block
 	movem.l a0, -(sp)
 	lea ConfigScan, a0
 	tst.l CaptureDerived
@@ -198,11 +208,11 @@ done
 	movea.l (sp)+, a0
 	tst.l d0
 	rts
-	.bend ; captureFileEnd
+	.bend  ; captureFileEnd
 
 ; D1=logical capture offset. A0=containing region on success, D0/CCR=status.
 ; Preserve other registers. Empty regions never match a record lookup.
-locateCapture .block
+locateCapture	.block
 	movem.l d2-d3/a1, -(sp)
 	lea CaptureRegions, a0
 	movea.l memory.Block.Pointer(a0), a0
@@ -233,11 +243,11 @@ done
 	movem.l (sp)+, d2-d3/a1
 	tst.l d0
 	rts
-	.bend ; locateCapture
+	.bend  ; locateCapture
 
 ; D1=retained physical origin index+1. Restore its path for module basename,
 ; active assets and diagnostics. D0/CCR=status; other registers preserved.
-captureSourcePath .block
+captureSourcePath	.block
 	movem.l d1-d3/a0-a2, -(sp)
 	tst.l d1
 	beq.w bad
@@ -262,12 +272,12 @@ done
 	movem.l (sp)+, d1-d3/a0-a2
 	tst.l d0
 	rts
-	.bend ; captureSourcePath
+	.bend  ; captureSourcePath
 
 ; D1=reachable graph binding. Configure all of its captured regions before
 ; graph traversal reads its edges. No struct, instruction or asset is executed.
 ; D0/CCR=status; other registers preserved.
-configureCapturedModule .block
+configureCapturedModule	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea ConfigScan, a0
 	move.l d1, configuration.Frame.Binding(a0)
@@ -341,12 +351,12 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; configureCapturedModule
+	.bend  ; configureCapturedModule
 
 ; Keep the selected capture line's real origin when configuration rejects it.
 ; Preserve all registers; CCR unspecified. An invalid capture retains the
 ; requested module/file location already supplied by configureCapturedModule.
-locateConfigurationFailure .block
+locateConfigurationFailure	.block
 	movem.l d0-d2/a0-a2, -(sp)
 	lea ConfigScan, a0
 	move.l configuration.Frame.Cursor(a0), d1
@@ -362,12 +372,12 @@ locateConfigurationFailure .block
 done
 	movem.l (sp)+, d0-d2/a0-a2
 	rts
-	.bend ; locateConfigurationFailure
+	.bend  ; locateConfigurationFailure
 
 ; Resolve the captured graph, including non-discovery manifests. Discovery
 ; callers use resolveGraph, which handles the missing-file status separately.
 ; D0/CCR=status; other registers preserved.
-orderCapturedSources .block
+orderCapturedSources	.block
 	movem.l d1-d7/a0-a6, -(sp)
 retry
 	lea GraphSpans, a0
@@ -391,12 +401,12 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; orderCapturedSources
+	.bend  ; orderCapturedSources
 
 ; Replace the configuration frontend with fresh semantic state. Canonical
 ; parameter spellings are rebound before the configuration scope is released.
 ; D0/CCR=status; other registers preserved. Old IO/output storage stays live.
-beginCapturedReplay .block
+beginCapturedReplay	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea Front, a0
 	lea ConfigFront, a1
@@ -469,12 +479,12 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; beginCapturedReplay
+	.bend  ; beginCapturedReplay
 
 ; Replay one capture span in graph order. Source ordinals remain physical;
 ; prepared offsets and semantic graph identities are rebuilt from fresh state.
 ; D0/CCR=status; other registers preserved.
-replayCapturedSources .block
+replayCapturedSources	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	bsr.w beginCapturedReplay
 	bne.w bad
@@ -550,12 +560,12 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; replayCapturedSources
+	.bend  ; replayCapturedSources
 
 ; A single CLI file without explicit modules keeps its normal semantic path.
 ; Its captured stream still replays once; indexing errors are then diagnosed
 ; by the ordinary frontend. D0/CCR=status; other registers preserved.
-prepareCapturedSources .block
+prepareCapturedSources	.block
 	movem.l d1-d3/a0-a2, -(sp)
 	cmpi.w #1, CliMode
 	bne.w ordered
@@ -582,11 +592,11 @@ done
 	movem.l (sp)+, d1-d3/a0-a2
 	tst.l d0
 	rts
-	.bend ; prepareCapturedSources
+	.bend  ; prepareCapturedSources
 
 ; Free all captured source ownership, including partially published regions.
 ; Preserve all registers; CCR unspecified. Safe on every execute exit.
-releaseCapturedSources .block
+releaseCapturedSources	.block
 	movem.l d0-d2/a0-a2, -(sp)
 	lea CaptureRegions, a0
 	movea.l memory.Block.Pointer(a0), a2
@@ -615,11 +625,11 @@ table
 	clr.l CaptureOrderCount
 	movem.l (sp)+, d0-d2/a0-a2
 	rts
-	.bend ; releaseCapturedSources
+	.bend  ; releaseCapturedSources
 
 ; Finish both frontend ownership states before scratch allocation release.
 ; Preserve all registers; CCR unspecified. Called after Front's normal finish.
-releaseScheduledFrontend .block
+releaseScheduledFrontend	.block
 	movem.l a0, -(sp)
 	tst.l ConfigFrontStarted
 	beq.w scratch
@@ -632,4 +642,4 @@ scratch
 	clr.l memory.Block.Used(a0)
 	movem.l (sp)+, a0
 	rts
-	.bend ; releaseScheduledFrontend
+	.bend  ; releaseScheduledFrontend

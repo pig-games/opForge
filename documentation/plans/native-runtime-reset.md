@@ -21,27 +21,34 @@ then report remaining limits and wait.
 
 ## Current evidence and limits
 
-The fresh frozen-image BS37/reservation correctness-only opcore audit completed
-all 86 roots under the fresh-run protocol: 29 positive roots match all requested
-live Rust artifacts exactly, 36 expected-negative roots reject with diagnostics
-(not exact diagnostic parity), and 21 positive roots exit 20. No pass/rejection
-status changed from the BS36/schema audit. The large `syntax.asm` root advances
-from `.ds` on line 114 to a labeled conditional on line 280; it remains failing.
-The 371.93-second correctness batch includes harness overhead and is not a
-performance measurement. This does not qualify complete opcore or CPU-family
-parity. The Rust reference audit matches 81 roots; five expected-error roots lack
-comparable partial artifacts for the stricter audit.
+The 2026-10-12 frozen-image correctness-only opcore audit completed all 86
+unchanged roots under the fresh-run protocol: 32 positive roots match every
+requested live Rust artifact exactly, 36 expected-negative roots reject with
+diagnostics (not exact diagnostic parity), and 18 positive roots exit 20. All
+cases have fresh completed protocol evidence. Compared with the prior combined
+binding audit, four roots improve and none regress: `cond_syntax`,
+`module_qualified_section_map`, `module_use_include` and
+`section_module_use_include`. The unchanged `syntax.asm` now reaches sparse
+`.org` emission on line 196; it still fails.
 
-The 21 remaining positive failures group by fixture: five statement signature or
+The 174.33-second correctness test includes host preparation and harness overhead;
+it is not a performance measurement. The Rust reference audit matches 81 roots;
+five expected-error roots lack comparable partial artifacts. An initial restricted
+host launch failed before guest startup and supplies no native result; the complete
+rerun used the required GUI/process access. Evidence and image/package/input
+digests are in `/tmp/opforge-static-includes-full-opcore-retry-20261012.json`.
+This does not qualify complete opcore or CPU-family parity.
+
+The 18 remaining positive failures group by fixture: five statement signature or
 expansion roots (`statement_boundary_span`, `statement_capture_types`,
 `statement_cross_module_ok`, `statement_expansion`, `statement_signatures`); four
 linker/output-policy roots (`linker_regions_full`, `linker_regions_minimal`,
 `linker_regions_no_dsection`, `linker_regions_pack_no_dsection`); three metadata
 roots (`module_metadata_block`, `module_metadata_output`,
-`module_metadata_outputs`); and nine roots across include/CLI, conditional and
-expression syntax, macros, modules/imports and general syntax. These are observed
-failure groups, not established causes. Source/session behavior and dynamic
-binding ownership still require separate focused controls outside this corpus.
+`module_metadata_outputs`); and six roots (`cli_json_outputs`, `expr_syntax`,
+`macro_syntax`, `module_basics`, `syntax`, `use_wildcard_import`). These are
+observed failure groups, not established causes. Source/session behavior and
+dynamic binding ownership still require focused controls outside this corpus.
 
 The numeric proxy-ownership repair qualifies direct and composed imported
 typed-member references: 18 positive controls match live Rust and two malformed
@@ -220,55 +227,59 @@ replays changed geometry and preserves the unchanged-layout reachability budget
 also pass. A stale authority test now mutates the effective CPU-owned table.
 
 Native match handling uses one current eight-head shared branch program, typed
-frames and existing guard observations. The earlier fresh matrix passed 30 exact
-positives and 32 expected diagnostic rejections across both packages. Integration
-review then found colliding configuration classification IDs; private roles now
-occupy a disjoint negative domain. Four additional discovery controls pass Rust,
-but the expanded 70-case native matrix still needs fresh execution. Preparation
-only effects inside retained match envelopes remain a separate language gap.
+frames and existing guard observations. Configuration classification IDs now
+occupy a disjoint private negative domain. The complete fresh 70-case matrix
+passes 38 exact positives and 32 expected diagnostic rejections across both
+packages. Preparation-only effects inside retained match envelopes remain a
+separate language gap.
 
-Scalar and typed expression capsules now share bounded opaque framing across
-operand transport. Displacement and product controls match freshly; grouped tuple
-expressions still reject on native despite valid Rust output. Their draft transport
-repair is not qualified. The 65C02 external-package harness setup was corrected;
-its four-case native matrix needs rerunning with the actual registry ID/package.
+Scalar and typed expression capsules share bounded opaque framing across operand
+transport. The upstream classifier now routes outer parenthesized comma children
+through existing structural preparation, without assigning CPU meaning to them.
+Seven tuple/displacement/product controls match freshly and two malformed cases
+reject; four immediate/external-65C02 controls also match exactly.
 
-Sorted disjoint emission spans repair dependency execution that visits higher
-addresses before lower addresses. Six earlier Hex/S-record controls passed freshly
-on 6502 and 68020. The latest inserted-span coalescing has three fresh exact cases;
-its eight-case matrix was interrupted when the Mac locked, so five cases remain
-unqualified, including the stronger single-region mapped-growth controls. The
-[separate release measurements](../performance/vm-efficiency.md#match-controls-and-packed-expression-framing)
-predate those latest repairs. Their current release and heap impacts are pending.
-These are integration checkpoints, not complete opcore or current self-host proof.
+Sorted disjoint emission spans and inserted-span coalescing pass all eight
+Hex/S-record placement controls on 6502 and 68020, including the stronger
+single-region mapped-growth cases. One pre-START emulator stall required an
+isolated fresh retry; it is not native algorithm evidence.
 
-Resume native validation after desktop unlock, then re-audit all unchanged opcore
-roots before updating the historical corpus totals above. Next structural work is
-static included-source module/use discovery before dependency ordering, preserving
-current rejection of runtime/expanded graph-changing includes. Capture and graph
-owners must acquire/index the static child stream once; do not relax the runtime
-source-control guard or add another syntax parser.
+Static included-source capture now acquires/indexes child streams before graph
+ordering. The shared FilePlan selector owns syntax, the conditional owner decides
+static acquisition, and the resolver/reader-suspension code is shared with runtime
+acquisition. Eighteen exact positives and twelve expected rejections cover nested
+paths, actual module search, included `.use` edges, selected-file siblings,
+cycles, assets and two unchanged default-8085 examples. Runtime/expanded
+module-graph changes remain rejected. Initial CPU bootstrap skips include
+statements and balanced conditional regions; template definitions within such
+regions remain a conservative initial-selection barrier.
+
+[Separate release and heap controls](../performance/vm-efficiency.md#separate-follow-up-costs)
+show no substantial tuple/framing/output regression. Static acquisition changes
+the unchanged control from 33.567695750 to 34.875348041 seconds (+3.90%), with
+16 additional peak owned bytes and zero live owned allocations on exit.
+These are focused integration results, not complete opcore, a new full self-host
+or 2 MiB proof. The complete current opcore audit is reported above.
 
 ## Immediate shared-language sequence
 
-1. Ordinary-loop declaration activity now has the focused coverage above. Extend
-   coverage independently of stored values where further gaps appear.
-   Only a completed inactive occurrence permits shorter member-name fallback;
-   unresolved activity defers and an executed longer owner keeps ownership even
-   before its value is available. Retain numeric scalar layout observations
-   separately where forward label-dependent conditions need another sizing sweep.
-2. The mapped-flat output selection/layout repair is complete for its focused
-   cases above. Broaden ordinary and mapped section coverage during the next
-   source-order qualification; the old 112-case matrix was not rerun.
-3. Normalize optional leading labels in shared packed conditional classification.
-   Publish a control-line label when its parent is active, including an unselected
-   `.if`/`.elseif`/`.else`; suppress nested labels beneath inactive parents. Cover
-   canonical colonless labels and colon forms without source-text fallbacks.
+1. Use the complete current opcore audit to choose the next structural language
+   gap. Known candidates include statement signatures/expansion, metadata,
+   linker output policies and sparse output. Keep CPU-specific failures in their
+   family owners rather than retargeting examples.
+2. Complete source/session gaps: actual assembly-context-dependent acquisition,
+   runtime graph changes and unresolved dynamic binding ownership. Preserve
+   strict unavailable-value rejection and numeric origin/cursor contracts.
+3. Complete the separately approved one-current-v1 consolidation for each VM;
+   remove native version fields, parameters and dispatch while retaining package
+   integrity and bounds checks. The expanded match program does not fulfil that
+   migration.
 
-Each outcome needs fresh positive and negative native controls, separate release
-and memory measurements, and a review of numeric execution ownership. Continue
-through the remaining shared-language gaps after these repairs; optimization
-shortcuts remain deferred until parity qualification.
+Each coherent outcome needs fresh positive and negative native controls, separate
+release and memory measurements, and a review of numeric execution ownership.
+Keep new responsibilities out of the already large frontend. Continue shared
+language work before CPU families; optimization shortcuts remain deferred until
+parity qualification.
 
 ## Complete and qualify a slice
 

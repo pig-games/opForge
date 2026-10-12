@@ -40,6 +40,7 @@ Materializing	.word ?  ; selected source iterations evaluate current known guard
 OperandOffset	.word ?  ; shared PRVM offset from the original record
 LabelBytes	.word ?  ; validated numeric label prefix, including optional colon
 LabelParent	.word ?  ; enclosing branch activity before this control
+Acquisition	.word ?  ; capture policy retains every expression guard
 PublishBytes	.word ?  ; consumed control prefix for ordinary scope preparation
 	.endstruct
 SLOTS = State.PublishBytes+2
@@ -66,6 +67,7 @@ begin	.block
 	clr.w State.Static(a0)
 	clr.w State.Uncertain(a0)
 	clr.w State.Materializing(a0)
+	clr.w State.Acquisition(a0)
 	moveq #0, d0
 	rts
 	.bend  ; begin
@@ -79,6 +81,15 @@ beginStatic	.block
 	moveq #0, d0
 	rts
 	.bend  ; beginStatic
+
+	; A0=state. Static source capture executes only preprocessor guards. Scalar
+; expression controls remain envelopes, including known .if selectors.
+beginAcquisition	.block
+	bsr.w begin
+	move.w #1, State.Acquisition(a0)
+	moveq #0, d0
+	rts
+	.bend  ; beginAcquisition
 
 ; A0=state. D0/CCR=status; reject a conditional crossing a file boundary.
 endFile	.block
@@ -476,6 +487,15 @@ endmatchLine
 	bne.w bad
 	bra.w closeFrame
 ifLine
+	tst.w State.Acquisition(a4)
+	beq.w ordinaryIf
+	tst.w d7
+	bne.w ordinaryIf
+	tst.w State.Active(a4)
+	beq.w ordinaryIf
+	moveq #branches.IF, d1
+	bra.w deferIf
+ordinaryIf
 	move.w State.Active(a4), State.LabelParent(a4)
 	cmpi.w #MATCH_KIND, d7
 	beq.w ifExpression

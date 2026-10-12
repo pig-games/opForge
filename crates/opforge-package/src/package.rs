@@ -1733,13 +1733,33 @@ pub fn inline_head_policy_program() -> Vec<u8> {
     ]
 }
 
+/// Roles in the shared initial-target bootstrap policy rows.
+pub const TARGET_BOOTSTRAP_ROLE_MODULE: u8 = 1;
+pub const TARGET_BOOTSTRAP_ROLE_CPU: u8 = 2;
+pub const TARGET_BOOTSTRAP_ROLE_INCLUDE: u8 = 3;
+pub const TARGET_BOOTSTRAP_ROLE_ENTER_CONDITIONAL: u8 = 4;
+pub const TARGET_BOOTSTRAP_ROLE_LEAVE_CONDITIONAL: u8 = 5;
+pub const TARGET_BOOTSTRAP_ROLE_TEMPLATE_BARRIER: u8 = 6;
+
 /// Shared initial-target grammar over unbound TKVM tokens. Names are policy
 /// operands, never CPU identifiers; consumers return decoded lexeme spans.
 pub fn target_bootstrap_program() -> Vec<u8> {
-    let mut program = vec![0x97, 2];
-    for (role, name) in [(1, b"module".as_slice()), (2, b"cpu".as_slice())] {
+    let rows = [
+        (TARGET_BOOTSTRAP_ROLE_MODULE, "module"),
+        (TARGET_BOOTSTRAP_ROLE_CPU, "cpu"),
+        (TARGET_BOOTSTRAP_ROLE_INCLUDE, "include"),
+        (TARGET_BOOTSTRAP_ROLE_ENTER_CONDITIONAL, "if"),
+        (TARGET_BOOTSTRAP_ROLE_ENTER_CONDITIONAL, "ifdef"),
+        (TARGET_BOOTSTRAP_ROLE_ENTER_CONDITIONAL, "ifndef"),
+        (TARGET_BOOTSTRAP_ROLE_LEAVE_CONDITIONAL, "endif"),
+        (TARGET_BOOTSTRAP_ROLE_TEMPLATE_BARRIER, "macro"),
+        (TARGET_BOOTSTRAP_ROLE_TEMPLATE_BARRIER, "segment"),
+        (TARGET_BOOTSTRAP_ROLE_TEMPLATE_BARRIER, "statement"),
+    ];
+    let mut program = vec![0x97, rows.len() as u8];
+    for (role, name) in rows {
         program.extend([role, name.len() as u8]);
-        program.extend_from_slice(name);
+        program.extend_from_slice(name.as_bytes());
     }
     program.extend([0x83, 0]);
     program

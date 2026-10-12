@@ -62,9 +62,13 @@ An initial `--cpu` or `--runtime-package` is optional. The compact CLI can selec
 its package from `.cpu NAME` in the unconditional root preamble, after comments,
 blank lines and `.module NAME`. Numeric aliases and quoted names are accepted;
 explicit CLI selection takes precedence. If the preamble contains no `.cpu`, the
-generated engine default is used. Discovery stops at the first other statement;
-it does not inspect includes or conditional/macro bodies. Later package switching
-remains unsupported. See [frontend boundaries](../documentation/plans/compact-frontend-vm-boundary.md)
+generated engine default is used. The shared bootstrap policy skips include
+statements and balanced conditional regions before looking for a later
+unconditional root `.cpu`; it does not acquire child files or select a CPU from
+conditional bodies. Ordinary code and template definitions stop discovery. A
+template definition inside a skipped conditional is still a conservative barrier
+and requires explicit initial selection. Later package switching remains unsupported.
+See [frontend boundaries](../documentation/plans/compact-frontend-vm-boundary.md)
 for bounds and fresh qualification. With no output
 request, the compact CLI validates the assembly and writes no artifact. An
 omitted output filename derives from the input basename unless output metadata

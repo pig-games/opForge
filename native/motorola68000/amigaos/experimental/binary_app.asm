@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_frontend as frontend
 	.use experimental.amigaos.binary_capture as capture
 	.use experimental.amigaos.binary_configuration as configuration
+	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_sections as sections
@@ -443,6 +444,7 @@ load
 	clr.l SourceCursorState.End+SourceCursorData
 	clr.l TemplateFloor
 	clr.l AcquiringSource
+	clr.w StaticPending
 	move.l #MetadataConfig, frontend.Frame.Metadata(a0)
 	move.l #1, FrontStarted
 	jsr frontend.begin
@@ -685,6 +687,8 @@ sourceReady
 	bra.w sourceLoop
 sourceEnd
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_SOURCE_END, SourceOrdinal, SourceLine, Records, memory.Block.Used
+	tst.l GraphMode
+	bne.w selectionComplete  ; capture/index owns complete physical-file boundaries
 	tst.l RequestedModule
 	beq.w selectionComplete
 	tst.l SelectedFileDerived
@@ -1189,12 +1193,16 @@ done
 	.bend  ; readByte
 
 lowerLine	.block
+	; Graph capture preprocesses the whole selected physical file. Reachability
+	; selects modules only after include acquisition and numeric indexing.
+	tst.l GraphMode
+	bne.w captureLine
 	bsr.w selectLine
 	tst.l d0
 	bmi.w bad
 	beq.w skipped
-	tst.l GraphMode
-	beq.w streamPhysicalLine
+	bra.w streamPhysicalLine
+captureLine
 	bsr.w capturePhysicalLine
 	bne.w bad
 	bra.w lowered
@@ -1228,6 +1236,12 @@ lineReady
 lowered
 	clr.l LineUsed
 	addq.l #1, SourceLine
+	tst.w StaticPending
+	beq.w loweredReady
+	clr.w StaticPending
+	bsr.w enterPendingSource
+	bne.w bad
+loweredReady
 	moveq #0, d0
 	rts
 skipped
@@ -1760,6 +1774,7 @@ loop
 done
 	rts
 	.bend  ; copy
+	.include "binary_source_static_include.i"
 	.include "binary_source_schedule.i"
 	.include "binary_source_discovery_idx.i"
 	.include "binary_source_selection.i"
@@ -1878,6 +1893,11 @@ NextOrigin	.res long, 1
 OriginId	.res long, 1
 OriginPaths	.res byte, memory.Block.Used+4
 LineOffset	.res long, 1
+StaticIncludeSeen	.res word, 1
+StaticTemplateDepth	.res word, 1
+StaticLoopDepth	.res word, 1
+StaticPending	.res word, 1
+StaticConditions	.res byte, conditionals.SCRATCH_BYTES
 IncludeDepthNow	.res long, 1
 IncludeStack	.res byte, INCLUDE_FRAME_BYTES*INCLUDE_DEPTH
 IncludePath	.res byte, PATH_BYTES

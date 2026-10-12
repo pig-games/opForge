@@ -17,7 +17,7 @@ MODE_OLDFILE = 1005
 LINE_BYTES = 1024
 PREAMBLE_LINES = 4096
 	.section code, kind=code
-; Fill omitted initial CPU from the unconditional root-file preamble/default.
+; Fill omitted CPU from the root preamble, skipping includes/conditional bodies.
 ; Inputs A0=args.State,A6=DOS. Explicit CPU/package bypass all source IO.
 ; Outputs D0/CCR=OK or ERROR. Other registers preserved. TKVM controls restored.
 select	.block
@@ -73,6 +73,7 @@ clearRequest
 	move.l #1, Request+abi.PRVM_FRAME_RESULT_CAPACITY
 	move.l #abi.PRVM_PARSER_CONTRACT_VERSION_V2, Request+abi.PRVM_FRAME_PARSER_CONTRACT_VERSION
 	move.l #256, Request+abi.PRVM_FRAME_STEP_BUDGET
+	clr.l ConditionalDepth
 	move.l #PREAMBLE_LINES, d5
 nextLine
 	subq.l #1, d5
@@ -110,6 +111,11 @@ lineReady
 	bne.w failed
 	move.l d1, Request+abi.PRVM_FRAME_TOKEN_COUNT
 	move.l d3, Request+abi.PRVM_FRAME_SOURCE_LEN
+	clr.l Request+abi.PRVM_FRAME_FLAGS
+	tst.l ConditionalDepth
+	beq.w bootstrapReady
+	move.l #abi.PRVM_BOOTSTRAP_SUPPRESS_DECLARATIONS, Request+abi.PRVM_FRAME_FLAGS
+bootstrapReady
 	lea Request, a0
 	move.l #abi.PRVM_REQUEST_FRAME_SIZE, d0
 	jsr parser.run
@@ -117,17 +123,31 @@ lineReady
 	tst.l d1
 	beq.w nextLine
 	lea Result, a0
-	cmpi.w #abi.PRVM_RESULT_TARGET_BOOTSTRAP, (a0)
+	cmpi.w #abi.PRVM_RESULT_TARGET_BOOTSTRAP, (a0)  ; BootstrapResult.Kind (zero offset)
 	bne.w failed
-	cmpi.w #2, 2(a0)
+	cmpi.w #abi.PRVM_BOOTSTRAP_ENTER_CONDITIONAL, abi.BootstrapResult.Action(a0)
+	beq.w enterConditional
+	cmpi.w #abi.PRVM_BOOTSTRAP_LEAVE_CONDITIONAL, abi.BootstrapResult.Action(a0)
+	beq.w leaveConditional
+	cmpi.w #abi.PRVM_BOOTSTRAP_STOP, abi.BootstrapResult.Action(a0)
 	beq.w defaultTarget
-	cmpi.w #1, 2(a0)
+	cmpi.w #abi.PRVM_BOOTSTRAP_SELECT, abi.BootstrapResult.Action(a0)
 	bne.w failed
 	lea Lexemes, a0
-	adda.l Result+4, a0
-	move.l Result+8, d1
+	adda.l Result+abi.BootstrapResult.LexemeOffset, a0
+	move.l Result+abi.BootstrapResult.LexemeBytes, d1
 	bra.w copyTarget
+enterConditional
+	addq.l #1, ConditionalDepth
+	bra.w nextLine
+leaveConditional
+	tst.l ConditionalDepth
+	beq.w failed
+	subq.l #1, ConditionalDepth
+	bra.w nextLine
 defaultTarget
+	tst.l ConditionalDepth
+	bne.w failed
 	lea BootstrapDefault, a0
 	movea.l a0, a1
 	moveq #0, d1
@@ -185,6 +205,7 @@ StateOffsets	.long 0
 	.endsection
 	.section bss, kind=bss
 	.align 4
+ConditionalDepth	.res long, 1
 SavedBudget	.res long, 1
 SavedTable	.res long, 1
 SavedCount	.res long, 1

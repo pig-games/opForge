@@ -33,6 +33,7 @@
 	.use experimental.amigaos.binary_macro_fragments as fragment_binding
 	.use tkvm.amigaos.control as control
 	.use prvm.amigaos.macro_runtime as macro_runtime
+	.use prvm.amigaos.packed_file as file_parser
 	.use experimental.amigaos.binary_declaration as declaration
 	.use prvm.amigaos.packed_declaration as declaration_parser
 	.use prvm.amigaos.packed_loop as loop_parser
@@ -3617,6 +3618,54 @@ done
 	tst.l d0
 	rts
 	.bend  ; loopRole
+; A0=session,A1=bounded directive leaf,D0=bytes. Shared file action or zero.
+fileRole	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l a1, a0
+	movea.l Frame.Scratch(a2), a1
+	bsr.w lookupPackage
+	bne.w absent
+	tst.l d2
+	bne.w absent
+	move.l d1, d0
+	movea.l Frame.Package(a2), a0
+	move.l package.Header.FilePlanBytes(a0), d1
+	adda.l package.Header.FilePlan(a0), a0
+	jsr file_parser.selectIdentity
+	bra.w done
+absent
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; fileRole
+
+; A0=session with a capture-selected writer record. Parse the full file action
+; through PRVM and queue its bounded request. Caller owns static eligibility.
+captureFile	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	bsr.w runFilePlan
+	bne.w bad
+	cmpi.l #1, d1
+	bne.w bad
+	move.l Frame.FileInclude(a5), d0
+	beq.w bad
+	movea.l d0, a2
+	movea.l a5, a0
+	lea MACRO_EVENTS(a6), a1
+	jsr (a2)
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; captureFile
 	.priv
 
 ; Writer's optional member callback: A0=writer.Frame,A1=current token.

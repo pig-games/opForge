@@ -17,6 +17,120 @@ PATH_OFFSET = State.Stage+abi.PRVM_FILE_PATH_OFFSET
 PATH_BYTES = State.Stage+abi.PRVM_FILE_PATH_BYTES
 PREFIX_BYTES = State.Stage+abi.PRVM_FILE_PREFIX_BYTES
 	.section code, kind=code
+; A0=bounded current file plan,D0=directive identity,D1=program bytes.
+; D0/CCR=action,zero absent,-1 invalid. Complete operands are parsed by run.
+selectIdentity	.block
+	movem.l d1-d7/a0-a2, -(sp)
+	move.l d0, d7
+	move.l d1, d0
+	bsr.w validatePlan
+	bne.w invalid
+	moveq #0, d2
+	move.b abi.FILE_PROGRAM_COUNT(a0), d2
+	lea abi.FILE_PROGRAM_ROWS(a0), a0
+row
+	moveq #0, d1
+	move.b abi.FILE_ROW_DIRECTIVE(a0), d1
+	lsl.w #8, d1
+	move.b abi.FILE_ROW_DIRECTIVE+1(a0), d1
+	cmp.w d1, d7
+	beq.w found
+	addq.l #abi.FILE_PROGRAM_ROW_BYTES, a0
+	subq.l #1, d2
+	bne.w row
+	moveq #0, d0
+	bra.w done
+found
+	moveq #0, d0
+	move.b abi.FILE_ROW_ACTION(a0), d0
+	bra.w done
+invalid
+	moveq #-1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a2
+	tst.l d0
+	rts
+	.bend  ; selectIdentity
+
+; A0=program,D0=bounded bytes. One validator owns both selectors' integrity
+; and row uniqueness checks. D0/CCR=status; all other registers preserved.
+	.priv
+FileTrailer	.struct
+Operand	.byte ?
+Publish	.byte ?
+End	.byte ?
+	.endstruct
+validatePlan	.block
+	movem.l d1-d7/a0-a2, -(sp)
+	movea.l a0, a2
+	move.l d0, d6
+	cmpi.l #abi.FILE_PROGRAM_FIXED_BYTES+abi.FILE_PROGRAM_ROW_BYTES, d6
+	blo.w bad
+	cmpi.b #abi.FILE_OP_ENVELOPE, (a2)
+	bne.w bad
+	move.b abi.FILE_PROGRAM_FLAGS(a2), d0
+	andi.b #$fe, d0
+	bne.w bad
+	cmpi.b #abi.FILE_OP_SELECT, abi.FILE_PROGRAM_SELECT(a2)
+	bne.w bad
+	moveq #0, d4
+	move.b abi.FILE_PROGRAM_COUNT(a2), d4
+	beq.w bad
+	move.l d4, d0
+	mulu.w #abi.FILE_PROGRAM_ROW_BYTES, d0
+	add.l #abi.FILE_PROGRAM_FIXED_BYTES, d0
+	cmp.l d6, d0
+	bne.w bad
+	lea abi.FILE_PROGRAM_ROWS(a2), a0
+	moveq #0, d5
+validateRows
+	moveq #0, d0
+	move.b abi.FILE_ROW_ACTION(a0), d0
+	cmpi.b #abi.FILE_ACTION_BINARY, d0
+	beq.w validAction
+	cmpi.b #abi.FILE_ACTION_SOURCE, d0
+	bne.w bad
+validAction
+	moveq #0, d0
+	move.b abi.FILE_ROW_DIRECTIVE(a0), d0
+	lsl.w #8, d0
+	move.b abi.FILE_ROW_DIRECTIVE+1(a0), d0
+	lea abi.FILE_PROGRAM_ROWS(a2), a1
+	move.l d5, d7
+validateUnique
+	tst.l d7
+	beq.w nextValidated
+	moveq #0, d1
+	move.b abi.FILE_ROW_DIRECTIVE(a1), d1
+	lsl.w #8, d1
+	move.b abi.FILE_ROW_DIRECTIVE+1(a1), d1
+	cmp.w d1, d0
+	beq.w bad
+	addq.l #abi.FILE_PROGRAM_ROW_BYTES, a1
+	subq.l #1, d7
+	bra.w validateUnique
+nextValidated
+	addq.l #abi.FILE_PROGRAM_ROW_BYTES, a0
+	addq.l #1, d5
+	cmp.l d4, d5
+	blo.w validateRows
+	cmpi.b #abi.FILE_OP_OPERAND, FileTrailer.Operand(a0)
+	bne.w bad
+	cmpi.b #abi.FILE_OP_PUBLISH, FileTrailer.Publish(a0)
+	bne.w bad
+	tst.b FileTrailer.End(a0)
+	bne.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a2
+	tst.l d0
+	rts
+	.bend  ; validatePlan
+
+	.pub
 ; A0=request,D0=available bytes; standard PRVM status/count/offset/bytes.
 ; Stage one result atomically. Offsets refer to the complete packed record.
 run	.block
@@ -69,62 +183,12 @@ run	.block
 	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	beq.w invalidFrame
 	movea.l d0, a5
-	cmpi.l #abi.FILE_PROGRAM_FIXED_BYTES+abi.FILE_PROGRAM_ROW_BYTES, abi.PRVM_FRAME_PROGRAM_LEN(a4)
-	blo.w invalidProgram
-	cmpi.b #abi.FILE_OP_ENVELOPE, (a5)
-	bne.w invalidProgram
-	move.b abi.FILE_PROGRAM_FLAGS(a5), d0
-	andi.b #$fe, d0
-	bne.w invalidProgram
-	cmpi.b #abi.FILE_OP_SELECT, abi.FILE_PROGRAM_SELECT(a5)
+	movea.l a5, a0
+	move.l abi.PRVM_FRAME_PROGRAM_LEN(a4), d0
+	bsr.w validatePlan
 	bne.w invalidProgram
 	moveq #0, d4
 	move.b abi.FILE_PROGRAM_COUNT(a5), d4
-	beq.w invalidProgram
-	move.l d4, d0
-	mulu.w #abi.FILE_PROGRAM_ROW_BYTES, d0
-	add.l #abi.FILE_PROGRAM_FIXED_BYTES, d0
-	cmp.l abi.PRVM_FRAME_PROGRAM_LEN(a4), d0
-	bne.w invalidProgram
-	lea abi.FILE_PROGRAM_ROWS(a5), a0
-	moveq #0, d5
-validateRows
-	moveq #0, d0
-	move.b abi.FILE_ROW_ACTION(a0), d0
-	cmpi.b #abi.FILE_ACTION_BINARY, d0
-	beq.w validAction
-	cmpi.b #abi.FILE_ACTION_SOURCE, d0
-	bne.w invalidProgram
-validAction
-	moveq #0, d0
-	move.b (a0), d0
-	lsl.w #8, d0
-	move.b 1(a0), d0
-	lea abi.FILE_PROGRAM_ROWS(a5), a1
-	move.l d5, d7
-validateUnique
-	tst.l d7
-	beq.w nextValidated
-	moveq #0, d1
-	move.b (a1), d1
-	lsl.w #8, d1
-	move.b 1(a1), d1
-	cmp.w d1, d0
-	beq.w invalidProgram
-	addq.l #abi.FILE_PROGRAM_ROW_BYTES, a1
-	subq.l #1, d7
-	bra.w validateUnique
-nextValidated
-	addq.l #abi.FILE_PROGRAM_ROW_BYTES, a0
-	addq.l #1, d5
-	cmp.l d4, d5
-	blo.w validateRows
-	cmpi.b #abi.FILE_OP_OPERAND, (a0)
-	bne.w invalidProgram
-	cmpi.b #abi.FILE_OP_PUBLISH, 1(a0)
-	bne.w invalidProgram
-	tst.b 2(a0)
-	bne.w invalidProgram
 	suba.w #STATE_BYTES, sp
 	movea.l sp, a3
 	movea.l a3, a0

@@ -214,9 +214,10 @@ Notes:
   exist. Included constants and templates become available to subsequent lines;
   template filename parameters are substituted before acquisition, and relative
   paths use the template definition's directory.
-- This active-include checkpoint is limited to the current module. An acquired
-  file introducing `.module`, `.endmodule` or `.use` is rejected; deferred
-  acquisition that affects module discovery remains separate work. Conditions
+- Deferred active-include execution is limited to the current module. A file
+  acquired during assembly or expansion that introduces `.module`, `.endmodule`
+  or `.use` is rejected; deferred acquisition that affects module discovery
+  remains separate work. Conditions
   controlling deferred acquisition must already have known values: forward
   dependent guards are diagnosed before opening the file. Repetition opening and
   closing directives must remain in the same source stream; splitting them
@@ -230,8 +231,16 @@ Notes:
   controls have focused native proof. Ordinary forward-count loops without file
   acquisition retain their runtime execution path. Named scoped-loop collections
   combined with acquisition, and assembly-dependent acquisition controls such as
-  `.while $ < 2`, remain unsupported. This is partial native coverage; includes
-  that change module discovery remain separate work.
+  `.while $ < 2`, remain unsupported.
+- Compact native capture now acquires static includes before module discovery and
+  dependency ordering. Included module declarations, sections and `.use` edges
+  participate in the captured graph. Nested paths use the including file; assets
+  retain their physical origin. Preprocessor guards select acquisition, while
+  scalar conditionals, loops and template bodies retain deferred file actions.
+  Runtime or expanded includes that change the module graph remain rejected.
+  Selected physical files are captured completely, so an active missing include
+  in a sibling module is diagnosed; unselected module files remain unopened.
+  This focused coverage does not establish complete native include parity.
 - `.incbin` includes the raw bytes of a binary file at the current program counter.
 - Binary files are loaded only for active `.incbin` statements, including expanded
   macros or segments. An inactive conditional or an unused definition does not

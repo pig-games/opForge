@@ -5,7 +5,16 @@
 
 PRVM_MAGIC_OPRP = $4F505250
 PRVM_REQUEST_FRAME_SIZE = 112
-PRVM_TOKEN_RECORD_SIZE = 20
+; Canonical native TKVM lexical row consumed by PRVM.
+TokenRecord	.struct
+Kind	.word ?
+NumericStatus	.word ?
+SourceStart	.long ?
+SourceEnd	.long ?
+LexemeOffset	.long ?
+LexemeBytes	.long ?
+	.endstruct
+PRVM_TOKEN_RECORD_SIZE = TokenRecord.LexemeBytes+4
 PRVM_RESULT_RECORD_SIZE = 32
 PRVM_FRAME_MAGIC = 0
 PRVM_FRAME_ABI_VERSION = 4
@@ -214,6 +223,25 @@ PRVM_RESULT_MACRO_DEFAULT = 11
 PRVM_RESULT_MACRO_LABEL = 12
 PRVM_ENTRY_KIND_TARGET_BOOTSTRAP = 8
 PRVM_RESULT_TARGET_BOOTSTRAP = 20
+PRVM_BOOTSTRAP_SELECT = 1
+PRVM_BOOTSTRAP_STOP = 2
+PRVM_BOOTSTRAP_ENTER_CONDITIONAL = 3
+PRVM_BOOTSTRAP_LEAVE_CONDITIONAL = 4
+PRVM_BOOTSTRAP_SUPPRESS_DECLARATIONS = 1
+; Mirrors the package-owned initial-target policy row roles.
+PRVM_BOOTSTRAP_ROLE_MODULE = 1
+PRVM_BOOTSTRAP_ROLE_CPU = 2
+PRVM_BOOTSTRAP_ROLE_INCLUDE = 3
+PRVM_BOOTSTRAP_ROLE_ENTER_CONDITIONAL = 4
+PRVM_BOOTSTRAP_ROLE_LEAVE_CONDITIONAL = 5
+PRVM_BOOTSTRAP_ROLE_TEMPLATE_BARRIER = 6
+BootstrapResult	.struct
+Kind	.word ?
+Action	.word ?
+LexemeOffset	.long ?
+LexemeBytes	.long ?
+Reserved	.res 20
+	.endstruct
 ; Shared packed grammar program opcodes.
 OP_PUBLISH = $83
 OP_LOOP_HEADER = $99

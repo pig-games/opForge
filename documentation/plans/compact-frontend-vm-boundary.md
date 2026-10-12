@@ -83,8 +83,13 @@ counted/iterable/while snapshots, nesting, definition-relative macro/segment
 includes and colonless/explicit-colon labels. Private numeric boundaries publish
 complete bounded batches; inventory and repetition owners independently validate
 label/index/nesting/balance and accumulate actual assembly address records without
-rerunning already materialized bodies. PC-dependent
-acquisition and graph-changing includes remain unqualified; the
+rerunning already materialized bodies. Static included-source capture now passes
+18 exact cases and 12 expected rejections across both packages and unchanged
+default-8085 examples. Capture acquires and indexes static child records before
+ordering modules, retaining physical origins and using the shared FilePlan
+selector. Actual module search, included `.use` edges, selected-file sibling
+validation and include cycles are covered. Runtime/expanded graph changes and
+PC-dependent acquisition remain unqualified; the
 [source-session design](native-source-execution.md) addresses the pending structural
 work. These focused results do not establish complete opcore or a new self-host.
 

@@ -8102,6 +8102,8 @@ mod native_scoped_loops;
 #[cfg(test)]
 #[path = "tests/native_source_cases.rs"]
 mod native_source_cases;
+#[path = "tests/native_static_include_graph.rs"]
+mod native_static_include_graph;
 #[path = "tests/native_struct_literal_values.rs"]
 mod native_struct_literal_values;
 #[path = "tests/native_struct_parameters.rs"]

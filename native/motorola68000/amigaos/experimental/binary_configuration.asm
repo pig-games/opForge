@@ -20,6 +20,7 @@
 ASSIGNMENT = -1
 LOOP_OPEN = -2
 LOOP_CLOSE = -3
+SOURCE_INCLUDE = -4
 SCHEMA_ACTIVE = 1
 SCHEMA_UNAVAILABLE = 2
 Frame	.struct
@@ -28,6 +29,7 @@ Arena	.long ?
 Scope	.long ?
 Graph	.long ?
 BindCapture	.long ?  ; frontend.bindCapture ABI; the selected writer copy only
+FileRole	.long ?  ; shared read-only file action head selection
 LoopRole	.long ?  ; read-only package loop-head selection callback
 DeclarationRole	.long ?  ; read-only package declaration-head selection callback
 UpdateRole	.long ?  ; shared numeric compound-update selection callback
@@ -106,6 +108,7 @@ next
 	move.l capture.Record.Bytes(a5), d7
 	movea.l a5, a0
 	bsr.w classify
+	bne.w bad
 	move.l d1, d3
 	movea.l Frame.Scope(a6), a0
 	move.w Frame.IndexModule+2(a6), layout.MODULE_STATE+modules.State.Active(a0)
@@ -409,6 +412,7 @@ next
 	move.l capture.Record.Bytes(a5), d7
 	movea.l a5, a0
 	bsr.w classify
+	bne.w bad
 	move.l d1, d6
 	tst.w Frame.Schema(a6)
 	beq.w ordinaryDepth
@@ -593,6 +597,18 @@ done
 	rts
 	.bend  ; captureSchema
 
+; A0=configuration frame,A1=validated capture record. Read-only shared role.
+; D0/CCR=status,D1=role. Other registers preserved.
+captureRole	.block
+	movem.l a0/a6, -(sp)
+	movea.l a0, a6
+	movea.l a1, a0
+	bsr.w classify
+	movem.l (sp)+, a0/a6
+	tst.l d0
+	rts
+	.bend  ; captureRole
+
 ; A0=validated capture.Record. D0=0,D1=shared directive key/ASSIGNMENT/zero;
 ; all other registers preserved. Read TKVM structural rows only; identifier
 ; spelling classification uses shared scope roles and package declaration identity.
@@ -664,6 +680,21 @@ loopSelected
 	bra.w done
 noLoopRole
 	movem.l (sp)+, d0/a1
+	movea.l Frame.FileRole(a6), a3
+	move.l a3, d2
+	beq.w declarationRole
+	movem.l d0/a1, -(sp)
+	movea.l Frame.Session(a6), a0
+	jsr (a3)
+	move.l d0, d2
+	movem.l (sp)+, d0/a1
+	tst.l d2
+	bmi.w invalidRole
+	cmpi.l #abi.FILE_ACTION_SOURCE, d2
+	bne.w declarationRole
+	moveq #SOURCE_INCLUDE, d1
+	bra.w done
+declarationRole
 	movea.l Frame.DeclarationRole(a6), a3
 	move.l a3, d2
 	beq.w done
@@ -677,7 +708,13 @@ assignmentRecord
 	moveq #ASSIGNMENT, d1
 done
 	moveq #0, d0
+	bra.w return
+invalidRole
+	moveq #0, d1
+	moveq #1, d0
+return
 	movem.l (sp)+, d2-d5/a0-a4
+	tst.l d0
 	rts
 	.bend  ; classify
 	.priv

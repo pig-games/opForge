@@ -30,8 +30,8 @@ run	.block
 	bne.w invalidFrame
 	cmpi.l #abi.PRVM_PARSER_CONTRACT_VERSION_V2, abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a4)
 	bne.w invalidFrame
-	tst.l abi.PRVM_FRAME_FLAGS(a4)
-	bne.w invalidFrame
+	cmpi.l #abi.PRVM_BOOTSTRAP_SUPPRESS_DECLARATIONS, abi.PRVM_FRAME_FLAGS(a4)
+	bhi.w invalidFrame
 	cmpi.l #abi.PRVM_TOKEN_RECORD_SIZE, abi.PRVM_FRAME_TOKEN_RECORD_SIZE(a4)
 	bne.w invalidFrame
 	tst.l abi.PRVM_FRAME_RESULT_CAPACITY(a4)
@@ -66,9 +66,9 @@ sourceReady
 validatePolicy
 	cmpi.l #4, d4
 	blo.w invalidProgram
-	cmpi.b #1, (a5)
+	cmpi.b #abi.PRVM_BOOTSTRAP_ROLE_MODULE, (a5)
 	blo.w invalidProgram
-	cmpi.b #2, (a5)+
+	cmpi.b #abi.PRVM_BOOTSTRAP_ROLE_TEMPLATE_BARRIER, (a5)+
 	bhi.w invalidProgram
 	moveq #0, d0
 	move.b (a5)+, d0
@@ -110,14 +110,14 @@ validNameByte
 	movea.l a6, a0
 	move.l d6, d4
 validateTokens
-	cmpi.w #40, (a0)
+	cmpi.w #40, (a0)  ; TokenRecord.Kind (zero offset)
 	bhi.w invalidFrame
-	move.l 12(a0), d0
+	move.l abi.TokenRecord.LexemeOffset(a0), d0
 	cmp.l abi.PRVM_FRAME_SOURCE_LEN(a4), d0
 	bhi.w invalidFrame
 	move.l abi.PRVM_FRAME_SOURCE_LEN(a4), d1
 	sub.l d0, d1
-	cmp.l 16(a0), d1
+	cmp.l abi.TokenRecord.LexemeBytes(a0), d1
 	blo.w invalidFrame
 	adda.w #abi.PRVM_TOKEN_RECORD_SIZE, a0
 	subq.l #1, d4
@@ -127,11 +127,34 @@ tokensValidated
 	bne.w finish
 	tst.l d6
 	beq.w empty
+	cmpi.l #3, d6
+	blo.w headReady
+	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, (a6)  ; TokenRecord.Kind (zero offset)
+	bne.w headReady
+	cmpi.w #abi.PRVM_TOKEN_KIND_DOT, abi.PRVM_TOKEN_RECORD_SIZE*1+abi.TokenRecord.Kind(a6)
+	beq.w colonlessHead
+	cmpi.l #4, d6
+	blo.w headReady
+	cmpi.w #abi.PRVM_TOKEN_KIND_COLON, abi.PRVM_TOKEN_RECORD_SIZE*1+abi.TokenRecord.Kind(a6)
+	bne.w headReady
+	cmpi.w #abi.PRVM_TOKEN_KIND_DOT, abi.PRVM_TOKEN_RECORD_SIZE*2+abi.TokenRecord.Kind(a6)
+	bne.w headReady
+	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, abi.PRVM_TOKEN_RECORD_SIZE*3+abi.TokenRecord.Kind(a6)
+	bne.w headReady
+	adda.w #abi.PRVM_TOKEN_RECORD_SIZE*2, a6
+	subq.l #2, d6
+	bra.w headReady
+colonlessHead
+	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, abi.PRVM_TOKEN_RECORD_SIZE*2+abi.TokenRecord.Kind(a6)
+	bne.w headReady
+	adda.w #abi.PRVM_TOKEN_RECORD_SIZE, a6
+	subq.l #1, d6
+headReady
 	cmpi.l #2, d6
 	blo.w stop
-	cmpi.w #abi.PRVM_TOKEN_KIND_DOT, (a6)
+	cmpi.w #abi.PRVM_TOKEN_KIND_DOT, (a6)  ; TokenRecord.Kind (zero offset)
 	bne.w stop
-	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, 20(a6)
+	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, abi.PRVM_TOKEN_RECORD_SIZE*1+abi.TokenRecord.Kind(a6)
 	bne.w stop
 	movea.l abi.PRVM_FRAME_PROGRAM_PTR(a4), a5
 	moveq #0, d4
@@ -144,10 +167,10 @@ findPolicy
 	move.b (a5)+, d5
 	moveq #0, d2
 	move.b (a5)+, d2
-	cmp.l 36(a6), d2
+	cmp.l abi.PRVM_TOKEN_RECORD_SIZE*1+abi.TokenRecord.LexemeBytes(a6), d2
 	bne.w nextPolicy
 	movea.l a3, a0
-	adda.l 32(a6), a0
+	adda.l abi.PRVM_TOKEN_RECORD_SIZE*1+abi.TokenRecord.LexemeOffset(a6), a0
 	movea.l a5, a1
 	move.l d2, d3
 compareName
@@ -160,12 +183,29 @@ compareName
 	bne.w nextPolicy
 	subq.l #1, d3
 	bne.w compareName
-	cmpi.l #2, d5
+	cmpi.l #abi.PRVM_BOOTSTRAP_ROLE_TEMPLATE_BARRIER, d5
+	beq.w barrier
+	cmpa.l abi.PRVM_FRAME_TOKEN_PTR(a4), a6
+	bne.w stop
+	cmpi.l #abi.PRVM_BOOTSTRAP_ROLE_ENTER_CONDITIONAL, d5
+	beq.w enterConditional
+	cmpi.l #abi.PRVM_BOOTSTRAP_ROLE_LEAVE_CONDITIONAL, d5
+	beq.w leaveConditional
+	tst.l abi.PRVM_FRAME_FLAGS(a4)
+	bne.w empty
+	cmpi.l #abi.PRVM_BOOTSTRAP_ROLE_CPU, d5
 	beq.w target
 	cmpi.l #3, d6
 	bne.w invalidToken
-	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, 40(a6)
+	cmpi.l #abi.PRVM_BOOTSTRAP_ROLE_INCLUDE, d5
+	beq.w includePath
+	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, abi.PRVM_TOKEN_RECORD_SIZE*2+abi.TokenRecord.Kind(a6)
 	bne.w invalidToken
+	bra.w continueDeclaration
+includePath
+	cmpi.w #abi.PRVM_TOKEN_KIND_STRING, abi.PRVM_TOKEN_RECORD_SIZE*2+abi.TokenRecord.Kind(a6)
+	bne.w invalidToken
+continueDeclaration
 	bsr.w validateOperand
 	bne.w finish
 	bra.w empty
@@ -177,20 +217,32 @@ nextPolicy
 target
 	cmpi.l #3, d6
 	bne.w invalidToken
-	move.w 40(a6), d0
+	move.w abi.PRVM_TOKEN_RECORD_SIZE*2+abi.TokenRecord.Kind(a6), d0
 	cmpi.w #abi.PRVM_TOKEN_KIND_IDENTIFIER, d0
 	beq.w targetKind
-	cmpi.w #2, d0
+	cmpi.w #abi.PRVM_TOKEN_KIND_NUMBER, d0
 	beq.w targetKind
-	cmpi.w #3, d0
+	cmpi.w #abi.PRVM_TOKEN_KIND_STRING, d0
 	bne.w invalidToken
 targetKind
 	bsr.w validateOperand
 	bne.w finish
-	moveq #1, d5
+	moveq #abi.PRVM_BOOTSTRAP_SELECT, d5
+	bra.w emit
+enterConditional
+	moveq #abi.PRVM_BOOTSTRAP_ENTER_CONDITIONAL, d5
+	bra.w regionEvent
+leaveConditional
+	moveq #abi.PRVM_BOOTSTRAP_LEAVE_CONDITIONAL, d5
+regionEvent
+	moveq #0, d2
+	moveq #0, d3
 	bra.w emit
 stop
-	moveq #2, d5
+	tst.l abi.PRVM_FRAME_FLAGS(a4)
+	bne.w empty
+barrier
+	moveq #abi.PRVM_BOOTSTRAP_STOP, d5
 	moveq #0, d2
 	moveq #0, d3
 emit
@@ -208,10 +260,10 @@ clearResult
 	clr.l (a0)+
 	dbra d0, clearResult
 	movea.l abi.PRVM_FRAME_RESULT_PTR(a4), a0
-	move.w #abi.PRVM_RESULT_TARGET_BOOTSTRAP, (a0)
-	move.w d5, 2(a0)
-	move.l d2, 4(a0)
-	move.l d3, 8(a0)
+	move.w #abi.PRVM_RESULT_TARGET_BOOTSTRAP, (a0)  ; BootstrapResult.Kind (zero offset)
+	move.w d5, abi.BootstrapResult.Action(a0)
+	move.l d2, abi.BootstrapResult.LexemeOffset(a0)
+	move.l d3, abi.BootstrapResult.LexemeBytes(a0)
 	moveq #1, d1
 	moveq #abi.PRVM_RESULT_RECORD_SIZE, d3
 	moveq #0, d0
@@ -243,11 +295,11 @@ done
 ; Validate a selected operand span; D2/D3 return decoded offset/length.
 ; Clobbers A0/D0/D4, CCR reflects D0.
 validateOperand	.block
-	move.l 56(a6), d3
+	move.l abi.PRVM_TOKEN_RECORD_SIZE*2+abi.TokenRecord.LexemeBytes(a6), d3
 	beq.w invalid
 	cmpi.l #255, d3
 	bhi.w invalid
-	move.l 52(a6), d2
+	move.l abi.PRVM_TOKEN_RECORD_SIZE*2+abi.TokenRecord.LexemeOffset(a6), d2
 	movea.l a3, a0
 	adda.l d2, a0
 	move.l d3, d4

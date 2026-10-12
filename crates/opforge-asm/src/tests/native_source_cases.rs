@@ -1,6 +1,6 @@
 //! Correctness-only batches for source trees executed by the frozen compact CLI.
 use super::native_active_includes::live_oracle;
-use super::native_iterable_loops::{oracle, scratch};
+use super::native_iterable_loops::{oracle, oracle_with_module_roots, scratch};
 use super::*;
 
 pub(super) struct Case {
@@ -19,15 +19,28 @@ fn write_tree(dir: &Path, files: &[(&str, String)]) {
     }
 }
 
+struct SourceInputs<'a> {
+    batch_size: usize,
+    packages: &'a [OpforgeNativeCliGuestFile<'a>],
+    command: &'a str,
+    module_roots: &'a [&'a str],
+    source_rejections: bool,
+}
+
+impl<'a> SourceInputs<'a> {
+    fn plain(batch_size: usize) -> Self {
+        Self {
+            batch_size,
+            packages: &[],
+            command: "Work:entry.asm --bin Work:out.bin",
+            module_roots: &[],
+            source_rejections: false,
+        }
+    }
+}
+
 pub(super) fn run(root: &Path, image: &[u8], cases: &[Case]) {
-    run_with_inputs(
-        root,
-        image,
-        cases,
-        8,
-        &[],
-        "Work:entry.asm --bin Work:out.bin",
-    );
+    run_with_inputs(root, image, cases, SourceInputs::plain(8));
 }
 
 /// Stage current producer packages under `packages/` for targets absent from
@@ -45,32 +58,59 @@ pub(super) fn run_with_packages(
         root,
         image,
         cases,
-        8,
-        packages,
-        "Work:entry.asm --bin Work:out.bin -P Work:packages",
+        SourceInputs {
+            packages,
+            command: "Work:entry.asm --bin Work:out.bin -P Work:packages",
+            ..SourceInputs::plain(8)
+        },
     );
 }
 
 /// Use the caller's bounded batch size while retaining each live source oracle.
 pub(super) fn run_batch(root: &Path, image: &[u8], cases: &[Case], batch_size: usize) {
-    run_with_inputs(
-        root,
-        image,
-        cases,
-        batch_size,
-        &[],
-        "Work:entry.asm --bin Work:out.bin",
-    );
+    run_with_inputs(root, image, cases, SourceInputs::plain(batch_size));
 }
 
-fn run_with_inputs(
+/// Source-language rejection must reach preparation, rather than fail package startup.
+pub(super) fn run_source_language_batch(
     root: &Path,
     image: &[u8],
     cases: &[Case],
     batch_size: usize,
-    packages: &[OpforgeNativeCliGuestFile<'_>],
-    command: &str,
 ) {
+    run_with_inputs(
+        root,
+        image,
+        cases,
+        SourceInputs {
+            source_rejections: true,
+            ..SourceInputs::plain(batch_size)
+        },
+    );
+}
+
+pub(super) fn run_discovery_batch(root: &Path, image: &[u8], cases: &[Case], batch_size: usize) {
+    run_with_inputs(
+        root,
+        image,
+        cases,
+        SourceInputs {
+            command: "Work:entry.asm --bin Work:out.bin -M Work:library",
+            module_roots: &["library"],
+            source_rejections: true,
+            ..SourceInputs::plain(batch_size)
+        },
+    );
+}
+
+fn run_with_inputs(root: &Path, image: &[u8], cases: &[Case], inputs: SourceInputs<'_>) {
+    let SourceInputs {
+        batch_size,
+        packages,
+        command,
+        module_roots,
+        source_rejections,
+    } = inputs;
     let mut package_paths = std::collections::HashSet::new();
     for package in packages {
         assert!(
@@ -101,7 +141,13 @@ fn run_with_inputs(
         let dir = scratch();
         let live = match &case.expected {
             Some(expected) => {
-                let actual = live_oracle(&dir.0, &case.files);
+                let actual = if module_roots.is_empty() {
+                    live_oracle(&dir.0, &case.files)
+                } else {
+                    write_tree(&dir.0, &case.files);
+                    oracle_with_module_roots(&dir.0, &case.files[0].1, module_roots)
+                        .expect("live Rust module-search oracle")
+                };
                 assert_eq!(
                     &actual, expected,
                     "Rust oracle changed for {} cpu={}",
@@ -113,7 +159,12 @@ fn run_with_inputs(
                 write_tree(&dir.0, &case.files);
                 let source = &case.files[0].1;
                 assert!(
-                    oracle(&dir.0, source).is_err(),
+                    if module_roots.is_empty() {
+                        oracle(&dir.0, source)
+                    } else {
+                        oracle_with_module_roots(&dir.0, source, module_roots)
+                    }
+                    .is_err(),
                     "Rust accepted expected rejection {} cpu={}",
                     case.name,
                     case.cpu
@@ -215,6 +266,15 @@ fn run_with_inputs(
                 }
             }
             None => {
+                if source_rejections
+                    && [&run.stdout, &run.stderr].iter().any(|output| {
+                        output.contains("package: missing, invalid or incompatible runtime package")
+                    })
+                {
+                    failures.push(format!(
+                        "{label}: package startup failure did not exercise source rejection"
+                    ));
+                }
                 if matches!(run.exit_code, None | Some(0))
                     || run.success
                     || (run.stdout.trim().is_empty() && run.stderr.trim().is_empty())

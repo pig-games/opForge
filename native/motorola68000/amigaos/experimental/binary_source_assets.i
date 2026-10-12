@@ -6,16 +6,16 @@ ORIGIN_LIMIT = memory.LIMIT/PATH_BYTES-1
 ; A0=frontend session,A1=VM-selected file action. D0/CCR=status;
 ; other registers preserved. Source requests only copy bounded request data:
 ; acquisition and frontend reentry belong to the caller's preparation cursor.
-includeSelected .block
+includeSelected	.block
 	cmpi.l #parser_abi.FILE_ACTION_BINARY, parser_abi.PRVM_FILE_ACTION(a1)
 	beq.w includeBinary
 	cmpi.l #parser_abi.FILE_ACTION_SOURCE, parser_abi.PRVM_FILE_ACTION(a1)
 	beq.w queueSource
 	moveq #1, d0
 	rts
-	.bend ; includeSelected
+	.bend  ; includeSelected
 
-queueSource .block
+queueSource	.block
 	movem.l d1-d3/a0-a2, -(sp)
 	tst.w frontend.Frame.SourcePending(a0)
 	bne.w bad
@@ -51,11 +51,68 @@ done
 	movem.l (sp)+, d1-d3/a0-a2
 	tst.l d0
 	rts
-	.bend ; queueSource
+	.bend  ; queueSource
+
+; Enter one queued source request through the existing authorized resolver.
+; Both static capture and runtime replay use the same path/cycle/depth owner.
+; D0/CCR=status; other registers preserved. The parent reader is suspended.
+enterPendingSource	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	cmpi.l #INCLUDE_DEPTH, IncludeDepthNow
+	bhs.w bad
+	move.l PendingOrigin, d0
+	lsl.l #8, d0
+	lea OriginPaths, a0
+	cmp.l memory.Block.Used(a0), d0
+	bhs.w bad
+	movea.l memory.Block.Pointer(a0), a2
+	adda.l d0, a2
+	lea PendingName, a0
+	lea IncludeName, a1
+	move.w #PATH_BYTES/4-1, d0
+name
+	move.l (a0)+, (a1)+
+	dbra d0, name
+	movea.l a2, a0
+	lea IncludePath, a1
+	bsr.w parentPath
+	bne.w bad
+	bsr.w openIncludedFrom
+	beq.w opened
+	bmi.w bad
+	moveq #0, d5
+root
+	cmp.l RootCount, d5
+	bhs.w bad
+	move.l d5, d0
+	lsl.l #8, d0
+	lea RootPaths, a0
+	movea.l memory.Block.Pointer(a0), a0
+	adda.l d0, a0
+	lea IncludePath, a1
+	bsr.w copyIncludeBase
+	bne.w bad
+	bsr.w openIncludedFrom
+	beq.w opened
+	bmi.w bad
+	addq.l #1, d5
+	bra.w root
+opened
+	lea Front, a0
+	clr.w frontend.Frame.SourcePending(a0)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; enterPendingSource
 
 ; A0=frontend session,A1=PRVM file plan. The path view is preparation-only.
 ; D0/CCR=status; preserves other registers. Always closes its asset handle.
-includeBinary .block
+includeBinary	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.l #filedata.FRAME_BYTES, sp
 	movea.l sp, a4
@@ -142,12 +199,12 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; includeBinary
+	.bend  ; includeBinary
 
 ; IncludePath is a directory prefix, IncludeName a relative decoded asset name.
 ; A2=definition source path,A4=filedata frame. D0/CCR=0 opened,1 missing/denied,-1 invalid path.
 ; Other registers preserved. The caller owns the returned handle.
-openBinaryPath .block
+openBinaryPath	.block
 	movem.l d1-d2/a6, -(sp)
 	bsr.w resolveIncludeFrom
 	bne.w done
@@ -166,11 +223,11 @@ done
 	movem.l (sp)+, d1-d2/a6
 	tst.l d0
 	rts
-	.bend ; openBinaryPath
+	.bend  ; openBinaryPath
 
 ; A0=packed data record,D0=bytes,A1=frontend session; D0/CCR=status.
 ; Preserve other registers as required by the streaming callback contract.
-appendBinaryData .block
+appendBinaryData	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a2
 	movea.l a1, a0
@@ -182,12 +239,12 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; appendBinaryData
+	.bend  ; appendBinaryData
 
 ; Retain the current physical source path under its opaque OriginId.
 ; D0/CCR=status; other registers preserved. Storage holds bytes, never pointers.
 ; The bounded registry supports IDs 1..4095; larger IDs fail preparation.
-retainOriginPath .block
+retainOriginPath	.block
 	movem.l d1-d3/a0-a2, -(sp)
 	move.l OriginId, d2
 	beq.w bad
@@ -219,4 +276,4 @@ done
 	movem.l (sp)+, d1-d3/a0-a2
 	tst.l d0
 	rts
-	.bend ; retainOriginPath
+	.bend  ; retainOriginPath

@@ -25,7 +25,8 @@ start	.block
 	move.l memory.Block.Used(a0), d2
 	move.l d2, d0
 	addi.l #PLAN_BYTES, d0
-	jsr memory.reserve
+	bcs.w bad
+	bsr.w reserveArena
 	bne.w done
 	move.l d2, State.Current(a0)
 	movea.l memory.Block.Pointer(a0), a1
@@ -36,6 +37,9 @@ start	.block
 	move.l d2, d1
 	addi.l #PLAN_BYTES, d1
 	move.l d1, memory.Block.Used(a0)
+	bra.w done
+bad
+	moveq #1, d0
 done
 	movem.l (sp)+, d1-d2/a1
 	tst.l d0
@@ -51,13 +55,22 @@ append	.block
 	cmpi.l #MAX_MEMBERS, d4
 	bhi.w bad
 	move.l memory.Block.Used(a0), d2
+	move.l d2, d0
+	sub.l State.Current(a0), d0
+	bcs.w bad
+	cmpi.l #PLAN_BYTES, d0
+	blo.w bad
+	movea.l memory.Block.Pointer(a0), a3
+	adda.l State.Current(a0), a3
+	cmpi.w #$ffff, layout.Plan.CandidateCount(a3)
+	beq.w bad
 	move.l d4, d0
 	add.l d0, d0
 	addi.l #CANDIDATE_BYTES, d0
 	add.l d2, d0
 	bcs.w bad
 	move.l d0, d5
-	jsr memory.reserve
+	bsr.w reserveArena
 	bne.w done
 	movea.l memory.Block.Pointer(a0), a2
 	movea.l a2, a3
@@ -129,7 +142,7 @@ reserve
 	move.l d4, d0
 	addi.l #CANDIDATE_BYTES, d0
 	bcs.w bad
-	jsr memory.reserve
+	bsr.w reserveArena
 	bne.w done
 	movea.l memory.Block.Pointer(a0), a3
 	movea.l a3, a1
@@ -759,5 +772,14 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; entry
+; A0=owned plan Block,D0=required bytes. D0/CCR=status; others kept.
+reserveArena	.block
+	move.l d1, -(sp)
+	move.l #layout.ARENA_LIMIT, d1
+	jsr memory.reserveBounded
+	move.l (sp)+, d1
+	tst.l d0
+	rts
+	.bend  ; reserveArena
 	.endsection
 	.endmodule

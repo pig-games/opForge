@@ -212,7 +212,8 @@ reserveIdentities	.block
 	bhi.w bad
 	mulu.w #records.ENTRY_BYTES, d0
 	lea ENTRIES(a1), a0
-	jsr memory.reserve
+	move.l #layout.ENTRIES_BYTES, d1
+	jsr memory.reserveBounded
 	bne.w bad
 	move.l d2, d0
 	lea MODULE_STATE(a1), a0

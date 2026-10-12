@@ -662,6 +662,40 @@ including nonzero status/CCR, zero handle, unchanged arena/content and preserved
 register checks. The large-source batch is correctness evidence, not a speed
 comparison. Full current-source self-host equality remains pending.
 The diagnostic-only snapshot leaves the release image byte-for-byte unchanged.
+The storage repair's separate unchanged release control measures 42.024316792
+seconds before and 41.813961917 after (one sample each; no speedup claim).
+Image/reservation grow 28 bytes. Instrumented peak heap stays 1,240,696 bytes,
+with equal allocation/free totals and zero live ownership in both controls.
+This small input stays below the former cap; larger inputs now allocate their
+required plan storage. Receipt: `/tmp/opforge-macro-plan-growth-cost-20261012.json`.
+
+The subsequent full current-source run (191 files, 2,108,729 source bytes,
+manifest `fnv1a64:da765f94e90e7ea2`) passes that macro-plan failure but rejects
+in `prvm_statement_invoke_req.asm:138`, at preparation scope stage 5. Guest
+START-to-DONE is 3,779.212573958 seconds with instrumentation; assembly has not
+started. The source identity table stops at 29,127 entries because its 36-byte
+entries inherited the shared 1 MiB scratch cap. With 2,688 package identities,
+the observed total of 31,815 identities identifies that exact boundary.
+This remains a failed full self-host, not an output comparison.
+
+Source identity storage now grows within its word identity/index-link contract,
+bounded by the package base and a maximum of 65,535 source entries. Numeric
+binding-plan producers and consumers use their own even unsigned-long byte
+extent, retaining validation, non-aliasing, overflow checks and word candidate
+counts. The shared scratch limit remains unchanged. Fresh native component
+proof covers all 62,848 source identities available with package base 2,688,
+the last global ID 65,535, rejection of the next identity without mutation,
+and first/last relookup. A separate native proof installs a 1,179,638-byte plan
+with 65,535 candidates and checks atomic rejection of candidate-count overflow
+and an aliased installation. These are storage correctness proofs; a new full
+current-source run is still required.
+The separate unchanged 11,592-byte control measures 41.836411250 seconds before
+and 41.616377542 after without telemetry (one sample each; no speedup claim).
+Executable size grows 124 bytes and linked reservation 140 bytes. Instrumented
+peak heap remains 1,240,696 bytes, with zero live ownership and allocation/free
+totals of 3,145,848 bytes in both runs. This input does not cross the old limits;
+the full run must measure the storage needed beyond them. Receipt:
+`/tmp/opforge-identity-bounds-cost-20261012.json`.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

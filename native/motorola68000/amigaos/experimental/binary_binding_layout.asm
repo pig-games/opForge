@@ -3,6 +3,8 @@
 	.module experimental.amigaos.binary_binding_layout
 	.cpu 68020
 	.pub
+; Largest even unsigned-long extent; plans retain long byte offsets.
+ARENA_LIMIT = $fffffffe
 Plan	.struct
 FullId	.word ?
 CandidateCount	.word ?

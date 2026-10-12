@@ -8065,6 +8065,9 @@ mod native_assembly_session_probe;
 #[path = "tests/native_binding_owner_states.rs"]
 mod native_binding_owner_states;
 #[cfg(test)]
+#[path = "tests/native_binding_plan_grow.rs"]
+mod native_binding_plan_grow;
+#[cfg(test)]
 #[path = "tests/native_compact_reservation.rs"]
 mod native_compact_reservation;
 #[cfg(test)]
@@ -8098,6 +8101,9 @@ mod native_member_owner_controls;
 #[cfg(test)]
 #[path = "tests/native_package_heads.rs"]
 mod native_package_heads;
+#[cfg(test)]
+#[path = "tests/native_scope_identity_grow.rs"]
+mod native_scope_identity_grow;
 #[cfg(test)]
 #[path = "tests/native_scoped_layouts.rs"]
 mod native_scoped_layouts;

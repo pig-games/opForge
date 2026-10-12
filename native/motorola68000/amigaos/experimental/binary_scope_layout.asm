@@ -6,8 +6,10 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_iterator_bindings as iterators
 	.pub
-; Source IDs remain words; the entry table retains the default block bound.
-LIMIT = memory.LIMIT/records.ENTRY_BYTES
+; Source counts and index+1 links are words; zero denotes an empty link.
+; The package base further bounds the available global identity range.
+LIMIT = 65535
+ENTRIES_BYTES = LIMIT*records.ENTRY_BYTES
 ; Composed lexical paths include invocation scopes as well as source names.
 NAME_BYTES = records.NAME_BYTES
 ; Spellings grow independently: every identity may own a full composed name.

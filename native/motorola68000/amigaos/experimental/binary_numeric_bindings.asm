@@ -21,10 +21,10 @@ install	.block
 	movea.l a0, a4
 	movea.l a1, a3
 	move.l d0, d7
-	cmpi.l #memory.LIMIT, d7
+	cmpi.l #layout.ARENA_LIMIT, d7
 	bhi.w invalid
 	lea values.Owner.Bindings(a0), a1
-	jsr values.block
+	bsr.w block
 	bne.w done
 	tst.l d7
 	beq.w clear
@@ -40,6 +40,7 @@ install	.block
 	cmp.l d0, d6
 	bls.w separate
 	add.l memory.Block.Capacity(a1), d0
+	bcs.w invalid
 	cmp.l d0, d5
 	blo.w invalid
 separate
@@ -69,8 +70,8 @@ next
 validated
 	lea values.Owner.Bindings(a4), a0
 	move.l d7, d0
-	jsr memory.reserve
-	tst.l d0
+	move.l #layout.ARENA_LIMIT, d1
+	jsr memory.reserveBounded
 	bne.w storage
 	movea.l memory.Block.Pointer(a0), a1
 	move.l d7, d1
@@ -105,7 +106,7 @@ getBinding	.block
 	lea values.Owner.Bindings(a0), a1
 	tst.l memory.Block.Used(a1)
 	beq.w absent
-	jsr values.block
+	bsr.w block
 	bne.w done
 	move.l memory.Block.Used(a1), d4
 	movea.l memory.Block.Pointer(a1), a1
@@ -211,5 +212,32 @@ done
 	tst.l d0
 	rts
 	.bend  ; validatePlan
+; A1=Bindings Block. D0/CCR=status; clobbers D3 like values.block.
+; Numeric plan storage has its own long-offset bound; retain integrity checks.
+block	.block
+	move.l memory.Block.Capacity(a1), d3
+	cmpi.l #layout.ARENA_LIMIT, d3
+	bhi.w bad
+	cmp.l memory.Block.Used(a1), d3
+	blo.w bad
+	move.l memory.Block.Pointer(a1), d0
+	beq.w empty
+	btst #0, d0
+	bne.w bad
+	tst.l d3
+	beq.w bad
+	add.l d3, d0
+	bcs.w bad
+	moveq #values.OK, d0
+	rts
+empty
+	tst.l d3
+	bne.w bad
+	moveq #values.OK, d0
+	rts
+bad
+	moveq #values.MALFORMED, d0
+	rts
+	.bend  ; block
 	.endsection
 	.endmodule

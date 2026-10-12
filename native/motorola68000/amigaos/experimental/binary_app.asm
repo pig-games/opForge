@@ -166,10 +166,11 @@ execute	.block
 	move.l Frame.OutputPath(a0), metadata_output.Frame.CliPath(a1)
 	move.l #MetadataConfig, metadata_output.Frame.Config(a1)
 	clr.w metadata_output.Frame.HexSet(a1)
-	lea MetadataConfig, a1
-	clr.w metadata.Config.NameSet(a1)
-	clr.w metadata.Config.HexSet(a1)
-	clr.w metadata.Config.Root(a1)
+	clr.l metadata_output.Frame.BinIndex(a1)
+	move.l a0, -(sp)
+	lea MetadataConfig, a0
+	jsr metadata.clear
+	movea.l (sp)+, a0
 	.MEMORY_COUNTER_CLEAR output_spans.Events
 	.MEMORY_COUNTER_CLEAR activation.Selections
 	.MEMORY_COUNTER_CLEAR activation.Roots
@@ -300,6 +301,8 @@ cleanup
 	lea Front, a0
 	jsr frontend.finish
 freeBlocks
+	lea MetadataConfig, a0
+	jsr metadata.release
 	bsr.w releaseScheduledFrontend
 	bsr.w releaseCapturedSources
 	lea PackageSource, a0
@@ -1336,6 +1339,8 @@ run	.block
 	cmpi.w #record_output.SREC, CliOutputKind
 	beq.w captureSpans
 	lea MetadataConfig, a1
+	tst.l metadata.Config.BinCount(a1)
+	bne.w captureSpans
 	tst.w metadata.Config.HexSet(a1)
 	beq.w assemble
 captureSpans
@@ -1363,6 +1368,8 @@ appendEmission	.block
 	tst.w sections.State.OutputSeen(a1)
 	bne.w relocatable
 	lea MetadataConfig, a0
+	tst.l metadata.Config.BinCount(a0)
+	bne.w capture
 	tst.w metadata.Config.HexSet(a0)
 	bne.w capture
 	; Bin uses spans only for ordinary source origins, not section selections.
@@ -1461,6 +1468,8 @@ recordArtifact
 sources
 	tst.w CliMode
 	beq.w sourceDescriptors
+	bsr.w writeMetadataBins
+	bne.w bad
 	lea MetadataOutput, a0
 	tst.w metadata_output.Frame.HexSet(a0)
 	beq.w sourceDescriptors
@@ -1532,6 +1541,7 @@ bad
 
 ; Transport only. All format selection and buffers are complete before IO.
 writeSelected	.block
+	clr.w SelectedRangeSet
 	cmpi.w #output_plan.BIN, SelectedOutputKind
 	beq.w flatCandidate
 	tst.w SelectedOutputKind
@@ -1556,6 +1566,7 @@ fixed
 	.bend  ; writeSelected
 
 	.include "binary_app_flat_output.i"
+	.include "binary_app_metadata_output.i"
 
 ; Format sparse initialized spans through a fixed 4 KiB transport buffer.
 ; D0/CCR=status; caller owns one assembly result and all requested artifacts.
@@ -1976,6 +1987,9 @@ TextBuffer	.res byte, memory.Block.Used+4
 RecordFrame	.res byte, record_output.FRAME_BYTES
 	.align 4
 FlatFrame	.res byte, flat_output.FRAME_BYTES
+SelectedRangeSet	.res word, 1
+SelectedRangeStart	.res long, 1
+SelectedRangeEnd	.res long, 1
 OutputStartSet	.res word, 1
 OutputStart	.res long, 1
 MetadataConfig	.res byte, metadata.CONFIG_BYTES

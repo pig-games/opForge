@@ -476,6 +476,34 @@ connected assembler still needs separate qualification/repair for origins at or
 above `$80000000` and terminal-PC overflow. The sixty connected cases do not
 establish that full address-domain boundary.
 
+Dotted BIN/FILL metadata now uses shared PRVM operand operations to publish
+numeric ranges/fill and an acquisition-only spelling span. Native preparation
+owns a dynamic spec vector; naming and streaming remain separate output owners.
+The complete vector is preflighted before its first file is opened. Fresh proof
+covers 32 positive inline cases with exact live Rust artifacts/inventories and
+15 fresh negative rejections, including a late invalid path leaving no earlier
+binary. Four separate instrumented cases free their vectors and preserve zero
+live ownership. The flat component has 29 exact native controls, including
+inclusive range clipping/padding, empty images and malformed requests.
+VM/package suites pass (573/101 tests); focused Clippy and native style pass.
+The initial metadata control is 36.296708584 to 36.408205709 release seconds;
+image grows 1,672 bytes, reservation 2,116 bytes, measured peak/total heap stays
+unchanged. Final vector preflight separately measures 36.263818042 to
+36.482956750 release seconds (+0.60%, single samples), adding 52 image/40
+linked bytes with no new allocation. These proofs
+do not establish metadata blocks, target overrides, listing provenance, CLI
+range/fill arguments, section-metadata BIN geometry or full current self-host.
+
+A bounded design review confirms mixed CPU phases need a real identity domain
+and captured lexical/execution context: exchanging the current package pointer
+would collide package-local name/qualifier IDs. The next structural experiment
+should establish a catalog-owned name domain and atomic package activation,
+then qualify unconditional sequential phases before broadening to imports,
+macros and deferred conditions. Keep pipeline grammars separate; a common name
+domain must not become a union lexer. Measure pool/capsule storage before wiring
+the new contract; avoid a full frontend/EXVM workspace per CPU. VM consolidation
+and remaining source/output gaps remain independent completion requirements.
+
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
 unchanged release control and a separate instrumented heap run against the saved

@@ -736,3 +736,27 @@ Hunk and linked reservation both increasing 7,080 bytes. Separate instrumented
 runs retain the same 1,285,768-byte peak, 3,189,896-byte total allocation/free
 and zero live ownership. This cost belongs to the package repair, not the origin
 slice. Receipt: `/tmp/opforge-motorola-package-cost-20261012.json`.
+
+### Dotted binary output metadata
+
+Shared PRVM now decodes BIN ranges and FILL bytes; separate preparation, path
+policy and streaming owners consume numeric results. Thirty-two fresh positive
+cases compare every requested artifact and inventory with live Rust; fifteen
+negative cases complete with fresh rejections (not exact diagnostic-text parity).
+The renderer has 29 independent native controls. Four instrumented metadata cases
+verify owned spec vectors are released. Metadata blocks, target overrides, listings,
+CLI range/fill options and section-metadata geometry remain unqualified.
+
+On the unchanged 11,592-byte 68020/10 MiB control, initial metadata integration
+measures 36.296708584 to 36.408205709 release seconds (+0.31%, single samples).
+Image grows 716,472 to 718,144 bytes (+1,672); linked reservation grows 749,404
+to 751,520 (+2,116). Separate instrumentation retains a 1,285,768-byte peak,
+3,189,896 total allocated/freed bytes and zero live ownership. Receipt:
+`/tmp/opforge-metadata-bin-cost-20261012.json`.
+
+Final BIN-vector filename preflight is measured independently: 36.263818042 to
+36.482956750 release seconds (+0.60%, single samples), on the same control.
+It adds 52 image bytes and 40 linked bytes; no additional allocation is introduced.
+These small timing differences do not establish a significant regression or gain.
+Receipt: `/tmp/opforge-metadata-preflight-cost-20261012.json`. Full current-source
+self-host time and the product memory floor require separate qualification.

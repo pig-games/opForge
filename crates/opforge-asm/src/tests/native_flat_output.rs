@@ -13,6 +13,9 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
         high: u32,
         output: Option<&'static [u8]>,
         init_only: bool,
+        range_set: u32,
+        range: (u32, u32),
+        fill: u32,
     }
     let positive = |capacity, rows, load, extent, high, output, init_only| Case {
         fault: 0,
@@ -24,6 +27,9 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
         high,
         output: Some(output),
         init_only,
+        range_set: 0,
+        range: (0, 0),
+        fill: 0,
     };
     let negative = |fault, capacity, rows, span_bytes| Case {
         fault,
@@ -35,6 +41,9 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
         high: 0,
         output: None,
         init_only: false,
+        range_set: 0,
+        range: (0, 0),
+        fill: 0,
     };
     let sparse = vec![(0x1000, 0, 2), (0x1004, 4, 2)];
     let mut cases = vec![
@@ -75,6 +84,80 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
         negative(0, 4, vec![(u32::MAX, 0, 2)], None),
     ];
     cases[3].fault = 7; // Empty image also accepts NULL data/span views.
+    let ranged = |mut case: Case, start, end, fill| {
+        case.range_set = 1;
+        case.range = (start, end);
+        case.fill = fill;
+        case
+    };
+    cases.extend([
+        ranged(
+            positive(3, vec![(0x1000, 0, 8)], 0x1002, 4, 0, &[3, 4, 5, 6], false),
+            0x1002,
+            0x1005,
+            0xaa,
+        ),
+        ranged(
+            positive(
+                2,
+                vec![(0x1000, 0, 2), (0x1004, 4, 2)],
+                0x1001,
+                4,
+                0,
+                &[2, 0xaa, 0xaa, 5],
+                false,
+            ),
+            0x1001,
+            0x1004,
+            0xaa,
+        ),
+        ranged(
+            positive(
+                2,
+                vec![(0x1000, 0, 2)],
+                0x0ffe,
+                3,
+                0,
+                &[0xaa, 0xaa, 1],
+                false,
+            ),
+            0x0ffe,
+            0x1000,
+            0xaa,
+        ),
+        ranged(
+            positive(2, vec![(0x1000, 0, 2)], 0x1006, 3, 0, &[0xaa; 3], false),
+            0x1006,
+            0x1008,
+            0xaa,
+        ),
+        ranged(
+            positive(
+                3,
+                vec![(0x1000, 0, 2), (0x1004, 4, 2)],
+                0x0ffe,
+                10,
+                0,
+                &[0xaa, 0xaa, 1, 2, 0xaa, 0xaa, 5, 6, 0xaa, 0xaa],
+                false,
+            ),
+            0x0ffe,
+            0x1007,
+            0xaa,
+        ),
+        ranged(
+            positive(1, vec![], 0x1000, 3, 0, &[0xff; 3], false),
+            0x1000,
+            0x1002,
+            0xff,
+        ),
+        ranged(positive(1, vec![], 0, 0, 1, &[], true), 0, u32::MAX, 0),
+        ranged(negative(0, 3, vec![], None), 0x1001, 0x1000, 0),
+        ranged(negative(0, 3, vec![], None), 0x1000, 0x1001, 256),
+    ]);
+    let mut invalid_range_flag = negative(0, 3, vec![], None);
+    invalid_range_flag.range_set = 2;
+    cases.push(invalid_range_flag);
     let count = cases.len() as u32;
     let mut input = count.to_be_bytes().to_vec();
     let mut expected = count.to_be_bytes().to_vec();
@@ -97,6 +180,10 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
             8,
             u32::from(case.init_only),
             u32::from(case.output.is_none()),
+            case.range_set,
+            case.range.0,
+            case.range.1,
+            case.fill,
         ] {
             word(&mut input, value);
         }
@@ -201,7 +288,7 @@ fn native_flat_output_oracle_and_fixture_export() {
     std::fs::create_dir_all(&directory).unwrap();
     std::fs::write(directory.join("flat-output-fixture.bin"), input).unwrap();
     std::fs::write(directory.join("flat-output-expected.bin"), expected).unwrap();
-    eprintln!("FLAT_OUTPUT cases=19 caller-buffer=true u32-envelope=true");
+    eprintln!("FLAT_OUTPUT cases=29 caller-buffer=true u32-envelope=true explicit-ranges=true");
 }
 #[test]
 fn native_flat_output_host_assembles() {

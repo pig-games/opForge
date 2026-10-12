@@ -87,28 +87,44 @@ artifact alongside source-selected outputs. An explicit `-x`/`--hex [FILE]`
 or `-s`/`--srec [FILE]` adds one Intel HEX or Motorola S-record artifact;
 `-g`/`--go ADDRESS` supplies a record start address of 4–8 hexadecimal digits.
 Record output supports flat assembly, including placed flat sections. Converting
-Hunk output to record output is rejected. The renderer can consume sparse
-numeric address spans, but CLI `.org` sparse parity is not yet claimed. Record
-rendering uses an 84-byte frame and a caller-owned 4096-byte streaming buffer;
-ordinary binary and Hunk output allocate neither the buffer nor captured spans.
+Hunk output to record output is rejected. Flat `.org` changes may move forward or
+backward; later initialized writes replace earlier bytes. Binary, Hex and S-record
+writers share the normalized numeric spans. Binary fills internal holes and trims
+leading/trailing uninitialized space unless an explicit metadata range is selected.
+Addressed rendering uses an 84-byte frame, binary rendering a 72-byte frame, and
+both reuse a caller-owned 4096-byte streaming buffer. Source Hunk geometry retains
+its existing owner without flat-span allocation. The connected high-address
+terminal-PC boundary remains unqualified.
 The compact writer creates
 missing parent directories.
 
-Quoted inline root-module metadata can request Hex without output flags:
+Inline root-module metadata can request Hex and binary files without output flags:
 
 ```asm
 .meta.output.name "build/program"
 .meta.output.hex
+.meta.output.bin "1000:10ff"
+.meta.output.fill "ff"
 ```
 
 `.meta.output.hex "records"` selects a named Hex file, adding `.hex` when absent.
 CLI Hex takes precedence over that filename. A CLI binary/Hunk/S-record request
 can coexist with source Hex; its omitted filename follows `.meta.output.name`.
+BIN accepts an omitted/empty name, a quoted name, or a quoted inclusive range
+`ssss:eeee` / `name:ssss:eeee` with 4–8 hexadecimal digits. FILL takes two quoted
+hexadecimal digits. BIN entries accumulate; explicit CLI BIN replaces this vector.
+Multiple unnamed binaries follow Rust's resolved-range naming, including its
+automatic image range. Empty images without ranges use numeric suffixes.
+The complete BIN vector is checked before its first file is opened. BIN's colon
+grammar reserves `:` for range syntax; use an output base to select an Amiga volume
+for an unnamed binary. Metadata BIN currently covers flat source origins; section
+selections use `.output` instead. CLI range/fill options remain separate gaps.
+
 Output naming alone produces no artifact. Active conditionals control metadata;
 imported modules and nested scopes cannot set root output metadata. Descriptive
 `.meta.name "..."` and `.meta.version "..."` are accepted without an output effect.
 This is an inline quoted subset: unquoted values, configuration blocks, CPU
-metadata overrides, source BIN/FILL/S-record metadata, listings, defines and general source-dependent
+metadata overrides, listings, CLI defines/range/fill options and general source-dependent
 CPU switching remain future work. The compact runtime package option is distinct from
 Rust's canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.

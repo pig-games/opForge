@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_metadata_output
 	.cpu 68020
 	.use experimental.amigaos.binary_metadata_prepare as metadata
+	.use experimental.amigaos.binary_memory as memory
 	.pub
 PATH_BYTES = 256
 BIN_KIND = 1
@@ -10,6 +11,9 @@ HUNK_KIND = 2
 SOURCE_ONLY_KIND = 3
 HEX_KIND = 4
 SREC_KIND = 5
+BIN_ITEM = 0
+BIN_END = 1
+BIN_INVALID = 2
 Frame	.struct
 Base	.long ?
 Config	.long ?
@@ -19,8 +23,14 @@ Default	.word ?
 ResolvedCli	.res PATH_BYTES
 ResolvedHex	.res PATH_BYTES
 HexSet	.word ?
+BinReserved	.word ?
+BinIndex	.long ?
+ResolvedBin	.res PATH_BYTES
+AutoRangeSet	.word ?
+AutoRangeReserved	.word ?
+AutoRangeStart	.long ?
 	.endstruct
-FRAME_BYTES = Frame.HexSet+2
+FRAME_BYTES = Frame.AutoRangeStart+4
 	.section code, kind=code
 	.pub
 ; A0=Frame. D0/CCR=0 success, 1 invalid/overflow/escaping path.
@@ -158,7 +168,197 @@ done
 	tst.l d0
 	rts
 	.bend  ; resolve
+; A0=Frame, with BinIndex reset by caller before traversal. D0/CCR=BIN_ITEM,
+; BIN_END or BIN_INVALID; ITEM returns A1=ResolvedBin,D1=range flag,D2/D3=bounds.
+; D4-D7/A0/A2-A6 preserved. Cursor increments only after successful resolution.
+; Explicit CLI BIN replaces the source vector. AutoRangeSet/Start are caller
+; inputs from completed image geometry, used for unnamed multiple-output paths.
+; No metadata text is interpreted.
+resolveBin	.block
+	movem.l d4-d7/a0/a2-a6, -(sp)
+	movea.l a0, a4
+	clr.b Frame.ResolvedBin(a4)
+	cmpi.w #BIN_KIND, Frame.CliKind(a4)
+	beq.w binEnd
+	movea.l Frame.Config(a4), a6
+	cmpa.l #0, a6
+	beq.w binEnd
+	move.l Frame.BinIndex(a4), d7
+	cmp.l metadata.Config.BinCount(a6), d7
+	bhs.w binEnd
+	move.l d7, d0
+	mulu.l #metadata.BIN_BYTES, d0
+	bvs.w binBad
+	move.l d0, d1
+	addi.l #metadata.BIN_BYTES, d1
+	bcs.w binBad
+	cmp.l metadata.Config.Bins+memory.Block.Used(a6), d1
+	bhi.w binBad
+	movea.l metadata.Config.Bins+memory.Block.Pointer(a6), a3
+	cmpa.l #0, a3
+	beq.w binBad
+	adda.l d0, a3
+	movea.l a3, a6  ; selected owned specification
+	lea EmptyPath, a5
+	movea.l Frame.Config(a4), a0
+	tst.w metadata.Config.NameSet(a0)
+	beq.w binInputBase
+	lea metadata.Config.Name(a0), a5
+	bra.w binBaseReady
+binInputBase
+	move.l Frame.Base(a4), d0
+	beq.w binBaseReady
+	movea.l d0, a5
+binBaseReady
+	lea metadata.Bin.Name(a6), a0
+	tst.b (a0)
+	bne.w binNamed
+	movea.l Frame.Config(a4), a0
+	cmpi.l #1, metadata.Config.BinCount(a0)
+	beq.w binSingle
+	tst.w metadata.Bin.RangeSet(a6)
+	beq.w binUnnamed
+	movea.l a5, a0
+	lea BinScratch, a1
+	lea DashSuffix, a2
+	bsr.w appendSuffix
+	bne.w binBad
+	lea BinScratch, a0
+	bsr.w pathEnd
+	tst.l d0
+	bmi.w binBad
+	lea metadata.Bin.RangeText(a6), a2
+	bsr.w appendAtEnd
+	bne.w binBad
+	bra.w binExtension
+binUnnamed
+	tst.w Frame.AutoRangeSet(a4)
+	beq.w binOrdinal
+	move.l Frame.AutoRangeStart(a4), d0
+	bsr.w autoSuffix
+	bra.w binIndexReady
+binOrdinal
+	move.l d7, d0
+	addq.l #1, d0
+	bsr.w indexSuffix
+binIndexReady
+	movea.l a5, a0
+	lea BinScratch, a1
+	lea IndexText, a2
+	bsr.w appendSuffix
+	bne.w binBad
+	bra.w binExtension
+binSingle
+	movea.l a5, a0
+	lea BinScratch, a1
+	bsr.w copyPath
+	bne.w binBad
+	bra.w binExtension
+binNamed
+	lea BinScratch, a1
+	bsr.w copyPath
+	bne.w binBad
+binExtension
+	lea BinScratch, a0
+	bsr.w hasExtension
+	tst.l d0
+	bmi.w binBad
+	bne.w binPathReady
+	lea BinScratch, a0
+	bsr.w pathEnd
+	tst.l d0
+	bmi.w binBad
+	lea BinSuffix, a2
+	bsr.w appendAtEnd
+	bne.w binBad
+binPathReady
+	lea BinScratch, a0
+	lea Frame.ResolvedBin(a4), a1
+	tst.b metadata.Bin.Name(a6)
+	beq.w binRawPath
+	movea.l a5, a2
+	bsr.w resolveRelativePath
+	bra.w binPathDone
+binRawPath
+	bsr.w copyPath
+binPathDone
+	tst.l d0
+	bne.w binBad
+	addq.l #1, Frame.BinIndex(a4)
+	moveq #0, d1
+	move.w metadata.Bin.RangeSet(a6), d1
+	move.l metadata.Bin.Start(a6), d2
+	move.l metadata.Bin.End(a6), d3
+	lea Frame.ResolvedBin(a4), a1
+	moveq #BIN_ITEM, d0
+	bra.w binDone
+binEnd
+	moveq #BIN_END, d0
+	bra.w binDone
+binBad
+	clr.b Frame.ResolvedBin(a4)
+	moveq #BIN_INVALID, d0
+binDone
+	movem.l (sp)+, d4-d7/a0/a2-a6
+	tst.l d0
+	rts
+	.bend  ; resolveBin
+
 	.priv
+; D0=automatic image start. Match shared format_addr's uppercase 4/6/8 digits.
+; Clobbers D0-D2/A0-A1; returns '-' plus digits in IndexText.
+autoSuffix	.block
+	moveq #4, d2
+	cmpi.l #$ffff, d0
+	bls.w widthReady
+	moveq #6, d2
+	cmpi.l #$ffffff, d0
+	bls.w widthReady
+	moveq #8, d2
+widthReady
+	lea IndexText, a0
+	move.b #'-', (a0)+
+	adda.l d2, a0
+	clr.b (a0)
+	lea HexDigits, a1
+hexDigit
+	move.l d0, d1
+	andi.l #15, d1
+	move.b 0(a1, d1.w), -(a0)
+	lsr.l #4, d0
+	subq.w #1, d2
+	bne.w hexDigit
+	rts
+	.bend  ; autoSuffix
+
+; D0=one-based ordinal. Produce '-' plus unsigned decimal digits.
+; Clobbers D0-D3/A0-A2; scratch is owned by this output resolver.
+indexSuffix	.block
+	lea -12(sp), sp
+	lea 12(sp), a0
+	moveq #0, d2
+digits
+	move.l d0, d1
+	moveq #10, d3
+	divu.l d3, d0
+	move.l d0, d3
+	mulu.l #10, d3
+	sub.l d3, d1
+	addi.b #'0', d1
+	move.b d1, -(a0)
+	addq.w #1, d2
+	tst.l d0
+	bne.w digits
+	lea IndexText, a1
+	move.b #'-', (a1)+
+copyDigits
+	move.b (a0)+, (a1)+
+	subq.w #1, d2
+	bne.w copyDigits
+	clr.b (a1)
+	lea 12(sp), sp
+	rts
+	.bend  ; indexSuffix
 
 ; D7=CLI kind; return A2=suffix.
 selectCliSuffix	.block
@@ -512,6 +712,8 @@ pathDone
 
 	.section data, kind=data
 EmptyPath	.byte 0
+HexDigits	.byte "0123456789ABCDEF"
+DashSuffix	.byte "-", 0
 BinSuffix	.byte ".bin", 0
 HunkSuffix	.byte ".hunk", 0
 HexSuffix	.byte ".hex", 0
@@ -520,5 +722,7 @@ SrecSuffix	.byte ".srec", 0
 	.section bss, kind=bss
 	.align 2
 HexScratch	.res byte, PATH_BYTES
+BinScratch	.res byte, PATH_BYTES
+IndexText	.res byte, 12
 	.endsection
 	.endmodule

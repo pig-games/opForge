@@ -9,14 +9,27 @@
 State	.struct
 Budget	.long ?
 Policy	.long ?
-Stage	.res 32
+Stage	.res abi.PRVM_RESULT_RECORD_SIZE
 	.endstruct
-STATE_BYTES = State.Stage+32
+STATE_BYTES = State.Stage+abi.PRVM_RESULT_RECORD_SIZE
 ROLE = State.Stage+abi.PRVM_METADATA_ROLE
 KEY = State.Stage+abi.PRVM_METADATA_KEY
 VALUE_OFFSET = State.Stage+abi.PRVM_METADATA_VALUE_OFFSET
 VALUE_BYTES = State.Stage+abi.PRVM_METADATA_VALUE_BYTES
 VALUE_KIND = State.Stage+abi.PRVM_METADATA_VALUE_KIND
+RANGE_TEXT_OFFSET = State.Stage+abi.PRVM_METADATA_RANGE_TEXT_OFFSET
+RANGE_TEXT_BYTES = State.Stage+abi.PRVM_METADATA_RANGE_TEXT_BYTES
+RANGE_START = State.Stage+abi.PRVM_METADATA_RANGE_START
+RANGE_END = State.Stage+abi.PRVM_METADATA_RANGE_END
+FILL_VALUE = State.Stage+abi.PRVM_METADATA_FILL_VALUE
+RECORD_HEAD = abi.PRVM_PACKED_RECORD_BYTES
+RECORD_HEAD_PREFIX = RECORD_HEAD+abi.PackedDot.Name+abi.PackedName.Kind
+RECORD_HEAD_ID = RECORD_HEAD+abi.PackedDot.Name+abi.PackedName.Id
+RECORD_HEAD_QUALIFIER = RECORD_HEAD+abi.PackedDot.Name+abi.PackedName.Qualifier
+RECORD_OPERAND = RECORD_HEAD+abi.PRVM_PACKED_DOT_BYTES
+RECORD_VALUE = RECORD_OPERAND+abi.PRVM_PACKED_STRING_HEADER_BYTES
+IMMUTABLE_FLAGS = abi.PRVM_PACKED_FLAG_ALLOWED-abi.PRVM_PACKED_FLAG_MUTABLE_SNAPSHOT
+BLOCK_FLAGS = abi.PRVM_PACKED_FLAG_BLOCK_OPEN+abi.PRVM_PACKED_FLAG_BLOCK_CLOSE
 	.section code, kind=code
 ; A0=request,D0=available bytes; standard PRVM status/count/offset/bytes.
 ; Stage one result atomically. Offsets refer to the complete packed record.
@@ -55,45 +68,47 @@ run	.block
 	beq.w invalidFrame
 	movea.l d0, a6
 	move.l abi.PRVM_FRAME_SOURCE_LEN(a4), d6
-	cmpi.l #4, d6
+	cmpi.l #abi.PRVM_PACKED_RECORD_BYTES, d6
 	blo.w invalidFrame
-	cmpi.l #256, d6
+	cmpi.l #abi.PRVM_PACKED_MAX_RECORD_BYTES, d6
 	bhi.w invalidFrame
 	moveq #0, d0
 	move.b (a6), d0
 	addq.l #1, d0
 	cmp.l d6, d0
 	bne.w invalidFrame
-	move.b 1(a6), d0
-	andi.b #$c0, d0
+	move.b abi.PackedRecord.Flags(a6), d0
+	andi.b #$ff-IMMUTABLE_FLAGS, d0
 	bne.w invalidFrame
 	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	beq.w invalidFrame
 	movea.l d0, a5
-	cmpi.l #34, abi.PRVM_FRAME_PROGRAM_LEN(a4)
+	cmpi.l #abi.METADATA_PROGRAM_BYTES, abi.PRVM_FRAME_PROGRAM_LEN(a4)
 	bne.w invalidProgram
-	cmpi.b #$96, (a5)
+	cmpi.b #abi.OP_METADATA_SELECT, (a5)
 	bne.w invalidProgram
-	cmpi.b #6, 1(a5)
+	cmpi.b #abi.METADATA_HEAD_COUNT, abi.MetadataProgram.Count(a5)
 	bne.w invalidProgram
-	cmpi.b #$83, 32(a5)
+	cmpi.b #abi.OP_PUBLISH, abi.MetadataProgram.Publish(a5)
 	bne.w invalidProgram
-	tst.b 33(a5)
+	tst.b abi.MetadataProgram.End(a5)
 	bne.w invalidProgram
-	lea 2(a5), a2
-	moveq #5, d5
+	lea abi.MetadataProgram.Rows(a5), a2
+	moveq #abi.METADATA_HEAD_COUNT-1, d5
 validateRows
-	cmpi.b #1, 2(a2)
+	cmpi.b #abi.PRVM_METADATA_OUTPUT, abi.MetadataRow.Role(a2)
 	blo.w invalidProgram
-	cmpi.b #2, 2(a2)
+	cmpi.b #abi.PRVM_METADATA_DESCRIPTIVE, abi.MetadataRow.Role(a2)
 	bhi.w invalidProgram
-	cmpi.b #1, 3(a2)
+	cmpi.b #abi.PRVM_METADATA_NAME, abi.MetadataRow.Key(a2)
 	blo.w invalidProgram
-	cmpi.b #5, 3(a2)
+	cmpi.b #abi.PRVM_METADATA_VERSION, abi.MetadataRow.Key(a2)
 	bhi.w invalidProgram
-	cmpi.b #2, 4(a2)
+	cmpi.b #abi.PRVM_METADATA_OPERAND_FILL, abi.MetadataRow.Operand(a2)
 	bhi.w invalidProgram
-	addq.l #5, a2
+	cmpi.b #abi.PRVM_METADATA_OPERAND_RESERVED, abi.MetadataRow.Operand(a2)
+	beq.w invalidProgram
+	addq.l #abi.METADATA_ROW_BYTES, a2
 	dbra d5, validateRows
 	suba.w #STATE_BYTES, sp
 	movea.l sp, a3
@@ -106,87 +121,99 @@ clear
 	clr.l d2
 	bsr.w tick
 	bne.w failure
-	move.l #$96, d7
+	move.l #abi.OP_METADATA_SELECT, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
-	move.b 1(a6), d0
-	andi.b #24, d0
+	move.b abi.PackedRecord.Flags(a6), d0
+	andi.b #abi.PRVM_PACKED_FLAG_INACTIVE, d0
 	bne.w noMatch
-	cmpi.l #4, d6
+	cmpi.l #abi.PRVM_PACKED_RECORD_BYTES, d6
 	beq.w noMatch
-	moveq #4, d2
+	moveq #RECORD_HEAD, d2
 	bsr.w tick
 	bne.w failure
-	move.l #$96, d7
+	move.l #abi.OP_METADATA_SELECT, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
-	cmpi.l #9, d6
+	cmpi.l #RECORD_OPERAND, d6
 	blo.w noMatch
-	cmpi.b #7, 4(a6)
+	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, RECORD_HEAD(a6)
 	bne.w noMatch
-	cmpi.b #1, 5(a6)
+	cmpi.b #1, RECORD_HEAD_PREFIX(a6)
 	bhi.w noMatch
 	moveq #0, d0
-	move.b 6(a6), d0
+	move.b RECORD_HEAD_ID(a6), d0
 	lsl.w #8, d0
-	move.b 7(a6), d0
-	lea 2(a5), a2
-	moveq #5, d5
+	move.b RECORD_HEAD_ID+1(a6), d0
+	lea abi.MetadataProgram.Rows(a5), a2
+	moveq #abi.METADATA_HEAD_COUNT-1, d5
 findHead
 	moveq #0, d1
 	move.b (a2), d1
 	lsl.w #8, d1
-	move.b 1(a2), d1
+	move.b abi.MetadataRow.HeadLow(a2), d1
 	cmp.w d1, d0
 	beq.w matched
-	addq.l #5, a2
+	addq.l #abi.METADATA_ROW_BYTES, a2
 	dbra d5, findHead
 	bra.w noMatch
 matched
-	moveq #8, d2
-	tst.b 8(a6)
+	moveq #RECORD_HEAD_QUALIFIER, d2
+	tst.b RECORD_HEAD_QUALIFIER(a6)
 	bne.w tokenFailure
-	move.b 1(a6), d0
-	andi.b #6, d0
+	move.b abi.PackedRecord.Flags(a6), d0
+	andi.b #BLOCK_FLAGS, d0
 	bne.w tokenFailure
 	moveq #0, d0
-	move.b 2(a2), d0
+	move.b abi.MetadataRow.Role(a2), d0
 	move.w d0, ROLE(a3)
-	move.b 3(a2), d0
+	move.b abi.MetadataRow.Key(a2), d0
 	move.l d0, KEY(a3)
 	moveq #0, d0
-	move.b 4(a2), d0
+	move.b abi.MetadataRow.Operand(a2), d0
 	move.l d0, State.Policy(a3)
-	moveq #9, d2
+	moveq #RECORD_OPERAND, d2
 	bsr.w tick
 	bne.w failure
 	moveq #0, d5
-	cmpi.l #9, d6
+	cmpi.l #RECORD_OPERAND, d6
 	bne.w operand
-	cmpi.l #1, State.Policy(a3)
+	cmpi.l #abi.PRVM_METADATA_OPERAND_OPTIONAL, State.Policy(a3)
+	beq.w validated
+	cmpi.l #abi.PRVM_METADATA_OPERAND_BIN, State.Policy(a3)
 	beq.w validated
 	bra.w tokenFailure
 operand
-	cmpi.l #11, d6
+	cmpi.l #RECORD_VALUE, d6
 	blo.w tokenFailure
-	cmpi.b #3, 9(a6)
+	cmpi.b #abi.PRVM_TOKEN_KIND_STRING, RECORD_OPERAND+abi.PackedString.Kind(a6)
 	bne.w tokenFailure
-	move.b 10(a6), d5
-	moveq #11, d2
+	move.b RECORD_OPERAND+abi.PackedString.Length(a6), d5
+	moveq #RECORD_VALUE, d2
 	move.l d2, d0
 	add.l d5, d0
 	cmp.l d6, d0
 	bne.w tokenFailure
-	cmpi.l #2, State.Policy(a3)
-	bne.w stringReady
+	move.l #abi.PRVM_TOKEN_KIND_STRING, VALUE_KIND(a3)
+	cmpi.l #abi.PRVM_METADATA_OPERAND_BIN, State.Policy(a3)
+	beq.w binaryOperand
+	cmpi.l #abi.PRVM_METADATA_OPERAND_FILL, State.Policy(a3)
+	bne.w validated
 	cmpi.l #2, d5
 	bne.w tokenFailure
-stringReady
-	move.l #3, VALUE_KIND(a3)
+	lea 0(a6, d2.l), a0
+	move.l d5, d0
+	bsr.w hexValue
+	bne.w tokenFailure
+	move.l d1, FILL_VALUE(a3)
+	bra.w validated
+binaryOperand
+	bsr.w binaryValue
+	bne.w tokenFailure
 validated
 	bsr.w tick
 	bne.w failure
-	move.l #$83, d7
+	move.l #abi.OP_PUBLISH, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
-	cmpi.l #32, abi.PRVM_FRAME_RESULT_CAPACITY(a4)
+	cmpi.l #abi.PRVM_RESULT_RECORD_SIZE, abi.PRVM_FRAME_RESULT_CAPACITY(a4)
 	blo.w overflow
 	move.l abi.PRVM_FRAME_RESULT_PTR(a4), d0
 	beq.w argumentFailure
@@ -194,19 +221,19 @@ validated
 	bne.w argumentFailure
 	bsr.w tick
 	bne.w failure
-	clr.l d7
+	clr.l d7  ; abi.OP_END
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	move.w #abi.PRVM_RESULT_PACKED_METADATA, State.Stage(a3)
 	move.l d2, VALUE_OFFSET(a3)
 	move.l d5, VALUE_BYTES(a3)
 	lea State.Stage(a3), a0
 	movea.l abi.PRVM_FRAME_RESULT_PTR(a4), a1
-	moveq #7, d0
+	moveq #abi.PRVM_RESULT_RECORD_SIZE/4-1, d0
 publish
 	move.l (a0)+, (a1)+
 	dbra d0, publish
 	moveq #1, d1
-	moveq #32, d3
+	moveq #abi.PRVM_RESULT_RECORD_SIZE, d3
 	clr.l d2
 	moveq #0, d0
 	bra.w finish
@@ -243,7 +270,110 @@ done
 	rts
 	.bend  ; run
 	.priv
-; One budget unit per interpreted envelope/match/operand/publication/end opcode.
+; A0=literal,D0=width. D0/CCR=status,D1=u32; clobbers D3/A0.
+; Callers enforce their operation's width before decoding.
+hexValue	.block
+	moveq #0, d1
+	tst.l d0
+	beq.w badHex
+hexDigit
+	moveq #0, d3
+	move.b (a0)+, d3
+	cmpi.b #'0', d3
+	blo.w badHex
+	cmpi.b #'9', d3
+	bls.w decimal
+	ori.b #$20, d3
+	cmpi.b #'a', d3
+	blo.w badHex
+	cmpi.b #'f', d3
+	bhi.w badHex
+	subi.b #'a'-10, d3
+	bra.w accumulate
+decimal
+	subi.b #'0', d3
+accumulate
+	lsl.l #4, d1
+	or.l d3, d1
+	subq.l #1, d0
+	bne.w hexDigit
+	moveq #0, d0
+	rts
+badHex
+	moveq #1, d0
+	rts
+	.bend  ; hexValue
+
+; D2/D5=decoded literal offset/width. Decode the last two colon components;
+; preceding colons belong to the name, matching the shared Rust output model.
+; D0/CCR=status, D5=name width; clobbers D1/D3/D4/D7/A0/A1/A2.
+binaryValue	.block
+	lea 0(a6, d2.l), a2
+	moveq #-1, d4  ; final separator
+	moveq #-1, d7  ; penultimate separator
+	move.l d5, d0
+scan
+	tst.l d0
+	beq.w scanned
+	subq.l #1, d0
+	cmpi.b #':', 0(a2, d0.l)
+	bne.w scan
+	tst.l d4
+	bpl.w second
+	move.l d0, d4
+	bra.w scan
+second
+	move.l d0, d7
+scanned
+	tst.l d4
+	bmi.w binaryGood
+	move.l d7, d0
+	addq.l #1, d0
+	lea 0(a2, d0.l), a0
+	move.l d2, d1
+	add.l d0, d1
+	move.w d1, RANGE_TEXT_OFFSET(a3)
+	move.l d4, d1
+	sub.l d0, d1
+	cmpi.l #4, d1
+	blo.w binaryBad
+	cmpi.l #8, d1
+	bhi.w binaryBad
+	move.w d1, RANGE_TEXT_BYTES(a3)
+	move.l d1, d0
+	bsr.w hexValue
+	bne.w binaryBad
+	move.l d1, RANGE_START(a3)
+	move.l d4, d0
+	addq.l #1, d0
+	lea 0(a2, d0.l), a0
+	move.l d5, d1
+	sub.l d0, d1
+	cmpi.l #4, d1
+	blo.w binaryBad
+	cmpi.l #8, d1
+	bhi.w binaryBad
+	move.l d1, d0
+	bsr.w hexValue
+	bne.w binaryBad
+	move.l d1, RANGE_END(a3)
+	cmp.l RANGE_START(a3), d1
+	blo.w binaryBad
+	moveq #0, d5
+	tst.l d7
+	bmi.w binaryGood
+	move.l d7, d5
+binaryGood
+	moveq #0, d0
+	rts
+binaryBad
+	moveq #1, d0
+	rts
+	.bend  ; binaryValue
+
+; One unit per selector envelope/head lookup/operand/publication/end operation.
+; Successful match needs five units; inactive records need one, unrelated two.
+; Literal scans stay within the validated <=256-byte record; no per-byte ticks.
 tick	.block
 	tst.l State.Budget(a3)
 	beq.w exhausted

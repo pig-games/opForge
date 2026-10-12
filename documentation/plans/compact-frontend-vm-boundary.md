@@ -369,7 +369,13 @@ operands are normalized before binding
 using those package-supplied field identities; shared directives and exact
 register spellings retain their identities. MemberShape predicates and TargetMember
 fixups operate on numeric wrappers without source text. Shared PRVM entry 7
-selects output/descriptive roles and bounded decoded-string spans. Rust
+selects output/descriptive roles and bounded decoded-string spans. Its current
+BIN/FILL operand operations also publish numeric inclusive bounds, original
+range-start spelling and fill bytes. Preparation owns the output spec vector;
+output policy resolves names and validates the complete vector before writing.
+The flat renderer clips/pads numeric spans without re-reading source strings.
+This qualifies dotted literal metadata, not blocks, CPU-qualified overrides,
+listing provenance, CLI range/fill options or deferred output configuration. Rust
 preparation expands only active `.incbin` statements for
 the quoted relative native subset, using definition-file-relative roots
 and the explicit supported cases. Per-record origins for macro bodies drawn

@@ -10,39 +10,175 @@ struct MetadataCase {
     metadata: &'static str,
     flags: &'static str,
     outputs: &'static [&'static str],
+    binary_outputs: &'static [(&'static str, &'static [u8])],
     input_base: bool,
+    empty_image: bool,
+}
+
+fn case(
+    name: &'static str,
+    metadata: &'static str,
+    flags: &'static str,
+    outputs: &'static [&'static str],
+    input_base: bool,
+) -> MetadataCase {
+    MetadataCase {
+        name,
+        metadata,
+        flags,
+        outputs,
+        binary_outputs: &[],
+        input_base,
+        empty_image: false,
+    }
+}
+
+fn set_binary_outputs(
+    cases: &mut [MetadataCase],
+    case_name: &str,
+    binary_outputs: &'static [(&'static str, &'static [u8])],
+) {
+    let case = cases
+        .iter_mut()
+        .find(|case| case.name == case_name)
+        .unwrap_or_else(|| panic!("missing metadata case {case_name}"));
+    case.binary_outputs = binary_outputs;
+}
+
+fn set_empty_image(cases: &mut [MetadataCase], case_name: &str) {
+    let case = cases
+        .iter_mut()
+        .find(|case| case.name == case_name)
+        .unwrap_or_else(|| panic!("missing metadata case {case_name}"));
+    case.empty_image = true;
 }
 
 fn cases() -> Vec<MetadataCase> {
-    vec![
-        MetadataCase { name: "metadata-nested-name-only", metadata: ".meta.output.name \"@ROOT@nested/base\"", flags: "", outputs: &[], input_base: false },
-        MetadataCase { name: "metadata-source-hex-relative-parent", metadata: ".meta.output.name \"@ROOT@nested/base\"\n.meta.output.hex \"records\"", flags: "", outputs: &["nested/records.hex"], input_base: false },
-        MetadataCase { name: "metadata-source-hex-relative-components", metadata: ".meta.output.name \"@ROOT@nested/base\"\n.meta.output.hex \"./child/../records\"", flags: "", outputs: &["nested/records.hex"], input_base: false },
-        MetadataCase { name: "metadata-cli-hex-relative-parent", metadata: ".meta.output.name \"@ROOT@nested/base\"", flags: "--hex records", outputs: &["nested/records.hex"], input_base: false },
-        MetadataCase { name: "metadata-source-hex-hidden-basename", metadata: ".meta.output.name \"@ROOT@base\"\n.meta.output.hex \".records\"", flags: "", outputs: &[".records.hex"], input_base: false },
-        MetadataCase { name: "metadata-name-only", metadata: ".meta.output.name \"@ROOT@base\"", flags: "", outputs: &[], input_base: false },
-        MetadataCase { name: "metadata-description-only", metadata: ".meta.name \"Description\"\n.meta.version \"1.2\"", flags: "", outputs: &[], input_base: false },
-        MetadataCase { name: "metadata-source-hex-input-base", metadata: ".meta.output.hex", flags: "", outputs: &["entry.hex"], input_base: true },
-        MetadataCase { name: "metadata-source-hex-empty-input-base", metadata: ".meta.output.hex \"\"", flags: "", outputs: &["entry.hex"], input_base: true },
-        MetadataCase { name: "metadata-source-hex-name", metadata: ".meta.output.hex \"@ROOT@source\"", flags: "", outputs: &["source.hex"], input_base: false },
-        MetadataCase { name: "metadata-source-hex-omitted", metadata: ".meta.output.name \"@ROOT@base\"\n.meta.output.hex", flags: "", outputs: &["base.hex"], input_base: false },
-        MetadataCase { name: "metadata-source-hex-empty", metadata: ".meta.output.name \"@ROOT@base\"\n.meta.output.hex \"\"", flags: "", outputs: &["base.hex"], input_base: false },
-        MetadataCase { name: "metadata-source-hex-cli-bin", metadata: ".meta.output.hex \"@ROOT@source\"", flags: "--bin @ROOT@explicit.bin", outputs: &["explicit.bin", "source.hex"], input_base: false },
-        MetadataCase { name: "metadata-source-hex-go", metadata: ".meta.output.hex \"@ROOT@source\"", flags: "--go 1234", outputs: &["source.hex"], input_base: false },
-        MetadataCase { name: "metadata-source-hex-cli-srec", metadata: ".meta.output.hex \"@ROOT@source\"", flags: "--srec @ROOT@explicit.srec", outputs: &["explicit.srec", "source.hex"], input_base: false },
-        MetadataCase { name: "metadata-cli-hex-overrides-source", metadata: ".meta.output.hex \"@ROOT@source\"", flags: "--hex @ROOT@explicit.hex", outputs: &["explicit.hex"], input_base: false },
-        MetadataCase { name: "metadata-cli-hex-base", metadata: ".meta.output.name \"@ROOT@base\"", flags: "--hex", outputs: &["base.hex"], input_base: false },
-        MetadataCase { name: "metadata-cli-bin-base", metadata: ".meta.output.name \"@ROOT@base\"", flags: "--bin", outputs: &["base.bin"], input_base: false },
-        MetadataCase { name: "metadata-cli-srec-base", metadata: ".meta.output.name \"@ROOT@base\"", flags: "--srec", outputs: &["base.srec"], input_base: false },
-        MetadataCase { name: "metadata-active-conditional", metadata: ".if 1\n.meta.output.hex \"@ROOT@active\"\n.endif\n.if 0\n.meta.output.hex \"@ROOT@inactive\"\n.endif", flags: "", outputs: &["active.hex"], input_base: false },
-        MetadataCase { name: "metadata-inactive-unsupported", metadata: ".if 0\n.meta.output.fill \"ff\"\n.meta.output.hex unquoted\n.endif", flags: "", outputs: &[], input_base: false },
-    ]
+    let mut cases = vec![
+        case("metadata-nested-name-only", ".meta.output.name \"@ROOT@nested/base\"", "", &[], false),
+        case("metadata-source-hex-relative-parent", ".meta.output.name \"@ROOT@nested/base\"\n.meta.output.hex \"records\"", "", &["nested/records.hex"], false),
+        case("metadata-source-hex-relative-components", ".meta.output.name \"@ROOT@nested/base\"\n.meta.output.hex \"./child/../records\"", "", &["nested/records.hex"], false),
+        case("metadata-cli-hex-relative-parent", ".meta.output.name \"@ROOT@nested/base\"", "--hex records", &["nested/records.hex"], false),
+        case("metadata-source-hex-hidden-basename", ".meta.output.name \"@ROOT@base\"\n.meta.output.hex \".records\"", "", &[".records.hex"], false),
+        case("metadata-name-only", ".meta.output.name \"@ROOT@base\"", "", &[], false),
+        case("metadata-description-only", ".meta.name \"Description\"\n.meta.version \"1.2\"", "", &[], false),
+        case("metadata-source-hex-input-base", ".meta.output.hex", "", &["entry.hex"], true),
+        case("metadata-source-hex-empty-input-base", ".meta.output.hex \"\"", "", &["entry.hex"], true),
+        case("metadata-source-hex-name", ".meta.output.hex \"@ROOT@source\"", "", &["source.hex"], false),
+        case("metadata-source-hex-omitted", ".meta.output.name \"@ROOT@base\"\n.meta.output.hex", "", &["base.hex"], false),
+        case("metadata-source-hex-empty", ".meta.output.name \"@ROOT@base\"\n.meta.output.hex \"\"", "", &["base.hex"], false),
+        case("metadata-source-hex-cli-bin", ".meta.output.hex \"@ROOT@source\"", "--bin @ROOT@explicit.bin", &["explicit.bin", "source.hex"], false),
+        case("metadata-source-hex-go", ".meta.output.hex \"@ROOT@source\"", "--go 1234", &["source.hex"], false),
+        case("metadata-source-hex-cli-srec", ".meta.output.hex \"@ROOT@source\"", "--srec @ROOT@explicit.srec", &["explicit.srec", "source.hex"], false),
+        case("metadata-cli-hex-overrides-source", ".meta.output.hex \"@ROOT@source\"", "--hex @ROOT@explicit.hex", &["explicit.hex"], false),
+        case("metadata-cli-hex-base", ".meta.output.name \"@ROOT@base\"", "--hex", &["base.hex"], false),
+        case("metadata-cli-bin-base", ".meta.output.name \"@ROOT@base\"", "--bin", &["base.bin"], false),
+        case("metadata-cli-srec-base", ".meta.output.name \"@ROOT@base\"", "--srec", &["base.srec"], false),
+        case("metadata-active-conditional", ".if 1\n.meta.output.hex \"@ROOT@active\"\n.meta.output.bin \"@BIN_ROOT@active\"\n.endif\n.if 0\n.meta.output.hex \"@ROOT@inactive\"\n.meta.output.bin \"@BIN_ROOT@inactive\"\n.endif", "", &["active.hex", "active.bin"], false),
+        case("metadata-inactive-unsupported", ".if 0\n.meta.output.fill \"ff\"\n.meta.output.bin unquoted\n.meta.output.hex unquoted\n.endif", "", &[], false),
+    ];
+    cases[12].binary_outputs = &[("explicit.bin", &[0x12, 0x34])];
+    cases[17].binary_outputs = &[("base.bin", &[0x12, 0x34])];
+    cases[19].binary_outputs = &[("active.bin", &[0x12, 0x34])];
+
+    cases.extend([
+        case("metadata-source-bin-name", ".meta.output.bin \"@BIN_ROOT@source\"", "", &["source.bin"], false),
+        case("metadata-source-bin-omitted-metadata-base", ".meta.output.name \"@ROOT@base\"\n.meta.output.bin", "", &["base.bin"], false),
+        case("metadata-source-bin-empty-metadata-base", ".meta.output.name \"@ROOT@base\"\n.meta.output.bin \"\"", "", &["base.bin"], false),
+        case("metadata-source-bin-custom-extension", ".meta.output.bin \"@BIN_ROOT@source.image\"", "", &["source.image"], false),
+        case("metadata-source-bin-range-padded", ".meta.output.bin \"@BIN_ROOT@range.bin:0ffe:1003\"\n.meta.output.fill \"aa\"", "", &["range.bin"], false),
+        case("metadata-source-bin-range-empty-intersection", ".meta.output.bin \"@BIN_ROOT@empty.bin:2000:2001\"", "", &["empty.bin"], false),
+        case("metadata-source-bin-multiple-unnamed-ranges", ".meta.output.name \"@ROOT@base\"\n.meta.output.bin \"1000:1001\"\n.meta.output.bin \"0000:0000\"", "", &["base-1000.bin", "base-0000.bin"], false),
+        case("metadata-source-bin-multiple-unnamed-no-ranges", ".meta.output.name \"@ROOT@base\"\n.meta.output.bin\n.meta.output.bin \"\"", "", &["base-1.bin", "base-2.bin"], false),
+        case("metadata-source-bin-multiple-unnamed-no-ranges-nonempty", ".meta.output.name \"@ROOT@base\"\n.meta.output.bin\n.meta.output.bin \"\"", "", &["base-1000.bin"], false),
+        case("metadata-source-bin-repeated-fill-last-wins", ".meta.output.bin \"@BIN_ROOT@repeat.bin:0ffe:1003\"\n.meta.output.fill \"aa\"\n.meta.output.fill \"bb\"", "", &["repeat.bin"], false),
+        case("metadata-source-bin-cli-bin-suppresses-vector", ".meta.output.name \"@ROOT@base\"\n.meta.output.hex \"@ROOT@source\"\n.meta.output.bin \"@BIN_ROOT@source\"", "--bin", &["base.bin", "source.hex"], false),
+    ]);
+    set_empty_image(&mut cases, "metadata-source-bin-multiple-unnamed-no-ranges");
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-hex-cli-bin",
+        &[("explicit.bin", &[0x12, 0x34])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-cli-bin-base",
+        &[("base.bin", &[0x12, 0x34])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-active-conditional",
+        &[("active.bin", &[0x12, 0x34])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-name",
+        &[("source.bin", &[0x12, 0x34])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-omitted-metadata-base",
+        &[("base.bin", &[0x12, 0x34])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-empty-metadata-base",
+        &[("base.bin", &[0x12, 0x34])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-custom-extension",
+        &[("source.image", &[0x12, 0x34])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-range-padded",
+        &[("range.bin", &[0xaa, 0xaa, 0x12, 0x34, 0xaa, 0xaa])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-range-empty-intersection",
+        &[("empty.bin", &[0, 0])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-multiple-unnamed-ranges",
+        &[("base-1000.bin", &[0x12, 0x34]), ("base-0000.bin", &[0])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-multiple-unnamed-no-ranges",
+        &[("base-1.bin", &[]), ("base-2.bin", &[])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-multiple-unnamed-no-ranges-nonempty",
+        &[("base-1000.bin", &[0x12, 0x34])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-repeated-fill-last-wins",
+        &[("repeat.bin", &[0xbb, 0xbb, 0x12, 0x34, 0xbb, 0xbb])],
+    );
+    set_binary_outputs(
+        &mut cases,
+        "metadata-source-bin-cli-bin-suppresses-vector",
+        &[("base.bin", &[0x12, 0x34])],
+    );
+    cases
 }
 
-fn source(metadata: &str, root: &str) -> String {
+fn source(metadata: &str, root: &str, empty_image: bool) -> String {
+    // BIN's shared colon grammar reserves ':' for a range. Relative guest BIN
+    // names are rooted by Work:, while host counterparts need an isolated path.
+    // NAME/HEX operands are ordinary paths and retain their volume prefix.
+    let bin_root = if root == "Work:" { "" } else { root };
     format!(
-        ".module main\n.cpu 68020\n{}\n.org $1000\n.byte $12,$34\n.endmodule\n",
-        metadata.replace("@ROOT@", root)
+        ".module main\n.cpu 68020\n{}\n.org $1000\n{}.endmodule\n",
+        metadata
+            .replace("@BIN_ROOT@", bin_root)
+            .replace("@ROOT@", root),
+        if empty_image { "" } else { ".byte $12,$34\n" }
     )
 }
 
@@ -68,7 +204,7 @@ fn rust_oracle(base: &Path, case: &MetadataCase) -> Vec<Vec<u8>> {
     fs::create_dir(&dir).unwrap();
     let input = dir.join("entry.asm");
     let root = format!("{}/", dir.display());
-    fs::write(&input, source(case.metadata, &root)).unwrap();
+    fs::write(&input, source(case.metadata, &root, case.empty_image)).unwrap();
     let mut args = vec![
         "opForge".to_string(),
         input.display().to_string(),
@@ -120,7 +256,17 @@ fn rust_oracle(base: &Path, case: &MetadataCase) -> Vec<Vec<u8>> {
         .map(|name| {
             let bytes = fs::read(dir.join(name)).unwrap();
             if name.ends_with(".bin") {
-                assert_eq!(bytes, [0x12, 0x34]);
+                let expected = case
+                    .binary_outputs
+                    .iter()
+                    .find_map(|(path, expected)| (*path == *name).then_some(*expected))
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{}: missing independent binary oracle for {name}",
+                            case.name
+                        )
+                    });
+                assert_eq!(bytes, expected, "{}: {name}", case.name);
             } else {
                 assert!(!bytes.is_empty());
             }
@@ -138,7 +284,27 @@ fn compact_cli_metadata_live_rust_oracles() {
     }
 }
 
-fn negative_cases() -> Vec<(&'static str, String, Option<&'static str>)> {
+struct NegativeMetadataCase {
+    name: &'static str,
+    source: String,
+    imported: Option<&'static str>,
+    diagnostic: &'static str,
+}
+
+fn rejection(
+    name: &'static str,
+    source: String,
+    imported: Option<&'static str>,
+) -> NegativeMetadataCase {
+    NegativeMetadataCase {
+        name,
+        source,
+        imported,
+        diagnostic: "binary source: unsupported or invalid input",
+    }
+}
+
+fn negative_cases() -> Vec<NegativeMetadataCase> {
     let mut result = Vec::new();
     for (name, metadata) in [
         ("metadata-reject-unquoted-name", ".meta.output.name base"),
@@ -157,18 +323,113 @@ fn negative_cases() -> Vec<(&'static str, String, Option<&'static str>)> {
             ".meta.output.68020.name \"Work:base\"",
         ),
         ("metadata-reject-list", ".meta.output.list \"Work:list\""),
-        ("metadata-reject-bin", ".meta.output.bin \"Work:image\""),
-        ("metadata-reject-fill", ".meta.output.fill \"ff\""),
+        (
+            "metadata-reject-bin-range",
+            ".meta.output.bin \"1000:0fff\"",
+        ),
+        ("metadata-reject-fill-byte", ".meta.output.fill \"g0\""),
+        ("metadata-reject-nul-path", ".meta.output.hex \"bad\0name\""),
         (
             "metadata-reject-nested",
             ".namespace nested\n.meta.output.hex \"Work:nested\"\n.endnamespace",
         ),
     ] {
-        result.push((name, source(metadata, "Work:"), None));
+        result.push(rejection(name, source(metadata, "Work:", false), None));
     }
-    result.push(("metadata-reject-imported", ".module main\n.cpu 68020\n.use imported as i\n.byte i.value\n.endmodule\n".into(), Some(".module imported\n.cpu 68020\n.meta.output.hex \"Work:imported\"\n.pub\nvalue = $12\n.endmodule\n")));
-    result.push(("metadata-reject-second-root-module", ".module main\n.cpu 68020\n.byte $12\n.endmodule\n.module other\n.meta.output.hex \"Work:other\"\n.endmodule\n".into(), None));
+    result.push(rejection("metadata-reject-imported", ".module main\n.cpu 68020\n.use imported as i\n.byte i.value\n.endmodule\n".into(), Some(".module imported\n.cpu 68020\n.meta.output.hex \"Work:imported\"\n.pub\nvalue = $12\n.endmodule\n")));
+    result.push(rejection("metadata-reject-second-root-module", ".module main\n.cpu 68020\n.byte $12\n.endmodule\n.module other\n.meta.output.hex \"Work:other\"\n.endmodule\n".into(), None));
+    let mut late = rejection(
+        "metadata-reject-late-bin-path",
+        source(
+            ".meta.output.bin \"first\"\n.meta.output.bin \"../escape\"",
+            "Work:",
+            false,
+        ),
+        None,
+    );
+    late.diagnostic = "compact CLI: output failed";
+    result.push(late);
     result
+}
+
+struct OwnedMetadataRun {
+    name: String,
+    source: String,
+    command: String,
+    imported: Option<String>,
+    artifacts: Vec<(String, Vec<u8>)>,
+    absent: Vec<String>,
+    diagnostic: Option<String>,
+    exit: i32,
+    outputs: Option<Vec<String>>,
+}
+
+fn check_metadata_run(
+    name: &str,
+    run: &FsUaeSmokeRun,
+    exit: i32,
+    outputs: Option<&[&str]>,
+    telemetry: bool,
+    failures: &mut Vec<String>,
+) {
+    if telemetry && exit == 0 {
+        let Some(memory) = run
+            .captured_artifacts
+            .get(&PathBuf::from("Work/memory.bin"))
+        else {
+            failures.push(format!("{name}: missing memory telemetry"));
+            return;
+        };
+        if memory.len() != 2280 || &memory[..4] != b"MEMD" {
+            failures.push(format!("{name}: invalid memory telemetry record"));
+            return;
+        }
+        let word =
+            |index: usize| u32::from_be_bytes(memory[index * 4..index * 4 + 4].try_into().unwrap());
+        if word(1) != 0 || word(3) != word(4) || word(11) != 0 || word(29) != 0 || word(524) != 0 {
+            failures.push(format!(
+                "{name}: telemetry ownership, allocation or profiling failure"
+            ));
+            return;
+        }
+    }
+    if let Some(outputs) = outputs {
+        // The runner stages input.bin for CompactCli and the startup
+        // alias named by FS_UAE_STARTUP_HUNK_ALIAS. Exclude only those
+        // exact inputs; assembler output must never collide with them.
+        let staged = [
+            PathBuf::from("Work/input.bin"),
+            PathBuf::from("Work").join(FS_UAE_STARTUP_HUNK_ALIAS),
+        ];
+        assert!(outputs
+            .iter()
+            .all(|name| !staged.contains(&PathBuf::from("Work").join(name))));
+        // Include every emitted output class, including unwanted defaults.
+        let actual: Vec<_> = run
+            .captured_artifacts
+            .keys()
+            .filter(|path| {
+                !staged.contains(path)
+                    && (outputs
+                        .iter()
+                        .any(|name| PathBuf::from("Work").join(name) == **path)
+                        || matches!(
+                            path.extension().and_then(|ext| ext.to_str()),
+                            Some("hex" | "srec" | "lst" | "bin" | "hunk")
+                        ))
+            })
+            .filter(|path| !telemetry || path.as_path() != Path::new("Work/memory.bin"))
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect();
+        let mut expected: Vec<_> = outputs.iter().map(|name| format!("Work/{name}")).collect();
+        expected.sort();
+        if actual != expected {
+            failures.push(format!(
+                "{name}: guest output inventory {actual:?}, expected {expected:?}"
+            ));
+        }
+    }
+    eprintln!("{name}: fresh native completion, exit {exit}");
 }
 
 #[test]
@@ -180,13 +441,6 @@ fn compact_cli_inline_source_metadata() {
         .unwrap();
     let dir = scratch();
     let _cleanup = EphemeralArtifactDir(dir.clone());
-    let build = build_native_packages(
-        &engine::build_default_asm_registry(),
-        &dir.join("native"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
-        &EmbedSelection::Targets(vec!["68020".into()]),
-    )
-    .unwrap();
     let telemetry = std::env::var_os("OPFORGE_CLI_METADATA_TELEMETRY").is_some();
     let defines = if telemetry {
         vec![
@@ -197,7 +451,18 @@ fn compact_cli_inline_source_metadata() {
     } else {
         vec![]
     };
-    let image = super::compact_cli_input::assemble_cli_with_defines(&root, &build, &defines);
+    let image = if let Some(path) = std::env::var_os("OPFORGE_CLI_METADATA_IMAGE") {
+        fs::read(path).expect("read prebuilt compact CLI metadata image")
+    } else {
+        let build = build_native_packages(
+            &engine::build_default_asm_registry(),
+            &dir.join("native"),
+            &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+            &EmbedSelection::Targets(vec!["68020".into()]),
+        )
+        .unwrap();
+        super::compact_cli_input::assemble_cli_with_defines(&root, &build, &defines)
+    };
     let selected = std::env::var("OPFORGE_CLI_METADATA_CASES").ok();
     let positive = cases();
     let negatives = negative_cases();
@@ -205,7 +470,7 @@ fn compact_cli_inline_source_metadata() {
         for name in names.split(',') {
             assert!(
                 positive.iter().any(|case| case.name == name)
-                    || negatives.iter().any(|case| case.0 == name)
+                    || negatives.iter().any(|case| case.name == name)
                     || name == "metadata-reject-go-without-record-output",
                 "unknown metadata case {name}"
             );
@@ -216,6 +481,19 @@ fn compact_cli_inline_source_metadata() {
             .as_ref()
             .is_none_or(|names| names.split(',').any(|item| item == name))
     };
+    let batch_size = std::env::var("OPFORGE_CLI_METADATA_BATCH_SIZE")
+        .ok()
+        .map(|value| {
+            let size: usize = value
+                .parse()
+                .expect("metadata batch size must be in 1..=64");
+            assert!(
+                (1..=64).contains(&size),
+                "metadata batch size must be in 1..=64"
+            );
+            size
+        });
+    let mut pending = Vec::new();
     let mut failures = Vec::new();
     let mut oracle_failures = Vec::new();
     let mut attempted = 0;
@@ -232,6 +510,38 @@ fn compact_cli_inline_source_metadata() {
                 "--cpu 68020 Work:entry.asm {}",
                 flags.replace("@ROOT@", "Work:")
             );
+            if batch_size.is_some() {
+                let mut owned = OwnedMetadataRun {
+                    name: name.into(),
+                    source: source.into(),
+                    command,
+                    imported: imported.map(str::to_owned),
+                    artifacts: vec![],
+                    absent: vec![],
+                    diagnostic: None,
+                    exit,
+                    outputs: outputs.map(|names| names.iter().map(|name| (*name).into()).collect()),
+                };
+                match proof {
+                    OpforgeNativeCliProof::ExactArtifacts(artifacts) => {
+                        owned.artifacts = artifacts
+                            .iter()
+                            .map(|artifact| {
+                                (artifact.relative_path.into(), artifact.rust_oracle.to_vec())
+                            })
+                            .collect()
+                    }
+                    OpforgeNativeCliProof::SuccessfulExitWithoutArtifacts(paths) => {
+                        owned.absent = paths.iter().map(|path| (*path).into()).collect()
+                    }
+                    OpforgeNativeCliProof::ExpectedFailureContaining(diagnostic) => {
+                        owned.diagnostic = Some(diagnostic.into())
+                    }
+                    _ => panic!("unsupported metadata proof"),
+                }
+                pending.push(owned);
+                return;
+            }
             let mut files = vec![OpforgeNativeCliGuestFile {
                 relative_path: "entry.asm",
                 bytes: source.as_bytes(),
@@ -258,70 +568,7 @@ fn compact_cli_inline_source_metadata() {
                         && runs[0].protocol_completed
                         && runs[0].exit_code == Some(exit) =>
                 {
-                    if telemetry && exit == 0 {
-                        let Some(memory) = runs[0]
-                            .captured_artifacts
-                            .get(&PathBuf::from("Work/memory.bin"))
-                        else {
-                            failures.push(format!("{name}: missing memory telemetry"));
-                            return;
-                        };
-                        if memory.len() != 2280 || &memory[..4] != b"MEMD" {
-                            failures.push(format!("{name}: invalid memory telemetry record"));
-                            return;
-                        }
-                        let word = |index: usize| {
-                            u32::from_be_bytes(memory[index * 4..index * 4 + 4].try_into().unwrap())
-                        };
-                        if word(1) != 0
-                            || word(3) != word(4)
-                            || word(11) != 0
-                            || word(29) != 0
-                            || word(524) != 0
-                        {
-                            failures.push(format!(
-                                "{name}: telemetry ownership, allocation or profiling failure"
-                            ));
-                            return;
-                        }
-                    }
-                    if let Some(outputs) = outputs {
-                        // The runner stages input.bin for CompactCli and the startup
-                        // alias named by FS_UAE_STARTUP_HUNK_ALIAS. Exclude only those
-                        // exact inputs; assembler output must never collide with them.
-                        let staged = [
-                            PathBuf::from("Work/input.bin"),
-                            PathBuf::from("Work").join(FS_UAE_STARTUP_HUNK_ALIAS),
-                        ];
-                        assert!(outputs
-                            .iter()
-                            .all(|name| !staged.contains(&PathBuf::from("Work").join(name))));
-                        // Include every emitted output class, including unwanted defaults.
-                        let actual: Vec<_> = runs[0]
-                            .captured_artifacts
-                            .keys()
-                            .filter(|path| {
-                                !staged.contains(path)
-                                    && matches!(
-                                        path.extension().and_then(|ext| ext.to_str()),
-                                        Some("hex" | "srec" | "lst" | "bin" | "hunk")
-                                    )
-                            })
-                            .filter(|path| {
-                                !telemetry || path.as_path() != Path::new("Work/memory.bin")
-                            })
-                            .map(|path| path.to_string_lossy().into_owned())
-                            .collect();
-                        let mut expected: Vec<_> =
-                            outputs.iter().map(|name| format!("Work/{name}")).collect();
-                        expected.sort();
-                        if actual != expected {
-                            failures.push(format!(
-                                "{name}: guest output inventory {actual:?}, expected {expected:?}"
-                            ));
-                        }
-                    }
-                    eprintln!("{name}: fresh native completion, exit {exit}");
+                    check_metadata_run(name, &runs[0], exit, outputs, telemetry, &mut failures);
                 }
                 Ok(FsUaeSmokeOutcome::Completed { runs }) => failures.push(format!(
                     "{name}: invalid completion/exit ({} runs)",
@@ -368,7 +615,7 @@ fn compact_cli_inline_source_metadata() {
             };
             run(
                 case.name,
-                &source(case.metadata, "Work:"),
+                &source(case.metadata, "Work:", case.empty_image),
                 case.flags,
                 None,
                 proof,
@@ -376,23 +623,21 @@ fn compact_cli_inline_source_metadata() {
                 Some(case.outputs),
             );
         }
-        for (name, source, imported) in negatives.iter().filter(|case| wanted(case.0)) {
+        for case in negatives.iter().filter(|case| wanted(case.name)) {
             run(
-                name,
-                source,
+                case.name,
+                &case.source,
                 "",
-                *imported,
-                OpforgeNativeCliProof::ExpectedFailureContaining(
-                    "binary source: unsupported or invalid input",
-                ),
+                case.imported,
+                OpforgeNativeCliProof::ExpectedFailureContaining(case.diagnostic),
                 20,
-                None,
+                Some(&[]),
             );
         }
         if wanted("metadata-reject-go-without-record-output") {
             run(
                 "metadata-reject-go-without-record-output",
-                &source("", "Work:"),
+                &source("", "Work:", false),
                 "--go 1234",
                 None,
                 OpforgeNativeCliProof::ExpectedFailureContaining("compact CLI:"),
@@ -401,9 +646,101 @@ fn compact_cli_inline_source_metadata() {
             );
         }
     }
+    if let Some(batch_size) = batch_size {
+        let files: Vec<Vec<_>> = pending
+            .iter()
+            .map(|owned| {
+                let mut files = vec![OpforgeNativeCliGuestFile {
+                    relative_path: "entry.asm",
+                    bytes: owned.source.as_bytes(),
+                }];
+                if let Some(imported) = &owned.imported {
+                    files.push(OpforgeNativeCliGuestFile {
+                        relative_path: "imported.asm",
+                        bytes: imported.as_bytes(),
+                    });
+                }
+                files
+            })
+            .collect();
+        let artifacts: Vec<Vec<_>> = pending
+            .iter()
+            .map(|owned| {
+                owned
+                    .artifacts
+                    .iter()
+                    .map(|(path, bytes)| OpforgeNativeCliExpectedArtifact {
+                        relative_path: path,
+                        rust_oracle: bytes,
+                    })
+                    .collect()
+            })
+            .collect();
+        let absent: Vec<Vec<_>> = pending
+            .iter()
+            .map(|owned| owned.absent.iter().map(String::as_str).collect())
+            .collect();
+        let cases: Vec<_> = pending
+            .iter()
+            .enumerate()
+            .map(|(index, owned)| OpforgeNativeCliParityCase {
+                name: &owned.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(owned.source.as_bytes()),
+                command_template: Some(&owned.command),
+                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: &files[index],
+                proof: if let Some(diagnostic) = &owned.diagnostic {
+                    OpforgeNativeCliProof::ExpectedFailureContaining(diagnostic)
+                } else if artifacts[index].is_empty() {
+                    OpforgeNativeCliProof::SuccessfulExitWithoutArtifacts(&absent[index])
+                } else {
+                    OpforgeNativeCliProof::ExactArtifacts(&artifacts[index])
+                },
+            })
+            .collect();
+        // The frozen image already contains the selected instrumentation defines.
+        // Breadth is correctness-only: per-case timing is deliberately absent.
+        if !cases.is_empty() {
+            match run_prebuilt_compact_cli_breadth_from_env(&root, &cases, &image, batch_size) {
+                Ok(results) => {
+                    assert_eq!(results.len(), pending.len());
+                    for (owned, result) in pending.iter().zip(results) {
+                        if let Some(error) = result.error {
+                            failures.push(format!("{}: {error}", owned.name));
+                            continue;
+                        }
+                        let Some(run) = result.run else {
+                            failures.push(format!("{}: missing completion", owned.name));
+                            continue;
+                        };
+                        if !run.protocol_completed || run.exit_code != Some(owned.exit) {
+                            failures.push(format!("{}: invalid completion/exit", owned.name));
+                            continue;
+                        }
+                        assert!(run.start_to_done_host_seconds.is_none());
+                        let outputs = owned
+                            .outputs
+                            .as_ref()
+                            .map(|names| names.iter().map(String::as_str).collect::<Vec<_>>());
+                        check_metadata_run(
+                            &owned.name,
+                            &run,
+                            owned.exit,
+                            outputs.as_deref(),
+                            telemetry,
+                            &mut failures,
+                        );
+                    }
+                }
+                Err(error) => failures.push(format!("metadata breadth: {error}")),
+            }
+        }
+    }
     failures.extend(oracle_failures);
     let expected = positive.iter().filter(|case| wanted(case.name)).count()
-        + negatives.iter().filter(|case| wanted(case.0)).count()
+        + negatives.iter().filter(|case| wanted(case.name)).count()
         + usize::from(wanted("metadata-reject-go-without-record-output"));
     assert_eq!(
         attempted, expected,

@@ -11,6 +11,10 @@ Spans	.long ?
 SpanBytes	.long ?
 Buffer	.long ?  ; caller scratch, no ownership transferred
 Capacity	.long ?  ; positive signed chunk limit, at most $7fffffff bytes
+RangeSet	.word ?  ; 0 initialized envelope, 1 explicit inclusive range
+Fill	.word ?  ; unsigned byte used for holes and explicit range padding
+RangeStart	.long ?
+RangeEnd	.long ?
 Load	.long ?  ; first address; zero for an empty image
 Extent	.long ?  ; low32 of last-inclusive - Load + 1
 ExtentHigh	.long ?  ; zero or one: full 32-bit address space has extent1:0
@@ -39,7 +43,9 @@ MAGIC = $464c4154
 ; not wrap. Frame and Buffer must be disjoint from each other and both input
 ; views; the two immutable input views may overlap. No allocation or OS calls.
 ; next requires a successful init; inputs then remain immutable until END.
-; Empty images permit NULL input pointers.
+; Empty images permit NULL input pointers. An explicit ascending inclusive range
+; clips initialized bytes and pads either side with Fill; otherwise only internal
+; holes are filled. Range/fill validation is atomic with input preflight.
 init	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a4
@@ -51,6 +57,10 @@ init	.block
 	bcs.w bad
 	tst.l Frame.Capacity(a4)
 	ble.w bad
+	cmpi.w #1, Frame.RangeSet(a4)
+	bhi.w bad
+	cmpi.w #255, Frame.Fill(a4)
+	bhi.w bad
 	movea.l Frame.Buffer(a4), a0
 	move.l Frame.Capacity(a4), d0
 	bsr.w span
@@ -114,6 +124,33 @@ addressEnd
 	subi.l #records.SPAN_BYTES, d5
 	bne.w checkSpan
 validated
+	moveq #0, d0  ; initial span cursor
+	moveq #0, d1  ; initial payload displacement
+	tst.w Frame.RangeSet(a4)
+	beq.w extent
+	move.l Frame.RangeStart(a4), d6
+	move.l Frame.RangeEnd(a4), d7
+	cmp.l d6, d7
+	blo.w bad
+	moveq #1, d4  ; explicit ranges also render an empty initialized image
+seek
+	cmp.l Frame.SpanBytes(a4), d0
+	bhs.w extent
+	movea.l Frame.Spans(a4), a5
+	adda.l d0, a5
+	move.l records.Span.Address(a5), d5
+	cmp.l d6, d5
+	bhs.w extent
+	add.l records.Span.Bytes(a5), d5
+	subq.l #1, d5  ; validated inclusive end; exclusive end may wrap
+	cmp.l d6, d5
+	bhs.w within
+	addi.l #records.SPAN_BYTES, d0
+	bra.w seek
+within
+	move.l d6, d1
+	sub.l records.Span.Address(a5), d1
+extent
 	moveq #0, d2
 	moveq #0, d3
 	tst.l d4
@@ -130,8 +167,8 @@ publish
 	move.l d6, Frame.Address(a4)
 	move.l d2, Frame.Remaining(a4)
 	move.l d3, Frame.RemainingHigh(a4)
-	clr.l Frame.Cursor(a4)
-	clr.l Frame.Within(a4)
+	move.l d0, Frame.Cursor(a4)
+	move.l d1, Frame.Within(a4)
 	move.l #MAGIC, Frame.Valid(a4)
 	move.l d6, d1
 	moveq #STATUS_OK, d0
@@ -148,7 +185,7 @@ done
 ; output_io Generator ABI: A0=initialized Frame/context. D0/CCR=ITEM0,END1,
 ; INVALID2. ITEM returns A0=Buffer,D1=positive bytes <=Capacity. END/INVALID
 ; preserve incoming A0/D1; all other registers always preserved. Streams exactly
-; ExtentHigh:Extent bytes: no leading/trailing holes, internal holes zero-filled.
+; ExtentHigh:Extent bytes, with configured Fill for absent initialized bytes.
 ; Remaining counts terminate iteration, not a wrapping address/end sentinel.
 ; The final Address may wrap after emitting $ffffffff; it is never read again.
 next	.block
@@ -174,7 +211,7 @@ more
 	beq.w chunkReady
 	move.l Frame.Cursor(a4), d0
 	cmp.l Frame.SpanBytes(a4), d0
-	bhs.w bad
+	bhs.w trailing
 	movea.l Frame.Spans(a4), a6
 	adda.l d0, a6
 	tst.l Frame.Within(a4)
@@ -189,11 +226,14 @@ more
 zeroSize
 	move.l d4, d0
 zeros
-	clr.b (a5)+
+	move.b Frame.Fill+1(a4), (a5)+
 	subq.l #1, d0
 	bne.w zeros
 	bsr.w advance
 	bra.w more
+trailing
+	move.l d7, d4
+	bra.w zeroSize
 payload
 	move.l records.Span.Bytes(a6), d4
 	sub.l Frame.Within(a4), d4

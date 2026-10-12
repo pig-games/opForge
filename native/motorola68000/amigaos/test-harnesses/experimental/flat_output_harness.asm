@@ -11,8 +11,12 @@ SpanBytes	.long ?
 DataBytes	.long ?
 InitOnly	.long ?
 Negative	.long ?
+RangeSet	.long ?
+RangeStart	.long ?
+RangeEnd	.long ?
+Fill	.long ?
 .endstruct
-HEADER_BYTES = Header.Negative+4
+HEADER_BYTES = Header.Fill+4
 FixtureHeader	.struct
 CaseCount	.long ?
 .endstruct
@@ -143,6 +147,10 @@ clearFrame
 	move.l Header.SpanBytes(a1), flat.Frame.SpanBytes(a0)
 	move.l #Buffer, flat.Frame.Buffer(a0)
 	move.l Header.Capacity(a1), flat.Frame.Capacity(a0)
+	move.w Header.RangeSet+2(a1), flat.Frame.RangeSet(a0)
+	move.l Header.RangeStart(a1), flat.Frame.RangeStart(a0)
+	move.l Header.RangeEnd(a1), flat.Frame.RangeEnd(a0)
+	move.w Header.Fill+2(a1), flat.Frame.Fill(a0)
 	move.l Header.Fault(a1), d0
 	cmpi.l #1, d0
 	bne.w spanWrap

@@ -20,12 +20,14 @@ RAW_BRACKET_OPEN = 10
 RAW_BRACKET_CLOSE = 11
 RAW_PAREN_OPEN = 14
 RAW_PAREN_CLOSE = 15
+SPAN_OUTER_COMMA_BIT = 2
 	.section code, kind=code
 
 ; A0/A1=remaining raw line,A2=raw package header.
 ; A6=first complete operand end (before comma).
 ; D0=0 ordinary,1 complex,2 malformed; other registers preserved. CCR=D0.
-; Brackets and scalar member/displacement syntax select recursive preparation.
+; Brackets, outer parenthesized comma children, and scalar member/displacement
+; syntax select recursive preparation; the package owns their meaning.
 needs	.block
 	movem.l d1-d7/a0-a5, -(sp)
 	cmpa.l a1, a0
@@ -40,6 +42,8 @@ needs	.block
 	bne.w bad
 ready
 	btst #1, d7
+	bne.w complex
+	btst #SPAN_OUTER_COMMA_BIT, d7
 	bne.w complex
 	tst.l d7
 	beq.w classified
@@ -588,6 +592,13 @@ delimiters
 	bne.w token
 	tst.l d4
 	beq.w ok
+	; Only commas between the operand's outer parenthesized children select
+	; tuple transport. Commas inside a scalar call remain expression syntax.
+	cmpi.l #1, d4
+	bne.w token
+	cmpi.b #RAW_PAREN_OPEN, (a0)
+	bne.w token
+	bset #SPAN_OUTER_COMMA_BIT, d7
 	bra.w token
 bracket
 	bset #1, d7

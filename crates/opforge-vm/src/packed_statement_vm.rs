@@ -111,7 +111,7 @@ pub fn compile_views(
     compile(program, &tokens, end)
 }
 
-fn validate_view(view: &wire::TokenView, arena: &[u8], span: Span) -> Result<(), ParseError> {
+pub(crate) fn validate_view(view: &wire::TokenView, arena: &[u8], span: Span) -> Result<(), ParseError> {
     let invalid = || error("Invalid statement token view", span);
     let end = (view.literal_offset as usize)
         .checked_add(view.literal_bytes as usize)

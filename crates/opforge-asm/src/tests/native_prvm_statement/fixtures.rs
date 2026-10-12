@@ -5,6 +5,19 @@ use package::statement_program as policy;
 use types::packed_statement::{self as wire, TokenView};
 use vm::packed_statement_vm::{compile_views, execute_match, prepare_tokens, select_head, Plan};
 
+use types::statement_invocation::{Route, ScopeRow};
+use vm::statement_invocation::{
+    decode_program, fallback_views, longest_prefix, route, select_overloads, MatchInput,
+    ScopedPlans,
+};
+#[derive(Clone, Default)]
+struct InvocationData {
+    scope: Vec<ScopeRow>,
+    keywords: Vec<u8>,
+    plans: Vec<Plan>,
+    head: Vec<u8>,
+}
+
 const BUDGET: u32 = 100_000;
 const OUTPUT: u32 = 8192;
 const WORKSPACE: u32 = 16384;
@@ -20,6 +33,7 @@ struct Case {
     arena: Vec<u8>,
     names: Vec<u16>,
     rejection: Option<u32>,
+    invocation: InvocationData,
 }
 fn span() -> Span {
     Span {
@@ -52,6 +66,7 @@ fn compile_case(text: &str, rejection: Option<u32>) -> Case {
         arena,
         names: vec![],
         rejection,
+        invocation: InvocationData::default(),
     }
 }
 fn match_case(signature: &str, invocation: &str) -> Case {
@@ -97,6 +112,7 @@ fn head_case(text: &str, rejection: Option<u32>) -> Case {
         arena,
         names,
         rejection,
+        invocation: InvocationData::default(),
     }
 }
 fn lossy_case(input: &[u8]) -> Case {
@@ -111,6 +127,7 @@ fn lossy_case(input: &[u8]) -> Case {
         arena: input.to_vec(),
         names: vec![],
         rejection: None,
+        invocation: InvocationData::default(),
     }
 }
 fn word(bytes: &mut Vec<u8>, value: u32) {
@@ -185,6 +202,79 @@ impl Case {
                     .into_bytes();
                 Ok((bytes.len() as u32, 0, 0, bytes))
             }
+            6 => decode_program(&self.program, span())
+                .and_then(|p| {
+                    route(
+                        &p,
+                        &self.tokens,
+                        &self.arena,
+                        &self.invocation.scope,
+                        &self.invocation.keywords,
+                        span(),
+                    )
+                })
+                .map(|route| {
+                    route.map_or((0, 0, 0, vec![]), |r| {
+                        (1, r.label_token, r.head_token, r.encode().to_vec())
+                    })
+                }),
+            7 => decode_program(&self.program, span())
+                .and_then(|p| fallback_views(&p, &self.tokens, &self.arena, span()))
+                .map(|views| {
+                    let mut bytes = Vec::new();
+                    for v in &views {
+                        bytes.extend(v.encode());
+                    }
+                    (views.len() as u32, bytes.len() as u32, 0, bytes)
+                }),
+            8 => decode_program(&self.program, span())
+                .and_then(|p| {
+                    let prefix = longest_prefix(
+                        &p,
+                        &self.invocation.head,
+                        &self.invocation.scope,
+                        &self.invocation.keywords,
+                        span(),
+                    )?;
+                    select_overloads(
+                        &p,
+                        &self.program,
+                        &ScopedPlans {
+                            rows: &self.invocation.scope,
+                            keywords: &self.invocation.keywords,
+                            plans: &self.invocation.plans,
+                        },
+                        &MatchInput {
+                            route: Route {
+                                label_token: wire::NONE,
+                                head_token: 0,
+                                prefix_bytes: prefix,
+                            },
+                            head: &self.invocation.head,
+                            views: &self.tokens,
+                            arena: &self.arena,
+                            span: span(),
+                        },
+                    )
+                })
+                .map(|(selected, fallback)| {
+                    let Some(selected) = selected else {
+                        return (0, 0, 0, vec![]);
+                    };
+                    let mut bytes = selected.encode_header().to_vec();
+                    for c in &selected.captures {
+                        bytes.extend(c.encode());
+                    }
+                    let fallback_count = if selected.used_fallback {
+                        for v in &fallback {
+                            bytes.extend(v.encode());
+                        }
+                        fallback.len() as u32
+                    } else {
+                        0
+                    };
+                    (1, selected.captures.len() as u32, fallback_count, bytes)
+                }),
             _ => unreachable!(),
         };
         if let Some(status) = self.rejection {
@@ -201,9 +291,18 @@ impl Case {
         if self.budget == 0 {
             return result(12, 0, 0, 0, &[]);
         }
-        if payload.len() > self.output as usize
+        // Selection and derived views publish into independently bounded
+        // buffers; the artifact concatenates them only after successful return.
+        let required_output = if self.mode == 8 && primary != 0 {
+            (types::statement_invocation::SELECTION_BYTES
+                + secondary as usize * wire::CAPTURE_BYTES)
+                .max(tertiary as usize * wire::TOKEN_BYTES)
+        } else {
+            payload.len()
+        };
+        if required_output > self.output as usize
             || (self.workspace == 0
-                && matches!(self.mode, 1 | 2)
+                && matches!(self.mode, 1 | 2 | 7 | 8)
                 && (!payload.is_empty() || self.mode == 1))
         {
             return result(7, 0, 0, 0, &[]);
@@ -221,6 +320,10 @@ impl Case {
             self.tokens.len() as u32,
             self.arena.len() as u32,
             self.names.len() as u32,
+            self.invocation.scope.len() as u32,
+            self.invocation.keywords.len() as u32,
+            self.invocation.plans.len() as u32,
+            self.invocation.head.len() as u32,
         ] {
             word(out, value);
         }
@@ -233,6 +336,15 @@ impl Case {
         for name in &self.names {
             out.extend(name.to_be_bytes());
         }
+        for row in &self.invocation.scope {
+            out.extend(row.encode());
+        }
+        padded(out, &self.invocation.keywords);
+        for plan in &self.invocation.plans {
+            word(out, plan.0.len() as u32);
+            padded(out, &plan.0);
+        }
+        padded(out, &self.invocation.head);
     }
 }
 
@@ -401,6 +513,7 @@ pub(super) fn batch() -> (Vec<u8>, Vec<u8>) {
             cases.push(workspace);
         }
     }
+    cases.extend(invocation_cases());
     let mut input = Vec::new();
     word(&mut input, cases.len() as u32);
     let mut expected = Vec::new();
@@ -409,4 +522,111 @@ pub(super) fn batch() -> (Vec<u8>, Vec<u8>) {
         expected.extend(case.oracle());
     }
     (input, expected)
+}
+
+fn invocation_case(mode: u32, input: &str, head: &str, definitions: &[(&str, &str)]) -> Case {
+    let mut case = match_case("byte:x", input);
+    case.mode = mode;
+    case.invocation.head = head.as_bytes().to_vec();
+    for (index, (keyword, signature)) in definitions.iter().enumerate() {
+        let definition = compile_case(signature, None);
+        let plan = compile_views(
+            &definition.program,
+            &definition.tokens,
+            &definition.arena,
+            span(),
+        )
+        .unwrap();
+        case.invocation.scope.push(ScopeRow {
+            keyword_offset: case.invocation.keywords.len() as u32,
+            keyword_bytes: keyword.len() as u32,
+            plan_id: index as u32,
+            template_id: index as u32 + 100,
+        });
+        case.invocation.keywords.extend(keyword.as_bytes());
+        case.invocation.plans.push(plan);
+    }
+    case
+}
+fn invocation_cases() -> Vec<Case> {
+    let mut out = Vec::new();
+    let defs = [("N", "byte:x"), ("NX", "char:x[{byte:y}]")];
+    for input in [
+        " nXmore 7",
+        "label nXmore 7",
+        "label: nXmore 7",
+        "label : nXmore 7",
+        "N",
+        " .N 7",
+        " Unknown 7",
+        " n 7",
+    ] {
+        out.push(invocation_case(6, input, "", &defs));
+    }
+    for input in [
+        "d0",
+        "D123",
+        "d 0",
+        "xy",
+        "d_0",
+        "d18446744073709551616",
+        "d4294967295",
+        "7",
+        "'d0'",
+        "d0,d2",
+    ] {
+        out.push(invocation_case(7, input, "", &[]));
+    }
+    for definitions in [
+        vec![("N", "byte:x"), ("N", "char:x[{byte:y}]")],
+        vec![("N", "char:x[{byte:y}]")],
+        vec![("N", "byte:x"), ("N", "byte:y")],
+        vec![("N", "byte:x"), ("N", "\"7\"")],
+    ] {
+        for input in [
+            "d0",
+            "d 0",
+            "7",
+            "256",
+            "d4294967296",
+            "d18446744073709551616",
+        ] {
+            let mut case = invocation_case(8, input, "N", &definitions);
+            if definitions == vec![("N", "byte:x"), ("N", "byte:y")]
+                && ["d0", "7", "d4294967296", "d18446744073709551616"].contains(&input)
+            {
+                case.rejection = Some(5);
+            }
+            out.push(case);
+        }
+    }
+    for mode in 6..=8 {
+        let mut base = invocation_case(
+            mode,
+            if mode == 6 { " N d0" } else { "d0" },
+            "N",
+            &[("N", "char:x[{byte:y}]")],
+        );
+        let mut budget = base.clone();
+        budget.budget = 0;
+        out.push(budget);
+        let mut capacity = base.clone();
+        capacity.output = 0;
+        out.push(capacity);
+        if mode != 6 {
+            base.workspace = 0;
+            out.push(base);
+        }
+    }
+    for (signature, capacities) in [
+        ("byte:x", &[31, 32][..]),
+        ("char:x[{byte:y}]", &[43, 63, 64][..]),
+    ] {
+        for capacity in capacities {
+            let mut case = invocation_case(8, "d0", "N", &[("N", signature)]);
+            case.output = *capacity;
+            out.push(case);
+        }
+    }
+    out
 }

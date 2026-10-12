@@ -14,6 +14,7 @@ pub mod packed_statement;
 pub mod path_display;
 pub mod processing;
 pub mod source_map;
+pub mod statement_invocation;
 pub mod symbol;
 pub mod symbol_stability;
 pub mod target_callbacks;

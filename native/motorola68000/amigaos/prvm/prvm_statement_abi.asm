@@ -12,6 +12,7 @@ BUDGET_EXCEEDED = 12
 OP_COMPILE = $a6
 OP_MATCH = $a7
 OP_HEAD = $a8
+OP_INVOCATION = $a9
 OP_PUBLISH = $83
 OP_END = 0
 K_IDENTIFIER = 0
@@ -111,6 +112,48 @@ Kind	.byte ?
 TextBytes	.byte ?
 	.endstruct
 RENDER_HEADER_BYTES = RenderText.TextBytes+1
+InvocationPolicy	.struct
+Opcode	.byte ?
+Flags	.byte ?
+UpperFirst	.byte ?
+UpperLast	.byte ?
+LowerFirst	.byte ?
+LowerLast	.byte ?
+DigitFirst	.byte ?
+DigitLast	.byte ?
+	.endstruct
+INVOCATION_POLICY_BYTES = InvocationPolicy.DigitLast+1
+INVOCATION_FOLD_ASCII = 1
+INVOCATION_COLUMN_ONE_LABEL = 2
+INVOCATION_DECIMAL_FALLBACK = 4
+INVOCATION_FLAGS = INVOCATION_FOLD_ASCII+INVOCATION_COLUMN_ONE_LABEL+INVOCATION_DECIMAL_FALLBACK
+MATCH_PROGRAM_BYTES = MATCH_HEADER_BYTES+POLICY_TYPE_COUNT*TYPE_POLICY_BYTES+INVOCATION_POLICY_BYTES+2
+ScopeRow	.struct
+KeywordOffset	.long ?
+KeywordBytes	.long ?
+PlanId	.long ?
+TemplateId	.long ?
+	.endstruct
+SCOPE_ROW_BYTES = ScopeRow.TemplateId+4
+PlanRef	.struct
+Ptr	.long ?
+Bytes	.long ?
+	.endstruct
+PLAN_REF_BYTES = PlanRef.Bytes+4
+Route	.struct
+LabelToken	.long ?
+HeadToken	.long ?
+PrefixBytes	.long ?
+	.endstruct
+ROUTE_BYTES = Route.PrefixBytes+4
+Selection	.struct
+ScopeIndex	.long ?
+PlanId	.long ?
+TemplateId	.long ?
+FallbackUsed	.long ?
+CaptureCount	.long ?
+	.endstruct
+SELECTION_BYTES = Selection.CaptureCount+4
 IDENTITY_BYTES = 2
 HEAD_DEFINITION = 1
 HEAD_END = 2
@@ -167,4 +210,59 @@ WorkspaceCapacity	.long ?
 StepBudget	.long ?
 	.endstruct
 MATCH_FRAME_BYTES = MatchFrame.StepBudget+4
+RouteFrame	.struct
+ProgramPtr	.long ?
+ProgramBytes	.long ?
+TokenPtr	.long ?
+TokenCount	.long ?
+ArenaPtr	.long ?
+ArenaBytes	.long ?
+ScopePtr	.long ?
+ScopeCount	.long ?
+KeywordsPtr	.long ?
+KeywordsBytes	.long ?
+OutputPtr	.long ?
+OutputCapacity	.long ?
+StepBudget	.long ?
+	.endstruct
+ROUTE_FRAME_BYTES = RouteFrame.StepBudget+4
+FallbackFrame	.struct
+ProgramPtr	.long ?
+ProgramBytes	.long ?
+TokenPtr	.long ?
+TokenCount	.long ?
+ArenaPtr	.long ?
+ArenaBytes	.long ?
+OutputPtr	.long ?
+OutputCapacity	.long ?
+WorkspacePtr	.long ?
+WorkspaceCapacity	.long ?
+StepBudget	.long ?
+	.endstruct
+FALLBACK_FRAME_BYTES = FallbackFrame.StepBudget+4
+SelectFrame	.struct
+ProgramPtr	.long ?
+ProgramBytes	.long ?
+ScopePtr	.long ?
+ScopeCount	.long ?
+KeywordsPtr	.long ?
+KeywordsBytes	.long ?
+PlanRefsPtr	.long ?
+PlanRefsCount	.long ?
+HeadPtr	.long ?
+HeadBytes	.long ?
+PrefixBytes	.long ?
+TokenPtr	.long ?
+TokenCount	.long ?
+ArenaPtr	.long ?
+ArenaBytes	.long ?
+OutputPtr	.long ?
+OutputCapacity	.long ?
+FallbackPtr	.long ?
+FallbackCapacity	.long ?
+WorkspacePtr	.long ?
+WorkspaceCapacity	.long ?
+StepBudget	.long ?
+	.endstruct
+SELECT_FRAME_BYTES = SelectFrame.StepBudget+4
 	.endmodule

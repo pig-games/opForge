@@ -7,11 +7,13 @@
 	.use prvm.amigaos.statement_inputs as inputs
 	.use prvm.amigaos.statement_request as request
 	.use prvm.amigaos.statement_plan as plan
+	.use prvm.amigaos.statement_policy as policies
 	.use prvm.amigaos.statement_facets as facets
 	.priv
 Local	.struct
 Frame	.long ?
 Budget	.long ?
+BudgetPtr	.long ?
 CaptureCount	.long ?
 CaptureBytes	.long ?
 LiteralCursor	.long ?
@@ -36,6 +38,8 @@ validateProgram	.block
 	move.l a3, (a4)  ; MatchFrame.ProgramPtr (zero offset)
 	move.l d7, abi.MatchFrame.ProgramBytes(a4)
 	move.l #abi.POLICY_TYPE_COUNT, Local.Budget(a6)
+	lea Local.Budget(a6), a0
+	move.l a0, Local.BudgetPtr(a6)
 	bsr.w policy
 	lea LOCAL_BYTES+abi.MATCH_FRAME_BYTES(sp), sp
 done
@@ -47,6 +51,17 @@ done
 ; Other registers preserved. Output is untouched on errors and nonmatches.
 ; Workspace is caller-owned scratch; token text/numeric interpretation is prepared.
 run	.block
+	move.l a1, -(sp)
+	suba.l a1, a1
+	bsr.w runBudget
+	movea.l (sp)+, a1
+	tst.l d0
+	rts
+	.bend  ; run
+; Same frame/output ABI as run, A1=shared budget cell (nonnull for nested calls).
+; The cell is caller-owned, validated, and disjoint from all frame spans. A null
+; cell is reserved for run's wrapper and selects its validated frame budget.
+runBudget	.block
 	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	movem.l d3-d7/a0-a6, -(sp)
 	lea -LOCAL_BYTES(sp), sp
@@ -56,6 +71,15 @@ run	.block
 	jsr request.match
 	bne.w finish
 	move.l abi.MatchFrame.StepBudget(a4), Local.Budget(a6)
+	move.l a1, Local.BudgetPtr(a6)
+	tst.l Local.BudgetPtr(a6)
+	bne.w sharedBudget
+	lea Local.Budget(a6), a0
+	move.l a0, Local.BudgetPtr(a6)
+sharedBudget
+	movea.l Local.BudgetPtr(a6), a0
+	jsr inputs.budget
+	bne.w finish
 	clr.l Local.CaptureCount(a6)
 	clr.l Local.CaptureBytes(a6)
 	bsr.w policy
@@ -64,7 +88,7 @@ run	.block
 	move.l abi.MatchFrame.TokenCount(a4), d0
 	movea.l abi.MatchFrame.ArenaPtr(a4), a1
 	move.l abi.MatchFrame.ArenaBytes(a4), d1
-	lea Local.Budget(a6), a2
+	movea.l Local.BudgetPtr(a6), a2
 	jsr facets.validate
 	bne.w finish
 	movea.l abi.MatchFrame.PlanPtr(a4), a0
@@ -219,47 +243,18 @@ done
 	tst.l d0
 	movem.l (sp)+, d3-d7/a0-a6
 	rts
-	.bend  ; run
+	.bend  ; runBudget
 	.priv
 ; Validate the package-selected current adjacency/type table; no VM version state.
 ; D0=status/CCR. Other registers preserved, local budget consumed.
 policy	.block
-	movem.l d1-d3/a0, -(sp)
-	cmpi.l #abi.MATCH_HEADER_BYTES+abi.POLICY_TYPE_COUNT*abi.TYPE_POLICY_BYTES+2, abi.MatchFrame.ProgramBytes(a4)
-	bne.w invalid
+	movem.l a0-a2, -(sp)
 	movea.l abi.MatchFrame.ProgramPtr(a4), a0
-	cmpi.b #abi.OP_MATCH, (a0)  ; MatchProgram.Opcode (zero offset)
-	bne.w invalid
-	cmpi.b #1, abi.MatchProgram.Adjacency(a0)
-	bne.w invalid
-	cmpi.b #abi.POLICY_TYPE_COUNT, abi.MatchProgram.TypeCount(a0)
-	bne.w invalid
-	adda.w #abi.MATCH_HEADER_BYTES, a0
-	moveq #abi.TYPE_FIRST, d1
-row
-	bsr.w tick
-	bne.w done
-	cmp.b (a0), d1  ; TypePolicy.Id (zero offset)
-	bne.w invalid
-	cmpi.b #2, abi.TypePolicy.Identifier(a0)
-	bhi.w invalid
-	tst.l abi.TypePolicy.Reserved(a0)
-	bne.w invalid
-	adda.w #abi.TYPE_POLICY_BYTES, a0
-	addq.l #1, d1
-	cmpi.l #abi.TYPE_LAST, d1
-	bls.w row
-	cmpi.b #abi.OP_PUBLISH, (a0)+
-	bne.w invalid
-	cmpi.b #abi.OP_END, (a0)
-	bne.w invalid
-	moveq #abi.OK, d0
-	bra.w done
-invalid
-	moveq #abi.INVALID_PROGRAM, d0
-done
+	move.l abi.MatchFrame.ProgramBytes(a4), d0
+	movea.l Local.BudgetPtr(a6), a2
+	jsr policies.match
 	tst.l d0
-	movem.l (sp)+, d1-d3/a0
+	movem.l (sp)+, a0-a2
 	rts
 	.bend  ; policy
 
@@ -337,7 +332,7 @@ done
 ; Local budget tick preserving the current literal cursor in A0.
 tick	.block
 	move.l a0, -(sp)
-	lea Local.Budget(a6), a0
+	movea.l Local.BudgetPtr(a6), a0
 	jsr inputs.tick
 	movea.l (sp)+, a0
 	rts

@@ -53,7 +53,13 @@ impl<'a> Policy<'a> {
             return Err(invalid());
         }
         let end = 3 + statement_program::TYPE_COUNT * statement_program::TYPE_ROW_BYTES;
-        if program.get(end..) != Some(&[statement_program::PUBLISH, statement_program::END]) {
+        let policy_end = end + statement_program::INVOCATION_POLICY_BYTES;
+        crate::statement_invocation::Policy::decode(
+            program.get(end..policy_end).ok_or_else(invalid)?,
+            span,
+        )?;
+        if program.get(policy_end..) != Some(&[statement_program::PUBLISH, statement_program::END])
+        {
             return Err(invalid());
         }
         let rows = &program[3..end];

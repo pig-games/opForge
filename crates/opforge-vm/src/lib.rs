@@ -63,6 +63,8 @@ mod runtime_tests;
 pub mod selector_encoding_utils;
 pub mod selector_vm;
 pub mod state_vm;
+pub mod statement_invocation;
+pub mod statement_invocation_source;
 pub mod structured_encoding_vm;
 pub mod target_bootstrap_vm;
 mod tokenizer_composite;

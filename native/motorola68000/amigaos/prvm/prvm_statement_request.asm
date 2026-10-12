@@ -4,22 +4,23 @@
 	.cpu 68020
 	.use prvm.amigaos.statement_abi as abi
 	.use prvm.amigaos.statement_inputs as inputs
-	.priv
+	.pub
 Check	.struct
 Pointer	.word ?
 Extent	.word ?
-TokenCount	.word ?
+CountShift	.word ?
 Aligned	.word ?
 Mutable	.word ?
 	.endstruct
 CHECK_BYTES = Check.Mutable+2
+	.priv
 Bound	.struct
 Start	.long ?
 End	.long ?
 Mutable	.long ?
 	.endstruct
 BOUND_BYTES = Bound.Mutable+4
-BOUND_CAPACITY = 7
+BOUND_CAPACITY = 12
 	.pub
 	.section code, kind=code
 ; A0=request,D0=available bytes. D0=status/CCR; other registers preserved.
@@ -47,8 +48,10 @@ match	.block
 	movem.l (sp)+, d1-d3/a1
 	rts
 	.bend  ; match
-	.priv
-; A1=checks,D1=count,D2=frame bytes,D3=budget field. Others as public entry.
+; A0/D0=request/available bytes,A1=trusted Check table,D1=check count,
+; D2=frame bytes,D3=budget field offset. D0=status/CCR; others preserved.
+; Check.CountShift is log2(row stride), zero for byte extents. Tables belong to
+; the calling request owner; mutable spans must be disjoint from all inputs.
 validate	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea -BOUND_CAPACITY*BOUND_BYTES(sp), sp
@@ -56,6 +59,10 @@ validate	.block
 	movea.l a0, a4
 	movea.l a1, a3
 	move.l d1, d7
+	tst.l d7
+	ble.w invalid
+	cmpi.l #BOUND_CAPACITY-1, d7
+	bhi.w invalid
 	cmp.l d2, d0
 	blo.w invalid
 	move.l a4, d1
@@ -79,11 +86,15 @@ next
 	moveq #0, d0
 	move.w Check.Extent(a3), d0
 	move.l 0(a4, d0.l), d4
-	tst.w Check.TokenCount(a3)
-	beq.w extentReady
-	cmpi.l #$03ffffff, d4
+	moveq #0, d0
+	move.w Check.CountShift(a3), d0
+	cmpi.l #5, d0
 	bhi.w invalid
-	lsl.l #5, d4  ; abi.TOKEN_BYTES = 32
+	move.l #$7fffffff, d1
+	lsr.l d0, d1
+	cmp.l d1, d4
+	bhi.w invalid
+	lsl.l d0, d4
 extentReady
 	move.l a0, d1
 	tst.w Check.Aligned(a3)
@@ -137,18 +148,19 @@ done
 	rts
 	.bend  ; validate
 	.endsection
+	.priv
 	.section data, kind=data
 	.align 2
 CompileChecks
 	.word abi.CompileFrame.ProgramPtr, abi.CompileFrame.ProgramBytes, 0, 0, 0
-	.word abi.CompileFrame.TokenPtr, abi.CompileFrame.TokenCount, 1, 1, 0
+	.word abi.CompileFrame.TokenPtr, abi.CompileFrame.TokenCount, 5, 1, 0
 	.word abi.CompileFrame.ArenaPtr, abi.CompileFrame.ArenaBytes, 0, 0, 0
 	.word abi.CompileFrame.OutputPtr, abi.CompileFrame.OutputCapacity, 0, 1, 1
 	.word abi.CompileFrame.WorkspacePtr, abi.CompileFrame.WorkspaceCapacity, 0, 1, 1
 MatchChecks
 	.word abi.MatchFrame.ProgramPtr, abi.MatchFrame.ProgramBytes, 0, 0, 0
 	.word abi.MatchFrame.PlanPtr, abi.MatchFrame.PlanBytes, 0, 1, 0
-	.word abi.MatchFrame.TokenPtr, abi.MatchFrame.TokenCount, 1, 1, 0
+	.word abi.MatchFrame.TokenPtr, abi.MatchFrame.TokenCount, 5, 1, 0
 	.word abi.MatchFrame.ArenaPtr, abi.MatchFrame.ArenaBytes, 0, 0, 0
 	.word abi.MatchFrame.OutputPtr, abi.MatchFrame.OutputCapacity, 0, 1, 1
 	.word abi.MatchFrame.WorkspacePtr, abi.MatchFrame.WorkspaceCapacity, 0, 1, 1

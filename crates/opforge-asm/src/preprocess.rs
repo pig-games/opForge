@@ -5,14 +5,11 @@ use opcore::macro_processor::{
     MacroProcessor, NativeStatementExport, StatementSupportHooks,
 };
 use opcore::parser::{StatementCaptureText, StatementSignature};
-use opcore::text_utils::{is_ident_start, to_upper, Cursor};
-use opcore::tokenizer::{NumberLiteral, Span, Token, TokenKind, Tokenizer};
+use opcore::text_utils::to_upper;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use types::processing::{LineProcessingTrace, ProcessingRequestKind};
-use vm::packed_statement_vm::{
-    parse_statement_definition_from_line, select_and_match_statement_signature_texts,
-};
+use vm::packed_statement_vm::parse_statement_definition_from_line;
 
 pub type AsmMacroError = MacroError;
 
@@ -174,70 +171,22 @@ fn asm_expand_statement_invocation(
         return Ok(None);
     }
 
-    let mut cursor = Cursor::new(code);
-    cursor.skip_ws();
-    if cursor.peek().is_none() || cursor.peek() == Some(b'.') {
-        return Ok(None);
-    }
-
-    let Some((label, mnemonic_text, mnemonic_end)) = scan_statement_invocation(code) else {
-        return Ok(None);
-    };
-
-    let mnemonic_upper = mnemonic_text.to_ascii_uppercase();
-    let mut best_keyword: Option<&str> = None;
-    for def in &defs {
-        let keyword = def.keyword();
-        let keyword_upper = keyword.to_ascii_uppercase();
-        if !mnemonic_upper.starts_with(&keyword_upper) {
-            continue;
-        }
-        match best_keyword {
-            None => best_keyword = Some(keyword),
-            Some(current) if keyword.len() > current.len() => best_keyword = Some(keyword),
-            _ => {}
-        }
-    }
-
-    let Some(keyword_upper) = best_keyword else {
+    let Some(invocation) = vm::statement_invocation_source::select_source(
+        &package::statement_program::match_program(),
+        code,
+        line_num,
+        &defs,
+    )
+    .map_err(|err| MacroError::new(err.message, Some(line_num), Some(err.span.col_start)))?
+    else {
         return Ok(None);
     };
-
-    let matching_defs: Vec<&NativeStatementExport> = defs
-        .iter()
-        .filter(|def| def.keyword().eq_ignore_ascii_case(keyword_upper))
-        .collect();
-    let remainder = &mnemonic_text[keyword_upper.len()..];
-    let tail = code.get(mnemonic_end..).unwrap_or("");
-    let match_text = format!("{}{}", remainder, tail);
-
-    let match_tokens = tokenize_line(&match_text, line_num)?;
-    let signatures: Vec<StatementSignature> = matching_defs
-        .iter()
-        .map(|def| def.signature().clone())
-        .collect();
-    let (selection, captures) =
-        match select_and_match_statement_signature_texts(&signatures, &match_tokens)
-            .map_err(|err| MacroError::new(err.message, Some(line_num), Some(err.span.col_start)))?
-        {
-            Some(result) => result,
-            None => {
-                let split_tokens = split_single_letter_digit_tokens(&match_tokens);
-                let Some(result) =
-                    select_and_match_statement_signature_texts(&signatures, &split_tokens)
-                        .map_err(|err| {
-                            MacroError::new(err.message, Some(line_num), Some(err.span.col_start))
-                        })?
-                else {
-                    return Ok(None);
-                };
-                result
-            }
-        };
-
+    let definition = &defs[invocation.definition];
+    let captures = invocation.captures;
+    let label = invocation.label;
     let (positional, named, full_list) = build_statement_args(&captures);
     let mut expanded = Vec::new();
-    for line in matching_defs[selection].body() {
+    for line in definition.body() {
         expanded.push(substitute_macro_line_with_named_args(
             line,
             &positional,
@@ -252,108 +201,10 @@ fn asm_expand_statement_invocation(
 
     let nested = processor.expand_nested_statement_lines_with_origins(
         &expanded,
-        matching_defs[selection].body_origins(),
+        definition.body_origins(),
         depth + 1,
     )?;
     Ok(Some(nested))
-}
-
-fn scan_statement_invocation(line: &str) -> Option<(Option<String>, String, usize)> {
-    let mut cursor = Cursor::new(line);
-    cursor.skip_ws();
-    let at_col1 = cursor.pos() == 0;
-    let first = cursor.peek()?;
-    if first == b'.' || first == b';' || first == b'#' || first == b'*' {
-        return None;
-    }
-    if !is_ident_start(first) {
-        return None;
-    }
-
-    let mut label = None;
-    if at_col1 {
-        let name = cursor.take_ident()?;
-        if cursor.peek() == Some(b':') {
-            cursor.next();
-        }
-        label = Some(name);
-        cursor.skip_ws();
-        if cursor.peek().is_none() || !is_ident_start(cursor.peek()?) {
-            return None;
-        }
-    }
-
-    let mnemonic = cursor.take_ident()?;
-    let mnemonic_end = cursor.pos();
-    Some((label, mnemonic, mnemonic_end))
-}
-
-fn tokenize_line(line: &str, line_num: u32) -> Result<Vec<Token>, AsmMacroError> {
-    let mut tokenizer = Tokenizer::new(line, line_num);
-    let mut tokens = Vec::new();
-    loop {
-        let token = tokenizer.next_token().map_err(|err| {
-            MacroError::new(err.message, Some(line_num), Some(err.span.col_start))
-        })?;
-        if matches!(token.kind, TokenKind::End) {
-            break;
-        }
-        tokens.push(token);
-    }
-    Ok(tokens)
-}
-
-fn split_single_letter_digit_tokens(tokens: &[Token]) -> Vec<Token> {
-    let mut out = Vec::with_capacity(tokens.len());
-    for token in tokens {
-        match &token.kind {
-            TokenKind::Identifier(name) | TokenKind::Register(name) => {
-                if name.len() >= 2 {
-                    let mut chars = name.chars();
-                    if let Some(first) = chars.next() {
-                        let rest: String = chars.collect();
-                        if first.is_ascii_alphabetic()
-                            && !rest.is_empty()
-                            && rest.chars().all(|c| c.is_ascii_digit())
-                        {
-                            let first_kind = if matches!(token.kind, TokenKind::Register(_)) {
-                                TokenKind::Register(first.to_string())
-                            } else {
-                                TokenKind::Identifier(first.to_string())
-                            };
-                            let first_start = token.span.col_start;
-                            let first_end = first_start + 1;
-                            let second_start = first_end;
-                            let second_end = token.span.col_end;
-                            out.push(Token {
-                                kind: first_kind,
-                                span: Span {
-                                    line: token.span.line,
-                                    col_start: first_start,
-                                    col_end: first_end,
-                                },
-                            });
-                            out.push(Token {
-                                kind: TokenKind::Number(NumberLiteral {
-                                    text: rest,
-                                    base: 10,
-                                }),
-                                span: Span {
-                                    line: token.span.line,
-                                    col_start: second_start,
-                                    col_end: second_end,
-                                },
-                            });
-                            continue;
-                        }
-                    }
-                }
-                out.push(token.clone());
-            }
-            _ => out.push(token.clone()),
-        }
-    }
-    out
 }
 
 fn build_statement_args(
@@ -381,6 +232,10 @@ fn attach_label_to_expansion(label: &str, expanded: &mut Vec<String>) {
         expanded.push(label.to_string());
     }
 }
+
+#[cfg(test)]
+#[path = "preprocess_statement_invocation_tests.rs"]
+mod statement_invocation_tests;
 
 #[cfg(test)]
 mod tests {

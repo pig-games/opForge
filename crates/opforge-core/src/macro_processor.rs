@@ -511,14 +511,18 @@ impl MacroProcessor {
             .map(|support| {
                 support
                     .defs
-                    .values()
-                    .flat_map(|defs| defs.iter())
-                    .map(|def| NativeStatementExport {
-                        keyword: def.keyword.clone(),
-                        signature: def.signature.clone(),
-                        body: def.body.clone(),
-                        origins: def.origins.clone(),
-                        visibility: def.visibility,
+                    .iter()
+                    .flat_map(|(keyword, defs)| {
+                        defs.iter().map(move |def| NativeStatementExport {
+                            // Invocation consumes the scope key, which can be a
+                            // qualified name or an import alias. Declaration export
+                            // retains its original identity in take_native_statement_defs.
+                            keyword: keyword.clone(),
+                            signature: def.signature.clone(),
+                            body: def.body.clone(),
+                            origins: def.origins.clone(),
+                            visibility: def.visibility,
+                        })
                     })
                     .collect()
             })

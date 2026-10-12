@@ -5,6 +5,10 @@ use types::packed_statement::{BYTE, CHAR, LONG, STR, WORD};
 pub const COMPILE: u8 = 0xa6;
 pub const MATCH: u8 = 0xa7;
 pub const HEAD: u8 = 0xa8;
+pub const INVOCATION: u8 = 0xa9;
+pub const INVOCATION_POLICY_BYTES: usize = 8;
+pub const INVOCATION_POLICY: [u8; INVOCATION_POLICY_BYTES] =
+    [INVOCATION, 7, b'A', b'Z', b'a', b'z', b'0', b'9'];
 pub const PUBLISH: u8 = 0x83;
 pub const END: u8 = 0;
 pub const TYPE_ROW_BYTES: usize = 24;
@@ -107,6 +111,7 @@ pub fn match_program() -> Vec<u8> {
         out.extend(max.to_be_bytes());
         out.extend([0; 4]);
     }
+    out.extend(INVOCATION_POLICY);
     out.extend([PUBLISH, END]);
     out
 }

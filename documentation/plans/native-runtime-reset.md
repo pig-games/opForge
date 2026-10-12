@@ -295,8 +295,8 @@ and AST debug representation.
 Native template storage now exposes a numeric external-definition facade, and a
 separate adapter stages normalized facets from owned TKVM records. Those helpers
 do not yet connect statement invocation to the compact CLI. Invocation-prefix
-selection, overload dispatch and generic letter/digit fallback must also remain
-shared VM responsibilities; an unregistered draft is not implementation proof.
+selection, overload dispatch and generic letter/digit fallback now have shared
+VM services; connecting them to native source/template orchestration remains.
 The adapter separately qualifies 96 cases against live Rust facet output,
 including numeric suffixes and overflow, canonical punctuation, decoded/lossy
 UTF-8, name IDs, bounds and atomic publication failures. Its fresh native
@@ -320,6 +320,29 @@ The unchanged release macro control changes separately from 34.697495584 to
 [foundation comparison](../performance/vm-efficiency.md#shared-statement-preparation-foundation-bs38).
 None of these component/control results adds CLI statement invocation or a new
 full self-host claim.
+
+The invocation checkpoint qualifies 242 current shared component cases against
+live Rust output, with fresh completion and explicit zero guest exit. A9 lives
+in the current A7 matcher program; the superseded 125-byte program is rejected,
+and the latest program is 133 bytes. Routing selects the longest visible keyword
+prefix, preserves adjacent label-colon boundaries, and delegates ordinary versus
+letter/digit fallback matching and overload ambiguity to shared services. Native
+selection and derived-view capacities are checked independently and outputs stay
+atomic on failure. The 11.954011083-second component run on FS-UAE 68020/10 MiB
+is correctness timing for this expanded workload, not CLI performance.
+
+Rust's exported invocation scope now retains the caller-visible qualified key:
+`Q.PUSH` remains `Q.PUSH` rather than leaking unqualified `PUSH`. Selected aliases
+and wildcard imports retain their respective keys and share immutable compiled
+plans. All five unchanged statement fixture outputs still match; nine focused
+assembler tests, 962 affected subsystem tests and Clippy pass. Source acquisition
+and numeric selection have separate owners. Export/scope rows are still rebuilt
+per Rust invocation; no optimization or broad statement parity is claimed.
+
+The current native CLI still lacks connected statement invocation. Definition
+storage, exposed import names and existing template cursor integration are the
+next orchestration work; component completion does not change the BS35 full
+self-host evidence or establish a new hardware/2 MiB qualification.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

@@ -697,6 +697,41 @@ totals of 3,145,848 bytes in both runs. This input does not cross the old limits
 the full run must measure the storage needed beyond them. Receipt:
 `/tmp/opforge-identity-bounds-cost-20261012.json`.
 
+The next fresh current-source full run (191 files, 2,110,004 bytes, manifest
+`fnv1a64:45e11043e5d3c84b`, Rust Hunk 250,492 bytes) passes the previous
+source-identity boundary and rejects at `binary_statement_execution.asm:80`,
+`Pack .res arguments.FRAME_BYTES`. Preparation scope stage 5 reports 34,554
+global identities, with the preceding macro-plan binding successful. Guest
+START-to-DONE is 4,454.531584 seconds (74 minutes 15 seconds), instrumented.
+Assembly never starts; full self-host remains failed. The captured MEMD has
+zero allocation failures, a 41,112,680-byte tracked peak, zero terminal live
+ownership and equal allocation/free totals of 93,269,096 bytes. Its unfinished
+preparation flag is `0x10`; this is failure-localization evidence, not a clean
+completed phase benchmark. Receipt/log and retained telemetry are in
+`/tmp/opforge-selfhost-identity-bounds-full-20261012.log` and
+`/tmp/opforge-selfhost-identity-bounds-capture-20261012/`.
+The same rejection reproduces in a small native input when an earlier struct
+field `Arguments` shadows the imported alias `arguments`; removing that field
+makes the exact Rust comparison pass. Shared binding now probes the existing
+import resolver with a temporary entry and lookup-only binder before capturing
+numeric compound-member alternatives. A complete unconditional imported target
+retains its ordinary precedence; missing or conditional targets retain member
+alternatives, and private targets retain ordinary visibility rejection. The
+probe publishes no identities, plans or values. Its scratch-buffer writes are
+safe because callers own copied spellings. Temporary struct diagnostics were
+removed after localization.
+All 17 fresh native spelling/import/member controls pass, including alias
+shadowing, compound fallback, private rejection and one 6502 case. All ten
+existing conditional/member ownership controls also pass across 68020 and 6502.
+Rust oracles, Clippy, formatting, native guards and independent review pass.
+A full current-source rerun remains necessary.
+The separate unchanged release control measures 41.919729125 seconds before
+and 41.916686042 after (one sample each; no speedup claim). Executable size
+grows 148 bytes and linked reservation 140 bytes. Both instrumented runs retain
+the same 1,240,696-byte tracked peak, zero live ownership and equal allocation/
+free totals of 3,145,848 bytes. Receipt:
+`/tmp/opforge-qualification-cost-20261013.json`.
+
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
 unchanged release control and a separate instrumented heap run against the saved

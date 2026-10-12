@@ -8117,6 +8117,9 @@ mod native_source_cases;
 mod native_static_include_graph;
 #[path = "tests/native_struct_literal_values.rs"]
 mod native_struct_literal_values;
+#[cfg(test)]
+#[path = "tests/native_struct_name_edges.rs"]
+mod native_struct_name_edges;
 #[path = "tests/native_struct_parameters.rs"]
 mod native_struct_parameters;
 #[path = "tests/native_struct_vm.rs"]

@@ -701,6 +701,12 @@ dotted
 	andi.w #records.CONDITIONAL_VALUE, d0
 	beq.w good
 capturePrefixes
+	; Complete qualified targets precede lexical value projections. A failed
+	; lookup leaves compound-member alternatives and their ambiguity intact.
+	movea.l a3, a0
+	movea.l a6, a1
+	jsr imports.qualification
+	beq.w good
 	moveq #0, d6
 	move.l d4, d5
 component

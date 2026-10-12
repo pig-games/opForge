@@ -804,6 +804,57 @@ reference	.block
 	bra.w referenceNamespace
 	.bend  ; reference
 
+; A0=source entry,A1=scope. D0/CCR=0 when ordinary qualified resolution
+; finds a complete unconditional target,1 otherwise. Other registers preserved.
+; Probe the existing resolver with a private origin and lookup-only binder:
+; no identities, plans or value cells are allocated or published. Missing full
+; targets retain numeric compound-member alternatives in the caller.
+qualification	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	moveq #0, d0
+	move.w layout.MODULE_STATE+modules.State.Active(a6), d0
+	beq.w absent
+	suba.w #records.ENTRY_BYTES, sp
+	movea.l sp, a3
+	movea.l a3, a1
+	moveq #records.ENTRY_BYTES/4-1, d1
+copy
+	move.l (a0)+, (a1)+
+	dbra d1, copy
+	move.w d0, records.Entry.Owner(a3)
+	clr.w records.Entry.Leaf(a3)
+	clr.w records.Entry.Flags(a3)
+	move.w layout.State.Current(a6), records.Entry.Padding(a3)
+	lea layout.IMPORT_STATE(a6), a4
+	lea findDeclared, a5
+	bsr.w resolve
+	bne.w probed
+	; Conditional complete declarations join the existing numeric alternatives;
+	; their inactive branch must not discard a valid compound-member fallback.
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	andi.l #$ffff, d0
+	mulu.w #records.ENTRY_BYTES, d0
+	movea.l layout.ENTRIES_POINTER(a6), a0
+	move.w records.Entry.Flags(a0, d0.l), d0
+	andi.w #records.CONDITIONAL_VALUE, d0
+	beq.w complete
+	moveq #1, d0
+	bra.w probed
+complete
+	moveq #0, d0
+probed
+	adda.w #records.ENTRY_BYTES, sp
+	bra.w done
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; qualification
+
 ; A0=name token,A1=scope state. Resolve invocation spelling independently
 ; of a numeric reference with the same spelling and origin.
 ; D0/CCR=status; other registers preserved.

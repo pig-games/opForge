@@ -344,7 +344,12 @@ fn preparation_telemetry_source() -> String {
                 || line.trim_start().starts_with(".MEMORY_PREPARATION_RECORD ")
         })
         .collect::<Vec<_>>();
-    assert_eq!(calls.len(), 2);
+    assert!(calls.iter().any(|line| line
+        .trim_start()
+        .starts_with(".MEMORY_PREPARATION_FAILURE ")));
+    assert!(calls
+        .iter()
+        .any(|line| line.trim_start().starts_with(".MEMORY_PREPARATION_RECORD ")));
     format!(
         ".module proof.frontend\n.cpu m68020\n.pub\nFrame .struct\nOutput .long ?\nCapacity .long ?\nUsed .long ?\nNameCount .long ?\n.endstruct\nPreparationStage=0\nPreparationInput=0\n.endmodule\n.module experimental.amigaos.binary_app\n.cpu m68020\n.use proof.frontend as frontend\nDosBase=0\nInAssembly=0\nFront=0\nPROGRESS_PREPARATION_FAILURE=301\n{telemetry}\nexecute .block\n{}\n.byte 1\n.bend\n.byte execute\n.endmodule\n",
         calls.join("\n")

@@ -10873,7 +10873,7 @@ fn external_fs_uae_native_item40_indexed_to_explicit_absolute_long_parity() {
         .expect("native CLI FS-UAE smoke lock poisoned");
     let root = workspace_root();
     let source = b".module item40.explicit.absolute.long\n.cpu 68020\n.use opforge.cli.constants\n.use opforge.cli.state\n.org 0\n.byte $a5\n.section code, kind=code\n\tmove.l 0(a0, d0.l), state.NativeCliResolvedModuleStartOffset.l\n.endsection\n.endmodule\n.end\n";
-    let module_sources = [
+    let mut module_sources = [
         (
             "item40_tkpkg_abi.asm",
             fs::read(root.join("native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm"))
@@ -10894,7 +10894,9 @@ fn external_fs_uae_native_item40_indexed_to_explicit_absolute_long_parity() {
             fs::read(root.join("native/motorola68000/amigaos/opforge-cli/state.asm"))
                 .expect("read exact native CLI state module"),
         ),
-    ];
+    ]
+    .to_vec();
+    item40_complete_service_dependencies(&root, &mut module_sources);
     let rust_support = module_sources
         .iter()
         .map(|(relative_path, bytes)| Item7StagedGuestFile {
@@ -14334,13 +14336,13 @@ fn external_fs_uae_native_explicit_alias_qualified_jsr_parity() {
         "68020",
         &[],
     );
-    assert_eq!(rust_oracle.len(), 34);
+    // The adapter import is unused; only the explicitly qualified provider survives.
+    assert_eq!(rust_oracle.len(), 0x10 + 2);
     assert_eq!(
         &rust_oracle[..8],
         [0x4e, 0xb9, 0x00, 0x00, 0x00, 0x10, 0x4e, 0x75]
     );
     assert_eq!(&rust_oracle[16..18], [0x4e, 0x75]);
-    assert_eq!(&rust_oracle[32..34], [0x4e, 0x75]);
     let guest_files = [
         crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
             relative_path: "runtime_context.asm",
@@ -14533,6 +14535,40 @@ fn external_fs_uae_native_item40_nested_import_topology_parity() {
     }
 }
 
+// Current PRVM runtime imports its macro runtime even for scalar service probes.
+// Stage the same exact source closure for the host oracle and native guest.
+fn item40_complete_service_dependencies(root: &Path, sources: &mut Vec<(&'static str, Vec<u8>)>) {
+    for filename in [
+        "prvm_abi.asm",
+        "prvm_runtime.asm",
+        "prvm_macro_runtime.asm",
+        "prvm_macro_descriptors.asm",
+        "prvm_packed_macro.asm",
+        "prvm_packed_file.asm",
+        "prvm_packed_declaration.asm",
+        "prvm_packed_data.asm",
+        "prvm_packed_text.asm",
+        "prvm_packed_metadata.asm",
+        "prvm_target_bootstrap.asm",
+        "prvm_macro_fragments.asm",
+    ] {
+        let bytes = fs::read(
+            root.join("native/motorola68000/amigaos/prvm")
+                .join(filename),
+        )
+        .expect("read current PRVM service dependency");
+        // Existing staged aliases already provide some exact modules.
+        if !sources.iter().any(|(_, existing)| *existing == bytes) {
+            sources.push((filename, bytes));
+        }
+    }
+    sources.push((
+        "telemetry_macros.i",
+        fs::read(root.join("native/motorola68000/amigaos/debug/telemetry_macros.i"))
+            .expect("read disabled runtime telemetry macros"),
+    ));
+}
+
 // @opforge-evidence: level=D; role=focused-regression; authority=rust-bytes; lifecycle=permanent
 #[test]
 fn external_fs_uae_native_item40_exact_expression_service_parity() {
@@ -14544,7 +14580,7 @@ fn external_fs_uae_native_item40_exact_expression_service_parity() {
         .expect("native CLI FS-UAE smoke lock poisoned");
     let root = workspace_root();
     let source = b".module item40.expression.probe\n.cpu 68020\n.use tkpkg.amigaos.expression_service\n.org 0\n.byte $a5\n.endmodule\n.end\n";
-    let module_sources = [
+    let mut module_sources = [
         (
             "item40_tkpkg_abi.asm",
             "native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm",
@@ -14603,7 +14639,9 @@ fn external_fs_uae_native_item40_exact_expression_service_parity() {
             relative_path,
             fs::read(root.join(source_path)).expect("read exact expression-service dependency"),
         )
-    });
+    })
+    .to_vec();
+    item40_complete_service_dependencies(&root, &mut module_sources);
     let rust_support = module_sources
         .iter()
         .map(|(relative_path, bytes)| Item7StagedGuestFile {
@@ -14686,7 +14724,7 @@ fn external_fs_uae_native_item40_exact_operand_runtime_parity() {
         .expect("native CLI FS-UAE smoke lock poisoned");
     let root = workspace_root();
     let source = b".module item40.operand.probe\n.cpu 68020\n.use opforge.cli.constants\n.use opforge.cli.state\n.use opforge.cli.strings\n.use opforge.cli.dos\n.use opforge.cli.path\n.use opforge.cli.copy\n.use tkpkg.amigaos.package_loader\n.use tkpkg.amigaos.service_status\n.use tkpkg.amigaos.service_request\n.use exprvm.amigaos.runtime\n.use opcore.amigaos.expr_bridge\n.use tkpkg.amigaos.engine_context_adapter\n.use tkpkg.amigaos.state_service\n.use tkpkg.amigaos.runtime_context\n.use tkpkg.amigaos.expression_service\n.use tkpkg.amigaos.selection_state\n.use tkpkg.amigaos.operand_runtime\n.org 0\n.byte $a5\n.endmodule\n.end\n";
-    let module_sources = [
+    let mut module_sources = [
         (
             "item40_tkpkg_abi.asm",
             "native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm",
@@ -14784,7 +14822,24 @@ fn external_fs_uae_native_item40_exact_operand_runtime_parity() {
         let bytes =
             fs::read(root.join(source_path)).expect("read exact operand-runtime dependency");
         (relative_path, bytes)
-    });
+    })
+    .to_vec();
+    for filename in [
+        "tkpkg_compact_prepare.asm",
+        "tkpkg_semantic_bindings.asm",
+        "tkpkg_selection_service.asm",
+        "tkpkg_value_execution.asm",
+    ] {
+        module_sources.push((
+            filename,
+            fs::read(
+                root.join("native/motorola68000/amigaos/tkpkg")
+                    .join(filename),
+            )
+            .expect("read current operand service dependency"),
+        ));
+    }
+    item40_complete_service_dependencies(&root, &mut module_sources);
     let rust_support = module_sources
         .iter()
         .map(|(relative_path, bytes)| Item7StagedGuestFile {
@@ -14943,7 +14998,7 @@ fn external_fs_uae_native_item40_exact_parse_service_parity() {
         .expect("native CLI FS-UAE smoke lock poisoned");
     let root = workspace_root();
     let source = b".module item40.parse.probe\n.cpu 68020\n.use tkpkg.amigaos.parse_service\n.org 0\n.byte $a5\n.endmodule\n.end\n";
-    let module_sources = [
+    let mut module_sources = [
         (
             "item40_tkpkg_abi.asm",
             fs::read(root.join("native/motorola68000/amigaos/tkpkg/tkpkg_abi.asm"))
@@ -14964,7 +15019,9 @@ fn external_fs_uae_native_item40_exact_parse_service_parity() {
             fs::read(root.join("native/motorola68000/amigaos/prvm/prvm_runtime.asm"))
                 .expect("read exact PRVM runtime module"),
         ),
-    ];
+    ]
+    .to_vec();
+    item40_complete_service_dependencies(&root, &mut module_sources);
     let rust_support = module_sources
         .iter()
         .map(|(relative_path, bytes)| Item7StagedGuestFile {
@@ -24715,22 +24772,8 @@ fn external_fs_uae_native_item36_symbolic_long_rejection_diagnostics_parity() {
                 ".endmodule\n",
             ),
         ),
-        (
-            "item36-long-target-subtract-constant",
-            concat!(
-                ".module main\n",
-                ".cpu 68000\n",
-                "offset .const 4\n",
-                ".region ram, $2000, $20ff\n",
-                ".section code, kind=code\n",
-                "start: .long target - offset\n",
-                "target: .byte 0\n",
-                ".endsection\n",
-                ".place code in ram\n",
-                ".output \"build/item36_reject_sub_const.hunk\", format=hunk, sections=code\n",
-                ".endmodule\n",
-            ),
-        ),
+        // A label minus a scalar equate is supported; the positive Item 36
+        // addend tests own that relocation coverage.
         (
             "item36-long-label-alias-addend",
             concat!(

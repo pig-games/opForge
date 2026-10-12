@@ -913,6 +913,8 @@ Inside a `.meta` block, `.name` sets the metadata name. Inside an `.output`
 block (or `.meta.output.*` inline), `.name` sets the output base name.
 `.list`/`.hex`/`.bin`/`.fill` are valid only inside `.output` blocks or via
 `.meta.output.*` inline directives.
+Metadata, output and target blocks must be closed before the source pass ends.
+Metadata directives in inactive conditional branches do not change configuration.
 
 `.use` forms (module scope only):
 

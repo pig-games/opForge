@@ -504,6 +504,14 @@ domain must not become a union lexer. Measure pool/capsule storage before wiring
 the new contract; avoid a full frontend/EXVM workspace per CPU. VM consolidation
 and remaining source/output gaps remain independent completion requirements.
 
+Rust metadata completion now rejects unclosed metadata/output/target blocks at
+both pass boundaries, including direct implicit-module execution. Inactive
+`.meta`/`.endmeta` no longer mutate state through lexical-scope replay. Four new
+controls and eighteen affected host checks pass; all three existing metadata
+fixtures retain their selected settings and bytes. Native block syntax/target
+selection remains pending, and the LIST-bearing fixture needs actual listing
+output rather than merely recognizing its directive.
+
 The host-only name-domain experiment establishes that the existing runtime
 model already supplies a catalog-wide prefix: 2,039 identities and 24,020 UTF-8
 spelling bytes. All 16 registered numeric pipelines together contain 3,229

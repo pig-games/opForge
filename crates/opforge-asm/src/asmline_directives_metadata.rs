@@ -4,11 +4,31 @@
 use super::*;
 
 impl<'a> AsmLine<'a> {
+    /// Report the innermost open metadata construct at the end of a source pass.
+    /// Implicit modules need this check independently of explicit .endmodule.
+    pub(crate) fn metadata_completion_error(&self) -> Option<AsmError> {
+        let message = if let Some(cpu) = self.output_state.output_cpu_block.as_deref() {
+            format!("Found .{cpu} without .end{cpu}")
+        } else if self.output_state.in_output_block {
+            "Found .output without .endoutput".to_string()
+        } else if self.output_state.in_meta_block {
+            "Found .meta without .endmeta".to_string()
+        } else {
+            return None;
+        };
+        Some(AsmError::new(AsmErrorKind::Directive, &message, None))
+    }
+
     pub fn route_metadata_directive_ast(
         &mut self,
         directive: &str,
         operands: &[Expr],
     ) -> Option<LineStatus> {
+        // Lexical scope replay routes these delimiters even in inactive branches.
+        // Metadata is configuration, so inactive controls must not change it.
+        if self.cond_stack.skipping() && matches!(directive, "META" | "ENDMETA") {
+            return Some(LineStatus::Skip);
+        }
         match directive {
             "META" => {
                 if !operands.is_empty() {

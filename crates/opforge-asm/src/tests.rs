@@ -213,6 +213,8 @@ mod native_hunk_output_contract;
 mod native_hunk_struct_constants;
 #[path = "tests/native_label_capacity.rs"]
 mod native_label_capacity;
+#[path = "tests/metadata_blocks.rs"]
+mod metadata_blocks;
 #[path = "tests/native_memory_budget.rs"]
 mod native_memory_budget;
 #[path = "tests/native_mos_forward_ref_stability.rs"]

@@ -535,3 +535,57 @@ The frozen images, hashes and linked reservations are recorded in
 `/tmp/opforge-opcore-controls-20261011.json`; per-state logs are
 `/tmp/opforge-opcore-<state>-20261011.log`. The run helper is
 `/tmp/opforge-measure-opcore-controls-20261011.py`.
+
+### Separate follow-up costs
+
+On 2026-10-12, the same 11,592-byte control (1,200 output bytes) was run
+serially with the same `68020-10m` configuration. Builds were held throughout.
+All ten runs completed freshly with exact live Rust output. Seven release
+images were timed without telemetry; three separately instrumented images
+provided allocation measurements. Compare the identified pair for each change,
+rather than attributing a combined delta to the latest edit:
+
+| Change | Before seconds | After seconds | Separate delta | Image growth | Linked growth |
+|---|---:|---:|---:|---:|---:|
+| Coalesce inserted output spans | 33.650178833 | 33.408906250 | -0.72% | 64 bytes | 64 bytes |
+| Group opaque expression capsules | 33.721100791 | 33.353201833 | -1.09% | 180 bytes | 168 bytes |
+| Classify outer operand tuples | 33.811678917 | 33.567695750 | -0.72% | 32 bytes | 32 bytes |
+| Static include graph acquisition and CPU bootstrap | 33.567695750 | 34.875348041 | +3.90% | 1,520 bytes | 1,748 bytes |
+
+Each timing is one sample. Small negative deltas do not establish speed gains;
+these are unchanged-path cost checks, not timings of every new language form.
+Static acquisition adds a modest measured cost while extending graph coverage.
+The final release image is 682,492 bytes with 716,320 linked reserved bytes.
+
+| Instrumented state | Peak owned bytes | Allocated/freed bytes | Live bytes |
+|---|---:|---:|---:|
+| Match/configuration baseline | 1,282,824 | 3,182,600 | 0 |
+| Outer tuple classification | 1,282,824 | 3,182,600 | 0 |
+| Static acquisition | 1,282,840 | 3,182,616 | 0 |
+
+Packed source (27,022 bytes) and runtime prefix (425,522 bytes) are unchanged.
+The static acquisition heap delta is 16 bytes. Owned allocation accounting
+excludes executable/static reservations and OS costs; this is not proof of 2 MiB
+fit. Instrumented stage times locate the additional work mostly in binding/raw
+records (12.78 to 13.60 seconds) and module discovery (0.91 to 1.09 seconds).
+Those stage times include telemetry and must not replace release timings.
+
+The maintained helper is `scripts/performance/measure_compact_control.py`.
+With the usual FS-UAE environment configured, supply frozen Hunk images and a
+compiled test executable containing `native_active_include_control_fs_uae`:
+
+```sh
+python3 scripts/performance/measure_compact_control.py \
+  --test-binary /tmp/current-asm-tests \
+  --release-image before=/tmp/before-cli \
+  --release-image after=/tmp/after-cli \
+  --memory-image after-memory=/tmp/after-memory-cli \
+  --report /tmp/compact-control.json
+```
+
+It records image/test hashes, configuration, completed exact timings, decoded
+memory receipts and per-state logs. It refuses existing report/log output and
+stops on failure while retaining the partial report. The present identified
+images and receipts are in `/tmp/opforge-separate-controls-20261012.json`, with
+logs in `/tmp/opforge-separate-controls-20261012-logs`. These controls do not
+establish full opcore parity or a new self-host result.

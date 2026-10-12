@@ -230,12 +230,21 @@ class BindingDiagnosticTests(unittest.TestCase):
             line = preparation_failure().splitlines()[0]
             decoder.decode_binding_diagnostic(line + "\n" + line)
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "unknown preparation"):
-            decoder.decode_binding_diagnostic(preparation_failure(stage=11))
+            decoder.decode_binding_diagnostic(preparation_failure(stage=16))
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "malformed preparation"):
             decoder.decode_binding_diagnostic("progress p=0000012d f=1 l=2 r=3 m=0000000a")
         self.assertFalse(decoder.decode_binding_diagnostic(
             preparation_failure(raw=b"\x00abc")
         )["preparation_failure"]["record_framing_valid"])
+
+    def test_statement_preparation_stages(self):
+        for stage, meaning in {
+            14: "statement definition storage",
+            15: "statement invocation",
+        }.items():
+            with self.subTest(stage=stage):
+                result = decoder.decode_binding_diagnostic(preparation_failure(stage=stage))
+                self.assertEqual(result["preparation_failure"]["stage_meaning"], meaning)
 
     def test_stage_14_decodes_canonical_import_target_declaration(self):
         result = decoder.decode_binding_diagnostic(snapshot(stage=14))

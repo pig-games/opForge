@@ -21,6 +21,10 @@
 	.use experimental.amigaos.binary_templates as templates
 	.use experimental.amigaos.binary_capture as capture
 	.use experimental.amigaos.binary_macro_plans as macro_plans
+	.use experimental.amigaos.binary_statement_heads as statement_heads
+	.use experimental.amigaos.binary_statement_session as statement_session
+	.use experimental.amigaos.binary_statement_execution as statement_execution
+	.use experimental.amigaos.binary_statements as statements
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_block_index as blocks
@@ -84,6 +88,8 @@ PREP_TEMPLATE = 10
 PREP_FRAGMENT_BIND = 11
 PREP_FRAGMENT_SUFFIX = 12
 PREP_FRAGMENT_APPEND = 13
+PREP_STATEMENT_STORE = 14
+PREP_STATEMENT_CALL = 15
 ; Last attempted preparation boundary, observed only by the existing gated
 ; failure/progress macros. It has no release storage or runtime updates.
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -138,7 +144,10 @@ CONDITION_STATE = SCOPE_STATE+scopes.SCRATCH_BYTES
 TEMPLATE_STATE = CONDITION_STATE+conditionals.SCRATCH_BYTES
 EXPRESSION_WORK = (TEMPLATE_STATE+templates.SCRATCH_BYTES+3)&$fffffffc
 TEXT_NAME_BUFFER = EXPRESSION_WORK+expression.WORKSPACE_BYTES
-SCRATCH_BYTES = TEXT_NAME_BUFFER+layout.NAME_BYTES
+STATEMENT_HEAD_NAMES = TEXT_NAME_BUFFER+layout.NAME_BYTES
+STATEMENT_STATE = STATEMENT_HEAD_NAMES+statement_heads.CACHE_BYTES
+STATEMENT_EXECUTION = STATEMENT_STATE+statement_session.STATE_BYTES
+SCRATCH_BYTES = STATEMENT_EXECUTION+statement_execution.STATE_BYTES
 	.priv
 FRAGMENT_REQUEST = fragment_binding.FRAME_BYTES
 FRAGMENT_VIEWS = FRAGMENT_REQUEST+fragment_tokenizer.FRAME_BYTES
@@ -167,6 +176,32 @@ Next	.long ?
 	.endstruct
 	.section code, kind=code
 	.pub
+; A0=frontend Frame,A1=validated owned capture.Record. D0/CCR=statement
+; status,D1=shared A8 role. Other registers preserved. Acquisition examines
+; lexical metadata only, before source identities or declarations exist.
+captureStatementRole	.block
+	movem.l d2/a0-a2, -(sp)
+	suba.w #statement_heads.FRAME_BYTES, sp
+	move.l Frame.Package(a0), statement_heads.Frame.Package(sp)
+	movea.l Frame.Scratch(a0), a2
+	adda.l #STATEMENT_HEAD_NAMES, a2
+	move.l a2, statement_heads.Frame.Names(sp)
+	lea capture.HEADER_BYTES(a1), a2
+	move.l a2, statement_heads.Frame.Tokens(sp)
+	move.l capture.Record.Count(a1), d2
+	move.l d2, statement_heads.Frame.Count(sp)
+	mulu.w #tokenizer.TOKEN_RECORD_SIZE, d2
+	adda.l d2, a2
+	move.l a2, statement_heads.Frame.Lexemes(sp)
+	move.l capture.Record.LexemeBytes(a1), statement_heads.Frame.LexemeBytes(sp)
+	movea.l sp, a0
+	jsr statement_heads.classify
+	adda.w #statement_heads.FRAME_BYTES, sp
+	tst.l d0
+	movem.l (sp)+, d2/a0-a2
+	rts
+	.bend  ; captureStatementRole
+
 ; Compute scratch including one offset-chain node per dictionary entry.
 ; A0=readable capsule header; D0=status, D1=bytes on success; CCR=D0.
 ; Other registers preserved. The capsule byte bound limits count, not a new cap.
@@ -222,6 +257,18 @@ clearBuckets
 	clr.l (a0)+
 	dbra d0, clearBuckets
 	bsr.w configure
+	bne.w failed
+	movea.l Frame.Package(a5), a0
+	movea.l a6, a1
+	adda.l #STATEMENT_HEAD_NAMES, a1
+	jsr statement_heads.configure
+	bne.w failed
+	movea.l a6, a0
+	adda.l #STATEMENT_STATE, a0
+	jsr statement_session.begin
+	movea.l a6, a0
+	adda.l #STATEMENT_EXECUTION, a0
+	jsr statement_execution.begin
 	bne.w failed
 	lea SCOPE_STATE(a6), a0
 	move.l NEXT_ID(a6), d0
@@ -421,6 +468,10 @@ endFileDerived	.block
 	movem.l d1-d2/a0-a2, -(sp)
 	movea.l a0, a2
 	movea.l Frame.Scratch(a2), a1
+	movea.l a1, a0
+	adda.l #STATEMENT_STATE, a0
+	jsr statement_session.endFile
+	bne.w endFileDerivedDone
 	moveq #0, d2
 	tst.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.FileDerived(a1)
 	beq.w noFileDerivedActive
@@ -967,6 +1018,19 @@ lowerTokens	.block
 	.MEMORY_DETAIL_END #4
 	bne.w failed
 templateDispatch
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_STATEMENT_STORE
+	bsr.w statementLine
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w failed
+	cmpi.w #statements.ACTION_CONSUMED, d1
+	beq.w segmentConsumed
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_STATEMENT_CALL
+	bsr.w statementInvoke
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w failed
+	cmpi.w #statement_execution.ACTION_EXPANDED, d1
+	beq.w templateExpanded
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 	movea.l Frame.Output(a5), a0
 	movea.l a6, a1
 	adda.l #TEMPLATE_STATE, a1
@@ -985,6 +1049,7 @@ templateDispatch
 	beq.w segmentConsumed
 	cmpi.w #2, d1
 	bne.w process
+templateExpanded
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
 	movea.l Frame.Output(a5), a1
@@ -1323,7 +1388,7 @@ retainedFragmentBody	.block
 	move.l d1, d7
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
-	tst.w templates.State.Open(a0)
+	jsr templates.hasOpen
 	beq.w ordinary
 	lea TOKENS(a6), a0
 	move.l d7, d0
@@ -1471,13 +1536,13 @@ fragmentLinePlan	.block
 	movem.l d1-d7/a0-a4, -(sp)
 	movea.l a6, a2
 	adda.l #TEMPLATE_STATE, a2
-	moveq #0, d0
-	move.w templates.State.Open(a2), d0
+	movea.l a2, a0
+	jsr templates.hasOpen
 	beq.w ready
-	subq.w #1, d0
-	mulu.w #templates.DEF_BYTES, d0
-	movea.l templates.DEFS+memory.Block.Pointer(a2), a1
-	adda.l d0, a1
+	jsr templates.openDef
+	bne.w bad
+	move.l a1, d0
+	beq.w ready
 	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
 	jsr templates.role
@@ -1875,7 +1940,10 @@ physicalPlan
 	clr.l macro_plans.Frame.RecipeCount(a0)
 	movea.l a6, a1
 	adda.l #TEMPLATE_STATE, a1
-	tst.w templates.State.Open(a1)
+	move.l a0, -(sp)
+	movea.l a1, a0
+	jsr templates.hasOpen
+	movea.l (sp)+, a0
 	beq.w planReady
 	cmpi.l #1, d4
 	bne.w planReady
@@ -1915,7 +1983,7 @@ bindCapturedPlan	.block
 	move.l capture.Record.CallHandle(a4), d6
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
-	tst.w templates.State.Open(a0)
+	jsr templates.hasOpen
 	beq.w candidateReady
 	tst.l capture.Record.CallRecipeStatus(a4)
 	bne.w bad
@@ -2159,7 +2227,10 @@ clearRequest
 	clr.l macro_plans.GeneratedFrame.RecipeCount(a0)
 	movea.l a6, a1
 	adda.l #TEMPLATE_STATE, a1
-	tst.w templates.State.Open(a1)
+	move.l a0, -(sp)
+	movea.l a1, a0
+	jsr templates.hasOpen
+	movea.l (sp)+, a0
 	beq.w generatedReady
 	; A generated call may itself become part of a captured definition.
 	suba.l #macro_plans.FRAME_BYTES, sp
@@ -3140,6 +3211,12 @@ finish	.block
 	move.l a6, d0
 	beq.w resetControl
 	movea.l a6, a0
+	adda.l #STATEMENT_STATE, a0
+	jsr statement_session.finish
+	movea.l a6, a0
+	adda.l #STATEMENT_EXECUTION, a0
+	jsr statement_execution.finish
+	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
 	jsr templates.finish
 	lea MACRO_PLANS(a6), a0
@@ -3763,6 +3840,12 @@ bind	.block
 	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_INLINE_HEAD, d2
 	beq.w packageName
+	; writeValues has no declaration frontier. A first-column operand must
+	; use ordinary value binding, just like subsequent operands.
+	moveq #0, d0
+	move.w LINE_FRAME+writer.Frame.HeadToken(a6), d0
+	cmp.l LINE_FRAME+writer.Frame.Count(a6), d0
+	beq.w packageName
 	; Column-one names are declarations even when their spelling also occurs
 	; in the package dictionary (for example, an `end` branch label).
 	movea.l LINE_FRAME+writer.Frame.Output(a6), a4
@@ -3774,12 +3857,17 @@ bind	.block
 	bne.w findSymbol
 	movea.l a6, a4
 	adda.l #TEMPLATE_STATE, a4
-	tst.w templates.State.Open(a4)
+	move.l a0, -(sp)
+	movea.l a4, a0
+	jsr templates.hasOpen
+	movea.l (sp)+, a0
 	beq.w packageName
 	movea.l LINE_FRAME+writer.Frame.Output(a6), a4
 	btst #0, 1(a4)
 	beq.w findSymbol
 packageName
+	movea.l a2, a0
+	move.l d6, d0
 	bsr.w hash
 	move.l d0, d4
 	lsl.l #2, d0
@@ -4134,6 +4222,7 @@ different
 	moveq #1, d0
 	rts
 	.bend  ; equal
+	.include "binary_statement_frontend.i"
 	.endsection
 	.section data, kind=data
 AsciiSpelling	.byte "ascii"

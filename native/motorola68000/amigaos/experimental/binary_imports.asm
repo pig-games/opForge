@@ -25,13 +25,16 @@ Qualifier	.word ?
 Selected	.word ?
 Unqualified	.word ?
 Next	.word ?
+Flags	.word ?  ; parser-owned spelling exposure facets, never inferred from names
 .endstruct
 Selection	.struct
 Name	.word ?
 Alias	.word ?
 Next	.word ?
 .endstruct
-ITEM_BYTES = Item.Next+2
+ITEM_BYTES = Item.Flags+2
+EXPLICIT_QUALIFIER = 1
+EXPLICIT_QUALIFIER_BIT = 0
 SELECTION_BYTES = Selection.Next+2
 COUNT = 0
 LIST_LIMIT = 512
@@ -53,7 +56,14 @@ PARAM_OWNER = KNOWN_OWNER+values.OWNER_BYTES
 EXPRESSION_SCRATCH = PARAM_OWNER+values.OWNER_BYTES
 SCRATCH_BYTES = EXPRESSION_SCRATCH+256
 PROXY = 8
+	.priv
+UseLocal	.struct
+Flags	.long ?
+Sections	.long ?
+	.endstruct
+USE_LOCAL_BYTES = UseLocal.Sections+4
 	.section code, kind=code
+	.pub
 
 ; A0=import scratch. D0/CCR=status; other registers preserved.
 begin	.block
@@ -443,7 +453,9 @@ done
 ; D0/CCR=status; other registers preserved.
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	move.l a3, -(sp)
+	suba.w #USE_LOCAL_BYTES, sp
+	clr.l UseLocal.Flags(sp)
+	move.l a3, UseLocal.Sections(sp)
 	movea.l a1, a6
 	movea.l a2, a5
 	moveq #0, d6
@@ -465,7 +477,7 @@ line	.block
 	addq.l #4, a3
 	movea.l a3, a0
 	movea.l a6, a1
-	movea.l (sp), a2
+	movea.l UseLocal.Sections(sp), a2
 	move.l d7, d0
 	jsr sections.importMap
 	bne.w bad
@@ -653,6 +665,7 @@ parseQualifier
 	bne.w bad
 	bsr.w tokenName
 	bne.w bad
+	move.l #EXPLICIT_QUALIFIER, UseLocal.Flags(sp)
 	moveq #0, d3
 	bra.w qualifier
 defaultQualifier
@@ -713,6 +726,7 @@ append
 	move.w d4, Item.Selected(a0)
 	move.w d3, Item.Unqualified(a0)
 	move.w (a3), Item.Next(a0)
+	move.w UseLocal.Flags+2(sp), Item.Flags(a0)
 	addq.w #1, d0
 	move.w d0, (a3)
 	move.w d0, COUNT(a4)
@@ -721,7 +735,7 @@ append
 bad
 	moveq #1, d0
 done
-	addq.l #4, sp
+	adda.w #USE_LOCAL_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -874,6 +888,7 @@ proxyNamespaceReady
 	clr.w records.Entry.MemberBase(a3)
 	clr.w records.Entry.TemplateModule(a3)
 	clr.w records.Entry.TemplateFlags(a3)
+	clr.w records.Entry.StatementModule(a3)
 	clr.l records.Entry.RegisterName(a3)
 	move.w (a4), records.Entry.Next(a3)
 	move.w d2, d0
@@ -1357,6 +1372,9 @@ aliasDone
 ; even when no reached code references them. D0/CCR=status; others preserved.
 validateSelected	.block
 	movem.l d1-d2/a0-a2, -(sp)
+	move.w Item.Flags(a3), d0
+	andi.w #$ffff-EXPLICIT_QUALIFIER, d0
+	bne.w bad
 	moveq #0, d2
 	move.w Item.Selected(a3), d2
 selected
@@ -1388,12 +1406,17 @@ selected
 	adda.l d1, a1
 	btst #0, 1(a1)
 	suba.l d1, a1
-	beq.w bad
+	beq.w selectedTemplate
 	bra.w selected
 selectedTemplate
 	btst #0, records.Entry.TemplateFlags+1(a0)
-	beq.w bad
+	beq.w selectedStatement
 	btst #1, records.Entry.TemplateFlags+1(a0)
+	bne.w selected
+selectedStatement
+	btst #records.STATEMENT_DECLARED_BIT, records.Entry.TemplateFlags+1(a0)
+	beq.w bad
+	btst #records.STATEMENT_PUBLIC_BIT, records.Entry.TemplateFlags+1(a0)
 	beq.w bad
 	bra.w selected
 ok
@@ -2972,6 +2995,7 @@ fold	.block
 done
 	rts
 	.bend  ; fold
+	.include "binary_template_exposure.i"
 	.endsection
 
 .ifdef OPFORGE_DEBUG_CONTRACTS

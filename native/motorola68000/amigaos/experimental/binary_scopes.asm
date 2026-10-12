@@ -500,6 +500,7 @@ ordinaryIdentity
 	clr.w records.Entry.MemberBase(a3)
 	clr.w records.Entry.TemplateModule(a3)
 	clr.w records.Entry.TemplateFlags(a3)
+	clr.w records.Entry.StatementModule(a3)
 	clr.l records.Entry.RegisterName(a3)
 	move.w #$ffff, records.Entry.MemberId(a3)
 	clr.w records.Entry.OriginalId(a3)
@@ -1187,6 +1188,7 @@ createIterator	.block
 	clr.w records.Entry.MemberBase(a3)
 	clr.w records.Entry.TemplateModule(a3)
 	clr.w records.Entry.TemplateFlags(a3)
+	clr.w records.Entry.StatementModule(a3)
 	move.l records.Entry.RegisterName(a2), records.Entry.RegisterName(a3)
 	move.w records.Entry.MemberId(a2), records.Entry.MemberId(a3)
 	clr.w records.Entry.OriginalId(a3)
@@ -3768,6 +3770,12 @@ templateDone
 	rts
 	.bend  ; templateDistance
 
+; A0=imports.TemplateExposureFrame. Independent module-flat statement exposure;
+; ordinary macro/segment lexical distance remains owned above.
+templateExposure	.block
+	jmp imports.templateExposure
+	.bend  ; templateExposure
+
 ; A0=template name token,A1=scope state. Declare the independent template
 ; facet of a lexical identity; the body remains in binary_templates.
 ; D0/CCR=status; other registers preserved.
@@ -3899,6 +3907,7 @@ Words
 	.byte KEY_ENDMATCH, 8, "endmatch"
 	.byte 0
 	.align 2  ; the next module shares this instruction section
+	.include "binary_statement_binding.i"
 	.endsection
 
 .ifdef OPFORGE_DEBUG_CONTRACTS

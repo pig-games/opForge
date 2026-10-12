@@ -15,6 +15,7 @@
 	.priv
 Local	.struct
 Budget	.long ?
+BudgetPtr	.long ?
 Policy	.long ?
 DerivedPtr	.long ?
 DerivedCapacity	.long ?
@@ -37,19 +38,40 @@ MAX_WORK_INPUTS = $7fffffff/WORK_BYTES_PER_INPUT
 ; candidate/best captures, then remaining bytes for matcher validation/staging.
 ; This deliberate upper bound is not a claim of minimum workspace requirements.
 run	.block
+	move.l a1, -(sp)
+	suba.l a1, a1
+	bsr.w runBudget
+	movea.l (sp)+, a1
+	tst.l d0
+	rts
+	.bend  ; run
+; Same frame/output ABI,A1=shared budget cell (null selects frame budget).
+; The cell is validated caller-owned mutable storage disjoint from frame spans.
+; The caller retains the remaining value across preparation and selection.
+runBudget	.block
 	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	movem.l d4-d7/a0-a6, -(sp)
 	lea -LOCAL_BYTES(sp), sp
 	movea.l sp, a6
 	movea.l a0, a4
-	jsr request.select
+	jsr request.selectBudget
 	bne.w finish
 	move.l abi.SelectFrame.StepBudget(a4), (a6)  ; Local.Budget (zero offset)
+	move.l a1, Local.BudgetPtr(a6)
+	tst.l Local.BudgetPtr(a6)
+	bne.w budgetReady
+	move.l a6, Local.BudgetPtr(a6)
+budgetReady
+	movea.l Local.BudgetPtr(a6), a0
+	jsr inputs.budget
+	bne.w finish
 	move.l abi.SelectFrame.PlanRefsCount(a4), d0
-	sub.l d0, (a6)  ; structural plan-span preflight is charged once
+	cmp.l (a0), d0
+	bhi.w exhausted
+	sub.l d0, (a0)  ; structural plan-span preflight is charged once
 	movea.l abi.SelectFrame.ProgramPtr(a4), a0
 	move.l abi.SelectFrame.ProgramBytes(a4), d0
-	movea.l a6, a2
+	movea.l Local.BudgetPtr(a6), a2
 	jsr policy.match
 	bne.w finish
 	move.l a1, Local.Policy(a6)
@@ -67,7 +89,7 @@ run	.block
 	bne.w finish
 	movea.l abi.SelectFrame.HeadPtr(a4), a0
 	move.l abi.SelectFrame.HeadBytes(a4), d0
-	movea.l a6, a1
+	movea.l Local.BudgetPtr(a6), a1
 	jsr text.validate
 	bne.w finish
 	movea.l abi.SelectFrame.ScopePtr(a4), a3
@@ -75,7 +97,7 @@ run	.block
 ids
 	tst.l d7
 	beq.w prefix
-	movea.l a6, a0
+	movea.l Local.BudgetPtr(a6), a0
 	jsr inputs.tick
 	bne.w finish
 	move.l abi.ScopeRow.PlanId(a3), d0
@@ -92,7 +114,7 @@ prefix
 	movea.l abi.SelectFrame.KeywordsPtr(a4), a2
 	movea.l Local.Policy(a6), a3
 	move.l a4, -(sp)
-	movea.l a6, a4
+	movea.l Local.BudgetPtr(a6), a4
 	jsr scope.longest
 	movea.l (sp)+, a4
 	bne.w finish
@@ -109,7 +131,7 @@ prefix
 	bhi.w overflow
 	lea STATE_OFFSET(a6), a5
 	move.l a4, (a5)  ; State.Frame (zero offset)
-	move.l a6, pass.State.Budget(a5)
+	move.l Local.BudgetPtr(a6), pass.State.Budget(a5)
 	move.l Local.Policy(a6), pass.State.Policy(a5)
 	move.l abi.SelectFrame.TokenPtr(a4), pass.State.Views(a5)
 	move.l d7, pass.State.ViewCount(a5)
@@ -154,7 +176,7 @@ prefix
 	move.l abi.SelectFrame.StepBudget(a4), abi.FallbackFrame.StepBudget(a3)
 	movea.l a3, a0
 	moveq #abi.FALLBACK_FRAME_BYTES, d0
-	movea.l a6, a1
+	movea.l Local.BudgetPtr(a6), a1
 	jsr fallback.stage
 	bne.w finish
 	move.l d1, Local.FallbackCount(a6)
@@ -179,7 +201,7 @@ publish
 	lsl.l #5, d0  ; abi.TOKEN_BYTES
 	cmp.l abi.SelectFrame.FallbackCapacity(a4), d0
 	bhi.w overflow
-	movea.l a6, a0
+	movea.l Local.BudgetPtr(a6), a0
 	jsr inputs.tick
 	bne.w finish
 	movea.l abi.SelectFrame.OutputPtr(a4), a1
@@ -213,6 +235,9 @@ matched
 	move.l pass.State.BestCount(a5), d2
 	move.l Local.FallbackCount(a6), d3
 	bra.w done
+exhausted
+	moveq #abi.BUDGET_EXCEEDED, d0
+	bra.w finish
 overflow
 	moveq #abi.OUTPUT_OVERFLOW, d0
 	bra.w finish

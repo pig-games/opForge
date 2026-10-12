@@ -23,12 +23,16 @@ staticCaptureLine	.block
 	jsr configuration.captureRole
 	bne.w bad
 	move.l d1, d7
+	cmpi.l #configuration.TEMPLATE_CLOSE, d7
+	beq.w closeTemplate
 	cmpi.l #scopes.KEY_ENDMACRO, d7
 	beq.w closeTemplate
 	cmpi.l #scopes.KEY_ENDSEGMENT, d7
 	beq.w closeTemplate
 	tst.w StaticTemplateDepth
 	bne.w templateBody
+	cmpi.l #configuration.TEMPLATE_OPEN, d7
+	beq.w openTemplate
 	cmpi.l #scopes.KEY_MACRO, d7
 	beq.w openTemplate
 	cmpi.l #scopes.KEY_SEGMENT, d7
@@ -61,6 +65,8 @@ openTemplate
 	beq.w bad
 	bra.w ordinary
 templateBody
+	cmpi.l #configuration.TEMPLATE_OPEN, d7
+	beq.w openTemplate
 	cmpi.l #scopes.KEY_MACRO, d7
 	beq.w openTemplate
 	cmpi.l #scopes.KEY_SEGMENT, d7

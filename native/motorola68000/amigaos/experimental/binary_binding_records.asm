@@ -20,6 +20,7 @@ Padding	.word ?  ; proxy origin lexical scope; zero for ordinary entries
 MemberBase	.word ?  ; qualified proxy's definition-time struct identity+1
 TemplateModule	.word ?  ; declaration ownership independent of the numeric value
 TemplateFlags	.word ?  ; preparation-only declaration and visibility facet
+StatementModule	.word ?  ; independent module-flat statement keyword ownership
 RegisterName	.word ?  ; original spelling's package register ID+1; zero absent
 RegisterQualifier	.byte ?
 RegisterReserved	.byte ?  ; zero; candidate metadata never follows Target
@@ -49,6 +50,10 @@ TEMPLATE_PROXY_BIT = 6
 TEMPLATE_PROXY = 1<<TEMPLATE_PROXY_BIT
 TEMPLATE_DECLARED = 1
 TEMPLATE_PUBLIC = 2
+STATEMENT_DECLARED = 4
+STATEMENT_PUBLIC = 8
+STATEMENT_DECLARED_BIT = 2
+STATEMENT_PUBLIC_BIT = 3
 NAMESPACE_VALUE = 0
 NAMESPACE_TEMPLATE = 1
 ; Includes room for the terminator in preparation-only composition/copy buffers.

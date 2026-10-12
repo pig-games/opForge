@@ -42593,3 +42593,8 @@ mod native_prvm_statement;
 
 #[path = "tests/native_statement_facets.rs"]
 mod native_statement_facets;
+
+#[path = "tests/native_statement_heads.rs"]
+mod native_statement_heads;
+
+mod native_statement_arguments;

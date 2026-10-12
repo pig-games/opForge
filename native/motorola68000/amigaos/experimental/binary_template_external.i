@@ -1,6 +1,6 @@
 ; Numeric storage facade for owners whose header grammar lives elsewhere.
 ; Included inside binary_templates: no source synthesis or second expander.
-; Handles are one-based Def/index cursors, valid until begin/finish. Span
+; Handles are private one-based body cursors, valid until begin/finish. Span
 ; pointers are borrowed only during invocation and copied into bounded frames.
 	.pub
 ExternalDefinition	.struct
@@ -39,48 +39,105 @@ FullBytes	.word ?
 STATUS_OK = 0
 STATUS_BAD = 1
 
-; Open an externally parsed definition. A0=state,A1=scope,A2=packet.
-; D0/CCR=status,D1=handle (zero on failure); other registers preserved.
-; Same-name external overloads share one scope declaration, but each owns a
-; Def and same-index Node. Internal macros/segments keep duplicate rejection.
-; HeaderPlan may be zero for numeric-only bodies; textual recipes require the
-; normal session-owned formal spelling plan. No defaults are inferred here.
-externalBegin	.block
-	movem.l d2-d7/a0-a6, -(sp)
+; A0=state. D0/CCR=normalized boolean; other registers preserved.
+; Test open ownership without looking up a descriptor or allocating storage.
+hasOpen	.block
+	moveq #1, d0
+	tst.w State.Open(a0)
+	bne.w done
+	tst.w State.ExternalOpen(a0)
+	bne.w done
+	moveq #0, d0
+done
+	tst.l d0
+	rts
+	.bend  ; hasOpen
+
+; A0=state. D0/CCR=status,A1=currently open internal/external descriptor,
+; or NULL when neither is open. Other registers preserved. Borrowed descriptor
+; expires on definition mutation/begin/finish; source routing remains caller-owned.
+openDef	.block
+	move.l d1, -(sp)
+	moveq #0, d1
+	move.w State.ExternalOpen(a0), d1
+	beq.w internal
+	movea.l EXTERNALS+memory.Block.Pointer(a0), a1
+	bra.w row
+internal
+	move.w State.Open(a0), d1
+	beq.w missing
+	movea.l DEFS+memory.Block.Pointer(a0), a1
+row
+	subq.w #1, d1
+	mulu.w #DEF_BYTES, d1
+	adda.l d1, a1
+	moveq #STATUS_OK, d0
+	bra.w done
+missing
+	suba.l a1, a1
+	moveq #STATUS_BAD, d0
+done
+	move.l (sp)+, d1
+	tst.l d0
+	rts
+	.bend  ; openDef
+
+; Reserve the next private carrier before source-owner facet publication.
+; A0=state. D0/CCR=status; other registers preserved. No count/open/index or
+; source declaration changes. After success externalBegin cannot allocate
+; until another template mutation; packet validation still applies.
+externalReserve	.block
+	movem.l d4/a0/a6, -(sp)
 	movea.l a0, a6
-	movea.l a1, a5
-	movea.l a2, a3
 	tst.w State.Open(a6)
+	bne.w bad
+	tst.w State.ExternalOpen(a6)
 	bne.w bad
 	tst.w State.Skipping(a6)
 	bne.w bad
+	cmpi.w #65535, State.ExternalCount(a6)
+	beq.w bad
+	moveq #0, d0
+	move.w State.ExternalCount(a6), d0
+	addq.l #1, d0
+	mulu.w #DEF_BYTES, d0
+	lea EXTERNALS(a6), a0
+	jsr memory.reserve
+	bra.w done
+bad
+	moveq #STATUS_BAD, d0
+done
+	movem.l (sp)+, d4/a0/a6
+	tst.l d0
+	rts
+	.bend  ; externalReserve
+
+; A0=state,A1=unused source context,A2=ExternalDefinition packet.
+; D0/CCR=status,D1=private one-based body handle (zero on failure); others kept.
+; Private carriers declare no macro/segment name or index node. The source
+; statement owner supplies its independent namespace/module/public facet.
+; HeaderPlan is optional for numeric-only bodies; textual recipes need the
+; ordinary session-owned spelling plan. No defaults or grammar are inferred.
+externalBegin	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	movea.l a2, a3
 	cmpi.w #PARAM_LIMIT, ExternalDefinition.ParamCount(a3)
 	bhi.w bad
-	moveq #0, d5
-	move.w ExternalDefinition.Name(a3), d5
-	move.l d5, d0
-	movea.l a6, a0
-	adda.l #CANDIDATES, a0
-	jsr index.find
-	moveq #1, d3
-	tst.w d1
-	beq.w allocate
-	moveq #0, d0
-	move.w d1, d0
-	subq.l #1, d0
-	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
-	adda.l d0, a0
-	cmpi.w #KIND_EXTERNAL, Def.Kind(a0)
+	bsr.w externalReserve
 	bne.w bad
-	moveq #0, d3
-allocate
 	moveq #0, d4
-	move.w State.Count(a6), d4
-	bsr.w reserveDefinition
+	move.w State.ExternalCount(a6), d4
+	lea EXTERNALS(a6), a0
+	bsr.w reserveRow
 	bne.w bad
+	move.w ExternalDefinition.Name(a3), Def.Name(a0)
 	move.w ExternalDefinition.ParamCount(a3), Def.ParamCount(a0)
 	move.l ExternalDefinition.HeaderPlan(a3), Def.HeaderPlan(a0)
+	move.l ExternalDefinition.Origin(a3), Def.Origin(a0)
+	move.w #KIND_EXTERNAL, Def.Kind(a0)
+	move.l State.Used(a6), Def.First(a0)
+	move.l State.Used(a6), Def.Last(a0)
 	moveq #0, d6
 copyFormal
 	cmp.w Def.ParamCount(a0), d6
@@ -92,13 +149,10 @@ copyFormal
 	addq.w #1, d6
 	bra.w copyFormal
 publish
-	moveq #KIND_EXTERNAL, d2
-	movea.l a5, a1
-	bsr.w publishDefinition
-	bne.w bad
-	move.l ExternalDefinition.Origin(a3), Def.Origin(a0)
+	addq.w #1, State.ExternalCount(a6)
 	moveq #0, d1
-	move.w State.Open(a6), d1
+	move.w State.ExternalCount(a6), d1
+	move.w d1, State.ExternalOpen(a6)
 	moveq #STATUS_OK, d0
 	bra.w done
 bad
@@ -119,11 +173,11 @@ externalCapture	.block
 	movea.l a0, a6
 	movea.l a1, a5
 	moveq #0, d0
-	move.w State.Open(a6), d0
+	move.w State.ExternalOpen(a6), d0
 	beq.w bad
 	subq.l #1, d0
 	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
+	movea.l EXTERNALS+memory.Block.Pointer(a6), a0
 	adda.l d0, a0
 	cmpi.w #KIND_EXTERNAL, Def.Kind(a0)
 	bne.w bad
@@ -148,16 +202,16 @@ externalClose	.block
 	movem.l d1/a1, -(sp)
 	tst.w d1
 	beq.w bad
-	cmp.w State.Open(a0), d1
+	cmp.w State.ExternalOpen(a0), d1
 	bne.w bad
 	subq.w #1, d1
 	mulu.w #DEF_BYTES, d1
-	movea.l DEFS+memory.Block.Pointer(a0), a1
+	movea.l EXTERNALS+memory.Block.Pointer(a0), a1
 	adda.l d1, a1
 	cmpi.w #KIND_EXTERNAL, Def.Kind(a1)
 	bne.w bad
 	move.l State.Used(a0), Def.Last(a1)
-	clr.w State.Open(a0)
+	clr.w State.ExternalOpen(a0)
 	moveq #STATUS_OK, d0
 	bra.w done
 bad
@@ -172,7 +226,8 @@ done
 ; D0/CCR=status; other registers preserved. Caller owns signature selection and
 ; supplies validated packed spans, spelling facets and caller-bound label/IDs.
 ; Exactly ParamCount arguments are required, with <=ARG_LIMIT packed bytes,
-; <=TEXT_LIMIT spelling bytes and <=251 full spelling bytes. Failure never
+; <=TEXT_LIMIT spelling bytes and <=251 full spelling bytes. Captured empty
+; strings may supply zero-length packed/spelling spans and NULL pointers. Failure never
 ; increments Depth; next/cursor expand success through the common engine.
 externalInvoke	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -180,15 +235,17 @@ externalInvoke	.block
 	movea.l a1, a3
 	tst.w State.Open(a6)
 	bne.w bad
+	tst.w State.ExternalOpen(a6)
+	bne.w bad
 	moveq #0, d4
 	move.w ExternalCall.Definition(a3), d4
 	beq.w bad
-	cmp.w State.Count(a6), d4
+	cmp.w State.ExternalCount(a6), d4
 	bhi.w bad
 	subq.w #1, d4
 	move.l d4, d0
 	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
+	movea.l EXTERNALS+memory.Block.Pointer(a6), a0
 	adda.l d0, a0
 	cmpi.w #KIND_EXTERNAL, Def.Kind(a0)
 	bne.w bad
@@ -208,6 +265,7 @@ labelReady
 	move.l ExternalCall.Label(a3), State.CallLabel(a6)
 	moveq #0, d5
 	move.w ExternalCall.CallName(a3), d5
+	moveq #1, d2  ; private external carrier
 	bsr.w startCall
 	bne.w bad
 	move.w ExternalCall.ArgCount(a3), CallFrame.ArgCount(a4)
@@ -219,11 +277,12 @@ argument
 	move.l a5, d0
 	beq.w bad
 	movea.l ExternalArgument.Packed(a5), a1
-	move.l a1, d0
-	beq.w bad
 	moveq #0, d0
 	move.w ExternalArgument.PackedBytes(a5), d0
+	beq.w packedReady
+	move.l a1, d1
 	beq.w bad
+packedReady
 	movea.l a1, a0
 	adda.l d0, a0
 	move.w d7, d1
@@ -288,7 +347,7 @@ queue
 	move.w ExternalCall.Definition(a3), d0
 	subq.w #1, d0
 	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
+	movea.l EXTERNALS+memory.Block.Pointer(a6), a0
 	adda.l d0, a0
 	moveq #0, d1
 	move.w ExternalCall.CallLine(a3), d1

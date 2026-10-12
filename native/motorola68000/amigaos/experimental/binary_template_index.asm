@@ -70,10 +70,8 @@ add	.block
 	beq.w bad
 	move.l d3, d2
 	mulu.w #NODE_BYTES, d2
-	move.l d2, d0
-	addi.l #NODE_BYTES, d0
-	lea NODES(a4), a0
-	jsr memory.reserve
+	movea.l a4, a0
+	bsr.w reserveNext
 	bne.w bad
 	movea.l NODES+memory.Block.Pointer(a4), a6
 	lea 0(a6, d2.l), a5
@@ -111,6 +109,27 @@ done
 	tst.l d0
 	rts
 	.bend  ; add
+
+; A0=state. Reserve its next node before another owner publishes a facet.
+; D0/CCR=status; other registers preserved. Count/chains/Used remain unchanged.
+reserveNext	.block
+	move.l a0, -(sp)
+	moveq #0, d0
+	move.w State.Count(a0), d0
+	cmpi.l #65535, d0
+	beq.w bad
+	addq.l #1, d0
+	mulu.w #NODE_BYTES, d0
+	lea NODES(a0), a0
+	jsr memory.reserve
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; reserveNext
 
 ; A0=state, D0=leaf bucket (0..255). D1=first cursor, or zero.
 ; All other registers preserved; CCR reflects D1.

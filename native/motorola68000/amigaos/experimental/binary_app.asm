@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_app
 	.cpu 68020
 	.use experimental.amigaos.binary_frontend as frontend
+	.use experimental.amigaos.binary_statement_execution as statement_execution
 	.use experimental.amigaos.binary_capture as capture
 	.use experimental.amigaos.binary_configuration as configuration
 	.use experimental.amigaos.binary_conditionals as conditionals
@@ -85,6 +86,7 @@ PROGRESS_RECORD_OUTPUT = 31
 PROGRESS_ASSEMBLY_RECORD_HEAD = 32
 PROGRESS_ASSEMBLY_WORK = 300
 PROGRESS_PREPARATION_FAILURE = 301
+PROGRESS_STATEMENT_FAILURE = 316
 PROGRESS_SCOPED_ROOTS = 310
 PROGRESS_SCOPED_SIZING = 311
 PROGRESS_SCOPED_ITERABLE = 312

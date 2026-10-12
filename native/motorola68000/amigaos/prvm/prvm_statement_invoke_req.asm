@@ -19,6 +19,23 @@ route	.block
 	movem.l (sp)+, d1-d3/a1
 	rts
 	.bend
+; Same frame ABI,A1=optional shared cell checked against every route span.
+routeBudget	.block
+	movem.l d1-d3/a1-a2, -(sp)
+	movea.l a1, a2
+	lea RouteChecks, a1
+	moveq #6, d1
+	moveq #abi.ROUTE_FRAME_BYTES, d2
+	moveq #abi.RouteFrame.StepBudget, d3
+	jsr request.validateBudget
+	tst.l d0
+	movem.l (sp)+, d1-d3/a1-a2
+	rts
+	.bend  ; routeBudget
+fallbackBudget	.block
+	jsr request.compileBudget
+	rts
+	.bend  ; fallbackBudget
 ; FallbackFrame has the same bounded span layout as CompileFrame.
 fallback	.block
 	jsr request.compile
@@ -27,17 +44,31 @@ fallback	.block
 ; Validate descriptor spans even when their plans are outside the selected group.
 ; Plan semantics are checked by the matcher only for the selected keyword group.
 select	.block
+	move.l a1, -(sp)
+	suba.l a1, a1
+	bsr.w selectBudget
+	movea.l (sp)+, a1
+	tst.l d0
+	rts
+	.bend  ; select
+; A1=optional cell. Also reject overlap with EVERY indirectly addressed plan.
+selectBudget	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a1, a2
 	movea.l a0, a4
 	lea SelectChecks, a1
 	moveq #10, d1
 	moveq #abi.SELECT_FRAME_BYTES, d2
 	moveq #abi.SelectFrame.StepBudget, d3
-	jsr request.validate
+	jsr request.validateBudget
 	bne.w done
 	movea.l abi.SelectFrame.PlanRefsPtr(a4), a3
 	move.l abi.SelectFrame.PlanRefsCount(a4), d7
 	cmp.l abi.SelectFrame.StepBudget(a4), d7
+	bhi.w exhausted
+	move.l a2, d0
+	beq.w next
+	cmp.l (a2), d7
 	bhi.w exhausted
 next
 	tst.l d7
@@ -51,6 +82,15 @@ next
 	move.l d6, d0
 	jsr inputs.span
 	bne.w done
+	move.l a2, d0
+	beq.w cellSeparate
+	movea.l a5, a0
+	move.l d6, d0
+	movea.l a2, a1
+	moveq #4, d1
+	jsr inputs.separate
+	bne.w done
+cellSeparate
 	movea.l a5, a0
 	move.l d6, d0
 	movea.l abi.SelectFrame.OutputPtr(a4), a1

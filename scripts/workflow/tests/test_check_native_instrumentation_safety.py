@@ -53,6 +53,22 @@ class InstrumentationSafetyTests(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertTrue(validate_text(path, text))
 
+    def test_functional_byte_warning_output_exception_is_owner_and_routine_scoped(self):
+        owner = "native/motorola68000/amigaos/experimental/binary_app_diagnostics.i"
+        routine = "reportByteWarning .block\n" + "\n".join(
+            ["bsr.w writeDiagnostic"] * 4
+        ) + "\n.bend ; reportByteWarning"
+        self.assertEqual(validate_text(owner, routine), [])
+        self.assertTrue(validate_text(owner, "bsr.w writeDiagnostic"))
+        self.assertTrue(validate_text("native/motorola68000/amigaos/other.i", routine))
+
+        injected = routine.replace(
+            "bsr.w writeDiagnostic\nbsr.w writeDiagnostic",
+            "bsr.w debugPrint\nbsr.w writeDiagnostic",
+            1,
+        )
+        self.assertTrue(validate_text(owner, injected))
+
     def test_standalone_harness_still_rejects_prohibited_debug_buffers(self):
         path = "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm"
         self.assertTrue(validate_text(path, "move.l d0, RequestBuffer ; debug"))

@@ -13,6 +13,7 @@
 Local	.struct
 Frame	.long ?
 Budget	.long ?
+BudgetPtr	.long ?
 Policy	.long ?
 LabelToken	.long ?
 HeadToken	.long ?
@@ -24,18 +25,38 @@ LOCAL_BYTES = Local.HeadToken+4
 ; Route12 is published only on success/found; absent/error outputs are zero.
 ; Other registers preserved. No original source or tokenizer access.
 run	.block
+	move.l a1, -(sp)
+	suba.l a1, a1
+	bsr.w runBudget
+	movea.l (sp)+, a1
+	tst.l d0
+	rts
+	.bend  ; run
+; Same frame/output ABI,A1=shared budget cell (null selects frame budget).
+; The cell is validated caller-owned mutable storage disjoint from frame spans.
+; The caller retains the remaining value across preparation and selection.
+runBudget	.block
 	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	movem.l d4-d7/a0-a6, -(sp)
 	lea -LOCAL_BYTES(sp), sp
 	movea.l sp, a6
 	movea.l a0, a5
 	move.l a5, (a6)  ; Local.Frame (zero offset)
-	jsr request.route
+	jsr request.routeBudget
 	bne.w finish
 	move.l abi.RouteFrame.StepBudget(a5), Local.Budget(a6)
+	move.l a1, Local.BudgetPtr(a6)
+	tst.l Local.BudgetPtr(a6)
+	bne.w budgetReady
+	lea Local.Budget(a6), a0
+	move.l a0, Local.BudgetPtr(a6)
+budgetReady
+	movea.l Local.BudgetPtr(a6), a0
+	jsr inputs.budget
+	bne.w finish
 	movea.l abi.RouteFrame.ProgramPtr(a5), a0
 	move.l abi.RouteFrame.ProgramBytes(a5), d0
-	lea Local.Budget(a6), a2
+	movea.l Local.BudgetPtr(a6), a2
 	jsr policy.match
 	bne.w finish
 	move.l a1, Local.Policy(a6)
@@ -89,7 +110,7 @@ head
 	move.l abi.RouteFrame.ScopeCount(a5), d1
 	movea.l abi.RouteFrame.KeywordsPtr(a5), a2
 	movea.l Local.Policy(a6), a3
-	lea Local.Budget(a6), a4
+	movea.l Local.BudgetPtr(a6), a4
 	jsr scope.longest
 	bne.w finish
 	tst.l d1

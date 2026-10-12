@@ -8148,3 +8148,23 @@ mod native_wide_literals;
 #[cfg(test)]
 #[path = "tests/native_labeled_conditionals.rs"]
 mod native_labeled_conditionals;
+
+#[cfg(test)]
+#[path = "tests/native_statement_storage.rs"]
+mod native_statement_storage;
+
+#[cfg(test)]
+#[path = "tests/native_statement_calls.rs"]
+mod native_statement_calls;
+
+#[cfg(test)]
+#[path = "tests/native_statement_templates.rs"]
+mod native_statement_templates;
+
+#[cfg(test)]
+#[path = "tests/native_statement_exposure.rs"]
+mod native_statement_exposure;
+
+#[cfg(test)]
+#[path = "tests/native_statement_tail.rs"]
+mod native_statement_tail;

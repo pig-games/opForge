@@ -18,6 +18,7 @@ captureFileBegin	.block
 	move.l #frontend.updateRole, configuration.Frame.UpdateRole(a0)
 	move.l #frontend.loopRole, configuration.Frame.LoopRole(a0)
 	move.l #frontend.fileRole, configuration.Frame.FileRole(a0)
+	move.l #frontend.captureStatementRole, configuration.Frame.StatementRole(a0)
 	lea Front, a1
 	move.l frontend.Frame.Output(a1), configuration.Frame.Output(a0)
 	move.l frontend.Frame.Capacity(a1), configuration.Frame.Capacity(a0)

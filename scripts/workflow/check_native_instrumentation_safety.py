@@ -31,6 +31,13 @@ FUNCTIONAL_SERVICE_ERROR_HARNESS = (
 FUNCTIONAL_SERVICE_ERROR_CALL = re.compile(
     r"^\s*bsr\.w\s+writeFailureDiagnostic\s*(?:;.*)?$", re.I
 )
+FUNCTIONAL_BYTE_WARNING_OWNER = (
+    "native/motorola68000/amigaos/experimental/binary_app_diagnostics.i"
+)
+# Warning text is part of the program's behavior. Exempt only its exact writer
+# calls inside the routine that formats those warnings.
+FUNCTIONAL_BYTE_WARNING_BEGIN = re.compile(r"^\s*reportByteWarning\s+\.block\b", re.I)
+FUNCTIONAL_BYTE_WARNING_CALL = re.compile(r"^\s*bsr\.w\s+writeDiagnostic\s*(?:;.*)?$", re.I)
 
 
 def validate_text(path: str, text: str) -> list[str]:
@@ -39,7 +46,10 @@ def validate_text(path: str, text: str) -> list[str]:
     standalone_diagnostic_harness = path in STANDALONE_DIAGNOSTIC_HARNESSES
     errors: list[str] = []
     lines = text.splitlines()
+    in_functional_byte_warning = False
     for index, line in enumerate(lines):
+        if path == FUNCTIONAL_BYTE_WARNING_OWNER and FUNCTIONAL_BYTE_WARNING_BEGIN.search(line):
+            in_functional_byte_warning = True
         # This standalone executable owns its DOS text protocol and predates the
         # production instrumentation framework. Its DebugCli namespace is not
         # instrumentation injected into runtime control flow. Keep the buffer,
@@ -48,7 +58,15 @@ def validate_text(path: str, text: str) -> list[str]:
             path == FUNCTIONAL_SERVICE_ERROR_HARNESS
             and FUNCTIONAL_SERVICE_ERROR_CALL.fullmatch(line) is not None
         )
-        if not standalone_diagnostic_harness and not functional_service_error_call and RAW_CALL.search(line):
+        functional_byte_warning_call = (
+            in_functional_byte_warning and FUNCTIONAL_BYTE_WARNING_CALL.fullmatch(line) is not None
+        )
+        if (
+            not standalone_diagnostic_harness
+            and not functional_service_error_call
+            and not functional_byte_warning_call
+            and RAW_CALL.search(line)
+        ):
             errors.append(f"{path}:{index + 1}: raw debug/diagnostic call is forbidden")
         if PROHIBITED.search(line) and ("debug" in line.lower() or "diag" in line.lower()):
             errors.append(f"{path}:{index + 1}: instrumentation touches a prohibited buffer")
@@ -77,6 +95,8 @@ def validate_text(path: str, text: str) -> list[str]:
                         )
                     break
                 cursor += 1
+        if in_functional_byte_warning and re.match(r"^\s*\.bend\b", line, re.I):
+            in_functional_byte_warning = False
     return errors
 
 

@@ -3,6 +3,7 @@ reportFailure	.block
 	.BINDING_DIAGNOSTIC_REPORT DosBase
 	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, frontend.PreparationStage, Front+frontend.Frame.Used, Front+frontend.Frame.NameCount, #PROGRESS_PREPARATION_FAILURE
 	.MEMORY_PREPARATION_RECORD DosBase, InAssembly, frontend.PreparationStage, Front+frontend.Frame.Output, Front+frontend.Frame.Capacity, frontend.PreparationInput, #PROGRESS_PREPARATION_FAILURE
+	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, statement_execution.FailureStep, #0, #0, #PROGRESS_STATEMENT_FAILURE
 	tst.l InAssembly
 	beq.w located
 	bsr.w locateFailure

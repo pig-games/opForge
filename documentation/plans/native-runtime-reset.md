@@ -292,11 +292,11 @@ cross-module use. Rust now retains invocation provenance for a label emitted by
 an empty statement body; opaque preparation caches stay out of semantic equality
 and AST debug representation.
 
-Native template storage now exposes a numeric external-definition facade, and a
-separate adapter stages normalized facets from owned TKVM records. Those helpers
-do not yet connect statement invocation to the compact CLI. Invocation-prefix
-selection, overload dispatch and generic letter/digit fallback now have shared
-VM services; connecting them to native source/template orchestration remains.
+Native template storage exposes a numeric external-definition facade, and a
+separate adapter stages normalized facets from owned TKVM records. Invocation-prefix
+selection, overload dispatch and generic letter/digit fallback have shared VM
+services. The connected source/template orchestration is described below; these
+earlier component proofs alone did not establish CLI invocation.
 The adapter separately qualifies 96 cases against live Rust facet output,
 including numeric suffixes and overflow, canonical punctuation, decoded/lossy
 UTF-8, name IDs, bounds and atomic publication failures. Its fresh native
@@ -339,10 +339,38 @@ assembler tests, 962 affected subsystem tests and Clippy pass. Source acquisitio
 and numeric selection have separate owners. Export/scope rows are still rebuilt
 per Rust invocation; no optimization or broad statement parity is claimed.
 
-The current native CLI still lacks connected statement invocation. Definition
-storage, exposed import names and existing template cursor integration are the
-next orchestration work; component completion does not change the BS35 full
-self-host evidence or establish a new hardware/2 MiB qualification.
+The compact CLI now connects direct source statement declarations and invocations
+to the shared services and existing packed template cursor. Ten fresh native
+cases match live Rust output exactly, with zero guest exit and completed protocol:
+byte/word overload selection, caller labels, empty and duplicate captures, named
+and positional text substitution, decoded expression captures, numeric fallback,
+keyword suffixes and independent macro/statement names. Definition storage,
+caller-visible keyword exposure, invocation scratch and capture transport have
+separate owners. Private statement carriers do not register ordinary macro names.
+The temporary capture writer restores the live frontend frame used by binding
+callbacks; new key arenas are allocated before exposure validation.
+
+Eight additional connected same-source module-graph cases qualify actual `.use`
+acquisition: qualified aliases, selected bare/renamed exports, wildcard/full
+module qualification, later-import replacement with local overloads, and rejection
+of private selection, implicit leaf aliases and sibling-block ambiguity. The five
+positive cases match live Rust bytes; the three negative cases complete freshly
+with guest exit 20 and diagnostics, without an exact diagnostic-text claim.
+
+Calls inside expanded macro/segment/statement bodies remain to qualify.
+Ordinary packed body records do not retain the lexical facets
+needed by statement matching; dispatch must acquire fresh owned metadata before
+using those records. Do not reuse stale caller tokens or reread original files.
+The separate exposure component validates acquired import descriptors; the eight
+connected cases are the current acquisition proof. This checkpoint does not change the BS35 full self-host
+evidence or establish a new hardware/2 MiB qualification.
+
+The unchanged release macro control separately takes 34.904874125 seconds before
+this integration and 36.037844917 afterward (+3.25%, one sample each). The image
+grows by 21,624 bytes and peak owned storage by 2,880 bytes (+0.22%) in separate
+instrumented runs, with zero owned storage left on exit. These costs are isolated
+from the earlier foundation delta; see the
+[integration comparison](../performance/vm-efficiency.md#connected-statement-preparation-and-invocation-bs38).
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

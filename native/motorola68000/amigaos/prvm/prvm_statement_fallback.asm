@@ -59,7 +59,7 @@ stage	.block
 	movea.l sp, a6
 	movea.l a0, a4
 	movea.l a1, a5
-	jsr request.fallback
+	jsr request.fallbackBudget
 	bne.w finish
 	move.l abi.FallbackFrame.StepBudget(a4), (a6)  ; Local.Budget (zero offset)
 	move.l a5, Local.BudgetPtr(a6)

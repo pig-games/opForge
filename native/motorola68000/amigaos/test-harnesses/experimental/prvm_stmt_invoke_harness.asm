@@ -10,6 +10,7 @@
 	.use prvm.amigaos.statement_policy as policy
 	.use prvm.amigaos.statement_scope as scope
 	.use prvm.amigaos.statement_text as text
+	.use test.amigaos.statement_budget as budgetTests
 	.pub
 Header	.struct
 Mode	.long ?
@@ -45,7 +46,8 @@ CASE_FALLBACK = 7
 CASE_SELECT = 8
 	.priv
 PREFIX_BUDGET_OFFSET = abi.SELECT_FRAME_BYTES
-LOCAL_BYTES = PREFIX_BUDGET_OFFSET+4
+SHARED_BUDGET_OFFSET = PREFIX_BUDGET_OFFSET+4
+LOCAL_BYTES = SHARED_BUDGET_OFFSET+4
 	.pub
 	.section code, kind=code
 ; A0=Context,A1=Header52. D0/status,D1/primary,D2/secondary,D3/tertiary.
@@ -81,7 +83,10 @@ routeCase
 	move.l Header.Budget(a5), abi.RouteFrame.StepBudget(a6)
 	movea.l a6, a0
 	moveq #abi.ROUTE_FRAME_BYTES, d0
-	jsr route.run
+	move.l Header.Budget(a5), SHARED_BUDGET_OFFSET(a6)
+	lea SHARED_BUDGET_OFFSET(a6), a1
+	jsr route.runBudget
+	bsr.w controls
 	bra.w done
 fallbackCase
 	move.l (a4), (a6)  ; Context.Program / FallbackFrame.ProgramPtr (zero offsets)
@@ -156,7 +161,10 @@ selectCase
 	move.l d1, abi.SelectFrame.PrefixBytes(a6)
 	movea.l a6, a0
 	moveq #abi.SELECT_FRAME_BYTES, d0
-	jsr selector.run
+	move.l Header.Budget(a5), SHARED_BUDGET_OFFSET(a6)
+	lea SHARED_BUDGET_OFFSET(a6), a1
+	jsr selector.runBudget
+	bsr.w controls
 	bra.w done
 failed
 	moveq #0, d1
@@ -168,5 +176,35 @@ done
 	movem.l (sp)+, d4-d7/a0-a6
 	rts
 	.bend
+; Exercise public shared cells on each successful current semantic case.
+; Preserve the live result; failed invariants become a detectable caller error.
+controls	.block
+	tst.l d0
+	bne.w done
+	movem.l d0-d3, -(sp)
+	move.l SHARED_BUDGET_OFFSET(a6), d0
+	cmp.l Header.Budget(a5), d0
+	bhi.w failed
+	movea.l a6, a0
+	move.l Header.Mode(a5), d1
+	moveq #abi.ROUTE_FRAME_BYTES, d0
+	cmpi.l #CASE_ROUTE, d1
+	beq.w ready
+	moveq #abi.SELECT_FRAME_BYTES, d0
+ready
+	jsr budgetTests.run
+	bne.w failed
+	movem.l (sp)+, d0-d3
+	bra.w done
+failed
+	movem.l (sp)+, d0-d3
+	moveq #abi.INVALID_ARGUMENT, d0
+	moveq #0, d1
+	moveq #0, d2
+	moveq #0, d3
+done
+	tst.l d0
+	rts
+	.bend  ; controls
 	.endsection
 	.endmodule

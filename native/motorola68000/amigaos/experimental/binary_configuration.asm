@@ -13,6 +13,7 @@
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_memory as memory
 	.use prvm.amigaos.abi as abi
+	.use prvm.amigaos.statement_abi as statement_abi
 	.pub
 ; Private classification roles are negative longs; shared directive keys are
 ; positive. Exact comparisons and moveq retain them, while unsigned keyword
@@ -21,6 +22,8 @@ ASSIGNMENT = -1
 LOOP_OPEN = -2
 LOOP_CLOSE = -3
 SOURCE_INCLUDE = -4
+TEMPLATE_OPEN = -5
+TEMPLATE_CLOSE = -6
 SCHEMA_ACTIVE = 1
 SCHEMA_UNAVAILABLE = 2
 Frame	.struct
@@ -33,6 +36,7 @@ FileRole	.long ?  ; shared read-only file action head selection
 LoopRole	.long ?  ; read-only package loop-head selection callback
 DeclarationRole	.long ?  ; read-only package declaration-head selection callback
 UpdateRole	.long ?  ; shared numeric compound-update selection callback
+StatementRole	.long ?  ; shared A8 role over an owned capture.Record
 Output	.long ?  ; session's caller-owned writer output
 Capacity	.long ?  ; writer output capacity, including shared label normalization
 Cursor	.long ?  ; local capture offset, independent of the graph's logical offset
@@ -615,6 +619,19 @@ captureRole	.block
 classify	.block
 	movem.l d2-d5/a0-a4, -(sp)
 	movea.l a0, a4
+	movea.l Frame.StatementRole(a6), a3
+	move.l a3, d2
+	beq.w ordinaryHead
+	movea.l Frame.Session(a6), a0
+	movea.l a4, a1
+	jsr (a3)
+	tst.l d0
+	bne.w invalidRole
+	cmpi.l #statement_abi.HEAD_DEFINITION, d1
+	beq.w statementOpen
+	cmpi.l #statement_abi.HEAD_END, d1
+	beq.w statementClose
+ordinaryHead
 	move.l capture.Record.Count(a4), d5
 	moveq #0, d1
 	cmpi.l #2, d5
@@ -706,6 +723,12 @@ declarationRole
 	bra.w done
 assignmentRecord
 	moveq #ASSIGNMENT, d1
+	bra.w done
+statementOpen
+	moveq #TEMPLATE_OPEN, d1
+	bra.w done
+statementClose
+	moveq #TEMPLATE_CLOSE, d1
 done
 	moveq #0, d0
 	bra.w return
@@ -721,6 +744,10 @@ return
 ; A0=Frame,D1=shared directive key. D0=1 structural record consumed,
 ; 0 ordinary record, -1 depth overflow; CCR reflects D0. Other registers kept.
 trackDepth	.block
+	cmpi.l #TEMPLATE_OPEN, d1
+	beq.w openNested
+	cmpi.l #TEMPLATE_CLOSE, d1
+	beq.w closeNested
 	cmpi.l #LOOP_OPEN, d1
 	beq.w openNested
 	cmpi.l #LOOP_CLOSE, d1

@@ -1429,7 +1429,9 @@ Reference example: [examples/statement_expansion.asm](../examples/opcore/stateme
 
 Expansion model:
 - `.statement` definitions are expanded by the macro processor **before parsing**.
-- Statement definitions are **global** (not module-scoped).
+- Each module has a flat statement keyword registry. Blocks and namespaces do
+  not create nearer statement overload scopes. `.use` controls exposed keys,
+  including selected names, aliases and full module qualification.
 
 ### 4.5 Scope and namespace interaction (`.macro`, `.segment`, `.statement`)
 
@@ -1441,7 +1443,9 @@ Definition-time behavior:
   - names are qualified by the active `.namespace` stack
   - lookup prefers the nearest namespace, then outer namespaces, then global
 - `.block` does **not** add macro/segment name qualification.
-- `.statement` definitions are global keyword entries (not namespace- or module-scoped).
+- `.statement` keyword lookup is flat within the module, independent of block
+  and namespace nesting. Imported keys follow `.use` exposure rules. Statements
+  and dot-invoked macros/segments have independent name registries.
 
 Expansion-time behavior:
 - `.macro` expands with an implicit `.block` / `.endblock` wrapper.
@@ -1731,7 +1735,7 @@ create?" without rereading the full discussion.
 |-----------|-------------------|----------------|----------------------------|-------|
 | `.macro` | Namespace-aware (nearest `.namespace` first, then outer, then global) | Implicit `.block` ... `.endblock` wrapper | Body symbols are local to generated block | Invocation label attaches to generated `.block` line |
 | `.segment` | Namespace-aware (same lookup as `.macro`) | Inline expansion (no implicit wrapper) | Body symbols resolve in caller scope | Use explicit `.block` in body if isolation is needed |
-| `.statement` | Global keyword registry (not namespace-scoped) | Inline expansion (no implicit wrapper) | Body symbols resolve in caller scope | Cannot be defined inside `.macro`/`.segment`; statement definitions are not nested |
+| `.statement` | Module keyword registry, flat across blocks/namespaces; `.use` controls imported keys | Inline expansion (no implicit wrapper) | Body symbols resolve in caller scope | Cannot be defined inside `.macro`/`.segment`; statement definitions are not nested |
 
 ## 8. Appendix: multi-CPU architecture
 

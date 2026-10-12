@@ -31,6 +31,11 @@ PREPARATION_STAGES = {
     8: "expression",
     9: "writer",
     10: "template",
+    11: "fragment binding",
+    12: "fragment suffix",
+    13: "fragment append",
+    14: "statement definition storage",
+    15: "statement invocation",
 }
 STAGES = {
     1: "lexical scope still open",

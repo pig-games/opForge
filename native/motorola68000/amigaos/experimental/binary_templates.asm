@@ -43,6 +43,8 @@ TEXT_SCRATCH = 42; private placeholder-consumer scratch, never a writer record
 ACTION_REGULAR = 0
 ACTION_CONSUMED = 1
 ACTION_INVOKE = 2
+ROLE_MACRO = 2
+ROLE_SEGMENT = 3
 ValueToken	.struct
 Kind	.byte ?
 Identity	.word ?
@@ -70,9 +72,12 @@ Floor	.word ?  ; source cursor protects suspended parent invocation frames
 RecordDepth	.word ?  ; invocation owning the last returned body record
 RecordOffset	.long ?  ; numeric body offset, never a pointer
 Origin	.long ?  ; opaque application source identity
+ExternalCount	.word ?  ; private carriers, independent of the macro index
+ExternalOpen	.word ?
 	.endstruct
 CallFrame	.struct
 Definition	.word ?
+External	.word ?  ; zero internal Def/index, one private carrier
 Cursor	.long ?
 ArgBytes	.word ?
 ArgCount	.word ?  ; supplied arguments, excluding omitted defaults
@@ -163,13 +168,14 @@ KIND_SEGMENT = 0
 KIND_MACRO = 1
 KIND_EXTERNAL = 2
 BLOCK_BYTES = memory.Block.Used+4
-DEFS = State.Origin+4
+DEFS = State.ExternalOpen+2
 DEFAULTS = DEFS+BLOCK_BYTES
 DEFAULT_TEXT = DEFAULTS+BLOCK_BYTES
 BODY = DEFAULT_TEXT+BLOCK_BYTES
 DEFAULT_USED = DEFAULTS+memory.Block.Used
 DEFAULT_TEXT_USED = DEFAULT_TEXT+memory.Block.Used
-FRAMES = BODY+BLOCK_BYTES
+EXTERNALS = BODY+BLOCK_BYTES
+FRAMES = EXTERNALS+BLOCK_BYTES
 COMPOSITE_TEXT = FRAMES+DEPTH_LIMIT*FRAME_BYTES
 HEADER_FRAME = COMPOSITE_TEXT+256
 CANDIDATES = HEADER_FRAME+FRAME_BYTES
@@ -187,6 +193,9 @@ begin	.block
 	jsr index.begin
 	movea.l (sp)+, a0
 	clr.w State.Count(a0)
+	clr.w State.ExternalCount(a0)
+	clr.w State.ExternalOpen(a0)
+	clr.l EXTERNALS+memory.Block.Used(a0)
 	clr.w State.Open(a0)
 	clr.w State.Skipping(a0)
 	clr.l State.Used(a0)
@@ -218,6 +227,8 @@ finish	.block
 	jsr memory.release
 	adda.l #BLOCK_BYTES, a0
 	jsr memory.release
+	adda.l #BLOCK_BYTES, a0
+	jsr memory.release
 	movea.l (sp)+, a0
 	move.l a0, -(sp)
 	adda.l #CANDIDATES, a0
@@ -234,6 +245,8 @@ endFile	.block
 	tst.w State.Depth(a0)
 	bne.w bad
 	tst.w State.Open(a0)
+	bne.w bad
+	tst.w State.ExternalOpen(a0)
 	bne.w bad
 	tst.w State.Skipping(a0)
 	beq.w done
@@ -429,10 +442,10 @@ call
 	moveq #1, d0
 	bra.w done
 macro
-	moveq #2, d0
+	moveq #ROLE_MACRO, d0
 	bra.w done
 segment
-	moveq #3, d0
+	moveq #ROLE_SEGMENT, d0
 	bra.w done
 none
 	moveq #0, d0
@@ -703,6 +716,8 @@ header
 	movea.l a3, a2
 checkedHeader
 	.MEMORY_TEMPLATE_WORK #9, #1
+	tst.w State.ExternalOpen(a6)
+	bne.w bad
 	tst.w State.Open(a6)
 	bne.w bad
 	tst.w State.Skipping(a6)
@@ -778,6 +793,7 @@ call
 	btst #0, 1(a5)
 	bne.w bad
 callSyntax
+	moveq #0, d2  ; internal Def/index carrier
 	bsr.w startCall
 	bne.w bad
 	bsr.w bindCallPlan
@@ -1100,11 +1116,7 @@ cursor	.block
 	mulu.w #FRAME_BYTES, d0
 	lea FRAMES(a0), a1
 	adda.l d0, a1
-	moveq #0, d0
-	move.w CallFrame.Definition(a1), d0
-	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a0), a2
-	adda.l d0, a2
+	bsr.w frameDefinition
 	move.l Def.Last(a2), d2
 	tst.l d4
 	beq.w view
@@ -1128,7 +1140,7 @@ done
 	.bend  ; cursor
 
 CursorSnapshot	.struct
-State	.res State.Origin+4
+State	.res DEFS
 Frame	.res FRAME_BYTES
 .endstruct
 PREVIEW_BYTES = CursorSnapshot.Frame+FRAME_BYTES
@@ -1157,7 +1169,7 @@ preview	.block
 	bsr.w savePreview
 	movea.l a6, a1
 	lea CursorSnapshot.State(a5), a0
-	move.l #State.Origin+4, d0
+	move.l #DEFS, d0
 	bsr.w savePreview
 	move.l d7, CallFrame.Cursor(a2)
 	move.w #2, CallFrame.CallPhase(a2)
@@ -1178,7 +1190,7 @@ preview	.block
 	bsr.w savePreview
 	movea.l a6, a0
 	lea CursorSnapshot.State(a5), a1
-	move.l #State.Origin+4, d0
+	move.l #DEFS, d0
 	bsr.w savePreview
 	move.l d7, d1
 	move.l d5, d0
@@ -1233,11 +1245,9 @@ nextFrame
 	mulu.w #FRAME_BYTES, d0
 	lea FRAMES(a0), a6
 	adda.l d0, a6
-	moveq #0, d0
-	move.w CallFrame.Definition(a6), d0
-	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a0), a4
-	adda.l d0, a4
+	movea.l a6, a1
+	bsr.w frameDefinition
+	movea.l a2, a4
 	move.l Def.Origin(a4), State.Origin(a0)
 	cmpi.w #KIND_MACRO, Def.Kind(a4)
 	bne.w bodyRecord
@@ -1272,6 +1282,15 @@ bodyAvailable
 	cmp.l Def.Last(a4), d2
 	bhi.w bad
 	move.l d2, CallFrame.Cursor(a6)
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w substantive
+	tst.w CallFrame.CallPhase(a6)
+	bne.w substantive
+	tst.w CallFrame.CallLabelPresent(a6)
+	beq.w substantive
+	cmpi.w #source.RECORD_HEADER_BYTES, d5
+	beq.w bodyRecord
+substantive
 	lea 0(a3, d5.w), a2
 	clr.w SIDE_BYTES(a6)
 	btst #LINE_PLAN_BIT, 1(a3)
@@ -1284,10 +1303,17 @@ bodyAvailable
 	bne.w bad
 	move.l source.PlanToken.Handle-source.PLAN_TOKEN_BYTES(a2), d1
 	moveq #0, d2
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	beq.w fragmentPending
 	cmp.l Def.First(a4), d0
 	bne.w fragmentLabelReady
 	cmpi.w #KIND_MACRO, Def.Kind(a4)
 	beq.w fragmentLabelReady
+	bra.w fragmentPresence
+fragmentPending
+	tst.w CallFrame.CallPhase(a6)
+	bne.w fragmentLabelReady
+fragmentPresence
 	tst.w CallFrame.CallLabelPresent(a6)
 	beq.w fragmentLabelReady
 	moveq #1, d2
@@ -1308,6 +1334,13 @@ fragmentLabelReady
 	moveq #0, d3
 	move.b (a5), d3
 	addq.l #1, d3
+	cmpi.l #source.RECORD_HEADER_BYTES, d3
+	bne.w fragmentNotEmpty
+	movea.l a2, a4  ; FragmentLine receives the definition in A2
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w bad
+	bra.w bodyRecord
+fragmentNotEmpty
 	cmpi.l #5, d3
 	blo.w bad
 	movea.l a5, a3
@@ -1349,6 +1382,9 @@ fragmentShift
 	move.b d4, (a5)
 	addq.l #1, d4
 	move.l d4, d1
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a2)
+	bne.w done
+	move.w #2, CallFrame.CallPhase(a6)
 	bra.w done
 tokenBody
 	btst #5, 1(a3)
@@ -1374,10 +1410,17 @@ bodyTextReady
 	addq.l #2, a3  ; source line is replaced by the invocation line
 	movea.l 4(sp), a0
 	move.l State.RecordOffset(a0), d0
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	beq.w pendingLabel
 	cmp.l Def.First(a4), d0
 	bne.w tokens
 	cmpi.w #KIND_MACRO, Def.Kind(a4)
 	beq.w tokens
+	bra.w labelPresence
+pendingLabel
+	tst.w CallFrame.CallPhase(a6)
+	bne.w tokens
+labelPresence
 	tst.w CallFrame.CallLabelPresent(a6)
 	beq.w tokens
 	; The first body record cannot already declare an entry label.
@@ -1406,6 +1449,9 @@ attachLabel
 	andi.b #$fe, -3(a5)
 	move.l CallFrame.CallLabel(a6), (a5)+
 	move.b #5, (a5)+
+	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
+	bne.w tokens
+	move.w #2, CallFrame.CallPhase(a6)
 tokens
 	cmpa.l a2, a3
 	beq.w complete
@@ -1944,12 +1990,9 @@ completeLength
 externalExhausted
 	; Caller-scope templates have no envelopes. Preserve an entry label even
 	; when their body contains no records, and emit it exactly once.
-	cmpi.w #4, CallFrame.CallPhase(a6)
-	beq.w exhausted
-	move.w #4, CallFrame.CallPhase(a6)
-	move.l Def.First(a4), d1
-	cmp.l Def.Last(a4), d1
+	tst.w CallFrame.CallPhase(a6)
 	bne.w exhausted
+	move.w #4, CallFrame.CallPhase(a6)
 	tst.w CallFrame.CallLabelPresent(a6)
 	beq.w exhausted
 	move.b #8, (a5)
@@ -1987,7 +2030,10 @@ done
 appendArgument	.block
 	move.l a0, d0
 	sub.l a1, d0
+	bne.w nonempty
+	tst.w CallFrame.External(a4)
 	beq.w argumentBad
+nonempty
 	cmpi.w #PARAM_LIMIT, d1
 	bhs.w argumentBad
 	moveq #0, d6
@@ -1997,10 +2043,13 @@ appendArgument	.block
 	bhi.w argumentBad
 	lea CallFrame.Argument(a4), a2
 	adda.w CallFrame.ArgBytes(a4), a2
+	tst.l d0
+	beq.w argumentStored
 argumentCopy
 	move.b (a1)+, (a2)+
 	subq.l #1, d0
 	bne.w argumentCopy
+argumentStored
 	move.w d6, CallFrame.ArgBytes(a4)
 	move.w d1, d0
 	add.w d0, d0
@@ -2017,7 +2066,21 @@ argumentBad
 ; A6=state,D4=next zero-based definition index. D0/CCR=status,A0=cleared Def.
 ; Other registers preserved. Reserve does not publish Count or index chains.
 reserveDefinition	.block
-	movem.l d1-d2/a1, -(sp)
+	movea.l a6, a0
+	adda.l #CANDIDATES, a0
+	jsr index.reserveNext
+	bne.w done
+	lea DEFS(a6), a0
+	bsr.w reserveRow
+done
+	rts
+	.bend  ; reserveDefinition
+
+; A0=private Def block,D4=next index. D0/status,A0=cleared row; others kept.
+; The reserved row remains unpublished until its owner increments its count.
+reserveRow	.block
+	movem.l d1-d2/a1-a2, -(sp)
+	movea.l a0, a2
 	cmpi.w #65535, d4
 	beq.w bad
 	moveq #0, d0
@@ -2025,29 +2088,28 @@ reserveDefinition	.block
 	addq.l #1, d0
 	mulu.w #DEF_BYTES, d0
 	move.l d0, d2
-	lea DEFS(a6), a0
 	jsr memory.reserve
 	bne.w bad
-	move.l d2, DEFS+memory.Block.Used(a6)
+	move.l d2, memory.Block.Used(a2)
 	moveq #0, d0
 	move.w d4, d0
 	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
+	movea.l memory.Block.Pointer(a2), a0
 	adda.l d0, a0
 	movea.l a0, a1
-	move.w #DEF_BYTES/2-1, d1
+	move.w #DEF_BYTES/4-1, d1
 clear
-	clr.w (a1)+
+	clr.l (a1)+
 	dbra d1, clear
 	moveq #STATUS_OK, d0
 	bra.w done
 bad
 	moveq #STATUS_BAD, d0
 done
-	movem.l (sp)+, d1-d2/a1
+	movem.l (sp)+, d1-d2/a1-a2
 	tst.l d0
 	rts
-	.bend  ; reserveDefinition
+	.bend  ; reserveRow
 
 ; A6=state,A0=unpublished Def,A1=scope,D4=index,D5=name,D2=kind,
 ; D3=declare facet flag. D0/CCR=status; other registers preserved.
@@ -2126,7 +2188,25 @@ done
 	rts
 	.bend  ; storeBody
 
-; A6=state,D4=definition index,D5=call name. D0/CCR=status,A4=next frame,
+	; A0=state,A1=call frame. A2=descriptor; other registers preserved.
+; Private carriers and indexed macro/segment definitions share the cursor engine.
+frameDefinition	.block
+	move.l d0, -(sp)
+	moveq #0, d0
+	move.w CallFrame.Definition(a1), d0
+	mulu.w #DEF_BYTES, d0
+	movea.l DEFS+memory.Block.Pointer(a0), a2
+	tst.w CallFrame.External(a1)
+	beq.w selected
+	movea.l EXTERNALS+memory.Block.Pointer(a0), a2
+selected
+	adda.l d0, a2
+	move.l (sp)+, d0
+	rts
+	.bend  ; frameDefinition
+
+; A6=state,D4=definition index,D5=call name,D2=external boolean.
+; D0/CCR=status,A4=next frame,
 ; A0=Def,D5=formal count; others preserved. Does not publish invocation depth.
 startCall	.block
 	cmpi.w #DEPTH_LIMIT, State.Depth(a6)
@@ -2137,14 +2217,16 @@ startCall	.block
 	lea FRAMES(a6), a4
 	adda.l d0, a4
 	move.w d4, CallFrame.Definition(a4)
+	move.w d2, CallFrame.External(a4)
 	move.w d5, CallFrame.CallName(a4)
 	move.l State.CallLabel(a6), CallFrame.CallLabel(a4)
 	move.w State.CallLabelPresent(a6), CallFrame.CallLabelPresent(a4)
-	moveq #0, d0
-	move.w d4, d0
-	mulu.w #DEF_BYTES, d0
-	movea.l DEFS+memory.Block.Pointer(a6), a0
-	adda.l d0, a0
+	movem.l a1-a2, -(sp)
+	movea.l a6, a0
+	movea.l a4, a1
+	bsr.w frameDefinition
+	movea.l a2, a0
+	movem.l (sp)+, a1-a2
 	move.w Def.ParamCount(a0), d5
 	clr.w CallFrame.DefaultMask(a4)
 	clr.w CallFrame.ArgBytes(a4)
@@ -2186,31 +2268,9 @@ queued
 	.bend  ; queueCall
 
 ; A0=index state,D0=exact name. D1=internal definition cursor or zero.
-; Other registers preserved; CCR reflects D1. Every Def remains indexed,
-; while external bodies are intentionally invisible to dot-macro lookup.
+; Other registers preserved; CCR reflects D1. Only internal Def rows are indexed.
 findInternal	.block
-	movem.l d2/a1-a2, -(sp)
-	movea.l a0, a2
-	jsr index.find
-next
-	tst.w d1
-	beq.w done
-	moveq #0, d2
-	move.w d1, d2
-	subq.w #1, d2
-	mulu.w #DEF_BYTES, d2
-	movea.l a2, a1
-	suba.l #CANDIDATES, a1
-	movea.l DEFS+memory.Block.Pointer(a1), a1
-	adda.l d2, a1
-	cmpi.w #KIND_EXTERNAL, Def.Kind(a1)
-	bne.w done
-	jsr index.nextExact
-	bra.w next
-done
-	movem.l (sp)+, d2/a1-a2
-	tst.w d1
-	rts
+	jmp index.find
 	.bend  ; findInternal
 
 ; A0=scope,D0=unqualified body name,D1=header formal. CCR=equal/missing;

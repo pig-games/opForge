@@ -48,11 +48,46 @@ match	.block
 	movem.l (sp)+, d1-d3/a1
 	rts
 	.bend  ; match
+; Same frame ABI,A1=optional shared budget cell. No cell/input/output overlap.
+compileBudget	.block
+	movem.l d1-d3/a1-a2, -(sp)
+	movea.l a1, a2
+	lea CompileChecks, a1
+	moveq #5, d1
+	moveq #abi.COMPILE_FRAME_BYTES, d2
+	moveq #abi.CompileFrame.StepBudget, d3
+	bsr.w validateBudget
+	tst.l d0
+	movem.l (sp)+, d1-d3/a1-a2
+	rts
+	.bend  ; compileBudget
+matchBudget	.block
+	movem.l d1-d3/a1-a2, -(sp)
+	movea.l a1, a2
+	lea MatchChecks, a1
+	moveq #6, d1
+	moveq #abi.MATCH_FRAME_BYTES, d2
+	moveq #abi.MatchFrame.StepBudget, d3
+	bsr.w validateBudget
+	tst.l d0
+	movem.l (sp)+, d1-d3/a1-a2
+	rts
+	.bend  ; matchBudget
 ; A0/D0=request/available bytes,A1=trusted Check table,D1=check count,
 ; D2=frame bytes,D3=budget field offset. D0=status/CCR; others preserved.
 ; Check.CountShift is log2(row stride), zero for byte extents. Tables belong to
 ; the calling request owner; mutable spans must be disjoint from all inputs.
 validate	.block
+	move.l a2, -(sp)
+	suba.l a2, a2
+	bsr.w validateBudget
+	movea.l (sp)+, a2
+	tst.l d0
+	rts
+	.bend  ; validate
+; Same trusted-table ABI plus A2=optional shared cell. Validate the cell, then
+; treat it as mutable against the frame and EVERY table span before any writes.
+validateBudget	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea -BOUND_CAPACITY*BOUND_BYTES(sp), sp
 	movea.l sp, a6
@@ -79,6 +114,25 @@ validate	.block
 	move.l d0, Bound.End(a6)
 	clr.l Bound.Mutable(a6)
 	lea BOUND_BYTES(a6), a5
+	move.l a2, d0
+	beq.w next
+	cmpi.l #BOUND_CAPACITY-2, d7
+	bhi.w invalid
+	movea.l a2, a0
+	jsr inputs.budget
+	bne.w done
+	movea.l a2, a0
+	moveq #4, d0
+	movea.l a4, a1
+	move.l d2, d1
+	jsr inputs.separate
+	bne.w done
+	move.l a2, (a5)  ; Bound.Start (zero offset)
+	move.l a2, d0
+	addq.l #4, d0
+	move.l d0, Bound.End(a5)
+	move.l #1, Bound.Mutable(a5)
+	adda.w #BOUND_BYTES, a5
 next
 	moveq #0, d0
 	move.w Check.Pointer(a3), d0
@@ -146,7 +200,7 @@ done
 	tst.l d0
 	movem.l (sp)+, d1-d7/a0-a6
 	rts
-	.bend  ; validate
+	.bend  ; validateBudget
 	.endsection
 	.priv
 	.section data, kind=data

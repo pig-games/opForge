@@ -156,6 +156,19 @@ claimTemplate	.block
 	rts
 	.bend  ; claimTemplate
 
+; A0=module state,A1=canonical statement-key entry. Aggregate public existence
+; across overloads; each retained row separately owns its visibility. No allocation.
+; All registers preserved; CCR unspecified. Ordinary template facets are untouched.
+claimStatement	.block
+	move.l d0, -(sp)
+	move.w State.Active(a0), records.Entry.StatementModule(a1)
+	move.w State.Visibility(a0), d0
+	lsl.w #records.STATEMENT_PUBLIC_BIT, d0
+	or.w d0, records.Entry.TemplateFlags(a1)
+	move.l (sp)+, d0
+	rts
+	.bend  ; claimStatement
+
 ; A0=module state,A1=template entry. Check the current invocation origin
 ; against its independent declaration ownership and visibility.
 ; D0/CCR=status; other registers preserved.

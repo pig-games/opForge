@@ -95,8 +95,37 @@ ownershipReady
 
 ; A5=session,A6=scratch. D0/status,D1=regular/expansion queued; others preserved.
 statementInvoke	.block
+	movem.l d2-d3, -(sp)
+	moveq #0, d2
+	moveq #0, d3
+	bsr.w invokeStatement
+	movem.l (sp)+, d2-d3
+	tst.l d0
+	rts
+	.bend  ; statementInvoke
+
+; Same ABI, with the template owner's numeric label separate from fresh facets.
+statementInvokeExpanded	.block
+	movem.l d2-d3/a0, -(sp)
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	moveq #0, d2
+	move.w templates.State.InheritedLabelPresent(a0), d2
+	move.l templates.State.InheritedLabel(a0), d3
+	bsr.w invokeStatement
+	movem.l (sp)+, d2-d3/a0
+	tst.l d0
+	rts
+	.bend  ; statementInvokeExpanded
+
+; D2=inherited-label presence,D3=packed numeric name; common request ownership.
+; D0/status,D1=action; all other registers preserved.
+invokeStatement	.block
 	movem.l d2/a0-a4, -(sp)
 	suba.w #statement_session.FRAME_BYTES+statement_execution.FRAME_BYTES, sp
+	lea statement_session.FRAME_BYTES(sp), a1
+	move.l d2, statement_execution.Frame.InheritedLabelPresent(a1)
+	move.l d3, statement_execution.Frame.InheritedLabel(a1)
 	movea.l sp, a0
 	bsr.w statementRequest
 	lea statement_session.FRAME_BYTES(sp), a1
@@ -112,7 +141,7 @@ statementInvoke	.block
 	tst.l d0
 	movem.l (sp)+, d2/a0-a4
 	rts
-	.bend  ; statementInvoke
+	.bend  ; invokeStatement
 
 ; A0/name,D0/bytes,A1=session scratch. D0/CCR=status,D1=numeric source ID.
 ; Clobbers A0/A1; all other registers preserved. Grammar vocabulary never

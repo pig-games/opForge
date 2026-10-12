@@ -27,8 +27,10 @@ Frame	.struct
 State	.long ?
 Source	.long ?  ; configured session.Frame, whose current writer record is live
 Writer	.long ?  ; exclusive live writer.Frame, restored by argument preparation
+InheritedLabelPresent	.long ?  ; numeric parent label, absent from lexical facets
+InheritedLabel	.long ?
 	.endstruct
-FRAME_BYTES = Frame.Writer+4
+FRAME_BYTES = Frame.InheritedLabel+4
 ACTION_REGULAR = 0
 ACTION_EXPANDED = 2; common frontend expansion queue action
 .ifdef OPFORGE_DEBUG_CONTRACTS

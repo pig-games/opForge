@@ -46,9 +46,9 @@ Binding	.long ?  ; requested graph binding for configure
 Depth	.word ?
 Priority	.word ?  ; physical entry only: static incoming-use root priority
 Schema	.word ?  ; zero idle; shared capture or unavailable body
-Reserved	.word ?
+TemplateDepth	.word ?  ; acquisition-only shared template roles, independent of activity
 	.endstruct
-CONDITIONS = Frame.Reserved+2
+CONDITIONS = Frame.TemplateDepth+2
 FRAME_BYTES = CONDITIONS+conditionals.SCRATCH_BYTES
 	.section code, kind=code
 ; A0=Frame with configured pointers. Clear physical index/depth state without
@@ -57,7 +57,7 @@ begin	.block
 	clr.l Frame.IndexModule(a0)
 	clr.w Frame.Depth(a0)
 	clr.w Frame.Schema(a0)
-	clr.w Frame.Reserved(a0)
+	clr.w Frame.TemplateDepth(a0)
 	move.l a0, -(sp)
 	lea CONDITIONS(a0), a0
 	jsr conditionals.beginStatic
@@ -114,6 +114,8 @@ next
 	bsr.w classify
 	bne.w bad
 	move.l d1, d3
+	movea.l a6, a0
+	bsr.w trackTemplateDepth
 	movea.l Frame.Scope(a6), a0
 	move.w Frame.IndexModule+2(a6), layout.MODULE_STATE+modules.State.Active(a0)
 	moveq #0, d4
@@ -234,6 +236,7 @@ module
 	tst.l d5
 	bne.w bad
 	clr.w Frame.Depth(a6)
+	clr.w Frame.TemplateDepth(a6)
 	tst.w Frame.Priority(a6)
 	beq.w moduleName
 	movea.l Frame.Scope(a6), a0
@@ -270,6 +273,7 @@ endModule
 	beq.w bad
 	moveq #0, d6
 clearPriority
+	clr.w Frame.TemplateDepth(a6)
 	tst.w Frame.Priority(a6)
 	beq.w publish
 	movea.l Frame.Scope(a6), a0
@@ -391,6 +395,7 @@ done
 ; D0/CCR=status; other registers preserved. Scope is already opened if implicit.
 beginConfiguration	.block
 	clr.w Frame.Depth(a0)
+	clr.w Frame.TemplateDepth(a0)
 	clr.w Frame.Schema(a0)
 	clr.w Frame.Priority(a0)
 	move.l a0, -(sp)
@@ -485,6 +490,7 @@ schemaOpen
 	bra.w advance
 moduleBoundary
 	clr.w Frame.Depth(a6)
+	clr.w Frame.TemplateDepth(a6)
 selected
 	bsr.w bindRecord
 	bne.w bad
@@ -741,6 +747,35 @@ return
 	rts
 	.bend  ; classify
 	.priv
+; A0=Frame,D1=already classified shared role. Preserve all registers;
+; CCR unspecified. Speculative inactive boundaries never reject acquisition.
+; The unsigned counter saturates rather than wrapping and clamps closes at zero.
+trackTemplateDepth	.block
+	cmpi.l #TEMPLATE_OPEN, d1
+	beq.w open
+	cmpi.l #scopes.KEY_MACRO, d1
+	beq.w open
+	cmpi.l #scopes.KEY_SEGMENT, d1
+	beq.w open
+	cmpi.l #TEMPLATE_CLOSE, d1
+	beq.w close
+	cmpi.l #scopes.KEY_ENDMACRO, d1
+	beq.w close
+	cmpi.l #scopes.KEY_ENDSEGMENT, d1
+	bne.w done
+close
+	tst.w Frame.TemplateDepth(a0)
+	beq.w done
+	subq.w #1, Frame.TemplateDepth(a0)
+	bra.w done
+open
+	cmpi.w #$ffff, Frame.TemplateDepth(a0)
+	beq.w done
+	addq.w #1, Frame.TemplateDepth(a0)
+done
+	rts
+	.bend  ; trackTemplateDepth
+
 ; A0=Frame,D1=shared directive key. D0=1 structural record consumed,
 ; 0 ordinary record, -1 depth overflow; CCR reflects D0. Other registers kept.
 trackDepth	.block

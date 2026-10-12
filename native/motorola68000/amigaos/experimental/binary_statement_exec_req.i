@@ -117,6 +117,16 @@ callRequest	.block
 	move.w writer.RecordHeader.Line(a0), Local.Call+templates.ExternalCall.CallLine(a6)
 	clr.w Local.Call+templates.ExternalCall.LabelPresent(a6)
 	clr.l Local.Call+templates.ExternalCall.Label(a6)
+	tst.l Frame.InheritedLabelPresent(a5)
+	beq.w lexicalLabel
+	cmpi.l #1, Frame.InheritedLabelPresent(a5)
+	bne.w invalid
+	cmpi.l #abi.NONE, State.Calls+calls.State.Route+abi.Route.LabelToken(a4)
+	bne.w invalid  ; a body label must not replace an inherited caller label
+	move.w #1, Local.Call+templates.ExternalCall.LabelPresent(a6)
+	move.l Frame.InheritedLabel(a5), Local.Call+templates.ExternalCall.Label(a6)
+	bra.w labelReady
+lexicalLabel
 	cmpi.l #abi.NONE, State.Calls+calls.State.Route+abi.Route.LabelToken(a4)
 	beq.w labelReady
 	cmpi.l #writer.RECORD_HEADER_BYTES+writer.NAME_TOKEN_BYTES, session.Frame.RecordBytes(a3)

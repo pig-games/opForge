@@ -357,10 +357,21 @@ of private selection, implicit leaf aliases and sibling-block ambiguity. The fiv
 positive cases match live Rust bytes; the three negative cases complete freshly
 with guest exit 20 and diagnostics, without an exact diagnostic-text claim.
 
-Calls inside expanded macro/segment/statement bodies remain to qualify.
-Ordinary packed body records do not retain the lexical facets
-needed by statement matching; dispatch must acquire fresh owned metadata before
-using those records. Do not reuse stale caller tokens or reread original files.
+Calls inside expanded macro/segment/statement bodies now have ten focused fresh
+native/live Rust comparisons. They cover forward callees, numeric/text formals,
+keyword adjacency, literal numeric spelling, caller-module lookup from an imported
+body, inactive calls, explicit body labels and inherited labels through an empty
+statement. A separate plain macro case proves the packed path with no statement
+definitions. This is focused coverage, not complete `.statement` or opcore parity.
+
+Physical token acquisition retains optional whole-line recipes only within
+template bodies (plus conservative dynamic acquisition). The existing shared
+classifier tracks this independently of blocks, namespaces and configuration
+activity. The template cursor uses optional recipes when a lexical consumer is
+needed; otherwise it removes the private trailer and executes the packed body.
+Required substitution recipes remain required. Each returned record explicitly
+publishes lexical freshness and numeric inherited-label provenance. Dispatch never
+reuses stale caller tokens or rereads original files.
 The separate exposure component validates acquired import descriptors; the eight
 connected cases are the current acquisition proof. This checkpoint does not change the BS35 full self-host
 evidence or establish a new hardware/2 MiB qualification.
@@ -371,6 +382,21 @@ grows by 21,624 bytes and peak owned storage by 2,880 bytes (+0.22%) in separate
 instrumented runs, with zero owned storage left on exit. These costs are isolated
 from the earlier foundation delta; see the
 [integration comparison](../performance/vm-efficiency.md#connected-statement-preparation-and-invocation-bs38).
+
+The expanded-body slice separately changes the same release control from
+36.030338375 to 36.227721417 seconds (+0.55%, one sample each), grows the image
+by 720 bytes and peak owned storage on that control by 16 bytes. These small
+control deltas do not measure recipe storage on a large template-heavy project;
+retain that distinction when qualifying the full native source.
+
+The subsequent frozen 86-case opcore audit qualifies 35 positive cases with
+exact live Rust/reference artifacts and 36 expected negative cases with fresh
+rejection/diagnostics (no exact diagnostic-text claim). Fifteen positive cases
+remain: CLI JSON, expressions, four linker cases, macro/module syntax, three
+metadata cases, three statement fixtures and general syntax. All current Rust
+reference oracles pass. This raises positive coverage from 32 to 35; it does not
+close opcore parity. The statement fixtures include comment-only/empty bodies
+and ordinary labels/instructions, so they take precedence over new breadth.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

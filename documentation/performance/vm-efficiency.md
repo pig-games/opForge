@@ -659,3 +659,31 @@ per-image logs beside each report. Reproduce with
 baseline native snapshot, `OPFORGE_ITERABLE_SAVE_IMAGE` for both images, and
 `scripts/performance/measure_compact_control.py` as described above. Use a separate
 `OPFORGE_ITERABLE_MEMORY=1` build for memory collection.
+
+### Expanded-body statement invocation (BS38)
+
+This subsequent 2026-10-12 slice adds optional owned body recipes and explicit
+lexical-freshness/inherited-label metadata. The template owner keeps packed
+execution when no statement definitions need those facets. Ten focused native
+expanded-body cases match live Rust, and a plain macro control proves that packed
+fallback. The unchanged 11,592-byte release control is measured separately against
+the connected-call checkpoint `818ca2af`, on FS-UAE 68020/10 MiB.
+
+| Measure | Before expanded-body support | After | Separate delta |
+|---|---:|---:|---:|
+| Release START-to-DONE seconds | 36.030338375 | 36.227721417 | +0.197383042 (+0.55%) |
+| Release Hunk bytes | 707,136 | 707,856 | +720 |
+| Linked reserved bytes | 740,092 | 740,812 | +720 |
+| Peak owned bytes, separate instrumented run | 1,285,752 | 1,285,768 | +16 |
+| Total allocated / freed bytes | 3,185,528 / 3,185,528 | 3,185,544 / 3,185,544 | +16 / +16 |
+| Live owned bytes after cleanup | 0 | 0 | 0 |
+| Runtime prefix / packed source bytes | 425,546 / 27,022 | 425,546 / 27,022 | 0 / 0 |
+
+These are single release samples; the instrumented after run takes 37.500862458
+seconds and supplies memory evidence only. The baseline memory row comes from
+the preceding integration measurement. This small macro control does not measure
+optional-recipe storage for a large project with many template bodies, statement
+throughput, full self-host or hardware/2 MiB qualification. Receipts and per-image
+logs are outside the build cache at
+`/tmp/opforge-statements-expanded-cost-20261012.json`; reproduce with the same
+image-build and control-measurement commands above.

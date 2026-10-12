@@ -129,6 +129,14 @@ trimmed
 	clr.l memory.Block.Used(a1)
 	lea CaptureRequest, a1
 	move.l #CaptureLine, capture.Frame.Arena(a1)
+	clr.l frontend.Frame.CaptureBody(a0)
+	tst.l AcquiringSource
+	bne.w captureBody
+	tst.w ConfigScan+configuration.Frame.TemplateDepth
+	beq.w captureModeReady
+captureBody
+	move.l #1, frontend.Frame.CaptureBody(a0)
+captureModeReady
 	jsr frontend.captureLine
 	bne.w bad
 	tst.l AcquiringSource

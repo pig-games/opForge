@@ -72,9 +72,10 @@ SourcePeek	.long ?  ; caller-owned transient capture view callback
 PreviewMode	.word ?  ; identity-only binding suppresses semantic references
 AsciiName	.word ?  ; global source-origin encoding identity
 PetsciiName	.word ?
+CaptureBody	.long ?  ; physical acquisition retains whole-line template body plans
 	.endstruct
 	.pub
-FRAME_BYTES = Frame.PetsciiName+2
+FRAME_BYTES = Frame.CaptureBody+4
 PREP_DECLARATION = 1
 PREP_CONDITIONAL = 2
 PREP_CONFIGURATION = 3
@@ -851,7 +852,10 @@ identityMap
 	move.l capture.Frame.Count(a4), d0
 	bsr.w namedFragmentCandidate
 	tst.l d0
+	bne.w lineSelected
+	tst.l Frame.CaptureBody(a5)
 	beq.w lineReady
+	moveq #FRAGMENT_NONE, d0  ; whole-line body without a substitution marker
 lineSelected
 	move.l d0, d2  ; candidate role survives until fragment selection
 lineCandidate
@@ -936,6 +940,8 @@ rowsReady
 	movea.l (sp)+, a0
 	tst.l d0
 	beq.w createCandidate
+	tst.l Frame.CaptureBody(a5)
+	bne.w createCandidate
 	moveq #capture.LINE_ABSENT, d5  ; ordinary numeric lines retain no plan
 	bra.w candidateReady
 failedRecipes
@@ -1529,7 +1535,7 @@ done
 SUFFIX_MATCHED = 0
 SUFFIX_ABSENT = 1
 SUFFIX_INVALID = 2
-; Capture VM-selected body strings and numeric-token substitution suffixes.
+; Capture required substitution recipes and optional invocation facets.
 ; Known nested calls keep their existing call recipes until that consumer moves.
 ; Token kind is a VM result; no placeholder or quote grammar is inspected here.
 fragmentLinePlan	.block
@@ -1548,6 +1554,9 @@ fragmentLinePlan	.block
 	jsr templates.role
 	tst.l d0
 	bne.w ready
+	movea.l Frame.Output(a5), a0
+	cmpi.b #writer.RECORD_HEADER_BYTES-1, writer.RecordHeader.Length(a0)
+	beq.w ready  ; no substantive body token needs invocation facets
 	lea TOKENS(a6), a0
 	move.l LINE_FRAME+writer.Frame.Count(a6), d0
 	bsr.w bodyFragmentCandidate
@@ -1557,7 +1566,7 @@ fragmentLinePlan	.block
 	; even when the original line contains no string literal.
 	bsr.w textNameBody
 	tst.l d0
-	beq.w ready
+	beq.w optionalCapture
 candidateReady
 	moveq #0, d7
 	cmpi.l #FRAGMENT_NUMERIC, d0
@@ -1570,7 +1579,12 @@ candidateReady
 	bne.w capture
 	tst.l capture.Record.LineHandle(a0)
 	bne.w bad
-	bra.w ready  ; capture proved there was no numeric positional suffix
+	bra.w optionalCapture  ; numeric text may still be a future statement capture
+optionalCapture
+	movea.l Frame.Output(a5), a0
+	btst #5, writer.RecordHeader.Flags(a0)
+	bne.w ready  ; a retained call plan already owns this line
+	moveq #2, d7  ; optional facets; no substitution requires retokenization
 capture
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_BIND
 	tst.l CAPTURE_RECORD(a6)
@@ -1588,10 +1602,15 @@ physicalCapture
 selectedBodyPlan
 	tst.l d7
 	beq.w appendCaptured
+	cmpi.l #2, d7
+	beq.w appendCaptured
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_SUFFIX
 	bsr.w numericSuffixPlan
 	cmpi.l #SUFFIX_ABSENT, d0
-	beq.w ready
+	bne.w suffixSelected
+	moveq #2, d7
+	bra.w appendCaptured
+suffixSelected
 	tst.l d0
 	bne.w bad
 appendCaptured
@@ -1603,6 +1622,9 @@ appendCaptured
 	andi.b #$ff-writer.FLAG_PLAN, writer.RecordHeader.Flags(a0)
 	ori.b #templates.LINE_PLAN_FLAG, writer.RecordHeader.Flags(a0)
 	move.b #templates.TOKEN_LINE_PLAN, writer.PlanToken.Kind-writer.PLAN_TOKEN_BYTES(a0, d1.l)
+	cmpi.l #2, d7
+	bne.w ready
+	move.b #templates.TOKEN_OPTIONAL_LINE_PLAN, writer.PlanToken.Kind-writer.PLAN_TOKEN_BYTES(a0, d1.l)
 ready
 	moveq #0, d0
 	bra.w done
@@ -2515,7 +2537,16 @@ nextDone
 ; A0=template state,A1=output,A2=scope; A5=session.
 ; Protect parent frames suspended by a selected source cursor. Same ABI as next.
 nextTemplate	.block
+	move.l a1, -(sp)
 	move.w Frame.ExpansionFloor(a5), templates.State.Floor(a0)
+	clr.w templates.State.NeedLexical(a0)
+	movea.l a6, a1
+	adda.l #STATEMENT_STATE, a1
+	tst.w statements.State.Count(a1)
+	beq.w lexicalModeReady
+	move.w #1, templates.State.NeedLexical(a0)
+lexicalModeReady
+	movea.l (sp)+, a1
 	jmp templates.next
 	.bend  ; nextTemplate
 
@@ -2530,6 +2561,17 @@ generatedLoop
 	move.l templates.State.Origin(a0), Frame.Origin(a5)
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.startLine
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	tst.w templates.State.LexicalReady(a0)
+	beq.w templateLookup
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_STATEMENT_CALL
+	bsr.w statementInvokeExpanded
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w failed
+	cmpi.w #statement_execution.ACTION_EXPANDED, d1
+	beq.w nextGenerated
+templateLookup
 	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a2
 	moveq #0, d0

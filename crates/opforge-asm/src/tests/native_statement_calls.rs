@@ -2,6 +2,7 @@
 use super::native_iterable_loops::{build_image, oracle, run_case, scratch};
 use super::*;
 const CASES: &[(&str, &str, &[u8])] = &[
+    ("statement-packed-macro-no-definitions", "PLAIN .macro\n.byte 3\n.endmacro\n .PLAIN\n", &[3]),
     ("statement-byte", ".statement LOAD byte:x\n.byte .x\n.endstatement\n LOAD 7\n", &[7]),
     ("statement-word-overload", ".statement LOAD byte:x\n.byte 1\n.endstatement\n.statement LOAD word:x\n.byte 2\n.endstatement\n LOAD 256\n", &[2]),
     ("statement-caller-label", ".statement LOAD byte:x\n.byte .x\n.endstatement\nentry LOAD 7\n.word entry\n", &[7,0,0]),
@@ -12,6 +13,20 @@ const CASES: &[(&str, &str, &[u8])] = &[
     ("statement-numeric-fallback", ".statement LOAD char:x byte:y\n.byte .y\n.endstatement\n LOAD d0\n", &[0]),
     ("statement-numeric-suffix", ".statement LOAD byte:x\n.byte .x\n.endstatement\n LOAD7\n", &[7]),
     ("statement-macro-coexist", ".statement LOAD byte:x\n.byte 1\n.endstatement\nLOAD .macro x\n.byte 2\n.endmacro\n LOAD 7\n.LOAD 8\n", &[1,2]),
+];
+// Definitions may be captured before their callee exists; replay must retain
+// lexical facets and resolve through the same caller-visible statement vectors.
+const EXPANDED_CASES: &[(&str, &str, &[u8])] = &[
+    ("statement-expanded-macro-forward-formal", "WRAP .macro x\n LOAD .x\n.endmacro\n.statement LOAD byte:x\n.byte .x\n.endstatement\n .WRAP 7\n", &[7]),
+    ("statement-expanded-segment-forward-formal", "WRAP .segment x\n LOAD .x\n.endsegment\n.statement LOAD byte:x\n.byte .x\n.endstatement\n .WRAP 8\n", &[8]),
+    ("statement-expanded-statement-forward-formal", ".statement OUT byte:x\n LOAD .x\n.endstatement\n.statement LOAD byte:x\n.byte .x\n.endstatement\n OUT 9\n", &[9]),
+    ("statement-expanded-keyword-adjacency", "WRAP .macro\n LOAD7\n LOAD 8\n.endmacro\n.statement LOAD byte:x\n.byte .x\n.endstatement\n .WRAP\n", &[7,8]),
+    ("statement-expanded-numeric-literal-spelling", "WRAP .macro x\n LOAD .x\n.endmacro\n.statement LOAD \"0B8H\"\n.byte 9\n.endstatement\n .WRAP 0B8H\n", &[9]),
+    ("statement-expanded-decoded-text-formal", "WRAP .macro x\n LOAD .x\n.endmacro\n.statement LOAD str:x\n.byte \".x\"\n.endstatement\n .WRAP \"Hi\"\n", b"Hi"),
+    ("statement-expanded-segment-empty-label", "WRAP .segment\n EMPTY\n.byte 9\n.endsegment\n.statement EMPTY\n.endstatement\nentry .WRAP\n.word entry\n", &[9,0,0]),
+    ("statement-expanded-named-macro-body-label", "WRAP .macro\ninside LOAD 7\n.endmacro\n.statement LOAD byte:x\n.byte .x\n.endstatement\nentry .WRAP\n.word entry.inside\n", &[7,0,0]),
+    ("statement-expanded-inactive-unmatched-call", "WRAP .macro\n.if 0\n LOAD \"not a number\"\n.endif\n.byte 5\n.endmacro\n.statement LOAD byte:x\n.byte .x\n.endstatement\n .WRAP\n", &[5]),
+    ("statement-expanded-imported-body-caller-scope", ".use library(OUT)\n.statement INNER byte:x\n.byte .x+1\n.endstatement\n OUT 7\n", &[8]),
 ];
 // Complete same-source graphs exercise source acquisition and .use processing,
 // beyond the direct statement exposure metadata controls. None means rejection.
@@ -69,11 +84,24 @@ fn graph_source(body: &str) -> String {
         source(body)
     )
 }
+fn expanded_source(body: &str) -> String {
+    format!(
+        "{}\n.module library\n.pub\n.statement OUT byte:x\n INNER .x\n.endstatement\n.endmodule\n",
+        source(body)
+    )
+}
 #[test]
 fn native_statement_calls_live_oracles() {
     let dir = scratch();
     for (name, body, bytes) in CASES {
         assert_eq!(oracle(&dir.0, &source(body)).unwrap(), *bytes, "{name}");
+    }
+    for (name, body, bytes) in EXPANDED_CASES {
+        assert_eq!(
+            oracle(&dir.0, &expanded_source(body)).unwrap(),
+            *bytes,
+            "{name}"
+        );
     }
     for (name, body, bytes) in GRAPH_CASES {
         let result = oracle(&dir.0, &graph_source(body));
@@ -108,12 +136,18 @@ fn native_statement_calls_fs_uae() {
             GRAPH_CASES
                 .iter()
                 .map(|(name, body, bytes)| (*name, graph_source(body), bytes.is_none())),
+        )
+        .chain(
+            EXPANDED_CASES
+                .iter()
+                .map(|(name, body, _)| (*name, expanded_source(body), false)),
         );
     let mut ran = 0;
     for (name, source, failure) in cases {
         if selected.as_deref().is_some_and(|selected| {
             selected != name
                 && !(selected == "graph" && GRAPH_CASES.iter().any(|case| case.0 == name))
+                && !(selected == "expanded" && EXPANDED_CASES.iter().any(|case| case.0 == name))
         }) {
             continue;
         }

@@ -37,6 +37,7 @@ TOKEN_AT = 40
 TOKEN_COMPOSITE = 41
 TOKEN_PLAN = 42
 TOKEN_LINE_PLAN = 43
+TOKEN_OPTIONAL_LINE_PLAN = 44; owned recipe used only for lexical consumers
 LINE_PLAN_BIT = 6
 LINE_PLAN_FLAG = 1<<LINE_PLAN_BIT
 TEXT_SCRATCH = 42; private placeholder-consumer scratch, never a writer record
@@ -74,6 +75,10 @@ RecordOffset	.long ?  ; numeric body offset, never a pointer
 Origin	.long ?  ; opaque application source identity
 ExternalCount	.word ?  ; private carriers, independent of the macro index
 ExternalOpen	.word ?
+NeedLexical	.word ?  ; caller requests lexical facets for generated body lines
+LexicalReady	.word ?  ; successful FragmentLine for the returned record only
+InheritedLabelPresent	.word ?
+InheritedLabel	.long ?  ; numeric caller label appended to the returned record
 	.endstruct
 CallFrame	.struct
 Definition	.word ?
@@ -168,7 +173,7 @@ KIND_SEGMENT = 0
 KIND_MACRO = 1
 KIND_EXTERNAL = 2
 BLOCK_BYTES = memory.Block.Used+4
-DEFS = State.ExternalOpen+2
+DEFS = State.InheritedLabel+4
 DEFAULTS = DEFS+BLOCK_BYTES
 DEFAULT_TEXT = DEFAULTS+BLOCK_BYTES
 BODY = DEFAULT_TEXT+BLOCK_BYTES
@@ -182,6 +187,9 @@ CANDIDATES = HEADER_FRAME+FRAME_BYTES
 SCRATCH_BYTES = CANDIDATES+index.SCRATCH_BYTES
 	.section code, kind=code
 	.include "binary_template_external.i"
+	.priv
+	.include "binary_template_line_recipe.i"
+	.pub
 
 ; A0=caller-owned zero-initialized state, or a previously begun session.
 ; Frees prior pools and clears definitions for a new assembly session.
@@ -195,6 +203,8 @@ begin	.block
 	clr.w State.Count(a0)
 	clr.w State.ExternalCount(a0)
 	clr.w State.ExternalOpen(a0)
+	clr.w State.NeedLexical(a0)
+	bsr.w clearLexicalRecord
 	clr.l EXTERNALS+memory.Block.Used(a0)
 	clr.w State.Open(a0)
 	clr.w State.Skipping(a0)
@@ -498,6 +508,10 @@ line	.block
 	cmpi.w #4, d6
 	blo.w bad
 	move.w d6, State.RawBytes(a6)
+	movea.l a5, a0
+	move.l d6, d0
+	bsr.w validateBodyPlan
+	bne.w bad
 	clr.w State.TextOffset(a6)
 	clr.l State.ActivePlan(a6)
 	clr.w State.HeaderParen(a6)
@@ -516,6 +530,8 @@ line	.block
 	cmpi.w #source.PLAN_TOKEN_BYTES, d0
 	bne.w bad
 	cmpi.b #TOKEN_LINE_PLAN, source.PlanToken.Kind(a0)
+	beq.w lineRecipe
+	cmpi.b #TOKEN_OPTIONAL_LINE_PLAN, source.PlanToken.Kind(a0)
 	beq.w lineRecipe
 	cmpi.b #TOKEN_PLAN, source.PlanToken.Kind(a0)
 	bne.w bad
@@ -1229,10 +1245,13 @@ done
 ; D0/CCR=status;
 ; D1=expanded raw record length, zero when the queued call is exhausted.
 ; The source line is the invocation line. Other registers preserved.
+; NeedLexical selects optional recipes. LexicalReady and inherited label metadata
+; describe only this successful record; next clears them even on exhaustion/error.
 next	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	movea.l a1, a5
+	bsr.w clearLexicalRecord
 	move.l a6, -(sp)  ; session state
 	move.l a2, -(sp)  ; scope state
 nextFrame
@@ -1258,6 +1277,8 @@ nextFrame
 	cmpi.w #4, CallFrame.CallPhase(a6)
 	beq.w exhausted
 bodyRecord
+	movea.l 4(sp), a0
+	bsr.w clearLexicalRecord
 	moveq #0, d0
 	move.l CallFrame.Cursor(a6), d0
 	cmp.l Def.Last(a4), d0
@@ -1281,6 +1302,12 @@ bodyAvailable
 	add.l d5, d2
 	cmp.l Def.Last(a4), d2
 	bhi.w bad
+	move.l d0, d7
+	movea.l a3, a0
+	move.l d5, d0
+	bsr.w validateBodyPlan
+	bne.w bad
+	move.l d7, d0
 	move.l d2, CallFrame.Cursor(a6)
 	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
 	bne.w substantive
@@ -1297,10 +1324,14 @@ substantive
 	beq.w tokenBody
 	cmpi.w #source.RECORD_HEADER_BYTES+source.PLAN_TOKEN_BYTES, d5
 	blo.w bad
-	cmpi.b #TOKEN_LINE_PLAN, source.PlanToken.Kind-source.PLAN_TOKEN_BYTES(a2)
-	bne.w bad
-	cmpi.b #source.PLAN_TOKEN_BYTES, source.PlanToken.Bytes-source.PLAN_TOKEN_BYTES(a2)
-	bne.w bad
+	cmpi.b #TOKEN_OPTIONAL_LINE_PLAN, source.PlanToken.Kind-source.PLAN_TOKEN_BYTES(a2)
+	bne.w requiredRecipe
+	movea.l 4(sp), a0
+	tst.w State.NeedLexical(a0)
+	bne.w requiredRecipe
+	suba.w #source.PLAN_TOKEN_BYTES, a2
+	bra.w bodyTextReady
+requiredRecipe
 	move.l source.PlanToken.Handle-source.PLAN_TOKEN_BYTES(a2), d1
 	moveq #0, d2
 	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
@@ -1329,6 +1360,8 @@ fragmentLabelReady
 	jsr (a3)
 	tst.l d0
 	bne.w bad
+	movea.l 4(sp), a0
+	move.w #1, State.LexicalReady(a0)
 	tst.w d2
 	beq.w done
 	moveq #0, d3
@@ -1376,6 +1409,8 @@ fragmentShift
 	subq.l #1, d6
 	bne.w fragmentShift
 	move.l CallFrame.CallLabel(a6), 4(a5)
+	movea.l 4(sp), a0
+	bsr.w publishInheritedLabel
 	move.b #5, 8(a5)
 	andi.b #$fe, 1(a5)
 	subq.l #1, d4
@@ -1406,6 +1441,7 @@ bodyTextReady
 	clr.w CallFrame.PostfixKey(a6)
 	lea 256(a5), a1
 	move.w (a3)+, (a5)+
+	andi.b #$ff-LINE_PLAN_FLAG, -1(a5)
 	move.w CallFrame.CallLine(a6), (a5)+
 	addq.l #2, a3  ; source line is replaced by the invocation line
 	movea.l 4(sp), a0
@@ -1448,6 +1484,8 @@ attachLabel
 	; The generated entry label starts in column one even when the body is indented.
 	andi.b #$fe, -3(a5)
 	move.l CallFrame.CallLabel(a6), (a5)+
+	movea.l 4(sp), a0
+	bsr.w publishInheritedLabel
 	move.b #5, (a5)+
 	cmpi.w #KIND_EXTERNAL, Def.Kind(a4)
 	bne.w tokens
@@ -1918,6 +1956,11 @@ openerFlagsReady
 	clr.b 10(a5)
 	move.w d1, 11(a5)
 	clr.b 13(a5)
+	tst.w CallFrame.CallLabelPresent(a6)
+	beq.w openerLabelReady
+	movea.l 4(sp), a0
+	bsr.w publishInheritedLabel
+openerLabelReady
 	move.w #2, CallFrame.CallPhase(a6)
 	moveq #14, d1
 	moveq #0, d0
@@ -1999,6 +2042,8 @@ externalExhausted
 	clr.b 1(a5)
 	move.w CallFrame.CallLine(a6), 2(a5)
 	move.l CallFrame.CallLabel(a6), 4(a5)
+	movea.l 4(sp), a0
+	bsr.w publishInheritedLabel
 	move.b #5, 8(a5)
 	moveq #9, d1
 	moveq #0, d0
@@ -2014,6 +2059,7 @@ noFrames
 bad
 	moveq #1, d0
 	movea.l 4(sp), a0
+	bsr.w clearLexicalRecord
 	clr.w State.Depth(a0)
 	moveq #0, d1
 done
@@ -2160,6 +2206,10 @@ done
 ; Complete records share the relocatable BODY pool for every template kind.
 storeBody	.block
 	movem.l d1-d2/a0-a1, -(sp)
+	movea.l a5, a0
+	move.l d6, d0
+	bsr.w validateBodyPlan
+	bne.w bad
 	move.l State.Used(a6), d2
 	move.l d2, d0
 	add.l d6, d0

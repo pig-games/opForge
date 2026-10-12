@@ -120,7 +120,7 @@ imports
  bhi.w invalid
  subq.l #1, d0
  mulu.w #ITEM_BYTES, d0
- lea ITEMS(a2), a3
+ movea.l ITEMS_POINTER(a2), a3
  adda.l d0, a3
  move.l a3, ExposureLocal.Item(a4)
  move.w Item.Flags(a3), d0
@@ -185,7 +185,7 @@ nextSelection
  bhi.w invalid
  subq.l #1, d0
  mulu.w #SELECTION_BYTES, d0
- lea SELECTIONS(a2), a1
+ movea.l SELECTIONS_POINTER(a2), a1
  adda.l d0, a1
  moveq #0, d0
  move.w Selection.Next(a1), d0

@@ -274,7 +274,7 @@ root
 	lea layout.IMPORT_STATE(a5), a0
 	moveq #0, d2
 	move.w imports.COUNT(a0), d2
-	lea imports.ITEMS(a0), a1
+	movea.l imports.ITEMS_POINTER(a0), a1
 importedRoot
 	tst.w d2
 	beq.w liveRoot

@@ -473,6 +473,9 @@ beginCapturedReplay	.block
 	bne.w bad
 	lea GraphBlock, a0
 	movea.l memory.Block.Pointer(a0), a1
+	; Configuration traversal is complete; semantic replay rebuilds its links.
+	movea.l a1, a0
+	jsr graph.release
 	lea Front, a0
 	jsr frontend.beginGraph
 	bne.w bad

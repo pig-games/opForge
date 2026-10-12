@@ -60,7 +60,7 @@ exposureCursorCheck .block
  lea layout.IMPORT_STATE(a6), a0
  moveq #0, d1
  move.w COUNT(a0), d1
- cmpi.l #LIST_LIMIT, d1
+ cmpi.l #RECORD_LIMIT, d1
  bhi.w invalid
  cmp.l ExposureLocal.Cursor+ExposureCursor.Item(a4), d1
  blo.w invalid
@@ -68,7 +68,7 @@ exposureCursorCheck .block
  blo.w invalid
  moveq #0, d1
  move.w SELECTED_COUNT(a0), d1
- cmpi.l #LIST_LIMIT, d1
+ cmpi.l #RECORD_LIMIT, d1
  bhi.w invalid
  cmp.l ExposureLocal.Cursor+ExposureCursor.Selection(a4), d1
  blo.w invalid

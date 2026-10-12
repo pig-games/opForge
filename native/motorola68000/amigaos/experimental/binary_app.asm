@@ -357,8 +357,7 @@ freeBlocks
 	clr.l memory.Block.Used(a0)
 	lea DeclarationBlock, a0
 	jsr memory.release
-	lea GraphBlock, a0
-	jsr memory.release
+	bsr.w releaseGraph
 	lea GraphSpans, a0
 	jsr memory.release
 	lea OrderedRecords, a0
@@ -912,8 +911,7 @@ parametersSaved
 	bsr.w releaseScheduledFrontend
 	; Keep bounded origin filenames for diagnostics through assembly and output.
 	; They never participate in packed execution; final cleanup releases them.
-	lea GraphBlock, a0
-	jsr memory.release
+	bsr.w releaseGraph
 	lea GraphSpans, a0
 	jsr memory.release
 	lea DeclarationBlock, a0
@@ -1013,6 +1011,22 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; prepareCliInputs
+
+; Release graph-owned edge links before their containing scratch allocation.
+; No inputs; preserves all registers. CCR unspecified; safe when absent.
+releaseGraph	.block
+	movem.l d0/a0, -(sp)
+	lea GraphBlock, a0
+	move.l memory.Block.Pointer(a0), d0
+	beq.w freeScratch
+	movea.l d0, a0
+	jsr graph.release
+freeScratch
+	lea GraphBlock, a0
+	jsr memory.release
+	movem.l (sp)+, d0/a0
+	rts
+	.bend  ; releaseGraph
 
 ; Consume one explicit manifest path and open that actual guest file.
 ; The manifest remains open independently. Each source has fresh buffered I/O.

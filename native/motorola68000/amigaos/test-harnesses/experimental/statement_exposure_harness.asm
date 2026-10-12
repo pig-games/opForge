@@ -8,6 +8,7 @@
 .use experimental.amigaos.binary_scope_layout as layout
 .use experimental.amigaos.binary_binding_records as records
 .use experimental.amigaos.binary_memory as memory
+.use experimental.amigaos.binary_graph as graph
 .priv
 EXEC_BASE = 4
 EXEC_OPEN_LIBRARY = -552
@@ -55,11 +56,147 @@ done
 	.endsection
 	.priv
 	.section code, kind=code
+; Component ownership boundaries: force both row owners to relocate, reject
+; a wrapping word-link count, then build NEXT above signed-word displacement.
+; Returns D0/CCR=status, preserving other registers and existing fixture outputs.
+edgeStorage	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea ScopeState+layout.IMPORT_STATE, a6
+	movea.l a6, a0
+	moveq #1, d0
+	jsr imports.reserveItems
+	bne.w bad
+	movea.l imports.ITEMS_POINTER(a6), a1
+	move.w #$1234, (a1)
+	move.l #imports.ITEM_BYTES, imports.ITEMS+memory.Block.Used(a6)
+	movea.l a1, a2
+	move.l #257, d0
+	jsr imports.reserveItems
+	bne.w bad
+	movea.l imports.ITEMS_POINTER(a6), a1
+	cmpa.l a2, a1
+	beq.w bad
+	cmpi.w #$1234, (a1)
+	bne.w bad
+	move.l imports.ITEMS+memory.Block.Capacity(a6), d3
+	movea.l a1, a2
+	move.l #65536, d0
+	jsr imports.reserveItems
+	beq.w bad
+	cmpa.l imports.ITEMS_POINTER(a6), a2
+	bne.w bad
+	cmp.l imports.ITEMS+memory.Block.Capacity(a6), d3
+	bne.w bad
+	cmpi.l #imports.ITEM_BYTES, imports.ITEMS+memory.Block.Used(a6)
+	bne.w bad
+	moveq #1, d0
+	jsr imports.reserveSelections
+	bne.w bad
+	movea.l imports.SELECTIONS_POINTER(a6), a1
+	move.w #$2345, (a1)
+	move.l #imports.SELECTION_BYTES, imports.SELECTIONS+memory.Block.Used(a6)
+	movea.l a1, a2
+	move.l #257, d0
+	jsr imports.reserveSelections
+	bne.w bad
+	movea.l imports.SELECTIONS_POINTER(a6), a1
+	cmpa.l a2, a1
+	beq.w bad
+	cmpi.w #$2345, (a1)
+	bne.w bad
+	movea.l a6, a0
+	jsr imports.begin
+	beq.w bad  ; live descriptors must not be cleared
+	cmpa.l imports.SELECTIONS_POINTER(a6), a1
+	bne.w bad
+	; Many edges, one independently bounded graph node. Each edge requests the
+	; absent binding2; order must reverse every link before reporting that miss.
+	move.l #32769, d0
+	jsr imports.reserveItems
+	bne.w bad
+	movea.l imports.ITEMS_POINTER(a6), a1
+	moveq #0, d2
+fill
+	move.w #1, imports.Item.Target(a1)
+	clr.w imports.Item.Qualifier(a1)
+	clr.w imports.Item.Selected(a1)
+	clr.w imports.Item.Unqualified(a1)
+	move.w d2, imports.Item.Next(a1)
+	clr.w imports.Item.Flags(a1)
+	adda.w #imports.ITEM_BYTES, a1
+	addq.l #1, d2
+	cmpi.l #32769, d2
+	blo.w fill
+	move.w d2, imports.COUNT(a6)
+	mulu.w #imports.ITEM_BYTES, d2
+	move.l d2, imports.ITEMS+memory.Block.Used(a6)
+	movea.l imports.HEADS_POINTER(a6), a1
+	move.w #32769, (a1)
+	lea EdgeGraph, a0
+	jsr graph.begin
+	bne.w bad
+	moveq #4, d0
+	moveq #0, d1
+	moveq #1, d2
+	jsr graph.line
+	bne.w bad
+	moveq #4, d0
+	moveq #1, d1
+	moveq #0, d2
+	jsr graph.line
+	bne.w bad
+	lea ScopeState, a1
+	lea EdgeSpan, a2
+	moveq #graph.SPAN_BYTES, d0
+	jsr graph.order
+	cmpi.l #2, d0
+	bne.w bad
+	cmpi.w #2, d1
+	bne.w bad
+	movea.l EdgeGraph+graph.NEXT_POINTER, a1
+	cmpi.w #2, (a1)
+	bne.w bad
+	move.l #32768*2, d0
+	tst.w 0(a1, d0.l)
+	bne.w bad  ; final source-order link has no successor
+	lea EdgeGraph, a0
+	jsr graph.begin
+	beq.w bad  ; NEXT remains owned across retry/error
+	jsr graph.release
+	tst.l EdgeGraph+graph.NEXT_POINTER
+	bne.w bad
+	; Reuse the grown row owners for the original exposure fixtures.
+	movea.l imports.HEADS_POINTER(a6), a1
+	clr.w (a1)
+	clr.w imports.COUNT(a6)
+	clr.w imports.SELECTED_COUNT(a6)
+	move.l #imports.ITEM_BYTES*2, imports.ITEMS+memory.Block.Used(a6)
+	move.l #imports.SELECTION_BYTES, imports.SELECTIONS+memory.Block.Used(a6)
+	moveq #0, d0
+	bra.w done
+bad
+	lea EdgeGraph, a0
+	jsr graph.release
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; edgeStorage
+
 cases .block
  lea ScopeState,a0
  moveq #100,d0
  moveq #0,d1
  jsr scopes.begin
+ bne.w bad
+	; Scenario rows borrow owned import storage; reserve before copying fixtures.
+	lea ScopeState+layout.IMPORT_STATE, a0
+	moveq #2, d0
+	jsr imports.reserveItems
+	bne.w bad
+	moveq #1, d0
+	jsr imports.reserveSelections
  bne.w bad
  lea Names,a2
  moveq #3,d7
@@ -70,6 +207,8 @@ bindNames
  jsr scopes.bindOrigin
  bne.w bad
  dbra d7,bindNames
+	bsr edgeStorage
+	bne.w bad
  ; Source module is entry0; declaration is module-flat even in lexical block2.
  move.w #1,ScopeState+layout.MODULE_STATE+modules.State.Active
  move.w #1,ScopeState+layout.MODULE_STATE+modules.State.Visibility
@@ -113,6 +252,8 @@ bindNames
  ; Switch caller module to app (entry1), retaining a different lexical block.
  move.w #2,ScopeState+layout.MODULE_STATE+modules.State.Active
  move.w #3,ScopeState+layout.State.Current
+	move.l #imports.ITEM_BYTES*2, ScopeState+layout.IMPORT_STATE+imports.ITEMS+memory.Block.Used
+	move.l #imports.SELECTION_BYTES, ScopeState+layout.IMPORT_STATE+imports.SELECTIONS+memory.Block.Used
  lea Scenarios,a2
  moveq #7,d7
 scenario
@@ -124,13 +265,13 @@ scenario
  move.l d0,Frame+imports.TemplateExposureFrame.Visibility
  move.w (a2)+,d0
  move.w d0,ScopeState+layout.IMPORT_STATE+imports.COUNT
- lea ScopeState+layout.IMPORT_STATE+imports.ITEMS,a0
+	movea.l ScopeState+layout.IMPORT_STATE+imports.ITEMS_POINTER, a0
  moveq #imports.ITEM_BYTES/2*2-1,d0
 items
  move.w (a2)+,(a0)+
  dbra d0,items
  move.w #1,ScopeState+layout.IMPORT_STATE+imports.SELECTED_COUNT
- lea ScopeState+layout.IMPORT_STATE+imports.SELECTIONS,a0
+	movea.l ScopeState+layout.IMPORT_STATE+imports.SELECTIONS_POINTER, a0
  moveq #imports.SELECTION_BYTES/2-1,d0
 selection
  move.w (a2)+,(a0)+
@@ -249,6 +390,8 @@ Cursor .res byte,imports.EXPOSURE_CURSOR_BYTES
 Row .res byte,imports.EXPOSURE_ROW_BYTES
 KeyArena .res byte,256
 ScopeState .res byte,scopes.SCRATCH_BYTES
+EdgeGraph	.res byte, graph.SCRATCH_BYTES
+EdgeSpan	.res byte, graph.SPAN_BYTES
 .endsection
 .output "statement-exposure.hunk",format=hunk,sections=entry,code,data,bss
 .endmodule

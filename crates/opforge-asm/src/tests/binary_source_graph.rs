@@ -11,6 +11,8 @@ mod map_configuration;
 mod identities;
 #[path = "binary_source_implicit_modules.rs"]
 mod implicit_modules;
+#[path = "binary_source_import_edges.rs"]
+mod import_edges;
 #[path = "binary_source_include_parent.rs"]
 mod include_parent;
 #[path = "binary_source_parameters.rs"]

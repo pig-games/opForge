@@ -552,7 +552,7 @@ Hunk) passes discovery but later exits 20 at `binary_block_index.asm`, line 7.
 Its fresh START/DONE interval is 669.041911792 seconds; total native harness
 work is 719.094207792 seconds. Those are failed-run durations, not successful
 assembly performance. This checkpoint does not qualify full self-host, 2 MiB
-fit or opcore completion; localize the later assembly failure independently.
+fit or opcore completion; localize the later preparation failure independently.
 The isolated unchanged 68020/10 MiB release control measures 36.243138208 to
 36.274235083 seconds (+0.086%, single samples), with 132 more image bytes and
 120 more linked reserved bytes. Separate instrumented accounting reduces peak
@@ -560,6 +560,20 @@ owned heap from 1,285,768 to 1,253,256 bytes and total allocation/free from
 3,189,896 to 3,157,384 bytes; both runs end at zero live ownership. These heap
 figures describe the small control, not the full self-host. The receipt is
 `/tmp/opforge-discovery-paths-cost-20261012.json`.
+
+The later failure is another preparation capacity boundary, not an instruction
+or `.endmodule` defect. A project with 173 modules and 510 import edges passes
+fresh native artifact proof; 175 modules and 516 edges rejects its 513th import.
+Both live Rust oracles pass independently. Import items, selected-name rows and
+graph links now grow in owned blocks with word-index limits, independently of
+the 512-node graph. Configuration-to-semantic graph reuse releases its old link
+payload before initialization. The repaired 516-edge case passes exact native
+comparison. A fresh component proof checks relocated row storage, rejection of
+65,536 rows, live-owner initialization guards and a graph-link byte offset of
+65,536 using 32,769 edges. Its 0.762623417-second interval is component timing,
+not full assembly performance. Full current self-host remains unqualified.
+An independent one-module, zero-import probe passes with 1,023 named blocks but
+rejects with 1,025 at block indexing; that fixed capacity needs a separate repair.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

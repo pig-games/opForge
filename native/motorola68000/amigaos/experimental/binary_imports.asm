@@ -37,13 +37,15 @@ EXPLICIT_QUALIFIER = 1
 EXPLICIT_QUALIFIER_BIT = 0
 SELECTION_BYTES = Selection.Next+2
 COUNT = 0
-LIST_LIMIT = 512
+RECORD_LIMIT = 65535; word links are index+1; zero remains the empty link
 HEADS = 2
 HEADS_POINTER = HEADS+memory.Block.Pointer
 ITEMS = HEADS+memory.Block.Used+4
-SELECTED_COUNT = ITEMS+LIST_LIMIT*ITEM_BYTES
+ITEMS_POINTER = ITEMS+memory.Block.Pointer
+SELECTED_COUNT = ITEMS+memory.Block.Used+4
 SELECTIONS = SELECTED_COUNT+2
-PROXIES = SELECTIONS+LIST_LIMIT*SELECTION_BYTES
+SELECTIONS_POINTER = SELECTIONS+memory.Block.Pointer
+PROXIES = SELECTIONS+memory.Block.Used+4
 PARAM_COUNT = PROXIES+256*2
 PARAMS = PARAM_COUNT+2
 PARAM_BYTES = pkg.PARAMETER_BYTES
@@ -65,8 +67,13 @@ USE_LOCAL_BYTES = UseLocal.Sections+4
 	.section code, kind=code
 	.pub
 
-; A0=import scratch. D0/CCR=status; other registers preserved.
+; A0=fresh/released import scratch. D0/CCR=status; other registers preserved.
+; Owned blocks must be released before clearing their descriptors.
 begin	.block
+	tst.l ITEMS_POINTER(a0)
+	bne.w live
+	tst.l SELECTIONS_POINTER(a0)
+	bne.w live
 	movem.l d1/a0, -(sp)
 	move.w #SCRATCH_BYTES/2-1, d1
 clear
@@ -75,7 +82,34 @@ clear
 	movem.l (sp)+, d1/a0
 	moveq #0, d0
 	rts
+live
+	moveq #1, d0
+	rts
 	.bend  ; begin
+
+; A0=import state,D0=minimum row count. D0/CCR=status; others kept.
+; Stored links are indices, never row pointers. Borrowed rows cannot survive
+; growth of their own owner; reload ITEMS_POINTER/SELECTIONS_POINTER afterward.
+reserveItems	.block
+	movem.l d1/a0, -(sp)
+	lea ITEMS(a0), a0
+	moveq #ITEM_BYTES, d1
+	bsr.w reserveRows
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; reserveItems
+
+; A0=import state,D0=minimum selection count. Same ownership/status contract.
+reserveSelections	.block
+	movem.l d1/a0, -(sp)
+	lea SELECTIONS(a0), a0
+	moveq #SELECTION_BYTES, d1
+	bsr.w reserveRows
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; reserveSelections
 
 ; A0=import state,D0=minimum identity slots. D0/CCR=status; others kept.
 reserve	.block
@@ -130,6 +164,16 @@ bad
 release	.block
 	move.l d0, -(sp)
 	move.l a0, -(sp)
+	lea ITEMS(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp), a0
+	lea SELECTIONS(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp), a0
+	clr.w COUNT(a0)
+	clr.w SELECTED_COUNT(a0)
 	lea HEADS(a0), a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -586,7 +630,7 @@ seenName
 	move.l d2, d0
 	subq.w #1, d0
 	mulu.w #SELECTION_BYTES, d0
-	lea SELECTIONS(a2), a0
+	movea.l SELECTIONS_POINTER(a2), a0
 	adda.l d0, a0
 	cmp.w Selection.Name(a0), d3
 	bne.w nextSeenName
@@ -599,17 +643,23 @@ nextSeenName
 appendName
 	moveq #0, d2
 	move.w SELECTED_COUNT(a2), d2
-	cmpi.w #LIST_LIMIT, d2
-	bhs.w bad
+	move.l d2, d0
+	addq.l #1, d0
+	movea.l a2, a0
+	bsr.w reserveSelections
+	bne.w bad
 	move.l d2, d0
 	mulu.w #SELECTION_BYTES, d0
-	lea SELECTIONS(a2), a0
+	movea.l SELECTIONS_POINTER(a2), a0
 	adda.l d0, a0
 	move.w d3, Selection.Name(a0)
 	move.w d5, Selection.Alias(a0)
 	move.w d4, Selection.Next(a0)
 	move.l d2, d4
 	addq.w #1, d4
+	move.l d4, d0
+	mulu.w #SELECTION_BYTES, d0
+	move.l d0, SELECTIONS+memory.Block.Used(a2)
 	move.w d4, SELECTED_COUNT(a2)
 nextNameToken
 	cmpa.l a4, a3
@@ -637,7 +687,7 @@ qualifiedSelection
 	move.l d2, d0
 	subq.w #1, d0
 	mulu.w #SELECTION_BYTES, d0
-	lea SELECTIONS(a2), a0
+	movea.l SELECTIONS_POINTER(a2), a0
 	adda.l d0, a0
 	tst.w Selection.Alias(a0)
 	bne.w bad  ; per-item aliases expose direct names only
@@ -702,7 +752,7 @@ collision
 	beq.w append
 	subq.w #1, d2
 	mulu.w #ITEM_BYTES, d2
-	lea ITEMS(a4), a0
+	movea.l ITEMS_POINTER(a4), a0
 	adda.l d2, a0
 	tst.w d5
 	beq.w nextCollision
@@ -715,11 +765,15 @@ nextCollision
 append
 	moveq #0, d0
 	move.w COUNT(a4), d0
-	cmpi.w #LIST_LIMIT, d0
-	bhs.w bad
+	move.l d0, d2
+	addq.l #1, d0
+	movea.l a4, a0
+	bsr.w reserveItems
+	bne.w bad
+	move.l d2, d0
 	move.l d0, d1
 	mulu.w #ITEM_BYTES, d1
-	lea ITEMS(a4), a0
+	movea.l ITEMS_POINTER(a4), a0
 	adda.l d1, a0
 	move.w d7, Item.Target(a0)
 	move.w d5, Item.Qualifier(a0)
@@ -727,6 +781,8 @@ append
 	move.w d3, Item.Unqualified(a0)
 	move.w (a3), Item.Next(a0)
 	move.w UseLocal.Flags+2(sp), Item.Flags(a0)
+	addi.l #ITEM_BYTES, d1
+	move.l d1, ITEMS+memory.Block.Used(a4)
 	addq.w #1, d0
 	move.w d0, (a3)
 	move.w d0, COUNT(a4)
@@ -962,7 +1018,7 @@ scan
 	move.l d7, d0
 	subq.w #1, d0
 	mulu.w #ITEM_BYTES, d0
-	lea ITEMS(a4), a3
+	movea.l ITEMS_POINTER(a4), a3
 	adda.l d0, a3
 	tst.w Item.Unqualified(a3)
 	beq.w next
@@ -983,7 +1039,7 @@ selected
 	move.l d6, d0
 	subq.w #1, d0
 	mulu.w #SELECTION_BYTES, d0
-	lea SELECTIONS(a4), a1
+	movea.l SELECTIONS_POINTER(a4), a1
 	adda.l d0, a1
 	moveq #0, d2
 	move.w Selection.Next(a1), d2
@@ -1055,7 +1111,7 @@ modulesLoop
 	bhs.w proxies
 	move.l d7, d0
 	mulu.w #ITEM_BYTES, d0
-	lea ITEMS(a4), a0
+	movea.l ITEMS_POINTER(a4), a0
 	adda.l d0, a0
 	moveq #0, d0
 	.BINDING_ATTEMPT_WORD #binding_diagnostic.IMPORT_MODULE, Item.Target(a0), #-1
@@ -1069,7 +1125,7 @@ modulesLoop
 	beq.w bad
 	move.l d7, d0
 	mulu.w #ITEM_BYTES, d0
-	lea ITEMS(a4), a3
+	movea.l ITEMS_POINTER(a4), a3
 	adda.l d0, a3
 	.BINDING_ATTEMPT_WORD #binding_diagnostic.IMPORT_SELECTION, Item.Target(a3), #-1
 	bsr.w validateSelected
@@ -1098,7 +1154,7 @@ selectedItem
 	move.l d7, d0
 	subq.w #1, d0
 	mulu.w #ITEM_BYTES, d0
-	lea ITEMS(a4), a3
+	movea.l ITEMS_POINTER(a4), a3
 	adda.l d0, a3
 	moveq #0, d0
 	.BINDING_ATTEMPT_WORD #binding_diagnostic.SELECTED_MODULE, Item.Target(a3), d6
@@ -1251,7 +1307,7 @@ templateImport
 	move.l d6, d0
 	subq.w #1, d0
 	mulu.w #ITEM_BYTES, d0
-	lea ITEMS(a4), a0
+	movea.l ITEMS_POINTER(a4), a0
 	adda.l d0, a0
 	moveq #0, d6
 	move.w Item.Next(a0), d6
@@ -1274,7 +1330,7 @@ templateSelection
 	move.l d5, d0
 	subq.w #1, d0
 	mulu.w #SELECTION_BYTES, d0
-	lea SELECTIONS(a4), a1
+	movea.l SELECTIONS_POINTER(a4), a1
 	adda.l d0, a1
 	cmp.w Selection.Name(a1), d2
 	beq.w templateOk
@@ -1386,7 +1442,7 @@ selected
 	cmp.w SELECTED_COUNT(a2), d0
 	bhs.w bad
 	mulu.w #SELECTION_BYTES, d0
-	lea SELECTIONS(a2), a1
+	movea.l SELECTIONS_POINTER(a2), a1
 	adda.l d0, a1
 	move.w Selection.Next(a1), d2
 	moveq #0, d0
@@ -1473,7 +1529,7 @@ aliasLoop
 	move.l d7, d0
 	subq.w #1, d0
 	mulu.w #ITEM_BYTES, d0
-	lea ITEMS(a4), a1
+	movea.l ITEMS_POINTER(a4), a1
 	adda.l d0, a1
 	moveq #0, d0
 	move.w Item.Qualifier(a1), d0
@@ -1522,7 +1578,7 @@ fullLoop
 	move.l d7, d0
 	subq.w #1, d0
 	mulu.w #ITEM_BYTES, d0
-	lea ITEMS(a4), a1
+	movea.l ITEMS_POINTER(a4), a1
 	adda.l d0, a1
 	moveq #0, d0
 	move.w Item.Target(a1), d0
@@ -2608,7 +2664,7 @@ wildcardItem
 	move.l d7, d0
 	subq.w #1, d0
 	mulu.w #ITEM_BYTES, d0
-	lea ITEMS(a4), a3
+	movea.l ITEMS_POINTER(a4), a3
 	adda.l d0, a3
 	moveq #0, d7
 	move.w Item.Next(a3), d7
@@ -2996,6 +3052,20 @@ done
 	rts
 	.bend  ; fold
 	.include "binary_template_exposure.i"
+	.priv
+; A0=owned Block,D0=row count,D1=row width. No Used/count publication.
+; Failure retains old payload and all descriptor fields; D0/CCR=status.
+reserveRows	.block
+	cmpi.l #RECORD_LIMIT, d0
+	bhi.w bad
+	mulu.w d1, d0
+	mulu.w #RECORD_LIMIT, d1
+	jsr memory.reserveBounded
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; reserveRows
 	.endsection
 
 .ifdef OPFORGE_DEBUG_CONTRACTS

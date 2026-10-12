@@ -136,6 +136,11 @@ Preparation captures unbound binary records before configuration/dependency
 scanning, then performs semantic preparation in dependency order. Current
 qualification and remaining source-acquisition gaps are in the
 [completion plan](../documentation/plans/native-runtime-reset.md).
+Import edges and selected-name rows grow in owned blocks independently of the
+512-module graph bound. Word links admit up to 65,535 rows; zero means absent.
+Graph links are released before configuration-to-semantic replay resets the
+graph, and again safely during final cleanup. These preparation allocations do
+not survive into assembly execution.
 
 ## Current Layout
 

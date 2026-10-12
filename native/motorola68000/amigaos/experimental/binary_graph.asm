@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_imports as imports
+	.use experimental.amigaos.binary_memory as memory
 	.pub
 Span	.struct
 Start	.long ?
@@ -41,15 +42,19 @@ Reserved	.word ?
 NODES = GraphState.Reserved+2
 STACK = NODES+LIMIT*NODE_BYTES
 NEXT = STACK+LIMIT*VISIT_BYTES
-EDGE_HEADS = NEXT+imports.LIST_LIMIT*2
+NEXT_POINTER = NEXT+memory.Block.Pointer
+EDGE_HEADS = NEXT+memory.Block.Used+4
 HASH = EDGE_HEADS+LIMIT*2
 HASH_SLOTS = LIMIT*2; at most half full; entries hold dense index+1
 HASH_MASK = HASH_SLOTS-1
 SCRATCH_BYTES = HASH+HASH_SLOTS*2
 	.section code, kind=code
 
-; A0=caller-owned aligned graph scratch. D0/CCR=status; other registers kept.
+; A0=fresh/released aligned graph scratch. D0/CCR=status; other registers kept.
+; Release the owned NEXT payload before clearing or freeing graph scratch.
 begin	.block
+	tst.l NEXT_POINTER(a0)
+	bne.w live
 	movem.l d1/a0, -(sp)
 	move.w #SCRATCH_BYTES/2-1, d1
 clear
@@ -59,7 +64,21 @@ clear
 	move.l #1, GraphState.SourceIndex(a0)
 	moveq #0, d0
 	rts
+live
+	moveq #1, d0
+	rts
 	.bend  ; begin
+
+; A0=graph scratch. Release owned edge links before caller frees the scratch.
+; All registers preserved; CCR unspecified. Safe for empty/released storage.
+release	.block
+	move.l a0, -(sp)
+	lea NEXT(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp)+, a0
+	rts
+	.bend  ; release
 
 ; A0=graph,D0=packed line bytes,D1=module before,D2=module after (index+1).
 ; Capture original record offsets; retain no process pointers. D0/CCR=status;
@@ -243,6 +262,17 @@ order	.block
 	bne.w bad
 	tst.w GraphState.Ordered(a6)
 	bne.w bad
+	; Reserve for the complete current edge set on every discovery retry.
+	; No NEXT pointer survives its owner growth; links remain word indices.
+	moveq #0, d0
+	move.w layout.IMPORT_STATE+imports.COUNT(a5), d0
+	add.l d0, d0
+	move.l d0, d2
+	move.l #imports.RECORD_LIMIT*2, d1
+	lea NEXT(a6), a0
+	jsr memory.reserveBounded
+	bne.w bad
+	move.l d2, memory.Block.Used(a0)
 	; A missing dependency can cause discovery to load another file and retry.
 	; Recompute selection from the complete graph on every attempt.
 	moveq #0, d7
@@ -288,18 +318,20 @@ heads
 reverse
 	tst.w d2
 	beq.w headNext
+	cmp.w layout.IMPORT_STATE+imports.COUNT(a5), d2
+	bhi.w bad
 	move.l d2, d0
 	subq.w #1, d0
 	move.l d0, d1
-	add.w d1, d1
-	lea NEXT(a6), a0
+	add.l d1, d1
+	movea.l NEXT_POINTER(a6), a0
 	move.w (a1), d0
-	move.w d0, 0(a0, d1.w)
+	move.w d0, 0(a0, d1.l)
 	move.w d2, (a1)
 	move.l d2, d0
 	subq.w #1, d0
 	mulu.w #imports.ITEM_BYTES, d0
-	lea layout.IMPORT_STATE+imports.ITEMS(a5), a0
+	movea.l layout.IMPORT_STATE+imports.ITEMS_POINTER(a5), a0
 	adda.l d0, a0
 	moveq #0, d2
 	move.w imports.Item.Next(a0), d2
@@ -352,14 +384,16 @@ walk
 	moveq #0, d2
 	move.w FrameEntry.Edge(a3), d2
 	beq.w emit
+	cmp.w layout.IMPORT_STATE+imports.COUNT(a5), d2
+	bhi.w bad
 	subq.w #1, d2
 	move.l d2, d0
-	add.w d0, d0
-	lea NEXT(a6), a0
-	move.w 0(a0, d0.w), d0
+	add.l d0, d0
+	movea.l NEXT_POINTER(a6), a0
+	move.w 0(a0, d0.l), d0
 	move.w d0, FrameEntry.Edge(a3)
 	mulu.w #imports.ITEM_BYTES, d2
-	lea layout.IMPORT_STATE+imports.ITEMS(a5), a0
+	movea.l layout.IMPORT_STATE+imports.ITEMS_POINTER(a5), a0
 	adda.l d2, a0
 	moveq #0, d1
 	move.w imports.Item.Target(a0), d1

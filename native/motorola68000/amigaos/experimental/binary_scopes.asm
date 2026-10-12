@@ -94,6 +94,11 @@ begin	.block
 	movea.l a0, a1
 	cmpi.l #65535, d0
 	bhi.w bad
+	; begin accepts fresh/released storage, never clears live edge owners.
+	tst.l IMPORT_STATE+imports.ITEMS_POINTER(a0)
+	bne.w bad
+	tst.l IMPORT_STATE+imports.SELECTIONS_POINTER(a0)
+	bne.w bad
 	move.w d0, layout.State.Base(a0)
 	move.w d1, layout.State.EndDirective(a0)
 	clr.w layout.State.Changed(a0)
@@ -139,6 +144,7 @@ clear
 	jsr modules.begin
 	lea IMPORT_STATE(a1), a0
 	jsr imports.begin
+	bne.w bad
 	movea.l a1, a0
 	adda.l #SECTION_STATE, a0
 	jsr sections.begin

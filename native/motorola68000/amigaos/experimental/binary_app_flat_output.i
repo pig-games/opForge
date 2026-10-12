@@ -11,7 +11,7 @@ writeFlat	.block
 	move.w SelectedRangeSet, flat_output.Frame.RangeSet(a1)
 	move.l SelectedRangeStart, flat_output.Frame.RangeStart(a1)
 	move.l SelectedRangeEnd, flat_output.Frame.RangeEnd(a1)
-	move.w MetadataConfig+metadata.Config.Fill+2, flat_output.Frame.Fill(a1)
+	move.w MetadataConfig+metadata.Config.Effective+metadata.Config.Fill+2, flat_output.Frame.Fill(a1)
 	move.l	memory.Block.Pointer(a0), flat_output.Frame.Buffer(a1)
 	move.l	#4096, flat_output.Frame.Capacity(a1)
 	lea	Output, a0

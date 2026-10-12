@@ -13,12 +13,13 @@ mod acquisition_package_tests;
 #[cfg(test)]
 mod seeded_producer_tests;
 
+mod binary_metadata_package;
+
 use package::{
     decode_encoding_program, inline_head_policy_program, macro_descriptor_program,
     macro_fragment_program, macro_spelling_program, packed_branch_program, packed_data_program,
     packed_declaration_program, packed_file_program, packed_loop_program,
-    packed_macro_call_program, packed_metadata_program, packed_text_program,
-    validate_fixup_program, EncodingStep,
+    packed_macro_call_program, packed_text_program, validate_fixup_program, EncodingStep,
 };
 use types::hierarchy::ResolvedHierarchy;
 use vm::binary_source_package::{
@@ -506,38 +507,6 @@ fn prepare_numeric_package(
         0,
         DictionaryRoleFlags::CONTEXTUAL,
     )?;
-    let mut metadata_heads = [0; 6];
-    for (slot, spelling) in metadata_heads.iter_mut().zip([
-        "meta.output.name",
-        "meta.output.hex",
-        "meta.output.bin",
-        "meta.output.fill",
-        "meta.name",
-        "meta.version",
-    ]) {
-        *slot = acquire_name(&mut names, spelling)?;
-        bind(
-            &mut dictionary,
-            spelling.into(),
-            *slot,
-            0,
-            DictionaryRoleFlags::CONTEXTUAL,
-        )?;
-    }
-    let mut statement_heads = [0; 2];
-    for (slot, spelling) in statement_heads
-        .iter_mut()
-        .zip(package::statement_program::HEAD_SPELLINGS)
-    {
-        *slot = acquire_name(&mut names, spelling)?;
-        bind(
-            &mut dictionary,
-            spelling.into(),
-            *slot,
-            0,
-            DictionaryRoleFlags::CONTEXTUAL,
-        )?;
-    }
     let cpu_id = acquire_name(&mut names, &resolved.cpu_id)?;
     bind(
         &mut dictionary,
@@ -559,6 +528,43 @@ fn prepare_numeric_package(
                 DictionaryRoleFlags::CONTEXTUAL,
             )?;
         }
+    }
+    let metadata_plan =
+        binary_metadata_package::metadata_program(core, &resolved.cpu_id, |spelling| {
+            // Keep dictionary and interner ownership in package acquisition. The
+            // metadata helper asks for heads in the established acquisition order.
+            if let Some(binding) = dictionary.get(spelling) {
+                if binding.qualifier != 0 {
+                    return Err(format!("qualified metadata head {spelling}"));
+                }
+                Ok(binding.id)
+            } else {
+                let head = acquire_name(&mut names, spelling)?;
+                bind(
+                    &mut dictionary,
+                    spelling.into(),
+                    head,
+                    0,
+                    DictionaryRoleFlags::CONTEXTUAL,
+                )?;
+                Ok(head)
+            }
+        })?;
+    vm::packed_metadata_vm::validate_program(&metadata_plan)
+        .map_err(|error| format!("invalid acquired metadata program: {}", error.message))?;
+    let mut statement_heads = [0; 2];
+    for (slot, spelling) in statement_heads
+        .iter_mut()
+        .zip(package::statement_program::HEAD_SPELLINGS)
+    {
+        *slot = acquire_name(&mut names, spelling)?;
+        bind(
+            &mut dictionary,
+            spelling.into(),
+            *slot,
+            0,
+            DictionaryRoleFlags::CONTEXTUAL,
+        )?;
     }
     // State operands use a separate lexical context so CPU aliases cannot widen
     // the exact package-owned state argument vocabulary.
@@ -883,7 +889,6 @@ fn prepare_numeric_package(
     out.extend_from_slice(&file_plan);
     align(&mut out);
     let metadata_offset = out.len();
-    let metadata_plan = packed_metadata_program(metadata_heads);
     out.extend_from_slice(&metadata_plan);
     align(&mut out);
     let statement_compile_offset = out.len();
@@ -2021,6 +2026,38 @@ fn name(names: &[String], id: u16) -> Result<&str, String> {
 #[cfg(test)]
 mod dictionary_role_contract_tests {
     use super::*;
+
+    #[test]
+    fn catalog_metadata_programs_are_sorted_bounded_and_pipeline_selected() {
+        const METADATA_PLAN: usize = 152;
+        const METADATA_PLAN_BYTES: usize = METADATA_PLAN + 4;
+        let core = RuntimeModelCore::from_registry(&engine::build_default_asm_registry()).unwrap();
+        let mut target_count = None;
+        for cpu in ["65c02", "6502", "68020"] {
+            let resolved = core.resolve_pipeline(cpu, None).unwrap();
+            let prepared = prepare_package_with_names(&core, &resolved).unwrap();
+            let read_long = |at: usize| {
+                u32::from_be_bytes(prepared.bytes[at..at + 4].try_into().unwrap()) as usize
+            };
+            let at = read_long(METADATA_PLAN);
+            let bytes = read_long(METADATA_PLAN_BYTES);
+            let program = &prepared.bytes[at..at + bytes];
+            vm::packed_metadata_vm::validate_program(program).unwrap();
+            let read_word = |at: usize| u16::from_be_bytes(program[at..at + 2].try_into().unwrap());
+            let count = read_word(package::package::METADATA_PROGRAM_COUNT);
+            let targets = read_word(package::package::METADATA_PROGRAM_TARGET_COUNT);
+            if let Some(expected) = target_count {
+                assert_eq!(targets, expected);
+            }
+            target_count = Some(targets);
+            assert!(read_word(package::package::METADATA_PROGRAM_SELECTED_TARGET) > 0);
+            assert!(count > package::package::METADATA_HEAD_COUNT as u16);
+            eprintln!(
+                "{cpu}: metadata rows={count} bytes={bytes} targets={targets} names={}",
+                prepared.names.len()
+            );
+        }
+    }
 
     #[test]
     fn accumulator_roles_survive_fixed_opcode_and_unsupported_encoding_recipes() {

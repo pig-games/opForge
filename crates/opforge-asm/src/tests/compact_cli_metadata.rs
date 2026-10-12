@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Inline literal metadata checkpoint, not metadata-block or CPU-specific parity.
+//! Literal metadata controls with exact output and inventory comparisons.
 use super::*;
 use crate::native_package_build::{build_native_packages, EmbedSelection};
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
+
+#[path = "compact_cli_metadata_blocks.rs"]
+mod blocks;
 
 struct MetadataCase {
     name: &'static str,
@@ -165,6 +168,7 @@ fn cases() -> Vec<MetadataCase> {
         "metadata-source-bin-cli-bin-suppresses-vector",
         &[("base.bin", &[0x12, 0x34])],
     );
+    cases.extend(blocks::cases());
     cases
 }
 
@@ -314,14 +318,6 @@ fn negative_cases() -> Vec<NegativeMetadataCase> {
             ".meta.name description",
         ),
         ("metadata-reject-unquoted-version", ".meta.version 1"),
-        (
-            "metadata-reject-block",
-            ".meta\nname = \"description\"\n.endmeta",
-        ),
-        (
-            "metadata-reject-cpu-specific",
-            ".meta.output.68020.name \"Work:base\"",
-        ),
         ("metadata-reject-list", ".meta.output.list \"Work:list\""),
         (
             "metadata-reject-bin-range",
@@ -349,6 +345,7 @@ fn negative_cases() -> Vec<NegativeMetadataCase> {
     );
     late.diagnostic = "compact CLI: output failed";
     result.push(late);
+    result.extend(blocks::negative_cases());
     result
 }
 

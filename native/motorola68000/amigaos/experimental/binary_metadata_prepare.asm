@@ -19,7 +19,7 @@ Name	.res PATH_BYTES
 RangeText	.res 10
 	.endstruct
 BIN_BYTES = Bin.RangeText+10
-Config	.struct
+Settings	.struct
 NameSet	.word ?
 HexSet	.word ?
 Root	.word ?
@@ -30,11 +30,37 @@ Bins	.res memory.Block.Used+4
 Name	.res PATH_BYTES
 Hex	.res PATH_BYTES
 	.endstruct
-CONFIG_BYTES = Config.Hex+PATH_BYTES
+SETTINGS_BYTES = Settings.Hex+PATH_BYTES
+Config	.struct
+NameSet	.word ?
+HexSet	.word ?
+Root	.word ?
+FillSet	.word ?
+Fill	.long ?
+BinCount	.long ?
+Bins	.res memory.Block.Used+4
+Name	.res PATH_BYTES
+Hex	.res PATH_BYTES
+Mode	.word ?
+ActiveTarget	.word ?
+SelectedTarget	.word ?
+Reserved	.word ?
+TargetCount	.long ?
+Targets	.res memory.Block.Used+4
+Effective	.res SETTINGS_BYTES
+	.endstruct
+Target	.struct
+Id	.word ?
+Reserved	.word ?
+Settings	.res SETTINGS_BYTES
+	.endstruct
+CONFIG_BYTES = Config.Effective+SETTINGS_BYTES
+TARGET_BYTES = Target.Settings+SETTINGS_BYTES
 	.priv
 Frame	.struct
 Request	.res abi.PRVM_REQUEST_FRAME_SIZE
 Result	.res abi.PRVM_RESULT_RECORD_SIZE
+Settings	.long ?
 StagedBin	.res BIN_BYTES
 	.endstruct
 FRAME_BYTES = Frame.StagedBin+BIN_BYTES
@@ -54,11 +80,27 @@ zero
 ; A0=initialized Config. Free owned BIN storage and reset all fields.
 ; Registers kept. Safe for zero-initialized and already released configurations.
 release	.block
-	move.l a0, -(sp)
-	lea Config.Bins(a0), a0
+	movem.l d0-d1/a0-a2, -(sp)
+	movea.l a0, a2
+	move.l Config.TargetCount(a2), d1
+	movea.l Config.Targets+memory.Block.Pointer(a2), a1
+loop
+	tst.l d1
+	beq.w defaults
+	lea Target.Settings+Config.Bins(a1), a0
 	jsr memory.release
-	movea.l (sp)+, a0
-	bra.w clear
+	adda.w #TARGET_BYTES, a1
+	subq.l #1, d1
+	bra.w loop
+defaults
+	lea Config.Bins(a2), a0
+	jsr memory.release
+	lea Config.Targets(a2), a0
+	jsr memory.release
+	movea.l a2, a0
+	bsr.w clear
+	movem.l (sp)+, d0-d1/a0-a2
+	rts
 	.bend  ; release
 
 ; A0=record,A1=package,A2=scope,A3=Config (optional),D1=root file boolean.
@@ -98,6 +140,13 @@ clear
 	move.l package.Header.MetadataPlan(a6), d0
 	lea 0(a6, d0.l), a0
 	move.l a0, abi.PRVM_FRAME_PROGRAM_PTR(a3)
+	tst.l d6
+	beq.w contextReady
+	movea.l d6, a1
+	move.w abi.MetadataProgram.SelectedTarget(a0), Config.SelectedTarget(a1)
+	move.w Config.ActiveTarget(a1), abi.PRVM_FRAME_FLAGS(a3)
+	move.w Config.Mode(a1), abi.PRVM_FRAME_FLAGS+2(a3)
+contextReady
 	move.l package.Header.MetadataPlanBytes(a6), abi.PRVM_FRAME_PROGRAM_LEN(a3)
 	lea Frame.Result(a3), a0
 	move.l a0, abi.PRVM_FRAME_RESULT_PTR(a3)
@@ -128,12 +177,21 @@ clear
 	bne.w bad
 scopeReady
 	lea Frame.Result(a3), a0
+	moveq #0, d0
+	move.w abi.PRVM_METADATA_ROLE(a0), d0
+	cmpi.w #abi.PRVM_METADATA_META_OPEN, d0
+	bhs.w control
 	cmpi.w #abi.PRVM_METADATA_DESCRIPTIVE, abi.PRVM_METADATA_ROLE(a0)
 	beq.w consumed
 	cmpi.w #abi.PRVM_METADATA_OUTPUT, abi.PRVM_METADATA_ROLE(a0)
 	bne.w bad
 	movea.l d6, a1
-	move.l abi.PRVM_METADATA_KEY(a0), d0
+	move.w abi.PRVM_METADATA_TARGET(a0), d0
+	bsr.w acquireSettings
+	bne.w bad
+	move.l a1, Frame.Settings(a3)
+	moveq #0, d0
+	move.w abi.PRVM_METADATA_KEY(a0), d0
 	cmpi.l #abi.PRVM_METADATA_NAME, d0
 	beq.w name
 	cmpi.l #abi.PRVM_METADATA_BIN, d0
@@ -220,7 +278,7 @@ rangeText
 	subq.l #1, d3
 	bne.w rangeText
 appendBin
-	movea.l d6, a1
+	movea.l Frame.Settings(a3), a1
 	lea Config.Bins(a1), a0
 	move.l memory.Block.Used(a0), d2
 	move.l d2, d0
@@ -237,7 +295,40 @@ publishBin
 	dbra d0, publishBin
 	addi.l #BIN_BYTES, memory.Block.Used(a0)
 	addq.l #1, Config.BinCount(a1)
+	bra.w consumed
 
+control
+	movea.l d6, a1
+	cmpi.w #abi.PRVM_METADATA_META_OPEN, d0
+	beq.w openMeta
+	cmpi.w #abi.PRVM_METADATA_OUTPUT_OPEN, d0
+	beq.w openOutput
+	cmpi.w #abi.PRVM_METADATA_TARGET_OPEN, d0
+	beq.w openTarget
+	cmpi.w #abi.PRVM_METADATA_TARGET_CLOSE, d0
+	beq.w closeTarget
+	cmpi.w #abi.PRVM_METADATA_OUTPUT_CLOSE, d0
+	beq.w closeOutput
+	cmpi.w #abi.PRVM_METADATA_META_CLOSE, d0
+	bne.w bad
+	clr.w Config.Mode(a1)
+	bra.w consumed
+openMeta
+	move.w #abi.PRVM_METADATA_CONTEXT_META, Config.Mode(a1)
+	bra.w consumed
+openOutput
+	move.w #abi.PRVM_METADATA_CONTEXT_OUTPUT, Config.Mode(a1)
+	bra.w consumed
+openTarget
+	move.w abi.PRVM_METADATA_TARGET(a0), Config.ActiveTarget(a1)
+	move.w #abi.PRVM_METADATA_CONTEXT_TARGET, Config.Mode(a1)
+	bra.w consumed
+closeTarget
+	clr.w Config.ActiveTarget(a1)
+	move.w #abi.PRVM_METADATA_CONTEXT_OUTPUT, Config.Mode(a1)
+	bra.w consumed
+closeOutput
+	move.w #abi.PRVM_METADATA_CONTEXT_META, Config.Mode(a1)
 consumed
 	move.b #3, (a5)
 	clr.b 1(a5)
@@ -253,5 +344,7 @@ done
 	tst.l d0
 	rts
 	.bend  ; check
+	.priv
+	.include "binary_metadata_targets.i"
 	.endsection
 	.endmodule

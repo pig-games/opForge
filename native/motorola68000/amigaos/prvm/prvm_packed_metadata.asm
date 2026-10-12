@@ -10,10 +10,15 @@ State	.struct
 Budget	.long ?
 Policy	.long ?
 Stage	.res abi.PRVM_RESULT_RECORD_SIZE
+Context	.word ?
+Target	.word ?
+HeadSeen	.word ?
+Fallback	.word ?
 	.endstruct
-STATE_BYTES = State.Stage+abi.PRVM_RESULT_RECORD_SIZE
+STATE_BYTES = State.Fallback+2
 ROLE = State.Stage+abi.PRVM_METADATA_ROLE
 KEY = State.Stage+abi.PRVM_METADATA_KEY
+TARGET = State.Stage+abi.PRVM_METADATA_TARGET
 VALUE_OFFSET = State.Stage+abi.PRVM_METADATA_VALUE_OFFSET
 VALUE_BYTES = State.Stage+abi.PRVM_METADATA_VALUE_BYTES
 VALUE_KIND = State.Stage+abi.PRVM_METADATA_VALUE_KIND
@@ -54,8 +59,6 @@ run	.block
 	bne.w invalidFrame
 	cmpi.l #abi.PRVM_PARSER_CONTRACT_VERSION_V2, abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a4)
 	bne.w invalidFrame
-	tst.l abi.PRVM_FRAME_FLAGS(a4)
-	bne.w invalidFrame
 	tst.l abi.PRVM_FRAME_TOKEN_PTR(a4)
 	bne.w invalidFrame
 	tst.l abi.PRVM_FRAME_TOKEN_COUNT(a4)
@@ -83,33 +86,26 @@ run	.block
 	move.l abi.PRVM_FRAME_PROGRAM_PTR(a4), d0
 	beq.w invalidFrame
 	movea.l d0, a5
-	cmpi.l #abi.METADATA_PROGRAM_BYTES, abi.PRVM_FRAME_PROGRAM_LEN(a4)
+	bsr.w validateEnvelope
 	bne.w invalidProgram
-	cmpi.b #abi.OP_METADATA_SELECT, (a5)
-	bne.w invalidProgram
-	cmpi.b #abi.METADATA_HEAD_COUNT, abi.MetadataProgram.Count(a5)
-	bne.w invalidProgram
-	cmpi.b #abi.OP_PUBLISH, abi.MetadataProgram.Publish(a5)
-	bne.w invalidProgram
-	tst.b abi.MetadataProgram.End(a5)
-	bne.w invalidProgram
-	lea abi.MetadataProgram.Rows(a5), a2
-	moveq #abi.METADATA_HEAD_COUNT-1, d5
-validateRows
-	cmpi.b #abi.PRVM_METADATA_OUTPUT, abi.MetadataRow.Role(a2)
-	blo.w invalidProgram
-	cmpi.b #abi.PRVM_METADATA_DESCRIPTIVE, abi.MetadataRow.Role(a2)
-	bhi.w invalidProgram
-	cmpi.b #abi.PRVM_METADATA_NAME, abi.MetadataRow.Key(a2)
-	blo.w invalidProgram
-	cmpi.b #abi.PRVM_METADATA_VERSION, abi.MetadataRow.Key(a2)
-	bhi.w invalidProgram
-	cmpi.b #abi.PRVM_METADATA_OPERAND_FILL, abi.MetadataRow.Operand(a2)
-	bhi.w invalidProgram
-	cmpi.b #abi.PRVM_METADATA_OPERAND_RESERVED, abi.MetadataRow.Operand(a2)
-	beq.w invalidProgram
-	addq.l #abi.METADATA_ROW_BYTES, a2
-	dbra d5, validateRows
+	move.l abi.PRVM_FRAME_FLAGS(a4), d0
+	move.l d0, d1
+	andi.l #$ffff, d0
+	cmpi.l #abi.PRVM_METADATA_CONTEXT_TARGET, d0
+	bhi.w invalidFrame
+	swap d1
+	andi.l #$ffff, d1
+	cmp.l d7, d1
+	bhi.w invalidFrame
+	tst.l d1
+	beq.w noContextTarget
+	cmpi.w #abi.PRVM_METADATA_CONTEXT_TARGET, d0
+	bne.w invalidFrame
+	bra.w contextReady
+noContextTarget
+	cmpi.w #abi.PRVM_METADATA_CONTEXT_TARGET, d0
+	beq.w invalidFrame
+contextReady
 	suba.w #STATE_BYTES, sp
 	movea.l sp, a3
 	movea.l a3, a0
@@ -118,6 +114,8 @@ clear
 	clr.l (a0)+
 	dbra d0, clear
 	move.l abi.PRVM_FRAME_STEP_BUDGET(a4), State.Budget(a3)
+	move.w abi.PRVM_FRAME_FLAGS+2(a4), State.Context(a3)
+	move.w abi.PRVM_FRAME_FLAGS(a4), State.Target(a3)
 	clr.l d2
 	bsr.w tick
 	bne.w failure
@@ -134,28 +132,82 @@ clear
 	move.l #abi.OP_METADATA_SELECT, d7
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_PRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_PARSER
 	cmpi.l #RECORD_OPERAND, d6
-	blo.w noMatch
+	blo.w unrelated
 	cmpi.b #abi.PRVM_TOKEN_KIND_DOT, RECORD_HEAD(a6)
-	bne.w noMatch
+	bne.w unrelated
 	cmpi.b #1, RECORD_HEAD_PREFIX(a6)
-	bhi.w noMatch
+	bhi.w unrelated
 	moveq #0, d0
 	move.b RECORD_HEAD_ID(a6), d0
 	lsl.w #8, d0
 	move.b RECORD_HEAD_ID+1(a6), d0
-	lea abi.MetadataProgram.Rows(a5), a2
-	moveq #abi.METADATA_HEAD_COUNT-1, d5
+	moveq #0, d4  ; lower inclusive row index
+	moveq #0, d5
+	move.w abi.MetadataProgram.Count(a5), d5  ; upper exclusive
 findHead
+	cmp.l d5, d4
+	bhs.w scanStart
+	move.l d4, d1
+	add.l d5, d1
+	lsr.l #1, d1
+	move.l d1, d7
+	lsl.l #abi.METADATA_ROW_SHIFT, d7
+	lea abi.METADATA_PROGRAM_ROWS(a5, d7.l), a2
+	moveq #0, d7
+	move.b abi.MetadataRow.HeadHigh(a2), d7
+	lsl.w #8, d7
+	move.b abi.MetadataRow.HeadLow(a2), d7
+	cmp.w d7, d0
+	bls.w lower
+	move.l d1, d4
+	addq.l #1, d4
+	bra.w findHead
+lower
+	move.l d1, d5
+	bra.w findHead
+scanStart
+	move.l d4, d1
+	lsl.l #abi.METADATA_ROW_SHIFT, d1
+	lea abi.METADATA_PROGRAM_ROWS(a5, d1.l), a2
+	moveq #3, d5  ; disjoint four-context rows bound duplicate heads
+scanHead
+	cmp.w abi.MetadataProgram.Count(a5), d4
+	bhs.w headEnd
 	moveq #0, d1
-	move.b (a2), d1
+	move.b abi.MetadataRow.HeadHigh(a2), d1
 	lsl.w #8, d1
 	move.b abi.MetadataRow.HeadLow(a2), d1
 	cmp.w d1, d0
-	beq.w matched
+	bne.w headEnd
+	move.w #1, State.HeadSeen(a3)
+	moveq #0, d1
+	move.w State.Context(a3), d1
+	btst d1, abi.MetadataRow.Contexts(a2)
+	bne.w matched
+	cmpi.b #abi.PRVM_METADATA_OUTPUT_OPEN, abi.MetadataRow.Role(a2)
+	bne.w nextContext
+	move.w #1, State.Fallback(a3)
+nextContext
 	addq.l #abi.METADATA_ROW_BYTES, a2
-	dbra d5, findHead
+	addq.l #1, d4
+	dbra d5, scanHead
+headEnd
+	tst.w State.Context(a3)
+	bne.w tokenFailure
+	tst.w State.Fallback(a3)
+	bne.w noMatch
+	tst.w State.HeadSeen(a3)
+	bne.w tokenFailure
+	bra.w noMatch
+unrelated
+	tst.w State.Context(a3)
+	bne.w tokenFailure
 	bra.w noMatch
 matched
+	moveq #0, d7
+	move.w abi.MetadataProgram.TargetCount(a5), d7
+	bsr.w validateRow
+	bne.w rowFailure
 	moveq #RECORD_HEAD_QUALIFIER, d2
 	tst.b RECORD_HEAD_QUALIFIER(a6)
 	bne.w tokenFailure
@@ -166,7 +218,22 @@ matched
 	move.b abi.MetadataRow.Role(a2), d0
 	move.w d0, ROLE(a3)
 	move.b abi.MetadataRow.Key(a2), d0
-	move.l d0, KEY(a3)
+	move.w d0, KEY(a3)
+	move.w abi.MetadataRow.Target(a2), TARGET(a3)
+	cmpi.w #abi.PRVM_METADATA_TARGET_CLOSE, ROLE(a3)
+	bne.w inheritTarget
+	move.w TARGET(a3), d0
+	cmp.w State.Target(a3), d0
+	bne.w tokenFailure
+inheritTarget
+	cmpi.w #abi.PRVM_METADATA_OUTPUT, ROLE(a3)
+	bne.w operandPolicy
+	tst.w TARGET(a3)
+	bne.w operandPolicy
+	cmpi.w #abi.PRVM_METADATA_CONTEXT_TARGET, State.Context(a3)
+	bne.w operandPolicy
+	move.w State.Target(a3), TARGET(a3)
+operandPolicy
 	moveq #0, d0
 	move.b abi.MetadataRow.Operand(a2), d0
 	move.l d0, State.Policy(a3)
@@ -180,8 +247,12 @@ matched
 	beq.w validated
 	cmpi.l #abi.PRVM_METADATA_OPERAND_BIN, State.Policy(a3)
 	beq.w validated
+	cmpi.l #abi.PRVM_METADATA_OPERAND_NONE, State.Policy(a3)
+	beq.w validated
 	bra.w tokenFailure
 operand
+	cmpi.l #abi.PRVM_METADATA_OPERAND_NONE, State.Policy(a3)
+	beq.w tokenFailure
 	cmpi.l #RECORD_VALUE, d6
 	blo.w tokenFailure
 	cmpi.b #abi.PRVM_TOKEN_KIND_STRING, RECORD_OPERAND+abi.PackedString.Kind(a6)
@@ -241,6 +312,10 @@ noMatch
 	clr.l d2
 	moveq #0, d0
 	bra.w failure
+rowFailure
+	clr.l d2
+	moveq #abi.PRVM_STATUS_INVALID_PROGRAM, d0
+	bra.w failure
 argumentFailure
 	moveq #abi.PRVM_STATUS_INVALID_ARGUMENT, d0
 	bra.w failure
@@ -270,6 +345,8 @@ done
 	rts
 	.bend  ; run
 	.priv
+	.include "prvm_metadata_program.i"
+
 ; A0=literal,D0=width. D0/CCR=status,D1=u32; clobbers D3/A0.
 ; Callers enforce their operation's width before decoding.
 hexValue	.block

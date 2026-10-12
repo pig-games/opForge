@@ -591,6 +591,29 @@ ownership in all three runs. Receipts are
 `/tmp/opforge-import-blocks-memory-cost-20261012.json`. These controls do not
 qualify full current self-host or full-workload memory use.
 
+Metadata blocks and target overlays now share numeric PRVM events and output
+owners with dotted fields. Canonical CPU ordinals are package-owned; native
+processing never compares target spellings. Default fields inherit independently,
+and target BIN vectors replace defaults. Sparse target settings own their vectors;
+the effective view borrows them and is selected before emission-span capture.
+Full row integrity is checked during acquisition, with ordered head lookup during
+execution. The catalog has fourteen canonical targets and 403–404 rows, about
+3.2 KiB per preparation program. Config grows from 540 to 1,104 static bytes;
+each touched target allocates a 544-byte slot. Fresh native proof covers 46 exact
+positive output/inventory cases and 24 fresh negative rejections. The 254.16-second
+batch is correctness evidence, not comparative performance. Five additional
+instrumented target/default-vector and failed-block controls preserve zero live
+ownership. Metadata catalog generation lives in a separate acquisition helper;
+its extraction preserves the complete 745,628-byte control image byte-for-byte. Package/VM suites
+pass 101/575 tests, with affected host controls and Clippy passing. LIST, dynamic
+metadata values and source-context-dependent execution remain separate gaps;
+this does not complete VM consolidation or full current self-host.
+The unchanged release control separately measures 36.283456083 to 36.248212917
+seconds; this single sample does not establish a speedup. Image/reservation grow
+26,708/27,220 bytes. Separate instrumented peak owned heap grows 6,320 bytes
+(1,234,376 to 1,240,696), with matching allocation/free totals and zero live
+ownership. The receipt is `/tmp/opforge-metadata-target-cost-20261012.json`.
+
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
 unchanged release control and a separate instrumented heap run against the saved

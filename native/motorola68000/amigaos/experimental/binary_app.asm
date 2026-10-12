@@ -245,6 +245,9 @@ configured
 	clr.w PrepStep
 	bsr.w prepare
 	bne.w failed
+	; Final CPU package selection precedes emission-span capture in both entry APIs.
+	lea MetadataConfig, a0
+	jsr metadata.select
 	tst.w CliMode
 	beq.w outputsReady
 	lea MetadataOutput, a0
@@ -1398,7 +1401,7 @@ run	.block
 	beq.w captureSpans
 	cmpi.w #record_output.SREC, CliOutputKind
 	beq.w captureSpans
-	lea MetadataConfig, a1
+	lea MetadataConfig+metadata.Config.Effective, a1
 	tst.l metadata.Config.BinCount(a1)
 	bne.w captureSpans
 	tst.w metadata.Config.HexSet(a1)
@@ -1427,7 +1430,7 @@ appendEmission	.block
 	movea.l assembly.Frame.Sections(a0), a1
 	tst.w sections.State.OutputSeen(a1)
 	bne.w relocatable
-	lea MetadataConfig, a0
+	lea MetadataConfig+metadata.Config.Effective, a0
 	tst.l metadata.Config.BinCount(a0)
 	bne.w capture
 	tst.w metadata.Config.HexSet(a0)

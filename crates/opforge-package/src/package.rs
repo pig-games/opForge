@@ -1765,38 +1765,95 @@ pub fn target_bootstrap_program() -> Vec<u8> {
     program
 }
 
-// Packed metadata selector program layout (byte fields, BE16 head identity).
+// Latest packed metadata selector: counted numeric rows over a shared context.
 pub const METADATA_OP_SELECT: u8 = 0x96;
 pub const METADATA_OP_PUBLISH: u8 = FILE_OP_PUBLISH;
 pub const METADATA_OP_END: u8 = FILE_OP_END;
 pub const METADATA_HEAD_COUNT: usize = 6;
-pub const METADATA_PROGRAM_ROWS: usize = 2;
+pub const METADATA_PROGRAM_COUNT: usize = 2;
+pub const METADATA_PROGRAM_SELECTED_TARGET: usize = 4;
+pub const METADATA_PROGRAM_TARGET_COUNT: usize = 6;
+pub const METADATA_PROGRAM_ROWS: usize = 8;
 pub const METADATA_ROW_HEAD: usize = 0;
-pub const METADATA_ROW_ROLE: usize = 2;
-pub const METADATA_ROW_KEY: usize = 3;
-pub const METADATA_ROW_OPERAND: usize = 4;
-pub const METADATA_ROW_BYTES: usize = METADATA_ROW_OPERAND + 1;
-pub const METADATA_PROGRAM_PUBLISH: usize =
-    METADATA_PROGRAM_ROWS + METADATA_HEAD_COUNT * METADATA_ROW_BYTES;
-pub const METADATA_PROGRAM_END: usize = METADATA_PROGRAM_PUBLISH + 1;
-pub const METADATA_PROGRAM_BYTES: usize = METADATA_PROGRAM_END + 1;
+pub const METADATA_ROW_CONTEXT: usize = 2;
+pub const METADATA_ROW_ROLE: usize = 3;
+pub const METADATA_ROW_KEY: usize = 4;
+pub const METADATA_ROW_OPERAND: usize = 5;
+pub const METADATA_ROW_TARGET: usize = 6;
+pub const METADATA_ROW_BYTES: usize = 8;
 pub const METADATA_ROLE_OUTPUT: u8 = 1;
 pub const METADATA_ROLE_DESCRIPTIVE: u8 = 2;
+pub const METADATA_ROLE_META_OPEN: u8 = 3;
+pub const METADATA_ROLE_META_CLOSE: u8 = 4;
+pub const METADATA_ROLE_OUTPUT_OPEN: u8 = 5;
+pub const METADATA_ROLE_OUTPUT_CLOSE: u8 = 6;
+pub const METADATA_ROLE_TARGET_OPEN: u8 = 7;
+pub const METADATA_ROLE_TARGET_CLOSE: u8 = 8;
+pub const METADATA_CONTEXT_NONE: u16 = 0;
+pub const METADATA_CONTEXT_META: u16 = 1;
+pub const METADATA_CONTEXT_OUTPUT: u16 = 2;
+pub const METADATA_CONTEXT_TARGET: u16 = 3;
 pub const METADATA_KEY_NAME: u8 = 1;
 pub const METADATA_KEY_HEX: u8 = 2;
 pub const METADATA_KEY_BIN: u8 = 3;
 pub const METADATA_KEY_FILL: u8 = 4;
 pub const METADATA_KEY_VERSION: u8 = 5;
-
-/// Package-selected packed metadata operand operations.
 pub const METADATA_OPERAND_REQUIRED: u8 = 0;
 pub const METADATA_OPERAND_OPTIONAL: u8 = 1;
 pub const METADATA_OPERAND_BIN: u8 = 3;
 pub const METADATA_OPERAND_FILL: u8 = 4;
-/// Shared inline metadata grammar: numeric head, role, key and operand operation.
+pub const METADATA_OPERAND_NONE: u8 = 5;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MetadataRow {
+    pub head: u16,
+    pub contexts: u8,
+    pub role: u8,
+    pub key: u8,
+    pub operand: u8,
+    pub target: u16,
+}
+
+/// Construct the single current metadata contract, with checked BE16 extents.
+pub fn metadata_program(
+    rows: &[MetadataRow],
+    selected: u16,
+    targets: u16,
+) -> Result<Vec<u8>, String> {
+    if rows.is_empty() || rows.len() > u16::MAX as usize || selected > targets {
+        return Err("invalid metadata program extent or selected target".into());
+    }
+    let mut rows = rows.to_vec();
+    rows.sort_unstable_by_key(|row| (row.head, row.contexts));
+    rows.dedup();
+    let mut previous = None;
+    let mut contexts = 0;
+    for row in &rows {
+        if previous != Some(row.head) {
+            contexts = 0;
+        }
+        if contexts & row.contexts != 0 {
+            return Err("overlapping metadata head contexts".into());
+        }
+        contexts |= row.contexts;
+        previous = Some(row.head);
+    }
+    let mut program = vec![METADATA_OP_SELECT, 0];
+    program.extend((rows.len() as u16).to_be_bytes());
+    program.extend(selected.to_be_bytes());
+    program.extend(targets.to_be_bytes());
+    for row in rows {
+        program.extend(row.head.to_be_bytes());
+        program.extend([row.contexts, row.role, row.key, row.operand]);
+        program.extend(row.target.to_be_bytes());
+    }
+    program.extend([METADATA_OP_PUBLISH, METADATA_OP_END]);
+    Ok(program)
+}
+
+/// Default dotted forms still use the same current counted/contextual contract.
 pub fn packed_metadata_program(heads: [u16; METADATA_HEAD_COUNT]) -> Vec<u8> {
-    let mut program = vec![METADATA_OP_SELECT, METADATA_HEAD_COUNT as u8];
-    for (head, (role, key, policy)) in heads.into_iter().zip([
+    let entries = [
         (
             METADATA_ROLE_OUTPUT,
             METADATA_KEY_NAME,
@@ -1823,12 +1880,20 @@ pub fn packed_metadata_program(heads: [u16; METADATA_HEAD_COUNT]) -> Vec<u8> {
             METADATA_KEY_VERSION,
             METADATA_OPERAND_REQUIRED,
         ),
-    ]) {
-        program.extend(head.to_be_bytes());
-        program.extend([role, key, policy]);
-    }
-    program.extend([METADATA_OP_PUBLISH, METADATA_OP_END]);
-    program
+    ];
+    let rows = heads
+        .into_iter()
+        .zip(entries)
+        .map(|(head, (role, key, operand))| MetadataRow {
+            head,
+            contexts: 1,
+            role,
+            key,
+            operand,
+            target: 0,
+        })
+        .collect::<Vec<_>>();
+    metadata_program(&rows, 0, 0).expect("fixed metadata rows fit")
 }
 
 pub const FILE_ACTION_BINARY: u8 = 1;

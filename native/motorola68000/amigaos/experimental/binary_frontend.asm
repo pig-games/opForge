@@ -13,6 +13,7 @@
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_data_prepare as data_prepare
 	.use experimental.amigaos.binary_metadata_prepare as metadata
+	.use prvm.amigaos.packed_metadata as metadata_vm
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as binding_records
@@ -3083,6 +3084,11 @@ orderDone
 ; Finalize scoped identities before lexical scratch is released. A0=Frame,
 ; A1=packed records,D0=record bytes. D0/CCR=status; other registers preserved.
 complete	.block
+	movem.l d0/a0, -(sp)
+	movea.l Frame.Metadata(a0), a0
+	jsr metadata.complete
+	bne.w metadataFailure
+	movem.l (sp)+, d0/a0
 	movem.l a0-a2, -(sp)
 	movea.l Frame.Scratch(a0), a2
 	movea.l a1, a0
@@ -3100,6 +3106,10 @@ complete	.block
 	movea.l (sp)+, a0
 	move.l d0, Frame.NameCount(a0)
 	moveq #0, d0
+	bra.w done
+metadataFailure
+	movea.l 4(sp), a0
+	addq.l #8, sp
 done
 	rts
 	.bend  ; complete
@@ -3521,6 +3531,11 @@ validateMacroPrograms	.block
 	bne.w bad
 	lea package.Header.MetadataPlan(a4), a0
 	bsr.w region
+	bne.w bad
+	move.l package.Header.MetadataPlan(a4), d0
+	lea 0(a4, d0.l), a0
+	move.l package.Header.MetadataPlanBytes(a4), d0
+	jsr metadata_vm.validate
 	bne.w bad
 	; The loop envelope belongs to the retained grammar region.
 	move.l d7, -(sp)

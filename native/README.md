@@ -126,9 +126,14 @@ selections use `.output` instead. CLI range/fill options remain separate gaps.
 Output naming alone produces no artifact. Active conditionals control metadata;
 imported modules and nested scopes cannot set root output metadata. Descriptive
 `.meta.name "..."` and `.meta.version "..."` are accepted without an output effect.
-This is an inline quoted subset: unquoted values, configuration blocks, CPU
-metadata overrides, listings, CLI defines/range/fill options and general source-dependent
-CPU switching remain future work. The compact runtime package option is distinct from
+Quoted metadata also supports `.meta` / `.output` blocks and canonical CPU or
+identifier-alias target blocks. Target NAME, HEX and FILL inherit omitted fields
+from defaults; a target BIN vector replaces the default vector. Inline numeric
+CPU aliases remain valid, while short block openers must be identifiers, such as
+`.m68020`. Blocks must close before root preparation finishes. Inactive controls
+have no effect. Unquoted values, listings, CLI defines/range/fill options and
+general source-dependent CPU switching remain future work.
+The compact runtime package option is distinct from
 Rust's canonical `.opasm` option. Old three-positional compact commands are retired;
 current export and hardware-runner commands use the named options.
 

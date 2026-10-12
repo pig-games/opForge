@@ -45,6 +45,12 @@ resolve	.block
 	lea EmptyPath, a5
 	movea.l Frame.Config(a4), a6
 	cmpa.l #0, a6
+	beq.w effectiveReady1
+	movea.l a6, a0
+	jsr metadata.select
+	movea.l a0, a6
+effectiveReady1
+	cmpa.l #0, a6
 	beq.w selectBase
 	tst.w metadata.Config.NameSet(a6)
 	beq.w selectBase
@@ -67,6 +73,12 @@ baseReady
 	tst.w Frame.Default(a4)
 	beq.w explicitCli
 	movea.l Frame.Config(a4), a6
+	cmpa.l #0, a6
+	beq.w effectiveReady2
+	movea.l a6, a0
+	jsr metadata.select
+	movea.l a0, a6
+effectiveReady2
 	cmpa.l #0, a6
 	beq.w explicitCli
 	tst.w metadata.Config.NameSet(a6)
@@ -108,6 +120,12 @@ clearCli
 	clr.b Frame.ResolvedCli(a4)
 resolveHex
 	movea.l Frame.Config(a4), a6
+	cmpa.l #0, a6
+	beq.w effectiveReady3
+	movea.l a6, a0
+	jsr metadata.select
+	movea.l a0, a6
+effectiveReady3
 	cmpa.l #0, a6
 	beq.w success
 	tst.w metadata.Config.HexSet(a6)
@@ -182,6 +200,12 @@ resolveBin	.block
 	beq.w binEnd
 	movea.l Frame.Config(a4), a6
 	cmpa.l #0, a6
+	beq.w effectiveReady4
+	movea.l a6, a0
+	jsr metadata.select
+	movea.l a0, a6
+effectiveReady4
+	cmpa.l #0, a6
 	beq.w binEnd
 	move.l Frame.BinIndex(a4), d7
 	cmp.l metadata.Config.BinCount(a6), d7
@@ -201,6 +225,7 @@ resolveBin	.block
 	movea.l a3, a6  ; selected owned specification
 	lea EmptyPath, a5
 	movea.l Frame.Config(a4), a0
+	jsr metadata.select
 	tst.w metadata.Config.NameSet(a0)
 	beq.w binInputBase
 	lea metadata.Config.Name(a0), a5
@@ -214,6 +239,7 @@ binBaseReady
 	tst.b (a0)
 	bne.w binNamed
 	movea.l Frame.Config(a4), a0
+	jsr metadata.select
 	cmpi.l #1, metadata.Config.BinCount(a0)
 	beq.w binSingle
 	tst.w metadata.Bin.RangeSet(a6)

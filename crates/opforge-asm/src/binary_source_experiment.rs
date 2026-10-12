@@ -7,6 +7,9 @@ use std::collections::{BTreeMap, BTreeSet};
 #[cfg(test)]
 mod name_domain;
 
+#[cfg(test)]
+mod acquisition_package_tests;
+
 use package::{
     decode_encoding_program, inline_head_policy_program, macro_descriptor_program,
     macro_fragment_program, macro_spelling_program, packed_branch_program, packed_data_program,
@@ -177,13 +180,32 @@ struct DictionaryBinding {
     roles: DictionaryRoleFlags,
 }
 
-/// Prepare a self-contained BS37 block for one resolved package hierarchy.
+/// A BS38 block and its complete acquisition-owned name identities.
+/// The name index is the existing wire identity; spellings retain interner order.
+pub(crate) struct PreparedPackage {
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) names: Vec<String>,
+}
+
+/// Prepare a self-contained BS38 block for one resolved package hierarchy.
 /// Offsets and lengths are big-endian and relative to the block start.
 /// Unsupported candidate recipes remain explicit rows, never silent omissions.
 pub fn prepare_package(
     core: &RuntimeModelCore,
     resolved: &ResolvedHierarchy,
 ) -> Result<Vec<u8>, String> {
+    let prepared = prepare_package_with_names(core, resolved)?;
+    drop(prepared.names);
+    Ok(prepared.bytes)
+}
+
+/// Retain the package-owned names plus the directive, policy, CPU and builtin
+/// identities appended by acquisition preparation. No identities are recovered
+/// from dictionary witnesses, and exposing them does not change BS38 bytes.
+pub(crate) fn prepare_package_with_names(
+    core: &RuntimeModelCore,
+    resolved: &ResolvedHierarchy,
+) -> Result<PreparedPackage, String> {
     let target = format!("{}--{}", resolved.cpu_id, resolved.dialect_id);
     if resolved.cpu_id.is_empty()
         || resolved.dialect_id.is_empty()
@@ -913,7 +935,7 @@ pub fn prepare_package(
         package::PARSER_VM_OPCODE_VERSION_V2_OPASM_STATEMENT,
     );
     set_word(&mut out, 128, word(target.len())?);
-    Ok(out)
+    Ok(PreparedPackage { bytes: out, names })
 }
 
 fn write_candidate(

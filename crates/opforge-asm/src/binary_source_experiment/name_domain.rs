@@ -1,14 +1,16 @@
 //! Host-only catalog identity experiment. This does not merge lexical grammars,
 //! remap candidate/qualifier facets, or participate in BS38 preparation.
-//! Acquisition-only identities are not exposed by their current owner. A future
-//! pure extraction there must preserve emitted package bytes before the complete
-//! session-domain proposal can include them; no dictionary witness is inferred.
+//! Complete identities come from the acquisition owner without changing package
+//! bytes. Internal plan names are measured too; runtime lexical storage need not
+//! retain that entire spelling union. No dictionary witnesses are inferred.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use registry::ModuleRegistry;
 use types::hierarchy::ResolvedHierarchy;
-use vm::{binary_source_package::BinarySourcePackage, runtime_model_core::RuntimeModelCore};
+use vm::runtime_model_core::RuntimeModelCore;
+
+use super::prepare_package_with_names;
 
 // The existing compact format reserves 0xffff for MISSING, including count fields.
 const NAME_CAPACITY: usize = u16::MAX as usize;
@@ -124,7 +126,7 @@ fn catalog_names(
             let resolved = core
                 .resolve_pipeline(cpu.as_str(), Some(&dialect))
                 .map_err(|e| e.to_string())?;
-            let names = BinarySourcePackage::prepare(core, &resolved)?.names;
+            let names = prepare_package_with_names(core, &resolved)?.names;
             pipelines.insert(
                 (resolved.cpu_id.clone(), resolved.dialect_id.clone()),
                 PipelineNames {
@@ -240,7 +242,7 @@ mod tests {
         let mut other = ModuleRegistry::new();
         families::register_mos6502_family_stack(&mut other);
         assert!(catalog_names(&core, &other).is_err());
-        eprintln!("catalog numeric-package pool: pipelines={} names={} string_bytes={} table_bytes={} fingerprint={}",
+        eprintln!("catalog acquisition-package pool: pipelines={} names={} string_bytes={} table_bytes={} fingerprint={}",
             pipelines.len(), domain.names.len(), domain.string_bytes(), domain.table_bytes(), domain.fingerprint());
         for cpu in ["6502", "65c02", "68020"] {
             let pipeline = pipelines

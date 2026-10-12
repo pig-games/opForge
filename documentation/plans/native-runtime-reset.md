@@ -512,9 +512,13 @@ of that growth. A hypothetical eight-byte offset/length table adds 25,832 bytes,
 with two more bytes per local-to-domain mapping entry. These are measured host
 storage counts, not native allocations or a proposed union lexer. Three focused
 tests qualify deterministic mapping, capacity and the common model prefix.
-Acquisition-only identities are not exposed by their owner yet. Extract that
-complete vector with unchanged emitted-package bytes before choosing a production
-domain layout; do not infer missing identities from dictionary spellings.
+The acquisition owner now exposes its complete interner vector through a pure
+helper. Exact pre/post BS38 bytes match across 43 CPU/dialect resolutions;
+the existing byte-only API is unchanged. With acquisition identities included,
+the 16 distinct pipelines contain 3,276 identities, 311,728 spelling bytes and
+26,208 proposed table bytes. For 6502/65c02/68020 the complete identity counts
+are 2,093/2,086/2,304. This closes the measurement API gap, without wiring a
+new native format or retaining that whole internal spelling union at runtime.
 
 The full current-source self-host attempt after the BIN/FILL checkpoint fails
 in input discovery before its first source record: 188 staged files include 159

@@ -410,6 +410,72 @@ on the unchanged release control (single samples, effectively unchanged).
 Image and linked reservation grow by eight bytes. It adds no allocation or
 layout fields; heap use was not remeasured for this focused guard.
 
+The numeric flat-origin slice now preserves append-only initialized payloads
+while allowing `.org` in either direction. One sorted, disjoint numeric span
+image applies Rust's later-write overwrite policy and supplies Hex, S-record
+and streamed Bin output. Bin fills internal holes with zeroes, trims
+leading/trailing uninitialized space, and reuses the 4 KiB transport buffer
+without allocating new origin holes. Existing reservation materialization and
+placed-section/Hunk geometry stay in their current owners. Sixty fresh native
+artifacts match live Rust across ten scenarios, two CPUs and three formats;
+nineteen numeric span controls match an independent address/offset model.
+The pure writer controls exposed legal Motorola forms rejected by Rust:
+memory-to-absolute MOVE and symbolic immediate CMPA. The shared family now
+accepts bare absolute symbols; package selectors cover indirect/update MOVE
+sources to absolute destinations and long ADDA/SUBA/CMPA pointer immediates
+with ABS32 fixups. Six opcode/relocation/width/CPU tests, 215 family tests and
+570 VM tests pass. The unchanged legal harness subsequently passes nineteen
+fresh native writer controls, including empty images, aliased invalid views,
+chunk boundaries and the inclusive u32 end. This does not claim complete MOVE
+coverage: absolute-to-absolute byte/word selectors remain a family gap.
+Existing MOVE/ALU/profile builders now have separate owners; the parent package
+file shrinks from 10,725 to 7,776 lines without changing existing profile order.
+
+The separate unchanged release control measures 36.213061584 to 36.237453667
+seconds (+0.067%, single samples). Image grows 1,528 bytes and linked reservation
+1,504 bytes. Separate MEMD runs retain a 1,285,768-byte peak; total allocations
+increase 4,352 bytes, all freed. This is not a full self-host or hardware claim.
+
+The complete frozen 86-case audit now qualifies 38 positive cases with exact
+live Rust/reference artifacts and 36 fresh expected rejections (no exact
+diagnostic-text claim). Twelve positive cases remain. Both original
+`module_basics` and `syntax` now pass, along with the empty statement fixture.
+Remaining groups are CLI JSON, mixed CPU phases, four linker output-policy
+cases, macro syntax, three metadata cases and two statement/8085 fixtures.
+All audited Rust reference oracles pass. The audit uses the frozen Rust oracle
+before the separate Motorola legal-form repair; requalify affected references
+when that repair changes package semantics.
+
+Broad Rust qualification remains red independently of these focused proofs.
+The pre-repair frozen assembler suite has 170 failures; the first repaired
+suite has 165, with one introduced obsolete explicit-`.L` diagnostic assertion
+now corrected and passing. Most failures compare frozen legacy native packages
+or old source/version/topology layouts. The remaining semantic/oracle failures
+need individual triage, not blanket expectation refreshes. A later broad run has
+167 failures: the obsolete Motorola assertion is gone, while the new example
+exposed two inventory omissions (now fixed with its S-record and explicit counts)
+and a parallel host-test scratch-directory collision is being repaired. The Motorola
+reference audit has the same 35 listing differences before and after this
+repair (implicit module provenance/qualified names); instruction payload checks
+are unchanged. A new explicit-module memory example has only its own Hex/listing
+references (Hex, S-record and listing), checked against independent opcodes and pointers. No existing
+reference or frozen package has been refreshed to conceal those failures.
+
+Expression-corpus localization separately identifies mixed `.cpu` phases:
+the 65c02 capsule cannot bind the later `6502` CPU identity, and execution also
+requires the current capsule's CPU. This needs real phase/package ownership,
+not treating 6502 as a 65c02 alias or suppressing unresolved references. Keep it
+explicit while completing the independent origin/output slice.
+
+The separate Motorola package repair is committed as `abd177df`. Regenerated
+embedded selectors add 7,080 bytes to image/reservation; the unchanged release
+control measures 36.395603667 to 36.254972459 seconds, with unchanged measured
+heap peak and allocation totals. Do not combine this delta with the native
+origin change. The flat-output component supports inclusive `$ffffffff`; the
+connected assembler still needs separate qualification/repair for origins at or
+above `$80000000` and terminal-PC overflow. The sixty connected cases do not
+establish that full address-domain boundary.
+
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
 unchanged release control and a separate instrumented heap run against the saved

@@ -16,6 +16,7 @@
 	.use experimental.amigaos.binary_output_io as output_io
 	.use experimental.amigaos.binary_record_output as record_output
 	.use experimental.amigaos.binary_output_spans as output_spans
+	.use experimental.amigaos.binary_flat_output as flat_output
 	.use experimental.amigaos.binary_metadata_prepare as metadata
 	.use experimental.amigaos.binary_metadata_output as metadata_output
 	.use experimental.amigaos.binary_package as package
@@ -1326,6 +1327,10 @@ run	.block
 	lea SymbolStorage+storage.State.MemberKeys, a1
 	move.l memory.Block.Pointer(a1), assembly.Frame.MemberKeys(a0)
 	clr.l assembly.Frame.Emitted(a0)
+	cmpi.w #output_plan.BIN, CliOutputKind
+	beq.w captureSpans
+	tst.w CliOutputKind
+	beq.w captureSpans  ; manifest flat output uses the same initialized image
 	cmpi.w #record_output.HEX, CliOutputKind
 	beq.w captureSpans
 	cmpi.w #record_output.SREC, CliOutputKind
@@ -1349,13 +1354,26 @@ bad
 	.bend  ; run
 
 ; A0=assembly.Frame,D1=address,D2=buffer offset,D3=initialized bytes.
-; Capture only numeric final-pass spans for requested addressed output.
-; D0/CCR=status; other registers preserved. No allocation for ordinary bin/Hunk.
+; Capture numeric final-pass spans for requested addressed or flat output.
+; D0/CCR=status; other registers preserved. Section-owned binary/Hunk geometry
+; stays in its existing owner; no span allocation for source Hunk output.
 appendEmission	.block
 	movem.l a0-a1, -(sp)
 	movea.l assembly.Frame.Sections(a0), a1
 	tst.w sections.State.OutputSeen(a1)
 	bne.w relocatable
+	lea MetadataConfig, a0
+	tst.w metadata.Config.HexSet(a0)
+	bne.w capture
+	; Bin uses spans only for ordinary source origins, not section selections.
+	cmpi.w #output_plan.BIN, CliOutputKind
+	beq.w flatMode
+	tst.w CliOutputKind
+	bne.w capture
+flatMode
+	tst.w sections.State.Mode(a1)
+	bne.w relocatable
+capture
 	lea EmissionSpans, a0
 	jsr output_spans.append
 	bra.w done
@@ -1514,6 +1532,16 @@ bad
 
 ; Transport only. All format selection and buffers are complete before IO.
 writeSelected	.block
+	cmpi.w #output_plan.BIN, SelectedOutputKind
+	beq.w flatCandidate
+	tst.w SelectedOutputKind
+	bne.w fixed
+flatCandidate
+	lea Work, a0
+	movea.l assembly.Frame.Sections(a0), a1
+	tst.w sections.State.Mode(a1)
+	beq.w writeFlat
+fixed
 	lea OutputWrite, a0
 	move.l SelectedOutputPath, output_io.Frame.Path(a0)
 	move.l WritePointer, output_io.Frame.Data(a0)
@@ -1526,6 +1554,8 @@ writeSelected	.block
 	jsr output_io.write
 	rts
 	.bend  ; writeSelected
+
+	.include "binary_app_flat_output.i"
 
 ; Format sparse initialized spans through a fixed 4 KiB transport buffer.
 ; D0/CCR=status; caller owns one assembly result and all requested artifacts.
@@ -1944,6 +1974,8 @@ PartSlots	.res byte, 8
 EmissionSpans	.res byte, memory.Block.Used+4
 TextBuffer	.res byte, memory.Block.Used+4
 RecordFrame	.res byte, record_output.FRAME_BYTES
+	.align 4
+FlatFrame	.res byte, flat_output.FRAME_BYTES
 OutputStartSet	.res word, 1
 OutputStart	.res long, 1
 MetadataConfig	.res byte, metadata.CONFIG_BYTES

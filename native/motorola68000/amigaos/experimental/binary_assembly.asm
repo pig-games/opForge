@@ -1512,12 +1512,10 @@ origin
 	bne.w bad
 	cmp.l pkg.Header.MaxAddress(a3), d1
 	bhi.w bad
-	movea.l Session+session.State.Frame, a4
-	tst.l Frame.Used(a4)
-	beq.w setOrigin
-	cmp.l pkg.Context.Pc(a2), d1
-	bne.w bad
-setOrigin
+	; Flat source addresses may move in either direction. Final initialized
+	; emissions carry their own address; output owns gaps and later overwrites.
+	; A reservation before this origin must not migrate to the new address.
+	clr.l PendingFlatGap
 	move.l d1, pkg.Context.Pc(a2)
 	move.l d1, RepeatState+repetition.State.ConditionPc
 	bra.w ok

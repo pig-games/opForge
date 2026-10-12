@@ -697,3 +697,42 @@ Fresh native comparison covers the original `statement_boundary_span` example
 and a focused blank/comment-only body, including a comment without whitespace
 after its semicolon. Receipt:
 `/tmp/opforge-statement-empty-cost-20261012.json`.
+
+### Numeric flat origins and output image
+
+This subsequent slice permits forward/backward `.org` changes and normalizes
+later initialized writes over earlier spans. The raw Bin writer streams that
+same numeric image through the reused 4 KiB transport buffer, filling origin
+holes without allocating their address extent. Placed-section/Hunk geometry
+keeps its existing owner; existing reservation materialization is unchanged.
+Sixty fresh connected cases match live Rust: ten origin scenarios, each on
+6502 and 68020, with Bin/Hex/S-record artifacts. Nineteen separate native span
+controls compare interval overlays with an independent byte-address model.
+
+The unchanged 11,592-byte control is measured separately against `3614955e`,
+with identically regenerated package inputs and FS-UAE 68020/10 MiB:
+
+| Measure | Before origin support | After | Separate delta |
+|---|---:|---:|---:|
+| Release START-to-DONE seconds | 36.213061584 | 36.237453667 | +0.024392083 (+0.067%) |
+| Release Hunk bytes | 707,864 | 709,392 | +1,528 |
+| Linked reserved bytes | 740,820 | 742,324 | +1,504 |
+| Peak owned bytes, separate instrumented runs | 1,285,768 | 1,285,768 | 0 |
+| Total allocated / freed bytes | 3,185,544 / 3,185,544 | 3,189,896 / 3,189,896 | +4,352 / +4,352 |
+| Live owned bytes after cleanup | 0 | 0 | 0 |
+
+Single release samples establish no measurable large regression, not a speed
+improvement. The separate instrumented runs take 37.420851 and 37.518597917
+seconds and supply memory evidence only. This control does not quantify a large
+overwrite-heavy image, full self-host, hardware or the 2 MiB target. Reproduce
+with the preceding image-build/control commands, selecting this checkpoint and
+its predecessor; receipt and per-image logs are outside the build cache at
+`/tmp/opforge-origins-cost-20261012.json`.
+
+The separate Motorola package repair (`abd177df`) regenerates the embedded
+selectors on the same native origin/output implementation. Its unchanged control
+measures 36.395603667 to 36.254972459 release seconds (single samples), with
+Hunk and linked reservation both increasing 7,080 bytes. Separate instrumented
+runs retain the same 1,285,768-byte peak, 3,189,896-byte total allocation/free
+and zero live ownership. This cost belongs to the package repair, not the origin
+slice. Receipt: `/tmp/opforge-motorola-package-cost-20261012.json`.

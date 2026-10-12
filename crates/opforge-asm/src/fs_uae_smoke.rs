@@ -8158,6 +8158,10 @@ mod native_statement_storage;
 mod native_statement_calls;
 
 #[cfg(test)]
+#[path = "tests/native_origin_outputs.rs"]
+mod native_origin_outputs;
+
+#[cfg(test)]
 #[path = "tests/native_statement_templates.rs"]
 mod native_statement_templates;
 
@@ -8168,3 +8172,11 @@ mod native_statement_exposure;
 #[cfg(test)]
 #[path = "tests/native_statement_tail.rs"]
 mod native_statement_tail;
+
+#[cfg(test)]
+#[path = "tests/native_output_spans.rs"]
+mod native_output_spans;
+
+#[cfg(test)]
+#[path = "tests/native_flat_output.rs"]
+mod native_flat_output;

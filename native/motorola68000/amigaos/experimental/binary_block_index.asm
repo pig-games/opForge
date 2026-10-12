@@ -10,13 +10,14 @@
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as source
+	.use prvm.amigaos.abi as abi
 	.use experimental.amigaos.binary_materialized_scope as materialized
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_owner_guards as guards
 	.use experimental.amigaos.binary_binding_plans as plans
 	.pub
-LIMIT = 1024
+LIMIT = 65535; packed parent/queue links remain representable words
 Span	.struct
 Start	.long ?
 End	.long ?
@@ -25,14 +26,18 @@ Parent	.word ?
 Live	.word ?
 	.endstruct
 SPAN_BYTES = Span.Live+2
-STACK = LIMIT*SPAN_BYTES
-SCRATCH_BYTES = STACK+LIMIT*2
-QUEUE = STACK; the indexer's nesting stack is dead after index returns
+Scratch	.struct
+Count	.long ?
+WorkspaceOffset	.long ?  ; relative to the first span
+	.endstruct
+HEADER_BYTES = Scratch.WorkspaceOffset+4
+ROW_BYTES = SPAN_BYTES+2; nesting stack becomes the reachability queue
 	.section bss, kind=bss
 	.priv
 Base	.res long, 1
 EndRecords	.res long, 1
 Spans	.res long, 1
+WorkspaceOffset	.res long, 1
 Scope	.res long, 1
 Graph	.res long, 1
 Count	.res word, 1
@@ -54,7 +59,9 @@ Marks	.res long, 1
 	.section code, kind=code
 	.pub
 
-; A0=prepared records, D0=bytes, A1=caller-owned SCRATCH_BYTES scratch.
+; A0=prepared records, D0=bytes, A1=caller-owned memory.Block descriptor.
+; The caller retires its name arena before this call. reserveExact may move it;
+; reload its pointer after return. Its owner retains release responsibility.
 ; Return D0/CCR=status, D1=span count. All other registers preserved.
 ; Start/End are offsets from A0; Parent is the enclosing span index+1.
 ; This indexes every named block, including nested blocks, and fails closed
@@ -64,6 +71,26 @@ index	.block
 	movea.l a0, a6
 	movea.l a0, a3
 	movea.l a1, a4
+	move.l d0, d7
+	bsr.w measure
+	bne.w bad
+	move.l d1, d6
+	mulu.w #ROW_BYTES, d1
+	add.l #HEADER_BYTES, d1
+	move.l d1, d5
+	move.l d1, d0
+	movea.l a4, a0
+	jsr memory.reserveExact
+	bne.w bad
+	move.l d5, memory.Block.Used(a4)
+	movea.l memory.Block.Pointer(a4), a4
+	move.l d6, Scratch.Count(a4)
+	mulu.w #SPAN_BYTES, d6
+	move.l d6, Scratch.WorkspaceOffset(a4)
+	move.l d6, WorkspaceOffset
+	adda.l #HEADER_BYTES, a4
+	move.l d7, d0
+	movea.l a6, a0
 	move.l a0, d2
 	add.l d0, d2
 	bcs.w bad
@@ -75,31 +102,14 @@ index	.block
 line
 	cmpa.l a2, a3
 	beq.w complete
-	bhi.w bad
 	moveq #0, d3
-	move.b (a3), d3
+	move.b source.RecordHeader.Length(a3), d3
 	addq.w #1, d3
-	cmpi.w #4, d3
-	blo.w bad
-	move.l a2, d4
-	sub.l a3, d4
-	cmp.l d4, d3
-	bhi.w bad
 	moveq #0, d4
-	move.b 1(a3), d4
+	move.b source.RecordHeader.Flags(a3), d4
 	move.l d4, d5
-	andi.w #$e8, d5  ; block bits and numeric layout controls are allowed
-	bne.w bad
-	btst #1, d4
+	andi.w #source.FLAG_BLOCK_OPEN, d5
 	beq.w closing
-	btst #2, d4
-	bne.w bad
-	cmpi.w #9, d3
-	bne.w bad
-	cmpi.b #1, 4(a3)
-	bhi.w bad
-	cmpi.b #5, 8(a3)
-	bne.w bad
 	cmpi.w #LIMIT, d1
 	bhs.w bad
 	move.l d1, d5
@@ -109,11 +119,11 @@ line
 	sub.l a6, d5
 	move.l a1, d7
 	beq.w startReady
-	cmpi.b #8, (a1)  ; a standalone label record is nine bytes
+	cmpi.b #source.DECLARATION_HEADER_BYTES-1, source.RecordHeader.Length(a1)  ; length excludes its own byte
 	bne.w startReady
-	cmpi.b #1, 4(a1)
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, source.DeclarationRecord.Name+source.NameToken.Kind(a1)
 	bhi.w startReady
-	cmpi.b #5, 8(a1)
+	cmpi.b #source.TOKEN_LABEL_DECLARATION, source.DeclarationRecord.Marker(a1)
 	bne.w startReady
 	move.l a1, d5
 	sub.l a6, d5
@@ -121,43 +131,43 @@ startReady
 	move.l d5, Span.Start(a5)
 	clr.l Span.End(a5)
 	moveq #0, d5
-	move.b 5(a3), d5
+	move.b source.DeclarationRecord.Name+source.NameToken.Id(a3), d5
 	lsl.w #8, d5
-	move.b 6(a3), d5
+	move.b source.DeclarationRecord.Name+source.NameToken.Id+1(a3), d5
 	move.w d5, Span.Entry(a5)
 	clr.w Span.Parent(a5)
 	clr.w Span.Live(a5)
 	tst.w d2
 	beq.w push
-	move.w d2, d5
-	subq.w #1, d5
-	add.w d5, d5
-	lea STACK(a4), a0
+	move.l d2, d5
+	subq.l #1, d5
+	add.l d5, d5
+	movea.l a4, a0
+	adda.l WorkspaceOffset, a0
 	moveq #0, d6
-	move.w 0(a0, d5.w), d6
+	move.w 0(a0, d5.l), d6
 	addq.w #1, d6
 	move.w d6, Span.Parent(a5)
 push
-	move.w d2, d5
-	add.w d5, d5
-	lea STACK(a4), a0
-	move.w d1, 0(a0, d5.w)
+	move.l d2, d5
+	add.l d5, d5
+	movea.l a4, a0
+	adda.l WorkspaceOffset, a0
+	move.w d1, 0(a0, d5.l)
 	addq.w #1, d2
 	addq.w #1, d1
 	bra.w next
 closing
-	btst #2, d4
+	move.l d4, d5
+	andi.w #source.FLAG_BLOCK_CLOSE, d5
 	beq.w next
-	cmpi.w #4, d3
-	bne.w bad
-	tst.w d2
-	beq.w bad
 	subq.w #1, d2
-	move.w d2, d5
-	add.w d5, d5
-	lea STACK(a4), a0
+	move.l d2, d5
+	add.l d5, d5
+	movea.l a4, a0
+	adda.l WorkspaceOffset, a0
 	moveq #0, d6
-	move.w 0(a0, d5.w), d6
+	move.w 0(a0, d5.l), d6
 	move.l d6, d5
 	mulu.w #SPAN_BYTES, d5
 	lea 0(a4, d5.l), a5
@@ -183,8 +193,87 @@ done
 	rts
 	.bend  ; index
 
+	.priv
+; Validate packed framing and named markers before allocation or span writes.
+; A0=records,D0=bytes. D0/CCR=status,D1=validated named span count.
+; Other registers preserved. Nesting depth alone validates balanced markers.
+measure	.block
+	movem.l d2-d6/a0-a1, -(sp)
+	movea.l a0, a1
+	adda.l d0, a1
+	move.l a1, d2
+	cmp.l a0, d2
+	blo.w bad
+	moveq #0, d1
+	moveq #0, d2
+line
+	cmpa.l a1, a0
+	beq.w complete
+	bhi.w bad
+	move.l a1, d3
+	sub.l a0, d3
+	cmpi.l #source.RECORD_HEADER_BYTES, d3
+	blo.w bad
+	moveq #0, d4
+	move.b source.RecordHeader.Length(a0), d4
+	addq.l #1, d4
+	cmpi.l #source.RECORD_HEADER_BYTES, d4
+	blo.w bad
+	cmp.l d3, d4
+	bhi.w bad
+	moveq #0, d5
+	move.b source.RecordHeader.Flags(a0), d5
+	move.l d5, d6
+	andi.w #$ff-(source.FLAG_INDENT+source.FLAG_BLOCK_OPEN+source.FLAG_BLOCK_CLOSE+source.FLAG_LAYOUT), d6
+	bne.w bad
+	move.l d5, d6
+	andi.w #source.FLAG_BLOCK_OPEN, d6
+	beq.w closing
+	move.l d5, d6
+	andi.w #source.FLAG_BLOCK_CLOSE, d6
+	bne.w bad
+	cmpi.l #source.DECLARATION_HEADER_BYTES, d4
+	bne.w bad
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, source.DeclarationRecord.Name+source.NameToken.Kind(a0)
+	bhi.w bad
+	cmpi.b #source.TOKEN_LABEL_DECLARATION, source.DeclarationRecord.Marker(a0)
+	bne.w bad
+	cmpi.l #LIMIT, d1
+	bhs.w bad
+	addq.l #1, d1
+	addq.l #1, d2
+	bra.w next
+closing
+	move.l d5, d6
+	andi.w #source.FLAG_BLOCK_CLOSE, d6
+	beq.w next
+	cmpi.l #source.RECORD_HEADER_BYTES, d4
+	bne.w bad
+	tst.l d2
+	beq.w bad
+	subq.l #1, d2
+next
+	adda.l d4, a0
+	bra.w line
+complete
+	tst.l d2
+	bne.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #0, d1
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d6/a0-a1
+	tst.l d0
+	rts
+	.bend  ; measure
+	.pub
+
 ; Select reachable outer blocks in a dependency-ordered module graph. A0=records,
 ; D0=record bytes, A1=index scratch, D1=span count, A2=scope state, A3=graph.
+; A1 points to the completed header followed by span and workspace storage.
+; Real BE16 owners use span index+1 values 1..65534; $ffff is ambiguity.
 ; Mark omitted packed records in place; no source text or process pointer is
 ; retained in the records. D0/CCR=status; all other registers preserved.
 select	.block
@@ -193,11 +282,19 @@ select	.block
 	add.l a0, d0
 	bcs.w invalid
 	move.l d0, EndRecords
+	cmpi.l #LIMIT, d1
+	bhi.w invalid
+	cmp.l Scratch.Count(a1), d1
+	bne.w invalid
+	move.l d1, d2
+	mulu.w #SPAN_BYTES, d2
+	cmp.l Scratch.WorkspaceOffset(a1), d2
+	bne.w invalid
+	move.l d2, WorkspaceOffset
+	adda.l #HEADER_BYTES, a1
 	move.l a1, Spans
 	move.l a2, Scope
 	move.l a3, Graph
-	cmpi.w #LIMIT, d1
-	bhi.w invalid
 	move.w d1, Count
 	clr.w Head
 	clr.w Tail
@@ -327,15 +424,16 @@ outsideScan
 	bne.w invalid
 	bra.w outsideLine
 queued
+	moveq #0, d7
 	move.w Head, d7
 	cmp.w Tail, d7
 	bhs.w queueDone
 	addq.w #1, Head
-	add.w d7, d7
+	add.l d7, d7
 	movea.l Spans, a5
-	lea QUEUE(a5), a5
+	adda.l WorkspaceOffset, a5
 	moveq #0, d0
-	move.w 0(a5, d7.w), d0
+	move.w 0(a5, d7.l), d0
 	movea.l Spans, a5
 	mulu.w #SPAN_BYTES, d0
 	adda.l d0, a5
@@ -547,9 +645,17 @@ saveOwner	.block
 	bne.w ownerSkip
 	move.w d7, d2
 	addq.w #1, d2
+	; The binding-plan owner table reserves $ffff for ambiguity. Fail before
+	; publishing a real owner that would collide with that existing contract.
+	cmpi.w #scopes.AMBIGUOUS_BINDING_OWNER, d2
+	beq.w ownerOverflow
 	move.w d2, 0(a0, d0.l)
 ownerSkip
 	moveq #0, d0
+	movem.l (sp)+, d1-d2/a0-a1
+	rts
+ownerOverflow
+	moveq #1, d0
 	movem.l (sp)+, d1-d2/a0-a1
 	rts
 	.bend  ; saveOwner
@@ -598,10 +704,10 @@ enqueue	.block
 	move.w Tail, d1
 	cmp.w Count, d1
 	bhs.w queueFull
-	add.w d1, d1
+	add.l d1, d1
 	movea.l Spans, a0
-	lea QUEUE(a0), a0
-	move.w d0, 0(a0, d1.w)
+	adda.l WorkspaceOffset, a0
+	move.w d0, 0(a0, d1.l)
 	addq.w #1, Tail
 	.MEMORY_COUNTER_INC QueueAdds
 	moveq #0, d0

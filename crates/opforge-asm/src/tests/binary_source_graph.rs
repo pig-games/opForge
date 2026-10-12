@@ -7,6 +7,8 @@ mod measurement;
 #[path = "binary_source_map_configuration.rs"]
 mod map_configuration;
 
+#[path = "binary_source_block_capacity.rs"]
+mod block_capacity;
 #[path = "binary_source_graph_identities.rs"]
 mod identities;
 #[path = "binary_source_implicit_modules.rs"]

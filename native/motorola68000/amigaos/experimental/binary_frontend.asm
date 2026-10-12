@@ -3167,19 +3167,11 @@ indexBlocks	.block
 	movea.l Frame.Scratch(a0), a2
 	move.l a2, d1
 	beq.w indexBad
-	move.l d0, -(sp)
-	lea SCOPE_STATE+scopes.ARENA(a2), a0
-	move.l #blocks.SCRATCH_BYTES, d0
-	jsr memory.reserve
-	bne.w indexReserveBad
-	move.l (sp)+, d0
-	movea.l SCOPE_STATE+scopes.ARENA_POINTER(a2), a2
 	movea.l a1, a0
-	movea.l a2, a1
+	; The name arena is retired here; indexing owns sizing and may move it.
+	lea SCOPE_STATE+scopes.ARENA(a2), a1
 	jsr blocks.index
 	bra.w indexDone
-indexReserveBad
-	addq.l #4, sp
 indexBad
 	moveq #0, d1
 	moveq #1, d0

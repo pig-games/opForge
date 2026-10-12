@@ -574,6 +574,22 @@ comparison. A fresh component proof checks relocated row storage, rejection of
 not full assembly performance. Full current self-host remains unqualified.
 An independent one-module, zero-import probe passes with 1,023 named blocks but
 rejects with 1,025 at block indexing; that fixed capacity needs a separate repair.
+The block index now validates packed framing/markers before sizing the retired
+name arena to an eight-byte header plus sixteen bytes per named span. The nesting
+stack becomes the reachability queue after indexing; both use long byte offsets.
+The repaired 1,025-block case matches Rust exactly. Word indices admit 65,535
+markers; the existing binding-owner ambiguity sentinel still limits real outer
+owners to 65,534, with an explicit rejection before a collision.
+On the unchanged 11,592-byte 68020/10 MiB control, the separately measured release
+steps are 36.520891708 to 36.267337417 seconds for imports, then 36.267337417 to
+36.402402792 for blocks. Single samples do not establish a speedup. Imports add
+328 image/304 linked bytes; blocks add 264/240. Separate instrumented peak owned
+heap falls from 1,253,256 to 1,234,376 for imports and stays unchanged for blocks;
+allocation/free totals fall from 3,157,384 to 3,139,528, with zero final live
+ownership in all three runs. Receipts are
+`/tmp/opforge-import-blocks-release-cost-20261012.json` and
+`/tmp/opforge-import-blocks-memory-cost-20261012.json`. These controls do not
+qualify full current self-host or full-workload memory use.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

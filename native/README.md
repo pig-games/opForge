@@ -141,6 +141,10 @@ Import edges and selected-name rows grow in owned blocks independently of the
 Graph links are released before configuration-to-semantic replay resets the
 graph, and again safely during final cleanup. These preparation allocations do
 not survive into assembly execution.
+Named-block index storage is sized from validated packed records in the retired
+name arena. Its span table and reused stack/queue grow with the actual block
+count. The independent binding-owner sentinel reserves `$ffff`; real outer
+owners remain limited to 65,534.
 
 ## Current Layout
 

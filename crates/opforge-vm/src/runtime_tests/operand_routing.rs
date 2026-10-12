@@ -137,3 +137,27 @@ fn shared_instruction_atoms_preserve_ast_spans_and_budget_checks() {
         "{failure}"
     );
 }
+
+#[test]
+fn motorola_memory_effective_address_forms_keep_boundaries() {
+    let model = model();
+    for source in [
+        " move.l (a0),$1000",
+        " move.l (a0),Cell",
+        " cmpa.l #Cell,a0",
+    ] {
+        let line = model
+            .parse_portable_line_for_assembler("m68020", None, source, 1)
+            .unwrap();
+        let LineAst::Statement(statement) = line.to_core_line_ast() else {
+            panic!("statement")
+        };
+        let parsed = M68KFamilyHandler::new()
+            .parse_operands(statement.mnemonic.as_deref().unwrap(), &statement.operands);
+        assert!(
+            parsed.is_ok(),
+            "{source}: operands={:?}; parsed={parsed:?}",
+            statement.operands
+        );
+    }
+}

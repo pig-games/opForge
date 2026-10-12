@@ -1368,17 +1368,13 @@ impl M68KFamilyHandler {
             }
             Expr::Identifier(name, span) => {
                 let Some((base, size)) = Self::strip_absolute_size_suffix(name) else {
-                    if name.contains('.') {
-                        return Ok(FamilyOperand::Absolute {
-                            expr: Expr::Identifier(name.clone(), *span),
-                            size: AbsoluteSize::Long,
-                            span: *span,
-                        });
-                    }
-                    return Err(FamilyParseError::new(
-                        "unsupported Motorola 68000 operand form",
-                        *span,
-                    ));
+                    // Symbols have no known word-width proof during parsing.
+                    // Keep the expression and a stable long EA across passes.
+                    return Ok(FamilyOperand::Absolute {
+                        expr: Expr::Identifier(name.clone(), *span),
+                        size: AbsoluteSize::Long,
+                        span: *span,
+                    });
                 };
 
                 Ok(FamilyOperand::Absolute {

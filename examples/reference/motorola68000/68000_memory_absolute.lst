@@ -1,0 +1,40 @@
+opForge Assembler v0.9.7 | full-runtime | bundled
+ADDR    BYTES                    LINE  SOURCE
+------  -----------------------  ----  ------
+----                                1  ; Baseline memory sources, absolute destinations and pointer immediates.
+----                                2  .module memory_absolute
+----                                3      .cpu 68000
+----    EQU 1000                    4      .org $1000
+----                                5  
+1000    21 D0 10 00                 6      move.l (a0),$1000
+1004    31 D1 7F FF                 7      move.w (a1),$7fff
+1008    13 DA 00 00 80 00           8      move.b (a2)+,$8000
+100E    23 E3 00 12 34 56           9      move.l -(a3),$123456
+1014    23 D0 00 00 10 2E          10      move.l (a0),cell
+101A    B1 FC 00 00 10 2E          11      cmpa.l #cell,a0
+1020    D3 FC 00 00 10 2E          12      adda.l #cell,a1
+1026    95 FC 00 00 10 2E          13      suba.l #cell,a2
+102C    4E 75                      14      rts
+102E    00 00 00 00                15  cell .long 0
+----                               16  
+----                               17  .endmodule
+----                               18  .end
+
+Lines: 18  Errors: 0  Warnings: 0
+
+SYMBOL TABLE
+
+NAME             VALUE     VIS  KIND
+---------------  --------  ---  ----
+memory_absolute.cell  102E      prv  lbl 
+
+Total memory is 50 bytes
+
+GENERATED OUTPUT
+
+ADDR    BYTES
+------  -----------------------
+1000    21 D0 10 00 31 D1 7F FF 13 DA 00 00 80 00 23 E3
+1010    00 12 34 56 23 D0 00 00 10 2E B1 FC 00 00 10 2E
+1020    D3 FC 00 00 10 2E 95 FC 00 00 10 2E 4E 75 00 00
+1030    00 00

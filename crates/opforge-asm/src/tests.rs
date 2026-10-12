@@ -35973,11 +35973,17 @@ fn linker_output_hunk_live_path_rejects_non_matrix_bare_symbolic_instruction_for
         let pass1 = assembler.pass1(&lines);
         assert!(pass1.errors > 0, "expected pass1 failure for `{source}`");
         assert!(
-            assembler
-                .diagnostics
-                .iter()
-                .any(|diag| diag.error.message().contains("explicit .L notation")),
-            "expected explicit .L diagnostic for `{source}`"
+            assembler.diagnostics.iter().any(|diag| diag
+                .error
+                .message()
+                .contains("No instruction found for MOVE.")),
+            "expected missing encoding diagnostic for `{source}`: {:?}",
+            assembler.diagnostics
+        );
+        let code = assembler.sections().get("code").expect("code section");
+        assert!(
+            code.output_fixups.is_empty(),
+            "unsupported absolute-to-absolute MOVE must not publish relocations"
         );
     }
 }
@@ -42598,3 +42604,6 @@ mod native_statement_facets;
 mod native_statement_heads;
 
 mod native_statement_arguments;
+
+#[path = "tests/motorola_memory_forms.rs"]
+mod motorola_memory_forms;

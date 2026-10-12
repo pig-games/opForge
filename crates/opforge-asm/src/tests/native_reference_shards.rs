@@ -119,7 +119,7 @@ fn native_reference_manifest_accounts_for_current_example_corpus() {
         "native reference completeness guard should exercise explicit exclusions"
     );
     assert_eq!(
-        motorola68000_count, 43,
+        motorola68000_count, 44,
         "every current top-level Motorola 68000 source must be reference-owned"
     );
 }
@@ -132,7 +132,7 @@ fn native_reference_motorola68000_manifest_accounts_for_complete_top_level_corpu
     let cases =
         crate::native_reference_parity::native_motorola68000_reference_cases(&workspace_root())
             .expect("complete Motorola 68000 reference inventory");
-    assert_eq!(cases.len(), 43);
+    assert_eq!(cases.len(), 44);
     let binary_count = cases
         .iter()
         .filter(|case| {
@@ -143,7 +143,7 @@ fn native_reference_motorola68000_manifest_accounts_for_complete_top_level_corpu
         })
         .count();
     let diagnostic_count = cases.len() - binary_count;
-    assert_eq!(binary_count, 36);
+    assert_eq!(binary_count, 37);
     assert_eq!(diagnostic_count, 7);
     for case in &cases {
         assert!(matches!(

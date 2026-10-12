@@ -625,8 +625,27 @@ while shared source keyword classification formerly accepted only source identit
 Preparation now resolves both identity domains through a bounded package spelling
 view; numeric runtime records stay unchanged. The reduced complete 72-byte Hunk
 matches live Rust freshly after this repair. Eight new positive/negative host
-controls cover ordinary and metadata-context `.output` on both CPUs; their native
-matrix, isolated cost and full self-host qualification are still pending.
+controls cover ordinary and metadata-context `.output` on both CPUs; all eight
+now pass fresh native execution (four exact artifacts, four source rejections).
+The unchanged 11,592-byte release control measures 36.484295417 seconds before
+and 41.900616833 after: +5.416321416 seconds (+14.85%), one sample per image.
+Image/reservation grow 140/136 bytes. Instrumented peak owned heap is unchanged
+at 1,240,696 bytes; both allocation/free totals match and live ownership is zero.
+The isolated receipt is `/tmp/opforge-source-head-cost-20261012.json`.
+
+The subsequent diagnostic full run still exits 20 at the same physical line,
+after 2,339.681234709 seconds. Its 191-file captured manifest is
+`fnv1a64:9e70f1bcf4592374` (2,105,866 source bytes; live Rust Hunk 250,340
+bytes). Gated stage 11 identifies fragment-plan binding during preparation;
+assembly has not started. This is a different instrumented input, not a
+before/after speed comparison. Captured line status and cumulative plan storage
+are the next discriminator; the `.output` repair does not clear this failure.
+Two fresh complete native CCR macro controls (unused and invoked) match live
+Rust. Gated preparation phases 317–319 retain scalar captured-plan status,
+handles, byte extent and destination usage around binding; release emits none
+of the snapshot code/storage. Whole-source stress cases with 12,000/24,000
+ordinary macro-body lines are accepted by live Rust; their native growth proof
+is pending. These diagnostics and controls are not full self-host completion.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

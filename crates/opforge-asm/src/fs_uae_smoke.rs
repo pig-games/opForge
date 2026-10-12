@@ -8088,6 +8088,8 @@ mod native_iterable_loops;
 #[cfg(test)]
 #[path = "tests/native_macro_parity.rs"]
 mod native_macro_parity;
+#[path = "tests/native_macro_plan_limits.rs"]
+mod native_macro_plan_limits;
 #[path = "tests/native_match_controls.rs"]
 mod native_match_controls;
 #[cfg(test)]

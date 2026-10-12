@@ -101,6 +101,16 @@ PREP_STATEMENT_CALL = 15
 PreparationStage	.res long, 1
 ; Two diagnostic-only pointers followed by the bounded raw writer prefix.
 PreparationInput	.res byte, PREPARATION_POSITION_BYTES
+; Scalars only: retain owner-boundary evidence after capture/stack cleanup.
+CapturedPlanRole	.res long, 1
+CapturedPlanLineStatus	.res long, 1
+CapturedPlanLineHandle	.res long, 1
+CapturedPlanBytes	.res long, 1
+CapturedPlanUsedBefore	.res long, 1
+CapturedPlanBindStatus	.res long, 1
+CapturedPlanBoundHandle	.res long, 1
+CapturedPlanUsedAfter	.res long, 1
+CapturedPlanSelectedHandle	.res long, 1
 	.endsection
 .endif
 .endif
@@ -1998,6 +2008,16 @@ done
 bindCapturedPlan	.block
 	movem.l d2-d7/a0-a4, -(sp)
 	movea.l CAPTURE_RECORD(a6), a4
+	; Existing gated scalar copies preserve CCR/registers, without borrowed views.
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanRole, d4
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanLineStatus, capture.Record.LineStatus(a4)
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanLineHandle, capture.Record.LineHandle(a4)
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBytes, #0
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanUsedBefore, MACRO_PLANS+memory.Block.Used(a6)
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBindStatus, #-1
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBoundHandle, #0
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanUsedAfter, MACRO_PLANS+memory.Block.Used(a6)
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanSelectedHandle, #0
 	moveq #0, d7
 	tst.l d4
 	beq.w lineCandidate
@@ -2025,9 +2045,11 @@ lineCandidate
 	move.l capture.Record.LineHandle(a4), d6
 	moveq #1, d7
 candidateReady
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanSelectedHandle, d6
 	suba.w #memory.Block.Used+4+macro_plans.BIND_FRAME_BYTES, sp
 	movea.l a4, a1
 	jsr capture.planView
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBytes, d0
 	move.l a0, memory.Block.Pointer(sp)
 	move.l d0, memory.Block.Capacity(sp)
 	move.l d0, memory.Block.Used(sp)
@@ -2042,6 +2064,9 @@ candidateReady
 	move.w d7, macro_plans.BindFrame.IncludeRecipes(a0)
 	clr.w macro_plans.BindFrame.Reserved(a0)
 	jsr macro_plans.bind
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBindStatus, d0
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBoundHandle, d1
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanUsedAfter, MACRO_PLANS+memory.Block.Used(a6)
 	adda.w #memory.Block.Used+4+macro_plans.BIND_FRAME_BYTES, sp
 	bra.w done
 bad

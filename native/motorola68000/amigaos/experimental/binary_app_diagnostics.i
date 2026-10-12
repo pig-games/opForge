@@ -4,6 +4,12 @@ reportFailure	.block
 	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, frontend.PreparationStage, Front+frontend.Frame.Used, Front+frontend.Frame.NameCount, #PROGRESS_PREPARATION_FAILURE
 	.MEMORY_PREPARATION_RECORD DosBase, InAssembly, frontend.PreparationStage, Front+frontend.Frame.Output, Front+frontend.Frame.Capacity, frontend.PreparationInput, #PROGRESS_PREPARATION_FAILURE
 	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, statement_execution.FailureStep, #0, #0, #PROGRESS_STATEMENT_FAILURE
+	; 317: role / captured line status / captured line handle.
+	; 318: captured plan bytes / destination Used before / bind status (-1=not called).
+	; 319: returned handle / destination Used after / selected captured handle.
+	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, frontend.CapturedPlanRole, frontend.CapturedPlanLineStatus, frontend.CapturedPlanLineHandle, #PROGRESS_CAPTURED_PLAN_LINE
+	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, frontend.CapturedPlanBytes, frontend.CapturedPlanUsedBefore, frontend.CapturedPlanBindStatus, #PROGRESS_CAPTURED_PLAN_BIND
+	.MEMORY_PREPARATION_FAILURE DosBase, InAssembly, frontend.CapturedPlanBoundHandle, frontend.CapturedPlanUsedAfter, frontend.CapturedPlanSelectedHandle, #PROGRESS_CAPTURED_PLAN_RESULT
 	tst.l InAssembly
 	beq.w located
 	bsr.w locateFailure

@@ -223,6 +223,7 @@ mod tests {
                 ids: std::collections::BTreeMap::new(),
                 reverse: std::collections::BTreeMap::new(),
                 overflow: false,
+                frozen: false,
             };
             let plan = lower(&program, profile, &mut names).unwrap();
             let mut reference = crate::state_vm::initial_state(&program, profile).unwrap();

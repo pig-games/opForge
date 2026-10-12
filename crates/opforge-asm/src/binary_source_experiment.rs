@@ -10,6 +10,9 @@ mod name_domain;
 #[cfg(test)]
 mod acquisition_package_tests;
 
+#[cfg(test)]
+mod seeded_producer_tests;
+
 use package::{
     decode_encoding_program, inline_head_policy_program, macro_descriptor_program,
     macro_fragment_program, macro_spelling_program, packed_branch_program, packed_data_program,
@@ -206,6 +209,33 @@ pub(crate) fn prepare_package_with_names(
     core: &RuntimeModelCore,
     resolved: &ResolvedHierarchy,
 ) -> Result<PreparedPackage, String> {
+    let target = package_target(resolved)?;
+    prepare_numeric_package(
+        core,
+        resolved,
+        BinarySourcePackage::prepare(core, resolved)?,
+        false,
+        target,
+    )
+}
+
+/// Host-only producer experiment; never selected by the production wrapper.
+#[cfg(test)]
+pub(crate) fn prepare_package_with_name_seed(
+    core: &RuntimeModelCore,
+    resolved: &ResolvedHierarchy,
+    seed: &[String],
+) -> Result<PreparedPackage, String> {
+    let target = package_target(resolved)?;
+    let package = BinarySourcePackage::prepare_with_name_seed(core, resolved, seed)?;
+    let prepared = prepare_numeric_package(core, resolved, package, true, target)?;
+    if prepared.names != seed {
+        return Err("acquisition name seed is missing an acquisition identity".into());
+    }
+    Ok(prepared)
+}
+
+fn package_target(resolved: &ResolvedHierarchy) -> Result<String, String> {
     let target = format!("{}--{}", resolved.cpu_id, resolved.dialect_id);
     if resolved.cpu_id.is_empty()
         || resolved.dialect_id.is_empty()
@@ -218,8 +248,25 @@ pub(crate) fn prepare_package_with_names(
             "runtime package target key {target:?} must use nonempty CPU and dialect identifiers containing only ASCII letters, digits, '_' or '-' and fit within 26 bytes"
         ));
     }
-    let package = BinarySourcePackage::prepare(core, resolved)?;
+    Ok(target)
+}
+
+fn prepare_numeric_package(
+    core: &RuntimeModelCore,
+    resolved: &ResolvedHierarchy,
+    package: BinarySourcePackage,
+    frozen_names: bool,
+    target: String,
+) -> Result<PreparedPackage, String> {
     let mut names = package.names.clone();
+    let acquire_name = |names: &mut Vec<String>, value: &str| {
+        if frozen_names && !names.iter().any(|name| name.eq_ignore_ascii_case(value)) {
+            return Err(format!(
+                "acquisition name seed is missing an acquisition identity: {value}"
+            ));
+        }
+        intern(names, value)
+    };
     let mut dictionary = BTreeMap::new();
     for alias in &package.aliases {
         let mut spelling = name(&names, alias.spelling)?.to_string();
@@ -349,7 +396,7 @@ pub(crate) fn prepare_package_with_names(
     for directive in [
         "cpu", "org", "byte", "word", "long", "end", "align", "res", "for", "endfor", "ds",
     ] {
-        let id = intern(&mut names, directive)?;
+        let id = acquire_name(&mut names, directive)?;
         bind(
             &mut dictionary,
             directive.into(),
@@ -364,7 +411,7 @@ pub(crate) fn prepare_package_with_names(
         .iter_mut()
         .zip(["while", "endwhile", "bfor", "bwhile"])
     {
-        *head = intern(&mut names, spelling)?;
+        *head = acquire_name(&mut names, spelling)?;
         bind(
             &mut dictionary,
             spelling.into(),
@@ -377,7 +424,7 @@ pub(crate) fn prepare_package_with_names(
     for (head, spelling) in branch_heads.iter_mut().zip([
         "if", "elseif", "else", "endif", "match", "case", "default", "endmatch",
     ]) {
-        *head = intern(&mut names, spelling)?;
+        *head = acquire_name(&mut names, spelling)?;
         bind(
             &mut dictionary,
             spelling.into(),
@@ -399,7 +446,7 @@ pub(crate) fn prepare_package_with_names(
         "null",
         "ptext",
     ]) {
-        *head = intern(&mut names, spelling)?;
+        *head = acquire_name(&mut names, spelling)?;
         bind(
             &mut dictionary,
             spelling.into(),
@@ -408,7 +455,7 @@ pub(crate) fn prepare_package_with_names(
             DictionaryRoleFlags::CONTEXTUAL,
         )?;
     }
-    let in_name = intern(&mut names, "in")?;
+    let in_name = acquire_name(&mut names, "in")?;
     bind(
         &mut dictionary,
         "in".into(),
@@ -416,7 +463,7 @@ pub(crate) fn prepare_package_with_names(
         0,
         DictionaryRoleFlags::CONTEXTUAL,
     )?;
-    let repeat_name = intern(&mut names, "x")?;
+    let repeat_name = acquire_name(&mut names, "x")?;
     bind(
         &mut dictionary,
         "x".into(),
@@ -426,7 +473,7 @@ pub(crate) fn prepare_package_with_names(
     )?;
     let mut declaration_heads = [0; 3];
     for (head, spelling) in declaration_heads.iter_mut().zip(["const", "var", "set"]) {
-        *head = intern(&mut names, spelling)?;
+        *head = acquire_name(&mut names, spelling)?;
         bind(
             &mut dictionary,
             spelling.into(),
@@ -435,7 +482,7 @@ pub(crate) fn prepare_package_with_names(
             DictionaryRoleFlags::CONTEXTUAL,
         )?;
     }
-    let emit_id = intern(&mut names, "emit")?;
+    let emit_id = acquire_name(&mut names, "emit")?;
     bind(
         &mut dictionary,
         "emit".into(),
@@ -443,7 +490,7 @@ pub(crate) fn prepare_package_with_names(
         0,
         DictionaryRoleFlags::CONTEXTUAL,
     )?;
-    let file_id = intern(&mut names, "incbin")?;
+    let file_id = acquire_name(&mut names, "incbin")?;
     bind(
         &mut dictionary,
         "incbin".into(),
@@ -451,7 +498,7 @@ pub(crate) fn prepare_package_with_names(
         0,
         DictionaryRoleFlags::CONTEXTUAL,
     )?;
-    let source_file_id = intern(&mut names, "include")?;
+    let source_file_id = acquire_name(&mut names, "include")?;
     bind(
         &mut dictionary,
         "include".into(),
@@ -468,7 +515,7 @@ pub(crate) fn prepare_package_with_names(
         "meta.name",
         "meta.version",
     ]) {
-        *slot = intern(&mut names, spelling)?;
+        *slot = acquire_name(&mut names, spelling)?;
         bind(
             &mut dictionary,
             spelling.into(),
@@ -482,7 +529,7 @@ pub(crate) fn prepare_package_with_names(
         .iter_mut()
         .zip(package::statement_program::HEAD_SPELLINGS)
     {
-        *slot = intern(&mut names, spelling)?;
+        *slot = acquire_name(&mut names, spelling)?;
         bind(
             &mut dictionary,
             spelling.into(),
@@ -491,7 +538,7 @@ pub(crate) fn prepare_package_with_names(
             DictionaryRoleFlags::CONTEXTUAL,
         )?;
     }
-    let cpu_id = intern(&mut names, &resolved.cpu_id)?;
+    let cpu_id = acquire_name(&mut names, &resolved.cpu_id)?;
     bind(
         &mut dictionary,
         resolved.cpu_id.to_ascii_lowercase(),
@@ -564,7 +611,7 @@ pub(crate) fn prepare_package_with_names(
         }) {
             continue;
         }
-        let shape = intern(&mut names, "implied")?;
+        let shape = acquire_name(&mut names, "implied")?;
         candidates.push(NumericCandidate {
             state_guard: 0,
             mnemonic: table.mnemonic,
@@ -581,7 +628,7 @@ pub(crate) fn prepare_package_with_names(
             recipe: CandidateRecipe::None,
         });
     }
-    let builtin_len = intern(&mut names, "len")?;
+    let builtin_len = acquire_name(&mut names, "len")?;
     bind(
         &mut dictionary,
         "len".into(),

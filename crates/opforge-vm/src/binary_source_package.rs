@@ -235,7 +235,24 @@ pub enum Projection {
 
 impl BinarySourcePackage {
     pub fn prepare(core: &RuntimeModelCore, resolved: &ResolvedHierarchy) -> Result<Self, String> {
-        let mut names = NameTable::from_core(core)?;
+        Self::prepare_with_names(core, resolved, NameTable::from_core(core)?)
+    }
+
+    /// Host-only seeded lowering experiment. The seed preserves the complete
+    /// existing core prefix and contains every identity the pipeline may use.
+    pub fn prepare_with_name_seed(
+        core: &RuntimeModelCore,
+        resolved: &ResolvedHierarchy,
+        seed: &[String],
+    ) -> Result<Self, String> {
+        Self::prepare_with_names(core, resolved, NameTable::from_seed(core, seed)?)
+    }
+
+    fn prepare_with_names(
+        core: &RuntimeModelCore,
+        resolved: &ResolvedHierarchy,
+        mut names: NameTable,
+    ) -> Result<Self, String> {
         let mut qualifiers = QualifierTable::default();
         let owners = core.scoped_owner_lookup_order(resolved);
         let mut state = state::prepare(core, resolved, &mut names)?;
@@ -420,7 +437,12 @@ impl BinarySourcePackage {
         }
         aliases.sort_by_key(|row| (row.spelling, row.spelling_qualifier));
         if names.overflow {
-            return Err("binary-source package name dictionary exceeds u16".into());
+            return Err(if names.frozen {
+                "binary-source name seed is missing a pipeline identity"
+            } else {
+                "binary-source package name dictionary exceeds u16"
+            }
+            .into());
         }
         if qualifiers.overflow {
             return Err("binary-source qualifier dictionary exceeds u8".into());
@@ -1227,6 +1249,7 @@ struct NameTable {
     ids: BTreeMap<String, u16>,
     reverse: BTreeMap<u32, String>,
     overflow: bool,
+    frozen: bool,
 }
 impl NameTable {
     fn from_core(core: &RuntimeModelCore) -> Result<Self, String> {
@@ -1250,12 +1273,44 @@ impl NameTable {
             ids,
             reverse,
             overflow: false,
+            frozen: false,
         })
     }
+    fn from_seed(core: &RuntimeModelCore, seed: &[String]) -> Result<Self, String> {
+        let prefix = Self::from_core(core)?;
+        if seed.len() > u16::MAX as usize {
+            return Err("binary-source name seed exceeds reserved-sentinel capacity".into());
+        }
+        if !seed.starts_with(&prefix.names) {
+            return Err("binary-source name seed does not preserve the exact core prefix".into());
+        }
+        let mut ids = BTreeMap::new();
+        for (index, name) in seed.iter().enumerate() {
+            if name != &name.to_ascii_lowercase()
+                || ids.insert(name.clone(), index as u16).is_some()
+            {
+                return Err(
+                    "binary-source name seed must contain unique canonical identities".into(),
+                );
+            }
+        }
+        Ok(Self {
+            names: seed.to_vec(),
+            ids,
+            reverse: prefix.reverse,
+            overflow: false,
+            frozen: true,
+        })
+    }
+
     fn id(&mut self, value: &str) -> u16 {
         let key = value.to_ascii_lowercase();
         if let Some(id) = self.ids.get(&key) {
             return *id;
+        }
+        if self.frozen {
+            self.overflow = true;
+            return 0;
         }
         let Ok(id) = u16::try_from(self.names.len()) else {
             self.overflow = true;
@@ -1316,6 +1371,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         let roles = role_projections(
             "semv.sequence.v1:match:_@indirect_tuple_reg0.item1.class1,indirect_tuple_arity0.value2;encode:future@required_value_program:missing:indirect_tuple_value0.item0,indirect_tuple_reg0.item1.class1",
@@ -1373,6 +1429,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         for operand in 0..=2 {
             assert_eq!(
@@ -1449,6 +1506,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         for argument in 0..=1 {
             assert_eq!(
@@ -1489,6 +1547,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         assert_eq!(
             parse_projection("call_arg_register1.arg1.class2", &mut names),
@@ -1540,6 +1599,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         assert_eq!(
             parse_projection("named_register1=INDEX", &mut names),
@@ -1640,6 +1700,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         let plan = "semv.sequence.v1:match:_@expr0,member_shape1.fieldWidth;encode:word@expr0;fixup:fix.abs32@target:member1.fieldWidth";
         let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
@@ -1700,6 +1761,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         assert!(matches!(
             super::parse_recipe(plan, &mut names),
@@ -1785,6 +1847,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         assert_eq!(
             parse_projection("indirect_tuple_reg0.item0.class1", &mut names),
@@ -1823,6 +1886,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         let plan = "semv.sequence.v1:match:_@indirect_tuple_reg0.item1.class1,indirect_tuple_qualified_reg0.item2.qualifierw.class0,indirect_tuple_value0.item0,indirect_tuple_arity0.value3;encode:fields@literal:48,indirect_tuple_reg0.item1.class1;encode:index@indirect_tuple_qualified_reg0.item2.qualifierw.class0,literal:0,literal:0,indirect_tuple_value0.item0";
         let super::CandidateRecipe::SemanticSequence { stages } =
@@ -1857,6 +1921,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         for item in 0..=2 {
             assert_eq!(
@@ -1935,7 +2000,8 @@ mod tests {
                             names: Vec::new(),
                             ids: BTreeMap::new(),
                             reverse: BTreeMap::new(),
-                            overflow: false
+                            overflow: false,
+                    frozen: false,
                         }
                     ),
                     CandidateRecipe::Unsupported { .. }
@@ -1951,7 +2017,8 @@ mod tests {
                     names: Vec::new(),
                     ids: BTreeMap::new(),
                     reverse: BTreeMap::new(),
-                    overflow: false
+                    overflow: false,
+                    frozen: false,
                 }
             ),
             CandidateRecipe::SemanticSequence { .. }
@@ -1965,6 +2032,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         let plan = "semv.sequence.v1:match:_@expr0,expr1;encode:word@literal:9212;fixup:fix.abs32@expr0;fixup:fix.abs32@expr1";
         let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
@@ -1990,6 +2058,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         let plan = "semv.sequence.v1:match:_@target:expr0;encode:word@literal:20081;fixup:fix.abs32@target:expr0";
         let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
@@ -2015,6 +2084,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         let plan = "semv.sequence.v1:match:_@expr0,target:expr1;encode:enc.template.field-9@literal:20665,required_value_program:scalar.packed-three-bit-count:expr0;fixup:fix.abs32@target:expr1|encoding.count.range";
         let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
@@ -2032,6 +2102,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         let plan = "semv.sequence.v1:match:_@target_atom:expr0,reg1.class0;encode:enc.template.field-9@literal:8252,reg1.class0;fixup:fix.abs32@target:expr0";
         let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
@@ -2088,6 +2159,7 @@ mod tests {
             ids: BTreeMap::new(),
             reverse: BTreeMap::new(),
             overflow: false,
+            frozen: false,
         };
         for plan in [
             "semv.branch.v1:branch.sized@auto,expr0,1,0",

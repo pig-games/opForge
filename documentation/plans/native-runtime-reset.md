@@ -527,6 +527,13 @@ the 16 distinct pipelines contain 3,276 identities, 311,728 spelling bytes and
 26,208 proposed table bytes. For 6502/65c02/68020 the complete identity counts
 are 2,093/2,086/2,304. This closes the measurement API gap, without wiring a
 new native format or retaining that whole internal spelling union at runtime.
+The next host-only experiment seeds that complete domain before numeric lowering,
+preserving the existing prefix and appending names in fixed pipeline/interner
+order. Sixteen canonical pipelines retain their numeric facets, selectable
+candidate order, program bytes and BS38 block lengths; representative encodings
+and invalid/missing seeds are checked. The ordinary producer stays unchanged.
+This is producer evidence only: native atomic activation and retained execution
+contexts are still unimplemented.
 
 The full current-source self-host attempt after the BIN/FILL checkpoint fails
 in input discovery before its first source record: 188 staged files include 159

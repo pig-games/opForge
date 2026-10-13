@@ -22,6 +22,7 @@ const INSTRUMENTED_DEFINES: &[&str] = &[
     "OPFORGE_BINDING_DETAIL_TELEMETRY",
     "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY",
+    "OPFORGE_CAPTURE_TELEMETRY",
     "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
 ];
 
@@ -175,15 +176,32 @@ fn export_bundle(failure_capture: bool) {
     // Retain the established completion-failure snapshot without the dense work
     // counters. This diagnostic bootstrap still assembles the release inputs.
     let binding_failure_only = std::env::var("OPFORGE_BINDING_FAILURE_ONLY").as_deref() == Ok("1");
+    // Focused owner/copy accounting avoids the hot nested timing probes.
+    let capture_only = std::env::var("OPFORGE_CAPTURE_ONLY").as_deref() == Ok("1");
     assert!(
         !binding_failure_only || instrumented,
         "binding failure observation requires an instrumented bootstrap"
+    );
+    assert!(
+        !capture_only || (instrumented && !binding_failure_only),
+        "capture accounting requires an instrumented bootstrap and its own profile"
     );
     let bootstrap_defines: Vec<_> = if instrumented {
         INSTRUMENTED_DEFINES
             .iter()
             .copied()
             .filter(|define| !phase_only || *define != "OPFORGE_TOKEN_DETAIL_TELEMETRY")
+            .filter(|define| {
+                !capture_only
+                    || matches!(
+                        *define,
+                        "OPFORGE_DEBUG_CONTRACTS"
+                            | "OPFORGE_MEMORY_TELEMETRY"
+                            | "OPFORGE_PREPARATION_PROGRESS"
+                            | "OPFORGE_CAPTURE_TELEMETRY"
+                            | "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"
+                    )
+            })
             .filter(|define| {
                 !binding_failure_only
                     || matches!(

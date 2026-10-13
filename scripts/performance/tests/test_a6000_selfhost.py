@@ -649,7 +649,9 @@ class HardwareCompletionTests(unittest.TestCase):
     def test_telemetry_required_but_cannot_replace_successful_assembly(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            manifest = {"bootstrap_defines": sorted(runner.INSTRUMENTATION_DEFINES)}
+            manifest = {"bootstrap_defines": sorted(
+                runner.INSTRUMENTATION_DEFINES - {"OPFORGE_CAPTURE_TELEMETRY"}
+            )}
             result = {"success": True}
             runner.add_telemetry(result, root, manifest)
             self.assertFalse(result["success"])
@@ -670,6 +672,51 @@ class HardwareCompletionTests(unittest.TestCase):
             result = {"success": True}
             runner.add_telemetry(result, root, manifest)
             self.assertFalse(result["telemetry_completed"])
+
+    def test_capture_summary_is_required_and_cannot_replace_artifact_proof(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            words = [0] * 570
+            words[0], words[28] = 0x4D454D44, 1000
+            words[19:28] = [0, 1, 0, 0, 1, 50, 0, 1, 100]
+            words[31] = 1000
+            (root / "memory.bin").write_bytes(struct.pack(">570I", *words))
+            manifest = {"bootstrap_defines": sorted(runner.INSTRUMENTATION_DEFINES)}
+            result = {"success": True}
+            runner.add_telemetry(result, root, manifest)
+            self.assertFalse(result["success"])
+            self.assertIsNone(result["capture_ownership"])
+            phases = [*range(400, 407), *range(416, 421),
+                      *range(424, 429), *range(432, 437)]
+            rows = []
+            for phase in phases:
+                f, l, r = (1, 0, 7) if phase == 400 else (0, 0, 0)
+                rows.append(f"progress p={phase:08x} f={f:08x} l={l:08x} r={r:08x} m=00000000")
+            (root / "assembly.stdout").write_text("\n".join(rows))
+            for native_success in (True, False):
+                result = {"success": native_success}
+                runner.add_telemetry(result, root, manifest)
+                self.assertTrue(result["telemetry_completed"])
+                self.assertEqual(result["success"], native_success)
+                self.assertEqual(result["capture_ownership"]["boundary_mask"], 7)
+            (root / "assembly.stdout").write_text("\n".join(rows[:-1]))
+            result = {"success": True}
+            runner.add_telemetry(result, root, manifest)
+            self.assertFalse(result["success"])
+            self.assertFalse(result["telemetry_completed"])
+
+    def test_capture_bundle_requires_its_report_gate_before_transfer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.bundle(root, True)
+            manifest = json.loads((root / "manifest.json").read_text())
+            manifest["bootstrap_defines"] = [
+                "OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
+                "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT", "OPFORGE_CAPTURE_TELEMETRY",
+            ]
+            (root / "manifest.json").write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "requires preparation progress"):
+                runner.load_bundle(root)
 
     def test_incompatible_filename_bundle_stops_before_transfer(self):
         with tempfile.TemporaryDirectory() as directory:

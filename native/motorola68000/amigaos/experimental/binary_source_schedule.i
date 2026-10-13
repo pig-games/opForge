@@ -164,8 +164,10 @@ fits
 	move.l d6, d0
 	add.l d7, d0
 	movea.l a4, a0
+	.CAPTURE_GROW_BEGIN
 	jsr memory.reserve
 	bne.w bad
+	.CAPTURE_GROW_END
 	movea.l memory.Block.Pointer(a4), a1
 	adda.l d6, a1
 	lea CaptureLine, a0
@@ -173,6 +175,7 @@ fits
 	move.l d7, d0
 	bsr.w copy
 	add.l d7, memory.Block.Used(a4)
+	.CAPTURE_APPEND CaptureLine, capture.HEADER_BYTES, capture.Record.Count, capture.Record.LexemeBytes, capture.Record.PlanBytes, capture.Record.SourceBytes, d7
 	move.l CaptureBytes, d0
 	add.l d7, d0
 	bcs.w bad
@@ -192,6 +195,7 @@ capturedOnly
 	moveq #0, d0
 	bra.w done
 bad
+	.CAPTURE_GROW_END
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6
@@ -465,6 +469,8 @@ beginCapturedReplay	.block
 	clr.l memory.Block.Capacity(a0)
 	clr.l memory.Block.Used(a0)
 	move.l OrderedCount, CaptureOrderCount
+	.CAPTURE_SNAPSHOT CAPTURE_ACQUISITION, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, CaptureRegion.Arena, CaptureOrderCount, SPAN_BYTES
+	.CAPTURE_REPLAY_BEGIN
 	clr.l OrderedCount
 	tst.l GraphMode
 	beq.w ready
@@ -562,10 +568,12 @@ endSpan
 	addq.l #1, CaptureOrderIndex
 	bra.w nextSpan
 good
+	.CAPTURE_SNAPSHOT CAPTURE_REPLAY, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, CaptureRegion.Arena, CaptureOrderCount, SPAN_BYTES
 	bsr.w releaseCapturedSources
 	moveq #0, d0
 	bra.w done
 bad
+	.CAPTURE_SNAPSHOT CAPTURE_REPLAY, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, CaptureRegion.Arena, CaptureOrderCount, SPAN_BYTES
 	move.l OriginId, SourceOrdinal
 	moveq #1, d0
 done
@@ -617,6 +625,7 @@ next
 	tst.l d2
 	beq.w table
 	lea CaptureRegion.Arena(a2), a0
+	.CAPTURE_RETAINED_RELEASE memory.Block.Capacity(a0)
 	jsr memory.release
 	adda.w #CAPTURE_REGION_BYTES, a2
 	subq.l #1, d2
@@ -635,6 +644,7 @@ table
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
 	clr.l CaptureOrderCount
+	.CAPTURE_SNAPSHOT CAPTURE_RELEASE, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, CaptureRegion.Arena, CaptureOrderCount, SPAN_BYTES
 	movem.l (sp)+, d0-d2/a0-a2
 	rts
 	.bend  ; releaseCapturedSources

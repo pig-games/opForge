@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_memory
 	.cpu 68020
 	.include "memory_telemetry.i"
+	.include "capture_telemetry.i"
 	.pub
 Block	.struct
 Pointer	.long ?
@@ -143,6 +144,7 @@ grow	.block
 	beq.w bad
 	movea.l d0, a5
 	.MEMORY_ALLOC d4
+	.CAPTURE_GROW Block.Used(a4), Block.Capacity(a4), d4
 	movea.l Block.Pointer(a4), a0
 	movea.l a5, a1
 	move.l Block.Used(a4), d2

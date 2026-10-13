@@ -4,6 +4,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as writer
+	.include "capture_telemetry.i"
 	.pub
 MAGIC = $42435031; BCP1, latest capture contract
 TOKEN_LIMIT = 64
@@ -98,6 +99,7 @@ clear
 	clr.b (a0)+
 	subq.l #1, d0
 	bne.w clear
+	.CAPTURE_CONSTRUCTION d6, Frame.Count(a6), Frame.LexemeBytes(a6), memory.Block.Used(a5)
 	move.l #MAGIC, Record.Magic(a3)
 	move.l d6, Record.Bytes(a3)
 	move.l Frame.Count(a6), Record.Count(a3)

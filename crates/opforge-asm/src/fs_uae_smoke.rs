@@ -1573,6 +1573,9 @@ pub(crate) fn run_compact_cli_files_from_env(
     if memory_telemetry && std::env::var("OPFORGE_INPUT_DETAIL").as_deref() == Ok("1") {
         extra_assembly_defines.push("OPFORGE_INPUT_TELEMETRY");
     }
+    if memory_telemetry && std::env::var("OPFORGE_CAPTURE_DETAIL").as_deref() == Ok("1") {
+        extra_assembly_defines.push("OPFORGE_CAPTURE_TELEMETRY");
+    }
     let case = OpforgeNativeCliParityCase {
         name: "compact-cli-source-set",
         cpu_override: "68020",
@@ -8202,3 +8205,7 @@ mod native_binding_remap;
 #[cfg(test)]
 #[path = "tests/native_package_members.rs"]
 mod native_package_members;
+
+#[cfg(test)]
+#[path = "tests/native_capture_telemetry.rs"]
+mod native_capture_telemetry;

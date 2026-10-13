@@ -141,6 +141,66 @@ to select one small construction change or a compact-capture experiment, with
 unchanged release input and the complete Rust artifact as correctness reference.
 No optimization has been implemented in this diagnostic pass.
 
+## Capture measurement checkpoint
+
+The gated 272-byte capture observer now reports retained header/token/lexeme/plan
+composition, used versus reserved storage at replay entry and before release,
+explicit cleared bytes, construction/append/materialization copies, global block
+growth copies and retained-capacity peak including growth overlap. MEMD remains
+2280 bytes; see the [instrumentation schema](../architecture/native-instrumentation-framework.md#bounded-capture-ownership-accounting).
+Active expanded includes can acquire additional captures after the initial
+snapshot, so the pre-release snapshot describes the final retained frontier.
+
+The focused multi-file macro/include case completes in FS-UAE with fresh exit
+zero, exact 29-byte live Rust output, zero accounting errors, all three boundaries
+and zero capture ownership after release. The independent real observer probe
+preserves all registers, CCR and stack depth. Four host tests and the decoder/
+hardware-runner checks also pass. These are component proofs, not a full self-host
+measurement.
+
+The full measurement candidate is `/tmp/opforge-a6000-capture-accounting-v3-20261013`:
+195 mapped inputs, 2,585,677 bytes, manifest `fnv1a64:cadc24b1921a07ea`.
+Its 719,588-byte bootstrap enables only contracts, memory accounting, preparation
+progress, capture accounting and local telemetry export; hot nested timing probes
+are omitted. Its uninstrumented 706,888-byte oracle is byte-for-byte identical to
+the baseline above. The measurement source contains the new gated observer/macros;
+elapsed time is not an isolated release before/after comparison.
+
+Run from macOS Terminal:
+
+```sh
+python3 scripts/performance/run_a6000_selfhost.py --bundle /tmp/opforge-a6000-capture-accounting-v3-20261013
+```
+
+The runner requires valid capture reporting when the capture flag is enabled and
+adds `capture_ownership` to its result. Independently decode captured stdout with:
+
+```sh
+python3 scripts/performance/capture_telemetry.py /absolute/captured/assembly.stdout
+```
+
+The first full emulator attempt and second hardware candidate rejected at physical
+file completion during acquisition. A reduced source also failed through the
+previously qualified release executable, isolating source classification from
+observer effects. Constants, import preamble, empty macro bodies and the first
+complete macro all passed fresh native comparisons. The cause was the new
+`CAPTURE_APPEND` formal named `block`: `lea .block,a0` was classified as a labeled
+`.block`, opening an extra acquisition scope. Renaming it to `arena` makes the
+complete include pass through the old executable and the current instrumented
+control. This avoids the classifier gap; it does not repair that general gap.
+
+Snapshot identities also now use always-available local constants so call-site
+arguments do not depend on gated imports. The third bootstrap is byte-identical
+to the earlier instrumented candidates; release output remains exact. Failed
+attempts supply partial acquisition counts only, not full workload measurements
+or successful self-host proof. Captures remain outside the tree at
+`/tmp/opforge-capture-full-fsuae-capture-20261013` and
+`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-ddiej4_s`.
+
+Full-workload ownership/copy results are pending from the corrected hardware
+candidate. Select the first optimization only after those results; do not infer
+its benefit from the small control or failed acquisition.
+
 Preserve failure-atomic allocation, stable numeric identity, longest-owner lookup,
 active branch/loop semantics, include provenance and relocation/layout behavior.
 Each selected optimization needs its own unchanged-input correctness comparison,

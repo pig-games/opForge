@@ -374,6 +374,93 @@ capacities; allocation precedes old-block release so copy/growth overlap is coun
 These counters do not claim to trace OS-wide allocations. Configuration and pre-entry
 Version/CPU/Stack/Avail observations accompany constrained guest measurements.
 
+## Bounded capture ownership accounting
+
+`debug/capture_telemetry.i` and `debug.amigaos.capture_profile` add a separate
+272-byte observer for the compact source-capture path. Calls, imports and owner
+storage require `OPFORGE_DEBUG_CONTRACTS`, `OPFORGE_MEMORY_TELEMETRY`, and
+`OPFORGE_CAPTURE_TELEMETRY`. Terminal reporting additionally requires
+`OPFORGE_PREPARATION_PROGRESS`. Missing a measurement gate emits no call-site
+bytes or observer import; release linking carries no observer code or storage.
+MEMD remains 2280 bytes. The observer has no retained pointers, allocation,
+clock, or per-byte/per-token event output. Its fixed BSS is outside the tracked
+heap accounting. All passive APIs and argument wrappers preserve D0–D7,
+A0–A6, CCR and stack depth.
+The include defines `CAPTURE_ACQUISITION`, `CAPTURE_REPLAY` and `CAPTURE_RELEASE`
+outside the observer gates. Disabled macro arguments still undergo numeric binding;
+their identities must remain available without a gated observer import.
+The append wrapper's owner formal is `arena`. Native acquisition currently
+misclassifies `lea .block,a0` in an unexpanded macro body as a labeled `.block`;
+using a formal named `block` would leave an extra acquisition scope open. The
+wrapper avoids that known classifier gap without changing generated instructions.
+
+Counters reset at one compact `execute` entry. Construction counts every record
+whose explicit clear and payload copies run, including records subsequently
+filtered from retention. Construction copies include the seven outcome longs
+and token, lexeme and candidate-plan payloads; header stores are writes rather
+than copies. Cleared bytes count explicit record clearing, excluding Exec's
+allocation clearing. Retained composition counts only actual region appends:
+header bytes, 20-byte token rows, lexemes, plans, alignment padding and their
+captured source-byte extent. Append-copy bytes count the whole copied record.
+Configuration and semantic replay materialization count actual capture-to-scratch
+copies, including preview calls, separated at the replay acquisition boundary.
+Those are work counts rather than unique records or successful semantics.
+
+Generic `binary_memory.grow` counters cover every successful allocation and its
+actual `Used` copy across this execute, including unrelated owners. Retained
+arena reserves bracket a separate attribution context. On successful growth,
+the observer considers current retained capacity plus the new allocation before
+subtracting old capacity, so its retained peak includes allocate-before-free
+overlap. Retained releases subtract their actual capacity; repeated zero-capacity
+cleanup cannot double-count. Neither the context nor snapshots retain descriptor
+addresses when the region table moves.
+
+Acquisition is observed immediately after graph-span ownership transfers to
+`CaptureOrder`, at the start of semantic replay. Active includes can acquire
+additional captured regions during replay; the acquisition snapshot remains
+that initial frontier, while the pre-release snapshot includes later ownership.
+Replay records the latest pre-release state on success or the failed replay
+return; release records the
+latest state after all capture owners have been freed. A failure before a
+boundary leaves that snapshot zero and its mask bit clear. Each boundary scans
+only the bounded published region table once. Temporary ownership is the reused
+`CaptureLine` arena; the constructor's transient plan owner has already been
+freed at these boundaries. Table and temporary used extents come from their
+blocks. Order used is its published count times `SPAN_BYTES`, validated against
+capacity, because its writer keeps count separately from `memory.Block.Used`.
+
+Terminal report emits these 22 rows through `memory_profile.progress`, once
+before memory save, including on failure. Progress `m` retains its usual tracked
+live-heap meaning and is independent of the fields below.
+
+| Phase | `f` | `l` | `r` |
+|---:|---|---|---|
+| 400 | schema 1 | error bits | boundary mask |
+| 401 | retained record count | retained headers | retained token bytes |
+| 402 | retained lexemes | retained plans | retained padding |
+| 403 | retained source bytes | constructed records | explicit cleared bytes |
+| 404 | construction copies | retained append copies | configuration materialization copies |
+| 405 | replay materialization copies | global grow calls | global grow Used-copy bytes |
+| 406 | retained grow calls | retained grow Used-copy bytes | retained peak capacity including overlap |
+
+Snapshot bases are 416 acquisition, 424 replay and 432 release. At each base:
+
+| Relative phase | `f` | `l` | `r` |
+|---:|---|---|---|
+| 0 | retained region count | retained used | retained capacity |
+| 1 | retained slack | temporary used | temporary capacity |
+| 2 | table used | table capacity | order used |
+| 3 | order capacity | temporary slack | table slack |
+| 4 | order slack | zero | zero |
+
+Cumulative counters saturate at `ffffffff` and set error bit 1. Bit 2 marks an
+invalid owner extent or snapshot layout; bit 4 marks retained-capacity accounting
+underflow. The boundary mask uses bits 1, 2 and 4 for acquisition, replay and
+release. Any error makes the accounting unsuitable for numerical conclusions.
+The snapshots describe capture ownership, not total preparation ownership or
+release timing. Existing completion and fresh-run parity evidence remains
+independently required.
+
 ## Event ABI
 
 Each 28-byte record contains:

@@ -19,12 +19,14 @@ import time
 import uuid
 
 from memory_telemetry import decode_memory_telemetry
+from capture_telemetry import decode_capture_telemetry
 
 INSTRUMENTATION_DEFINES = {
     "OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
     "OPFORGE_TOKEN_DETAIL_TELEMETRY", "OPFORGE_PREPARATION_PROGRESS",
     "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+    "OPFORGE_CAPTURE_TELEMETRY",
 }
 PACKAGE_HEADER_BYTES = 262
 PACKAGE_MAGIC = b"BS38"
@@ -105,6 +107,8 @@ def load_bundle(bundle):
                     "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"}
         if not required <= defines or not defines <= INSTRUMENTATION_DEFINES:
             raise ValueError("Unsupported bootstrap instrumentation defines")
+        if "OPFORGE_CAPTURE_TELEMETRY" in defines and "OPFORGE_PREPARATION_PROGRESS" not in defines:
+            raise ValueError("Capture accounting requires preparation progress for its report")
         if manifest.get("telemetry_file") != "memory.bin":
             raise ValueError("Instrumented export must write local memory.bin")
     elif manifest.get("telemetry_file"):
@@ -425,6 +429,18 @@ def add_telemetry(result, root, manifest):
     stages = memory["preparation_stage_seconds"]
     if preparation is not None and stages is not None and abs(stages - preparation) > 0.040001:
         diagnostics.append("exclusive stage clocks disagree with preparation by more than 40 ms")
+    if "OPFORGE_CAPTURE_TELEMETRY" in defines:
+        try:
+            capture = decode_capture_telemetry((root / "assembly.stdout").read_text())
+            summary = capture["capture_summary"]
+            if summary is None:
+                raise ValueError("missing capture ownership summary")
+            if result["assembly_success"] and summary["boundary_mask"] != 7:
+                raise ValueError("successful assembly lacks capture ownership boundaries")
+            result["capture_ownership"] = summary
+        except (OSError, ValueError) as error:
+            result["capture_ownership"] = None
+            diagnostics.append(str(error))
     result.update({"instrumented_memory": memory, "telemetry_completed": not diagnostics,
                    "success": result["success"] and not diagnostics})
 

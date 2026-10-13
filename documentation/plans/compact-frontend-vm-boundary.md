@@ -841,6 +841,18 @@ implementation layers. Shared `.byte`, `.word`, `.org`, and other generic
 directives remain in shared processing; unresolved dot-prefixed names cannot
 fall through to instruction handling.
 
+### Open acquisition classifier gap
+
+An instruction operand matching a structural directive can be mistaken for a
+labeled directive while acquiring an unexpanded macro body. For example,
+`lea .block,a0` inside a macro with formal `block` opens an extra acquisition
+scope even when that body is disabled; file completion then rejects. The Rust
+macro control is valid. The capture telemetry wrapper uses formal `arena` to
+avoid this case, with identical expanded instructions. This is a compatibility
+correction in that wrapper, not general parity for the source pattern. A later
+shared-language repair must classify the complete statement head through shared
+grammar rather than introducing CPU mnemonic tests in native acquisition.
+
 ### Native proof boundary
 
 The maintained proof contract is [native Rust

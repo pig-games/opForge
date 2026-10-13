@@ -49,6 +49,7 @@
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
 	.include "binding_telemetry.i"
+	.include "capture_telemetry.i"
 HEADER_BYTES = package.HEADER_BYTES
 IO_BYTES = 4096
 INCLUDE_DEPTH = 8
@@ -182,6 +183,7 @@ execute	.block
 	lea MetadataConfig, a0
 	jsr metadata.clear
 	movea.l (sp)+, a0
+	.CAPTURE_CLEAR
 	.MEMORY_COUNTER_CLEAR output_spans.Events
 	.MEMORY_COUNTER_CLEAR activation.Selections
 	.MEMORY_COUNTER_CLEAR activation.Roots
@@ -377,6 +379,7 @@ freeBlocks
 	.MEMORY_PHASE #3
 	move.l DosBase, d0
 	beq.w done
+	.CAPTURE_REPORT DosBase
 	.MEMORY_SAVE DosBase
 	movea.l d0, a1
 	movea.l 4.w, a6

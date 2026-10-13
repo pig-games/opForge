@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_frontend
 	.cpu 68020
 	.include "memory_telemetry.i"
+	.include "capture_telemetry.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_source as writer
@@ -806,6 +807,7 @@ done
 ; A0=owned capture input,A1=disjoint scratch destination,D0=bytes.
 ; D0/A0/A1 scratch; CCR unspecified. Copy exactly D0 bytes, including tails.
 copyCaptureBytes	.block
+	.CAPTURE_COPY d0
 	cmpi.l #4, d0
 	blo.w tail
 longs

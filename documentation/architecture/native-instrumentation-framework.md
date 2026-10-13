@@ -470,15 +470,20 @@ independently required.
 ## Sampled native routine hotspots
 
 `debug/hotspot_telemetry.i` owns the reusable `HOTSPOT_CLEAR`,
-`HOTSPOT_ENTER slot`, `HOTSPOT_LEAVE slot` and `HOTSPOT_REPORT dosbase` macros.
-The first three require `OPFORGE_DEBUG_CONTRACTS`, `OPFORGE_MEMORY_TELEMETRY`
+`HOTSPOT_ENTER slot`, `HOTSPOT_LEAVE slot`, measured `HOTSPOT_CALL slot,target` /
+`HOTSPOT_BSR slot,target`, exact `HOTSPOT_COUNT counterID,amount` and
+`HOTSPOT_REPORT dosbase` macros.
+The observer operations require `OPFORGE_DEBUG_CONTRACTS`, `OPFORGE_MEMORY_TELEMETRY`
 and `OPFORGE_HOTSPOT_TELEMETRY`; reporting also requires
 `OPFORGE_PREPARATION_PROGRESS`. Missing a gate emits no call-site instructions,
 observer import, code or storage. Slot constants remain available outside gates.
-All macros and observer APIs preserve D0–D7, A0–A6, CCR and stack depth.
+Passive counter/timing macros and observer APIs preserve D0–D7, A0–A6,
+CCR and stack depth. Measured-call wrappers forward the callee's result
+registers and flags.
 Slot arguments are operands, for example `#HOTSPOT_NAME_BIND`.
 
-The observer has 1,244 bytes of fixed static storage: 16 counter/timing rows,
+The observer has 1,756 bytes of fixed static storage: 32 counter/timing rows,
+16 exact work counters,
 a bounded 32-frame nesting stack and metadata. It allocates nothing and emits
 only one terminal report. `memory_profile.readClock` is a separately gated
 bridge to its already-open timer: A0 receives the high/low E-clock timestamp,
@@ -524,13 +529,72 @@ preparation stages. A routine with no own sample has no time estimate.
 | 13 | `binary_frontend.bindCapturedPlan` |
 | 14 | `binary_frontend.tokenizeLine` |
 | 15 | `binary_scopes.lookup` |
+| 16 | `processRecord` source-control callback |
+| 17 | Declaration normalization |
+| 18 | Conditional processing |
+| 19 | Metadata checks (including deferred validation) |
+| 20 | Configuration statement binding |
+| 21 | Operand-role binding |
+| 22 | Scope processing |
+| 23 | Configuration value capture |
+| 24 | File-effect processing |
+| 25 | Data preparation |
+| 26 | Expression preparation (ordinary or unfolded) |
+| 27 | Prepared-record copy |
+| 28 | Graph updates |
+| 29 | Scope count publication |
+| 30 | Lookup name hashing |
+| 31 | Lookup bucket-chain traversal, including name comparisons |
 
 Terminal progress uses decimal phases 500 (schema 1, error bits, period),
 501 (E-clock frequency, maximum depth, active depth) and 502 (capacity, seed,
 stopped state). For slot `i`, phases `512+3*i` through `514+3*i` contain
 `id/calls/completed-own-samples`, `completed-timing-windows/inclusive-high/low`
-and `exclusive-high/low/reserved-zero`. There are exactly 51 rows. MEMD remains
+and `exclusive-high/low/reserved-zero`. Work counter `i` uses phase `608+i`, with `id/value/reserved-zero`.
+There are exactly 115 rows. MEMD remains
 2,280 bytes; capture accounting is unchanged.
+
+Exact counters do not read the clock or call an observer routine. Updates
+preserve CCR and D0, saturate on overflow and stop observation on the same
+arithmetic-error bit. Counter identities must be compile-time indices in `0..15`, **without**
+`#`; the amount is a long source operand. For example:
+
+```asm
+.HOTSPOT_COUNT HOTSPOT_LOOKUP_HASH_BYTES, d6
+.HOTSPOT_COUNT_IF_ZERO capture.Record.Count(a4), HOTSPOT_REPLAY_EMPTY_RECORDS, #1
+```
+
+Predicate macros own their conditional gates and comparisons. `IF_EQ` uses a
+long immediate comparison, `IF_EQ_BYTE` a byte immediate comparison, and
+`IF_NE_WORD` reserves D1 internally: its expected/amount operands must not use
+D1. Operands must not depend on SP because preservation uses the stack. The
+measured-call wrappers emit precisely the original call when disabled and return
+the callee's result registers and CCR when enabled; callers keep their ordinary
+status branch immediately after the wrapper.
+
+| Counter | Observable work |
+|---|---|
+| `CAPTURE_EMPTY_RECORDS` | Retained physical captures with zero TKVM tokens |
+| `CAPTURE_EMPTY_BYTES` | Their complete aligned encoded record bytes, including headers/plans/padding |
+| `REPLAY_EMPTY_RECORDS` | Resolved zero-token captures visited by replay |
+| `PROCESS_RECORDS` | All `processRecord` entries, including expanded records |
+| `PROCESS_EMPTY_INPUTS` | Header-only inputs reaching ordinary declaration processing (excludes early source-control consumption) |
+| `PROCESS_EMPTY_OUTPUTS` | Header-only outputs reaching normal successful publication |
+| `SOURCE_CONSUMED` | Successful source-control callbacks consuming a record |
+| `CONDITION_CONSUMED` | Conditional processing consuming a record without a published label |
+| `LOOKUP_HASH_BYTES` | Input-name bytes hashed |
+| `LOOKUP_CHAIN_PROBES` | Entries visited in bucket chains |
+| `LOOKUP_NAMESPACE_REJECTS` | Entries rejected before length/name comparison |
+| `LOOKUP_LENGTH_REJECTS` | Namespace-compatible entries rejected by length |
+| `LOOKUP_NAME_COMPARES` | Namespace/length-compatible name comparisons started |
+| `LOOKUP_COMPARE_BYTES` | Byte pairs compared, including a mismatch pair |
+| `LOOKUP_HITS`, `LOOKUP_MISSES` | Lookups finishing with a match or exhausted chain |
+
+An empty representation is a pruning **candidate**, not proof of no side effects.
+Conditional, scope, module and macro controls may emit nothing yet change state;
+these counters do not authorize discarding them. No record handling changes in
+this measurement slice. Per-byte comparison counters and additional wrappers
+add observer work; compare enabled durations with the identical light baseline.
 
 Errors stop only the observer, leaving production control flow intact:
 invalid slot 1, stack overflow 2, mismatched leave 4, unavailable clock 8,

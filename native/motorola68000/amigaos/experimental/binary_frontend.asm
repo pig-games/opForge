@@ -649,6 +649,7 @@ replayLine	.block
 	jsr capture.resolve
 	bne.w bad
 	movea.l a1, a4
+	.HOTSPOT_COUNT_IF_ZERO capture.Record.Count(a4), HOTSPOT_REPLAY_EMPTY_RECORDS, #1
 	move.l capture.Record.LexemeBytes(a4), d3
 	cmpi.l #LEXEME_BYTES, d3
 	bhi.w bad
@@ -2665,6 +2666,7 @@ sourceSuspended
 ; records. This routine does not tokenize source or advance the physical line.
 processRecord	.block
 	.HOTSPOT_ENTER #HOTSPOT_RECORD_PROCESS
+	.HOTSPOT_COUNT HOTSPOT_PROCESS_RECORDS, #1
 	clr.l Frame.Used(a5)
 	; Source-control publications need the same current-module ownership as
 	; ordinary records before they can return through the consumed path.
@@ -2681,12 +2683,13 @@ sourceGraphReady
 	movea.l d0, a2
 	movea.l a5, a0
 	movea.l Frame.Output(a5), a1
-	jsr (a2)
+	.HOTSPOT_CALL #HOTSPOT_SOURCE_CONTROL, (a2)
 	bne.w failed
 	tst.l d1
 	beq.w sourceControlReady
+	.HOTSPOT_COUNT HOTSPOT_SOURCE_CONSUMED, #1
 	lea SCOPE_STATE(a6), a0
-	jsr scopes.count
+	.HOTSPOT_CALL #HOTSPOT_SCOPE_COUNT, scopes.count
 	move.l d0, Frame.NameCount(a5)
 	moveq #0, d0
 	.HOTSPOT_LEAVE #HOTSPOT_RECORD_PROCESS
@@ -2694,11 +2697,12 @@ sourceGraphReady
 sourceControlReady
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DECLARATION
 	movea.l Frame.Output(a5), a0
+	.HOTSPOT_COUNT_IF_EQ_BYTE writer.RecordHeader.Length(a0), #writer.RECORD_HEADER_BYTES-1, HOTSPOT_PROCESS_EMPTY_INPUTS, #1
 	; Scope-private macro records are not portable declaration requests.
 	btst #7, 1(a0)
 	bne.w declarationReady
 	movea.l Frame.Package(a5), a1
-	jsr declaration.normalize
+	.HOTSPOT_CALL #HOTSPOT_DECLARATION, declaration.normalize
 	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w failed
 declarationReady
@@ -2714,7 +2718,7 @@ declarationReady
 	beq.w sourceGuardMode
 	clr.w conditionals.State.Materializing(a2)
 sourceGuardMode
-	jsr conditionals.line
+	.HOTSPOT_CALL #HOTSPOT_CONDITIONAL, conditionals.line
 	.MEMORY_DETAIL_END #2
 	bne.w failed
 	tst.l d1
@@ -2730,6 +2734,7 @@ sourceGuardMode
 	clr.b 1(a0)
 	bra.w activeLine
 consumedWithoutLabel
+	.HOTSPOT_COUNT HOTSPOT_CONDITION_CONSUMED, #1
 	move.b #3, (a0)
 	clr.b 1(a0)
 	bra.w conditionReady
@@ -2750,7 +2755,7 @@ activeLine
 	lea SCOPE_STATE(a6), a2
 	suba.l a3, a3
 	moveq #0, d1
-	jsr metadata.check
+	.HOTSPOT_CALL #HOTSPOT_METADATA, metadata.check
 	bne.w failed
 activePreparation
 	movea.l Frame.Output(a5), a0
@@ -2763,7 +2768,7 @@ activePreparation
 	movea.l Frame.Metadata(a5), a3
 	moveq #0, d1
 	move.w Frame.RootFile(a5), d1
-	jsr metadata.check
+	.HOTSPOT_CALL #HOTSPOT_METADATA, metadata.check
 	bne.w failed
 	tst.l d1
 	bne.w conditionReady
@@ -2776,14 +2781,14 @@ bindLine
 	lea SCOPE_STATE(a6), a1
 	move.l Frame.Capacity(a5), d0
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONFIGURATION
-	jsr scopes.configurationStatement
+	.HOTSPOT_CALL #HOTSPOT_CONFIGURATION, scopes.configurationStatement
 	bne.w failed
 	movea.l Frame.Output(a5), a0
 	movea.l Frame.Package(a5), a1
 	lea SCOPE_STATE(a6), a2
 	.MEMORY_DETAIL_BEGIN #2
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_OPERAND_ROLES
-	jsr operand_binding.line
+	.HOTSPOT_CALL #HOTSPOT_OPERAND_BIND, operand_binding.line
 	.MEMORY_DETAIL_END #2
 	bne.w failed
 scopeLine
@@ -2792,7 +2797,7 @@ scopeLine
 	lea SCOPE_STATE(a6), a1
 	move.l Frame.Capacity(a5), d0
 	.MEMORY_DETAIL_BEGIN #2
-	jsr scopes.line
+	.HOTSPOT_CALL #HOTSPOT_SCOPE_LINE, scopes.line
 	.MEMORY_DETAIL_END #2
 	bne.w failed
 	movea.l Frame.Output(a5), a0
@@ -2815,14 +2820,14 @@ scopeLine
 captureValue
 	lea SCOPE_STATE(a6), a1
 	.MEMORY_DETAIL_BEGIN #2
-	jsr imports.captureValue
+	.HOTSPOT_CALL #HOTSPOT_VALUE_CAPTURE, imports.captureValue
 	.MEMORY_DETAIL_END #2
 	bne.w failed
 scalarCaptured
 conditionReady
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FILE
 	.MEMORY_DETAIL_BEGIN #3
-	bsr.w fileLine
+	.HOTSPOT_BSR #HOTSPOT_FILE_LINE, fileLine
 	bne.w failed
 	tst.l d1
 	bne.w graphLineDone  ; callback published its numeric data and graph bytes
@@ -2834,7 +2839,7 @@ conditionReady
 	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
 	cmp.w Frame.SourceIteration(a5), d0
 	bne.w dataPrepared
-	jsr data_prepare.check
+	.HOTSPOT_CALL #HOTSPOT_DATA_PREPARE, data_prepare.check
 	bne.w failed
 dataPrepared
 	movea.l Frame.Output(a5), a0
@@ -2848,16 +2853,17 @@ dataPrepared
 	sub.w Frame.SourceIteration(a5), d0
 	or.w conditionals.State.Deferred(a4), d0
 	beq.w prepareOrdinary
-	jsr prepare.lineUnfolded
+	.HOTSPOT_CALL #HOTSPOT_EXPRESSION_PREPARE, prepare.lineUnfolded
 	bra.w preparedExpression
 prepareOrdinary
-	jsr prepare.line
+	.HOTSPOT_CALL #HOTSPOT_EXPRESSION_PREPARE, prepare.line
 preparedExpression
 	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w failed
 	.MEMORY_STAGE #0
 	cmp.l Frame.Capacity(a5), d1
 	bhi.w failed
+	.HOTSPOT_ENTER #HOTSPOT_PREPARED_COPY
 	lea PREPARED_LINE(a6), a0
 	movea.l Frame.Output(a5), a1
 	move.l d1, d0
@@ -2865,6 +2871,7 @@ copyPrepared
 	move.b (a0)+, (a1)+
 	subq.l #1, d0
 	bne.w copyPrepared
+	.HOTSPOT_LEAVE #HOTSPOT_PREPARED_COPY
 	move.l d1, Frame.Used(a5)
 	movea.l Frame.Graph(a5), a0
 	move.l a0, d0
@@ -2874,11 +2881,12 @@ copyPrepared
 	movea.l Frame.Scratch(a5), a1
 	moveq #0, d2
 	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a1), d2
-	jsr graph.line
+	.HOTSPOT_CALL #HOTSPOT_GRAPH_LINE, graph.line
 	bne.w failed
 graphLineDone
+	.HOTSPOT_COUNT_IF_EQ Frame.Used(a5), #writer.RECORD_HEADER_BYTES, HOTSPOT_PROCESS_EMPTY_OUTPUTS, #1
 	lea SCOPE_STATE(a6), a0
-	jsr scopes.count
+	.HOTSPOT_CALL #HOTSPOT_SCOPE_COUNT, scopes.count
 	move.l d0, Frame.NameCount(a5)
 	moveq #0, d0
 	bra.w done

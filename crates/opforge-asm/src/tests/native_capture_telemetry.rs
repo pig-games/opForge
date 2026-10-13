@@ -312,7 +312,7 @@ fn capture_rows(stdout: &str) -> std::collections::BTreeMap<u32, [u32; 3]> {
     rows
 }
 
-fn assert_capture_rows(stdout: &str) {
+fn assert_capture_rows(stdout: &str) -> std::collections::BTreeMap<u32, [u32; 3]> {
     let rows = capture_rows(stdout);
     assert_eq!(
         rows[&400],
@@ -380,6 +380,58 @@ fn assert_capture_rows(stdout: &str) {
     for phase in 432..=436 {
         assert_eq!(rows[&phase], [0; 3], "released ownership at phase {phase}");
     }
+    rows
+}
+
+fn assert_hotspot_counter_relationships(
+    profile: &serde_json::Value,
+    capture: &std::collections::BTreeMap<u32, [u32; 3]>,
+) {
+    let counter = |name: &str| {
+        profile["work_counters"][name]
+            .as_u64()
+            .unwrap_or_else(|| panic!("missing hotspot work counter {name}"))
+    };
+    let calls = |slot: usize| {
+        profile["hotspots"][slot]["calls"]
+            .as_u64()
+            .unwrap_or_else(|| panic!("missing hotspot call count for slot {slot}"))
+    };
+    let process_calls = calls(12);
+    let lookup_calls = calls(15);
+    let capture_empty_records = counter("CAPTURE_EMPTY_RECORDS");
+    let lookup_namespace_rejects = counter("LOOKUP_NAMESPACE_REJECTS");
+    let lookup_length_rejects = counter("LOOKUP_LENGTH_REJECTS");
+    let lookup_name_compares = counter("LOOKUP_NAME_COMPARES");
+    let lookup_compare_bytes = counter("LOOKUP_COMPARE_BYTES");
+    let lookup_hash_bytes = counter("LOOKUP_HASH_BYTES");
+    let lookup_chain_probes = counter("LOOKUP_CHAIN_PROBES");
+
+    assert_eq!(counter("PROCESS_RECORDS"), process_calls);
+    assert_eq!(
+        counter("LOOKUP_HITS") + counter("LOOKUP_MISSES"),
+        lookup_calls
+    );
+    assert_eq!(calls(30), lookup_calls);
+    assert_eq!(calls(31), lookup_calls);
+    assert_eq!(
+        lookup_chain_probes,
+        lookup_namespace_rejects + lookup_length_rejects + lookup_name_compares
+    );
+    assert!(lookup_compare_bytes >= lookup_name_compares);
+    assert!(lookup_hash_bytes >= lookup_calls);
+    assert!(
+        capture_empty_records > 0,
+        "fixture should capture blank/comment records"
+    );
+    assert!(counter("CAPTURE_EMPTY_BYTES") >= capture_empty_records * 64);
+    assert!(counter("CAPTURE_EMPTY_BYTES") <= u64::from(capture[&404][1]));
+    assert!(capture_empty_records <= u64::from(capture[&401][0]));
+    assert!(counter("REPLAY_EMPTY_RECORDS") <= calls(5));
+    assert!(counter("PROCESS_EMPTY_INPUTS") <= process_calls);
+    assert!(counter("PROCESS_EMPTY_OUTPUTS") <= process_calls);
+    assert!(counter("SOURCE_CONSUMED") <= calls(16));
+    assert!(counter("CONDITION_CONSUMED") <= calls(18));
 }
 
 #[test]
@@ -426,7 +478,7 @@ fn native_capture_telemetry_compact_cli_fs_uae() {
     )
     .expect("fresh capture CLI exact-artifact proof");
     if reference_image.is_none() || hotspots {
-        assert_capture_rows(&run.stdout);
+        let capture = assert_capture_rows(&run.stdout);
         let memory = super::native_package_loading_performance::memory(
             &run.captured_artifacts[&PathBuf::from("Work/memory.bin")],
         );
@@ -448,6 +500,7 @@ fn native_capture_telemetry_compact_cli_fs_uae() {
             let profile = &value["hotspot_summary"];
             assert!(profile.is_object(), "hotspot observer must report");
             assert_eq!(profile["eclock_hz"], memory["eclock_hz"]);
+            assert_hotspot_counter_relationships(profile, &capture);
             eprintln!("HOTSPOT_NATIVE_PROFILE {profile}");
         }
     }

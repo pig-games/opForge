@@ -491,13 +491,13 @@ These counts are identical across all three modes. The increase from the earlier
 195-input measurement is a changed source workload/capacity frontier; it is not
 an increase caused by enabling the hotspot observer.
 
-Recommended next slice: split the residual `processRecord` cost across source
+The active drill-down slice splits the residual `processRecord` cost across source
 control, declaration/conditional/metadata handling, operand/scope handling,
 data/expression preparation, publication and graph work. Inspect replay/packed
 writing alongside it. Measure scope lookup hashing, chain traversal and string
 comparison before choosing a hash-table change: current code uses 256 buckets
 and folds lexical bytes during hashing/comparison. Also quantify blank/comment
-and other semantically inert record populations before proposing capture pruning
+and header-only record populations before proposing capture pruning
 or packing. Eliminating redundant replay/binding work could improve both time
 and storage, but the present profile does not prove a safe elimination rule.
 Preserve shared VM ownership, contextual rebinding, iterator/macro hygiene,
@@ -522,15 +522,16 @@ memory target.
 Run from macOS Terminal:
 
 ```sh
-sh /tmp/opforge-a6000-hotspots-20261013/run.sh
+sh /tmp/opforge-a6000-drilldown-20261013/run.sh
 ```
 
 The [launcher](../../scripts/performance/run_a6000_hotspots.py) validates every
-export before connecting and runs the light baseline followed by both sample
-settings on `Development:`. It requires exact equality of all non-bootstrap
+export before connecting, discovers the current address with `ash -l`, and runs
+the light baseline followed by both sample settings on `Development:`. A unique
+discovered IPv4 address is required; `--host ADDRESS` is an explicit override. It requires exact equality of all non-bootstrap
 input bytes, command and Rust oracle, with matching base instrumentation flags.
 Each run has its own case identity, fresh challenge, explicit exit and complete
-output proof. Each profile additionally needs all 51 valid rows, matching
+output proof. The current expanded profile additionally needs all 115 valid rows, matching
 period/seed and E-clock frequency. Incremental `hotspots.json` retains completed
 results if a later transport/run fails. Completed failures do not supply timing
 claims. Transfers are outside guest durations (one-second resolution).
@@ -541,6 +542,59 @@ release and 134-second instrumented cases have slightly different source;
 neither isolates this observer's overhead. Compare both sample rankings and
 sample counts before treating scaled timings as actionable. Full-workload
 memory ownership and sampled costs will guide the next optimization together.
+
+The new drill-down extends the observer to 32 timing boundaries and 16 exact
+work counters. It separately measures `processRecord` handlers and lookup
+hashing/chain traversal. Exact lookup work counts cover probes, rejected
+namespaces/lengths, eligible name comparisons and compared byte pairs. Inert
+candidate counts distinguish retained zero-token captures (with their encoded
+bytes), replay visits, header-only ordinary inputs/outputs and consumed controls.
+No records are discarded, and header-only controls are not declared side-effect-free.
+The [instrumentation contract](../architecture/native-instrumentation-framework.md#sampled-native-routine-hotspots)
+defines every boundary and counter.
+
+Validation: the actual native observer passed three period/seed preservation,
+sampling, saturation/reset and error probes. A fresh real-native multi-file
+macro/include case matched its 29-byte Rust oracle and passed all 115 decoded
+rows plus exact lookup/capture accounting relationships. That reduced case
+retained 18 zero-token records occupying 1,152 encoded bytes, replayed 18 such
+records and processed 348 ordinary/expanded records. Its 529 lookups hashed
+6,957 bytes and visited 429 entries: 2 namespace rejects, 127 length rejects and
+300 name comparisons (3,721 byte pairs), finishing with 297 hits and 232 misses.
+These are component-validation facts, not full self-host workload estimates.
+
+An unchanged 11,592-byte active-include/macro control passed fresh exact native
+output in all three modes on the same `68020-10m` emulator profile. The light
+baseline took 43.311 s; drill-down128 took 48.687 s (+5.376 s, +12.41%) and
+256 took 48.665 s (+5.354 s, +12.36%), one run each. Both expanded profiles
+passed strict decoding and exact lookup count reconciliation. This is added
+**observer overhead**, not a release regression or an isolated sampling-only
+cost: per-byte exact counters run at both densities. Heap peak stayed 1,240,712
+bytes, allocated/freed 3,145,864 each, packed source 27,022 and cleanup zero.
+Report: `/tmp/opforge-drill-overhead-control-20261013.json`; decoded verification:
+`/tmp/opforge-drill-control-verified-20261013.json`. Full A6000 observer overhead
+still needs the new identical-input hardware runs below.
+
+The A6000 cases freeze the same 196 input files (2,595,817 bytes), package,
+command and fresh 706,916-byte release Rust oracle, source digest
+`fnv1a64:7eec9ace461f7b6b`. The light-baseline bootstrap and complete release
+oracle are byte-for-byte identical to the preceding exports; source changes
+add probe definitions/sites, so old and new full source-run timings are not an
+unchanged-input production comparison. Baseline Hunk is 719,628 bytes / 755,532
+linked bytes; both expanded profiles are 723,992 / 760,968. Fixed observer state
+increases by 512 to 1,756 bytes, with no observer heap allocation. Release code,
+data and BSS are unchanged.
+
+The baseline and profiles (period128/seed0 and period256/seed37) live at
+`/tmp/opforge-a6000-drill-baseline-20261013`,
+`/tmp/opforge-a6000-drill-128-20261013` and
+`/tmp/opforge-a6000-drill-256-20261013`. The source snapshot remains at
+`/tmp/opforge-drill-source-20261013` so later repository edits do not change their
+inputs. **These new full-self-host exports remain host-validated hardware
+candidates; their exact full configurations have not yet executed natively.**
+The earlier three successful A6000 configurations above remain distinct proof.
+Per-byte counters and extra call wrappers add observer work; use the new light
+baseline and sample sensitivity runs before selecting an optimization.
 
 Wide bulk copying remains a possible small candidate, followed by capacity policy and
 a compact capture-format experiment. Growth tightening must account for extra

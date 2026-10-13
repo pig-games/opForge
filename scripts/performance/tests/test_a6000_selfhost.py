@@ -1,3 +1,4 @@
+import argparse
 import importlib.util
 import json
 from pathlib import Path
@@ -5,6 +6,7 @@ import tempfile
 import unittest
 import struct
 import sys
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
@@ -18,6 +20,53 @@ from test_hotspot_telemetry import profile_rows, profile_text
 
 
 class HardwareCompletionTests(unittest.TestCase):
+    def test_host_discovery_accepts_named_ipv4_and_ignores_banner(self):
+        output = "ApolloExplorer Hosts found:\n\u00a0 V4-A6000 (UniCorn) 192.168.2.4\n"
+        with mock.patch.object(runner.subprocess, "run", return_value=mock.Mock(stdout=output)) as run:
+            self.assertEqual(runner.resolve_host(None, "/usr/bin/ash"),
+                             ("V4-A6000 (UniCorn)", "192.168.2.4"))
+        run.assert_called_once_with(["/usr/bin/ash", "-l"], check=True,
+                                    capture_output=True, text=True, timeout=30)
+
+    def test_host_discovery_rejects_missing_or_ambiguous_hosts_with_override_guidance(self):
+        for output, message in (
+            ("ApolloExplorer Hosts found:\n", "No A6000 hosts"),
+            ("First 192.168.2.4\nSecond 192.168.2.5\n", "Ambiguous A6000 hosts"),
+        ):
+            with self.subTest(output=output), self.assertRaisesRegex(ValueError, message) as caught:
+                runner.parse_host_discovery(output)
+            self.assertIn("--host", str(caught.exception))
+
+    def test_host_discovery_deduplicates_aliases_for_same_ipv4(self):
+        output = "First Name 192.168.2.4\nAlias (Room 2) 192.168.2.4\n"
+        self.assertEqual(runner.parse_host_discovery(output), ("First Name", "192.168.2.4"))
+
+    def test_host_discovery_rejects_invalid_ipv4(self):
+        with self.assertRaisesRegex(ValueError, "Invalid IPv4"):
+            runner.parse_host_discovery("V4-A6000 (UniCorn) 192.168.2.999\n")
+
+    def test_explicit_host_bypasses_discovery_and_is_validated(self):
+        with mock.patch.object(runner.subprocess, "run", side_effect=AssertionError("discovery ran")):
+            self.assertEqual(runner.resolve_host("192.168.2.4", "/usr/bin/ash"),
+                             ("192.168.2.4", "192.168.2.4"))
+            self.assertEqual(runner.resolve_host("a6000.local", "/usr/bin/ash"),
+                             ("a6000.local", "a6000.local"))
+        self.assertFalse(runner.valid_host("192.168.2.999"))
+
+    def test_dry_run_does_not_look_up_tools_or_discover_host(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bundle = Path(directory) / "bundle"
+            bundle.mkdir()
+            self.bundle(bundle, False)
+            manifest, files, oracle, case_digest = runner.load_bundle(bundle)
+            manifest["over_classic_limit_components"] = []
+            args = argparse.Namespace(dry_run=True, host=None, volume="Development")
+            with (mock.patch.object(runner.shutil, "which", side_effect=AssertionError("tool lookup ran")),
+                  mock.patch.object(runner.subprocess, "run", side_effect=AssertionError("network ran"))):
+                result, _ = runner.run_case(args, bundle, manifest, files, oracle, case_digest)
+            self.assertIsNone(result)
+            self.assertIsNone(args.host)
+
     def test_hotspot_numeric_parameters_are_narrow_and_require_gate(self):
         flag = "OPFORGE_HOTSPOT_TELEMETRY"
         for period in (64, 128, 256):

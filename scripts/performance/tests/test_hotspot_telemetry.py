@@ -3,16 +3,19 @@ from pathlib import Path
 import unittest
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
-from hotspot_telemetry import decode_hotspot_telemetry, expected_samples, HotspotTelemetryError, LABELS
+from hotspot_telemetry import (decode_hotspot_telemetry, expected_samples,
+                               HotspotTelemetryError, LABELS, WORK_COUNTERS)
 
 
 def profile_rows(period=64, seed=0, calls=128, frequency=1000):
     rows = {500: (1, 0, period), 501: (frequency, 3, 0), 502: (32, seed, 0)}
-    for index in range(16):
+    for index in range(32):
         samples = expected_samples(calls, index, period, seed)
         rows[512 + 3 * index] = (index, calls, samples)
         rows[513 + 3 * index] = (samples, 0, 100 * samples)
         rows[514 + 3 * index] = (0, 40 * samples, 0)
+    for index in range(16):
+        rows[608 + index] = (index, index * 11, 0)
     return rows
 
 
@@ -28,7 +31,7 @@ class HotspotTelemetryTests(unittest.TestCase):
     def test_no_rows_and_partial_and_duplicate(self):
         self.assertIsNone(decode_hotspot_telemetry('assembly done')['hotspot_summary'])
         rows = profile_rows()
-        del rows[559]
+        del rows[623]
         with self.assertRaisesRegex(HotspotTelemetryError, 'incomplete'):
             self.decode(rows)
         text = profile_text(profile_rows())
@@ -38,7 +41,7 @@ class HotspotTelemetryTests(unittest.TestCase):
     def test_sampling_phase_matches_literal_selection_for_all_periods(self):
         for period in (64, 128, 256):
             for seed in (0, 1, 0xffffffff):
-                for index in range(16):
+                for index in range(32):
                     for calls in (0, 1, 63, 64, 65, 127, 500):
                         literal = sum(((call - 1 + 17 * index + seed) & (period - 1)) == 0
                                       for call in range(1, calls + 1))
@@ -53,6 +56,7 @@ class HotspotTelemetryTests(unittest.TestCase):
             (512, (1, 128, 2)), (512, (0, 128, 1)),
             (513, (1, 0, 200)), (513, (129, 0, 200)),
             (514, (0, 201, 0)), (514, (0, 80, 1)),
+            (608, (1, 10, 0)), (609, (2, 10, 0)), (623, (15, 10, 1)),
         ]
         for phase, values in invalid:
             with self.subTest(phase=phase, values=values):
@@ -60,6 +64,20 @@ class HotspotTelemetryTests(unittest.TestCase):
                 rows[phase] = values
                 with self.assertRaises(HotspotTelemetryError):
                     self.decode(rows)
+
+    def test_latest_protocol_requires_all_slots_and_exposes_work_counters(self):
+        rows = profile_rows()
+        summary = self.decode(rows)
+        self.assertEqual(len(summary['hotspots']), 32)
+        self.assertEqual(summary['hotspots'][-1]['label'], LABELS[-1])
+        self.assertEqual(summary['work_counters'], {
+            label: index * 11 for index, label in enumerate(WORK_COUNTERS)
+        })
+        # A prior 16-slot profile is incomplete under the current protocol.
+        for phase in range(560, 624):
+            rows.pop(phase, None)
+        with self.assertRaisesRegex(HotspotTelemetryError, 'incomplete'):
+            self.decode(rows)
 
     def test_child_only_windows_do_not_become_own_samples_or_ticks(self):
         rows = profile_rows(calls=1, seed=1)

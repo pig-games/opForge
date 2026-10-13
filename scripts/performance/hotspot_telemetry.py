@@ -25,12 +25,24 @@ LABELS = (
     "PACKED_WRITE", "NAME_BIND", "SCOPE_BIND", "IMPORT_RESOLVE",
     "EXPRESSION_COMPILE", "RECORD_PROCESS", "PLAN_BIND", "TOKENIZE",
     "SCOPE_LOOKUP",
+    "SOURCE_CONTROL", "DECLARATION", "CONDITIONAL", "METADATA",
+    "CONFIGURATION", "OPERAND_BIND", "SCOPE_LINE", "VALUE_CAPTURE",
+    "FILE_LINE", "DATA_PREPARE", "EXPRESSION_PREPARE", "PREPARED_COPY",
+    "GRAPH_LINE", "SCOPE_COUNT", "LOOKUP_HASH", "LOOKUP_CHAIN",
+)
+WORK_COUNTERS = (
+    "CAPTURE_EMPTY_RECORDS", "CAPTURE_EMPTY_BYTES", "REPLAY_EMPTY_RECORDS",
+    "PROCESS_EMPTY_INPUTS", "PROCESS_EMPTY_OUTPUTS", "SOURCE_CONSUMED",
+    "CONDITION_CONSUMED", "LOOKUP_HASH_BYTES", "LOOKUP_CHAIN_PROBES",
+    "LOOKUP_NAME_COMPARES", "LOOKUP_COMPARE_BYTES", "LOOKUP_HITS",
+    "LOOKUP_MISSES", "LOOKUP_NAMESPACE_REJECTS", "LOOKUP_LENGTH_REJECTS",
+    "PROCESS_RECORDS",
 )
 _LINE = re.compile(
     r"^progress p=([0-9a-fA-F]{8}) f=([0-9a-fA-F]{8}) "
     r"l=([0-9a-fA-F]{8}) r=([0-9a-fA-F]{8}) m=([0-9a-fA-F]{8})$"
 )
-_PHASES = {500, 501, 502} | set(range(512, 560))
+_PHASES = {500, 501, 502} | set(range(512, 624))
 
 
 def expected_samples(calls: int, hotspot_id: int, period: int, seed: int) -> int:
@@ -102,6 +114,14 @@ def decode_hotspot_telemetry(text: str, *, terminal_complete: bool = True) -> di
             "estimated_total_inclusive_seconds": sample_inclusive * scale if scale is not None else None,
             "estimated_total_exclusive_seconds": sample_exclusive * scale if scale is not None else None,
         })
+    work_counters = {}
+    for counter_id, label in enumerate(WORK_COUNTERS):
+        reported_id, count, reserved = rows[608 + counter_id]
+        if reported_id != counter_id:
+            raise HotspotTelemetryError(f"work counter ID differs at phase 0x{608 + counter_id:x}")
+        if reserved:
+            raise HotspotTelemetryError(f"work counter {label} reserved field must be zero")
+        work_counters[label] = count
     def hottest(field):
         return [row["label"] for row in sorted(
             hotspots, key=lambda row: (-(row[field] or 0), row["id"]))]
@@ -110,6 +130,7 @@ def decode_hotspot_telemetry(text: str, *, terminal_complete: bool = True) -> di
         "eclock_hz": frequency, "stack_capacity": capacity,
         "maximum_depth": max_depth, "active_depth": active_depth, "stopped": stopped,
         "terminal_sample_counts_validated": terminal_complete, "hotspots": hotspots,
+        "work_counters": work_counters,
         "hottest_exclusive": hottest("estimated_total_exclusive_seconds"),
         "hottest_inclusive": hottest("estimated_total_inclusive_seconds"),
         "interpretation": (

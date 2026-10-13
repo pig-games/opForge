@@ -11,8 +11,11 @@ const GATES: [&str; 3] = [
     "OPFORGE_MEMORY_TELEMETRY",
     "OPFORGE_HOTSPOT_TELEMETRY",
 ];
+const PREDICATES: &str = " .HOTSPOT_COUNT_IF_ZERO d0,0,#1\n .HOTSPOT_COUNT_IF_EQ d0,#7,1,#1\n .HOTSPOT_COUNT_IF_EQ_BYTE d0,#7,2,#1\n .HOTSPOT_COUNT_IF_NE_WORD d0,d6,3,#1\n";
+const CALL_SITES: &str = " .HOTSPOT_CALL #0,passive\n .HOTSPOT_BSR #1,passive\n";
+const ORIGINAL_CALLS: &str = " jsr passive\n bsr.w passive\n";
 const SITES: &str =
-    " .HOTSPOT_CLEAR\n .HOTSPOT_ENTER #0\n .HOTSPOT_LEAVE #0\n .HOTSPOT_REPORT a6\n";
+    " .HOTSPOT_CLEAR\n .HOTSPOT_ENTER #0\n .HOTSPOT_LEAVE #0\n .HOTSPOT_COUNT HOTSPOT_LOOKUP_HASH_BYTES,#1\n .HOTSPOT_REPORT a6\n";
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -55,11 +58,11 @@ fn assemble(source: &str, defines: &[String], output: &str) -> Vec<u8> {
 
 fn wrapper(sites: &str, stub: bool) -> String {
     let stub = if stub {
-        ".module debug.amigaos.hotspot_profile\n.cpu 68020\n.pub\n.section code,kind=code\nclear .block\n rts\n.bend\nenter .block\n rts\n.bend\nleave .block\n rts\n.bend\nreport .block\n rts\n.bend\n.endsection\n.endmodule\n"
+        ".module debug.amigaos.hotspot_profile\n.cpu 68020\n.pub\nARITHMETIC_OVERFLOW = 32\n.section code,kind=code\nclear .block\n rts\n.bend\nenter .block\n rts\n.bend\nleave .block\n rts\n.bend\nreport .block\n rts\n.bend\n.endsection\n.section code,kind=code\nErrors .long 0\nStopped .long 0\nCounters .long 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n.endsection\n.endmodule\n"
     } else {
         ""
     };
-    format!(".module test\n.cpu 68020\n.region ram,0,$ffff\n.include \"hotspot_telemetry.i\"\n.section code,kind=code\nstart .block\n moveq #7,d0\n{sites} rts\n.bend\n.endsection\n.place code in ram\n.output \"build/wrapper\",format=bin,sections=code\n.endmodule\n{stub}.end\n")
+    format!(".module test\n.cpu 68020\n.region ram,0,$ffff\n.include \"hotspot_telemetry.i\"\n.section code,kind=code\nstart .block\n moveq #7,d0\n{sites} rts\n.bend\npassive .block\n rts\n.bend\n.endsection\n.place code in ram\n.output \"build/wrapper\",format=bin,sections=code\n.endmodule\n{stub}.end\n")
 }
 
 #[test]
@@ -75,13 +78,14 @@ fn native_hotspot_telemetry_missing_gates_emit_zero_bytes() {
             assemble(
                 &format!(
                     "{}{}\n.end\n",
-                    wrapper(SITES, false).trim_end_matches(".end\n"),
+                    wrapper(&format!("{SITES}{PREDICATES}{CALL_SITES}"), false)
+                        .trim_end_matches(".end\n"),
                     fs::read_to_string(workspace_root().join(OBSERVER)).unwrap()
                 ),
                 &defines,
                 "build/wrapper"
             ),
-            assemble(&wrapper("", false), &defines, "build/wrapper"),
+            assemble(&wrapper(ORIGINAL_CALLS, false), &defines, "build/wrapper"),
             "gate mask {mask} must emit no import or instructions"
         );
     }
@@ -99,7 +103,7 @@ fn native_hotspot_telemetry_missing_gates_emit_zero_bytes() {
 
 #[test]
 fn native_hotspot_telemetry_wrappers_preserve_ccr_before_argument_setup() {
-    let expected = " move.w ccr,-(sp)\n jsr hotspot_profile.clear\n move.w (sp)+,ccr\n move.w ccr,-(sp)\n move.l d0,-(sp)\n move.l #0,d0\n jsr hotspot_profile.enter\n move.l (sp)+,d0\n move.w (sp)+,ccr\n move.w ccr,-(sp)\n move.l d0,-(sp)\n move.l #0,d0\n jsr hotspot_profile.leave\n move.l (sp)+,d0\n move.w (sp)+,ccr\n move.w ccr,-(sp)\n move.l a0,-(sp)\n movea.l a6,a0\n jsr hotspot_profile.report\n movea.l (sp)+,a0\n move.w (sp)+,ccr\n";
+    let expected = " move.w ccr,-(sp)\n jsr hotspot_profile.clear\n move.w (sp)+,ccr\n move.w ccr,-(sp)\n move.l d0,-(sp)\n move.l #0,d0\n jsr hotspot_profile.enter\n move.l (sp)+,d0\n move.w (sp)+,ccr\n move.w ccr,-(sp)\n move.l d0,-(sp)\n move.l #0,d0\n jsr hotspot_profile.leave\n move.l (sp)+,d0\n move.w (sp)+,ccr\n move.w ccr,-(sp)\n move.l d0,-(sp)\n move.l #1,d0\n tst.l hotspot_profile.Stopped\n bne.w count_done\n add.l d0,hotspot_profile.Counters+28\n bcc.w count_done\n move.l #$ffffffff,hotspot_profile.Counters+28\n ori.l #32,hotspot_profile.Errors\n move.l #1,hotspot_profile.Stopped\ncount_done\n move.l (sp)+,d0\n move.w (sp)+,ccr\n move.w ccr,-(sp)\n move.l a0,-(sp)\n movea.l a6,a0\n jsr hotspot_profile.report\n movea.l (sp)+,a0\n move.w (sp)+,ccr\n";
     let mut defines = GATES.map(str::to_string).to_vec();
     defines.push("OPFORGE_PREPARATION_PROGRESS".into());
     assert_eq!(
@@ -116,6 +120,7 @@ struct Probe {
     rows: Vec<[u32; 4]>,
     checks: usize,
     period: u32,
+    counters: [u32; 16],
     seed: u32,
 }
 impl Probe {
@@ -150,6 +155,7 @@ compare_{serial}
     }
     fn clear(&mut self) {
         self.checked(".HOTSPOT_CLEAR", 0);
+        self.counters = [0; 16];
     }
     fn enter(&mut self, slot: u32) {
         self.checked(&format!(".HOTSPOT_ENTER #{slot}"), 31);
@@ -174,7 +180,7 @@ compare_{serial}
         frequency: u32,
         depth: [u32; 2],
         stopped: u32,
-        slots: [Slot; 16],
+        slots: [Slot; 32],
     ) {
         self.checked(".HOTSPOT_REPORT a6", 31);
         self.rows.extend([
@@ -190,6 +196,9 @@ compare_{serial}
                 [514 + 3 * id, 0, exclusive, 0],
             ]);
         }
+        for (id, value) in self.counters.into_iter().enumerate() {
+            self.rows.push([608 + id as u32, id as u32, value, 0]);
+        }
     }
 }
 
@@ -198,6 +207,7 @@ fn probe_source(period: u32, seed: u32) -> String {
         code: String::new(),
         rows: Vec::new(),
         checks: 0,
+        counters: [0; 16],
         period,
         seed,
     };
@@ -209,13 +219,13 @@ fn probe_source(period: u32, seed: u32) -> String {
         p.warm(0, warm0);
         p.checked(".HOTSPOT_ENTER #0", flags);
         p.checked(".HOTSPOT_LEAVE #0", flags);
-        let mut slots = [[0; 5]; 16];
+        let mut slots = [[0; 5]; 32];
         slots[0] = [warm0 + 1, 1, 1, 1000, 1000];
         p.report(0, 1000, [1, 0], 0, slots);
         // Report preservation with CCR=0 as well as the report method's 31.
         if flags == 0 {
             p.checked(".HOTSPOT_REPORT a6", 0);
-            let rows = p.rows[p.rows.len() - 51..].to_vec();
+            let rows = p.rows[p.rows.len() - 115..].to_vec();
             p.rows.extend(rows);
         }
     }
@@ -229,7 +239,7 @@ fn probe_source(period: u32, seed: u32) -> String {
     p.leave(2);
     p.leave(1);
     p.leave(0);
-    let mut slots = [[0; 5]; 16];
+    let mut slots = [[0; 5]; 32];
     slots[0] = [warm0 + 1, 1, 1, 3000, 2000];
     slots[1] = [1, 0, 1, 0, 0];
     slots[2] = [1, 0, 0, 0, 0];
@@ -240,7 +250,7 @@ fn probe_source(period: u32, seed: u32) -> String {
     p.enter(0);
     p.leave(0);
     p.leave(0);
-    let mut slots = [[0; 5]; 16];
+    let mut slots = [[0; 5]; 32];
     slots[0] = [warm0 + 2, 1, 2, 3000, 2000];
     p.report(0, 1000, [2, 0], 0, slots);
     // A child selected by its own phase remains sampled under an unsampled parent.
@@ -251,7 +261,7 @@ fn probe_source(period: u32, seed: u32) -> String {
     p.enter(2);
     p.leave(2);
     p.leave(3);
-    let mut slots = [[0; 5]; 16];
+    let mut slots = [[0; 5]; 32];
     slots[2] = [warm2 + 1, 1, 1, 1000, 1000];
     slots[3] = [1, 0, 0, 0, 0];
     p.report(0, 1000, [2, 0], 0, slots);
@@ -259,8 +269,8 @@ fn probe_source(period: u32, seed: u32) -> String {
     // oracle checks phase offsets independently of observer implementation.
     p.clear();
     let calls = 2 * period + 19;
-    let mut slots = [[0; 5]; 16];
-    for id in 0..16u32 {
+    let mut slots = [[0; 5]; 32];
+    for id in 0..32u32 {
         p.warm(id, calls);
         let samples = (0..calls)
             .filter(|index| (index + 17 * id + seed) & (period - 1) == 0)
@@ -275,7 +285,7 @@ fn probe_source(period: u32, seed: u32) -> String {
         .push_str(" clr.l bridge.Clock\n move.l #$fffff830,bridge.Clock+4\n");
     p.enter(0);
     p.leave(0);
-    let mut slots = [[0; 5]; 16];
+    let mut slots = [[0; 5]; 32];
     slots[0] = [warm0 + 1, 1, 1, 1000, 1000];
     p.report(0, 1000, [1, 0], 0, slots);
     // Failure freezes this observer; later production macro calls still return
@@ -286,7 +296,7 @@ fn probe_source(period: u32, seed: u32) -> String {
     p.leave(1);
     p.enter(2);
     p.leave(0);
-    let mut slots = [[0; 5]; 16];
+    let mut slots = [[0; 5]; 32];
     slots[0] = [warm0 + 1, 0, 0, 0, 0];
     p.report(4 + 128, 1000, [1, 1], 1, slots);
     p.clear();
@@ -297,9 +307,64 @@ fn probe_source(period: u32, seed: u32) -> String {
     for _ in 0..33 {
         p.leave(0);
     }
-    let mut slots = [[0; 5]; 16];
+    let mut slots = [[0; 5]; 32];
     slots[0] = [warm0 + 33, 0, 0, 0, 0];
     p.report(2 + 128, 1000, [32, 32], 1, slots);
+    // Exact counters use immediate, register and memory operands without clocks.
+    // All IDs exercise positive updates and full passive ABI preservation.
+    p.clear();
+    for id in 0..16 {
+        p.checked(&format!(".HOTSPOT_COUNT {id},#{}", id + 1), 0);
+        p.checked(&format!(".HOTSPOT_COUNT {id},#2"), 31);
+        p.counters[id] = id as u32 + 3;
+    }
+    p.checked(".HOTSPOT_COUNT HOTSPOT_LOOKUP_HASH_BYTES,d0", 31);
+    p.counters[7] += 0x101;
+    p.checked(".HOTSPOT_COUNT HOTSPOT_LOOKUP_COMPARE_BYTES,Seeds", 0);
+    p.counters[10] += 0x101;
+    p.report(0, 0, [0, 0], 0, [[0; 5]; 32]);
+    p.clear();
+    p.checked(".HOTSPOT_COUNT_IF_ZERO d0,0,#1", 31);
+    p.checked(".HOTSPOT_COUNT_IF_ZERO bridge.Failed,0,#2", 0);
+    p.counters[0] = 2;
+    p.checked(".HOTSPOT_COUNT_IF_EQ d0,#$101,1,#3", 31);
+    p.checked(".HOTSPOT_COUNT_IF_EQ d0,#0,1,#7", 0);
+    p.counters[1] = 3;
+    p.checked(".HOTSPOT_COUNT_IF_EQ_BYTE d0,#1,2,#4", 31);
+    p.checked(".HOTSPOT_COUNT_IF_EQ_BYTE d0,#2,2,#7", 0);
+    p.counters[2] = 4;
+    p.checked(".HOTSPOT_COUNT_IF_NE_WORD d0,d6,3,#1", 31);
+    p.checked(".HOTSPOT_COUNT_IF_NE_WORD d0,d0,3,#1", 0);
+    p.counters[3] = 1;
+    // Passive callees retain the canaries/flags across measured calls.
+    // d0 carries the canary used by every checked() action.
+    p.checked(".HOTSPOT_CALL #0,bridge.passive", 31);
+    p.checked(".HOTSPOT_BSR #1,passive", 0);
+    let sample0 = u32::from(seed & (period - 1) == 0);
+    let sample1 = u32::from((17 + seed) & (period - 1) == 0);
+    let mut slots = [[0; 5]; 32];
+    slots[0] = [1, sample0, sample0, 1000 * sample0, 1000 * sample0];
+    slots[1] = [1, sample1, sample1, 1000 * sample1, 1000 * sample1];
+    p.report(
+        0,
+        if sample0 + sample1 > 0 { 1000 } else { 0 },
+        [1, 0],
+        0,
+        slots,
+    );
+    // Natural u32 overflow saturates the failing counter and freezes every
+    // observer update. No direct writes seed implementation-owned storage.
+    p.clear();
+    p.checked(".HOTSPOT_COUNT HOTSPOT_PROCESS_RECORDS,#$ffffffff", 31);
+    p.checked(".HOTSPOT_COUNT HOTSPOT_PROCESS_RECORDS,#1", 0);
+    p.checked(".HOTSPOT_COUNT HOTSPOT_LOOKUP_HITS,#1", 31);
+    p.enter(0);
+    p.leave(0);
+    p.counters[15] = u32::MAX;
+    p.report(32, 0, [0, 0], 1, [[0; 5]; 32]);
+    // Clear recovers both sampled observer and work counters after failure.
+    p.clear();
+    p.report(0, 0, [0, 0], 0, [[0; 5]; 32]);
     let table = p
         .rows
         .iter()
@@ -333,6 +398,9 @@ bad
  moveq #20,d0
  rts
 .bend
+passive .block
+ rts
+.bend
 .endsection
 .section data,kind=data
 Seeds .long $101,$202,$303,$404,$505,$606,$707,$808
@@ -352,6 +420,9 @@ AfterCCR .res word,1
 .cpu 68020
 .pub
 .section code,kind=code
+passive .block
+ rts
+.bend
 ; Deterministic passive E-clock: advance 1000 ticks/read, frequency1000.
 readClock .block
  move.w ccr,-(sp)

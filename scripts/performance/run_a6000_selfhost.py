@@ -8,6 +8,7 @@ Each invocation keeps its own local results and Development: directory.
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import math
 from pathlib import Path
@@ -526,6 +527,13 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
     if not acp or not ash:
         raise ValueError("acp and ash must be installed and available in PATH")
 
+    if getattr(args, "remote_host", None) is None:
+        host_name, host_address = resolve_host(args.host, ash)
+        args.host = host_address
+        args.remote_host = host_address
+        args.remote_host_name = host_name
+        print(f"Remote host: {host_name} ({host_address})", flush=True)
+
     def run(command, timeout=300):
         print("Running: " + " ".join(command), flush=True)
         subprocess.run(command, check=True, timeout=timeout)
@@ -561,12 +569,66 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
         diagnostic = captured / name / "assembly.stdout"
         if diagnostic.is_file():
             print("Native diagnostic:\n" + diagnostic.read_text(errors="replace"), flush=True)
-    result.update({"case_sha256": case_digest, "remote_directory": remote, "source_files": manifest["source_files"], "source_bytes": manifest["source_bytes"]})
+    result.update({"case_sha256": case_digest, "remote_directory": remote,
+                   "remote_host": args.remote_host, "source_files": manifest["source_files"],
+                   "source_bytes": manifest["source_bytes"]})
     result.update(metadata or {})
     (local / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2), flush=True)
     print(f"Results retained at {local}; remote files retained at {remote}.")
     return result, local
+
+
+_HOST_ROW = re.compile(r"^\s*(.*?)\s+((?:\d{1,3}\.){3}\d{1,3})\s*$")
+_HOST_TOKEN = re.compile(r"[A-Za-z0-9.-]+\Z")
+
+
+def valid_host(host):
+    if not isinstance(host, str) or _HOST_TOKEN.fullmatch(host) is None:
+        return False
+    if re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", host):
+        try:
+            ipaddress.IPv4Address(host)
+        except ipaddress.AddressValueError:
+            return False
+    return True
+
+
+def parse_host_discovery(text):
+    """Return the unique (display name, IPv4 address) from `ash -l` output."""
+    hosts = []
+    for line in text.splitlines():
+        match = _HOST_ROW.fullmatch(line)
+        if match is None:
+            continue
+        name, address = match.groups()
+        if not name.strip():
+            raise ValueError(f"Invalid host discovery row {line!r}; use --host to override")
+        try:
+            canonical = str(ipaddress.IPv4Address(address))
+        except ipaddress.AddressValueError as error:
+            raise ValueError(
+                f"Invalid IPv4 address in host discovery row {line!r}; use --host to override"
+            ) from error
+        hosts.append((name.strip(), canonical))
+    if not hosts:
+        raise ValueError("No A6000 hosts found by `ash -l`; use --host to override")
+    addresses = {address for _, address in hosts}
+    if len(addresses) != 1:
+        choices = ", ".join(sorted(addresses))
+        raise ValueError(f"Ambiguous A6000 hosts found ({choices}); use --host to override")
+    return hosts[0]
+
+
+def resolve_host(host, ash):
+    """Validate an explicit host or discover the single listed A6000 host."""
+    if host is not None:
+        if not valid_host(host):
+            raise ValueError("Host must be a plain hostname or IPv4 address")
+        return host, host
+    discovered = subprocess.run([ash, "-l"], check=True, capture_output=True,
+                                text=True, timeout=30)
+    return parse_host_discovery(discovered.stdout)
 
 
 def main():
@@ -575,12 +637,12 @@ def main():
     default_bundle = current if current.is_dir() else Path("/tmp/opforge-a6000-compact-export")
     parser.add_argument("--bundle", type=Path, default=default_bundle,
                         help="bundle directory; defaults to the current export when available")
-    parser.add_argument("--host", default="192.168.0.220")
+    parser.add_argument("--host", default=None, help="A6000 address; defaults to unique `ash -l` discovery")
     parser.add_argument("--volume", default="Development")
     parser.add_argument("--timeout", type=int, default=3600, help="assembly timeout in seconds")
     parser.add_argument("--dry-run", action="store_true", help="prepare locally without connecting")
     args = parser.parse_args()
-    if not re.fullmatch(r"[A-Za-z0-9.-]+", args.host) or not re.fullmatch(r"[A-Za-z0-9_-]+", args.volume):
+    if (args.host is not None and not valid_host(args.host)) or not re.fullmatch(r"[A-Za-z0-9_-]+", args.volume):
         parser.error("Host and volume must be plain names; omit the volume colon")
     if not 1 <= args.timeout < 86400:
         parser.error("Timeout must be between 1 and 86399 seconds")

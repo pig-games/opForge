@@ -268,8 +268,12 @@ Run from macOS Terminal, where `ash` and `acp` can reach the A6000:
 python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
 ```
 
-Defaults are host `192.168.0.220`, volume `Development` and a one-hour assembly
-timeout. Each invocation creates its own remote directory and local result tree.
+The runner discovers the current address once per invocation with `ash -l`.
+Host names may contain spaces/parentheses; a unique IPv4 address is required.
+`--host ADDRESS` overrides discovery. Dry-runs perform no discovery or network
+access. Defaults are volume `Development` and a one-hour assembly timeout.
+Each invocation creates its own remote directory and local result tree; completed
+results record `remote_host`.
 The current script validates BS38 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. A

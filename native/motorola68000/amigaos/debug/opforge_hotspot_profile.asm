@@ -13,7 +13,9 @@ OPFORGE_HOTSPOT_SAMPLE_PERIOD = 128
 OPFORGE_HOTSPOT_PHASE_SEED = 0
 .endif
 	.pub
-SLOT_COUNT = 16
+SLOT_COUNT = 32
+COUNTER_COUNT = 16
+COUNTER_PHASE = 608
 STACK_CAPACITY = 32
 SCHEMA_PHASE = 500
 STATE_PHASE = 501
@@ -22,12 +24,14 @@ SLOT_PHASE = 512
 	.priv
 TIMED = 1
 OWN_SAMPLE = 2
+	.pub
+ARITHMETIC_OVERFLOW = 32
+	.priv
 INVALID_SLOT = 1
 STACK_OVERFLOW = 2
 MISMATCH_ERROR = 4
 CLOCK_UNAVAILABLE = 8
 FREQUENCY_CHANGED = 16
-ARITHMETIC_OVERFLOW = 32
 INVALID_PERIOD = 64
 UNFINISHED = 128
 TickPair	.struct
@@ -58,6 +62,7 @@ Depth	.long ?
 Stopped	.long ?
 Stamp	.res TICKS_BYTES
 Slots	.res SLOT_COUNT*SLOT_BYTES
+Counters	.res COUNTER_COUNT*4
 Frames	.res STACK_CAPACITY*FRAME_BYTES
 .endstruct
 STATE_BYTES = Fields.Frames+STACK_CAPACITY*FRAME_BYTES
@@ -81,15 +86,15 @@ next
 	cmpi.l #256, d0
 	beq.w done
 	lea State, a0
-	move.l #INVALID_PERIOD, Fields.Errors(a0)
-	move.l #1, Fields.Stopped(a0)
+	move.l #INVALID_PERIOD, Fields.ERRORS(a0)
+	move.l #1, Fields.STOPPED(a0)
 done
 	movem.l (sp)+, d0/a0
 	move.w (sp)+, ccr
 	rts
 	.bend  ; clear
 
-; D0=slot 0..15. Each actual invocation is counted, including recursion.
+; D0=slot 0..31. Each actual invocation is counted, including recursion.
 ; Independently sample a per-slot fixed phase; deterministic periodic samples
 ; can alias periodic workloads. A different seed/period is a sensitivity check.
 ; Only an own sample or direct child of an own sample needs an E-clock read:
@@ -98,7 +103,7 @@ enter	.block
 	move.w ccr, -(sp)
 	movem.l d0-d3/a0-a3, -(sp)
 	lea State, a2
-	tst.l Fields.Stopped(a2)
+	tst.l Fields.STOPPED(a2)
 	bne.w done
 	cmpi.l #SLOT_COUNT-1, d0
 	bhi.w invalid
@@ -167,7 +172,7 @@ leave	.block
 	move.w ccr, -(sp)
 	movem.l d0-d3/a0-a3, -(sp)
 	lea State, a2
-	tst.l Fields.Stopped(a2)
+	tst.l Fields.STOPPED(a2)
 	bne.w done
 	cmpi.l #SLOT_COUNT-1, d0
 	bhi.w invalid
@@ -245,7 +250,7 @@ done
 	.bend  ; leave
 
 .ifdef OPFORGE_PREPARATION_PROGRESS
-; A0=DOS base. Fixed schema: three metadata rows plus three rows per slot.
+; A0=DOS base. Fixed schema: three metadata, 96 slot, 16 work rows.
 ; Report once at terminal save before memory_profile closes its timer.
 report	.block
 	move.w ccr, -(sp)
@@ -254,11 +259,11 @@ report	.block
 	lea State, a6
 	tst.l Fields.Depth(a6)
 	beq.w metadata
-	ori.l #UNFINISHED, Fields.Errors(a6)
+	ori.l #UNFINISHED, Fields.ERRORS(a6)
 metadata
 	move.l #SCHEMA_PHASE, d0
 	moveq #1, d1
-	move.l Fields.Errors(a6), d2
+	move.l Fields.ERRORS(a6), d2
 	move.l #OPFORGE_HOTSPOT_SAMPLE_PERIOD, d3
 	jsr memory_profile.progress
 	move.l #STATE_PHASE, d0
@@ -270,7 +275,7 @@ metadata
 	move.l #CONFIG_PHASE, d0
 	moveq #STACK_CAPACITY, d1
 	move.l #OPFORGE_HOTSPOT_PHASE_SEED, d2
-	move.l Fields.Stopped(a6), d3
+	move.l Fields.STOPPED(a6), d3
 	movea.l a4, a0
 	jsr memory_profile.progress
 	lea Fields.Slots(a6), a5
@@ -302,6 +307,20 @@ next
 	addq.l #1, d5
 	cmpi.l #SLOT_COUNT, d5
 	blo.w next
+	lea Fields.COUNTERS(a6), a5
+	move.l #COUNTER_PHASE, d4
+	moveq #0, d5
+counter
+	move.l d4, d0
+	move.l d5, d1
+	move.l (a5)+, d2
+	moveq #0, d3
+	movea.l a4, a0
+	jsr memory_profile.progress
+	addq.l #1, d4
+	addq.l #1, d5
+	cmpi.l #COUNTER_COUNT, d5
+	blo.w counter
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
 	rts
@@ -329,7 +348,7 @@ changed
 	moveq #FREQUENCY_CHANGED, d0
 failed
 	bsr.w stop
-	cmpi.l #2, Fields.Stopped(a2)  ; stopped=1: set carry without changing registers
+	cmpi.l #2, Fields.STOPPED(a2)  ; stopped=1: set carry without changing registers
 	rts
 	.bend  ; getClock
 
@@ -338,9 +357,9 @@ increment	.block
 	addq.l #1, (a0)
 	bcc.w done
 	move.l #$ffffffff, (a0)
-	ori.l #ARITHMETIC_OVERFLOW, Fields.Errors(a2)
-	move.l #1, Fields.Stopped(a2)
-	cmpi.l #2, Fields.Stopped(a2)  ; stopped=1: set carry without changing registers
+	ori.l #ARITHMETIC_OVERFLOW, Fields.ERRORS(a2)
+	move.l #1, Fields.STOPPED(a2)
+	cmpi.l #2, Fields.STOPPED(a2)  ; stopped=1: set carry without changing registers
 done
 	rts
 	.bend  ; increment
@@ -356,22 +375,26 @@ addTicks	.block
 overflow
 	move.l #$ffffffff, TickPair.High(a0)
 	move.l #$ffffffff, TickPair.Low(a0)
-	ori.l #ARITHMETIC_OVERFLOW, Fields.Errors(a2)
-	move.l #1, Fields.Stopped(a2)
-	cmpi.l #2, Fields.Stopped(a2)  ; stopped=1: set carry without changing registers
+	ori.l #ARITHMETIC_OVERFLOW, Fields.ERRORS(a2)
+	move.l #1, Fields.STOPPED(a2)
+	cmpi.l #2, Fields.STOPPED(a2)  ; stopped=1: set carry without changing registers
 	rts
 	.bend  ; addTicks
 
 ; D0=error bit, A2=state. Retain observations and stop only this observer.
 stop	.block
-	or.l d0, Fields.Errors(a2)
-	move.l #1, Fields.Stopped(a2)
+	or.l d0, Fields.ERRORS(a2)
+	move.l #1, Fields.STOPPED(a2)
 	rts
 	.bend  ; stop
 	.endsection
 	.section bss, kind=bss
 	.align 4
+	.pub
 State	.res byte, STATE_BYTES
+ERRORS = State+Fields.ERRORS
+STOPPED = State+Fields.STOPPED
+COUNTERS = State+Fields.COUNTERS
 	.endsection
 .endif
 .endif

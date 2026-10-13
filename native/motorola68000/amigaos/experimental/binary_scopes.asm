@@ -3267,6 +3267,8 @@ bad
 ; Clobbers D0-D2/A0-A1/A3; preserves other registers.
 lookup	.block
 	.HOTSPOT_ENTER #HOTSPOT_SCOPE_LOOKUP
+	.HOTSPOT_COUNT HOTSPOT_LOOKUP_HASH_BYTES, d6
+	.HOTSPOT_ENTER #HOTSPOT_LOOKUP_HASH
 	movea.l a2, a0
 	move.l d6, d0
 	moveq #0, d4
@@ -3280,12 +3282,14 @@ hash
 	add.l d1, d4
 	subq.l #1, d0
 	bne.w hash
+	.HOTSPOT_LEAVE #HOTSPOT_LOOKUP_HASH
 	andi.l #255, d4
 	move.l d4, d0
 	add.w d0, d0
 	lea BUCKETS(a6), a0
 	moveq #0, d2
 	move.w 0(a0, d0.w), d2
+	.HOTSPOT_ENTER #HOTSPOT_LOOKUP_CHAIN
 chain
 	tst.w d2
 	beq.w missing
@@ -3293,15 +3297,19 @@ chain
 	mulu.w #records.ENTRY_BYTES, d2
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d2, a3
+	.HOTSPOT_COUNT HOTSPOT_LOOKUP_CHAIN_PROBES, #1
 	moveq #0, d0
 	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a3)
 	beq.w namespaceReady
 	moveq #1, d0
 namespaceReady
+	.HOTSPOT_COUNT_IF_NE_WORD layout.State.BindingNamespace(a6), d0, HOTSPOT_LOOKUP_NAMESPACE_REJECTS, #1
 	cmp.w layout.State.BindingNamespace(a6), d0
 	bne.w next
+	.HOTSPOT_COUNT_IF_NE_WORD records.Entry.Length(a3), d6, HOTSPOT_LOOKUP_LENGTH_REJECTS, #1
 	cmp.w records.Entry.Length(a3), d6
 	bne.w next
+	.HOTSPOT_COUNT HOTSPOT_LOOKUP_NAME_COMPARES, #1
 	movea.l ARENA_POINTER(a6), a1
 	moveq #0, d0
 	move.l records.Entry.Name(a3), d0
@@ -3309,6 +3317,7 @@ namespaceReady
 	movea.l a2, a0
 	move.l d6, d0
 compare
+	.HOTSPOT_COUNT HOTSPOT_LOOKUP_COMPARE_BYTES, #1
 	moveq #0, d1
 	move.b (a0)+, d1
 	bsr.w fold
@@ -3319,6 +3328,8 @@ compare
 	bne.w next
 	subq.l #1, d0
 	bne.w compare
+	.HOTSPOT_COUNT HOTSPOT_LOOKUP_HITS, #1
+	.HOTSPOT_LEAVE #HOTSPOT_LOOKUP_CHAIN
 	moveq #0, d0
 	.HOTSPOT_LEAVE #HOTSPOT_SCOPE_LOOKUP
 	rts
@@ -3327,6 +3338,8 @@ next
 	move.w records.Entry.Next(a3), d2
 	bra.w chain
 missing
+	.HOTSPOT_COUNT HOTSPOT_LOOKUP_MISSES, #1
+	.HOTSPOT_LEAVE #HOTSPOT_LOOKUP_CHAIN
 	moveq #1, d0
 	.HOTSPOT_LEAVE #HOTSPOT_SCOPE_LOOKUP
 	rts

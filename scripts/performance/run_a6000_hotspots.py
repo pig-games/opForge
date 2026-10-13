@@ -67,12 +67,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline-bundle", type=Path, required=True)
     parser.add_argument("--profile-bundle", type=Path, action="append", required=True)
-    parser.add_argument("--host", default="192.168.0.220")
+    parser.add_argument("--host", default=None, help="A6000 address; defaults to unique `ash -l` discovery")
     parser.add_argument("--volume", default="Development")
     parser.add_argument("--timeout", type=int, default=3600)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
-    if not re.fullmatch(r"[A-Za-z0-9.-]+", args.host) or not re.fullmatch(r"[A-Za-z0-9_-]+", args.volume):
+    if ((args.host is not None and not runner.valid_host(args.host))
+            or not re.fullmatch(r"[A-Za-z0-9_-]+", args.volume)):
         parser.error("Host and volume must be plain names; omit the volume colon")
     if not 1 <= args.timeout < 86400:
         parser.error("Timeout must be between 1 and 86399 seconds")

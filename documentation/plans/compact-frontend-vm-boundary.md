@@ -236,6 +236,22 @@ language/family parity or the 2 MiB target. The separate identical-input baselin
 and candidate both take 117 guest seconds, so no full-build speed gain is
 resolved by this pair. See [the comparison](native-performance-diagnosis.md#clear-elision-implementation-and-separate-release-measurement).
 
+At `2ed960b4`, all three profiling configurations also complete a full physical
+A6000 self-host from identical 196-input / 2,590,506-byte source, manifest
+`fnv1a64:7c0d30514b87a2cd`. The light telemetry baseline takes 136 seconds;
+period 128/seed 0 takes 141 seconds and period 256/seed 37 takes 140 seconds.
+Each has fresh zero exit and exact complete 706,916-byte Rust output with the
+same SHA-256 above. All accounting is valid and releases ownership completely.
+Tracked peak is identical in all modes at 47,862,664 bytes; both hotspot reports
+have maximum nesting 7 with no remaining frames or errors. Full input/bootstrap/
+package/script, fresh challenges, exits, outputs and decoded reports were
+independently rechecked. These qualify the exact instrumented configurations,
+not complete parity or the product memory budget. The additional time measures
+observer overhead rather than a release regression.
+Hardware summary: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-hotspots-unlk2kto/hotspots.json`.
+Case identities and hotspot interpretation are in
+[the measurement](native-performance-diagnosis.md#completed-a6000-hotspot-measurement).
+
 The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at
 `catalog.i` line 572, the package `.incbin`; no output was produced. Binary assets
 had been stored as ordinary strings and passed through text encoding. The current

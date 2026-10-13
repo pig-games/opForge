@@ -408,8 +408,9 @@ remains exactly 706,916 bytes, SHA-256
 
 Dense binding, tokenizer, template and input timers/counters remain disabled.
 The new observer's fixed static state is 1,244 bytes and performs no allocations.
-All three full hardware cases are pending. Host export and component tests
-do not qualify their own full self-host execution.
+All three full hardware cases now complete with fresh zero exit, exact complete
+706,916-byte Rust output and valid accounting. Host export and component tests
+were not substitutes for those hardware runs.
 
 The real observer probe checks nesting, recursion, own versus forced-child
 samples, all slot phase/count rules, 64-bit clock carry, error freezing and
@@ -439,7 +440,84 @@ Receipt with fresh timing, memory, image identities and decoded profiles:
 Three host profiler checks, three real observer configurations, the real-timer
 CLI case, 138 performance-tool tests and the native engineering guards pass.
 Fresh regeneration after naming the timer vector also matches the exported
-period-128 bootstrap byte-for-byte. Hardware profiles remain pending.
+period-128 bootstrap byte-for-byte.
+
+### Completed A6000 hotspot measurement
+
+| Full self-host mode | Guest seconds | Preparation / assembly seconds |
+|---|---:|---:|
+| Light baseline | 136 | 100.68 / 34.52 |
+| Period 128 / seed 0 | 141 | 105.34 / 35.06 |
+| Period 256 / seed 37 | 140 | 104.36 / 34.78 |
+
+Added hotspot observation costs 5 seconds (3.68%) or 4 seconds (2.94%) over
+the identical-input light baseline, at one-second resolution, one run each.
+It changes no tracked ownership or byte-work totals. All three peak at
+47,862,664 tracked heap bytes (45.65 MiB), allocate and free 112,277,720 bytes,
+and finish with zero live ownership and no errors. The two profiles have
+maximum nesting 7, no unfinished frames and valid sample counts/frequencies.
+
+| Routine | Calls | Estimated exclusive seconds, period 128 | Period 256 |
+|---|---:|---:|---:|
+| Record processing | 118,516 | 24.22 | 25.05 |
+| Replay orchestration | 111,650 | 18.08 | 18.32 |
+| Packed writing | 119,660 | 15.86 | 15.41 |
+| Scope lookup | 254,274 | 14.29 | 18.52 |
+| Tokenization wrapper | 112,150 | 14.02 | 14.39 |
+| Name binding | 266,648 | 13.02 | 13.08 |
+| Candidate acquisition | 112,150 | 8.76 | 9.09 |
+| Expression compilation | 68,126 | 8.19 | 7.92 |
+| Capture construction | 112,150 | 4.22 | 4.09 |
+| Retained append | 112,048 | 3.61 | 3.67 |
+| Block growth | 38,406 | 2.88 | 3.51 |
+
+These extrapolate independently selected samples of instrumented execution;
+they are neither measured release totals nor additive phase components.
+Exclusive means outside instrumented child boundaries; uninstrumented callees
+remain in the parent. Record processing is the largest stable residual bucket.
+Scope lookup is expensive in both profiles but varies about 30%; growth also
+varies noticeably. Treat the rankings as targets for investigation, not precise
+savings budgets. The tokenization wrapper includes work outside the coarse
+tokenization stage, so its estimate must not replace the measured stage clock.
+Replay's inclusive estimate is 66.46–67.13 seconds and includes its descendants;
+it must not be added to their estimates.
+
+Capture storage remains the largest measured RAM opportunity: 112,048 records,
+23,356,036 used bytes (22.27 MiB), 32,731,136 reserved (31.21 MiB), with
+9,375,100 slack (8.94 MiB). Headers and tokens occupy 15,841,032 bytes, about
+67.8% of used capture. Acquisition and pre-release ownership are identical;
+all owners reach zero after release. Actual clear writes total 404,997 bytes.
+These counts are identical across all three modes. The increase from the earlier
+195-input measurement is a changed source workload/capacity frontier; it is not
+an increase caused by enabling the hotspot observer.
+
+Recommended next slice: split the residual `processRecord` cost across source
+control, declaration/conditional/metadata handling, operand/scope handling,
+data/expression preparation, publication and graph work. Inspect replay/packed
+writing alongside it. Measure scope lookup hashing, chain traversal and string
+comparison before choosing a hash-table change: current code uses 256 buckets
+and folds lexical bytes during hashing/comparison. Also quantify blank/comment
+and other semantically inert record populations before proposing capture pruning
+or packing. Eliminating redundant replay/binding work could improve both time
+and storage, but the present profile does not prove a safe elimination rule.
+Preserve shared VM ownership, contextual rebinding, iterator/macro hygiene,
+forward declarations and diagnostic/listing provenance. No optimization is
+selected from these extrapolated totals alone.
+
+Hardware summary:
+`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-hotspots-unlk2kto/hotspots.json`.
+Cases, in table order:
+`886fcc6848dbb3c87d9ccf972753f0028e62b7ebcc9e062726c492c90f16d0cd`,
+`a40027b33202ed5fab41ac2fcaf5a4547399f17fb822db2e79494aacb0ab9a0f`,
+`7a65f015d0e93043b94ed3241c30754593adf5d5d72cbc8b42c3928178514f7f`.
+Each staged/pre-run/captured source/bootstrap/package/script, case-bound fresh
+challenge, explicit zero exit, whole Hunk, MEMD, capture/hotspot report and clock
+was independently revalidated. Verification summary:
+`/tmp/opforge-hotspot-hardware-verified-20261013.json`.
+These exact instrumented full-self-host configurations are now qualified on
+the A6000; their original host-only status describes qualification before these
+runs. This establishes neither complete language/family parity nor the 2 MiB
+memory target.
 
 Run from macOS Terminal:
 

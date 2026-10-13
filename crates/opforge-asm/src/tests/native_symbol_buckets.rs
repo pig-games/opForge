@@ -96,6 +96,71 @@ value .macro
     (source.into(), vec![13, 7, 41, 7, 41, 99, 7])
 }
 
+fn imported_struct_member() -> (String, Vec<u8>) {
+    // The public type is in bucket 65, but its Used field is in bucket 768.
+    // Import completion must use the same mask as scope insertion for both.
+    assert_eq!(
+        symbol_bucket("experimental.amigaos.binary_memory.Block"),
+        65
+    );
+    assert_eq!(
+        symbol_bucket("experimental.amigaos.binary_memory.Block.Used"),
+        768
+    );
+    let source = r#".module experimental.amigaos.binary_memory
+.cpu 68020
+.pub
+Block .struct
+Pointer .long ?
+Capacity .long ?
+Used .long ?
+.endstruct
+.endmodule
+.module experimental.amigaos.binary_values
+.cpu 68020
+.use experimental.amigaos.binary_memory as memory
+Owner .struct
+Arena .res memory.Block.Used+4
+Kinds .res MEMORY.Block.Used+4
+Count .long ?
+.endstruct
+.byte Owner.Arena,Owner.Kinds,Owner.Count,memory.Block.Used
+.endmodule
+"#;
+    (source.into(), vec![0, 12, 24, 8])
+}
+
+#[test]
+fn native_symbol_bucket_imported_struct_rust_oracle() {
+    let dir = scratch();
+    let (source, expected) = imported_struct_member();
+    assert_eq!(oracle(&dir.0, &source).unwrap(), expected);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; imported declared struct members in upper symbol buckets"]
+fn native_symbol_bucket_imported_struct_fs_uae() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap();
+    let dir = scratch();
+    let image = std::env::var_os("OPFORGE_SYMBOL_BUCKET_IMAGE")
+        .map(|path| fs::read(path).unwrap())
+        .unwrap_or_else(|| build_image(&root, &dir.0));
+    let (source, expected) = imported_struct_member();
+    assert_eq!(oracle(&dir.0, &source).unwrap(), expected);
+    run_case(
+        &root,
+        &dir.0,
+        &image,
+        "imported-struct-upper-bucket",
+        "68020",
+        &source,
+        false,
+    );
+}
+
 fn cases() -> [(&'static str, String, Vec<u8>); 2] {
     let (wide, wide_expected) = all_buckets();
     let (visibility, visibility_expected) = visibility_and_facets();

@@ -662,9 +662,9 @@ unchanged. The separate eight-bit template-candidate key remains unchanged.
 Hypothesis: fewer collision-chain visits improve preparation at a small scratch
 storage cost. Stop on parity failures or disproportionate memory/runtime growth;
 keep the frozen 256-bucket code as the comparative reference. Full-workload
-qualification and integration judgment await the new A6000 results.
+qualification and integration judgment await a passing repaired A6000 comparison.
 
-The same 11,592-byte active-include/macro workload and live Rust oracle ran on
+The initial 11,592-byte active-include/macro workload and live Rust oracle ran on
 both release executables using the same `68020-10m` FS-UAE profile. Separate
 light-accounting and hotspot-count runs used the same input bytes. Every case
 completed with fresh zero exit and exact output.
@@ -704,7 +704,7 @@ decoded count/memory comparison: `/tmp/opforge-buckets-control-verified-20261013
 Run the new A6000 comparison from macOS Terminal:
 
 ```sh
-sh /tmp/opforge-a6000-buckets-20261013/run.sh
+sh /tmp/opforge-a6000-buckets-fixed-20261013/run.sh
 ```
 
 It discovers the current address with `ash -l`, uses `Development:` and performs
@@ -715,21 +715,52 @@ oracle. Release timing and heap/capture comparisons are reported separately.
 Only the final case can qualify the new executable assembling its current source.
 Each run requires complete fresh protocol, explicit zero exit and whole-output
 parity; partial captures/timeouts cannot provide a success or timing conclusion.
-All five staged plans passed a no-network dry-run. Their exact full configurations
-remain host-validated A6000 candidates until execution.
+All five staged plans passed a no-network dry-run. Actual A6000 execution then
+qualified the baseline release (118 s, 706,916 bytes) and baseline light accounting
+(136 s, tracked heap peak 48,124,808 bytes; total allocated/freed 113,107,616 bytes
+each, final ownership zero). Both original candidate fixed-workload cases failed
+with exit 20 at `binary_values.asm` line 9, after 35 s release / 43 s accounting.
+These partial runs establish neither a runtime gain nor a full-workload heap
+difference. Their source/package/bootstrap round trips, fresh markers, case
+identities and complete result captures have been independently verified.
+The final current-source run has no captured completion; it does not qualify
+self-hosting and must not be overlapped with a retry while its guest may be active.
 
-Release exports: `/tmp/opforge-buckets-baseline-release-20261013` and
-`/tmp/opforge-buckets-candidate-release-20261013`. Accounting exports:
+Diagnosis: `binary_imports.findDeclared` reads the shared scope hash table but
+retained `andi.l #255`. `experimental.amigaos.binary_memory.Block.Used` is inserted
+into bucket 768 yet searched in bucket 0. The struct base itself occupies bucket
+65, explaining why its field alone fails. Replace this consumer's mask with
+`layout.BUCKET_MASK`; the separate template hash remains eight-bit. A 417-byte
+regression uses the actual qualified type/member names in imported `.res` fields,
+including a mixed-case alias, and checks explicit offsets `[0,12,24,8]` against
+Rust. The original candidate fails this fresh native case with exit 20; the
+repaired release image completes with exact bytes. This proves the focused repair,
+not the full self-host. Existing full hardware qualification remains baseline-only.
+The evidence audit is `/tmp/opforge-buckets-hardware-verified-20261013.json`.
+
+Repeating that identical focused control with the repaired image gives release
+41.510722 s baseline / 41.060186 s repaired candidate (−0.450537 s, −1.09%, one
+pair; insufficient to establish a reliable runtime gain). Separate light
+accounting still gives heap peak 1,240,712 / 1,243,784 bytes (+3,072), allocated
+and freed 3,145,864 / 3,148,936 bytes each, packed source 27,022 bytes and final
+ownership zero. All four fresh native runs match Rust exactly; release and
+accounting Hunk extents remain unchanged. Report:
+`/tmp/opforge-bucket-fixed-control-20261013.json`. Both existing imported-struct
+reservation tests also pass, including reversed source input order. The corrected
+five-run hardware plan passes a no-network dry-run; its full cases remain pending.
+
+Corrected release exports: `/tmp/opforge-buckets-baseline-release-20261013` and
+`/tmp/opforge-buckets-fixed-release-20261013`. Accounting exports:
 `/tmp/opforge-a6000-drill-baseline-20261013` and
-`/tmp/opforge-buckets-candidate-memory-20261013`. Baseline source remains at
+`/tmp/opforge-buckets-fixed-memory-20261013`. Baseline source remains at
 `/tmp/opforge-drill-source-20261013` (196 files, 2,595,817 bytes,
-`fnv1a64:7eec9ace461f7b6b`); candidate source at
-`/tmp/opforge-buckets-source-20261013` (196 files, 2,596,082 bytes,
-`fnv1a64:ac65e49ab7804edc`). Both package configurations embed only m68020 and
+`fnv1a64:7eec9ace461f7b6b`); repaired candidate source at
+`/tmp/opforge-buckets-fixed-source-20261013` (196 files, 2,596,097 bytes,
+`fnv1a64:20a2106b4ce5f83d`). Both package configurations embed only m68020 and
 use the same package bytes. Baseline output SHA-256 is
 `e197fc8e076ab5a706f2415c0bd6d18433ae4a7bc6bdb309900617a78da69b26`;
 candidate current-source output SHA-256 is
-`7b5d7d129bfe5a98b0a74e3be3d102a3caee9b9e94302a8acc0be73b236166aa`.
+`0f6af5842c01df66625583448260da3b4db35422f6d0cbbd5d6d513b23cac918`.
 The first four runs use the baseline output, making the bootstrap change the
 only execution-variable for each timing/accounting pair.
 

@@ -3034,7 +3034,7 @@ hash
 	add.l d1, d4
 	subq.l #1, d0
 	bne.w hash
-	andi.l #255, d4
+	andi.l #layout.BUCKET_MASK, d4
 	add.w d4, d4
 	move.l d4, d0
 	lea layout.BUCKETS(a6), a0

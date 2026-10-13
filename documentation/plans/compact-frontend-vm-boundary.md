@@ -268,11 +268,18 @@ The approved 1,024-bucket binder candidate follows that measured state. Native
 upper-bucket/collision, visibility/forward-binding and identity-growth checks
 pass. On identical focused input, chain probes drop 58.1%, tracked heap peak
 increases 3 KiB and one release pair differs only 0.59%, insufficient to claim a
-material speed gain. Its current-source release oracle is 706,916 bytes with
-SHA-256 `7b5d7d129bfe5a98b0a74e3be3d102a3caee9b9e94302a8acc0be73b236166aa`.
-The new five-run A6000 package separates unchanged-input release timing, memory
-accounting and current-source full self-host qualification. Those exact full
-cases remain unexecuted host-validated candidates; see
+material speed gain. The repaired current-source release oracle is 706,916 bytes
+with SHA-256 `0f6af5842c01df66625583448260da3b4db35422f6d0cbbd5d6d513b23cac918`.
+The first A6000 comparison qualifies the 256-bucket baseline at 118 s release
+and 136 s light accounting, with exact 706,916-byte output and tracked heap peak
+48,124,808 bytes. Both 1,024-bucket fixed-workload cases fail with exit 20 at
+`binary_values.asm` line 9; their partial times/memory cannot establish an
+optimization benefit. The final current-source run has no captured completion.
+An imported declared-member lookup still used the old hardcoded mask, searching
+bucket 0 for `binary_memory.Block.Used`, which insertion placed in bucket 768.
+That consumer now shares `binary_scope_layout.BUCKET_MASK`. A focused native
+regression fails with the old candidate and passes with the repaired image;
+full repaired self-host and hardware performance qualification remain pending. See
 [the experiment](native-performance-diagnosis.md#1024-symbol-hash-buckets).
 
 The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at

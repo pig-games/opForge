@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_binding_records
 	.module experimental.amigaos.binary_binding_records
 	.cpu 68020
+	.include "binding_telemetry.i"
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_source as source
@@ -28,6 +29,7 @@ MemberId	.word ?  ; immutable global bare field key; $ffff until declared
 OriginalId	.word ?  ; original complete name ID for BINDING_PROXY
 .endstruct
 ENTRY_BYTES = Entry.OriginalId+2
+REMAP_SAVED_BASE = 7*4 ; D1-D7 precede saved A0 in remap's MOVEM frame
 ENCODING_NAME_HIGH_BIT = 7
 ENCODING_NAME = 1<<(ENCODING_NAME_HIGH_BIT+8); independent non-value identity namespace
 REFERENCED = 2
@@ -89,6 +91,10 @@ line
 	movea.l a4, a0
 	bra.w line
 tokens
+	movea.l a0, a2
+	moveq #0, d4
+	move.b source.RecordHeader.Flags(a2), d4
+	andi.w #source.FLAG_PLAN, d4 ; a call-plan flag requires its terminal trailer
 	cmpa.l a4, a0
 	beq.w bad
 	move.l a4, d0
@@ -100,7 +106,7 @@ tokens
 	addq.l #4, a0
 token
 	cmpa.l a4, a0
-	beq.w line
+	beq.w recordDone
 	bhi.w bad
 	moveq #0, d0
 	move.b (a0)+, d0
@@ -114,6 +120,12 @@ token
 	beq.w schema
 	cmpi.b #source.TOKEN_ITERATOR_BINDING, d0
 	beq.w iterator
+	cmpi.b #source.MACRO_PLAN, d0
+	beq.w callPlan
+	cmpi.b #source.LINE_PLAN, d0
+	beq.w linePlan
+	cmpi.b #source.OPTIONAL_LINE_PLAN, d0
+	beq.w linePlan
 	cmpi.b #2, d0
 	beq.w literal
 	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
@@ -123,6 +135,39 @@ token
 	cmpi.b #41, d0
 	beq.w bad  ; composite recipes must be expanded before remapping
 	bra.w token
+callPlan
+	moveq #source.FLAG_PLAN, d5
+	bra.w plan
+linePlan
+	btst #source.LINE_PLAN_BIT, source.RecordHeader.Flags(a2)
+	beq.w token ; ordinary mutable/conditional declaration markers retain meaning
+	move.l a4, d1
+	sub.l a0, d1
+	cmpi.l #source.PLAN_TOKEN_BYTES-1, d1
+	bne.w token
+	cmpi.b #source.PLAN_TOKEN_BYTES, source.PlanToken.Bytes-1(a0)
+	bne.w token
+	moveq #source.LINE_PLAN_FLAG, d5
+plan
+	moveq #0, d0
+	move.b source.RecordHeader.Flags(a2), d0
+	andi.w #source.FLAG_PLAN+source.LINE_PLAN_FLAG, d0
+	cmp.w d5, d0
+	bne.w bad
+	move.l a4, d0
+	sub.l a0, d0
+	cmpi.l #source.PLAN_TOKEN_BYTES-1, d0
+	bne.w bad
+	cmpi.b #source.PLAN_TOKEN_BYTES, source.PlanToken.Bytes-1(a0)
+	bne.w bad
+	tst.l (a0)
+	beq.w bad
+	moveq #0, d4
+	movea.l a4, a0
+recordDone
+	tst.w d4
+	bne.w bad
+	bra.w line
 string
 	cmpa.l a4, a0
 	bhs.w bad
@@ -162,6 +207,8 @@ materializedRecord
 	move.w d1, materialized.Record.Label(a0)
 markerDone
 emptyRecord
+	tst.w d4
+	bne.w bad
 	movea.l a4, a0
 	bra.w line
 
@@ -245,6 +292,8 @@ opcode
 	beq.w opcode
 	bra.w bad
 typedOpcode
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL, d0
+	beq.w typedString
 	cmpi.b #$10, d0
 	beq.w eight
 	cmpi.b #$11, d0
@@ -270,6 +319,23 @@ typedOpcode
 	cmpi.b #$70, d0
 	beq.w opcode
 	bra.w bad
+typedString
+	; Canonical strings carry a little-endian u16 byte count. Their contents
+	; are opaque even when bytes resemble opcodes or numeric symbol IDs.
+	move.l a3, d0
+	sub.l a0, d0
+	cmpi.l #2, d0
+	blo.w bad
+	moveq #0, d2
+	move.b 1(a0), d2
+	lsl.w #8, d2
+	move.b (a0), d2
+	addq.l #2, a0
+	subq.l #2, d0
+	cmp.l d2, d0
+	blo.w bad
+	adda.l d2, a0
+	bra.w opcode
 struct
 	move.l a3, d0
 	sub.l a0, d0
@@ -335,6 +401,7 @@ ok
 	moveq #0, d0
 	bra.w done
 bad
+	.BINDING_REMAP_FAILURE a0, a5, REMAP_SAVED_BASE
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6

@@ -30,6 +30,11 @@ FRAGMENT_LITERAL = 0
 FRAGMENT_FULL_LIST = 10
 FRAGMENT_NAMED = 11
 MACRO_PLAN = 42
+; Acquisition-only typed tails share the writer's six-byte plan layout.
+LINE_PLAN = 43
+OPTIONAL_LINE_PLAN = 44
+LINE_PLAN_BIT = 6
+LINE_PLAN_FLAG = 1<<LINE_PLAN_BIT ; role distinguished from snapshots by terminal typed framing
 TOKEN_CONSTANT_DECLARATION = 34
 TOKEN_MUTABLE_DECLARATION = 43
 TOKEN_CONDITIONAL_DECLARATION = 44

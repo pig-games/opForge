@@ -8194,3 +8194,7 @@ mod native_output_spans;
 #[cfg(test)]
 #[path = "tests/native_flat_output.rs"]
 mod native_flat_output;
+
+#[cfg(test)]
+#[path = "tests/native_binding_remap.rs"]
+mod native_binding_remap;

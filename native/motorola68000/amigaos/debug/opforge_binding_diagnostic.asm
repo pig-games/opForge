@@ -54,6 +54,15 @@ Name	.res 256
 .endstruct
 SNAPSHOT_BYTES = Snapshot.Name+256
 PAYLOAD_LONGS = (SNAPSHOT_BYTES-Snapshot.Entry)/4
+RemapCapture	.struct
+Cursor	.long ? ; offset from packed base, never a retained pointer
+Record	.long ?
+Bytes	.long ?
+Head	.res 32
+Near	.res 32
+.endstruct
+REMAP_CAPTURE_BYTES = RemapCapture.Near+32
+REMAP_PROGRESS = 336
 PendingCheck	.struct
 Stage	.long ?
 Index	.long ?
@@ -69,6 +78,11 @@ clear	.block
 loop
 	clr.l (a0)+
 	dbra d0, loop
+	lea RemapRecord, a0
+	moveq #REMAP_CAPTURE_BYTES/4-1, d0
+remapClear
+	clr.l (a0)+
+	dbra d0, remapClear
 	lea Pending, a0
 	clr.l PendingCheck.Stage(a0)
 	clr.l PendingCheck.Index(a0)
@@ -113,6 +127,76 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; attemptTarget
+; A0=failed cursor,A1=packed base,A2=exclusive packed limit. Failure-only
+; bounded observation. Scan length-prefixed records to find the containing
+; record; copy at most 32 bytes from its head and around the cursor. No pointers
+; survive, no allocation/IO, and all registers/CCR/stack are preserved.
+remapFailure	.block
+	move.w ccr, -(sp)
+	movem.l d0-d3/a0-a4, -(sp)
+	lea RemapRecord, a4
+	move.l a0, d0
+	sub.l a1, d0
+	move.l d0, RemapCapture.Cursor(a4)
+	move.l #-1, RemapCapture.Record(a4)
+	cmpa.l a1, a0
+	blo.w done
+	cmpa.l a2, a0
+	bhi.w done
+	movea.l a1, a3
+scan
+	cmpa.l a2, a3
+	bhs.w near
+	moveq #0, d1
+	move.b (a3), d1
+	addq.l #1, d1
+	move.l a2, d2
+	sub.l a3, d2
+	cmp.l d1, d2
+	blo.w near
+	move.l a0, d2
+	sub.l a3, d2
+	cmp.l d1, d2
+	bls.w found
+	adda.l d1, a3
+	bra.w scan
+found
+	move.l a3, d2
+	sub.l a1, d2
+	move.l d2, RemapCapture.Record(a4)
+	move.l d1, RemapCapture.Bytes(a4)
+	cmpi.l #32, d1
+	bls.w headLength
+	moveq #32, d1
+headLength
+	lea RemapCapture.Head(a4), a1
+	subq.w #1, d1
+copyHead
+	move.b (a3)+, (a1)+
+	dbra d1, copyHead
+near
+	; Include the consumed opcode before the cursor when within the stream.
+	tst.l d0
+	beq.w nearLength
+	subq.l #1, a0
+nearLength
+	move.l a2, d1
+	sub.l a0, d1
+	beq.w done
+	cmpi.l #32, d1
+	bls.w nearReady
+	moveq #32, d1
+nearReady
+	lea RemapCapture.Near(a4), a1
+	subq.w #1, d1
+copyNear
+	move.b (a0)+, (a1)+
+	dbra d1, copyNear
+done
+	movem.l (sp)+, d0-d3/a0-a4
+	move.w (sp)+, ccr
+	rts
+	.bend  ; remapFailure
 ; D0=status,A0=scope state,A1=View descriptor. Commit the pending check only
 ; for actual failure. First actual failure wins. Registers/CCR/stack preserved;
 ; no allocation or I/O. Entry/name views are bounded by count/owned arena extent.
@@ -476,6 +560,26 @@ report	.block
 	move.l #224, d4
 	move.l #256, d5
 	bsr.w reportSnapshot
+	cmpi.l #REMAP, Record+Snapshot.Stage
+	bne.w done
+	lea RemapRecord, a4
+	move.l #REMAP_PROGRESS, d7
+	moveq #REMAP_CAPTURE_BYTES/12-1, d6
+remapRows
+	move.l d7, d0
+	move.l (a4)+, d1
+	move.l (a4)+, d2
+	move.l (a4)+, d3
+	movea.l a6, a0
+	jsr memory_profile.progress
+	addq.l #1, d7
+	dbra d6, remapRows
+	move.l d7, d0
+	move.l (a4), d1
+	moveq #0, d2
+	moveq #0, d3
+	movea.l a6, a0
+	jsr memory_profile.progress
 done
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
@@ -553,5 +657,6 @@ OwnerRecord	.res byte, SNAPSHOT_BYTES
 PreviousRecord	.res byte, SNAPSHOT_BYTES
 NextRecord	.res byte, SNAPSHOT_BYTES
 Pending	.res byte, PendingCheck.Related+4
+RemapRecord	.res byte, REMAP_CAPTURE_BYTES
 	.endsection
 	.endmodule

@@ -76,6 +76,7 @@ SNAPSHOT_PHASES = {
     "previous": (160, 192),
     "next": (224, 256),
 }
+REMAP_PHASES = range(336, 343)
 
 
 class BindingDiagnosticError(ValueError):
@@ -98,18 +99,28 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
     """Decode all phase lines for the first binding snapshot in captured text."""
     groups = {name: {} for name in SNAPSHOT_PHASES}
     preparation_phases: dict[int, tuple[int, int, int, int]] = {}
+    remap_phases: dict[int, tuple[int, int, int, int]] = {}
     for line in text.splitlines():
         match = PROGRESS.fullmatch(line.strip())
         if not match:
             candidate = PREPARATION_PROGRESS_PREFIX.match(line.strip())
-            if candidate and int(candidate.group(1), 16) in (301, 302, 303, 304, 305, 306, 307, 308):
-                raise BindingDiagnosticError("malformed preparation failure progress record")
+            if candidate:
+                malformed_phase = int(candidate.group(1), 16)
+                if malformed_phase in (301, 302, 303, 304, 305, 306, 307, 308):
+                    raise BindingDiagnosticError("malformed preparation failure progress record")
+                if malformed_phase in REMAP_PHASES:
+                    raise BindingDiagnosticError("malformed remap failure progress record")
             continue
         phase, *values = (int(part, 16) for part in match.groups())
         if phase in (301, 302, 303, 304, 305, 306, 307, 308):
             if phase in preparation_phases:
                 raise BindingDiagnosticError(f"duplicate preparation failure phase {phase}")
             preparation_phases[phase] = tuple(values)
+            continue
+        if phase in REMAP_PHASES:
+            if phase in remap_phases:
+                raise BindingDiagnosticError(f"duplicate remap failure phase {phase}")
+            remap_phases[phase] = tuple(values)
             continue
         for name, (metadata, spelling) in SNAPSHOT_PHASES.items():
             normalized = None
@@ -142,7 +153,48 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
         result["correlations"] = correlations
     if preparation_phases:
         result["preparation_failure"] = _decode_preparation_failure(preparation_phases)
+    if remap_phases:
+        if primary is None or primary["stage"] != 8:
+            raise BindingDiagnosticError("remap failure capture requires a primary stage 8 snapshot")
+        result["remap_failure"] = _decode_remap_failure(remap_phases)
     return result
+
+
+def _decode_remap_failure(phases: dict[int, tuple[int, int, int, int]]) -> dict[str, object]:
+    required = set(REMAP_PHASES)
+    missing = sorted(required - phases.keys())
+    if missing:
+        raise BindingDiagnosticError(
+            "incomplete remap failure capture; missing phases " + ", ".join(map(str, missing))
+        )
+    if phases[342][1] != 0 or phases[342][2] != 0:
+        raise BindingDiagnosticError("phase 342 trailing words must be zero")
+    raw = b"".join(
+        word.to_bytes(4, "big")
+        for phase in range(336, 342)
+        for word in phases[phase][:3]
+    ) + phases[342][0].to_bytes(4, "big")
+    if len(raw) != 76:
+        raise BindingDiagnosticError("remap failure capture must contain 76 bytes")
+    cursor, record, extent = (int.from_bytes(raw[i:i + 4], "big") for i in (0, 4, 8))
+    head, window = raw[12:44], raw[44:76]
+    if record == 0xFFFFFFFF:
+        if extent != 0:
+            raise BindingDiagnosticError("absent remap record must have zero extent")
+        record_offset = None
+        record_prefix = b""
+    else:
+        if extent == 0 or record > cursor or cursor - record > extent:
+            raise BindingDiagnosticError("remap record extent does not contain cursor")
+        record_offset = record
+        record_prefix = head[:min(extent, 32)]
+    return {
+        "cursor_offset": cursor,
+        "record_offset": record_offset,
+        "record_bytes": extent,
+        "record_prefix_hex": record_prefix.hex(),
+        "cursor_window_hex": window.hex(),
+    }
 
 
 def _decode_preparation_failure(

@@ -102,3 +102,23 @@ BINDING_DIAGNOSTIC_REPORT	.macro dosbase
 .endif
 .endif
 .endmacro
+
+; remap saves D1-D7/A0-A6: the original packed base is at byte 28.
+; Called only at its failure exit, before that save frame is restored.
+; No successful-path work. Preserve all registers, CCR and stack.
+BINDING_REMAP_FAILURE	.macro cursor, limit, savedBaseOffset
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l a0-a2, -(sp)
+	movea.l .cursor, a0
+	movea.l .limit, a2
+	movea.l .savedBaseOffset+3*4+2(sp), a1 ; saved base plus observer A0-A2/CCR
+	jsr binding_diagnostic.remapFailure
+	movem.l (sp)+, a0-a2
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro

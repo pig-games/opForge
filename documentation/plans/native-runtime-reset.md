@@ -724,13 +724,39 @@ All 17 fresh native spelling/import/member controls pass, including alias
 shadowing, compound fallback, private rejection and one 6502 case. All ten
 existing conditional/member ownership controls also pass across 68020 and 6502.
 Rust oracles, Clippy, formatting, native guards and independent review pass.
-A full current-source rerun remains necessary.
+The subsequent full current-source run still fails: all captured source replay
+completes, then final prepared-record remapping rejects before assembly begins.
+Fresh START/DONE is 2,280.086436417 seconds (38 minutes), guest exit 20;
+191 files / 2,111,719 source bytes, manifest `eb0bd386bdf4bafb`, live Rust Hunk
+250,640 bytes. There are 51,801 numeric identities and 1,523,765 prepared bytes.
+Tracked peak is 47,204,712 bytes, with no allocation failure and zero live
+ownership after cleanup. This is failure localization, not self-host completion
+or a comparative speedup. The failure-only capture is now implemented and gated out of release builds.
+A fresh component probe demonstrated an opaque six-byte plan handle being read
+as a source ID after the adjacent real symbol had been correctly rewritten.
+The decoder now validates and skips typed terminal plan payloads, preserving
+ordinary declaration markers and opaque wide-number payloads. It also skips
+canonical typed strings by their bounded LE16 payload length. Fresh native
+string and plan controls pass, including malformed lengths/tails, unsigned IDs,
+empty strings, declaration-marker collisions and mandatory-tail rejection.
+These controls qualify their boundaries; the full current-source rerun remains
+necessary to identify the complete self-host outcome.
+Receipt: `/tmp/opforge-selfhost-qualification-full-20261013.log`.
 The separate unchanged release control measures 41.919729125 seconds before
 and 41.916686042 after (one sample each; no speedup claim). Executable size
 grows 148 bytes and linked reservation 140 bytes. Both instrumented runs retain
 the same 1,240,696-byte tracked peak, zero live ownership and equal allocation/
 free totals of 3,145,848 bytes. Receipt:
 `/tmp/opforge-qualification-cost-20261013.json`.
+
+The separate unchanged decoder-repair control measures 41.721528084 seconds
+before and 41.758562875 after (+0.09%, one sample each). Release image and linked
+reservation grow 192 bytes. Instrumented runs retain the same 1,240,696-byte
+tracked peak, zero live ownership and allocation/free totals of 3,145,848 bytes.
+Enabled failure capture adds 76 bytes of debug storage; release capture emits
+no code/data/import. Wrapper gate/preservation tests, 24 decoder tests, native
+guards, formatting, Clippy and independent review pass. Receipt:
+`/tmp/opforge-remap-cost-20261013.json`.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

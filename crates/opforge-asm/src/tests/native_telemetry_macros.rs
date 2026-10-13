@@ -704,6 +704,7 @@ fn binding_diagnostic_source(sites: &str) -> String {
 fn native_binding_failure_diagnostic_is_gated_and_preserves_setup_frame() {
     let sites = r#"
     .BINDING_DIAGNOSTIC_CLEAR
+    .BINDING_REMAP_FAILURE a0, a5, 7*4
     .BINDING_ATTEMPT #13, d7, d1
     .BINDING_ATTEMPT_WORD #10, 2(a0), d6
     .BINDING_CANONICAL_TARGET #14, d1, (a0)
@@ -741,6 +742,14 @@ fn native_binding_failure_diagnostic_is_gated_and_preserves_setup_frame() {
     // it does not execute guest code or prove native completion.
     let expected = r#"
     jsr binding_diagnostic.clear
+    move.w ccr, -(sp)
+    movem.l a0-a2, -(sp)
+    movea.l a0, a0
+    movea.l a5, a2
+    movea.l 7*4+3*4+2(sp), a1
+    jsr binding_diagnostic.remapFailure
+    movem.l (sp)+, a0-a2
+    move.w (sp)+, ccr
     move.w ccr, -(sp)
     movem.l d0-d2, -(sp)
     move.l #13, -(sp)

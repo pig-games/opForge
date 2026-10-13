@@ -39,6 +39,22 @@ def writer_status(status, reserved_first=0, reserved_second=0, live_owned=99):
     return progress(308, status, reserved_first, reserved_second, live_owned)
 
 
+def remap_capture(cursor=5, record=2, extent=6, head=b"abcdef", window=b"window"):
+    raw = (
+        cursor.to_bytes(4, "big")
+        + record.to_bytes(4, "big")
+        + extent.to_bytes(4, "big")
+        + head.ljust(32, b"\0")[:32]
+        + window.ljust(32, b"\0")[:32]
+    )
+    lines = []
+    for index, phase in enumerate(range(336, 343)):
+        chunk = raw[index * 12:(index + 1) * 12]
+        words = [int.from_bytes(chunk[i:i + 4], "big") for i in (0, 4, 8)]
+        lines.append(progress(phase, *words, fourth=99))
+    return "\n".join(lines)
+
+
 def snapshot(name=b"Widget", *, index=1, related=0xFFFFFFFF, stage=5, count=3):
     entry = bytearray(28)
     entry[0:4] = bytes.fromhex("00001000")
@@ -80,6 +96,45 @@ def correlation(kind, **kwargs):
 
 
 class BindingDiagnosticTests(unittest.TestCase):
+    def test_stage8_remap_capture_decodes_bounded_record_and_window(self):
+        result = decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + remap_capture())
+        remap = result["remap_failure"]
+        self.assertEqual(remap["cursor_offset"], 5)
+        self.assertEqual(remap["record_offset"], 2)
+        self.assertEqual(remap["record_bytes"], 6)
+        self.assertEqual(bytes.fromhex(remap["record_prefix_hex"]), b"abcdef")
+        self.assertEqual(len(bytes.fromhex(remap["cursor_window_hex"])), 32)
+        self.assertEqual(bytes.fromhex(remap["cursor_window_hex"])[:6], b"window")
+
+    def test_remap_capture_is_optional_but_requires_complete_unique_rows_and_stage8(self):
+        self.assertNotIn("remap_failure", decoder.decode_binding_diagnostic(snapshot(stage=8)))
+        capture = remap_capture()
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "missing phases"):
+            decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + "\n".join(capture.splitlines()[:-1]))
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "duplicate remap"):
+            decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + capture + "\n" + capture.splitlines()[0])
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "requires a primary stage 8"):
+            decoder.decode_binding_diagnostic(capture)
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "requires a primary stage 8"):
+            decoder.decode_binding_diagnostic(snapshot(stage=5) + "\n" + capture)
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "malformed remap"):
+            decoder.decode_binding_diagnostic(
+                snapshot(stage=8) + "\n" + capture.replace("m=00000063", "")
+            )
+
+    def test_remap_capture_validates_extent_and_phase342_reserved_words(self):
+        absent = remap_capture(cursor=3, record=0xFFFFFFFF, extent=0)
+        result = decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + absent)
+        self.assertIsNone(result["remap_failure"]["record_offset"])
+        self.assertEqual(result["remap_failure"]["record_prefix_hex"], "")
+        bad_extent = remap_capture(cursor=4, record=2, extent=1)
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "does not contain cursor"):
+            decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + bad_extent)
+        lines = remap_capture().splitlines()
+        lines[-1] = progress(342, 0, 1, 0, fourth=99)
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "trailing words"):
+            decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + "\n".join(lines))
+
     def test_optional_correlated_views_keep_original_snapshot(self):
         text = snapshot(stage=16)
         for kind in ("owner", "previous", "next"):

@@ -37,6 +37,22 @@ Length	.byte ?
 Payload	.byte ?
 	.endstruct
 CAPSULE_HEADER_BYTES = Capsule.Payload
+; Exact symbol-only recipe, shared by compact and canonical typed capsules.
+SymbolLeaf	.struct
+Opcode	.byte ?
+Low	.byte ?
+High	.byte ?
+End	.byte ?
+	.endstruct
+SYMBOL_LEAF_BYTES = SymbolLeaf.End+1
+ScalarSymbolLeaf	.struct
+Opcode	.byte ?
+Low	.byte ?
+High	.byte ?
+RequireScalar	.byte ?
+End	.byte ?
+	.endstruct
+SCALAR_SYMBOL_LEAF_BYTES = ScalarSymbolLeaf.End+1
 Frame	.struct
 Values	.long ?
 Defined	.long ?
@@ -131,6 +147,41 @@ done
 	tst.l d0
 	rts
 	.bend  ; capsuleSpan
+
+; Inspect one exact symbol recipe without evaluating or reading symbol cells.
+; A0/A1=bounded capsule/end. D0/CCR=capsuleSpan status,D1=extent,
+; D2=single symbol ID or -1 for an opaque/general recipe. Others preserved.
+; This limited metadata predicate does not validate general program semantics.
+singleSymbol	.block
+	bsr.w capsuleSpan
+	moveq #-1, d2
+	tst.l d0
+	bne.w done
+	cmpi.l #CAPSULE_HEADER_BYTES+SYMBOL_LEAF_BYTES, d1
+	beq.w leaf
+	cmpi.l #CAPSULE_HEADER_BYTES+SCALAR_SYMBOL_LEAF_BYTES, d1
+	bne.w done
+	cmpi.b #VALUE_TAG, Capsule.Tag(a0)
+	bne.w done
+	cmpi.b #runtime.EXPRVM_OPCODE_REQUIRE_SCALAR, Capsule.Payload+ScalarSymbolLeaf.RequireScalar(a0)
+	bne.w done
+	cmpi.b #runtime.EXPRVM_OPCODE_END, Capsule.Payload+ScalarSymbolLeaf.End(a0)
+	bne.w done
+	bra.w symbol
+leaf
+	cmpi.b #runtime.EXPRVM_OPCODE_END, Capsule.Payload+SymbolLeaf.End(a0)
+	bne.w done
+symbol
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, Capsule.Payload+SymbolLeaf.Opcode(a0)
+	bne.w done
+	moveq #0, d2
+	move.b Capsule.Payload+SymbolLeaf.High(a0), d2
+	lsl.w #8, d2
+	move.b Capsule.Payload+SymbolLeaf.Low(a0), d2
+done
+	tst.l d0
+	rts
+	.bend  ; singleSymbol
 
 ; A0/A1=bounded raw tokens,A2=bare-member callback,A6=callback context.
 ; Callback: A0=context,D0=source ID => D0=status,D1=global member ID;

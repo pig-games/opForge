@@ -3820,6 +3820,12 @@ fn run_native_cli_parity_batch_cases(
     let capture = batch_capture_config_from_env(&batch_paths)?;
     clear_capture_files(&capture)?;
     clear_native_cli_output_artifacts(&mounted_work_dir)?;
+    // Self-host output can replace the loaded executable's pathname. Record the
+    // staged bootstrap before execution, rather than hashing that output later.
+    let native_image_digest = opforge_self_host_package_digest(
+        &fs::read(&mounted_hunk_alias_path)
+            .map_err(|err| format!("read staged native image: {err}"))?,
+    );
     let generated_config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?;
 
     let args = args_text
@@ -4071,10 +4077,7 @@ fn run_native_cli_parity_batch_cases(
             protocol_completed,
             start_to_done_host_seconds: wait_outcome
                 .single_case_seconds(cases.len(), protocol_completed),
-            native_image_digest: Some(opforge_self_host_package_digest(
-                &fs::read(&mounted_hunk_alias_path)
-                    .map_err(|err| format!("read measured native image: {err}"))?,
-            )),
+            native_image_digest: Some(native_image_digest.clone()),
             success,
             verified_output: None,
             captured_artifacts: opforge_native_cli_case_captured_artifacts(
@@ -8223,3 +8226,10 @@ mod native_symbol_buckets;
 #[cfg(test)]
 #[path = "tests/native_full_selfhost_comparison.rs"]
 mod native_full_selfhost_comparison;
+
+#[cfg(test)]
+#[path = "tests/native_fragment_controls.rs"]
+mod native_fragment_controls;
+#[cfg(test)]
+#[path = "tests/native_fragment_probe.rs"]
+mod native_fragment_probe;

@@ -851,3 +851,23 @@ active branch/loop semantics, include provenance and relocation/layout behavior.
 Each selected optimization needs its own unchanged-input correctness comparison,
 release timing, separate heap measurement and code-quality review. This pass does
 not claim complete language/family parity or fit within the 2 MiB target.
+
+### Opt-in prepared-source fragment envelope
+
+The [first fragment experiment](native-fragment-preparation.md#first-experiment-results)
+keeps the current assembler as its default reference and relocates the complete
+frozen source backing before unchanged execution. On identical uninstrumented
+68020/10 MiB controls it measures 128.4001 / 128.6525 seconds (+0.20%; one pair,
+no meaningful timing change). Release Hunk and linked reservation grow by
+1,628 / 1,660 bytes when enabled.
+
+Separate expanded-memory 68040 accounting on identical full-source inputs shows
+47,587,208 tracked peak heap bytes in both paths. The envelope adds and frees
+2,122,664 transient bytes, including the complete 2 MiB backing allocation;
+preparation remains the peak. Both accounting outputs match Rust exactly and
+cleanup is zero. A separate full enabled release self-host matches the entire
+708,592-byte Rust binary in 103.1142 seconds. These are three distinct scopes,
+not a single combined benchmark, and do not establish the 2 MiB product target.
+
+Keep the envelope opt-in as the foundation for future lazy preparation. It
+provides no avoided preparation or independent fragment linking yet.

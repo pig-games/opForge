@@ -157,6 +157,13 @@ fn native_full_selfhost_comparison_fs_uae() {
         fs::create_dir_all(destination.parent().unwrap()).unwrap();
         fs::write(destination, bytes).unwrap();
     }
+    // Source-directed self-host output also overwrites build/opforge_compact.
+    // The recorded bootstrap identity must remain the actual input executable.
+    let bootstrap_digest = opforge_self_host_package_digest(&image);
+    assert_eq!(
+        run.native_image_digest.as_deref(),
+        Some(bootstrap_digest.as_str())
+    );
     let static_bytes = native_package_loading_performance::linked_static_bytes(&image);
     let result = json!({
         "success": run.success && run.protocol_completed && run.exit_code == Some(0),

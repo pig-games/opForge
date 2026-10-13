@@ -5,6 +5,7 @@
 	.cpu 68020
 	.use tkvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_state as state
+	.use experimental.amigaos.binary_memory as memory
 	.use prvm.amigaos.abi as abi
 	.use prvm.amigaos.packed_text as text
 	.pub
@@ -15,6 +16,8 @@ STATUS_OVERFLOW = 2
 STATUS_UNSUPPORTED = 3
 STATUS_BIND_FAILED = 4
 MAX_LINE = 256
+; Complete prepared streams can exceed an ordinary scratch allocation.
+RECORD_LIMIT = 2*memory.LIMIT
 FLAG_INDENT = 1
 FLAG_BLOCK_OPEN = 2
 FLAG_BLOCK_CLOSE = 4

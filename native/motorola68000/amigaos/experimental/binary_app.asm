@@ -10,6 +10,9 @@
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_assembly as assembly
+.ifdef OPFORGE_FRAGMENT_SOURCE
+	.use experimental.amigaos.binary_fragment as fragment
+.endif
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_output as hunk
 	.use experimental.amigaos.binary_output_plan as output_plan
@@ -22,6 +25,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_package_loader as loader
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_symbol_storage as storage
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_discovery as discovery
@@ -55,7 +59,7 @@ IO_BYTES = 4096
 INCLUDE_DEPTH = 8
 LINE_BYTES = 4096
 RECORD_BYTES = 256
-RECORD_LIMIT = 2*memory.LIMIT
+RECORD_LIMIT = source.RECORD_LIMIT
 CANDIDATE_LIMIT = graph.LIMIT; discovery shares the module-graph upper bound
 PATH_BYTES = 256
 DOS_OUTPUT = -60
@@ -83,6 +87,7 @@ PROGRESS_ASSEMBLY_POSITION = 26
 PROGRESS_ASSEMBLY_RECORDS = 27
 PROGRESS_ASSEMBLY_SECTIONS = 28
 PROGRESS_ASSEMBLY_SELECTION = 29
+PROGRESS_FRAGMENT = 450
 PROGRESS_PACKAGE = 30
 PROGRESS_RECORD_OUTPUT = 31
 PROGRESS_ASSEMBLY_RECORD_HEAD = 32
@@ -1419,7 +1424,12 @@ run	.block
 captureSpans
 	move.l #appendEmission, assembly.Frame.Emitted(a0)
 assemble
+.ifdef OPFORGE_FRAGMENT_SOURCE
+	jsr fragment.run
+	.MEMORY_PROGRESS DosBase, #PROGRESS_FRAGMENT, fragment.Prepared, fragment.CopiedBytes, fragment.MappedRecords
+.else
 	jsr assembly.assemble
+.endif
 	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_WORK, assembly.TraversalPasses, assembly.TraversalRecords, #0
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ROOTS, activation.Selections, activation.Roots, activation.GlobalSelections
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_SIZING, assembly.SizingPasses, branches.DeferredEvaluations, #0

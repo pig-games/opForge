@@ -572,8 +572,7 @@ passed strict decoding and exact lookup count reconciliation. This is added
 cost: per-byte exact counters run at both densities. Heap peak stayed 1,240,712
 bytes, allocated/freed 3,145,864 each, packed source 27,022 and cleanup zero.
 Report: `/tmp/opforge-drill-overhead-control-20261013.json`; decoded verification:
-`/tmp/opforge-drill-control-verified-20261013.json`. Full A6000 observer overhead
-still needs the new identical-input hardware runs below.
+`/tmp/opforge-drill-control-verified-20261013.json`. The full A6000 measurements below independently measure observer overhead.
 
 The A6000 cases freeze the same 196 input files (2,595,817 bytes), package,
 command and fresh 706,916-byte release Rust oracle, source digest
@@ -590,11 +589,68 @@ The baseline and profiles (period128/seed0 and period256/seed37) live at
 `/tmp/opforge-a6000-drill-128-20261013` and
 `/tmp/opforge-a6000-drill-256-20261013`. The source snapshot remains at
 `/tmp/opforge-drill-source-20261013` so later repository edits do not change their
-inputs. **These new full-self-host exports remain host-validated hardware
-candidates; their exact full configurations have not yet executed natively.**
-The earlier three successful A6000 configurations above remain distinct proof.
-Per-byte counters and extra call wrappers add observer work; use the new light
-baseline and sample sensitivity runs before selecting an optimization.
+inputs. All three exact configurations now complete full self-host assembly
+on the physical `V4-A6000 (UniCorn)`, discovered at `192.168.2.4` by `ash -l`.
+Each reports fresh completion, exit zero and exact complete Rust Hunk output.
+The staged, round-tripped and captured source/bootstrap/package/script bytes,
+case-bound markers, full output, dates and independently decoded telemetry were
+revalidated against the exports. The original `native_validation=not_run`
+manifest records their pre-hardware status; the hardware receipts supply the new
+qualification. This qualifies these cases, not full language parity or 2 MiB fit.
+
+| Full self-host mode | Guest duration | Preparation / assembly | Extra observer time |
+|---|---:|---:|---:|
+| Light MEMD+capture baseline | 136 s | 101.36 / 34.56 s | — |
+| Drill-down128 / seed0 | 154 s | 117.80 / 35.26 s | +18 s (+13.24%) |
+| Drill-down256 / seed37 | 152 s | 116.28 / 35.12 s | +16 s (+11.76%) |
+
+One run per mode, one-second guest duration resolution; transfers are excluded.
+These are added observer costs on identical inputs, not production speed changes.
+All three modes have identical heap peak 48,124,808 bytes (45.90 MiB), allocated
+and freed 113,107,616 each, packed source 2,028,931 and cleanup zero. Retained
+capture is 23,665,468 used / 32,993,280 reserved, with 9,327,812 slack. The peak
+increase from the previous source workload is 262,144 bytes; all modes agree,
+so enabling drill-down did not add tracked heap ownership.
+
+The exact work counts agree between both sampling configurations:
+
+- 256,738 lookups visit 17,080,007 entries, **66.53 probes per lookup**.
+- 16,674,463 entries (97.63%) fail the length check; 639 fail namespace.
+  The remaining 404,905 reach name comparison, reading 8,940,352 byte pairs.
+  Hashing reads 9,740,928 bytes. Lookups finish with 156,103 hits / 100,635 misses.
+- 8,763 zero-token retained captures occupy 560,832 bytes (547.69 KiB):
+  7.75% of records, only 2.37% of used capture. Replay visits 8,365 of them.
+- Of 120,346 `processRecord` calls, 27,950 ordinary inputs and 40,429 published
+  outputs are header-only; conditional handling consumes 8,086 controls.
+  Empty publication does not prove a record had no semantic effect.
+
+Sample estimates place hashing around 7.19–7.55 s and chain traversal around
+18.71–23.92 s **in the instrumented execution**. Chain ranking varies about 28%.
+`processRecord` exclusive estimates agree near 45.9 s, but selected parents
+force timing of many direct children. Clock/wrapper margins outside the child
+intervals remain in the parent and are extrapolated to all calls. This systematic
+inflation is not removed by period/seed agreement; the value cannot establish
+45.9 production seconds or a regression against the earlier coarse profile.
+Short handlers' estimates have the same observer-margin concern. Prefer exact
+work counts for choosing this next experiment.
+
+Recommended first optimization: a bounded, centrally defined lookup bucket-count
+experiment (256 baseline, 1,024 and possibly 4,096), retaining identical name
+folding, comparison, numeric identities and word links. Raw bucket storage would
+increase by 1,536 or 7,680 bytes per binder; measure actual heap/allocation effects.
+Test unchanged-input release timing separately from exact work counters, including
+collisions, namespaces, hygiene, imports and forward bindings. The experiment
+must reduce actual candidate visits and retain exact output before integration.
+Zero-token capture pruning has a smaller direct RAM budget (548 KiB) and needs
+provenance/control-effect tests; header-only publication is not a pruning rule.
+No optimization has been implemented from these results.
+
+Hardware summary:
+`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-hotspots-49hi4wwb/hotspots.json`.
+Cases in table order: `27dd2bbb238bbeb631dc06e60887641d7164a84cc004fa94c86dc4f2456f9f11`,
+`f45bf080ef34b14ea1def065b556e66bfd395f8e5c086768d22dcb1873e0d957`,
+`1d2ec057c822df891a7db77af1bffb912eb508370747f3b98a442a2d6b8db257`.
+Independent verification: `/tmp/opforge-drill-hardware-verified-20261013.json`.
 
 Wide bulk copying remains a possible small candidate, followed by capacity policy and
 a compact capture-format experiment. Growth tightening must account for extra

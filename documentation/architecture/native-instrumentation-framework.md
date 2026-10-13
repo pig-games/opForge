@@ -511,6 +511,17 @@ times overlap, and independently sampled exclusive estimates do not form an
 exact decomposition of full assembly time. Do not add them to the measured
 preparation stages. A routine with no own sample has no time estimate.
 
+Selected parents incur forced-child clock reads that most unsampled parents
+avoid. Child entry work before its timestamp and exit bookkeeping after its
+end timestamp remain in the parent's exclusive interval. Scaling that parent
+sample to every call also scales those conditional observer costs. Consequently,
+parent estimates can be systematically inflated even when two periods/seeds
+agree. Short leaf handlers can likewise be dominated by clock/wrapper margins;
+chain traversal additionally includes its per-probe/byte counter work. These
+estimates locate work but do not establish release-time seconds or obtainable
+savings. Actual identical-input overall durations measure observer overhead;
+exact work counts remain independently useful.
+
 | Slot | Actual instrumented boundary |
 |---:|---|
 | 0 | `binary_frontend.captureLine` |

@@ -252,6 +252,18 @@ Hardware summary: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a600
 Case identities and hotspot interpretation are in
 [the measurement](native-performance-diagnosis.md#completed-a6000-hotspot-measurement).
 
+The expanded observer at `9b0f6703` is also qualified for its three exact full
+A6000 self-host configurations: 196 identical inputs / 2,595,817 bytes, digest
+`fnv1a64:7eec9ace461f7b6b`, light baseline 136 s, drill-down128 154 s and
+256 152 s. Each has independently verified fresh zero exit, complete 706,916-byte
+Rust output with the same SHA-256 above and valid decoded capture/115-row hotspot
+report where enabled. Peak ownership is identical at 48,124,808 bytes and cleanup
+zero. The extra 16–18 s measures observer work; release bytes are unchanged.
+Hardware summary: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-hotspots-49hi4wwb/hotspots.json`.
+Exact counters show excessive lookup candidate traversal; parent timing estimates
+have systematic observer inflation described in the measurement. These runs
+qualify the named self-host cases, not complete parity or 2 MiB product fit.
+
 The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at
 `catalog.i` line 572, the package `.incbin`; no output was produced. Binary assets
 had been stored as ordinary strings and passed through text encoding. The current

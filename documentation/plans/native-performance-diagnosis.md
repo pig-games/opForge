@@ -158,7 +158,7 @@ preserves all registers, CCR and stack depth. Four host tests and the decoder/
 hardware-runner checks also pass. These are component proofs, not a full self-host
 measurement.
 
-The full measurement candidate is `/tmp/opforge-a6000-capture-accounting-v3-20261013`:
+The full measurement bundle is `/tmp/opforge-a6000-capture-accounting-v3-20261013`:
 195 mapped inputs, 2,585,677 bytes, manifest `fnv1a64:cadc24b1921a07ea`.
 Its 719,588-byte bootstrap enables only contracts, memory accounting, preparation
 progress, capture accounting and local telemetry export; hot nested timing probes
@@ -197,9 +197,96 @@ or successful self-host proof. Captures remain outside the tree at
 `/tmp/opforge-capture-full-fsuae-capture-20261013` and
 `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-ddiej4_s`.
 
-Full-workload ownership/copy results are pending from the corrected hardware
-candidate. Select the first optimization only after those results; do not infer
-its benefit from the small control or failed acquisition.
+The corrected bundle now completes on the physical A6000 in **134 guest seconds**
+(2m14s, one-second clock resolution), with fresh exit zero, exact complete Rust
+output and valid telemetry. Host command time including connection is
+133.909075042 seconds. Case digest:
+`404fac74ec19b8b65497e0dcc8556e84d3e21f958eb7dbf94999714090063373`.
+Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-5c03wy1h/result.json`.
+The host-generated challenge/script, every captured input, bootstrap, package,
+complete Hunk and both decoded records were independently rechecked against this
+bundle. Its initial host-only status describes qualification before this run.
+
+Preparation takes 98.18 instrumented seconds and assembly 34.60. Exclusive
+binding/raw-record work is 53.02 seconds; other stages are I/O/other 8.40,
+package setup 0.10, tokenization 8.80, expressions 10.38, finalization 8.33 and
+discovery 9.15. This focused observer omits the previous nested timers, so
+134 versus 191 seconds is a change of measurement mode, not an optimization.
+The earlier 118-second release run also has slightly different source inputs;
+neither comparison establishes isolated instrumentation overhead or a release gain.
+
+| Retained capture component | Bytes | MiB |
+|---|---:|---:|
+| Headers, 111,292 records | 7,122,688 | 6.79 |
+| Shared 20-byte tokens | 8,620,260 | 8.22 |
+| Lexemes | 1,980,495 | 1.89 |
+| Candidate plans | 5,236,852 | 4.99 |
+| Padding | 178,409 | 0.17 |
+| Total used | 23,138,704 | 22.07 |
+| Total reserved | 31,944,704 | 30.46 |
+| Capacity slack | 8,806,000 | 8.40 |
+
+Headers and tokens are 68.0% of used capture storage. Slack is 27.6% of reserved
+capacity. All 162 retained regions have identical ownership at initial replay
+entry and immediately before release: no additional acquisition changes these
+snapshots in this workload. Retained capacity peak including allocation overlap
+is 32,010,240 bytes. Whole tracked heap peak is separately 47,077,256 bytes
+(44.90 MiB); these peaks have different scopes and are not time-correlated owner
+samples. Live bytes after preparation are 2,960,640, and after assembly 4,934,912.
+All 110,472,408 allocated bytes are freed; cleanup live bytes and errors are zero.
+
+| Observed memory work | Bytes |
+|---|---:|
+| Explicit record clearing, 111,387 constructions | 23,195,144 |
+| Constructor outcome/payload copies | 19,006,444 |
+| Temporary capture to retained region copies | 23,138,704 |
+| Configuration scratch materialization | 738,927 |
+| Semantic replay scratch materialization | 10,604,657 |
+| All successful block-growth copies | 46,963,881 |
+| Retained-region growth copies, subset of the preceding row | 31,668,772 |
+
+The five disjoint copy categories total 100,452,613 bytes; the retained-growth
+subset must not be added again. Construction payloads, retained append and global
+growth account for 85,990,193 bytes passing through current byte-copy loops after
+excluding the constructor's seven outcome-long copies. Scratch materialization
+already uses long/word/tail copying. These are byte-work totals, not elapsed-time
+attribution or counts of unique source data. Clearing excludes Exec allocation
+clearing; the allocator still requests cleared allocations.
+
+## First selected experiment: remove overwritten capture clearing
+
+The first candidate is narrowly owned by `binary_capture.create`: stop clearing
+the entire record before overwriting its header and payloads. Explicitly zero
+`Record.Reserved` and both 0–3-byte alignment gaps. Retain the current record
+format, shared TKVM ABI, allocation policy, copied payloads and failure-atomic
+publication. Reused storage must not rely on the allocator's initial clearing.
+
+The hypothesis is a runtime reduction from removing almost all 23,195,144
+explicit clear-byte operations. Expected remaining zeroing is two bytes per
+constructed record plus its padding, approximately 0.4 MB on this workload.
+That is a work prediction, not a measured speedup. No heap reduction is expected.
+Update the observer argument to count actual cleared bytes, not record extent.
+
+Before editing, freeze the complete input/package/command and generate its live
+Rust oracle. Compare baseline and candidate release executables on that same
+input, separately from instrumented work/heap runs. Changing the assembler's own
+source changes the workload: the fixed-input comparison and a new current-source
+self-host qualification are separate cases, each with its own exact Rust output.
+
+Focused validation must poison reused capture storage, exercise both alignment
+gaps and all length residues including zero payloads, retain wide-token metadata,
+and check invalid-record/allocation-failure behavior and unchanged publication.
+The full comparison requires fresh completion, exit zero and exact bytes; count
+composition/copies and allocation ownership must remain unchanged while actual
+clear counts fall. Retain the change only after separate release timing shows
+benefit without correctness, memory or code-quality regressions. No optimization
+has been implemented yet.
+
+Wide bulk copying is the next small candidate, followed by capacity policy and
+a compact capture-format experiment. Growth tightening must account for extra
+copies; merely reserving exact size on every append could trade slack for much
+more work. Format compaction has the larger structural memory opportunity in the
+headers and tokens but requires a broader producer/validator/consumer change.
 
 Preserve failure-atomic allocation, stable numeric identity, longest-owner lookup,
 active branch/loop semantics, include provenance and relocation/layout behavior.

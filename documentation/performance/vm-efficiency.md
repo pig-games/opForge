@@ -823,6 +823,18 @@ account for 100.79 instrumented seconds, about 65% of preparation. Full stage,
 ownership and work-count analysis is maintained in the resource diagnosis above.
 Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-4i2o6ro3/result.json`.
 
+The focused capture observer's current 195-input full A6000 run completes in
+134 instrumented seconds with fresh exit zero and exact 706,888-byte Rust output.
+It omits nested timing probes; the difference from 191 seconds is measurement
+overhead/mode, not an optimization. Capture usage/reservation is 23,138,704 /
+31,944,704 bytes; 8,806,000 bytes are slack. Whole tracked peak is 47,077,256 bytes.
+Explicit record clearing is 23,195,144 bytes; disjoint accounted copy categories
+total 100,452,613 bytes. All ownership is released and telemetry errors are zero.
+The [resource diagnosis](../plans/native-performance-diagnosis.md#first-selected-experiment-remove-overwritten-capture-clearing)
+selects removal of overwritten record clearing first, with separate fixed-input
+release timing and no expected heap reduction. No optimization is implemented yet.
+Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-5c03wy1h/result.json`.
+
 The opaque-asset repair's separate no-asset 11,592-byte control remains unchanged:
 41.802194583 seconds before and 41.802430625 after, release mode on 68020/10 MiB.
 Image and linked reservation grow 292 and 268 bytes respectively. Separate

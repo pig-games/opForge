@@ -209,6 +209,17 @@ there is no completed instrumented emulator result for this embedded configurati
 See [resource diagnosis](native-performance-diagnosis.md) for attribution,
 instrumentation overhead and optimization candidates.
 
+The capture-accounting state now also completes a full physical A6000 self-host
+from 195 mapped inputs / 2,585,677 bytes, manifest `fnv1a64:cadc24b1921a07ea`.
+Bootstrap and output embed m68020; the release output remains exactly the same
+706,888-byte Rust Hunk. Fresh exit is zero, both markers bind the case, and all
+ownership/copy telemetry validates. Time is 134 guest seconds with the focused
+observer (98.18 preparation, 34.60 assembly), not a release optimization result.
+Case: `404fac74ec19b8b65497e0dcc8556e84d3e21f958eb7dbf94999714090063373`.
+Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-5c03wy1h/result.json`.
+The capture wrapper avoids the `.block` formal classifier gap documented below;
+this full run does not qualify the unsupported spelling.
+
 The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at
 `catalog.i` line 572, the package `.incbin`; no output was produced. Binary assets
 had been stored as ordinary strings and passed through text encoding. The current

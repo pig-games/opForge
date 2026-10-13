@@ -35,9 +35,9 @@ class HardwareCompletionTests(unittest.TestCase):
         package[168:172] = head_offset.to_bytes(4, "big")
         package[172:176] = (4).to_bytes(4, "big")
         package[176:178] = (2).to_bytes(2, "big")
-        declaration_offset = append_aligned(b"D" * 23)
+        declaration_offset = append_aligned(b"D" * 116)
         package[180:184] = declaration_offset.to_bytes(4, "big")
-        package[184:188] = (23).to_bytes(4, "big")
+        package[184:188] = (116).to_bytes(4, "big")
         package[188:190] = (2).to_bytes(2, "big")
         expression_offset = append_aligned(b"E")
         package[200:204] = expression_offset.to_bytes(4, "big")
@@ -199,6 +199,7 @@ class HardwareCompletionTests(unittest.TestCase):
             (160, 4, 168, "member-binding table"),
             (160, 4, 201, "member-binding table"),
             (184, 4, 13, "declaration"),
+            (184, 4, 23, "declaration"),
             (160, 4, 219, "member-binding table"),
             (164, 4, 6, "member-binding"),
             (164, 4, 0xFFFFFFFF, "member-binding table"),

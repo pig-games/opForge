@@ -147,16 +147,23 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The latest qualified release bundle is
-`/tmp/opforge-selfhost-bs35-scoped-release-74m`. Bootstrap and
-assembled output both embed only `m68020--motorola68k.bin`. The named package is
-retained for local identity verification; no external runtime fallback is used.
-This historical bundle has complete FS-UAE qualification, but no physical
-execution or remote transfer proof. Current source and the A6000 helper use BS38
-and require a newly qualified BS38 bundle. The existing current-export link still
-selects the older BS35 bundle and is rejected by the current helper; do not treat
-it as a current executable qualification. Once the link points to a qualified
-BS38 bundle, use macOS Terminal, where `ash` and `acp` can reach the A6000:
+The current host-validated release bundle is
+`/tmp/opforge-a6000-eed674a3-release`, selected by `/tmp/opforge-a6000-current`.
+Bootstrap and assembled output both embed only `m68020--motorola68k.bin`;
+there is no external runtime fallback. It contains 194 mapped inputs
+(2,577,776 bytes including the package asset) and a 706,596-byte executable,
+with 740,392 bytes linked reservation. Local and relocated Rust assembly match,
+and the A6000 runner's dry run validates the actual bundle. Its manifest records
+`native_validation: not_run`: this embedded variant has not yet been executed
+on hardware or through FS-UAE. The complete emulator proof above covers the
+identified core with an unembedded output.
+
+The 31-byte `binary_declaration_activity.asm` filename was shortened to
+`binary_decl_activity.asm` without changing module identity or source bytes.
+The resulting unembedded Rust Hunk is byte-identical to the completed native
+self-host output. The runner now validates the current 116-byte declaration plan,
+retaining rejection of the superseded 23-byte size. All 26 runner tests pass.
+Run from macOS Terminal, where `ash` and `acp` can reach the A6000:
 
 ```sh
 python3 /Users/erik/Code/Retro/opForge/scripts/performance/run_a6000_selfhost.py
@@ -167,7 +174,7 @@ timeout. Each invocation creates its own remote directory and local result tree.
 The current script validates BS38 package headers, mapped source preamble and
 exact source/package/image bytes before transfer, then round-trips all inputs
 before execution. Filename components must fit the 30-byte classic limit. A
-qualified matching BS38 release bundle is required for the current helper.
+fresh matching BS38 bundle is required for the current helper.
 Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout

@@ -27,6 +27,7 @@ INSTRUMENTATION_DEFINES = {
 }
 PACKAGE_HEADER_BYTES = 262
 PACKAGE_MAGIC = b"BS38"
+DECLARATION_PLAN_BYTES = 116  # prvm_packed_declaration.PLAN_BYTES
 BRANCH_PLAN_OFFSET = 220
 BRANCH_PLAN_BYTES_OFFSET = 224
 TEXT_PLAN_OFFSET = 228
@@ -164,7 +165,9 @@ def load_bundle(bundle):
     if any(package[offset + 6:offset + 8] != b"\0\0"
            for offset in range(bindings_offset, bindings_end, 8)):
         raise ValueError("Invalid member-binding reserved field")
-    for label, header_offset, expected_size in (("head-policy", 168, 4), ("declaration", 180, 23)):
+    for label, header_offset, expected_size in (
+        ("head-policy", 168, 4), ("declaration", 180, DECLARATION_PLAN_BYTES)
+    ):
         offset = int.from_bytes(package[header_offset:header_offset + 4], "big")
         size = int.from_bytes(package[header_offset + 4:header_offset + 8], "big")
         version = int.from_bytes(package[header_offset + 8:header_offset + 10], "big")

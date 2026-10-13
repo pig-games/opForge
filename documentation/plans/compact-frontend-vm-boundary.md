@@ -111,6 +111,21 @@ work. These focused results do not establish complete opcore or a new self-host.
 
 ## Full current-source self-host qualification
 
+The subsequent opaque-asset repair `7a903cf8` has fresh focused native proof for
+the 4,099-byte patterned asset, the generated full catalog containing the actual
+454,890-byte package, text encoding isolation, and malformed payload/remapping
+controls. The catalog emits a complete 456,992-byte Hunk matching its live Rust
+oracle. These focused results do not establish the complete embedded self-build.
+
+Its separate unchanged 11,592-byte control on FS-UAE 68020/10 MiB takes
+41.802194583 seconds before and 41.802430625 after in release mode: no measurable
+change in this single pair. Release image size grows 747,132 to 747,424 bytes,
+and linked reservation grows 780,928 to 781,196 bytes. Separate instrumented
+controls retain the same 1,240,712-byte peak, 27,022-byte packed source,
+3,145,864 allocated/freed bytes and zero live ownership. This control contains
+no binary asset, so it measures repair overhead, not asset-path speedup.
+Report: `/tmp/opforge-binary-assets-cost-20261013.json`.
+
 Source commit `eed674a3` self-assembles the complete 193-file source set
 (2,122,797 bytes), manifest `fnv1a64:befc1361cc9722cd`, on FS-UAE 68020/74 MiB.
 Fresh case-bound START/DONE and native exit zero accompany exact live Rust equality

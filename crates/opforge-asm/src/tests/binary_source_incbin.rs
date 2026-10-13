@@ -20,7 +20,7 @@ impl Drop for Scratch {
     }
 }
 
-fn oracle(
+pub(super) fn oracle(
     cpu: &str,
     files: &[(&str, &[u8])],
     roots: &[&str],

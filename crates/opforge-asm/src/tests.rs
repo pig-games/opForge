@@ -42570,8 +42570,11 @@ mod native_runtime_comparison;
 mod binary_source_experiment;
 #[path = "tests/binary_source_incbin.rs"]
 mod binary_source_incbin;
+
 #[path = "tests/binary_source_scope_arena.rs"]
 mod binary_source_scope_arena;
+#[path = "tests/native_asset_timing.rs"]
+mod native_asset_timing;
 
 #[path = "tests/native_telemetry_macros.rs"]
 mod native_telemetry_macros;

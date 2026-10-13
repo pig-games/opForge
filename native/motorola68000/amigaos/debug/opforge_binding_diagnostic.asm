@@ -21,6 +21,8 @@ TARGET_DECLARATION = 14
 DECLARED_CANONICAL = 15
 DECLARED_LEAF = 16
 MEMBER_ACQUISITION = 17
+BLOCK_INDEX = 18
+BLOCK_REFERENCES = 19
 VALUE_DECLARED_BIT = 0
 IMPORT_PROXY_BIT = 3
 ENTRY_CAPACITY = 32; bounded prefix through preparation-only register metadata
@@ -55,7 +57,7 @@ Name	.res 256
 SNAPSHOT_BYTES = Snapshot.Name+256
 PAYLOAD_LONGS = (SNAPSHOT_BYTES-Snapshot.Entry)/4
 RemapCapture	.struct
-Cursor	.long ? ; offset from packed base, never a retained pointer
+Cursor	.long ?  ; offset from packed base, never a retained pointer
 Record	.long ?
 Bytes	.long ?
 Head	.res 32
@@ -63,6 +65,7 @@ Near	.res 32
 .endstruct
 REMAP_CAPTURE_BYTES = RemapCapture.Near+32
 REMAP_PROGRESS = 336
+RECORD_CONTEXT_PROGRESS = 343
 PendingCheck	.struct
 Stage	.long ?
 Index	.long ?
@@ -83,6 +86,7 @@ loop
 remapClear
 	clr.l (a0)+
 	dbra d0, remapClear
+	clr.l CaptureStage
 	lea Pending, a0
 	clr.l PendingCheck.Stage(a0)
 	clr.l PendingCheck.Index(a0)
@@ -127,13 +131,16 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; attemptTarget
-; A0=failed cursor,A1=packed base,A2=exclusive packed limit. Failure-only
+; D0=consumer stage,A0=failed cursor,A1=packed base,A2=exclusive packed limit. Failure-only
 ; bounded observation. Scan length-prefixed records to find the containing
 ; record; copy at most 32 bytes from its head and around the cursor. No pointers
 ; survive, no allocation/IO, and all registers/CCR/stack are preserved.
-remapFailure	.block
+recordFailure	.block
 	move.w ccr, -(sp)
 	movem.l d0-d3/a0-a4, -(sp)
+	tst.l CaptureStage
+	bne.w done
+	move.l d0, CaptureStage
 	lea RemapRecord, a4
 	move.l a0, d0
 	sub.l a1, d0
@@ -196,7 +203,7 @@ done
 	movem.l (sp)+, d0-d3/a0-a4
 	move.w (sp)+, ccr
 	rts
-	.bend  ; remapFailure
+	.bend  ; recordFailure
 ; D0=status,A0=scope state,A1=View descriptor. Commit the pending check only
 ; for actual failure. First actual failure wins. Registers/CCR/stack preserved;
 ; no allocation or I/O. Entry/name views are bounded by count/owned arena extent.
@@ -544,7 +551,7 @@ report	.block
 	movea.l a0, a6
 	lea Record, a5
 	tst.l Snapshot.Stage(a5)
-	beq.w done
+	beq.w recordCapture
 	moveq #32, d4
 	moveq #64, d5
 	bsr.w reportSnapshot
@@ -560,8 +567,9 @@ report	.block
 	move.l #224, d4
 	move.l #256, d5
 	bsr.w reportSnapshot
-	cmpi.l #REMAP, Record+Snapshot.Stage
-	bne.w done
+recordCapture
+	tst.l CaptureStage
+	beq.w done
 	lea RemapRecord, a4
 	move.l #REMAP_PROGRESS, d7
 	moveq #REMAP_CAPTURE_BYTES/12-1, d6
@@ -576,6 +584,12 @@ remapRows
 	dbra d6, remapRows
 	move.l d7, d0
 	move.l (a4), d1
+	moveq #0, d2
+	moveq #0, d3
+	movea.l a6, a0
+	jsr memory_profile.progress
+	move.l #RECORD_CONTEXT_PROGRESS, d0
+	move.l CaptureStage, d1
 	moveq #0, d2
 	moveq #0, d3
 	movea.l a6, a0
@@ -658,5 +672,6 @@ PreviousRecord	.res byte, SNAPSHOT_BYTES
 NextRecord	.res byte, SNAPSHOT_BYTES
 Pending	.res byte, PendingCheck.Related+4
 RemapRecord	.res byte, REMAP_CAPTURE_BYTES
+CaptureStage	.res long, 1
 	.endsection
 	.endmodule

@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_block_index
 	.cpu 68020
 	.include "memory_telemetry.i"
+	.include "binding_telemetry.i"
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_modules as modules
@@ -10,6 +11,7 @@
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_payload_bounds as payloads
 	.use prvm.amigaos.abi as abi
 	.use experimental.amigaos.binary_materialized_scope as materialized
 	.use opasm.amigaos.binary_expression as expr
@@ -17,6 +19,7 @@
 	.use experimental.amigaos.binary_owner_guards as guards
 	.use experimental.amigaos.binary_binding_plans as plans
 	.pub
+MEASURE_SAVED_BASE = 5*4; D2-D6 precede saved A0 in measure's MOVEM frame
 LIMIT = 65535; packed parent/queue links remain representable words
 Span	.struct
 Start	.long ?
@@ -224,7 +227,7 @@ line
 	moveq #0, d5
 	move.b source.RecordHeader.Flags(a0), d5
 	move.l d5, d6
-	andi.w #$ff-(source.FLAG_INDENT+source.FLAG_BLOCK_OPEN+source.FLAG_BLOCK_CLOSE+source.FLAG_LAYOUT), d6
+	andi.w #$ff-source.FLAG_ALLOWED, d6
 	bne.w bad
 	move.l d5, d6
 	andi.w #source.FLAG_BLOCK_OPEN, d6
@@ -261,6 +264,7 @@ complete
 	moveq #0, d0
 	bra.w done
 bad
+	.BINDING_RECORD_FAILURE #binding_diagnostic.BLOCK_INDEX, a0, a1, MEASURE_SAVED_BASE
 	moveq #0, d1
 	moveq #1, d0
 done
@@ -685,7 +689,12 @@ scanLine	.block
 	lea 4(a4), a0
 	movea.l a4, a1
 	adda.w d6, a1
+	move.l d3, -(sp)
+	moveq #0, d3
+	move.b source.RecordHeader.Flags(a4), d3
 	bsr.w references
+	move.l (sp)+, d3
+	tst.l d0
 	bne.w scanBad
 scanNext
 	adda.w d6, a4
@@ -721,6 +730,7 @@ queueFull
 ; bytecode operands are skipped by their encoded width. D0/CCR=status.
 references	.block
 	movem.l d1-d5/a0-a2/a5, -(sp)
+	move.l d3, -(sp)  ; record flags remain independent of operand scratch
 token
 	cmpa.l a1, a0
 	beq.w good
@@ -745,8 +755,23 @@ token
 	beq.w schema
 	cmpi.b #source.TOKEN_ITERATOR_BINDING, d1
 	beq.w iterator
+	cmpi.b #source.MACRO_PLAN, d1
+	beq.w plan
+	cmpi.b #source.LINE_PLAN, d1
+	beq.w plan
+	cmpi.b #source.OPTIONAL_LINE_PLAN, d1
+	beq.w plan
 	cmpi.b #41, d1
 	beq.w bad  ; expansion must replace composite recipes before indexing
+	bra.w token
+plan
+	move.l d1, d0
+	move.l (sp), d1
+	jsr payloads.plan
+	bne.w bad
+	tst.l d1
+	beq.w token
+	andi.l #$ff-source.FLAG_PLAN, (sp)
 	bra.w token
 iterator
 	; An iterator binding is not a reference to an emitted block.
@@ -857,6 +882,8 @@ opcode
 	beq.w opcode
 	bra.w bad
 typedOpcode
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL, d1
+	beq.w typedString
 	cmpi.b #$10, d1
 	beq.w eight
 	cmpi.b #$11, d1
@@ -882,6 +909,13 @@ typedOpcode
 	cmpi.b #$70, d1
 	beq.w opcode
 	bra.w bad
+typedString
+	move.l a1, -(sp)
+	movea.l a5, a1
+	jsr payloads.string
+	movea.l (sp)+, a1
+	bne.w bad
+	bra.w opcode
 struct
 	move.l a5, d0
 	sub.l a0, d0
@@ -947,11 +981,16 @@ endExpression
 	bne.w bad
 	bra.w token
 good
+	move.l (sp), d0
+	andi.l #source.FLAG_PLAN, d0
+	bne.w bad
 	moveq #0, d0
 	bra.w doneRefs
 bad
+	.BINDING_RECORD_VIEW_FAILURE #binding_diagnostic.BLOCK_REFERENCES, a0, a1, Base
 	moveq #1, d0
 doneRefs
+	addq.l #4, sp
 	movem.l (sp)+, d1-d5/a0-a2/a5
 	tst.l d0
 	rts

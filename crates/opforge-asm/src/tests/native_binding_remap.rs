@@ -32,6 +32,24 @@ const PLAN: Probe = Probe {
     ],
 };
 
+const BLOCK: Probe = Probe {
+    name: "block-index-current-flags",
+    stem: "block_index_flags",
+    output_stem: "block-index-flags",
+    artifact: "Work/block-index-flags.bin",
+    source_root_env: "OPFORGE_BLOCK_INDEX_SOURCE_ROOT",
+    defines: PLAN.defines,
+};
+
+const REFERENCES: Probe = Probe {
+    name: "block-reference-opaque-payload",
+    stem: "block_reference_payload",
+    output_stem: "block-reference-payload",
+    artifact: "Work/block-reference-payload.bin",
+    source_root_env: "OPFORGE_BLOCK_REFERENCE_SOURCE_ROOT",
+    defines: &[],
+};
+
 fn component_image(dir: &Path, probe: &Probe) -> (Vec<u8>, String) {
     use clap::Parser;
     use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
@@ -118,6 +136,16 @@ fn native_proof(probe: &Probe) {
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].success && runs[0].protocol_completed && runs[0].exit_code == Some(0));
+    if probe.name == BLOCK.name {
+        let context: Vec<_> = runs[0]
+            .stdout
+            .lines()
+            .filter(|line| line.starts_with("progress p=00000157 "))
+            .collect();
+        assert_eq!(context.len(), 1, "one failure-only index context");
+        assert!(context[0].contains("f=00000012 l=00000000 r=00000000"));
+        eprintln!("{}", runs[0].stdout);
+    }
 }
 
 #[test]
@@ -140,4 +168,26 @@ fn native_plan_trailer_remap_host_assembles() {
 #[ignore = "requires configured FS-UAE; actual remap rejection and ABI"]
 fn native_plan_trailer_remap_fs_uae() {
     native_proof(&PLAN);
+}
+
+#[test]
+fn native_block_index_flags_host_assembles() {
+    host_assembles(&BLOCK);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; actual block topology and flag validation"]
+fn native_block_index_flags_fs_uae() {
+    native_proof(&BLOCK);
+}
+
+#[test]
+fn native_block_reference_payload_host_assembles() {
+    host_assembles(&REFERENCES);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; real symbol reachability excludes opaque payloads"]
+fn native_block_reference_payload_fs_uae() {
+    native_proof(&REFERENCES);
 }

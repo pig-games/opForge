@@ -758,6 +758,34 @@ no code/data/import. Wrapper gate/preservation tests, 24 decoder tests, native
 guards, formatting, Clippy and independent review pass. Receipt:
 `/tmp/opforge-remap-cost-20261013.json`.
 
+The full rerun after that decoder repair passed final binding and module-order
+materialization, then rejected block indexing before assembly. Fresh START/DONE
+is 2,297.603380750 seconds (38 minutes 17 seconds), exit 20, no output Hunk;
+191 files / 2,114,338 source bytes, manifest `af2aba3f02a8279e`, Rust Hunk
+250,832 bytes. There are 51,895 identities and 1,525,719 prepared bytes. Tracked
+peak is 47,270,248 bytes (+65,536 from the preceding failed run), with no
+allocation failure and zero live ownership. Allocation/free totals match at
+105,598,160 bytes. These are incomplete diagnostic runs, not comparable full
+assembly timings. Receipt: `/tmp/opforge-selfhost-remap-full-20261013.log`.
+
+The index validator still allowed only older record flags. It now accepts the
+shared current flag contract while retaining exact marker framing, balance and
+reserved-bit rejection. The following reachability scan had the same opaque
+payload gaps as remapping; both now use one bounded payload helper. Fresh native
+controls verify current flags, malformed markers, real references retaining
+blocks, and strings/plan handles leaving unreferenced blocks omitted. All four
+component boundaries pass after correcting the reachability fixture's graph
+binding key. Failure capture is reused with a four-byte consumer tag to identify
+remap, block-index and reference-scan failures; it remains excluded from release.
+The separate unchanged release control measures 41.862387833 seconds before
+and 41.936003333 after (+0.18%, one pair). Release image grows 212 bytes and
+linked reservation 196 bytes. Both instrumented controls retain a
+1,240,696-byte tracked peak, zero live ownership and equal allocation/free totals
+of 3,145,848 bytes. Receipt: `/tmp/opforge-index-cost-20261013.json`.
+Formatting preserves release/instrumented image bytes. Native guards, Clippy,
+wrapper gating/preservation, 26 decoder tests and independent review pass.
+The next full current-source rerun is still required.
+
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
 unchanged release control and a separate instrumented heap run against the saved

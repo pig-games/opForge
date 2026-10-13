@@ -103,22 +103,43 @@ BINDING_DIAGNOSTIC_REPORT	.macro dosbase
 .endif
 .endmacro
 
-; remap saves D1-D7/A0-A6: the original packed base is at byte 28.
-; Called only at its failure exit, before that save frame is restored.
-; No successful-path work. Preserve all registers, CCR and stack.
-BINDING_REMAP_FAILURE	.macro cursor, limit, savedBaseOffset
+; Capture a packed-record consumer failure from its live bounded range. The
+; save-frame variant obtains the original base from the consumer's saved A0.
+; Observations allocate nothing, change no records and emit nothing in release.
+BINDING_RECORD_FAILURE	.macro stage, cursor, limit, savedBaseOffset
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
 	move.w ccr, -(sp)
-	movem.l a0-a2, -(sp)
+	movem.l d0/a0-a2, -(sp)
 	movea.l .cursor, a0
 	movea.l .limit, a2
-	movea.l .savedBaseOffset+3*4+2(sp), a1 ; saved base plus observer A0-A2/CCR
-	jsr binding_diagnostic.remapFailure
-	movem.l (sp)+, a0-a2
+	movea.l .savedBaseOffset+4*4+2(sp), a1
+	move.l .stage, d0
+	jsr binding_diagnostic.recordFailure
+	movem.l (sp)+, d0/a0-a2
 	move.w (sp)+, ccr
 .endif
 .endif
 .endif
+.endmacro
+BINDING_RECORD_VIEW_FAILURE	.macro stage, cursor, limit, base
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	movem.l d0/a0-a2, -(sp)
+	movea.l .cursor, a0
+	movea.l .limit, a2
+	movea.l .base, a1
+	move.l .stage, d0
+	jsr binding_diagnostic.recordFailure
+	movem.l (sp)+, d0/a0-a2
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+BINDING_REMAP_FAILURE	.macro cursor, limit, savedBaseOffset
+	.BINDING_RECORD_FAILURE #binding_diagnostic.REMAP, .cursor, .limit, .savedBaseOffset
 .endmacro

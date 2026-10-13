@@ -76,7 +76,12 @@ SNAPSHOT_PHASES = {
     "previous": (160, 192),
     "next": (224, 256),
 }
-REMAP_PHASES = range(336, 343)
+PACKED_RECORD_PHASES = range(336, 344)
+PACKED_RECORD_CONSUMERS = {
+    8: "prepared-record identity remap",
+    18: "block index",
+    19: "block references",
+}
 
 
 class BindingDiagnosticError(ValueError):
@@ -99,7 +104,7 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
     """Decode all phase lines for the first binding snapshot in captured text."""
     groups = {name: {} for name in SNAPSHOT_PHASES}
     preparation_phases: dict[int, tuple[int, int, int, int]] = {}
-    remap_phases: dict[int, tuple[int, int, int, int]] = {}
+    packed_record_phases: dict[int, tuple[int, int, int, int]] = {}
     for line in text.splitlines():
         match = PROGRESS.fullmatch(line.strip())
         if not match:
@@ -108,8 +113,8 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
                 malformed_phase = int(candidate.group(1), 16)
                 if malformed_phase in (301, 302, 303, 304, 305, 306, 307, 308):
                     raise BindingDiagnosticError("malformed preparation failure progress record")
-                if malformed_phase in REMAP_PHASES:
-                    raise BindingDiagnosticError("malformed remap failure progress record")
+                if malformed_phase in PACKED_RECORD_PHASES:
+                    raise BindingDiagnosticError("malformed packed-record failure progress record")
             continue
         phase, *values = (int(part, 16) for part in match.groups())
         if phase in (301, 302, 303, 304, 305, 306, 307, 308):
@@ -117,10 +122,10 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
                 raise BindingDiagnosticError(f"duplicate preparation failure phase {phase}")
             preparation_phases[phase] = tuple(values)
             continue
-        if phase in REMAP_PHASES:
-            if phase in remap_phases:
-                raise BindingDiagnosticError(f"duplicate remap failure phase {phase}")
-            remap_phases[phase] = tuple(values)
+        if phase in PACKED_RECORD_PHASES:
+            if phase in packed_record_phases:
+                raise BindingDiagnosticError(f"duplicate packed-record failure phase {phase}")
+            packed_record_phases[phase] = tuple(values)
             continue
         for name, (metadata, spelling) in SNAPSHOT_PHASES.items():
             normalized = None
@@ -153,22 +158,33 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
         result["correlations"] = correlations
     if preparation_phases:
         result["preparation_failure"] = _decode_preparation_failure(preparation_phases)
-    if remap_phases:
-        if primary is None or primary["stage"] != 8:
-            raise BindingDiagnosticError("remap failure capture requires a primary stage 8 snapshot")
-        result["remap_failure"] = _decode_remap_failure(remap_phases)
+    if packed_record_phases:
+        packed_record_failure = _decode_packed_record_failure(packed_record_phases)
+        consumer_stage = packed_record_failure["consumer_stage"]
+        if consumer_stage == 8 and (primary is None or primary["stage"] != 8):
+            raise BindingDiagnosticError("stage 8 packed-record capture requires a primary stage 8 snapshot")
+        if primary is not None and primary["stage"] != consumer_stage:
+            raise BindingDiagnosticError("packed-record capture has inconsistent primary snapshot context")
+        result["packed_record_failure"] = packed_record_failure
     return result
 
 
-def _decode_remap_failure(phases: dict[int, tuple[int, int, int, int]]) -> dict[str, object]:
-    required = set(REMAP_PHASES)
+def _decode_packed_record_failure(
+    phases: dict[int, tuple[int, int, int, int]],
+) -> dict[str, object]:
+    required = set(PACKED_RECORD_PHASES)
     missing = sorted(required - phases.keys())
     if missing:
         raise BindingDiagnosticError(
-            "incomplete remap failure capture; missing phases " + ", ".join(map(str, missing))
+            "incomplete packed-record failure capture; missing phases " + ", ".join(map(str, missing))
         )
     if phases[342][1] != 0 or phases[342][2] != 0:
         raise BindingDiagnosticError("phase 342 trailing words must be zero")
+    consumer_stage, reserved_first, reserved_second, _ = phases[343]
+    if reserved_first != 0 or reserved_second != 0:
+        raise BindingDiagnosticError("phase 343 trailing words must be zero")
+    if consumer_stage not in PACKED_RECORD_CONSUMERS:
+        raise BindingDiagnosticError(f"unknown packed-record consumer stage {consumer_stage}")
     raw = b"".join(
         word.to_bytes(4, "big")
         for phase in range(336, 342)
@@ -189,6 +205,8 @@ def _decode_remap_failure(phases: dict[int, tuple[int, int, int, int]]) -> dict[
         record_offset = record
         record_prefix = head[:min(extent, 32)]
     return {
+        "consumer_stage": consumer_stage,
+        "consumer_stage_meaning": PACKED_RECORD_CONSUMERS[consumer_stage],
         "cursor_offset": cursor,
         "record_offset": record_offset,
         "record_bytes": extent,

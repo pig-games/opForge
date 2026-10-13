@@ -6,6 +6,7 @@
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_payload_bounds as payloads
 	.use experimental.amigaos.binary_materialized_scope as materialized
 	.pub
 Entry	.struct
@@ -29,7 +30,7 @@ MemberId	.word ?  ; immutable global bare field key; $ffff until declared
 OriginalId	.word ?  ; original complete name ID for BINDING_PROXY
 .endstruct
 ENTRY_BYTES = Entry.OriginalId+2
-REMAP_SAVED_BASE = 7*4 ; D1-D7 precede saved A0 in remap's MOVEM frame
+REMAP_SAVED_BASE = 7*4; D1-D7 precede saved A0 in remap's MOVEM frame
 ENCODING_NAME_HIGH_BIT = 7
 ENCODING_NAME = 1<<(ENCODING_NAME_HIGH_BIT+8); independent non-value identity namespace
 REFERENCED = 2
@@ -94,7 +95,7 @@ tokens
 	movea.l a0, a2
 	moveq #0, d4
 	move.b source.RecordHeader.Flags(a2), d4
-	andi.w #source.FLAG_PLAN, d4 ; a call-plan flag requires its terminal trailer
+	andi.w #source.FLAG_PLAN, d4  ; a call-plan flag requires its terminal trailer
 	cmpa.l a4, a0
 	beq.w bad
 	move.l a4, d0
@@ -136,34 +137,15 @@ token
 	beq.w bad  ; composite recipes must be expanded before remapping
 	bra.w token
 callPlan
-	moveq #source.FLAG_PLAN, d5
-	bra.w plan
 linePlan
-	btst #source.LINE_PLAN_BIT, source.RecordHeader.Flags(a2)
-	beq.w token ; ordinary mutable/conditional declaration markers retain meaning
-	move.l a4, d1
-	sub.l a0, d1
-	cmpi.l #source.PLAN_TOKEN_BYTES-1, d1
-	bne.w token
-	cmpi.b #source.PLAN_TOKEN_BYTES, source.PlanToken.Bytes-1(a0)
-	bne.w token
-	moveq #source.LINE_PLAN_FLAG, d5
-plan
-	moveq #0, d0
-	move.b source.RecordHeader.Flags(a2), d0
-	andi.w #source.FLAG_PLAN+source.LINE_PLAN_FLAG, d0
-	cmp.w d5, d0
+	movea.l a4, a1
+	moveq #0, d1
+	move.b source.RecordHeader.Flags(a2), d1
+	jsr payloads.plan
 	bne.w bad
-	move.l a4, d0
-	sub.l a0, d0
-	cmpi.l #source.PLAN_TOKEN_BYTES-1, d0
-	bne.w bad
-	cmpi.b #source.PLAN_TOKEN_BYTES, source.PlanToken.Bytes-1(a0)
-	bne.w bad
-	tst.l (a0)
-	beq.w bad
+	tst.l d1
+	beq.w token
 	moveq #0, d4
-	movea.l a4, a0
 recordDone
 	tst.w d4
 	bne.w bad
@@ -320,21 +302,9 @@ typedOpcode
 	beq.w opcode
 	bra.w bad
 typedString
-	; Canonical strings carry a little-endian u16 byte count. Their contents
-	; are opaque even when bytes resemble opcodes or numeric symbol IDs.
-	move.l a3, d0
-	sub.l a0, d0
-	cmpi.l #2, d0
-	blo.w bad
-	moveq #0, d2
-	move.b 1(a0), d2
-	lsl.w #8, d2
-	move.b (a0), d2
-	addq.l #2, a0
-	subq.l #2, d0
-	cmp.l d2, d0
-	blo.w bad
-	adda.l d2, a0
+	movea.l a3, a1
+	jsr payloads.string
+	bne.w bad
 	bra.w opcode
 struct
 	move.l a3, d0

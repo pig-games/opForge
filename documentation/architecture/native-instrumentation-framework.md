@@ -286,16 +286,20 @@ A valid correlation view emits every row; an empty view emits none. The primary
 phases and their meaning remain unchanged. Correlations are neighboring storage
 and ownership observations, not additional assembly failures.
 
-For a primary stage-8 remap failure, the same failure-only observer may emit the
-optional 76-byte remap capture at phases 336–342. The first row stores the
+For a packed-record consumer failure, the same failure-only observer may emit
+the optional 80-byte capture at phases 336–343. The first row stores the
 cursor byte offset, containing-record byte offset (`ffffffff` when absent), and
 record extent. The next 64 bytes hold the first 32 record bytes and a 32-byte
 window beginning at the cursor (or one byte before it when the cursor is
 nonzero). Phases 336–341 each carry 12 bytes; phase 342 carries the final four
-bytes in its first word and zeroes in its next two words. The decoder trims the
+bytes in its first word and zeroes in its next two words. Phase 343 carries the
+consumer stage (8 for prepared-record remapping, 18 for block indexing, 19 for
+block references) and zeroes in its next two words. The decoder trims the
 record prefix to the reported extent and preserves the cursor window as a
 zero-padded 32-byte capture; neither view has a separately reported known
-length. This observer is bounded, retains no pointers, and emits no allocation
+length. Stage 8 requires a matching primary binding snapshot; block consumer
+stages can be decoded without one because they have no binding lexical base or
+count. This observer is bounded, retains no pointers, and emits no allocation
 or I/O of its own. Emission requires `OPFORGE_DEBUG_CONTRACTS`,
 `OPFORGE_MEMORY_TELEMETRY`, and `OPFORGE_PREPARATION_PROGRESS`; release builds
 omit it.

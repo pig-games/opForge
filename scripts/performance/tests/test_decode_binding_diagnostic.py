@@ -39,7 +39,9 @@ def writer_status(status, reserved_first=0, reserved_second=0, live_owned=99):
     return progress(308, status, reserved_first, reserved_second, live_owned)
 
 
-def remap_capture(cursor=5, record=2, extent=6, head=b"abcdef", window=b"window"):
+def packed_record_capture(
+    consumer_stage=8, cursor=5, record=2, extent=6, head=b"abcdef", window=b"window"
+):
     raw = (
         cursor.to_bytes(4, "big")
         + record.to_bytes(4, "big")
@@ -52,6 +54,7 @@ def remap_capture(cursor=5, record=2, extent=6, head=b"abcdef", window=b"window"
         chunk = raw[index * 12:(index + 1) * 12]
         words = [int.from_bytes(chunk[i:i + 4], "big") for i in (0, 4, 8)]
         lines.append(progress(phase, *words, fourth=99))
+    lines.append(progress(343, consumer_stage, 0, 0, fourth=99))
     return "\n".join(lines)
 
 
@@ -96,43 +99,79 @@ def correlation(kind, **kwargs):
 
 
 class BindingDiagnosticTests(unittest.TestCase):
-    def test_stage8_remap_capture_decodes_bounded_record_and_window(self):
-        result = decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + remap_capture())
-        remap = result["remap_failure"]
-        self.assertEqual(remap["cursor_offset"], 5)
-        self.assertEqual(remap["record_offset"], 2)
-        self.assertEqual(remap["record_bytes"], 6)
-        self.assertEqual(bytes.fromhex(remap["record_prefix_hex"]), b"abcdef")
-        self.assertEqual(len(bytes.fromhex(remap["cursor_window_hex"])), 32)
-        self.assertEqual(bytes.fromhex(remap["cursor_window_hex"])[:6], b"window")
+    def test_stage8_packed_record_capture_decodes_bounded_record_and_window(self):
+        result = decoder.decode_binding_diagnostic(
+            snapshot(stage=8) + "\n" + packed_record_capture()
+        )
+        capture = result["packed_record_failure"]
+        self.assertEqual(capture["consumer_stage"], 8)
+        self.assertEqual(capture["consumer_stage_meaning"], "prepared-record identity remap")
+        self.assertEqual(capture["cursor_offset"], 5)
+        self.assertEqual(capture["record_offset"], 2)
+        self.assertEqual(capture["record_bytes"], 6)
+        self.assertEqual(bytes.fromhex(capture["record_prefix_hex"]), b"abcdef")
+        self.assertEqual(len(bytes.fromhex(capture["cursor_window_hex"])), 32)
+        self.assertEqual(bytes.fromhex(capture["cursor_window_hex"])[:6], b"window")
 
-    def test_remap_capture_is_optional_but_requires_complete_unique_rows_and_stage8(self):
-        self.assertNotIn("remap_failure", decoder.decode_binding_diagnostic(snapshot(stage=8)))
-        capture = remap_capture()
+    def test_packed_record_capture_is_optional_but_requires_complete_unique_rows(self):
+        self.assertNotIn(
+            "packed_record_failure", decoder.decode_binding_diagnostic(snapshot(stage=8))
+        )
+        capture = packed_record_capture()
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "missing phases"):
             decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + "\n".join(capture.splitlines()[:-1]))
-        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "duplicate remap"):
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "duplicate packed-record"):
             decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + capture + "\n" + capture.splitlines()[0])
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "requires a primary stage 8"):
             decoder.decode_binding_diagnostic(capture)
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "requires a primary stage 8"):
             decoder.decode_binding_diagnostic(snapshot(stage=5) + "\n" + capture)
-        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "malformed remap"):
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "malformed packed-record"):
             decoder.decode_binding_diagnostic(
                 snapshot(stage=8) + "\n" + capture.replace("m=00000063", "")
             )
 
-    def test_remap_capture_validates_extent_and_phase342_reserved_words(self):
-        absent = remap_capture(cursor=3, record=0xFFFFFFFF, extent=0)
+    def test_packed_record_capture_validates_extent_and_reserved_words(self):
+        absent = packed_record_capture(cursor=3, record=0xFFFFFFFF, extent=0)
         result = decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + absent)
-        self.assertIsNone(result["remap_failure"]["record_offset"])
-        self.assertEqual(result["remap_failure"]["record_prefix_hex"], "")
-        bad_extent = remap_capture(cursor=4, record=2, extent=1)
+        self.assertIsNone(result["packed_record_failure"]["record_offset"])
+        self.assertEqual(result["packed_record_failure"]["record_prefix_hex"], "")
+        bad_extent = packed_record_capture(cursor=4, record=2, extent=1)
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "does not contain cursor"):
             decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + bad_extent)
-        lines = remap_capture().splitlines()
-        lines[-1] = progress(342, 0, 1, 0, fourth=99)
+        lines = packed_record_capture().splitlines()
+        lines[-2] = progress(342, 0, 1, 0, fourth=99)
         with self.assertRaisesRegex(decoder.BindingDiagnosticError, "trailing words"):
+            decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + "\n".join(lines))
+
+    def test_block_consumer_stages_decode_without_binding_snapshot(self):
+        meanings = {18: "block index", 19: "block references"}
+        for stage, meaning in meanings.items():
+            with self.subTest(stage=stage):
+                result = decoder.decode_binding_diagnostic(
+                    packed_record_capture(consumer_stage=stage)
+                )
+                self.assertIsNone(result["snapshot"])
+                capture = result["packed_record_failure"]
+                self.assertEqual(capture["consumer_stage"], stage)
+                self.assertEqual(capture["consumer_stage_meaning"], meaning)
+
+    def test_packed_record_capture_rejects_wrong_primary_and_unknown_context(self):
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "primary stage 8"):
+            decoder.decode_binding_diagnostic(
+                snapshot(stage=5) + "\n" + packed_record_capture(consumer_stage=8)
+            )
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "inconsistent primary"):
+            decoder.decode_binding_diagnostic(
+                snapshot(stage=5) + "\n" + packed_record_capture(consumer_stage=18)
+            )
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "unknown packed-record consumer"):
+            decoder.decode_binding_diagnostic(
+                packed_record_capture(consumer_stage=20)
+            )
+        lines = packed_record_capture().splitlines()
+        lines[-1] = progress(343, 8, 1, 0, fourth=99)
+        with self.assertRaisesRegex(decoder.BindingDiagnosticError, "phase 343 trailing"):
             decoder.decode_binding_diagnostic(snapshot(stage=8) + "\n" + "\n".join(lines))
 
     def test_optional_correlated_views_keep_original_snapshot(self):

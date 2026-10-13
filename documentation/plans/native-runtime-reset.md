@@ -5,6 +5,12 @@
 Complete current Rust assembler language, packages and assembly CLI/output
 behavior through the compact native path in this order:
 
+Current direction (2026-10-13): pause parity implementation for a measurement-led
+performance pass. Establish current full-workload runtime and memory costs,
+analyse ownership and repeated work, then rank optimization candidates before
+implementing them. See [performance diagnosis](native-performance-diagnosis.md).
+This request supersedes the earlier optimization deferral.
+
 1. Shared opcore.
 2. 6502 family.
 3. Complete 68000 family, including FPU, MMU, AMMX and 68080/Apollo.
@@ -16,8 +22,8 @@ Repair discovered Rust defects before qualifying corresponding native behavior.
 Keep CPU/family/dialect semantics in package owners and generic directives in
 shared processing. Developer tools remain separate. Continue autonomously through
 coherent recovery points; consult Erik for dramatic performance or memory
-regressions. Begin no optimization rounds until this completion sequence is done;
-then report remaining limits and wait.
+regressions. Resume this completion sequence after the current performance
+diagnosis and its agreed optimization work.
 
 ## Current evidence and limits
 
@@ -80,8 +86,9 @@ with fresh exit zero. Bootstrap and output embed only the m68020 package.
 The release FS-UAE 68020/74 MiB run takes 3,512.267856959 seconds (58m32.27s).
 Full-workload memory was not instrumented; the earlier unembedded instrumented
 checkpoint had a 47,319,416-byte tracked peak. These are different inputs/modes,
-not a performance comparison. Physical A6000 validation of the corrected bundle,
-complete opcore/family parity and 2 MiB fit remain separate work. See the maintained
+not a performance comparison. The identical release bundle also passes on the
+A6000 in 118 seconds, with exact complete Hunk equality. Complete opcore/family
+parity and 2 MiB fit remain separate work. See the maintained
 [self-host proof](compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).
 
 The separate shared text-owner component matches its complete live Rust artifact
@@ -845,8 +852,7 @@ graph-changing source acquisition boundaries explicit.
 Each coherent outcome needs fresh positive and negative native controls, separate
 release and memory measurements, and a review of numeric execution ownership.
 Keep new responsibilities out of the already large frontend. Continue shared
-language work before CPU families; optimization shortcuts remain deferred until
-parity qualification.
+language work before CPU families when parity implementation resumes.
 
 ## Complete and qualify a slice
 

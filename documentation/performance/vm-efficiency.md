@@ -805,6 +805,14 @@ not a timing comparison against the earlier unembedded/instrumented case, and
 does not establish hardware timing or a new full-workload memory measurement.
 Capture: `/tmp/opforge-binary-assets-full-capture-20261013/`.
 
+The same release bundle passes a fresh physical A6000 run in 118 guest seconds
+(one-second resolution); host command time is 118.3560407909099 seconds including
+connection. Instrumentation defines are empty. All 194 mapped inputs and the
+complete 706,888-byte output identify the same case; its hardware output SHA-256
+matches the complete emulator and Rust outputs. Receipt:
+`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-ewffglzb/result.json`.
+This is the physical release baseline for the [current resource diagnosis](../plans/native-performance-diagnosis.md).
+
 The opaque-asset repair's separate no-asset 11,592-byte control remains unchanged:
 41.802194583 seconds before and 41.802430625 after, release mode on 68020/10 MiB.
 Image and linked reservation grow 292 and 268 bytes respectively. Separate

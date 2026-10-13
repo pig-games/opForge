@@ -2,8 +2,9 @@
 
 Status: source commit `7a903cf8` has complete embedded release native self-host
 qualification on 2026-10-13, with exact complete live Rust Hunk equality.
-This emulator run does not qualify physical hardware, full-workload memory,
-the 2 MiB target or complete opcore/CPU-family parity.
+The same release bundle also passes on the physical A6000 in 118 seconds.
+Full-workload memory, the 2 MiB target and complete opcore/CPU-family parity
+remain separate measurements and qualification work.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -183,8 +184,15 @@ there is no external runtime fallback. It contains 194 mapped inputs
 (2,580,296 bytes including the package asset) and a 706,888-byte executable,
 with 740,660 bytes linked reservation. Local and relocated Rust assembly match,
 and the A6000 runner's dry run validates the actual bundle. Its manifest records
-`native_validation: fresh_fs_uae_exact_hunk`. Fresh physical A6000 execution of
-this corrected bundle is still pending.
+`native_validation: fresh_fs_uae_exact_hunk`. A fresh physical A6000 run of the
+same bundle completes with exit zero and exact complete Hunk equality in
+118 seconds (one-second guest clock resolution), with 118.3560407909099 seconds
+of host command time including connection. This is release mode, with no
+instrumentation defines. Its case digest
+`c469c0fb6c9894cf8948514016b02e2fdee467095dd94f1ddc344b1db42d6d0b`
+matches the current bundle. The captured output independently matches its Rust
+oracle and the emulator output SHA-256 above. Receipt:
+`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-ewffglzb/result.json`.
 
 The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at
 `catalog.i` line 572, the package `.incbin`; no output was produced. Binary assets

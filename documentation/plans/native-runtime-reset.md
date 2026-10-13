@@ -84,9 +84,11 @@ The current full self-host proof covers source commit `7a903cf8`, manifest
 assemble natively into the complete 706,888-byte Hunk, exactly matching live Rust
 with fresh exit zero. Bootstrap and output embed only the m68020 package.
 The release FS-UAE 68020/74 MiB run takes 3,512.267856959 seconds (58m32.27s).
-Full-workload memory was not instrumented; the earlier unembedded instrumented
-checkpoint had a 47,319,416-byte tracked peak. These are different inputs/modes,
-not a performance comparison. The identical release bundle also passes on the
+The separate full instrumented A6000 run reports a 46,880,904-byte tracked peak,
+155.38 seconds preparation and 35.14 seconds assembly, with all storage freed.
+The earlier unembedded instrumented checkpoint had a 47,319,416-byte tracked peak;
+these are different configurations, not an isolated improvement comparison.
+The identical release bundle also passes on the
 A6000 in 118 seconds, with exact complete Hunk equality. Complete opcore/family
 parity and 2 MiB fit remain separate work. See the maintained
 [self-host proof](compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).

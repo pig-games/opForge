@@ -23,10 +23,60 @@ Reuse this current release baseline. A separate full instrumented run uses the
 identical source/package/command/oracle, with allocation tracking, phase clocks,
 binding samples, template work counts and input-reader counts. Dense tokenizer
 opcode telemetry is disabled. Instrumented time measures attribution and overhead,
-not release speed. Require fresh completion, exit zero and the complete Rust match.
-Retain measurements outside `target`, then clean the completed build/test batch.
+not release speed. The instrumented A6000 run now completes with fresh exit zero,
+exact complete output and valid telemetry. Its case digest is
+`3538c2ea566915b2b5d01c5a6d0f1e1e36cb164219815bcdb8314f0383154baa`.
+Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-4i2o6ro3/result.json`.
+The equivalent emulator diagnostic was cancelled after this hardware completion;
+it supplies no completed emulator measurement. Summary:
+`/tmp/opforge-native-performance-baseline-20261013.json`.
 
-## Analysis to complete
+## Measured costs
+
+Instrumented overall time is 191 seconds versus 118 release seconds: about 62%
+additional elapsed time. Guest phase clocks report 155.38 seconds preparation and
+35.14 seconds assembly. Do not extrapolate release phase times by scaling these
+observations: instrumentation overhead is distributed unevenly.
+
+| Exclusive preparation responsibility | Instrumented seconds |
+|---|---:|
+| Binding and raw records | 100.79 |
+| Source I/O and other | 17.78 |
+| Expression preparation | 9.99 |
+| Module discovery | 9.44 |
+| Tokenization | 9.03 |
+| Runtime finalization | 8.25 |
+| Package setup | 0.11 |
+
+Binding/raw records account for about 65% of instrumented preparation. Nested
+observations include record finalization/append (20.03 seconds), packed
+writing/binding (18.36) and conditionals/scopes/imports (15.76). They are already
+within the preparation stages and must not be added to the table. Binding sampling
+estimates 15.14 seconds of name binding; that estimate is nested too.
+
+| Ownership boundary | Tracked live bytes |
+|---|---:|
+| Last acquisition sample | 33,588,976 |
+| Replay complete, before finalization | 12,957,528 |
+| Parameter/export boundary | 13,161,560 |
+| Preparation released / assembly entry | 2,895,104 |
+| Assembly complete | 4,869,376 |
+| Global tracked peak | 46,880,904 |
+
+The peak is 44.71 MiB, versus 2.76 MiB after preparation teardown and 4.64 MiB
+at assembly completion. The exact peak falls between snapshots; current telemetry
+cannot assign it to a particular owner or distinguish growth overlap from replay
+overlap. All 109,772,320 allocated bytes are freed, with zero live storage,
+no allocation failures and no profiling errors. This points to transient
+preparation ownership rather than a retained leak. These are tracked allocations
+from an instrumented build, not total process RAM or an exact release heap peak.
+
+Runtime prefix is 432,626 bytes; prepared packed records are 2,008,891 bytes.
+67,723 expressions compile into 264,023 program bytes, with 174,723 evaluations.
+Input collection reads 2,626,150 bytes through 1,007 reads; mapped input size and
+actual bytes read are different quantities.
+
+## Growth observations and remaining attribution
 
 Earlier successful release A6000 receipts show a workload trend, not isolated
 change costs: 103 files / 1,509,170 input bytes took 35 seconds; 121 files /
@@ -51,14 +101,45 @@ supports investigating repeated work; it does not establish a specific cause.
    complexity and correctness risk. Identify missing evidence before choosing a
    change; use focused representative controls for subsequent before/after runs.
 
-## Initial hypotheses, not optimization decisions
+## Ranked candidates
 
-- Binding: repeated template candidate selection and scope/name resolution.
-- Memory: composed spelling and plan arenas, geometric slack and growth copies,
-  preparation/export overlap, and retained captured source regions.
-- Discovery: declaration-only byte/line scanning followed by full preparation.
-- Assembly: repeated structural traversal within necessary semantic/layout replay.
-- Finalization: binding candidate validation, remapping and compaction.
+1. **Capture representation and lifetime.** Each retained acquisition line has a
+   64-byte header, 20-byte shared TKVM tokens, lexemes and copied candidate plans.
+   Some spellings occur in both lexemes and plans. The scheduler retains these
+   regions through replay. Measure total used/capacity and header/token/lexeme/plan
+   contributions first. A compact acquisition format inflated into existing TKVM
+   scratch during replay could lower memory without changing the shared VM ABI.
+   Preserve columns, adjacency, wide-number metadata, macro spelling and origins.
+2. **Capture construction and bulk memory work.** Construction clears a whole
+   record, overwrites it, and copies it from temporary to retained storage; buffer
+   growth copies used bytes byte-by-byte. Removing overwritten clears, avoiding
+   redundant copies or using suitable bulk-copy operations are smaller candidates
+   than a format redesign. Measure cleared/copied/growth bytes, keep padding
+   deterministic and preserve overlap, alignment and failure-atomic behavior.
+3. **Candidate acquisition work.** Telemetry reports 221,240 descriptor VM runs,
+   consistent with unconditional call/header acquisition for 110,620 lines.
+   Consider package-authored shared prefix work or eligibility filtering after
+   measuring match/no-match costs. Preserve deferred failures until contextual
+   replay selects a role; never recreate grammar in native shortcuts.
+4. **Binding/finalization owners.** Measure composed spelling, macro/binding plan
+   arenas and exported copies individually before choosing ownership transfer,
+   early retirement or deduplication. Preserve visibility, longest declaration
+   precedence, inactive alternatives, cursor validity and installed-owner checks.
+5. **Discovery and assembly traversal.** Discovery is 9.44 instrumented seconds;
+   assembly is 35.14. Reader and pass/layout counters should precede changes to
+   scanning or reuse. Actual branch, mutable-symbol and relaxation semantics
+   continue to require evaluation.
+
+Broad template-dispatch caching is lower priority than the initial audit suggested:
+dispatch measures 4.63 seconds and only 462 invocations occur. Searches are a
+minority of role/line calls. Zero physical string-plan captures does not mean
+fragment planning is unused: retained captured plans bind through another route.
+
+Recommended next slice: bounded owner usage/capacity and construction/copy counts
+at acquisition end, replay overlap and capture release. Use those measurements
+to select one small construction change or a compact-capture experiment, with
+unchanged release input and the complete Rust artifact as correctness reference.
+No optimization has been implemented in this diagnostic pass.
 
 Preserve failure-atomic allocation, stable numeric identity, longest-owner lookup,
 active branch/loop semantics, include provenance and relocation/layout behavior.

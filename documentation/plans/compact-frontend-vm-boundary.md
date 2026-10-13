@@ -3,8 +3,8 @@
 Status: source commit `7a903cf8` has complete embedded release native self-host
 qualification on 2026-10-13, with exact complete live Rust Hunk equality.
 The same release bundle also passes on the physical A6000 in 118 seconds.
-Full-workload memory, the 2 MiB target and complete opcore/CPU-family parity
-remain separate measurements and qualification work.
+The separate instrumented A6000 run measures 46,880,904 tracked peak bytes;
+the 2 MiB target and complete opcore/CPU-family parity remain open.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -193,6 +193,21 @@ instrumentation defines. Its case digest
 matches the current bundle. The captured output independently matches its Rust
 oracle and the emulator output SHA-256 above. Receipt:
 `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-ewffglzb/result.json`.
+
+The separate instrumented bootstrap runs the identical release source/package/
+command/oracle on the A6000, with fresh exit zero and exact complete output.
+It takes 191 seconds including instrumentation: preparation 155.38 seconds and
+assembly 35.14 seconds. Tracked peak is 46,880,904 bytes; all 109,772,320 allocated
+bytes are freed, with zero live ownership, no allocation failures and no profiling
+errors. The instrumented hardware case is
+`3538c2ea566915b2b5d01c5a6d0f1e1e36cb164219815bcdb8314f0383154baa`.
+Its initial host-only candidate status describes the state before this fresh
+hardware qualification. Receipt:
+`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-4i2o6ro3/result.json`.
+The redundant instrumented emulator attempt was cancelled after hardware proof;
+there is no completed instrumented emulator result for this embedded configuration.
+See [resource diagnosis](native-performance-diagnosis.md) for attribution,
+instrumentation overhead and optimization candidates.
 
 The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at
 `catalog.i` line 572, the package `.incbin`; no output was produced. Binary assets

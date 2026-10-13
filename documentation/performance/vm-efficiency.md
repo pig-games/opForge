@@ -813,6 +813,16 @@ matches the complete emulator and Rust outputs. Receipt:
 `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-ewffglzb/result.json`.
 This is the physical release baseline for the [current resource diagnosis](../plans/native-performance-diagnosis.md).
 
+The same full workload's separate instrumented A6000 run succeeds with exact
+complete output in 191 seconds. Preparation/assembly phase clocks are 155.38 /
+35.14 seconds. Tracked peak is 46,880,904 bytes, versus 2,895,104 live at assembly
+entry; all 109,772,320 allocated bytes are freed with no failure or profiling
+errors. The approximately 62% instrumented elapsed overhead must not be treated
+as a release regression or applied uniformly to stage times. Binding/raw records
+account for 100.79 instrumented seconds, about 65% of preparation. Full stage,
+ownership and work-count analysis is maintained in the resource diagnosis above.
+Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-4i2o6ro3/result.json`.
+
 The opaque-asset repair's separate no-asset 11,592-byte control remains unchanged:
 41.802194583 seconds before and 41.802430625 after, release mode on 68020/10 MiB.
 Image and linked reservation grow 292 and 268 bytes respectively. Separate

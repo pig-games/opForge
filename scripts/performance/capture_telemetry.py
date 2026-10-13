@@ -62,8 +62,56 @@ def _fail(message: str):
     raise CaptureTelemetryError(message)
 
 
-def decode_capture_telemetry(text: str) -> dict:
+def capture_record_header_bytes(source: str) -> int:
+    """Read the declared Record.Tokens offset; reject unsupported declarations.
+
+    This inspects the capture source paired with an observed executable, allowing
+    a frozen comparison bundle to declare its own layout without inferring it
+    from telemetry totals.
+    """
+    statements = [line.partition(";")[0].strip() for line in source.splitlines()]
+    starts = [i for i, line in enumerate(statements)
+              if re.fullmatch(r"Record\s+\.struct", line, re.IGNORECASE)]
+    if len(starts) != 1:
+        _fail("capture source must declare exactly one Record struct")
+    offset = 0
+    fields = set()
+    tokens_offset = None
+    ended = False
+    for statement in statements[starts[0] + 1:]:
+        if not statement:
+            continue
+        if re.fullmatch(r"\.endstruct", statement, re.IGNORECASE):
+            ended = True
+            break
+        match = re.fullmatch(r"([A-Za-z_][A-Za-z_0-9]*)\s+\.(long|word|byte)\s+\?",
+                             statement, re.IGNORECASE)
+        if not match:
+            _fail("unsupported capture Record field declaration")
+        name, width = match.groups()
+        name, width = name.lower(), width.lower()
+        if name in fields or tokens_offset is not None:
+            _fail("duplicate or trailing capture Record field")
+        fields.add(name)
+        if name == "tokens":
+            if width != "byte":
+                _fail("capture Record.Tokens must be a byte field")
+            tokens_offset = offset
+        offset += {"long": 4, "word": 2, "byte": 1}[width]
+    if not ended or tokens_offset is None or tokens_offset <= 0:
+        _fail("incomplete capture Record declaration")
+    assignments = [line for line in statements
+                   if re.match(r"HEADER_BYTES\s*=", line, re.IGNORECASE)]
+    if len(assignments) != 1 or not re.fullmatch(
+            r"HEADER_BYTES\s*=\s*Record\.Tokens", assignments[0], re.IGNORECASE):
+        _fail("capture HEADER_BYTES must equal Record.Tokens")
+    return tokens_offset
+
+
+def decode_capture_telemetry(text: str, *, record_header_bytes: int = 56) -> dict:
     """Decode exact progress rows, rejecting partial or invalid summaries."""
+    if type(record_header_bytes) is not int or record_header_bytes <= 0:
+        _fail("record header bytes must be a positive integer")
     rows = {}
     for line_number, line in enumerate(text.splitlines(), 1):
         if not line.strip().lower().startswith("progress p="):
@@ -100,8 +148,8 @@ def decode_capture_telemetry(text: str) -> dict:
         summary["counters"][name] = values
     composition = summary["counters"]["retained_composition"]
     append = summary["counters"]["construction_copy"]["retained_append_copy_bytes"]
-    if composition["header_bytes"] != composition["records"] * 64:
-        _fail("retained header bytes do not equal 64 bytes per record")
+    if composition["header_bytes"] != composition["records"] * record_header_bytes:
+        _fail(f"retained header bytes do not equal {record_header_bytes} bytes per record")
     if composition["token_bytes"] % 20:
         _fail("retained token bytes are not a multiple of 20")
     if composition["token_bytes"] > composition["records"] * 64 * 20:
@@ -135,9 +183,13 @@ def decode_capture_telemetry(text: str) -> dict:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("file", type=Path, help="guest stdout text file")
+    parser.add_argument("--capture-source", type=Path,
+                        help="capture source paired with executable (default: current 56-byte layout)")
     args = parser.parse_args(argv)
     try:
-        result = decode_capture_telemetry(args.file.read_text())
+        header_bytes = (capture_record_header_bytes(args.capture_source.read_text())
+                        if args.capture_source else 56)
+        result = decode_capture_telemetry(args.file.read_text(), record_header_bytes=header_bytes)
     except (OSError, CaptureTelemetryError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2, sort_keys=True))

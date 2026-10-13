@@ -172,7 +172,9 @@ next
 	bhi.w bad
 	move.l d0, SourceCursorState.Next+SourceCursorData
 	move.l capture.Record.Origin(a1), OriginId
-	move.l capture.Record.Line(a1), SourceLine
+	moveq #0, d0
+	move.w capture.Record.Line(a1), d0
+	move.l d0, SourceLine
 	move.l d1, d6
 	move.l OriginId, d1
 	bsr.w captureSourcePath

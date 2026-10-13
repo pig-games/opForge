@@ -298,6 +298,31 @@ class HardwareCompletionTests(unittest.TestCase):
                            "manifest.json": json.dumps(manifest).encode()}.items():
             (root / name).write_bytes(data)
 
+    def test_capture_layout_is_bound_to_validated_bootstrap_sources(self):
+        for header_longs, expected in ((14, 56), (16, 64)):
+            with self.subTest(header_bytes=expected), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.bundle(root, True)
+                source = ("Record .struct\n" + "".join(
+                    f"Field{i} .long ?\n" for i in range(header_longs)) +
+                    "Tokens .byte ?\n.endstruct\nHEADER_BYTES = Record.Tokens\n").encode()
+                logical = "experimental/binary_capture.asm"
+                for base in (root / "original", root / "src"):
+                    (base / "experimental").mkdir()
+                    (base / logical).write_bytes(source)
+                manifest = json.loads((root / "manifest.json").read_text())
+                manifest["source_mapping"].append({
+                    "staged_path": "src/" + logical, "logical_path": logical,
+                    "bytes": len(source), "digest": runner.fnv(source)})
+                manifest["source_manifest_digest"] = runner.fnv(
+                    b"entry.asm\0source\0" + logical.encode() + b"\0" + source + b"\0")
+                manifest["_validated_capture_record_header_bytes"] = 123  # Never trust persisted metadata.
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                validated, files, _, _ = runner.load_bundle(root)
+                self.assertEqual(validated["_validated_capture_record_header_bytes"], expected)
+                files["src/" + logical] = b"different frozen workload"
+                self.assertEqual(validated["_validated_capture_record_header_bytes"], expected)
+
     def embedded_bundle(self, root):
         self.bundle(root, False)
         target = b"m68020--motorola68k"
@@ -816,8 +841,11 @@ class HardwareCompletionTests(unittest.TestCase):
             words[31] = 1000
             (root / "memory.bin").write_bytes(struct.pack(">570I", *words))
             manifest = {"bootstrap_defines": sorted(LEGACY_INSTRUMENTATION_DEFINES)}
+            files = {"src/experimental/binary_capture.asm": (
+                Path(__file__).parents[3] /
+                "native/motorola68000/amigaos/experimental/binary_capture.asm").read_bytes()}
             result = {"success": True}
-            runner.add_telemetry(result, root, manifest)
+            runner.add_telemetry(result, root, manifest, files)
             self.assertFalse(result["success"])
             self.assertIsNone(result["capture_ownership"])
             phases = [*range(400, 407), *range(416, 421),
@@ -829,13 +857,13 @@ class HardwareCompletionTests(unittest.TestCase):
             (root / "assembly.stdout").write_text("\n".join(rows))
             for native_success in (True, False):
                 result = {"success": native_success}
-                runner.add_telemetry(result, root, manifest)
+                runner.add_telemetry(result, root, manifest, files)
                 self.assertTrue(result["telemetry_completed"])
                 self.assertEqual(result["success"], native_success)
                 self.assertEqual(result["capture_ownership"]["boundary_mask"], 7)
             (root / "assembly.stdout").write_text("\n".join(rows[:-1]))
             result = {"success": True}
-            runner.add_telemetry(result, root, manifest)
+            runner.add_telemetry(result, root, manifest, files)
             self.assertFalse(result["success"])
             self.assertFalse(result["telemetry_completed"])
 

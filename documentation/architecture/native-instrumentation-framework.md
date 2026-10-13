@@ -403,9 +403,10 @@ whose explicit clear and payload copies run, including records subsequently
 filtered from retention. Construction copies include the seven outcome longs
 and token, lexeme and candidate-plan payloads; header stores are writes rather
 than copies. Cleared bytes count actual explicit zero writes, excluding Exec's
-allocation clearing. The constructor clears the reserved word and both alignment
-gaps, totaling 2–8 bytes per construction; overwritten fields and payloads are
-not cleared first. Retained composition counts only actual region appends:
+allocation clearing. The current 56-byte header has no reserved storage; the
+constructor clears only its two alignment gaps, totaling 0–6 bytes per
+construction. Overwritten fields and payloads are not cleared first. Retained
+composition counts only actual region appends:
 header bytes, 20-byte token rows, lexemes, plans, alignment padding and their
 captured source-byte extent. Append-copy bytes count the whole copied record.
 Configuration and semantic replay materialization count actual capture-to-scratch
@@ -466,6 +467,14 @@ release. Any error makes the accounting unsuitable for numerical conclusions.
 The snapshots describe capture ownership, not total preparation ownership or
 release timing. Existing completion and fresh-run parity evidence remains
 independently required.
+
+The capture decoder defaults to the current 56-byte header. For a frozen export,
+pass `--capture-source /absolute/bootstrap/src/experimental/binary_capture.asm`
+to derive the header width from that executable's validated source. Comparison
+runners bind this width before replacing workload inputs; the assembled source
+can describe a different layout from the running executable. They never infer
+the layout from observed counter totals. This is host accounting for preserved
+comparison images, not native format compatibility or version dispatch.
 
 ## Sampled native routine hotspots
 
@@ -572,7 +581,7 @@ arithmetic-error bit. Counter identities must be compile-time indices in `0..15`
 
 ```asm
 .HOTSPOT_COUNT HOTSPOT_LOOKUP_HASH_BYTES, d6
-.HOTSPOT_COUNT_IF_ZERO capture.Record.Count(a4), HOTSPOT_REPLAY_EMPTY_RECORDS, #1
+.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a4), #0, HOTSPOT_REPLAY_EMPTY_RECORDS, #1
 ```
 
 Predicate macros own their conditional gates and comparisons. `IF_EQ` uses a

@@ -173,8 +173,8 @@ fits
 	lea CaptureLine, a0
 	movea.l memory.Block.Pointer(a0), a0
 	move.l d7, d0
-	.HOTSPOT_COUNT_IF_ZERO capture.Record.Count(a0), HOTSPOT_CAPTURE_EMPTY_RECORDS, #1
-	.HOTSPOT_COUNT_IF_ZERO capture.Record.Count(a0), HOTSPOT_CAPTURE_EMPTY_BYTES, d7
+	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a0), #0, HOTSPOT_CAPTURE_EMPTY_RECORDS, #1
+	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a0), #0, HOTSPOT_CAPTURE_EMPTY_BYTES, d7
 	.HOTSPOT_ENTER #HOTSPOT_CAPTURE_APPEND
 	bsr.w copy
 	.HOTSPOT_LEAVE #HOTSPOT_CAPTURE_APPEND
@@ -383,7 +383,9 @@ locateConfigurationFailure	.block
 	bne.w done
 	move.l capture.Record.Origin(a1), OriginId
 	move.l capture.Record.Origin(a1), SourceOrdinal
-	move.l capture.Record.Line(a1), SourceLine
+	moveq #0, d0
+	move.w capture.Record.Line(a1), d0
+	move.l d0, SourceLine
 	move.l capture.Record.Origin(a1), d1
 	bsr.w captureSourcePath
 done

@@ -20,7 +20,7 @@ import time
 import uuid
 
 from memory_telemetry import decode_memory_telemetry
-from capture_telemetry import decode_capture_telemetry
+from capture_telemetry import capture_record_header_bytes, decode_capture_telemetry
 from hotspot_telemetry import decode_hotspot_telemetry
 
 INSTRUMENTATION_DEFINES = {
@@ -359,6 +359,12 @@ def load_bundle(bundle):
         identity.extend(b"\0instrumented-bootstrap\0" + bootstrap)
     if storage == "embedded":
         identity.extend(b"\0embedded-bootstrap\0" + bootstrap)
+    # Bind accounting to this executable's validated source before a comparison
+    # replaces the workload files with a frozen baseline.
+    capture_source = files.get("src/experimental/binary_capture.asm")
+    manifest["_validated_capture_record_header_bytes"] = (
+        capture_record_header_bytes(capture_source.decode("utf-8"))
+        if "OPFORGE_CAPTURE_TELEMETRY" in defines and capture_source is not None else None)
     return manifest, files, oracle, hashlib.sha256(identity).hexdigest()
 
 
@@ -440,7 +446,7 @@ def inspect_result(root, files, oracle, marker, host_seconds):
     }
 
 
-def add_telemetry(result, root, manifest):
+def add_telemetry(result, root, manifest, files=None, *, record_header_bytes=None):
     defines = manifest.get("bootstrap_defines", [])
     result.update({"measurement_mode": "instrumented" if defines else "release",
                    "bootstrap_defines": defines,
@@ -470,7 +476,14 @@ def add_telemetry(result, root, manifest):
         diagnostics.append("exclusive stage clocks disagree with preparation by more than 40 ms")
     if "OPFORGE_CAPTURE_TELEMETRY" in defines:
         try:
-            capture = decode_capture_telemetry((root / "assembly.stdout").read_text())
+            source_path = "src/experimental/binary_capture.asm"
+            header_bytes = record_header_bytes
+            if header_bytes is None:
+                if files is None or source_path not in files:
+                    raise ValueError("capture telemetry requires validated bundled capture source")
+                header_bytes = capture_record_header_bytes(files[source_path].decode("utf-8"))
+            capture = decode_capture_telemetry(
+                (root / "assembly.stdout").read_text(), record_header_bytes=header_bytes)
             summary = capture["capture_summary"]
             if summary is None:
                 raise ValueError("missing capture ownership summary")
@@ -564,7 +577,8 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
         result = inspect_result(captured / name, files, oracle, marker, elapsed)
     except (OSError, ValueError) as error:
         raise ValueError(f"Post-run capture validation failed; execution returned but the hardware result is unverified: {error}") from error
-    add_telemetry(result, captured / name, manifest)
+    add_telemetry(result, captured / name, manifest,
+                  record_header_bytes=manifest.get("_validated_capture_record_header_bytes"))
     if not result["success"]:
         diagnostic = captured / name / "assembly.stdout"
         if diagnostic.is_file():

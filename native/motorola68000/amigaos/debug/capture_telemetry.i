@@ -66,7 +66,7 @@ CAPTURE_CONSTRUCTION_CLEAR_BEGIN	.macro counter
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
-	moveq #2, .counter  ; Record.Reserved word
+	moveq #0, .counter  ; compact header has no reserved storage
 	move.w (sp)+, ccr
 .endif
 .endif
@@ -104,6 +104,7 @@ CAPTURE_CONSTRUCTION	.macro clearBytes, count, lexemeBytes, planBytes
 .endif
 .endmacro
 
+; countOffset identifies the compact capture header's unsigned byte count.
 CAPTURE_APPEND	.macro arena, headerBytes, countOffset, lexemeOffset, planOffset, sourceOffset, bytes
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
@@ -113,7 +114,8 @@ CAPTURE_APPEND	.macro arena, headerBytes, countOffset, lexemeOffset, planOffset,
 	move.l .bytes, d5
 	lea .arena, a0
 	movea.l capture_profile.BlockView.Pointer(a0), a0
-	move.l .countOffset(a0), d1
+	moveq #0, d1
+	move.b .countOffset(a0), d1
 	move.l .lexemeOffset(a0), d2
 	move.l .planOffset(a0), d3
 	move.l .sourceOffset(a0), d4

@@ -113,7 +113,7 @@ const SITES: &str = r#"
  .CAPTURE_CONSTRUCTION_CLEAR_BEGIN d4
  .CAPTURE_CONSTRUCTION_CLEAR_GAP d4, d5
  .CAPTURE_CONSTRUCTION d4, 8(a4), 12(a4), 8(a5)
- .CAPTURE_APPEND Temp, 64, 8, 12, 32, 16, d0
+ .CAPTURE_APPEND Temp, 56, 54, 8, 20, 12, d0
  .CAPTURE_COPY d6
  .CAPTURE_GROW d5, 4(a4), d7
  .CAPTURE_RETAINED_RELEASE 4(a4)
@@ -162,7 +162,7 @@ fn native_capture_telemetry_wrappers_preserve_ccr_before_setup_and_balance_frame
  jsr capture_profile.replayBegin
  move.w (sp)+,ccr
  move.w ccr,-(sp)
- moveq #2,d4
+ moveq #0,d4
  move.w (sp)+,ccr
  move.w ccr,-(sp)
  add.l d5,d4
@@ -181,11 +181,12 @@ fn native_capture_telemetry_wrappers_preserve_ccr_before_setup_and_balance_frame
  move.l d0,d5
  lea Temp,a0
  movea.l capture_profile.BlockView.Pointer(a0),a0
- move.l 8(a0),d1
- move.l 12(a0),d2
- move.l 32(a0),d3
- move.l 16(a0),d4
- move.l #64,d6
+ moveq #0,d1
+ move.b 54(a0),d1
+ move.l 8(a0),d2
+ move.l 20(a0),d3
+ move.l 12(a0),d4
+ move.l #56,d6
  jsr capture_profile.append
  movem.l (sp)+,d1-d6/a0
  move.w (sp)+,ccr
@@ -322,7 +323,7 @@ fn assert_capture_rows(stdout: &str) -> std::collections::BTreeMap<u32, [u32; 3]
     let [records, headers, tokens] = rows[&401];
     let [lexemes, plans, padding] = rows[&402];
     assert!(records > 0 && tokens > 0 && lexemes > 0 && plans > 0);
-    assert_eq!(headers, records.checked_mul(64).unwrap());
+    assert_eq!(headers, records.checked_mul(56).unwrap());
     assert_eq!(tokens % 20, 0);
     let composed = [headers, tokens, lexemes, plans, padding]
         .into_iter()
@@ -335,9 +336,8 @@ fn assert_capture_rows(stdout: &str) -> std::collections::BTreeMap<u32, [u32; 3]
     let [source_bytes, constructed, cleared] = rows[&403];
     assert!(source_bytes > 0 && constructed >= records);
     assert!(
-        cleared >= constructed.checked_mul(2).unwrap()
-            && cleared <= constructed.checked_mul(8).unwrap(),
-        "constructor clears only its reserved word and two alignment gaps"
+        cleared <= constructed.checked_mul(6).unwrap(),
+        "constructor clears only its two alignment gaps"
     );
     assert!(rows[&404][0] > 0 && rows[&404][2] > 0 && rows[&405][0] > 0);
     assert!(
@@ -424,7 +424,7 @@ fn assert_hotspot_counter_relationships(
         capture_empty_records > 0,
         "fixture should capture blank/comment records"
     );
-    assert!(counter("CAPTURE_EMPTY_BYTES") >= capture_empty_records * 64);
+    assert!(counter("CAPTURE_EMPTY_BYTES") >= capture_empty_records * 56);
     assert!(counter("CAPTURE_EMPTY_BYTES") <= u64::from(capture[&404][1]));
     assert!(capture_empty_records <= u64::from(capture[&401][0]));
     assert!(counter("REPLAY_EMPTY_RECORDS") <= calls(5));
@@ -573,18 +573,18 @@ fn observer_probe_source() -> String {
         ("moveq #0,d1\nmoveq #0,d2\nmove.l #256,d3", "grow"),
         ("", "growEnd"),
         (
-            "moveq #2,d0\nmoveq #1,d1\nmoveq #4,d2\nmoveq #4,d3",
+            "moveq #0,d0\nmoveq #1,d1\nmoveq #4,d2\nmoveq #4,d3",
             "construction",
         ),
         (
-            "moveq #1,d1\nmoveq #4,d2\nmoveq #4,d3\nmoveq #7,d4\nmove.l #92,d5\nmoveq #64,d6",
+            "moveq #1,d1\nmoveq #4,d2\nmoveq #4,d3\nmoveq #7,d4\nmove.l #84,d5\nmoveq #56,d6",
             "append",
         ),
-        ("moveq #92,d0", "materialize"),
+        ("moveq #84,d0", "materialize"),
         ("", "replayBegin"),
-        ("moveq #92,d0", "materialize"),
+        ("moveq #84,d0", "materialize"),
         ("", "growBegin"),
-        ("moveq #92,d1\nmove.l #256,d2\nmove.l #512,d3", "grow"),
+        ("moveq #84,d1\nmove.l #256,d2\nmove.l #512,d3", "grow"),
         ("", "growEnd"),
         (
             "moveq #0,d0\nmoveq #1,d1\nmoveq #12,d2\nmoveq #0,d3\nmoveq #2,d4\nmoveq #8,d5",
@@ -608,7 +608,7 @@ fn observer_probe_source() -> String {
     // The clear macros preserve everything except their documented counter.
     // Compare against the expected D4 while retaining all other canaries.
     calls.extend([
-        ("", ".CAPTURE_CONSTRUCTION_CLEAR_BEGIN d4".into(), Some(2)),
+        ("", ".CAPTURE_CONSTRUCTION_CLEAR_BEGIN d4".into(), Some(0)),
         (
             "moveq #3,d5",
             ".CAPTURE_CONSTRUCTION_CLEAR_GAP d4, d5".into(),
@@ -679,11 +679,15 @@ bad
 Seeds .long $101,$202,$303,$404,$505,$606,$707,$808
  .long Table,Temp,Order,Record,Descriptor,Payload,OrderBytes
 Table .long Descriptor,12,12
-Descriptor .long Payload,512,92
-Temp .long Record,128,92
+Descriptor .long Payload,512,84
+Temp .long Record,128,84
 Order .long OrderBytes,16,0
-Record .long $42435031,92,1,4,7,0,1,0,4,0,0,0,0,0,0,0
- .fill byte,64,0
+; Current 56-byte header followed by one token, four lexeme and four plan bytes.
+Record .long $42435031,84,4,7,0,4
+ .long 0,0,0,0,0,0,0
+ .word 1
+ .byte 1,0
+ .fill byte,28,0
 Payload .fill byte,512,0
 OrderBytes .fill byte,16,0
 .endsection

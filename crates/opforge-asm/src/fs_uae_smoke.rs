@@ -8219,3 +8219,7 @@ mod native_capture_initialization;
 mod native_hotspot_telemetry;
 #[path = "tests/native_symbol_buckets.rs"]
 mod native_symbol_buckets;
+
+#[cfg(test)]
+#[path = "tests/native_full_selfhost_comparison.rs"]
+mod native_full_selfhost_comparison;

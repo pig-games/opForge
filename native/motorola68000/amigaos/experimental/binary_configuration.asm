@@ -298,11 +298,11 @@ publish
 outside
 	tst.l d4
 	bne.w outsideReady
-	tst.l capture.Record.Count(a5)
+	tst.b capture.Record.Count(a5)
 	beq.w outsideReady
 	cmpi.l #scopes.KEY_END, d3
 	bne.w outsideContent
-	cmpi.l #2, capture.Record.Count(a5)
+	cmpi.b #2, capture.Record.Count(a5)
 	beq.w outsideReady
 outsideContent
 	move.w #1, graph.GraphState.Invalid(a0)
@@ -638,7 +638,8 @@ classify	.block
 	cmpi.l #statement_abi.HEAD_END, d1
 	beq.w statementClose
 ordinaryHead
-	move.l capture.Record.Count(a4), d5
+	moveq #0, d5
+	move.b capture.Record.Count(a4), d5
 	moveq #0, d1
 	cmpi.l #2, d5
 	blo.w done
@@ -670,7 +671,8 @@ directive
 	adda.w #20, a2
 	cmpi.w #1, source.Token.Kind(a2)
 	bhi.w done
-	move.l capture.Record.Count(a4), d0
+	moveq #0, d0
+	move.b capture.Record.Count(a4), d0
 	mulu.w #20, d0
 	lea capture.HEADER_BYTES(a4), a0
 	adda.l d0, a0

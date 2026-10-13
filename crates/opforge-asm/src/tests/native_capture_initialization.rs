@@ -40,31 +40,30 @@ fn token_rows(count: usize, lexemes: usize) -> Vec<u8> {
     bytes
 }
 
-fn oracle(count: usize, lexemes: usize, plans: usize) -> Vec<u8> {
+fn oracle(count: usize, lexemes: usize, plans: usize, line: u16, root: u8) -> Vec<u8> {
     // Independent wire-layout oracle: explicit fields, complete raw token rows,
     // and zero-filled alignment. Frame.Reserved deliberately is not serialized.
     let tokens = token_rows(count, lexemes);
-    let plan_offset = (64 + tokens.len() + lexemes + 3) & !3;
+    let plan_offset = (56 + tokens.len() + lexemes + 3) & !3;
     let bytes = (plan_offset + plans + 3) & !3;
     let mut result = Vec::new();
     for value in [
         0x4243_5031,
         bytes as u32,
-        count as u32,
         lexemes as u32,
         SOURCE_BYTES,
         ORIGIN,
-        65535,
+        plans as u32,
     ] {
         result.extend_from_slice(&value.to_be_bytes());
     }
-    result.extend_from_slice(&1u16.to_be_bytes());
-    result.extend_from_slice(&0u16.to_be_bytes());
-    result.extend_from_slice(&(plans as u32).to_be_bytes());
     for value in OUTCOMES {
         result.extend_from_slice(&value.to_be_bytes());
     }
-    assert_eq!(result.len(), 64);
+    result.extend_from_slice(&line.to_be_bytes());
+    result.push(count as u8);
+    result.push(root);
+    assert_eq!(result.len(), 56);
     result.extend(tokens);
     result.extend((0..lexemes).map(|i| 0x31 + i as u8));
     result.resize(plan_offset, 0);
@@ -90,14 +89,18 @@ fn emit_bytes(label: &str, bytes: &[u8]) -> String {
     source
 }
 
-fn cases() -> Vec<(usize, usize, usize)> {
+fn cases() -> Vec<(usize, usize, usize, u16, u8)> {
     let mut cases = Vec::new();
     for lexemes in 0..4 {
         for plans in 0..4 {
-            cases.push((2, lexemes, plans));
+            cases.push((2, lexemes, plans, u16::MAX, 1));
         }
     }
-    cases.extend([(0, 0, 0), (64, 7, 7)]);
+    cases.extend([
+        (0, 0, 0, 0, 0),
+        (64, 7, 7, u16::MAX, 1),
+        (2, 0, 0, 0x8000, 0),
+    ]);
     cases
 }
 
@@ -121,8 +124,8 @@ fn probe_source() -> String {
     let token_abi = token_abi.split_once("\t.endstruct").unwrap().0;
     let mut checks = String::new();
     let mut data = String::new();
-    for (index, (count, lexemes, plans)) in cases().into_iter().enumerate() {
-        let expected = oracle(count, lexemes, plans);
+    for (index, (count, lexemes, plans, line, root)) in cases().into_iter().enumerate() {
+        let expected = oracle(count, lexemes, plans, line, root);
         data.push_str(&emit_bytes(
             &format!("Tokens{index}"),
             &token_rows(count, lexemes),
@@ -132,6 +135,8 @@ fn probe_source() -> String {
             r#"
  bsr.w poison
  move.l #{count},capture.Frame.Count+Frame
+ move.l #{line},capture.Frame.Line+Frame
+ move.w #{root},capture.Frame.RootFile+Frame
  move.l #Tokens{index},capture.Frame.Tokens+Frame
  move.l #{lexemes},capture.Frame.LexemeBytes+Frame
  move.l #{plans},memory.Block.Used+Plans
@@ -162,6 +167,12 @@ fn probe_source() -> String {
     for setup in [
         "move.l #65,capture.Frame.Count+Frame",
         "move.l #65536,capture.Frame.Line+Frame",
+        "move.l #$ffffffff,capture.Frame.Line+Frame",
+        "move.l #$100,capture.Frame.Count+Frame",
+        "move.l #$ffffffff,capture.Frame.Count+Frame",
+        "move.w #2,capture.Frame.RootFile+Frame",
+        "move.w #$100,capture.Frame.RootFile+Frame",
+        "move.w #$ffff,capture.Frame.RootFile+Frame",
         "move.l #InvalidTokens,capture.Frame.Tokens+Frame",
         "move.l #$fffffffc,capture.Frame.LexemeBytes+Frame",
         "move.l #memory.LIMIT+1,capture.Frame.LexemeBytes+Frame",
@@ -172,6 +183,7 @@ fn probe_source() -> String {
  move.l #Tokens15,capture.Frame.Tokens+Frame
  move.l #3,capture.Frame.LexemeBytes+Frame
  move.l #65535,capture.Frame.Line+Frame
+ move.w #1,capture.Frame.RootFile+Frame
  move.l #3,memory.Block.Used+Plans
  {setup}
  move.l memory.Block.Used+Arena,ExpectedUsed
@@ -370,11 +382,20 @@ fn build_probe(dir: &Path) -> (String, Vec<u8>) {
 
 #[test]
 fn native_capture_initialization_rust_oracle_and_actual_probe_host_assembles() {
-    for (count, lexemes, plans) in cases() {
-        let expected = oracle(count, lexemes, plans);
-        assert_eq!(&expected[30..32], &[0, 0]);
-        assert_eq!(&expected[64..64 + count * 20], &token_rows(count, lexemes));
-        let end_lexemes = 64 + count * 20 + lexemes;
+    for (count, lexemes, plans, line, root) in cases() {
+        let expected = oracle(count, lexemes, plans, line, root);
+        assert_eq!(&expected[52..54], &line.to_be_bytes());
+        assert_eq!(expected[54], count as u8);
+        assert_eq!(expected[55], root);
+        assert_eq!(
+            &expected[24..52],
+            &OUTCOMES
+                .into_iter()
+                .flat_map(u32::to_be_bytes)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(&expected[56..56 + count * 20], &token_rows(count, lexemes));
+        let end_lexemes = 56 + count * 20 + lexemes;
         let start_plans = (end_lexemes + 3) & !3;
         assert!(expected[end_lexemes..start_plans].iter().all(|&v| v == 0));
         assert!(expected[start_plans + plans..].iter().all(|&v| v == 0));

@@ -203,7 +203,8 @@ captureStatementRole	.block
 	move.l a2, statement_heads.Frame.Names(sp)
 	lea capture.HEADER_BYTES(a1), a2
 	move.l a2, statement_heads.Frame.Tokens(sp)
-	move.l capture.Record.Count(a1), d2
+	moveq #0, d2
+	move.b capture.Record.Count(a1), d2
 	move.l d2, statement_heads.Frame.Count(sp)
 	mulu.w #tokenizer.TOKEN_RECORD_SIZE, d2
 	adda.l d2, a2
@@ -649,7 +650,7 @@ replayLine	.block
 	jsr capture.resolve
 	bne.w bad
 	movea.l a1, a4
-	.HOTSPOT_COUNT_IF_ZERO capture.Record.Count(a4), HOTSPOT_REPLAY_EMPTY_RECORDS, #1
+	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a4), #0, HOTSPOT_REPLAY_EMPTY_RECORDS, #1
 	move.l capture.Record.LexemeBytes(a4), d3
 	cmpi.l #LEXEME_BYTES, d3
 	bhi.w bad
@@ -658,10 +659,15 @@ replayLine	.block
 	clr.l Frame.Source(a5)
 	clr.l Frame.SourceBytes(a5)
 	move.l a4, CAPTURE_RECORD(a6)
-	move.l capture.Record.Line(a4), LINE_NUMBER(a6)
+	moveq #0, d1
+	move.w capture.Record.Line(a4), d1
+	move.l d1, LINE_NUMBER(a6)
 	move.l capture.Record.Origin(a4), Frame.Origin(a5)
-	move.w capture.Record.RootFile(a4), Frame.RootFile(a5)
-	move.l capture.Record.Count(a4), d1
+	moveq #0, d1
+	move.b capture.Record.RootFile(a4), d1
+	move.w d1, Frame.RootFile(a5)
+	moveq #0, d1
+	move.b capture.Record.Count(a4), d1
 	move.l d1, d0
 	mulu.w #20, d0
 	lea capture.HEADER_BYTES(a4), a0
@@ -670,7 +676,8 @@ replayLine	.block
 	lea LEXEMES(a6), a1
 	move.l d3, d0
 	bsr.w copyCaptureBytes
-	move.l capture.Record.Count(a4), d1
+	moveq #0, d1
+	move.b capture.Record.Count(a4), d1
 	bsr.w lowerTokens
 	clr.l CAPTURE_RECORD(a6)
 	move.l (sp)+, Frame.SourceBytes(a5)
@@ -764,10 +771,15 @@ bindCapture	.block
 	move.l capture.Record.LexemeBytes(a4), d3
 	cmpi.l #LEXEME_BYTES, d3
 	bhi.w bad
-	move.l capture.Record.Line(a4), LINE_NUMBER(a6)
+	moveq #0, d1
+	move.w capture.Record.Line(a4), d1
+	move.l d1, LINE_NUMBER(a6)
 	move.l capture.Record.Origin(a4), Frame.Origin(a5)
-	move.w capture.Record.RootFile(a4), Frame.RootFile(a5)
-	move.l capture.Record.Count(a4), d0
+	moveq #0, d1
+	move.b capture.Record.RootFile(a4), d1
+	move.w d1, Frame.RootFile(a5)
+	moveq #0, d0
+	move.b capture.Record.Count(a4), d0
 	mulu.w #20, d0
 	lea capture.HEADER_BYTES(a4), a0
 	lea TOKENS(a6), a1
@@ -779,7 +791,8 @@ bindCapture	.block
 	move.l Frame.SourceBytes(a5), -(sp)
 	clr.l Frame.Source(a5)
 	clr.l Frame.SourceBytes(a5)
-	move.l capture.Record.Count(a4), d1
+	moveq #0, d1
+	move.b capture.Record.Count(a4), d1
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_WRITER
 	bsr.w writeTokens
 	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
@@ -3685,7 +3698,8 @@ updateRole	.block
 	subq.l #8, sp
 	movea.l a0, a3
 	movea.l a1, a2
-	move.l capture.Record.Count(a1), d4
+	moveq #0, d4
+	move.b capture.Record.Count(a1), d4
 	cmpi.l #2, d4
 	blo.w absent
 	lea capture.HEADER_BYTES(a1), a0
@@ -3731,7 +3745,8 @@ namedOperator
 	move.l writer.Token.Length(a0), d0
 	cmp.l d0, d2
 	blo.w absent
-	move.l capture.Record.Count(a2), d2
+	moveq #0, d2
+	move.b capture.Record.Count(a2), d2
 	mulu.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, d2
 	adda.l #capture.HEADER_BYTES, a2
 	adda.l d2, a2

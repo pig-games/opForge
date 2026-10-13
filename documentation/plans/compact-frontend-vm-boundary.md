@@ -1,10 +1,11 @@
 # Compact frontend: VM boundary correction
 
-Status: source commit `7a903cf8` has complete embedded release native self-host
-qualification on 2026-10-13, with exact complete live Rust Hunk equality.
-The same release bundle also passes on the physical A6000 in 118 seconds.
-The separate instrumented A6000 run measures 46,880,904 tracked peak bytes;
-the 2 MiB target and complete opcore/CPU-family parity remain open.
+Status: the compact-header source (`fnv1a64:95994e5a743c73e9`) completes a full
+embedded-m68020 release self-host on FS-UAE in 100.5940835 seconds, with exact
+complete fresh Rust Hunk equality. The comparison uses expanded-memory 68040;
+the header change has not yet run on physical A6000 hardware. Separate full
+unchanged-input accounting measures 46,997,384 tracked peak heap bytes.
+The 2 MiB target and complete opcore/CPU-family parity remain open.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -281,6 +282,19 @@ All 193 native-origin files match the workspace. Inputs, actual executables,
 unique fresh markers, entire output and raw accounting records were independently
 verified. This qualifies the exact current-source self-host configuration, not
 complete language/family parity, all package selections or fit within 2 MiB.
+
+The subsequent capture header compaction (64 → 56 bytes) completes a full
+current-source release self-host on FS-UAE in **100.5940835 seconds**: 196 inputs /
+2,596,708 bytes, manifest `fnv1a64:95994e5a743c73e9`, embedded m68020, zero exit
+and complete fresh Rust equality for the 706,964-byte Hunk (SHA-256
+`279adef6d3be645a0b0d6d9461f15c04e5354452b434afd654cf3e9c7c9b42b6`).
+This uses the expanded-memory A4000/68040 emulator, not the A6000 or constrained
+68020 profile. Separate identical-input accounting reduces tracked heap peak
+48,127,880 → 46,997,384 bytes (−1.08 MiB), with zero cleanup ownership;
+release linked reservation is 740,736 bytes. Timing comparison and reproducible
+receipts are in the [performance diagnosis](native-performance-diagnosis.md#compact-retained-capture-headers).
+Hardware validation of this header change remains pending; the future A6000
+launcher is `sh /tmp/opforge-a6000-headers-20261013/run.sh`.
 
 The original candidate's imported struct-member failure was a stale 255 mask in
 `binary_imports.findDeclared`; it now shares `binary_scope_layout.BUCKET_MASK`.

@@ -33,16 +33,14 @@ LineStatus	.long ?
 LineHandle	.long ?
 .endstruct
 FRAME_BYTES = Frame.LineHandle+4
+; Owned header: thirteen raw longs, then Line.word/Count.byte/RootFile.byte.
+; Tokens begin at byte 56; Frame retains full-width constructor inputs.
 Record	.struct
 Magic	.long ?
 Bytes	.long ?
-Count	.long ?
 LexemeBytes	.long ?
 SourceBytes	.long ?
 Origin	.long ?
-Line	.long ?
-RootFile	.word ?
-Reserved	.word ?
 PlanBytes	.long ?
 CallStatus	.long ?
 CallHandle	.long ?
@@ -51,6 +49,9 @@ HeaderStatus	.long ?
 HeaderHandle	.long ?
 LineStatus	.long ?
 LineHandle	.long ?
+Line	.word ?
+Count	.byte ?
+RootFile	.byte ?
 Tokens	.byte ?
 .endstruct
 HEADER_BYTES = Record.Tokens
@@ -68,6 +69,10 @@ create	.block
 	beq.w bad
 	move.l Frame.Count(a6), d6
 	cmpi.l #TOKEN_LIMIT, d6
+	bhi.w bad
+	cmpi.l #65535, Frame.Line(a6)
+	bhi.w bad
+	cmpi.w #1, Frame.RootFile(a6)
 	bhi.w bad
 	mulu.w #20, d6
 	addi.l #HEADER_BYTES, d6
@@ -95,17 +100,19 @@ create	.block
 	bne.w bad
 	movea.l memory.Block.Pointer(a4), a3
 	adda.l d3, a3
-	; Every field and payload is overwritten; only reserved/padding need zeroes.
-	clr.w Record.Reserved(a3)
+	; Every field and payload is overwritten; only alignment padding needs zeroes.
 	.CAPTURE_CONSTRUCTION_CLEAR_BEGIN d4
 	move.l #MAGIC, Record.Magic(a3)
 	move.l d6, Record.Bytes(a3)
-	move.l Frame.Count(a6), Record.Count(a3)
+	move.l Frame.Count(a6), d0
+	move.b d0, Record.Count(a3)
 	move.l Frame.LexemeBytes(a6), Record.LexemeBytes(a3)
 	move.l Frame.SourceBytes(a6), Record.SourceBytes(a3)
 	move.l Frame.Origin(a6), Record.Origin(a3)
-	move.l Frame.Line(a6), Record.Line(a3)
-	move.w Frame.RootFile(a6), Record.RootFile(a3)
+	move.l Frame.Line(a6), d0
+	move.w d0, Record.Line(a3)
+	move.w Frame.RootFile(a6), d0
+	move.b d0, Record.RootFile(a3)
 	move.l memory.Block.Used(a5), Record.PlanBytes(a3)
 	lea Frame.CallStatus(a6), a0
 	lea Record.CallStatus(a3), a1
@@ -191,7 +198,8 @@ done
 
 ; A1=validated record. A0=owned plan region, D0=region bytes. Other regs kept.
 planView	.block
-	move.l Record.Count(a1), d0
+	moveq #0, d0
+	move.b Record.Count(a1), d0
 	mulu.w #20, d0
 	addi.l #HEADER_BYTES, d0
 	add.l Record.LexemeBytes(a1), d0
@@ -213,7 +221,8 @@ validate	.block
 	cmp.l Record.Bytes(a1), d0
 	bne.w bad
 	move.l d0, d5
-	move.l Record.Count(a1), d4
+	moveq #0, d4
+	move.b Record.Count(a1), d4
 	cmpi.l #TOKEN_LIMIT, d4
 	bhi.w bad
 	move.l d4, d0
@@ -231,12 +240,8 @@ validate	.block
 	andi.l #$fffffffc, d0
 	cmp.l d5, d0
 	bne.w bad
-	cmpi.l #65535, Record.Line(a1)
+	cmpi.b #1, Record.RootFile(a1)
 	bhi.w bad
-	cmpi.w #1, Record.RootFile(a1)
-	bhi.w bad
-	tst.w Record.Reserved(a1)
-	bne.w bad
 	move.l Record.SourceBytes(a1), d3
 	addq.l #1, d3
 	bcs.w bad

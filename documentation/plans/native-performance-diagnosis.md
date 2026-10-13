@@ -174,7 +174,8 @@ The runner requires valid capture reporting when the capture flag is enabled and
 adds `capture_ownership` to its result. Independently decode captured stdout with:
 
 ```sh
-python3 scripts/performance/capture_telemetry.py /absolute/captured/assembly.stdout
+python3 scripts/performance/capture_telemetry.py /absolute/captured/assembly.stdout \
+  --capture-source /absolute/bootstrap/src/experimental/binary_capture.asm
 ```
 
 The first full emulator attempt and second hardware candidate rejected at physical
@@ -748,8 +749,99 @@ the fifth expects the candidate SHA-256 above. The audit retains each actual
 bootstrap and case SHA-256, keeping fixed-workload comparison distinct from
 current-source self-host proof.
 
+### Compact retained capture headers
+
+The retained `binary_capture.Record` header is reduced from
+64 to 56 bytes. Keep all thirteen metadata/status/handle longs unchanged; store
+validated line number as a word, token count and root-file indicator as bytes,
+and remove reserved padding. Working Frame, 20-byte TKVM token records, grammar,
+plan ownership, origins, alignment and raw outcome values remain unchanged.
+All narrowed constructor values must pass their original full-width bounds
+before encoding. Consumers must zero-extend; no new source limits are introduced.
+
+The qualified 1,024-bucket baseline and the new executable assemble identical
+frozen full inputs: 196 files / 2,596,097 bytes, source manifest
+`fnv1a64:20a2106b4ce5f83d`, embedded m68020, no release defines. Four separate
+serial FS-UAE runs compare release timing and gated memory/copy accounting.
+Both memory builds have the same five light accounting defines; neither has
+sampled hotspot instrumentation. The full comparison uses the configured A4000 /
+68040 with 2 MiB chip, 8 MiB fast, 64 MiB Zorro III and 16 MiB RTG. This differs
+from the focused 68020/10 MiB control and previous A6000 hardware timings;
+compare only the before/after runs within each setup.
+
+| Identical full input: memory accounting | Header 64 | Header 56 | Change |
+|---|---:|---:|---:|
+| Tracked heap peak | 48,127,880 | 46,997,384 | −1,130,496 (−2.35%) |
+| Linked static reservation, instrumented | 755,532 | 755,580 | +48 |
+| Static reservation + tracked heap peak | 48,883,412 | 47,752,964 | −1,130,448 |
+| Retained record count | 113,035 | 113,035 | 0 |
+| Header bytes | 7,234,240 | 6,329,960 | −904,280 |
+| Retained used / append-copy bytes | 23,666,168 | 22,761,888 | −904,280 |
+| Retained capacity | 32,993,280 | 31,862,784 | −1,130,496 |
+| Total allocated and freed, each | 113,110,704 | 110,872,240 | −2,238,464 |
+| Global grow used-copy bytes | 48,074,907 | 46,944,775 | −1,130,132 |
+| Retained grow calls | 1,472 | 1,505 | +33 |
+
+Token/lexeme/plan/padding sizes, semantic replay copies and logical work counts
+are unchanged; all tracked ownership is freed. Capacity rounding changes at
+several boundaries, so heap savings differ from eight bytes times record count.
+These are tracked allocations plus linked reservation, not complete process RAM:
+OS overhead, stack and allocator metadata are not included. The 2 MiB product
+target remains unmet.
+
+Uninstrumented full timing pairs, with unchanged inputs and configuration:
+
+| Run order | Header 64 seconds | Header 56 seconds | Candidate change |
+|---|---:|---:|---:|
+| Baseline then candidate | 98.575121458 | 100.997860416 | +2.46% |
+| Candidate then baseline | 102.228381666 | 98.613011833 | −3.54% |
+
+The two-run means are 100.401751562 / 99.805436125 seconds (−0.59%), but the
+order-dependent spread is larger than that difference. No reproducible speed
+improvement or regression is established. Retain the compaction for its measured
+1.08 MiB heap saving and reduced retained copy work. Reverse-order receipts are
+at `/tmp/opforge-headers-reverse-fsuae-20261013`; both runs pass fresh whole Rust
+comparison. Instrumented runs take 104.694388666 / 104.242375333 seconds;
+those are accounting runs, not release speed evidence. The unchanged 11,592-byte
+active-include/macro control on 68020/10 MiB takes 41.232046417 → 41.059722792
+seconds (single pair), with heap peak unchanged at 1,243,784 bytes because rounded
+capacity remains identical. Its retained used bytes fall 314,800 → 305,112.
+
+A separate **full current-source release self-host completes in 100.5940835
+seconds**: 196 inputs / 2,596,708 bytes, manifest `fnv1a64:95994e5a743c73e9`,
+embedded m68020, zero exit and entire 706,964-byte Hunk equal to a freshly
+assembled Rust oracle. Output SHA-256:
+`279adef6d3be645a0b0d6d9461f15c04e5354452b434afd654cf3e9c7c9b42b6`.
+This qualifies that exact FS-UAE self-host configuration, not full language/family
+parity, other package selections or hardware performance. Release executable and
+linked reservation grow by 48 bytes to 706,964 / 740,736.
+
+Poisoned-reuse native probes verify the independent complete header/payload
+oracle, every alignment residue, full raw outcomes, zero/max/high-bit line
+numbers, both root flags, and failure-atomic rejection before narrowing oversized
+inputs. Actual observer probes check registers/CCR/stack; disabled wrappers emit
+nothing. An independent audit verifies all five full receipts, complete live
+Rust/native output equality, unique fresh challenge/completion markers, identical
+paired inputs, strict raw accounting and the native tree's equality to the frozen
+candidate source.
+
+Full receipts: `/tmp/opforge-headers-full-fsuae2-20261013`. The original memory
+summaries mislabeled package storage during host decoding; separate
+`results-metadata-corrected.json` corrects those labels from validated manifests
+and re-decodes the same raw captures, preserving all original receipts. It does
+not represent new native runs. The maintained comparison harness now retains
+that manifest metadata. `run_fs_uae_selfhost_comparison.py` prepares all five
+validated cases, generates live Rust oracles, runs them serially and retains
+receipts outside `target`; its plan records hardware/config/binary identities.
+
+A6000 execution is unavailable. The prepared five-case launcher is
+`sh /tmp/opforge-a6000-headers-20261013/run.sh`: identical-input release pair,
+separate accounting pair, then current-source self-host. It discovers the current
+address with `ash -l` and uses Development. Candidate release is FS-UAE-qualified;
+physical hardware validation is still pending.
+
 Wide bulk copying remains a possible small candidate, followed by capacity policy and
-a compact capture-format experiment. Growth tightening must account for extra
+further capture/token compaction. Growth tightening must account for extra
 copies; merely reserving exact size on every append could trade slack for much
 more work. Format compaction has the larger structural memory opportunity in the
 headers and tokens but requires a broader producer/validator/consumer change.

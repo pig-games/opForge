@@ -110,7 +110,9 @@ const SITES: &str = r#"
  .CAPTURE_GROW_BEGIN
  .CAPTURE_GROW_END
  .CAPTURE_REPLAY_BEGIN
- .CAPTURE_CONSTRUCTION d6, 8(a4), 12(a4), 8(a5)
+ .CAPTURE_CONSTRUCTION_CLEAR_BEGIN d4
+ .CAPTURE_CONSTRUCTION_CLEAR_GAP d4, d5
+ .CAPTURE_CONSTRUCTION d4, 8(a4), 12(a4), 8(a5)
  .CAPTURE_APPEND Temp, 64, 8, 12, 32, 16, d0
  .CAPTURE_COPY d6
  .CAPTURE_GROW d5, 4(a4), d7
@@ -160,8 +162,14 @@ fn native_capture_telemetry_wrappers_preserve_ccr_before_setup_and_balance_frame
  jsr capture_profile.replayBegin
  move.w (sp)+,ccr
  move.w ccr,-(sp)
+ moveq #2,d4
+ move.w (sp)+,ccr
+ move.w ccr,-(sp)
+ add.l d5,d4
+ move.w (sp)+,ccr
+ move.w ccr,-(sp)
  movem.l d0-d3,-(sp)
- move.l d6,d0
+ move.l d4,d0
  move.l 8(a4),d1
  move.l 12(a4),d2
  move.l 8(a5),d3
@@ -324,7 +332,13 @@ fn assert_capture_rows(stdout: &str) {
         composed, rows[&404][1],
         "composition equals actual append copies"
     );
-    assert!(rows[&403][0] > 0 && rows[&403][1] >= records && rows[&403][2] >= composed);
+    let [source_bytes, constructed, cleared] = rows[&403];
+    assert!(source_bytes > 0 && constructed >= records);
+    assert!(
+        cleared >= constructed.checked_mul(2).unwrap()
+            && cleared <= constructed.checked_mul(8).unwrap(),
+        "constructor clears only its reserved word and two alignment gaps"
+    );
     assert!(rows[&404][0] > 0 && rows[&404][2] > 0 && rows[&405][0] > 0);
     assert!(
         rows[&405][1] >= rows[&406][0],
@@ -485,7 +499,7 @@ fn observer_probe_source() -> String {
         ("moveq #0,d1\nmoveq #0,d2\nmove.l #256,d3", "grow"),
         ("", "growEnd"),
         (
-            "move.l #92,d0\nmoveq #1,d1\nmoveq #4,d2\nmoveq #4,d3",
+            "moveq #2,d0\nmoveq #1,d1\nmoveq #4,d2\nmoveq #4,d3",
             "construction",
         ),
         (
@@ -513,10 +527,27 @@ fn observer_probe_source() -> String {
         ),
         ("", "report"),
     ];
+    let mut calls = calls
+        .into_iter()
+        .map(|(setup, name)| (setup, format!("jsr observer.{name}"), None))
+        .collect::<Vec<_>>();
+    // The clear macros preserve everything except their documented counter.
+    // Compare against the expected D4 while retaining all other canaries.
+    calls.extend([
+        ("", ".CAPTURE_CONSTRUCTION_CLEAR_BEGIN d4".into(), Some(2)),
+        (
+            "moveq #3,d5",
+            ".CAPTURE_CONSTRUCTION_CLEAR_GAP d4, d5".into(),
+            Some(0x505 + 3),
+        ),
+    ]);
     let mut checks = String::new();
     for flags in [0, 31] {
-        for (index, (setup, name)) in calls.iter().enumerate() {
+        for (index, (setup, action, expected_d4)) in calls.iter().enumerate() {
             let setup = setup.replace('\n', "\n ");
+            let expected_counter = expected_d4
+                .map(|value| format!("move.l #{value},Before+16"))
+                .unwrap_or_default();
             // Nonzero canaries include every address register. A0-A2 point to
             // valid Block views, with one retained record and logical order.
             checks.push_str(&format!(
@@ -524,9 +555,10 @@ fn observer_probe_source() -> String {
  movem.l Seeds,d0-d7/a0-a6
  {setup}
  movem.l d0-d7/a0-a6,Before
+ {expected_counter}
  move.l sp,BeforeStack
  move.w #{flags},ccr
- jsr observer.{name}
+ {action}
  move.w ccr,AfterCCR
  movem.l d0-d7/a0-a6,After
  cmpa.l BeforeStack,sp
@@ -552,6 +584,7 @@ compare_{flags}_{index}
         r#".module probe
 .cpu 68020
 .use debug.amigaos.capture_profile as observer
+.include "capture_telemetry.i"
 .section entry,kind=code
 start .block
  movem.l d1-d7/a0-a6,-(sp)
@@ -607,10 +640,13 @@ fn build_observer_probe(dir: &Path) -> (String, Vec<u8>) {
     let source = observer_probe_source();
     let path = dir.join("capture-probe.asm");
     fs::write(&path, &source).unwrap();
+    fs::copy(workspace_root().join(INCLUDE), dir.join("capture_telemetry.i")).unwrap();
+    let mut defines = GATES.map(str::to_string).to_vec();
+    defines.push("OPFORGE_PREPARATION_PROGRESS".into());
     let image = assemble_source(
         &path,
         dir,
-        &["OPFORGE_PREPARATION_PROGRESS".into()],
+        &defines,
         "build/capture-probe",
     );
     (source, image)

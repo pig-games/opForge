@@ -1,7 +1,7 @@
 # Native runtime and memory diagnosis
 
-Current assignment: measure and analyse resource growth before selecting further
-optimizations. Parity implementation is paused for this pass. Preserve shared VM,
+Current assignment: measure resource growth and evaluate the selected capture
+clear-elision experiment. Parity implementation is paused for this pass. Preserve shared VM,
 numeric source and package boundaries; no CPU-specific shortcuts in generic code.
 
 ## Fixed workload and baseline
@@ -110,8 +110,8 @@ supports investigating repeated work; it does not establish a specific cause.
    contributions first. A compact acquisition format inflated into existing TKVM
    scratch during replay could lower memory without changing the shared VM ABI.
    Preserve columns, adjacency, wide-number metadata, macro spelling and origins.
-2. **Capture construction and bulk memory work.** Construction clears a whole
-   record, overwrites it, and copies it from temporary to retained storage; buffer
+2. **Capture construction and bulk memory work.** The measured baseline clears a
+   whole record, overwrites it, and copies it from temporary to retained storage; buffer
    growth copies used bytes byte-by-byte. Removing overwritten clears, avoiding
    redundant copies or using suitable bulk-copy operations are smaller candidates
    than a format redesign. Measure cleared/copied/growth bytes, keep padding
@@ -135,11 +135,9 @@ dispatch measures 4.63 seconds and only 462 invocations occur. Searches are a
 minority of role/line calls. Zero physical string-plan captures does not mean
 fragment planning is unused: retained captured plans bind through another route.
 
-Recommended next slice: bounded owner usage/capacity and construction/copy counts
-at acquisition end, replay overlap and capture release. Use those measurements
-to select one small construction change or a compact-capture experiment, with
-unchanged release input and the complete Rust artifact as correctness reference.
-No optimization has been implemented in this diagnostic pass.
+The owner/count measurement below selected clear elision as the first small
+construction experiment, with unchanged release input and the complete Rust
+artifact as correctness reference. A compact-capture experiment remains deferred.
 
 ## Capture measurement checkpoint
 
@@ -279,8 +277,75 @@ and check invalid-record/allocation-failure behavior and unchanged publication.
 The full comparison requires fresh completion, exit zero and exact bytes; count
 composition/copies and allocation ownership must remain unchanged while actual
 clear counts fall. Retain the change only after separate release timing shows
-benefit without correctness, memory or code-quality regressions. No optimization
-has been implemented yet.
+benefit without correctness, memory or code-quality regressions.
+
+### Clear-elision implementation and separate release measurement
+
+The constructor now writes the reserved word and clears only the two alignment
+gaps. Copies, validation-before-publication, record layout and allocation policy
+are unchanged. Constructor-local clear accounting uses gated macros with an
+explicit counter output; release builds emit no accounting instructions.
+
+The real constructor passes an independent byte-layout oracle on poisoned reused
+storage in FS-UAE: all 16 lexeme/plan length residues, empty payloads, 64 token
+rows with nonzero metadata, consecutive appends, unchanged published prefixes,
+invalid token/line/count bounds, arithmetic overflow and reserve-limit rejection.
+This is constructor proof, not a complete current-source self-host run.
+The enabled observer/macro preservation probe and the fresh exact 29-byte
+macro/include case also pass. The latter reports 1,328 actual cleared bytes for
+267 constructions, valid complete ownership snapshots and zero capture ownership
+after release. Five focused host checks, 41 A6000 runner/comparison tests and the
+native engineering gate pass. These component counts do not replace the pending
+full fixed-workload measurements.
+
+Release timing uses the unchanged 11,592-byte two-module control with 1,200 macro
+calls and a fresh live Rust oracle, FS-UAE 68020/10 MiB, and telemetry disabled.
+The same compiled test executable, package bytes and source generator supply
+all four serial cases, ordered baseline/candidate/candidate/baseline.
+
+| Image | START-to-DONE samples, seconds | Mean |
+|---|---|---:|
+| Baseline | 41.814091250, 41.802031541 | 41.808061396 |
+| Clear elision | 41.320402000, 41.569497708 | 41.444949854 |
+
+The mean decreases by **0.3631 seconds (0.87%)**. Both candidate samples are
+faster, but this small control does not establish a full self-host speedup.
+The release Hunk grows 28 bytes, from 706,888 to 706,916; linked reservation
+grows from 740,660 to 740,688. No meaningful heap reduction is expected because
+record extents and allocation policy are unchanged. Full-workload heap/work and
+release timing have not yet been measured for this candidate. Receipt:
+`/tmp/opforge-clear-release-control-20261013.json`.
+
+The physical A6000 comparison deliberately uses a frozen 195-input baseline
+manifest `fnv1a64:cadc24b1921a07ea` (2,585,677 bytes). Its fresh Rust-produced
+oracle and baseline executable have the 706,888-byte SHA-256 recorded above.
+The candidate executable SHA-256 is
+`e197fc8e076ab5a706f2415c0bd6d18433ae4a7bc6bdb309900617a78da69b26`.
+Both embed the same 454,890-byte m68020 package. The baseline native source root
+is frozen at `/tmp/opforge-clear-baseline-native-20261013`.
+
+The [comparison runner](../../scripts/performance/run_a6000_comparison.py)
+validates both ordinary exports before constructing explicit benchmark cases.
+Only the bootstrap differs in the first two runs; source/package/command/oracle
+remain identical. Each case has a distinct identity-bound fresh challenge and
+exact output proof. The original self-host bootstrap/oracle guard is unchanged.
+The third run uses the candidate's own 195-input source manifest
+`fnv1a64:1b1cb47fe4c81f08` (2,587,096 bytes), and its new 706,916-byte oracle.
+That third run is the independent current-source self-host case. All three
+hardware runs remain pending; the new bundle is host-validated only.
+
+Run the prepared three-case bundle from macOS Terminal:
+
+```sh
+sh /tmp/opforge-a6000-clear-elision-20261013/run.sh
+```
+
+The wrapper invokes the maintained comparison tool with the baseline and
+candidate exports. Add `--dry-run` for local preparation only. Separate results
+and `comparison.json` retain guest durations (one-second resolution), bootstrap
+and workload identities, fresh completion and exact-output status. Transfers
+are outside the guest timing window. A fixed-input candidate success does not
+claim that the candidate assembled its own current source.
 
 Wide bulk copying is the next small candidate, followed by capacity policy and
 a compact capture-format experiment. Growth tightening must account for extra

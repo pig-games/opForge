@@ -8209,3 +8209,7 @@ mod native_package_members;
 #[cfg(test)]
 #[path = "tests/native_capture_telemetry.rs"]
 mod native_capture_telemetry;
+
+#[cfg(test)]
+#[path = "tests/native_capture_initialization.rs"]
+mod native_capture_initialization;

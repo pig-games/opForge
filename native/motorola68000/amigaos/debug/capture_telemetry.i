@@ -59,13 +59,40 @@ CAPTURE_REPLAY_BEGIN	.macro
 .endif
 .endmacro
 
-CAPTURE_CONSTRUCTION	.macro recordBytes, count, lexemeBytes, planBytes
+; Constructor-local clear accounting. The counter register is an output;
+; preserve CCR and emit nothing unless the complete observer gate is enabled.
+CAPTURE_CONSTRUCTION_CLEAR_BEGIN	.macro counter
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_CAPTURE_TELEMETRY
+	move.w ccr, -(sp)
+	moveq #2, .counter  ; Record.Reserved word
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
+CAPTURE_CONSTRUCTION_CLEAR_GAP	.macro counter, bytes
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_CAPTURE_TELEMETRY
+	move.w ccr, -(sp)
+	add.l .bytes, .counter
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
+; clearBytes counts explicit zero writes, excluding overwritten fields/payload.
+CAPTURE_CONSTRUCTION	.macro clearBytes, count, lexemeBytes, planBytes
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	movem.l d0-d3, -(sp)
-	move.l .recordBytes, d0
+	move.l .clearBytes, d0
 	move.l .count, d1
 	move.l .lexemeBytes, d2
 	move.l .planBytes, d3

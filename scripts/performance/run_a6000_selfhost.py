@@ -445,22 +445,9 @@ def add_telemetry(result, root, manifest):
                    "success": result["success"] and not diagnostics})
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    current = Path("/tmp/opforge-a6000-current")
-    default_bundle = current if current.is_dir() else Path("/tmp/opforge-a6000-compact-export")
-    parser.add_argument("--bundle", type=Path, default=default_bundle,
-                        help="bundle directory; defaults to the current export when available")
-    parser.add_argument("--host", default="192.168.0.220")
-    parser.add_argument("--volume", default="Development")
-    parser.add_argument("--timeout", type=int, default=3600, help="assembly timeout in seconds")
-    parser.add_argument("--dry-run", action="store_true", help="prepare locally without connecting")
-    args = parser.parse_args()
-    if not re.fullmatch(r"[A-Za-z0-9.-]+", args.host) or not re.fullmatch(r"[A-Za-z0-9_-]+", args.volume):
-        parser.error("Host and volume must be plain names; omit the volume colon")
-    if not 1 <= args.timeout < 86400:
-        parser.error("Timeout must be between 1 and 86399 seconds")
-    manifest, files, oracle, case_digest = load_bundle(args.bundle.resolve())
+def run_case(args, bundle, manifest, files, oracle, case_digest, *,
+             run_kind="self-host", metadata=None):
+    """Transfer and execute one already validated case with fresh completion proof."""
     run_id = uuid.uuid4().hex
     name = f"opforge-{run_id[:12]}"
     remote = f"{args.volume}:{name}"
@@ -473,13 +460,13 @@ def main():
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
     (stage / "run-selfhost").write_text(guest_script(remote, marker, manifest["command"]))
-    print(f"Bundle: {args.bundle.resolve()}\nLocal results: {local}\nRemote directory: {remote}", flush=True)
-    print("Bundle native validation: " + native_validation_status(manifest), flush=True)
+    print(f"Run: {run_kind}\nBundle: {bundle}\nLocal results: {local}\nRemote directory: {remote}", flush=True)
+    print("Bundle prior native validation: " + native_validation_status(manifest), flush=True)
     if manifest["over_classic_limit_components"]:
         print("Exact filenames required: " + ", ".join(manifest["over_classic_limit_components"]), flush=True)
     if args.dry_run:
         print("Prepared only; no network access or native execution.")
-        return 0
+        return None, local
     acp, ash = shutil.which("acp"), shutil.which("ash")
     if not acp or not ash:
         raise ValueError("acp and ash must be installed and available in PATH")
@@ -499,7 +486,7 @@ def main():
         verify_fresh_directory(copied / name)
     except (OSError, ValueError) as error:
         raise ValueError(f"Pre-run transfer verification failed; assembly was not started: {error}") from error
-    print("Remote source, package, bootstrap and script verified. Starting native self-host.", flush=True)
+    print(f"Remote source, package, bootstrap and script verified. Starting native {run_kind}.", flush=True)
     started = time.monotonic()
     try:
         run([ash, args.host, f"Execute {remote}/run-selfhost"], args.timeout)
@@ -520,10 +507,31 @@ def main():
         if diagnostic.is_file():
             print("Native diagnostic:\n" + diagnostic.read_text(errors="replace"), flush=True)
     result.update({"case_sha256": case_digest, "remote_directory": remote, "source_files": manifest["source_files"], "source_bytes": manifest["source_bytes"]})
+    result.update(metadata or {})
     (local / "result.json").write_text(json.dumps(result, indent=2) + "\n")
     print(json.dumps(result, indent=2), flush=True)
     print(f"Results retained at {local}; remote files retained at {remote}.")
-    return 0 if result["success"] else 1
+    return result, local
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    current = Path("/tmp/opforge-a6000-current")
+    default_bundle = current if current.is_dir() else Path("/tmp/opforge-a6000-compact-export")
+    parser.add_argument("--bundle", type=Path, default=default_bundle,
+                        help="bundle directory; defaults to the current export when available")
+    parser.add_argument("--host", default="192.168.0.220")
+    parser.add_argument("--volume", default="Development")
+    parser.add_argument("--timeout", type=int, default=3600, help="assembly timeout in seconds")
+    parser.add_argument("--dry-run", action="store_true", help="prepare locally without connecting")
+    args = parser.parse_args()
+    if not re.fullmatch(r"[A-Za-z0-9.-]+", args.host) or not re.fullmatch(r"[A-Za-z0-9_-]+", args.volume):
+        parser.error("Host and volume must be plain names; omit the volume colon")
+    if not 1 <= args.timeout < 86400:
+        parser.error("Timeout must be between 1 and 86399 seconds")
+    manifest, files, oracle, case_digest = load_bundle(args.bundle.resolve())
+    result, _ = run_case(args, args.bundle.resolve(), manifest, files, oracle, case_digest)
+    return 0 if result is None or result["success"] else 1
 
 
 if __name__ == "__main__":

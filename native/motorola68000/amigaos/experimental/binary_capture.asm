@@ -93,13 +93,9 @@ create	.block
 	bne.w bad
 	movea.l memory.Block.Pointer(a4), a3
 	adda.l d3, a3
-	movea.l a3, a0
-	move.l d6, d0
-clear
-	clr.b (a0)+
-	subq.l #1, d0
-	bne.w clear
-	.CAPTURE_CONSTRUCTION d6, Frame.Count(a6), Frame.LexemeBytes(a6), memory.Block.Used(a5)
+	; Every field and payload is overwritten; only reserved/padding need zeroes.
+	clr.w Record.Reserved(a3)
+	.CAPTURE_CONSTRUCTION_CLEAR_BEGIN d4
 	move.l #MAGIC, Record.Magic(a3)
 	move.l d6, Record.Bytes(a3)
 	move.l Frame.Count(a6), Record.Count(a3)
@@ -123,11 +119,22 @@ outcomes
 	movea.l Frame.Lexemes(a6), a0
 	move.l Frame.LexemeBytes(a6), d0
 	bsr.w copy
+	; A1 ends the lexemes; D5 is the aligned plan offset.
+	move.l a3, d0
+	add.l d5, d0
+	sub.l a1, d0
+	bsr.w clearPadding
 	movea.l a3, a1
 	adda.l d5, a1
 	movea.l memory.Block.Pointer(a5), a0
 	move.l memory.Block.Used(a5), d0
 	bsr.w copy
+	; A1 ends the plans; D6 is the aligned record extent.
+	move.l a3, d0
+	add.l d6, d0
+	sub.l a1, d0
+	bsr.w clearPadding
+	.CAPTURE_CONSTRUCTION d4, Frame.Count(a6), Frame.LexemeBytes(a6), memory.Block.Used(a5)
 	movea.l a3, a1
 	move.l d6, d0
 	bsr.w validate
@@ -261,6 +268,22 @@ done
 	tst.l d0
 	rts
 	.bend  ; validate
+
+; A1=payload end,D0=align4 gap (0..3). Clear only the caller-proven gap.
+; Advance A1, return D0=0; telemetry adds the gap to constructor-local D4.
+; Other registers preserved; CCR unspecified. Never receives a record extent.
+clearPadding	.block
+	.CAPTURE_CONSTRUCTION_CLEAR_GAP d4, d0
+	tst.l d0
+	beq.w done
+next
+	clr.b (a1)+
+	subq.l #1, d0
+	bne.w next
+done
+	rts
+	.bend  ; clearPadding
+
 copy	.block
 	tst.l d0
 	beq.w done

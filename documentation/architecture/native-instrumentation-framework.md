@@ -385,7 +385,11 @@ bytes or observer import; release linking carries no observer code or storage.
 MEMD remains 2280 bytes. The observer has no retained pointers, allocation,
 clock, or per-byte/per-token event output. Its fixed BSS is outside the tracked
 heap accounting. All passive APIs and argument wrappers preserve D0–D7,
-A0–A6, CCR and stack depth.
+A0–A6, CCR and stack depth. The constructor-local
+`CAPTURE_CONSTRUCTION_CLEAR_BEGIN counter` and
+`CAPTURE_CONSTRUCTION_CLEAR_GAP counter, bytes` macros explicitly output the
+counter register; they preserve other registers, CCR and stack depth and emit
+nothing when any observer gate is missing.
 The include defines `CAPTURE_ACQUISITION`, `CAPTURE_REPLAY` and `CAPTURE_RELEASE`
 outside the observer gates. Disabled macro arguments still undergo numeric binding;
 their identities must remain available without a gated observer import.
@@ -398,8 +402,10 @@ Counters reset at one compact `execute` entry. Construction counts every record
 whose explicit clear and payload copies run, including records subsequently
 filtered from retention. Construction copies include the seven outcome longs
 and token, lexeme and candidate-plan payloads; header stores are writes rather
-than copies. Cleared bytes count explicit record clearing, excluding Exec's
-allocation clearing. Retained composition counts only actual region appends:
+than copies. Cleared bytes count actual explicit zero writes, excluding Exec's
+allocation clearing. The constructor clears the reserved word and both alignment
+gaps, totaling 2–8 bytes per construction; overwritten fields and payloads are
+not cleared first. Retained composition counts only actual region appends:
 header bytes, 20-byte token rows, lexemes, plans, alignment padding and their
 captured source-byte extent. Append-copy bytes count the whole copied record.
 Configuration and semantic replay materialization count actual capture-to-scratch

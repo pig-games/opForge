@@ -127,7 +127,7 @@ replayBegin	.block
 	rts
 	.bend  ; replayBegin
 
-; D0=cleared record extent,D1=tokens,D2=lexemes,D3=plans. Count actual
+; D0=actual cleared bytes,D1=tokens,D2=lexemes,D3=plans. Count actual
 ; constructor work, including records later filtered from retained capture.
 construction	.block
 	move.w ccr, -(sp)

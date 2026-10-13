@@ -73,13 +73,14 @@ PC-dependent acquisition also remains pending. The identified proxy-repair image
 is 657,484 bytes with 681,816 bytes linked static reservation. The subsequent
 collection image is 659,608 bytes with 684,524 bytes linked static reservation; neither is peak RAM.
 
-The latest full self-host proof is BS35, source manifest `54fb484dd0022ab5`:
-121 mapped inputs (1,780,288 bytes), with exact bootstrap/native/live Rust equality
-for the entire 601,196-byte Hunk. The uninstrumented release run took
-1,522.60420225 seconds on FS-UAE 68020/74 MiB. This proves that identified source
-checkpoint only. Later changes have focused evidence, with no new full self-host
-proof. Full BS35 peak allocation, physical A6000 timing and 2 MiB fit remain
-unmeasured. See the maintained [self-host proof](compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs35).
+The current full self-host proof covers source commit `eed674a3`, manifest
+`befc1361cc9722cd`: all 193 source files (2,122,797 bytes) assemble natively into
+the complete 251,704-byte Hunk, exactly matching live Rust with fresh exit zero.
+The phase/memory-instrumented FS-UAE 68020/74 MiB run takes 3,568.574592333 seconds
+(59m28.57s); tracked peak is 47,319,416 bytes, with all allocations freed and no
+allocation failures. This proves this source checkpoint, not release/hardware
+performance, complete opcore/family parity or 2 MiB fit. See the maintained
+[self-host proof](compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).
 
 The separate shared text-owner component matches its complete live Rust artifact
 in a fresh native run. This covers builtin/custom maps, variable escapes, cloning
@@ -161,7 +162,7 @@ positive artifacts and 28 diagnostic rejections across 68020 and 6502. Its isola
 unchanged release control grows from 27.42 s to 33.11 s (+20.8%, one pair); linked
 storage grows 13,464 bytes (+2.0%), and instrumented owned-memory peak is unchanged.
 See [source execution](native-source-execution.md) for scope and measurement limits.
-The latest qualified full self-host remains BS35; no complete opcore claim is made.
+These controls do not establish complete opcore; the current full self-host proof is separate.
 
 VM-contract consolidation remains a separate pending design.
 Consolidate each VM's current capabilities into its own
@@ -213,8 +214,7 @@ does not establish those capabilities. The unchanged release control rises
 separately by 0.73% for labels/output policy and 0.20% for forward preparation
 (one sample each). Owned-memory peak increases by 16 bytes for the former and
 stays unchanged for the latter, with zero live bytes after cleanup.
-BS35 remains the latest full self-host
-proof; these controls make no complete-opcore or 2 MiB claim.
+These controls make no complete-opcore or 2 MiB claim; current self-host proof is separate.
 
 ## Current integration checkpoint
 
@@ -373,8 +373,7 @@ Required substitution recipes remain required. Each returned record explicitly
 publishes lexical freshness and numeric inherited-label provenance. Dispatch never
 reuses stale caller tokens or rereads original files.
 The separate exposure component validates acquired import descriptors; the eight
-connected cases are the current acquisition proof. This checkpoint does not change the BS35 full self-host
-evidence or establish a new hardware/2 MiB qualification.
+connected cases are the current acquisition proof. These focused cases do not establish hardware/2 MiB qualification; current self-host proof is separate.
 
 The unchanged release macro control separately takes 34.904874125 seconds before
 this integration and 36.037844917 afterward (+3.25%, one sample each). The image
@@ -815,6 +814,13 @@ ownership remains zero. Receipt: `/tmp/opforge-member-syntax-cost-20261013.json`
 The existing full-extension tuple variation still rejects `4.W` at line 8 in
 both saved pre-repair and candidate images. That separate nested-member gap
 remains pending; the absolute-member repair does not qualify all nested forms.
+The subsequent full current-source run completed natively with exact live Rust
+Hunk equality. Its phase/memory instrumentation reports 2,329.72 seconds in
+preparation and 1,241.58 seconds in assembly. Full-run peak grows 32,784 bytes
+relative to the preceding incomplete run, whose source differs; those totals do
+not measure this repair’s separate performance impact. The unchanged-input control
+above does. Current complete receipt:
+`/tmp/opforge-selfhost-member-capture-20261013/selfhost-summary.json`.
 
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the

@@ -42,12 +42,12 @@ one recursive module root and one include root for the bare debug header names:
 opforge -i src/experimental/opforge_compact_cli.asm --hunk output.hunk -M src -I src/debug
 ```
 
-The entry's `.cpu 68020` selects the embedded package. The latest full native
-self-host proof is the identified BS35 source checkpoint, with exact live Rust
-Hunk equality; see the [self-host
-evidence](../documentation/plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs35).
-Later focused repairs have no new full self-host proof, physical A6000 timing or
-2 MiB qualification.
+The entry's `.cpu 68020` selects its prepared package, embedded when configured
+or loaded externally. The full current-source
+native self-host is qualified with exact live Rust Hunk equality; see the
+[current self-host evidence](../documentation/plans/compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).
+That instrumented run does not establish release performance, physical A6000
+timing, 2 MiB fit or full opcore/family parity.
 Assembly errors now retain source filenames alongside numeric line provenance,
 without retaining source text for execution.
 

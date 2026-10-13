@@ -629,10 +629,9 @@ Notes:
   Anonymous and labeled `.bwhile` also have focused native coverage. Full
   `.bwhile` parity, mapped scoped replay and general forward-value/layout
   convergence remain open. These
-  focused results do not establish complete loop/macro parity. The latest full
-  self-host proof covers an earlier identified BS35 source; later focused repairs
-  require a new full run. See the [self-host qualification and
-  limits](plans/compact-frontend-vm-boundary.md#most-recent-full-self-host-qualification-bs35).
+  focused results do not establish complete loop/macro parity. A full
+  current-source self-host is qualified; see the [self-host qualification and
+  limits](plans/compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).
 
 Scalar `.for` and `.bfor` counts may refer forward to immutable constants whose
 dependencies are independent of labels, the program counter, mutable values and

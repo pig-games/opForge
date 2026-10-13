@@ -1,9 +1,9 @@
 # Compact frontend: VM boundary correction
 
-Status: the preceding BS35 source has complete native self-host qualification.
-The current scoped conditional, retained-guard and iterable repairs have focused
-Rust/native proof; their full self-host has not been rerun. Mapped conditional
-repetition and remaining loop/macro expansion effects are still open.
+Status: source commit `eed674a3` has full current-source native self-host
+qualification on 2026-10-13, with exact complete live Rust Hunk equality.
+The phase/memory-instrumented run does not qualify release timing, physical
+hardware, the 2 MiB target or complete opcore/CPU-family parity.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -12,6 +12,22 @@ source-site scalar, flat-list and range `.use ... with (...)` values, mutable
 snapshots, compound forwarding and packed iterable `.for` have focused coverage.
 Imported iterator identities, deferred macro register/value binding and lexical
 dotted-name lookup have focused native coverage.
+
+## Package members and shared value members
+
+`binary_member_syntax` selects acquisition-only facets from the package’s numeric
+`MemberBinding` rows: instruction, qualifier, operand position and field identity.
+Literal and parenthesized scalar bases retain their package member wrapper. EXVM
+treats the selected facet as an enclosing delimiter and validates the scalar
+base; preparation strips the transient role before persisting numeric operands.
+Ordinary struct members keep shared typed expression evaluation. This does not
+introduce field spellings or CPU-specific suffix rules into the shared evaluator.
+
+Focused native controls cover absolute widths, disabled telemetry neighbors and
+ordinary struct fields. The full-extension tuple width variation remains an
+existing gap in both pre-repair and candidate images. See the
+[current completion plan](native-runtime-reset.md) for full self-host evidence
+and the separate performance/memory comparison.
 
 ## Repetition and conditional execution
 
@@ -93,32 +109,37 @@ PC-dependent acquisition remain unqualified; the
 [source-session design](native-source-execution.md) addresses the pending structural
 work. These focused results do not establish complete opcore or a new self-host.
 
-## Most recent full self-host qualification (BS35)
+## Full current-source self-host qualification
 
-BS35 self-assembles all 121 mapped source/binary inputs (1,780,288 bytes) in
-FS-UAE 68020/74 MiB. Fresh START/DONE and native exit zero prove completion;
-bootstrap, native output and the live Rust oracle exactly match the entire
-601,196-byte Hunk. Its single embedded m68020 package is 434,454 bytes,
-fingerprint `fnv1a64:fa2f68cc934984a1`; source fingerprint is
-`fnv1a64:54fb484dd0022ab5` and Hunk fingerprint `fnv1a64:f03d432ace77a0c2`.
-Linked static reservation is 620,728 bytes.
+Source commit `eed674a3` self-assembles the complete 193-file source set
+(2,122,797 bytes), manifest `fnv1a64:befc1361cc9722cd`, on FS-UAE 68020/74 MiB.
+Fresh case-bound START/DONE and native exit zero accompany exact live Rust equality
+for the entire 251,704-byte Hunk, with 285,500 bytes linked reservation and SHA-256
+`8bc6a2e0474a98d55d212a9d393276a6734db9ce148efe1c6ccc3a7c5b798083`.
+The prepared m68020 runtime package is 454,890 bytes. This is the complete source
+assembly, not a reduced probe or partial artifact comparison.
 
-The uninstrumented release run takes 1,522.60420225 seconds (25m22.60s), with no
-concurrent host builds/tests or native runs. The earlier BS34 full source differs;
-these whole-run times do not isolate the latest implementation changes. Separate
-unchanged-input measurements belong in the
-[performance guide](../performance/vm-efficiency.md). Full BS35 peak allocation,
-physical A6000 timing and 2 MiB fit
-are not measured. The small focused scoped-loop diagnostic peak is separate.
+The phase/memory-instrumented bootstrap takes 3,568.574592333 seconds from fresh
+START to DONE (59m28.57s). Separate guest phase measurements report 2,329.72 seconds
+preparation and 1,241.58 seconds assembly. Tracked peak allocation is 47,319,416
+bytes; all 108,612,240 allocated bytes are freed, with zero live ownership and no
+allocation failure. This is instrumented emulator evidence, not release timing,
+physical A6000 execution or 2 MiB feasibility. Earlier BS35 release timing uses
+different source and package inputs and is not a before/after comparison.
 
-This qualifies the identified current-source checkpoint, not complete loop/macro
-or language parity. Later source changes need new proof; do not reuse this result
-for an unqualified executable or package.
+The proof uses `compact_cli_self_host_entry_readiness_fs_uae` with
+`OPFORGE_COMPARE_MEMORY=1`, `OPFORGE_PREPARATION_PROGRESS=1`,
+`OPFORGE_PHASE_ONLY=1`, the configured `68020-74m` profile and generous fresh-run
+timeouts. Its Rust oracle is assembled from the current filesystem; the full
+output matches in the same guest run. Receipt and captured output:
+`/tmp/opforge-selfhost-member-capture-20261013/`.
+This qualifies this source checkpoint only; whole-language/family parity and a
+new embedded hardware bundle remain separate work.
 
-The maintained full embedded proof uses `export_compact_self_host_bundle` with
+A separate embedded bundle can be qualified using `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
-`OPFORGE_COMPACT_EXPORT_NATIVE=1`, both `OPFORGE_FS_UAE_TIMEOUT_MS=3600000`
-and `OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=3600000`, a new absolute
+`OPFORGE_COMPACT_EXPORT_NATIVE=1`, `OPFORGE_FS_UAE_TIMEOUT_MS=10800000`
+and `OPFORGE_FS_UAE_POST_START_TIMEOUT_MS=10200000`, a new absolute
 `OPFORGE_COMPACT_EXPORT_DIR` and the [configured FS-UAE environment](../../agents/rules/fs-uae.md).
 Host export alone does not establish native completion. Fresh case-bound
 START/DONE, explicit exit zero and exact complete Hunk equality are required;
@@ -524,8 +545,8 @@ These statements describe the implemented subset. They do not imply complete ass
   diagnostics and generated spelling.
 - `binary_expression.compile` now runs the shared EXVM program, replacing its
   handwritten precedence parser. Fresh native component, folded-statement and
-  session-lifecycle comparisons pass. Current full self-host evidence is the
-  identified BS35 source above; later source changes have focused proof only.
+  session-lifecycle comparisons pass. Current full self-host evidence covers the
+  identified `eed674a3` source above; complete language parity remains open.
   Ordinary Rust expression handling still uses core token spelling instead of
   portable numeric metadata. Expression-range and operand-wrapper choices in
   preparation need a PRVM/package audit. Other native VM contracts still carry

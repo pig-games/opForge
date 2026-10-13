@@ -285,8 +285,8 @@ variable-width repetition/reservation layout still require further qualification
 
 The earlier schema-replay-only checkpoint measured 32.804228 s against 33.112641 s
 (-0.9%, one comparison), with 564 more linked bytes; it predates this conditional
-repair and is not its performance result. Full opcore parity and a fresh full
-current-source self-host remain pending; BS35 is the latest qualified self-host.
+repair and is not its performance result. Full opcore parity remains pending.
+The full current-source self-host is qualified; see the [current qualification](compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).
 
 Rust forward named iteration records now retain observations from executed
 immutable owners independently of dependency-graph certification. Ordinary
@@ -309,9 +309,9 @@ is 678,952 bytes with 712,060 bytes linked. See the
 [current measurements](../performance/vm-efficiency.md#control-labels-and-forward-member-preparation):
 the unchanged release control rises separately by 0.73% for labels/output policy
 and 0.20% for forward preparation (one sample each). Owned-memory peak grows by
-16 bytes, then stays unchanged; all allocations are freed. No full-opcore, new
-full-self-host or 2 MiB claim follows. BS35
-remains the latest full self-host proof.
+16 bytes, then stays unchanged; all allocations are freed. No full-opcore or 2 MiB
+claim follows. The full current-source self-host qualification is documented
+[here](compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).
 
 The frozen source-policy v5 matrix passed eight Hunk policy cases: two exact
 long-relocation outputs and six expected rejections across both CPUs. Narrow

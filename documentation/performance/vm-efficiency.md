@@ -528,8 +528,8 @@ The match image predates the configuration classification-collision repair.
 The table also excludes later grouped-tuple transport and inserted-span
 coalescing changes. Its exact results remain valid for this control, but do not
 qualify those subsequent changes or complete opcore parity. Heap impact requires
-separate instrumented runs. BS35 remains the latest full current-source self-host
-proof; these measurements establish neither a new self-host nor 2 MiB fit.
+separate instrumented runs. These measurements establish neither a new self-host nor 2 MiB fit;
+[current self-host proof](../plans/compact-frontend-vm-boundary.md#full-current-source-self-host-qualification) is separate.
 
 The frozen images, hashes and linked reservations are recorded in
 `/tmp/opforge-opcore-controls-20261011.json`; per-state logs are
@@ -760,3 +760,38 @@ It adds 52 image bytes and 40 linked bytes; no additional allocation is introduc
 These small timing differences do not establish a significant regression or gain.
 Receipt: `/tmp/opforge-metadata-preflight-cost-20261012.json`. Full current-source
 self-host time and the product memory floor require separate qualification.
+
+### Package member preparation and current full self-host
+
+The 2026-10-13 package-member repair has its own unchanged 11,592-byte
+`68020-10m` control: 41.933110667 seconds release before, 41.867839750 after
+(-0.16%, one pair; no measurable speed change). Executable size grows 660 bytes
+and linked reservation 652 bytes. Separate instrumented peak grows 16 bytes,
+1,240,696 to 1,240,712; allocated/freed totals both grow 16 bytes and live
+ownership remains zero. Receipt: `/tmp/opforge-member-syntax-cost-20261013.json`.
+
+The full current-source self-host of `eed674a3` completes with exact live Rust
+251,704-byte Hunk equality on FS-UAE 68020/74 MiB. It covers 193 files and
+2,122,797 source bytes, with phase/memory instrumentation enabled. Fresh
+START-to-DONE takes 3,568.574592333 seconds (59m28.57s). Guest measurements:
+
+| Responsibility | Instrumented seconds |
+|---|---:|
+| Preparation overall | 2,329.72 |
+| Binding and raw records | 1,158.65 |
+| Module discovery | 371.93 |
+| Runtime finalization | 224.83 |
+| Expression preparation | 219.10 |
+| Tokenization | 210.33 |
+| Source I/O and other | 144.60 |
+| Package setup | 0.28 |
+| Assembly overall | 1,241.58 |
+
+Substages are within preparation; do not add them to the overall preparation row.
+Guest phase/EClock figures and host START/DONE observations are distinct clocks.
+Tracked peak is 47,319,416 bytes. All 108,612,240 allocated bytes are freed, with
+zero live ownership and no allocation failures. Source manifest is
+`fnv1a64:befc1361cc9722cd`. The earlier incomplete runs and BS35 release run use
+different inputs or measurement modes; these full-run times do not isolate this
+repair or establish release speed, hardware timing or 2 MiB feasibility.
+Receipt/output: `/tmp/opforge-selfhost-member-capture-20261013/`.

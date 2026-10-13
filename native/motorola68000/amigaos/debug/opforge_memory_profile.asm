@@ -7,6 +7,11 @@ TOKEN_OPCODE_MAX = TOKEN_OPCODE_COUNT-1
 STAGE_COUNT = 7
 DETAIL_COUNT = 7
 
+ClockStamp	.struct
+High	.long ?
+Low	.long ?
+	.endstruct
+
 Fields	.struct
 Magic	.long ?
 Live	.long ?
@@ -101,6 +106,32 @@ InputStart	.res long, 1
 	.endsection
 	.section code, kind=code
 	.pub
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_HOTSPOT_TELEMETRY
+READ_ECLOCK = -60; timer.device V36 clock vector
+; Read the already-open E-clock without changing accounting or timer ownership.
+; A0=caller-owned eight-byte timestamp (high long, low long).
+; D0=frequency, or zero with a cleared timestamp when the device is unavailable.
+; Other registers and stack depth preserved; CCR reflects D0 (Z means unavailable).
+; Available after clock 0 until save closes the device, including assembly.
+readClock	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	clr.l ClockStamp.High(a0)
+	clr.l ClockStamp.Low(a0)
+	moveq #0, d0
+	tst.l Timer
+	beq.w done
+	movea.l Timer, a6
+	jsr READ_ECLOCK(a6)
+done
+	tst.l d0
+	movem.l (sp)+, d1-d7/a0-a6
+	rts
+	.bend  ; readClock
+.endif
+.endif
+.endif
 ; D0=actual allocation capacity. All registers/CCR preserved; no request storage.
 allocate	.block
 	move.w ccr, -(sp)

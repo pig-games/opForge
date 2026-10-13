@@ -133,6 +133,7 @@ Origin	.long ?
 Path	.byte ?
 	.endstruct
 INCLUDE_FRAME_BYTES = IncludeFrame.Path+PATH_BYTES
+	.include "hotspot_telemetry.i"
 	.pub
 Frame	.struct
 PackagePath	.long ?
@@ -184,6 +185,7 @@ execute	.block
 	jsr metadata.clear
 	movea.l (sp)+, a0
 	.CAPTURE_CLEAR
+	.HOTSPOT_CLEAR
 	.MEMORY_COUNTER_CLEAR output_spans.Events
 	.MEMORY_COUNTER_CLEAR activation.Selections
 	.MEMORY_COUNTER_CLEAR activation.Roots
@@ -380,6 +382,7 @@ freeBlocks
 	move.l DosBase, d0
 	beq.w done
 	.CAPTURE_REPORT DosBase
+	.HOTSPOT_REPORT DosBase
 	.MEMORY_SAVE DosBase
 	movea.l d0, a1
 	movea.l 4.w, a6

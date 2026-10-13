@@ -376,7 +376,95 @@ and workload identities, fresh completion and exact-output status. Transfers
 are outside the guest timing window. A fixed-input candidate success does not
 claim that the candidate assembled its own current source.
 
-Wide bulk copying is the next small candidate, followed by capacity policy and
+## Next experiment: native routine hotspot profiling
+
+The assignment now prioritizes actual elapsed hotspots before another
+optimization. Large byte-work totals did not establish a measurable full-build
+gain for clearing. Binding/raw-record preparation remains the largest coarse
+stage, but its 53.02 instrumented seconds do not identify the individual costly
+routines. Use the [sampled observer](../architecture/native-instrumentation-framework.md#sampled-native-routine-hotspots)
+to separate candidate acquisition, capture construction/append/growth,
+replay/preview, packed writing, name/scope/import binding, expression compilation,
+record processing, selected-plan binding, tokenization and scope lookup.
+
+Keep the release implementation unchanged. Success requires identical release
+bytes, passive register/CCR/stack behavior, correct nested/recursive samples,
+fresh exact native output, complete error-free terminal accounting and bounded
+observer overhead. Compare sampling periods/phases to detect unstable rankings;
+drill into the hottest routine before selecting an optimization. Retain capture
+ownership/copy counts alongside timings to assess memory opportunities.
+
+The three host exports use identical source/package/command/oracle: 196 mapped
+inputs, 2,590,506 bytes, manifest `fnv1a64:7c0d30514b87a2cd`, both bootstrap and
+output embedding the unchanged 454,890-byte m68020 package. The release Hunk
+remains exactly 706,916 bytes, SHA-256
+`e197fc8e076ab5a706f2415c0bd6d18433ae4a7bc6bdb309900617a78da69b26`.
+
+| Bootstrap | Image bytes | Measurement mode |
+|---|---:|---|
+| Light baseline | 719,628 | Existing phase/MEMD/capture accounting |
+| Sampled hotspots | 721,572 | Same baseline plus period 128 / seed 0 |
+| Sensitivity check | 721,572 | Same baseline plus period 256 / seed 37 |
+
+Dense binding, tokenizer, template and input timers/counters remain disabled.
+The new observer's fixed static state is 1,244 bytes and performs no allocations.
+All three full hardware cases are pending. Host export and component tests
+do not qualify their own full self-host execution.
+
+The real observer probe checks nesting, recursion, own versus forced-child
+samples, all slot phase/count rules, 64-bit clock carry, error freezing and
+register/CCR/stack preservation. Native probes pass for periods 64/128 and
+period 256 with seed 7. A separate fresh macro/include CLI run with the real
+timer and period 128 produces exact 29-byte Rust output, valid MEMD/capture
+records and a complete valid hotspot report (maximum observed depth 7).
+Those small-case rankings are not full-self-host hotspot results.
+
+The identical 11,592-byte/1,200-call control runs serially on FS-UAE
+68020/10 MiB, with fresh exact output and valid MEMD/capture/hotspot records:
+
+| Instrumented image | START-to-DONE seconds | Extra over light baseline |
+|---|---:|---:|
+| Light baseline | 43.017769417 | — |
+| Period 128 / seed 0 | 44.848765834 | 1.830996417 (4.26%) |
+| Period 256 / seed 37 | 44.788869291 | 1.771099874 (4.12%) |
+
+These are one sample each, measuring observer overhead on this control, not
+optimization or full-self-host overhead. Both profiles pass the strict decoder,
+including sample-phase counts and matching MEMD E-clock frequency. All three
+peak at 1,240,712 tracked heap bytes, allocate/free 3,145,864 bytes, end with
+zero live ownership and retain the same 27,022 prepared source bytes. Linked
+reservation grows from 755,532 to 758,516 bytes (+2,984 static code/storage).
+Receipt with fresh timing, memory, image identities and decoded profiles:
+`/tmp/opforge-hotspot-overhead-control-20261013.json`.
+Three host profiler checks, three real observer configurations, the real-timer
+CLI case, 138 performance-tool tests and the native engineering guards pass.
+Fresh regeneration after naming the timer vector also matches the exported
+period-128 bootstrap byte-for-byte. Hardware profiles remain pending.
+
+Run from macOS Terminal:
+
+```sh
+sh /tmp/opforge-a6000-hotspots-20261013/run.sh
+```
+
+The [launcher](../../scripts/performance/run_a6000_hotspots.py) validates every
+export before connecting and runs the light baseline followed by both sample
+settings on `Development:`. It requires exact equality of all non-bootstrap
+input bytes, command and Rust oracle, with matching base instrumentation flags.
+Each run has its own case identity, fresh challenge, explicit exit and complete
+output proof. Each profile additionally needs all 51 valid rows, matching
+period/seed and E-clock frequency. Incremental `hotspots.json` retains completed
+results if a later transport/run fails. Completed failures do not supply timing
+claims. Transfers are outside guest durations (one-second resolution).
+
+Extra time relative to the light baseline measures the added hotspot observer
+on identical inputs. It is not a production speed change. Earlier 117-second
+release and 134-second instrumented cases have slightly different source;
+neither isolates this observer's overhead. Compare both sample rankings and
+sample counts before treating scaled timings as actionable. Full-workload
+memory ownership and sampled costs will guide the next optimization together.
+
+Wide bulk copying remains a possible small candidate, followed by capacity policy and
 a compact capture-format experiment. Growth tightening must account for extra
 copies; merely reserving exact size on every append could trade slack for much
 more work. Format compaction has the larger structural memory opportunity in the

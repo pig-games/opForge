@@ -5,6 +5,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as writer
 	.include "capture_telemetry.i"
+	.include "hotspot_telemetry.i"
 	.pub
 MAGIC = $42435031; BCP1, latest capture contract
 TOKEN_LIMIT = 64
@@ -58,6 +59,7 @@ HEADER_BYTES = Record.Tokens
 ; they must not overlap destination storage. D0/CCR=status,D1=offset+1 handle.
 ; Other registers preserved. A failed record is never published in Arena.Used.
 create	.block
+	.HOTSPOT_ENTER #HOTSPOT_CAPTURE_CONSTRUCTION
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	movea.l Frame.Arena(a6), a4
@@ -150,6 +152,7 @@ bad
 done
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_CAPTURE_CONSTRUCTION
 	rts
 	.bend  ; create
 

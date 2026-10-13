@@ -18,6 +18,7 @@
 	.use exprvm.amigaos.runtime as runtime
 	.use exprvm.amigaos.assignment as assignment
 	.use prvm.amigaos.packed_branch as branches
+	.include "hotspot_telemetry.i"
 	.pub
 Item	.struct
 Target	.word ?
@@ -1540,6 +1541,7 @@ done
 ; A3=proxy,A4=import state,A5=binder,A6=scope state. D1=canonical numeric ID,
 ; D0/CCR=status; other registers preserved. Alias precedence precedes exact names.
 resolve	.block
+	.HOTSPOT_ENTER #HOTSPOT_IMPORT_RESOLVE
 	movem.l d2-d7/a0-a4, -(sp)
 	move.w records.Entry.Flags(a3), -(sp)  ; retain namespace across moving bindings
 	tst.w records.Entry.Leaf(a3)
@@ -1724,6 +1726,7 @@ done
 	addq.l #2, sp
 	movem.l (sp)+, d2-d7/a0-a4
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_IMPORT_RESOLVE
 	rts
 	.bend  ; resolve
 

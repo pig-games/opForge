@@ -15,6 +15,7 @@
 	.use experimental.amigaos.binary_source as source
 	.include "telemetry_macros.i"
 	.include "memory_telemetry.i"
+	.include "hotspot_telemetry.i"
 	.pub
 COMPILED_TAG = $81
 VALUE_TAG = $83
@@ -353,6 +354,7 @@ compileValueUnfolded	.block
 	.bend  ; compileValueUnfolded
 	.priv
 compileMode	.block
+	.HOTSPOT_ENTER #HOTSPOT_EXPRESSION_COMPILE
 	movem.l d1-d7/a1-a2/a4-a6, -(sp)
 	movea.l Workspace, a2
 	move.l a2, d1
@@ -493,6 +495,7 @@ unavailable
 restore
 	movem.l (sp)+, d1-d7/a1-a2/a4-a6
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_EXPRESSION_COMPILE
 	rts
 	.bend  ; compileMode
 

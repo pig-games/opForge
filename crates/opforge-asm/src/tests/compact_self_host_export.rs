@@ -178,6 +178,7 @@ fn export_bundle(failure_capture: bool) {
     let binding_failure_only = std::env::var("OPFORGE_BINDING_FAILURE_ONLY").as_deref() == Ok("1");
     // Focused owner/copy accounting avoids the hot nested timing probes.
     let capture_only = std::env::var("OPFORGE_CAPTURE_ONLY").as_deref() == Ok("1");
+    let hotspot_only = std::env::var("OPFORGE_HOTSPOT_ONLY").as_deref() == Ok("1");
     assert!(
         !binding_failure_only || instrumented,
         "binding failure observation requires an instrumented bootstrap"
@@ -186,7 +187,29 @@ fn export_bundle(failure_capture: bool) {
         !capture_only || (instrumented && !binding_failure_only),
         "capture accounting requires an instrumented bootstrap and its own profile"
     );
-    let bootstrap_defines: Vec<_> = if instrumented {
+    assert!(
+        !hotspot_only || (instrumented && !phase_only && !capture_only && !binding_failure_only),
+        "sampled hotspots require their own instrumented profile"
+    );
+    let bootstrap_defines: Vec<String> = if hotspot_only {
+        let period = std::env::var("OPFORGE_HOTSPOT_PERIOD").unwrap_or_else(|_| "128".into());
+        assert!(matches!(period.as_str(), "64" | "128" | "256"));
+        let seed = std::env::var("OPFORGE_HOTSPOT_SEED").unwrap_or_else(|_| "0".into());
+        let seed: u8 = seed.parse().expect("hotspot phase seed must be 0..255");
+        let mut defines = [
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_MEMORY_TELEMETRY",
+            "OPFORGE_PREPARATION_PROGRESS",
+            "OPFORGE_CAPTURE_TELEMETRY",
+            "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+            "OPFORGE_HOTSPOT_TELEMETRY",
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        defines.push(format!("OPFORGE_HOTSPOT_SAMPLE_PERIOD={period}"));
+        defines.push(format!("OPFORGE_HOTSPOT_PHASE_SEED={seed}"));
+        defines
+    } else if instrumented {
         INSTRUMENTED_DEFINES
             .iter()
             .copied()
@@ -212,6 +235,7 @@ fn export_bundle(failure_capture: bool) {
                             | "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"
                     )
             })
+            .map(str::to_owned)
             .collect()
     } else {
         Vec::new()
@@ -227,10 +251,7 @@ fn export_bundle(failure_capture: bool) {
         let bootstrap_cli = Cli::parse_from(args);
         config = validate_cli(&bootstrap_cli).expect("validate configured bootstrap");
         config.out_dir = Some(scratch.clone());
-        config.defines = bootstrap_defines
-            .iter()
-            .map(|name| (*name).to_owned())
-            .collect();
+        config.defines = bootstrap_defines.clone();
         run_with_validated_cli_with_context(&bootstrap_cli, &config).unwrap_or_else(|error| {
             panic!(
                 "{}",
@@ -472,10 +493,14 @@ fn export_bundle(failure_capture: bool) {
             relative_path: "Work/output.hunk",
             rust_oracle: &oracle,
         }];
+        let bootstrap_define_refs = bootstrap_defines
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
         let case = OpforgeNativeCliParityCase {
             name: "compact-configured-self-host",
             cpu_override: "68020",
-            extra_assembly_defines: &bootstrap_defines,
+            extra_assembly_defines: &bootstrap_define_refs,
             source_override: Some(b""),
             command_template: Some(command.strip_prefix("opforge ").unwrap()),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,

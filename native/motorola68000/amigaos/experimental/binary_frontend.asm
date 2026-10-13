@@ -49,6 +49,7 @@
 	.use prvm.amigaos.macro_spelling as spelling
 	.use experimental.amigaos.binary_text_names as textNames
 	.use prvm.amigaos.packed_text as text
+	.include "hotspot_telemetry.i"
 	.pub
 Frame	.struct
 Package	.long ?
@@ -575,6 +576,7 @@ done
 ; advancing scope/template/graph/line state. D0/CCR=status,D1=record handle;
 ; other registers preserved. Source is used only here, never by replayLine.
 captureLine	.block
+	.HOTSPOT_ENTER #HOTSPOT_CAPTURE_LINE
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a5
@@ -626,6 +628,7 @@ bad
 done
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_CAPTURE_LINE
 	rts
 	.bend  ; captureLine
 
@@ -634,6 +637,7 @@ done
 ; No original source is read or re-tokenized. D0/CCR=status; other regs preserved.
 ; Frame.Used/NameCount and nextExpansion retain the direct line API contract.
 replayLine	.block
+	.HOTSPOT_ENTER #HOTSPOT_REPLAY_LINE
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
@@ -676,6 +680,7 @@ bad
 done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_REPLAY_LINE
 	rts
 	.bend  ; replayLine
 
@@ -698,6 +703,7 @@ PREVIEW_BYTES = Preview.BindingMode+2
 ; D1=bytes. Other registers preserved. Names may be interned by the binder;
 ; no scope, template, graph or known-value action is performed.
 previewCapture	.block
+	.HOTSPOT_ENTER #HOTSPOT_CAPTURE_PREVIEW
 	movem.l d2-d7/a0/a2-a6, -(sp)
 	suba.w #PREVIEW_BYTES, sp
 	movea.l a0, a5
@@ -734,6 +740,7 @@ previewCapture	.block
 	adda.w #PREVIEW_BYTES, sp
 	movem.l (sp)+, d2-d7/a0/a2-a6
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_CAPTURE_PREVIEW
 	rts
 	.bend  ; previewCapture
 
@@ -832,6 +839,7 @@ done
 ; A4=capture request,A5=session,A6=scratch. Candidate grammar failures remain
 ; outcomes until contextual replay selects a role. Allocation failure aborts.
 captureCandidates	.block
+	.HOTSPOT_ENTER #HOTSPOT_CANDIDATE_ACQUISITION
 	movem.l d1-d7/a0-a4, -(sp)
 	suba.w #(TOKEN_CAPACITY+1)*2, sp
 	movea.l sp, a0
@@ -892,6 +900,7 @@ done
 	adda.w #(TOKEN_CAPACITY+1)*2, sp
 	movem.l (sp)+, d1-d7/a0-a4
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_CANDIDATE_ACQUISITION
 	rts
 	.bend  ; captureCandidates
 
@@ -986,6 +995,7 @@ done
 ; A5=session,A6=scratch. Existing TKVM is the only physical-line lexer.
 ; D0/CCR=status,D1=token count,D3=lexeme bytes; other registers preserved.
 tokenizeLine	.block
+	.HOTSPOT_ENTER #HOTSPOT_TOKENIZE
 	movem.l d2/d4-d7/a0-a4, -(sp)
 	movea.l Frame.Source(a5), a0
 	move.l Frame.SourceBytes(a5), d0
@@ -1010,6 +1020,7 @@ bad
 done
 	movem.l (sp)+, d2/d4-d7/a0-a4
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_TOKENIZE
 	rts
 	.bend  ; tokenizeLine
 
@@ -1266,6 +1277,7 @@ headDone
 ; rows with current binder; no semantic processing or source parsing.
 ; D0/CCR=status,D1=writer record bytes; other registers preserved.
 writeTokens	.block
+	.HOTSPOT_ENTER #HOTSPOT_PACKED_WRITE
 	movem.l d2-d7/a0-a6, -(sp)
 	bsr.w configureWriter
 	.MEMORY_DETAIL_BEGIN #0
@@ -1278,6 +1290,7 @@ failed
 done
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_PACKED_WRITE
 	rts
 	.bend  ; writeTokens
 
@@ -2009,6 +2022,7 @@ done
 ; Select only now, after the replay writer has rebound names in current scope.
 ; D0/CCR=status,D1=normal session plan handle; other registers preserved.
 bindCapturedPlan	.block
+	.HOTSPOT_ENTER #HOTSPOT_PLAN_BIND
 	movem.l d2-d7/a0-a4, -(sp)
 	movea.l CAPTURE_RECORD(a6), a4
 	; Existing gated scalar copies preserve CCR/registers, without borrowed views.
@@ -2078,6 +2092,7 @@ bad
 done
 	movem.l (sp)+, d2-d7/a0-a4
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_PLAN_BIND
 	rts
 	.bend  ; bindCapturedPlan
 
@@ -2649,6 +2664,7 @@ sourceSuspended
 ; normal numeric selection, binding and expression path to original or expanded
 ; records. This routine does not tokenize source or advance the physical line.
 processRecord	.block
+	.HOTSPOT_ENTER #HOTSPOT_RECORD_PROCESS
 	clr.l Frame.Used(a5)
 	; Source-control publications need the same current-module ownership as
 	; ordinary records before they can return through the consumed path.
@@ -2673,6 +2689,7 @@ sourceGraphReady
 	jsr scopes.count
 	move.l d0, Frame.NameCount(a5)
 	moveq #0, d0
+	.HOTSPOT_LEAVE #HOTSPOT_RECORD_PROCESS
 	rts
 sourceControlReady
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DECLARATION
@@ -2870,6 +2887,7 @@ failed
 done
 	.MEMORY_DETAIL_END #3
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_RECORD_PROCESS
 	rts
 	.bend  ; processRecord
 	.pub
@@ -3894,6 +3912,7 @@ done
 ; outputs D1=id,D2=qualifier,D0/status.
 ; A1=Scratch context. Preserves D3-D7/A2-A6.
 bind	.block
+	.HOTSPOT_ENTER #HOTSPOT_NAME_BIND
 	movem.l d3-d7/a2-a6, -(sp)
 	.MEMORY_BIND_SAMPLE_BEGIN
 	movea.l a1, a6
@@ -4190,6 +4209,7 @@ bad
 done
 	.MEMORY_BIND_SAMPLE_END
 	movem.l (sp)+, d3-d7/a2-a6
+	.HOTSPOT_LEAVE #HOTSPOT_NAME_BIND
 	rts
 	.bend  ; bind
 ; Raw decoded encoding name A0/D0, session scratch A1. Normalize once and

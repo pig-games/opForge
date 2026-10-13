@@ -4,6 +4,7 @@
 	.cpu 68020
 	.include "memory_telemetry.i"
 	.include "capture_telemetry.i"
+	.include "hotspot_telemetry.i"
 	.pub
 Block	.struct
 Pointer	.long ?
@@ -136,6 +137,7 @@ done
 ; D0/CCR=status; clobbers D1-D2/A0-A1/A5-A6. Used remains unchanged.
 ; Allocate before releasing old storage so failure preserves all block state.
 grow	.block
+	.HOTSPOT_ENTER #HOTSPOT_BLOCK_GROW
 	move.l d4, d0
 	move.l #$10001, d1
 	movea.l 4.w, a6
@@ -159,10 +161,12 @@ copied
 	move.l a5, Block.Pointer(a4)
 	move.l d4, Block.Capacity(a4)
 	moveq #0, d0
+	.HOTSPOT_LEAVE #HOTSPOT_BLOCK_GROW
 	rts
 bad
 	.MEMORY_FAILURE #ALLOC_FAILURE, d4, Block.Capacity(a4), Block.Used(a4)
 	moveq #1, d0
+	.HOTSPOT_LEAVE #HOTSPOT_BLOCK_GROW
 	rts
 	.bend  ; grow
 	.endsection

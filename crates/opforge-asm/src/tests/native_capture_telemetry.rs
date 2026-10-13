@@ -389,6 +389,7 @@ fn native_capture_telemetry_compact_cli_fs_uae() {
     let dir = scratch();
     let files = capture_tree();
     let oracle = super::native_active_includes::live_oracle(&dir.0, &files);
+    let hotspots = std::env::var("OPFORGE_CAPTURE_HOTSPOTS").as_deref() == Ok("1");
     let reference_image = std::env::var_os("OPFORGE_CAPTURE_REFERENCE_IMAGE").map(PathBuf::from);
     let image = if let Some(path) = &reference_image {
         fs::read(path).expect("read explicitly selected capture reference executable")
@@ -400,17 +401,17 @@ fn native_capture_telemetry_compact_cli_fs_uae() {
             &EmbedSelection::Targets(vec!["68020".into()]),
         )
         .unwrap();
-        super::compact_cli_input::assemble_cli_with_defines(
-            &root,
-            &build,
-            &[
-                "OPFORGE_DEBUG_CONTRACTS",
-                "OPFORGE_MEMORY_TELEMETRY",
-                "OPFORGE_CAPTURE_TELEMETRY",
-                "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
-                "OPFORGE_PREPARATION_PROGRESS",
-            ],
-        )
+        let mut defines = vec![
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_MEMORY_TELEMETRY",
+            "OPFORGE_CAPTURE_TELEMETRY",
+            "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+            "OPFORGE_PREPARATION_PROGRESS",
+        ];
+        if hotspots {
+            defines.push("OPFORGE_HOTSPOT_TELEMETRY");
+        }
+        super::compact_cli_input::assemble_cli_with_defines(&root, &build, &defines)
     };
     eprintln!(
         "CAPTURE_CASE reference_image={reference_image:?} oracle_bytes={}",
@@ -424,11 +425,31 @@ fn native_capture_telemetry_compact_cli_fs_uae() {
         &oracle,
     )
     .expect("fresh capture CLI exact-artifact proof");
-    if reference_image.is_none() {
+    if reference_image.is_none() || hotspots {
         assert_capture_rows(&run.stdout);
-        super::native_package_loading_performance::memory(
+        let memory = super::native_package_loading_performance::memory(
             &run.captured_artifacts[&PathBuf::from("Work/memory.bin")],
         );
+        if hotspots {
+            let stdout = dir.0.join("hotspot.stdout");
+            fs::write(&stdout, &run.stdout).unwrap();
+            let decoded = std::process::Command::new("python3")
+                .arg(root.join("scripts/performance/hotspot_telemetry.py"))
+                .arg(stdout)
+                .env("PYTHONDONTWRITEBYTECODE", "1")
+                .output()
+                .expect("run maintained hotspot decoder on fresh guest stdout");
+            assert!(
+                decoded.status.success(),
+                "{}",
+                String::from_utf8_lossy(&decoded.stderr)
+            );
+            let value: serde_json::Value = serde_json::from_slice(&decoded.stdout).unwrap();
+            let profile = &value["hotspot_summary"];
+            assert!(profile.is_object(), "hotspot observer must report");
+            assert_eq!(profile["eclock_hz"], memory["eclock_hz"]);
+            eprintln!("HOTSPOT_NATIVE_PROFILE {profile}");
+        }
     }
 }
 
@@ -640,15 +661,14 @@ fn build_observer_probe(dir: &Path) -> (String, Vec<u8>) {
     let source = observer_probe_source();
     let path = dir.join("capture-probe.asm");
     fs::write(&path, &source).unwrap();
-    fs::copy(workspace_root().join(INCLUDE), dir.join("capture_telemetry.i")).unwrap();
+    fs::copy(
+        workspace_root().join(INCLUDE),
+        dir.join("capture_telemetry.i"),
+    )
+    .unwrap();
     let mut defines = GATES.map(str::to_string).to_vec();
     defines.push("OPFORGE_PREPARATION_PROGRESS".into());
-    let image = assemble_source(
-        &path,
-        dir,
-        &defines,
-        "build/capture-probe",
-    );
+    let image = assemble_source(&path, dir, &defines, "build/capture-probe");
     (source, image)
 }
 

@@ -173,7 +173,9 @@ fits
 	lea CaptureLine, a0
 	movea.l memory.Block.Pointer(a0), a0
 	move.l d7, d0
+	.HOTSPOT_ENTER #HOTSPOT_CAPTURE_APPEND
 	bsr.w copy
+	.HOTSPOT_LEAVE #HOTSPOT_CAPTURE_APPEND
 	add.l d7, memory.Block.Used(a4)
 	.CAPTURE_APPEND CaptureLine, capture.HEADER_BYTES, capture.Record.Count, capture.Record.LexemeBytes, capture.Record.PlanBytes, capture.Record.SourceBytes, d7
 	move.l CaptureBytes, d0

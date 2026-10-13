@@ -13,9 +13,94 @@ SPEC = importlib.util.spec_from_file_location(
 )
 runner = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(runner)
+LEGACY_INSTRUMENTATION_DEFINES = runner.INSTRUMENTATION_DEFINES - {"OPFORGE_HOTSPOT_TELEMETRY"}
+from test_hotspot_telemetry import profile_rows, profile_text
 
 
 class HardwareCompletionTests(unittest.TestCase):
+    def test_hotspot_numeric_parameters_are_narrow_and_require_gate(self):
+        flag = "OPFORGE_HOTSPOT_TELEMETRY"
+        for period in (64, 128, 256):
+            flags, config = runner.hotspot_configuration(
+                [flag, f"OPFORGE_HOTSPOT_SAMPLE_PERIOD={period}", "OPFORGE_HOTSPOT_PHASE_SEED=255"])
+            self.assertEqual(flags, {flag})
+            self.assertEqual(config, {"sampling_period": period, "phase_seed": 255})
+        self.assertEqual(runner.hotspot_configuration([flag])[1],
+                         {"sampling_period": 128, "phase_seed": 0})
+        bad = ["OPFORGE_HOTSPOT_SAMPLE_PERIOD=32", "OPFORGE_HOTSPOT_SAMPLE_PERIOD",
+               "OPFORGE_HOTSPOT_SAMPLE_PERIOD=064", "OPFORGE_HOTSPOT_SAMPLE_PERIOD=64=128",
+               "OPFORGE_HOTSPOT_PHASE_SEED=-1", "OPFORGE_HOTSPOT_PHASE_SEED=256",
+               "OPFORGE_HOTSPOT_PHASE_SEED=0x1"]
+        for define in bad:
+            with self.subTest(define=define), self.assertRaises(ValueError):
+                runner.hotspot_configuration([flag, define])
+        with self.assertRaisesRegex(ValueError, "require OPFORGE_HOTSPOT"):
+            runner.hotspot_configuration(["OPFORGE_HOTSPOT_PHASE_SEED=1"])
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            runner.hotspot_configuration([flag, "OPFORGE_HOTSPOT_PHASE_SEED=1",
+                                          "OPFORGE_HOTSPOT_PHASE_SEED=2"])
+
+    def test_hotspot_bundle_requires_report_and_excludes_dense_flags(self):
+        base = {"OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
+                "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT", "OPFORGE_PREPARATION_PROGRESS",
+                "OPFORGE_HOTSPOT_TELEMETRY"}
+        for removed in (None, "OPFORGE_PREPARATION_PROGRESS", "OPFORGE_DEBUG_CONTRACTS",
+                        "OPFORGE_MEMORY_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"):
+            with self.subTest(removed=removed), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.bundle(root, True)
+                manifest = json.loads((root / "manifest.json").read_text())
+                manifest["bootstrap_defines"] = sorted(base - ({removed} if removed else set()))
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                if removed:
+                    with self.assertRaises(ValueError):
+                        runner.load_bundle(root)
+                else:
+                    runner.load_bundle(root)
+                    for define in ("OPFORGE_HOTSPOT_SAMPLE_PERIOD=64", "OPFORGE_HOTSPOT_PHASE_SEED=255"):
+                        manifest["bootstrap_defines"] = sorted(base | {define})
+                        (root / "manifest.json").write_text(json.dumps(manifest))
+                        runner.load_bundle(root)
+                    manifest["bootstrap_defines"] = sorted(base | {"OPFORGE_UNRELATED=64"})
+                    (root / "manifest.json").write_text(json.dumps(manifest))
+                    with self.assertRaisesRegex(ValueError, "Unsupported bootstrap"):
+                        runner.load_bundle(root)
+                    for flag in runner.DENSE_TELEMETRY_DEFINES:
+                        manifest["bootstrap_defines"] = sorted(base | {flag})
+                        (root / "manifest.json").write_text(json.dumps(manifest))
+                        with self.assertRaisesRegex(ValueError, "zero dense"):
+                            runner.load_bundle(root)
+
+    def test_hotspot_summary_required_and_clock_matches_memory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            words = [0] * 570
+            words[0], words[28] = 0x4D454D44, 1000
+            words[19:28] = [0, 1, 0, 0, 1, 50, 0, 1, 100]
+            words[31] = 1000
+            (root / "memory.bin").write_bytes(struct.pack(">570I", *words))
+            manifest = {"bootstrap_defines": ["OPFORGE_HOTSPOT_TELEMETRY"]}
+            for text, expected in ((None, False), ("no profile", False),
+                                   (profile_text(profile_rows(period=128, frequency=2000)), False),
+                                   (profile_text(profile_rows(period=64)), False),
+                                   (profile_text(profile_rows(period=128, seed=1)), False),
+                                   (profile_text(profile_rows(period=128)), True)):
+                if text is not None:
+                    (root / "assembly.stdout").write_text(text)
+                for assembly_success in (True, False):
+                    result = {"success": assembly_success}
+                    runner.add_telemetry(result, root, manifest)
+                    self.assertEqual(result["assembly_success"], assembly_success)
+                    self.assertEqual(result["telemetry_completed"], expected)
+                    self.assertEqual(result["success"], expected and assembly_success)
+                    self.assertEqual(result["hotspot_summary"] is not None, expected)
+            manifest["bootstrap_defines"] += ["OPFORGE_HOTSPOT_SAMPLE_PERIOD=64",
+                                               "OPFORGE_HOTSPOT_PHASE_SEED=255"]
+            (root / "assembly.stdout").write_text(profile_text(profile_rows(period=64, seed=255)))
+            result = {"success": True}
+            runner.add_telemetry(result, root, manifest)
+            self.assertTrue(result["success"])
+
     def test_native_validation_status_distinguishes_candidate_failure_and_qualification(self):
         self.assertEqual(
             runner.native_validation_status({}),
@@ -155,7 +240,7 @@ class HardwareCompletionTests(unittest.TestCase):
                                 "bytes": 6, "digest": runner.fnv(b"source")}],
             "release_hunk_digest": runner.fnv(oracle),
             "bootstrap_hunk_digest": runner.fnv(bootstrap),
-            "bootstrap_defines": sorted(runner.INSTRUMENTATION_DEFINES) if instrumented else [],
+            "bootstrap_defines": sorted(LEGACY_INSTRUMENTATION_DEFINES) if instrumented else [],
             "telemetry_file": "memory.bin" if instrumented else None,
             "runtime_package_digest": runner.fnv(package), "command": command,
         }
@@ -537,7 +622,7 @@ class HardwareCompletionTests(unittest.TestCase):
                 oracle = b"executable" + (root / manifest["runtime_package_file"]).read_bytes() * copies
                 (root / "oracle.hunk").write_bytes(oracle)
                 manifest.update({"release_hunk_digest": runner.fnv(oracle),
-                                 "bootstrap_defines": sorted(runner.INSTRUMENTATION_DEFINES), "telemetry_file": "memory.bin"})
+                                 "bootstrap_defines": sorted(LEGACY_INSTRUMENTATION_DEFINES), "telemetry_file": "memory.bin"})
                 (root / "manifest.json").write_text(json.dumps(manifest))
                 with self.assertRaisesRegex(ValueError, "release oracle"):
                     runner.load_bundle(root)
@@ -612,7 +697,7 @@ class HardwareCompletionTests(unittest.TestCase):
             self.bundle(root, False)
             release_case = runner.load_bundle(root)[3]
             manifest = json.loads((root / "manifest.json").read_text())
-            manifest.update({"bootstrap_defines": sorted(runner.INSTRUMENTATION_DEFINES),
+            manifest.update({"bootstrap_defines": sorted(LEGACY_INSTRUMENTATION_DEFINES),
                              "bootstrap_hunk_digest": runner.fnv(b"profile"),
                              "telemetry_file": "memory.bin"})
             (root / "manifest.json").write_text(json.dumps(manifest))
@@ -650,7 +735,7 @@ class HardwareCompletionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             manifest = {"bootstrap_defines": sorted(
-                runner.INSTRUMENTATION_DEFINES - {"OPFORGE_CAPTURE_TELEMETRY"}
+                LEGACY_INSTRUMENTATION_DEFINES - {"OPFORGE_CAPTURE_TELEMETRY"}
             )}
             result = {"success": True}
             runner.add_telemetry(result, root, manifest)
@@ -681,7 +766,7 @@ class HardwareCompletionTests(unittest.TestCase):
             words[19:28] = [0, 1, 0, 0, 1, 50, 0, 1, 100]
             words[31] = 1000
             (root / "memory.bin").write_bytes(struct.pack(">570I", *words))
-            manifest = {"bootstrap_defines": sorted(runner.INSTRUMENTATION_DEFINES)}
+            manifest = {"bootstrap_defines": sorted(LEGACY_INSTRUMENTATION_DEFINES)}
             result = {"success": True}
             runner.add_telemetry(result, root, manifest)
             self.assertFalse(result["success"])

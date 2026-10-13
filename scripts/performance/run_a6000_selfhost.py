@@ -20,6 +20,7 @@ import uuid
 
 from memory_telemetry import decode_memory_telemetry
 from capture_telemetry import decode_capture_telemetry
+from hotspot_telemetry import decode_hotspot_telemetry
 
 INSTRUMENTATION_DEFINES = {
     "OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
@@ -27,6 +28,11 @@ INSTRUMENTATION_DEFINES = {
     "OPFORGE_BINDING_DETAIL_TELEMETRY", "OPFORGE_TEMPLATE_WORK_TELEMETRY",
     "OPFORGE_INPUT_TELEMETRY", "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
     "OPFORGE_CAPTURE_TELEMETRY",
+    "OPFORGE_HOTSPOT_TELEMETRY",
+}
+DENSE_TELEMETRY_DEFINES = {
+    "OPFORGE_TOKEN_DETAIL_TELEMETRY", "OPFORGE_BINDING_DETAIL_TELEMETRY",
+    "OPFORGE_TEMPLATE_WORK_TELEMETRY", "OPFORGE_INPUT_TELEMETRY",
 }
 PACKAGE_HEADER_BYTES = 262
 PACKAGE_MAGIC = b"BS38"
@@ -40,6 +46,33 @@ NAMED_DS_DIRECTIVE_OFFSET = 236
 STATEMENT_COMPILE_OFFSET = 238
 STATEMENT_MATCH_OFFSET = 246
 STATEMENT_HEAD_OFFSET = 254
+
+
+def hotspot_configuration(defines):
+    """Validate the two bounded bootstrap parameters; return flags and config."""
+    flags = set()
+    config = {"sampling_period": 128, "phase_seed": 0}
+    seen = set()
+    for define in defines:
+        name, separator, value = define.partition("=")
+        if name not in ("OPFORGE_HOTSPOT_SAMPLE_PERIOD", "OPFORGE_HOTSPOT_PHASE_SEED"):
+            flags.add(define)
+            continue
+        if name in seen or not separator or not re.fullmatch(r"0|[1-9][0-9]*", value):
+            raise ValueError("Malformed or duplicate hotspot numeric define")
+        seen.add(name)
+        number = int(value)
+        if name == "OPFORGE_HOTSPOT_SAMPLE_PERIOD":
+            if number not in (64, 128, 256):
+                raise ValueError("Hotspot sample period must be 64, 128 or 256")
+            config["sampling_period"] = number
+        else:
+            if not 0 <= number <= 255:
+                raise ValueError("Hotspot phase seed must be between 0 and 255")
+            config["phase_seed"] = number
+    if seen and "OPFORGE_HOTSPOT_TELEMETRY" not in flags:
+        raise ValueError("Hotspot numeric defines require OPFORGE_HOTSPOT_TELEMETRY")
+    return flags, config
 
 
 def fnv(data):
@@ -92,7 +125,7 @@ def load_bundle(bundle):
         filename_mappings.add("identity; generated inputs have explicit origins")
     if manifest["release_defines"] or manifest["filename_mapping"] not in filename_mappings:
         raise ValueError("Require unchanged source filenames and a release output oracle")
-    defines = set(manifest.get("bootstrap_defines", []))
+    defines, _hotspot_config = hotspot_configuration(manifest.get("bootstrap_defines", []))
     storage = manifest.get("bootstrap_package_storage", "external")
     embedded_packages = manifest.get("embedded_packages", [])
     output_packages = manifest.get("output_embedded_packages", [])
@@ -109,6 +142,11 @@ def load_bundle(bundle):
             raise ValueError("Unsupported bootstrap instrumentation defines")
         if "OPFORGE_CAPTURE_TELEMETRY" in defines and "OPFORGE_PREPARATION_PROGRESS" not in defines:
             raise ValueError("Capture accounting requires preparation progress for its report")
+        if "OPFORGE_HOTSPOT_TELEMETRY" in defines:
+            if "OPFORGE_PREPARATION_PROGRESS" not in defines:
+                raise ValueError("Hotspot telemetry requires preparation progress for its report")
+            if defines & DENSE_TELEMETRY_DEFINES:
+                raise ValueError("Hotspot telemetry requires zero dense detail telemetry flags")
         if manifest.get("telemetry_file") != "memory.bin":
             raise ValueError("Instrumented export must write local memory.bin")
     elif manifest.get("telemetry_file"):
@@ -440,6 +478,23 @@ def add_telemetry(result, root, manifest):
             result["capture_ownership"] = summary
         except (OSError, ValueError) as error:
             result["capture_ownership"] = None
+            diagnostics.append(str(error))
+    if "OPFORGE_HOTSPOT_TELEMETRY" in defines:
+        try:
+            _, config = hotspot_configuration(defines)
+            summary = decode_hotspot_telemetry(
+                (root / "assembly.stdout").read_text(),
+                terminal_complete=result["assembly_success"],
+            )["hotspot_summary"]
+            if summary is None:
+                raise ValueError("missing hotspot summary")
+            if summary["eclock_hz"] != memory["eclock_hz"]:
+                raise ValueError("hotspot E-clock frequency differs from MEMD")
+            if any(summary[key] != config[key] for key in config):
+                raise ValueError("hotspot sampling configuration differs from bundle manifest")
+            result["hotspot_summary"] = summary
+        except (OSError, ValueError) as error:
+            result["hotspot_summary"] = None
             diagnostics.append(str(error))
     result.update({"instrumented_memory": memory, "telemetry_completed": not diagnostics,
                    "success": result["success"] and not diagnostics})

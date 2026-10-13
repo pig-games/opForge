@@ -467,6 +467,82 @@ The snapshots describe capture ownership, not total preparation ownership or
 release timing. Existing completion and fresh-run parity evidence remains
 independently required.
 
+## Sampled native routine hotspots
+
+`debug/hotspot_telemetry.i` owns the reusable `HOTSPOT_CLEAR`,
+`HOTSPOT_ENTER slot`, `HOTSPOT_LEAVE slot` and `HOTSPOT_REPORT dosbase` macros.
+The first three require `OPFORGE_DEBUG_CONTRACTS`, `OPFORGE_MEMORY_TELEMETRY`
+and `OPFORGE_HOTSPOT_TELEMETRY`; reporting also requires
+`OPFORGE_PREPARATION_PROGRESS`. Missing a gate emits no call-site instructions,
+observer import, code or storage. Slot constants remain available outside gates.
+All macros and observer APIs preserve D0–D7, A0–A6, CCR and stack depth.
+Slot arguments are operands, for example `#HOTSPOT_NAME_BIND`.
+
+The observer has 1,244 bytes of fixed static storage: 16 counter/timing rows,
+a bounded 32-frame nesting stack and metadata. It allocates nothing and emits
+only one terminal report. `memory_profile.readClock` is a separately gated
+bridge to its already-open timer: A0 receives the high/low E-clock timestamp,
+D0 returns frequency or zero if unavailable, other registers are preserved,
+and CCR reflects D0. Clock reads change no memory accounting or phase state.
+
+`OPFORGE_HOTSPOT_SAMPLE_PERIOD` selects 64, 128 (default) or 256 calls;
+`OPFORGE_HOTSPOT_PHASE_SEED` selects 0–255 (default 0). A slot's zero-based
+call index is selected when `(index + 17*slot + seed) & (period-1) == 0`.
+Every enter/leave updates bounded nesting; fully unsampled paths read no clock.
+An independently selected invocation records an own sample. Its direct
+instrumented children are timed even when not independently selected, allowing
+their complete wall intervals to be subtracted from the parent's sample.
+Deeper untimed descendants are already inside those child intervals. Forced-only
+child windows contribute no own-sample elapsed totals. Recursion uses separate
+frames, even when slot identities repeat.
+
+Inclusive sampled time contains instrumented children. Exclusive sampled time
+subtracts those direct children; uninstrumented callees remain attributed to the
+parent. Timestamps exclude some wrapper work but do not remove all observer
+overhead. The decoder reports measured sample seconds and separately marked
+estimates scaled by calls/own samples. Fixed-period samples can alias workload
+patterns; use different periods/seeds to check ranking sensitivity. Inclusive
+times overlap, and independently sampled exclusive estimates do not form an
+exact decomposition of full assembly time. Do not add them to the measured
+preparation stages. A routine with no own sample has no time estimate.
+
+| Slot | Actual instrumented boundary |
+|---:|---|
+| 0 | `binary_frontend.captureLine` |
+| 1 | `binary_frontend.captureCandidates` |
+| 2 | `binary_capture.create` |
+| 3 | Retained append copy in `binary_source_schedule.i` |
+| 4 | `binary_memory.grow`, including allocation/copy/release |
+| 5 | `binary_frontend.replayLine` |
+| 6 | `binary_frontend.previewCapture` |
+| 7 | `binary_frontend.writeTokens` |
+| 8 | `binary_frontend.bind` |
+| 9 | `binary_scopes.bindName` |
+| 10 | `binary_imports.resolve` |
+| 11 | `binary_expression.compileMode` |
+| 12 | `binary_frontend.processRecord` |
+| 13 | `binary_frontend.bindCapturedPlan` |
+| 14 | `binary_frontend.tokenizeLine` |
+| 15 | `binary_scopes.lookup` |
+
+Terminal progress uses decimal phases 500 (schema 1, error bits, period),
+501 (E-clock frequency, maximum depth, active depth) and 502 (capacity, seed,
+stopped state). For slot `i`, phases `512+3*i` through `514+3*i` contain
+`id/calls/completed-own-samples`, `completed-timing-windows/inclusive-high/low`
+and `exclusive-high/low/reserved-zero`. There are exactly 51 rows. MEMD remains
+2,280 bytes; capture accounting is unchanged.
+
+Errors stop only the observer, leaving production control flow intact:
+invalid slot 1, stack overflow 2, mismatched leave 4, unavailable clock 8,
+changed frequency 16, arithmetic overflow 32, invalid period 64, unfinished
+depth at report 128. Such a report is diagnostic evidence, not valid profiling.
+The [decoder](../../scripts/performance/hotspot_telemetry.py) rejects missing,
+duplicate, erroneous or inconsistent rows, invalid completed sample counts,
+remaining depth, stopped state and exclusive totals exceeding inclusive totals.
+The A6000 runner additionally requires the requested period/seed and MEMD
+frequency to agree, and preserves assembly success separately from a profiling
+failure. Artifact parity and fresh completion remain independently required.
+
 ## Event ABI
 
 Each 28-byte record contains:

@@ -24,6 +24,7 @@
 	.use experimental.amigaos.binary_iterator_bindings as iterators
 	.use experimental.amigaos.binary_binding_plans as plans
 	.use experimental.amigaos.binary_numeric_bindings as bindings
+	.include "hotspot_telemetry.i"
 	.pub
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES
@@ -447,6 +448,7 @@ done
 	.bend  ; memberIdentity
 	.priv
 bindName	.block
+	.HOTSPOT_ENTER #HOTSPOT_SCOPE_BIND
 	movem.l d3-d7/a2-a6, -(sp)
 	move.l d2, -(sp)
 	movea.l a1, a6
@@ -564,6 +566,7 @@ done
 	addq.w #4, sp
 	movem.l (sp)+, d3-d7/a2-a6
 	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_SCOPE_BIND
 	rts
 	.bend  ; bindName
 	.pub
@@ -3263,6 +3266,7 @@ bad
 ; A2/D6=lookup bytes. D0/CCR=found status, A3=entry; D4=bucket (even on miss).
 ; Clobbers D0-D2/A0-A1/A3; preserves other registers.
 lookup	.block
+	.HOTSPOT_ENTER #HOTSPOT_SCOPE_LOOKUP
 	movea.l a2, a0
 	move.l d6, d0
 	moveq #0, d4
@@ -3316,6 +3320,7 @@ compare
 	subq.l #1, d0
 	bne.w compare
 	moveq #0, d0
+	.HOTSPOT_LEAVE #HOTSPOT_SCOPE_LOOKUP
 	rts
 next
 	moveq #0, d2
@@ -3323,6 +3328,7 @@ next
 	bra.w chain
 missing
 	moveq #1, d0
+	.HOTSPOT_LEAVE #HOTSPOT_SCOPE_LOOKUP
 	rts
 	.bend  ; lookup
 

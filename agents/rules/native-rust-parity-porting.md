@@ -52,6 +52,16 @@ success or previous green record never substitutes for the required evidence.
 A failed case must not prevent later cases from executing and receiving their
 own result; lock-poison fallout is not emulator evidence.
 
+Full self-host qualification belongs to the exact tested configuration: source
+manifest, bootstrap executable, package bytes and storage, assembly command,
+output configuration and instrumentation. An external-package self-build does
+not qualify an embedded-package self-build that exercises `.incbin`. A Rust-built
+export is a host-validated candidate until that same configuration executes
+natively. State the bundle's own qualification when handing it over; related
+component or source-only proofs cannot supply that status. Testing an explicitly
+identified candidate on hardware remains useful and does not require a prior
+emulator qualification, but its results must be reported as a new hardware case.
+
 ## Current runner safeguards
 
 The [FS-UAE runner](../../crates/opforge-asm/src/fs_uae_smoke.rs) clears previous

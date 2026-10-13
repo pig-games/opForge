@@ -73,13 +73,15 @@ PC-dependent acquisition also remains pending. The identified proxy-repair image
 is 657,484 bytes with 681,816 bytes linked static reservation. The subsequent
 collection image is 659,608 bytes with 684,524 bytes linked static reservation; neither is peak RAM.
 
-The current full self-host proof covers source commit `eed674a3`, manifest
-`befc1361cc9722cd`: all 193 source files (2,122,797 bytes) assemble natively into
-the complete 251,704-byte Hunk, exactly matching live Rust with fresh exit zero.
-The phase/memory-instrumented FS-UAE 68020/74 MiB run takes 3,568.574592333 seconds
-(59m28.57s); tracked peak is 47,319,416 bytes, with all allocations freed and no
-allocation failures. This proves this source checkpoint, not release/hardware
-performance, complete opcore/family parity or 2 MiB fit. See the maintained
+The current full self-host proof covers source commit `7a903cf8`, manifest
+`ec940cb60e2202f6`: all 194 mapped inputs (2,580,296 bytes including the package)
+assemble natively into the complete 706,888-byte Hunk, exactly matching live Rust
+with fresh exit zero. Bootstrap and output embed only the m68020 package.
+The release FS-UAE 68020/74 MiB run takes 3,512.267856959 seconds (58m32.27s).
+Full-workload memory was not instrumented; the earlier unembedded instrumented
+checkpoint had a 47,319,416-byte tracked peak. These are different inputs/modes,
+not a performance comparison. Physical A6000 validation of the corrected bundle,
+complete opcore/family parity and 2 MiB fit remain separate work. See the maintained
 [self-host proof](compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).
 
 The separate shared text-owner component matches its complete live Rust artifact

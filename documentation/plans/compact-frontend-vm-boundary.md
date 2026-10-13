@@ -1,9 +1,9 @@
 # Compact frontend: VM boundary correction
 
-Status: source commit `eed674a3` has full current-source native self-host
+Status: source commit `7a903cf8` has complete embedded release native self-host
 qualification on 2026-10-13, with exact complete live Rust Hunk equality.
-The phase/memory-instrumented run does not qualify release timing, physical
-hardware, the 2 MiB target or complete opcore/CPU-family parity.
+This emulator run does not qualify physical hardware, full-workload memory,
+the 2 MiB target or complete opcore/CPU-family parity.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -126,7 +126,21 @@ controls retain the same 1,240,712-byte peak, 27,022-byte packed source,
 no binary asset, so it measures repair overhead, not asset-path speedup.
 Report: `/tmp/opforge-binary-assets-cost-20261013.json`.
 
-Source commit `eed674a3` self-assembles the complete 193-file source set
+The complete configured release self-build of `7a903cf8` also passes on FS-UAE
+68020/74 MiB: all 194 mapped inputs (2,580,296 bytes including the package)
+assemble with fresh START/DONE, explicit exit zero and exact complete live Rust
+Hunk equality. Both bootstrap and assembled output embed only the unchanged
+454,890-byte m68020 package. Output is 706,888 bytes, linked reservation is
+740,660 bytes, and SHA-256 is
+`5d5e6f10c15dacf4b8b3840119380032755551d51eafe897bcb668985f4f19ee`.
+Source manifest: `fnv1a64:ec940cb60e2202f6`. Release START-to-DONE is
+3,512.267856959 seconds (58m32.27s). This is a complete embedded self-build,
+not an isolated catalog test. Memory instrumentation was disabled, so no new
+full-workload allocation claim is made. Capture:
+`/tmp/opforge-binary-assets-full-capture-20261013/`; exported bundle:
+`/tmp/opforge-a6000-7a903cf8-release`.
+
+The earlier unembedded source commit `eed674a3` self-assembles the 193-file source set
 (2,122,797 bytes), manifest `fnv1a64:befc1361cc9722cd`, on FS-UAE 68020/74 MiB.
 Fresh case-bound START/DONE and native exit zero accompany exact live Rust equality
 for the entire 251,704-byte Hunk, with 285,500 bytes linked reservation and SHA-256
@@ -148,8 +162,8 @@ The proof uses `compact_cli_self_host_entry_readiness_fs_uae` with
 timeouts. Its Rust oracle is assembled from the current filesystem; the full
 output matches in the same guest run. Receipt and captured output:
 `/tmp/opforge-selfhost-member-capture-20261013/`.
-This qualifies this source checkpoint only; whole-language/family parity and a
-new embedded hardware bundle remain separate work.
+This qualifies that source checkpoint only. Its instrumented time and different
+output are not a before/after timing comparison for the embedded release run.
 
 A separate embedded bundle can be qualified using `export_compact_self_host_bundle` with
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`,
@@ -162,19 +176,20 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The current host-validated release bundle is
-`/tmp/opforge-a6000-eed674a3-release`, selected by `/tmp/opforge-a6000-current`.
+The current emulator-qualified release bundle is
+`/tmp/opforge-a6000-7a903cf8-release`, selected by `/tmp/opforge-a6000-current`.
 Bootstrap and assembled output both embed only `m68020--motorola68k.bin`;
 there is no external runtime fallback. It contains 194 mapped inputs
-(2,577,776 bytes including the package asset) and a 706,596-byte executable,
-with 740,392 bytes linked reservation. Local and relocated Rust assembly match,
+(2,580,296 bytes including the package asset) and a 706,888-byte executable,
+with 740,660 bytes linked reservation. Local and relocated Rust assembly match,
 and the A6000 runner's dry run validates the actual bundle. Its manifest records
-`native_validation: not_run`. A subsequent fresh A6000 run completed its protocol
-but failed with exit 20 after 101 seconds at `catalog.i` line 572, the package
-`.incbin`. No output was produced. Binary assets had been stored as ordinary
-strings and passed through text encoding; the opaque-byte repair is being
-qualified before replacing this bundle. The complete emulator proof above
-covers the identified core with an unembedded output.
+`native_validation: fresh_fs_uae_exact_hunk`. Fresh physical A6000 execution of
+this corrected bundle is still pending.
+
+The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at
+`catalog.i` line 572, the package `.incbin`; no output was produced. Binary assets
+had been stored as ordinary strings and passed through text encoding. The current
+bundle includes the opaque-byte repair and complete embedded emulator proof above.
 
 The 31-byte `binary_declaration_activity.asm` filename was shortened to
 `binary_decl_activity.asm` without changing module identity or source bytes.
@@ -197,6 +212,13 @@ Guest `Date` brackets assembly at one-second resolution, excluding transfer;
 host command time includes connection and Shell setup. Success requires fresh
 case-bound markers, explicit guest exit zero and exact full-Hunk output. A timeout
 can leave a guest command running: inspect that run before retrying.
+
+The runner prints the selected bundle's native qualification before transfer and
+records it as `bundle_prior_native_validation` in the result. Host-only exports,
+failed diagnostic captures and exact qualified bundles have distinct statuses;
+inconsistent success claims reject. That prior status describes this exact bundle,
+including embedded/external package configuration. The new hardware run's own
+completion, exit and artifact comparison determine its success independently.
 
 Instrumented configurations must be regenerated for the current package format
 and qualified before hardware selection. Use separate release and instrumented
@@ -437,8 +459,8 @@ executor for a superseded format.
 Prepared binary assets use an opaque, length-prefixed byte token. Record walkers
 validate its bounds and skip or copy the payload; emission bypasses text encoding
 and macro substitution. This repairs `.incbin` payloads containing arbitrary
-bytes, including bytes resembling identifiers or placeholders. Native qualification
-of the embedded self-build is in progress.
+bytes, including bytes resembling identifiers or placeholders. The complete
+embedded self-build has fresh exact native qualification above.
 
 The intended data representation is raw bytes wherever values are already known:
 resolve literals and active string encoding once, then retain the resulting bytes
@@ -584,7 +606,7 @@ These statements describe the implemented subset. They do not imply complete ass
 - `binary_expression.compile` now runs the shared EXVM program, replacing its
   handwritten precedence parser. Fresh native component, folded-statement and
   session-lifecycle comparisons pass. Current full self-host evidence covers the
-  identified `eed674a3` source above; complete language parity remains open.
+  identified `7a903cf8` source above; complete language parity remains open.
   Ordinary Rust expression handling still uses core token spelling instead of
   portable numeric metadata. Expression-range and operand-wrapper choices in
   preparation need a PRVM/package audit. Other native VM contracts still carry

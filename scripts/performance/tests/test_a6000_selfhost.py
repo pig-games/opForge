@@ -16,6 +16,64 @@ SPEC.loader.exec_module(runner)
 
 
 class HardwareCompletionTests(unittest.TestCase):
+    def test_native_validation_status_distinguishes_candidate_failure_and_qualification(self):
+        self.assertEqual(
+            runner.native_validation_status({}),
+            "Host-validated candidate; no native qualification.",
+        )
+        self.assertEqual(
+            runner.native_validation_status({"native_validation": "not_run"}),
+            "Host-validated candidate; no native qualification.",
+        )
+        self.assertEqual(
+            runner.native_validation_status({"native_validation": "fresh_fs_uae_failure_capture"}),
+            "Native failed candidate (fresh FS-UAE capture).",
+        )
+        qualified = {
+            "native_validation": "fresh_fs_uae_exact_hunk",
+            "native_protocol_completed": True,
+            "native_assembler_exit_code": 0,
+            "native_start_to_done_host_seconds": 3512.2,
+        }
+        status = runner.native_validation_status(qualified)
+        self.assertIn("this exact bundle", status)
+        self.assertIn("physical A6000 validation pending", status)
+
+    def test_load_bundle_rejects_inconsistent_or_unknown_native_validation(self):
+        bad_claims = [
+            {"native_validation": "unknown"},
+            {"native_validation": "fresh_fs_uae_exact_hunk", "native_protocol_completed": False,
+             "native_assembler_exit_code": 0, "native_start_to_done_host_seconds": 1},
+            {"native_validation": "fresh_fs_uae_exact_hunk", "native_protocol_completed": True,
+             "native_assembler_exit_code": True, "native_start_to_done_host_seconds": 1},
+            {"native_validation": "fresh_fs_uae_exact_hunk", "native_protocol_completed": True,
+             "native_assembler_exit_code": 1, "native_start_to_done_host_seconds": 1},
+            {"native_validation": "fresh_fs_uae_exact_hunk", "native_protocol_completed": True,
+             "native_assembler_exit_code": 0, "native_start_to_done_host_seconds": -1},
+            {"native_validation": "fresh_fs_uae_exact_hunk", "native_protocol_completed": True,
+             "native_assembler_exit_code": 0, "native_start_to_done_host_seconds": float("inf")},
+        ]
+        for claim in bad_claims:
+            with self.subTest(claim=claim), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.bundle(root, False)
+                manifest = json.loads((root / "manifest.json").read_text())
+                manifest.update(claim)
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, "native validation"):
+                    runner.load_bundle(root)
+
+    def test_hardware_result_metadata_includes_bundle_native_validation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest = {"native_validation": "fresh_fs_uae_failure_capture"}
+            result = {"success": True}
+            runner.add_telemetry(result, root, manifest)
+            self.assertEqual(
+                result["bundle_prior_native_validation"],
+                "Native failed candidate (fresh FS-UAE capture).",
+            )
+
     def package(self, target=b""):
         package = bytearray(runner.PACKAGE_HEADER_BYTES)
         package[:4] = runner.PACKAGE_MAGIC

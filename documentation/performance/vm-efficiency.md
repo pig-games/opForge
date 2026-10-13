@@ -770,7 +770,7 @@ and linked reservation 652 bytes. Separate instrumented peak grows 16 bytes,
 1,240,696 to 1,240,712; allocated/freed totals both grow 16 bytes and live
 ownership remains zero. Receipt: `/tmp/opforge-member-syntax-cost-20261013.json`.
 
-The full current-source self-host of `eed674a3` completes with exact live Rust
+The earlier unembedded self-host of `eed674a3` completes with exact live Rust
 251,704-byte Hunk equality on FS-UAE 68020/74 MiB. It covers 193 files and
 2,122,797 source bytes, with phase/memory instrumentation enabled. Fresh
 START-to-DONE takes 3,568.574592333 seconds (59m28.57s). Guest measurements:
@@ -795,3 +795,43 @@ zero live ownership and no allocation failures. Source manifest is
 different inputs or measurement modes; these full-run times do not isolate this
 repair or establish release speed, hardware timing or 2 MiB feasibility.
 Receipt/output: `/tmp/opforge-selfhost-member-capture-20261013/`.
+
+The subsequent complete embedded release self-build of `7a903cf8` matches the
+entire live Rust 706,888-byte Hunk on FS-UAE 68020/74 MiB, with fresh exit zero.
+All 194 mapped inputs total 2,580,296 bytes including the unchanged 454,890-byte
+m68020 package. Bootstrap and output both embed that package. Release START/DONE
+is 3,512.267856959 seconds (58m32.27s), with instrumentation disabled. This is
+not a timing comparison against the earlier unembedded/instrumented case, and
+does not establish hardware timing or a new full-workload memory measurement.
+Capture: `/tmp/opforge-binary-assets-full-capture-20261013/`.
+
+The opaque-asset repair's separate no-asset 11,592-byte control remains unchanged:
+41.802194583 seconds before and 41.802430625 after, release mode on 68020/10 MiB.
+Image and linked reservation grow 292 and 268 bytes respectively. Separate
+instrumented controls retain the same 1,240,712-byte tracked peak and free all
+3,145,864 allocated bytes. This measures overhead outside the asset path, not
+asset processing gains. Receipt: `/tmp/opforge-binary-assets-cost-20261013.json`.
+
+The separate asset-path comparison uses identical 454,890-byte printable ASCII
+input, the same package, complete source and live Rust Hunk oracle, with release
+images on FS-UAE 68020/10 MiB. Both revisions complete with fresh exit zero and
+exact 454,948-byte Hunk equality. Reverse-order samples are:
+
+| Image | START-to-DONE samples (seconds) | Mean |
+|---|---|---:|
+| Before opaque bytes | 16.974033250, 17.255742500 | 17.114887875 |
+| After opaque bytes | 12.413317375, 12.182063958 | 12.297690667 |
+
+These samples show 28.15% less elapsed time (1.39x throughput) for this valid
+asset workload. They do not predict full self-host speed or cover arbitrary
+binary input on the old executable, which rejects the actual package asset.
+Asset SHA-256: `6a25b2a260d42e5437ae041b30d749f3a661c913a87b0f6470d28e05f6759960`.
+Receipt with image/package/source/oracle identities:
+`/tmp/opforge-ascii-asset-cost-20261013.json`. Reproduce with the ignored
+`ascii_asset_timing_fs_uae` test and `OPFORGE_ASSET_TIMING_IMAGE` set to each
+release executable, using the same configured FS-UAE environment.
+
+Earlier approximately 40-minute self-host captures ended in exit 20 (for example,
+2,380.911178041 seconds in `/tmp/opforge-selfhost-index-full-20261013.log`). Their
+time to failure is not the duration of a complete assembly and cannot establish
+a 40-to-60-minute full-build regression.

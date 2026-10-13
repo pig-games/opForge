@@ -43,11 +43,11 @@ opforge -i src/experimental/opforge_compact_cli.asm --hunk output.hunk -M src -I
 ```
 
 The entry's `.cpu 68020` selects its prepared package, embedded when configured
-or loaded externally. The full current-source
+or loaded externally. The full current-source embedded release
 native self-host is qualified with exact live Rust Hunk equality; see the
 [current self-host evidence](../documentation/plans/compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).
-That instrumented run does not establish release performance, physical A6000
-timing, 2 MiB fit or full opcore/family parity.
+The release run records overall emulator time; physical A6000 timing,
+full-workload memory, 2 MiB fit and full opcore/family parity remain separate.
 Assembly errors now retain source filenames alongside numeric line provenance,
 without retaining source text for execution.
 

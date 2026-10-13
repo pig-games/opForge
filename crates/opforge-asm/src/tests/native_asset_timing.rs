@@ -109,7 +109,7 @@ fn ascii_asset_timing_fs_uae() {
     ];
     let case = OpforgeNativeCliParityCase {
         name: "identical-ascii-asset-timing",
-        cpu_override: "m68020",
+        cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(SOURCE.as_bytes()),
         command_template: Some("Work:source.asm --hunk Work:asset.hunk"),

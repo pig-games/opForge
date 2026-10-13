@@ -9,6 +9,7 @@ Each invocation keeps its own local results and Development: directory.
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import shutil
@@ -61,8 +62,28 @@ def has_m68020_entry_preamble(entry):
     )
 
 
+def native_validation_status(manifest):
+    validation = manifest.get("native_validation", "not_run")
+    if validation in (None, "not_run"):
+        return "Host-validated candidate; no native qualification."
+    if validation == "fresh_fs_uae_failure_capture":
+        return "Native failed candidate (fresh FS-UAE capture)."
+    if validation == "fresh_fs_uae_exact_hunk":
+        elapsed = manifest.get("native_start_to_done_host_seconds")
+        if (manifest.get("native_protocol_completed") is not True
+                or type(manifest.get("native_assembler_exit_code")) is not int
+                or manifest["native_assembler_exit_code"] != 0
+                or isinstance(elapsed, bool)
+                or not isinstance(elapsed, (int, float))
+                or not math.isfinite(elapsed) or elapsed < 0):
+            raise ValueError("Inconsistent fresh FS-UAE exact-hunk native validation claim")
+        return ("Qualified on FS-UAE for this exact bundle; physical A6000 validation pending.")
+    raise ValueError(f"Unknown native validation claim: {validation}")
+
+
 def load_bundle(bundle):
     manifest = json.loads((bundle / "manifest.json").read_text())
+    native_validation_status(manifest)
     output_storage = manifest.get("output_package_storage", "external")
     filename_mappings = {"identity; source include literals are unchanged"}
     if output_storage == "embedded":
@@ -383,7 +404,8 @@ def add_telemetry(result, root, manifest):
                    "bootstrap_package_storage": manifest.get("bootstrap_package_storage", "external"),
                    "embedded_packages": manifest.get("embedded_packages", []),
                    "output_package_storage": manifest.get("output_package_storage", "external"),
-                   "output_embedded_packages": manifest.get("output_embedded_packages", [])})
+                   "output_embedded_packages": manifest.get("output_embedded_packages", []),
+                   "bundle_prior_native_validation": native_validation_status(manifest)})
     if not defines:
         return
     result["assembly_success"] = result["success"]
@@ -436,6 +458,7 @@ def main():
         target.write_bytes(data)
     (stage / "run-selfhost").write_text(guest_script(remote, marker, manifest["command"]))
     print(f"Bundle: {args.bundle.resolve()}\nLocal results: {local}\nRemote directory: {remote}", flush=True)
+    print("Bundle native validation: " + native_validation_status(manifest), flush=True)
     if manifest["over_classic_limit_components"]:
         print("Exact filenames required: " + ", ".join(manifest["over_classic_limit_components"]), flush=True)
     if args.dry_run:

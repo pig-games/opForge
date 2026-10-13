@@ -264,23 +264,34 @@ Exact counters show excessive lookup candidate traversal; parent timing estimate
 have systematic observer inflation described in the measurement. These runs
 qualify the named self-host cases, not complete parity or 2 MiB product fit.
 
-The approved 1,024-bucket binder candidate follows that measured state. Native
-upper-bucket/collision, visibility/forward-binding and identity-growth checks
-pass. On identical focused input, chain probes drop 58.1%, tracked heap peak
-increases 3 KiB and one release pair differs only 0.59%, insufficient to claim a
-material speed gain. The repaired current-source release oracle is 706,916 bytes
-with SHA-256 `0f6af5842c01df66625583448260da3b4db35422f6d0cbbd5d6d513b23cac918`.
-The first A6000 comparison qualifies the 256-bucket baseline at 118 s release
-and 136 s light accounting, with exact 706,916-byte output and tracked heap peak
-48,124,808 bytes. Both 1,024-bucket fixed-workload cases fail with exit 20 at
-`binary_values.asm` line 9; their partial times/memory cannot establish an
-optimization benefit. The final current-source run has no captured completion.
-An imported declared-member lookup still used the old hardcoded mask, searching
-bucket 0 for `binary_memory.Block.Used`, which insertion placed in bucket 768.
-That consumer now shares `binary_scope_layout.BUCKET_MASK`. A focused native
-regression fails with the old candidate and passes with the repaired image;
-full repaired self-host and hardware performance qualification remain pending. See
-[the experiment](native-performance-diagnosis.md#1024-symbol-hash-buckets).
+The 1,024-bucket binder at `92336d97` is now qualified for its five exact A6000
+cases and retained. On identical full baseline source/package/command/Rust output,
+release time is **119 → 110 seconds** (−9 s, −7.56%; one pair, one-second guest
+clock). Separate light accounting measures tracked heap peak
+48,124,808 → 48,127,880 bytes (+3,072), total allocated/freed +3,072 bytes each,
+unchanged packed/capture sizes and zero cleanup ownership. Its instrumented
+preparation clock falls 101.36 → 92.36 s; assembly remains 34.40 / 34.50 s.
+Release Hunk size and linked reservation remain 706,916 / 740,688 bytes.
+
+The fifth case performs a **full current-source release self-host in 111 seconds**:
+196 inputs / 2,596,097 bytes, digest `fnv1a64:20a2106b4ce5f83d`, embedded m68020,
+explicit zero exit and whole Rust output SHA-256
+`0f6af5842c01df66625583448260da3b4db35422f6d0cbbd5d6d513b23cac918`.
+All 193 native-origin files match the workspace. Inputs, actual executables,
+unique fresh markers, entire output and raw accounting records were independently
+verified. This qualifies the exact current-source self-host configuration, not
+complete language/family parity, all package selections or fit within 2 MiB.
+
+The original candidate's imported struct-member failure was a stale 255 mask in
+`binary_imports.findDeclared`; it now shares `binary_scope_layout.BUCKET_MASK`.
+The focused imported-member regression fails on the old image and passes after
+repair; the full corrected runs pass too. Upper buckets/collisions, visibility,
+forward bindings, imported reservations/order and identity-growth checks also pass.
+See [the experiment](native-performance-diagnosis.md#1024-symbol-hash-buckets)
+for separate timing/memory comparisons and reproducible bundle identities.
+Hardware summary:
+`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-comparison-pryi1022/comparison.json`.
+Independent audit: `/tmp/opforge-buckets-fixed-hardware-verified-20261013.json`.
 
 The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at
 `catalog.i` line 572, the package `.incbin`; no output was produced. Binary assets

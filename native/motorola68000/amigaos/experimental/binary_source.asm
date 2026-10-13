@@ -34,7 +34,7 @@ MACRO_PLAN = 42
 LINE_PLAN = 43
 OPTIONAL_LINE_PLAN = 44
 LINE_PLAN_BIT = 6
-LINE_PLAN_FLAG = 1<<LINE_PLAN_BIT ; role distinguished from snapshots by terminal typed framing
+LINE_PLAN_FLAG = 1<<LINE_PLAN_BIT; role distinguished from snapshots by terminal typed framing
 TOKEN_CONSTANT_DECLARATION = 34
 TOKEN_MUTABLE_DECLARATION = 43
 TOKEN_CONDITIONAL_DECLARATION = 44
@@ -80,6 +80,7 @@ Id	.word ?
 Qualifier	.byte ?
 .endstruct
 NAME_TOKEN_BYTES = NameToken.Qualifier+1
+TOKEN_NAME_MAX = abi.PRVM_TOKEN_KIND_REGISTER
 	; Declaration records retain the common header, numeric name, and marker.
 DeclarationRecord	.struct
 Header	.res RECORD_HEADER_BYTES
@@ -99,6 +100,7 @@ Value	.byte ?
 .endstruct
 BIND_ROLE_WIDTH = 3
 BIND_ROLE_PACKAGE_NAME = 4
+SYNTAX_MEMBER_QUALIFIER = $81; acquisition-only package syntax; stripped before execution
 BIND_ROLE_MEMBER_NAME = 5
 BIND_ROLE_INLINE_HEAD = 6
 BIND_ROLE_STATE_ARGUMENT = 7
@@ -132,8 +134,9 @@ StatePlan	.long ?  ; optional package state plan for first-operand name binding
 NextKind	.long ?  ; raw lookahead for contextual binder; $ffff at the line end
 TextPlan	.long ?  ; compiled shared text grammar
 TextPlanBytes	.long ?
+CurrentToken	.long ?  ; transient lexical cursor for contextual binder callbacks
 	.endstruct
-FRAME_BYTES = Frame.TextPlanBytes+4
+FRAME_BYTES = Frame.CurrentToken+4
 
 Token	.struct
 Kind	.word ?
@@ -143,6 +146,7 @@ End	.long ?
 Offset	.long ?
 Length	.long ?
 	.endstruct
+TOKEN_BYTES = Token.Length+4
 
 	.section code, kind=code
 
@@ -438,6 +442,7 @@ textIdentity
 restoreLength
 	move.l d6, d0
 callBinder
+	move.l a2, Frame.CurrentToken(a5)
 	; A single captured identifier may represent a package-declared member.
 	; Keep one lexical map entry while emitting its numeric wrapper. Shared
 	; directives and statement names are excluded by the contextual callback.

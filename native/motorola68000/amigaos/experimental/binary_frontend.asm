@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_source as writer
 	.use experimental.amigaos.binary_members as members
+	.use experimental.amigaos.binary_member_syntax as memberSyntax
 	.use experimental.amigaos.binary_prepare as prepare
 	.use experimental.amigaos.binary_operand_binding as operand_binding
 	.use opasm.amigaos.binary_expression as expression
@@ -3911,7 +3912,7 @@ bind	.block
 	cmpi.l #writer.BIND_ROLE_STATE_ARGUMENT, d2
 	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d2
-	beq.w findSymbol
+	beq.w syntaxMember
 	cmpi.l #writer.BIND_ROLE_CALL_NAME, d2
 	beq.w packageName
 	cmpi.l #writer.BIND_ROLE_INLINE_HEAD, d2
@@ -4102,6 +4103,18 @@ textName
 	movea.l a6, a1
 	bsr.w bindTextName
 	bra.w done
+
+syntaxMember
+	movem.l a0-a3, -(sp)
+	lea LINE_FRAME(a6), a0
+	movea.l writer.Frame.CurrentToken(a0), a1
+	movea.l PACKAGE_BASE(a6), a2
+	lea lookupPackage, a3
+	jsr memberSyntax.field
+	movem.l (sp)+, a0-a3
+	tst.l d0
+	beq.w good
+	bra.w findSymbol
 
 findSymbol
 	moveq #0, d4

@@ -584,6 +584,17 @@ postfixCheck
 	bne.w done
 	bra.w postfixCheck
 memberCheck
+	; A package-selected syntax field is an enclosing operand delimiter.
+	; The shared expression parser leaves it untouched for preparation.
+	move.l Request.TokenBytes(a5), d0
+	sub.l State.Cursor(a6), d0
+	cmpi.l #1+source.NAME_TOKEN_BYTES, d0
+	blo.w valueMember
+	cmpi.b #source.TOKEN_NAME_MAX, 1+source.NameToken.Kind(a0)
+	bhi.w valueMember
+	cmpi.b #source.SYNTAX_MEMBER_QUALIFIER, 1+source.NameToken.Qualifier(a0)
+	beq.w next
+valueMember
 	move.w State.Outputs(a6), d0
 	cmp.w (sp), d0
 	bls.w syntaxBad

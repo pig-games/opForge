@@ -786,6 +786,36 @@ Formatting preserves release/instrumented image bytes. Native guards, Clippy,
 wrapper gating/preservation, 26 decoder tests and independent review pass.
 The next full current-source rerun is still required.
 
+The subsequent full current-source run passed preparation, block indexing and
+reference selection, then entered assembly. It rejects in instruction encoding
+at the retained origin `binary_memory.asm:124`, immediately before
+`movea.l 4.w,a6`. The numeric instruction identity is confirmed as `movea`.
+Six focused native probes match all four disabled telemetry-only cases and reject
+both standalone and macro-following `movea.l 4.w,a6`; the package member operand
+is consumed as an ordinary typed member expression during preparation. This is not
+a completed self-host. Fresh START/DONE is 2,380.911178041 seconds (39 minutes
+41 seconds), exit 20, no Hunk. Inputs: 192 files / 2,116,884 bytes, manifest
+`1e4322d6d6474b76`, Rust Hunk 251,044 bytes. Tracked peak is 47,286,632 bytes,
+zero live ownership, no allocation failure, equal allocation/free totals
+107,609,256 bytes. Receipt: `/tmp/opforge-selfhost-index-full-20261013.log`.
+
+The package-member preparation repair uses existing numeric `MemberBinding`
+metadata to distinguish syntax facets from shared value members during acquisition.
+EXVM leaves the transient facet as an enclosing delimiter; preparation validates
+and strips it while preserving the existing numeric operand wrapper. Field meaning
+remains package-owned. The 15-case fresh native matrix has 11 exact positive
+artifacts and four expected rejections, including disabled telemetry calls,
+absolute widths, parenthesized bases and ordinary struct members. This focused
+proof fixes the identified instruction but does not establish full self-hosting.
+The unchanged release control takes 41.933110667 seconds before and
+41.867839750 after (-0.16%, one pair), with 660 more executable bytes and 652
+more linked bytes. Separate telemetry changes tracked peak from 1,240,696 to
+1,240,712 bytes (+16); allocation/free totals both rise 16 bytes and live
+ownership remains zero. Receipt: `/tmp/opforge-member-syntax-cost-20261013.json`.
+The existing full-extension tuple variation still rejects `4.W` at line 8 in
+both saved pre-repair and candidate images. That separate nested-member gap
+remains pending; the absolute-member repair does not qualify all nested forms.
+
 Correctness requires fresh component comparison, unchanged local and cross-module
 fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
 unchanged release control and a separate instrumented heap run against the saved

@@ -458,7 +458,10 @@ member
 	cmpi.b #RAW_NAME_MAX, 1(a2)
 	bhi.w bad
 	tst.b 4(a2)
+	beq.w memberField
+	cmpi.b #source.SYNTAX_MEMBER_QUALIFIER, 1+source.NameToken.Qualifier(a2)
 	bne.w bad
+memberField
 	moveq #0, d0
 	move.w 2(a2), d0
 	move.l a2, -(sp)
@@ -484,6 +487,8 @@ member
 	movea.l a6, a0
 	moveq #5, d6
 	bsr.w copy
+	bne.w done
+	clr.b -1(a3)  ; acquisition facet never enters persisted operand views
 	bra.w done
 prefixTuple
 	; scalar(tuple) has the same transport as (scalar,tuple children).

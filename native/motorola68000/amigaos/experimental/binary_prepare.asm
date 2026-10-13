@@ -1025,6 +1025,9 @@ loop
 	bne.w bad
 	bsr.w name
 	bne.w bad
+	cmpi.b #source.SYNTAX_MEMBER_QUALIFIER, source.NameToken.Qualifier-source.NAME_TOKEN_BYTES(a3)
+	bne.w bad
+	clr.b -1(a3)  ; acquisition role cannot escape into persisted operands
 ok
 	moveq #0, d0
 	rts

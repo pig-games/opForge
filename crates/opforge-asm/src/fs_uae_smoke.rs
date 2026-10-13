@@ -8198,3 +8198,7 @@ mod native_flat_output;
 #[cfg(test)]
 #[path = "tests/native_binding_remap.rs"]
 mod native_binding_remap;
+
+#[cfg(test)]
+#[path = "tests/native_package_members.rs"]
+mod native_package_members;

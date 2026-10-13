@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_mutable as mutable
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_payload_bounds as payloads
 	.pub
 STATUS_CLEAR = 0
 STATUS_SECTION = 1
@@ -540,6 +541,8 @@ next
 	beq.w number
 	cmpi.b #source.TOKEN_WIDE_NUMBER, d1
 	beq.w wideNumber
+	cmpi.b #source.TOKEN_BINARY_BYTES, d1
+	beq.w binary
 	cmpi.b #3, d1
 	beq.w string
 	cmpi.b #4, d1
@@ -595,6 +598,13 @@ number
 wideNumber
 	moveq #source.WIDE_NUMBER_BYTES-1, d1
 	bra.w skipToken
+binary
+	subq.l #1, a0
+	jsr payloads.binary
+	bne.w bad
+	adda.l d2, a0
+	bra.w next
+
 string
 	moveq #1, d1
 	bsr.w available

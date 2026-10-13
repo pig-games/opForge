@@ -743,6 +743,8 @@ token
 	beq.w literal
 	cmpi.b #source.TOKEN_WIDE_NUMBER, d1
 	beq.w wideLiteral
+	cmpi.b #source.TOKEN_BINARY_BYTES, d1
+	beq.w binary
 	cmpi.b #3, d1
 	beq.w string
 	cmpi.b #expr.COMPILED_TAG, d1
@@ -802,6 +804,13 @@ materializedPayload
 	cmpi.l #materialized.RECORD_BYTES-materialized.Record.Action, d0
 	bne.w bad
 	movea.l a1, a0
+	bra.w token
+
+binary
+	subq.l #1, a0
+	jsr payloads.binary
+	bne.w bad
+	adda.l d2, a0
 	bra.w token
 
 string

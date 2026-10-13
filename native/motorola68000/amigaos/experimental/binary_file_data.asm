@@ -33,7 +33,7 @@ BLOCK_BYTES = memory.Block.Used+4
 	.pub
 ; A0=Frame with an open asset and PRVM-validated source record. Callback receives
 ; A0=packed record, D0=bytes, A1=Context, returns D0/CCR=status; preserves others.
-; Every byte is published as a .byte string, including NUL/high-bit/quote bytes.
+; Every byte is published as a .byte opaque byte payload, including NUL/high-bit/quote bytes.
 ; Empty assets publish a label-only record if labeled, otherwise no record.
 ; D0/CCR=status; preserves other registers. Owns one temporary STATE_BYTES block;
 ; only its small allocation descriptor and saved registers occupy the stack.
@@ -84,7 +84,7 @@ read
 	lea State.Buffer(a5), a4
 	moveq #1, d6
 chunk
-	move.l #source.MAX_LINE-11, d4
+	move.l #source.MAX_LINE-source.BINARY_BYTES_RECORD_BYTES, d4
 	sub.l d7, d4
 	cmp.l d5, d4
 	bls.w sizeReady
@@ -105,7 +105,7 @@ header
 	move.b #0, (a3)+
 	move.w Frame.ByteName(a6), (a3)+
 	clr.b (a3)+
-	move.b #3, (a3)+
+	move.b #source.TOKEN_BINARY_BYTES, (a3)+
 	move.b d4, (a3)+
 	move.l d4, d0
 payload
@@ -114,7 +114,7 @@ payload
 	bne.w payload
 	move.l d4, d0
 	add.l d7, d0
-	addi.l #11, d0
+	addi.l #source.BINARY_BYTES_RECORD_BYTES, d0
 	bsr.w publish
 	bne.w bad
 	moveq #0, d7  ; the label is defined only by the first data record

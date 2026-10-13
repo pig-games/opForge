@@ -131,6 +131,8 @@ token
 	beq.w literal
 	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
 	beq.w wideLiteral
+	cmpi.b #source.TOKEN_BINARY_BYTES, d0
+	beq.w binary
 	cmpi.b #3, d0
 	beq.w string
 	cmpi.b #41, d0
@@ -150,6 +152,14 @@ recordDone
 	tst.w d4
 	bne.w bad
 	bra.w line
+binary
+	subq.l #1, a0
+	movea.l a4, a1
+	jsr payloads.binary
+	bne.w bad
+	adda.l d2, a0
+	bra.w token
+
 string
 	cmpa.l a4, a0
 	bhs.w bad

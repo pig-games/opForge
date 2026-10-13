@@ -19,6 +19,7 @@
 	.use experimental.amigaos.binary_mutable as mutable
 	.use experimental.amigaos.binary_constants as constants
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_payload_bounds as payloads
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_mapping as mapping
 	.use experimental.amigaos.binary_hunk_placement as placement
@@ -1626,6 +1627,8 @@ data
 dataValueStart
 	cmpa.l a1, a0
 	bhs.w bad
+	cmpi.b #source.TOKEN_BINARY_BYTES, (a0)
+	beq.w dataBinary
 	cmpi.b #3, (a0)
 	bne.w dataExpression
 	move.l a1, d0
@@ -1662,6 +1665,21 @@ dataStringScalar
 	move.b (a4), d1
 	movea.l a5, a0
 	bra.w dataEmitValue
+dataBinary
+	; Binary inclusion is initialized byte data, independent of text state.
+	cmpi.w #1, d6
+	bne.w bad
+	jsr payloads.binary
+	bne.w bad
+	movea.l a0, a5
+	adda.l d2, a5
+	adda.l #source.BinaryBytesToken.Payload, a0
+	move.l d1, d0
+	bsr.w emitBytes
+	bne.w bad
+	movea.l a5, a0
+	bra.w dataNext
+
 dataExpression
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #FAILURE_DATA_EVALUATION
 	movea.l a0, a5

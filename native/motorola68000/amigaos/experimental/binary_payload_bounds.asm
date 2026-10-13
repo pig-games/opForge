@@ -5,6 +5,30 @@
 .use experimental.amigaos.binary_source as source
 .pub
 .section code, kind=code
+; A0=binary token,A1=bounded record end. D0/CCR=status,D1=payload bytes,
+; D2=complete token bytes. Other registers preserved; failed views publish zero.
+binary	.block
+	move.l a1, d0
+	sub.l a0, d0
+	bcs.w bad
+	cmpi.l #source.BINARY_BYTES_HEADER_BYTES, d0
+	blo.w bad
+	cmpi.b #source.TOKEN_BINARY_BYTES, source.BinaryBytesToken.Kind(a0)
+	bne.w bad
+	moveq #0, d1
+	move.b source.BinaryBytesToken.Length(a0), d1
+	move.l d1, d2
+	addi.l #source.BINARY_BYTES_HEADER_BYTES, d2
+	cmp.l d2, d0
+	blo.w bad
+	moveq #0, d0
+	rts
+bad
+	moveq #0, d1
+	moveq #0, d2
+	moveq #1, d0
+	rts
+.bend  ; binary
 ; A0=LE16 string length,A1=expression end. Advance only after full validation.
 ; D0/CCR=status; other registers preserved except successful A0 advancement.
 string	.block

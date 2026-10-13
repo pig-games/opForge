@@ -12,6 +12,7 @@
 	.use experimental.amigaos.binary_values as values
 	.use opasm.amigaos.binary_expression as expr
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_payload_bounds as payloads
 	.use experimental.amigaos.binary_section_prepare as sections
 	.use experimental.amigaos.binary_structs as structs
 	.use experimental.amigaos.binary_struct_values as struct_values
@@ -2138,6 +2139,8 @@ references
 	beq.w literal
 	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
 	beq.w wideLiteral
+	cmpi.b #source.TOKEN_BINARY_BYTES, d0
+	beq.w binary
 	cmpi.b #3, d0
 	beq.w string
 	cmpi.b #7, d0
@@ -2155,6 +2158,15 @@ literalPayload
 	blo.w bad
 	adda.l d0, a0
 	bra.w references
+binary
+	move.l a1, -(sp)
+	movea.l a4, a1
+	jsr payloads.binary
+	movea.l (sp)+, a1
+	bne.w bad
+	adda.l d2, a0
+	bra.w references
+
 string
 	move.l a4, d1
 	sub.l a0, d1

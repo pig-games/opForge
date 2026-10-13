@@ -418,3 +418,211 @@ fn binary_incbin_argument_fs_uae() {
         Some(&expected),
     );
 }
+
+const CATALOG_ENTRY: &str = ".module binary_catalog_stream\n.cpu m68020\n.section code,kind=code\n rts\n.endsection\n.section data,kind=data\n.include \"experimental/catalog.i\"\n.endsection\n.output \"build/catalog.hunk\",format=hunk,sections=code,data\n.endmodule\n";
+const CATALOG_ASSET: &str = "Catalog\n.long CatalogPayload9-Catalog,CatalogEnd-CatalogPayload9\n.align 2\nCatalogPayload9\n.incbin \"packages/m68020--motorola68k.bin\"\n.align 2\nCatalogEnd\n";
+
+fn catalog_files_with_source<'a>(
+    payload: &'a [u8],
+    catalog: &'a str,
+) -> Vec<(&'static str, &'a [u8])> {
+    vec![
+        ("project/src/entry.asm", CATALOG_ENTRY.as_bytes()),
+        ("project/src/experimental/catalog.i", catalog.as_bytes()),
+        (
+            "project/src/experimental/packages/m68020--motorola68k.bin",
+            payload,
+        ),
+    ]
+}
+
+fn catalog_files(payload: &[u8]) -> Vec<(&str, &[u8])> {
+    catalog_files_with_source(payload, CATALOG_ASSET)
+}
+
+fn full_catalog_source() -> String {
+    if let Some(path) = std::env::var_os("OPFORGE_INCBIN_CATALOG") {
+        return fs::read_to_string(path).expect("explicit complete catalog fixture");
+    }
+    let scratch = Scratch::new();
+    let root = workspace_root();
+    let build = crate::native_package_build::build_native_packages(
+        &default_registry(),
+        &scratch.0.join("catalog"),
+        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &crate::native_package_build::EmbedSelection::Targets(vec!["m68020".into()]),
+    )
+    .unwrap();
+    fs::read_to_string(build.catalog_path).unwrap()
+}
+
+fn full_catalog_oracle(payload: &[u8], catalog: &str) -> Vec<u8> {
+    let bytes = oracle(
+        "m68020",
+        &catalog_files_with_source(payload, catalog),
+        &[],
+        "build/catalog.hunk",
+        false,
+    )
+    .unwrap();
+    let segments = hunk::segments(&bytes).unwrap();
+    assert_eq!(segments.len(), 2);
+    let data = &segments[1].payload;
+    let start = data
+        .windows(payload.len().min(32))
+        .position(|view| view == &payload[..payload.len().min(32)])
+        .expect("catalog contains actual package");
+    assert_eq!(&data[start..start + payload.len()], payload);
+    assert!(segments[1].relocations.is_empty());
+    bytes
+}
+
+fn catalog_package() -> Vec<u8> {
+    if let Some(path) = std::env::var_os("OPFORGE_INCBIN_PACKAGE") {
+        return fs::read(path).expect("explicit catalog package fixture");
+    }
+    let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
+    let resolved = core.resolve_pipeline("m68020", None).unwrap();
+    crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap()
+}
+
+fn catalog_oracle(payload: &[u8]) -> Vec<u8> {
+    let bytes = oracle(
+        "m68020",
+        &catalog_files(payload),
+        &[],
+        "build/catalog.hunk",
+        false,
+    )
+    .unwrap();
+    let segments = hunk::segments(&bytes).unwrap();
+    assert_eq!(segments.len(), 2);
+    let data = &segments[1].payload;
+    assert_eq!(&data[..4], &8u32.to_be_bytes());
+    let padded = payload.len() + payload.len() % 2;
+    assert_eq!(&data[4..8], &(padded as u32).to_be_bytes());
+    assert_eq!(&data[8..8 + payload.len()], payload);
+    assert!(data[8 + payload.len()..].iter().all(|byte| *byte == 0));
+    assert!(segments[1].relocations.is_empty());
+    bytes
+}
+
+#[test]
+fn binary_incbin_catalog_rust_oracle() {
+    let package = catalog_package();
+    assert!(package.len() > 4096);
+    catalog_oracle(&package);
+    full_catalog_oracle(&package, &full_catalog_source());
+    for length in [245, package.len(), 2 * 1024 * 1024] {
+        let payload: Vec<_> = (0..length)
+            .map(|n| ((n * 73 + n / 256) & 255) as u8)
+            .collect();
+        assert_eq!(
+            payload
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
+            256.min(length)
+        );
+        catalog_oracle(&payload);
+    }
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; actual package in a nested catalog asset path"]
+fn binary_incbin_catalog_fs_uae() {
+    let package = catalog_package();
+    let catalog = full_catalog_source();
+    let expected = full_catalog_oracle(&package, &catalog);
+    native(
+        "actual-nested-package-catalog",
+        "m68020",
+        &catalog_files_with_source(&package, &catalog),
+        &[],
+        Some(&expected),
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; scalable binary asset records including NUL/high bytes"]
+fn binary_incbin_scaled_fs_uae() {
+    let package = catalog_package();
+    // Two MiB of raw input expands beyond the current two-MiB packed-record
+    // capacity (per-record framing is additional). That frontier remains covered
+    // by the Rust scale oracle above; these native positives fit the owner budget.
+    for length in [245, package.len(), 1024 * 1024] {
+        let payload: Vec<_> = (0..length)
+            .map(|n| ((n * 73 + n / 256) & 255) as u8)
+            .collect();
+        let expected = catalog_oracle(&payload);
+        native(
+            &format!("nested-pattern-{length}"),
+            "m68020",
+            &catalog_files(&payload),
+            &[],
+            Some(&expected),
+        );
+    }
+}
+
+const ENCODED_ASSET: &str = ".module main\n.cpu m68020\n.org 0\n.encode gamefont\n.cdef \"A\",\"Z\",1\n.endencode\n.enc gamefont\n.byte \"AZ\"\n.incbin \"data.bin\"\n.byte \"AZ\"\n.endmodule\n.end\n";
+const ENCODED_PAYLOAD: &[u8] = &[0, 65, 90, 128, 255];
+const ENCODED_EXPECTED: &[u8] = &[1, 26, 0, 65, 90, 128, 255, 1, 26];
+
+#[test]
+fn binary_incbin_encoding_rust_oracle() {
+    assert_eq!(
+        oracle(
+            "m68020",
+            &[
+                ("main.asm", ENCODED_ASSET.as_bytes()),
+                ("data.bin", ENCODED_PAYLOAD)
+            ],
+            &[],
+            "output.bin",
+            true
+        )
+        .unwrap(),
+        ENCODED_EXPECTED
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; opaque asset preserves active source string mapping"]
+fn binary_incbin_encoding_fs_uae() {
+    let files = [
+        ("main.asm", ENCODED_ASSET.as_bytes()),
+        ("data.bin", ENCODED_PAYLOAD),
+    ];
+    let expected = oracle("m68020", &files, &[], "output.bin", true).unwrap();
+    assert_eq!(expected, ENCODED_EXPECTED);
+    native(
+        "binary-asset-between-mapped-strings",
+        "m68020",
+        &files,
+        &[],
+        Some(&expected),
+    );
+}
+
+#[test]
+fn binary_incbin_layout_contract() {
+    use vm::packed_source_layout::*;
+    assert_eq!(
+        (
+            TOKEN_BINARY_BYTES,
+            BINARY_BYTES_KIND,
+            BINARY_BYTES_LENGTH,
+            BINARY_BYTES_HEADER_BYTES
+        ),
+        (0x87, 0, 1, 2)
+    );
+    let root = workspace_root();
+    let source = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/experimental/binary_source.asm"),
+    )
+    .unwrap();
+    assert!(source.contains("TOKEN_BINARY_BYTES = $87"));
+    assert!(source.contains("BINARY_BYTES_HEADER_BYTES = BinaryBytesToken.Payload"));
+}

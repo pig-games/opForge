@@ -154,9 +154,12 @@ there is no external runtime fallback. It contains 194 mapped inputs
 (2,577,776 bytes including the package asset) and a 706,596-byte executable,
 with 740,392 bytes linked reservation. Local and relocated Rust assembly match,
 and the A6000 runner's dry run validates the actual bundle. Its manifest records
-`native_validation: not_run`: this embedded variant has not yet been executed
-on hardware or through FS-UAE. The complete emulator proof above covers the
-identified core with an unembedded output.
+`native_validation: not_run`. A subsequent fresh A6000 run completed its protocol
+but failed with exit 20 after 101 seconds at `catalog.i` line 572, the package
+`.incbin`. No output was produced. Binary assets had been stored as ordinary
+strings and passed through text encoding; the opaque-byte repair is being
+qualified before replacing this bundle. The complete emulator proof above
+covers the identified core with an unembedded output.
 
 The 31-byte `binary_declaration_activity.asm` filename was shortened to
 `binary_decl_activity.asm` without changing module identity or source bytes.
@@ -415,6 +418,19 @@ markers are consumed before runtime records are emitted. If a bytecode or
 package contract changes, regenerate its producer and migrate Rust/native
 consumers together. Keep one current contract rather than a compatibility
 executor for a superseded format.
+
+Prepared binary assets use an opaque, length-prefixed byte token. Record walkers
+validate its bounds and skip or copy the payload; emission bypasses text encoding
+and macro substitution. This repairs `.incbin` payloads containing arbitrary
+bytes, including bytes resembling identifiers or placeholders. Native qualification
+of the embedded self-build is in progress.
+
+The intended data representation is raw bytes wherever values are already known:
+resolve literals and active string encoding once, then retain the resulting bytes
+for subsequent passes. Unresolved expressions and relocatable addresses still need
+numeric expression/fixup records until their values and provenance are established.
+Extending this compaction beyond binary assets is later work; memory and speed
+benefits require separate before/after measurements.
 
 For Hunk output, section and symbol provenance survives stabilization. The
 native output path must preserve absolute instruction fixups and supported

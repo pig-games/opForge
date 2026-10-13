@@ -19,6 +19,7 @@
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_template_index as index
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_payload_bounds as payloads
 	.pub
 ARG_LIMIT = 192
 TEXT_LIMIT = 192
@@ -1508,6 +1509,8 @@ tokenContextReady
 	beq.w number
 	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
 	beq.w wideNumber
+	cmpi.b #source.TOKEN_BINARY_BYTES, d0
+	beq.w binaryToken
 	cmpi.b #3, d0
 	beq.w stringToken
 	cmpi.b #TOKEN_COMPOSITE, d0
@@ -1714,8 +1717,11 @@ defaultValue
 	beq.w defaultNumberToken
 	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
 	beq.w defaultWideNumberToken
+	cmpi.b #source.TOKEN_BINARY_BYTES, d0
+	beq.w defaultBytes
 	cmpi.b #3, d0
 	bne.w defaultTokenReady
+defaultBytes
 	cmpi.w #2, d4
 	blo.w bad
 	moveq #0, d6
@@ -1787,6 +1793,17 @@ number
 wideNumber
 	moveq #source.WIDE_NUMBER_BYTES, d4
 	bra.w copyToken
+binaryToken
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l a3, a0
+	movea.l a2, a1
+	jsr payloads.binary
+	move.l d2, d4
+	movem.l (sp)+, d1-d2/a0-a1
+	tst.l d0
+	bne.w bad
+	bra.w copyToken
+
 stringToken
 	tst.w SIDE_BYTES(a6)
 	beq.w expandBodyString

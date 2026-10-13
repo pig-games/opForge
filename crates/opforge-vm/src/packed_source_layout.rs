@@ -51,6 +51,11 @@ pub const TOKEN_CLOSE_PAREN: u8 = 15;
 pub const TOKEN_WIDE_NUMBER: u8 = 64;
 pub const TOKEN_COMPILED_EXPRESSION: u8 = 129;
 pub const TOKEN_TYPED_EXPRESSION: u8 = 131;
+/// Prepared binary asset payload: u8 byte length; contents are not decoded text.
+pub const TOKEN_BINARY_BYTES: u8 = 0x87;
+pub const BINARY_BYTES_KIND: usize = 0;
+pub const BINARY_BYTES_LENGTH: usize = 1;
+pub const BINARY_BYTES_HEADER_BYTES: usize = 2;
 pub const NUMBER_BYTES: usize = 5;
 pub const WIDE_NUMBER_BYTES: usize = 9;
 pub fn canonical_name(token: &[u8]) -> bool {

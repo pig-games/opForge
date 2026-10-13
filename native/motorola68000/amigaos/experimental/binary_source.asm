@@ -72,6 +72,15 @@ Low	.long ?
 TOKEN_ITERATOR_BINDING = $84
 ; Preparation-owned nominal type declaration: BE32 retained schema offset.
 TOKEN_STRUCT_DECLARATION = $85
+; Prepared binary assets: u8 length followed by opaque bytes, never decoded text.
+TOKEN_BINARY_BYTES = $87
+BinaryBytesToken	.struct
+Kind	.byte ?
+Length	.byte ?
+Payload	.byte ?
+	.endstruct
+BINARY_BYTES_HEADER_BYTES = BinaryBytesToken.Payload
+BINARY_BYTES_RECORD_BYTES = RECORD_HEADER_BYTES+abi.PRVM_PACKED_DOT_BYTES+BINARY_BYTES_HEADER_BYTES
 ; Accepted shared EXVM field metadata; consumed before canonical preparation.
 FIELD_KEY_QUALIFIER = $fe
 NameToken	.struct

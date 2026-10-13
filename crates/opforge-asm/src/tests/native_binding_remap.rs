@@ -50,6 +50,15 @@ const REFERENCES: Probe = Probe {
     defines: &[],
 };
 
+const BINARY_BYTES: Probe = Probe {
+    name: "opaque-binary-byte-boundaries",
+    stem: "binary_bytes",
+    output_stem: "binary-bytes",
+    artifact: "Work/binary-bytes.bin",
+    source_root_env: "OPFORGE_BINARY_BYTES_SOURCE_ROOT",
+    defines: &[],
+};
+
 fn component_image(dir: &Path, probe: &Probe) -> (Vec<u8>, String) {
     use clap::Parser;
     use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
@@ -190,4 +199,15 @@ fn native_block_reference_payload_host_assembles() {
 #[ignore = "requires configured FS-UAE; real symbol reachability excludes opaque payloads"]
 fn native_block_reference_payload_fs_uae() {
     native_proof(&REFERENCES);
+}
+
+#[test]
+fn native_binary_bytes_host_assembles() {
+    host_assembles(&BINARY_BYTES);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; opaque binary bytes and malformed length controls"]
+fn native_binary_bytes_fs_uae() {
+    native_proof(&BINARY_BYTES);
 }

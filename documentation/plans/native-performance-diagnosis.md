@@ -295,8 +295,8 @@ The enabled observer/macro preservation probe and the fresh exact 29-byte
 macro/include case also pass. The latter reports 1,328 actual cleared bytes for
 267 constructions, valid complete ownership snapshots and zero capture ownership
 after release. Five focused host checks, 41 A6000 runner/comparison tests and the
-native engineering gate pass. These component counts do not replace the pending
-full fixed-workload measurements.
+native engineering gate pass. These component counts do not replace full
+fixed-workload measurements.
 
 Release timing uses the unchanged 11,592-byte two-module control with 1,200 macro
 calls and a fresh live Rust oracle, FS-UAE 68020/10 MiB, and telemetry disabled.
@@ -312,8 +312,9 @@ The mean decreases by **0.3631 seconds (0.87%)**. Both candidate samples are
 faster, but this small control does not establish a full self-host speedup.
 The release Hunk grows 28 bytes, from 706,888 to 706,916; linked reservation
 grows from 740,660 to 740,688. No meaningful heap reduction is expected because
-record extents and allocation policy are unchanged. Full-workload heap/work and
-release timing have not yet been measured for this candidate. Receipt:
+record extents and allocation policy are unchanged. Full-workload instrumented
+heap/work have not yet been measured for this candidate. Release timing is
+recorded below. Control receipt:
 `/tmp/opforge-clear-release-control-20261013.json`.
 
 The physical A6000 comparison deliberately uses a frozen 195-input baseline
@@ -332,7 +333,35 @@ exact output proof. The original self-host bootstrap/oracle guard is unchanged.
 The third run uses the candidate's own 195-input source manifest
 `fnv1a64:1b1cb47fe4c81f08` (2,587,096 bytes), and its new 706,916-byte oracle.
 That third run is the independent current-source self-host case. All three
-hardware runs remain pending; the new bundle is host-validated only.
+physical A6000 runs now complete with fresh exit zero and exact complete output:
+
+| Release case | Guest seconds | Output bytes | Host command seconds, including connection |
+|---|---:|---:|---:|
+| Baseline on frozen input | 117 | 706,888 | 117.844501458 |
+| Clear elision on identical frozen input | 117 | 706,888 | 117.371201333 |
+| Clear elision on its current source | 117 | 706,916 | 117.909336417 |
+
+The fixed-input pair shows **no measurable full-build gain at one-second guest
+resolution**. The host intervals differ by 0.4733 seconds, but include connection
+overhead and are single samples; they do not establish a subsecond assembly
+speedup. The small emulator control's 0.87% result is not a full-build claim.
+Keep the bounded, correctness-tested clear elision as removal of redundant work;
+its full-build speed benefit remains unproven. No heap reduction is claimed.
+
+The comparison summary is
+`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-comparison-ng_p4baw/comparison.json`.
+Baseline and candidate fixed-input case identities are respectively
+`6c05a008f32ab2391497ed747784b66c6e5a79cfbea5b51efb1dfcd6c8372a06` and
+`38bc4df412519b7605f800dd975c1e7c7ee64fceaa14c70b6d9b8d9025863ff2`.
+The new current-source full self-host case is
+`772db9dab2237fad4a77ceb52bc3961adb02673cef56dc28756151f345aa5ade`, with receipt
+`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-3tef8gza/result.json`.
+Every staged, pre-run and captured input/bootstrap/package/script, regenerated
+case identity, fresh challenge, explicit exit, complete output and decoded
+duration was independently revalidated. Verification summary:
+`/tmp/opforge-clear-hardware-verified-20261013.json`.
+The bundle's original host-only status describes its qualification before this
+hardware run; this exact release configuration is now qualified on the A6000.
 
 Run the prepared three-case bundle from macOS Terminal:
 

@@ -177,8 +177,8 @@ stored manifests or outputs cannot replace the live oracle.
 
 ## Physical A6000 execution
 
-The current emulator-qualified release bundle is
-`/tmp/opforge-a6000-7a903cf8-release`, selected by `/tmp/opforge-a6000-current`.
+The earlier emulator-qualified release bundle is
+`/tmp/opforge-a6000-7a903cf8-release`, retained as a reference.
 Bootstrap and assembled output both embed only `m68020--motorola68k.bin`;
 there is no external runtime fallback. It contains 194 mapped inputs
 (2,580,296 bytes including the package asset) and a 706,888-byte executable,
@@ -190,7 +190,7 @@ same bundle completes with exit zero and exact complete Hunk equality in
 of host command time including connection. This is release mode, with no
 instrumentation defines. Its case digest
 `c469c0fb6c9894cf8948514016b02e2fdee467095dd94f1ddc344b1db42d6d0b`
-matches the current bundle. The captured output independently matches its Rust
+matches that tested bundle. The captured output independently matches its Rust
 oracle and the emulator output SHA-256 above. Receipt:
 `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-ewffglzb/result.json`.
 
@@ -219,6 +219,22 @@ Case: `404fac74ec19b8b65497e0dcc8556e84d3e21f958eb7dbf94999714090063373`.
 Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-5c03wy1h/result.json`.
 The capture wrapper avoids the `.block` formal classifier gap documented below;
 this full run does not qualify the unsupported spelling.
+
+The current release bundle is `/tmp/opforge-clear-candidate-release-20261013`,
+selected by `/tmp/opforge-a6000-current`. At `120e495b`, the clear-elision state
+completes a full self-host on the physical A6000 in **117 seconds (1m57s)**.
+Its 195 mapped inputs total 2,587,096 bytes, manifest
+`fnv1a64:1b1cb47fe4c81f08`; bootstrap and output both embed only m68020.
+Fresh challenge/exit and the complete 706,916-byte Hunk match the Rust oracle,
+SHA-256 `e197fc8e076ab5a706f2415c0bd6d18433ae4a7bc6bdb309900617a78da69b26`.
+Case: `772db9dab2237fad4a77ceb52bc3961adb02673cef56dc28756151f345aa5ade`.
+Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-3tef8gza/result.json`.
+Inputs, bootstrap, package, generated script, fresh markers, exit, complete
+output and duration were independently rechecked. This qualifies that full
+current-source release configuration on the A6000; it does not claim complete
+language/family parity or the 2 MiB target. The separate identical-input baseline
+and candidate both take 117 guest seconds, so no full-build speed gain is
+resolved by this pair. See [the comparison](native-performance-diagnosis.md#clear-elision-implementation-and-separate-release-measurement).
 
 The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at
 `catalog.i` line 572, the package `.incbin`; no output was produced. Binary assets

@@ -8217,3 +8217,5 @@ mod native_capture_initialization;
 #[cfg(test)]
 #[path = "tests/native_hotspot_telemetry.rs"]
 mod native_hotspot_telemetry;
+#[path = "tests/native_symbol_buckets.rs"]
+mod native_symbol_buckets;

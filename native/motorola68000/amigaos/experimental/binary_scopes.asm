@@ -137,7 +137,7 @@ begin	.block
 	clr.w layout.State.FirstBound(a0)
 	clr.w layout.State.FirstExplicit(a0)
 	lea BUCKETS(a0), a0
-	move.w #255, d1
+	move.w #layout.BUCKET_COUNT-1, d1
 clear
 	clr.w (a0)+
 	dbra d1, clear
@@ -3283,7 +3283,7 @@ hash
 	subq.l #1, d0
 	bne.w hash
 	.HOTSPOT_LEAVE #HOTSPOT_LOOKUP_HASH
-	andi.l #255, d4
+	andi.l #layout.BUCKET_MASK, d4
 	move.l d4, d0
 	add.w d0, d0
 	lea BUCKETS(a6), a0

@@ -264,6 +264,17 @@ Exact counters show excessive lookup candidate traversal; parent timing estimate
 have systematic observer inflation described in the measurement. These runs
 qualify the named self-host cases, not complete parity or 2 MiB product fit.
 
+The approved 1,024-bucket binder candidate follows that measured state. Native
+upper-bucket/collision, visibility/forward-binding and identity-growth checks
+pass. On identical focused input, chain probes drop 58.1%, tracked heap peak
+increases 3 KiB and one release pair differs only 0.59%, insufficient to claim a
+material speed gain. Its current-source release oracle is 706,916 bytes with
+SHA-256 `7b5d7d129bfe5a98b0a74e3be3d102a3caee9b9e94302a8acc0be73b236166aa`.
+The new five-run A6000 package separates unchanged-input release timing, memory
+accounting and current-source full self-host qualification. Those exact full
+cases remain unexecuted host-validated candidates; see
+[the experiment](native-performance-diagnosis.md#1024-symbol-hash-buckets).
+
 The preceding bundle failed a fresh A6000 run with exit 20 after 101 seconds at
 `catalog.i` line 572, the package `.incbin`; no output was produced. Binary assets
 had been stored as ordinary strings and passed through text encoding. The current

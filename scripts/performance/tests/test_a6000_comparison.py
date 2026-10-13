@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -34,6 +35,20 @@ class FixedWorkloadComparisonTests(unittest.TestCase):
         self.replace_image(candidate, b"candidate executable:" + package)
         self.refresh_sources(candidate)
         return baseline, candidate, baseline / "original"
+
+    def memory_export(self, release, destination, label):
+        shutil.copytree(release, destination)
+        manifest = json.loads((destination / "manifest.json").read_text())
+        package = (destination / manifest.get("runtime_package_file", "p.bin")).read_bytes()
+        bootstrap = f"instrumented-{label}:".encode() + package
+        (destination / "opforge").write_bytes(bootstrap)
+        manifest.update({
+            "bootstrap_defines": sorted(comparison.MEMORY_DEFINES),
+            "bootstrap_hunk_digest": runner.fnv(bootstrap),
+            "telemetry_file": "memory.bin",
+        })
+        self.save_manifest(destination, manifest)
+        return destination
 
     def save_manifest(self, bundle, manifest):
         (bundle / "manifest.json").write_text(json.dumps(manifest))
@@ -148,7 +163,8 @@ class FixedWorkloadComparisonTests(unittest.TestCase):
                 status = comparison.main(["--baseline-bundle", str(baseline), "--candidate-bundle", str(candidate),
                                           "--baseline-source-root", str(frozen), "--dry-run"])
             self.assertEqual(status, 0)
-            stages = [next(path.glob("opforge-*")) for path in created[:3]]
+            stages = [next(path.glob("opforge-*")) for path in created
+                      if list(path.glob("opforge-*"))]
             markers = [runner.re.search(r'START ([^"\n]+)', (stage / "run-selfhost").read_text()).group(1)
                        for stage in stages]
             self.assertEqual(len(set(markers)), 3)
@@ -156,7 +172,8 @@ class FixedWorkloadComparisonTests(unittest.TestCase):
             self.assertEqual((stages[1] / "src/entry.asm").read_bytes(), b"source")
             self.assertEqual((stages[2] / "src/entry.asm").read_bytes(), b"candidate source")
             self.assertEqual((stages[1] / "opforge").read_bytes(), (stages[2] / "opforge").read_bytes())
-            summary = json.loads((created[3] / "comparison.json").read_text())
+            summary_path = next(root.rglob("comparison.json"))
+            summary = json.loads(summary_path.read_text())
             self.assertTrue(summary["dry_run"])
             self.assertFalse(summary["fixed_workload_parity_passed"])
             self.assertFalse(summary["current_source_selfhost_passed"])
@@ -181,6 +198,202 @@ class FixedWorkloadComparisonTests(unittest.TestCase):
         self.assertNotIn("guest_speedup", summary)
         candidate.update({"success": True, "guest_overall_seconds": None})
         self.assertIsNone(comparison.comparison_summary(records)["guest_speedup"])
+
+    def test_memory_cases_use_baseline_inputs_with_corresponding_instrumented_bootstraps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline, candidate, frozen = self.exports(root)
+            baseline_memory = self.memory_export(baseline, root / "baseline-memory", "baseline")
+            candidate_memory = self.memory_export(candidate, root / "candidate-memory", "candidate")
+            _, _, release_cases = comparison.load_comparison(baseline, candidate, frozen)
+            cases = comparison.load_memory_cases(
+                baseline, candidate, baseline_memory, candidate_memory,
+                release_cases[0][2]["workload_sha256"],
+            )
+            self.assertEqual([case[5] for case in cases], ["baseline_memory", "candidate_memory"])
+            workload_files = release_cases[0][0]
+            for _, manifest, files, oracle, _, _, metadata in cases:
+                self.assertEqual({key: value for key, value in files.items() if key != "opforge"},
+                                 {key: value for key, value in workload_files.items() if key != "opforge"})
+                self.assertEqual(files["src/entry.asm"], b"source")
+                self.assertEqual(oracle, (baseline / "oracle.hunk").read_bytes())
+                self.assertEqual(files["opforge"], (Path(metadata["bootstrap_bundle"]) / "opforge").read_bytes())
+                self.assertEqual(set(manifest["bootstrap_defines"]), comparison.MEMORY_DEFINES)
+                self.assertFalse(metadata["candidate_source_selfhost_proven"])
+                self.assertEqual(metadata["workload_source_manifest_digest"],
+                                 release_cases[0][2]["workload_source_manifest_digest"])
+            self.assertNotEqual(cases[0][3], (candidate / "oracle.hunk").read_bytes())
+            self.assertNotEqual(cases[0][4], cases[1][4])
+
+    def test_memory_exports_require_exact_light_flags_and_corresponding_release_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline, candidate, frozen = self.exports(root)
+            baseline_memory = self.memory_export(baseline, root / "baseline-memory", "baseline")
+            candidate_memory = self.memory_export(candidate, root / "candidate-memory", "candidate")
+            _, _, cases = comparison.load_comparison(baseline, candidate, frozen)
+            manifest_path = candidate_memory / "manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest["bootstrap_defines"].remove("OPFORGE_CAPTURE_TELEMETRY")
+            self.save_manifest(candidate_memory, manifest)
+            with self.assertRaisesRegex(ValueError, r"exactly the light MEMD\+CAPTURE"):
+                comparison.load_memory_cases(baseline, candidate, baseline_memory, candidate_memory,
+                                             cases[0][2]["workload_sha256"])
+
+            manifest["bootstrap_defines"] = sorted(comparison.MEMORY_DEFINES)
+            self.save_manifest(candidate_memory, manifest)
+            (candidate_memory / "oracle.hunk").write_bytes(b"different oracle")
+            with self.assertRaisesRegex(ValueError, "Release oracle mismatch"):
+                comparison.load_memory_cases(baseline, candidate, baseline_memory, candidate_memory,
+                                             cases[0][2]["workload_sha256"])
+
+    def test_memory_command_cannot_differ_from_frozen_workload_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline, candidate, frozen = self.exports(root)
+            manifest = json.loads((candidate / "manifest.json").read_text())
+            manifest["command"] += " -M src"
+            self.save_manifest(candidate, manifest)
+            (candidate / "command.txt").write_text(manifest["command"] + "\n")
+            baseline_memory = self.memory_export(baseline, root / "baseline-memory", "baseline")
+            candidate_memory = self.memory_export(candidate, root / "candidate-memory", "candidate")
+            runner.load_bundle(candidate_memory)
+            _, _, release_cases = comparison.load_comparison(baseline, candidate, frozen)
+            with self.assertRaisesRegex(ValueError, "frozen baseline command"):
+                comparison.load_memory_cases(
+                    baseline, candidate, baseline_memory, candidate_memory,
+                    release_cases[0][2]["workload_sha256"],
+                )
+
+    def test_memory_storage_metadata_must_match_corresponding_release(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline, candidate, frozen = self.exports(root)
+            baseline_memory = self.memory_export(baseline, root / "baseline-memory", "baseline")
+            candidate_memory = root / "candidate-memory"
+            candidate_memory.mkdir()
+            fixtures.HardwareCompletionTests("runTest").bundle(candidate_memory, instrumented=True)
+            manifest_path = candidate_memory / "manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            manifest.update({
+                "kind": "compact-self-host-local-export", "manifest_version": 1,
+                "over_classic_limit_components": [],
+                "bootstrap_defines": sorted(comparison.MEMORY_DEFINES),
+                "release_defines": [], "telemetry_file": "memory.bin",
+            })
+            self.save_manifest(candidate_memory, manifest)
+            # Both exports pass the independent bundle validator, but their
+            # package storage configurations differ.
+            runner.load_bundle(candidate_memory)
+            runner.load_bundle(candidate)
+            _, _, release_cases = comparison.load_comparison(baseline, candidate, frozen)
+            with self.assertRaisesRegex(ValueError, "storage settings"):
+                comparison.load_memory_cases(
+                    baseline, candidate, baseline_memory, candidate_memory,
+                    release_cases[0][2]["workload_sha256"],
+                )
+
+    def test_memory_bundle_pair_is_required_and_all_exports_validate_before_transport(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline, candidate, frozen = self.exports(root)
+            baseline_memory = self.memory_export(baseline, root / "baseline-memory", "baseline")
+            candidate_memory = self.memory_export(candidate, root / "candidate-memory", "candidate")
+            with self.assertRaises(SystemExit):
+                comparison.main(["--baseline-bundle", str(baseline), "--candidate-bundle", str(candidate),
+                                 "--baseline-source-root", str(frozen), "--baseline-memory-bundle",
+                                 str(baseline_memory), "--dry-run"])
+
+            manifest = json.loads((candidate_memory / "manifest.json").read_text())
+            manifest["bootstrap_defines"] = sorted(comparison.MEMORY_DEFINES | {"OPFORGE_HOTSPOT_TELEMETRY"})
+            self.save_manifest(candidate_memory, manifest)
+            with mock.patch.object(runner, "run_case") as execute, contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaisesRegex(ValueError, r"exactly the light MEMD\+CAPTURE"):
+                    comparison.main(["--baseline-bundle", str(baseline), "--candidate-bundle", str(candidate),
+                                     "--baseline-source-root", str(frozen), "--baseline-memory-bundle",
+                                     str(baseline_memory), "--candidate-memory-bundle", str(candidate_memory)])
+                execute.assert_not_called()
+
+    def test_five_dry_runs_keep_release_then_memory_then_own_selfhost_order(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline, candidate, frozen = self.exports(root)
+            baseline_memory = self.memory_export(baseline, root / "baseline-memory", "baseline")
+            candidate_memory = self.memory_export(candidate, root / "candidate-memory", "candidate")
+            created = []
+
+            def temporary_directory(prefix):
+                path = root / f"{prefix}{len(created)}"
+                path.mkdir()
+                created.append(path)
+                return str(path)
+
+            real_write_summary = comparison.write_comparison_summary
+            observed_run_counts = []
+
+            def observe_summary(path, records, dry_run):
+                summary = real_write_summary(path, records, dry_run)
+                observed_run_counts.append(len(summary["runs"]))
+                return summary
+
+            with mock.patch("tempfile.mkdtemp", side_effect=temporary_directory), \
+                    mock.patch.object(comparison, "write_comparison_summary", side_effect=observe_summary), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                status = comparison.main([
+                    "--baseline-bundle", str(baseline), "--candidate-bundle", str(candidate),
+                    "--baseline-source-root", str(frozen), "--baseline-memory-bundle", str(baseline_memory),
+                    "--candidate-memory-bundle", str(candidate_memory), "--dry-run",
+                ])
+            self.assertEqual(status, 0)
+            stages = [next(path.glob("opforge-*")) for path in created
+                      if list(path.glob("opforge-*"))]
+            markers = [runner.re.search(r'START ([^"\n]+)', (stage / "run-selfhost").read_text()).group(1)
+                       for stage in stages]
+            self.assertEqual(len(set(markers)), 5)
+            expected_sources = [b"source", b"source", b"source", b"source", b"candidate source"]
+            expected_bootstraps = [
+                (baseline / "opforge").read_bytes(), (candidate / "opforge").read_bytes(),
+                (baseline_memory / "opforge").read_bytes(), (candidate_memory / "opforge").read_bytes(),
+                (candidate / "opforge").read_bytes(),
+            ]
+            for stage, source, bootstrap in zip(stages, expected_sources, expected_bootstraps):
+                self.assertEqual((stage / "src/entry.asm").read_bytes(), source)
+                self.assertEqual((stage / "opforge").read_bytes(), bootstrap)
+            summary_path = next(root.rglob("comparison.json"))
+            summary = json.loads(summary_path.read_text())
+            self.assertEqual([run["role"] for run in summary["runs"]], [
+                "baseline", "candidate", "baseline_memory", "candidate_memory", "current_source_selfhost",
+            ])
+            self.assertNotIn("memory_summary", summary)
+            self.assertEqual(observed_run_counts, [0, 1, 2, 3, 4, 5])
+
+    def test_memory_summary_reports_only_telemetry_deltas_when_both_runs_complete(self):
+        keys = ("peak_owned_bytes", "live_owned_bytes", "total_allocated_bytes", "total_freed_bytes",
+                "packed_source_bytes", "prepared_live_bytes", "assembly_live_bytes")
+
+        def result(offset):
+            memory = {key: offset + index for index, key in enumerate(keys)}
+            capture = {"counters": {
+                "construction_copy": {"retained_append_copy_bytes": offset + 100},
+                "retained_growth": {"retained_peak_capacity_including_overlap": offset + 200},
+            }}
+            return {"success": True, "telemetry_completed": True,
+                    "instrumented_memory": memory, "capture_ownership": capture,
+                    "guest_overall_seconds": 9000 - offset}
+
+        records = [{"role": "baseline_memory", "result": result(0)},
+                   {"role": "candidate_memory", "result": result(20)}]
+        summary = comparison.memory_comparison_summary(records)
+        self.assertIsNotNone(summary)
+        self.assertEqual(summary["metrics"]["peak_owned_bytes"],
+                         {"baseline": 0, "candidate": 20, "delta": 20})
+        self.assertEqual(summary["metrics"]["capture_retained_peak_capacity_including_overlap_bytes"]["delta"], 20)
+        self.assertFalse(summary["instrumented_timings_used_for_speedup"])
+        records[1]["result"]["success"] = False
+        self.assertIsNone(comparison.memory_comparison_summary(records))
+        records[1]["result"]["success"] = True
+        records[1]["result"]["telemetry_completed"] = False
+        self.assertIsNone(comparison.memory_comparison_summary(records))
 
     def test_candidate_output_must_match_frozen_oracle_with_own_fresh_challenge(self):
         with tempfile.TemporaryDirectory() as directory:

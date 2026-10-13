@@ -495,7 +495,7 @@ The active drill-down slice splits the residual `processRecord` cost across sour
 control, declaration/conditional/metadata handling, operand/scope handling,
 data/expression preparation, publication and graph work. Inspect replay/packed
 writing alongside it. Measure scope lookup hashing, chain traversal and string
-comparison before choosing a hash-table change: current code uses 256 buckets
+comparison before choosing a hash-table change: pre-change code used 256 buckets
 and folds lexical bytes during hashing/comparison. Also quantify blank/comment
 and header-only record populations before proposing capture pruning
 or packing. Eliminating redundant replay/binding work could improve both time
@@ -651,6 +651,87 @@ Cases in table order: `27dd2bbb238bbeb631dc06e60887641d7164a84cc004fa94c86dc4f24
 `f45bf080ef34b14ea1def065b556e66bfd395f8e5c086768d22dcb1873e0d957`,
 `1d2ec057c822df891a7db77af1bffb912eb508370747f3b98a442a2d6b8db257`.
 Independent verification: `/tmp/opforge-drill-hardware-verified-20261013.json`.
+
+### 1,024 symbol hash buckets
+
+The approved experiment increases only the generic native symbol binder's table
+from 256 to 1,024 word buckets. `binary_scope_layout` owns the count, mask and
+byte extent; initialization and lookup consume those constants. Hash folding,
+full-name comparison, namespace/visibility rules and numeric identities are
+unchanged. The separate eight-bit template-candidate key remains unchanged.
+Hypothesis: fewer collision-chain visits improve preparation at a small scratch
+storage cost. Stop on parity failures or disproportionate memory/runtime growth;
+keep the frozen 256-bucket code as the comparative reference. Full-workload
+qualification and integration judgment await the new A6000 results.
+
+The same 11,592-byte active-include/macro workload and live Rust oracle ran on
+both release executables using the same `68020-10m` FS-UAE profile. Separate
+light-accounting and hotspot-count runs used the same input bytes. Every case
+completed with fresh zero exit and exact output.
+
+| Measurement | 256 buckets | 1,024 buckets | Difference |
+|---|---:|---:|---:|
+| Release start-to-DONE | 41.484964 s | 41.241746 s | −0.243218 s (−0.59%) |
+| Tracked heap peak | 1,240,712 B | 1,243,784 B | +3,072 B |
+| Total allocated / freed | 3,145,864 B each | 3,148,936 B each | +3,072 B each |
+| Packed source | 27,022 B | 27,022 B | 0 |
+| Cleanup ownership | 0 | 0 | 0 |
+| Exact lookup chain probes | 22,901 | 9,597 | −58.09% |
+| Name comparisons | 11,922 | 5,694 | −52.24% |
+| Compared byte pairs | 81,590 | 43,464 | −46.73% |
+
+One runtime run per executable: the small difference does not establish a
+meaningful release speedup. The unchanged counts (4,842 lookups, 53,181 hashed
+bytes, 2,412 hits, 2,430 misses and 3,611 processed records) establish equivalent
+logical work with fewer candidates. This small control averaged 4.73 probes per
+lookup before the change; the full measured self-host averaged 66.53, so its
+runtime effect still needs an identical-input physical comparison. Enabled
+observer times are excluded from the release speed claim. Heap increase is
+measured, not inferred solely from the raw +1,536 bytes per binder. Release Hunk
+size and linked reservation remain 706,916 / 740,688 bytes in both builds.
+
+Focused correctness: 1,030 names cover all upper buckets and same-/different-length
+collision chains, forward and mixed-case reads; a separate native case covers
+imports, namespace shadowing and same-spelling value/template facets. Both match
+their literal/live Rust oracles (2,060 and 7 bytes). The native scope identity
+growth, word limit and register/CCR checks also pass. Python comparison tooling
+validates paired release/accounting exports before transfer, retains each actual
+bootstrap identity and separate output oracle, and updates its summary after
+every completed run. These focused checks do not qualify the full self-host.
+Local measurements: `/tmp/opforge-buckets-control-20261013.json`; independently
+decoded count/memory comparison: `/tmp/opforge-buckets-control-verified-20261013.json`.
+
+Run the new A6000 comparison from macOS Terminal:
+
+```sh
+sh /tmp/opforge-a6000-buckets-20261013/run.sh
+```
+
+It discovers the current address with `ash -l`, uses `Development:` and performs
+five serial fresh runs: release256/release1024 on identical baseline source,
+package, command and Rust oracle; light accounting256/accounting1024 on that
+same workload; then release1024 on its own current source with its own Rust
+oracle. Release timing and heap/capture comparisons are reported separately.
+Only the final case can qualify the new executable assembling its current source.
+Each run requires complete fresh protocol, explicit zero exit and whole-output
+parity; partial captures/timeouts cannot provide a success or timing conclusion.
+All five staged plans passed a no-network dry-run. Their exact full configurations
+remain host-validated A6000 candidates until execution.
+
+Release exports: `/tmp/opforge-buckets-baseline-release-20261013` and
+`/tmp/opforge-buckets-candidate-release-20261013`. Accounting exports:
+`/tmp/opforge-a6000-drill-baseline-20261013` and
+`/tmp/opforge-buckets-candidate-memory-20261013`. Baseline source remains at
+`/tmp/opforge-drill-source-20261013` (196 files, 2,595,817 bytes,
+`fnv1a64:7eec9ace461f7b6b`); candidate source at
+`/tmp/opforge-buckets-source-20261013` (196 files, 2,596,082 bytes,
+`fnv1a64:ac65e49ab7804edc`). Both package configurations embed only m68020 and
+use the same package bytes. Baseline output SHA-256 is
+`e197fc8e076ab5a706f2415c0bd6d18433ae4a7bc6bdb309900617a78da69b26`;
+candidate current-source output SHA-256 is
+`7b5d7d129bfe5a98b0a74e3be3d102a3caee9b9e94302a8acc0be73b236166aa`.
+The first four runs use the baseline output, making the bootstrap change the
+only execution-variable for each timing/accounting pair.
 
 Wide bulk copying remains a possible small candidate, followed by capacity policy and
 a compact capture-format experiment. Growth tightening must account for extra

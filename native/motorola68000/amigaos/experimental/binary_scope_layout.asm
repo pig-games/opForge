@@ -42,8 +42,13 @@ EarlierReference	.long ?  ; preparation-only lexical snapshot binder
 ITERATOR_STATE = State.LoopDepth
 ENTRIES = State.EarlierReference+4
 ENTRIES_POINTER = ENTRIES+memory.Block.Pointer
+; Power-of-two table. Word index+1 links retain numeric entry identities;
+; doubled bucket offsets fit the signed-word addressing used by lookup.
+BUCKET_COUNT = 1024
+BUCKET_MASK = BUCKET_COUNT-1
+BUCKET_BYTES = BUCKET_COUNT*2
 BUCKETS = ENTRIES+memory.Block.Used+4
-ARENA = BUCKETS+256*2
+ARENA = BUCKETS+BUCKET_BYTES
 ARENA_POINTER = ARENA+memory.Block.Pointer
 BUFFER = ARENA+memory.Block.Used+4
 MODULE_STATE = BUFFER+NAME_BYTES

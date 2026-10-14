@@ -641,7 +641,7 @@ done
 ; No original source is read or re-tokenized. D0/CCR=status; other regs preserved.
 ; Frame.Used/NameCount and nextExpansion retain the direct line API contract.
 replayLine	.block
-	.WORK_CALL lazy_work.sampleBegin
+	.WORK_CALL lazy_work.sampleEnd
 	.HOTSPOT_ENTER #HOTSPOT_REPLAY_LINE
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
 	movem.l d1-d7/a0-a6, -(sp)
@@ -667,6 +667,7 @@ replayLine	.block
 	move.w capture.Record.Line(a4), d1
 	move.l d1, LINE_NUMBER(a6)
 	move.l capture.Record.Origin(a4), Frame.Origin(a5)
+	.WORK_SAMPLE_BEGIN Frame.Origin(a5)
 	moveq #0, d1
 	move.b capture.Record.RootFile(a4), d1
 	move.w d1, Frame.RootFile(a5)

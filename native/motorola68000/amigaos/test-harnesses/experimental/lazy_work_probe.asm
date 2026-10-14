@@ -7,10 +7,11 @@
 	.use experimental.amigaos.binary_source as source
 	.section code, kind=code
 	.pub
-; D0/CCR=status (11..19 invariant failure); preserves other registers.
+; D0/CCR=status (11..20 invariant failure); preserves other registers.
 run	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l sp, SavedSp
+	jsr lazy_units.clear
 	movem.l Seed, d0-d7/a0-a6
 	lea Request, a4
 	move.w #$15, ccr
@@ -26,7 +27,8 @@ run	.block
 	.WORK_BOUND_BEGIN #10
 	.WORK_BOUND_END #14
 	.WORK_TEMPLATE_DELTA #10, #14
-	.WORK_CALL lazy_work.sampleBegin
+	.WORK_SAMPLE_BEGIN #1
+	.WORK_CALL lazy_work.sampleEnd
 	move.w ccr, AfterFlags
 	movem.l d0-d7/a0-a6, After
 	moveq #11, d0
@@ -95,7 +97,7 @@ acquisitions
 	bne.w done
 	jsr lazy_work.clear
 	jsr lazy_units.clear
-	.WORK_CALL lazy_work.sampleBegin
+	.WORK_SAMPLE_BEGIN #1
 	.WORK_COUNT lazy_work.BIND, #3
 	.WORK_COUNT lazy_work.COMPILE, #2
 	.WORK_COUNT lazy_work.TEMPLATE_BYTES, #7
@@ -160,6 +162,41 @@ acquisitions
 	cmpi.l #2, lazy_work.WorkFields.Selected+lazy_work.BIND(a0)
 	bne.w done
 	tst.l lazy_work.WorkFields.Unreferenced+lazy_work.BIND(a0)
+	bne.w done
+	; No publication occurs during this invocation. Lifecycle completion owns
+	; its preparation exactly once, including plan binding and committed bytes.
+	jsr lazy_work.clear
+	jsr lazy_units.clear
+	lea Nested, a0
+	moveq #4, d0
+	moveq #10, d1
+	moveq #5, d2
+	moveq #1, d3
+	moveq #2, d4
+	moveq #0, d5
+	jsr lazy_units.prepared
+	.WORK_SAMPLE_BEGIN #1
+	.WORK_COUNT lazy_work.PLAN_BIND, #2
+	.WORK_COUNT lazy_work.BOUND_BYTES, #11
+	.WORK_CALL lazy_work.sampleEnd
+	.WORK_CALL lazy_work.sampleEnd
+	jsr lazy_work.getState
+	moveq #20, d0
+	cmpi.l #2, lazy_work.WorkFields.Rows+lazy_work.Row.Values+lazy_work.PLAN_BIND(a0)
+	bne.w done
+	cmpi.l #11, lazy_work.WorkFields.Rows+lazy_work.Row.Values+lazy_work.BOUND_BYTES(a0)
+	bne.w done
+	tst.l lazy_work.WorkFields.Sample+lazy_work.PLAN_BIND(a0)
+	bne.w done
+	tst.l lazy_work.WorkFields.SampleOwner(a0)
+	bne.w done
+	.WORK_SAMPLE_BEGIN #2
+	.WORK_COUNT lazy_work.BIND, #1
+	.WORK_CALL lazy_work.sampleEnd
+	jsr lazy_work.getState
+	cmpi.l #lazy_work.MULTIFILE, lazy_work.WorkFields.Rows+lazy_work.Row.Reasons(a0)
+	bne.w done
+	tst.l lazy_work.WorkFields.Errors(a0)
 	bne.w done
 	jsr lazy_work.clear
 	jsr lazy_units.clear

@@ -156,3 +156,17 @@ WORK_TEMPLATE_DELTA .macro previous, current
 .endif
 .endif
 .endmacro
+
+WORK_SAMPLE_BEGIN .macro origin
+.ifdef OPFORGE_LAZY_AUDIT
+.ifdef OPFORGE_LAZY_WORK
+	move.w ccr, -(sp)
+	movem.l d1/a0, -(sp)
+	move.l .origin, d1
+	jsr lazy_units.getState
+	jsr lazy_work.sampleBegin
+	movem.l (sp)+, d1/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro

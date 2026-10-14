@@ -20,6 +20,41 @@ pub(super) fn controls() -> Vec<Control> {
         });
     }
     let base = super::native_fragment_controls::source(1, 0x1000);
+    for (name, definitions, invocation) in [
+        (
+            "zero-output-macro",
+            "EMPTY .macro\n.if 0\n.byte $6a\n.endif\n.endmacro\n",
+            ".EMPTY\n",
+        ),
+        (
+            "emitting-macro",
+            "EMIT .macro value\n.byte .value\n.endmacro\n",
+            ".EMIT $6a\n",
+        ),
+        (
+            "nested-macro",
+            "EMIT .macro value\n.byte .value\n.endmacro\nOUTER .macro value\n.EMIT .value\n.endmacro\n",
+            ".OUTER $6a\n",
+        ),
+    ] {
+        for referenced in [false, true] {
+            // Definitions remain identical and shared in both controls. Only
+            // the root reference changes whether the entire costed unit lives.
+            let source = base
+                .replace(".module dep\n.cpu 68020\n", &format!(".module dep\n.cpu 68020\n{definitions}"))
+                .replace("entry .block", &format!("costed .block\n{invocation}.byte $6b\n.bend\nentry .block"));
+            let source = if referenced {
+                source.replace(".long dep.payload", ".long dep.payload\n.long dep.costed")
+            } else {
+                source
+            };
+            result.push(Control {
+                name: format!("{name}-{}", if referenced { "selected" } else { "unreferenced" }),
+                source,
+                includes: vec![],
+            });
+        }
+    }
     for referenced in [false, true] {
         let body = "costed .block\n\tmoveq #2,d0\n\tadd.l d0,d1\n.byte $31\ninside:\n.byte $32\n.long inside\n.bend\n";
         let source = base.replace("entry .block", &format!("{body}entry .block"));
@@ -194,6 +229,7 @@ fn native_lazy_audit_prebuilt_fs_uae() {
     }
     for variable in variables {
         let mut costed_work = std::collections::BTreeMap::new();
+        let mut macro_work = std::collections::BTreeMap::new();
         let image =
             fs::read(std::env::var_os(variable).unwrap_or_else(|| panic!("set {variable}")))
                 .unwrap();
@@ -264,8 +300,49 @@ fn native_lazy_audit_prebuilt_fs_uae() {
                         );
                         costed_work.insert(case.name, vector);
                     }
+                    for family in ["zero-output-macro", "emitting-macro", "nested-macro"] {
+                        if case.name.starts_with(&format!("{family}-")) {
+                            // The first structural publication is costed. Its
+                            // macro expansion inherits that active source owner.
+                            assert_eq!(
+                                rows[&2060],
+                                [1, 1, 0],
+                                "{}: macro caller ownership",
+                                case.name
+                            );
+                            let vector: Vec<_> =
+                                (2061..=2066).flat_map(|phase| rows[&phase]).collect();
+                            assert!(
+                                vector[3] > 0,
+                                "{}: processing is charged to caller",
+                                case.name
+                            );
+                            assert!(
+                                rows[&2011][2] > 0,
+                                "macro definitions retain shared templates"
+                            );
+                            assert_eq!(vector[5], 0, "shared macro definition precedes caller");
+                            if family == "zero-output-macro" {
+                                // The consumed EMPTY invocation still binds its
+                                // plan and processes conditional records. A
+                                // publication-only sample loses this work.
+                                assert_eq!(vector[2], 1, "consumed macro plan binding");
+                                assert_eq!(vector[3], 8, "consumed macro record processing");
+                                assert_eq!(vector[4], 44, "consumed macro bound plan payload");
+                            }
+                            let selected = case.name.ends_with("-selected");
+                            assert_eq!(rows[&1121][1], u32::from(selected), "costed selection");
+                            macro_work.insert((family, selected), vector);
+                        }
+                    }
                     if case.name == "generated-block" || case.name == "active-include-resume" {
                         assert_ne!(rows[&2002][2], 0, "ambiguous provenance remains unknown");
+                    }
+                    if case.name == "generated-block" {
+                        assert!(
+                            (0..rows[&2001][2]).any(|index| rows[&(2060 + index * 7)][2] & 1 != 0),
+                            "generated publication retains its explicit GENERATED reason"
+                        );
                     }
                 }
                 if case.name == "generated-block" {
@@ -284,6 +361,17 @@ fn native_lazy_audit_prebuilt_fs_uae() {
                 selected, unreferenced,
                 "same whole body incurs identical preparation before selection"
             );
+        }
+        for family in ["zero-output-macro", "emitting-macro", "nested-macro"] {
+            if let (Some(selected), Some(unreferenced)) = (
+                macro_work.get(&(family, true)),
+                macro_work.get(&(family, false)),
+            ) {
+                assert_eq!(
+                    selected, unreferenced,
+                    "{family}: identical body preparation before selection"
+                );
+            }
         }
     }
 }

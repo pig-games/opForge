@@ -135,6 +135,10 @@ unit
 	bsr.w addVector
 	movem.l (sp)+, a0/a2
 range
+	; Generated block boundaries borrow the physical invocation capture.
+	; Its retained tokens/acquisition belong to the enclosing physical unit.
+	tst.l Event.Generated(a0)
+	bne.w advance
 	move.l Event.CaptureOpen(a0), d0
 	cmp.l capture.Region.Base(a4), d0
 	blo.w advance
@@ -153,7 +157,7 @@ range
 	bhi.w advance
 	move.l capture.Record.Origin(a3), d0
 	cmp.l Event.Origin(a0), d0
-	bne.w badRange
+	bne.w advance
 	move.l Event.OriginalOpen(a0), d0
 	cmp.l d5, d0
 	blo.w advance

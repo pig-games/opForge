@@ -116,8 +116,10 @@ published
 	lea Front, a0
 	tst.w frontend.Frame.SourcePending(a0)
 	beq.w append
+	.WORK_CALL lazy_work.sampleEnd
 	bsr.w materializePendingSource
 	bne.w bad
+	.WORK_SAMPLE_BEGIN OriginId
 	bra.w expansion
 append
 	tst.l frontend.Frame.Used(a0)
@@ -186,12 +188,14 @@ next
 	bne.w bad
 	bsr.w drainPrepared
 	bne.w bad
+	.WORK_CALL lazy_work.sampleEnd
 	move.l SourceCursorState.Next+SourceCursorData, ScheduleCursor
 	bra.w next
 good
 	moveq #0, d0
 	bra.w done
 bad
+	.WORK_CALL lazy_work.sampleEnd
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6

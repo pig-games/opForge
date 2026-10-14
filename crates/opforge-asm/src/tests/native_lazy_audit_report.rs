@@ -142,6 +142,24 @@ fn assert_work_report(rows: &BTreeMap<u32, [u32; 3]>) {
     assert_eq!(reported, count.min(limit));
     assert_eq!(rows[&2002][0], 60, "capture header contract");
     assert_eq!(rows[&2002][1], 4, "audit header overhead");
+    assert_eq!(
+        rows[&2041][2], rows[&2011][2],
+        "all retained templates are shared"
+    );
+    for category in [2020, 2030, 2050] {
+        assert_eq!(
+            rows[&(category + 1)][2],
+            0,
+            "templates have no exclusive owner"
+        );
+    }
+    for part in 0..6 {
+        for (field, value) in rows[&(2040 + part)].iter().enumerate() {
+            if part != 1 || field != 2 {
+                assert_eq!(*value, 0, "only template retention is shared");
+            }
+        }
+    }
     for part in 0..6 {
         for (field, total) in rows[&(2010 + part)].iter().enumerate() {
             let total = u64::from(*total);
@@ -219,4 +237,29 @@ fn native_lazy_audit_report_decodes_hex_and_rejects_duplicates() {
         "progress p=000002BC f=1 l=0 r=0\nprogress p=000002BC f=1 l=0 r=0\n"
     ))
     .is_err());
+}
+
+#[test]
+fn native_lazy_audit_work_report_requires_shared_template_provenance() {
+    let mut rows = BTreeMap::from([
+        (705, [0, 0, 0]),
+        (2000, [1, 0, 0]),
+        (2001, [0, 16, 0]),
+        (2002, [60, 4, 0]),
+    ]);
+    for category in [2010, 2020, 2030, 2040, 2050] {
+        for part in 0..6 {
+            rows.insert(category + part, [0; 3]);
+        }
+    }
+    // No whole-unit publications: preparation stays unknown, while committed
+    // macro template payload is shared even when it emits no records.
+    rows.get_mut(&2010).unwrap()[0] = 3;
+    rows.get_mut(&2050).unwrap()[0] = 3;
+    rows.get_mut(&2011).unwrap()[2] = 48;
+    rows.get_mut(&2041).unwrap()[2] = 48;
+    assert_work_report(&rows);
+    rows.get_mut(&2041).unwrap()[2] = 0;
+    rows.get_mut(&2051).unwrap()[2] = 48;
+    assert!(std::panic::catch_unwind(|| assert_work_report(&rows)).is_err());
 }

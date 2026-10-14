@@ -6,6 +6,7 @@ reassemble its exact sources against a live Rust oracle through the maintained
 native test. Timing images have no memory telemetry; memory images use identical
 telemetry settings, with only OPFORGE_LAZY_AUDIT added to the candidate.
 With --work-attribution, compare L1-only against L1+OPFORGE_LAZY_WORK instead.
+With --baseline-images too, compare two work observers with identical build flags.
 This is fixed-input audit qualification, not candidate-source self-host proof.
 """
 import argparse
@@ -38,6 +39,9 @@ def read_checked(root, row):
 
 def prepare(args):
     work_attribution = getattr(args, "work_attribution", False)
+    baseline_images = getattr(args, "baseline_images", None)
+    if baseline_images is not None and not work_attribution:
+        raise ValueError("Baseline images require --work-attribution")
     original = json.loads(args.workload_case.read_text())
     if original.get("schema") != 1:
         raise ValueError("Require current full-comparison case schema")
@@ -48,6 +52,8 @@ def prepare(args):
         raise ValueError("Duplicate workload guest path")
     build_manifest = json.loads((args.images / "images.json").read_text())
     image_manifest = {row["file"]: row for row in build_manifest["images"]}
+    baseline_manifest = json.loads((baseline_images / "images.json").read_text()) if baseline_images else build_manifest
+    baseline_rows = {row["file"]: row for row in baseline_manifest["images"]}
     digest = hashlib.sha256()
     for name, data in files:
         if not name.startswith("src/") or ".." in Path(name).parts:
@@ -66,15 +72,19 @@ def prepare(args):
     for label, role, memory in variants:
         directory = args.output / label
         directory.mkdir()
-        image_role = ("audit" if role == "reference" else "work") if work_attribution else role
+        image_role = role
+        if work_attribution:
+            image_role = "work" if baseline_images or role == "audit" else "audit"
         image_name = f"{image_role}-{'memory' if memory else 'release'}.hunk"
-        image = (args.images / image_name).read_bytes()
+        image_root = baseline_images if baseline_images and role == "reference" else args.images
+        image = (image_root / image_name).read_bytes()
         defines = list(MEMORY_DEFINES) if memory else []
         if role == "audit" or work_attribution:
             defines.append("OPFORGE_LAZY_AUDIT")
-        if role == "audit" and work_attribution:
+        if work_attribution and (role == "audit" or baseline_images):
             defines.append("OPFORGE_LAZY_WORK")
-        built = image_manifest[image_name]
+        manifest = baseline_manifest if baseline_images and role == "reference" else build_manifest
+        built = (baseline_rows if baseline_images and role == "reference" else image_manifest)[image_name]
         if built["fnv1a64"] != runner.fnv(image) or built["bytes"] != len(image):
             raise ValueError(f"Changed image: {image_name}")
         if sorted(built["defines"]) != sorted(defines):
@@ -87,8 +97,9 @@ def prepare(args):
                              "source_bytes": sum(len(data) for _, data in files),
                              "candidate_source_selfhost_proven": False,
                              "work_attribution_comparison": work_attribution,
+                             "work_observer_revision_comparison": baseline_images is not None,
                              "frozen_workload_case": str(args.workload_case),
-                             "bootstrap_source_fnv1a64": build_manifest.get("native_source_fnv1a64"),
+                             "bootstrap_source_fnv1a64": manifest.get("native_source_fnv1a64"),
                              "memory_profile": os.environ.get("OPFORGE_FS_UAE_MEMORY_PROFILE", "existing")}}
         for key, name, data in (("image", "bootstrap.hunk", image), ("oracle", "exported-oracle.hunk", oracle)):
             (directory / name).write_bytes(data)
@@ -126,7 +137,12 @@ def execute(args, cases):
                     if row["metadata"]["comparison_role"] == "audit" or row["metadata"].get("work_attribution_comparison"):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
-                        if row["metadata"].get("work_attribution_comparison") and row["metadata"]["comparison_role"] == "audit":
+                        needs_work_report = (
+                            row["metadata"].get("work_observer_revision_comparison")
+                            or (row["metadata"].get("work_attribution_comparison")
+                                and row["metadata"]["comparison_role"] == "audit")
+                        )
+                        if needs_work_report:
                             row["success"] = row["success"] and row["audit"]["work_attribution"]["accounting_complete"]
                 except (OSError, ValueError) as error:
                     row.update(success=False, error=str(error))
@@ -143,6 +159,16 @@ def execute(args, cases):
                for role in ("reference", "audit")}
     means = {role: sum(values) / len(values) for role, values in runtime.items()}
     memory = {row["metadata"]["comparison_role"]: row for row in records if row["metadata"]["measurement"] == "memory"}
+    if getattr(args, "baseline_images", None):
+        previous = memory["reference"]["audit"]["work_attribution"]["metrics"]["total"]
+        current = memory["audit"]["audit"]["work_attribution"]["metrics"]["total"]
+        if previous != current:
+            raise ValueError("Observer revision changed global work totals on identical input")
+    baseline_name = "ordinary release"
+    if getattr(args, "work_attribution", False):
+        baseline_name = "L1 audit"
+    if getattr(args, "baseline_images", None):
+        baseline_name = "previous work observer"
     summary = {"runtime_samples_seconds": runtime, "runtime_means_seconds": means,
                "audit_runtime_delta_seconds": means["audit"] - means["reference"],
                "audit_runtime_delta_percent": 100 * (means["audit"] / means["reference"] - 1),
@@ -152,7 +178,8 @@ def execute(args, cases):
                "linked_static_bytes": {role: row["linked_static_reserved_bytes"] for role, row in memory.items()},
                "audit_linked_static_delta_bytes": memory["audit"]["linked_static_reserved_bytes"] - memory["reference"]["linked_static_reserved_bytes"],
                "audit": memory["audit"]["audit"],
-               "baseline": "L1 audit" if getattr(args, "work_attribution", False) else "ordinary release",
+               "baseline_audit": memory["reference"].get("audit"),
+               "baseline": baseline_name,
                "evidence_limit": "fixed frozen input; instrumentation times are diagnostic; no lazy preparation or early release"}
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, indent=2))
@@ -169,12 +196,16 @@ def main():
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--work-attribution", action="store_true",
                         help="measure marginal attribution overhead: audit images versus work images")
+    parser.add_argument("--baseline-images", type=Path,
+                        help="with --work-attribution, compare saved work images against current work images")
     args = parser.parse_args()
     for key, value in vars(args).items():
         if isinstance(value, Path):
             setattr(args, key, value.resolve())
     if not 1 <= args.repeats <= 4:
         parser.error("repeats must be 1..4")
+    if args.baseline_images and not args.work_attribution:
+        parser.error("--baseline-images requires --work-attribution")
     if not args.prepare_only and args.test_binary is None:
         parser.error("execution requires --test-binary")
     target = Path(__file__).resolve().parents[2] / "target"

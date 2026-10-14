@@ -43,6 +43,7 @@ Errors	.long ?
 Count	.long ?
 UnknownReasons	.long ?
 SelectionDone	.long ?
+SampleOwner	.long ? ; physical invocation event ordinal+1
 SampleReasons	.long ?
 FilterCount	.long ?
 BoundBefore	.long ?

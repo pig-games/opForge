@@ -6,7 +6,122 @@ The ordinary path remains the reference. No preparation is skipped and no captur
 is retired early. Acquisition-only unit discovery and individual binding links
 remain unimplemented; see the measured scope below.
 
-## Active checkpoint: preparation attribution to whole units
+## Active refinement: invocation and non-emitting ownership
+
+The work observer now snapshots the deepest authoritative physical unit at replay
+begin, after the capture origin is known. Preparation follows that invocation
+owner, while prepared-copy bytes follow the actual publication owner. Physical
+block openings establish their new owner. Publication consumes a sample without
+ending the invocation; replay completion, failure and include suspension flush
+remaining work and clear the owner, including calls that emit no prepared record.
+This prevents subsequent global work from inheriting a stale unit.
+
+Generated publications retain their own uncertainty without demoting their
+physical caller merely because expansion is active. Generated boundaries do not
+claim the caller's retained physical capture. Records with a different origin do
+not poison an otherwise valid physical range; actual cross-file execution,
+including zero-output execution, still marks the affected unit `MULTIFILE`.
+Ambiguous generated preceding-label transfers remain `PREVIOUS_UNKNOWN`: the
+existing containment check must prove the source vector before moving it.
+
+This adds one four-byte observer scalar, bringing work-table reservation to
+**688,756 bytes**. There is no new journal, capture/header/row growth, parser,
+evaluator, deferred execution or early release. Ordinary release and L1-only
+timing/memory images are byte-identical to the preceding checkpoint. The eager
+reference remains unchanged.
+
+### Focused ownership proof
+
+Seventy-two fresh native runs cover 18 controls on ordinary, L1, refined-work and
+work-probe images. All complete with zero exit and full live Rust BIN/Hunk equality.
+Paired selected/unreferenced controls have identical complete preparation vectors;
+only their final category differs. Their physical caller has no uncertainty reason.
+
+| Macro in the same `costed` block | Captured-plan bindings | Bound-plan bytes | Process calls |
+|---|---:|---:|---:|
+| Empty conditional expansion | 1 | 44 | 8 |
+| One emitting expansion | 1 | 80 | 6 |
+| Nested emitting expansion | 1 | 160 | 8 |
+
+The empty control deliberately has no active emission in its macro; its counts
+detect the publication-only observer's lost work. Probes independently check exact
+zero-output counts, duplicate flush, cleared owners, zero-output origin mismatch
+and register/CCR/stack preservation. Existing generated-unit, include, preceding-
+label and ordinary-body controls remain in the matrix. Template retention stays
+shared, and every metric conserves its global total.
+
+### Identical full input: attribution and overhead
+
+Six fresh full-input runs use the same frozen 198 files / 2,614,471 source bytes
+and match the complete 708,592-byte live Rust Hunk. The previous and refined
+observers use identical audit flags and packages. All 18 global work totals are
+exactly unchanged. All 1,415 units reconcile, with zero observer/accounting errors.
+The existing expanded-memory A4000/68040 profile remains in use; this is neither
+A6000 nor 2 MiB qualification.
+
+| Serial timing pair without memory telemetry | Previous observer (s) | Refined observer (s) |
+|---|---:|---:|
+| Previous then refined | 108.550765 | 108.222396 |
+| Refined then previous | 106.588735 | 106.679345 |
+| Mean | 107.569750 | 107.450870 |
+
+The difference is **−0.118880 s / −0.11%**, within run-to-run variation. There is
+no measured preparation speedup: neither image skips work. In the separate memory
+pair, tracked heap peak is **48,390,024 bytes** for both; allocated and freed
+capacities are **113,993,896 bytes** each, with zero terminal live heap, allocation
+failures or profiling errors. Linked reservation changes **1,812,256 → 1,812,632
+bytes (+376)**. Capture used/capacity are unchanged at 23,613,704 / 33,255,424 bytes.
+
+| Resource still unknown | Previous | Refined | Newly attributed to required units |
+|---|---:|---:|---:|
+| Binding calls | 199,352 | 120,597 | 78,755 |
+| EXVM compilations | 31,625 | 16,973 | 14,652 |
+| Process calls | 65,961 | 38,858 | 27,103 |
+| Capture bytes, including audit headers | 14,465,068 | 11,177,508 | 3,287,560 |
+| Captured-plan bindings | 20,731 | 20,195 | 536 |
+| Retained bound-plan bytes | 3,082,134 | 2,996,260 | 85,874 |
+
+Unknown capture ownership falls **61.26% → 47.33%**. The known unreferenced
+fraction remains **1,205 / 425,557 bindings (0.28%)** and **52,628 / 23,155,688
+ordinary capture bytes (0.23%, excluding observer headers)**. No newly explained
+cost becomes unreferenced on this input. Shared template payload remains 640,694
+bytes; shared means unapportioned, not proof that every definition is needed.
+
+This strengthens the evidence that a large amount of measured preparation belongs
+to required code. It still cannot bound all savings from deferral. Work outside
+published units, unpublished/inactive units and physical ranges marked `BAD_RANGE`
+remain unresolved; the final reason mask is 16. Most captured-plan binding and
+bound-plan payload are still unknown. Acquisition-only inventory and distinguishing
+global residual work from ambiguous unit work are prerequisites to a broader claim.
+Do not equate call/payload fractions with elapsed-time or heap-peak savings.
+
+Receipts and captures: `/tmp/opforge-lazy-owner-full-v3-20261014/summary.json`;
+focused matrix: `/tmp/opforge-lazy-owner-controls-v3-20261014`; images and disabled
+equivalence proof: `/tmp/opforge-lazy-owner-images-v3-20261014`. Native source
+digest: `fnv1a64:54febc6625bfb044`.
+
+The separate ordinary **current-source self-host** also completes in **103.844493
+seconds**: 199 files, 2,610,057 source bytes, fresh START/DONE and zero exit. Native
+reproduces the entire live Rust Hunk and its own 706,956-byte bootstrap, both
+`fnv1a64:ba4df89ee2249d95`, with only the embedded 68020 package and no defines.
+Source manifest: `fnv1a64:1e442dc9740d6d35`. Its qualified export is at
+`/tmp/opforge-lazy-owner-current-selfhost-20261014/manifest.json`. This single run
+is a self-host correctness checkpoint, not a separate performance comparison.
+
+Focused Rust tests, Clippy with warnings denied, Rust/native formatting, the
+redundant-test guard, 14 Python audit/comparison tests and the workflow checks with
+147 tests pass. Validation is scoped to the observer and its unchanged eager path.
+
+Reproduce the refinement comparison using the maintained FS-UAE environment:
+
+```sh
+python3 scripts/performance/run_lazy_preparation_comparison.py \
+  --workload-case /absolute/frozen-full-case/case.json \
+  --images /absolute/refined-images --baseline-images /absolute/previous-images \
+  --work-attribution --output /absolute/new-results --test-binary /absolute/asm-tests
+```
+
+## Baseline checkpoint: publication-only preparation attribution
 
 `OPFORGE_LAZY_WORK` is implemented beside `OPFORGE_LAZY_AUDIT`, observing the existing eager
 path. The hypothesis is that complete unreferenced blocks account for a measurable

@@ -89,19 +89,90 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; acquire
+; A0=structural state,D1=physical invocation origin. Finish the prior invocation before selecting the deepest
+; physical active unit. Generated units own output, never caller preparation.
 sampleBegin	.block
 	move.w ccr, -(sp)
-	movem.l d0/a0, -(sp)
+	movem.l d0-d3/a0-a2, -(sp)
+	move.l d1, d3
+	bsr.w sampleEnd
+	clr.l State+WorkFields.SampleOwner
+	move.l Fields.Depth(a0), d2
+	cmpi.l #LIMIT, d2
+	bhi.w invalidInput
+	movea.l a0, a1
+	adda.l #Fields.Stack, a1
+next
+	tst.l d2
+	beq.w done
+	subq.l #1, d2
+	move.l d2, d0
+	lsl.l #2, d0
+	move.l 0(a1, d0.l), d1
+	cmpi.l #LIMIT, d1
+	bhs.w invalidInput
+	move.l d1, d0
+	mulu.w #EVENT_BYTES, d0
+	lea Fields.Events(a0), a2
+	adda.l d0, a2
+	tst.l Event.Generated(a2)
+	bne.w next
+	addq.l #1, d1
+	move.l d1, State+WorkFields.SampleOwner
+	cmp.l Event.Origin(a2), d3
+	beq.w done
+	subq.l #1, d1
+	move.l d1, d0
+	bsr.w rowAddress
+	ori.l #MULTIFILE, Row.Reasons(a2)
+	bra.w done
+invalidInput
+	ori.l #INVALID, State+WorkFields.Errors
+done
+	movem.l (sp)+, d0-d3/a0-a2
+	move.w (sp)+, ccr
+	rts
+	.bend  ; sampleBegin
+; Commit preparation remaining after a zero-output invocation or suspension.
+; Unknown owner work stays only in Totals. Every sample is consumed once.
+sampleEnd	.block
+	move.w ccr, -(sp)
+	bsr.w flushSample
+	clr.l State+WorkFields.SampleOwner
+	move.w (sp)+, ccr
+	rts
+	.bend  ; sampleEnd
+	.priv
+; Consume the vector while retaining the active invocation for more output.
+flushSample	.block
+	move.w ccr, -(sp)
+	movem.l d0-d1/a0-a2, -(sp)
+	move.l State+WorkFields.SampleOwner, d0
+	beq.w clear
+	subq.l #1, d0
+	cmpi.l #LIMIT, d0
+	bhs.w invalidInput
+	bsr.w rowAddress
+	move.l State+WorkFields.SampleReasons, d1
+	or.l d1, Row.Reasons(a2)
+	adda.w #Row.Values, a2
+	lea State+WorkFields.Sample, a0
+	bsr.w addVector
+	bra.w clear
+invalidInput
+	ori.l #INVALID, State+WorkFields.Errors
+clear
 	clr.l State+WorkFields.SampleReasons
 	lea State+WorkFields.Sample, a0
 	moveq #METRICS-1, d0
 next
 	clr.l (a0)+
 	dbra d0, next
-	movem.l (sp)+, d0/a0
+	movem.l (sp)+, d0-d1/a0-a2
 	move.w (sp)+, ccr
 	rts
-	.bend  ; sampleBegin
+	.bend  ; flushSample
+	.pub
 boundBegin	.block
 	move.w ccr, -(sp)
 	move.l d1, State+WorkFields.BoundBefore
@@ -212,10 +283,8 @@ publication	.block
 	mulu.w #EVENT_BYTES, d0
 	lea Fields.Events(a5), a0
 	adda.l d0, a0
-	tst.l d5
-	beq.w origin
-	ori.l #GENERATED, Row.Reasons(a3)
-origin
+	; Only the generated event itself is deferred at authoritative selection.
+	; Expansion depth does not invalidate its enclosing physical unit.
 	cmp.l Event.Origin(a0), d3
 	beq.w multi
 	ori.l #MULTIFILE, Row.Reasons(a3)
@@ -229,6 +298,16 @@ multi
 	subq.l #1, d0
 	cmp.l d7, d0
 	beq.w opening
+	; A generated child sharing the invocation capture is output provenance,
+	; not competing physical ownership of the caller preparation.
+	tst.l Event.Generated(a0)
+	bne.w opening
+	move.l d0, d1
+	mulu.w #EVENT_BYTES, d1
+	lea Fields.Events(a5), a1
+	adda.l d1, a1
+	tst.l Event.Generated(a1)
+	bne.w opening
 	ori.l #MULTI_OWNER, Row.Reasons(a3)
 	bsr.w rowAddress
 	ori.l #MULTI_OWNER, Row.Reasons(a2)
@@ -240,11 +319,32 @@ opening
 	lea Row.Previous(a3), a2
 	bsr.w addVector
 sample
-	move.l WorkFields.SampleReasons(a6), d0
-	or.l d0, Row.Reasons(a3)
+	; A physical opening publishes the invocation's new owner. For ordinary
+	; lines the begin snapshot remains valid even after the closing pop.
+	tst.l d5
+	bne.w preparation
+	btst #source.FLAG_BLOCK_OPEN_BIT, source.RecordHeader.Flags(a4)
+	beq.w preparation
+	move.l d7, d0
+	addq.l #1, d0
+	move.l d0, WorkFields.SampleOwner(a6)
+preparation
+	; Preserve the preceding vector before consuming it. Its source owner is
+	; unchanged on physical publications; generated rows remain conservative.
 	lea WorkFields.Sample(a6), a0
-	lea Row.Values(a3), a2
-	bsr.w addVector
+	lea WorkFields.PreviousSample(a6), a1
+	moveq #METRICS-1, d0
+saveSample
+	move.l (a0)+, (a1)+
+	dbra d0, saveSample
+	; Materialized bytes follow the actual innermost output owner.
+	move.l WorkFields.Sample+PREPARED_COPY(a6), d1
+	add.l d1, Row.Values+PREPARED_COPY(a3)
+	bcc.w copyOwned
+	ori.l #OVERFLOW, WorkFields.Errors(a6)
+copyOwned
+	clr.l WorkFields.Sample+PREPARED_COPY(a6)
+	bsr.w flushSample
 	addq.l #1, d7
 	move.l d7, WorkFields.LastOwner(a6)
 	bra.w saved
@@ -253,6 +353,10 @@ outside
 saved
 	move.l d2, WorkFields.LastCapture(a6)
 	move.l d3, WorkFields.LastOrigin(a6)
+	; Outside publication has no structural destination, but its preceding
+	; sample remains available for authoritative entry-label reconciliation.
+	tst.l Fields.Depth(a5)
+	bne.w observed
 	lea WorkFields.Sample(a6), a0
 	lea WorkFields.PreviousSample(a6), a1
 	moveq #METRICS-1, d0
@@ -260,6 +364,7 @@ copy
 	move.l (a0), (a1)+
 	clr.l (a0)+
 	dbra d0, copy
+observed
 	; Observe every active ancestor, including an include or reordered child.
 	; Disjoint peer units can legitimately arrive in a different physical order.
 	move.l Fields.Depth(a5), d7

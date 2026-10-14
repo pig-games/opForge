@@ -14,6 +14,20 @@ spec.loader.exec_module(module)
 
 
 class LazyComparisonTests(unittest.TestCase):
+    def add_work_images(self, images, source_digest):
+        path = images / "images.json"
+        manifest = json.loads(path.read_text())
+        manifest["native_source_fnv1a64"] = source_digest
+        for row in list(manifest["images"]):
+            if row["file"].startswith("audit-"):
+                data = (source_digest + row["file"]).encode()
+                work = dict(row, file=row["file"].replace("audit-", "work-"),
+                            defines=row["defines"] + ["OPFORGE_LAZY_WORK"],
+                            fnv1a64=module.runner.fnv(data), bytes=len(data))
+                (images / work["file"]).write_bytes(data)
+                manifest["images"].append(work)
+        path.write_text(json.dumps(manifest))
+
     def inputs(self, root):
         workload = root / "workload"
         workload.mkdir()
@@ -73,21 +87,42 @@ class LazyComparisonTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             args = self.inputs(Path(directory))
             args.work_attribution = True
-            path = args.images / "images.json"
-            manifest = json.loads(path.read_text())
-            for row in list(manifest["images"]):
-                if row["file"].startswith("audit-"):
-                    work = dict(row, file=row["file"].replace("audit-", "work-"),
-                                defines=row["defines"] + ["OPFORGE_LAZY_WORK"])
-                    (args.images / work["file"]).write_bytes((args.images / row["file"]).read_bytes())
-                    manifest["images"].append(work)
-            path.write_text(json.dumps(manifest))
+            self.add_work_images(args.images, "candidate")
             cases = [json.loads(path.read_text()) for path in module.prepare(args)]
             for case in cases:
                 self.assertIn("OPFORGE_LAZY_AUDIT", case["bootstrap_defines"])
                 self.assertEqual("OPFORGE_LAZY_WORK" in case["bootstrap_defines"],
                                  case["metadata"]["comparison_role"] == "audit")
                 self.assertTrue(case["metadata"]["work_attribution_comparison"])
+
+    def test_observer_revisions_keep_flags_and_workload_identical(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = self.inputs(root)
+            baseline_root = root / "baseline"
+            baseline_root.mkdir()
+            baseline = self.inputs(baseline_root)
+            self.add_work_images(args.images, "candidate")
+            self.add_work_images(baseline.images, "baseline")
+            args.work_attribution = True
+            args.baseline_images = baseline.images
+            cases = [json.loads(path.read_text()) for path in module.prepare(args)]
+            for case in cases:
+                self.assertIn("OPFORGE_LAZY_WORK", case["bootstrap_defines"])
+                expected = "baseline" if case["metadata"]["comparison_role"] == "reference" else "candidate"
+                self.assertEqual(case["metadata"]["bootstrap_source_fnv1a64"], expected)
+                self.assertTrue(case["metadata"]["work_observer_revision_comparison"])
+            self.assertTrue(all(case["files"] == cases[0]["files"] for case in cases))
+            self.assertTrue(all(case["oracle"] == cases[0]["oracle"] for case in cases))
+            self.assertNotEqual(cases[0]["image"]["digest"], cases[1]["image"]["digest"])
+
+    def test_baseline_without_work_attribution_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory))
+            args.baseline_images = args.images
+            with self.assertRaisesRegex(ValueError, "require.*work-attribution"):
+                module.prepare(args)
+            self.assertFalse(args.output.exists())
 
     def test_mislabeled_memory_build_cannot_supply_runtime_measurement(self):
         with tempfile.TemporaryDirectory() as directory:

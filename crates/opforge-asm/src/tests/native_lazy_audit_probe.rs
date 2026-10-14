@@ -70,11 +70,33 @@ fn native_lazy_audit_save_images() {
     )
     .unwrap();
     let mut images = Vec::new();
-    for audit in [true, false] {
+    let selected_roles = std::env::var("OPFORGE_LAZY_SAVE_ROLES").ok();
+    if let Some(roles) = &selected_roles {
+        assert!(
+            roles
+                .split(',')
+                .all(|role| ["audit", "reference", "work"].contains(&role)),
+            "OPFORGE_LAZY_SAVE_ROLES accepts audit,reference,work"
+        );
+    }
+    for (role, audit, work) in [
+        ("audit", true, false),
+        ("reference", false, false),
+        ("work", true, true),
+    ] {
+        if selected_roles
+            .as_ref()
+            .is_some_and(|roles| !roles.split(',').any(|selected| selected == role))
+        {
+            continue;
+        }
         for memory in [false, true] {
             let mut defines = Vec::new();
             if audit {
                 defines.push("OPFORGE_LAZY_AUDIT");
+            }
+            if work {
+                defines.push("OPFORGE_LAZY_WORK");
             }
             if memory {
                 defines.extend([
@@ -88,7 +110,7 @@ fn native_lazy_audit_save_images() {
                 super::compact_cli_input::assemble_cli_with_defines(&source_root, &build, &defines);
             let filename = format!(
                 "{}-{}.hunk",
-                if audit { "audit" } else { "reference" },
+                role,
                 if memory { "memory" } else { "release" }
             );
             images.push(serde_json::json!({"file": filename, "defines": defines, "fnv1a64": opforge_self_host_package_digest(&image), "bytes": image.len()}));
@@ -116,7 +138,7 @@ fn native_lazy_audit_save_images() {
         );
         let entry = "prepare\t.block\n";
         assert_eq!(text.matches(entry).count(), 1);
-        fs::write(app, text.replace(entry, &format!("{entry}\tjsr lazyProbe.run\n\tmove.l d0, PackageStatus\n\tbne.w bad\n\t.LAZY_CLEAR\n"))).unwrap();
+        fs::write(app, text.replace(entry, &format!("{entry}\tjsr lazyProbe.run\n\tmove.l d0, PackageStatus\n\tbne.w bad\n\t.LAZY_CLEAR\n\t.WORK_CALL lazy_work.clear\n"))).unwrap();
         let probe_build = build_native_packages(
             &engine::build_default_asm_registry(),
             &dir.0.join("probe-build"),
@@ -124,17 +146,31 @@ fn native_lazy_audit_save_images() {
             &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
         )
         .unwrap();
-        let defines = [
+        let base_defines = [
             "OPFORGE_LAZY_AUDIT",
             "OPFORGE_DEBUG_CONTRACTS",
             "OPFORGE_MEMORY_TELEMETRY",
             "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
             "OPFORGE_PREPARATION_PROGRESS",
         ];
-        let image =
-            super::compact_cli_input::assemble_cli_with_defines(&snapshot, &probe_build, &defines);
-        images.push(serde_json::json!({"file":"probe-memory.hunk", "defines":defines, "fnv1a64":opforge_self_host_package_digest(&image), "bytes":image.len()}));
-        fs::write(destination.join("probe-memory.hunk"), image).unwrap();
+        for work in [false, true] {
+            let mut defines = base_defines.to_vec();
+            if work {
+                defines.push("OPFORGE_LAZY_WORK");
+            }
+            let image = super::compact_cli_input::assemble_cli_with_defines(
+                &snapshot,
+                &probe_build,
+                &defines,
+            );
+            let filename = if work {
+                "work-probe-memory.hunk"
+            } else {
+                "probe-memory.hunk"
+            };
+            images.push(serde_json::json!({"file":filename, "defines":defines, "fnv1a64":opforge_self_host_package_digest(&image), "bytes":image.len()}));
+            fs::write(destination.join(filename), image).unwrap();
+        }
     }
 
     fs::write(
@@ -159,7 +195,14 @@ fn native_lazy_audit_disabled_macros_emit_zero_bytes() {
         dir.0.join("lazy_audit.i"),
     )
     .unwrap();
+    fs::copy(
+        super::native_fragment_controls::root()
+            .join("native/motorola68000/amigaos/debug/lazy_work.i"),
+        dir.0.join("lazy_work.i"),
+    )
+    .unwrap();
     let sites = ".LAZY_CLEAR\n.LAZY_PREPARED Missing,d0,d1,d2,d3\n.LAZY_REMAP d0,d1,d2\n.LAZY_CLASSIFY\n.LAZY_SELECTED a0,d0\n.LAZY_COUNT 0,#1\n.LAZY_REGION Missing, d0\n.LAZY_LOOKUP\n.LAZY_PIN 1\n.LAZY_SCHEDULE Missing,d0,12\n.LAZY_SPAN d0,d1,d2,d3\n.LAZY_SPAN_END d0\n.LAZY_BLOCKS a0,d0\n.LAZY_REPORT a6\n";
+    let sites = format!("{sites}.WORK_CALL Missing\n.WORK_COUNT 0,#1\n.WORK_ACQUIRE 0,a0\n.WORK_CAPTURE_RESET a0\n.WORK_BOUND_BEGIN d0\n.WORK_BOUND_END d0\n.WORK_PUBLICATION a0\n.WORK_CAPTURE_REGION a0\n.WORK_SELECTED a0,d0\n.WORK_REPORT a6\n.WORK_EFFECT a0\n.WORK_TEMPLATE_DELTA d1,d2\n");
     let input = dir.0.join("disabled.asm");
     fs::write(&input, format!(".module disabled\n.cpu 68020\n.include \"lazy_audit.i\"\n.region ram,0,$ffff\n.section code,kind=code\n{sites}\trts\n.endsection\n.place code in ram\n.output \"build/disabled\",format=bin,sections=code\n.endmodule\n")).unwrap();
     let cli = Cli::parse_from(["opforge".into(), input.to_string_lossy().into_owned()]);

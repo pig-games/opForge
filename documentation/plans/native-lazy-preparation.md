@@ -1,9 +1,176 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: opt-in L1 publication-provenance/lifetime audit implemented, 2026-10-14.
+Status: opt-in L1 publication/lifetime and whole-unit work audits implemented,
+measured and natively qualified, 2026-10-14.
 The ordinary path remains the reference. No preparation is skipped and no capture
 is retired early. Acquisition-only unit discovery and individual binding links
 remain unimplemented; see the measured scope below.
+
+## Active checkpoint: preparation attribution to whole units
+
+`OPFORGE_LAZY_WORK` is implemented beside `OPFORGE_LAZY_AUDIT`, observing the existing eager
+path. The hypothesis is that complete unreferenced blocks account for a measurable
+fraction of preparation calls and retained capture/plan bytes. This checkpoint
+measures that fraction; it skips no work and changes no release representation.
+
+Count actual candidate, descriptor, fragment and plan-creation calls during physical
+capture, including unsuccessful attempts. A four-byte audit-only capture field
+carries those counts until structural ownership is available. Attribute replay
+binding/expression/plan/process calls and retained used bytes through publication
+provenance, then reconcile against authoritative whole-block selection. Charge
+nested work exclusively to its deepest proven owner; include the preceding entry
+label only where the final block extent owns it.
+
+Partition each resource total into selected, unreferenced, shared/required and
+unknown ownership. Shared templates, schemas/configuration effects, generated
+occurrences, interleaved includes and ambiguous publication must not inflate an
+unreferenced-block opportunity. Keep capacity/slack distinct from payload used;
+never prorate shared capacity to claim a peak-memory saving. Bounded observer
+exhaustion, counter overflow, incomplete ownership and truncated printed detail
+are separate report states.
+
+Qualify small selected/unselected and nested controls against the unchanged path,
+check aggregate conservation and instrumented preservation, and compare the
+same frozen full input. Measure marginal runtime overhead with L1-only versus
+L1+work images without memory telemetry, then memory in a separate identically
+configured pair. A fresh current-source default self-host remains a separate
+proof. Ordinary releases must contain no observer code, storage or extra capture
+fields. Stop attribution claims on accounting failures; unknown ownership remains
+visible. The unreferenced fraction is an upper bound on a later candidate, not
+evidence that deferral preserves all diagnostics or saves the same fraction of
+elapsed time.
+
+### Attribution scope and interpretation
+
+The [work observer](../../native/motorola68000/amigaos/debug/opforge_lazy_work.asm)
+owns separate capture, partition and report includes; it reuses L1's published
+unit intervals rather than adding a source parser. Its 4,096 bounded unit rows
+and regional scratch filter reserve **688,752 linked bytes**, in addition to L1.
+All of that storage and its calls disappear without both audit flags. The capture
+header is 56 bytes normally and 60 bytes with both flags. The report names the
+four-byte-per-record instrumentation cost separately from retained payload.
+
+The 18 metrics distinguish physical candidate/descriptor/fragment/plan-creation
+calls, replay binding/EXVM/captured-plan/process calls, retained plan and template
+pool growth, preparation/replay copies, and capture header/token/lexeme/plan/padding
+bytes. Capture bytes are observed before their normal release. Plan bytes measure
+successful retained `MACRO_PLANS` appends; template bytes cover definition rows,
+bodies and default/spelling payload pools. They are allocation-stage observations,
+not a simultaneous live-memory sum. Symbol tables, schema/member indexes, package
+directories and arena slack are not apportioned as unit payload. Memory telemetry
+measures the process's tracked heap separately.
+
+Selected ancestors retain their entire nested bodies. Resource counts go to the
+deepest proven owner, and a preceding entry label transfers only when the final
+block extent includes it. Shared template publication remains shared; declarations
+with possible semantic effects, generated/multiple owners, cross-file activity,
+nonmonotonic activity within a unit and unresolved publication remain unknown.
+Independent graph reordering of disjoint units is permitted. The four categories
+sum exactly to the global total for every metric; printed unit rows can sum to less
+because global/shared work has no block row. Detail printing stops at 16, while
+aggregate accounting covers all bounded rows. Complete accounting does not mean
+complete ownership coverage.
+
+Forty-eight final focused fresh native runs compare reference, L1, attribution and
+attribution-probe images on 12 controls, with complete live Rust BIN/Hunk equality.
+The identical `costed` body has 18 bindings, four EXVM compilations, eight process
+calls, 602 replay-copy bytes and 1,540 retained capture bytes whether selected or
+unreferenced. Of those capture bytes, 32 are observer headers; the ordinary payload
+is 1,508 bytes. It has 18 candidate, 16 descriptor, seven fragment and five
+plan-creation calls. Changing only its external reference changes its category,
+not its preparation cost. Probes check register/CCR/stack preservation, exact
+register-operand counts, overflow/reset, ancestor selection and invalid captures.
+This demonstrates the intended attribution mechanism; it is not a timing gain.
+
+### Full-input attribution and observer overhead
+
+Six serial fresh native comparisons use the same frozen input as L1: 198 files,
+2,614,471 bytes, complete 708,592-byte live Rust Hunk equality. The current
+bootstrap source digest is `fnv1a64:6df1820e8efb08b9`; both bootstraps embed 68020
+and 6502 packages, while the frozen output embeds 68020. These comparisons retain
+the existing A4000/68040 expanded-memory profile described below. They are fixed-input
+measurements, not current-source self-host or hardware/2 MiB qualification.
+
+| Serial timing pair | L1 only (s) | L1 + work (s) |
+|---|---:|---:|
+| Reference then work | 101.943206 | 106.686020 |
+| Work then reference | 102.350905 | 107.125591 |
+| Mean | 102.147055 | 106.905806 |
+
+Marginal observer cost is **4.758750 seconds / 4.66%**. These images have no
+memory telemetry. No work is avoided. Ordinary release and L1-only images are
+byte-identical to the preceding checkpoint in both timing and memory modes.
+
+| Separate memory pair | L1 only | L1 + work | Increase |
+|---|---:|---:|---:|
+| Tracked heap peak | 47,587,208 | 48,390,024 | 802,816 |
+| Total allocated/freed capacities, each | 112,389,800 | 113,993,896 | 1,604,096 |
+| Linked reservation | 1,120,196 | 1,812,256 | 692,060 |
+| Used capture bytes | 23,155,688 | 23,613,704 | 458,016 |
+| Capture capacity | 32,452,608 | 33,255,424 | 802,816 |
+
+The used-byte difference is exactly 114,504 four-byte observer headers. The
+capacity increase explains the tracked-heap increase. Linked plus tracked peak
+increases 1,494,876 bytes; OS allocations, allocator metadata and stack remain
+outside this accounting. Both runs release all tracked capacity and have zero
+profiling diagnostics. The additional observer is not a release-memory regression.
+
+All 1,415 publication units reconcile with the ordinary block index; work errors
+and accounting failures are zero. Ownership coverage remains partial. Known
+unreferenced whole units account for:
+
+| Resource | Total observed | Known unreferenced | Fraction |
+|---|---:|---:|---:|
+| Binding calls | 425,557 | 1,205 | 0.28% |
+| EXVM compilations | 69,365 | 154 | 0.22% |
+| Candidate calls | 251,590 | 672 | 0.27% |
+| Record processing calls | 121,885 | 336 | 0.28% |
+| Replay-copy bytes | 11,703,923 | 30,617 | 0.26% |
+| Ordinary capture payload, excluding audit headers | 23,155,688 | 52,628 | 0.23% |
+
+Unknown ownership accounts for 199,352 bindings, 31,625 EXVM compilations and
+14,465,068 instrumented capture bytes (61.26%). All 20,731 captured-plan binding
+attempts and 3,082,134 retained plan bytes are unknown. Template payload of 640,694
+bytes is shared. The report's reason mask is 17: generated activity and ambiguous
+physical capture ranges. It deliberately demotes whole affected units rather than
+guessing a division between physical and generated work. Printed rows are only
+the first 16; the table above uses the complete aggregate partition.
+Global work outside published block records also stays unknown. In particular,
+preparation that emits no record has no publication sample to attach to a unit;
+the row reason mask does not explain every global residual byte or call.
+
+These results establish a small known unreferenced opportunity on this self-host
+input, **not** a small upper bound on all deferred processing. The large unknown
+fraction prevents that conclusion. Before implementing broad deferral, investigate
+invocation/caller provenance, preparation with no emitted record and physical-range
+attribution so ordinary units that contain generated work can be classified without losing their whole cost. Required
+work must still be performed once; delaying it alone does not save CPU time. A
+separate lifetime candidate remains possible but must measure its actual peak.
+
+Receipts, preserved captures and summary:
+`/tmp/opforge-lazy-work-full-v6-20261014/summary.json`. Current images:
+`/tmp/opforge-lazy-work-images-v6-20261014/images.json`. Focused controls/probes:
+`/tmp/opforge-lazy-work-controls-v6-20261014`.
+
+The separate ordinary **current-source self-host** also completes: 199 files,
+2,609,635 source bytes, a 706,956-byte Hunk, fresh native exit zero and complete
+equality with its own bootstrap and live Rust in 102.612610 seconds. Bootstrap
+and output both embed only 68020; no audit or memory flags are enabled. Its source
+manifest digest is `fnv1a64:4aa9b3d0c158eff4` and output digest
+`fnv1a64:ba4df89ee2249d95`. The qualified bundle manifest and proof are preserved
+at `/tmp/opforge-lazy-work-current-selfhost-20261014/manifest.json` and the matching
+log `/tmp/opforge-lazy-work-current-selfhost.log`. This proves that exact default
+self-build configuration, separately from the frozen-input audit comparisons.
+
+```sh
+OPFORGE_LAZY_SAVE_DIR=/tmp/new-work-images OPFORGE_LAZY_SAVE_PROBE=1 \
+  cargo test -p asm native_lazy_audit_save_images -- --ignored --nocapture --test-threads=1
+
+python3 scripts/performance/run_lazy_preparation_comparison.py \
+  --work-attribution --workload-case /absolute/frozen-full-case/case.json \
+  --images /tmp/new-work-images --output /tmp/new-work-results \
+  --test-binary /absolute/asm-tests
+```
 
 ## Decision and first checkpoint
 

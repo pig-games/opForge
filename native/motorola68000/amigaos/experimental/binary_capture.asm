@@ -17,6 +17,13 @@ Arena	.res memory.Block.Used+4
 REGION_BYTES = Region.Arena+memory.Block.Used+4
 MAGIC = $42435031; BCP1, latest capture contract
 TOKEN_LIMIT = 64
+TOKEN_BYTES = writer.TOKEN_BYTES
+; Owned audit-only packed u8 counter order; no emitted release storage.
+CANDIDATE_COUNT = 0
+DESCRIPTOR_COUNT = 1
+FRAGMENT_COUNT = 2
+PLAN_CREATE_COUNT = 3
+WORK_COUNTER_BYTES = 4
 LINE_READY = 0
 LINE_ABSENT = 1
 LINE_INVALID = 2
@@ -39,10 +46,24 @@ HeaderStatus	.long ?
 HeaderHandle	.long ?
 LineStatus	.long ?
 LineHandle	.long ?
+.ifdef OPFORGE_LAZY_AUDIT
+.ifdef OPFORGE_LAZY_WORK
+WorkCounts	.long ?  ; four exact saturating acquisition counters, audit only
+.endif
+.endif
 .endstruct
+.ifdef OPFORGE_LAZY_AUDIT
+.ifdef OPFORGE_LAZY_WORK
+FRAME_BYTES = Frame.WorkCounts+4
+.else
 FRAME_BYTES = Frame.LineHandle+4
+.endif
+.else
+FRAME_BYTES = Frame.LineHandle+4
+.endif
 ; Owned header: thirteen raw longs, then Line.word/Count.byte/RootFile.byte.
-; Tokens begin at byte 56; Frame retains full-width constructor inputs.
+; Tokens begin at byte 56 (60 with both audit flags). The four audit bytes
+; retain actual acquisition calls; Frame retains full-width constructor inputs.
 Record	.struct
 Magic	.long ?
 Bytes	.long ?
@@ -60,6 +81,11 @@ LineHandle	.long ?
 Line	.word ?
 Count	.byte ?
 RootFile	.byte ?
+.ifdef OPFORGE_LAZY_AUDIT
+.ifdef OPFORGE_LAZY_WORK
+WorkCounts	.long ?
+.endif
+.endif
 Tokens	.byte ?
 .endstruct
 HEADER_BYTES = Record.Tokens
@@ -82,7 +108,7 @@ create	.block
 	bhi.w bad
 	cmpi.w #1, Frame.RootFile(a6)
 	bhi.w bad
-	mulu.w #20, d6
+	mulu.w #TOKEN_BYTES, d6
 	addi.l #HEADER_BYTES, d6
 	add.l Frame.LexemeBytes(a6), d6
 	bcs.w bad
@@ -128,10 +154,15 @@ create	.block
 outcomes
 	move.l (a0)+, (a1)+
 	dbra d0, outcomes
+.ifdef OPFORGE_LAZY_AUDIT
+.ifdef OPFORGE_LAZY_WORK
+	move.l Frame.WorkCounts(a6), Record.WorkCounts(a3)
+.endif
+.endif
 	lea HEADER_BYTES(a3), a1
 	movea.l Frame.Tokens(a6), a0
 	move.l Frame.Count(a6), d0
-	mulu.w #20, d0
+	mulu.w #TOKEN_BYTES, d0
 	bsr.w copy
 	movea.l Frame.Lexemes(a6), a0
 	move.l Frame.LexemeBytes(a6), d0
@@ -208,7 +239,7 @@ done
 planView	.block
 	moveq #0, d0
 	move.b Record.Count(a1), d0
-	mulu.w #20, d0
+	mulu.w #TOKEN_BYTES, d0
 	addi.l #HEADER_BYTES, d0
 	add.l Record.LexemeBytes(a1), d0
 	addq.l #3, d0
@@ -234,7 +265,7 @@ validate	.block
 	cmpi.l #TOKEN_LIMIT, d4
 	bhi.w bad
 	move.l d4, d0
-	mulu.w #20, d0
+	mulu.w #TOKEN_BYTES, d0
 	addi.l #HEADER_BYTES, d0
 	add.l Record.LexemeBytes(a1), d0
 	bcs.w bad

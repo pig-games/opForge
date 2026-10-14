@@ -63,5 +63,59 @@ class DecoderTests(unittest.TestCase):
             module.decode(stdout(rows))
 
 
+class WorkDecoderTests(unittest.TestCase):
+    def work_report(self):
+        rows = report()
+        rows.update({2000: [1, 0, 1], 2001: [100, 16, 1], 2002: [60, 4, 0], 2060: [1, 1, 0]})
+        for part in range(6):
+            for start in (2010, 2020, 2030, 2040, 2050):
+                rows[start + part] = [1, 2, 3] if start in (2010, 2020) else [0, 0, 0]
+            rows[2061 + part] = [1, 2, 3]
+        for metric, value in enumerate((60, 20, 3, 4, 1, 88), 8):
+            for start in (2010, 2020, 2061):
+                rows[start + metric // 3][metric % 3] = value
+        rows[2003] = [88, 88, 4]
+        return rows
+
+    def test_exclusive_partition_and_completion_are_distinct(self):
+        rows = self.work_report()
+        work = module.decode(stdout(rows))["work_attribution"]
+        self.assertTrue(work["coverage_complete"])
+        self.assertNotIn("guest_protocol_completed", work)
+        rows[2002][2] = 1
+        work = module.decode(stdout(rows))["work_attribution"]
+        self.assertTrue(work["accounting_complete"])
+        self.assertFalse(work["coverage_complete"])
+        rows[2000][1] = 1
+        self.assertFalse(module.decode(stdout(rows))["work_attribution"]["accounting_complete"])
+
+    def test_structural_details_may_exclude_shared_and_unknown_residuals(self):
+        rows = self.work_report()
+        rows[2010][0] += 7
+        rows[2040][0] += 3
+        rows[2050][0] += 4
+        decoded = module.decode(stdout(rows))["work_attribution"]
+        self.assertEqual(decoded["metrics"]["total"]["bind_calls"], 8)
+        self.assertEqual(decoded["details"][0]["exclusive"]["bind_calls"], 1)
+        self.assertTrue(decoded["accounting_complete"])
+        self.assertFalse(decoded["coverage_complete"])
+
+    def test_rejects_missing_schema_and_nonconservation(self):
+        for phase in (2001, 2003, 2015, 2055, 2066):
+            rows = self.work_report()
+            del rows[phase]
+            with self.assertRaisesRegex(ValueError, "Missing"):
+                module.decode(stdout(rows))
+        rows = self.work_report()
+        rows[2000][0] = 2
+        with self.assertRaisesRegex(ValueError, "schema"):
+            module.decode(stdout(rows))
+        for phase in (2020, 2061):
+            rows = self.work_report()
+            rows[phase][0] += 1
+            with self.assertRaisesRegex(ValueError, "conservation"):
+                module.decode(stdout(rows))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Compare L1 audit overhead on one frozen workload, with separate MEMD runs.
+"""Compare opt-in preparation audit overhead on one frozen workload.
 
 The workload case is produced by the existing full self-host exporter. All runs
 reassemble its exact sources against a live Rust oracle through the maintained
 native test. Timing images have no memory telemetry; memory images use identical
 telemetry settings, with only OPFORGE_LAZY_AUDIT added to the candidate.
+With --work-attribution, compare L1-only against L1+OPFORGE_LAZY_WORK instead.
 This is fixed-input audit qualification, not candidate-source self-host proof.
 """
 import argparse
@@ -36,6 +37,7 @@ def read_checked(root, row):
 
 
 def prepare(args):
+    work_attribution = getattr(args, "work_attribution", False)
     original = json.loads(args.workload_case.read_text())
     if original.get("schema") != 1:
         raise ValueError("Require current full-comparison case schema")
@@ -64,11 +66,14 @@ def prepare(args):
     for label, role, memory in variants:
         directory = args.output / label
         directory.mkdir()
-        image_name = f"{role}-{'memory' if memory else 'release'}.hunk"
+        image_role = ("audit" if role == "reference" else "work") if work_attribution else role
+        image_name = f"{image_role}-{'memory' if memory else 'release'}.hunk"
         image = (args.images / image_name).read_bytes()
         defines = list(MEMORY_DEFINES) if memory else []
-        if role == "audit":
+        if role == "audit" or work_attribution:
             defines.append("OPFORGE_LAZY_AUDIT")
+        if role == "audit" and work_attribution:
+            defines.append("OPFORGE_LAZY_WORK")
         built = image_manifest[image_name]
         if built["fnv1a64"] != runner.fnv(image) or built["bytes"] != len(image):
             raise ValueError(f"Changed image: {image_name}")
@@ -81,6 +86,7 @@ def prepare(args):
                              "workload_sha256": workload_digest, "source_files": len(files),
                              "source_bytes": sum(len(data) for _, data in files),
                              "candidate_source_selfhost_proven": False,
+                             "work_attribution_comparison": work_attribution,
                              "frozen_workload_case": str(args.workload_case),
                              "bootstrap_source_fnv1a64": build_manifest.get("native_source_fnv1a64"),
                              "memory_profile": os.environ.get("OPFORGE_FS_UAE_MEMORY_PROFILE", "existing")}}
@@ -117,9 +123,11 @@ def execute(args, cases):
                 try:
                     row["memory"] = memory_telemetry.decode_memory_telemetry((receipt.parent / "memory.bin").read_bytes())
                     row["success"] = row["success"] and not row["memory"]["diagnostics"]
-                    if row["metadata"]["comparison_role"] == "audit":
+                    if row["metadata"]["comparison_role"] == "audit" or row["metadata"].get("work_attribution_comparison"):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
+                        if row["metadata"].get("work_attribution_comparison") and row["metadata"]["comparison_role"] == "audit":
+                            row["success"] = row["success"] and row["audit"]["work_attribution"]["accounting_complete"]
                 except (OSError, ValueError) as error:
                     row.update(success=False, error=str(error))
         row["test_exit_code"] = result.returncode
@@ -142,7 +150,9 @@ def execute(args, cases):
                "audit_peak_owned_delta_bytes": memory["audit"]["memory"]["peak_owned_bytes"] - memory["reference"]["memory"]["peak_owned_bytes"],
                "audit_allocated_delta_bytes": memory["audit"]["memory"]["total_allocated_bytes"] - memory["reference"]["memory"]["total_allocated_bytes"],
                "linked_static_bytes": {role: row["linked_static_reserved_bytes"] for role, row in memory.items()},
+               "audit_linked_static_delta_bytes": memory["audit"]["linked_static_reserved_bytes"] - memory["reference"]["linked_static_reserved_bytes"],
                "audit": memory["audit"]["audit"],
+               "baseline": "L1 audit" if getattr(args, "work_attribution", False) else "ordinary release",
                "evidence_limit": "fixed frozen input; instrumentation times are diagnostic; no lazy preparation or early release"}
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, indent=2))
@@ -157,6 +167,8 @@ def main():
     parser.add_argument("--test-binary", type=Path)
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--work-attribution", action="store_true",
+                        help="measure marginal attribution overhead: audit images versus work images")
     args = parser.parse_args()
     for key, value in vars(args).items():
         if isinstance(value, Path):

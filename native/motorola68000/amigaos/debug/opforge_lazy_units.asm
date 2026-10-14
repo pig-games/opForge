@@ -5,6 +5,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_source as source
 	.include "binary_block_span.i"
+	.include "lazy_work.i"
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
@@ -13,44 +14,7 @@
 .endif
 .endif
 	.pub
-LIMIT = 4096
-DETAIL_LIMIT = 16
-OVERFLOW = 1
-EXHAUSTED = 2
-INVALID = 4
-Event	.struct
-OriginalOpen	.long ?
-OriginalEnd	.long ?
-OriginalPrevious	.long ?
-CaptureOpen	.long ?
-CaptureClose	.long ?
-Origin	.long ?
-Line	.long ?
-Generated	.long ?  ; nonzero template depth is conservatively deferred
-FinalOpen	.long ?
-FinalEnd	.long ?
-FinalPrevious	.long ?
-Unit	.long ?  ; authoritative block ordinal+1, zero when unresolved
-PreviousCapture	.long ?
-PreviousOrigin	.long ?
-PreviousLine	.long ?
-.endstruct
-EVENT_BYTES = Event.PreviousLine+4
-Fields	.struct
-Errors	.long ?
-Count	.long ?
-Depth	.long ?
-Matched	.long ?
-Deferred	.long ?
-Unmatched	.long ?
-Previous	.long ?
-PreviousCapture	.long ?
-PreviousOrigin	.long ?
-PreviousLine	.long ?
-Events	.res LIMIT*EVENT_BYTES
-Stack	.res LIMIT*4
-.endstruct
-STATE_BYTES = Fields.Stack+LIMIT*4
+	.include "lazy_units_layout.i"
 	.section code, kind=code
 	.pub
 ; Clear the bounded unit observer. All passive routines preserve registers,
@@ -130,6 +94,7 @@ line
 	addq.l #1, Fields.Depth(a3)
 	addq.l #1, Fields.Count(a3)
 close
+	.WORK_PUBLICATION a3
 	btst #source.FLAG_BLOCK_CLOSE_BIT, source.RecordHeader.Flags(a0)  ; shared BLOCK_CLOSE bit
 	beq.w advance
 	move.l Fields.Depth(a3), d0

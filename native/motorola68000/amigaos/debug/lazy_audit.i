@@ -1,3 +1,4 @@
+	.include "lazy_work.i"
 ; Opt-in passive shadow audit. Work requires only OPFORGE_LAZY_AUDIT.
 ; Reporting additionally uses the approved memory progress bridge.
 .ifdef OPFORGE_LAZY_AUDIT
@@ -152,6 +153,7 @@ LAZY_SELECTED .macro table, count
 	move.w .count, d0
 	movea.l .table, a0
 	jsr lazy_audit.selected
+	.WORK_SELECTED .table, .count
 	movem.l (sp)+, d0/a0
 	move.w (sp)+, ccr
 .endif

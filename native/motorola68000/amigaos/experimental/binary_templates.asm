@@ -5,6 +5,7 @@
 	.module experimental.amigaos.binary_templates
 	.cpu 68020
 	.include "memory_telemetry.i"
+	.include "lazy_work.i"
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_macro_plans as plans
 	.use experimental.amigaos.binary_macro_fragments as fragments
@@ -1017,6 +1018,7 @@ storeDefault	.block
 	movea.l (sp)+, a0
 	bne.w bad
 	move.l d3, memory.Block.Used(a2)
+	.WORK_COUNT lazy_work.TEMPLATE_BYTES, d1
 	movea.l memory.Block.Pointer(a2), a2
 	adda.l d2, a2
 copy
@@ -2153,6 +2155,7 @@ reserveRow	.block
 	move.l d0, d2
 	jsr memory.reserve
 	bne.w bad
+	.WORK_TEMPLATE_DELTA memory.Block.Used(a2), d2
 	move.l d2, memory.Block.Used(a2)
 	moveq #0, d0
 	move.w d4, d0
@@ -2245,6 +2248,7 @@ copy
 	bne.w copy
 	move.l d1, State.Used(a6)
 	move.l d1, BODY+memory.Block.Used(a6)
+	.WORK_COUNT lazy_work.TEMPLATE_BYTES, d6
 	moveq #STATUS_OK, d0
 	bra.w done
 bad

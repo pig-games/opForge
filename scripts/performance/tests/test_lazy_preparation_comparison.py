@@ -69,6 +69,26 @@ class LazyComparisonTests(unittest.TestCase):
                 module.prepare(args)
             self.assertFalse(args.output.exists())
 
+    def test_work_attribution_changes_only_the_audit_build_flag(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory))
+            args.work_attribution = True
+            path = args.images / "images.json"
+            manifest = json.loads(path.read_text())
+            for row in list(manifest["images"]):
+                if row["file"].startswith("audit-"):
+                    work = dict(row, file=row["file"].replace("audit-", "work-"),
+                                defines=row["defines"] + ["OPFORGE_LAZY_WORK"])
+                    (args.images / work["file"]).write_bytes((args.images / row["file"]).read_bytes())
+                    manifest["images"].append(work)
+            path.write_text(json.dumps(manifest))
+            cases = [json.loads(path.read_text()) for path in module.prepare(args)]
+            for case in cases:
+                self.assertIn("OPFORGE_LAZY_AUDIT", case["bootstrap_defines"])
+                self.assertEqual("OPFORGE_LAZY_WORK" in case["bootstrap_defines"],
+                                 case["metadata"]["comparison_role"] == "audit")
+                self.assertTrue(case["metadata"]["work_attribution_comparison"])
+
     def test_mislabeled_memory_build_cannot_supply_runtime_measurement(self):
         with tempfile.TemporaryDirectory() as directory:
             args = self.inputs(Path(directory))

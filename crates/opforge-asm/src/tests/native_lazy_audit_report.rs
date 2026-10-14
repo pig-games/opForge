@@ -19,7 +19,7 @@ pub(super) fn rows(stdout: &str) -> BTreeMap<u32, [u32; 3]> {
             })
             .collect();
         let phase = fields["p"];
-        if (700..=1831).contains(&phase) {
+        if (700..=2171).contains(&phase) {
             assert!(
                 rows.insert(phase, [fields["f"], fields["l"], fields["r"]])
                     .is_none(),
@@ -127,7 +127,86 @@ pub(super) fn assert_report(stdout: &str) -> BTreeMap<u32, [u32; 3]> {
         assert!(open <= end, "materialized publication offsets");
         assert!(unit <= rows[&705][0], "publication unit relationship");
     }
+    if rows.contains_key(&2000) {
+        assert_work_report(&rows);
+    }
     rows
+}
+
+fn assert_work_report(rows: &BTreeMap<u32, [u32; 3]>) {
+    let [version, errors, count] = rows[&2000];
+    assert_eq!(version, 1, "work schema");
+    assert_eq!(errors, 0, "work observer errors/overflow");
+    let [_, limit, reported] = rows[&2001];
+    assert_eq!(limit, 16);
+    assert_eq!(reported, count.min(limit));
+    assert_eq!(rows[&2002][0], 60, "capture header contract");
+    assert_eq!(rows[&2002][1], 4, "audit header overhead");
+    for part in 0..6 {
+        for (field, total) in rows[&(2010 + part)].iter().enumerate() {
+            let total = u64::from(*total);
+            let categories: u64 = [2020, 2030, 2040, 2050]
+                .iter()
+                .map(|start| u64::from(rows[&(start + part)][field]))
+                .sum();
+            assert_eq!(total, categories, "exclusive category conservation");
+            {
+                let details: u64 = (0..reported)
+                    .map(|index| u64::from(rows[&(2061 + index * 7 + part)][field]))
+                    .sum();
+                assert!(
+                    details <= total,
+                    "exclusive unit details are bounded by total"
+                );
+            }
+        }
+    }
+    let mut events = std::collections::BTreeSet::new();
+    for index in 0..reported {
+        let [event, _, _] = rows[&(2060 + index * 7)];
+        assert!(event != 0 && events.insert(event), "unique work event");
+    }
+    // On small controls independently rebuild the categories from final whole
+    // block retention. Nested units are retained with their outer owner even
+    // when their own Live word is zero. Global residual work has no unit row.
+    if count == reported && rows[&705][0] <= 16 {
+        let mut expected = [[0u64; 18]; 2];
+        for index in 0..reported {
+            let [_, mut unit, reasons] = rows[&(2060 + index * 7)];
+            if reasons != 0 || unit == 0 {
+                continue;
+            }
+            let mut depth = 0;
+            loop {
+                assert!(unit <= rows[&705][0]);
+                let [parent, live, _] = rows[&(1121 + (unit - 1) * 2)];
+                if parent == 0 {
+                    let category = if live == 1 { 0 } else { 1 };
+                    for metric in 0..18u32 {
+                        if metric != 5 {
+                            // Template retention is always shared.
+                            expected[category][metric as usize] += u64::from(
+                                rows[&(2061 + index * 7 + metric / 3)][(metric % 3) as usize],
+                            );
+                        }
+                    }
+                    break;
+                }
+                unit = parent;
+                depth += 1;
+                assert!(depth <= rows[&705][0], "acyclic parent ownership");
+            }
+        }
+        for (category, start) in [2020, 2030].into_iter().enumerate() {
+            for metric in 0..18u32 {
+                assert_eq!(
+                    expected[category][metric as usize],
+                    u64::from(rows[&(start + metric / 3)][(metric % 3) as usize]),
+                    "whole-unit retention category, metric {metric}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

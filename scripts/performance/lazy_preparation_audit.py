@@ -22,7 +22,7 @@ def decode(stdout):
         if not {"p", "f", "l", "r"} <= fields.keys():
             raise ValueError("Incomplete L1 progress fields")
         phase = fields["p"]
-        if 700 <= phase <= 1831:
+        if 700 <= phase <= 2171:
             if phase in rows:
                 raise ValueError(f"Duplicate L1 report phase {phase}")
             rows[phase] = [fields["f"], fields["l"], fields["r"]]
@@ -67,7 +67,7 @@ def decode(stdout):
     scheduled, completed, includes = rows[703]
     pins, max_pins, lookups = rows[704]
     observer_complete = boundary_mask == 15 and not (errors or unit_errors or depth or late or pins) and scheduled == completed
-    return {"schema": 1, "observer_complete": observer_complete,
+    result = {"schema": 1, "observer_complete": observer_complete,
             "ordinary_unit_reconciliation_complete": observer_complete and unmatched == 0,
             "main_errors": errors, "unit_errors": unit_errors, "late_accesses": late,
             "observed_boundaries_mask": boundary_mask, "required_boundaries_mask": 15,
@@ -86,3 +86,70 @@ def decode(stdout):
             "detail_limits": {"ordinary": detail_limit, "publications": event_detail_limit},
             "details": details,
             "evidence_limit": "No capture was retired or preparation skipped; residency is a prediction. Per-member/proxy/schema links and acquisition-only unit inventory remain deferred."}
+
+    if 2000 in rows:
+        result["work_attribution"] = decode_work(rows, observer_complete)
+    return result
+
+
+WORK_METRICS = ("bind_calls", "compile_calls", "captured_plan_binds", "process_calls",
+                "bound_plan_bytes", "template_bytes", "prepared_copy_bytes", "replay_copy_bytes",
+                "capture_header_bytes", "capture_token_bytes", "capture_lexeme_bytes",
+                "capture_plan_bytes", "capture_padding_bytes", "capture_bytes", "candidate_calls",
+                "descriptor_calls", "fragment_calls", "plan_create_calls")
+
+
+def decode_work(rows, observer_complete):
+    def required(phase):
+        if phase not in rows:
+            raise ValueError(f"Missing work attribution phase {phase}")
+        return rows[phase]
+
+    version, errors, count = required(2000)
+    if version != 1:
+        raise ValueError("Unsupported work attribution schema")
+    static_bytes, limit, reported = required(2001)
+    header_bytes, audit_header_bytes, reasons = required(2002)
+    capacity_bytes, capture_bytes, observer_header_bytes = required(2003)
+    if limit != 16 or reported != min(count, limit) or header_bytes != 60 or audit_header_bytes != 4:
+        raise ValueError("Inconsistent work attribution bounds/header contract")
+    vectors = {}
+    for name, start in (("total", 2010), ("selected", 2020), ("ultimately_unreferenced", 2030),
+                        ("shared_required", 2040), ("unknown", 2050)):
+        values = [value for phase in range(start, start + 6) for value in required(phase)]
+        vectors[name] = dict(zip(WORK_METRICS, values))
+    for metric in WORK_METRICS:
+        if vectors["total"][metric] != sum(vectors[name][metric] for name in vectors if name != "total"):
+            raise ValueError(f"Inconsistent work attribution conservation: {metric}")
+    if capture_bytes != vectors["total"]["capture_bytes"] or capture_bytes > capacity_bytes:
+        raise ValueError("Inconsistent capture used/capacity attribution")
+    if vectors["total"]["capture_header_bytes"] % header_bytes or capture_bytes != sum(
+            vectors["total"][metric] for metric in WORK_METRICS[8:13]):
+        raise ValueError("Inconsistent capture component attribution")
+    if observer_header_bytes != vectors["total"]["capture_header_bytes"] // header_bytes * audit_header_bytes:
+        raise ValueError("Inconsistent audit-only capture header overhead")
+    details = []
+    seen = set()
+    for index in range(reported):
+        start = 2060 + index * 7
+        event, unit, reason = required(start)
+        if event == 0 or event in seen:
+            raise ValueError("Invalid or duplicate work attribution event")
+        seen.add(event)
+        values = [value for phase in range(start + 1, start + 7) for value in required(phase)]
+        details.append({"event": event, "unit": unit, "reasons": reason,
+                        "exclusive": dict(zip(WORK_METRICS, values))})
+    for metric in WORK_METRICS:
+        if sum(row["exclusive"][metric] for row in details) > vectors["total"][metric]:
+            raise ValueError(f"Inconsistent work detail conservation: {metric}")
+    return {"schema": version, "errors": errors, "row_count": count,
+            "coverage_complete": observer_complete and errors == 0 and reasons == 0
+                                 and not any(vectors["unknown"].values()),
+            "accounting_complete": observer_complete and errors == 0,
+            "unknown_reason_mask": reasons, "observer_static_bytes": static_bytes,
+            "detail_limit": limit, "reported_rows": reported, "detail_truncated": count > reported,
+            "capture_header_bytes": header_bytes, "audit_header_bytes": audit_header_bytes,
+            "capture_capacity_bytes": capacity_bytes, "capture_used_bytes": capture_bytes,
+            "observer_capture_header_bytes": observer_header_bytes,
+            "metrics": vectors, "details": details,
+            "evidence_limit": "Observed preparation calls and retained used bytes; no avoided work, memory savings or native completion proof."}

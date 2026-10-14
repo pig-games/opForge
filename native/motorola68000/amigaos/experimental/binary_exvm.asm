@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_exvm
 	.module experimental.amigaos.binary_exvm
 	.cpu 68020
+	.include "lazy_work.i"
 	.use tkvm.amigaos.runtime as tokens
 	.use experimental.amigaos.binary_source as source
 	.include "telemetry_macros.i"
@@ -141,6 +142,7 @@ SCRATCH_BYTES = SPANS+OUTPUT_LIMIT*4
 ; Field First=bare member ID, Second=value child, Count=1; Next links fields.
 ; Request.Scratch owns SCRATCH_BYTES reusable work; only call frames use stack.
 compile	.block
+	.WORK_COUNT lazy_work.COMPILE, #1
 	.TELEMETRY_VM_ENTER runtime_profile.OPFORGE_RUNTIME_VM_EXVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_FRONTEND
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5

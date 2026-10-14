@@ -20,6 +20,27 @@ pub(super) fn controls() -> Vec<Control> {
         });
     }
     let base = super::native_fragment_controls::source(1, 0x1000);
+    for referenced in [false, true] {
+        let body = "costed .block\n\tmoveq #2,d0\n\tadd.l d0,d1\n.byte $31\ninside:\n.byte $32\n.long inside\n.bend\n";
+        let source = base.replace("entry .block", &format!("{body}entry .block"));
+        let source = if referenced {
+            source.replace(".long dep.payload", ".long dep.payload\n.long dep.costed")
+        } else {
+            source
+        };
+        result.push(Control {
+            name: format!(
+                "whole-work-{}",
+                if referenced {
+                    "selected"
+                } else {
+                    "unreferenced"
+                }
+            ),
+            source,
+            includes: vec![],
+        });
+    }
     for (name, source, includes) in [
         ("preceding-nested", base.replace(".long dep.helper", ".long dep.helper\n.long dep.preceding").replace("entry .block\n.byte $11", "preceding:\nentry .block\n.byte $11\nnested .block\n.byte $18\n.bend"), vec![]),
         ("generated-name", base.replace(".byte $11", "MAKE .macro suffix\ngenerated@1:\n.byte $11\n.long generated@1\n.endmacro\n.MAKE A"), vec![]),
@@ -53,6 +74,7 @@ pub(super) fn controls() -> Vec<Control> {
 "#.into(),
         includes: vec![
             ("lazy_audit.i", include_str!("../../../../native/motorola68000/amigaos/debug/lazy_audit.i")),
+            ("lazy_work.i", include_str!("../../../../native/motorola68000/amigaos/debug/lazy_work.i")),
             ("depA.asm", ".module depA\n.cpu 68020\n.include \"lazy_audit.i\"\n.pub\n.section code,kind=code\nentry .block\n.byte $5a\n.bend\n.endsection\n.endmodule\n"),
             ("depB.asm", ".module depB\n.cpu 68020\n.include \"lazy_audit.i\"\n.pub\n.section code,kind=code\nentry .block\n.byte $5b\n.bend\n.endsection\n.endmodule\n"),
         ],
@@ -167,7 +189,11 @@ fn native_lazy_audit_prebuilt_fs_uae() {
     if std::env::var_os("OPFORGE_LAZY_PROBE_IMAGE").is_some() {
         variables.push("OPFORGE_LAZY_PROBE_IMAGE");
     }
+    if std::env::var_os("OPFORGE_LAZY_WORK_IMAGE").is_some() {
+        variables.push("OPFORGE_LAZY_WORK_IMAGE");
+    }
     for variable in variables {
+        let mut costed_work = std::collections::BTreeMap::new();
         let image =
             fs::read(std::env::var_os(variable).unwrap_or_else(|| panic!("set {variable}")))
                 .unwrap();
@@ -206,6 +232,42 @@ fn native_lazy_audit_prebuilt_fs_uae() {
                     case.name, run.stdout
                 );
                 let rows = super::native_lazy_audit_report::assert_report(&run.stdout);
+                if variable == "OPFORGE_LAZY_WORK_IMAGE" {
+                    assert!(rows.contains_key(&2000), "work image emits attribution");
+                    assert!(
+                        rows[&2000][2] <= 16,
+                        "focused controls expose every work row"
+                    );
+                    if case.name == "whole-work-unreferenced" {
+                        assert!(
+                            rows[&2030].iter().any(|value| *value > 0),
+                            "unused whole block incurred preparation"
+                        );
+                    }
+                    if case.name == "whole-work-selected" {
+                        assert!(
+                            rows[&2020].iter().any(|value| *value > 0),
+                            "selected whole block incurred preparation"
+                        );
+                    }
+                    if case.name.starts_with("whole-work-") {
+                        // The fixture's first discovered block is `costed` in
+                        // dep; the root contains only its external reference.
+                        assert_eq!(rows[&2060][0..2], [1, 1]);
+                        assert_eq!(rows[&2060][2], 0, "proven ordinary ownership");
+                        let vector: Vec<_> = (2061..=2066).flat_map(|phase| rows[&phase]).collect();
+                        assert!(vector[0] > 0 && vector[1] > 0 && vector[13] > 0);
+                        assert_eq!(
+                            vector[7],
+                            vector[9] + vector[10],
+                            "ordinary costed body copies its tokens and lexemes once"
+                        );
+                        costed_work.insert(case.name, vector);
+                    }
+                    if case.name == "generated-block" || case.name == "active-include-resume" {
+                        assert_ne!(rows[&2002][2], 0, "ambiguous provenance remains unknown");
+                    }
+                }
                 if case.name == "generated-block" {
                     assert!(
                         rows[&710][1] > 0,
@@ -213,6 +275,15 @@ fn native_lazy_audit_prebuilt_fs_uae() {
                     );
                 }
             }
+        }
+        if let (Some(selected), Some(unreferenced)) = (
+            costed_work.get("whole-work-selected"),
+            costed_work.get("whole-work-unreferenced"),
+        ) {
+            assert_eq!(
+                selected, unreferenced,
+                "same whole body incurs identical preparation before selection"
+            );
         }
     }
 }

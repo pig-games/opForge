@@ -4,6 +4,9 @@
 	.cpu 68020
 	.include "lazy_audit.i"
 	.include "binary_block_span.i"
+.ifdef OPFORGE_LAZY_WORK
+	.use tests.amigaos.binary_lazy_work_probe as work_probe
+.endif
 	.use experimental.amigaos.binary_capture as capture
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as source
@@ -173,6 +176,9 @@ maps
 	tst.l lazy_units.Fields.Count(a0)
 	bne.w done
 	moveq #0, d0
+.ifdef OPFORGE_LAZY_WORK
+	jsr work_probe.run
+.endif
 done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0

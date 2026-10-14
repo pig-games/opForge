@@ -637,6 +637,7 @@ releaseCapturedSources	.block
 next
 	tst.l d2
 	beq.w table
+	.WORK_CAPTURE_REGION a2
 	lea capture.Region.Arena(a2), a0
 	.LAZY_COUNT lazy_audit.RELEASED, #1
 	.CAPTURE_RETAINED_RELEASE memory.Block.Capacity(a0)

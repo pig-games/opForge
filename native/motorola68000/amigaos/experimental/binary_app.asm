@@ -185,6 +185,7 @@ execute	.block
 	movea.l (sp)+, a0
 	.CAPTURE_CLEAR
 	.LAZY_CLEAR
+	.WORK_CALL lazy_work.clear
 	.HOTSPOT_CLEAR
 	.MEMORY_COUNTER_CLEAR output_spans.Events
 	.MEMORY_COUNTER_CLEAR activation.Selections
@@ -383,6 +384,7 @@ freeBlocks
 	beq.w done
 	.CAPTURE_REPORT DosBase
 	.LAZY_REPORT DosBase
+	.WORK_REPORT DosBase
 	.HOTSPOT_REPORT DosBase
 	.MEMORY_SAVE DosBase
 	movea.l d0, a1
@@ -1355,6 +1357,7 @@ appendPrepared	.block
 	move.l frontend.Frame.Used(a0), d0
 	add.l d0, memory.Block.Used(a1)
 	.LAZY_COUNT lazy_audit.MATERIALIZED, frontend.Frame.Used(a0)
+	.WORK_COUNT lazy_work.PREPARED_COPY, frontend.Frame.Used(a0)
 	.LAZY_PREPARED Front, LineOffset, SourceCursorState.Offset+SourceCursorData, OriginId, SourceLine
 	movea.l frontend.Frame.Output(a0), a0
 	movea.l a2, a1

@@ -4,6 +4,7 @@
 	.cpu 68020
 	.include "memory_telemetry.i"
 	.include "binding_telemetry.i"
+	.include "lazy_audit.i"
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_modules as modules
@@ -21,14 +22,7 @@
 	.pub
 MEASURE_SAVED_BASE = 5*4; D2-D6 precede saved A0 in measure's MOVEM frame
 LIMIT = 65535; packed parent/queue links remain representable words
-Span	.struct
-Start	.long ?
-End	.long ?
-Entry	.word ?
-Parent	.word ?
-Live	.word ?
-	.endstruct
-SPAN_BYTES = Span.Live+2
+	.include "binary_block_span.i"
 Scratch	.struct
 Count	.long ?
 WorkspaceOffset	.long ?  ; relative to the first span
@@ -185,6 +179,7 @@ next
 complete
 	tst.w d2
 	bne.w bad
+	.LAZY_BLOCKS a4, d1
 	moveq #0, d0
 	bra.w done
 bad
@@ -483,6 +478,7 @@ nextSpan
 	addq.w #1, d7
 	bra.w omit
 selected
+	.LAZY_SELECTED Spans, Count
 	moveq #0, d0
 	bra.w doneSelect
 invalid

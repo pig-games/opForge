@@ -1,0 +1,218 @@
+//! Live source controls and fresh exact-artifact proof for the opt-in L1 observer.
+use super::native_iterable_loops::scratch;
+use super::*;
+use clap::Parser;
+use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
+
+pub(super) struct Control {
+    pub name: String,
+    pub source: String,
+    pub includes: Vec<(&'static str, &'static str)>,
+}
+
+pub(super) fn controls() -> Vec<Control> {
+    let mut result = Vec::new();
+    for guard in [0, 1] {
+        result.push(Control {
+            name: format!("blocks-guard-{guard}"),
+            source: super::native_fragment_controls::source(guard, 0x1000),
+            includes: vec![],
+        });
+    }
+    let base = super::native_fragment_controls::source(1, 0x1000);
+    for (name, source, includes) in [
+        ("preceding-nested", base.replace(".long dep.helper", ".long dep.helper\n.long dep.preceding").replace("entry .block\n.byte $11", "preceding:\nentry .block\n.byte $11\nnested .block\n.byte $18\n.bend"), vec![]),
+        ("generated-name", base.replace(".byte $11", "MAKE .macro suffix\ngenerated@1:\n.byte $11\n.long generated@1\n.endmacro\n.MAKE A"), vec![]),
+        ("generated-block", base.replace(".byte $11", "MAKE .macro suffix\ngenerated@1 .block\n.byte $11\n.bend\n.long generated@1\n.endmacro\n.MAKE A"), vec![]),
+        ("loop-shadow-schema", base.replace(".for item in {2,4}", "Info .struct\nvalue .byte ?\n.endstruct\nsaved .const Info {value:7}\n.byte saved.value\nitem={9,11}\n.for item in {2,4}").replace(".endfor\n.byte $22", ".endfor\n.byte item[1]\n.byte $22"), vec![]),
+        ("active-include-resume", base.replace(".byte $11", ".byte $11\n.if 1\n.include \"active.inc\"\n.endif\n.byte $19"), vec![("active.inc", ".byte $17\n.if 0\n.include \"missing.inc\"\n.endif\n")]),
+        ("transitive-forward-member", base.replace(".long dep.payload", ".long dep.payload\n.byte dep.saved.value").replace(".long helper", ".long leaf.helper\n.byte saved.value").replace(".module dep\n.cpu 68020", ".module dep\n.cpu 68020\n.use leaf").replace("forward = 1", "Info .struct\nvalue .byte ?\n.endstruct\nsaved .const Info {value:later}\nlater .const 7\nforward = 1") + ".module leaf\n.cpu 68020\n.pub\n.section code,kind=code\nhelper .block\n.byte $48\n.bend\n.endsection\n.endmodule\n", vec![]),
+    ] {
+        result.push(Control { name: name.into(), source, includes });
+    }
+    // Separate discovered modules expose `.end` operands in the shared
+    // template header to the acquisition index; they are not boundaries.
+    result.push(Control {
+        name: "imported-audit-template-boundary".into(),
+        source: r#".module main
+.cpu 68020
+.use depA as a
+.use depB as b
+.region ram,$1000,$ffff
+.section code,kind=code
+.long a.entry,b.entry
+.endsection
+.section data,kind=data
+.byte $77
+.endsection
+.place code in ram
+.place data in ram
+.output "build/fragment.bin",format=bin,sections=code,data
+.output "build/fragment.hunk",format=hunk,sections=code,data
+.endmodule
+"#.into(),
+        includes: vec![
+            ("lazy_audit.i", include_str!("../../../../native/motorola68000/amigaos/debug/lazy_audit.i")),
+            ("depA.asm", ".module depA\n.cpu 68020\n.include \"lazy_audit.i\"\n.pub\n.section code,kind=code\nentry .block\n.byte $5a\n.bend\n.endsection\n.endmodule\n"),
+            ("depB.asm", ".module depB\n.cpu 68020\n.include \"lazy_audit.i\"\n.pub\n.section code,kind=code\nentry .block\n.byte $5b\n.bend\n.endsection\n.endmodule\n"),
+        ],
+    });
+    result.push(Control {
+        name: "typed-configuration".into(),
+        source: base
+            .replace(
+                ".use dep",
+                "Info .struct\nvalue .byte ?\n.endstruct\n.use dep with (VALUE=Info{value:7})",
+            )
+            .replace(".byte $11", ".byte $11,VALUE.value"),
+        includes: vec![],
+    });
+    result
+}
+
+pub(super) fn oracle(control: &Control) -> (Vec<u8>, Vec<u8>) {
+    let dir = scratch();
+    fs::create_dir_all(dir.0.join("build")).unwrap();
+    let input = dir.0.join("entry.asm");
+    fs::write(&input, &control.source).unwrap();
+    for (path, contents) in &control.includes {
+        fs::write(dir.0.join(path), contents).unwrap();
+    }
+    let cli = Cli::parse_from(["opforge".into(), input.to_string_lossy().into_owned()]);
+    let mut config = validate_cli(&cli).unwrap();
+    config.out_dir = Some(dir.0.clone());
+    run_with_validated_cli_with_context(&cli, &config)
+        .unwrap_or_else(|error| panic!("{}: {error:?}", control.name));
+    (
+        fs::read(dir.0.join("build/fragment.bin")).unwrap(),
+        fs::read(dir.0.join("build/fragment.hunk")).unwrap(),
+    )
+}
+
+#[test]
+fn native_lazy_audit_live_rust_controls() {
+    for control in controls() {
+        let (binary, hunk) = oracle(&control);
+        assert!(!binary.is_empty(), "{}", control.name);
+        assert_eq!(hunk::segments(&hunk).unwrap().len(), 2, "{}", control.name);
+    }
+}
+
+#[test]
+#[ignore = "requires prebuilt reference/audit images and fresh FS-UAE"]
+fn native_lazy_audit_prebuilt_fs_uae() {
+    let root = super::native_fragment_controls::root();
+    let mut controls = controls();
+    if let Ok(filter) = std::env::var("OPFORGE_LAZY_CASE_FILTER") {
+        controls.retain(|control| control.name == filter);
+        assert!(
+            !controls.is_empty(),
+            "unknown lazy audit case filter {filter}"
+        );
+    }
+    let oracles: Vec<_> = controls.iter().map(oracle).collect();
+    let artifacts: Vec<_> = oracles
+        .iter()
+        .map(|oracle| {
+            [
+                OpforgeNativeCliExpectedArtifact {
+                    relative_path: "Work/build/fragment.bin",
+                    rust_oracle: &oracle.0,
+                },
+                OpforgeNativeCliExpectedArtifact {
+                    relative_path: "Work/build/fragment.hunk",
+                    rust_oracle: &oracle.1,
+                },
+            ]
+        })
+        .collect();
+    let files: Vec<Vec<_>> = controls
+        .iter()
+        .map(|control| {
+            let mut files = vec![
+                OpforgeNativeCliGuestFile {
+                    relative_path: "entry.asm",
+                    bytes: control.source.as_bytes(),
+                },
+                OpforgeNativeCliGuestFile {
+                    relative_path: "build/.keep",
+                    bytes: b"",
+                },
+            ];
+            files.extend(control.includes.iter().map(|(path, contents)| {
+                OpforgeNativeCliGuestFile {
+                    relative_path: path,
+                    bytes: contents.as_bytes(),
+                }
+            }));
+            files
+        })
+        .collect();
+    let cases: Vec<_> = controls
+        .iter()
+        .zip(&artifacts)
+        .zip(&files)
+        .map(|((control, artifacts), files)| OpforgeNativeCliParityCase {
+            name: &control.name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(control.source.as_bytes()),
+            command_template: Some("Work:entry.asm"),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: files,
+            proof: OpforgeNativeCliProof::ExactArtifacts(artifacts),
+        })
+        .collect();
+    let mut variables = vec!["OPFORGE_LAZY_REFERENCE_IMAGE", "OPFORGE_LAZY_AUDIT_IMAGE"];
+    if std::env::var_os("OPFORGE_LAZY_PROBE_IMAGE").is_some() {
+        variables.push("OPFORGE_LAZY_PROBE_IMAGE");
+    }
+    for variable in variables {
+        let image =
+            fs::read(std::env::var_os(variable).unwrap_or_else(|| panic!("set {variable}")))
+                .unwrap();
+        let results = run_prebuilt_compact_cli_breadth_from_env(&root, &cases, &image, 4).unwrap();
+        assert_eq!(results.len(), cases.len());
+        for (result, case) in results.iter().zip(&cases) {
+            let run = result.run.as_ref().expect("fresh guest run");
+            assert_eq!(
+                run.native_image_digest.as_deref(),
+                Some(opforge_self_host_package_digest(&image).as_str()),
+                "staged executable identity"
+            );
+            assert!(
+                run.protocol_completed && run.success && run.exit_code == Some(0),
+                "{variable} {}: {}",
+                case.name,
+                run.stdout
+            );
+            assert!(result.error.is_none(), "{}: {:?}", case.name, result.error);
+            if let Some(directory) = std::env::var_os("OPFORGE_LAZY_EVIDENCE_DIR") {
+                let directory = PathBuf::from(directory).join(variable).join(case.name);
+                assert!(!directory.starts_with(root.join("target")));
+                fs::create_dir_all(&directory).unwrap();
+                fs::write(directory.join("stdout.txt"), &run.stdout).unwrap();
+                for (path, bytes) in &run.captured_artifacts {
+                    if let Some(name) = path.file_name() {
+                        fs::write(directory.join(name), bytes).unwrap();
+                    }
+                }
+            }
+            if variable != "OPFORGE_LAZY_REFERENCE_IMAGE"
+                && std::env::var("OPFORGE_LAZY_CHECK_REPORT").as_deref() == Ok("1")
+            {
+                eprintln!(
+                    "LAZY_AUDIT_REPORT image={variable} case={}\n{}",
+                    case.name, run.stdout
+                );
+                let rows = super::native_lazy_audit_report::assert_report(&run.stdout);
+                if case.name == "generated-block" {
+                    assert!(
+                        rows[&710][1] > 0,
+                        "generated block relationships are explicitly deferred"
+                    );
+                }
+            }
+        }
+    }
+}

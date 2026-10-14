@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_ordered_records
 	.module experimental.amigaos.binary_ordered_records
 	.cpu 68020
+	.include "lazy_audit.i"
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_memory as memory
 	.pub
@@ -142,6 +143,7 @@ copySpan
 	adda.l d0, a2
 	move.l d6, (a2)
 	move.l d6, d4
+	.LAZY_REMAP graph.Span.Start(a4), graph.Span.End(a4), d6
 	move.l graph.Span.End(a4), d5
 	sub.l graph.Span.Start(a4), d5
 	movea.l Frame.OrderedRecords(a6), a0

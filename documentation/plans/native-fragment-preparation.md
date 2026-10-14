@@ -304,8 +304,9 @@ digest is now captured before execution: source-directed output can overwrite
 reported the output as the bootstrap. The full comparison checks the actual
 input image identity explicitly.
 
-The [lazy-preparation design](native-lazy-preparation.md) now defines the
-inventory/publication/lifetime boundary and the next shadow-audit checkpoint.
-That checkpoint is not implemented yet. This result qualifies movement of a
+The [lazy-preparation audit](native-lazy-preparation.md#l1-implementation-and-measured-scope)
+now records publication provenance, capture consumers and separate overhead
+measurements. Acquisition-only inventory and skipped preparation remain future work.
+This fragment result qualifies movement of a
 frozen prepared stream and its bounded envelope; it does not remove the preparation
 work responsible for the large capture peak.

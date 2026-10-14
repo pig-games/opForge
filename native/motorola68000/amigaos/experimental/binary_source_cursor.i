@@ -78,10 +78,10 @@ physical
 	move.l d1, d6
 	bsr.w locateCapture
 	bne.w bad
-	sub.l CaptureRegion.Base(a0), d1
+	sub.l capture.Region.Base(a0), d1
 	addq.l #1, d1
 	move.l d1, d5
-	lea CaptureRegion.Arena(a0), a4
+	lea capture.Region.Arena(a0), a4
 	movea.l a4, a0
 	jsr capture.resolve
 	bne.w bad
@@ -158,9 +158,9 @@ next
 	move.l d1, SourceCursorState.Offset+SourceCursorData
 	bsr.w locateCapture
 	bne.w bad
-	sub.l CaptureRegion.Base(a0), d1
+	sub.l capture.Region.Base(a0), d1
 	addq.l #1, d1
-	lea CaptureRegion.Arena(a0), a4
+	lea capture.Region.Arena(a0), a4
 	movea.l a4, a0
 	jsr capture.resolve
 	bne.w bad
@@ -206,6 +206,7 @@ materializePendingSource	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.l #SOURCE_RESUME_BYTES, sp
 	movea.l sp, a5
+	.LAZY_PIN 1
 	lea SourceCursorData, a0
 	lea SourceResume.Cursor(a5), a1
 	moveq #SOURCE_CURSOR_BYTES, d0
@@ -268,6 +269,7 @@ bad
 	clr.l AcquiringSource
 	moveq #1, d0
 restore
+	.LAZY_PIN -1
 	move.l d0, d7
 	lea SourceResume.Cursor(a5), a0
 	lea SourceCursorData, a1

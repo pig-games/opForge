@@ -7,6 +7,14 @@
 	.include "capture_telemetry.i"
 	.include "hotspot_telemetry.i"
 	.pub
+Region	.struct
+Base	.long ?
+End	.long ?
+File	.long ?
+Derived	.long ?
+Arena	.res memory.Block.Used+4
+	.endstruct
+REGION_BYTES = Region.Arena+memory.Block.Used+4
 MAGIC = $42435031; BCP1, latest capture contract
 TOKEN_LIMIT = 64
 LINE_READY = 0

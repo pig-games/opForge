@@ -54,6 +54,7 @@
 	.include "memory_telemetry.i"
 	.include "binding_telemetry.i"
 	.include "capture_telemetry.i"
+	.include "lazy_audit.i"
 HEADER_BYTES = package.HEADER_BYTES
 IO_BYTES = 4096
 INCLUDE_DEPTH = 8
@@ -119,14 +120,7 @@ End	.long ?
 File	.long ?
 	.endstruct
 SPAN_BYTES = graph.SPAN_BYTES
-CaptureRegion	.struct
-Base	.long ?
-End	.long ?
-File	.long ?
-Derived	.long ?
-Arena	.byte ?
-	.endstruct
-CAPTURE_REGION_BYTES = CaptureRegion.Arena+memory.Block.Used+4
+CAPTURE_REGION_BYTES = capture.REGION_BYTES
 IO_SCRATCH_BYTES = IO_BYTES*(INCLUDE_DEPTH+1)+LINE_BYTES+RECORD_BYTES
 IncludeFrame	.struct
 Handle	.long ?
@@ -190,6 +184,7 @@ execute	.block
 	jsr metadata.clear
 	movea.l (sp)+, a0
 	.CAPTURE_CLEAR
+	.LAZY_CLEAR
 	.HOTSPOT_CLEAR
 	.MEMORY_COUNTER_CLEAR output_spans.Events
 	.MEMORY_COUNTER_CLEAR activation.Selections
@@ -387,6 +382,7 @@ freeBlocks
 	move.l DosBase, d0
 	beq.w done
 	.CAPTURE_REPORT DosBase
+	.LAZY_REPORT DosBase
 	.HOTSPOT_REPORT DosBase
 	.MEMORY_SAVE DosBase
 	movea.l d0, a1
@@ -837,6 +833,7 @@ orderReady
 	bne.w completionBad
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_BIND, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	move.l frontend.Frame.NameCount(a0), NameCount
+	.LAZY_COUNT lazy_audit.NAMES, NameCount
 	tst.l GraphMode
 	beq.w selected
 	move.w #STEP_MATERIALIZE, PrepStep
@@ -1357,6 +1354,8 @@ appendPrepared	.block
 	lea Front, a0
 	move.l frontend.Frame.Used(a0), d0
 	add.l d0, memory.Block.Used(a1)
+	.LAZY_COUNT lazy_audit.MATERIALIZED, frontend.Frame.Used(a0)
+	.LAZY_PREPARED Front, LineOffset, SourceCursorState.Offset+SourceCursorData, OriginId, SourceLine
 	movea.l frontend.Frame.Output(a0), a0
 	movea.l a2, a1
 	bsr.w copy

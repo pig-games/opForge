@@ -76,14 +76,15 @@ newCaptureRegion	.block
 	move.l CaptureRegionCount, CaptureRegionCurrent
 	movea.l memory.Block.Pointer(a0), a1
 	adda.l memory.Block.Used(a0), a1
-	move.l CaptureBytes, CaptureRegion.Base(a1)
-	move.l CaptureBytes, CaptureRegion.End(a1)
-	move.l SourceOrdinal, CaptureRegion.File(a1)
-	move.l CaptureDerived, CaptureRegion.Derived(a1)
-	clr.l CaptureRegion.Arena+memory.Block.Pointer(a1)
-	clr.l CaptureRegion.Arena+memory.Block.Capacity(a1)
-	clr.l CaptureRegion.Arena+memory.Block.Used(a1)
+	move.l CaptureBytes, capture.Region.Base(a1)
+	move.l CaptureBytes, capture.Region.End(a1)
+	move.l SourceOrdinal, capture.Region.File(a1)
+	move.l CaptureDerived, capture.Region.Derived(a1)
+	clr.l capture.Region.Arena+memory.Block.Pointer(a1)
+	clr.l capture.Region.Arena+memory.Block.Capacity(a1)
+	clr.l capture.Region.Arena+memory.Block.Used(a1)
 	addi.l #CAPTURE_REGION_BYTES, memory.Block.Used(a0)
+	.LAZY_REGION 0(a1), CaptureRegionCurrent
 	addq.l #1, CaptureRegionCount
 	moveq #0, d0
 	bra.w done
@@ -149,7 +150,7 @@ capturedPolicy
 	lea CaptureLine, a0
 	move.l memory.Block.Used(a0), d7
 	bsr.w currentCaptureRegion
-	move.l CaptureRegion.Arena+memory.Block.Used(a0), d6
+	move.l capture.Region.Arena+memory.Block.Used(a0), d6
 	move.l d6, d0
 	add.l d7, d0
 	bcs.w bad
@@ -160,7 +161,7 @@ capturedPolicy
 	bsr.w currentCaptureRegion
 	moveq #0, d6
 fits
-	lea CaptureRegion.Arena(a0), a4
+	lea capture.Region.Arena(a0), a4
 	move.l d6, d0
 	add.l d7, d0
 	movea.l a4, a0
@@ -185,10 +186,12 @@ fits
 	bcs.w bad
 	move.l d0, CaptureBytes
 	bsr.w currentCaptureRegion
-	move.l CaptureBytes, CaptureRegion.End(a0)
+	move.l CaptureBytes, capture.Region.End(a0)
+	.LAZY_REGION 0(a0), CaptureRegionCurrent
+	.LAZY_COUNT lazy_audit.PHYSICAL, #1
 	tst.l AcquiringSource
 	bne.w capturedOnly
-	lea CaptureRegion.Arena(a0), a1
+	lea capture.Region.Arena(a0), a1
 	lea ConfigScan, a0
 	move.l a1, configuration.Frame.Arena(a0)
 	move.l d6, configuration.Frame.Cursor(a0)
@@ -237,21 +240,22 @@ locateCapture	.block
 next
 	tst.l d2
 	beq.w bad
-	cmp.l CaptureRegion.Base(a0), d1
+	cmp.l capture.Region.Base(a0), d1
 	blo.w bad
-	cmp.l CaptureRegion.End(a0), d1
+	cmp.l capture.Region.End(a0), d1
 	blo.w good
 	bne.w advance
-	cmp.l CaptureRegion.Base(a0), d1
+	cmp.l capture.Region.Base(a0), d1
 	bne.w advance
 	move.l ScheduleFile, d3
-	cmp.l CaptureRegion.File(a0), d3
+	cmp.l capture.Region.File(a0), d3
 	beq.w good
 advance
 	adda.w #CAPTURE_REGION_BYTES, a0
 	subq.l #1, d2
 	bra.w next
 good
+	.LAZY_LOOKUP
 	moveq #0, d0
 	bra.w done
 bad
@@ -313,7 +317,7 @@ configureCapturedModule	.block
 	move.l ScheduleCursor, d1
 	bsr.w locateCapture
 	bne.w bad
-	move.l CaptureRegion.Derived(a0), ScheduleDerived
+	move.l capture.Region.Derived(a0), ScheduleDerived
 	beq.w beginScan
 	bsr.w pathStem
 	beq.w bad
@@ -331,15 +335,15 @@ part
 	beq.w endScan
 	bsr.w locateCapture
 	bne.w bad
-	move.l CaptureRegion.End(a0), d7
+	move.l capture.Region.End(a0), d7
 	cmp.l ScheduleEnd, d7
 	bls.w bounded
 	move.l ScheduleEnd, d7
 bounded
 	move.l d7, d2
-	sub.l CaptureRegion.Base(a0), d1
-	sub.l CaptureRegion.Base(a0), d2
-	lea CaptureRegion.Arena(a0), a1
+	sub.l capture.Region.Base(a0), d1
+	sub.l capture.Region.Base(a0), d2
+	lea capture.Region.Arena(a0), a1
 	lea ConfigScan, a0
 	move.l a1, configuration.Frame.Arena(a0)
 	move.l d1, configuration.Frame.Cursor(a0)
@@ -475,7 +479,8 @@ beginCapturedReplay	.block
 	clr.l memory.Block.Capacity(a0)
 	clr.l memory.Block.Used(a0)
 	move.l OrderedCount, CaptureOrderCount
-	.CAPTURE_SNAPSHOT CAPTURE_ACQUISITION, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, CaptureRegion.Arena, CaptureOrderCount, SPAN_BYTES
+	.CAPTURE_SNAPSHOT CAPTURE_ACQUISITION, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, capture.Region.Arena, CaptureOrderCount, SPAN_BYTES
+	.LAZY_SCHEDULE CaptureOrder, CaptureOrderCount, SPAN_BYTES
 	.CAPTURE_REPLAY_BEGIN
 	clr.l OrderedCount
 	tst.l GraphMode
@@ -537,13 +542,14 @@ nextSpan
 	lea Records, a1
 	move.l memory.Block.Used(a1), Span.Start(a0)
 	move.l ScheduleFile, Span.File(a0)
+	.LAZY_SPAN ScheduleCursor, ScheduleEnd, ScheduleFile, memory.Block.Used(a1)
 	lea GraphBlock, a0
 	movea.l memory.Block.Pointer(a0), a0
 	move.l ScheduleFile, graph.GraphState.SourceIndex(a0)
 	move.l ScheduleCursor, d1
 	bsr.w locateCapture
 	bne.w bad
-	move.l CaptureRegion.Derived(a0), ScheduleDerived
+	move.l capture.Region.Derived(a0), ScheduleDerived
 	beq.w nextRecord
 	bsr.w pathStem
 	beq.w bad
@@ -568,18 +574,19 @@ endSpan
 	bsr.w fileSpan
 	lea Records, a1
 	move.l memory.Block.Used(a1), Span.End(a0)
+	.LAZY_SPAN_END memory.Block.Used(a1)
 	lea FileSpans, a0
 	addi.l #SPAN_BYTES, memory.Block.Used(a0)
 	addq.l #1, SpanCount
 	addq.l #1, CaptureOrderIndex
 	bra.w nextSpan
 good
-	.CAPTURE_SNAPSHOT CAPTURE_REPLAY, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, CaptureRegion.Arena, CaptureOrderCount, SPAN_BYTES
+	.CAPTURE_SNAPSHOT CAPTURE_REPLAY, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, capture.Region.Arena, CaptureOrderCount, SPAN_BYTES
 	bsr.w releaseCapturedSources
 	moveq #0, d0
 	bra.w done
 bad
-	.CAPTURE_SNAPSHOT CAPTURE_REPLAY, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, CaptureRegion.Arena, CaptureOrderCount, SPAN_BYTES
+	.CAPTURE_SNAPSHOT CAPTURE_REPLAY, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, capture.Region.Arena, CaptureOrderCount, SPAN_BYTES
 	move.l OriginId, SourceOrdinal
 	moveq #1, d0
 done
@@ -630,7 +637,8 @@ releaseCapturedSources	.block
 next
 	tst.l d2
 	beq.w table
-	lea CaptureRegion.Arena(a2), a0
+	lea capture.Region.Arena(a2), a0
+	.LAZY_COUNT lazy_audit.RELEASED, #1
 	.CAPTURE_RETAINED_RELEASE memory.Block.Capacity(a0)
 	jsr memory.release
 	adda.w #CAPTURE_REGION_BYTES, a2
@@ -650,7 +658,7 @@ table
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
 	clr.l CaptureOrderCount
-	.CAPTURE_SNAPSHOT CAPTURE_RELEASE, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, CaptureRegion.Arena, CaptureOrderCount, SPAN_BYTES
+	.CAPTURE_SNAPSHOT CAPTURE_RELEASE, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, capture.Region.Arena, CaptureOrderCount, SPAN_BYTES
 	movem.l (sp)+, d0-d2/a0-a2
 	rts
 	.bend  ; releaseCapturedSources

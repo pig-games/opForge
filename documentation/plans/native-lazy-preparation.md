@@ -1,8 +1,9 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: design and source audit, 2026-10-14. No lazy execution or early retirement
-is implemented by this document. The [fragment experiment](native-fragment-preparation.md)
-is qualified; the ordinary path remains the reference.
+Status: opt-in L1 publication-provenance/lifetime audit implemented, 2026-10-14.
+The ordinary path remains the reference. No preparation is skipped and no capture
+is retired early. Acquisition-only unit discovery and individual binding links
+remain unimplemented; see the measured scope below.
 
 ## Decision and first checkpoint
 
@@ -215,3 +216,163 @@ Preserve the working reference. Compare identical source/package/configuration
 inputs with release timings and separate ownership measurements, then perform a
 fresh full current-source self-host. Report each change's time and memory impact
 independently. Package demand loading and persistent `.ofm` remain later stages.
+
+## L1 implementation and measured scope
+
+`OPFORGE_LAZY_AUDIT` alone enables the audit work. Reporting additionally requires
+the existing debug/memory/progress gates. Timing builds omit those gates; the
+memory pair enables the same four gates on both images. Disabled audit macros
+emit no code, imports or references. The default reference release executable
+was byte-identical to the pre-L1 reference before the shared discovery repair
+below. The final reference and audit images both include that repair.
+
+The [region observer](../../native/motorola68000/amigaos/debug/opforge_lazy_audit.asm)
+records capture extents/capacities, scheduled consumers, suspended include pins,
+ordered replay spans and potential retirement checkpoints. The separate
+[unit observer](../../native/motorola68000/amigaos/debug/opforge_lazy_units.asm)
+records shared block-flag publication, capture/origin/line provenance, original
+prepared offsets and actual ordered-copy translations. It reconciles complete
+block ranges, preceding-entry ownership and numeric entries against the existing
+block index, then records its selection state. Stored tables contain offsets and
+scalar identities, not borrowed process pointers.
+
+This inventory is observed **at prepared-record publication**, not independently
+discovered from unbound acquisition records. Existing shared A8 head classification
+is counted without adding a parser. Individual member/proxy/schema links and full
+generated invocation identities remain deferred. Consequently, this experiment
+does not establish that its inventory is sufficient to skip body preparation.
+Generated whole units are reported separately when their publication has an
+expansion context; generated names inside an ordinary unit are not separately
+inventoried.
+
+Lifetime predictions combine scheduled last consumers, successful replay/drain,
+independently copied plans/template bodies/previews/provenance, and zero suspended
+parent pins. Unscheduled child include regions remain retained. A later lookup
+of a supposedly closed region invalidates coverage. Nothing is actually freed.
+Main/unit errors, exhaustion, unfinished publication nesting, missing observation
+boundaries and unbalanced cursors cannot supply a complete audit verdict.
+
+Bounds are 256 regions, 256 scheduled mappings, 2,048 indexed units and 4,096
+publication events. Only the first 16 rows of each detail group are printed;
+complete aggregates cover the bounded tables. Detail truncation is distinct from
+table exhaustion. The tables use 322,700 linked BSS bytes and allocate no heap.
+Their fixed cost is appropriate for an opt-in observer, not a production inventory
+layout. The canonical block-row include lives in the existing shared debug include
+root, retaining block-index ownership; no extra include search path is required.
+
+### Shared discovery repair required by the new source
+
+A fresh current-source self-build exposed an existing discovery bug: an instruction
+operand `.end` inside a captured macro was mistaken for a module terminator. The
+actual audit header in separately discovered imported modules reproduces the same
+failure; renaming only that operand removes it. A permanent control retains the
+original spelling. Indexing and configuration now preserve template ownership
+through its opening, body and closing records, independently of guard activity.
+They retain the enclosing module's captured ranges and defer body semantics to
+replay. The ordinary reference and audit images share this repair.
+
+A distinct legacy capture ambiguity for `.endmacro`/`.endsegment` parameter
+operands remains a later opcore parity issue. A8's current head contract covers
+`.statement`/`.endstatement`; it does not replace legacy macro/segment roles.
+No new head grammar or CPU-specific classification is introduced by this audit.
+
+### Identical full input: runtime overhead
+
+All six fresh full-input runs exit zero and match the entire live Rust Hunk:
+198 files, 2,614,471 bytes, 708,592-byte output. Both bootstraps embed 68020 and
+6502 packages; the frozen output embeds 68020. The frozen input is the previous
+fragment-enabled source snapshot. This is full **fixed-input comparison**, not
+a new audit-enabled current-source self-host qualification.
+
+FS-UAE uses the existing A4000/68040 profile: 2 MiB chip, 8 MiB fast,
+64 MiB Zorro III and 16 MiB graphics. It does not qualify the 2 MiB product target
+or A6000 hardware performance.
+
+| Serial release pair | Reference seconds | Audit seconds | Difference |
+|---|---:|---:|---:|
+| Reference then audit | 102.792439 | 107.690345 | +4.76% |
+| Audit then reference | 104.140757 | 105.340650 | +1.15% |
+| Two-run mean | 103.466598 | 106.515498 | +3.048900 s / +2.95% |
+
+These are uninstrumented timings of the audit work. The small sample and
+order-dependent spread limit precision; there is no optimization gain to claim.
+Final release image bytes increase 747,492 → 750,348; linked reservation increases
+781,264 → 1,106,596 (+325,332), including the tables. These comparisons use
+the same final source with the shared discovery repair in both executables.
+
+### Separate identical-input memory pair
+
+| Tracked/linked resource | Reference | Audit | Difference |
+|---|---:|---:|---:|
+| Tracked heap peak | 47,587,208 | 47,587,208 | 0 |
+| Allocated and freed capacities, each | 112,389,800 | 112,389,800 | 0 |
+| Terminal live heap | 0 | 0 | 0 |
+| Linked reservation, memory build | 794,220 | 1,120,196 | +325,976 |
+
+Both memory runs report zero profiling errors and allocation failures. The audit
+cost is linked storage/code, not an increased tracked heap peak. Combined linked
+reservation plus tracked heap peak increases by 325,976 bytes; this still excludes
+OS allocations, stack and allocator metadata.
+
+The full audit links all 1,415 indexed units to 1,415 ordinary publication events,
+with zero unmatched units and zero observer errors. It records 162 completed
+scheduled spans, 164 regions, 114,504 physical captures, 114,626 capture lookups,
+and a post-member-completion name count of 54,536. Those names are not individual
+binding proofs. No runtime include acquisition occurs on this particular input.
+
+Captured storage is 23,155,688 used / 32,452,608 reserved bytes. All 164 regions
+become potentially retireable by the end of replay, with zero later-access
+contradictions. Printed replay checkpoints show earlier eligible capacity. This
+does **not** mean saving the full reserved capacity at peak: acquisition already retains those regions,
+and the reference already releases them when replay finishes. A real lifetime
+candidate needs a new measurement of overlap and actual heap peak.
+
+### Proof and reproduction
+
+Thirty focused fresh native runs compare reference, audit and isolated component-probe
+images against live BIN/Hunk oracles. They cover both guards, nested/preceding/
+internal labels, transitive imports and forward members, schema/configuration,
+loop shadowing, generated names, include suspension/resumption and an imported
+header whose template operand must not terminate discovery. The component
+probe checks register/CCR/stack preservation, repeated reset, bounds/exhaustion,
+overflow, failed mapping publication, remapping, closure and later-access detection.
+Generated-unit lineage is a separate focused case; unresolved relationships are
+not promoted to execution visibility.
+
+The final-source default release self-build is separately proven: 198 files,
+2,604,248 bytes of source and a 706,956-byte Hunk. Fresh FS-UAE START/DONE, exit
+zero and complete live Rust equality are recorded at
+`/tmp/opforge-lazy-l1-current-native-v5-20261014/result/native-result.json`.
+The native executable reproduces its own complete bytes in 103.083183 seconds
+on the same profile. This is a current-source self-host check, not an audit-enabled
+self-host or an A6000/2 MiB qualification.
+
+Runtime/memory receipts and original captures:
+`/tmp/opforge-lazy-l1-full-v4-20261014/summary.json`. Final source images and
+identities: `/tmp/opforge-lazy-audit-images-v5/images.json`, native source digest
+`fnv1a64:e12b0b7c9be4fe32`. All five final images are byte-identical to the
+measured and native-tested v4 images, including the shared discovery repair.
+The only subsequent source change removes trailing whitespace from two empty
+macro declarations by adding comments. `final-image-equivalence.json` records
+the complete image comparisons. The exact final source was self-hosted freshly.
+
+The [comparison runner](../../scripts/performance/run_lazy_preparation_comparison.py)
+validates frozen file and image digests, actual build defines, and fresh whole-output
+proof. Its [audit decoder](../../scripts/performance/lazy_preparation_audit.py)
+reports coverage separately from native completion and memory measurements.
+
+```sh
+OPFORGE_LAZY_SAVE_DIR=/tmp/new-l1-images OPFORGE_LAZY_SAVE_PROBE=1 \
+  cargo test -p asm native_lazy_audit_save_images -- --ignored --nocapture --test-threads=1
+
+# Use the maintained FS-UAE environment; preserve the test binary outside target.
+python3 scripts/performance/run_lazy_preparation_comparison.py \
+  --workload-case /absolute/frozen-full-case/case.json \
+  --images /tmp/new-l1-images --output /tmp/new-l1-results \
+  --test-binary /absolute/asm-tests
+```
+
+Keep the audit opt-in. Its strongest next implementation opportunity is the
+conservative scheduled-region retirement boundary; measure its real effect before
+accepting it. Acquisition-only inventory remains necessary before deferred body
+preparation, and that preparation work has not been avoided by L1.

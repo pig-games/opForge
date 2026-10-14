@@ -5,6 +5,7 @@
 	.cpu 68020
 	.include "memory_telemetry.i"
 	.include "capture_telemetry.i"
+	.include "lazy_audit.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_source as writer
@@ -212,6 +213,7 @@ captureStatementRole	.block
 	move.l capture.Record.LexemeBytes(a1), statement_heads.Frame.LexemeBytes(sp)
 	movea.l sp, a0
 	jsr statement_heads.classify
+	.LAZY_CLASSIFY
 	adda.w #statement_heads.FRAME_BYTES, sp
 	tst.l d0
 	movem.l (sp)+, d2/a0-a2
@@ -2678,6 +2680,7 @@ sourceSuspended
 ; normal numeric selection, binding and expression path to original or expanded
 ; records. This routine does not tokenize source or advance the physical line.
 processRecord	.block
+	.LAZY_COUNT lazy_audit.PROCESS, #1
 	.HOTSPOT_ENTER #HOTSPOT_RECORD_PROCESS
 	.HOTSPOT_COUNT HOTSPOT_PROCESS_RECORDS, #1
 	clr.l Frame.Used(a5)

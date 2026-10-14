@@ -46,7 +46,7 @@ Binding	.long ?  ; requested graph binding for configure
 Depth	.word ?
 Priority	.word ?  ; physical entry only: static incoming-use root priority
 Schema	.word ?  ; zero idle; shared capture or unavailable body
-TemplateDepth	.word ?  ; acquisition-only shared template roles, independent of activity
+TemplateDepth	.word ?  ; shared template ownership, independent of guard activity
 	.endstruct
 CONDITIONS = Frame.TemplateDepth+2
 FRAME_BYTES = CONDITIONS+conditionals.SCRATCH_BYTES
@@ -116,11 +116,21 @@ next
 	move.l d1, d3
 	movea.l a6, a0
 	bsr.w trackTemplateDepth
+	move.l d0, d2
 	movea.l Frame.Scope(a6), a0
 	move.w Frame.IndexModule+2(a6), layout.MODULE_STATE+modules.State.Active(a0)
 	moveq #0, d4
 	move.l Frame.IndexModule(a6), d5
 	move.l d5, d6
+	; Template headers, bodies and terminators keep their enclosing module's
+	; capture range. Their guards, values and dot operands are not configuration.
+	tst.l d2
+	beq.w outsideTemplate
+	tst.w CONDITIONS+conditionals.State.Active(a6)
+	bne.w publish
+	moveq #1, d4
+	bra.w publish
+outsideTemplate
 	tst.w Frame.Priority(a6)
 	bne.w controls
 	tst.l d5
@@ -423,6 +433,10 @@ next
 	bsr.w classify
 	bne.w bad
 	move.l d1, d6
+	movea.l a6, a0
+	bsr.w trackTemplateDepth
+	tst.l d0
+	bne.w advance
 	tst.w Frame.Schema(a6)
 	beq.w ordinaryDepth
 	move.l d6, d1
@@ -749,10 +763,18 @@ return
 	rts
 	.bend  ; classify
 	.priv
-; A0=Frame,D1=already classified shared role. Preserve all registers;
-; CCR unspecified. Speculative inactive boundaries never reject acquisition.
-; The unsigned counter saturates rather than wrapping and clamps closes at zero.
+; A0=Frame,D1=shared A8/scope role. D0/CCR=1 for a template-owned record,
+; including opening and closing markers, otherwise 0. Other registers kept.
+; Track ownership before activity checks: inactive alternatives cannot expose
+; template guards or operand names to module configuration. A closing marker
+; remains owned even when its update reduces TemplateDepth to zero. The bounded
+; counter retains its saturation and zero-clamped close policy.
 trackTemplateDepth	.block
+	moveq #0, d0
+	tst.w Frame.TemplateDepth(a0)
+	beq.w classifyRole
+	moveq #1, d0
+classifyRole
 	cmpi.l #TEMPLATE_OPEN, d1
 	beq.w open
 	cmpi.l #scopes.KEY_MACRO, d1
@@ -767,24 +789,23 @@ trackTemplateDepth	.block
 	bne.w done
 close
 	tst.w Frame.TemplateDepth(a0)
-	beq.w done
+	beq.w owned
 	subq.w #1, Frame.TemplateDepth(a0)
-	bra.w done
+	bra.w owned
 open
 	cmpi.w #$ffff, Frame.TemplateDepth(a0)
-	beq.w done
+	beq.w owned
 	addq.w #1, Frame.TemplateDepth(a0)
+owned
+	moveq #1, d0
 done
+	tst.l d0
 	rts
 	.bend  ; trackTemplateDepth
 
 ; A0=Frame,D1=shared directive key. D0=1 structural record consumed,
 ; 0 ordinary record, -1 depth overflow; CCR reflects D0. Other registers kept.
 trackDepth	.block
-	cmpi.l #TEMPLATE_OPEN, d1
-	beq.w openNested
-	cmpi.l #TEMPLATE_CLOSE, d1
-	beq.w closeNested
 	cmpi.l #LOOP_OPEN, d1
 	beq.w openNested
 	cmpi.l #LOOP_CLOSE, d1
@@ -793,19 +814,11 @@ trackDepth	.block
 	beq.w openNested
 	cmpi.l #scopes.KEY_NAMESPACE, d1
 	beq.w openNested
-	cmpi.l #scopes.KEY_MACRO, d1
-	beq.w openNested
-	cmpi.l #scopes.KEY_SEGMENT, d1
-	beq.w openNested
 	cmpi.l #scopes.KEY_STRUCT, d1
 	beq.w openNested
 	cmpi.l #scopes.KEY_ENDBLOCK, d1
 	beq.w closeNested
 	cmpi.l #scopes.KEY_ENDNAMESPACE, d1
-	beq.w closeNested
-	cmpi.l #scopes.KEY_ENDMACRO, d1
-	beq.w closeNested
-	cmpi.l #scopes.KEY_ENDSEGMENT, d1
 	beq.w closeNested
 	cmpi.l #scopes.KEY_ENDSTRUCT, d1
 	beq.w closeNested

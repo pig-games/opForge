@@ -8233,3 +8233,13 @@ mod native_fragment_controls;
 #[cfg(test)]
 #[path = "tests/native_fragment_probe.rs"]
 mod native_fragment_probe;
+
+#[cfg(test)]
+#[path = "tests/native_lazy_audit_controls.rs"]
+mod native_lazy_audit_controls;
+#[cfg(test)]
+#[path = "tests/native_lazy_audit_probe.rs"]
+mod native_lazy_audit_probe;
+#[cfg(test)]
+#[path = "tests/native_lazy_audit_report.rs"]
+mod native_lazy_audit_report;

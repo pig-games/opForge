@@ -5,9 +5,10 @@
 	.include "lazy_audit.i"
 	.use experimental.amigaos.binary_capture as capture
 	.use experimental.amigaos.binary_source as source
+	.use tests.amigaos.binary_lazy_template_probe as template_probe
 	.section code, kind=code
 	.pub
-; D0/CCR=status (11..25 invariant failure); preserves other registers.
+; D0/CCR=status (11..37 invariant failure); preserves other registers.
 run	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l sp, SavedSp
@@ -350,6 +351,7 @@ checkRanges
 	bne.w done
 	jsr lazy_units.clear
 	moveq #0, d0
+	jsr template_probe.run
 done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0

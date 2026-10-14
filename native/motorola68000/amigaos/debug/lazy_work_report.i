@@ -145,6 +145,8 @@ contextTriple
 	addq.l #1, d4
 	dbra d7, contextTriple
 done
+	movea.l a4, a0
+	bsr.w templateReport
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
 	rts

@@ -42,6 +42,26 @@ rangeOrigin
 	lea lazy_work.WorkFields.RangeExamples+lazy_work.RangeExample.Origin(a5), a0
 	move.l 0(a0, d0.l), d1
 origin
+	move.l d6, d5
+	mulu.w #AUDIT_PATH_STRIDE, d5
+	addi.l #AUDIT_PATH_PHASE, d5
+	bsr.w workWritePath
+	addq.l #1, d6
+	cmpi.l #AUDIT_PATH_SLOTS, d6
+	blo.w slot
+done
+	bsr.w workTemplatePaths
+	adda.w #AUDIT_PATH_WORD_BYTES, sp
+	movem.l (sp)+, d0-d7/a0-a6
+	move.w (sp)+, ccr
+	rts
+	.bend ; workOriginPaths
+
+; D1=origin,D5=phase,D6=zero-based slot,A3=12-byte scratch,A4=DOS base.
+; Borrow owned paths only. Clobbers D0-D5/D7/A0-A2, preserves D6/A3-A6.
+workWritePath .block
+	moveq #0, d7
+	suba.l a2, a2
 	move.l d1, d4
 	beq.w header
 	cmpi.l #ORIGIN_LIMIT, d1
@@ -67,9 +87,6 @@ length
 	blo.w length
 	moveq #0, d7 ; no bounded terminator: omit the path, never read beyond owner
 header
-	move.l d6, d5
-	mulu.w #AUDIT_PATH_STRIDE, d5
-	addi.l #AUDIT_PATH_PHASE, d5
 	move.l d5, d0
 	move.l d4, d1
 	move.l d7, d2
@@ -80,7 +97,7 @@ header
 	addq.l #1, d5
 chunk
 	tst.l d7
-	beq.w nextSlot
+	beq.w done
 	clr.l AuditPathWords.First(a3)
 	clr.l AuditPathWords.Second(a3)
 	clr.l AuditPathWords.Third(a3)
@@ -103,16 +120,62 @@ writeChunk
 	jsr memory_profile.progress
 	addq.l #1, d5
 	bra.w chunk
-nextSlot
+done
+	rts
+	.bend ; workWritePath
+
+; All used inventory rows/edges have an optional source-path exemplar. Numeric
+; identities and counts remain authoritative; missing paths remain empty.
+; No inputs/outputs; preserves registers/CCR/SP, before OriginPaths release.
+workTemplatePaths .block
+	move.w ccr, -(sp)
+	movem.l d0-d7/a0-a6, -(sp)
+	suba.w #AUDIT_PATH_WORD_BYTES, sp
+	movea.l sp, a3
+	movea.l DosBase, a4
+	move.l a4, d0
+	beq.w done
+	jsr lazy_work.getTemplates
+	movea.l a0, a5
+	move.l #lazy_work.TEMPLATE_PATH_HEADER, d0
+	moveq #1, d1
+	move.l lazy_work.TemplateFields.Count(a5), d2
+	move.l lazy_work.TemplateFields.EdgeCount(a5), d3
+	movea.l a4, a0
+	jsr memory_profile.progress
+	moveq #0, d6
+slot
+	move.l lazy_work.TemplateFields.Count(a5), d0
+	add.l lazy_work.TemplateFields.EdgeCount(a5), d0
+	cmp.l d0, d6
+	bhs.w done
+	move.l d6, d0
+	cmp.l lazy_work.TemplateFields.Count(a5), d0
+	bhs.w edgeOrigin
+	mulu.w #lazy_work.TEMPLATE_DEFINITION_BYTES, d0
+	movea.l a5, a0
+	adda.l #lazy_work.TemplateFields.Rows+lazy_work.TemplateDefinition.Origin, a0
+	move.l 0(a0, d0.l), d1
+	bra.w path
+edgeOrigin
+	sub.l lazy_work.TemplateFields.Count(a5), d0
+	mulu.w #lazy_work.TEMPLATE_EDGE_BYTES, d0
+	movea.l a5, a0
+	adda.l #lazy_work.TemplateFields.Edges+lazy_work.TemplateEdge.Origin, a0
+	move.l 0(a0, d0.l), d1
+path
+	move.l d6, d5
+	mulu.w #AUDIT_PATH_STRIDE, d5
+	addi.l #lazy_work.TEMPLATE_PATH_FIRST, d5
+	bsr.w workWritePath
 	addq.l #1, d6
-	cmpi.l #AUDIT_PATH_SLOTS, d6
-	blo.w slot
+	bra.w slot
 done
 	adda.w #AUDIT_PATH_WORD_BYTES, sp
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
 	rts
-	.bend ; workOriginPaths
+	.bend ; workTemplatePaths
 .endif
 .endif
 .endif

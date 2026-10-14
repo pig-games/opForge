@@ -70,6 +70,11 @@ fn native_lazy_audit_save_images() {
     )
     .unwrap();
     let mut images = Vec::new();
+    let probe_only = std::env::var("OPFORGE_LAZY_SAVE_PROBE_ONLY").as_deref() == Ok("1");
+    assert!(
+        !probe_only || std::env::var("OPFORGE_LAZY_SAVE_PROBE").as_deref() == Ok("1"),
+        "probe-only builds require OPFORGE_LAZY_SAVE_PROBE=1"
+    );
     let selected_roles = std::env::var("OPFORGE_LAZY_SAVE_ROLES").ok();
     if let Some(roles) = &selected_roles {
         assert!(
@@ -84,6 +89,9 @@ fn native_lazy_audit_save_images() {
         ("reference", false, false),
         ("work", true, true),
     ] {
+        if probe_only {
+            continue;
+        }
         if selected_roles
             .as_ref()
             .is_some_and(|roles| !roles.split(',').any(|selected| selected == role))
@@ -207,11 +215,18 @@ fn native_lazy_audit_disabled_macros_emit_zero_bytes() {
         dir.0.join("lazy_work_context.i"),
     )
     .unwrap();
+    fs::copy(
+        super::native_fragment_controls::root()
+            .join("native/motorola68000/amigaos/debug/lazy_template_hooks.i"),
+        dir.0.join("lazy_template_hooks.i"),
+    )
+    .unwrap();
     let sites = ".LAZY_CLEAR\n.LAZY_PREPARED Missing,d0,d1,d2,d3\n.LAZY_REMAP d0,d1,d2\n.LAZY_CLASSIFY\n.LAZY_SELECTED a0,d0\n.LAZY_COUNT 0,#1\n.LAZY_REGION Missing, d0\n.LAZY_LOOKUP\n.LAZY_PIN 1\n.LAZY_SCHEDULE Missing,d0,12\n.LAZY_SPAN d0,d1,d2,d3\n.LAZY_SPAN_END d0\n.LAZY_BLOCKS a0,d0\n.LAZY_REPORT a6\n";
     let sites = format!("{sites}.WORK_CALL Missing\n.WORK_COUNT 0,#1\n.WORK_ACQUIRE 0,a0\n.WORK_CAPTURE_RESET a0\n.WORK_BOUND_BEGIN d0\n.WORK_BOUND_END d0\n.WORK_PUBLICATION a0\n.WORK_CAPTURE_REGION a0,#128\n.WORK_SELECTED a0,d0\n.WORK_REPORT a6\n.WORK_EFFECT a0\n.WORK_TEMPLATE_DELTA d1,d2\n.WORK_SAMPLE_BEGIN #1\n");
-    let sites = format!("{sites}.WORK_PLAN_CONTEXT #0\n.WORK_CONTEXT 0,#1\n.WORK_TEMPLATE_CONTEXT a6,MISSING_OFFSET\n.WORK_ORIGIN_PATHS\n");
+    let sites = format!("{sites}.WORK_PLAN_CONTEXT #0\n.WORK_CONTEXT 0,#1\n.WORK_TEMPLATE_CONTEXT a6,MISSING_OFFSET\n.WORK_TEMPLATE_FLOOR a6,MISSING_OFFSET,Missing\n.WORK_ORIGIN_PATHS\n");
+    let sites = format!("{sites}.WORK_TEMPLATE_BEGIN a0\n.WORK_TEMPLATE_DEFINE a0,a1,#0,#0\n.WORK_TEMPLATE_CLOSE a0,a1,#0\n.WORK_TEMPLATE_CALL a0,a1\n.WORK_TEMPLATE_POOLS a0\n.WORK_TEMPLATE_LINE a0,Missing,#1,Missing\n");
     let input = dir.0.join("disabled.asm");
-    fs::write(&input, format!(".module disabled\n.cpu 68020\n.include \"lazy_audit.i\"\n.include \"lazy_work_context.i\"\n.region ram,0,$ffff\n.section code,kind=code\n{sites}\trts\n.endsection\n.place code in ram\n.output \"build/disabled\",format=bin,sections=code\n.endmodule\n")).unwrap();
+    fs::write(&input, format!(".module disabled\n.cpu 68020\n.include \"lazy_audit.i\"\n.include \"lazy_work_context.i\"\n.include \"lazy_template_hooks.i\"\n.region ram,0,$ffff\n.section code,kind=code\n{sites}\trts\n.endsection\n.place code in ram\n.output \"build/disabled\",format=bin,sections=code\n.endmodule\n")).unwrap();
     let cli = Cli::parse_from(["opforge".into(), input.to_string_lossy().into_owned()]);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(dir.0.clone());

@@ -22,7 +22,9 @@ def decode(stdout):
         if not {"p", "f", "l", "r"} <= fields.keys():
             raise ValueError("Incomplete L1 progress fields")
         phase = fields["p"]
-        if 700 <= phase <= 2466:
+        if (700 <= phase <= 2466 or 3000 <= phase <= 3014
+                or 3100 <= phase < 19484 or 20000 <= phase < 32288
+                or 34999 <= phase < 182456):
             if phase in rows:
                 raise ValueError(f"Duplicate L1 report phase {phase}")
             rows[phase] = [fields["f"], fields["l"], fields["r"]]
@@ -89,6 +91,8 @@ def decode(stdout):
 
     if 2000 in rows:
         result["work_attribution"] = decode_work(rows, observer_complete)
+    elif any(phase >= 3000 for phase in rows):
+        raise ValueError("Template inventory requires work attribution")
     return result
 
 
@@ -245,4 +249,165 @@ def decode_work(rows, observer_complete):
                 "missing_original_end", "open_before_region_base", "bad_parent"), causes[:-1])),
             "largest_contributors": contributors, "range_examples": examples, "bind_contexts": contexts,
             "bind_context_evidence_limit": "Contexts observe whether a unit owner exists at call time; preceding-entry transfer can change final ownership. Context totals are independent of the final unknown ownership split and do not describe conditional activity or reachability."}
+    if any(phase >= 3000 for phase in rows):
+        result["template_inventory"] = decode_template_inventory(rows, result)
     return result
+
+
+TEMPLATE_FIELDS = ("epoch", "handle", "pool", "kind", "name", "origin", "line",
+                   "header_plan", "first", "last", "definition_bytes", "default_bytes",
+                   "text_bytes", "closed", "calls", "nested_calls", "default_calls",
+                   "first_caller", "first_origin", "first_line", "plan_binds",
+                   "committed_bound_bytes", "default_slots", "reserved")
+TEMPLATE_ERRORS = ((1, "overflow"), (2, "capacity"), (4, "invalid"),
+                   (8, "unclosed"), (16, "unfinished"), (32, "reconciliation"))
+
+
+def decode_template_inventory(rows, work):
+    """Decode scalar inventory evidence; accepted queue calls establish usage.
+
+    Binding deltas describe eager work while a published body is open. They are
+    not unique retained plan payload, and all plan arena bytes remain residual.
+    """
+    def required(phase):
+        if phase not in rows:
+            raise ValueError(f"Missing template inventory phase {phase}")
+        return rows[phase]
+
+    schema, errors, epoch = required(3000)
+    static_bytes, definition_limit, edge_limit = required(3001)
+    count, edge_count, finished = required(3002)
+    for phase in range(3003, 3015):
+        required(phase)
+    if schema != 1 or definition_limit != 2048 or edge_limit != 4096:
+        raise ValueError("Unsupported template inventory schema/bounds")
+    if (errors & ~63 or count > definition_limit or edge_count > edge_limit or required(3014)[2]
+            or static_bytes == 0 or static_bytes % 4 or finished > epoch or required(3014)[1] > 4):
+        raise ValueError("Invalid template inventory bounds/reserved/errors")
+    expected_phases = set(range(3000, 3015)) | set(range(3100, 3100 + count * 8)) | set(range(20000, 20000 + edge_count * 3))
+    if any(3000 <= phase < 34999 and phase not in expected_phases for phase in rows):
+        raise ValueError("Unexpected template inventory detail phase")
+    definitions, identities = [], set()
+    for index in range(count):
+        values = [value for phase in range(3100 + index * 8, 3108 + index * 8) for value in required(phase)]
+        row = dict(zip(TEMPLATE_FIELDS, values), row=index + 1)
+        identity = (row["epoch"], row["pool"], row["handle"])
+        if (not 0 < row["epoch"] <= epoch or not row["handle"] or identity in identities
+                or row["kind"] not in (0, 1, 2) or row["pool"] != (1 if row["kind"] == 2 else 0)
+                or row["closed"] not in (0, 1) or row["reserved"] or row["first_caller"] > count):
+            raise ValueError("Invalid or duplicate template definition")
+        if row["closed"] and row["last"] < row["first"]:
+            raise ValueError("Invalid template body offsets")
+        identities.add(identity)
+        row["body_bytes"] = row["last"] - row["first"] if row["closed"] else 0
+        row["payload_bytes"] = sum(row[field] for field in ("definition_bytes", "default_bytes", "text_bytes", "body_bytes"))
+        definitions.append(row)
+    edges, relationships = [], set()
+    for index in range(edge_count):
+        caller, callee, origin = required(20000 + index * 3)
+        line, calls, defaults = required(20001 + index * 3)
+        slots, reserved1, reserved2 = required(20002 + index * 3)
+        key = caller, callee, origin
+        if (caller > count or not 0 < callee <= count or key in relationships or not calls
+                or defaults > calls or bool(defaults) != bool(slots) or slots < defaults or reserved1 or reserved2
+                or caller and definitions[caller - 1]["epoch"] != definitions[callee - 1]["epoch"]):
+            raise ValueError("Invalid or duplicate template consumer relationship")
+        relationships.add(key)
+        edges.append({"caller_row": caller, "callee_row": callee, "origin": origin,
+                      "first_line": line, "calls": calls, "default_calls": defaults, "default_slots": slots})
+    decode_template_paths(rows, definitions, edges)
+    open_rows, unfinished, unattributed_calls = required(3011)
+    unattributed_bytes, row_calls, edge_calls = required(3012)
+    row_binds, row_bytes, edge_defaults = required(3013)
+    edge_slots, active, _ = required(3014)
+    complete = work["accounting_complete"] and not (errors or open_rows or unfinished or active)
+    pool = dict(zip(("internal_definition_bytes", "external_definition_bytes", "default_bytes", "text_bytes", "body_bytes", "plan_bytes"), required(3005) + required(3006)))
+    residual = dict(zip(pool, required(3009) + required(3010)))
+    attributed = dict(zip(tuple(pool)[:5], required(3007) + required(3008)[:2]))
+    observed_binds, observed_bytes, calls = required(3003)
+    nested_calls, default_calls, default_slots = required(3004)
+    if complete:
+        def reconcile(condition, detail):
+            if not condition:
+                raise ValueError(f"Inconsistent template inventory conservation: {detail}")
+        reconcile(all(row["closed"] for row in definitions), "closed definitions")
+        reconcile(required(3008)[2] == count, "closed count")
+        reconcile(sum(pool.values()) - pool["plan_bytes"] == work["metrics"]["total"]["template_bytes"], "global template payload")
+        actual_payload = {"internal_definition_bytes": sum(row["definition_bytes"] for row in definitions if row["pool"] == 0),
+                          "external_definition_bytes": sum(row["definition_bytes"] for row in definitions if row["pool"] == 1)}
+        for field in ("default_bytes", "text_bytes", "body_bytes"):
+            actual_payload[field] = sum(row[field] for row in definitions)
+        reconcile(actual_payload == attributed, "definition payload components")
+        reconcile(all(attributed[field] + residual[field] == pool[field] for field in attributed)
+                  and residual["plan_bytes"] == pool["plan_bytes"], "pool residuals")
+        reconcile(row_calls == sum(row["calls"] for row in definitions) == calls == edge_calls == sum(edge["calls"] for edge in edges), "accepted calls")
+        reconcile(nested_calls == sum(row["nested_calls"] for row in definitions) == sum(edge["calls"] for edge in edges if edge["caller_row"]), "nested calls")
+        reconcile(default_calls == sum(row["default_calls"] for row in definitions) == edge_defaults == sum(edge["default_calls"] for edge in edges), "default calls")
+        reconcile(default_slots == sum(row["default_slots"] for row in definitions) == edge_slots == sum(edge["default_slots"] for edge in edges), "default slots")
+        reconcile(row_binds == sum(row["plan_binds"] for row in definitions) and row_bytes == sum(row["committed_bound_bytes"] for row in definitions), "body binding sums")
+        reconcile(row_binds + unattributed_calls == observed_binds and row_bytes + unattributed_bytes == observed_bytes, "body/unattributed bindings")
+        contexts = work.get("unknown_ownership", {}).get("bind_contexts")
+        if contexts is None:
+            raise ValueError("Missing template inventory definition bind contexts")
+        reconcile(observed_binds == sum(contexts[name]["calls"] for name in ("without_unit_definition", "with_unit_definition"))
+                  and observed_bytes == sum(contexts[name]["bound_bytes"] for name in ("without_unit_definition", "with_unit_definition")), "definition bind contexts")
+        for row in definitions:
+            consumers = [edge for edge in edges if edge["callee_row"] == row["row"]]
+            reconcile(row["calls"] == sum(edge["calls"] for edge in consumers)
+                      and row["nested_calls"] == sum(edge["calls"] for edge in consumers if edge["caller_row"])
+                      and row["default_calls"] == sum(edge["default_calls"] for edge in consumers)
+                      and row["default_slots"] == sum(edge["default_slots"] for edge in consumers), "per-definition consumers")
+            exemplar = (row["first_caller"], row["first_origin"], row["first_line"])
+            reconcile(any((edge["caller_row"], edge["origin"], edge["first_line"]) == exemplar for edge in consumers)
+                      if row["calls"] else exemplar == (0, 0, 0), "first consumer exemplar")
+    classification = None
+    if complete:
+        classification = {name: {"rows": [row["row"] for row in definitions if predicate(row)],
+                                 "definition_count": sum(predicate(row) for row in definitions),
+                                 "payload_bytes": sum(row["payload_bytes"] for row in definitions if predicate(row)),
+                                 "body_plan_binds": sum(row["plan_binds"] for row in definitions if predicate(row)),
+                                 "body_committed_bound_bytes": sum(row["committed_bound_bytes"] for row in definitions if predicate(row))}
+                          for name, predicate in (("never_invoked", lambda row: row["calls"] == 0),
+                                                  ("invoked", lambda row: row["calls"] > 0))}
+    return {"schema": schema, "errors": errors, "error_names": [name for bit, name in TEMPLATE_ERRORS if errors & bit],
+            "complete": complete, "classification_complete": complete, "current_epoch": epoch,
+            "observer_static_bytes": static_bytes, "definition_limit": definition_limit, "edge_limit": edge_limit,
+            "definition_count": count, "edge_count": edge_count, "finished_sessions": finished,
+            "open_rows_at_finish": open_rows, "unfinished_sessions": unfinished, "active_session": active,
+            "calls": calls, "direct_calls": calls - nested_calls if complete else None, "nested_calls": nested_calls,
+            "default_calls": default_calls, "default_slots": default_slots,
+            "observed_definition_plan_binds": observed_binds, "observed_definition_committed_bound_bytes": observed_bytes,
+            "unattributed_definition_plan_binds": unattributed_calls, "unattributed_definition_committed_bound_bytes": unattributed_bytes,
+            "pool_used_bytes": pool, "attributed_payload_bytes": attributed, "unattributed_pool_bytes": residual,
+            "definitions": definitions, "consumer_relationships": edges, "classification": classification,
+            "evidence_limit": "Calls count accepted queueCall invocations, including empty bodies, never lookups or previews. Relationships group caller row, callee row and origin with one first-line exemplar; they are not full source callsites. Lines use incoming invocation provenance; nested/generated records can inherit outer lines, so path/line pairs are not guaranteed original physical source coordinates. Body binding bytes are committed work deltas, not unique retained plan payload. All plan arena bytes are unattributed. No preparation was skipped and no savings or native completion are established."}
+
+
+def decode_template_paths(rows, definitions, edges):
+    """Validate optional copied path provenance without retaining source objects."""
+    if not any(phase >= 34999 for phase in rows):
+        return
+    def required(phase):
+        if phase not in rows:
+            raise ValueError(f"Missing template source path phase {phase}")
+        return rows[phase]
+    if required(34999) != [1, len(definitions), len(edges)]:
+        raise ValueError("Inconsistent template source path dictionary schema/counts")
+    expected = {34999}
+    for slot, provenance in enumerate(definitions + edges):
+        start = 35000 + slot * 24
+        origin, length, ordinal = required(start)
+        if origin != provenance["origin"] or ordinal != slot + 1 or length >= 256 or (not origin and length):
+            raise ValueError("Inconsistent template source path provenance")
+        chunks = (length + 11) // 12
+        expected.update(range(start, start + 1 + chunks))
+        data = b"".join(word.to_bytes(4, "big") for phase in range(start + 1, start + 1 + chunks)
+                        for word in required(phase))
+        if any(data[length:]):
+            raise ValueError("Nonzero template source path padding")
+        try:
+            provenance["source_path"] = data[:length].decode("utf-8", errors="strict")
+        except UnicodeDecodeError as error:
+            raise ValueError("Invalid UTF-8 template source path") from error
+    if any(phase >= 34999 and phase not in expected for phase in rows):
+        raise ValueError("Unexpected template source path chunk")

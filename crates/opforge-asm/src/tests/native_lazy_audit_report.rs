@@ -1,6 +1,9 @@
 //! L1 report decoder. A deferred report is evidence, not retirement authorization.
 use std::collections::BTreeMap;
 
+#[path = "native_lazy_template_report.rs"]
+mod template_inventory;
+
 pub(super) fn rows(stdout: &str) -> BTreeMap<u32, [u32; 3]> {
     let mut rows = BTreeMap::new();
     for line in stdout
@@ -19,7 +22,12 @@ pub(super) fn rows(stdout: &str) -> BTreeMap<u32, [u32; 3]> {
             })
             .collect();
         let phase = fields["p"];
-        if (700..=2466).contains(&phase) {
+        if (700..=2466).contains(&phase)
+            || (3000..=3014).contains(&phase)
+            || (3100..19484).contains(&phase)
+            || (20000..32288).contains(&phase)
+            || (34999..182456).contains(&phase)
+        {
             assert!(
                 rows.insert(phase, [fields["f"], fields["l"], fields["r"]])
                     .is_none(),
@@ -129,6 +137,11 @@ pub(super) fn assert_report(stdout: &str) -> BTreeMap<u32, [u32; 3]> {
     }
     if rows.contains_key(&2000) {
         assert_work_report(&rows);
+    } else {
+        assert!(
+            rows.range(3000..).next().is_none(),
+            "inventory requires work report"
+        );
     }
     rows
 }
@@ -369,6 +382,9 @@ fn assert_work_report(rows: &BTreeMap<u32, [u32; 3]>) {
                 );
             }
         }
+    }
+    if rows.range(3000..).next().is_some() {
+        template_inventory::assert_report(rows);
     }
 }
 

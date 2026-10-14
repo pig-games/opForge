@@ -137,6 +137,9 @@ def execute(args, cases):
                     if row["metadata"]["comparison_role"] == "audit" or row["metadata"].get("work_attribution_comparison"):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
+                        inventory = row["audit"].get("work_attribution", {}).get("template_inventory")
+                        if inventory is not None and not inventory["complete"]:
+                            raise ValueError("Incomplete template inventory")
                         needs_work_report = (
                             row["metadata"].get("work_observer_revision_comparison")
                             or (row["metadata"].get("work_attribution_comparison")

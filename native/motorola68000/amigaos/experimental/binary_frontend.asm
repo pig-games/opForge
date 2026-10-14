@@ -1054,6 +1054,7 @@ done
 lowerTokens	.block
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_WRITER
 	movem.l d1-d7/a0-a6, -(sp)
+	.WORK_TEMPLATE_FLOOR a6, TEMPLATE_STATE, Frame.ExpansionFloor(a5)
 	.MEMORY_STAGE #3
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.startLine
@@ -2643,6 +2644,7 @@ lexicalModeReady
 ; child frame and resume the parent when that child drains.
 expandRecord	.block
 generatedLoop
+	.WORK_TEMPLATE_FLOOR a6, TEMPLATE_STATE, Frame.ExpansionFloor(a5)
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0

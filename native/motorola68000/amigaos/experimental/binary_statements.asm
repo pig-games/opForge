@@ -4,6 +4,8 @@
 ; @opforge-owner: experimental.amigaos.binary_statements
 	.module experimental.amigaos.binary_statements
 	.cpu 68020
+	.include "lazy_work.i"
+	.include "lazy_template_hooks.i"
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_source as writer
@@ -534,6 +536,7 @@ publish
 	move.l Frame.Origin(a5), Row.Origin(a0)
 	movea.l Frame.RawRecord(a5), a1
 	move.w writer.RecordHeader.Line(a1), Row.Line(a0)
+	.WORK_TEMPLATE_LINE Frame.Templates(a5), Row.Template(a0), #1, Row.Line(a0)
 	clr.w Row.Reserved(a0)
 	move.l Local.RowOffset(a4), d0
 	addi.l #ROW_BYTES, d0

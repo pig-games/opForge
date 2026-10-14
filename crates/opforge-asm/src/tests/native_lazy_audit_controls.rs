@@ -124,6 +124,21 @@ pub(super) fn controls() -> Vec<Control> {
             .replace(".byte $11", ".byte $11,VALUE.value"),
         includes: vec![],
     });
+    let definitions = "ONCE .macro value=7\n.byte .value\n.endmacro\nOUTER .macro value\n.ONCE .value\n.endmacro\nSTASH .segment value\n.byte .value\n.endsegment\nEMPTY .macro\n.endmacro\nUNUSED .macro value=9\n.byte .value\n.endmacro\nUNUSED_SEG .segment\n.byte 10\n.endsegment\n.statement LOAD byte:x\n.byte .x\n.endstatement\n.statement DORMANT byte:x\n.byte .x\n.endstatement\nWRAP .macro value\n LOAD .value\n.endmacro\n";
+    result.push(Control {
+        name: "template-inventory-lifecycle".into(),
+        source: base
+            .replace(".module dep\n.cpu 68020\n", &format!(".module dep\n.cpu 68020\n{definitions}"))
+            .replace("entry .block\n.byte $11", "entry .block\n.ONCE\n.OUTER 4\n.STASH 6\n.EMPTY\n LOAD 5\n.WRAP 8\n.if 0\n.UNUSED\n.endif\n.byte $11"),
+        includes: vec![],
+    });
+    result.push(Control {
+        name: "template-inventory-include-floor".into(),
+        source: base
+            .replace(".module dep\n.cpu 68020\n", ".module dep\n.cpu 68020\nLOAD .macro file\n.include .file\n.LEAF 8\n.endmacro\nLEAF .macro value\n.byte .value\n.endmacro\n")
+            .replace("entry .block\n.byte $11", "entry .block\n.LOAD \"consumer.inc\"\n.byte $11"),
+        includes: vec![("consumer.inc", ".LEAF 7\n")],
+    });
     result
 }
 
@@ -226,6 +241,18 @@ fn native_lazy_audit_prebuilt_fs_uae() {
     }
     if std::env::var_os("OPFORGE_LAZY_WORK_IMAGE").is_some() {
         variables.push("OPFORGE_LAZY_WORK_IMAGE");
+    }
+    if let Ok(selected) = std::env::var("OPFORGE_LAZY_CHECK_ROLES") {
+        let roles: Vec<_> = selected.split(',').collect();
+        assert!(
+            roles.iter().all(|role| variables.contains(role)),
+            "select configured audit image roles"
+        );
+        variables.retain(|role| roles.contains(role));
+        assert!(
+            !variables.is_empty(),
+            "select at least one audit image role"
+        );
     }
     for variable in variables {
         let mut costed_work = std::collections::BTreeMap::new();
@@ -349,6 +376,81 @@ fn native_lazy_audit_prebuilt_fs_uae() {
                     assert!(
                         rows[&710][1] > 0,
                         "generated block relationships are explicitly deferred"
+                    );
+                }
+                if rows.contains_key(&3000) && case.name == "template-inventory-lifecycle" {
+                    let definitions: Vec<Vec<_>> = (0..rows[&3002][0])
+                        .map(|index| {
+                            (3100 + 8 * index..3108 + 8 * index)
+                                .flat_map(|phase| rows[&phase])
+                                .collect()
+                        })
+                        .collect();
+                    let epoch = definitions
+                        .iter()
+                        .map(|definition| definition[0])
+                        .max()
+                        .unwrap();
+                    let current: Vec<_> = definitions
+                        .iter()
+                        .filter(|definition| definition[0] == epoch)
+                        .collect();
+                    assert_eq!(
+                        current.len(),
+                        9,
+                        "registered definitions, including never invoked"
+                    );
+                    assert_eq!(
+                        current.iter().map(|definition| definition[14]).sum::<u32>(),
+                        8,
+                        "accepted invocations include empty body"
+                    );
+                    for (field, expected) in [(15, 2), (16, 1), (22, 1)] {
+                        assert_eq!(
+                            current
+                                .iter()
+                                .map(|definition| definition[field])
+                                .sum::<u32>(),
+                            expected,
+                            "nested/default consumers"
+                        );
+                    }
+                    let unused: Vec<_> = current
+                        .iter()
+                        .filter(|definition| definition[14] == 0)
+                        .collect();
+                    assert_eq!(unused.len(), 3, "inactive call is not a consumer");
+                    assert!(
+                        unused.iter().any(|definition| definition[20] > 0),
+                        "never-invoked body still incurs binding work"
+                    );
+                }
+                if rows.contains_key(&3000) && case.name == "template-inventory-include-floor" {
+                    let definitions: Vec<Vec<_>> = (0..rows[&3002][0])
+                        .map(|index| {
+                            (3100 + 8 * index..3108 + 8 * index)
+                                .flat_map(|phase| rows[&phase])
+                                .collect()
+                        })
+                        .collect();
+                    let epoch = definitions
+                        .iter()
+                        .map(|definition| definition[0])
+                        .max()
+                        .unwrap();
+                    let current: Vec<_> = definitions
+                        .iter()
+                        .filter(|definition| definition[0] == epoch)
+                        .collect();
+                    assert_eq!(current.len(), 2);
+                    assert_eq!(
+                        current.iter().map(|definition| definition[14]).sum::<u32>(),
+                        3
+                    );
+                    assert_eq!(
+                        current.iter().map(|definition| definition[15]).sum::<u32>(),
+                        1,
+                        "physical include is direct; resumed LOAD owns its nested call"
                     );
                 }
             }

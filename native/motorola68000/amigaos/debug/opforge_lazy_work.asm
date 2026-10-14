@@ -18,6 +18,7 @@
 .endif
 	.pub
 	.include "lazy_work_layout.i"
+	.include "lazy_template_layout.i"
 	.section code, kind=code
 	.pub
 ; Every passive entry preserves registers/CCR/stack, including failure paths.
@@ -36,6 +37,7 @@ next
 	move.l #CAPTURE_BYTES, WorkFields.TopRows+Top.Metric(a0)
 	move.l #PLAN_BIND, WorkFields.TopRows+TOP_BYTES+Top.Metric(a0)
 	move.l #BOUND_BYTES, WorkFields.TopRows+TOP_BYTES*2+Top.Metric(a0)
+	bsr.w templateClear
 	movem.l (sp)+, d0/a0
 	move.w (sp)+, ccr
 	rts
@@ -238,6 +240,11 @@ group
 	move.l d2, d1
 	lea WorkFields.Contexts(a1), a0
 	bsr.w addScalar
+	; context transforms D1 while selecting its slot; inventory receives the
+	; original metric and amount from this routine's preservation frame.
+	move.l 4(sp), d1
+	move.l 8(sp), d2
+	bsr.w templateCount
 	bra.w done
 invalidInput
 	ori.l #INVALID, WorkFields.Errors(a1)
@@ -491,10 +498,13 @@ done
 	rts
 	.bend  ; effect
 	.include "lazy_work_partition.i"
+	.include "lazy_work_templates.i"
+	.include "lazy_work_template_report.i"
 	.include "lazy_work_report.i"
 	.endsection
 	.section bss, kind=bss
 	.priv
 State	.res byte, WORK_STATE_BYTES
+TemplateState .res byte, TEMPLATE_STATE_BYTES
 	.endsection
 	.endmodule

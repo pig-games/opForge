@@ -153,6 +153,7 @@ publish
 	moveq #0, d1
 	move.w State.ExternalCount(a6), d1
 	move.w d1, State.ExternalOpen(a6)
+	.WORK_TEMPLATE_DEFINE a6, a0, #1, #0
 	moveq #STATUS_OK, d0
 	bra.w done
 bad
@@ -211,6 +212,7 @@ externalClose	.block
 	cmpi.w #KIND_EXTERNAL, Def.Kind(a1)
 	bne.w bad
 	move.l State.Used(a0), Def.Last(a1)
+	.WORK_TEMPLATE_CLOSE a0, a1, #1
 	clr.w State.ExternalOpen(a0)
 	moveq #STATUS_OK, d0
 	bra.w done

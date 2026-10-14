@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 spec = importlib.util.spec_from_file_location(
@@ -74,6 +76,30 @@ class LazyComparisonTests(unittest.TestCase):
             for case in cases[4:]:
                 self.assertIn("OPFORGE_MEMORY_TELEMETRY", case["bootstrap_defines"])
             self.assertTrue(all(not case["metadata"]["candidate_source_selfhost_proven"] for case in cases))
+
+    def test_incomplete_inventory_rejects_otherwise_complete_native_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory))
+            args.work_attribution = True
+            self.add_work_images(args.images, "candidate")
+            case = module.prepare(args)[-1]  # Audit memory case.
+            result_dir = case.parent / "result"
+            result_dir.mkdir()
+            metadata = json.loads(case.read_text())["metadata"]
+            (result_dir / "native-result.json").write_text(json.dumps({"success": True, "metadata": metadata}))
+            (result_dir / "memory.bin").write_bytes(b"")
+            (result_dir / "assembly.stdout").write_text("bounded inventory overflow report")
+            audit = {"observer_complete": True, "work_attribution": {
+                "accounting_complete": True, "template_inventory": {"complete": False, "errors": 38}}}
+            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={"diagnostics": []}), \
+                 patch.object(module.lazy_preparation_audit, "decode", return_value=audit):
+                self.assertFalse(module.execute(args, [case]))
+            saved = json.loads((case.parent / "result.json").read_text())
+            self.assertFalse(saved["success"])
+            self.assertEqual(saved["error"], "Incomplete template inventory")
+            self.assertTrue(saved["audit"]["work_attribution"]["accounting_complete"])
+            self.assertEqual(saved["test_exit_code"], 0)
 
     def test_changed_source_is_rejected_before_staging(self):
         with tempfile.TemporaryDirectory() as directory:

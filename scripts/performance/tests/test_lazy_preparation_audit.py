@@ -266,5 +266,248 @@ class WorkDecoderTests(unittest.TestCase):
                 module.decode(stdout(rows))
 
 
+class TemplateInventoryTests(WorkDecoderTests):
+    def inventory_report(self):
+        rows = self.unknown_report()
+        rows[2011][2] = rows[2041][2] = 108
+        rows.update({3000: [1, 0, 1], 3001: [238760, 2048, 4096], 3002: [3, 3, 1],
+                     3003: [3, 2, 4], 3004: [1, 2, 3], 3005: [40, 32, 4],
+                     3006: [12, 20, 40], 3007: [40, 32, 4], 3008: [12, 20, 3],
+                     3009: [0, 0, 0], 3010: [0, 0, 40], 3011: [0, 0, 0],
+                     3012: [0, 4, 4], 3013: [3, 2, 2], 3014: [3, 0, 0]})
+        definitions = [
+            [1, 1, 0, 1, 10, 1, 2, 1000, 100, 120, 24, 4, 8, 1, 3, 1, 2, 0, 1, 10, 2, 2, 3, 0],
+            [1, 1, 1, 2, 20, 2, 3, 1001, 200, 200, 32, 0, 4, 1, 1, 0, 0, 0, 2, 20, 1, 0, 0, 0],
+            [1, 2, 0, 0, 30, 1, 4, 0, 300, 300, 16, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]]
+        for index, values in enumerate(definitions):
+            for part in range(8):
+                rows[3100 + index * 8 + part] = values[part * 3:part * 3 + 3]
+        for index, values in enumerate(([0, 1, 1, 10, 2, 1, 1, 0, 0],
+                                         [2, 1, 2, 11, 1, 1, 2, 0, 0],
+                                         [0, 2, 2, 20, 1, 0, 0, 0, 0])):
+            for part in range(3):
+                rows[20000 + index * 3 + part] = values[part * 3:part * 3 + 3]
+        return rows
+
+    def inventory(self, rows=None):
+        return module.decode(stdout(self.inventory_report() if rows is None else rows))["work_attribution"]["template_inventory"]
+
+    def test_optional_inventory_and_complete_scalar_relationships(self):
+        self.assertNotIn("template_inventory", module.decode(stdout(self.unknown_report()))["work_attribution"])
+        inventory = self.inventory()
+        self.assertTrue(inventory["complete"])
+        self.assertEqual(inventory["direct_calls"], 3)
+        self.assertEqual(inventory["classification"]["never_invoked"]["rows"], [3])
+        self.assertEqual(inventory["classification"]["never_invoked"]["payload_bytes"], 16)
+        self.assertEqual(inventory["definitions"][1]["body_bytes"], 0)
+        self.assertEqual(inventory["definitions"][1]["calls"], 1)  # Accepted empty invocation.
+        self.assertEqual(inventory["unattributed_pool_bytes"]["plan_bytes"], 40)
+        self.assertEqual(inventory["observed_definition_committed_bound_bytes"], 2)
+        self.assertNotIn("source_path", inventory["definitions"][0])
+        self.assertNotIn("guest_protocol_completed", inventory)
+
+    def test_missing_truncated_duplicate_and_extra_rows_are_rejected(self):
+        for phase in (3000, 3014, 3107, 20008):
+            bad = self.inventory_report()
+            del bad[phase]
+            with self.assertRaisesRegex(ValueError, "Missing"):
+                self.inventory(bad)
+        bad = self.inventory_report()
+        bad[3124] = [0, 0, 0]
+        with self.assertRaisesRegex(ValueError, "Unexpected"):
+            self.inventory(bad)
+        text = stdout(self.inventory_report()) + "\nprogress p=00000C1C f=1 l=1 r=0"
+        with self.assertRaisesRegex(ValueError, "Duplicate"):
+            module.decode(text)
+
+    def test_definition_identity_and_edge_grouping_are_unique(self):
+        bad = self.inventory_report()
+        for part in range(8):
+            bad[3116 + part] = bad[3100 + part][:]
+        with self.assertRaisesRegex(ValueError, "duplicate template definition"):
+            self.inventory(bad)
+        bad = self.inventory_report()
+        bad[20003] = bad[20000][:]
+        with self.assertRaisesRegex(ValueError, "duplicate template consumer"):
+            self.inventory(bad)
+
+    def test_full_inventory_crosses_former_definition_capacity_without_phase_overlap(self):
+        rows = self.inventory_report()
+        count = 1361
+        added_bytes = (count - 3) * 184
+        rows[3002][0] = rows[3008][2] = count
+        rows[3005][0] += added_bytes
+        rows[3007][0] += added_bytes
+        rows[2011][2] += added_bytes
+        rows[2041][2] += added_bytes
+        for index in range(3, count):
+            values = [1, index + 10, 0, 0, 0, 1, 0, 0, 0, 0, 184, 0, 0, 1] + [0] * 10
+            for part in range(8):
+                rows[3100 + index * 8 + part] = values[part * 3:part * 3 + 3]
+        inventory = self.inventory(rows)
+        self.assertTrue(inventory["complete"])
+        self.assertEqual(inventory["definition_count"], count)
+        self.assertEqual(inventory["classification"]["never_invoked"]["definition_count"], count - 2)
+        self.assertEqual(inventory["edge_count"], 3)
+
+    def overlap_report(self):
+        rows = self.inventory_report()
+        rows[3000][2] = rows[3002][2] = 2
+        rows[3108][0] = rows[3116][0] = 2
+        rows[3116][1] = 1  # Pool/handle reused in a later epoch.
+        rows[20003][0] = 1  # Recursive consumer stays within epoch 1.
+        return rows
+
+    def test_overlapping_finished_epochs_keep_distinct_owner_identities(self):
+        inventory = self.inventory(self.overlap_report())
+        self.assertTrue(inventory["complete"])
+        self.assertEqual([row["epoch"] for row in inventory["definitions"]], [1, 2, 2])
+        self.assertEqual(inventory["finished_sessions"], 2)
+        self.assertEqual(inventory["calls"], 4)
+        bad = self.overlap_report()
+        bad[20003][0] = 2
+        with self.assertRaisesRegex(ValueError, "consumer relationship"):
+            self.inventory(bad)
+
+    def test_owner_count_and_static_table_bounds_are_checked(self):
+        for phase, field, value in ((3001, 0, 0), (3001, 0, 238761),
+                                     (3002, 2, 2), (3014, 1, 5)):
+            bad = self.inventory_report()
+            bad[phase][field] = value
+            with self.assertRaisesRegex(ValueError, "bounds", msg=(phase, field, value)):
+                self.inventory(bad)
+        for active in range(1, 5):
+            bad = self.inventory_report()
+            bad[3014][1] = active
+            inventory = self.inventory(bad)
+            self.assertEqual(inventory["active_session"], active)
+            self.assertFalse(inventory["complete"])
+
+    def test_bad_scalar_contracts_and_cross_epoch_parent_are_rejected(self):
+        for phase, field, value in ((3000, 0, 2), (3001, 1, 2047), (3002, 0, 2049),
+                                     (3014, 2, 1), (3101, 0, 3), (3108, 2, 0),
+                                     (3104, 1, 2), (3103, 0, 99), (20000, 1, 4),
+                                     (20001, 1, 0), (20002, 1, 1)):
+            bad = self.inventory_report()
+            bad[phase][field] = value
+            with self.assertRaises(ValueError, msg=(phase, field, value)):
+                self.inventory(bad)
+        bad = self.inventory_report()
+        bad[3000][2] = bad[3108][0] = 2
+        with self.assertRaisesRegex(ValueError, "consumer relationship"):
+            self.inventory(bad)
+
+    def test_count_payload_and_binding_conservation_rejects_malformed_totals(self):
+        for phase, field in ((3003, 0), (3003, 1), (3003, 2), (3004, 0), (3004, 1),
+                             (3004, 2), (3005, 0), (3007, 0), (3008, 2), (3009, 1),
+                             (3010, 2), (3012, 1), (3012, 2), (3013, 0), (3013, 1),
+                             (3013, 2), (3014, 0), (3104, 2), (3105, 0), (3107, 1),
+                             (3106, 2)):
+            bad = self.inventory_report()
+            bad[phase][field] += 1
+            with self.assertRaisesRegex(ValueError, "conservation", msg=(phase, field)):
+                self.inventory(bad)
+
+    def test_errors_or_unfinished_observation_never_classify_usage(self):
+        for phase, field in ((3000, 1), (3011, 0), (3011, 1), (3014, 1)):
+            bad = self.inventory_report()
+            bad[phase][field] = 1
+            # Invalid observed totals may be reported, never certified.
+            bad[3003][2] += 1
+            inventory = self.inventory(bad)
+            self.assertFalse(inventory["complete"])
+            self.assertFalse(inventory["classification_complete"])
+            self.assertIsNone(inventory["classification"])
+        bad = self.inventory_report()
+        bad[700][1] = 1
+        self.assertFalse(self.inventory(bad)["complete"])
+
+    def test_pool_residuals_and_missing_row_binding_are_explicit(self):
+        rows = self.inventory_report()
+        rows[3005][0] += 8
+        rows[3009][0] += 8
+        rows[2011][2] += 8
+        rows[2041][2] += 8
+        rows[3106][2] -= 1
+        rows[3013][0] -= 1
+        rows[3011][2] += 1
+        inventory = self.inventory(rows)
+        self.assertTrue(inventory["complete"])
+        self.assertEqual(inventory["unattributed_pool_bytes"]["internal_definition_bytes"], 8)
+        self.assertEqual(inventory["unattributed_definition_plan_binds"], 1)
+
+    def test_per_definition_consumers_and_definition_contexts_must_conserve(self):
+        bad = self.inventory_report()
+        bad[3104][2] -= 1
+        bad[3108 + 4][2] += 1
+        with self.assertRaisesRegex(ValueError, "per-definition consumers"):
+            self.inventory(bad)
+        bad = self.inventory_report()
+        bad[2282] = [2, 2, 1]
+        bad[2283][0] = 0
+        with self.assertRaisesRegex(ValueError, "definition bind contexts"):
+            self.inventory(bad)
+
+    def template_path_report(self):
+        rows = self.inventory_report()
+        rows[34999] = [1, 3, 3]
+        for slot in range(6):
+            start = 35000 + slot * 24
+            origin = rows[3101 + slot * 8][2] if slot < 3 else rows[20000 + (slot - 3) * 3][2]
+            data = "src/é.asm".encode("utf-8") if slot != 2 else b""
+            rows[start] = [origin, len(data), slot + 1]
+            if data:
+                padded = data + bytes((-len(data)) % 12)
+                rows[start + 1] = [int.from_bytes(padded[index:index + 4], "big") for index in (0, 4, 8)]
+        return rows
+
+    def test_optional_template_source_paths_match_definition_and_edge_origins(self):
+        inventory = self.inventory(self.template_path_report())
+        self.assertEqual(inventory["definitions"][0]["source_path"], "src/é.asm")
+        self.assertEqual(inventory["definitions"][2]["source_path"], "")
+        self.assertEqual(inventory["consumer_relationships"][1]["source_path"], "src/é.asm")
+        self.assertTrue(inventory["complete"])
+
+    def test_template_source_dictionary_rejects_missing_counts_chunks_and_provenance(self):
+        for phase in (34999, 35001, 35072, 35120):
+            bad = self.template_path_report()
+            del bad[phase]
+            with self.assertRaisesRegex(ValueError, "Missing template source path"):
+                self.inventory(bad)
+        for phase, field, value in ((34999, 0, 2), (34999, 1, 2), (34999, 2, 2),
+                                     (35000, 0, 2), (35000, 1, 256), (35000, 2, 2),
+                                     (35001, 2, 1), (35001, 0, 0xff000000), (35072, 0, 2)):
+            bad = self.template_path_report()
+            bad[phase][field] = value
+            with self.assertRaises(ValueError, msg=(phase, field, value)):
+                self.inventory(bad)
+        bad = self.template_path_report()
+        bad[35049] = [0, 0, 0]  # Extra chunk for an unavailable path.
+        with self.assertRaisesRegex(ValueError, "Unexpected template source path chunk"):
+            self.inventory(bad)
+        bad = self.template_path_report()
+        bad[3101][2] = bad[35000][0] = 0
+        with self.assertRaisesRegex(ValueError, "template source path provenance"):
+            self.inventory(bad)
+
+    def test_no_rows_is_valid_for_finished_failed_or_clear_probe(self):
+        rows = self.inventory_report()
+        rows = {phase: value for phase, value in rows.items() if phase < 3100}
+        for phase in (3002, 3003, 3004, 3007, 3008, 3011, 3012, 3013, 3014):
+            rows[phase] = [0, 0, 0]
+        rows[3002][2] = 1
+        rows[3009] = rows[3005][:]
+        rows[3010] = rows[3006][:]
+        rows[2282] = [0, 0, 3]
+        rows[2283] = [2, 0, 0]
+        inventory = self.inventory(rows)
+        self.assertTrue(inventory["complete"])
+        self.assertEqual(inventory["classification"]["never_invoked"]["definition_count"], 0)
+        rows[3000][2] = rows[3002][2] = 0
+        rows[2011][2] = rows[2041][2] = 0
+        rows[3005] = rows[3006] = rows[3009] = rows[3010] = [0, 0, 0]
+        self.assertTrue(self.inventory(rows)["complete"])  # No template session.
+
+
 if __name__ == "__main__":
     unittest.main()

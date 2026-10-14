@@ -7,7 +7,7 @@
 	.use experimental.amigaos.binary_source as source
 	.section code, kind=code
 	.pub
-; D0/CCR=status (11..20 invariant failure); preserves other registers.
+; D0/CCR=status (11..25 invariant failure); preserves other registers.
 run	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l sp, SavedSp
@@ -27,6 +27,8 @@ run	.block
 	.WORK_BOUND_BEGIN #10
 	.WORK_BOUND_END #14
 	.WORK_TEMPLATE_DELTA #10, #14
+	.WORK_PLAN_CONTEXT #1
+	.WORK_CONTEXT 0, #3
 	.WORK_SAMPLE_BEGIN #1
 	.WORK_CALL lazy_work.sampleEnd
 	move.w ccr, AfterFlags
@@ -204,7 +206,7 @@ acquisitions
 	move.l #capture.HEADER_BYTES, Malformed+capture.Record.Bytes
 	move.l #capture.HEADER_BYTES+1, Malformed+capture.Record.LexemeBytes
 	lea InvalidRegion, a4
-	.WORK_CAPTURE_REGION a4
+	.WORK_CAPTURE_REGION a4, #capture.HEADER_BYTES
 	jsr lazy_work.getState
 	moveq #16, d0
 	cmpi.l #lazy_units.INVALID, lazy_work.WorkFields.Errors(a0)
@@ -218,6 +220,134 @@ acquisitions
 	bne.w done
 	tst.l lazy_work.WorkFields.Totals+lazy_work.BIND(a0)
 	bne.w done
+	; Quantitative unknown split, stable largest rows, scalar range causes.
+	jsr lazy_work.clear
+	jsr lazy_units.clear
+	jsr lazy_units.getState
+	move.l #4, lazy_units.Fields.Count(a0)
+	lea lazy_units.Fields.Events(a0), a1
+	moveq #3, d2
+seedRanges
+	move.l #10, lazy_units.Event.CaptureOpen(a1)
+	move.l #10, lazy_units.Event.CaptureClose(a1)
+	move.l #20, lazy_units.Event.OriginalEnd(a1)
+	move.l #1, lazy_units.Event.Origin(a1)
+	move.l #2, lazy_units.Event.Line(a1)
+	move.l #1, lazy_units.Event.Unit(a1)
+	adda.w #lazy_units.EVENT_BYTES, a1
+	dbra d2, seedRanges
+	lea lazy_units.Fields.Events(a0), a1
+	move.l #9, lazy_units.Event.CaptureClose(a1)
+	move.l #14+capture.HEADER_BYTES, lazy_units.EVENT_BYTES+lazy_units.Event.CaptureClose(a1)
+	clr.l lazy_units.EVENT_BYTES*2+lazy_units.Event.OriginalEnd(a1)
+	move.l #5, lazy_units.EVENT_BYTES*3+lazy_units.Event.CaptureOpen(a1)
+	move.l #10, lazy_units.EVENT_BYTES*3+lazy_units.Event.PreviousCapture(a1)
+	; The preceding malformed-record probe deliberately left invalid lengths.
+	; This independent valid owner starts from a fully cleared capture header.
+	lea Malformed, a1
+	moveq #capture.HEADER_BYTES/4-1, d2
+clearCapture
+	clr.l (a1)+
+	dbra d2, clearCapture
+	move.l #capture.MAGIC, Malformed+capture.Record.Magic
+	move.l #capture.HEADER_BYTES, Malformed+capture.Record.Bytes
+	move.l #1, Malformed+capture.Record.Origin
+	move.w #2, Malformed+capture.Record.Line
+	lea AuditRegion, a1
+	move.l #10+capture.HEADER_BYTES, d0
+	jsr lazy_work.captureRegion
+	jsr lazy_work.getState
+	moveq #22, d0
+	tst.l lazy_work.WorkFields.Errors(a0)
+	bne.w done
+	cmpi.l #lazy_work.BAD_RANGE, lazy_work.WorkFields.Rows+lazy_work.ROW_BYTES+lazy_work.Row.Reasons(a0)
+	bne.w done
+	lea lazy_work.WorkFields.RangeCounts(a0), a1
+	moveq #3, d2
+checkRanges
+	cmpi.l #1, (a1)+
+	bne.w done
+	dbra d2, checkRanges
+	cmpi.l #10, lazy_work.WorkFields.RangeExamples+28(a0)
+	bne.w done
+	cmpi.l #10+capture.HEADER_BYTES, lazy_work.WorkFields.RangeExamples+32(a0)
+	bne.w done
+	; Force one row-owned cost with another global remainder. These observations
+	; do not claim that the latter happened outside an eventual reconciled unit.
+	move.l #2, lazy_work.WorkFields.Totals+lazy_work.PLAN_BIND(a0)
+	move.l #1, lazy_work.WorkFields.Rows+lazy_work.Row.Values+lazy_work.PLAN_BIND(a0)
+	move.l #40, lazy_work.WorkFields.Totals+lazy_work.BOUND_BYTES(a0)
+	move.l #30, lazy_work.WorkFields.Rows+lazy_work.Row.Values+lazy_work.BOUND_BYTES(a0)
+	lea BlockRows, a4
+	.WORK_SELECTED a4, #1
+	jsr lazy_work.getState
+	moveq #23, d0
+	tst.l lazy_work.WorkFields.Errors(a0)
+	bne.w done
+	cmpi.l #1, lazy_work.WorkFields.UnknownRows+lazy_work.PLAN_BIND(a0)
+	bne.w done
+	cmpi.l #1, lazy_work.WorkFields.Residual+lazy_work.PLAN_BIND(a0)
+	bne.w done
+	cmpi.l #30, lazy_work.WorkFields.UnknownRows+lazy_work.BOUND_BYTES(a0)
+	bne.w done
+	cmpi.l #10, lazy_work.WorkFields.Residual+lazy_work.BOUND_BYTES(a0)
+	bne.w done
+	cmpi.l #1, lazy_work.WorkFields.TopRows+lazy_work.TOP_BYTES+lazy_work.Top.Event(a0)
+	bne.w done
+	; One complete physical unit spans two independently retained arenas. The
+	; close equals the first region endpoint but is below the actual global end.
+	jsr lazy_work.clear
+	jsr lazy_units.clear
+	jsr lazy_units.getState
+	move.l #1, lazy_units.Fields.Count(a0)
+	lea lazy_units.Fields.Events(a0), a1
+	move.l #10, lazy_units.Event.CaptureOpen(a1)
+	move.l #10+capture.HEADER_BYTES, lazy_units.Event.CaptureClose(a1)
+	move.l #10, lazy_units.Event.OriginalOpen(a1)
+	move.l #20, lazy_units.Event.OriginalEnd(a1)
+	move.l #10, lazy_units.Event.FinalOpen(a1)
+	move.l #1, lazy_units.Event.Origin(a1)
+	move.l #2, lazy_units.Event.Line(a1)
+	move.l #1, lazy_units.Event.Unit(a1)
+	lea AuditRegion, a4
+	.WORK_CAPTURE_REGION a4, #10+capture.HEADER_BYTES*2
+	lea SecondRegion, a4
+	.WORK_CAPTURE_REGION a4, #10+capture.HEADER_BYTES*2
+	jsr lazy_work.getState
+	moveq #25, d0
+	tst.l lazy_work.WorkFields.Errors(a0)
+	bne.w done
+	tst.l lazy_work.WorkFields.Rows+lazy_work.Row.Reasons(a0)
+	bne.w done
+	cmpi.l #capture.HEADER_BYTES*2, lazy_work.WorkFields.Rows+lazy_work.Row.Values+lazy_work.CAPTURE_BYTES(a0)
+	bne.w done
+	cmpi.l #capture.HEADER_BYTES*2, lazy_work.WorkFields.Totals+lazy_work.CAPTURE_BYTES(a0)
+	bne.w done
+	cmpi.l #2, lazy_work.WorkFields.CaptureRecords(a0)
+	bne.w done
+	cmpi.l #1, lazy_work.WorkFields.RangeCounts+4(a0)
+	bne.w done
+	cmpi.l #1, lazy_work.WorkFields.RangeCounts+12(a0)
+	bne.w done
+	lea BlockRows, a4
+	.WORK_SELECTED a4, #1
+	jsr lazy_work.getState
+	cmpi.l #capture.HEADER_BYTES*2, lazy_work.WorkFields.Unreferenced+lazy_work.CAPTURE_BYTES(a0)
+	bne.w done
+	tst.l lazy_work.WorkFields.Unknown+lazy_work.CAPTURE_BYTES(a0)
+	bne.w done
+	jsr lazy_work.clear
+	.WORK_PLAN_CONTEXT #1
+	.WORK_CONTEXT 0, #3
+	moveq #0, d0
+	.WORK_BOUND_BEGIN #10
+	.WORK_BOUND_END #17
+	jsr lazy_work.getState
+	moveq #24, d0
+	cmpi.l #3, lazy_work.WorkFields.Contexts+8(a0)
+	bne.w done
+	cmpi.l #7, lazy_work.WorkFields.Contexts+12(a0)
+	bne.w done
 	jsr lazy_units.clear
 	moveq #0, d0
 done
@@ -227,6 +357,10 @@ done
 	.bend  ; run
 	.endsection
 	.section data, kind=data
+SecondRegion	.long 10+capture.HEADER_BYTES, 10+capture.HEADER_BYTES*2, 1, 0
+	.long Malformed, capture.HEADER_BYTES, capture.HEADER_BYTES
+AuditRegion	.long 10, 10+capture.HEADER_BYTES, 1, 0
+	.long Malformed, capture.HEADER_BYTES, capture.HEADER_BYTES
 InvalidRegion	.long 0, capture.HEADER_BYTES, 1, 0
 	.long Malformed, capture.HEADER_BYTES, capture.HEADER_BYTES
 Seed	.long $10101010, $21212121, $32323232, $43434343

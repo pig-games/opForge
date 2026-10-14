@@ -31,7 +31,11 @@ next
 	subq.l #1, d0
 	bne.w next
 	lea State, a0
+	move.l #CONTEXT_ORDINARY, WorkFields.PlanContext(a0)
 	move.l #-1, WorkFields.LastCapture(a0)
+	move.l #CAPTURE_BYTES, WorkFields.TopRows+Top.Metric(a0)
+	move.l #PLAN_BIND, WorkFields.TopRows+TOP_BYTES+Top.Metric(a0)
+	move.l #BOUND_BYTES, WorkFields.TopRows+TOP_BYTES*2+Top.Metric(a0)
 	movem.l (sp)+, d0/a0
 	move.w (sp)+, ccr
 	rts
@@ -182,21 +186,66 @@ boundBegin	.block
 ; D0=status,D1=new used. Only committed successful delta is counted.
 boundEnd	.block
 	move.w ccr, -(sp)
-	movem.l d0-d1, -(sp)
+	movem.l d0-d2, -(sp)
 	tst.l d0
 	bne.w done
 	sub.l State+WorkFields.BoundBefore, d1
 	bcs.w invalidInput
 	moveq #BOUND_BYTES, d0
 	jsr count
+	move.l d1, d2
+	moveq #1, d1
+	jsr context
 	bra.w done
 invalidInput
 	ori.l #INVALID, State+WorkFields.Errors
 done
-	movem.l (sp)+, d0-d1
+	movem.l (sp)+, d0-d2
 	move.w (sp)+, ccr
 	rts
 	.bend  ; boundEnd
+	; Generic context observer: category is supplied by its owning frontend.
+; No borrowed pointers, template imports, or production decisions.
+contextSet	.block
+	move.w ccr, -(sp)
+	cmpi.l #2, d0
+	bhi.w invalidInput
+	move.l d0, State+WorkFields.PlanContext
+	bra.w done
+invalidInput
+	ori.l #INVALID, State+WorkFields.Errors
+done
+	move.w (sp)+, ccr
+	rts
+	.bend  ; contextSet
+; D1=0 calls/1 committed bytes,D2=amount. Groups are call-time observations.
+context	.block
+	move.w ccr, -(sp)
+	movem.l d0-d2/a0-a1, -(sp)
+	lea State, a1
+	cmpi.l #1, d1
+	bhi.w invalidInput
+	move.l WorkFields.PlanContext(a1), d0
+	cmpi.l #2, d0
+	bhi.w invalidInput
+	tst.l WorkFields.SampleOwner(a1)
+	beq.w group
+	addq.l #3, d0
+group
+	lsl.l #3, d0
+	lsl.l #2, d1
+	add.l d1, d0
+	move.l d2, d1
+	lea WorkFields.Contexts(a1), a0
+	bsr.w addScalar
+	bra.w done
+invalidInput
+	ori.l #INVALID, WorkFields.Errors(a1)
+done
+	movem.l (sp)+, d0-d2/a0-a1
+	move.w (sp)+, ccr
+	rts
+	.bend  ; context
 	; Successful template Def pool publication, D1=current,D2=previous.
 templateDelta	.block
 	move.w ccr, -(sp)

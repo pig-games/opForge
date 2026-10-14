@@ -22,7 +22,7 @@ def decode(stdout):
         if not {"p", "f", "l", "r"} <= fields.keys():
             raise ValueError("Incomplete L1 progress fields")
         phase = fields["p"]
-        if 700 <= phase <= 2171:
+        if 700 <= phase <= 2466:
             if phase in rows:
                 raise ValueError(f"Duplicate L1 report phase {phase}")
             rows[phase] = [fields["f"], fields["l"], fields["r"]]
@@ -142,7 +142,7 @@ def decode_work(rows, observer_complete):
     for metric in WORK_METRICS:
         if sum(row["exclusive"][metric] for row in details) > vectors["total"][metric]:
             raise ValueError(f"Inconsistent work detail conservation: {metric}")
-    return {"schema": version, "errors": errors, "row_count": count,
+    result = {"schema": version, "errors": errors, "row_count": count,
             "coverage_complete": observer_complete and errors == 0 and reasons == 0
                                  and not any(vectors["unknown"].values()),
             "accounting_complete": observer_complete and errors == 0,
@@ -153,3 +153,96 @@ def decode_work(rows, observer_complete):
             "observer_capture_header_bytes": observer_header_bytes,
             "metrics": vectors, "details": details,
             "evidence_limit": "Observed preparation calls and retained used bytes; no avoided work, memory savings or native completion proof."}
+
+    if any(2200 <= phase <= 2281 for phase in rows):
+        extension, top_count, provenance_bytes = required(2200)
+        if (extension, top_count, provenance_bytes) != (1, 3, 36):
+            raise ValueError("Unsupported unknown ownership extension contract")
+        def vector(start):
+            return dict(zip(WORK_METRICS, (value for phase in range(start, start + 6)
+                                          for value in required(phase))))
+        unit_unknown, residual = vector(2210), vector(2220)
+        for metric in WORK_METRICS:
+            if unit_unknown[metric] + residual[metric] != vectors["unknown"][metric]:
+                raise ValueError(f"Inconsistent unknown ownership conservation: {metric}")
+        if errors and any(unit_unknown.values()):
+            raise ValueError("Invalid observer cannot claim unit unknown ownership")
+        causes = required(2230) + required(2231)
+        if causes[-1] != 0:
+            raise ValueError("Nonzero reserved unknown ownership word")
+        contributors = []
+        for index, offset in enumerate((52, 8, 16)):
+            start = 2240 + index * 9
+            metric_offset, event, unit = required(start)
+            reason, opened, closed = required(start + 1)
+            origin, line, original_open = required(start + 2)
+            values = vector(start + 3)
+            if metric_offset != offset or any(values[m] > unit_unknown[m] for m in WORK_METRICS):
+                raise ValueError("Inconsistent largest unknown contributor")
+            if event == 0 and (unit or reason or opened or closed or origin or line or original_open
+                               or any(values.values())):
+                raise ValueError("Absent unknown contributor has nonzero provenance")
+            if event and (not reason or event > count):
+                raise ValueError("Invalid unknown contributor event/reasons")
+            metric = WORK_METRICS[offset // 4]
+            if not errors and count == reported:
+                candidates = [row for row in details if row["reasons"] and row["exclusive"][metric]]
+                winner = max(candidates, key=lambda row: (row["exclusive"][metric], -row["event"]), default=None)
+                if (winner is None and event != 0) or (winner is not None and
+                        (event != winner["event"] or unit != winner["unit"] or reason != winner["reasons"]
+                         or values != dict(winner["exclusive"], template_bytes=0))):
+                    raise ValueError("Largest unknown contributor does not match complete details")
+            contributors.append({"metric": metric, "event": event, "unit": unit, "reasons": reason,
+                                 "capture_open": opened, "capture_close": closed, "origin": origin,
+                                 "line": line, "original_open": original_open, "exclusive": values})
+        if not errors and count == reported:
+            for metric in WORK_METRICS:
+                expected = sum(row["exclusive"][metric] for row in details if row["reasons"] and metric != "template_bytes")
+                if unit_unknown[metric] != expected:
+                    raise ValueError(f"Unknown unit ownership does not match complete details: {metric}")
+        # Region cuts describe capture segmentation; they need not invalidate ownership.
+        examples = []
+        for index in range(4):
+            start = 2270 + index * 3
+            event, unit, cause = required(start)
+            opened, closed, origin = required(start + 1)
+            line, base, end = required(start + 2)
+            if (event and cause != index + 1) or event > count or (event == 0 and any((unit, cause, opened, closed, origin, line, base, end))):
+                raise ValueError("Invalid unknown range example provenance")
+            if bool(event) != bool(causes[index]):
+                raise ValueError("Range example disagrees with observation count")
+            if event and not (closed < opened, closed >= end, True, opened < base)[index]:
+                raise ValueError("Range example does not demonstrate its observation")
+            examples.append({"event": event, "unit": unit, "cause": cause, "open": opened,
+                             "close": closed, "origin": origin, "line": line,
+                             "region_base": base, "region_end": end})
+        context_values = [value for phase in range(2282, 2286) for value in required(phase)]
+        if sum(context_values[::2]) != vectors["total"]["captured_plan_binds"] or sum(context_values[1::2]) != vectors["total"]["bound_plan_bytes"]:
+            raise ValueError("Inconsistent bind context conservation")
+        contexts = {name: {"calls": context_values[index * 2], "bound_bytes": context_values[index * 2 + 1]}
+                    for index, name in enumerate(("without_unit_definition", "without_unit_expansion", "without_unit_ordinary",
+                                                  "with_unit_definition", "with_unit_expansion", "with_unit_ordinary"))}
+        if any(2300 <= phase <= 2466 for phase in rows):
+            for slot, provenance in enumerate(contributors + examples):
+                start = 2300 + slot * 24
+                origin, length, ordinal = required(start)
+                if origin != provenance["origin"] or ordinal != slot + 1 or length >= 256 or (not origin and length):
+                    raise ValueError("Inconsistent source path provenance")
+                chunks = (length + 11) // 12
+                if any(start + 1 + chunks <= phase < start + 24 for phase in rows):
+                    raise ValueError("Unexpected source path chunk")
+                data = b"".join(word.to_bytes(4, "big") for phase in range(start + 1, start + 1 + chunks)
+                                for word in required(phase))
+                if any(data[length:]):
+                    raise ValueError("Nonzero source path padding")
+                try:
+                    provenance["source_path"] = data[:length].decode("utf-8", errors="strict")
+                except UnicodeDecodeError as error:
+                    raise ValueError("Invalid UTF-8 source path") from error
+        result["unknown_ownership"] = {"schema": extension, "reason_marked_units": unit_unknown,
+            "global_or_unassigned_residual": residual,
+            "range_observations": dict(zip(("close_before_open", "close_at_or_beyond_region_end",
+                "missing_original_end", "open_before_region_base", "bad_parent"), causes[:-1])),
+            "largest_contributors": contributors, "range_examples": examples, "bind_contexts": contexts,
+            "bind_context_evidence_limit": "Contexts observe whether a unit owner exists at call time; preceding-entry transfer can change final ownership. Context totals are independent of the final unknown ownership split and do not describe conditional activity or reachability."}
+    return result

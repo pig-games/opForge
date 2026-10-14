@@ -6,6 +6,7 @@
 	.include "memory_telemetry.i"
 	.include "capture_telemetry.i"
 	.include "lazy_audit.i"
+	.include "lazy_work_context.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_source as writer
@@ -1559,6 +1560,7 @@ mapTail
 	bra.w append
 createPhysical
 	lea MACRO_FRAME(a6), a0
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
 	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	jsr macro_plans.create
 	bne.w bad
@@ -1652,6 +1654,7 @@ physicalCapture
 	.MEMORY_TEMPLATE_WORK #11, #1
 	bsr.w physicalLineRecipe
 	bne.w bad
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
 	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	jsr macro_plans.create
 	bne.w bad
@@ -2029,6 +2032,7 @@ physicalPlan
 	bsr.w captureFragments
 	bne.w bad
 planReady
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
 	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	jsr macro_plans.create
 	bne.w bad
@@ -2052,6 +2056,8 @@ done
 ; Select only now, after the replay writer has rebound names in current scope.
 ; D0/CCR=status,D1=normal session plan handle; other registers preserved.
 bindCapturedPlan	.block
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
+	.WORK_CONTEXT 0, #1
 	.WORK_COUNT lazy_work.PLAN_BIND, #1
 	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	.HOTSPOT_ENTER #HOTSPOT_PLAN_BIND
@@ -2351,6 +2357,7 @@ generatedCaptureFailed
 	bne.w bad
 	lea MACRO_FRAME(a6), a0
 generatedReady
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
 	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	jsr macro_plans.createGenerated
 	bne.w bad

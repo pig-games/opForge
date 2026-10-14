@@ -6,7 +6,122 @@ The ordinary path remains the reference. No preparation is skipped and no captur
 is retired early. Acquisition-only unit discovery and individual binding links
 remain unimplemented; see the measured scope below.
 
-## Active refinement: invocation and non-emitting ownership
+## Active investigation: remaining unknown work
+
+The observer now separates costs on published units with uncertainty reasons from
+the arithmetic global/unassigned remainder. These are independent of a new
+call-time classification: template definition, expansion or ordinary processing,
+each with or without an active invocation owner. This classification uses existing
+template state. It does not identify inactive branches, unused templates or work
+that a lazy executor could safely omit.
+
+The optional report carries three largest reason-marked contributors, four bounded
+range exemplars and their owned source paths. Each vector conserves the existing
+18 global totals; context totals independently conserve captured-plan calls and
+committed bound-plan bytes. Source paths are read before their owner is released.
+No pointers survive reporting, no new heap allocation is introduced, and hooks
+preserve registers, CCR and stack. Fixed observer reservation grows by 684 bytes;
+the app path adapter uses 12 bytes of temporary stack storage.
+
+### Proven observer defect: region cuts are not unit boundaries
+
+The diagnostic run found two whole units spanning retained capture regions. For
+example, `selectLine .block` in `src/experimental/binary_source_selection.i`
+opens at capture offset 1,249,532 and closes at 1,269,768, beyond its first region's
+end at 1,262,564. The previous observer incorrectly marked this `BAD_RANGE`.
+
+The observer now checks the actual global capture bound and attributes matching
+records across every overlapping region. Generated boundaries still do not own
+their caller's physical capture. Close-before-open, out-of-global-bound and missing
+publication endpoints remain invalid. Region cuts and continuations are reported
+as observations, not automatically as errors. A native component probe owns exactly
+two records across two independent regions, including a close equal to the first
+region's end, without double counting or demotion.
+
+The eager reference remains unchanged. Ordinary and L1-only timing/memory images
+are byte-identical to the preceding checkpoint. No binding, compilation or capture
+work is skipped; no payload is released early.
+
+### Separate identical-input runtime comparison
+
+The frozen input remains 198 files / 2,614,471 source bytes, with a complete
+708,592-byte live Rust oracle. Previous and revised work observers use the same
+audit flags and embedded packages. Timing builds have no memory telemetry.
+
+| Serial timing pair | Previous observer (s) | Revised observer (s) |
+|---|---:|---:|
+| Previous then revised | 110.702892 | 109.641136 |
+| Revised then previous | 109.123843 | 110.592792 |
+| Mean | 109.913367 | 110.116964 |
+
+The incremental observer difference is **+0.203597 s / +0.19%**, within the
+run-to-run spread. All four runs complete with fresh START/DONE, zero exit and
+complete Rust equality. This measures diagnostic overhead, not deferred-work
+savings. The existing expanded-memory A4000/68040 profile remains in use; these
+numbers do not qualify A6000 hardware or the 2 MiB product target.
+
+### What this investigation can establish
+
+The separate memory pair has the same tracked heap peak of **48,390,024 bytes**
+and the same **113,993,896 bytes** of allocated/freed capacity. Terminal live heap,
+allocation failures and profiling errors are zero. Linked reservation grows
+**1,812,632 → 1,814,960 bytes (+2,328)**, including code and fixed observer state.
+Capture used/capacity remain **23,613,704 / 33,255,424 bytes**. All six full-input
+runs complete with full live Rust equality; every one of the 18 global work totals
+is unchanged.
+
+After the range repair all 1,415 published units reconcile with zero uncertainty
+reasons and zero accounting errors. Unknown capture falls **47.33% → 47.13%**;
+48,580 bytes now belong to selected units. The repair also assigns 1,153 bindings,
+223 EXVM compilations and 304 process calls to selected units. No new work becomes
+unreferenced. Known unreferenced work remains only 1,205 / 425,557 bindings (0.28%)
+and 52,628 ordinary capture bytes (0.23%, excluding observer headers).
+
+| Call-time context | Captured-plan bindings | Committed bound-plan bytes |
+|---|---:|---:|
+| Template definition, no invocation owner | 18,823 | 2,821,828 |
+| Expansion, no invocation owner | 0 | 1,048 |
+| Ordinary, no invocation owner | 1,372 | 173,384 |
+| Template definition, with invocation owner | 0 | 0 |
+| Expansion, with invocation owner | 0 | 11,416 |
+| Ordinary, with invocation owner | 536 | 74,458 |
+| Total | 20,731 | 3,082,134 |
+
+Template-definition preparation without an active block owner accounts for
+**90.8% of captured-plan binding calls and 91.6% of bound-plan bytes**. The remaining
+unknown vector is entirely the global/unassigned remainder, not reason-marked
+published units. These contexts precede final preceding-label transfer, so they
+are independent of final ownership categories. Bound bytes also include plan
+creation that does not call `bindCapturedPlan`; zero calls need not mean zero bytes.
+
+This points to template preparation as the next investigation, but does not prove
+those definitions are unreferenced or quantify avoidable elapsed time/heap peak.
+The smallest next step is a template consumer inventory: identify definitions,
+active expansions, shared/configuration effects and retained plan/capture payload
+per definition. Then choose a bounded deferred-body-binding experiment. Do not
+infer safe deferral from the absence of a block owner. Preserve binary templates,
+complete referenced blocks and the eager correctness reference.
+
+Receipts: `/tmp/opforge-lazy-unknown-full-v6-20261014/summary.json`;
+72 fresh focused controls: `/tmp/opforge-lazy-unknown-controls-v6-20261014`;
+final images: `/tmp/opforge-lazy-unknown-images-v6-20261014/images.json`.
+Native source digest: `fnv1a64:963d1e43773229a0`.
+The probes cover exact cross-region ownership and global-bound rejection, context
+conservation, zero-absent exemplars and register/CCR/stack preservation. Focused
+Rust checks, Clippy with warnings denied, Rust/native formatting, 22 Python tests
+and the workflow checks with 147 tests pass. Independent review found no further
+grounded defects. The redundant-test guard has zero blocking findings; existing
+call-return checks remain advisory.
+
+The separate ordinary **full current-source self-host** also completes in
+**105.076963 seconds** on FS-UAE: all 201 files / 2,614,816 source bytes, fresh
+START/DONE and zero exit. It reproduces both the complete live Rust Hunk and its
+own **706,956-byte** bootstrap, `fnv1a64:ba4df89ee2249d95`, with only the embedded
+68020 package and no defines. Source manifest: `fnv1a64:e84b805888c10f97`.
+Receipt: `/tmp/opforge-lazy-unknown-current-selfhost-20261014/manifest.json`.
+This is current-source correctness proof, not another comparative timing sample.
+
+## Previous checkpoint: invocation and non-emitting ownership
 
 The work observer now snapshots the deepest authoritative physical unit at replay
 begin, after the capture origin is known. Preparation follows that invocation

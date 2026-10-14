@@ -1,14 +1,17 @@
 ; Live-owner retained capture aggregation; included in lazy_work code.
-; A0=structural State,A1=live capture.Region. Before actual owner release.
+; A0=structural State,A1=live capture.Region,D0=global capture end. Before actual owner release.
 ; Walk only existing validated numeric records. No borrowed pointer survives.
 captureRegion	.block
 	move.w ccr, -(sp)
 	movem.l d0-d7/a0-a6, -(sp)
-	subq.l #8, sp
+	suba.w #12, sp
+	move.l d0, 8(sp)
 	clr.l (sp)
 	movea.l a0, a5
 	movea.l a1, a4
 	lea State, a6
+	cmp.l capture.Region.End(a4), d0
+	blo.w invalidInput
 	clr.l WorkFields.FilterCount(a6)
 	move.l Fields.Count(a5), d3
 	cmpi.l #LIMIT, d3
@@ -25,6 +28,15 @@ filter
 	cmp.l capture.Region.End(a4), d0
 	blo.w included
 previousRange
+	; A complete physical unit can span retained regions. Include any overlap;
+	; membership and the actual global endpoint are checked per record below.
+	move.l Event.CaptureOpen(a0), d0
+	cmp.l capture.Region.End(a4), d0
+	bhs.w preceding
+	move.l Event.CaptureClose(a0), d0
+	cmp.l capture.Region.Base(a4), d0
+	bhs.w included
+preceding
 	move.l Event.PreviousCapture(a0), d0
 	cmp.l capture.Region.Base(a4), d0
 	blo.w nextFilter
@@ -39,6 +51,8 @@ nextFilter
 	subq.l #1, d3
 	bra.w filter
 filtered
+	; Diagnose once per filtered event/region, never once per capture record.
+	bsr.w captureRanges
 	move.l capture.Region.Arena+memory.Block.Capacity(a4), d0
 	add.l d0, WorkFields.Capacity(a6)
 	bcc.w nextRecord
@@ -140,14 +154,10 @@ range
 	tst.l Event.Generated(a0)
 	bne.w advance
 	move.l Event.CaptureOpen(a0), d0
-	cmp.l capture.Region.Base(a4), d0
-	blo.w advance
-	cmp.l capture.Region.End(a4), d0
-	bhs.w advance
 	move.l Event.CaptureClose(a0), d1
 	cmp.l d0, d1
 	blo.w badRange
-	cmp.l capture.Region.End(a4), d1
+	cmp.l 8(sp), d1
 	bhs.w badRange
 	tst.l Event.OriginalEnd(a0)
 	beq.w badRange
@@ -188,8 +198,91 @@ advanceRecord
 invalidInput
 	ori.l #INVALID, WorkFields.Errors(a6)
 done
-	addq.l #8, sp
+	adda.w #12, sp
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
 	rts
 	.bend  ; captureRegion
+
+	.priv
+; A5=structural state,A4=region,A6=work. Private passive aggregate hook.
+; Counts observations, not distinct units: a unit can meet several live regions.
+captureRanges	.block
+	movem.l d0-d3/a0-a2, -(sp)
+	moveq #0, d2
+	move.l WorkFields.FilterCount(a6), d3
+next
+	tst.l d3
+	beq.w done
+	move.l d2, d0
+	lsl.l #2, d0
+	lea WorkFields.Filter(a6), a1
+	move.l 0(a1, d0.l), d1
+	move.l d1, d0
+	mulu.w #EVENT_BYTES, d0
+	lea Fields.Events(a5), a0
+	adda.l d0, a0
+	tst.l Event.Generated(a0)
+	bne.w advance
+	move.l Event.CaptureOpen(a0), d0
+	cmp.l capture.Region.Base(a4), d0
+	bhs.w inside
+	moveq #3, d0
+	bsr.w observe
+inside
+	move.l Event.CaptureClose(a0), d0
+	cmp.l Event.CaptureOpen(a0), d0
+	bhs.w endCheck
+	moveq #0, d0
+	bsr.w observe
+endCheck
+	move.l Event.CaptureClose(a0), d0
+	cmp.l capture.Region.End(a4), d0
+	blo.w originalCheck
+	moveq #1, d0
+	bsr.w observe
+originalCheck
+	tst.l Event.OriginalEnd(a0)
+	bne.w advance
+	moveq #2, d0
+	bsr.w observe
+advance
+	addq.l #1, d2
+	subq.l #1, d3
+	bra.w next
+; D0=cause index,D1=zero-based event. Snapshot first occurrence; no pointers.
+observe
+	movem.l d0-d1/a1-a2, -(sp)
+	move.l d0, d1
+	lsl.l #2, d1
+	lea WorkFields.RangeCounts(a6), a1
+	addq.l #1, 0(a1, d1.l)
+	bcc.w counted
+	ori.l #OVERFLOW, WorkFields.Errors(a6)
+counted
+	mulu.w #RANGE_EXAMPLE_BYTES, d0
+	lea WorkFields.RangeExamples(a6), a2
+	adda.l d0, a2
+	tst.l (a2)
+	bne.w observed
+	move.l 4(sp), d1
+	addq.l #1, d1
+	move.l d1, (a2)+
+	move.l Event.Unit(a0), (a2)+
+	move.l (sp), d1
+	addq.l #1, d1
+	move.l d1, (a2)+
+	move.l Event.CaptureOpen(a0), (a2)+
+	move.l Event.CaptureClose(a0), (a2)+
+	move.l Event.Origin(a0), (a2)+
+	move.l Event.Line(a0), (a2)+
+	move.l capture.Region.Base(a4), (a2)+
+	move.l capture.Region.End(a4), (a2)+
+observed
+	movem.l (sp)+, d0-d1/a1-a2
+	rts
+done
+	movem.l (sp)+, d0-d3/a0-a2
+	rts
+	.bend  ; captureRanges
+	.pub

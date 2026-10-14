@@ -63,7 +63,7 @@ bounded
 	lea WorkFields.Rows(a6), a3
 detailRow
 	tst.l d7
-	beq.w done
+	beq.w extension
 	move.l d4, d0
 	move.l d6, d1
 	move.l Row.Unit(a3), d2
@@ -77,6 +77,73 @@ detailRow
 	addq.l #1, d6
 	subq.l #1, d7
 	bra.w detailRow
+extension
+	move.l #2200, d0
+	moveq #1, d1
+	moveq #TOP_COUNT, d2
+	moveq #RANGE_EXAMPLE_BYTES, d3
+	movea.l a4, a0
+	jsr memory_profile.progress
+	move.l #2210, d4
+	lea WorkFields.UnknownRows(a6), a5
+	bsr.w vector
+	move.l #2220, d4
+	lea WorkFields.Residual(a6), a5
+	bsr.w vector
+	move.l #2230, d0
+	move.l WorkFields.RangeCounts(a6), d1
+	move.l WorkFields.RangeCounts+4(a6), d2
+	move.l WorkFields.RangeCounts+8(a6), d3
+	movea.l a4, a0
+	jsr memory_profile.progress
+	move.l #2231, d0
+	move.l WorkFields.RangeCounts+12(a6), d1
+	move.l WorkFields.RangeCounts+16(a6), d2
+	moveq #0, d3
+	movea.l a4, a0
+	jsr memory_profile.progress
+	move.l #2240, d4
+	lea WorkFields.TopRows(a6), a3
+	moveq #TOP_COUNT-1, d7
+nextTop
+	movea.l a3, a5
+	moveq #2, d6
+provenance
+	move.l d4, d0
+	move.l (a5)+, d1
+	move.l (a5)+, d2
+	move.l (a5)+, d3
+	movea.l a4, a0
+	jsr memory_profile.progress
+	addq.l #1, d4
+	dbra d6, provenance
+	bsr.w vector
+	adda.w #TOP_BYTES, a3
+	dbra d7, nextTop
+	move.l #2270, d4
+	lea WorkFields.RangeExamples(a6), a5
+	moveq #11, d7
+rangeExample
+	move.l d4, d0
+	move.l (a5)+, d1
+	move.l (a5)+, d2
+	move.l (a5)+, d3
+	movea.l a4, a0
+	jsr memory_profile.progress
+	addq.l #1, d4
+	dbra d7, rangeExample
+	move.l #2282, d4
+	lea WorkFields.Contexts(a6), a5
+	moveq #3, d7
+contextTriple
+	move.l d4, d0
+	move.l (a5)+, d1
+	move.l (a5)+, d2
+	move.l (a5)+, d3
+	movea.l a4, a0
+	jsr memory_profile.progress
+	addq.l #1, d4
+	dbra d7, contextTriple
 done
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr

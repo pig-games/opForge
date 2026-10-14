@@ -100,6 +100,155 @@ class WorkDecoderTests(unittest.TestCase):
         self.assertTrue(decoded["accounting_complete"])
         self.assertFalse(decoded["coverage_complete"])
 
+    def unknown_report(self):
+        rows = self.work_report()
+        rows[2060][2] = 16
+        rows[2002][2] = 16
+        for part in range(6):
+            rows[2050 + part] = rows[2020 + part][:]
+            rows[2020 + part] = [0, 0, 0]
+            rows[2210 + part] = rows[2050 + part][:]
+            rows[2220 + part] = [0, 0, 0]
+        rows[2041][2] = rows[2051][2]
+        rows[2051][2] = rows[2211][2] = rows[2062][2] = 0
+        rows[2282] = [3, 2, 0]
+        rows[2283] = [0, 0, 0]
+        rows[2284] = [0, 0, 0]
+        rows[2285] = [0, 0, 0]
+        rows[2200] = [1, 3, 36]
+        rows[2230] = [1, 0, 0]
+        rows[2231] = [0, 0, 0]
+        for index in range(4):
+            start = 2270 + index * 3
+            rows[start] = [1, 1, 1] if index == 0 else [0, 0, 0]
+            rows[start + 1] = [100, 90, 1] if index == 0 else [0, 0, 0]
+            rows[start + 2] = [5, 0, 200] if index == 0 else [0, 0, 0]
+        for index, offset in enumerate((52, 8, 16)):
+            start = 2240 + index * 9
+            rows[start] = [offset, 1, 1]
+            rows[start + 1] = [16, 100, 90]
+            rows[start + 2] = [1, 5, 10]
+            for part in range(6):
+                rows[start + 3 + part] = rows[2061 + part][:]
+        return rows
+
+    def test_unknown_split_and_numeric_provenance_preserve_baseline(self):
+        self.assertNotIn("unknown_ownership", module.decode(stdout(self.work_report()))["work_attribution"])
+        rows = self.unknown_report()
+        rows[2010][0] += 7
+        rows[2050][0] += 7
+        rows[2220][0] += 7
+        work = module.decode(stdout(rows))["work_attribution"]
+        ownership = work["unknown_ownership"]
+        self.assertEqual(ownership["reason_marked_units"]["bind_calls"], 1)
+        self.assertEqual(ownership["global_or_unassigned_residual"]["bind_calls"], 7)
+        self.assertEqual(ownership["largest_contributors"][0]["capture_close"], 90)
+        self.assertFalse(work["coverage_complete"])
+
+    def test_unknown_extension_rejects_missing_split_and_false_winner(self):
+        for phase in (2200, 2212, 2225, 2230, 2266):
+            rows = self.unknown_report()
+            del rows[phase]
+            with self.assertRaisesRegex(ValueError, "Missing"):
+                module.decode(stdout(rows))
+        for phase in (2210, 2240, 2243):
+            rows = self.unknown_report()
+            rows[phase][0] += 1
+            with self.assertRaises(ValueError):
+                module.decode(stdout(rows))
+
+    def path_report(self):
+        rows = self.unknown_report()
+        for slot in range(7):
+            start = 2300 + slot * 24
+            origin = rows[2242 + slot * 9][0] if slot < 3 else rows[2271 + (slot - 3) * 3][2]
+            data = "src/é.asm".encode("utf-8") if origin else b""
+            rows[start] = [origin, len(data), slot + 1]
+            if data:
+                padded = data + bytes((-len(data)) % 12)
+                rows[start + 1] = [int.from_bytes(padded[index:index + 4], "big") for index in (0, 4, 8)]
+        return rows
+
+    def test_source_paths_decode_bounded_utf8_and_reject_false_provenance(self):
+        rows = self.path_report()
+        ownership = module.decode(stdout(rows))["work_attribution"]["unknown_ownership"]
+        self.assertEqual(ownership["largest_contributors"][0]["source_path"], "src/é.asm")
+        self.assertEqual(ownership["range_examples"][3]["source_path"], "")
+        for phase, field, value in ((2300, 0, 2), (2300, 1, 256), (2301, 2, 1), (2301, 0, 0xff000000)):
+            bad = self.path_report()
+            bad[phase][field] = value
+            with self.assertRaises(ValueError):
+                module.decode(stdout(bad))
+        for phase in (2301, 2444):
+            bad = self.path_report()
+            del bad[phase]
+            with self.assertRaisesRegex(ValueError, "Missing"):
+                module.decode(stdout(bad))
+
+    def test_bind_contexts_conserve_calls_and_bytes_independently(self):
+        rows = self.unknown_report()
+        ownership = module.decode(stdout(rows))["work_attribution"]["unknown_ownership"]
+        self.assertEqual(ownership["bind_contexts"]["without_unit_definition"], {"calls": 3, "bound_bytes": 2})
+        for field in (0, 1):
+            bad = self.unknown_report()
+            bad[2282][field] += 1
+            with self.assertRaisesRegex(ValueError, "context conservation"):
+                module.decode(stdout(bad))
+
+    def test_range_examples_require_matching_counts_and_numeric_cause(self):
+        for phase, field, value in ((2230, 0, 0), (2271, 1, 110), (2273, 0, 1)):
+            rows = self.unknown_report()
+            rows[phase][field] = value
+            with self.assertRaisesRegex(ValueError, "[Rr]ange example"):
+                module.decode(stdout(rows))
+
+    def test_region_cuts_are_observations_without_unknown_ownership_claim(self):
+        rows = self.unknown_report()
+        # A unit can begin in an earlier region and end at this segment boundary.
+        # These numeric observations do not themselves assign BAD_RANGE.
+        rows[2002][2] = rows[2060][2] = 0
+        for part in range(6):
+            rows[2020 + part] = rows[2050 + part][:]
+            rows[2050 + part] = rows[2210 + part] = [0, 0, 0]
+        for index in range(3):
+            start = 2240 + index * 9
+            rows[start][1:] = [0, 0]
+            for phase in range(start + 1, start + 9):
+                rows[phase] = [0, 0, 0]
+        rows[2230] = [0, 1, 0]
+        rows[2231] = [1, 0, 0]
+        rows[2270] = rows[2271] = rows[2272] = [0, 0, 0]
+        for index in (1, 3):
+            start = 2270 + index * 3
+            rows[start] = [1, 1, index + 1]
+            rows[start + 1] = [50, 200, 1]
+            rows[start + 2] = [5, 100, 200]
+        work = module.decode(stdout(rows))["work_attribution"]
+        observations = work["unknown_ownership"]["range_observations"]
+        self.assertEqual(observations["close_at_or_beyond_region_end"], 1)
+        self.assertEqual(observations["open_before_region_base"], 1)
+        self.assertEqual(work["unknown_reason_mask"], 0)
+        self.assertTrue(work["coverage_complete"])
+        self.assertNotIn("bad_range_causes", work["unknown_ownership"])
+
+    def test_observer_error_cannot_claim_reason_unit_split(self):
+        rows = self.unknown_report()
+        rows[2000][1] = 1
+        with self.assertRaisesRegex(ValueError, "Invalid observer"):
+            module.decode(stdout(rows))
+
+    def test_truncated_unknown_details_cannot_claim_complete_winner_verification(self):
+        rows = self.unknown_report()
+        rows[2000][2] = 17
+        rows[2001][2] = 16
+        for index in range(1, 16):
+            rows[2060 + index * 7] = [index + 1, 0, 0]
+            for part in range(6):
+                rows[2061 + index * 7 + part] = [0, 0, 0]
+        work = module.decode(stdout(rows))["work_attribution"]
+        self.assertTrue(work["detail_truncated"])
+        self.assertEqual(len(work["details"]), 16)
+
     def test_rejects_missing_schema_and_nonconservation(self):
         for phase in (2001, 2003, 2015, 2055, 2066):
             rows = self.work_report()

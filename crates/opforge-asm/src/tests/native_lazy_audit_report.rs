@@ -19,7 +19,7 @@ pub(super) fn rows(stdout: &str) -> BTreeMap<u32, [u32; 3]> {
             })
             .collect();
         let phase = fields["p"];
-        if (700..=2171).contains(&phase) {
+        if (700..=2466).contains(&phase) {
             assert!(
                 rows.insert(phase, [fields["f"], fields["l"], fields["r"]])
                     .is_none(),
@@ -176,6 +176,151 @@ fn assert_work_report(rows: &BTreeMap<u32, [u32; 3]>) {
                     details <= total,
                     "exclusive unit details are bounded by total"
                 );
+            }
+        }
+    }
+    if rows.contains_key(&2200) {
+        assert_eq!(rows[&2200], [1, 3, 36], "unknown extension ABI");
+        for metric in 0..18u32 {
+            let part = metric / 3;
+            let field = (metric % 3) as usize;
+            assert_eq!(
+                u64::from(rows[&(2210 + part)][field]) + u64::from(rows[&(2220 + part)][field]),
+                u64::from(rows[&(2050 + part)][field]),
+                "unknown split conservation"
+            );
+            if count == reported {
+                let expected: u64 = (0..reported)
+                    .filter(|index| rows[&(2060 + index * 7)][2] != 0)
+                    .map(|index| {
+                        if metric == 5 {
+                            0
+                        } else {
+                            u64::from(rows[&(2061 + index * 7 + part)][field])
+                        }
+                    })
+                    .sum();
+                assert_eq!(
+                    u64::from(rows[&(2210 + part)][field]),
+                    expected,
+                    "reason-marked unit conservation"
+                );
+            }
+        }
+        let contexts: Vec<_> = (2282..=2285).flat_map(|phase| rows[&phase]).collect();
+        assert_eq!(
+            contexts
+                .iter()
+                .step_by(2)
+                .map(|v| u64::from(*v))
+                .sum::<u64>(),
+            u64::from(rows[&2010][2]),
+            "context plan-bind conservation"
+        );
+        assert_eq!(
+            contexts
+                .iter()
+                .skip(1)
+                .step_by(2)
+                .map(|v| u64::from(*v))
+                .sum::<u64>(),
+            u64::from(rows[&2011][1]),
+            "context bound-byte conservation"
+        );
+        if rows.range(2300..=2466).next().is_some() {
+            for slot in 0..7u32 {
+                let start = 2300 + slot * 24;
+                let [origin, length, ordinal] = rows[&start];
+                let provenance = if slot < 3 {
+                    rows[&(2242 + slot * 9)][0]
+                } else {
+                    rows[&(2271 + (slot - 3) * 3)][2]
+                };
+                assert_eq!(origin, provenance);
+                assert_eq!(ordinal, slot + 1);
+                assert!(length < 256);
+                assert!(origin != 0 || length == 0);
+                assert!(
+                    rows.range(start + 1 + length.div_ceil(12)..start + 24)
+                        .next()
+                        .is_none(),
+                    "unexpected source path chunk"
+                );
+                let bytes: Vec<_> = (0..length.div_ceil(12))
+                    .flat_map(|index| {
+                        rows[&(start + 1 + index)]
+                            .into_iter()
+                            .flat_map(u32::to_be_bytes)
+                    })
+                    .collect();
+                assert!(bytes[length as usize..].iter().all(|byte| *byte == 0));
+                std::str::from_utf8(&bytes[..length as usize]).expect("source path UTF-8");
+            }
+        }
+        assert_eq!(rows[&2231][2], 0, "reserved unknown word");
+        for index in 0..4u32 {
+            let start = 2270 + index * 3;
+            let [event, unit, cause] = rows[&start];
+            let [open, close, _origin] = rows[&(start + 1)];
+            let [_line, base, end] = rows[&(start + 2)];
+            let count = if index < 3 {
+                rows[&2230][index as usize]
+            } else {
+                rows[&2231][0]
+            };
+            assert_eq!(event != 0, count != 0);
+            if event == 0 {
+                assert_eq!(cause, 0);
+                assert_eq!(unit, 0);
+                assert_eq!(rows[&(start + 1)], [0; 3]);
+                assert_eq!(rows[&(start + 2)], [0; 3]);
+            } else {
+                assert_eq!(cause, index + 1);
+                assert!(match index {
+                    0 => close < open,
+                    1 => close >= end,
+                    2 => true,
+                    _ => open < base,
+                });
+            }
+        }
+        for (index, metric) in [13u32, 2, 4].into_iter().enumerate() {
+            let start = 2240 + index as u32 * 9;
+            let [offset, event, unit] = rows[&start];
+            assert_eq!(offset, metric * 4);
+            let reasons = rows[&(start + 1)][0];
+            assert!(event <= count);
+            for part in 0..6 {
+                for (field, value) in rows[&(start + 3 + part)].iter().enumerate() {
+                    assert!(*value <= rows[&(2210 + part)][field]);
+                }
+            }
+            if count == reported {
+                let winner = (0..reported)
+                    .filter(|i| rows[&(2060 + i * 7)][2] != 0)
+                    .filter(|i| rows[&(2061 + i * 7 + metric / 3)][(metric % 3) as usize] != 0)
+                    .max_by_key(|i| {
+                        (
+                            rows[&(2061 + i * 7 + metric / 3)][(metric % 3) as usize],
+                            std::cmp::Reverse(rows[&(2060 + i * 7)][0]),
+                        )
+                    });
+                if let Some(i) = winner {
+                    assert_eq!([event, unit, reasons], rows[&(2060 + i * 7)]);
+                    for part in 0..6 {
+                        let mut expected = rows[&(2061 + i * 7 + part)];
+                        if part == 1 {
+                            expected[2] = 0;
+                        }
+                        assert_eq!(rows[&(start + 3 + part)], expected);
+                    }
+                } else {
+                    assert_eq!(event, 0);
+                    for phase in start + 1..start + 9 {
+                        assert_eq!(rows[&phase], [0; 3]);
+                    }
+                    assert_eq!(unit, 0);
+                }
             }
         }
     }

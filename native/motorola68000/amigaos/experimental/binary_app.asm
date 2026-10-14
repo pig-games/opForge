@@ -55,6 +55,7 @@
 	.include "binding_telemetry.i"
 	.include "capture_telemetry.i"
 	.include "lazy_audit.i"
+	.include "lazy_work_context.i"
 HEADER_BYTES = package.HEADER_BYTES
 IO_BYTES = 4096
 INCLUDE_DEPTH = 8
@@ -355,6 +356,7 @@ freeBlocks
 	jsr memory.release
 	lea OriginSpans, a0
 	jsr memory.release
+	.WORK_ORIGIN_PATHS
 	lea OriginPaths, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -397,6 +399,7 @@ done
 	.bend  ; execute
 	.priv
 	.include "binary_app_diagnostics.i"
+	.include "binary_app_lazy_report.i"
 
 ; Read exactly D3 bytes into D2 from the open InputHandle. D0/CCR=status.
 ; Preserves all other registers. No seek, whole-source buffer or byte-at-a-time I/O.

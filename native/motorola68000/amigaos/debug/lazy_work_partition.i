@@ -119,6 +119,7 @@ root
 	move.l #1, Row.Class(a1)
 	bra.w advance
 badParent
+	addq.l #1, WorkFields.RangeCounts+16(a6)
 	ori.l #BAD_RANGE, Row.Reasons(a1)
 advance
 	adda.w #EVENT_BYTES, a3
@@ -129,6 +130,7 @@ invalidInput
 	ori.l #INVALID, WorkFields.Errors(a6)
 partition
 	bsr.w makePartition
+	bsr.w unknownTop
 done
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
@@ -223,6 +225,140 @@ copy
 	move.l (a0)+, (a1)+
 	dbra d0, copy
 done
+	bsr.w unknownSplit
 	movem.l (sp)+, d0-d7/a0-a3
 	rts
 	.bend  ; makePartition
+
+; Unknown row-owned values exclude shared templates. Residual means only the
+; arithmetic remainder: it is not evidence that work happened outside units.
+unknownSplit	.block
+	movem.l d0-d3/a0-a2/a4, -(sp)
+	lea WorkFields.UnknownRows(a3), a0
+	moveq #METRICS-1, d0
+clear
+	clr.l (a0)+
+	dbra d0, clear
+	tst.l WorkFields.Errors(a3)
+	bne.w remainder
+	move.l WorkFields.Count(a3), d3
+	lea WorkFields.Rows(a3), a0
+next
+	tst.l d3
+	beq.w remainder
+	tst.l Row.Reasons(a0)
+	bne.w included
+	tst.l Row.Class(a0)
+	bne.w advance
+included
+	moveq #0, d0
+	lea Row.Values(a0), a1
+	lea WorkFields.UnknownRows(a3), a2
+values
+	cmpi.l #TEMPLATE_BYTES, d0
+	beq.w nextValue
+	move.l 0(a1, d0.l), d1
+	movea.l a2, a4
+	adda.l d0, a4
+	add.l d1, (a4)
+	bcs.w invalidInput
+nextValue
+	addq.l #4, d0
+	cmpi.l #VECTOR_BYTES, d0
+	blo.w values
+advance
+	adda.w #ROW_BYTES, a0
+	subq.l #1, d3
+	bra.w next
+remainder
+	lea WorkFields.Unknown(a3), a0
+	lea WorkFields.UnknownRows(a3), a1
+	lea WorkFields.Residual(a3), a2
+	moveq #METRICS-1, d0
+subtract
+	move.l (a0)+, d1
+	sub.l (a1)+, d1
+	bcs.w invalidInput
+	move.l d1, (a2)+
+	dbra d0, subtract
+	bra.w done
+invalidInput
+	ori.l #INVALID, WorkFields.Errors(a3)
+	lea WorkFields.UnknownRows(a3), a1
+	lea WorkFields.Unknown(a3), a0
+	lea WorkFields.Residual(a3), a2
+	moveq #METRICS-1, d0
+reset
+	clr.l (a1)+
+	move.l (a0)+, (a2)+
+	dbra d0, reset
+done
+	movem.l (sp)+, d0-d3/a0-a2/a4
+	rts
+	.bend  ; unknownSplit
+; Snapshot largest unknown row independently by capture/plan/bound metric.
+; Stable ties retain the first event; structural state is borrowed only here.
+unknownTop	.block
+	movem.l d0-d7/a0-a4, -(sp)
+	lea WorkFields.TopRows(a6), a4
+	moveq #0, d7
+metric
+	moveq #CAPTURE_BYTES, d6
+	tst.l d7
+	beq.w ready
+	moveq #PLAN_BIND, d6
+	cmpi.l #1, d7
+	beq.w ready
+	moveq #BOUND_BYTES, d6
+ready
+	move.l d6, Top.Metric(a4)
+	tst.l WorkFields.Errors(a6)
+	bne.w nextMetric
+	moveq #0, d5
+	move.l WorkFields.Count(a6), d4
+	lea WorkFields.Rows(a6), a0
+nextTopRow
+	tst.l d4
+	beq.w nextMetric
+	tst.l Row.Reasons(a0)
+	bne.w included
+	tst.l Row.Class(a0)
+	bne.w advance
+included
+	lea Row.Values(a0), a1
+	lea Top.Values(a4), a2
+	move.l 0(a1, d6.l), d0
+	cmp.l 0(a2, d6.l), d0
+	bls.w advance
+	move.l d5, d0
+	addq.l #1, d0
+	move.l d0, Top.Event(a4)
+	move.l Row.Unit(a0), Top.Unit(a4)
+	move.l Row.Reasons(a0), Top.Reasons(a4)
+	move.l d5, d0
+	mulu.w #EVENT_BYTES, d0
+	lea Fields.Events(a5), a3
+	adda.l d0, a3
+	move.l Event.CaptureOpen(a3), Top.CaptureOpen(a4)
+	move.l Event.CaptureClose(a3), Top.CaptureClose(a4)
+	move.l Event.Origin(a3), Top.Origin(a4)
+	move.l Event.Line(a3), Top.Line(a4)
+	move.l Event.OriginalOpen(a3), Top.OriginalOpen(a4)
+	moveq #METRICS-1, d0
+copy
+	move.l (a1)+, (a2)+
+	dbra d0, copy
+	clr.l Top.Values+TEMPLATE_BYTES(a4)
+advance
+	adda.w #ROW_BYTES, a0
+	addq.l #1, d5
+	subq.l #1, d4
+	bra.w nextTopRow
+nextMetric
+	adda.w #TOP_BYTES, a4
+	addq.l #1, d7
+	cmpi.l #TOP_COUNT, d7
+	blo.w metric
+	movem.l (sp)+, d0-d7/a0-a4
+	rts
+	.bend  ; unknownTop

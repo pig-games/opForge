@@ -82,15 +82,16 @@ WORK_PUBLICATION .macro state
 .endif
 .endif
 .endmacro
-WORK_CAPTURE_REGION .macro descriptor
+WORK_CAPTURE_REGION .macro descriptor, globalEnd
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
 	move.w ccr, -(sp)
-	movem.l a0-a1, -(sp)
+	movem.l d0/a0-a1, -(sp)
 	movea.l .descriptor, a1
+	move.l .globalEnd, d0
 	jsr lazy_units.getState
 	jsr lazy_work.captureRegion
-	movem.l (sp)+, a0-a1
+	movem.l (sp)+, d0/a0-a1
 	move.w (sp)+, ccr
 .endif
 .endif
@@ -166,6 +167,32 @@ WORK_SAMPLE_BEGIN .macro origin
 	jsr lazy_units.getState
 	jsr lazy_work.sampleBegin
 	movem.l (sp)+, d1/a0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+
+WORK_PLAN_CONTEXT .macro category
+.ifdef OPFORGE_LAZY_AUDIT
+.ifdef OPFORGE_LAZY_WORK
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .category, d0
+	jsr lazy_work.contextSet
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endmacro
+WORK_CONTEXT .macro metric, amount
+.ifdef OPFORGE_LAZY_AUDIT
+.ifdef OPFORGE_LAZY_WORK
+	move.w ccr, -(sp)
+	movem.l d1-d2, -(sp)
+	move.l .amount, d2
+	move.l #.metric, d1
+	jsr lazy_work.context
+	movem.l (sp)+, d1-d2
 	move.w (sp)+, ccr
 .endif
 .endif

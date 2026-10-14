@@ -17,6 +17,9 @@ CANDIDATE = 56
 DESCRIPTOR = 60
 FRAGMENT = 64
 PLAN_CREATE = 68
+CONTEXT_DEFINITION = 0
+CONTEXT_EXPANSION = 1
+CONTEXT_ORDINARY = 2
 METRICS = 18
 VECTOR_BYTES = METRICS*4
 GENERATED = 1
@@ -38,6 +41,34 @@ Values	.res VECTOR_BYTES
 Previous	.res VECTOR_BYTES
 .endstruct
 ROW_BYTES = Row.Previous+VECTOR_BYTES
+; Fixed audit extension; no per-record or per-unit storage growth.
+TOP_COUNT = 3
+Top	.struct
+Metric	.long ?
+Event	.long ?
+Unit	.long ?
+Reasons	.long ?
+CaptureOpen	.long ?
+CaptureClose	.long ?
+Origin	.long ?
+Line	.long ?
+OriginalOpen	.long ?
+Values	.res VECTOR_BYTES
+.endstruct
+TOP_BYTES = Top.Values+VECTOR_BYTES
+RANGE_EXAMPLE_COUNT = 4
+RangeExample .struct
+Event .long ?
+Unit .long ?
+Cause .long ?
+CaptureOpen .long ?
+CaptureClose .long ?
+Origin .long ?
+Line .long ?
+RegionBase .long ?
+RegionEnd .long ?
+.endstruct
+RANGE_EXAMPLE_BYTES = RangeExample.RegionEnd+4
 WorkFields	.struct
 Errors	.long ?
 Count	.long ?
@@ -60,6 +91,13 @@ Unknown	.res VECTOR_BYTES
 Sample	.res VECTOR_BYTES
 PreviousSample	.res VECTOR_BYTES
 Record	.res VECTOR_BYTES
+UnknownRows	.res VECTOR_BYTES
+Residual	.res VECTOR_BYTES
+RangeCounts	.res 5*4 ; close-before, close>=end, missing-end, open<base, parent
+RangeExamples	.res RANGE_EXAMPLE_COUNT*RANGE_EXAMPLE_BYTES
+TopRows	.res TOP_COUNT*TOP_BYTES
+PlanContext	.long ? ; 0 definition,1 expansion,2 ordinary
+Contexts	.res 6*2*4 ; inactive then active SampleOwner, calls/committed bytes
 Filter	.res LIMIT*4
 Rows	.res LIMIT*ROW_BYTES
 .endstruct

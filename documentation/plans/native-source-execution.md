@@ -7,6 +7,9 @@ The [completion plan](native-runtime-reset.md) records current evidence and comp
 The revised [fragment and lazy-preparation plan](native-fragment-preparation.md)
 records the current design investigation and proposed foundation. Its first
 experiment preserves the frozen lifecycle; it does not enable growing-source execution.
+The [lazy-preparation design](native-lazy-preparation.md) separates source-occurrence
+inventory from final symbol publication and keeps its first candidate before
+`beginSizing`. It does not relax the growing-session requirements below.
 
 The 2026-10-12 frozen static-acquisition image completed all 86 unchanged opcore
 roots: 32 positive roots matched every requested Rust artifact exactly, 36

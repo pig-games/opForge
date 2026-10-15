@@ -2,7 +2,9 @@
 
 Status, 2026-10-15: parity remains paused. This pass qualified chunked capture,
 removed superseded macro experiments, guarded disabled telemetry definitions and
-selected a symbol-table growth policy using exact work counts. Next is the
+selected a symbol-table growth policy using exact work counts. A subsequent raw
+include-text reuse experiment was dropped: release time is unchanged and peak
+heap increases. Next is the
 [structural design review](native-fragment-preparation.md); no structural pipeline
 or persistent cache has been implemented.
 
@@ -164,6 +166,93 @@ and freed capacities and no observer errors. Release timing uses no instrumentat
 The current full-source proof, fixed-input comparisons, component tests, focused
 Rust checks and engineering guards establish this performance checkpoint, not
 full language/CPU parity. A6000 hardware is unavailable for this pass.
+
+## In-build include text reuse
+
+Decision, 2026-10-15: dropped after qualification. Expected saving: avoid repeated
+file reads without changing capture, binding or source execution. The prototype
+shared immutable raw file bytes after normal resolution, authorization, cycle
+checks and DOS open.
+Every occurrence retains its own reader cursor, source origin and declaration/
+configuration context. It caches no interpreted result, so configuration is not a
+cache key. This is raw-content reuse, not a measured configured-object cache hit rate.
+Inputs are assumed immutable during a build; different resolved paths are separate
+entries even when their bytes happen to match.
+
+The prototype limits logical payload to 128 KiB, individual files to 32 KiB and
+the directory to 64 entries. Allocator rounding and directory growth are additional
+costs. Oversized/nonseekable files and exhausted budgets use the original streaming
+reader. Release images contain no measurement counters. The preserved reference
+source/executables come from `cc6eaf65`; there is no stack of experiment switches.
+
+All full comparisons use identical frozen 214-file / 2,648,242-byte input,
+SHA-256 `eae5102bd21b3863105a7f550912193dff8e52c8ba2d6ff11b498392b7dca480`,
+and freshly regenerate the complete 708,216-byte Rust oracle. Separate instrumented
+runs use the same eight existing memory/input/capture gates.
+
+| Resource | Reference | Reuse |
+|---|---:|---:|
+| Include requests / hits | — | 204 / 83 (40.7%) |
+| Cached content offered on hits | — | 525,758 B |
+| Loaded entries / logical payload | — | 24 / 131,067 B |
+| Cache-owned read calls / bypasses | — | 48 / 97 |
+| Line collection calls | 117,425 | 117,425 |
+| Tracked peak heap | 34,517,176 B | 34,654,744 B |
+| Allocated/freed capacities, each | 64,979,400 B | 65,190,984 B |
+
+Peak increases 137,568 bytes (0.40%). Captured records, tokens, plans and their
+construction/replay work are unchanged. Cache allocations add 48 global block
+growths and 73,968 directory-copy bytes. Both runs free all tracked storage with
+no observer errors. This fuller instrumentation profile differs from the preceding
+lightweight memory profile; compare within this pair only.
+
+The earlier checkpoint's `1,259 → 932` read counts are scoped to line collection,
+not all source I/O. Cache fills move outside that scope. Neither those counts nor
+the input-collection timer establish a total-I/O percentage or a speed gain.
+Cache-owned hit/length counters above count complete views offered to readers;
+release timings below are the independent runtime test.
+
+| Uninstrumented START→DONE | Reference | Reuse |
+|---|---:|---:|
+| Reference then reuse | 101.870 s | 101.442 s |
+| Reuse then reference | 101.231 s | 101.701 s |
+| Mean | 101.551 s | 101.572 s |
+
+The mean change is +0.021 s (+0.02%): runtime-neutral at the roughly two-second
+noise level. The two pairs point in opposite directions. No speed gain is claimed.
+
+The small module project hits on 3 of 4 requests (75%), offering 228 cached bytes;
+its peak stays 608,768 bytes. The macro-heavy project has no includes and acts as
+a no-hit control; peak stays 2,249,400 bytes. Both source-directed BIN and Hunk
+outputs match live Rust. The module release cases finish before the first timing
+observation, so both return no elapsed-time estimate. The macro release pair is 5.888 → 5.926 s,
+within noise. Neither establishes a small-workload speed difference.
+
+Validation includes repeated/nested/empty includes, CRLF and final partial lines,
+changing lexical/mutable values, file/entry/payload limits and streaming fallback,
+active/expanded definition-relative acquisition, plus missing-file/cycle rejection.
+All positive cases require fresh completion, exit zero and exact live Rust output;
+negative cases require their fresh nonzero completion. Rust oracles, Clippy,
+formatting, instrumentation safety and workflow checks pass.
+
+The candidate peak is 33.05 MiB of tracked heap, before executable, stack and OS:
+about 16.5 times the full 2 MiB target. No low-memory fit is claimed. This does not
+measure `.ofm` viability: it shares raw input but leaves preparation and capture
+ownership intact.
+
+Decision: drop the cache and its experiment-only tests. Restore the reference
+native implementation exactly. It avoids no capture/preparation work, misses the
+approximately 1% target-resource gate and worsens peak heap. Hits alone do not
+justify the added code and ownership. The persistent leaf-module feasibility slice
+must test reuse that avoids preparation, rather than extrapolate from this raw-byte
+hit rate.
+
+Local frozen cases, manifests, images and receipts are retained outside `target`
+at `/tmp/opforge-include-cases-20261015`; raw-source export roots are
+`/tmp/opforge-include-reference-phase-20261015` and
+`/tmp/opforge-include-candidate-phase-20261015`. Historical prototype code is
+recoverable from checkpoint `7b849ffd`. Persistent leaf-module reuse and structural
+publication remain unimplemented.
 
 ## Enduring earlier decisions
 

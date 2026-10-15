@@ -102,21 +102,23 @@ it can reduce acquisition residency sooner, but retains source-oriented work.
 Compare both against resident objects. Extra scans, validation, rereads and object
 construction/publication overlap may cost runtime; measure them independently.
 
-## After review: incremental feasibility first
+## Incremental feasibility status and next question
 
-Before a broad pipeline rewrite, prototype identical include text under identical
-configuration within one build. Reuse text/structural work, not caller-bound IDs;
-each include must still execute its ordered effects. Measure eligible hits, avoided
-work and peak bytes on self-host and both maintained smaller benchmarks. Apply the
-approximately 1% exact resource gate; do not add another observer framework.
+The separately authorized in-build raw include-text experiment is complete and
+[dropped](native-performance-diagnosis.md#in-build-include-text-reuse): it has hits,
+but leaves all per-line preparation intact, adds peak heap and has no measurable
+release gain. This is not a configured-object hit-rate measurement. A useful next
+slice must reuse prepared meaning while preserving ordered effects and remapping
+caller-bound identities. Apply the approximately 1% exact resource gate; do not
+add another observer framework.
 
-Then try one persistent pointer-free leaf-module entry keyed by content hash and
-configuration. Its fingerprint must cover transitive include/assets, imported
-exports/types/templates, compiler and package semantics, relevant options, search
+The next proposed test is one persistent pointer-free leaf-module entry keyed by
+content hash and configuration. Its fingerprint must cover transitive include/assets,
+imported exports/types/templates, compiler and package semantics, relevant options, search
 resolution and source-order inputs actually consumed. Timestamps are hints, not
 validity. Test changed dependencies/configuration, cold/warm output equality and
 hit rates. An unresolved dependency cannot silently become a valid cache hit.
 
-This thin feasibility slice, and the structural implementation, remain unstarted
+The persistent leaf slice and structural implementation remain unstarted
 at the review boundary. Demand-loaded package chunks are separate future work,
 not a prerequisite for this experiment.

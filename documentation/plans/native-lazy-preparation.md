@@ -16,6 +16,7 @@ which awaits review before implementation.
 | First-use whole-line plans | Removed with switches and experiment-specific tests. |
 | Binary token/spelling interface prototype | Removed; no justified prerequisite for a currently authorized implementation. |
 | Fragment envelope | Removed with its selector/probes/tests; the future object design remains a proposal. |
+| In-build raw include text reuse | Dropped after identical-input qualification: runtime-neutral, extra peak heap, unchanged preparation work. |
 
 The standard packed macro execution, declaration context and shared VM/package
 boundaries remain. These decisions remove alternate preparation paths, not language
@@ -75,11 +76,17 @@ a resident object and a disk-backed object must share the same pointer-free form
 This requires an explicit configuration, include-continuation and publication
 contract, not another macro observer.
 
-After that review, the next feasibility slice is identical include text under
-identical configuration within one build, followed by one persistent leaf-module
-entry. Reuse must preserve each include's ordered semantic effects and remap numeric
-identities. Measure hit rate, avoided work and invalidation before committing to a
-complete `.ofm` cache. A new framework or further macro-only audit is not authorized.
+The separately authorized in-build include experiment is complete. Sharing raw
+bytes produced 40.7% hits but avoided no preparation work, added peak heap and
+changed release time by only +0.02%; it and its tests were removed. The original
+path remains the default. See the [separate runtime/memory results](native-performance-diagnosis.md#in-build-include-text-reuse),
+including the collection-counter scope caveat.
+
+The next proposed feasibility slice is one persistent leaf-module entry that can
+avoid preparation. It remains unimplemented. Preserve each include's ordered
+semantic effects and remap numeric identities; measure dependency invalidation,
+actual avoided work and cold/warm hit rates before a complete `.ofm` cache. A new
+framework or further macro-only audit is not authorized.
 
 The current heap remains roughly 32.8 MiB before executable, stack and OS costs;
 there is no 2 MiB fit claim. Structural scanning and object publication may lower

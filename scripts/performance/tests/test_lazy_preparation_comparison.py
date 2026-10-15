@@ -16,6 +16,148 @@ spec.loader.exec_module(module)
 
 
 class LazyComparisonTests(unittest.TestCase):
+    def packing_inputs(self, root, period=64, seed=0):
+        args = self.inputs(root)
+        args.experiment_define = module.PACKING_EXPERIMENT
+        args.packing_sample_period = period
+        args.packing_phase_seed = seed
+        path = args.images / "images.json"
+        manifest = json.loads(path.read_text())
+        for image in manifest["images"]:
+            if not image["file"].startswith(("reference-", "deferred-")):
+                continue
+            memory = image["file"].endswith("memory.hunk")
+            candidate = image["file"].startswith("deferred-")
+            image["defines"] = list(module.PACKING_BASELINE) + (module.MEMORY_DEFINES if memory else [])
+            if candidate:
+                image["defines"].append(module.PACKING_EXPERIMENT)
+                if memory:
+                    image["defines"].append("OPFORGE_PACKING_TIMING")
+                    if period != 64:
+                        image["defines"].append(f"OPFORGE_PACKING_SAMPLE_PERIOD={period}")
+                    if seed != 0:
+                        image["defines"].append(f"OPFORGE_PACKING_PHASE_SEED={seed}")
+        path.write_text(json.dumps(manifest))
+        return args
+
+    def test_packing_shares_inventory_and_samples_only_candidate_memory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.packing_inputs(Path(directory), period=128, seed=255)
+            cases = [json.loads(path.read_text()) for path in module.prepare(args)]
+            for case in cases:
+                metadata, defines = case["metadata"], case["bootstrap_defines"]
+                candidate_memory = metadata["comparison_role"] == "audit" and metadata["measurement"] == "memory"
+                self.assertTrue(metadata["macro_packing_fixed_input_comparison"])
+                self.assertEqual(metadata["reference_config"], module.PACKING_REFERENCE)
+                self.assertEqual(metadata["packing_sample_period"], 128)
+                self.assertEqual(metadata["packing_phase_seed"], 255)
+                self.assertTrue(set(module.PACKING_BASELINE) <= set(defines))
+                self.assertEqual(module.PACKING_EXPERIMENT in defines, metadata["comparison_role"] == "audit")
+                for flag in ("OPFORGE_PACKING_TIMING", "OPFORGE_PACKING_SAMPLE_PERIOD=128", "OPFORGE_PACKING_PHASE_SEED=255"):
+                    self.assertEqual(flag in defines, candidate_memory)
+            self.assertEqual(len({case["metadata"]["workload_sha256"] for case in cases}), 1)
+
+    def test_packing_default_sampling_omits_numeric_defines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.packing_inputs(Path(directory))
+            for path in module.prepare(args):
+                defines = json.loads(path.read_text())["bootstrap_defines"]
+                self.assertFalse(any(define.startswith(("OPFORGE_PACKING_SAMPLE_PERIOD=", "OPFORGE_PACKING_PHASE_SEED=")) for define in defines))
+
+    def test_packing_sampling_options_reject_invalid_or_other_profile(self):
+        for period, seed in ((63, 0), (64, -1), (64, 256)):
+            with tempfile.TemporaryDirectory() as directory:
+                args = self.inputs(Path(directory))
+                args.packing_sample_period, args.packing_phase_seed = period, seed
+                with self.assertRaisesRegex(ValueError, "Invalid packing"):
+                    module.prepare(args)
+                self.assertFalse(args.output.exists())
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory))
+            args.packing_sample_period = 128
+            with self.assertRaisesRegex(ValueError, "require OPFORGE_MACRO_PACKING_AUDIT"):
+                module.prepare(args)
+
+    def test_packing_report_configuration_and_unchanged_accounting(self):
+        import copy
+        report = {"sample_period": 128, "phase_seed": 255, "timing_enabled": True}
+        metadata = {"packing_sample_period": 128, "packing_phase_seed": 255}
+        module.validate_packing_configuration(report, metadata)
+        for changed in (dict(report, sample_period=64), dict(report, phase_seed=0), dict(report, timing_enabled=False)):
+            with self.assertRaisesRegex(ValueError, "configuration"):
+                module.validate_packing_configuration(changed, metadata)
+        work = {"metrics": {"total": {"bind_calls": 2}}, "template_inventory": {
+            key: [] if key in ("definitions", "consumer_relationships") else {}
+            for key in ("definitions", "consumer_relationships", "pool_used_bytes", "attributed_payload_bytes", "unattributed_pool_bytes")}}
+        memory = {role: {"audit": {"work_attribution": copy.deepcopy(work)}} for role in ("reference", "audit")}
+        module.validate_packing_comparison(memory)
+        memory["audit"]["audit"]["work_attribution"]["metrics"]["total"]["bind_calls"] += 1
+        with self.assertRaisesRegex(ValueError, "work metrics"):
+            module.validate_packing_comparison(memory)
+        memory["audit"]["audit"]["work_attribution"]["metrics"]["total"]["bind_calls"] -= 1
+        for key in work["template_inventory"]:
+            original = copy.deepcopy(memory["audit"]["audit"]["work_attribution"]["template_inventory"][key])
+            memory["audit"]["audit"]["work_attribution"]["template_inventory"][key] = {"changed": 1}
+            with self.assertRaisesRegex(ValueError, "changed template"):
+                module.validate_packing_comparison(memory)
+            memory["audit"]["audit"]["work_attribution"]["template_inventory"][key] = original
+
+    def test_packing_work_reconciles_independent_binder_and_body_totals(self):
+        import copy
+        report = {"gross": {"names": 2, "members": 3, "stored_bytes": 40},
+                  "outside_writer_binds": {"names": 5, "members": 7}}
+        work = {"metrics": {"total": {"bind_calls": 17}},
+                "template_inventory": {"pool_used_bytes": {"body_bytes": 40}}}
+        module.validate_packing_work(report, work)
+        for section in ("gross", "outside_writer_binds"):
+            for field in ("names", "members"):
+                changed = copy.deepcopy(report)
+                changed[section][field] += 1
+                with self.subTest(section=section, field=field), self.assertRaisesRegex(ValueError, "bind totals"):
+                    module.validate_packing_work(changed, work)
+        report["gross"]["stored_bytes"] += 1
+        with self.assertRaisesRegex(ValueError, "stored body byte totals"):
+            module.validate_packing_work(report, work)
+
+    def test_packing_decodes_inventory_on_both_memory_profiles(self):
+        import copy
+        from contextlib import redirect_stdout
+        import io
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.packing_inputs(Path(directory))
+            args.test_binary = Path("fake-test")
+            paths = module.prepare(args)
+            for path in paths:
+                metadata = json.loads(path.read_text())["metadata"]
+                result = path.parent / "result"
+                result.mkdir()
+                (result / "native-result.json").write_text(json.dumps({"success": True, "metadata": metadata,
+                    "start_to_done_host_seconds": 1.0, "linked_static_reserved_bytes": 12}))
+                if metadata["measurement"] == "memory":
+                    (result / "memory.bin").write_bytes(b"")
+                    (result / "assembly.stdout").write_text(metadata["comparison_role"])
+            inv = {"complete": True, "definitions": [], "consumer_relationships": [], "pool_used_bytes": {"body_bytes": 0},
+                   "attributed_payload_bytes": {}, "unattributed_pool_bytes": {}}
+            old = {"observer_complete": True, "work_attribution": {"accounting_complete": True,
+                   "metrics": {"total": {"bind_calls": 0}}, "template_inventory": inv}}
+            new = {"complete": True, "sample_period": 64, "phase_seed": 0, "timing_enabled": True,
+                   "gross": {"names": 0, "members": 0, "stored_bytes": 0},
+                   "outside_writer_binds": {"names": 0, "members": 0}}
+            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
+                     "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}), \
+                 patch.object(module.lazy_preparation_audit, "decode", side_effect=lambda _: copy.deepcopy(old)) as decode_old, \
+                 patch.object(module.macro_packing_audit, "decode", return_value=new) as decode_new, \
+                 patch.object(module, "decode_deferred_binding", side_effect=AssertionError("wrong report")), \
+                 redirect_stdout(io.StringIO()):
+                self.assertTrue(module.execute(args, paths))
+            self.assertEqual(decode_old.call_count, 2)
+            decode_new.assert_called_once_with("audit", inv)
+            summary = json.loads((args.output / "summary.json").read_text())
+            self.assertEqual(summary["macro_packing"], new)
+            self.assertIsNotNone(summary["baseline_audit"])
+            self.assertEqual(summary["baseline"], module.PACKING_REFERENCE)
+
     def add_work_images(self, images, source_digest):
         path = images / "images.json"
         manifest = json.loads(path.read_text())
@@ -284,8 +426,8 @@ class LazyComparisonTests(unittest.TestCase):
                     (result_dir / "memory.bin").write_bytes(b"")
                     if metadata["comparison_role"] == "audit":
                         (result_dir / "assembly.stdout").write_text(
-                            "progress p=00000ce4 f=00000008 l=00000005 r=00000003 m=00000000\n"
-                            "progress p=00000ce5 f=00000004 l=00000002 r=00000000 m=00000000\n")
+                            "progress p=0006ddd0 f=00000008 l=00000005 r=00000003 m=00000000\n"
+                            "progress p=0006ddd1 f=00000004 l=00000002 r=00000000 m=00000000\n")
             with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
                  patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
                      "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}):
@@ -333,9 +475,9 @@ class LazyComparisonTests(unittest.TestCase):
                     (result_dir / "memory.bin").write_bytes(b"")
                     if metadata["comparison_role"] == "audit":
                         (result_dir / "assembly.stdout").write_text(
-                            "progress p=00000ce4 f=00000008 l=00000005 r=00000003 m=00000000\n"
-                            "progress p=00000ce5 f=00000004 l=00000002 r=00000000 m=00000000\n"
-                            "progress p=00000ce6 f=00000003 l=00000002 r=00000000 m=00000001\n")
+                            "progress p=0006ddd0 f=00000008 l=00000005 r=00000003 m=00000000\n"
+                            "progress p=0006ddd1 f=00000004 l=00000002 r=00000000 m=00000000\n"
+                            "progress p=0006ddd2 f=00000003 l=00000002 r=00000000 m=00000001\n")
             with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
                  patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
                      "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}):
@@ -388,10 +530,10 @@ class LazyComparisonTests(unittest.TestCase):
                     (result_dir / "memory.bin").write_bytes(b"")
                     if metadata["comparison_role"] == "audit":
                         (result_dir / "assembly.stdout").write_text(
-                            "progress p=00000ce4 f=00000008 l=00000005 r=00000003 m=00000000\n"
-                            "progress p=00000ce5 f=00000004 l=00000002 r=00000000 m=00000000\n"
-                            "progress p=00000ce6 f=00000003 l=00000002 r=00000000 m=00000001\n"
-                            "progress p=00000ce7 f=00000004 l=00000003 r=00000000 m=00000001\n")
+                            "progress p=0006ddd0 f=00000008 l=00000005 r=00000003 m=00000000\n"
+                            "progress p=0006ddd1 f=00000004 l=00000002 r=00000000 m=00000000\n"
+                            "progress p=0006ddd2 f=00000003 l=00000002 r=00000000 m=00000001\n"
+                            "progress p=0006ddd3 f=00000004 l=00000003 r=00000000 m=00000001\n")
             with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
                  patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
                      "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}):
@@ -412,7 +554,7 @@ class LazyComparisonTests(unittest.TestCase):
 
     def test_acquisition_report_requires_one_valid_bounded_row(self):
         binding = {"created": 8, "bound": 5}
-        row = "progress p=00000ce6 f=00000003 l=00000002 r=00000000 m=00000001"
+        row = "progress p=0006ddd2 f=00000003 l=00000002 r=00000000 m=00000001"
         self.assertEqual(module.decode_deferred_acquisition(row, binding), {"created": 3, "bound": 2})
         self.assertEqual(module.decode_deferred_acquisition(
             row.replace("f=00000003 l=00000002", "f=00000000 l=00000000"), binding),
@@ -427,7 +569,7 @@ class LazyComparisonTests(unittest.TestCase):
 
     def test_line_report_requires_one_valid_bounded_row(self):
         binding = {"created": 8, "bound": 5}
-        row = "progress p=00000ce7 f=00000003 l=00000002 r=00000000 m=00000001"
+        row = "progress p=0006ddd3 f=00000003 l=00000002 r=00000000 m=00000001"
         self.assertEqual(module.decode_deferred_lines(row, binding), {"created": 3, "bound": 2})
         self.assertEqual(module.decode_deferred_lines(
             row.replace("f=00000003 l=00000002", "f=00000000 l=00000000"), binding),
@@ -441,8 +583,8 @@ class LazyComparisonTests(unittest.TestCase):
                 module.decode_deferred_lines(invalid, binding)
 
     def test_deferred_report_rejects_missing_duplicate_reserved_and_bad_bounds(self):
-        first = "progress p=00000ce4 f=00000008 l=00000005 r=00000003 m=00000000"
-        second = "progress p=00000ce5 f=00000004 l=00000002 r=00000000 m=00000000"
+        first = "progress p=0006ddd0 f=00000008 l=00000005 r=00000003 m=00000000"
+        second = "progress p=0006ddd1 f=00000004 l=00000002 r=00000000 m=00000000"
         self.assertEqual(module.decode_deferred_binding(
             first.replace("m=00000000", "m=0005adc8") + "\n" + second.replace("m=00000000", "m=0005adc8"), 10)["bound"], 5)
         with self.assertRaisesRegex(ValueError, "Missing"):

@@ -19,6 +19,9 @@
 	.pub
 	.include "lazy_work_layout.i"
 	.include "lazy_template_layout.i"
+.ifdef OPFORGE_MACRO_PACKING_AUDIT
+	.include "macro_packing_layout.i"
+.endif
 .ifdef OPFORGE_LAZY_CANDIDATES
 	.include "candidate_audit_layout.i"
 .endif
@@ -41,6 +44,9 @@ next
 	move.l #PLAN_BIND, WorkFields.TopRows+TOP_BYTES+Top.Metric(a0)
 	move.l #BOUND_BYTES, WorkFields.TopRows+TOP_BYTES*2+Top.Metric(a0)
 	bsr.w templateClear
+.ifdef OPFORGE_MACRO_PACKING_AUDIT
+	bsr.w packingClear
+.endif
 .ifdef OPFORGE_LAZY_CANDIDATES
 	bsr.w candidateClear
 .endif
@@ -505,6 +511,9 @@ done
 	.bend  ; effect
 	.include "lazy_work_partition.i"
 	.include "lazy_work_templates.i"
+.ifdef OPFORGE_MACRO_PACKING_AUDIT
+	.include "lazy_work_packing.i"
+.endif
 .ifdef OPFORGE_LAZY_CANDIDATES
 	.include "candidate_audit_observer.i"
 	.include "candidate_audit_clock.i"
@@ -517,6 +526,9 @@ done
 	.priv
 State	.res byte, WORK_STATE_BYTES
 TemplateState	.res byte, TEMPLATE_STATE_BYTES
+.ifdef OPFORGE_MACRO_PACKING_AUDIT
+PackingState	.res byte, PACKING_STATE_BYTES
+.endif
 .ifdef OPFORGE_LAZY_CANDIDATES
 CandidateState	.res byte, CANDIDATE_STATE_BYTES
 .endif

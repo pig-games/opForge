@@ -35,6 +35,7 @@ pub(super) fn assert_report(rows: &BTreeMap<u32, [u32; 3]>) {
                 || (20000..20000 + edge_count * 3).contains(&phase)
                 || (34999..182456).contains(&phase)
                 || (400000..=400039).contains(&phase)
+                || (450000..=450003).contains(&phase)
         }),
         "unexpected inventory detail"
     );
@@ -288,6 +289,10 @@ fn native_template_inventory_conserves_payload_calls_and_body_work() {
         }
     }
     assert_report(&full); // Cross the former table/edge phase overlap.
+    for phase in 450000..450004 {
+        full.insert(phase, [8, 5, 0]);
+    }
+    assert_report(&full); // Deferred summaries coexist with definition ordinal 25.
     let mut overlap = rows.clone();
     overlap.get_mut(&3000).unwrap()[2] = 2;
     overlap.get_mut(&3002).unwrap()[2] = 2;

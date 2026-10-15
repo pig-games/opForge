@@ -8,6 +8,8 @@ telemetry settings, with only OPFORGE_LAZY_AUDIT added to the candidate.
 With --work-attribution, compare L1-only against L1+OPFORGE_LAZY_WORK instead.
 With --baseline-images too, compare two work observers with identical build flags.
 With --experiment-define, compare eager acquisition with a selected macro experiment.
+The packing observer compares two eager writers sharing the prior plan experiments
+and template inventory; its memory candidate alone enables sampled packing clocks.
 This is fixed-input audit qualification, not candidate-source self-host proof.
 """
 import argparse
@@ -21,8 +23,20 @@ import subprocess
 import memory_telemetry
 import lazy_preparation_audit
 import candidate_preparation_audit
+import macro_packing_audit
 import run_a6000_selfhost as runner
 from run_fs_uae_selfhost_comparison import TEST, reproducibility_metadata
+
+PACKING_EXPERIMENT = "OPFORGE_MACRO_PACKING_AUDIT"
+PACKING_BASELINE = ["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW",
+                    "OPFORGE_DEFERRED_MACRO_CANDIDATES", "OPFORGE_DEFERRED_MACRO_LINES",
+                    "OPFORGE_LAZY_AUDIT", "OPFORGE_LAZY_WORK"]
+PACKING_REFERENCE = "eager macro packing with prior plan experiments and shared inventory"
+EXPERIMENT_REFERENCES = {
+    PACKING_EXPERIMENT: PACKING_REFERENCE,
+    "OPFORGE_DEFERRED_MACRO_LINES": "eager whole-line construction with deferred macro binding, binary macro view and deferred candidate acquisition",
+    "OPFORGE_DEFERRED_MACRO_CANDIDATES": "eager candidate acquisition with deferred macro binding and binary macro view",
+}
 
 MEMORY_DEFINES = [
     "OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
@@ -39,7 +53,7 @@ def decode_deferred_binding(stdout, total_allocated_bytes):
     rows = {}
     for line in stdout.splitlines():
         prefix = DEFERRED_PHASE_PREFIX.match(line)
-        if prefix is None or int(prefix.group(1), 16) not in (3300, 3301):
+        if prefix is None or int(prefix.group(1), 16) not in (450000, 450001):
             continue
         match = DEFERRED_PROGRESS.fullmatch(line)
         if match is None:
@@ -48,13 +62,13 @@ def decode_deferred_binding(stdout, total_allocated_bytes):
         if phase in rows:
             raise ValueError(f"Duplicate deferred binding phase {phase}")
         # m is the existing progress ABI live-heap measurement, not reserved.
-        if phase == 3301 and third != 0:
-            raise ValueError("Deferred binding phase 3301 reserved field is nonzero")
+        if phase == 450001 and third != 0:
+            raise ValueError("Deferred binding phase 450001 reserved field is nonzero")
         rows[phase] = (first, second, third)
-    if 3300 not in rows or 3301 not in rows:
+    if 450000 not in rows or 450001 not in rows:
         raise ValueError("Missing deferred binding progress phases")
-    created, bound, hits = rows[3300]
-    recipe_bytes, normal_plan_used, _ = rows[3301]
+    created, bound, hits = rows[450000]
+    recipe_bytes, normal_plan_used, _ = rows[450001]
     if bound > created:
         raise ValueError("Deferred binding count exceeds created plans")
     if recipe_bytes > total_allocated_bytes:
@@ -63,7 +77,7 @@ def decode_deferred_binding(stdout, total_allocated_bytes):
             "recipe_bytes": recipe_bytes, "normal_plan_used": normal_plan_used}
 
 
-def decode_deferred_acquisition(stdout, binding, *, phase=3302, label="acquisition"):
+def decode_deferred_acquisition(stdout, binding, *, phase=450002, label="acquisition"):
     rows = []
     for line in stdout.splitlines():
         prefix = DEFERRED_PHASE_PREFIX.match(line)
@@ -85,7 +99,7 @@ def decode_deferred_acquisition(stdout, binding, *, phase=3302, label="acquisiti
 
 
 def decode_deferred_lines(stdout, binding):
-    return decode_deferred_acquisition(stdout, binding, phase=3303, label="whole-line")
+    return decode_deferred_acquisition(stdout, binding, phase=450003, label="whole-line")
 
 
 def read_checked(root, row):
@@ -110,6 +124,13 @@ def prepare(args):
     work_attribution = getattr(args, "work_attribution", False)
     baseline_images = getattr(args, "baseline_images", None)
     experiment_define = getattr(args, "experiment_define", None)
+    packing = experiment_define == PACKING_EXPERIMENT
+    packing_period = getattr(args, "packing_sample_period", 64)
+    packing_seed = getattr(args, "packing_phase_seed", 0)
+    if packing_period not in (64, 128, 256) or not 0 <= packing_seed <= 255:
+        raise ValueError("Invalid packing sample period/phase seed")
+    if not packing and (packing_period != 64 or packing_seed != 0):
+        raise ValueError("Packing sampling options require OPFORGE_MACRO_PACKING_AUDIT")
     if timing and not candidate:
         raise ValueError("--candidate-timing requires --candidate-attribution")
     if candidate and (not work_attribution or baseline_images is None):
@@ -157,7 +178,9 @@ def prepare(args):
         image_root = baseline_images if baseline_images and role == "reference" else args.images
         image = (image_root / image_name).read_bytes()
         defines = list(MEMORY_DEFINES) if memory else []
-        if experiment_define == "OPFORGE_DEFERRED_MACRO_LINES":
+        if packing:
+            defines.extend(PACKING_BASELINE)
+        elif experiment_define == "OPFORGE_DEFERRED_MACRO_LINES":
             defines.extend(["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES"])
         elif experiment_define == "OPFORGE_DEFERRED_MACRO_CANDIDATES":
             defines.extend(["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW"])
@@ -167,6 +190,12 @@ def prepare(args):
             defines.append("OPFORGE_LAZY_WORK")
         if experiment_define and role == "audit":
             defines.append(experiment_define)
+            if packing and memory:
+                defines.append("OPFORGE_PACKING_TIMING")
+                if packing_period != 64:
+                    defines.append(f"OPFORGE_PACKING_SAMPLE_PERIOD={packing_period}")
+                if packing_seed != 0:
+                    defines.append(f"OPFORGE_PACKING_PHASE_SEED={packing_seed}")
         if candidate and role == "audit":
             defines.append("OPFORGE_LAZY_CANDIDATES")
             if timing and memory:
@@ -198,12 +227,12 @@ def prepare(args):
                              "macro_interface_fixed_input_comparison": experiment_define == "OPFORGE_BINARY_MACRO_VIEW",
                              "macro_candidate_fixed_input_comparison": experiment_define == "OPFORGE_DEFERRED_MACRO_CANDIDATES",
                              "macro_line_fixed_input_comparison": experiment_define == "OPFORGE_DEFERRED_MACRO_LINES",
+                             "macro_packing_fixed_input_comparison": packing,
+                             "packing_sample_period": packing_period,
+                             "packing_phase_seed": packing_seed,
                              "experiment_define": experiment_define,
-                             "reference_config": ("eager whole-line construction with deferred macro binding, binary macro view and deferred candidate acquisition"
-                                                  if experiment_define == "OPFORGE_DEFERRED_MACRO_LINES"
-                                                  else "eager candidate acquisition with deferred macro binding and binary macro view"
-                                                  if experiment_define == "OPFORGE_DEFERRED_MACRO_CANDIDATES"
-                                                  else "eager macro services" if experiment_define else "ordinary release"),
+                             "reference_config": EXPERIMENT_REFERENCES.get(
+                                 experiment_define, "eager macro services" if experiment_define else "ordinary release"),
                              "frozen_workload_case": str(args.workload_case),
                              "bootstrap_source_fnv1a64": built.get("native_source_fnv1a64", manifest.get("native_source_fnv1a64")),
                              "memory_profile": os.environ.get("OPFORGE_FS_UAE_MEMORY_PROFILE", "existing")}}
@@ -222,6 +251,32 @@ def prepare(args):
     (args.output / "plan.json").write_text(json.dumps({"test": TEST, "cases": [str(p) for p in cases],
         "workload_sha256": workload_digest, "reproducibility": reproducibility_metadata(args)}, indent=2) + "\n")
     return cases
+
+
+def validate_packing_configuration(report, metadata):
+    if (report["sample_period"] != metadata.get("packing_sample_period", 64)
+            or report["phase_seed"] != metadata.get("packing_phase_seed", 0)
+            or not report["timing_enabled"]):
+        raise ValueError("Packing report sampling configuration differs from image manifest")
+
+
+def validate_packing_work(report, work):
+    binder_calls = sum(report[section][field]
+                       for section in ("gross", "outside_writer_binds")
+                       for field in ("names", "members"))
+    if binder_calls != work["metrics"]["total"]["bind_calls"]:
+        raise ValueError("Packing/work name and member bind totals disagree")
+    if report["gross"]["stored_bytes"] != work["template_inventory"]["pool_used_bytes"]["body_bytes"]:
+        raise ValueError("Packing/work stored body byte totals disagree")
+
+
+def validate_packing_comparison(memory):
+    previous, current = (memory[role]["audit"]["work_attribution"] for role in ("reference", "audit"))
+    if previous["metrics"] != current["metrics"]:
+        raise ValueError("Packing observer changed work metrics on identical input")
+    for key in ("definitions", "consumer_relationships", "pool_used_bytes", "attributed_payload_bytes", "unattributed_pool_bytes"):
+        if previous["template_inventory"][key] != current["template_inventory"][key]:
+            raise ValueError(f"Packing observer changed template {key}")
 
 
 def validate_candidate_configuration(report, metadata):
@@ -288,7 +343,8 @@ def execute(args, cases):
                             row["deferred_lines"] = decode_deferred_lines(
                                 (receipt.parent / "assembly.stdout").read_text(), row["deferred_binding"])
 
-                    if (row["metadata"].get("work_attribution_comparison")
+                    if (row["metadata"].get("macro_packing_fixed_input_comparison")
+                            or row["metadata"].get("work_attribution_comparison")
                             or (row["metadata"]["comparison_role"] == "audit"
                                 and not row["metadata"].get("macro_binding_fixed_input_comparison")
                                 and not row["metadata"].get("macro_interface_fixed_input_comparison")
@@ -296,6 +352,10 @@ def execute(args, cases):
                                 and not row["metadata"].get("macro_line_fixed_input_comparison"))):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
+                        if row["metadata"].get("macro_packing_fixed_input_comparison"):
+                            work = row["audit"].get("work_attribution", {})
+                            if not work.get("accounting_complete") or not work.get("template_inventory", {}).get("complete"):
+                                raise ValueError("Incomplete packing baseline work/template inventory")
                         if (row["metadata"].get("candidate_attribution_comparison")
                                 and row["metadata"]["comparison_role"] == "audit"):
                             row["candidate_attribution"] = candidate_preparation_audit.decode(
@@ -303,11 +363,19 @@ def execute(args, cases):
                             validate_candidate_configuration(row["candidate_attribution"], row["metadata"])
                             if not row["candidate_attribution"]["complete"]:
                                 raise ValueError("Incomplete candidate attribution")
+                        if (row["metadata"].get("macro_packing_fixed_input_comparison")
+                                and row["metadata"]["comparison_role"] == "audit"):
+                            row["macro_packing"] = macro_packing_audit.decode(
+                                (receipt.parent / "assembly.stdout").read_text(),
+                                row["audit"]["work_attribution"]["template_inventory"])
+                            validate_packing_configuration(row["macro_packing"], row["metadata"])
+                            validate_packing_work(row["macro_packing"], row["audit"]["work_attribution"])
                         inventory = row["audit"].get("work_attribution", {}).get("template_inventory")
                         if inventory is not None and not inventory["complete"]:
                             raise ValueError("Incomplete template inventory")
                         needs_work_report = (
-                            row["metadata"].get("work_observer_revision_comparison")
+                            row["metadata"].get("macro_packing_fixed_input_comparison")
+                            or row["metadata"].get("work_observer_revision_comparison")
                             or (row["metadata"].get("work_attribution_comparison")
                                 and row["metadata"]["comparison_role"] == "audit")
                         )
@@ -341,13 +409,11 @@ def execute(args, cases):
             current = {key: value for key, value in current.items() if key not in excluded}
         if previous != current:
             raise ValueError("Observer revision changed global work totals on identical input")
+    if getattr(args, "experiment_define", None) == PACKING_EXPERIMENT:
+        validate_packing_comparison(memory)
     baseline_name = "ordinary release"
     if getattr(args, "experiment_define", None):
-        baseline_name = ("eager whole-line construction with deferred macro binding, binary macro view and deferred candidate acquisition"
-                         if args.experiment_define == "OPFORGE_DEFERRED_MACRO_LINES"
-                         else "eager candidate acquisition with deferred macro binding and binary macro view"
-                         if args.experiment_define == "OPFORGE_DEFERRED_MACRO_CANDIDATES"
-                         else "eager macro services")
+        baseline_name = EXPERIMENT_REFERENCES.get(args.experiment_define, "eager macro services")
     if getattr(args, "work_attribution", False):
         baseline_name = "L1 audit"
     if getattr(args, "baseline_images", None):
@@ -366,6 +432,7 @@ def execute(args, cases):
                "deferred_acquisition": memory["audit"].get("deferred_acquisition"),
                "deferred_lines": memory["audit"].get("deferred_lines"),
                "candidate_attribution": memory["audit"].get("candidate_attribution"),
+               "macro_packing": memory["audit"].get("macro_packing"),
                "baseline": baseline_name,
                "evidence_limit": ("fixed frozen input; instrumentation times are diagnostic; "
                                   "not current-source self-host proof; no early capture release")}
@@ -388,16 +455,22 @@ def main():
                         help="measure marginal attribution overhead: audit images versus work images")
     parser.add_argument("--baseline-images", type=Path,
                         help="with --work-attribution, compare saved work images against current work images")
-    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES", "OPFORGE_DEFERRED_MACRO_LINES"),
+    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES", "OPFORGE_DEFERRED_MACRO_LINES", PACKING_EXPERIMENT),
                         help="compare eager reference images with the selected macro experiment")
     parser.add_argument("--candidate-attribution", action="store_true", help="compare passive candidate attribution against baseline work images")
     parser.add_argument("--candidate-timing", action="store_true", help="sample candidate preparation only in the candidate memory image")
     parser.add_argument("--candidate-sample-period", type=int, choices=(64, 128, 256), default=64)
     parser.add_argument("--candidate-phase-seed", type=int, default=0)
+    parser.add_argument("--packing-sample-period", type=int, choices=(64, 128, 256), default=64)
+    parser.add_argument("--packing-phase-seed", type=int, default=0)
     args = parser.parse_args()
     for key, value in vars(args).items():
         if isinstance(value, Path):
             setattr(args, key, value.resolve())
+    if not 0 <= args.packing_phase_seed <= 255:
+        parser.error("packing phase seed must be 0..255")
+    if (args.packing_sample_period != 64 or args.packing_phase_seed != 0) and args.experiment_define != PACKING_EXPERIMENT:
+        parser.error("packing sampling requires OPFORGE_MACRO_PACKING_AUDIT")
     if not 1 <= args.repeats <= 4:
         parser.error("repeats must be 1..4")
     if not 0 <= args.candidate_phase_seed < args.candidate_sample_period:

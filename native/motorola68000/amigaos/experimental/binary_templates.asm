@@ -8,6 +8,7 @@
 	.include "memory_telemetry.i"
 	.include "lazy_work.i"
 	.include "lazy_template_hooks.i"
+	.include "macro_packing_audit.i"
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_macro_plans as plans
 .if DEFER_MACRO_PLANS
@@ -2303,6 +2304,7 @@ copy
 	move.l d1, State.Used(a6)
 	move.l d1, BODY+memory.Block.Used(a6)
 	.WORK_COUNT lazy_work.TEMPLATE_BYTES, d6
+	.PACKING_STORED a6, d6
 	moveq #STATUS_OK, d0
 	bra.w done
 bad

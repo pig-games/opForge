@@ -151,6 +151,10 @@ contextTriple
 done
 	movea.l a4, a0
 	bsr.w templateReport
+.ifdef OPFORGE_MACRO_PACKING_AUDIT
+	movea.l a4, a0
+	bsr.w packingReport
+.endif
 .ifdef OPFORGE_LAZY_CANDIDATES
 	movea.l a4, a0
 	bsr.w candidateReport

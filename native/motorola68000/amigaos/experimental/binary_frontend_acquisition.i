@@ -226,6 +226,8 @@ selected
 	moveq #0, d1
 	bra.w restore
 construct
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
+	.WORK_CONTEXT 0, #1
 	.WORK_COUNT lazy_work.PLAN_BIND, #1
 	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	jsr macro_plans.create

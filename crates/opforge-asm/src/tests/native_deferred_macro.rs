@@ -251,8 +251,8 @@ fn run_prebuilt_controls(mut controls: Vec<Control>) {
                 && std::env::var("OPFORGE_DEFERRED_CHECK_ACQUISITION_STATS").as_deref() == Ok("1")
             {
                 let rows = super::native_lazy_audit_report::rows(&run.stdout);
-                let [created, bound, reserved] = rows[&3302];
-                let [plans_created, plans_bound, _] = rows[&3300];
+                let [created, bound, reserved] = rows[&450002];
+                let [plans_created, plans_bound, _] = rows[&450000];
                 assert_eq!(reserved, 0);
                 assert!(bound <= created && created <= plans_created && bound <= plans_bound);
                 match control.name {
@@ -269,8 +269,8 @@ fn run_prebuilt_controls(mut controls: Vec<Control>) {
                 && std::env::var("OPFORGE_DEFERRED_CHECK_LINE_STATS").as_deref() == Ok("1")
             {
                 let rows = super::native_lazy_audit_report::rows(&run.stdout);
-                let [created, bound, reserved] = rows[&3303];
-                let [plans_created, plans_bound, _] = rows[&3300];
+                let [created, bound, reserved] = rows[&450003];
+                let [plans_created, plans_bound, _] = rows[&450000];
                 assert_eq!(reserved, 0);
                 assert!(bound <= created && created <= plans_created && bound <= plans_bound);
                 // Both controls have the same declaration; invocation must not
@@ -292,7 +292,7 @@ fn run_prebuilt_controls(mut controls: Vec<Control>) {
                 && std::env::var("OPFORGE_DEFERRED_CHECK_STATS").as_deref() == Ok("1")
             {
                 let rows = super::native_lazy_audit_report::rows(&run.stdout);
-                let [created, bound, _] = rows[&3300];
+                let [created, bound, _] = rows[&450000];
                 assert!(bound <= created);
                 if control.name == "unused" {
                     assert!(created > 0);

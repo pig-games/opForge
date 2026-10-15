@@ -1,10 +1,251 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: opt-in first-use whole-line macro-body plan construction is measured and
-natively qualified for the frozen workload, 2026-10-15. Earlier call-plan, binary
-interface and first-use binding foundations remain available. Ordinary eager
-execution remains the default reference. No capture is retired early. Historical checkpoint details
-are in Git history.
+Status: macro-body packing/name-binding investigation measured and qualified on
+identical frozen input, 2026-10-15. Packing and name binding remain eager; there
+is no implementation of their deferral. The earlier first-use whole-line plan
+experiment remains opt-in. Ordinary execution remains the reference, and no
+capture is retired early. Historical checkpoint details are in Git history.
+
+## Macro-body packing and name-binding investigation
+
+Authorized 2026-10-15. Keep writer execution eager in both profiles. Determine what declaration-time packed writing, individual name
+binding and stored body payload belongs to definitions that are actually invoked.
+Do not implement deferred packing, skip validation or change capture lifetime.
+
+The baseline enables the four existing plan/interface experiments plus the shared
+`OPFORGE_LAZY_AUDIT` / `OPFORGE_LAZY_WORK` template inventory. The candidate adds
+`OPFORGE_MACRO_PACKING_AUDIT`; only its instrumented memory image also enables
+`OPFORGE_PACKING_TIMING`. Report the new observer's incremental cost against this
+common inventory baseline, not the cost of all instrumentation against ordinary
+production. Preserve ordinary images and compare disabled output byte-for-byte.
+
+Count primary source writer calls and retained-prefix writes; their input token
+counts, available lexical extents, primary offset-map bytes and successful packed
+bytes; actual name/member callbacks, package candidates, source-name requests and
+`captureBinding` calls. Observe committed template body records/bytes separately.
+Join numeric definition ordinals to the existing closed-definition and accepted
+invocation inventory. Keep ordinary, used macro, unused macro and other-template
+work distinct. Binder events outside a primary writer remain explicit; generated
+argument-list `writeValues` is outside the writer timing window. Prefix map bytes
+exclude its later frontier fill. Lexical extents and map work are not uniquely
+retained allocations. Package/source categories can overlap for dual facets.
+
+Important correction: the older template inventory's `PlanBinds` / "body binding
+calls" counts plan construction/remapping, not individual writer name callbacks.
+Its 3.84% comparison with all name/member callbacks does not establish the fraction
+of name-binding work avoidable here. Measure those entries directly before drawing
+that conclusion.
+
+A bounded scalar observer adds no production state or per-record fields. Its owner
+and nesting rows are diagnostic-only and contain numeric identities; missing gates
+emit no instructions/imports/storage. Sampled inclusive writer windows include
+binder work and may overlap when nested; they are neither release seconds nor a
+calculation of avoidable work. Use independent conservation and explicit failures
+for overflow, incomplete ownership, unclosed writers or clock problems.
+
+Preliminary context finding: collecting bodies reaches the writer and template
+store before semantic `processRecord`; body directives do not execute during that
+collection. Numeric binding still captures earlier dotted prefixes, import facets
+and known-configuration availability. Restoring only a scope ID at first call
+cannot reconstruct that historical view. Headers/defaults/structure and malformed
+unused-body checks remain eager. A future design must retain appropriate binding
+occurrences or demonstrate a context-independent subset; it must preserve live
+caller lookup, hygiene, mutable/iterator values and definition-relative includes.
+
+Qualify enabled probe/ABI/bounds and the existing macro/lifecycle controls, then
+compare identical frozen source/package bytes with fresh live Rust output.
+Measure counter-only release overhead in reversed serial pairs and tracked memory
+in a separate matched pair. Repeat sampled timing with another period/seed before
+ranking an opportunity. Stop or revise on altered outputs/failure behavior,
+incomplete attribution or disproportionate observer overhead. A frozen-input
+comparison does not qualify current-source fixed-point self-hosting.
+
+### Observer overhead on identical full input
+
+All six comparison runs complete with fresh zero-exit protocol evidence and
+exact live Rust output: 198 files / 2,614,471 source bytes, producing 708,592
+Hunk bytes. The unchanged expanded FS-UAE A4000/68040 profile has 2 MiB chip,
+8 MiB fast, 64 MiB Zorro III and 16 MiB graphics memory. It does not qualify
+A6000 hardware or the 2 MiB product target. This qualifies the frozen input;
+current-source fixed-point self-hosting was not rerun for this investigation.
+
+| Metric | Shared-inventory reference | Packing observer | Increment |
+|---|---:|---:|---:|
+| Mean counter-only START→DONE host time | 113.850933 s | 115.075096 s | +1.224163 s (+1.08%) |
+| Tracked owned-heap peak | 39,817,576 B | 39,817,576 B | 0 |
+| Total allocated / freed, each | 96,714,888 B | 96,714,888 B | 0 |
+| Linked reservation, counter-only | 2,208,484 B | 2,357,932 B | +149,448 B |
+| Linked reservation, sampled memory | 2,224,608 B | 2,375,060 B | +150,452 B |
+| Executable file, counter-only | 769,004 B | 770,304 B | +1,300 B |
+| Executable file, sampled memory | 783,440 B | 785,812 B | +2,372 B |
+
+Serial timing pairs are reference 114.122171 s → observer 114.783168 s, then
+observer 115.367024 s → reference 113.579694 s. Both orders show added cost;
+two pairs establish its observed scale, not a precise constant. No heavy host
+build overlaps these timing intervals. Both images share all previous plan modes
+and the old inventory; this is the new observer's marginal cost, not total
+instrumentation cost relative to ordinary production.
+
+Separate memory runs take 121.553566 s / 124.843215 s; these instrumented times
+are diagnostic only. Prepared live heap (2,960,640 B), assembly live heap
+(4,934,912 B), complete allocation/free totals and every existing work/inventory
+vector agree exactly. Both finish with zero tracked live heap, allocation failures
+and profiling errors. Linked reservation is additional to owned heap; OS storage,
+stack and allocator overhead are not fully measured. The fixed 148,224-byte
+observer state has no per-record allocation. With its gates missing, the ordinary
+release executable remains byte-for-byte identical to the preceding checkpoint.
+The old instrumented image differs only in the repaired summary phase IDs.
+
+### Direct packing and binding opportunity
+
+The full frozen input contains 1,361 closed macro instances: 188 accepted at
+least one invocation, and 1,173 accepted none. These are definition instances in
+source contexts, not unique macro spellings or a final-reachability count.
+
+| Observed preparation work | Ordinary | Invoked macros | Never-invoked macros |
+|---|---:|---:|---:|
+| Primary writer calls | 103,570 | 2,484 | 16,435 |
+| Input tokens | 386,508 | 10,728 | 75,083 |
+| Name callbacks | 228,653 | 5,561 | 37,913 |
+| Member callbacks | 131,339 | 2,789 | 18,990 |
+| Source-name requests | 87,344 | 2,002 | 14,635 |
+| `captureBinding` calls | 62,546 | 1,005 | 7,313 |
+| Successful packed bytes written | 1,567,475 | 37,859 | 259,882 |
+| Committed body records | 0 | 2,296 | 15,262 |
+| Committed body bytes | 0 | 49,871 | 340,393 |
+
+Outside the primary writer, generated argument binding contributes another 156
+name and 156 member callbacks. Gross plus outside is exactly the existing
+425,557-callback work total; committed body bytes sum to the 390,264-byte live
+body pool. Other template kinds have zero instances in this workload, and are
+covered by the lifecycle control instead. Every owner joins a closed definition;
+all pool bytes, accepted consumers and independent work vectors reconcile.
+
+Never-invoked instances account for **56,903 / 425,557 callbacks (13.37%)**,
+not the earlier plan-event ratio. Their 340,393 body bytes are only **0.85% of
+the measured owned-heap peak**. These are opportunity bounds, not achieved
+savings. Writer calls include one closing line per definition; structural close
+checks remain necessary. Written packed bytes are temporary work and must not be
+added to their retained body copies. Headers/defaults and required diagnostics
+remain eager; retaining capture/context can offset a future body-pool reduction.
+
+All never-invoked instances originate in five shared telemetry include files:
+835 in `memory_telemetry.i`, 213 in `telemetry_macros.i`, 53 in
+`hotspot_telemetry.i`, 39 in `capture_telemetry.i` and 33 in `binding_telemetry.i`.
+They are repeated in their including contexts. Source identities attribute the
+observation only; production must never select deferral by these filenames.
+
+### Declaration-context boundary
+
+A first-use packer must consume owned binary token/spelling captures; it must not
+read the source again or run `replayLine`/semantic `processRecord` as preparation.
+`bindCapture` is a writer-only building block, but currently uses the live binder.
+Simply restoring `layout.State.Current` is insufficient:
+
+- `scopes.captureBinding` captures earlier declared dotted prefixes and import
+  qualification alternatives. Later definitions can change those alternatives.
+  Capturing a prefix can also publish reference effects through `modules.reference`.
+- Configured values, local/import origin identities, package facets, encodings,
+  source origin/line and definition-relative paths must retain their meaning.
+- Unqualified body/default lookups can intentionally resolve in the caller;
+  mutable symbols, temporary iterators and fresh hygiene scopes must remain live.
+
+Do not snapshot the whole mutable scope or collapse these meanings into a single
+scope ID. A broad deferred binder needs an immutable per-occurrence binding
+interface plus explicit declaration effects, preserving numeric identities and
+owned offsets. A smaller possible experiment would retain the existing numeric
+binding eagerly and defer only body record materialization. Neither is implemented
+or authorized by this investigation. Segments/statements require their own proof.
+
+### Sampling sensitivity and decision
+
+The same source, packages and work counters reproduce with period 128 / phase 37.
+All non-timing owner/group metrics and the tracked heap peak agree exactly with
+period 64 / phase 0. The seventh full run has fresh zero-exit completion and
+exact live Rust output; its 119.265634 s instrumented duration is diagnostic only.
+
+| Inclusive writer estimate | Period 64 / phase 0 | Period 128 / phase 37 |
+|---|---:|---:|
+| All writers | 10.8787 s (1,914 samples) | 10.5726 s (957 samples) |
+| Ordinary | 9.1839 s (1,624) | 9.0315 s (802) |
+| Never-invoked macro | 1.5035 s (249) | 1.3627 s (142) |
+| Invoked macro | 0.1941 s (41) | 0.1708 s (13) |
+
+Each group extrapolates its own calls/samples; estimates must not be added into
+the gross estimate. These include diagnostic callbacks, boundary overhead and
+required validation. Nested windows can overlap, although this workload's maximum
+writer depth is one. The two configurations support the scale and ranking, not
+a claim that release runtime would fall by 1.36–1.50 seconds. In particular,
+13.37% of callbacks does not mean 13.37% of assembly time is avoidable.
+
+**Recommendation:** do not make a broad first-use name-binding rewrite the next
+implementation on this evidence. Previous plan deferral removed the larger known
+macro payload; the remaining packing window is modest and the declaration-history
+risk is real. Keep binding eager. A later materialization-only experiment can
+reuse numeric binding occurrences, but must justify its extra retained capture
+and context against the 340 KB body opportunity before implementation.
+
+For a larger memory opportunity, prefer a bounded capture-storage/lifetime
+investigation. The current input retains 20,818,992 used capture bytes in
+28,274,688 bytes of capacity, including 8,861,880 token bytes and 6,870,240 header
+bytes. The earlier header narrowing from 64 to 56 bytes is already present; do
+not repeat that work. Audit which token/header fields and owners each remaining
+consumer needs, and where peak overlap actually occurs, before choosing layout
+compaction or earlier retirement. Acquisition precedes semantic replay, so the
+capacity total is not a prediction of achievable peak reduction. No such further
+investigation or implementation is performed in this slice.
+
+### Qualification and reproduction
+
+The true combined component probe executes from a separate injected source
+snapshot, then clears all synthetic observations before the lifecycle workload.
+It covers enabled register/CCR/SP preservation, nesting/overflow balance,
+saturating counts, bad identities, internal/external owner separation and stored
+publication. Its fresh lifecycle output matches Rust and its complete packing
+report reconciles independently. Native macro controls pass for ten eager and
+ten observed cases, twenty lifecycle cases, plus four preserved expected native
+rejections. Existing cross-CPU expansion and unused-malformed-body parity limits
+remain unchanged. All seven full frozen-input runs match live Rust output.
+
+Qualification caught and repaired three diagnostic defects: newer plan constructors
+omitted context bookkeeping; old deferred summary phase IDs overlapped definition
+rows; and the macro-image builder's unused probe flag did not insert a probe call.
+The builder now injects and fingerprints the harness-only snapshot explicitly,
+requires a distinct probe image when both are built, and has an isolation test.
+No production source is modified to run a probe. Strict report failures are not
+converted into incomplete success; missing/duplicate rows, ownership and count
+mismatches remain failures.
+
+Focused Python suites (120 tests), workflow tests (147), Rust macro oracles,
+probe-injection/disabled-emission/report regressions, affected native formatting,
+workspace Rust formatting and `cargo clippy -p asm --tests -- -D warnings` pass.
+The focused CCR checker has zero enforced findings; its existing report-only
+callback checks remain explicit. Build outputs/evidence are preserved outside
+`target` before the normal end-of-batch cleanup.
+
+Build with `OPFORGE_DEFERRED_SAVE_DIR` outside `target` and
+`OPFORGE_DEFERRED_SAVE_PROBE=1`, running
+`cargo test -p asm native_macro_packing_save_images -- --ignored --nocapture --test-threads=1`.
+Then use `scripts/performance/run_lazy_preparation_comparison.py` with
+`--experiment-define OPFORGE_MACRO_PACKING_AUDIT`, the frozen workload case,
+`--images`, `--output`, `--test-binary` and the configured FS-UAE environment.
+Default two reversed runtime pairs and separate memory runs isolate the new
+observer. `--packing-sample-period` / `--packing-phase-seed` must match the image
+builder's `OPFORGE_PACKING_SAVE_SAMPLE_PERIOD` / `OPFORGE_PACKING_SAVE_PHASE_SEED`.
+The sensitivity image can be built alone using
+`OPFORGE_DEFERRED_SAVE_IMAGES=deferred-memory.hunk`; combine its checked manifest
+row with the same-source reference images and execute its memory case only.
+
+Evidence: `/tmp/opforge-packing-images-v2-20261015/images.json`,
+`/tmp/opforge-packing-full-20261015/{plan,results,summary}.json`,
+`/tmp/opforge-packing-sensitivity-full-20261015/memory-audit/result.json` and
+`/tmp/opforge-packing-real-probe-evidence-20261015`. The preserved serial driver is
+`/tmp/opforge-packing-tools-20261015/run_qualified.py`. Native tree
+fingerprint is `fnv1a64:6d57b4fc2403c423`; the injected probe snapshot records its
+separate `fnv1a64:76e470534e1fff2f` fingerprint. Both memory runs precede the two
+reversed counter-only runtime pairs; the sensitivity run follows them. All
+emulator invocations are serialized, with no heavy host build during runtime
+samples. These receipts establish this investigation's scope only.
 
 ## First-use whole-line macro-body plans
 
@@ -795,9 +1036,11 @@ instances, not distinct source-level macro names or final-output reachability.
 | Total | 1,361 | 18,823 | 2,821,828 | 640,694 |
 
 Never-invoked instances account for **86.87% of definition-body binding calls**,
-**87.14% of their committed bytes**, and **86.82% of template payload**. Their calls
-are only **3.84% of all 425,557 binding calls**. All belong to telemetry macro
-sources, instantiated in their owning contexts:
+**87.14% of their committed bytes**, and **86.82% of template payload**. These are plan-binding events, not individual name/member callbacks; comparing
+them with all 425,557 name/member calls does not measure their share of name
+binding. The packing investigation above measures those callbacks directly.
+All of these definitions originate in telemetry macro sources, instantiated in
+their owning contexts:
 
 | Definition source | Never-invoked instances | Body binding calls | Committed bound-plan bytes |
 |---|---:|---:|---:|

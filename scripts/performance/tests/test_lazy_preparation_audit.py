@@ -4,6 +4,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 import lazy_preparation_audit as module
+import run_lazy_preparation_comparison as comparison
 
 
 def report():
@@ -331,9 +332,8 @@ class TemplateInventoryTests(WorkDecoderTests):
         with self.assertRaisesRegex(ValueError, "duplicate template consumer"):
             self.inventory(bad)
 
-    def test_full_inventory_crosses_former_definition_capacity_without_phase_overlap(self):
+    def extended_inventory_report(self, count):
         rows = self.inventory_report()
-        count = 1361
         added_bytes = (count - 3) * 184
         rows[3002][0] = rows[3008][2] = count
         rows[3005][0] += added_bytes
@@ -344,6 +344,29 @@ class TemplateInventoryTests(WorkDecoderTests):
             values = [1, index + 10, 0, 0, 0, 1, 0, 0, 0, 0, 184, 0, 0, 1] + [0] * 10
             for part in range(8):
                 rows[3100 + index * 8 + part] = values[part * 3:part * 3 + 3]
+        return rows
+
+    def test_deferred_summaries_coexist_with_template_ordinal_25(self):
+        # The 26th definition (zero-based ordinal 25) owns phases 3300..3307.
+        rows = self.extended_inventory_report(26)
+        self.assertIn(3300, rows)
+        before = self.inventory(rows)
+        rows.update({450000: [8, 5, 3], 450001: [4, 2, 0],
+                     450002: [3, 2, 0], 450003: [4, 3, 0]})
+        self.assertEqual(self.inventory(rows), before)
+        text = stdout(rows).replace(" m=0", " m=00000000")
+        binding = comparison.decode_deferred_binding(text, 10)
+        self.assertEqual(binding, {"created": 8, "bound": 5, "hits": 3,
+                                   "recipe_bytes": 4, "normal_plan_used": 2})
+        self.assertEqual(comparison.decode_deferred_acquisition(text, binding), {"created": 3, "bound": 2})
+        self.assertEqual(comparison.decode_deferred_lines(text, binding), {"created": 4, "bound": 3})
+        # Template words at the superseded phases cannot satisfy this contract.
+        with self.assertRaisesRegex(ValueError, "Missing deferred binding"):
+            comparison.decode_deferred_binding(stdout(self.extended_inventory_report(26)), 10)
+
+    def test_full_inventory_crosses_former_definition_capacity_without_phase_overlap(self):
+        count = 1361
+        rows = self.extended_inventory_report(count)
         inventory = self.inventory(rows)
         self.assertTrue(inventory["complete"])
         self.assertEqual(inventory["definition_count"], count)

@@ -55,6 +55,46 @@ Use these macros in new/adapted runtime code. Other legacy counter families reta
 their existing implementation until adapted; this is a reusable entry point into
 the current framework, not a mandate for a repository-wide instrumentation rewrite.
 
+## Macro packing investigation
+
+`debug/macro_packing_audit.i` provides passive `PACKING_WRITE_BEGIN`,
+`PACKING_WRITE_END`, `PACKING_COUNT` and `PACKING_STORED` calls. They require
+`OPFORGE_LAZY_AUDIT`, `OPFORGE_LAZY_WORK` and `OPFORGE_MACRO_PACKING_AUDIT`;
+missing any gate emits no calls or observer import. The bounded scalar state
+belongs to `debug.amigaos.lazy_work`: 2,049 owner rows, 32 nested writer frames,
+148,224 bytes in total. It does not alter production records or retain pointers.
+All four APIs preserve D0–D7/A0–A6, CCR and SP. SP-relative macro operands are
+outside their contract. `packingGetState` returns A0 only for the component probe.
+
+Writer windows cover primary physical-source packing and retained-fragment
+prefixes. Argument-list packing remains outside; its binder events are reported
+separately. A template row uses the existing session/pool/handle inventory's
+numeric ordinal, validated while the definition is open. Ordinary work has owner
+zero. Committed template bytes are counted separately after successful storage.
+Map counts exclude the later prefix frontier fill; lexical extents are input
+sizes, not uniquely retained allocations. Source-name requests include iterator
+probes; package candidates can overlap source facets.
+
+Only `OPFORGE_PACKING_TIMING` with the normal debug/memory/progress gates adds
+sampled E-clock calls. Supported periods are 64, 128 and 256; phase seeds are
+0–255. Inclusive windows can overlap when nested. They measure instrumented
+writer time including binding, not avoidable time or release runtime. Validate
+sampling sensitivity before using them to rank work. Counter-only builds perform
+no clock calls or report I/O.
+
+Terminal schema 1 uses phases 500000–500004 for bounds/configuration, six triples
+each at 500010 and 500020 for gross and outside-writer metrics, and six triples at
+`500100 + owner * 6` per nonempty owner. `PackingRow` defines field order. The
+strict host decoder joins complete template identities, checks closed-definition
+body extents and independently conserves gross/owner totals. It also reconciles
+name/member callbacks and stored body bytes against the work inventory. Bounds,
+overflow, identity, nesting, clock and conservation errors invalidate the report;
+none of these reports establishes native completion.
+
+Deferred plan summaries use phases 450000–450003, outside template definition
+and consumer ranges. The previous 3300–3303 identifiers overlapped definition
+rows and are superseded; do not mix old producers with the current decoder.
+
 ## Bounded memory accounting
 
 `debug/memory_telemetry.i` supplies `MEMORY_ALLOC`, `MEMORY_FREE`, `MEMORY_PHASE`,

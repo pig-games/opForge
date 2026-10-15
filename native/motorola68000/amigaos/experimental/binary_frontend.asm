@@ -8,6 +8,7 @@
 	.include "capture_telemetry.i"
 	.include "lazy_audit.i"
 	.include "lazy_work_context.i"
+	.include "macro_packing_audit.i"
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_source as writer
@@ -1246,7 +1247,9 @@ done
 writeWithHeadPolicy	.block
 	bsr.w selectHeadPolicy
 	bne.w done
+	.PACKING_WRITE_BEGIN a6, TEMPLATE_STATE, LINE_FRAME, #0
 	jsr writer.writeLine
+	.PACKING_WRITE_END d0, d1
 done
 	tst.l d0
 	rts
@@ -1638,7 +1641,9 @@ headReady
 	bhi.w bad
 	lea LINE_FRAME(a6), a0
 	move.l d4, writer.Frame.Count(a0)
+	.PACKING_WRITE_BEGIN a6, TEMPLATE_STATE, LINE_FRAME, #1
 	jsr writer.writeLine
+	.PACKING_WRITE_END d0, d1
 	bne.w bad
 	; Retained operands have no packed representation yet. Their lexical
 	; boundaries map to the numeric head frontier until fragment expansion.
@@ -4059,6 +4064,7 @@ done
 ; D0=0 member/1 ordinary/2 invalid,D1=base ID,D2=field ID,D3=base qualifier;
 ; CCR=D0. Preserve D4-D7/A2-A6; inspect only captured lexical storage.
 bindMember	.block
+	.PACKING_COUNT packing_audit.PackingRow.Members, #1
 	.WORK_COUNT lazy_work.BIND, #1
 	movem.l a2-a3, -(sp)
 	movea.l writer.Frame.Context(a0), a2
@@ -4120,6 +4126,7 @@ done
 ; outputs D1=id,D2=qualifier,D0/status.
 ; A1=Scratch context. Preserves D3-D7/A2-A6.
 bind	.block
+	.PACKING_COUNT packing_audit.PackingRow.Names, #1
 	.WORK_COUNT lazy_work.BIND, #1
 	.HOTSPOT_ENTER #HOTSPOT_NAME_BIND
 	movem.l d3-d7/a2-a6, -(sp)
@@ -4211,6 +4218,7 @@ ordinaryPackageEntry
 	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
 	bne.w advance
 entryFound
+	.PACKING_COUNT packing_audit.PackingRow.PackageHits, #1
 	moveq #0, d1
 	move.w 2(a3), d1
 	btst #package.DICTIONARY_ASSIGNMENT_WORD_BIT, package.DictionaryEntry.Roles(a3)
@@ -4353,6 +4361,7 @@ findSymbol
 ; Shared lexical binding. D4 selects origin versus canonical identity; active
 ; iterators keep their temporary origin. D3 retains the current struct scope.
 sourceName
+	.PACKING_COUNT packing_audit.PackingRow.SourceBinds, #1
 	movea.l a2, a0
 	move.l d6, d0
 	lea SCOPE_STATE(a6), a1
@@ -4405,6 +4414,7 @@ sourceBound
 	move.l d2, -(sp)
 	movea.l a2, a0
 	move.l d6, d0
+	.PACKING_COUNT packing_audit.PackingRow.CaptureBinds, #1
 	jsr scopes.captureBinding
 	move.l (sp)+, d2
 	tst.l d0

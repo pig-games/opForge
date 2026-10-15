@@ -7,6 +7,9 @@
 	.use experimental.amigaos.binary_capture as capture
 	.use experimental.amigaos.binary_source as source
 	.use tests.amigaos.binary_lazy_template_probe as template_probe
+.ifdef OPFORGE_MACRO_PACKING_AUDIT
+	.use tests.amigaos.macro_packing_probe as packing_probe
+.endif
 .if DEFER_MACRO_LINES
 	.use tests.amigaos.line_proof_probe as line_probe
 .endif
@@ -362,6 +365,10 @@ checkRanges
 	jsr lazy_units.clear
 	moveq #0, d0
 	jsr template_probe.run
+.ifdef OPFORGE_MACRO_PACKING_AUDIT
+	bne.w done
+	jsr packing_probe.run
+.endif
 .if DEFER_MACRO_LINES
 	bne.w done
 	jsr line_probe.run

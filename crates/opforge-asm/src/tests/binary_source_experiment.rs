@@ -1042,6 +1042,7 @@ fn compact_cli_self_host_descriptor_module_fs_uae() {
     let entry = b".module descriptor_probe\n.cpu m68020\n.use prvm.amigaos.macro_descriptors as desc\n.use prvm.amigaos.packed_macro as packed\n.section entry, kind=code\n.long desc.State.ListEnd,packed.State.ListEnd\n.endsection\n.output \"build/descriptors.hunk\", format=hunk, sections=entry,code\n.endmodule\n";
     let abi = fs::read(root.join("prvm/prvm_abi.asm")).unwrap();
     let telemetry = fs::read(root.join("debug/telemetry_macros.i")).unwrap();
+    let telemetry_noop = fs::read(root.join("debug/telemetry_macros_noop.i")).unwrap();
     let oracle_dir = create_temp_dir("compact-self-host-descriptor-oracle");
     fs::create_dir_all(oracle_dir.join("experimental")).unwrap();
     fs::create_dir_all(oracle_dir.join("prvm")).unwrap();
@@ -1056,6 +1057,11 @@ fn compact_cli_self_host_descriptor_module_fs_uae() {
     fs::write(oracle_dir.join("prvm/prvm_packed_macro.asm"), &packed_macro).unwrap();
     fs::write(oracle_dir.join("prvm/prvm_abi.asm"), &abi).unwrap();
     fs::write(oracle_dir.join("debug/telemetry_macros.i"), &telemetry).unwrap();
+    fs::write(
+        oracle_dir.join("debug/telemetry_macros_noop.i"),
+        &telemetry_noop,
+    )
+    .unwrap();
     let cli = Cli::parse_from([
         "opForge".to_string(),
         input.to_string_lossy().into_owned(),
@@ -1080,6 +1086,7 @@ fn compact_cli_self_host_descriptor_module_fs_uae() {
         ("prvm/prvm_packed_macro.asm", packed_macro.as_slice()),
         ("prvm/prvm_abi.asm", abi.as_slice()),
         ("debug/telemetry_macros.i", telemetry.as_slice()),
+        ("debug/telemetry_macros_noop.i", telemetry_noop.as_slice()),
     ];
     let outcome = crate::fs_uae_smoke::run_compact_cli_files_from_env(
         &workspace_root(),

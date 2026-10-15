@@ -5,10 +5,7 @@ use super::native_iterable_loops::{build_image, oracle, scratch};
 use super::native_source_cases::{self, Case};
 
 fn cases() -> Vec<Case> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let telemetry =
-        std::fs::read_to_string(root.join("native/motorola68000/amigaos/debug/memory_telemetry.i"))
-            .unwrap();
+    let telemetry_files = crate::tests::native_telemetry_macros::telemetry_fixture_files();
     let mut cases: Vec<Case> = [
         ("register", ".MEMORY_FREE d0"),
         ("immediate", ".MEMORY_FREE #0"),
@@ -28,8 +25,12 @@ fn cases() -> Vec<Case> {
                     ".module memory\n.cpu 68020\n.include \"memory_telemetry.i\"\n.pub\n.region image, $1000, $100f, align=1\n.section code, kind=code\nrelease .block\n\t{call}\n\trts\n.bend\n.word release\n.endsection\n.place code in image\n.output \"out.bin\", format=bin, sections=code\n.endmodule\n"
                 ),
             ),
-            ("memory_telemetry.i", telemetry.clone()),
-        ],
+        ]
+        .into_iter()
+        .chain(telemetry_files.iter().map(|(name, bytes)| {
+            (*name, String::from_utf8(bytes.clone()).unwrap())
+        }))
+        .collect(),
         expected: Some(if name.contains("movea") { vec![0x2c, 0x78, 0, 4, 0x4e, 0x75, 0x10, 0] } else { vec![0x4e, 0x75, 0x10, 0] }),
     })
     .collect();

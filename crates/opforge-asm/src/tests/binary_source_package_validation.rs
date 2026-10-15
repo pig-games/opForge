@@ -354,9 +354,6 @@ Payload .res byte,PACKAGE_CAPACITY
 "#,
     );
     let directory = root.join("native/motorola68000/amigaos/experimental");
-    let telemetry =
-        std::fs::read_to_string(root.join("native/motorola68000/amigaos/debug/telemetry_macros.i"))
-            .unwrap();
     for name in [
         "prvm_abi.asm",
         "prvm_packed_branch.asm",
@@ -375,8 +372,7 @@ Payload .res byte,PACKAGE_CAPACITY
     ] {
         source.push_str(
             &std::fs::read_to_string(root.join("native/motorola68000/amigaos/prvm").join(name))
-                .unwrap()
-                .replace(".include \"telemetry_macros.i\"", &telemetry),
+                .unwrap(),
         );
         source.push('\n');
     }
@@ -387,15 +383,7 @@ Payload .res byte,PACKAGE_CAPACITY
         "binary_package_validation.asm",
     ] {
         let module = std::fs::read_to_string(directory.join(name)).unwrap();
-        if name == "binary_memory.asm" {
-            let telemetry = std::fs::read_to_string(
-                root.join("native/motorola68000/amigaos/debug/memory_telemetry.i"),
-            )
-            .unwrap();
-            source.push_str(&module.replace(".include \"memory_telemetry.i\"", &telemetry));
-        } else {
-            source.push_str(&module);
-        }
+        source.push_str(&module);
         source.push('\n');
     }
     source.push_str(".end\n");
@@ -537,6 +525,7 @@ fn compact_package_validation_component_host_assembles() {
     let scratch = Scratch::new();
     let input = scratch.0.join("entry.asm");
     std::fs::write(&input, source(&workspace_root())).unwrap();
+    crate::tests::native_telemetry_macros::stage_telemetry_fixture_files(&scratch.0);
     let cli = Cli::parse_from(["opForge", input.to_str().unwrap(), "--cpu", "68020"]);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(scratch.0.clone());
@@ -565,6 +554,7 @@ fn compact_package_validation_component_fs_uae() {
     let source = source(&root);
     let input = scratch.0.join("entry.asm");
     std::fs::write(&input, &source).unwrap();
+    crate::tests::native_telemetry_macros::stage_telemetry_fixture_files(&scratch.0);
     let mut cases = fixtures();
     let selected = std::env::var("OPFORGE_PACKAGE_VALIDATION_CASES").ok();
     if let Some(names) = &selected {

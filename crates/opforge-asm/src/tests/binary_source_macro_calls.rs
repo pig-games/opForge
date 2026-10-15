@@ -32,6 +32,7 @@ fn oracle(source: &str) -> Vec<u8> {
     let input = dir.join("input.asm");
     let output = dir.join("output.bin");
     fs::write(&input, source).unwrap();
+    crate::tests::native_telemetry_macros::stage_telemetry_fixture_files(&dir);
     let cli = Cli::parse_from([
         "opForge".to_string(),
         input.to_string_lossy().into_owned(),
@@ -259,14 +260,26 @@ fn native_source_for_cpu(source: String, cpu: &str) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline(cpu, None).unwrap();
     let package = prepare_package(&core, &resolved).unwrap();
+    let telemetry_files = crate::tests::native_telemetry_macros::telemetry_fixture_files();
+    let mut sources = vec![("entry.asm", source.as_bytes())];
+    sources.extend(
+        telemetry_files
+            .iter()
+            .map(|(name, bytes)| (*name, bytes.as_slice())),
+    );
     let result = if let Some(path) = std::env::var_os("OPFORGE_MACRO_IMAGE") {
         // Reuse one identified executable within a native test batch. Guest
         // source, Rust oracle, completion challenge and output remain fresh.
         let image = fs::read(path).unwrap();
-        let files = [crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
-            relative_path: "entry.asm",
-            bytes: source.as_bytes(),
-        }];
+        let files = sources
+            .iter()
+            .map(
+                |(name, bytes)| crate::fs_uae_smoke::OpforgeNativeCliGuestFile {
+                    relative_path: name,
+                    bytes,
+                },
+            )
+            .collect::<Vec<_>>();
         let case = crate::fs_uae_smoke::OpforgeNativeCliParityCase {
             name: "macro-binding",
             cpu_override: "68020",
@@ -286,11 +299,14 @@ fn native_source_for_cpu(source: String, cpu: &str) {
             &image,
         )
     } else {
-        crate::fs_uae_smoke::run_compact_cli_from_env(
+        crate::fs_uae_smoke::run_compact_cli_files_from_env(
             &workspace_root(),
             &package,
-            source.as_bytes(),
+            &sources,
+            &[],
+            &[],
             Some(&expected),
+            false,
         )
     }
     .expect("fresh packed macro call comparison");
@@ -319,11 +335,10 @@ fn compact_macro_call_nested_fs_uae() {
     native_source(source(true));
 }
 
-// The invocation-local gate name exceeds the former 63-byte composed-name cap.
-// Keep the real disabled telemetry definitions: no telemetry code may be emitted.
+// Keep the real disabled telemetry include and its relative no-op dependency:
+// calls must preserve their argument API while emitting no telemetry code.
 fn telemetry_source() -> String {
-    let telemetry =
-        include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");
+    let telemetry = ".include \"memory_telemetry.i\"";
     format!(".module experimental.amigaos.binary_app\n.cpu m68020\n{telemetry}\nexecute .block\n.MEMORY_PHASE #0\n.byte 1\n.bend\n.byte execute\n.endmodule\n")
 }
 
@@ -331,8 +346,7 @@ fn telemetry_source() -> String {
 // single call exceeded the native argument-spelling pool even though its packed
 // tokens fit; disabled macros must still accept their complete invocation.
 fn preparation_telemetry_source() -> String {
-    let telemetry =
-        include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");
+    let telemetry = ".include \"memory_telemetry.i\"";
     let diagnostics = include_str!(
         "../../../../native/motorola68000/amigaos/experimental/binary_app_diagnostics.i"
     );
@@ -368,8 +382,7 @@ fn compact_preparation_telemetry_fs_uae() {
 }
 
 fn assembly_telemetry_source() -> String {
-    let telemetry =
-        include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");
+    let telemetry = ".include \"memory_telemetry.i\"";
     format!(".module app\n.cpu m68020\n{telemetry}\nMissing=0\n.ASSEMBLY_FAILURE_STAGE Missing,#1\n.MEMORY_COUNTER_INC_ZERO UndefinedCounter,#0\n.MEMORY_COUNTER_INC_ZERO UndefinedCounter,#1\n.byte 1\n.endmodule\n")
 }
 
@@ -453,8 +466,7 @@ fn compact_macro_forward_labeled_call_fs_uae() {
 }
 
 fn telemetry_family_source() -> String {
-    let telemetry =
-        include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");
+    let telemetry = ".include \"memory_telemetry.i\"";
     let calls = [
         ".MEMORY_ALLOC #16",
         ".MEMORY_WORK #0,#1",

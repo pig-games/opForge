@@ -14567,6 +14567,11 @@ fn item40_complete_service_dependencies(root: &Path, sources: &mut Vec<(&'static
         fs::read(root.join("native/motorola68000/amigaos/debug/telemetry_macros.i"))
             .expect("read disabled runtime telemetry macros"),
     ));
+    sources.push((
+        "telemetry_macros_noop.i",
+        fs::read(root.join("native/motorola68000/amigaos/debug/telemetry_macros_noop.i"))
+            .expect("read disabled runtime telemetry signatures"),
+    ));
 }
 
 // @opforge-evidence: level=D; role=focused-regression; authority=rust-bytes; lifecycle=permanent

@@ -41,7 +41,6 @@ const GATES: [&str; 3] = [
     "OPFORGE_MEMORY_TELEMETRY",
     "OPFORGE_CAPTURE_TELEMETRY",
 ];
-const INCLUDE: &str = "native/motorola68000/amigaos/debug/capture_telemetry.i";
 const OBSERVER: &str = "native/motorola68000/amigaos/debug/opforge_capture_profile.asm";
 
 fn wrapper_source(sites: &str, stub: bool) -> String {
@@ -97,11 +96,7 @@ fn assemble_wrapper(sites: &str, stub: bool, defines: &[String]) -> Vec<u8> {
     let dir = scratch();
     let source = dir.0.join("capture.asm");
     fs::write(&source, wrapper_source(sites, stub)).unwrap();
-    fs::copy(
-        workspace_root().join(INCLUDE),
-        dir.0.join("capture_telemetry.i"),
-    )
-    .unwrap();
+    crate::tests::native_telemetry_macros::stage_telemetry_fixture_files(&dir.0);
     assemble_source(&source, &dir.0, defines, "build/capture-test")
 }
 
@@ -261,8 +256,12 @@ fn capture_tree() -> Vec<(&'static str, String)> {
         ("templates/leaf.inc", ".byte 37\n".into()),
         // Guest source has no debug defines or observer module. Native must
         // still bind the disabled call's boundary identity at module close.
-        ("capture_telemetry.i", fs::read_to_string(workspace_root().join(INCLUDE)).unwrap()),
     ]
+    .into_iter()
+    .chain(crate::tests::native_telemetry_macros::telemetry_fixture_files().into_iter().map(|(name, bytes)| {
+        (name, String::from_utf8(bytes).unwrap())
+    }))
+    .collect()
 }
 
 #[test]
@@ -722,11 +721,7 @@ fn build_observer_probe(dir: &Path) -> (String, Vec<u8>) {
     let source = observer_probe_source();
     let path = dir.join("capture-probe.asm");
     fs::write(&path, &source).unwrap();
-    fs::copy(
-        workspace_root().join(INCLUDE),
-        dir.join("capture_telemetry.i"),
-    )
-    .unwrap();
+    crate::tests::native_telemetry_macros::stage_telemetry_fixture_files(dir);
     let mut defines = GATES.map(str::to_string).to_vec();
     defines.push("OPFORGE_PREPARATION_PROGRESS".into());
     let image = assemble_source(&path, dir, &defines, "build/capture-probe");

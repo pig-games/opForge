@@ -1,7 +1,52 @@
 use super::*;
 
-const RUNTIME_TELEMETRY_INCLUDE: &str = "native/motorola68000/amigaos/debug/telemetry_macros.i";
-const MEMORY_TELEMETRY_INCLUDE: &str = "native/motorola68000/amigaos/debug/memory_telemetry.i";
+// Preserve the real includes and their relative disabled-definition dependencies.
+pub(crate) fn telemetry_fixture_files() -> Vec<(&'static str, Vec<u8>)> {
+    let debug = workspace_root().join("native/motorola68000/amigaos/debug");
+    [
+        "memory_telemetry.i",
+        "memory_telemetry_noop.i",
+        "telemetry_macros.i",
+        "telemetry_macros_noop.i",
+        "binding_telemetry.i",
+        "binding_telemetry_noop.i",
+        "capture_telemetry.i",
+        "capture_telemetry_noop.i",
+        "hotspot_telemetry.i",
+        "hotspot_telemetry_noop.i",
+    ]
+    .into_iter()
+    .map(|name| {
+        (
+            name,
+            fs::read(debug.join(name)).expect("read real telemetry fixture include"),
+        )
+    })
+    .collect()
+}
+
+pub(crate) fn stage_telemetry_fixture_files(directory: &Path) {
+    for (name, bytes) in telemetry_fixture_files() {
+        fs::write(directory.join(name), bytes).expect("stage telemetry fixture include");
+    }
+}
+
+#[test]
+fn native_telemetry_fixture_includes_have_relative_dependencies() {
+    let files = telemetry_fixture_files();
+    for (name, bytes) in &files {
+        let source = std::str::from_utf8(bytes).unwrap();
+        for line in source.lines() {
+            if let Some(include) = line.trim().strip_prefix(".include \"") {
+                let dependency = include.split('"').next().unwrap();
+                assert!(
+                    files.iter().any(|(path, _)| *path == dependency),
+                    "{name} requires unstaged fixture include {dependency}"
+                );
+            }
+        }
+    }
+}
 
 fn runtime_telemetry_source(with_stub: bool, with_sites: bool) -> String {
     let mut stub = String::new();
@@ -62,15 +107,10 @@ start .block
 }
 
 fn assemble_runtime_telemetry_case(label: &str, source: &str, defines: &[String]) -> Vec<u8> {
-    let root = workspace_root();
     let temp = create_temp_dir(label);
     let source_path = temp.join("telemetry_test.asm");
     fs::write(&source_path, source).expect("write telemetry test source");
-    fs::write(
-        temp.join("telemetry_macros.i"),
-        fs::read(root.join(RUNTIME_TELEMETRY_INCLUDE)).expect("read telemetry macro include"),
-    )
-    .expect("stage telemetry macro include");
+    stage_telemetry_fixture_files(&temp);
     assemble_example_with_base_and_defines(&source_path, &temp, "telemetry_test", false, defines)
         .unwrap_or_else(|error| panic!("assemble {label}: {error}"));
     let bytes = fs::read(temp.join("build/telemetry-test")).expect("read telemetry test output");
@@ -238,17 +278,7 @@ fn assemble_memory_telemetry_case(label: &str, source: &str, defines: &[String])
         source.to_string()
     };
     fs::write(&source_path, owned_source).expect("write memory telemetry test source");
-    fs::write(
-        temp.join("memory_telemetry.i"),
-        fs::read(root.join(MEMORY_TELEMETRY_INCLUDE)).expect("read memory telemetry macro include"),
-    )
-    .expect("stage memory telemetry macro include");
-    fs::write(
-        temp.join("binding_telemetry.i"),
-        fs::read(root.join("native/motorola68000/amigaos/debug/binding_telemetry.i"))
-            .expect("read binding telemetry macro include"),
-    )
-    .expect("stage binding telemetry macro include");
+    stage_telemetry_fixture_files(&temp);
     assemble_example_with_base_and_defines(
         &source_path,
         &temp,

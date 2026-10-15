@@ -4,7 +4,6 @@ use super::*;
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 
-const INCLUDE: &str = "native/motorola68000/amigaos/debug/hotspot_telemetry.i";
 const OBSERVER: &str = "native/motorola68000/amigaos/debug/opforge_hotspot_profile.asm";
 const GATES: [&str; 3] = [
     "OPFORGE_DEBUG_CONTRACTS",
@@ -28,11 +27,7 @@ fn assemble(source: &str, defines: &[String], output: &str) -> Vec<u8> {
     let dir = scratch();
     let path = dir.0.join("hotspot.asm");
     fs::write(&path, source).unwrap();
-    fs::copy(
-        workspace_root().join(INCLUDE),
-        dir.0.join("hotspot_telemetry.i"),
-    )
-    .unwrap();
+    crate::tests::native_telemetry_macros::stage_telemetry_fixture_files(&dir.0);
     let mut args = vec![
         "opForge".into(),
         path.to_string_lossy().into_owned(),

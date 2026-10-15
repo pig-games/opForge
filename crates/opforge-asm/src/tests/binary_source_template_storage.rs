@@ -3,6 +3,8 @@ use super::*;
 
 const TELEMETRY: &str =
     include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry.i");
+const TELEMETRY_NOOP: &str =
+    include_str!("../../../../native/motorola68000/amigaos/debug/memory_telemetry_noop.i");
 const ENTRY: &str = ".include \"provider.i\"\n.module app\n.cpu m68020\n.use provider (EMIT)\n.include \"memory_telemetry.i\"\n.MEMORY_PHASE 0\n.MEMORY_LAYOUT 1,2,3\n.EMIT\n.endmodule\n";
 const PROVIDER: &str = ".module provider\n.include \"memory_telemetry.i\"\n.pub\nEMIT .macro value=7\n.byte .value\n.endmacro\n.endmodule\n";
 const PAYLOAD: &str =
@@ -94,6 +96,7 @@ fn compact_template_storage_rust_oracles() {
         ("input.asm", ENTRY.as_bytes()),
         ("provider.i", PROVIDER.as_bytes()),
         ("debug/memory_telemetry.i", TELEMETRY.as_bytes()),
+        ("debug/memory_telemetry_noop.i", TELEMETRY_NOOP.as_bytes()),
     ];
     assert_eq!(oracle(&sources, "68020"), [7]);
     let source = growth_source();
@@ -274,6 +277,7 @@ fn compact_template_storage_modules_fs_uae() {
             ("input.asm", ENTRY.as_bytes()),
             ("provider.i", PROVIDER.as_bytes()),
             ("debug/memory_telemetry.i", TELEMETRY.as_bytes()),
+            ("debug/memory_telemetry_noop.i", TELEMETRY_NOOP.as_bytes()),
         ],
         "m68020",
     );

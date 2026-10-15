@@ -2,21 +2,23 @@
 ; @opforge-owner: experimental.amigaos.binary_app
 ; @opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent
 	.module experimental.amigaos.binary_app
+; Whole-source observers below require one contiguous arena per logical region.
+; The shared capture store resolves records across independent physical chunks.
+.ifdef OPFORGE_LAZY_AUDIT
+.error "chunked capture does not support the contiguous-region lazy observer"
+.endif
+.ifdef OPFORGE_CAPTURE_LIFETIME_AUDIT
+.error "chunked capture does not support the contiguous-region lifetime observer"
+.endif
 	.cpu 68020
-	.include "build_configuration.i"
 	.use experimental.amigaos.binary_frontend as frontend
 	.use experimental.amigaos.binary_statement_execution as statement_execution
 	.use experimental.amigaos.binary_capture as capture
-.if CHUNKED_CAPTURE
 	.use experimental.amigaos.binary_capture_store as capture_store
-.endif
 	.use experimental.amigaos.binary_configuration as configuration
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_assembly as assembly
-.ifdef OPFORGE_FRAGMENT_SOURCE
-	.use experimental.amigaos.binary_fragment as fragment
-.endif
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_output as hunk
 	.use experimental.amigaos.binary_output_plan as output_plan
@@ -56,7 +58,6 @@
 	.use experimental.amigaos.binary_source_control as source_control
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
-	.include "deferred_binding_report.i"
 	.include "binding_telemetry.i"
 	.include "capture_telemetry.i"
 	.include "capture_lifetime.i"
@@ -130,11 +131,7 @@ SPAN_BYTES = graph.SPAN_BYTES
 CAPTURE_REGION_BYTES = capture.REGION_BYTES
 ; Report physical capture ownership; zero telemetry emission in release builds.
 SOURCE_CAPTURE_SNAPSHOT	.macro boundary
-.if CHUNKED_CAPTURE
 	.CAPTURE_CHUNK_SNAPSHOT .boundary, CaptureStore+capture_store.State.Directory, capture_store.ROW_SHIFT, capture_store.ROW_BYTES, capture_store.Row.Storage, CaptureLine, CaptureOrder, CaptureOrderCount, SPAN_BYTES
-.else
-	.CAPTURE_SNAPSHOT .boundary, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, capture.Region.Arena, CaptureOrderCount, SPAN_BYTES
-.endif
 .endmacro
 IO_SCRATCH_BYTES = IO_BYTES*(INCLUDE_DEPTH+1)+LINE_BYTES+RECORD_BYTES
 IncludeFrame	.struct
@@ -336,7 +333,6 @@ cleanup
 	bsr.w closeInput
 	tst.l FrontStarted
 	beq.w freeBlocks
-	.DEFERRED_BINDING_REPORT DosBase, Front
 	lea Front, a0
 	jsr frontend.finish
 freeBlocks
@@ -495,10 +491,6 @@ load
 	move.l #includeSelected, frontend.Frame.FileInclude(a0)
 	move.l #sourceCursor, frontend.Frame.SourceCursor(a0)
 	move.l #sourcePeek, frontend.Frame.SourcePeek(a0)
-.if DEFER_MACRO_PLANS
-	move.l #resolvePlanCapture, frontend.Frame.CaptureResolve(a0)
-	clr.l frontend.Frame.CaptureOffset(a0)
-.endif
 	move.l #source_control.line, frontend.Frame.SourceControl(a0)
 	clr.l SourceCursorState.Start+SourceCursorData
 	clr.l SourceCursorState.Offset+SourceCursorData
@@ -951,7 +943,6 @@ parametersSaved
 	jsr memory.release
 	bsr.w clearIncludeText
 	lea Front, a0
-	.DEFERRED_BINDING_REPORT DosBase, Front
 	jsr frontend.finish
 	clr.l FrontStarted
 	bsr.w releaseScheduledFrontend
@@ -1455,12 +1446,7 @@ run	.block
 captureSpans
 	move.l #appendEmission, assembly.Frame.Emitted(a0)
 assemble
-.ifdef OPFORGE_FRAGMENT_SOURCE
-	jsr fragment.run
-	.MEMORY_PROGRESS DosBase, #PROGRESS_FRAGMENT, fragment.Prepared, fragment.CopiedBytes, fragment.MappedRecords
-.else
 	jsr assembly.assemble
-.endif
 	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_WORK, assembly.TraversalPasses, assembly.TraversalRecords, #0
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ROOTS, activation.Selections, activation.Roots, activation.GlobalSelections
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_SIZING, assembly.SizingPasses, branches.DeferredEvaluations, #0
@@ -2023,9 +2009,7 @@ OrderedCount	.res long, 1
 GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4
 CaptureRegions	.res byte, memory.Block.Used+4
-.if CHUNKED_CAPTURE
 CaptureStore	.res byte, capture_store.STATE_BYTES
-.endif
 CaptureRegionCount	.res long, 1
 CaptureRegionCurrent	.res long, 1
 CaptureBytes	.res long, 1

@@ -27,9 +27,6 @@ WORK_COUNTER_BYTES = 4
 LINE_READY = 0
 LINE_ABSENT = 1
 LINE_INVALID = 2
-LINE_PROOF = 3; compact checked spelling/fragments, not an execution plan
-; Validated call grammar; candidate construction is pending first consumption.
-CALL_DEFERRED = 3
 Frame	.struct
 Arena	.long ?
 Tokens	.long ?

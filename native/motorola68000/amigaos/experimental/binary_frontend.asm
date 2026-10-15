@@ -3,7 +3,6 @@
 ; @opforge-owner: experimental.amigaos.binary_frontend
 	.module experimental.amigaos.binary_frontend
 	.cpu 68020
-	.include "build_configuration.i"
 	.include "memory_telemetry.i"
 	.include "capture_telemetry.i"
 	.include "lazy_audit.i"
@@ -27,12 +26,6 @@
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_templates as templates
 	.use experimental.amigaos.binary_capture as capture
-.if DEFER_MACRO_LINES
-	.use experimental.amigaos.binary_line_proofs as line_proofs
-.endif
-.if DEFER_MACRO_PLANS
-	.use experimental.amigaos.binary_deferred_plans as deferred
-.endif
 	.use experimental.amigaos.binary_macro_plans as macro_plans
 	.include "candidate_audit.i"
 	.use experimental.amigaos.binary_statement_heads as statement_heads
@@ -58,10 +51,6 @@
 	.use prvm.amigaos.runtime as parser_runtime
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.macro_spelling as spelling
-.if BINARY_MACRO_VIEW
-	.use prvm.amigaos.binary_spelling as binary_spelling
-	.use prvm.amigaos.binary_macro_runtime as binary_runtime
-.endif
 	.use experimental.amigaos.binary_text_names as textNames
 	.use prvm.amigaos.packed_text as text
 	.include "hotspot_telemetry.i"
@@ -92,16 +81,9 @@ PreviewMode	.word ?  ; identity-only binding suppresses semantic references
 AsciiName	.word ?  ; global source-origin encoding identity
 PetsciiName	.word ?
 CaptureBody	.long ?  ; physical acquisition retains whole-line template body plans
-; Zero-width fields retain the eager ABI when source configuration disables them.
-CaptureOffset	.res DEFER_MACRO_PLANS*4  ; global record offset across regions/includes
-CaptureResolve	.res DEFER_MACRO_PLANS*4  ; immutable lookup; no preview/binding
 	.endstruct
 	.pub
-.if DEFER_MACRO_PLANS
-FRAME_BYTES = Frame.CaptureResolve+4
-.else
 FRAME_BYTES = Frame.CaptureBody+4
-.endif
 PREP_DECLARATION = 1
 PREP_CONDITIONAL = 2
 PREP_CONFIGURATION = 3
@@ -184,15 +166,7 @@ TEXT_NAME_BUFFER = EXPRESSION_WORK+expression.WORKSPACE_BYTES
 STATEMENT_HEAD_NAMES = TEXT_NAME_BUFFER+layout.NAME_BYTES
 STATEMENT_STATE = STATEMENT_HEAD_NAMES+statement_heads.CACHE_BYTES
 STATEMENT_EXECUTION = STATEMENT_STATE+statement_session.STATE_BYTES
-.if BINARY_MACRO_VIEW
-BINARY_VIEW = (STATEMENT_EXECUTION+statement_execution.STATE_BYTES+3)&$fffffffc
-BINARY_VIEW_FRAME = BINARY_VIEW+binary_spelling.MAX_BYTES
-BINARY_VIEW_BYTES = BINARY_VIEW_FRAME+binary_spelling.FRAME_BYTES
-BINARY_VIEW_READY = BINARY_VIEW_BYTES+4
-SCRATCH_BYTES = BINARY_VIEW_READY+4
-.else
 SCRATCH_BYTES = STATEMENT_EXECUTION+statement_execution.STATE_BYTES
-.endif
 	.priv
 FRAGMENT_REQUEST = fragment_binding.FRAME_BYTES
 FRAGMENT_VIEWS = FRAGMENT_REQUEST+fragment_tokenizer.FRAME_BYTES
@@ -359,9 +333,6 @@ clearBuckets
 	move.l a1, templates.State.Plans(a0)
 	move.l #generatedPlan, templates.State.GeneratedPlan(a0)
 	move.l #fragmentLine, templates.State.FragmentLine(a0)
-.if DEFER_MACRO_PLANS
-	move.l #bindDeferred, templates.State.BindPlan(a0)
-.endif
 	move.l a5, templates.State.ParserContext(a0)
 	move.l Frame.Package(a5), templates.State.Package(a0)
 	move.l #1, LINE_NUMBER(a6)
@@ -948,29 +919,6 @@ lineCandidate
 lineReady
 	move.l d5, capture.Frame.LineStatus(a4)
 	move.l d6, capture.Frame.LineHandle(a4)
-.if ACQUIRE_MACRO_CANDIDATES
-	; A deferred call borrows whole-line spelling only when that owner is valid.
-	; Invalid/absent line recipes retain the original independent call owner.
-	cmpi.l #capture.CALL_DEFERRED, capture.Frame.CallStatus(a4)
-	bne.w acquisitionReady
-	tst.l d5
-	beq.w acquisitionReady
-.if DEFER_MACRO_LINES
-	cmpi.l #capture.LINE_PROOF, d5
-	beq.w acquisitionReady
-.endif
-	move.l Frame.CaptureBody(a5), d3
-	clr.l Frame.CaptureBody(a5)
-	moveq #1, d4
-	bsr.w captureCandidate
-	move.l d3, Frame.CaptureBody(a5)
-	tst.l d0
-	bne.w bad
-	move.l d5, capture.Frame.CallStatus(a4)
-	move.l d6, capture.Frame.CallHandle(a4)
-	move.l d7, capture.Frame.CallRecipeStatus(a4)
-acquisitionReady
-.endif
 	moveq #0, d0
 	bra.w done
 bad
@@ -1060,36 +1008,6 @@ discardRecipes
 	clr.l macro_plans.Frame.RecipeEvents(a0)
 	clr.l macro_plans.Frame.RecipeCount(a0)
 createCandidate
-.if DEFER_MACRO_LINES
-	cmpi.l #3, d4
-	bne.w ordinaryLine
-	tst.l Frame.CaptureBody(a5)
-	beq.w ordinaryLine
-	jsr line_proofs.create
-	cmpi.l #line_proofs.STATUS_UNSUPPORTED, d0
-	beq.w ordinaryLine
-	tst.l d0
-	bne.w bad
-	move.l d1, d6
-	moveq #capture.LINE_PROOF, d5
-	bra.w candidateReady
-ordinaryLine
-.endif
-.if ACQUIRE_MACRO_CANDIDATES
-	cmpi.l #1, d4
-	bne.w publishCandidate
-	tst.l Frame.CaptureBody(a5)
-	beq.w publishCandidate
-	tst.l capture.Frame.Count(a4)
-	beq.w publishCandidate
-	; Keep the same grammar/recipe/container failure checks, without retaining
-	; a duplicate call plan. The valid whole-line candidate owns its spelling.
-	jsr macro_plans.validate
-	bne.w bad
-	moveq #capture.CALL_DEFERRED, d5
-	bra.w candidateReady
-publishCandidate
-.endif
 	.WORK_ACQUIRE capture.PLAN_CREATE_COUNT, a4
 	jsr macro_plans.create
 	bne.w bad
@@ -1110,11 +1028,6 @@ done
 tokenizeLine	.block
 	.HOTSPOT_ENTER #HOTSPOT_TOKENIZE
 	movem.l d2/d4-d7/a0-a4, -(sp)
-.if BINARY_MACRO_VIEW
-	movea.l a6, a0
-	adda.l #BINARY_VIEW_READY, a0
-	clr.l (a0)
-.endif
 	movea.l Frame.Source(a5), a0
 	move.l Frame.SourceBytes(a5), d0
 	bmi.w bad
@@ -1559,26 +1472,12 @@ candidateReady
 	move.l CAPTURE_RECORD(a6), d0
 	beq.w physical
 	movea.l d0, a1
-.if DEFER_MACRO_LINES
-	move.l capture.Record.LineStatus(a1), d0
-	cmpi.l #capture.LINE_PROOF, d0
-	beq.w retainedProof
-	tst.l d0
-.else
 	tst.l capture.Record.LineStatus(a1)
-.endif
 	bne.w ordinary
 retainedProof
 	move.l capture.Record.LineHandle(a1), d6
 	beq.w bad
 	suba.w #memory.Block.Used+4, sp
-.if DEFER_MACRO_LINES
-	cmpi.l #capture.LINE_PROOF, capture.Record.LineStatus(a1)
-	bne.w retainedNormal
-	bsr.w proofRecipes
-	bra.w retainedRows
-retainedNormal
-.endif
 	jsr capture.planView
 	move.l a0, memory.Block.Pointer(sp)
 	move.l d0, memory.Block.Capacity(sp)
@@ -1863,13 +1762,6 @@ done
 ; Lexical concatenation is selected by VM spans, never marker spelling.
 numericSuffixPlan	.block
 	movem.l d1-d7/a0-a3, -(sp)
-.if DEFER_MACRO_PLANS
-	btst #31, d1
-	beq.w boundRecipe
-	bsr.w capturedLineRecipes
-	bra.w recipeReady
-boundRecipe
-.endif
 	lea MACRO_PLANS(a6), a0
 	jsr macro_plans.recipeView
 recipeReady
@@ -2176,40 +2068,8 @@ done
 
 ; A5=session,A6=scratch,D4=role (zero selects string-line candidate).
 ; Select only now, after the replay writer has rebound names in current scope.
-; D0/CCR=status,D1=normal handle or opt-in deferred body recipe; others kept.
+; D0/CCR=status,D1=normal handle; others kept.
 bindCapturedPlan	.block
-.if DEFER_MACRO_LINES
-	tst.l d4
-	bne.w ordinaryLineRole
-	move.l a0, -(sp)
-	movea.l CAPTURE_RECORD(a6), a0
-	cmpi.l #capture.LINE_PROOF, capture.Record.LineStatus(a0)
-	movea.l (sp)+, a0
-	bne.w ordinaryLineRole
-	bsr.w selectedLineProof
-	rts
-ordinaryLineRole
-.endif
-.if ACQUIRE_MACRO_CANDIDATES
-	cmpi.l #1, d4
-	bne.w ordinaryCandidate
-	move.l a0, -(sp)
-	movea.l CAPTURE_RECORD(a6), a0
-	cmpi.l #capture.CALL_DEFERRED, capture.Record.CallStatus(a0)
-	movea.l (sp)+, a0
-	bne.w ordinaryCandidate
-	bsr.w selectedAcquisition
-	rts
-ordinaryCandidate
-.endif
-.if DEFER_MACRO_PLANS
-	bsr.w deferCapturedPlan
-	cmpi.l #DEFER_EAGER, d0
-	beq.w eager
-	tst.l d0
-	rts
-eager
-.endif
 	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
 	.WORK_CONTEXT 0, #1
 	.WORK_COUNT lazy_work.PLAN_BIND, #1
@@ -2359,11 +2219,7 @@ selectedProgram
 	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	.MEMORY_TEMPLATE_WORK #10, #1
-.if BINARY_MACRO_VIEW
-	bsr.w binaryDescriptors
-.else
 	jsr macro_runtime.run
-.endif
 	bne.w bad
 	bra.w done
 bad
@@ -2376,44 +2232,10 @@ done
 
 ; Cache package-selected fragments only for nested calls captured in a template.
 ; A0=initial plan frame,A5=session,A6=scratch. D0/CCR=status; preserves others.
-.if BINARY_MACRO_VIEW
-captureFragments	.block
-	move.l d7, -(sp)
-	moveq #0, d7
-	bsr.w captureFragmentRequest
-	move.l (sp)+, d7
-	tst.l d0
-	rts
-	.bend  ; captureFragments
-
-; Expanded argument lists own their spelling independently of the physical line.
-captureGeneratedFragments	.block
-	move.l d7, -(sp)
-	moveq #1, d7
-	bsr.w captureFragmentRequest
-	move.l (sp)+, d7
-	tst.l d0
-	rts
-	.bend  ; captureGeneratedFragments
-
-captureFragmentRequest	.block
-	.include "binary_frontend_fragment_req.i"
-	.bend  ; captureFragmentRequest
-.else
 captureFragments	.block
 	.include "binary_frontend_fragment_req.i"
 	.bend  ; captureFragments
-.endif
 
-.if BINARY_MACRO_VIEW
-	.include "binary_frontend_spelling.i"
-.endif
-.if ACQUIRE_MACRO_CANDIDATES
-	.include "binary_frontend_acquisition.i"
-.endif
-.if DEFER_MACRO_LINES
-	.include "binary_frontend_line_proofs.i"
-.endif
 
 ; A0=session,A1=complete packed line,A2=expanded call list,D1=list bytes,
 ; D2=captured call-plan handle. Lex the list through TKVM before selecting the
@@ -2498,11 +2320,7 @@ clearRequest
 	lea MACRO_SPELL_EVENTS(a6), a1
 	move.l a1, macro_plans.Frame.Events(a0)
 	move.l a3, macro_plans.Frame.Source(a0)
-.if BINARY_MACRO_VIEW
-	bsr.w captureGeneratedFragments
-.else
 	bsr.w captureFragments
-.endif
 	tst.l d0
 	bne.w generatedCaptureFailed
 	lea MACRO_FRAME(a6), a1
@@ -4553,7 +4371,6 @@ different
 	rts
 	.bend  ; equal
 	.include "binary_statement_frontend.i"
-	.include "binary_frontend_deferred.i"
 	.endsection
 	.section data, kind=data
 AsciiSpelling	.byte "ascii"

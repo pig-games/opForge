@@ -583,7 +583,6 @@ enum NativeCliParityExecutable {
     ExprvmI64Harness,
     TkvmBranchHarness,
     PrvmMacroHarness,
-    BinarySpellingHarness,
     ExpressionI64Harness,
     CompactMemoHarness,
     BinarySourceHarness,
@@ -1347,20 +1346,6 @@ pub(crate) fn run_tkvm_branch_harness_from_env(
         rust_oracle,
         "Work/build/tkvm-branch-values.bin",
         NativeCliParityExecutable::TkvmBranchHarness,
-    )
-}
-
-pub(crate) fn run_binary_spelling_harness_from_env(
-    workspace_root: &Path,
-    case_bytes: &[u8],
-    rust_oracle: &[u8],
-) -> Result<FsUaeSmokeOutcome, String> {
-    run_exact_harness_from_env(
-        workspace_root,
-        case_bytes,
-        rust_oracle,
-        "Work/build/binary-spelling-results.bin",
-        NativeCliParityExecutable::BinarySpellingHarness,
     )
 }
 
@@ -2936,7 +2921,6 @@ fn opforge_native_cli_case_identity(
             NativeCliParityExecutable::ExprvmI64Harness => b"exprvm-i64-harness",
             NativeCliParityExecutable::TkvmBranchHarness => b"tkvm-branch-harness",
             NativeCliParityExecutable::PrvmMacroHarness => b"prvm-macro-harness",
-            NativeCliParityExecutable::BinarySpellingHarness => b"binary-spelling-harness",
             NativeCliParityExecutable::ExpressionI64Harness => b"expression-i64-harness",
             NativeCliParityExecutable::CompactMemoHarness => b"compact-memo-harness",
             NativeCliParityExecutable::BinarySourceHarness => b"binary-source-harness",
@@ -3405,7 +3389,6 @@ fn run_native_cli_parity_batch_cases(
         NativeCliParityExecutable::ExprvmI64Harness => "exprvm_i64_harness",
         NativeCliParityExecutable::TkvmBranchHarness => "tkvm_branch_harness",
         NativeCliParityExecutable::PrvmMacroHarness => "prvm_macro_harness",
-        NativeCliParityExecutable::BinarySpellingHarness => "binary_spelling_probe",
         NativeCliParityExecutable::ExpressionI64Harness => "tkpkg_expression_i64_harness",
         NativeCliParityExecutable::CompactMemoHarness => "tkpkg_compact_memo_harness",
         NativeCliParityExecutable::BinarySourceHarness => "binary_source_harness",
@@ -3423,9 +3406,6 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::PrvmMacroHarness => {
             "native/motorola68000/amigaos/test-harnesses/prvm/prvm_macro_harness.asm"
-        }
-        NativeCliParityExecutable::BinarySpellingHarness => {
-            "native/motorola68000/amigaos/test-harnesses/prvm/binary_spelling_probe.asm"
         }
         NativeCliParityExecutable::ExprvmI64Harness => {
             "native/motorola68000/amigaos/test-harnesses/exprvm/exprvm_i64_harness.asm"
@@ -3540,17 +3520,6 @@ fn run_native_cli_parity_batch_cases(
                         .ok_or("macro descriptor harness requires case bytes")?,
                 )?;
             }
-            NativeCliParityExecutable::BinarySpellingHarness => {
-                if cases.len() != 1 {
-                    return Err("binary spelling harness requires one live batch".into());
-                }
-                stage_guest_input_bytes(
-                    &mounted_work_dir,
-                    "binary-spelling-cases.bin",
-                    case.source_override
-                        .ok_or("binary spelling harness requires case bytes")?,
-                )?;
-            }
             NativeCliParityExecutable::TkvmBranchHarness => {
                 if cases.len() != 1 {
                     return Err("tokenizer branch harness requires one batch".into());
@@ -3611,9 +3580,6 @@ fn run_native_cli_parity_batch_cases(
             }
             NativeCliParityExecutable::PrvmMacroHarness => {
                 "Work:build/prvm_macro_harness".to_string()
-            }
-            NativeCliParityExecutable::BinarySpellingHarness => {
-                "Work:build/binary_spelling_probe".to_string()
             }
             NativeCliParityExecutable::ExprvmI64Harness => {
                 "Work:build/exprvm_i64_harness".to_string()
@@ -3711,7 +3677,6 @@ fn run_native_cli_parity_batch_cases(
         | NativeCliParityExecutable::ExprvmI64Harness
         | NativeCliParityExecutable::TkvmBranchHarness
         | NativeCliParityExecutable::PrvmMacroHarness
-        | NativeCliParityExecutable::BinarySpellingHarness
         | NativeCliParityExecutable::ExpressionI64Harness
         | NativeCliParityExecutable::CompactMemoHarness
         | NativeCliParityExecutable::BinarySourceHarness
@@ -3727,7 +3692,6 @@ fn run_native_cli_parity_batch_cases(
         | NativeCliParityExecutable::ExprvmI64Harness
         | NativeCliParityExecutable::TkvmBranchHarness
         | NativeCliParityExecutable::PrvmMacroHarness
-        | NativeCliParityExecutable::BinarySpellingHarness
         | NativeCliParityExecutable::ExpressionI64Harness
         | NativeCliParityExecutable::CompactMemoHarness
         | NativeCliParityExecutable::BinarySourceHarness
@@ -3845,9 +3809,6 @@ fn run_native_cli_parity_batch_cases(
         }
         NativeCliParityExecutable::PrvmMacroHarness => {
             mounted_work_dir.join("build/prvm_macro_harness")
-        }
-        NativeCliParityExecutable::BinarySpellingHarness => {
-            mounted_work_dir.join("build/binary_spelling_probe")
         }
         NativeCliParityExecutable::ExprvmI64Harness => {
             mounted_work_dir.join("build/exprvm_i64_harness")
@@ -4479,7 +4440,6 @@ fn example_module_paths(workspace_root: &Path, example_name: &str) -> Vec<PathBu
             | "exprvm_i64_harness"
             | "tkvm_branch_harness"
             | "prvm_macro_harness"
-            | "binary_spelling_probe"
             | "tkpkg_expression_i64_harness"
             | "tkpkg_compact_memo_harness"
             | "binary_source_harness"
@@ -4532,7 +4492,6 @@ fn example_include_paths(workspace_root: &Path, example_name: &str) -> Vec<PathB
                 | "exprvm_i64_harness"
                 | "tkvm_branch_harness"
                 | "prvm_macro_harness"
-                | "binary_spelling_probe"
                 | "prvm_smoke"
                 | "prvm_line_iterator_smoke"
                 | "tkpkg_expression_i64_harness"
@@ -8331,12 +8290,6 @@ mod native_full_selfhost_comparison;
 #[cfg(test)]
 #[path = "tests/native_fragment_controls.rs"]
 mod native_fragment_controls;
-#[cfg(test)]
-#[path = "tests/native_fragment_probe.rs"]
-mod native_fragment_probe;
-
-#[path = "tests/native_deferred_macro.rs"]
-mod native_deferred_macro;
 #[cfg(test)]
 #[path = "tests/native_lazy_audit_controls.rs"]
 mod native_lazy_audit_controls;

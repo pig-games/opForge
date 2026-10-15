@@ -150,7 +150,6 @@ captureModeReady
 capturedPolicy
 	lea CaptureLine, a0
 	move.l memory.Block.Used(a0), d7
-.if CHUNKED_CAPTURE
 	movea.l memory.Block.Pointer(a0), a1
 	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a1), #0, HOTSPOT_CAPTURE_EMPTY_RECORDS, #1
 	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a1), #0, HOTSPOT_CAPTURE_EMPTY_BYTES, d7
@@ -162,41 +161,6 @@ capturedPolicy
 	; Logical regions own source identity; shared chunks own physical storage.
 	moveq #0, d6
 	lea CaptureLine, a4
-.else
-	bsr.w currentCaptureRegion
-	move.l capture.Region.Arena+memory.Block.Used(a0), d6
-	move.l d6, d0
-	add.l d7, d0
-	bcs.w bad
-	cmpi.l #memory.LIMIT, d0
-	bls.w fits
-	bsr.w newCaptureRegion
-	bne.w bad
-	bsr.w currentCaptureRegion
-	moveq #0, d6
-fits
-	lea capture.Region.Arena(a0), a4
-	move.l d6, d0
-	add.l d7, d0
-	movea.l a4, a0
-	.CAPTURE_GROW_BEGIN
-	.CAPTURE_LIFE_RETAIN_BEGIN
-	jsr memory.reserve
-	bne.w reserveBad
-	.CAPTURE_LIFE_RETAIN_END
-	.CAPTURE_GROW_END
-	movea.l memory.Block.Pointer(a4), a1
-	adda.l d6, a1
-	lea CaptureLine, a0
-	movea.l memory.Block.Pointer(a0), a0
-	move.l d7, d0
-	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a0), #0, HOTSPOT_CAPTURE_EMPTY_RECORDS, #1
-	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a0), #0, HOTSPOT_CAPTURE_EMPTY_BYTES, d7
-	.HOTSPOT_ENTER #HOTSPOT_CAPTURE_APPEND
-	bsr.w copy
-	.HOTSPOT_LEAVE #HOTSPOT_CAPTURE_APPEND
-	add.l d7, memory.Block.Used(a4)
-.endif
 	.CAPTURE_APPEND CaptureLine, capture.HEADER_BYTES, capture.Record.Count, capture.Record.LexemeBytes, capture.Record.PlanBytes, capture.Record.SourceBytes, d7
 	.CAPTURE_LIFE_RECORD CaptureLine+memory.Block.Pointer, #CaptureLifeLayout, CaptureRegionCurrent, memory.Block.Capacity(a4), d7
 	move.l CaptureBytes, d0
@@ -209,11 +173,7 @@ fits
 	.LAZY_COUNT lazy_audit.PHYSICAL, #1
 	tst.l AcquiringSource
 	bne.w capturedOnly
-.if CHUNKED_CAPTURE
 	lea CaptureLine, a1
-.else
-	lea capture.Region.Arena(a0), a1
-.endif
 	lea ConfigScan, a0
 	move.l a1, configuration.Frame.Arena(a0)
 	move.l d6, configuration.Frame.Cursor(a0)
@@ -223,10 +183,7 @@ fits
 capturedOnly
 	moveq #0, d0
 	bra.w done
-reserveBad
-	.CAPTURE_LIFE_RETAIN_END
 bad
-	.CAPTURE_GROW_END
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6
@@ -365,7 +322,6 @@ part
 	bls.w bounded
 	move.l ScheduleEnd, d7
 bounded
-.if CHUNKED_CAPTURE
 	bsr.w captureView
 	bne.w bad
 	cmp.l d2, d7
@@ -377,12 +333,6 @@ chunkBounded
 	move.l d7, d2
 	sub.l ScheduleCursor, d2
 	add.l d1, d2
-.else
-	move.l d7, d2
-	sub.l capture.Region.Base(a0), d1
-	sub.l capture.Region.Base(a0), d2
-	lea capture.Region.Arena(a0), a1
-.endif
 	lea ConfigScan, a0
 	move.l a1, configuration.Frame.Arena(a0)
 	move.l d1, configuration.Frame.Cursor(a0)
@@ -675,28 +625,8 @@ done
 ; Preserve all registers; CCR unspecified. Safe on every execute exit.
 releaseCapturedSources	.block
 	movem.l d0-d2/a0-a2, -(sp)
-.if CHUNKED_CAPTURE
 	lea CaptureStore, a0
 	jsr capture_store.cleanup
-.else
-	lea CaptureRegions, a0
-	movea.l memory.Block.Pointer(a0), a2
-	move.l CaptureRegionCount, d2
-next
-	tst.l d2
-	beq.w table
-	.WORK_CAPTURE_REGION a2, CaptureBytes
-	lea capture.Region.Arena(a2), a0
-	.LAZY_COUNT lazy_audit.RELEASED, #1
-	.CAPTURE_RETAINED_RELEASE memory.Block.Capacity(a0)
-	.CAPTURE_LIFE_RETAIN_BEGIN
-	jsr memory.release
-	.CAPTURE_LIFE_RETAIN_END
-	adda.w #CAPTURE_REGION_BYTES, a2
-	subq.l #1, d2
-	bra.w next
-table
-.endif
 	lea CaptureRegions, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)

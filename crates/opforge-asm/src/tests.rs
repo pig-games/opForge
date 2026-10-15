@@ -42579,9 +42579,6 @@ mod native_asset_timing;
 #[path = "tests/native_telemetry_macros.rs"]
 pub(crate) mod native_telemetry_macros;
 
-#[path = "tests/native_deferred_telemetry.rs"]
-mod native_deferred_telemetry;
-
 #[path = "tests/binary_resource_activity.rs"]
 mod binary_resource_activity;
 
@@ -42615,9 +42612,3 @@ mod native_statement_arguments;
 
 #[path = "tests/motorola_memory_forms.rs"]
 mod motorola_memory_forms;
-
-#[path = "tests/binary_spelling_interface.rs"]
-mod binary_spelling_interface;
-
-#[path = "tests/binary_spelling_native.rs"]
-mod binary_spelling_native;

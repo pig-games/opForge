@@ -4,16 +4,12 @@
 ; @opforge-owner: experimental.amigaos.binary_templates
 	.module experimental.amigaos.binary_templates
 	.cpu 68020
-	.include "build_configuration.i"
 	.include "memory_telemetry.i"
 	.include "lazy_work.i"
 	.include "lazy_template_hooks.i"
 	.include "macro_packing_audit.i"
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_macro_plans as plans
-.if DEFER_MACRO_PLANS
-	.use experimental.amigaos.binary_deferred_plans as deferred
-.endif
 	.use experimental.amigaos.binary_macro_fragments as fragments
 	.use experimental.amigaos.binary_package as package
 	.use prvm.amigaos.packed_branch as branches
@@ -87,7 +83,6 @@ NeedLexical	.word ?  ; caller requests lexical facets for generated body lines
 LexicalReady	.word ?  ; successful FragmentLine for the returned record only
 InheritedLabelPresent	.word ?
 InheritedLabel	.long ?  ; numeric caller label appended to the returned record
-BindPlan	.res DEFER_MACRO_PLANS*4  ; optional callback; zero width retains eager ABI
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
 AuditSession	.long ?  ; observer-only numeric owner, never a pointer
@@ -182,15 +177,9 @@ Kind	.word ?
 ParamCount	.word ?
 HeaderPlan	.long ?
 Origin	.long ?  ; definition source identity, never a path or pointer
-BodyReady	.res DEFER_MACRO_PLANS*4  ; optional readiness flag; zero width when eager
 	.endstruct
-.if DEFER_MACRO_PLANS
-DEF_BYTES = Def.BodyReady+4
-STATE_CORE_BYTES = State.BindPlan+4
-.else
 DEF_BYTES = Def.Origin+4
 STATE_CORE_BYTES = State.InheritedLabel+4
-.endif
 KIND_SEGMENT = 0
 KIND_MACRO = 1
 KIND_EXTERNAL = 2
@@ -210,12 +199,7 @@ BODY = DEFAULT_TEXT+BLOCK_BYTES
 DEFAULT_USED = DEFAULTS+memory.Block.Used
 DEFAULT_TEXT_USED = DEFAULT_TEXT+memory.Block.Used
 EXTERNALS = BODY+BLOCK_BYTES
-.if DEFER_MACRO_PLANS
-DEFERRED = EXTERNALS+BLOCK_BYTES
-FRAMES = DEFERRED+deferred.STATE_BYTES
-.else
 FRAMES = EXTERNALS+BLOCK_BYTES
-.endif
 COMPOSITE_TEXT = FRAMES+DEPTH_LIMIT*FRAME_BYTES
 HEADER_FRAME = COMPOSITE_TEXT+256
 CANDIDATES = HEADER_FRAME+FRAME_BYTES
@@ -264,12 +248,6 @@ begin	.block
 ; A0=state. Release all session-owned pools before caller scratch is freed.
 ; D0/CCR=zero; other registers preserved. Safe on zero-initialized state.
 finish	.block
-.if DEFER_MACRO_PLANS
-	move.l a0, -(sp)
-	adda.l #DEFERRED, a0
-	jsr deferred.finish
-	movea.l (sp)+, a0
-.endif
 	.WORK_TEMPLATE_POOLS a0
 	movem.l a0, -(sp)
 	lea DEFS(a0), a0
@@ -579,14 +557,6 @@ line	.block
 	cmpi.b #TOKEN_PLAN, source.PlanToken.Kind(a0)
 	bne.w bad
 	move.l source.PlanToken.Handle(a0), d1
-.if DEFER_MACRO_PLANS
-	btst #31, d1
-	beq.w resolveCallPlan
-	tst.w State.Open(a6)
-	beq.w bad
-	bra.w lineRecipe  ; a retained body has no semantic plan consumer yet
-resolveCallPlan
-.endif
 	movea.l State.Plans(a6), a0
 	jsr plans.resolve
 	bne.w bad
@@ -933,10 +903,6 @@ omittedEnd
 	addq.w #1, d7
 	bra.w fillOmitted
 argumentsBound
-.if DEFER_MACRO_PLANS
-	bsr.w bindBody
-	bne.w bad
-.endif
 	moveq #0, d1
 	move.w 2(a5), d1
 	bsr.w queueCall
@@ -3003,6 +2969,5 @@ done
 	rts
 	.bend  ; replayIterator
 	.include "binary_template_audit.i"
-	.include "binary_template_deferred.i"
 	.endsection
 	.endmodule

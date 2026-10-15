@@ -21,7 +21,6 @@ Padding	.word ?
 .endstruct
 SOURCE_RESUME_BYTES = SourceResume.Padding+2
 
-.if CHUNKED_CAPTURE
 ; A0=logical region,D1=global capture offset. D0/CCR=status,A0=borrowed
 ; physical memory.Block,D1=local handle,D2=global chunk/region end. Others kept.
 ; The directory descriptor expires on append; owned record bytes never move.
@@ -44,46 +43,7 @@ done
 	tst.l d0
 	rts
 	.bend  ; captureView
-.endif
 
-.if DEFER_MACRO_PLANS
-; A0=session,D1=global capture offset. D0/CCR=status,A1=borrowed immutable
-; record; other registers preserved. This lookup neither previews/binds names
-; nor depends on the current include slice or expansion cursor.
-resolvePlanCapture	.block
-	movem.l d1-d3/a0/a2, -(sp)
-	move.l d1, d3
-	bsr.w locateCapture
-	bne.w bad
-	move.l capture.Region.End(a0), d2
-	cmp.l d2, d3
-	bhs.w bad
-.if CHUNKED_CAPTURE
-	bsr.w captureView
-	bne.w bad
-.else
-	sub.l capture.Region.Base(a0), d1
-	addq.l #1, d1
-	lea capture.Region.Arena(a0), a0
-.endif
-	jsr capture.resolve
-	bne.w bad
-	move.l capture.Record.Bytes(a1), d0
-	add.l d3, d0
-	bcs.w bad
-	cmp.l d2, d0
-	bhi.w bad
-	moveq #0, d0
-	bra.w done
-bad
-	suba.l a1, a1
-	moveq #1, d0
-done
-	movem.l (sp)+, d1-d3/a0/a2
-	tst.l d0
-	rts
-	.bend  ; resolvePlanCapture
-.endif
 
 ; A0=session,D0=0 view / 1 seek,D1=logical capture offset for seek.
 ; D0/CCR=status,D1=current offset,D2=end,D3=stream identity (0 physical).
@@ -142,18 +102,10 @@ physical
 	move.l d1, d6
 	bsr.w locateCapture
 	bne.w bad
-.if CHUNKED_CAPTURE
 	bsr.w captureView
 	bne.w bad
 	movea.l a0, a4
 	move.l d1, d5
-.else
-	sub.l capture.Region.Base(a0), d1
-	addq.l #1, d1
-	move.l d1, d5
-	lea capture.Region.Arena(a0), a4
-	movea.l a4, a0
-.endif
 	jsr capture.resolve
 	bne.w bad
 	move.l capture.Record.Bytes(a1), d7
@@ -231,16 +183,9 @@ next
 	move.l d1, SourceCursorState.Offset+SourceCursorData
 	bsr.w locateCapture
 	bne.w bad
-.if CHUNKED_CAPTURE
 	bsr.w captureView
 	bne.w bad
 	movea.l a0, a4
-.else
-	sub.l capture.Region.Base(a0), d1
-	addq.l #1, d1
-	lea capture.Region.Arena(a0), a4
-	movea.l a4, a0
-.endif
 	jsr capture.resolve
 	bne.w bad
 	move.l capture.Record.Bytes(a1), d7
@@ -261,9 +206,6 @@ next
 	move.l d6, d1
 	lea Front, a0
 	movea.l a4, a1
-.if DEFER_MACRO_PLANS
-	move.l ScheduleCursor, frontend.Frame.CaptureOffset(a0)
-.endif
 	jsr frontend.replayLine
 	bne.w bad
 	bsr.w drainPrepared

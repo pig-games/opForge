@@ -2,13 +2,6 @@
 	movem.l d1-d7/a0-a4, -(sp)
 	movea.l a0, a4
 	movea.l macro_plans.Frame.Events(a4), a1
-.if BINARY_MACRO_VIEW
-	tst.l d7
-	bne.w rangeReady
-	bsr.w binaryLineExtent
-	bne.w done
-rangeReady
-.endif
 	move.l macro_plans.Row.SpellingStart(a1), d1
 	move.l macro_plans.Row.SpellingEnd(a1), d2
 	sub.l d1, d2
@@ -37,18 +30,7 @@ clear
 	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
 	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
-.if BINARY_MACRO_VIEW
-	tst.l d7
-	bne.w generatedSpelling
-	bsr.w binaryFragments
-	bra.w recipesReady
-generatedSpelling
-	; Generated argument text has its own lexical owner, never the physical view.
 	jsr macro_runtime.run
-recipesReady
-.else
-	jsr macro_runtime.run
-.endif
 	bne.w done
 	move.l d1, macro_plans.Frame.RecipeCount(a4)
 	movea.l a6, a1

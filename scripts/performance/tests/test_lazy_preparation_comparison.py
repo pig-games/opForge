@@ -14,7 +14,6 @@ spec = importlib.util.spec_from_file_location(
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
-
 class LazyComparisonTests(unittest.TestCase):
     def observer_inputs(self, root, period=64, seed=0, experiment=module.PACKING_EXPERIMENT):
         args = self.inputs(root)
@@ -28,8 +27,8 @@ class LazyComparisonTests(unittest.TestCase):
                 continue
             memory = image["file"].endswith("memory.hunk")
             candidate = image["file"].startswith("deferred-")
-            image["defines"] = list(module.CHUNKED_BASELINE if experiment == module.CHUNKED_CAPTURE_EXPERIMENT else module.PACKING_BASELINE) + (module.MEMORY_DEFINES if memory else [])
-            if memory and experiment in (module.CAPTURE_LIFETIME_EXPERIMENT, module.CHUNKED_CAPTURE_EXPERIMENT):
+            image["defines"] = list(module.PACKING_BASELINE) + (module.MEMORY_DEFINES if memory else [])
+            if memory and experiment == module.CAPTURE_LIFETIME_EXPERIMENT:
                 image["defines"].append("OPFORGE_CAPTURE_TELEMETRY")
             if candidate:
                 image["defines"].append(experiment)
@@ -41,49 +40,6 @@ class LazyComparisonTests(unittest.TestCase):
                         image["defines"].append(f"OPFORGE_PACKING_PHASE_SEED={seed}")
         path.write_text(json.dumps(manifest))
         return args
-
-    def test_chunked_capture_compares_storage_with_matching_memory_telemetry(self):
-        with tempfile.TemporaryDirectory() as directory:
-            args = self.observer_inputs(Path(directory), experiment=module.CHUNKED_CAPTURE_EXPERIMENT)
-            cases = [json.loads(path.read_text()) for path in module.prepare(args)]
-            for case in cases:
-                metadata, defines = case["metadata"], case["bootstrap_defines"]
-                self.assertTrue(metadata["chunked_capture_fixed_input_comparison"])
-                self.assertEqual(module.CHUNKED_CAPTURE_EXPERIMENT in defines, metadata["comparison_role"] == "audit")
-                self.assertEqual("OPFORGE_CAPTURE_TELEMETRY" in defines, metadata["measurement"] == "memory")
-                self.assertTrue(set(module.CHUNKED_BASELINE) <= set(defines))
-                self.assertFalse(set(defines) & {"OPFORGE_LAZY_AUDIT", "OPFORGE_LAZY_WORK", module.CAPTURE_LIFETIME_EXPERIMENT})
-            self.assertEqual(len({case["metadata"]["workload_sha256"] for case in cases}), 1)
-
-    def test_chunked_capture_requires_unchanged_payload_and_zero_growth_copy(self):
-        import copy
-        counters = {
-            "construction": {"constructed_records": 2, "retained_source_bytes": 8},
-            "construction_copy": {"construction_copy_bytes": 8},
-            "retained_composition": {"records": 2, "header_bytes": 112, "token_bytes": 40},
-            "preparation": {"lexeme_bytes": 8, "plan_bytes": 4, "padding_bytes": 0},
-            "replay_copy": {"semantic_replay_materialization_copy_bytes": 5, "global_grow_calls": 20},
-            "retained_growth": {"retained_grow_copy_used_bytes": 100},
-        }
-        reference = {"capture_ownership": {"counters": counters, "stages": {"replay": {"retained_region_count": 2}}}}
-        candidate = copy.deepcopy(reference)
-        candidate["capture_ownership"]["counters"]["retained_growth"]["retained_grow_copy_used_bytes"] = 0
-        candidate["capture_ownership"]["counters"]["replay_copy"]["global_grow_calls"] = 100
-        candidate["capture_ownership"]["stages"]["replay"]["retained_region_count"] = 17
-        memory = {"reference": reference, "audit": candidate}
-        module.validate_chunked_capture_comparison(memory)
-        for section, field in (("retained_composition", "records"),
-                               ("retained_composition", "token_bytes"),
-                               ("construction", "constructed_records"),
-                               ("construction_copy", "construction_copy_bytes"),
-                               ("preparation", "plan_bytes"),
-                               ("replay_copy", "semantic_replay_materialization_copy_bytes"),
-                               ("retained_growth", "retained_grow_copy_used_bytes")):
-            with self.subTest(section=section, field=field):
-                changed = copy.deepcopy(memory)
-                changed["audit"]["capture_ownership"]["counters"][section][field] += 1
-                with self.assertRaises(ValueError):
-                    module.validate_chunked_capture_comparison(changed)
 
     def test_packing_shares_inventory_and_samples_only_candidate_memory(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -268,7 +224,6 @@ class LazyComparisonTests(unittest.TestCase):
                      "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}), \
                  patch.object(module.lazy_preparation_audit, "decode", side_effect=lambda _: copy.deepcopy(old)) as decode_old, \
                  patch.object(module.macro_packing_audit, "decode", return_value=new) as decode_new, \
-                 patch.object(module, "decode_deferred_binding", side_effect=AssertionError("wrong report")), \
                  redirect_stdout(io.StringIO()):
                 self.assertTrue(module.execute(args, paths))
             self.assertEqual(decode_old.call_count, 2)
@@ -317,19 +272,9 @@ class LazyComparisonTests(unittest.TestCase):
                 defines = list(module.MEMORY_DEFINES) if mode == "memory" else []
                 if role == "audit":
                     defines.append("OPFORGE_LAZY_AUDIT")
-                if role == "deferred":
-                    defines.append("OPFORGE_DEFERRED_MACRO_PLANS")
                 image_rows.append({"file": name, "defines": defines,
                                    "fnv1a64": module.runner.fnv(data), "bytes": len(data)})
         (images / "images.json").write_text(json.dumps({"images": image_rows}))
-        probe_data = b"deferred-probe-memory.hunk"
-        (images / "deferred-probe-memory.hunk").write_bytes(probe_data)
-        manifest = json.loads((images / "images.json").read_text())
-        manifest["images"].append({"file": "deferred-probe-memory.hunk",
-            "defines": ["OPFORGE_DEFERRED_MACRO_PLANS", *module.MEMORY_DEFINES,
-                        "OPFORGE_LAZY_AUDIT", "OPFORGE_LAZY_WORK", "OPFORGE_LAZY_COMPONENT_PROBE"],
-            "fnv1a64": module.runner.fnv(probe_data), "bytes": len(probe_data)})
-        (images / "images.json").write_text(json.dumps(manifest))
         return argparse.Namespace(workload_case=case, images=images,
                                   output=root / "results", repeats=2, test_binary=None,
                                   experiment_define=None, work_attribution=False, baseline_images=None)
@@ -442,68 +387,6 @@ class LazyComparisonTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "requires"):
                 module.prepare(args)
 
-    def test_deferred_mode_uses_feature_images_and_fixed_workload(self):
-        with tempfile.TemporaryDirectory() as directory:
-            args = self.inputs(Path(directory))
-            args.experiment_define = "OPFORGE_DEFERRED_MACRO_PLANS"
-            cases = [json.loads(path.read_text()) for path in module.prepare(args)]
-            self.assertEqual(len(cases), 6)
-            self.assertEqual([case["metadata"]["comparison_role"] for case in cases],
-                             ["reference", "audit", "audit", "reference", "reference", "audit"])
-            self.assertTrue(all(case["metadata"]["macro_binding_fixed_input_comparison"] for case in cases))
-            self.assertTrue(all(case["metadata"]["experiment_define"] == args.experiment_define for case in cases))
-            for case in cases:
-                defines = case["bootstrap_defines"]
-                candidate = case["metadata"]["comparison_role"] == "audit"
-                self.assertEqual(args.experiment_define in defines, candidate)
-                self.assertNotIn("OPFORGE_LAZY_AUDIT", defines)
-                expected_image = f"{'deferred' if candidate else 'reference'}-{'memory' if case['metadata']['measurement'] == 'memory' else 'release'}.hunk"
-                image_bytes = (args.images / expected_image).read_bytes()
-                self.assertEqual(case["image"]["digest"], module.runner.fnv(image_bytes))
-            self.assertTrue(all(case["files"] == cases[0]["files"] for case in cases))
-            self.assertTrue(all(case["oracle"] == cases[0]["oracle"] for case in cases))
-
-    def test_binary_interface_is_measured_without_binding_or_audit_reports(self):
-        with tempfile.TemporaryDirectory() as directory:
-            args = self.inputs(Path(directory))
-            args.experiment_define = "OPFORGE_BINARY_MACRO_VIEW"
-            args.test_binary = Path("fake-test")
-            manifest_path = args.images / "images.json"
-            manifest = json.loads(manifest_path.read_text())
-            for image in manifest["images"]:
-                image["native_source_fnv1a64"] = image["file"].split("-")[0] + "-source"
-                if image["file"].startswith("deferred-"):
-                    image["defines"] = [args.experiment_define if define ==
-                        "OPFORGE_DEFERRED_MACRO_PLANS" else define for define in image["defines"]]
-            manifest_path.write_text(json.dumps(manifest))
-            paths = module.prepare(args)
-            for path in paths:
-                case = json.loads(path.read_text())
-                self.assertTrue(case["metadata"]["macro_interface_fixed_input_comparison"])
-                self.assertFalse(case["metadata"]["macro_binding_fixed_input_comparison"])
-                role = "deferred" if case["metadata"]["comparison_role"] == "audit" else "reference"
-                self.assertEqual(case["metadata"]["bootstrap_source_fnv1a64"], role + "-source")
-                self.assertEqual(args.experiment_define in case["bootstrap_defines"],
-                                 case["metadata"]["comparison_role"] == "audit")
-                self.assertEqual(case["files"], json.loads(paths[0].read_text())["files"])
-                result = path.parent / "result"
-                result.mkdir()
-                (result / "native-result.json").write_text(json.dumps({
-                    "success": True, "metadata": case["metadata"],
-                    "start_to_done_host_seconds": 1.0, "linked_static_reserved_bytes": 12}))
-                if case["metadata"]["measurement"] == "memory":
-                    (result / "memory.bin").write_bytes(b"")
-            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
-                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
-                     "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}), \
-                 patch.object(module, "decode_deferred_binding", side_effect=AssertionError("wrong report")), \
-                 patch.object(module, "decode_deferred_acquisition", side_effect=AssertionError("wrong report")), \
-                 patch.object(module.lazy_preparation_audit, "decode", side_effect=AssertionError("wrong report")):
-                self.assertTrue(module.execute(args, paths))
-            for row in json.loads((args.output / "results.json").read_text()):
-                self.assertNotIn("audit", row)
-                self.assertNotIn("deferred_binding", row)
-
     def test_stop_on_failure_retains_result_without_running_remaining_samples(self):
         with tempfile.TemporaryDirectory() as directory:
             args = self.inputs(Path(directory))
@@ -519,7 +402,7 @@ class LazyComparisonTests(unittest.TestCase):
     def test_experiment_mode_rejects_mixed_comparison_modes(self):
         with tempfile.TemporaryDirectory() as directory:
             args = self.inputs(Path(directory))
-            args.experiment_define = "OPFORGE_DEFERRED_MACRO_PLANS"
+            args.experiment_define = module.PACKING_EXPERIMENT
             args.work_attribution = True
             with self.assertRaisesRegex(ValueError, "cannot be combined"):
                 module.prepare(args)
@@ -528,196 +411,6 @@ class LazyComparisonTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "cannot be combined"):
                 module.prepare(args)
             self.assertFalse(args.output.exists())
-
-    def test_experiment_result_does_not_require_lazy_audit_report(self):
-        with tempfile.TemporaryDirectory() as directory:
-            args = self.inputs(Path(directory))
-            args.experiment_define = "OPFORGE_DEFERRED_MACRO_PLANS"
-            args.test_binary = Path("fake-test")
-            paths = module.prepare(args)
-            for case in paths:
-                result_dir = case.parent / "result"
-                result_dir.mkdir()
-                metadata = json.loads(case.read_text())["metadata"]
-                receipt = {"success": True, "metadata": metadata, "start_to_done_host_seconds": 1.0,
-                           "linked_static_reserved_bytes": 12}
-                (result_dir / "native-result.json").write_text(json.dumps(receipt))
-                if metadata["measurement"] == "memory":
-                    (result_dir / "memory.bin").write_bytes(b"")
-                    if metadata["comparison_role"] == "audit":
-                        (result_dir / "assembly.stdout").write_text(
-                            "progress p=0006ddd0 f=00000008 l=00000005 r=00000003 m=00000000\n"
-                            "progress p=0006ddd1 f=00000004 l=00000002 r=00000000 m=00000000\n")
-            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
-                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
-                     "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}):
-                self.assertTrue(module.execute(args, paths))
-            saved = json.loads((paths[-1].parent / "result.json").read_text())
-            self.assertTrue(saved["success"])
-            self.assertNotIn("audit", saved)
-            self.assertEqual(saved["deferred_binding"], {
-                "created": 8, "bound": 5, "hits": 3, "recipe_bytes": 4,
-                "normal_plan_used": 2})
-            self.assertTrue((paths[-1].parent / "result" / "assembly.stdout").exists())
-
-    def test_macro_candidate_uses_deferred_stats_without_audit_or_binding_label(self):
-        with tempfile.TemporaryDirectory() as directory:
-            args = self.inputs(Path(directory))
-            args.experiment_define = "OPFORGE_DEFERRED_MACRO_CANDIDATES"
-            manifest_path = args.images / "images.json"
-            manifest = json.loads(manifest_path.read_text())
-            for image in manifest["images"]:
-                image["defines"] = [args.experiment_define if define ==
-                    "OPFORGE_DEFERRED_MACRO_PLANS" else define for define in image["defines"]]
-                if image["file"].startswith(("reference-", "deferred-")):
-                    image["defines"].extend(["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW"])
-            manifest_path.write_text(json.dumps(manifest))
-            args.test_binary = Path("fake-test")
-            paths = module.prepare(args)
-            for case in paths:
-                result_dir = case.parent / "result"
-                result_dir.mkdir()
-                spec = json.loads(case.read_text())
-                metadata = spec["metadata"]
-                self.assertTrue(metadata["macro_candidate_fixed_input_comparison"])
-                self.assertFalse(metadata["macro_binding_fixed_input_comparison"])
-                self.assertFalse(metadata["macro_interface_fixed_input_comparison"])
-                self.assertIn("OPFORGE_DEFERRED_MACRO_PLANS", spec["bootstrap_defines"])
-                self.assertIn("OPFORGE_BINARY_MACRO_VIEW", spec["bootstrap_defines"])
-                self.assertEqual(args.experiment_define in spec["bootstrap_defines"],
-                                 metadata["comparison_role"] == "audit")
-                self.assertEqual(metadata["reference_config"],
-                                 "eager candidate acquisition with deferred macro binding and binary macro view")
-                receipt = {"success": True, "metadata": metadata, "start_to_done_host_seconds": 1.0,
-                           "linked_static_reserved_bytes": 12}
-                (result_dir / "native-result.json").write_text(json.dumps(receipt))
-                if metadata["measurement"] == "memory":
-                    (result_dir / "memory.bin").write_bytes(b"")
-                    if metadata["comparison_role"] == "audit":
-                        (result_dir / "assembly.stdout").write_text(
-                            "progress p=0006ddd0 f=00000008 l=00000005 r=00000003 m=00000000\n"
-                            "progress p=0006ddd1 f=00000004 l=00000002 r=00000000 m=00000000\n"
-                            "progress p=0006ddd2 f=00000003 l=00000002 r=00000000 m=00000001\n")
-            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
-                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
-                     "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}):
-                self.assertTrue(module.execute(args, paths))
-            saved = json.loads((paths[-1].parent / "result.json").read_text())
-            self.assertTrue(saved["success"])
-            self.assertEqual(saved["deferred_acquisition"], {"created": 3, "bound": 2})
-            self.assertEqual(json.loads((args.output / "summary.json").read_text())["deferred_acquisition"],
-                             {"created": 3, "bound": 2})
-            self.assertNotIn("audit", saved)
-            self.assertEqual(saved["deferred_binding"], {
-                "created": 8, "bound": 5, "hits": 3, "recipe_bytes": 4,
-                "normal_plan_used": 2})
-            self.assertTrue((paths[-1].parent / "result" / "assembly.stdout").exists())
-
-    def test_macro_lines_keep_prior_features_and_decode_all_deferred_stats(self):
-        with tempfile.TemporaryDirectory() as directory:
-            args = self.inputs(Path(directory))
-            args.experiment_define = "OPFORGE_DEFERRED_MACRO_LINES"
-            manifest_path = args.images / "images.json"
-            manifest = json.loads(manifest_path.read_text())
-            for image in manifest["images"]:
-                image["defines"] = [args.experiment_define if define ==
-                    "OPFORGE_DEFERRED_MACRO_PLANS" else define for define in image["defines"]]
-                if image["file"].startswith(("reference-", "deferred-")):
-                    image["defines"].extend(["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES"])
-            manifest_path.write_text(json.dumps(manifest))
-            args.test_binary = Path("fake-test")
-            paths = module.prepare(args)
-            for case in paths:
-                result_dir = case.parent / "result"
-                result_dir.mkdir()
-                spec = json.loads(case.read_text())
-                metadata = spec["metadata"]
-                self.assertTrue(metadata["macro_line_fixed_input_comparison"])
-                self.assertFalse(metadata["macro_candidate_fixed_input_comparison"])
-                self.assertFalse(metadata["macro_binding_fixed_input_comparison"])
-                self.assertFalse(metadata["macro_interface_fixed_input_comparison"])
-                self.assertIn("OPFORGE_DEFERRED_MACRO_PLANS", spec["bootstrap_defines"])
-                self.assertIn("OPFORGE_BINARY_MACRO_VIEW", spec["bootstrap_defines"])
-                self.assertIn("OPFORGE_DEFERRED_MACRO_CANDIDATES", spec["bootstrap_defines"])
-                self.assertEqual(args.experiment_define in spec["bootstrap_defines"],
-                                 metadata["comparison_role"] == "audit")
-                self.assertEqual(metadata["reference_config"],
-                                 "eager whole-line construction with deferred macro binding, binary macro view and deferred candidate acquisition")
-                receipt = {"success": True, "metadata": metadata, "start_to_done_host_seconds": 1.0,
-                           "linked_static_reserved_bytes": 12}
-                (result_dir / "native-result.json").write_text(json.dumps(receipt))
-                if metadata["measurement"] == "memory":
-                    (result_dir / "memory.bin").write_bytes(b"")
-                    if metadata["comparison_role"] == "audit":
-                        (result_dir / "assembly.stdout").write_text(
-                            "progress p=0006ddd0 f=00000008 l=00000005 r=00000003 m=00000000\n"
-                            "progress p=0006ddd1 f=00000004 l=00000002 r=00000000 m=00000000\n"
-                            "progress p=0006ddd2 f=00000003 l=00000002 r=00000000 m=00000001\n"
-                            "progress p=0006ddd3 f=00000004 l=00000003 r=00000000 m=00000001\n")
-            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
-                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
-                     "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}):
-                self.assertTrue(module.execute(args, paths))
-            saved = json.loads((paths[-1].parent / "result.json").read_text())
-            self.assertTrue(saved["success"])
-            self.assertEqual(saved["deferred_acquisition"], {"created": 3, "bound": 2})
-            self.assertEqual(json.loads((args.output / "summary.json").read_text())["deferred_acquisition"],
-                             {"created": 3, "bound": 2})
-            self.assertEqual(saved["deferred_lines"], {"created": 4, "bound": 3})
-            self.assertEqual(json.loads((args.output / "summary.json").read_text())["deferred_lines"],
-                             {"created": 4, "bound": 3})
-            self.assertNotIn("audit", saved)
-            self.assertEqual(saved["deferred_binding"], {
-                "created": 8, "bound": 5, "hits": 3, "recipe_bytes": 4,
-                "normal_plan_used": 2})
-            self.assertTrue((paths[-1].parent / "result" / "assembly.stdout").exists())
-
-    def test_acquisition_report_requires_one_valid_bounded_row(self):
-        binding = {"created": 8, "bound": 5}
-        row = "progress p=0006ddd2 f=00000003 l=00000002 r=00000000 m=00000001"
-        self.assertEqual(module.decode_deferred_acquisition(row, binding), {"created": 3, "bound": 2})
-        self.assertEqual(module.decode_deferred_acquisition(
-            row.replace("f=00000003 l=00000002", "f=00000000 l=00000000"), binding),
-            {"created": 0, "bound": 0})
-        for invalid in ("", row + "\n" + row, row.replace(" r=", " bad="),
-                        row.replace("r=00000000", "r=00000001"),
-                        row.replace("l=00000002", "l=00000004"),
-                        row.replace("f=00000003", "f=00000009"),
-                        row.replace("f=00000003 l=00000002", "f=00000006 l=00000006")):
-            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
-                module.decode_deferred_acquisition(invalid, binding)
-
-    def test_line_report_requires_one_valid_bounded_row(self):
-        binding = {"created": 8, "bound": 5}
-        row = "progress p=0006ddd3 f=00000003 l=00000002 r=00000000 m=00000001"
-        self.assertEqual(module.decode_deferred_lines(row, binding), {"created": 3, "bound": 2})
-        self.assertEqual(module.decode_deferred_lines(
-            row.replace("f=00000003 l=00000002", "f=00000000 l=00000000"), binding),
-            {"created": 0, "bound": 0})
-        for invalid in ("", row + "\n" + row, row.replace(" r=", " bad="),
-                        row.replace("r=00000000", "r=00000001"),
-                        row.replace("l=00000002", "l=00000004"),
-                        row.replace("f=00000003", "f=00000009"),
-                        row.replace("f=00000003 l=00000002", "f=00000006 l=00000006")):
-            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
-                module.decode_deferred_lines(invalid, binding)
-
-    def test_deferred_report_rejects_missing_duplicate_reserved_and_bad_bounds(self):
-        first = "progress p=0006ddd0 f=00000008 l=00000005 r=00000003 m=00000000"
-        second = "progress p=0006ddd1 f=00000004 l=00000002 r=00000000 m=00000000"
-        self.assertEqual(module.decode_deferred_binding(
-            first.replace("m=00000000", "m=0005adc8") + "\n" + second.replace("m=00000000", "m=0005adc8"), 10)["bound"], 5)
-        with self.assertRaisesRegex(ValueError, "Missing"):
-            module.decode_deferred_binding(first, 10)
-        with self.assertRaisesRegex(ValueError, "Duplicate"):
-            module.decode_deferred_binding(first + "\n" + first + "\n" + second, 10)
-        with self.assertRaisesRegex(ValueError, "reserved"):
-            module.decode_deferred_binding(first + "\n" + second.replace("r=00000000", "r=00000001"), 10)
-        with self.assertRaisesRegex(ValueError, "created"):
-            module.decode_deferred_binding(
-                first.replace("l=00000005", "l=00000009") + "\n" + second, 10)
-        with self.assertRaisesRegex(ValueError, "allocated"):
-            module.decode_deferred_binding(first + "\n" + second, 3)
 
     def test_identical_workloads_with_reversed_timing_order_and_separate_memory(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -824,7 +517,6 @@ class LazyComparisonTests(unittest.TestCase):
             (args.images / "audit-release.hunk").write_bytes(b"different")
             with self.assertRaisesRegex(ValueError, "Changed image"):
                 module.prepare(args)
-
 
 if __name__ == "__main__":
     unittest.main()

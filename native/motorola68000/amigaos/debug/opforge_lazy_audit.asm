@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_graph as graph
 	.include "binary_block_span.i"
+	.include "capture_lifetime.i"
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
@@ -454,6 +455,8 @@ spanEnd	.block
 	moveq #0, d0
 residency
 	move.l d0, Mapping.Predicted(a0)
+	; Historical closure classification only: deferred recipes can retain captures.
+	.CAPTURE_LIFE_CURVE Fields.Completed(a2), Fields.Eligible(a2), Fields.Capacity(a2), Fields.Pins(a2), Fields.RegionCount(a2)
 done
 	movem.l (sp)+, d0-d1/a0-a2
 	move.w (sp)+, ccr

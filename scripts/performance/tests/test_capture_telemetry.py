@@ -1,6 +1,10 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from contextlib import redirect_stdout, redirect_stderr
+import io
+import json
+import tempfile
 
 
 SPEC = importlib.util.spec_from_file_location(
@@ -43,6 +47,11 @@ class CaptureTelemetryTests(unittest.TestCase):
         source = (Path(__file__).parents[3] /
                   "native/motorola68000/amigaos/experimental/binary_capture.asm").read_text()
         self.assertEqual(decoder.capture_record_header_bytes(source), 56)
+        self.assertEqual(decoder.capture_record_header_bytes(source, defines=["OPFORGE_LAZY_WORK"]), 56)
+        work = ["OPFORGE_LAZY_AUDIT", "OPFORGE_LAZY_WORK"]
+        self.assertEqual(decoder.capture_record_header_bytes(source, defines=work), 60)
+        self.assertEqual(decoder.capture_record_header_bytes(source, defines=work + ["OPFORGE_LAZY_CANDIDATES"]), 72)
+        self.assertEqual(decoder.capture_record_header_bytes(source, defines=[name.lower() for name in work]), 60)
         frozen = source.replace("Line\t.word ?", "OldReserved0\t.long ?\nOldReserved1\t.long ?\nLine\t.word ?")
         self.assertEqual(decoder.capture_record_header_bytes(frozen), 64)
         with self.assertRaisesRegex(decoder.CaptureTelemetryError, "56 bytes per record"):
@@ -53,6 +62,63 @@ class CaptureTelemetryTests(unittest.TestCase):
         self.assertEqual(summary["counters"]["retained_composition"]["header_bytes"], 256)
         with self.assertRaisesRegex(decoder.CaptureTelemetryError, "64 bytes per record"):
             decoder.decode_capture_telemetry(self.capture(), record_header_bytes=64)
+
+    def test_nested_symbol_guards_and_alternate_declarations(self):
+        source = """.ifndef EMPTY
+Record .struct
+Magic .long ?
+.ifdef OUTER
+.ifndef INNER
+Extra .long ?
+.else
+Inner .word ?
+.endif
+.else
+Small .byte ?
+.endif
+Tokens .byte ?
+.endstruct
+HEADER_BYTES = Record.Tokens
+.else
+Record .struct
+Only .word ?
+Tokens .byte ?
+.endstruct
+HEADER_BYTES = Record.Tokens
+.endif
+"""
+        for defines, expected in (([], 5), (["OUTER"], 8), (["OUTER", "INNER"], 6), (["EMPTY"], 2)):
+            with self.subTest(defines=defines):
+                self.assertEqual(decoder.capture_record_header_bytes(source, defines=defines), expected)
+
+    def test_conditional_syntax_and_define_inputs_fail_closed(self):
+        source = "Record .struct\nMagic .long ?\nTokens .byte ?\n.endstruct\nHEADER_BYTES = Record.Tokens"
+        guards = (".if 1\n.endif", ".ifdef FLAG + 1\n.endif", ".ifndef\n.endif",
+                  ".else", ".endif", ".ifdef FLAG", ".ifdef FLAG\n.else\n.else\n.endif",
+                  ".ifdef FLAG\n.elseif OTHER\n.endif", ".ifdef FLAG\n.if 0\n.endif\n.endif",
+                  ".ifdef FLAG\n.ifndef OTHER\n.endif", ".ifdef FLAG\n.endif extra")
+        for guard in guards:
+            with self.subTest(guard=guard), self.assertRaises(decoder.CaptureTelemetryError):
+                decoder.capture_record_header_bytes(source + "\n" + guard)
+        for defines in ("FLAG", None, [1], ["FLAG=1"], ["FLAG extra"], [""], ["1FLAG"]):
+            with self.subTest(defines=defines), self.assertRaises(decoder.CaptureTelemetryError):
+                decoder.capture_record_header_bytes(source, defines=defines)
+
+    def test_cli_capture_defines_select_layout_and_require_source(self):
+        source = (Path(__file__).parents[3] /
+                  "native/motorola68000/amigaos/experimental/binary_capture.asm")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "stdout.txt"
+            path.write_text(self.capture(header_bytes=60))
+            output = io.StringIO()
+            with redirect_stdout(output):
+                self.assertEqual(decoder.main([str(path), "--capture-source", str(source),
+                    "--capture-define", "OPFORGE_LAZY_AUDIT", "--capture-define", "OPFORGE_LAZY_WORK"]), 0)
+            result = json.loads(output.getvalue())
+            self.assertEqual(result["capture_summary"]["counters"]["retained_composition"]["header_bytes"], 240)
+            with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                decoder.main([str(path), "--capture-define", "OPFORGE_LAZY_WORK"])
+            self.assertEqual(error.exception.code, 2)
 
     def test_rejects_ambiguous_or_unsupported_source_layout(self):
         source = "Record .struct\nMagic .long ?\nTokens .byte ?\n.endstruct\nHEADER_BYTES = Record.Tokens"

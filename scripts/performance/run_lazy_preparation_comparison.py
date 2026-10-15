@@ -24,9 +24,12 @@ import memory_telemetry
 import lazy_preparation_audit
 import candidate_preparation_audit
 import macro_packing_audit
+import capture_lifetime_audit
+import capture_telemetry
 import run_a6000_selfhost as runner
 from run_fs_uae_selfhost_comparison import TEST, reproducibility_metadata
 
+CAPTURE_LIFETIME_EXPERIMENT = "OPFORGE_CAPTURE_LIFETIME_AUDIT"
 PACKING_EXPERIMENT = "OPFORGE_MACRO_PACKING_AUDIT"
 PACKING_BASELINE = ["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW",
                     "OPFORGE_DEFERRED_MACRO_CANDIDATES", "OPFORGE_DEFERRED_MACRO_LINES",
@@ -34,6 +37,7 @@ PACKING_BASELINE = ["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW",
 PACKING_REFERENCE = "eager macro packing with prior plan experiments and shared inventory"
 EXPERIMENT_REFERENCES = {
     PACKING_EXPERIMENT: PACKING_REFERENCE,
+    CAPTURE_LIFETIME_EXPERIMENT: "existing capture storage with prior plan experiments and shared inventory",
     "OPFORGE_DEFERRED_MACRO_LINES": "eager whole-line construction with deferred macro binding, binary macro view and deferred candidate acquisition",
     "OPFORGE_DEFERRED_MACRO_CANDIDATES": "eager candidate acquisition with deferred macro binding and binary macro view",
 }
@@ -124,6 +128,7 @@ def prepare(args):
     work_attribution = getattr(args, "work_attribution", False)
     baseline_images = getattr(args, "baseline_images", None)
     experiment_define = getattr(args, "experiment_define", None)
+    lifetime = experiment_define == CAPTURE_LIFETIME_EXPERIMENT
     packing = experiment_define == PACKING_EXPERIMENT
     packing_period = getattr(args, "packing_sample_period", 64)
     packing_seed = getattr(args, "packing_phase_seed", 0)
@@ -178,7 +183,9 @@ def prepare(args):
         image_root = baseline_images if baseline_images and role == "reference" else args.images
         image = (image_root / image_name).read_bytes()
         defines = list(MEMORY_DEFINES) if memory else []
-        if packing:
+        if lifetime and memory:
+            defines.append("OPFORGE_CAPTURE_TELEMETRY")
+        if packing or lifetime:
             defines.extend(PACKING_BASELINE)
         elif experiment_define == "OPFORGE_DEFERRED_MACRO_LINES":
             defines.extend(["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES"])
@@ -228,6 +235,7 @@ def prepare(args):
                              "macro_candidate_fixed_input_comparison": experiment_define == "OPFORGE_DEFERRED_MACRO_CANDIDATES",
                              "macro_line_fixed_input_comparison": experiment_define == "OPFORGE_DEFERRED_MACRO_LINES",
                              "macro_packing_fixed_input_comparison": packing,
+                             "capture_lifetime_fixed_input_comparison": lifetime,
                              "packing_sample_period": packing_period,
                              "packing_phase_seed": packing_seed,
                              "experiment_define": experiment_define,
@@ -270,13 +278,13 @@ def validate_packing_work(report, work):
         raise ValueError("Packing/work stored body byte totals disagree")
 
 
-def validate_packing_comparison(memory):
+def validate_shared_inventory_comparison(memory, label):
     previous, current = (memory[role]["audit"]["work_attribution"] for role in ("reference", "audit"))
     if previous["metrics"] != current["metrics"]:
-        raise ValueError("Packing observer changed work metrics on identical input")
+        raise ValueError(f"{label} observer changed work metrics on identical input")
     for key in ("definitions", "consumer_relationships", "pool_used_bytes", "attributed_payload_bytes", "unattributed_pool_bytes"):
         if previous["template_inventory"][key] != current["template_inventory"][key]:
-            raise ValueError(f"Packing observer changed template {key}")
+            raise ValueError(f"{label} observer changed template {key}")
 
 
 def validate_candidate_configuration(report, metadata):
@@ -343,7 +351,8 @@ def execute(args, cases):
                             row["deferred_lines"] = decode_deferred_lines(
                                 (receipt.parent / "assembly.stdout").read_text(), row["deferred_binding"])
 
-                    if (row["metadata"].get("macro_packing_fixed_input_comparison")
+                    if (row["metadata"].get("capture_lifetime_fixed_input_comparison")
+                            or row["metadata"].get("macro_packing_fixed_input_comparison")
                             or row["metadata"].get("work_attribution_comparison")
                             or (row["metadata"]["comparison_role"] == "audit"
                                 and not row["metadata"].get("macro_binding_fixed_input_comparison")
@@ -352,10 +361,11 @@ def execute(args, cases):
                                 and not row["metadata"].get("macro_line_fixed_input_comparison"))):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
-                        if row["metadata"].get("macro_packing_fixed_input_comparison"):
+                        if (row["metadata"].get("macro_packing_fixed_input_comparison")
+                                or row["metadata"].get("capture_lifetime_fixed_input_comparison")):
                             work = row["audit"].get("work_attribution", {})
                             if not work.get("accounting_complete") or not work.get("template_inventory", {}).get("complete"):
-                                raise ValueError("Incomplete packing baseline work/template inventory")
+                                raise ValueError("Incomplete shared work/template inventory")
                         if (row["metadata"].get("candidate_attribution_comparison")
                                 and row["metadata"]["comparison_role"] == "audit"):
                             row["candidate_attribution"] = candidate_preparation_audit.decode(
@@ -370,11 +380,22 @@ def execute(args, cases):
                                 row["audit"]["work_attribution"]["template_inventory"])
                             validate_packing_configuration(row["macro_packing"], row["metadata"])
                             validate_packing_work(row["macro_packing"], row["audit"]["work_attribution"])
+                        if row["metadata"].get("capture_lifetime_fixed_input_comparison"):
+                            row["capture_ownership"] = capture_telemetry.decode_capture_telemetry(
+                                (receipt.parent / "assembly.stdout").read_text(),
+                                record_header_bytes=work["capture_header_bytes"])["capture_summary"]
+                            if row["capture_ownership"] is None or row["capture_ownership"]["boundary_mask"] != 7:
+                                raise ValueError("Incomplete capture ownership report")
+                            if row["metadata"]["comparison_role"] == "audit":
+                                row["capture_lifetime"] = capture_lifetime_audit.decode(
+                                    (receipt.parent / "assembly.stdout").read_text(), row["memory"],
+                                    row["audit"], row["capture_ownership"])
                         inventory = row["audit"].get("work_attribution", {}).get("template_inventory")
                         if inventory is not None and not inventory["complete"]:
                             raise ValueError("Incomplete template inventory")
                         needs_work_report = (
                             row["metadata"].get("macro_packing_fixed_input_comparison")
+                            or row["metadata"].get("capture_lifetime_fixed_input_comparison")
                             or row["metadata"].get("work_observer_revision_comparison")
                             or (row["metadata"].get("work_attribution_comparison")
                                 and row["metadata"]["comparison_role"] == "audit")
@@ -410,7 +431,11 @@ def execute(args, cases):
         if previous != current:
             raise ValueError("Observer revision changed global work totals on identical input")
     if getattr(args, "experiment_define", None) == PACKING_EXPERIMENT:
-        validate_packing_comparison(memory)
+        validate_shared_inventory_comparison(memory, "Packing")
+    if getattr(args, "experiment_define", None) == CAPTURE_LIFETIME_EXPERIMENT:
+        validate_shared_inventory_comparison(memory, "Capture lifetime")
+        if memory["reference"]["capture_ownership"] != memory["audit"]["capture_ownership"]:
+            raise ValueError("Capture lifetime observer changed existing capture ownership accounting")
     baseline_name = "ordinary release"
     if getattr(args, "experiment_define", None):
         baseline_name = EXPERIMENT_REFERENCES.get(args.experiment_define, "eager macro services")
@@ -433,11 +458,19 @@ def execute(args, cases):
                "deferred_lines": memory["audit"].get("deferred_lines"),
                "candidate_attribution": memory["audit"].get("candidate_attribution"),
                "macro_packing": memory["audit"].get("macro_packing"),
+               "capture_lifetime": memory["audit"].get("capture_lifetime"),
+               "capture_ownership": {role: row.get("capture_ownership") for role, row in memory.items()},
                "baseline": baseline_name,
                "evidence_limit": ("fixed frozen input; instrumentation times are diagnostic; "
                                   "not current-source self-host proof; no early capture release")}
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
-    print(json.dumps(summary, indent=2))
+    # Keep full bounded tables in the artifact, not repeated in terminal/model output.
+    console_keys = ("baseline", "runtime_samples_seconds", "runtime_means_seconds",
+                    "audit_runtime_delta_seconds", "audit_runtime_delta_percent",
+                    "audit_peak_owned_delta_bytes", "audit_allocated_delta_bytes",
+                    "audit_linked_static_delta_bytes", "evidence_limit")
+    print(json.dumps(dict(summary_file=str(args.output / "summary.json"),
+                          **{key: summary[key] for key in console_keys}), indent=2))
     return True
 
 
@@ -455,8 +488,8 @@ def main():
                         help="measure marginal attribution overhead: audit images versus work images")
     parser.add_argument("--baseline-images", type=Path,
                         help="with --work-attribution, compare saved work images against current work images")
-    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES", "OPFORGE_DEFERRED_MACRO_LINES", PACKING_EXPERIMENT),
-                        help="compare eager reference images with the selected macro experiment")
+    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES", "OPFORGE_DEFERRED_MACRO_LINES", PACKING_EXPERIMENT, CAPTURE_LIFETIME_EXPERIMENT),
+                        help="compare reference images with the selected preparation experiment or observer")
     parser.add_argument("--candidate-attribution", action="store_true", help="compare passive candidate attribution against baseline work images")
     parser.add_argument("--candidate-timing", action="store_true", help="sample candidate preparation only in the candidate memory image")
     parser.add_argument("--candidate-sample-period", type=int, choices=(64, 128, 256), default=64)

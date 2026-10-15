@@ -85,6 +85,7 @@ newCaptureRegion	.block
 	clr.l capture.Region.Arena+memory.Block.Used(a1)
 	addi.l #CAPTURE_REGION_BYTES, memory.Block.Used(a0)
 	.LAZY_REGION 0(a1), CaptureRegionCurrent
+	.CAPTURE_LIFE_REGION CaptureRegionCurrent, SourceOrdinal
 	addq.l #1, CaptureRegionCount
 	moveq #0, d0
 	bra.w done
@@ -166,8 +167,10 @@ fits
 	add.l d7, d0
 	movea.l a4, a0
 	.CAPTURE_GROW_BEGIN
+	.CAPTURE_LIFE_RETAIN_BEGIN
 	jsr memory.reserve
-	bne.w bad
+	bne.w reserveBad
+	.CAPTURE_LIFE_RETAIN_END
 	.CAPTURE_GROW_END
 	movea.l memory.Block.Pointer(a4), a1
 	adda.l d6, a1
@@ -181,6 +184,7 @@ fits
 	.HOTSPOT_LEAVE #HOTSPOT_CAPTURE_APPEND
 	add.l d7, memory.Block.Used(a4)
 	.CAPTURE_APPEND CaptureLine, capture.HEADER_BYTES, capture.Record.Count, capture.Record.LexemeBytes, capture.Record.PlanBytes, capture.Record.SourceBytes, d7
+	.CAPTURE_LIFE_RECORD CaptureLine+memory.Block.Pointer, #CaptureLifeLayout, CaptureRegionCurrent, memory.Block.Capacity(a4), d7
 	move.l CaptureBytes, d0
 	add.l d7, d0
 	bcs.w bad
@@ -201,6 +205,8 @@ fits
 capturedOnly
 	moveq #0, d0
 	bra.w done
+reserveBad
+	.CAPTURE_LIFE_RETAIN_END
 bad
 	.CAPTURE_GROW_END
 	moveq #1, d0
@@ -299,6 +305,7 @@ done
 ; graph traversal reads its edges. No struct, instruction or asset is executed.
 ; D0/CCR=status; other registers preserved.
 configureCapturedModule	.block
+	.CAPTURE_LIFE_PHASE #capture_life.CONFIGURATION
 	movem.l d1-d7/a0-a6, -(sp)
 	lea ConfigScan, a0
 	move.l d1, configuration.Frame.Binding(a0)
@@ -401,6 +408,7 @@ done
 ; callers use resolveGraph, which handles the missing-file status separately.
 ; D0/CCR=status; other registers preserved.
 orderCapturedSources	.block
+	.CAPTURE_LIFE_PHASE #capture_life.CONFIGURATION
 	movem.l d1-d7/a0-a6, -(sp)
 retry
 	lea GraphSpans, a0
@@ -430,6 +438,7 @@ done
 ; parameter spellings are rebound before the configuration scope is released.
 ; D0/CCR=status; other registers preserved. Old IO/output storage stays live.
 beginCapturedReplay	.block
+	.CAPTURE_LIFE_PHASE #capture_life.REPLAY_INIT
 	movem.l d1-d7/a0-a6, -(sp)
 	lea Front, a0
 	lea ConfigFront, a1
@@ -517,6 +526,7 @@ replayCapturedSources	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	bsr.w beginCapturedReplay
 	bne.w bad
+	.CAPTURE_LIFE_PHASE #capture_life.REPLAY
 	clr.l CaptureOrderIndex
 nextSpan
 	move.l CaptureOrderIndex, d0
@@ -582,7 +592,9 @@ endSpan
 	bra.w nextSpan
 good
 	.CAPTURE_SNAPSHOT CAPTURE_REPLAY, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, capture.Region.Arena, CaptureOrderCount, SPAN_BYTES
+	.CAPTURE_LIFE_PHASE #capture_life.CAPTURE_RELEASE
 	bsr.w releaseCapturedSources
+	.CAPTURE_LIFE_PHASE #capture_life.FINALIZATION
 	moveq #0, d0
 	bra.w done
 bad
@@ -641,7 +653,9 @@ next
 	lea capture.Region.Arena(a2), a0
 	.LAZY_COUNT lazy_audit.RELEASED, #1
 	.CAPTURE_RETAINED_RELEASE memory.Block.Capacity(a0)
+	.CAPTURE_LIFE_RETAIN_BEGIN
 	jsr memory.release
+	.CAPTURE_LIFE_RETAIN_END
 	adda.w #CAPTURE_REGION_BYTES, a2
 	subq.l #1, d2
 	bra.w next

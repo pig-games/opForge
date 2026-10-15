@@ -16,9 +16,9 @@ spec.loader.exec_module(module)
 
 
 class LazyComparisonTests(unittest.TestCase):
-    def packing_inputs(self, root, period=64, seed=0):
+    def observer_inputs(self, root, period=64, seed=0, experiment=module.PACKING_EXPERIMENT):
         args = self.inputs(root)
-        args.experiment_define = module.PACKING_EXPERIMENT
+        args.experiment_define = experiment
         args.packing_sample_period = period
         args.packing_phase_seed = seed
         path = args.images / "images.json"
@@ -29,9 +29,11 @@ class LazyComparisonTests(unittest.TestCase):
             memory = image["file"].endswith("memory.hunk")
             candidate = image["file"].startswith("deferred-")
             image["defines"] = list(module.PACKING_BASELINE) + (module.MEMORY_DEFINES if memory else [])
+            if memory and experiment == module.CAPTURE_LIFETIME_EXPERIMENT:
+                image["defines"].append("OPFORGE_CAPTURE_TELEMETRY")
             if candidate:
-                image["defines"].append(module.PACKING_EXPERIMENT)
-                if memory:
+                image["defines"].append(experiment)
+                if memory and experiment == module.PACKING_EXPERIMENT:
                     image["defines"].append("OPFORGE_PACKING_TIMING")
                     if period != 64:
                         image["defines"].append(f"OPFORGE_PACKING_SAMPLE_PERIOD={period}")
@@ -42,7 +44,7 @@ class LazyComparisonTests(unittest.TestCase):
 
     def test_packing_shares_inventory_and_samples_only_candidate_memory(self):
         with tempfile.TemporaryDirectory() as directory:
-            args = self.packing_inputs(Path(directory), period=128, seed=255)
+            args = self.observer_inputs(Path(directory), period=128, seed=255)
             cases = [json.loads(path.read_text()) for path in module.prepare(args)]
             for case in cases:
                 metadata, defines = case["metadata"], case["bootstrap_defines"]
@@ -57,9 +59,84 @@ class LazyComparisonTests(unittest.TestCase):
                     self.assertEqual(flag in defines, candidate_memory)
             self.assertEqual(len({case["metadata"]["workload_sha256"] for case in cases}), 1)
 
+    def test_capture_lifetime_reuses_inventory_and_capture_telemetry_in_memory_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.observer_inputs(Path(directory), experiment=module.CAPTURE_LIFETIME_EXPERIMENT)
+            for path in module.prepare(args):
+                case = json.loads(path.read_text())
+                metadata, defines = case["metadata"], case["bootstrap_defines"]
+                self.assertTrue(metadata["capture_lifetime_fixed_input_comparison"])
+                self.assertFalse(metadata["macro_packing_fixed_input_comparison"])
+                self.assertTrue(set(module.PACKING_BASELINE) <= set(defines))
+                self.assertEqual(module.CAPTURE_LIFETIME_EXPERIMENT in defines, metadata["comparison_role"] == "audit")
+                self.assertEqual("OPFORGE_CAPTURE_TELEMETRY" in defines, metadata["measurement"] == "memory")
+                self.assertNotIn(module.PACKING_EXPERIMENT, defines)
+                self.assertFalse(any(define.startswith("OPFORGE_PACKING_") for define in defines))
+
+    def test_capture_lifetime_decodes_both_existing_reports_and_only_candidate_lifetime(self):
+        import copy
+        from contextlib import redirect_stdout
+        import io
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.observer_inputs(Path(directory), experiment=module.CAPTURE_LIFETIME_EXPERIMENT)
+            args.test_binary = Path("fake-test")
+            paths = module.prepare(args)
+            for path in paths:
+                metadata = json.loads(path.read_text())["metadata"]
+                result = path.parent / "result"
+                result.mkdir()
+                (result / "native-result.json").write_text(json.dumps({"success": True, "metadata": metadata,
+                    "start_to_done_host_seconds": 1.0, "linked_static_reserved_bytes": 12}))
+                if metadata["measurement"] == "memory":
+                    (result / "memory.bin").write_bytes(b"")
+                    (result / "assembly.stdout").write_text(metadata["comparison_role"])
+            inv = {"complete": True, "definitions": [], "consumer_relationships": [], "pool_used_bytes": {},
+                   "attributed_payload_bytes": {}, "unattributed_pool_bytes": {}}
+            old = {"observer_complete": True, "work_attribution": {"accounting_complete": True,
+                   "capture_header_bytes": 60, "metrics": {"total": {}}, "template_inventory": inv}}
+            capture = {"version": 1, "boundary_mask": 7}
+            new = {"complete": True, "schema": 1}
+            memory = {"diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}
+            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value=memory), \
+                 patch.object(module.lazy_preparation_audit, "decode", side_effect=lambda _: copy.deepcopy(old)) as decode_old, \
+                 patch.object(module.capture_telemetry, "decode_capture_telemetry", return_value={"capture_summary": capture}) as decode_capture, \
+                 patch.object(module.capture_lifetime_audit, "decode", return_value=new) as decode_new, \
+                 patch.object(module.macro_packing_audit, "decode", side_effect=AssertionError("wrong report")), \
+                 redirect_stdout(io.StringIO()):
+                self.assertTrue(module.execute(args, paths))
+            self.assertEqual(decode_old.call_count, 2)
+            self.assertEqual(decode_capture.call_count, 2)
+            self.assertEqual([call.kwargs for call in decode_capture.call_args_list], [{"record_header_bytes": 60}] * 2)
+            decode_new.assert_called_once_with("audit", memory, old, capture)
+            summary = json.loads((args.output / "summary.json").read_text())
+            self.assertEqual(summary["capture_lifetime"], new)
+            self.assertEqual(summary["capture_ownership"], {"reference": capture, "audit": capture})
+
+    def test_capture_lifetime_rejects_incomplete_capture_ownership(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.observer_inputs(Path(directory), experiment=module.CAPTURE_LIFETIME_EXPERIMENT)
+            args.test_binary = Path("fake-test")
+            path = module.prepare(args)[-2]  # Reference memory must qualify too.
+            result = path.parent / "result"
+            result.mkdir()
+            metadata = json.loads(path.read_text())["metadata"]
+            (result / "native-result.json").write_text(json.dumps({"success": True, "metadata": metadata}))
+            (result / "memory.bin").write_bytes(b"")
+            (result / "assembly.stdout").write_text("")
+            old = {"observer_complete": True, "work_attribution": {"accounting_complete": True,
+                   "capture_header_bytes": 60, "template_inventory": {"complete": True}}}
+            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={"diagnostics": []}), \
+                 patch.object(module.lazy_preparation_audit, "decode", return_value=old), \
+                 patch.object(module.capture_telemetry, "decode_capture_telemetry", return_value={"capture_summary": None}):
+                self.assertFalse(module.execute(args, [path]))
+            saved = json.loads((path.parent / "result.json").read_text())
+            self.assertEqual(saved["error"], "Incomplete capture ownership report")
+
     def test_packing_default_sampling_omits_numeric_defines(self):
         with tempfile.TemporaryDirectory() as directory:
-            args = self.packing_inputs(Path(directory))
+            args = self.observer_inputs(Path(directory))
             for path in module.prepare(args):
                 defines = json.loads(path.read_text())["bootstrap_defines"]
                 self.assertFalse(any(define.startswith(("OPFORGE_PACKING_SAMPLE_PERIOD=", "OPFORGE_PACKING_PHASE_SEED=")) for define in defines))
@@ -90,16 +167,16 @@ class LazyComparisonTests(unittest.TestCase):
             key: [] if key in ("definitions", "consumer_relationships") else {}
             for key in ("definitions", "consumer_relationships", "pool_used_bytes", "attributed_payload_bytes", "unattributed_pool_bytes")}}
         memory = {role: {"audit": {"work_attribution": copy.deepcopy(work)}} for role in ("reference", "audit")}
-        module.validate_packing_comparison(memory)
+        module.validate_shared_inventory_comparison(memory, "Packing")
         memory["audit"]["audit"]["work_attribution"]["metrics"]["total"]["bind_calls"] += 1
         with self.assertRaisesRegex(ValueError, "work metrics"):
-            module.validate_packing_comparison(memory)
+            module.validate_shared_inventory_comparison(memory, "Packing")
         memory["audit"]["audit"]["work_attribution"]["metrics"]["total"]["bind_calls"] -= 1
         for key in work["template_inventory"]:
             original = copy.deepcopy(memory["audit"]["audit"]["work_attribution"]["template_inventory"][key])
             memory["audit"]["audit"]["work_attribution"]["template_inventory"][key] = {"changed": 1}
             with self.assertRaisesRegex(ValueError, "changed template"):
-                module.validate_packing_comparison(memory)
+                module.validate_shared_inventory_comparison(memory, "Packing")
             memory["audit"]["audit"]["work_attribution"]["template_inventory"][key] = original
 
     def test_packing_work_reconciles_independent_binder_and_body_totals(self):
@@ -124,7 +201,7 @@ class LazyComparisonTests(unittest.TestCase):
         from contextlib import redirect_stdout
         import io
         with tempfile.TemporaryDirectory() as directory:
-            args = self.packing_inputs(Path(directory))
+            args = self.observer_inputs(Path(directory))
             args.test_binary = Path("fake-test")
             paths = module.prepare(args)
             for path in paths:

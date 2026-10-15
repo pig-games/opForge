@@ -50,6 +50,15 @@ class CpuSpecificArchitectureBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(findings, [])
 
+    def test_declared_macro_parameter_can_be_indexed_address_operand(self):
+        findings = self.scan_native(
+            "LIFE_ADD .macro field, amount\n"
+            "\tlea .field(a6), a0\n"
+            "\t.endmacro\n",
+            terms=("lea",),
+        )
+        self.assertEqual(findings, [])
+
     def test_macro_parameters_do_not_hide_definitions_or_data(self):
         findings = self.scan_native(
             "LEVEL .macro tighter, block, byte, word\n"
@@ -84,6 +93,19 @@ class CpuSpecificArchitectureBoundaryTests(unittest.TestCase):
             "OTHER .macro other\n"
             "\tbsr.w .tighter\n"
             "\t.endmacro\n"
+        )
+        self.assertEqual([finding.line for finding in findings], [4, 6])
+
+    def test_indexed_macro_parameter_exception_does_not_escape_its_macro(self):
+        findings = self.scan_native(
+            "LIFE_ADD .macro field\n"
+            "\tlea .field(a6), a0\n"
+            "\t.endmacro\n"
+            "\tlea .field(a6), a0\n"
+            "OTHER .macro other\n"
+            "\tlea .field(a6), a0\n"
+            "\t.endmacro\n",
+            terms=("lea",),
         )
         self.assertEqual([finding.line for finding in findings], [4, 6])
 

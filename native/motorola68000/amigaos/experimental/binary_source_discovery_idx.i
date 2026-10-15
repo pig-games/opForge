@@ -2,7 +2,7 @@
 ; declaration names; only reachable files enter the binary frontend.
 
 ; D0/CCR=status; other registers preserved. Paths remain owned by CandidatePaths, independently of stationary traversal scratch.
-indexCandidates .block
+indexCandidates	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l #1, SourceOrdinal
 nextCandidate
@@ -62,13 +62,13 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; indexCandidates
+	.bend  ; indexCandidates
 
 ; Return A1/D0 as the basename without its final extension, prefixing ASCII
 ; digit-leading names with '_'. SourcePath is unchanged; prefixed names use
 ; StemName until the next call. Other registers preserved; CCR reflects D0.
 ; Zero length means an invalid path.
-pathStem .block
+pathStem	.block
 	movem.l d1-d2/a0/a2-a3, -(sp)
 	lea SourcePath, a0
 	movea.l a0, a2
@@ -123,11 +123,11 @@ stemDone
 	movem.l (sp)+, d1-d2/a0/a2-a3
 	tst.l d0
 	rts
-	.bend ; pathStem
+	.bend  ; pathStem
 
 ; Inspect one bounded line. Long irrelevant lines are ignored by the indexer;
 ; the full frontend retains its ordinary size/error checks for selected files.
-indexLine .block
+indexLine	.block
 	tst.l IndexOverflow
 	bne.w skip
 	lea DeclarationBlock, a0
@@ -144,11 +144,12 @@ done
 	clr.l IndexOverflow
 	tst.l d0
 	rts
-	.bend ; indexLine
+	.bend  ; indexLine
 
 ; Retry numeric graph ordering after each selected file. D0=0 when complete,
 ; 2 with SourceOrdinal set to the next required file, 1 for invalid graph.
-resolveGraph .block
+resolveGraph	.block
+	.CAPTURE_LIFE_PHASE #capture_life.CONFIGURATION
 	movem.l d2-d7/a0-a6, -(sp)
 retry
 	lea GraphSpans, a0
@@ -179,12 +180,12 @@ done
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; resolveGraph
+	.bend  ; resolveGraph
 
 ; D1=missing numeric module index+1. Look up its spelling in the preparation
 ; arena, then select its unique candidate file. No name survives preparation.
 ; D0/CCR=status; other registers preserved.
-selectCandidate .block
+selectCandidate	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l d1, d7
 	beq.w bad
@@ -227,4 +228,4 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; selectCandidate
+	.bend  ; selectCandidate

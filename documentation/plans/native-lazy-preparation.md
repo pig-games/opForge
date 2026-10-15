@@ -1,10 +1,196 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: macro-body packing/name-binding investigation measured and qualified on
-identical frozen input, 2026-10-15. Packing and name binding remain eager; there
-is no implementation of their deferral. The earlier first-use whole-line plan
-experiment remains opt-in. Ordinary execution remains the reference, and no
+Status: capture-storage/lifetime investigation measured and qualified on
+identical frozen input, 2026-10-15. Macro-body packing and writer name binding
+remain eager; their deferral is not implemented. Earlier first-use plan
+experiments remain opt-in. The existing path remains the reference, and no
 capture is retired early. Historical checkpoint details are in Git history.
+
+## Capture storage and lifetimes
+
+Authorized 2026-10-15. Observe the existing path without changing capture layout,
+allocation, validation, execution or retirement. Establish which capture storage
+coincides with the actual owned-heap peak and whether token fields support a
+smaller stored representation. Stop on changed output, invalid accounting or
+unbounded observer cost; these measurements authorize no production replacement.
+
+Both profiles share the four plan/interface experiments and the existing
+`OPFORGE_LAZY_AUDIT` / `OPFORGE_LAZY_WORK` inventory. Only the candidate adds
+`OPFORGE_CAPTURE_LIFETIME_AUDIT`. Both memory images also enable the existing
+capture telemetry, reusing its composition, copy and growth-overlap measurements.
+Counter-only timing images have no memory/debug/progress gates or observer clocks.
+Measure the new observer's marginal runtime overhead in reversed serial pairs;
+measure owned heap, linked reservation and image bytes separately.
+
+A bounded scalar observer tracks the same successful allocation/free events as
+MEMD, including old/new growth overlap. Retained-arena reserve/release brackets
+classify capture ownership. It records synchronized global/retained peaks, coarse
+phase peaks (including inherited residency on phase entry), and each completed
+replay span. Temporary line, directory, order and other storage remain outside
+the retained-capture subset. It neither allocates nor retains source pointers.
+
+The typed caller-supplied layout packet avoids dependencies from the observer to
+capture/source/allocator modules. Inspect only committed retained records. Budget
+a hypothetical aligned 12-byte stored token: kind.u8, padding, Reserved.u16 and
+four u16 source/lexeme offsets/lengths. Preserve the full Reserved word, including
+recipe flags. A record with any unrepresentable token retains the current 20-byte
+token budget. The live TKVM ABI stays unchanged; observed bounds do not restrict
+accepted language input. Format selection and conversion costs remain unresolved.
+
+Report used bytes and hypothetical power-of-two capacity per existing region.
+This preserves current partitioning; it does not simulate changed growth overlap,
+repartitioning or a new whole-run heap peak. Storage savings remain a budget until
+an actual representation is implemented and measured.
+
+Lifetime review: EOF closes acquisition, not ownership. Configuration ordering,
+semantic replay, physical previews/seeks, suspended include cursors and deferred
+macro recipes still consume captures. In particular, L1's closure model assumes
+body copies while the opt-in deferred recipes retain capture offsets. Its
+"eligible" bytes are a historical shadow classification, not safe-to-free bytes.
+Preserve that raw classification even when it exceeds current capture residency
+during bulk release; a clamped presentation value is only an instantaneous upper
+bound. Do not infer a retirement policy or peak saving from it.
+
+Qualify the direct observer probe, disabled emission, macro declaration-context
+controls, includes/loops and failure cleanup before full measurements. Compare
+identical frozen source/package bytes with a fresh live Rust oracle and fresh
+native completion. This is frozen-input qualification, not current-source
+fixed-point self-hosting or hardware qualification. A6000 is unavailable.
+
+### Observer overhead on identical full input
+
+All six fresh comparisons complete with zero exit, fresh guest protocol and
+exact live Rust output. All use the same 198 files / 2,614,471 source bytes and emit
+708,592 Hunk bytes. The expanded FS-UAE A4000/68040 profile remains unchanged:
+2 MiB chip, 8 MiB fast, 64 MiB Zorro III and 16 MiB graphics memory. This does not
+qualify the A6000 or the 2 MiB product target, nor current-source fixed-point
+self-hosting.
+
+| Metric | Common-inventory reference | Capture observer | Increment |
+|---|---:|---:|---:|
+| Mean counter-only START→DONE host time | 116.034630 s | 119.585458 s | +3.550828 s (+3.06%) |
+| Tracked owned-heap peak | 39,817,576 B | 39,817,576 B | 0 |
+| Total allocated / freed, each | 96,714,888 B | 96,714,888 B | 0 |
+| Prepared live heap | 2,960,640 B | 2,960,640 B | 0 |
+| Assembly live heap | 4,934,912 B | 4,934,912 B | 0 |
+| Cleanup live heap | 0 | 0 | 0 |
+| Linked reservation, counter-only | 2,208,484 B | 2,229,748 B | +21,264 B |
+| Linked reservation, memory build | 2,226,492 B | 2,248,708 B | +22,216 B |
+| Executable file, counter-only | 769,004 B | 771,544 B | +2,540 B |
+| Executable file, memory build | 785,256 B | 788,820 B | +3,564 B |
+
+Serial counter-only pairs are reference 117.311357 s → observer 118.793386 s,
+then observer 120.377530 s → reference 114.757903 s. The paired increments are
+1.482029 s (1.26%) and 5.619627 s (4.90%). Both orders add time, but the variation
+and two samples per profile establish an observed scale rather than a precise
+constant. No heavy host build overlaps the timing intervals. These are marginal
+observer costs against the common inventory baseline, not production optimization
+gains or total instrumentation overhead.
+
+The fixed observer buffer is 18,868 B; code, the typed packet and alignment account for the
+remaining linked increment. Owned heap excludes linked reservation, stack, OS
+storage and allocator overhead. Every existing capture counter/boundary and
+work/template inventory agrees. Missing the new gate preserves the preceding
+common-inventory release executable byte-for-byte.
+
+Instrumented START→DONE times are 122.278862 s reference and 122.654367 s candidate;
+these are diagnostic times, not release overhead. A preceding candidate run also
+completed with an identical complete lifetime report. Its reference stalled during
+terminal report output and was stopped without DONE; that incomplete run is
+excluded. A completely fresh memory pair then passed. No cause for the interrupted
+emulator run is established. Counter-only timings above are measured separately.
+
+Evidence remains outside `target`: `/tmp/opforge-capture-life-full-v2-20261015`
+contains the plan, six receipts, raw reports and full summary; images and their
+manifest are in `/tmp/opforge-capture-life-images-v5-20261015`. Native source
+fingerprint is `fnv1a64:f571acff76085763`; frozen workload SHA-256 is
+`0cde14ab0d79e6f10ca7cc33f44bb171045f950703e4f69380ed6102d29c13fb`.
+The console summary stays compact; full tables remain in `summary.json`.
+
+Validation passes: the direct native observer probe (including invalid inputs and
+wide fallback), macro declaration/caller-context matrices, include/loop lifecycle
+controls and expected nested-call rejection; disabled-wrapper and isolated probe
+injection checks; 104 affected Python tests; affected native formatting and CCR
+checks; Clippy for `asm` tests; and all 149 workflow tests. The new decoder rejects
+partial, duplicate, inconsistent or unknown report rows instead of using them.
+
+### Observed storage and lifetime opportunity
+
+The qualified observer's full frozen input contains 114,504 retained records,
+443,094 tokens and 164 regions. It completes all 162 scheduled replay spans and
+emits the exact 708,592-byte live Rust Hunk oracle. No capture is repacked or
+retired in these observations.
+
+| Capture storage | Existing | Hypothetical 12-byte tokens |
+|---|---:|---:|
+| Retained used bytes | 20,818,992 B | 17,274,240 B |
+| Sum of region capacities | 28,274,688 B | 24,268,800 B |
+| Whole-record wide fallbacks | — | 0 |
+
+The used-byte budget falls by 3,544,752 B (17.03%); the same-partition,
+power-of-two capacity budget falls by 4,005,888 B (14.17%). These are representation
+budgets, not measured heap/runtime savings. They exclude a format selector,
+conversion work and changed allocation-growth overlap. The live token ABI remains
+20 bytes. Observed maxima are count 33, kind 34, Reserved 1, start 256, end 292,
+lexeme offset 246 and length 100. The component probe separately verifies full
+Reserved.u16 preservation and whole-record fallback beyond narrow limits.
+
+| Lifecycle peak | Owned heap | Capture subset | Last completed span |
+|---|---:|---:|---:|
+| Acquisition | 30,183,264 B | 28,340,224 B | 0 |
+| Configuration/order | 30,117,728 B | 28,274,688 B | 0 |
+| Replay initialization | 30,216,808 B | 28,274,688 B | 0 |
+| Semantic replay / whole-run peak | 39,817,576 B | 28,274,688 B | 157 |
+| Post-replay finalization | 13,044,792 B | 0 | 162 |
+| Assembly | 5,295,872 B | 0 | 162 |
+| Output | 6,016,256 B | 0 | 162 |
+
+These are synchronized heap-peak snapshots for each phase, including inherited
+residency on entry; they are not independently summed owner maxima. Capture's
+own 28,340,224-byte peak occurs during acquisition growth, including old/new
+allocation overlap, rather than at the global heap peak. Captures occupy 71.01%
+of the global peak. The final per-span snapshot still has all 28,274,688 bytes
+resident; bulk capture release then removes them before finalization/assembly.
+
+At the global peak L1 labels 26,374,144 bytes eligible, but its model does not
+prove the retained deferred recipes independent. This is a useful location for
+consumer/lifetime work, not permission to free that memory. Even proven retirement
+after completed spans would inherit at least the observed 30,216,808-byte peak
+before any span completes; the shadow eligible total cannot be reported as a
+whole-run peak reduction. Earlier acquisition/initialization would need separate
+changes to lower that floor.
+
+The lower-risk next implementation candidate is compact capture-only token
+storage, with a preserved wide fallback and measured conversion cost against the
+unchanged path. Early release remains a separate candidate requiring explicit
+ownership of deferred recipe ranges, preview/seek cursors and suspended includes.
+Do not combine those changes in one performance comparison.
+
+### Reproducing the capture audit
+
+Use the maintained [FS-UAE environment](../../agents/rules/fs-uae.md). Save images
+and evidence outside `target`; serialize emulator invocations and keep heavy host
+builds out of timing intervals. The builder's optional probe uses a separate
+snapshot with a direct component call; it never modifies the reference source.
+
+```sh
+OPFORGE_DEFERRED_SAVE_DIR=/tmp/new-capture-images OPFORGE_DEFERRED_SAVE_PROBE=1 \
+  cargo test -p asm native_capture_lifetime_save_images -- --ignored --nocapture --test-threads=1
+
+python3 scripts/performance/run_lazy_preparation_comparison.py \
+  --experiment-define OPFORGE_CAPTURE_LIFETIME_AUDIT \
+  --workload-case /absolute/frozen-full-case/case.json \
+  --images /tmp/new-capture-images --output /tmp/new-capture-results \
+  --test-binary /absolute/current-saved-asm-tests --stop-on-failure
+```
+
+The manifest identifies the common baseline and candidate defines and image
+fingerprints. Memory variants include the old capture observer in both profiles;
+only the candidate emits the new lifetime report. The runner checks both old
+reports and independently reconciles the candidate with MEMD, retained composition,
+growth overlap and L1/work totals. Counter-only timing variants omit report gates.
+Preserve needed tools/results, then clean the completed build batch as required
+by the workflow.
 
 ## Macro-body packing and name-binding investigation
 

@@ -56,6 +56,7 @@
 	.include "deferred_binding_report.i"
 	.include "binding_telemetry.i"
 	.include "capture_telemetry.i"
+	.include "capture_lifetime.i"
 	.include "lazy_audit.i"
 	.include "lazy_work_context.i"
 HEADER_BYTES = package.HEADER_BYTES
@@ -244,6 +245,7 @@ copyPath
 	bra.w invalidConfig
 configured
 	.MEMORY_PHASE #0
+	.CAPTURE_LIFE_CLEAR
 	move.l #20, ReturnCode
 	lea DosName, a1
 	moveq #36, d0
@@ -279,11 +281,13 @@ configured
 outputsReady
 	.MEMORY_CLOCK DosBase, #1
 	.MEMORY_PHASE #1
+	.CAPTURE_LIFE_PHASE #capture_life.ASSEMBLY
 	bsr.w run
 	bne.w failed
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_ASSEMBLED, #0, #0, Records, memory.Block.Used
 	.MEMORY_CLOCK DosBase, #2
 	.MEMORY_PHASE #2
+	.CAPTURE_LIFE_PHASE #capture_life.OUTPUT
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_OUTPUT, #0, #0, Records, memory.Block.Used
 	bsr.w writeOutputs
 	bne.w outputFailed
@@ -315,6 +319,7 @@ failed
 invalidConfig
 	move.l #20, ReturnCode
 cleanup
+	.CAPTURE_LIFE_PHASE #capture_life.CLEANUP
 	bsr.w closeIncludes
 	bsr.w closeSource
 	bsr.w closeInput
@@ -388,6 +393,7 @@ freeBlocks
 	move.l DosBase, d0
 	beq.w done
 	.CAPTURE_REPORT DosBase
+	.CAPTURE_LIFE_REPORT DosBase
 	.LAZY_REPORT DosBase
 	.WORK_REPORT DosBase
 	.HOTSPOT_REPORT DosBase
@@ -645,6 +651,7 @@ filesReady
 	move.l #1, SourceOrdinal
 	move.l SourceCount, NextOrigin
 nextFile
+	.CAPTURE_LIFE_PHASE #capture_life.ACQUISITION
 	tst.l DiscoverMode
 	beq.w ordinalReady
 	lea GraphBlock, a0
@@ -1922,6 +1929,15 @@ done
 	.include "binary_source_cursor.i"
 	.endsection
 	.section data, kind=data
+.ifdef OPFORGE_CAPTURE_LIFETIME_AUDIT
+; Borrowed layout packet keeps the observer independent of production modules.
+	.align 2
+CaptureLifeLayout
+	.word capture.HEADER_BYTES, capture.Record.Count, capture.Record.Bytes
+	.word capture.Record.LexemeBytes, capture.Record.PlanBytes, capture.Record.SourceBytes
+	.word source.TOKEN_BYTES, source.Token.Kind, source.Token.Reserved
+	.word source.Token.Start, source.Token.End, source.Token.Offset, source.Token.Length
+.endif
 GoFailure	.byte "compact CLI: --go requires Hex or S-record output (CLI or metadata)", 10, 0
 DosName	.byte "dos.library", 0
 WarningsFailure	.byte "--Werror: warnings treated as errors", 10, 0

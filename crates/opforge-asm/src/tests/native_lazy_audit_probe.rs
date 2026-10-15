@@ -17,6 +17,14 @@ fn copy_tree(from: &Path, to: &Path) {
 }
 
 fn prepare_component_probe_source(source_root: &Path, snapshot: &Path) {
+    prepare_component_probe_source_for(
+        source_root,
+        snapshot,
+        "tests.amigaos.binary_lazy_audit_probe",
+    );
+}
+
+fn prepare_component_probe_source_for(source_root: &Path, snapshot: &Path, probe_module: &str) {
     copy_tree(&source_root.join("native"), &snapshot.join("native"));
     let app = snapshot.join("native/motorola68000/amigaos/experimental/binary_app.asm");
     let text = fs::read_to_string(&app).unwrap();
@@ -24,7 +32,7 @@ fn prepare_component_probe_source(source_root: &Path, snapshot: &Path) {
     assert_eq!(text.matches(import).count(), 1);
     let text = text.replace(
         import,
-        &format!("{import}\t.use tests.amigaos.binary_lazy_audit_probe as lazyProbe\n"),
+        &format!("{import}\t.use {probe_module} as lazyProbe\n"),
     );
     let entry = "prepare\t.block\n";
     assert_eq!(text.matches(entry).count(), 1);
@@ -53,6 +61,15 @@ fn native_lazy_audit_probe_injection_preserves_reference_source() {
     );
     assert_eq!(injected.matches("jsr lazyProbe.run").count(), 1);
     assert!(injected.contains("prepare\t.block\n\tjsr lazyProbe.run\n\tmove.l d0, PackageStatus\n\tbne.w bad\n\t.LAZY_CLEAR\n\t.WORK_CALL lazy_work.clear\n"));
+    let lifetime_snapshot = dir.0.join("lifetime-probe");
+    prepare_component_probe_source_for(
+        &source,
+        &lifetime_snapshot,
+        "tests.amigaos.capture_lifetime_probe",
+    );
+    let lifetime = fs::read_to_string(lifetime_snapshot.join(relative)).unwrap();
+    assert!(lifetime.contains(".use tests.amigaos.capture_lifetime_probe as lazyProbe"));
+    assert!(!lifetime.contains("tests.amigaos.binary_lazy_audit_probe"));
 }
 
 fn tree_digest(root: &Path) -> String {
@@ -312,6 +329,12 @@ fn native_macro_packing_save_images() {
     save_macro_experiment_images("OPFORGE_MACRO_PACKING_AUDIT");
 }
 
+#[test]
+#[ignore = "builds baseline and passive capture lifetime observer images outside target"]
+fn native_capture_lifetime_save_images() {
+    save_macro_experiment_images("OPFORGE_CAPTURE_LIFETIME_AUDIT");
+}
+
 fn save_macro_experiment_images(experiment: &str) {
     let root = super::native_fragment_controls::root();
     let destination = PathBuf::from(
@@ -329,10 +352,12 @@ fn save_macro_experiment_images(experiment: &str) {
                 "OPFORGE_DEFERRED_MACRO_PLANS"
                     | "OPFORGE_DEFERRED_MACRO_LINES"
                     | "OPFORGE_MACRO_PACKING_AUDIT"
+                    | "OPFORGE_CAPTURE_LIFETIME_AUDIT"
             ),
-        "the component probe supports deferred binding, whole-line and packing experiments"
+        "the selected experiment does not support the component probe"
     );
     let packing = experiment == "OPFORGE_MACRO_PACKING_AUDIT";
+    let capture_lifetime = experiment == "OPFORGE_CAPTURE_LIFETIME_AUDIT";
     let packing_period: u32 = std::env::var("OPFORGE_PACKING_SAVE_SAMPLE_PERIOD")
         .map(|value| {
             value
@@ -418,7 +443,7 @@ fn save_macro_experiment_images(experiment: &str) {
             )
             .unwrap()
         });
-    let baseline_defines: &[&str] = if packing {
+    let baseline_defines: &[&str] = if packing || capture_lifetime {
         &[
             "OPFORGE_DEFERRED_MACRO_PLANS",
             "OPFORGE_BINARY_MACRO_VIEW",
@@ -450,6 +475,9 @@ fn save_macro_experiment_images(experiment: &str) {
                 }
             }
             if memory {
+                if capture_lifetime {
+                    defines.push("OPFORGE_CAPTURE_TELEMETRY");
+                }
                 defines.extend([
                     "OPFORGE_DEBUG_CONTRACTS",
                     "OPFORGE_MEMORY_TELEMETRY",
@@ -475,7 +503,15 @@ fn save_macro_experiment_images(experiment: &str) {
         .any(|name| name == "deferred-probe-memory.hunk")
     {
         let snapshot = dir.0.join("probe-source");
-        prepare_component_probe_source(&source_root, &snapshot);
+        if capture_lifetime {
+            prepare_component_probe_source_for(
+                &source_root,
+                &snapshot,
+                "tests.amigaos.capture_lifetime_probe",
+            );
+        } else {
+            prepare_component_probe_source(&source_root, &snapshot);
+        }
         let probe_source_digest = tree_digest(&snapshot.join("native"));
         let probe_build = build_native_packages(
             &engine::build_default_asm_registry(),
@@ -486,6 +522,9 @@ fn save_macro_experiment_images(experiment: &str) {
         .unwrap();
         let mut defines = baseline_defines.to_vec();
         defines.push(experiment);
+        if capture_lifetime {
+            defines.push("OPFORGE_CAPTURE_TELEMETRY");
+        }
         if packing {
             defines.push("OPFORGE_PACKING_TIMING");
             defines.extend(packing_sampling_defines.iter().map(String::as_str));
@@ -606,6 +645,46 @@ fn native_lazy_audit_disabled_macros_emit_zero_bytes() {
             fs::read(dir.0.join("build/disabled")).unwrap(),
             [0x4e, 0x75],
             "packing macros must disappear with gates {defines:?}"
+        );
+    }
+}
+
+#[test]
+fn native_capture_lifetime_disabled_macros_emit_zero_bytes_with_other_audits() {
+    use clap::Parser;
+    use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
+    let dir = scratch();
+    fs::create_dir_all(dir.0.join("build")).unwrap();
+    fs::copy(
+        super::native_fragment_controls::root()
+            .join("native/motorola68000/amigaos/debug/capture_lifetime.i"),
+        dir.0.join("capture_lifetime.i"),
+    )
+    .unwrap();
+    let input = dir.0.join("disabled-life.asm");
+    let sites = ".CAPTURE_LIFE_CLEAR\n.CAPTURE_LIFE_ALLOC #256\n.CAPTURE_LIFE_FREE #256\n.CAPTURE_LIFE_RETAIN_BEGIN\n.CAPTURE_LIFE_RETAIN_END\n.CAPTURE_LIFE_PHASE #1\n.CAPTURE_LIFE_REGION #0,#1\n.CAPTURE_LIFE_RECORD MissingBlock,MissingLayout,#0,#256,#60\n.CAPTURE_LIFE_CURVE #1,#0,#0,#0,#0\n.CAPTURE_LIFE_REPORT MissingDosBase\n";
+    fs::write(&input, format!(".module disabled_life\n.cpu 68020\n.include \"capture_lifetime.i\"\n.region ram,0,$ffff\n.section code,kind=code\n{sites}\trts\n.endsection\n.place code in ram\n.output \"build/disabled-life\",format=bin,sections=code\n.endmodule\n")).unwrap();
+    for defines in [
+        &[][..],
+        &[
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_MEMORY_TELEMETRY",
+            "OPFORGE_PREPARATION_PROGRESS",
+            "OPFORGE_LAZY_AUDIT",
+            "OPFORGE_LAZY_WORK",
+        ][..],
+    ] {
+        let mut argv = vec!["opforge".to_owned(), input.to_string_lossy().into_owned()];
+        for define in defines {
+            argv.extend(["--define".to_owned(), (*define).to_owned()]);
+        }
+        let cli = Cli::parse_from(argv);
+        let mut config = validate_cli(&cli).unwrap();
+        config.out_dir = Some(dir.0.clone());
+        run_with_validated_cli_with_context(&cli, &config).unwrap();
+        assert_eq!(
+            fs::read(dir.0.join("build/disabled-life")).unwrap(),
+            [0x4e, 0x75]
         );
     }
 }

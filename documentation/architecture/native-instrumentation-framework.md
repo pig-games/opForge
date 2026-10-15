@@ -510,11 +510,41 @@ independently required.
 
 The capture decoder defaults to the current 56-byte header. For a frozen export,
 pass `--capture-source /absolute/bootstrap/src/experimental/binary_capture.asm`
-to derive the header width from that executable's validated source. Comparison
-runners bind this width before replacing workload inputs; the assembled source
+to derive the header width from that executable's validated source. Repeat
+`--capture-define NAME` for its configured symbol-presence guards; for example,
+`OPFORGE_LAZY_AUDIT` plus `OPFORGE_LAZY_WORK` selects the 60-byte audit header.
+Unsupported conditional syntax fails closed. Comparison runners bind this width before replacing workload inputs; the assembled source
 can describe a different layout from the running executable. They never infer
 the layout from observed counter totals. This is host accounting for preserved
 comparison images, not native format compatibility or version dispatch.
+
+## Capture storage and lifetime audit (experimental)
+
+`capture_lifetime.i` gates calls, imports and fixed storage on
+`OPFORGE_CAPTURE_LIFETIME_AUDIT`. Counter-only images require no memory/debug gates
+and read no clocks. Terminal reporting additionally requires debug, memory and
+preparation-progress gates. Passive APIs preserve all registers, CCR and stack;
+`getState` alone returns A0 to the isolated component probe.
+
+The [owning layout](../../native/motorola68000/amigaos/debug/capture_lifetime_layout.i)
+defines the 18,868-byte bounded state, typed input packet and scalar rows.
+Allocation/free hooks mirror MEMD's owned heap, including growth overlap;
+synchronous retained-arena brackets classify its capture subset. Phase entry
+includes inherited residency. Per-span rows join synchronized heap/capture values
+to the existing L1 shadow classification; they do not prove safe early retirement.
+Record inspection budgets a 12-byte stored token with whole-record wide fallback,
+without modifying capture storage or the live token ABI.
+
+Decimal progress phases `600000..619999` are reserved for this schema. Fixed
+summaries occupy `600000..600027`, phase peaks `600100..600119`, completed-span
+rows begin at `601000` and region rows at `602000`. Each detail has explicit
+bounded counts; gaps, duplicate/unknown rows, overflow, invalid layouts and
+unbalanced ownership invalidate the report. The
+[decoder](../../scripts/performance/capture_lifetime_audit.py) reconciles it with
+MEMD, capture composition/growth and L1/work inventory. Native completion and
+exact Rust output remain separate requirements. See the
+[investigation](../plans/native-lazy-preparation.md#capture-storage-and-lifetimes)
+for scope, lifetime caveats, reproduction and measured overhead.
 
 ## Sampled native routine hotspots
 

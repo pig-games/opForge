@@ -4,6 +4,7 @@
 	.cpu 68020
 	.include "memory_telemetry.i"
 	.include "capture_telemetry.i"
+	.include "capture_lifetime.i"
 	.include "hotspot_telemetry.i"
 	.pub
 Block	.struct
@@ -123,6 +124,7 @@ release	.block
 	movea.l d0, a1
 	move.l Block.Capacity(a0), d0
 	.MEMORY_FREE d0
+	.CAPTURE_LIFE_FREE d0
 	movea.l 4.w, a6
 	jsr -210(a6)
 	clr.l Block.Pointer(a2)
@@ -146,6 +148,7 @@ grow	.block
 	beq.w bad
 	movea.l d0, a5
 	.MEMORY_ALLOC d4
+	.CAPTURE_LIFE_ALLOC d4
 	.CAPTURE_GROW Block.Used(a4), Block.Capacity(a4), d4
 	movea.l Block.Pointer(a4), a0
 	movea.l a5, a1

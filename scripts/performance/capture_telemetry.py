@@ -62,14 +62,56 @@ def _fail(message: str):
     raise CaptureTelemetryError(message)
 
 
-def capture_record_header_bytes(source: str) -> int:
+def _active_capture_statements(source, defines):
+    """Evaluate only symbol-presence guards; this is not an assembler evaluator."""
+    if isinstance(defines, (str, bytes)):
+        _fail("capture defines must be a collection of symbol names")
+    try:
+        symbols = set()
+        for name in defines:
+            if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]*", name):
+                _fail("capture defines must contain symbol names without assignments")
+            symbols.add(name.casefold())
+    except TypeError:
+        _fail("capture defines must be a collection of symbol names")
+    statements, stack, active = [], [], True
+    for line in source.splitlines():
+        statement = line.partition(";")[0].strip()
+        guard = re.fullmatch(r"\.(ifdef|ifndef)\s+([A-Za-z_][A-Za-z_0-9]*)", statement, re.IGNORECASE)
+        if guard:
+            condition = guard[2].casefold() in symbols
+            if guard[1].casefold() == "ifndef":
+                condition = not condition
+            stack.append((active, condition, False))
+            active = active and condition
+        elif statement.casefold() == ".else":
+            if not stack or stack[-1][2]:
+                _fail("unbalanced or duplicate capture conditional else")
+            parent, condition, _ = stack[-1]
+            stack[-1] = (parent, condition, True)
+            active = parent and not condition
+        elif statement.casefold() == ".endif":
+            if not stack:
+                _fail("unbalanced capture conditional endif")
+            active = stack.pop()[0]
+        elif re.match(r"\.(?:if|else|elif|endif)", statement, re.IGNORECASE):
+            _fail("unsupported capture conditional directive")
+        elif active:
+            statements.append(statement)
+    if stack:
+        _fail("unbalanced capture conditional nesting")
+    return statements
+
+
+def capture_record_header_bytes(source: str, *, defines=()) -> int:
     """Read the declared Record.Tokens offset; reject unsupported declarations.
 
     This inspects the capture source paired with an observed executable, allowing
     a frozen comparison bundle to declare its own layout without inferring it
-    from telemetry totals.
+    from telemetry totals. Defines are symbol names; only ifdef/ifndef/else/endif
+    are supported, including guards around the declaration and its fields.
     """
-    statements = [line.partition(";")[0].strip() for line in source.splitlines()]
+    statements = _active_capture_statements(source, defines)
     starts = [i for i, line in enumerate(statements)
               if re.fullmatch(r"Record\s+\.struct", line, re.IGNORECASE)]
     if len(starts) != 1:
@@ -185,9 +227,13 @@ def main(argv=None) -> int:
     parser.add_argument("file", type=Path, help="guest stdout text file")
     parser.add_argument("--capture-source", type=Path,
                         help="capture source paired with executable (default: current 56-byte layout)")
+    parser.add_argument("--capture-define", action="append", default=[], metavar="NAME",
+                        help="defined symbol for --capture-source layout; repeat for multiple symbols")
     args = parser.parse_args(argv)
+    if args.capture_define and args.capture_source is None:
+        parser.error("--capture-define requires --capture-source")
     try:
-        header_bytes = (capture_record_header_bytes(args.capture_source.read_text())
+        header_bytes = (capture_record_header_bytes(args.capture_source.read_text(), defines=args.capture_define)
                         if args.capture_source else 56)
         result = decode_capture_telemetry(args.file.read_text(), record_header_bytes=header_bytes)
     except (OSError, CaptureTelemetryError) as error:

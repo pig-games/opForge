@@ -4,6 +4,9 @@ use std::collections::BTreeMap;
 #[path = "native_lazy_template_report.rs"]
 mod template_inventory;
 
+#[path = "native_candidate_report.rs"]
+mod candidate_inventory;
+
 pub(super) fn rows(stdout: &str) -> BTreeMap<u32, [u32; 3]> {
     let mut rows = BTreeMap::new();
     for line in stdout
@@ -27,6 +30,7 @@ pub(super) fn rows(stdout: &str) -> BTreeMap<u32, [u32; 3]> {
             || (3100..19484).contains(&phase)
             || (20000..32288).contains(&phase)
             || (34999..182456).contains(&phase)
+            || (400000..=400039).contains(&phase)
         {
             assert!(
                 rows.insert(phase, [fields["f"], fields["l"], fields["r"]])
@@ -153,8 +157,20 @@ fn assert_work_report(rows: &BTreeMap<u32, [u32; 3]>) {
     let [_, limit, reported] = rows[&2001];
     assert_eq!(limit, 16);
     assert_eq!(reported, count.min(limit));
-    assert_eq!(rows[&2002][0], 60, "capture header contract");
-    assert_eq!(rows[&2002][1], 4, "audit header overhead");
+    let candidate = rows.get(&400000).is_some_and(|row| row[0] == 1);
+    assert_eq!(
+        rows[&2002][0],
+        if candidate { 72 } else { 60 },
+        "capture header contract"
+    );
+    assert_eq!(
+        rows[&2002][1],
+        if candidate { 16 } else { 4 },
+        "audit header overhead"
+    );
+    if rows.contains_key(&400000) {
+        candidate_inventory::assert_report(rows);
+    }
     assert_eq!(
         rows[&2041][2], rows[&2011][2],
         "all retained templates are shared"
@@ -383,7 +399,7 @@ fn assert_work_report(rows: &BTreeMap<u32, [u32; 3]>) {
             }
         }
     }
-    if rows.range(3000..).next().is_some() {
+    if rows.contains_key(&3000) {
         template_inventory::assert_report(rows);
     }
 }

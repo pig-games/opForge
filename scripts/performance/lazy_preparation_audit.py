@@ -8,6 +8,7 @@ aggregate counts cover the complete bounded observer tables.
 
 def decode(stdout):
     rows = {}
+    candidate_header = False
     for line in stdout.splitlines():
         if not line.startswith("progress p="):
             continue
@@ -22,6 +23,10 @@ def decode(stdout):
         if not {"p", "f", "l", "r"} <= fields.keys():
             raise ValueError("Incomplete L1 progress fields")
         phase = fields["p"]
+        if phase == 400000:
+            if candidate_header or fields["f"] != 1:
+                raise ValueError("Invalid candidate header contract")
+            candidate_header = True
         if (700 <= phase <= 2466 or 3000 <= phase <= 3014
                 or 3100 <= phase < 19484 or 20000 <= phase < 32288
                 or 34999 <= phase < 182456):
@@ -90,7 +95,7 @@ def decode(stdout):
             "evidence_limit": "No capture was retired or preparation skipped; residency is a prediction. Per-member/proxy/schema links and acquisition-only unit inventory remain deferred."}
 
     if 2000 in rows:
-        result["work_attribution"] = decode_work(rows, observer_complete)
+        result["work_attribution"] = decode_work(rows, observer_complete, candidate_header)
     elif any(phase >= 3000 for phase in rows):
         raise ValueError("Template inventory requires work attribution")
     return result
@@ -103,7 +108,7 @@ WORK_METRICS = ("bind_calls", "compile_calls", "captured_plan_binds", "process_c
                 "descriptor_calls", "fragment_calls", "plan_create_calls")
 
 
-def decode_work(rows, observer_complete):
+def decode_work(rows, observer_complete, candidate_header=False):
     def required(phase):
         if phase not in rows:
             raise ValueError(f"Missing work attribution phase {phase}")
@@ -115,7 +120,7 @@ def decode_work(rows, observer_complete):
     static_bytes, limit, reported = required(2001)
     header_bytes, audit_header_bytes, reasons = required(2002)
     capacity_bytes, capture_bytes, observer_header_bytes = required(2003)
-    if limit != 16 or reported != min(count, limit) or header_bytes != 60 or audit_header_bytes != 4:
+    if limit != 16 or reported != min(count, limit) or (header_bytes, audit_header_bytes) != ((72, 16) if candidate_header else (60, 4)):
         raise ValueError("Inconsistent work attribution bounds/header contract")
     vectors = {}
     for name, start in (("total", 2010), ("selected", 2020), ("ultimately_unreferenced", 2030),

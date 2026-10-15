@@ -49,12 +49,20 @@ LineHandle	.long ?
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
 WorkCounts	.long ?  ; four exact saturating acquisition counters, audit only
+.ifdef OPFORGE_LAZY_CANDIDATES
+CandidateTicks	.long ?
+CandidateSample	.long ?
+.endif
 .endif
 .endif
 .endstruct
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
+.ifdef OPFORGE_LAZY_CANDIDATES
+FRAME_BYTES = Frame.CandidateSample+4
+.else
 FRAME_BYTES = Frame.WorkCounts+4
+.endif
 .else
 FRAME_BYTES = Frame.LineHandle+4
 .endif
@@ -62,8 +70,8 @@ FRAME_BYTES = Frame.LineHandle+4
 FRAME_BYTES = Frame.LineHandle+4
 .endif
 ; Owned header: thirteen raw longs, then Line.word/Count.byte/RootFile.byte.
-; Tokens begin at byte 56 (60 with both audit flags). The four audit bytes
-; retain actual acquisition calls; Frame retains full-width constructor inputs.
+; Tokens begin at byte 56 (60 with work audit, 72 with candidate ownership).
+; WorkCounts retains actual acquisition calls; Frame keeps full-width inputs.
 Record	.struct
 Magic	.long ?
 Bytes	.long ?
@@ -84,11 +92,17 @@ RootFile	.byte ?
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
 WorkCounts	.long ?
+.ifdef OPFORGE_LAZY_CANDIDATES
+CandidateTicks	.long ?
+CandidateSample	.long ?
+CandidateOwner	.long ?  ; audit-only ordinal assigned once at physical replay
+.endif
 .endif
 .endif
 Tokens	.byte ?
 .endstruct
 HEADER_BYTES = Record.Tokens
+AUDIT_HEADER_BYTES = HEADER_BYTES-(Record.RootFile+1)
 	.section code, kind=code
 ; A0=Frame. Append a variable-size record to Arena. Caller owns input views;
 ; they must not overlap destination storage. D0/CCR=status,D1=offset+1 handle.
@@ -157,6 +171,11 @@ outcomes
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
 	move.l Frame.WorkCounts(a6), Record.WorkCounts(a3)
+.ifdef OPFORGE_LAZY_CANDIDATES
+	move.l Frame.CandidateTicks(a6), Record.CandidateTicks(a3)
+	move.l Frame.CandidateSample(a6), Record.CandidateSample(a3)
+	clr.l Record.CandidateOwner(a3)
+.endif
 .endif
 .endif
 	lea HEADER_BYTES(a3), a1

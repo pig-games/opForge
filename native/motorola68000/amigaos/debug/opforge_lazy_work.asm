@@ -19,6 +19,9 @@
 	.pub
 	.include "lazy_work_layout.i"
 	.include "lazy_template_layout.i"
+.ifdef OPFORGE_LAZY_CANDIDATES
+	.include "candidate_audit_layout.i"
+.endif
 	.section code, kind=code
 	.pub
 ; Every passive entry preserves registers/CCR/stack, including failure paths.
@@ -38,6 +41,9 @@ next
 	move.l #PLAN_BIND, WorkFields.TopRows+TOP_BYTES+Top.Metric(a0)
 	move.l #BOUND_BYTES, WorkFields.TopRows+TOP_BYTES*2+Top.Metric(a0)
 	bsr.w templateClear
+.ifdef OPFORGE_LAZY_CANDIDATES
+	bsr.w candidateClear
+.endif
 	movem.l (sp)+, d0/a0
 	move.w (sp)+, ccr
 	rts
@@ -499,12 +505,20 @@ done
 	.bend  ; effect
 	.include "lazy_work_partition.i"
 	.include "lazy_work_templates.i"
+.ifdef OPFORGE_LAZY_CANDIDATES
+	.include "candidate_audit_observer.i"
+	.include "candidate_audit_clock.i"
+	.include "candidate_audit_report.i"
+.endif
 	.include "lazy_work_template_report.i"
 	.include "lazy_work_report.i"
 	.endsection
 	.section bss, kind=bss
 	.priv
 State	.res byte, WORK_STATE_BYTES
-TemplateState .res byte, TEMPLATE_STATE_BYTES
+TemplateState	.res byte, TEMPLATE_STATE_BYTES
+.ifdef OPFORGE_LAZY_CANDIDATES
+CandidateState	.res byte, CANDIDATE_STATE_BYTES
+.endif
 	.endsection
 	.endmodule

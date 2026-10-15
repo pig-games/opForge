@@ -627,6 +627,40 @@ The A6000 runner additionally requires the requested period/seed and MEMD
 frequency to agree, and preserves assembly success separately from a profiling
 failure. Artifact parity and fresh completion remain independently required.
 
+## Candidate acquisition ownership (experimental)
+
+`candidate_audit.i` requires `OPFORGE_LAZY_AUDIT`, `OPFORGE_LAZY_WORK` and
+`OPFORGE_LAZY_CANDIDATES`. Its four passive macros preserve registers, CCR and
+stack depth. Missing gates emit no calls or imports. Enabled captures add twelve
+audit-only bytes: sampled ticks, sample presence and a numeric template-owner
+ordinal. The 532-byte fixed observer stores no borrowed pointer. Only the audit
+owner field is assigned during replay; semantic capture fields stay immutable.
+
+Successful constructors count gross original acquisition work, including temporary
+captures later discarded. Region release accounts for retained records. Accepted
+template invocations determine whether a physical macro-body envelope has consumers;
+previews, output bytes and final block reachability do not determine that usage.
+The terminal gross-minus-retained residual remains a separate category.
+
+Progress schema v1 uses `400000..400003` for schema/errors/storage, gross counts,
+sampling configuration and timing/unknown-owner counts. Six vectors occupy five
+triples each at `400010..400039`: gross total, retained non-macro, retained
+never-invoked macro, retained invoked macro, retained unknown, and not retained.
+The [owning layout](../../native/motorola68000/amigaos/debug/candidate_audit_layout.i)
+defines vector fields, including 64-bit aggregate ticks and zero reserved words.
+The [decoder](../../scripts/performance/candidate_preparation_audit.py) checks
+conservation and rejects incomplete attribution; the comparison runner also
+reconciles gross calls and retained payload against the existing work observer.
+
+`OPFORGE_CANDIDATE_TIMING` additionally requires debug, memory and preparation
+progress gates. It samples non-nesting candidate-generation windows through
+`memory_profile.readClock`, preserving timer ownership. Periods 64/128/256 and a
+bounded phase seed are configurable. No sampled window means no time estimate.
+Sample extrapolation includes instrumentation and may alias workload structure;
+it establishes neither release cost nor avoidable work. Measure counter-only
+release overhead and memory overhead separately on identical inputs. See the
+[investigation and results](../plans/native-lazy-preparation.md).
+
 ## Event ABI
 
 Each 28-byte record contains:

@@ -24,6 +24,45 @@ fn text_recipe_ordering_rust_oracles() {
 }
 
 #[test]
+fn normalized_tokens_do_not_preserve_substitution_spelling() {
+    use vm::runtime_portable_types::{PortableTokenizeRequest, PortableTokenizerByteStream};
+
+    let model = load_opasm_model_from_package_bytes(&tkpkg_smoke_package_bytes());
+    let program = model
+        .resolve_tokenizer_vm_program("m68020", None)
+        .unwrap()
+        .unwrap();
+    let policy = model.resolve_token_policy("m68020", None).unwrap();
+    let tokenize = |line: &str| {
+        model
+            .tokenize_with_vm_core(
+                &PortableTokenizeRequest {
+                    family_id: "motorola68000",
+                    cpu_id: "m68020",
+                    dialect_id: "motorola68k",
+                    source_line: line,
+                    source_stream: PortableTokenizerByteStream::from_source_line(line),
+                    line_num: 1,
+                    token_policy: policy.clone(),
+                },
+                &program,
+            )
+            .unwrap()
+    };
+    // One-byte gaps give identical token values AND original byte spans. The
+    // macro inserts the argument into a string before string decoding, making
+    // those discarded whitespace bytes observable in the assembled output.
+    assert_eq!(tokenize(".emit 1 + 2"), tokenize(".emit 1\t+\t2"));
+    for argument in ["1 + 2", "1\t+\t2"] {
+        let input = source(r#""@1""#, argument).replace("m6502", "m68020");
+        assert_eq!(
+            graph::oracle_with_roots(&[("input.asm", &input)], &[]).unwrap(),
+            argument.as_bytes()
+        );
+    }
+}
+
+#[test]
 #[ignore = "requires configured FS-UAE; ordinary substitution baseline"]
 fn text_recipe_control_substitution_fs_uae() {
     native(source(r#""x@1""#, "A"));

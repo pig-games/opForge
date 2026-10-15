@@ -34,6 +34,7 @@ pub(super) fn assert_report(rows: &BTreeMap<u32, [u32; 3]>) {
                 || (3100..3100 + count * 8).contains(&phase)
                 || (20000..20000 + edge_count * 3).contains(&phase)
                 || (34999..182456).contains(&phase)
+                || (400000..=400039).contains(&phase)
         }),
         "unexpected inventory detail"
     );

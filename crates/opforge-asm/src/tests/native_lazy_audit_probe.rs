@@ -75,6 +75,45 @@ fn native_lazy_audit_save_images() {
         !probe_only || std::env::var("OPFORGE_LAZY_SAVE_PROBE").as_deref() == Ok("1"),
         "probe-only builds require OPFORGE_LAZY_SAVE_PROBE=1"
     );
+    let candidates = std::env::var("OPFORGE_LAZY_SAVE_CANDIDATES").as_deref() == Ok("1");
+    let candidate_timing =
+        std::env::var("OPFORGE_LAZY_SAVE_CANDIDATE_TIMING").as_deref() == Ok("1");
+    assert!(
+        !candidate_timing || candidates,
+        "candidate timing requires candidates"
+    );
+    let candidate_period: u32 = std::env::var("OPFORGE_LAZY_SAVE_CANDIDATE_PERIOD")
+        .map(|value| value.parse().expect("candidate period must be an integer"))
+        .unwrap_or(64);
+    let candidate_seed: u32 = std::env::var("OPFORGE_LAZY_SAVE_CANDIDATE_SEED")
+        .map(|value| value.parse().expect("candidate seed must be an integer"))
+        .unwrap_or(0);
+    assert!(
+        [64, 128, 256].contains(&candidate_period),
+        "candidate period must be 64, 128 or 256"
+    );
+    assert!(
+        candidate_seed < candidate_period,
+        "candidate seed must be below period"
+    );
+    assert!(
+        candidate_timing || (candidate_period == 64 && candidate_seed == 0),
+        "nondefault sampling requires candidate timing"
+    );
+    let sampling_defines: Vec<String> = [
+        (
+            candidate_period != 64,
+            format!("OPFORGE_CANDIDATE_SAMPLE_PERIOD={candidate_period}"),
+        ),
+        (
+            candidate_seed != 0,
+            format!("OPFORGE_CANDIDATE_PHASE_SEED={candidate_seed}"),
+        ),
+    ]
+    .into_iter()
+    .filter_map(|(changed, define)| changed.then_some(define))
+    .collect();
+    let memory_only = std::env::var("OPFORGE_LAZY_SAVE_MEMORY_ONLY").as_deref() == Ok("1");
     let selected_roles = std::env::var("OPFORGE_LAZY_SAVE_ROLES").ok();
     if let Some(roles) = &selected_roles {
         assert!(
@@ -84,6 +123,13 @@ fn native_lazy_audit_save_images() {
             "OPFORGE_LAZY_SAVE_ROLES accepts audit,reference,work"
         );
     }
+    assert!(
+        !candidates
+            || selected_roles
+                .as_ref()
+                .is_some_and(|roles| roles.split(',').any(|role| role == "work")),
+        "candidate images require OPFORGE_LAZY_SAVE_ROLES including work"
+    );
     for (role, audit, work) in [
         ("audit", true, false),
         ("reference", false, false),
@@ -99,12 +145,22 @@ fn native_lazy_audit_save_images() {
             continue;
         }
         for memory in [false, true] {
+            if memory_only && !memory {
+                continue;
+            }
             let mut defines = Vec::new();
             if audit {
                 defines.push("OPFORGE_LAZY_AUDIT");
             }
             if work {
                 defines.push("OPFORGE_LAZY_WORK");
+                if candidates {
+                    defines.push("OPFORGE_LAZY_CANDIDATES");
+                    if memory && candidate_timing {
+                        defines.push("OPFORGE_CANDIDATE_TIMING");
+                        defines.extend(sampling_defines.iter().map(String::as_str));
+                    }
+                }
             }
             if memory {
                 defines.extend([
@@ -165,6 +221,13 @@ fn native_lazy_audit_save_images() {
             let mut defines = base_defines.to_vec();
             if work {
                 defines.push("OPFORGE_LAZY_WORK");
+                if candidates {
+                    defines.push("OPFORGE_LAZY_CANDIDATES");
+                    if candidate_timing {
+                        defines.push("OPFORGE_CANDIDATE_TIMING");
+                        defines.extend(sampling_defines.iter().map(String::as_str));
+                    }
+                }
             }
             let image = super::compact_cli_input::assemble_cli_with_defines(
                 &snapshot,
@@ -331,12 +394,21 @@ fn native_lazy_audit_disabled_macros_emit_zero_bytes() {
         dir.0.join("lazy_template_hooks.i"),
     )
     .unwrap();
+    fs::copy(
+        super::native_fragment_controls::root()
+            .join("native/motorola68000/amigaos/debug/candidate_audit.i"),
+        dir.0.join("candidate_audit.i"),
+    )
+    .unwrap();
     let sites = ".LAZY_CLEAR\n.LAZY_PREPARED Missing,d0,d1,d2,d3\n.LAZY_REMAP d0,d1,d2\n.LAZY_CLASSIFY\n.LAZY_SELECTED a0,d0\n.LAZY_COUNT 0,#1\n.LAZY_REGION Missing, d0\n.LAZY_LOOKUP\n.LAZY_PIN 1\n.LAZY_SCHEDULE Missing,d0,12\n.LAZY_SPAN d0,d1,d2,d3\n.LAZY_SPAN_END d0\n.LAZY_BLOCKS a0,d0\n.LAZY_REPORT a6\n";
     let sites = format!("{sites}.WORK_CALL Missing\n.WORK_COUNT 0,#1\n.WORK_ACQUIRE 0,a0\n.WORK_CAPTURE_RESET a0\n.WORK_BOUND_BEGIN d0\n.WORK_BOUND_END d0\n.WORK_PUBLICATION a0\n.WORK_CAPTURE_REGION a0,#128\n.WORK_SELECTED a0,d0\n.WORK_REPORT a6\n.WORK_EFFECT a0\n.WORK_TEMPLATE_DELTA d1,d2\n.WORK_SAMPLE_BEGIN #1\n");
     let sites = format!("{sites}.WORK_PLAN_CONTEXT #0\n.WORK_CONTEXT 0,#1\n.WORK_TEMPLATE_CONTEXT a6,MISSING_OFFSET\n.WORK_TEMPLATE_FLOOR a6,MISSING_OFFSET,Missing\n.WORK_ORIGIN_PATHS\n");
     let sites = format!("{sites}.WORK_TEMPLATE_BEGIN a0\n.WORK_TEMPLATE_DEFINE a0,a1,#0,#0\n.WORK_TEMPLATE_CLOSE a0,a1,#0\n.WORK_TEMPLATE_CALL a0,a1\n.WORK_TEMPLATE_POOLS a0\n.WORK_TEMPLATE_LINE a0,Missing,#1,Missing\n");
+    let sites = format!(
+        "{sites}.CANDIDATE_BEGIN\n.CANDIDATE_END a4\n.CANDIDATE_CREATED a4\n.CANDIDATE_OWNER\n"
+    );
     let input = dir.0.join("disabled.asm");
-    fs::write(&input, format!(".module disabled\n.cpu 68020\n.include \"lazy_audit.i\"\n.include \"lazy_work_context.i\"\n.include \"lazy_template_hooks.i\"\n.region ram,0,$ffff\n.section code,kind=code\n{sites}\trts\n.endsection\n.place code in ram\n.output \"build/disabled\",format=bin,sections=code\n.endmodule\n")).unwrap();
+    fs::write(&input, format!(".module disabled\n.cpu 68020\n.include \"lazy_audit.i\"\n.include \"lazy_work_context.i\"\n.include \"lazy_template_hooks.i\"\n.include \"candidate_audit.i\"\n.region ram,0,$ffff\n.section code,kind=code\n{sites}\trts\n.endsection\n.place code in ram\n.output \"build/disabled\",format=bin,sections=code\n.endmodule\n")).unwrap();
     let cli = Cli::parse_from(["opforge".into(), input.to_string_lossy().into_owned()]);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(dir.0.clone());

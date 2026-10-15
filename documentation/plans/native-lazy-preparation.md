@@ -1,11 +1,196 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: opt-in first-use macro-body plan binding is measured and natively qualified,
-2026-10-15. The preceding publication/lifetime, whole-unit work and template
+Status: candidate acquisition attribution is measured and qualified; opt-in first-use
+macro-body plan binding is measured and natively qualified, 2026-10-15. The preceding publication/lifetime, whole-unit work and template
 inventories are measured. The ordinary eager path remains the reference;
 no capture is retired early. Historical checkpoint details are in Git history.
 
-## Active experiment: first-use macro-body plan binding
+## Acquisition ownership and reconstruction investigation
+
+Authorized 2026-10-15. Keep all execution eager. Attribute original candidate
+generation calls, retained candidate bytes and sampled acquisition time to
+physical macro bodies with and without accepted consumers. Count each physical
+capture once, independently of template instance counts. Keep non-macro and
+unassigned ownership explicit; reject duplicate replay, overflow and incomplete
+accounting. Include closing records in the measured body envelope and disclose
+that distinction. Do not interpret all observed work as avoidable.
+
+An additional opt-in observer records only scalar owner ordinals and timing data
+in audit-only capture fields. Declaration ownership comes from the existing
+template state; usage comes from accepted calls. A gross total and five disjoint
+categories separate retained non-macro records, retained never-invoked and invoked
+macro-body envelopes, retained unknowns, and temporary captures not retained.
+Successful constructor publication records independent gross totals; region
+release records retained totals. Their difference is not an unused-macro claim.
+Classification happens before capture release, after preparation consumers are
+known. Sampled E-clock times
+are diagnostic instrumented windows, not release costs or projected speedups.
+Compare ordinary eager release timing against observer-enabled eager timing on
+identical frozen inputs; measure heap and linked reservations in a separate pair
+with matched memory instrumentation. Keep prior work-observer accounting as the
+incremental baseline and report that scope explicitly.
+
+Also inspect the reconstruction boundary: retained normalized token/lexeme rows
+currently lose spelling that descriptor/fragment generation consumes. Establish
+which shared binary/spelling interface is missing before proposing to discard
+candidate plans. This investigation does not add lazy acquisition, retain source
+text as a workaround, alter VM grammar, retire captures or change error policies.
+
+### Binary reconstruction finding
+
+The current normalized token/lexeme view cannot preserve all macro behavior on
+its own. The executed
+[spelling witness](../../crates/opforge-asm/src/tests/binary_source_text_recipe_semantics.rs)
+uses `.byte "@1"` inside a macro and compares arguments `1 + 2` and
+`1<TAB>+<TAB>2`, with literal one-byte tabs. The tokenizer produces identical
+tokens, lexemes and original byte spans, but Rust emits respectively
+`31 20 2b 20 32` and `31 09 2b 09 32`. Substitution precedes string decoding.
+Byte spans identify gaps but cannot recover their lost contents.
+
+Current `frontend.sourceDescriptors` passes physical source and token spans to
+the package-selected shared descriptor VM. `captureFragments` passes raw spelling
+to the shared fragment VM, whose current entry rejects token input. Plan creation
+copies selected spelling into the retained arena. Those plans make source-free
+replay possible today; discarding them also discards some required spelling.
+
+The missing foundation is a shared binary token/spelling view preserving
+**semantically observable spelling atoms**, substitution boundaries and declaration
+configuration. It does not follow that every original line, comment or trivia
+byte must be retained. A bounded token/atom VM interface would maintain the
+no-source-reparse direction; keeping complete physical lines and reusing the
+source parser would be a different design. No such replacement was implemented
+by this investigation. A future implementation must retain acquisition body mode
+and the declaration's package context, as well as numeric lexical ownership.
+
+### Acquisition attribution results
+
+The frozen 198-file / 2,614,471-byte input produces the complete live Rust
+708,592-byte Hunk. Native completion, exit zero and exact output are independently
+required. The observer does not skip work, change binding or release captures.
+
+| Original acquisition ownership | Records | Candidate calls | Plan bytes |
+|---|---:|---:|---:|
+| Retained non-macro | 95,183 | 193,816 | 1,783,566 |
+| Retained never-invoked macro body | 16,435 | 49,221 | 3,382,688 |
+| Retained invoked macro body | 2,484 | 7,440 | 483,166 |
+| Retained unknown | 402 | 804 | 0 |
+| Temporary, not retained | 103 | 309 | 45,124 |
+| Gross total | 114,607 | 251,590 | 5,694,544 |
+
+The retained 114,504 records own 5,649,420 candidate-plan bytes. Never-invoked
+body envelopes account for **59.88% of retained plan bytes** and **19.56% of gross
+candidate calls**. These are physical capture records, not macro instance counts
+or body-binding calls. Envelopes include closing and non-binding records. Accepted
+invocations are consumers even when they emit nothing or their caller's block is
+later omitted. Unreplayed captures and discarded temporary work remain explicit;
+neither is reassigned to unused macros. All observer errors and duplicate replays
+are zero; original work totals and definition/consumer relationships reconcile.
+
+These bytes establish a potential storage budget, not a peak-heap saving. A future
+implementation still needs binary tokens, spelling atoms, structural validation,
+declaration context, recipes and used-body plans. Preserve unused-body diagnostics;
+the entire generation cost cannot be assumed removable.
+
+### Separately measured observer memory overhead
+
+| Resource | Prior eager work observer | Candidate observer | Added cost |
+|---|---:|---:|---:|
+| Tracked heap peak | 48,390,040 | 49,758,104 | 1,368,064 (+2.83%) |
+| Allocated/freed capacities, each | 113,993,912 | 116,692,152 | 2,698,240 (+2.37%) |
+| Linked reservation, memory image | 2,213,300 | 2,215,156 | 1,856 |
+| Memory image file bytes | 771,776 | 773,200 | 1,424 |
+
+The observer adds twelve bytes per retained capture and 532 fixed scalar bytes.
+Capacity rounding makes the tracked peak different from the field-size sum.
+Linked reservation includes code and static storage separately from tracked heap.
+Both memory runs finish with zero tracked ownership, allocation failures,
+profiling errors and decoder diagnostics. These are observer costs, not deferred
+preparation savings. The sampled image uses period 64 / phase 0; its elapsed time
+is diagnostic, separately from release overhead.
+
+### Separately measured observer runtime overhead
+
+Both executables execute the eager path. Counter-only release images omit memory
+telemetry and candidate clocks; the baseline retains the preceding work/template
+observer. This is the **incremental** cost of the new inventory, not the total
+overhead of all measurement facilities or a production performance improvement.
+
+| Serial order | Prior observer seconds | Candidate observer seconds |
+|---|---:|---:|
+| Prior then candidate | 111.725507 | 113.268668 |
+| Candidate then prior | 111.522847 | 111.756279 |
+| Mean | 111.624177 | 112.512473 |
+
+Mean added cost is **0.888296 seconds / 0.80%**. The individual paired deltas are
+1.38% and 0.21%; this is a small two-pair estimate. Release file size grows
+758,224 → 759,000 bytes (+776), linked reservation 2,197,936 → 2,199,188 (+1,252).
+The separate instrumented memory pair takes 115.730986 / 116.770025 seconds;
+those elapsed times are diagnostic and are not additional release samples.
+
+All six full frozen-input runs finish with fresh protocol, explicit zero exit,
+whole live Rust equality and conserved observer/work/template accounting. They
+assemble the frozen earlier source, not the current candidate's own source, so
+these are **not current-source fixed-point self-host qualifications**. No heavy
+host builds overlap the reported samples. Evidence and actual execution order:
+`/tmp/opforge-candidate-full-final-20261015/plan.json`, `summary.json` and the six
+case receipts. The actual test binary and maintained FS-UAE hardware/configuration
+are identified in that plan. It uses the existing expanded A4000/68040 profile;
+there is no A6000 or 2 MiB qualification in this investigation.
+
+### Sampled acquisition time and decision
+
+Two separately completed instrumented runs use different periods/phases. Counts,
+retained payload, definition rows and tracked heap peak agree exactly; both require
+the whole live Rust output. These estimates describe only original candidate
+generation, excluding tokenization, construction/retained copying, binding and
+later preparation. They include work-observer and clock-boundary cost.
+
+| Acquisition class | Period 64 / phase 0 | Period 128 / phase 37 |
+|---|---:|---:|
+| All acquisition, estimated seconds | 6.8475 (1,791 samples) | 7.0639 (895 samples) |
+| Never-invoked body, estimated seconds | 1.9079 (264 samples) | 1.9376 (117 samples) |
+| Invoked body, estimated seconds | 0.3085 (44 samples) | 0.2984 (18 samples) |
+
+Category estimates use each category's own mean; do not add them to reconstruct
+the independently weighted global estimate. Clock observations are conserved;
+extrapolated estimates need not be additive. Matching two configurations is a
+sensitivity check, not a confidence interval or a release performance result.
+The second complete run takes 119.541603 seconds with identical 49,758,104-byte
+tracked heap peak. Evidence:
+`/tmp/opforge-candidate-sensitivity-proof-20261015/analysis.json` and its fresh
+`result/native-result.json`.
+
+The hypothesis is supported primarily for **memory**: never-invoked body plans
+occupy 3.38 MB. The sampled generation window suggests roughly two instrumented
+seconds of opportunity, with validation and required spelling still to preserve.
+It does not support a claim of a large overall runtime gain. Extending first-use
+copy/remapping to more template kinds alone does not address this acquisition.
+
+The next prerequisite is a bounded shared VM token/spelling interface experiment,
+covering the observable whitespace witness, quoted escapes, defaults and embedded
+substitutions before discarding any captured plans. Preserve declaration identities
+and the descriptor grammar's acquisition configuration while retaining existing
+CPU switching behavior during expansion. Its success would enable a later measured
+first-use acquisition candidate and persistent binary templates. It is **proposed,
+not implemented or authorized by this investigation**.
+
+All 20 lifecycle/module/include/template controls pass with the final six-category
+observer. The independent native probe passes preservation, duplicate ownership,
+unknown accounting and 64-bit accumulation checks. A focused imported-template
+case proves the distinction between gross acquisition and discarded temporary
+captures. Rust independently checks report conservation; the executed spelling
+witness proves normalized tokens alone lose observable macro behavior.
+
+Final Rust report/disabled-emission/spelling checks, asm Clippy with warnings
+denied, Rust/native formatting, 57 lazy-tool tests, eight candidate-decoder tests
+and 147 workflow tests pass. The helper now supplies the explicit experimental
+include root required by cross-directory probes; include containment checks are
+unchanged. After formatting, both measured candidate executables are byte-identical
+to the qualified images. The ordinary release executable remains byte-identical
+to the preceding commit (747,740 bytes). Identity evidence:
+`/tmp/opforge-candidate-tools-20261015/final-image-identity.json`.
+
+## Measured experiment: first-use macro-body plan binding
 
 Authorized 2026-10-15. Hypothesis: keeping declaration-time numeric binding while
 postponing captured descriptor copy/remapping avoids the measured never-invoked
@@ -306,7 +491,7 @@ it is not an audit-enabled current-source self-host or A6000/2 MiB qualification
 Receipt: `/tmp/opforge-template-inventory-current-selfhost-20261014/manifest.json`;
 source manifest `fnv1a64:fe2dd20e35f70198`.
 
-### Next bounded candidate
+### Why first-use binding was selected
 
 The evidence supports a **generic first-use macro-body binding experiment**:
 retain the packed definition recipe and its declaration context, defer body-plan
@@ -550,6 +735,20 @@ python3 scripts/performance/run_lazy_preparation_comparison.py \
   --images /tmp/new-images --output /tmp/new-results \
   --test-binary /absolute/asm-tests
 
+# Acquisition inventory: compare two eager executables, adding only the new audit.
+OPFORGE_LAZY_SAVE_ROLES=work OPFORGE_LAZY_SAVE_DIR=/tmp/prior-observer \
+  cargo test -p asm native_lazy_audit_save_images -- --ignored --nocapture --test-threads=1
+
+OPFORGE_LAZY_SAVE_ROLES=work OPFORGE_LAZY_SAVE_DIR=/tmp/candidate-observer \
+  OPFORGE_LAZY_SAVE_CANDIDATES=1 OPFORGE_LAZY_SAVE_CANDIDATE_TIMING=1 \
+  cargo test -p asm native_lazy_audit_save_images -- --ignored --nocapture --test-threads=1
+
+python3 scripts/performance/run_lazy_preparation_comparison.py \
+  --candidate-attribution --candidate-timing --work-attribution \
+  --baseline-images /tmp/prior-observer --images /tmp/candidate-observer \
+  --workload-case /absolute/frozen-full-case/case.json \
+  --output /tmp/candidate-results --test-binary /absolute/asm-tests
+
 OPFORGE_DEFERRED_SAVE_DIR=/tmp/new-first-use-images OPFORGE_DEFERRED_SAVE_PROBE=1 \
   cargo test -p asm native_deferred_macro_save_images -- --ignored --nocapture --test-threads=1
 
@@ -559,6 +758,16 @@ python3 scripts/performance/run_lazy_preparation_comparison.py \
   --images /tmp/new-first-use-images --output /tmp/new-first-use-results \
   --test-binary /absolute/asm-tests
 ```
+
+For a sampling sensitivity check, set builder variables
+`OPFORGE_LAZY_SAVE_CANDIDATE_PERIOD=128` and
+`OPFORGE_LAZY_SAVE_CANDIDATE_SEED=37`, with matching runner arguments
+`--candidate-sample-period 128 --candidate-phase-seed 37`. Only the memory image
+gets the numeric definitions; release images retain count-only behavior.
+`OPFORGE_LAZY_SAVE_MEMORY_ONLY=1` can save only memory images for a standalone
+case. The measured second profile uses its saved complete `case.json` directly
+with the maintained `native_full_selfhost_comparison_fs_uae` test and
+`OPFORGE_FULL_COMPARISON_CASE`; it is not another release timing sample.
 
 For a separate current-source experimental self-host, set
 `OPFORGE_COMPACT_EXPORT_DEFERRED_MACRO_PLANS=1`,

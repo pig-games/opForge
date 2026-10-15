@@ -10,6 +10,9 @@
 .if DEFER_MACRO_PLANS
 	.use tests.amigaos.binary_deferred_plan_probe as deferred_probe
 .endif
+.ifdef OPFORGE_LAZY_CANDIDATES
+	.use tests.amigaos.candidate_audit_probe as candidate_probe
+.endif
 	.section code, kind=code
 	.pub
 ; D0/CCR=status (11..37 invariant failure); preserves other registers.
@@ -359,6 +362,10 @@ checkRanges
 .if DEFER_MACRO_PLANS
 	bne.w done
 	jsr deferred_probe.run
+.endif
+.ifdef OPFORGE_LAZY_CANDIDATES
+	bne.w done
+	jsr candidate_probe.run
 .endif
 done
 	movem.l (sp)+, d1-d7/a0-a6

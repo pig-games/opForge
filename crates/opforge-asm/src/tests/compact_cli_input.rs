@@ -265,6 +265,14 @@ pub(crate) fn assemble_cli_with_defines(
             .to_string_lossy()
             .into_owned(),
     ]);
+    // Test harnesses include the shared build configuration from their sibling
+    // experimental owner; declare that include root without relaxing containment.
+    argv.extend([
+        "-I".into(),
+        root.join("native/motorola68000/amigaos/experimental")
+            .to_string_lossy()
+            .into_owned(),
+    ]);
     for define in defines {
         argv.extend(["--define".into(), (*define).into()]);
     }

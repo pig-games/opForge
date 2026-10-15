@@ -72,6 +72,114 @@ class LazyComparisonTests(unittest.TestCase):
                                   output=root / "results", repeats=2, test_binary=None,
                                   experiment_define=None, work_attribution=False, baseline_images=None)
 
+    def test_candidate_flags_require_baseline_and_timing_is_memory_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = self.inputs(root)
+            args.candidate_attribution = True
+            with self.assertRaisesRegex(ValueError, "requires"):
+                module.prepare(args)
+            args.work_attribution = True
+            baseline_root = root / "baseline"
+            baseline_root.mkdir()
+            baseline = self.inputs(baseline_root)
+            self.add_work_images(args.images, "candidate")
+            self.add_work_images(baseline.images, "baseline")
+            args.baseline_images = baseline.images
+            args.candidate_timing = True
+            args.candidate_sample_period = 128
+            args.candidate_phase_seed = 37
+            manifest_path = args.images / "images.json"
+            manifest = json.loads(manifest_path.read_text())
+            for row in manifest["images"]:
+                if row["file"].startswith("work-"):
+                    row["defines"].append("OPFORGE_LAZY_CANDIDATES")
+                    if "memory" in row["file"]:
+                        row["defines"].extend(["OPFORGE_CANDIDATE_TIMING",
+                            "OPFORGE_CANDIDATE_SAMPLE_PERIOD=128", "OPFORGE_CANDIDATE_PHASE_SEED=37"])
+            manifest_path.write_text(json.dumps(manifest))
+            cases = [json.loads(path.read_text()) for path in module.prepare(args)]
+            for case in cases:
+                candidate = case["metadata"]["comparison_role"] == "audit"
+                memory = case["metadata"]["measurement"] == "memory"
+                self.assertEqual("OPFORGE_LAZY_CANDIDATES" in case["bootstrap_defines"], candidate)
+                self.assertEqual("OPFORGE_CANDIDATE_TIMING" in case["bootstrap_defines"], candidate and memory)
+                for flag in ("OPFORGE_CANDIDATE_SAMPLE_PERIOD=128", "OPFORGE_CANDIDATE_PHASE_SEED=37"):
+                    self.assertEqual(flag in case["bootstrap_defines"], candidate and memory)
+                self.assertEqual(case["metadata"]["candidate_sample_period"], 128)
+                self.assertEqual(case["metadata"]["candidate_phase_seed"], 37)
+
+    def test_candidate_comparison_reconciles_calls_and_template_consumers(self):
+        import copy
+        total = {field: 3 for field in ("candidate_calls", "descriptor_calls", "fragment_calls", "plan_create_calls")}
+        total.update(capture_header_bytes=216, capture_plan_bytes=12, capture_bytes=260,
+                     capture_token_bytes=20, capture_lexeme_bytes=12)
+        work = {"capture_header_bytes": 72, "metrics": {"total": total}, "template_inventory": {
+            "definitions": [{"row": 1, "calls": 2}], "consumer_relationships": [{"callee_row": 1}]}}
+        memory = {role: {"audit": {"work_attribution": copy.deepcopy(work)}} for role in ("reference", "audit")}
+        candidate_total = dict(total, token_bytes=20, lexeme_bytes=12)
+        memory["audit"]["candidate_attribution"] = {"records_created": 3, "plan_bytes_created": 12,
+                                                     "metrics": {"total": candidate_total, "not_retained": {
+                                                         "records": 0, "plan_bytes": 0, "capture_bytes": 0,
+                                                         "token_bytes": 0, "lexeme_bytes": 0}}}
+        module.validate_candidate_comparison(memory)
+        report = memory["audit"]["candidate_attribution"]
+        # Gross acquisitions may include discarded records absent from retained work bytes.
+        report["records_created"] += 1
+        report["plan_bytes_created"] += 4
+        report["metrics"]["not_retained"].update(records=1, plan_bytes=4, capture_bytes=100, token_bytes=12, lexeme_bytes=8)
+        for field, value in (("capture_bytes", 100), ("token_bytes", 12), ("lexeme_bytes", 8)):
+            report["metrics"]["total"][field] += value
+        module.validate_candidate_comparison(memory)
+        for key in ("records_created", "plan_bytes_created"):
+            report[key] += 1
+            with self.assertRaisesRegex(ValueError, "totals disagree"):
+                module.validate_candidate_comparison(memory)
+            report[key] -= 1
+        for key in ("capture_bytes", "token_bytes", "lexeme_bytes"):
+            report["metrics"]["total"][key] += 1
+            with self.assertRaisesRegex(ValueError, "totals disagree"):
+                module.validate_candidate_comparison(memory)
+            report["metrics"]["total"][key] -= 1
+        memory["audit"]["candidate_attribution"]["metrics"]["total"]["candidate_calls"] += 1
+        with self.assertRaisesRegex(ValueError, "totals disagree"):
+            module.validate_candidate_comparison(memory)
+        memory["audit"]["candidate_attribution"]["metrics"]["total"]["candidate_calls"] -= 1
+        memory["audit"]["audit"]["work_attribution"]["template_inventory"]["definitions"][0]["calls"] += 1
+        with self.assertRaisesRegex(ValueError, "template definitions"):
+            module.validate_candidate_comparison(memory)
+
+    def test_candidate_sampling_options_require_timing_and_valid_seed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory))
+            args.candidate_sample_period = 128
+            with self.assertRaisesRegex(ValueError, "requires --candidate-timing"):
+                module.prepare(args)
+            args.candidate_phase_seed = 128
+            with self.assertRaisesRegex(ValueError, "Invalid candidate"):
+                module.prepare(args)
+
+    def test_report_sampling_must_match_image_configuration(self):
+        report = {"sample_period": 128, "phase_seed": 37, "frequency": 100, "timed_calls": 1}
+        metadata = {"candidate_sample_period": 128, "candidate_phase_seed": 37, "candidate_timing": True}
+        module.validate_candidate_configuration(report, metadata)
+        for field in ("candidate_sample_period", "candidate_phase_seed"):
+            wrong = dict(metadata)
+            wrong[field] += 1
+            with self.assertRaisesRegex(ValueError, "configuration"):
+                module.validate_candidate_configuration(report, wrong)
+        with self.assertRaisesRegex(ValueError, "unexpectedly"):
+            module.validate_candidate_configuration(report, dict(metadata, candidate_timing=False))
+        with self.assertRaisesRegex(ValueError, "unexpectedly"):
+            module.validate_candidate_configuration(dict(report, frequency=0), dict(metadata, candidate_timing=False))
+
+    def test_candidate_timing_alone_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory))
+            args.candidate_timing = True
+            with self.assertRaisesRegex(ValueError, "requires"):
+                module.prepare(args)
+
     def test_deferred_mode_uses_feature_images_and_fixed_workload(self):
         with tempfile.TemporaryDirectory() as directory:
             args = self.inputs(Path(directory))

@@ -32,7 +32,7 @@ bounded
 	jsr memory_profile.progress
 	move.l #2002, d0
 	move.l #capture.HEADER_BYTES, d1
-	moveq #capture.WORK_COUNTER_BYTES, d2
+	moveq #capture.AUDIT_HEADER_BYTES, d2
 	move.l WorkFields.UnknownReasons(a6), d3
 	movea.l a4, a0
 	jsr memory_profile.progress
@@ -40,7 +40,11 @@ bounded
 	move.l WorkFields.Capacity(a6), d1
 	move.l WorkFields.Totals+CAPTURE_BYTES(a6), d2
 	move.l WorkFields.CaptureRecords(a6), d3
+.ifdef OPFORGE_LAZY_CANDIDATES
+	mulu.l #capture.AUDIT_HEADER_BYTES, d3
+.else
 	lsl.l #2, d3
+.endif
 	movea.l a4, a0
 	jsr memory_profile.progress
 	move.l #2010, d4
@@ -147,6 +151,10 @@ contextTriple
 done
 	movea.l a4, a0
 	bsr.w templateReport
+.ifdef OPFORGE_LAZY_CANDIDATES
+	movea.l a4, a0
+	bsr.w candidateReport
+.endif
 	movem.l (sp)+, d0-d7/a0-a6
 	move.w (sp)+, ccr
 	rts

@@ -67,6 +67,10 @@ nextRecord
 	jsr capture.resolve
 	bne.w invalidInput
 	movea.l a1, a3
+.ifdef OPFORGE_LAZY_CANDIDATES
+	movea.l a3, a0
+	bsr.w candidateRecord
+.endif
 	addq.l #1, WorkFields.CaptureRecords(a6)
 	bcs.w invalidInput
 	move.l capture.Record.Bytes(a3), 4(sp)
@@ -116,8 +120,8 @@ captureTotals
 	addq.l #4, d0
 	cmpi.l #CANDIDATE, d0
 	blo.w captureTotals
-	moveq #0, d4 ; deepest physical owner, ordinal+1
-	moveq #0, d5 ; greatest original prepared opening
+	moveq #0, d4  ; deepest physical owner, ordinal+1
+	moveq #0, d5  ; greatest original prepared opening
 	moveq #0, d2
 	move.l WorkFields.FilterCount(a6), d3
 unit

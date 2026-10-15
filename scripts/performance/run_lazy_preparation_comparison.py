@@ -20,6 +20,7 @@ import subprocess
 
 import memory_telemetry
 import lazy_preparation_audit
+import candidate_preparation_audit
 import run_a6000_selfhost as runner
 from run_fs_uae_selfhost_comparison import TEST, reproducibility_metadata
 
@@ -73,10 +74,22 @@ def read_checked(root, row):
 
 
 def prepare(args):
+    candidate = getattr(args, "candidate_attribution", False)
+    timing = getattr(args, "candidate_timing", False)
+    period = getattr(args, "candidate_sample_period", 64)
+    seed = getattr(args, "candidate_phase_seed", 0)
+    if period not in (64, 128, 256) or not 0 <= seed < period:
+        raise ValueError("Invalid candidate sample period/phase seed")
+    if (period != 64 or seed != 0) and not timing:
+        raise ValueError("Nondefault candidate sample period/phase seed requires --candidate-timing")
     work_attribution = getattr(args, "work_attribution", False)
     baseline_images = getattr(args, "baseline_images", None)
     experiment_define = getattr(args, "experiment_define", None)
-    if experiment_define and (work_attribution or baseline_images is not None):
+    if timing and not candidate:
+        raise ValueError("--candidate-timing requires --candidate-attribution")
+    if candidate and (not work_attribution or baseline_images is None):
+        raise ValueError("--candidate-attribution requires --work-attribution and --baseline-images")
+    if experiment_define and (candidate or work_attribution or baseline_images is not None):
         raise ValueError("--experiment-define cannot be combined with work-attribution or baseline images")
     if baseline_images is not None and not work_attribution:
         raise ValueError("Baseline images require --work-attribution")
@@ -125,6 +138,14 @@ def prepare(args):
             defines.append("OPFORGE_LAZY_WORK")
         if experiment_define and role == "audit":
             defines.append(experiment_define)
+        if candidate and role == "audit":
+            defines.append("OPFORGE_LAZY_CANDIDATES")
+            if timing and memory:
+                defines.append("OPFORGE_CANDIDATE_TIMING")
+                if period != 64:
+                    defines.append(f"OPFORGE_CANDIDATE_SAMPLE_PERIOD={period}")
+                if seed != 0:
+                    defines.append(f"OPFORGE_CANDIDATE_PHASE_SEED={seed}")
         manifest = baseline_manifest if baseline_images and role == "reference" else build_manifest
         built = (baseline_rows if baseline_images and role == "reference" else image_manifest)[image_name]
         if built["fnv1a64"] != runner.fnv(image) or built["bytes"] != len(image):
@@ -139,6 +160,10 @@ def prepare(args):
                              "source_bytes": sum(len(data) for _, data in files),
                              "candidate_source_selfhost_proven": False,
                              "work_attribution_comparison": work_attribution,
+                             "candidate_attribution_comparison": candidate,
+                             "candidate_timing": timing,
+                             "candidate_sample_period": period,
+                             "candidate_phase_seed": seed,
                              "work_observer_revision_comparison": baseline_images is not None,
                              "macro_binding_fixed_input_comparison": experiment_define is not None,
                              "experiment_define": experiment_define,
@@ -160,6 +185,38 @@ def prepare(args):
     (args.output / "plan.json").write_text(json.dumps({"test": TEST, "cases": [str(p) for p in cases],
         "workload_sha256": workload_digest, "reproducibility": reproducibility_metadata(args)}, indent=2) + "\n")
     return cases
+
+
+def validate_candidate_configuration(report, metadata):
+    if (report["sample_period"] != metadata.get("candidate_sample_period", 64)
+            or report["phase_seed"] != metadata.get("candidate_phase_seed", 0)):
+        raise ValueError("Candidate report sampling configuration differs from image manifest")
+    if not metadata.get("candidate_timing") and (report["frequency"] or report["timed_calls"]):
+        raise ValueError("Candidate report unexpectedly enabled timing")
+
+
+def validate_candidate_comparison(memory):
+    previous, current = (memory[role]["audit"]["work_attribution"] for role in ("reference", "audit"))
+    for key in ("definitions", "consumer_relationships"):
+        if previous["template_inventory"][key] != current["template_inventory"][key]:
+            raise ValueError(f"Candidate observer changed template {key}")
+    report = memory["audit"]["candidate_attribution"]
+    total = current["metrics"]["total"]
+    discarded = report["metrics"]["not_retained"]
+    gross = report["metrics"]["total"]
+    expected_records = total["capture_header_bytes"] // current["capture_header_bytes"]
+    if report["records_created"] - discarded["records"] != expected_records:
+        raise ValueError("Candidate/work created record totals disagree")
+    if report["plan_bytes_created"] - discarded["plan_bytes"] != total["capture_plan_bytes"]:
+        raise ValueError("Candidate/work created plan byte totals disagree")
+    for candidate_field, work_field in (("capture_bytes", "capture_bytes"),
+                                        ("token_bytes", "capture_token_bytes"),
+                                        ("lexeme_bytes", "capture_lexeme_bytes")):
+        if gross[candidate_field] - discarded[candidate_field] != total[work_field]:
+            raise ValueError(f"Candidate/work totals disagree: {candidate_field}")
+    for field in ("candidate_calls", "descriptor_calls", "fragment_calls", "plan_create_calls"):
+        if report["metrics"]["total"][field] != total[field]:
+            raise ValueError(f"Candidate/work totals disagree: {field}")
 
 
 def execute(args, cases):
@@ -189,6 +246,13 @@ def execute(args, cases):
                                 and not row["metadata"].get("macro_binding_fixed_input_comparison"))):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
+                        if (row["metadata"].get("candidate_attribution_comparison")
+                                and row["metadata"]["comparison_role"] == "audit"):
+                            row["candidate_attribution"] = candidate_preparation_audit.decode(
+                                (receipt.parent / "assembly.stdout").read_text())
+                            validate_candidate_configuration(row["candidate_attribution"], row["metadata"])
+                            if not row["candidate_attribution"]["complete"]:
+                                raise ValueError("Incomplete candidate attribution")
                         inventory = row["audit"].get("work_attribution", {}).get("template_inventory")
                         if inventory is not None and not inventory["complete"]:
                             raise ValueError("Incomplete template inventory")
@@ -217,6 +281,11 @@ def execute(args, cases):
     if getattr(args, "baseline_images", None):
         previous = memory["reference"]["audit"]["work_attribution"]["metrics"]["total"]
         current = memory["audit"]["audit"]["work_attribution"]["metrics"]["total"]
+        if getattr(args, "candidate_attribution", False):
+            validate_candidate_comparison(memory)
+            excluded = {"capture_header_bytes", "capture_padding_bytes", "capture_bytes"}
+            previous = {key: value for key, value in previous.items() if key not in excluded}
+            current = {key: value for key, value in current.items() if key not in excluded}
         if previous != current:
             raise ValueError("Observer revision changed global work totals on identical input")
     baseline_name = "ordinary release"
@@ -237,6 +306,7 @@ def execute(args, cases):
                "audit": memory["audit"].get("audit"),
                "baseline_audit": memory["reference"].get("audit"),
                "deferred_binding": memory["audit"].get("deferred_binding"),
+               "candidate_attribution": memory["audit"].get("candidate_attribution"),
                "baseline": baseline_name,
                "evidence_limit": ("fixed frozen input; instrumentation times are diagnostic; "
                                   "not current-source self-host proof; no early capture release")}
@@ -259,12 +329,24 @@ def main():
                         help="with --work-attribution, compare saved work images against current work images")
     parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS",),
                         help="compare eager reference images with the deferred macro-plan experiment")
+    parser.add_argument("--candidate-attribution", action="store_true", help="compare passive candidate attribution against baseline work images")
+    parser.add_argument("--candidate-timing", action="store_true", help="sample candidate preparation only in the candidate memory image")
+    parser.add_argument("--candidate-sample-period", type=int, choices=(64, 128, 256), default=64)
+    parser.add_argument("--candidate-phase-seed", type=int, default=0)
     args = parser.parse_args()
     for key, value in vars(args).items():
         if isinstance(value, Path):
             setattr(args, key, value.resolve())
     if not 1 <= args.repeats <= 4:
         parser.error("repeats must be 1..4")
+    if not 0 <= args.candidate_phase_seed < args.candidate_sample_period:
+        parser.error("candidate phase seed must be 0..sample-period-1")
+    if (args.candidate_sample_period != 64 or args.candidate_phase_seed != 0) and not args.candidate_timing:
+        parser.error("nondefault candidate sampling requires --candidate-timing")
+    if args.candidate_timing and not args.candidate_attribution:
+        parser.error("--candidate-timing requires --candidate-attribution")
+    if args.candidate_attribution and (not args.work_attribution or not args.baseline_images or args.experiment_define):
+        parser.error("--candidate-attribution requires work attribution and baseline images and excludes experiment define")
     if args.baseline_images and not args.work_attribution:
         parser.error("--baseline-images requires --work-attribution")
     if args.experiment_define and (args.work_attribution or args.baseline_images):

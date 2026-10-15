@@ -30,6 +30,7 @@
 	.use experimental.amigaos.binary_deferred_plans as deferred
 .endif
 	.use experimental.amigaos.binary_macro_plans as macro_plans
+	.include "candidate_audit.i"
 	.use experimental.amigaos.binary_statement_heads as statement_heads
 	.use experimental.amigaos.binary_statement_session as statement_session
 	.use experimental.amigaos.binary_statement_execution as statement_execution
@@ -625,10 +626,13 @@ captureLine	.block
 	clr.l memory.Block.Capacity(a0)
 	clr.l memory.Block.Used(a0)
 	move.l a0, capture.Frame.Plans(a4)
+	.CANDIDATE_BEGIN
 	bsr.w captureCandidates
+	.CANDIDATE_END a4
 	bne.w releaseBad
 	movea.l a4, a0
 	jsr capture.create
+	.CANDIDATE_CREATED a4
 	bra.w release
 releaseBad
 	moveq #1, d0
@@ -669,6 +673,7 @@ replayLine	.block
 	jsr capture.resolve
 	bne.w bad
 	movea.l a1, a4
+	.CANDIDATE_OWNER
 	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a4), #0, HOTSPOT_REPLAY_EMPTY_RECORDS, #1
 	move.l capture.Record.LexemeBytes(a4), d3
 	cmpi.l #LEXEME_BYTES, d3

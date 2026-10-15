@@ -6,7 +6,7 @@ pub(super) fn assert_report(
     definitions: &[[u32; 24]],
     edges: &[[u32; 9]],
 ) {
-    if rows.range(34999..).next().is_none() {
+    if rows.range(34999..182456).next().is_none() {
         return;
     }
     assert_eq!(
@@ -42,7 +42,7 @@ pub(super) fn assert_report(
         std::str::from_utf8(&bytes[..length as usize]).expect("source path UTF-8");
     }
     assert!(
-        rows.range(34999..)
+        rows.range(34999..182456)
             .all(|(phase, _)| expected.contains(phase)),
         "unexpected source path chunk"
     );
@@ -70,6 +70,14 @@ fn optional_template_source_paths_validate_provenance_and_bounded_utf8() {
         (35024, [9, 0, 2]), // A path may be unavailable for a known origin.
     ]);
     assert_report(&rows, &[definition], &[edge]);
+    let mut with_candidates = rows.clone();
+    with_candidates.insert(400000, [1, 0, 532]);
+    assert_report(&with_candidates, &[definition], &[edge]);
+    assert_report(
+        &BTreeMap::from([(400000, [1, 0, 532])]),
+        &[definition],
+        &[edge],
+    );
     for (phase, field, value) in [
         (34999, 0, 2),
         (34999, 1, 0),

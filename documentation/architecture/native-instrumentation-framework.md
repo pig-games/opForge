@@ -520,6 +520,14 @@ comparison images, not native format compatibility or version dispatch.
 
 ## Capture storage and lifetime audit (experimental)
 
+Current scope: the sole whole-application chunked capture path rejects
+`OPFORGE_LAZY_AUDIT` and `OPFORGE_CAPTURE_LIFETIME_AUDIT`; these observers assume
+contiguous source regions. Unsupported whole-app image builders were removed.
+The component probes and compatible historical decoders below remain, but cannot
+qualify fresh chunked whole-app measurements. Use existing MEMD/capture/hotspot
+telemetry for current comparisons; see the
+[current ownership contract](../plans/native-lazy-preparation.md#capture-storage-and-lifetimes).
+
 `capture_lifetime.i` gates calls, imports and fixed storage on
 `OPFORGE_CAPTURE_LIFETIME_AUDIT`. Counter-only images require no memory/debug gates
 and read no clocks. Terminal reporting additionally requires debug, memory and
@@ -544,7 +552,7 @@ unbalanced ownership invalidate the report. The
 MEMD, capture composition/growth and L1/work inventory. Native completion and
 exact Rust output remain separate requirements. See the
 [investigation](../plans/native-lazy-preparation.md#capture-storage-and-lifetimes)
-for scope, lifetime caveats, reproduction and measured overhead.
+for current scope and lifetime caveats; historical overhead measurements are in Git.
 
 ## Sampled native routine hotspots
 

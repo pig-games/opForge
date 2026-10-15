@@ -1,873 +1,200 @@
 # Native runtime and memory diagnosis
 
-Current assignment: measure resource growth and evaluate the selected capture
-clear-elision experiment. Parity implementation is paused for this pass. Preserve shared VM,
-numeric source and package boundaries; no CPU-specific shortcuts in generic code.
+Status, 2026-10-15: parity remains paused. This pass qualified chunked capture,
+removed superseded macro experiments, guarded disabled telemetry definitions and
+selected a symbol-table growth policy using exact work counts. Next is the
+[structural design review](native-fragment-preparation.md); no structural pipeline
+or persistent cache has been implemented.
 
-## Fixed workload and baseline
+## Measurement contract
 
-Use source `7a903cf8`, manifest `fnv1a64:ec940cb60e2202f6`: 194 mapped inputs,
-2,580,296 bytes including the unchanged 454,890-byte m68020 package. Bootstrap
-and output both embed that package. Complete expected Hunk is 706,888 bytes,
-SHA-256 `5d5e6f10c15dacf4b8b3840119380032755551d51eafe897bcb668985f4f19ee`.
+Compare each engine change on identical frozen source/package bytes and commands,
+with a newly generated live Rust oracle. Require a fresh native challenge,
+START/DONE, exit zero and exact complete output. Compare tracked heap and exact
+work separately from uninstrumented runtime. Instrumented seconds are attribution,
+not release speed. Two timing pairs below about 2% are inconclusive here; timing
+noise is about two seconds. Reject changes below about 1% of their target resource
+unless they are a documented prerequisite. No new observer framework was added.
 
-- Release FS-UAE 68020/74 MiB: 3,512.267856959 seconds (58m32.27s), fresh exit
-  zero and exact complete live Rust output.
-- Release A6000: 118 seconds, fresh exit zero and the same complete output;
-  guest resolution is one second, transfer excluded. Hardware receipt and exact
-  case identity are in the [self-host evidence](compact-frontend-vm-boundary.md#physical-a6000-execution).
-- Release image: 706,888 bytes; linked reservation: 740,660 bytes. Neither is
-  peak process memory.
+All new runs use the expanded-memory FS-UAE template, a 64 KiB guest stack and
+serial execution. They are neither A6000 timings nor 2 MiB qualification. Tracked
+heap excludes the executable, stack, OS and untracked allocations; linked static
+reservation is reported separately. Do not compare absolute times across emulator
+profiles or changing source snapshots.
 
-Reuse this current release baseline. A separate full instrumented run uses the
-identical source/package/command/oracle, with allocation tracking, phase clocks,
-binding samples, template work counts and input-reader counts. Dense tokenizer
-opcode telemetry is disabled. Instrumented time measures attribution and overhead,
-not release speed. The instrumented A6000 run now completes with fresh exit zero,
-exact complete output and valid telemetry. Its case digest is
-`3538c2ea566915b2b5d01c5a6d0f1e1e36cb164219815bcdb8314f0383154baa`.
-Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-4i2o6ro3/result.json`.
-The equivalent emulator diagnostic was cancelled after this hardware completion;
-it supplies no completed emulator measurement. Summary:
-`/tmp/opforge-native-performance-baseline-20261013.json`.
+## Telemetry definitions
 
-## Measured costs
+Expected saving: avoid capturing implementation bodies for about 1,173 inventoried
+release-disabled macro definitions from five repeatedly included telemetry files, reducing records and preparation
+work. Outer generic conditionals now skip those bodies; small no-op definitions
+preserve public call signatures. Ordinary call wrappers and failure behavior remain
+active. No filename, benchmark or expected-output selection exists in production.
 
-Instrumented overall time is 191 seconds versus 118 release seconds: about 62%
-additional elapsed time. Guest phase clocks report 155.38 seconds preparation and
-35.14 seconds assembly. Do not extrapolate release phase times by scaling these
-observations: instrumentation overhead is distributed unevenly.
+This necessarily changes the source workload. Frozen before/after snapshots differ
+only in the five guards and five no-op includes. Both run the same native engine
+and produce the same live Rust output. This is not an identical-source engine
+comparison.
 
-| Exclusive preparation responsibility | Instrumented seconds |
-|---|---:|
-| Binding and raw records | 100.79 |
-| Source I/O and other | 17.78 |
-| Expression preparation | 9.99 |
-| Module discovery | 9.44 |
-| Tokenization | 9.03 |
-| Runtime finalization | 8.25 |
-| Package setup | 0.11 |
-
-Binding/raw records account for about 65% of instrumented preparation. Nested
-observations include record finalization/append (20.03 seconds), packed
-writing/binding (18.36) and conditionals/scopes/imports (15.76). They are already
-within the preparation stages and must not be added to the table. Binding sampling
-estimates 15.14 seconds of name binding; that estimate is nested too.
-
-| Ownership boundary | Tracked live bytes |
-|---|---:|
-| Last acquisition sample | 33,588,976 |
-| Replay complete, before finalization | 12,957,528 |
-| Parameter/export boundary | 13,161,560 |
-| Preparation released / assembly entry | 2,895,104 |
-| Assembly complete | 4,869,376 |
-| Global tracked peak | 46,880,904 |
-
-The peak is 44.71 MiB, versus 2.76 MiB after preparation teardown and 4.64 MiB
-at assembly completion. The exact peak falls between snapshots; current telemetry
-cannot assign it to a particular owner or distinguish growth overlap from replay
-overlap. All 109,772,320 allocated bytes are freed, with zero live storage,
-no allocation failures and no profiling errors. This points to transient
-preparation ownership rather than a retained leak. These are tracked allocations
-from an instrumented build, not total process RAM or an exact release heap peak.
-
-Runtime prefix is 432,626 bytes; prepared packed records are 2,008,891 bytes.
-67,723 expressions compile into 264,023 program bytes, with 174,723 evaluations.
-Input collection reads 2,626,150 bytes through 1,007 reads; mapped input size and
-actual bytes read are different quantities.
-
-## Growth observations and remaining attribution
-
-Earlier successful release A6000 receipts show a workload trend, not isolated
-change costs: 103 files / 1,509,170 input bytes took 35 seconds; 121 files /
-1,780,288 bytes took 49 seconds; the current 194 files / 2,580,296 bytes took
-118 seconds. Input totals include assets, and implementations/capabilities differ.
-Growth in time exceeds growth in input bytes across these observations, which
-supports investigating repeated work; it does not establish a specific cause.
-
-1. Report preparation, discovery, binding, tokenization, expression preparation,
-   finalization and assembly costs; nested observations must not be added to the
-   exclusive stage totals.
-2. Separate tracked heap live/peak/cumulative allocations from executable/static
-   reservation. Identify the peak phase and preparation-to-assembly lifetime drop.
-3. Examine captured source, composed names, macro/binding plans, numeric execution
-   state and output ownership. Distinguish used bytes, capacity slack, duplicate
-   owners and transient growth overlap. Existing aggregate telemetry cannot assign
-   peak bytes or copy traffic to individual owners.
-4. Compare earlier identified measurements only where input and mode match.
-   Smaller older projects and failures after about 40 minutes are not full-build
-   baselines. Normalized trends can guide investigation but cannot isolate causes.
-5. Rank candidates by measured importance, expected runtime/RAM benefit, code
-   complexity and correctness risk. Identify missing evidence before choosing a
-   change; use focused representative controls for subsequent before/after runs.
-
-## Ranked candidates
-
-1. **Capture representation and lifetime.** Each retained acquisition line has a
-   64-byte header, 20-byte shared TKVM tokens, lexemes and copied candidate plans.
-   Some spellings occur in both lexemes and plans. The scheduler retains these
-   regions through replay. Measure total used/capacity and header/token/lexeme/plan
-   contributions first. A compact acquisition format inflated into existing TKVM
-   scratch during replay could lower memory without changing the shared VM ABI.
-   Preserve columns, adjacency, wide-number metadata, macro spelling and origins.
-2. **Capture construction and bulk memory work.** The measured baseline clears a
-   whole record, overwrites it, and copies it from temporary to retained storage; buffer
-   growth copies used bytes byte-by-byte. Removing overwritten clears, avoiding
-   redundant copies or using suitable bulk-copy operations are smaller candidates
-   than a format redesign. Measure cleared/copied/growth bytes, keep padding
-   deterministic and preserve overlap, alignment and failure-atomic behavior.
-3. **Candidate acquisition work.** Telemetry reports 221,240 descriptor VM runs,
-   consistent with unconditional call/header acquisition for 110,620 lines.
-   Consider package-authored shared prefix work or eligibility filtering after
-   measuring match/no-match costs. Preserve deferred failures until contextual
-   replay selects a role; never recreate grammar in native shortcuts.
-4. **Binding/finalization owners.** Measure composed spelling, macro/binding plan
-   arenas and exported copies individually before choosing ownership transfer,
-   early retirement or deduplication. Preserve visibility, longest declaration
-   precedence, inactive alternatives, cursor validity and installed-owner checks.
-5. **Discovery and assembly traversal.** Discovery is 9.44 instrumented seconds;
-   assembly is 35.14. Reader and pass/layout counters should precede changes to
-   scanning or reuse. Actual branch, mutable-symbol and relaxation semantics
-   continue to require evaluation.
-
-Broad template-dispatch caching is lower priority than the initial audit suggested:
-dispatch measures 4.63 seconds and only 462 invocations occur. Searches are a
-minority of role/line calls. Zero physical string-plan captures does not mean
-fragment planning is unused: retained captured plans bind through another route.
-
-The owner/count measurement below selected clear elision as the first small
-construction experiment, with unchanged release input and the complete Rust
-artifact as correctness reference. A compact-capture experiment remains deferred.
-
-## Capture measurement checkpoint
-
-The gated 272-byte capture observer now reports retained header/token/lexeme/plan
-composition, used versus reserved storage at replay entry and before release,
-explicit cleared bytes, construction/append/materialization copies, global block
-growth copies and retained-capacity peak including growth overlap. MEMD remains
-2280 bytes; see the [instrumentation schema](../architecture/native-instrumentation-framework.md#bounded-capture-ownership-accounting).
-Active expanded includes can acquire additional captures after the initial
-snapshot, so the pre-release snapshot describes the final retained frontier.
-
-The focused multi-file macro/include case completes in FS-UAE with fresh exit
-zero, exact 29-byte live Rust output, zero accounting errors, all three boundaries
-and zero capture ownership after release. The independent real observer probe
-preserves all registers, CCR and stack depth. Four host tests and the decoder/
-hardware-runner checks also pass. These are component proofs, not a full self-host
-measurement.
-
-The full measurement bundle is `/tmp/opforge-a6000-capture-accounting-v3-20261013`:
-195 mapped inputs, 2,585,677 bytes, manifest `fnv1a64:cadc24b1921a07ea`.
-Its 719,588-byte bootstrap enables only contracts, memory accounting, preparation
-progress, capture accounting and local telemetry export; hot nested timing probes
-are omitted. Its uninstrumented 706,888-byte oracle is byte-for-byte identical to
-the baseline above. The measurement source contains the new gated observer/macros;
-elapsed time is not an isolated release before/after comparison.
-
-Run from macOS Terminal:
-
-```sh
-python3 scripts/performance/run_a6000_selfhost.py --bundle /tmp/opforge-a6000-capture-accounting-v3-20261013
-```
-
-The runner requires valid capture reporting when the capture flag is enabled and
-adds `capture_ownership` to its result. Independently decode captured stdout with:
-
-```sh
-python3 scripts/performance/capture_telemetry.py /absolute/captured/assembly.stdout \
-  --capture-source /absolute/bootstrap/src/experimental/binary_capture.asm
-```
-
-The first full emulator attempt and second hardware candidate rejected at physical
-file completion during acquisition. A reduced source also failed through the
-previously qualified release executable, isolating source classification from
-observer effects. Constants, import preamble, empty macro bodies and the first
-complete macro all passed fresh native comparisons. The cause was the new
-`CAPTURE_APPEND` formal named `block`: `lea .block,a0` was classified as a labeled
-`.block`, opening an extra acquisition scope. Renaming it to `arena` makes the
-complete include pass through the old executable and the current instrumented
-control. This avoids the classifier gap; it does not repair that general gap.
-
-Snapshot identities also now use always-available local constants so call-site
-arguments do not depend on gated imports. The third bootstrap is byte-identical
-to the earlier instrumented candidates; release output remains exact. Failed
-attempts supply partial acquisition counts only, not full workload measurements
-or successful self-host proof. Captures remain outside the tree at
-`/tmp/opforge-capture-full-fsuae-capture-20261013` and
-`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-ddiej4_s`.
-
-The corrected bundle now completes on the physical A6000 in **134 guest seconds**
-(2m14s, one-second clock resolution), with fresh exit zero, exact complete Rust
-output and valid telemetry. Host command time including connection is
-133.909075042 seconds. Case digest:
-`404fac74ec19b8b65497e0dcc8556e84d3e21f958eb7dbf94999714090063373`.
-Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-5c03wy1h/result.json`.
-The host-generated challenge/script, every captured input, bootstrap, package,
-complete Hunk and both decoded records were independently rechecked against this
-bundle. Its initial host-only status describes qualification before this run.
-
-Preparation takes 98.18 instrumented seconds and assembly 34.60. Exclusive
-binding/raw-record work is 53.02 seconds; other stages are I/O/other 8.40,
-package setup 0.10, tokenization 8.80, expressions 10.38, finalization 8.33 and
-discovery 9.15. This focused observer omits the previous nested timers, so
-134 versus 191 seconds is a change of measurement mode, not an optimization.
-The earlier 118-second release run also has slightly different source inputs;
-neither comparison establishes isolated instrumentation overhead or a release gain.
-
-| Retained capture component | Bytes | MiB |
+| Resource | Before | Guarded |
 |---|---:|---:|
-| Headers, 111,292 records | 7,122,688 | 6.79 |
-| Shared 20-byte tokens | 8,620,260 | 8.22 |
-| Lexemes | 1,980,495 | 1.89 |
-| Candidate plans | 5,236,852 | 4.99 |
-| Padding | 178,409 | 0.17 |
-| Total used | 23,138,704 | 22.07 |
-| Total reserved | 31,944,704 | 30.46 |
-| Capacity slack | 8,806,000 | 8.40 |
+| Tracked peak heap | 47,980,680 B | 43,659,400 B |
+| Retained records | 117,686 | 116,715 |
+| Retained capture used | 24,245,572 B | 23,836,984 B |
+| Plan bytes | 6,218,310 B | 5,806,578 B |
+| Allocated/freed capacities, each | 117,317,832 B | 107,474,488 B |
+| Instrumented preparation | 72.384 s | 71.530 s |
 
-Headers and tokens are 68.0% of used capture storage. Slack is 27.6% of reserved
-capacity. All 162 retained regions have identical ownership at initial replay
-entry and immediately before release: no additional acquisition changes these
-snapshots in this workload. Retained capacity peak including allocation overlap
-is 32,010,240 bytes. Whole tracked heap peak is separately 47,077,256 bytes
-(44.90 MiB); these peaks have different scopes and are not time-correlated owner
-samples. Live bytes after preparation are 2,960,640, and after assembly 4,934,912.
-All 110,472,408 allocated bytes are freed; cleanup live bytes and errors are zero.
+Decision: keep. Heap falls 9.0%, capture payload 1.69% and plans 6.62%; retained
+records fall only 0.825%, below the record-count hypothesis. Capacity thresholds
+amplify the heap effect; it is not a universal 9% prediction. Preparation timing
+shows no established speed gain. Both full runs complete exactly and free all
+tracked storage. Disabled and enabled macro combinations retain their behavior.
 
-| Observed memory work | Bytes |
-|---|---:|
-| Explicit record clearing, 111,387 constructions | 23,195,144 |
-| Constructor outcome/payload copies | 19,006,444 |
-| Temporary capture to retained region copies | 23,138,704 |
-| Configuration scratch materialization | 738,927 |
-| Semantic replay scratch materialization | 10,604,657 |
-| All successful block-growth copies | 46,963,881 |
-| Retained-region growth copies, subset of the preceding row | 31,668,772 |
+## Chunked capture
 
-The five disjoint copy categories total 100,452,613 bytes; the retained-growth
-subset must not be added again. Construction payloads, retained append and global
-growth account for 85,990,193 bytes passing through current byte-copy loops after
-excluding the constructor's seven outcome-long copies. Scratch materialization
-already uses long/word/tail copying. These are byte-work totals, not elapsed-time
-attribution or counts of unique source data. Clearing excludes Exec allocation
-clearing; the allocator still requests cleared allocations.
+Expected saving: remove capture arena growth copies and excess capacity while
+preserving record bytes, logical offsets, source identities and replay behavior.
+The shared append-only store is now the sole implementation. The eager preparation
+path remains the semantic reference; old executables and frozen comparisons live
+outside the tree. See [ownership and switch decisions](native-lazy-preparation.md).
 
-## First selected experiment: remove overwritten capture clearing
+The final comparison removes the old stacked macro switches from both sides.
+Identical guarded frozen input: 216 mapped files, workload SHA-256
+`1dd34618cfaaa53f84b6bf02267e69fa0fc2ddf1f32bfde482c7d02438ba80da`;
+complete live Rust Hunk output 707,204 bytes.
 
-The first candidate is narrowly owned by `binary_capture.create`: stop clearing
-the entire record before overwriting its header and payloads. Explicitly zero
-`Record.Reserved` and both 0–3-byte alignment gaps. Retain the current record
-format, shared TKVM ABI, allocation policy, copied payloads and failure-atomic
-publication. Reused storage must not rely on the allocator's initial clearing.
-
-The hypothesis is a runtime reduction from removing almost all 23,195,144
-explicit clear-byte operations. Expected remaining zeroing is two bytes per
-constructed record plus its padding, approximately 0.4 MB on this workload.
-That is a work prediction, not a measured speedup. No heap reduction is expected.
-Update the observer argument to count actual cleared bytes, not record extent.
-
-Before editing, freeze the complete input/package/command and generate its live
-Rust oracle. Compare baseline and candidate release executables on that same
-input, separately from instrumented work/heap runs. Changing the assembler's own
-source changes the workload: the fixed-input comparison and a new current-source
-self-host qualification are separate cases, each with its own exact Rust output.
-
-Focused validation must poison reused capture storage, exercise both alignment
-gaps and all length residues including zero payloads, retain wide-token metadata,
-and check invalid-record/allocation-failure behavior and unchanged publication.
-The full comparison requires fresh completion, exit zero and exact bytes; count
-composition/copies and allocation ownership must remain unchanged while actual
-clear counts fall. Retain the change only after separate release timing shows
-benefit without correctness, memory or code-quality regressions.
-
-### Clear-elision implementation and separate release measurement
-
-The constructor now writes the reserved word and clears only the two alignment
-gaps. Copies, validation-before-publication, record layout and allocation policy
-are unchanged. Constructor-local clear accounting uses gated macros with an
-explicit counter output; release builds emit no accounting instructions.
-
-The real constructor passes an independent byte-layout oracle on poisoned reused
-storage in FS-UAE: all 16 lexeme/plan length residues, empty payloads, 64 token
-rows with nonzero metadata, consecutive appends, unchanged published prefixes,
-invalid token/line/count bounds, arithmetic overflow and reserve-limit rejection.
-This is constructor proof, not a complete current-source self-host run.
-The enabled observer/macro preservation probe and the fresh exact 29-byte
-macro/include case also pass. The latter reports 1,328 actual cleared bytes for
-267 constructions, valid complete ownership snapshots and zero capture ownership
-after release. Five focused host checks, 41 A6000 runner/comparison tests and the
-native engineering gate pass. These component counts do not replace full
-fixed-workload measurements.
-
-Release timing uses the unchanged 11,592-byte two-module control with 1,200 macro
-calls and a fresh live Rust oracle, FS-UAE 68020/10 MiB, and telemetry disabled.
-The same compiled test executable, package bytes and source generator supply
-all four serial cases, ordered baseline/candidate/candidate/baseline.
-
-| Image | START-to-DONE samples, seconds | Mean |
-|---|---|---:|
-| Baseline | 41.814091250, 41.802031541 | 41.808061396 |
-| Clear elision | 41.320402000, 41.569497708 | 41.444949854 |
-
-The mean decreases by **0.3631 seconds (0.87%)**. Both candidate samples are
-faster, but this small control does not establish a full self-host speedup.
-The release Hunk grows 28 bytes, from 706,888 to 706,916; linked reservation
-grows from 740,660 to 740,688. No meaningful heap reduction is expected because
-record extents and allocation policy are unchanged. Full-workload instrumented
-heap/work have not yet been measured for this candidate. Release timing is
-recorded below. Control receipt:
-`/tmp/opforge-clear-release-control-20261013.json`.
-
-The physical A6000 comparison deliberately uses a frozen 195-input baseline
-manifest `fnv1a64:cadc24b1921a07ea` (2,585,677 bytes). Its fresh Rust-produced
-oracle and baseline executable have the 706,888-byte SHA-256 recorded above.
-The candidate executable SHA-256 is
-`e197fc8e076ab5a706f2415c0bd6d18433ae4a7bc6bdb309900617a78da69b26`.
-Both embed the same 454,890-byte m68020 package. The baseline native source root
-is frozen at `/tmp/opforge-clear-baseline-native-20261013`.
-
-The [comparison runner](../../scripts/performance/run_a6000_comparison.py)
-validates both ordinary exports before constructing explicit benchmark cases.
-Only the bootstrap differs in the first two runs; source/package/command/oracle
-remain identical. Each case has a distinct identity-bound fresh challenge and
-exact output proof. The original self-host bootstrap/oracle guard is unchanged.
-The third run uses the candidate's own 195-input source manifest
-`fnv1a64:1b1cb47fe4c81f08` (2,587,096 bytes), and its new 706,916-byte oracle.
-That third run is the independent current-source self-host case. All three
-physical A6000 runs now complete with fresh exit zero and exact complete output:
-
-| Release case | Guest seconds | Output bytes | Host command seconds, including connection |
-|---|---:|---:|---:|
-| Baseline on frozen input | 117 | 706,888 | 117.844501458 |
-| Clear elision on identical frozen input | 117 | 706,888 | 117.371201333 |
-| Clear elision on its current source | 117 | 706,916 | 117.909336417 |
-
-The fixed-input pair shows **no measurable full-build gain at one-second guest
-resolution**. The host intervals differ by 0.4733 seconds, but include connection
-overhead and are single samples; they do not establish a subsecond assembly
-speedup. The small emulator control's 0.87% result is not a full-build claim.
-Keep the bounded, correctness-tested clear elision as removal of redundant work;
-its full-build speed benefit remains unproven. No heap reduction is claimed.
-
-The comparison summary is
-`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-comparison-ng_p4baw/comparison.json`.
-Baseline and candidate fixed-input case identities are respectively
-`6c05a008f32ab2391497ed747784b66c6e5a79cfbea5b51efb1dfcd6c8372a06` and
-`38bc4df412519b7605f800dd975c1e7c7ee64fceaa14c70b6d9b8d9025863ff2`.
-The new current-source full self-host case is
-`772db9dab2237fad4a77ceb52bc3961adb02673cef56dc28756151f345aa5ade`, with receipt
-`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-3tef8gza/result.json`.
-Every staged, pre-run and captured input/bootstrap/package/script, regenerated
-case identity, fresh challenge, explicit exit, complete output and decoded
-duration was independently revalidated. Verification summary:
-`/tmp/opforge-clear-hardware-verified-20261013.json`.
-The bundle's original host-only status describes its qualification before this
-hardware run; this exact release configuration is now qualified on the A6000.
-
-Run the prepared three-case bundle from macOS Terminal:
-
-```sh
-sh /tmp/opforge-a6000-clear-elision-20261013/run.sh
-```
-
-The wrapper invokes the maintained comparison tool with the baseline and
-candidate exports. Add `--dry-run` for local preparation only. Separate results
-and `comparison.json` retain guest durations (one-second resolution), bootstrap
-and workload identities, fresh completion and exact-output status. Transfers
-are outside the guest timing window. A fixed-input candidate success does not
-claim that the candidate assembled its own current source.
-
-## Next experiment: native routine hotspot profiling
-
-The assignment now prioritizes actual elapsed hotspots before another
-optimization. Large byte-work totals did not establish a measurable full-build
-gain for clearing. Binding/raw-record preparation remains the largest coarse
-stage, but its 53.02 instrumented seconds do not identify the individual costly
-routines. Use the [sampled observer](../architecture/native-instrumentation-framework.md#sampled-native-routine-hotspots)
-to separate candidate acquisition, capture construction/append/growth,
-replay/preview, packed writing, name/scope/import binding, expression compilation,
-record processing, selected-plan binding, tokenization and scope lookup.
-
-Keep the release implementation unchanged. Success requires identical release
-bytes, passive register/CCR/stack behavior, correct nested/recursive samples,
-fresh exact native output, complete error-free terminal accounting and bounded
-observer overhead. Compare sampling periods/phases to detect unstable rankings;
-drill into the hottest routine before selecting an optimization. Retain capture
-ownership/copy counts alongside timings to assess memory opportunities.
-
-The three host exports use identical source/package/command/oracle: 196 mapped
-inputs, 2,590,506 bytes, manifest `fnv1a64:7c0d30514b87a2cd`, both bootstrap and
-output embedding the unchanged 454,890-byte m68020 package. The release Hunk
-remains exactly 706,916 bytes, SHA-256
-`e197fc8e076ab5a706f2415c0bd6d18433ae4a7bc6bdb309900617a78da69b26`.
-
-| Bootstrap | Image bytes | Measurement mode |
-|---|---:|---|
-| Light baseline | 719,628 | Existing phase/MEMD/capture accounting |
-| Sampled hotspots | 721,572 | Same baseline plus period 128 / seed 0 |
-| Sensitivity check | 721,572 | Same baseline plus period 256 / seed 37 |
-
-Dense binding, tokenizer, template and input timers/counters remain disabled.
-The new observer's fixed static state is 1,244 bytes and performs no allocations.
-All three full hardware cases now complete with fresh zero exit, exact complete
-706,916-byte Rust output and valid accounting. Host export and component tests
-were not substitutes for those hardware runs.
-
-The real observer probe checks nesting, recursion, own versus forced-child
-samples, all slot phase/count rules, 64-bit clock carry, error freezing and
-register/CCR/stack preservation. Native probes pass for periods 64/128 and
-period 256 with seed 7. A separate fresh macro/include CLI run with the real
-timer and period 128 produces exact 29-byte Rust output, valid MEMD/capture
-records and a complete valid hotspot report (maximum observed depth 7).
-Those small-case rankings are not full-self-host hotspot results.
-
-The identical 11,592-byte/1,200-call control runs serially on FS-UAE
-68020/10 MiB, with fresh exact output and valid MEMD/capture/hotspot records:
-
-| Instrumented image | START-to-DONE seconds | Extra over light baseline |
+| Resource | Contiguous eager | Chunked eager |
 |---|---:|---:|
-| Light baseline | 43.017769417 | — |
-| Period 128 / seed 0 | 44.848765834 | 1.830996417 (4.26%) |
-| Period 256 / seed 37 | 44.788869291 | 1.771099874 (4.12%) |
+| Tracked peak heap | 43,659,400 B | 34,324,616 B |
+| Retained capture used | 23,836,984 B | 23,836,984 B |
+| Retained capture capacity | 33,337,344 B | 23,953,408 B |
+| Retained capture slack | 9,500,360 B | 116,424 B |
+| Retained growth-copy bytes | 33,064,076 B | 0 B |
+| Allocated/freed capacities, each | 107,474,488 B | 64,858,680 B |
 
-These are one sample each, measuring observer overhead on this control, not
-optimization or full-self-host overhead. Both profiles pass the strict decoder,
-including sample-phase counts and matching MEMD E-clock frequency. All three
-peak at 1,240,712 tracked heap bytes, allocate/free 3,145,864 bytes, end with
-zero live ownership and retain the same 27,022 prepared source bytes. Linked
-reservation grows from 755,532 to 758,516 bytes (+2,984 static code/storage).
-Receipt with fresh timing, memory, image identities and decoded profiles:
-`/tmp/opforge-hotspot-overhead-control-20261013.json`.
-Three host profiler checks, three real observer configurations, the real-timer
-CLI case, 138 performance-tool tests and the native engineering guards pass.
-Fresh regeneration after naming the timer vector also matches the exported
-period-128 bootstrap byte-for-byte.
+Decision: promote for the 21.4% heap reduction and eliminated growth copies.
+Records, tokens and retained payload are identical; this is storage efficiency,
+not avoided language work. Earlier two-pair release change of 1.4% was noise,
+not a speed claim. Component checks cover boundaries, oversized records, shared
+regions, cleanup and exact execution. Current-source full self-host also passes.
 
-### Completed A6000 hotspot measurement
+## Symbol lookup scaling
 
-| Full self-host mode | Guest seconds | Preparation / assembly seconds |
+Expected saving: reduce long collision-chain traversal, the established lookup
+hotspot. Test fixed 4,096 buckets, load-scaled buckets, and a full cached hash per
+entry independently against fixed 1,024. Existing exact counters are the gate;
+only the selected candidate receives release timing. No switches remain in product
+code. All four variants complete the same frozen full input with exact Rust output.
+
+| Resource | 1,024 | 4,096 | Scaled | Cached hash |
+|---|---:|---:|---:|---:|
+| Lookup calls | 267,289 | 267,289 | 267,301 | 267,289 |
+| Chain entries visited | 4,433,086 | 1,238,246 | 454,810 | 4,433,086 |
+| Entries per lookup | 16.59 | 4.63 | 1.70 | 16.59 |
+| Name comparisons | 228,335 | 180,349 | 168,003 | 164,182 |
+| Compared byte pairs | 6,407,408 | 5,673,062 | 5,491,166 | 5,428,948 |
+| Hash spelling bytes | 10,085,313 | 10,085,313 | 11,421,472 | 10,085,313 |
+| Tracked peak heap | 34,324,616 B | 34,336,904 B | 34,353,336 B | 34,324,616 B |
+
+Decision: scaled buckets, initially 256, doubling at indexed load one to a maximum
+16,384. It removes 89.7% of chain visits and 14.3% of compared byte pairs for
+28,720 extra peak bytes (0.084%). Twelve extra misses follow growth to recompute
+the bucket; successful hits are unchanged. Rehash spelling reads are included in
+hash-byte totals (+13.2%), but not in the sampled ordinary hash timer.
+
+Rehashing splits existing bucket chains stably, preserving lookup precedence and
+numeric entry identities. Unindexed iterator/import proxies are not rethreaded.
+Allocation precedes mutation; lifecycle and failure cleanup remain owned by a
+separate bucket module. Native controls cover collisions, case folding, lexical
+visibility, imported struct members and the final source identity 65,535.
+
+Fixed 4,096 is inferior on the target chain/byte-comparison counts. Cached hashes shorten comparisons but not
+chains, and enlarge logical entries from 36 to 40 bytes; allocation rounding hides
+that increase in this heap peak. Neither alternative is retained or combined with
+the winner.
+
+Uninstrumented frozen-input release pairs, in both run orders:
+
+| Pair | Fixed 1,024 | Scaled |
 |---|---:|---:|
-| Light baseline | 136 | 100.68 / 34.52 |
-| Period 128 / seed 0 | 141 | 105.34 / 35.06 |
-| Period 256 / seed 37 | 140 | 104.36 / 34.78 |
+| Base then scaled | 101.937 s | 100.766 s |
+| Scaled then base | 103.570 s | 101.076 s |
+| Mean | 102.754 s | 100.921 s |
 
-Added hotspot observation costs 5 seconds (3.68%) or 4 seconds (2.94%) over
-the identical-input light baseline, at one-second resolution, one run each.
-It changes no tracked ownership or byte-work totals. All three peak at
-47,862,664 tracked heap bytes (45.65 MiB), allocate and free 112,277,720 bytes,
-and finish with zero live ownership and no errors. The two profiles have
-maximum nesting 7, no unfinished frames and valid sample counts/frequencies.
+The mean difference is −1.78% (−1.833 s), inside the roughly two-second noise.
+It is not an established full-build speedup. Keep the change for the exact-work
+reduction with a negligible heap cost; do not extrapolate a 90% runtime gain.
 
-| Routine | Calls | Estimated exclusive seconds, period 128 | Period 256 |
-|---|---:|---:|---:|
-| Record processing | 118,516 | 24.22 | 25.05 |
-| Replay orchestration | 111,650 | 18.08 | 18.32 |
-| Packed writing | 119,660 | 15.86 | 15.41 |
-| Scope lookup | 254,274 | 14.29 | 18.52 |
-| Tokenization wrapper | 112,150 | 14.02 | 14.39 |
-| Name binding | 266,648 | 13.02 | 13.08 |
-| Candidate acquisition | 112,150 | 8.76 | 9.09 |
-| Expression compilation | 68,126 | 8.19 | 7.92 |
-| Capture construction | 112,150 | 4.22 | 4.09 |
-| Retained append | 112,048 | 3.61 | 3.67 |
-| Block growth | 38,406 | 2.88 | 3.51 |
+## Additional workloads
 
-These extrapolate independently selected samples of instrumented execution;
-they are neither measured release totals nor additive phase components.
-Exclusive means outside instrumented child boundaries; uninstrumented callees
-remain in the parent. Record processing is the largest stable residual bucket.
-Scope lookup is expensive in both profiles but varies about 30%; growth also
-varies noticeably. Treat the rankings as targets for investigation, not precise
-savings budgets. The tokenization wrapper includes work outside the coarse
-tokenization stage, so its estimate must not replace the measured stage clock.
-Replay's inclusive estimate is 66.46–67.13 seconds and includes its descendants;
-it must not be added to their estimates.
+The maintained [benchmark sources](../../benchmarks/native-preparation/README.md)
+add a four-module project and a four-module, 1,000-call macro-heavy project.
+Both emit source-directed BIN and Hunk files, compared independently with live
+Rust outputs. The local opForge465 project has no macro directives, so it is not
+presented as a macro-heavy workload. No parity repair was folded into qualification.
 
-Capture storage remains the largest measured RAM opportunity: 112,048 records,
-23,356,036 used bytes (22.27 MiB), 32,731,136 reserved (31.21 MiB), with
-9,375,100 slack (8.94 MiB). Headers and tokens occupy 15,841,032 bytes, about
-67.8% of used capture. Acquisition and pre-release ownership are identical;
-all owners reach zero after release. Actual clear writes total 404,997 bytes.
-These counts are identical across all three modes. The increase from the earlier
-195-input measurement is a changed source workload/capacity frontier; it is not
-an increase caused by enabling the hotspot observer.
+| Scaled versus 1,024 | Small modules | Macro-heavy |
+|---|---:|---:|
+| Chain visits | 104 → 117 | 48,078 → 14,227 |
+| Compared byte pairs | 1,037 → 1,037 | 87,683 → 55,056 |
+| Tracked peak heap | 608,768 → 608,768 B | 2,237,064 → 2,249,400 B |
+| Hash spelling bytes, including rehash | 2,185 → 2,185 | 238,323 → 427,387 |
 
-The active drill-down slice splits the residual `processRecord` cost across source
-control, declaration/conditional/metadata handling, operand/scope handling,
-data/expression preparation, publication and graph work. Inspect replay/packed
-writing alongside it. Measure scope lookup hashing, chain traversal and string
-comparison before choosing a hash-table change: pre-change code used 256 buckets
-and folds lexical bytes during hashing/comparison. Also quantify blank/comment
-and header-only record populations before proposing capture pruning
-or packing. Eliminating redundant replay/binding work could improve both time
-and storage, but the present profile does not prove a safe elimination rule.
-Preserve shared VM ownership, contextual rebinding, iterator/macro hygiene,
-forward declarations and diagnostic/listing provenance. No optimization is
-selected from these extrapolated totals alone.
+The tiny workload incurs 13 extra visits; the macro workload removes 70.4% of
+visits and 37.2% of byte pairs for 12,336 extra peak bytes. Rehashing costs are
+visible rather than excluded. These are exact-work/heap results, not release-time
+claims. Both outputs and all ownership accounting pass.
 
-Hardware summary:
-`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-hotspots-unlk2kto/hotspots.json`.
-Cases, in table order:
-`886fcc6848dbb3c87d9ccf972753f0028e62b7ebcc9e062726c492c90f16d0cd`,
-`a40027b33202ed5fab41ac2fcaf5a4547399f17fb822db2e79494aacb0ab9a0f`,
-`7a65f015d0e93043b94ed3241c30754593adf5d5d72cbc8b42c3928178514f7f`.
-Each staged/pre-run/captured source/bootstrap/package/script, case-bound fresh
-challenge, explicit zero exit, whole Hunk, MEMD, capture/hotspot report and clock
-was independently revalidated. Verification summary:
-`/tmp/opforge-hotspot-hardware-verified-20261013.json`.
-These exact instrumented full-self-host configurations are now qualified on
-the A6000; their original host-only status describes qualification before these
-runs. This establishes neither complete language/family parity nor the 2 MiB
-memory target.
+## Current qualification and distance to target
 
-Run from macOS Terminal:
+Fresh complete self-host of current native sources: 214 mapped files / 2,648,242
+bytes, source manifest `fnv1a64:c57d381aab4b2523`. The uninstrumented native build
+finishes in 101.978 s, exit zero, and emits all 708,216 bytes exactly equal to the
+fresh Rust oracle and its own bootstrap. This is a full self-host, not a prefix
+or successful launcher. Release linked reservation is 741,956 bytes.
 
-```sh
-sh /tmp/opforge-a6000-drilldown-20261013/run.sh
-```
+The matched frozen-input winner peaks at 34,353,336 tracked heap bytes (32.76 MiB),
+about 16.4 times the entire 2 MiB target before executable, stack or OS costs.
+The earlier current-source chunked memory run measured 34,390,152 bytes before
+bucket scaling; do not substitute that different-source number for a paired delta.
+No low-memory qualification is claimed.
 
-The [launcher](../../scripts/performance/run_a6000_hotspots.py) validates every
-export before connecting, discovers the current address with `ash -l`, and runs
-the light baseline followed by both sample settings on `Development:`. A unique
-discovered IPv4 address is required; `--host ADDRESS` is an explicit override. It requires exact equality of all non-bootstrap
-input bytes, command and Rust oracle, with matching base instrumentation flags.
-Each run has its own case identity, fresh challenge, explicit exit and complete
-output proof. The current expanded profile additionally needs all 115 valid rows, matching
-period/seed and E-clock frequency. Incremental `hotspots.json` retains completed
-results if a later transport/run fails. Completed failures do not supply timing
-claims. Transfers are outside guest durations (one-second resolution).
+Matched-input memory images end with zero tracked live storage, balanced allocated
+and freed capacities and no observer errors. Release timing uses no instrumentation.
+The current full-source proof, fixed-input comparisons, component tests, focused
+Rust checks and engineering guards establish this performance checkpoint, not
+full language/CPU parity. A6000 hardware is unavailable for this pass.
 
-Extra time relative to the light baseline measures the added hotspot observer
-on identical inputs. It is not a production speed change. Earlier 117-second
-release and 134-second instrumented cases have slightly different source;
-neither isolates this observer's overhead. Compare both sample rankings and
-sample counts before treating scaled timings as actionable. Full-workload
-memory ownership and sampled costs will guide the next optimization together.
+## Enduring earlier decisions
 
-The new drill-down extends the observer to 32 timing boundaries and 16 exact
-work counters. It separately measures `processRecord` handlers and lookup
-hashing/chain traversal. Exact lookup work counts cover probes, rejected
-namespaces/lengths, eligible name comparisons and compared byte pairs. Inert
-candidate counts distinguish retained zero-token captures (with their encoded
-bytes), replay visits, header-only ordinary inputs/outputs and consumed controls.
-No records are discarded, and header-only controls are not declared side-effect-free.
-The [instrumentation contract](../architecture/native-instrumentation-framework.md#sampled-native-routine-hotspots)
-defines every boundary and counter.
+Keep these facts without retaining the experiment chronology:
 
-Validation: the actual native observer passed three period/seed preservation,
-sampling, saturation/reset and error probes. A fresh real-native multi-file
-macro/include case matched its 29-byte Rust oracle and passed all 115 decoded
-rows plus exact lookup/capture accounting relationships. That reduced case
-retained 18 zero-token records occupying 1,152 encoded bytes, replayed 18 such
-records and processed 348 ordinary/expanded records. Its 529 lookups hashed
-6,957 bytes and visited 429 entries: 2 namespace rejects, 127 length rejects and
-300 name comparisons (3,721 byte pairs), finishing with 297 hits and 232 misses.
-These are component-validation facts, not full self-host workload estimates.
+- Redundant record clearing was removed. The matched physical release pair was
+  117 → 117 seconds: no demonstrated speed gain.
+- Moving from 256 to 1,024 buckets gave a physical single pair of 119 → 110 seconds,
+  with 3,072 extra peak heap bytes. It is useful evidence, not a confidence interval.
+- Retained headers were compacted from 64 to 56 bytes. On 113,035 identical records,
+  logical headers fell 904,280 bytes and tracked peak fell 1,130,496 bytes (2.35%).
+  The 0.59% release-time difference was noise; retain the memory improvement only.
 
-An unchanged 11,592-byte active-include/macro control passed fresh exact native
-output in all three modes on the same `68020-10m` emulator profile. The light
-baseline took 43.311 s; drill-down128 took 48.687 s (+5.376 s, +12.41%) and
-256 took 48.665 s (+5.354 s, +12.36%), one run each. Both expanded profiles
-passed strict decoding and exact lookup count reconciliation. This is added
-**observer overhead**, not a release regression or an isolated sampling-only
-cost: per-byte exact counters run at both densities. Heap peak stayed 1,240,712
-bytes, allocated/freed 3,145,864 each, packed source 27,022 and cleanup zero.
-Report: `/tmp/opforge-drill-overhead-control-20261013.json`; decoded verification:
-`/tmp/opforge-drill-control-verified-20261013.json`. The full A6000 measurements below independently measure observer overhead.
+## Evidence and reproduction
 
-The A6000 cases freeze the same 196 input files (2,595,817 bytes), package,
-command and fresh 706,916-byte release Rust oracle, source digest
-`fnv1a64:7eec9ace461f7b6b`. The light-baseline bootstrap and complete release
-oracle are byte-for-byte identical to the preceding exports; source changes
-add probe definitions/sites, so old and new full source-run timings are not an
-unchanged-input production comparison. Baseline Hunk is 719,628 bytes / 755,532
-linked bytes; both expanded profiles are 723,992 / 760,968. Fixed observer state
-increases by 512 to 1,756 bytes, with no observer heap allocation. Release code,
-data and BSS are unchanged.
+Fresh receipts, manifests, frozen inputs, images and decoded reports are outside
+`target`, under `/tmp/opforge-course-telemetry-cases-20261015`,
+`/tmp/opforge-course-final-frozen-memory-case-20261015`,
+`/tmp/opforge-course-lookup-cases-20261015`,
+`/tmp/opforge-course-release-cases-20261015` and
+`/tmp/opforge-course-benchmark-native-v4-20261015`.
+These are local diagnostic artifacts, not durable repository dependencies. Git
+preserves prior implementations and detailed historical evidence; no archive tree
+or stale generated results are maintained here.
 
-The baseline and profiles (period128/seed0 and period256/seed37) live at
-`/tmp/opforge-a6000-drill-baseline-20261013`,
-`/tmp/opforge-a6000-drill-128-20261013` and
-`/tmp/opforge-a6000-drill-256-20261013`. The source snapshot remains at
-`/tmp/opforge-drill-source-20261013` so later repository edits do not change their
-inputs. All three exact configurations now complete full self-host assembly
-on the physical `V4-A6000 (UniCorn)`, discovered at `192.168.2.4` by `ash -l`.
-Each reports fresh completion, exit zero and exact complete Rust Hunk output.
-The staged, round-tripped and captured source/bootstrap/package/script bytes,
-case-bound markers, full output, dates and independently decoded telemetry were
-revalidated against the exports. The original `native_validation=not_run`
-manifest records their pre-hardware status; the hardware receipts supply the new
-qualification. This qualifies these cases, not full language parity or 2 MiB fit.
-
-| Full self-host mode | Guest duration | Preparation / assembly | Extra observer time |
-|---|---:|---:|---:|
-| Light MEMD+capture baseline | 136 s | 101.36 / 34.56 s | — |
-| Drill-down128 / seed0 | 154 s | 117.80 / 35.26 s | +18 s (+13.24%) |
-| Drill-down256 / seed37 | 152 s | 116.28 / 35.12 s | +16 s (+11.76%) |
-
-One run per mode, one-second guest duration resolution; transfers are excluded.
-These are added observer costs on identical inputs, not production speed changes.
-All three modes have identical heap peak 48,124,808 bytes (45.90 MiB), allocated
-and freed 113,107,616 each, packed source 2,028,931 and cleanup zero. Retained
-capture is 23,665,468 used / 32,993,280 reserved, with 9,327,812 slack. The peak
-increase from the previous source workload is 262,144 bytes; all modes agree,
-so enabling drill-down did not add tracked heap ownership.
-
-The exact work counts agree between both sampling configurations:
-
-- 256,738 lookups visit 17,080,007 entries, **66.53 probes per lookup**.
-- 16,674,463 entries (97.63%) fail the length check; 639 fail namespace.
-  The remaining 404,905 reach name comparison, reading 8,940,352 byte pairs.
-  Hashing reads 9,740,928 bytes. Lookups finish with 156,103 hits / 100,635 misses.
-- 8,763 zero-token retained captures occupy 560,832 bytes (547.69 KiB):
-  7.75% of records, only 2.37% of used capture. Replay visits 8,365 of them.
-- Of 120,346 `processRecord` calls, 27,950 ordinary inputs and 40,429 published
-  outputs are header-only; conditional handling consumes 8,086 controls.
-  Empty publication does not prove a record had no semantic effect.
-
-Sample estimates place hashing around 7.19–7.55 s and chain traversal around
-18.71–23.92 s **in the instrumented execution**. Chain ranking varies about 28%.
-`processRecord` exclusive estimates agree near 45.9 s, but selected parents
-force timing of many direct children. Clock/wrapper margins outside the child
-intervals remain in the parent and are extrapolated to all calls. This systematic
-inflation is not removed by period/seed agreement; the value cannot establish
-45.9 production seconds or a regression against the earlier coarse profile.
-Short handlers' estimates have the same observer-margin concern. Prefer exact
-work counts for choosing this next experiment.
-
-Recommended first optimization: a bounded, centrally defined lookup bucket-count
-experiment (256 baseline, 1,024 and possibly 4,096), retaining identical name
-folding, comparison, numeric identities and word links. Raw bucket storage would
-increase by 1,536 or 7,680 bytes per binder; measure actual heap/allocation effects.
-Test unchanged-input release timing separately from exact work counters, including
-collisions, namespaces, hygiene, imports and forward bindings. The experiment
-must reduce actual candidate visits and retain exact output before integration.
-Zero-token capture pruning has a smaller direct RAM budget (548 KiB) and needs
-provenance/control-effect tests; header-only publication is not a pruning rule.
-No optimization has been implemented from these results.
-
-Hardware summary:
-`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-hotspots-49hi4wwb/hotspots.json`.
-Cases in table order: `27dd2bbb238bbeb631dc06e60887641d7164a84cc004fa94c86dc4f2456f9f11`,
-`f45bf080ef34b14ea1def065b556e66bfd395f8e5c086768d22dcb1873e0d957`,
-`1d2ec057c822df891a7db77af1bffb912eb508370747f3b98a442a2d6b8db257`.
-Independent verification: `/tmp/opforge-drill-hardware-verified-20261013.json`.
-
-### 1,024 symbol hash buckets
-
-Keep the qualified 1,024-bucket generic native symbol binder. The baseline uses
-256 word buckets; `binary_scope_layout` now owns the count, mask and byte extent
-consumed by initialization, ordinary lookup and imported declared-member lookup.
-Hash folding, full-name comparisons, namespace/visibility rules and numeric
-identities are unchanged. The separate eight-bit template-candidate key remains
-unchanged. The three production changes are in `binary_scope_layout`,
-`binary_scopes` and `binary_imports` (repair checkpoint `92336d97`).
-
-The A6000 comparison changes only the bootstrap executable for each fixed-input
-pair: identical baseline source, package, command and complete Rust output oracle.
-Both configurations embed only `m68020--motorola68k.bin`. Release timing and
-light MEMD/capture accounting are measured in separate fresh guest runs.
-
-| Full fixed-workload measurement | 256 buckets | 1,024 buckets | Difference |
-|---|---:|---:|---:|
-| Release guest duration | 119 s | 110 s | −9 s (−7.56%; 1.082× throughput) |
-| Tracked heap peak | 48,124,808 B | 48,127,880 B | +3,072 B |
-| Total allocated / freed | 113,107,616 B each | 113,110,688 B each | +3,072 B each |
-| Packed source | 2,028,931 B | 2,028,931 B | 0 |
-| Cleanup ownership | 0 | 0 | 0 |
-| Release Hunk / linked reservation | 706,916 / 740,688 B | 706,916 / 740,688 B | 0 |
-
-This is one paired release measurement with one-second guest clock resolution,
-not a statistical performance estimate. Transfers and verification are outside
-its timing window. The separate instrumented runs take 136 / 128 seconds and
-are excluded from the release speed claim. Their preparation clocks are
-101.36 / 92.36 seconds, while assembly clocks are 34.40 / 34.50 seconds: the
-observed saving is in preparation. Prepared/assembly live bytes and capture
-append-copy bytes/peak overlapping capacity are unchanged. The measured heap
-cost agrees with two binders each adding 1,536 raw bucket bytes.
-
-A fifth fresh run assembles the candidate's own current source and completes in
-**111 seconds**, exit zero, with an exact **706,916-byte Rust output match**,
-SHA-256 `0f6af5842c01df66625583448260da3b4db35422f6d0cbbd5d6d513b23cac918`.
-This is full current-source native self-host qualification for this release
-embedded-m68020 configuration. All 193 native-origin inputs match the workspace;
-the export also supplies the generated catalog and package inputs. It does not
-qualify all language/family features, other package selections or the 2 MiB budget.
-
-All five actual bootstraps, source/package round trips, unique fresh challenges,
-explicit zero exits and whole output bytes were independently verified. Raw
-memory/capture records decode successfully and reconcile with the saved summaries.
-Hardware summary:
-`/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-comparison-pryi1022/comparison.json`.
-Audit: `/tmp/opforge-buckets-fixed-hardware-verified-20261013.json`.
-
-The first candidate failed at `binary_values.asm` line 9 because
-`binary_imports.findDeclared` retained a hardcoded 255 mask when reading the
-shared scope table. `experimental.amigaos.binary_memory.Block.Used` was inserted
-in bucket 768 but searched in bucket 0. The consumer now uses `layout.BUCKET_MASK`.
-A focused 417-byte imported-struct regression fails on that old image and passes
-on the repaired one with literal/live Rust offsets `[0,12,24,8]`, including a
-mixed-case alias. Existing imported reservations and reversed input order pass.
-This missing consumer explains why the initial focused tests passed while the
-full workload failed; partial failed-run times/memory are excluded from comparisons.
-
-Other focused correctness covers 1,030 names across all buckets and collision
-chains, forward/mixed-case reads, imports, lexical shadowing, value/template
-facets, identity growth and register/CCR preservation. On the identical
-11,592-byte control, the initial candidate reduces exact chain probes
-22,901 → 9,597 (−58.09%), name comparisons 11,922 → 5,694 and byte pairs
-81,590 → 43,464, with unchanged logical work counts. The repaired release pair
-is 41.510722 / 41.060186 seconds; that small control alone does not establish a
-reliable runtime gain. Separate tracked heap peak is 1,240,712 / 1,243,784 bytes,
-final ownership zero. Full-workload gains above come from hardware release runs.
-Focused report: `/tmp/opforge-bucket-fixed-control-20261013.json`.
-Count audit: `/tmp/opforge-buckets-control-verified-20261013.json`.
-
-Reproduce the five serial comparisons from macOS Terminal:
-
-```sh
-sh /tmp/opforge-a6000-buckets-fixed-20261013/run.sh
-```
-
-The launcher discovers the current address with `ash -l` and uses `Development:`.
-It runs release256/release1024 on baseline input, accounting256/accounting1024
-on that same input, then release1024 on its own current source. A transport
-interruption does not prove guest termination; do not overlap an incomplete run
-with a retry. Only the fifth case qualifies the candidate's own source.
-
-Release exports: `/tmp/opforge-buckets-baseline-release-20261013` and
-`/tmp/opforge-buckets-fixed-release-20261013`. Accounting exports:
-`/tmp/opforge-a6000-drill-baseline-20261013` and
-`/tmp/opforge-buckets-fixed-memory-20261013`. Baseline source remains at
-`/tmp/opforge-drill-source-20261013` (196 files, 2,595,817 bytes,
-`fnv1a64:7eec9ace461f7b6b`); candidate source at
-`/tmp/opforge-buckets-fixed-source-20261013` (196 files, 2,596,097 bytes,
-`fnv1a64:20a2106b4ce5f83d`). Both configurations use the same package bytes.
-The first four cases expect baseline Rust output SHA-256
-`e197fc8e076ab5a706f2415c0bd6d18433ae4a7bc6bdb309900617a78da69b26`;
-the fifth expects the candidate SHA-256 above. The audit retains each actual
-bootstrap and case SHA-256, keeping fixed-workload comparison distinct from
-current-source self-host proof.
-
-### Compact retained capture headers
-
-The retained `binary_capture.Record` header is reduced from
-64 to 56 bytes. Keep all thirteen metadata/status/handle longs unchanged; store
-validated line number as a word, token count and root-file indicator as bytes,
-and remove reserved padding. Working Frame, 20-byte TKVM token records, grammar,
-plan ownership, origins, alignment and raw outcome values remain unchanged.
-All narrowed constructor values must pass their original full-width bounds
-before encoding. Consumers must zero-extend; no new source limits are introduced.
-
-The qualified 1,024-bucket baseline and the new executable assemble identical
-frozen full inputs: 196 files / 2,596,097 bytes, source manifest
-`fnv1a64:20a2106b4ce5f83d`, embedded m68020, no release defines. Four separate
-serial FS-UAE runs compare release timing and gated memory/copy accounting.
-Both memory builds have the same five light accounting defines; neither has
-sampled hotspot instrumentation. The full comparison uses the configured A4000 /
-68040 with 2 MiB chip, 8 MiB fast, 64 MiB Zorro III and 16 MiB RTG. This differs
-from the focused 68020/10 MiB control and previous A6000 hardware timings;
-compare only the before/after runs within each setup.
-
-| Identical full input: memory accounting | Header 64 | Header 56 | Change |
-|---|---:|---:|---:|
-| Tracked heap peak | 48,127,880 | 46,997,384 | −1,130,496 (−2.35%) |
-| Linked static reservation, instrumented | 755,532 | 755,580 | +48 |
-| Static reservation + tracked heap peak | 48,883,412 | 47,752,964 | −1,130,448 |
-| Retained record count | 113,035 | 113,035 | 0 |
-| Header bytes | 7,234,240 | 6,329,960 | −904,280 |
-| Retained used / append-copy bytes | 23,666,168 | 22,761,888 | −904,280 |
-| Retained capacity | 32,993,280 | 31,862,784 | −1,130,496 |
-| Total allocated and freed, each | 113,110,704 | 110,872,240 | −2,238,464 |
-| Global grow used-copy bytes | 48,074,907 | 46,944,775 | −1,130,132 |
-| Retained grow calls | 1,472 | 1,505 | +33 |
-
-Token/lexeme/plan/padding sizes, semantic replay copies and logical work counts
-are unchanged; all tracked ownership is freed. Capacity rounding changes at
-several boundaries, so heap savings differ from eight bytes times record count.
-These are tracked allocations plus linked reservation, not complete process RAM:
-OS overhead, stack and allocator metadata are not included. The 2 MiB product
-target remains unmet.
-
-Uninstrumented full timing pairs, with unchanged inputs and configuration:
-
-| Run order | Header 64 seconds | Header 56 seconds | Candidate change |
-|---|---:|---:|---:|
-| Baseline then candidate | 98.575121458 | 100.997860416 | +2.46% |
-| Candidate then baseline | 102.228381666 | 98.613011833 | −3.54% |
-
-The two-run means are 100.401751562 / 99.805436125 seconds (−0.59%), but the
-order-dependent spread is larger than that difference. No reproducible speed
-improvement or regression is established. Retain the compaction for its measured
-1.08 MiB heap saving and reduced retained copy work. Reverse-order receipts are
-at `/tmp/opforge-headers-reverse-fsuae-20261013`; both runs pass fresh whole Rust
-comparison. Instrumented runs take 104.694388666 / 104.242375333 seconds;
-those are accounting runs, not release speed evidence. The unchanged 11,592-byte
-active-include/macro control on 68020/10 MiB takes 41.232046417 → 41.059722792
-seconds (single pair), with heap peak unchanged at 1,243,784 bytes because rounded
-capacity remains identical. Its retained used bytes fall 314,800 → 305,112.
-
-A separate **full current-source release self-host completes in 100.5940835
-seconds**: 196 inputs / 2,596,708 bytes, manifest `fnv1a64:95994e5a743c73e9`,
-embedded m68020, zero exit and entire 706,964-byte Hunk equal to a freshly
-assembled Rust oracle. Output SHA-256:
-`279adef6d3be645a0b0d6d9461f15c04e5354452b434afd654cf3e9c7c9b42b6`.
-This qualifies that exact FS-UAE self-host configuration, not full language/family
-parity, other package selections or hardware performance. Release executable and
-linked reservation grow by 48 bytes to 706,964 / 740,736.
-
-Poisoned-reuse native probes verify the independent complete header/payload
-oracle, every alignment residue, full raw outcomes, zero/max/high-bit line
-numbers, both root flags, and failure-atomic rejection before narrowing oversized
-inputs. Actual observer probes check registers/CCR/stack; disabled wrappers emit
-nothing. An independent audit verifies all five full receipts, complete live
-Rust/native output equality, unique fresh challenge/completion markers, identical
-paired inputs, strict raw accounting and the native tree's equality to the frozen
-candidate source.
-
-Full receipts: `/tmp/opforge-headers-full-fsuae2-20261013`. The original memory
-summaries mislabeled package storage during host decoding; separate
-`results-metadata-corrected.json` corrects those labels from validated manifests
-and re-decodes the same raw captures, preserving all original receipts. It does
-not represent new native runs. The maintained comparison harness now retains
-that manifest metadata. `run_fs_uae_selfhost_comparison.py` prepares all five
-validated cases, generates live Rust oracles, runs them serially and retains
-receipts outside `target`; its plan records hardware/config/binary identities.
-
-A6000 execution is unavailable. The prepared five-case launcher is
-`sh /tmp/opforge-a6000-headers-20261013/run.sh`: identical-input release pair,
-separate accounting pair, then current-source self-host. It discovers the current
-address with `ash -l` and uses Development. Candidate release is FS-UAE-qualified;
-physical hardware validation is still pending.
-
-Wide bulk copying remains a possible small candidate, followed by capacity policy and
-further capture/token compaction. Growth tightening must account for extra
-copies; merely reserving exact size on every append could trade slack for much
-more work. Format compaction has the larger structural memory opportunity in the
-headers and tokens but requires a broader producer/validator/consumer change.
-
-Preserve failure-atomic allocation, stable numeric identity, longest-owner lookup,
-active branch/loop semantics, include provenance and relocation/layout behavior.
-Each selected optimization needs its own unchanged-input correctness comparison,
-release timing, separate heap measurement and code-quality review. This pass does
-not claim complete language/family parity or fit within the 2 MiB target.
-
-### Opt-in prepared-source fragment envelope
-
-The [first fragment experiment](native-fragment-preparation.md#first-experiment-results)
-keeps the current assembler as its default reference and relocates the complete
-frozen source backing before unchanged execution. On identical uninstrumented
-68020/10 MiB controls it measures 128.4001 / 128.6525 seconds (+0.20%; one pair,
-no meaningful timing change). Release Hunk and linked reservation grow by
-1,628 / 1,660 bytes when enabled.
-
-Separate expanded-memory 68040 accounting on identical full-source inputs shows
-47,587,208 tracked peak heap bytes in both paths. The envelope adds and frees
-2,122,664 transient bytes, including the complete 2 MiB backing allocation;
-preparation remains the peak. Both accounting outputs match Rust exactly and
-cleanup is zero. A separate full enabled release self-host matches the entire
-708,592-byte Rust binary in 103.1142 seconds. These are three distinct scopes,
-not a single combined benchmark, and do not establish the 2 MiB product target.
-
-Keep the envelope opt-in as the foundation for future lazy preparation. It
-provides no avoided preparation or independent fragment linking yet.
+Use the [FS-UAE environment](../../agents/rules/fs-uae.md) and the ignored
+`native_full_selfhost_comparison_fs_uae` test with
+`OPFORGE_FULL_COMPARISON_CASE` pointing to a freshly prepared case. Its
+[case contract](../../scripts/performance/run_fs_uae_selfhost_comparison.py)
+requires an identified bootstrap and source mapping, then generates a live Rust
+oracle. Use `native_preparation_benchmark_fs_uae` with the image/workload/result
+variables documented beside the benchmark sources. Existing MEMD, capture and
+hotspot telemetry provide the memory/work comparisons. Do not substitute archived
+or expected bytes for the live oracle.

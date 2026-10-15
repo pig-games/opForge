@@ -235,7 +235,7 @@ output and duration were independently rechecked. This qualifies that full
 current-source release configuration on the A6000; it does not claim complete
 language/family parity or the 2 MiB target. The separate identical-input baseline
 and candidate both take 117 guest seconds, so no full-build speed gain is
-resolved by this pair. See [the comparison](native-performance-diagnosis.md#clear-elision-implementation-and-separate-release-measurement).
+resolved by this pair. See [the comparison](native-performance-diagnosis.md#enduring-earlier-decisions).
 
 At `2ed960b4`, all three profiling configurations also complete a full physical
 A6000 self-host from identical 196-input / 2,590,506-byte source, manifest
@@ -250,8 +250,8 @@ independently rechecked. These qualify the exact instrumented configurations,
 not complete parity or the product memory budget. The additional time measures
 observer overhead rather than a release regression.
 Hardware summary: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-hotspots-unlk2kto/hotspots.json`.
-Case identities and hotspot interpretation are in
-[the measurement](native-performance-diagnosis.md#completed-a6000-hotspot-measurement).
+Current measurements and retained performance decisions are in
+[the performance diagnosis](native-performance-diagnosis.md).
 
 The expanded observer at `9b0f6703` is also qualified for its three exact full
 A6000 self-host configurations: 196 identical inputs / 2,595,817 bytes, digest
@@ -291,8 +291,8 @@ and complete fresh Rust equality for the 706,964-byte Hunk (SHA-256
 This uses the expanded-memory A4000/68040 emulator, not the A6000 or constrained
 68020 profile. Separate identical-input accounting reduces tracked heap peak
 48,127,880 → 46,997,384 bytes (−1.08 MiB), with zero cleanup ownership;
-release linked reservation is 740,736 bytes. Timing comparison and reproducible
-receipts are in the [performance diagnosis](native-performance-diagnosis.md#compact-retained-capture-headers).
+release linked reservation is 740,736 bytes. Separate timing and memory results are summarized
+in the [performance diagnosis](native-performance-diagnosis.md#enduring-earlier-decisions).
 Hardware validation of this header change remains pending; the future A6000
 launcher is `sh /tmp/opforge-a6000-headers-20261013/run.sh`.
 
@@ -301,8 +301,8 @@ The original candidate's imported struct-member failure was a stale 255 mask in
 The focused imported-member regression fails on the old image and passes after
 repair; the full corrected runs pass too. Upper buckets/collisions, visibility,
 forward bindings, imported reservations/order and identity-growth checks also pass.
-See [the experiment](native-performance-diagnosis.md#1024-symbol-hash-buckets)
-for separate timing/memory comparisons and reproducible bundle identities.
+See [the experiment](native-performance-diagnosis.md#enduring-earlier-decisions)
+for the retained separate timing and memory results.
 Hardware summary:
 `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-comparison-pryi1022/comparison.json`.
 Independent audit: `/tmp/opforge-buckets-fixed-hardware-verified-20261013.json`.

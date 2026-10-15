@@ -830,7 +830,7 @@ overhead/mode, not an optimization. Capture usage/reservation is 23,138,704 /
 31,944,704 bytes; 8,806,000 bytes are slack. Whole tracked peak is 47,077,256 bytes.
 Explicit record clearing is 23,195,144 bytes; disjoint accounted copy categories
 total 100,452,613 bytes. All ownership is released and telemetry errors are zero.
-The [resource diagnosis](../plans/native-performance-diagnosis.md#first-selected-experiment-remove-overwritten-capture-clearing)
+The [resource diagnosis](../plans/native-performance-diagnosis.md#enduring-earlier-decisions)
 selected removal of overwritten record clearing first, with separate fixed-input
 release timing and no expected heap reduction.
 Receipt: `/var/folders/98/663my3_95hqdv6wyjc99vkrw0000gn/T/opforge-a6000-result-5c03wy1h/result.json`.
@@ -847,8 +847,8 @@ self-host also completes in 117 seconds, with fresh exit zero and exact complete
 706,916-byte Rust output. The executable and linked reservation grow 28 bytes;
 allocation policy/record extents are unchanged and no heap saving is claimed.
 Full-workload instrumented heap/work for this candidate remain unmeasured.
-The [comparison record](../plans/native-performance-diagnosis.md#clear-elision-implementation-and-separate-release-measurement)
-contains input/bootstrap identities and independently verified hardware receipts.
+The [comparison record](../plans/native-performance-diagnosis.md#enduring-earlier-decisions)
+summarizes the retained timing conclusion; the receipts above identify the runs.
 
 The opaque-asset repair's separate no-asset 11,592-byte control remains unchanged:
 41.802194583 seconds before and 41.802430625 after, release mode on 68020/10 MiB.

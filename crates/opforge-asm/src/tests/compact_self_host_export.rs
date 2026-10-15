@@ -93,6 +93,19 @@ fn capture_compact_self_host_failure() {
     export_bundle(true);
 }
 
+fn copy_source_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let destination = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_source_tree(&entry.path(), &destination);
+        } else {
+            fs::copy(entry.path(), destination).unwrap();
+        }
+    }
+}
+
 fn export_bundle(failure_capture: bool) {
     let output = PathBuf::from(
         std::env::var_os("OPFORGE_COMPACT_EXPORT_DIR")
@@ -116,6 +129,27 @@ fn export_bundle(failure_capture: bool) {
     let cleanup = EphemeralArtifactDir(scratch.clone());
     let dependencies = scratch.join("dependencies.d");
     let instrumented = std::env::var("OPFORGE_COMPACT_EXPORT_INSTRUMENTED").as_deref() == Ok("1");
+    let deferred_macro =
+        std::env::var("OPFORGE_COMPACT_EXPORT_DEFERRED_MACRO_PLANS").as_deref() == Ok("1");
+    // Configure the actual source inputs: native deliberately has no -D support.
+    // Keep the repository defaults intact and expose the generated origin below.
+    let original_source_root = source_root;
+    let source_root = if deferred_macro {
+        let configured = scratch.join("configured-source");
+        assert!(
+            !configured.starts_with(&original_source_root),
+            "configured copy must be outside its source tree"
+        );
+        copy_source_tree(&original_source_root, &configured);
+        fs::write(
+            configured.join("experimental/build_configuration.i"),
+            "DEFER_MACRO_PLANS = 1\n",
+        )
+        .unwrap();
+        configured
+    } else {
+        original_source_root.clone()
+    };
     let selection = |name| match std::env::var(name) {
         Err(std::env::VarError::NotPresent) => false,
         Ok(value) if value == "68020" => true,
@@ -272,7 +306,7 @@ fn export_bundle(failure_capture: bool) {
             .split_whitespace()
             .map(|name| {
                 let path = PathBuf::from(name);
-                let (logical, origin) =
+                let (logical, mut origin) =
                     if let Some(build) = package_build.as_ref().filter(|_| output_embedded) {
                         if path == build.cli_source_path {
                             (PathBuf::from(ENTRY), "configured_entry")
@@ -300,6 +334,9 @@ fn export_bundle(failure_capture: bool) {
                             "native",
                         )
                     };
+                if deferred_macro && logical == Path::new("experimental/build_configuration.i") {
+                    origin = "generated_build_configuration";
+                }
                 assert!(logical
                     .components()
                     .all(|part| { matches!(part, std::path::Component::Normal(_)) }));
@@ -390,7 +427,11 @@ fn export_bundle(failure_capture: bool) {
     let mut manifest = json!({
         "manifest_version": 1,
         "kind": "compact-self-host-local-export",
-        "source_root": source_root,
+        "source_root": original_source_root,
+        "source_configuration": deferred_macro.then_some(json!({
+            "file": "src/experimental/build_configuration.i",
+            "symbol": "DEFER_MACRO_PLANS", "value": 1,
+        })),
         "source_manifest_digest": opforge_self_host_package_digest(&manifest_bytes),
         "source_files": sources.len(),
         "source_bytes": sources.iter().map(|(_, _, bytes, _)| bytes.len()).sum::<usize>(),
@@ -471,7 +512,7 @@ fn export_bundle(failure_capture: bool) {
     .unwrap();
     fs::write(
         output.join("README.txt"),
-        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare output.hunk exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nAn embedded bootstrap uses the entry source's .cpu 68020 selection; its named\nverification package is retained locally and is not a runtime fallback. Embedded-\noutput cases also stage that package under src/experimental/packages as a binary\nassembly input. An instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude. Generated catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
+        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare output.hunk exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nAn embedded bootstrap uses the entry source's .cpu 68020 selection; its named\nverification package is retained locally and is not a runtime fallback. Embedded-\noutput cases also stage that package under src/experimental/packages as a binary\nassembly input. An instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude and optional source build configuration. Both generated origins are in\nmanifest.json. Catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
     )
     .unwrap();
     if std::env::var("OPFORGE_COMPACT_EXPORT_NATIVE").as_deref() == Ok("1") {

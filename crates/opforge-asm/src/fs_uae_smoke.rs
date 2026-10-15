@@ -8234,6 +8234,8 @@ mod native_fragment_controls;
 #[path = "tests/native_fragment_probe.rs"]
 mod native_fragment_probe;
 
+#[path = "tests/native_deferred_macro.rs"]
+mod native_deferred_macro;
 #[cfg(test)]
 #[path = "tests/native_lazy_audit_controls.rs"]
 mod native_lazy_audit_controls;

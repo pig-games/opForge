@@ -2,10 +2,14 @@
 ; @opforge-owner: tests.amigaos.binary_lazy_work_probe
 	.module tests.amigaos.binary_lazy_work_probe
 	.cpu 68020
+	.include "../../experimental/build_configuration.i"
 	.include "lazy_audit.i"
 	.use experimental.amigaos.binary_capture as capture
 	.use experimental.amigaos.binary_source as source
 	.use tests.amigaos.binary_lazy_template_probe as template_probe
+.if DEFER_MACRO_PLANS
+	.use tests.amigaos.binary_deferred_plan_probe as deferred_probe
+.endif
 	.section code, kind=code
 	.pub
 ; D0/CCR=status (11..37 invariant failure); preserves other registers.
@@ -352,6 +356,10 @@ checkRanges
 	jsr lazy_units.clear
 	moveq #0, d0
 	jsr template_probe.run
+.if DEFER_MACRO_PLANS
+	bne.w done
+	jsr deferred_probe.run
+.endif
 done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0

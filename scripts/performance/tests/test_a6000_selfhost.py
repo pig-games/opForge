@@ -126,7 +126,9 @@ class HardwareCompletionTests(unittest.TestCase):
             words = [0] * 570
             words[0], words[28] = 0x4D454D44, 1000
             words[19:28] = [0, 1, 0, 0, 1, 50, 0, 1, 100]
-            words[31] = 1000
+            # MEMD stage tick pairs start at word 30. One second at 1 kHz
+            # matches the one-second preparation DateStamp interval above.
+            words[30:32] = [0, 1000]
             (root / "memory.bin").write_bytes(struct.pack(">570I", *words))
             manifest = {"bootstrap_defines": ["OPFORGE_HOTSPOT_TELEMETRY"]}
             for text, expected in ((None, False), ("no profile", False),
@@ -297,6 +299,81 @@ class HardwareCompletionTests(unittest.TestCase):
                            "command.txt": command.encode(),
                            "manifest.json": json.dumps(manifest).encode()}.items():
             (root / name).write_bytes(data)
+
+    def generated_configuration_bundle(self, root):
+        self.bundle(root, False)
+        logical = "experimental/build_configuration.i"
+        original = root / "original" / logical
+        staged = root / "src" / logical
+        original.parent.mkdir(parents=True)
+        staged.parent.mkdir(parents=True)
+        original.write_bytes(b"")
+        data = b"DEFER_MACRO_PLANS = 1\n"
+        staged.write_bytes(data)
+        manifest = json.loads((root / "manifest.json").read_text())
+        manifest["source_mapping"].append({
+            "logical_path": logical, "staged_path": "src/" + logical,
+            "origin": "generated_build_configuration", "bytes": len(data),
+            "digest": runner.fnv(data),
+        })
+        manifest["source_configuration"] = {
+            "file": "src/" + logical,
+            "symbol": "DEFER_MACRO_PLANS",
+            "value": 1,
+        }
+        manifest["source_manifest_digest"] = runner.fnv(
+            b"entry.asm\0source\0" + logical.encode() + b"\0" + data + b"\0")
+        (root / "manifest.json").write_text(json.dumps(manifest))
+
+    def test_generated_build_configuration_is_exact_and_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.generated_configuration_bundle(root)
+            manifest, files, oracle, _ = runner.load_bundle(root)
+            self.assertEqual(manifest["release_defines"], [])
+            self.assertEqual(manifest["bootstrap_defines"], [])
+            self.assertEqual(files["src/experimental/build_configuration.i"],
+                             b"DEFER_MACRO_PLANS = 1\n")
+            self.assertEqual((root / "opforge").read_bytes(), oracle)
+
+    def test_generated_build_configuration_rejects_invalid_metadata_and_origin(self):
+        changes = [
+            (lambda manifest, row: manifest["source_configuration"].update(extra=1)),
+            (lambda manifest, row: manifest["source_configuration"].update(symbol="OTHER")),
+            (lambda manifest, row: manifest["source_configuration"].update(file="src/other.i")),
+            (lambda manifest, row: manifest["source_configuration"].update(value=True)),
+            (lambda manifest, row: manifest["source_configuration"].update(value=2)),
+            (lambda manifest, row: manifest.update(source_configuration=None)),
+            (lambda manifest, row: manifest.update(source_configuration="unknown")),
+            (lambda manifest, row: row.pop("origin")),
+            (lambda manifest, row: manifest["source_mapping"].append(dict(row))),
+            (lambda manifest, row: row.update(staged_path="src/other.i")),
+            (lambda manifest, row: row.update(bytes=row["bytes"] + 1)),
+        ]
+        for change in changes:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.generated_configuration_bundle(root)
+                manifest = json.loads((root / "manifest.json").read_text())
+                row = manifest["source_mapping"][-1]
+                change(manifest, row)
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaises(ValueError):
+                    runner.load_bundle(root)
+
+    def test_generated_build_configuration_rejects_changed_source_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.generated_configuration_bundle(root)
+            manifest = json.loads((root / "manifest.json").read_text())
+            row = manifest["source_mapping"][-1]
+            data = b"DEFER_MACRO_PLANS = 2\n"
+            (root / row["staged_path"]).write_bytes(data)
+            row["digest"] = runner.fnv(data)
+            row["bytes"] = len(data)
+            (root / "manifest.json").write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "Current source differs"):
+                runner.load_bundle(root)
 
     def test_capture_layout_is_bound_to_validated_bootstrap_sources(self):
         for header_longs, expected in ((14, 56), (16, 64)):
@@ -841,9 +918,13 @@ class HardwareCompletionTests(unittest.TestCase):
             words[31] = 1000
             (root / "memory.bin").write_bytes(struct.pack(">570I", *words))
             manifest = {"bootstrap_defines": sorted(LEGACY_INSTRUMENTATION_DEFINES)}
-            files = {"src/experimental/binary_capture.asm": (
-                Path(__file__).parents[3] /
-                "native/motorola68000/amigaos/experimental/binary_capture.asm").read_bytes()}
+            # Exercise report/artifact authority with a fixed layout fixture;
+            # keep live source-layout parsing separate from this fixture.
+            record_fields = [f"Field{i} .long ?" for i in range(13)]
+            capture_source = ("Record .struct\n" + "\n".join(record_fields) +
+                              "\nLine .word ?\nCount .byte ?\nRootFile .byte ?\n"
+                              "Tokens .byte ?\n.endstruct\nHEADER_BYTES = Record.Tokens\n")
+            files = {"src/experimental/binary_capture.asm": capture_source.encode()}
             result = {"success": True}
             runner.add_telemetry(result, root, manifest, files)
             self.assertFalse(result["success"])

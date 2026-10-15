@@ -3,6 +3,7 @@
 ; @opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent
 	.module experimental.amigaos.binary_app
 	.cpu 68020
+	.include "build_configuration.i"
 	.use experimental.amigaos.binary_frontend as frontend
 	.use experimental.amigaos.binary_statement_execution as statement_execution
 	.use experimental.amigaos.binary_capture as capture
@@ -52,6 +53,7 @@
 	.use experimental.amigaos.binary_source_control as source_control
 	.use experimental.amigaos.binary_binding_records as records
 	.include "memory_telemetry.i"
+	.include "deferred_binding_report.i"
 	.include "binding_telemetry.i"
 	.include "capture_telemetry.i"
 	.include "lazy_audit.i"
@@ -318,6 +320,7 @@ cleanup
 	bsr.w closeInput
 	tst.l FrontStarted
 	beq.w freeBlocks
+	.DEFERRED_BINDING_REPORT DosBase, Front
 	lea Front, a0
 	jsr frontend.finish
 freeBlocks
@@ -475,6 +478,10 @@ load
 	move.l #includeSelected, frontend.Frame.FileInclude(a0)
 	move.l #sourceCursor, frontend.Frame.SourceCursor(a0)
 	move.l #sourcePeek, frontend.Frame.SourcePeek(a0)
+.if DEFER_MACRO_PLANS
+	move.l #resolvePlanCapture, frontend.Frame.CaptureResolve(a0)
+	clr.l frontend.Frame.CaptureOffset(a0)
+.endif
 	move.l #source_control.line, frontend.Frame.SourceControl(a0)
 	clr.l SourceCursorState.Start+SourceCursorData
 	clr.l SourceCursorState.Offset+SourceCursorData
@@ -926,6 +933,7 @@ parametersSaved
 	jsr memory.release
 	bsr.w clearIncludeText
 	lea Front, a0
+	.DEFERRED_BINDING_REPORT DosBase, Front
 	jsr frontend.finish
 	clr.l FrontStarted
 	bsr.w releaseScheduledFrontend

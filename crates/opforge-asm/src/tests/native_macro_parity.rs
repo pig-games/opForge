@@ -114,7 +114,7 @@ fn source(cpu: &str, body: &str) -> String {
     format!(".module entry\n.cpu {cpu}\n{body}.endmodule\n")
 }
 
-fn combined_positive_source(cpu: &str) -> String {
+pub(super) fn combined_positive_source(cpu: &str) -> String {
     let mut body = String::new();
     for case in POSITIVE {
         let namespace = case.name.replace('-', "_");

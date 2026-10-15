@@ -3,6 +3,7 @@
 ; @opforge-owner: experimental.amigaos.binary_frontend
 	.module experimental.amigaos.binary_frontend
 	.cpu 68020
+	.include "build_configuration.i"
 	.include "memory_telemetry.i"
 	.include "capture_telemetry.i"
 	.include "lazy_audit.i"
@@ -25,6 +26,9 @@
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_templates as templates
 	.use experimental.amigaos.binary_capture as capture
+.if DEFER_MACRO_PLANS
+	.use experimental.amigaos.binary_deferred_plans as deferred
+.endif
 	.use experimental.amigaos.binary_macro_plans as macro_plans
 	.use experimental.amigaos.binary_statement_heads as statement_heads
 	.use experimental.amigaos.binary_statement_session as statement_session
@@ -79,9 +83,16 @@ PreviewMode	.word ?  ; identity-only binding suppresses semantic references
 AsciiName	.word ?  ; global source-origin encoding identity
 PetsciiName	.word ?
 CaptureBody	.long ?  ; physical acquisition retains whole-line template body plans
+; Zero-width fields retain the eager ABI when source configuration disables them.
+CaptureOffset	.res DEFER_MACRO_PLANS*4  ; global record offset across regions/includes
+CaptureResolve	.res DEFER_MACRO_PLANS*4  ; immutable lookup; no preview/binding
 	.endstruct
 	.pub
+.if DEFER_MACRO_PLANS
+FRAME_BYTES = Frame.CaptureResolve+4
+.else
 FRAME_BYTES = Frame.CaptureBody+4
+.endif
 PREP_DECLARATION = 1
 PREP_CONDITIONAL = 2
 PREP_CONFIGURATION = 3
@@ -331,6 +342,9 @@ clearBuckets
 	move.l a1, templates.State.Plans(a0)
 	move.l #generatedPlan, templates.State.GeneratedPlan(a0)
 	move.l #fragmentLine, templates.State.FragmentLine(a0)
+.if DEFER_MACRO_PLANS
+	move.l #bindDeferred, templates.State.BindPlan(a0)
+.endif
 	move.l a5, templates.State.ParserContext(a0)
 	move.l Frame.Package(a5), templates.State.Package(a0)
 	move.l #1, LINE_NUMBER(a6)
@@ -1750,8 +1764,16 @@ done
 ; Lexical concatenation is selected by VM spans, never marker spelling.
 numericSuffixPlan	.block
 	movem.l d1-d7/a0-a3, -(sp)
+.if DEFER_MACRO_PLANS
+	btst #31, d1
+	beq.w boundRecipe
+	bsr.w capturedLineRecipes
+	bra.w recipeReady
+boundRecipe
+.endif
 	lea MACRO_PLANS(a6), a0
 	jsr macro_plans.recipeView
+recipeReady
 	cmpi.l #macro_plans.RECIPE_ABSENT, d0
 	beq.w absent
 	tst.l d0
@@ -2055,8 +2077,16 @@ done
 
 ; A5=session,A6=scratch,D4=role (zero selects string-line candidate).
 ; Select only now, after the replay writer has rebound names in current scope.
-; D0/CCR=status,D1=normal session plan handle; other registers preserved.
+; D0/CCR=status,D1=normal handle or opt-in deferred body recipe; others kept.
 bindCapturedPlan	.block
+.if DEFER_MACRO_PLANS
+	bsr.w deferCapturedPlan
+	cmpi.l #DEFER_EAGER, d0
+	beq.w eager
+	tst.l d0
+	rts
+eager
+.endif
 	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
 	.WORK_CONTEXT 0, #1
 	.WORK_COUNT lazy_work.PLAN_BIND, #1
@@ -4392,6 +4422,7 @@ different
 	rts
 	.bend  ; equal
 	.include "binary_statement_frontend.i"
+	.include "binary_frontend_deferred.i"
 	.endsection
 	.section data, kind=data
 AsciiSpelling	.byte "ascii"

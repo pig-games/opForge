@@ -158,6 +158,31 @@ def load_bundle(bundle):
     identity = bytearray()
     origins = {}
     mapped_paths = set()
+    generated_configuration = manifest.get("source_configuration")
+    generated_configuration_bytes = b"DEFER_MACRO_PLANS = 1\n"
+    generated_configuration_path = "experimental/build_configuration.i"
+    generated_configuration_rows = [
+        row for row in manifest["source_mapping"]
+        if row.get("origin") == "generated_build_configuration"
+    ]
+    if generated_configuration is None:
+        if generated_configuration_rows:
+            raise ValueError("Generated build configuration source lacks metadata")
+    else:
+        if (not isinstance(generated_configuration, dict)
+                or set(generated_configuration) != {"file", "symbol", "value"}
+                or generated_configuration.get("file") != "src/" + generated_configuration_path
+                or generated_configuration.get("symbol") != "DEFER_MACRO_PLANS"
+                or type(generated_configuration.get("value")) is not int
+                or generated_configuration.get("value") != 1):
+            raise ValueError("Unsupported generated source configuration")
+        if len(generated_configuration_rows) != 1:
+            raise ValueError("Require exactly one generated build configuration source origin")
+        config_row = generated_configuration_rows[0]
+        if (config_row.get("logical_path") != generated_configuration_path
+                or config_row.get("staged_path") != "src/" + generated_configuration_path
+                or config_row.get("bytes") != len(generated_configuration_bytes)):
+            raise ValueError("Generated source configuration metadata mismatch")
     for row in manifest["source_mapping"]:
         path = Path(row["staged_path"])
         logical = Path(row["logical_path"])
@@ -173,6 +198,10 @@ def load_bundle(bundle):
         mapped_paths.add(folded_path)
         if origin == "native":
             expected = (Path(manifest["source_root"]) / logical).read_bytes()
+        elif origin == "generated_build_configuration":
+            if generated_configuration is None or logical.as_posix() != generated_configuration_path:
+                raise ValueError("Invalid generated build configuration origin")
+            expected = generated_configuration_bytes
         elif output_storage == "embedded" and origin in (
             "configured_entry", "generated_catalog", "package_asset"
         ):

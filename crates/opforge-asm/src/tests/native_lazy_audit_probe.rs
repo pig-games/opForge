@@ -192,6 +192,116 @@ fn native_lazy_audit_save_images() {
 }
 
 #[test]
+#[ignore = "builds eager and deferred macro-binding images outside target"]
+fn native_deferred_macro_save_images() {
+    let root = super::native_fragment_controls::root();
+    let destination = PathBuf::from(
+        std::env::var_os("OPFORGE_DEFERRED_SAVE_DIR")
+            .expect("set OPFORGE_DEFERRED_SAVE_DIR outside target"),
+    );
+    fs::create_dir_all(&destination).unwrap();
+    let destination = destination.canonicalize().unwrap();
+    assert!(!destination.starts_with(root.join("target")));
+    let save_probe = std::env::var("OPFORGE_DEFERRED_SAVE_PROBE").as_deref() == Ok("1");
+    let mut available = vec![
+        "reference-release.hunk",
+        "reference-memory.hunk",
+        "deferred-release.hunk",
+        "deferred-memory.hunk",
+    ];
+    if save_probe {
+        available.push("deferred-probe-memory.hunk");
+    }
+    let selected: Vec<String> = match std::env::var("OPFORGE_DEFERRED_SAVE_IMAGES") {
+        Ok(value) => {
+            let names: Vec<_> = value.split(',').map(str::trim).collect();
+            assert!(
+                names.iter().all(|name| !name.is_empty()),
+                "OPFORGE_DEFERRED_SAVE_IMAGES entries must be nonempty"
+            );
+            assert!(
+                names.iter().all(|name| available.contains(name)),
+                "OPFORGE_DEFERRED_SAVE_IMAGES contains an unknown image filename"
+            );
+            assert_eq!(
+                names.iter().collect::<std::collections::HashSet<_>>().len(),
+                names.len(),
+                "OPFORGE_DEFERRED_SAVE_IMAGES contains duplicate filenames"
+            );
+            names.into_iter().map(str::to_owned).collect()
+        }
+        Err(std::env::VarError::NotPresent) => {
+            available.iter().map(|name| (*name).to_owned()).collect()
+        }
+        Err(error) => panic!("invalid OPFORGE_DEFERRED_SAVE_IMAGES: {error}"),
+    };
+    let dir = scratch();
+    let source_root = dir.0.join("frozen-source");
+    copy_tree(&root.join("native"), &source_root.join("native"));
+    let native_source_digest = tree_digest(&source_root.join("native"));
+    let build = build_native_packages(
+        &engine::build_default_asm_registry(),
+        &dir.0.join("packages"),
+        &source_root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
+    )
+    .unwrap();
+    let mut images = Vec::new();
+    for (role, deferred) in [("reference", false), ("deferred", true)] {
+        for memory in [false, true] {
+            let mut defines = Vec::new();
+            if deferred {
+                defines.push("OPFORGE_DEFERRED_MACRO_PLANS");
+            }
+            if memory {
+                defines.extend([
+                    "OPFORGE_DEBUG_CONTRACTS",
+                    "OPFORGE_MEMORY_TELEMETRY",
+                    "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+                    "OPFORGE_PREPARATION_PROGRESS",
+                ]);
+            }
+            let filename = format!("{role}-{}.hunk", if memory { "memory" } else { "release" });
+            if !selected.contains(&filename) {
+                continue;
+            }
+            let image =
+                super::compact_cli_input::assemble_cli_with_defines(&source_root, &build, &defines);
+            images.push(serde_json::json!({"file": filename, "defines": defines, "fnv1a64": opforge_self_host_package_digest(&image), "bytes": image.len()}));
+            fs::write(destination.join(filename), image).unwrap();
+        }
+    }
+    if selected
+        .iter()
+        .any(|name| name == "deferred-probe-memory.hunk")
+    {
+        let defines = [
+            "OPFORGE_DEFERRED_MACRO_PLANS",
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_MEMORY_TELEMETRY",
+            "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+            "OPFORGE_PREPARATION_PROGRESS",
+            "OPFORGE_LAZY_AUDIT",
+            "OPFORGE_LAZY_WORK",
+            "OPFORGE_LAZY_COMPONENT_PROBE",
+        ];
+        let image =
+            super::compact_cli_input::assemble_cli_with_defines(&source_root, &build, &defines);
+        let filename = "deferred-probe-memory.hunk";
+        images.push(serde_json::json!({"file": filename, "defines": defines, "fnv1a64": opforge_self_host_package_digest(&image), "bytes": image.len()}));
+        fs::write(destination.join(filename), image).unwrap();
+    }
+    fs::write(
+        destination.join("images.json"),
+        serde_json::to_vec_pretty(
+            &serde_json::json!({"native_source_fnv1a64":native_source_digest,"images":images}),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
 fn native_lazy_audit_disabled_macros_emit_zero_bytes() {
     use clap::Parser;
     use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};

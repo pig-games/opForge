@@ -90,27 +90,20 @@ finish	.block
 ; A0=Frame. D0/CCR=status; D1=arena offset plus one, or zero on failure.
 ; Preserves other registers. Publication is atomic; a failed prefix is unused.
 create	.block
+	bsr.w validateCreate
+	bne.w invalidCreate
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	movea.l Frame.Arena(a6), a4
 	movea.l Frame.Events(a6), a2
 	move.l Frame.Count(a6), d7
-	beq.w bad
-	cmpi.l #MAX_ROWS, d7
-	bhi.w bad
 	move.l Row.SpellingStart(a2), d4
 	move.l Row.SpellingEnd(a2), d5
-	cmp.l d4, d5
-	blo.w bad
-	cmp.l Frame.SourceBytes(a6), d5
-	bhi.w bad
 	sub.l d4, d5
 	moveq #0, d1
 	tst.l Frame.RecipeEvents(a6)
 	beq.w reserve
 	move.l Frame.RecipeCount(a6), d1
-	cmpi.l #MAX_ROWS, d1
-	bhi.w bad
 	lsl.l #5, d1
 	addq.l #4, d1
 reserve
@@ -132,73 +125,44 @@ copyRow
 	dbra d0, copyRow
 	lea -ROW_BYTES(a3), a1
 	move.l Row.PackedStart(a1), d0
-	cmp.l Frame.TokenCount(a6), d0
-	bhi.w bad
 	move.l Row.PackedEnd(a1), d1
-	cmp.l d0, d1
-	blo.w bad
-	cmp.l Frame.TokenCount(a6), d1
-	bhi.w bad
 	add.l d0, d0
 	add.l d1, d1
 	movea.l Frame.PackedMap(a6), a0
 	moveq #0, d5
 	move.w 0(a0, d0.l), d5
-	cmpi.l #256, d5
-	bhi.w bad
 	move.l d5, Row.PackedStart(a1)
 	moveq #0, d5
 	move.w 0(a0, d1.l), d5
-	cmpi.l #256, d5
-	bhi.w bad
-	cmp.l Row.PackedStart(a1), d5
-	blo.w bad
 	move.l d5, Row.PackedEnd(a1)
 	move.l Row.SpellingStart(a1), d0
 	move.l Row.SpellingEnd(a1), d1
-	cmp.l d0, d1
-	blo.w bad
-	cmp.l d4, d0
-	blo.w bad
-	cmp.l Frame.SourceBytes(a6), d1
-	bhi.w bad
-	movea.l Frame.Events(a6), a0
-	cmp.l Row.SpellingEnd(a0), d1
-	bhi.w bad
 	sub.l d4, d0
 	sub.l d4, d1
 	add.l d2, d0
 	add.l d2, d1
 	move.l d0, Row.SpellingStart(a1)
 	move.l d1, Row.SpellingEnd(a1)
-	cmpi.w #10, Row.Kind(a1)
+	cmpi.w #abi.PRVM_RESULT_MACRO_FORMAL, Row.Kind(a1)
 	beq.w formalType
-	cmpi.w #8, Row.Kind(a1)
+	cmpi.w #abi.PRVM_RESULT_MACRO_LINE, Row.Kind(a1)
 	bne.w rowReady
 	move.l Row.Aux2(a1), d0
-	cmpi.l #-1, d0
-	beq.w rowReady
-	cmp.l Frame.TokenCount(a6), d0
-	bhs.w bad
-	add.l d0, d0
-	movea.l Frame.PackedMap(a6), a0
-	moveq #0, d1
-	move.w 0(a0, d0.l), d1
-	move.l d1, Row.Aux2(a1)
-	bra.w rowReady
+	bra.w auxiliary
 formalType
 	move.l Row.Aux0(a1), d0
+auxiliary
 	cmpi.l #-1, d0
 	beq.w rowReady
-	cmp.l Frame.TokenCount(a6), d0
-	bhs.w bad
 	add.l d0, d0
-	movea.l Frame.PackedMap(a6), a0
 	moveq #0, d1
 	move.w 0(a0, d0.l), d1
-	cmpi.l #256, d1
-	bhi.w bad
+	cmpi.w #abi.PRVM_RESULT_MACRO_FORMAL, Row.Kind(a1)
+	bne.w callAuxiliary
 	move.l d1, Row.Aux0(a1)
+	bra.w rowReady
+callAuxiliary
+	move.l d1, Row.Aux2(a1)
 rowReady
 	subq.l #1, d7
 	bne.w rows
@@ -221,6 +185,10 @@ done
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
+invalidCreate
+	moveq #0, d1
+	tst.l d0
+	rts
 	.bend  ; create
 
 ; A0=BindFrame. Captured rows retain token indices via an identity map.
@@ -228,8 +196,21 @@ done
 ; create; the captured arena is immutable. D0/CCR=status,D1=session plan handle.
 ; Other registers preserved. Temporary recipe rows use at most MAX_ROWS*32 bytes.
 bind	.block
+	moveq #0, d0
+	bra.w bindSelected
+	.bend  ; bind
+
+; A0=BindFrame. Validate the identical captured binding without allocation or
+; publication. Arena is ignored; D0/CCR=status,D1=zero; others preserved.
+validateBind	.block
+	moveq #1, d0
+	bra.w bindSelected
+	.bend  ; validateBind
+	.priv
+bindSelected	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a6
+	move.l d0, -(sp)  ; validation-only selection
 	suba.w #FRAME_BYTES, sp
 	movea.l sp, a5
 	moveq #0, d7
@@ -242,9 +223,12 @@ bind	.block
 	movea.l a1, a4
 	movea.l BindFrame.Arena(a6), a0
 	movea.l BindFrame.Source(a6), a2
+	tst.l FRAME_BYTES(a5)
+	bne.w distinct
 	move.l memory.Block.Pointer(a0), d0
 	cmp.l memory.Block.Pointer(a2), d0
 	beq.w bad  ; destination reservation cannot relocate captured input
+distinct
 	move.l a0, Frame.Arena(a5)
 	move.l memory.Block.Pointer(a2), Frame.Source(a5)
 	move.l Plan.Bytes(a4), Frame.SourceBytes(a5)
@@ -327,6 +311,12 @@ nextRecipe
 	bra.w recipe
 createBound
 	movea.l a5, a0
+	tst.l FRAME_BYTES(a5)
+	beq.w publishBound
+	bsr.w validateCreate
+	moveq #0, d1
+	bra.w done
+publishBound
 	bsr.w create
 	bra.w done
 bad
@@ -334,11 +324,149 @@ bad
 	moveq #0, d1
 done
 	adda.l d7, sp
-	adda.w #FRAME_BYTES, sp
+	adda.w #FRAME_BYTES+4, sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; bind
+	.bend  ; bindSelected
+	.pub
+
+; A0=Frame. Shared create/bind preflight without output storage. VM kinds and spans remain owned by the captured plan.
+validateCreate	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	movea.l a0, a4
+	movea.l Frame.Events(a4), a2
+	move.l Frame.Count(a4), d7
+	beq.w bad
+	cmpi.l #MAX_ROWS, d7
+	bhi.w bad
+	move.l Row.SpellingStart(a2), d4
+	move.l Row.SpellingEnd(a2), d5
+	cmp.l d4, d5
+	blo.w bad
+	cmp.l Frame.SourceBytes(a4), d5
+	bhi.w bad
+row
+	move.l Row.PackedStart(a2), d0
+	cmp.l Frame.TokenCount(a4), d0
+	bhi.w bad
+	move.l Row.PackedEnd(a2), d1
+	cmp.l d0, d1
+	blo.w bad
+	cmp.l Frame.TokenCount(a4), d1
+	bhi.w bad
+	add.l d0, d0
+	add.l d1, d1
+	movea.l Frame.PackedMap(a4), a0
+	moveq #0, d2
+	move.w 0(a0, d0.l), d2
+	cmpi.l #256, d2
+	bhi.w bad
+	moveq #0, d3
+	move.w 0(a0, d1.l), d3
+	cmpi.l #256, d3
+	bhi.w bad
+	cmp.l d2, d3
+	blo.w bad
+	move.l Row.SpellingStart(a2), d0
+	move.l Row.SpellingEnd(a2), d1
+	cmp.l d0, d1
+	blo.w bad
+	cmp.l d4, d0
+	blo.w bad
+	cmp.l d5, d1
+	bhi.w bad
+	cmpi.w #abi.PRVM_RESULT_MACRO_FORMAL, Row.Kind(a2)
+	beq.w formal
+	cmpi.w #abi.PRVM_RESULT_MACRO_LINE, Row.Kind(a2)
+	bne.w next
+	move.l Row.Aux2(a2), d0
+	bra.w auxiliary
+formal
+	move.l Row.Aux0(a2), d0
+auxiliary
+	cmpi.l #-1, d0
+	beq.w next
+	cmp.l Frame.TokenCount(a4), d0
+	bhs.w bad
+	add.l d0, d0
+	moveq #0, d1
+	move.w 0(a0, d0.l), d1
+	cmpi.w #abi.PRVM_RESULT_MACRO_FORMAL, Row.Kind(a2)
+	bne.w next
+	cmpi.l #256, d1
+	bhi.w bad
+next
+	adda.w #ROW_BYTES, a2
+	subq.l #1, d7
+	bne.w row
+	tst.l Frame.RecipeEvents(a4)
+	beq.w good
+	move.l Frame.RecipeCount(a4), d7
+	cmpi.l #MAX_ROWS, d7
+	bhi.w bad
+	movea.l Frame.RecipeEvents(a4), a2
+	sub.l d4, d5
+	bsr.w validateRecipes
+	bra.w done
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; validateCreate
+
+; A2=normalized fragment rows,D7=count,D5=whole spelling bytes.
+; D0/CCR=status; other registers preserved. Shared by both plan constructors.
+validateRecipes	.block
+	movem.l d1-d3/d7/a2, -(sp)
+	moveq #0, d3
+recipe
+	tst.l d7
+	beq.w complete
+	cmp.l Row.SpellingStart(a2), d3
+	bne.w bad
+	move.l Row.SpellingEnd(a2), d3
+	cmp.l Row.SpellingStart(a2), d3
+	bls.w bad
+	cmp.l d5, d3
+	bhi.w bad
+	cmpi.w #abi.PRVM_RESULT_MACRO_LITERAL, Row.Kind(a2)
+	blo.w bad
+	cmpi.w #abi.PRVM_RESULT_MACRO_SUPPLIED_LIST, Row.Kind(a2)
+	bhi.w bad
+	cmpi.w #abi.PRVM_RESULT_MACRO_NAMED, Row.Kind(a2)
+	bne.w nextRecipe
+	move.l Row.Aux0(a2), d0
+	cmp.l Row.SpellingStart(a2), d0
+	blo.w bad
+	move.l Row.Aux1(a2), d1
+	cmp.l d0, d1
+	bls.w bad
+	cmp.l d3, d1
+	bhi.w bad
+nextRecipe
+	adda.w #ROW_BYTES, a2
+	subq.l #1, d7
+	bra.w recipe
+complete
+	cmp.l d5, d3
+	bne.w bad
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/d7/a2
+	tst.l d0
+	rts
+	.bend  ; validateRecipes
+	.pub
 
 	; Merge independent VM representations by argument ordinal. Packed offsets
 ; already address the execution record; spelling offsets address the literal list.
@@ -420,9 +548,9 @@ copyRow
 	add.l d2, d1
 	move.l d0, Row.SpellingStart(a1)
 	move.l d1, Row.SpellingEnd(a1)
-	cmpi.w #10, Row.Kind(a1)
+	cmpi.w #abi.PRVM_RESULT_MACRO_FORMAL, Row.Kind(a1)
 	beq.w formalType
-	cmpi.w #8, Row.Kind(a1)
+	cmpi.w #abi.PRVM_RESULT_MACRO_LINE, Row.Kind(a1)
 	bne.w rowReady
 	move.l Row.Aux2(a1), d0
 	bra.w auxOffset
@@ -600,21 +728,14 @@ storeRecipes	.block
 	move.l Row.SpellingEnd(a0), d4
 	sub.l Row.SpellingStart(a0), d4
 	movea.l Frame.RecipeEvents(a6), a2
+	move.l d4, d5
+	bsr.w validateRecipes
+	bne.w bad
 	moveq #0, d5
 next
 	tst.l d7
 	beq.w complete
-	cmp.l Row.SpellingStart(a2), d5
-	bne.w bad
 	move.l Row.SpellingEnd(a2), d5
-	cmp.l Row.SpellingStart(a2), d5
-	bls.w bad
-	cmp.l d4, d5
-	bhi.w bad
-	cmpi.w #abi.PRVM_RESULT_MACRO_LITERAL, Row.Kind(a2)
-	blo.w bad
-	cmpi.w #abi.PRVM_RESULT_MACRO_SUPPLIED_LIST, Row.Kind(a2)
-	bhi.w bad
 	movea.l a1, a3
 	moveq #7, d0
 copy
@@ -624,14 +745,6 @@ copy
 	add.l d2, Row.SpellingEnd(a3)
 	cmpi.w #abi.PRVM_RESULT_MACRO_NAMED, Row.Kind(a3)
 	bne.w advance
-	move.l Row.Aux0(a3), d0
-	cmp.l -ROW_BYTES+Row.SpellingStart(a2), d0
-	blo.w bad
-	move.l Row.Aux1(a3), d1
-	cmp.l d0, d1
-	bls.w bad
-	cmp.l d5, d1
-	bhi.w bad
 	add.l d2, Row.Aux0(a3)
 	add.l d2, Row.Aux1(a3)
 advance

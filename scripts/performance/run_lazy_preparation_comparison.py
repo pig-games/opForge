@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare opt-in preparation audit overhead on one frozen workload.
+"""Compare preparation observers or first-use binding on one frozen workload.
 
 The workload case is produced by the existing full self-host exporter. All runs
 reassemble its exact sources against a live Rust oracle through the maintained
@@ -7,6 +7,7 @@ native test. Timing images have no memory telemetry; memory images use identical
 telemetry settings, with only OPFORGE_LAZY_AUDIT added to the candidate.
 With --work-attribution, compare L1-only against L1+OPFORGE_LAZY_WORK instead.
 With --baseline-images too, compare two work observers with identical build flags.
+With --experiment-define, compare eager and first-use macro-plan binding.
 This is fixed-input audit qualification, not candidate-source self-host proof.
 """
 import argparse
@@ -14,6 +15,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 
 import memory_telemetry
@@ -25,6 +27,39 @@ MEMORY_DEFINES = [
     "OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY",
     "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT", "OPFORGE_PREPARATION_PROGRESS",
 ]
+DEFERRED_PROGRESS = re.compile(
+    r"^progress p=([0-9a-fA-F]{8}) f=([0-9a-fA-F]{8}) "
+    r"l=([0-9a-fA-F]{8}) r=([0-9a-fA-F]{8}) m=([0-9a-fA-F]{8})$"
+)
+DEFERRED_PHASE_PREFIX = re.compile(r"^progress p=([0-9a-fA-F]{8})\b")
+
+
+def decode_deferred_binding(stdout, total_allocated_bytes):
+    rows = {}
+    for line in stdout.splitlines():
+        prefix = DEFERRED_PHASE_PREFIX.match(line)
+        if prefix is None or int(prefix.group(1), 16) not in (3300, 3301):
+            continue
+        match = DEFERRED_PROGRESS.fullmatch(line)
+        if match is None:
+            raise ValueError("Malformed deferred binding progress row")
+        phase, first, second, third, _live_heap = (int(value, 16) for value in match.groups())
+        if phase in rows:
+            raise ValueError(f"Duplicate deferred binding phase {phase}")
+        # m is the existing progress ABI live-heap measurement, not reserved.
+        if phase == 3301 and third != 0:
+            raise ValueError("Deferred binding phase 3301 reserved field is nonzero")
+        rows[phase] = (first, second, third)
+    if 3300 not in rows or 3301 not in rows:
+        raise ValueError("Missing deferred binding progress phases")
+    created, bound, hits = rows[3300]
+    recipe_bytes, normal_plan_used, _ = rows[3301]
+    if bound > created:
+        raise ValueError("Deferred binding count exceeds created plans")
+    if recipe_bytes > total_allocated_bytes:
+        raise ValueError("Deferred recipe bytes exceed total allocated bytes")
+    return {"created": created, "bound": bound, "hits": hits,
+            "recipe_bytes": recipe_bytes, "normal_plan_used": normal_plan_used}
 
 
 def read_checked(root, row):
@@ -40,6 +75,9 @@ def read_checked(root, row):
 def prepare(args):
     work_attribution = getattr(args, "work_attribution", False)
     baseline_images = getattr(args, "baseline_images", None)
+    experiment_define = getattr(args, "experiment_define", None)
+    if experiment_define and (work_attribution or baseline_images is not None):
+        raise ValueError("--experiment-define cannot be combined with work-attribution or baseline images")
     if baseline_images is not None and not work_attribution:
         raise ValueError("Baseline images require --work-attribution")
     original = json.loads(args.workload_case.read_text())
@@ -73,16 +111,20 @@ def prepare(args):
         directory = args.output / label
         directory.mkdir()
         image_role = role
-        if work_attribution:
+        if experiment_define:
+            image_role = "deferred" if role == "audit" else "reference"
+        elif work_attribution:
             image_role = "work" if baseline_images or role == "audit" else "audit"
         image_name = f"{image_role}-{'memory' if memory else 'release'}.hunk"
         image_root = baseline_images if baseline_images and role == "reference" else args.images
         image = (image_root / image_name).read_bytes()
         defines = list(MEMORY_DEFINES) if memory else []
-        if role == "audit" or work_attribution:
+        if (role == "audit" and not experiment_define) or work_attribution:
             defines.append("OPFORGE_LAZY_AUDIT")
         if work_attribution and (role == "audit" or baseline_images):
             defines.append("OPFORGE_LAZY_WORK")
+        if experiment_define and role == "audit":
+            defines.append(experiment_define)
         manifest = baseline_manifest if baseline_images and role == "reference" else build_manifest
         built = (baseline_rows if baseline_images and role == "reference" else image_manifest)[image_name]
         if built["fnv1a64"] != runner.fnv(image) or built["bytes"] != len(image):
@@ -98,6 +140,8 @@ def prepare(args):
                              "candidate_source_selfhost_proven": False,
                              "work_attribution_comparison": work_attribution,
                              "work_observer_revision_comparison": baseline_images is not None,
+                             "macro_binding_fixed_input_comparison": experiment_define is not None,
+                             "experiment_define": experiment_define,
                              "frozen_workload_case": str(args.workload_case),
                              "bootstrap_source_fnv1a64": manifest.get("native_source_fnv1a64"),
                              "memory_profile": os.environ.get("OPFORGE_FS_UAE_MEMORY_PROFILE", "existing")}}
@@ -134,7 +178,15 @@ def execute(args, cases):
                 try:
                     row["memory"] = memory_telemetry.decode_memory_telemetry((receipt.parent / "memory.bin").read_bytes())
                     row["success"] = row["success"] and not row["memory"]["diagnostics"]
-                    if row["metadata"]["comparison_role"] == "audit" or row["metadata"].get("work_attribution_comparison"):
+                    if (row["metadata"].get("macro_binding_fixed_input_comparison")
+                            and row["metadata"]["comparison_role"] == "audit"):
+                        row["deferred_binding"] = decode_deferred_binding(
+                            (receipt.parent / "assembly.stdout").read_text(),
+                            row["memory"]["total_allocated_bytes"],
+                        )
+                    if (row["metadata"].get("work_attribution_comparison")
+                            or (row["metadata"]["comparison_role"] == "audit"
+                                and not row["metadata"].get("macro_binding_fixed_input_comparison"))):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
                         inventory = row["audit"].get("work_attribution", {}).get("template_inventory")
@@ -168,6 +220,8 @@ def execute(args, cases):
         if previous != current:
             raise ValueError("Observer revision changed global work totals on identical input")
     baseline_name = "ordinary release"
+    if getattr(args, "experiment_define", None):
+        baseline_name = "eager macro binding"
     if getattr(args, "work_attribution", False):
         baseline_name = "L1 audit"
     if getattr(args, "baseline_images", None):
@@ -180,10 +234,12 @@ def execute(args, cases):
                "audit_allocated_delta_bytes": memory["audit"]["memory"]["total_allocated_bytes"] - memory["reference"]["memory"]["total_allocated_bytes"],
                "linked_static_bytes": {role: row["linked_static_reserved_bytes"] for role, row in memory.items()},
                "audit_linked_static_delta_bytes": memory["audit"]["linked_static_reserved_bytes"] - memory["reference"]["linked_static_reserved_bytes"],
-               "audit": memory["audit"]["audit"],
+               "audit": memory["audit"].get("audit"),
                "baseline_audit": memory["reference"].get("audit"),
+               "deferred_binding": memory["audit"].get("deferred_binding"),
                "baseline": baseline_name,
-               "evidence_limit": "fixed frozen input; instrumentation times are diagnostic; no lazy preparation or early release"}
+               "evidence_limit": ("fixed frozen input; instrumentation times are diagnostic; "
+                                  "not current-source self-host proof; no early capture release")}
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, indent=2))
     return True
@@ -201,6 +257,8 @@ def main():
                         help="measure marginal attribution overhead: audit images versus work images")
     parser.add_argument("--baseline-images", type=Path,
                         help="with --work-attribution, compare saved work images against current work images")
+    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS",),
+                        help="compare eager reference images with the deferred macro-plan experiment")
     args = parser.parse_args()
     for key, value in vars(args).items():
         if isinstance(value, Path):
@@ -209,6 +267,8 @@ def main():
         parser.error("repeats must be 1..4")
     if args.baseline_images and not args.work_attribution:
         parser.error("--baseline-images requires --work-attribution")
+    if args.experiment_define and (args.work_attribution or args.baseline_images):
+        parser.error("--experiment-define cannot be combined with work-attribution or baseline images")
     if not args.prepare_only and args.test_binary is None:
         parser.error("execution requires --test-binary")
     target = Path(__file__).resolve().parents[2] / "target"

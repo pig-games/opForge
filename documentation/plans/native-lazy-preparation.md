@@ -1,9 +1,170 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: opt-in publication/lifetime, whole-unit work and template-definition/consumer
-inventories are measured and natively qualified, 2026-10-14.
-The ordinary eager path remains the reference. No preparation is skipped and no
-capture is retired early. Historical checkpoint details are in Git history.
+Status: opt-in first-use macro-body plan binding is measured and natively qualified,
+2026-10-15. The preceding publication/lifetime, whole-unit work and template
+inventories are measured. The ordinary eager path remains the reference;
+no capture is retired early. Historical checkpoint details are in Git history.
+
+## Active experiment: first-use macro-body plan binding
+
+Authorized 2026-10-15. Hypothesis: keeping declaration-time numeric binding while
+postponing captured descriptor copy/remapping avoids the measured never-invoked
+macro work and reduces its plan arena, at an acceptable cost for compact recipes.
+The compile-time `OPFORGE_DEFERRED_MACRO_PLANS` switch keeps the eager reference.
+The shared `experimental/build_configuration.i` maps that Rust preprocessor
+definition to the module-local `DEFER_MACRO_PLANS` constant (otherwise zero).
+Owners use ordinary `.if` conditions; optional ABI fields reserve zero bytes when
+disabled. A native source build can select the same mode by defining that constant
+in the shared include, without adding native CLI define support.
+
+The first slice covers ordinary captured macros. The writer still binds names and
+produces their packed map at declaration. A recipe owns that map and numeric global
+capture offset/candidate handle; it contains no borrowed pointers. A direct,
+cursor-independent resolver reacquires an immutable capture view across includes
+and region movement. First invocation binds all body plans once, caches normal
+handles and then queues the macro. Header/default binding, invocation scope and
+shared VM grammar stay with their existing owners. Segment/statement templates
+and non-captured input stay eager. Captures already survive through replay;
+this experiment does not retire them early.
+
+Malformed-plan validation remains eager through shared validators. Compare the
+new shared validation's eager path with the preceding eager executable as well
+as comparing eager/first-use builds from the same final source. No behavior is
+selected by telemetry source name, fixture, expected output or benchmark identity.
+
+Success requires fresh exact Rust and eager-output parity, owned-map/relocation/
+cache/invalid-input/preservation probes, and separately measured release runtime
+and heap/linked memory on identical frozen inputs. Report actually created/bound
+recipes and storage; do not count every retained header/recipe as removable. Then
+run a separate full current-source self-host of the selected configuration.
+Stop or revise on semantic/diagnostic drift or a material runtime/memory regression.
+
+This postpones descriptor copy/remapping, not lexical name binding, tokenization,
+capture construction or all expression preparation. The existing declaration
+writer still establishes numeric identities. Recipe storage is a 20-byte header
+plus two bytes per packed-map entry (including its sentinel). Closing records can
+also create recipes that are never retained in a body; their overhead is included.
+All body alternatives are bound together on first invocation. Smaller first-use
+units and early capture retirement remain separate experiments.
+
+### First-use memory comparison
+
+Both fresh instrumented runs assemble the same frozen 198 files / 2,614,471 source
+bytes into the complete live Rust 708,592-byte output. They report zero allocation
+failures, profiling errors and terminal tracked heap. These measurements exclude
+OS/stack/allocator metadata and do not establish the 2 MiB product goal.
+
+| Resource | Eager reference | First use | Change |
+|---|---:|---:|---:|
+| Tracked heap peak | 47,587,208 | 43,992,264 | −3,594,944 (−7.55%) |
+| Allocated/freed capacities, each | 112,389,800 | 108,195,304 | −4,194,496 (−3.73%) |
+| Linked reservation, memory image | 794,472 | 796,072 | +1,600 |
+| Memory image file bytes | 758,636 | 760,336 | +1,700 |
+| Terminal tracked heap | 0 | 0 | 0 |
+
+The experiment creates 18,823 recipes and materializes 2,284. The 16,539 remaining
+recipes reconcile with the earlier inventory's 16,351 body-binding calls in
+never-invoked instances plus 188 closing records in invoked instances. They are
+not 16,539 unused macros. Used recipe storage is 585,728 bytes; the resulting normal
+plan arena uses 606,198 bytes. Neither is a reserved-capacity or whole-session peak
+measurement. Zero entry-cache hits is expected here: `BodyReady` skips repeat body
+binding at the template boundary. The component probe separately exercises cache
+reuse. Captures and template bodies still remain live under their original owners.
+
+Evidence: `/tmp/opforge-first-use-full-final-20261015/memory-reference/result.json`
+and `memory-audit/result.json`; the memory runs' elapsed times are diagnostic only.
+
+### Separate release runtime comparison
+
+The same frozen full input and package configuration is assembled serially by
+uninstrumented eager/first-use executables. Every run requires fresh native
+completion, exit zero and the entire live Rust output.
+
+| Order | Eager seconds | First-use seconds |
+|---|---:|---:|
+| Eager then first use | 102.714222 | 101.621366 |
+| First use then eager | 101.880230 | 102.866117 |
+| Mean | 102.297226 | 102.243741 |
+
+The mean difference is **−0.053485 seconds / −0.05%**: effectively unchanged,
+well within the observed spread, not evidence of a speedup. The measured value is
+memory reduction. The release image grows 747,740 → 749,048 bytes (+1,308), with
+linked reservation 781,512 → 782,772 bytes (+1,260). These are distinct from the
+instrumented-image costs above.
+
+All six full frozen-input runs pass. Evidence:
+`/tmp/opforge-first-use-full-final-20261015/summary.json`.
+The eager path remains the default; the experiment remains opt-in.
+The benefit is workload-dependent: this input has many never-invoked definitions.
+Used bodies retain recipe storage as well as their materialized plans. These
+results do not establish a memory or timing benefit for projects that invoke
+every definition, and do not justify promoting the switch globally.
+
+### Shared-validator refactor measured separately
+
+The preceding eager executable assembles the identical frozen input in
+102.535939 and 103.142029 seconds (mean 102.838984). The new eager path's two
+samples above average 102.297226: **−0.541758 seconds / −0.53%**. This shows no
+observed slowdown, not a demonstrated speedup at this sample size. It is separate
+from first-use binding's −0.05% comparison. The refactor adds 248 release-image
+bytes and 248 linked bytes; it introduces no new heap owner in the eager path.
+Both old-executable runs finish with complete live Rust equality.
+Evidence: `/tmp/opforge-first-use-validation-cost-20261015/summary.json`.
+
+### Qualification
+
+The six new macro controls pass on the first-use memory and component-probe images
+(12 fresh native runs). They cover unused/repeated calls, mutable declaration
+values versus caller shadowing, defaults, included definitions after source-slice
+changes, definition-relative child includes, and the existing 68020/6502 macro
+language matrix. The component probe covers malformed descriptors/maps, owned-map
+mutation, capture relocation, failed realization, eager descriptor equality,
+cache/reset behavior and register/CCR/stack preservation. All 20 prior lifecycle,
+module/include, whole-unit and template controls pass on eager and first-use
+memory images (40 more fresh native comparisons).
+
+After adding source configuration, all five rebuilt release/memory/probe images
+are **byte-for-byte identical** to these measured and controlled executables.
+Source identity `fnv1a64:fe289ab69d98d9c2`:
+`/tmp/opforge-first-use-images-config-width-20261015/images.json`.
+Identity proof:
+`/tmp/opforge-first-use-tools-20261015/source-configuration-image-identity.json`.
+The configured source export also matches the globally defined feature build
+exactly (708,512-byte `fnv1a64:91050030ced3cf89`), preventing a disabled-feature
+build from being mistaken for the experimental self-host.
+
+The separate **full current-source self-host with first-use binding enabled**
+passes: 209 files / 2,643,887 source bytes, one embedded 68020 package, no memory
+instrumentation, fresh START/DONE and exit zero. The complete **708,512-byte**
+native output equals both the freshly assembled Rust oracle and the actual
+bootstrap executable (`fnv1a64:91050030ced3cf89`). Native START-to-DONE duration is
+**107.971166 seconds**. This is its own input/configuration, not another sample of
+the frozen-input optimization comparison. Source manifest:
+`fnv1a64:dc77a9a564b1057c`.
+Receipt: `/tmp/opforge-first-use-current-config-width-proof-20261015/result/native-result.json`.
+Qualified export: `/tmp/opforge-first-use-current-config-width-20261015/manifest.json`.
+
+The default eager configuration also completes a separate current-source
+fixed-point self-host: fresh native output, fresh Rust output and its actual
+bootstrap all equal the complete **707,204-byte** executable
+(`fnv1a64:0c34b11b04c4bcb1`), with exit zero and fresh START/DONE in
+**103.837460 seconds**. Its 209-file source capture includes two unreferenced
+files; this count is not a claim that all files contribute linked code. It uses
+the default build-configuration include, exercising the zero-width optional
+fields on native as well as Rust. These different configured self-hosts are
+correctness checks, not a matched-input performance comparison.
+Receipt: `/tmp/opforge-first-use-current-eager-proof-20261015/result/native-result.json`.
+
+FS-UAE uses the maintained existing A4000/68040 memory profile; this is not A6000
+hardware or 2 MiB qualification.
+
+Focused Rust oracles, asm Clippy with warnings denied, Rust/native formatting,
+44 self-host-tool tests, 12 comparison-tool tests, five memory-decoder tests and
+147 workflow tests pass. The focused redundant-test guard reports no blocking
+findings in changed assembly; report-only ABI probes remain visible. A capture
+summary unit test now supplies its own layout fixture rather than depending on
+live conditional assembly syntax; its artifact-proof assertions and validators
+are unchanged. Independent reviews found no concrete implementation defect.
 
 ## Template inventory contract
 
@@ -158,7 +319,8 @@ Start with ordinary macros and explicit controls for unused, empty, repeated,
 nested, shadowed and default-consuming calls. Carry declaration identities/context
 without retaining borrowed views; unknown dependencies remain conservative. Count
 actually avoided work and measure runtime and memory separately before expanding
-to segment/statement templates. This is a recommendation, **not implemented here**.
+to segment/statement templates. The ordinary-macro experiment above implements
+this candidate; it does not extend deferral to those other template kinds.
 
 ## Measured reference and remaining uncertainty
 
@@ -387,7 +549,29 @@ python3 scripts/performance/run_lazy_preparation_comparison.py \
   --workload-case /absolute/frozen-full-case/case.json \
   --images /tmp/new-images --output /tmp/new-results \
   --test-binary /absolute/asm-tests
+
+OPFORGE_DEFERRED_SAVE_DIR=/tmp/new-first-use-images OPFORGE_DEFERRED_SAVE_PROBE=1 \
+  cargo test -p asm native_deferred_macro_save_images -- --ignored --nocapture --test-threads=1
+
+python3 scripts/performance/run_lazy_preparation_comparison.py \
+  --experiment-define OPFORGE_DEFERRED_MACRO_PLANS \
+  --workload-case /absolute/frozen-full-case/case.json \
+  --images /tmp/new-first-use-images --output /tmp/new-first-use-results \
+  --test-binary /absolute/asm-tests
 ```
+
+For a separate current-source experimental self-host, set
+`OPFORGE_COMPACT_EXPORT_DEFERRED_MACRO_PLANS=1`,
+`OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`, `OPFORGE_COMPACT_EXPORT_NATIVE=1`
+and a fresh absolute `OPFORGE_COMPACT_EXPORT_DIR`, then run the ignored
+`export_compact_self_host_bundle` test. Its oracle, bootstrap, relocated-source
+check and guest command all use the same configured source. The exporter copies
+the native source into a temporary build root and generates
+`experimental/build_configuration.i`, defining `DEFER_MACRO_PLANS = 1` in
+the three owning modules. The repository include maps the Rust preprocessor
+switch to that constant, selecting zero by default. The
+generated origin and configuration are explicit in the manifest; no native `-D`
+option is needed or added. Hardware qualification remains a separate case.
 
 Use the maintained FS-UAE environment and preserve evidence/tools outside `target`.
 Do not overlap heavy host work with reported runtime samples. Compare release

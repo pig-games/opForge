@@ -525,8 +525,17 @@ fn compact_package_validation_component_host_assembles() {
     let scratch = Scratch::new();
     let input = scratch.0.join("entry.asm");
     std::fs::write(&input, source(&workspace_root())).unwrap();
-    crate::tests::native_telemetry_macros::stage_telemetry_fixture_files(&scratch.0);
-    let cli = Cli::parse_from(["opForge", input.to_str().unwrap(), "--cpu", "68020"]);
+    // The concatenated real owners retain their debug includes and each include's
+    // own relative dependencies; do not replace them with a partial copied closure.
+    let debug = workspace_root().join("native/motorola68000/amigaos/debug");
+    let cli = Cli::parse_from([
+        "opForge",
+        input.to_str().unwrap(),
+        "--cpu",
+        "68020",
+        "-I",
+        debug.to_str().unwrap(),
+    ]);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(scratch.0.clone());
     run_with_validated_cli_with_context(&cli, &config)
@@ -554,7 +563,6 @@ fn compact_package_validation_component_fs_uae() {
     let source = source(&root);
     let input = scratch.0.join("entry.asm");
     std::fs::write(&input, &source).unwrap();
-    crate::tests::native_telemetry_macros::stage_telemetry_fixture_files(&scratch.0);
     let mut cases = fixtures();
     let selected = std::env::var("OPFORGE_PACKAGE_VALIDATION_CASES").ok();
     if let Some(names) = &selected {
@@ -569,7 +577,17 @@ fn compact_package_validation_component_fs_uae() {
     });
     assert!(!cases.is_empty());
     assert!(cases.iter().all(|case| case.1.len() < 1048576));
-    let cli = Cli::parse_from(["opForge", input.to_str().unwrap(), "--cpu", "68020"]);
+    // The concatenated real owners retain their debug includes and each include's
+    // own relative dependencies; do not replace them with a partial copied closure.
+    let debug = workspace_root().join("native/motorola68000/amigaos/debug");
+    let cli = Cli::parse_from([
+        "opForge",
+        input.to_str().unwrap(),
+        "--cpu",
+        "68020",
+        "-I",
+        debug.to_str().unwrap(),
+    ]);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(scratch.0.clone());
     run_with_validated_cli_with_context(&cli, &config)

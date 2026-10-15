@@ -2236,7 +2236,6 @@ captureFragments	.block
 	.include "binary_frontend_fragment_req.i"
 	.bend  ; captureFragments
 
-
 ; A0=session,A1=complete packed line,A2=expanded call list,D1=list bytes,
 ; D2=captured call-plan handle. Lex the list through TKVM before selecting the
 ; generated packed/spelling descriptors; substitutions may change token shape.

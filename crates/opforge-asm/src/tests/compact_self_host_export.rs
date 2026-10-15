@@ -143,7 +143,7 @@ fn export_bundle(failure_capture: bool) {
         copy_source_tree(&original_source_root, &configured);
         fs::write(
             configured.join("experimental/build_configuration.i"),
-            "DEFER_MACRO_PLANS = 1\nBINARY_MACRO_VIEW = 0\nACQUIRE_MACRO_CANDIDATES = 0\n",
+            "DEFER_MACRO_PLANS = 1\nBINARY_MACRO_VIEW = 0\nACQUIRE_MACRO_CANDIDATES = 0\nDEFER_MACRO_LINES = 0\n",
         )
         .unwrap();
         configured

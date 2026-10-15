@@ -163,6 +163,7 @@ def load_bundle(bundle):
         b"DEFER_MACRO_PLANS = 1\n"
         b"BINARY_MACRO_VIEW = 0\n"
         b"ACQUIRE_MACRO_CANDIDATES = 0\n"
+        b"DEFER_MACRO_LINES = 0\n"
     )
     generated_configuration_path = "experimental/build_configuration.i"
     generated_configuration_rows = [

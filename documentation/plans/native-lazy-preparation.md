@@ -1,10 +1,113 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: opt-in first-use macro call-plan construction is measured and natively
-qualified for the frozen workload, 2026-10-15. Earlier binary interface and
-first-use binding foundations remain available. Ordinary eager execution remains
-the default reference. No capture is retired early. Historical checkpoint details
+Status: opt-in first-use whole-line macro-body plan construction is measured and
+natively qualified for the frozen workload, 2026-10-15. Earlier call-plan, binary
+interface and first-use binding foundations remain available. Ordinary eager
+execution remains the default reference. No capture is retired early. Historical checkpoint details
 are in Git history.
+
+## First-use whole-line macro-body plans
+
+Authorized and measured 2026-10-15. Retain the experiment opt-in: it lowers peak
+preparation memory with effectively flat release runtime. Hypothesis:
+retain one compact checked spelling/fragment representation instead of a generic
+whole-line candidate, then construct its complete execution plan on the first
+accepted macro invocation. Avoid descriptor/fragment grammar replay for that
+construction. Declaration-time numeric binding and required overlap/map checks
+remain eager; do not change macro errors, scope, defaults or expansion semantics.
+
+Keep the ordinary eager path and all previous switches available. The incremental
+comparison enables first-use binding, binary spelling and call-plan construction
+in both profiles; only `OPFORGE_DEFERRED_MACRO_LINES` differs. Native source
+configuration `DEFER_MACRO_LINES` requires the prior candidate mode. No VM version
+handling or CPU-specific syntax is introduced.
+
+The physical proof has a 12-byte header, ten-byte fragment rows and one exact
+code-spelling payload, all with numeric offsets. Fragment grammar remains owned
+by shared VM results. Compact rows omit only verified zero fields; valid input
+outside the compact representation falls back before allocation. Declaration
+consumers expand bounded numeric spans into existing scratch, preserving numeric
+suffix/composed-token checks. First use creates a normal plan from the stored
+proof and owned declaration map, without physical source access, re-tokenization
+or fragment grammar replay. Other template kinds construct immediately. Headers and
+defaults remain eager. Capture lifetime is unchanged.
+
+Require exact live Rust/eager output comparisons, preserved native expected
+failures, component bounds/relocation/atomic-publication checks and first-use/reuse
+counter evidence. Measure separate matched tracked-memory runs and serial
+uninstrumented release pairs on identical frozen sources/packages. Report current
+source fixed-point self-host separately; a frozen-input comparison is not that
+qualification. Revise or stop on semantic divergence or a material runtime/memory
+regression. Do not predict savings from counts of never-invoked recipes.
+
+Measured incremental result:
+
+| Metric | Previous call-plan checkpoint | Whole-line experiment | Change |
+|---|---:|---:|---:|
+| Mean release START→DONE host time | 111.866562 s | 111.390929 s | −0.475633 s (−0.43%) |
+| Peak owned heap | 42,684,744 B | 39,506,264 B | −3,178,480 B (−7.45%) |
+| Total allocation / free | 102,579,560 B | 96,093,560 B | −6,486,000 B (−6.32%) |
+| Linked static reservation | 803,224 B | 805,268 B | +2,044 B |
+| Memory-image file | 767,588 B | 769,720 B | +2,132 B |
+| Release-image file | 756,072 B | 757,944 B | +1,872 B |
+
+All six full runs have fresh zero-exit completion and exact live Rust oracle
+agreement on the same 198-file, 2,614,471-byte frozen input, producing 708,592
+Hunk bytes. Both memory runs finish with zero tracked live heap, allocation
+failures and profiling errors. These are owned-heap measurements, not total Amiga memory use;
+linked reservation is reported separately. Prepared live heap (2,960,640 B) and
+assembly live heap (4,934,912 B) are identical: this saving is in transient
+preparation/capture storage, not the final prepared program. The expanded FS-UAE
+profile is not the 2 MiB product target or A6000 hardware.
+
+The release pairs are reference 110.815981 s → candidate 110.357817 s, then
+candidate 112.424040 s → reference 112.917142 s. Both orders show a small
+improvement, but the mean delta is smaller than the approximately two-second
+run-to-run spread: treat runtime as effectively flat, not a demonstrated material
+speedup. No memory instrumentation or heavy host builds overlap release timing.
+The comparison isolates this whole-line experiment from the earlier call-plan
+checkpoint, not from the original eager implementation. Instrumented durations
+(114.682262 s candidate, 113.918880 s reference) are diagnostic only.
+
+The candidate creates 18,511 whole-line binding recipes and constructs 2,259
+on first use; 16,252 remain unconstructed. These are selected record recipes,
+not macro counts or a calculation of saved grammar work. The 312 call recipes /
+25 constructed calls remain unchanged. Both paths have 18,823 total binding
+recipes, 585,728 recipe bytes, 2,284 constructed plans and 606,044 normal-plan
+bytes. The memory delta combines compact captured proofs and first-use normal
+plan construction. Physical tokenization, grammar checks, declaration-time
+numeric binding and the capture lifetime remain unchanged. Other captured
+template/include contexts use the compact proof too, but construct selected
+non-macro plans immediately.
+
+Fresh native qualification covers the component probe (exact ordinary-plan
+reconstruction, malformed bounds, output atomicity, arena relocation and register /
+CCR preservation), ten release macro controls, ten reference plus ten instrumented
+candidate macro controls, twenty lifecycle cases and preserved expected failures.
+The unused/repeated controls create the same two whole-line recipes: zero versus
+one gets constructed. Both calls reuse the same constructed body line. Existing
+cross-CPU and unused-malformed-macro parity limits are unchanged.
+
+An initial candidate timed out in the included-definition/child-include control.
+Its decoder used a 2 KiB temporary stack buffer. Replacing it with two disjoint
+parts of the existing spelling scratch resolves the fresh reproducer and the full
+control matrix, without adding production scratch storage. Caller staging can be
+modified on error; published rows and frame outputs remain unchanged. A compile-time
+bound verifies that both scratch ranges fit.
+
+Evidence: `/tmp/opforge-whole-line-images-final-20261015/images.json` and
+`/tmp/opforge-whole-line-full-20261015/{plan,results,summary}.json`. The current
+native tree fingerprint matches the built images (`fnv1a64:23e9e5ba2b9bb6f4`).
+The incremental reference release/memory images match the prior qualified
+call-plan experiment byte-for-byte. These tests qualify frozen input against a
+live Rust oracle; current-source fixed-point self-hosting is not claimed.
+
+Host validation: focused Rust macro oracles (3), both performance-tool Python
+suites (67), workflow tests (147), affected native formatting, workspace Rust
+formatting and `cargo clippy -p asm --tests -- -D warnings` pass. The focused
+native CCR checker has no enforced findings; its two report-only callback tests
+remain explicit because callback CCR is not assumed. A bounded independent
+integration review found no blocking ABI, bounds or lifetime issue.
 
 ## First-use macro call-candidate construction experiment
 
@@ -1055,6 +1158,18 @@ python3 scripts/performance/run_lazy_preparation_comparison.py \
   --experiment-define OPFORGE_DEFERRED_MACRO_CANDIDATES \
   --workload-case /absolute/frozen-full-case/case.json \
   --images /tmp/new-acquisition-images --output /tmp/new-acquisition-results \
+  --test-binary /absolute/asm-tests --stop-on-failure
+
+# Incremental whole-line construction: both profiles also enable call-plan
+# construction; only OPFORGE_DEFERRED_MACRO_LINES differs. Optional component
+# probe includes compact-container bounds, relocation and ABI checks.
+OPFORGE_DEFERRED_SAVE_DIR=/tmp/new-line-images OPFORGE_DEFERRED_SAVE_PROBE=1 \
+  cargo test -p asm native_deferred_line_save_images -- --ignored --nocapture --test-threads=1
+
+python3 scripts/performance/run_lazy_preparation_comparison.py \
+  --experiment-define OPFORGE_DEFERRED_MACRO_LINES \
+  --workload-case /absolute/frozen-full-case/case.json \
+  --images /tmp/new-line-images --output /tmp/new-line-results \
   --test-binary /absolute/asm-tests --stop-on-failure
 
 ```

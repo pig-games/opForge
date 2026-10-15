@@ -27,3 +27,15 @@ BINARY_MACRO_VIEW = 1
 BINARY_MACRO_VIEW = 0
 .endif
 .endif
+
+; Whole-line construction is an incremental experiment over the three prior modes.
+.ifdef OPFORGE_DEFERRED_MACRO_LINES
+DEFER_MACRO_LINES = 1
+.else
+DEFER_MACRO_LINES = 0
+.endif
+.if DEFER_MACRO_LINES
+.if ACQUIRE_MACRO_CANDIDATES = 0
+.error "whole-line plans require deferred macro candidates"
+.endif
+.endif

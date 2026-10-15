@@ -15,6 +15,11 @@ DEFERRED_BINDING_REPORT	.macro dosbase, session
 	jsr frontend.acquisitionStats
 	.MEMORY_PROGRESS .dosbase, #3302, d1, d2, #0
 .endif
+.ifdef OPFORGE_DEFERRED_MACRO_LINES
+	lea .session, a0
+	jsr frontend.lineStats
+	.MEMORY_PROGRESS .dosbase, #3303, d1, d2, #0
+.endif
 	movem.l (sp)+, d0-d5/a0
 	move.w (sp)+, ccr
 .endif

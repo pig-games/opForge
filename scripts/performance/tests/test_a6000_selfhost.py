@@ -312,6 +312,7 @@ class HardwareCompletionTests(unittest.TestCase):
             b"DEFER_MACRO_PLANS = 1\n"
             b"BINARY_MACRO_VIEW = 0\n"
             b"ACQUIRE_MACRO_CANDIDATES = 0\n"
+            b"DEFER_MACRO_LINES = 0\n"
         )
         staged.write_bytes(data)
         manifest = json.loads((root / "manifest.json").read_text())
@@ -339,7 +340,8 @@ class HardwareCompletionTests(unittest.TestCase):
             self.assertEqual(files["src/experimental/build_configuration.i"],
                              b"DEFER_MACRO_PLANS = 1\n"
                              b"BINARY_MACRO_VIEW = 0\n"
-                             b"ACQUIRE_MACRO_CANDIDATES = 0\n")
+                             b"ACQUIRE_MACRO_CANDIDATES = 0\n"
+                             b"DEFER_MACRO_LINES = 0\n")
             self.assertEqual((root / "opforge").read_bytes(), oracle)
 
     def test_generated_build_configuration_rejects_invalid_metadata_and_origin(self):
@@ -374,9 +376,10 @@ class HardwareCompletionTests(unittest.TestCase):
             manifest = json.loads((root / "manifest.json").read_text())
             row = manifest["source_mapping"][-1]
             data = (
-                b"DEFER_MACRO_PLANS = 2\n"
+                b"DEFER_MACRO_PLANS = 1\n"
                 b"BINARY_MACRO_VIEW = 0\n"
                 b"ACQUIRE_MACRO_CANDIDATES = 0\n"
+                b"DEFER_MACRO_LINES = 2\n"
             )
             (root / row["staged_path"]).write_bytes(data)
             row["digest"] = runner.fnv(data)

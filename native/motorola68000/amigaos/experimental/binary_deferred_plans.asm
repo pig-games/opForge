@@ -17,6 +17,9 @@ ARENA_LIMIT = $7ffffffe
 ACQUIRE_CALL = 1
 ACQUIRE_TOKEN_LIMIT = 64
 .endif
+.if DEFER_MACRO_LINES
+ACQUIRE_LINE = 2
+.endif
 State	.struct
 Block	.res memory.Block.Used+4
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -30,6 +33,10 @@ StoredBytes	.long ?
 AcquiredCreated	.long ?
 AcquiredBound	.long ?
 .endif
+.ifdef OPFORGE_DEFERRED_MACRO_LINES
+LinesCreated	.long ?
+LinesBound	.long ?
+.endif
 .endif
 .endif
 .endif
@@ -37,10 +44,14 @@ AcquiredBound	.long ?
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
+.if DEFER_MACRO_LINES
+STATE_BYTES = State.LinesBound+4
+.else
 .if ACQUIRE_MACRO_CANDIDATES
 STATE_BYTES = State.AcquiredBound+4
 .else
 STATE_BYTES = State.StoredBytes+4
+.endif
 .endif
 .else
 STATE_BYTES = memory.Block.Used+4
@@ -79,11 +90,16 @@ Handle	.long ?
 Context	.long ?
 Resolve	.long ?
 Acquire	.res ACQUIRE_MACRO_CANDIDATES*4
+AcquireLine	.res DEFER_MACRO_LINES*4
 .endstruct
+.if DEFER_MACRO_LINES
+REALIZE_FRAME_BYTES = RealizeFrame.AcquireLine+4
+.else
 .if ACQUIRE_MACRO_CANDIDATES
 REALIZE_FRAME_BYTES = RealizeFrame.Acquire+4
 .else
 REALIZE_FRAME_BYTES = RealizeFrame.Resolve+4
+.endif
 .endif
 	.section code, kind=code
 ; A0=zero-initialized State or existing owner. Release/reset all recipes.
@@ -117,6 +133,29 @@ createAcquired	.block
 	moveq #ACQUIRE_CALL, d4
 	bra.w create.store
 	.bend  ; createAcquired
+.endif
+
+.if DEFER_MACRO_LINES
+; A0=CreateFrame with caller-validated declaration map of TokenCount+1 words.
+; Handle=positive owned whole-line proof handle, IncludeRecipes=1,
+; TokenCount<=64, Reserved=0. Capture owns the proof named by Handle.
+; Save numeric proof/capture inputs and map only. D0/CCR=status,
+; D1=tagged handle or zero; all other registers preserved.
+createLine	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	tst.l CreateFrame.Handle(a6)
+	ble.w create.bad
+	tst.w CreateFrame.Reserved(a6)
+	bne.w create.bad
+	cmpi.w #1, CreateFrame.IncludeRecipes(a6)
+	bne.w create.bad
+	move.l CreateFrame.TokenCount(a6), d7
+	cmpi.l #ACQUIRE_TOKEN_LIMIT, d7
+	bhi.w create.bad
+	moveq #ACQUIRE_LINE, d4
+	bra.w create.store
+	.bend  ; createLine
 .endif
 
 ; A0=CreateFrame. Validate selected source spans and save its declaration map.
@@ -179,6 +218,7 @@ copyMap
 	move.l d6, memory.Block.Used(a4)
 	.DEFERRED_COUNTER a4, State.Created, #1
 	.DEFERRED_ACQUISITION_COUNTER a4, State.AcquiredCreated, d4
+	.DEFERRED_LINE_COUNTER a4, State.LinesCreated, d4
 	sub.l d5, d6
 	.DEFERRED_COUNTER a4, State.StoredBytes, d6
 	move.l d5, d1
@@ -201,6 +241,8 @@ done
 ; D1=global capture offset,D2=TokenCount; D0=status,D1=normal plan handle.
 ; It preserves every other register, owns the destination session plan arena,
 ; and must not mutate the deferred arena. The map contains Count+1 u16 words.
+; AcquireLine additionally receives D3=Entry.Plan, the expected compact proof
+; handle owned by the capture; it validates that identity and preserves D3.
 ; Cache only a successfully copied normal plan. D0/CCR=status,D1=normal handle;
 ; others preserved. Borrowed views never survive this call or arena mutation.
 realize	.block
@@ -234,6 +276,10 @@ realize	.block
 .if ACQUIRE_MACRO_CANDIDATES
 	move.w Entry.Reserved(a3), d0
 	beq.w validTag
+.if DEFER_MACRO_LINES
+	cmpi.w #ACQUIRE_LINE, d0
+	beq.w validLine
+.endif
 	cmpi.w #ACQUIRE_CALL, d0
 	bne.w bad
 	cmpi.l #ACQUIRE_TOKEN_LIMIT, d7
@@ -242,6 +288,16 @@ realize	.block
 	bne.w bad
 	cmpi.w #1, Entry.Recipes(a3)
 	bne.w bad
+.if DEFER_MACRO_LINES
+	bra.w validTag
+validLine
+	cmpi.l #ACQUIRE_TOKEN_LIMIT, d7
+	bhi.w bad
+	tst.l Entry.Plan(a3)
+	ble.w bad
+	cmpi.w #1, Entry.Recipes(a3)
+	bne.w bad
+.endif
 validTag
 .endif
 	move.l Entry.Cache(a3), d1
@@ -265,6 +321,10 @@ distinctOwners
 .if ACQUIRE_MACRO_CANDIDATES
 	cmpi.w #ACQUIRE_CALL, Entry.Reserved(a3)
 	beq.w acquire
+.if DEFER_MACRO_LINES
+	cmpi.w #ACQUIRE_LINE, Entry.Reserved(a3)
+	beq.w acquireLine
+.endif
 .endif
 	move.l RealizeFrame.Resolve(a6), d0
 	beq.w bad
@@ -307,11 +367,21 @@ publish
 	adda.l d5, a3
 	move.l d1, Entry.Cache(a3)
 	.DEFERRED_COUNTER a4, State.Bound, #1
+	.DEFERRED_LINE_COUNTER a4, State.LinesBound, Entry.Reserved(a3)
 	moveq #0, d0
 	bra.w done
 .if ACQUIRE_MACRO_CANDIDATES
+.if DEFER_MACRO_LINES
+acquireLine
+	move.l Entry.Plan(a3), d3
+	move.l RealizeFrame.AcquireLine(a6), d0
+	bra.w acquireCallback
+.endif
 acquire
 	move.l RealizeFrame.Acquire(a6), d0
+.if DEFER_MACRO_LINES
+acquireCallback
+.endif
 	beq.w bad
 	movea.l d0, a5
 	movea.l RealizeFrame.Context(a6), a0
@@ -321,7 +391,11 @@ acquire
 	jsr (a5)
 	tst.l d0
 	bne.w bad
+.if DEFER_MACRO_LINES
+	.DEFERRED_ACQUISITION_COUNTER a4, State.AcquiredBound, Entry.Reserved(a3)
+.else
 	.DEFERRED_COUNTER a4, State.AcquiredBound, #1
+.endif
 	bra.w publish
 .endif
 bad
@@ -367,6 +441,23 @@ getAcquisitionStats	.block
 .endif
 	rts
 	.bend  ; getAcquisitionStats
+.endif
+.if DEFER_MACRO_LINES
+; A0=State. D1/D2=whole-line recipes created/successfully realized.
+; Other registers preserved; CCR unspecified. Ordinary builds return zeros.
+getLineStats	.block
+	moveq #0, d1
+	moveq #0, d2
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.l State.LinesCreated(a0), d1
+	move.l State.LinesBound(a0), d2
+.endif
+.endif
+.endif
+	rts
+	.bend  ; getLineStats
 .endif
 	.endsection
 	.endmodule

@@ -133,7 +133,14 @@ acquireCall	.block
 	tst.l capture.Record.CallRecipeStatus(a4)
 	bne.w bad
 recipesReady
+.if DEFER_MACRO_LINES
+	move.l capture.Record.LineStatus(a4), d0
+	cmpi.l #capture.LINE_PROOF, d0
+	beq.w compactSpelling
+	tst.l d0
+.else
 	tst.l capture.Record.LineStatus(a4)
+.endif
 	bne.w bad
 	movea.l a4, a1
 	jsr capture.planView
@@ -157,6 +164,28 @@ recipesReady
 	sub.l macro_plans.Row.SpellingStart(a1), d0
 	move.l a0, Frame.Source(a5)
 	move.l d0, Frame.SourceBytes(a5)
+.if DEFER_MACRO_LINES
+	bra.w spellingReady
+compactSpelling
+	movea.l a4, a1
+	jsr capture.planView
+	move.l a0, Acquisition.View+memory.Block.Pointer(a3)
+	move.l d0, Acquisition.View+memory.Block.Capacity(a3)
+	move.l d0, Acquisition.View+memory.Block.Used(a3)
+	lea Acquisition.View(a3), a0
+	move.l capture.Record.LineHandle(a4), d1
+	move.l a3, -(sp)
+	movea.l a6, a3
+	adda.l #MACRO_SPELL_SCRATCH, a3
+	jsr line_proofs.sourceView
+	movea.l (sp)+, a3
+	bne.w bad
+	cmp.l Acquisition.Count(a3), d2
+	bne.w bad
+	move.l a1, Frame.Source(a5)
+	move.l d1, Frame.SourceBytes(a5)
+.endif
+spellingReady
 	lea capture.HEADER_BYTES(a4), a0
 	lea TOKENS(a6), a1
 	move.l Acquisition.Count(a3), d0

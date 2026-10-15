@@ -7,6 +7,15 @@ DEFER_BLOCK_BYTES = memory.Block.Used+4
 ; numeric suffix selection needs spans, never a newly copied descriptor.
 ; D0=RECIPE_* status,A1=rows,D1=count,D2=spelling base; other registers kept.
 capturedLineRecipes	.block
+.if DEFER_MACRO_LINES
+	move.l a1, -(sp)
+	movea.l CAPTURE_RECORD(a6), a1
+	cmpi.l #capture.LINE_PROOF, capture.Record.LineStatus(a1)
+	movea.l (sp)+, a1
+	bne.w ordinaryLineProof
+	bra.w proofRecipes
+ordinaryLineProof
+.endif
 	movem.l d3/a0, -(sp)
 	movea.l CAPTURE_RECORD(a6), a1
 	move.l a1, d0
@@ -121,6 +130,9 @@ bindDeferred	.block
 	.if ACQUIRE_MACRO_CANDIDATES
 	move.l #acquireDeferred, deferred.RealizeFrame.Acquire(a0)
 .endif
+.if DEFER_MACRO_LINES
+	move.l #acquireDeferredLine, deferred.RealizeFrame.AcquireLine(a0)
+.endif
 	jsr deferred.realize
 	adda.w #deferred.REALIZE_FRAME_BYTES, sp
 	movem.l (sp)+, a0-a2
@@ -151,6 +163,17 @@ acquisitionStats	.block
 	movea.l (sp)+, a0
 	rts
 	.bend  ; acquisitionStats
+.endif
+.if DEFER_MACRO_LINES
+; A0=session. D1/D2=created/realized whole-line recipes; others preserved.
+lineStats	.block
+	move.l a0, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	adda.l #TEMPLATE_STATE+templates.DEFERRED, a0
+	jsr deferred.getLineStats
+	movea.l (sp)+, a0
+	rts
+	.bend  ; lineStats
 .endif
 	.priv
 .endif

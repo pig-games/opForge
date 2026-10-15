@@ -26,6 +26,10 @@ DEFERRED_CLEAR	.macro state
 	clr.l State.AcquiredCreated(.state)
 	clr.l State.AcquiredBound(.state)
 .endif
+.ifdef OPFORGE_DEFERRED_MACRO_LINES
+	clr.l State.LinesCreated(.state)
+	clr.l State.LinesBound(.state)
+.endif
 	move.w (sp)+, ccr
 .endif
 .endif
@@ -39,6 +43,23 @@ DEFERRED_ACQUISITION_COUNTER	.macro state, field, tag
 .ifdef OPFORGE_PREPARATION_PROGRESS
 	move.w ccr, -(sp)
 	cmpi.w #ACQUIRE_CALL, .tag
+	bne.w done
+	.DEFERRED_COUNTER .state, .field, #1
+done
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endif
+.endmacro
+; Count whole-line recipes only, including flag-neutral tag selection.
+DEFERRED_LINE_COUNTER	.macro state, field, tag
+.ifdef OPFORGE_DEFERRED_MACRO_LINES
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	cmpi.w #ACQUIRE_LINE, .tag
 	bne.w done
 	.DEFERRED_COUNTER .state, .field, #1
 done

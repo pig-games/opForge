@@ -208,6 +208,8 @@ fn run_prebuilt_controls(mut controls: Vec<Control>) {
         assert_eq!(results.len(), cases.len());
         let mut unused_created = None;
         let mut repeated_created = None;
+        let mut unused_lines_created = None;
+        let mut repeated_lines_created = None;
         for (control, result) in controls.iter().zip(results) {
             let run = result.run.unwrap_or_else(|| {
                 panic!(
@@ -264,6 +266,29 @@ fn run_prebuilt_controls(mut controls: Vec<Control>) {
                 }
             }
             if variable == "OPFORGE_DEFERRED_IMAGE"
+                && std::env::var("OPFORGE_DEFERRED_CHECK_LINE_STATS").as_deref() == Ok("1")
+            {
+                let rows = super::native_lazy_audit_report::rows(&run.stdout);
+                let [created, bound, reserved] = rows[&3303];
+                let [plans_created, plans_bound, _] = rows[&3300];
+                assert_eq!(reserved, 0);
+                assert!(bound <= created && created <= plans_created && bound <= plans_bound);
+                // Both controls have the same declaration; invocation must not
+                // recreate its recipes, and only the scalar body line binds.
+                match control.name {
+                    "unused" => {
+                        assert!(created > 0);
+                        assert_eq!(bound, 0);
+                        unused_lines_created = Some(created);
+                    }
+                    "repeated" => {
+                        assert_eq!(bound, 1);
+                        repeated_lines_created = Some(created);
+                    }
+                    _ => {}
+                }
+            }
+            if variable == "OPFORGE_DEFERRED_IMAGE"
                 && std::env::var("OPFORGE_DEFERRED_CHECK_STATS").as_deref() == Ok("1")
             {
                 let rows = super::native_lazy_audit_report::rows(&run.stdout);
@@ -279,6 +304,12 @@ fn run_prebuilt_controls(mut controls: Vec<Control>) {
                     repeated_created = Some(created);
                 }
             }
+        }
+        if let (Some(unused), Some(repeated)) = (unused_lines_created, repeated_lines_created) {
+            assert_eq!(
+                unused, repeated,
+                "invocations do not recapture whole-line recipes"
+            );
         }
         if let (Some(unused), Some(repeated)) = (unused_created, repeated_created) {
             assert_eq!(

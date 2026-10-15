@@ -272,6 +272,12 @@ fn native_deferred_candidate_save_images() {
     save_macro_experiment_images("OPFORGE_DEFERRED_MACRO_CANDIDATES");
 }
 
+#[test]
+#[ignore = "builds eager and deferred whole-line images outside target"]
+fn native_deferred_line_save_images() {
+    save_macro_experiment_images("OPFORGE_DEFERRED_MACRO_LINES");
+}
+
 fn save_macro_experiment_images(experiment: &str) {
     let root = super::native_fragment_controls::root();
     let destination = PathBuf::from(
@@ -283,8 +289,12 @@ fn save_macro_experiment_images(experiment: &str) {
     assert!(!destination.starts_with(root.join("target")));
     let save_probe = std::env::var("OPFORGE_DEFERRED_SAVE_PROBE").as_deref() == Ok("1");
     assert!(
-        !save_probe || experiment == "OPFORGE_DEFERRED_MACRO_PLANS",
-        "the deferred binding probe is specific to that experiment"
+        !save_probe
+            || matches!(
+                experiment,
+                "OPFORGE_DEFERRED_MACRO_PLANS" | "OPFORGE_DEFERRED_MACRO_LINES"
+            ),
+        "the component probe supports deferred binding and whole-line experiments"
     );
     let mut available = vec![
         "reference-release.hunk",
@@ -329,7 +339,13 @@ fn save_macro_experiment_images(experiment: &str) {
         &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
     )
     .unwrap();
-    let baseline_defines: &[&str] = if experiment == "OPFORGE_DEFERRED_MACRO_CANDIDATES" {
+    let baseline_defines: &[&str] = if experiment == "OPFORGE_DEFERRED_MACRO_LINES" {
+        &[
+            "OPFORGE_DEFERRED_MACRO_PLANS",
+            "OPFORGE_BINARY_MACRO_VIEW",
+            "OPFORGE_DEFERRED_MACRO_CANDIDATES",
+        ]
+    } else if experiment == "OPFORGE_DEFERRED_MACRO_CANDIDATES" {
         &["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW"]
     } else {
         &[]
@@ -363,8 +379,9 @@ fn save_macro_experiment_images(experiment: &str) {
         .iter()
         .any(|name| name == "deferred-probe-memory.hunk")
     {
-        let defines = [
-            "OPFORGE_DEFERRED_MACRO_PLANS",
+        let mut defines = baseline_defines.to_vec();
+        defines.push(experiment);
+        defines.extend([
             "OPFORGE_DEBUG_CONTRACTS",
             "OPFORGE_MEMORY_TELEMETRY",
             "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
@@ -372,7 +389,7 @@ fn save_macro_experiment_images(experiment: &str) {
             "OPFORGE_LAZY_AUDIT",
             "OPFORGE_LAZY_WORK",
             "OPFORGE_LAZY_COMPONENT_PROBE",
-        ];
+        ]);
         let image =
             super::compact_cli_input::assemble_cli_with_defines(&source_root, &build, &defines);
         let filename = "deferred-probe-memory.hunk";

@@ -351,6 +351,65 @@ class LazyComparisonTests(unittest.TestCase):
                 "normal_plan_used": 2})
             self.assertTrue((paths[-1].parent / "result" / "assembly.stdout").exists())
 
+    def test_macro_lines_keep_prior_features_and_decode_all_deferred_stats(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory))
+            args.experiment_define = "OPFORGE_DEFERRED_MACRO_LINES"
+            manifest_path = args.images / "images.json"
+            manifest = json.loads(manifest_path.read_text())
+            for image in manifest["images"]:
+                image["defines"] = [args.experiment_define if define ==
+                    "OPFORGE_DEFERRED_MACRO_PLANS" else define for define in image["defines"]]
+                if image["file"].startswith(("reference-", "deferred-")):
+                    image["defines"].extend(["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES"])
+            manifest_path.write_text(json.dumps(manifest))
+            args.test_binary = Path("fake-test")
+            paths = module.prepare(args)
+            for case in paths:
+                result_dir = case.parent / "result"
+                result_dir.mkdir()
+                spec = json.loads(case.read_text())
+                metadata = spec["metadata"]
+                self.assertTrue(metadata["macro_line_fixed_input_comparison"])
+                self.assertFalse(metadata["macro_candidate_fixed_input_comparison"])
+                self.assertFalse(metadata["macro_binding_fixed_input_comparison"])
+                self.assertFalse(metadata["macro_interface_fixed_input_comparison"])
+                self.assertIn("OPFORGE_DEFERRED_MACRO_PLANS", spec["bootstrap_defines"])
+                self.assertIn("OPFORGE_BINARY_MACRO_VIEW", spec["bootstrap_defines"])
+                self.assertIn("OPFORGE_DEFERRED_MACRO_CANDIDATES", spec["bootstrap_defines"])
+                self.assertEqual(args.experiment_define in spec["bootstrap_defines"],
+                                 metadata["comparison_role"] == "audit")
+                self.assertEqual(metadata["reference_config"],
+                                 "eager whole-line construction with deferred macro binding, binary macro view and deferred candidate acquisition")
+                receipt = {"success": True, "metadata": metadata, "start_to_done_host_seconds": 1.0,
+                           "linked_static_reserved_bytes": 12}
+                (result_dir / "native-result.json").write_text(json.dumps(receipt))
+                if metadata["measurement"] == "memory":
+                    (result_dir / "memory.bin").write_bytes(b"")
+                    if metadata["comparison_role"] == "audit":
+                        (result_dir / "assembly.stdout").write_text(
+                            "progress p=00000ce4 f=00000008 l=00000005 r=00000003 m=00000000\n"
+                            "progress p=00000ce5 f=00000004 l=00000002 r=00000000 m=00000000\n"
+                            "progress p=00000ce6 f=00000003 l=00000002 r=00000000 m=00000001\n"
+                            "progress p=00000ce7 f=00000004 l=00000003 r=00000000 m=00000001\n")
+            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
+                     "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}):
+                self.assertTrue(module.execute(args, paths))
+            saved = json.loads((paths[-1].parent / "result.json").read_text())
+            self.assertTrue(saved["success"])
+            self.assertEqual(saved["deferred_acquisition"], {"created": 3, "bound": 2})
+            self.assertEqual(json.loads((args.output / "summary.json").read_text())["deferred_acquisition"],
+                             {"created": 3, "bound": 2})
+            self.assertEqual(saved["deferred_lines"], {"created": 4, "bound": 3})
+            self.assertEqual(json.loads((args.output / "summary.json").read_text())["deferred_lines"],
+                             {"created": 4, "bound": 3})
+            self.assertNotIn("audit", saved)
+            self.assertEqual(saved["deferred_binding"], {
+                "created": 8, "bound": 5, "hits": 3, "recipe_bytes": 4,
+                "normal_plan_used": 2})
+            self.assertTrue((paths[-1].parent / "result" / "assembly.stdout").exists())
+
     def test_acquisition_report_requires_one_valid_bounded_row(self):
         binding = {"created": 8, "bound": 5}
         row = "progress p=00000ce6 f=00000003 l=00000002 r=00000000 m=00000001"
@@ -365,6 +424,21 @@ class LazyComparisonTests(unittest.TestCase):
                         row.replace("f=00000003 l=00000002", "f=00000006 l=00000006")):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 module.decode_deferred_acquisition(invalid, binding)
+
+    def test_line_report_requires_one_valid_bounded_row(self):
+        binding = {"created": 8, "bound": 5}
+        row = "progress p=00000ce7 f=00000003 l=00000002 r=00000000 m=00000001"
+        self.assertEqual(module.decode_deferred_lines(row, binding), {"created": 3, "bound": 2})
+        self.assertEqual(module.decode_deferred_lines(
+            row.replace("f=00000003 l=00000002", "f=00000000 l=00000000"), binding),
+            {"created": 0, "bound": 0})
+        for invalid in ("", row + "\n" + row, row.replace(" r=", " bad="),
+                        row.replace("r=00000000", "r=00000001"),
+                        row.replace("l=00000002", "l=00000004"),
+                        row.replace("f=00000003", "f=00000009"),
+                        row.replace("f=00000003 l=00000002", "f=00000006 l=00000006")):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                module.decode_deferred_lines(invalid, binding)
 
     def test_deferred_report_rejects_missing_duplicate_reserved_and_bad_bounds(self):
         first = "progress p=00000ce4 f=00000008 l=00000005 r=00000003 m=00000000"

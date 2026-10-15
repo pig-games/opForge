@@ -26,6 +26,9 @@
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_templates as templates
 	.use experimental.amigaos.binary_capture as capture
+.if DEFER_MACRO_LINES
+	.use experimental.amigaos.binary_line_proofs as line_proofs
+.endif
 .if DEFER_MACRO_PLANS
 	.use experimental.amigaos.binary_deferred_plans as deferred
 .endif
@@ -951,6 +954,10 @@ lineReady
 	bne.w acquisitionReady
 	tst.l d5
 	beq.w acquisitionReady
+.if DEFER_MACRO_LINES
+	cmpi.l #capture.LINE_PROOF, d5
+	beq.w acquisitionReady
+.endif
 	move.l Frame.CaptureBody(a5), d3
 	clr.l Frame.CaptureBody(a5)
 	moveq #1, d4
@@ -1052,6 +1059,21 @@ discardRecipes
 	clr.l macro_plans.Frame.RecipeEvents(a0)
 	clr.l macro_plans.Frame.RecipeCount(a0)
 createCandidate
+.if DEFER_MACRO_LINES
+	cmpi.l #3, d4
+	bne.w ordinaryLine
+	tst.l Frame.CaptureBody(a5)
+	beq.w ordinaryLine
+	jsr line_proofs.create
+	cmpi.l #line_proofs.STATUS_UNSUPPORTED, d0
+	beq.w ordinaryLine
+	tst.l d0
+	bne.w bad
+	move.l d1, d6
+	moveq #capture.LINE_PROOF, d5
+	bra.w candidateReady
+ordinaryLine
+.endif
 .if ACQUIRE_MACRO_CANDIDATES
 	cmpi.l #1, d4
 	bne.w publishCandidate
@@ -1534,11 +1556,26 @@ candidateReady
 	move.l CAPTURE_RECORD(a6), d0
 	beq.w physical
 	movea.l d0, a1
+.if DEFER_MACRO_LINES
+	move.l capture.Record.LineStatus(a1), d0
+	cmpi.l #capture.LINE_PROOF, d0
+	beq.w retainedProof
+	tst.l d0
+.else
 	tst.l capture.Record.LineStatus(a1)
+.endif
 	bne.w ordinary
+retainedProof
 	move.l capture.Record.LineHandle(a1), d6
 	beq.w bad
 	suba.w #memory.Block.Used+4, sp
+.if DEFER_MACRO_LINES
+	cmpi.l #capture.LINE_PROOF, capture.Record.LineStatus(a1)
+	bne.w retainedNormal
+	bsr.w proofRecipes
+	bra.w retainedRows
+retainedNormal
+.endif
 	jsr capture.planView
 	move.l a0, memory.Block.Pointer(sp)
 	move.l d0, memory.Block.Capacity(sp)
@@ -1546,6 +1583,7 @@ candidateReady
 	movea.l sp, a0
 	move.l d6, d1
 	jsr macro_plans.recipeView
+retainedRows
 	move.l d0, d5
 	movea.l a1, a0
 	move.l d1, d0
@@ -2135,6 +2173,18 @@ done
 ; Select only now, after the replay writer has rebound names in current scope.
 ; D0/CCR=status,D1=normal handle or opt-in deferred body recipe; others kept.
 bindCapturedPlan	.block
+.if DEFER_MACRO_LINES
+	tst.l d4
+	bne.w ordinaryLineRole
+	move.l a0, -(sp)
+	movea.l CAPTURE_RECORD(a6), a0
+	cmpi.l #capture.LINE_PROOF, capture.Record.LineStatus(a0)
+	movea.l (sp)+, a0
+	bne.w ordinaryLineRole
+	bsr.w selectedLineProof
+	rts
+ordinaryLineRole
+.endif
 .if ACQUIRE_MACRO_CANDIDATES
 	cmpi.l #1, d4
 	bne.w ordinaryCandidate
@@ -2355,6 +2405,9 @@ captureFragments	.block
 .endif
 .if ACQUIRE_MACRO_CANDIDATES
 	.include "binary_frontend_acquisition.i"
+.endif
+.if DEFER_MACRO_LINES
+	.include "binary_frontend_line_proofs.i"
 .endif
 
 ; A0=session,A1=complete packed line,A2=expanded call list,D1=list bytes,

@@ -4,15 +4,16 @@
 ; gates are enabled. Enabled expansions preserve every caller register and the
 ; original CCR. Disabled expansions emit no bytes and import no runtime module.
 
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+; Select definitions before macro capture; every missing gate keeps only no-ops.
+.ifndef OPFORGE_DEBUG_CONTRACTS
+.include "telemetry_macros_noop.i"
+.else
+.ifndef OPFORGE_PROGRESS_RUNTIME_COUNTERS
+.include "telemetry_macros_noop.i"
+.else
 	.use debug.amigaos.runtime_profile as runtime_profile
-.endif
-.endif
 
 TELEMETRY_VM_ENTER	.macro vm_id, program_id
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.w ccr, -(sp)
 	movem.l d0-d1, -(sp)
 	moveq #.vm_id, d0
@@ -20,13 +21,9 @@ TELEMETRY_VM_ENTER	.macro vm_id, program_id
 	jsr runtime_profile.opforgeRuntimeProfileEnterVmV1
 	movem.l (sp)+, d0-d1
 	move.w (sp)+, ccr
-.endif
-.endif
 .endmacro
 
 TELEMETRY_VM_OPCODE	.macro vm_id, program_id
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.w ccr, -(sp)
 	movem.l d0-d1, -(sp)
 	moveq #.vm_id, d0
@@ -34,59 +31,39 @@ TELEMETRY_VM_OPCODE	.macro vm_id, program_id
 	jsr runtime_profile.opforgeRuntimeProfileRecordOpcodeV1
 	movem.l (sp)+, d0-d1
 	move.w (sp)+, ccr
-.endif
-.endif
 .endmacro
 
 TELEMETRY_VM_LEAVE	.macro
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.w ccr, -(sp)
 	jsr runtime_profile.opforgeRuntimeProfileLeaveVmV1
 	move.w (sp)+, ccr
-.endif
-.endif
 .endmacro
 
 TELEMETRY_SERVICE_ENTER	.macro service_id
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.w ccr, -(sp)
 	move.l d0, -(sp)
 	moveq #.service_id, d0
 	jsr runtime_profile.opforgeRuntimeProfileEnterServiceV1
 	move.l (sp)+, d0
 	move.w (sp)+, ccr
-.endif
-.endif
 .endmacro
 
 TELEMETRY_SERVICE_LEAVE	.macro
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.w ccr, -(sp)
 	jsr runtime_profile.opforgeRuntimeProfileLeaveServiceV1
 	move.w (sp)+, ccr
-.endif
-.endif
 .endmacro
 
 TELEMETRY_CANDIDATE	.macro candidate_kind
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.w ccr, -(sp)
 	move.l d0, -(sp)
 	moveq #.candidate_kind, d0
 	jsr runtime_profile.opforgeRuntimeProfileRecordCandidateV1
 	move.l (sp)+, d0
 	move.w (sp)+, ccr
-.endif
-.endif
 .endmacro
 
 TELEMETRY_COMPACT	.macro kind, amount
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.w ccr, -(sp)
 	movem.l d0-d1, -(sp)
 	move.l .amount, d1
@@ -94,14 +71,10 @@ TELEMETRY_COMPACT	.macro kind, amount
 	jsr runtime_profile.recordCompact
 	movem.l (sp)+, d0-d1
 	move.w (sp)+, ccr
-.endif
-.endif
 .endmacro
 
 ; Widen a word counter inside the gates; disabled callers emit no setup code.
 TELEMETRY_COMPACT_WORD	.macro kind, amount
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 	move.w ccr, -(sp)
 	movem.l d0-d1, -(sp)
 	move.w .amount, d1
@@ -110,6 +83,6 @@ TELEMETRY_COMPACT_WORD	.macro kind, amount
 	jsr runtime_profile.recordCompact
 	movem.l (sp)+, d0-d1
 	move.w (sp)+, ccr
-.endif
-.endif
 .endmacro
+.endif
+.endif

@@ -3,93 +3,58 @@
 CAPTURE_ACQUISITION = 0
 CAPTURE_REPLAY = 1
 CAPTURE_RELEASE = 2
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
+; Select definitions before macro capture; every missing gate keeps only no-ops.
+.ifndef OPFORGE_DEBUG_CONTRACTS
+.include "capture_telemetry_noop.i"
+.else
+.ifndef OPFORGE_MEMORY_TELEMETRY
+.include "capture_telemetry_noop.i"
+.else
+.ifndef OPFORGE_CAPTURE_TELEMETRY
+.include "capture_telemetry_noop.i"
+.else
 	.use debug.amigaos.capture_profile as capture_profile
-.endif
-.endif
-.endif
 
 CAPTURE_CLEAR	.macro
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	jsr capture_profile.clear
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 CAPTURE_GROW_BEGIN	.macro
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	jsr capture_profile.growBegin
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 CAPTURE_GROW_END	.macro
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	jsr capture_profile.growEnd
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 CAPTURE_REPLAY_BEGIN	.macro
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	jsr capture_profile.replayBegin
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 ; Constructor-local clear accounting. The counter register is an output;
 ; preserve CCR and emit nothing unless the complete observer gate is enabled.
 CAPTURE_CONSTRUCTION_CLEAR_BEGIN	.macro counter
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	moveq #0, .counter  ; compact header has no reserved storage
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 CAPTURE_CONSTRUCTION_CLEAR_GAP	.macro counter, bytes
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	add.l .bytes, .counter
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 ; clearBytes counts explicit zero writes, excluding overwritten fields/payload.
 CAPTURE_CONSTRUCTION	.macro clearBytes, count, lexemeBytes, planBytes
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	movem.l d0-d3, -(sp)
 	move.l .clearBytes, d0
@@ -99,16 +64,10 @@ CAPTURE_CONSTRUCTION	.macro clearBytes, count, lexemeBytes, planBytes
 	jsr capture_profile.construction
 	movem.l (sp)+, d0-d3
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 ; countOffset identifies the compact capture header's unsigned byte count.
 CAPTURE_APPEND	.macro arena, headerBytes, countOffset, lexemeOffset, planOffset, sourceOffset, bytes
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	movem.l d1-d6/a0, -(sp)
 	move.l .bytes, d5
@@ -123,30 +82,18 @@ CAPTURE_APPEND	.macro arena, headerBytes, countOffset, lexemeOffset, planOffset,
 	jsr capture_profile.append
 	movem.l (sp)+, d1-d6/a0
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 CAPTURE_COPY	.macro amount
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	movem.l d0, -(sp)
 	move.l .amount, d0
 	jsr capture_profile.materialize
 	movem.l (sp)+, d0
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 CAPTURE_GROW	.macro used, oldCapacity, newCapacity
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	movem.l d1-d3, -(sp)
 	move.l .used, d1
@@ -155,30 +102,18 @@ CAPTURE_GROW	.macro used, oldCapacity, newCapacity
 	jsr capture_profile.grow
 	movem.l (sp)+, d1-d3
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 CAPTURE_RETAINED_RELEASE	.macro capacity
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	movem.l d0, -(sp)
 	move.l .capacity, d0
 	jsr capture_profile.retainedRelease
 	movem.l (sp)+, d0
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 CAPTURE_SNAPSHOT	.macro boundary, table, count, temp, order, stride, arenaOffset, orderCount, orderStride
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	movem.l d0-d5/a0-a2, -(sp)
 	move.l .count, d1
@@ -193,18 +128,12 @@ CAPTURE_SNAPSHOT	.macro boundary, table, count, temp, order, stride, arenaOffset
 	jsr capture_profile.snapshot
 	movem.l (sp)+, d0-d5/a0-a2
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 ; Chunk ownership uses the same snapshot schema: Regions counts allocations,
 ; and Table describes their directory. Logical source regions are a separate
 ; index accounted by MEMD. No per-record or per-token observer lookup is added.
 CAPTURE_CHUNK_SNAPSHOT	.macro boundary, directory, rowShift, rowBytes, storageOffset, temp, order, orderCount, orderStride
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 	move.w ccr, -(sp)
 	move.l d1, -(sp)
 	move.l .directory+capture_profile.BlockView.Used, d1
@@ -212,24 +141,21 @@ CAPTURE_CHUNK_SNAPSHOT	.macro boundary, directory, rowShift, rowBytes, storageOf
 	.CAPTURE_SNAPSHOT .boundary, .directory, d1, .temp, .order, .rowBytes, .storageOffset, .orderCount, .orderStride
 	move.l (sp)+, d1
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
-CAPTURE_REPORT	.macro dosbase
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_CAPTURE_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
+CAPTURE_REPORT	.macro dosbase
 	move.w ccr, -(sp)
 	movem.l a0, -(sp)
 	movea.l .dosbase, a0
 	jsr capture_profile.report
 	movem.l (sp)+, a0
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
-.endif
 .endmacro
+.else
+CAPTURE_REPORT	.macro dosbase
+.endmacro
+.endif
+.endif
+.endif
+.endif

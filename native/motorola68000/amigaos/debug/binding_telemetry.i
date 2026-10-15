@@ -1,27 +1,22 @@
 ; Completion failure observation is independently owned and imported only when
 ; all progress gates are present. No release code, data or import is emitted.
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
+; Select definitions before macro capture; every missing gate keeps only no-ops.
+.ifndef OPFORGE_DEBUG_CONTRACTS
+.include "binding_telemetry_noop.i"
+.else
+.ifndef OPFORGE_MEMORY_TELEMETRY
+.include "binding_telemetry_noop.i"
+.else
+.ifndef OPFORGE_PREPARATION_PROGRESS
+.include "binding_telemetry_noop.i"
+.else
 	.use debug.amigaos.binding_diagnostic as binding_diagnostic
-.endif
-.endif
-.endif
 BINDING_DIAGNOSTIC_CLEAR	.macro
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
 	jsr binding_diagnostic.clear
-.endif
-.endif
-.endif
 .endmacro
 ; Mark before an existing call or flag setter. Existing branch instructions
 ; remain unchanged; the shared failure/done boundary commits only nonzero status.
 BINDING_ATTEMPT	.macro stage, entry, related
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
 	move.w ccr, -(sp)
 	movem.l d0-d2, -(sp)
 	move.l .stage, -(sp)
@@ -33,14 +28,8 @@ BINDING_ATTEMPT	.macro stage, entry, related
 	jsr binding_diagnostic.attempt
 	movem.l (sp)+, d0-d2
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 BINDING_ATTEMPT_WORD	.macro stage, entryWord, related
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
 	move.w ccr, -(sp)
 	movem.l d0-d1, -(sp)
 	move.l .related, d1
@@ -49,16 +38,10 @@ BINDING_ATTEMPT_WORD	.macro stage, entryWord, related
 	.BINDING_ATTEMPT .stage, d0, d1
 	movem.l (sp)+, d0-d1
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 ; A successful binder returns a source ID. Record its zero-based target index
 ; and retain the pending origin proxy as Related; no lookup or semantic change.
 BINDING_CANONICAL_TARGET	.macro stage, target, baseWord
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
 	move.w ccr, -(sp)
 	movem.l d0-d2, -(sp)
 	move.l .target, d1
@@ -68,14 +51,8 @@ BINDING_CANONICAL_TARGET	.macro stage, target, baseWord
 	jsr binding_diagnostic.attemptTarget
 	movem.l (sp)+, d0-d2
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 BINDING_DIAGNOSTIC_COMMIT	.macro status, state, view
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
 	move.w ccr, -(sp)
 	movem.l d0/a0-a1, -(sp)
 	move.l .status, d0
@@ -84,32 +61,20 @@ BINDING_DIAGNOSTIC_COMMIT	.macro status, state, view
 	jsr binding_diagnostic.commit
 	movem.l (sp)+, d0/a0-a1
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 BINDING_DIAGNOSTIC_REPORT	.macro dosbase
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
 	move.w ccr, -(sp)
 	move.l a0, -(sp)
 	movea.l .dosbase, a0
 	jsr binding_diagnostic.report
 	movea.l (sp)+, a0
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 ; Capture a packed-record consumer failure from its live bounded range. The
 ; save-frame variant obtains the original base from the consumer's saved A0.
 ; Observations allocate nothing, change no records and emit nothing in release.
 BINDING_RECORD_FAILURE	.macro stage, cursor, limit, savedBaseOffset
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
 	move.w ccr, -(sp)
 	movem.l d0/a0-a2, -(sp)
 	movea.l .cursor, a0
@@ -119,14 +84,8 @@ BINDING_RECORD_FAILURE	.macro stage, cursor, limit, savedBaseOffset
 	jsr binding_diagnostic.recordFailure
 	movem.l (sp)+, d0/a0-a2
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 BINDING_RECORD_VIEW_FAILURE	.macro stage, cursor, limit, base
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
 	move.w ccr, -(sp)
 	movem.l d0/a0-a2, -(sp)
 	movea.l .cursor, a0
@@ -136,10 +95,12 @@ BINDING_RECORD_VIEW_FAILURE	.macro stage, cursor, limit, base
 	jsr binding_diagnostic.recordFailure
 	movem.l (sp)+, d0/a0-a2
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
+.endif
+.endif
+.endif
+
+; Keep the remap convenience wrapper callable in every build mode.
 BINDING_REMAP_FAILURE	.macro cursor, limit, savedBaseOffset
 	.BINDING_RECORD_FAILURE #binding_diagnostic.REMAP, .cursor, .limit, .savedBaseOffset
 .endmacro

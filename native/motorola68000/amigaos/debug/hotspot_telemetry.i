@@ -49,79 +49,59 @@ HOTSPOT_LOOKUP_NAMESPACE_REJECTS = 13
 HOTSPOT_LOOKUP_LENGTH_REJECTS = 14
 HOTSPOT_PROCESS_RECORDS = 15
 HOTSPOT_COUNTER_COUNT = 16
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
+; Select definitions before macro capture; every missing gate keeps only no-ops.
+.ifndef OPFORGE_DEBUG_CONTRACTS
+.include "hotspot_telemetry_noop.i"
+.else
+.ifndef OPFORGE_MEMORY_TELEMETRY
+.include "hotspot_telemetry_noop.i"
+.else
+.ifndef OPFORGE_HOTSPOT_TELEMETRY
+.include "hotspot_telemetry_noop.i"
+.else
 	.use debug.amigaos.hotspot_profile as hotspot_profile
-.endif
-.endif
-.endif
 
 HOTSPOT_CLEAR	.macro
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
 	move.w ccr, -(sp)
 	jsr hotspot_profile.clear
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 HOTSPOT_ENTER	.macro slot
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
 	move.w ccr, -(sp)
 	move.l d0, -(sp)
 	move.l .slot, d0
 	jsr hotspot_profile.enter
 	move.l (sp)+, d0
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 HOTSPOT_LEAVE	.macro slot
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
 	move.w ccr, -(sp)
 	move.l d0, -(sp)
 	move.l .slot, d0
 	jsr hotspot_profile.leave
 	move.l (sp)+, d0
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
-HOTSPOT_REPORT	.macro dosbase
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
+HOTSPOT_REPORT	.macro dosbase
 	move.w ccr, -(sp)
 	move.l a0, -(sp)
 	movea.l .dosbase, a0
 	jsr hotspot_profile.report
 	movea.l (sp)+, a0
 	move.w (sp)+, ccr
-.endif
-.endif
-.endif
-.endif
 .endmacro
+.else
+HOTSPOT_REPORT	.macro dosbase
+.endmacro
+.endif
 
 ; Static counter identity (without #); amount is a long source operand.
 ; Dedicated bounded storage, no clock reads/calls; preserve all registers/CCR/SP.
 HOTSPOT_COUNT .macro counterID, amount
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
  move.w ccr, -(sp)
  move.l d0, -(sp)
  move.l .amount, d0
@@ -135,42 +115,52 @@ HOTSPOT_COUNT .macro counterID, amount
 done
  move.l (sp)+, d0
  move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 ; Long-valued predicates remain wholly within the telemetry gate.
 HOTSPOT_COUNT_IF_ZERO .macro value, counterID, amount
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
  move.w ccr, -(sp)
  tst.l .value
  bne.w done
  .HOTSPOT_COUNT .counterID,.amount
 done
  move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
 
 ; Explicit byte predicate for retained record kind fields.
 HOTSPOT_COUNT_IF_EQ_BYTE .macro value, expected, counterID, amount
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
  move.w ccr, -(sp)
  cmpi.b .expected,.value
  bne.w done
  .HOTSPOT_COUNT .counterID,.amount
 done
  move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro
+
+HOTSPOT_COUNT_IF_EQ .macro value, expected, counterID, amount
+ move.w ccr, -(sp)
+ cmpi.l .expected,.value
+ bne.w done
+ .HOTSPOT_COUNT .counterID,.amount
+done
+ move.w (sp)+, ccr
+.endmacro
+
+; Expected may be an immediate, memory or register operand except D1.
+HOTSPOT_COUNT_IF_NE_WORD .macro value, expected, counterID, amount
+ move.w ccr, -(sp)
+ move.l d1, -(sp)
+ move.w .value, d1
+ cmp.w .expected,d1
+ beq.w done
+ .HOTSPOT_COUNT .counterID,.amount
+done
+ move.l (sp)+, d1
+ move.w (sp)+, ccr
+.endmacro
+.endif
+.endif
+.endif
 
 ; Measured calls retain the callee's result registers/CCR exactly. Disabled
 ; forms emit only the original call; passive leave preserves its result flags.
@@ -184,38 +174,4 @@ HOTSPOT_BSR .macro slot, target
  .HOTSPOT_ENTER .slot
  bsr.w .target
  .HOTSPOT_LEAVE .slot
-.endmacro
-
-HOTSPOT_COUNT_IF_EQ .macro value, expected, counterID, amount
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
- move.w ccr, -(sp)
- cmpi.l .expected,.value
- bne.w done
- .HOTSPOT_COUNT .counterID,.amount
-done
- move.w (sp)+, ccr
-.endif
-.endif
-.endif
-.endmacro
-
-; Expected may be an immediate, memory or register operand except D1.
-HOTSPOT_COUNT_IF_NE_WORD .macro value, expected, counterID, amount
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_HOTSPOT_TELEMETRY
- move.w ccr, -(sp)
- move.l d1, -(sp)
- move.w .value, d1
- cmp.w .expected,d1
- beq.w done
- .HOTSPOT_COUNT .counterID,.amount
-done
- move.l (sp)+, d1
- move.w (sp)+, ccr
-.endif
-.endif
-.endif
 .endmacro

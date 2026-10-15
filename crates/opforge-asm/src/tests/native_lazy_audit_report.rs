@@ -31,7 +31,6 @@ pub(super) fn rows(stdout: &str) -> BTreeMap<u32, [u32; 3]> {
             || (20000..32288).contains(&phase)
             || (34999..182456).contains(&phase)
             || (400000..=400039).contains(&phase)
-            || (450000..=450003).contains(&phase)
         {
             assert!(
                 rows.insert(phase, [fields["f"], fields["l"], fields["r"]])
@@ -418,31 +417,18 @@ fn native_lazy_audit_report_decodes_hex_and_rejects_duplicates() {
 }
 
 #[test]
-fn native_lazy_audit_report_keeps_deferred_summaries_separate_from_template_rows() {
+fn native_lazy_audit_report_keeps_template_ordinal_25() {
     let mut stdout = String::new();
-    // Definition ordinal 25 (zero-based) occupies the superseded summary band.
     for phase in 3300..3308 {
         stdout.push_str(&format!(
             "progress p={phase:08x} f={phase:08x} l=00000001 r=00000002\n"
         ));
     }
-    for phase in 450000..450004 {
-        stdout.push_str(&format!(
-            "progress p={phase:08x} f=00000008 l=00000005 r=00000000\n"
-        ));
-    }
-    // Adjacent phases do not belong to the current deferred summary contract.
-    stdout.push_str("progress p=0006ddcf f=1 l=2 r=3\nprogress p=0006ddd4 f=1 l=2 r=3\n");
     let decoded = rows(&stdout);
-    assert_eq!(decoded.len(), 12);
+    assert_eq!(decoded.len(), 8);
     for phase in 3300..3308 {
         assert_eq!(decoded[&phase], [phase, 1, 2]);
     }
-    for phase in 450000..450004 {
-        assert_eq!(decoded[&phase], [8, 5, 0]);
-    }
-    stdout.push_str("progress p=0006ddd0 f=8 l=5 r=0\n");
-    assert!(std::panic::catch_unwind(|| rows(&stdout)).is_err());
 }
 
 #[test]

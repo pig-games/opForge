@@ -13,6 +13,9 @@ tests/** | * | Tests may contain CPU-specific source snippets and expectations.
 fixtures/** | * | Fixtures may contain CPU-specific source snippets and expectations.
 reference/** | * | Reference outputs may contain CPU-specific source snippets and expectations.
 
+# Reviewed generic hash-table vocabulary, unrelated to CPU addressing modes.
+native/motorola68000/amigaos/experimental/binary_scope_layout.asm | indexed | State.IndexedCount counts source-name entries reachable from hash buckets for table growth; it implements no CPU addressing-mode semantics.
+
 # CLI metadata is user-facing capability text. This does not implement CPU behavior.
 crates/opforge-cli-core/src/cli.rs | 8080,8085,z80,6809,6309,6502,65c02,65816,45gs02,68020,intel8080,intel8085,mos6502,wdc65c02,wdc65816,csg45gs02 | CLI help/capability metadata lists supported CPUs but does not implement CPU semantics.
 

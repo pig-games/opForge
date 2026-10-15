@@ -2,9 +2,10 @@
 use super::native_iterable_loops::{build_image, oracle, run_case, scratch};
 use super::*;
 
-// Fixture selection only: choose spellings that exercise all 1024 native symbol
-// buckets. This does not predict binding results; literal emitted bytes below
-// are the independent oracle. The template candidate key has a separate hash.
+// Fixture selection only: cover all low-ten-bit hash buckets with diverse names.
+// These names exercise several growth boundaries in the adaptive table. This
+// does not predict binding results; emitted bytes below are the independent
+// oracle. The template candidate key has a separate hash.
 fn symbol_bucket(name: &str) -> usize {
     name.bytes().fold(0u32, |hash, byte| {
         hash.wrapping_mul(33)

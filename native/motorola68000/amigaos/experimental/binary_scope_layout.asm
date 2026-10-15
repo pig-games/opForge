@@ -38,17 +38,19 @@ MaterializedLoops	.word ?  ; physical preparation loops with selected iterations
 PreviewBinding	.word ?  ; identity-only preview forbids candidate publication
 BindingNamespace	.word ?  ; zero=value/template spelling, one=encoding name
 EarlierReference	.long ?  ; preparation-only lexical snapshot binder
+BucketCount	.long ?
+BucketMask	.long ?
+IndexedCount	.long ?  ; only entries reachable from the scope buckets
 .endstruct
 ITERATOR_STATE = State.LoopDepth
-ENTRIES = State.EarlierReference+4
+ENTRIES = State.IndexedCount+4
 ENTRIES_POINTER = ENTRIES+memory.Block.Pointer
-; Power-of-two table. Word index+1 links retain numeric entry identities;
-; doubled bucket offsets fit the signed-word addressing used by lookup.
-BUCKET_COUNT = 1024
-BUCKET_MASK = BUCKET_COUNT-1
-BUCKET_BYTES = BUCKET_COUNT*2
+; Owned power-of-two buckets; doubled offsets stay within signed-word indexing.
+BUCKET_INITIAL = 256
+BUCKET_MAX = 16384
 BUCKETS = ENTRIES+memory.Block.Used+4
-ARENA = BUCKETS+BUCKET_BYTES
+BUCKETS_POINTER = BUCKETS+memory.Block.Pointer
+ARENA = BUCKETS+memory.Block.Used+4
 ARENA_POINTER = ARENA+memory.Block.Pointer
 BUFFER = ARENA+memory.Block.Used+4
 MODULE_STATE = BUFFER+NAME_BYTES

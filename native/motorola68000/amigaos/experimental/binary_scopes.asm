@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_scope_buckets as buckets
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_values as values
@@ -32,7 +33,6 @@ ENTRY_BYTES = records.ENTRY_BYTES
 AMBIGUOUS_BINDING_OWNER = plans.AMBIGUOUS_OWNER
 ENTRIES = layout.ENTRIES
 ENTRIES_POINTER = layout.ENTRIES_POINTER
-BUCKETS = layout.BUCKETS
 ARENA = layout.ARENA
 ARENA_POINTER = layout.ARENA_POINTER
 BUFFER = layout.BUFFER
@@ -98,6 +98,8 @@ begin	.block
 	cmpi.l #65535, d0
 	bhi.w bad
 	; begin accepts fresh/released storage, never clears live edge owners.
+	tst.l layout.BUCKETS_POINTER(a0)
+	bne.w bad
 	tst.l IMPORT_STATE+imports.ITEMS_POINTER(a0)
 	bne.w bad
 	tst.l IMPORT_STATE+imports.SELECTIONS_POINTER(a0)
@@ -136,11 +138,8 @@ begin	.block
 	clr.w layout.State.PreviewBinding(a0)
 	clr.w layout.State.FirstBound(a0)
 	clr.w layout.State.FirstExplicit(a0)
-	lea BUCKETS(a0), a0
-	move.w #layout.BUCKET_COUNT-1, d1
-clear
-	clr.w (a0)+
-	dbra d1, clear
+	jsr buckets.begin
+	bne.w bad
 	lea MODULE_STATE(a1), a0
 	moveq #0, d0
 	move.w layout.State.Base(a1), d0
@@ -178,6 +177,7 @@ configureLoops	.block
 release	.block
 	movem.l a0-a1, -(sp)
 	movea.l a0, a1
+	jsr buckets.release
 	lea ENTRIES(a1), a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -464,6 +464,13 @@ bindName	.block
 find
 	bsr.w lookup
 	beq.w found
+	movea.l a6, a0
+	jsr buckets.ensure
+	bne.w bad
+	tst.l d1
+	beq.w bucketReady
+	bsr.w lookup  ; growth changed the mask, rederive the absent-name bucket
+bucketReady
 	moveq #0, d0
 	move.w layout.State.Count(a6), d0
 	addq.l #1, d0
@@ -518,12 +525,13 @@ ordinaryIdentity
 	move.w layout.State.Base(a6), d2
 	add.w d1, d2
 	move.w d2, records.Entry.Target(a3)
-	lea BUCKETS(a6), a4
+	movea.l layout.BUCKETS_POINTER(a6), a4
 	add.w d4, d4
 	move.w 0(a4, d4.w), records.Entry.Next(a3)
 	addq.w #1, d1
 	move.w d1, 0(a4, d4.w)
 	addq.w #1, layout.State.Count(a6)
+	addq.l #1, layout.State.IndexedCount(a6)
 	moveq #0, d1
 	move.w layout.State.Count(a6), d1
 	mulu.w #records.ENTRY_BYTES, d1
@@ -3283,10 +3291,10 @@ hash
 	subq.l #1, d0
 	bne.w hash
 	.HOTSPOT_LEAVE #HOTSPOT_LOOKUP_HASH
-	andi.l #layout.BUCKET_MASK, d4
+	and.l layout.State.BucketMask(a6), d4
 	move.l d4, d0
 	add.w d0, d0
-	lea BUCKETS(a6), a0
+	movea.l layout.BUCKETS_POINTER(a6), a0
 	moveq #0, d2
 	move.w 0(a0, d0.w), d2
 	.HOTSPOT_ENTER #HOTSPOT_LOOKUP_CHAIN

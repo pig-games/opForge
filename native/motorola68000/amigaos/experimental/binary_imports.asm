@@ -3034,10 +3034,10 @@ hash
 	add.l d1, d4
 	subq.l #1, d0
 	bne.w hash
-	andi.l #layout.BUCKET_MASK, d4
+	and.l layout.State.BucketMask(a6), d4
 	add.w d4, d4
 	move.l d4, d0
-	lea layout.BUCKETS(a6), a0
+	movea.l layout.BUCKETS_POINTER(a6), a0
 	moveq #0, d4
 	move.w 0(a0, d0.w), d4
 candidate

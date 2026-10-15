@@ -265,8 +265,26 @@ tryOpen
 	tst.l d0
 	beq.w openFailed
 	move.l d0, IncludeHandle
+	lea IncludeTextRequest, a0
+	move.l #IncludeTextState, include_text.Frame.State(a0)
+	move.l DosBase, include_text.Frame.Dos(a0)
+	move.l d0, include_text.Frame.Handle(a0)
+	move.l #IncludePath, include_text.Frame.Path(a0)
+	jsr include_text.acquire
+	cmpi.l #include_text.ERROR, d0
+	beq.w invalidPath
+	move.l d0, d6
 	bsr.w pushInclude
 	bne.w invalidPath
+	cmpi.l #include_text.READY, d6
+	bne.w streaming
+	lea IncludeTextRequest, a0
+	move.l include_text.Frame.Data(a0), IoCursor
+	move.l include_text.Frame.Bytes(a0), d0
+	add.l IoCursor, d0
+	move.l d0, IoEnd
+	move.l #1, IoMemory
+streaming
 	moveq #0, d0
 	bra.w openDone
 openFailed
@@ -529,6 +547,7 @@ pushInclude .block
 	move.l IoEnd, IncludeFrame.End(a2)
 	move.l SourceLine, IncludeFrame.Line(a2)
 	move.l OriginId, IncludeFrame.Origin(a2)
+	move.l IoMemory, IncludeFrame.Memory(a2)
 	lea SourcePath, a0
 	lea IncludeFrame.Path(a2), a1
 	move.w #PATH_BYTES/4-1, d0
@@ -549,6 +568,7 @@ usePath
 	move.l a0, IoBuffer
 	move.l a0, IoCursor
 	move.l a0, IoEnd
+	clr.l IoMemory
 	addq.l #1, NextOrigin
 	move.l NextOrigin, OriginId
 	bsr.w retainOriginPath
@@ -578,6 +598,7 @@ popInclude .block
 	move.l IncludeFrame.End(a2), IoEnd
 	move.l IncludeFrame.Line(a2), SourceLine
 	move.l IncludeFrame.Origin(a2), OriginId
+	move.l IncludeFrame.Memory(a2), IoMemory
 	lea IncludeFrame.Path(a2), a0
 	lea SourcePath, a1
 	move.w #PATH_BYTES/4-1, d0
@@ -676,3 +697,13 @@ originDone
 	tst.l d0
 	rts
 	.bend ; appendOrigin
+
+; All readers have closed before release; captured records own their lexemes.
+; Preserves all registers; CCR unspecified. Safe on failure or repeated cleanup.
+releaseIncludeText	.block
+	move.l a0, -(sp)
+	lea IncludeTextState, a0
+	jsr include_text.release
+	movea.l (sp)+, a0
+	rts
+	.bend  ; releaseIncludeText

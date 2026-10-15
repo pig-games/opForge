@@ -8152,6 +8152,9 @@ mod native_guarded_iterables;
 #[path = "tests/native_include_collections.rs"]
 mod native_include_collections;
 #[cfg(test)]
+#[path = "tests/native_include_text_reuse.rs"]
+mod native_include_text_reuse;
+#[cfg(test)]
 #[path = "tests/native_iterable_loops.rs"]
 mod native_iterable_loops;
 #[cfg(test)]

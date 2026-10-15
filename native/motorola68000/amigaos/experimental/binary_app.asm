@@ -36,6 +36,7 @@
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_discovery as discovery
 	.use experimental.amigaos.binary_input_plan as inputs
+	.use experimental.amigaos.binary_include_text as include_text
 	.use experimental.amigaos.binary_line_input as line_input
 	.use experimental.amigaos.binary_declarations as declarations
 	.use experimental.amigaos.binary_graph as graph
@@ -114,6 +115,9 @@ PROGRESS_FRONTEND_BEGIN = 332
 PROGRESS_SOURCE_CONTROL_BEGIN = 333
 PROGRESS_INPUT_DISCOVERY = 334
 PROGRESS_INPUT_CANDIDATES = 335
+PROGRESS_INCLUDE_REUSE = 336
+PROGRESS_INCLUDE_READS = 337
+PROGRESS_INCLUDE_STORAGE = 338
 PROGRESS_SCOPED_ROOTS = 310
 PROGRESS_SCOPED_SIZING = 311
 PROGRESS_SCOPED_ITERABLE = 312
@@ -141,6 +145,7 @@ Cursor	.long ?
 End	.long ?
 Line	.long ?
 Origin	.long ?
+Memory	.long ?
 Path	.byte ?
 	.endstruct
 INCLUDE_FRAME_BYTES = IncludeFrame.Path+PATH_BYTES
@@ -330,6 +335,7 @@ cleanup
 	.CAPTURE_LIFE_PHASE #capture_life.CLEANUP
 	bsr.w closeIncludes
 	bsr.w closeSource
+	bsr.w releaseIncludeText
 	bsr.w closeInput
 	tst.l FrontStarted
 	beq.w freeBlocks
@@ -942,6 +948,10 @@ parametersSaved
 	lea RootPaths, a0
 	jsr memory.release
 	bsr.w clearIncludeText
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_INCLUDE_REUSE, IncludeTextState, include_text.State.Requests, include_text.State.Hits, include_text.State.HitBytes
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_INCLUDE_READS, IncludeTextState, include_text.State.ReadBytes, include_text.State.ReadCalls, include_text.State.Bypasses
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_INCLUDE_STORAGE, IncludeTextState, include_text.State.Count, include_text.State.PayloadBytes, include_text.State.Rows+memory.Block.Capacity
+	bsr.w releaseIncludeText
 	lea Front, a0
 	jsr frontend.finish
 	clr.l FrontStarted
@@ -1088,6 +1098,7 @@ manifestSource
 	bsr.w readManifestPath
 	bne.w bad
 openPath
+	clr.l IoMemory
 	movea.l DosBase, a6
 	move.l #SourcePath, d1
 	move.l #1005, d2
@@ -1975,6 +1986,9 @@ IoBuffer	.res long, 1
 IoCapacity	.res long, 1
 SourceHandle	.res long, 1
 DosBase	.res long, 1
+IoMemory	.res long, 1
+IncludeTextState	.res byte, include_text.STATE_BYTES
+IncludeTextRequest	.res byte, include_text.FRAME_BYTES
 InputName	.res long, 1
 OutputName	.res long, 1
 CliMode	.res word, 1

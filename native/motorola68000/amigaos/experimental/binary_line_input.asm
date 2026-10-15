@@ -18,14 +18,16 @@ Buffer	.long ?
 Capacity	.long ?
 Handle	.long ?
 Dos	.long ?
+Memory	.long ?  ; nonzero: immutable Cursor..End span, no DOS refill
 	.endstruct
-SCRATCH_BYTES = State.Dos+4
+SCRATCH_BYTES = State.Memory+4
 
 	.section code, kind=code
 
 ; Collect one physical line from a buffered DOS source. LF is consumed but not
 ; copied; CR remains in the output for the caller to handle. The caller owns all
 ; storage and initializes Cursor/End to an empty span before the first call.
+; Memory mode borrows an immutable span; exhaustion is EOF, including empty spans.
 ; Inputs: A0=State, A1=output, D0=output capacity in bytes.
 ; Outputs: D0=LINE on LF, EOF on end of input, ERROR on read/invalid state, or
 ; LIMIT after consuming the first non-LF byte beyond capacity. D1=copied bytes;
@@ -68,6 +70,8 @@ scan
 	subq.l #1, d3
 	bra.w scan
 refill
+	tst.l State.Memory(a2)
+	bne.w endOfFile
 	move.l a4, State.Cursor(a2)
 	move.l State.Buffer(a2), d0
 	beq.w readError

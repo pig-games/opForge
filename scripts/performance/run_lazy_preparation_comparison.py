@@ -7,7 +7,7 @@ native test. Timing images have no memory telemetry; memory images use identical
 telemetry settings, with only OPFORGE_LAZY_AUDIT added to the candidate.
 With --work-attribution, compare L1-only against L1+OPFORGE_LAZY_WORK instead.
 With --baseline-images too, compare two work observers with identical build flags.
-With --experiment-define, compare eager and first-use macro-plan binding.
+With --experiment-define, compare eager acquisition with a selected macro experiment.
 This is fixed-input audit qualification, not candidate-source self-host proof.
 """
 import argparse
@@ -165,10 +165,11 @@ def prepare(args):
                              "candidate_sample_period": period,
                              "candidate_phase_seed": seed,
                              "work_observer_revision_comparison": baseline_images is not None,
-                             "macro_binding_fixed_input_comparison": experiment_define is not None,
+                             "macro_binding_fixed_input_comparison": experiment_define == "OPFORGE_DEFERRED_MACRO_PLANS",
+                             "macro_interface_fixed_input_comparison": experiment_define == "OPFORGE_BINARY_MACRO_VIEW",
                              "experiment_define": experiment_define,
                              "frozen_workload_case": str(args.workload_case),
-                             "bootstrap_source_fnv1a64": manifest.get("native_source_fnv1a64"),
+                             "bootstrap_source_fnv1a64": built.get("native_source_fnv1a64", manifest.get("native_source_fnv1a64")),
                              "memory_profile": os.environ.get("OPFORGE_FS_UAE_MEMORY_PROFILE", "existing")}}
         for key, name, data in (("image", "bootstrap.hunk", image), ("oracle", "exported-oracle.hunk", oracle)):
             (directory / name).write_bytes(data)
@@ -243,7 +244,8 @@ def execute(args, cases):
                         )
                     if (row["metadata"].get("work_attribution_comparison")
                             or (row["metadata"]["comparison_role"] == "audit"
-                                and not row["metadata"].get("macro_binding_fixed_input_comparison"))):
+                                and not row["metadata"].get("macro_binding_fixed_input_comparison")
+                                and not row["metadata"].get("macro_interface_fixed_input_comparison"))):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
                         if (row["metadata"].get("candidate_attribution_comparison")
@@ -271,6 +273,9 @@ def execute(args, cases):
         records.append(row)
         (args.output / "results.json").write_text(json.dumps(records, indent=2, sort_keys=True) + "\n")
         print(f"{path.parent.name}: {'passed' if row['success'] else 'failed'}", flush=True)
+        if not row["success"] and getattr(args, "stop_on_failure", False):
+            print("Stopped comparison after failure; no performance summary is valid.", flush=True)
+            return False
     if not all(row["success"] for row in records):
         return False
     runtime = {role: [row["start_to_done_host_seconds"] for row in records
@@ -290,7 +295,7 @@ def execute(args, cases):
             raise ValueError("Observer revision changed global work totals on identical input")
     baseline_name = "ordinary release"
     if getattr(args, "experiment_define", None):
-        baseline_name = "eager macro binding"
+        baseline_name = "eager macro services"
     if getattr(args, "work_attribution", False):
         baseline_name = "L1 audit"
     if getattr(args, "baseline_images", None):
@@ -323,12 +328,14 @@ def main():
     parser.add_argument("--test-binary", type=Path)
     parser.add_argument("--repeats", type=int, default=2)
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--stop-on-failure", action="store_true",
+                        help="retain completed evidence and stop before remaining comparison runs on failure")
     parser.add_argument("--work-attribution", action="store_true",
                         help="measure marginal attribution overhead: audit images versus work images")
     parser.add_argument("--baseline-images", type=Path,
                         help="with --work-attribution, compare saved work images against current work images")
-    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS",),
-                        help="compare eager reference images with the deferred macro-plan experiment")
+    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW"),
+                        help="compare eager reference images with the selected macro experiment")
     parser.add_argument("--candidate-attribution", action="store_true", help="compare passive candidate attribution against baseline work images")
     parser.add_argument("--candidate-timing", action="store_true", help="sample candidate preparation only in the candidate memory image")
     parser.add_argument("--candidate-sample-period", type=int, choices=(64, 128, 256), default=64)

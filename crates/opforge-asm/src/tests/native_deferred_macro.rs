@@ -42,6 +42,13 @@ fn controls() -> Vec<Control> {
         ],
         expected: Some(&[2, 3, 6, 8, 5]),
     });
+    controls.push(Control {
+        name: "quoted-substitution-preserves-argument-trivia",
+        cpu: "68020",
+        source: ".module main\n.cpu 68020\nEMIT .macro value\n.byte \"@1\",0 ; retain argument spelling\n.endmacro\n.EMIT 1+2\n.EMIT 1 + 2\n.EMIT 1\t+\t2\n.endmodule\n".into(),
+        files: vec![],
+        expected: Some(b"1+2\x001 + 2\x001\t+\t2\0"),
+    });
     for cpu in ["68020", "6502"] {
         controls.push(Control {
             name: "existing-macro-language-matrix",
@@ -52,6 +59,21 @@ fn controls() -> Vec<Control> {
         });
     }
     controls
+}
+
+// Rust supports changing the expansion CPU. The compact native capsule remains
+// one selected pipeline: binary_assembly.cpu rejects any different CpuName.
+// Keep this scope gap separate from positive spelling-representation controls.
+fn cross_cpu_control() -> Control {
+    Control {
+        name: "declaration-cpu-and-expansion-cpu",
+        cpu: "68020",
+        source:
+            ".module main\n.cpu 68020\nEMIT .macro\n nop\n.endmacro\n.cpu 6502\n.EMIT\n.endmodule\n"
+                .into(),
+        files: vec![],
+        expected: Some(&[0xea]),
+    }
 }
 
 fn live_oracle(control: &Control) -> Vec<u8> {
@@ -77,9 +99,17 @@ fn native_deferred_macro_rust_controls() {
 }
 
 #[test]
+fn native_deferred_macro_cross_cpu_rust_oracle() {
+    assert_eq!(live_oracle(&cross_cpu_control()), [0xea]);
+}
+
+#[test]
 #[ignore = "requires prebuilt eager/deferred images and fresh FS-UAE"]
 fn native_deferred_macro_prebuilt_fs_uae() {
-    let mut controls = controls();
+    run_prebuilt_controls(controls());
+}
+
+fn run_prebuilt_controls(mut controls: Vec<Control>) {
     if let Ok(filter) = std::env::var("OPFORGE_DEFERRED_CASE") {
         controls.retain(|control| control.name == filter);
         assert!(!controls.is_empty(), "unknown control {filter}");

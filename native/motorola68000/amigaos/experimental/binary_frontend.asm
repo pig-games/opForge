@@ -54,6 +54,10 @@
 	.use prvm.amigaos.runtime as parser_runtime
 	.use prvm.amigaos.abi as parser_abi
 	.use prvm.amigaos.macro_spelling as spelling
+.if BINARY_MACRO_VIEW
+	.use prvm.amigaos.binary_spelling as binary_spelling
+	.use prvm.amigaos.binary_macro_runtime as binary_runtime
+.endif
 	.use experimental.amigaos.binary_text_names as textNames
 	.use prvm.amigaos.packed_text as text
 	.include "hotspot_telemetry.i"
@@ -176,7 +180,15 @@ TEXT_NAME_BUFFER = EXPRESSION_WORK+expression.WORKSPACE_BYTES
 STATEMENT_HEAD_NAMES = TEXT_NAME_BUFFER+layout.NAME_BYTES
 STATEMENT_STATE = STATEMENT_HEAD_NAMES+statement_heads.CACHE_BYTES
 STATEMENT_EXECUTION = STATEMENT_STATE+statement_session.STATE_BYTES
+.if BINARY_MACRO_VIEW
+BINARY_VIEW = (STATEMENT_EXECUTION+statement_execution.STATE_BYTES+3)&$fffffffc
+BINARY_VIEW_FRAME = BINARY_VIEW+binary_spelling.MAX_BYTES
+BINARY_VIEW_BYTES = BINARY_VIEW_FRAME+binary_spelling.FRAME_BYTES
+BINARY_VIEW_READY = BINARY_VIEW_BYTES+4
+SCRATCH_BYTES = BINARY_VIEW_READY+4
+.else
 SCRATCH_BYTES = STATEMENT_EXECUTION+statement_execution.STATE_BYTES
+.endif
 	.priv
 FRAGMENT_REQUEST = fragment_binding.FRAME_BYTES
 FRAGMENT_VIEWS = FRAGMENT_REQUEST+fragment_tokenizer.FRAME_BYTES
@@ -1041,6 +1053,11 @@ done
 tokenizeLine	.block
 	.HOTSPOT_ENTER #HOTSPOT_TOKENIZE
 	movem.l d2/d4-d7/a0-a4, -(sp)
+.if BINARY_MACRO_VIEW
+	movea.l a6, a0
+	adda.l #BINARY_VIEW_READY, a0
+	clr.l (a0)
+.endif
 	movea.l Frame.Source(a5), a0
 	move.l Frame.SourceBytes(a5), d0
 	bmi.w bad
@@ -2241,7 +2258,11 @@ selectedProgram
 	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
 	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
 	.MEMORY_TEMPLATE_WORK #10, #1
+.if BINARY_MACRO_VIEW
+	bsr.w binaryDescriptors
+.else
 	jsr macro_runtime.run
+.endif
 	bne.w bad
 	bra.w done
 bad
@@ -2254,49 +2275,38 @@ done
 
 ; Cache package-selected fragments only for nested calls captured in a template.
 ; A0=initial plan frame,A5=session,A6=scratch. D0/CCR=status; preserves others.
+.if BINARY_MACRO_VIEW
 captureFragments	.block
-	movem.l d1-d7/a0-a4, -(sp)
-	movea.l a0, a4
-	movea.l macro_plans.Frame.Events(a4), a1
-	move.l macro_plans.Row.SpellingStart(a1), d1
-	move.l macro_plans.Row.SpellingEnd(a1), d2
-	sub.l d1, d2
-	movea.l macro_plans.Frame.Source(a4), a2
-	adda.l d1, a2
-	lea MACRO_REQUEST(a6), a0
-	movea.l a0, a1
-	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
-clear
-	clr.l (a1)+
-	dbra d0, clear
-	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
-	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
-	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
-	move.w #parser_abi.PRVM_ENTRY_KIND_MACRO_FRAGMENTS, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
-	move.l a2, parser_abi.PRVM_FRAME_SOURCE_PTR(a0)
-	move.l d2, parser_abi.PRVM_FRAME_SOURCE_LEN(a0)
-	movea.l Frame.Package(a5), a1
-	move.l package.Header.MacroFragmentsBytes(a1), parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
-	adda.l package.Header.MacroFragments(a1), a1
-	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
-	movea.l a6, a1
-	adda.l #MACRO_SPELL_SCRATCH, a1
-	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
-	move.l #64*parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
-	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
-	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
-	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
-	jsr macro_runtime.run
-	bne.w done
-	move.l d1, macro_plans.Frame.RecipeCount(a4)
-	movea.l a6, a1
-	adda.l #MACRO_SPELL_SCRATCH, a1
-	move.l a1, macro_plans.Frame.RecipeEvents(a4)
-done
-	movem.l (sp)+, d1-d7/a0-a4
+	move.l d7, -(sp)
+	moveq #0, d7
+	bsr.w captureFragmentRequest
+	move.l (sp)+, d7
 	tst.l d0
 	rts
 	.bend  ; captureFragments
+
+; Expanded argument lists own their spelling independently of the physical line.
+captureGeneratedFragments	.block
+	move.l d7, -(sp)
+	moveq #1, d7
+	bsr.w captureFragmentRequest
+	move.l (sp)+, d7
+	tst.l d0
+	rts
+	.bend  ; captureGeneratedFragments
+
+captureFragmentRequest	.block
+	.include "binary_frontend_fragment_request.i"
+	.bend  ; captureFragmentRequest
+.else
+captureFragments	.block
+	.include "binary_frontend_fragment_request.i"
+	.bend  ; captureFragments
+.endif
+
+.if BINARY_MACRO_VIEW
+	.include "binary_frontend_spelling.i"
+.endif
 
 ; A0=session,A1=complete packed line,A2=expanded call list,D1=list bytes,
 ; D2=captured call-plan handle. Lex the list through TKVM before selecting the
@@ -2381,7 +2391,11 @@ clearRequest
 	lea MACRO_SPELL_EVENTS(a6), a1
 	move.l a1, macro_plans.Frame.Events(a0)
 	move.l a3, macro_plans.Frame.Source(a0)
+.if BINARY_MACRO_VIEW
+	bsr.w captureGeneratedFragments
+.else
 	bsr.w captureFragments
+.endif
 	tst.l d0
 	bne.w generatedCaptureFailed
 	lea MACRO_FRAME(a6), a1

@@ -201,6 +201,58 @@ class LazyComparisonTests(unittest.TestCase):
             self.assertTrue(all(case["files"] == cases[0]["files"] for case in cases))
             self.assertTrue(all(case["oracle"] == cases[0]["oracle"] for case in cases))
 
+    def test_binary_interface_is_measured_without_binding_or_audit_reports(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory))
+            args.experiment_define = "OPFORGE_BINARY_MACRO_VIEW"
+            args.test_binary = Path("fake-test")
+            manifest_path = args.images / "images.json"
+            manifest = json.loads(manifest_path.read_text())
+            for image in manifest["images"]:
+                image["native_source_fnv1a64"] = image["file"].split("-")[0] + "-source"
+                if image["file"].startswith("deferred-"):
+                    image["defines"] = [args.experiment_define if define ==
+                        "OPFORGE_DEFERRED_MACRO_PLANS" else define for define in image["defines"]]
+            manifest_path.write_text(json.dumps(manifest))
+            paths = module.prepare(args)
+            for path in paths:
+                case = json.loads(path.read_text())
+                self.assertTrue(case["metadata"]["macro_interface_fixed_input_comparison"])
+                self.assertFalse(case["metadata"]["macro_binding_fixed_input_comparison"])
+                role = "deferred" if case["metadata"]["comparison_role"] == "audit" else "reference"
+                self.assertEqual(case["metadata"]["bootstrap_source_fnv1a64"], role + "-source")
+                self.assertEqual(args.experiment_define in case["bootstrap_defines"],
+                                 case["metadata"]["comparison_role"] == "audit")
+                self.assertEqual(case["files"], json.loads(paths[0].read_text())["files"])
+                result = path.parent / "result"
+                result.mkdir()
+                (result / "native-result.json").write_text(json.dumps({
+                    "success": True, "metadata": case["metadata"],
+                    "start_to_done_host_seconds": 1.0, "linked_static_reserved_bytes": 12}))
+                if case["metadata"]["measurement"] == "memory":
+                    (result / "memory.bin").write_bytes(b"")
+            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=0)), \
+                 patch.object(module.memory_telemetry, "decode_memory_telemetry", return_value={
+                     "diagnostics": [], "peak_owned_bytes": 20, "total_allocated_bytes": 30}), \
+                 patch.object(module, "decode_deferred_binding", side_effect=AssertionError("wrong report")), \
+                 patch.object(module.lazy_preparation_audit, "decode", side_effect=AssertionError("wrong report")):
+                self.assertTrue(module.execute(args, paths))
+            for row in json.loads((args.output / "results.json").read_text()):
+                self.assertNotIn("audit", row)
+                self.assertNotIn("deferred_binding", row)
+
+    def test_stop_on_failure_retains_result_without_running_remaining_samples(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory))
+            args.test_binary = Path("fake-test")
+            args.stop_on_failure = True
+            paths = module.prepare(args)
+            with patch.object(module.subprocess, "run", return_value=SimpleNamespace(returncode=1)) as run:
+                self.assertFalse(module.execute(args, paths))
+            self.assertEqual(run.call_count, 1)
+            self.assertFalse((args.output / "summary.json").exists())
+            self.assertEqual(len(json.loads((args.output / "results.json").read_text())), 1)
+
     def test_experiment_mode_rejects_mixed_comparison_modes(self):
         with tempfile.TemporaryDirectory() as directory:
             args = self.inputs(Path(directory))

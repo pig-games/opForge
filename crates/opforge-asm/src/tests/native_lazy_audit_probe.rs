@@ -257,6 +257,16 @@ fn native_lazy_audit_save_images() {
 #[test]
 #[ignore = "builds eager and deferred macro-binding images outside target"]
 fn native_deferred_macro_save_images() {
+    save_macro_experiment_images("OPFORGE_DEFERRED_MACRO_PLANS");
+}
+
+#[test]
+#[ignore = "builds eager and binary token/spelling images outside target"]
+fn native_binary_spelling_save_images() {
+    save_macro_experiment_images("OPFORGE_BINARY_MACRO_VIEW");
+}
+
+fn save_macro_experiment_images(experiment: &str) {
     let root = super::native_fragment_controls::root();
     let destination = PathBuf::from(
         std::env::var_os("OPFORGE_DEFERRED_SAVE_DIR")
@@ -266,6 +276,10 @@ fn native_deferred_macro_save_images() {
     let destination = destination.canonicalize().unwrap();
     assert!(!destination.starts_with(root.join("target")));
     let save_probe = std::env::var("OPFORGE_DEFERRED_SAVE_PROBE").as_deref() == Ok("1");
+    assert!(
+        !save_probe || experiment == "OPFORGE_DEFERRED_MACRO_PLANS",
+        "the deferred binding probe is specific to that experiment"
+    );
     let mut available = vec![
         "reference-release.hunk",
         "reference-memory.hunk",
@@ -314,7 +328,7 @@ fn native_deferred_macro_save_images() {
         for memory in [false, true] {
             let mut defines = Vec::new();
             if deferred {
-                defines.push("OPFORGE_DEFERRED_MACRO_PLANS");
+                defines.push(experiment);
             }
             if memory {
                 defines.extend([

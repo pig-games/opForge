@@ -31,10 +31,29 @@ pub fn execute(
     capacity: usize,
     steps: usize,
 ) -> Result<Vec<Descriptor>, DescriptorError> {
-    if entry != PARSER_VM_MACRO_FRAGMENT_ENTRY
-        || version != PARSER_VM_MACRO_VERSION
-        || source.len() > 1024
-    {
+    execute_bytes(
+        entry,
+        version,
+        program,
+        source.len(),
+        |i| source.as_bytes().get(i).copied(),
+        capacity,
+        steps,
+    )
+}
+
+/// Shared recipe scanner over a validated logical spelling view. The accessor
+/// preserves original byte coordinates and must cover every offset below len.
+pub(crate) fn execute_bytes(
+    entry: u16,
+    version: u16,
+    program: &[u8],
+    len: usize,
+    byte: impl Fn(usize) -> Option<u8>,
+    capacity: usize,
+    steps: usize,
+) -> Result<Vec<Descriptor>, DescriptorError> {
+    if entry != PARSER_VM_MACRO_FRAGMENT_ENTRY || version != PARSER_VM_MACRO_VERSION || len > 1024 {
         return Err(error(4, 0, "Invalid fragment request"));
     }
     if program.len() != 10 || program[0] != 0x86 || program[1] != 1 || program[8..] != [0x83, 0] {
@@ -57,7 +76,6 @@ pub fn execute(
         steps
             .checked_sub(program.len())
             .ok_or(error(12, 0, "Step budget exceeded"))?;
-    let bytes = source.as_bytes();
     let mut records: Vec<Descriptor> = Vec::new();
     let mut emit = |kind,
                     start: usize,
@@ -84,34 +102,35 @@ pub fn execute(
     };
     let mut i = 0;
     let mut literal = 0;
-    while i < bytes.len() {
+    while i < len {
         budget = budget
             .checked_sub(1)
             .ok_or(error(12, i, "Step budget exceeded"))?;
         let mut end = i + 1;
         let mut kind = LITERAL;
         let mut aux = [0; 3];
-        if (bytes[i] == positional || bytes[i] == dot) && i + 1 < bytes.len() {
-            let next = bytes[i + 1];
+        let current = byte(i).unwrap();
+        if (current == positional || current == dot) && i + 1 < len {
+            let next = byte(i + 1).unwrap();
             if (first..=last).contains(&next) {
                 kind = POSITIONAL;
                 end = i + 2;
                 aux[0] = (next - first) as u32;
-            } else if bytes[i] == dot {
+            } else if current == dot {
                 if next == positional {
                     kind = SUPPLIED_LIST;
                     end = i + 2;
                 } else {
                     let start = i + if next == open { 2 } else { 1 };
                     let mut j = start;
-                    while j < bytes.len() && name_byte(bytes[j]) {
+                    while j < len && name_byte(byte(j).unwrap()) {
                         budget =
                             budget
                                 .checked_sub(1)
                                 .ok_or(error(12, j, "Step budget exceeded"))?;
                         j += 1;
                     }
-                    if j > start && (next != open || bytes.get(j) == Some(&close)) {
+                    if j > start && (next != open || byte(j) == Some(close)) {
                         kind = NAMED;
                         end = j + usize::from(next == open);
                         aux[0] = start as u32;

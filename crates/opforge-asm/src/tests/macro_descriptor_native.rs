@@ -8,7 +8,7 @@ use vm::runtime_portable_types::{PortableTokenizeRequest, PortableTokenizerByteS
 
 const RESULT_BYTES: usize = 64 * 32;
 
-fn kind_code(kind: &PortableTokenKind) -> u16 {
+pub(crate) fn kind_code(kind: &PortableTokenKind) -> u16 {
     match kind {
         PortableTokenKind::Identifier(_) => 0,
         PortableTokenKind::Register(_) => 1,

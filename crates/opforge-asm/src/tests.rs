@@ -42612,3 +42612,9 @@ mod native_statement_arguments;
 
 #[path = "tests/motorola_memory_forms.rs"]
 mod motorola_memory_forms;
+
+#[path = "tests/binary_spelling_interface.rs"]
+mod binary_spelling_interface;
+
+#[path = "tests/binary_spelling_native.rs"]
+mod binary_spelling_native;

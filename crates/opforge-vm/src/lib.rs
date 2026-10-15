@@ -12,7 +12,10 @@
 //! Existing top-level modules remain available during migration, but new code
 //! should prefer these partition surfaces when choosing ownership.
 
+pub mod binary_macro_descriptor_vm;
+pub mod binary_macro_fragment_vm;
 pub mod binary_source_package;
+pub mod binary_spelling_vm;
 pub mod branch_vm;
 pub mod builder;
 pub mod bytecode;

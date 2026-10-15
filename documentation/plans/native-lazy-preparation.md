@@ -1,9 +1,163 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: candidate acquisition attribution is measured and qualified; opt-in first-use
+Status: shared binary token/spelling interface experiment is measured and
+qualified for the frozen workload; candidate acquisition attribution is measured
+and qualified; opt-in first-use
 macro-body plan binding is measured and natively qualified, 2026-10-15. The preceding publication/lifetime, whole-unit work and template
 inventories are measured. The ordinary eager path remains the reference;
 no capture is retired early. Historical checkpoint details are in Git history.
+
+## Shared binary token/spelling interface experiment
+
+Authorized 2026-10-15. Hypothesis: a shared pointer-free input can preserve macro
+spelling while letting descriptor grammar traverse token structure, removing the
+need for physical source at the service boundary. This establishes a prerequisite
+for deferred acquisition; it does not defer work or discard existing plans.
+
+Keep ordinary eager acquisition as the reference. The opt-in
+`OPFORGE_BINARY_MACRO_VIEW` build uses a transient binary view for physical macro
+candidate acquisition. Existing numeric declaration binding, package-selected
+programs, template ownership, defaults and expansion CPU selection stay intact.
+Generated expansion handling continues through its existing services.
+
+The provisional block has a 16-byte header and 12-byte atom rows, followed by
+owned raw spelling bytes. Integers are big endian and all references are offsets.
+Token atoms retain their TKVM kind and dense token index; gap atoms retain exact
+space/tab bytes. Quotes, escapes and numeric spelling are preserved. Comments
+are excluded using the lexical tokens' last extent, without another comment
+parser. Consumers validate complete bounds and canonical coverage before atomic
+publication. Descriptor grammar uses token kinds for structural delimiters;
+fragment matching reads selected atom spelling directly. No physical line is
+reconstructed and passed to the source descriptor scanner.
+
+Compare exact descriptor/recipe outcomes and final emitted bytes, covering tabs
+versus spaces, defaults, escaped markers, embedded substitutions, nested lexical
+scope, definition-relative includes and package changes. Include malformed-view,
+capacity and budget failures. Stop or revise on semantic divergence; report any
+unsupported boundary explicitly. Keep the experimental input versionless and do
+not introduce native VM version dispatch.
+
+Measure release runtime on identical frozen source/package bytes, with reversed
+serial pairs. Measure tracked heap and linked reservations in a separate matched
+instrumented pair. Account for bounded transient view/staging stack separately;
+heap telemetry does not measure stack high-water. This slice measures interface
+cost, not projected deferred-preparation savings. Require fresh native completion,
+zero exit and whole live Rust equality for the full-input comparison. That
+comparison is not a current-source fixed-point self-host claim.
+
+### Interface boundaries and qualification
+
+The [Rust view](../../crates/opforge-vm/src/binary_spelling_vm.rs) and
+[native producer](../../native/motorola68000/amigaos/prvm/prvm_binary_spelling.asm)
+share canonical bounds: 64 tokens, 129 atoms and 1,024 spelling bytes. The
+[native descriptor service](../../native/motorola68000/amigaos/prvm/prvm_binary_macro_descriptors.asm)
+uses token structure; the fragment service scans the canonical atom payload in
+place. Native executors add no VM version dispatch. Invalid views have no
+published output; native reports invalid-view status with offset zero, while the
+Rust view parser can additionally identify a malformed container row.
+
+The view is a transient per-tokenization service input, **not a retained source
+format or a lazy-acquisition implementation**. It contains exact code spelling,
+including indentation, and excludes comments. Existing owned token captures and
+candidate plans remain. Before first-use acquisition, decide which spelling atoms
+must remain owned after the physical input disappears; do not multiply this
+prototype's full view across all retained records and assume a memory saving.
+Declaration identities, selected package grammar and capture-body mode are still
+owned by the existing frontend. Generated argument text uses an explicit eager
+route with its own spelling owner; it never borrows the cached physical view.
+
+A whole-line recipe must use the view's code-only extent as well. Keeping the
+physical length after removing comments caused the first full-input trial to
+reject a commented instruction in `debug/memory_telemetry.i`. The corrected
+adapter normalizes the owned row before recipe capture and plan creation; a
+commented macro-body control covers that boundary. The rejected trial supplies
+no performance evidence. The comparison tool can now stop after a failure,
+preserving completed results without producing an invalid performance summary.
+
+Seven supported macro controls pass on both the reference and candidate (14
+fresh native cases), including exact spaces/tabs, defaults, lexical declaration
+binding and definition-relative includes. All 20 module/include/template lifecycle
+controls pass on the candidate. The independent native service probe passes 358
+vectors covering live-token builder bytes, descriptor/fragment records, malformed
+views, UTF-8, capacity/budget failures and atomic publication. The complete Rust
+VM suite passes 582 tests; focused live-TKVM interface and harness tests pass.
+The final service probe is rerun against current native sources. ASM/VM Clippy
+with warnings denied, Rust formatting, all nine changed native files' formatter
+checks, 147 workflow tests and 59 lazy-comparison/tool tests pass. The focused
+four-file native CCR scan has zero blocking findings and 18 report-only findings;
+it does not cover included `.i` files or qualify all native assembly.
+
+Switching one source module from 68020 to 6502 after declaring a macro is **not
+qualified native behavior**: the existing compact capsule rejects a different
+CPU from its selected pipeline. The Rust oracle is preserved, and this existing
+scope limitation is separate from declaration-context preservation. No multi-CPU
+language support was added or removed here. Comment-free service input also
+charges its retained extent rather than discarded physical comment bytes; exact
+budget thresholds for those different inputs are not an equivalence claim.
+
+### Separately measured interface memory cost
+
+Both profiles assemble the identical frozen input against its live Rust oracle.
+The ordinary reference has no work/candidate observer. Memory telemetry settings
+are identical, with only `OPFORGE_BINARY_MACRO_VIEW` added to the candidate.
+
+| Resource, bytes | Eager reference | Binary interface | Difference |
+|---|---:|---:|---:|
+| Tracked heap peak | 47,587,208 | 47,592,440 | +5,232 (+0.011%) |
+| Allocated/freed capacities, each | 112,389,800 | 112,394,776 | +4,976 (+0.0044%) |
+| Linked reservation, memory image | 794,472 | 800,456 | +5,984 |
+| Memory image file | 758,636 | 764,648 | +6,012 |
+
+Both finish with zero tracked ownership, allocation failures and telemetry
+diagnostics. The interface reserves 2,620 additional scratch bytes per frontend,
+plus alignment, and the producer temporarily stages at most 2,588 additional
+stack bytes. These bounds are separate from tracked heap; no stack high-water
+measurement is claimed. Whole-line plans now retain code-only spelling, so the
+net measured cost is not simply the scratch-size sum. Existing eager services
+remain linked for reference and generated text; the experimental duplication is
+intentional and is not proposed as a permanent dual implementation.
+
+Memory-run elapsed times are 109.919181 seconds (reference) and 114.482681 seconds
+(candidate); these are instrumented diagnostics, **not release timing samples**.
+
+### Separately measured release runtime and decision
+
+The complete frozen input is 198 files / 2,614,471 bytes and produces the live
+Rust 708,592-byte Hunk. These are serial release runs without memory telemetry,
+work/candidate observers or diagnostic clocks. No heavy host build overlaps the
+reported samples. The existing expanded A4000/68040 FS-UAE profile is unchanged;
+these results do not qualify the A6000 or the 2 MiB product memory target.
+
+| Serial order | Eager reference, seconds | Binary interface, seconds |
+|---|---:|---:|
+| Reference then candidate | 105.304775 | 109.846687 |
+| Candidate then reference | 107.349713 | 110.631202 |
+| Mean | 106.327244 | 110.238945 |
+
+The incremental cost is **3.911700 seconds / 3.68%**. Individual paired overheads
+are 4.31% and 3.06%; two reversed pairs give a bounded comparison, not a confidence
+interval. The release file grows 747,740 → 753,752 bytes (+6,012). Both eager
+reference images are byte-identical to the pre-experiment images; current-source
+rebuilds also match the measured candidate images exactly. Per-image source
+fingerprints, build flags and executable digests are retained with the evidence.
+
+All six final full-input runs have fresh completion, explicit zero exit and whole
+live Rust equality. They assemble the frozen earlier source; **no current-source
+fixed-point self-host qualification is claimed by this experiment**. Evidence:
+`/tmp/opforge-binary-spelling-full-final-20261015/plan.json`, `summary.json`,
+`results.json` and each case receipt. The plan identifies the actual saved host
+test binary, environment and FS-UAE configuration. The qualified image manifest
+is `/tmp/opforge-binary-spelling-qualified-images-20261015/images.json`.
+
+**Retain this as an opt-in functional foundation, not a standalone optimization.**
+Its runtime cost is measurable and its tracked heap cost is small. It proves
+binary input at these VM boundaries while preserving tested macro behavior;
+it does not prove any deferred-acquisition saving. A subsequent slice must own
+required spelling and declaration configuration across capture retirement, avoid
+unnecessary duplication with existing captures, and compare real first-use
+acquisition against eager execution before considering promotion. Keep the eager
+reference available. Do not infer a peak saving from the earlier 3.38 MB payload
+opportunity or subtract sampled generation windows from these release timings.
 
 ## Acquisition ownership and reconstruction investigation
 
@@ -171,8 +325,8 @@ covering the observable whitespace witness, quoted escapes, defaults and embedde
 substitutions before discarding any captured plans. Preserve declaration identities
 and the descriptor grammar's acquisition configuration while retaining existing
 CPU switching behavior during expansion. Its success would enable a later measured
-first-use acquisition candidate and persistent binary templates. It is **proposed,
-not implemented or authorized by this investigation**.
+first-use acquisition candidate and persistent binary templates. It was proposed by that investigation; the separately authorized interface
+experiment above now investigates it.
 
 All 20 lifecycle/module/include/template controls pass with the final six-category
 observer. The independent native probe passes preservation, duplicate ownership,

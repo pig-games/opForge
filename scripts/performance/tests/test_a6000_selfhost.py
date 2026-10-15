@@ -300,7 +300,7 @@ class HardwareCompletionTests(unittest.TestCase):
                            "manifest.json": json.dumps(manifest).encode()}.items():
             (root / name).write_bytes(data)
 
-    def generated_configuration_bundle(self, root):
+    def generated_configuration_bundle(self, root, chunked=False):
         self.bundle(root, False)
         logical = "experimental/build_configuration.i"
         original = root / "original" / logical
@@ -313,7 +313,12 @@ class HardwareCompletionTests(unittest.TestCase):
             b"BINARY_MACRO_VIEW = 0\n"
             b"ACQUIRE_MACRO_CANDIDATES = 0\n"
             b"DEFER_MACRO_LINES = 0\n"
+            b"CHUNKED_CAPTURE = 0\n"
         )
+        if chunked:
+            data = (b"DEFER_MACRO_PLANS = 1\nBINARY_MACRO_VIEW = 1\n"
+                    b"ACQUIRE_MACRO_CANDIDATES = 1\nDEFER_MACRO_LINES = 1\n"
+                    b"CHUNKED_CAPTURE = 1\n")
         staged.write_bytes(data)
         manifest = json.loads((root / "manifest.json").read_text())
         manifest["source_mapping"].append({
@@ -323,12 +328,20 @@ class HardwareCompletionTests(unittest.TestCase):
         })
         manifest["source_configuration"] = {
             "file": "src/" + logical,
-            "symbol": "DEFER_MACRO_PLANS",
+            "symbol": "CHUNKED_CAPTURE" if chunked else "DEFER_MACRO_PLANS",
             "value": 1,
         }
         manifest["source_manifest_digest"] = runner.fnv(
             b"entry.asm\0source\0" + logical.encode() + b"\0" + data + b"\0")
         (root / "manifest.json").write_text(json.dumps(manifest))
+
+    def test_generated_chunked_configuration_is_exact(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.generated_configuration_bundle(root, chunked=True)
+            manifest, files, _, _ = runner.load_bundle(root)
+            self.assertEqual(manifest["source_configuration"]["symbol"], "CHUNKED_CAPTURE")
+            self.assertIn(b"CHUNKED_CAPTURE = 1\n", files["src/experimental/build_configuration.i"])
 
     def test_generated_build_configuration_is_exact_and_explicit(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -341,7 +354,8 @@ class HardwareCompletionTests(unittest.TestCase):
                              b"DEFER_MACRO_PLANS = 1\n"
                              b"BINARY_MACRO_VIEW = 0\n"
                              b"ACQUIRE_MACRO_CANDIDATES = 0\n"
-                             b"DEFER_MACRO_LINES = 0\n")
+                             b"DEFER_MACRO_LINES = 0\n"
+                             b"CHUNKED_CAPTURE = 0\n")
             self.assertEqual((root / "opforge").read_bytes(), oracle)
 
     def test_generated_build_configuration_rejects_invalid_metadata_and_origin(self):
@@ -380,6 +394,7 @@ class HardwareCompletionTests(unittest.TestCase):
                 b"BINARY_MACRO_VIEW = 0\n"
                 b"ACQUIRE_MACRO_CANDIDATES = 0\n"
                 b"DEFER_MACRO_LINES = 2\n"
+                b"CHUNKED_CAPTURE = 0\n"
             )
             (root / row["staged_path"]).write_bytes(data)
             row["digest"] = runner.fnv(data)

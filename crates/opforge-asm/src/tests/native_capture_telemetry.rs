@@ -131,7 +131,11 @@ fn native_capture_telemetry_missing_gates_emit_zero_bytes() {
             .map(|(_, gate)| (*gate).to_string())
             .collect::<Vec<_>>();
         assert_eq!(
-            assemble_wrapper(SITES, false, &defines),
+            assemble_wrapper(
+                &format!("{SITES} .CAPTURE_CHUNK_SNAPSHOT MissingBoundary, MissingDirectory, MissingShift, MissingRowBytes, MissingStorageOffset, MissingTemp, MissingOrder, MissingCount, MissingStride\n"),
+                false,
+                &defines,
+            ),
             assemble_wrapper("", false, &defines),
             "incomplete gate mask {mask} must emit no capture imports or code"
         );

@@ -198,6 +198,25 @@ CAPTURE_SNAPSHOT	.macro boundary, table, count, temp, order, stride, arenaOffset
 .endif
 .endmacro
 
+; Chunk ownership uses the same snapshot schema: Regions counts allocations,
+; and Table describes their directory. Logical source regions are a separate
+; index accounted by MEMD. No per-record or per-token observer lookup is added.
+CAPTURE_CHUNK_SNAPSHOT	.macro boundary, directory, rowShift, rowBytes, storageOffset, temp, order, orderCount, orderStride
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_CAPTURE_TELEMETRY
+	move.w ccr, -(sp)
+	move.l d1, -(sp)
+	move.l .directory+capture_profile.BlockView.Used, d1
+	lsr.l #.rowShift, d1
+	.CAPTURE_SNAPSHOT .boundary, .directory, d1, .temp, .order, .rowBytes, .storageOffset, .orderCount, .orderStride
+	move.l (sp)+, d1
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+
 CAPTURE_REPORT	.macro dosbase
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY

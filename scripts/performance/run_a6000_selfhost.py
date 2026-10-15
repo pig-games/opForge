@@ -164,6 +164,7 @@ def load_bundle(bundle):
         b"BINARY_MACRO_VIEW = 0\n"
         b"ACQUIRE_MACRO_CANDIDATES = 0\n"
         b"DEFER_MACRO_LINES = 0\n"
+        b"CHUNKED_CAPTURE = 0\n"
     )
     generated_configuration_path = "experimental/build_configuration.i"
     generated_configuration_rows = [
@@ -177,10 +178,16 @@ def load_bundle(bundle):
         if (not isinstance(generated_configuration, dict)
                 or set(generated_configuration) != {"file", "symbol", "value"}
                 or generated_configuration.get("file") != "src/" + generated_configuration_path
-                or generated_configuration.get("symbol") != "DEFER_MACRO_PLANS"
+                or generated_configuration.get("symbol") not in ("DEFER_MACRO_PLANS", "CHUNKED_CAPTURE")
                 or type(generated_configuration.get("value")) is not int
                 or generated_configuration.get("value") != 1):
             raise ValueError("Unsupported generated source configuration")
+        if generated_configuration["symbol"] == "CHUNKED_CAPTURE":
+            generated_configuration_bytes = (
+                b"DEFER_MACRO_PLANS = 1\nBINARY_MACRO_VIEW = 1\n"
+                b"ACQUIRE_MACRO_CANDIDATES = 1\nDEFER_MACRO_LINES = 1\n"
+                b"CHUNKED_CAPTURE = 1\n"
+            )
         if len(generated_configuration_rows) != 1:
             raise ValueError("Require exactly one generated build configuration source origin")
         config_row = generated_configuration_rows[0]

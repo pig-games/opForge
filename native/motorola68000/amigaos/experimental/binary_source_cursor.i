@@ -21,11 +21,36 @@ Padding	.word ?
 .endstruct
 SOURCE_RESUME_BYTES = SourceResume.Padding+2
 
+.if CHUNKED_CAPTURE
+; A0=logical region,D1=global capture offset. D0/CCR=status,A0=borrowed
+; physical memory.Block,D1=local handle,D2=global chunk/region end. Others kept.
+; The directory descriptor expires on append; owned record bytes never move.
+captureView	.block
+	movem.l d3-d4/a1, -(sp)
+	move.l d1, d3
+	move.l capture.Region.End(a0), d4
+	lea CaptureStore, a0
+	jsr capture_store.resolve
+	bne.w done
+	movea.l a1, a0
+	addq.l #1, d1
+	add.l d3, d2
+	cmp.l d4, d2
+	bls.w done
+	move.l d4, d2
+done
+	movem.l (sp)+, d3-d4/a1
+	; Clamping changes CCR; the status remains the resolver's D0.
+	tst.l d0
+	rts
+	.bend  ; captureView
+.endif
+
 .if DEFER_MACRO_PLANS
 ; A0=session,D1=global capture offset. D0/CCR=status,A1=borrowed immutable
 ; record; other registers preserved. This lookup neither previews/binds names
 ; nor depends on the current include slice or expansion cursor.
-resolvePlanCapture .block
+resolvePlanCapture	.block
 	movem.l d1-d3/a0/a2, -(sp)
 	move.l d1, d3
 	bsr.w locateCapture
@@ -33,9 +58,14 @@ resolvePlanCapture .block
 	move.l capture.Region.End(a0), d2
 	cmp.l d2, d3
 	bhs.w bad
+.if CHUNKED_CAPTURE
+	bsr.w captureView
+	bne.w bad
+.else
 	sub.l capture.Region.Base(a0), d1
 	addq.l #1, d1
 	lea capture.Region.Arena(a0), a0
+.endif
 	jsr capture.resolve
 	bne.w bad
 	move.l capture.Record.Bytes(a1), d0
@@ -52,7 +82,7 @@ done
 	movem.l (sp)+, d1-d3/a0/a2
 	tst.l d0
 	rts
-	.bend ; resolvePlanCapture
+	.bend  ; resolvePlanCapture
 .endif
 
 ; A0=session,D0=0 view / 1 seek,D1=logical capture offset for seek.
@@ -112,11 +142,18 @@ physical
 	move.l d1, d6
 	bsr.w locateCapture
 	bne.w bad
+.if CHUNKED_CAPTURE
+	bsr.w captureView
+	bne.w bad
+	movea.l a0, a4
+	move.l d1, d5
+.else
 	sub.l capture.Region.Base(a0), d1
 	addq.l #1, d1
 	move.l d1, d5
 	lea capture.Region.Arena(a0), a4
 	movea.l a4, a0
+.endif
 	jsr capture.resolve
 	bne.w bad
 	move.l capture.Record.Bytes(a1), d7
@@ -194,10 +231,16 @@ next
 	move.l d1, SourceCursorState.Offset+SourceCursorData
 	bsr.w locateCapture
 	bne.w bad
+.if CHUNKED_CAPTURE
+	bsr.w captureView
+	bne.w bad
+	movea.l a0, a4
+.else
 	sub.l capture.Region.Base(a0), d1
 	addq.l #1, d1
 	lea capture.Region.Arena(a0), a4
 	movea.l a4, a0
+.endif
 	jsr capture.resolve
 	bne.w bad
 	move.l capture.Record.Bytes(a1), d7

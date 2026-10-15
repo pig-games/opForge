@@ -29,6 +29,9 @@ import capture_telemetry
 import run_a6000_selfhost as runner
 from run_fs_uae_selfhost_comparison import TEST, reproducibility_metadata
 
+CHUNKED_CAPTURE_EXPERIMENT = "OPFORGE_CHUNKED_CAPTURE"
+CHUNKED_BASELINE = ["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW",
+                    "OPFORGE_DEFERRED_MACRO_CANDIDATES", "OPFORGE_DEFERRED_MACRO_LINES"]
 CAPTURE_LIFETIME_EXPERIMENT = "OPFORGE_CAPTURE_LIFETIME_AUDIT"
 PACKING_EXPERIMENT = "OPFORGE_MACRO_PACKING_AUDIT"
 PACKING_BASELINE = ["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW",
@@ -36,6 +39,7 @@ PACKING_BASELINE = ["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW",
                     "OPFORGE_LAZY_AUDIT", "OPFORGE_LAZY_WORK"]
 PACKING_REFERENCE = "eager macro packing with prior plan experiments and shared inventory"
 EXPERIMENT_REFERENCES = {
+    CHUNKED_CAPTURE_EXPERIMENT: "whole-region capture storage with prior macro experiments",
     PACKING_EXPERIMENT: PACKING_REFERENCE,
     CAPTURE_LIFETIME_EXPERIMENT: "existing capture storage with prior plan experiments and shared inventory",
     "OPFORGE_DEFERRED_MACRO_LINES": "eager whole-line construction with deferred macro binding, binary macro view and deferred candidate acquisition",
@@ -129,6 +133,7 @@ def prepare(args):
     baseline_images = getattr(args, "baseline_images", None)
     experiment_define = getattr(args, "experiment_define", None)
     lifetime = experiment_define == CAPTURE_LIFETIME_EXPERIMENT
+    chunked = experiment_define == CHUNKED_CAPTURE_EXPERIMENT
     packing = experiment_define == PACKING_EXPERIMENT
     packing_period = getattr(args, "packing_sample_period", 64)
     packing_seed = getattr(args, "packing_phase_seed", 0)
@@ -183,9 +188,11 @@ def prepare(args):
         image_root = baseline_images if baseline_images and role == "reference" else args.images
         image = (image_root / image_name).read_bytes()
         defines = list(MEMORY_DEFINES) if memory else []
-        if lifetime and memory:
+        if (lifetime or chunked) and memory:
             defines.append("OPFORGE_CAPTURE_TELEMETRY")
-        if packing or lifetime:
+        if chunked:
+            defines.extend(CHUNKED_BASELINE)
+        elif packing or lifetime:
             defines.extend(PACKING_BASELINE)
         elif experiment_define == "OPFORGE_DEFERRED_MACRO_LINES":
             defines.extend(["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES"])
@@ -236,6 +243,7 @@ def prepare(args):
                              "macro_line_fixed_input_comparison": experiment_define == "OPFORGE_DEFERRED_MACRO_LINES",
                              "macro_packing_fixed_input_comparison": packing,
                              "capture_lifetime_fixed_input_comparison": lifetime,
+                             "chunked_capture_fixed_input_comparison": chunked,
                              "packing_sample_period": packing_period,
                              "packing_phase_seed": packing_seed,
                              "experiment_define": experiment_define,
@@ -285,6 +293,19 @@ def validate_shared_inventory_comparison(memory, label):
     for key in ("definitions", "consumer_relationships", "pool_used_bytes", "attributed_payload_bytes", "unattributed_pool_bytes"):
         if previous["template_inventory"][key] != current["template_inventory"][key]:
             raise ValueError(f"{label} observer changed template {key}")
+
+
+def validate_chunked_capture_comparison(memory):
+    reference, candidate = (memory[role]["capture_ownership"]["counters"]
+                            for role in ("reference", "audit"))
+    for section in ("construction", "construction_copy", "retained_composition", "preparation"):
+        if reference[section] != candidate[section]:
+            raise ValueError(f"Chunked capture changed identical-input {section} counters")
+    field = "semantic_replay_materialization_copy_bytes"
+    if reference["replay_copy"][field] != candidate["replay_copy"][field]:
+        raise ValueError("Chunked capture changed semantic replay materialization copy bytes")
+    if candidate["retained_growth"]["retained_grow_copy_used_bytes"] != 0:
+        raise ValueError("Chunked capture copied retained payload during growth")
 
 
 def validate_candidate_configuration(report, metadata):
@@ -351,6 +372,12 @@ def execute(args, cases):
                             row["deferred_lines"] = decode_deferred_lines(
                                 (receipt.parent / "assembly.stdout").read_text(), row["deferred_binding"])
 
+                    if row["metadata"].get("chunked_capture_fixed_input_comparison"):
+                        row["capture_ownership"] = capture_telemetry.decode_capture_telemetry(
+                            (receipt.parent / "assembly.stdout").read_text())["capture_summary"]
+                        if row["capture_ownership"] is None or row["capture_ownership"]["boundary_mask"] != 7:
+                            raise ValueError("Incomplete capture ownership report")
+
                     if (row["metadata"].get("capture_lifetime_fixed_input_comparison")
                             or row["metadata"].get("macro_packing_fixed_input_comparison")
                             or row["metadata"].get("work_attribution_comparison")
@@ -358,7 +385,8 @@ def execute(args, cases):
                                 and not row["metadata"].get("macro_binding_fixed_input_comparison")
                                 and not row["metadata"].get("macro_interface_fixed_input_comparison")
                                 and not row["metadata"].get("macro_candidate_fixed_input_comparison")
-                                and not row["metadata"].get("macro_line_fixed_input_comparison"))):
+                                and not row["metadata"].get("macro_line_fixed_input_comparison")
+                                and not row["metadata"].get("chunked_capture_fixed_input_comparison"))):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
                         if (row["metadata"].get("macro_packing_fixed_input_comparison")
@@ -436,6 +464,8 @@ def execute(args, cases):
         validate_shared_inventory_comparison(memory, "Capture lifetime")
         if memory["reference"]["capture_ownership"] != memory["audit"]["capture_ownership"]:
             raise ValueError("Capture lifetime observer changed existing capture ownership accounting")
+    if getattr(args, "experiment_define", None) == CHUNKED_CAPTURE_EXPERIMENT:
+        validate_chunked_capture_comparison(memory)
     baseline_name = "ordinary release"
     if getattr(args, "experiment_define", None):
         baseline_name = EXPERIMENT_REFERENCES.get(args.experiment_define, "eager macro services")
@@ -488,7 +518,7 @@ def main():
                         help="measure marginal attribution overhead: audit images versus work images")
     parser.add_argument("--baseline-images", type=Path,
                         help="with --work-attribution, compare saved work images against current work images")
-    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES", "OPFORGE_DEFERRED_MACRO_LINES", PACKING_EXPERIMENT, CAPTURE_LIFETIME_EXPERIMENT),
+    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES", "OPFORGE_DEFERRED_MACRO_LINES", PACKING_EXPERIMENT, CAPTURE_LIFETIME_EXPERIMENT, CHUNKED_CAPTURE_EXPERIMENT),
                         help="compare reference images with the selected preparation experiment or observer")
     parser.add_argument("--candidate-attribution", action="store_true", help="compare passive candidate attribution against baseline work images")
     parser.add_argument("--candidate-timing", action="store_true", help="sample candidate preparation only in the candidate memory image")

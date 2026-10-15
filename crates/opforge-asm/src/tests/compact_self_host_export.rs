@@ -131,10 +131,12 @@ fn export_bundle(failure_capture: bool) {
     let instrumented = std::env::var("OPFORGE_COMPACT_EXPORT_INSTRUMENTED").as_deref() == Ok("1");
     let deferred_macro =
         std::env::var("OPFORGE_COMPACT_EXPORT_DEFERRED_MACRO_PLANS").as_deref() == Ok("1");
+    let chunked_capture =
+        std::env::var("OPFORGE_COMPACT_EXPORT_CHUNKED_CAPTURE").as_deref() == Ok("1");
     // Configure the actual source inputs: native deliberately has no -D support.
     // Keep the repository defaults intact and expose the generated origin below.
     let original_source_root = source_root;
-    let source_root = if deferred_macro {
+    let source_root = if deferred_macro || chunked_capture {
         let configured = scratch.join("configured-source");
         assert!(
             !configured.starts_with(&original_source_root),
@@ -143,7 +145,11 @@ fn export_bundle(failure_capture: bool) {
         copy_source_tree(&original_source_root, &configured);
         fs::write(
             configured.join("experimental/build_configuration.i"),
-            "DEFER_MACRO_PLANS = 1\nBINARY_MACRO_VIEW = 0\nACQUIRE_MACRO_CANDIDATES = 0\nDEFER_MACRO_LINES = 0\n",
+            if chunked_capture {
+                "DEFER_MACRO_PLANS = 1\nBINARY_MACRO_VIEW = 1\nACQUIRE_MACRO_CANDIDATES = 1\nDEFER_MACRO_LINES = 1\nCHUNKED_CAPTURE = 1\n"
+            } else {
+                "DEFER_MACRO_PLANS = 1\nBINARY_MACRO_VIEW = 0\nACQUIRE_MACRO_CANDIDATES = 0\nDEFER_MACRO_LINES = 0\nCHUNKED_CAPTURE = 0\n"
+            },
         )
         .unwrap();
         configured
@@ -334,7 +340,9 @@ fn export_bundle(failure_capture: bool) {
                             "native",
                         )
                     };
-                if deferred_macro && logical == Path::new("experimental/build_configuration.i") {
+                if (deferred_macro || chunked_capture)
+                    && logical == Path::new("experimental/build_configuration.i")
+                {
                     origin = "generated_build_configuration";
                 }
                 assert!(logical
@@ -428,9 +436,9 @@ fn export_bundle(failure_capture: bool) {
         "manifest_version": 1,
         "kind": "compact-self-host-local-export",
         "source_root": original_source_root,
-        "source_configuration": deferred_macro.then_some(json!({
+        "source_configuration": (deferred_macro || chunked_capture).then_some(json!({
             "file": "src/experimental/build_configuration.i",
-            "symbol": "DEFER_MACRO_PLANS", "value": 1,
+            "symbol": if chunked_capture { "CHUNKED_CAPTURE" } else { "DEFER_MACRO_PLANS" }, "value": 1,
         })),
         "source_manifest_digest": opforge_self_host_package_digest(&manifest_bytes),
         "source_files": sources.len(),

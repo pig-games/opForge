@@ -7,6 +7,9 @@
 	.use experimental.amigaos.binary_frontend as frontend
 	.use experimental.amigaos.binary_statement_execution as statement_execution
 	.use experimental.amigaos.binary_capture as capture
+.if CHUNKED_CAPTURE
+	.use experimental.amigaos.binary_capture_store as capture_store
+.endif
 	.use experimental.amigaos.binary_configuration as configuration
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_scopes as scopes
@@ -125,6 +128,14 @@ File	.long ?
 	.endstruct
 SPAN_BYTES = graph.SPAN_BYTES
 CAPTURE_REGION_BYTES = capture.REGION_BYTES
+; Report physical capture ownership; zero telemetry emission in release builds.
+SOURCE_CAPTURE_SNAPSHOT	.macro boundary
+.if CHUNKED_CAPTURE
+	.CAPTURE_CHUNK_SNAPSHOT .boundary, CaptureStore+capture_store.State.Directory, capture_store.ROW_SHIFT, capture_store.ROW_BYTES, capture_store.Row.Storage, CaptureLine, CaptureOrder, CaptureOrderCount, SPAN_BYTES
+.else
+	.CAPTURE_SNAPSHOT .boundary, CaptureRegions, CaptureRegionCount, CaptureLine, CaptureOrder, CAPTURE_REGION_BYTES, capture.Region.Arena, CaptureOrderCount, SPAN_BYTES
+.endif
+.endmacro
 IO_SCRATCH_BYTES = IO_BYTES*(INCLUDE_DEPTH+1)+LINE_BYTES+RECORD_BYTES
 IncludeFrame	.struct
 Handle	.long ?
@@ -2012,6 +2023,9 @@ OrderedCount	.res long, 1
 GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4
 CaptureRegions	.res byte, memory.Block.Used+4
+.if CHUNKED_CAPTURE
+CaptureStore	.res byte, capture_store.STATE_BYTES
+.endif
 CaptureRegionCount	.res long, 1
 CaptureRegionCurrent	.res long, 1
 CaptureBytes	.res long, 1

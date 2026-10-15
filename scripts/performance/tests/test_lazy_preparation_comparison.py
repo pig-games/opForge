@@ -28,8 +28,8 @@ class LazyComparisonTests(unittest.TestCase):
                 continue
             memory = image["file"].endswith("memory.hunk")
             candidate = image["file"].startswith("deferred-")
-            image["defines"] = list(module.PACKING_BASELINE) + (module.MEMORY_DEFINES if memory else [])
-            if memory and experiment == module.CAPTURE_LIFETIME_EXPERIMENT:
+            image["defines"] = list(module.CHUNKED_BASELINE if experiment == module.CHUNKED_CAPTURE_EXPERIMENT else module.PACKING_BASELINE) + (module.MEMORY_DEFINES if memory else [])
+            if memory and experiment in (module.CAPTURE_LIFETIME_EXPERIMENT, module.CHUNKED_CAPTURE_EXPERIMENT):
                 image["defines"].append("OPFORGE_CAPTURE_TELEMETRY")
             if candidate:
                 image["defines"].append(experiment)
@@ -41,6 +41,49 @@ class LazyComparisonTests(unittest.TestCase):
                         image["defines"].append(f"OPFORGE_PACKING_PHASE_SEED={seed}")
         path.write_text(json.dumps(manifest))
         return args
+
+    def test_chunked_capture_compares_storage_with_matching_memory_telemetry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.observer_inputs(Path(directory), experiment=module.CHUNKED_CAPTURE_EXPERIMENT)
+            cases = [json.loads(path.read_text()) for path in module.prepare(args)]
+            for case in cases:
+                metadata, defines = case["metadata"], case["bootstrap_defines"]
+                self.assertTrue(metadata["chunked_capture_fixed_input_comparison"])
+                self.assertEqual(module.CHUNKED_CAPTURE_EXPERIMENT in defines, metadata["comparison_role"] == "audit")
+                self.assertEqual("OPFORGE_CAPTURE_TELEMETRY" in defines, metadata["measurement"] == "memory")
+                self.assertTrue(set(module.CHUNKED_BASELINE) <= set(defines))
+                self.assertFalse(set(defines) & {"OPFORGE_LAZY_AUDIT", "OPFORGE_LAZY_WORK", module.CAPTURE_LIFETIME_EXPERIMENT})
+            self.assertEqual(len({case["metadata"]["workload_sha256"] for case in cases}), 1)
+
+    def test_chunked_capture_requires_unchanged_payload_and_zero_growth_copy(self):
+        import copy
+        counters = {
+            "construction": {"constructed_records": 2, "retained_source_bytes": 8},
+            "construction_copy": {"construction_copy_bytes": 8},
+            "retained_composition": {"records": 2, "header_bytes": 112, "token_bytes": 40},
+            "preparation": {"lexeme_bytes": 8, "plan_bytes": 4, "padding_bytes": 0},
+            "replay_copy": {"semantic_replay_materialization_copy_bytes": 5, "global_grow_calls": 20},
+            "retained_growth": {"retained_grow_copy_used_bytes": 100},
+        }
+        reference = {"capture_ownership": {"counters": counters, "stages": {"replay": {"retained_region_count": 2}}}}
+        candidate = copy.deepcopy(reference)
+        candidate["capture_ownership"]["counters"]["retained_growth"]["retained_grow_copy_used_bytes"] = 0
+        candidate["capture_ownership"]["counters"]["replay_copy"]["global_grow_calls"] = 100
+        candidate["capture_ownership"]["stages"]["replay"]["retained_region_count"] = 17
+        memory = {"reference": reference, "audit": candidate}
+        module.validate_chunked_capture_comparison(memory)
+        for section, field in (("retained_composition", "records"),
+                               ("retained_composition", "token_bytes"),
+                               ("construction", "constructed_records"),
+                               ("construction_copy", "construction_copy_bytes"),
+                               ("preparation", "plan_bytes"),
+                               ("replay_copy", "semantic_replay_materialization_copy_bytes"),
+                               ("retained_growth", "retained_grow_copy_used_bytes")):
+            with self.subTest(section=section, field=field):
+                changed = copy.deepcopy(memory)
+                changed["audit"]["capture_ownership"]["counters"][section][field] += 1
+                with self.assertRaises(ValueError):
+                    module.validate_chunked_capture_comparison(changed)
 
     def test_packing_shares_inventory_and_samples_only_candidate_memory(self):
         with tempfile.TemporaryDirectory() as directory:

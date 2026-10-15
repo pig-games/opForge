@@ -1,10 +1,136 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: capture-storage/lifetime investigation measured and qualified on
-identical frozen input, 2026-10-15. Macro-body packing and writer name binding
-remain eager; their deferral is not implemented. Earlier first-use plan
-experiments remain opt-in. The existing path remains the reference, and no
-capture is retired early. Historical checkpoint details are in Git history.
+Status: chunked capture storage implementation is under qualification,
+2026-10-15. Further macro-only investigations are stopped. Earlier first-use
+plan experiments remain opt-in. The contiguous path remains the reference;
+no capture is retired early. Historical checkpoint details are in Git history.
+
+## Shared chunked capture storage
+
+Authorized 2026-10-15. Replace growing per-region capture buffers with a shared,
+append-only store. Preserve capture records, source identities, dense logical
+byte offsets, dependency ordering, declaration context and macro execution.
+A logical source region can cross chunks; a chunk can contain several regions.
+Records stay contiguous, with one physical view resolved per record. Sequential
+resolution caches a directory row; arbitrary offsets use binary search. No
+per-token indirection, original-text replay or CPU-specific selection is added.
+
+`OPFORGE_CHUNKED_CAPTURE` selects the source configuration `CHUNKED_CAPTURE=1`.
+Default builds retain the existing contiguous path. The store uses 32 KiB chunks;
+records larger than 4 KiB receive exact-size allocations (rounded to eight bytes).
+A dedicated allocation terminates the current shared chunk so physical rows keep
+ordered, nonoverlapping logical intervals. Descriptors may relocate when the small
+directory grows; capture bytes never move. The existing temporary record is still
+copied once into retained storage. Chunk append copies longs plus trailing bytes;
+the reference retains its existing byte-copy append. These are the combined
+storage change being compared, not independent optimization claims.
+
+The preceding audit observed 20,818,992 capture bytes in 28,274,688 bytes of
+capacity, with 28,023,496 additional bytes copied during arena growth. The
+hypothesis is to remove those growth copies and much of the unused capacity.
+Those prior figures include the old work audit; they are motivation, not the
+new comparison baseline. Packing depends on record sizes and dedicated-record
+frequency: no universal memory or runtime improvement is promised.
+
+Compare reference/candidate builds with the same four prior first-use macro
+switches on identical frozen input. Release images have no observers. Separate
+memory images share MEMD and capture telemetry. The capture snapshot's region
+count describes physical allocations and its table describes their directory;
+the chunked build's logical-region index remains included in MEMD totals. Actual
+allocation/free, construction/append copies and retained-growth work remain
+counted. Old contiguous-region lazy/lifetime observers are explicitly rejected
+with chunked storage instead of producing misleading reports.
+
+Acceptance target: at least 4 MB lower tracked peak heap and a repeatable runtime
+improvement, aiming for 5% or better. Require component boundary/oversized/cleanup
+checks, module/include/configuration and macro controls, fresh exact Rust output
+for every full comparison, and a separate full current-source self-host of the
+chunked embedded-package configuration. Reject semantic divergence or invalid
+accounting. Discuss a memory-only win or a material regression before promotion.
+
+### Matched full-input results
+
+The six fresh FS-UAE runs all complete with exit zero and exact equality to the
+live Rust 708,592-byte Hunk oracle. Frozen input: 198 files / 2,614,471 bytes,
+SHA-256 `0cde14ab0d79e6f10ca7cc33f44bb171045f950703e4f69380ed6102d29c13fb`.
+Native source fingerprint: `fnv1a64:19b56c3fcf127c3f`. The reference release remains
+byte-identical to the preceding whole-line experiment (`757,944` bytes).
+
+| Metric | Contiguous reference | Chunked | Change |
+|---|---:|---:|---:|
+| Mean release START→DONE host time | 109.196415 s | 107.667608 s | −1.528807 s (−1.40%) |
+| Tracked owned-heap peak | 39,506,264 B | 32,006,488 B | −7,499,776 B (−18.98%) |
+| Total allocated/freed capacities, each | 96,093,560 B | 60,718,968 B | −35,374,592 B (−36.81%) |
+| Retained capture used | 20,360,976 B | 20,360,976 B | unchanged |
+| Retained capture capacity | 27,963,392 B | 20,447,232 B | −7,516,160 B |
+| Retained capture slack | 7,602,416 B | 86,256 B | −7,516,160 B |
+| Capture growth copies | 27,708,880 B | 0 B | eliminated |
+| Release image file | 757,944 B | 758,436 B | +492 B |
+| Release linked reservation | 791,552 B | 792,040 B | +488 B |
+| Memory image linked reservation | 807,156 B | 807,692 B | +536 B |
+
+The first serial pair is reference 109.093781 s → chunked 107.473061 s
+(−1.49%); the reversed pair is chunked 107.862154 s → reference 109.299049 s
+(−1.31%). These are two pairs, not a confidence interval. Runtime improves
+modestly and misses the 5% aspiration; memory exceeds the 4 MB target. Keep the
+candidate opt-in pending discussion of promotion; no further optimization is
+silently folded into this result.
+
+Both memory runs end at zero tracked heap, with equal allocations/frees, no
+allocation failures and no profiling errors. Prepared live heap is 2,960,640 B
+and assembly live heap is 4,934,912 B in both. Constructor/input-copy/composition/
+preparation counters and semantic replay-copy bytes match exactly; only physical
+storage work changes. Chunked storage uses 624 allocations versus 164 logical
+regions. Its directory and retained logical-region index are included in MEMD.
+
+The profile is the existing expanded-memory A4000/68040 FS-UAE configuration,
+not A6000 hardware or evidence of the 2 MiB product target. Instrumented elapsed
+and phase times are diagnostic only. Frozen-input comparison is separate from
+current-source self-host qualification below.
+
+Evidence outside `target`: `/tmp/opforge-chunk-fixed-v1-20261015/plan.json`,
+`summary.json`, `results.json`, `capture-counter-validation.json` and case receipts;
+images `/tmp/opforge-chunk-images-v2-20261015/images.json`; preserved test binary
+`/tmp/opforge-chunk-tools-20261015/asm-tests`. The plan records source/package/
+image identities, emulator setup and execution order. The executed comparison
+script is preserved alongside the binary; post-run invariant validation uses the
+same memory receipts without rerunning native cases.
+
+### Current-source self-host and reproduction
+
+Current-source embedded-68020 chunked qualification is in progress. The first
+export stopped before native launch because three dependency filenames exceeded
+the classic 30-byte limit; only filenames/include references were shortened. The
+next fresh native run rejected a 41-value `.byte` punctuation table at the existing
+64-token acquisition limit. Reflowing that table into rows of at most 16 literal
+bytes preserves its data; this does not expand native line-capacity parity. No
+completed current-source self-host claim is made until its fresh result is recorded
+here. A subsequent run reached the unchanged package `.incbin` but failed at the
+shared prepared-stream capacity: request 2,097,159 B, used 2,096,903 B, capacity
+2,097,152 B (failure flag 64). The instrumented diagnostic ended with zero tracked
+heap, but neither failing run produced a guest completion marker; both were stopped
+and are localization evidence only. Diagnostic snapshots are outside `target` at
+`/tmp/opforge-chunk-current-triage-20261015/live-diagnostic`. Raising the stream
+bound is a separate supporting repair, not part of the measured chunk savings.
+
+The image builder is the ignored test
+`fs_uae_smoke::native_lazy_audit_probe::native_chunked_capture_save_images`, with
+`OPFORGE_DEFERRED_SAVE_DIR` outside `target` and `OPFORGE_DEFERRED_SAVE_PROBE=1`.
+Use `scripts/performance/run_lazy_preparation_comparison.py` with
+`--experiment-define OPFORGE_CHUNKED_CAPTURE`, the saved image directory and one
+frozen `--workload-case`; release and memory images have matching flags within
+their respective pairs. Its chunked invariant validator rejects altered record
+composition/preparation work and any claimed retained-growth copying.
+
+For a full current-source chunked self-build, use the existing ignored exporter
+`fs_uae_smoke::compact_self_host_export::export_compact_self_host_bundle` with
+`OPFORGE_COMPACT_EXPORT_DIR` outside `target`,
+`OPFORGE_COMPACT_EXPORT_CHUNKED_CAPTURE=1`,
+`OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`, and
+`OPFORGE_COMPACT_EXPORT_NATIVE=1`, plus the documented FS-UAE environment.
+The exporter configures both bootstrap and output sources with the four earlier
+macro features and `CHUNKED_CAPTURE=1`; the bundle loader validates that exact
+source configuration. Without the chunked setting the existing path remains.
 
 ## Capture storage and lifetimes
 
@@ -160,11 +286,11 @@ before any span completes; the shadow eligible total cannot be reported as a
 whole-run peak reduction. Earlier acquisition/initialization would need separate
 changes to lower that floor.
 
-The lower-risk next implementation candidate is compact capture-only token
-storage, with a preserved wide fallback and measured conversion cost against the
-unchanged path. Early release remains a separate candidate requiring explicit
+The audit now motivates the shared chunked-store experiment above. Compact
+capture-only tokens remain a separate representation candidate with a wide
+fallback and conversion cost to measure. Early release still requires explicit
 ownership of deferred recipe ranges, preview/seek cursors and suspended includes.
-Do not combine those changes in one performance comparison.
+Do not fold either change into the chunked-store comparison.
 
 ### Reproducing the capture audit
 
@@ -714,7 +840,7 @@ comparison is not a current-source fixed-point self-host claim.
 The [Rust view](../../crates/opforge-vm/src/binary_spelling_vm.rs) and
 [native producer](../../native/motorola68000/amigaos/prvm/prvm_binary_spelling.asm)
 share canonical bounds: 64 tokens, 129 atoms and 1,024 spelling bytes. The
-[native descriptor service](../../native/motorola68000/amigaos/prvm/prvm_binary_macro_descriptors.asm)
+[native descriptor service](../../native/motorola68000/amigaos/prvm/prvm_binary_macro_desc.asm)
 uses token structure; the fragment service scans the canonical atom payload in
 place. Native executors add no VM version dispatch. Invalid views have no
 published output; native reports invalid-view status with offset zero, while the

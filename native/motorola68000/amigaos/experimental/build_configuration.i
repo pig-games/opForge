@@ -1,6 +1,21 @@
 ; Source build configuration shared by the feature-owning modules.
 ; Rust command-line definitions select the same constant as a native source
 ; configuration. Generated experimental exports replace this include explicitly.
+.ifdef OPFORGE_CHUNKED_CAPTURE
+CHUNKED_CAPTURE = 1
+.else
+CHUNKED_CAPTURE = 0
+.endif
+.if CHUNKED_CAPTURE
+; These experimental observers scan a contiguous arena per logical region.
+; Reject that unsupported combination rather than publish misleading accounts.
+.ifdef OPFORGE_LAZY_AUDIT
+.error "chunked capture does not support the contiguous-region lazy observer"
+.endif
+.ifdef OPFORGE_CAPTURE_LIFETIME_AUDIT
+.error "chunked capture does not support the contiguous-region lifetime observer"
+.endif
+.endif
 .ifdef OPFORGE_DEFERRED_MACRO_CANDIDATES
 ACQUIRE_MACRO_CANDIDATES = 1
 .else

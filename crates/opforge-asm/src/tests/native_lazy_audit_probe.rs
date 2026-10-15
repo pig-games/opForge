@@ -335,6 +335,12 @@ fn native_capture_lifetime_save_images() {
     save_macro_experiment_images("OPFORGE_CAPTURE_LIFETIME_AUDIT");
 }
 
+#[test]
+#[ignore = "builds reference and chunked capture images outside target"]
+fn native_chunked_capture_save_images() {
+    save_macro_experiment_images("OPFORGE_CHUNKED_CAPTURE");
+}
+
 fn save_macro_experiment_images(experiment: &str) {
     let root = super::native_fragment_controls::root();
     let destination = PathBuf::from(
@@ -353,11 +359,13 @@ fn save_macro_experiment_images(experiment: &str) {
                     | "OPFORGE_DEFERRED_MACRO_LINES"
                     | "OPFORGE_MACRO_PACKING_AUDIT"
                     | "OPFORGE_CAPTURE_LIFETIME_AUDIT"
+                    | "OPFORGE_CHUNKED_CAPTURE"
             ),
         "the selected experiment does not support the component probe"
     );
     let packing = experiment == "OPFORGE_MACRO_PACKING_AUDIT";
     let capture_lifetime = experiment == "OPFORGE_CAPTURE_LIFETIME_AUDIT";
+    let chunked = experiment == "OPFORGE_CHUNKED_CAPTURE";
     let packing_period: u32 = std::env::var("OPFORGE_PACKING_SAVE_SAMPLE_PERIOD")
         .map(|value| {
             value
@@ -443,7 +451,14 @@ fn save_macro_experiment_images(experiment: &str) {
             )
             .unwrap()
         });
-    let baseline_defines: &[&str] = if packing || capture_lifetime {
+    let baseline_defines: &[&str] = if chunked {
+        &[
+            "OPFORGE_DEFERRED_MACRO_PLANS",
+            "OPFORGE_BINARY_MACRO_VIEW",
+            "OPFORGE_DEFERRED_MACRO_CANDIDATES",
+            "OPFORGE_DEFERRED_MACRO_LINES",
+        ]
+    } else if packing || capture_lifetime {
         &[
             "OPFORGE_DEFERRED_MACRO_PLANS",
             "OPFORGE_BINARY_MACRO_VIEW",
@@ -475,7 +490,7 @@ fn save_macro_experiment_images(experiment: &str) {
                 }
             }
             if memory {
-                if capture_lifetime {
+                if capture_lifetime || chunked {
                     defines.push("OPFORGE_CAPTURE_TELEMETRY");
                 }
                 defines.extend([
@@ -503,7 +518,13 @@ fn save_macro_experiment_images(experiment: &str) {
         .any(|name| name == "deferred-probe-memory.hunk")
     {
         let snapshot = dir.0.join("probe-source");
-        if capture_lifetime {
+        if chunked {
+            prepare_component_probe_source_for(
+                &source_root,
+                &snapshot,
+                "tests.amigaos.capture_store_probe",
+            );
+        } else if capture_lifetime {
             prepare_component_probe_source_for(
                 &source_root,
                 &snapshot,
@@ -522,20 +543,21 @@ fn save_macro_experiment_images(experiment: &str) {
         .unwrap();
         let mut defines = baseline_defines.to_vec();
         defines.push(experiment);
-        if capture_lifetime {
+        if capture_lifetime || chunked {
             defines.push("OPFORGE_CAPTURE_TELEMETRY");
         }
         if packing {
             defines.push("OPFORGE_PACKING_TIMING");
             defines.extend(packing_sampling_defines.iter().map(String::as_str));
         }
+        if !chunked {
+            defines.extend(["OPFORGE_LAZY_AUDIT", "OPFORGE_LAZY_WORK"]);
+        }
         for define in [
             "OPFORGE_DEBUG_CONTRACTS",
             "OPFORGE_MEMORY_TELEMETRY",
             "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
             "OPFORGE_PREPARATION_PROGRESS",
-            "OPFORGE_LAZY_AUDIT",
-            "OPFORGE_LAZY_WORK",
         ] {
             if !defines.contains(&define) {
                 defines.push(define);

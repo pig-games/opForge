@@ -2397,11 +2397,11 @@ captureGeneratedFragments	.block
 	.bend  ; captureGeneratedFragments
 
 captureFragmentRequest	.block
-	.include "binary_frontend_fragment_request.i"
+	.include "binary_frontend_fragment_req.i"
 	.bend  ; captureFragmentRequest
 .else
 captureFragments	.block
-	.include "binary_frontend_fragment_request.i"
+	.include "binary_frontend_fragment_req.i"
 	.bend  ; captureFragments
 .endif
 

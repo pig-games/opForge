@@ -8288,6 +8288,10 @@ mod native_symbol_buckets;
 mod native_full_selfhost_comparison;
 
 #[cfg(test)]
+#[path = "tests/native_preparation_benchmarks.rs"]
+mod native_preparation_benchmarks;
+
+#[cfg(test)]
 #[path = "tests/native_fragment_controls.rs"]
 mod native_fragment_controls;
 #[cfg(test)]

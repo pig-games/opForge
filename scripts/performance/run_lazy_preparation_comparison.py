@@ -63,6 +63,27 @@ def decode_deferred_binding(stdout, total_allocated_bytes):
             "recipe_bytes": recipe_bytes, "normal_plan_used": normal_plan_used}
 
 
+def decode_deferred_acquisition(stdout, binding):
+    rows = []
+    for line in stdout.splitlines():
+        prefix = DEFERRED_PHASE_PREFIX.match(line)
+        if prefix is None or int(prefix.group(1), 16) != 3302:
+            continue
+        match = DEFERRED_PROGRESS.fullmatch(line)
+        if match is None:
+            raise ValueError("Malformed deferred acquisition progress row")
+        _, created, bound, reserved, _live_heap = (int(value, 16) for value in match.groups())
+        if reserved != 0:
+            raise ValueError("Deferred acquisition reserved field is nonzero")
+        rows.append((created, bound))
+    if len(rows) != 1:
+        raise ValueError("Require exactly one deferred acquisition progress row")
+    created, bound = rows[0]
+    if bound > created or created > binding["created"] or bound > binding["bound"]:
+        raise ValueError("Deferred acquisition counts exceed binding bounds")
+    return {"created": created, "bound": bound}
+
+
 def read_checked(root, row):
     path = Path(row["path"])
     if path.is_absolute() or any(part in ("..", ".") for part in path.parts):
@@ -132,6 +153,8 @@ def prepare(args):
         image_root = baseline_images if baseline_images and role == "reference" else args.images
         image = (image_root / image_name).read_bytes()
         defines = list(MEMORY_DEFINES) if memory else []
+        if experiment_define == "OPFORGE_DEFERRED_MACRO_CANDIDATES":
+            defines.extend(["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW"])
         if (role == "audit" and not experiment_define) or work_attribution:
             defines.append("OPFORGE_LAZY_AUDIT")
         if work_attribution and (role == "audit" or baseline_images):
@@ -167,7 +190,11 @@ def prepare(args):
                              "work_observer_revision_comparison": baseline_images is not None,
                              "macro_binding_fixed_input_comparison": experiment_define == "OPFORGE_DEFERRED_MACRO_PLANS",
                              "macro_interface_fixed_input_comparison": experiment_define == "OPFORGE_BINARY_MACRO_VIEW",
+                             "macro_candidate_fixed_input_comparison": experiment_define == "OPFORGE_DEFERRED_MACRO_CANDIDATES",
                              "experiment_define": experiment_define,
+                             "reference_config": ("eager candidate acquisition with deferred macro binding and binary macro view"
+                                                  if experiment_define == "OPFORGE_DEFERRED_MACRO_CANDIDATES"
+                                                  else "eager macro services" if experiment_define else "ordinary release"),
                              "frozen_workload_case": str(args.workload_case),
                              "bootstrap_source_fnv1a64": built.get("native_source_fnv1a64", manifest.get("native_source_fnv1a64")),
                              "memory_profile": os.environ.get("OPFORGE_FS_UAE_MEMORY_PROFILE", "existing")}}
@@ -236,16 +263,22 @@ def execute(args, cases):
                 try:
                     row["memory"] = memory_telemetry.decode_memory_telemetry((receipt.parent / "memory.bin").read_bytes())
                     row["success"] = row["success"] and not row["memory"]["diagnostics"]
-                    if (row["metadata"].get("macro_binding_fixed_input_comparison")
+                    if ((row["metadata"].get("macro_binding_fixed_input_comparison")
+                             or row["metadata"].get("macro_candidate_fixed_input_comparison"))
                             and row["metadata"]["comparison_role"] == "audit"):
                         row["deferred_binding"] = decode_deferred_binding(
                             (receipt.parent / "assembly.stdout").read_text(),
                             row["memory"]["total_allocated_bytes"],
                         )
+                        if row["metadata"].get("macro_candidate_fixed_input_comparison"):
+                            row["deferred_acquisition"] = decode_deferred_acquisition(
+                                (receipt.parent / "assembly.stdout").read_text(), row["deferred_binding"])
+
                     if (row["metadata"].get("work_attribution_comparison")
                             or (row["metadata"]["comparison_role"] == "audit"
                                 and not row["metadata"].get("macro_binding_fixed_input_comparison")
-                                and not row["metadata"].get("macro_interface_fixed_input_comparison"))):
+                                and not row["metadata"].get("macro_interface_fixed_input_comparison")
+                                and not row["metadata"].get("macro_candidate_fixed_input_comparison"))):
                         row["audit"] = lazy_preparation_audit.decode((receipt.parent / "assembly.stdout").read_text())
                         row["success"] = row["success"] and row["audit"]["observer_complete"]
                         if (row["metadata"].get("candidate_attribution_comparison")
@@ -295,7 +328,9 @@ def execute(args, cases):
             raise ValueError("Observer revision changed global work totals on identical input")
     baseline_name = "ordinary release"
     if getattr(args, "experiment_define", None):
-        baseline_name = "eager macro services"
+        baseline_name = ("eager candidate acquisition with deferred macro binding and binary macro view"
+                         if args.experiment_define == "OPFORGE_DEFERRED_MACRO_CANDIDATES"
+                         else "eager macro services")
     if getattr(args, "work_attribution", False):
         baseline_name = "L1 audit"
     if getattr(args, "baseline_images", None):
@@ -311,6 +346,7 @@ def execute(args, cases):
                "audit": memory["audit"].get("audit"),
                "baseline_audit": memory["reference"].get("audit"),
                "deferred_binding": memory["audit"].get("deferred_binding"),
+               "deferred_acquisition": memory["audit"].get("deferred_acquisition"),
                "candidate_attribution": memory["audit"].get("candidate_attribution"),
                "baseline": baseline_name,
                "evidence_limit": ("fixed frozen input; instrumentation times are diagnostic; "
@@ -334,7 +370,7 @@ def main():
                         help="measure marginal attribution overhead: audit images versus work images")
     parser.add_argument("--baseline-images", type=Path,
                         help="with --work-attribution, compare saved work images against current work images")
-    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW"),
+    parser.add_argument("--experiment-define", choices=("OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW", "OPFORGE_DEFERRED_MACRO_CANDIDATES"),
                         help="compare eager reference images with the selected macro experiment")
     parser.add_argument("--candidate-attribution", action="store_true", help="compare passive candidate attribution against baseline work images")
     parser.add_argument("--candidate-timing", action="store_true", help="sample candidate preparation only in the candidate memory image")

@@ -25,7 +25,10 @@ cargo test -p asm external_fs_uae_hunk_smoke -- --nocapture --test-threads=1
 Set these values for the actual host; do not assume the example paths exist
 elsewhere. Broader filters such as `external_fs_uae_` are deliberate qualification
 choices. Keep environment settings attached to the test process and serialize
-emulator execution with `--test-threads=1`.
+emulator execution with `--test-threads=1`. The coordinator lock is local to
+one host process: also serialize separate test-binary or runner invocations.
+Concurrent processes can interrupt each other's emulator; interrupted batches
+provide no qualification or timing evidence and must be rerun serially.
 
 ## Inspecting failures
 

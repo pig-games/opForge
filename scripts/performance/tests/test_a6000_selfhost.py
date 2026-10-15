@@ -308,7 +308,11 @@ class HardwareCompletionTests(unittest.TestCase):
         original.parent.mkdir(parents=True)
         staged.parent.mkdir(parents=True)
         original.write_bytes(b"")
-        data = b"DEFER_MACRO_PLANS = 1\n"
+        data = (
+            b"DEFER_MACRO_PLANS = 1\n"
+            b"BINARY_MACRO_VIEW = 0\n"
+            b"ACQUIRE_MACRO_CANDIDATES = 0\n"
+        )
         staged.write_bytes(data)
         manifest = json.loads((root / "manifest.json").read_text())
         manifest["source_mapping"].append({
@@ -333,7 +337,9 @@ class HardwareCompletionTests(unittest.TestCase):
             self.assertEqual(manifest["release_defines"], [])
             self.assertEqual(manifest["bootstrap_defines"], [])
             self.assertEqual(files["src/experimental/build_configuration.i"],
-                             b"DEFER_MACRO_PLANS = 1\n")
+                             b"DEFER_MACRO_PLANS = 1\n"
+                             b"BINARY_MACRO_VIEW = 0\n"
+                             b"ACQUIRE_MACRO_CANDIDATES = 0\n")
             self.assertEqual((root / "opforge").read_bytes(), oracle)
 
     def test_generated_build_configuration_rejects_invalid_metadata_and_origin(self):
@@ -367,7 +373,11 @@ class HardwareCompletionTests(unittest.TestCase):
             self.generated_configuration_bundle(root)
             manifest = json.loads((root / "manifest.json").read_text())
             row = manifest["source_mapping"][-1]
-            data = b"DEFER_MACRO_PLANS = 2\n"
+            data = (
+                b"DEFER_MACRO_PLANS = 2\n"
+                b"BINARY_MACRO_VIEW = 0\n"
+                b"ACQUIRE_MACRO_CANDIDATES = 0\n"
+            )
             (root / row["staged_path"]).write_bytes(data)
             row["digest"] = runner.fnv(data)
             row["bytes"] = len(data)

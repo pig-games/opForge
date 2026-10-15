@@ -49,6 +49,47 @@ fn controls() -> Vec<Control> {
         files: vec![],
         expected: Some(b"1+2\x001 + 2\x001\t+\t2\0"),
     });
+    controls.push(Control {
+        name: "unused-selected-nested-call",
+        cpu: "68020",
+        source: concat!(
+            ".module main\n.cpu 68020\n",
+            "INNER .macro value=3\n.byte .value\n.endmacro\n",
+            "OUTER .macro\n.INNER\n.INNER 5\n.endmacro\n",
+            ".byte 7\n.endmodule\n",
+        )
+        .into(),
+        files: vec![],
+        expected: Some(&[7]),
+    });
+    controls.push(Control {
+        name: "selected-nested-call-first-use-and-reuse",
+        cpu: "68020",
+        source: concat!(
+            ".module main\n.cpu 68020\n",
+            "INNER .macro value=3\n.byte .value\n.endmacro\n",
+            "OUTER .macro\n.INNER\n.INNER 5\n.endmacro\n",
+            ".OUTER\n.OUTER\n.endmodule\n",
+        )
+        .into(),
+        files: vec![],
+        expected: Some(&[3, 5, 3, 5]),
+    });
+    controls.push(Control {
+        name: "nested-body-caller-context-defaults-and-trivia",
+        cpu: "68020",
+        source: concat!(
+            ".module main\n.cpu 68020\nvalue .const 7\n",
+            "TEXT .macro argument=3\n.byte value,.argument\n.byte \"@1\",0\n.endmacro\n",
+            "OUTER .macro argument=5\n.TEXT .argument\n.TEXT 1\t+\t2\n.endmacro\n",
+            ".namespace caller\nvalue .const 18\n.OUTER\n.OUTER 6\n.endnamespace\n.endmodule\n",
+        )
+        .into(),
+        files: vec![],
+        // Ordinary value names resolve in the expansion namespace. Keep the
+        // caller shadow in the oracle rather than assuming early value binding.
+        expected: Some(b"\x12\x055\0\x12\x031\t+\t2\0\x12\x066\0\x12\x031\t+\t2\0"),
+    });
     for cpu in ["68020", "6502"] {
         controls.push(Control {
             name: "existing-macro-language-matrix",
@@ -205,6 +246,24 @@ fn run_prebuilt_controls(mut controls: Vec<Control>) {
                 }
             }
             if variable == "OPFORGE_DEFERRED_IMAGE"
+                && std::env::var("OPFORGE_DEFERRED_CHECK_ACQUISITION_STATS").as_deref() == Ok("1")
+            {
+                let rows = super::native_lazy_audit_report::rows(&run.stdout);
+                let [created, bound, reserved] = rows[&3302];
+                let [plans_created, plans_bound, _] = rows[&3300];
+                assert_eq!(reserved, 0);
+                assert!(bound <= created && created <= plans_created && bound <= plans_bound);
+                match control.name {
+                    "unused-selected-nested-call" => {
+                        assert_eq!([created, bound, reserved], [2, 0, 0])
+                    }
+                    "selected-nested-call-first-use-and-reuse" => {
+                        assert_eq!([created, bound, reserved], [2, 2, 0])
+                    }
+                    _ => {}
+                }
+            }
+            if variable == "OPFORGE_DEFERRED_IMAGE"
                 && std::env::var("OPFORGE_DEFERRED_CHECK_STATS").as_deref() == Ok("1")
             {
                 let rows = super::native_lazy_audit_report::rows(&run.stdout);
@@ -225,6 +284,82 @@ fn run_prebuilt_controls(mut controls: Vec<Control>) {
             assert_eq!(
                 unused, repeated,
                 "invocations do not recapture declaration recipes"
+            );
+        }
+    }
+    assert!(attempted > 0, "set a prebuilt eager/deferred image");
+}
+
+// Rust permits an unused malformed nested call, but rejects it on first use.
+// Existing eager native acquisition rejects both states. Preserve that native
+// behavior in the candidate, while recording unused acceptance as a known
+// Rust/native non-equivalence rather than claiming positive artifact parity.
+// Each native failure still requires fresh completion and a diagnostic.
+const INVALID_UNUSED_NESTED_CALL: &str = concat!(
+    ".module main\n.cpu 68020\n",
+    "INNER .macro left,right\n.byte .left,.right\n.endmacro\n",
+    "UNUSED .macro\n.INNER(1,2\n.endmacro\n.byte 7\n.endmodule\n",
+);
+
+#[test]
+fn native_deferred_macro_invalid_nested_call_rust_oracle() {
+    let dir = scratch();
+    assert_eq!(oracle(&dir.0, INVALID_UNUSED_NESTED_CALL).unwrap(), [7]);
+    let selected =
+        INVALID_UNUSED_NESTED_CALL.replace(".byte 7\n.endmodule", ".byte 7\n.UNUSED\n.endmodule");
+    assert!(oracle(&dir.0, &selected).is_err());
+}
+
+#[test]
+#[ignore = "requires prebuilt macro experiment images and fresh FS-UAE"]
+fn native_deferred_macro_invalid_nested_call_prebuilt_fs_uae() {
+    let selected =
+        INVALID_UNUSED_NESTED_CALL.replace(".byte 7\n.endmodule", ".byte 7\n.UNUSED\n.endmodule");
+    let root = super::native_fragment_controls::root();
+    let cases: Vec<_> = [
+        (
+            "unused-invalid-selected-nested-call",
+            INVALID_UNUSED_NESTED_CALL,
+        ),
+        ("invoked-invalid-selected-nested-call", selected.as_str()),
+    ]
+    .into_iter()
+    .map(|(name, source)| OpforgeNativeCliParityCase {
+        name,
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("Work:entry.asm --bin Work:out.bin"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
+    })
+    .collect();
+    let mut attempted = 0;
+    for variable in ["OPFORGE_DEFERRED_REFERENCE_IMAGE", "OPFORGE_DEFERRED_IMAGE"] {
+        let Some(path) = std::env::var_os(variable) else {
+            continue;
+        };
+        attempted += 1;
+        let image = fs::read(path).unwrap();
+        let results = run_prebuilt_compact_cli_breadth_from_env(&root, &cases, &image, 4).unwrap();
+        assert_eq!(results.len(), cases.len());
+        for (case, result) in cases.iter().zip(results) {
+            assert!(
+                result.error.is_none(),
+                "{variable} {}: {:?}",
+                case.name,
+                result.error
+            );
+            let run = result
+                .run
+                .as_ref()
+                .expect("fresh native failure completion");
+            assert!(
+                run.protocol_completed && run.exit_code.is_some_and(|exit| exit != 0),
+                "{variable} {}: {}",
+                case.name,
+                run.stdout
             );
         }
     }

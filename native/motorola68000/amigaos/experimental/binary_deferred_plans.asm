@@ -6,12 +6,17 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_macro_plans as plans
 	.use experimental.amigaos.binary_capture as capture
+	.include "build_configuration.i"
 	.include "deferred_plan_telemetry.i"
 	.include "lazy_work.i"
 	.pub
 TAG = $80000000
 HANDLE_MASK = $7fffffff
 ARENA_LIMIT = $7ffffffe
+.if ACQUIRE_MACRO_CANDIDATES
+ACQUIRE_CALL = 1
+ACQUIRE_TOKEN_LIMIT = 64
+.endif
 State	.struct
 Block	.res memory.Block.Used+4
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -21,6 +26,10 @@ Created	.long ?
 Bound	.long ?
 Hits	.long ?
 StoredBytes	.long ?
+.ifdef OPFORGE_DEFERRED_MACRO_CANDIDATES
+AcquiredCreated	.long ?
+AcquiredBound	.long ?
+.endif
 .endif
 .endif
 .endif
@@ -28,7 +37,11 @@ StoredBytes	.long ?
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
+.if ACQUIRE_MACRO_CANDIDATES
+STATE_BYTES = State.AcquiredBound+4
+.else
 STATE_BYTES = State.StoredBytes+4
+.endif
 .else
 STATE_BYTES = memory.Block.Used+4
 .endif
@@ -65,8 +78,13 @@ Plans	.long ?
 Handle	.long ?
 Context	.long ?
 Resolve	.long ?
+Acquire	.res ACQUIRE_MACRO_CANDIDATES*4
 .endstruct
+.if ACQUIRE_MACRO_CANDIDATES
+REALIZE_FRAME_BYTES = RealizeFrame.Acquire+4
+.else
 REALIZE_FRAME_BYTES = RealizeFrame.Resolve+4
+.endif
 	.section code, kind=code
 ; A0=zero-initialized State or existing owner. Release/reset all recipes.
 ; D0/CCR=zero; other registers preserved.
@@ -80,6 +98,26 @@ begin	.block
 finish	.block
 	bra.w begin
 	.bend  ; finish
+
+.if ACQUIRE_MACRO_CANDIDATES
+; A0=CreateFrame with caller-validated declaration map of TokenCount+1 words.
+; Handle=0, IncludeRecipes=1, TokenCount<=64. The caller bounds the map.
+; Save numeric acquisition inputs only; source is unused. D0/CCR=status,
+; D1=tagged handle or zero; all other registers preserved.
+createAcquired	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	tst.l CreateFrame.Handle(a6)
+	bne.w create.bad
+	cmpi.w #1, CreateFrame.IncludeRecipes(a6)
+	bne.w create.bad
+	move.l CreateFrame.TokenCount(a6), d7
+	cmpi.l #ACQUIRE_TOKEN_LIMIT, d7
+	bhi.w create.bad
+	moveq #ACQUIRE_CALL, d4
+	bra.w create.store
+	.bend  ; createAcquired
+.endif
 
 ; A0=CreateFrame. Validate selected source spans and save its declaration map.
 ; D0/CCR=status,D1=tagged handle or zero. Other registers preserved.
@@ -103,6 +141,10 @@ create	.block
 	adda.w #plans.BIND_FRAME_BYTES, sp
 	tst.l d0
 	bne.w bad
+.if ACQUIRE_MACRO_CANDIDATES
+	moveq #0, d4
+store
+.endif
 	movea.l CreateFrame.Arena(a6), a4
 	move.l memory.Block.Used(a4), d5
 	move.l d7, d6
@@ -123,7 +165,11 @@ create	.block
 	move.l CreateFrame.Handle(a6), Entry.Plan(a3)
 	move.l d7, Entry.Count(a3)
 	move.w CreateFrame.IncludeRecipes(a6), Entry.Recipes(a3)
+.if ACQUIRE_MACRO_CANDIDATES
+	move.w d4, Entry.Reserved(a3)
+.else
 	clr.w Entry.Reserved(a3)
+.endif
 	clr.l Entry.Cache(a3)
 	lea Entry.Map(a3), a1
 	movea.l CreateFrame.PackedMap(a6), a0
@@ -132,6 +178,7 @@ copyMap
 	dbra d7, copyMap
 	move.l d6, memory.Block.Used(a4)
 	.DEFERRED_COUNTER a4, State.Created, #1
+	.DEFERRED_ACQUISITION_COUNTER a4, State.AcquiredCreated, d4
 	sub.l d5, d6
 	.DEFERRED_COUNTER a4, State.StoredBytes, d6
 	move.l d5, d1
@@ -150,6 +197,10 @@ done
 
 ; A0=RealizeFrame. Resolve callback: A0=Context,D1=global capture offset;
 ; D0=status,A1=borrowed validated capture.Record; all other registers preserved.
+; Acquire callback (experimental): A0=Context,A1=borrowed Entry.Map,
+; D1=global capture offset,D2=TokenCount; D0=status,D1=normal plan handle.
+; It preserves every other register, owns the destination session plan arena,
+; and must not mutate the deferred arena. The map contains Count+1 u16 words.
 ; Cache only a successfully copied normal plan. D0/CCR=status,D1=normal handle;
 ; others preserved. Borrowed views never survive this call or arena mutation.
 realize	.block
@@ -180,8 +231,25 @@ realize	.block
 	addi.l #ENTRY_BYTES, d0
 	cmp.l d2, d0
 	bhi.w bad
+.if ACQUIRE_MACRO_CANDIDATES
+	move.w Entry.Reserved(a3), d0
+	beq.w validTag
+	cmpi.w #ACQUIRE_CALL, d0
+	bne.w bad
+	cmpi.l #ACQUIRE_TOKEN_LIMIT, d7
+	bhi.w bad
+	tst.l Entry.Plan(a3)
+	bne.w bad
+	cmpi.w #1, Entry.Recipes(a3)
+	bne.w bad
+validTag
+.endif
 	move.l Entry.Cache(a3), d1
 	beq.w uncached
+.if ACQUIRE_MACRO_CANDIDATES
+	tst.l d1
+	bmi.w bad
+.endif
 	.DEFERRED_COUNTER a4, State.Hits, #1
 	moveq #0, d0
 	bra.w done
@@ -194,6 +262,10 @@ uncached
 	cmp.l memory.Block.Pointer(a2), d0
 	beq.w bad
 distinctOwners
+.if ACQUIRE_MACRO_CANDIDATES
+	cmpi.w #ACQUIRE_CALL, Entry.Reserved(a3)
+	beq.w acquire
+.endif
 	move.l RealizeFrame.Resolve(a6), d0
 	beq.w bad
 	movea.l d0, a5
@@ -224,6 +296,11 @@ distinctOwners
 	adda.w #memory.Block.Used+4+plans.BIND_FRAME_BYTES, sp
 	tst.l d0
 	bne.w bad
+.if ACQUIRE_MACRO_CANDIDATES
+publish
+	tst.l d1
+	beq.w bad
+.endif
 	tst.l d1
 	bmi.w bad
 	movea.l memory.Block.Pointer(a4), a3
@@ -232,6 +309,21 @@ distinctOwners
 	.DEFERRED_COUNTER a4, State.Bound, #1
 	moveq #0, d0
 	bra.w done
+.if ACQUIRE_MACRO_CANDIDATES
+acquire
+	move.l RealizeFrame.Acquire(a6), d0
+	beq.w bad
+	movea.l d0, a5
+	movea.l RealizeFrame.Context(a6), a0
+	lea Entry.Map(a3), a1
+	move.l Entry.Capture(a3), d1
+	move.l d7, d2
+	jsr (a5)
+	tst.l d0
+	bne.w bad
+	.DEFERRED_COUNTER a4, State.AcquiredBound, #1
+	bra.w publish
+.endif
 bad
 	moveq #0, d1
 	moveq #1, d0
@@ -259,5 +351,22 @@ getStats	.block
 .endif
 	rts
 	.bend  ; getStats
+.if ACQUIRE_MACRO_CANDIDATES
+; A0=State. D1/D2=acquisition recipes created/successfully realized.
+; Other registers preserved; CCR unspecified. Ordinary builds return zeros.
+getAcquisitionStats	.block
+	moveq #0, d1
+	moveq #0, d2
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.l State.AcquiredCreated(a0), d1
+	move.l State.AcquiredBound(a0), d2
+.endif
+.endif
+.endif
+	rts
+	.bend  ; getAcquisitionStats
+.endif
 	.endsection
 	.endmodule

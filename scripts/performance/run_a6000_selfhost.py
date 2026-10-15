@@ -159,7 +159,11 @@ def load_bundle(bundle):
     origins = {}
     mapped_paths = set()
     generated_configuration = manifest.get("source_configuration")
-    generated_configuration_bytes = b"DEFER_MACRO_PLANS = 1\n"
+    generated_configuration_bytes = (
+        b"DEFER_MACRO_PLANS = 1\n"
+        b"BINARY_MACRO_VIEW = 0\n"
+        b"ACQUIRE_MACRO_CANDIDATES = 0\n"
+    )
     generated_configuration_path = "experimental/build_configuration.i"
     generated_configuration_rows = [
         row for row in manifest["source_mapping"]

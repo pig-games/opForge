@@ -6,7 +6,7 @@ DEFER_BLOCK_BYTES = memory.Block.Used+4
 ; A6=scratch. Inspect the same immutable VM recipe before deferred publication;
 ; numeric suffix selection needs spans, never a newly copied descriptor.
 ; D0=RECIPE_* status,A1=rows,D1=count,D2=spelling base; other registers kept.
-capturedLineRecipes .block
+capturedLineRecipes	.block
 	movem.l d3/a0, -(sp)
 	movea.l CAPTURE_RECORD(a6), a1
 	move.l a1, d0
@@ -30,12 +30,12 @@ done
 	movem.l (sp)+, d3/a0
 	tst.l d0
 	rts
-	.bend ; capturedLineRecipes
+	.bend  ; capturedLineRecipes
 
 ; A5=session,A6=scratch,D4=candidate role. D0=status or DEFER_EAGER,
 ; D1=tagged recipe on success. Other registers preserved. Physical/generated
 ; input without an immutable capture owner retains the eager implementation.
-deferCapturedPlan .block
+deferCapturedPlan	.block
 	movem.l d2-d7/a0-a4, -(sp)
 	tst.l Frame.CaptureResolve(a5)
 	beq.w eager
@@ -96,11 +96,11 @@ done
 	movem.l (sp)+, d2-d7/a0-a4
 	tst.l d0
 	rts
-	.bend ; deferCapturedPlan
+	.bend  ; deferCapturedPlan
 
 ; A0=session,D1=tagged recipe. D0/CCR=status,D1=normal plan handle;
 ; other registers preserved. The callback resolves a fresh immutable view.
-bindDeferred .block
+bindDeferred	.block
 	movem.l a0-a2, -(sp)
 	movea.l a0, a2
 	move.l a6, -(sp)
@@ -118,17 +118,20 @@ bindDeferred .block
 	move.l d1, deferred.RealizeFrame.Handle(a0)
 	move.l a2, deferred.RealizeFrame.Context(a0)
 	move.l Frame.CaptureResolve(a2), deferred.RealizeFrame.Resolve(a0)
+	.if ACQUIRE_MACRO_CANDIDATES
+	move.l #acquireDeferred, deferred.RealizeFrame.Acquire(a0)
+.endif
 	jsr deferred.realize
 	adda.w #deferred.REALIZE_FRAME_BYTES, sp
 	movem.l (sp)+, a0-a2
 	tst.l d0
 	rts
-	.bend ; bindDeferred
+	.bend  ; bindDeferred
 
 	.pub
 ; A0=session. D1-D4=created/bound/cache hits/recipe bytes,D5=normal plan Used.
 ; Other registers preserved; CCR unspecified. Only gated reporting calls this.
-deferredStats .block
+deferredStats	.block
 	move.l a0, -(sp)
 	movea.l Frame.Scratch(a0), a0
 	move.l MACRO_PLANS+memory.Block.Used(a0), d5
@@ -136,6 +139,18 @@ deferredStats .block
 	jsr deferred.getStats
 	movea.l (sp)+, a0
 	rts
-	.bend ; deferredStats
+	.bend  ; deferredStats
+	.if ACQUIRE_MACRO_CANDIDATES
+; A0=session. D1/D2=created/acquired first-use call recipes; other regs kept.
+; CCR unspecified. Reporting is separately gated by the existing memory profile.
+acquisitionStats	.block
+	move.l a0, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	adda.l #TEMPLATE_STATE+templates.DEFERRED, a0
+	jsr deferred.getAcquisitionStats
+	movea.l (sp)+, a0
+	rts
+	.bend  ; acquisitionStats
+.endif
 	.priv
 .endif

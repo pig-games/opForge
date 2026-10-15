@@ -1,5 +1,5 @@
 ; Deferred-plan owner counters; ordinary builds emit no storage or updates.
-DEFERRED_COUNTER .macro state, field, amount
+DEFERRED_COUNTER	.macro state, field, amount
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
@@ -13,7 +13,7 @@ DEFERRED_COUNTER .macro state, field, amount
 .endif
 .endif
 .endmacro
-DEFERRED_CLEAR .macro state
+DEFERRED_CLEAR	.macro state
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
@@ -22,7 +22,28 @@ DEFERRED_CLEAR .macro state
 	clr.l State.Bound(.state)
 	clr.l State.Hits(.state)
 	clr.l State.StoredBytes(.state)
+.ifdef OPFORGE_DEFERRED_MACRO_CANDIDATES
+	clr.l State.AcquiredCreated(.state)
+	clr.l State.AcquiredBound(.state)
+.endif
 	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+; Count only acquisition recipes; preserve flags across tag selection too.
+DEFERRED_ACQUISITION_COUNTER	.macro state, field, tag
+.ifdef OPFORGE_DEFERRED_MACRO_CANDIDATES
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	cmpi.w #ACQUIRE_CALL, .tag
+	bne.w done
+	.DEFERRED_COUNTER .state, .field, #1
+done
+	move.w (sp)+, ccr
+.endif
 .endif
 .endif
 .endif

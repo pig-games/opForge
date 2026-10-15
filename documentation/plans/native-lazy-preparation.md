@@ -1,11 +1,145 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: shared binary token/spelling interface experiment is measured and
-qualified for the frozen workload; candidate acquisition attribution is measured
-and qualified; opt-in first-use
-macro-body plan binding is measured and natively qualified, 2026-10-15. The preceding publication/lifetime, whole-unit work and template
-inventories are measured. The ordinary eager path remains the reference;
-no capture is retired early. Historical checkpoint details are in Git history.
+Status: opt-in first-use macro call-plan construction is measured and natively
+qualified for the frozen workload, 2026-10-15. Earlier binary interface and
+first-use binding foundations remain available. Ordinary eager execution remains
+the default reference. No capture is retired early. Historical checkpoint details
+are in Git history.
+
+## First-use macro call-candidate construction experiment
+
+Authorized and measured 2026-10-15. Keep the
+ordinary eager path as reference. Opt-in `OPFORGE_DEFERRED_MACRO_CANDIDATES`
+selects the binary token/spelling interface and first-use body-plan binding.
+The hypothesis is that retaining one whole-line spelling owner, rather than an
+additional call candidate, reduces heap and copying enough to justify rebuilding
+selected call candidates at their first accepted macro invocation.
+
+This is deliberately **candidate construction**, not fully lazy grammar checking.
+Physical capture still runs descriptor/fragment grammar and validates its result.
+Declaration packing still needs fragment overlap proof; selected call descriptors
+are revalidated against their declaration map before publication. Invalid unused
+macros must continue to reject. Headers, defaults and whole-line fragment plans
+remain eager. A capture without a valid whole-line backing owner keeps its eager
+call candidate. Template segments and other non-macro consumers acquire a selected
+pending call immediately, rather than retaining a macro-only recipe.
+
+No per-record binary-view copy is retained. Existing captured TKVM rows and the
+whole-line plan's exact code spelling supply a transient binary view. Candidate
+services consume that view directly without physical source or another lexer.
+A first-use recipe stores the global capture offset, numeric declaration map and
+an acquisition-role tag; it contains no pointers. The immutable selected capsule
+owns the package programs for this native session. The current single-capsule
+CPU selection limitation remains unchanged. Successful acquisition publishes one
+normal plan handle and is cached before the existing body-ready publication.
+Capture ownership remains live through replay; no earlier retirement is claimed.
+The adapter adds a bounded 1,324-byte stack frame plus its register saves; the
+existing binary-view builder also uses bounded staging stack. No stack high-water
+claim is inferred from heap telemetry.
+
+Stop or revise on differing output/failure behavior. Compare unused and repeated
+nested calls, declaration shadowing, defaults, exact whitespace and quoting,
+embedded substitutions, includes and template lifecycle cases. Then run fresh
+whole frozen-input Rust/native comparisons. Measure serial release pairs on the
+same source/package bytes and heap in a separate matched instrumented pair.
+The incremental baseline enables both earlier binary-view and first-use-binding
+features in both images; only call-candidate construction differs. Ordinary eager
+executables are retained and compared for byte identity separately. Report the
+cost of this restricted experiment separately from prior binary-view and binding results; do not infer fully deferred-grammar savings. Preserve the
+working eager path regardless of the measured outcome.
+
+### Candidate construction: measured memory and behavior
+
+The serial qualification passes 20 lifecycle cases, ten macro controls on both
+images (20 fresh positive cases), and unused/invoked malformed-call rejection on
+both images (four fresh expected failures). The unused malformed-call boundary is
+an existing non-equivalence: Rust accepts it while native eager preparation
+rejects it. This experiment preserves that native rejection; it does not claim
+to close that language gap. Exact argument whitespace, defaults, lexical names,
+caller value resolution, definition-relative includes and repeated calls are
+covered. Instrumented controls prove two acquisition recipes / zero constructions
+for an unused body and two recipes / two constructions when invoked twice.
+
+The complete frozen workload passes both matched memory runs with fresh
+completion, zero exit and exact live Rust equality: 198 files / 2,614,471 source
+bytes, producing 708,592 bytes. This is **not a current-source fixed-point
+self-host qualification**. These runs use the unchanged expanded A4000/68040
+FS-UAE profile, not the 2 MiB product target or A6000 hardware.
+
+| Resource, bytes | Eager call construction, prior features enabled | First-use call construction | Difference |
+|---|---:|---:|---:|
+| Tracked heap peak | 43,997,496 | 42,684,744 | −1,312,752 (−2.98%) |
+| Allocated/freed capacities, each | 108,200,280 | 102,579,560 | −5,620,720 (−5.19%) |
+| Linked reservation, memory image | 802,056 | 803,224 | +1,168 |
+| Memory executable file | 766,348 | 767,588 | +1,240 |
+
+Both end with zero tracked ownership, allocation failures, profiling errors and
+telemetry diagnostics. There is no additional retained binary spelling copy.
+The release executable grows 755,060 → 756,072 bytes (+1,012) against this
+incremental baseline. The ordinary eager release/memory images are freshly
+rebuilt and remain byte-identical to the preceding qualified eager images.
+
+The full candidate creates 312 declaration-selected acquisition recipes and
+constructs 25 on first use; 287 remain unconstructed. These are call-plan recipes,
+not macro counts or all physical candidates avoided. Unselected physical call
+alternatives with valid whole-line backing are also no longer retained; dynamic
+source acquisition uses the same capture body mode. Non-macro selected calls
+acquire immediately. Whole-line plans and their proof remain eager; 18,823 total
+deferred binding recipes and 2,284 bound recipes match the preceding binding
+experiment's counts. The candidate retains 585,728 recipe bytes and 606,044 normal
+plan bytes; both retained byte totals match the reference exactly. No capture is
+retired earlier.
+
+Instrumented elapsed times are 113.013735 seconds (reference) and 113.861861 seconds
+(candidate). They are diagnostics, **not release timing samples**. The release
+pairs below provide the separate runtime comparison.
+
+### Candidate construction: release runtime and decision
+
+Two serial release pairs, in reversed order, have no instrumentation or heavy
+host builds overlapping their timings. All four complete with zero exit and exact
+live Rust equality. The matched memory runs above bring the total to six fresh
+whole-input comparisons. Neither release executable changed between pairs.
+
+| Order | Eager call construction, seconds | First-use call construction, seconds |
+|---|---:|---:|
+| Reference then candidate | 110.381911 | 110.110084 |
+| Candidate then reference | 110.033302 | 109.757023 |
+| Mean | 110.207607 | 109.933554 |
+
+The measured difference is −0.274053 seconds / −0.249%. Individual paired changes
+are −0.246% and −0.251%. Treat runtime as **effectively unchanged**; two pairs do
+not establish a reliable speedup. The 2.98% tracked-heap reduction and lower
+allocated capacities are the useful outcome. This does not establish savings
+from deferring grammar execution: descriptor/fragment validation remains eager,
+and selected calls repeat services during declaration validation and first use.
+
+**Retain as an opt-in storage experiment; do not promote the compounded path to
+the default from this result alone.** The eager reference remains available.
+Whole-line/fragment proof, numeric declaration binding and capture lifetimes are
+still the larger remaining responsibilities; their deferred design must preserve
+current diagnostics and source-effect order. No broader implementation is started
+by this result. A current-source fixed-point self-host remains a separate check
+before promotion or handing over a corresponding self-host bundle.
+
+Evidence: `/tmp/opforge-acquisition-full-20261015/plan.json`, `results.json`,
+`summary.json` and each case receipt. The plan records the actual serial order,
+FS-UAE configuration, saved test-binary identity, source fingerprints and build
+flags. Images: `/tmp/opforge-acquisition-images-qualified-20261015/images.json`.
+Serial component logs/evidence use `/tmp/opforge-acquisition-{lifecycle,macros,negative}-serial-20261015`.
+Interrupted overlapping component batches are excluded; all reported component
+checks were rerun serially. The [FS-UAE guide](../../agents/rules/fs-uae.md) now
+makes its process-local coordinator and cross-process serialization requirement
+explicit.
+
+ASM Clippy with warnings denied, Rust formatting, the nine affected native
+formatter checks, 147 workflow tests, 61 lazy-tool tests and 44 A6000-runner tests
+pass. The focused four-file native CCR scan has no blocking findings and 15
+report-only findings; it excludes included `.i` files and does not qualify all
+native code. Generated first-use-binding self-host configuration now explicitly
+defines the disabled binary-view and acquisition constants as well as its binding
+constant, preserving the latest source contract rather than leaving symbols
+unresolved.
 
 ## Shared binary token/spelling interface experiment
 
@@ -911,6 +1045,18 @@ python3 scripts/performance/run_lazy_preparation_comparison.py \
   --workload-case /absolute/frozen-full-case/case.json \
   --images /tmp/new-first-use-images --output /tmp/new-first-use-results \
   --test-binary /absolute/asm-tests
+
+# Incremental call-plan construction: both images enable the earlier interface
+# and binding features; only OPFORGE_DEFERRED_MACRO_CANDIDATES differs.
+OPFORGE_DEFERRED_SAVE_DIR=/tmp/new-acquisition-images \
+  cargo test -p asm native_deferred_candidate_save_images -- --ignored --nocapture --test-threads=1
+
+python3 scripts/performance/run_lazy_preparation_comparison.py \
+  --experiment-define OPFORGE_DEFERRED_MACRO_CANDIDATES \
+  --workload-case /absolute/frozen-full-case/case.json \
+  --images /tmp/new-acquisition-images --output /tmp/new-acquisition-results \
+  --test-binary /absolute/asm-tests --stop-on-failure
+
 ```
 
 For a sampling sensitivity check, set builder variables
@@ -930,8 +1076,8 @@ and a fresh absolute `OPFORGE_COMPACT_EXPORT_DIR`, then run the ignored
 `export_compact_self_host_bundle` test. Its oracle, bootstrap, relocated-source
 check and guest command all use the same configured source. The exporter copies
 the native source into a temporary build root and generates
-`experimental/build_configuration.i`, defining `DEFER_MACRO_PLANS = 1` in
-the three owning modules. The repository include maps the Rust preprocessor
+`experimental/build_configuration.i`, defining `DEFER_MACRO_PLANS = 1` and explicitly disabling
+`BINARY_MACRO_VIEW` and `ACQUIRE_MACRO_CANDIDATES`. The repository include maps the Rust preprocessor
 switch to that constant, selecting zero by default. The
 generated origin and configuration are explicit in the manifest; no native `-D`
 option is needed or added. Hardware qualification remains a separate case.

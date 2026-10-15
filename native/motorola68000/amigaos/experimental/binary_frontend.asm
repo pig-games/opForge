@@ -944,6 +944,25 @@ lineCandidate
 lineReady
 	move.l d5, capture.Frame.LineStatus(a4)
 	move.l d6, capture.Frame.LineHandle(a4)
+.if ACQUIRE_MACRO_CANDIDATES
+	; A deferred call borrows whole-line spelling only when that owner is valid.
+	; Invalid/absent line recipes retain the original independent call owner.
+	cmpi.l #capture.CALL_DEFERRED, capture.Frame.CallStatus(a4)
+	bne.w acquisitionReady
+	tst.l d5
+	beq.w acquisitionReady
+	move.l Frame.CaptureBody(a5), d3
+	clr.l Frame.CaptureBody(a5)
+	moveq #1, d4
+	bsr.w captureCandidate
+	move.l d3, Frame.CaptureBody(a5)
+	tst.l d0
+	bne.w bad
+	move.l d5, capture.Frame.CallStatus(a4)
+	move.l d6, capture.Frame.CallHandle(a4)
+	move.l d7, capture.Frame.CallRecipeStatus(a4)
+acquisitionReady
+.endif
 	moveq #0, d0
 	bra.w done
 bad
@@ -1033,6 +1052,21 @@ discardRecipes
 	clr.l macro_plans.Frame.RecipeEvents(a0)
 	clr.l macro_plans.Frame.RecipeCount(a0)
 createCandidate
+.if ACQUIRE_MACRO_CANDIDATES
+	cmpi.l #1, d4
+	bne.w publishCandidate
+	tst.l Frame.CaptureBody(a5)
+	beq.w publishCandidate
+	tst.l capture.Frame.Count(a4)
+	beq.w publishCandidate
+	; Keep the same grammar/recipe/container failure checks, without retaining
+	; a duplicate call plan. The valid whole-line candidate owns its spelling.
+	jsr macro_plans.validate
+	bne.w bad
+	moveq #capture.CALL_DEFERRED, d5
+	bra.w candidateReady
+publishCandidate
+.endif
 	.WORK_ACQUIRE capture.PLAN_CREATE_COUNT, a4
 	jsr macro_plans.create
 	bne.w bad
@@ -2101,6 +2135,18 @@ done
 ; Select only now, after the replay writer has rebound names in current scope.
 ; D0/CCR=status,D1=normal handle or opt-in deferred body recipe; others kept.
 bindCapturedPlan	.block
+.if ACQUIRE_MACRO_CANDIDATES
+	cmpi.l #1, d4
+	bne.w ordinaryCandidate
+	move.l a0, -(sp)
+	movea.l CAPTURE_RECORD(a6), a0
+	cmpi.l #capture.CALL_DEFERRED, capture.Record.CallStatus(a0)
+	movea.l (sp)+, a0
+	bne.w ordinaryCandidate
+	bsr.w selectedAcquisition
+	rts
+ordinaryCandidate
+.endif
 .if DEFER_MACRO_PLANS
 	bsr.w deferCapturedPlan
 	cmpi.l #DEFER_EAGER, d0
@@ -2306,6 +2352,9 @@ captureFragments	.block
 
 .if BINARY_MACRO_VIEW
 	.include "binary_frontend_spelling.i"
+.endif
+.if ACQUIRE_MACRO_CANDIDATES
+	.include "binary_frontend_acquisition.i"
 .endif
 
 ; A0=session,A1=complete packed line,A2=expanded call list,D1=list bytes,

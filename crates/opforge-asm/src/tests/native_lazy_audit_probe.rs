@@ -266,6 +266,12 @@ fn native_binary_spelling_save_images() {
     save_macro_experiment_images("OPFORGE_BINARY_MACRO_VIEW");
 }
 
+#[test]
+#[ignore = "builds eager and deferred macro-candidate images outside target"]
+fn native_deferred_candidate_save_images() {
+    save_macro_experiment_images("OPFORGE_DEFERRED_MACRO_CANDIDATES");
+}
+
 fn save_macro_experiment_images(experiment: &str) {
     let root = super::native_fragment_controls::root();
     let destination = PathBuf::from(
@@ -323,10 +329,15 @@ fn save_macro_experiment_images(experiment: &str) {
         &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
     )
     .unwrap();
+    let baseline_defines: &[&str] = if experiment == "OPFORGE_DEFERRED_MACRO_CANDIDATES" {
+        &["OPFORGE_DEFERRED_MACRO_PLANS", "OPFORGE_BINARY_MACRO_VIEW"]
+    } else {
+        &[]
+    };
     let mut images = Vec::new();
     for (role, deferred) in [("reference", false), ("deferred", true)] {
         for memory in [false, true] {
-            let mut defines = Vec::new();
+            let mut defines = baseline_defines.to_vec();
             if deferred {
                 defines.push(experiment);
             }

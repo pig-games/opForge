@@ -206,6 +206,11 @@ validateBind	.block
 	moveq #1, d0
 	bra.w bindSelected
 	.bend  ; validateBind
+; A0=Frame. Validate exactly the create boundary without allocating a candidate.
+; D0/CCR=status; all other registers preserved. No output is published.
+validate	.block
+	bra.w validateCreate
+	.bend  ; validate
 	.priv
 bindSelected	.block
 	movem.l d2-d7/a0-a6, -(sp)

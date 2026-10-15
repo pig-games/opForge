@@ -200,8 +200,10 @@ rejections across both CPUs. The latest unchanged `syntax.asm` reaches sparse
    before claiming opcore completion and moving through the CPU families.
 
 Keep explicit existing limits: nesting 16, iterations 65,536, record storage
-2 MiB and ordinary owned blocks 1 MiB. Check overflow before allocation. Measure
-release time separately from telemetry. Instrument published records, cursor
+3 MiB and ordinary owned blocks 1 MiB. The prepared-stream ceiling was raised
+from 2 MiB after the current embedded self-build exceeded it; this is an
+allocation bound, not a claim of fitting the product memory budget. Check overflow
+before allocation. Measure release time separately from telemetry. Instrument published records, cursor
 resumes, sizing rounds, captures and peak owned bytes through existing macros.
 Retained captures and live context overlap until sealing, so heap growth needs
 actual measurement; image reservation alone cannot establish peak memory.

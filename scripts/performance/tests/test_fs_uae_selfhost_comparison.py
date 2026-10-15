@@ -22,6 +22,7 @@ class FullComparisonTests(unittest.TestCase):
             with mock.patch.dict(module.os.environ, {
                 "OPFORGE_FS_UAE_CONFIG_TEMPLATE": str(template),
                 "OPFORGE_FS_UAE_MEMORY_PROFILE": "existing",
+                "OPFORGE_FS_UAE_GUEST_STACK_BYTES": "65536",
                 "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS": "7200000",
                 "UNRELATED_SECRET": "must-not-appear",
             }, clear=True):
@@ -29,6 +30,7 @@ class FullComparisonTests(unittest.TestCase):
             self.assertEqual(record["config_template"]["hardware_settings"]["cpu"], "68040")
             self.assertEqual(record["config_template"]["sha256"], module.hashlib.sha256(template.read_bytes()).hexdigest())
             self.assertEqual(record["environment"]["OPFORGE_FS_UAE_POST_START_TIMEOUT_MS"], "7200000")
+            self.assertEqual(record["environment"]["OPFORGE_FS_UAE_GUEST_STACK_BYTES"], "65536")
             serialized = json.dumps(record)
             self.assertNotIn("must-not-appear", serialized)
             self.assertNotIn("private-drive", serialized)

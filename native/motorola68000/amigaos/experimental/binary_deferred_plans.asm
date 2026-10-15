@@ -29,14 +29,10 @@ Created	.long ?
 Bound	.long ?
 Hits	.long ?
 StoredBytes	.long ?
-.ifdef OPFORGE_DEFERRED_MACRO_CANDIDATES
-AcquiredCreated	.long ?
-AcquiredBound	.long ?
-.endif
-.ifdef OPFORGE_DEFERRED_MACRO_LINES
-LinesCreated	.long ?
-LinesBound	.long ?
-.endif
+AcquiredCreated	.res ACQUIRE_MACRO_CANDIDATES*4
+AcquiredBound	.res ACQUIRE_MACRO_CANDIDATES*4
+LinesCreated	.res DEFER_MACRO_LINES*4
+LinesBound	.res DEFER_MACRO_LINES*4
 .endif
 .endif
 .endif
@@ -44,15 +40,7 @@ LinesBound	.long ?
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
-.if DEFER_MACRO_LINES
-STATE_BYTES = State.LinesBound+4
-.else
-.if ACQUIRE_MACRO_CANDIDATES
-STATE_BYTES = State.AcquiredBound+4
-.else
-STATE_BYTES = State.StoredBytes+4
-.endif
-.endif
+STATE_BYTES = State.StoredBytes+4+ACQUIRE_MACRO_CANDIDATES*8+DEFER_MACRO_LINES*8
 .else
 STATE_BYTES = memory.Block.Used+4
 .endif

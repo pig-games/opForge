@@ -1,7 +1,8 @@
 # Lazy preparation: inventory, publication and lifetime
 
-Status: chunked capture storage implementation is under qualification,
-2026-10-15. Further macro-only investigations are stopped. Earlier first-use
+Status: opt-in chunked capture storage passes matched-input comparisons and
+full current-source self-host checks, 2026-10-15. Further macro-only
+investigations are stopped. Earlier first-use
 plan experiments remain opt-in. The contiguous path remains the reference;
 no capture is retired early. Historical checkpoint details are in Git history.
 
@@ -98,20 +99,64 @@ same memory receipts without rerunning native cases.
 
 ### Current-source self-host and reproduction
 
-Current-source embedded-68020 chunked qualification is in progress. The first
-export stopped before native launch because three dependency filenames exceeded
+The full current-source embedded-68020 chunked release self-host completes with
+fresh START/DONE, exit zero and exact equality to the live Rust oracle and the
+bootstrap executable: 717,900 bytes, `fnv1a64:7e08b9287f8c47d5`. It assembles
+222 files / 2,744,904 source bytes in 120.176212 s on the same expanded FS-UAE
+profile, using a 65,536-byte guest stack. This is an absolute current-source
+result, not another sample in the frozen-input performance comparison.
+
+Qualification required separate supporting repairs. The first export stopped
+before native launch because three dependency filenames exceeded
 the classic 30-byte limit; only filenames/include references were shortened. The
 next fresh native run rejected a 41-value `.byte` punctuation table at the existing
 64-token acquisition limit. Reflowing that table into rows of at most 16 literal
-bytes preserves its data; this does not expand native line-capacity parity. No
-completed current-source self-host claim is made until its fresh result is recorded
-here. A subsequent run reached the unchanged package `.incbin` but failed at the
+bytes preserves its data; this does not expand native line-capacity parity.
+A subsequent run reached the unchanged package `.incbin` but failed at the
 shared prepared-stream capacity: request 2,097,159 B, used 2,096,903 B, capacity
 2,097,152 B (failure flag 64). The instrumented diagnostic ended with zero tracked
 heap, but neither failing run produced a guest completion marker; both were stopped
 and are localization evidence only. Diagnostic snapshots are outside `target` at
-`/tmp/opforge-chunk-current-triage-20261015/live-diagnostic`. Raising the stream
-bound is a separate supporting repair, not part of the measured chunk savings.
+`/tmp/opforge-chunk-current-triage-20261015/live-diagnostic`. The stream's bounded
+ceiling is now 3 MiB; ordinary allocations remain limited to 1 MiB. This does not
+change allocations for the 2,043,148-byte frozen prepared stream. It is a separate
+capacity repair, not part of the measured chunk savings.
+
+Source-configured instrumentation also needed optional deferred-plan fields and
+reports to follow source settings rather than host-only feature definitions.
+Reusable telemetry helpers retain register/CCR preservation and zero release
+emission. A regression assembles all seven incomplete observer-gate combinations
+for each of three feature configurations, with deliberately unresolved telemetry
+arguments, requiring only the original four bytes of executable code.
+
+The template shell's default stack is 4,096 bytes. Current-source runs at that
+setting wrote the expected output but did not return valid completion evidence;
+they are not self-host qualifications. The successful release run explicitly sets
+`Stack 65536` before invocation. Its temporary launcher records the exact original
+and modified guest scripts; it changes no source, executable, output or proof
+checks. Receipt: `/tmp/opforge-chunk-current-stack-20261015/release/result/native-result.json`;
+launch evidence: `/tmp/opforge-chunk-current-stack-20261015/stack-launches`.
+The original relative-output instrumented command also completes after changing
+only the stack setting: identical source manifest, bootstrap/release digests and
+command, fresh START/DONE and exit zero. Peak owned heap is 36,513,128 B;
+68,390,448 B allocated and freed, terminal heap zero, no allocation failures or
+profiling errors. Prepared stream used bytes are 2,125,351. This is the larger
+current source, not the matched-input memory comparison above. Its 128.298743 s
+instrumented time is diagnostic only. Receipt and decoded memory are outside
+`target` at `/tmp/opforge-chunk-capacity-selfhost-memory-v4-20261015`;
+`stack-discriminator.json` checks the unchanged input/image/command identities.
+
+The maintained native CLI test runner now accepts
+`OPFORGE_FS_UAE_GUEST_STACK_BYTES=65536`, emitting the same explicit shell
+setting before START. Unset retains the original scripts and comparison
+environment. Comparison plans record this environment setting. The extra guest
+stack is OS-managed and is not included in tracked application-owned heap.
+A fresh release run through this maintained option also passes in 118.771218 s,
+with exact bootstrap/oracle output, fresh START/DONE and exit zero. Its receipt
+and environment/tool fingerprints are under
+`/tmp/opforge-chunk-current-stack-20261015/release-maintained`.
+The 64 KiB setting is demonstrated to work; the smallest safe stack has not been
+established, and native CLI automatic stack sizing/guarding is not implemented.
 
 The image builder is the ignored test
 `fs_uae_smoke::native_lazy_audit_probe::native_chunked_capture_save_images`, with
@@ -127,7 +172,9 @@ For a full current-source chunked self-build, use the existing ignored exporter
 `OPFORGE_COMPACT_EXPORT_DIR` outside `target`,
 `OPFORGE_COMPACT_EXPORT_CHUNKED_CAPTURE=1`,
 `OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020`, and
-`OPFORGE_COMPACT_EXPORT_NATIVE=1`, plus the documented FS-UAE environment.
+`OPFORGE_COMPACT_EXPORT_NATIVE=1`, plus the documented FS-UAE environment and
+`OPFORGE_FS_UAE_GUEST_STACK_BYTES=65536`. For a direct AmigaOS invocation, run
+`Stack 65536` in the invoking shell first.
 The exporter configures both bootstrap and output sources with the four earlier
 macro features and `CHUNKED_CAPTURE=1`; the bundle loader validates that exact
 source configuration. Without the chunked setting the existing path remains.

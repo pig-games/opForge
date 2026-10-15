@@ -42579,6 +42579,9 @@ mod native_asset_timing;
 #[path = "tests/native_telemetry_macros.rs"]
 mod native_telemetry_macros;
 
+#[path = "tests/native_deferred_telemetry.rs"]
+mod native_deferred_telemetry;
+
 #[path = "tests/binary_resource_activity.rs"]
 mod binary_resource_activity;
 

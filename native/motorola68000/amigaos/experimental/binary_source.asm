@@ -16,8 +16,9 @@ STATUS_OVERFLOW = 2
 STATUS_UNSUPPORTED = 3
 STATUS_BIND_FAILED = 4
 MAX_LINE = 256
-; Complete prepared streams can exceed an ordinary scratch allocation.
-RECORD_LIMIT = 2*memory.LIMIT
+; Complete prepared streams can exceed an ordinary scratch allocation. Current
+; embedded self-builds exceed 2 MiB; bounded growth clamps at this stream ceiling.
+RECORD_LIMIT = 3*memory.LIMIT
 FLAG_INDENT = 1
 FLAG_BLOCK_OPEN_BIT = 1
 FLAG_BLOCK_CLOSE_BIT = 2

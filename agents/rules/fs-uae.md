@@ -30,6 +30,23 @@ one host process: also serialize separate test-binary or runner invocations.
 Concurrent processes can interrupt each other's emulator; interrupted batches
 provide no qualification or timing evidence and must be rerun serially.
 
+## Guest stack for native CLI checks
+
+`OPFORGE_FS_UAE_GUEST_STACK_BYTES` optionally sets the guest shell stack for
+native CLI parity, prebuilt-image and self-host checks. It accepts decimal bytes
+from `4096` through `1048576`, aligned to 16 bytes. Invalid values fail before
+emulator launch. The runner inserts `Stack <bytes>` immediately after `FailAt 999`,
+before changing to `Work:` or emitting START. When unset, the batch script remains
+byte-for-byte unchanged and inherits the guest shell's stack; the maintained
+local template's current shell default is 4096 bytes. This setting does not change
+the saved FS-UAE template.
+
+Use `OPFORGE_FS_UAE_GUEST_STACK_BYTES=65536` for current full self-host checks.
+A current-source release self-build completed with fresh START/DONE, exit zero
+and exact output at 65536 bytes after the inherited-stack run failed to complete.
+This establishes a working stack setting, not the smallest required stack.
+The separate correctness-only breadth runner does not use this setting.
+
 ## Inspecting failures
 
 Host launch failures usually stop before guest output. Guest-side failures expose

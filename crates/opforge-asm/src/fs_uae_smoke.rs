@@ -3320,6 +3320,23 @@ fn stage_opforge_native_cli_case_guest_inputs(
     Ok(())
 }
 
+fn native_cli_guest_batch_prefix(stack_bytes: Option<&str>) -> Result<String, String> {
+    let mut script = String::from("FailAt 999\n");
+    if let Some(value) = stack_bytes {
+        let bytes = value.parse::<u32>().ok().filter(|bytes| {
+            !value.is_empty()
+                && value.bytes().all(|byte| byte.is_ascii_digit())
+                && (4096..=1_048_576).contains(bytes)
+                && bytes % 16 == 0
+        }).ok_or_else(|| {
+            "OPFORGE_FS_UAE_GUEST_STACK_BYTES must be decimal bytes in 4096..1048576, aligned to 16".to_owned()
+        })?;
+        script.push_str(&format!("Stack {bytes}\n"));
+    }
+    script.push_str("CD Work:\n");
+    Ok(script)
+}
+
 fn run_native_cli_parity_batch_cases(
     workspace_root: &Path,
     fs_uae_bin: &str,
@@ -3328,6 +3345,13 @@ fn run_native_cli_parity_batch_cases(
     executable: NativeCliParityExecutable,
     bootstrap_executable: Option<&[u8]>,
 ) -> Result<FsUaeSmokeOutcome, String> {
+    let stack_bytes = std::env::var("OPFORGE_FS_UAE_GUEST_STACK_BYTES")
+        .map(Some)
+        .or_else(|error| match error {
+            std::env::VarError::NotPresent => Ok(None),
+            _ => Err("OPFORGE_FS_UAE_GUEST_STACK_BYTES must be UTF-8".to_owned()),
+        })?;
+    let batch_prefix = native_cli_guest_batch_prefix(stack_bytes.as_deref())?;
     let live_capture = std::env::var("OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE").as_deref() == Ok("1");
     let prebuilt_compact_cli = if matches!(executable, NativeCliParityExecutable::CompactCli) {
         bootstrap_executable
@@ -3439,7 +3463,7 @@ fn run_native_cli_parity_batch_cases(
     // Rust resolves source-owned relative output paths from the invocation
     // directory.  Make the mounted Work volume that same authority on AmigaOS
     // before invoking any absolute `Work:` executable path.
-    let mut batch_script = String::from("FailAt 999\nCD Work:\n");
+    let mut batch_script = batch_prefix;
     let mut batch_paths = Vec::with_capacity(cases.len());
     let run_challenge = opforge_native_cli_run_challenge();
     for (index, case) in cases.iter().enumerate() {
@@ -7150,6 +7174,42 @@ mod tests {
         assert!(!opforge_native_cli_case_assembly_defines(&case)
             .iter()
             .any(|define| define == "OPFORGE_FS_UAE_SMOKE"));
+    }
+
+    #[test]
+    fn native_cli_guest_stack_prefix_preserves_default_and_sets_explicit_stack() {
+        assert_eq!(
+            native_cli_guest_batch_prefix(None).unwrap(),
+            "FailAt 999\nCD Work:\n"
+        );
+        for bytes in [4096, 65536, 1_048_576] {
+            assert_eq!(
+                native_cli_guest_batch_prefix(Some(&bytes.to_string())).unwrap(),
+                format!("FailAt 999\nStack {bytes}\nCD Work:\n")
+            );
+        }
+    }
+
+    #[test]
+    fn native_cli_guest_stack_prefix_rejects_invalid_values() {
+        for value in [
+            "",
+            "0",
+            "4080",
+            "4097",
+            "1048592",
+            "4294967296",
+            "-4096",
+            "+4096",
+            " 4096",
+            "4096\n",
+            "64k",
+        ] {
+            assert!(
+                native_cli_guest_batch_prefix(Some(value)).is_err(),
+                "accepted {value:?}"
+            );
+        }
     }
 
     #[test]

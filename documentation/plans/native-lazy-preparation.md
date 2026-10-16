@@ -1,15 +1,16 @@
 # Preparation ownership and capture storage
 
-Status, 2026-10-16: one eager preparation implementation and one shared chunked
-capture store are maintained. Macro-only deferral investigations have ended.
-Parity is paused. The next proposed ownership change is the
-[structural scan and relocatable-object design](native-fragment-preparation.md),
-which awaits review before implementation.
+Status, 2026-10-16: one eager preparation implementation uses the shared chunked
+capture store. Resident storage remains the default; `--capture-dir DIR` selects a
+bounded disk-backed policy. It reduces frozen full-build tracked peak by 65.7%,
+with no established release-time change. Parity remains paused. Structural scanning,
+module publication and `.ofm` remain [designs awaiting review](native-fragment-preparation.md).
 
 ## Experiment decisions
 
 | Experiment | Maintained decision |
 |---|---|
+| Bounded disk backing | Retained as one explicit directory/storage policy; full current-source native self-host and identical-input comparisons pass. |
 | Chunked capture | Promoted to the default; fresh fixed-input and current-source full native self-host proofs pass. |
 | First-use macro-body binding/plans | Removed with switches and experiment-specific tests; no established runtime gain. |
 | First-use call candidates | Removed with switches and experiment-specific tests. |
@@ -21,8 +22,9 @@ which awaits review before implementation.
 
 The standard packed macro execution, declaration context and shared VM/package
 boundaries remain. These decisions remove alternate preparation paths, not language
-features. No opt-in switch stack remains. Old implementations are recoverable from
-Git; baseline executables and frozen measurements are diagnostic artifacts outside
+features. No macro/cache experiment switch stack remains; disk backing is a storage
+policy, not another language-preparation path. Old implementations are recoverable
+from Git; baseline executables and frozen measurements are diagnostic artifacts outside
 the tree. The comparison scripts no longer expose removed experiment modes.
 
 ## Shared chunked capture
@@ -30,8 +32,10 @@ the tree. The comparison scripts no longer expose removed experiment modes.
 The append-only store uses 32 KiB chunks; records larger than 4 KiB get dedicated
 allocations rounded to eight bytes. A dedicated allocation ends the current shared
 chunk, keeping directory intervals ordered and nonoverlapping. A logical source
-region can span chunks, and a chunk can contain several regions. Record bytes never
-move when the small descriptor directory grows.
+region can span chunks, and a chunk can contain several regions. Payload bytes
+remain stable while pinned, including when the descriptor directory grows.
+Resident chunks can be evicted and faulted back at different physical addresses;
+logical offsets stay unchanged.
 
 Logical offsets and source-region ownership remain stable. Each record is contiguous;
 sequential resolution caches a directory row and arbitrary resolution uses binary
@@ -47,27 +51,39 @@ The earlier 1.4% release difference is below timing noise, not a speed result.
 
 ## Capture storage and lifetimes
 
-Chunking removes growth overhead, not the acquisition floor: all captured modules
-are still accumulated before replay. Records, plans, macro templates, configuration
-exports and binding state can reference the retained source representation. Nothing
-may be freed merely because its emitting block is unreachable or a macro was not
-invoked. Complete referenced blocks preserve internal-label fallthrough.
+Chunking removes growth waste. Disk backing removes accumulated payload residency:
+immutable chunks are spooled by logical offset into one private DOS scratch file.
+A 1 MiB payload budget includes the active writer and every counted reader pin;
+directory metadata, temporary records and OS buffers remain outside it. Configuration,
+replay and nested source lookahead acquire/release explicit leases. Templates and
+prepared values must own their data before a lease ends. Descriptors can move on
+append and must never escape into retained state.
 
-On the earlier lifetime-audit input, 30,216,808 tracked bytes were already resident
-before a replay span completed. Capture accounted for about 71% of that input's
-heap peak. These are historical observations, not the current heap measurement.
-Early retirement after replay cannot remove a peak already reached during acquisition.
-The current frozen input retains about 23.84 MB of capture even after growth waste
-is removed. No qualified largest-module or active-closure bound exists yet.
+The current policy seals a chunk before exposing it to a reader. It evicts unpinned
+chunks round-robin and reloads checked exact extents. A whole record must fit the
+budget; exhaustion or IO failure produces an explicit diagnostic with normal owned
+cleanup. The resident path performs no file IO. Both still capture and prepare all
+applicable source; neither skips unreachable language work nor changes whole-block
+fallthrough, declaration context, macros or module ordering.
 
-Whole-application `OPFORGE_LAZY_AUDIT` and `OPFORGE_CAPTURE_LIFETIME_AUDIT` builds
-are rejected with chunked storage: their contiguous-region assumptions are invalid.
-Their unsupported whole-app image builders were removed. Compatible component
-probes, layouts and strict historical decoders remain; old decoded reports do not
-qualify a fresh chunked whole-app run. Existing MEMD/capture/hotspot observers supply
-current comparisons. The capture telemetry field `retained_region_count` now counts
-physical store allocations, not logical source regions; do not infer module size
-or early-release eligibility from it.
+On the identical 214-file workload, 116,855 records / 23,852,392 logical bytes are
+unchanged. Resident capture peaks at 23,986,176 B; disk-backed payload peaks at
+1,048,576 B. Whole tracked heap falls from 34,517,176 to 11,839,624 B. Allocation
+churn increases through reloads. Below-budget controls may gain nothing or retain
+another partial chunk; this is why resident storage stays the default. See the
+[separate runtime/memory results](native-performance-diagnosis.md#bounded-disk-backed-capture).
+
+Use an existing writable disk directory, for example
+`--capture-dir Development:opforge-scratch`. Do not assume `T:` uses disk. This is
+a process-private raw capture spool, not a persistent cache or published object.
+No automatic fallback to unbounded RAM is allowed. Normal cleanup removes only
+owned paths; process crashes may leave scratch directories for manual recovery.
+
+Existing capture snapshots count resident allocations/used/capacity, while logical
+composition counters cover all records. Evicted rows retain logical length without
+owning payload. The old whole-source lazy/lifetime observers remain unsupported
+because they require a contiguous arena per region; no new observer framework was
+added. Current MEMD/capture events supply the comparisons.
 
 ## Next boundary
 
@@ -85,13 +101,15 @@ frozen full workload, but retained every source capture and left peak heap at
 peak already reached. Its passing cases also do not resolve the difference
 between early preparation snapshots and final folded values.
 
-The next decision is the structural publication contract, not another cache flag.
+The next architectural decision is the structural publication contract, not another
+cache flag.
 An object must retain unresolved binding/layout recipes and ordered preparation
 observations before its source-oriented storage can be freed. Review the linked
-design and its disk-spill alternative before changing that lifetime boundary.
+design and its measured raw-spill reference before changing that lifetime boundary.
 No general `.ofm` implementation or early-release memory bound has been qualified.
 
-The production reference is restored byte-for-byte in native/Rust source to
-`bcac8dc8`; experimental code and tests are preserved in Git, not the active tree.
-The measured full-profile heap remains 32.92 MiB before executable, stack and OS
-costs, about 16.5 times the entire 2 MiB target. No low-memory fit is claimed.
+The pre-storage reference (`1171797a`, native/Rust code matching `bcac8dc8`) remains
+recoverable and its executable is preserved for comparison. Disk backing changes
+storage ownership, not eager preparation semantics. The paired peak is now
+11.29 MiB of tracked heap before executable, stack and OS costs, about 5.6 times
+the entire 2 MiB target. No low-memory fit is claimed.

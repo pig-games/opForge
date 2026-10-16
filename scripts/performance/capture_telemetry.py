@@ -222,6 +222,37 @@ def decode_capture_telemetry(text: str, *, record_header_bytes: int = 56) -> dic
     return {"capture_summary": summary}
 
 
+def decode_capture_store_telemetry(text: str) -> dict | None:
+    """Decode optional bounded-store counters through the existing progress ABI.
+
+    Absence permits reference images predating disk backing. Partial/duplicate
+    summaries fail closed. These counters do not establish native completion.
+    Payload capacity excludes the directory, executable and OS file buffers.
+    """
+    rows = {}
+    for line in text.splitlines():
+        match = _LINE.fullmatch(line.strip())
+        if not match:
+            if line.strip().lower().startswith("progress p="):
+                _fail("malformed capture store progress row")
+            continue
+        phase, *values = (int(value, 16) for value in match.groups())
+        if phase not in (360, 361, 362):
+            continue
+        if phase in rows:
+            _fail("duplicate capture store telemetry")
+        rows[phase] = values
+    if not rows:
+        return None
+    if set(rows) != {360, 361, 362}:
+        _fail("incomplete capture store telemetry")
+    if rows[360][2] or rows[361][2]:
+        _fail("capture store reserved fields must be zero")
+    return dict(zip(("read_calls", "read_bytes", "write_calls", "write_bytes",
+                     "fault_attempts", "evictions", "peak_payload_capacity"),
+                    rows[360][:2] + rows[361][:2] + rows[362][:3]))
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("file", type=Path, help="guest stdout text file")
@@ -235,7 +266,9 @@ def main(argv=None) -> int:
     try:
         header_bytes = (capture_record_header_bytes(args.capture_source.read_text(), defines=args.capture_define)
                         if args.capture_source else 56)
-        result = decode_capture_telemetry(args.file.read_text(), record_header_bytes=header_bytes)
+        text = args.file.read_text()
+        result = decode_capture_telemetry(text, record_header_bytes=header_bytes)
+        result["capture_store"] = decode_capture_store_telemetry(text)
     except (OSError, CaptureTelemetryError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2, sort_keys=True))

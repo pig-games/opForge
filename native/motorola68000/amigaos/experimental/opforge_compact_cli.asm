@@ -95,9 +95,14 @@ optional
 packageRoot
 	move.l #DefaultRoot, app.Frame.PackageRoot(a0)
 	tst.b args.State.PackageRoot(a2)
-	beq.w execute
+	beq.w captureDirectory
 	lea args.State.PackageRoot(a2), a1
 	move.l a1, app.Frame.PackageRoot(a0)
+captureDirectory
+	tst.b args.State.CaptureDirectory(a2)
+	beq.w execute
+	lea args.State.CaptureDirectory(a2), a1
+	move.l a1, app.Frame.CaptureDirectory(a0)
 execute
 	bsr.w closeDos
 	lea Config, a0
@@ -149,6 +154,7 @@ UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "  -i, --infile FILE     Input (directory selects main.asm; default .)", 10
 	.byte "      --cpu CPU         Optional initial target; otherwise root .cpu or default", 10
 	.byte "      --runtime-package FILE  Explicit BS38 runtime package", 10
+	.byte "      --capture-dir DIR  Disk scratch directory; capture RAM bounded to 1 MiB", 10
 	.byte "  -b, --bin [FILE]      Flat binary output", 10
 	.byte "      --hunk [FILE]     Source-configured Hunk output", 10
 	.byte "  -x, --hex [FILE]      Intel HEX output", 10

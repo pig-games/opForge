@@ -1,6 +1,7 @@
 # Structural preparation and relocatable module objects
 
-Design for review, updated 2026-10-16. **Structural pipeline not implemented.** Stop for Erik's review before
+Design for review, updated 2026-10-16. **Structural pipeline not implemented.** Raw
+capture disk backing is separately implemented and qualified. Stop for Erik's review before
 changing the preparation pipeline. Parity remains paused. The old fragment-envelope
 experiment was removed; this proposal does not preserve that selector or its format.
 See [current measurements](native-performance-diagnosis.md) and
@@ -85,8 +86,8 @@ parser, evaluator, CPU encoder or convergence policy.
 ## Memory bound and disk alternative
 
 The old acquisition floor was 30,216,808 tracked bytes before any replay span ended.
-Current frozen-source chunked peak is 34,324,616 bytes, with about 23.84 MB retained
-capture. Chunking removes growth waste, not accumulated source ownership.
+The latest frozen 214-file resident peak is 34,517,176 bytes, including
+23,852,392 logical captured bytes. Chunking removes growth waste, not accumulated source ownership.
 
 The proposed bound becomes the maximum simultaneous sum of shared runtime/packages,
 structural/configuration index, retained objects/exports, active module/include
@@ -97,10 +98,13 @@ these measurements cannot yield an honest numeric replacement for 30 MB yet.
 
 A disk-backed object store keeps a small directory and bounded I/O buffers resident.
 Use a genuinely disk-backed AmigaOS volume: a temp assign resolving to RAM saves
-no RAM. A simpler alternative spills raw capture and rereads it during replay;
-it can reduce acquisition residency sooner, but retains source-oriented work.
-Compare both against resident objects. Extra scans, validation, rereads and object
-construction/publication overlap may cost runtime; measure them independently.
+no RAM. The implemented raw-capture spill policy now demonstrates that alternative:
+a 1 MiB payload budget reduces the identical full workload's tracked peak from
+34,517,176 to 11,839,624 bytes, with no established release-time change. It retains
+all source-oriented work and increases allocation/IO churn. Compare future objects
+against both this bounded policy and resident capture, not only the old acquisition
+floor. The result does not establish an object-size or active-module bound. Extra
+scans, validation, rereads and object construction/publication overlap may cost runtime; measure them independently.
 
 ## Incremental feasibility and the publication boundary
 
@@ -126,13 +130,13 @@ Waiting for global completion and then writing an object does not remove the
 capture acquisition floor. A useful next implementation must own the semantic
 recipes needed after publication and actually release module-oriented capture,
 not merely add persistence to the existing all-files pipeline. This remains a
-consequential structural change requiring review. No general relocatable code
-object, sparse linker, early-release pipeline or disk-spill engine was qualified
-by the declaration experiment.
+consequential structural change requiring review. No general relocatable code object, sparse linker or early-release pipeline was
+qualified by the declaration experiment. The separate raw disk store is storage
+qualification, not object publication or avoided preparation.
 
 Before implementation, choose the publication contract and bound the largest
 simultaneous active module/include closure, shared state and sealed objects.
-Compare disk-backed objects with the simpler raw-capture spill alternative above.
+Compare disk-backed objects with the now-measured raw-capture spill policy above.
 Do not infer a new memory bound from compact leaf objects alone.
 
 A future configured-object fingerprint must cover content, transitive includes

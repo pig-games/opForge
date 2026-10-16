@@ -23,13 +23,14 @@ SOURCE_RESUME_BYTES = SourceResume.Padding+2
 
 ; A0=logical region,D1=global capture offset. D0/CCR=status,A0=borrowed
 ; physical memory.Block,D1=local handle,D2=global chunk/region end. Others kept.
-; The directory descriptor expires on append; owned record bytes never move.
+; Release using the original offset after use. Pinned bytes stay resident;
+; the directory descriptor expires on append, so retain no descriptor across it.
 captureView	.block
 	movem.l d3-d4/a1, -(sp)
 	move.l d1, d3
 	move.l capture.Region.End(a0), d4
 	lea CaptureStore, a0
-	jsr capture_store.resolve
+	jsr capture_store.acquire
 	bne.w done
 	movea.l a1, a0
 	addq.l #1, d1
@@ -44,6 +45,17 @@ done
 	rts
 	.bend  ; captureView
 
+; Release an acquired capture view by its original global offset in D1.
+; All registers and CCR survive so failed frontend status remains authoritative.
+releaseCaptureView	.block
+	move.w ccr, -(sp)
+	movem.l d0/a0, -(sp)
+	lea CaptureStore, a0
+	jsr capture_store.releaseView
+	movem.l (sp)+, d0/a0
+	move.w (sp)+, ccr
+	rts
+	.bend  ; releaseCaptureView
 
 ; A0=session,D0=0 view / 1 seek,D1=logical capture offset for seek.
 ; D0/CCR=status,D1=current offset,D2=end,D3=stream identity (0 physical).
@@ -107,20 +119,28 @@ physical
 	movea.l a0, a4
 	move.l d1, d5
 	jsr capture.resolve
-	bne.w bad
+	bne.w pinnedBad
 	move.l capture.Record.Bytes(a1), d7
 	add.l d6, d7
-	bcs.w bad
+	bcs.w pinnedBad
 	cmp.l SourceCursorState.End+SourceCursorData, d7
-	bhi.w bad
+	bhi.w pinnedBad
 	lea Front, a0
 	movea.l a4, a1
 	move.l d5, d1
 	lea PeekRecord, a2
 	jsr frontend.previewCapture
-	bne.w bad
+	bne.w pinnedBad
 	move.l d7, d1
 	moveq #0, d0
+	bra.w unpin
+pinnedBad
+	moveq #1, d0
+unpin
+	move.l d1, -(sp)
+	move.l d6, d1
+	bsr.w releaseCaptureView
+	move.l (sp)+, d1
 	bra.w done
 bad
 	moveq #1, d0
@@ -176,7 +196,8 @@ done
 replaySourceSlice	.block
 	movem.l d1-d7/a0-a6, -(sp)
 next
-	move.l ScheduleCursor, d1
+	move.l ScheduleCursor, d5
+	move.l d5, d1
 	cmp.l ScheduleEnd, d1
 	beq.w good
 	bhi.w bad
@@ -187,13 +208,13 @@ next
 	bne.w bad
 	movea.l a0, a4
 	jsr capture.resolve
-	bne.w bad
+	bne.w pinnedBad
 	move.l capture.Record.Bytes(a1), d7
 	move.l ScheduleCursor, d0
 	add.l d7, d0
-	bcs.w bad
+	bcs.w pinnedBad
 	cmp.l ScheduleEnd, d0
-	bhi.w bad
+	bhi.w pinnedBad
 	move.l d0, SourceCursorState.Next+SourceCursorData
 	move.l capture.Record.Origin(a1), OriginId
 	moveq #0, d0
@@ -202,17 +223,24 @@ next
 	move.l d1, d6
 	move.l OriginId, d1
 	bsr.w captureSourcePath
-	bne.w bad
+	bne.w pinnedBad
 	move.l d6, d1
 	lea Front, a0
 	movea.l a4, a1
 	jsr frontend.replayLine
+	move.l d5, d1
+	bsr.w releaseCaptureView
+	tst.l d0
 	bne.w bad
 	bsr.w drainPrepared
 	bne.w bad
 	.WORK_CALL lazy_work.sampleEnd
 	move.l SourceCursorState.Next+SourceCursorData, ScheduleCursor
 	bra.w next
+pinnedBad
+	move.l d5, d1
+	bsr.w releaseCaptureView
+	bra.w bad
 good
 	moveq #0, d0
 	bra.w done

@@ -1,3 +1,10 @@
+; Capture-store progress schema (source / line / records fields):
+; READ: completed exact read calls / bytes read / zero.
+; WRITE: completed exact write calls / bytes written / zero.
+; CACHE: fault attempts / completed evictions / peak resident payload capacity.
+CAPTURE_STORE_READ = 360
+CAPTURE_STORE_WRITE = 361
+CAPTURE_STORE_CACHE = 362
 ; Fixed-size capture accounting. Missing any gate emits no import or calls.
 ; Call-site identities remain available when the observer alias is gated out.
 CAPTURE_ACQUISITION = 0
@@ -141,6 +148,23 @@ CAPTURE_CHUNK_SNAPSHOT	.macro boundary, directory, rowShift, rowBytes, storageOf
 	.CAPTURE_SNAPSHOT .boundary, .directory, d1, .temp, .order, .rowBytes, .storageOffset, .orderCount, .orderStride
 	move.l (sp)+, d1
 	move.w (sp)+, ccr
+.endmacro
+
+; Caller supplies gated backend globals; inactive definitions capture no references.
+CAPTURE_STORE_CLEAR	.macro reads, readBytes, writes, writeBytes, faults, evictions, peak
+	.MEMORY_COUNTER_CLEAR .reads
+	.MEMORY_COUNTER_CLEAR .readBytes
+	.MEMORY_COUNTER_CLEAR .writes
+	.MEMORY_COUNTER_CLEAR .writeBytes
+	.MEMORY_COUNTER_CLEAR .faults
+	.MEMORY_COUNTER_CLEAR .evictions
+	.MEMORY_COUNTER_CLEAR .peak
+.endmacro
+
+CAPTURE_STORE_REPORT	.macro dosbase, reads, readBytes, writes, writeBytes, faults, evictions, peak
+	.MEMORY_PROGRESS .dosbase, #CAPTURE_STORE_READ, .reads, .readBytes, #0
+	.MEMORY_PROGRESS .dosbase, #CAPTURE_STORE_WRITE, .writes, .writeBytes, #0
+	.MEMORY_PROGRESS .dosbase, #CAPTURE_STORE_CACHE, .faults, .evictions, .peak
 .endmacro
 
 .ifdef OPFORGE_PREPARATION_PROGRESS

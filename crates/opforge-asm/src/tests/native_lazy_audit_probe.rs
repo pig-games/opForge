@@ -70,6 +70,15 @@ fn native_lazy_audit_probe_injection_preserves_reference_source() {
     let lifetime = fs::read_to_string(lifetime_snapshot.join(relative)).unwrap();
     assert!(lifetime.contains(".use tests.amigaos.capture_lifetime_probe as lazyProbe"));
     assert!(!lifetime.contains("tests.amigaos.binary_lazy_audit_probe"));
+    let disk_snapshot = dir.0.join("disk-probe");
+    prepare_component_probe_source_for(
+        &source,
+        &disk_snapshot,
+        "tests.amigaos.capture_disk_store_probe",
+    );
+    let disk = fs::read_to_string(disk_snapshot.join(relative)).unwrap();
+    assert!(disk.contains(".use tests.amigaos.capture_disk_store_probe as lazyProbe"));
+    assert_eq!(fs::read_to_string(source.join(relative)).unwrap(), original);
 }
 
 fn tree_digest(root: &Path) -> String {
@@ -106,17 +115,35 @@ fn tree_digest(root: &Path) -> String {
 #[test]
 #[ignore = "builds the independent capture-store component probe outside target"]
 fn native_capture_store_probe_save_image() {
+    save_capture_store_probe(
+        "tests.amigaos.capture_store_probe",
+        "OPFORGE_CAPTURE_STORE_SAVE_DIR",
+        "capture-store-probe-memory.hunk",
+    );
+}
+
+#[test]
+#[ignore = "builds the independent disk capture-store component probe outside target"]
+fn native_capture_disk_store_probe_save_image() {
+    save_capture_store_probe(
+        "tests.amigaos.capture_disk_store_probe",
+        "OPFORGE_CAPTURE_DISK_STORE_SAVE_DIR",
+        "capture-disk-store-probe-memory.hunk",
+    );
+}
+
+fn save_capture_store_probe(probe_module: &str, destination_variable: &str, filename: &str) {
     let root = super::native_fragment_controls::root();
     let destination = PathBuf::from(
-        std::env::var_os("OPFORGE_CAPTURE_STORE_SAVE_DIR")
-            .expect("set OPFORGE_CAPTURE_STORE_SAVE_DIR outside target"),
+        std::env::var_os(destination_variable)
+            .unwrap_or_else(|| panic!("set {destination_variable} outside target")),
     );
     fs::create_dir_all(&destination).unwrap();
     let destination = destination.canonicalize().unwrap();
     assert!(!destination.starts_with(root.join("target")));
     let dir = scratch();
     let snapshot = dir.0.join("probe-source");
-    prepare_component_probe_source_for(&root, &snapshot, "tests.amigaos.capture_store_probe");
+    prepare_component_probe_source_for(&root, &snapshot, probe_module);
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &dir.0.join("probe-build"),
@@ -132,7 +159,6 @@ fn native_capture_store_probe_save_image() {
         "OPFORGE_CAPTURE_TELEMETRY",
     ];
     let image = super::compact_cli_input::assemble_cli_with_defines(&snapshot, &build, &defines);
-    let filename = "capture-store-probe-memory.hunk";
     let digest = tree_digest(&snapshot.join("native"));
     fs::write(destination.join(filename), &image).unwrap();
     fs::write(

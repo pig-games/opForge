@@ -27,3 +27,7 @@ CAPTURE_CHUNK_SNAPSHOT	.macro boundary, directory, rowShift, rowBytes, storageOf
 .endmacro
 CAPTURE_REPORT	.macro dosbase
 .endmacro
+CAPTURE_STORE_CLEAR	.macro reads, readBytes, writes, writeBytes, faults, evictions, peak
+.endmacro
+CAPTURE_STORE_REPORT	.macro dosbase, reads, readBytes, writes, writeBytes, faults, evictions, peak
+.endmacro

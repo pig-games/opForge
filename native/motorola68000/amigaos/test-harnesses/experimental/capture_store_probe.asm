@@ -123,7 +123,7 @@ failed
 finish
 	jsr store.cleanup
 	movea.l a0, a1
-	moveq #store.STATE_BYTES/4-1, d3
+	move.l #store.STATE_BYTES/4-1, d3
 cleared
 	tst.l (a1)+
 	bne.w cleanupFailed

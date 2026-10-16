@@ -21,3 +21,13 @@ fresh absolute `OPFORGE_PREPARATION_RESULT_DIR` outside `target`. Use the
 [FS-UAE environment](../../agents/rules/fs-uae.md). The adapter freezes inputs,
 creates live Rust oracles, and retains the two exact artifact proofs and existing
 telemetry. It adds no production selector or observer.
+
+For the bounded disk-capture policy, set `OPFORGE_PREPARATION_CAPTURE_MODE=disk`;
+`resident` or unset keeps the reference storage policy. Disk mode supplies
+`--capture-dir Work:` on the host-backed guest volume. Results identify the mode
+and reject retained scratch payload files; the dedicated store probe also checks
+private directory removal. On the current candidate both modes match Rust BIN
+and Hunk outputs: module peak stays 608,768 B; macro-heavy peak is 2,249,656 B
+resident versus 2,282,424 B disk-backed. Neither reaches the 1 MiB capture budget,
+so these controls establish behavior and small-workload cost, not a memory gain.
+See the [full-workload measurements](../../documentation/plans/native-performance-diagnosis.md#bounded-disk-backed-capture).

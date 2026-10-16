@@ -39,6 +39,7 @@ Cpu	.res PATH_BYTES
 RuntimePackage	.res PATH_BYTES  ; BS32, never a Rust .opasm package
 Dialect	.res PATH_BYTES
 PackageRoot	.res PATH_BYTES
+CaptureDirectory	.res PATH_BYTES
 ModulePaths	.res MODULE_LIMIT*PATH_BYTES
 IncludePaths	.res (INCLUDE_LIMIT+1)*PATH_BYTES
 StartSet	.word ?
@@ -683,6 +684,8 @@ Options
 	.long Name50
 	.word 0, K_UNSUPPORTED, 0, 0
 	.long Name51
+	.word 0, K_VALUE, State.CaptureDirectory, 0
+	.long Name52
 	.word 0, 0, 0, 0
 	.long 0
 Name0	.byte "infile", 0
@@ -737,5 +740,6 @@ Name48	.byte "pp-macro-depth", 0
 Name49	.byte "max-loop-iterations", 0
 Name50	.byte "input-asm-ext", 0
 Name51	.byte "input-inc-ext", 0
+Name52	.byte "capture-dir", 0
 	.endsection
 	.endmodule

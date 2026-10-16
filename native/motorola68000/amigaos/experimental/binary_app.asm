@@ -64,6 +64,7 @@
 	.include "lazy_audit.i"
 	.include "lazy_work_context.i"
 HEADER_BYTES = package.HEADER_BYTES
+CAPTURE_RESIDENT_BYTES = 1048576
 IO_BYTES = 4096
 INCLUDE_DEPTH = 8
 LINE_BYTES = 4096
@@ -167,8 +168,9 @@ OutputBase	.long ?  ; Shell input basename, independent of source selection
 OutputDefault	.word ?  ; CLI output filename was omitted
 WarningsAsErrors	.word ?
 LowerLine	.long ?  ; temporary capture proof callback; zero uses frontend.line
+CaptureDirectory	.long ?  ; optional disk-backed capture scratch directory
 	.endstruct
-FRAME_BYTES = Frame.LowerLine+4
+FRAME_BYTES = Frame.CaptureDirectory+4
 	.section code, kind=code
 	.pub
 ; Assemble one package and source selection. A0=Frame, D0=Shell return code.
@@ -180,6 +182,7 @@ execute	.block
 	move.w Frame.Mode(a0), CliMode
 	move.w Frame.WarningsAsErrors(a0), CliWarningsAsErrors
 	move.l Frame.LowerLine(a0), LowerLineRoutine
+	move.l Frame.CaptureDirectory(a0), CaptureDirectory
 	move.w Frame.OutputKind(a0), CliOutputKind
 	move.w Frame.StartSet(a0), OutputStartSet
 	move.l Frame.Start(a0), OutputStart
@@ -196,6 +199,7 @@ execute	.block
 	jsr metadata.clear
 	movea.l (sp)+, a0
 	.CAPTURE_CLEAR
+	.CAPTURE_STORE_CLEAR capture_store.diskReads, capture_store.diskReadBytes, capture_store.diskWrites, capture_store.diskWriteBytes, capture_store.faults, capture_store.evictions, capture_store.peakPayload
 	.LAZY_CLEAR
 	.WORK_CALL lazy_work.clear
 	.HOTSPOT_CLEAR
@@ -262,6 +266,15 @@ configured
 	tst.l d0
 	beq.w cleanup
 	move.l d0, DosBase
+	tst.l CaptureDirectory
+	beq.w captureConfigured
+	lea CaptureStore, a0
+	movea.l DosBase, a1
+	movea.l CaptureDirectory, a2
+	move.l #CAPTURE_RESIDENT_BYTES, d0  ; writer and all pinned readers included
+	jsr capture_store.configure
+	bne.w captureFailed
+captureConfigured
 	.MEMORY_CLOCK DosBase, #0
 	.MEMORY_STAGE #1
 	clr.w PrepStep
@@ -311,6 +324,11 @@ outputsReady
 warningsReady
 	clr.l ReturnCode
 	bra.w cleanup
+captureFailed
+	movea.l DosBase, a6
+	move.l #CaptureBackingFailure, d1
+	jsr DOS_PUT_STR(a6)
+	bra.w cleanup
 outputFailed
 	movea.l DosBase, a6
 	move.l #OutputFailure, d1
@@ -322,6 +340,29 @@ missingRecordOutput
 	jsr DOS_PUT_STR(a6)
 	bra.w cleanup
 failed
+	move.l CaptureStore+capture_store.State.Failure, d0
+	beq.w sourceFailed
+	move.l #CaptureIoFailure, d1
+	cmpi.l #capture_store.FAILURE_BUDGET, d0
+	beq.w captureBudgetFailed
+	cmpi.l #capture_store.FAILURE_ALLOCATION, d0
+	beq.w captureAllocationFailed
+	cmpi.l #capture_store.FAILURE_LEASE, d0
+	beq.w captureLeaseFailed
+	bra.w reportCaptureFailure
+captureBudgetFailed
+	move.l #CaptureBudgetFailure, d1
+	bra.w reportCaptureFailure
+captureAllocationFailed
+	move.l #CaptureAllocationFailure, d1
+	bra.w reportCaptureFailure
+captureLeaseFailed
+	move.l #CaptureLeaseFailure, d1
+reportCaptureFailure
+	movea.l DosBase, a6
+	jsr DOS_PUT_STR(a6)
+	bra.w cleanup
+sourceFailed
 	bsr.w reportFailure
 	bra.w cleanup
 invalidConfig
@@ -399,6 +440,7 @@ freeBlocks
 	.MEMORY_PHASE #3
 	move.l DosBase, d0
 	beq.w done
+	.CAPTURE_STORE_REPORT DosBase, capture_store.diskReads, capture_store.diskReadBytes, capture_store.diskWrites, capture_store.diskWriteBytes, capture_store.faults, capture_store.evictions, capture_store.peakPayload
 	.CAPTURE_REPORT DosBase
 	.CAPTURE_LIFE_REPORT DosBase
 	.LAZY_REPORT DosBase
@@ -1936,6 +1978,11 @@ CaptureLifeLayout
 	.word source.Token.Start, source.Token.End, source.Token.Offset, source.Token.Length
 .endif
 GoFailure	.byte "compact CLI: --go requires Hex or S-record output (CLI or metadata)", 10, 0
+CaptureBackingFailure	.byte "capture store: cannot create disk backing storage", 10, 0
+CaptureIoFailure	.byte "capture store: disk read, write or seek failed", 10, 0
+CaptureBudgetFailure	.byte "capture store: resident payload budget exhausted (record too large or readers pinned)", 10, 0
+CaptureAllocationFailure	.byte "capture store: memory allocation failed", 10, 0
+CaptureLeaseFailure	.byte "capture store: invalid or unbalanced reader lease", 10, 0
 DosName	.byte "dos.library", 0
 WarningsFailure	.byte "--Werror: warnings treated as errors", 10, 0
 OutputFailure	.byte "compact CLI: output failed", 10, 0
@@ -1981,6 +2028,7 @@ CliMode	.res word, 1
 CliOutputKind	.res word, 1
 CliWarningsAsErrors	.res word, 1
 LowerLineRoutine	.res long, 1
+CaptureDirectory	.res long, 1
 	.align 4
 CliModuleRoots	.res long, 1
 CliModuleCount	.res long, 1

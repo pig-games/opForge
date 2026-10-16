@@ -153,7 +153,10 @@ Embedding documentation:
   artifacts after final section placement; AmigaDOS paths use native volume
   and directory semantics rather than Unix path rules. Root `.meta` block and
   inline forms also select Rust-equivalent 6502-family BIN, listing, and HEX
-  artifacts.
+  artifacts. The experimental native option `--capture-dir DIR` uses an existing
+  disk directory to bound capture payload RAM to 1 MiB; resident storage remains
+  the default. Metadata and other assembler memory are outside that limit. See
+  the [storage measurements and limits](documentation/plans/native-lazy-preparation.md).
 
 ## Development Shortcuts
 

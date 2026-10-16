@@ -1,8 +1,58 @@
 //! Full frozen-input comparisons using exported images and a freshly assembled Rust oracle.
+//! Case JSON optionally sets capture_mode to disk or resident (the default).
 use super::*;
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 use serde_json::{json, Value};
+
+// Optional case `capture_mode` and preparation environment use the same explicit
+// values. Unset preserves the resident reference path.
+pub(super) fn capture_mode(value: Option<&str>) -> &'static str {
+    match value {
+        None | Some("resident") => "resident",
+        Some("disk") => "disk",
+        Some(other) => panic!("capture mode must be resident or disk, got {other:?}"),
+    }
+}
+
+pub(super) fn capture_command(command: &str, mode: &str) -> String {
+    if mode == "disk" {
+        format!("{command} --capture-dir Work:")
+    } else {
+        command.to_owned()
+    }
+}
+
+// The existing runner captures files, not empty directories. This checks leaked
+// scratch payloads; the component probe separately checks private dir removal.
+pub(super) fn capture_scratch_files(run: &FsUaeSmokeRun) -> Vec<String> {
+    run.captured_artifacts
+        .keys()
+        .filter_map(|path| {
+            let relative = path.strip_prefix("Work").ok()?;
+            let directory = relative.components().next()?.as_os_str().to_str()?;
+            let suffix = directory.strip_prefix("opfg")?;
+            (suffix.len() == 16 && suffix.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                .then(|| path.to_string_lossy().into_owned())
+        })
+        .collect()
+}
+
+#[test]
+fn native_capture_configuration_is_explicit_and_defaults_to_resident() {
+    assert_eq!(capture_mode(None), "resident");
+    assert_eq!(capture_mode(Some("resident")), "resident");
+    assert_eq!(capture_mode(Some("disk")), "disk");
+    assert_eq!(
+        capture_command("-i source.asm", "resident"),
+        "-i source.asm"
+    );
+    assert_eq!(
+        capture_command("-i source.asm", "disk"),
+        "-i source.asm --capture-dir Work:"
+    );
+    assert!(std::panic::catch_unwind(|| capture_mode(Some("typo"))).is_err());
+}
 
 fn checked_file(case: &Path, row: &Value) -> Vec<u8> {
     let path = row["path"].as_str().expect("case file path");
@@ -31,6 +81,8 @@ fn native_full_selfhost_comparison_fs_uae() {
     let directory = specification.parent().unwrap();
     let input: Value = serde_json::from_slice(&fs::read(&specification).unwrap()).unwrap();
     assert_eq!(input["schema"], 1);
+    assert!(input["capture_mode"].is_null() || input["capture_mode"].is_string());
+    let capture_mode = capture_mode(input["capture_mode"].as_str());
     let output = directory.join("result");
     fs::create_dir(&output).expect("fresh result directory required");
     let image = checked_file(directory, &input["image"]);
@@ -127,12 +179,22 @@ fn native_full_selfhost_comparison_fs_uae() {
         .iter()
         .map(|value| value.as_str().unwrap())
         .collect::<Vec<_>>();
+    let command = capture_command(
+        "-i src/experimental/opforge_compact_cli.asm --hunk Work:output.hunk -M src -I src/debug",
+        capture_mode,
+    );
     let case = OpforgeNativeCliParityCase {
-        name: "full-exported-selfhost-comparison", cpu_override: "68020", extra_assembly_defines: &define_strings,
+        name: "full-exported-selfhost-comparison",
+        cpu_override: "68020",
+        extra_assembly_defines: &define_strings,
         source_override: Some(b""),
-        command_template: Some("-i src/experimental/opforge_compact_cli.asm --hunk Work:output.hunk -M src -I src/debug"),
-        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault, extra_guest_files: &files,
-        proof: OpforgeNativeCliProof::ExactArtifact { relative_path: "Work/output.hunk", rust_oracle: &oracle },
+        command_template: Some(&command),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &files,
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/output.hunk",
+            rust_oracle: &oracle,
+        },
     };
     let outcome = match run_prebuilt_compact_cli_case_from_env(&workspace, &case, &image) {
         Ok(outcome) => outcome,
@@ -165,8 +227,10 @@ fn native_full_selfhost_comparison_fs_uae() {
         Some(bootstrap_digest.as_str())
     );
     let static_bytes = native_package_loading_performance::linked_static_bytes(&image);
+    let scratch_files = capture_scratch_files(run);
     let result = json!({
-        "success": run.success && run.protocol_completed && run.exit_code == Some(0),
+        "capture_mode": capture_mode, "capture_scratch_files_remaining": scratch_files,
+        "success": run.success && run.protocol_completed && run.exit_code == Some(0) && scratch_files.is_empty(),
         "guest_protocol_completed": run.protocol_completed, "assembler_exit_code": run.exit_code,
         "exact_rust_match": run.verified_output.as_deref() == Some(oracle.as_slice()),
         "start_to_done_host_seconds": run.start_to_done_host_seconds,
@@ -180,6 +244,10 @@ fn native_full_selfhost_comparison_fs_uae() {
     )
     .unwrap();
     eprintln!("FULL_COMPARISON_RESULT {result}");
+    assert!(
+        scratch_files.is_empty(),
+        "capture scratch files survived cleanup: {scratch_files:?}"
+    );
     assert!(run.protocol_completed && run.success && run.exit_code == Some(0));
     assert_eq!(run.verified_output.as_deref(), Some(oracle.as_slice()));
 }

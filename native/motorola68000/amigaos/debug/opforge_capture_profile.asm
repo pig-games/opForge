@@ -263,7 +263,9 @@ snapshot	.block
 	mulu.w #SNAPSHOT_BYTES, d0
 	lea Fields.Snapshots(a6), a5
 	adda.l d0, a5
-	move.l d1, OwnerSnapshot.Regions(a5)
+	; Directory entries can describe evicted capture. Only resident payload
+	; contributes to this ownership snapshot; logical composition is separate.
+	clr.l OwnerSnapshot.Regions(a5)
 	move.l BlockView.Used(a0), OwnerSnapshot.TableUsed(a5)
 	move.l BlockView.Capacity(a0), OwnerSnapshot.TableCapacity(a5)
 	move.l BlockView.Used(a1), OwnerSnapshot.TemporaryUsed(a5)
@@ -300,11 +302,19 @@ next
 	tst.l d1
 	beq.w totals
 	lea 0(a3, d3.l), a4
+	tst.l BlockView.Pointer(a4)
+	bne.w resident
+	tst.l BlockView.Capacity(a4)
+	bne.w invalid
+	bra.w advance
+resident
+	addq.l #1, OwnerSnapshot.Regions(a5)
 	move.l BlockView.Used(a4), d0
 	cmp.l BlockView.Capacity(a4), d0
 	bhi.w invalid
 	.SUM d0, d4
 	.SUM BlockView.Capacity(a4), d5
+advance
 	adda.l d2, a3
 	subq.l #1, d1
 	bra.w next

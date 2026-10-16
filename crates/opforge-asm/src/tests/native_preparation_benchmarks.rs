@@ -1,4 +1,8 @@
 //! Frozen maintained preparation workloads through the existing single-case runner.
+//! OPFORGE_PREPARATION_CAPTURE_MODE=disk adds --capture-dir Work:; unset is resident.
+use super::native_full_selfhost_comparison::{
+    capture_command, capture_mode, capture_scratch_files,
+};
 use super::*;
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
@@ -28,6 +32,8 @@ fn native_preparation_benchmark_fs_uae() {
         .join("../..")
         .canonicalize()
         .unwrap();
+    let capture_setting = std::env::var("OPFORGE_PREPARATION_CAPTURE_MODE").ok();
+    let capture_mode = capture_mode(capture_setting.as_deref());
     let workload = std::env::var("OPFORGE_PREPARATION_WORKLOAD").expect("modules or macros");
     assert!(matches!(workload.as_str(), "modules" | "macros"));
     let requested = PathBuf::from(
@@ -112,12 +118,13 @@ fn native_preparation_benchmark_fs_uae() {
             bytes,
         })
         .collect::<Vec<_>>();
+    let command = capture_command("-i Work:main.asm -M Work: -I Work:", capture_mode);
     let case = OpforgeNativeCliParityCase {
         name: "native-preparation-benchmark",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(b""),
-        command_template: Some("-i Work:main.asm -M Work: -I Work:"),
+        command_template: Some(&command),
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &files,
         proof: OpforgeNativeCliProof::ExactArtifacts(&expected),
@@ -164,11 +171,17 @@ fn native_preparation_benchmark_fs_uae() {
     let exact = artifacts
         .iter()
         .all(|artifact| artifact["exact_rust_match"] == true);
-    let success = run.success && run.protocol_completed && run.exit_code == Some(0) && exact;
+    let scratch_files = capture_scratch_files(run);
+    let success = run.success
+        && run.protocol_completed
+        && run.exit_code == Some(0)
+        && exact
+        && scratch_files.is_empty();
     let sources = owned.iter().map(|(path, bytes)| json!({
         "path": path, "bytes": bytes.len(), "digest": opforge_self_host_package_digest(bytes),
     })).collect::<Vec<_>>();
     let result = json!({
+        "capture_mode": capture_mode, "capture_scratch_files_remaining": scratch_files,
         "success": success, "workload": workload, "sources": sources, "artifacts": artifacts,
         // The single-case runner validates both challenge-bound START and DONE.
         "fresh_start_and_done_verified": run.protocol_completed,

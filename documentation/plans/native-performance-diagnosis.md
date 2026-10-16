@@ -1,11 +1,11 @@
 # Native runtime and memory diagnosis
 
-Status, 2026-10-16: parity remains paused. Chunked capture and scaled symbol
-buckets are the maintained improvements. Raw include-text reuse and the prepared
-declaration-leaf cache were both measured and dropped. Native and Rust code are
-restored exactly to reference `bcac8dc8`; no cache selector remains. The next
-consequential decision is the [module publication design](native-fragment-preparation.md),
-which still requires review before implementation.
+Status, 2026-10-16: parity remains paused. The native assembler now offers a
+bounded disk-backed capture policy alongside the resident reference. On identical
+full-build inputs it reduces peak tracked heap by 65.7%; release timing shows no
+established change. Chunked capture and scaled symbol buckets remain maintained.
+Cache prototypes are removed. Structural scan, early module publication and `.ofm`
+remain [design work requiring review](native-fragment-preparation.md).
 
 ## Measurement contract
 
@@ -22,6 +22,79 @@ serial execution. They are neither A6000 timings nor 2 MiB qualification. Tracke
 heap excludes the executable, stack, OS and untracked allocations; linked static
 reservation is reported separately. Do not compare absolute times across emulator
 profiles or changing source snapshots.
+
+## Bounded disk-backed capture
+
+Expected saving: replace about 24 MB of resident capture with at most 1 MiB of
+payload, including the writer and all pinned readers. Target at least 25% lower
+whole-build tracked peak, preserving the eager language pipeline and record bytes.
+The original resident executable and the current resident policy are references.
+
+Use the experimental native option `--capture-dir DIR`, where DIR is an existing,
+writable, genuinely disk-backed AmigaOS directory. No option retains resident
+storage. A `T:` assign may resolve to RAM and would defeat the saving. The 1 MiB
+bound covers payload capacity, not metadata, temporary records, the executable or
+OS buffers. Records stay contiguous; a single record exceeding the budget, or
+insufficient space because of pins, fails explicitly rather than falling back to
+unbounded RAM. This is scratch storage, not a persistent module-object format.
+
+One private scratch directory/file stores immutable chunks by logical byte offset.
+Counted leases cover nested lookahead, configuration and replay; bytes cannot be
+evicted until every borrower releases them. The small resident directory uses
+32-byte rows for shift-based indexing. Round-robin eviction avoids repeated scans
+from its first row. DOS transport owns exact seeks/transfers and removes only paths
+it created. Normal success and failure cleanup close and delete owned storage.
+Preparation, binding, expression compilation and module order stay eager.
+
+Identical frozen input: 214 mapped files / 2,648,242 bytes, workload SHA-256
+`eae5102bd21b3863105a7f550912193dff8e52c8ba2d6ff11b498392b7dca480`.
+All runs generate a fresh live Rust oracle and match all 708,216 output bytes.
+Same five instrumentation gates on each memory image:
+
+| Resource | Original resident | Current resident | Disk-backed |
+|---|---:|---:|---:|
+| Peak tracked heap | 34,517,176 B | 34,533,560 B | 11,839,624 B |
+| Peak capture payload capacity | 23,986,176 B | 23,986,176 B | 1,048,576 B |
+| Capture directory capacity | 16,384 B | 32,768 B | 32,768 B |
+| Captured records | 116,855 | 116,855 | 116,855 |
+| Logical captured bytes | 23,852,392 B | 23,852,392 B | 23,852,392 B |
+| Expression compilations / evaluations | 69,528 / 176,850 | 69,528 / 176,850 | 69,528 / 176,850 |
+| Allocated/freed capacities, each | 64,979,400 B | 65,012,168 B | 94,180,904 B |
+
+Disk backing reduces total peak by **22,677,552 B / 65.7%** versus the original,
+without avoiding language work. Reload churn increases total allocation. Its 804
+completed writes cover 23,852,392 bytes; 895 successful reloads read 26,807,624 bytes,
+with 1,665 evictions. Peak payload is exactly the budget. Every memory run finishes
+with zero tracked live bytes, balanced capacities and no observer errors.
+
+Release timing uses no instrumentation, serially in both orders:
+
+| Pair | Original resident | Disk-backed |
+|---|---:|---:|
+| Reference then disk | 104.747 s | 105.912 s |
+| Disk then reference | 104.700 s | 105.669 s |
+| Mean | 104.724 s | 105.790 s |
+
+The measured +1.019% / +1.067 s difference is inside the roughly two-second noise:
+no established speedup or slowdown. The current resident executable takes 105.145 s
+in one control, also within that noise. Release image / linked reservation grows
+from 708,216 / 741,956 to 710,340 / 744,776 bytes. No disk timing on A6000 hardware
+has been obtained; FS-UAE's host-backed filesystem does not predict physical disk cost.
+
+Decision: retain this single explicit storage policy, with resident storage still
+the default. It meets the memory gate; it is not a deferred-preparation or speed
+optimization. Small below-budget projects need not save memory: the maintained
+module workload stays at 608,768 B, while the macro-heavy workload grows from
+2,249,656 to 2,282,424 B because sealing creates another partial chunk. Both modes
+match both live Rust BIN/Hunk artifacts. The component probe exercises distinct
+chunk contents, reload boundaries, nested pins, budget rejection, invalid scratch
+setup, idempotent cleanup and actual file/directory removal.
+
+Existing telemetry reports resident capture ownership; logical record composition
+remains separate. Progress events 360/361 count completed reads/writes and bytes;
+362 reports fault attempts, evictions and peak payload. The existing decoder accepts
+absence for reference images, but rejects partial/duplicate store summaries. No new
+observer framework or production workload selector was introduced.
 
 ## Telemetry definitions
 
@@ -148,126 +221,43 @@ claims. Both outputs and all ownership accounting pass.
 
 ## Current qualification and distance to target
 
-Fresh complete self-host of current native sources: 214 mapped files / 2,648,242
-bytes, source manifest `fnv1a64:c57d381aab4b2523`. The uninstrumented native build
-finishes in 101.978 s, exit zero, and emits all 708,216 bytes exactly equal to the
-fresh Rust oracle and its own bootstrap. This is a full self-host, not a prefix
-or successful launcher. Release linked reservation is 741,956 bytes.
+Fresh complete self-host of the current native CLI with disk-backed capture:
+215 mapped files / 2,666,285 bytes, source manifest
+`fnv1a64:7c7278ec02d4ee8c`. The uninstrumented native run finishes in **106.509 s**,
+with fresh challenge-bound START/DONE, exit zero, and all **710,340 output bytes**
+exactly equal to the live Rust oracle and bootstrap (`fnv1a64:7dd8eb4328d217df`).
+It uses an embedded m68020 package, a 64 KiB guest stack and the expanded-memory
+A4000/68040 FS-UAE profile. This is the complete current CLI self-build, separate
+from the unchanged-input resource comparisons above. It is not A6000 evidence.
 
-The matched frozen-input winner peaks at 34,353,336 tracked heap bytes (32.76 MiB),
-about 16.4 times the entire 2 MiB target before executable, stack or OS costs.
-The earlier current-source chunked memory run measured 34,390,152 bytes before
-bucket scaling; do not substitute that different-source number for a paired delta.
-No low-memory qualification is claimed.
+The paired disk-backed heap peak is **11.29 MiB**, about **5.6 times the entire
+2 MiB target**, before executable, stack and OS costs. With the instrumented
+image's linked reservation it is at least 12.02 MiB. That peak belongs to the frozen
+214-file workload, not a separate memory measurement of the 215-file current build.
+No low-memory fit or full language/CPU parity is claimed. Parity remains paused.
 
-Matched-input memory images end with zero tracked live storage, balanced allocated
-and freed capacities and no observer errors. Release timing uses no instrumentation.
-The current full-source proof, fixed-input comparisons, component tests, focused
-Rust checks and engineering guards establish this performance checkpoint, not
-full language/CPU parity. A6000 hardware is unavailable for this pass.
+The resident path, component probes, both maintained workloads, exact frozen-input
+comparisons and current-source disk-backed self-host establish this storage change.
+The next larger ownership decision remains the structural publication contract;
+it is not authorized by the storage result.
 
 ## Cache experiment decisions
 
-Expected saving: raw include reuse should avoid repeated input reads; prepared
-leaf reuse should avoid binding and expression compilation for cached module
-bodies. Neither experiment can remove the acquisition floor while all captured
-source remains resident. Keep the eager path as reference; require exact native
-output, then judge actual work, uninstrumented runtime and peak heap separately.
-No new observer framework was added.
+Both cache experiments are dropped; their code/options/tests are in Git history,
+not the maintained tree. They do not reduce the acquisition floor.
 
-### Raw include text: dropped
+| Prototype | Observed opportunity | Decision |
+|---|---|---|
+| Raw include reuse (`7b849ffd`) | 83/204 hits, no avoided preparation, +137,568 B heap; release pair means 101.551 / 101.572 s | Remove: no established runtime benefit. |
+| Prepared declaration leaves (`406ebfda`) | Five warm entries / 698 rows avoid 1.73% of expression compilations; heap unchanged at 34,517,176 B; no demonstrated speed gain | Remove: too little benefit and incomplete preparation-observation equivalence. |
 
-Identical frozen input produced 83 hits from 204 requests (40.7%), offering
-525,758 bytes of cached content. Preparation, records and plans were unchanged.
-Peak heap increased 137,568 bytes, from 34,517,176 to 34,654,744. Two release
-pairs averaged 101.551 versus 101.572 seconds (+0.02%): no demonstrated gain.
-Both maintained workloads matched Rust; neither established a speed improvement.
-The prototype and its tests were removed; checkpoint `7b849ffd` preserves it.
-
-Input-read counters cover line collection, not all physical reads; cache fills
-can move work outside that window. They are not evidence of a total-I/O saving.
-
-### Prepared declaration leaves: feasibility only, dropped
-
-Prototype `406ebfda` exports immutable scalars and plain struct schemas as checked,
-pointer-free objects with local IDs and explicit remapping. Warm import reuses
-compiled meaning, avoiding body binding/compilation. Module/CPU boundaries remain
-eager. Imports/configuration, templates, control flow, emission, includes and
-potential current-PC spellings decline caching. The conservative whole-acquisition
-fingerprint and exact package comparison are not a complete per-module semantic
-fingerprint. This is not a general `.ofm` or code-relocation implementation.
-
-Cold export waits for global `frontend.complete`, because dotted identities can
-change until then. Shared ExprVM reevaluates finalized capsules against private,
-source-ordered cells. This avoids freezing stale final bindings, but permits no
-early source release. Nine reduced native comparisons pass, including independent
-cold/warm processes, changed source/context, corrupt/truncated entries and
-include/control-body rejection. They establish their cases, not general parity.
-
-Full comparisons use identical 214-file / 2,648,242-byte frozen input, SHA-256
-`eae5102bd21b3863105a7f550912193dff8e52c8ba2d6ff11b498392b7dca480`.
-All three memory runs and both release runs finish with fresh START/DONE, exit
-zero and all 708,216 bytes equal to the newly assembled live Rust oracle
-(`fnv1a64:27c800763d556961`). These are complete frozen self-host workload
-comparisons; the cache prototype's own new source tree was not self-host-qualified.
-
-| Resource | Eager | Cold cache | Warm cache |
-|---|---:|---:|---:|
-| Cache load requests | — | 160 | 160 |
-| Hits / writes | — | 0 / 5 | 5 / 0 |
-| Reused source rows | 0 | 0 | 698 |
-| Expression compilations | 69,528 | 69,528 | 68,324 |
-| Evaluations | 176,850 | 177,451 | 176,247 |
-| Tracked peak heap | 34,517,176 B | 34,517,432 B | 34,517,176 B |
-| Allocated/freed capacities, each | 64,979,400 B | 69,236,168 B | 65,045,704 B |
-| Prepared stream bytes | 2,032,832 B | 2,032,832 B | 2,036,846 B |
-
-Warm hits are 3.13% of load attempts, not coverage of every module. Compilations
-fall 1.73%, evaluations 0.34%; literal recipes enlarge the stream by 4,014 bytes.
-All tracked storage is freed without observer errors. Capture and peak heap are
-unchanged: caching after acquisition cannot remove the acquisition floor.
-
-One uninstrumented pair, eager then warm: **104.484 → 105.905 seconds**,
-a +1.421-second (+1.36%) difference inside roughly two-second noise. No speedup
-or statistically established slowdown is claimed. Instrumented preparation is
-68.78 / 70.80 / 70.00 seconds, including observer costs. No further timing was
-justified once unchanged peak and the correctness limit below ruled out promotion.
-
-Both additional workloads match Rust BIN and Hunk outputs. Each makes four load
-attempts and admits no cacheable leaf: these are no-hit controls. Peaks stay
-608,768 bytes for the small project and 2,249,400 for the macro-heavy project;
-compilation/evaluation counts and allocated capacities are unchanged. Their
-instrumented elapsed observations are not release speed claims.
-
-The five objects total 64,712 bytes for 138,408 bytes of captured body extent.
-Disk entries total 2,339,494 bytes because the prototype repeats the entire
-454,890-byte package per entry; that persistence cost is separate from object
-size. The release prototype adds 9,276 executable and 9,448 linked static bytes.
-
-**Unresolved correctness condition:** warm imports must reproduce values visible
-to preparation consumers, not just final assembly values. Late dotted resolution
-can change a final folded value relative to its original eager snapshot, changing
-an importing conditional. The prototype lacks the original-snapshot consistency
-gate, including equivalent schema geometry. The passing corpus does not cover
-that ambiguity and does not qualify general warm semantics.
-
-Decision: remove the prototype, option, helpers and experiment-only tests. No peak
-saving or demonstrated runtime win justifies its added code/ownership and further
-semantic qualification. The real compiler-count reduction is insufficient. Do not
-expand this into another small-leaf or macro-only investigation. It neither proves
-nor disproves a broader relocatable `.ofm` design. Review the publication boundary
-before changing the preparation pipeline.
-
-Heap remains 32.92 MiB, about 16.5 times the entire 2 MiB target before executable,
-stack or OS costs. The restored production reference and its qualification remain
-unchanged; no constrained-memory fit is claimed.
-
-Local evidence outside `target`: `/tmp/opforge-leaf-full-summary-20261016.json`,
-`/tmp/opforge-leaf-component-summary-20261016.json` and
-`/tmp/opforge-leaf-benchmark-summary-20261016.json`, with the corresponding
-`opforge-leaf-*-v5-*-20261016` case/result directories. These are local receipts,
-not repository dependencies. Reproduce removed ignored tests from checkpoint
-`406ebfda`; Git is the prototype archive.
+The prepared prototype established checked local-ID/schema export/import for its
+restricted cases, not general relocatable `.ofm` objects. Global dotted binding can
+change final values after earlier preparation consumers have observed them. Module
+publication must retain unresolved recipes and ordered observations; freezing final
+folded values is insufficient. Waiting for global completion cannot free early
+capture. Those requirements remain in the [structural design](native-fragment-preparation.md).
+Disk backing addresses residency without relying on either cache prototype.
 
 ## Enduring earlier decisions
 
@@ -302,3 +292,11 @@ oracle. Use `native_preparation_benchmark_fs_uae` with the image/workload/result
 variables documented beside the benchmark sources. Existing MEMD, capture and
 hotspot telemetry provide the memory/work comparisons. Do not substitute archived
 or expected bytes for the live oracle.
+
+Current storage receipts and immutable cases are outside `target`:
+`/tmp/opforge-disk-summary-20261016.json`,
+`/tmp/opforge-disk-cases-v3-20261016`, and
+`/tmp/opforge-disk-candidate-v3-20261016`. These local diagnostics are not repository
+dependencies. For the full comparison, set case JSON `capture_mode` to `disk` or
+`resident` (unset means resident); the disk adapter supplies `--capture-dir Work:`.
+For the maintained workloads use `OPFORGE_PREPARATION_CAPTURE_MODE=disk`.

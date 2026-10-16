@@ -339,9 +339,16 @@ chunkBounded
 	move.l d2, configuration.Frame.End(a0)
 	jsr configuration.configurePart
 	beq.w scanned
+	; Diagnostic resolution still borrows the configured row.
 	bsr.w locateConfigurationFailure
+	move.l ScheduleCursor, d1
+	bsr.w releaseCaptureView
+	clr.l ConfigScan+configuration.Frame.Arena
 	bra.w bad
 scanned
+	move.l ScheduleCursor, d1
+	bsr.w releaseCaptureView
+	clr.l ConfigScan+configuration.Frame.Arena
 	move.l d7, ScheduleCursor
 	bra.w part
 endScan

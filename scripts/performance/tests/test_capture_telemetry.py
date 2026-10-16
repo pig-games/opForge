@@ -19,6 +19,21 @@ def line(phase, values):
 
 
 class CaptureTelemetryTests(unittest.TestCase):
+    def test_optional_store_summary_requires_complete_unique_rows(self):
+        text = "\n".join((line(360, [2, 64, 0]), line(361, [3, 96, 0]),
+                          line(362, [2, 4, 1048576])))
+        self.assertEqual(decoder.decode_capture_store_telemetry(text), {
+            "read_calls": 2, "read_bytes": 64, "write_calls": 3,
+            "write_bytes": 96, "fault_attempts": 2, "evictions": 4,
+            "peak_payload_capacity": 1048576,
+        })
+        self.assertIsNone(decoder.decode_capture_store_telemetry("ordinary output"))
+        for bad in (text.splitlines()[0], text + "\n" + text.splitlines()[0],
+                    text.splitlines()[0].replace("l=00000040", "l=broken"),
+                    text.replace("r=00000000", "r=00000001", 1)):
+            with self.subTest(text=bad), self.assertRaises(decoder.CaptureTelemetryError):
+                decoder.decode_capture_store_telemetry(bad)
+
     def capture(self, mask=7, header_bytes=56):
         rows = [line(400, [1, 0, mask])]
         # Four records, their declared headers, and ten 20-byte tokens.

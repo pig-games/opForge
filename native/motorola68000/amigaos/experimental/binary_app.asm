@@ -15,14 +15,9 @@
 	.use experimental.amigaos.binary_statement_execution as statement_execution
 	.use experimental.amigaos.binary_capture as capture
 	.use experimental.amigaos.binary_capture_store as capture_store
-	.use experimental.amigaos.binary_leaf_object as leaf_object
-	.use experimental.amigaos.binary_leaf_io as leaf_io
-	.use experimental.amigaos.binary_leaf_key as leaf_key
-	.use tkvm.amigaos.runtime as tokenizer
 	.use experimental.amigaos.binary_configuration as configuration
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_scopes as scopes
-	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_output as hunk
@@ -172,9 +167,8 @@ OutputBase	.long ?  ; Shell input basename, independent of source selection
 OutputDefault	.word ?  ; CLI output filename was omitted
 WarningsAsErrors	.word ?
 LowerLine	.long ?  ; temporary capture proof callback; zero uses frontend.line
-LeafCache	.long ?  ; optional private experimental cache directory
 	.endstruct
-FRAME_BYTES = Frame.LeafCache+4
+FRAME_BYTES = Frame.LowerLine+4
 	.section code, kind=code
 	.pub
 ; Assemble one package and source selection. A0=Frame, D0=Shell return code.
@@ -186,16 +180,6 @@ execute	.block
 	move.w Frame.Mode(a0), CliMode
 	move.w Frame.WarningsAsErrors(a0), CliWarningsAsErrors
 	move.l Frame.LowerLine(a0), LowerLineRoutine
-	move.l Frame.LeafCache(a0), LeafDirectory
-	movem.l a0-a1, -(sp)
-	lea LeafKey, a0
-	jsr leaf_key.begin
-	clr.l LeafDynamicSource
-	.MEMORY_COUNTER_CLEAR LeafRequests
-	.MEMORY_COUNTER_CLEAR LeafHits
-	.MEMORY_COUNTER_CLEAR LeafWrites
-	.MEMORY_COUNTER_CLEAR LeafRows
-	movem.l (sp)+, a0-a1
 	move.w Frame.OutputKind(a0), CliOutputKind
 	move.w Frame.StartSet(a0), OutputStartSet
 	move.l Frame.Start(a0), OutputStart
@@ -356,13 +340,6 @@ freeBlocks
 	jsr metadata.release
 	bsr.w releaseScheduledFrontend
 	bsr.w releaseCapturedSources
-	lea LeafObject, a0
-	jsr leaf_object.release
-	lea LeafPending, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
-	lea LeafIo+leaf_io.State.Buffer, a0
-	jsr memory.release
 	lea PackageSource, a0
 	jsr loader.release
 	lea RuntimeBlock, a0
@@ -423,8 +400,6 @@ freeBlocks
 	move.l DosBase, d0
 	beq.w done
 	.CAPTURE_REPORT DosBase
-	.MEMORY_PROGRESS DosBase, #340, LeafRequests, LeafHits, LeafWrites
-	.MEMORY_PROGRESS DosBase, #341, LeafRows, #0, #0
 	.CAPTURE_LIFE_REPORT DosBase
 	.LAZY_REPORT DosBase
 	.WORK_REPORT DosBase
@@ -441,7 +416,6 @@ done
 	.priv
 	.include "binary_app_diagnostics.i"
 	.include "binary_app_lazy_report.i"
-	.include "binary_source_leaf.i"
 
 ; Read exactly D3 bytes into D2 from the open InputHandle. D0/CCR=status.
 ; Preserves all other registers. No seek, whole-source buffer or byte-at-a-time I/O.
@@ -747,7 +721,6 @@ sourceLoop
 	movea.l LineBuffer, a1
 	move.l #LINE_BYTES, d0
 	jsr line_input.next
-	bsr.w leafHashLine
 	add.l d2, SourceBytes
 	move.l d1, LineUsed
 	.MEMORY_INPUT_END SourceBytes
@@ -880,7 +853,6 @@ orderReady
 	lea Front, a0
 	jsr frontend.complete
 	bne.w completionBad
-	bsr.w leafPublish
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_BIND, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	move.l frontend.Frame.NameCount(a0), NameCount
 	.LAZY_COUNT lazy_audit.NAMES, NameCount
@@ -2009,30 +1981,6 @@ CliMode	.res word, 1
 CliOutputKind	.res word, 1
 CliWarningsAsErrors	.res word, 1
 LowerLineRoutine	.res long, 1
-	.align 4
-LeafDirectory	.res long, 1
-LeafKey	.res byte, leaf_key.STATE_BYTES
-LeafIo	.res byte, leaf_io.STATE_BYTES
-LeafObject	.res byte, leaf_object.FRAME_BYTES
-LeafBeforeModule	.res long, 1
-LeafBodyModule	.res long, 1
-LeafBodyRecords	.res long, 1
-LeafBodyCapture	.res long, 1
-LeafBeforeRecords	.res long, 1
-LeafWarm	.res long, 1
-LeafCpu	.res long, 1
-LeafStarted	.res long, 1
-LeafBodyOrigin	.res long, 1
-LeafDynamicSource .res long, 1
-LeafPending .res byte, memory.Block.Used+4
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-LeafRequests	.res long, 1
-LeafHits	.res long, 1
-LeafWrites	.res long, 1
-LeafRows	.res long, 1
-.endif
-.endif
 	.align 4
 CliModuleRoots	.res long, 1
 CliModuleCount	.res long, 1

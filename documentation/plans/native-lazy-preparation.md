@@ -1,6 +1,6 @@
 # Preparation ownership and capture storage
 
-Status, 2026-10-15: one eager preparation implementation and one shared chunked
+Status, 2026-10-16: one eager preparation implementation and one shared chunked
 capture store are maintained. Macro-only deferral investigations have ended.
 Parity is paused. The next proposed ownership change is the
 [structural scan and relocatable-object design](native-fragment-preparation.md),
@@ -16,7 +16,8 @@ which awaits review before implementation.
 | First-use whole-line plans | Removed with switches and experiment-specific tests. |
 | Binary token/spelling interface prototype | Removed; no justified prerequisite for a currently authorized implementation. |
 | Fragment envelope | Removed with its selector/probes/tests; the future object design remains a proposal. |
-| In-build raw include text reuse | Dropped after identical-input qualification: runtime-neutral, extra peak heap, unchanged preparation work. |
+| In-build raw include text reuse | Dropped: no runtime gain, extra heap, unchanged preparation work. |
+| Persistent prepared declaration leaves | Dropped: tested local-ID/schema reuse avoids 1.73% of compilations, but has no peak saving or demonstrated speed gain and lacks preparation-observation consistency qualification. |
 
 The standard packed macro execution, declaration context and shared VM/package
 boundaries remain. These decisions remove alternate preparation paths, not language
@@ -76,18 +77,21 @@ a resident object and a disk-backed object must share the same pointer-free form
 This requires an explicit configuration, include-continuation and publication
 contract, not another macro observer.
 
-The separately authorized in-build include experiment is complete. Sharing raw
-bytes produced 40.7% hits but avoided no preparation work, added peak heap and
-changed release time by only +0.02%; it and its tests were removed. The original
-path remains the default. See the [separate runtime/memory results](native-performance-diagnosis.md#in-build-include-text-reuse),
-including the collection-counter scope caveat.
+The raw include and persistent prepared declaration-leaf experiments are complete
+and dropped. See the [separate runtime/memory results](native-performance-diagnosis.md#cache-experiment-decisions).
+The prepared prototype reused five entries / 698 rows with exact output on the
+frozen full workload, but retained every source capture and left peak heap at
+34,517,176 bytes. Serialization after global binding cannot lower an acquisition
+peak already reached. Its passing cases also do not resolve the difference
+between early preparation snapshots and final folded values.
 
-The next proposed feasibility slice is one persistent leaf-module entry that can
-avoid preparation. It remains unimplemented. Preserve each include's ordered
-semantic effects and remap numeric identities; measure dependency invalidation,
-actual avoided work and cold/warm hit rates before a complete `.ofm` cache. A new
-framework or further macro-only audit is not authorized.
+The next decision is the structural publication contract, not another cache flag.
+An object must retain unresolved binding/layout recipes and ordered preparation
+observations before its source-oriented storage can be freed. Review the linked
+design and its disk-spill alternative before changing that lifetime boundary.
+No general `.ofm` implementation or early-release memory bound has been qualified.
 
-The current heap remains roughly 32.8 MiB before executable, stack and OS costs;
-there is no 2 MiB fit claim. Structural scanning and object publication may lower
-the bound but have not been implemented or measured.
+The production reference is restored byte-for-byte in native/Rust source to
+`bcac8dc8`; experimental code and tests are preserved in Git, not the active tree.
+The measured full-profile heap remains 32.92 MiB before executable, stack and OS
+costs, about 16.5 times the entire 2 MiB target. No low-memory fit is claimed.

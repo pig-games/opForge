@@ -5,7 +5,6 @@
 ; D0/CCR=status; other registers preserved. No module body is prepared here.
 captureFileBegin	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	bsr.w leafHashPath
 	lea ConfigScan, a0
 	move.l #Front, configuration.Frame.Session(a0)
 	lea Front, a1
@@ -515,8 +514,6 @@ nextSpan
 	move.l CaptureOrderIndex, d0
 	cmp.l CaptureOrderCount, d0
 	bhs.w good
-	bsr.w leafSpanBegin
-	move.l CaptureOrderIndex, d0
 	mulu.w #SPAN_BYTES, d0
 	lea CaptureOrder, a0
 	movea.l memory.Block.Pointer(a0), a0

@@ -95,14 +95,9 @@ optional
 packageRoot
 	move.l #DefaultRoot, app.Frame.PackageRoot(a0)
 	tst.b args.State.PackageRoot(a2)
-	beq.w leafCache
+	beq.w execute
 	lea args.State.PackageRoot(a2), a1
 	move.l a1, app.Frame.PackageRoot(a0)
-leafCache
-	tst.b args.State.LeafCache(a2)
-	beq.w execute
-	lea args.State.LeafCache(a2), a1
-	move.l a1, app.Frame.LeafCache(a0)
 execute
 	bsr.w closeDos
 	lea Config, a0
@@ -154,7 +149,6 @@ UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "  -i, --infile FILE     Input (directory selects main.asm; default .)", 10
 	.byte "      --cpu CPU         Optional initial target; otherwise root .cpu or default", 10
 	.byte "      --runtime-package FILE  Explicit BS38 runtime package", 10
-	.byte "      --leaf-cache DIR      Experimental native leaf cache", 10
 	.byte "  -b, --bin [FILE]      Flat binary output", 10
 	.byte "      --hunk [FILE]     Source-configured Hunk output", 10
 	.byte "  -x, --hex [FILE]      Intel HEX output", 10

@@ -1,6 +1,6 @@
 # Structural preparation and relocatable module objects
 
-Design for review, 2026-10-15. **Not implemented.** Stop for Erik's review before
+Design for review, updated 2026-10-16. **Structural pipeline not implemented.** Stop for Erik's review before
 changing the preparation pipeline. Parity remains paused. The old fragment-envelope
 experiment was removed; this proposal does not preserve that selector or its format.
 See [current measurements](native-performance-diagnosis.md) and
@@ -102,23 +102,46 @@ it can reduce acquisition residency sooner, but retains source-oriented work.
 Compare both against resident objects. Extra scans, validation, rereads and object
 construction/publication overlap may cost runtime; measure them independently.
 
-## Incremental feasibility status and next question
+## Incremental feasibility and the publication boundary
 
-The separately authorized in-build raw include-text experiment is complete and
-[dropped](native-performance-diagnosis.md#in-build-include-text-reuse): it has hits,
-but leaves all per-line preparation intact, adds peak heap and has no measurable
-release gain. This is not a configured-object hit-rate measurement. A useful next
-slice must reuse prepared meaning while preserving ordered effects and remapping
-caller-bound identities. Apply the approximately 1% exact resource gate; do not
-add another observer framework.
+The raw include-text and prepared declaration-leaf experiments are complete and
+[dropped](native-performance-diagnosis.md#cache-experiment-decisions). The latter
+proves pointer-free local-ID export/import for tested constants and plain schemas:
+five warm entries reuse 698 rows and avoid 1.73% of expression compilations on the
+frozen full workload. Peak heap is unchanged and no release speedup is established.
+The maintained small-module and macro-heavy controls admit no eligible leaf.
+No cache switch or alternate preparation path remains.
 
-The next proposed test is one persistent pointer-free leaf-module entry keyed by
-content hash and configuration. Its fingerprint must cover transitive include/assets,
-imported exports/types/templates, compiler and package semantics, relevant options, search
-resolution and source-order inputs actually consumed. Timestamps are hints, not
-validity. Test changed dependencies/configuration, cold/warm output equality and
-hit rates. An unresolved dependency cannot silently become a valid cache hit.
+The experiment exposes two requirements for the general design:
 
-The persistent leaf slice and structural implementation remain unstarted
-at the review boundary. Demand-loaded package chunks are separate future work,
-not a prerequisite for this experiment.
+- Dotted references are globally finalized today. Early module publication must
+  preserve unresolved binding recipes or establish a sound closed-module boundary;
+  it cannot assume that a currently found name is the eventual preferred binding.
+- Preparation-time observations are part of semantics. Importing configuration,
+  conditionals and other consumers must see the same values at the same point as
+  eager execution. Final folded values alone are insufficient. The discarded
+  prototype did not implement its required original-snapshot consistency guard.
+
+Waiting for global completion and then writing an object does not remove the
+capture acquisition floor. A useful next implementation must own the semantic
+recipes needed after publication and actually release module-oriented capture,
+not merely add persistence to the existing all-files pipeline. This remains a
+consequential structural change requiring review. No general relocatable code
+object, sparse linker, early-release pipeline or disk-spill engine was qualified
+by the declaration experiment.
+
+Before implementation, choose the publication contract and bound the largest
+simultaneous active module/include closure, shared state and sealed objects.
+Compare disk-backed objects with the simpler raw-capture spill alternative above.
+Do not infer a new memory bound from compact leaf objects alone.
+
+A future configured-object fingerprint must cover content, transitive includes
+and assets, imported exports/types/templates, compiler and package semantics,
+relevant options, search resolution and consumed source-order inputs. Timestamps
+are hints, not validity. Persist checked offsets and object-local identities,
+never process pointers. Sparse entries must declare missing units and miss or
+prepare source when a later request needs one. Unknown dependencies are not hits.
+
+Demand-loaded package chunks remain separate future work. Parity stays paused;
+no new observer framework, further macro-only audit or structural implementation
+is authorized by this note.

@@ -36,7 +36,7 @@ fn native_full_selfhost_comparison_fs_uae() {
     let image = checked_file(directory, &input["image"]);
     let exported_oracle = checked_file(directory, &input["oracle"]);
     let rows = input["files"].as_array().unwrap();
-    let owned = rows
+    let mut owned = rows
         .iter()
         .map(|row| {
             let name = row["guest_path"].as_str().unwrap().to_owned();
@@ -47,6 +47,20 @@ fn native_full_selfhost_comparison_fs_uae() {
             (name, checked_file(directory, row))
         })
         .collect::<Vec<_>>();
+    let cache_enabled = input["leaf_cache"]["enabled"].as_bool().unwrap_or(false);
+    if cache_enabled {
+        owned.push(("cache/keep".to_owned(), vec![]));
+        if let Some(entries) = input["leaf_cache"]["entries"].as_array() {
+            for row in entries {
+                let path = row["guest_path"].as_str().unwrap();
+                assert!(Path::new(path).starts_with("cache"));
+                assert!(Path::new(path)
+                    .components()
+                    .all(|part| matches!(part, std::path::Component::Normal(_))));
+                owned.push((path.to_owned(), checked_file(directory, row)));
+            }
+        }
+    }
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
@@ -127,12 +141,23 @@ fn native_full_selfhost_comparison_fs_uae() {
         .iter()
         .map(|value| value.as_str().unwrap())
         .collect::<Vec<_>>();
+    let command = if cache_enabled {
+        "-i src/experimental/opforge_compact_cli.asm --hunk Work:output.hunk -M src -I src/debug --leaf-cache Work:cache"
+    } else {
+        "-i src/experimental/opforge_compact_cli.asm --hunk Work:output.hunk -M src -I src/debug"
+    };
     let case = OpforgeNativeCliParityCase {
-        name: "full-exported-selfhost-comparison", cpu_override: "68020", extra_assembly_defines: &define_strings,
+        name: "full-exported-selfhost-comparison",
+        cpu_override: "68020",
+        extra_assembly_defines: &define_strings,
         source_override: Some(b""),
-        command_template: Some("-i src/experimental/opforge_compact_cli.asm --hunk Work:output.hunk -M src -I src/debug"),
-        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault, extra_guest_files: &files,
-        proof: OpforgeNativeCliProof::ExactArtifact { relative_path: "Work/output.hunk", rust_oracle: &oracle },
+        command_template: Some(command),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &files,
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/output.hunk",
+            rust_oracle: &oracle,
+        },
     };
     let outcome = match run_prebuilt_compact_cli_case_from_env(&workspace, &case, &image) {
         Ok(outcome) => outcome,
@@ -173,6 +198,7 @@ fn native_full_selfhost_comparison_fs_uae() {
         "native_image_digest": run.native_image_digest, "image_bytes": image.len(),
         "linked_static_reserved_bytes": static_bytes, "live_rust_oracle_digest": opforge_self_host_package_digest(&oracle),
         "output_bytes": oracle.len(), "case_sha256": input["case_sha256"], "metadata": input["metadata"],
+        "leaf_cache_enabled":cache_enabled,"leaf_cache_work":native_leaf_cache::cache_work(&run.stdout),
     });
     fs::write(
         output.join("native-result.json"),

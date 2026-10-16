@@ -8287,6 +8287,9 @@ mod native_symbol_buckets;
 #[path = "tests/native_full_selfhost_comparison.rs"]
 mod native_full_selfhost_comparison;
 
+#[path = "tests/native_leaf_cache.rs"]
+#[cfg(test)]
+mod native_leaf_cache;
 #[cfg(test)]
 #[path = "tests/native_preparation_benchmarks.rs"]
 mod native_preparation_benchmarks;

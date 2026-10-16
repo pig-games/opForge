@@ -204,11 +204,14 @@ next
 	bsr.w captureSourcePath
 	bne.w bad
 	move.l d6, d1
+	bsr.w leafBeforeRecord
 	lea Front, a0
 	movea.l a4, a1
 	jsr frontend.replayLine
 	bne.w bad
 	bsr.w drainPrepared
+	bne.w bad
+	bsr.w leafAfterRecord
 	bne.w bad
 	.WORK_CALL lazy_work.sampleEnd
 	move.l SourceCursorState.Next+SourceCursorData, ScheduleCursor
@@ -229,6 +232,7 @@ done
 ; it in the caller's current module/scope. Registers and parent cursor survive.
 ; D0/CCR=status. Handles close on success; execute owns failure cleanup.
 materializePendingSource	.block
+	move.l #1, LeafDynamicSource
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.l #SOURCE_RESUME_BYTES, sp
 	movea.l sp, a5

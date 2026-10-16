@@ -63,6 +63,26 @@ NAMESPACE_TEMPLATE = 1
 NAME_BYTES = 256
 	.section code, kind=code
 
+; A0=packed records,D0=bytes,A1=dense long source-index-to-target-ID map,
+; D1=source ID base,D2=map entries (at most 65535). D0/CCR=status; other
+; registers preserved. A negative/absent map entry or non-word target rejects.
+; Package IDs below the source base remain unchanged, as in remap. Rewrites
+; in place through the same payload walker; failure may leave earlier IDs changed.
+; Callers validating a dependency closure must therefore use a private copy.
+remapDense	.block
+	cmpi.l #65535, d2
+	bhi.w bad
+	move.l d2, -(sp)
+	bset #31, d2  ; internal dense-map mode; low word remains the bounded count
+	bsr.w remap
+	move.l (sp)+, d2
+	tst.l d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; remapDense
+
 ; A0=packed records,D0=bytes,A1=Entry array,
 ; D1=source ID base,D2=entry count. D0/CCR=status; other registers preserved.
 ; Compact and canonical typed payloads are skipped by their encoded widths. Only
@@ -391,17 +411,26 @@ done
 	.priv
 
 ; D0=ID; D1=final ID,D0/CCR=status. A1 scratch; package IDs remain unchanged.
+; D7 carries a word entry count and optional bit31 selecting a dense long map.
 identity	.block
 	move.l d0, d1
 	sub.l d6, d0
 	bcs.w ok
-	cmp.l d7, d0
+	cmp.w d7, d0  ; source IDs and counts are words; ignore the mode bit
 	bhs.w bad
+	btst #31, d7
+	bne.w dense
 	mulu.w #ENTRY_BYTES, d0
 	movea.l a6, a1
 	adda.l d0, a1
 	moveq #0, d1
 	move.w Entry.Target(a1), d1
+	bra.w ok
+dense
+	lsl.l #2, d0
+	move.l 0(a6, d0.l), d1
+	cmpi.l #65535, d1
+	bhi.w bad  ; includes the absent-entry sentinel -1
 ok
 	moveq #0, d0
 	rts

@@ -77,6 +77,44 @@ fn native_preparation_benchmark_fs_uae() {
         })
         .collect::<Vec<_>>();
     assert!(owned.iter().any(|(name, _)| name == "main.asm"));
+    let cache_mode = match std::env::var("OPFORGE_PREPARATION_LEAF_CACHE").as_deref() {
+        Ok("cold") => Some("cold"),
+        Ok("warm") => Some("warm"),
+        Ok(other) => panic!("unsupported OPFORGE_PREPARATION_LEAF_CACHE value: {other}"),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(error) => panic!("read OPFORGE_PREPARATION_LEAF_CACHE: {error}"),
+    };
+    let cache_entries = if cache_mode == Some("warm") {
+        let directory = PathBuf::from(
+            std::env::var_os("OPFORGE_PREPARATION_LEAF_ENTRIES")
+                .expect("warm mode requires a local leaf-entry directory"),
+        );
+        let mut entries = fs::read_dir(directory)
+            .expect("read warm leaf-entry directory")
+            .filter_map(|entry| {
+                let entry = entry.expect("leaf-entry directory item");
+                let name = entry.file_name().into_string().ok()?;
+                let relative = format!("cache/{name}");
+                if !normal_relative(Path::new(&relative))
+                    || Path::new(&name)
+                        .extension()
+                        .and_then(|value| value.to_str())
+                        != Some("ofl")
+                    || !fs::symlink_metadata(entry.path())
+                        .ok()?
+                        .file_type()
+                        .is_file()
+                {
+                    return None;
+                }
+                Some((relative, fs::read(entry.path()).ok()?))
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by(|left, right| left.0.cmp(&right.0));
+        entries
+    } else {
+        Vec::new()
+    };
     let oracle_dir = output.join("oracle");
     fs::create_dir(&oracle_dir).unwrap();
     let cli = Cli::parse_from([
@@ -105,19 +143,38 @@ fn native_preparation_benchmark_fs_uae() {
             rust_oracle: &hunk,
         },
     ];
-    let files = owned
+    let mut files = owned
         .iter()
         .map(|(name, bytes)| OpforgeNativeCliGuestFile {
             relative_path: name,
             bytes,
         })
         .collect::<Vec<_>>();
+    if cache_mode.is_some() {
+        files.push(OpforgeNativeCliGuestFile {
+            relative_path: "cache/keep",
+            bytes: &[],
+        });
+        files.extend(
+            cache_entries
+                .iter()
+                .map(|(name, bytes)| OpforgeNativeCliGuestFile {
+                    relative_path: name,
+                    bytes,
+                }),
+        );
+    }
+    let command = if cache_mode.is_some() {
+        "-i Work:main.asm -M Work: -I Work: --leaf-cache Work:cache".to_owned()
+    } else {
+        "-i Work:main.asm -M Work: -I Work:".to_owned()
+    };
     let case = OpforgeNativeCliParityCase {
         name: "native-preparation-benchmark",
         cpu_override: "68020",
         extra_assembly_defines: &[],
         source_override: Some(b""),
-        command_template: Some("-i Work:main.asm -M Work: -I Work:"),
+        command_template: Some(&command),
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &files,
         proof: OpforgeNativeCliProof::ExactArtifacts(&expected),
@@ -170,6 +227,8 @@ fn native_preparation_benchmark_fs_uae() {
     })).collect::<Vec<_>>();
     let result = json!({
         "success": success, "workload": workload, "sources": sources, "artifacts": artifacts,
+        "leaf_cache_mode": cache_mode.unwrap_or("reference"),
+        "leaf_cache_work": native_leaf_cache::cache_work(&run.stdout),
         // The single-case runner validates both challenge-bound START and DONE.
         "fresh_start_and_done_verified": run.protocol_completed,
         "guest_protocol_completed": run.protocol_completed, "assembler_exit_code": run.exit_code,

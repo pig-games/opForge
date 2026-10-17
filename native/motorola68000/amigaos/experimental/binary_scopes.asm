@@ -1528,14 +1528,34 @@ done
 ; D0/CCR=status; other registers preserved. No configuration IDs or pointers
 ; survive in destination preparation records. Destination Current must be zero.
 seedConfiguration	.block
-	movem.l d1-d7/a0-a6, -(sp)
+	movem.l d1-d2, -(sp)
+	moveq #0, d0
+	moveq #0, d1
+	bsr.w seedConfigurationRange
+	movem.l (sp)+, d1-d2
+	tst.l d0
+	rts
+	.bend  ; seedConfiguration
+
+; A0=configuration scope,A1=semantic scope,D0=first parameter,D1=first map.
+; Seed only appended incoming configuration. Existing semantic values and map
+; consumption flags survive. D0/CCR=status; D1/D2=current parameter/map counts
+; on success, zero on failure. Other registers preserved; Current must be zero.
+seedConfigurationRange	.block
+	movem.l d3-d7/a0-a6, -(sp)
+	move.l d1, -(sp)
 	movea.l a0, a5
 	movea.l a1, a6
 	tst.w layout.State.Current(a6)
 	bne.w bad
 	moveq #0, d7
 	move.w IMPORT_STATE+imports.PARAM_COUNT(a5), d7
+	cmp.l d7, d0
+	bhi.w bad
+	sub.l d0, d7
+	mulu.w #imports.PARAM_BYTES, d0
 	lea IMPORT_STATE+imports.PARAMS(a5), a4
+	adda.l d0, a4
 next
 	tst.w d7
 	beq.w good
@@ -1583,15 +1603,24 @@ next
 	subq.w #1, d7
 	bra.w next
 good
+	move.l (sp), d1
 	bsr.w seedConfigurationMaps
+	bne.w bad
+	moveq #0, d1
+	move.w IMPORT_STATE+imports.PARAM_COUNT(a5), d1
+	moveq #0, d2
+	move.w SECTION_STATE+sections.State.MapCount(a5), d2
 	bra.w done
 bad
+	moveq #0, d1
+	moveq #0, d2
 	moveq #1, d0
 done
-	movem.l (sp)+, d1-d7/a0-a6
+	addq.l #4, sp
+	movem.l (sp)+, d3-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; seedConfiguration
+	.bend  ; seedConfigurationRange
 	.priv
 ; A0=destination Owner,D2=copied offset,A5=configuration scope,A6=semantic
 ; scope. Bind every nominal and member key before publishing the snapshot.
@@ -1654,19 +1683,24 @@ bad
 	rts
 	.bend  ; bindConfigurationId
 
-; A5=configuration scope,A6=fresh semantic scope. Rebind bounded map fields
+; A5=configuration scope,A6=semantic scope,D1=first source map. Rebind new fields
 ; before any dependency section is lowered. Owner/module are entry indices+1;
 ; logical/concrete are source IDs. No configuration identity survives.
 ; D0/CCR=status; other registers preserved.
 seedConfigurationMaps	.block
 	movem.l d1-d7/a0-a4, -(sp)
+	suba.w #sections.MAP_BYTES, sp
 	moveq #0, d7
 	move.w SECTION_STATE+sections.State.MapCount(a5), d7
 	cmpi.w #2, d7
 	bhi.w bad
+	cmp.l d7, d1
+	bhi.w bad
+	move.l d1, d4
+	mulu.w #sections.MAP_BYTES, d1
 	lea SECTION_STATE+sections.MAPS(a5), a4
-	lea SECTION_STATE+sections.MAPS(a6), a2
-	moveq #0, d4
+	adda.l d1, a4
+	movea.l sp, a2
 nextMap
 	cmp.w d7, d4
 	bhs.w good
@@ -1719,20 +1753,43 @@ store
 	addq.w #2, d5
 	cmpi.w #sections.MAP_BYTES, d5
 	blo.w field
+	; Merge by the complete rebound identity tuple. A semantic map may
+	; already exist, including one whose ordinary import consumed Seeded.
+	moveq #0, d6
+	lea SECTION_STATE+sections.MAPS(a6), a0
+findMap
+	cmp.w SECTION_STATE+sections.State.MapCount(a6), d6
+	bhs.w appendMap
+	move.l (a2), d0
+	cmp.l (a0), d0
+	bne.w nextExisting
+	move.l 4(a2), d0
+	cmp.l 4(a0), d0
+	beq.w mapReady
+nextExisting
+	addq.w #1, d6
+	adda.w #sections.MAP_BYTES, a0
+	bra.w findMap
+appendMap
+	cmpi.w #2, d6
+	bhs.w bad
+	move.l (a2), (a0)
+	move.l 4(a2), 4(a0)
+	addq.w #1, SECTION_STATE+sections.State.MapCount(a6)
 	move.w SECTION_STATE+sections.State.Seeded(a6), d0
-	bset d4, d0
+	bset d6, d0
 	move.w d0, SECTION_STATE+sections.State.Seeded(a6)
+mapReady
 	addq.w #1, d4
 	adda.w #sections.MAP_BYTES, a4
-	adda.w #sections.MAP_BYTES, a2
 	bra.w nextMap
 good
-	move.w d7, SECTION_STATE+sections.State.MapCount(a6)
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
+	adda.w #sections.MAP_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a4
 	tst.l d0
 	rts
@@ -2507,6 +2564,13 @@ finish	.block
 	lea forwardBinding, a2
 	.BINDING_ATTEMPT #binding_diagnostic.IMPORTS, #-1, #-1
 	jsr imports.finish
+	bne.w failSaved
+	movea.l a5, a0
+	move.l (sp), d0
+	movea.l a6, a1
+	movea.l a6, a2
+	adda.l #SECTION_STATE, a2
+	jsr sections.resolveLayouts
 	bne.w failSaved
 	movea.l a6, a0
 	adda.l #SECTION_STATE, a0

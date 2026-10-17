@@ -133,6 +133,16 @@ fn native_capture_disk_store_probe_save_image() {
 }
 
 #[test]
+#[ignore = "builds the incremental graph publication component probe outside target"]
+fn native_graph_publication_probe_save_image() {
+    save_capture_store_probe(
+        "tests.amigaos.graph_publication_probe",
+        "OPFORGE_GRAPH_PUBLICATION_SAVE_DIR",
+        "graph-publication-probe-memory.hunk",
+    );
+}
+
+#[test]
 #[ignore = "builds the independent ordered-record component probe outside target"]
 fn native_ordered_records_probe_save_image() {
     save_capture_store_probe(

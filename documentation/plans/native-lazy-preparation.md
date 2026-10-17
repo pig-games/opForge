@@ -1,163 +1,98 @@
 # Preparation ownership and capture storage
 
-Status, 2026-10-17: one eager preparation implementation uses shared chunked
-capture. Resident capture remains the default; `--capture-dir DIR` selects bounded
-disk capture and staged growth of large prepared-record buffers. Lexical names
-now use paged memory in both modes. The isolated paged-name comparison lowers
-tracked peak from 10,946,600 to **10,488,384 B (−4.19%)**, with unchanged preparation
-work and no established release runtime change. See the
-[separate runtime/memory results](native-performance-diagnosis.md#paged-lexical-name-store).
-Validated identity layouts and retirement of finished workspaces remain maintained.
-Parity remains paused. Structural scanning, publication and `.ofm` remain
-[designs awaiting review](native-fragment-preparation.md).
+Status, 2026-10-17: module discovery/configuration can now publish dependency-complete
+modules through the shared semantic frontend with resident capture and retire their raw captures before
+acquiring later dependencies. Complete graphs keep the existing scheduled path.
+Bounded disk capture keeps complete-graph scheduling to avoid overlapping growing
+session owners. Resident capture remains the default; `--capture-dir DIR` selects bounded disk
+capture and staged growth of large prepared-record buffers. Lexical names are paged.
+Parity remains paused. See [separate resource results](native-performance-diagnosis.md)
+and the [implemented boundary and remaining object design](native-fragment-preparation.md).
 
-## Experiment decisions
+## Maintained decisions
 
-| Experiment | Maintained decision |
+| Mechanism | Decision |
 |---|---|
-| Paged lexical names | Default owned storage: contiguous names in 64 KiB pages, numeric handles and checked diagnostic resolution. No new runtime option. Exact full self-build and allocation-failure ownership pass. |
-| Disk-assisted record growth | With disk capture, stage the used prefix during large record-buffer growth; keep normal growth for resident/small buffers. Exact full output and component failure ownership pass. |
-| Finished preparation workspaces | Retire configuration scratch and physical discovery before semantic replay; independent I/O survives. No selector or alternate pipeline. |
-| Identity record layout reuse | Automatic after complete validation; real reorders/partial selections keep copying. Full self-build passes; materialization saves about 76 ms, with no established whole-build runtime change. |
-| Bounded disk backing | Retained as one explicit directory/storage policy; full current-source native self-host and identical-input comparisons pass. |
-| Chunked capture | Promoted to the default; fresh fixed-input and current-source full native self-host proofs pass. |
-| First-use macro-body binding/plans | Removed with switches and experiment-specific tests; no established runtime gain. |
-| First-use call candidates | Removed with switches and experiment-specific tests. |
-| First-use whole-line plans | Removed with switches and experiment-specific tests. |
-| Binary token/spelling interface prototype | Removed; no justified prerequisite for a currently authorized implementation. |
-| Fragment envelope | Removed with its selector/probes/tests; the future object design remains a proposal. |
-| In-build raw include text reuse | Dropped: no runtime gain, extra heap, unchanged preparation work. |
-| Persistent prepared declaration leaves | Dropped: tested local-ID/schema reuse avoids 1.73% of compilations, but has no peak saving or demonstrated speed gain and lacks preparation-observation consistency qualification. |
+| Dependency-first publication | Default for resident open-graph discovery; shared replay publishes owned numeric records/templates, then retires captures. Global binding/layout remain. No new selector. |
+| Complete-graph replay | Retained for all bounded-disk inputs, explicit closed manifests and resident inputs closing before first publication. Uses the same replay helper and normal global completion. |
+| Paged lexical names | Default storage: names stay contiguous within 64 KiB pages; entries hold numeric handles and diagnostics use checked resolution. |
+| Disk-assisted record growth | With disk capture, large nonempty prepared buffers stage their used prefix before growth; normal growth remains for resident/small buffers. |
+| Finished configuration/discovery | Release after final seeding, before remaining semantic replay. Include paths and independent I/O survive. |
+| Identity record layout reuse | After full validation, keep an already contiguous complete stream. Reordered/partial selections still copy. |
+| Bounded disk backing | One explicit directory/storage policy, not another language implementation or persistent cache. |
+| Chunked capture | Sole raw-capture representation, shared by resident/disk modes. |
+| Macro-only deferral, first-use candidates/plans, binary token prototype, fragment envelope | Removed with switches and experiment-only tests; no established runtime gain. |
+| In-build include-text reuse | Removed: no preparation avoided, extra heap and no demonstrated speed gain. |
+| Persistent prepared declaration leaves | Removed: only 1.73% fewer expression compilations, no peak benefit, no demonstrated speed gain, and incomplete observation equivalence. |
 
-The standard packed macro execution, declaration context and shared VM/package
-boundaries remain. These decisions remove alternate preparation paths, not language
-features. No macro/cache experiment switch stack remains; disk backing is a storage
-policy, not another language-preparation path. Old implementations are recoverable
-from Git; baseline executables and frozen measurements are diagnostic artifacts outside
-the tree. The comparison scripts no longer expose removed experiment modes.
-
-## Shared chunked capture
-
-The append-only store uses 32 KiB chunks; records larger than 4 KiB get dedicated
-allocations rounded to eight bytes. A dedicated allocation ends the current shared
-chunk, keeping directory intervals ordered and nonoverlapping. A logical source
-region can span chunks, and a chunk can contain several regions. Payload bytes
-remain stable while pinned, including when the descriptor directory grows.
-Resident chunks can be evicted and faulted back at different physical addresses;
-logical offsets stay unchanged.
-
-Logical offsets and source-region ownership remain stable. Each record is contiguous;
-sequential resolution caches a directory row and arbitrary resolution uses binary
-search. There is no per-token indirection or original-text replay. The temporary
-record is still copied once into retained storage; construction itself is not lazy.
-Long copies plus a byte tail implement append. CPU semantics remain package-owned.
-
-On identical frozen eager input, capture payload stays 23,836,984 bytes, capacity
-falls from 33,337,344 to 23,953,408 bytes, and growth copies fall from 33,064,076 to
-zero. Tracked peak heap falls 21.4%, to 34,324,616 bytes. See the
-[qualified resource comparisons](native-performance-diagnosis.md#chunked-capture).
-The earlier 1.4% release difference is below timing noise, not a speed result.
+Normal packed macros, declaration context and shared VM/package boundaries remain.
+Git is the archive for removed implementations. No macro/cache experiment switch stack
+remains. The binary token prototype is not a prerequisite of this pipeline.
 
 ## Capture storage and lifetimes
 
-Chunking removes growth waste. Disk backing removes accumulated payload residency:
-immutable chunks are spooled by logical offset into one private DOS scratch file.
-A 1 MiB payload budget includes the active writer and every counted reader pin;
-directory metadata, temporary records and OS buffers remain outside it. Configuration,
-replay and nested source lookahead acquire/release explicit leases. Templates and
-prepared values must own their data before a lease ends. Descriptors can move on
-append and must never escape into retained state.
+The append-only store uses 32 KiB chunks; records larger than 4 KiB receive dedicated
+allocations rounded to eight bytes. Dedicated allocations and physical file boundaries
+seal shared writers. Regions can span chunks, and chunks can contain several regions.
+Directory rows may move; logical offsets never do. A record stays contiguous.
+Sequential resolution caches a row; other resolution uses binary search. There is
+no per-token storage indirection or original-text replay.
 
-The current policy seals a chunk before exposing it to a reader. It evicts unpinned
-chunks round-robin and reloads checked exact extents. A whole record must fit the
-budget; exhaustion or IO failure produces an explicit diagnostic with normal owned
-cleanup. The resident path performs no file IO. Both still capture and prepare all
-applicable source; neither skips unreachable language work nor changes whole-block
-fallthrough, declaration context, macros or module ordering.
+Disk mode spools immutable chunks into one process-private DOS file. A 1 MiB payload
+budget includes writers and counted reader leases; directories, temporary records,
+executable, stack and OS buffers are outside it. Eviction skips pins and checked
+reloads may use different physical addresses. Oversized records, pin exhaustion or
+I/O failure produce an explicit error, never an unbounded RAM fallback.
 
-On the identical 214-file workload, 116,855 records / 23,852,392 logical bytes are
-unchanged. Resident capture peaks at 23,986,176 B; disk-backed payload peaks at
-1,048,576 B. At the storage checkpoint, whole tracked heap falls from 34,517,176
-to 11,839,624 B. Allocation churn increases through reloads. Below-budget controls may gain nothing or retain
-another partial chunk; this is why resident storage stays the default. See the
-[separate runtime/memory results](native-performance-diagnosis.md#bounded-disk-backed-capture).
+Use an existing writable disk directory, such as
+`--capture-dir Development:opforge-scratch`; `T:` may be RAM. The resident policy
+performs no scratch-file I/O. Normal cleanup removes only owned paths. A crash can
+leave private scratch files for manual recovery.
 
-Use an existing writable disk directory, for example
-`--capture-dir Development:opforge-scratch`. Do not assume `T:` uses disk. This is
-a process-private raw capture spool, not a persistent cache or published object.
-No automatic fallback to unbounded RAM is allowed. Normal cleanup removes only
-owned paths; process crashes may leave scratch directories for manual recovery.
+## Publication and retirement
 
-Existing capture snapshots count resident allocations/used/capacity, while logical
-composition counters cover all records. Evicted rows retain logical length without
-owning payload. The old whole-source lazy/lifetime observers remain unsupported
-because they require a contiguous arena per region; no new observer framework was
-added. Current MEMD/capture events supply the comparisons.
+The scheduler preserves dependency/source order and requests a module only when its
+configuration dependencies are ready. Configuration and semantic frontends own
+independent storage. Session switching restores shared VM state at a stable frontend
+address. Immutable parameter snapshots seed incrementally; complete key sets and
+values must agree across repeated imports. Consumed maps are not overwritten.
 
-## Prepared-record ownership
+Shared replay owns every retained record, typed value and template before returning.
+Only then is its graph node acknowledged and its raw range retired. During
+interleaved resident replay, includes retire
+their acquired ranges after replay, before the suspended parent resumes. Complete-graph
+paths retain them until final capture cleanup. Definition-relative
+lookup and macro declaration context remain unchanged. Final section-map geometry
+uses retained numeric recipes, so a later importing module can still map an earlier
+published logical section.
 
-Final ordering now retains the packed buffer when validated module spans already
-cover the whole stream contiguously in order. It still builds module starts and
-physical origins through the existing metadata loop. Reorders and partial
-selections keep the copying path. No input-text use or semantic ownership changes.
+Retirement validates disjoint ranges and rejects pinned rows before mutation.
+Fully retired rows release payload and become checked tombstones; partially shared
+chunks retain live bytes. Views cannot cross retired boundaries. Disk payload is
+not reloaded after full retirement, while spool offsets remain stable. Unselected
+or still-shared capture gaps survive until final capture cleanup. This is not a
+claim that all lexical storage retires immediately after each module.
 
-On identical disk-backed input this avoids 2,032,832 copy bytes and a 2 MiB
-allocation, but another overlap then set an 11,594,504 B peak. Subsequent retirement
-of finished configuration/discovery workspaces lowers it to 11,410,720 B; see the
-[isolated lifetime results](native-performance-diagnosis.md#retire-finished-preparation-workspaces). The actual
-saving is 245,120 B / 2.07%; prepared/assembly live heap is unchanged. The initial
-release slowdown did not reproduce. Matched phase controls save about 76 ms in
-ordering, with effectively unchanged postorder work; no whole-build speed change
-is established. Both smaller controls avoid copies without lowering their peaks.
-Full current-source disk-backed self-host passes.
+Once configuration closes, the remaining schedule transfers to semantic ownership.
+Final snapshots seed before configuration scratch/graph and physical discovery retire.
+Origin paths and include roots remain for active includes. Both partial sessions have
+normal owned failure cleanup. Existing capture phase markers now follow the active
+session; no new observer or record schema was introduced.
 
-With disk capture selected, nonempty record buffers at least 1 MiB now stage their
-used prefix before growth, releasing old RAM before allocating/restoring the new
-contiguous block. Write failure preserves old storage; failed allocation/read after
-release aborts with empty ownership. Resident/small growth retains the allocator.
-The isolated saving is 464,120 B / 4.07%, to 10,946,600 B, despite removing the full
-1 MiB overlap at its earlier peak event. Capture and language work are unchanged.
-This is temporary record storage, not publication of relocatable module objects.
+## Retained state and the next boundary
 
-## Preparation name ownership
+This pipeline shortens source lifetimes; it does not avoid configuration or semantic
+work. It does not yet replace configuration with a cheap structural-only scan.
+Global semantic scratch, names, exports/templates and prepared records still grow
+across modules. `frontend.complete` resolves binding proxies/member identities and
+section recipes against the full build before ordinary layout/emission.
 
-The scope owns a `binary_name_store` rather than a relocatable flat spelling block.
-Its first page grows up to 64 KiB; subsequent pages stay fixed. Entries retain
-page/offset handles, preserving numeric IDs and original bytes. Payload limits
-exclude page-tail gaps; name readers resolve once per spelling. Diagnostics use a
-checked owner callback. Retire all pages before reusing the first descriptor for
-the numeric block index; final cleanup supports either state.
+A real `.ofm` owner must replace build-global identities with object-local IDs,
+checked offsets and explicit remapping. It must preserve unresolved expressions,
+relocation/relaxation recipes and ordered preparation observations. Only after all
+later consumers have transferred can source-oriented prepared state retire. A common
+resident/disk object representation and sparse whole-block support remain future work.
+The [object design](native-fragment-preparation.md) describes these constraints.
 
-On the unchanged full workload, paging saves 458,216 peak bytes and 2,489,904 growth
-copy bytes. Prepared/assembly live heap and capture IO remain unchanged. This
-reduces scratch allocation waste; it does not defer preparation or publish objects.
-
-## Next boundary
-
-Replace capture-all/replay-all only after review of the structural design. An owned,
-relocatable near-output object could release source-oriented storage at publication;
-a resident object and a disk-backed object must share the same pointer-free format.
-This requires an explicit configuration, include-continuation and publication
-contract, not another macro observer.
-
-The raw include and persistent prepared declaration-leaf experiments are complete
-and dropped. See the [separate runtime/memory results](native-performance-diagnosis.md#cache-experiment-decisions).
-The prepared prototype reused five entries / 698 rows with exact output on the
-frozen full workload, but retained every source capture and left peak heap at
-34,517,176 bytes. Serialization after global binding cannot lower an acquisition
-peak already reached. Its passing cases also do not resolve the difference
-between early preparation snapshots and final folded values.
-
-The next architectural decision is the structural publication contract, not another
-cache flag.
-An object must retain unresolved binding/layout recipes and ordered preparation
-observations before its source-oriented storage can be freed. Review the linked
-design and its measured raw-spill reference before changing that lifetime boundary.
-No general `.ofm` implementation or early-release memory bound has been qualified.
-
-The pre-storage reference (`1171797a`, native/Rust code matching `bcac8dc8`) remains
-recoverable and its executable is preserved for comparison. Disk backing changes
-storage ownership, not eager preparation semantics. After identity reuse, workspace
-retirement, disk-assisted growth and paged names the paired peak is 10.00 MiB of tracked heap
-before executable, stack and OS costs, about 5.00 times
-the entire 2 MiB target. No low-memory fit is claimed.
+No 2 MiB fit is claimed. Resource comparisons report tracked heap independently
+from executable/stack/OS costs; see the [current distance to target](native-performance-diagnosis.md#current-qualification-and-distance-to-target).

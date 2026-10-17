@@ -453,7 +453,11 @@ composition counts only actual region appends:
 header bytes, 20-byte token rows, lexemes, plans, alignment padding and their
 captured source-byte extent. Append-copy bytes count the whole copied record.
 Configuration and semantic replay materialization count actual capture-to-scratch
-copies, including preview calls, separated at the replay acquisition boundary.
+copies, including preview calls. `CAPTURE_REPLAY_BEGIN` and
+`CAPTURE_CONFIGURATION_BEGIN` select attribution for the currently active semantic
+or configuration session; they do not reset cumulative counters. Resident module
+publication can alternate these sessions. Neither macro adds release code, retained
+pointers, counters or clocks.
 Those are work counts rather than unique records or successful semantics.
 
 Generic `binary_memory.grow` counters cover every successful allocation and its
@@ -465,10 +469,14 @@ overlap. Retained releases subtract their actual capacity; repeated zero-capacit
 cleanup cannot double-count. Neither the context nor snapshots retain descriptor
 addresses when the region table moves.
 
-Acquisition is observed immediately after graph-span ownership transfers to
-`CaptureOrder`, at the start of semantic replay. Active includes can acquire
-additional captured regions during replay; the acquisition snapshot remains
-that initial frontier, while the pre-release snapshot includes later ownership.
+Acquisition is observed at the first semantic replay frontier: after complete
+schedule transfer for closed-graph preparation, or before the first early module
+publication for interleaved resident discovery. The latter does not imply that
+all files have been acquired, and its `CaptureOrder` fields can still be zero.
+Active includes and later discovery can acquire more regions; publication can
+retire earlier ones. The acquisition snapshot remains that initial frontier,
+while the pre-release snapshot reports then-live ownership. Neither snapshot is
+a whole-build heap peak; use MEMD and cumulative retained-capacity accounting.
 Replay records the latest pre-release state on success or the failed replay
 return; release records the
 latest state after all capture owners have been freed. A failure before a

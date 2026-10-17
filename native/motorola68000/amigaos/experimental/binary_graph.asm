@@ -17,6 +17,9 @@ SPAN_BYTES = Span.File+4
 ENTRY_TARGET = 32; graph-private static incoming-use flag in module metadata
 LIMIT = 512; independent module graph capacity
 MAX_SPANS = LIMIT
+READY = 4; orderNext owns one pending dependency-complete span
+PUBLICATION_ONE = 1
+PUBLICATION_REMAINING = 2
 Node	.struct
 Start	.long ?
 End	.long ?
@@ -24,8 +27,9 @@ File	.word ?
 Color	.word ?
 Binding	.word ?
 Configured	.word ?
+Published	.word ?
 .endstruct
-NODE_BYTES = Node.Configured+2
+NODE_BYTES = Node.Published+2
 FrameEntry	.struct
 Module	.word ?
 Edge	.word ?
@@ -38,8 +42,10 @@ Count	.word ?
 Invalid	.word ?
 Ordered	.word ?
 Reserved	.word ?
+Incremental	.word ?
+Pending	.word ?
 .endstruct
-NODES = GraphState.Reserved+2
+NODES = GraphState.Pending+2
 STACK = NODES+LIMIT*NODE_BYTES
 NEXT = STACK+LIMIT*VISIT_BYTES
 NEXT_POINTER = NEXT+memory.Block.Pointer
@@ -116,6 +122,7 @@ line	.block
 	move.w d3, GraphState.Count(a6)
 	move.w d1, Node.Binding(a0)
 	move.w #1, Node.Configured(a0)  ; ordinary streaming nodes are already prepared
+	clr.w Node.Published(a0)
 	move.l d4, Node.Start(a0)
 	move.w GraphState.SourceIndex+2(a6), d0
 	move.w d0, Node.File(a0)
@@ -245,6 +252,56 @@ done
 	rts
 	.bend  ; entryTarget
 
+; Incremental dependency-first publication, using the same traversal as order.
+; Inputs match order. D0=4,D1=1 yields one span; acknowledge only after its
+; semantic preparation succeeds. D0=0,D1=0 means exhausted; 1/2/3 match order.
+; No second traversal is allowed while a yielded span remains pending.
+; Other registers preserved; CCR reflects D0. No lexical identity is finalized.
+orderNext	.block
+	move.w #PUBLICATION_ONE, GraphState.Incremental(a0)
+	bsr.w order
+	clr.w GraphState.Incremental(a0)
+	tst.l d0
+	rts
+	.bend  ; orderNext
+
+; Collect every unpublished span once the current discovery graph is complete.
+; Inputs match order. D0=0,D1=remaining count seals the graph without requiring
+; acknowledgements; caller owns the returned order before configuration release.
+; D0=1/2/3 match order, leave Ordered clear and do not publish partial output.
+; A pending orderNext yield must be acknowledged first. Other registers
+; preserved; CCR reflects D0. No lexical identities are finalized.
+orderRemaining	.block
+	move.w #PUBLICATION_REMAINING, GraphState.Incremental(a0)
+	bsr.w order
+	clr.w GraphState.Incremental(a0)
+	tst.l d0
+	rts
+	.bend  ; orderRemaining
+
+; A0=graph. Commit the pending span after its caller-owned preparation succeeds.
+; D0/CCR=status; other registers preserved. Failure leaves publication pending.
+acknowledge	.block
+	movem.l d1-d2/a0-a1/a6, -(sp)
+	movea.l a0, a6
+	moveq #0, d1
+	move.w GraphState.Pending(a6), d1
+	beq.w bad
+	bsr.w getNode
+	tst.w Node.Published(a0)
+	bne.w bad
+	move.w #1, Node.Published(a0)
+	clr.w GraphState.Pending(a6)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1/a6
+	tst.l d0
+	rts
+	.bend  ; acknowledge
+
 ; A0=graph,A1=scope state,A2=span buffer,D0=buffer bytes. D0=0,D1=span
 ; count on success; D0=2,D1=missing module index+1 for a discovery retry;
 ; D0=3,D1=present module index+1 needing configuration before traversal;
@@ -258,6 +315,8 @@ order	.block
 	movea.l a2, a4
 	move.l d0, d5
 	moveq #0, d4
+	tst.w GraphState.Pending(a6)
+	bne.w bad
 	tst.w GraphState.Invalid(a6)
 	bne.w bad
 	tst.w GraphState.Ordered(a6)
@@ -418,6 +477,11 @@ emit
 	moveq #0, d1
 	move.w FrameEntry.Module(a3), d1
 	bsr.w getNode
+	tst.w GraphState.Incremental(a6)
+	beq.w writeSpan
+	tst.w Node.Published(a0)
+	bne.w emitted
+writeSpan
 	cmpi.l #SPAN_BYTES, d5
 	blo.w bad
 	move.l Node.End(a0), d0
@@ -430,6 +494,13 @@ emit
 	move.l d0, (a4)+
 	subi.l #SPAN_BYTES, d5
 	addq.w #1, d4
+	cmpi.w #PUBLICATION_ONE, GraphState.Incremental(a6)
+	bne.w emitted
+	move.w FrameEntry.Module(a3), GraphState.Pending(a6)
+	moveq #1, d1
+	moveq #READY, d0
+	bra.w done
+emitted
 	move.w #2, Node.Color(a0)
 	subq.w #1, d6
 	bra.w walk

@@ -26,7 +26,8 @@ FLAG_BLOCK_OPEN = 1<<FLAG_BLOCK_OPEN_BIT
 FLAG_BLOCK_CLOSE = 1<<FLAG_BLOCK_CLOSE_BIT
 FLAG_OMIT_BIT = 3
 FLAG_OMIT = 1<<FLAG_OMIT_BIT
-FLAG_LAYOUT = 16
+FLAG_LAYOUT_BIT = 4
+FLAG_LAYOUT = 1<<FLAG_LAYOUT_BIT
 FLAG_PLAN = 32
 ; Dependency preparation owns this role on canonical immutable declarations.
 FLAG_MUTABLE_SNAPSHOT = 64
@@ -59,6 +60,40 @@ Flags	.byte ?
 Line	.word ?
 .endstruct
 RECORD_HEADER_BYTES = RecordHeader.Line+2
+; Numeric section recipes retain stable source slots until all incoming maps
+; are known. Finalization changes opcodes/destinations, never record extents.
+LayoutRecord	.struct
+Header	.res RECORD_HEADER_BYTES
+Opcode	.byte ?
+.endstruct
+ConcreteSection	.struct
+Prefix	.res LayoutRecord.Opcode+1
+Kind	.byte ?
+Slot	.byte ?
+Alignment	.long ?
+.endstruct
+LogicalSection	.struct
+Prefix	.res ConcreteSection.Alignment
+Destination	.byte ?
+Alignment	.long ?
+.endstruct
+PlaceRecord	.struct
+Header	.res RECORD_HEADER_BYTES
+Opcode	.byte ?
+Section	.byte ?
+Region	.byte ?
+Alignment	.long ?
+.endstruct
+CONCRETE_SECTION_BYTES = ConcreteSection.Alignment+4
+LOGICAL_SECTION_BYTES = LogicalSection.Alignment+4
+LAYOUT_PENDING_CONCRETE = 24
+LAYOUT_PENDING_LOGICAL = 25
+LAYOUT_UNMAPPED_DESTINATION = $ff
+LAYOUT_SECTION_END = 3
+LAYOUT_FIRST_PLACE = 5
+LAYOUT_SECOND_PLACE = 9
+LAYOUT_HUNK_OUTPUT = 20
+LAYOUT_EXTRA_PLACE = 23
 PlanToken	.struct
 Kind	.byte ?
 Handle	.long ?

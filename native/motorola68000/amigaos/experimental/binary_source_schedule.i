@@ -5,6 +5,11 @@
 ; D0/CCR=status; other registers preserved. No module body is prepared here.
 captureFileBegin	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	; Active semantic includes can append logical capture gaps between files.
+	; The configuration graph indexes source offsets, never prepared offsets.
+	lea GraphBlock, a0
+	movea.l memory.Block.Pointer(a0), a0
+	move.l CaptureBytes, graph.GraphState.Cursor(a0)
 	lea ConfigScan, a0
 	move.l #Front, configuration.Frame.Session(a0)
 	lea Front, a1
@@ -194,6 +199,9 @@ done
 ; End one physical capture file. D0/CCR=status; other registers preserved.
 captureFileEnd	.block
 	movem.l a0, -(sp)
+	lea CaptureStore, a0
+	jsr capture_store.seal
+	bne.w done
 	lea ConfigScan, a0
 	tst.l CaptureDerived
 	beq.w validate
@@ -531,6 +539,32 @@ nextSpan
 	lea CaptureOrder, a0
 	movea.l memory.Block.Pointer(a0), a0
 	adda.l d0, a0
+	bsr.w replayCapturedSpan
+	bne.w bad
+	addq.l #1, CaptureOrderIndex
+	bra.w nextSpan
+good
+	.SOURCE_CAPTURE_SNAPSHOT CAPTURE_REPLAY
+	.CAPTURE_LIFE_PHASE #capture_life.CAPTURE_RELEASE
+	bsr.w releaseCapturedSources
+	.CAPTURE_LIFE_PHASE #capture_life.FINALIZATION
+	moveq #0, d0
+	bra.w done
+bad
+	.SOURCE_CAPTURE_SNAPSHOT CAPTURE_REPLAY
+	move.l OriginId, SourceOrdinal
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; replayCapturedSources
+
+; A0=immutable capture Span. Publish its owned numeric records and templates.
+; Global binding/layout remain deferred. Captures are borrowed only within calls.
+; D0/CCR=status; other registers preserved. Used by eager and interleaved owners.
+replayCapturedSpan	.block
+	movem.l d1-d7/a0-a6, -(sp)
 	move.l Span.Start(a0), ScheduleCursor
 	move.l Span.End(a0), ScheduleEnd
 	move.l Span.File(a0), ScheduleFile
@@ -583,30 +617,26 @@ endSpan
 	lea FileSpans, a0
 	addi.l #SPAN_BYTES, memory.Block.Used(a0)
 	addq.l #1, SpanCount
-	addq.l #1, CaptureOrderIndex
-	bra.w nextSpan
-good
-	.SOURCE_CAPTURE_SNAPSHOT CAPTURE_REPLAY
-	.CAPTURE_LIFE_PHASE #capture_life.CAPTURE_RELEASE
-	bsr.w releaseCapturedSources
-	.CAPTURE_LIFE_PHASE #capture_life.FINALIZATION
 	moveq #0, d0
 	bra.w done
 bad
-	.SOURCE_CAPTURE_SNAPSHOT CAPTURE_REPLAY
-	move.l OriginId, SourceOrdinal
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; replayCapturedSources
+	.bend  ; replayCapturedSpan
 
 ; A single CLI file without explicit modules keeps its normal semantic path.
 ; Its captured stream still replays once; indexing errors are then diagnosed
 ; by the ordinary frontend. D0/CCR=status; other registers preserved.
 prepareCapturedSources	.block
 	movem.l d1-d3/a0-a2, -(sp)
+	tst.l ModulePipeline
+	beq.w legacy
+	bsr.w finishModulePipeline
+	bra.w done
+legacy
 	cmpi.w #1, CliMode
 	bne.w ordered
 	lea GraphBlock, a0
@@ -661,16 +691,24 @@ releaseCapturedSources	.block
 ; Finish both frontend ownership states before scratch allocation release.
 ; Preserve all registers; CCR unspecified. Called after Front's normal finish.
 releaseScheduledFrontend	.block
-	movem.l a0, -(sp)
+	movem.l d0/a0, -(sp)
 	tst.l ConfigFrontStarted
 	beq.w scratch
 	lea ConfigFront, a0
 	jsr frontend.finish
 	clr.l ConfigFrontStarted
 scratch
+	lea SemanticGraph, a0
+	move.l memory.Block.Pointer(a0), d0
+	beq.w releaseScratch
+	movea.l d0, a0
+	jsr graph.release
+	lea SemanticGraph, a0
+	jsr memory.release
+releaseScratch
 	lea SemanticScratch, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
-	movem.l (sp)+, a0
+	movem.l (sp)+, d0/a0
 	rts
 	.bend  ; releaseScheduledFrontend

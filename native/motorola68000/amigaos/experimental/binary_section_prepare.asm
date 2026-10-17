@@ -42,6 +42,8 @@ REGION_NAMES = OUTPUT_SLOTS+8
 SCRATCH_BYTES = REGION_NAMES+8*2
 ; Seen bits: first logical/concrete/region/place, second concrete/region/place,
 ; second logical. Packed control opcodes 10/11 are second logical/concrete.
+SEEN_FIRST_REGION = 1 << 2
+SEEN_SECOND_REGION = 1 << 5
 SEEN_FIRST_LOGICAL = 1 << 0
 SEEN_FIRST_CONCRETE = 1 << 1
 SEEN_FIRST_PLACE = 1 << 3
@@ -95,7 +97,7 @@ clearMaps
 ; select geometry independently of artifact format or map declaration order.
 ; Concrete opens carry [header,opcode,kind,slot,u32 alignment]; mapped
 ; logical opens append a destination slot before the alignment. Unmapped flat
-; logical opens retain [header,opcode,kind]. Region/place controls carry
+; logical opens retain a checked unmapped destination sentinel. Region/place controls carry
 ; canonical numeric slots and literal bounds/alignment (see preparation include).
 ; D0/CCR=status; other registers preserved.
 line	.block
@@ -111,7 +113,7 @@ line	.block
 	blo.w bad
 	movea.l a5, a3
 	adda.w d0, a3
-	lea 4(a5), a2
+	lea source.LayoutRecord.Opcode(a5), a2
 	cmpi.b #7, (a2)
 	bne.w bad  ; labels on section controls are a later layout slice
 	adda.w #5, a2
@@ -196,6 +198,98 @@ bssKind
 sectionName
 	cmpa.l a3, a2
 	bne.w bad
+	move.w d6, d1
+	bsr.w slot
+	bmi.w bad
+	move.w d0, d7
+	move.w d5, State.Active(a4)
+	cmpi.w #1, d5
+	beq.w logicalRecipe
+	; A seeded map owned by this module must be consumed before its
+	; concrete declarations, even though numeric classification is deferred.
+	moveq #0, d3
+	lea MAPS(a4), a0
+mappedTarget
+	cmp.w State.MapCount(a4), d3
+	bhs.w concreteRecipe
+	move.w layout.State.Current(a6), d0
+	cmp.w Map.Owner(a0), d0
+	bne.w nextTarget
+	move.w Map.Concrete(a0), d0
+	move.w d6, d1
+	bsr.w sameLeaf
+	beq.w checkPendingMaps
+nextTarget
+	addq.w #1, d3
+	adda.w #MAP_BYTES, a0
+	bra.w mappedTarget
+checkPendingMaps
+	moveq #0, d3
+	lea MAPS(a4), a0
+pendingMap
+	cmp.w State.MapCount(a4), d3
+	bhs.w concreteRecipe
+	move.w State.Seeded(a4), d0
+	btst d3, d0
+	beq.w nextPending
+	move.w layout.State.Current(a6), d0
+	cmp.w Map.Owner(a0), d0
+	beq.w bad
+nextPending
+	addq.w #1, d3
+	adda.w #MAP_BYTES, a0
+	bra.w pendingMap
+concreteRecipe
+	move.b #source.CONCRETE_SECTION_BYTES-1, (a5)
+	move.b #source.LAYOUT_PENDING_CONCRETE, source.LayoutRecord.Opcode(a5)
+	lea source.ConcreteSection.Alignment(a5), a0
+	bra.w recipeAlignment
+logicalRecipe
+	move.b #source.LOGICAL_SECTION_BYTES-1, (a5)
+	move.b #source.LAYOUT_PENDING_LOGICAL, source.LayoutRecord.Opcode(a5)
+	move.b #source.LAYOUT_UNMAPPED_DESTINATION, source.LogicalSection.Destination(a5)
+	lea source.LogicalSection.Alignment(a5), a0
+recipeAlignment
+	move.b #source.FLAG_LAYOUT, 1(a5)
+	move.b d4, source.ConcreteSection.Kind(a5)
+	move.b d7, source.ConcreteSection.Slot(a5)
+	move.l State.PendingAlign(a4), d1
+	bsr.w writeLong
+	bra.w ok
+endsection
+	cmpa.l a3, a2
+	bne.w bad
+	tst.w State.Active(a4)
+	beq.w bad
+	clr.w State.Active(a4)
+	moveq #3, d5
+	bra.w control
+region
+	bsr.w prepareRegion
+	bra.w done
+place
+	bsr.w preparePlace
+	bra.w done
+control
+	move.b #4, (a5)
+	move.b #source.FLAG_LAYOUT, 1(a5)
+	move.b d5, source.LayoutRecord.Opcode(a5)
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; line
+
+; D6=source section ID,D5=logical(1)/concrete(2),D4=kind. A4=section
+; state,A5=reserved numeric record,A6=scope. Resolve against complete maps.
+; D0/CCR=status; scratch registers follow the enclosing preparation convention.
+	.priv
+classifySection	.block
 	tst.w State.MapCount(a4)
 	bne.w mappedName
 	tst.w State.OutputSeen(a4)
@@ -389,20 +483,6 @@ secondConcrete
 extraConcrete
 	move.w #12, State.Active(a4)
 	bra.w sectionControl
-endsection
-	cmpa.l a3, a2
-	bne.w bad
-	tst.w State.Active(a4)
-	beq.w bad
-	clr.w State.Active(a4)
-	moveq #3, d5
-	bra.w control
-region
-	bsr.w prepareRegion
-	bra.w done
-place
-	bsr.w preparePlace
-	bra.w done
 sectionControl
 	move.w d6, d1
 	bsr.w declareSlot
@@ -411,15 +491,15 @@ sectionControl
 writeSection
 	move.b #5, (a5)
 	move.b #source.FLAG_LAYOUT, 1(a5)
-	move.b d5, 4(a5)
-	move.b d4, 5(a5)
+	move.b d5, source.LayoutRecord.Opcode(a5)
+	move.b d4, source.ConcreteSection.Kind(a5)
 	cmpi.w #1, d5
 	bne.w writeSlot
 	tst.w State.MapCount(a4)
 	beq.w unmappedLogical
 writeSlot
 	move.b #6, (a5)
-	move.b d7, 6(a5)
+	move.b d7, source.ConcreteSection.Slot(a5)
 	cmpi.w #1, d5
 	beq.w writeMap
 	cmpi.w #10, d5
@@ -433,12 +513,12 @@ writeMap
 	bsr.w slot
 	bmi.w bad
 	move.b #7, (a5)
-	move.b d0, 7(a5)
-	lea 8(a5), a0
+	move.b d0, source.LogicalSection.Destination(a5)
+	lea source.LogicalSection.Alignment(a5), a0
 	move.b #11, (a5)
 	bra.w writeAlignment
 concreteAlign
-	lea 7(a5), a0
+	lea source.ConcreteSection.Alignment(a5), a0
 	move.b #10, (a5)
 writeAlignment
 	move.l State.PendingAlign(a4), d1
@@ -447,22 +527,20 @@ writeAlignment
 unmappedLogical
 	cmpi.l #1, State.PendingAlign(a4)
 	bne.w bad
+	move.b #source.LOGICAL_SECTION_BYTES-1, (a5)
+	move.b d7, source.ConcreteSection.Slot(a5)
+	move.b #source.LAYOUT_UNMAPPED_DESTINATION, source.LogicalSection.Destination(a5)
+	move.l #1, source.LogicalSection.Alignment(a5)
 	bra.w ok
-control
-	move.b #4, (a5)
-	move.b #source.FLAG_LAYOUT, 1(a5)
-	move.b d5, 4(a5)
 ok
 	moveq #0, d0
-	bra.w done
+	rts
 bad
 	moveq #1, d0
-done
-	movem.l (sp)+, d1-d7/a0-a6
-	tst.l d0
 	rts
-	.bend  ; line
+	.bend  ; classifySection
 
+	.pub
 ; A0=writer record,A1=scope state,A2=section state. Retain a literal path,
 ; container and numeric section selection. Hunk output establishes the existing
 ; section-relative layout; additional Hunk artifacts must use the same order.
@@ -617,10 +695,10 @@ outputRecord
 	subq.w #1, d0
 	move.b d0, (a5)
 	move.b #source.FLAG_LAYOUT, 1(a5)
-	move.b #20, 4(a5)
+	move.b #20, source.LayoutRecord.Opcode(a5)
 	cmpi.w #2, d5
 	beq.w outputHeader
-	move.b #21, 4(a5)
+	move.b #21, source.LayoutRecord.Opcode(a5)
 outputHeader
 	move.b d7, 5(a5)
 	lea 6(a5), a0
@@ -780,11 +858,11 @@ record
 	sub.l a5, d0
 	cmp.l d0, d7
 	bhi.w bad
-	btst #4, 1(a5)
+	btst #source.FLAG_LAYOUT_BIT, source.RecordHeader.Flags(a5)
 	beq.w next
 	cmpi.w #5, d7
 	blo.w bad
-	cmpi.b #21, 4(a5)
+	cmpi.b #21, source.LayoutRecord.Opcode(a5)
 	bne.w next
 	moveq #0, d5
 	move.b 5(a5), d5
@@ -822,6 +900,162 @@ done
 	tst.l d0
 	rts
 	.bend  ; resolveOutputs
+
+; A0=packed records,D0=bytes,A1=scope,A2=section state. Resolve owned numeric
+; layout recipes after all incoming maps are known. Record extents never move;
+; no parser, capture pointer or lexical text is retained. D0/CCR=status; other
+; registers preserved. Must precede finish and assembly's frozen frontier.
+resolveLayouts	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a6
+	movea.l a2, a4
+	movea.l a0, a3
+	adda.l d0, a3
+	clr.w State.First(a4)
+	clr.w State.Concrete(a4)
+	clr.w State.Second(a4)
+	clr.w State.Active(a4)
+	clr.w State.Declared(a4)
+	clr.w State.OutputSeen(a4)
+	andi.w #SEEN_FIRST_REGION+SEEN_SECOND_REGION, State.Seen(a4)  ; regions retain their independently parsed facts
+record
+	cmpa.l a3, a5
+	beq.w good
+	bhi.w bad
+	moveq #0, d7
+	move.b (a5), d7
+	addq.w #1, d7
+	cmpi.w #4, d7
+	blo.w bad
+	move.l a3, d0
+	sub.l a5, d0
+	cmp.l d0, d7
+	bhi.w bad
+	btst #source.FLAG_LAYOUT_BIT, source.RecordHeader.Flags(a5)
+	beq.w next
+	cmpi.w #5, d7
+	blo.w bad
+	moveq #0, d0
+	move.b source.LayoutRecord.Opcode(a5), d0
+	cmpi.w #source.LAYOUT_HUNK_OUTPUT, d0
+	beq.w output
+	cmpi.w #source.LAYOUT_SECTION_END, d0
+	beq.w close
+	cmpi.w #source.LAYOUT_PENDING_CONCRETE, d0
+	beq.w concrete
+	cmpi.w #source.LAYOUT_PENDING_LOGICAL, d0
+	beq.w logical
+	cmpi.w #source.LAYOUT_FIRST_PLACE, d0
+	beq.w place
+	cmpi.w #source.LAYOUT_SECOND_PLACE, d0
+	beq.w place
+	cmpi.w #source.LAYOUT_EXTRA_PLACE, d0
+	beq.w place
+	bra.w next
+output
+	move.w #1, State.OutputSeen(a4)
+	bra.w next
+close
+	tst.w State.Active(a4)
+	beq.w bad
+	clr.w State.Active(a4)
+	bra.w next
+concrete
+	cmpi.w #source.CONCRETE_SECTION_BYTES, d7
+	bne.w bad
+	moveq #2, d5
+	move.l source.ConcreteSection.Alignment(a5), State.PendingAlign(a4)
+	bra.w section
+logical
+	cmpi.w #source.LOGICAL_SECTION_BYTES, d7
+	bne.w bad
+	moveq #1, d5
+	move.l source.LogicalSection.Alignment(a5), State.PendingAlign(a4)
+section
+	tst.w State.Active(a4)
+	bne.w bad
+	bsr.w sourceIdentity
+	bne.w bad
+	moveq #0, d4
+	move.b source.ConcreteSection.Kind(a5), d4
+	move.l d7, -(sp)
+	moveq #0, d7
+	move.b source.ConcreteSection.Slot(a5), d7
+	bsr.w classifySection
+	move.l (sp)+, d7
+	tst.l d0
+	bne.w bad
+	bra.w next
+place
+	cmpi.w #source.CONCRETE_SECTION_BYTES, d7
+	bne.w bad
+	tst.w State.Active(a4)
+	bne.w bad
+	moveq #0, d0
+	move.b source.PlaceRecord.Section(a5), d0
+	bsr.w identityForSlot
+	bne.w bad
+	moveq #source.LAYOUT_EXTRA_PLACE, d5
+	move.w State.Concrete(a4), d0
+	beq.w secondPlace
+	move.w d6, d1
+	bsr.w sameLeaf
+	bne.w secondPlace
+	moveq #source.LAYOUT_FIRST_PLACE, d5
+	ori.w #8, State.Seen(a4)
+	bra.w writePlace
+secondPlace
+	move.w State.Second(a4), d0
+	beq.w writePlace
+	move.w d6, d1
+	bsr.w sameLeaf
+	bne.w writePlace
+	moveq #source.LAYOUT_SECOND_PLACE, d5
+	ori.w #64, State.Seen(a4)
+writePlace
+	move.b d5, source.LayoutRecord.Opcode(a5)
+next
+	adda.l d7, a5
+	bra.w record
+good
+	tst.w State.Active(a4)
+	bne.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; resolveLayouts
+	.priv
+; A5=section recipe,A4=section state. D6=owned source ID,D0/CCR=status.
+sourceIdentity	.block
+	moveq #0, d0
+	move.b source.ConcreteSection.Slot(a5), d0
+	bra.w identityForSlot
+	.bend  ; sourceIdentity
+; D0=slot,A4=state,A6=scope. D6=source ID,D0/CCR=status; D1 scratch.
+identityForSlot	.block
+	cmp.w State.SlotCount(a4), d0
+	bhs.w bad
+	add.w d0, d0
+	moveq #0, d6
+	move.w SLOT_NAMES(a4, d0.w), d6
+	move.l d6, d1
+	sub.w layout.State.Base(a6), d1
+	bcs.w bad
+	cmp.w layout.State.Count(a6), d1
+	bhs.w bad
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; identityForSlot
+	.pub
 
 ; A0=section state. Resolve region references after all declarations; a mapped
 ; case also requires both named sections by completion.

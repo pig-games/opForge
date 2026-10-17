@@ -8306,3 +8306,7 @@ mod native_lazy_audit_probe;
 #[cfg(test)]
 #[path = "tests/native_lazy_audit_report.rs"]
 mod native_lazy_audit_report;
+
+#[cfg(test)]
+#[path = "tests/native_module_pipeline.rs"]
+mod native_module_pipeline;

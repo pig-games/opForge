@@ -60,12 +60,19 @@ PARAM_OWNER = KNOWN_OWNER+values.OWNER_BYTES
 EXPRESSION_SCRATCH = PARAM_OWNER+values.OWNER_BYTES
 SCRATCH_BYTES = EXPRESSION_SCRATCH+256
 PROXY = 8
+PARAMETER_CLAIMED = $40; import-owned complete incoming parameter-set claim
 	.priv
 UseLocal	.struct
 Flags	.long ?
 Sections	.long ?
 	.endstruct
 USE_LOCAL_BYTES = UseLocal.Sections+4
+PARAMETER_SEEN_BYTES = (pkg.PARAMETER_LIMIT+31)/32*4
+ParameterLocal	.struct
+Count	.long ?
+Seen	.res PARAMETER_SEEN_BYTES
+.endstruct
+PARAMETER_LOCAL_BYTES = ParameterLocal.Seen+PARAMETER_SEEN_BYTES
 	.section code, kind=code
 	.pub
 
@@ -1784,7 +1791,13 @@ done
 ; Other registers preserved; D0/CCR=status.
 parameters	.block
 	movem.l d1-d7/a0-a3/a5, -(sp)
+	suba.w #PARAMETER_LOCAL_BYTES, sp
 	movea.l a0, a3
+	movea.l sp, a0
+	moveq #PARAMETER_LOCAL_BYTES/4-1, d0
+clearSeen
+	clr.l (a0)+
+	dbra d0, clearSeen
 	moveq #0, d4
 scanParameterSuffix
 	cmpa.l a4, a3
@@ -1859,6 +1872,9 @@ copyParameterLeaf
 	bsr.w globalBind
 	bne.w parametersBad
 	move.l d1, d5  ; canonical ID
+	movea.l sp, a0
+	bsr.w markParameterKey
+	bne.w parametersBad
 	sub.w layout.State.Base(a6), d1
 	bcs.w parametersBad
 	andi.l #$ffff, d1
@@ -1981,15 +1997,111 @@ scanFinished
 	tst.w d4
 	bne.w parametersBad
 parametersOk
+	movea.l sp, a0
+	bsr.w claimParameterSet
+	bne.w parametersBad
 	moveq #0, d0
 	bra.w parametersDone
 parametersBad
 	moveq #1, d0
 parametersDone
+	adda.w #PARAMETER_LOCAL_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a3/a5
 	tst.l d0
 	rts
 	.bend  ; parameters
+
+; A0=per-use ParameterLocal,A6=scope,D5=canonical key,D7=target index.
+; D0/CCR=status; other registers preserved. Existing parameter slots provide
+; stable compact bitmap identities. A previous complete claim forbids new keys.
+markParameterKey	.block
+	movem.l d1-d3/a1-a2, -(sp)
+	moveq #0, d1
+	moveq #0, d2
+	move.w layout.IMPORT_STATE+PARAM_COUNT(a6), d2
+	lea layout.IMPORT_STATE+PARAMS(a6), a1
+find
+	cmp.l d2, d1
+	bhs.w new
+	cmp.w pkg.Parameter.Id(a1), d5
+	beq.w found
+	adda.w #PARAM_BYTES, a1
+	addq.l #1, d1
+	bra.w find
+new
+	cmpi.l #pkg.PARAMETER_LIMIT, d1
+	bhs.w bad
+	move.l d7, d3
+	add.l d3, d3
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a2
+	move.w 0(a2, d3.l), d3
+	andi.w #PARAMETER_CLAIMED, d3
+	bne.w bad
+found
+	move.l d1, d2
+	lsr.l #3, d2
+	andi.l #7, d1
+	lea ParameterLocal.Seen(a0), a1
+	adda.l d2, a1
+	bset d1, (a1)
+	bne.w bad
+	addq.l #1, ParameterLocal.Count(a0)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a1-a2
+	tst.l d0
+	rts
+	.bend  ; markParameterKey
+
+; A0=per-use ParameterLocal,A6=scope,D7=target index. D0/CCR=status;
+; other registers preserved. Complete key sets include an empty first use.
+; Values were compared with immutable snapshots by storeParameter.
+claimParameterSet	.block
+	movem.l d1-d5/a1-a2, -(sp)
+	moveq #0, d1
+	move.w layout.IMPORT_STATE+PARAM_COUNT(a6), d1
+	lea layout.IMPORT_STATE+PARAMS(a6), a1
+	moveq #0, d2
+	move.l d7, d5
+	addq.l #1, d5
+next
+	tst.l d1
+	beq.w counted
+	moveq #0, d3
+	move.w pkg.Parameter.Id(a1), d3
+	sub.w layout.State.Base(a6), d3
+	bcs.w bad
+	andi.l #$ffff, d3
+	cmp.w layout.State.Count(a6), d3
+	bhs.w bad
+	mulu.w #records.ENTRY_BYTES, d3
+	movea.l layout.ENTRIES_POINTER(a6), a2
+	cmp.w records.Entry.Owner(a2, d3.l), d5
+	bne.w advance
+	addq.l #1, d2
+advance
+	adda.w #PARAM_BYTES, a1
+	subq.l #1, d1
+	bra.w next
+counted
+	cmp.l ParameterLocal.Count(a0), d2
+	bne.w bad
+	move.l d7, d3
+	add.l d3, d3
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a2
+	ori.w #PARAMETER_CLAIMED, 0(a2, d3.l)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d5/a1-a2
+	tst.l d0
+	rts
+	.bend  ; claimParameterSet
 
 ; A6=scope,D5=canonical ID,D6=known low,D2=high,D3=already declared,D4=kind.
 ; Snapshot parameters in their independent arena; compare immutable contents.

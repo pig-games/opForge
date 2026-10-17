@@ -127,6 +127,18 @@ replayBegin	.block
 	rts
 	.bend  ; replayBegin
 
+; Interleaved publication resumes configuration after a semantic span.
+; No inputs; all registers and CCR preserved. Counters remain cumulative.
+configurationBegin .block
+	move.w ccr, -(sp)
+	move.l a0, -(sp)
+	lea State, a0
+	clr.l Fields.ReplayMode(a0)
+	movea.l (sp)+, a0
+	move.w (sp)+, ccr
+	rts
+	.bend ; configurationBegin
+
 ; D0=actual cleared bytes,D1=tokens,D2=lexemes,D3=plans. Count actual
 ; constructor work, including records later filtered from retained capture.
 construction	.block

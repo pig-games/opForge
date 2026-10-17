@@ -90,12 +90,28 @@ pub(super) fn run_source_language_batch(
 }
 
 pub(super) fn run_discovery_batch(root: &Path, image: &[u8], cases: &[Case], batch_size: usize) {
+    run_discovery_batch_command(
+        root,
+        image,
+        cases,
+        batch_size,
+        "Work:entry.asm --bin Work:out.bin -M Work:library",
+    );
+}
+
+pub(super) fn run_discovery_batch_command(
+    root: &Path,
+    image: &[u8],
+    cases: &[Case],
+    batch_size: usize,
+    command: &str,
+) {
     run_with_inputs(
         root,
         image,
         cases,
         SourceInputs {
-            command: "Work:entry.asm --bin Work:out.bin -M Work:library",
+            command,
             module_roots: &["library"],
             source_rejections: true,
             ..SourceInputs::plain(batch_size)

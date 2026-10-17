@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_sections
 	.cpu 68020
 	.use experimental.amigaos.binary_package as pkg
+	.use experimental.amigaos.binary_source as source
 	.pub
 KIND_BSS = 3
 CONTROL_LOGICAL_SECTION = 1
@@ -146,9 +147,13 @@ findLayout
 	cmpi.w #MAPPED_CONTROL_BYTES, d0
 	bne.w concreteLayout
 	cmpi.b #CONTROL_LOGICAL_SECTION, ControlRecord.Opcode(a4)
-	beq.w fragmentLayout
+	beq.w logicalLayout
 	cmpi.b #CONTROL_SECOND_LOGICAL_SECTION, ControlRecord.Opcode(a4)
-	beq.w fragmentLayout
+	bne.w concreteLayout
+logicalLayout
+	cmpi.b #source.LAYOUT_UNMAPPED_DESTINATION, source.LogicalSection.Destination(a4)
+	bne.w fragmentLayout
+	bra.w nextLayout
 concreteLayout
 	cmpi.w #ControlRecord.Kind+1, d0
 	blo.w nextLayout
@@ -371,8 +376,16 @@ scanHunkControl	.block
 	beq.w mapped
 	bra.w ok
 mapped
-	cmpi.w #12, d0
-	bne.w incompatible
+	cmpi.w #MAPPED_CONTROL_BYTES, d0
+	bne.w bad
+	cmpi.b #source.LAYOUT_UNMAPPED_DESTINATION, source.LogicalSection.Destination(a0)
+	bne.w mappedDestination
+	cmpi.b #8, 6(a0)
+	bhs.w bad
+	cmpi.l #1, MAPPED_CONTROL_ALIGNMENT(a0)
+	bne.w bad
+	bra.w incompatible
+mappedDestination
 	moveq #0, d2
 	move.b 6(a0), d2
 	cmpi.w #8, d2
@@ -1126,13 +1139,7 @@ sectionKind	.block
 	cmpi.w #10, d2
 	bne.w checkBytes
 mappedLogical
-	; Current unmapped logical reopenings have no numeric map suffix.
-	tst.w State.MapCount(a0)
-	bne.w mappedSize
-	moveq #5, d0
-	bra.w checkBytes
-mappedSize
-	moveq #11, d0
+	moveq #MAPPED_CONTROL_BYTES-1, d0
 	bra.w checkBytes
 mappedConcrete
 	moveq #10, d0

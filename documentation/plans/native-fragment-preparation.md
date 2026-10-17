@@ -1,166 +1,112 @@
-# Structural preparation and relocatable module objects
+# Module preparation and relocatable objects
 
-Design for review, updated 2026-10-17. **Structural pipeline not implemented.** Raw
-capture disk backing is separately implemented and qualified. Stop for Erik's review before
-changing the preparation pipeline. Parity remains paused. The old fragment-envelope
-experiment was removed; this proposal does not preserve that selector or its format.
-See [current measurements](native-performance-diagnosis.md) and
+Status, 2026-10-17: dependency-first preparation now interleaves with module
+configuration/discovery with resident capture. Completed module captures retire after their numeric
+records and templates have been published into the shared semantic owner.
+Final binding, layout and emission still run globally. This is an early-release
+pipeline, not a persistent `.ofm` object implementation. Parity remains paused.
+See [measurements](native-performance-diagnosis.md) and
 [capture ownership](native-lazy-preparation.md).
 
-## Intended saving and boundary
+## Implemented publication boundary
 
-Replace “capture all files, then replay all” with a cheap structural scan, followed
-by capture, preparation and release of modules in dependency order. The expected
-saving is the accumulated captured/prepared source of already published modules.
-A near-output, pointer-free `.ofm` object is the proposed ownership boundary: once
-it owns everything needed later, source-oriented storage can be released.
+The discovery graph can yield a dependency-complete module before a later import
+requires another file. A successful shared-frontend replay publishes owned numeric
+records, definitions and templates, then acknowledges that graph node and retires
+its raw capture interval. A failed replay is never acknowledged. Dependency and
+source order, whole-block fallthrough and normal global reachability remain intact.
 
-An object may be complete or sparse, retaining only referenced whole `.block`
-units. The same representation can stay in memory on larger systems or be backed
-by disk on smaller systems. This is a hypothesis about memory ownership, not a
-promise that another intermediate representation saves time or fits 2 MiB.
+Configuration and semantic sessions own independent scratch and graph storage.
+Only one session is active at the stable frontend address; switching restores
+shared VM control. Append-only immutable configuration snapshots are transferred
+by spelling into semantic identities. Previously consumed section maps retain
+their state. Repeated `.use` configurations must name the same complete set of
+keys and equal values, independent of key order, matching Rust.
 
-## Structural index and configuration ordering
+Before requesting another publication, the scheduler tests whether configuration
+has closed. Once it has, it transfers the remaining schedule, seeds final snapshots,
+then releases configuration scratch, graph and physical discovery before replaying
+remaining bodies. Already published records remain owned. A graph which closes
+without early publication uses the shared existing complete-schedule path. No
+benchmark/path-specific behavior or new experiment switch selects this boundary.
 
-The scan identifies module declarations, imports, exports, whole-unit ranges and
-prerequisites, using existing shared lexical/VM facilities. It must avoid full
-binding, expression compilation and candidate-plan generation for every record.
-Moving that work into an index builder would merely rename the current problem.
+Bounded disk capture uses complete-graph scheduling. Its payload already stays within
+1 MiB, while overlapping growing configuration and semantic owners increased tracked
+peak by 14.9% in the measured interleaved control. Keeping the existing single-owner
+transition avoids that regression. This is the existing storage policy selecting an
+ownership schedule, with the same language implementation on both paths.
 
-Configuration is executable language. Preserve the current ordering: evaluate the
-importer's required configuration prefix, including earlier constants/schemas and
-`.use ... with` arguments, before configuring a dependency; then prepare dependency
-bodies before the importing body. Preserve import source order, root declaration
-order, cycle detection and missing/ambiguous-module diagnostics. A module can own
-ordered effects as well as exported values.
+Late section maps prevent early commitment to section geometry. Fixed-size numeric
+section recipes retain source section slots, kind and alignment until the full map set is
+known. Global completion resolves them before region/placement validation and
+ordinary binding/layout. No CPU parser, expression evaluator or convergence policy
+is duplicated in this scheduler.
 
-Unknown conditional dependencies must remain unresolved or escalate to ordinary
-preparation; never guess one branch. Mutable definitions invalidate structural
-facts that read them. Record the state on which a scan result depends. Explicit
-`.cpu`, `.fpu`, `.apollo` and other configuration directives drive package
-activation; instruction spelling does not implicitly load capabilities.
+## Captures, includes and ownership
 
-## Source order and include suspension
+Captured source has monotonic logical offsets. Retirement records disjoint checked
+intervals; fully retired chunks release payload and cannot fault back from disk.
+A partially retired shared chunk stays allocated while live bytes remain. Reader
+views stop at retired boundaries; pinned rows cannot retire. Physical file boundaries
+seal writers, reducing shared allocation lifetimes. Descriptor movement never changes
+logical handles.
 
-Preserve ordered assignments, macro definitions, shadowing, generated names and
-configuration changes. Includes in inactive branches or unexpanded definitions
-must not be opened. At an active include, suspend the current source/unit cursor,
-expansion state, origin and ownership context; acquire the include and resume in
-order. Preserve definition-relative paths and declaration context, while retaining
-the invocation's applicable CPU/package selection.
+An active include suspends its parent source cursor and preserves origin, expansion
+and declaration context. During interleaved resident preparation, its acquired
+extent retires only after replay, before the parent resumes. Complete-graph paths
+keep include captures until final capture cleanup. Templates retain their own binary
+bodies/defaults, not borrowed capture pointers. Inactive branches and unexpanded templates do not acquire files. Discovery
+paths required by later active includes survive physical discovery cleanup.
 
-An include may introduce modules or new `.use` dependencies, so discovery can
-extend the graph and resume dependency processing. The structural scan is not a
-claim that every module edge is known before execution. Generated filenames are
-evaluated at their existing shared semantic boundary.
+Resident and disk-backed capture use this same ownership protocol. Disk backing
+still has a bounded resident payload budget and one private append-only scratch file;
+retirement reduces RAM ownership, not the file's accumulated length. Use a genuinely
+disk-backed volume rather than assuming `T:` saves RAM. Failure cleanup owns both
+sessions and every partial allocation.
 
-## What publication must own
+## What remains eager and resident
 
-Objects own bytes, exported typed definitions, schema/member metadata, configuration
-values, template signatures/bodies/defaults and the provenance needed for diagnostics
-and later instantiation. Use object-local IDs and checked offsets, including nested
-region offsets; no persisted process pointers or borrowed capture/parser storage.
+The configuration pass still runs shared lexical/configuration processing; this is
+not the proposed cheap structural-only scan. Every applicable module body still gets
+prepared. The shared semantic scratch, exported definitions/templates and prepared
+record buffer remain resident and grow across modules. Binding proxies, member
+identities and placement-sensitive recipes are finalized across the complete build.
+Publication does not skip preparation of unreachable source or emit final bytes early.
 
-Separate three operations: resolving owner-relative storage after movement, remapping
-imported object IDs, and relocating emitted section addresses. All fragments support
-relocation. Fixed bytes need patches; unresolved expressions, variable-width encoding,
-placement-sensitive conditions and loops need existing VM/package recipes. Keep
-recipes whose dependencies can change with placement even if currently resolved.
-Reverse indexes may map a symbol to both patch sites and dependent recipes.
+Consequently the useful memory bound is shared runtime/packages plus simultaneous
+configuration and semantic state, retained prepared data, active module/include
+capture, discovery and allocation overlap. It no longer requires every completed
+module's raw capture to remain resident. The measured largest overlap, rather than
+a speculative object size, determines the current peak. No 2 MiB fit is claimed.
 
-Retain one loop body and a tree of conditional alternatives, not every iteration
-or branch combination. Mutable recipes preserve per-use/invocation/iteration context
-and ordered writes or snapshots. Inactive alternatives contribute no live block
-roots, file acquisition or package activation. Whole-block inclusion preserves
-fallthrough beyond unused internal labels; macros and segments remain templates.
-A sparse object records retained units: a later absent-block request triggers source
-preparation or a cache miss.
+## Next ownership boundary: real module objects
 
-Publication must be transactional: validate and seal imports, member/proxy identities,
-typed exports and recipes, then transfer ownership. The current global
-`frontend.complete`/materialization boundary needs an explicit bridge to this contract.
-Do not free source with outstanding borrowed views. Preserve the no-growth/no-movement
-assembly frontier at `beginSizing`; storage ownership must not introduce another
-parser, evaluator, CPU encoder or convergence policy.
+A reusable near-output object must have object-local IDs and checked offsets,
+including nested regions, with no process pointers or build-global symbol IDs.
+It must own exported typed values, schemas, templates, provenance and unresolved
+binding/layout recipes. Resolving storage offsets, remapping imported identities
+and relocating output addresses are separate operations.
 
-## Memory bound and disk alternative
+All fragments support relocation. Fixed bytes need patches; variable-width encodings,
+placement-dependent conditionals and loops need VM/package recipes. Keep recipes
+whose dependencies can change even if currently resolved. Retain a loop body and
+conditional tree rather than enumerating every iteration or branch combination.
+Ordered mutable observations must match source execution. Sparse objects retain
+whole referenced `.block` units, preserving internal fallthrough; absent units cause
+source preparation or a cache miss. Macros and segments remain templates.
 
-The old acquisition floor was 30,216,808 tracked bytes before any replay span ended.
-The latest frozen 214-file resident peak is 34,517,176 bytes, including
-23,852,392 logical captured bytes. Chunking removes growth waste, not accumulated source ownership.
+Resident and disk-backed objects should use the same pointer-free representation.
+Once a validated object owns every later consumer's data, source-oriented prepared
+storage can retire. Merely serializing after global completion cannot lower an
+earlier peak. Preserve the no-growth/no-movement assembly frontier at `beginSizing`.
+This next boundary is not yet implemented or qualified.
 
-The proposed bound becomes the maximum simultaneous sum of shared runtime/packages,
-structural/configuration index, retained objects/exports, active module/include
-capture, scratch/output buffers and publication/allocation overlap. It replaces
-all captured modules with an active closure, but resident objects still consume
-memory. There is no qualified largest-module, active-closure or object-size bound;
-these measurements cannot yield an honest numeric replacement for 30 MB yet.
+A future configured-object fingerprint must cover content, transitive includes and
+assets, imported exports/types/templates, compiler/package semantics, relevant options,
+search resolution and consumed source-order inputs. Timestamps are hints. Earlier
+raw-include and prepared declaration-leaf caches were dropped: they retained captures
+and established no peak or runtime improvement. Git preserves those experiments.
 
-A disk-backed object store keeps a small directory and bounded I/O buffers resident.
-Use a genuinely disk-backed AmigaOS volume: a temp assign resolving to RAM saves
-no RAM. The implemented raw-capture spill policy now demonstrates that alternative:
-a 1 MiB payload budget reduces the identical full workload's tracked peak from
-34,517,176 to 11,839,624 bytes, with no established release-time change. It retains
-all source-oriented work and increases allocation/IO churn. Compare future objects
-against both this bounded policy and resident capture, not only the old acquisition
-floor. Validated identity record reuse subsequently lowers that disk-backed peak
-by only 245,120 B / 2.07%, to 11,594,504 B, despite avoiding a 2 MiB replacement
-allocation. Another overlap now dominates. The initial 2.40% release slowdown did
-not reproduce in controlled follow-up; no whole-build timing change is established.
-Matched phase controls save about 76 ms in materialization, with effectively
-unchanged postorder work.
-See the [isolated comparison](native-performance-diagnosis.md#reuse-an-already-ordered-record-stream).
-Finished configuration/discovery workspace retirement subsequently lowers the
-paired peak another 183,784 B / 1.585%, to 11,410,720 B, without changing preparation
-work or allocation capacity. See the
-[isolated lifetime comparison](native-performance-diagnosis.md#retire-finished-preparation-workspaces).
-Current raw-storage policies combine bounded disk capture, staged record-buffer
-growth and paged lexical names. The latest identical-input peak is **10,488,384 B**;
-paging alone saves 458,216 B / 4.19%. Source preparation remains eager. See the
-[isolated name-store comparison](native-performance-diagnosis.md#paged-lexical-name-store).
-These changes establish no object-size or active-module bound. Extra
-scans, validation, rereads and object construction/publication overlap may cost runtime; measure them independently.
-
-## Incremental feasibility and the publication boundary
-
-The raw include-text and prepared declaration-leaf experiments are complete and
-[dropped](native-performance-diagnosis.md#cache-experiment-decisions). The latter
-proves pointer-free local-ID export/import for tested constants and plain schemas:
-five warm entries reuse 698 rows and avoid 1.73% of expression compilations on the
-frozen full workload. Peak heap is unchanged and no release speedup is established.
-The maintained small-module and macro-heavy controls admit no eligible leaf.
-No cache switch or alternate preparation path remains.
-
-The experiment exposes two requirements for the general design:
-
-- Dotted references are globally finalized today. Early module publication must
-  preserve unresolved binding recipes or establish a sound closed-module boundary;
-  it cannot assume that a currently found name is the eventual preferred binding.
-- Preparation-time observations are part of semantics. Importing configuration,
-  conditionals and other consumers must see the same values at the same point as
-  eager execution. Final folded values alone are insufficient. The discarded
-  prototype did not implement its required original-snapshot consistency guard.
-
-Waiting for global completion and then writing an object does not remove the
-capture acquisition floor. A useful next implementation must own the semantic
-recipes needed after publication and actually release module-oriented capture,
-not merely add persistence to the existing all-files pipeline. This remains a
-consequential structural change requiring review. No general relocatable code object, sparse linker or early-release pipeline was
-qualified by the declaration experiment. The separate raw disk store is storage
-qualification, not object publication or avoided preparation.
-
-Before implementation, choose the publication contract and bound the largest
-simultaneous active module/include closure, shared state and sealed objects.
-Compare disk-backed objects with the now-measured raw-capture spill policy above.
-Do not infer a new memory bound from compact leaf objects alone.
-
-A future configured-object fingerprint must cover content, transitive includes
-and assets, imported exports/types/templates, compiler and package semantics,
-relevant options, search resolution and consumed source-order inputs. Timestamps
-are hints, not validity. Persist checked offsets and object-local identities,
-never process pointers. Sparse entries must declare missing units and miss or
-prepare source when a later request needs one. Unknown dependencies are not hits.
-
-Demand-loaded package chunks remain separate future work. Parity stays paused;
-no new observer framework, further macro-only audit or structural implementation
-is authorized by this note.
+Explicit `.cpu`, `.fpu`, `.apollo` and related configuration directives drive future
+package demand loading. Instruction spelling must not implicitly select chunks.
+Package storage is a separate future interface; CPU semantics remain package-owned.

@@ -555,6 +555,9 @@ load
 	clr.l SourceCursorState.End+SourceCursorData
 	clr.l TemplateFloor
 	clr.l AcquiringSource
+	clr.l ModulePipeline
+	clr.l SeededParameters
+	clr.l SeededMaps
 	clr.w StaticPending
 	move.l #MetadataConfig, frontend.Frame.Metadata(a0)
 	move.l #1, FrontStarted
@@ -1969,6 +1972,7 @@ done
 	.bend  ; copy
 	.include "binary_source_static_include.i"
 	.include "binary_source_schedule.i"
+	.include "binary_module_pipeline.i"
 	.include "binary_source_discovery_idx.i"
 	.include "binary_source_selection.i"
 	.include "binary_source_includes.i"
@@ -2091,6 +2095,11 @@ PeekRecord	.res byte, RECORD_BYTES
 ConfigFront	.res byte, frontend.FRAME_BYTES
 ConfigFrontStarted	.res long, 1
 SemanticScratch	.res byte, memory.Block.Used+4
+SemanticGraph	.res byte, memory.Block.Used+4
+ModulePipeline	.res long, 1
+SeededParameters	.res long, 1
+SeededMaps	.res long, 1
+PublishedCapture	.res byte, SPAN_BYTES
 OrderFrame	.res byte, ordered.FRAME_BYTES
 OrderedRecords	.res byte, memory.Block.Used+4
 OrderedFiles	.res byte, memory.Block.Used+4

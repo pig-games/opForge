@@ -317,6 +317,16 @@ close
 	bne.w bad
 	bsr.w popInclude
 	bne.w bad
+	tst.l ModulePipeline
+	beq.w published
+	lea CaptureStore, a0
+	move.l SourceCursorState.Start+SourceCursorData, d1
+	move.l SourceCursorState.End+SourceCursorData, d2
+	cmp.l d1, d2
+	beq.w published
+	jsr capture_store.retire
+	bne.w bad
+published
 	moveq #0, d0
 	bra.w restore
 bad

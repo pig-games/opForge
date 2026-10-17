@@ -7,6 +7,8 @@ CAPTURE_GROW_END	.macro
 .endmacro
 CAPTURE_REPLAY_BEGIN	.macro
 .endmacro
+CAPTURE_CONFIGURATION_BEGIN .macro
+.endmacro
 CAPTURE_CONSTRUCTION_CLEAR_BEGIN	.macro counter
 .endmacro
 CAPTURE_CONSTRUCTION_CLEAR_GAP	.macro counter, bytes

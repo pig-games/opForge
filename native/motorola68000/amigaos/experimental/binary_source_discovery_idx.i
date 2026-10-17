@@ -156,11 +156,44 @@ retry
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Capacity(a0), d0
 	lea Front, a0
-	jsr frontend.orderGraph
+	; The discovery graph owns configuration IDs. A ready prefix can now be
+	; prepared before the next missing dependency is acquired.
+	movea.l a1, a2
+	movea.l frontend.Frame.Scratch(a0), a1
+	adda.l #frontend.SCOPE_STATE, a1
+	lea GraphBlock, a0
+	movea.l memory.Block.Pointer(a0), a0
+	jsr graph.orderRemaining
+	beq.w closed
+	cmpi.l #1, d0
+	beq.w bad
+	; Bounded capture already removes accumulated payload residency. Keep one
+	; growing preparation owner there: overlapping sessions cost more than the
+	; capture budget can save. Resident capture benefits from early retirement.
+	tst.l CaptureStore+capture_store.State.Configured
+	bne.w unresolved
+	; Until configuration closes, publish a dependency-complete prefix rather
+	; than accumulating every file while later dependencies are discovered.
+	lea GraphSpans, a0
+	movea.l memory.Block.Pointer(a0), a2
+	move.l memory.Block.Capacity(a0), d0
+	lea Front, a0
+	movea.l frontend.Frame.Scratch(a0), a1
+	adda.l #frontend.SCOPE_STATE, a1
+	lea GraphBlock, a0
+	movea.l memory.Block.Pointer(a0), a0
+	jsr graph.orderNext
+	cmpi.l #graph.READY, d0
+	beq.w publish
 	tst.l d0
 	bne.w unresolved
+closed
 	move.l d1, OrderedCount
 	bra.w done
+publish
+	bsr.w publishCapturedModule
+	bne.w bad
+	bra.w retry
 unresolved
 	cmpi.l #3, d0
 	bne.w missing

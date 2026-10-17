@@ -51,6 +51,7 @@ fn wrapper_source(sites: &str, stub: bool) -> String {
             "growBegin",
             "growEnd",
             "replayBegin",
+            "configurationBegin",
             "construction",
             "append",
             "materialize",
@@ -105,6 +106,7 @@ const SITES: &str = r#"
  .CAPTURE_GROW_BEGIN
  .CAPTURE_GROW_END
  .CAPTURE_REPLAY_BEGIN
+ .CAPTURE_CONFIGURATION_BEGIN
  .CAPTURE_CONSTRUCTION_CLEAR_BEGIN d4
  .CAPTURE_CONSTRUCTION_CLEAR_GAP d4, d5
  .CAPTURE_CONSTRUCTION d4, 8(a4), 12(a4), 8(a5)
@@ -159,6 +161,9 @@ fn native_capture_telemetry_wrappers_preserve_ccr_before_setup_and_balance_frame
  move.w (sp)+,ccr
  move.w ccr,-(sp)
  jsr capture_profile.replayBegin
+ move.w (sp)+,ccr
+ move.w ccr,-(sp)
+ jsr capture_profile.configurationBegin
  move.w (sp)+,ccr
  move.w ccr,-(sp)
  moveq #0,d4

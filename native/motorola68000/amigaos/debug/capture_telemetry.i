@@ -50,6 +50,12 @@ CAPTURE_REPLAY_BEGIN	.macro
 	move.w (sp)+, ccr
 .endmacro
 
+CAPTURE_CONFIGURATION_BEGIN .macro
+	move.w ccr, -(sp)
+	jsr capture_profile.configurationBegin
+	move.w (sp)+, ccr
+.endmacro
+
 ; Constructor-local clear accounting. The counter register is an output;
 ; preserve CCR and emit nothing unless the complete observer gate is enabled.
 CAPTURE_CONSTRUCTION_CLEAR_BEGIN	.macro counter

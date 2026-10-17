@@ -116,6 +116,64 @@ appendLoop
 	beq.w failed
 	cmpi.l #660203, store.State.LogicalUsed(a0)
 	bne.w failed
+	; Three owners share one chunk and retire out of order. A failed lease
+	; or overlapping retirement preserves ownership; appends keep global offsets.
+	jsr store.cleanup
+	moveq #3, d6
+owners
+	lea Source, a1
+	moveq #4, d0
+	jsr store.append
+	bne.w failed
+	subq.l #1, d6
+	bne.w owners
+	moveq #4, d1
+	moveq #8, d2
+	jsr store.retire
+	bne.w failed
+	cmpi.l #32768, store.State.Reserved(a0)
+	bne.w failed
+	moveq #0, d1
+	jsr store.resolve
+	bne.w failed
+	cmpi.l #4, d2
+	bne.w failed
+	moveq #4, d1
+	jsr store.resolve
+	beq.w failed
+	moveq #8, d1
+	jsr store.acquire
+	bne.w failed
+	moveq #8, d1
+	moveq #12, d2
+	jsr store.retire
+	beq.w failed
+	jsr store.releaseView
+	moveq #0, d1
+	moveq #4, d2
+	jsr store.retire
+	bne.w failed
+	jsr store.retire
+	beq.w failed
+	moveq #8, d1
+	moveq #12, d2
+	jsr store.retire
+	bne.w failed
+	tst.l store.State.Reserved(a0)
+	bne.w failed
+	moveq #8, d1
+	jsr store.resolve
+	beq.w failed
+	lea Source, a1
+	moveq #4, d0
+	jsr store.append
+	bne.w failed
+	cmpi.l #12, d1
+	bne.w failed
+	jsr store.seal
+	bne.w failed
+	tst.l store.State.Active(a0)
+	bne.w failed
 	moveq #0, d4
 	bra.w finish
 failed

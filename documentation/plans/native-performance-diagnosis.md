@@ -333,6 +333,15 @@ the expanded-memory A4000/68040 FS-UAE profile. This is the complete current CLI
 self-build, separate from the unchanged-input resource comparisons. It qualifies
 that configuration, not A6000 hardware or the resident default command.
 
+The A6000 runner also accepts a manifest-bound `capture_mode: "disk"` bundle.
+It creates `scratch` in the fresh run directory on `Development:` before timing,
+then assembles with `--capture-dir scratch`; results record the storage mode.
+The normal `python3 scripts/performance/run_a6000_selfhost.py` command uses the
+bundle selected by `/tmp/opforge-a6000-current` and discovers the host through
+`ash -l`. The current release bundle contains the same executable, source and
+embedded package as the proof above; its hardware command remains unqualified
+until a fresh A6000 run completes and matches all Rust output bytes.
+
 The paired disk-backed peak is **11.06 MiB** of tracked heap, about **5.5 times
 the entire 2 MiB target**, before executable, stack and OS costs. Adding the
 instrumented image's linked reservation gives at least 11.78 MiB. This is the

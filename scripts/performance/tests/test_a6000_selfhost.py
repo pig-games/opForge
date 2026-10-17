@@ -202,13 +202,57 @@ class HardwareCompletionTests(unittest.TestCase):
     def test_hardware_result_metadata_includes_bundle_native_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            manifest = {"native_validation": "fresh_fs_uae_failure_capture"}
+            manifest = {"native_validation": "fresh_fs_uae_failure_capture", "capture_mode": "disk"}
             result = {"success": True}
             runner.add_telemetry(result, root, manifest)
             self.assertEqual(
                 result["bundle_prior_native_validation"],
                 "Native failed candidate (fresh FS-UAE capture).",
             )
+            self.assertEqual(result["capture_mode"], "disk")
+
+    def test_capture_mode_defaults_to_resident_for_older_bundles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.bundle(root, False)
+            manifest, _, _, _ = runner.load_bundle(root)
+            self.assertEqual(manifest["capture_mode"], "resident")
+            result = {"success": True}
+            runner.add_telemetry(result, root, manifest)
+            self.assertEqual(result["capture_mode"], "resident")
+
+    def test_disk_capture_requires_exact_manifest_bound_command_suffix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.embedded_bundle(root)
+            manifest = json.loads((root / "manifest.json").read_text())
+            command = manifest["command"] + " --capture-dir scratch"
+            manifest.update({"capture_mode": "disk", "command": command})
+            (root / "command.txt").write_text(command)
+            (root / "manifest.json").write_text(json.dumps(manifest))
+            validated, _, _, _ = runner.load_bundle(root)
+            self.assertEqual(validated["capture_mode"], "disk")
+
+    def test_capture_mode_rejects_unknown_and_mismatched_or_injected_suffixes(self):
+        cases = (
+            ("invalid", None, "Unknown capture mode"),
+            ("resident", " --capture-dir .", "Resident capture"),
+            ("disk", "", "exact.*suffix"),
+            ("disk", " --capture-dir .", "exact.*suffix"),
+            ("disk", " --capture-dir src/debug", "exact.*suffix"),
+            ("disk", " --capture-dir scratch --capture-dir foo", "exact.*suffix"),
+        )
+        for mode, suffix, error in cases:
+            with self.subTest(mode=mode, suffix=suffix), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.embedded_bundle(root)
+                manifest = json.loads((root / "manifest.json").read_text())
+                command = manifest["command"] + (suffix or "")
+                manifest.update({"capture_mode": mode, "command": command})
+                (root / "command.txt").write_text(command)
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, error):
+                    runner.load_bundle(root)
 
     def package(self, target=b""):
         package = bytearray(runner.PACKAGE_HEADER_BYTES)
@@ -936,6 +980,14 @@ class HardwareCompletionTests(unittest.TestCase):
         script = runner.guest_script("Development:opforge-fresh", "fresh case", "opforge --runtime-package p.bin -i src/entry.asm --hunk output.hunk")
         self.assertIn("Echo $RC >exitcode\nC:Date >end.time", script)
         self.assertIn('Echo "START fresh case"', script)
+        self.assertNotIn("MakeDir scratch", script)
+        disk_script = runner.guest_script(
+            "Development:opforge-fresh", "fresh case",
+            "opforge --runtime-package p.bin -i src/entry.asm --hunk output.hunk --capture-dir scratch",
+            capture_mode="disk",
+        )
+        self.assertLess(disk_script.index("MakeDir scratch"), disk_script.index('Echo "START fresh case"'))
+        self.assertLess(disk_script.index("MakeDir scratch"), disk_script.index("C:Date >start.time"))
         self.assertIn('Echo "DONE fresh case"', script)
         self.assertLessEqual(max(map(len, script.splitlines())), 255)
 

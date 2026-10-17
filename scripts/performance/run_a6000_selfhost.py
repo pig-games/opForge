@@ -339,11 +339,25 @@ def load_bundle(bundle):
         raise ValueError("Assembly command mismatch")
     if not re.fullmatch(r"[A-Za-z0-9_./ -]+", command):
         raise ValueError("Unsafe assembly command")
+    capture_mode = manifest.get("capture_mode", "resident")
+    if capture_mode not in ("resident", "disk"):
+        raise ValueError(f"Unknown capture mode: {capture_mode}")
+    validated_command = command
+    capture_suffix = " --capture-dir scratch"
+    if capture_mode == "disk":
+        if not command.endswith(capture_suffix):
+            raise ValueError("Disk capture requires the exact '--capture-dir scratch' command suffix")
+        validated_command = command[:-len(capture_suffix)]
+        if "--capture-dir" in validated_command:
+            raise ValueError("Capture directory override is not allowed")
+    elif "--capture-dir" in command:
+        raise ValueError("Resident capture cannot use a capture directory")
+    manifest["capture_mode"] = capture_mode
     if storage == "embedded":
         search_options = r"(?: -(?:M|I) src(?:/[A-Za-z0-9_./-]+)?)*"
         command_tail = r"-i (src/[A-Za-z0-9_./-]+) --hunk output\.hunk" + search_options
-        explicit_cpu = re.fullmatch(r"opforge --cpu 68020 " + command_tail, command)
-        source_cpu = re.fullmatch(r"opforge " + command_tail, command)
+        explicit_cpu = re.fullmatch(r"opforge --cpu 68020 " + command_tail, validated_command)
+        source_cpu = re.fullmatch(r"opforge " + command_tail, validated_command)
         if not explicit_cpu and not source_cpu:
             raise ValueError("Embedded test cannot override package selection or search")
         if source_cpu:
@@ -352,7 +366,7 @@ def load_bundle(bundle):
             if (manifest.get("entry") != entry_path or entry is None
                     or not has_m68020_entry_preamble(entry)):
                 raise ValueError("Source-selected embedded test requires the mapped m68020 entry preamble")
-    elif not command.startswith("opforge --runtime-package p.bin -i "):
+    elif not validated_command.startswith("opforge --runtime-package p.bin -i "):
         raise ValueError("External-package test requires the named runtime package")
     identity.extend(b"m68020\0" + command.encode() + b"\0" + package + b"\0" + oracle)
     identity.extend(b"\0output-package-storage\0" + output_storage.encode() + b"\0")
@@ -369,14 +383,16 @@ def load_bundle(bundle):
     return manifest, files, oracle, hashlib.sha256(identity).hexdigest()
 
 
-def guest_script(remote, marker, command):
+def guest_script(remote, marker, command, *, capture_mode="resident"):
     # Save RC immediately; ash's Execute status alone is not assembly completion.
     executable, arguments = command.split(" ", 1)
+    capture_setup = "MakeDir scratch\n" if capture_mode == "disk" else ""
     script = (
         f"FailAt 10\nCD {remote}\nStack 65536\nProtect opforge +e\n"
         "C:Version >environment.txt\nIf EXISTS C:CPU\nC:CPU >>environment.txt\nEndIf\n"
         "C:Avail >>environment.txt\nStack >>environment.txt\n"
-        f'Echo "START {marker}" >start.marker\nC:Date >start.time\n'
+        + capture_setup
+        + f'Echo "START {marker}" >start.marker\nC:Date >start.time\n'
         "FailAt 999\n"
         # OS 3.1 lacks *>; put ordinary output redirection immediately after
         # the executable, which also works with the Shell's oldredirect mode.
@@ -450,6 +466,7 @@ def inspect_result(root, files, oracle, marker, host_seconds):
 def add_telemetry(result, root, manifest, files=None, *, record_header_bytes=None):
     defines = manifest.get("bootstrap_defines", [])
     result.update({"measurement_mode": "instrumented" if defines else "release",
+                   "capture_mode": manifest.get("capture_mode", "resident"),
                    "bootstrap_defines": defines,
                    "bootstrap_package_storage": manifest.get("bootstrap_package_storage", "external"),
                    "embedded_packages": manifest.get("embedded_packages", []),
@@ -533,7 +550,8 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
         target = stage / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
-    (stage / "run-selfhost").write_text(guest_script(remote, marker, manifest["command"]))
+    (stage / "run-selfhost").write_text(guest_script(
+        remote, marker, manifest["command"], capture_mode=manifest.get("capture_mode", "resident")))
     print(f"Run: {run_kind}\nBundle: {bundle}\nLocal results: {local}\nRemote directory: {remote}", flush=True)
     print("Bundle prior native validation: " + native_validation_status(manifest), flush=True)
     if manifest["over_classic_limit_components"]:

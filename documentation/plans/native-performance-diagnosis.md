@@ -125,6 +125,78 @@ ownership on failure. Disabled macros emit zero bytes with undefined operands.
 Further memory work must address the remaining peak, not extrapolate another
 2 MiB saving from this counter. Structural publication still requires review.
 
+## Remaining peak and proposed workspace retirement
+
+Investigation only, 2026-10-17: no lifetime or production implementation changed.
+A temporary bootstrap uses the existing passive progress interface to identify
+new allocation high-water marks and snapshot named block capacities at replay
+span/finalization boundaries. No new telemetry format, framework or maintained
+switch was added. The diagnostic source and receipts are outside the working tree
+at `/tmp/opforge-peak-ownership-20261017`; they are not repository dependencies.
+
+The identical frozen 214-file workload completes with fresh START/DONE, exit zero,
+no scratch-file leaks and all 708,216 bytes matching a newly assembled live Rust
+oracle. Tracked allocations/frees remain 92,083,752 B each, with zero accounting
+errors. Peak remains exactly **11,594,504 B**. Diagnostic elapsed time includes
+extra console output and is not a release-performance measurement.
+
+The global peak occurs during semantic replay when `Records` grows from 1 MiB to
+2 MiB. The allocator preserves the old records until the copy completes. Other
+new high-water marks identify growth of lexical entries, names and the shared
+template/call-plan arena. Major capacities surrounding the global peak are:
+
+| Owner | Capacity |
+|---|---:|
+| Prepared records, old allocation being replaced | 1,048,576 B |
+| Prepared records, replacement | 2,097,152 B |
+| Lexical identity entries | 2,097,152 B |
+| Source-name arena | 2,097,152 B |
+| Shared template/call plans | 1,048,576 B |
+| Known compile-time values | 524,288 B |
+| Template definitions | 262,144 B |
+
+This is a major-owner list, not a complete heap sum. Descriptor snapshots occur
+at span boundaries; the allocation event identifies the exact peak and its owner.
+The large semantic tables still have live consumers. The 8.6 MB difference between
+peak and prepared residency is not all dead storage that can simply be freed.
+
+**Proposed next change, not implemented:** retire finished preparation workspaces
+at the transition to semantic replay:
+
+- Allocate the 41,216 B I/O/line/output area separately from initial frontend
+  scratch from the outset. After configuration seeding and `ConfigFront.finish`,
+  release the 92,336 B configuration scratch. This avoids rebasing current and
+  suspended include pointers; the semantic frontend retains its own scratch.
+- Release candidate paths (65,536 B), the declaration index (21,512 B) and discovery
+  scratch (4,400 B) after the last configuration/discovery consumer, before
+  captured semantic replay. Preserve origin filenames, search roots and all
+  storage used by active/expanded includes. Preserve the direct streaming path,
+  failure diagnostics and idempotent cleanup.
+
+These capacities are measured live at the peak. Combined expected saving is
+**183,784 B / 1.585%**, predicting about **11,410,720 B** peak on this frozen input
+if no other overlap dominates. Initial combined scratch capacity is unchanged;
+one additional I/O allocation replaces shared ownership, with no new source reads,
+disk transfers or per-record work. No runtime gain is predicted. Neither part
+alone meets the 1% target-resource gate, so evaluate the coherent phase-retirement
+change together, against the existing executable, before retaining it. Qualify
+late/expanded includes, configuration seeding, discovery/failure diagnostics and
+cleanup as well as exact full output, heap and separate release timing.
+
+A larger alternative is disk staging during large record-buffer growth: fully
+save the old records, release their RAM, allocate/reload the replacement and only
+then publish it. The identified growth offers an upper bound near 1 MiB / 9% peak
+saving, before other overlaps and staging costs. It adds roughly two transfers
+of the old used bytes and requires a separate private scratch context or an
+explicitly owned backing range. After releasing old RAM, an allocation/read error
+must abort preparation cleanly; it cannot promise the generic allocator's existing
+failure-preserves-old-block contract. Defer this more consequential option until
+the smaller retirement proposal is reviewed; neither proposal is implemented.
+
+Even the smaller predicted peak is about 10.88 MiB / 5.44 times the entire 2 MiB
+target, excluding executable, stack and OS. It does not establish low-memory fit
+or the structural module-publication design.
+
 ## Bounded disk-backed capture
 
 Expected saving: replace about 24 MB of resident capture with at most 1 MiB of

@@ -1,12 +1,13 @@
 # Native runtime and memory diagnosis
 
-Status, 2026-10-17: parity remains paused. Validated identity layouts reuse their
-packed buffer and reduce identical disk-backed full-build peak tracked heap by
-**2.07%**. The initially observed 2.40% release slowdown did **not** reproduce in
-controlled follow-up runs. Materialization itself saves about 76 ms; no reproducible
-whole-build runtime change is established. Bounded capture, chunked storage and
-scaled symbol buckets remain maintained; cache prototypes are removed. Structural
-scan, early publication and `.ofm` remain
+Status, 2026-10-17: parity remains paused. Finished configuration/discovery
+workspaces now retire before semantic replay. On identical disk-backed full-build
+input, peak tracked heap falls **183,784 B / 1.585%**, to **11,410,720 B**.
+Uninstrumented means are 102.449 s before / 102.772 s after (+0.315%): no runtime
+change is established. Preparation work and allocated capacity are unchanged.
+Validated identity record reuse, bounded capture, chunked storage and scaled
+symbol buckets remain maintained; cache prototypes are removed. Structural scan,
+early publication and `.ofm` remain
 [design work requiring review](native-fragment-preparation.md).
 
 ## Measurement contract
@@ -125,25 +126,79 @@ ownership on failure. Disabled macros emit zero bytes with undefined operands.
 Further memory work must address the remaining peak, not extrapolate another
 2 MiB saving from this counter. Structural publication still requires review.
 
-## Remaining peak and proposed workspace retirement
+## Retire finished preparation workspaces
 
-Investigation only, 2026-10-17: no lifetime or production implementation changed.
-A temporary bootstrap uses the existing passive progress interface to identify
-new allocation high-water marks and snapshot named block capacities at replay
-span/finalization boundaries. No new telemetry format, framework or maintained
-switch was added. The diagnostic source and receipts are outside the working tree
-at `/tmp/opforge-peak-ownership-20261017`; they are not repository dependencies.
+Expected saving: **183,784 B / 1.585%** of the frozen full-build tracked peak,
+without additional source reads, disk transfers or per-record work. No runtime
+gain was predicted. Configuration and physical discovery have no consumers after
+configuration seeding and frontend shutdown, so their storage now retires before
+semantic replay. Independent I/O/line/output storage survives that transition.
 
-The identical frozen 214-file workload completes with fresh START/DONE, exit zero,
-no scratch-file leaks and all 708,216 bytes matching a newly assembled live Rust
-oracle. Tracked allocations/frees remain 92,083,752 B each, with zero accounting
-errors. Peak remains exactly **11,594,504 B**. Diagnostic elapsed time includes
-extra console output and is not a release-performance measurement.
+The 41,216 B I/O area is allocated separately from configuration scratch from the
+outset. This avoids rebasing active and suspended include pointers. After parameter
+seeding and `ConfigFront.finish`, release the 92,336 B configuration scratch,
+65,536 B candidate paths, 21,512 B declaration index and 4,400 B discovery scratch.
+Keep origin filenames, include roots and semantic scratch. One idempotent discovery
+cleanup routine serves normal retirement, direct inputs and partial failure.
+There is no new switch, observer framework or alternate preparation path.
 
-The global peak occurs during semantic replay when `Records` grows from 1 MiB to
-2 MiB. The allocator preserves the old records until the copy completes. Other
-new high-water marks identify growth of lexical entries, names and the shared
-template/call-plan arena. Major capacities surrounding the global peak are:
+Same frozen 214 files / 2,648,242 source bytes, package, disk-capture command and
+five telemetry gates as the identity-reuse reference. A fresh live Rust oracle
+matches all 708,216 native output bytes, with fresh START/DONE and exit zero.
+
+| Resource | Before retirement | After retirement |
+|---|---:|---:|
+| Peak tracked heap | 11,594,504 B | 11,410,720 B |
+| Allocated/freed capacities, each | 92,083,752 B | unchanged |
+| Prepared live heap | 2,969,088 B | unchanged |
+| Assembly live heap | 4,943,360 B | unchanged |
+| Captured records / logical bytes | 116,855 / 23,852,392 B | unchanged |
+| Source bytes read | 2,816,781 B | unchanged |
+| Expression compilations / evaluations | 69,528 / 176,850 | unchanged |
+| Capture reads / writes | 26,807,624 / 23,852,392 B | unchanged |
+
+The measured reduction is exactly the predicted **183,784 B / 1.585%**. Total
+allocation capacity is unchanged: the saving comes from shorter overlapping
+lifetimes. Separating I/O adds one reserve call, with unchanged total capacity.
+Cleanup reaches zero live tracked bytes, with no accounting errors,
+allocation failures or leaked capture files. Release image / linked reservation
+grows by 44 / 48 B, to 710,436 / 744,876 B.
+
+The identical small-module control keeps its 608,768 B peak. The macro-heavy
+control falls from 2,282,424 to **2,163,152 B** (119,272 B / 5.23%); allocated/freed
+capacities stay unchanged on both. Both BIN and Hunk outputs match live Rust.
+
+Uninstrumented full-build runs alternate reference/candidate/candidate/reference,
+on the same frozen source and package bytes:
+
+| Release comparison | Before | After |
+|---|---:|---:|
+| Pair A | 103.065 s | 103.397 s |
+| Pair B | 101.832 s | 102.147 s |
+| Mean | 102.449 s | 102.772 s |
+
+The mean difference is **+0.323 s / +0.315%**, below the measured noise. All four
+runs match the complete fresh Rust output. No whole-build speedup or slowdown is
+established. Retain the coherent lifetime reduction for its measured heap saving
+above 1%, without claiming reduced preparation work.
+
+Focused native checks cover active/expanded and nested repeated includes on both
+68020 and 6502, configured compound values, unavailable/conflicting parameters,
+discovery/static include graphs, direct streaming across reader refills, and
+expected failures for missing/cyclic includes and forbidden module changes.
+Independent ownership review found no issues. Formatting checks cover 165 files.
+The optional detailed-counter variant of the direct-input test still fails its
+pre-existing tokenization/binding-entry equality assertion: binding stage entries
+count multiple calls per line. Its ordinary release correctness variant passes.
+The broad redundant-test guard also retains 18 pre-existing autofixable findings;
+the changed assembly file has no new findings. Neither limitation was hidden or
+repaired as part of this lifetime change.
+
+### What still owns the peak
+
+Existing passive progress and named-block snapshots identify `Records` growth
+from 1 MiB to 2 MiB during semantic replay as the peak event. The allocator keeps
+the old records until the copy completes. Major capacities around that boundary:
 
 | Owner | Capacity |
 |---|---:|
@@ -155,47 +210,25 @@ template/call-plan arena. Major capacities surrounding the global peak are:
 | Known compile-time values | 524,288 B |
 | Template definitions | 262,144 B |
 
-This is a major-owner list, not a complete heap sum. Descriptor snapshots occur
-at span boundaries; the allocation event identifies the exact peak and its owner.
-The large semantic tables still have live consumers. The 8.6 MB difference between
-peak and prepared residency is not all dead storage that can simply be freed.
+This is a major-owner list, not a complete heap sum. Allocation events identify
+the exact high-water mark; named snapshots are at span boundaries. These large
+semantic tables still have live consumers. The difference from prepared residency
+is not all dead storage that can simply be freed.
 
-**Proposed next change, not implemented:** retire finished preparation workspaces
-at the transition to semantic replay:
+Disk staging during large record growth is a possible next investigation, not an
+implemented or authorized redesign. Saving old records, releasing their RAM and
+reloading a replacement offers an upper bound near 1 MiB / 9% peak saving before
+other overlaps. It adds roughly two transfers of the old used bytes and requires
+explicit scratch ownership. Allocation/read failure after releasing old RAM must
+abort cleanly; it cannot promise the allocator's failure-preserves-old-block
+contract. Structural publication remains a separate design decision.
 
-- Allocate the 41,216 B I/O/line/output area separately from initial frontend
-  scratch from the outset. After configuration seeding and `ConfigFront.finish`,
-  release the 92,336 B configuration scratch. This avoids rebasing current and
-  suspended include pointers; the semantic frontend retains its own scratch.
-- Release candidate paths (65,536 B), the declaration index (21,512 B) and discovery
-  scratch (4,400 B) after the last configuration/discovery consumer, before
-  captured semantic replay. Preserve origin filenames, search roots and all
-  storage used by active/expanded includes. Preserve the direct streaming path,
-  failure diagnostics and idempotent cleanup.
-
-These capacities are measured live at the peak. Combined expected saving is
-**183,784 B / 1.585%**, predicting about **11,410,720 B** peak on this frozen input
-if no other overlap dominates. Initial combined scratch capacity is unchanged;
-one additional I/O allocation replaces shared ownership, with no new source reads,
-disk transfers or per-record work. No runtime gain is predicted. Neither part
-alone meets the 1% target-resource gate, so evaluate the coherent phase-retirement
-change together, against the existing executable, before retaining it. Qualify
-late/expanded includes, configuration seeding, discovery/failure diagnostics and
-cleanup as well as exact full output, heap and separate release timing.
-
-A larger alternative is disk staging during large record-buffer growth: fully
-save the old records, release their RAM, allocate/reload the replacement and only
-then publish it. The identified growth offers an upper bound near 1 MiB / 9% peak
-saving, before other overlaps and staging costs. It adds roughly two transfers
-of the old used bytes and requires a separate private scratch context or an
-explicitly owned backing range. After releasing old RAM, an allocation/read error
-must abort preparation cleanly; it cannot promise the generic allocator's existing
-failure-preserves-old-block contract. Defer this more consequential option until
-the smaller retirement proposal is reviewed; neither proposal is implemented.
-
-Even the smaller predicted peak is about 10.88 MiB / 5.44 times the entire 2 MiB
-target, excluding executable, stack and OS. It does not establish low-memory fit
-or the structural module-publication design.
+Evidence is retained outside the tree in
+`/tmp/opforge-workspace-retirement-build-20261017` and
+`/tmp/opforge-workspace-retirement-cases-20261017`. The earlier ownership probe is
+in `/tmp/opforge-peak-ownership-20261017`. These are local receipts, not repository
+dependencies. The current peak is **10.88 MiB / 5.44 times the entire 2 MiB target**,
+excluding executable, stack and OS. No low-memory fit is claimed.
 
 ## Bounded disk-backed capture
 
@@ -395,11 +428,12 @@ claims. Both outputs and all ownership accounting pass.
 
 ## Current qualification and distance to target
 
-Fresh complete self-host of the current native CLI with identity reuse and
-disk-backed capture: 215 mapped files / 2,669,473 bytes, source manifest
-`fnv1a64:adf3b92af9fbbf2d`. The uninstrumented native run finishes in **105.204 s**,
-with fresh challenge-bound START/DONE, exit zero, and all **710,392 output bytes**
-exactly equal to the live Rust oracle and bootstrap (`fnv1a64:dbef0aa3d2172369`).
+Fresh complete self-host of the current native CLI with workspace retirement,
+identity reuse and disk-backed capture: 215 mapped files / 2,670,375 bytes, source
+manifest `fnv1a64:96b53f2cfb9f2dba`. The uninstrumented native run finishes in
+**105.650 s**, with fresh challenge-bound START/DONE, exit zero, and all **710,436
+output bytes** exactly equal to the live Rust oracle and bootstrap
+(`fnv1a64:956e28ea7afdb065`).
 It uses an embedded m68020 package, `--capture-dir Work:`, a 64 KiB guest stack and
 the expanded-memory A4000/68040 FS-UAE profile. This is the complete current CLI
 self-build, separate from the unchanged-input resource comparisons. It qualifies
@@ -414,17 +448,18 @@ bundle selected by `/tmp/opforge-a6000-current` and discovers the host through
 embedded package as the proof above; its hardware command remains unqualified
 until a fresh A6000 run completes and matches all Rust output bytes.
 
-The paired disk-backed peak is **11.06 MiB** of tracked heap, about **5.5 times
+The paired disk-backed peak is **10.88 MiB** of tracked heap, about **5.44 times
 the entire 2 MiB target**, before executable, stack and OS costs. Adding the
-instrumented image's linked reservation gives at least 11.78 MiB. This is the
+instrumented image's linked reservation gives at least 11.61 MiB. This is the
 frozen 214-file memory workload, not a separate memory measurement of the current
 215-file self-build. No low-memory fit or full language/CPU parity is claimed.
 
-Component and maintained workload checks, identical-input comparisons and the
-complete current-source disk-backed self-build pass. The memory gate passes;
-controlled follow-up does not establish a whole-build runtime change. The next larger ownership
-decision remains the structural publication contract; this result does not
-authorize its implementation.
+The focused native correctness checks, maintained workloads, identical-input
+comparisons and complete current-source disk-backed self-build pass. The memory
+gate passes; release timing establishes no whole-build runtime change. The
+existing optional counter assertion and broad style-guard limitations are recorded
+[above](#retire-finished-preparation-workspaces). Larger record-growth or structural
+publication changes require a separate decision; this result authorizes neither.
 
 ## Cache experiment decisions
 

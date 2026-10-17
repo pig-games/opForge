@@ -388,6 +388,8 @@ freeBlocks
 	jsr memory.release
 	lea PrepBlock, a0
 	jsr memory.release
+	lea IoBlock, a0
+	jsr memory.release
 	lea Records, a0
 	jsr memory.release
 	lea SymbolStorage, a0
@@ -419,15 +421,7 @@ freeBlocks
 	clr.l memory.Block.Used(a0)
 	lea RootPaths, a0
 	jsr memory.release
-	lea CandidatePaths, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
-	clr.l CandidateCount
-	lea DiscoveryBlock, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
-	lea DeclarationBlock, a0
-	jsr memory.release
+	bsr.w releaseDiscovery
 	bsr.w releaseGraph
 	lea GraphSpans, a0
 	jsr memory.release
@@ -511,8 +505,6 @@ load
 	.MEMORY_SETUP_RESULT DosBase, #PROGRESS_FRONTEND_SIZE
 	bne.w closeBad
 	move.l d1, d0
-	addi.l #IO_SCRATCH_BYTES, d0
-	bcs.w closeBad
 	lea PrepBlock, a0
 	jsr memory.reserveExact
 	.MEMORY_SETUP_RESULT DosBase, #PROGRESS_FRONTEND_STORAGE
@@ -522,7 +514,14 @@ load
 	lea Front, a0
 	move.l a4, frontend.Frame.Package(a0)
 	move.l a1, frontend.Frame.Scratch(a0)
-	adda.l d1, a1
+	; Buffered readers and packed-line output outlive configuration scratch.
+	; Own them separately from the outset so include cursors never need rebasing.
+	move.l #IO_SCRATCH_BYTES, d0
+	lea IoBlock, a0
+	jsr memory.reserveExact
+	bne.w closeBad
+	movea.l memory.Block.Pointer(a0), a1
+	lea Front, a0
 	move.l a1, IoBuffer
 	move.l a1, IoCursor
 	move.l a1, IoEnd
@@ -855,17 +854,7 @@ sourcesPrepared
 	.MEMORY_STAGE #5
 	bsr.w closeInput
 	bne.w bad
-	tst.l DiscoverMode
-	beq.w pathsCleared
-	lea CandidatePaths, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
-	clr.l CandidateCount
-	lea DiscoveryBlock, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
-	clr.l DiscoveryScratch
-pathsCleared
+	bsr.w releaseDiscovery
 	; Active source acquisition may still need roots during semantic replay.
 
 	cmpi.w #1, CliMode
@@ -995,9 +984,9 @@ parametersSaved
 	bsr.w releaseGraph
 	lea GraphSpans, a0
 	jsr memory.release
-	lea DeclarationBlock, a0
-	jsr memory.release
 	lea PrepBlock, a0
+	jsr memory.release
+	lea IoBlock, a0
 	jsr memory.release
 	lea FileSpans, a0
 	jsr memory.release
@@ -2129,6 +2118,7 @@ PackageSource	.res byte, loader.FRAME_BYTES
 PackageStatus	.res long, 1
 RuntimeBlock	.res byte, memory.Block.Used+4
 PrepBlock	.res byte, memory.Block.Used+4
+IoBlock	.res byte, memory.Block.Used+4
 Records	.res byte, memory.Block.Used+4
 SymbolStorage	.res byte, storage.STATE_BYTES
 Parameters	.res byte, memory.Block.Used+4

@@ -3,7 +3,10 @@
 Status, 2026-10-17: one eager preparation implementation uses shared chunked
 capture. Resident storage remains the default; `--capture-dir DIR` selects bounded
 disk backing. Validated identity layouts now avoid a second prepared-record
-buffer. The isolated change lowers full-build tracked peak by 2.07%. The initial 2.40%
+buffer. Retiring finished configuration/discovery workspaces further lowers the
+paired peak from 11,594,504 to 11,410,720 B (1.585%), with no change in preparation
+work or allocated capacity. Release means differ by +0.315%, within timing noise.
+The earlier isolated identity change saves 2.07%. The initial 2.40%
 release slowdown did not reproduce in controlled follow-up; no whole-build
 runtime change is established. See the
 [separate results](native-performance-diagnosis.md#reuse-an-already-ordered-record-stream).
@@ -14,6 +17,7 @@ Parity remains paused. Structural scanning, publication and `.ofm` remain
 
 | Experiment | Maintained decision |
 |---|---|
+| Finished preparation workspaces | Retire configuration scratch and physical discovery before semantic replay; independent I/O survives. No selector or alternate pipeline. |
 | Identity record layout reuse | Automatic after complete validation; real reorders/partial selections keep copying. Full self-build passes; materialization saves about 76 ms, with no established whole-build runtime change. |
 | Bounded disk backing | Retained as one explicit directory/storage policy; full current-source native self-host and identical-input comparisons pass. |
 | Chunked capture | Promoted to the default; fresh fixed-input and current-source full native self-host proofs pass. |
@@ -98,7 +102,9 @@ physical origins through the existing metadata loop. Reorders and partial
 selections keep the copying path. No input-text use or semantic ownership changes.
 
 On identical disk-backed input this avoids 2,032,832 copy bytes and a 2 MiB
-allocation, but another overlap sets the remaining 11,594,504 B peak. The actual
+allocation, but another overlap then set an 11,594,504 B peak. Subsequent retirement
+of finished configuration/discovery workspaces lowers it to 11,410,720 B; see the
+[isolated lifetime results](native-performance-diagnosis.md#retire-finished-preparation-workspaces). The actual
 saving is 245,120 B / 2.07%; prepared/assembly live heap is unchanged. The initial
 release slowdown did not reproduce. Matched phase controls save about 76 ms in
 ordering, with effectively unchanged postorder work; no whole-build speed change
@@ -130,6 +136,7 @@ No general `.ofm` implementation or early-release memory bound has been qualifie
 
 The pre-storage reference (`1171797a`, native/Rust code matching `bcac8dc8`) remains
 recoverable and its executable is preserved for comparison. Disk backing changes
-storage ownership, not eager preparation semantics. After identity reuse the paired
-peak is 11.06 MiB of tracked heap before executable, stack and OS costs, about 5.5 times
+storage ownership, not eager preparation semantics. After identity reuse and workspace
+retirement the paired peak is 10.88 MiB of tracked heap before executable, stack and
+OS costs, about 5.44 times
 the entire 2 MiB target. No low-memory fit is claimed.

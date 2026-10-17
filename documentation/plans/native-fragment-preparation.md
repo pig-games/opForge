@@ -110,7 +110,11 @@ not reproduce in controlled follow-up; no whole-build timing change is establish
 Matched phase controls save about 76 ms in materialization, with effectively
 unchanged postorder work.
 See the [isolated comparison](native-performance-diagnosis.md#reuse-an-already-ordered-record-stream).
-Neither change establishes an object-size or active-module bound. Extra
+Finished configuration/discovery workspace retirement subsequently lowers the
+paired peak another 183,784 B / 1.585%, to 11,410,720 B, without changing preparation
+work or allocation capacity. See the
+[isolated lifetime comparison](native-performance-diagnosis.md#retire-finished-preparation-workspaces).
+These changes establish no object-size or active-module bound. Extra
 scans, validation, rereads and object construction/publication overlap may cost runtime; measure them independently.
 
 ## Incremental feasibility and the publication boundary

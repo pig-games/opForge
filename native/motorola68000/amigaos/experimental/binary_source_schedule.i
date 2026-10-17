@@ -425,7 +425,8 @@ done
 
 ; Replace the configuration frontend with fresh semantic state. Canonical
 ; parameter spellings are rebound before the configuration scope is released.
-; D0/CCR=status; other registers preserved. Old IO/output storage stays live.
+; D0/CCR=status; other registers preserved. Independent IO/output stays live;
+; configuration scratch and completed discovery ownership retire before replay.
 beginCapturedReplay	.block
 	.CAPTURE_LIFE_PHASE #capture_life.REPLAY_INIT
 	movem.l d1-d7/a0-a6, -(sp)
@@ -465,6 +466,11 @@ beginCapturedReplay	.block
 	lea ConfigFront, a0
 	jsr frontend.finish
 	clr.l ConfigFrontStarted
+	clr.l frontend.Frame.Scratch(a0)
+	lea PrepBlock, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	bsr.w releaseDiscovery
 	lea Front, a0
 	jsr frontend.activate
 	bne.w bad

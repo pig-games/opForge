@@ -229,3 +229,27 @@ done
 	tst.l d0
 	rts
 	.bend  ; selectCandidate
+
+; Retire physical discovery after its final configuration/selection consumer.
+; Captured replay uses retained origin paths and include roots, not candidates
+; or declaration lookup. Also used by final cleanup and non-captured inputs.
+; No inputs; preserves all registers, CCR unspecified. Safe after partial setup
+; and repeated calls; never releases the paths needed by active source includes.
+releaseDiscovery	.block
+	move.l a0, -(sp)
+	lea CandidatePaths, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	clr.l CandidateCount
+	lea DiscoveryBlock, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	clr.l DiscoveryScratch
+	lea InputPlan, a0
+	clr.l inputs.Frame.Scratch(a0)
+	lea DeclarationBlock, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp)+, a0
+	rts
+	.bend  ; releaseDiscovery

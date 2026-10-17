@@ -518,8 +518,8 @@ can describe a different layout from the running executable. They never infer
 the layout from observed counter totals. This is host accounting for preserved
 comparison images, not native format compatibility or version dispatch.
 
-The same capture gates also enable fixed backend counters, reset at compact
-`execute` entry and reported after cleanup through the existing progress ABI:
+The same capture gates also enable fixed backend counters, reset by their owners
+and reported at retirement/cleanup through the existing progress ABI:
 
 | Phase | `f` | `l` | `r` |
 |---:|---|---|---|
@@ -528,9 +528,15 @@ The same capture gates also enable fixed backend counters, reset at compact
 | 362 | fault attempts | evictions | peak resident capture payload capacity |
 | 363 | ordered materialization attempts | successful identity reuses | record bytes actually copied |
 | 364 | record bytes whose copy was avoided | replacement capacity whose allocation was avoided | zero |
+| 365 | completed disk-assisted record growths | staged write bytes | restored read bytes |
+| 366 | old record capacity released before replacement allocation | zero | zero |
 
-Capture-store counters use 28 B of fixed BSS; ordered-record counters use 20 B.
-The latter count only a validated complete identity layout as reuse; failed
+Capture-store counters use 28 B of fixed BSS; ordered-record counters use 20 B;
+record-growth counters use 16 B. Record-growth totals report once when their
+DOS-bound owner retires (normally before assembly), then clear. Failed restoration
+can legitimately leave writes without reads or a completed growth. Released
+capacity is allocation-overlap accounting, not measured whole-build peak saving.
+Ordered-record counters count only a validated complete identity layout as reuse; failed
 attempts remain in the attempt count. Avoided capacity follows `reserveBounded`
 growth/clamping and accounts for existing replacement capacity. It is avoided
 allocation work, not a prediction of the whole-build heap-peak reduction. All

@@ -286,6 +286,38 @@ def decode_ordered_record_telemetry(text: str) -> dict | None:
                 avoided_bytes=avoided, avoided_capacity=capacity)
 
 
+def decode_record_growth_telemetry(text: str) -> dict | None:
+    """Decode optional aggregate record growth counters from progress events.
+
+    Event 365 reports completed growth operations and aggregate write/read bytes; event
+    366 reports released capacity. Absence supports older reference images.
+    Partial failure summaries are valid and may contain unequal byte counts.
+    """
+    rows = {}
+    for line in text.splitlines():
+        match = _LINE.fullmatch(line.strip())
+        if not match:
+            if line.strip().lower().startswith("progress p="):
+                _fail("malformed record growth progress row")
+            continue
+        phase, *values = (int(value, 16) for value in match.groups())
+        if phase not in (365, 366):
+            continue
+        if phase in rows:
+            _fail("duplicate record growth telemetry")
+        rows[phase] = values
+    if not rows:
+        return None
+    if set(rows) != {365, 366}:
+        _fail("incomplete record growth telemetry")
+    completed, write_bytes, read_bytes = rows[365][:3]
+    released_capacity, reserved_0, reserved_1 = rows[366][:3]
+    if reserved_0 or reserved_1:
+        _fail("record growth reserved fields must be zero")
+    return dict(completed=completed, write_bytes=write_bytes,
+                read_bytes=read_bytes, released_capacity=released_capacity)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("file", type=Path, help="guest stdout text file")
@@ -303,6 +335,7 @@ def main(argv=None) -> int:
         result = decode_capture_telemetry(text, record_header_bytes=header_bytes)
         result["capture_store"] = decode_capture_store_telemetry(text)
         result["ordered_records"] = decode_ordered_record_telemetry(text)
+        result["record_growth"] = decode_record_growth_telemetry(text)
     except (OSError, CaptureTelemetryError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2, sort_keys=True))

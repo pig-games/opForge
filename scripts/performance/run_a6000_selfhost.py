@@ -21,7 +21,8 @@ import uuid
 
 from memory_telemetry import decode_memory_telemetry
 from capture_telemetry import (capture_record_header_bytes, decode_capture_telemetry,
-                               decode_capture_store_telemetry, decode_ordered_record_telemetry)
+                               decode_capture_store_telemetry, decode_ordered_record_telemetry,
+                               decode_record_growth_telemetry)
 from hotspot_telemetry import decode_hotspot_telemetry
 
 INSTRUMENTATION_DEFINES = {
@@ -511,6 +512,8 @@ def add_telemetry(result, root, manifest, files=None, *, record_header_bytes=Non
             result["capture_store"] = decode_capture_store_telemetry(
                 (root / "assembly.stdout").read_text())
             result["ordered_records"] = decode_ordered_record_telemetry(
+                (root / "assembly.stdout").read_text())
+            result["record_growth"] = decode_record_growth_telemetry(
                 (root / "assembly.stdout").read_text())
         except (OSError, ValueError) as error:
             result["capture_ownership"] = None

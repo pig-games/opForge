@@ -904,6 +904,10 @@ class HardwareCompletionTests(unittest.TestCase):
             for phase in phases:
                 f, l, r = (1, 0, 7) if phase == 400 else (0, 0, 0)
                 rows.append(f"progress p={phase:08x} f={f:08x} l={l:08x} r={r:08x} m=00000000")
+            rows.extend((
+                "progress p=0000016d f=00000001 l=00001000 r=00000800 m=00000000",
+                "progress p=0000016e f=00002000 l=00000000 r=00000000 m=00000000",
+            ))
             (root / "assembly.stdout").write_text("\n".join(rows))
             for native_success in (True, False):
                 result = {"success": native_success}
@@ -911,6 +915,10 @@ class HardwareCompletionTests(unittest.TestCase):
                 self.assertTrue(result["telemetry_completed"])
                 self.assertEqual(result["success"], native_success)
                 self.assertEqual(result["capture_ownership"]["boundary_mask"], 7)
+                self.assertEqual(result["record_growth"], {
+                    "completed": 1, "write_bytes": 4096, "read_bytes": 2048,
+                    "released_capacity": 8192,
+                })
             (root / "assembly.stdout").write_text("\n".join(rows[:-1]))
             result = {"success": True}
             runner.add_telemetry(result, root, manifest, files)

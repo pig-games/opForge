@@ -2,14 +2,11 @@
 
 Status, 2026-10-17: one eager preparation implementation uses shared chunked
 capture. Resident storage remains the default; `--capture-dir DIR` selects bounded
-disk backing. Validated identity layouts now avoid a second prepared-record
-buffer. Retiring finished configuration/discovery workspaces further lowers the
-paired peak from 11,594,504 to 11,410,720 B (1.585%), with no change in preparation
-work or allocated capacity. Release means differ by +0.315%, within timing noise.
-The earlier isolated identity change saves 2.07%. The initial 2.40%
-release slowdown did not reproduce in controlled follow-up; no whole-build
-runtime change is established. See the
-[separate results](native-performance-diagnosis.md#reuse-an-already-ordered-record-stream).
+disk capture and disk-assisted growth of large prepared-record buffers. The latter
+lowers identical full-build tracked peak from 11,410,720 to **10,946,600 B (−4.07%)**.
+It shortens allocation overlap; preparation work and total allocated capacity are
+unchanged. See the [separate runtime/memory results](native-performance-diagnosis.md#disk-assisted-prepared-record-growth).
+Validated identity layouts and retirement of finished workspaces remain maintained.
 Parity remains paused. Structural scanning, publication and `.ofm` remain
 [designs awaiting review](native-fragment-preparation.md).
 
@@ -17,6 +14,7 @@ Parity remains paused. Structural scanning, publication and `.ofm` remain
 
 | Experiment | Maintained decision |
 |---|---|
+| Disk-assisted record growth | With disk capture, stage the used prefix during large record-buffer growth; keep normal growth for resident/small buffers. Exact full output and component failure ownership pass. |
 | Finished preparation workspaces | Retire configuration scratch and physical discovery before semantic replay; independent I/O survives. No selector or alternate pipeline. |
 | Identity record layout reuse | Automatic after complete validation; real reorders/partial selections keep copying. Full self-build passes; materialization saves about 76 ms, with no established whole-build runtime change. |
 | Bounded disk backing | Retained as one explicit directory/storage policy; full current-source native self-host and identical-input comparisons pass. |
@@ -111,6 +109,14 @@ ordering, with effectively unchanged postorder work; no whole-build speed change
 is established. Both smaller controls avoid copies without lowering their peaks.
 Full current-source disk-backed self-host passes.
 
+With disk capture selected, nonempty record buffers at least 1 MiB now stage their
+used prefix before growth, releasing old RAM before allocating/restoring the new
+contiguous block. Write failure preserves old storage; failed allocation/read after
+release aborts with empty ownership. Resident/small growth retains the allocator.
+The isolated saving is 464,120 B / 4.07%, to 10,946,600 B, despite removing the full
+1 MiB overlap at its earlier peak event. Capture and language work are unchanged.
+This is temporary record storage, not publication of relocatable module objects.
+
 ## Next boundary
 
 Replace capture-all/replay-all only after review of the structural design. An owned,
@@ -136,7 +142,7 @@ No general `.ofm` implementation or early-release memory bound has been qualifie
 
 The pre-storage reference (`1171797a`, native/Rust code matching `bcac8dc8`) remains
 recoverable and its executable is preserved for comparison. Disk backing changes
-storage ownership, not eager preparation semantics. After identity reuse and workspace
-retirement the paired peak is 10.88 MiB of tracked heap before executable, stack and
-OS costs, about 5.44 times
+storage ownership, not eager preparation semantics. After identity reuse, workspace
+retirement and disk-assisted growth the paired peak is 10.44 MiB of tracked heap
+before executable, stack and OS costs, about 5.22 times
 the entire 2 MiB target. No low-memory fit is claimed.

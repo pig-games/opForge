@@ -39,6 +39,24 @@ class CaptureTelemetryTests(unittest.TestCase):
             with self.subTest(text=bad), self.assertRaises(decoder.CaptureTelemetryError):
                 decoder.decode_ordered_record_telemetry(bad)
 
+    def test_optional_record_growth_summary_accepts_partial_failure_counts(self):
+        fullrun = "\n".join((line(365, [1, 4096, 4096]), line(366, [8192, 0, 0])))
+        self.assertEqual(decoder.decode_record_growth_telemetry(fullrun), {
+            "completed": 1, "write_bytes": 4096, "read_bytes": 4096,
+            "released_capacity": 8192,
+        })
+        partial_failure = "\n".join((line(365, [0, 128, 0]), line(366, [256, 0, 0])))
+        self.assertEqual(decoder.decode_record_growth_telemetry(partial_failure), {
+            "completed": 0, "write_bytes": 128, "read_bytes": 0,
+            "released_capacity": 256,
+        })
+        self.assertIsNone(decoder.decode_record_growth_telemetry("ordinary output"))
+        for bad in (fullrun.splitlines()[0], fullrun + "\n" + fullrun.splitlines()[0],
+                    fullrun.splitlines()[0].replace("l=00001000", "l=broken"),
+                    fullrun.replace("r=00000000", "r=00000001")):
+            with self.subTest(text=bad), self.assertRaises(decoder.CaptureTelemetryError):
+                decoder.decode_record_growth_telemetry(bad)
+
     def test_optional_store_summary_requires_complete_unique_rows(self):
         text = "\n".join((line(360, [2, 64, 0]), line(361, [3, 96, 0]),
                           line(362, [2, 4, 1048576])))
@@ -144,13 +162,19 @@ HEADER_BYTES = Record.Tokens
                   "native/motorola68000/amigaos/experimental/binary_capture.asm")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "stdout.txt"
-            path.write_text(self.capture(header_bytes=60))
+            path.write_text(self.capture(header_bytes=60) + "\n" +
+                            line(365, [1, 4096, 2048]) + "\n" +
+                            line(366, [8192, 0, 0]))
             output = io.StringIO()
             with redirect_stdout(output):
                 self.assertEqual(decoder.main([str(path), "--capture-source", str(source),
                     "--capture-define", "OPFORGE_LAZY_AUDIT", "--capture-define", "OPFORGE_LAZY_WORK"]), 0)
             result = json.loads(output.getvalue())
             self.assertEqual(result["capture_summary"]["counters"]["retained_composition"]["header_bytes"], 240)
+            self.assertEqual(result["record_growth"], {
+                "completed": 1, "write_bytes": 4096, "read_bytes": 2048,
+                "released_capacity": 8192,
+            })
             with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
                 decoder.main([str(path), "--capture-define", "OPFORGE_LAZY_WORK"])
             self.assertEqual(error.exception.code, 2)

@@ -40,6 +40,7 @@
 	.use experimental.amigaos.binary_declarations as declarations
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_ordered_records as ordered
+	.use experimental.amigaos.binary_record_growth as record_growth
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_file_data as filedata
 	.use prvm.amigaos.abi as parser_abi
@@ -267,6 +268,9 @@ configured
 	tst.l d0
 	beq.w cleanup
 	move.l d0, DosBase
+	lea RecordGrowth, a0
+	move.l d0, record_growth.State.Dos(a0)
+	move.l CaptureDirectory, record_growth.State.Directory(a0)
 	tst.l CaptureDirectory
 	beq.w captureConfigured
 	lea CaptureStore, a0
@@ -341,6 +345,13 @@ missingRecordOutput
 	jsr DOS_PUT_STR(a6)
 	bra.w cleanup
 failed
+	tst.l RecordGrowth+record_growth.State.Failure
+	beq.w captureStatus
+	movea.l DosBase, a6
+	move.l #RecordGrowthFailure, d1
+	jsr DOS_PUT_STR(a6)
+	bra.w cleanup
+captureStatus
 	move.l CaptureStore+capture_store.State.Failure, d0
 	beq.w sourceFailed
 	move.l #CaptureIoFailure, d1
@@ -392,6 +403,8 @@ freeBlocks
 	jsr memory.release
 	lea Records, a0
 	jsr memory.release
+	lea RecordGrowth, a0
+	jsr record_growth.cleanup
 	lea SymbolStorage, a0
 	jsr storage.release
 	lea ValueOwner, a0
@@ -988,6 +1001,8 @@ parametersSaved
 	jsr memory.release
 	lea IoBlock, a0
 	jsr memory.release
+	lea RecordGrowth, a0
+	jsr record_growth.cleanup
 	lea FileSpans, a0
 	jsr memory.release
 	clr.l IoBuffer
@@ -1401,7 +1416,8 @@ appendPrepared	.block
 	add.l frontend.Frame.Used(a1), d0
 	bcs.w bad
 	move.l #RECORD_LIMIT, d1
-	jsr memory.reserveBounded
+	lea RecordGrowth, a1
+	jsr record_growth.reserve
 	bne.w bad
 	lea Records, a1
 	movea.l memory.Block.Pointer(a1), a2
@@ -1971,6 +1987,7 @@ CaptureLifeLayout
 GoFailure	.byte "compact CLI: --go requires Hex or S-record output (CLI or metadata)", 10, 0
 CaptureBackingFailure	.byte "capture store: cannot create disk backing storage", 10, 0
 CaptureIoFailure	.byte "capture store: disk read, write or seek failed", 10, 0
+RecordGrowthFailure	.byte "prepared records: scratch growth failed", 10, 0
 CaptureBudgetFailure	.byte "capture store: resident payload budget exhausted (record too large or readers pinned)", 10, 0
 CaptureAllocationFailure	.byte "capture store: memory allocation failed", 10, 0
 CaptureLeaseFailure	.byte "capture store: invalid or unbalanced reader lease", 10, 0
@@ -2049,6 +2066,7 @@ GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4
 CaptureRegions	.res byte, memory.Block.Used+4
 CaptureStore	.res byte, capture_store.STATE_BYTES
+RecordGrowth	.res byte, record_growth.STATE_BYTES
 CaptureRegionCount	.res long, 1
 CaptureRegionCurrent	.res long, 1
 CaptureBytes	.res long, 1

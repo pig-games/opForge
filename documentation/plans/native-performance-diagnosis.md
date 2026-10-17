@@ -1,13 +1,14 @@
 # Native runtime and memory diagnosis
 
-Status, 2026-10-17: parity remains paused. Finished configuration/discovery
-workspaces now retire before semantic replay. On identical disk-backed full-build
-input, peak tracked heap falls **183,784 B / 1.585%**, to **11,410,720 B**.
-Uninstrumented means are 102.449 s before / 102.772 s after (+0.315%): no runtime
-change is established. Preparation work and allocated capacity are unchanged.
-Validated identity record reuse, bounded capture, chunked storage and scaled
-symbol buckets remain maintained; cache prototypes are removed. Structural scan,
-early publication and `.ofm` remain
+Status, 2026-10-17: parity remains paused. Disk-assisted prepared-record growth
+removes the old-buffer overlap during large growth. On identical disk-backed
+full-build input, tracked peak falls **464,120 B / 4.07%**, from 11,410,720 to
+**10,946,600 B**. Other live storage now limits the saving. Release means are 101.554 / 101.860 s
+(+0.30%), within timing noise: no runtime change is established.
+The current source/package semantics, preparation work and allocated capacity
+remain unchanged. Bounded capture, chunked storage, scaled symbol buckets,
+identity record reuse and finished-workspace retirement remain maintained.
+Structural scan, early publication and `.ofm` remain
 [design work requiring review](native-fragment-preparation.md).
 
 ## Measurement contract
@@ -194,41 +195,91 @@ The broad redundant-test guard also retains 18 pre-existing autofixable findings
 the changed assembly file has no new findings. Neither limitation was hidden or
 repaired as part of this lifetime change.
 
-### What still owns the peak
+## Disk-assisted prepared-record growth
 
-Existing passive progress and named-block snapshots identify `Records` growth
-from 1 MiB to 2 MiB during semantic replay as the peak event. The allocator keeps
-the old records until the copy completes. Major capacities around that boundary:
+Expected saving: remove the old 1 MiB allocation at the measured 1 MiB → 2 MiB
+`Records` growth event. The upper-bound whole-build prediction was about 9.2%,
+subject to another peak taking over. The existing executable at `8e9e0334` remains
+the comparison reference; no new option or experiment selector was added.
 
-| Owner | Capacity |
-|---|---:|
-| Prepared records, old allocation being replaced | 1,048,576 B |
-| Prepared records, replacement | 2,097,152 B |
-| Lexical identity entries | 2,097,152 B |
-| Source-name arena | 2,097,152 B |
-| Shared template/call plans | 1,048,576 B |
-| Known compile-time values | 524,288 B |
-| Template definitions | 262,144 B |
+With `--capture-dir DIR`, actual growth of a nonempty record block whose existing
+capacity is at least 1 MiB uses a private scratch context. Write the used prefix
+completely, release old RAM, allocate the normal larger capacity and restore the
+exact bytes. Publish `Used` only after a successful read. Small growth and resident
+capture retain the ordinary allocator; records remain contiguous and retain their
+numeric offsets. Assembly and record lookup acquire no new indirection.
 
-This is a major-owner list, not a complete heap sum. Allocation events identify
-the exact high-water mark; named snapshots are at span boundaries. These large
-semantic tables still have live consumers. The difference from prepared residency
-is not all dead storage that can simply be freed.
+The record owner delegates transport to the existing scratch-file module. It never
+reuses arbitrary offsets in the capture-store file. Setup/write failures retain
+the original block. Allocation/read failure after release leaves an empty block
+and aborts preparation; it cannot retain the allocator's old-block-on-failure
+contract. Normal completion retires scratch before assembly, with idempotent final
+cleanup and a bounded scratch-growth diagnostic on failure.
 
-Disk staging during large record growth is a possible next investigation, not an
-implemented or authorized redesign. Saving old records, releasing their RAM and
-reloading a replacement offers an upper bound near 1 MiB / 9% peak saving before
-other overlaps. It adds roughly two transfers of the old used bytes and requires
-explicit scratch ownership. Allocation/read failure after releasing old RAM must
-abort cleanly; it cannot promise the allocator's failure-preserves-old-block
-contract. Structural publication remains a separate design decision.
+Same frozen 214 files / 2,648,242 source bytes, package, disk command and telemetry
+gates as the preceding step. Fresh native START/DONE and exit zero accompany all
+708,216 output bytes matching a newly generated live Rust oracle.
 
-Evidence is retained outside the tree in
-`/tmp/opforge-workspace-retirement-build-20261017` and
-`/tmp/opforge-workspace-retirement-cases-20261017`. The earlier ownership probe is
-in `/tmp/opforge-peak-ownership-20261017`. These are local receipts, not repository
-dependencies. The current peak is **10.88 MiB / 5.44 times the entire 2 MiB target**,
-excluding executable, stack and OS. No low-memory fit is claimed.
+| Resource | In-memory growth reference | Disk-assisted large growth |
+|---|---:|---:|
+| Peak tracked heap | 11,410,720 B | 10,946,600 B |
+| Allocated/freed capacities, each | 92,083,752 B | unchanged |
+| Prepared / assembly live heap | 2,969,088 / 4,943,360 B | unchanged |
+| Global growth-copy bytes | 11,976,608 B | 10,928,046 B |
+| Completed staged growths | none | 1 |
+| Additional scratch writes / reads | none | 1,048,562 / 1,048,562 B |
+| Old capacity released before replacement allocation | none | 1,048,576 B |
+
+The measured whole-build saving is **464,120 B / 4.07%**, not the 1 MiB released
+at one event. Another overlap now dominates; the earlier trace of record-high
+allocation events cannot identify every secondary peak. The large live owners
+still include lexical entries and names (2 MiB each), prepared records (2 MiB),
+shared template/call plans (1 MiB), known values and template definitions. No larger
+retirement or spill policy for these tables is implemented.
+
+Capture-store reads/writes, retained records, source reads, expression compilation
+and evaluation are unchanged. New progress events 365/366 report only the added
+record-growth work, independently of capture IO and the actual MEMD heap peak.
+All tracked capacities balance, cleanup reaches zero, no allocation/profiling
+errors occur, and no owned scratch files remain. The small-module and macro-heavy
+controls keep peaks of 608,768 and 2,163,152 B and stage no records; both BIN/Hunk
+artifacts match live Rust on identical sources.
+
+Uninstrumented comparisons use both run orders on the identical frozen input:
+
+| Release comparison | In-memory growth | Disk-assisted growth |
+|---|---:|---:|
+| Pair A | 101.497 s | 101.768 s |
+| Pair B | 101.612 s | 101.953 s |
+| Mean | 101.554 s | 101.860 s |
+
+The mean difference is **+0.306 s / +0.30%**, within the measured noise. No runtime
+change is established; this is a measured heap/copy-work saving with extra IO.
+All four runs match the complete fresh live Rust output.
+
+The release image grows 500 B to 710,936 B; linked reservation grows 968 B to
+745,844 B. Enabled counters add 16 B of BSS under existing capture telemetry gates;
+ordinary release contains none of their code or storage. No observer framework
+or VM/package semantic change was added.
+
+Independent ownership review found no issues. Real native component probes cover
+small/resident bypass, a full 1 MiB longword-index pattern, an appended tail,
+over-limit/setup/write failure preservation, allocation/read failure empty-state
+cleanup and repeated cleanup. Expected allocation failure is deliberate only in
+the component fixture. Separate write/read fault variants replace exactly one
+transport call in an isolated source snapshot; production has no fault switch.
+
+Reproduce component images with ignored `native_record_growth_probe_save_image`,
+`OPFORGE_RECORD_GROWTH_SAVE_DIR` outside `target`, and optional
+`OPFORGE_RECORD_GROWTH_FAULT=write|read`. Normal and both fault images executed
+through the fresh native exact-output runner. These are component proofs, separate
+from the complete current-source self-host below.
+
+Receipts, frozen cases and images remain outside the tree at
+`/tmp/opforge-record-growth-cases-20261017` and
+`/tmp/opforge-record-growth-build-20261017`. They are local diagnostics, not
+repository dependencies. Heap alone is **10.44 MiB / 5.22 times the entire 2 MiB
+target**, before executable, stack and OS. This does not qualify low-memory fit.
 
 ## Bounded disk-backed capture
 
@@ -428,16 +479,18 @@ claims. Both outputs and all ownership accounting pass.
 
 ## Current qualification and distance to target
 
-Fresh complete self-host of the current native CLI with workspace retirement,
-identity reuse and disk-backed capture: 215 mapped files / 2,670,375 bytes, source
-manifest `fnv1a64:96b53f2cfb9f2dba`. The uninstrumented native run finishes in
-**105.650 s**, with fresh challenge-bound START/DONE, exit zero, and all **710,436
-output bytes** exactly equal to the live Rust oracle and bootstrap
-(`fnv1a64:956e28ea7afdb065`).
+Fresh complete self-host of the current native CLI with disk-assisted record
+growth, workspace retirement and identity reuse: **216 mapped files / 2,675,513
+source bytes**, manifest `fnv1a64:a320645abe7c2b47`. The uninstrumented native run
+finishes in **104.030 s**, with fresh challenge-bound START/DONE, exit zero,
+no leaked scratch files, and all **710,936 output bytes** exactly equal to the
+fresh live Rust oracle and bootstrap (`fnv1a64:365065faf1c5df13`).
+
 It uses an embedded m68020 package, `--capture-dir Work:`, a 64 KiB guest stack and
 the expanded-memory A4000/68040 FS-UAE profile. This is the complete current CLI
-self-build, separate from the unchanged-input resource comparisons. It qualifies
-that configuration, not A6000 hardware or the resident default command.
+self-build, separate from the identical-input resource comparisons. Its timing
+must not be compared as a speed change against earlier changed-source self-builds.
+It qualifies that configuration, not A6000 hardware or the resident default command.
 
 The A6000 runner also accepts a manifest-bound `capture_mode: "disk"` bundle.
 It creates `scratch` in the fresh run directory on `Development:` before timing,
@@ -448,18 +501,22 @@ bundle selected by `/tmp/opforge-a6000-current` and discovers the host through
 embedded package as the proof above; its hardware command remains unqualified
 until a fresh A6000 run completes and matches all Rust output bytes.
 
-The paired disk-backed peak is **10.88 MiB** of tracked heap, about **5.44 times
+The paired disk-backed peak is **10.44 MiB** of tracked heap, about **5.22 times
 the entire 2 MiB target**, before executable, stack and OS costs. Adding the
-instrumented image's linked reservation gives at least 11.61 MiB. This is the
+instrumented image's linked reservation gives at least 11.17 MiB. This is the
 frozen 214-file memory workload, not a separate memory measurement of the current
-215-file self-build. No low-memory fit or full language/CPU parity is claimed.
+216-file self-build. No low-memory fit or full language/CPU parity is claimed.
 
 The focused native correctness checks, maintained workloads, identical-input
 comparisons and complete current-source disk-backed self-build pass. The memory
 gate passes; release timing establishes no whole-build runtime change. The
 existing optional counter assertion and broad style-guard limitations are recorded
-[above](#retire-finished-preparation-workspaces). Larger record-growth or structural
+[above](#retire-finished-preparation-workspaces). Additional arena-spill or structural
 publication changes require a separate decision; this result authorizes neither.
+The new component builder compiles, all three normal/fault images assemble and
+execute, and the focused capture/A6000 decoder suite passes 56 tests. Formatting
+checks cover 166 production files plus the probe/dependencies; the changed native
+files pass the redundant-test guard with zero autofixable findings (11 advisory).
 
 ## Cache experiment decisions
 
@@ -535,4 +592,4 @@ receipts and diagnostic images at `/tmp/opforge-record-regression-build-20261017
 full identical-input cases at `/tmp/opforge-record-regression-cases-20261017`, and
 the decoded local summary at `/tmp/opforge-record-regression-summary-20261017.json`.
 The unused old-layout phase image is host-built only, not native qualification.
-Production code remains at `8b57e34b`; no new optimization was implemented here.
+That attribution-only investigation changed no production code.

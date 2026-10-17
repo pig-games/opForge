@@ -1,11 +1,12 @@
 # Native runtime and memory diagnosis
 
-Status, 2026-10-17: parity remains paused. Validated identity record layouts now
-reuse their existing packed buffer. On identical disk-backed full-build inputs,
-this lowers peak tracked heap by **2.07%**, but the two release pairs are **2.40%
-slower**. Retain the measured memory saving, not a speed claim. Bounded capture,
-chunked storage and scaled symbol buckets remain maintained; cache prototypes are
-removed. Structural scan, early publication and `.ofm` remain
+Status, 2026-10-17: parity remains paused. Validated identity layouts reuse their
+packed buffer and reduce identical disk-backed full-build peak tracked heap by
+**2.07%**. The initially observed 2.40% release slowdown did **not** reproduce in
+controlled follow-up runs. Materialization itself saves about 76 ms; no reproducible
+whole-build runtime change is established. Bounded capture, chunked storage and
+scaled symbol buckets remain maintained; cache prototypes are removed. Structural
+scan, early publication and `.ofm` remain
 [design work requiring review](native-fragment-preparation.md).
 
 ## Measurement contract
@@ -15,8 +16,10 @@ with a newly generated live Rust oracle. Require a fresh native challenge,
 START/DONE, exit zero and exact complete output. Compare tracked heap and exact
 work separately from uninstrumented runtime. Instrumented seconds are attribution,
 not release speed. Two timing pairs below about 2% are inconclusive here; timing
-noise is about two seconds. Reject changes below about 1% of their target resource
-unless they are a documented prerequisite. No new observer framework was added.
+noise is about two seconds. A marginal result above 2% is not automatically a
+confirmed effect either; require reproducible controls before assigning a cause.
+Reject changes below about 1% of their target resource unless they are a
+documented prerequisite. No new observer framework was added.
 
 All new runs use the expanded-memory FS-UAE template, a 64 KiB guest stack and
 serial execution. They are neither A6000 timings nor 2 MiB qualification. Tracked
@@ -60,20 +63,58 @@ All tracked storage is freed with no observer errors. Peak falls only **245,120 
 (**2.07%**): another allocation overlap now dominates. Prepared/assembly residency
 is unchanged; this is not a deferred-processing gain.
 
-| Uninstrumented pair | Copying reference | Identity reuse |
-|---|---:|---:|
-| Reference then candidate | 102.157 s | 104.649 s |
-| Candidate then reference | 102.062 s | 104.470 s |
-| Mean | 102.109 s | 104.559 s |
+The initial two release pairs averaged 102.109 s copying versus 104.559 s reuse
+(+2.450 s / 2.40%). Follow-up investigation did not reproduce that regression:
 
-The candidate is **2.450 s / 2.40% slower** in these pairs, close to but above the
-roughly two-second timing noise. Both pairs have the same direction; do not call
-this timing-neutral or a speed improvement. The new span-level tests do not
-establish a cause for the whole-run difference. Allocation addresses/lifetimes
-and code-layout effects remain hypotheses. No A6000 timing is available.
+| Fresh uninstrumented run | Seconds |
+|---|---:|
+| Original pre-change executable | 102.010 |
+| Current executable, reuse | 100.998 |
+| Current executable, forced copy | 100.539 |
+
+The forced-copy control differs from the current release executable in exactly
+one initializer byte, verified by successful source assembly and complete binary
+comparison: it forces the existing allocation/copy/replacement path while retaining
+all current checks, compiled layout and image size. Its 0.460 s / 0.46% difference
+from reuse is within timing noise. The current executable also runs faster than
+the fresh original reference here. These single fresh runs establish neither a
+new whole-build speedup nor the earlier claimed cost.
+
+To isolate work, temporary diagnostic sources reuse the existing phase/detail
+clock APIs at just three finalization boundaries; ordinary per-record telemetry
+remains disabled. Matched copy/reuse diagnostic images again differ in one byte.
+Each scope is entered once with zero profiling errors:
+
+| Coarse diagnostic phase | Forced copy | Reuse |
+|---|---:|---:|
+| Other preparation | 62.1224 s | 62.0354 s |
+| Graph order and completion binding | 2.4427 s | 2.4454 s |
+| Ordered materialization | 100.286 ms | 24.703 ms |
+| Postorder index/export/disposal/prefix work | 394.558 ms | 394.429 ms |
+| Assembly | 36.86 s | 36.92 s |
+| All preparation (DOS clock) | 65.06 s | 64.90 s |
+
+Materialization saves **75.583 ms**; postorder work is effectively identical and
+assembly differs by only 0.06 s. There is no measured downstream penalty matching
+the earlier 2.45-second gap. The local saving is only about 0.074% of a 102-second
+build, too small for these whole-build timings to resolve reliably. The initial
+difference remains unexplained variation, not a confirmed copy-removal regression.
+Do not assert an OS, memory-bank, cache or code-layout cause without evidence.
+No A6000 timing is available.
+
+Diagnostic phase images are not release benchmarks or new memory measurements.
+They retain only CLOCK/PHASE/SAVE and six coarse detail calls from the approved
+framework; their ordinary memory/work counters are deliberately unmeasured.
+Temporary detail IDs 0/1/2 mean order-completion/materialization/postorder, not the
+standard binding-detail labels. Other preparation is the residual of the complete
+preparation clock and these scopes, including CLI metadata setup. All five fresh
+native investigation runs match the complete live Rust 708,216-byte output on the
+same frozen source/package bytes. No production switch, observer framework or
+implementation change was introduced by the investigation.
 
 Decision: retain automatic validated reuse for its memory saving above the 1%
-gate and lower allocation/copy work, while recording the measured runtime cost.
+gate and lower allocation/copy work. Correct the earlier runtime-cost claim:
+there is no established whole-build speedup or slowdown from this change.
 Release image / linked reservation grows by only 52 B, to 710,392 / 744,828 B.
 The module and macro-heavy controls keep peaks of 608,768 and 2,282,424 B: avoided
 copies do not reduce every workload's peak. Their BIN/Hunk outputs match live Rust.
@@ -300,7 +341,7 @@ frozen 214-file memory workload, not a separate memory measurement of the curren
 
 Component and maintained workload checks, identical-input comparisons and the
 complete current-source disk-backed self-build pass. The memory gate passes;
-release timing shows the small cost documented above. The next larger ownership
+controlled follow-up does not establish a whole-build runtime change. The next larger ownership
 decision remains the structural publication contract; this result does not
 authorize its implementation.
 
@@ -372,3 +413,10 @@ self-build are retained outside `target` under
 `/tmp/opforge-record-order-summary-20261017.json`. These are diagnostic artifacts,
 not repository dependencies. Progress 363/364 and the existing capture decoder
 report ordered copy/reuse work; MEMD separately measures the actual heap peak.
+
+The runtime-attribution investigation retains checked temporary sources, binary
+receipts and diagnostic images at `/tmp/opforge-record-regression-build-20261017`,
+full identical-input cases at `/tmp/opforge-record-regression-cases-20261017`, and
+the decoded local summary at `/tmp/opforge-record-regression-summary-20261017.json`.
+The unused old-layout phase image is host-built only, not native qualification.
+Production code remains at `8b57e34b`; no new optimization was implemented here.

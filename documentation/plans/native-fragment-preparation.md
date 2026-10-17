@@ -105,7 +105,10 @@ all source-oriented work and increases allocation/IO churn. Compare future objec
 against both this bounded policy and resident capture, not only the old acquisition
 floor. Validated identity record reuse subsequently lowers that disk-backed peak
 by only 245,120 B / 2.07%, to 11,594,504 B, despite avoiding a 2 MiB replacement
-allocation. Another overlap now dominates; the release pairs are 2.40% slower.
+allocation. Another overlap now dominates. The initial 2.40% release slowdown did
+not reproduce in controlled follow-up; no whole-build timing change is established.
+Matched phase controls save about 76 ms in materialization, with effectively
+unchanged postorder work.
 See the [isolated comparison](native-performance-diagnosis.md#reuse-an-already-ordered-record-stream).
 Neither change establishes an object-size or active-module bound. Extra
 scans, validation, rereads and object construction/publication overlap may cost runtime; measure them independently.

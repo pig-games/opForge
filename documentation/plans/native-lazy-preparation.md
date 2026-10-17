@@ -3,8 +3,9 @@
 Status, 2026-10-17: one eager preparation implementation uses shared chunked
 capture. Resident storage remains the default; `--capture-dir DIR` selects bounded
 disk backing. Validated identity layouts now avoid a second prepared-record
-buffer. The isolated change lowers full-build tracked peak by 2.07%, while the
-release pairs are 2.40% slower. See the
+buffer. The isolated change lowers full-build tracked peak by 2.07%. The initial 2.40%
+release slowdown did not reproduce in controlled follow-up; no whole-build
+runtime change is established. See the
 [separate results](native-performance-diagnosis.md#reuse-an-already-ordered-record-stream).
 Parity remains paused. Structural scanning, publication and `.ofm` remain
 [designs awaiting review](native-fragment-preparation.md).
@@ -13,7 +14,7 @@ Parity remains paused. Structural scanning, publication and `.ofm` remain
 
 | Experiment | Maintained decision |
 |---|---|
-| Identity record layout reuse | Automatic after complete validation; real reorders/partial selections keep copying. Full self-build passes; retain memory saving with measured runtime cost. |
+| Identity record layout reuse | Automatic after complete validation; real reorders/partial selections keep copying. Full self-build passes; materialization saves about 76 ms, with no established whole-build runtime change. |
 | Bounded disk backing | Retained as one explicit directory/storage policy; full current-source native self-host and identical-input comparisons pass. |
 | Chunked capture | Promoted to the default; fresh fixed-input and current-source full native self-host proofs pass. |
 | First-use macro-body binding/plans | Removed with switches and experiment-specific tests; no established runtime gain. |
@@ -98,9 +99,11 @@ selections keep the copying path. No input-text use or semantic ownership change
 
 On identical disk-backed input this avoids 2,032,832 copy bytes and a 2 MiB
 allocation, but another overlap sets the remaining 11,594,504 B peak. The actual
-saving is 245,120 B / 2.07%; prepared/assembly live heap is unchanged. Release
-pairs show a 2.40% cost, not a speed gain. Both smaller controls avoid copies
-without lowering their peaks. Full current-source disk-backed self-host passes.
+saving is 245,120 B / 2.07%; prepared/assembly live heap is unchanged. The initial
+release slowdown did not reproduce. Matched phase controls save about 76 ms in
+ordering, with effectively unchanged postorder work; no whole-build speed change
+is established. Both smaller controls avoid copies without lowering their peaks.
+Full current-source disk-backed self-host passes.
 
 ## Next boundary
 

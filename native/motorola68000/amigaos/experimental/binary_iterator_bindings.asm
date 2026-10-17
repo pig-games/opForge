@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_iterator_bindings
 	.cpu 68020
 	.use experimental.amigaos.binary_binding_records as records
+	.use experimental.amigaos.binary_name_store as nameStore
 	.pub
 LIMIT = 16
 COUNTED = $ffff
@@ -87,7 +88,7 @@ done
 	rts
 	.bend  ; close
 
-; A0/D0=unqualified lexical name/bytes,A1=state,A2=entries,A3=name arena,
+; A0/D0=unqualified lexical name/bytes,A1=state,A2=entries,A3=name store,
 ; D1=source ID base,D2=current lexical owner (entry index+1).
 ; D0/CCR=0 matched,1 absent; D1=temporary ID,D2=zero qualifier on match.
 ; Other registers preserved. Lookup happens only during source preparation.
@@ -146,7 +147,8 @@ name
 	cmp.l d6, d0
 	bne.w slot
 	movea.l a3, a0
-	adda.l records.Entry.Name(a4), a0
+	move.l records.Entry.Name(a4), d0
+	jsr nameStore.pointer
 	moveq #0, d0
 	move.w records.Entry.Leaf(a4), d0
 	adda.l d0, a0

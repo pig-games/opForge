@@ -269,18 +269,21 @@ the first actual failure wins, including a nested import failure before outer
 scope completion. Stage 17 identifies final numeric member-plan acquisition for
 an imported forward occurrence; stage 13 remains ordinary import resolution.
 The descriptor supplies word offsets for count, base, current,
-entries pointer, arena pointer/used extent, entry stride and name offset/length,
-plus flags and owner offsets. `DECLARED` is bit zero of the current shared entry
+entries pointer, name-store offset/logical end, entry stride and name handle/length,
+plus flags and owner offsets. A separate resolver callback validates the paged
+name store and returns a borrowed pointer; the observer imports no preparation
+owner. Resolution checks the selected page and its used extent, including sealed
+page-tail gaps. `DECLARED` is bit zero of the current shared entry
 ABI; the owner is a one-based source-entry index, with zero meaning absent.
 The observer copies at most 28 entry bytes and 255 canonical-name bytes. It
-checks the index against count and the name extent against the owned arena,
-rejects arithmetic overflow, and stores a zero-padded name independently of the
-source allocations. Descriptor entry fields must fit inside the bounded stride.
+checks the index against count and the logical name end, rejects arithmetic
+overflow, then asks the owner to validate and resolve the complete name. It stores
+a zero-padded name independently of the source allocations. Descriptor entry fields must fit inside the bounded stride.
 For a valid stage-14 target, the observer scans at most the retained entry count
 for declarations: a complete folded canonical match takes priority over the first
 folded final-component match. Import proxies (flag bit three) are excluded:
-validated references do not constitute owner declarations. Each candidate name must fit the owned arena and
-the 255-byte limit. A match replaces the entry/name snapshot with stage 15 or 16
+validated references do not constitute owner declarations. Each candidate name
+must pass the same checked resolver and the 255-byte limit. A match replaces the entry/name snapshot with stage 15 or 16
 and retains the failed target index as related; absent matches retain stage 14.
 This search uses no binding hash and changes no source entries. It reuses the
 primary snapshot and pending storage. At stages 15/16 only, the observer also

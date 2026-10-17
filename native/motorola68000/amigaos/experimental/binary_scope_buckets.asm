@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_scope_buckets
 	.module experimental.amigaos.binary_scope_buckets
 	.cpu 68020
+	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_memory as memory
@@ -110,8 +111,10 @@ chain
 	adda.l d0, a2
 	moveq #0, d3
 	move.w records.Entry.Next(a2), d3
-	movea.l layout.ARENA_POINTER(a6), a1
-	adda.l records.Entry.Name(a2), a1
+	lea layout.ARENA(a6), a0
+	move.l records.Entry.Name(a2), d0
+	jsr nameStore.pointer
+	movea.l a0, a1
 	moveq #0, d0
 	move.w records.Entry.Length(a2), d0
 	; Total bucket hashing includes these rehash spelling-byte reads.

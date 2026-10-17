@@ -3,6 +3,7 @@
 	.module experimental.amigaos.binary_modules
 	.cpu 68020
 	.include "telemetry_macros.i"
+	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_memory as memory
 	.pub
@@ -261,7 +262,7 @@ done
 	rts
 	.bend  ; check
 
-; D0=module source index,A0=metadata,A1=Entry block descriptor,A2=name arena,
+; D0=module source index,A0=metadata,A1=Entry block descriptor,A2=name store,
 ; A3=scope state,A4=source binder callback. Caller proves root scope and ID bounds.
 ; Build dotted lexical prefixes separately from module identity. Binder follows
 ; writer ABI and preserves D3-D7/A2-A6. D0/CCR=status, other registers preserved.
@@ -291,9 +292,11 @@ open	.block
 	adda.l d0, a0
 	moveq #0, d0
 	move.l records.Entry.Name(a0), d0
-	adda.l d0, a2
 	moveq #0, d6
 	move.w records.Entry.Length(a0), d6
+	movea.l a2, a0
+	jsr nameStore.pointer
+	movea.l a0, a2
 	cmpi.l #records.NAME_BYTES-1, d6
 	bhi.w bad
 	movea.l a2, a0

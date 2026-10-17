@@ -4,6 +4,7 @@
 	.cpu 68020
 	.include "telemetry_macros.i"
 	.include "binding_telemetry.i"
+	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_scope_layout as layout
@@ -1013,8 +1014,10 @@ proxyNamespaceReady
 	bne.w found
 	; Struct definitions must exist at the reference site. Import and absolute
 	; targets may still be forward references, so only gate the member fallback.
-	movea.l layout.ARENA_POINTER(a6), a2
-	adda.l records.Entry.Name(a3), a2
+	move.l records.Entry.Name(a3), d0
+	lea layout.ARENA(a6), a0
+	jsr nameStore.pointer
+	movea.l a0, a2
 	moveq #0, d6
 	move.w records.Entry.Length(a3), d6
 	moveq #0, d5
@@ -1552,8 +1555,9 @@ resolve	.block
 resolveQualified
 	moveq #0, d0
 	move.l records.Entry.Name(a3), d0
-	movea.l layout.ARENA_POINTER(a6), a2
-	adda.l d0, a2
+	lea layout.ARENA(a6), a0
+	jsr nameStore.pointer
+	movea.l a0, a2
 	moveq #0, d6
 	move.w records.Entry.Length(a3), d6
 	moveq #0, d5
@@ -2274,10 +2278,9 @@ scopedDone
 ; Explicit qualified bindings have Leaf=0, so scan the stored name itself.
 entryLeafBytes	.block
 	move.l a2, -(sp)
-	movea.l layout.ARENA_POINTER(a6), a0
-	moveq #0, d0
+	lea layout.ARENA(a6), a0
 	move.l records.Entry.Name(a3), d0
-	adda.l d0, a0
+	jsr nameStore.pointer
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	movea.l a0, a1
@@ -2854,12 +2857,12 @@ entryName	.block
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l layout.ENTRIES_POINTER(a6), a1
 	adda.l d0, a1
-	movea.l layout.ARENA_POINTER(a6), a0
-	moveq #0, d0
+	moveq #0, d1
+	move.w records.Entry.Length(a1), d1
 	move.l records.Entry.Name(a1), d0
-	adda.l d0, a0
-	moveq #0, d0
-	move.w records.Entry.Length(a1), d0
+	lea layout.ARENA(a6), a0
+	jsr nameStore.pointer
+	move.l d1, d0
 	rts
 	.bend  ; entryName
 
@@ -2928,8 +2931,8 @@ ancestor
 	moveq #0, d4
 	move.w records.Entry.Length(a0), d4
 	move.l records.Entry.Name(a0), d0
-	movea.l layout.ARENA_POINTER(a6), a0
-	adda.l d0, a0
+	lea layout.ARENA(a6), a0
+	jsr nameStore.pointer
 	lea layout.BUFFER(a6), a1
 	move.l d4, d0
 copyPrefix
@@ -3051,8 +3054,9 @@ candidate
 	beq.w next
 	cmp.w records.Entry.Length(a3), d5
 	bne.w next
-	movea.l layout.ARENA_POINTER(a6), a0
-	adda.l records.Entry.Name(a3), a0
+	lea layout.ARENA(a6), a0
+	move.l records.Entry.Name(a3), d0
+	jsr nameStore.pointer
 	movea.l a2, a1
 	move.l d5, d3
 compare
@@ -3128,9 +3132,10 @@ bad
 	.section data, kind=data
 	.priv
 BindingView	.word layout.State.Count, layout.State.Base, layout.State.Current
-	.word layout.ENTRIES_POINTER, layout.ARENA_POINTER, layout.State.ArenaUsed
+	.word layout.ENTRIES_POINTER, layout.ARENA, layout.State.ArenaUsed
 	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length, records.Entry.Flags
 	.word records.Entry.Owner
+	.long nameStore.resolve
 	.endsection
 .endif
 .endif

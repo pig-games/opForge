@@ -3,6 +3,7 @@
 ; @opforge-owner: experimental.amigaos.binary_section_prepare
 	.module experimental.amigaos.binary_section_prepare
 	.cpu 68020
+	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as names
 	.use experimental.amigaos.binary_source as source
@@ -1112,8 +1113,12 @@ leaf	.block
 	moveq #0, d1
 	move.l names.Entry.Name(a1), d1
 	add.l d3, d1
-	movea.l layout.ARENA_POINTER(a6), a1
-	adda.l d1, a1
+	move.l a0, -(sp)
+	lea layout.ARENA(a6), a0
+	move.l d1, d0
+	jsr nameStore.pointer
+	movea.l a0, a1
+	movea.l (sp)+, a0
 	moveq #0, d0
 	rts
 bad

@@ -4,6 +4,7 @@
 ; @opforge-owner: experimental.amigaos.binary_conditionals
 	.module experimental.amigaos.binary_conditionals
 	.cpu 68020
+	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_imports as imports
@@ -345,7 +346,6 @@ legacyPreparation
 	moveq #0, d2
 	move.w records.Entry.Length(a0), d2
 	sub.w records.Entry.Leaf(a0), d2
-	movea.l layout.ARENA_POINTER(a6), a1
 	moveq #0, d0
 	move.l records.Entry.Name(a0), d0
 	move.l d1, -(sp)
@@ -353,7 +353,9 @@ legacyPreparation
 	move.w records.Entry.Leaf(a0), d1
 	add.l d1, d0
 	move.l (sp)+, d1
-	adda.l d0, a1
+	lea layout.ARENA(a6), a0
+	jsr nameStore.pointer
+	movea.l a0, a1
 	cmpi.w #2, d2
 	bne.w checkElse
 	move.w (a1), d0

@@ -4,6 +4,7 @@
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_name_store as names
 	.use experimental.amigaos.binary_iterator_bindings as iterators
 	.pub
 ; Source counts and index+1 links are words; zero denotes an empty link.
@@ -21,7 +22,7 @@ Base	.word ?
 Count	.word ?
 Current	.word ?
 Ended	.word ?
-ArenaUsed	.long ?
+ArenaUsed	.long ?  ; logical name end, including sealed page-tail gaps
 FirstBound	.word ?
 FirstExplicit	.word ?
 EndDirective	.word ?
@@ -51,8 +52,8 @@ BUCKET_MAX = 16384
 BUCKETS = ENTRIES+memory.Block.Used+4
 BUCKETS_POINTER = BUCKETS+memory.Block.Pointer
 ARENA = BUCKETS+memory.Block.Used+4
-ARENA_POINTER = ARENA+memory.Block.Pointer
-BUFFER = ARENA+memory.Block.Used+4
+; Names own paged byte storage; Entry.Name is a page/offset handle.
+BUFFER = ARENA+names.STATE_BYTES
 MODULE_STATE = BUFFER+NAME_BYTES
 IMPORT_STATE = MODULE_STATE+modules.SCRATCH_BYTES
 	.endmodule

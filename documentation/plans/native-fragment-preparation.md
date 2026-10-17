@@ -114,10 +114,10 @@ Finished configuration/discovery workspace retirement subsequently lowers the
 paired peak another 183,784 B / 1.585%, to 11,410,720 B, without changing preparation
 work or allocation capacity. See the
 [isolated lifetime comparison](native-performance-diagnosis.md#retire-finished-preparation-workspaces).
-Disk-assisted growth of large prepared-record buffers subsequently removes one
-1 MiB allocation overlap but lowers the whole-build peak only 464,120 B / 4.07%,
-to 10,946,600 B. Other live storage limits the saving; source preparation remains
-eager. See the [isolated growth comparison](native-performance-diagnosis.md#disk-assisted-prepared-record-growth).
+Current raw-storage policies combine bounded disk capture, staged record-buffer
+growth and paged lexical names. The latest identical-input peak is **10,488,384 B**;
+paging alone saves 458,216 B / 4.19%. Source preparation remains eager. See the
+[isolated name-store comparison](native-performance-diagnosis.md#paged-lexical-name-store).
 These changes establish no object-size or active-module bound. Extra
 scans, validation, rereads and object construction/publication overlap may cost runtime; measure them independently.
 

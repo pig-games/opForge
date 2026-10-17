@@ -8,6 +8,7 @@
 	.include "lazy_work.i"
 	.include "lazy_template_hooks.i"
 	.include "macro_packing_audit.i"
+	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_macro_plans as plans
 	.use experimental.amigaos.binary_macro_fragments as fragments
@@ -2956,8 +2957,11 @@ replayIterator	.block
 	move.w records.Entry.Length(a2), d0
 	sub.l d2, d0
 	beq.w absent
-	movea.l scopes.ARENA_POINTER(a1), a0
-	adda.l records.Entry.Name(a2), a0
+	move.l d0, -(sp)
+	lea scopes.ARENA(a1), a0
+	move.l records.Entry.Name(a2), d0
+	jsr nameStore.pointer
+	move.l (sp)+, d0
 	adda.l d2, a0
 	jsr scopes.probeIterator
 	bra.w done

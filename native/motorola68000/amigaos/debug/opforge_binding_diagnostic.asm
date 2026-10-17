@@ -35,13 +35,14 @@ Count	.word ?
 Base	.word ?
 Current	.word ?
 Entries	.word ?
-Arena	.word ?
+Arena	.word ?  ; embedded name-store state offset
 ArenaUsed	.word ?
 EntryBytes	.word ?
 Name	.word ?
 Length	.word ?
 Flags	.word ?  ; DECLARED is bit zero in the current shared entry ABI
 Owner	.word ?  ; one-based source-entry index, zero when absent
+NameReader	.long ?  ; checked name resolver supplied by the owner
 .endstruct
 Snapshot	.struct
 Stage	.long ?
@@ -321,11 +322,8 @@ entryLoop
 	move.w View.ArenaUsed(a4), d0
 	cmp.l 0(a5, d0.l), d3
 	bhi.w invalid
-	move.w View.Arena(a4), d0
-	movea.l 0(a5, d0.l), a0
-	move.l a0, d0
-	beq.w invalid
-	adda.l d2, a0
+	bsr.w resolveName
+	bne.w invalid
 	move.l d7, Snapshot.NameBytes(a6)
 	lea Snapshot.Name(a6), a1
 nameLoop
@@ -338,6 +336,23 @@ invalid
 	moveq #0, d0
 	rts
 	.bend  ; snapshotEntry
+
+; D2=name handle,D7=positive length<=255,A4=View,A5=scope. The owner
+; validates page membership and holes. D0/CCR=status,A0=name pointer or zero;
+; all other registers preserved. The callback returns its pointer in A1.
+resolveName	.block
+	movem.l d1/a1-a2, -(sp)
+	moveq #0, d0
+	move.w View.Arena(a4), d0
+	lea 0(a5, d0.l), a0
+	move.l d2, d0
+	move.l d7, d1
+	movea.l View.NameReader(a4), a2
+	jsr (a2)
+	movea.l a1, a0
+	movem.l (sp)+, d1/a1-a2
+	rts
+	.bend  ; resolveName
 
 ; A3=primary declaration,A4=View,A5=scope,A6=primary Snapshot. Retain its
 ; one-based owner and immediate entry neighbors without changing the primary.
@@ -435,9 +450,9 @@ next
 	move.w View.ArenaUsed(a4), d0
 	cmp.l 0(a5, d0.l), d3
 	bhi.w advance
-	move.w View.Arena(a4), d0
-	movea.l 0(a5, d0.l), a2
-	adda.l d2, a2
+	bsr.w resolveName
+	bne.w advance
+	movea.l a0, a2
 	cmp.l Snapshot.NameBytes(a6), d7
 	bne.w tryLeaf
 	lea Snapshot.Name(a6), a0

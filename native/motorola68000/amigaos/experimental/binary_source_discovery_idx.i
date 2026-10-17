@@ -204,11 +204,14 @@ selectCandidate	.block
 	move.w records.Entry.Length(a4), d0
 	beq.w bad
 	move.l d0, RequestedNameBytes
-	movea.l layout.ARENA_POINTER(a5), a1
-	moveq #0, d1
 	move.l records.Entry.Name(a4), d1
-	adda.l d1, a1
 	move.l d1, RequestedNameOffset
+	move.l d0, -(sp)
+	move.l d1, d0
+	lea layout.ARENA(a5), a0
+	jsr nameStore.pointer
+	movea.l a0, a1
+	move.l (sp)+, d0
 	lea DeclarationBlock, a0
 	movea.l memory.Block.Pointer(a0), a0
 	jsr declarations.find

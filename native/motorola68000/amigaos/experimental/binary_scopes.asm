@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_scope_buckets as buckets
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_name_store as names
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_values as values
 	.use opasm.amigaos.binary_expression as expr
@@ -34,7 +35,6 @@ AMBIGUOUS_BINDING_OWNER = plans.AMBIGUOUS_OWNER
 ENTRIES = layout.ENTRIES
 ENTRIES_POINTER = layout.ENTRIES_POINTER
 ARENA = layout.ARENA
-ARENA_POINTER = layout.ARENA_POINTER
 BUFFER = layout.BUFFER
 MODULE_STATE = layout.MODULE_STATE
 IMPORT_STATE = layout.IMPORT_STATE
@@ -131,9 +131,15 @@ begin	.block
 	clr.w layout.State.Current(a0)
 	clr.w layout.State.Ended(a0)
 	clr.l layout.State.ArenaUsed(a0)
-	clr.l ARENA+memory.Block.Pointer(a0)
-	clr.l ARENA+memory.Block.Capacity(a0)
-	clr.l ARENA+memory.Block.Used(a0)
+	; Fresh/released stores contain no pages; initialize every owned descriptor.
+	move.l d0, -(sp)
+	lea ARENA(a0), a1
+	moveq #names.STATE_BYTES/4-1, d0
+clearNames
+	clr.l (a1)+
+	dbra d0, clearNames
+	move.l (sp)+, d0
+	movea.l a0, a1
 	clr.w layout.State.BindingNamespace(a0)
 	clr.w layout.State.PreviewBinding(a0)
 	clr.w layout.State.FirstBound(a0)
@@ -189,8 +195,8 @@ release	.block
 	adda.l #STRUCT_STATE, a0
 	jsr structs.release
 	lea ARENA(a1), a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
+	jsr names.release
+	clr.l layout.State.ArenaUsed(a1)
 	movea.l a1, a0
 	adda.l #BINDING_PLANS, a0
 	jsr memory.release
@@ -289,7 +295,7 @@ beginFileDerived	.block
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
 	lea ENTRIES(a6), a1
-	movea.l ARENA_POINTER(a6), a2
+	lea ARENA(a6), a2
 	movea.l a6, a3
 	lea bind, a4
 	lea MODULE_STATE(a6), a0
@@ -406,8 +412,11 @@ memberIdentity	.block
 	move.w records.Entry.Length(a3), d0
 	sub.w d2, d0
 	bls.w bad
-	movea.l ARENA_POINTER(a6), a0
-	adda.l records.Entry.Name(a3), a0
+	move.l d0, -(sp)
+	lea ARENA(a6), a0
+	move.l records.Entry.Name(a3), d0
+	jsr names.pointer
+	move.l (sp)+, d0
 	adda.l d2, a0
 	; Explicitly qualified declarations may have Leaf=0. Select their last
 	; lexical component here, while spelling is still preparation-owned.
@@ -477,13 +486,8 @@ bucketReady
 	movea.l a6, a0
 	bsr.w reserveIdentities
 	bne.w bad
-	moveq #0, d0
-	move.l layout.State.ArenaUsed(a6), d0
-	add.l d6, d0
-	cmpi.l #ARENA_BYTES, d0
-	bhi.w bad
-	; Lookup bytes may originate in the arena being grown. Keep a stable copy.
-	movem.l d0/a0-a1, -(sp)
+	; Lookup bytes can alias a moving first page. Copy before appending.
+	movem.l a0-a1, -(sp)
 	movea.l a2, a0
 	lea BUFFER(a6), a1
 	move.l d6, d1
@@ -492,19 +496,21 @@ stableName
 	subq.l #1, d1
 	bne.w stableName
 	lea BUFFER(a6), a2
-	move.l 0(sp), d0
+	movea.l a2, a1
 	lea ARENA(a6), a0
+	move.l d6, d0
 	move.l #ARENA_BYTES, d1
-	jsr memory.reserveBounded
-	movem.l (sp)+, d0/a0-a1
+	jsr names.append
+	movem.l (sp)+, a0-a1
 	bne.w bad
+	move.l d1, d0  ; immutable spelling handle, published with its entry below
 	moveq #0, d1
 	move.w layout.State.Count(a6), d1
 	move.l d1, d2
 	mulu.w #records.ENTRY_BYTES, d2
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d2, a3
-	move.l layout.State.ArenaUsed(a6), records.Entry.Name(a3)
+	move.l d0, records.Entry.Name(a3)
 	move.w d6, records.Entry.Length(a3)
 	move.w d3, records.Entry.Owner(a3)
 	move.w d7, records.Entry.Leaf(a3)
@@ -536,18 +542,7 @@ ordinaryIdentity
 	move.w layout.State.Count(a6), d1
 	mulu.w #records.ENTRY_BYTES, d1
 	move.l d1, ENTRIES+memory.Block.Used(a6)
-	movea.l ARENA_POINTER(a6), a1
-	moveq #0, d1
-	move.l layout.State.ArenaUsed(a6), d1
-	adda.l d1, a1
-	move.l d0, layout.State.ArenaUsed(a6)
-	move.l d0, ARENA+memory.Block.Used(a6)
-	movea.l a2, a0
-	move.l d6, d0
-copy
-	move.b (a0)+, (a1)+
-	subq.l #1, d0
-	bne.w copy
+	move.l ARENA+names.State.End(a6), layout.State.ArenaUsed(a6)
 found
 	tst.w d5
 	beq.w bound
@@ -910,8 +905,9 @@ scan
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
-	movea.l ARENA_POINTER(a6), a0
-	adda.l records.Entry.Name(a3), a0
+	lea ARENA(a6), a0
+	move.l records.Entry.Name(a3), d0
+	jsr names.pointer
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	move.w layout.State.Current(a6), -(sp)
@@ -1000,8 +996,9 @@ relative
 	addq.l #1, d6
 	cmpi.l #layout.NAME_BYTES-1, d6
 	bhi.w parent
-	movea.l ARENA_POINTER(a6), a0
-	adda.l records.Entry.Name(a3), a0
+	lea ARENA(a6), a0
+	move.l records.Entry.Name(a3), d0
+	jsr names.pointer
 	lea BUFFER(a6), a1
 	move.l d4, d0
 prefix
@@ -1158,7 +1155,7 @@ probeIterator	.block
 	beq.w absent
 	movem.l a0-a3, -(sp)
 	movea.l ENTRIES_POINTER(a1), a2
-	movea.l ARENA_POINTER(a1), a3
+	lea ARENA(a1), a3
 	moveq #0, d1
 	move.w layout.State.Base(a1), d1
 	moveq #0, d2
@@ -1695,8 +1692,9 @@ entry
 	; A canonical dotted name bound globally loses its lexical leaf/owner.
 	; Bind the original map leaf inside its importing owner instead.
 	move.w sections.Map.Owner(a2), layout.State.Current(a6)
-	movea.l ARENA_POINTER(a5), a0
-	adda.l records.Entry.Name(a3), a0
+	lea ARENA(a5), a0
+	move.l records.Entry.Name(a3), d0
+	jsr names.pointer
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	moveq #0, d1
@@ -1744,8 +1742,9 @@ done
 ; Bind its owned canonical spelling globally. D0/CCR=status,D1=new ID,D2=flags;
 ; A0/A1 scratch, other registers preserved.
 bindConfigurationName	.block
-	movea.l ARENA_POINTER(a5), a0
-	adda.l records.Entry.Name(a3), a0
+	lea ARENA(a5), a0
+	move.l records.Entry.Name(a3), d0
+	jsr names.pointer
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	movea.l a6, a1
@@ -2309,8 +2308,9 @@ earlierReference	.block
 	andi.w #records.BINDING_PROXY, d0
 	bne.w publishBinding
 	move.l d1, d3
-	movea.l ARENA_POINTER(a6), a0
-	adda.l records.Entry.Name(a3), a0
+	lea ARENA(a6), a0
+	move.l records.Entry.Name(a3), d0
+	jsr names.pointer
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	beq.w bad
@@ -2433,8 +2433,9 @@ parent
 	bsr.w updateParentVisible
 	bne.w good
 parentVisible
-	movea.l ARENA_POINTER(a6), a0
-	adda.l records.Entry.Name(a4), a0
+	lea ARENA(a6), a0
+	move.l records.Entry.Name(a4), d0
+	jsr names.pointer
 	moveq #0, d0
 	move.w records.Entry.Leaf(a4), d0
 	adda.l d0, a0
@@ -2585,13 +2586,12 @@ parent
 	bsr.w updateParentVisible
 	bne.w unresolvedReference
 parentVisible
-	movea.l ARENA_POINTER(a6), a0
-	moveq #0, d0
+	lea ARENA(a6), a0
 	move.l records.Entry.Name(a4), d0
+	jsr names.pointer
 	moveq #0, d1
 	move.w records.Entry.Leaf(a4), d1
-	add.l d1, d0
-	adda.l d0, a0
+	adda.l d1, a0
 	moveq #0, d0
 	move.w records.Entry.Length(a4), d0
 	sub.w records.Entry.Leaf(a4), d0
@@ -2684,8 +2684,9 @@ forwardBinding	.block
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
-	movea.l ARENA_POINTER(a6), a0
-	adda.l records.Entry.Name(a3), a0
+	lea ARENA(a6), a0
+	move.l records.Entry.Name(a3), d0
+	jsr names.pointer
 	moveq #0, d2
 	move.w records.Entry.Length(a3), d2
 	beq.w bad
@@ -2857,7 +2858,7 @@ openModule	.block
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	lea ENTRIES(a6), a1
-	movea.l ARENA_POINTER(a6), a2
+	lea ARENA(a6), a2
 	movea.l a6, a3
 	lea bind, a4
 	lea MODULE_STATE(a6), a0
@@ -3240,10 +3241,9 @@ scan
 	add.l d7, d0
 	cmpi.l #layout.NAME_BYTES-1, d0
 	bhi.w bad
-	movea.l ARENA_POINTER(a6), a0
-	moveq #0, d1
-	move.l records.Entry.Name(a3), d1
-	adda.l d1, a0
+	lea ARENA(a6), a0
+	move.l records.Entry.Name(a3), d0
+	jsr names.pointer
 	lea BUFFER(a6), a1
 	move.l d7, d1
 	subq.w #1, d1
@@ -3318,10 +3318,10 @@ namespaceReady
 	cmp.w records.Entry.Length(a3), d6
 	bne.w next
 	.HOTSPOT_COUNT HOTSPOT_LOOKUP_NAME_COMPARES, #1
-	movea.l ARENA_POINTER(a6), a1
-	moveq #0, d0
+	lea ARENA(a6), a0
 	move.l records.Entry.Name(a3), d0
-	adda.l d0, a1
+	jsr names.pointer
+	movea.l a0, a1
 	movea.l a2, a0
 	move.l d6, d0
 compare
@@ -3379,10 +3379,9 @@ keyword	.block
 	mulu.w #records.ENTRY_BYTES, d0
 	movea.l ENTRIES_POINTER(a6), a3
 	adda.l d0, a3
-	movea.l ARENA_POINTER(a6), a0
-	moveq #0, d0
+	lea ARENA(a6), a0
 	move.l records.Entry.Name(a3), d0
-	adda.l d0, a0
+	jsr names.pointer
 	moveq #0, d4
 	move.w records.Entry.Length(a3), d4
 	bra.w leaf
@@ -3512,11 +3511,12 @@ rebindLocal	.block
 	move.w records.Entry.Length(a3), d0
 	sub.w d2, d0
 	beq.w badRebind
-	movea.l ARENA_POINTER(a6), a0
-	moveq #0, d3
-	move.l records.Entry.Name(a3), d3
-	add.l d2, d3
-	adda.l d3, a0
+	move.l d0, -(sp)
+	lea ARENA(a6), a0
+	move.l records.Entry.Name(a3), d0
+	jsr names.pointer
+	adda.l d2, a0
+	move.l (sp)+, d0
 	movea.l a6, a1
 	tst.l d4
 	bne.w candidateBinding
@@ -3574,8 +3574,10 @@ templateKey	.block
 	moveq #0, d2
 	move.w records.Entry.Length(a1), d2
 	beq.w bad
-	movea.l ARENA_POINTER(a0), a2
-	adda.l records.Entry.Name(a1), a2
+	adda.l #ARENA, a0
+	move.l records.Entry.Name(a1), d0
+	jsr names.pointer
+	movea.l a0, a2
 	moveq #0, d3
 scan
 	moveq #0, d1
@@ -3665,14 +3667,14 @@ templateLeafEqual	.block
 	move.w records.Entry.Length(a2), d2
 	moveq #0, d3
 	move.w records.Entry.Length(a3), d3
-	movea.l ARENA_POINTER(a6), a0
-	moveq #0, d0
+	lea ARENA(a6), a0
 	move.l records.Entry.Name(a2), d0
-	adda.l d0, a0
-	movea.l ARENA_POINTER(a6), a1
-	moveq #0, d0
+	jsr names.pointer
+	movea.l a0, a1
+	lea ARENA(a6), a0
 	move.l records.Entry.Name(a3), d0
-	adda.l d0, a1
+	jsr names.pointer
+	exg a0, a1
 	; Entry.Leaf is the first binding context, not necessarily the final
 	; component of an explicitly qualified import alias.
 	moveq #0, d4
@@ -3768,20 +3770,20 @@ templateDistance	.block
 	sub.w records.Entry.Leaf(a5), d3
 	cmp.w d3, d2
 	bne.w missing
-	movea.l ARENA_POINTER(a6), a2
-	moveq #0, d0
+	lea ARENA(a6), a0
 	move.l records.Entry.Name(a4), d0
+	jsr names.pointer
+	movea.l a0, a2
 	moveq #0, d1
 	move.w records.Entry.Leaf(a4), d1
-	add.l d1, d0
-	adda.l d0, a2
-	movea.l ARENA_POINTER(a6), a3
-	moveq #0, d0
+	adda.l d1, a2
+	lea ARENA(a6), a0
 	move.l records.Entry.Name(a5), d0
+	jsr names.pointer
+	movea.l a0, a3
 	moveq #0, d1
 	move.w records.Entry.Leaf(a5), d1
-	add.l d1, d0
-	adda.l d0, a3
+	adda.l d1, a3
 compareTemplateLeaf
 	moveq #0, d1
 	move.b (a2)+, d1
@@ -3985,9 +3987,10 @@ Words
 	.section data, kind=data
 	.priv
 BindingView	.word layout.State.Count, layout.State.Base, layout.State.Current
-	.word layout.ENTRIES_POINTER, layout.ARENA_POINTER, layout.State.ArenaUsed
+	.word layout.ENTRIES_POINTER, layout.ARENA, layout.State.ArenaUsed
 	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length, records.Entry.Flags
 	.word records.Entry.Owner
+	.long names.resolve
 	.endsection
 .endif
 .endif

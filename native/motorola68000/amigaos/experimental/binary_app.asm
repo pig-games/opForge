@@ -17,6 +17,7 @@
 	.use experimental.amigaos.binary_capture_store as capture_store
 	.use experimental.amigaos.binary_configuration as configuration
 	.use experimental.amigaos.binary_conditionals as conditionals
+	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_sections as sections

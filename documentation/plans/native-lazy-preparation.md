@@ -1,11 +1,12 @@
 # Preparation ownership and capture storage
 
 Status, 2026-10-17: one eager preparation implementation uses shared chunked
-capture. Resident storage remains the default; `--capture-dir DIR` selects bounded
-disk capture and disk-assisted growth of large prepared-record buffers. The latter
-lowers identical full-build tracked peak from 11,410,720 to **10,946,600 B (−4.07%)**.
-It shortens allocation overlap; preparation work and total allocated capacity are
-unchanged. See the [separate runtime/memory results](native-performance-diagnosis.md#disk-assisted-prepared-record-growth).
+capture. Resident capture remains the default; `--capture-dir DIR` selects bounded
+disk capture and staged growth of large prepared-record buffers. Lexical names
+now use paged memory in both modes. The isolated paged-name comparison lowers
+tracked peak from 10,946,600 to **10,488,384 B (−4.19%)**, with unchanged preparation
+work and no established release runtime change. See the
+[separate runtime/memory results](native-performance-diagnosis.md#paged-lexical-name-store).
 Validated identity layouts and retirement of finished workspaces remain maintained.
 Parity remains paused. Structural scanning, publication and `.ofm` remain
 [designs awaiting review](native-fragment-preparation.md).
@@ -14,6 +15,7 @@ Parity remains paused. Structural scanning, publication and `.ofm` remain
 
 | Experiment | Maintained decision |
 |---|---|
+| Paged lexical names | Default owned storage: contiguous names in 64 KiB pages, numeric handles and checked diagnostic resolution. No new runtime option. Exact full self-build and allocation-failure ownership pass. |
 | Disk-assisted record growth | With disk capture, stage the used prefix during large record-buffer growth; keep normal growth for resident/small buffers. Exact full output and component failure ownership pass. |
 | Finished preparation workspaces | Retire configuration scratch and physical discovery before semantic replay; independent I/O survives. No selector or alternate pipeline. |
 | Identity record layout reuse | Automatic after complete validation; real reorders/partial selections keep copying. Full self-build passes; materialization saves about 76 ms, with no established whole-build runtime change. |
@@ -117,6 +119,19 @@ The isolated saving is 464,120 B / 4.07%, to 10,946,600 B, despite removing the 
 1 MiB overlap at its earlier peak event. Capture and language work are unchanged.
 This is temporary record storage, not publication of relocatable module objects.
 
+## Preparation name ownership
+
+The scope owns a `binary_name_store` rather than a relocatable flat spelling block.
+Its first page grows up to 64 KiB; subsequent pages stay fixed. Entries retain
+page/offset handles, preserving numeric IDs and original bytes. Payload limits
+exclude page-tail gaps; name readers resolve once per spelling. Diagnostics use a
+checked owner callback. Retire all pages before reusing the first descriptor for
+the numeric block index; final cleanup supports either state.
+
+On the unchanged full workload, paging saves 458,216 peak bytes and 2,489,904 growth
+copy bytes. Prepared/assembly live heap and capture IO remain unchanged. This
+reduces scratch allocation waste; it does not defer preparation or publish objects.
+
 ## Next boundary
 
 Replace capture-all/replay-all only after review of the structural design. An owned,
@@ -143,6 +158,6 @@ No general `.ofm` implementation or early-release memory bound has been qualifie
 The pre-storage reference (`1171797a`, native/Rust code matching `bcac8dc8`) remains
 recoverable and its executable is preserved for comparison. Disk backing changes
 storage ownership, not eager preparation semantics. After identity reuse, workspace
-retirement and disk-assisted growth the paired peak is 10.44 MiB of tracked heap
-before executable, stack and OS costs, about 5.22 times
+retirement, disk-assisted growth and paged names the paired peak is 10.00 MiB of tracked heap
+before executable, stack and OS costs, about 5.00 times
 the entire 2 MiB target. No low-memory fit is claimed.

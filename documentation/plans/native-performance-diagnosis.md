@@ -1,15 +1,13 @@
 # Native runtime and memory diagnosis
 
-Status, 2026-10-17: parity remains paused. Disk-assisted prepared-record growth
-removes the old-buffer overlap during large growth. On identical disk-backed
-full-build input, tracked peak falls **464,120 B / 4.07%**, from 11,410,720 to
-**10,946,600 B**. Other live storage now limits the saving. Release means are 101.554 / 101.860 s
-(+0.30%), within timing noise: no runtime change is established.
-The current source/package semantics, preparation work and allocated capacity
-remain unchanged. Bounded capture, chunked storage, scaled symbol buckets,
-identity record reuse and finished-workspace retirement remain maintained.
-Structural scan, early publication and `.ofm` remain
-[design work requiring review](native-fragment-preparation.md).
+Status, 2026-10-17: parity remains paused. Paged lexical names reduce identical
+full-build tracked peak from 10,946,600 to **10,488,384 B (−4.19%)** and eliminate
+2,489,904 growth-copy bytes. Release means are 101.362 / 100.115 s
+(-1.23%), within timing noise; no runtime change is established. The full
+current-source disk-backed self-host passes with exact live Rust output.
+Bounded capture, staged record growth, scaled symbol buckets, identity record
+reuse and workspace retirement remain maintained. Structural scan, early
+publication and `.ofm` remain [design work requiring review](native-fragment-preparation.md).
 
 ## Measurement contract
 
@@ -28,6 +26,87 @@ serial execution. They are neither A6000 timings nor 2 MiB qualification. Tracke
 heap excludes the executable, stack, OS and untracked allocations; linked static
 reservation is reported separately. Do not compare absolute times across emulator
 profiles or changing source snapshots.
+
+## Paged lexical name store
+
+Expected saving: replace power-of-two arena slack and large growth overlaps with
+64 KiB pages. The late-replay sample suggested about 0.75 MiB less reserved name
+storage; the whole-build saving depends on other simultaneous owners. The flat
+reference is retained in Git at `5cb0990b` and as an immutable native executable;
+the maintained path uses paging without another experiment switch.
+
+`binary_name_store` owns append, trusted pointer resolution, checked diagnostic
+resolution and release. The first page grows from 256 bytes up to 64 KiB; later
+pages are fixed 64 KiB allocations. A name stays contiguous within one page.
+`Entry.Name` remains a numeric handle: high word page, low word byte offset.
+Payload accounting excludes sealed tail gaps. The page directory may move, but
+full pages do not. Callers copy aliases before appending to a growing first page.
+
+Scope lookup resolves once after namespace/length checks, outside byte-comparison
+loops. Module, import, iterator, template and discovery readers use that interface.
+After lexical processing, all pages are released before the first descriptor is
+repurposed for the numeric block index. Final cleanup handles either ownership.
+The diagnostic observer uses a checked resolver callback and retains its bounded
+copy/preservation contract.
+
+The identical frozen input remains 214 mapped files / 2,648,242 staged source/package
+bytes, SHA-256
+`eae5102bd21b3863105a7f550912193dff8e52c8ba2d6ff11b498392b7dca480`.
+Both engines use the same package, command and five memory gates. Fresh live Rust
+and native execution agree on all 708,216 output bytes in every full comparison.
+
+| Resource | Flat names | Paged names |
+|---|---:|---:|
+| Peak tracked heap | 10,946,600 B | 10,488,384 B |
+| Allocated/freed capacities, each | 92,083,752 B | 89,223,968 B |
+| Global growth-copy bytes | 10,928,046 B | 8,438,142 B |
+| Global growth calls | 40,850 | 40,878 |
+| Prepared / assembly live heap | 2,969,088 / 4,943,360 B | unchanged |
+
+Peak falls **458,216 B / 4.19%**; another live overlap limits the whole-build gain.
+Allocation traffic falls 2,859,784 B and growth copies fall 2,489,904 B, despite
+28 more small allocations. Captured records/bytes, source reads, expression work,
+ordered reuse and capture/record-growth IO are unchanged. All capacities balance,
+cleanup reaches zero, profiling/allocation flags are zero and scratch cleanup passes.
+These results use existing telemetry; no new observer framework was added.
+
+The small-module control keeps its 608,768 B peak (allocation traffic +136 B).
+The macro-heavy control falls from 2,163,152 to 2,097,896 B, saving 65,256 B / 3.02%.
+Both controls match the live Rust BIN and complete Hunk outputs with balanced
+ownership. They remain separate workloads, not production selectors.
+
+Release timing is independent of the enabled accounting run, in R-C-C-R order:
+
+| Release comparison | Flat names | Paged names |
+|---|---:|---:|
+| Pair A | 101.774 s | 100.278 s |
+| Pair B | 100.950 s | 99.953 s |
+| Mean | 101.362 s | 100.115 s |
+
+The mean difference is **-1.247 s / -1.23%**. This is within the
+established timing noise; no runtime change is established. Retain paging for
+the measured memory/copy-work saving. Release image size grows 732 B to 711,668 B;
+linked reservation grows 576 B to 746,420 B. The instrumented image reserves
+762,492 B separately from its tracked heap.
+
+The standalone native probe covers small growth, copied aliases, sealed-page gaps,
+checked/trusted handles, payload limits and repeated/repurposed cleanup. Isolated
+first-page/new-page allocation-failure fixtures preserve existing names/extents;
+the latter also verifies ownership of a grown but unpublished directory row.
+The existing 65,535-ID boundary and 10,000-name arena probes pass. Independent
+interface/register-lifetime review found no issues.
+
+Reproduce the component under the [documented FS-UAE environment](../../agents/rules/fs-uae.md):
+
+```sh
+cargo test -p asm native_name_store_fs_uae -- --ignored --nocapture --test-threads=1
+```
+
+`OPFORGE_NAME_STORE_FAULT=first|page` selects only an isolated test-source fixture;
+production has no fault selector. The host-only `native_name_store_host_assembles`
+test optionally saves its image through `OPFORGE_NAME_STORE_SAVE_IMAGE`.
+Receipts, immutable images and frozen cases are outside the tree at
+`/tmp/opforge-name-store-build-20261017` and `/tmp/opforge-name-store-cases-20261017`.
 
 ## Reuse an already ordered record stream
 
@@ -479,44 +558,38 @@ claims. Both outputs and all ownership accounting pass.
 
 ## Current qualification and distance to target
 
-Fresh complete self-host of the current native CLI with disk-assisted record
-growth, workspace retirement and identity reuse: **216 mapped files / 2,675,513
-source bytes**, manifest `fnv1a64:a320645abe7c2b47`. The uninstrumented native run
-finishes in **104.030 s**, with fresh challenge-bound START/DONE, exit zero,
-no leaked scratch files, and all **710,936 output bytes** exactly equal to the
-fresh live Rust oracle and bootstrap (`fnv1a64:365065faf1c5df13`).
+Fresh complete self-host of the current native CLI with paged names: **217
+mapped files / 2,681,428 staged source/package bytes**, staged-input SHA-256
+`6cf90ab3c0033c04a4ae3db00e9059d5805ecab589a79d7015db69c16ff20375`.
+The uninstrumented native run finishes in **101.911 s**, with fresh
+challenge-bound START/DONE, exit zero, no leaked scratch files, and all
+**711,668 output bytes** exactly equal to the freshly assembled live Rust oracle
+and bootstrap (`fnv1a64:c5334f77de1181e8`).
 
 It uses an embedded m68020 package, `--capture-dir Work:`, a 64 KiB guest stack and
 the expanded-memory A4000/68040 FS-UAE profile. This is the complete current CLI
-self-build, separate from the identical-input resource comparisons. Its timing
-must not be compared as a speed change against earlier changed-source self-builds.
-It qualifies that configuration, not A6000 hardware or the resident default command.
+self-build, separate from the identical-input resource comparisons. Its time is
+not a speed comparison against earlier changed-source self-builds. It qualifies
+that configuration, not A6000 hardware or the resident default command. No new
+A6000 run or paged-name hardware bundle is qualified here.
 
-The A6000 runner also accepts a manifest-bound `capture_mode: "disk"` bundle.
-It creates `scratch` in the fresh run directory on `Development:` before timing,
-then assembles with `--capture-dir scratch`; results record the storage mode.
-The normal `python3 scripts/performance/run_a6000_selfhost.py` command uses the
-bundle selected by `/tmp/opforge-a6000-current` and discovers the host through
-`ash -l`. The current release bundle contains the same executable, source and
-embedded package as the proof above; its hardware command remains unqualified
-until a fresh A6000 run completes and matches all Rust output bytes.
-
-The paired disk-backed peak is **10.44 MiB** of tracked heap, about **5.22 times
+The paired disk-backed peak is **10.00 MiB** of tracked heap, about **5.00 times
 the entire 2 MiB target**, before executable, stack and OS costs. Adding the
-instrumented image's linked reservation gives at least 11.17 MiB. This is the
+instrumented image's linked reservation gives at least **10.73 MiB**. This is the
 frozen 214-file memory workload, not a separate memory measurement of the current
-216-file self-build. No low-memory fit or full language/CPU parity is claimed.
+217-file self-build. No low-memory fit or full language/CPU parity is claimed.
 
-The focused native correctness checks, maintained workloads, identical-input
-comparisons and complete current-source disk-backed self-build pass. The memory
-gate passes; release timing establishes no whole-build runtime change. The
-existing optional counter assertion and broad style-guard limitations are recorded
-[above](#retire-finished-preparation-workspaces). Additional arena-spill or structural
-publication changes require a separate decision; this result authorizes neither.
-The new component builder compiles, all three normal/fault images assemble and
-execute, and the focused capture/A6000 decoder suite passes 56 tests. Formatting
-checks cover 166 production files plus the probe/dependencies; the changed native
-files pass the redundant-test guard with zero autofixable findings (11 advisory).
+The maintained controls, five native storage/identity component cases,
+14 focused host scope tests and complete current-source self-build pass. Rust
+formatting, native formatting over 167 production/probe files, workflow/CPU-boundary,
+no-growth and proof-contract checks pass. The combined changed-file redundant-test
+scan retains two pre-existing autofixable findings in `binary_imports.asm`, verified
+against the flat reference, plus advisory call-return findings. New storage/probe
+code introduces no autofixable findings. No broad Rust workspace gate was run for
+this native storage change.
+
+Paging passes the memory gate without an established runtime change. Preparation
+remains eager. Further spill/publication changes require a separate decision.
 
 ## Cache experiment decisions
 
@@ -550,46 +623,18 @@ Keep these facts without retaining the experiment chronology:
 
 ## Evidence and reproduction
 
-Fresh receipts, manifests, frozen inputs, images and decoded reports are outside
-`target`, under `/tmp/opforge-course-telemetry-cases-20261015`,
-`/tmp/opforge-course-final-frozen-memory-case-20261015`,
-`/tmp/opforge-course-lookup-cases-20261015`,
-`/tmp/opforge-course-release-cases-20261015` and
-`/tmp/opforge-course-benchmark-native-v4-20261015`.
-These are local diagnostic artifacts, not durable repository dependencies. Git
-preserves prior implementations and detailed historical evidence; no archive tree
-or stale generated results are maintained here.
+Current receipts, images, frozen inputs and decoded results remain outside `target`
+at `/tmp/opforge-name-store-cases-20261017` and
+`/tmp/opforge-name-store-build-20261017`. They are local diagnostics, not repository
+dependencies. Git retains superseded implementations and detailed older receipts.
 
-Use the [FS-UAE environment](../../agents/rules/fs-uae.md) and the ignored
+Use the [FS-UAE environment](../../agents/rules/fs-uae.md) and ignored
 `native_full_selfhost_comparison_fs_uae` test with
-`OPFORGE_FULL_COMPARISON_CASE` pointing to a freshly prepared case. Its
+`OPFORGE_FULL_COMPARISON_CASE` pointing to a freshly prepared case. The
 [case contract](../../scripts/performance/run_fs_uae_selfhost_comparison.py)
-requires an identified bootstrap and source mapping, then generates a live Rust
-oracle. Use `native_preparation_benchmark_fs_uae` with the image/workload/result
-variables documented beside the benchmark sources. Existing MEMD, capture and
-hotspot telemetry provide the memory/work comparisons. Do not substitute archived
-or expected bytes for the live oracle.
-
-Current storage receipts and immutable cases are outside `target`:
-`/tmp/opforge-disk-summary-20261016.json`,
-`/tmp/opforge-disk-cases-v3-20261016`, and
-`/tmp/opforge-disk-candidate-v3-20261016`. These local diagnostics are not repository
-dependencies. For the full comparison, set case JSON `capture_mode` to `disk` or
-`resident` (unset means resident); the disk adapter supplies `--capture-dir Work:`.
-For the maintained workloads use `OPFORGE_PREPARATION_CAPTURE_MODE=disk`.
-
-Identity-reuse receipts, both-order release pairs, the component probe and current
-self-build are retained outside `target` under
-`/tmp/opforge-record-order-cases-20261017`,
-`/tmp/opforge-record-order-probe-native-20261017`, and
-`/tmp/opforge-record-order-candidate-v1-20261017`, with the local summary at
-`/tmp/opforge-record-order-summary-20261017.json`. These are diagnostic artifacts,
-not repository dependencies. Progress 363/364 and the existing capture decoder
-report ordered copy/reuse work; MEMD separately measures the actual heap peak.
-
-The runtime-attribution investigation retains checked temporary sources, binary
-receipts and diagnostic images at `/tmp/opforge-record-regression-build-20261017`,
-full identical-input cases at `/tmp/opforge-record-regression-cases-20261017`, and
-the decoded local summary at `/tmp/opforge-record-regression-summary-20261017.json`.
-The unused old-layout phase image is host-built only, not native qualification.
-That attribution-only investigation changed no production code.
+identifies bootstrap/source/package bytes and generates a live Rust oracle.
+Case JSON `capture_mode: "disk"` supplies `--capture-dir Work:`; `resident` or
+unset retains RAM capture. Use `native_preparation_benchmark_fs_uae` with its
+image/workload/result variables and `OPFORGE_PREPARATION_CAPTURE_MODE=disk` for
+the maintained controls. Existing MEMD and capture telemetry supply separate
+memory/work results. Archived expected bytes never replace the live oracle.

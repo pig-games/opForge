@@ -8,6 +8,7 @@
 	.include "lazy_audit.i"
 	.include "lazy_work_context.i"
 	.include "macro_packing_audit.i"
+	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_state as state
 	.use experimental.amigaos.binary_source as writer
@@ -3243,16 +3244,19 @@ parametersExit
 	rts
 	.bend  ; copyParameters
 ; A0=Frame,A1=ordered prepared records,D0=bytes. Index numeric block spans
-; in the no-longer-needed name arena, before lexical scratch is released.
+; in a retired name-store block, before lexical scratch is released.
 ; D0/CCR=status,D1=span count; all other registers preserved.
 indexBlocks	.block
 	movem.l a0-a2, -(sp)
 	movea.l Frame.Scratch(a0), a2
 	move.l a2, d1
 	beq.w indexBad
+	; Retire all name pages before reusing First as the numeric index block.
+	lea SCOPE_STATE+scopes.ARENA(a2), a0
+	jsr nameStore.release
+	clr.l SCOPE_STATE+layout.State.ArenaUsed(a2)
 	movea.l a1, a0
-	; The name arena is retired here; indexing owns sizing and may move it.
-	lea SCOPE_STATE+scopes.ARENA(a2), a1
+	lea SCOPE_STATE+scopes.ARENA+nameStore.State.First(a2), a1
 	jsr blocks.index
 	bra.w indexDone
 indexBad
@@ -3275,7 +3279,7 @@ selectBlocks	.block
 	beq.w selectBad
 	movea.l a1, a0
 	lea SCOPE_STATE(a2), a2
-	movea.l scopes.ARENA_POINTER(a2), a1
+	movea.l scopes.ARENA+nameStore.State.First+memory.Block.Pointer(a2), a1
 	jsr blocks.select
 	bra.w selectDone
 selectBad

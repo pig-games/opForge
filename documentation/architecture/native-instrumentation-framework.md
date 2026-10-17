@@ -518,6 +518,28 @@ can describe a different layout from the running executable. They never infer
 the layout from observed counter totals. This is host accounting for preserved
 comparison images, not native format compatibility or version dispatch.
 
+The same capture gates also enable fixed backend counters, reset at compact
+`execute` entry and reported after cleanup through the existing progress ABI:
+
+| Phase | `f` | `l` | `r` |
+|---:|---|---|---|
+| 360 | completed disk reads | read bytes | zero |
+| 361 | completed disk writes | written bytes | zero |
+| 362 | fault attempts | evictions | peak resident capture payload capacity |
+| 363 | ordered materialization attempts | successful identity reuses | record bytes actually copied |
+| 364 | record bytes whose copy was avoided | replacement capacity whose allocation was avoided | zero |
+
+Capture-store counters use 28 B of fixed BSS; ordered-record counters use 20 B.
+The latter count only a validated complete identity layout as reuse; failed
+attempts remain in the attempt count. Avoided capacity follows `reserveBounded`
+growth/clamping and accounts for existing replacement capacity. It is avoided
+allocation work, not a prediction of the whole-build heap-peak reduction. All
+wrappers preserve registers, CCR and stack depth, and missing a capture gate
+removes their calls, imports and storage. The `m` field remains tracked live heap.
+The [capture decoder](../../scripts/performance/capture_telemetry.py) accepts
+absent summaries for older reference images and rejects partial, duplicate or
+inconsistent summaries. These counters do not establish native completion.
+
 ## Capture storage and lifetime audit (experimental)
 
 Current scope: the sole whole-application chunked capture path rejects

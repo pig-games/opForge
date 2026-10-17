@@ -1,15 +1,19 @@
 # Preparation ownership and capture storage
 
-Status, 2026-10-16: one eager preparation implementation uses the shared chunked
-capture store. Resident storage remains the default; `--capture-dir DIR` selects a
-bounded disk-backed policy. It reduces frozen full-build tracked peak by 65.7%,
-with no established release-time change. Parity remains paused. Structural scanning,
-module publication and `.ofm` remain [designs awaiting review](native-fragment-preparation.md).
+Status, 2026-10-17: one eager preparation implementation uses shared chunked
+capture. Resident storage remains the default; `--capture-dir DIR` selects bounded
+disk backing. Validated identity layouts now avoid a second prepared-record
+buffer. The isolated change lowers full-build tracked peak by 2.07%, while the
+release pairs are 2.40% slower. See the
+[separate results](native-performance-diagnosis.md#reuse-an-already-ordered-record-stream).
+Parity remains paused. Structural scanning, publication and `.ofm` remain
+[designs awaiting review](native-fragment-preparation.md).
 
 ## Experiment decisions
 
 | Experiment | Maintained decision |
 |---|---|
+| Identity record layout reuse | Automatic after complete validation; real reorders/partial selections keep copying. Full self-build passes; retain memory saving with measured runtime cost. |
 | Bounded disk backing | Retained as one explicit directory/storage policy; full current-source native self-host and identical-input comparisons pass. |
 | Chunked capture | Promoted to the default; fresh fixed-input and current-source full native self-host proofs pass. |
 | First-use macro-body binding/plans | Removed with switches and experiment-specific tests; no established runtime gain. |
@@ -68,8 +72,8 @@ fallthrough, declaration context, macros or module ordering.
 
 On the identical 214-file workload, 116,855 records / 23,852,392 logical bytes are
 unchanged. Resident capture peaks at 23,986,176 B; disk-backed payload peaks at
-1,048,576 B. Whole tracked heap falls from 34,517,176 to 11,839,624 B. Allocation
-churn increases through reloads. Below-budget controls may gain nothing or retain
+1,048,576 B. At the storage checkpoint, whole tracked heap falls from 34,517,176
+to 11,839,624 B. Allocation churn increases through reloads. Below-budget controls may gain nothing or retain
 another partial chunk; this is why resident storage stays the default. See the
 [separate runtime/memory results](native-performance-diagnosis.md#bounded-disk-backed-capture).
 
@@ -84,6 +88,19 @@ composition counters cover all records. Evicted rows retain logical length witho
 owning payload. The old whole-source lazy/lifetime observers remain unsupported
 because they require a contiguous arena per region; no new observer framework was
 added. Current MEMD/capture events supply the comparisons.
+
+## Prepared-record ownership
+
+Final ordering now retains the packed buffer when validated module spans already
+cover the whole stream contiguously in order. It still builds module starts and
+physical origins through the existing metadata loop. Reorders and partial
+selections keep the copying path. No input-text use or semantic ownership changes.
+
+On identical disk-backed input this avoids 2,032,832 copy bytes and a 2 MiB
+allocation, but another overlap sets the remaining 11,594,504 B peak. The actual
+saving is 245,120 B / 2.07%; prepared/assembly live heap is unchanged. Release
+pairs show a 2.40% cost, not a speed gain. Both smaller controls avoid copies
+without lowering their peaks. Full current-source disk-backed self-host passes.
 
 ## Next boundary
 
@@ -110,6 +127,6 @@ No general `.ofm` implementation or early-release memory bound has been qualifie
 
 The pre-storage reference (`1171797a`, native/Rust code matching `bcac8dc8`) remains
 recoverable and its executable is preserved for comparison. Disk backing changes
-storage ownership, not eager preparation semantics. The paired peak is now
-11.29 MiB of tracked heap before executable, stack and OS costs, about 5.6 times
+storage ownership, not eager preparation semantics. After identity reuse the paired
+peak is 11.06 MiB of tracked heap before executable, stack and OS costs, about 5.5 times
 the entire 2 MiB target. No low-memory fit is claimed.

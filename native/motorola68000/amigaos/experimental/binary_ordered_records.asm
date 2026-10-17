@@ -3,6 +3,8 @@
 	.module experimental.amigaos.binary_ordered_records
 	.cpu 68020
 	.include "lazy_audit.i"
+	.include "memory_telemetry.i"
+	.include "capture_telemetry.i"
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_memory as memory
 	.pub
@@ -27,14 +29,18 @@ FRAME_BYTES = Frame.ModuleStarts+4
 ; origins are offset spans with physical file ordinals. The caller owns all
 ; Block descriptors and releases temporary allocations on failure. Success
 ; replaces Records and Origins only after every span and allocation is valid,
-; updates Frame.OriginCount, and clears temporary ownership. D0/CCR=status;
+; updates Frame.OriginCount, and clears transferred ownership. D0/CCR=status;
 ; other registers preserved. Source text is never consulted.
-; Frame.RecordLimit bounds the temporary packed-record allocation; origins
+; Identity layouts retain Records unchanged; other layouts use a replacement.
+; Frame.RecordLimit bounds packed-record bytes even when reused; origins
 ; retain the memory module's ordinary limit. ModuleStarts records actual module
 ; boundaries, independently of physical files/includes. Empty modules may share
 ; a boundary. Its Used/count is published only with the completed materialization.
 materialize	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	subq.l #4, sp
+	move.l #1, (sp)  ; identity until an ordered start differs from its offset
+	.CAPTURE_ORDERED_COUNT Materializations, #1
 	movea.l a0, a6
 	move.l Frame.OrderCount(a6), d7
 	beq.w bad
@@ -96,6 +102,10 @@ record
 	adda.l d0, a1
 	bra.w record
 spanValid
+	cmp.l d6, d4
+	beq.w contiguous
+	clr.l (sp)
+contiguous
 	sub.l d4, d3
 	add.l d3, d6
 	bcs.w bad
@@ -105,12 +115,20 @@ spanValid
 	movea.l Frame.Records(a6), a0
 	cmp.l memory.Block.Used(a0), d6
 	bhi.w bad
+	beq.w coverageReady
+	clr.l (sp)
+coverageReady
+	cmp.l Frame.RecordLimit(a6), d6
+	bhi.w bad
+	tst.l (sp)
+	bne.w recordsReady
 	movea.l Frame.OrderedRecords(a6), a0
 	move.l d6, d0
 	move.l Frame.RecordLimit(a6), d1
 	jsr memory.reserveBounded
 	bne.w bad
 	move.l d6, memory.Block.Used(a0)
+recordsReady
 	movea.l Frame.OrderedOrigins(a6), a0
 	move.l Frame.OriginCount(a6), d0
 	move.l Frame.OrderCount(a6), d1
@@ -146,6 +164,8 @@ copySpan
 	.LAZY_REMAP graph.Span.Start(a4), graph.Span.End(a4), d6
 	move.l graph.Span.End(a4), d5
 	sub.l graph.Span.Start(a4), d5
+	tst.l (sp)
+	bne.w metadata
 	movea.l Frame.OrderedRecords(a6), a0
 	movea.l memory.Block.Pointer(a0), a1
 	adda.l d6, a1
@@ -154,6 +174,8 @@ copySpan
 	adda.l graph.Span.Start(a4), a0
 	move.l d5, d0
 	bsr.w copy
+	.CAPTURE_ORDERED_COUNT CopiedBytes, d5
+metadata
 	; Intersect this module's packed range with each physical-origin run.
 	movea.l Frame.Origins(a6), a0
 	movea.l memory.Block.Pointer(a0), a3
@@ -196,9 +218,16 @@ originsDone
 	adda.w #graph.SPAN_BYTES, a4
 	subq.l #1, d7
 	bne.w copySpan
+	tst.l (sp)
+	beq.w replaceRecords
+	.CAPTURE_ORDERED_COUNT IdentityReuses, #1
+	.CAPTURE_ORDERED_REUSE AvoidedBytes, AvoidedCapacity, d6, Frame.OrderedRecords(a6), Frame.RecordLimit(a6)
+	bra.w recordsPublished
+replaceRecords
 	movea.l Frame.Records(a6), a0
 	movea.l Frame.OrderedRecords(a6), a1
 	bsr.w replaceBlock
+recordsPublished
 	movea.l Frame.Origins(a6), a0
 	movea.l Frame.OrderedOrigins(a6), a1
 	bsr.w replaceBlock
@@ -215,6 +244,7 @@ originsDone
 bad
 	moveq #1, d0
 done
+	addq.l #4, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -247,4 +277,18 @@ copied
 	rts
 	.bend  ; copy
 	.endsection
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_CAPTURE_TELEMETRY
+	.pub
+	.section bss, kind=bss
+Materializations	.res byte, 4
+IdentityReuses	.res byte, 4
+CopiedBytes	.res byte, 4
+AvoidedBytes	.res byte, 4
+AvoidedCapacity	.res byte, 4
+	.endsection
+.endif
+.endif
+.endif
 	.endmodule

@@ -1,11 +1,12 @@
 # Native runtime and memory diagnosis
 
-Status, 2026-10-16: parity remains paused. The native assembler now offers a
-bounded disk-backed capture policy alongside the resident reference. On identical
-full-build inputs it reduces peak tracked heap by 65.7%; release timing shows no
-established change. Chunked capture and scaled symbol buckets remain maintained.
-Cache prototypes are removed. Structural scan, early module publication and `.ofm`
-remain [design work requiring review](native-fragment-preparation.md).
+Status, 2026-10-17: parity remains paused. Validated identity record layouts now
+reuse their existing packed buffer. On identical disk-backed full-build inputs,
+this lowers peak tracked heap by **2.07%**, but the two release pairs are **2.40%
+slower**. Retain the measured memory saving, not a speed claim. Bounded capture,
+chunked storage and scaled symbol buckets remain maintained; cache prototypes are
+removed. Structural scan, early publication and `.ofm` remain
+[design work requiring review](native-fragment-preparation.md).
 
 ## Measurement contract
 
@@ -22,6 +23,66 @@ serial execution. They are neither A6000 timings nor 2 MiB qualification. Tracke
 heap excludes the executable, stack, OS and untracked allocations; linked static
 reservation is reported separately. Do not compare absolute times across emulator
 profiles or changing source snapshots.
+
+## Reuse an already ordered record stream
+
+Expected saving: avoid a 2 MiB replacement allocation and a 2,032,832-byte record
+copy on the frozen full workload. The initial estimate of a similar whole-build
+peak reduction was too optimistic: removing one overlap exposes a different peak.
+
+`binary_ordered_records.materialize` retains the packed buffer only after normal
+span/record validation proves every ordered start equals the preceding cumulative
+length and the final length equals the complete stream. Empty modules remain
+valid. `RecordLimit` still applies. Origins and module starts use the same metadata
+loop; actual reorders and partial selections retain the existing copying path.
+No option or alternate preparation implementation was added. The pre-change
+executable and `5a7b91e4` remain the reference.
+
+Same 214 files / 2,648,242 source bytes and package bytes on both engines, with
+workload SHA-256
+`eae5102bd21b3863105a7f550912193dff8e52c8ba2d6ff11b498392b7dca480`.
+Both use `--capture-dir Work:`. Every run builds a fresh live Rust oracle and
+matches all 708,216 output bytes. Memory images use the same five gates.
+
+| Resource | Copying reference | Identity reuse |
+|---|---:|---:|
+| Peak tracked heap | 11,839,624 B | 11,594,504 B |
+| Allocated/freed capacities, each | 94,180,904 B | 92,083,752 B |
+| Prepared live heap | 2,969,088 B | 2,969,088 B |
+| Assembly live heap | 4,943,360 B | 4,943,360 B |
+| Captured records / logical bytes | 116,855 / 23,852,392 B | unchanged |
+| Expression compilations / evaluations | 69,528 / 176,850 | unchanged |
+
+Exact ordered counters show one successful identity reuse, zero actual record-copy
+bytes, 2,032,832 avoided copy bytes and 2,097,152 avoided replacement capacity.
+Generic allocation counts fall by one; capture IO and language work are unchanged.
+All tracked storage is freed with no observer errors. Peak falls only **245,120 B**
+(**2.07%**): another allocation overlap now dominates. Prepared/assembly residency
+is unchanged; this is not a deferred-processing gain.
+
+| Uninstrumented pair | Copying reference | Identity reuse |
+|---|---:|---:|
+| Reference then candidate | 102.157 s | 104.649 s |
+| Candidate then reference | 102.062 s | 104.470 s |
+| Mean | 102.109 s | 104.559 s |
+
+The candidate is **2.450 s / 2.40% slower** in these pairs, close to but above the
+roughly two-second timing noise. Both pairs have the same direction; do not call
+this timing-neutral or a speed improvement. The new span-level tests do not
+establish a cause for the whole-run difference. Allocation addresses/lifetimes
+and code-layout effects remain hypotheses. No A6000 timing is available.
+
+Decision: retain automatic validated reuse for its memory saving above the 1%
+gate and lower allocation/copy work, while recording the measured runtime cost.
+Release image / linked reservation grows by only 52 B, to 710,392 / 744,828 B.
+The module and macro-heavy controls keep peaks of 608,768 and 2,282,424 B: avoided
+copies do not reduce every workload's peak. Their BIN/Hunk outputs match live Rust.
+The native component probe covers identity plus empty modules, actual reorder,
+partial selection, malformed input, identity-limit rejection and preserved
+ownership on failure. Disabled macros emit zero bytes with undefined operands.
+
+Further memory work must address the remaining peak, not extrapolate another
+2 MiB saving from this counter. Structural publication still requires review.
 
 ## Bounded disk-backed capture
 
@@ -51,7 +112,7 @@ Identical frozen input: 214 mapped files / 2,648,242 bytes, workload SHA-256
 All runs generate a fresh live Rust oracle and match all 708,216 output bytes.
 Same five instrumentation gates on each memory image:
 
-| Resource | Original resident | Current resident | Disk-backed |
+| Resource | Original resident | Resident at storage checkpoint | Disk at storage checkpoint |
 |---|---:|---:|---:|
 | Peak tracked heap | 34,517,176 B | 34,533,560 B | 11,839,624 B |
 | Peak capture payload capacity | 23,986,176 B | 23,986,176 B | 1,048,576 B |
@@ -221,25 +282,27 @@ claims. Both outputs and all ownership accounting pass.
 
 ## Current qualification and distance to target
 
-Fresh complete self-host of the current native CLI with disk-backed capture:
-215 mapped files / 2,666,285 bytes, source manifest
-`fnv1a64:7c7278ec02d4ee8c`. The uninstrumented native run finishes in **106.509 s**,
-with fresh challenge-bound START/DONE, exit zero, and all **710,340 output bytes**
-exactly equal to the live Rust oracle and bootstrap (`fnv1a64:7dd8eb4328d217df`).
-It uses an embedded m68020 package, a 64 KiB guest stack and the expanded-memory
-A4000/68040 FS-UAE profile. This is the complete current CLI self-build, separate
-from the unchanged-input resource comparisons above. It is not A6000 evidence.
+Fresh complete self-host of the current native CLI with identity reuse and
+disk-backed capture: 215 mapped files / 2,669,473 bytes, source manifest
+`fnv1a64:adf3b92af9fbbf2d`. The uninstrumented native run finishes in **105.204 s**,
+with fresh challenge-bound START/DONE, exit zero, and all **710,392 output bytes**
+exactly equal to the live Rust oracle and bootstrap (`fnv1a64:dbef0aa3d2172369`).
+It uses an embedded m68020 package, `--capture-dir Work:`, a 64 KiB guest stack and
+the expanded-memory A4000/68040 FS-UAE profile. This is the complete current CLI
+self-build, separate from the unchanged-input resource comparisons. It qualifies
+that configuration, not A6000 hardware or the resident default command.
 
-The paired disk-backed heap peak is **11.29 MiB**, about **5.6 times the entire
-2 MiB target**, before executable, stack and OS costs. With the instrumented
-image's linked reservation it is at least 12.02 MiB. That peak belongs to the frozen
-214-file workload, not a separate memory measurement of the 215-file current build.
-No low-memory fit or full language/CPU parity is claimed. Parity remains paused.
+The paired disk-backed peak is **11.06 MiB** of tracked heap, about **5.5 times
+the entire 2 MiB target**, before executable, stack and OS costs. Adding the
+instrumented image's linked reservation gives at least 11.78 MiB. This is the
+frozen 214-file memory workload, not a separate memory measurement of the current
+215-file self-build. No low-memory fit or full language/CPU parity is claimed.
 
-The resident path, component probes, both maintained workloads, exact frozen-input
-comparisons and current-source disk-backed self-host establish this storage change.
-The next larger ownership decision remains the structural publication contract;
-it is not authorized by the storage result.
+Component and maintained workload checks, identical-input comparisons and the
+complete current-source disk-backed self-build pass. The memory gate passes;
+release timing shows the small cost documented above. The next larger ownership
+decision remains the structural publication contract; this result does not
+authorize its implementation.
 
 ## Cache experiment decisions
 
@@ -300,3 +363,12 @@ Current storage receipts and immutable cases are outside `target`:
 dependencies. For the full comparison, set case JSON `capture_mode` to `disk` or
 `resident` (unset means resident); the disk adapter supplies `--capture-dir Work:`.
 For the maintained workloads use `OPFORGE_PREPARATION_CAPTURE_MODE=disk`.
+
+Identity-reuse receipts, both-order release pairs, the component probe and current
+self-build are retained outside `target` under
+`/tmp/opforge-record-order-cases-20261017`,
+`/tmp/opforge-record-order-probe-native-20261017`, and
+`/tmp/opforge-record-order-candidate-v1-20261017`, with the local summary at
+`/tmp/opforge-record-order-summary-20261017.json`. These are diagnostic artifacts,
+not repository dependencies. Progress 363/364 and the existing capture decoder
+report ordered copy/reuse work; MEMD separately measures the actual heap peak.

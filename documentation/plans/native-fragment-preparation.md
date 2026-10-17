@@ -1,6 +1,6 @@
 # Structural preparation and relocatable module objects
 
-Design for review, updated 2026-10-16. **Structural pipeline not implemented.** Raw
+Design for review, updated 2026-10-17. **Structural pipeline not implemented.** Raw
 capture disk backing is separately implemented and qualified. Stop for Erik's review before
 changing the preparation pipeline. Parity remains paused. The old fragment-envelope
 experiment was removed; this proposal does not preserve that selector or its format.
@@ -103,7 +103,11 @@ a 1 MiB payload budget reduces the identical full workload's tracked peak from
 34,517,176 to 11,839,624 bytes, with no established release-time change. It retains
 all source-oriented work and increases allocation/IO churn. Compare future objects
 against both this bounded policy and resident capture, not only the old acquisition
-floor. The result does not establish an object-size or active-module bound. Extra
+floor. Validated identity record reuse subsequently lowers that disk-backed peak
+by only 245,120 B / 2.07%, to 11,594,504 B, despite avoiding a 2 MiB replacement
+allocation. Another overlap now dominates; the release pairs are 2.40% slower.
+See the [isolated comparison](native-performance-diagnosis.md#reuse-an-already-ordered-record-stream).
+Neither change establishes an object-size or active-module bound. Extra
 scans, validation, rereads and object construction/publication overlap may cost runtime; measure them independently.
 
 ## Incremental feasibility and the publication boundary

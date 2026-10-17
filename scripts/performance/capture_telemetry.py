@@ -253,6 +253,39 @@ def decode_capture_store_telemetry(text: str) -> dict | None:
                     rows[360][:2] + rows[361][:2] + rows[362][:3]))
 
 
+def decode_ordered_record_telemetry(text: str) -> dict | None:
+    """Decode optional copy/reuse counters; absence permits reference images.
+
+    Attempt counts include failures. Saving counts describe successful identity
+    layouts, and do not establish native completion or the actual heap peak.
+    """
+    rows = {}
+    for line in text.splitlines():
+        match = _LINE.fullmatch(line.strip())
+        if not match:
+            if line.strip().lower().startswith("progress p="):
+                _fail("malformed ordered record progress row")
+            continue
+        phase, *values = (int(value, 16) for value in match.groups())
+        if phase not in (363, 364):
+            continue
+        if phase in rows:
+            _fail("duplicate ordered record telemetry")
+        rows[phase] = values
+    if not rows:
+        return None
+    if set(rows) != {363, 364}:
+        _fail("incomplete ordered record telemetry")
+    calls, reuses, copied = rows[363][:3]
+    avoided, capacity, reserved = rows[364][:3]
+    if reserved:
+        _fail("ordered record reserved field must be zero")
+    if reuses > calls or (not calls and copied) or (not reuses and (avoided or capacity)):
+        _fail("inconsistent ordered record counters")
+    return dict(materializations=calls, identity_reuses=reuses, copied_bytes=copied,
+                avoided_bytes=avoided, avoided_capacity=capacity)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("file", type=Path, help="guest stdout text file")
@@ -269,6 +302,7 @@ def main(argv=None) -> int:
         text = args.file.read_text()
         result = decode_capture_telemetry(text, record_header_bytes=header_bytes)
         result["capture_store"] = decode_capture_store_telemetry(text)
+        result["ordered_records"] = decode_ordered_record_telemetry(text)
     except (OSError, CaptureTelemetryError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2, sort_keys=True))

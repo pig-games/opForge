@@ -5,6 +5,10 @@
 CAPTURE_STORE_READ = 360
 CAPTURE_STORE_WRITE = 361
 CAPTURE_STORE_CACHE = 362
+; ORDERED_WORK: attempts / successful identity reuses / actual record-copy bytes.
+; ORDERED_REUSE: avoided record-copy bytes / avoided replacement capacity / zero.
+CAPTURE_ORDERED_WORK = 363
+CAPTURE_ORDERED_SAVING = 364
 ; Fixed-size capture accounting. Missing any gate emits no import or calls.
 ; Call-site identities remain available when the observer alias is gated out.
 CAPTURE_ACQUISITION = 0
@@ -151,6 +155,55 @@ CAPTURE_CHUNK_SNAPSHOT	.macro boundary, directory, rowShift, rowBytes, storageOf
 .endmacro
 
 ; Caller supplies gated backend globals; inactive definitions capture no references.
+CAPTURE_ORDERED_COUNT	.macro counter, amount
+	.MEMORY_COUNTER_ADD .counter, .amount
+.endmacro
+
+; Exact capacity reserveBounded would request, excluding already available storage.
+; Only telemetry executes this duplicate of its doubling/clamp arithmetic.
+CAPTURE_ORDERED_REUSE	.macro bytes, savedCapacity, used, block, limit
+	move.w ccr, -(sp)
+	movem.l d0-d2/a0, -(sp)
+	move.l .used, d0
+	add.l d0, .bytes
+	movea.l .block, a0
+	cmp.l capture_profile.BlockView.Capacity(a0), d0
+	bls.w done
+	move.l .limit, d2
+	move.l #256, d1
+	cmp.l d2, d1
+	bls.w sizeLoop
+	move.l d2, d1
+sizeLoop
+	cmp.l d0, d1
+	bhs.w ready
+	add.l d1, d1
+	bcs.w capped
+	cmp.l d2, d1
+	bls.w sizeLoop
+capped
+	move.l d2, d1
+	bra.w sizeLoop
+ready
+	add.l d1, .savedCapacity
+done
+	movem.l (sp)+, d0-d2/a0
+	move.w (sp)+, ccr
+.endmacro
+
+CAPTURE_ORDERED_CLEAR	.macro calls, reuses, copied, avoided, capacity
+	.MEMORY_COUNTER_CLEAR .calls
+	.MEMORY_COUNTER_CLEAR .reuses
+	.MEMORY_COUNTER_CLEAR .copied
+	.MEMORY_COUNTER_CLEAR .avoided
+	.MEMORY_COUNTER_CLEAR .capacity
+.endmacro
+
+CAPTURE_ORDERED_REPORT	.macro dosbase, calls, reuses, copied, avoided, capacity
+	.MEMORY_PROGRESS .dosbase, #CAPTURE_ORDERED_WORK, .calls, .reuses, .copied
+	.MEMORY_PROGRESS .dosbase, #CAPTURE_ORDERED_SAVING, .avoided, .capacity, #0
+.endmacro
+
 CAPTURE_STORE_CLEAR	.macro reads, readBytes, writes, writeBytes, faults, evictions, peak
 	.MEMORY_COUNTER_CLEAR .reads
 	.MEMORY_COUNTER_CLEAR .readBytes

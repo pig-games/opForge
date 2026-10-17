@@ -199,6 +199,7 @@ execute	.block
 	jsr metadata.clear
 	movea.l (sp)+, a0
 	.CAPTURE_CLEAR
+	.CAPTURE_ORDERED_CLEAR ordered.Materializations, ordered.IdentityReuses, ordered.CopiedBytes, ordered.AvoidedBytes, ordered.AvoidedCapacity
 	.CAPTURE_STORE_CLEAR capture_store.diskReads, capture_store.diskReadBytes, capture_store.diskWrites, capture_store.diskWriteBytes, capture_store.faults, capture_store.evictions, capture_store.peakPayload
 	.LAZY_CLEAR
 	.WORK_CALL lazy_work.clear
@@ -440,6 +441,7 @@ freeBlocks
 	.MEMORY_PHASE #3
 	move.l DosBase, d0
 	beq.w done
+	.CAPTURE_ORDERED_REPORT DosBase, ordered.Materializations, ordered.IdentityReuses, ordered.CopiedBytes, ordered.AvoidedBytes, ordered.AvoidedCapacity
 	.CAPTURE_STORE_REPORT DosBase, capture_store.diskReads, capture_store.diskReadBytes, capture_store.diskWrites, capture_store.diskWriteBytes, capture_store.faults, capture_store.evictions, capture_store.peakPayload
 	.CAPTURE_REPORT DosBase
 	.CAPTURE_LIFE_REPORT DosBase

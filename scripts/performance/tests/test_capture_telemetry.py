@@ -19,6 +19,26 @@ def line(phase, values):
 
 
 class CaptureTelemetryTests(unittest.TestCase):
+    def test_optional_ordered_record_summary(self):
+        text = "\n".join((line(363, [3, 1, 128]), line(364, [1024, 1024, 0])))
+        self.assertEqual(decoder.decode_ordered_record_telemetry(text), {
+            "materializations": 3, "identity_reuses": 1, "copied_bytes": 128,
+            "avoided_bytes": 1024, "avoided_capacity": 1024,
+        })
+        # The ordinary m field is live heap, not part of the counter schema.
+        self.assertEqual(decoder.decode_ordered_record_telemetry(text),
+                         decoder.decode_ordered_record_telemetry(
+                             text.replace("m=00000000", "m=00000080")))
+        self.assertIsNone(decoder.decode_ordered_record_telemetry("ordinary output"))
+        for bad in (text.splitlines()[0], text + "\n" + text.splitlines()[0],
+                    text.replace("f=00000003", "f=broken"),
+                    text.replace("r=00000000", "r=00000001"),
+                    text.replace("l=00000001", "l=00000004"),
+                    text.replace("l=00000001", "l=00000000"),
+                    line(363, [0, 0, 1]) + "\n" + line(364, [0, 0, 0])):
+            with self.subTest(text=bad), self.assertRaises(decoder.CaptureTelemetryError):
+                decoder.decode_ordered_record_telemetry(bad)
+
     def test_optional_store_summary_requires_complete_unique_rows(self):
         text = "\n".join((line(360, [2, 64, 0]), line(361, [3, 96, 0]),
                           line(362, [2, 4, 1048576])))

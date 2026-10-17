@@ -31,3 +31,11 @@ CAPTURE_STORE_CLEAR	.macro reads, readBytes, writes, writeBytes, faults, evictio
 .endmacro
 CAPTURE_STORE_REPORT	.macro dosbase, reads, readBytes, writes, writeBytes, faults, evictions, peak
 .endmacro
+CAPTURE_ORDERED_COUNT	.macro counter, amount
+.endmacro
+CAPTURE_ORDERED_REUSE	.macro bytes, savedCapacity, used, block, limit
+.endmacro
+CAPTURE_ORDERED_CLEAR	.macro calls, reuses, copied, avoided, capacity
+.endmacro
+CAPTURE_ORDERED_REPORT	.macro dosbase, calls, reuses, copied, avoided, capacity
+.endmacro

@@ -132,6 +132,16 @@ fn native_capture_disk_store_probe_save_image() {
     );
 }
 
+#[test]
+#[ignore = "builds the independent ordered-record component probe outside target"]
+fn native_ordered_records_probe_save_image() {
+    save_capture_store_probe(
+        "tests.amigaos.ordered_records_probe",
+        "OPFORGE_ORDERED_RECORDS_SAVE_DIR",
+        "ordered-records-probe-memory.hunk",
+    );
+}
+
 fn save_capture_store_probe(probe_module: &str, destination_variable: &str, filename: &str) {
     let root = super::native_fragment_controls::root();
     let destination = PathBuf::from(
@@ -151,13 +161,18 @@ fn save_capture_store_probe(probe_module: &str, destination_variable: &str, file
         &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
     )
     .unwrap();
-    let defines = [
+    let mut defines = vec![
         "OPFORGE_DEBUG_CONTRACTS",
         "OPFORGE_MEMORY_TELEMETRY",
         "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
         "OPFORGE_PREPARATION_PROGRESS",
         "OPFORGE_CAPTURE_TELEMETRY",
     ];
+    if probe_module == "tests.amigaos.ordered_records_probe"
+        && std::env::var_os("OPFORGE_ORDERED_RECORDS_EXPECT_REUSE").is_some()
+    {
+        defines.push("OPFORGE_ORDERED_RECORDS_EXPECT_REUSE");
+    }
     let image = super::compact_cli_input::assemble_cli_with_defines(&snapshot, &build, &defines);
     let digest = tree_digest(&snapshot.join("native"));
     fs::write(destination.join(filename), &image).unwrap();
@@ -217,6 +232,15 @@ fn native_lazy_audit_disabled_macros_emit_zero_bytes() {
         dir.0.join("macro_packing_audit.i"),
     )
     .unwrap();
+    for include in ["capture_telemetry.i", "capture_telemetry_noop.i"] {
+        fs::copy(
+            super::native_fragment_controls::root()
+                .join("native/motorola68000/amigaos/debug")
+                .join(include),
+            dir.0.join(include),
+        )
+        .unwrap();
+    }
     // Undefined layouts and operands, and no observer module, prove disabled
     // sites neither emit instructions nor acquire their gated import.
     let packing_sites = ".PACKING_WRITE_BEGIN a6,MISSING_TEMPLATE,MISSING_WRITER,#Missing\n.PACKING_WRITE_END Missing,Missing\n.PACKING_COUNT MISSING_FIELD,#Missing\n.PACKING_STORED a6,Missing\n";
@@ -224,11 +248,12 @@ fn native_lazy_audit_disabled_macros_emit_zero_bytes() {
     let sites = format!("{sites}.WORK_CALL Missing\n.WORK_COUNT 0,#1\n.WORK_ACQUIRE 0,a0\n.WORK_CAPTURE_RESET a0\n.WORK_BOUND_BEGIN d0\n.WORK_BOUND_END d0\n.WORK_PUBLICATION a0\n.WORK_CAPTURE_REGION a0,#128\n.WORK_SELECTED a0,d0\n.WORK_REPORT a6\n.WORK_EFFECT a0\n.WORK_TEMPLATE_DELTA d1,d2\n.WORK_SAMPLE_BEGIN #1\n");
     let sites = format!("{sites}.WORK_PLAN_CONTEXT #0\n.WORK_CONTEXT 0,#1\n.WORK_TEMPLATE_CONTEXT a6,MISSING_OFFSET\n.WORK_TEMPLATE_FLOOR a6,MISSING_OFFSET,Missing\n.WORK_ORIGIN_PATHS\n");
     let sites = format!("{sites}.WORK_TEMPLATE_BEGIN a0\n.WORK_TEMPLATE_DEFINE a0,a1,#0,#0\n.WORK_TEMPLATE_CLOSE a0,a1,#0\n.WORK_TEMPLATE_CALL a0,a1\n.WORK_TEMPLATE_POOLS a0\n.WORK_TEMPLATE_LINE a0,Missing,#1,Missing\n");
+    let sites = format!("{sites}.CAPTURE_ORDERED_COUNT MissingCounter,#1\n.CAPTURE_ORDERED_REUSE MissingBytes,MissingCapacity,MissingUsed,MissingBlock,MissingLimit\n.CAPTURE_ORDERED_CLEAR MissingCalls,MissingReuses,MissingCopied,MissingAvoided,MissingCapacity\n.CAPTURE_ORDERED_REPORT MissingDos,MissingCalls,MissingReuses,MissingCopied,MissingAvoided,MissingCapacity\n");
     let sites = format!(
         "{sites}.CANDIDATE_BEGIN\n.CANDIDATE_END a4\n.CANDIDATE_CREATED a4\n.CANDIDATE_OWNER\n{packing_sites}"
     );
     let input = dir.0.join("disabled.asm");
-    fs::write(&input, format!(".module disabled\n.cpu 68020\n.include \"lazy_audit.i\"\n.include \"lazy_work_context.i\"\n.include \"lazy_template_hooks.i\"\n.include \"candidate_audit.i\"\n.include \"macro_packing_audit.i\"\n.region ram,0,$ffff\n.section code,kind=code\n{sites}\trts\n.endsection\n.place code in ram\n.output \"build/disabled\",format=bin,sections=code\n.endmodule\n")).unwrap();
+    fs::write(&input, format!(".module disabled\n.cpu 68020\n.include \"lazy_audit.i\"\n.include \"lazy_work_context.i\"\n.include \"lazy_template_hooks.i\"\n.include \"candidate_audit.i\"\n.include \"macro_packing_audit.i\"\n.include \"capture_telemetry.i\"\n.region ram,0,$ffff\n.section code,kind=code\n{sites}\trts\n.endsection\n.place code in ram\n.output \"build/disabled\",format=bin,sections=code\n.endmodule\n")).unwrap();
     let cli = Cli::parse_from(["opforge".into(), input.to_string_lossy().into_owned()]);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(dir.0.clone());

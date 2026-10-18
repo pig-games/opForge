@@ -540,7 +540,7 @@ def add_telemetry(result, root, manifest, files=None, *, record_header_bytes=Non
 
 
 def run_case(args, bundle, manifest, files, oracle, case_digest, *,
-             run_kind="self-host", metadata=None):
+             run_kind="self-host", metadata=None, before_execute=None):
     """Transfer and execute one already validated case with fresh completion proof."""
     run_id = uuid.uuid4().hex
     name = f"opforge-{run_id[:12]}"
@@ -589,6 +589,11 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
     except (OSError, ValueError) as error:
         raise ValueError(f"Pre-run transfer verification failed; assembly was not started: {error}") from error
     print(f"Remote source, package, bootstrap and script verified. Starting native {run_kind}.", flush=True)
+    if before_execute is not None:
+        before_execute({"remote_directory": remote, "run_uuid": run_id,
+                        "local_results": str(local), "case_sha256": case_digest,
+                        "remote_host": args.remote_host,
+                        "remote_host_name": args.remote_host_name})
     started = time.monotonic()
     try:
         run([ash, args.host, f"Execute {remote}/run-selfhost"], args.timeout)

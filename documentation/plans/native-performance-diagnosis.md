@@ -145,6 +145,61 @@ records are outside `target` at `/tmp/opforge-budget-20261018`; prior timeout
 captures are at `/tmp/opforge-timeout-20261018`. The budget is confirmed. Next prepare the serial A6000 repeatability bundle;
 hardware execution and its results remain outstanding.
 
+## Step 2: hardware repeatability prepared, results pending
+
+This is measurement preparation, with no proposed runtime/heap saving and no
+cache-policy change. `scripts/performance/run_a6000_repeatability.py` validates
+the frozen schema-1 comparison case and genuine current release/memory exports,
+including their package identity, before any network access. It preflights every
+derived guest script, including the Amiga Shell line-length limit. The existing
+`ash -l` discovery, `Development:` transfer/readback, fresh UUID-bound markers,
+explicit exit and complete oracle checks remain authoritative.
+
+The serial order is resident/disk pairs three times on the frozen input, then
+current-source disk once, then frozen disk once with the existing light MEMD,
+capture accounting and PREPARATION_PROGRESS gates. The latter is diagnostic,
+not a release timing. Disk scratch is inside each private Development: run
+directory, never assumed to be `T:`.
+
+An exclusive durable journal is claimed before connection and records the actual
+remote UUID/directory immediately before Execute. Exceptions, interrupted
+connections and incomplete guest protocols leave it unresolved and stop the
+batch. The same journal cannot be resumed or retried automatically. Do not bypass
+that protection by choosing another output/state path or launching another batch
+while a guest may still be running. Completed failures also stop for inspection.
+Each completed run records the environment, recent progress markers and remaining
+scratch names. Successful cleanup leaves no scratch names; transient names are
+not invented from that absence. An unresolved run retains its location for
+read-only diagnosis rather than claiming completion from a partial capture.
+
+Only three successful release runs in a configuration produce its min/max,
+median and variance. Record guest seconds (one-second resolution), excluding
+transfers. A6000 RAM remains unrestricted and cannot prove the 8 MiB target.
+
+Source review found bounded loops, not a proven native hang: private scratch
+names use the context address plus a bounded 256-attempt suffix and atomic
+CreateDir ownership; allocation/IO errors fail rather than retry indefinitely.
+Victim scans and pin exhaustion are bounded; positive partial transfers decrease
+remaining bytes. No clock/task-ID dependency selecting assembly or cache behavior
+was identified. These are static findings, not proof that every hardware run
+terminates. The expanded-profile DOS-read/reply stall remains unexplained pending
+the hardware comparison; no speculative production fix was made.
+
+Prepared local bundle: `/tmp/opforge-a6000-repeatability-20261018`.
+Fresh host Rust assemblies match both full outputs exactly: frozen 708,216 B
+and current-source 728,656 B. The sources, package and current bootstraps are
+unchanged; release and memory image identities are those in step 1.
+The setup was dry-run locally with no network or hardware execution. Run once
+from macOS Terminal:
+
+```sh
+sh /tmp/opforge-a6000-repeatability-20261018/run.sh
+```
+
+Return `results/state.json` and its referenced local result folders. Step 2 is
+not complete until those native results are reviewed. Do not start the memory/
+speed curve or chain/hash bridge in place of the missing repeatability evidence.
+
 ## Existing storage evidence
 
 Qualified-source macro register binding is repaired and the

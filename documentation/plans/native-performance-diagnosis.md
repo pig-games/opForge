@@ -6,7 +6,12 @@ The 2026-10-18 course correction replaces the former product target with
 **8 MiB total machine RAM (8,388,608 B)**. Lower memory remains useful, but speed
 may use the available budget. Parity remains paused. No `.ofm` implementation,
 object-local identities, new cache policy or observer framework is authorized in
-the budget/repeatability step.
+the budget/repeatability step. Erik has since authorized starting the
+[first-reference module approach](native-fragment-preparation.md#first-reference-module-assembly-proposal)
+alongside the unchanged hardware batch. Its publication/reuse component is now
+native-tested; module lowering and CLI activation are still pending. The remaining
+curve/bridge/adaptive-policy steps below are retained candidates, not changes already
+made or a reason to mix results from different storage implementations.
 
 Work in this order, keeping one coherent commit and unchanged-input/live-Rust
 comparison per step:
@@ -201,9 +206,11 @@ not complete until those native results are reviewed. Do not start the memory/
 speed curve or chain/hash bridge in place of the missing repeatability evidence.
 
 While that batch runs, the [first-reference module assembly proposal](native-fragment-preparation.md#first-reference-module-assembly-proposal)
-formalizes a possible later ownership boundary, expected benefits and explicit
-resource targets. It is design-only and does not authorize implementation or
-reorder this sequence. Preliminary hardware timings are identified there as such.
+formalizes the newly authorized development direction, expected benefits and
+explicit resource targets. Its first native component does not alter the CLI or
+running cases and supplies no whole-build resource result. Preliminary hardware
+timings are identified there as such. Finish the batch before making a repeated
+hardware timing claim.
 
 ## Existing storage evidence
 
@@ -504,7 +511,8 @@ is planned to avoid cold entry/name acquisition during failed
 lookup and rehash. A 14-byte identity bridge would cost another 393,210 B at 65,535 IDs; an unchanged peak would leave about
 1.166 MiB of the measured sealing saving. This is a projection, not implementation
 or approval for early implementation. Real object-local IDs and relocatable
-near-output objects remain analysis-only candidates; macro-only deferral/audits and retired
+near-output module integration remains unimplemented beyond the component described
+in the linked proposal; macro-only deferral/audits and retired
 include/leaf-cache experiments remain removed.
 
 ## Enduring earlier decisions

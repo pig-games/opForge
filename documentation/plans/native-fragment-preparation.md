@@ -1,8 +1,9 @@
 # Module preparation and relocatable objects
 
 Follow the [current 8 MiB budget and performance sequence](native-performance-diagnosis.md#current-assignment-and-decision-points).
-Module objects and object-local IDs remain analysis-only until Erik decides whether
-to continue them; they are not the next implementation assignment.
+Erik has now authorized work on the first-reference module approach below.
+Its first saved-image component is implemented; CLI scheduling and early native
+module lowering remain unimplemented. Persistent cross-build reuse is not enabled.
 
 Status, 2026-10-18: dependency-first preparation now interleaves with module
 configuration/discovery with resident capture. Completed module captures retire after their numeric
@@ -120,10 +121,10 @@ a speculative object size, determines the current peak. Expanded-memory results 
 
 ## First-reference module assembly proposal
 
-Design proposal, 2026-10-18; **no implementation is authorized by this note**.
-The user requested this proposal while the hardware repeatability batch runs.
-The [budget and measurement sequence](native-performance-diagnosis.md) remains
-active. No cache policy, running image or benchmark changes accompany this design.
+Design proposal, 2026-10-18; Erik subsequently authorized starting implementation.
+The hardware repeatability batch continues against its unchanged snapshots.
+The [budget and measurement evidence](native-performance-diagnosis.md) remains
+the reference. This section describes the endpoint, not completed functionality.
 Persistent `.ofm` reuse, fingerprints and cross-build invalidation are later
 decisions; the proposed first boundary is an in-build module image.
 
@@ -297,7 +298,48 @@ claim. Measure release runtime separately from instrumented memory, using existi
 telemetry and the already authorized narrow I/O counters. Do not add an observer
 framework to pursue this proposal.
 
-### Smallest coherent implementation candidate, subject to agreement
+### First native component: publication and reuse
+
+`binary_module_image.asm` implements a checked immutable image: a 28-byte header,
+12 bytes per block directory row, 16 bytes per absolute BE32 relocation and raw
+payload. Only offsets and numeric identities are serialized. Canonical sorted
+directories give linear validation and binary block/relocation lookup. Validated
+readers avoid repeating whole-image validation for each selected block. Copies use
+native long transfers with byte tails; unaligned fields are valid on the native
+68020. Signed addends, other widths/endian forms and layout recipes are not yet
+represented. They must remain outside this restricted boundary until supported.
+
+`binary_module_request.asm` owns one compile/build callback on the first requested
+block, validates publication and reuses it for subsequent block requests. Failed
+publication releases partial ownership and remains failed until explicit release.
+Recursive acquire/release requests latch failure without freeing the outer
+compiler's live allocation. A missing block preserves an already published image.
+Returned views borrow that immutable image until release.
+
+The standalone `module_image_probe.asm` builds from instruction/data bytes freshly
+assembled by Rust, moves the image, poisons and frees its source/original buffers,
+then links two copies with different imported addresses and selects another saved
+block. A third block remains unselected. Its 20-byte artifact matches the live Rust
+assembly exactly under the real 8 MiB Shell profile. The harness also verifies one
+builder invocation, corrupt/truncated input rejection, bounds/overflow and resolver
+failure before output mutation, sticky partial failure, recursive ownership and
+idempotent cleanup. Caller buffers remain nonoverlapping and the link resolver
+must be pure/stable for the two-pass validation/emission contract.
+
+This is a native **component proof**, not native compilation of a source module:
+the callback packages supplied bytes; it does not yet run the native frontend or
+encoder. The CLI does not call these components, and no module is prepared early
+or spilled to disk through them. All images in this component proof remain resident.
+There is no full self-host through this approach, no full-build resource reduction
+and no 8 MiB fit claim. The current engine remains the reference, with no new
+production switch. Existing telemetry/build behavior is unchanged.
+
+Validation also exposed a Rust M68K package selector bug for symbolic MOVE.L
+immediates with addends and memory destinations. The separate repair uses the
+existing relocation program and has exact opcode/addend/BSS-relocation regression
+coverage. It is not a module storage optimization.
+
+### Next coherent integration slice
 
 Start with a configured leaf module containing several named blocks, internal
 forward references, a retained exported value/template, and relocations to an
@@ -322,8 +364,8 @@ macro-heavy controls, exact unchanged-input Rust output, tracked cleanup zero an
 no allocation failure. Use deterministic retired-capacity and I/O counters first;
 stop if directory/recipe retention or suspended modules simply recreates the old
 peak. Whole-build acceptance requires meaningful measured saving, release timing,
-and a fresh exact full self-host under the real 8 MiB profile. Until separately
-agreed, this remains a proposal and does not reorder the active performance work.
+and a fresh exact full self-host under the real 8 MiB profile. The saved-image
+component above is a prerequisite, not completion of this integration slice.
 
 ## Sequential lexical storage sealing: current checkpoint
 
@@ -377,9 +419,10 @@ It is unimplemented and follows the ordered work in the current plan. No 8 MiB
 fit is established by these expanded-memory runs: frozen tracked heap
 alone is 6.59 MiB, and prepared/assembly live heap remains 2.83 / 4.71 MiB.
 
-Real object-local identities, explicit remapping and near-output relocatable fragments
-are analysis-only candidates after these storage and qualification limits are
-resolved. Do not start another macro-only investigation or a final-only cache.
+Semantic object-local identities, explicit remapping and native early lowering
+remain unimplemented integration work for the newly authorized approach above.
+The saved-image component alone does not provide them. Do not start another
+macro-only investigation or a final-only cache.
 The census and current receipts remain outside `target` under
 `/tmp/opforge-module-capacity-20261018`, `/tmp/opforge-module-sealing-20261018`
 and `/tmp/opforge-cache-reuse-20261018`.

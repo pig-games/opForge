@@ -200,6 +200,11 @@ Return `results/state.json` and its referenced local result folders. Step 2 is
 not complete until those native results are reviewed. Do not start the memory/
 speed curve or chain/hash bridge in place of the missing repeatability evidence.
 
+While that batch runs, the [first-reference module assembly proposal](native-fragment-preparation.md#first-reference-module-assembly-proposal)
+formalizes a possible later ownership boundary, expected benefits and explicit
+resource targets. It is design-only and does not authorize implementation or
+reorder this sequence. Preliminary hardware timings are identified there as such.
+
 ## Existing storage evidence
 
 Qualified-source macro register binding is repaired and the

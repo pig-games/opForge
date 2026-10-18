@@ -208,3 +208,50 @@ fn compact_absolute_numeric_clear_fs_uae() {
         Some("[file 00000001, line 00000002]"),
     );
 }
+
+#[test]
+fn compact_immediate_bss_addend_to_memory_rust_hunk_oracle() {
+    for (body, expected) in [
+        (
+            " move.l #moduleCount+4,app.Frame.ModuleCount(a0)\n",
+            vec![0x21, 0x7c, 0, 0, 0, 4, 0, 4, 0x4e, 0x75],
+        ),
+        (
+            " move.l #(moduleCount+4),app.Frame.ModuleCount(a0)\n",
+            vec![0x21, 0x7c, 0, 0, 0, 4, 0, 4, 0x4e, 0x75],
+        ),
+        (
+            " move.l #moduleCount+4,4(a0)\n",
+            vec![0x21, 0x7c, 0, 0, 0, 4, 0, 4, 0x4e, 0x75],
+        ),
+        (
+            " move.l #moduleCount+4,(a0)\n",
+            vec![0x20, 0xbc, 0, 0, 0, 4, 0x4e, 0x75],
+        ),
+        (
+            " move.l #moduleCount+4,(a0)+\n",
+            vec![0x20, 0xfc, 0, 0, 0, 4, 0x4e, 0x75],
+        ),
+        (
+            " move.l #moduleCount+4,-(a0)\n",
+            vec![0x21, 0x3c, 0, 0, 0, 4, 0x4e, 0x75],
+        ),
+    ] {
+        let oracle = hunk_sections::rust_hunk_source(&bss_to_struct_source(body));
+        let segments = hunk::segments(&oracle).unwrap();
+        assert_eq!(segments.len(), 3, "{body}");
+        // The helper places code, BSS, data in that order. Compare the actual
+        // code from its beginning, excluding only final alignment padding.
+        assert_eq!(&segments[0].payload[..expected.len()], expected, "{body}");
+        assert_eq!(
+            segments[0].payload.len(),
+            expected.len().next_multiple_of(4),
+            "{body}"
+        );
+        assert_eq!(segments[0].relocations, [(2, 1)], "{body}");
+        assert!(segments[1].payload.is_empty(), "{body}");
+        assert!(segments[1].relocations.is_empty(), "{body}");
+        assert_eq!(segments[2].payload, [0xaa, 0xbb, 0xcc, 0], "{body}");
+        assert!(segments[2].relocations.is_empty(), "{body}");
+    }
+}

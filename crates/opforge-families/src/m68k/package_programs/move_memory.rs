@@ -138,7 +138,7 @@ pub(super) fn append_immediate_and_absolute_sources(selectors: &mut Vec<ModeSele
                     shape_key: "immediate_direct".to_string(),
                     mode_key: "semantic".to_string(),
                     operand_plan: format!(
-                        "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target_atom:expr0,{destination_plan};encode:{PARAM_FIELD_9}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},{destination_plan};fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0",
+                        "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0,{destination_plan};encode:{PARAM_FIELD_9}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},{destination_plan};fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0",
                         immediate_base + destination_mode_bits
                     ),
                     priority: 108 + priority as u16,
@@ -228,10 +228,10 @@ pub(super) fn append_immediate_and_absolute_sources(selectors: &mut Vec<ModeSele
         shape_key: "immediate_direct".to_string(),
         mode_key: "semantic".to_string(),
         operand_plan: format!(
-            "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target_atom:expr0,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}1.class1,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_ARITY_PREFIX}1.value2;encode:{PARAM_FIELD_9}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}1.class1;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}0",
+            "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}1.class1,{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_ARITY_PREFIX}1.value2;encode:{PARAM_FIELD_9}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{},{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_REGISTER_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}1.class1;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_INDIRECT_TUPLE_VALUE_PREFIX}1{MODE_SELECTOR_PLAN_TUPLE_ITEM_SEPARATOR}0",
             0x203c_u32 + 0x140
         ),
-        // An exact symbolic immediate needs its package relocation step before
+        // A symbolic immediate, including an addend, needs its relocation step before
         // the generic numeric-immediate tuple fallback can consume the value.
         priority: 111,
         unstable_widen: false,

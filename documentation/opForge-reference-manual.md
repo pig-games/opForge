@@ -1594,6 +1594,10 @@ The following rules are the ones most likely to affect day-to-day invocation:
 - `--hunk` does not currently consume `-g`; AmigaOS executable hunks remain
   loader-relocatable and use the Hunk segment/relocation records emitted by
   the Hunk writer.
+- Motorola 68000-family `MOVE.L` immediate addresses retain their Hunk relocation
+  when an addend is present, including memory destinations such as
+  `move.l #buffer+4, Frame.Pointer(a0)`. The immediate field holds the section-relative
+  address plus addend; the Hunk loader supplies the target section base.
 
 ### 5.1 Formatter configuration
 

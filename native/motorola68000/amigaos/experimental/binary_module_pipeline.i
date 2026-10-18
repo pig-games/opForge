@@ -6,7 +6,7 @@
 ; Begin semantic ownership without destroying ongoing configuration/discovery.
 ; Returns with configuration active and semantic state in ConfigFront.
 ; D0/CCR=status; other registers preserved. Partial owners use normal cleanup.
-beginModulePipeline .block
+beginModulePipeline	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea Front, a0
 	lea ConfigFront, a1
@@ -31,6 +31,8 @@ beginModulePipeline .block
 	clr.l frontend.Frame.Graph(a0)
 	jsr frontend.begin
 	bne.w bad
+	bsr.w configureLexicalStorage
+	bne.w bad
 	jsr source_control.begin
 	bne.w bad
 	lea SemanticGraph, a0
@@ -53,12 +55,12 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; beginModulePipeline
+	.bend  ; beginModulePipeline
 
 ; Swap session frames, then restore the selected package's shared VM control.
 ; Owned scratch/graph allocations never move. No borrowed line crosses this call.
 ; D0/CCR=status; other registers preserved.
-switchModuleSession .block
+switchModuleSession	.block
 	movem.l d1-d3/a0-a1, -(sp)
 	lea Front, a0
 	lea ConfigFront, a1
@@ -75,12 +77,12 @@ next
 	movem.l (sp)+, d1-d3/a0-a1
 	tst.l d0
 	rts
-	.bend ; switchModuleSession
+	.bend  ; switchModuleSession
 
 ; GraphSpans holds the next dependency-complete raw capture extent.
 ; Prepare it with the shared frontend, publish owned records, then retire source.
 ; Discovery resumes with configuration active. D0/CCR=status; others preserved.
-publishCapturedModule .block
+publishCapturedModule	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l SourceOrdinal, -(sp)
 	move.l OriginId, -(sp)
@@ -156,12 +158,12 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; publishCapturedModule
+	.bend  ; publishCapturedModule
 
 ; Transfer appended configuration into the active semantic session. The dormant
 ; ConfigFront owns its snapshots. Existing observations are never overwritten.
 ; D0/CCR=status; other registers preserved.
-seedModuleConfiguration .block
+seedModuleConfiguration	.block
 	movem.l d1-d2/a0-a1, -(sp)
 	lea ConfigFront, a0
 	movea.l frontend.Frame.Scratch(a0), a0
@@ -180,10 +182,10 @@ done
 	movem.l (sp)+, d1-d2/a0-a1
 	tst.l d0
 	rts
-	.bend ; seedModuleConfiguration
+	.bend  ; seedModuleConfiguration
 
 ; A0/A1=Block descriptors. Swap ownership; all registers preserved, CCR unspecified.
-swapModuleGraphs .block
+swapModuleGraphs	.block
 	movem.l d0-d2/a0-a1, -(sp)
 	moveq #(memory.Block.Used+4)/4-1, d2
 next
@@ -194,13 +196,13 @@ next
 	dbra d2, next
 	movem.l (sp)+, d0-d2/a0-a1
 	rts
-	.bend ; swapModuleGraphs
+	.bend  ; swapModuleGraphs
 
 ; Discovery exhausted: retain the remaining module schedule, transfer final
 ; configuration, then retire that owner BEFORE preparing the remaining bodies.
 ; Earlier published records/templates stay owned. Global binding/layout still
 ; run once against the complete numeric universe. D0/CCR=status; others kept.
-finishModulePipeline .block
+finishModulePipeline	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	lea GraphSpans, a0
 	lea CaptureOrder, a1
@@ -270,4 +272,4 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend ; finishModulePipeline
+	.bend  ; finishModulePipeline

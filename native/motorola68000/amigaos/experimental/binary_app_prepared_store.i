@@ -99,6 +99,8 @@ indexPreparedStore	.block
 viewReady
 	movea.l Front+frontend.Frame.Scratch, a2
 	adda.l #frontend.SCOPE_STATE, a2
+	lea layout.LEXICAL_STATE(a2), a0
+	jsr lexical.retireNames
 	lea scopes.ARENA(a2), a0
 	jsr nameStore.release
 	clr.l layout.State.ArenaUsed(a2)

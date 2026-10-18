@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_scope_layout as layout
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_section_prepare as sections
 	.use opasm.amigaos.binary_expression as expression
@@ -73,6 +74,112 @@ Count	.long ?
 Seen	.res PARAMETER_SEEN_BYTES
 .endstruct
 PARAMETER_LOCAL_BYTES = ParameterLocal.Seen+PARAMETER_SEEN_BYTES
+; Caller-owned lexical views and spelling buffers. This outer frame sits above
+; each routine's saved registers and existing locals; no borrowed cache view escapes.
+ImportsLocal	.struct
+EntryA	.res records.ENTRY_BYTES
+EntryB	.res records.ENTRY_BYTES
+IndexA	.long ?
+IndexB	.long ?
+NameA	.res layout.NAME_BYTES
+NameB	.res layout.NAME_BYTES
+.endstruct
+CAPTURE_LOCAL_BYTES = ImportsLocal.IndexA+4
+INVALIDATE_LOCAL_BYTES = ImportsLocal.IndexA+4
+LINE_LOCAL_BYTES = ImportsLocal.NameB+layout.NAME_BYTES
+QUALIFICATION_LOCAL_BYTES = ImportsLocal.IndexA+4
+REFERENCE_LOCAL_BYTES = ImportsLocal.NameA+layout.NAME_BYTES
+SELECTED_LOCAL_BYTES = ImportsLocal.NameB+layout.NAME_BYTES
+FINISH_LOCAL_BYTES = ImportsLocal.IndexA+4
+TEMPLATE_LOCAL_BYTES = ImportsLocal.IndexA+4
+VALIDATE_LOCAL_BYTES = ImportsLocal.IndexA+4
+RESOLVE_LOCAL_BYTES = ImportsLocal.NameB+layout.NAME_BYTES
+PARAMETERS_LOCAL_BYTES = ImportsLocal.NameB+layout.NAME_BYTES
+CLAIM_LOCAL_BYTES = ImportsLocal.IndexA+4
+SEED_LOCAL_BYTES = ImportsLocal.IndexA+4
+SCOPED_LOCAL_BYTES = ImportsLocal.NameB+layout.NAME_BYTES
+EXPRESSION_LOCAL_BYTES = ImportsLocal.IndexA+4
+WILDCARD_LOCAL_BYTES = ImportsLocal.NameB+layout.NAME_BYTES
+MEMBER_LOCAL_BYTES = ImportsLocal.NameA+layout.NAME_BYTES
+IMPORT_VIEW_SAVED_BYTES = 4*4
+SAVED_POINTER_BYTES = 4
+NAMESPACE_BYTES = 2
+PROXY_FLAGS_BYTES = 2
+EXPRESSION_COPY_HEADER_BYTES = 4
+CAPTURE_SAVED_BYTES = 14*4
+INVALIDATE_SAVED_BYTES = 7*4
+LINE_SAVED_BYTES = 14*4
+QUALIFICATION_SAVED_BYTES = 14*4
+REFERENCE_SAVED_BYTES = 14*4
+SELECTED_SAVED_BYTES = 11*4
+FINISH_SAVED_BYTES = 14*4
+TEMPLATE_SAVED_BYTES = 13*4
+VALIDATE_SAVED_BYTES = 5*4
+RESOLVE_SAVED_BYTES = 11*4
+PARAMETERS_SAVED_BYTES = 12*4
+CLAIM_SAVED_BYTES = 7*4
+SEED_SAVED_BYTES = 14*4
+SCOPED_SAVED_BYTES = 12*4
+EXPRESSION_SAVED_BYTES = 11*4
+WILDCARD_SAVED_BYTES = 10*4
+MEMBER_SAVED_BYTES = 11*4
+; Offsets include the caller's saved registers and current private stack locals.
+; Each copy has its own retained index; helpers may acquire other lexical pages.
+IMPORT_ENTRY	.macro ownerArg, sourceIndexArg, outputArg, entrySlotArg, indexSlotArg, failureArg
+	movem.l d0-d1/a0-a1, -(sp)
+	move.l .sourceIndexArg, d0
+	move.l d0, .indexSlotArg+IMPORT_VIEW_SAVED_BYTES(sp)
+	lea layout.LEXICAL_STATE(.ownerArg), a0
+	lea .entrySlotArg+IMPORT_VIEW_SAVED_BYTES(sp), a1
+	jsr lexical.readEntry
+	movem.l (sp)+, d0-d1/a0-a1
+	bne.w .failureArg
+	lea .entrySlotArg(sp), .outputArg
+.endmacro
+IMPORT_PUBLISH	.macro ownerArg, entrySlotArg, indexSlotArg, failureArg
+	movem.l d0-d1/a0-a1, -(sp)
+	move.l .indexSlotArg+IMPORT_VIEW_SAVED_BYTES(sp), d0
+	lea layout.LEXICAL_STATE(.ownerArg), a0
+	lea .entrySlotArg+IMPORT_VIEW_SAVED_BYTES(sp), a1
+	jsr lexical.writeEntry
+	movem.l (sp)+, d0-d1/a0-a1
+	bne.w .failureArg
+.endmacro
+; Expression probes keep a variable-size token copy below their fixed frame.
+; Its leading longword is the current allocation size. These variants retain
+; that explicit bias while acquiring the same caller-owned Entry view.
+IMPORT_DYNAMIC_ENTRY	.macro ownerArg, sourceIndexArg, outputArg, entrySlotArg, indexSlotArg, failureArg
+	movem.l d0-d1/a0-a1, -(sp)
+	move.l .sourceIndexArg, d0
+	move.l IMPORT_VIEW_SAVED_BYTES(sp), d1
+	lea .indexSlotArg+IMPORT_VIEW_SAVED_BYTES(sp), a1
+	adda.l d1, a1
+	move.l d0, (a1)
+	lea layout.LEXICAL_STATE(.ownerArg), a0
+	lea .entrySlotArg+IMPORT_VIEW_SAVED_BYTES(sp), a1
+	adda.l d1, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, d0-d1/a0-a1
+	bne.w .failureArg
+	move.l d0, -(sp)
+	move.l EXPRESSION_COPY_HEADER_BYTES(sp), d0
+	lea .entrySlotArg+EXPRESSION_COPY_HEADER_BYTES(sp), .outputArg
+	adda.l d0, .outputArg
+	move.l (sp)+, d0
+.endmacro
+IMPORT_DYNAMIC_PUBLISH	.macro ownerArg, entrySlotArg, indexSlotArg, failureArg
+	movem.l d0-d1/a0-a1, -(sp)
+	move.l IMPORT_VIEW_SAVED_BYTES(sp), d1
+	lea .indexSlotArg+IMPORT_VIEW_SAVED_BYTES(sp), a1
+	adda.l d1, a1
+	move.l (a1), d0
+	lea layout.LEXICAL_STATE(.ownerArg), a0
+	lea .entrySlotArg+IMPORT_VIEW_SAVED_BYTES(sp), a1
+	adda.l d1, a1
+	jsr lexical.writeEntry
+	movem.l (sp)+, d0-d1/a0-a1
+	bne.w .failureArg
+.endmacro
 	.section code, kind=code
 	.pub
 
@@ -233,6 +340,7 @@ done
 ; The expression VM handles typed values; labels and forward values remain unknown.
 ; D0/CCR=status; other registers preserved.
 captureValue	.block
+	suba.w #CAPTURE_LOCAL_BYTES, sp
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
 	; Known snapshots remain keyed by their lexical source IDs. Keeping
@@ -279,9 +387,8 @@ updateValue
 	tst.w layout.State.Deferred(a6)
 	bne.w constantUnknown
 	move.l d0, d6
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	move.w records.Entry.Flags(a0, d0.l), d2
+	.IMPORT_ENTRY a6, d0, a0, ImportsLocal.EntryA+CAPTURE_SAVED_BYTES, ImportsLocal.IndexA+CAPTURE_SAVED_BYTES, lexicalFailed
+	move.w records.Entry.Flags(a0), d2
 	andi.w #records.MUTABLE, d2
 	beq.w constantUnknown
 	lea layout.IMPORT_STATE(a6), a0
@@ -340,17 +447,17 @@ scalarValue
 	andi.l #$ffff, d1
 	cmp.w layout.State.Count(a6), d1
 	bhs.w scalarMetadataInvalid
-	mulu.w #records.ENTRY_BYTES, d1
-	movea.l layout.ENTRIES_POINTER(a6), a0
+	.IMPORT_ENTRY a6, d1, a0, ImportsLocal.EntryA+CAPTURE_SAVED_BYTES+4, ImportsLocal.IndexA+CAPTURE_SAVED_BYTES+4, lexicalMetadataFailed
 	tst.w layout.State.Deferred(a6)
 	beq.w markMutable
 	; A deferred readonly replacement is retained solely for runtime rejection
 	; if selected. It cannot invalidate or acquire mutable preparation ownership.
-	move.w records.Entry.Flags(a0, d1.l), d2
+	move.w records.Entry.Flags(a0), d2
 	andi.w #records.MUTABLE, d2
 	beq.w deferredReadonly
 markMutable
-	ori.w #records.MUTABLE, records.Entry.Flags(a0, d1.l)
+	ori.w #records.MUTABLE, records.Entry.Flags(a0)
+	.IMPORT_PUBLISH a6, ImportsLocal.EntryA+CAPTURE_SAVED_BYTES+4, ImportsLocal.IndexA+CAPTURE_SAVED_BYTES+4, lexicalMetadataFailed
 	movea.l (sp)+, a0
 	bra.w scalarMetadataReady
 deferredReadonly
@@ -423,10 +530,16 @@ constantUnknown
 	moveq #0, d2
 	jsr values.setKind
 	bra.w constantDone
+lexicalMetadataFailed
+	movea.l (sp)+, a0
+lexicalFailed
+	moveq #1, d0
+	bra.w constantDone
 constantOk
 	moveq #0, d0
 constantDone
 	movem.l (sp)+, d1-d7/a0-a6
+	adda.w #CAPTURE_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; captureValue
@@ -435,6 +548,7 @@ constantDone
 ; earlier mutable snapshot unavailable. Read-only snapshots retain their value.
 ; D0/CCR=status; other registers preserved.
 invalidateMutable	.block
+	suba.w #INVALIDATE_LOCAL_BYTES, sp
 	movem.l d1-d3/a0-a3, -(sp)
 	moveq #0, d1
 	move.w source.NameToken.Id+4(a0), d1
@@ -444,9 +558,8 @@ invalidateMutable	.block
 	cmp.w layout.State.Count(a1), d1
 	bhs.w good
 	move.l d1, d2
-	mulu.w #records.ENTRY_BYTES, d2
-	movea.l layout.ENTRIES_POINTER(a1), a2
-	move.w records.Entry.Flags(a2, d2.l), d2
+	.IMPORT_ENTRY a1, d2, a2, ImportsLocal.EntryA+INVALIDATE_SAVED_BYTES, ImportsLocal.IndexA+INVALIDATE_SAVED_BYTES, readFailed
+	move.w records.Entry.Flags(a2), d2
 	andi.w #records.MUTABLE, d2
 	beq.w good
 	lea layout.IMPORT_STATE(a1), a3
@@ -457,10 +570,14 @@ invalidateMutable	.block
 	moveq #0, d2
 	jsr values.setKind
 	bra.w done
+readFailed
+	moveq #1, d0
+	bra.w done
 good
 	moveq #0, d0
 done
 	movem.l (sp)+, d1-d3/a0-a3
+	adda.w #INVALIDATE_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; invalidateMutable
@@ -491,10 +608,13 @@ done
 ; A0=target token,A5=binder,A6=scope. Shared lexical target extraction and
 ; global binding. D0/CCR=status,D1=canonical source ID; caller supplies bounds.
 boundModuleTarget	.block
+	suba.w #layout.NAME_BYTES, sp
+	movea.l sp, a1
 	bsr.w tokenName
 	bne.w done
 	bsr.w globalBind
 done
+	adda.w #layout.NAME_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; boundModuleTarget
@@ -505,6 +625,7 @@ done
 ; One or more selected names and an optional module alias; references stay separate.
 ; D0/CCR=status; other registers preserved.
 line	.block
+	suba.w #LINE_LOCAL_BYTES, sp
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.w #USE_LOCAL_BYTES, sp
 	clr.l UseLocal.Flags(sp)
@@ -564,12 +685,15 @@ selectedName
 	tst.b 3(a3)
 	bne.w bad  ; this bounded form selects unqualified names
 	movea.l a3, a0
+	lea ImportsLocal.NameA+LINE_SAVED_BYTES+USE_LOCAL_BYTES(sp), a1
 	bsr.w tokenName
 	bne.w bad
 	movea.l a0, a2
 	move.l d0, d3
 	move.l d7, d0
+	lea ImportsLocal.NameB+LINE_SAVED_BYTES+USE_LOCAL_BYTES(sp), a1
 	bsr.w entryName
+	bne.w bad
 	add.l d0, d3
 	addq.l #1, d3
 	cmpi.l #layout.NAME_BYTES-1, d3
@@ -606,6 +730,7 @@ copySelected
 	tst.b 3(a3)
 	bne.w bad
 	movea.l a3, a0
+	lea ImportsLocal.NameA+LINE_SAVED_BYTES+USE_LOCAL_BYTES(sp), a1
 	bsr.w tokenName
 	bne.w bad
 	cmpi.l #2, d0
@@ -622,6 +747,7 @@ copySelected
 	tst.b 3(a3)
 	bne.w bad
 	movea.l a3, a0
+	lea ImportsLocal.NameA+LINE_SAVED_BYTES+USE_LOCAL_BYTES(sp), a1
 	bsr.w tokenName
 	bne.w bad
 	moveq #0, d5
@@ -711,6 +837,7 @@ parseQualifier
 	tst.b 3(a3)
 	bne.w bad
 	movea.l a3, a0
+	lea ImportsLocal.NameA+LINE_SAVED_BYTES+USE_LOCAL_BYTES(sp), a1
 	bsr.w tokenName
 	bne.w bad
 	cmpi.l #2, d0
@@ -722,6 +849,7 @@ parseQualifier
 	lea 4(a3), a0
 	tst.b 3(a0)
 	bne.w bad
+	lea ImportsLocal.NameA+LINE_SAVED_BYTES+USE_LOCAL_BYTES(sp), a1
 	bsr.w tokenName
 	bne.w bad
 	move.l #EXPLICIT_QUALIFIER, UseLocal.Flags(sp)
@@ -733,7 +861,9 @@ defaultQualifier
 	tst.w d4
 	bne.w noQualifier
 	move.l d7, d0
+	lea ImportsLocal.NameA+LINE_SAVED_BYTES+USE_LOCAL_BYTES(sp), a1
 	bsr.w entryLeaf
+	bne.w bad
 	bra.w qualifier
 noQualifier
 	moveq #0, d5
@@ -802,6 +932,7 @@ bad
 done
 	adda.w #USE_LOCAL_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
+	adda.w #LINE_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; line
@@ -819,6 +950,7 @@ reference	.block
 ; no identities, plans or value cells are allocated or published. Missing full
 ; targets retain numeric compound-member alternatives in the caller.
 qualification	.block
+	suba.w #QUALIFICATION_LOCAL_BYTES, sp
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
 	moveq #0, d0
@@ -836,7 +968,7 @@ copy
 	clr.w records.Entry.Flags(a3)
 	move.w layout.State.Current(a6), records.Entry.Padding(a3)
 	lea layout.IMPORT_STATE(a6), a4
-	lea findDeclared, a5
+	lea findDeclaredBind, a5
 	bsr.w resolve
 	bne.w probed
 	; Conditional complete declarations join the existing numeric alternatives;
@@ -844,15 +976,17 @@ copy
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
 	andi.l #$ffff, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	move.w records.Entry.Flags(a0, d0.l), d0
+	.IMPORT_ENTRY a6, d0, a0, ImportsLocal.EntryA+QUALIFICATION_SAVED_BYTES+records.ENTRY_BYTES, ImportsLocal.IndexA+QUALIFICATION_SAVED_BYTES+records.ENTRY_BYTES, readFailed
+	move.w records.Entry.Flags(a0), d0
 	andi.w #records.CONDITIONAL_VALUE, d0
 	beq.w complete
 	moveq #1, d0
 	bra.w probed
 complete
 	moveq #0, d0
+	bra.w probed
+readFailed
+	moveq #1, d0
 probed
 	adda.w #records.ENTRY_BYTES, sp
 	bra.w done
@@ -860,6 +994,7 @@ absent
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6
+	adda.w #QUALIFICATION_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; qualification
@@ -876,6 +1011,7 @@ referenceTemplate	.block
 ; D0=namespace,A0=token,A1=scope state. The namespace joins the existing
 ; module, spelling and lexical-origin proxy key. Other registers preserved.
 referenceNamespace	.block
+	suba.w #REFERENCE_LOCAL_BYTES, sp
 	movem.l d1-d7/a0-a6, -(sp)
 	move.w d0, -(sp)
 	movea.l a1, a6
@@ -893,9 +1029,7 @@ referenceNamespace	.block
 	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.IMPORT_ENTRY a6, d0, a3, ImportsLocal.EntryA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, ImportsLocal.IndexA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, bad
 	btst #records.ITERATOR_HIGH_BIT, records.Entry.Flags(a3)
 	bne.w ok  ; a lexical iterator never becomes an import selection/proxy
 	bsr.w selectedTarget
@@ -911,9 +1045,7 @@ referenceNamespace	.block
 	move.w 1(a5), d0
 	sub.w layout.State.Base(a6), d0
 	andi.l #$ffff, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.IMPORT_ENTRY a6, d0, a3, ImportsLocal.EntryA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, ImportsLocal.IndexA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, bad
 	tst.w (sp)
 	bne.w wildcardTemplateDeclaration
 	btst #0, records.Entry.Flags+1(a3)
@@ -945,9 +1077,7 @@ find
 	beq.w allocate
 	subq.w #1, d2
 	move.l d2, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.IMPORT_ENTRY a6, d0, a3, ImportsLocal.EntryA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, ImportsLocal.IndexA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, bad
 	moveq #records.NAMESPACE_VALUE, d0
 	btst #records.TEMPLATE_PROXY_BIT, records.Entry.Flags+1(a3)
 	beq.w namespaceReady
@@ -981,14 +1111,14 @@ allocate
 	jsr (a1)
 	tst.l d0
 	bne.w bad
-	move.l d2, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
-	move.l d6, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	move.l d2, ImportsLocal.IndexA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES(sp)
+	lea ImportsLocal.EntryA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES(sp), a3
+	movea.l a3, a0
+	moveq #records.ENTRY_BYTES/4-1, d0
+clearProxy
+	clr.l (a0)+
+	dbra d0, clearProxy
+	.IMPORT_ENTRY a6, d6, a0, ImportsLocal.EntryB+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, ImportsLocal.IndexB+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, bad
 	move.l records.Entry.Name(a0), records.Entry.Name(a3)
 	move.w records.Entry.Length(a0), records.Entry.Length(a3)
 	move.w d7, records.Entry.Owner(a3)
@@ -1007,23 +1137,33 @@ proxyNamespaceReady
 	clr.w records.Entry.StatementModule(a3)
 	clr.l records.Entry.RegisterName(a3)
 	move.w (a4), records.Entry.Next(a3)
+	move.w layout.State.Base(a6), d0
+	add.w d2, d0
+	move.w d0, records.Entry.Target(a3)
+	movem.l d0-d1/a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	lea ImportsLocal.EntryA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES+IMPORT_VIEW_SAVED_BYTES(sp), a1
+	move.l ImportsLocal.IndexA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES+IMPORT_VIEW_SAVED_BYTES(sp), d0
+	jsr lexical.appendEntry
+	movem.l (sp)+, d0-d1/a0-a1
+	bne.w bad
 	move.w d2, d0
 	addq.w #1, d0
 	move.w d0, (a4)
 	move.w d0, layout.State.Count(a6)
-	mulu.w #records.ENTRY_BYTES, d0
-	move.l d0, layout.ENTRIES+memory.Block.Used(a6)
-	move.w layout.State.Base(a6), d0
-	add.w d2, d0
-	move.w d0, records.Entry.Target(a3)
 	; Templates have no struct-member interpretation or numeric value remap.
 	tst.w (sp)
 	bne.w found
 	; Struct definitions must exist at the reference site. Import and absolute
 	; targets may still be forward references, so only gate the member fallback.
 	move.l records.Entry.Name(a3), d0
-	lea layout.ARENA(a6), a0
-	jsr nameStore.pointer
+	moveq #0, d1
+	move.w records.Entry.Length(a3), d1
+	lea layout.LEXICAL_STATE(a6), a0
+	lea ImportsLocal.NameA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES(sp), a1
+	jsr lexical.copyName
+	bne.w bad
+	lea ImportsLocal.NameA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES(sp), a0
 	movea.l a0, a2
 	moveq #0, d6
 	move.w records.Entry.Length(a3), d6
@@ -1040,6 +1180,7 @@ memberAvailable
 	bsr.w resolveStructMember
 	bne.w found
 	move.w d2, records.Entry.MemberBase(a3)
+	.IMPORT_PUBLISH a6, ImportsLocal.EntryA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, ImportsLocal.IndexA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, bad
 found
 	move.w records.Entry.Target(a3), 1(a5)
 ok
@@ -1050,6 +1191,7 @@ bad
 done
 	addq.l #2, sp
 	movem.l (sp)+, d1-d7/a0-a6
+	adda.w #REFERENCE_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; referenceNamespace
@@ -1059,6 +1201,7 @@ done
 ; D4=selected
 ; target index+1 (zero when not imported), D0/CCR=status. Other registers kept.
 selectedTarget	.block
+	suba.w #SELECTED_LOCAL_BYTES, sp
 	movem.l d1-d3/d5-d7/a0-a4, -(sp)
 	lea layout.IMPORT_STATE(a6), a4
 	move.l d7, d0
@@ -1070,6 +1213,7 @@ selectedTarget	.block
 	move.w 0(a0, d0.l), d7
 	beq.w ok
 	movea.l a5, a0
+	lea ImportsLocal.NameA+SELECTED_SAVED_BYTES(sp), a1
 	bsr.w tokenName
 	bne.w bad
 	movea.l a0, a2
@@ -1117,7 +1261,9 @@ originalLeaf
 compareLeaf
 	move.l d1, d0
 	subq.w #1, d0
+	lea ImportsLocal.NameB+SELECTED_SAVED_BYTES(sp), a1
 	bsr.w entryLeaf
+	bne.w bad
 	cmp.w d5, d0
 	bne.w nextSelected
 	bsr.w prefixEqual
@@ -1142,6 +1288,7 @@ bad
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d3/d5-d7/a0-a4
+	adda.w #SELECTED_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; selectedTarget
@@ -1158,6 +1305,7 @@ Acquire	.long ?
 .endstruct
 FINISH_FRAME_BYTES = FinishFrame.Acquire+4
 finish	.block
+	suba.w #FINISH_LOCAL_BYTES, sp
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.w #FINISH_FRAME_BYTES, sp
 	move.l a2, FinishFrame.Acquire(sp)
@@ -1243,9 +1391,7 @@ loop
 	cmp.w layout.State.Count(a6), d7
 	bhs.w ok
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.IMPORT_ENTRY a6, d0, a3, ImportsLocal.EntryA+FINISH_SAVED_BYTES+FINISH_FRAME_BYTES, ImportsLocal.IndexA+FINISH_SAVED_BYTES+FINISH_FRAME_BYTES, bad
 	btst #3, records.Entry.Flags+1(a3)
 	beq.w next
 	btst #records.TEMPLATE_PROXY_BIT, records.Entry.Flags+1(a3)
@@ -1273,18 +1419,15 @@ resolveProxy
 	bne.w next
 	; Acquisition can grow the entry arena even without publishing a plan.
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.IMPORT_ENTRY a6, d0, a3, ImportsLocal.EntryA+FINISH_SAVED_BYTES+FINISH_FRAME_BYTES, ImportsLocal.IndexA+FINISH_SAVED_BYTES+FINISH_FRAME_BYTES, bad
 	.BINDING_ATTEMPT #binding_diagnostic.PROXY, d7, #-1
 	bsr.w resolve
 	bne.w bad
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.IMPORT_ENTRY a6, d0, a3, ImportsLocal.EntryA+FINISH_SAVED_BYTES+FINISH_FRAME_BYTES, ImportsLocal.IndexA+FINISH_SAVED_BYTES+FINISH_FRAME_BYTES, bad
 	move.w d1, records.Entry.Target(a3)
 	ori.w #1, records.Entry.Flags(a3)  ; validated declaration target, not a new value
+	.IMPORT_PUBLISH a6, ImportsLocal.EntryA+FINISH_SAVED_BYTES+FINISH_FRAME_BYTES, ImportsLocal.IndexA+FINISH_SAVED_BYTES+FINISH_FRAME_BYTES, bad
 	move.w #1, layout.State.Changed(a6)
 next
 	addq.w #1, d7
@@ -1299,6 +1442,7 @@ done
 	.TELEMETRY_SERVICE_LEAVE
 	adda.w #FINISH_FRAME_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
+	adda.w #FINISH_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; finish
@@ -1309,6 +1453,7 @@ done
 ; returned; cross-module targets require a matching .use and public visibility.
 ; D0/CCR=status,D1=canonical target ID; other registers preserved.
 resolveTemplate	.block
+	suba.w #TEMPLATE_LOCAL_BYTES, sp
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a3
 	movea.l a1, a6
@@ -1323,9 +1468,7 @@ resolveTemplate	.block
 	andi.l #$ffff, d0
 	cmp.w layout.State.Count(a6), d0
 	bhs.w templateBad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.IMPORT_ENTRY a6, d0, a3, ImportsLocal.EntryA+TEMPLATE_SAVED_BYTES, ImportsLocal.IndexA+TEMPLATE_SAVED_BYTES, templateBad
 	btst #3, records.Entry.Flags+1(a3)
 	beq.w templateTarget
 	lea layout.IMPORT_STATE(a6), a4
@@ -1339,9 +1482,7 @@ templateTarget
 	cmp.w layout.State.Count(a6), d0
 	bhs.w templateBad
 	move.l d0, d6
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.IMPORT_ENTRY a6, d0, a3, ImportsLocal.EntryA+TEMPLATE_SAVED_BYTES, ImportsLocal.IndexA+TEMPLATE_SAVED_BYTES, templateBad
 	btst #0, records.Entry.TemplateFlags+1(a3)
 	beq.w templateBad
 	moveq #0, d7
@@ -1406,6 +1547,7 @@ templateBad
 	moveq #1, d0
 templateDone
 	movem.l (sp)+, d2-d7/a0-a6
+	adda.w #TEMPLATE_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; resolveTemplate
@@ -1489,6 +1631,7 @@ aliasDone
 ; A3=import item,A6=scope state. Selected names must be declared and public
 ; even when no reached code references them. D0/CCR=status; others preserved.
 validateSelected	.block
+	suba.w #VALIDATE_LOCAL_BYTES, sp
 	movem.l d1-d2/a0-a2, -(sp)
 	move.w Item.Flags(a3), d0
 	andi.w #$ffff-EXPLICIT_QUALIFIER, d0
@@ -1513,9 +1656,7 @@ selected
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d1
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.IMPORT_ENTRY a6, d0, a0, ImportsLocal.EntryA+VALIDATE_SAVED_BYTES, ImportsLocal.IndexA+VALIDATE_SAVED_BYTES, bad
 	btst #0, records.Entry.Flags+1(a0)
 	beq.w selectedTemplate
 	andi.l #$ffff, d1
@@ -1544,6 +1685,7 @@ bad
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d2/a0-a2
+	adda.w #VALIDATE_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; validateSelected
@@ -1551,6 +1693,7 @@ done
 ; A3=proxy,A4=import state,A5=binder,A6=scope state. D1=canonical numeric ID,
 ; D0/CCR=status; other registers preserved. Alias precedence precedes exact names.
 resolve	.block
+	suba.w #RESOLVE_LOCAL_BYTES, sp
 	.HOTSPOT_ENTER #HOTSPOT_IMPORT_RESOLVE
 	movem.l d2-d7/a0-a4, -(sp)
 	move.w records.Entry.Flags(a3), -(sp)  ; retain namespace across moving bindings
@@ -1562,8 +1705,13 @@ resolve	.block
 resolveQualified
 	moveq #0, d0
 	move.l records.Entry.Name(a3), d0
-	lea layout.ARENA(a6), a0
-	jsr nameStore.pointer
+	moveq #0, d1
+	move.w records.Entry.Length(a3), d1
+	lea layout.LEXICAL_STATE(a6), a0
+	lea ImportsLocal.NameA+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES(sp), a1
+	jsr lexical.copyName
+	bne.w bad
+	lea ImportsLocal.NameA+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES(sp), a0
 	movea.l a0, a2
 	moveq #0, d6
 	move.w records.Entry.Length(a3), d6
@@ -1598,15 +1746,19 @@ aliasLoop
 	moveq #0, d0
 	move.w Item.Qualifier(a1), d0
 	move.l a1, -(sp)
+	lea ImportsLocal.NameB+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES+4(sp), a1
 	bsr.w entryLeaf
 	movea.l (sp)+, a1
+	bne.w bad
 	cmp.w d5, d0
 	bne.w aliasNext
 	bsr.w prefixEqual
 	bne.w aliasNext
 	moveq #0, d0
 	move.w Item.Target(a1), d0
+	lea ImportsLocal.NameB+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES(sp), a1
 	bsr.w entryName
+	bne.w bad
 	move.l d6, d1
 	sub.w d5, d1
 	add.w d0, d1
@@ -1647,8 +1799,10 @@ fullLoop
 	moveq #0, d0
 	move.w Item.Target(a1), d0
 	move.l a1, -(sp)
+	lea ImportsLocal.NameB+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES+4(sp), a1
 	bsr.w entryName
 	movea.l (sp)+, a1
+	bne.w bad
 	cmp.w d6, d0
 	bhs.w fullNext
 	adda.l d0, a2
@@ -1683,9 +1837,7 @@ bind
 	move.w d1, d0
 	sub.w layout.State.Base(a6), d0
 	andi.l #$ffff, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.IMPORT_ENTRY a6, d0, a0, ImportsLocal.EntryA+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES, ImportsLocal.IndexA+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES, bad
 	move.w (sp), d0
 	bsr.w targetDeclared
 	bne.w bad
@@ -1701,9 +1853,7 @@ resolveSelected
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d2
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.IMPORT_ENTRY a6, d0, a0, ImportsLocal.EntryA+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES, ImportsLocal.IndexA+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES, bad
 	move.w (sp), d0
 	bsr.w targetDeclared
 	beq.w selectedBound
@@ -1713,9 +1863,7 @@ resolveSelected
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d2
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.IMPORT_ENTRY a6, d0, a0, ImportsLocal.EntryA+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES, ImportsLocal.IndexA+RESOLVE_SAVED_BYTES+PROXY_FLAGS_BYTES, bad
 	move.w (sp), d0
 	bsr.w targetDeclared
 	bne.w bad
@@ -1736,6 +1884,7 @@ bad
 done
 	addq.l #2, sp
 	movem.l (sp)+, d2-d7/a0-a4
+	adda.w #RESOLVE_LOCAL_BYTES, sp
 	tst.l d0
 	.HOTSPOT_LEAVE #HOTSPOT_IMPORT_RESOLVE
 	rts
@@ -1790,6 +1939,7 @@ done
 ; the with clause, so the existing selection/alias parser sees its own suffix.
 ; Other registers preserved; D0/CCR=status.
 parameters	.block
+	suba.w #PARAMETERS_LOCAL_BYTES, sp
 	movem.l d1-d7/a0-a3/a5, -(sp)
 	suba.w #PARAMETER_LOCAL_BYTES, sp
 	movea.l a0, a3
@@ -1820,6 +1970,7 @@ scanWith
 	cmpi.b #1, (a3)
 	bhi.w scanAdvance
 	movea.l a3, a0
+	lea ImportsLocal.NameA+PARAMETERS_SAVED_BYTES+PARAMETER_LOCAL_BYTES(sp), a1
 	bsr.w tokenName
 	bne.w parametersBad
 	cmpi.l #4, d0
@@ -1843,12 +1994,15 @@ parameterItem
 	tst.b 3(a3)
 	bne.w parametersBad
 	movea.l a3, a0
+	lea ImportsLocal.NameA+PARAMETERS_SAVED_BYTES+PARAMETER_LOCAL_BYTES(sp), a1
 	bsr.w tokenName
 	bne.w parametersBad
 	movea.l a0, a2
 	move.l d0, d3
 	move.l d7, d0
+	lea ImportsLocal.NameB+PARAMETERS_SAVED_BYTES+PARAMETER_LOCAL_BYTES(sp), a1
 	bsr.w entryName
+	bne.w parametersBad
 	add.l d0, d3
 	addq.l #1, d3
 	cmpi.l #layout.NAME_BYTES-1, d3
@@ -1880,9 +2034,7 @@ copyParameterLeaf
 	andi.l #$ffff, d1
 	cmp.w layout.State.Count(a6), d1
 	bhs.w parametersBad
-	mulu.w #records.ENTRY_BYTES, d1
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d1, a0
+	.IMPORT_ENTRY a6, d1, a0, ImportsLocal.EntryA+PARAMETERS_SAVED_BYTES+PARAMETER_LOCAL_BYTES, ImportsLocal.IndexA+PARAMETERS_SAVED_BYTES+PARAMETER_LOCAL_BYTES, parametersBad
 	moveq #0, d3
 	btst #0, records.Entry.Flags+1(a0)
 	beq.w newParameter
@@ -1893,6 +2045,7 @@ newParameter
 	move.w d7, d0
 	addq.w #1, d0
 	move.w d0, records.Entry.Owner(a0)
+	.IMPORT_PUBLISH a6, ImportsLocal.EntryA+PARAMETERS_SAVED_BYTES+PARAMETER_LOCAL_BYTES, ImportsLocal.IndexA+PARAMETERS_SAVED_BYTES+PARAMETER_LOCAL_BYTES, parametersBad
 	move.l d5, d0
 	sub.w layout.State.Base(a6), d0
 	andi.l #$ffff, d0
@@ -2007,6 +2160,7 @@ parametersBad
 parametersDone
 	adda.w #PARAMETER_LOCAL_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a3/a5
+	adda.w #PARAMETERS_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; parameters
@@ -2060,6 +2214,7 @@ done
 ; other registers preserved. Complete key sets include an empty first use.
 ; Values were compared with immutable snapshots by storeParameter.
 claimParameterSet	.block
+	suba.w #CLAIM_LOCAL_BYTES, sp
 	movem.l d1-d5/a1-a2, -(sp)
 	moveq #0, d1
 	move.w layout.IMPORT_STATE+PARAM_COUNT(a6), d1
@@ -2077,9 +2232,8 @@ next
 	andi.l #$ffff, d3
 	cmp.w layout.State.Count(a6), d3
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d3
-	movea.l layout.ENTRIES_POINTER(a6), a2
-	cmp.w records.Entry.Owner(a2, d3.l), d5
+	.IMPORT_ENTRY a6, d3, a2, ImportsLocal.EntryA+CLAIM_SAVED_BYTES, ImportsLocal.IndexA+CLAIM_SAVED_BYTES, bad
+	cmp.w records.Entry.Owner(a2), d5
 	bne.w advance
 	addq.l #1, d2
 advance
@@ -2099,6 +2253,7 @@ bad
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d5/a1-a2
+	adda.w #CLAIM_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; claimParameterSet
@@ -2216,6 +2371,7 @@ done
 ; Identities must already be bound in this scope. D0/CCR=status; other registers
 ; preserved. A conflict leaves this caller-owned preparation state releasable.
 seedParameter	.block
+	suba.w #SEED_LOCAL_BYTES, sp
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	move.l d0, d5
@@ -2249,9 +2405,7 @@ scalarSeed
 	bhs.w bad
 	move.l d4, -(sp)
 	move.l d0, d4
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a1
-	adda.l d0, a1
+	.IMPORT_ENTRY a6, d0, a1, ImportsLocal.EntryA+SEED_SAVED_BYTES+4, ImportsLocal.IndexA+SEED_SAVED_BYTES+4, ownerBad
 	moveq #0, d3
 	btst #0, records.Entry.Flags+1(a1)
 	beq.w new
@@ -2262,6 +2416,7 @@ scalarSeed
 new
 	ori.w #1, records.Entry.Flags(a1)
 	move.w d7, records.Entry.Owner(a1)
+	.IMPORT_PUBLISH a6, ImportsLocal.EntryA+SEED_SAVED_BYTES+4, ImportsLocal.IndexA+SEED_SAVED_BYTES+4, ownerBad
 	add.l d4, d4
 	movea.l layout.MODULE_STATE+modules.OWNERS_POINTER(a6), a1
 	move.w d7, 0(a1, d4.l)
@@ -2277,6 +2432,7 @@ bad
 	moveq #1, d0
 done
 	movem.l (sp)+, d1-d7/a0-a6
+	adda.w #SEED_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; seedParameter
@@ -2288,6 +2444,7 @@ done
 ; IDs are changed, and the control record is discarded after this call.
 ; D1=known i64 low/D2=high on success, D0/CCR=status; other registers preserved.
 evaluateScoped	.block
+	suba.w #SCOPED_LOCAL_BYTES, sp
 	movem.l d3-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	movea.l a1, a4
@@ -2315,12 +2472,12 @@ scanScoped
 	suba.l d0, a0
 	bne.w scopedNext
 	move.l d0, d1
-	mulu.w #records.ENTRY_BYTES, d1
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d1, a3
+	.IMPORT_ENTRY a6, d1, a3, ImportsLocal.EntryA+SCOPED_SAVED_BYTES+4, ImportsLocal.IndexA+SCOPED_SAVED_BYTES+4, scopedBad
 	btst #0, records.Entry.Flags+1(a3)
 	bne.w scopedNext  ; a local declaration shadows the module value
+	lea ImportsLocal.NameA+SCOPED_SAVED_BYTES+SAVED_POINTER_BYTES(sp), a1
 	bsr.w entryLeafBytes
+	bne.w scopedBad
 	move.l d0, d6
 	movea.l a0, a2
 	moveq #0, d7
@@ -2338,12 +2495,12 @@ candidate
 	suba.l d4, a0
 	beq.w candidateNext
 	move.l d4, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.IMPORT_ENTRY a6, d0, a3, ImportsLocal.EntryA+SCOPED_SAVED_BYTES+4, ImportsLocal.IndexA+SCOPED_SAVED_BYTES+4, scopedBad
 	cmp.w records.Entry.Owner(a3), d7
 	bne.w candidateNext
+	lea ImportsLocal.NameB+SCOPED_SAVED_BYTES+SAVED_POINTER_BYTES(sp), a1
 	bsr.w entryLeafBytes
+	bne.w scopedBad
 	cmp.w d6, d0
 	bne.w candidateNext
 	movea.l a0, a1
@@ -2381,6 +2538,7 @@ scopedBad
 	moveq #1, d0
 scopedDone
 	movem.l (sp)+, d3-d7/a0-a6
+	adda.w #SCOPED_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; evaluateScoped
@@ -2389,12 +2547,17 @@ scopedDone
 ; A3=entry,A6=scope state. Return A0=last dotted component, D0=its bytes.
 ; Explicit qualified bindings have Leaf=0, so scan the stored name itself.
 entryLeafBytes	.block
-	move.l a2, -(sp)
-	lea layout.ARENA(a6), a0
+	movem.l d1-d2/a2, -(sp)
+	movea.l a1, a2
+	moveq #0, d2
+	move.w records.Entry.Length(a3), d2
 	move.l records.Entry.Name(a3), d0
-	jsr nameStore.pointer
-	moveq #0, d0
-	move.w records.Entry.Length(a3), d0
+	move.l d2, d1
+	lea layout.LEXICAL_STATE(a6), a0
+	jsr lexical.copyName
+	bne.w done
+	movea.l a2, a0
+	move.l d2, d0
 	movea.l a0, a1
 	adda.l d0, a1
 	movea.l a1, a2
@@ -2407,7 +2570,9 @@ leafBack
 leafReady
 	move.l a2, d0
 	sub.l a0, d0
-	movea.l (sp)+, a2
+	cmp.l d0, d0
+done
+	movem.l (sp)+, d1-d2/a2
 	rts
 	.bend  ; entryLeafBytes
 
@@ -2484,6 +2649,7 @@ evaluateValue	.block
 
 ; D0=nonzero for a scalar consumer; binding and frame setup remain shared.
 evaluateValueMode	.block
+	suba.w #EXPRESSION_LOCAL_BYTES, sp
 	movem.l d4-d7/a0-a6, -(sp)
 	move.l d0, d6
 	subq.l #4, sp
@@ -2570,9 +2736,7 @@ ordinaryValueName
 	cmp.w layout.State.Count(a6), d0
 	bhs.w rangeBad
 	move.l d0, d3
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.IMPORT_DYNAMIC_ENTRY a6, d0, a0, ImportsLocal.EntryA+EXPRESSION_SAVED_BYTES+4, ImportsLocal.IndexA+EXPRESSION_SAVED_BYTES+4, rangeBad
 	btst #3, records.Entry.Flags+1(a0)
 	bne.w registeredExpressionSymbol
 	; Struct extents precede scopes.line's normal reference walk. Use the same
@@ -2589,9 +2753,7 @@ ordinaryValueName
 	cmp.w layout.State.Count(a6), d0
 	bhs.w rangeBad
 	move.l d0, d3
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.IMPORT_DYNAMIC_ENTRY a6, d0, a0, ImportsLocal.EntryA+EXPRESSION_SAVED_BYTES+4, ImportsLocal.IndexA+EXPRESSION_SAVED_BYTES+4, rangeBad
 registeredExpressionSymbol
 	; This token belongs to the owned expression copy, never runtime source.
 	; Earlier lexical/member binding already ran on this owned copy.
@@ -2603,9 +2765,7 @@ registeredExpressionSymbol
 	cmp.w layout.State.Count(a6), d0
 	bhs.w rangeBad
 	move.l d0, d3
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.IMPORT_DYNAMIC_ENTRY a6, d0, a0, ImportsLocal.EntryA+EXPRESSION_SAVED_BYTES+4, ImportsLocal.IndexA+EXPRESSION_SAVED_BYTES+4, rangeBad
 	; Snapshot probes share replay's reference availability policy. A loop
 	; body may never execute; its numeric missing IDs fail only when consumed.
 	move.w layout.State.LoopDepth(a6), d0
@@ -2616,20 +2776,19 @@ registeredExpressionSymbol
 deferredExpressionSymbol
 	ori.w #records.OPTIONAL_REFERENCED, records.Entry.Flags(a0)
 expressionReferenceReady
+	.IMPORT_DYNAMIC_PUBLISH a6, ImportsLocal.EntryA+EXPRESSION_SAVED_BYTES+4, ImportsLocal.IndexA+EXPRESSION_SAVED_BYTES+4, rangeBad
 	clr.b 3(a5)
 	move.l d3, d0
 	lea layout.MODULE_STATE(a6), a0
 	jsr modules.reference
 	move.l d3, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.IMPORT_DYNAMIC_ENTRY a6, d0, a0, ImportsLocal.EntryA+EXPRESSION_SAVED_BYTES+4, ImportsLocal.IndexA+EXPRESSION_SAVED_BYTES+4, rangeBad
 	btst #3, records.Entry.Flags+1(a0)
 	beq.w knownExpressionSymbol
 	movem.l a2-a5, -(sp)
 	movea.l a0, a3
 	lea layout.IMPORT_STATE(a6), a4
-	lea findDeclared, a5  ; lookup only: forward declarations cannot be allocated
+	lea findDeclaredBind, a5  ; lookup only: forward declarations cannot be allocated
 	bsr.w resolve
 	movem.l (sp)+, a2-a5
 	bne.w rangeBad
@@ -2754,6 +2913,7 @@ rangeDone
 	adda.l d4, sp
 	addq.l #4, sp
 	movem.l (sp)+, d4-d7/a0-a6
+	adda.w #EXPRESSION_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; evaluateValueMode
@@ -2800,13 +2960,16 @@ badToken
 ; Find one public declaration among wildcard imports of this module.
 ; The import itself never makes a named block live; remapped references do.
 wildcardTarget	.block
+	suba.w #WILDCARD_LOCAL_BYTES, sp
 	movem.l d2-d7/a0-a3, -(sp)
 	move.w records.Entry.Flags(a3), -(sp)
 	suba.l #layout.NAME_BYTES, sp  ; retain leaf across bindings that relocate names
 	moveq #0, d0
 	move.w records.Entry.ScopeKind(a3), d0
 	subq.w #1, d0
+	lea ImportsLocal.NameB+WILDCARD_SAVED_BYTES+PROXY_FLAGS_BYTES+layout.NAME_BYTES(sp), a1
 	bsr.w entryLeaf
+	bne.w wildcardBad
 	move.l d0, d6
 	cmpi.l #layout.NAME_BYTES-1, d6
 	bhi.w wildcardBad
@@ -2841,7 +3004,9 @@ wildcardItem
 	bne.w wildcardItem
 	moveq #0, d0
 	move.w Item.Target(a3), d0
+	lea ImportsLocal.NameB+WILDCARD_SAVED_BYTES+PROXY_FLAGS_BYTES+layout.NAME_BYTES(sp), a1
 	bsr.w entryName
+	bne.w wildcardBad
 	move.l d0, d4
 	add.w d6, d4
 	addq.w #1, d4
@@ -2870,9 +3035,7 @@ copyWildcardLeaf
 	cmp.w layout.State.Count(a6), d2
 	bhs.w wildcardBad
 	move.l d2, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.IMPORT_ENTRY a6, d0, a0, ImportsLocal.EntryA+WILDCARD_SAVED_BYTES+PROXY_FLAGS_BYTES+layout.NAME_BYTES, ImportsLocal.IndexA+WILDCARD_SAVED_BYTES+PROXY_FLAGS_BYTES+layout.NAME_BYTES, wildcardBad
 	move.w layout.NAME_BYTES(sp), d0
 	bsr.w targetDeclared
 	bne.w wildcardItem
@@ -2899,6 +3062,7 @@ wildcardExit
 	adda.l #layout.NAME_BYTES, sp
 	addq.l #2, sp
 	movem.l (sp)+, d2-d7/a0-a3
+	adda.w #WILDCARD_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; wildcardTarget
@@ -2950,9 +3114,11 @@ tokenName	.block
 	tst.l (sp)+
 	beq.w leaf
 	bsr.w entryName
+	bne.w bad
 	bra.w ok
 leaf
 	bsr.w entryLeaf
+	bne.w bad
 ok
 	cmp.l d0, d0
 	rts
@@ -2963,18 +3129,33 @@ bad
 	rts
 	.bend  ; tokenName
 
-; D0=entry index, A6=scope state. A0/D0=full bytes; D1/A1 scratch.
+; D0=entry index,A1=caller NAME_BYTES buffer,A6=scope state.
+; A0/D0=owned full bytes; D1/A1 scratch.
 entryName	.block
+	movem.l d2/a2-a3, -(sp)
+	suba.w #records.ENTRY_BYTES, sp
+	movea.l a1, a2  ; caller owns returned spelling
 	andi.l #$ffff, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a1
-	adda.l d0, a1
-	moveq #0, d1
-	move.w records.Entry.Length(a1), d1
+	lea layout.LEXICAL_STATE(a6), a0
+	movea.l sp, a1
+	jsr lexical.readEntry
+	bne.w failed
+	moveq #0, d2
+	move.w records.Entry.Length(a1), d2
 	move.l records.Entry.Name(a1), d0
-	lea layout.ARENA(a6), a0
-	jsr nameStore.pointer
-	move.l d1, d0
+	move.l d2, d1
+	movea.l a2, a1
+	jsr lexical.copyName
+	bne.w failed
+	movea.l a2, a0
+	move.l d2, d0
+	cmp.l d0, d0
+	bra.w done
+failed
+	tst.l d0
+done
+	adda.w #records.ENTRY_BYTES, sp
+	movem.l (sp)+, d2/a2-a3
 	rts
 	.bend  ; entryName
 
@@ -2983,6 +3164,7 @@ entryName	.block
 ; declaration before this bare alias token. D1/A1 scratch.
 entryLeaf	.block
 	bsr.w entryName
+	bne.w done
 	movea.l a0, a1
 	move.l d0, d1
 scan
@@ -2994,6 +3176,8 @@ scan
 next
 	subq.w #1, d1
 	bne.w scan
+	cmp.l d0, d0
+done
 	rts
 	.bend  ; entryLeaf
 
@@ -3005,6 +3189,7 @@ next
 ; D2=struct identity+1 (zero for exact symbols); other registers preserved.
 ; No identities are allocated.
 resolveStructMember	.block
+	suba.w #MEMBER_LOCAL_BYTES, sp
 	movem.l d3-d7/a0-a5, -(sp)
 	move.l d0, d2
 	movea.l a2, a4
@@ -3035,16 +3220,22 @@ ancestor
 	beq.w globalBase
 	move.l d7, d0
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	lea layout.LEXICAL_STATE(a6), a0
+	lea ImportsLocal.EntryB+MEMBER_SAVED_BYTES(sp), a1
+	jsr lexical.readEntry
+	bne.w bad
+	movea.l a1, a0
 	moveq #0, d7
 	move.w records.Entry.Owner(a0), d7
 	moveq #0, d4
 	move.w records.Entry.Length(a0), d4
 	move.l records.Entry.Name(a0), d0
-	lea layout.ARENA(a6), a0
-	jsr nameStore.pointer
+	move.l d4, d1
+	lea layout.LEXICAL_STATE(a6), a0
+	lea ImportsLocal.NameA+MEMBER_SAVED_BYTES(sp), a1
+	jsr lexical.copyName
+	bne.w bad
+	lea ImportsLocal.NameA+MEMBER_SAVED_BYTES(sp), a0
 	lea layout.BUFFER(a6), a1
 	move.l d4, d0
 copyPrefix
@@ -3077,6 +3268,7 @@ copyBase
 	add.l d3, d4
 	lea layout.BUFFER(a6), a0
 	move.l d4, d0
+	lea ImportsLocal.EntryB+MEMBER_SAVED_BYTES(sp), a1
 	bsr.w findDeclared
 	bne.w missingCandidate
 	cmp.l d6, d3
@@ -3115,6 +3307,7 @@ copyField
 	sub.l d5, d4
 	lea layout.BUFFER(a6), a0
 	move.l d4, d0
+	lea ImportsLocal.EntryB+MEMBER_SAVED_BYTES(sp), a1
 	bsr.w findDeclared
 	bra.w done  ; a missing member must not fall back to an outer struct
 exactFound
@@ -3127,15 +3320,32 @@ bad
 	moveq #1, d0
 done
 	movem.l (sp)+, d3-d7/a0-a5
+	adda.w #MEMBER_LOCAL_BYTES, sp
 	tst.l d0
 	rts
 	.bend  ; resolveStructMember
 
-; A0/D0=name bytes,A6=scope. D0=status,D1=target,A0=declared entry.
+; Lookup-only binder adapter: discard the copied Entry before returning.
+; A0/D0=name,A1=scope ignored,A6=scope. D0/status,D1=target; no view escapes.
+findDeclaredBind	.block
+	movem.l a0-a1, -(sp)
+	suba.w #records.ENTRY_BYTES, sp
+	movea.l sp, a1
+	bsr.w findDeclared
+	adda.w #records.ENTRY_BYTES, sp
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; findDeclaredBind
+
+; A0/D0=name bytes,A1=caller Entry destination,A6=scope.
+; D0=status,D1=target,A0=caller-owned declared Entry.
 ; Preserve remaining registers; use the scope binder's folded hash chains.
 ; Proxies have separate import chains and are never inserted in these buckets.
 findDeclared	.block
-	movem.l d2-d5/a1-a3, -(sp)
+	movem.l d2-d5/a1-a4, -(sp)
+	suba.w #records.ENTRY_BYTES+records.NAME_BYTES, sp
+	movea.l a1, a4
 	movea.l a0, a2
 	move.l d0, d5
 	moveq #0, d4
@@ -3159,16 +3369,23 @@ candidate
 	tst.w d4
 	beq.w bad
 	subq.w #1, d4
-	mulu.w #records.ENTRY_BYTES, d4
-	movea.l layout.ENTRIES_POINTER(a6), a3
-	adda.l d4, a3
+	move.l d4, d0
+	lea layout.LEXICAL_STATE(a6), a0
+	movea.l sp, a1
+	jsr lexical.readEntry
+	bne.w bad
+	movea.l sp, a3
 	btst #0, records.Entry.Flags+1(a3)
 	beq.w next
 	cmp.w records.Entry.Length(a3), d5
 	bne.w next
-	lea layout.ARENA(a6), a0
+	lea layout.LEXICAL_STATE(a6), a0
+	lea records.ENTRY_BYTES(sp), a1
 	move.l records.Entry.Name(a3), d0
-	jsr nameStore.pointer
+	move.l d5, d1
+	jsr lexical.copyName
+	bne.w bad
+	lea records.ENTRY_BYTES(sp), a0
 	movea.l a2, a1
 	move.l d5, d3
 compare
@@ -3182,7 +3399,13 @@ compare
 	bne.w next
 	subq.l #1, d3
 	bne.w compare
-	movea.l a3, a0
+	movea.l a4, a0
+	movea.l a4, a1
+	moveq #records.ENTRY_BYTES/4-1, d2
+copyEntry
+	move.l (a3)+, (a1)+
+	dbra d2, copyEntry
+	movea.l sp, a3
 	moveq #0, d1
 	move.w records.Entry.Target(a3), d1
 	moveq #0, d0
@@ -3194,7 +3417,8 @@ next
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d2-d5/a1-a3
+	adda.w #records.ENTRY_BYTES+records.NAME_BYTES, sp
+	movem.l (sp)+, d2-d5/a1-a4
 	tst.l d0
 	rts
 	.bend  ; findDeclared
@@ -3244,10 +3468,10 @@ bad
 	.section data, kind=data
 	.priv
 BindingView	.word layout.State.Count, layout.State.Base, layout.State.Current
-	.word layout.ENTRIES_POINTER, layout.ARENA, layout.State.ArenaUsed
+	.word layout.LEXICAL_STATE, layout.LEXICAL_STATE, 0
 	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length, records.Entry.Flags
 	.word records.Entry.Owner
-	.long nameStore.resolve
+	.long lexical.copyName, lexical.readEntry
 	.endsection
 .endif
 .endif

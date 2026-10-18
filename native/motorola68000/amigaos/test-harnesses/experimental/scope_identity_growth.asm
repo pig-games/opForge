@@ -3,6 +3,7 @@
 .module test.amigaos.scope_identity_growth
 .cpu 68020
 .use experimental.amigaos.binary_scopes as scopes
+.use experimental.amigaos.binary_lexical_store as lexical
 .use experimental.amigaos.binary_scope_layout as layout
 .use experimental.amigaos.binary_memory as memory
 .priv
@@ -92,8 +93,12 @@ next
 	.for offset in {scopes.ENTRIES+memory.Block.Pointer, scopes.ENTRIES+memory.Block.Capacity, scopes.ENTRIES+memory.Block.Used, scopes.ARENA+memory.Block.Pointer, scopes.ARENA+memory.Block.Capacity, scopes.ARENA+memory.Block.Used, layout.State.ArenaUsed}
 	move.l Scope+offset, (a0)+
 	.endfor
-	movea.l Scope+scopes.ENTRIES_POINTER, a4
-	adda.l #(NAMES-1)*scopes.ENTRY_BYTES, a4
+	lea Scope+layout.LEXICAL_STATE, a0
+	lea EntryCopy, a1
+	move.l #NAMES-1, d0
+	jsr lexical.readEntry
+	bne.w bad
+	lea EntryCopy, a4
 	.for i in 0..scopes.ENTRY_BYTES/4
 	move.l i*4(a4), LastEntry+i*4
 	.endfor
@@ -109,6 +114,11 @@ next
 	cmp.l (a0)+, d0
 	bne.w bad
 	.endfor
+	lea Scope+layout.LEXICAL_STATE, a0
+	lea EntryCopy, a1
+	move.l #NAMES-1, d0
+	jsr lexical.readEntry
+	bne.w bad
 	.for i in 0..scopes.ENTRY_BYTES/4
 	move.l i*4(a4), d0
 	cmp.l LastEntry+i*4, d0
@@ -165,6 +175,7 @@ Hex	.byte "0123456789ABCDEF"
 Scope	.res byte, scopes.SCRATCH_BYTES
 Snapshot	.res long, 7
 LastEntry	.res byte, scopes.ENTRY_BYTES
+EntryCopy	.res byte, scopes.ENTRY_BYTES
 DosBase	.res long, 1
 OutputHandle	.res long, 1
 ReturnCode	.res long, 1

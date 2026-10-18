@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_data_prepare
 	.module experimental.amigaos.binary_data_prepare
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
@@ -122,9 +123,13 @@ name
 	bcs.w failed
 	cmp.w layout.State.Count(a4), d0
 	bhs.w failed
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a4), a0
-	adda.l d0, a0
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a4), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	bne.w failed
+	lea LexicalEntry, a0
 	btst #records.LABEL_VALUE_BIT, records.Entry.Flags+1(a0)
 	beq.w failed
 nextName
@@ -145,5 +150,9 @@ done
 	tst.l d0
 	rts
 	.bend
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, records.ENTRY_BYTES
 	.endsection
 	.endmodule

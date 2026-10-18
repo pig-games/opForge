@@ -460,6 +460,8 @@ beginCapturedReplay	.block
 	move.l #1, FrontStarted
 	jsr frontend.begin
 	bne.w bad
+	bsr.w configureLexicalStorage
+	bne.w bad
 	move.l #source_control.line, frontend.Frame.SourceControl(a0)
 	jsr source_control.begin
 	bne.w bad
@@ -609,6 +611,8 @@ endSpan
 	bne.w bad
 	moveq #0, d0
 	jsr frontend.endFile
+	bne.w bad
+	bsr.w sealLexicalStorage
 	bne.w bad
 	bsr.w fileSpan
 	lea Records, a1

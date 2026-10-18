@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_binding_layout as layout
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_owner_guards as guards
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.pub
 PLAN_BYTES = layout.HEADER_BYTES
 CANDIDATE_BYTES = layout.CANDIDATE_HEADER_BYTES
@@ -180,7 +181,7 @@ done
 	rts
 	.bend  ; prependWhole
 
-; A0=State,A1=Entry array,D0=source base,D1=count. Finalize once after binding.
+; A0=State,A1=lexical.State,D0=source base,D1=count. Finalize once after binding.
 ; Remove plans with resolved full declarations; remap bases via Entry.Target.
 ; A longest unconditional declaration fixes binding before its value kind exists.
 ; Compact that plan to one candidate; dormant branch/loop candidates stay deferred.
@@ -188,8 +189,9 @@ done
 ; D0/CCR=status; others preserved. Member IDs retain their bare global identity.
 FinalizeFrame	.struct
 Output	.long ?
+Entry	.res records.ENTRY_BYTES
 .endstruct
-FINALIZE_FRAME_BYTES = FinalizeFrame.Output+4
+FINALIZE_FRAME_BYTES = FinalizeFrame.Entry+records.ENTRY_BYTES
 finalize	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.w #FINALIZE_FRAME_BYTES, sp
@@ -210,12 +212,14 @@ plan
 	beq.w complete
 	moveq #0, d0
 	move.w layout.Plan.FullId(a0), d0
+	lea FinalizeFrame.Entry(sp), a1
 	bsr.w entry
 	bne.w done
 	btst #0, records.Entry.Flags+1(a1)
 	bne.w discard
 	moveq #0, d0
 	move.w records.Entry.Target(a1), d0
+	lea FinalizeFrame.Entry(sp), a1
 	bsr.w entry
 	bne.w done
 	btst #0, records.Entry.Flags+1(a1)
@@ -236,10 +240,12 @@ shape
 	; zero=alternatives, one=selected first, two=tail validation
 	moveq #0, d0
 	move.w PLAN_BYTES+layout.Candidate.Base(a0), d0
+	lea FinalizeFrame.Entry(sp), a1
 	bsr.w entry
 	bne.w done
 	moveq #0, d0
 	move.w records.Entry.Target(a1), d0
+	lea FinalizeFrame.Entry(sp), a1
 	bsr.w entry
 	bne.w done
 	btst #0, records.Entry.Flags+1(a1)
@@ -264,11 +270,13 @@ candidate
 	blo.w invalid
 	moveq #0, d0
 	move.w layout.Candidate.Base(a0), d0
+	lea FinalizeFrame.Entry(sp), a1
 	bsr.w entry
 	bne.w done
 	moveq #0, d0
 	move.w records.Entry.Target(a1), d0
 	move.l d0, d1
+	lea FinalizeFrame.Entry(sp), a1
 	bsr.w entry
 	bne.w done
 	cmpi.l #2, d2
@@ -343,7 +351,7 @@ done
 	rts
 	.bend  ; finalize
 
-; A0=State,A1=entries,D0=source base,D1=count. D0/CCR=status,D2=need.
+; A0=State,A1=lexical.State,D0=source base,D1=count. D0/CCR=status,D2=need.
 ; Only multiple alternatives or a conditional candidate require this bounded
 ; acquisition slice. Validate the numeric container before allocating proofs.
 needsGuards	.block
@@ -388,8 +396,12 @@ candidate
 	bcs.w bad
 	cmp.l d7, d1
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d1
-	move.w records.Entry.Flags(a1, d1.l), d1
+	movem.l d0/a0, -(sp)
+	move.l d1, d0
+	movea.l a1, a0
+	bsr.w entryFlags
+	movem.l (sp)+, d0/a0
+	bne.w bad
 	andi.w #records.CONDITIONAL_VALUE, d1
 	beq.w extent
 	moveq #1, d5
@@ -561,14 +573,14 @@ done
 
 OwnerIndexFrame	.struct
 Defined	.long ?
-Entries	.long ?
+Lexical	.long ?
 Guards	.long ?
 Committed	.word ?
 Ambiguous	.word ?
 .endstruct
 OWNER_INDEX_FRAME_BYTES = OwnerIndexFrame.Ambiguous+2
 ; A0=finalized State,A1=known values Owner,A2=source-indexed BE16 owner slots,
-; A3=source-indexed defined cells,A4=source Entry array,D0=base,D1=count.
+; A3=source-indexed defined cells,A4=lexical.State,D0=base,D1=count.
 ; An unconditional declaration commits ownership regardless of current value
 ; kind. Non-declaration snapshots and dormant conditional prefixes retain the
 ; conservative possible-owner check; a known immutable compound ends it.
@@ -580,7 +592,7 @@ indexOwners	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.w #OWNER_INDEX_FRAME_BYTES, sp
 	move.l a3, OwnerIndexFrame.Defined(sp)
-	move.l a4, OwnerIndexFrame.Entries(sp)
+	move.l a4, OwnerIndexFrame.Lexical(sp)
 	move.l d2, OwnerIndexFrame.Guards(sp)
 	move.l d0, d6
 	move.l d1, d7
@@ -672,9 +684,13 @@ membersReady
 	bne.w nextCandidate
 	move.l d1, d0
 	sub.l d6, d0
-	movea.l OwnerIndexFrame.Entries(sp), a0
-	mulu.w #records.ENTRY_BYTES, d0
-	move.w records.Entry.Flags(a0, d0.l), d2
+	movea.l OwnerIndexFrame.Lexical(sp), a0
+	move.l d1, -(sp)
+	bsr.w entryFlags
+	move.l d1, d2
+	move.l (sp)+, d1
+	tst.l d0
+	bne.w bad
 	btst #0, d2
 	beq.w dynamicOwner
 	andi.w #records.CONDITIONAL_VALUE, d2
@@ -691,14 +707,17 @@ dynamicOwner
 	movea.l (sp)+, a0
 	cmpi.l #guards.ACTIVE, d0
 	beq.w certifiedOwner
+snapshotOwner
 	move.l d1, d0
 	sub.l d6, d0
-	mulu.w #records.ENTRY_BYTES, d0
-snapshotOwner
-	move.w records.Entry.Flags(a0, d0.l), d2
-	andi.w #records.CONDITIONAL_VALUE, d2
+	move.l d1, -(sp)
+	bsr.w entryFlags
+	move.l d1, d2
+	move.l (sp)+, d1
+	tst.l d0
+	bne.w bad
+	btst #records.CONDITIONAL_VALUE_BIT, d2
 	bne.w possibleOwner  ; an uncertified snapshot cannot prove a branch inactive
-	move.w records.Entry.Flags(a0, d0.l), d2
 	andi.w #records.MUTABLE, d2
 	bne.w possibleOwner
 	move.l d1, d0
@@ -757,21 +776,42 @@ done
 	rts
 	.bend  ; indexOwners
 	.priv
-; D0=source ID,D6=base,D7=count,A5=entries. D0/CCR=status,A1=Entry.
+; D0=source ID,D6=base,D7=count,A5=lexical.State,A1=caller-owned Entry.
+; D0/CCR=status; all other registers, including the destination, are preserved.
 entry	.block
 	sub.l d6, d0
 	bcs.w bad
 	cmp.l d7, d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l a5, a1
-	adda.l d0, a1
-	moveq #0, d0
+	move.l a0, -(sp)
+	movea.l a5, a0
+	jsr lexical.readEntry
+	movea.l (sp)+, a0
+	tst.l d0
 	rts
 bad
 	moveq #1, d0
 	rts
 	.bend  ; entry
+FlagsLocal	.struct
+Entry	.res records.ENTRY_BYTES
+.endstruct
+FLAGS_LOCAL_BYTES = FlagsLocal.Entry+records.ENTRY_BYTES
+; A0=lexical.State,D0=entry index. D1=flags,D0/CCR=status; others preserved.
+entryFlags	.block
+	move.l a1, -(sp)
+	suba.w #FLAGS_LOCAL_BYTES, sp
+	lea FlagsLocal.Entry(sp), a1
+	jsr lexical.readEntry
+	bne.w done
+	moveq #0, d1
+	move.w records.Entry.Flags(a1), d1
+done
+	adda.w #FLAGS_LOCAL_BYTES, sp
+	movea.l (sp)+, a1
+	tst.l d0
+	rts
+	.bend  ; entryFlags
 ; A0=owned plan Block,D0=required bytes. D0/CCR=status; others kept.
 reserveArena	.block
 	move.l d1, -(sp)

@@ -17,6 +17,7 @@ Reserved	.long ?
 Configured	.long ?
 Failure	.long ?
 Victim	.long ?
+Limit	.long ?  ; owner-selected checked logical extent; payload cache stays bounded
 Io	.res io.CONTEXT_BYTES
 .endstruct
 Row	.struct
@@ -42,25 +43,44 @@ FAILURE_RANGE = 5
 ; A0=zero State,A1=DOS base,A2=existing parent path. D0/CCR=status;
 ; other registers preserved. Failure owns no file or payload; cleanup is safe.
 configure	.block
-	movem.l a0, -(sp)
+	move.l #source.RECORD_LIMIT, d0
+	bra.w configureBounded
+	.bend  ; configure
+
+; Same transport/cache contract as configure, D0=positive owner logical limit.
+; Limits remain below signed offsets; no allocation grows with this value alone.
+; D0/CCR=status; other registers preserved. configure retains source's old limit.
+configureBounded	.block
+	movem.l d1/a0, -(sp)
+	tst.l d0
+	ble.w range
+	move.l d0, d1
 	lea State.Io(a0), a0
 	jsr io.configure
-	movea.l (sp)+, a0
+	movea.l 4(sp), a0
 	tst.l d0
 	bne.w bad
+	move.l d1, State.Limit(a0)
 	move.l #1, State.Configured(a0)
 	moveq #0, d0
-	rts
+	bra.w done
+range
+	move.l #FAILURE_RANGE, State.Failure(a0)
+	moveq #1, d0
+	bra.w done
 bad
 	move.l #FAILURE_IO, State.Failure(a0)
 	moveq #1, d0
+done
+	movem.l (sp)+, d1/a0
+	tst.l d0
 	rts
-	.bend  ; configure
+	.bend  ; configureBounded
 
 ; A0=State,A1=complete packed record,D0=positive bytes <=MAX_RECORD_BYTES.
 ; D0/CCR=status,D1=dense offset on success (zero on failure); others preserved.
-; Records never straddle pages. Total logical extent is bounded by the source
-; record contract, independently of memory.Block's per-allocation limit.
+; Records never straddle pages. Total logical extent is bounded by the owner's
+; configured contract, independently of memory.Block's per-allocation limit.
 append	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a4
@@ -75,7 +95,7 @@ append	.block
 	move.l State.LogicalUsed(a4), d6
 	add.l d5, d6
 	bcs.w bad
-	cmpi.l #source.RECORD_LIMIT, d6
+	cmp.l State.Limit(a4), d6
 	bhi.w bad
 	move.l State.Active(a4), d4
 	beq.w newRow

@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_owner_guards
 	.module experimental.amigaos.binary_owner_guards
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
@@ -186,10 +187,14 @@ inventory
 	bsr.w row
 	bne.w bad
 	movea.l State.Scope(a6), a2
-	move.l d0, d1
-	mulu.w #records.ENTRY_BYTES, d1
-	movea.l layout.ENTRIES_POINTER(a2), a2
-	move.w records.Entry.Flags(a2, d1.l), d1
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a2), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	bne.w bad
+	lea LexicalEntry, a2
+	move.w records.Entry.Flags(a2), d1
 	andi.w #records.MUTABLE+records.ITERATOR+records.LABEL_VALUE+records.CONDITIONAL_VALUE, d1
 	bne.w inventoryNext
 	tst.l Decl.Rhs(a0)
@@ -779,5 +784,9 @@ done
 	tst.l d0
 	rts
 	.bend  ; symbolPure
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, records.ENTRY_BYTES
 	.endsection
 	.endmodule

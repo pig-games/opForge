@@ -4,7 +4,7 @@
 
 ; D0=1 lower this line, 0 skip it, -1 invalid duplicate selection. Other
 ; registers preserved. RequestedModule=0 leaves entry/explicit-order files alone.
-selectLine .block
+selectLine	.block
 	tst.l SelectedFileDerived
 	bne.w lower
 	tst.l RequestedModule
@@ -74,15 +74,7 @@ nameEnd
 compareName
 	cmp.l RequestedNameBytes, d5
 	bne.w skip
-	; Resolve the stable name handle after preparation between selected lines.
-	lea Front, a2
-	movea.l frontend.Frame.Scratch(a2), a2
-	movem.l d0/a0, -(sp)
-	lea frontend.SCOPE_STATE+layout.ARENA(a2), a0
-	move.l RequestedNameOffset, d0
-	jsr nameStore.pointer
-	movea.l a0, a2
-	movem.l (sp)+, d0/a0
+	lea RequestedName, a2
 compare
 	moveq #0, d1
 	move.b (a3)+, d1
@@ -143,7 +135,7 @@ lower
 
 ; A0=first keyword byte,D4=remaining bytes,A1=expected lowercase text,
 ; D3=expected length. On match D0=1 and A0/D4 advance; otherwise D0=0.
-matchSelectionWord .block
+matchSelectionWord	.block
 	cmp.l d3, d4
 	blo.w no
 	move.l d3, d2
@@ -164,7 +156,7 @@ no
 	.bend  ; matchSelectionWord
 
 ; D1=ASCII byte; fold spelling only. Other registers preserved.
-foldSelectionByte .block
+foldSelectionByte	.block
 	cmpi.b #'A', d1
 	blo.w done
 	cmpi.b #'Z', d1

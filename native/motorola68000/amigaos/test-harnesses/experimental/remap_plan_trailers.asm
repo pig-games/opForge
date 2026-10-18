@@ -170,102 +170,120 @@ remap	.block
 	lea Entries, a1
 	move.l #$8000, d1
 	moveq #1, d2
+	lea readFixtureEntry, a2
 	jsr records.remap
 	lea DiagnosticState, a0
 	.BINDING_DIAGNOSTIC_COMMIT d0, a0, DiagnosticView
 	rts
 .bend  ; remap
+; A0=one-row fixture owner,A1=owned Entry destination,D0=index.
+; D0/CCR=status; all other registers preserved. Reject non-fixture identities.
+readFixtureEntry	.block
+	tst.l d0
+	bne.w bad
+	movem.l d1/a0-a1, -(sp)
+	moveq #records.ENTRY_BYTES/4-1, d1
+copy
+	move.l (a0)+, (a1)+
+	dbra d1, copy
+	movem.l (sp)+, d1/a0-a1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; readFixtureEntry
 .endsection
 .section data, kind=data
 DosName	.byte "dos.library", 0
 OutputName	.byte "Work:remap-plan-trailers.bin", 0
 Result	.byte $5a
 Call
-	.byte CallEnd-Call-1,source.FLAG_PLAN
+	.byte CallEnd-Call-1, source.FLAG_PLAN
 	.word 1
-	.byte 7,0,$80,0,0
+	.byte 7, 0, $80, 0, 0
 	.byte source.MACRO_PLAN
 	.long $00ffff00
 	.byte source.PLAN_TOKEN_BYTES
 CallEnd
 Line
-	.byte LineEnd-Line-1,templates.LINE_PLAN_FLAG
+	.byte LineEnd-Line-1, templates.LINE_PLAN_FLAG
 	.word 1
-	.byte 7,0,$80,0,0
+	.byte 7, 0, $80, 0, 0
 	.byte templates.TOKEN_LINE_PLAN
 	.long $00ffff00
 	.byte source.PLAN_TOKEN_BYTES
 LineEnd
 Optional
-	.byte OptionalEnd-Optional-1,templates.LINE_PLAN_FLAG
+	.byte OptionalEnd-Optional-1, templates.LINE_PLAN_FLAG
 	.word 1
-	.byte 7,0,$80,0,0
+	.byte 7, 0, $80, 0, 0
 	.byte templates.TOKEN_OPTIONAL_LINE_PLAN
 	.long $00ffff00
 	.byte source.PLAN_TOKEN_BYTES
 OptionalEnd
 Scalar
- .byte ScalarEnd-Scalar-1,source.FLAG_MUTABLE_SNAPSHOT
- .word 1
- .byte 0,$80,0,0,source.TOKEN_MUTABLE_DECLARATION,2
- .long 6
+	.byte ScalarEnd-Scalar-1, source.FLAG_MUTABLE_SNAPSHOT
+	.word 1
+	.byte 0, $80, 0, 0, source.TOKEN_MUTABLE_DECLARATION, 2
+	.long 6
 ScalarEnd
 Mutable
- .byte MutableEnd-Mutable-1,source.FLAG_MUTABLE_SNAPSHOT
- .word 1
- .byte 0,$80,0,0,source.TOKEN_MUTABLE_DECLARATION,expression.COMPILED_TAG
- .byte MutableProgramEnd-MutableProgram
+	.byte MutableEnd-Mutable-1, source.FLAG_MUTABLE_SNAPSHOT
+	.word 1
+	.byte 0, $80, 0, 0, source.TOKEN_MUTABLE_DECLARATION, expression.COMPILED_TAG
+	.byte MutableProgramEnd-MutableProgram
 MutableProgram
- .byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL,0,$80
- .byte runtime.COMPACT_I8,6,runtime.COMPACT_ADD,runtime.EXPRVM_OPCODE_END
+	.byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL, 0, $80
+	.byte runtime.COMPACT_I8, 6, runtime.COMPACT_ADD, runtime.EXPRVM_OPCODE_END
 MutableProgramEnd
 MutableEnd
 Conditional
- .byte ConditionalEnd-Conditional-1,source.FLAG_MUTABLE_SNAPSHOT
- .word 1
- .byte 0,$80,0,0,source.TOKEN_CONDITIONAL_DECLARATION,expression.COMPILED_TAG
- .byte ConditionalProgramEnd-ConditionalProgram
+	.byte ConditionalEnd-Conditional-1, source.FLAG_MUTABLE_SNAPSHOT
+	.word 1
+	.byte 0, $80, 0, 0, source.TOKEN_CONDITIONAL_DECLARATION, expression.COMPILED_TAG
+	.byte ConditionalProgramEnd-ConditionalProgram
 ConditionalProgram
- .byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL,0,$80
- .byte runtime.COMPACT_I8,6,runtime.COMPACT_ADD,runtime.EXPRVM_OPCODE_END
+	.byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL, 0, $80
+	.byte runtime.COMPACT_I8, 6, runtime.COMPACT_ADD, runtime.EXPRVM_OPCODE_END
 ConditionalProgramEnd
 ConditionalEnd
 ZeroCall
- .byte ZeroCallEnd-ZeroCall-1,source.FLAG_PLAN
- .word 1
- .byte 7,0,0,0,0,source.MACRO_PLAN
- .long 0
- .byte source.PLAN_TOKEN_BYTES
+	.byte ZeroCallEnd-ZeroCall-1, source.FLAG_PLAN
+	.word 1
+	.byte 7, 0, 0, 0, 0, source.MACRO_PLAN
+	.long 0
+	.byte source.PLAN_TOKEN_BYTES
 ZeroCallEnd
 WrongWidth
- .byte WrongWidthEnd-WrongWidth-1,source.FLAG_PLAN
- .word 1
- .byte 7,0,0,0,0,source.MACRO_PLAN
- .long $00ffff00
- .byte 5
+	.byte WrongWidthEnd-WrongWidth-1, source.FLAG_PLAN
+	.word 1
+	.byte 7, 0, 0, 0, 0, source.MACRO_PLAN
+	.long $00ffff00
+	.byte 5
 WrongWidthEnd
 ZeroLine
- .byte ZeroLineEnd-ZeroLine-1,source.LINE_PLAN_FLAG
- .word 1
- .byte 7,0,0,0,0,source.LINE_PLAN
- .long 0
- .byte source.PLAN_TOKEN_BYTES
+	.byte ZeroLineEnd-ZeroLine-1, source.LINE_PLAN_FLAG
+	.word 1
+	.byte 7, 0, 0, 0, 0, source.LINE_PLAN
+	.long 0
+	.byte source.PLAN_TOKEN_BYTES
 ZeroLineEnd
 MixedLine
- .byte MixedLineEnd-MixedLine-1,source.FLAG_PLAN+source.LINE_PLAN_FLAG
- .word 1
- .byte 7,0,0,0,0,source.LINE_PLAN
- .long $00ffff00
- .byte source.PLAN_TOKEN_BYTES
+	.byte MixedLineEnd-MixedLine-1, source.FLAG_PLAN+source.LINE_PLAN_FLAG
+	.word 1
+	.byte 7, 0, 0, 0, 0, source.LINE_PLAN
+	.long $00ffff00
+	.byte source.PLAN_TOKEN_BYTES
 MixedLineEnd
 MissingCall
- .byte MissingCallEnd-MissingCall-1,source.FLAG_PLAN
- .word 1
- .byte 7,0,0,0,0
+	.byte MissingCallEnd-MissingCall-1, source.FLAG_PLAN
+	.word 1
+	.byte 7, 0, 0, 0, 0
 MissingCallEnd
 EmptyCall
- .byte EmptyCallEnd-EmptyCall-1,source.FLAG_PLAN
- .word 1
+	.byte EmptyCallEnd-EmptyCall-1, source.FLAG_PLAN
+	.word 1
 EmptyCallEnd
 .endsection
 .section bss, kind=bss
@@ -284,5 +302,5 @@ DiagnosticView	.res byte, binding_diagnostic.View.Owner+2
 .endif
 .endif
 .endsection
-.output "remap-plan-trailers.hunk", format=hunk, sections=entry,code,data,bss
+.output "remap-plan-trailers.hunk", format=hunk, sections=entry, code, data, bss
 .endmodule

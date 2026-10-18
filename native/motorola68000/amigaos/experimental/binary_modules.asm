@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_modules
 	.module experimental.amigaos.binary_modules
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.include "telemetry_macros.i"
 	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_binding_records as records
@@ -262,7 +263,7 @@ done
 	rts
 	.bend  ; check
 
-; D0=module source index,A0=metadata,A1=Entry block descriptor,A2=name store,
+; D0=module source index,A0=metadata,A1=lexical.State,A2=unused,
 ; A3=scope state,A4=source binder callback. Caller proves root scope and ID bounds.
 ; Build dotted lexical prefixes separately from module identity. Binder follows
 ; writer ABI and preserves D3-D7/A2-A6. D0/CCR=status, other registers preserved.
@@ -287,26 +288,25 @@ open	.block
 	suba.l d1, a0
 	bne.w bad  ; explicit module identities cannot reopen
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l memory.Block.Pointer(a5), a0
-	adda.l d0, a0
+	movea.l a5, a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	bne.w bad
+	lea LexicalEntry, a0
 	moveq #0, d0
 	move.l records.Entry.Name(a0), d0
 	moveq #0, d6
 	move.w records.Entry.Length(a0), d6
-	movea.l a2, a0
-	jsr nameStore.pointer
-	movea.l a0, a2
+	movea.l a5, a0
+	movea.l sp, a1
+	move.l d6, d1
+	jsr lexical.copyName
+	bne.w bad
+	movea.l sp, a2
 	cmpi.l #records.NAME_BYTES-1, d6
 	bhi.w bad
-	movea.l a2, a0
-	movea.l sp, a1
-	move.l d6, d0
+	tst.l d6
 	beq.w bad
-copyName
-	move.b (a0)+, (a1)+
-	subq.l #1, d0
-	bne.w copyName
 	movea.l sp, a2
 	moveq #0, d5
 	moveq #0, d4
@@ -332,10 +332,15 @@ scan
 	sub.w State.Base(a6), d1
 	andi.l #$ffff, d1
 	move.l d1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l memory.Block.Pointer(a5), a0
-	adda.l d0, a0
-	move.w d4, records.Entry.Owner(a0)
+	move.l d0, LexicalIndex
+	movea.l a5, a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	bne.w bad
+	move.w d4, records.Entry.Owner(a1)
+	move.l LexicalIndex, d0
+	jsr lexical.writeEntry
+	bne.w bad
 	addq.w #1, d1
 	move.w d1, d4
 next
@@ -343,11 +348,15 @@ next
 	bra.w scan
 ready
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l memory.Block.Pointer(a5), a0
-	adda.l d0, a0
-	move.w d4, records.Entry.Owner(a0)
-	move.w #KIND_MODULE, records.Entry.ScopeKind(a0)
+	movea.l a5, a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	bne.w bad
+	move.w d4, records.Entry.Owner(a1)
+	move.w #KIND_MODULE, records.Entry.ScopeKind(a1)
+	move.l d7, d0
+	jsr lexical.writeEntry
+	bne.w bad
 	move.l d7, d0
 	andi.l #$ffff, d0
 	add.l d0, d0
@@ -387,5 +396,10 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; close
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, records.ENTRY_BYTES
+LexicalIndex	.res long, 1
 	.endsection
 	.endmodule

@@ -7,6 +7,7 @@
 .use experimental.amigaos.binary_record_view as views
 .use experimental.amigaos.binary_source as source
 .use experimental.amigaos.binary_scopes as scopes
+.use experimental.amigaos.binary_lexical_store as lexical
 .use experimental.amigaos.binary_scope_layout as layout
 .use experimental.amigaos.binary_binding_records as records
 .use experimental.amigaos.binary_modules as modules
@@ -73,10 +74,18 @@ done
 cases	.block
 	lea Scope, a2
 	move.w #3, layout.State.Count(a2)
-	lea Entries, a0
-	move.l a0, layout.ENTRIES_POINTER(a2)
-	move.l #3*records.ENTRY_BYTES, layout.ENTRIES+memory.Block.Used(a2)
-	move.l #3*records.ENTRY_BYTES, layout.ENTRIES+memory.Block.Capacity(a2)
+	; Preserve the original three empty lexical rows through their owning API.
+	; Fixture identities remain 0..2; module ownership is supplied independently.
+	moveq #0, d7
+appendFixture
+	lea layout.LEXICAL_STATE(a2), a0
+	lea EntryFixture, a1
+	move.l d7, d0
+	jsr lexical.appendEntry
+	bne.w bad
+	addq.l #1, d7
+	cmpi.l #3, d7
+	blo.w appendFixture
 	lea Owners, a0
 	move.l a0, layout.MODULE_STATE+modules.OWNERS_POINTER(a2)
 	move.l #6, layout.MODULE_STATE+modules.OWNERS+memory.Block.Used(a2)
@@ -151,6 +160,8 @@ finish
 	jsr views.finish
 	lea Scratch, a0
 	jsr memory.release
+	lea Scope+layout.LEXICAL_STATE, a0
+	jsr lexical.release
 	move.l (sp)+, d0
 	tst.l d0
 	rts
@@ -214,7 +225,7 @@ InputEnd
 .align 4
 Scope	.res byte, scopes.SCRATCH_BYTES
 Graph	.res byte, graph.SCRATCH_BYTES
-Entries	.res byte, 3*records.ENTRY_BYTES
+EntryFixture	.res byte, records.ENTRY_BYTES
 Scratch	.res byte, memory.Block.Used+4
 View	.res byte, views.FRAME_BYTES
 DosBase	.res long, 1

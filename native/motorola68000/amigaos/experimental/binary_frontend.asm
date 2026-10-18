@@ -3,6 +3,7 @@
 ; @opforge-owner: experimental.amigaos.binary_frontend
 	.module experimental.amigaos.binary_frontend
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.include "memory_telemetry.i"
 	.include "capture_telemetry.i"
 	.include "lazy_audit.i"
@@ -339,7 +340,8 @@ clearBuckets
 	move.l #1, LINE_NUMBER(a6)
 	jsr scopes.count
 	move.l d0, Frame.NameCount(a5)
-	moveq #0, d0
+	movea.l a5, a0
+	bsr.w checkLexicalSession
 	bra.w done
 failed
 	moveq #1, d0
@@ -396,12 +398,22 @@ reserved
 	subq.l #1, d4
 	bra.w reserved
 entries
-	movea.l layout.ENTRIES_POINTER(a2), a1
+	moveq #0, d5
 copy
 	tst.l d2
 	beq.w ok
+	move.l a0, -(sp)
+	move.l d5, d0
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a2), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	lea LexicalEntry, a1
+	movea.l (sp)+, a0
+	bne.w bad
 	move.w binding_records.Entry.MemberId(a1), (a0)+
-	adda.w #binding_records.ENTRY_BYTES, a1
+	addq.l #1, d5
 	subq.l #1, d2
 	bra.w copy
 ok
@@ -1150,6 +1162,14 @@ segmentConsumed
 failed
 	moveq #1, d0
 done
+	tst.l d0
+	bne.w checked
+	movea.l a5, a0
+	bsr.w checkLexicalSession
+	tst.l d0
+	beq.w checked
+	clr.l Frame.Used(a5)
+checked
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -2710,7 +2730,9 @@ sourceGraphReady
 	lea SCOPE_STATE(a6), a0
 	.HOTSPOT_CALL #HOTSPOT_SCOPE_COUNT, scopes.count
 	move.l d0, Frame.NameCount(a5)
-	moveq #0, d0
+	movea.l a5, a0
+	bsr.w checkLexicalSession
+	bne.w failed
 	.HOTSPOT_LEAVE #HOTSPOT_RECORD_PROCESS
 	rts
 sourceControlReady
@@ -2913,6 +2935,15 @@ graphLineDone
 failed
 	moveq #1, d0
 done
+	tst.l d0
+	bne.w checked
+	movea.l a5, a0
+	bsr.w checkLexicalSession
+checked
+	tst.l d0
+	beq.w checkedOk
+	clr.l Frame.Used(a5)
+checkedOk
 	.MEMORY_DETAIL_END #3
 	tst.l d0
 	.HOTSPOT_LEAVE #HOTSPOT_RECORD_PROCESS
@@ -3124,6 +3155,9 @@ endFile	.block
 	jsr graph.endFile
 	bne.w done
 resetFileLine
+	movea.l a2, a0
+	bsr.w checkLexicalSession
+	bne.w done
 	move.l #1, LINE_NUMBER(a1)
 done
 	movem.l (sp)+, a0-a2
@@ -3339,6 +3373,8 @@ indexBlocks	.block
 	move.l a2, d1
 	beq.w indexBad
 	; Retire all name pages before reusing First as the numeric index block.
+	lea SCOPE_STATE+layout.LEXICAL_STATE(a2), a0
+	jsr lexical.retireNames
 	lea SCOPE_STATE+scopes.ARENA(a2), a0
 	jsr nameStore.release
 	clr.l SCOPE_STATE+layout.State.ArenaUsed(a2)
@@ -3417,9 +3453,12 @@ done
 ; registers; CCR reflects D0.
 finish	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	moveq #0, d7
 	movea.l Frame.Scratch(a0), a6
 	move.l a6, d0
 	beq.w resetControl
+	bsr.w checkLexicalSession
+	move.l d0, d7
 	movea.l a6, a0
 	adda.l #STATEMENT_STATE, a0
 	jsr statement_session.finish
@@ -3457,11 +3496,26 @@ resetControl
 	moveq #0, d1
 	suba.l a0, a0
 	jsr control.tkvmSetProgramStateTable68000
-	moveq #0, d0
+	move.l d7, d0
 	movem.l (sp)+, d1-d7/a0-a6
 	rts
 	.bend  ; finish
 	.priv
+; A0=frontend Frame. D0/CCR=sticky lexical I/O status; other registers kept.
+; Check before publication or lexical release so boolean fallbacks cannot hide I/O.
+checkLexicalSession	.block
+	movem.l a0-a1, -(sp)
+	movea.l Frame.Scratch(a0), a1
+	move.l a1, d0
+	beq.w done
+	lea SCOPE_STATE+layout.LEXICAL_STATE(a1), a0
+	jsr lexical.check
+done
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; checkLexicalSession
+
 ; Validate only the package surfaces consumed by this frontend. Execution has
 ; independent bounds checks for candidate/program tables.
 configure	.block
@@ -4465,5 +4519,9 @@ different
 	.section data, kind=data
 AsciiSpelling	.byte "ascii"
 PetsciiSpelling	.byte "petscii"
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, binding_records.ENTRY_BYTES
 	.endsection
 	.endmodule

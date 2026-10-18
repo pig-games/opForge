@@ -1,111 +1,119 @@
 # Preparation ownership and capture storage
 
-Status, 2026-10-18: module discovery/configuration can now publish dependency-complete
-modules through the shared semantic frontend with resident capture and retire their raw captures before
-acquiring later dependencies. Complete graphs keep the existing scheduled path.
-Bounded disk capture keeps complete-graph scheduling to avoid overlapping growing
-session owners. Resident capture remains the default; `--capture-dir DIR` selects bounded disk
-capture and a bounded prepared-record store. Module ranges are finalized through views;
-the contiguous assembly input is rebuilt only after frontend scratch retires. Lexical names are paged.
-Parity remains paused. See [separate resource results](native-performance-diagnosis.md)
-and the [implemented boundary and remaining object design](native-fragment-preparation.md).
+Status, 2026-10-18: module publication, bounded prepared records and sequential
+lexical storage sealing are implemented in the working candidate. The new sealing
+boundary saves **1.54 MiB of frozen peak heap**, but its runtime cost blocks release
+promotion. Current-source self-hosting also fails at qualified-register macro
+binding; the exact frozen full-build comparison is not a current-source proof.
+Preserve the reference and pause for review before further implementation.
+Parity remains paused. See [measurements and proof limits](native-performance-diagnosis.md)
+and [the remaining object boundary](native-fragment-preparation.md).
 
-## Maintained decisions
+## Maintained storage policies
 
-| Mechanism | Decision |
+| Mechanism | Current decision |
 |---|---|
-| Dependency-first publication | Default for resident open-graph discovery; shared replay publishes owned numeric records/templates, then retires captures. Global binding/layout remain. No new selector. |
-| Complete-graph replay | Retained for all bounded-disk inputs, explicit closed manifests and resident inputs closing before first publication. Uses the same replay helper and normal global completion. |
-| Paged lexical names | Default storage: names stay contiguous within 64 KiB pages; entries hold numeric handles and diagnostics use checked resolution. |
-| Module-indexed prepared records | Disk policy uses a 128 KiB page cache and checked module views through global binding/layout and reachability. Final contiguous records are allocated after frontend retirement. Resident allocation remains the reference. |
-| Finished configuration/discovery | Release after final seeding, before remaining semantic replay. Include paths and independent I/O survive. |
-| Identity record layout reuse | Resident mode retains validated complete contiguous streams; resident reorders/partial selections copy. Disk mode publishes ordering metadata before late reconstruction. |
-| Bounded disk backing | One explicit directory/storage policy, not another language implementation or persistent cache. |
-| Chunked capture | Sole raw-capture representation, shared by resident/disk modes. |
-| Macro-only deferral, first-use candidates/plans, binary token prototype, fragment envelope | Removed with switches and experiment-only tests; no established runtime gain. |
-| In-build include-text reuse | Removed: no preparation avoided, extra heap and no demonstrated speed gain. |
-| Persistent prepared declaration leaves | Removed: only 1.73% fewer expression compilations, no peak benefit, no demonstrated speed gain, and incomplete observation equivalence. |
+| Resident capture | Default; dependency-first publication can retire completed raw captures before acquiring later modules. |
+| Complete-graph replay | Retained for disk inputs, explicit closed manifests and resident graphs closing before first publication. Same semantic frontend. |
+| `--capture-dir DIR` | One disk policy for raw capture, prepared records and the candidate lexical backing; no additional experiment switch. |
+| Chunked raw capture | Sole capture representation; 32 KiB shared chunks and dedicated large records. |
+| Prepared records | Disk policy caps payload cache at 128 KiB through finalization/reachability; reconstructs ordered contiguous assembly input after frontend retirement. |
+| Lexical entries/names | Resident policy keeps contiguous entries and paged names. Disk candidate seals completed active ranges behind stable IDs and a 128 KiB cache. Both use owned copies. |
+| Module metadata | Owners, origins and visibility arrays remain resident; private dependency closure is not assumed. |
+| Macro-only deferral/audits, first-use plans/candidates, binary token prototype, fragment envelope | Removed; no demonstrated whole-build benefit justified retention. |
+| In-build include-text reuse, persistent prepared leaf cache | Removed; inadequate savings and incomplete reuse equivalence. |
 
-Normal packed macros, declaration context and shared VM/package boundaries remain.
-Git is the archive for removed implementations. No macro/cache experiment switch stack
-remains. The binary token prototype is not a prerequisite of this pipeline.
+Normal packed macros, existing binding context and shared VM/package boundaries
+remain. Git is the archive; no macro/cache selector stack remains.
 
-## Capture storage and lifetimes
+## Capture acquisition and retirement
 
-The append-only store uses 32 KiB chunks; records larger than 4 KiB receive dedicated
-allocations rounded to eight bytes. Dedicated allocations and physical file boundaries
-seal shared writers. Regions can span chunks, and chunks can contain several regions.
-Directory rows may move; logical offsets never do. A record stays contiguous.
-Sequential resolution caches a row; other resolution uses binary search. There is
-no per-token storage indirection or original-text replay.
+Shared writers use 32 KiB chunks. Records larger than 4 KiB receive dedicated
+allocations rounded to eight bytes. Dedicated records and physical file boundaries
+seal writers. Directory rows may move; logical offsets never do. Each record stays
+contiguous. Sequential resolution caches a row; other resolution uses binary search.
 
-Disk mode spools immutable chunks into one process-private DOS file. A 1 MiB payload
-budget includes writers and counted reader leases; directories, temporary records,
-executable, stack and OS buffers are outside it. Eviction skips pins and checked
-reloads may use different physical addresses. Oversized records, pin exhaustion or
-I/O failure produce an explicit error, never an unbounded RAM fallback.
+Disk mode spools immutable chunks to a process-private DOS file. Its 1 MiB payload
+budget includes writers and counted reader leases; directory, temporary records,
+executable, stack and OS are outside it. Eviction skips pins and checked reloads may
+move payload. I/O failure, oversized records or pin exhaustion fail explicitly,
+without an unbounded RAM fallback. Use an existing real disk directory, for example
+`--capture-dir Development:opforge-scratch`; `T:` may be RAM.
 
-Use an existing writable disk directory, such as
-`--capture-dir Development:opforge-scratch`; `T:` may be RAM. The resident policy
-performs no scratch-file I/O. Normal cleanup removes only owned paths. A crash can
-leave private scratch files for manual recovery.
+Retirement validates disjoint ranges and pinned rows before mutation. Fully retired
+chunks release payload and become checked tombstones; partially shared chunks keep
+live bytes. Views cannot cross retired boundaries or reload fully retired payload.
+Unselected/shared gaps survive final capture cleanup. Scratch-file length need not
+shrink when RAM ownership retires. Normal cleanup removes only owned paths; crashes
+can leave process-private files for manual recovery.
 
-## Publication and retirement
+## Publication, configuration and includes
 
-The scheduler preserves dependency/source order and requests a module only when its
-configuration dependencies are ready. Configuration and semantic frontends own
-independent storage. Session switching restores shared VM state at a stable frontend
-address. Immutable parameter snapshots seed incrementally; complete key sets and
-values must agree across repeated imports. Consumed maps are not overwritten.
+The scheduler preserves dependency and source order. Configuration and semantic
+frontends own independent state. Session switching restores shared VM control at a
+stable frontend address; no borrowed line crosses the switch. Immutable parameter
+snapshots seed by spelling. Repeated imports require equal complete key/value sets;
+consumed section maps retain their state.
 
-Shared replay owns every retained record, typed value and template before returning.
-Only then is its graph node acknowledged and its raw range retired. During
-interleaved resident replay, includes retire
-their acquired ranges after replay, before the suspended parent resumes. Complete-graph
-paths retain them until final capture cleanup. Definition-relative
-lookup and macro declaration context remain unchanged. Final section-map geometry
-uses retained numeric recipes, so a later importing module can still map an earlier
-published logical section.
+A successful replay owns retained records, values and templates before graph
+acknowledgement and capture retirement. Includes suspend their parent cursor and
+preserve origin/expansion context. In resident interleaved replay, included captures
+retire after replay and before parent continuation. Complete-graph paths keep them
+until capture cleanup. Inactive branches and unexpanded templates do not acquire
+files. Definition-relative paths remain available for later active includes.
 
-Retirement validates disjoint ranges and rejects pinned rows before mutation.
-Fully retired rows release payload and become checked tombstones; partially shared
-chunks retain live bytes. Views cannot cross retired boundaries. Disk payload is
-not reloaded after full retirement, while spool offsets remain stable. Unselected
-or still-shared capture gaps survive until final capture cleanup. This is not a
-claim that all lexical storage retires immediately after each module.
+After configuration closes, final snapshots seed before configuration scratch,
+graph and physical discovery retire. The remaining schedule transfers to semantic
+ownership. Disk policy retains complete-graph scheduling because overlapping two
+growing sessions previously increased peak. All paths keep normal failure cleanup.
 
-Once configuration closes, the remaining schedule transfers to semantic ownership.
-Final snapshots seed before configuration scratch/graph and physical discovery retire.
-Origin paths and include roots remain for active includes. Both partial sessions have
-normal owned failure cleanup. Existing capture phase markers now follow the active
-session; no new observer or record schema was introduced.
+## Sequential lexical storage sealing
 
-## Retained state and the next boundary
+Successful semantic module publication seals only the newly appended lexical range.
+Public/interface facets remain retained; private entries and canonical names move
+to checked backing offsets. An eight-byte row per global identity resolves entry
+and canonical spelling locations. Active arenas are physically freed after successful
+publication. Serialized data contains IDs and offsets, never memory pointers.
 
-This pipeline shortens source lifetimes; it does not avoid configuration or semantic
-work. It does not yet replace configuration with a cheap structural-only scan.
-Global semantic scratch, names and exports/templates still grow across modules.
-Disk prepared-record payload no longer does: four 32 KiB pages plus a directory
-replace the growing contiguous preparation buffer. Global completion resolves binding
-proxies/member identities and section recipes against the full build before ordinary
-layout/emission.
+Closing a module does not close all its dependencies. Later imports, templates,
+member identities and binding can still read or change private metadata. Readers
+therefore receive caller-owned entry/name copies; mutations explicitly write back.
+No page pointer escapes its lease. Stable global IDs preserve the existing late
+binding and layout order. Canonical-name sharing survives aliasing and retirement.
+The backing cache has four 32 KiB pages; dirty changes persist before eviction.
 
-The prepared store is mutable during finalization. Dirty pages write before eviction;
-leases protect reads and mapped views stop at module boundaries. Module ranges and
-origins retain offsets, not payload pointers. Existing layout, output and binding
-phases traverse whole-record page batches in their original order. Reachability
-retains numeric decisions in an independently owned index. Runtime values, bindings,
-parameters and member keys export before frontend retirement; only then are ordered
-records reconstructed and omitted blocks marked. The store and its private DOS file
-are released before assembly. The old disk-growth helper and its tests are removed.
-No new storage selector or observer framework was introduced.
+Storage errors are sticky and checked before successful frontend publication or
+cleanup, so boolean lookup fallbacks cannot turn I/O failure into ordinary absence.
+Names retire at the existing post-binding numeric frontier. Entries remain readable
+until their later numeric consumers finish. Partial sealing retains normal owned
+cleanup. The resident control uses the same APIs without module spooling.
 
-A real `.ofm` owner must replace build-global identities with object-local IDs,
-checked offsets and explicit remapping. It must preserve unresolved expressions,
-relocation/relaxation recipes and ordered preparation observations. Only after all
-later consumers have transferred can source-oriented prepared state retire. A common
-resident/disk object representation and sparse whole-block support remain future work.
-The [object design](native-fragment-preparation.md) describes these constraints.
+This is **storage sealing**, not semantic finalization, module-local ID remapping
+or persistent `.ofm` serialization. Module owner/origin/flag arrays, typed values,
+schemas, templates, import state and plans still have build-wide lifetimes.
+The current-source binding failure and measured runtime regression mean this
+candidate is not ready for promotion;
+see the proposed buffer reuse and resident lookup metadata in the [diagnosis](native-performance-diagnosis.md#decision-and-next-step).
 
-No 2 MiB fit is claimed. Resource comparisons report tracked heap independently
-from executable/stack/OS costs; see the [current distance to target](native-performance-diagnosis.md#current-qualification-and-distance-to-target).
+## Prepared records and the remaining frontier
+
+Prepared-record module views cap reads at module boundaries. Dirty pages write
+before eviction; leases protect borrowed views. Layout, output, binding and remapping
+traverse whole-record batches in their original order. Late section-map recipes
+preserve geometry until the full map set is known. Reachability records whole-block
+decisions independently, preserving internal label fallthrough.
+
+Runtime bindings, typed values, configuration and member IDs transfer before frontend
+retirement. Only then are ordered records reconstructed and omitted blocks marked.
+Prepared backing releases before assembly; `beginSizing` retains its no-growth
+contract. Resident identity layouts can reuse validated complete streams; reordered
+or partial resident layouts copy.
+
+Preparation still processes applicable module bodies and uses full configuration
+semantics, not a cheap structural-only scan. A real `.ofm` must own local identities,
+exports, templates and unresolved relocation/layout/observation recipes before
+source-oriented owners can retire. A final-only cache cannot reduce an earlier peak.
+
+No 2 MiB fit is claimed. The frozen candidate's tracked heap alone is 6.59 MiB;
+prepared and assembly live heap remain 2.83 and 4.71 MiB, excluding executable,
+stack and OS. Resource results and current qualification are reported separately.

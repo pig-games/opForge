@@ -162,6 +162,16 @@ fn native_prepared_store_probe_save_image() {
     );
 }
 
+#[test]
+#[ignore = "builds the bounded lexical sealing component probe outside target"]
+fn native_lexical_store_probe_save_image() {
+    save_capture_store_probe(
+        "tests.amigaos.lexical_store_probe",
+        "OPFORGE_LEXICAL_STORE_SAVE_DIR",
+        "lexical-store-probe-memory.hunk",
+    );
+}
+
 fn save_capture_store_probe(probe_module: &str, destination_variable: &str, filename: &str) {
     let root = super::native_fragment_controls::root();
     let destination = PathBuf::from(

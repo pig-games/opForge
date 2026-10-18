@@ -30,14 +30,15 @@ MemberId	.word ?  ; immutable global bare field key; $ffff until declared
 OriginalId	.word ?  ; original complete name ID for BINDING_PROXY
 .endstruct
 ENTRY_BYTES = Entry.OriginalId+2
-REMAP_SAVED_BASE = 7*4; D1-D7 precede saved A0 in remap's MOVEM frame
+REMAP_SAVED_BASE = 7*4+REMAP_LOCAL_BYTES; D1-D7 precede saved A0 in remap's MOVEM frame
 ENCODING_NAME_HIGH_BIT = 7
 ENCODING_NAME = 1<<(ENCODING_NAME_HIGH_BIT+8); independent non-value identity namespace
 REFERENCED = 2
 OPTIONAL_REFERENCED = 512
 IMPORT_PROXY_BIT = 3
 IMPORT_PROXY = 1<<IMPORT_PROXY_BIT; preparation-only imported/qualified occurrence
-CONDITIONAL_VALUE = 1<<11; preparation retains candidate immutable definitions
+CONDITIONAL_VALUE_BIT = 11
+CONDITIONAL_VALUE = 1<<CONDITIONAL_VALUE_BIT; preparation retains candidate immutable definitions
 MUTABLE_BIT = 8
 MUTABLE = 1<<MUTABLE_BIT
 ITERATOR_HIGH_BIT = 2
@@ -63,12 +64,19 @@ NAMESPACE_TEMPLATE = 1
 NAME_BYTES = 256
 	.section code, kind=code
 
-; A0=packed records,D0=bytes,A1=Entry array,
-; D1=source ID base,D2=entry count. D0/CCR=status; other registers preserved.
+; A0=packed records,D0=bytes,A1=checked reader context (normally lexical.State),
+; A2=checked readEntry callback; D1=source ID base,D2=entry count. D0/CCR=status; other registers preserved.
 ; Compact and canonical typed payloads are skipped by their encoded widths. Only
 ; symbol operands are rewritten, with their original BE/LE representation.
+RemapLocal	.struct
+Reader	.long ?
+.endstruct
+REMAP_LOCAL_BYTES = RemapLocal.Reader+4
+RETURN_BYTES = 4
 remap	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #REMAP_LOCAL_BYTES, sp
+	move.l a2, RemapLocal.Reader(sp)
 	movea.l a1, a6
 	move.l d1, d6
 	move.l d2, d7
@@ -384,11 +392,17 @@ bad
 	.BINDING_REMAP_FAILURE a0, a5, REMAP_SAVED_BASE
 	moveq #1, d0
 done
+	adda.w #REMAP_LOCAL_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
 	.bend  ; remap
 	.priv
+
+IdentityLocal	.struct
+Entry	.res ENTRY_BYTES
+.endstruct
+IDENTITY_LOCAL_BYTES = IdentityLocal.Entry+ENTRY_BYTES
 
 ; D0=ID; D1=final ID,D0/CCR=status. A1 scratch; package IDs remain unchanged.
 identity	.block
@@ -397,11 +411,22 @@ identity	.block
 	bcs.w ok
 	cmp.l d7, d0
 	bhs.w bad
-	mulu.w #ENTRY_BYTES, d0
-	movea.l a6, a1
-	adda.l d0, a1
+	move.l a2, -(sp)
+	movea.l RemapLocal.Reader+RETURN_BYTES+4(sp), a2
+	movem.l a0-a1, -(sp)
+	suba.w #IDENTITY_LOCAL_BYTES, sp
+	movea.l a6, a0
+	lea IdentityLocal.Entry(sp), a1
+	jsr (a2)
+	bne.w readFailed
 	moveq #0, d1
 	move.w Entry.Target(a1), d1
+readFailed
+	adda.w #IDENTITY_LOCAL_BYTES, sp
+	movem.l (sp)+, a0-a1
+	movea.l (sp)+, a2
+	tst.l d0
+	bne.w bad
 ok
 	moveq #0, d0
 	rts

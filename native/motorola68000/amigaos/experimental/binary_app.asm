@@ -11,6 +11,8 @@
 .error "chunked capture does not support the contiguous-region lifetime observer"
 .endif
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
+	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_frontend as frontend
 	.use experimental.amigaos.binary_statement_execution as statement_execution
 	.use experimental.amigaos.binary_capture as capture
@@ -570,6 +572,8 @@ load
 	move.l #1, FrontStarted
 	jsr frontend.begin
 	.MEMORY_SETUP_RESULT DosBase, #PROGRESS_FRONTEND_BEGIN
+	bne.w closeBad
+	bsr.w configureLexicalStorage
 	bne.w closeBad
 	jsr source_control.begin
 	.MEMORY_SETUP_RESULT DosBase, #PROGRESS_SOURCE_CONTROL_BEGIN
@@ -2018,6 +2022,7 @@ done
 	rts
 	.bend  ; copy
 	.include "binary_app_prepared_store.i"
+	.include "binary_app_lexical_store.i"
 	.include "binary_source_static_include.i"
 	.include "binary_source_schedule.i"
 	.include "binary_module_pipeline.i"
@@ -2110,7 +2115,6 @@ CandidatePaths	.res byte, memory.Block.Used+4
 DeclarationBlock	.res byte, memory.Block.Used+4
 IndexOverflow	.res long, 1
 RequestedModule	.res long, 1
-RequestedNameOffset	.res long, 1
 RequestedNameBytes	.res long, 1
 SelectionState	.res long, 1
 SelectedFileDerived	.res long, 1
@@ -2233,5 +2237,9 @@ Prefix	.res byte, 2
 PrefixBytes	.res long, 1
 WritePointer	.res long, 1
 WriteBytes	.res long, 1
+	.endsection
+	.section bss, kind=bss
+LexicalEntry	.res byte, records.ENTRY_BYTES
+RequestedName	.res byte, records.NAME_BYTES
 	.endsection
 	.endmodule

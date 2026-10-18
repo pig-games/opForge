@@ -1,186 +1,182 @@
 # Native runtime and memory diagnosis
 
-Status, 2026-10-18: bounded prepared-record storage reduces the disk-backed frozen
-full-build peak from **10,489,408 to 8,525,376 B (−18.72%)**. Module ranges are read
-through bounded views during global finalization and reachability; the contiguous
-assembly stream is reconstructed only after frontend scratch retires. Resident
-capture remains the default/reference storage policy. Parity remains paused.
-This is in-build storage ownership, not persistent `.ofm` objects.
-See [ownership](native-lazy-preparation.md) and the
-[implemented object boundary](native-fragment-preparation.md).
+Status, 2026-10-18: sequential storage sealing reduces the frozen disk-backed
+heap peak from **8,525,376 to 6,909,720 B (−18.95%)**, but is **not ready for
+release promotion**. The instrumented comparison completes exactly; release
+exceeds the 600-second bound versus a 101.414-second reference. Parity remains
+paused. Current-source self-hosting also fails at qualified-register macro binding.
+Resolve correctness and lookup/storage cost before further ownership changes.
+See [storage ownership](native-lazy-preparation.md) and
+[the remaining object boundary](native-fragment-preparation.md).
 
 ## Measurement contract
 
-Compare engine changes on identical source/package bytes and commands against a
-newly assembled live Rust oracle. Require fresh challenge-bound START/DONE, exit
-zero and byte-for-byte complete output. A timeout or launcher success is no proof.
-Tracked heap and exact work are measured separately from uninstrumented runtime.
-Two-pair results below about 2% / two seconds do not establish a speed change.
+Compare identical source/package bytes and commands against a freshly assembled
+Rust oracle. Require challenge-bound START/DONE, exit zero and exact complete
+output. A timeout, diagnostic capture or launcher exit is not native completion.
+Measure tracked heap separately from uninstrumented runtime. Results below about
+2% / two seconds do not establish a speed change from two pairs alone.
 
-The expanded-memory A4000/68040 FS-UAE profile and 64 KiB guest stack run serially.
-These are not A6000 measurements or 2 MiB qualification. Heap excludes executable,
-stack, OS and untracked allocations; linked reservation is reported separately.
-No observer framework or experiment selector was added.
+Runs use the expanded-memory A4000/68040 FS-UAE profile and a 64 KiB guest stack,
+serially. These are not A6000 or 2 MiB qualifications. Heap excludes executable,
+stack, OS and untracked allocations. No observer framework or new selector was added.
 
-## Bounded prepared-record storage
+## Sequential module storage sealing
 
-Expected saving was at least 1 MiB, with a planning estimate of 1–1.5 MiB: avoid
-retaining a 2 MiB record allocation alongside frontend scratch. Preserve the
-`c76e53f2` executable as the reference. `--capture-dir DIR` now controls both raw
-capture and prepared-record backing; use a real disk directory, not RAM-backed `T:`.
+Expected saving: at least **1 MiB of full-build peak heap**. Preserve the executable
+from before sealing as the baseline. Resident storage keeps contiguous metadata;
+`--capture-dir DIR` also selects bounded lexical backing. Both share the new owned
+access interfaces, so resident storage is a control, not the unchanged executable.
+Use a disk directory rather than RAM-backed `T:`.
 
-A module owns checked dense record ranges in the shared store. Four 32 KiB mutable
-payload pages cap residency at 128 KiB; the directory is outside that cap. Records
-never cross pages. Leases prevent eviction of borrowed pointers, dirty pages persist
-before eviction, and dependency-ordered views cap reads at module boundaries.
-Global identities remain a build-local bridge. There are no process pointers in
-stored record payloads. Resident mode keeps the contiguous reference path.
+After successful publication, private lexical entries and canonical spellings move
+to private backing. Active arenas are physically freed. A stable eight-byte identity
+bridge, retained interface entries/names and a four-page 128 KiB cache serve later
+readers. Three module metadata arrays remain resident (393,216 B at full capacity).
+Private dependencies are reloadable and mutable until global completion; this is
+storage sealing, not early semantic finalization or a reusable `.ofm` object.
 
-Layout, outputs, canonical binding and record remapping keep their existing phase
-order across page batches. Reachability retains whole-block decisions in an independent
-index. Runtime bindings, typed values, parameters and member identities transfer
-before lexical/template scratch retires. Only then is one contiguous ordered stream
-rebuilt and omission applied. The assembly engine's no-growth frontier is unchanged.
-The superseded disk-assisted growth helper and its probes were removed.
-
-Frozen workload: **214 mapped files / 2,648,242 staged bytes**, SHA-256
+Frozen input: **214 files / 2,648,242 staged bytes**, SHA-256
 `eae5102bd21b3863105a7f550912193dff8e52c8ba2d6ff11b498392b7dca480`.
-Every full comparison emits the live Rust oracle's exact **708,216 bytes**,
-`fnv1a64:27c800763d556961`.
+Both completed instrumented runs produce the exact **708,216-byte** live Rust Hunk,
+`fnv1a64:27c800763d556961`, with zero cleanup ownership and no scratch files left.
 
-| Resource | Reference | Final paged storage |
+| Resource | Pre-sealing reference | Sealing candidate |
 |---|---:|---:|
-| Tracked heap peak | 10,489,408 B | 8,525,376 B |
-| Allocated/freed capacity, each | 89,224,992 B | 126,781,224 B |
+| Tracked heap peak | 8,525,376 B | 6,909,720 B |
+| Allocated/freed capacity, each | 126,781,224 B | 826,338,176 B |
 | Prepared live heap | 2,969,088 B | 2,969,088 B |
 | Assembly live heap | 4,943,360 B | 4,943,360 B |
 | Cleanup live heap | 0 B | 0 B |
 | Expression compilations | 69,528 | 69,528 |
 | Expression evaluations | 176,850 | 176,850 |
-| Source bytes read | 2,816,781 | 2,816,781 |
+| Packed source | 2,032,832 B | 2,032,832 B |
+| Source bytes read | 2,816,781 B | 2,816,781 B |
+| Instrumented preparation | 70.38 s | 290.50 s |
+| Instrumented assembly | 37.46 s | 38.68 s |
+| Instrumented START/DONE | 108.077 s | 329.314 s |
 
-The **1,964,032 B / 1.873 MiB** peak saving matches replacing the 2 MiB buffer with
-128 KiB payload pages plus a 2 KiB directory. It clears the resource gate. Allocation
-traffic rises **42.09%** because faulted pages are allocated and freed; lower peak
-residency is not lower allocation work. The candidate reproduced its peak before and
-after removal of the obsolete growth helper. Reference memory is the preserved
-qualified `c76e53f2` receipt on this exact frozen input. Diagnostics are empty and
-all capacities balance; no language work was skipped.
+The **1,615,656 B / 1.541 MiB** saving clears the heap target. Allocation traffic
+grows by **699,556,952 B**; this is storage work, not reduced language work.
+It is consistent with roughly 21,000 additional 32 KiB allocations, but is not a
+measured page-fault count. Scope copy frames are stack storage, outside these figures.
 
-Uninstrumented frozen-input measurements are separate. The first two pairs precede
-the final dead-helper cleanup; the last row measures the final executable.
-
-| Release engine | Run A | Run B | Mean |
-|---|---:|---:|---:|
-| Reference `c76e53f2` | 105.032 s | 104.295 s | 104.664 s |
-| Paged storage before cleanup | 104.632 s | 103.283 s | 103.957 s |
-| Final paged storage | 102.934 s | 102.983 s | 102.959 s |
-
-Final observed difference: **-1.63% / -1.705 s**.
-This is inside timing noise; no release speedup or slowdown is established.
-The heap saving is the reason to retain the change. Final release image/linked
-reservation is **719,128 / 753,576 B**, versus 715,132 / 749,504 B; the instrumented
-image/linked reservation is **733,756 / 769,968 B**.
-
-The maintained disk-backed controls compare source-directed BIN and complete Hunk
-outputs against live Rust, independently of self-host workload identity:
-
-| Resource | Small modules reference → final | Macro-heavy reference → final |
+| Separate release control | Reference | Candidate |
 |---|---:|---:|
-| Tracked heap peak | 608,768 → 608,768 B | 2,098,920 → 2,066,408 B |
-| Allocated/freed capacity, each | 1,074,656 → 1,106,920 B | 4,522,712 → 4,523,232 B |
-| Instrumented seconds | not resolved → not resolved | 6.073 s → 6.078 s |
+| Resident access-interface control | 104.253 s | 112.429 s |
+| Frozen disk-backed full build | 101.414 s, exact | No completion within 600 s |
+| Small multi-module project | 0.253 s | 0.255 s |
+| Macro-heavy project | 6.108 s | 9.149 s |
 
-The short instrumented times are attribution samples, not release-speed claims.
-The module case completes before the host poll resolves a START/DONE interval;
-its timing is explicitly unavailable, not zero.
-Cleanup is zero and diagnostics are empty. Expression/evaluation counts and source
-reads agree with the reference. A small workload need not save heap: page granularity
-has a cost, while the large-buffer overlap disappears only on sufficiently large inputs.
+The resident pair isolates an approximately **8% access-interface cost** before
+spilling. It is one pair, not a precise speed estimate. The disk release timeout
+cannot supply a completed timing or an exact-output claim. Small timing differences
+are inside noise. Macro-heavy release slows by about **50%** in this control pair.
+
+| Separate memory control | Small modules: reference → candidate | Macro-heavy: reference → candidate |
+|---|---:|---:|
+| Peak tracked heap | 608,768 → 608,768 B | 2,066,408 → 2,173,848 B |
+| Allocated/freed capacity, each | 1,106,920 → 1,242,696 B | 4,523,232 → 162,832,960 B |
+
+Both smaller controls match live Rust BIN and full Hunk output, retain identical
+expression/evaluation/source counters, clean up to zero and leave no owned files.
+The macro case grows peak by 107,440 B (5.2%); sealing is not a universal heap win.
+
+The frozen comparison images precede the final statement-binding and named-size
+cleanup: release/memory images are 728,292 / 742,816 B. The statement-binding repair
+has a fresh native exposure proof. A later current-source self-build uses different,
+larger source input; its failure below does not invalidate the frozen comparison,
+but prevents qualification of the complete candidate.
+
+## What the debugger establishes
+
+One bounded, read-only capture samples a normal **32 KiB `MEMF_CLEAR` allocation**,
+with exactly 568 bytes still to clear. Source-name bytes ahead of its cursor are
+old contents, not evidence of heap corruption. The exact executable was rebuilt
+byte-for-byte with labels before mapping the sampled stack:
+
+`imports.referenceNamespace.find → lexical_store.readEntry → readPayload → locate
+→ prepared_store.acquire → resident → memory.reserveExact → grow → AllocMem`.
+
+This is localization evidence, not completion. Source review also shows bucket
+rehashing reads names and dirties scattered spilled entries to update chain links.
+Ordinary mismatches acquire full entries just for chain/length/namespace metadata.
+A four-page cache cannot absorb arbitrary access over many sealed pages. These
+paths and allocation traffic support a lookup-induced churn hypothesis; the one
+sample does not attribute all elapsed time or prove the release run would finish.
 
 ## Current qualification and distance to target
 
-The **complete current CLI self-build**, distinct from the frozen comparison,
-passes on real FS-UAE execution: **220 staged files / 2,743,248 source/package bytes**,
-source manifest `fnv1a64:6734ba67110e7e54`. Native produces the exact **719,128-byte**
-Rust/bootstrap executable, `fnv1a64:44c8104a1488ead0`, with fresh protocol completion,
-exit zero and no scratch files left. It takes **109.959 s** uninstrumented with the
-embedded m68020 package and `--capture-dir Work:`. This changing-source time is not
-an optimization comparison or hardware timing.
+**The current-source full self-host does not pass.** The instrumented attempt
+reaches global binding, then exits 20 after 321.888 s with missing symbol
+`experimental.amigaos.binary_imports.capturevalue.a6`. That duration is a failed
+attempt, not a completed assembly measurement. New storage-access macros combine
+a qualified displacement with a register parameter; reduced qualified-offset and
+struct-field cases reproduce the failure. Live Rust oracles accept both. Simple
+register and unqualified displacement controls pass. Whether this binding gap
+predates sealing has not been established.
 
-The disk and resident 14-case module matrices cover configuration, active includes,
-templates, diamonds/multiple modules per file, late/reordered maps, forward layout,
-logical geometry and invalid parameter sets. The final resident matrix also verifies
-normal allocation after removing the old wrapper. The prepared-store component
-covers eviction/writeback, pinned-budget rejection, unchanged ownership on failure,
-reordered views, empty modules, page/module limits, EOF and repeated cleanup. A block
-probe covers deferred omission, exact size validation and opaque layout records.
-Host builds/oracles, formatting, CPU architecture boundaries and changed-subsystem
-CCR checks pass; advisory existing call-return checks remain. Native no-growth,
-instrumentation safety and fresh-proof guards also pass. No broad Rust workspace
-gate or A6000 run was made for this slice.
+Package inspection places LEA displacement selection in tuple register/value/arity
+projections. A speculative raw-call change did not repair it and was reverted.
+Next localization is expanded operand tokens and `tupleLeaf → rawTuple`, not a
+CPU-specific workaround. No successful current-source full self-host is claimed.
 
-**No 2 MiB fit is claimed.** Frozen disk peak alone is **8.13 MiB / 4.07 times**
-the entire target, exceeding it by 6.13 MiB. Adding instrumented linked reservation
-reaches at least **8.86 MiB**, before stack/OS/untracked costs. Prepared/assembly live
-heap is still 2.83 / 4.71 MiB. These are frozen-input figures, not a new memory
-measurement of the larger current-source self-build. Resident peak was last qualified
-at 18,175,240 B in the preceding publication slice; it was not remeasured here.
+The original 16-case module matrices pass in both resident and disk modes. The
+expanded resident matrix passes those 16 and fails the two new qualified-register
+macro cases; the expanded disk matrix was not run after that failure. Coverage includes typed configuration,
+active includes, templates, colliding spellings, late template use, diamonds,
+multiple modules per file, section maps, forward layout and invalid parameter sets.
+The lexical component exercises more than 3 MiB of private backing, eviction, late
+writes, aliases, physical arena retirement, sticky errors and cleanup. Fresh native
+statement-exposure and full word-sized identity-growth controls pass. Binding/remap
+host checks and live Rust oracles pass. No broad Rust workspace gate or A6000 run
+was made. Formatting, architecture, no-growth, instrumentation and fresh-proof
+guards pass; the workflow suite passes 152 tests. CCR scanning reports three
+pre-existing mechanical findings and advisory call-return checks.
 
-## Maintained decisions and next boundary
+**No 2 MiB fit is claimed.** Frozen peak is **6.59 MiB**, exceeding the entire target
+by **4.59 MiB**, before executable, stack and OS. Adding the measured instrumented
+linked reservation (780,912 B) reaches at least **7.33 MiB** before stack/OS.
+Prepared/assembly live heap remains 2.83 / 4.71 MiB. The next frontier must address
+these retained owners as well as preparation peak; disk storage alone cannot fit.
 
-- Resident discovery publishes dependency-complete modules and retires completed raw
-  captures. Disk capture retains complete-graph scheduling to avoid overlapping growing
-  configuration/semantic owners. Both use shared replay and global finalization.
-- Raw capture uses 32 KiB shared chunks, dedicated large records and offset handles;
-  disk payload is capped at 1 MiB. Finished configuration/discovery retire after seeding.
-- Lexical names occupy 64 KiB pages. Symbol buckets scale from 256 up to 16,384;
-  the qualified exact-work comparison reduced chain visits 89.7% and compared byte
-  pairs 14.3%, at 28,720 extra peak bytes. Fixed 4,096 and stored hashes were removed.
-- Telemetry implementation bodies are generically guarded, with no-op signatures for
-  release. No test, filename or benchmark identity selects production behavior.
-- Identity layouts reuse resident records; disk layouts publish ordering/origin metadata
-  without copying payload until the post-frontend materialization boundary.
-- Macro-only deferral/token/fragment experiments, raw-include reuse and prepared leaf
-  caches were removed: no demonstrated whole-peak/runtime benefit justified retention.
+## Decision and next step
 
-The next object boundary is module-local identity and ownership of definitions,
-types, templates and unresolved binding/layout plans. They remain global today.
-Prepared storage is now bounded in disk mode, but final assembly still needs the
-contiguous record stream. A `.ofm` object must use local IDs, checked offsets and
-relocatable fragments/recipes before that stream and module metadata can retire.
-Do not return to macro-only audits or treat a final-only cache as an earlier peak saving.
+Keep this as a recovery checkpoint, with the pre-sealing executable and contiguous
+control retained. Do not promote based only on the heap saving. Stop for review of
+the dramatic runtime cost before implementing another design.
 
-The [bounded module-capacity calculation](native-fragment-preparation.md#capacity-budget-before-module-sealing)
-identifies 4.13 MiB of lexical allocation at a frontier within 42,096 B of the
-measured peak. After retained interfaces, an identity bridge, the largest active
-private module, sealing overlap and a workspace allowance, its planning budget is
-1.5–1.9 MiB less at that frontier. This is conditional on closing private bindings
-and sequential module retirement; it is not a measured new full-build peak. The
-next implementation must demonstrate at least 1 MiB peak saving on the unchanged
-input. Sealing/retirement is not implemented by this calculation.
+First repair the qualified-register macro binding gap required by the new access
+macros and rerun the focused matrix. Then consider **reusing page buffers on eviction**. The current
+cache frees a victim and allocates/clears another 32 KiB buffer on the next fault.
+A private helper can flush an unpinned victim and transfer its pointer/capacity to
+that row, preserving both rows' logical metadata. It needs no spare allocation or
+larger cache, so it would preserve the 128 KiB payload bound and measured heap saving.
+It targets repeated allocation/zeroing; it does not remove disk reads/writes or
+lookup misses. Compare exact allocation counters first, then runtime and peak.
+This change is proposed, not implemented; no full runtime recovery is promised.
 
-## Evidence and reproduction
+A second candidate is a **14-byte bridge** with authoritative chain link and
+namespace-tagged spelling hash. Rehash would update resident links, and nonmatching
+lookups would avoid cold entry/name acquisition. Full spelling comparison still
+handles true collisions. At 65,535 identities it adds 393,210 B. If the measured
+peak frontier stayed unchanged, saving would fall from 1.541 to approximately
+**1.166 MiB**; that is a projection, not a new bound or guaranteed result. Prefer
+buffer reuse first because it directly addresses the sampled allocation without
+consuming the RAM saving. Both candidates require review before implementation.
 
-Immutable reference/candidate images, frozen cases, current-source export, raw receipts
-and decoded results live at `/tmp/opforge-prepared-objects-20261018`. The reference
-memory receipt remains at `/tmp/opforge-module-pipeline-20261017/policy-disk`.
-These local diagnostic artifacts are outside `target`, not repository dependencies.
-Git preserves superseded code and detailed trials.
+Maintain prior decisions: adaptive symbol buckets, guarded release telemetry,
+chunked captures, bounded prepared records and finished-configuration retirement.
+Macro-only deferral/audits, token/fragment prototypes, raw include reuse and prepared
+leaf caches remain removed. Object-local IDs and relocatable near-output objects
+remain future work; parity stays paused.
 
-Use the [FS-UAE environment](../../agents/rules/fs-uae.md) and ignored
-`native_full_selfhost_comparison_fs_uae` with `OPFORGE_FULL_COMPARISON_CASE` naming
-a fresh [comparison case](../../scripts/performance/run_fs_uae_selfhost_comparison.py).
-`capture_mode: "disk"` adds `--capture-dir Work:`; resident/unset retains RAM storage.
-Both execute real native code against a freshly built Rust oracle.
+## Evidence
 
-Use `native_preparation_benchmark_fs_uae` with `OPFORGE_PREPARATION_IMAGE`,
-`OPFORGE_PREPARATION_WORKLOAD=modules|macros`, a fresh
-`OPFORGE_PREPARATION_RESULT_DIR` and `OPFORGE_PREPARATION_CAPTURE_MODE=disk`.
-[Maintained workloads](../../benchmarks/native-preparation/README.md) include a
-four-module project and a four-module, 1,000-call macro workload; opForge465 contains
-no macros and is not mislabeled as the macro-heavy case.
-
-`native_prepared_store_probe_save_image` / `OPFORGE_PREPARED_STORE_SAVE_DIR` exports
-the component image outside `target`. Existing MEMD/capture events supply separate
-heap/work measurements. Fresh expected artifacts never substitute for completion.
+Images, cases, receipts, decoded MEMD, smaller controls and debugger artifacts are at
+`/tmp/opforge-module-sealing-20261018`, outside `target`. `prepare_cases.py`,
+`run_native.py` and `summarize.py` record this batch's reproduction. Frozen baseline
+images remain at `/tmp/opforge-prepared-objects-20261018/integration-{release,memory}`.
+The preceding capacity census is at `/tmp/opforge-module-capacity-20261018`.
+These are local diagnostic artifacts, not repository dependencies. Git archives
+superseded implementation detail and experiment chronology.

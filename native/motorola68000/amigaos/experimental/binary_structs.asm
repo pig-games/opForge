@@ -3,6 +3,7 @@
 ; @opforge-owner: experimental.amigaos.binary_structs
 	.module experimental.amigaos.binary_structs
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_package as package
@@ -213,14 +214,26 @@ replayEligibilityReady
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d1
-	mulu.w #records.ENTRY_BYTES, d1
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d1, a0
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	bne.w bad
+	lea LexicalEntry, a0
+	move.l d1, d0
 	btst #0, records.Entry.Flags+1(a0)
 	bne.w bad
 	move.w layout.State.Current(a6), State.Parent(a4)
 	move.w layout.State.Current(a6), records.Entry.Owner(a0)
 	ori.w #records.STRUCT_TYPE, records.Entry.Flags(a0)  ; retained at close
+	move.l a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalEntry, a1
+	jsr lexical.writeEntry
+	movea.l (sp)+, a1
+	bne.w bad
+	move.l d1, d0
 	move.w d7, State.Name(a4)
 	addq.w #1, d0
 	move.w d0, layout.State.Current(a6)
@@ -307,5 +320,9 @@ done
 	tst.l d0
 	rts
 	.bend  ; line
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, records.ENTRY_BYTES
 	.endsection
 	.endmodule

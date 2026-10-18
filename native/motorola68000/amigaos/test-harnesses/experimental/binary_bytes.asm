@@ -67,6 +67,7 @@ cases	.block
 	lea Entries, a1
 	move.l #$8000, d1
 	moveq #1, d2
+	lea readFixtureEntry, a2
 	jsr records.remap
 	bne.w bad
 	cmpi.b #$ab, Record+6
@@ -111,6 +112,7 @@ cases	.block
 	lea Entries, a1
 	move.l #$8000, d1
 	moveq #1, d2
+	lea readFixtureEntry, a2
 	jsr records.remap
 	beq.w bad
 	lea LongRecord, a0
@@ -118,6 +120,7 @@ cases	.block
 	lea Entries, a1
 	move.l #$8000, d1
 	moveq #1, d2
+	lea readFixtureEntry, a2
 	jsr records.remap
 	beq.w bad
 	moveq #0, d0
@@ -126,6 +129,23 @@ bad
 	moveq #1, d0
 	rts
 .bend  ; cases
+; A0=one-row fixture owner,A1=owned Entry destination,D0=index.
+; D0/CCR=status; all other registers preserved. Reject non-fixture identities.
+readFixtureEntry	.block
+	tst.l d0
+	bne.w bad
+	movem.l d1/a0-a1, -(sp)
+	moveq #records.ENTRY_BYTES/4-1, d1
+copy
+	move.l (a0)+, (a1)+
+	dbra d1, copy
+	movem.l (sp)+, d1/a0-a1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; readFixtureEntry
 .endsection
 .section data, kind=data
 DosName	.byte "dos.library", 0

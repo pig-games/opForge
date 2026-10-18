@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_block_index
 	.module experimental.amigaos.binary_block_index
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.include "memory_telemetry.i"
 	.include "binding_telemetry.i"
 	.include "lazy_audit.i"
@@ -391,7 +392,7 @@ selectView	.block
 	clr.w GuardActive
 	move.l a4, -(sp)  ; source-session package survives the predicate call
 	movea.l Scope, a0
-	movea.l layout.ENTRIES_POINTER(a0), a1
+	lea layout.LEXICAL_STATE(a0), a1
 	moveq #0, d0
 	moveq #0, d1
 	move.w layout.State.Base(a0), d0

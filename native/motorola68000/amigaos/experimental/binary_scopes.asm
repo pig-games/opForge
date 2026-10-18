@@ -10,6 +10,7 @@
 	.use experimental.amigaos.binary_scope_buckets as buckets
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_name_store as names
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_values as values
 	.use opasm.amigaos.binary_expression as expr
@@ -86,7 +87,9 @@ KEY_ENDMATCH = 33
 SECTION_STATE = IMPORT_STATE+imports.SCRATCH_BYTES
 STRUCT_STATE = SECTION_STATE+sections.SCRATCH_BYTES
 BINDING_PLANS = STRUCT_STATE+structs.SCRATCH_BYTES
-SCRATCH_BYTES = BINDING_PLANS+plans.STATE_BYTES
+VIEWS = BINDING_PLANS+plans.STATE_BYTES
+SCRATCH_BYTES = VIEWS+4
+	.include "binary_scope_views.i"
 	.section code, kind=code
 
 ; A0=zero-initialized caller-owned SCRATCH_BYTES (or released prior session),
@@ -144,6 +147,7 @@ clearNames
 	clr.w layout.State.PreviewBinding(a0)
 	clr.w layout.State.FirstBound(a0)
 	clr.w layout.State.FirstExplicit(a0)
+	clr.l VIEWS(a0)
 	jsr buckets.begin
 	bne.w bad
 	lea MODULE_STATE(a1), a0
@@ -184,9 +188,8 @@ release	.block
 	movem.l a0-a1, -(sp)
 	movea.l a0, a1
 	jsr buckets.release
-	lea ENTRIES(a1), a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
+	lea layout.LEXICAL_STATE(a1), a0
+	jsr lexical.release
 	lea MODULE_STATE(a1), a0
 	jsr modules.release
 	lea IMPORT_STATE(a1), a0
@@ -194,8 +197,6 @@ release	.block
 	movea.l a1, a0
 	adda.l #STRUCT_STATE, a0
 	jsr structs.release
-	lea ARENA(a1), a0
-	jsr names.release
 	clr.l layout.State.ArenaUsed(a1)
 	movea.l a1, a0
 	adda.l #BINDING_PLANS, a0
@@ -218,10 +219,8 @@ reserveIdentities	.block
 	add.l d0, d1
 	cmpi.l #65536, d1
 	bhi.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	lea ENTRIES(a1), a0
-	move.l #layout.ENTRIES_BYTES, d1
-	jsr memory.reserveBounded
+	lea layout.LEXICAL_STATE(a1), a0
+	jsr lexical.reserve
 	bne.w bad
 	move.l d2, d0
 	lea MODULE_STATE(a1), a0
@@ -294,8 +293,8 @@ beginFileDerived	.block
 	bne.w fileDerivedBad
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
-	lea ENTRIES(a6), a1
-	lea ARENA(a6), a2
+	lea layout.LEXICAL_STATE(a6), a1
+	suba.l a2, a2
 	movea.l a6, a3
 	lea bind, a4
 	lea MODULE_STATE(a6), a0
@@ -398,14 +397,13 @@ bindEncodingName	.block
 memberIdentity	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a6
+	.VIEW_ENTER a6
 	sub.w layout.State.Base(a6), d0
 	bcs.w bad
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d7
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	moveq #0, d2
 	move.w records.Entry.Leaf(a3), d2
 	moveq #0, d0
@@ -413,9 +411,7 @@ memberIdentity	.block
 	sub.w d2, d0
 	bls.w bad
 	move.l d0, -(sp)
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_NAME a6, a3, a0, ViewFrame.Name1, a6, bad
 	move.l (sp)+, d0
 	adda.l d2, a0
 	; Explicitly qualified declarations may have Leaf=0. Select their last
@@ -444,13 +440,14 @@ nextByte
 	move.w (sp)+, layout.State.Current(a6)
 	tst.l d0
 	bne.w done
-	mulu.w #records.ENTRY_BYTES, d7
-	movea.l ENTRIES_POINTER(a6), a3
-	move.w d1, records.Entry.MemberId(a3, d7.l)
+	.VIEW_READ a6, d7, a3, ViewFrame.Entry3, a6, bad
+	move.w d1, records.Entry.MemberId(a3)
+	.VIEW_WRITE a6, a3, bad
 	bra.w done
 bad
 	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -459,8 +456,9 @@ done
 bindName	.block
 	.HOTSPOT_ENTER #HOTSPOT_SCOPE_BIND
 	movem.l d3-d7/a2-a6, -(sp)
-	move.l d2, -(sp)
 	movea.l a1, a6
+	move.l d2, -(sp)
+	.VIEW_ENTER a6
 	moveq #0, d5
 	moveq #0, d3
 	move.w layout.State.Current(a6), d3
@@ -497,19 +495,20 @@ stableName
 	bne.w stableName
 	lea BUFFER(a6), a2
 	movea.l a2, a1
-	lea ARENA(a6), a0
+	lea layout.LEXICAL_STATE(a6), a0
 	move.l d6, d0
-	move.l #ARENA_BYTES, d1
-	jsr names.append
+	moveq #0, d1
+	move.w layout.State.Count(a6), d1
+	jsr lexical.appendName
 	movem.l (sp)+, a0-a1
 	bne.w bad
 	move.l d1, d0  ; immutable spelling handle, published with its entry below
 	moveq #0, d1
 	move.w layout.State.Count(a6), d1
 	move.l d1, d2
-	mulu.w #records.ENTRY_BYTES, d2
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d2, a3
+	movea.l VIEWS(a6), a3
+	lea ViewFrame.Entry3+View.Entry(a3), a3
+	move.l d2, View.Index-View.Entry(a3)
 	move.l d0, records.Entry.Name(a3)
 	move.w d6, records.Entry.Length(a3)
 	move.w d3, records.Entry.Owner(a3)
@@ -534,27 +533,28 @@ ordinaryIdentity
 	movea.l layout.BUCKETS_POINTER(a6), a4
 	add.w d4, d4
 	move.w 0(a4, d4.w), records.Entry.Next(a3)
+	movem.l d0-d1/a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	movea.l a3, a1
+	move.l View.Index-View.Entry(a3), d0
+	jsr lexical.appendEntry
+	movem.l (sp)+, d0-d1/a0-a1
+	bne.w bad
 	addq.w #1, d1
 	move.w d1, 0(a4, d4.w)
 	addq.w #1, layout.State.Count(a6)
 	addq.l #1, layout.State.IndexedCount(a6)
-	moveq #0, d1
-	move.w layout.State.Count(a6), d1
-	mulu.w #records.ENTRY_BYTES, d1
-	move.l d1, ENTRIES+memory.Block.Used(a6)
-	move.l ARENA+names.State.End(a6), layout.State.ArenaUsed(a6)
+	add.l d6, layout.State.ArenaUsed(a6)
 found
 	tst.w d5
 	beq.w bound
 	ori.w #EXPLICIT, records.Entry.Flags(a3)
+	.VIEW_WRITE a6, a3, bad
 bound
 	moveq #0, d1
-	tst.l (sp)
+	tst.l VIEW_SAVED_LONG(sp)
 	beq.w canonicalIdentity
-	move.l a3, d1
-	sub.l ENTRIES_POINTER(a6), d1
-	divu.w #records.ENTRY_BYTES, d1
-	andi.l #$ffff, d1
+	move.l View.Index-View.Entry(a3), d1
 	add.w layout.State.Base(a6), d1
 	bra.w identityReady
 canonicalIdentity
@@ -566,6 +566,7 @@ identityReady
 bad
 	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	addq.w #4, sp
 	movem.l (sp)+, d3-d7/a2-a6
 	tst.l d0
@@ -595,20 +596,16 @@ exportBindings	.block
 ; owners; differing possibilities reject only if the proxy becomes reachable.
 ; D0/CCR=status; other registers preserved. No borrowed pointer is retained.
 indexBindingOwners	.block
-	movem.l d1/a0-a4, -(sp)
+	movem.l d1/a0-a4/a6, -(sp)
+	movea.l a0, a6
+	.VIEW_ENTER a6
 	moveq #0, d1
 	move.w layout.State.Count(a0), d1
 	cmp.l d1, d0
 	bne.w bad
-	move.l d1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	cmp.l ENTRIES+memory.Block.Used(a0), d0
-	bhi.w bad
-	movea.l ENTRIES_POINTER(a0), a4
-	tst.l d1
-	beq.w entriesReady
-	move.l a4, d0
-	beq.w bad
+	cmp.l layout.LEXICAL_STATE+lexical.State.Count(a0), d1
+	bne.w bad
+	lea layout.LEXICAL_STATE(a0), a4
 entriesReady
 	movea.l a1, a2
 	lea IMPORT_STATE(a0), a1
@@ -629,7 +626,8 @@ definedReady
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d1/a0-a4
+	.VIEW_LEAVE a6
+	movem.l (sp)+, d1/a0-a4/a6
 	tst.l d0
 	rts
 	.bend  ; indexBindingOwners
@@ -639,6 +637,7 @@ done
 materializedCollection	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a1, a6
+	.VIEW_ENTER a6
 	move.l #source.MAX_LINE, d0
 	bsr.w normalizeLabel
 	bne.w done
@@ -658,12 +657,14 @@ materializedCollection	.block
 	move.w source.NameToken.Id(a0), d1
 	andi.w #$ffff-records.LABEL_VALUE, records.Entry.Flags(a3)
 	ori.w #records.COMPOUND_LABEL, records.Entry.Flags(a3)
+	.VIEW_WRITE a6, a3, bad
 good
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -676,8 +677,9 @@ done
 ; Other registers preserved. Earlier ordinary references keep their own IDs.
 captureBinding	.block
 	movem.l d2-d7/a0-a6, -(sp)
-	suba.w #FIELD_BUFFER_BYTES, sp
 	movea.l a1, a6
+	.VIEW_ENTER a6
+	suba.w #FIELD_BUFFER_BYTES, sp
 	movea.l a0, a4
 	move.l d0, d4
 	move.l d1, d7
@@ -699,9 +701,7 @@ dotted
 	bcs.w good
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	btst #0, records.Entry.Flags+1(a3)
 	beq.w capturePrefixes
 	move.w records.Entry.Flags(a3), d0
@@ -727,12 +727,10 @@ component
 	bne.w component
 	tst.w records.Entry.ScopeKind(a3)
 	bne.w component
-	move.l a3, d0
-	sub.l ENTRIES_POINTER(a6), d0
-	divu.w #records.ENTRY_BYTES, d0
-	andi.l #$ffff, d0
+	move.l View.Index-View.Entry(a3), d0
 	move.l d0, -(sp)
 	ori.w #REFERENCED, records.Entry.Flags(a3)
+	.VIEW_WRITE a6, a3, bad
 	move.l d0, d1
 	movea.l a6, a0
 	adda.l #MODULE_STATE, a0
@@ -830,6 +828,7 @@ good
 	moveq #0, d0
 done
 	adda.w #FIELD_BUFFER_BYTES, sp
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -839,6 +838,7 @@ done
 ; Proxy names share stable arena bytes; only numeric origin/context differ.
 createBindingProxy	.block
 	movem.l d2-d5/a0-a3, -(sp)
+	.VIEW_ENTER a6
 	move.l d0, d5
 	moveq #0, d4
 	move.w layout.State.Count(a6), d4
@@ -849,13 +849,11 @@ createBindingProxy	.block
 	bne.w done
 	move.l d5, d0
 	sub.w layout.State.Base(a6), d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a2
-	adda.l d0, a2
+	.VIEW_READ a6, d0, a2, ViewFrame.Entry2, a6, bad
 	move.l d4, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	movea.l VIEWS(a6), a3
+	lea ViewFrame.Entry3+View.Entry(a3), a3
+	move.l d0, View.Index-View.Entry(a3)
 	movea.l a3, a1
 	moveq #records.ENTRY_BYTES/4-1, d2
 copy
@@ -871,14 +869,21 @@ copy
 	moveq #0, d1
 	move.w layout.State.Base(a6), d1
 	add.l d4, d1
+	movem.l d0-d1/a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	movea.l a3, a1
+	move.l View.Index-View.Entry(a3), d0
+	jsr lexical.appendEntry
+	movem.l (sp)+, d0-d1/a0-a1
+	bne.w bad
 	addq.w #1, layout.State.Count(a6)
-	move.l d4, d0
-	addq.l #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	move.l d0, ENTRIES+memory.Block.Used(a6)
 	move.w #1, layout.State.Changed(a6)
 	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d2-d5/a0-a3
 	tst.l d0
 	rts
@@ -888,26 +893,21 @@ done
 ; D0/CCR=status; other registers preserved. Called after normal target binding.
 finalizeBindingProxies	.block
 	movem.l d1-d7/a0-a5, -(sp)
+	.VIEW_ENTER a6
 	moveq #0, d7
 scan
 	cmp.w layout.State.Count(a6), d7
 	bhs.w good
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a4
-	adda.l d0, a4
+	.VIEW_READ a6, d0, a4, ViewFrame.Entry4, a6, bad
 	move.w records.Entry.Flags(a4), d0
 	andi.w #records.BINDING_PROXY, d0
 	beq.w next
 	moveq #0, d0
 	move.w records.Entry.OriginalId(a4), d0
 	sub.w layout.State.Base(a6), d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
+	.VIEW_NAME a6, a3, a0, ViewFrame.Name1, a6, bad
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	move.w layout.State.Current(a6), -(sp)
@@ -920,9 +920,8 @@ scan
 	move.w records.Entry.Target(a3), d1
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a2
-	move.w records.Entry.Flags(a2, d0.l), d0
+	.VIEW_READ a6, d0, a2, ViewFrame.Entry2, a6, bad
+	move.w records.Entry.Flags(a2), d0
 	andi.w #records.CONDITIONAL_VALUE, d0
 	beq.w completeDeclaration
 	move.l d7, d0
@@ -937,6 +936,7 @@ scan
 	bra.w fallback
 completeDeclaration
 	move.w d1, records.Entry.Target(a4)
+	.VIEW_WRITE a6, a4, bad
 	move.l d7, d0
 	moveq #0, d1
 	move.w records.Entry.Target(a4), d1
@@ -950,12 +950,17 @@ fallback
 	move.w layout.State.Base(a6), d0
 	add.l d7, d0
 	move.w d0, records.Entry.Target(a4)
+	.VIEW_WRITE a6, a4, bad
 next
 	addq.w #1, d7
 	bra.w scan
 good
 	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d7/a0-a5
 	tst.l d0
 	rts
@@ -986,9 +991,7 @@ relative
 	beq.w parent
 	move.l d3, d0
 	subq.l #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, absent
 	moveq #0, d4
 	move.w records.Entry.Length(a3), d4
 	move.l a5, d6
@@ -996,9 +999,7 @@ relative
 	addq.l #1, d6
 	cmpi.l #layout.NAME_BYTES-1, d6
 	bhi.w parent
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_NAME a6, a3, a0, ViewFrame.Name0, a6, absent
 	lea BUFFER(a6), a1
 	move.l d4, d0
 prefix
@@ -1022,9 +1023,7 @@ parent
 	beq.w absent
 	move.l d3, d0
 	subq.l #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, absent
 	moveq #0, d3
 	move.w records.Entry.Owner(a3), d3
 	bra.w owner
@@ -1045,10 +1044,7 @@ availableConfigurationName	.block
 	btst #0, records.Entry.Flags+1(a3)
 	bne.w good
 	movem.l d1/a0, -(sp)
-	move.l a3, d1
-	sub.l ENTRIES_POINTER(a6), d1
-	divu.w #records.ENTRY_BYTES, d1
-	andi.l #$ffff, d1
+	move.l View.Index-View.Entry(a3), d1
 	movea.l IMPORT_STATE+imports.KNOWN_DEFINED_POINTER(a6), a0
 	tst.b 0(a0, d1.l)
 	movem.l (sp)+, d1/a0
@@ -1070,7 +1066,9 @@ CANDIDATE_INVALID = 2
 ; D0/CCR=matched or invalid; other registers preserved. Attach atomically;
 ; repeated identical candidates succeed, while conflicting candidates reject.
 attachRegister	.block
-	movem.l d1-d4/a1, -(sp)
+	movem.l d1-d4/a1/a6, -(sp)
+	movea.l a0, a6
+	.VIEW_ENTER a6
 	cmpi.l #$ffff, d0
 	bhi.w bad
 	sub.w layout.State.Base(a0), d0
@@ -1083,9 +1081,7 @@ attachRegister	.block
 	bhs.w bad
 	cmpi.l #$ff, d2
 	bhi.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a0), a1
-	adda.l d0, a1
+	.VIEW_READ a0, d0, a1, ViewFrame.Entry1, a6, bad
 	addq.w #1, d1
 	swap d1
 	lsl.w #8, d2
@@ -1099,13 +1095,15 @@ attach
 	tst.w layout.State.PreviewBinding(a0)
 	bne.w good
 	move.l d1, records.Entry.RegisterName(a1)
+	.VIEW_WRITE a6, a1, bad
 good
 	moveq #CANDIDATE_MATCHED, d0
 	bra.w done
 bad
 	moveq #CANDIDATE_INVALID, d0
 done
-	movem.l (sp)+, d1-d4/a1
+	.VIEW_LEAVE a6
+	movem.l (sp)+, d1-d4/a1/a6
 	tst.l d0
 	rts
 	.bend  ; attachRegister
@@ -1114,16 +1112,16 @@ done
 ; D1/D2=package register ID/qualifier on match. Other registers preserved.
 ; Package IDs are absent. Source candidates are read without following Target.
 registerCandidate	.block
-	movem.l d3/a1, -(sp)
+	movem.l d3/a1/a6, -(sp)
+	movea.l a0, a6
+	.VIEW_ENTER a6
 	cmpi.l #$ffff, d0
 	bhi.w bad
 	sub.w layout.State.Base(a0), d0
 	bcs.w absent
 	cmp.w layout.State.Count(a0), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a0), a1
-	adda.l d0, a1
+	.VIEW_READ a0, d0, a1, ViewFrame.Entry1, a6, bad
 	moveq #0, d1
 	move.w records.Entry.RegisterName(a1), d1
 	beq.w absent
@@ -1142,7 +1140,8 @@ absent
 bad
 	moveq #CANDIDATE_INVALID, d0
 done
-	movem.l (sp)+, d3/a1
+	.VIEW_LEAVE a6
+	movem.l (sp)+, d3/a1/a6
 	tst.l d0
 	rts
 	.bend  ; registerCandidate
@@ -1154,8 +1153,8 @@ probeIterator	.block
 	tst.w layout.State.LoopDepth(a1)
 	beq.w absent
 	movem.l a0-a3, -(sp)
-	movea.l ENTRIES_POINTER(a1), a2
-	lea ARENA(a1), a3
+	lea layout.LEXICAL_STATE(a1), a2
+	suba.l a3, a3
 	moveq #0, d1
 	move.w layout.State.Base(a1), d1
 	moveq #0, d2
@@ -1176,6 +1175,7 @@ absent
 createIterator	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a6
+	.VIEW_ENTER a6
 	sub.w layout.State.Base(a6), d0
 	bcs.w bad
 	cmp.w layout.State.Count(a6), d0
@@ -1193,13 +1193,11 @@ createIterator	.block
 	bsr.w reserveIdentities
 	bne.w bad
 	move.l d6, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a2
-	adda.l d0, a2
+	.VIEW_READ a6, d0, a2, ViewFrame.Entry2, a6, bad
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	movea.l VIEWS(a6), a3
+	lea ViewFrame.Entry3+View.Entry(a3), a3
+	move.l d0, View.Index-View.Entry(a3)
 	move.l records.Entry.Name(a2), records.Entry.Name(a3)
 	move.w records.Entry.Length(a2), records.Entry.Length(a3)
 	move.w records.Entry.Leaf(a2), records.Entry.Leaf(a3)
@@ -1219,16 +1217,20 @@ createIterator	.block
 	move.w layout.State.Base(a6), d1
 	add.w d7, d1
 	move.w d1, records.Entry.Target(a3)
+	movem.l d0-d1/a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	movea.l a3, a1
+	move.l View.Index-View.Entry(a3), d0
+	jsr lexical.appendEntry
+	movem.l (sp)+, d0-d1/a0-a1
+	bne.w bad
 	addq.w #1, layout.State.Count(a6)
-	moveq #0, d0
-	move.w layout.State.Count(a6), d0
-	mulu.w #records.ENTRY_BYTES, d0
-	move.l d0, ENTRIES+memory.Block.Used(a6)
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -1543,9 +1545,10 @@ seedConfiguration	.block
 ; on success, zero on failure. Other registers preserved; Current must be zero.
 seedConfigurationRange	.block
 	movem.l d3-d7/a0-a6, -(sp)
-	move.l d1, -(sp)
-	movea.l a0, a5
 	movea.l a1, a6
+	move.l d1, -(sp)
+	.VIEW_ENTER a6
+	movea.l a0, a5
 	tst.w layout.State.Current(a6)
 	bne.w bad
 	moveq #0, d7
@@ -1565,9 +1568,7 @@ next
 	bcs.w bad
 	cmp.w layout.State.Count(a5), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a5), a3
-	adda.l d0, a3
+	.VIEW_READ a5, d0, a3, ViewFrame.Entry3, a6, bad
 	moveq #0, d6
 	move.w records.Entry.Owner(a3), d6
 	beq.w bad
@@ -1578,9 +1579,7 @@ next
 	move.l d1, d5
 	move.l d6, d0
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a5), a3
-	adda.l d0, a3
+	.VIEW_READ a5, d0, a3, ViewFrame.Entry3, a6, bad
 	bsr.w bindConfigurationName
 	bne.w bad
 	sub.w layout.State.Base(a6), d1
@@ -1603,7 +1602,7 @@ next
 	subq.w #1, d7
 	bra.w next
 good
-	move.l (sp), d1
+	move.l VIEW_SAVED_LONG(sp), d1
 	bsr.w seedConfigurationMaps
 	bne.w bad
 	moveq #0, d1
@@ -1616,6 +1615,7 @@ bad
 	moveq #0, d2
 	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	addq.l #4, sp
 	movem.l (sp)+, d3-d7/a0-a6
 	tst.l d0
@@ -1674,9 +1674,7 @@ bindConfigurationId	.block
 	bcs.w bad
 	cmp.w layout.State.Count(a5), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a5), a3
-	adda.l d0, a3
+	.VIEW_READ a5, d0, a3, ViewFrame.Entry3, a6, bad
 	bra.w bindConfigurationName
 bad
 	moveq #1, d0
@@ -1689,6 +1687,7 @@ bad
 ; D0/CCR=status; other registers preserved.
 seedConfigurationMaps	.block
 	movem.l d1-d7/a0-a4, -(sp)
+	.VIEW_ENTER a6
 	suba.w #sections.MAP_BYTES, sp
 	moveq #0, d7
 	move.w SECTION_STATE+sections.State.MapCount(a5), d7
@@ -1718,17 +1717,13 @@ entry
 	bcs.w bad
 	cmp.w layout.State.Count(a5), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a5), a3
-	adda.l d0, a3
+	.VIEW_READ a5, d0, a3, ViewFrame.Entry3, a6, bad
 	cmpi.w #sections.Map.Logical, d5
 	blo.w bindMapModule
 	; A canonical dotted name bound globally loses its lexical leaf/owner.
 	; Bind the original map leaf inside its importing owner instead.
 	move.w sections.Map.Owner(a2), layout.State.Current(a6)
-	lea ARENA(a5), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_NAME a5, a3, a0, ViewFrame.Name1, a6, bad
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	moveq #0, d1
@@ -1790,6 +1785,7 @@ bad
 	moveq #1, d0
 done
 	adda.w #sections.MAP_BYTES, sp
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d7/a0-a4
 	tst.l d0
 	rts
@@ -1799,13 +1795,14 @@ done
 ; Bind its owned canonical spelling globally. D0/CCR=status,D1=new ID,D2=flags;
 ; A0/A1 scratch, other registers preserved.
 bindConfigurationName	.block
-	lea ARENA(a5), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_NAME a5, a3, a0, ViewFrame.Name1, a6, bad
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	movea.l a6, a1
 	bra.w bind
+bad
+	moveq #1, d0
+	rts
 	.bend  ; bindConfigurationName
 	.pub
 
@@ -1816,6 +1813,7 @@ bindConfigurationName	.block
 line	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a1, a6
+	.VIEW_ENTER a6
 	clr.w layout.State.PendingRepeat(a6)
 	movea.l a0, a5
 	move.l d0, d4
@@ -1894,10 +1892,9 @@ declaration
 	moveq #0, d0
 	move.w 1(a0), d0
 	sub.w layout.State.Base(a6), d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.VIEW_READ a6, d0, a0, ViewFrame.Entry0, a6, bad
 	ori.w #records.LABEL_VALUE, records.Entry.Flags(a0)
+	.VIEW_WRITE a6, a0, bad
 	movem.l (sp)+, a0/d0
 	addq.l #5, a0
 	bra.w statement
@@ -2021,11 +2018,10 @@ scopedLoopHeader
 	movem.l d0-d2/a0-a1, -(sp)
 	move.l d7, d0
 	sub.w layout.State.Base(a6), d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a1
-	adda.l d0, a1
+	.VIEW_READ a6, d0, a1, ViewFrame.Entry1, a6, bad
 	andi.w #$ffff-records.LABEL_VALUE, records.Entry.Flags(a1)
 	ori.w #records.COMPOUND_LABEL, records.Entry.Flags(a1)
+	.VIEW_WRITE a6, a1, bad
 	movem.l (sp)+, d0-d2/a0-a1
 loopHeader
 	move.l d3, -(sp)
@@ -2272,9 +2268,7 @@ reference
 	bcs.w importReference
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a3)
 	bne.w packageName
 	move.w records.Entry.Flags(a3), d0
@@ -2292,9 +2286,7 @@ sourceReference
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d1
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	move.w layout.State.LoopDepth(a6), d0
 	cmp.w layout.State.MaterializedLoops(a6), d0
 	bne.w optionalReference
@@ -2309,6 +2301,7 @@ sourceReference
 optionalReference
 	ori.w #OPTIONAL_REFERENCED, records.Entry.Flags(a3)
 referenceReady
+	.VIEW_WRITE a6, a3, bad
 	clr.b 3(a0)
 	btst #records.ITERATOR_HIGH_BIT, records.Entry.Flags(a3)
 	bne.w packageName  ; temporary values create no module reachability edge
@@ -2323,7 +2316,8 @@ packageName
 empty
 	move.b #3, (a5)
 ok
-	moveq #0, d0
+	lea layout.LEXICAL_STATE(a6), a0
+	jsr lexical.check
 	bra.w done
 bad
 	moveq #1, d0
@@ -2335,6 +2329,7 @@ done
 	move.w layout.State.PendingRepeat(a6), layout.State.Current(a6)
 lineReturn
 	clr.w layout.State.PendingRepeat(a6)
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -2346,8 +2341,9 @@ lineReturn
 ; retain the token identity and return success. New plans are installed before VM use.
 earlierReference	.block
 	movem.l d1-d3/a0-a3/a6, -(sp)
-	suba.w #layout.NAME_BYTES, sp
 	movea.l a1, a6
+	.VIEW_ENTER a6
+	suba.w #layout.NAME_BYTES, sp
 	movea.l a0, a2
 	bsr.w bindEarlier
 	bne.w done
@@ -2358,16 +2354,12 @@ earlierReference	.block
 	bcs.w good
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	move.w records.Entry.Flags(a3), d0
 	andi.w #records.BINDING_PROXY, d0
 	bne.w publishBinding
 	move.l d1, d3
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_NAME a6, a3, a0, ViewFrame.Name1, a6, bad
 	moveq #0, d0
 	move.w records.Entry.Length(a3), d0
 	beq.w bad
@@ -2402,6 +2394,7 @@ bad
 	moveq #1, d0
 done
 	adda.w #layout.NAME_BYTES, sp
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d3/a0-a3/a6
 	tst.l d0
 	rts
@@ -2413,15 +2406,14 @@ done
 ; D0/CCR=status; all other registers kept. No new declaration is manufactured.
 bindUpdate	.block
 	movem.l d1-d3/a0-a3, -(sp)
+	.VIEW_ENTER a6
 	moveq #0, d0
 	move.w source.NameToken.Id(a0), d0
 	sub.w layout.State.Base(a6), d0
 	bcs.w resolve
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a2
-	adda.l d0, a2
+	.VIEW_READ a6, d0, a2, ViewFrame.Entry2, a6, bad
 	btst #2, records.Entry.Flags+1(a2)
 	bne.w resolve
 	moveq #0, d3
@@ -2431,9 +2423,7 @@ owner
 	beq.w resolve
 	move.l d3, d0
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	move.w records.Entry.ScopeKind(a3), d0
 	andi.w #$ff, d0
 	cmpi.w #KIND_BLOCK, d0
@@ -2444,12 +2434,14 @@ local
 	; Rust's first-pass update lookup excludes module/global values whenever
 	; a block is active. Enclosing namespaces and scoped loops remain visible.
 	ori.w #records.UPDATE_LOCAL, records.Entry.Flags(a2)
+	.VIEW_WRITE a6, a2, bad
 resolve
 	bsr.w bindEarlier
 	bra.w done
 bad
 	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d3/a0-a3
 	tst.l d0
 	rts
@@ -2459,6 +2451,7 @@ done
 ; carry the first-pass block restriction. Ordinary RHS names keep late binding.
 bindEarlier	.block
 	movem.l d1-d7/a0-a5, -(sp)
+	.VIEW_ENTER a6
 	movea.l a0, a5
 	moveq #0, d0
 	move.w source.NameToken.Id(a0), d0
@@ -2466,9 +2459,7 @@ bindEarlier	.block
 	bcs.w good
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a4
-	adda.l d0, a4
+	.VIEW_READ a6, d0, a4, ViewFrame.Entry4, a6, bad
 	btst #0, records.Entry.Flags+1(a4)
 	bne.w good
 	btst #2, records.Entry.Flags+1(a4)
@@ -2480,9 +2471,7 @@ parent
 	beq.w good
 	move.l d3, d0
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	moveq #0, d3
 	move.w records.Entry.Owner(a3), d3
 	btst #records.UPDATE_LOCAL_HIGH_BIT, records.Entry.Flags(a4)
@@ -2490,9 +2479,7 @@ parent
 	bsr.w updateParentVisible
 	bne.w good
 parentVisible
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a4), d0
-	jsr names.pointer
+	.VIEW_NAME a6, a4, a0, ViewFrame.Name1, a6, bad
 	moveq #0, d0
 	move.w records.Entry.Leaf(a4), d0
 	adda.l d0, a0
@@ -2513,6 +2500,7 @@ good
 bad
 	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d7/a0-a5
 	tst.l d0
 	rts
@@ -2526,9 +2514,7 @@ updateParentVisible	.block
 	beq.w hidden
 	move.l d3, d0
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a2
-	adda.l d0, a2
+	.VIEW_READ a6, d0, a2, ViewFrame.Entry2, a6, hidden
 	move.w records.Entry.ScopeKind(a2), d1
 	andi.w #$ff, d1
 	cmpi.w #modules.KIND_MODULE, d1
@@ -2677,16 +2663,15 @@ done
 ; A0=scope. Resolve canonical identities and occurrence proxies once.
 finishBindings	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
 	movea.l a0, a6
+	.VIEW_ENTER a6
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
 	moveq #0, d7
 resolve
 	cmp.w layout.State.Count(a6), d7
 	bhs.w rewrite
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a4
-	adda.l d0, a4
+	.VIEW_READ a6, d0, a4, ViewFrame.Entry4, a6, bad
 	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a4)
 	bne.w next  ; text identities never canonicalize through value owners
 	move.w records.Entry.Flags(a4), d0
@@ -2735,9 +2720,7 @@ parent
 	beq.w unresolvedReference
 	move.l d3, d0
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	moveq #0, d3
 	move.w records.Entry.Owner(a3), d3
 	btst #records.UPDATE_LOCAL_HIGH_BIT, records.Entry.Flags(a4)
@@ -2745,9 +2728,7 @@ parent
 	bsr.w updateParentVisible
 	bne.w unresolvedReference
 parentVisible
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a4), d0
-	jsr names.pointer
+	.VIEW_NAME a6, a4, a0, ViewFrame.Name1, a6, bad
 	moveq #0, d1
 	move.w records.Entry.Leaf(a4), d1
 	adda.l d1, a0
@@ -2765,6 +2746,7 @@ lookupFailed
 	btst #0, records.Entry.Flags+1(a3)
 	beq.w parent
 	move.w records.Entry.Target(a3), records.Entry.Target(a4)
+	.VIEW_WRITE a6, a4, bad
 	move.w #1, layout.State.Changed(a6)
 access
 	move.l d7, d0
@@ -2793,6 +2775,7 @@ bad
 done
 	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
 	.TELEMETRY_SERVICE_LEAVE
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -2805,7 +2788,8 @@ finishRecords	.block
 	movea.l a1, a6
 	tst.w layout.State.Changed(a6)
 	beq.w unchanged
-	movea.l ENTRIES_POINTER(a6), a1
+	lea layout.LEXICAL_STATE(a6), a1
+	lea lexical.readEntry, a2
 	moveq #0, d1
 	move.w layout.State.Base(a6), d1
 	moveq #0, d2
@@ -2830,7 +2814,7 @@ finishEnd	.block
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
 	movea.l a0, a6
 	adda.l #BINDING_PLANS, a0
-	movea.l ENTRIES_POINTER(a6), a1
+	lea layout.LEXICAL_STATE(a6), a1
 	moveq #0, d0
 	move.w layout.State.Base(a6), d0
 	moveq #0, d1
@@ -2845,6 +2829,9 @@ finishEnd	.block
 	movea.l a6, a0
 	adda.l #IMPORT_STATE+imports.PARAM_OWNER, a0
 	jsr struct_values.remapNominals
+	bne.w done
+	lea layout.LEXICAL_STATE(a6), a0
+	jsr lexical.check
 	bra.w done
 done
 	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
@@ -2862,14 +2849,11 @@ done
 ; Other registers preserved, including the enclosing finish scan's A4.
 forwardBinding	.block
 	movem.l d2-d6/a0-a5, -(sp)
+	.VIEW_ENTER a6
 	suba.w #layout.NAME_BYTES, sp
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
+	.VIEW_NAME a6, a3, a0, ViewFrame.Name1, a6, bad
 	moveq #0, d2
 	move.w records.Entry.Length(a3), d2
 	beq.w bad
@@ -2904,9 +2888,7 @@ capture
 	; Completion runs after .endmodule. Prefix reachability and private access
 	; must still use the importing occurrence's module, not the closed session.
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	move.w MODULE_STATE+modules.State.Active(a6), -(sp)
 	move.w records.Entry.Owner(a3), MODULE_STATE+modules.State.Active(a6)
 	move.l d7, d1
@@ -2923,11 +2905,10 @@ capture
 	cmp.l d6, d1
 	beq.w absent
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	move.w d1, records.Entry.Target(a3)
 	andi.w #$ffff-REFERENCED-OPTIONAL_REFERENCED-records.IMPORT_PROXY, records.Entry.Flags(a3)
+	.VIEW_WRITE a6, a3, bad
 	move.w #1, layout.State.Changed(a6)
 	moveq #1, d1
 	moveq #0, d0
@@ -2940,6 +2921,7 @@ bad
 	moveq #1, d0
 done
 	adda.w #layout.NAME_BYTES, sp
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d2-d6/a0-a5
 	tst.l d0
 	rts
@@ -2949,21 +2931,22 @@ done
 ; other registers preserved. Bare field keys have a separate immutable identity.
 structNominal	.block
 	movem.l d2/a0, -(sp)
+	.VIEW_ENTER a6
 	move.l d0, d1
 	sub.w layout.State.Base(a6), d0
 	bcs.w good
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a0
+	.VIEW_READ a6, d0, a0, ViewFrame.Entry0, a6, bad
 	moveq #0, d1
-	move.w records.Entry.Target(a0, d0.l), d1
+	move.w records.Entry.Target(a0), d1
 good
 	moveq #0, d0
 	bra.w done
 bad
 	moveq #1, d0
 done
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d2/a0
 	tst.l d0
 	rts
@@ -3040,8 +3023,8 @@ openModule	.block
 	bcs.w bad
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	lea ENTRIES(a6), a1
-	lea ARENA(a6), a2
+	lea layout.LEXICAL_STATE(a6), a1
+	suba.l a2, a2
 	movea.l a6, a3
 	lea bind, a4
 	lea MODULE_STATE(a6), a0
@@ -3135,6 +3118,7 @@ bad
 ; D0/CCR=status; other registers preserved. No reachability marker is emitted.
 anonymousRepeat	.block
 	movem.l d1-d7/a0-a5, -(sp)
+	.VIEW_ENTER a6
 	subq.l #6, sp
 	movea.l sp, a0
 	move.b #'#', (a0)+
@@ -3159,17 +3143,20 @@ digitReady
 	bne.w done
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	move.w #KIND_NAMESPACE, records.Entry.ScopeKind(a3)
+	.VIEW_WRITE a6, a3, bad
 	move.l d1, d0
 	sub.w layout.State.Base(a6), d0
 	addq.w #1, d0
 	move.w d0, layout.State.Current(a6)
 	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
 done
 	addq.l #6, sp
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d7/a0-a5
 	tst.l d0
 	rts
@@ -3223,9 +3210,7 @@ enter
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d1
-	mulu.w #records.ENTRY_BYTES, d1
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d1, a3
+	.VIEW_READ a6, d1, a3, ViewFrame.Entry3, a6, bad
 	; Only opening a path owns its parent metadata. A later qualified value
 	; declaration must not change an existing namespace's lexical parent.
 	move.w layout.State.Current(a6), records.Entry.Owner(a3)
@@ -3234,6 +3219,7 @@ enter
 	lsl.w #8, d1
 	or.w d2, d1
 	move.w d1, records.Entry.ScopeKind(a3)
+	.VIEW_WRITE a6, a3, bad
 	addq.w #1, d0
 	move.w d0, layout.State.Current(a6)
 	moveq #0, d0
@@ -3255,9 +3241,7 @@ closeScope	.block
 	move.w layout.State.Current(a6), d0
 	beq.w bad
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	move.w records.Entry.ScopeKind(a3), d0
 	andi.w #$ff, d0
 	cmp.w d0, d2
@@ -3287,9 +3271,7 @@ declare	.block
 	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
 	move.l d0, d1
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	btst #0, records.Entry.Flags+1(a3)
 	beq.w firstDeclaration
 	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
@@ -3337,6 +3319,7 @@ conditionalOwnership
 candidate
 	ori.w #records.CONDITIONAL_VALUE, records.Entry.Flags(a3)
 	clr.b 3(a0)
+	.VIEW_WRITE a6, a3, bad
 	moveq #0, d0
 	rts
 ignored
@@ -3364,6 +3347,7 @@ declarationKind
 mutableOwnership
 	ori.w #records.MUTABLE, records.Entry.Flags(a3)
 ownershipReady
+	.VIEW_WRITE a6, a3, bad
 	; Only declarations collectible by scoped replay need global field keys.
 	; Ordinary files retain their existing identity count and binding cost.
 	move.l a0, -(sp)
@@ -3379,6 +3363,8 @@ ownershipReady
 	movem.l (sp)+, d1-d2/a0-a3
 	tst.l d0
 	bne.w bad
+	move.l View.Index-View.Entry(a3), d0
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 declarationOwnership
 	move.l d1, d0
 	move.l a0, -(sp)
@@ -3414,9 +3400,7 @@ scan
 	beq.w ready
 	move.l d3, d0
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
 	moveq #0, d7
 	move.w records.Entry.Length(a3), d7
 	addq.w #1, d7
@@ -3424,9 +3408,7 @@ scan
 	add.l d7, d0
 	cmpi.l #layout.NAME_BYTES-1, d0
 	bhi.w bad
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_NAME a6, a3, a0, ViewFrame.Name0, a6, bad
 	lea BUFFER(a6), a1
 	move.l d7, d1
 	subq.w #1, d1
@@ -3457,6 +3439,7 @@ bad
 ; A2/D6=lookup bytes. D0/CCR=found status, A3=entry; D4=bucket (even on miss).
 ; Clobbers D0-D2/A0-A1/A3; preserves other registers.
 lookup	.block
+	suba.w #layout.NAME_BYTES, sp
 	.HOTSPOT_ENTER #HOTSPOT_SCOPE_LOOKUP
 	.HOTSPOT_COUNT HOTSPOT_LOOKUP_HASH_BYTES, d6
 	.HOTSPOT_ENTER #HOTSPOT_LOOKUP_HASH
@@ -3485,9 +3468,7 @@ chain
 	tst.w d2
 	beq.w missing
 	subq.w #1, d2
-	mulu.w #records.ENTRY_BYTES, d2
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d2, a3
+	.VIEW_READ a6, d2, a3, ViewFrame.Entry3, a6, missing
 	.HOTSPOT_COUNT HOTSPOT_LOOKUP_CHAIN_PROBES, #1
 	moveq #0, d0
 	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a3)
@@ -3501,10 +3482,16 @@ namespaceReady
 	cmp.w records.Entry.Length(a3), d6
 	bne.w next
 	.HOTSPOT_COUNT HOTSPOT_LOOKUP_NAME_COMPARES, #1
-	lea ARENA(a6), a0
+	movem.l d0-d1/a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
 	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
-	movea.l a0, a1
+	moveq #0, d1
+	move.w records.Entry.Length(a3), d1
+	lea VIEW_RESULT(sp), a1
+	jsr lexical.copyName
+	movem.l (sp)+, d0-d1/a0-a1
+	bne.w missing
+	movea.l sp, a1
 	movea.l a2, a0
 	move.l d6, d0
 compare
@@ -3521,6 +3508,7 @@ compare
 	bne.w compare
 	.HOTSPOT_COUNT HOTSPOT_LOOKUP_HITS, #1
 	.HOTSPOT_LEAVE #HOTSPOT_LOOKUP_CHAIN
+	adda.w #layout.NAME_BYTES, sp
 	moveq #0, d0
 	.HOTSPOT_LEAVE #HOTSPOT_SCOPE_LOOKUP
 	rts
@@ -3531,6 +3519,7 @@ next
 missing
 	.HOTSPOT_COUNT HOTSPOT_LOOKUP_MISSES, #1
 	.HOTSPOT_LEAVE #HOTSPOT_LOOKUP_CHAIN
+	adda.w #layout.NAME_BYTES, sp
 	moveq #1, d0
 	.HOTSPOT_LEAVE #HOTSPOT_SCOPE_LOOKUP
 	rts
@@ -3551,6 +3540,7 @@ done
 ; A6=state; preserves other registers. Package .end is supplied by caller.
 keyword	.block
 	movem.l d1-d4/a0-a3, -(sp)
+	.VIEW_ENTER a6
 	cmp.w layout.State.EndDirective(a6), d0
 	beq.w end
 	moveq #0, d2
@@ -3559,12 +3549,8 @@ keyword	.block
 	bcs.w packageName
 	cmp.w layout.State.Count(a6), d0
 	bhs.w none
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, none
+	.VIEW_NAME a6, a3, a0, ViewFrame.Name1, a6, none
 	moveq #0, d4
 	move.w records.Entry.Length(a3), d4
 	bra.w leaf
@@ -3600,6 +3586,7 @@ end
 none
 	moveq #0, d0
 done
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d4/a0-a3
 	rts
 	.bend  ; keyword
@@ -3671,8 +3658,9 @@ classifyDirective	.block
 ; Other registers preserved. Package and encoding IDs are returned unchanged.
 rebindLocal	.block
 	movem.l d2-d5/a0-a3/a6, -(sp)
-	move.l a1, -(sp)
 	movea.l a0, a6
+	move.l a1, -(sp)
+	.VIEW_ENTER a6
 	tst.w d1
 	bne.w unchanged
 	move.l d0, d5
@@ -3680,9 +3668,7 @@ rebindLocal	.block
 	bcs.w unchanged
 	cmp.w layout.State.Count(a6), d5
 	bhs.w badRebind
-	mulu.w #records.ENTRY_BYTES, d5
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d5, a3
+	.VIEW_READ a6, d5, a3, ViewFrame.Entry3, a6, badRebind
 	; Encoding identities are global non-value names. Macro hygiene must
 	; preserve their facet and ID instead of creating a call-local symbol.
 	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a3)
@@ -3695,9 +3681,7 @@ rebindLocal	.block
 	sub.w d2, d0
 	beq.w badRebind
 	move.l d0, -(sp)
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
+	.VIEW_NAME a6, a3, a0, ViewFrame.Name1, a6, badRebind
 	adda.l d2, a0
 	move.l (sp)+, d0
 	movea.l a6, a1
@@ -3736,6 +3720,7 @@ unchanged
 badRebind
 	moveq #1, d0
 rebindDone
+	.VIEW_LEAVE a6
 	movea.l (sp)+, a1
 	movem.l (sp)+, d2-d5/a0-a3/a6
 	tst.l d0
@@ -3746,21 +3731,19 @@ rebindDone
 ; bucket (0..255). This is a candidate key, never a visibility decision.
 ; Entry.Leaf denotes binding context, so explicit qualification is scanned here.
 templateKey	.block
-	movem.l d2-d4/a0-a2, -(sp)
-	sub.w layout.State.Base(a0), d0
+	movem.l d2-d4/a0-a2/a6, -(sp)
+	movea.l a0, a6
+	.VIEW_ENTER a6
+	sub.w layout.State.Base(a6), d0
 	bcs.w bad
-	cmp.w layout.State.Count(a0), d0
+	cmp.w layout.State.Count(a6), d0
 	bhs.w bad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a0), a1
-	adda.l d0, a1
+	andi.l #$ffff, d0
+	.VIEW_READ a6, d0, a1, ViewFrame.Entry3, a6, bad
 	moveq #0, d2
 	move.w records.Entry.Length(a1), d2
 	beq.w bad
-	adda.l #ARENA, a0
-	move.l records.Entry.Name(a1), d0
-	jsr names.pointer
-	movea.l a0, a2
+	.VIEW_NAME a6, a1, a2, ViewFrame.Name0, a6, bad
 	moveq #0, d3
 scan
 	moveq #0, d1
@@ -3785,7 +3768,8 @@ next
 bad
 	moveq #1, d0
 done
-	movem.l (sp)+, d2-d4/a0-a2
+	.VIEW_LEAVE a6
+	movem.l (sp)+, d2-d4/a0-a2/a6
 	tst.l d0
 	rts
 	.bend  ; templateKey
@@ -3832,6 +3816,7 @@ candidateDone
 templateLeafEqual	.block
 	movem.l d1-d5/a0-a3/a6, -(sp)
 	movea.l a0, a6
+	.VIEW_ENTER a6
 	sub.w layout.State.Base(a6), d0
 	bcs.w leafMissing
 	cmp.w layout.State.Count(a6), d0
@@ -3840,24 +3825,16 @@ templateLeafEqual	.block
 	bcs.w leafMissing
 	cmp.w layout.State.Count(a6), d1
 	bhs.w leafMissing
-	mulu.w #records.ENTRY_BYTES, d0
-	mulu.w #records.ENTRY_BYTES, d1
-	movea.l ENTRIES_POINTER(a6), a2
-	adda.l d0, a2
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d1, a3
+	andi.l #$ffff, d0
+	andi.l #$ffff, d1
+	.VIEW_READ a6, d0, a2, ViewFrame.Entry3, a6, leafMissing
+	.VIEW_READ a6, d1, a3, ViewFrame.Entry4, a6, leafMissing
 	moveq #0, d2
 	move.w records.Entry.Length(a2), d2
 	moveq #0, d3
 	move.w records.Entry.Length(a3), d3
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a2), d0
-	jsr names.pointer
-	movea.l a0, a1
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a3), d0
-	jsr names.pointer
-	exg a0, a1
+	.VIEW_NAME a6, a2, a0, ViewFrame.Name0, a6, leafMissing
+	.VIEW_NAME a6, a3, a1, ViewFrame.Name1, a6, leafMissing
 	; Entry.Leaf is the first binding context, not necessarily the final
 	; component of an explicitly qualified import alias.
 	moveq #0, d4
@@ -3911,6 +3888,7 @@ leafCompare
 leafMissing
 	moveq #1, d0
 leafDone
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1-d5/a0-a3/a6
 	tst.l d0
 	rts
@@ -3923,6 +3901,7 @@ leafDone
 templateDistance	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a6
+	.VIEW_ENTER a6
 	cmp.w d1, d0
 	beq.w exact
 	moveq #0, d6
@@ -3937,12 +3916,8 @@ templateDistance	.block
 	bcs.w missing
 	cmp.w layout.State.Count(a6), d7
 	bhs.w missing
-	mulu.w #records.ENTRY_BYTES, d6
-	mulu.w #records.ENTRY_BYTES, d7
-	movea.l ENTRIES_POINTER(a6), a4
-	adda.l d6, a4
-	movea.l ENTRIES_POINTER(a6), a5
-	adda.l d7, a5
+	.VIEW_READ a6, d6, a4, ViewFrame.Entry3, a6, missing
+	.VIEW_READ a6, d7, a5, ViewFrame.Entry4, a6, missing
 	tst.w records.Entry.Leaf(a4)
 	beq.w missing  ; an explicitly qualified call needs an exact ID
 	moveq #0, d2
@@ -3953,17 +3928,11 @@ templateDistance	.block
 	sub.w records.Entry.Leaf(a5), d3
 	cmp.w d3, d2
 	bne.w missing
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a4), d0
-	jsr names.pointer
-	movea.l a0, a2
+	.VIEW_NAME a6, a4, a2, ViewFrame.Name0, a6, missing
 	moveq #0, d1
 	move.w records.Entry.Leaf(a4), d1
 	adda.l d1, a2
-	lea ARENA(a6), a0
-	move.l records.Entry.Name(a5), d0
-	jsr names.pointer
-	movea.l a0, a3
+	.VIEW_NAME a6, a5, a3, ViewFrame.Name1, a6, missing
 	moveq #0, d1
 	move.w records.Entry.Leaf(a5), d1
 	adda.l d1, a3
@@ -3992,9 +3961,7 @@ templateAncestor
 	moveq #0, d0
 	move.w d4, d0
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	.VIEW_READ a6, d0, a0, ViewFrame.Entry5, a6, missing
 	move.w records.Entry.Owner(a0), d4
 	addq.w #1, d1
 	bra.w templateAncestor
@@ -4005,9 +3972,8 @@ exact
 	bcs.w missing
 	cmp.w layout.State.Count(a6), d0
 	bhs.w missing
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	andi.l #$ffff, d0
+	.VIEW_READ a6, d0, a0, ViewFrame.Entry5, a6, missing
 	move.w records.Entry.TemplateModule(a0), d0
 	beq.w foundTemplate  ; global template
 	cmp.w MODULE_STATE+modules.State.Active(a6), d0
@@ -4019,6 +3985,7 @@ missing
 	moveq #1, d0
 	moveq #-1, d1
 templateDone
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -4036,6 +4003,7 @@ templateExposure	.block
 declareTemplate	.block
 	movem.l d1/a0-a1/a3/a6, -(sp)
 	movea.l a1, a6
+	.VIEW_ENTER a6
 	cmpi.b #1, 3(a0)
 	bhi.w templateBad
 	moveq #0, d0
@@ -4044,20 +4012,20 @@ declareTemplate	.block
 	bcs.w templateBad
 	cmp.w layout.State.Count(a6), d0
 	bhs.w templateBad
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l ENTRIES_POINTER(a6), a3
-	adda.l d0, a3
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, templateBad
 	btst #0, records.Entry.TemplateFlags+1(a3)
 	bne.w templateBad
 	ori.w #records.TEMPLATE_DECLARED, records.Entry.TemplateFlags(a3)
 	movea.l a3, a1
 	lea MODULE_STATE(a6), a0
 	jsr modules.claimTemplate
+	.VIEW_WRITE a6, a3, templateBad
 	moveq #0, d0
 	bra.w templateDeclared
 templateBad
 	moveq #1, d0
 templateDeclared
+	.VIEW_LEAVE a6
 	movem.l (sp)+, d1/a0-a1/a3/a6
 	tst.l d0
 	rts
@@ -4170,10 +4138,10 @@ Words
 	.section data, kind=data
 	.priv
 BindingView	.word layout.State.Count, layout.State.Base, layout.State.Current
-	.word layout.ENTRIES_POINTER, layout.ARENA, layout.State.ArenaUsed
+	.word layout.LEXICAL_STATE, layout.LEXICAL_STATE, 0
 	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length, records.Entry.Flags
 	.word records.Entry.Owner
-	.long names.resolve
+	.long lexical.copyName, lexical.readEntry
 	.endsection
 .endif
 .endif

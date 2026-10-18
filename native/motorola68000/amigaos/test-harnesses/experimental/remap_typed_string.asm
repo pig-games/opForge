@@ -106,51 +106,69 @@ remap	.block
 	lea Entries, a1
 	move.l #$8000, d1
 	moveq #1, d2
+	lea readFixtureEntry, a2
 	jsr records.remap
 	rts
 .bend  ; remap
+; A0=one-row fixture owner,A1=owned Entry destination,D0=index.
+; D0/CCR=status; all other registers preserved. Reject non-fixture identities.
+readFixtureEntry	.block
+	tst.l d0
+	bne.w bad
+	movem.l d1/a0-a1, -(sp)
+	moveq #records.ENTRY_BYTES/4-1, d1
+copy
+	move.l (a0)+, (a1)+
+	dbra d1, copy
+	movem.l (sp)+, d1/a0-a1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; readFixtureEntry
 .endsection
 .section data, kind=data
 DosName	.byte "dos.library", 0
 OutputName	.byte "Work:remap-typed-string.bin", 0
 Result	.byte $5a
 Positive
-	.byte PositiveEnd-Positive-1,0
+	.byte PositiveEnd-Positive-1, 0
 	.word 1
-	.byte expression.VALUE_TAG,PositiveProgramEnd-PositiveProgram
+	.byte expression.VALUE_TAG, PositiveProgramEnd-PositiveProgram
 PositiveProgram
-	.byte runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL,5,0
-	.byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL,0,$80,runtime.EXPRVM_OPCODE_END,runtime.EXPRVM_OPCODE_BUILD_STRUCT
-	.byte runtime.EXPRVM_OPCODE_CALL_BUILTIN,value_runtime.LEN_ID,0,1
-	.byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL,0,$80
-	.byte runtime.EXPRVM_OPCODE_APPLY_BINARY,runtime.EXPRVM_BINARY_ADD,runtime.EXPRVM_OPCODE_END
+	.byte runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL, 5, 0
+	.byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL, 0, $80, runtime.EXPRVM_OPCODE_END, runtime.EXPRVM_OPCODE_BUILD_STRUCT
+	.byte runtime.EXPRVM_OPCODE_CALL_BUILTIN, value_runtime.LEN_ID, 0, 1
+	.byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL, 0, $80
+	.byte runtime.EXPRVM_OPCODE_APPLY_BINARY, runtime.EXPRVM_BINARY_ADD, runtime.EXPRVM_OPCODE_END
 PositiveProgramEnd
 PositiveEnd
 Empty
-	.byte EmptyEnd-Empty-1,0
+	.byte EmptyEnd-Empty-1, 0
 	.word 2
-	.byte expression.VALUE_TAG,EmptyProgramEnd-EmptyProgram
+	.byte expression.VALUE_TAG, EmptyProgramEnd-EmptyProgram
 EmptyProgram
-	.byte runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL,0,0
-	.byte runtime.EXPRVM_OPCODE_CALL_BUILTIN,value_runtime.LEN_ID,0,1
-	.byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL,0,$80
-	.byte runtime.EXPRVM_OPCODE_APPLY_BINARY,runtime.EXPRVM_BINARY_ADD,runtime.EXPRVM_OPCODE_END
+	.byte runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL, 0, 0
+	.byte runtime.EXPRVM_OPCODE_CALL_BUILTIN, value_runtime.LEN_ID, 0, 1
+	.byte runtime.EXPRVM_OPCODE_PUSH_SYMBOL, 0, $80
+	.byte runtime.EXPRVM_OPCODE_APPLY_BINARY, runtime.EXPRVM_BINARY_ADD, runtime.EXPRVM_OPCODE_END
 EmptyProgramEnd
 EmptyEnd
 Short
-	.byte ShortEnd-Short-1,0
+	.byte ShortEnd-Short-1, 0
 	.word 3
-	.byte expression.VALUE_TAG,1,runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL
+	.byte expression.VALUE_TAG, 1, runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL
 ShortEnd
 Long
-	.byte LongEnd-Long-1,0
+	.byte LongEnd-Long-1, 0
 	.word 4
-	.byte expression.VALUE_TAG,4,runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL,$ff,$ff,runtime.EXPRVM_OPCODE_END
+	.byte expression.VALUE_TAG, 4, runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL, $ff, $ff, runtime.EXPRVM_OPCODE_END
 LongEnd
 ConsumedEnd
-	.byte ConsumedEndEnd-ConsumedEnd-1,0
+	.byte ConsumedEndEnd-ConsumedEnd-1, 0
 	.word 5
-	.byte expression.VALUE_TAG,5,runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL,2,0,$42,runtime.EXPRVM_OPCODE_END
+	.byte expression.VALUE_TAG, 5, runtime.EXPRVM_OPCODE_PUSH_STRING_LITERAL, 2, 0, $42, runtime.EXPRVM_OPCODE_END
 ConsumedEndEnd
 .endsection
 .section bss, kind=bss
@@ -160,5 +178,5 @@ DosBase	.res long, 1
 OutputHandle	.res long, 1
 ReturnCode	.res long, 1
 .endsection
-.output "remap-typed-string.hunk", format=hunk, sections=entry,code,data,bss
+.output "remap-typed-string.hunk", format=hunk, sections=entry, code, data, bss
 .endmodule

@@ -4,6 +4,7 @@
 ; @opforge-owner: experimental.amigaos.binary_conditionals
 	.module experimental.amigaos.binary_conditionals
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
@@ -340,22 +341,29 @@ legacyPreparation
 	bcs.w ordinary
 	cmp.w layout.State.Count(a6), d0
 	bhs.w ordinary
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a0
-	adda.l d0, a0
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	bne.w bad
+	lea LexicalEntry, a0
 	moveq #0, d2
 	move.w records.Entry.Length(a0), d2
 	sub.w records.Entry.Leaf(a0), d2
 	moveq #0, d0
 	move.l records.Entry.Name(a0), d0
-	move.l d1, -(sp)
+	movem.l d1-d2, -(sp)
 	moveq #0, d1
-	move.w records.Entry.Leaf(a0), d1
-	add.l d1, d0
-	move.l (sp)+, d1
-	lea layout.ARENA(a6), a0
-	jsr nameStore.pointer
-	movea.l a0, a1
+	move.w records.Entry.Length(a0), d1
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalName, a1
+	jsr lexical.copyName
+	movem.l (sp)+, d1-d2
+	bne.w bad
+	moveq #0, d0
+	move.w LexicalEntry+records.Entry.Leaf, d0
+	adda.l d0, a1
 	cmpi.w #2, d2
 	bne.w checkElse
 	move.w (a1), d0
@@ -802,5 +810,10 @@ invalid
 	moveq #1, d0
 	rts
 	.bend  ; definedOperand
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, records.ENTRY_BYTES
+LexicalName	.res byte, records.NAME_BYTES
 	.endsection
 	.endmodule

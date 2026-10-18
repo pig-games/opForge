@@ -4,6 +4,7 @@
 ; @opforge-owner: experimental.amigaos.binary_templates
 	.module experimental.amigaos.binary_templates
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.include "memory_telemetry.i"
 	.include "lazy_work.i"
 	.include "lazy_template_hooks.i"
@@ -2948,21 +2949,32 @@ replayIterator	.block
 	bcs.w absent
 	cmp.w layout.State.Count(a1), d0
 	bhs.w absent
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l scopes.ENTRIES_POINTER(a1), a2
-	adda.l d0, a2
+	move.l a1, -(sp)
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a1), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	lea LexicalEntry, a2
+	movea.l (sp)+, a1
+	bne.w absent
 	moveq #0, d2
 	move.w records.Entry.Leaf(a2), d2
 	moveq #0, d0
 	move.w records.Entry.Length(a2), d0
 	sub.l d2, d0
 	beq.w absent
-	move.l d0, -(sp)
-	lea scopes.ARENA(a1), a0
+	movem.l d0-d1/a1, -(sp)
+	moveq #0, d1
+	move.w records.Entry.Length(a2), d1
 	move.l records.Entry.Name(a2), d0
-	jsr nameStore.pointer
-	move.l (sp)+, d0
+	lea layout.LEXICAL_STATE(a1), a0
+	lea LexicalName, a1
+	jsr lexical.copyName
+	lea LexicalName, a0
 	adda.l d2, a0
+	movem.l (sp)+, d0-d1/a1
+	bne.w absent
 	jsr scopes.probeIterator
 	bra.w done
 absent
@@ -2973,5 +2985,10 @@ done
 	rts
 	.bend  ; replayIterator
 	.include "binary_template_audit.i"
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, records.ENTRY_BYTES
+LexicalName	.res byte, records.NAME_BYTES
 	.endsection
 	.endmodule

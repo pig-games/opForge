@@ -216,7 +216,7 @@ done
 	.bend  ; resolveGraph
 
 ; D1=missing numeric module index+1. Look up its spelling in the preparation
-; arena, then select its unique candidate file. No name survives preparation.
+; store, then retain an owned spelling for the serial candidate-file selection.
 ; D0/CCR=status; other registers preserved.
 selectCandidate	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -230,21 +230,27 @@ selectCandidate	.block
 	cmp.w layout.State.Count(a5), d7
 	bhs.w bad
 	move.l d7, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a5), a4
-	adda.l d0, a4
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a5), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	bne.w bad
+	lea LexicalEntry, a4
 	moveq #0, d0
 	move.w records.Entry.Length(a4), d0
 	beq.w bad
 	move.l d0, RequestedNameBytes
 	move.l records.Entry.Name(a4), d1
-	move.l d1, RequestedNameOffset
 	move.l d0, -(sp)
+	move.l d0, d2
 	move.l d1, d0
-	lea layout.ARENA(a5), a0
-	jsr nameStore.pointer
-	movea.l a0, a1
-	move.l (sp)+, d0
+	move.l d2, d1
+	lea layout.LEXICAL_STATE(a5), a0
+	lea RequestedName, a1
+	jsr lexical.copyName
+	movem.l (sp)+, d0
+	bne.w bad
 	lea DeclarationBlock, a0
 	movea.l memory.Block.Pointer(a0), a0
 	jsr declarations.find

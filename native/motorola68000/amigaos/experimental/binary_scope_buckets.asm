@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_scope_buckets
 	.module experimental.amigaos.binary_scope_buckets
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
@@ -94,11 +95,8 @@ clear
 	movea.l layout.BUCKETS_POINTER(a6), a5
 	moveq #0, d7
 bucket
-	movea.l memory.Block.Pointer(sp), a4
-	adda.l d7, a4
-	movea.l a4, a3
-	adda.l d6, a3
-	adda.l d6, a3
+	suba.l a4, a4
+	suba.l a3, a3
 	moveq #0, d4
 	move.w 0(a5, d7.w), d4
 chain
@@ -106,15 +104,22 @@ chain
 	beq.w nextBucket
 	move.l d4, d0
 	subq.l #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a2
-	adda.l d0, a2
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	bne.w storeFailed
+	lea LexicalEntry, a2
 	moveq #0, d3
 	move.w records.Entry.Next(a2), d3
-	lea layout.ARENA(a6), a0
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalName, a1
 	move.l records.Entry.Name(a2), d0
-	jsr nameStore.pointer
-	movea.l a0, a1
+	moveq #0, d1
+	move.w records.Entry.Length(a2), d1
+	jsr lexical.copyName
+	bne.w storeFailed
 	moveq #0, d0
 	move.w records.Entry.Length(a2), d0
 	; Total bucket hashing includes these rehash spelling-byte reads.
@@ -138,14 +143,36 @@ folded
 	and.l d5, d2
 	add.l d2, d2
 	clr.w records.Entry.Next(a2)
+	move.l d4, d0
+	subq.l #1, d0
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalEntry, a1
+	jsr lexical.writeEntry
+	bne.w storeFailed
 	cmp.l d7, d2
 	bne.w upper
-	move.w d4, (a4)
-	lea records.Entry.Next(a2), a4
-	bra.w linked
+	move.l a4, d0
+	movea.l d4, a4
+	bra.w linkTail
 upper
-	move.w d4, (a3)
-	lea records.Entry.Next(a2), a3
+	move.l a3, d0
+	movea.l d4, a3
+linkTail
+	tst.l d0
+	beq.w bucketHead
+	subq.l #1, d0
+	move.l d0, LinkIndex
+	jsr lexical.readEntry
+	bne.w storeFailed
+	move.w d4, records.Entry.Next(a1)
+	; The accessor returns status; retain the predecessor index for writeback.
+	move.l LinkIndex, d0
+	jsr lexical.writeEntry
+	bne.w storeFailed
+	bra.w linked
+bucketHead
+	movea.l memory.Block.Pointer(sp), a0
+	move.w d4, 0(a0, d2.l)
 linked
 	move.l d3, d4
 	bra.w chain
@@ -170,6 +197,9 @@ nextBucket
 	adda.w #BLOCK_BYTES, sp
 	moveq #1, d1
 	bra.w good
+storeFailed
+	movea.l sp, a0
+	jsr memory.release
 allocationFailed
 	adda.w #BLOCK_BYTES, sp
 bad
@@ -183,5 +213,11 @@ done
 	tst.l d0
 	rts
 	.bend  ; ensure
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, records.ENTRY_BYTES
+LexicalName	.res byte, records.NAME_BYTES
+LinkIndex	.res long, 1
 	.endsection
 	.endmodule

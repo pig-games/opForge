@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_name_store as names
 	.use experimental.amigaos.binary_iterator_bindings as iterators
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.pub
 ; Source counts and index+1 links are words; zero denotes an empty link.
 ; The package base further bounds the available global identity range.
@@ -52,8 +53,10 @@ BUCKET_MAX = 16384
 BUCKETS = ENTRIES+memory.Block.Used+4
 BUCKETS_POINTER = BUCKETS+memory.Block.Pointer
 ARENA = BUCKETS+memory.Block.Used+4
-; Names own paged byte storage; Entry.Name is a page/offset handle.
-BUFFER = ARENA+names.STATE_BYTES
+; The lexical owner resolves opaque canonical-name handles through its bridge.
+; The former arena descriptor stays empty during consumer migration.
+LEXICAL_STATE = ARENA+names.STATE_BYTES
+BUFFER = LEXICAL_STATE+lexical.STATE_BYTES
 MODULE_STATE = BUFFER+NAME_BYTES
 IMPORT_STATE = MODULE_STATE+modules.SCRATCH_BYTES
 	.endmodule

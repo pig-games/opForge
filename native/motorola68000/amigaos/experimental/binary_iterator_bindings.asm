@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_iterator_bindings
 	.module experimental.amigaos.binary_iterator_bindings
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_name_store as nameStore
 	.pub
@@ -88,7 +89,7 @@ done
 	rts
 	.bend  ; close
 
-; A0/D0=unqualified lexical name/bytes,A1=state,A2=entries,A3=name store,
+; A0/D0=unqualified lexical name/bytes,A1=state,A2=lexical.State,A3=unused,
 ; D1=source ID base,D2=current lexical owner (entry index+1).
 ; D0/CCR=0 matched,1 absent; D1=temporary ID,D2=zero qualifier on match.
 ; Other registers preserved. Lookup happens only during source preparation.
@@ -123,9 +124,11 @@ slot
 	beq.w slot
 	move.l d3, d0
 	sub.w d4, d0
-	mulu.w #records.ENTRY_BYTES, d0
-	movea.l a2, a4
-	adda.l d0, a4
+	movea.l a2, a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	bne.w absent
+	lea LexicalEntry, a4
 	move.l d5, d2
 ancestor
 	cmp.w records.Entry.Owner(a4), d2
@@ -134,9 +137,11 @@ ancestor
 	beq.w slot
 	move.l d2, d0
 	subq.w #1, d0
-	mulu.w #records.ENTRY_BYTES, d0
 	movea.l a2, a0
-	adda.l d0, a0
+	lea LexicalAncestor, a1
+	jsr lexical.readEntry
+	bne.w absent
+	lea LexicalAncestor, a0
 	moveq #0, d2
 	move.w records.Entry.Owner(a0), d2
 	bra.w ancestor
@@ -146,12 +151,19 @@ name
 	sub.w records.Entry.Leaf(a4), d0
 	cmp.l d6, d0
 	bne.w slot
-	movea.l a3, a0
+	movea.l a2, a0
+	lea LexicalName, a1
 	move.l records.Entry.Name(a4), d0
-	jsr nameStore.pointer
-	moveq #0, d0
-	move.w records.Entry.Leaf(a4), d0
-	adda.l d0, a0
+	moveq #0, d1
+	move.w records.Entry.Leaf(a4), d1
+	moveq #0, d1
+	move.w records.Entry.Length(a4), d1
+	jsr lexical.copyName
+	bne.w absent
+	lea LexicalName, a0
+	moveq #0, d1
+	move.w records.Entry.Leaf(a4), d1
+	adda.l d1, a0
 	movea.l a5, a1
 	move.l d6, d2
 compare
@@ -212,5 +224,11 @@ done
 	tst.l d0
 	rts
 	.bend  ; scoped
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, records.ENTRY_BYTES
+LexicalAncestor	.res byte, records.ENTRY_BYTES
+LexicalName	.res byte, records.NAME_BYTES
 	.endsection
 	.endmodule

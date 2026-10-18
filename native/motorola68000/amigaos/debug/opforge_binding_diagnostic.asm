@@ -34,15 +34,16 @@ View	.struct
 Count	.word ?
 Base	.word ?
 Current	.word ?
-Entries	.word ?
-Arena	.word ?  ; embedded name-store state offset
-ArenaUsed	.word ?
+Entries	.word ?  ; embedded lexical storage state offset
+Arena	.word ?  ; same lexical storage state offset
+ArenaUsed	.word ?  ; reserved, zero
 EntryBytes	.word ?
 Name	.word ?
 Length	.word ?
 Flags	.word ?  ; DECLARED is bit zero in the current shared entry ABI
 Owner	.word ?  ; one-based source-entry index, zero when absent
-NameReader	.long ?  ; checked name resolver supplied by the owner
+NameReader	.long ?  ; checked name copy supplied by the owner
+EntryReader	.long ?  ; checked entry copy supplied by the owner
 .endstruct
 Snapshot	.struct
 Stage	.long ?
@@ -226,7 +227,7 @@ done
 	.bend  ; recordViewFailure
 ; D0=status,A0=scope state,A1=View descriptor. Commit the pending check only
 ; for actual failure. First actual failure wins. Registers/CCR/stack preserved;
-; no allocation or I/O. Entry/name views are bounded by count/owned arena extent.
+; copied payloads are checked by the owner. Sealed payloads may fault from disk.
 commit	.block
 	move.w ccr, -(sp)
 	movem.l d0-d7/a0-a6, -(sp)
@@ -277,16 +278,11 @@ commit	.block
 	addq.l #2, d0
 	cmp.l d6, d0
 	bhi.w done
+	cmpi.l #256, d6
+	bhi.w done
 	move.l d1, d0
-	mulu.w d6, d0
-	move.l d0, d2
-	moveq #0, d0
-	move.w View.Entries(a4), d0
-	movea.l 0(a5, d0.l), a0
-	move.l a0, d0
-	beq.w done
-	adda.l d2, a0
-	movea.l a0, a3
+	bsr.w readEntry
+	bne.w done
 	bsr.w snapshotEntry
 	beq.w done
 	cmpi.l #TARGET_DECLARATION, Snapshot.Stage(a6)
@@ -335,12 +331,6 @@ entryLoop
 	beq.w invalid
 	cmpi.l #255, d7
 	bhi.w invalid
-	move.l d2, d3
-	add.l d7, d3
-	bcs.w invalid
-	move.w View.ArenaUsed(a4), d0
-	cmp.l 0(a5, d0.l), d3
-	bhi.w invalid
 	bsr.w resolveName
 	bne.w invalid
 	move.l d7, Snapshot.NameBytes(a6)
@@ -356,20 +346,39 @@ invalid
 	rts
 	.bend  ; snapshotEntry
 
-; D2=name handle,D7=positive length<=255,A4=View,A5=scope. The owner
-; validates page membership and holes. D0/CCR=status,A0=name pointer or zero;
-; all other registers preserved. The callback returns its pointer in A1.
+; D0=index,A4=View,A5=scope -> A3=owned entry,D0/CCR=status.
+; Other registers preserved. No entry pointer borrows cache storage.
+readEntry	.block
+	movem.l d1/a0-a2, -(sp)
+	move.l d0, d1
+	moveq #0, d0
+	move.w View.Entries(a4), d0
+	lea 0(a5, d0.l), a0
+	lea EntryCopy, a1
+	movea.l View.EntryReader(a4), a2
+	move.l d1, d0
+	jsr (a2)
+	lea EntryCopy, a3
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	rts
+	.bend  ; readEntry
+
+; D2=name handle,D7=length,A4=View,A5=scope -> A0=owned spelling.
+; D0/CCR=status; other registers preserved. The callback copies bounded bytes.
 resolveName	.block
 	movem.l d1/a1-a2, -(sp)
 	moveq #0, d0
 	move.w View.Arena(a4), d0
 	lea 0(a5, d0.l), a0
+	lea NameCopy, a1
 	move.l d2, d0
 	move.l d7, d1
 	movea.l View.NameReader(a4), a2
 	jsr (a2)
-	movea.l a1, a0
+	lea NameCopy, a0
 	movem.l (sp)+, d1/a1-a2
+	tst.l d0
 	rts
 	.bend  ; resolveName
 
@@ -417,12 +426,8 @@ snapshotRelated	.block
 	move.l Snapshot.Base(a0), Snapshot.Base(a6)
 	move.l Snapshot.Current(a0), Snapshot.Current(a6)
 	move.l d1, d0
-	moveq #0, d2
-	move.w View.EntryBytes(a4), d2
-	mulu.w d2, d0
-	move.w View.Entries(a4), d2
-	movea.l 0(a5, d2.l), a3
-	adda.l d0, a3
+	bsr.w readEntry
+	bne.w done
 	bsr.w snapshotEntry
 done
 	rts
@@ -431,7 +436,7 @@ done
 ; Find an existing declaration without using the binding hash. Exact folded
 ; canonical matches take priority over the first folded leaf match. D0/CCR=stage
 ; 15/16 with D1=index,A3=entry, or zero when absent. The original snapshot name
-; remains immutable throughout the bounded scan; no allocations or I/O occur.
+; remains immutable throughout the bounded scan; sealed reads may fault.
 findDeclared	.block
 	moveq #0, d4
 	moveq #0, d5
@@ -441,13 +446,8 @@ next
 	cmp.l d5, d4
 	bhs.w finished
 	move.l d4, d0
-	moveq #0, d2
-	move.w View.EntryBytes(a4), d2
-	mulu.w d2, d0
-	moveq #0, d2
-	move.w View.Entries(a4), d2
-	movea.l 0(a5, d2.l), a3
-	adda.l d0, a3
+	bsr.w readEntry
+	bne.w advance
 	move.w View.Flags(a4), d2
 	move.w 0(a3, d2.l), d0
 	btst #VALUE_DECLARED_BIT, d0
@@ -462,13 +462,6 @@ next
 	bhi.w advance
 	move.w View.Name(a4), d2
 	move.l 0(a3, d2.l), d2
-	move.l d2, d3
-	add.l d7, d3
-	bcs.w advance
-	moveq #0, d0
-	move.w View.ArenaUsed(a4), d0
-	cmp.l 0(a5, d0.l), d3
-	bhi.w advance
 	bsr.w resolveName
 	bne.w advance
 	movea.l a0, a2
@@ -509,13 +502,8 @@ finished
 	bmi.w absent
 	move.l d6, d1
 	move.l d6, d0
-	moveq #0, d2
-	move.w View.EntryBytes(a4), d2
-	mulu.w d2, d0
-	moveq #0, d2
-	move.w View.Entries(a4), d2
-	movea.l 0(a5, d2.l), a3
-	adda.l d0, a3
+	bsr.w readEntry
+	bne.w absent
 	moveq #DECLARED_LEAF, d0
 	rts
 absent
@@ -707,5 +695,7 @@ NextRecord	.res byte, SNAPSHOT_BYTES
 Pending	.res byte, PendingCheck.Related+4
 RemapRecord	.res byte, REMAP_CAPTURE_BYTES
 CaptureStage	.res long, 1
+EntryCopy	.res byte, 256
+NameCopy	.res byte, 256
 	.endsection
 	.endmodule

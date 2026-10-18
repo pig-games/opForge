@@ -3,6 +3,7 @@
 ; @opforge-owner: experimental.amigaos.binary_section_prepare
 	.module experimental.amigaos.binary_section_prepare
 	.cpu 68020
+	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as names
@@ -379,9 +380,15 @@ mapCompare
 	bne.w nextMapName
 	move.l d6, d0
 	sub.w layout.State.Base(a6), d0
-	mulu.w #names.ENTRY_BYTES, d0
-	movea.l layout.ENTRIES_POINTER(a6), a1
-	adda.l d0, a1
+	move.l a0, -(sp)
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	lea LexicalEntry, a1
+	movea.l (sp)+, a0
+	bne.w bad
 	move.w names.Entry.Owner(a1), d0
 	cmpi.w #1, d5
 	bne.w mapConcreteOwner
@@ -1340,8 +1347,14 @@ sameLeaf	.block
 	move.l d0, d1
 	bsr.w leaf
 	bne.w different
-	movea.l a1, a3
+	lea LexicalOtherName, a3
 	move.l d2, d4
+	move.l d2, d3
+copyLeaf
+	move.b (a1)+, (a3)+
+	subq.l #1, d3
+	bne.w copyLeaf
+	lea LexicalOtherName, a3
 	move.l d5, d1
 	bsr.w leaf
 	bne.w different
@@ -1376,9 +1389,16 @@ leaf	.block
 	bcs.w bad
 	cmp.w layout.State.Count(a6), d1
 	bhs.w bad
-	mulu.w #names.ENTRY_BYTES, d1
-	movea.l layout.ENTRIES_POINTER(a6), a1
-	adda.l d1, a1
+	move.l a0, -(sp)
+	move.l d1, d0
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	lea LexicalEntry, a1
+	movea.l (sp)+, a0
+	bne.w bad
 	moveq #0, d2
 	move.w names.Entry.Length(a1), d2
 	moveq #0, d3
@@ -1387,13 +1407,16 @@ leaf	.block
 	beq.w bad
 	moveq #0, d1
 	move.l names.Entry.Name(a1), d1
-	add.l d3, d1
 	move.l a0, -(sp)
-	lea layout.ARENA(a6), a0
 	move.l d1, d0
-	jsr nameStore.pointer
-	movea.l a0, a1
+	moveq #0, d1
+	move.w names.Entry.Length(a1), d1
+	lea layout.LEXICAL_STATE(a6), a0
+	lea LexicalName, a1
+	jsr lexical.copyName
+	adda.l d3, a1
 	movea.l (sp)+, a0
+	bne.w bad
 	moveq #0, d0
 	rts
 bad
@@ -1428,5 +1451,11 @@ BinWord	.byte "bin"
 PrgWord	.byte "prg"
 SectionsWord	.byte "sections"
 	.align 2  ; keep the next module's instructions word-aligned
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, names.ENTRY_BYTES
+LexicalName	.res byte, names.NAME_BYTES
+LexicalOtherName	.res byte, names.NAME_BYTES
 	.endsection
 	.endmodule

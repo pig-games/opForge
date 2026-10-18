@@ -5,6 +5,49 @@ use super::*;
 
 fn cases() -> Vec<Case> {
     vec![
+        // aaa and pbq collide under every supported scope bucket mask. Parent
+        // lookup must preserve its query while inspecting a different candidate.
+        Case {
+            name: "module-pipeline-colliding-parent-spellings".into(),
+            cpu: "68020".into(),
+            files: vec![
+                ("entry.asm", ".module main\n.cpu 68020\naaa=11\npbq=22\nroutine .block\n.byte aaa,pbq\n.bend\n.byte routine\n.endmodule\n".into()),
+                ("library/unused.asm", ".module unused\n.cpu 68020\n.endmodule\n".into()),
+            ],
+            expected: Some(vec![11, 22, 0]),
+        },
+        // Qualified displacement names must not hide the consuming base-register
+        // role when a macro actual has no scalar declaration.
+        Case {
+            name: "module-pipeline-macro-qualified-register-base".into(),
+            cpu: "68020".into(),
+            files: vec![
+                ("entry.asm", ".module main\n.cpu 68020\n.use provider as layout\nemit .macro ownerArg\n lea layout.OFF(.ownerArg),a0\n.endmacro\nrun .block\n .emit a6\n.bend\n.endmodule\n".into()),
+                ("library/provider.asm", ".module provider\n.cpu 68020\n.pub\nOFF = 4\n.endmodule\n".into()),
+            ],
+            expected: Some(vec![0x41, 0xee, 0, 4]),
+        },
+        Case {
+            name: "module-pipeline-macro-qualified-struct-register-base".into(),
+            cpu: "68020".into(),
+            files: vec![
+                ("entry.asm", ".module main\n.cpu 68020\n.use provider as layout\nemit .macro ownerArg\n move.l layout.Frame.Value(.ownerArg),d1\n.endmacro\nrun .block\n .emit a6\n.bend\n.endmodule\n".into()),
+                ("library/provider.asm", ".module provider\n.cpu 68020\n.pub\nFrame .struct\nPadding .long ?\nValue .long ?\n.endstruct\n.endmodule\n".into()),
+            ],
+            expected: Some(vec![0x22, 0x2e, 0, 4]),
+        },
+        // The provider is closed before its public template runs in main.
+        // Default arguments and ordinary names retain their existing invocation context.
+        Case {
+            name: "module-pipeline-late-template-invocation-context".into(),
+            cpu: "68020".into(),
+            files: vec![
+                ("entry.asm", ".module main\n.cpu 68020\n.use provider (emit)\n.use sibling\nhidden=90\n.emit\n.emit 2\n.endmodule\n".into()),
+                ("library/provider.asm", ".module provider\n.cpu 68020\nhidden=7\n.pub\nemit .macro value=hidden\n.byte .value,hidden\n.endmacro\n.endmodule\n".into()),
+                ("library/sibling.asm", ".module sibling\n.cpu 68020\n.byte 3\n.endmodule\n".into()),
+            ],
+            expected: Some(vec![3, 90, 90, 2, 90]),
+        },
         Case {
             name: "module-pipeline-typed-scalar-chain".into(),
             cpu: "68020".into(),

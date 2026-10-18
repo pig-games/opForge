@@ -6,6 +6,10 @@ exactly. The subsequent resident cleanup repair passes the unchanged frozen memo
 workload with zero cleanup ownership. Buffer reuse removes 88.41% of allocation
 traffic on the frozen workload without changing its peak heap.
 Sequential sealing still costs substantial runtime versus the pre-sealing reference.
+Small-read cache admission was evaluated and removed: the completed controls show
+no measurable saving, and the candidate lacks full-build qualification. Fresh
+unchanged-reference retries also time out; the latest full self-host check did not
+complete. Earlier successful receipts below do not qualify those incomplete runs.
 Parity remains paused. See [storage ownership](native-lazy-preparation.md) and
 [the remaining object boundary](native-fragment-preparation.md).
 
@@ -21,6 +25,63 @@ These runs use the same expanded-memory A4000/68040 FS-UAE profile and 64 KiB gu
 stack, serially. They are not A6000 measurements or a 2 MiB qualification. Heap
 excludes executable, stack, OS and untracked allocations. No new observer framework
 or experiment selector was added.
+
+## Small-read cache admission: not retained
+
+The tested policy copied a first cold lexical read directly into caller-owned
+storage, admitting the complete backing page on its second touch. Resident bytes
+remained authoritative, including dirty/pinned bytes. The four-page 128 KiB cache
+and 32-byte directory rows did not grow; an unused row word held the admission
+hint. The hypothesis was a 10–20% release-time saving with unchanged peak heap,
+not an established gain.
+
+Fresh native component checks passed cold reads, second-touch admission, pinned
+budget exhaustion/retry, dirty bytes, short/failed IO, bounds and complete cleanup.
+The maintained module and macro controls were then run separately for release
+timing and memory, with identical source/package/command bytes and live Rust BIN
+and Hunk oracles:
+
+| Resource | Reference | Small-read candidate |
+|---|---:|---:|
+| Module release START/DONE | 0.255 s | 0.253 s |
+| Module peak tracked heap | 608,768 B | 608,768 B |
+| Module allocated/freed capacity, each | 1,242,696 B | 1,242,696 B |
+| Macro release START/DONE | 7.839 s | 7.957 s |
+| Macro peak tracked heap | 2,173,848 B | 2,173,848 B |
+| Macro allocated/freed capacity, each | 5,579,328 B | 5,579,328 B |
+
+All eight controls completed with exact outputs, explicit exit zero, zero cleanup
+ownership and no accounting/allocation diagnostics. Deterministic language-work
+and storage-accounting fields agree; timing differences are below the acceptance
+threshold. These small controls do not establish large-workload cache hit rates.
+The candidate release image grew 220 B.
+
+The frozen full-build release reference completed in 191.742 s. The candidate was
+still incomplete at an observed 11 min 15 s after emulator launch; it was later
+interrupted when terminating its scheduling process also ended the active child.
+That is neither a finite native duration nor a completed correctness comparison.
+A second run of the unchanged frozen release reference timed out after 600 s.
+The separate instrumented reference timed out after 1,200 s without a final memory
+receipt. Full-build timing is not repeatable enough for attribution. There is
+**no completed full-build candidate timing, memory comparison or full self-host
+proof**. No new IO observer was added; extra filesystem-call overhead remains a
+hypothesis rather than measured attribution.
+
+The candidate did not establish the required saving or qualification. Its API,
+integration and probes are removed; the original cache policy remains, without
+another selector or fallback. This decision does not diagnose the incomplete runs
+as a specific cache or ownership bug. Images, candidate source, comparison assertions
+and receipts are retained outside `target` at
+`/tmp/opforge-small-read-20261018`.
+
+The retained current-source release reference was also checked in disk mode:
+**223 files / 2,783,840 B**, manifest `fnv1a64:9e2d20b52db3e4eb`, with bootstrap
+and fresh Rust oracle both **728,656 B**, `fnv1a64:8151a17c6c83a3a9`. It timed out
+after 600 s without DONE, a recorded native exit or a complete output. This step
+therefore does **not** qualify a full current-source self-host, even for the
+retained reference. Localize this repeatability failure before another cache
+policy change; do not interpret it as a measured speed regression or enlarge the
+cache to mask an unlocated failure.
 
 ## Isolated binding repair
 
@@ -225,14 +286,15 @@ Preserve contiguous storage and the pre-sealing executable as references. Do not
 start another ownership change before reviewing the remaining runtime tradeoff and
 current qualification limits.
 
-**No 2 MiB fit is claimed.** Frozen tracked heap is **6.59 MiB**, exceeding the entire
-target by **4.59 MiB** before executable, stack and OS. Instrumented linked reservation
-adds 781,252 B, reaching at least **7.33 MiB** before stack/OS. Prepared/assembly live
-heap remains 2.83 / 4.71 MiB. Buffer reuse reduces traffic, not these retained owners.
+**No 2 MiB fit is claimed.** The last completed frozen disk memory measurement is
+**6.59 MiB**, exceeding the entire target by **4.59 MiB** before executable, stack
+and OS. That instrumented executable's linked reservation adds 781,252 B, reaching
+at least **7.33 MiB** before stack/OS. Prepared/assembly live heap remains
+2.83 / 4.71 MiB. Buffer reuse reduces traffic, not these retained owners.
 
-The next runtime candidate to discuss is resident chain/hash metadata to avoid cold
-entry/name acquisition during failed lookup and rehash. A 14-byte identity bridge
-would cost another 393,210 B at 65,535 IDs; an unchanged peak would leave about
+After restoring repeatable full-run qualification, a runtime candidate to discuss
+is resident chain/hash metadata to avoid cold entry/name acquisition during failed
+lookup and rehash. A 14-byte identity bridge would cost another 393,210 B at 65,535 IDs; an unchanged peak would leave about
 1.166 MiB of the measured sealing saving. This is a projection, not implementation
 or approval. Real object-local IDs and relocatable near-output objects remain the
 next architectural ownership boundary; macro-only deferral/audits and retired

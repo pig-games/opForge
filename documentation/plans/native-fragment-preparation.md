@@ -129,6 +129,83 @@ Object-local identities, near-output relocatable fragments and per-module metada
 retirement are not yet implemented or qualified. The bounded prepared-record bridge
 above is implemented; it is not a substitute for these object interfaces.
 
+## Capacity budget before module sealing
+
+The 2026-10-18 bounded census supports pursuing module-private lexical retirement,
+with a **1 MiB measured full-build peak reduction** as the acceptance target.
+This is a prediction budget, not an implemented saving or a new peak measurement.
+Current shared arrays cannot release module slices: direct reclaim remains zero.
+
+The unchanged frozen self-host input contains 50,815 lexical entries and 38,298
+unique stored names, totaling 1,791,485 name bytes. Ownership follows explicit
+declaration metadata and checked lexical-parent chains, identifying 220 module
+scopes; 1,172 global/unassigned entries remain retained. Names shared between
+modules are counted once and retained. The largest module has 3,810 entries.
+
+| Existing allocation near the preparation peak | Capacity |
+|---|---:|
+| 36-byte lexical entry arena | 2,097,152 B |
+| Three per-identity module metadata arrays | 393,216 B |
+| Name pages and directory | 1,835,520 B |
+| Total potentially replaceable capacity | **4,325,888 B / 4.13 MiB** |
+
+All these allocations coexist at a measured **8,483,280 B** semantic-span
+frontier, just 42,096 B below the existing **8,525,376 B** heap peak. Thus the
+opportunity exists near the actual peak, rather than only at final cleanup.
+
+The conservative eight-byte identity-bridge model charges the following replacement
+storage. It assumes completed private lexical state is sealed/spilled, only one
+module's private frontend is active, and later consumers use numeric interfaces.
+It retains all current typed-value, schema, template, import, plan and bucket
+allocations; no savings from those owners or near-output fragments are credited.
+
+| Replacement owner | Budget |
+|---|---:|
+| All visible facets and global/unassigned entries, with full entry/module metadata and shared/interface names | 900,784 B |
+| Eight-byte numeric bridge for every current identity | 406,520 B |
+| Largest active private module, including geometric allocation and name-page slack | 352,512 B |
+| Additional bounded object-metadata cache | 131,072 B |
+| 256-byte directory allowance per module/global unit | 56,576 B |
+| Total steady replacement | **1,847,464 B / 1.76 MiB** |
+
+The retained interface includes 9,981 entries and 481,558 unique name bytes.
+The model charges all public value/template/statement facets, without treating
+visibility as proof that their private dependencies can be released. Sealing must
+resolve those dependencies or retain explicit numeric recipes. Any additional
+closure storage reduces the saving byte for byte.
+
+At the measured peak-near frontier, replacing these owners gives a modeled
+6,004,856 B. Charge another 352,512 B for a whole-private-module sealing copy and
+reserve 128 KiB for additional remapping/workspace: **6,488,440 B / 6.19 MiB**,
+or **1.90 MiB below that frontier**. Allowing geometric growth instead of exact
+sizing for the bridge, directory and per-module interface entry tables adds
+380,528 B, leaving **1.54 MiB** of modeled saving. The 128 KiB workspace is a
+proposed implementation budget, not measured existing work. No concurrent sealing
+or retained private dependency closure is hidden in these estimates.
+
+These **1.5–1.9 MiB planning estimates apply to the sampled frontier**, not a
+guaranteed new full-build peak. Allocation overlap inside spans, concurrent module
+lifetimes and closure requirements can move the maximum. A production experiment
+must preserve the reference, count retained and released capacities, enforce a
+bounded sealing workspace, and run the full unchanged-input peak measurement.
+If additional retention consumes the margin above 1 MiB, revise the design before
+expanding it. Merely writing today's global tables to an object file cannot realize
+this budget. Module sealing/retirement remains unimplemented; parity stays paused.
+The current tracked peak is still 8.13 MiB, excluding executable, stack and OS:
+no 2 MiB fit is claimed.
+
+Evidence is retained outside the build cache at
+`/tmp/opforge-module-capacity-20261018`: `calculate.py`, `capacity-v2.json`,
+`decoded-memory.json`, and `census/result/native-result.json`. A temporary source
+snapshot uses the existing progress telemetry for a finite read-only census, with
+no production code or observer interface changes. The fresh FS-UAE run completes,
+exits zero and produces the exact 708,216-byte live Rust oracle on workload
+`eae5102bd21b3863105a7f550912193dff8e52c8ba2d6ff11b498392b7dca480`.
+Heap peak, allocated/freed totals, packed bytes and expression/evaluation counts
+match the reference exactly; cleanup live bytes are zero. Census timing is
+diagnostic overhead and establishes no speed improvement. This is frozen-input
+proof, not a fresh current-source self-build or A6000 measurement.
+
 A future configured-object fingerprint must cover content, transitive includes and
 assets, imported exports/types/templates, compiler/package semantics, relevant options,
 search resolution and consumed source-order inputs. Timestamps are hints. Earlier

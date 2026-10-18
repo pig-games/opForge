@@ -151,6 +151,15 @@ contiguous record stream. A `.ofm` object must use local IDs, checked offsets an
 relocatable fragments/recipes before that stream and module metadata can retire.
 Do not return to macro-only audits or treat a final-only cache as an earlier peak saving.
 
+The [bounded module-capacity calculation](native-fragment-preparation.md#capacity-budget-before-module-sealing)
+identifies 4.13 MiB of lexical allocation at a frontier within 42,096 B of the
+measured peak. After retained interfaces, an identity bridge, the largest active
+private module, sealing overlap and a workspace allowance, its planning budget is
+1.5–1.9 MiB less at that frontier. This is conditional on closing private bindings
+and sequential module retirement; it is not a measured new full-build peak. The
+next implementation must demonstrate at least 1 MiB peak saving on the unchanged
+input. Sealing/retirement is not implemented by this calculation.
+
 ## Evidence and reproduction
 
 Immutable reference/candidate images, frozen cases, current-source export, raw receipts

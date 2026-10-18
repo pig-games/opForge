@@ -7,10 +7,11 @@ Disk-backed prepared module ranges now survive global binding/layout and reachab
 through bounded views, allowing frontend scratch to retire before assembly input is
 materialized. Final binding, layout and emission still run globally. This is an
 in-build ownership boundary, not a persistent `.ofm` object implementation. Sequential lexical
-storage sealing is now implemented as a checkpoint, but a dramatic runtime cost
-blocks promotion. Current-source full self-hosting fails during qualified-register
-macro binding; only the frozen full-build instrumented comparison succeeds.
-Parity remains paused.
+sealing now has qualified-source binding repaired and reuses its bounded cache
+buffers. Current release self-hosting succeeds exactly; the extra instrumented
+current-source run times out during global completion. Frozen resource comparisons
+remain valid, but that timeout supplies no final peak or completion. Parity remains
+paused.
 See [measurements](native-performance-diagnosis.md) and
 [capture ownership](native-lazy-preparation.md).
 
@@ -89,8 +90,9 @@ storage released. `beginSizing` still sees stable contiguous records. This avoid
 prepared-buffer/frontend overlap; it does not avoid semantic preparation work.
 
 Bounded prepared records previously saved 1,964,032 B / 18.72% on frozen input.
-The new lexical sealing checkpoint saves another 1,615,656 B / 18.95%, while
-introducing the substantial runtime cost documented below.
+Lexical sealing saves another 1,615,656 B / 18.95%. Buffer reuse then removes
+88.41% of allocation/free traffic without changing that heap peak. The remaining
+runtime cost and qualification limits are documented below.
 The [resource results](native-performance-diagnosis.md) separate heap, allocation
 traffic and release timing. Global symbol IDs remain a temporary in-build bridge;
 this storage cannot yet be exported as a reusable module object.
@@ -158,39 +160,39 @@ justify deleting its private dependency closure, and this checkpoint does not do
 Failures latch and flow to frontend publication/cleanup; partial owners release normally.
 The existing `--capture-dir` policy selects backing, with no additional selector.
 
-The unchanged frozen comparison reduces peak from 8,525,376 to 6,909,720 B:
-**1.541 MiB / 18.95% saved**, above the 1 MiB target. Work counters and complete
-instrumented output on that frozen input remain identical to live Rust. However, allocation traffic rises
-from 126,781,224 to 826,338,176 B. Instrumented preparation rises 70.38→290.50 s,
-and release does not complete within 600 s versus a 101.414 s reference. The smaller
-macro-heavy project also slows 6.108→9.149 s and grows peak 5.2%. This is a recovery
-checkpoint, not an accepted runtime/memory tradeoff or release qualification.
+The unchanged frozen sealing comparison reduces peak from 8,525,376 to
+6,909,720 B: **1.541 MiB / 18.95% saved**, above the 1 MiB target. The binding repair
+leaves heap/work counters unchanged. Reusing four existing 32 KiB cache buffers
+then reduces allocated/freed capacity from 826,338,176 to 95,775,616 B, with the
+same peak, exact live Rust output and zero cleanup ownership. Instrumented
+preparation falls 289.94 to 166.42 s. Separate release timing and smaller controls
+are in the [measurement report](native-performance-diagnosis.md).
 
-A bounded debugger sample maps an ordinary 32 KiB page allocation to imported-name
-lookup through the lexical store. It does not establish heap corruption or completion.
-Bucket rehashing and mismatching name searches still acquire spilled entry metadata;
-rehashing also rewrites cold chain links. See the [full evidence and proof limits](native-performance-diagnosis.md).
+The current release executable also assembles its entire current source exactly in
+both resident and disk modes. The additional instrumented current-source case
+does not complete within
+1,200 s, after the ORDER marker and before BIND. Do not use that timeout as a peak
+measurement or infer it was introduced by cache reuse: an equivalent pre-reuse
+instrumented current-source control has not been run. Focused native component and
+module checks pass. Keep the contiguous path and preserved pre-sealing executable
+as references; review the anomaly before further ownership changes.
 
-Stop for review before implementing the next design. First repair the qualified-
-register macro binding failure exposed by the new access macros; its tuple
-projection boundary is identified, but a repair is not qualified. Then consider reusing the
-existing 128 KiB cache buffers on eviction: flush an unpinned victim, transfer its
-buffer to the destination row, preserve logical metadata and avoid allocating and
-zeroing a replacement. This adds no payload capacity and targets the confirmed
-allocation path, while disk I/O and lookup misses remain. It is unimplemented;
-exact allocation counters and fresh timing/peak comparisons must qualify it.
+Buffer reuse is implemented, with no extra state or larger cache. It transfers
+allocation ownership after flushing an unpinned victim, preserving logical metadata;
+short views expose only initialized bytes. Dirty writes, pins and failed-I/O cleanup
+have fresh native component coverage. The static capacity census remains a forecast,
+while the completed frozen MEMD run establishes the actual peak saving.
 
-A later 14-byte bridge could retain authoritative chain links and a namespace-tagged
-spelling hash, avoiding private payload acquisition during rehash and nonmatches.
-Its additional 393,210 B would project approximately 1.166 MiB remaining saving at an
-unchanged peak frontier. Buffer reuse should precede that RAM tradeoff. No 2 MiB fit
-is claimed: frozen heap alone is 6.59 MiB, with prepared/assembly live heap still
-2.83/4.71 MiB. Full current-source and release qualification limits are in the
-[measurement report](native-performance-diagnosis.md#current-qualification-and-distance-to-target).
+A resident chain/hash bridge remains a proposal for avoiding cold payload acquisition
+during rehash/nonmatching lookup. A 14-byte bridge adds 393,210 B at maximum count,
+projecting about 1.166 MiB remaining sealing saving at an unchanged peak frontier.
+It is unimplemented and needs review. No 2 MiB fit is claimed: frozen tracked heap
+alone is 6.59 MiB, and prepared/assembly live heap remains 2.83 / 4.71 MiB.
 
 Real object-local identities, explicit remapping and near-output relocatable fragments
-remain the next architectural boundary after this storage cost is resolved. Do not
-start another macro-only investigation or a final-only cache in place of that work.
+remain the next architectural boundary after these storage and qualification limits
+are resolved. Do not start another macro-only investigation or a final-only cache in place of that work.
 The census and current receipts remain outside `target` under
-`/tmp/opforge-module-capacity-20261018` and `/tmp/opforge-module-sealing-20261018`.
+`/tmp/opforge-module-capacity-20261018`, `/tmp/opforge-module-sealing-20261018`
+and `/tmp/opforge-cache-reuse-20261018`.
 Git preserves the superseded forecast and experiment chronology.

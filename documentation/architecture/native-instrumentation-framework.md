@@ -566,7 +566,7 @@ contiguous source regions. Unsupported whole-app image builders were removed.
 The component probes and compatible historical decoders below remain, but cannot
 qualify fresh chunked whole-app measurements. Use existing MEMD/capture/hotspot
 telemetry for current comparisons; see the
-[current ownership contract](../plans/native-lazy-preparation.md#capture-storage-and-lifetimes).
+[current ownership contract](../plans/native-lazy-preparation.md#capture-acquisition-and-retirement).
 
 `capture_lifetime.i` gates calls, imports and fixed storage on
 `OPFORGE_CAPTURE_LIFETIME_AUDIT`. Counter-only images require no memory/debug gates
@@ -591,7 +591,7 @@ unbalanced ownership invalidate the report. The
 [decoder](../../scripts/performance/capture_lifetime_audit.py) reconciles it with
 MEMD, capture composition/growth and L1/work inventory. Native completion and
 exact Rust output remain separate requirements. See the
-[investigation](../plans/native-lazy-preparation.md#capture-storage-and-lifetimes)
+[investigation](../plans/native-lazy-preparation.md#capture-acquisition-and-retirement)
 for current scope and lifetime caveats; historical overhead measurements are in Git.
 
 ## Sampled native routine hotspots

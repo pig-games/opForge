@@ -1,13 +1,15 @@
 # Preparation ownership and capture storage
 
-Status, 2026-10-18: module publication, bounded prepared records and sequential
-lexical storage sealing are implemented in the working candidate. The new sealing
-boundary saves **1.54 MiB of frozen peak heap**, but its runtime cost blocks release
-promotion. Current-source self-hosting also fails at qualified-register macro
-binding; the exact frozen full-build comparison is not a current-source proof.
-Preserve the reference and pause for review before further implementation.
-Parity remains paused. See [measurements and proof limits](native-performance-diagnosis.md)
-and [the remaining object boundary](native-fragment-preparation.md).
+Status, 2026-10-18: sequential lexical sealing and bounded cache buffer reuse are
+implemented. The qualified-source register-binding repair passes focused native
+checks, and the current release completes its full disk-backed self-host exactly.
+On frozen input, buffer reuse reduces allocation traffic 88.41% while preserving
+6.59 MiB peak heap. Runtime remains substantially above the pre-sealing reference.
+An extra instrumented current-source self-host times out during global completion;
+its peak is unqualified. Review that anomaly and the remaining tradeoff before
+further ownership implementation. Parity remains paused.
+See [measurements and proof limits](native-performance-diagnosis.md) and
+[the remaining object boundary](native-fragment-preparation.md).
 
 ## Maintained storage policies
 
@@ -80,7 +82,11 @@ member identities and binding can still read or change private metadata. Readers
 therefore receive caller-owned entry/name copies; mutations explicitly write back.
 No page pointer escapes its lease. Stable global IDs preserve the existing late
 binding and layout order. Canonical-name sharing survives aliasing and retirement.
-The backing cache has four 32 KiB pages; dirty changes persist before eviction.
+The backing cache has four 32 KiB pages. At capacity, a successful dirty flush
+precedes transfer of an unpinned buffer's Pointer/Capacity; both logical Used
+extents remain with their rows. Reuse avoids allocation/clearing without growing
+the cache. Failed flush preserves ownership; failed reload frees its destination
+and reduces Reserved. Appends and bounded views expose initialized bytes only.
 
 Storage errors are sticky and checked before successful frontend publication or
 cleanup, so boolean lookup fallbacks cannot turn I/O failure into ordinary absence.
@@ -91,9 +97,10 @@ cleanup. The resident control uses the same APIs without module spooling.
 This is **storage sealing**, not semantic finalization, module-local ID remapping
 or persistent `.ofm` serialization. Module owner/origin/flag arrays, typed values,
 schemas, templates, import state and plans still have build-wide lifetimes.
-The current-source binding failure and measured runtime regression mean this
-candidate is not ready for promotion;
-see the proposed buffer reuse and resident lookup metadata in the [diagnosis](native-performance-diagnosis.md#decision-and-next-step).
+Buffer reuse removes 730,562,560 B of allocation/free traffic on the frozen input;
+heap remains 6,909,720 B. Release self-host completion does not supply a peak for
+the stalled instrumented current-source case. The [measurement report](native-performance-diagnosis.md)
+separates those configurations and retains the contiguous reference.
 
 ## Prepared records and the remaining frontier
 

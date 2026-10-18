@@ -1,5 +1,9 @@
 # Module preparation and relocatable objects
 
+Follow the [current 8 MiB budget and performance sequence](native-performance-diagnosis.md#current-assignment-and-decision-points).
+Module objects and object-local IDs remain analysis-only until Erik decides whether
+to continue them; they are not the next implementation assignment.
+
 Status, 2026-10-18: dependency-first preparation now interleaves with module
 configuration/discovery with resident capture. Completed module captures retire after their numeric
 records and templates have been published into the shared semantic owner.
@@ -112,7 +116,7 @@ Consequently the useful memory bound is shared runtime/packages plus simultaneou
 configuration and semantic state, retained prepared data, active module/include
 capture, discovery and allocation overlap. It no longer requires every completed
 module's raw capture to remain resident. The measured largest overlap, rather than
-a speculative object size, determines the current peak. No 2 MiB fit is claimed.
+a speculative object size, determines the current peak. Expanded-memory results do not establish 8 MiB fit.
 
 ## Next ownership boundary: real module objects
 
@@ -186,12 +190,13 @@ while the completed frozen MEMD run establishes the actual peak saving.
 A resident chain/hash bridge remains a proposal for avoiding cold payload acquisition
 during rehash/nonmatching lookup. A 14-byte bridge adds 393,210 B at maximum count,
 projecting about 1.166 MiB remaining sealing saving at an unchanged peak frontier.
-It is unimplemented and needs review. No 2 MiB fit is claimed: frozen tracked heap
+It is unimplemented and follows the ordered work in the current plan. No 8 MiB
+fit is established by these expanded-memory runs: frozen tracked heap
 alone is 6.59 MiB, and prepared/assembly live heap remains 2.83 / 4.71 MiB.
 
 Real object-local identities, explicit remapping and near-output relocatable fragments
-remain the next architectural boundary after these storage and qualification limits
-are resolved. Do not start another macro-only investigation or a final-only cache in place of that work.
+are analysis-only candidates after these storage and qualification limits are
+resolved. Do not start another macro-only investigation or a final-only cache.
 The census and current receipts remain outside `target` under
 `/tmp/opforge-module-capacity-20261018`, `/tmp/opforge-module-sealing-20261018`
 and `/tmp/opforge-cache-reuse-20261018`.

@@ -1,5 +1,9 @@
 # Preparation ownership and capture storage
 
+The [current 8 MiB budget and performance sequence](native-performance-diagnosis.md#current-assignment-and-decision-points)
+supersedes the former product target and pauses further module-object implementation.
+Confirm the measured process budget before another storage policy.
+
 Status, 2026-10-18: sequential lexical sealing and bounded cache buffer reuse are
 implemented. The qualified-source register-binding repair passes focused native
 checks, and the current release completes its full disk-backed self-host exactly.
@@ -121,6 +125,6 @@ semantics, not a cheap structural-only scan. A real `.ofm` must own local identi
 exports, templates and unresolved relocation/layout/observation recipes before
 source-oriented owners can retire. A final-only cache cannot reduce an earlier peak.
 
-No 2 MiB fit is claimed. The frozen candidate's tracked heap alone is 6.59 MiB;
+These expanded-memory runs do not establish 8 MiB fit. The frozen candidate's tracked heap alone is 6.59 MiB;
 prepared and assembly live heap remain 2.83 and 4.71 MiB, excluding executable,
 stack and OS. Resource results and current qualification are reported separately.

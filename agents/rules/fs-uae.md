@@ -59,7 +59,37 @@ The [console debugger](../../documentation/fs-uae-console-debugger.md) is a sepa
 explicitly enabled diagnostic tool with PTY and GUI-entry constraints. Its transcript
 is not a native test result. Ordinary parity checks do not require debugger entry.
 
-## Experimental constrained-memory comparison
+## Native memory qualification
+
+The product target is an **8 MiB Amiga (8,388,608 bytes total RAM)**. Use
+`OPFORGE_FS_UAE_MEMORY_PROFILE=68020-8m` for fit qualification: 2 MiB chip plus
+4 MiB and 2 MiB fast banks, with no additional RAM or RTG memory. FS-UAE 3.1.66
+rejects a single 6 MiB fast bank. The profile pins unrestricted CPU speed and
+disables cycle-exact emulation; it measures memory fit, not hardware timing.
+Existing expanded-profile results cannot establish fit. Require a completed
+exact live Rust comparison and report remaining margin, including the OS,
+executable/embedded package and stack, not just tracked heap.
+
+Create disposable system-drive copies with
+`scripts/performance/prepare_fs_uae_budget_boot.py --template <saved-template>
+--output <fresh-directory> --mode shell` or `--mode workbench`. Select the
+generated `template.fs-uae` through `OPFORGE_FS_UAE_CONFIG_TEMPLATE`. The latter
+loads Workbench before invoking the existing runner shim, without desktop
+preferences or WBStartup utilities. `--mode installed-workbench` preserves the
+installed startup and utilities for a separate desktop-cost comparison. The
+saved system drive and template remain unchanged. Copies and receipts belong
+outside `target`; remove them when no longer needed.
+
+The normal native runner retains `guest-memory.txt` before assembler launch
+under this profile, including release runs. Disposable boots also capture
+`boot-memory.txt` before the runner changes the guest stack. These snapshots
+describe environment availability, not the assembler's peak. A6000 is the
+reference for runtime/repeatability and disk I/O; its installed RAM is not
+restricted by the current hardware launcher, so hardware success is not 8 MiB
+fit evidence. The confirmed split is 6.5 MiB for the entire process and 1.5 MiB for OS; see
+[the current performance plan](../../documentation/plans/native-performance-diagnosis.md).
+
+## Other diagnostic profiles
 
 For the binary-source harness, `OPFORGE_FS_UAE_MEMORY_PROFILE=2m` generates a
 68020 configuration with 2 MiB chip RAM and zero fast/slow/motherboard/Zorro/RTG
@@ -69,14 +99,14 @@ profile. The saved template is never modified.
 
 `OPFORGE_FS_UAE_MEMORY_PROFILE=68020-10m` keeps the same 68020 and 2 MiB chip
 RAM but adds 8 MiB fast RAM. Use it to investigate functional self-host parity
-without the current 2 MiB allocation frontier. It is an investigation profile,
-not evidence that the 2 MiB product target has been met.
+with more RAM than the product budget. It is an investigation profile,
+not evidence that the 8 MiB product target has been met.
 
 `OPFORGE_FS_UAE_MEMORY_PROFILE=68020-74m` keeps that 68020, 2 MiB chip and
 8 MiB fast setup and adds 64 MiB Zorro III memory, matching the repository's
 normal expanded-memory configuration. This diagnostic profile is useful when
 investigating allocation failures caused by retained storage. It does not prove the
-product memory budget or fit within the 2 MiB product target. Do not combine
+product memory budget or fit within the 8 MiB product target. Do not combine
 measurements from this profile with the `68020-10m` native clock comparison;
 keep that comparison on its existing profile.
 

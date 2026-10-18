@@ -1,6 +1,153 @@
 # Native runtime and memory diagnosis
 
-Status, 2026-10-18: qualified-source macro register binding is repaired and the
+## Current assignment and decision points
+
+The 2026-10-18 course correction replaces the former product target with
+**8 MiB total machine RAM (8,388,608 B)**. Lower memory remains useful, but speed
+may use the available budget. Parity remains paused. No `.ofm` implementation,
+object-local identities, new cache policy or observer framework is authorized in
+the budget/repeatability step.
+
+Work in this order, keeping one coherent commit and unchanged-input/live-Rust
+comparison per step:
+
+1. Establish a real 8 MiB FS-UAE profile under minimal Shell and Workbench.
+   Measure free RAM and existing resident/disk behavior; confirm the process/OS
+   split with Erik before using it to choose storage budgets.
+2. Prepare serial A6000 repeatability cases: unchanged release resident/disk,
+   three runs each on frozen 214-file input; current-source disk once and
+   instrumented/progress disk once. Preserve environment, scratch and last marker.
+   Audit naming, clock/address/task dependencies, eviction and retry/pin loops.
+   Fix an identified hang separately; unexplained variance stays unexplained.
+3. Measure the memory/speed curve under 8 MiB, independently ablating capture,
+   prepared and lexical backing. Sweep lexical cache 128/256/512/1024 KiB and
+   capture payload budgets. Add only the agreed narrow gated I/O counters;
+   confirm final candidates on A6000, three runs each.
+4. Add resident chain/hash metadata within the planned 393 KB maximum. Repeat
+   the curve. If best-budget sealing still costs over about 15% for its roughly
+   1.2 MB saving, restore the pre-sealing default and remove sealing from the tree.
+5. Select storage/cache budgets from free memory and staged input size, retaining
+   `--capture-dir` override. Qualify both automatic choices and clean allocation
+   failure. No benchmark/path-specific selection.
+6. Refresh the existing hotspot profile at two sample settings. Choose later
+   runtime work from exclusive costs and exact counts, not the October 13 table.
+7. Census assembly heap and executable/package costs; report cheap candidates
+   without implementing them.
+8. Estimate incremental reuse upper bound and compare full relocatable module
+   objects with Hunk separate assembly/linking. Analysis only; Erik decides
+   whether `.ofm` continues.
+
+State expected savings before each optimization; discard changes below about 1%
+of the target resource by exact counters. Require at least three timings before
+a claim of 2% or more. A6000 is the timing/disk-I/O reference; only a completed
+exact native run under the 8 MiB emulator profile establishes fit. Do not overlap
+or retry over an incomplete hardware run. At phase completion, consolidate these
+three plans here, delete superseded chronology, and propose a remaining time box
+and parity-resumption date. The open macro iterator/value controls remain in the
+[parity backlog](compact-frontend-vm-boundary.md).
+
+Step 1 establishes the qualification profile; Erik confirmed the process/OS split below. The maintained `68020-8m` profile exposes 2 MiB chip plus
+4+2 MiB fast banks; other RAM and RTG are disabled. It pins max CPU speed and
+disables cycle-exact execution, so timings are not physical-68020 timings. See
+[the qualification recipe](../../agents/rules/fs-uae.md). The first cycle-exact
+full trial was deliberately interrupted after discovering the emulator default;
+it is neither a memory failure nor a completed timing.
+
+## Step 1: budget qualification
+
+This step changes qualification, not assembler/storage behavior; no runtime or
+heap saving is claimed. The reference profile is A4000/68020, max emulation
+speed, no cycle-exact execution, 2 MiB chip plus 4+2 MiB fast, no RTG/other RAM,
+and 64 KiB Shell stack. FS-UAE 3.1.66 and Kickstart 47.96/Workbench 47.2 report
+8,372,224 B registered memory: 2,080,768 B chip and 6,291,456 B fast. The 16 KiB
+physical/registered difference also belongs in the OS reserve.
+
+Disposable boots preserve the installed system. Minimal Workbench runs SetPatch
+and LoadWB, without installed desktop preferences or WBStartup programs. It must
+check LoadWB's exit immediately and retain its success witness before starting
+the normal native proof runner. A failed desktop start cannot qualify Workbench.
+The budget profile requires a template and canonical generated-config arguments;
+selecting an environment label alone is insufficient.
+
+| Environment | Free before assembler load | Largest free block |
+|---|---:|---:|
+| Minimal Shell, 64 KiB stack selected | 8,161,520 B / 7.78 MiB | 6,082,048 B |
+| Minimal Workbench, 64 KiB stack selected | 7,800,856 B / 7.44 MiB | 5,768,160 B |
+| Installed desktop, preferences and WBStartup enabled | 3,352,232 B / 3.20 MiB | 2,014,568 B |
+
+The configured-desktop measurement is a separate environment, not the minimal
+Workbench baseline. Removing only WBStartup programs still leaves 3,971,648 B
+free; preferences/services matter too. The small maintained module control
+assembles to the live Rust BIN (104 B) and Hunk (204 B) under each boot tested.
+Those small controls do not qualify the full assembler build.
+
+Four release checks use the unchanged current bootstrap (728,656 B,
+`fnv1a64:8151a17c6c83a3a9`) on the frozen **214 files / 2,648,242 B** input,
+SHA-256 `eae5102bd21b3863105a7f550912193dff8e52c8ba2d6ff11b498392b7dca480`.
+Every case assembles the live Rust oracle (708,216 B,
+`fnv1a64:27c800763d556961`) before native execution. **All four native builds
+fail with fresh START/DONE and exit 20; none produces an exact complete output.**
+
+| Boot | Storage | Observed START to failure | Result |
+|---|---|---:|---|
+| Shell | Resident | 11.914 s | Rejects in `binary_repeat_inventory.asm` |
+| Shell | Disk | 73.374 s | Rejects in `debug/lazy_audit.i` |
+| Workbench | Resident | 10.139 s | Rejects in `binary_exvm.asm` |
+| Workbench | Disk | 79.685 s | Rejects in `debug/lazy_audit.i` |
+
+These are single failed-run durations, not completed assembly times, speed
+comparisons or variance estimates. Disk scratch uses the disk-backed Work:
+mount. The generic "unsupported or invalid input" diagnostic does not identify
+resource exhaustion adequately.
+
+Separate existing-gate MEMD captures confirm actual allocation failure: Shell
+resident rejects a 32,768 B request at a **partial** tracked peak of 7,263,080 B;
+Workbench disk rejects a 1,048,576 B growth request, replacing a 524,288 B buffer,
+at a **partial** tracked peak of 5,651,096 B. Each records one allocation failure,
+profiling flags `0x90`, and zero terminal tracked ownership with allocated/freed
+capacity balanced. Neither reaches successful preparation/assembly completion.
+These partial peaks are not lower full-build requirements or measured savings.
+Growth overlap, untracked OS allocations and contiguous availability matter in
+addition to live heap. The separate failure-diagnostic test retains those receipts
+with `success: false`, `exact_rust_match: false`, and no verified output; its
+passing test status never means successful self-hosting.
+
+**Confirmed split:** reserve **1.5 MiB / 1,572,864 B for OS** and allow at most
+**6.5 MiB / 6,815,744 B for the whole assembler process**. The release linked image
+reserves 764,484 B, including the 454,890 B embedded package; do not count that
+package twice. After a 65,536 B stack, this leaves **5,985,724 B / 5.71 MiB for
+heap and other process allocations**. The instrumented image reserves 781,260 B,
+leaving 5,968,948 B under the same split. The OS reserve covers registered and
+unregistered OS memory, filesystem growth and safety margin; it is not an allowance
+for arbitrary installed desktop utilities.
+
+The earlier expanded-profile frozen disk peak of 6,909,720 B already exceeds
+the proposed release heap allowance by **923,996 B**, before allowing for
+untracked process allocations or fragmentation. That subtraction is a planning
+lower bound, not a promise that saving 924 KB will make the full build fit.
+**No full-build 8 MiB fit or positive remaining margin is established.**
+
+The last captured A6000 `Avail` reports **2,136,989,696 B** OS-registered memory
+(roughly 2 GiB), not an independently verified physical DIMM inventory. Its
+launcher cannot restrict available guest RAM. No hardware run was made in this
+step; A6000 timings cannot qualify 8 MiB fit. Refresh its environment in step 2.
+
+The separate expanded-profile timeout investigation found the assembler task
+waiting in DOS Read during lexical-page restoration, with a processed-packet
+marker already set in FS-UAE's filesystem path. This localizes a reply-delivery
+stall; it does not establish its cause or a native cache defect. Debugger-enabled
+runs also both complete and stall, so enabling the debugger is not a fix. Preserve
+this discriminator for the hardware/emulator comparison, without a speculative
+production workaround.
+
+Receipts, frozen cases, boot snapshots, configuration captures and failure MEMD
+records are outside `target` at `/tmp/opforge-budget-20261018`; prior timeout
+captures are at `/tmp/opforge-timeout-20261018`. The budget is confirmed. Next prepare the serial A6000 repeatability bundle;
+hardware execution and its results remain outstanding.
+
+## Existing storage evidence
+
+Qualified-source macro register binding is repaired and the
 bounded cache reuses page buffers. The release self-host proofs below match Rust
 exactly. The subsequent resident cleanup repair passes the unchanged frozen memory
 workload with zero cleanup ownership. Buffer reuse removes 88.41% of allocation
@@ -22,7 +169,7 @@ not completion. Keep instrumented memory/work accounting separate from release
 timing. Small differences below about two seconds / 2% are not speed evidence.
 
 These runs use the same expanded-memory A4000/68040 FS-UAE profile and 64 KiB guest
-stack, serially. They are not A6000 measurements or a 2 MiB qualification. Heap
+stack, serially. They are not A6000 measurements or an 8 MiB qualification. Heap
 excludes executable, stack, OS and untracked allocations. No new observer framework
 or experiment selector was added.
 
@@ -198,7 +345,7 @@ and comparison assertions are at `/tmp/opforge-resident-cleanup-20261018`.
 These frozen-input times must not be mixed with the 118.617 / 225.499 s
 current-source release results below: that newer input has 223 files. The prior
 instrumented current-source disk timeout remains unresolved. Both storage modes
-remain above 2 MiB before executable, stack and OS.
+do not establish 8 MiB fit after executable, stack and OS are included.
 
 ## Current-source full self-host before the cleanup repair
 
@@ -286,18 +433,18 @@ Preserve contiguous storage and the pre-sealing executable as references. Do not
 start another ownership change before reviewing the remaining runtime tradeoff and
 current qualification limits.
 
-**No 2 MiB fit is claimed.** The last completed frozen disk memory measurement is
-**6.59 MiB**, exceeding the entire target by **4.59 MiB** before executable, stack
-and OS. That instrumented executable's linked reservation adds 781,252 B, reaching
+**These expanded-memory receipts do not establish 8 MiB fit.** The last completed
+frozen disk memory measurement is **6.59 MiB**. That instrumented executable's
+linked reservation adds 781,252 B, reaching
 at least **7.33 MiB** before stack/OS. Prepared/assembly live heap remains
 2.83 / 4.71 MiB. Buffer reuse reduces traffic, not these retained owners.
 
-After restoring repeatable full-run qualification, a runtime candidate to discuss
-is resident chain/hash metadata to avoid cold entry/name acquisition during failed
+The ordered work above governs the next changes. Resident chain/hash metadata
+is planned to avoid cold entry/name acquisition during failed
 lookup and rehash. A 14-byte identity bridge would cost another 393,210 B at 65,535 IDs; an unchanged peak would leave about
 1.166 MiB of the measured sealing saving. This is a projection, not implementation
-or approval. Real object-local IDs and relocatable near-output objects remain the
-next architectural ownership boundary; macro-only deferral/audits and retired
+or approval for early implementation. Real object-local IDs and relocatable
+near-output objects remain analysis-only candidates; macro-only deferral/audits and retired
 include/leaf-cache experiments remain removed.
 
 ## Enduring earlier decisions

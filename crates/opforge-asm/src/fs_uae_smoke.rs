@@ -15,6 +15,13 @@ use types::lockstep::ContinuationHead;
 use vm::builder::{build_hierarchy_chunks_from_registry, build_hierarchy_package_from_registry};
 use vm::output_model::BinOutputSpec;
 
+#[path = "fs_uae_smoke/config.rs"]
+mod config;
+use config::{
+    fs_uae_memory_profile_from_env, rewrite_fs_uae_config_work_mount, validate_budget_launch,
+    FsUaeMemoryProfile,
+};
+
 #[path = "fs_uae_smoke/breadth_runner.rs"]
 mod breadth_runner;
 pub(crate) use breadth_runner::BreadthCaseResult;
@@ -53,7 +60,6 @@ const FS_UAE_EXIT_CODE_FILE_ENV: &str = "OPFORGE_FS_UAE_EXIT_CODE_FILE";
 const FS_UAE_TIMEOUT_MS_ENV: &str = "OPFORGE_FS_UAE_TIMEOUT_MS";
 const FS_UAE_POLL_MS_ENV: &str = "OPFORGE_FS_UAE_POLL_MS";
 const FS_UAE_POST_START_TIMEOUT_MS_ENV: &str = "OPFORGE_FS_UAE_POST_START_TIMEOUT_MS";
-const FS_UAE_MEMORY_PROFILE_ENV: &str = "OPFORGE_FS_UAE_MEMORY_PROFILE";
 const FS_UAE_DEFAULT_START_FILE: &str = "opforge_fsuae_smoke.start";
 const FS_UAE_DEFAULT_READY_FILE: &str = "opforge_fsuae_smoke.done";
 const FS_UAE_DEFAULT_STDOUT_FILE: &str = "opforge_fsuae_smoke.stdout";
@@ -66,7 +72,6 @@ const FS_UAE_LAUNCHER_HANDOFF_GRACE_MS: u64 = 5_000;
 const FS_UAE_LAUNCHER_STDOUT_FILE: &str = "fs_uae_launcher.stdout.log";
 const FS_UAE_LAUNCHER_STDERR_FILE: &str = "fs_uae_launcher.stderr.log";
 const FS_UAE_CONFIG_FILE_NAME: &str = "fs-uae-smoke.fs-uae";
-const FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB: u32 = 65_536;
 const FS_UAE_MOUNTED_WORK_DIR_NAME: &str = "Work";
 const FS_UAE_MOUNTED_HUNK_ALIAS: &str = "build/opforge_fsuae_smoke.hunk";
 const FS_UAE_STARTUP_HUNK_ALIAS: &str = "build/tkpkg_debug_cli.hunk";
@@ -907,8 +912,9 @@ pub(crate) fn prepare_native_debug_contract_console_from_env(
         &mounted_work_dir,
         format!("FailAt 999\nWork:{FS_UAE_MOUNTED_HUNK_ALIAS}\n").as_str(),
     )?;
-    let config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?
-        .ok_or_else(|| "console harness requires generated FS-UAE config".to_string())?;
+    let config_path =
+        maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir, "{fsuae_config}")?
+            .ok_or_else(|| "console harness requires generated FS-UAE config".to_string())?;
     let descriptor_path = artifact_dir.join("console-debugger-launch.json");
     let descriptor = serde_json::to_vec_pretty(&json!({
         "schema_version": 1,
@@ -2132,6 +2138,13 @@ fn verify_native_cli_case_proof(
     run: &mut FsUaeSmokeRun,
 ) -> Result<(), String> {
     verify_native_cli_case_proof_inner(case, run).map_err(|error| {
+        // Failed budget runs must retain their environment reading too. The
+        // ephemeral Work tree is removed before the caller receives this error.
+        let error = if let Some(memory) = run.captured_artifacts.get(&PathBuf::from("Work/guest-memory.txt")) {
+            format!("{error}\nguest memory before launch:\n{}", String::from_utf8_lossy(memory))
+        } else {
+            error
+        };
         match run.start_to_done_host_seconds.filter(|_| run.protocol_completed) {
             Some(seconds) => format!(
                 "{error}\ncase timing: start_to_done_host_seconds={seconds:.9}; guest_exit={:?}; proof_verified=false (host observation of fresh START/DONE)",
@@ -3604,9 +3617,11 @@ fn run_native_cli_parity_batch_cases(
         if matches!(
             executable,
             NativeCliParityExecutable::BinarySourceHarness | NativeCliParityExecutable::CompactCli
-        ) && case
+        ) && (case
             .extra_assembly_defines
             .contains(&"OPFORGE_MEMORY_TELEMETRY")
+            || (matches!(executable, NativeCliParityExecutable::CompactCli)
+                && fs_uae_memory_profile_from_env()? == FsUaeMemoryProfile::Budget8MiB68020))
         {
             batch_script.push_str("C:Version >Work:guest-memory.txt\n");
             batch_script.push_str("C:CPU >>Work:guest-memory.txt\n");
@@ -3850,7 +3865,8 @@ fn run_native_cli_parity_batch_cases(
         &fs::read(&mounted_hunk_alias_path)
             .map_err(|err| format!("read staged native image: {err}"))?,
     );
-    let generated_config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?;
+    let generated_config_path =
+        maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir, args_text)?;
 
     let args = args_text
         .lines()
@@ -5120,11 +5136,14 @@ fn terminate_process_id(process_id: u32) -> Result<(), String> {
 fn maybe_materialize_fs_uae_config(
     artifact_dir: &Path,
     work_mount_dir: &Path,
+    args_text: &str,
 ) -> Result<Option<PathBuf>, String> {
-    let Some(template_path) = std::env::var(FS_UAE_CONFIG_TEMPLATE_ENV)
+    let template_path = std::env::var(FS_UAE_CONFIG_TEMPLATE_ENV)
         .ok()
-        .filter(|value| !value.trim().is_empty())
-    else {
+        .filter(|value| !value.trim().is_empty());
+    let memory_profile = fs_uae_memory_profile_from_env()?;
+    validate_budget_launch(memory_profile, args_text, template_path.as_deref())?;
+    let Some(template_path) = template_path else {
         return Ok(None);
     };
 
@@ -5135,7 +5154,6 @@ fn maybe_materialize_fs_uae_config(
             template_path.display()
         )
     })?;
-    let memory_profile = fs_uae_memory_profile_from_env()?;
     let config_text = rewrite_fs_uae_config_work_mount(
         &template_text,
         &work_mount_dir.to_string_lossy(),
@@ -5149,123 +5167,6 @@ fn maybe_materialize_fs_uae_config(
         )
     })?;
     Ok(Some(config_path))
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum FsUaeMemoryProfile {
-    Existing,
-    Constrained2MiB,
-    Expanded68020,
-    ExpandedDiagnostic68020,
-}
-
-fn fs_uae_memory_profile_from_env() -> Result<FsUaeMemoryProfile, String> {
-    match std::env::var(FS_UAE_MEMORY_PROFILE_ENV) {
-        Err(std::env::VarError::NotPresent) => Ok(FsUaeMemoryProfile::Existing),
-        Ok(value) if value.trim().is_empty() || value == "existing" => {
-            Ok(FsUaeMemoryProfile::Existing)
-        }
-        Ok(value) if value == "2m" => Ok(FsUaeMemoryProfile::Constrained2MiB),
-        Ok(value) if value == "68020-10m" => Ok(FsUaeMemoryProfile::Expanded68020),
-        Ok(value) if value == "68020-74m" => Ok(FsUaeMemoryProfile::ExpandedDiagnostic68020),
-        Ok(value) => Err(format!(
-            "unsupported {FS_UAE_MEMORY_PROFILE_ENV} value '{value}'; expected 'existing', '2m', '68020-10m' or '68020-74m'"
-        )),
-        Err(error) => Err(format!("read {FS_UAE_MEMORY_PROFILE_ENV}: {error}")),
-    }
-}
-
-const CPU_68020_FS_UAE_SETTINGS: &[(&str, &str)] = &[
-    ("cpu", "68020"),
-    ("chip_memory", "2048"),
-    ("slow_memory", "0"),
-    ("fast_memory", "0"),
-    ("motherboard_ram", "0"),
-    ("zorro_iii_memory", "0"),
-    ("graphics_card", "none"),
-    ("graphics_memory", "0"),
-    ("graphics_card_memory", "0"),
-];
-
-fn cpu_68020_fs_uae_setting(
-    key: Option<&str>,
-    memory_profile: FsUaeMemoryProfile,
-) -> Option<(&'static str, &'static str)> {
-    let key = key?;
-    CPU_68020_FS_UAE_SETTINGS
-        .iter()
-        .copied()
-        .find(|(candidate, _)| *candidate == key)
-        .map(|(key, value)| {
-            if key == "fast_memory"
-                && matches!(
-                    memory_profile,
-                    FsUaeMemoryProfile::Expanded68020 | FsUaeMemoryProfile::ExpandedDiagnostic68020
-                )
-            {
-                (key, "8192")
-            } else if key == "zorro_iii_memory"
-                && memory_profile == FsUaeMemoryProfile::ExpandedDiagnostic68020
-            {
-                (key, "65536")
-            } else {
-                (key, value)
-            }
-        })
-}
-
-fn rewrite_fs_uae_config_work_mount(
-    template_text: &str,
-    work_mount_path: &str,
-    memory_profile: FsUaeMemoryProfile,
-) -> String {
-    let mut lines = Vec::new();
-    let mut replaced_work_mount = false;
-    let mut replaced_zorro_memory = false;
-    let mut profile_keys = BTreeSet::new();
-    for line in template_text.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("hard_drive_1") {
-            lines.push(format!("hard_drive_1 = {work_mount_path}"));
-            replaced_work_mount = true;
-        } else if memory_profile == FsUaeMemoryProfile::Existing
-            && trimmed.starts_with("zorro_iii_memory")
-        {
-            lines.push(format!(
-                "zorro_iii_memory = {FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB}"
-            ));
-            replaced_zorro_memory = true;
-        } else if memory_profile != FsUaeMemoryProfile::Existing {
-            let key = trimmed.split_once('=').map(|(key, _)| key.trim());
-            if let Some((key, value)) = cpu_68020_fs_uae_setting(key, memory_profile) {
-                lines.push(format!("{key} = {value}"));
-                profile_keys.insert(key);
-            } else {
-                lines.push(line.to_string());
-            }
-        } else {
-            lines.push(line.to_string());
-        }
-    }
-    if !replaced_work_mount {
-        lines.push(format!("hard_drive_1 = {work_mount_path}"));
-    }
-    if memory_profile == FsUaeMemoryProfile::Existing && !replaced_zorro_memory {
-        lines.push(format!(
-            "zorro_iii_memory = {FS_UAE_NATIVE_ZORRO_III_MEMORY_KIB}"
-        ));
-    }
-    if memory_profile != FsUaeMemoryProfile::Existing {
-        for (key, _) in CPU_68020_FS_UAE_SETTINGS {
-            if !profile_keys.contains(key) {
-                let (_, value) = cpu_68020_fs_uae_setting(Some(*key), memory_profile).unwrap();
-                lines.push(format!("{key} = {value}"));
-            }
-        }
-    }
-    let mut rewritten = lines.join("\n");
-    rewritten.push('\n');
-    rewritten
 }
 
 fn read_optional_text(path: &Path) -> Result<Option<String>, String> {
@@ -5706,7 +5607,8 @@ fn run_example_smoke_with_request(
 
     let capture = capture_config_from_env(&mounted_work_dir, None)?;
     clear_capture_files(&capture)?;
-    let generated_config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?;
+    let generated_config_path =
+        maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir, args_text)?;
 
     let args = args_text
         .lines()
@@ -5983,7 +5885,8 @@ fn run_example_smoke_with_guest_input(
 
     let capture = capture_config_from_env(&mounted_work_dir, None)?;
     clear_capture_files(&capture)?;
-    let generated_config_path = maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir)?;
+    let generated_config_path =
+        maybe_materialize_fs_uae_config(&artifact_dir, &mounted_work_dir, args_text)?;
 
     let args = args_text
         .lines()
@@ -6840,10 +6743,15 @@ mod tests {
         };
         for exit in [0, 7] {
             let mut run = proof_test_run(true, Some(exit), Some(&[0xa9, 0x43]));
+            run.captured_artifacts.insert(
+                PathBuf::from("Work/guest-memory.txt"),
+                b"total 7800856 571368 8372224 5768176\n".to_vec(),
+            );
             run.start_to_done_host_seconds =
                 FsUaeWaitOutcome::Captured(Some(Duration::from_millis(1250)))
                     .single_case_seconds(1, run.protocol_completed);
             let error = verify_native_cli_case_proof(&case, &mut run).unwrap_err();
+            assert!(error.contains("guest memory before launch:\ntotal 7800856"));
             assert!(
                 error.contains("start_to_done_host_seconds=1.250000000"),
                 "{error}"
@@ -7178,133 +7086,6 @@ mod tests {
         let difference = current.difference(&baseline).copied().collect::<Vec<_>>();
 
         assert_eq!(difference, vec![30_u32, 40_u32]);
-    }
-
-    #[test]
-    fn rewrite_fs_uae_config_work_mount_replaces_hard_drive_1() {
-        let template = "[fs-uae]\nhard_drive_0 = /sys\nhard_drive_1 = /old/work\nzorro_iii_memory = 16384\nsave_disk = 0\n";
-        let rewritten =
-            rewrite_fs_uae_config_work_mount(template, "/new/work", FsUaeMemoryProfile::Existing);
-
-        assert!(rewritten.contains("hard_drive_0 = /sys"));
-        assert!(rewritten.contains("hard_drive_1 = /new/work"));
-        assert!(!rewritten.contains("hard_drive_1 = /old/work"));
-        assert!(rewritten.contains("zorro_iii_memory = 65536"));
-        assert!(!rewritten.contains("zorro_iii_memory = 16384"));
-    }
-
-    #[test]
-    fn rewrite_fs_uae_config_work_mount_appends_missing_hard_drive_1() {
-        let template = "[fs-uae]\nhard_drive_0 = /sys\n";
-        let rewritten =
-            rewrite_fs_uae_config_work_mount(template, "/new/work", FsUaeMemoryProfile::Existing);
-
-        assert!(rewritten.contains("hard_drive_0 = /sys"));
-        assert!(rewritten.contains("hard_drive_1 = /new/work"));
-        assert!(rewritten.contains("zorro_iii_memory = 65536"));
-    }
-
-    #[test]
-    fn rewrite_fs_uae_config_work_mount_constrains_total_guest_ram_to_2m() {
-        let template = "[fs-uae]\namiga_model = A4000\ncpu = 68040\nchip_memory = 1024\nfast_memory = 8192\nhard_drive_0 = /sys\nhard_drive_1 = /old/work\ngraphics_card = uaegfx-z3\ngraphics_memory = 16384\nzorro_iii_memory = 65536\nsave_disk = 0\n";
-        let rewritten = rewrite_fs_uae_config_work_mount(
-            template,
-            "/new/work",
-            FsUaeMemoryProfile::Constrained2MiB,
-        );
-
-        for required in [
-            "amiga_model = A4000",
-            "cpu = 68020",
-            "chip_memory = 2048",
-            "slow_memory = 0",
-            "fast_memory = 0",
-            "motherboard_ram = 0",
-            "zorro_iii_memory = 0",
-            "graphics_card = none",
-            "graphics_memory = 0",
-            "graphics_card_memory = 0",
-            "hard_drive_1 = /new/work",
-        ] {
-            assert!(
-                rewritten.contains(required),
-                "missing {required}:\n{rewritten}"
-            );
-        }
-        for removed in ["68040", "8192", "uaegfx-z3", "16384", "65536"] {
-            assert!(
-                !rewritten.contains(removed),
-                "retained {removed}:\n{rewritten}"
-            );
-        }
-    }
-
-    #[test]
-    fn rewrite_fs_uae_config_work_mount_expands_ram_but_keeps_68020() {
-        let template = "[fs-uae]\namiga_model = A4000\ncpu = 68040\nchip_memory = 1024\nfast_memory = 4096\nhard_drive_1 = /old/work\ngraphics_card = uaegfx-z3\ngraphics_memory = 16384\nzorro_iii_memory = 65536\n";
-        let rewritten = rewrite_fs_uae_config_work_mount(
-            template,
-            "/new/work",
-            FsUaeMemoryProfile::Expanded68020,
-        );
-
-        for required in [
-            "cpu = 68020",
-            "chip_memory = 2048",
-            "fast_memory = 8192",
-            "slow_memory = 0",
-            "motherboard_ram = 0",
-            "zorro_iii_memory = 0",
-            "graphics_card = none",
-            "graphics_memory = 0",
-            "graphics_card_memory = 0",
-            "hard_drive_1 = /new/work",
-        ] {
-            assert!(
-                rewritten.contains(required),
-                "missing {required}:\n{rewritten}"
-            );
-        }
-    }
-
-    #[test]
-    fn rewrite_fs_uae_config_work_mount_sets_expanded_diagnostic_68020_profile() {
-        let template = "[fs-uae]\namiga_model = A4000\ncpu = 68040\nchip_memory = 1024\nfast_memory = 4096\nhard_drive_1 = /old/work\ngraphics_card = uaegfx-z3\ngraphics_memory = 16384\nzorro_iii_memory = 0\n";
-        let rewritten = rewrite_fs_uae_config_work_mount(
-            template,
-            "/new/work",
-            FsUaeMemoryProfile::ExpandedDiagnostic68020,
-        );
-
-        for required in [
-            "cpu = 68020",
-            "chip_memory = 2048",
-            "fast_memory = 8192",
-            "slow_memory = 0",
-            "motherboard_ram = 0",
-            "zorro_iii_memory = 65536",
-            "graphics_card = none",
-            "graphics_memory = 0",
-            "graphics_card_memory = 0",
-            "hard_drive_1 = /new/work",
-        ] {
-            assert!(
-                rewritten.contains(required),
-                "missing {required}:\n{rewritten}"
-            );
-        }
-        for removed in [
-            "68040",
-            "4096",
-            "uaegfx-z3",
-            "16384",
-            "zorro_iii_memory = 0",
-        ] {
-            assert!(
-                !rewritten.contains(removed),
-                "retained {removed}:\n{rewritten}"
-            );
-        }
     }
 
     #[test]

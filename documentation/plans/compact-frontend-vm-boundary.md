@@ -5,7 +5,9 @@ embedded-m68020 release self-host on FS-UAE in 100.5940835 seconds, with exact
 complete fresh Rust Hunk equality. The comparison uses expanded-memory 68040;
 the header change has not yet run on physical A6000 hardware. Separate full
 unchanged-input accounting measures 46,997,384 tracked peak heap bytes.
-The 2 MiB target and complete opcore/CPU-family parity remain open.
+The current [8 MiB product budget](native-performance-diagnosis.md) and complete
+opcore/CPU-family parity remain open. These older expanded-memory results do not
+establish fit under that budget.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM
@@ -32,6 +34,12 @@ existing gap in both pre-repair and candidate images. See the
 and the separate performance/memory comparison.
 
 ## Repetition and conditional execution
+
+Parity backlog, paused during the memory/runtime phase: the maintained iterator
+and value macro controls currently fail. The iterator failure also reproduces on
+the pre-sealing reference. Focused coverage listed below must not be read as full
+macro/iterator parity. Restore both controls before closing that language area;
+storage changes do not waive them.
 
 Packed replay uses package-owned numeric BranchPlan/LoopPlan roles without
 parsing source text. Rust skips expression evaluation under inactive parents and

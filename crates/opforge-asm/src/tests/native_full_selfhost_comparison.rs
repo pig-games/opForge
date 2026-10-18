@@ -76,6 +76,22 @@ fn checked_file(case: &Path, row: &Value) -> Vec<u8> {
 #[test]
 #[ignore = "requires prepared full comparison case and configured FS-UAE"]
 fn native_full_selfhost_comparison_fs_uae() {
+    full_selfhost_comparison(false);
+}
+
+// Retain existing memory/progress receipts for a known failed constrained run.
+// A passing diagnostic test is NEVER an assembly success or a fit qualification.
+#[test]
+#[ignore = "requires a known failing full case and the 8 MiB FS-UAE profile"]
+fn native_full_selfhost_budget_failure_fs_uae() {
+    assert_eq!(
+        std::env::var("OPFORGE_FS_UAE_MEMORY_PROFILE").as_deref(),
+        Ok("68020-8m")
+    );
+    full_selfhost_comparison(true);
+}
+
+fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     let specification =
         PathBuf::from(std::env::var_os("OPFORGE_FULL_COMPARISON_CASE").expect("case JSON path"));
     let directory = specification.parent().unwrap();
@@ -191,9 +207,13 @@ fn native_full_selfhost_comparison_fs_uae() {
         command_template: Some(&command),
         package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
         extra_guest_files: &files,
-        proof: OpforgeNativeCliProof::ExactArtifact {
-            relative_path: "Work/output.hunk",
-            rust_oracle: &oracle,
+        proof: if budget_failure_diagnostic {
+            OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
+        } else {
+            OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/output.hunk",
+                rust_oracle: &oracle,
+            }
         },
     };
     let outcome = match run_prebuilt_compact_cli_case_from_env(&workspace, &case, &image) {
@@ -230,13 +250,15 @@ fn native_full_selfhost_comparison_fs_uae() {
     let scratch_files = capture_scratch_files(run);
     let result = json!({
         "capture_mode": capture_mode, "capture_scratch_files_remaining": scratch_files,
+        "budget_failure_diagnostic": budget_failure_diagnostic,
         "success": run.success && run.protocol_completed && run.exit_code == Some(0) && scratch_files.is_empty(),
         "guest_protocol_completed": run.protocol_completed, "assembler_exit_code": run.exit_code,
         "exact_rust_match": run.verified_output.as_deref() == Some(oracle.as_slice()),
         "start_to_done_host_seconds": run.start_to_done_host_seconds,
         "native_image_digest": run.native_image_digest, "image_bytes": image.len(),
         "linked_static_reserved_bytes": static_bytes, "live_rust_oracle_digest": opforge_self_host_package_digest(&oracle),
-        "output_bytes": oracle.len(), "case_sha256": input["case_sha256"], "metadata": input["metadata"],
+        "output_bytes": run.verified_output.as_ref().map(Vec::len), "oracle_bytes": oracle.len(),
+        "case_sha256": input["case_sha256"], "metadata": input["metadata"],
     });
     fs::write(
         output.join("native-result.json"),
@@ -248,6 +270,11 @@ fn native_full_selfhost_comparison_fs_uae() {
         scratch_files.is_empty(),
         "capture scratch files survived cleanup: {scratch_files:?}"
     );
-    assert!(run.protocol_completed && run.success && run.exit_code == Some(0));
-    assert_eq!(run.verified_output.as_deref(), Some(oracle.as_slice()));
+    if budget_failure_diagnostic {
+        assert!(run.protocol_completed && !run.success && run.exit_code == Some(20));
+        assert!(run.verified_output.is_none());
+    } else {
+        assert!(run.protocol_completed && run.success && run.exit_code == Some(0));
+        assert_eq!(run.verified_output.as_deref(), Some(oracle.as_slice()));
+    }
 }

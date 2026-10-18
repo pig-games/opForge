@@ -27,15 +27,51 @@ CONSTRAINED_2M_SETTINGS = {
 }
 
 
+BUDGET_8M_SETTINGS = {
+    "cpu_speed": "max",
+    "accuracy": "0",
+    "uae_cpu_speed": "max",
+    "uae_cpu_cycle_exact": "false",
+    "uae_cpu_memory_cycle_exact": "false",
+    "uae_blitter_cycle_exact": "false",
+    "uae_cycle_exact": "false",
+    "fast_memory": "4096",
+    "accelerator": "none",
+    "accelerator_memory": "0",
+    "uae_cpu_model": "68020",
+    "uae_cpuboard_type": "none",
+    "uae_cpuboardmem1_size": "0",
+    "uae_cpuboardmem2_size": "0",
+    "uae_chipmem_size": "4",
+    "uae_fastmem_size": "4",
+    "uae_fastmem_size_k": "4096",
+    "uae_fastmem2_size": "2",
+    "uae_fastmem2_size_k": "2048",
+    "uae_bogomem_size": "0",
+    "uae_a3000mem_size": "0",
+    "uae_mbresmem_size": "0",
+    "uae_mem25bit_size": "0",
+    "uae_z3mem_size": "0",
+    "uae_z3mem2_size": "0",
+    "uae_megachipmem_size": "0",
+    "uae_gfxcard_size": "0",
+}
+
+
 def effective_emulator_config(template_text, memory_profile):
     """Mirror the Rust runner's generated config using a stable mount placeholder."""
     settings = ({"zorro_iii_memory": "65536"} if memory_profile == "existing"
-                else CONSTRAINED_2M_SETTINGS)
+                else dict(CONSTRAINED_2M_SETTINGS))
+    if memory_profile == "68020-8m":
+        settings.update(BUDGET_8M_SETTINGS)
     seen = set()
     lines = []
     replaced_mount = False
     for line in template_text.splitlines():
         key = line.lstrip().partition("=")[0].strip() if "=" in line else None
+        if memory_profile == "68020-8m" and key in (
+                "uae_quickstart", "uae_cpu_type", "uae_addmem1", "uae_addmem2"):
+            continue
         if key == "hard_drive_1":
             lines.append("hard_drive_1 = {ephemeral_work_mount}")
             replaced_mount = True
@@ -218,9 +254,9 @@ def main():
                         help="also measure the separate compact native CLI on macro-repeat")
     parser.add_argument("--compact-only", action="store_true",
                         help="run only the compact native CLI; requires --compact-cli")
-    parser.add_argument("--memory-profile", choices=("existing", "2m"),
+    parser.add_argument("--memory-profile", choices=("existing", "2m", "68020-8m"),
                         default=os.environ.get(MEMORY_PROFILE_ENV, "existing"),
-                        help="FS-UAE guest RAM profile; 2m selects 68020 with 2 MiB total RAM")
+                        help="FS-UAE guest RAM profile; 2m/68020-8m select 68020 with 2/8 MiB total RAM")
     parser.add_argument("--compare-memory", action="store_true",
                         help="run gated memory/work telemetry for binary-source or compact-cli; timings include probes")
     parser.add_argument("--cpus", nargs="+", choices=("m6502", "m68000"), default=["m6502", "m68000"])

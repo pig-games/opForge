@@ -1,9 +1,10 @@
 # Native runtime and memory diagnosis
 
 Status, 2026-10-18: qualified-source macro register binding is repaired and the
-bounded cache reuses page buffers. The current release executable completes its
-full disk-backed self-host with exact Rust output. Buffer reuse removes 88.41% of
-allocation traffic on the frozen workload without changing its peak heap.
+bounded cache reuses page buffers. The release self-host proofs below match Rust
+exactly. The subsequent resident cleanup repair passes the unchanged frozen memory
+workload with zero cleanup ownership. Buffer reuse removes 88.41% of allocation
+traffic on the frozen workload without changing its peak heap.
 Sequential sealing still costs substantial runtime versus the pre-sealing reference.
 Parity remains paused. See [storage ownership](native-lazy-preparation.md) and
 [the remaining object boundary](native-fragment-preparation.md).
@@ -82,14 +83,14 @@ the fresh pre-reuse comparison above must take precedence when interpreting spee
 
 ## Resident versus disk storage on identical input
 
-The following comparison uses the same 214-file frozen input above, current
+The original comparison below uses the same 214-file frozen input above, pre-repair
 release/instrumented executables, embedded package, hardware profile and 64 KiB
 stack. Only the existing storage policy differs. Resident mode omits
 `--capture-dir Work:`; disk mode enables raw-capture, prepared-record and lexical
 backing together, including their existing scheduling differences. This does not
 isolate lexical paging alone. No native code or instrumentation changed.
 
-| Resource | Resident | Disk-backed |
+| Resource | Resident before cleanup repair | Disk-backed |
 |---|---:|---:|
 | Separate release START/DONE | 107.562 s | 200.961 s |
 | Observed peak tracked heap | 18,831,968 B / 17.96 MiB | 6,909,720 B / 6.59 MiB |
@@ -105,29 +106,42 @@ execution takes **93.399 s / 86.83% longer**. These are single completed pairs,
 not precise repeated timing estimates. Preparation accounts for nearly all the
 instrumented phase-time difference; those clocks are separate from release timing.
 
-All four runs complete with fresh challenge-bound START/DONE, explicit exit zero
-and the exact full 708,216-byte live Rust Hunk. Source-read, packed-source,
+All four original runs complete with fresh challenge-bound START/DONE, explicit
+exit zero and the exact full 708,216-byte live Rust Hunk. Source-read, packed-source,
 expression-compilation, evaluation and compiled-program counters agree. The
-resident memory run has no allocation failure or profiling error, but leaves
-22,736 B tracked live: allocated/freed capacity is 63,745,344 / 63,722,608 B.
-The decoder reports both nonzero terminal ownership and unbalanced capacities.
-Its observed peak is reported with that limit; this is **not clean memory
-qualification**. A read-only review found an ownership gap: resident
-`frontend.indexBlocks` repurposes the retired name-store `First` block for its
-numeric index, but `scopes.release` no longer frees that block. Disk cleanup
-explicitly releases its separate `PreparedIndex`. This is consistent with the
-residual; the receipt does not identify individual allocations, so the exact
-22,736-byte allocation is not independently established. No repair is included
-in this measurement change. Disk accounting finishes at zero with no diagnostics.
+original resident memory run left 22,736 B tracked live: allocated/freed capacity
+was 63,745,344 / 63,722,608 B. It was not clean terminal ownership accounting.
+Resident `frontend.indexBlocks` repurposes the retired name-store `First` block
+for its numeric index. Scope cleanup omitted that owner; disk cleanup already
+released its separate `PreparedIndex`.
+
+Scope cleanup now releases the retired name arena, including that numeric index.
+A fresh native memory rerun uses identical frozen sources/package, resident policy,
+telemetry flags, emulator and stack, with only the repaired bootstrap changed
+(`fnv1a64:407da09829e94d1a`). It completes with explicit exit zero and exact full
+708,216-byte live Rust output. Results:
+
+- Terminal tracked ownership: **22,736 -> 0 B**.
+- Allocated/freed capacity: **63,745,344 / 63,745,344 B**; exactly 22,736 B more freed.
+- Peak tracked heap: **18,831,968 B / 17.96 MiB**, unchanged.
+- Prepared/assembly live heap: **2,969,088 / 4,943,360 B**, now matching disk.
+- No accounting diagnostics, allocation failures or profiling errors; language-work
+  counters and total allocated capacity are unchanged.
+
+The instrumented executable grows 12 B, linked reservation 8 B; no retained owner
+or per-record work is added. Release timing was not repeated for this cleanup fix,
+so the original comparison above remains the release timing reference. The rerun
+qualifies this frozen workload, not a new full current-source self-host. Evidence
+and comparison assertions are at `/tmp/opforge-resident-cleanup-20261018`.
 
 These frozen-input times must not be mixed with the 118.617 / 225.499 s
 current-source release results below: that newer input has 223 files. The prior
 instrumented current-source disk timeout remains unresolved. Both storage modes
 remain above 2 MiB before executable, stack and OS.
 
-## Current-source full self-host
+## Current-source full self-host before the cleanup repair
 
-Current source: **223 files / 2,783,726 B**, manifest
+Qualified source: **223 files / 2,783,726 B**, manifest
 `fnv1a64:ae80a45a7feba2d2`. The package is embedded
 `m68020--motorola68k.bin`, 454,890 B, `fnv1a64:095cca74317e365b`.
 The release bootstrap and complete Rust oracle are both **728,644 B**,

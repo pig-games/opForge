@@ -190,6 +190,9 @@ release	.block
 	jsr buckets.release
 	lea layout.LEXICAL_STATE(a1), a0
 	jsr lexical.release
+	; The retired name arena's First block may own the resident numeric index.
+	lea ARENA(a1), a0
+	jsr names.release
 	lea MODULE_STATE(a1), a0
 	jsr modules.release
 	lea IMPORT_STATE(a1), a0

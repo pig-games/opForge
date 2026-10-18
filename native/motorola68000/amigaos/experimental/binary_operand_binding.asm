@@ -644,34 +644,110 @@ tupleLeaf	.block
 	rts
 	.bend  ; tupleLeaf
 
+ScalarSyntaxLocal	.struct
+Tokens	.res source.MAX_LINE
+Output	.res source.MAX_LINE
+.endstruct
+SCALAR_SYNTAX_LOCAL_BYTES = ScalarSyntaxLocal.Output+source.MAX_LINE
 ; Check an exact scalar with the installed shared EXVM grammar. No value is
-; evaluated and no bytes persist; a row cannot borrow a malformed value view
-; to authorize a different register projection. Origins remain unchanged.
+; evaluated and no bytes persist. Lexical qualification is preparation metadata:
+; normalize it only in this private syntax copy, before scopes.line processes
+; the original record. Package qualifiers and reserved member/field facets stay
+; unchanged, and failed rows cannot publish a partial register-role proof.
 scalarSyntax	.block
-	movem.l d1/a0-a4, -(sp)
-	; Scalar checking always sees original source IDs, even if an earlier
-	; projection in this private row has already proven another register leaf.
+	movem.l d1-d3/a0-a4, -(sp)
+	suba.w #SCALAR_SYNTAX_LOCAL_BYTES, sp
+	; Scalar checking sees original source IDs, even if this trial row already
+	; promoted another register leaf.
 	lea Work.Trial(a6), a3
 	suba.l a3, a0
 	suba.l a3, a1
 	adda.l Work.Record(a6), a0
 	adda.l Work.Record(a6), a1
-	suba.w #source.MAX_LINE, sp
-	movea.l sp, a3
-	lea source.MAX_LINE(sp), a4
+	move.l a0, d2
+	move.l a1, d0
+	sub.l d2, d0
+	beq.w mismatch
+	cmpi.l #source.MAX_LINE, d0
+	bhi.w mismatch
+	; Keep the existing no-copy path for already normalized scalar syntax.
 	movea.l Work.Package(a6), a2
+	lea ScalarSyntaxLocal.Output(sp), a3
+	lea SCALAR_SYNTAX_LOCAL_BYTES(sp), a4
+	jsr expression.compileUnfolded
+	tst.l d0
+	bne.w findQualified
+	cmpa.l a1, a0
+	beq.w good
+findQualified
+	movea.l d2, a0
+	movea.l Work.Package(a6), a2
+	moveq #0, d3
+	move.w package.Header.NameCount(a2), d3
+scan
+	cmpa.l a1, a0
+	beq.w mismatch
+	bhi.w mismatch
+	jsr nested.rawTokenBytes
+	bne.w mismatch
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, (a0)
+	bhi.w scanNext
+	cmpi.b #source.QUALIFIED_NAME_QUALIFIER, NameToken.Qualifier(a0)
+	bne.w scanNext
+	moveq #0, d0
+	move.w NameToken.Name(a0), d0
+	cmp.l d3, d0
+	bhs.w copyQualified
+scanNext
+	adda.l d1, a0
+	bra.w scan
+copyQualified
+	movea.l d2, a0
+	move.l a1, d0
+	sub.l d2, d0
+	lea ScalarSyntaxLocal.Tokens(sp), a2
+copy
+	move.b (a0)+, (a2)+
+	subq.l #1, d0
+	bne.w copy
+	movea.l a2, a1
+	lea ScalarSyntaxLocal.Tokens(sp), a0
+normalize
+	cmpa.l a1, a0
+	beq.w compileQualified
+	bhi.w mismatch
+	jsr nested.rawTokenBytes
+	bne.w mismatch
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, (a0)
+	bhi.w advance
+	cmpi.b #source.QUALIFIED_NAME_QUALIFIER, NameToken.Qualifier(a0)
+	bne.w advance
+	moveq #0, d0
+	move.w NameToken.Name(a0), d0
+	cmp.l d3, d0
+	blo.w advance
+	clr.b NameToken.Qualifier(a0)
+advance
+	adda.l d1, a0
+	bra.w normalize
+compileQualified
+	lea ScalarSyntaxLocal.Tokens(sp), a0
+	movea.l Work.Package(a6), a2
+	lea ScalarSyntaxLocal.Output(sp), a3
+	lea SCALAR_SYNTAX_LOCAL_BYTES(sp), a4
 	jsr expression.compileUnfolded
 	tst.l d0
 	bne.w mismatch
 	cmpa.l a1, a0
 	bne.w mismatch
+good
 	moveq #STATUS_OK, d0
 	bra.w done
 mismatch
 	moveq #STATUS_MISMATCH, d0
 done
-	adda.w #source.MAX_LINE, sp
-	movem.l (sp)+, d1/a0-a4
+	adda.w #SCALAR_SYNTAX_LOCAL_BYTES, sp
+	movem.l (sp)+, d1-d3/a0-a4
 	tst.l d0
 	rts
 	.bend  ; scalarSyntax

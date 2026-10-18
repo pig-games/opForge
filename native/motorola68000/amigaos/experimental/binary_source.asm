@@ -123,6 +123,7 @@ Payload	.byte ?
 BINARY_BYTES_HEADER_BYTES = BinaryBytesToken.Payload
 BINARY_BYTES_RECORD_BYTES = RECORD_HEADER_BYTES+abi.PRVM_PACKED_DOT_BYTES+BINARY_BYTES_HEADER_BYTES
 ; Accepted shared EXVM field metadata; consumed before canonical preparation.
+QUALIFIED_NAME_QUALIFIER = 1; preparation-only explicit lexical qualification
 FIELD_KEY_QUALIFIER = $fe
 NameToken	.struct
 Kind	.byte ?

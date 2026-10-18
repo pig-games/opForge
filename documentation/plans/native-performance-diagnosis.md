@@ -80,6 +80,51 @@ the contiguous control; the reference executable is preserved independently.
 Earlier 600-second release timeouts were incomplete results, not finite timings;
 the fresh pre-reuse comparison above must take precedence when interpreting speed.
 
+## Resident versus disk storage on identical input
+
+The following comparison uses the same 214-file frozen input above, current
+release/instrumented executables, embedded package, hardware profile and 64 KiB
+stack. Only the existing storage policy differs. Resident mode omits
+`--capture-dir Work:`; disk mode enables raw-capture, prepared-record and lexical
+backing together, including their existing scheduling differences. This does not
+isolate lexical paging alone. No native code or instrumentation changed.
+
+| Resource | Resident | Disk-backed |
+|---|---:|---:|
+| Separate release START/DONE | 107.562 s | 200.961 s |
+| Observed peak tracked heap | 18,831,968 B / 17.96 MiB | 6,909,720 B / 6.59 MiB |
+| Prepared live heap | 2,991,824 B | 2,969,088 B |
+| Assembly live heap | 4,966,096 B | 4,943,360 B |
+| Allocated capacity | 63,745,344 B | 95,775,616 B |
+| Terminal cleanup live heap | **22,736 B** | 0 B |
+| Instrumented preparation | 78.10 s | 166.42 s |
+| Instrumented assembly | 36.90 s | 37.38 s |
+
+Observed disk peak is **11,922,248 B / 11.37 MiB / 63.31% lower**, while release
+execution takes **93.399 s / 86.83% longer**. These are single completed pairs,
+not precise repeated timing estimates. Preparation accounts for nearly all the
+instrumented phase-time difference; those clocks are separate from release timing.
+
+All four runs complete with fresh challenge-bound START/DONE, explicit exit zero
+and the exact full 708,216-byte live Rust Hunk. Source-read, packed-source,
+expression-compilation, evaluation and compiled-program counters agree. The
+resident memory run has no allocation failure or profiling error, but leaves
+22,736 B tracked live: allocated/freed capacity is 63,745,344 / 63,722,608 B.
+The decoder reports both nonzero terminal ownership and unbalanced capacities.
+Its observed peak is reported with that limit; this is **not clean memory
+qualification**. A read-only review found an ownership gap: resident
+`frontend.indexBlocks` repurposes the retired name-store `First` block for its
+numeric index, but `scopes.release` no longer frees that block. Disk cleanup
+explicitly releases its separate `PreparedIndex`. This is consistent with the
+residual; the receipt does not identify individual allocations, so the exact
+22,736-byte allocation is not independently established. No repair is included
+in this measurement change. Disk accounting finishes at zero with no diagnostics.
+
+These frozen-input times must not be mixed with the 118.617 / 225.499 s
+current-source release results below: that newer input has 223 files. The prior
+instrumented current-source disk timeout remains unresolved. Both storage modes
+remain above 2 MiB before executable, stack and OS.
+
 ## Current-source full self-host
 
 Current source: **223 files / 2,783,726 B**, manifest

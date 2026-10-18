@@ -59,6 +59,15 @@ class CpuSpecificArchitectureBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(findings, [])
 
+    def test_declared_macro_parameter_can_have_arithmetic_suffix(self):
+        findings = self.scan_native(
+            "IMPORT_ENTRY .macro entrySlotArg\n"
+            "\tlea .entrySlotArg+IMPORT_VIEW_SAVED_BYTES(sp), a1\n"
+            "\t.endmacro\n",
+            terms=("lea",),
+        )
+        self.assertEqual(findings, [])
+
     def test_macro_parameters_do_not_hide_definitions_or_data(self):
         findings = self.scan_native(
             "LEVEL .macro tighter, block, byte, word\n"
@@ -70,6 +79,16 @@ class CpuSpecificArchitectureBoundaryTests(unittest.TestCase):
             "\t.endmacro\n"
         )
         self.assertEqual([finding.line for finding in findings], [2, 3, 4, 5])
+
+    def test_macro_parameter_exception_does_not_hide_cpu_named_macro_label(self):
+        findings = self.scan_native(
+            "LEVEL .macro tighter\n"
+            "\tbsr .tighter+bsr\n"
+            "bsr .macro target\n"
+            "\t.endmacro\n"
+            "\t.endmacro\n"
+        )
+        self.assertEqual([finding.line for finding in findings], [3])
 
     def test_macro_parameter_exception_keeps_directives_and_labels_scanned(self):
         findings = self.scan_native(

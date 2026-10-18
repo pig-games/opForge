@@ -122,13 +122,9 @@ newRow
 clearRow
 	clr.l (a0)+
 	dbra d0, clearRow
-	bsr.w makeRoom
-	bne.w failed
 	lea Row.Storage(a3), a0
-	move.l #PAGE_BYTES, d0
-	jsr memory.reserveExact
-	bne.w allocationFailed
-	addi.l #PAGE_BYTES, State.Reserved(a4)
+	bsr.w providePage
+	bne.w failed
 	move.l State.LogicalUsed(a4), Row.Base(a3)
 	addi.l #ROW_BYTES, State.Directory+memory.Block.Used(a4)
 	move.l d4, d0
@@ -424,12 +420,15 @@ done
 	rts
 	.bend  ; flushRow
 
-; A4=State. Make one PAGE_BYTES allocation fit; evict one unpinned resident
-; page, flushing dirty bytes first. D0/CCR=status; all other registers preserved.
-makeRoom	.block
-	movem.l d1-d3/a0/a2, -(sp)
+; A4=State,A0=destination Storage with zero Pointer/Capacity; Used may retain
+; its logical extent. Allocate below the payload budget, otherwise transfer one
+; flushed, unpinned victim buffer. Logical row extents never move with buffers.
+; D0/CCR=status; all other registers preserved. A failed flush changes no owners.
+providePage	.block
+	movem.l d1-d3/a0-a3, -(sp)
+	movea.l a0, a3
 	cmpi.l #PAYLOAD_BUDGET-PAGE_BYTES, State.Reserved(a4)
-	bls.w good
+	bls.w allocate
 	move.l State.Directory+memory.Block.Used(a4), d3
 	move.l State.Victim(a4), d2
 	cmp.l d3, d2
@@ -446,9 +445,11 @@ scan
 	beq.w next
 	bsr.w flushRow
 	bne.w failed
-	lea Row.Storage(a2), a0
-	jsr memory.release
-	subi.l #PAGE_BYTES, State.Reserved(a4)
+	; Transfer allocation ownership only. Both logical Used fields stay intact.
+	move.l Row.Storage+memory.Block.Pointer(a2), memory.Block.Pointer(a3)
+	move.l Row.Storage+memory.Block.Capacity(a2), memory.Block.Capacity(a3)
+	clr.l Row.Storage+memory.Block.Pointer(a2)
+	clr.l Row.Storage+memory.Block.Capacity(a2)
 	addi.l #ROW_BYTES, d2
 	move.l d2, State.Victim(a4)
 	bra.w good
@@ -460,6 +461,20 @@ next
 cursorReady
 	subi.l #ROW_BYTES, d3
 	bra.w scan
+allocate
+	; A nonresident row has Used but no source allocation to copy during growth.
+	move.l memory.Block.Used(a3), d3
+	clr.l memory.Block.Used(a3)
+	move.l #PAGE_BYTES, d0
+	jsr memory.reserveExact
+	move.l d3, memory.Block.Used(a3)
+	tst.l d0
+	bne.w allocationFailed
+	addi.l #PAGE_BYTES, State.Reserved(a4)
+	bra.w good
+allocationFailed
+	move.l #FAILURE_ALLOCATION, State.Failure(a4)
+	bra.w failed
 bad
 	move.l #FAILURE_BUDGET, State.Failure(a4)
 failed
@@ -468,10 +483,10 @@ failed
 good
 	moveq #0, d0
 done
-	movem.l (sp)+, d1-d3/a0/a2
+	movem.l (sp)+, d1-d3/a0-a3
 	tst.l d0
 	rts
-	.bend  ; makeRoom
+	.bend  ; providePage
 
 ; A4=State,A2=row. Restore its stable logical extent, including committed
 ; edits. Used never changes across faults. D0/CCR=status; others preserved.
@@ -481,17 +496,10 @@ resident	.block
 	bne.w good
 	tst.l Row.Backed(a2)
 	beq.w bad
-	bsr.w makeRoom
+	lea Row.Storage(a2), a0
+	bsr.w providePage
 	bne.w failed
 	move.l Row.Storage+memory.Block.Used(a2), d3
-	clr.l Row.Storage+memory.Block.Used(a2)
-	lea Row.Storage(a2), a0
-	move.l #PAGE_BYTES, d0
-	jsr memory.reserveExact
-	move.l d3, Row.Storage+memory.Block.Used(a2)
-	tst.l d0
-	bne.w bad
-	addi.l #PAGE_BYTES, State.Reserved(a4)
 	lea State.Io(a4), a0
 	move.l Row.Base(a2), d1
 	movea.l Row.Storage+memory.Block.Pointer(a2), a1

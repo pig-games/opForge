@@ -4,6 +4,7 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_prepared_store as store
 	.use experimental.amigaos.binary_record_view as views
+	.use tests.amigaos.prepared_store_reuse_probe as reuse
 OPEN_LIBRARY = -552
 CLOSE_LIBRARY = -414
 PROBE_FAILED = 88
@@ -102,6 +103,14 @@ pinLoop
 	move.l #4*store.PAGE_BYTES, d1
 	jsr store.acquire
 	beq.w finish
+	move.l a1, d0
+	or.l d2, d0
+	or.l d3, d0
+	bne.w finish
+	cmpi.l #store.FAILURE_BUDGET, store.State.Failure(a0)
+	bne.w finish
+	cmpi.l #store.PAYLOAD_BUDGET, store.State.Reserved(a0)
+	bne.w finish
 	lea Source, a1
 	move.l #RECORD_BYTES, d0
 	jsr store.append
@@ -133,6 +142,12 @@ cleared
 	bne.w cleanupFailed
 	dbra d3, cleared
 	jsr store.cleanup
+	tst.l d4
+	bne.w closeDos
+	movea.l DosBase, a0
+	jsr reuse.run
+	beq.w closeDos
+	moveq #PROBE_FAILED, d4
 	bra.w closeDos
 cleanupFailed
 	moveq #CLEANUP_FAILED, d4

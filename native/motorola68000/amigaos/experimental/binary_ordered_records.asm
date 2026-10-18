@@ -7,6 +7,7 @@
 	.include "capture_telemetry.i"
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_record_view as views
 	.pub
 Frame	.struct
 OrderCount	.long ?
@@ -21,9 +22,31 @@ OrderedRecords	.long ?
 OrderedOrigins	.long ?
 RecordLimit	.long ?
 ModuleStarts	.long ?  ; caller-owned Block of ordered-relative BE32 offsets
+RecordView	.long ?  ; zero=contiguous records; otherwise an unmapped seekable view
 .endstruct
-FRAME_BYTES = Frame.ModuleStarts+4
+FRAME_BYTES = Frame.RecordView+4
 	.section code, kind=code
+
+; A0=Frame,A1=unmapped record view. Validate framing and publish only ordered
+; origins/module starts; the caller retains record-store ownership. Records.Used
+; becomes ordered bytes without a contiguous allocation. Uses materialize's exact
+; span/metadata implementation and releases its reader lease on every return.
+; D0/CCR=status; other registers preserved. Normal materialize requires RecordView=0.
+orderView	.block
+	movem.l d1/a0-a1, -(sp)
+	move.l a1, Frame.RecordView(a0)
+	bsr.w materialize
+	move.l d0, d1
+	movea.l a1, a0
+	jsr views.finish
+	tst.l d1
+	beq.w done
+	move.l d1, d0
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+	.bend  ; orderView
 
 ; A0=Frame. Span fields are offsets in the original packed Records block;
 ; origins are offset spans with physical file ordinals. The caller owns all
@@ -84,15 +107,27 @@ loadFound
 	movea.l Frame.Records(a6), a0
 	cmp.l memory.Block.Used(a0), d3
 	bhi.w bad
+	suba.l a1, a1
+	tst.l Frame.RecordView(a6)
+	bne.w recordStart
 	movea.l memory.Block.Pointer(a0), a1
 	adda.l d4, a1
+recordStart
 	move.l d4, d2
 record
 	cmp.l d3, d2
 	beq.w spanValid
+	tst.l Frame.RecordView(a6)
+	beq.w residentRecord
+	bsr.w recordLength
+	bne.w bad
+	move.l d1, d0
+	bra.w recordReady
+residentRecord
 	moveq #0, d0
 	move.b (a1), d0
 	addq.l #1, d0
+recordReady
 	cmpi.l #4, d0
 	blo.w bad
 	add.l d0, d2
@@ -120,6 +155,8 @@ contiguous
 coverageReady
 	cmp.l Frame.RecordLimit(a6), d6
 	bhi.w bad
+	tst.l Frame.RecordView(a6)
+	bne.w recordsReady
 	tst.l (sp)
 	bne.w recordsReady
 	movea.l Frame.OrderedRecords(a6), a0
@@ -164,6 +201,8 @@ copySpan
 	.LAZY_REMAP graph.Span.Start(a4), graph.Span.End(a4), d6
 	move.l graph.Span.End(a4), d5
 	sub.l graph.Span.Start(a4), d5
+	tst.l Frame.RecordView(a6)
+	bne.w metadata
 	tst.l (sp)
 	bne.w metadata
 	movea.l Frame.OrderedRecords(a6), a0
@@ -218,6 +257,12 @@ originsDone
 	adda.w #graph.SPAN_BYTES, a4
 	subq.l #1, d7
 	bne.w copySpan
+	tst.l Frame.RecordView(a6)
+	beq.w contiguousPublication
+	movea.l Frame.Records(a6), a0
+	move.l d6, memory.Block.Used(a0)
+	bra.w recordsPublished
+contiguousPublication
 	tst.l (sp)
 	beq.w replaceRecords
 	.CAPTURE_ORDERED_COUNT IdentityReuses, #1
@@ -251,6 +296,32 @@ done
 	.bend  ; materialize
 
 	.priv
+; A1=contiguous pointer,D2=physical record offset,A6=Frame. D0/CCR=status,
+; D1=record bytes. Preserve the caller's offset/pointer while a view seek returns
+; its own A1/D2 lease. Complete records must fit the current page and span.
+recordLength	.block
+	movem.l d2/a0-a2, -(sp)
+	movea.l Frame.RecordView(a6), a0
+	move.l d2, d1
+	jsr views.seek
+	bne.w bad
+	tst.l d2
+	beq.w bad
+	moveq #0, d1
+	move.b (a1), d1
+	addq.l #1, d1
+	cmp.l d2, d1
+	bhi.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; recordLength
+
 ; A0=old Block,A1=replacement. Transfers ownership after releasing old data.
 replaceBlock	.block
 	jsr memory.release

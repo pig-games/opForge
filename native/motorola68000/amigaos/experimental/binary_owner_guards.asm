@@ -6,6 +6,7 @@
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_record_view as views
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_branches as branches
 	.use opasm.amigaos.binary_expression as expr
@@ -22,6 +23,7 @@ PROOF_VISITING = 1
 PROOF_PURE = 2
 PROOF_UNCERTIFIED = 3
 DEPTH_LIMIT = 32
+RECORD_CAPACITY = 256; encoded byte length excludes its own byte
 Decl	.struct
 Rhs	.long ?  ; numeric record offset+1; zero has no eligible initializer
 Proof	.byte ?
@@ -41,8 +43,12 @@ Boundaries	.res memory.Block.Used+4
 Values	.res memory.Block.Used+4
 Defined	.res memory.Block.Used+4
 Sections	.res memory.Block.Used+4
-Records	.long ?  ; borrowed only for this preparation call
-End	.long ?
+Records	.long ?  ; borrowed record-view Frame for this preparation call
+End	.long ?  ; logical stream bytes
+Cursor	.long ?
+Next	.long ?
+Record	.res RECORD_CAPACITY  ; one packed record, independent of recursive view seeks
+BufferView	.res views.FRAME_BYTES
 Scope	.long ?
 Base	.long ?
 Count	.long ?
@@ -62,19 +68,46 @@ Current	.res long, 1  ; synchronous proof callback; cleared before return
 	.section code, kind=code
 	.pub
 ; A0=State,A1=bounded compiled records,D0=bytes,A2=scope,A3=package.
-; Only unconditional immutable scalar initializer provenance can certify a guard.
-; Certified scalar dependencies evaluate into a private EXVM view; no borrowed
-; Known values or source-visible Defined cells are published or changed.
-; Unknown proofs retain conservative owner alternatives; ordinary runtime branches
-; continue through their existing execution path. No candidate code executes here.
-; D0/CCR=status; other registers preserved. Release is required on every exit.
+; Contiguous adapter for prepareView. D0/CCR=status; others preserved.
+; Release remains required on every exit for certificate-owned allocations.
 prepare	.block
+	movem.l d1/a0-a1/a4, -(sp)
+	movea.l a0, a4
+	move.l d0, d1
+	lea State.BufferView(a4), a0
+	jsr views.initBuffer
+	bne.w done
+	lea State.BufferView(a4), a1
+	movea.l a4, a0
+	move.l d1, d0
+	bsr.w prepareView
+	move.l d0, -(sp)
+	lea State.BufferView(a4), a0
+	jsr views.finish
+	move.l (sp)+, d0
+done
+	movem.l (sp)+, d1/a0-a1/a4
+	tst.l d0
+	rts
+	.bend  ; prepare
+
+; A0=State,A1=record-view Frame,D0=bytes,A2=scope,A3=package.
+; Only unconditional immutable scalar provenance can certify a guard.
+; The shared branch evaluator sees one copied record; recursive provenance
+; proofs copy each initializer onto their bounded stack before another seek.
+; Unknown proofs retain conservative owner alternatives. No candidate code
+; executes, and no source-visible scalar cells change.
+; D0/CCR=status; other registers preserved. Caller retains/finishes the view.
+; Release is required on every exit for certificate-owned allocations.
+prepareView	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	move.l a1, State.Records(a6)
-	add.l a1, d0
-	bcs.w bad
+	cmp.l views.Frame.Bytes(a1), d0
+	bne.w bad
 	move.l d0, State.End(a6)
+	clr.l State.Cursor(a6)
+	clr.l State.Next(a6)
 	move.l a2, State.Scope(a6)
 	moveq #0, d0
 	move.w layout.State.Base(a2), d0
@@ -132,9 +165,9 @@ clearContext
 	move.l State.Base(a6), d0
 	add.l State.Count(a6), d0
 	move.l d0, State.Context+pkg.Context.Count(a6)
-	movea.l State.Records(a6), a4
 inventory
-	cmpa.l State.End(a6), a4
+	move.l State.Cursor(a6), d0
+	cmp.l State.End(a6), d0
 	beq.w acquire
 	bsr.w recordEnd
 	bne.w bad
@@ -161,15 +194,14 @@ inventory
 	bne.w inventoryNext
 	tst.l Decl.Rhs(a0)
 	bne.w duplicate
-	move.l a4, d0
-	sub.l State.Records(a6), d0
+	move.l State.Cursor(a6), d0
 	addq.l #1, d0
 	move.l d0, Decl.Rhs(a0)
 	bra.w inventoryNext
 duplicate
 	move.b #PROOF_UNCERTIFIED, Decl.Proof(a0)
 inventoryNext
-	movea.l a5, a4
+	move.l State.Next(a6), State.Cursor(a6)
 	bra.w inventory
 acquire
 	tst.w State.LoopDepth(a6)
@@ -177,23 +209,28 @@ acquire
 	lea State.Branches(a6), a0
 	moveq #0, d0
 	movea.l d0, a1
-	movea.l State.Records(a6), a2
+	lea State.Record(a6), a2
 	moveq #1, d0
 	jsr branches.beginPass
 	jsr branches.begin
 	lea proofExpression, a1
 	move.l a1, branches.State.Proof(a0)
 	move.l a6, Current
-	movea.l State.Records(a6), a4
+	clr.l State.Cursor(a6)
 line
-	cmpa.l State.End(a6), a4
+	move.l State.Cursor(a6), d0
+	cmp.l State.End(a6), d0
 	beq.w complete
 	bsr.w recordEnd
 	bne.w bad
 	bsr.w scanLoop
 	bne.w bad
+	; Branch trace uses this temporary anchor only to subtract a logical offset.
+	move.l a4, d0
+	sub.l State.Cursor(a6), d0
+	move.l d0, State.Branches+branches.State.Records(a6)
 	movea.l a4, a0
-	movea.l State.End(a6), a1
+	movea.l a5, a1
 	lea State.Context(a6), a2
 	lea State.Branches(a6), a3
 	clr.w State.Veto(a6)
@@ -249,9 +286,7 @@ saveBoundary
 	bne.w bad
 	movea.l memory.Block.Pointer(a0), a1
 	adda.l d2, a1
-	move.l a5, d0
-	sub.l State.Records(a6), d0
-	move.l d0, Boundary.Offset(a1)
+	move.l State.Next(a6), Boundary.Offset(a1)
 	move.w d6, Boundary.Activity(a1)
 	clr.w Boundary.Reserved(a1)
 	addi.l #BOUNDARY_BYTES, memory.Block.Used(a0)
@@ -288,7 +323,7 @@ declarationReady
 saveActivity
 	move.b d6, Decl.Activity(a0)
 next
-	movea.l a5, a4
+	move.l State.Next(a6), State.Cursor(a6)
 	bra.w line
 complete
 	tst.w State.LoopDepth(a6)
@@ -305,7 +340,7 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; prepare
+	.bend  ; prepareView
 
 ; A0=State,D0=record offset. D0=ACTIVE/INACTIVE/UNKNOWN; others preserved.
 ; Boundaries are sorted offsets. Binary search gives the preceding activity.
@@ -384,6 +419,8 @@ release	.block
 	clr.l State.Base(a0)
 	clr.l State.Records(a0)
 	clr.l State.End(a0)
+	clr.l State.Cursor(a0)
+	clr.l State.Next(a0)
 	clr.l State.Scope(a0)
 	clr.l State.Branches+branches.State.Proof(a0)
 	lea State.Context(a0), a1
@@ -456,23 +493,80 @@ bad
 	rts
 	.bend  ; scanLoop
 
-; A4=record,A6=State. D7=width,A5=end,D0=status.
+; A6=State. Copy the logical cursor's record before recursive proofs seek.
+; Return D7=width,A4=record,A5=end,D0/CCR=status. Clobbers D1-D2/A0-A1.
 recordEnd	.block
+	movea.l State.Records(a6), a0
+	move.l State.Cursor(a6), d1
+	jsr views.seek
+	bne.w bad
+	cmpi.l #source.RECORD_HEADER_BYTES, d2
+	blo.w bad
 	moveq #0, d7
-	move.b source.RecordHeader.Length(a4), d7
+	move.b source.RecordHeader.Length(a1), d7
 	addq.w #1, d7
 	cmpi.l #source.RECORD_HEADER_BYTES, d7
 	blo.w bad
-	movea.l a4, a5
-	adda.l d7, a5
-	cmpa.l State.End(a6), a5
+	cmp.l d2, d7
 	bhi.w bad
+	add.l d7, d1
+	bcs.w bad
+	cmp.l State.End(a6), d1
+	bhi.w bad
+	move.l d1, State.Next(a6)
+	lea State.Record(a6), a4
+	movea.l a4, a5
+	move.l d7, d2
+copy
+	move.b (a1)+, (a5)+
+	subq.w #1, d2
+	bne.w copy
 	moveq #0, d0
 	rts
 bad
 	moveq #1, d0
 	rts
 	.bend  ; recordEnd
+
+; A6=State,D0=initializer record offset,A0=RECORD_CAPACITY-byte destination.
+; Return A0=RHS,A1=end,D0/CCR=status; other registers preserved.
+; Each recursive caller owns its copy until its proof/evaluation returns.
+initializer	.block
+	movem.l d1-d3/a2, -(sp)
+	movea.l a0, a2
+	move.l d0, d1
+	movea.l State.Records(a6), a0
+	jsr views.seek
+	bne.w bad
+	cmpi.l #source.DECLARATION_HEADER_BYTES, d2
+	blo.w bad
+	moveq #0, d3
+	move.b source.RecordHeader.Length(a1), d3
+	addq.w #1, d3
+	cmpi.l #source.DECLARATION_HEADER_BYTES, d3
+	blo.w bad
+	cmp.l d2, d3
+	bhi.w bad
+	add.l d3, d1
+	bcs.w bad
+	cmp.l State.End(a6), d1
+	bhi.w bad
+	movea.l a2, a0
+copy
+	move.b (a1)+, (a2)+
+	subq.w #1, d3
+	bne.w copy
+	movea.l a2, a1
+	adda.w #source.DeclarationRecord.Rhs, a0
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a2
+	tst.l d0
+	rts
+	.bend  ; initializer
 ; A6=State,D0=ID. D0=index,A0=row,CCR=status.
 row	.block
 	sub.l State.Base(a6), d0
@@ -549,7 +643,6 @@ opcode
 	bhs.w unknown
 	moveq #0, d0
 	move.b (a0)+, d0
-	tst.b d0
 	beq.w end
 	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, d0
 	beq.w symbol
@@ -621,6 +714,7 @@ done
 ; D0=ID,A6=State. A declaration's whole dependency closure must be pure.
 symbolPure	.block
 	movem.l d1-d3/a0-a3, -(sp)
+	suba.w #RECORD_CAPACITY, sp
 	move.l d0, d3
 	bsr.w row
 	bne.w unknown
@@ -636,31 +730,16 @@ symbolPure	.block
 	move.b #PROOF_VISITING, Decl.Proof(a3)
 	move.l Decl.Rhs(a3), d0
 	subq.l #1, d0
-	movea.l State.Records(a6), a0
-	adda.l d0, a0
-	moveq #0, d0
-	move.b (a0), d0
-	addq.w #1, d0
-	movea.l a0, a1
-	adda.l d0, a1
-	lea source.DeclarationRecord.Rhs(a0), a0
+	movea.l sp, a0
+	bsr.w initializer
+	bne.w impure
 	addq.w #1, State.ProofDepth(a6)
 	bsr.w expressionPure
 	subq.w #1, State.ProofDepth(a6)
 	tst.l d0
 	bne.w impure
-	; Reconstruct this certified initializer in the private view only after all
-	; recursively proven dependencies have acquired their own scalar cells.
-	move.l Decl.Rhs(a3), d0
-	subq.l #1, d0
-	movea.l State.Records(a6), a0
-	adda.l d0, a0
-	moveq #0, d0
-	move.b source.RecordHeader.Length(a0), d0
-	addq.w #1, d0
-	movea.l a0, a1
-	adda.l d0, a1
-	lea source.DeclarationRecord.Rhs(a0), a0
+	; The stack copy remains valid after all recursively proven dependencies
+	; acquire their scalar cells; evaluate this exact initializer once.
 	lea State.Context(a6), a2
 	clr.l pkg.Context.Kind(a2)
 	clr.l pkg.Context.High(a2)
@@ -695,6 +774,7 @@ impure
 unknown
 	moveq #1, d0
 done
+	adda.w #RECORD_CAPACITY, sp
 	movem.l (sp)+, d1-d3/a0-a3
 	tst.l d0
 	rts

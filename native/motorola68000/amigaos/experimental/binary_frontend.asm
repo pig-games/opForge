@@ -3158,35 +3158,122 @@ orderDone
 ; Finalize scoped identities before lexical scratch is released. A0=Frame,
 ; A1=packed records,D0=record bytes. D0/CCR=status; other registers preserved.
 complete	.block
-	movem.l d0/a0, -(sp)
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	move.l d0, d7
+	bsr.w completeBegin
+	bne.w done
+	movea.l a6, a1
+	move.l d7, d0
+	bsr.w completeLayouts
+	bne.w done
+	bsr.w completeLayoutsEnd
+	bne.w done
+	movea.l a6, a1
+	move.l d7, d0
+	bsr.w completeOutputs
+	bne.w done
+	bsr.w completeBindings
+	bne.w done
+	movea.l a6, a1
+	move.l d7, d0
+	bsr.w completeRecords
+	bne.w done
+	bsr.w completeEnd
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; complete
+
+; Staged completion uses the same phases as complete: Begin, all Layouts
+; batches, LayoutsEnd, all Outputs batches, Bindings, all Records batches, End.
+; A0=Frame throughout; batch APIs additionally take A1=mutable complete records,
+; D0=bytes. No batch view survives a call. D0/CCR=status; others preserved.
+completeBegin	.block
+	movem.l a0-a2, -(sp)
+	movea.l a0, a2
 	movea.l Frame.Metadata(a0), a0
 	jsr metadata.complete
-	bne.w metadataFailure
-	movem.l (sp)+, d0/a0
+	bne.w done
+	movea.l Frame.Scratch(a2), a0
+	adda.l #SCOPE_STATE, a0
+	jsr scopes.finishBegin
+done
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeBegin
+
+completeLayouts	.block
 	movem.l a0-a2, -(sp)
 	movea.l Frame.Scratch(a0), a2
 	movea.l a1, a0
 	lea SCOPE_STATE(a2), a1
-	jsr scopes.finish
+	jsr scopes.finishLayouts
 	movem.l (sp)+, a0-a2
 	tst.l d0
-	bne.w done
-	; Final member acquisition can add numeric identities after the last line.
-	; Publish the complete universe before values/plans/member keys are exported.
-	move.l a0, -(sp)
-	movea.l Frame.Scratch(a0), a0
-	lea SCOPE_STATE(a0), a0
-	jsr scopes.count
-	movea.l (sp)+, a0
-	move.l d0, Frame.NameCount(a0)
-	moveq #0, d0
-	bra.w done
-metadataFailure
-	movea.l 4(sp), a0
-	addq.l #8, sp
-done
 	rts
-	.bend  ; complete
+	.bend  ; completeLayouts
+
+completeLayoutsEnd	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	lea SCOPE_STATE(a2), a0
+	jsr scopes.finishLayoutsEnd
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeLayoutsEnd
+
+completeOutputs	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a1
+	jsr scopes.finishOutputs
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeOutputs
+
+completeBindings	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	lea SCOPE_STATE(a2), a0
+	jsr scopes.finishBindings
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeBindings
+
+completeRecords	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a1
+	jsr scopes.finishRecords
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeRecords
+
+completeEnd	.block
+	movem.l a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l Frame.Scratch(a0), a0
+	adda.l #SCOPE_STATE, a0
+	jsr scopes.finishEnd
+	bne.w done
+	; Final member acquisition may add identities after the last source line.
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a2)
+	moveq #0, d0
+done
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeEnd
 ; A0=Frame. D0=serialized table/payload bytes,D1=parameter count.
 ; Other registers preserved. Preparation scratch remains live.
 parameterBytes	.block

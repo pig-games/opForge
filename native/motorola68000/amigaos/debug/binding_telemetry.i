@@ -96,6 +96,19 @@ BINDING_RECORD_VIEW_FAILURE	.macro stage, cursor, limit, base
 	movem.l (sp)+, d0/a0-a2
 	move.w (sp)+, ccr
 .endmacro
+BINDING_RECORD_OFFSET_FAILURE	.macro stage, cursor, limit, record, offset
+	move.w ccr, -(sp)
+	movem.l d0-d1/a0-a2, -(sp)
+	movea.l .cursor, a0
+	movea.l .limit, a2
+	movea.l .record, a1
+	move.l .offset, d1
+	move.l .stage, d0
+	jsr binding_diagnostic.recordViewFailure
+	movem.l (sp)+, d0-d1/a0-a2
+	move.w (sp)+, ccr
+.endmacro
+
 .endif
 .endif
 .endif

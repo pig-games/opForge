@@ -12,6 +12,7 @@
 	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_record_view as views
 	.use experimental.amigaos.binary_payload_bounds as payloads
 	.use prvm.amigaos.abi as abi
 	.use experimental.amigaos.binary_materialized_scope as materialized
@@ -20,18 +21,22 @@
 	.use experimental.amigaos.binary_owner_guards as guards
 	.use experimental.amigaos.binary_binding_plans as plans
 	.pub
-MEASURE_SAVED_BASE = 5*4; D2-D6 precede saved A0 in measure's MOVEM frame
 LIMIT = 65535; packed parent/queue links remain representable words
 	.include "binary_block_span.i"
 Scratch	.struct
 Count	.long ?
 WorkspaceOffset	.long ?  ; relative to the first span
+Bytes	.long ?  ; logical stream bound retained with the numeric selection
 	.endstruct
-HEADER_BYTES = Scratch.WorkspaceOffset+4
+HEADER_BYTES = Scratch.Bytes+4
 ROW_BYTES = SPAN_BYTES+2; nesting stack becomes the reachability queue
 	.section bss, kind=bss
 	.priv
-Base	.res long, 1
+View	.res long, 1
+RecordPointer	.res long, 1
+RecordOffset	.res long, 1
+RecordLimit	.res long, 1
+BufferView	.res byte, views.FRAME_BYTES
 EndRecords	.res long, 1
 Spans	.res long, 1
 WorkspaceOffset	.res long, 1
@@ -56,22 +61,44 @@ Marks	.res long, 1
 	.section code, kind=code
 	.pub
 
-; A0=prepared records, D0=bytes, A1=caller-owned memory.Block descriptor.
-; The caller retires its name arena before this call. reserveExact may move it;
-; reload its pointer after return. Its owner retains release responsibility.
-; Return D0/CCR=status, D1=span count. All other registers preserved.
-; Start/End are offsets from A0; Parent is the enclosing span index+1.
-; This indexes every named block, including nested blocks, and fails closed
-; on malformed or unbalanced markers. It does not choose reachable blocks.
+; A0=prepared records,D0=bytes,A1=caller-owned memory.Block descriptor.
+; Buffer adapter for indexView; the owner retains release responsibility.
+; D0/CCR=status,D1=span count; other registers preserved.
 index	.block
+	movem.l d2/a0-a2, -(sp)
+	move.l d0, d2
+	movea.l a1, a2
+	movea.l a0, a1
+	lea BufferView, a0
+	jsr views.initBuffer
+	bne.w done
+	move.l d2, d0
+	movea.l a2, a1
+	bsr.w indexView
+	move.l d0, -(sp)
+	lea BufferView, a0
+	jsr views.finish
+	move.l (sp)+, d0
+done
+	movem.l (sp)+, d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; index
+
+; A0=record-view Frame,D0=logical bytes,A1=caller-owned memory.Block.
+; Index every named block, failing closed on malformed/unbalanced markers.
+; Spans retain logical offsets and numeric parents, never leased pointers.
+; D0/CCR=status,D1=span count; other registers preserved. View stays borrowed.
+indexView	.block
 	movem.l d2-d7/a0-a6, -(sp)
-	movea.l a0, a6
-	movea.l a0, a3
+	move.l a0, View
+	move.l d0, EndRecords
+	cmp.l views.Frame.Bytes(a0), d0
+	bne.w bad
 	movea.l a1, a4
-	move.l d0, d7
 	bsr.w measure
 	bne.w bad
-	move.l d1, d6
+	move.l d1, d7
 	mulu.w #ROW_BYTES, d1
 	add.l #HEADER_BYTES, d1
 	move.l d1, d5
@@ -81,56 +108,43 @@ index	.block
 	bne.w bad
 	move.l d5, memory.Block.Used(a4)
 	movea.l memory.Block.Pointer(a4), a4
-	move.l d6, Scratch.Count(a4)
-	mulu.w #SPAN_BYTES, d6
-	move.l d6, Scratch.WorkspaceOffset(a4)
-	move.l d6, WorkspaceOffset
+	move.l d7, Scratch.Count(a4)
+	move.l EndRecords, Scratch.Bytes(a4)
+	mulu.w #SPAN_BYTES, d7
+	move.l d7, Scratch.WorkspaceOffset(a4)
+	move.l d7, WorkspaceOffset
 	adda.l #HEADER_BYTES, a4
-	move.l d7, d0
-	movea.l a6, a0
-	move.l a0, d2
-	add.l d0, d2
-	bcs.w bad
-	movea.l d2, a2
 	moveq #0, d0
-	movea.l d0, a1  ; immediately preceding packed record, if any
-	moveq #0, d1
-	moveq #0, d2
+	movea.l d0, a3  ; logical cursor
+	moveq #0, d1  ; span count
+	moveq #0, d2  ; nesting depth
+	moveq #0, d7  ; preceding qualifying label offset+1
 line
-	cmpa.l a2, a3
+	cmpa.l EndRecords, a3
 	beq.w complete
-	moveq #0, d3
-	move.b source.RecordHeader.Length(a3), d3
-	addq.w #1, d3
+	move.l a3, d0
+	bsr.w record
+	bne.w bad
 	moveq #0, d4
-	move.b source.RecordHeader.Flags(a3), d4
+	move.b source.RecordHeader.Flags(a0), d4
 	move.l d4, d5
 	andi.w #source.FLAG_BLOCK_OPEN, d5
 	beq.w closing
-	cmpi.w #LIMIT, d1
-	bhs.w bad
 	move.l d1, d5
 	mulu.w #SPAN_BYTES, d5
 	lea 0(a4, d5.l), a5
 	move.l a3, d5
-	sub.l a6, d5
-	move.l a1, d7
+	tst.l d7
 	beq.w startReady
-	cmpi.b #source.DECLARATION_HEADER_BYTES-1, source.RecordHeader.Length(a1)  ; length excludes its own byte
-	bne.w startReady
-	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, source.DeclarationRecord.Name+source.NameToken.Kind(a1)
-	bhi.w startReady
-	cmpi.b #source.TOKEN_LABEL_DECLARATION, source.DeclarationRecord.Marker(a1)
-	bne.w startReady
-	move.l a1, d5
-	sub.l a6, d5
+	move.l d7, d5
+	subq.l #1, d5
 startReady
 	move.l d5, Span.Start(a5)
 	clr.l Span.End(a5)
 	moveq #0, d5
-	move.b source.DeclarationRecord.Name+source.NameToken.Id(a3), d5
+	move.b source.DeclarationRecord.Name+source.NameToken.Id(a0), d5
 	lsl.w #8, d5
-	move.b source.DeclarationRecord.Name+source.NameToken.Id+1(a3), d5
+	move.b source.DeclarationRecord.Name+source.NameToken.Id+1(a0), d5
 	move.w d5, Span.Entry(a5)
 	clr.w Span.Parent(a5)
 	clr.w Span.Live(a5)
@@ -139,18 +153,18 @@ startReady
 	move.l d2, d5
 	subq.l #1, d5
 	add.l d5, d5
-	movea.l a4, a0
-	adda.l WorkspaceOffset, a0
-	moveq #0, d6
-	move.w 0(a0, d5.l), d6
-	addq.w #1, d6
-	move.w d6, Span.Parent(a5)
+	movea.l a4, a1
+	adda.l WorkspaceOffset, a1
+	moveq #0, d3
+	move.w 0(a1, d5.l), d3
+	addq.w #1, d3
+	move.w d3, Span.Parent(a5)
 push
 	move.l d2, d5
 	add.l d5, d5
-	movea.l a4, a0
-	adda.l WorkspaceOffset, a0
-	move.w d1, 0(a0, d5.l)
+	movea.l a4, a1
+	adda.l WorkspaceOffset, a1
+	move.w d1, 0(a1, d5.l)
 	addq.w #1, d2
 	addq.w #1, d1
 	bra.w next
@@ -161,24 +175,31 @@ closing
 	subq.w #1, d2
 	move.l d2, d5
 	add.l d5, d5
-	movea.l a4, a0
-	adda.l WorkspaceOffset, a0
-	moveq #0, d6
-	move.w 0(a0, d5.l), d6
-	move.l d6, d5
+	movea.l a4, a1
+	adda.l WorkspaceOffset, a1
+	moveq #0, d3
+	move.w 0(a1, d5.l), d3
+	move.l d3, d5
 	mulu.w #SPAN_BYTES, d5
 	lea 0(a4, d5.l), a5
 	move.l a3, d5
-	sub.l a6, d5
-	add.l d3, d5
+	add.l d6, d5
 	move.l d5, Span.End(a5)
 next
-	movea.l a3, a1
-	adda.w d3, a3
+	; Cache only the preceding declaration's offset; the next seek may evict it.
+	moveq #0, d7
+	cmpi.w #source.DECLARATION_HEADER_BYTES, d6
+	bne.w advance
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, source.DeclarationRecord.Name+source.NameToken.Kind(a0)
+	bhi.w advance
+	cmpi.b #source.TOKEN_LABEL_DECLARATION, source.DeclarationRecord.Marker(a0)
+	bne.w advance
+	move.l a3, d7
+	addq.l #1, d7
+advance
+	adda.l d6, a3
 	bra.w line
 complete
-	tst.w d2
-	bne.w bad
 	.LAZY_BLOCKS a4, d1
 	moveq #0, d0
 	bra.w done
@@ -189,48 +210,36 @@ done
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; index
+	.bend  ; indexView
 
 	.priv
-; Validate packed framing and named markers before allocation or span writes.
-; A0=records,D0=bytes. D0/CCR=status,D1=validated named span count.
-; Other registers preserved. Nesting depth alone validates balanced markers.
+; Validate packed framing and markers before allocation or span writes.
+; View/EndRecords describe the stream. D0/CCR=status,D1=span count.
+; Other registers preserved. Nesting depth validates balanced markers.
 measure	.block
-	movem.l d2-d6/a0-a1, -(sp)
-	movea.l a0, a1
-	adda.l d0, a1
-	move.l a1, d2
-	cmp.l a0, d2
-	blo.w bad
+	movem.l d2-d7/a0-a3, -(sp)
+	moveq #0, d0
+	movea.l d0, a3
 	moveq #0, d1
 	moveq #0, d2
 line
-	cmpa.l a1, a0
+	cmpa.l EndRecords, a3
 	beq.w complete
-	bhi.w bad
-	move.l a1, d3
-	sub.l a0, d3
-	cmpi.l #source.RECORD_HEADER_BYTES, d3
-	blo.w bad
-	moveq #0, d4
-	move.b source.RecordHeader.Length(a0), d4
-	addq.l #1, d4
-	cmpi.l #source.RECORD_HEADER_BYTES, d4
-	blo.w bad
-	cmp.l d3, d4
-	bhi.w bad
+	move.l a3, d0
+	bsr.w record
+	bne.w bad
 	moveq #0, d5
 	move.b source.RecordHeader.Flags(a0), d5
-	move.l d5, d6
-	andi.w #$ff-source.FLAG_ALLOWED, d6
+	move.l d5, d4
+	andi.w #$ff-source.FLAG_ALLOWED, d4
 	bne.w bad
-	move.l d5, d6
-	andi.w #source.FLAG_BLOCK_OPEN, d6
+	move.l d5, d4
+	andi.w #source.FLAG_BLOCK_OPEN, d4
 	beq.w closing
-	move.l d5, d6
-	andi.w #source.FLAG_BLOCK_CLOSE, d6
+	move.l d5, d4
+	andi.w #source.FLAG_BLOCK_CLOSE, d4
 	bne.w bad
-	cmpi.l #source.DECLARATION_HEADER_BYTES, d4
+	cmpi.l #source.DECLARATION_HEADER_BYTES, d6
 	bne.w bad
 	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, source.DeclarationRecord.Name+source.NameToken.Kind(a0)
 	bhi.w bad
@@ -242,16 +251,16 @@ line
 	addq.l #1, d2
 	bra.w next
 closing
-	move.l d5, d6
-	andi.w #source.FLAG_BLOCK_CLOSE, d6
+	move.l d5, d4
+	andi.w #source.FLAG_BLOCK_CLOSE, d4
 	beq.w next
-	cmpi.l #source.RECORD_HEADER_BYTES, d4
+	cmpi.l #source.RECORD_HEADER_BYTES, d6
 	bne.w bad
 	tst.l d2
 	beq.w bad
 	subq.l #1, d2
 next
-	adda.l d4, a0
+	adda.l d6, a3
 	bra.w line
 complete
 	tst.l d2
@@ -259,28 +268,107 @@ complete
 	moveq #0, d0
 	bra.w done
 bad
-	.BINDING_RECORD_FAILURE #binding_diagnostic.BLOCK_INDEX, a0, a1, MEASURE_SAVED_BASE
+	tst.l RecordPointer
+	beq.w unobserved
+	.BINDING_RECORD_OFFSET_FAILURE #binding_diagnostic.BLOCK_INDEX, RecordPointer, RecordLimit, RecordPointer, RecordOffset
+unobserved
 	moveq #0, d1
 	moveq #1, d0
 done
-	movem.l (sp)+, d2-d6/a0-a1
+	movem.l (sp)+, d2-d7/a0-a3
 	tst.l d0
 	rts
 	.bend  ; measure
+
+; D0=logical offset. Return A0=leased record,D6=width,D0/CCR=status.
+; Other registers preserved. The view owns the lease until its next seek/finish.
+record	.block
+	movem.l d1-d2/a1, -(sp)
+	move.l d0, d1
+	move.l d0, RecordOffset
+	clr.l RecordPointer
+	movea.l View, a0
+	jsr views.seek
+	bne.w bad
+	move.l a1, RecordPointer
+	move.l EndRecords, d6
+	sub.l d1, d6
+	cmp.l d6, d2
+	bls.w available
+	move.l d6, d2
+available
+	move.l a1, d6
+	add.l d2, d6
+	move.l d6, RecordLimit
+	cmpi.l #source.RECORD_HEADER_BYTES, d2
+	blo.w bad
+	moveq #0, d6
+	move.b source.RecordHeader.Length(a1), d6
+	addq.l #1, d6
+	cmpi.l #source.RECORD_HEADER_BYTES, d6
+	blo.w bad
+	cmp.l d2, d6
+	bhi.w bad
+	move.l d1, d2
+	add.l d6, d2
+	bcs.w bad
+	cmp.l EndRecords, d2
+	bhi.w bad
+	move.l a1, RecordPointer
+	movea.l a1, a0
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a1
+	tst.l d0
+	rts
+	.bend  ; record
 	.pub
 
-; Select reachable outer blocks in a dependency-ordered module graph. A0=records,
-; D0=record bytes, A1=index scratch, D1=span count, A2=scope state, A3=graph.
-; A1 points to the completed header followed by span and workspace storage.
-; Real BE16 owners use span index+1 values 1..65534; $ffff is ambiguity.
-; Mark omitted packed records in place; no source text or process pointer is
-; retained in the records. D0/CCR=status; all other registers preserved.
+; Select blocks from a contiguous buffer and apply omitted flags in place.
+; A0=records,D0=bytes,A1=index,D1=span count,A2=scope,A3=graph,A4=package.
+; D0/CCR=status; other registers preserved.
 select	.block
+	movem.l d2/a0-a1/a5, -(sp)
+	move.l d0, d2
+	movea.l a1, a5
+	movea.l a0, a1
+	lea BufferView, a0
+	jsr views.initBuffer
+	bne.w done
+	move.l d2, d0
+	movea.l a5, a1
+	bsr.w selectView
+	move.l d0, -(sp)
+	lea BufferView, a0
+	jsr views.finish
+	move.l (sp)+, d0
+	bne.w done
+	movea.l 4(sp), a0
+	movea.l a5, a1
+	move.l d2, d0
+	bsr.w applySelection
+done
+	movem.l (sp)+, d2/a0-a1/a5
+	tst.l d0
+	rts
+	.bend  ; select
+
+; Select reachable outer blocks through a dependency-ordered logical view.
+; A0=view Frame,D0=bytes,A1=index,D1=count,A2=scope,A3=graph,A4=package.
+; Retain numeric Live decisions in the index; applySelection mutates a later
+; contiguous materialization. No leased pointer survives a seek.
+; D0/CCR=status; other registers preserved. Caller finishes the borrowed view.
+selectView	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	move.l a0, Base
-	add.l a0, d0
-	bcs.w invalid
+	move.l a0, View
 	move.l d0, EndRecords
+	cmp.l views.Frame.Bytes(a0), d0
+	bne.w invalid
+	cmp.l Scratch.Bytes(a1), d0
+	bne.w invalid
 	cmpi.l #LIMIT, d1
 	bhi.w invalid
 	cmp.l Scratch.Count(a1), d1
@@ -316,11 +404,10 @@ select	.block
 	beq.w guardsReady
 	move.w #1, GuardActive
 	lea Guards, a0
-	movea.l Base, a1
+	movea.l View, a1
 	move.l EndRecords, d0
-	sub.l a1, d0
 	movea.l Scope, a2
-	jsr guards.prepare
+	jsr guards.prepareView
 	bne.w invalid
 	movea.l Scope, a0
 	adda.l #scopes.BINDING_PLANS, a0
@@ -390,7 +477,8 @@ nextRoot
 	addq.w #1, d7
 	bra.w root
 outside
-	movea.l Base, a4
+	moveq #0, d0
+	movea.l d0, a4
 	movea.l EndRecords, a6
 	moveq #0, d7  ; outer spans and record offsets both advance in source order
 outsideLine
@@ -398,7 +486,6 @@ outsideLine
 	beq.w queued
 	bhi.w invalid
 	move.l a4, d4
-	sub.l Base, d4
 owner
 	cmp.w Count, d7
 	bhs.w outsideScan
@@ -409,11 +496,10 @@ owner
 	tst.w Span.Parent(a5)
 	bne.w nextOwner
 	cmp.l Span.Start(a5), d4
-	blo.w outsideScan  ; later outer spans start after this record too
+	blo.w outsideScan
 	cmp.l Span.End(a5), d4
 	bhs.w nextOwner
-	movea.l Base, a4
-	adda.l Span.End(a5), a4
+	movea.l Span.End(a5), a4
 	bra.w outsideLine
 nextOwner
 	addq.w #1, d7
@@ -436,10 +522,8 @@ queued
 	movea.l Spans, a5
 	mulu.w #SPAN_BYTES, d0
 	adda.l d0, a5
-	movea.l Base, a4
-	adda.l Span.Start(a5), a4
-	movea.l Base, a6
-	adda.l Span.End(a5), a6
+	movea.l Span.Start(a5), a4
+	movea.l Span.End(a5), a6
 blockLine
 	cmpa.l a6, a4
 	beq.w queued
@@ -448,35 +532,6 @@ blockLine
 	bne.w invalid
 	bra.w blockLine
 queueDone
-	moveq #0, d7
-omit
-	cmp.w Count, d7
-	bhs.w selected
-	move.l d7, d0
-	mulu.w #SPAN_BYTES, d0
-	movea.l Spans, a5
-	adda.l d0, a5
-	tst.w Span.Parent(a5)
-	bne.w nextSpan
-	tst.w Span.Live(a5)
-	bne.w nextSpan
-	movea.l Base, a4
-	adda.l Span.Start(a5), a4
-	movea.l Base, a6
-	adda.l Span.End(a5), a6
-omitLine
-	cmpa.l a6, a4
-	beq.w nextSpan
-	bhi.w invalid
-	moveq #0, d6
-	move.b (a4), d6
-	addq.w #1, d6
-	ori.b #source.FLAG_OMIT, 1(a4)
-	adda.w d6, a4
-	bra.w omitLine
-nextSpan
-	addq.w #1, d7
-	bra.w omit
 selected
 	.LAZY_SELECTED Spans, Count
 	moveq #0, d0
@@ -491,7 +546,79 @@ doneSelect
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; select
+	.bend  ; selectView
+
+; Apply a retained numeric selection after the logical stream is materialized.
+; A0=contiguous records,D0=bytes,A1=index,D1=count. The index stays owned by
+; its caller independently of lexical scratch. D0/CCR=status; others preserved.
+applySelection	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	cmp.l Scratch.Count(a1), d1
+	bne.w invalid
+	cmp.l Scratch.Bytes(a1), d0
+	bne.w invalid
+	cmpi.l #LIMIT, d1
+	bhi.w invalid
+	move.l d1, d2
+	mulu.w #SPAN_BYTES, d2
+	cmp.l Scratch.WorkspaceOffset(a1), d2
+	bne.w invalid
+	movea.l a0, a2
+	add.l a0, d0
+	bcs.w invalid
+	movea.l d0, a3
+	adda.l #HEADER_BYTES, a1
+	moveq #0, d7
+span
+	cmp.l d1, d7
+	bhs.w good
+	move.l d7, d0
+	mulu.w #SPAN_BYTES, d0
+	lea 0(a1, d0.l), a5
+	tst.w Span.Parent(a5)
+	bne.w next
+	tst.w Span.Live(a5)
+	bne.w next
+	movea.l a2, a4
+	adda.l Span.Start(a5), a4
+	movea.l a2, a6
+	adda.l Span.End(a5), a6
+	cmpa.l a2, a4
+	blo.w invalid
+	cmpa.l a3, a6
+	bhi.w invalid
+line
+	cmpa.l a6, a4
+	beq.w next
+	bhi.w invalid
+	move.l a6, d0
+	sub.l a4, d0
+	cmpi.l #source.RECORD_HEADER_BYTES, d0
+	blo.w invalid
+	moveq #0, d6
+	move.b source.RecordHeader.Length(a4), d6
+	addq.w #1, d6
+	cmpi.l #source.RECORD_HEADER_BYTES, d6
+	blo.w invalid
+	cmp.l d0, d6
+	bhi.w invalid
+	ori.b #source.FLAG_OMIT, source.RecordHeader.Flags(a4)
+	adda.w d6, a4
+	bra.w line
+next
+	addq.l #1, d7
+	bra.w span
+good
+	moveq #0, d0
+	bra.w done
+invalid
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; applySelection
+	.priv
 
 ; Resolve each defining numeric identity to its first outer block once. The
 ; table is temporary and stores span indices+1, never process pointers. It
@@ -535,57 +662,54 @@ ownerSpan
 	move.w Span.Entry(a3), d0
 	bsr.w saveOwner
 	bne.w ownerBad
-	movea.l Base, a4
-	adda.l Span.Start(a3), a4
-	movea.l Base, a6
-	adda.l Span.End(a3), a6
+	movea.l Span.Start(a3), a4
+	movea.l Span.End(a3), a6
 ownerLine
 	cmpa.l a6, a4
 	beq.w ownerNext
 	bhi.w ownerBad
-	moveq #0, d6
-	move.b (a4), d6
-	addq.w #1, d6
-	cmpi.w #4, d6
-	blo.w ownerBad
+	move.l a4, d0
+	bsr.w record
+	bne.w ownerBad
+	movea.l a0, a5
 	move.l a6, d0
 	sub.l a4, d0
 	cmp.l d0, d6
 	bhi.w ownerBad
 	move.l a4, d0
-	sub.l Base, d0
 	lea Guards, a0
 	jsr guards.activity
 	cmpi.l #guards.INACTIVE, d0
 	beq.w ownerAdvance
 	cmpi.w #materialized.Record.Kind+1, d6
 	blo.w ownerAdvance
-	cmpi.b #materialized.TOKEN, materialized.Record.Kind(a4)
+	cmpi.b #materialized.TOKEN, materialized.Record.Kind(a5)
 	beq.w materializedOwner
-	cmpi.w #9, d6
+	cmpi.w #source.DECLARATION_HEADER_BYTES, d6
 	blo.w ownerAdvance
-	cmpi.b #1, 4(a4)
+	cmpi.b #abi.PRVM_TOKEN_KIND_REGISTER, source.DeclarationRecord.Name+source.NameToken.Kind(a5)
 	bhi.w ownerAdvance
-	cmpi.b #5, 8(a4)
+	cmpi.b #source.TOKEN_LABEL_DECLARATION, source.DeclarationRecord.Marker(a5)
 	beq.w ownerDeclaration
-	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 8(a4)
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, source.DeclarationRecord.Marker(a5)
 	beq.w ownerDeclaration
-	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 8(a4)
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, source.DeclarationRecord.Marker(a5)
 	beq.w ownerDeclaration
-	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 8(a4)
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, source.DeclarationRecord.Marker(a5)
 	beq.w ownerDeclaration
-	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, 8(a4)
+	cmpi.b #source.TOKEN_CONSTANT_DECLARATION, source.DeclarationRecord.Marker(a5)
 	beq.w ownerDeclaration
 	bra.w ownerAdvance
 materializedOwner
-	movea.l a4, a0
-	movea.l a6, a1
+	movea.l a5, a0
+	movea.l a5, a1
+	adda.l d6, a1
 	jsr materialized.validate
 	bne.w ownerBad
-	cmpi.b #materialized.COLLECTION_OPEN, materialized.Record.Action(a4)
+	cmpi.b #materialized.COLLECTION_OPEN, materialized.Record.Action(a5)
 	bne.w ownerAdvance
 	moveq #0, d0
-	move.w materialized.Record.Label(a4), d0
+	move.w materialized.Record.Label(a5), d0
 	cmpi.l #materialized.ANONYMOUS, d0
 	beq.w ownerAdvance
 	bsr.w saveOwner
@@ -594,7 +718,7 @@ materializedOwner
 
 ownerDeclaration
 	moveq #0, d0
-	move.w 5(a4), d0
+	move.w source.DeclarationRecord.Name+source.NameToken.Id(a5), d0
 	bsr.w saveOwner
 	bne.w ownerBad
 ownerAdvance
@@ -661,33 +785,32 @@ ownerOverflow
 	.bend  ; saveOwner
 
 	.priv
-; A4=current packed record, A6=end of its scan range. Advance A4 once.
-; D0/CCR=status; clobbers D6/A0-A1. References may enqueue newly live blocks.
+; A4=current logical offset,A6=end offset. Advance A4 once.
+; D0/CCR=status; clobbers D6/A0-A1. References may enqueue live blocks.
 scanLine	.block
-	moveq #0, d6
-	move.b (a4), d6
-	addq.w #1, d6
-	cmpi.w #4, d6
-	blo.w scanBad
+	move.l a4, d0
+	bsr.w record
+	bne.w scanBad
 	move.l a6, d0
 	sub.l a4, d0
 	cmp.l d0, d6
 	bhi.w scanBad
 	.MEMORY_COUNTER_INC Scanned
+	move.l a0, -(sp)
 	move.l a4, d0
-	sub.l Base, d0
 	lea Guards, a0
 	jsr guards.activity
+	movea.l (sp)+, a0
 	cmpi.l #guards.INACTIVE, d0
 	beq.w scanNext
-	btst #4, 1(a4)
+	btst #source.FLAG_LAYOUT_BIT, source.RecordHeader.Flags(a0)
 	bne.w scanNext
-	lea 4(a4), a0
-	movea.l a4, a1
+	movea.l a0, a1
 	adda.w d6, a1
 	move.l d3, -(sp)
 	moveq #0, d3
-	move.b source.RecordHeader.Flags(a4), d3
+	move.b source.RecordHeader.Flags(a0), d3
+	adda.w #source.RECORD_HEADER_BYTES, a0
 	bsr.w references
 	move.l (sp)+, d3
 	tst.l d0
@@ -992,7 +1115,7 @@ good
 	moveq #0, d0
 	bra.w doneRefs
 bad
-	.BINDING_RECORD_VIEW_FAILURE #binding_diagnostic.BLOCK_REFERENCES, a0, a1, Base
+	.BINDING_RECORD_OFFSET_FAILURE #binding_diagnostic.BLOCK_REFERENCES, a0, a1, RecordPointer, RecordOffset
 	moveq #1, d0
 doneRefs
 	addq.l #4, sp

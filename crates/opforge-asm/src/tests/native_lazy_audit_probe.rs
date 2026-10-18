@@ -153,12 +153,12 @@ fn native_ordered_records_probe_save_image() {
 }
 
 #[test]
-#[ignore = "builds the independent record-growth component probe outside target"]
-fn native_record_growth_probe_save_image() {
+#[ignore = "builds the bounded prepared-record store/view component probe outside target"]
+fn native_prepared_store_probe_save_image() {
     save_capture_store_probe(
-        "tests.amigaos.record_growth_probe",
-        "OPFORGE_RECORD_GROWTH_SAVE_DIR",
-        "record-growth-probe-memory.hunk",
+        "tests.amigaos.prepared_store_probe",
+        "OPFORGE_PREPARED_STORE_SAVE_DIR",
+        "prepared-store-probe-memory.hunk",
     );
 }
 
@@ -174,26 +174,6 @@ fn save_capture_store_probe(probe_module: &str, destination_variable: &str, file
     let dir = scratch();
     let snapshot = dir.0.join("probe-source");
     prepare_component_probe_source_for(&root, &snapshot, probe_module);
-    // Fault injection belongs only to this isolated component-test snapshot.
-    // Replace the transport call, retaining the helper's actual failure branch.
-    let growth_fault = if probe_module == "tests.amigaos.record_growth_probe" {
-        std::env::var_os("OPFORGE_RECORD_GROWTH_FAULT").map(|value| {
-            let mode = match value.to_str() {
-                Some("write") => "write",
-                Some("read") => "read",
-                _ => panic!("OPFORGE_RECORD_GROWTH_FAULT must be write or read"),
-            };
-            let helper =
-                snapshot.join("native/motorola68000/amigaos/experimental/binary_record_growth.asm");
-            let source = fs::read_to_string(&helper).unwrap();
-            let call = format!("\tjsr io.{mode}\n");
-            assert_eq!(source.matches(&call).count(), 1, "expected one {mode} call");
-            fs::write(&helper, source.replacen(&call, "\tmoveq #1, d0\n", 1)).unwrap();
-            mode
-        })
-    } else {
-        None
-    };
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &dir.0.join("probe-build"),
@@ -213,12 +193,6 @@ fn save_capture_store_probe(probe_module: &str, destination_variable: &str, file
     {
         defines.push("OPFORGE_ORDERED_RECORDS_EXPECT_REUSE");
     }
-    match growth_fault {
-        Some("write") => defines.push("OPFORGE_GROWTH_EXPECT_WRITE_FAILURE"),
-        Some("read") => defines.push("OPFORGE_GROWTH_EXPECT_READ_FAILURE"),
-        None => {}
-        Some(_) => unreachable!("growth fault was validated above"),
-    }
     let image = super::compact_cli_input::assemble_cli_with_defines(&snapshot, &build, &defines);
     let digest = tree_digest(&snapshot.join("native"));
     fs::write(destination.join(filename), &image).unwrap();
@@ -227,7 +201,6 @@ fn save_capture_store_probe(probe_module: &str, destination_variable: &str, file
         serde_json::to_vec_pretty(
             &serde_json::json!({"native_source_fnv1a64": digest, "images": [{
                 "file": filename, "defines": defines, "bytes": image.len(),
-                "record_growth_fault": growth_fault,
                 "fnv1a64": opforge_self_host_package_digest(&image),
                 "native_source_fnv1a64": digest,
             }]}),

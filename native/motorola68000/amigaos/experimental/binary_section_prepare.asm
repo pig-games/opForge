@@ -906,12 +906,28 @@ done
 ; no parser, capture pointer or lexical text is retained. D0/CCR=status; other
 ; registers preserved. Must precede finish and assembly's frozen frontier.
 resolveLayouts	.block
-	movem.l d1-d7/a0-a6, -(sp)
-	movea.l a0, a5
-	movea.l a1, a6
-	movea.l a2, a4
-	movea.l a0, a3
-	adda.l d0, a3
+	movem.l d1/a0-a2, -(sp)
+	move.l d0, d1
+	move.l a0, -(sp)
+	movea.l a2, a0
+	bsr.w beginResolution
+	movea.l (sp)+, a0
+	move.l d1, d0
+	bsr.w resolveBatch
+	bne.w done
+	movea.l a2, a0
+	bsr.w finishResolution
+done
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	rts
+	.bend  ; resolveLayouts
+
+; A0=section state. Begin one global layout traversal. No record is borrowed.
+; D0/CCR=status; other registers preserved.
+beginResolution	.block
+	move.l a4, -(sp)
+	movea.l a0, a4
 	clr.w State.First(a4)
 	clr.w State.Concrete(a4)
 	clr.w State.Second(a4)
@@ -919,6 +935,21 @@ resolveLayouts	.block
 	clr.w State.Declared(a4)
 	clr.w State.OutputSeen(a4)
 	andi.w #SEEN_FIRST_REGION+SEEN_SECOND_REGION, State.Seen(a4)  ; regions retain their independently parsed facts
+	movea.l (sp)+, a4
+	moveq #0, d0
+	rts
+	.bend  ; beginResolution
+
+; A0=mutable whole-record batch,D0=bytes,A1=scope,A2=section state.
+; Carry open-section/declaration state across batches; retain no batch pointers.
+; D0/CCR=status; other registers preserved.
+resolveBatch	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a6
+	movea.l a2, a4
+	movea.l a0, a3
+	adda.l d0, a3
 record
 	cmpa.l a3, a5
 	beq.w good
@@ -1019,8 +1050,6 @@ next
 	adda.l d7, a5
 	bra.w record
 good
-	tst.w State.Active(a4)
-	bne.w bad
 	moveq #0, d0
 	bra.w done
 bad
@@ -1029,7 +1058,19 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; resolveLayouts
+	.bend  ; resolveBatch
+
+; A0=section state. Seal after the last batch; a batch boundary is not EOF.
+; D0/CCR=status; other registers preserved.
+finishResolution	.block
+	tst.w State.Active(a0)
+	bne.w bad
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; finishResolution
 	.priv
 ; A5=section recipe,A4=section state. D6=owned source ID,D0/CCR=status.
 sourceIdentity	.block

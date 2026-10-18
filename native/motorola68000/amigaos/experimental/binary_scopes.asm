@@ -2549,41 +2549,136 @@ done
 ; No source string survives this preparation boundary.
 finish	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
-	.BINDING_DIAGNOSTIC_CLEAR
+	movea.l a0, a5
 	movea.l a1, a6
+	move.l d0, d7
+	movea.l a6, a0
+	bsr.w finishBegin
+	bne.w done
+	movea.l a5, a0
+	movea.l a6, a1
+	move.l d7, d0
+	bsr.w finishLayouts
+	bne.w done
+	movea.l a6, a0
+	bsr.w finishLayoutsEnd
+	bne.w done
+	movea.l a5, a0
+	movea.l a6, a1
+	move.l d7, d0
+	bsr.w finishOutputs
+	bne.w done
+	movea.l a6, a0
+	bsr.w finishBindings
+	bne.w done
+	movea.l a5, a0
+	movea.l a6, a1
+	move.l d7, d0
+	bsr.w finishRecords
+	bne.w done
+	movea.l a6, a0
+	bsr.w finishEnd
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; finish
+
+; Staged completion preserves the contiguous adapter's semantic/error order:
+; Begin, all Layouts batches, LayoutsEnd, all Outputs batches, Bindings,
+; all Records batches, End. Batches contain only complete records. No stage
+; retains a batch pointer. All APIs return D0/CCR=status, preserving others.
+; A0=scope. Validate the closed source frontier and resolve global imports.
+finishBegin	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	movea.l a0, a6
+	.BINDING_DIAGNOSTIC_CLEAR
 	.BINDING_ATTEMPT #binding_diagnostic.CURRENT, #-1, #-1
 	tst.w layout.State.Current(a6)
 	bne.w bad
 	tst.w layout.State.LoopDepth(a6)
 	bne.w bad
-	movea.l a0, a5
-	move.l d0, -(sp)
-	movea.l a6, a0
 	lea bind, a1
 	lea forwardBinding, a2
 	.BINDING_ATTEMPT #binding_diagnostic.IMPORTS, #-1, #-1
 	jsr imports.finish
-	bne.w failSaved
-	movea.l a5, a0
-	move.l (sp), d0
-	movea.l a6, a1
-	movea.l a6, a2
-	adda.l #SECTION_STATE, a2
-	jsr sections.resolveLayouts
-	bne.w failSaved
+	bne.w bad
 	movea.l a6, a0
 	adda.l #SECTION_STATE, a0
+	jsr sections.beginResolution
+	bra.w done
+bad
+	moveq #1, d0
+done
+	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
+	.TELEMETRY_SERVICE_LEAVE
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; finishBegin
+
+; A0=mutable batch,D0=bytes,A1=scope. Carry layout state across batches.
+finishLayouts	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	movea.l a1, a6
+	movea.l a6, a2
+	adda.l #SECTION_STATE, a2
+	jsr sections.resolveBatch
+	bra.w done
+done
+	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
+	.TELEMETRY_SERVICE_LEAVE
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; finishLayouts
+
+; A0=scope. Seal layout traversal, then perform section/region validation.
+finishLayoutsEnd	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	movea.l a0, a6
+	adda.l #SECTION_STATE, a0
 	.BINDING_ATTEMPT #binding_diagnostic.SECTIONS, #-1, #-1
+	jsr sections.finishResolution
+	bne.w bad
 	jsr sections.finish
-	bne.w failSaved
-	movea.l a0, a2
-	movea.l a5, a0
-	move.l (sp), d0
-	movea.l a6, a1
+	bra.w done
+bad
+	moveq #1, d0
+done
+	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
+	.TELEMETRY_SERVICE_LEAVE
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; finishLayoutsEnd
+
+; A0=mutable batch,D0=bytes,A1=scope. Resolve output section references.
+finishOutputs	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	movea.l a1, a6
+	movea.l a6, a2
+	adda.l #SECTION_STATE, a2
 	.BINDING_ATTEMPT #binding_diagnostic.OUTPUTS, #-1, #-1
 	jsr sections.resolveOutputs
-	bne.w failSaved
+	bra.w done
+done
+	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
+	.TELEMETRY_SERVICE_LEAVE
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; finishOutputs
+
+; A0=scope. Resolve canonical identities and occurrence proxies once.
+finishBindings	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	movea.l a0, a6
 	moveq #0, d7
 resolve
 	cmp.w layout.State.Count(a6), d7
@@ -2679,23 +2774,37 @@ access
 	lea MODULE_STATE(a6), a0
 	.BINDING_ATTEMPT #binding_diagnostic.VISIBILITY, d7, d1
 	jsr modules.check
-	bne.w failSaved
+	bne.w bad
 	bra.w next
 unresolvedReference
 	; Optional skipped RHS names do not require a scalar definition. A later
 	; ordinary reference to the same entry retains the usual hard error.
 	btst #1, records.Entry.Flags+1(a4)
-	bne.w failSaved
+	bne.w bad
 next
 	addq.w #1, d7
 	bra.w resolve
 rewrite
 	bsr.w finalizeBindingProxies
-	bne.w failSaved
-	move.l (sp)+, d0
+	bne.w bad
+	bra.w done
+bad
+	moveq #1, d0
+done
+	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
+	.TELEMETRY_SERVICE_LEAVE
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; finishBindings
+
+; A0=mutable batch,D0=bytes,A1=scope. Rewrite finalized numeric identities.
+finishRecords	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	movea.l a1, a6
 	tst.w layout.State.Changed(a6)
 	beq.w unchanged
-	movea.l a5, a0
 	movea.l ENTRIES_POINTER(a6), a1
 	moveq #0, d1
 	move.w layout.State.Base(a6), d1
@@ -2703,9 +2812,23 @@ rewrite
 	move.w layout.State.Count(a6), d2
 	.BINDING_ATTEMPT #binding_diagnostic.REMAP, #-1, #-1
 	jsr records.remap
-	bne.w done
+	bra.w done
 unchanged
-	movea.l a6, a0
+	moveq #0, d0
+	bra.w done
+done
+	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
+	.TELEMETRY_SERVICE_LEAVE
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; finishRecords
+
+; A0=scope. Finalize value plans and typed nominal identities once.
+finishEnd	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	movea.l a0, a6
 	adda.l #BINDING_PLANS, a0
 	movea.l ENTRIES_POINTER(a6), a1
 	moveq #0, d0
@@ -2723,17 +2846,13 @@ unchanged
 	adda.l #IMPORT_STATE+imports.PARAM_OWNER, a0
 	jsr struct_values.remapNominals
 	bra.w done
-failSaved
-	addq.l #4, sp
-bad
-	moveq #1, d0
 done
 	.BINDING_DIAGNOSTIC_COMMIT d0, a6, BindingView
 	.TELEMETRY_SERVICE_LEAVE
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; finish
+	.bend  ; finishEnd
 	.priv
 
 ; Imports.finish callback: D7=unresolved proxy index,A6=scope.

@@ -1,10 +1,12 @@
 # Module preparation and relocatable objects
 
-Status, 2026-10-17: dependency-first preparation now interleaves with module
+Status, 2026-10-18: dependency-first preparation now interleaves with module
 configuration/discovery with resident capture. Completed module captures retire after their numeric
 records and templates have been published into the shared semantic owner.
-Final binding, layout and emission still run globally. This is an early-release
-pipeline, not a persistent `.ofm` object implementation. Parity remains paused.
+Disk-backed prepared module ranges now survive global binding/layout and reachability
+through bounded views, allowing frontend scratch to retire before assembly input is
+materialized. Final binding, layout and emission still run globally. This is an
+in-build ownership boundary, not a persistent `.ofm` object implementation. Parity remains paused.
 See [measurements](native-performance-diagnosis.md) and
 [capture ownership](native-lazy-preparation.md).
 
@@ -64,12 +66,36 @@ retirement reduces RAM ownership, not the file's accumulated length. Use a genui
 disk-backed volume rather than assuming `T:` saves RAM. Failure cleanup owns both
 sessions and every partial allocation.
 
+## Prepared module storage
+
+Checked module spans own dense ranges in a shared prepared-record store; module
+boundaries need not waste page space. Disk mode keeps at most four 32 KiB payload
+pages, with directory metadata outside that budget. Records remain whole, dirty
+pages persist before eviction and pinned pointers cannot move. Logical module-order
+views translate offsets and cap reads at module boundaries without reloading all
+records. Buffer adapters preserve the contiguous reference path.
+
+Global completion runs its existing layout, output, binding and record-remapping
+phases across pages in the original order. Section state spans batches. Metadata-only
+ordering builds origins and module starts. Reachability uses the same selector through
+views and retains whole-block decisions separately from lexical scratch. Runtime
+bindings, typed values, parameters and member IDs transfer before frontend retirement.
+The ordered contiguous stream is then rebuilt once, omission applied and backing
+storage released. `beginSizing` still sees stable contiguous records. This avoids
+prepared-buffer/frontend overlap; it does not avoid semantic preparation work.
+
+The measured disk peak saving is 1,964,032 B / 18.72% on identical frozen input.
+The [resource results](native-performance-diagnosis.md) separate heap, allocation
+traffic and release timing. Global symbol IDs remain a temporary in-build bridge;
+this storage cannot yet be exported as a reusable module object.
+
 ## What remains eager and resident
 
 The configuration pass still runs shared lexical/configuration processing; this is
 not the proposed cheap structural-only scan. Every applicable module body still gets
-prepared. The shared semantic scratch, exported definitions/templates and prepared
-record buffer remain resident and grow across modules. Binding proxies, member
+prepared. Shared semantic scratch and exported definitions/templates remain resident and grow
+across modules. Prepared records use bounded backing with disk policy, while resident
+policy retains its contiguous buffer. Binding proxies, member
 identities and placement-sensitive recipes are finalized across the complete build.
 Publication does not skip preparation of unreachable source or emit final bytes early.
 
@@ -99,7 +125,9 @@ Resident and disk-backed objects should use the same pointer-free representation
 Once a validated object owns every later consumer's data, source-oriented prepared
 storage can retire. Merely serializing after global completion cannot lower an
 earlier peak. Preserve the no-growth/no-movement assembly frontier at `beginSizing`.
-This next boundary is not yet implemented or qualified.
+Object-local identities, near-output relocatable fragments and per-module metadata
+retirement are not yet implemented or qualified. The bounded prepared-record bridge
+above is implemented; it is not a substitute for these object interfaces.
 
 A future configured-object fingerprint must cover content, transitive includes and
 assets, imported exports/types/templates, compiler/package semantics, relevant options,

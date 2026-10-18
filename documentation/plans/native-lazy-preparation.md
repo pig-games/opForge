@@ -1,11 +1,12 @@
 # Preparation ownership and capture storage
 
-Status, 2026-10-17: module discovery/configuration can now publish dependency-complete
+Status, 2026-10-18: module discovery/configuration can now publish dependency-complete
 modules through the shared semantic frontend with resident capture and retire their raw captures before
 acquiring later dependencies. Complete graphs keep the existing scheduled path.
 Bounded disk capture keeps complete-graph scheduling to avoid overlapping growing
 session owners. Resident capture remains the default; `--capture-dir DIR` selects bounded disk
-capture and staged growth of large prepared-record buffers. Lexical names are paged.
+capture and a bounded prepared-record store. Module ranges are finalized through views;
+the contiguous assembly input is rebuilt only after frontend scratch retires. Lexical names are paged.
 Parity remains paused. See [separate resource results](native-performance-diagnosis.md)
 and the [implemented boundary and remaining object design](native-fragment-preparation.md).
 
@@ -16,9 +17,9 @@ and the [implemented boundary and remaining object design](native-fragment-prepa
 | Dependency-first publication | Default for resident open-graph discovery; shared replay publishes owned numeric records/templates, then retires captures. Global binding/layout remain. No new selector. |
 | Complete-graph replay | Retained for all bounded-disk inputs, explicit closed manifests and resident inputs closing before first publication. Uses the same replay helper and normal global completion. |
 | Paged lexical names | Default storage: names stay contiguous within 64 KiB pages; entries hold numeric handles and diagnostics use checked resolution. |
-| Disk-assisted record growth | With disk capture, large nonempty prepared buffers stage their used prefix before growth; normal growth remains for resident/small buffers. |
+| Module-indexed prepared records | Disk policy uses a 128 KiB page cache and checked module views through global binding/layout and reachability. Final contiguous records are allocated after frontend retirement. Resident allocation remains the reference. |
 | Finished configuration/discovery | Release after final seeding, before remaining semantic replay. Include paths and independent I/O survive. |
-| Identity record layout reuse | After full validation, keep an already contiguous complete stream. Reordered/partial selections still copy. |
+| Identity record layout reuse | Resident mode retains validated complete contiguous streams; resident reorders/partial selections copy. Disk mode publishes ordering metadata before late reconstruction. |
 | Bounded disk backing | One explicit directory/storage policy, not another language implementation or persistent cache. |
 | Chunked capture | Sole raw-capture representation, shared by resident/disk modes. |
 | Macro-only deferral, first-use candidates/plans, binary token prototype, fragment envelope | Removed with switches and experiment-only tests; no established runtime gain. |
@@ -83,9 +84,21 @@ session; no new observer or record schema was introduced.
 
 This pipeline shortens source lifetimes; it does not avoid configuration or semantic
 work. It does not yet replace configuration with a cheap structural-only scan.
-Global semantic scratch, names, exports/templates and prepared records still grow
-across modules. `frontend.complete` resolves binding proxies/member identities and
-section recipes against the full build before ordinary layout/emission.
+Global semantic scratch, names and exports/templates still grow across modules.
+Disk prepared-record payload no longer does: four 32 KiB pages plus a directory
+replace the growing contiguous preparation buffer. Global completion resolves binding
+proxies/member identities and section recipes against the full build before ordinary
+layout/emission.
+
+The prepared store is mutable during finalization. Dirty pages write before eviction;
+leases protect reads and mapped views stop at module boundaries. Module ranges and
+origins retain offsets, not payload pointers. Existing layout, output and binding
+phases traverse whole-record page batches in their original order. Reachability
+retains numeric decisions in an independently owned index. Runtime values, bindings,
+parameters and member keys export before frontend retirement; only then are ordered
+records reconstructed and omitted blocks marked. The store and its private DOS file
+are released before assembly. The old disk-growth helper and its tests are removed.
+No new storage selector or observer framework was introduced.
 
 A real `.ofm` owner must replace build-global identities with object-local IDs,
 checked offsets and explicit remapping. It must preserve unresolved expressions,

@@ -4,6 +4,7 @@
 .cpu 68020
 .use experimental.amigaos.binary_block_index as blocks
 .use experimental.amigaos.binary_memory as memory
+.use experimental.amigaos.binary_record_view as views
 .use experimental.amigaos.binary_source as source
 .use experimental.amigaos.binary_scopes as scopes
 .use experimental.amigaos.binary_scope_layout as layout
@@ -104,12 +105,32 @@ cases	.block
 	bne.w bad
 	cmpi.l #2, d1
 	bne.w bad
-	lea Input, a0
+	lea View, a0
+	lea Input, a1
+	move.l #InputEnd-Input, d0
+	jsr views.initBuffer
+	bne.w bad
 	move.l #InputEnd-Input, d0
 	movea.l Scratch+memory.Block.Pointer, a1
 	lea Scope, a2
 	lea Graph, a3
-	jsr blocks.select
+	jsr blocks.selectView
+	bne.w bad
+	; Selection decisions survive independently while the prepared view stays
+	; immutable. The later materialization applies only the retained omissions.
+	btst #source.FLAG_OMIT_BIT, Opaque+source.RecordHeader.Flags
+	bne.w bad
+	lea View, a0
+	jsr views.finish
+	lea Input, a0
+	move.l #InputEnd-Input-1, d0
+	movea.l Scratch+memory.Block.Pointer, a1
+	jsr blocks.applySelection
+	beq.w bad
+	btst #source.FLAG_OMIT_BIT, Opaque+source.RecordHeader.Flags
+	bne.w bad
+	move.l #InputEnd-Input, d0
+	jsr blocks.applySelection
 	bne.w bad
 	btst #source.FLAG_OMIT_BIT, Real+source.RecordHeader.Flags
 	bne.w bad
@@ -126,6 +147,8 @@ bad
 	moveq #1, d0
 finish
 	move.l d0, -(sp)
+	lea View, a0
+	jsr views.finish
 	lea Scratch, a0
 	jsr memory.release
 	move.l (sp)+, d0
@@ -151,6 +174,13 @@ StringProgram
 	.byte runtime.EXPRVM_OPCODE_APPLY_BINARY, runtime.EXPRVM_BINARY_ADD, runtime.EXPRVM_OPCODE_END
 StringProgramEnd
 StringEnd
+	; Layout payloads are opaque to emitted-code reachability even when their
+	; numeric bytes resemble a reference to a collectible block.
+	.byte 7, source.FLAG_LAYOUT
+	.word 2
+	.byte 0
+	.word 2
+	.byte 0
 	.byte 9, source.FLAG_PLAN
 	.word 2
 	.byte source.MACRO_PLAN
@@ -186,6 +216,7 @@ Scope	.res byte, scopes.SCRATCH_BYTES
 Graph	.res byte, graph.SCRATCH_BYTES
 Entries	.res byte, 3*records.ENTRY_BYTES
 Scratch	.res byte, memory.Block.Used+4
+View	.res byte, views.FRAME_BYTES
 DosBase	.res long, 1
 OutputHandle	.res long, 1
 ReturnCode	.res long, 1

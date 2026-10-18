@@ -539,14 +539,15 @@ and reported at retirement/cleanup through the existing progress ABI:
 | 362 | fault attempts | evictions | peak resident capture payload capacity |
 | 363 | ordered materialization attempts | successful identity reuses | record bytes actually copied |
 | 364 | record bytes whose copy was avoided | replacement capacity whose allocation was avoided | zero |
-| 365 | completed disk-assisted record growths | staged write bytes | restored read bytes |
-| 366 | old record capacity released before replacement allocation | zero | zero |
 
-Capture-store counters use 28 B of fixed BSS; ordered-record counters use 20 B;
-record-growth counters use 16 B. Record-growth totals report once when their
-DOS-bound owner retires (normally before assembly), then clear. Failed restoration
-can legitimately leave writes without reads or a completed growth. Released
-capacity is allocation-overlap accounting, not measured whole-build peak saving.
+Capture-store counters use 28 B of fixed BSS; ordered-record counters use 20 B.
+Phases 365/366 belong to preserved disk-growth reference receipts; their producer
+was removed when bounded prepared-record storage replaced staged buffer growth.
+The host decoder retains those optional reference summaries for comparisons.
+Phase 363 counts payload copies made by the ordering helper. Disk ordering publishes
+metadata without copying; later assembly-buffer reconstruction and page I/O are outside
+that counter. The prepared store uses existing MEMD allocation tracking and has no new
+observer framework. Its 128 KiB payload budget excludes directory metadata and OS costs.
 Ordered-record counters count only a validated complete identity layout as reuse; failed
 attempts remain in the attempt count. Avoided capacity follows `reserveBounded`
 growth/clamping and accounts for existing replacement capacity. It is avoided

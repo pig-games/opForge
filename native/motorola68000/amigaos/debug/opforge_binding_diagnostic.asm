@@ -205,6 +205,25 @@ done
 	move.w (sp)+, ccr
 	rts
 	.bend  ; recordFailure
+; D0=stage,D1=logical record offset,A0=cursor,A1=record,A2=record end.
+; Observe only this leased record, then rebase captured numeric offsets. Never
+; scan preceding pages or retain the borrowed view. Registers/CCR preserved.
+recordViewFailure	.block
+	move.w ccr, -(sp)
+	movem.l d0-d1/a0, -(sp)
+	tst.l CaptureStage
+	bne.w done
+	bsr.w recordFailure
+	lea RemapRecord, a0
+	add.l d1, RemapCapture.Cursor(a0)
+	cmpi.l #-1, RemapCapture.Record(a0)
+	beq.w done
+	add.l d1, RemapCapture.Record(a0)
+done
+	movem.l (sp)+, d0-d1/a0
+	move.w (sp)+, ccr
+	rts
+	.bend  ; recordViewFailure
 ; D0=status,A0=scope state,A1=View descriptor. Commit the pending check only
 ; for actual failure. First actual failure wins. Registers/CCR/stack preserved;
 ; no allocation or I/O. Entry/name views are bounded by count/owned arena extent.

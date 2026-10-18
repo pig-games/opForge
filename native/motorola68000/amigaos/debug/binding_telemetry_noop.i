@@ -15,3 +15,5 @@ BINDING_RECORD_FAILURE	.macro stage, cursor, limit, savedBaseOffset
 .endmacro
 BINDING_RECORD_VIEW_FAILURE	.macro stage, cursor, limit, base
 .endmacro
+BINDING_RECORD_OFFSET_FAILURE	.macro stage, cursor, limit, record, offset
+.endmacro

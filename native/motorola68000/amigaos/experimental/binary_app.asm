@@ -41,7 +41,9 @@
 	.use experimental.amigaos.binary_declarations as declarations
 	.use experimental.amigaos.binary_graph as graph
 	.use experimental.amigaos.binary_ordered_records as ordered
-	.use experimental.amigaos.binary_record_growth as record_growth
+	.use experimental.amigaos.binary_prepared_store as prepared_store
+	.use experimental.amigaos.binary_record_view as views
+	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_file_data as filedata
 	.use prvm.amigaos.abi as parser_abi
@@ -52,7 +54,6 @@
 	.use experimental.amigaos.binary_repetition as repetition
 	.use experimental.amigaos.binary_scalar_observations as scalar_observations
 .ifdef OPFORGE_PREPARATION_PROGRESS
-	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_encoding as encoding
 .endif
 .endif
@@ -269,9 +270,6 @@ configured
 	tst.l d0
 	beq.w cleanup
 	move.l d0, DosBase
-	lea RecordGrowth, a0
-	move.l d0, record_growth.State.Dos(a0)
-	move.l CaptureDirectory, record_growth.State.Directory(a0)
 	tst.l CaptureDirectory
 	beq.w captureConfigured
 	lea CaptureStore, a0
@@ -280,6 +278,11 @@ configured
 	move.l #CAPTURE_RESIDENT_BYTES, d0  ; writer and all pinned readers included
 	jsr capture_store.configure
 	bne.w captureFailed
+	lea PreparedStore, a0
+	movea.l DosBase, a1
+	movea.l CaptureDirectory, a2
+	jsr prepared_store.configure
+	bne.w failed
 captureConfigured
 	.MEMORY_CLOCK DosBase, #0
 	.MEMORY_STAGE #1
@@ -346,10 +349,10 @@ missingRecordOutput
 	jsr DOS_PUT_STR(a6)
 	bra.w cleanup
 failed
-	tst.l RecordGrowth+record_growth.State.Failure
+	tst.l PreparedStore+prepared_store.State.Failure
 	beq.w captureStatus
 	movea.l DosBase, a6
-	move.l #RecordGrowthFailure, d1
+	move.l #PreparedStoreFailure, d1
 	jsr DOS_PUT_STR(a6)
 	bra.w cleanup
 captureStatus
@@ -385,6 +388,12 @@ cleanup
 	bsr.w closeIncludes
 	bsr.w closeSource
 	bsr.w closeInput
+	lea PreparedView, a0
+	jsr views.finish
+	lea PreparedStore, a0
+	jsr prepared_store.cleanup
+	lea PreparedIndex, a0
+	jsr memory.release
 	tst.l FrontStarted
 	beq.w freeBlocks
 	lea Front, a0
@@ -404,8 +413,6 @@ freeBlocks
 	jsr memory.release
 	lea Records, a0
 	jsr memory.release
-	lea RecordGrowth, a0
-	jsr record_growth.cleanup
 	lea SymbolStorage, a0
 	jsr storage.release
 	lea ValueOwner, a0
@@ -897,12 +904,19 @@ graphReady
 orderReady
 	move.w #STEP_BIND, PrepStep
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_ORDER, SourceOrdinal, SourceLine, Records, memory.Block.Used
+	tst.l CaptureDirectory
+	bne.w completeStored
 	lea Records, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Used(a0), d0
 	lea Front, a0
 	jsr frontend.complete
+	bra.w completed
+completeStored
+	bsr.w completePreparedStore
+completed
 	bne.w completionBad
+	lea Front, a0
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_BIND, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	move.l frontend.Frame.NameCount(a0), NameCount
 	.LAZY_COUNT lazy_audit.NAMES, NameCount
@@ -922,12 +936,26 @@ orderReady
 	move.l #OrderedFiles, ordered.Frame.OrderedOrigins(a0)
 	move.l #RECORD_LIMIT, ordered.Frame.RecordLimit(a0)
 	move.l #ModuleStarts, ordered.Frame.ModuleStarts(a0)
+	clr.l ordered.Frame.RecordView(a0)
+	tst.l CaptureDirectory
+	beq.w orderContiguous
+	lea PreparedView, a1
+	jsr ordered.orderView
+	bra.w orderFinished
+orderContiguous
 	jsr ordered.materialize
+orderFinished
 	bne.w completionBad
 	move.l ordered.Frame.OriginCount(a0), OriginCount
 selected
 	move.w #STEP_INDEX, PrepStep
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_MATERIALIZE, SourceOrdinal, SourceLine, Records, memory.Block.Used
+	tst.l CaptureDirectory
+	beq.w indexContiguous
+	bsr.w indexPreparedStore
+	bne.w completionBad
+	bra.w blocksSelected
+indexContiguous
 	lea Records, a0
 	movea.l memory.Block.Pointer(a0), a1
 	move.l memory.Block.Used(a0), d0
@@ -999,20 +1027,27 @@ parametersSaved
 	; Keep bounded origin filenames for diagnostics through assembly and output.
 	; They never participate in packed execution; final cleanup releases them.
 	bsr.w releaseGraph
+	; The ordered view borrows graph spans until final record reconstruction.
+	tst.l CaptureDirectory
+	bne.w retainPreparedMap
 	lea GraphSpans, a0
 	jsr memory.release
+retainPreparedMap
 	lea PrepBlock, a0
 	jsr memory.release
 	lea IoBlock, a0
 	jsr memory.release
-	lea RecordGrowth, a0
-	jsr record_growth.cleanup
 	lea FileSpans, a0
 	jsr memory.release
 	clr.l IoBuffer
 	clr.l IoCursor
 	clr.l IoEnd
 	clr.l LineBuffer
+	tst.l CaptureDirectory
+	beq.w recordsRebuilt
+	bsr.w materializePreparedStore
+	bne.w bad
+recordsRebuilt
 ; Copy relocatable execution prefix while the old allocation is still live.
 ; No lexical storage or source buffer remains when either assembly pass starts.
 	lea PackageSource, a0
@@ -1413,6 +1448,8 @@ bad
 ; Append one prepared numeric record. A segment invocation can call this more
 ; than once for one physical source line; every record keeps that line's origin.
 appendPrepared	.block
+	tst.l CaptureDirectory
+	bne.w stored
 	lea Records, a0
 	move.l memory.Block.Used(a0), d0
 	move.l d0, LineOffset
@@ -1420,8 +1457,7 @@ appendPrepared	.block
 	add.l frontend.Frame.Used(a1), d0
 	bcs.w bad
 	move.l #RECORD_LIMIT, d1
-	lea RecordGrowth, a1
-	jsr record_growth.reserve
+	jsr memory.reserveBounded
 	bne.w bad
 	lea Records, a1
 	movea.l memory.Block.Pointer(a1), a2
@@ -1435,6 +1471,17 @@ appendPrepared	.block
 	movea.l frontend.Frame.Output(a0), a0
 	movea.l a2, a1
 	bsr.w copy
+	bsr.w appendOrigin
+	rts
+stored
+	lea Front, a0
+	move.l frontend.Frame.Used(a0), d0
+	movea.l frontend.Frame.Output(a0), a1
+	lea PreparedStore, a0
+	jsr prepared_store.append
+	bne.w bad
+	move.l d1, LineOffset
+	move.l prepared_store.State.LogicalUsed(a0), Records+memory.Block.Used
 	bsr.w appendOrigin
 	rts
 bad
@@ -1970,6 +2017,7 @@ loop
 done
 	rts
 	.bend  ; copy
+	.include "binary_app_prepared_store.i"
 	.include "binary_source_static_include.i"
 	.include "binary_source_schedule.i"
 	.include "binary_module_pipeline.i"
@@ -1992,7 +2040,7 @@ CaptureLifeLayout
 GoFailure	.byte "compact CLI: --go requires Hex or S-record output (CLI or metadata)", 10, 0
 CaptureBackingFailure	.byte "capture store: cannot create disk backing storage", 10, 0
 CaptureIoFailure	.byte "capture store: disk read, write or seek failed", 10, 0
-RecordGrowthFailure	.byte "prepared records: scratch growth failed", 10, 0
+PreparedStoreFailure	.byte "prepared records: bounded storage failed", 10, 0
 CaptureBudgetFailure	.byte "capture store: resident payload budget exhausted (record too large or readers pinned)", 10, 0
 CaptureAllocationFailure	.byte "capture store: memory allocation failed", 10, 0
 CaptureLeaseFailure	.byte "capture store: invalid or unbalanced reader lease", 10, 0
@@ -2071,7 +2119,10 @@ GraphBlock	.res byte, memory.Block.Used+4
 GraphSpans	.res byte, memory.Block.Used+4
 CaptureRegions	.res byte, memory.Block.Used+4
 CaptureStore	.res byte, capture_store.STATE_BYTES
-RecordGrowth	.res byte, record_growth.STATE_BYTES
+PreparedStore	.res byte, prepared_store.STATE_BYTES
+PreparedView	.res byte, views.FRAME_BYTES
+PreparedIndex	.res byte, memory.Block.Used+4
+PreparedCount	.res long, 1
 CaptureRegionCount	.res long, 1
 CaptureRegionCurrent	.res long, 1
 CaptureBytes	.res long, 1

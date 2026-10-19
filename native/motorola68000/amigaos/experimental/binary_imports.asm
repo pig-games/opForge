@@ -1447,6 +1447,23 @@ done
 	rts
 	.bend  ; finish
 
+; A0=caller-owned import occurrence Entry,A1=scope. D0/CCR=status,
+; D1=canonical build-local ID on success; other registers preserved.
+; Lookup only: preserves occurrence namespace/origin and publishes no binding.
+; The caller must check closed declaration ownership and unconditionality.
+; Missing/unsupported lookup returns 1; lexical.Failure distinguishes IO errors.
+resolveClosedEntry	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a3
+	movea.l a1, a6
+	lea layout.IMPORT_STATE(a6), a4
+	lea findDeclaredBind, a5
+	bsr.w resolve
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; resolveClosedEntry
+
 ; A0=mutable four-byte call-name token,A1=scope state,A2=scope binder.
 ; Resolve one template call through the same selected, wildcard and qualified
 ; import proxies as ordinary references. Only declared template targets are

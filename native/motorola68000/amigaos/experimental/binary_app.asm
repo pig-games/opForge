@@ -21,6 +21,7 @@
 	.use experimental.amigaos.binary_conditionals as conditionals
 	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_scopes as scopes
+	.use experimental.amigaos.binary_fragment_lower as fragments
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_output as hunk
@@ -102,7 +103,13 @@ PROGRESS_ASSEMBLY_POSITION = 26
 PROGRESS_ASSEMBLY_RECORDS = 27
 PROGRESS_ASSEMBLY_SECTIONS = 28
 PROGRESS_ASSEMBLY_SELECTION = 29
+; Progress 450: converted modules / original prepared bytes / replacement bytes.
 PROGRESS_FRAGMENT = 450
+FragmentStats	.struct
+Count	.long ?
+Before	.long ?
+After	.long ?
+	.endstruct
 PROGRESS_PACKAGE = 30
 PROGRESS_RECORD_OUTPUT = 31
 PROGRESS_ASSEMBLY_RECORD_HEAD = 32
@@ -203,6 +210,9 @@ execute	.block
 	lea MetadataConfig, a0
 	jsr metadata.clear
 	movea.l (sp)+, a0
+	.MEMORY_COUNTER_CLEAR FragmentCounters+FragmentStats.Count
+	.MEMORY_COUNTER_CLEAR FragmentCounters+FragmentStats.Before
+	.MEMORY_COUNTER_CLEAR FragmentCounters+FragmentStats.After
 	.CAPTURE_CLEAR
 	.CAPTURE_ORDERED_CLEAR ordered.Materializations, ordered.IdentityReuses, ordered.CopiedBytes, ordered.AvoidedBytes, ordered.AvoidedCapacity
 	.CAPTURE_STORE_CLEAR capture_store.diskReads, capture_store.diskReadBytes, capture_store.diskWrites, capture_store.diskWriteBytes, capture_store.faults, capture_store.evictions, capture_store.peakPayload
@@ -387,6 +397,7 @@ invalidConfig
 	move.l #20, ReturnCode
 cleanup
 	.CAPTURE_LIFE_PHASE #capture_life.CLEANUP
+	bsr.w releaseFragmentBuffers
 	bsr.w closeIncludes
 	bsr.w closeSource
 	bsr.w closeInput
@@ -477,6 +488,7 @@ done
 	.priv
 	.include "binary_app_diagnostics.i"
 	.include "binary_app_lazy_report.i"
+	.include "binary_app_fragments.i"
 
 ; Read exactly D3 bytes into D2 from the open InputHandle. D0/CCR=status.
 ; Preserves all other registers. No seek, whole-source buffer or byte-at-a-time I/O.
@@ -920,6 +932,7 @@ completeStored
 	bsr.w completePreparedStore
 completed
 	bne.w completionBad
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_FRAGMENT, FragmentCounters, FragmentStats.Count, FragmentStats.Before, FragmentStats.After
 	lea Front, a0
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_BIND, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	move.l frontend.Frame.NameCount(a0), NameCount
@@ -1452,6 +1465,8 @@ bad
 ; Append one prepared numeric record. A segment invocation can call this more
 ; than once for one physical source line; every record keeps that line's origin.
 appendPrepared	.block
+	cmpi.l #FRAGMENT_CANDIDATE, FragmentActive
+	beq.w stagePreparedFragment
 	tst.l CaptureDirectory
 	bne.w stored
 	lea Records, a0
@@ -1497,6 +1512,8 @@ run	.block
 	move.l #1, InAssembly
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_ASSEMBLE, #0, #0, Records, memory.Block.Used
 	lea Work, a0
+	clr.l assembly.Frame.Seed(a0)
+	clr.l assembly.Frame.Encoded(a0)
 	clr.w assembly.Frame.Failure(a0)
 	move.l #-1, assembly.Frame.RecordOffset(a0)
 	move.l NameCount, d0
@@ -2159,6 +2176,20 @@ OrderFrame	.res byte, ordered.FRAME_BYTES
 OrderedRecords	.res byte, memory.Block.Used+4
 OrderedFiles	.res byte, memory.Block.Used+4
 ModuleStarts	.res byte, memory.Block.Used+4
+; Only the current module is staged; no old module payload remains here.
+FragmentActive	.res long, 1  ; candidate or bounded original passthrough
+FragmentRows	.res long, 1
+FragmentBase	.res long, 1
+FragmentEnd	.res long, 1
+FragmentInput	.res byte, memory.Block.Used+4
+FragmentOutput	.res byte, memory.Block.Used+4
+FragmentMap	.res byte, memory.Block.Used+4
+FragmentFrame	.res byte, fragments.FRAME_BYTES
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+FragmentCounters	.res byte, FragmentStats.After+4
+.endif
+.endif
 OriginSpans	.res byte, memory.Block.Used+4
 OriginCount	.res long, 1
 RootPaths	.res byte, memory.Block.Used+4

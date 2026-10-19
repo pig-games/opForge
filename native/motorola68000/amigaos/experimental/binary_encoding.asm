@@ -92,13 +92,15 @@ OperandShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
 Records	.res byte, 128
-Execution	.res byte, encoding.Context.InputTarget+2
+Execution	.res byte, encoding.CONTEXT_BYTES
 Output	.res byte, 4096
 FixupCount	.res word, 1
 FixupOffsets	.res long, 16
 FixupAddends	.res long, 16
 FixupWidths	.res word, 16
 FixupTargets	.res word, 16
+FixupOrders	.res word, 16
+PositionUsed	.res word, 1
 PositionProofCount	.res word, 1
 PositionProofTarget	.res word, 1
 ProjectedTarget	.res word, 1
@@ -126,6 +128,7 @@ encode	.block
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION
 	movem.l d2-d7/a2-a6, -(sp)
 	clr.w FixupCount
+	clr.w PositionUsed
 	clr.w PositionProofCount
 	move.w d0, d6
 	moveq #0, d7
@@ -216,6 +219,7 @@ guardReady
 	beq.w fail
 	movem.l d3/d6-d7/a2/a5, -(sp)
 	clr.w FixupCount
+	clr.w PositionUsed
 	clr.w PositionProofCount
 	bsr.w tryRow
 	movem.l (sp)+, d3/d6-d7/a2/a5
@@ -243,6 +247,37 @@ fail
 
 ; Numeric side channel from the most recent successful encode. Hunk projection
 ; binds opaque targets to canonical sections; package execution only transports IDs.
+; Outputs: D0=boolean instruction-PC use by the successful selected candidate.
+; Preserves other registers; CCR reflects D0.
+outputPositionUsed	.block
+	moveq #0, d0
+	move.w PositionUsed, d0
+	rts
+	.bend  ; outputPositionUsed
+
+; Inputs: D0=index. Outputs: D0=status, D1=0 big / 1 little endian.
+; Preserves other registers; CCR reflects D0.
+outputFixupOrder	.block
+	movem.l d2/a0, -(sp)
+	cmpi.l #16, d0
+	bhs.w badOrder
+	cmp.w FixupCount, d0
+	bhs.w badOrder
+	move.l d0, d2
+	add.w d2, d2
+	lea FixupOrders, a0
+	moveq #0, d1
+	move.w 0(a0, d2.w), d1
+	moveq #0, d0
+	bra.w orderReturn
+badOrder
+	moveq #1, d0
+orderReturn
+	movem.l (sp)+, d2/a0
+	tst.l d0
+	rts
+	.bend  ; outputFixupOrder
+
 outputFixupCount	.block
 	moveq #0, d0
 	move.w FixupCount, d0
@@ -1063,6 +1098,7 @@ tableRel8
 	bne.w bad
 	tst.w Unresolved
 	bne.w unresolvedFixed
+	move.w #1, PositionUsed
 	sub.l package.Context.Pc(a2), d1
 	subq.l #2, d1
 	cmpi.l #-128, d1
@@ -1178,6 +1214,7 @@ branchStateReady
 	jsr encoding.semantic
 	tst.l d0
 	bne.w bad
+	move.w encoding.Context.PositionUsed(a6), PositionUsed
 	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
 	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
 	cmpi.b #RECIPE_SEMANTIC_TABLE, package.Row.Recipe(a5)
@@ -1361,6 +1398,7 @@ fixupVersion
 	tst.l d0
 	bne.w stageBad
 	move.w encoding.Context.FixupCount(a6), FixupCount
+	move.w encoding.Context.PositionUsed(a6), PositionUsed
 	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
 	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
 	move.l d1, (sp)
@@ -1871,9 +1909,13 @@ targetName
 	cmpi.b #expression.COMPILED_TAG, (a0)
 	bne.w targetReady
 affineIdentity
-	jsr references.affineTarget
+	jsr references.affineIdentity
 	cmpi.l #references.STATUS_BAD, d0
-	beq.w bad
+	bne.w affineProved
+	tst.w package.Context.Relocatable(a2)
+	bne.w bad
+	bra.w targetReady
+affineProved
 	cmpi.l #references.STATUS_SECTION, d0
 	bne.w targetReady
 	bra.w bindTarget
@@ -1989,8 +2031,6 @@ scalarIdentity	.block
 	bne.w target
 	addq.l #1, a0
 target
-	tst.w package.Context.Relocatable(a2)
-	beq.w exact
 	tst.w Unresolved
 	bne.w absent
 	cmpi.b #expression.VALUE_TAG, (a0)
@@ -1998,9 +2038,13 @@ target
 	cmpi.b #expression.COMPILED_TAG, (a0)
 	bne.w exact
 affineIdentity
-	jsr references.affineTarget
+	jsr references.affineIdentity
 	cmpi.l #references.STATUS_BAD, d0
-	beq.w bad
+	bne.w affineProved
+	tst.w package.Context.Relocatable(a2)
+	bne.w bad
+	bra.w absent
+affineProved
 	cmpi.l #references.STATUS_SECTION, d0
 	bne.w absent
 	bra.w bind
@@ -2557,6 +2601,8 @@ prepareExecution	.block
 	move.l #FixupAddends, encoding.Context.FixupAddends(a6)
 	move.l #FixupWidths, encoding.Context.FixupWidths(a6)
 	move.l #FixupTargets, encoding.Context.FixupTargets(a6)
+	move.l #FixupOrders, encoding.Context.FixupOrders(a6)
+	move.w PositionUsed, encoding.Context.PositionUsed(a6)
 	move.w PositionProofCount, encoding.Context.PositionProofCount(a6)
 	move.w PositionProofTarget, encoding.Context.PositionProofTarget(a6)
 	move.w ScalarTarget, encoding.Context.InputTarget(a6)

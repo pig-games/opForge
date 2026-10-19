@@ -567,6 +567,8 @@ done
 ; D0/CCR=status; other registers preserved. Used by eager and interleaved owners.
 replayCapturedSpan	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	bsr.w beginPreparedFragment
+	bne.w bad
 	move.l Span.Start(a0), ScheduleCursor
 	move.l Span.End(a0), ScheduleEnd
 	move.l Span.File(a0), ScheduleFile
@@ -611,6 +613,8 @@ endSpan
 	bne.w bad
 	moveq #0, d0
 	jsr frontend.endFile
+	bne.w bad
+	bsr.w publishPreparedFragment
 	bne.w bad
 	bsr.w sealLexicalStorage
 	bne.w bad

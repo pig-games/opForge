@@ -4133,6 +4133,7 @@ Words
 	.byte 0
 	.align 2  ; the next module shares this instruction section
 	.include "binary_statement_binding.i"
+	.include "binary_scope_snapshot.i"
 	.endsection
 
 .ifdef OPFORGE_DEBUG_CONTRACTS

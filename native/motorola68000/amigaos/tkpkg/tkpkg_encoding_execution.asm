@@ -33,7 +33,10 @@ FixupTargets	.long ?
 PositionProofCount	.word ?
 PositionProofTarget	.word ?
 InputTarget	.word ?  ; optional exact scalar identity; $ffff means absent
+PositionUsed	.word ?  ; selected portable step read the instruction PC
+FixupOrders	.long ?  ; optional word array, 0 big / 1 little endian
 .endstruct
+CONTEXT_BYTES = Context.FixupOrders+4
 
 MALFORMED_TEXT_LEN = 30
 RANGE_SUFFIX_LEN = 33
@@ -124,6 +127,7 @@ branchRequestedReady
 	moveq #1, d0
 	lsl.b d2, d0
 	move.w d0, 32(sp)
+	move.w #1, Context.PositionUsed(a6)
 	move.l Context.Pc(a6), 24(sp)
 	clr.w 34(sp)
 	tst.b Context.Unstable(a6)
@@ -562,6 +566,7 @@ fixupResolved
 	btst #0, d6
 	beq.w fixupProjected
 fixupApplyPosition
+	move.w #1, Context.PositionUsed(a6)
 	move.l Context.Pc(a6), d0
 	add.l 8(sp), d0
 	bvs.w fixupFrameFail
@@ -588,6 +593,7 @@ fixupTransformReady
 	sub.l a1, d0
 	move.w d2, d1
 	move.w d5, d2
+	move.w 4(sp), d4
 	bsr.w recordFixup
 	bne.w fixupFrameFail
 	; Rust's PortableOutputFixup retains `width` and `target_index` as
@@ -933,7 +939,8 @@ fixupInputFail
 
 ; Retain one Rust PortableOutputFixup emitted by the active SEMV fixup step.
 ; Inputs: D0=step-relative output offset, D1.W=width, D2.W=opaque target
-; symbol index, D3=encoded scalar before assembler section projection.
+; symbol index, D3=encoded scalar before assembler section projection,
+; D4.W=selected VM byte order (0 big, 1 little).
 ; Outputs: D0=0 success/1 capacity failure. Preserves all other registers.
 recordFixup	.block
 	movem.l d1-d7/a0-a2, -(sp)
@@ -953,6 +960,11 @@ recordFixup	.block
 	move.w d1, 0(a0, d6.w)
 	movea.l Context.FixupTargets(a6), a0
 	move.w d2, 0(a0, d6.w)
+	movea.l Context.FixupOrders(a6), a0
+	cmpa.l #0, a0
+	beq.w outputFixupOrderReady
+	move.w d4, 0(a0, d6.w)
+outputFixupOrderReady
 	addq.w #1, Context.FixupCount(a6)
 	moveq #0, d0
 	bra.w outputFixupReturn

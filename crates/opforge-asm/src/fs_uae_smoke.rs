@@ -32,6 +32,9 @@ pub(crate) mod hunk;
 #[cfg(test)]
 #[path = "tests/compact_self_host_export.rs"]
 mod compact_self_host_export;
+#[cfg(test)]
+#[path = "tests/native_fragment_comparison.rs"]
+mod native_fragment_comparison;
 
 pub(crate) struct FsUaeNativeCliSmokeLock(std::sync::Mutex<()>);
 
@@ -4311,7 +4314,7 @@ fn create_artifact_dir(workspace_root: &Path, label: &str) -> Result<PathBuf, St
         .as_nanos();
     let dir = workspace_root
         .join("target")
-        .join(format!("{label}-{nanos}"));
+        .join(format!("{label}-{}-{nanos}", std::process::id()));
     fs::create_dir_all(&dir)
         .map_err(|err| format!("create artifact directory {}: {err}", dir.display()))?;
     Ok(dir)

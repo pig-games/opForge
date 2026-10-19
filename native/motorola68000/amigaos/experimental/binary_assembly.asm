@@ -57,6 +57,8 @@ AsciiName	.word ?  ; prepared global source-origin encoding IDs
 PetsciiName	.word ?
 ModuleStarts	.long ?  ; ordered-relative numeric module boundaries
 ModuleCount	.long ?
+Seed	.long ?  ; optional symbol seeding callback after parameter/layout reset
+Encoded	.long ?  ; optional final instruction bytes/metadata callback
 	.endstruct
 
 OutputReloc	.struct
@@ -65,7 +67,7 @@ Target	.long ?
 Offset	.long ?
 	.endstruct
 OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
-FRAME_BYTES = Frame.ModuleCount+4
+FRAME_BYTES = Frame.Encoded+4
 FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
 FAILURE_WHILE_LAYOUT = 2
@@ -234,6 +236,10 @@ return
 ; Optional Emitted(A0=Frame,D1=address,D2=buffer offset,D3=bytes) runs only
 ; for nonempty initialized final-pass emissions, before advancing state. It returns D0/CCR
 ; status and preserves other registers. No text/CPU grammar enters the callback.
+; Optional Seed(A0=Frame) seeds private symbols after parameters/resetLayout;
+; D0/CCR=status, all other registers preserved. Optional Encoded(A0=Frame,
+; A1=bytes,D1=length,D2=reference status,D3=reference count) runs after
+; relocation processing on the final pass; D0/CCR=status, others preserved.
 ; Optional Warn(A0=Frame,D1=low-u32 value) reports final-pass byte truncation;
 ; D0/CCR=status, other registers preserved. Warnings counts all such events.
 ; Other registers preserved; CCR reflects D0. No text/dictionary pointer enters
@@ -440,6 +446,8 @@ clearSymbols
 	movea.l a6, a0
 	jsr parameters.load
 	bne.w fail
+	bsr.w seedSymbols
+	bne.w fail
 	movea.l Frame.Records(a5), a0
 	move.l Frame.RecordBytes(a5), d0
 	movea.l a6, a2
@@ -454,6 +462,9 @@ clearSymbols
 	move.l InventoryState+repeatInventory.State.Globals, d1
 	jsr dependencies.resolve
 	tst.l d0
+	bne.w fail
+	; Resolution clears provisional address cells; restore private foreign labels.
+	bsr.w seedSymbols
 	bne.w fail
 	lea RepeatState, a0
 	lea InventoryState, a1
@@ -1011,6 +1022,8 @@ layoutCompared
 	bhs.w fail
 	jsr dependencies.resetLayout
 	bne.w fail
+	bsr.w seedSymbols
+	bne.w fail
 	bra.w pass
 stableLayout
 	tst.w sections.State.MapCount(a0)
@@ -1038,6 +1051,8 @@ finishedLayout
 	bne.w fail
 	movea.l a6, a1
 	jsr dependencies.resetLayout
+	bne.w fail
+	bsr.w seedSymbols
 	bne.w fail
 	lea ScalarObservations, a0
 	jsr scalarObservations.restore
@@ -1378,17 +1393,30 @@ dispatch
 	clr.w HunkInstructionRefs
 	clr.w HunkInstructionRefCount
 	tst.w pkg.Context.Relocatable(a2)
+	bne.w instructionReferencePass
+	movea.l Session+session.State.Frame, a5
+	tst.l Frame.Encoded(a5)
 	beq.w instructionReady
+instructionReferencePass
 	cmpi.w #2, pkg.Context.Pass(a2)
 	bne.w instructionReady
 	move.l d0, d5
 	movea.l a0, a5
 	move.w d1, -(sp)  ; retain the mnemonic qualifier across reference counting
+	move.l a3, -(sp)
+	movea.l Session+session.State.Frame, a3
+	tst.l Frame.Encoded(a3)
+	beq.w ordinaryInstructionReferences
+	jsr hunkrefs.tokensForFreeze
+	bra.w instructionReferencesReady
+ordinaryInstructionReferences
 	jsr hunkrefs.tokens
+instructionReferencesReady
+	movea.l (sp)+, a3
 	move.w d1, HunkInstructionRefCount
 	move.w (sp)+, d1
 	cmpi.l #hunkrefs.STATUS_BAD, d0
-	beq.w bad
+	bhs.w bad
 	move.w d0, HunkInstructionRefs
 	movea.l a5, a0
 	move.l d5, d0
@@ -1403,6 +1431,12 @@ instructionReady
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #14
 	bsr.w markInstructionRelocs
 	bne.w bad
+	movea.l Session+session.State.Frame, a0
+	tst.l Frame.Encoded(a0)
+	beq.w instructionEmit
+	bsr.w encodedInstruction
+	bne.w bad
+instructionEmit
 	movea.l a1, a0
 	move.l d1, d0
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #17
@@ -1781,6 +1815,51 @@ done
 	tst.l d0
 	rts
 	.bend  ; warnByte
+
+; A5=Frame during session initialization/replay. Optional Seed receives A0=Frame,
+; returns D0/CCR=status and preserves other registers. This wrapper preserves A0/A1.
+seedSymbols	.block
+	movem.l a0-a1, -(sp)
+	movea.l Frame.Seed(a5), a1
+	cmpa.l #0, a1
+	beq.w seedReady
+	movea.l a5, a0
+	jsr (a1)
+	bra.w seedReturn
+seedReady
+	moveq #0, d0
+seedReturn
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; seedSymbols
+
+; Final-pass optional Encoded receives A0=Frame,A1=encoded bytes,D1=length,
+; D2=reference status,D3=reference count. Returns D0/CCR=status; preserves
+; other registers, including the byte pointer and length needed by emission.
+encodedInstruction	.block
+	movem.l d2-d3/a0/a2, -(sp)
+	movea.l Session+session.State.Frame, a0
+	movea.l Frame.Encoded(a0), a2
+	cmpa.l #0, a2
+	beq.w encodedReady
+	movea.l Frame.Context(a0), a0
+	cmpi.w #2, pkg.Context.Pass(a0)
+	bne.w encodedReady
+	movea.l Session+session.State.Frame, a0
+	moveq #0, d2
+	move.w HunkInstructionRefs, d2
+	moveq #0, d3
+	move.w HunkInstructionRefCount, d3
+	jsr (a2)
+	bra.w encodedReturn
+encodedReady
+	moveq #0, d0
+encodedReturn
+	movem.l (sp)+, d2-d3/a0/a2
+	tst.l d0
+	rts
+	.bend  ; encodedInstruction
 
 ; Translate package-VM absolute-long output fixups to section-offset Hunk
 ; records. Instruction bytes and their fixup offsets came from the selected

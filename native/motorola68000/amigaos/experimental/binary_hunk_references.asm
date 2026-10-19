@@ -14,6 +14,7 @@
 STATUS_CLEAR = 0
 STATUS_SECTION = 1
 STATUS_BAD = 2
+STATUS_UNSUPPORTED = 3
 WRAPPER = $81
 NO_BASE = $ffffffff
 SECTION_ID_BASE = $10010; canonical section identities occupy +1 through +8
@@ -78,9 +79,38 @@ compact
 ; absolute+base, base-absolute and unary plus preserve a base. Subtracting
 ; two symbols with the same nonzero section provenance cancels their bases.
 affineTarget	.block
+	move.l d4, -(sp)
+	moveq #0, d4
+	bsr.w proveAffine
+	move.l (sp)+, d4
+	tst.l d0
+	rts
+	.bend  ; affineTarget
+
+; Instruction metadata identity: flat address symbols retain their exact ID.
+; Scalars remain absolute. In flat mode only identical bases cancel; PC leaves
+; and typed wrappers conservatively fail. Hunk behavior matches affineTarget.
+; Same inputs, outputs, register preservation and CCR contract as affineTarget.
+affineIdentity	.block
+	move.l d4, -(sp)
+	moveq #1, d4
+	bsr.w proveAffine
+	move.l (sp)+, d4
+	tst.l d0
+	rts
+	.bend  ; affineIdentity
+	.priv
+proveAffine	.block
 	jsr expr.requiresTyped
 	tst.l d0
+	beq.w compact
+	tst.w d4
+	beq.w typedTarget
+	tst.w pkg.Context.Relocatable(a2)
 	bne.w typedTarget
+	moveq #STATUS_BAD, d0
+	moveq #-1, d1
+	rts
 compact
 	movem.l d2-d7/a1-a6, -(sp)
 	suba.w #runtime.EXPRVM_STACK_CAPACITY*4, sp
@@ -148,6 +178,11 @@ next
 	beq.w subtract
 	bra.w binaryConstant
 currentAddress
+	tst.w d4
+	beq.w currentSection
+	tst.w pkg.Context.Relocatable(a2)
+	beq.w bad
+currentSection
 	; A PC base is session state, not a fabricated symbol or encoded pointer.
 	tst.w pkg.Context.Relocatable(a2)
 	beq.w absolute
@@ -201,6 +236,8 @@ symbol
 	bne.w bad
 	bra.w absolute  ; fixed-width pass-1 fixups defer value and identity together
 defined
+	tst.w d4
+	bne.w push
 	; Flat labels are scalars. In Hunk output retain layout-dependent identity,
 	; including aliases whose missing section provenance must later reject.
 	tst.w pkg.Context.Relocatable(a2)
@@ -266,6 +303,15 @@ binary
 	move.l d7, 0(a5, d0.l)
 	bra.w next
 difference
+	tst.w d4
+	beq.w differenceSection
+	tst.w pkg.Context.Relocatable(a2)
+	bne.w differenceSection
+	cmp.l d5, d7
+	bne.w bad
+	move.l #NO_BASE, 0(a5, d0.l)
+	bra.w next
+differenceSection
 	; Resolve both symbol and current-PC bases to actual section identities.
 	; Only equal nonzero identities cancel; numeric coincidence proves nothing.
 	move.l d0, -(sp)
@@ -310,7 +356,8 @@ done
 	movem.l (sp)+, d2-d7/a1-a6
 	tst.l d0
 	rts
-	.bend  ; affineTarget
+	.bend  ; proveAffine
+	.pub
 
 ; D1.L=affine base identity,A2=Context. D0/CCR=0 and D1.W=one-based section,
 ; or STATUS_BAD when no section provenance is available. Other registers preserved.
@@ -468,6 +515,8 @@ next
 	beq.w byte
 	bra.w bad
 current
+	cmpi.w #2, d7
+	beq.w unsupported
 	moveq #STATUS_SECTION, d5
 	bsr.w countReference
 	bra.w next
@@ -505,6 +554,9 @@ end
 	bne.w bad
 	move.l d5, d0
 	bra.w done
+unsupported
+	moveq #STATUS_UNSUPPORTED, d0
+	bra.w done
 bad
 	moveq #STATUS_BAD, d0
 done
@@ -520,8 +572,29 @@ done
 ; The same statuses as targets are returned; D1.W is target count, capped at two.
 ; A0 advances to the end. Other registers are preserved.
 tokens	.block
-	movem.l d2-d7/a1-a6, -(sp)
+	move.l d7, -(sp)
 	moveq #1, d7
+	bsr.w scanTokens
+	move.l (sp)+, d7
+	tst.l d0
+	rts
+	.bend  ; tokens
+
+; Freeze proof counts every nonabsolute flat address identity, without affine
+; cancellation. Current-PC expressions and typed wrappers conservatively return
+; STATUS_UNSUPPORTED; their value cannot be frozen using scalar VM metadata.
+; Same register/CCR contract as tokens.
+tokensForFreeze	.block
+	move.l d7, -(sp)
+	moveq #2, d7
+	bsr.w scanTokens
+	move.l (sp)+, d7
+	tst.l d0
+	rts
+	.bend  ; tokensForFreeze
+	.priv
+scanTokens	.block
+	movem.l d2-d7/a1-a6, -(sp)
 	movea.l a1, a4
 	moveq #STATUS_CLEAR, d5
 	moveq #0, d6
@@ -552,6 +625,16 @@ next
 	bra.w next
 wrapped
 	subq.l #1, a0
+	cmpi.w #2, d7
+	bne.w ordinaryWrapped
+	jsr expr.requiresTyped
+	tst.l d0
+	bne.w unsupported
+	bsr.w scanExpression
+	cmpi.l #STATUS_BAD, d0
+	bhs.w done
+	bra.w countWrapped
+ordinaryWrapped
 	; Cancelled same-section bases need no instruction relocation. Keep the
 	; conservative scan for surviving bases and positional/unsupported forms;
 	; the package projection still owns their fixup proof or rejection.
@@ -566,6 +649,7 @@ wrappedReferences
 	jsr targets
 	cmpi.l #STATUS_BAD, d0
 	beq.w bad
+countWrapped
 	tst.l d0
 	beq.w next
 	moveq #STATUS_SECTION, d5
@@ -619,6 +703,9 @@ skipToken
 clear
 	move.l d5, d0
 	bra.w done
+unsupported
+	moveq #STATUS_UNSUPPORTED, d0
+	bra.w done
 bad
 	moveq #STATUS_BAD, d0
 done
@@ -626,7 +713,7 @@ done
 	movem.l (sp)+, d2-d7/a1-a6
 	tst.l d0
 	rts
-	.bend  ; tokens
+	.bend  ; scanTokens
 	.priv
 
 ; D1=bytes needed at A0. Uses the current bounded end in A4 for expression

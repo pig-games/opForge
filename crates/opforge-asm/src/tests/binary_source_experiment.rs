@@ -228,7 +228,10 @@ fn binary_source_runtime_target_identity_is_relocatable() {
             declaration_program
         );
         assert_eq!(word(64), little_endian);
-        assert_eq!(word(130) & 1, u16::from(cpu == "m6502"));
+        // Both pipelines distinguish plain scalar operands from indirect
+        // wrappers. M68k's absolute-memory MOVE fallback must retain that
+        // distinction before testing its scalar destination projection.
+        assert_eq!(word(130) & 1, 1);
         assert_eq!(word(130) & !3, 0);
         assert!(target_offset >= PACKAGE_HEADER_BYTES);
         assert_eq!(target_bytes, expected.len());

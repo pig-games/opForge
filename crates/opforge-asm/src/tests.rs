@@ -35949,44 +35949,49 @@ fn qualified_import_call_operands_assemble_across_non_m68k_families() {
 }
 
 #[test]
-fn linker_output_hunk_live_path_rejects_non_matrix_bare_symbolic_instruction_forms() {
-    for source in [
-        "start: MOVE.B target1,target2",
-        "start: MOVE.W target1,target2",
+fn linker_output_hunk_live_path_emits_both_reloc32_for_absolute_memory_move() {
+    for (source, opcode) in [
+        ("start: MOVE.B target1,target2", [0x13, 0xf9]),
+        ("start: MOVE.W target1,target2", [0x33, 0xf9]),
     ] {
-        let lines = vec![
-            ".module main".to_string(),
-            ".cpu 68000".to_string(),
-            ".region ram, $2000, $20ff".to_string(),
-            ".section code, kind=code".to_string(),
-            source.to_string(),
-            " RTS".to_string(),
-            "target1: .byte 0".to_string(),
-            "target2: .byte 0".to_string(),
-            ".endsection".to_string(),
-            ".place code in ram".to_string(),
-            ".output \"build/out.hunk\", format=hunk, sections=code".to_string(),
-            ".endmodule".to_string(),
-        ];
-
-        let mut assembler = Assembler::new();
-        assembler.root_metadata.root_module_id = Some("main".to_string());
-        assembler.clear_diagnostics();
-        let pass1 = assembler.pass1(&lines);
-        assert!(pass1.errors > 0, "expected pass1 failure for `{source}`");
+        let assembler = run_passes(&[
+            ".module main",
+            ".cpu 68000",
+            ".region ram, $2000, $20ff",
+            ".section code, kind=code",
+            source,
+            " RTS",
+            "target1: .byte 0",
+            "target2: .byte 0",
+            ".endsection",
+            ".place code in ram",
+            ".output \"build/out.hunk\", format=hunk, sections=code",
+            ".endmodule",
+        ]);
         assert!(
-            assembler.diagnostics.iter().any(|diag| diag
-                .error
-                .message()
-                .contains("No instruction found for MOVE.")),
-            "expected missing encoding diagnostic for `{source}`: {:?}",
+            assembler.diagnostics.is_empty(),
+            "unexpected diagnostics for `{source}`: {:?}",
             assembler.diagnostics
         );
-        let code = assembler.sections().get("code").expect("code section");
-        assert!(
-            code.output_fixups.is_empty(),
-            "unsupported absolute-to-absolute MOVE must not publish relocations"
+        let output = assembler
+            .root_metadata
+            .linker_outputs
+            .first()
+            .expect("output directive");
+        assert_eq!(
+            output.relocation_disposition,
+            LinkerOutputRelocationDisposition::RelocationRecordsPresent
         );
+        let payload =
+            build_linker_output_payload(output, assembler.sections()).expect("hunk payload");
+        let segments = crate::fs_uae_smoke::hunk::segments(&payload).expect("valid hunk");
+        assert_eq!(segments.len(), 1);
+        assert_eq!(
+            segments[0].payload,
+            [opcode[0], opcode[1], 0, 0, 0, 12, 0, 0, 0, 13, 0x4e, 0x75, 0, 0, 0, 0],
+            "{source}"
+        );
+        assert_eq!(segments[0].relocations, [(2, 0), (6, 0)], "{source}");
     }
 }
 

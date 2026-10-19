@@ -462,22 +462,19 @@ dottedCall
 	bne.w bad
 	bra.w operandDone
 parenthesizedRegister
-	btst #0, package.Header.TargetFlags+1(a2)
-	beq.w ordinaryParenthesis
-	jsr wrappers.prepare
-	bne.w bad
-	bra.w operandDone
-ordinaryParenthesis
+	; Operand binding has already selected package register roles. Preserve
+	; those numeric identities before compiling any scalar wrapper; source
+	; symbols retain separate IDs even when their spelling matches a register.
 	move.l a1, d0
 	sub.l a0, d0
 	cmpi.l #6, d0
-	blo.w expressionOperand
+	blo.w scalarParenthesis
 	cmpi.b #1, 1(a0)
-	bhi.w expressionOperand
+	bhi.w scalarParenthesis
 	cmpi.b #4, 5(a0)
-	beq.w namedTuple
+	beq.w parenthesizedTuple
 	cmpi.b #15, 5(a0)
-	bne.w expressionOperand
+	bne.w scalarParenthesis
 	move.l a0, -(sp)
 	lea 1(a0), a0
 	bsr.w packageRegister
@@ -485,7 +482,7 @@ ordinaryParenthesis
 	cmpi.l #2, d0
 	beq.w bad
 	tst.l d0
-	bne.w expressionOperand
+	bne.w scalarParenthesis
 	moveq #6, d6
 	move.l a1, d0
 	sub.l a0, d0
@@ -498,8 +495,17 @@ parenthesizedReady
 	bsr.w copy
 	bne.w bad
 	bra.w operandDone
+parenthesizedTuple
+	btst #0, package.Header.TargetFlags+1(a2)
+	bne.w scalarParenthesis
 namedTuple
 	bsr.w tupleTail
+	bne.w bad
+	bra.w operandDone
+scalarParenthesis
+	btst #0, package.Header.TargetFlags+1(a2)
+	beq.w expressionOperand
+	jsr wrappers.prepare
 	bne.w bad
 	bra.w operandDone
 

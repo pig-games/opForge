@@ -106,6 +106,49 @@ fn compact_absolute_memory_to_numeric_destination_rust_oracle() {
     );
 }
 
+#[test]
+#[ignore = "requires configured FS-UAE; absolute pairs, scalar destination and retained wrappers"]
+fn compact_absolute_memory_to_memory_native_matrix_fs_uae() {
+    hunk_sections::native_hunk_source(&bss_to_struct_source(concat!(
+        " move.b payload+2,moduleCount+4\n",
+        " move.w moduleCount+2,payload+4\n",
+        " move.l moduleCount+2,includeCount+4\n",
+        " move.l moduleCount+2,$123456\n",
+        " move.l (a0),(a1)\n",
+        " move.l 4(a0),d0\n",
+    )));
+}
+
+const MOS_REGISTER_SPELLING_SCALAR: &str =
+    ".cpu m6502\n.org $1000\nx=$1234\nptr=$1234\n jmp (ptr)\n .word x\n lda ($20,x)\n lda ($20),y\n.end\n";
+
+#[test]
+fn compact_indirect_register_spelling_scalar_rust_oracle() {
+    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(
+        &MOS_REGISTER_SPELLING_SCALAR.lines().collect::<Vec<_>>(),
+        true,
+    )
+    .unwrap();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let bytes = entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    // The existing Rust selectors do not support JMP (x). Exercise scalar
+    // parentheses with an ordinary symbol, then the register spelling in
+    // scalar data and index positions without extending that instruction form.
+    assert_eq!(
+        bytes,
+        [0x6c, 0x34, 0x12, 0x34, 0x12, 0xa1, 0x20, 0xb1, 0x20]
+    );
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; scalar parentheses, x value and index register x"]
+fn compact_indirect_register_spelling_scalar_fs_uae() {
+    assert_binary_source(MOS_REGISTER_SPELLING_SCALAR.into(), "m6502".into());
+}
+
 fn source(body: &str) -> String {
     format!(".module probe\n.cpu m68020\n.use state\nLimit=8\n.section code,kind=code\n{body} rts\n.endsection\n.section data,kind=data\n.byte 7\n.endsection\n.output \"build/sections.hunk\",format=hunk,sections=code,data,bss\n.endmodule\n.module state\n.cpu m68020\n.pub\n.section bss,kind=bss\nStart .res word,1\nCount .res long,1\nPointer .res long,1\n.res word,1\n.endsection\n.endmodule\n")
 }

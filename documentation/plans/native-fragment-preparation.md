@@ -185,16 +185,37 @@ for resource scope; this is not a CLI peak reduction or an 8 MiB full-build resu
 
 ## Next coherent integration boundary
 
-The scalar/list/schema ownership boundary is now implemented in the private
-producer. Extend it with binary templates and their declaration context, complete
-nominal dependencies, imports and explicit address/layout recipes. Then consume
-one such configured module through ordinary final layout without reconstructing
-its instruction stream. Preserve shared sections, imports and complete blocks.
+The preimplementation capacity check does **not** establish the requested 1 MiB
+net full-build saving for code-only modules. Imports and absolute instruction
+relocations alone leave ordinary data/BSS and aligned modules on the reference
+path. The resulting 106-module textual upper bound could remove about 1.7 MiB
+of capacity at the observed peak, before replacement owners. Its public export
+rows and spellings alone would cost about 343 KiB if duplicated. Compiled payloads,
+recipes, typed/member data, remapping and a complete active private session still
+need space. Do not count the gross opportunity as an achieved or qualified net
+saving. See the [capacity assessment](native-performance-diagnosis.md#private-module-cli-capacity-gate).
 
-The representative shared-section relocation boundary is now qualified. Next
-connect exported address identities and imports to fragment placement before
-selecting an ordinary CLI module for private-owner retirement. Continue the frozen
-full/small/macro comparisons. Stop
-if retained interfaces and temporary overlap replace the old peak. Do not increase
-limits or add switches simply to keep the failed instruction-only converter alive.
-Do not describe component publication as general CLI module completion.
+The recommended scope correction is an ordinary-module completion boundary:
+
+- Consume captured binary input at dependency-first publication, before private
+  identities and records enter the global semantic frontend.
+- Preserve independently reachable whole code blocks, mandatory initialized data,
+  BSS extents, section order and explicit alignment constraints in final layout.
+  Do not freeze original padding when fragments can move.
+- Complete imported scalar/schema/member remapping, exported fragment addresses,
+  absolute instruction relocations and whole-block dependencies through the shared
+  VM/package services.
+- Transfer one owned canonical public interface. Do not retain both a global
+  lexical/type copy and a second complete semantic export table. Retire the
+  private frontend, names, template plans and records before later preparation.
+- Keep public templates, unsupported nominal closures and unresolved control/layout
+  recipes on the complete reference path initially. Admission/fallback must not
+  repeat file effects or partially publish a module.
+
+This is a broader design decision, not implemented CLI behavior. Canonical-interface
+transfer alone does not enlarge the cohort; it belongs with ordinary data/BSS and
+alignment support rather than another standalone foundation checkpoint. Size the
+supported cohort and replacement owners before asserting its net saving. Preserve
+the existing path, then compare identical full/small/macro inputs, measure release
+runtime separately from memory, and qualify a full self-build before promotion.
+Do not increase limits or add switches to retain a converter that misses its gate.

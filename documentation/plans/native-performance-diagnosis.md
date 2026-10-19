@@ -19,6 +19,67 @@ savings first; drop changes below about 1% of the target resource. Use exact wor
 and capacity counters first, then at least three release timings for a speed claim.
 No new observer framework, macro-only investigations or selector stack is needed.
 
+## Private-module CLI capacity gate
+
+The preimplementation check does not yet justify a **1 MiB net peak reduction**
+from the proposed code-only integration. Production behavior remains unchanged;
+no private module has been integrated into the normal CLI in this checkpoint.
+
+The frozen comparison input remains 223 files / 2,789,855 B, source manifest
+`fnv1a64:d717c6af1a278e75`, with the same prepared 68020 package. A temporary
+source copy reused the finite capacity census and existing telemetry macros;
+no observer framework, production selector or production instrumentation was added.
+Two completed native rebuilds, using a full-entry census and a smaller boundary-only
+census, exited zero, producing all 729,140 bytes exactly
+equal to the freshly assembled Rust oracle. Heap peak remained **19,364,448 B**,
+allocation/free capacity **69,935,968 / 69,935,968 B**, terminal ownership zero and
+profiling errors zero. All 167 module boundaries retain identical scope counts,
+original owner capacities and live-heap values across those runs. An intervening
+verbose retry stopped advancing during its symbol dump; it was terminated and
+excluded from qualification. The census interval is diagnostic, not a release speed
+comparison or a new private-module self-host qualification.
+
+The source-shape upper bound contains 106 modules / 601 textual blocks. It excludes
+data/BSS, alignment, recognized top-level storage and detected public macro/segment
+definitions, but does
+not prove semantic admission: includes, imports, positional observations and typed
+dependencies still need qualification. Its final 15,354 private identities are a
+subset of 55,942 total identities. At the observed heap peak, omitting 15,152
+private identities would still leave 35,080; the large entry, bridge and per-ID
+arrays therefore keep their existing capacities. The old whole-module census's
+2.48–2.68 MB lexical-frontier model cannot be assigned to this narrower cohort.
+
+| Capacity opportunity at the observed peak | Conditional gross reduction |
+|---|---:|
+| Prepared record buffer, 2 MiB to 1 MiB | 1,048,576 B |
+| Exclusive private names, six 64 KiB pages | 393,216 B |
+| Template definitions, if their complete private closure retires | 262,144 B |
+| Other value/plan tables, before interface/dependency retention | At most 99,584 B |
+| Large lexical/per-ID arrays | 0 B |
+
+Exact record attribution gives 1,525,049 B at peak snapshot 160, of which the
+textual cohort accounts for 613,592 B, leaving 911,457 B. A later near-peak
+snapshot leaves 1,025,054 B, only 23,522 B below the 1 MiB allocation threshold.
+Partial admission or replacement records can lose that capacity step. The name
+simulation preserves shared spellings and reproduces the original page layout;
+it does not treat removed payload bytes as automatically freed capacity.
+
+These opportunities total **up to 1.72 MiB gross**, not net. The cohort's 4,450
+public entries contain 226,503 spelling bytes; duplicating those spellings plus
+28-byte export rows alone costs 351,103 B, before member/value data, compiled
+payload, relocation recipes, remapping and complete private compilation overlap.
+There is no supported bound keeping all replacement costs inside the remaining
+margin. Canonical interface transfer and ordinary code/data/BSS ownership with
+alignment are the recommended [broader integration boundary](native-fragment-preparation.md#next-coherent-integration-boundary).
+Do not implement another narrowly enlarged converter on the assumption that this
+gross figure guarantees its resource gate.
+
+This check makes no memory-fit claim: resident tracked heap alone is 18.47 MiB.
+With the current release's linked reservation and 64 KiB stack, the measured
+components exceed the 6.5 MiB process allowance by at least 12.76 MiB, before
+untracked process costs. Release timing, candidate memory comparison and candidate
+self-host qualification follow actual CLI integration, not this capacity census.
+
 ## Module images: qualified component, not CLI integration
 
 The private producer now saves independently relocatable blocks from shared code

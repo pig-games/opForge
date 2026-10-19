@@ -17,6 +17,8 @@ second:
  move.l first,second
  move.l #first+4,d0
  move.l #7,d0
+ bsr.w second
+ bsr second
  .endmodule
 "#;
 
@@ -39,6 +41,12 @@ fn prepare(dir: &Path) -> Vec<u8> {
         .qualifiers
         .iter()
         .position(|entry| entry.eq_ignore_ascii_case("l"))
+        .unwrap()
+        + 1;
+    let word_qualifier = numeric
+        .qualifiers
+        .iter()
+        .position(|entry| entry.eq_ignore_ascii_case("w"))
         .unwrap()
         + 1;
     let symbol = |id: u16| vec![0x81, 4, 0x12, id as u8, (id >> 8) as u8, 0];
@@ -66,8 +74,8 @@ fn prepare(dir: &Path) -> Vec<u8> {
     let mut absolute = vec![8, 0x81, 3, 0x13, 7, 0, 4];
     absolute.extend(register(name("d0")));
     let mut fixture = format!(
-        "NAME_COUNT={}\nSYMBOL_COUNT={}\nFIRST_ID={}\nSECOND_ID={}\nMOVE_ID={}\nLONG_QUALIFIER={}\n",
-        first, second + 1, first, second, name("move"), qualifier
+        "NAME_COUNT={}\nSYMBOL_COUNT={}\nFIRST_ID={}\nSECOND_ID={}\nMOVE_ID={}\nLONG_QUALIFIER={}\nBSR_ID={}\nWORD_QUALIFIER={}\n",
+        first, second + 1, first, second, name("move"), qualifier, name("bsr"), word_qualifier
     );
     for (index, operands) in [repeated, distinct, addend, absolute].iter().enumerate() {
         fixture.push_str(&format!(
@@ -79,6 +87,14 @@ fn prepare(dir: &Path) -> Vec<u8> {
                 .join(",")
         ));
     }
+    fixture.push_str(&format!(
+        "BranchOperand .byte {}\nBranchOperandEnd\n",
+        symbol(second)
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
+    ));
     fs::write(dir.join("instruction_fixup_identity_fixture.i"), fixture).unwrap();
     fs::write(
         dir.join("instruction_fixup_identity_package.bin"),
@@ -87,7 +103,7 @@ fn prepare(dir: &Path) -> Vec<u8> {
     .unwrap();
 
     let bytes = oracle(dir, SOURCE).expect("live Rust MOVE instruction oracle");
-    assert_eq!(bytes.len(), 64);
+    assert_eq!(bytes.len(), 72);
     let mut expected = Vec::new();
     let mut cursor = 32;
     for (length, fields) in [
@@ -105,6 +121,12 @@ fn prepare(dir: &Path) -> Vec<u8> {
                 expected.extend_from_slice(&word.to_be_bytes());
             }
         }
+    }
+    for (length, request) in [(4, 1_i32), (4, -1_i32)] {
+        expected.extend_from_slice(&(length as u32).to_be_bytes());
+        expected.extend_from_slice(&bytes[cursor..cursor + length]);
+        cursor += length;
+        expected.extend_from_slice(&request.to_be_bytes());
     }
     expected
 }

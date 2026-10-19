@@ -118,6 +118,30 @@ nextInstruction
 	jsr encoding.outputFixupIdentity
 	beq.w bad
 	dbra d6, nextCase
+	; Both requests may select a narrow encodable displacement. Retain whether
+	; package input requested a candidate or automatic selection chose one.
+	move.l #$1040, package.Context.Pc(a2)
+	lea BranchQualifiers, a3
+	moveq #1, d6
+branchRequest
+	lea BranchOperand, a0
+	lea BranchOperandEnd, a1
+	move.l #BSR_ID, d0
+	move.l (a3)+, d1
+	jsr encoding.encode
+	tst.l d0
+	bne.w bad
+	move.l d1, (a5)+
+	add.l d1, package.Context.Pc(a2)
+	move.l d1, d4
+copyBranch
+	move.b (a1)+, (a5)+
+	subq.l #1, d4
+	bne.w copyBranch
+	jsr encoding.outputPositionRequestedCandidate
+	bne.w bad
+	move.l d1, (a5)+
+	dbra d6, branchRequest
 	move.l a5, d0
 	lea Result, a0
 	sub.l a0, d0
@@ -135,6 +159,7 @@ bad
 	.align 4
 Cases	.long Operands0, Operands0End, Operands1, Operands1End
 	.long Operands2, Operands2End, Operands3, Operands3End
+BranchQualifiers	.long WORD_QUALIFIER, 0
 Package	.incbin "instruction_fixup_identity_package.bin"
 DosName	.byte "dos.library", 0
 OutputPath	.byte "Work:output.bin", 0

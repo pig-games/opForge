@@ -21,6 +21,9 @@
 	.use exprvm.amigaos.runtime as exprvm
 	.use tkpkg.amigaos.encoding_execution as encoding
 	.use tkpkg.amigaos.value_execution as value
+	.pub
+REQUEST_AUTO = encoding.REQUEST_AUTO
+	.priv
 
 TOKEN_SYMBOL_0 = 0
 TOKEN_SYMBOL_1 = 1
@@ -117,6 +120,7 @@ PositionRecipeProgram	.res word, 1
 PositionRecipeArguments	.res long, 1
 PositionRecipeValue	.res long, 1
 PositionRecipeIdentity	.res long, 1
+PositionRecipeRequested	.res long, 1
 ReplayExecution	.res byte, encoding.ContextBytes
 ReplayRecords	.res byte, REPLAY_INPUT_BYTES
 ProjectedTarget	.res word, 1
@@ -150,6 +154,7 @@ encode	.block
 	clr.w PositionProofCount
 	move.w #MISSING_PROGRAM, PositionRecipeProgram
 	move.l #references.NO_BASE, PositionRecipeIdentity
+	move.l #REQUEST_AUTO, PositionRecipeRequested
 	move.w d0, d6
 	moveq #0, d7
 	move.b d1, d7
@@ -323,6 +328,20 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; outputPositionRecipe
+
+; Return the successful ordinary branch's original package width request.
+; D0/CCR=status,D1=REQUEST_AUTO or explicit candidate ID. Others preserved.
+; The selected candidate alone does not prove that source width was explicit.
+outputPositionRequestedCandidate	.block
+	cmpi.w #MISSING_PROGRAM, PositionRecipeProgram
+	beq.w bad
+	move.l PositionRecipeRequested, d1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; outputPositionRequestedCandidate
 
 ; Replay the same package program with a forced candidate after placement.
 ; A0=package,A1=output,D0=capacity,D1=program,D2=arguments,D3=PC,D4=target.
@@ -1376,6 +1395,7 @@ branchStateReady
 	move.b encoding.Context.PositionProofCandidate+1(a6), d0
 	move.l d0, PositionRecipeArguments
 	move.l encoding.Context.PositionProofValue(a6), PositionRecipeValue
+	move.l encoding.Context.PositionProofRequested(a6), PositionRecipeRequested
 recipeReady
 	moveq #0, d0
 	cmpi.b #RECIPE_SEMANTIC_TABLE, package.Row.Recipe(a5)

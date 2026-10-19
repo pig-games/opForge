@@ -45,8 +45,10 @@ PositionProofOpcode	.word ?
 PositionProofValue	.long ?
 InputIdentities	.long ?  ; optional caller-owned opaque long per input
 FixupIdentities	.long ?  ; optional caller-owned opaque long per fixup
+PositionProofRequested	.long ?  ; original package request, REQUEST_AUTO or ID
 .endstruct
-ContextBytes = Context.FixupIdentities+4
+ContextBytes = Context.PositionProofRequested+4
+REQUEST_AUTO = -1
 
 MALFORMED_TEXT_LEN = 30
 RANGE_SUFFIX_LEN = 33
@@ -415,6 +417,7 @@ branchSuffixReady
 	move.l 12(sp), d0
 	move.w d0, Context.PositionProofOpcode(a6)
 	move.l 16(sp), Context.PositionProofValue(a6)
+	move.l 20(sp), Context.PositionProofRequested(a6)
 branchProofReady
 	moveq #0, d0
 	bra.w branchReturn

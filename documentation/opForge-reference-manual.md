@@ -1598,6 +1598,9 @@ The following rules are the ones most likely to affect day-to-day invocation:
   when an addend is present, including memory destinations such as
   `move.l #buffer+4, Frame.Pointer(a0)`. The immediate field holds the section-relative
   address plus addend; the Hunk loader supplies the target section base.
+- Absolute memory-to-memory `MOVE.B`, `MOVE.W` and `MOVE.L` retain both address
+  relocations, including independent addends, for example
+  `move.w source+2, destination+4`.
 
 ### 5.1 Formatter configuration
 

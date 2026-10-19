@@ -1,6 +1,111 @@
 //! Qualified absolute-memory operands from the tokenizer runtime.
 use super::*;
 
+#[test]
+fn compact_absolute_memory_to_memory_defined_labels_rust_oracle() {
+    for (width, opcode) in [
+        ("b", [0x13, 0xf9]),
+        ("w", [0x33, 0xf9]),
+        ("l", [0x23, 0xf9]),
+    ] {
+        let input = format!(".cpu m68020\n.org $1000\n move.{width} source+2,destination+4\nsource: .long 0\ndestination: .long 0\n.end\n");
+        let (entries, diagnostics) =
+            assemble_source_entries_with_runtime_mode(&input.lines().collect::<Vec<_>>(), true)
+                .unwrap();
+        assert!(diagnostics.is_empty(), "MOVE.{width}: {diagnostics:?}");
+        let bytes = entries
+            .into_iter()
+            .map(|(_, byte)| byte)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            &bytes[..10],
+            &[opcode[0], opcode[1], 0, 0, 0x10, 12, 0, 0, 0x10, 18],
+            "MOVE.{width}"
+        );
+    }
+}
+
+#[test]
+fn compact_absolute_memory_to_memory_relocations_rust_hunk_oracle() {
+    for (width, opcode) in [
+        ("b", [0x13, 0xf9]),
+        ("w", [0x33, 0xf9]),
+        ("l", [0x23, 0xf9]),
+    ] {
+        for (source, destination, source_target, destination_target) in [
+            ("payload", "payload", 2, 2),
+            ("moduleCount", "includeCount", 1, 1),
+            ("payload", "moduleCount", 2, 1),
+            ("moduleCount", "payload", 1, 2),
+        ] {
+            let body = format!(" move.{width} {source}+2,{destination}+4\n");
+            let oracle = hunk_sections::rust_hunk_source(&bss_to_struct_source(&body));
+            let segments = hunk::segments(&oracle).unwrap();
+            let destination_addend = if destination == "includeCount" { 8 } else { 4 };
+            assert_eq!(
+                &segments[0].payload[..12],
+                &[
+                    opcode[0],
+                    opcode[1],
+                    0,
+                    0,
+                    0,
+                    2,
+                    0,
+                    0,
+                    0,
+                    destination_addend,
+                    0x4e,
+                    0x75
+                ],
+                "{body}"
+            );
+            let mut relocations = segments[0].relocations.clone();
+            relocations.sort_unstable();
+            assert_eq!(
+                relocations,
+                [(2, source_target), (6, destination_target)],
+                "{body}"
+            );
+            assert!(segments[1].payload.is_empty());
+            assert!(segments[1].relocations.is_empty());
+            assert_eq!(segments[2].payload, [0xaa, 0xbb, 0xcc, 0]);
+            assert!(segments[2].relocations.is_empty());
+        }
+    }
+}
+
+#[test]
+fn compact_absolute_memory_to_memory_invalid_destinations_rust_rejection() {
+    for width in ["b", "w", "l"] {
+        for destination in ["#4", "4(pc)"] {
+            let input =
+                format!(".cpu m68020\n move.{width} source,{destination}\nsource: .long 0\n.end\n");
+            let (_, diagnostics) =
+                assemble_source_entries_with_runtime_mode(&input.lines().collect::<Vec<_>>(), true)
+                    .unwrap();
+            assert!(!diagnostics.is_empty(), "MOVE.{width} source,{destination}");
+        }
+    }
+}
+
+#[test]
+fn compact_absolute_memory_to_numeric_destination_rust_oracle() {
+    let input = ".cpu m68020\n.org $1000\n move.l source+2,$123456\nsource: .long 0\n.end\n";
+    let (entries, diagnostics) =
+        assemble_source_entries_with_runtime_mode(&input.lines().collect::<Vec<_>>(), true)
+            .unwrap();
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let bytes = entries
+        .into_iter()
+        .map(|(_, byte)| byte)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        &bytes[..10],
+        &[0x23, 0xf9, 0, 0, 0x10, 12, 0, 0x12, 0x34, 0x56]
+    );
+}
+
 fn source(body: &str) -> String {
     format!(".module probe\n.cpu m68020\n.use state\nLimit=8\n.section code,kind=code\n{body} rts\n.endsection\n.section data,kind=data\n.byte 7\n.endsection\n.output \"build/sections.hunk\",format=hunk,sections=code,data,bss\n.endmodule\n.module state\n.cpu m68020\n.pub\n.section bss,kind=bss\nStart .res word,1\nCount .res long,1\nPointer .res long,1\n.res word,1\n.endsection\n.endmodule\n")
 }

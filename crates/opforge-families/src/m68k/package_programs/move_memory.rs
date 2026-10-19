@@ -277,25 +277,29 @@ pub(super) fn append_immediate_and_absolute_sources(selectors: &mut Vec<ModeSele
             });
         }
     }
+    // Both effective addresses are long even when the transferred value is a
+    // byte or word. Retain each target's independent relocation and addend.
+    for (mnemonic, opcode) in [
+        ("MOVE.B", 0x13f9_u32),
+        ("MOVE.W", 0x33f9),
+        ("MOVE.L", 0x23f9),
+    ] {
+        selectors.push(selector(
+            mnemonic,
+            "direct_direct",
+            format!(
+                "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0,target:expr1;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}{opcode};fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr1"
+            ),
+            127,
+        ));
+    }
     selectors.push(ModeSelectorDescriptor {
         owner: ScopedOwner::Family("motorola68000".to_string()),
         mnemonic: "MOVE.L".to_string(),
         shape_key: "direct_direct".to_string(),
         mode_key: "semantic".to_string(),
         operand_plan: format!(
-            "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0,target:expr1;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}9209;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr1"
-        ),
-        priority: 127,
-        unstable_widen: false,
-        width_rank: 0,
-    });
-    selectors.push(ModeSelectorDescriptor {
-        owner: ScopedOwner::Family("motorola68000".to_string()),
-        mnemonic: "MOVE.L".to_string(),
-        shape_key: "direct_direct".to_string(),
-        mode_key: "semantic".to_string(),
-        operand_plan: format!(
-            "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0,expr1;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}9209;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0;encode:{PARAM_SCALAR_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}expr1"
+            "{MODE_SELECTOR_PLAN_SEMANTIC_SEQUENCE_PREFIX}match:_{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0,scalar_expr1;encode:{PARAM_SCALAR_WORD}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}{MODE_SELECTOR_PLAN_LITERAL_PREFIX}9209;fixup:{FIXUP_ABSOLUTE_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}target:expr0;encode:{PARAM_SCALAR_LONG}{MODE_SELECTOR_PLAN_INPUT_SEPARATOR}scalar_expr1"
         ),
         priority: 128,
         unstable_widen: false,

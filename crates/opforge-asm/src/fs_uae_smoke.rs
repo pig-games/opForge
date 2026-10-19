@@ -33,8 +33,8 @@ pub(crate) mod hunk;
 #[path = "tests/compact_self_host_export.rs"]
 mod compact_self_host_export;
 #[cfg(test)]
-#[path = "tests/native_fragment_comparison.rs"]
-mod native_fragment_comparison;
+#[path = "tests/native_cli_frozen_comparison.rs"]
+mod native_cli_frozen_comparison;
 
 pub(crate) struct FsUaeNativeCliSmokeLock(std::sync::Mutex<()>);
 

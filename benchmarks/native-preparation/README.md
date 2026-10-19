@@ -30,4 +30,4 @@ private directory removal. On the current candidate both modes match Rust BIN
 and Hunk outputs: module peak stays 608,768 B; macro-heavy peak is 2,249,656 B
 resident versus 2,282,424 B disk-backed. Neither reaches the 1 MiB capture budget,
 so these controls establish behavior and small-workload cost, not a memory gain.
-See the [full-workload measurements](../../documentation/plans/native-performance-diagnosis.md#bounded-disk-backed-capture).
+See the [full-workload measurements](../../documentation/plans/native-performance-diagnosis.md).

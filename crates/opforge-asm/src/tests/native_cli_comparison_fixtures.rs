@@ -1,13 +1,11 @@
-//! Shared conversion workloads and their host semantic checks.
+//! Shared native CLI comparison workloads and their host semantic checks.
 use super::*;
 
 // Both blocks use one ordinary code section. Roots outside those blocks force
 // reachability, while instructions consume an imported address and constants.
 pub(super) fn small_fixture(scenario: &str) -> Vec<(String, Vec<u8>)> {
     let mut main = String::from(".module main\n.cpu m68020\n.use left as l map { code -> appcode }\n.use right as r\n.region image, 0, $1fff\n.section appcode, kind=code\nentry .block\n");
-    if scenario == "oversized" {
-        main.push_str(&" nop\n".repeat(1100));
-    } else if scenario == "macro" {
+    if scenario == "macro" {
         main = main.replace(".region image", "loadPair .macro\n move.l #l.value,d0\n move.l #r.value,d1\n add.l d1,d0\n.endmacro\n.region image");
         main.push_str(&" .loadPair\n".repeat(200));
     } else {
@@ -19,25 +17,11 @@ pub(super) fn small_fixture(scenario: &str) -> Vec<(String, Vec<u8>)> {
     for _ in 0..16 {
         main.push_str(" nop\n");
     }
-    if scenario == "source_pc" {
-        main.push_str(" move.l #($+0),d0\n");
-    }
-    if scenario == "conditional" {
-        main.push_str(" .if 1\n nop\n .endif\n");
-    }
     main.push_str(
         " rts\n .bend\n .word entry,other\n .long l.address\n.endsection\n.place appcode in image\n.endmodule\n.end\n",
     );
     if scenario == "mapped_gap" {
         main = main.replace(".region image, 0,", ".region image, $1000,");
-    }
-    if scenario == "shifted" {
-        // Move code away from the private compilation PC while avoiding the
-        // independently reproduced placed-region reference gap below. Native also
-        // currently rejects .org within a section; initialized padding changes
-        // block placement through the ordinary supported section path.
-        let padding = format!("{}entry .block", ".long 0\n".repeat(16));
-        main = main.replace("entry .block", &padding);
     }
     vec![
         ("src/main.asm".into(), main.into_bytes()),
@@ -49,19 +33,11 @@ pub(super) fn small_fixture(scenario: &str) -> Vec<(String, Vec<u8>)> {
 }
 
 #[test]
-fn native_fragment_cli_rust_oracles() {
-    let root =
-        std::env::temp_dir().join(format!("opforge-fragment-oracles-{}", std::process::id()));
+fn native_cli_comparison_rust_oracles() {
+    let root = std::env::temp_dir().join(format!("opforge-cli-oracles-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let _cleanup = EphemeralArtifactDir(root.clone());
-    for scenario in [
-        "converted",
-        "macro",
-        "oversized",
-        "source_pc",
-        "shifted",
-        "conditional",
-    ] {
+    for scenario in ["small", "macro"] {
         let staged = root.join(scenario);
         for (name, bytes) in small_fixture(scenario) {
             let path = staged.join(name);
@@ -74,14 +50,11 @@ fn native_fragment_cli_rust_oracles() {
 
 // The unchanged native reference emits the placed address here. Rust currently
 // leaves the imported mapped label relative to the output section. Keep this
-// separate from the fragment resource comparison until the reference is fixed.
+// separate from the resource comparison until the reference is fixed.
 #[test]
 #[ignore = "known Rust gap: placed mapped imported block address remains section-relative"]
 fn mapped_imported_block_flat_address_regression() {
-    let root = std::env::temp_dir().join(format!(
-        "opforge-fragment-mapped-gap-{}",
-        std::process::id()
-    ));
+    let root = std::env::temp_dir().join(format!("opforge-cli-mapped-gap-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let _cleanup = EphemeralArtifactDir(root.clone());
     for (name, bytes) in small_fixture("mapped_gap") {

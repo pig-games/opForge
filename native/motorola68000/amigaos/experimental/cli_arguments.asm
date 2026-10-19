@@ -30,6 +30,7 @@ Help	.word ?
 Version	.word ?
 EndOptions	.word ?
 WarningsAsErrors	.word ?
+ReferenceModules	.word ?
 ModuleCount	.long ?
 IncludeCount	.long ?
 Input	.res PATH_BYTES
@@ -61,6 +62,7 @@ K_HEX = 10
 K_SREC = 11
 K_GO = 12
 K_WERROR = 13
+K_REFERENCE_MODULES = 14
 Record	.struct
 Short	.word ?
 Kind	.word ?
@@ -178,12 +180,21 @@ selected
 	beq.w go
 	cmpi.w #K_WERROR, d2
 	beq.w werror
+	cmpi.w #K_REFERENCE_MODULES, d2
+	beq.w referenceModules
 	movea.l a4, a6
 	adda.w Record.Dest(a5), a6
 	tst.b (a6)
 	bne.w rejectDuplicate
 	bsr.w required
 	bne.w done
+	bra.w next
+referenceModules
+	move.l a2, d0
+	bne.w rejectMalformed
+	tst.w State.ReferenceModules(a4)
+	bne.w rejectDuplicate
+	move.w #1, State.ReferenceModules(a4)
 	bra.w next
 werror
 	move.l a2, d0
@@ -686,6 +697,8 @@ Options
 	.long Name51
 	.word 0, K_VALUE, State.CaptureDirectory, 0
 	.long Name52
+	.word 0, K_REFERENCE_MODULES, 0, 0
+	.long Name53
 	.word 0, 0, 0, 0
 	.long 0
 Name0	.byte "infile", 0
@@ -741,5 +754,6 @@ Name49	.byte "max-loop-iterations", 0
 Name50	.byte "input-asm-ext", 0
 Name51	.byte "input-inc-ext", 0
 Name52	.byte "capture-dir", 0
+Name53	.byte "reference-modules", 0
 	.endsection
 	.endmodule

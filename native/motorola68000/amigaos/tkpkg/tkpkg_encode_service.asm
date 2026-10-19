@@ -35,7 +35,7 @@ EncodeTableMalformedText
 
 	.section bss, kind=bss
 	.priv
-Execution	.res byte, execution.ContextBytes
+Execution	.res byte, execution.CONTEXT_BYTES
 BindingId
 	.res word, 1
 BindingPending

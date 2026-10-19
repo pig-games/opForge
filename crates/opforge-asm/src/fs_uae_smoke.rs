@@ -8108,3 +8108,6 @@ mod native_module_shared_sections;
 #[cfg(test)]
 #[path = "tests/native_instruction_fixup_identity.rs"]
 mod native_instruction_fixup_identity;
+#[cfg(test)]
+#[path = "tests/native_module_geometry.rs"]
+mod native_module_geometry;

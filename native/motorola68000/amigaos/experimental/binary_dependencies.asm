@@ -11,6 +11,7 @@
 	.use opasm.amigaos.binary_expression as expr
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_module_records as compiled
 	.use experimental.amigaos.binary_repeat_inventory as repeatInventory
 	.use experimental.amigaos.binary_repeat_dependencies as localGraph
 	.use experimental.amigaos.binary_repeat_activation as activation
@@ -20,6 +21,9 @@
 	.use prvm.amigaos.abi as abi
 	.pub
 ABSOLUTE = graph.ABSOLUTE
+; Available immutable incoming address, retained across layout rewinds without
+; granting absolute-folding proof. Runtime availability is not a DAG state.
+RETAINED_ADDRESS = 5
 	.priv
 PENDING = graph.PENDING
 VISITING = graph.VISITING
@@ -59,8 +63,8 @@ Scratch	.res byte, memory.Block.Used+4
 ; D1=global conditional ID count,A2=Context with zeroed symbol arrays.
 ; Scoped declarations belong to their iteration owner, outside the eager graph.
 ; D0/CCR=status; other registers preserved. Graph states and expression offsets
-; stay in private storage. Absolute values retain Defined=ABSOLUTE; other entries
-; are cleared before return. Scratch is bounded by source IDs and always freed.
+; stay in private storage. Absolute values and immutable incoming addresses
+; retain availability; other entries clear before return. Scratch is bounded.
 resolve	.block
 	clr.w Mode
 start
@@ -346,6 +350,8 @@ clearLoop
 	bne.w erase
 	cmpi.b #ABSOLUTE, (a1)
 	beq.w keep
+	cmpi.b #RETAINED_ADDRESS, (a1)
+	beq.w keep
 erase
 	clr.l (a0)
 	clr.l 4(a0)
@@ -461,8 +467,10 @@ release	.block
 	movem.l a0, -(sp)
 	lea States, a0
 	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	lea Offsets, a0
 	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	lea Scratch, a0
 	jsr memory.release
 	movem.l (sp)+, a0
@@ -582,6 +590,16 @@ line
 	bsr.w indexLoop
 	bne.w bad
 rolesReady
+	btst #source.FLAG_LAYOUT_BIT, source.RecordHeader.Flags(a0)
+	beq.w sourceDeclaration
+	cmpi.w #source.LayoutRecord.Opcode+1, d6
+	blo.w bad
+	cmpi.b #compiled.OP_OWNERS, source.LayoutRecord.Opcode(a0)
+	bne.w next
+	bsr.w compiledLabels
+	bne.w bad
+	bra.w next
+sourceDeclaration
 	cmpi.w #9, d6
 	blo.w next
 	lea 4(a0), a3
@@ -737,6 +755,46 @@ done
 	rts
 	.bend  ; index
 
+; Numeric public label declarations emitted by the compiled whole owner.
+; A0=record,D6=extent,A2=package,A5=dependency states,A6=Context.
+; Root-owner lists may recur across section/owner transitions. Repeated LABEL
+; roles are idempotent; a conflicting ordinary scalar role remains invalid.
+; D0/CCR=status; other registers preserved.
+compiledLabels	.block
+	movem.l d1-d4/a0-a3, -(sp)
+	move.l d6, d0
+	jsr compiled.ownersView
+	bne.w done
+	movea.l a1, a3
+	move.l d1, d3
+next
+	tst.l d3
+	beq.w good
+	moveq #0, d4
+	move.w (a3)+, d4
+	cmp.w pkg.Header.NameCount(a2), d4
+	blo.w bad
+	cmp.l pkg.Context.Count(a6), d4
+	bhs.w bad
+	tst.b 0(a5, d4.l)
+	beq.w storeRole
+	cmpi.b #LABEL, 0(a5, d4.l)
+	bne.w bad
+storeRole
+	move.b #LABEL, 0(a5, d4.l)
+	subq.l #1, d3
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d4/a0-a3
+	tst.l d0
+	rts
+	.bend  ; compiledLabels
+
 ; A0=bounded record,D6=extent,A2=package. Track branch ancestry through PRVM.
 ; D0/CCR=status; other registers preserved.
 indexBranch	.block
@@ -847,6 +905,8 @@ ownerReady
 	movea.l pkg.Context.SectionIds(a1), a4
 	moveq #0, d4
 symbol
+	cmpi.b #RETAINED_ADDRESS, (a3)
+	beq.w retained
 	cmpi.b #ABSOLUTE, (a3)
 	bne.w clearSymbol
 	; An ordinary-loop scalar root is absolute only for its executed owner.
@@ -897,7 +957,12 @@ graphStorage	.block
 	movea.l memory.Block.Pointer(a0), a0
 	movea.l pkg.Context.Defined(a6), a1
 copy
-	move.b (a1)+, (a0)+
+	move.b (a1)+, (a0)
+	cmpi.b #RETAINED_ADDRESS, (a0)
+	bne.w copied
+	move.b #LABEL, (a0)
+copied
+	addq.l #1, a0
 	subq.l #1, d1
 	bne.w copy
 	move.l pkg.Context.Count(a6), d0

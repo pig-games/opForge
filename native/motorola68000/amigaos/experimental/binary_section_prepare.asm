@@ -92,6 +92,38 @@ clearMaps
 	rts
 	.bend  ; begin
 
+; Register a privately compiled section through the same leaf-name/slot rules
+; as ordinary preparation. A0=scope,A1=its section State,D1=bound source ID.
+; Success D1=slot0..7. D0/CCR=status; other registers preserved. The caller
+; supplies the section owner explicitly to avoid a scopes/sections dependency.
+bindCompiledSlot	.block
+	movem.l d2-d3/a0-a6, -(sp)
+	movea.l a0, a6
+	movea.l a1, a4
+	cmpi.l #65535, d1
+	bhi.w bad
+	moveq #0, d2
+	move.w layout.State.Base(a6), d2
+	cmp.l d2, d1
+	blo.w bad
+	moveq #0, d3
+	move.w layout.State.Count(a6), d3
+	add.l d2, d3
+	cmp.l d3, d1
+	bhs.w bad
+	bsr.w declareSlot
+	bmi.w bad
+	move.l d0, d1
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d3/a0-a6
+	tst.l d0
+	rts
+	.bend  ; bindCompiledSlot
+
 ; A0=writer record,A1=scope state,A2=section state,D0=1..4.
 ; Legacy flat placement retains two adjacent concrete regions. Mapped layouts
 ; share eight source slots across concrete and logical sections; numeric targets
@@ -982,6 +1014,15 @@ record
 	beq.w close
 	cmpi.w #source.LAYOUT_PENDING_CONCRETE, d0
 	beq.w concrete
+	; Module carriers already own normalized geometry. Traverse their opens
+	; through the same declaration checks as pending source sections, so the
+	; matching end record and following source share one active-section state.
+	cmpi.w #source.LAYOUT_FIRST_CONCRETE, d0
+	beq.w concrete
+	cmpi.w #source.LAYOUT_SECOND_CONCRETE, d0
+	beq.w concrete
+	cmpi.w #source.LAYOUT_EXTRA_CONCRETE, d0
+	beq.w concrete
 	cmpi.w #source.LAYOUT_PENDING_LOGICAL, d0
 	beq.w logical
 	cmpi.w #source.LAYOUT_FIRST_PLACE, d0
@@ -1167,25 +1208,9 @@ finishDone
 flatSlot	.block
 	movem.l d1-d5/a0, -(sp)
 	move.w d1, d5
-	tst.w State.MapCount(a4)
-	bne.w mappedSlots
-	moveq #0, d0
-	move.w State.Concrete(a4), d0
-	beq.w legacySecond
-	bsr.w sameLeaf
-	beq.w legacyFirst
-legacySecond
-	moveq #0, d0
-	move.w State.Second(a4), d0
-	beq.w missing
-	bsr.w sameLeaf
-	bne.w missing
-	moveq #1, d0
-	bra.w done
-legacyFirst
-	moveq #0, d0
-	bra.w done
-mappedSlots
+	; Declaration slots are authoritative for every layout, including source-
+	; order Hunk sections. First/Second are traversal history and cannot resolve
+	; arbitrary output selections or declarations introduced by saved images.
 	moveq #0, d4
 mapSlot
 	cmp.w State.MapCount(a4), d4

@@ -199,7 +199,7 @@ fn export(root: &Path, dir: &Path, f: &Fixture, image: &[u8]) {
     ] {
         fs::copy(dir.join(name), output.join(name)).unwrap();
     }
-    let manifest = serde_json::json!({"schema":1,"kind":"native-module-shared-export","image":{"path":"opforge","digest":opforge_self_host_package_digest(image)},"oracle":{"path":"oracle.bin","digest":opforge_self_host_package_digest(&f.oracle)},"source_digest":opforge_self_host_package_digest(f.source.as_bytes()),"package_digest":opforge_self_host_package_digest(&f.package),"block_sizes":f.sizes,"bases":BASES,"selection":[3,1,2],"expected_output_bytes":f.oracle.len(),"instrumented":std::env::var("OPFORGE_MODULE_SHARED_MEMORY").as_deref()==Ok("1"),"outputs":["output.bin","metrics.bin"],"native_validation":"not_run","scope":"shared-section native compiler component; no CLI savings claim"});
+    let manifest = serde_json::json!({"schema":1,"kind":"native-module-shared-export","image":{"path":"opforge","digest":opforge_self_host_package_digest(image)},"oracle":{"path":"oracle.bin","digest":opforge_self_host_package_digest(&f.oracle)},"source_digest":opforge_self_host_package_digest(f.source.as_bytes()),"package_digest":opforge_self_host_package_digest(&f.package),"fragment_sizes":f.sizes,"bases":BASES,"selection":[3,1,2],"expected_output_bytes":f.oracle.len(),"instrumented":std::env::var("OPFORGE_MODULE_SHARED_MEMORY").as_deref()==Ok("1"),"outputs":["output.bin","metrics.bin"],"native_validation":"not_run","scope":"shared-section native compiler component; no CLI savings claim"});
     fs::write(
         output.join("manifest.json"),
         serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -280,7 +280,7 @@ fn native_module_shared_sections_fs_uae() {
         }
         eprintln!(
             "MODULE_SHARED_COMPONENT {}",
-            serde_json::json!({"native_compiles":words[1],"relocation_rows":words[2],"stored_blocks":words[3],"output_bytes":f.oracle.len(),"source_bytes":f.source.len(),"source_digest":opforge_self_host_package_digest(f.source.as_bytes()),"package_digest":opforge_self_host_package_digest(&f.package),"image_bytes":image.len(),"image_digest":opforge_self_host_package_digest(&image),"linked_static_reserved_bytes":super::native_package_loading_performance::linked_static_bytes(&image),"instrumented":std::env::var("OPFORGE_MODULE_SHARED_MEMORY").as_deref()==Ok("1"),"native_component_seconds":run.start_to_done_host_seconds,"scope":"shared-section component only; no CLI/full-build savings"})
+            serde_json::json!({"native_compiles":words[1],"relocation_rows":words[2],"stored_fragments":words[3],"output_bytes":f.oracle.len(),"source_bytes":f.source.len(),"source_digest":opforge_self_host_package_digest(f.source.as_bytes()),"package_digest":opforge_self_host_package_digest(&f.package),"image_bytes":image.len(),"image_digest":opforge_self_host_package_digest(&image),"linked_static_reserved_bytes":super::native_package_loading_performance::linked_static_bytes(&image),"instrumented":std::env::var("OPFORGE_MODULE_SHARED_MEMORY").as_deref()==Ok("1"),"native_component_seconds":run.start_to_done_host_seconds,"scope":"shared-section component only; no CLI/full-build savings"})
         );
     }
 }
@@ -296,8 +296,6 @@ fn prepare_rejections(dir: &Path) {
         ("conditional", " .long (first==second ? first : third)"),
         ("pc", " .long ($-first)+second"),
         ("numeric_branch", " bsr.w 0"),
-        ("alignment_zero", " .align 4"),
-        ("alignment_padding", " .byte 1\n .align 4"),
     ] {
         let mut source = SYNTHETIC.replace(" .long second,ending", statement);
         if name == "alias" {
@@ -333,7 +331,7 @@ fn native_module_shared_sections_rejections_fs_uae() {
     // Restore the positive fixture's package/source/include after oracle checks.
     let _ = prepare(&dir.0, SYNTHETIC);
     let image = probe(&root, &dir.0, true);
-    let expected = [1u8; 11];
+    let expected = [1u8; 9];
     let case = OpforgeNativeCliParityCase {
         name: "native-module-shared-layout-rejections",
         cpu_override: "68020",

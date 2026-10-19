@@ -163,6 +163,21 @@ retry
 	adda.l #frontend.SCOPE_STATE, a1
 	lea GraphBlock, a0
 	movea.l memory.Block.Pointer(a0), a0
+	; Private publication must also consume the final dependency-complete set.
+	; orderRemaining seals that set, so yielding begins before that call. Once
+	; every yielded module is acknowledged, orderNext closes with zero spans.
+	; Reference and bounded-disk policies retain their original schedule.
+	tst.w ReferenceModules
+	bne.w referenceOrder
+	tst.l CaptureStore+capture_store.State.Configured
+	bne.w referenceOrder
+	jsr graph.orderNext
+	cmpi.l #graph.READY, d0
+	beq.w publish
+	tst.l d0
+	beq.w closed
+	bra.w unresolved
+referenceOrder
 	jsr graph.orderRemaining
 	beq.w closed
 	cmpi.l #1, d0

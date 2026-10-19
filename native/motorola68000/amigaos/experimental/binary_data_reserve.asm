@@ -15,8 +15,7 @@ reserveDataBytes	.block
 	beq.w flat
 	cmpi.w #sections.KIND_BSS, sections.State.ActiveKind(a0)
 	bne.w initialized
-	movea.l a2, a1
-	jsr sections.reserve
+	bsr.w reserveSectionBytes
 	bra.w done
 initialized
 	bsr.w emitGap

@@ -47,7 +47,7 @@ InputIdentities	.long ?  ; optional caller-owned opaque long per input
 FixupIdentities	.long ?  ; optional caller-owned opaque long per fixup
 PositionProofRequested	.long ?  ; original package request, REQUEST_AUTO or ID
 .endstruct
-ContextBytes = Context.PositionProofRequested+4
+CONTEXT_BYTES = Context.PositionProofRequested+4
 REQUEST_AUTO = -1
 
 MALFORMED_TEXT_LEN = 30

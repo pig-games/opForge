@@ -76,24 +76,70 @@ fn oracle(root: &Path, entry: &str, output: &Path, binary: bool) -> Vec<u8> {
     .unwrap()
 }
 
+// The existing final assembly-work packet carries the accepted module count.
+// Read it only for policy comparisons; older images assign that word differently.
+fn private_module_count(stdout: &str) -> Option<u32> {
+    stdout.lines().find_map(|line| {
+        let fields = line
+            .strip_prefix("progress ")?
+            .split_whitespace()
+            .filter_map(|field| field.split_once('='))
+            .collect::<BTreeMap<_, _>>();
+        (u32::from_str_radix(fields.get("p")?, 16).ok()? == 300)
+            .then(|| u32::from_str_radix(fields.get("r")?, 16).ok())?
+    })
+}
+
 #[test]
 #[ignore = "four prepared embedded bundles and configured serial FS-UAE required"]
 fn native_cli_frozen_comparison() {
-    compare(false);
+    compare(false, false, Measurement::Both);
 }
 
 #[test]
 #[ignore = "fresh candidate against an already measured identical frozen input; serial FS-UAE required"]
 fn native_cli_frozen_candidate_comparison() {
-    compare(true);
+    compare(true, false, Measurement::Both);
 }
 
-fn compare(candidate_only: bool) {
+// Compare execution policies in the same executable, package and source tree.
+// The reference flag preserves the old schedule as well as module execution.
+#[test]
+#[ignore = "prepared embedded bundles and configured serial FS-UAE required"]
+fn native_cli_frozen_module_policy_memory() {
+    compare(false, true, Measurement::Memory);
+}
+
+#[test]
+#[ignore = "qualified module-policy memory comparison and serial FS-UAE required"]
+fn native_cli_frozen_module_policy_release() {
+    compare(false, true, Measurement::Release);
+}
+
+#[derive(PartialEq)]
+enum Measurement {
+    Both,
+    Memory,
+    Release,
+}
+
+fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Measurement) {
     let (frozen_root, frozen, _, package) = bundle("OPFORGE_CLI_FROZEN_BUNDLE");
     let baseline = bundle("OPFORGE_CLI_BASELINE_RELEASE");
     let candidate = bundle("OPFORGE_CLI_CANDIDATE_RELEASE");
     let baseline_memory = bundle("OPFORGE_CLI_BASELINE_MEMORY");
     let candidate_memory = bundle("OPFORGE_CLI_CANDIDATE_MEMORY");
+    if module_policy_comparison {
+        assert_eq!(baseline.2, candidate.2, "identical release executable");
+        assert_eq!(
+            baseline_memory.2, candidate_memory.2,
+            "identical memory executable"
+        );
+        assert_eq!(
+            baseline.1["source_manifest_digest"],
+            candidate.1["source_manifest_digest"]
+        );
+    }
     for release in [&baseline, &candidate] {
         assert_eq!(release.1["bootstrap_defines"], json!([]));
         assert_eq!(
@@ -269,13 +315,24 @@ fn compare(candidate_only: bool) {
             if candidate_only && role.starts_with("baseline") {
                 continue;
             }
+            if (measurement == Measurement::Memory && !instrumented)
+                || (measurement == Measurement::Release && instrumented)
+            {
+                continue;
+            }
+            let reference_modules = module_policy_comparison && role.starts_with("baseline");
+            let command = if reference_modules {
+                format!("{command} --reference-modules")
+            } else {
+                command.to_owned()
+            };
             for round in 1..=rounds {
                 let case = OpforgeNativeCliParityCase {
                     name: workload,
                     cpu_override: "68020",
                     extra_assembly_defines: if instrumented { &memory_defines } else { &[] },
                     source_override: Some(b""),
-                    command_template: Some(command),
+                    command_template: Some(&command),
                     package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
                     extra_guest_files: &guest_files,
                     proof: OpforgeNativeCliProof::ExactArtifact {
@@ -316,6 +373,22 @@ fn compare(candidate_only: bool) {
                         } else {
                             None
                         };
+                        let private_modules = (module_policy_comparison && instrumented)
+                            .then(|| private_module_count(&run.stdout))
+                            .flatten();
+                        if module_policy_comparison
+                            && instrumented
+                            && valid
+                            && (private_modules.is_none()
+                                || (reference_modules && private_modules != Some(0))
+                                || (!reference_modules
+                                    && workload == "full"
+                                    && private_modules == Some(0)))
+                        {
+                            failures.push(format!(
+                                "{workload}/{role}: invalid private publication receipt {private_modules:?}"
+                            ));
+                        }
                         let bootstrap_manifest = if role.starts_with("baseline") {
                             &baseline.1
                         } else {
@@ -343,6 +416,9 @@ fn compare(candidate_only: bool) {
                                 "image_digest": opforge_self_host_package_digest(image), "image_bytes": image.len(),
                                 "linked_static_reserved_bytes": super::native_package_loading_performance::linked_static_bytes(image),
                                 "allocation": allocation, "command": command,
+                                "module_policy_comparison": module_policy_comparison,
+                                "reference_modules": reference_modules,
+                                "privately_compiled_modules": private_modules,
                                 "memory_profile": std::env::var("OPFORGE_FS_UAE_MEMORY_PROFILE").ok(),
                                 "config_template": std::env::var("OPFORGE_FS_UAE_CONFIG_TEMPLATE").ok(),
                                 "metric_scope": "host-observed START/DONE interval, not hardware timing; tracked heap and linked reservations exclude OS/loader/untracked storage"

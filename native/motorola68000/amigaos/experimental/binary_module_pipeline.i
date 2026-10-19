@@ -104,6 +104,10 @@ begun
 	.CAPTURE_REPLAY_BEGIN
 	bsr.w seedModuleConfiguration
 	bne.w semanticBad
+	bsr.w tryPrivateModule
+	bne.w semanticBad
+	tst.l d1
+	bne.w published
 	; replayCapturedSpan uses the active semantic graph, not the discovery graph.
 	lea GraphBlock, a0
 	lea SemanticGraph, a1
@@ -116,6 +120,7 @@ begun
 	bsr.w swapModuleGraphs
 	tst.l d7
 	bne.w semanticBad
+published
 	bsr.w switchModuleSession
 	bne.w bad
 	.CAPTURE_CONFIGURATION_BEGIN

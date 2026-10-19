@@ -9,6 +9,7 @@
 	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_modules as modules
+	.use experimental.amigaos.binary_imports as imports
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_module_interface as interface
@@ -19,10 +20,12 @@ Exports	.res memory.Block.Used+4
 Members	.res memory.Block.Used+4
 Names	.res memory.Block.Used+4
 Bits	.res memory.Block.Used+4
+Targets	.res memory.Block.Used+4
 Base	.long ?
 Count	.long ?
 ExportCount	.long ?
 MemberCount	.long ?
+Module	.long ?  ; zero selects all public modules; otherwise lexical index+1
 Ready	.long ?
 Consumed	.long ?
 	.endstruct
@@ -35,6 +38,22 @@ Entry	.res records.ENTRY_BYTES
 Target	.res records.ENTRY_BYTES
 	.endstruct
 PREPARE_BYTES = PrepareLocal.Target+records.ENTRY_BYTES
+SourceView	.struct
+Owner	.long ?
+Values	.long ?
+Defined	.long ?
+Sections	.long ?
+Base	.long ?  ; array indexing base, never a pointer bias
+Count	.long ?  ; absolute exclusive value ID bound
+Scope	.long ?  ; nonzero only for retained known-snapshot publication
+	.endstruct
+SOURCE_BYTES = SourceView.Scope+4
+PublishLocal	.struct
+Frame	.res interface.FRAME_BYTES
+Source	.res SOURCE_BYTES
+Entry	.res records.ENTRY_BYTES
+	.endstruct
+PUBLISH_BYTES = PublishLocal.Entry+records.ENTRY_BYTES
 	.section code, kind=code
 	.pub
 ; A0=zero State,A1=completed frontend.Frame with live lexical names.
@@ -44,13 +63,22 @@ PREPARE_BYTES = PrepareLocal.Target+records.ENTRY_BYTES
 ; No frontend, scope, lexical-page or name pointer is retained. On failure State
 ; owns its partial buffers; release before reuse. Templates/statements and
 ; deferred/mutable declarations fail closed rather than disappearing silently.
-; Publication currently admits scalar/list/range/schema values, not concrete
-; address/struct instances whose nominal schema closure is not yet exported.
+; Canonical public targets are retained once. Publication adds private nominal
+; schemas as numeric, nameless dependency rows and prunes unused member keys.
 prepare	.block
+	moveq #0, d0
+	bra.w prepareModule
+	.bend  ; prepare
+
+; Same capture contract; D0 selects one owning module lexical index+1.
+; Zero retains the complete standalone component interface. Selected public
+; templates/statements still reject; unrelated modules do not enter capture.
+prepareModule	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.w #PREPARE_BYTES, sp
 	movea.l sp, a4
 	movea.l a0, a5
+	move.l d0, d3
 	moveq #STATE_BYTES/4-1, d0
 fresh
 	tst.l (a0)+
@@ -72,6 +100,20 @@ fresh
 	moveq #0, d6
 	move.w layout.State.Count(a6), d6
 	move.l d6, State.Count(a5)
+	cmp.l d6, d3
+	bhi.w bad
+	move.l d3, State.Module(a5)
+	beq.w moduleReady
+	move.l d3, d0
+	subq.l #1, d0
+	add.l d0, d0
+	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
+	move.l a0, d1
+	beq.w bad
+	move.w 0(a0, d0.l), d0
+	andi.w #modules.MODULE_ID, d0
+	beq.w bad
+moduleReady
 	move.l d5, d0
 	add.l d6, d0
 	cmpi.l #65536, d0
@@ -93,15 +135,35 @@ clearBits
 	clr.b (a1)+
 	subq.l #1, d1
 	bne.w clearBits
+	lea State.Targets(a5), a0
+	move.l d6, d0
+	addq.l #7, d0
+	lsr.l #3, d0
+	jsr memory.reserveExact
+	bne.w bad
+	move.l d6, d1
+	addq.l #7, d1
+	lsr.l #3, d1
+	move.l d1, memory.Block.Used(a0)
+	movea.l memory.Block.Pointer(a0), a1
+clearTargets
+	clr.b (a1)+
+	subq.l #1, d1
+	bne.w clearTargets
 	moveq #0, d7
 entry
 	cmp.l d6, d7
-	bhs.w members
+	bhs.w canonicalBegin
 	lea layout.LEXICAL_STATE(a6), a0
 	movea.l a4, a1
 	move.l d7, d0
 	jsr lexical.readEntry
 	bne.w bad
+	; Proxies carry occurrence metadata, not schema/member declarations.
+	; Their zero-filled MemberId is not a published immutable field key.
+	move.w records.Entry.Flags(a4), d0
+	andi.w #records.IMPORT_PROXY+records.BINDING_PROXY+records.ENCODING_NAME, d0
+	bne.w visibility
 	; Member keys need not themselves be value declarations.
 	moveq #0, d0
 	move.w records.Entry.MemberId(a4), d0
@@ -117,20 +179,40 @@ entry
 	adda.l d0, a0
 	bset d1, (a0)
 visibility
+	move.l State.Module(a5), d0
+	beq.w templateVisibility
+	cmp.w records.Entry.TemplateModule(a4), d0
+	bne.w statementVisibility
+templateVisibility
 	move.w records.Entry.TemplateFlags(a4), d0
 	andi.w #records.TEMPLATE_DECLARED+records.TEMPLATE_PUBLIC, d0
 	cmpi.w #records.TEMPLATE_DECLARED+records.TEMPLATE_PUBLIC, d0
 	beq.w bad
+statementVisibility
+	move.l State.Module(a5), d0
+	beq.w testStatement
+	cmp.w records.Entry.StatementModule(a4), d0
+	bne.w valueVisibility
+testStatement
 	move.w records.Entry.TemplateFlags(a4), d0
 	andi.w #records.STATEMENT_DECLARED+records.STATEMENT_PUBLIC, d0
 	cmpi.w #records.STATEMENT_DECLARED+records.STATEMENT_PUBLIC, d0
 	beq.w bad
+valueVisibility
 	move.l d7, d0
 	add.l d0, d0
 	addq.l #2, d0
 	cmp.l layout.MODULE_STATE+modules.FLAGS+memory.Block.Used(a6), d0
 	bhi.w bad
 	subq.l #2, d0
+	move.l State.Module(a5), d1
+	beq.w ownerSelected
+	movea.l layout.MODULE_STATE+modules.OWNERS_POINTER(a6), a0
+	move.l a0, d2
+	beq.w bad
+	cmp.w 0(a0, d0.l), d1
+	bne.w next
+ownerSelected
 	movea.l layout.MODULE_STATE+modules.FLAGS_POINTER(a6), a0
 	move.l a0, d1
 	beq.w bad
@@ -164,6 +246,36 @@ visibility
 	move.w PrepareLocal.Target+records.Entry.Flags(a4), d0
 	andi.w #records.MUTABLE+records.CONDITIONAL_VALUE+records.IMPORT_PROXY+records.BINDING_PROXY, d0
 	bne.w bad
+	moveq #0, d0
+	move.w records.Entry.Target(a4), d0
+	sub.l d5, d0
+	move.l d0, d1
+	lsr.l #3, d0
+	movea.l State.Targets+memory.Block.Pointer(a5), a0
+	adda.l d0, a0
+	bset d1, (a0)
+	bra.w next
+canonicalBegin
+	moveq #0, d7
+canonical
+	cmp.l d6, d7
+	bhs.w members
+	move.l d7, d0
+	lsr.l #3, d0
+	movea.l State.Targets+memory.Block.Pointer(a5), a0
+	adda.l d0, a0
+	btst d7, (a0)
+	beq.w nextCanonical
+	lea layout.LEXICAL_STATE(a6), a0
+	movea.l a4, a1
+	move.l d7, d0
+	jsr lexical.readEntry
+	bne.w bad
+	moveq #0, d0
+	move.w records.Entry.Target(a4), d0
+	sub.l d5, d0
+	cmp.l d7, d0
+	bne.w bad
 	bsr.w appendName
 	bne.w bad
 	move.l d1, d3
@@ -189,6 +301,9 @@ visibility
 	clr.l interface.Export.High(a2)
 	clr.l interface.Export.Provenance(a2)
 	addq.l #1, State.ExportCount(a5)
+nextCanonical
+	addq.l #1, d7
+	bra.w canonical
 next
 	addq.l #1, d7
 	bra.w entry
@@ -243,7 +358,7 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; prepare
+	.bend  ; prepareModule
 
 ; A0=prepared State,A1=assembled pkg.Context,A2=empty destination Block.
 ; D0/CCR=status; other registers preserved. One publish attempt per prepare:
@@ -251,48 +366,99 @@ done
 ; copies names/compound arena into Destination; no borrowed runtime pointer
 ; survives success. On failure release the consumed snapshot and destination.
 publish	.block
+	moveq #0, d0
+	bra.w publishSource
+	.bend  ; publish
+
+; A0=prepared State,A1=retained scope,A2=empty destination Block.
+; Same ownership/status contract as publish, using base-relative known tables.
+; Undefined declared LABEL_VALUE rows are external-symbol placeholders only:
+; scalar zero with section marker1, never finalized module image semantics.
+; Other undefined values reject. No runtime Context or copied source arena.
+publishKnown	.block
+	moveq #1, d0
+	bra.w publishSource
+	.bend  ; publishKnown
+	.priv
+publishSource	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	suba.w #interface.FRAME_BYTES, sp
+	suba.w #PUBLISH_BYTES, sp
 	movea.l sp, a3
 	movea.l a0, a6
-	movea.l a1, a5
+	movea.l a1, a4
+	lea PublishLocal.Source(a3), a5
+	move.l a2, interface.Frame.Destination(a3)
+	tst.l d0
+	bne.w knownSource
+	move.l pkg.Context.Owner(a4), SourceView.Owner(a5)
+	move.l pkg.Context.Values(a4), SourceView.Values(a5)
+	move.l pkg.Context.Defined(a4), SourceView.Defined(a5)
+	move.l pkg.Context.SectionIds(a4), SourceView.Sections(a5)
+	move.l pkg.Context.Count(a4), SourceView.Count(a5)
+	clr.l SourceView.Base(a5)
+	clr.l SourceView.Scope(a5)
+	bra.w sourceReady
+knownSource
+	moveq #0, d0
+	move.w layout.State.Base(a4), d0
+	cmp.l State.Base(a6), d0
+	bne.w bad
+	move.l d0, SourceView.Base(a5)
+	moveq #0, d1
+	move.w layout.State.Count(a4), d1
+	cmp.l State.Count(a6), d1
+	bne.w bad
+	add.l d1, d0
+	move.l d0, SourceView.Count(a5)
+	lea layout.IMPORT_STATE+imports.KNOWN_OWNER(a4), a0
+	move.l a0, SourceView.Owner(a5)
+	move.l layout.IMPORT_STATE+imports.KNOWN_VALUES_POINTER(a4), SourceView.Values(a5)
+	move.l layout.IMPORT_STATE+imports.KNOWN_DEFINED_POINTER(a4), SourceView.Defined(a5)
+	clr.l SourceView.Sections(a5)
+	move.l a4, SourceView.Scope(a5)
+sourceReady
 	cmpi.l #1, State.Ready(a6)
 	bne.w bad
 	tst.l State.Consumed(a6)
 	bne.w bad
 	move.l #1, State.Consumed(a6)
-	move.l a2, interface.Frame.Destination(a3)
-	move.l pkg.Context.Owner(a5), interface.Frame.Owner(a3)
-	move.l State.Exports+memory.Block.Pointer(a6), interface.Frame.Exports(a3)
-	move.l State.ExportCount(a6), d7
-	move.l d7, interface.Frame.ExportCount(a3)
-	movea.l interface.Frame.Exports(a3), a4
+	move.l SourceView.Owner(a5), interface.Frame.Owner(a3)
+	; Reuse member bits for the exact descriptor closure, not all private fields.
+	movea.l State.Bits+memory.Block.Pointer(a6), a0
+	move.l State.Bits+memory.Block.Used(a6), d0
+clearMembers
+	tst.l d0
+	beq.w valuesBegin
+	clr.b (a0)+
+	subq.l #1, d0
+	bra.w clearMembers
+valuesBegin
+	moveq #0, d6
 export
-	tst.l d7
-	beq.w memberNames
+	cmp.l State.Exports+memory.Block.Used(a6), d6
+	bhs.w valueNames
+	movea.l State.Exports+memory.Block.Pointer(a6), a4
+	adda.l d6, a4
 	move.l interface.Export.Kind(a4), d1
-	cmp.l pkg.Context.Count(a5), d1
+	cmp.l SourceView.Count(a5), d1
 	bhs.w bad
-	movea.l pkg.Context.Defined(a5), a0
+	move.l d1, d5
+	sub.l SourceView.Base(a5), d5
+	bcs.w bad
+	movea.l SourceView.Defined(a5), a0
 	move.l a0, d0
 	beq.w bad
-	tst.b 0(a0, d1.l)
-	beq.w bad
-	movea.l pkg.Context.Owner(a5), a0
+	tst.b 0(a0, d5.l)
+	beq.w external
+	movea.l SourceView.Owner(a5), a0
 	move.l a0, d0
 	beq.w bad
 	jsr values.getKind
 	bne.w bad
-	; Concrete nominal values also require their schema dependency closure.
-	; Until that is exported, reject instead of retaining an orphan nominal ID.
-	cmpi.l #values.ADDRESS_RECORD, d2
-	beq.w bad
-	cmpi.l #values.STRUCT_LITERAL, d2
-	beq.w bad
 	move.l d2, interface.Export.Kind(a4)
-	move.l d1, d0
+	move.l d5, d0
 	lsl.l #3, d0
-	movea.l pkg.Context.Values(a5), a0
+	movea.l SourceView.Values(a5), a0
 	move.l a0, d3
 	beq.w bad
 	move.l exprvm.Value.Low(a0, d0.l), interface.Export.Low(a4)
@@ -300,7 +466,9 @@ export
 	clr.l interface.Export.Provenance(a4)
 	tst.l d2
 	bne.w compound
-	movea.l pkg.Context.SectionIds(a5), a0
+	tst.l SourceView.Scope(a5)
+	bne.w dependenciesReady
+	movea.l SourceView.Sections(a5), a0
 	move.l a0, d0
 	beq.w bad
 	moveq #0, d0
@@ -308,20 +476,55 @@ export
 	cmpi.l #8, d0
 	bhi.w bad
 	move.l d0, interface.Export.Provenance(a4)
-	bra.w exportName
+	bra.w dependenciesReady
+external
+	movea.l SourceView.Scope(a5), a0
+	move.l a0, d0
+	beq.w bad
+	adda.l #layout.LEXICAL_STATE, a0
+	lea PublishLocal.Entry(a3), a1
+	move.l d5, d0
+	jsr lexical.readEntry
+	bne.w bad
+	move.w records.Entry.Flags(a1), d0
+	andi.w #scopes.DECLARED+records.LABEL_VALUE, d0
+	cmpi.w #scopes.DECLARED+records.LABEL_VALUE, d0
+	bne.w bad
+	clr.l interface.Export.Kind(a4)
+	clr.l interface.Export.Low(a4)
+	clr.l interface.Export.High(a4)
+	move.l #1, interface.Export.Provenance(a4)
+	bra.w dependenciesReady
 compound
 	tst.l interface.Export.High(a4)
 	bne.w bad
+dependenciesReady
+	bsr.w dependencies
+	bne.w bad
+	addi.l #interface.EXPORT_BYTES, d6
+	bra.w export
+valueNames
+	bsr.w sortExports
+	move.l State.Exports+memory.Block.Pointer(a6), interface.Frame.Exports(a3)
+	move.l State.ExportCount(a6), d7
+	move.l d7, interface.Frame.ExportCount(a3)
+	movea.l interface.Frame.Exports(a3), a4
 exportName
+	tst.l d7
+	beq.w memberNames
+	tst.l interface.Export.NameBytes(a4)
+	beq.w nextName
 	move.l interface.Export.Name(a4), d0
 	move.l interface.Export.NameBytes(a4), d1
 	bsr.w namePointer
 	bne.w bad
 	move.l d1, interface.Export.Name(a4)
+nextName
 	adda.w #interface.EXPORT_BYTES, a4
 	subq.l #1, d7
-	bra.w export
+	bra.w exportName
 memberNames
+	bsr.w pruneMembers
 	move.l State.Members+memory.Block.Pointer(a6), interface.Frame.Members(a3)
 	move.l State.MemberCount(a6), d7
 	move.l d7, interface.Frame.MemberCount(a3)
@@ -344,11 +547,12 @@ build
 bad
 	moveq #INVALID, d0
 done
-	adda.w #interface.FRAME_BYTES, sp
+	adda.w #PUBLISH_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; publish
+	.bend  ; publishSource
+	.pub
 
 ; A0=State. Release partial preparation, consumed publication or successful
 ; temporary inputs. Destination belongs to the caller. D0/CCR=0; others kept.
@@ -363,6 +567,8 @@ release	.block
 	jsr memory.release
 	lea State.Bits(a1), a0
 	jsr memory.release
+	lea State.Targets(a1), a0
+	jsr memory.release
 	movea.l a1, a0
 	moveq #STATE_BYTES/4-1, d1
 clear
@@ -374,6 +580,170 @@ clear
 	rts
 	.bend  ; release
 	.priv
+
+; A6=State,A5=SourceView,A4=export. Retain exactly the numeric schema
+; and member closure. No lexical owner is live here. Other registers kept.
+dependencies	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	move.l interface.Export.Kind(a4), d4
+	cmpi.l #values.TYPED_LIST, d4
+	blo.w good
+	movea.l SourceView.Owner(a5), a0
+	move.l interface.Export.Low(a4), d1
+	jsr values.view
+	bne.w done
+	cmp.l values.Record.Kind(a1), d4
+	bne.w bad
+	movea.l a1, a2
+	move.l values.Record.Count(a2), d7
+	cmpi.l #values.STRUCT_TYPE, d4
+	bhs.w nominal
+	cmpi.l #values.ADDRESS_RECORD, d4
+	bne.w good
+	lea values.RECORD_BASE_BYTES(a2), a2
+	moveq #values.FIELD_BYTES, d5
+	bra.w field
+nominal
+	move.l values.StructRecord.Nominal(a2), d1
+	movea.l SourceView.Owner(a5), a0
+	jsr values.getKind
+	bne.w bad
+	cmpi.l #values.STRUCT_TYPE, d2
+	bne.w bad
+	move.l State.ExportCount(a6), d0
+	movea.l State.Exports+memory.Block.Pointer(a6), a0
+findSchema
+	tst.l d0
+	beq.w appendSchema
+	cmp.l interface.Export.Id(a0), d1
+	beq.w schemaReady
+	adda.w #interface.EXPORT_BYTES, a0
+	subq.l #1, d0
+	bra.w findSchema
+appendSchema
+	lea State.Exports(a6), a0
+	move.l memory.Block.Used(a0), d0
+	addi.l #interface.EXPORT_BYTES, d0
+	jsr memory.reserve
+	bne.w bad
+	movea.l memory.Block.Pointer(a0), a1
+	adda.l memory.Block.Used(a0), a1
+	addi.l #interface.EXPORT_BYTES, memory.Block.Used(a0)
+	move.l d1, interface.Export.Id(a1)
+	clr.l interface.Export.Name(a1)
+	clr.l interface.Export.NameBytes(a1)
+	move.l d1, interface.Export.Kind(a1)
+	clr.l interface.Export.Low(a1)
+	clr.l interface.Export.High(a1)
+	clr.l interface.Export.Provenance(a1)
+	addq.l #1, State.ExportCount(a6)
+schemaReady
+	lea values.STRUCT_BASE_BYTES(a2), a2
+	moveq #values.STRUCT_FIELD_BYTES, d5
+	cmpi.l #values.STRUCT_TYPE, d4
+	beq.w field
+	moveq #values.FIELD_BYTES, d5
+field
+	tst.l d7
+	beq.w good
+	move.l (a2), d0
+	sub.l State.Base(a6), d0
+	bcs.w bad
+	cmp.l State.Count(a6), d0
+	bhs.w bad
+	move.l d0, d1
+	lsr.l #3, d0
+	movea.l State.Bits+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
+	bset d1, (a0)
+	adda.l d5, a2
+	subq.l #1, d7
+	bra.w field
+good
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; dependencies
+
+; A6=State. Sort canonical rows by ID after closure growth. Others kept.
+sortExports	.block
+	movem.l d0-d4/a0-a2, -(sp)
+	move.l State.ExportCount(a6), d4
+	beq.w done
+pass
+	moveq #0, d3
+	movea.l State.Exports+memory.Block.Pointer(a6), a0
+	move.l State.ExportCount(a6), d2
+	subq.l #1, d2
+pair
+	tst.l d2
+	beq.w passDone
+	lea interface.EXPORT_BYTES(a0), a1
+	move.l interface.Export.Id(a0), d0
+	cmp.l interface.Export.Id(a1), d0
+	bls.w ordered
+	movea.l a0, a2
+	moveq #interface.EXPORT_BYTES/4-1, d1
+swap
+	move.l (a2), d0
+	move.l (a1), (a2)+
+	move.l d0, (a1)+
+	dbra d1, swap
+	moveq #1, d3
+ordered
+	adda.w #interface.EXPORT_BYTES, a0
+	subq.l #1, d2
+	bra.w pair
+passDone
+	tst.l d3
+	beq.w done
+	subq.l #1, d4
+	bne.w pass
+done
+	movem.l (sp)+, d0-d4/a0-a2
+	rts
+	.bend  ; sortExports
+
+; A6=State. Discard member names outside the retained descriptor closure.
+; Names are still offsets, so overlapping table compaction is safe. Others kept.
+pruneMembers	.block
+	movem.l d0-d4/a0-a2, -(sp)
+	movea.l State.Members+memory.Block.Pointer(a6), a1
+	movea.l a1, a2
+	move.l State.MemberCount(a6), d3
+	moveq #0, d4
+next
+	tst.l d3
+	beq.w finish
+	move.l interface.Member.Id(a1), d0
+	sub.l State.Base(a6), d0
+	move.l d0, d1
+	lsr.l #3, d0
+	movea.l State.Bits+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
+	btst d1, (a0)
+	beq.w skip
+	move.l interface.Member.Id(a1), interface.Member.Id(a2)
+	move.l interface.Member.Name(a1), interface.Member.Name(a2)
+	move.l interface.Member.NameBytes(a1), interface.Member.NameBytes(a2)
+	adda.w #interface.MEMBER_BYTES, a2
+	addq.l #1, d4
+skip
+	adda.w #interface.MEMBER_BYTES, a1
+	subq.l #1, d3
+	bra.w next
+finish
+	move.l d4, State.MemberCount(a6)
+	mulu.l #interface.MEMBER_BYTES, d4
+	move.l d4, State.Members+memory.Block.Used(a6)
+	movem.l (sp)+, d0-d4/a0-a2
+	rts
+	.bend  ; pruneMembers
 
 ; A5=State,A6=scope,A4=Entry copy. D0=status,D1=owned name offset.
 ; Preserve other registers. The copied terminator is spare capacity, excluded

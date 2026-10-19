@@ -1,8 +1,9 @@
-; Immutable fixed fragments and opaque bounded patch recipes; no grammar.
+; Immutable section fragments and opaque bounded patch recipes; no grammar.
 ; @opforge-owner: experimental.amigaos.binary_module_image
 	.module experimental.amigaos.binary_module_image
 	.cpu 68020
 	.use experimental.amigaos.binary_module_interface as semantics
+	.use experimental.amigaos.binary_memory as memory
 	.pub
 Header	.struct
 Magic	.long ?
@@ -20,15 +21,28 @@ MAGIC = $4f464d49; OFMI: integrity tag, not executor version dispatch
 Block	.struct
 Id	.long ?
 Offset	.long ?
-Bytes	.long ?
+Bytes	.long ?  ; initialized payload only
+Owner	.long ?  ; whole lexical block; zero is unconditional module content
+Section	.long ?  ; numeric section identity, independent of target CPU
+Kind	.long ?
+Alignment	.long ?  ; placement constraint, never frozen payload padding
+Extent	.long ?  ; allocation extent; BSS has no initialized payload
 	.endstruct
-BLOCK_BYTES = Block.Bytes+4
+BLOCK_BYTES = Block.Extent+4
 Input	.struct
 Id	.long ?
 Data	.long ?
 Bytes	.long ?
+Owner	.long ?
+Section	.long ?
+Kind	.long ?
+Alignment	.long ?
+Extent	.long ?
 	.endstruct
-INPUT_BYTES = Input.Bytes+4
+INPUT_BYTES = Input.Extent+4
+KIND_CODE = 1
+KIND_DATA = 2
+KIND_BSS = 3
 Reloc	.struct
 Block	.long ?
 Offset	.long ?
@@ -83,15 +97,12 @@ build	.block
 	move.l Frame.Count(a6), d6
 	move.l Frame.RelocCount(a6), d7
 	; Multiplication is bounded before shifts/adds, never a truncated MULU.
-	cmpi.l #$0fffffff, d6
+	cmpi.l #$ffffffff/BLOCK_BYTES, d6
 	bhi.w bad
 	cmpi.l #$ffffffff/RELOC_BYTES, d7
 	bhi.w bad
 	move.l d6, d4
-	lsl.l #2, d4
-	move.l d4, d0
-	add.l d4, d4
-	add.l d0, d4
+	mulu.l #BLOCK_BYTES, d4
 	addi.l #HEADER_BYTES, d4
 	bcs.w bad
 	move.l d7, d0
@@ -106,10 +117,7 @@ build	.block
 inputReady
 	movea.l d0, a2
 	move.l d6, d1
-	lsl.l #2, d1
-	move.l d1, d2
-	add.l d1, d1
-	add.l d2, d1
+	mulu.l #INPUT_BYTES, d1
 	add.l d1, d0
 	bcs.w bad
 	move.l Frame.Relocs(a6), d0
@@ -126,6 +134,8 @@ relocReady
 checkBlock
 	cmp.l d6, d5
 	bhs.w checkRelocs
+	bsr.w checkInputGeometry
+	bne.w bad
 	move.l Input.Bytes(a2), d0
 	add.l d0, d4
 	bcs.w bad
@@ -226,10 +236,7 @@ semanticHeaderReady
 	move.l #HEADER_BYTES, Header.Blocks(a5)
 	move.l d7, Header.RelocCount(a5)
 	move.l d6, d0
-	lsl.l #2, d0
-	move.l d0, d1
-	add.l d0, d0
-	add.l d1, d0
+	mulu.l #BLOCK_BYTES, d0
 	addi.l #HEADER_BYTES, d0
 	move.l d0, Header.Relocs(a5)
 	movea.l a5, a1
@@ -252,6 +259,11 @@ writeBlock
 	move.l Input.Id(a2), Block.Id(a3)
 	move.l d1, Block.Offset(a3)
 	move.l Input.Bytes(a2), Block.Bytes(a3)
+	move.l Input.Owner(a2), Block.Owner(a3)
+	move.l Input.Section(a2), Block.Section(a3)
+	move.l Input.Kind(a2), Block.Kind(a3)
+	move.l Input.Alignment(a2), Block.Alignment(a3)
+	move.l Input.Extent(a2), Block.Extent(a3)
 	movea.l Input.Data(a2), a0
 	movea.l a5, a1
 	adda.l d1, a1
@@ -318,10 +330,7 @@ validate	.block
 	cmp.l d0, d6
 	bhi.w bad
 	move.l d6, d4
-	lsl.l #2, d4
-	move.l d4, d0
-	add.l d4, d4
-	add.l d0, d4
+	mulu.l #BLOCK_BYTES, d4
 	addi.l #HEADER_BYTES, d4
 	cmp.l Header.Relocs(a6), d4
 	bne.w bad
@@ -342,6 +351,8 @@ validate	.block
 nextBlock
 	cmp.l d6, d5
 	bhs.w relocs
+	bsr.w checkBlockGeometry
+	bne.w bad
 	cmp.l Block.Offset(a2), d4
 	bne.w bad
 	add.l Block.Bytes(a2), d4
@@ -465,6 +476,74 @@ done
 	rts
 	.bend  ; semanticView
 
+; A0=owned image memory.Block. After canonical interface installation, remove
+; that duplicate semantic payload. Success replaces the owner with a compact
+; image; failure preserves it completely. No borrowed views may cross this call.
+; D0/CCR=status; other registers preserved. At most one image overlaps copying.
+retireSemantics	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #memory.Block.Used+4, sp
+	movea.l sp, a5
+	clr.l memory.Block.Pointer(a5)
+	clr.l memory.Block.Capacity(a5)
+	clr.l memory.Block.Used(a5)
+	movea.l a0, a6
+	move.l memory.Block.Used(a6), d0
+	movea.l memory.Block.Pointer(a6), a0
+	bsr.w validate
+	bne.w bad
+	tst.l Header.SemanticsBytes(a0)
+	beq.w good
+	move.l Header.Payload(a0), d7
+	move.l Header.BlockCount(a0), d1
+	beq.w extentReady
+	subq.l #1, d1
+	mulu.l #BLOCK_BYTES, d1
+	movea.l a0, a1
+	adda.l Header.Blocks(a0), a1
+	adda.l d1, a1
+	move.l Block.Offset(a1), d7
+	add.l Block.Bytes(a1), d7
+extentReady
+	move.l d7, d0
+	movea.l a5, a0
+	jsr memory.reserveExact
+	bne.w bad
+	move.l d7, memory.Block.Used(a5)
+	movea.l memory.Block.Pointer(a6), a0
+	movea.l memory.Block.Pointer(a5), a1
+	move.l d7, d0
+	bsr.w copyBytes
+	movea.l memory.Block.Pointer(a5), a0
+	move.l d7, Header.Bytes(a0)
+	clr.l Header.Semantics(a0)
+	clr.l Header.SemanticsBytes(a0)
+	move.l d7, d0
+	bsr.w validate
+	bne.w bad
+	movea.l a6, a0
+	jsr memory.release
+	move.l memory.Block.Pointer(a5), memory.Block.Pointer(a6)
+	move.l memory.Block.Capacity(a5), memory.Block.Capacity(a6)
+	move.l d7, memory.Block.Used(a6)
+	clr.l memory.Block.Pointer(a5)
+	clr.l memory.Block.Capacity(a5)
+	clr.l memory.Block.Used(a5)
+good
+	moveq #0, d7
+	bra.w cleanup
+bad
+	moveq #1, d7
+cleanup
+	movea.l a5, a0
+	jsr memory.release
+	adda.w #memory.Block.Used+4, sp
+	move.l d7, d0
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; retireSemantics
+
 ; A0=image,D0=bytes,D1=block ID. Success: A1=payload,D1=length.
 ; D0/CCR=status (missing is invalid); remaining registers preserved.
 ; On failure A1 and D1 are unchanged. No borrowed pointer survives image movement.
@@ -480,6 +559,25 @@ done
 ; Same result contract as find. Image MUST have passed validate for these exact
 ; bytes and remained immutable since then. No validation or table scan repeats.
 findValidated	.block
+	movem.l d1/a2, -(sp)
+	bsr.w descriptorValidated
+	bne.w done
+	movea.l a1, a2
+	movea.l a0, a1
+	adda.l Block.Offset(a2), a1
+	move.l Block.Bytes(a2), d0
+	move.l d0, 0(sp)
+	moveq #0, d0
+done
+	movem.l (sp)+, d1/a2
+	tst.l d0
+	rts
+	.bend  ; findValidated
+
+; A0=validated image,D1=fragment ID. A1=borrowed Block row on success.
+; D0/CCR=status; other registers preserved, A1 unchanged on failure. The row
+; contains only offsets and numeric geometry, and moves with the image.
+descriptorValidated	.block
 	movem.l d2-d5/a0/a2, -(sp)
 	moveq #0, d2
 	move.l Header.BlockCount(a0), d3
@@ -491,10 +589,7 @@ next
 	lsr.l #1, d4
 	add.l d2, d4
 	move.l d4, d5
-	lsl.l #2, d5
-	move.l d5, d0
-	add.l d5, d5
-	add.l d0, d5
+	mulu.l #BLOCK_BYTES, d5
 	movea.l a0, a2
 	adda.l Header.Blocks(a0), a2
 	adda.l d5, a2
@@ -508,9 +603,7 @@ lower
 	move.l d4, d3
 	bra.w next
 found
-	movea.l a0, a1
-	adda.l Block.Offset(a2), a1
-	move.l Block.Bytes(a2), d1
+	movea.l a2, a1
 	moveq #0, d0
 	bra.w done
 bad
@@ -519,11 +612,13 @@ done
 	movem.l (sp)+, d2-d5/a0/a2
 	tst.l d0
 	rts
-	.bend  ; findValidated
+	.bend  ; descriptorValidated
 
 ; A0=LinkFrame. Copies one selected block and executes bounded patch recipes.
 ; D0/CCR=status; other registers preserved. Used changes only on success.
-; Resolve(A0=Context,D1=opaque target)->D0=status,D1=absolute address;
+; Resolve(A0=Context,D1=opaque target,D2=program)->D0=status,D1=address;
+; Absolute recipes may resolve section-relative fields for a relocatable writer;
+; other recipes require absolute targets. The consumer owns this choice.
 ; it preserves other registers and MUST be pure/stable across both passes.
 ; Base is available in the caller's context; targets never implicitly add Base.
 ; Address+unsigned Addend overflow is rejected. All selected resolutions and
@@ -560,6 +655,15 @@ linkValidated	.block
 	movea.l LinkFrame.Image(a6), a0
 	move.l LinkFrame.ImageBytes(a6), d0
 	move.l LinkFrame.BlockId(a6), d1
+	bsr.w descriptorValidated
+	bne.w bad
+	move.l LinkFrame.Base(a6), d0
+	move.l Block.Alignment(a1), d2
+	subq.l #1, d2
+	and.l d0, d2
+	bne.w bad
+	add.l Block.Extent(a1), d0
+	bcs.w bad
 	bsr.w findValidated
 	bne.w bad
 	movea.l a1, a5
@@ -624,7 +728,10 @@ next
 	movea.l d0, a3
 	movea.l LinkFrame.Context(a6), a0
 	move.l Reloc.Target(a4), d1
+	move.l d2, -(sp)
+	move.l Reloc.Program(a4), d2
 	jsr (a3)
+	move.l (sp)+, d2
 	tst.l d0
 	bne.w bad
 	add.l Reloc.Addend(a4), d1
@@ -686,6 +793,47 @@ done
 	.bend  ; linkValidated
 
 	.priv
+; A2=input/serialized row. Their numeric geometry shares explicit offsets.
+; D0/CCR=status; D1-D2 clobbered. No pointers or payload bytes are read.
+checkInputGeometry	.block
+	move.l Input.Kind(a2), d0
+	move.l Input.Alignment(a2), d1
+	move.l Input.Extent(a2), d2
+	bra.w checkGeometry
+	.bend  ; checkInputGeometry
+checkBlockGeometry	.block
+	move.l Block.Kind(a2), d0
+	move.l Block.Alignment(a2), d1
+	move.l Block.Extent(a2), d2
+	bra.w checkGeometry
+	.bend  ; checkBlockGeometry
+; Both row layouts intentionally share Bytes, Kind, Alignment and Extent.
+checkGeometry	.block
+	cmpi.l #KIND_CODE, d0
+	blo.w bad
+	cmpi.l #KIND_BSS, d0
+	bhi.w bad
+	tst.l d1
+	beq.w bad
+	move.l d1, -(sp)
+	subq.l #1, d1
+	and.l (sp)+, d1
+	bne.w bad
+	cmpi.l #KIND_BSS, d0
+	beq.w bss
+	cmp.l Input.Bytes(a2), d2
+	bne.w bad
+	bra.w good
+bss
+	tst.l Input.Bytes(a2)
+	bne.w bad
+good
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; checkGeometry
 ; A0/A1=nonoverlapping readable/writable ranges,D0=bytes. Other data registers
 ; preserved. The caller validated extents; empty ranges need no valid pointer.
 copyBytes	.block

@@ -80,6 +80,8 @@ PROJECTION_HASH_SCALAR = 25
 PROJECTION_PATH = 26
 PROJECTION_CALL_WRAPPED_REGISTER = 27
 MISSING_PROGRAM = $ffff
+GEOMETRY_DEPENDENT_BIT = 0
+GEOMETRY_FIXUP_BIT = 1
 HEADER_BYTES = package.HEADER_BYTES
 ROW_BYTES = package.ROW_BYTES
 PROJECTION_BYTES = 12
@@ -104,7 +106,7 @@ OperandShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
 Records	.res byte, 128
-Execution	.res byte, encoding.ContextBytes
+Execution	.res byte, encoding.CONTEXT_BYTES
 Output	.res byte, 4096
 FixupCount	.res word, 1
 FixupOffsets	.res long, 16
@@ -121,7 +123,8 @@ PositionRecipeArguments	.res long, 1
 PositionRecipeValue	.res long, 1
 PositionRecipeIdentity	.res long, 1
 PositionRecipeRequested	.res long, 1
-ReplayExecution	.res byte, encoding.ContextBytes
+GeometryState	.res word, 1
+ReplayExecution	.res byte, encoding.CONTEXT_BYTES
 ReplayRecords	.res byte, REPLAY_INPUT_BYTES
 ProjectedTarget	.res word, 1
 ProjectedIdentity	.res long, 1
@@ -155,6 +158,7 @@ encode	.block
 	move.w #MISSING_PROGRAM, PositionRecipeProgram
 	move.l #references.NO_BASE, PositionRecipeIdentity
 	move.l #REQUEST_AUTO, PositionRecipeRequested
+	clr.w GeometryState
 	move.w d0, d6
 	moveq #0, d7
 	move.b d1, d7
@@ -342,6 +346,21 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; outputPositionRequestedCandidate
+
+; Numeric admission proof for the latest encode attempt. D0/CCR=0 means no
+; non-fixup scalar projection observed a section/PC value and no fixup attempt
+; failed while considering candidates; nonzero is unproven. Others preserved.
+; Failed candidates contribute because movement can make their ranges match.
+; Consumers query only after successful encoding. Ordinary policy skips proof.
+outputGeometryProof	.block
+	tst.w GeometryState
+	bne.w unproven
+	moveq #0, d0
+	rts
+unproven
+	moveq #1, d0
+	rts
+	.bend  ; outputGeometryProof
 
 ; Replay the same package program with a forced candidate after placement.
 ; A0=package,A1=output,D0=capacity,D1=program,D2=arguments,D3=PC,D4=target.
@@ -1523,9 +1542,14 @@ projected
 	beq.w match
 	bra.w encodeStage
 fixupProjection
+	bset #GEOMETRY_FIXUP_BIT, GeometryState+1
 	bsr.w projectFixup
+	bclr #GEOMETRY_FIXUP_BIT, GeometryState+1
 	tst.l d0
-	bne.w projectionBad
+	beq.w fixupProjected
+	bsr.w geometryUnproven
+	bra.w projectionBad
+fixupProjected
 	addq.w #2, sp
 	bra.w fixupStage
 encodeStage
@@ -1578,7 +1602,12 @@ fixupVersion
 	move.w #7, encoding.Context.FirstInputLen(a6)
 	jsr encoding.semantic
 	tst.l d0
-	bne.w stageBad
+	beq.w fixupExecuted
+	; A narrower fixup range can become legal at a different placement. Treat
+	; all failed fixup attempts conservatively, including projection failures.
+	bsr.w geometryUnproven
+	bra.w stageBad
+fixupExecuted
 	move.w encoding.Context.PositionDependent(a6), PositionDependent
 	move.w encoding.Context.FixupCount(a6), FixupCount
 	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
@@ -1613,10 +1642,54 @@ done
 	rts
 	.bend  ; sequence
 
+; A failed fixup attempt cannot certify selection invariance. Caller already
+; owns failure status; preserve every register. Ordinary assembly skips proof.
+geometryUnproven	.block
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w done
+	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+done
+	rts
+	.bend  ; geometryUnproven
+
+; Observe bounded operands before path/product helpers evaluate scalar leaves.
+; D0/CCR scratch; preserves other registers. Ordinary policy skips the scan.
+observeOperandGeometry	.block
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w done
+	tst.w GeometryState
+	bne.w done
+	movem.l d1/a0, -(sp)
+	jsr references.tokens
+	tst.l d0
+	beq.w independent
+	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+independent
+	movem.l (sp)+, d1/a0
+done
+	rts
+	.bend  ; observeOperandGeometry
+
 ; Project a known scalar through the package's bounded 32-bit bridge.
 ; A0/A1=expression, A2=package.Context. Expression ABI and registers retained.
 ; D0/CCR=status; reject values outside signed-i32/unsigned-u32 representation.
 evaluateScalar	.block
+	; Fixed VM programs have static emitted geometry. Their candidate ranges,
+	; value programs and opcode inputs must not observe movable addresses unless
+	; the field is explicitly owned by a later fixup. Retain observations across
+	; every attempted row, including one that subsequently fails its range.
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w evaluate
+	tst.w GeometryState
+	bne.w evaluate
+	movem.l d1/a0, -(sp)
+	jsr references.expression
+	tst.l d0
+	beq.w independent
+	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+independent
+	movem.l (sp)+, d1/a0
+evaluate
 	jsr expression.evaluate
 	tst.l d0
 	bne.w done
@@ -1876,6 +1949,7 @@ scalarExpression
 pathValue
 	bsr.w operandSpan
 	bne.w valueReady
+	bsr.w observeOperandGeometry
 	jsr paths.evaluate
 	tst.l d0
 	bne.w valueReady
@@ -1938,7 +2012,10 @@ ready
 	movea.l a0, a6
 	jsr expression.evaluateWithSymbols
 	tst.l d0
-	bne.w done
+	beq.w evaluated
+	bsr.w geometryUnproven
+	bra.w done
+evaluated
 	cmpa.l a1, a0
 	bne.w bad
 	tst.l d4
@@ -2436,6 +2513,7 @@ projectionTupleItem	.block
 	move.b 2(a0), d1
 	bra.w lookupRegister
 identity
+	bsr.w observeOperandGeometry
 	movem.l d4-d5, -(sp)
 	moveq #1, d4
 	moveq #0, d5
@@ -2475,6 +2553,7 @@ bad
 tupleRegisterLeaf	.block
 	cmpi.b #products.BINARY_TAG, (a0)
 	bne.w plain
+	bsr.w observeOperandGeometry
 	movem.l d4-d5, -(sp)
 	moveq #0, d4
 	moveq #0, d5

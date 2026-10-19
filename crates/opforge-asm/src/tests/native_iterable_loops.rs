@@ -235,7 +235,8 @@ pub(super) fn oracle_with_module_roots(
         ]);
     }
     let cli = Cli::parse_from(args);
-    let config = validate_cli(&cli).map_err(|error| format!("{error:?}"))?;
+    let mut config = validate_cli(&cli).map_err(|error| format!("{error:?}"))?;
+    config.out_dir = Some(dir.to_path_buf());
     run_with_validated_cli_with_context(&cli, &config).map_err(|error| format!("{error:?}"))?;
     fs::read(output).map_err(|error| error.to_string())
 }

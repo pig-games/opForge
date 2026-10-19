@@ -240,3 +240,513 @@ fn native_discovery(disk: bool) {
     };
     super::native_source_cases::run_discovery_batch_command(&root, &image, &cases(), 4, command);
 }
+
+struct PrivateCase {
+    name: &'static str,
+    files: Vec<(&'static str, String)>,
+    accepted_modules: u32,
+}
+
+fn private_cases() -> Vec<PrivateCase> {
+    let outputs = ".region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
+    vec![
+        PrivateCase {
+            name: "private-real-text-names",
+            files: vec![
+                ("entry.asm", ".module main\n.cpu 68020\n.use experimental.amigaos.binary_text_names as names\n.section code,kind=code\n.long names.normalize\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.output \"build/module.bin\",format=bin,sections=code\n.output \"build/module.hunk\",format=hunk,sections=code\n.endmodule\n".into()),
+                ("library/binary_text_names.asm", fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../native/motorola68000/amigaos/experimental/binary_text_names.asm")).unwrap()),
+            ],
+            accepted_modules: 1,
+        },
+        PrivateCase {
+            name: "private-package-state-reference-fallback",
+            files: vec![
+                ("entry.asm", ".module main\n.cpu 68020\n.use consumer\n.section code,kind=code\n.long consumer.entry\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.output \"build/module.bin\",format=bin,sections=code\n.output \"build/module.hunk\",format=hunk,sections=code\n.endmodule\n".into()),
+                ("library/provider.asm", ".module provider\n.cpu 68020\n.fpu 68881\n.section code,kind=code\n rts\n.endsection\n.endmodule\n".into()),
+                ("library/consumer.asm", ".module consumer\n.use provider\n.pub\n.section code,kind=code\nentry .block\n fmove fp0,fp1\n rts\n.bend\n.endsection\n.endmodule\n".into()),
+            ],
+            accepted_modules: 0,
+        },
+        PrivateCase {
+            name: "private-text-state-reference-fallback",
+            files: vec![
+                ("entry.asm", ".module main\n.cpu 68020\n.use consumer\n.section code,kind=code\n.long consumer.entry\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.output \"build/module.bin\",format=bin,sections=code\n.output \"build/module.hunk\",format=hunk,sections=code\n.endmodule\n".into()),
+                ("library/provider.asm", ".module provider\n.cpu 68020\n.encode shared\n.cdef \"A\",\"A\",9\n.endencode\n.section code,kind=code\n rts\n.endsection\n.endmodule\n".into()),
+                ("library/consumer.asm", ".module consumer\n.cpu 68020\n.use provider\n.pub\n.section code,kind=code\nentry .block\n.enc shared\n.byte \"A\"\n.bend\n.endsection\n.endmodule\n".into()),
+            ],
+            accepted_modules: 0,
+        },
+        PrivateCase {
+            name: "three-section-output-selection",
+            files: vec![(
+                "entry.asm",
+                ".module main\n.cpu 68020\n.section alpha,kind=code\n.byte 1\n.endsection\n.section beta,kind=data\n.byte 2\n.endsection\n.section gamma,kind=data\n.byte 3\n.endsection\n.region ram,0,$ffff\n.place alpha in ram\n.place beta in ram\n.place gamma in ram\n.output \"build/module.bin\",format=bin,sections=alpha,beta,gamma\n.output \"build/module.hunk\",format=hunk,sections=alpha,beta,gamma\n.endmodule\n".into(),
+            )],
+            accepted_modules: 0,
+        },
+        PrivateCase {
+            name: "private-scalar-code-block",
+            files: vec![
+                ("entry.asm", format!(".module main\n.cpu 68020\n.use provider\n.section code,kind=code\n.long provider.entry\n.endsection\n.section data,kind=data\n.byte provider.VALUE,provider.ITEMS[1],.len(provider.ITEMS),provider.Info.X,provider.SEED.X\n.endsection\n{outputs}")),
+                ("library/provider.asm", ".module provider\n.cpu 68020\n.pub\nVALUE .const 5\nITEMS .const {3,9}\nInfo .struct\nPadding .long ?\nX .long ?\n.endstruct\nSEED .const Info{Padding:0,X:7}\n.section code,kind=code\nentry .block\n.word $1111\n rts\n.bend\n.endsection\n.endmodule\n".into()),
+            ],
+            accepted_modules: 1,
+        },
+        PrivateCase {
+            name: "private-schema-code-data-bss",
+            files: vec![
+                ("entry.asm", ".module main\n.cpu 68020\n.use provider\nALIAS = provider.entry\n.section code,kind=code\n.long ALIAS\n.endsection\n.section data,kind=data\n.long provider.payload,provider.scratch\n.byte provider.Frame.Value,provider.COUNT,provider.Seed.Value\n.endsection\n.section bss,kind=bss\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.place data in ram\n.place bss in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data,bss\n.endmodule\n".into()),
+                ("library/provider.asm", ".module provider\n.cpu 68020\n.pub\nFrame .struct\nPadding .long ?\nValue .long ?\n.endstruct\nCOUNT .const 5\nSeed .const Frame{Padding:0,Value:7}\n.section code,kind=code\nentry .block\n.byte $11\ninside .block\n.byte $22\n.bend\n.byte $33,$44\n rts\n.bend\n.priv\nunused .block\n.long $deadbeef\n.bend\n.endsection\n.pub\n.section data,kind=data\npayload .block\n.byte $45,$67\n.bend\n.endsection\n.section bss,kind=bss\nscratch .block\n.res byte,7\n.bend\n.endsection\n.endmodule\n".into()),
+            ],
+            accepted_modules: 1,
+        },
+        PrivateCase {
+            name: "private-cross-module-absolute-addresses",
+            files: vec![
+                ("entry.asm", format!(".module main\n.cpu 68020\n.use middle\n.section code,kind=code\n.long middle.entry\n.endsection\n.section data,kind=data\n.byte middle.VALUE\n.endsection\n{outputs}")),
+                ("library/middle.asm", ".module middle\n.cpu 68020\n.use leaf\n.pub\nVALUE .const leaf.FLAG+1\n.section code,kind=code\nentry .block\n lea leaf.payload.l,a0\n.long leaf.payload\n.word leaf.FLAG\n rts\n.bend\n.endsection\n.endmodule\n".into()),
+                ("library/leaf.asm", ".module leaf\n.cpu 68020\n.pub\nFLAG .const 6\n.section data,kind=data\npayload .block\n.long $12345678\n.bend\n.endsection\n.endmodule\n".into()),
+            ],
+            accepted_modules: 2,
+        },
+        PrivateCase {
+            name: "private-placement-reference-fallback",
+            files: vec![
+                ("entry.asm", ".module main\n.cpu 68020\n.use provider\n.section code,kind=code\n.long provider.entry\n.endsection\n.section data,kind=data\n.byte $55\n.endsection\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n".into()),
+                ("library/provider.asm", ".module provider\n.cpu 68020\n.pub\n.region ram,0,$ffff\n.section code,kind=code\nentry .block\n.byte $a5,$5a\n.bend\n.endsection\n.section data,kind=data\n.byte $33\n.endsection\n.place code in ram\n.place data in ram\n.endmodule\n".into()),
+            ],
+            accepted_modules: 0,
+        },
+        PrivateCase {
+            name: "private-warning-reference-fallback-once",
+            files: vec![
+                ("entry.asm", format!(".module main\n.cpu 68020\n.use provider\n.section code,kind=code\n.long provider.entry\n.endsection\n.section data,kind=data\n.byte $55\n.endsection\n{outputs}")),
+                ("library/provider.asm", ".module provider\n.cpu 68020\n.pub\n.section code,kind=code\nentry .block\n.byte 256,$6b\n.bend\n.endsection\n.endmodule\n".into()),
+            ],
+            accepted_modules: 0,
+        },
+        PrivateCase {
+            name: "private-active-include-reference-fallback-once",
+            files: vec![
+                ("entry.asm", format!(".module main\n.cpu 68020\n.use provider\n.section code,kind=code\n.long provider.entry\n.endsection\n.section data,kind=data\n.byte $55\n.endsection\n{outputs}")),
+                ("library/provider.asm", ".module provider\n.cpu 68020\n.priv\nLOAD .macro file\n.include .file\n.endmacro\n.pub\n.section code,kind=code\nentry .block\n.LOAD \"parts/payload.inc\"\n.byte $6b\n.bend\n.endsection\n.endmodule\n".into()),
+                ("library/parts/payload.inc", ".byte $7a\n".into()),
+                // Invocation-relative resolution must not use the root copy.
+                ("parts/payload.inc", ".byte $99\n".into()),
+            ],
+            accepted_modules: 0,
+        },
+    ]
+}
+
+fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
+    use clap::Parser;
+    use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
+
+    let dir = scratch();
+    fs::create_dir_all(dir.0.join("build")).unwrap();
+    fs::create_dir_all(dir.0.join("library")).unwrap();
+    for (relative, contents) in &case.files {
+        let path = dir.0.join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+    let cli = Cli::parse_from([
+        "opforge".into(),
+        dir.0.join("entry.asm").to_string_lossy().into_owned(),
+        "-M".into(),
+        dir.0.join("library").to_string_lossy().into_owned(),
+    ]);
+    let mut config = validate_cli(&cli).unwrap();
+    config.out_dir = Some(dir.0.clone());
+    run_with_validated_cli_with_context(&cli, &config)
+        .unwrap_or_else(|error| panic!("{}: {error:?}", case.name));
+    let binary = fs::read(dir.0.join("build/module.bin")).unwrap();
+    let hunk = fs::read(dir.0.join("build/module.hunk")).unwrap();
+    let segments = hunk::segments(&hunk).unwrap();
+    match case.name {
+        "private-real-text-names" => {
+            assert!(binary.len() > 4, "root pointer and reachable module code");
+            assert_eq!(segments.len(), 1);
+            assert_eq!(segments[0].relocations.len(), 1);
+        }
+        "private-package-state-reference-fallback" => {
+            assert!(binary.len() >= 10);
+            assert!(binary.windows(2).any(|bytes| bytes == [0x4e, 0x75]));
+        }
+        "private-text-state-reference-fallback" => {
+            assert_eq!(binary.iter().filter(|byte| **byte == 9).count(), 1);
+            assert!(!binary.contains(&65));
+        }
+        "three-section-output-selection" => {
+            assert_eq!(binary, [1, 2, 3]);
+            assert_eq!(segments.len(), 3);
+        }
+        "private-scalar-code-block" => {
+            assert!(binary.windows(2).any(|bytes| bytes == [0x11, 0x11]));
+            assert!(binary.windows(5).any(|bytes| bytes == [5, 9, 2, 4, 7]));
+            assert!(segments
+                .iter()
+                .any(|segment| !segment.relocations.is_empty()));
+        }
+        "private-schema-code-data-bss" => {
+            assert!(binary.windows(3).any(|bytes| bytes == [0x11, 0x22, 0x33]));
+            assert!(!binary
+                .windows(4)
+                .any(|bytes| bytes == [0xde, 0xad, 0xbe, 0xef]));
+            assert!(binary.windows(3).any(|bytes| bytes == [4, 5, 7]));
+            assert!(hunk::allocation(&hunk).unwrap().bss >= 7);
+            assert!(
+                segments
+                    .iter()
+                    .map(|segment| segment.relocations.len())
+                    .sum::<usize>()
+                    >= 3
+            );
+        }
+        "private-cross-module-absolute-addresses" => {
+            assert!(binary
+                .windows(4)
+                .any(|bytes| bytes == [0x12, 0x34, 0x56, 0x78]));
+            assert!(
+                segments
+                    .iter()
+                    .map(|segment| segment.relocations.len())
+                    .sum::<usize>()
+                    >= 3
+            );
+        }
+        "private-placement-reference-fallback" => {
+            assert!(binary.windows(2).any(|bytes| bytes == [0xa5, 0x5a]));
+        }
+        "private-active-include-reference-fallback-once" => {
+            assert_eq!(binary.iter().filter(|byte| **byte == 0x7a).count(), 1);
+            assert_eq!(binary.iter().filter(|byte| **byte == 0x6b).count(), 1);
+            assert!(!binary.contains(&0x99));
+        }
+        "private-warning-reference-fallback-once" => {
+            assert!(binary.windows(2).any(|bytes| bytes == [0, 0x6b]));
+        }
+        _ => unreachable!(),
+    }
+    (binary, hunk)
+}
+
+#[test]
+fn module_private_pipeline_live_rust_oracles() {
+    for case in private_cases() {
+        private_oracle(&case);
+    }
+    let files = reset_state_files();
+    let dir = scratch();
+    fs::create_dir_all(dir.0.join("build")).unwrap();
+    for (relative, contents) in &files {
+        let path = dir.0.join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+    let error = oracle_with_module_roots(&dir.0, &files[0].1, &["library"]).unwrap_err();
+    assert!(
+        error.contains("FNOP requires an active .fpu target"),
+        "expected reset-disabled FPU: {error}"
+    );
+}
+
+fn reset_state_files() -> Vec<(&'static str, String)> {
+    vec![
+        ("entry.asm", ".module main\n.cpu 68020\n.use consumer\n.section code,kind=code\n.word $1234\n.endsection\n.output \"build/module.hunk\",format=hunk,sections=code\n.endmodule\n".into()),
+        ("library/prior.asm", ".module prior\n.cpu 68020\n.fpu 68881\n.section code,kind=code\n rts\n.endsection\n.endmodule\n".into()),
+        ("library/resetter.asm", ".module resetter\n.cpu 68020\n.use prior\n.pub\n.section code,kind=code\nentry .block\n.word $1111\n.bend\n.endsection\n.endmodule\n".into()),
+        ("library/consumer.asm", ".module consumer\n.use resetter\n.section code,kind=code\n.long resetter.entry\n fnop\n.endsection\n.endmodule\n".into()),
+    ]
+}
+
+#[test]
+#[ignore = "requires instrumented compact CLI; compiled module retains CPU reset"]
+fn native_module_private_pipeline_reset_state() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let image =
+        fs::read(std::env::var_os("OPFORGE_MODULE_PIPELINE_PROGRESS_IMAGE").unwrap()).unwrap();
+    let source = reset_state_files();
+    let files: Vec<_> = source
+        .iter()
+        .map(|(path, contents)| OpforgeNativeCliGuestFile {
+            relative_path: path,
+            bytes: contents.as_bytes(),
+        })
+        .chain([OpforgeNativeCliGuestFile {
+            relative_path: "build/.keep",
+            bytes: b"",
+        }])
+        .collect();
+    for reference in [false, true] {
+        let parity = OpforgeNativeCliParityCase {
+            name: "private-outgoing-cpu-reset",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(source[0].1.as_bytes()),
+            command_template: Some(if reference {
+                "Work:entry.asm -M Work:library --reference-modules"
+            } else {
+                "Work:entry.asm -M Work:library"
+            }),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &files,
+            proof: OpforgeNativeCliProof::ExpectedFailureWithDiagnostic,
+        };
+        let outcome = run_prebuilt_compact_cli_case_from_env(&root, &parity, &image)
+            .expect("fresh retained CPU reset failure proof");
+        let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+            panic!("real native completion required")
+        };
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert!(run.protocol_completed);
+        assert_eq!(run.exit_code, Some(20));
+        assert!(run.stdout.contains("source: Work:library/consumer.asm"));
+        assert_eq!(private_counts(&run.stdout), [u32::from(!reference)]);
+    }
+}
+
+#[test]
+#[ignore = "requires prebuilt current compact CLI and fresh FS-UAE completion"]
+fn native_module_private_pipeline_exact_artifacts() {
+    private_pipeline_native(false);
+}
+
+#[test]
+#[ignore = "requires instrumented current compact CLI and fresh FS-UAE completion"]
+fn native_module_private_pipeline_progress() {
+    private_pipeline_native(true);
+}
+
+#[test]
+#[ignore = "requires prebuilt compact CLI; module warning fallback preserves --Werror"]
+fn native_module_private_pipeline_warning_error() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let image = fs::read(std::env::var_os("OPFORGE_MODULE_PIPELINE_IMAGE").unwrap()).unwrap();
+    let case = private_cases()
+        .into_iter()
+        .find(|case| case.name == "private-warning-reference-fallback-once")
+        .unwrap();
+    let (binary, hunk) = private_oracle(&case);
+    let files: Vec<_> = case
+        .files
+        .iter()
+        .map(|(path, contents)| OpforgeNativeCliGuestFile {
+            relative_path: path,
+            bytes: contents.as_bytes(),
+        })
+        .chain([OpforgeNativeCliGuestFile {
+            relative_path: "build/.keep",
+            bytes: b"",
+        }])
+        .collect();
+    for reference in [false, true] {
+        let parity = OpforgeNativeCliParityCase {
+            name: case.name,
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(case.files[0].1.as_bytes()),
+            command_template: Some(if reference {
+                "Work:entry.asm -M Work:library --Werror --reference-modules"
+            } else {
+                "Work:entry.asm -M Work:library --Werror"
+            }),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &files,
+            proof: OpforgeNativeCliProof::ExpectedFailureContaining(
+                "--Werror: warnings treated as errors",
+            ),
+        };
+        let outcome = run_prebuilt_compact_cli_case_from_env(&root, &parity, &image)
+            .expect("fresh module --Werror completion");
+        let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+            panic!("real native completion required")
+        };
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert!(run.protocol_completed);
+        assert_eq!(run.exit_code, Some(20));
+        assert_private_warnings(&case, &run.stdout);
+        for (path, expected) in [
+            ("Work/build/module.bin", &binary),
+            ("Work/build/module.hunk", &hunk),
+        ] {
+            assert_eq!(run.captured_artifacts[&PathBuf::from(path)], *expected);
+        }
+    }
+}
+
+fn private_pipeline_native(progress: bool) {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let variable = if progress {
+        "OPFORGE_MODULE_PIPELINE_PROGRESS_IMAGE"
+    } else {
+        "OPFORGE_MODULE_PIPELINE_IMAGE"
+    };
+    let image =
+        fs::read(std::env::var_os(variable).unwrap_or_else(|| panic!("set {variable}"))).unwrap();
+    let mut cases = private_cases();
+    if let Ok(filter) = std::env::var("OPFORGE_MODULE_PRIVATE_CASE") {
+        cases.retain(|case| case.name == filter);
+        assert!(!cases.is_empty(), "unknown private module case {filter}");
+    }
+    let oracles: Vec<_> = cases.iter().map(private_oracle).collect();
+    let artifacts: Vec<_> = oracles
+        .iter()
+        .map(|(binary, hunk)| {
+            [
+                OpforgeNativeCliExpectedArtifact {
+                    relative_path: "Work/build/module.bin",
+                    rust_oracle: binary,
+                },
+                OpforgeNativeCliExpectedArtifact {
+                    relative_path: "Work/build/module.hunk",
+                    rust_oracle: hunk,
+                },
+            ]
+        })
+        .collect();
+    let files: Vec<Vec<_>> = cases
+        .iter()
+        .map(|case| {
+            case.files
+                .iter()
+                .map(|(path, contents)| OpforgeNativeCliGuestFile {
+                    relative_path: path,
+                    bytes: contents.as_bytes(),
+                })
+                .chain([
+                    OpforgeNativeCliGuestFile {
+                        relative_path: "build/.keep",
+                        bytes: b"",
+                    },
+                    OpforgeNativeCliGuestFile {
+                        relative_path: "library/.keep",
+                        bytes: b"",
+                    },
+                ])
+                .collect()
+        })
+        .collect();
+    let mut failures = Vec::new();
+    for reference in [false, true] {
+        let command = if reference {
+            "Work:entry.asm -M Work:library --reference-modules"
+        } else {
+            "Work:entry.asm -M Work:library"
+        };
+        let parity: Vec<_> = cases
+            .iter()
+            .zip(&artifacts)
+            .zip(&files)
+            .map(|((case, artifacts), files)| OpforgeNativeCliParityCase {
+                name: case.name,
+                cpu_override: "68020",
+                extra_assembly_defines: &[],
+                source_override: Some(case.files[0].1.as_bytes()),
+                command_template: Some(command),
+                package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+                extra_guest_files: files,
+                proof: OpforgeNativeCliProof::ExactArtifacts(artifacts),
+            })
+            .collect();
+        if progress {
+            for (case, parity) in cases.iter().zip(&parity) {
+                let outcome = match run_prebuilt_compact_cli_case_from_env(&root, parity, &image) {
+                    Ok(outcome) => outcome,
+                    Err(error) => {
+                        failures.push(format!("{} reference={reference}: {error}", case.name));
+                        continue;
+                    }
+                };
+                let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+                    panic!("real native completion required")
+                };
+                assert_eq!(runs.len(), 1);
+                let run = &runs[0];
+                assert!(
+                    run.protocol_completed && run.success && run.exit_code == Some(0),
+                    "{} reference={reference}: {} {}",
+                    case.name,
+                    run.stdout,
+                    run.stderr
+                );
+                let counts = private_counts(&run.stdout);
+                let expected = [if reference { 0 } else { case.accepted_modules }];
+                if counts != expected {
+                    failures.push(format!(
+                        "{} reference={reference}: publication count {counts:?}, expected {expected:?}; stdout: {}",
+                        case.name, run.stdout
+                    ));
+                    continue;
+                }
+                assert_private_warnings(case, &run.stdout);
+                eprintln!(
+                    "PRIVATE_MODULE_CASE name={} reference={reference} accepted={} exact=bin+hunk",
+                    case.name, counts[0]
+                );
+            }
+        } else {
+            let results = run_prebuilt_compact_cli_breadth_from_env(&root, &parity, &image, 3)
+                .expect("fresh private pipeline artifact batch");
+            assert_eq!(results.len(), cases.len());
+            for (case, result) in cases.iter().zip(&results) {
+                let Some(run) = &result.run else {
+                    failures.push(format!(
+                        "{} reference={reference}: guest missing: {:?}",
+                        case.name, result.error
+                    ));
+                    continue;
+                };
+                if !run.protocol_completed
+                    || !run.success
+                    || run.exit_code != Some(0)
+                    || result.error.is_some()
+                {
+                    failures.push(format!(
+                        "{} reference={reference}: {:?} {} {}",
+                        case.name, result.error, run.stdout, run.stderr
+                    ));
+                    continue;
+                }
+                eprintln!(
+                    "PRIVATE_MODULE_CASE name={} reference={reference} exact=bin+hunk",
+                    case.name
+                );
+                assert_private_warnings(case, &run.stdout);
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "private pipeline artifact failures: {failures:?}"
+    );
+}
+
+fn assert_private_warnings(case: &PrivateCase, stdout: &str) {
+    if case.name == "private-warning-reference-fallback-once" {
+        assert_eq!(
+            stdout.matches("warning: Value truncated to byte").count(),
+            1,
+            "{}: warning must survive reference fallback exactly once: {stdout}",
+            case.name
+        );
+    }
+}
+
+fn private_counts(stdout: &str) -> Vec<u32> {
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let fields: std::collections::BTreeMap<_, _> = line
+                .strip_prefix("progress ")?
+                .split_whitespace()
+                .filter_map(|field| field.split_once('='))
+                .collect();
+            (u32::from_str_radix(fields.get("p")?, 16).ok()? == 300)
+                .then(|| u32::from_str_radix(fields["r"], 16).expect("accepted module count"))
+        })
+        .collect()
+}

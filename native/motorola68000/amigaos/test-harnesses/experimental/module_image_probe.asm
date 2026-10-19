@@ -597,9 +597,10 @@ next
 	.section data, kind=data
 	.align 4
 Inputs
-	.long 1, 0, FIRST_BYTES
-	.long 2, 0, SECOND_BYTES
-	.long 3, 0, 1
+	; Id,Data,Bytes,Owner,Section,Kind,Alignment,Extent (image.Input).
+	.long 1, 0, FIRST_BYTES, 1, 0, image.KIND_CODE, 1, FIRST_BYTES
+	.long 2, 0, SECOND_BYTES, 2, 0, image.KIND_CODE, 1, SECOND_BYTES
+	.long 3, 0, 1, 3, 0, image.KIND_CODE, 1, 1
 Fixup
 	.long 1, 2, 17, 4, 4, image.PROGRAM_ABSOLUTE, 0
 Build

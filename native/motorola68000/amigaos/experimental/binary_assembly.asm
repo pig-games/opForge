@@ -33,6 +33,7 @@
 	.use experimental.amigaos.binary_text_layout as textLayout
 	.use experimental.amigaos.binary_string_provider as stringProvider
 	.use experimental.amigaos.binary_memory as memory
+	.use experimental.amigaos.binary_module_records as moduleRecords
 	.include "memory_telemetry.i"
 	.pub
 
@@ -58,6 +59,10 @@ PetsciiName	.word ?
 ModuleStarts	.long ?  ; ordered-relative numeric module boundaries
 ModuleCount	.long ?
 Instruction	.long ?  ; optional final selected Hunk instruction metadata callback
+Reserved	.long ?  ; optional final selected BSS extent callback
+Aligned	.long ?  ; optional final alignment constraint callback, including zero padding
+Seed	.long ?  ; optional incoming numeric values after reset/parameter loading
+Fragment	.long ?  ; optional immutable module fragment placement/link callback
 	.endstruct
 
 OutputReloc	.struct
@@ -66,7 +71,7 @@ Target	.long ?
 Offset	.long ?
 	.endstruct
 OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
-FRAME_BYTES = Frame.Instruction+4
+FRAME_BYTES = Frame.Fragment+4
 FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
 FAILURE_WHILE_LAYOUT = 2
@@ -441,6 +446,19 @@ clearSymbols
 	movea.l a6, a0
 	jsr parameters.load
 	bne.w fail
+	movea.l Frame.Seed(a5), a1
+	cmpa.w #0, a1
+	beq.w incomingReady
+	movea.l a5, a0
+	jsr (a1)
+	bne.w fail
+	; Incoming compound values belong to the immutable seed frontier, alongside
+	; parameters. Layout replay must not rewind their arena storage away.
+	movea.l pkg.Context.Owner(a6), a0
+	cmpa.w #0, a0
+	beq.w incomingReady
+	move.l values.Owner.Arena+memory.Block.Used(a0), pkg.Context.RetainedValues(a6)
+incomingReady
 	movea.l Frame.Records(a5), a0
 	move.l Frame.RecordBytes(a5), d0
 	movea.l a6, a2
@@ -914,6 +932,12 @@ statementEnded
 	adda.l d6, a4
 	bra.w suspendTerminated
 layoutControl
+	cmpi.b #moduleRecords.OP_OWNERS, source.LayoutRecord.Opcode(a4)
+	beq.w compiledOwners
+	cmpi.b #moduleRecords.OP_REFERENCES, source.LayoutRecord.Opcode(a4)
+	beq.w compiledReferences
+	cmpi.b #moduleRecords.OP_FRAGMENT, source.LayoutRecord.Opcode(a4)
+	beq.w compiledFragment
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #6
 	lea SectionState, a0
 	movea.l a6, a1
@@ -921,6 +945,27 @@ layoutControl
 	jsr sections.control
 	bne.w fail
 	.ASSEMBLY_POSITION Position, d7, d5, SectionState, sections.State.Mode, sections.State.HunkCurrent, sections.State.OrderCount
+	bra.w omitted
+compiledReferences
+	movea.l a4, a0
+	move.l d6, d0
+	jsr moduleRecords.referencesView
+	bne.w fail
+	bra.w omitted
+compiledOwners
+	movea.l a4, a0
+	move.l d6, d0
+	jsr moduleRecords.ownersView
+	bne.w fail
+	bra.w omitted
+compiledFragment
+	btst #source.FLAG_OMIT_BIT, source.RecordHeader.Flags(a4)
+	bne.w omitted
+	movea.l a4, a0
+	move.l d6, d0
+	movea.l a6, a2
+	bsr.w emitCompiledFragment
+	bne.w fail
 omitted
 	adda.l d6, a4
 	bra.w line
@@ -1496,6 +1541,10 @@ cpu
 	movem.l (sp)+, a2
 	bra.w done
 origin
+	; A movable image has no owned absolute-origin recipe. Its consumer may
+	; preserve alignment separately, but must not silently freeze a PC reset.
+	btst #pkg.POSITION_OBSERVATION_POLICY_BIT, pkg.Context.ExpressionPolicy+1(a2)
+	bne.w bad
 	lea SectionState, a4
 	tst.w sections.State.Mode(a4)
 	bne.w bad
@@ -1527,9 +1576,13 @@ end
 	moveq #2, d0
 	bra.w done
 align
-	; Fixed module images cannot preserve placement-dependent padding yet.
+	; An image consumer must own the alignment constraint, never frozen padding.
+	movea.l Session+session.State.Frame, a6
+	tst.l Frame.Aligned(a6)
+	bne.w alignmentOwned
 	btst #pkg.POSITION_OBSERVATION_POLICY_BIT, pkg.Context.ExpressionPolicy+1(a2)
 	bne.w bad
+alignmentOwned
 	movea.l a2, a6
 	jsr expr.evaluate
 	movea.l a6, a2
@@ -1556,15 +1609,7 @@ align
 	and.l d0, d6
 	sub.l d3, d6
 	move.l d6, d0
-	lea SectionState, a4
-	cmpi.w #3, sections.State.ActiveKind(a4)
-	bne.w alignBytes
-	movea.l a4, a0
-	movea.l a2, a1
-	jsr sections.reserve
-	bra.w done
-alignBytes
-	bsr.w emitGap
+	bsr.w emitAlignment
 	bra.w done
 reserveByteCount
 	movea.l a2, a6
@@ -1622,9 +1667,7 @@ reserveCount
 	swap d3
 	tst.w d3
 	bne.w bad
-	lea SectionState, a0
-	movea.l a2, a1
-	jsr sections.reserve
+	bsr.w reserveSectionBytes
 	bra.w done
 data
 	move.l pkg.Context.Pc(a2), DataPc
@@ -1874,6 +1917,19 @@ nextFixup
 	move.l d4, d1
 	move.l d3, d4
 	move.l #hunkrefs.NO_BASE, d3
+	; A private artifact consumer additionally needs the source identity. The
+	; ordinary Hunk writer keeps its existing section/addend callback contract.
+	movea.l Session+session.State.Frame, a0
+	tst.l Frame.Instruction(a0)
+	beq.w identityReady
+	movem.l d1-d2/d4, -(sp)
+	move.l d7, d0
+	jsr encoding.outputFixupIdentity
+	beq.w identityFound
+	move.l #hunkrefs.NO_BASE, d3
+identityFound
+	movem.l (sp)+, d1-d2/d4
+identityReady
 	moveq #0, d0
 	move.w sections.State.HunkCurrent(a4), d0
 	movea.l Session+session.State.Frame, a0
@@ -2003,6 +2059,7 @@ fail
 	.bend  ; name
 
 	.include "binary_data_reserve.asm"
+	.include "binary_assembly_fragments.i"
 
 ; D0=padding count,A2=Context. Flat address gaps are uninitialized; placed
 ; section payloads retain initialized padding, as in Rust's section replay.

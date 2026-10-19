@@ -70,9 +70,22 @@ exports
 firstExport
 	moveq #1, d5
 	move.l Export.Id(a4), d6
+	cmpi.l #65535, d6
+	bhi.w bad
+	tst.l Export.NameBytes(a4)
+	bne.w publicName
+	tst.l Export.Name(a4)
+	bne.w bad
+	cmpi.l #values.STRUCT_TYPE, Export.Kind(a4)
+	bne.w bad
+	bra.w exportValue
+publicName
 	bsr.w serializedName
 	bne.w bad
+exportValue
 	move.l Export.Kind(a4), d3
+	cmpi.l #FRAGMENT_ADDRESS, d3
+	beq.w fragment
 	cmpi.l #values.STRUCT_LITERAL, d3
 	bhi.w bad
 	tst.l d3
@@ -96,6 +109,18 @@ firstExport
 	bne.w bad
 	bsr.w compoundCells
 	bne.w bad
+	bsr.w closure
+	bne.w bad
+	bra.w nextExport
+fragment
+	tst.l Export.Provenance(a4)
+	bne.w bad
+	tst.l Export.High(a4)
+	beq.w bad
+	cmpi.l #65535, Export.High(a4)
+	bhi.w bad
+	cmpi.l #memory.LIMIT, Export.Low(a4)
+	bhi.w bad
 	bra.w nextExport
 scalar
 	cmpi.l #8, Export.Provenance(a4)
@@ -122,6 +147,8 @@ members
 firstMember
 	moveq #1, d5
 	move.l Member.Id(a4), d6
+	cmpi.l #65535, d6
+	bhi.w bad
 	bsr.w serializedName
 	bne.w bad
 	movea.l a6, a0
@@ -236,6 +263,88 @@ malformed
 	moveq #INVALID, d0
 	rts
 	.bend  ; compoundCells
+
+; A6=bounded image,A1=bounded compound,D3=kind. Every nominal schema and
+; member key must belong to this same image. Other registers preserved.
+closure	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	move.l d3, d4
+	movea.l a1, a3
+	move.l values.Record.Count(a3), d7
+	cmpi.l #values.STRUCT_TYPE, d4
+	bhs.w nominal
+	cmpi.l #values.ADDRESS_RECORD, d4
+	bne.w good
+	lea values.RECORD_BASE_BYTES(a3), a3
+	moveq #values.FIELD_BYTES, d5
+	bra.w field
+nominal
+	move.l values.StructRecord.Nominal(a3), d1
+	move.l Header.ExportCount(a6), d2
+	movea.l a6, a0
+	adda.l Header.Exports(a6), a0
+findSchema
+	tst.l d2
+	beq.w bad
+	cmp.l Export.Id(a0), d1
+	beq.w schema
+	adda.w #EXPORT_BYTES, a0
+	subq.l #1, d2
+	bra.w findSchema
+schema
+	cmpi.l #values.STRUCT_TYPE, Export.Kind(a0)
+	bne.w bad
+	; The target row may occur later, so bound it before reading its nominal.
+	move.l Export.Low(a0), d0
+	andi.l #7, d0
+	bne.w bad
+	move.l Header.ArenaBytes(a6), d0
+	subi.l #values.STRUCT_BASE_BYTES, d0
+	bcs.w bad
+	cmp.l Export.Low(a0), d0
+	blo.w bad
+	movea.l a6, a2
+	adda.l Header.Arena(a6), a2
+	adda.l Export.Low(a0), a2
+	cmpi.l #values.STRUCT_TYPE, values.Record.Kind(a2)
+	bne.w bad
+	move.l values.StructRecord.Nominal(a2), d0
+	cmp.l d1, d0
+	bne.w bad
+	lea values.STRUCT_BASE_BYTES(a3), a3
+	moveq #values.STRUCT_FIELD_BYTES, d5
+	cmpi.l #values.STRUCT_TYPE, d4
+	beq.w field
+	moveq #values.FIELD_BYTES, d5
+field
+	tst.l d7
+	beq.w good
+	move.l (a3), d1
+	move.l Header.MemberCount(a6), d2
+	movea.l a6, a0
+	adda.l Header.Members(a6), a0
+findMember
+	tst.l d2
+	beq.w bad
+	cmp.l Member.Id(a0), d1
+	beq.w nextField
+	adda.w #MEMBER_BYTES, a0
+	subq.l #1, d2
+	bra.w findMember
+nextField
+	adda.l d5, a3
+	subq.l #1, d7
+	bra.w field
+good
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; closure
 
 	.pub
 ; A0=image,D0=exact bytes,D1=local ID. D0/CCR=OK,NOT_FOUND,INVALID;

@@ -21,8 +21,8 @@ HEADER_BYTES = Header.ArenaBytes+4
 MAGIC = $4f464d53; OFMS integrity tag, not a contract-version selector
 NAME_LIMIT = 255
 Export	.struct
-Id	.long ?
-Name	.long ?  ; input pointer; serialized image-relative offset
+Id	.long ?  ; canonical module-local value identity
+Name	.long ?  ; input pointer; serialized offset, zero for private schema dependency
 NameBytes	.long ?
 Kind	.long ?
 Low	.long ?  ; compound: arena-relative offset
@@ -48,6 +48,8 @@ FRAME_BYTES = Frame.Destination+4
 OK = 0
 INVALID = 1
 NOT_FOUND = 2
+; Artifact address recipe; never a runtime values.Kind.
+FRAGMENT_ADDRESS = $100
 	.priv
 	.section bss, kind=bss
 Active	.res long, 1
@@ -67,6 +69,7 @@ ArenaOffset	.res long, 1
 ; Destination must be empty and disjoint from all input/storage descriptors.
 ; Publication is transactional; failure leaves Destination empty. The caller
 ; supplies complete nominal/member dependency closure. IDs remain module-local.
+; Nameless rows may retain only a private schema required by public values.
 ; Current values.copyRecord accepts scalar-cell compound descriptors only;
 ; unsupported nested compounds reject rather than retaining borrowed offsets.
 ; Templates, configuration and deferred recipe programs are not in this image.
@@ -116,6 +119,14 @@ build	.block
 	btst #0, d0
 	bne.w bad
 exports
+	tst.l Export.NameBytes(a4)
+	bne.w publicName
+	tst.l Export.Name(a4)
+	bne.w bad
+	cmpi.l #values.STRUCT_TYPE, Export.Kind(a4)
+	bne.w bad
+	bra.w exportValue
+publicName
 	movea.l Export.Name(a4), a0
 	move.l Export.NameBytes(a4), d0
 	bsr.w inputName
@@ -123,10 +134,13 @@ exports
 	move.l Export.NameBytes(a4), d0
 	add.l d0, NameBytes
 	bcs.w bad
+exportValue
 	move.l Export.Kind(a4), d3
+	move.l Export.Low(a4), d2
+	cmpi.l #FRAGMENT_ADDRESS, d3
+	beq.w fragment
 	cmpi.l #values.STRUCT_LITERAL, d3
 	bhi.w bad
-	move.l Export.Low(a4), d2
 	tst.l d3
 	beq.w scalar
 	tst.l Export.High(a4)
@@ -144,6 +158,16 @@ exports
 	lea Compact, a0
 	jsr values.copyRecord
 	bne.w bad
+	bra.w offsetReady
+fragment
+	tst.l Export.Provenance(a4)
+	bne.w bad
+	tst.l Export.High(a4)
+	beq.w bad
+	cmpi.l #65535, Export.High(a4)
+	bhi.w bad
+	cmpi.l #memory.LIMIT, d2
+	bhi.w bad
 	bra.w offsetReady
 scalar
 	cmpi.l #8, Export.Provenance(a4)
@@ -216,8 +240,12 @@ writeExports
 	tst.l d7
 	beq.w writeMembersBegin
 	move.l Export.Id(a4), (a2)+
+	moveq #0, d0
+	tst.l Export.NameBytes(a4)
+	beq.w noName
 	move.l a5, d0
 	sub.l a3, d0
+noName
 	move.l d0, (a2)+
 	move.l Export.NameBytes(a4), (a2)+
 	move.l Export.Kind(a4), (a2)+

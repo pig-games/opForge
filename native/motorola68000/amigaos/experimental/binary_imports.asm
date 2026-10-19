@@ -226,6 +226,7 @@ reserveSelections	.block
 	tst.l d0
 	rts
 	.bend  ; reserveSelections
+	.include "binary_import_dependencies.i"
 
 ; A0=import state,D0=minimum identity slots. D0/CCR=status; others kept.
 reserve	.block

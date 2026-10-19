@@ -22,6 +22,7 @@
 	.use experimental.amigaos.binary_name_store as nameStore
 	.use experimental.amigaos.binary_scopes as scopes
 	.use experimental.amigaos.binary_assembly as assembly
+	.use experimental.amigaos.binary_dependencies as dependencies
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_hunk_output as hunk
 	.use experimental.amigaos.binary_output_plan as output_plan
@@ -48,6 +49,18 @@
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_scope_layout as layout
 	.use experimental.amigaos.binary_file_data as filedata
+	.use experimental.amigaos.binary_module_compile as moduleCompile
+	.use experimental.amigaos.binary_module_scope as moduleScope
+	.use experimental.amigaos.binary_module_snapshot as moduleSnapshot
+	.use experimental.amigaos.binary_module_remap as moduleRemap
+	.use experimental.amigaos.binary_module_image as moduleImage
+	.use experimental.amigaos.binary_module_registry as moduleRegistry
+	.use experimental.amigaos.binary_module_runtime as moduleRuntime
+	.use experimental.amigaos.binary_module_carrier as moduleCarrier
+	.use experimental.amigaos.binary_module_admission as moduleAdmission
+	.use experimental.amigaos.binary_section_prepare as sectionPrepare
+	.use experimental.amigaos.binary_imports as imports
+	.use exprvm.amigaos.runtime as runtime
 	.use prvm.amigaos.abi as parser_abi
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
@@ -174,8 +187,10 @@ OutputDefault	.word ?  ; CLI output filename was omitted
 WarningsAsErrors	.word ?
 LowerLine	.long ?  ; temporary capture proof callback; zero uses frontend.line
 CaptureDirectory	.long ?  ; optional disk-backed capture scratch directory
+ReferenceModules	.word ?
+Reserved	.word ?
 	.endstruct
-FRAME_BYTES = Frame.CaptureDirectory+4
+FRAME_BYTES = Frame.Reserved+2
 	.section code, kind=code
 	.pub
 ; Assemble one package and source selection. A0=Frame, D0=Shell return code.
@@ -188,6 +203,7 @@ execute	.block
 	move.w Frame.WarningsAsErrors(a0), CliWarningsAsErrors
 	move.l Frame.LowerLine(a0), LowerLineRoutine
 	move.l Frame.CaptureDirectory(a0), CaptureDirectory
+	move.w Frame.ReferenceModules(a0), ReferenceModules
 	move.w Frame.OutputKind(a0), CliOutputKind
 	move.w Frame.StartSet(a0), OutputStartSet
 	move.l Frame.Start(a0), OutputStart
@@ -386,6 +402,17 @@ sourceFailed
 invalidConfig
 	move.l #20, ReturnCode
 cleanup
+	bsr.w privateReleaseAttempt
+	bsr.w privateReleaseRetained
+	jsr moduleRuntime.release
+	lea PrivateRegistry, a0
+	jsr moduleRegistry.release
+	lea PrivatePublishedValues, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	clr.l PrivatePublishedCount
+	clr.l PrivateTextChecked
+	clr.l PrivateTextUnsafe
 	.CAPTURE_LIFE_PHASE #capture_life.CLEANUP
 	bsr.w closeIncludes
 	bsr.w closeSource
@@ -1024,6 +1051,7 @@ parametersSaved
 	lea RootPaths, a0
 	jsr memory.release
 	bsr.w clearIncludeText
+	bsr.w privateRetainKnown
 	lea Front, a0
 	jsr frontend.finish
 	clr.l FrontStarted
@@ -1551,8 +1579,17 @@ run	.block
 captureSpans
 	move.l #appendEmission, assembly.Frame.Emitted(a0)
 assemble
+	lea PrivateRegistry, a0
+	jsr moduleRuntime.begin
+	lea Work, a0
+	move.l #moduleRuntime.fragment, assembly.Frame.Fragment(a0)
+	clr.l assembly.Frame.Seed(a0)
+	tst.l PrivatePublishedCount
+	beq.w incomingReady
+	move.l #privateGlobalSeed, assembly.Frame.Seed(a0)
+incomingReady
 	jsr assembly.assemble
-	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_WORK, assembly.TraversalPasses, assembly.TraversalRecords, #0
+	.MEMORY_PROGRESS DosBase, #PROGRESS_ASSEMBLY_WORK, assembly.TraversalPasses, assembly.TraversalRecords, PrivatePublishedCount
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ROOTS, activation.Selections, activation.Roots, activation.GlobalSelections
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_SIZING, assembly.SizingPasses, branches.DeferredEvaluations, #0
 	.MEMORY_PROGRESS DosBase, #PROGRESS_SCOPED_ITERABLE, repetition.IterableScopes, repetition.IterableBindings, #0
@@ -2026,6 +2063,7 @@ done
 	.include "binary_app_lexical_store.i"
 	.include "binary_source_static_include.i"
 	.include "binary_source_schedule.i"
+	.include "binary_module_private.i"
 	.include "binary_module_pipeline.i"
 	.include "binary_source_discovery_idx.i"
 	.include "binary_source_selection.i"
@@ -2034,6 +2072,11 @@ done
 	.include "binary_source_cursor.i"
 	.endsection
 	.section data, kind=data
+PrivateNumberPointers
+	.long SourceOrdinal, OriginId, SourceLine, ScheduleCursor, ScheduleEnd
+	.long ScheduleFile, ScheduleDerived, CaptureRegionCurrent, CaptureDerived
+	.long TemplateFloor, SpanCount, OriginCount, LineOffset
+	.long SourceCursorData, SourceCursorData+4, SourceCursorData+8, SourceCursorData+12
 .ifdef OPFORGE_CAPTURE_LIFETIME_AUDIT
 ; Borrowed layout packet keeps the observer independent of production modules.
 	.align 2
@@ -2096,6 +2139,8 @@ CliOutputKind	.res word, 1
 CliWarningsAsErrors	.res word, 1
 LowerLineRoutine	.res long, 1
 CaptureDirectory	.res long, 1
+ReferenceModules	.res word, 1
+	.align 4
 	.align 4
 CliModuleRoots	.res long, 1
 CliModuleCount	.res long, 1
@@ -2156,6 +2201,58 @@ ModulePipeline	.res long, 1
 SeededParameters	.res long, 1
 SeededMaps	.res long, 1
 PublishedCapture	.res byte, SPAN_BYTES
+PrivateCompile	.res byte, moduleCompile.CONTEXT_BYTES
+PrivateInstall	.res byte, moduleScope.FRAME_BYTES
+PrivateLookup	.res byte, moduleScope.FRAME_BYTES
+PrivateCarrier	.res byte, moduleCarrier.FRAME_BYTES
+PrivateResolver	.res byte, moduleRemap.FRAME_BYTES
+PrivateRegistry	.res byte, moduleRegistry.STATE_BYTES
+PrivateGlobalScope	.res long, 1
+PrivateConfigScope	.res long, 1
+PrivateConfigModule	.res long, 1
+PrivateFrontend	.res long, 1
+PrivateBorrowedFront	.res long, 1
+PrivateBorrowedRecords	.res long, 1
+PrivateSavedGraphIndex	.res long, 1
+PrivateSavedNumbers	.res long, PRIVATE_NUMBER_COUNT
+PrivateModuleName	.res byte, PATH_BYTES
+PrivateModuleBytes	.res long, 1
+PrivateDependencyName	.res byte, PATH_BYTES
+PrivateDependencyBytes	.res long, 1
+PrivateCompareName	.res byte, PATH_BYTES
+PrivateEntry	.res byte, records.ENTRY_BYTES
+PrivateSectionMeta	.res byte, 8*PRIVATE_SECTION_BYTES
+PrivateSections	.res byte, 8*moduleCarrier.SECTION_BYTES
+PrivateOwnerCount	.res long, 1
+PrivateInstalledModule	.res long, 1
+PrivateModuleId	.res long, 1
+PrivateRecordStart	.res long, 1
+PrivatePublishedCount	.res long, 1
+PrivateImage	.res byte, memory.Block.Used+4
+PrivateSnapshot	.res byte, memory.Block.Used+4
+PrivateIncoming	.res byte, memory.Block.Used+4
+PrivateSeen	.res byte, memory.Block.Used+4
+PrivateDependencies	.res byte, memory.Block.Used+4
+PrivateOwners	.res byte, memory.Block.Used+4
+PrivateLinksBlock	.res byte, memory.Block.Used+4
+PrivateAddresses	.res byte, memory.Block.Used+4
+PrivateCarrierRecords	.res byte, memory.Block.Used+4
+PrivateReset	.res byte, memory.Block.Used+4
+PrivateTextChecked	.res long, 1
+PrivateTextUnsafe	.res long, 1
+PrivateFileSpans	.res byte, memory.Block.Used+4
+PrivateOrigins	.res byte, memory.Block.Used+4
+PrivatePublishedValues	.res byte, memory.Block.Used+4
+PrivateRetainedOwner	.res byte, values.OWNER_BYTES
+PrivateRetainedValues	.res byte, memory.Block.Used+4
+PrivateRetainedDefined	.res byte, memory.Block.Used+4
+PrivateRetainedBase	.res long, 1
+PrivateSeedGlobal	.res long, 1
+PrivateSeedSourceOwner	.res long, 1
+PrivateSeedSourceValues	.res long, 1
+PrivateSeedSourceDefined	.res long, 1
+PrivateSeedSourceBase	.res long, 1
+
 OrderFrame	.res byte, ordered.FRAME_BYTES
 OrderedRecords	.res byte, memory.Block.Used+4
 OrderedFiles	.res byte, memory.Block.Used+4

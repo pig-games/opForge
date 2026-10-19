@@ -23,6 +23,30 @@ pub(super) fn capture_command(command: &str, mode: &str) -> String {
     }
 }
 
+// One execution policy selects the preserved reference, without rebuilding or
+// modifying the source workload. Older frozen cases keep their original command.
+fn module_command(command: &str, mode: Option<&str>) -> String {
+    match mode {
+        None | Some("private") => command.to_owned(),
+        Some("reference") => format!("{command} --reference-modules"),
+        Some(other) => panic!("module mode must be private or reference, got {other:?}"),
+    }
+}
+
+#[test]
+fn module_comparison_policy_is_explicit() {
+    assert_eq!(module_command("-i source.asm", None), "-i source.asm");
+    assert_eq!(
+        module_command("-i source.asm", Some("private")),
+        "-i source.asm"
+    );
+    assert_eq!(
+        module_command("-i source.asm", Some("reference")),
+        "-i source.asm --reference-modules"
+    );
+    assert!(std::panic::catch_unwind(|| module_command("", Some("typo"))).is_err());
+}
+
 // The existing runner captures files, not empty directories. This checks leaked
 // scratch payloads; the component probe separately checks private dir removal.
 pub(super) fn capture_scratch_files(run: &FsUaeSmokeRun) -> Vec<String> {
@@ -98,6 +122,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     let input: Value = serde_json::from_slice(&fs::read(&specification).unwrap()).unwrap();
     assert_eq!(input["schema"], 1);
     assert!(input["capture_mode"].is_null() || input["capture_mode"].is_string());
+    assert!(input["module_mode"].is_null() || input["module_mode"].is_string());
     let capture_mode = capture_mode(input["capture_mode"].as_str());
     let output = directory.join("result");
     fs::create_dir(&output).expect("fresh result directory required");
@@ -195,10 +220,10 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         .iter()
         .map(|value| value.as_str().unwrap())
         .collect::<Vec<_>>();
-    let command = capture_command(
+    let command = module_command(&capture_command(
         "-i src/experimental/opforge_compact_cli.asm --hunk Work:output.hunk -M src -I src/debug",
         capture_mode,
-    );
+    ), input["module_mode"].as_str());
     let case = OpforgeNativeCliParityCase {
         name: "full-exported-selfhost-comparison",
         cpu_override: "68020",
@@ -250,10 +275,15 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     let scratch_files = capture_scratch_files(run);
     let result = json!({
         "capture_mode": capture_mode, "capture_scratch_files_remaining": scratch_files,
+        "module_mode": input["module_mode"],
         "budget_failure_diagnostic": budget_failure_diagnostic,
         "success": run.success && run.protocol_completed && run.exit_code == Some(0) && scratch_files.is_empty(),
         "guest_protocol_completed": run.protocol_completed, "assembler_exit_code": run.exit_code,
         "exact_rust_match": run.verified_output.as_deref() == Some(oracle.as_slice()),
+        "self_host": !budget_failure_diagnostic && define_strings.is_empty()
+            && image == oracle && run.success && run.protocol_completed
+            && run.exit_code == Some(0)
+            && run.verified_output.as_deref() == Some(image.as_slice()),
         "start_to_done_host_seconds": run.start_to_done_host_seconds,
         "native_image_digest": run.native_image_digest, "image_bytes": image.len(),
         "linked_static_reserved_bytes": static_bytes, "live_rust_oracle_digest": opforge_self_host_package_digest(&oracle),

@@ -77,9 +77,9 @@ fn prepare(dir: &Path) -> Vec<u8> {
     let mut absolute = vec![8, 0x81, 3, 0x13, 7, 0, 4];
     absolute.extend(register(name("d0")));
     let mut fixture = format!(
-        "NAME_COUNT={}\nSYMBOL_COUNT={}\nFIRST_ID={}\nSECOND_ID={}\nMOVE_ID={}\nLONG_QUALIFIER={}\nBSR_ID={}\nWORD_QUALIFIER={}\nQUALIFIED_FIRST_ID={}\nQUALIFIED_SECOND_ID={}\nPROJECTED_ID={}\nMEMBER_ID={}\n",
+        "NAME_COUNT={}\nSYMBOL_COUNT={}\nFIRST_ID={}\nSECOND_ID={}\nMOVE_ID={}\nLONG_QUALIFIER={}\nBSR_ID={}\nWORD_QUALIFIER={}\nQUALIFIED_FIRST_ID={}\nQUALIFIED_SECOND_ID={}\nPROJECTED_ID={}\nMEMBER_ID={}\nFPU_ID={}\nNONE_ID={}\nENCODE_ID={}\nMOVEQ_ID={}\n",
         first, projected + 1, first, second, name("move"), qualifier, name("bsr"), word_qualifier,
-        qualified_first, qualified_second, projected, name("d0")
+        qualified_first, qualified_second, projected, name("d0"), name("fpu"), name("none"), name("encode"), name("moveq")
     );
     for (index, operands) in [repeated, distinct, addend, absolute].iter().enumerate() {
         fixture.push_str(&format!(
@@ -94,6 +94,18 @@ fn prepare(dir: &Path) -> Vec<u8> {
     fixture.push_str(&format!(
         "BranchOperand .byte {}\nBranchOperandEnd\n",
         symbol(second)
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
+    ));
+    let mut range_operand = vec![8];
+    range_operand.extend(symbol(first));
+    range_operand.push(4);
+    range_operand.extend(register(name("d0")));
+    fixture.push_str(&format!(
+        "RangeOperand .byte {}\nRangeOperandEnd\n",
+        range_operand
             .iter()
             .map(u8::to_string)
             .collect::<Vec<_>>()
@@ -171,7 +183,11 @@ fn build_probe(root: &Path, dir: &Path) -> Vec<u8> {
     if let Err(error) = run_with_validated_cli_with_context(&cli, &config) {
         match error {
             cli_core::CliRunError::Assembler { error, .. } => {
-                panic!("native identity probe: {}", error.summary());
+                panic!(
+                    "native identity probe: {}\n{:?}",
+                    error.summary(),
+                    error.diagnostics()
+                );
             }
             error => panic!("native identity probe: {error:?}"),
         }
@@ -185,6 +201,69 @@ fn native_instruction_fixup_identity_host_assembles() {
     let dir = scratch();
     assert!(!prepare(&dir.0).is_empty());
     assert!(!build_probe(&root, &dir.0).is_empty());
+}
+
+#[test]
+fn native_module_carrier_host_assembles() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let dir = scratch();
+    let input = dir.0.join("carrier_host.asm");
+    fs::write(
+        &input,
+        r#" .module tests.amigaos.carrier_host
+ .cpu 68020
+ .use experimental.amigaos.binary_module_carrier as carrier
+ .use experimental.amigaos.binary_module_image as image
+ .use experimental.amigaos.binary_module_records as records
+ .use experimental.amigaos.binary_memory as memory
+ .use experimental.amigaos.binary_source as source
+ .use experimental.amigaos.binary_sections as sections
+ .use experimental.amigaos.binary_block_index as blockIndex
+ .use experimental.amigaos.binary_scope_layout as carrierScope
+ .use experimental.amigaos.binary_scopes as carrierScopes
+ .use experimental.amigaos.binary_lexical_store as carrierLexical
+ .use experimental.amigaos.binary_modules as carrierModules
+ .use experimental.amigaos.binary_imports as carrierImports
+ .use experimental.amigaos.binary_graph as carrierGraph
+ .use experimental.amigaos.binary_values as carrierValues
+ .section entry, kind=code
+ .pub
+start .block
+ jsr carrierChecks
+ rts
+ .bend
+ .endsection
+ .section code, kind=code
+ .priv
+ .include "module_carrier_checks.i"
+ .endsection
+ .output "carrier-host.hunk",format=hunk,sections=entry,code,data,bss
+ .endmodule
+"#,
+    )
+    .unwrap();
+    let native = root.join("native/motorola68000/amigaos");
+    let cli = Cli::parse_from([
+        "opforge".to_owned(),
+        input.to_string_lossy().into_owned(),
+        "-M".to_owned(),
+        native.to_string_lossy().into_owned(),
+        "-I".to_owned(),
+        native.join("debug").to_string_lossy().into_owned(),
+    ]);
+    let mut config = validate_cli(&cli).unwrap();
+    config.out_dir = Some(dir.0.clone());
+    if let Err(error) = run_with_validated_cli_with_context(&cli, &config) {
+        match error {
+            cli_core::CliRunError::Assembler { error, .. } => {
+                panic!("carrier host harness: {}", error.summary());
+            }
+            error => panic!("carrier host harness: {error:?}"),
+        }
+    }
+    assert!(!fs::read(dir.0.join("carrier-host.hunk"))
+        .unwrap()
+        .is_empty());
 }
 
 #[test]

@@ -10,6 +10,7 @@
 	.use experimental.amigaos.binary_dependency_layout as graph
 	.use experimental.amigaos.binary_repeat_inventory as inventory
 	.use experimental.amigaos.binary_source as source
+	.use experimental.amigaos.binary_module_records as compiled
 	.use exprvm.amigaos.runtime as runtime
 	.include "memory_telemetry.i"
 	.pub
@@ -133,7 +134,7 @@ done
 ; Called after control selection, before independent output filters. Bounds
 ; come from this record, so a following record cannot supply its marker.
 mark	.block
-	movem.l d1-d2/a0-a1, -(sp)
+	movem.l d1-d2/a0-a2, -(sp)
 	tst.l State.Count(a0)
 	beq.w good
 	move.l a2, d0
@@ -145,6 +146,34 @@ mark	.block
 	addq.w #1, d2
 	cmp.l d0, d2
 	bhi.w bad
+	cmpi.l #source.LayoutRecord.Opcode+1, d2
+	blo.w good
+	btst #source.FLAG_LAYOUT_BIT, source.RecordHeader.Flags(a1)
+	beq.w sourceDeclaration
+	cmpi.b #compiled.OP_OWNERS, source.LayoutRecord.Opcode(a1)
+	bne.w good
+	; Selection already removed dead whole owners. Capture the placed public
+	; cells at endPass even though their source declarations were retired.
+	move.l a0, -(sp)
+	movea.l a1, a0
+	move.l d2, d0
+	jsr compiled.ownersView
+	movea.l (sp)+, a0
+	bne.w bad
+compiledLabel
+	tst.l d1
+	beq.w good
+	moveq #0, d2
+	move.w (a1)+, d2
+	cmp.l State.Count(a0), d2
+	bhs.w bad
+	mulu.l #ROW_BYTES, d2
+	movea.l State.Rows+memory.Block.Pointer(a0), a2
+	adda.l d2, a2
+	bset #SEEN_BIT, Row.Flags(a2)
+	subq.l #1, d1
+	bra.w compiledLabel
+sourceDeclaration
 	cmpi.l #inventory.PackedRecord.Rhs, d2
 	blo.w good
 	cmpi.b #1, inventory.PackedRecord.NameKind(a1)
@@ -168,7 +197,7 @@ good
 bad
 	moveq #values.MALFORMED, d0
 done
-	movem.l (sp)+, d1-d2/a0-a1
+	movem.l (sp)+, d1-d2/a0-a2
 	tst.l d0
 	rts
 	.bend  ; mark

@@ -424,6 +424,11 @@ releaseOwners	.block
 	clr.l values.Owner.Arena+memory.Block.Pointer(a0)
 	clr.l values.Owner.Arena+memory.Block.Capacity(a0)
 	clr.l values.Owner.Arena+memory.Block.Used(a0)
+	.ifdef OPFORGE_MODULE_COMPILE_REJECTIONS
+	lea NominalOwner, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	.endif
 	lea Moved, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -432,8 +437,10 @@ releaseOwners	.block
 	rts
 	.bend  ; releaseOwners
 	.ifdef OPFORGE_MODULE_COMPILE_REJECTIONS
-; Separate correctness image: cross-block absolute aliases and relative branches
-; and unsupported nominal/template exports fail without retaining an owner.
+; Separate correctness image: unanchored absolute aliases, cross-section
+; relative branches and public templates fail without retaining an owner.
+; Public nominal literals retain their private schema and member identity
+; closure.
 ; These checks are excluded from timing images.
 rejectionCases	.block
 	lea BadAbsoluteContext, a1
@@ -442,14 +449,83 @@ rejectionCases	.block
 	lea BadRelativeContext, a1
 	bsr.w rejectSource
 	bne.w done
-	lea BadNominalContext, a1
-	bsr.w rejectSource
-	bne.w done
 	lea BadTemplateContext, a1
 	bsr.w rejectSource
+	bne.w done
+	bsr.w nominalCase
 done
 	rts
 	.bend  ; rejectionCases
+; A public struct literal retains its private schema, not a dangling nominal ID.
+nominalCase	.block
+	lea BadNominalContext, a0
+	lea NominalOwner, a1
+	jsr compiler.compile
+	bne.w bad
+	movea.l NominalOwner+memory.Block.Pointer, a0
+	move.l NominalOwner+memory.Block.Used, d0
+	jsr image.semanticView
+	bne.w bad
+	move.l a1, SemanticBase
+	move.l d1, SemanticBytes
+	movea.l a1, a6
+	movea.l a6, a0
+	adda.l semantics.Header.Arena(a6), a0
+	move.l a0, Borrowed+values.Owner.Arena+memory.Block.Pointer
+	move.l semantics.Header.ArenaBytes(a6), Borrowed+values.Owner.Arena+memory.Block.Capacity
+	move.l semantics.Header.ArenaBytes(a6), Borrowed+values.Owner.Arena+memory.Block.Used
+	lea SampleName, a5
+	moveq #SampleNameEnd-SampleName, d5
+	bsr.w exportName
+	bne.w bad
+	cmpi.l #values.STRUCT_LITERAL, semantics.Export.Kind(a1)
+	bne.w bad
+	move.l semantics.Export.Low(a1), FrameOffset
+	move.l FrameOffset, d1
+	lea Borrowed, a0
+	jsr values.view
+	bne.w bad
+	move.l values.StructRecord.Nominal(a1), d1
+	movea.l a6, a0
+	move.l SemanticBytes, d0
+	jsr semantics.findExport
+	bne.w bad
+	cmpi.l #values.STRUCT_TYPE, semantics.Export.Kind(a1)
+	bne.w bad
+	tst.l semantics.Export.NameBytes(a1)
+	bne.w bad
+	move.l semantics.Export.Low(a1), d1
+	lea Borrowed, a0
+	jsr values.view
+	bne.w bad
+	cmpi.l #1, values.StructRecord.Size(a1)
+	bne.w bad
+	cmpi.l #1, values.StructRecord.Count(a1)
+	bne.w bad
+	move.l semantics.Header.Members(a6), d4
+	move.l semantics.Header.MemberCount(a6), d7
+	moveq #semantics.MEMBER_BYTES, d6
+	lea CodeName, a5
+	moveq #CodeNameEnd-CodeName, d5
+	bsr.w nameId
+	bne.w bad
+	move.l FrameOffset, d0
+	lea Borrowed, a0
+	jsr structs.member
+	bne.w bad
+	cmpi.l #4, d2
+	bne.w bad
+	or.l d3, d4
+	or.l d5, d4
+	bne.w bad
+	bsr.w releaseOwners
+	moveq #0, d0
+	rts
+bad
+	bsr.w releaseOwners
+	moveq #1, d0
+	rts
+	.bend  ; nominalCase
 rejectSource	.block
 	lea NegativeRequest, a0
 	lea compiler.compile, a2
@@ -517,19 +593,23 @@ bad
 	.section data, kind=data
 	.align 4
 CompileContext
-	.long Package, Source, SourceEnd-Source
+	.long Package, Source, SourceEnd-Source, 0, 0, 0, 0, 0, 0
 	.ifdef OPFORGE_MODULE_COMPILE_REJECTIONS
 BadAbsoluteContext
-	.long Package, BadAbsolute, BadAbsoluteEnd-BadAbsolute
+	.long Package, BadAbsolute, BadAbsoluteEnd-BadAbsolute, 0, 0, 0, 0, 0, 0
 BadRelativeContext
-	.long Package, BadRelative, BadRelativeEnd-BadRelative
+	.long Package, BadRelative, BadRelativeEnd-BadRelative, 0, 0, 0, 0, 0, 0
 BadNominalContext
-	.long Package, BadNominal, BadNominalEnd-BadNominal
+	.long Package, BadNominal, BadNominalEnd-BadNominal, 0, 0, 0, 0, 0, 0
 BadTemplateContext
-	.long Package, BadTemplate, BadTemplateEnd-BadTemplate
+	.long Package, BadTemplate, BadTemplateEnd-BadTemplate, 0, 0, 0, 0, 0, 0
 BadNominal
 	.incbin "module_compile_bad_nominal.asm"
 BadNominalEnd
+SampleName	.byte "leaf.Sample"
+SampleNameEnd
+CodeName	.byte "Code"
+CodeNameEnd
 BadTemplate
 	.incbin "module_compile_bad_template.asm"
 BadTemplateEnd
@@ -571,6 +651,7 @@ SemanticBytes	.res long, 1
 FrameOffset	.res long, 1
 	.ifdef OPFORGE_MODULE_COMPILE_REJECTIONS
 NegativeRequest	.res byte, request.STATE_BYTES
+NominalOwner	.res byte, memory.Block.Used+4
 	.endif
 CompileCount	.res long, 1
 FirstId	.res long, 1

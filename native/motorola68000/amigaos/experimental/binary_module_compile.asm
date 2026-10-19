@@ -9,6 +9,9 @@
 	.use experimental.amigaos.binary_module_image as image
 	.use experimental.amigaos.binary_module_exports as exports
 	.use experimental.amigaos.binary_module_layout as layout
+	.use experimental.amigaos.binary_module_publication as publication
+	.use experimental.amigaos.binary_scope_layout as scope
+	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_symbol_storage as storage
 	.use experimental.amigaos.binary_values as values
@@ -24,14 +27,22 @@ Context	.struct
 Package	.long ?
 Source	.long ?
 Bytes	.long ?
+Initialize	.long ?  ; optional A0=private frontend,A1=Context -> D0 status
+Replay	.long ?  ; optional A0=frontend,A1=owned records block,A2=Context
+Seed	.long ?  ; optional A0=assembly frame,A1=Context -> D0 status
+Opaque	.long ?  ; callback-owned borrowed request state
+Resolve	.long ?  ; optional exact external address resolver, A0=Opaque
+Inventory	.long ?  ; A0=frontend,A1=Index,A2=Context,A3=Records, copy inventory
 	.endstruct
-CONTEXT_BYTES = Context.Bytes+4
+CONTEXT_BYTES = Context.Inventory+4
 LINE_CAPACITY = 256
 INVALID = 1
 EXPORT_INVALID = 2
 EXECUTION_INVALID = 3
 PUBLICATION_INVALID = 4
 IMAGE_INVALID = 5
+UNSUPPORTED = 6
+REPLAY_UNSUPPORTED = 2
 	.priv
 ; The shared native assembly engine is itself a single active session. This
 ; producer is sequential, never callable during another assembly session.
@@ -42,6 +53,12 @@ Destination	.res long, 1
 Started	.res long, 1
 Cursor	.res long, 1
 After	.res long, 1
+SectionMask	.res long, 1
+SectionCount	.res long, 1
+SectionOrder	.res byte, sections.HUNK_SLOT_COUNT
+FirstLexical	.res long, 1
+OwnModule	.res long, 1
+InitialModules	.res byte, memory.Block.Used+4
 	.align 4
 Front	.res byte, frontend.FRAME_BYTES
 Work	.res byte, assembly.FRAME_BYTES
@@ -69,17 +86,21 @@ TransientEnd
 ; Text is processed by shared frontend, macros by shared template execution,
 ; instruction/data bytes by one shared assembly session. No source parser here.
 ; Image IDs are declaration-order ordinals 1..N, independent of lexical IDs.
-; Nonnested blocks may share a selected Hunk code section. Initialized bytes
-; must belong to contiguous whole blocks. Package-owned branch recipes preserve
+; Nested whole blocks and mandatory owner-zero fragments share selected Hunk
+; code/data/BSS sections. Package-owned branch recipes preserve
 ; the chosen instruction width when blocks move; shared affine label identity
-; preserves absolute data references. Instruction absolute fixups and aliases
-; without an exact label owner reject. Runtime conditionals/loops reject.
+; preserves absolute instruction/data references. References without an exact
+; source identity reject. Runtime conditionals/loops reject.
 ; Constant source preprocessing and private macros may complete before assembly.
 ; Publishes immutable scalars, lists/ranges and struct schemas with local IDs.
-; Scalars retain image-local section provenance; concrete nominal values reject.
-; Public templates, mutable/deferred exports, external imports, unresolved layout
-; recipes and disk spilling remain unsupported by this private producer.
-; Package/source are borrowed for this call. All private owners retire on return;
+; Public addresses retain exact fragment/offset identity; compound values retain
+; their canonical schema/member closure. Public templates, mutable/deferred
+; exports, warnings, unresolved layout recipes and disk
+; spilling remain unsupported by this private producer. Optional callbacks seed
+; imports and replay owned captured records without a source-text dependency.
+; Replay closes the file/expansion context; this owner completes preparation.
+; Replay status REPLAY_UNSUPPORTED returns UNSUPPORTED after private cleanup.
+; Package/source/callback state are borrowed for this call. Private owners retire;
 ; success transfers only the immutable image. Existing gated telemetry owns
 ; resource reporting; no release-only observer or metrics owner is retained.
 compile	.block
@@ -105,12 +126,15 @@ compile	.block
 	move.l Scratch+memory.Block.Pointer, Front+frontend.Frame.Scratch
 	movea.l Caller, a0
 	move.l Context.Package(a0), Front+frontend.Frame.Package
+	tst.l Context.Replay(a0)
+	bne.w inputReady
 	move.l Context.Source(a0), Cursor
 	move.l Context.Source(a0), d0
 	beq.w bad
 	add.l Context.Bytes(a0), d0
 	bcs.w bad
 	move.l d0, After
+inputReady
 	move.l #LINE_CAPACITY, d0
 	lea Line, a0
 	jsr memory.reserveExact
@@ -125,6 +149,38 @@ compile	.block
 	lea Front, a0
 	jsr frontend.begin
 	bne.w bad
+	movea.l Caller, a1
+	movea.l Context.Initialize(a1), a3
+	cmpa.w #0, a3
+	beq.w initialized
+	lea Front, a0
+	jsr (a3)
+	tst.l d0
+	bne.w callbackBad
+initialized
+	movea.l Front+frontend.Frame.Scratch, a0
+	moveq #0, d0
+	move.w frontend.SCOPE_STATE+scope.State.Count(a0), d0
+	move.l d0, FirstLexical
+	bsr.w captureModules
+	bne.w bad
+	movea.l Caller, a2
+	movea.l Context.Replay(a2), a3
+	cmpa.w #0, a3
+	beq.w nextLine
+	lea Front, a0
+	lea Records, a1
+	jsr (a3)
+	tst.l d0
+	bne.w callbackBad
+	tst.w Front+frontend.Frame.SourcePending
+	bne.w notSupported
+	; A replay borrower may swap the stable CLI frontend while draining the
+	; captured span. Restore this owner's active grammar before completion.
+	lea Front, a0
+	jsr frontend.activate
+	bne.w bad
+	bra.w complete
 nextLine
 	move.l Cursor, d0
 	cmp.l After, d0
@@ -185,10 +241,26 @@ prepared
 	lea Front, a0
 	jsr frontend.endFile
 	bne.w bad
+complete
+	movea.l Caller, a0
+	tst.l Context.Replay(a0)
+	beq.w completeRecords
+	; The private selection belongs to ordinary layout normalization. Append it
+	; before completion validates unplaced concrete sections against the output.
+	bsr.w selectPrivateSections
+	bne.w notSupported
+completeRecords
+	lea Front, a0
 	movea.l Records+memory.Block.Pointer, a1
 	move.l Records+memory.Block.Used, d0
 	jsr frontend.complete
 	bne.w bad
+	movea.l Caller, a0
+	tst.l Context.Replay(a0)
+	beq.w recordsReady
+	bsr.w findOwnModule
+	bne.w notSupported
+recordsReady
 	bsr.w rejectControls
 	bne.w bad
 	movea.l Records+memory.Block.Pointer, a0
@@ -196,8 +268,6 @@ prepared
 	lea Index, a1
 	jsr blocks.index
 	bne.w bad
-	tst.l d1
-	beq.w bad
 	lea LayoutState, a0
 	movea.l Records+memory.Block.Pointer, a1
 	move.l Records+memory.Block.Used, d0
@@ -205,11 +275,32 @@ prepared
 	move.l Front+frontend.Frame.NameCount, d1
 	jsr layout.begin
 	bne.w bad
+	movea.l Caller, a2
+	tst.l Context.Resolve(a2)
+	beq.w layoutReady
+	lea LayoutState, a0
+	lea resolveExternal, a1
+	jsr layout.configureExternal
+	bne.w bad
+layoutReady
+	movea.l Caller, a2
+	movea.l Context.Inventory(a2), a3
+	cmpa.w #0, a3
+	beq.w inventoryReady
+	lea Front, a0
+	lea Index, a1
+	movea.l a3, a4
+	lea Records, a3
+	jsr (a4)
+	tst.l d0
+	bne.w callbackBad
+inventoryReady
 	bsr.w exportState
 	bne.w bad
 	lea PublicState, a0
 	lea Front, a1
-	jsr exports.prepare
+	move.l OwnModule, d0
+	jsr exports.prepareModule
 	bne.w exportBad
 	; No source-oriented owner remains when assembly begins.
 	bsr.w retireFrontend
@@ -232,11 +323,17 @@ prepared
 	move.l #allocateOutput, Work+assembly.Frame.Allocate
 	move.l #captureAbsolute, Work+assembly.Frame.AddReloc
 	move.l #captureInstruction, Work+assembly.Frame.Instruction
+	move.l #seedSymbols, Work+assembly.Frame.Seed
+	move.l #captureReserved, Work+assembly.Frame.Reserved
+	move.l #captureAlignment, Work+assembly.Frame.Aligned
 	move.l #emitted, Work+assembly.Frame.Emitted
 	move.l Symbols+storage.State.MemberKeys+memory.Block.Pointer, Work+assembly.Frame.MemberKeys
 	lea Work, a0
 	jsr assembly.assemble
 	bne.w executionBad
+	; Reference replay owns diagnostics and --Werror handling exactly once.
+	tst.l Work+assembly.Frame.Warnings
+	bne.w notSupported
 	movea.l Work+assembly.Frame.Sections, a0
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
 	bne.w bad
@@ -250,6 +347,10 @@ prepared
 	lea Cells, a1
 	lea SemanticOwner, a2
 	jsr exports.publish
+	bne.w publicationBad
+	lea SemanticOwner, a0
+	lea LayoutState, a1
+	jsr publication.finalize
 	bne.w publicationBad
 	bsr.w saveImage
 	bne.w imageBad
@@ -274,6 +375,13 @@ publicationBad
 imageBad
 	moveq #IMAGE_INVALID, d7
 	bra.w done
+callbackBad
+	cmpi.l #REPLAY_UNSUPPORTED, d0
+	beq.w notSupported
+	bra.w bad
+notSupported
+	moveq #UNSUPPORTED, d7
+	bra.w done
 bad
 	moveq #INVALID, d7
 done
@@ -290,6 +398,224 @@ exit
 	.bend  ; compile
 
 	.priv
+; Configuration can intern the owning module's name before replay opens it.
+; Snapshot module roles rather than assuming every older identity is an import.
+; D0/CCR=status; other registers scratch. The bitmap owns no source spelling.
+captureModules	.block
+	move.l FirstLexical, d0
+	addq.l #7, d0
+	lsr.l #3, d0
+	lea InitialModules, a0
+	jsr memory.reserveExact
+	bne.w bad
+	move.l FirstLexical, d0
+	addq.l #7, d0
+	lsr.l #3, d0
+	move.l d0, InitialModules+memory.Block.Used
+	movea.l InitialModules+memory.Block.Pointer, a2
+	movea.l a2, a0
+clear
+	tst.l d0
+	beq.w flags
+	clr.b (a0)+
+	subq.l #1, d0
+	bra.w clear
+flags
+	moveq #0, d5
+	tst.l FirstLexical
+	beq.w good
+	movea.l Front+frontend.Frame.Scratch, a0
+	movea.l frontend.SCOPE_STATE+scope.MODULE_STATE+modules.FLAGS_POINTER(a0), a1
+	cmpa.w #0, a1
+	beq.w bad
+next
+	cmp.l FirstLexical, d5
+	bhs.w good
+	move.w (a1)+, d1
+	andi.w #modules.MODULE_ID, d1
+	beq.w advance
+	move.l d5, d0
+	lsr.l #3, d0
+	move.l d5, d1
+	andi.l #7, d1
+	lea 0(a2, d0.l), a3
+	bset d1, (a3)
+advance
+	addq.l #1, d5
+	bra.w next
+good
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; captureModules
+
+; Exactly one module role must become active during replay, so its interface
+; cannot re-export seeded dependencies. OwnModule is lexical index+1.
+; D0/CCR=status; other registers scratch.
+findOwnModule	.block
+	clr.l OwnModule
+	movea.l Front+frontend.Frame.Scratch, a0
+	lea frontend.SCOPE_STATE(a0), a0
+	moveq #0, d6
+	move.w scope.State.Count(a0), d6
+	move.l FirstLexical, d0
+	cmp.l d6, d0
+	bhi.w bad
+	moveq #0, d5
+	movea.l InitialModules+memory.Block.Pointer, a2
+	movea.l scope.MODULE_STATE+modules.FLAGS_POINTER(a0), a1
+	cmpa.w #0, a1
+	beq.w bad
+next
+	cmp.l d6, d5
+	bhs.w complete
+	move.l d5, d0
+	add.l d0, d0
+	move.w 0(a1, d0.l), d1
+	andi.w #modules.MODULE_ID, d1
+	beq.w advance
+	cmp.l FirstLexical, d5
+	bhs.w newModule
+	move.l d5, d0
+	lsr.l #3, d0
+	move.l d5, d1
+	andi.l #7, d1
+	lea 0(a2, d0.l), a3
+	btst d1, (a3)
+	bne.w advance
+newModule
+	tst.l OwnModule
+	bne.w bad
+	move.l d5, d0
+	addq.l #1, d0
+	move.l d0, OwnModule
+advance
+	addq.l #1, d5
+	bra.w next
+complete
+	tst.l OwnModule
+	beq.w bad
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; findOwnModule
+
+; Add a private geometry selection before shared completion resolves pending
+; section recipes. Its empty artifact path never reaches an output writer.
+; Declaration order is retained; only concrete section slots are admitted.
+; D0/CCR=status. Registers scratch; Records may move while appending.
+selectPrivateSections	.block
+	clr.l SectionMask
+	clr.l SectionCount
+	movea.l Records+memory.Block.Pointer, a3
+	movea.l a3, a4
+	adda.l Records+memory.Block.Used, a4
+next
+	cmpa.l a4, a3
+	beq.w append
+	bhi.w bad
+	move.l a4, d0
+	sub.l a3, d0
+	cmpi.l #source.RECORD_HEADER_BYTES, d0
+	blo.w bad
+	moveq #0, d6
+	move.b source.RecordHeader.Length(a3), d6
+	addq.l #1, d6
+	cmpi.l #source.RECORD_HEADER_BYTES, d6
+	blo.w bad
+	cmp.l d0, d6
+	bhi.w bad
+	btst #source.FLAG_LAYOUT_BIT, source.RecordHeader.Flags(a3)
+	beq.w advance
+	cmpi.l #source.LayoutRecord.Opcode+1, d6
+	blo.w bad
+	moveq #0, d0
+	move.b source.LayoutRecord.Opcode(a3), d0
+	cmpi.b #sections.CONTROL_OUTPUT, d0
+	beq.w bad
+	cmpi.b #21, d0  ; shared flat artifact descriptor
+	beq.w bad
+	cmpi.b #sections.CONTROL_LOGICAL_SECTION, d0
+	beq.w bad
+	cmpi.b #sections.CONTROL_SECOND_LOGICAL_SECTION, d0
+	beq.w bad
+	cmpi.b #sections.CONTROL_MAPPED_CONCRETE, d0
+	beq.w bad
+	cmpi.b #sections.CONTROL_SECOND_MAPPED_CONCRETE, d0
+	beq.w bad
+	cmpi.b #source.LAYOUT_PENDING_LOGICAL, d0
+	beq.w bad
+	cmpi.b #source.LAYOUT_PENDING_CONCRETE, d0
+	beq.w section
+	cmpi.b #sections.CONTROL_FIRST_SECTION, d0
+	beq.w section
+	cmpi.b #sections.CONTROL_SECOND_SECTION, d0
+	beq.w section
+	cmpi.b #sections.CONTROL_EXTRA_SECTION, d0
+	bne.w advance
+section
+	cmpi.l #source.CONCRETE_SECTION_BYTES, d6
+	bne.w bad
+	moveq #0, d1
+	move.b source.ConcreteSection.Slot(a3), d1
+	cmpi.l #sections.HUNK_SLOT_COUNT, d1
+	bhs.w bad
+	move.l SectionMask, d2
+	btst d1, d2
+	bne.w advance
+	bset d1, d2
+	move.l d2, SectionMask
+	move.l SectionCount, d0
+	lea SectionOrder, a0
+	move.b d1, 0(a0, d0.l)
+	addq.l #1, SectionCount
+advance
+	adda.l d6, a3
+	bra.w next
+append
+	move.l SectionCount, d6
+	beq.w bad
+	move.l d6, d7
+	add.l d7, d7
+	addq.l #8, d7
+	lea Records, a0
+	move.l memory.Block.Used(a0), d5
+	move.l d5, d0
+	add.l d7, d0
+	bcs.w bad
+	jsr memory.reserve
+	bne.w bad
+	movea.l Records+memory.Block.Pointer, a1
+	adda.l d5, a1
+	move.l d7, d0
+	subq.l #1, d0
+	move.b d0, source.RecordHeader.Length(a1)
+	move.b #source.FLAG_LAYOUT, source.RecordHeader.Flags(a1)
+	clr.w source.RecordHeader.Line(a1)
+	move.b #sections.CONTROL_OUTPUT, source.LayoutRecord.Opcode(a1)
+	move.b d6, source.LayoutRecord.Opcode+1(a1)
+	adda.w #source.LayoutRecord.Opcode+2, a1
+	lea SectionOrder, a0
+slots
+	moveq #0, d0
+	move.b (a0)+, d0
+	move.w d0, (a1)+
+	subq.l #1, d6
+	bne.w slots
+	move.b #2, (a1)+  ; shared output kind: Hunk
+	clr.b (a1)  ; private geometry has no artifact path
+	add.l d7, Records+memory.Block.Used
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; selectPrivateSections
+
 appendRecord	.block
 	move.l Front+frontend.Frame.Used, d2
 	beq.w good
@@ -333,6 +659,23 @@ next
 	sub.l a3, d0
 	cmp.l d0, d6
 	bhi.w bad
+	btst #source.FLAG_LAYOUT_BIT, source.RecordHeader.Flags(a3)
+	beq.w ordinaryControl
+	cmpi.l #source.LayoutRecord.Opcode+1, d6
+	blo.w bad
+	move.b source.LayoutRecord.Opcode(a3), d0
+	cmpi.b #sections.CONTROL_FIRST_SECTION, d0
+	beq.w nextRecord
+	cmpi.b #sections.CONTROL_SECOND_SECTION, d0
+	beq.w nextRecord
+	cmpi.b #sections.CONTROL_EXTRA_SECTION, d0
+	beq.w nextRecord
+	cmpi.b #sections.CONTROL_END_SECTION, d0
+	beq.w nextRecord
+	cmpi.b #sections.CONTROL_OUTPUT, d0
+	bne.w bad
+	bra.w nextRecord
+ordinaryControl
 	movea.l a3, a0
 	move.l d6, d0
 	movea.l a2, a1
@@ -349,6 +692,7 @@ next
 	jsr loops.classify
 	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
 	bne.w bad
+nextRecord
 	adda.l d6, a3
 	bra.w next
 good
@@ -455,6 +799,63 @@ captureInstruction	.block
 	rts
 	.bend  ; captureInstruction
 
+; Exact import resolver: A0=compiler Context,D1=private symbol,D2=source
+; section,D3=value. D0/CCR=status,D1=bit31|global identity,D2=addend.
+; The caller-owned callback receives A0=Context.Opaque. Others preserved.
+resolveExternal	.block
+	movem.l d3-d7/a0-a6, -(sp)
+	movea.l Context.Resolve(a0), a3
+	cmpa.w #0, a3
+	beq.w bad
+	movea.l Context.Opaque(a0), a0
+	jsr (a3)
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d3-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; resolveExternal
+
+; Seed the fresh assembly cells after the shared runtime initializes them.
+; A0=assembly frame. D0/CCR=status; all other caller registers preserved.
+seedSymbols	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l Caller, a1
+	movea.l Context.Seed(a1), a3
+	cmpa.w #0, a3
+	beq.w good
+	jsr (a3)
+	bra.w done
+good
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; seedSymbols
+
+captureReserved	.block
+	movem.l a0-a1, -(sp)
+	movea.l a0, a1
+	lea LayoutState, a0
+	jsr layout.reserved
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; captureReserved
+
+captureAlignment	.block
+	movem.l a0-a1, -(sp)
+	movea.l a0, a1
+	lea LayoutState, a0
+	jsr layout.aligned
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; captureAlignment
+
 ; The layout owner maps final emission to indexed lexical block spans.
 emitted	.block
 	movem.l a0-a1, -(sp)
@@ -519,6 +920,8 @@ cleanup	.block
 	lea Index, a0
 	jsr memory.release
 	lea Parameters, a0
+	jsr memory.release
+	lea InitialModules, a0
 	jsr memory.release
 	lea Output, a0
 	jsr memory.release

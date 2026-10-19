@@ -7,7 +7,10 @@
 	.use experimental.amigaos.binary_numeric_bindings as bindings
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_hunk_references as references
+	.use experimental.amigaos.binary_module_admission as admission
+	.use prvm.amigaos.abi as abi
 	.priv
+RESET_RECORD_BYTES = abi.PRVM_PACKED_RECORD_BYTES+abi.PRVM_PACKED_DOT_BYTES+abi.PRVM_PACKED_NAME_BYTES
 EXEC_BASE = 4
 OPEN_LIBRARY = -552
 CLOSE_LIBRARY = -414
@@ -145,7 +148,11 @@ copyBranch
 	bne.w bad
 	move.l d1, (a5)+
 	dbra d6, branchRequest
+	bsr.w admissionChecks
+	bne.w bad
 	bsr.w qualifiedChecks
+	bne.w bad
+	bsr.w geometryChecks
 	bne.w bad
 	move.l a5, d0
 	lea Result, a0
@@ -157,6 +164,107 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; encodeCases
+
+; Package reset is retained; ambient package/text mutations reject admission.
+admissionChecks	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	move.w Package+package.Header.CpuDirective, ResetRecord+abi.PRVM_PACKED_RECORD_BYTES+abi.PackedDot.Name+abi.PackedName.Id
+	move.w Package+package.Header.CpuName, ResetRecord+abi.PRVM_PACKED_RECORD_BYTES+abi.PRVM_PACKED_DOT_BYTES+abi.PackedName.Id
+	lea ResetRecord, a0
+	moveq #RESET_RECORD_BYTES, d0
+	lea Package, a1
+	moveq #1, d1
+	moveq #2, d2
+	jsr admission.prepare
+	bne.w bad
+	cmpi.l #RESET_RECORD_BYTES, d1
+	bne.w bad
+	lea ResetRecord, a0
+	cmpa.l a0, a1
+	bne.w bad
+	moveq #RESET_RECORD_BYTES*2, d0
+	lea Package, a1
+	moveq #1, d1
+	moveq #2, d2
+	jsr admission.prepare
+	cmpi.l #admission.UNSUPPORTED, d0
+	bne.w bad
+	lea ResetRecord, a0
+	moveq #RESET_RECORD_BYTES*2, d0
+	lea Package, a1
+	jsr admission.textSafe
+	bne.w bad
+	lea TextDefinitionRecord, a0
+	moveq #RESET_RECORD_BYTES, d0
+	jsr admission.textSafe
+	cmpi.l #admission.UNSUPPORTED, d0
+	bne.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; admissionChecks
+
+; A failed address-dependent scalar range must leave the geometry proof
+; unproven. A new encode resets that observation; fixed package fixups pass.
+geometryChecks	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea IdentityOwner, a0
+	move.l #SYMBOL_COUNT, d0
+	jsr values.init
+	bne.w bad
+	move.l #IdentityOwner, package.Context.Owner(a2)
+	move.w #package.POSITION_OBSERVATION_POLICY, package.Context.ExpressionPolicy(a2)
+	bsr.w fixedFields
+	bne.w bad
+	lea RangeOperand, a0
+	lea RangeOperandEnd, a1
+	move.l #MOVEQ_ID, d0
+	moveq #0, d1
+	jsr encoding.encode
+	tst.l d0
+	beq.w bad
+	jsr encoding.outputGeometryProof
+	tst.l d0
+	beq.w bad
+	bsr.w fixedFields
+	bne.w bad
+	moveq #0, d7
+	bra.w cleanup
+bad
+	moveq #1, d7
+cleanup
+	clr.w package.Context.ExpressionPolicy(a2)
+	clr.l package.Context.Owner(a2)
+	lea IdentityOwner, a0
+	jsr values.release
+	move.l d7, d0
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+fixedFields
+	lea Operands0, a0
+	lea Operands0End, a1
+	move.l #MOVE_ID, d0
+	moveq #LONG_QUALIFIER, d1
+	jsr encoding.encode
+	tst.l d0
+	bne.w done
+	jsr encoding.outputFixupCount
+	cmpi.l #2, d0
+	bne.w missingFields
+	jsr encoding.outputGeometryProof
+	rts
+missingFields
+	moveq #1, d0
+done
+	tst.l d0
+	rts
+	.bend  ; geometryChecks
 
 ; Numeric qualified plans retain declaration identity even when values coincide.
 qualifiedChecks	.block
@@ -227,6 +335,28 @@ IdentityPlans	.word QUALIFIED_FIRST_ID, 1
 	.word FIRST_ID, 1, MEMBER_ID
 	.word SECOND_ID, 0
 IdentityPlansEnd
+ResetRecord	.byte RESET_RECORD_BYTES-1,abi.PRVM_PACKED_FLAG_INDENT
+	.word 0
+	.byte abi.PRVM_TOKEN_KIND_DOT,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.word 0
+	.byte 0,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.word 0
+	.byte 0
+PackageStateRecord	.byte RESET_RECORD_BYTES-1,abi.PRVM_PACKED_FLAG_INDENT
+	.word 0
+	.byte abi.PRVM_TOKEN_KIND_DOT,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.word FPU_ID
+	.byte 0,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.word NONE_ID
+	.byte 0
+TextDefinitionRecord	.byte RESET_RECORD_BYTES-1,abi.PRVM_PACKED_FLAG_INDENT
+	.word 0
+	.byte abi.PRVM_TOKEN_KIND_DOT,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.word ENCODE_ID
+	.byte 0,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.word 1
+	.byte 0
+	.align 2
 Package	.incbin "instruction_fixup_identity_package.bin"
 DosName	.byte "dos.library", 0
 OutputPath	.byte "Work:output.bin", 0

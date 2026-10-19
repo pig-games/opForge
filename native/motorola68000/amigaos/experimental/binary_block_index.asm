@@ -21,6 +21,7 @@
 	.use exprvm.amigaos.runtime as runtime
 	.use experimental.amigaos.binary_owner_guards as guards
 	.use experimental.amigaos.binary_binding_plans as plans
+	.use experimental.amigaos.binary_module_records as compiled
 	.pub
 LIMIT = 65535; packed parent/queue links remain representable words
 	.include "binary_block_span.i"
@@ -682,6 +683,20 @@ ownerLine
 	jsr guards.activity
 	cmpi.l #guards.INACTIVE, d0
 	beq.w ownerAdvance
+	btst #source.FLAG_LAYOUT_BIT, source.RecordHeader.Flags(a5)
+	beq.w ordinaryOwner
+	cmpi.w #source.LayoutRecord.Opcode+1, d6
+	blo.w ownerBad
+	cmpi.b #compiled.OP_OWNERS, source.LayoutRecord.Opcode(a5)
+	bne.w ownerAdvance
+	movea.l a5, a0
+	move.l d6, d0
+	jsr compiled.ownersView
+	bne.w ownerBad
+	bsr.w saveCompiledOwners
+	bne.w ownerBad
+	bra.w ownerAdvance
+ordinaryOwner
 	cmpi.w #materialized.Record.Kind+1, d6
 	blo.w ownerAdvance
 	cmpi.b #materialized.TOKEN, materialized.Record.Kind(a5)
@@ -750,6 +765,28 @@ ownerDone
 	rts
 	.bend  ; indexOwners
 
+; A1=validated packed owner IDs,D1=count,D7=outer span. Owner metadata
+; establishes reachability only; the fragment runtime supplies actual values.
+; D0/CCR=status; all other registers preserved.
+saveCompiledOwners	.block
+	movem.l d1-d3/a0-a1, -(sp)
+next
+	tst.l d1
+	beq.w good
+	moveq #0, d0
+	move.w (a1)+, d0
+	bsr.w saveOwner
+	bne.w done
+	subq.l #1, d1
+	bra.w next
+good
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a1
+	tst.l d0
+	rts
+	.bend  ; saveCompiledOwners
+
 ; D0=bound numeric identity, D7=outer span index. Keep the first owner, as
 ; the former source-order search did. D0/CCR=status; other registers preserved.
 saveOwner	.block
@@ -805,7 +842,7 @@ scanLine	.block
 	cmpi.l #guards.INACTIVE, d0
 	beq.w scanNext
 	btst #source.FLAG_LAYOUT_BIT, source.RecordHeader.Flags(a0)
-	bne.w scanNext
+	bne.w scanLayout
 	movea.l a0, a1
 	adda.w d6, a1
 	move.l d3, -(sp)
@@ -816,6 +853,14 @@ scanLine	.block
 	move.l (sp)+, d3
 	tst.l d0
 	bne.w scanBad
+	bra.w scanNext
+scanLayout
+	cmpi.w #source.LayoutRecord.Opcode+1, d6
+	blo.w scanBad
+	cmpi.b #compiled.OP_REFERENCES, source.LayoutRecord.Opcode(a0)
+	bne.w scanNext
+	bsr.w compiledReferences
+	bne.w scanBad
 scanNext
 	adda.w d6, a4
 	moveq #0, d0
@@ -824,6 +869,8 @@ scanBad
 	moveq #1, d0
 	rts
 	.bend  ; scanLine
+
+	.include "binary_block_image_refs.i"
 
 ; D0=outer span index. Queue capacity equals the indexed span limit, and each
 ; outer span is enqueued only on its dead-to-live transition. D0/CCR=status;

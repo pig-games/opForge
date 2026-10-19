@@ -4,6 +4,9 @@
 	.use experimental.amigaos.binary_encoding as encoding
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_dependency_layout as dependencies
+	.use experimental.amigaos.binary_numeric_bindings as bindings
+	.use experimental.amigaos.binary_values as values
+	.use experimental.amigaos.binary_hunk_references as references
 	.priv
 EXEC_BASE = 4
 OPEN_LIBRARY = -552
@@ -142,6 +145,8 @@ copyBranch
 	bne.w bad
 	move.l d1, (a5)+
 	dbra d6, branchRequest
+	bsr.w qualifiedChecks
+	bne.w bad
 	move.l a5, d0
 	lea Result, a0
 	sub.l a0, d0
@@ -152,6 +157,54 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; encodeCases
+
+; Numeric qualified plans retain declaration identity even when values coincide.
+qualifiedChecks	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea IdentityOwner, a0
+	move.l #SYMBOL_COUNT, d0
+	jsr values.init
+	bne.w bad
+	move.l #IdentityOwner, package.Context.Owner(a2)
+	lea IdentityPlans, a1
+	move.l #IdentityPlansEnd-IdentityPlans, d0
+	jsr bindings.install
+	bne.w bad
+	move.l #$1000, Values+SECOND_ID*8
+	lea QualifiedCases, a3
+	moveq #2, d7
+next
+	movea.l (a3)+, a0
+	movea.l (a3)+, a1
+	move.l (a3)+, d6
+	jsr references.affineTarget
+	cmpi.l #references.STATUS_SECTION, d0
+	bne.w bad
+	cmp.l d6, d1
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	dbra d7, next
+	; An active member candidate commits; a later whole scalar cannot win.
+	lea IdentityOwner, a0
+	move.l #PROJECTED_ID, d1
+	jsr bindings.scalarIdentity
+	cmpi.l #values.BOUNDS, d0
+	bne.w bad
+	moveq #0, d7
+	bra.w cleanup
+bad
+	moveq #1, d7
+cleanup
+	move.l #$1010, Values+SECOND_ID*8
+	clr.l package.Context.Owner(a2)
+	lea IdentityOwner, a0
+	jsr values.release
+	move.l d7, d0
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; qualifiedChecks
 	.endsection
 	.section data, kind=data
 	.priv
@@ -160,6 +213,20 @@ bad
 Cases	.long Operands0, Operands0End, Operands1, Operands1End
 	.long Operands2, Operands2End, Operands3, Operands3End
 BranchQualifiers	.long WORD_QUALIFIER, 0
+QualifiedCases	.long QualifiedFirst, QualifiedFirstEnd, FIRST_ID
+	.long QualifiedSecond, QualifiedSecondEnd, SECOND_ID
+	.long QualifiedAddend, QualifiedAddendEnd, FIRST_ID
+IdentityPlans	.word QUALIFIED_FIRST_ID, 1
+	.long 12
+	.word FIRST_ID, 0
+	.word QUALIFIED_SECOND_ID, 1
+	.long 12
+	.word SECOND_ID, 0
+	.word PROJECTED_ID, 2
+	.long 18
+	.word FIRST_ID, 1, MEMBER_ID
+	.word SECOND_ID, 0
+IdentityPlansEnd
 Package	.incbin "instruction_fixup_identity_package.bin"
 DosName	.byte "dos.library", 0
 OutputPath	.byte "Work:output.bin", 0
@@ -172,6 +239,7 @@ Values	.res byte, SYMBOL_COUNT*8
 Defined	.res byte, SYMBOL_COUNT
 SectionIds	.res byte, SYMBOL_COUNT
 	.align 4
+IdentityOwner	.res byte, values.OWNER_BYTES
 Result	.res byte, 256
 ResultBytes	.res long, 1
 ReturnCode	.res long, 1

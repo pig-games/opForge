@@ -37,6 +37,9 @@ fn prepare(dir: &Path) -> Vec<u8> {
     };
     let first = package.names.len() as u16;
     let second = first + 1;
+    let qualified_first = second + 1;
+    let qualified_second = second + 2;
+    let projected = second + 3;
     let qualifier = numeric
         .qualifiers
         .iter()
@@ -74,8 +77,9 @@ fn prepare(dir: &Path) -> Vec<u8> {
     let mut absolute = vec![8, 0x81, 3, 0x13, 7, 0, 4];
     absolute.extend(register(name("d0")));
     let mut fixture = format!(
-        "NAME_COUNT={}\nSYMBOL_COUNT={}\nFIRST_ID={}\nSECOND_ID={}\nMOVE_ID={}\nLONG_QUALIFIER={}\nBSR_ID={}\nWORD_QUALIFIER={}\n",
-        first, second + 1, first, second, name("move"), qualifier, name("bsr"), word_qualifier
+        "NAME_COUNT={}\nSYMBOL_COUNT={}\nFIRST_ID={}\nSECOND_ID={}\nMOVE_ID={}\nLONG_QUALIFIER={}\nBSR_ID={}\nWORD_QUALIFIER={}\nQUALIFIED_FIRST_ID={}\nQUALIFIED_SECOND_ID={}\nPROJECTED_ID={}\nMEMBER_ID={}\n",
+        first, projected + 1, first, second, name("move"), qualifier, name("bsr"), word_qualifier,
+        qualified_first, qualified_second, projected, name("d0")
     );
     for (index, operands) in [repeated, distinct, addend, absolute].iter().enumerate() {
         fixture.push_str(&format!(
@@ -95,6 +99,25 @@ fn prepare(dir: &Path) -> Vec<u8> {
             .collect::<Vec<_>>()
             .join(",")
     ));
+    for (label, mut expression) in [
+        ("QualifiedFirst", symbol(qualified_first)),
+        ("QualifiedSecond", symbol(qualified_second)),
+        ("QualifiedAddend", symbol(qualified_first)),
+    ] {
+        if label == "QualifiedAddend" {
+            expression.pop();
+            expression[1] += 3;
+            expression.extend([0x13, 3, 0x31, 0]);
+        }
+        fixture.push_str(&format!(
+            "{label} .byte {}\n{label}End\n",
+            expression
+                .iter()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ));
+    }
     fs::write(dir.join("instruction_fixup_identity_fixture.i"), fixture).unwrap();
     fs::write(
         dir.join("instruction_fixup_identity_package.bin"),

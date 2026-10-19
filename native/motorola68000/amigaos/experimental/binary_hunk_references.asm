@@ -10,6 +10,8 @@
 	.use experimental.amigaos.binary_mutable as mutable
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_payload_bounds as payloads
+	.use experimental.amigaos.binary_numeric_bindings as bindings
+	.use experimental.amigaos.binary_values as values
 	.pub
 STATUS_CLEAR = 0
 STATUS_SECTION = 1
@@ -80,9 +82,51 @@ compact
 affineTarget	.block
 	jsr expr.requiresTyped
 	tst.l d0
-	bne.w typedTarget
+	beq.w compact
+	; Keep shared typed evaluation authoritative. A compact PUSH_SYMBOL may
+	; require that evaluator solely because it owns a numeric qualified plan.
+	; Recover its exact declaration only when the existing affine proof and
+	; ordered whole-scalar binding agree with the evaluated section provenance.
+	movem.l d2-d3/a3, -(sp)
+	movea.l a0, a3
+	bsr.w typedTarget
+	cmpi.l #STATUS_SECTION, d0
+	bne.w typedDone
+	move.l d1, d2
+	move.l a0, d3
+	movea.l a3, a0
+	bsr.w compactBound
+	cmpi.l #STATUS_SECTION, d0
+	bne.w typedSection
+	move.l d1, -(sp)
+	bsr.w baseSection
+	bne.w sectionMismatch
+	addi.l #SECTION_ID_BASE, d1
+	cmp.l d2, d1
+	bne.w sectionMismatch
+	move.l (sp)+, d1
+	moveq #STATUS_SECTION, d0
+	bra.w typedCursor
+sectionMismatch
+	addq.l #4, sp
+typedSection
+	move.l d2, d1
+	moveq #STATUS_SECTION, d0
+typedCursor
+	movea.l d3, a0
+typedDone
+	movem.l (sp)+, d2-d3/a3
+	tst.l d0
+	rts
 compact
-	movem.l d2-d7/a1-a6, -(sp)
+	move.l a6, -(sp)
+	suba.l a6, a6
+	bra.w compactFrame
+compactBound
+	move.l a6, -(sp)
+	movea.w #1, a6
+compactFrame
+	movem.l d2-d7/a1-a5, -(sp)
 	suba.w #runtime.EXPRVM_STACK_CAPACITY*4, sp
 	movea.l sp, a5
 	moveq #0, d6
@@ -186,6 +230,11 @@ symbol
 	beq.w bad  ; reserved encoded symbol ID cannot name a target
 	cmp.l pkg.Context.Count(a2), d1
 	bhs.w bad
+	move.l a6, d0
+	beq.w canonicalReady
+	bsr.w canonicalScalar
+	bne.w bad
+canonicalReady
 	movea.l pkg.Context.Defined(a2), a3
 	move.l a3, d0
 	beq.w bad
@@ -307,10 +356,44 @@ bad
 	moveq #-1, d1
 done
 	adda.w #runtime.EXPRVM_STACK_CAPACITY*4, sp
-	movem.l (sp)+, d2-d7/a1-a6
+	movem.l (sp)+, d2-d7/a1-a5
+	movea.l (sp)+, a6
 	tst.l d0
 	rts
 	.bend  ; affineTarget
+	.priv
+; D1=source symbol,A2=Context. Resolve exact whole-scalar numeric plans;
+; real member/compound projections keep the authoritative typed section proof.
+; D0/CCR=status,D1=canonical symbol. Other registers preserved.
+canonicalScalar	.block
+	movem.l d2/a0-a1, -(sp)
+	movea.l pkg.Context.Owner(a2), a0
+	move.l a0, d0
+	beq.w good
+	jsr bindings.getBinding
+	cmpi.l #values.BOUNDS, d0
+	beq.w ordinary
+	tst.l d0
+	bne.w done
+	jsr bindings.scalarIdentity
+	bra.w done
+ordinary
+	jsr values.getKind
+	tst.l d0
+	bne.w done
+	tst.l d2
+	bne.w compound
+good
+	moveq #0, d0
+	bra.w done
+compound
+	moveq #values.BOUNDS, d0
+done
+	movem.l (sp)+, d2/a0-a1
+	tst.l d0
+	rts
+	.bend  ; canonicalScalar
+	.pub
 
 ; D1.L=affine base identity,A2=Context. D0/CCR=0 and D1.W=one-based section,
 ; or STATUS_BAD when no section provenance is available. Other registers preserved.

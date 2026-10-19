@@ -146,6 +146,69 @@ clear	.block
 declaration	.block
 	jmp activity.declaration
 	.bend  ; declaration
+
+; A0=Owner,D1=full ID. D0/CCR=OK,D1=exact whole scalar declaration;
+; BOUNDS means unavailable, projected, compound, or another proxy. MALFORMED
+; remains an error. Other registers preserved. Candidate priority is identical
+; to the typed evaluator: only INACTIVE skips; the first ACTIVE commits.
+scalarIdentity	.block
+	movem.l d2-d7/a0-a3, -(sp)
+	movea.l a0, a3
+	bsr.w declaration
+	bne.w done
+	cmpi.l #ACTIVE, d2
+	bne.w absent
+	bsr.w getBinding
+	cmpi.l #values.BOUNDS, d0
+	beq.w scalar
+	tst.l d0
+	bne.w done
+	moveq #0, d7
+	move.w layout.Plan.CandidateCount(a1), d7
+	lea HEADER_BYTES(a1), a2
+candidate
+	moveq #0, d1
+	move.w layout.Candidate.Base(a2), d1
+	moveq #0, d6
+	move.w layout.Candidate.MemberCount(a2), d6
+	movea.l a3, a0
+	bsr.w declaration
+	bne.w done
+	cmpi.l #INACTIVE, d2
+	beq.w advance
+	cmpi.l #ACTIVE, d2
+	bne.w absent
+	tst.l d6
+	bne.w absent
+	; A candidate denotes a declaration, never an independently cached proxy.
+	bsr.w getBinding
+	cmpi.l #values.BOUNDS, d0
+	bne.w nested
+scalar
+	movea.l a3, a0
+	jsr values.getKind
+	bne.w done
+	tst.l d2
+	bne.w absent
+	moveq #values.OK, d0
+	bra.w done
+nested
+	tst.l d0
+	bne.w done
+	bra.w absent
+advance
+	add.l d6, d6
+	addi.l #CANDIDATE_BYTES, d6
+	adda.l d6, a2
+	subq.l #1, d7
+	bne.w candidate
+absent
+	moveq #values.BOUNDS, d0
+done
+	movem.l (sp)+, d2-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; scalarIdentity
 	.priv
 ; A0=Owner,A1=bounded header,D2=remaining bytes. D0/CCR=status,D2=planbytes.
 ; Other registers preserved. Bounds every chain before reading its numeric IDs.

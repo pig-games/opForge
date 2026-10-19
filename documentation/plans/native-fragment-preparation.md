@@ -4,8 +4,10 @@
 
 The maintained CLI still performs final binding, layout and emission globally.
 Dependency-first module publication, capture retirement and bounded disk storage
-are implemented. Standalone image/request/leaf-compiler components are implemented;
-they are not a general CLI module-object path or a persistent `.ofm` cache.
+are implemented. Standalone image/request/leaf-compiler components now publish
+owned scalar,
+list/range and struct-schema exports after private-owner retirement. They are
+not a general CLI module-object path or a persistent `.ofm` cache.
 
 The 2026-10-19 CLI integration attempt was removed after failing its memory gate.
 It converted nine modules and saved 9,820 prepared bytes, while heap peak and
@@ -108,31 +110,53 @@ runtime separately from heap, and qualify a full self-build before promotion.
 
 These standalone components remain as the checked image/publication contract:
 
-- `binary_module_image.asm`: immutable 28-byte header, 12-byte block directory rows,
-  16-byte BE32 relocation rows and raw payload, using offsets and numeric IDs.
+- `binary_module_image.asm`: immutable 36-byte header, 12-byte block directory rows,
+  16-byte BE32 relocation rows, raw payload and an optional aligned semantic image.
+  Every serialized reference is a bounded offset or module-local numeric identity.
 - `binary_module_request.asm`: one first-request compile callback, checked publication,
   reuse, sticky failure and explicit release. Views borrow the published image.
 - `binary_module_compile.asm`: shared tokenizer/frontend/assembly execution for a
   restricted leaf, followed by private-owner retirement and image publication.
+- `binary_module_exports.asm`: captures owned public spellings and member keys
+  before lexical retirement, then obtains final values from the shared engine.
+- `binary_module_interface.asm`: owns compact scalar/list/range/schema exports,
+  validates their bounded representation, and provides numeric readers.
 
 The leaf producer supports up to eight nonnested blocks, each in a distinct code
 section with contiguous initialized output from local PC zero. Same-block relative
-branches use existing package/Hunk proof. General imports, exported definitions/
-templates, absolute cross-section relocations and placement-dependent recipes are
-not implemented there. Unsupported sources reject the component request.
+branches use existing package/Hunk proof. Immutable scalar dependencies resolve
+through the shared engine, including private forward constants. Public scalar,
+list/range and struct-schema definitions survive in the saved image. Spellings
+retain source case; symbol matching remains ASCII case insensitive. IDs are local
+to the image, including member and nominal identities; later integration needs
+explicit remapping, not reuse as build-wide IDs. Scalars retain local section
+provenance, but final section-to-fragment placement is not implemented here.
+
+General imports, public templates, mutable/deferred exports, concrete address/
+struct values, nested compound cells, absolute cross-section relocations and
+placement-dependent recipes remain unsupported. Concrete nominal values reject
+until their schema dependencies can be exported completely. Unsupported sources
+reject the component request; the normal CLI continues to use its existing engine.
 
 Native probes cover moved images, poisoned/freed originals, selected whole blocks,
 one compilation across repeated requests, different imported link addresses,
-corrupt/truncated input, overflow, recursive failure and balanced cleanup. A scaled
-leaf produced exact 5,148-byte selected output; its 14,362 prepared bytes became
-a 2,639-byte image. That component compression is **not** a CLI peak reduction,
-a speedup over the reference, or a full-build 8 MiB fit result.
+corrupt/truncated input, overflow, recursive failure and balanced cleanup. The
+semantic consumer also moves the complete image, poisons source and original
+image bytes, releases the request, then reads scalar, struct-member and list values
+through the retained image only. Its expected bytes come from a live Rust consumer.
+Malformed semantic kind/name offsets and truncated images must reject. Public
+templates and unsupported nominal values must fail without leaking owners.
+
+The scaled component stores 2,575 code bytes plus 352 semantic bytes in a 3,000-byte
+image; five block requests compile once and produce 5,151 exact Rust bytes, including
+the three-byte semantic consumer. This is **not** a CLI peak reduction, a speedup
+over the reference, or a full-build 8 MiB fit result.
 
 ## Next coherent integration boundary
 
-Complete the module semantic interface before retiring storage: resolve local
-immutable/typed dependencies, retain public/template values, and describe every
-remaining address/layout dependency with explicit numeric recipes. Then consume
+The scalar/list/schema ownership boundary is now implemented in the private
+producer. Extend it with binary templates and their declaration context, complete
+nominal dependencies, imports and explicit address/layout recipes. Then consume
 one such configured module through ordinary final layout without reconstructing
 its instruction stream. Preserve shared sections, imports and complete blocks.
 
@@ -140,4 +164,4 @@ First qualify a representative module that exercises the previously excluded
 binding/relocation cases, then use the frozen full/small/macro comparisons. Stop
 if retained interfaces and temporary overlap replace the old peak. Do not increase
 limits or add switches simply to keep the failed instruction-only converter alive.
-Discuss this larger completion/export boundary before implementing it.
+Do not describe component publication as general CLI module completion.

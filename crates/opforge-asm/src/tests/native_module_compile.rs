@@ -9,6 +9,16 @@ use vm::runtime_model_core::RuntimeModelCore;
 const SOURCE: &str = r#".module leaf
 .cpu 68020
 .priv
+Hidden=Later+10
+Later=1
+.pub
+Answer=Hidden+31
+Frame .struct
+Tag .byte ?
+Value .long ?
+.endstruct
+Choices={2,7,9}
+.priv
 Config=7
 emitConfigured .macro
  moveq #Config,d0
@@ -78,8 +88,20 @@ fn concise_failure(context: &str, failure: cli_core::CliRunError) -> ! {
 }
 
 fn section_oracle(dir: &Path, source: &str, selected: &str, terminal: u8) -> Vec<u8> {
-    // Keep every body and declaration unchanged. Select this leaf as the Hunk
-    // entry so ordinary Rust reachability retains the same requested block.
+    let mut payload = section_payload(dir, source, selected);
+    let mut padding = 0;
+    // These fixture code leaves end in RTS/$99; strip only final Hunk padding.
+    while payload.last() == Some(&0) {
+        payload.pop();
+        padding += 1;
+    }
+    assert!(padding <= 3);
+    assert_eq!(payload.last(), Some(&terminal));
+    payload
+}
+
+fn section_payload(dir: &Path, source: &str, selected: &str) -> Vec<u8> {
+    // Keep declarations and bodies unchanged; Rust selects this Hunk section.
     let source = source.replace(
         "sections=first,second,third",
         &format!("sections={selected}"),
@@ -95,17 +117,7 @@ fn section_oracle(dir: &Path, source: &str, selected: &str, terminal: u8) -> Vec
     let segments = hunk::segments(&bytes).expect("live section Hunk oracle");
     assert_eq!(segments.len(), 1);
     assert!(segments[0].relocations.is_empty());
-    let mut payload = segments[0].payload.to_vec();
-    let mut padding = 0;
-    // Fixture-specific: each leaf ends in RTS ($75) or the explicit $99 byte.
-    // Only Hunk's final word padding may be zero; this is not general trimming.
-    while payload.last() == Some(&0) {
-        payload.pop();
-        padding += 1;
-    }
-    assert!(padding <= 3);
-    assert_eq!(payload.last(), Some(&terminal));
-    payload
+    segments[0].payload.to_vec()
 }
 
 fn prepare(dir: &Path) -> Fixture {
@@ -142,25 +154,40 @@ fn prepare(dir: &Path) -> Fixture {
         source.replace(" bra.w done", " bra.w second"),
     )
     .unwrap();
+    let nominal = source.replace(
+        "Choices={2,7,9}",
+        "Choices={2,7,9}\n.priv\nSecret .struct\nCode .byte ?\n.endstruct\n.pub\nSample=Secret{Code:4}",
+    );
+    section_oracle(dir, &nominal, "third", 0x99);
+    fs::write(dir.join("module_compile_bad_nominal.asm"), nominal).unwrap();
+    let template = source.replace(".priv\nConfig=7", ".pub\nConfig=7");
+    section_oracle(dir, &template, "third", 0x99);
+    fs::write(dir.join("module_compile_bad_template.asm"), template).unwrap();
     // Derive each bound from a live assembly of that section with the identical
     // constant and private macro context, rather than instruction-size arithmetic.
     let first = section_oracle(dir, &source, "first", 0x75);
     let second = section_oracle(dir, &source, "second", 0x75);
     let third = section_oracle(dir, &source, "third", 0x99);
     assert_eq!(third, [0x99]);
+    let consumer_source = source.replace(".output \"leaf.hunk\"", ".section consumer,kind=code\n .byte Answer,Frame.Value,Choices[1]\n.endsection\n.output \"leaf.hunk\"");
+    let consumer = section_payload(dir, &consumer_source, "consumer");
+    assert_eq!(consumer.len(), 4, "three consumer bytes plus Hunk padding");
+    assert_eq!(consumer[3], 0, "Hunk padding only");
     let selected = [
         first.as_slice(),
         second.as_slice(),
         first.as_slice(),
         second.as_slice(),
+        &consumer[..3],
     ]
     .concat();
     fs::write(
         dir.join("module_compile_fixture.i"),
         format!(
-            "FIRST_BYTES={}\nSECOND_BYTES={}\nRESULT_BYTES={}\n",
+            "FIRST_BYTES={}\nSECOND_BYTES={}\nCODE_RESULT_BYTES={}\nRESULT_BYTES={}\n",
             first.len(),
             second.len(),
+            selected.len() - 3,
             selected.len()
         ),
     )
@@ -188,6 +215,8 @@ fn build_probe(root: &Path, dir: &Path, rejections: bool) -> Vec<u8> {
     let mut args = vec![
         "opforge".to_owned(),
         input.to_string_lossy().into_owned(),
+        "--dependencies".to_owned(),
+        dir.join("probe.d").to_string_lossy().into_owned(),
         "-M".to_owned(),
         native.to_string_lossy().into_owned(),
         "-I".to_owned(),
@@ -202,7 +231,11 @@ fn build_probe(root: &Path, dir: &Path, rejections: bool) -> Vec<u8> {
     if std::env::var("OPFORGE_MODULE_COMPILE_MEMORY").as_deref() == Ok("1") {
         // Failure-path accounting is a separate correctness run. It must not
         // contribute to the unchanged positive-input resource comparison.
-        for define in ["OPFORGE_DEBUG_CONTRACTS", "OPFORGE_MEMORY_TELEMETRY"] {
+        for define in [
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_MEMORY_TELEMETRY",
+            "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+        ] {
             args.extend(["--define".to_owned(), define.to_owned()]);
         }
     }
@@ -214,12 +247,91 @@ fn build_probe(root: &Path, dir: &Path, rejections: bool) -> Vec<u8> {
     fs::read(dir.join("module-compile-probe.hunk")).unwrap()
 }
 
+fn export_component(root: &Path, scratch: &Path, fixture: &Fixture, image: &[u8]) {
+    let Some(output) = std::env::var_os("OPFORGE_MODULE_COMPILE_EXPORT_DIR") else {
+        return;
+    };
+    let output = PathBuf::from(output);
+    assert!(output.is_absolute(), "export destination must be absolute");
+    assert!(
+        !output.starts_with(root.canonicalize().unwrap().join("target")),
+        "export outside target"
+    );
+    fs::create_dir(&output).expect("new export directory must not already exist");
+    fs::write(output.join("opforge"), image).unwrap();
+    fs::write(output.join("oracle.bin"), &fixture.selected).unwrap();
+    let mut files = Vec::new();
+    for name in [
+        "module_compile_source.asm",
+        "module_compile_package.bin",
+        "module_compile_fixture.i",
+    ] {
+        let bytes = fs::read(scratch.join(name)).unwrap();
+        fs::write(output.join(name), &bytes).unwrap();
+        files.push(
+            serde_json::json!({"path": name, "digest": opforge_self_host_package_digest(&bytes)}),
+        );
+    }
+    let dependencies = fs::read_to_string(scratch.join("probe.d")).unwrap();
+    let (_, dependencies) = dependencies
+        .split_once(": ")
+        .expect("dependency prerequisites");
+    let canonical_scratch = scratch.canonicalize().unwrap();
+    let mut paths = dependencies
+        .split_whitespace()
+        .map(|path| Path::new(path).canonicalize().unwrap())
+        .filter(|path| !path.starts_with(&canonical_scratch))
+        .collect::<BTreeSet<_>>();
+    paths.insert(
+        root.join("crates/opforge-asm/src/tests/native_module_compile.rs")
+            .canonicalize()
+            .unwrap(),
+    );
+    paths.insert(
+        root.join(
+            "native/motorola68000/amigaos/test-harnesses/experimental/module_compile_probe.asm",
+        )
+        .canonicalize()
+        .unwrap(),
+    );
+    let snapshot = paths
+        .into_iter()
+        .map(|path| {
+            let bytes = fs::read(&path).unwrap();
+            serde_json::json!({"path": path, "digest": opforge_self_host_package_digest(&bytes)})
+        })
+        .collect::<Vec<_>>();
+    let memory = std::env::var("OPFORGE_MODULE_COMPILE_MEMORY").as_deref() == Ok("1");
+    let manifest = serde_json::json!({
+        "schema": 1, "kind": "native-module-compile-export", "output_paths": "relative",
+        "image": {"path": "opforge", "digest": opforge_self_host_package_digest(image)},
+        "oracle": {"path": "oracle.bin", "digest": opforge_self_host_package_digest(&fixture.selected)},
+        "files": files, "source_snapshot": snapshot, "source_digest": fixture.source_digest,
+        "package_digest": fixture.package_digest, "expected_output_bytes": fixture.selected.len(),
+        "scale": fixture.scale, "instrumented": memory,
+        "expected_metrics": {"magic": "MCM1", "bytes": 28, "compiles": 1,
+            "semantic_bytes_minimum": 1, "raw_code_bytes": fixture.output_bytes,
+            "stored_blocks": 3, "retired_pointer": 0},
+        "scope": "native module compiler component and moved owned semantic consumer; not CLI self-host",
+        "native_validation": "not_run", "command": "opforge",
+        "outputs": ["output.bin", "metrics.bin"], "memory_output": memory.then_some("memory.bin"),
+    });
+    fs::write(
+        output.join("manifest.json"),
+        serde_json::to_vec_pretty(&manifest).unwrap(),
+    )
+    .unwrap();
+    eprintln!("MODULE_COMPILE_EXPORT {}", output.display());
+}
+
 #[test]
 fn native_module_compile_host_assembles() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let dir = scratch();
-    prepare(&dir.0);
-    assert!(!build_probe(&root, &dir.0, false).is_empty());
+    let fixture = prepare(&dir.0);
+    let image = build_probe(&root, &dir.0, false);
+    assert!(!image.is_empty());
+    export_component(&root, &dir.0, &fixture, &image);
 }
 
 #[test]
@@ -279,7 +391,7 @@ fn native_run(rejections: bool) {
             .collect::<Vec<_>>();
         assert_eq!(words[0], 0x4d434d31);
         assert_eq!(words[1], 1, "one actual native compile");
-        assert_eq!(words[2], 0, "reserved metric word");
+        assert!(words[2] > 0, "owned semantic interface bytes");
         assert_eq!(words[3], fixture.output_bytes as u32);
         assert!(words[4] > words[3], "saved image includes its directory");
         assert_eq!(words[5], 3);
@@ -313,6 +425,7 @@ fn native_run(rejections: bool) {
                 "exact_rust_bytes": expected.len(), "scale": fixture.scale, "trial": trial + 1, "rejections_checked": rejections,
                 "native_compiles": words[1], "selected_requests": 5, "stored_blocks": words[5],
                 "prepared_bytes": null, "output_bytes": words[3], "image_bytes": words[4],
+                "semantic_bytes": words[2], "owned_consumer_bytes": 3,
                 "native_component_seconds": runs[0].start_to_done_host_seconds,
                 "full_build_memory_saving": null, "full_build_runtime_saving": null,
             })

@@ -7,7 +7,9 @@ Parity remains paused; full-build 8 MiB fit is unproven.
 The [first-reference module proposal](native-fragment-preparation.md#first-reference-module-assembly-proposal)
 has standalone image/publication/leaf components. Its first CLI converter failed
 the resource gate and was removed; it does not change the storage policies below.
-Global binding, layout, reachability and emission remain authoritative.
+Global binding, layout, reachability and emission remain authoritative. The
+private leaf producer now preserves owned scalar/list/schema exports after its
+frontend retires; that component does not retire any additional CLI owner.
 
 ## Maintained storage policies
 

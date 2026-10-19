@@ -3,6 +3,7 @@
 	.module tests.amigaos.module_image_probe
 	.cpu 68020
 	.use experimental.amigaos.binary_module_image as image
+	.use experimental.amigaos.binary_module_interface as semantics
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_module_request as request
 	.include "module_image_payload.i"
@@ -247,6 +248,11 @@ selected	.block
 	jsr image.findValidated
 	tst.l d0
 	beq.w bad
+	; Images without semantic exports have no readable semantic view.
+	move.l #IMAGE_BYTES, d0
+	jsr image.semanticView
+	cmpi.l #semantics.NOT_FOUND, d0
+	bne.w bad
 	; Link failure checks always use a guarded output and zero publication count.
 	move.l #FAIL_REJECTION, ReturnCode
 	lea Link, a0
@@ -558,7 +564,7 @@ Inputs
 Fixup
 	.long 1, 2, 17, 4
 Build
-	.long Inputs, 3, Fixup, 1, 0, 0, 0
+	.long Inputs, 3, Fixup, 1, 0, 0, 0, 0, 0
 Link
 	.long 0, IMAGE_BYTES, 1, 0, 0, FIRST_BYTES, 0, resolve, 0
 Guard	.long GUARD_VALUE, GUARD_VALUE

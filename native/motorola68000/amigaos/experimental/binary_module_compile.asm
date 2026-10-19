@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_module_image as image
+	.use experimental.amigaos.binary_module_exports as exports
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_symbol_storage as storage
 	.use experimental.amigaos.binary_values as values
@@ -26,6 +27,11 @@ Bytes	.long ?
 CONTEXT_BYTES = Context.Bytes+4
 MAX_BLOCKS = sections.HUNK_SLOT_COUNT
 LINE_CAPACITY = 256
+INVALID = 1
+EXPORT_INVALID = 2
+EXECUTION_INVALID = 3
+PUBLICATION_INVALID = 4
+IMAGE_INVALID = 5
 ; Shared section-kind value; only code sections lower in this slice.
 CODE_KIND = 1
 	.priv
@@ -60,6 +66,8 @@ Index	.res byte, memory.Block.Used+4
 Parameters	.res byte, memory.Block.Used+4
 Output	.res byte, memory.Block.Used+4
 ImageOwner	.res byte, memory.Block.Used+4
+SemanticOwner	.res byte, memory.Block.Used+4
+PublicState	.res byte, exports.STATE_BYTES
 Inputs	.res byte, MAX_BLOCKS*image.INPUT_BYTES
 ; Artifact geometry, indexed by declaration order; never serialized pointers.
 Geometry	.res byte, MAX_BLOCKS*GEOMETRY_BYTES
@@ -69,7 +77,7 @@ TransientEnd
 	.section code, kind=code
 	.pub
 ; request compiler callback: A0=Context,A1=empty owned memory.Block.
-; D0/CCR=0 success,1 unsupported/invalid/storage; other registers preserved.
+; D0/CCR=0 success, otherwise one of the named *_INVALID statuses; others kept.
 ; Text is processed by shared frontend, macros by shared template execution,
 ; instruction/data bytes by one shared assembly session. No source parser here.
 ; Image IDs are declaration-order ordinals 1..N, independent of lexical IDs.
@@ -79,7 +87,10 @@ TransientEnd
 ; Absolute section references fail through AddReloc; cross-section PC-relative
 ; references fail the package Hunk proof. Runtime conditionals/loops are rejected.
 ; Constant source preprocessing and private macros may complete before assembly.
-; No exported template/interface, external import, layout recipe or disk spilling.
+; Publishes immutable scalars, lists/ranges and struct schemas with local IDs.
+; Scalars retain image-local section provenance; concrete nominal values reject.
+; Public templates, mutable/deferred exports, external imports, unresolved layout
+; recipes and disk spilling remain unsupported by this private producer.
 ; Package/source are borrowed for this call. All private owners retire on return;
 ; success transfers only the immutable image. Existing gated telemetry owns
 ; resource reporting; no release-only observer or metrics owner is retained.
@@ -225,6 +236,10 @@ rows
 	bls.w rows
 	bsr.w exportState
 	bne.w bad
+	lea PublicState, a0
+	lea Front, a1
+	jsr exports.prepare
+	bne.w exportBad
 	; No source-oriented owner remains when assembly begins.
 	bsr.w retireFrontend
 	bne.w bad
@@ -247,7 +262,7 @@ rows
 	move.l Symbols+storage.State.MemberKeys+memory.Block.Pointer, Work+assembly.Frame.MemberKeys
 	lea Work, a0
 	jsr assembly.assemble
-	bne.w bad
+	bne.w executionBad
 	movea.l Work+assembly.Frame.Sections, a0
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
 	bne.w bad
@@ -257,8 +272,13 @@ rows
 	move.w sections.State.OrderCount(a0), d0
 	cmp.l Count, d0
 	bne.w bad
+	lea PublicState, a0
+	lea Cells, a1
+	lea SemanticOwner, a2
+	jsr exports.publish
+	bne.w publicationBad
 	bsr.w saveImage
-	bne.w bad
+	bne.w imageBad
 	movea.l Destination, a1
 	move.l ImageOwner+memory.Block.Pointer, memory.Block.Pointer(a1)
 	move.l ImageOwner+memory.Block.Capacity, memory.Block.Capacity(a1)
@@ -268,8 +288,20 @@ rows
 	clr.l ImageOwner+memory.Block.Used
 	moveq #0, d7
 	bra.w done
+exportBad
+	moveq #EXPORT_INVALID, d7
+	bra.w done
+executionBad
+	moveq #EXECUTION_INVALID, d7
+	bra.w done
+publicationBad
+	moveq #PUBLICATION_INVALID, d7
+	bra.w done
+imageBad
+	moveq #IMAGE_INVALID, d7
+	bra.w done
 bad
-	moveq #1, d7
+	moveq #INVALID, d7
 done
 	bsr.w cleanup
 	clr.l Active
@@ -538,6 +570,8 @@ rows
 	addq.l #1, d3
 	bra.w rows
 measure
+	move.l SemanticOwner+memory.Block.Pointer, Build+image.Frame.Semantics
+	move.l SemanticOwner+memory.Block.Used, Build+image.Frame.SemanticsBytes
 	move.l #Inputs, Build+image.Frame.Blocks
 	move.l Count, Build+image.Frame.Count
 	clr.l Build+image.Frame.Relocs
@@ -564,6 +598,10 @@ bad
 
 cleanup	.block
 	bsr.w retireFrontend
+	lea PublicState, a0
+	jsr exports.release
+	lea SemanticOwner, a0
+	jsr memory.release
 	lea Metadata, a0
 	jsr metadata.release
 	lea Symbols, a0

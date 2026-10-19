@@ -18,6 +18,53 @@ savings first; drop changes below about 1% of the target resource. Use exact wor
 and capacity counters first, then at least three release timings for a speed claim.
 No new observer framework, macro-only investigations or selector stack is needed.
 
+## Owned module exports: qualified component, not CLI integration
+
+The private leaf producer now saves public scalar, list/range and struct-schema
+values with owned names/member keys in its offset-only image. A consumer moves
+that image, poisons the original source/image, releases the request, then reads
+the exported values. The live Rust consumer is the exact byte oracle. Unsupported
+public templates and concrete nominal values reject; complete template/schema
+closure and address/layout recipes remain integration work.
+
+The maintained CLI/reference is unchanged. This is a capability/ownership
+checkpoint, **not** a measured optimization against an equivalent eager producer.
+No new full-build runtime or memory saving is claimed. The eventual CLI change
+still needs to meet the meaningful-owner-retirement gate.
+
+| Scaled component, identical release/memory input | Result |
+|---|---:|
+| Source / prepared records | 11,116 / 14,507 B |
+| Stored code / semantic metadata / total image | 2,575 / 352 / 3,000 B |
+| Compiles / selected block requests | 1 / 5 |
+| Exact Rust output, including semantic consumer | 5,151 B |
+| Uninstrumented release observations | 0.609526 / 0.613320 / 0.606791 s |
+| Release median | 0.609526 s |
+| Separate MEMD peak tracked heap | 150,576 B |
+| Retained after publication / terminal ownership | 3,000 / 0 B |
+| Total allocation / free capacity | 269,864 / 269,864 B |
+
+The new saved image costs 361 B more than the previous code-only format for the
+same 2,575 code bytes: 352 semantic bytes, eight header bytes and one alignment
+byte. That is format overhead, not a full-build memory comparison. The separate
+instrumented process estimate is 919,192 B (703,080 linked bytes + tracked heap +
+65,536 stack), excluding OS/untracked costs. Component fit cannot establish
+full-build fit. The last full matched memory comparison above 19 MB of tracked
+heap remains far outside the 6.5 MiB process budget; this checkpoint changes none
+of those build-wide owners.
+
+These are fresh FS-UAE START/DONE intervals under max-speed 68020 emulation and
+the 8 MiB component profile; they are not hardware times. Release image identity:
+`fnv1a64:e5bb692519e60f2f`; source: `fnv1a64:a61403ed321af043`; package:
+`fnv1a64:415d2172932e243a`. Memory runs use a separately instrumented image.
+
+A fresh maintained-CLI self-host also completes: 223 files / 2,784,288 B produce
+728,804 B exactly equal to live Rust and the bootstrap, in 121.379 s. Bootstrap
+identity is `fnv1a64:f5d910ef19616ded`; source manifest:
+`fnv1a64:5973448cccfce8c4`. This uses the expanded 74 MiB diagnostic profile and
+64 KiB stack. It qualifies the hardware bundle's full self-host case, **not** the
+new module producer inside CLI scheduling or an 8 MiB full build.
+
 ## Configured-module CLI integration: not retained
 
 Checkpoint `cf78c259` preserves the attempted converter and its focused tests;

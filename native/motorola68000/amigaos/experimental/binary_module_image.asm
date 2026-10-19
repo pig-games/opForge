@@ -2,6 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_module_image
 	.module experimental.amigaos.binary_module_image
 	.cpu 68020
+	.use experimental.amigaos.binary_module_interface as semantics
 	.pub
 Header	.struct
 Magic	.long ?
@@ -11,8 +12,10 @@ Blocks	.long ?
 RelocCount	.long ?
 Relocs	.long ?
 Payload	.long ?
+Semantics	.long ?
+SemanticsBytes	.long ?
 	.endstruct
-HEADER_BYTES = Header.Payload+4
+HEADER_BYTES = Header.SemanticsBytes+4
 MAGIC = $4f464d49; OFMI: integrity tag, not executor version dispatch
 Block	.struct
 Id	.long ?
@@ -41,8 +44,10 @@ RelocCount	.long ?
 Output	.long ?
 Capacity	.long ?
 Used	.long ?
+Semantics	.long ?  ; optional borrowed owned-interface image
+SemanticsBytes	.long ?
 	.endstruct
-FRAME_BYTES = Frame.Used+4
+FRAME_BYTES = Frame.SemanticsBytes+4
 LinkFrame	.struct
 Image	.long ?
 ImageBytes	.long ?
@@ -63,7 +68,8 @@ LINK_FRAME_BYTES = LinkFrame.Context+4
 ; all caller buffers must be readable/writable and immutable during this call.
 ; Blocks require strictly increasing unsigned IDs. Relocations require increasing
 ; (Block,Offset) order with disjoint four-byte fields. Tables and payload are
-; serialized in input order, with no padding or pointers.
+; serialized in input order. Optional semantic data follows zero padding to an
+; eight-byte boundary; no process pointers are serialized.
 ; Every input and relocation is checked before the first output write.
 build	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -166,6 +172,24 @@ field
 	addq.l #1, d5
 	bra.w nextReloc
 checked
+	tst.l Frame.SemanticsBytes(a6)
+	beq.w noSemantics
+	move.l d4, d0
+	addq.l #7, d0
+	bcs.w bad
+	andi.l #$fffffff8, d0
+	move.l d0, d4
+	add.l Frame.SemanticsBytes(a6), d4
+	bcs.w bad
+	movea.l Frame.Semantics(a6), a0
+	move.l Frame.SemanticsBytes(a6), d0
+	jsr semantics.validate
+	bne.w bad
+	bra.w outputReady
+noSemantics
+	tst.l Frame.Semantics(a6)
+	bne.w bad
+outputReady
 	move.l Frame.Output(a6), d0
 	beq.w good
 	cmp.l Frame.Capacity(a6), d4
@@ -177,6 +201,13 @@ checked
 	move.l #MAGIC, Header.Magic(a5)
 	move.l d4, Header.Bytes(a5)
 	move.l d6, Header.BlockCount(a5)
+	clr.l Header.Semantics(a5)
+	move.l Frame.SemanticsBytes(a6), Header.SemanticsBytes(a5)
+	beq.w semanticHeaderReady
+	move.l d4, d0
+	sub.l Frame.SemanticsBytes(a6), d0
+	move.l d0, Header.Semantics(a5)
+semanticHeaderReady
 	move.l #HEADER_BYTES, Header.Blocks(a5)
 	move.l d7, Header.RelocCount(a5)
 	move.l d6, d0
@@ -202,7 +233,7 @@ checked
 	moveq #0, d5
 writeBlock
 	cmp.l d6, d5
-	bhs.w good
+	bhs.w writeSemantics
 	move.l Input.Id(a2), Block.Id(a3)
 	move.l d1, Block.Offset(a3)
 	move.l Input.Bytes(a2), Block.Bytes(a3)
@@ -216,6 +247,21 @@ writeBlock
 	adda.w #BLOCK_BYTES, a3
 	addq.l #1, d5
 	bra.w writeBlock
+writeSemantics
+	tst.l Frame.SemanticsBytes(a6)
+	beq.w good
+	movea.l a5, a1
+	adda.l d1, a1
+padding
+	cmp.l Header.Semantics(a5), d1
+	bhs.w semanticPayload
+	clr.b (a1)+
+	addq.l #1, d1
+	bra.w padding
+semanticPayload
+	movea.l Frame.Semantics(a6), a0
+	move.l Frame.SemanticsBytes(a6), d0
+	bsr.w copyBytes
 good
 	move.l d4, Frame.Used(a6)
 	moveq #0, d0
@@ -296,8 +342,40 @@ blockOk
 	addq.l #1, d5
 	bra.w nextBlock
 relocs
+	tst.l Header.SemanticsBytes(a6)
+	beq.w noSemantics
+	move.l d4, d0
+	addq.l #7, d0
+	bcs.w bad
+	andi.l #$fffffff8, d0
+	cmp.l Header.Semantics(a6), d0
+	bne.w bad
+	cmp.l d7, d0
+	bhi.w bad
+	move.l d7, d1
+	sub.l d0, d1
+	cmp.l Header.SemanticsBytes(a6), d1
+	bne.w bad
+	movea.l a6, a0
+	adda.l d4, a0
+padding
+	cmp.l Header.Semantics(a6), d4
+	bhs.w semanticPayload
+	tst.b (a0)+
+	bne.w bad
+	addq.l #1, d4
+	bra.w padding
+semanticPayload
+	move.l Header.SemanticsBytes(a6), d0
+	jsr semantics.validate
+	bne.w bad
+	bra.w relocationTable
+noSemantics
+	tst.l Header.Semantics(a6)
+	bne.w bad
 	cmp.l d7, d4
 	bne.w bad
+relocationTable
 	movea.l a6, a4
 	adda.l Header.Relocs(a6), a4
 	movea.l a6, a2
@@ -341,6 +419,26 @@ done
 	tst.l d0
 	rts
 	.bend  ; validate
+
+; A0=image,D0=bytes. Success A1=borrowed semantic image,D1=bytes.
+; D0/CCR=status; missing semantics is NOT_FOUND; others preserved.
+; The view owns no pointers and remains valid only while its image is retained.
+semanticView	.block
+	bsr.w validate
+	bne.w done
+	move.l Header.SemanticsBytes(a0), d0
+	beq.w absent
+	move.l d0, d1
+	movea.l a0, a1
+	adda.l Header.Semantics(a0), a1
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #semantics.NOT_FOUND, d0
+done
+	tst.l d0
+	rts
+	.bend  ; semanticView
 
 ; A0=image,D0=bytes,D1=block ID. Success: A1=payload,D1=length.
 ; D0/CCR=status (missing is invalid); remaining registers preserved.

@@ -1534,6 +1534,7 @@ run	.block
 	lea SymbolStorage+storage.State.MemberKeys, a1
 	move.l memory.Block.Pointer(a1), assembly.Frame.MemberKeys(a0)
 	clr.l assembly.Frame.Emitted(a0)
+	clr.l assembly.Frame.Instruction(a0)
 	cmpi.w #output_plan.BIN, CliOutputKind
 	beq.w captureSpans
 	tst.w CliOutputKind

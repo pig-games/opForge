@@ -8101,3 +8101,6 @@ mod native_module_images;
 #[cfg(test)]
 #[path = "tests/native_module_pipeline.rs"]
 mod native_module_pipeline;
+#[cfg(test)]
+#[path = "tests/native_module_shared_sections.rs"]
+mod native_module_shared_sections;

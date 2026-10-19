@@ -9,7 +9,11 @@ has standalone image/publication/leaf components. Its first CLI converter failed
 the resource gate and was removed; it does not change the storage policies below.
 Global binding, layout, reachability and emission remain authoritative. The
 private leaf producer now preserves owned scalar/list/schema exports after its
-frontend retires; that component does not retire any additional CLI owner.
+frontend retires. It also saves independently relocatable blocks from a shared
+section using exact label ownership and package-owned branch replay; no CPU
+semantics move into the producer. These components do not retire any additional
+CLI owner. Address/import mapping and template dependency closure still prevent
+general CLI image publication.
 
 ## Maintained storage policies
 

@@ -20,6 +20,9 @@ UNAVAILABLE_KIND = -1; private stack cell; never published as a values Kind
 LEN_ID = 1
 MODE_COMPACT_BIT = 0
 MODE_ASSEMBLER_BIT = 1
+POSITION_OBSERVATION_POLICY_BIT = 0
+POSITION_SEEN = 1
+POSITION_UNSAFE = 2
 Frame	.struct
 Values	.long ?
 Defined	.long ?
@@ -51,8 +54,9 @@ Mode	.long ?
 ArenaStart	.long ?
 TypeOffset	.long ?
 Nominal	.long ?
+PositionObserved	.long ?
 .endstruct
-STACK = State.Nominal+4
+STACK = State.PositionObserved+4
 PACKED = STACK+MAX_DEPTH*CELL_BYTES
 TEMP = PACKED+MAX_DEPTH*values.FIELD_BYTES
 WORK_BYTES = TEMP+22
@@ -108,6 +112,7 @@ evaluateMode	.block
 	move.l d4, State.Mode(a3)
 	clr.l State.Unresolved(a3)
 	clr.l State.Symbols(a3)
+	clr.l State.PositionObserved(a3)
 	clr.l State.Steps(a3)
 	movea.l Frame.Owner(a6), a0
 	move.l values.Owner.Arena+memory.Block.Used(a0), State.ArenaStart(a3)
@@ -118,6 +123,19 @@ next
 	addq.l #1, State.Steps(a3)
 	cmpi.l #STEP_LIMIT, State.Steps(a3)
 	bhi.w malformed
+	; Record section observations before an operation can cancel provenance.
+	; The private module producer opts in; ordinary evaluator behavior is zero.
+	btst #POSITION_OBSERVATION_POLICY_BIT, Frame.Reserved+1(a6)
+	beq.w observationReady
+	tst.l d7
+	beq.w observationReady
+	bsr.w top
+	tst.l Cell.Provenance(a1)
+	beq.w observationReady
+	tst.l State.PositionObserved(a3)
+	bne.w observationReady
+	move.l #POSITION_SEEN, State.PositionObserved(a3)
+observationReady
 	bsr.w byte
 	bne.w malformed
 	.TELEMETRY_VM_OPCODE runtime_profile.OPFORGE_RUNTIME_VM_EXPRVM, runtime_profile.OPFORGE_RUNTIME_PROGRAM_EXPRESSION_EVALUATOR
@@ -395,6 +413,12 @@ condition
 	beq.w malformed
 	bra.w condition
 truth
+	btst #POSITION_OBSERVATION_POLICY_BIT, Frame.Reserved+1(a6)
+	beq.w conditionReady
+	tst.l Cell.Provenance(a1)
+	beq.w conditionReady
+	move.l #POSITION_UNSAFE, State.PositionObserved(a3)
+conditionReady
 	lea CELL_BYTES(a1), a2
 	move.l Cell.Low(a1), d0
 	or.l Cell.High(a1), d0
@@ -872,6 +896,17 @@ finish
 	cmpi.l #1, d7
 	bne.w malformed
 	bsr.w top
+	; A producer cannot freeze an address observation that has become absolute
+	; or unsafe. Compound observations also stay closed in this bounded slice.
+	cmpi.l #POSITION_UNSAFE, State.PositionObserved(a3)
+	beq.w malformed
+	tst.l State.PositionObserved(a3)
+	beq.w positionReady
+	tst.l Cell.Kind(a1)
+	bne.w malformed
+	tst.l Cell.Provenance(a1)
+	ble.w malformed
+positionReady
 	btst #MODE_ASSEMBLER_BIT, State.Mode+3(a3)
 	beq.w captureReady
 	cmpi.l #structs.LITERAL, Cell.Kind(a1)
@@ -1169,6 +1204,14 @@ project	.block
 	move.l d3, Cell.High(a1)
 	move.l d4, Cell.Kind(a1)
 	move.l d5, Cell.Provenance(a1)
+	; Arithmetic can project two records and cancel them within one VM step.
+	btst #POSITION_OBSERVATION_POLICY_BIT, Frame.Reserved+1(a6)
+	beq.w restored
+	tst.l d5
+	beq.w restored
+	tst.l State.PositionObserved(a3)
+	bne.w restored
+	move.l #POSITION_SEEN, State.PositionObserved(a3)
 restored
 	movem.l (sp)+, d1-d7/a0-a2
 	tst.l d0
@@ -1225,6 +1268,20 @@ unary
 unsupportedUnary
 	moveq #-1, d2
 done
+	; Once arithmetic erases an address observation, a later address cannot
+	; make its frozen addend safe again. Keep that failure sticky to End.
+	btst #POSITION_OBSERVATION_POLICY_BIT, Frame.Reserved+1(a6)
+	beq.w policyReady
+	tst.l d2
+	bgt.w policyReady
+	cmpi.l #2, d6
+	bne.w policyUnary
+	or.l d1, d0
+policyUnary
+	tst.l d0
+	beq.w policyReady
+	move.l #POSITION_UNSAFE, State.PositionObserved(a3)
+policyReady
 	move.l d2, State.Provenance(a3)
 	movem.l (sp)+, d0-d2
 	rts

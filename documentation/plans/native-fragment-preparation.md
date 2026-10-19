@@ -111,32 +111,59 @@ runtime separately from heap, and qualify a full self-build before promotion.
 These standalone components remain as the checked image/publication contract:
 
 - `binary_module_image.asm`: immutable 36-byte header, 12-byte block directory rows,
-  16-byte BE32 relocation rows, raw payload and an optional aligned semantic image.
+  28-byte bounded relocation rows, raw payload and an optional aligned semantic image.
   Every serialized reference is a bounded offset or module-local numeric identity.
 - `binary_module_request.asm`: one first-request compile callback, checked publication,
   reuse, sticky failure and explicit release. Views borrow the published image.
 - `binary_module_compile.asm`: shared tokenizer/frontend/assembly execution for a
   restricted leaf, followed by private-owner retirement and image publication.
+- `binary_module_layout.asm`: owns numeric block geometry, exact label ownership
+  and package-program relocation recipes; no source grammar or CPU decoder.
 - `binary_module_exports.asm`: captures owned public spellings and member keys
   before lexical retirement, then obtains final values from the shared engine.
 - `binary_module_interface.asm`: owns compact scalar/list/range/schema exports,
   validates their bounded representation, and provides numeric readers.
 
-The leaf producer supports up to eight nonnested blocks, each in a distinct code
-section with contiguous initialized output from local PC zero. Same-block relative
-branches use existing package/Hunk proof. Immutable scalar dependencies resolve
-through the shared engine, including private forward constants. Public scalar,
-list/range and struct-schema definitions survive in the saved image. Spellings
-retain source case; symbol matching remains ASCII case insensitive. IDs are local
-to the image, including member and nominal identities; later integration needs
-explicit remapping, not reuse as build-wide IDs. Scalars retain local section
-provenance, but final section-to-fragment placement is not implemented here.
+The leaf producer supports nonnested blocks sharing selected code sections. Block
+count is bounded by owned storage and 16-bit local identities, independently of
+the eight-section Hunk limit. Each block owns contiguous initialized output;
+empty blocks and initialized bytes outside blocks reject. Exact label identities
+preserve ownership even when an end label shares the next block's entry address.
+
+Ordinary relative branches save their package program, selected candidate and
+numeric arguments. Linking replays that same VM program at the new source/target
+addresses; package-defined widths, endian, reserved values and ranges remain
+authoritative. No instruction decoding or new VM version dispatch is introduced.
+Same-block relative branches need no saved recipe. Absolute data references to
+owned labels use bounded BE32 relocations; incompatible package byte order rejects.
+The VM reports PC dependence separately from the existing Hunk cancellation
+proof. Numeric PC-dependent branches without an owned target cannot publish a
+recipe and reject. Other instruction fixups, unowned
+aliases and placement-dependent candidate relaxation reject. Linking preflights
+all patches before copying bytes; resolver/patch callbacks must be pure and stable.
+The private image requires the matching producer package; persistent fingerprints
+are still future work.
+
+Immutable scalar dependencies resolve through the shared engine, including private
+forward constants. Public scalar, list/range and struct-schema definitions survive
+in the saved image. Spellings retain source case; symbol matching remains ASCII
+case insensitive. IDs are local to the image, including member and nominal
+identities; later integration needs explicit remapping, not reuse as build-wide
+IDs. Scalar section provenance is retained; mapping exported addresses to independently
+placed fragment IDs remains an explicit CLI-integration boundary.
 
 General imports, public templates, mutable/deferred exports, concrete address/
-struct values, nested compound cells, absolute cross-section relocations and
-placement-dependent recipes remain unsupported. Concrete nominal values reject
+struct values, nested compound cells, absolute instruction fixups and
+placement-dependent relaxation recipes remain unsupported. Concrete nominal values reject
 until their schema dependencies can be exported completely. Unsupported sources
 reject the component request; the normal CLI continues to use its existing engine.
+The producer-only evaluator policy also rejects positional observations that lose
+affine provenance, including intermediate cancellation, comparisons and positional
+conditions. Even same-block differences conservatively reject until a stronger
+proof or explicit layout recipe can represent them. Normal CLI policy remains zero.
+The same policy rejects `.align` in the shared assembly handler, including zero
+original padding: independently moving a block can change its required padding.
+An alignment recipe or explicit placement constraint is needed before accepting it.
 
 Native probes cover moved images, poisoned/freed originals, selected whole blocks,
 one compilation across repeated requests, different imported link addresses,
@@ -147,10 +174,14 @@ through the retained image only. Its expected bytes come from a live Rust consum
 Malformed semantic kind/name offsets and truncated images must reject. Public
 templates and unsupported nominal values must fail without leaking owners.
 
-The scaled component stores 2,575 code bytes plus 352 semantic bytes in a 3,000-byte
-image; five block requests compile once and produce 5,151 exact Rust bytes, including
-the three-byte semantic consumer. This is **not** a CLI peak reduction, a speedup
-over the reference, or a full-build 8 MiB fit result.
+The real `binary_text_names` component produces 528 code bytes across three
+shared-section blocks and two inter-block recipes. Moving the image, poisoning
+its source/original image and linking in order 3/1/2 at different addresses matches
+fresh Rust exactly. A second fixture combines absolute data, relative branches
+and block-local end labels. Missing callbacks, out-of-range placement, unknown
+programs and malformed spans reject before changing guarded output. Separate
+MEMD runs finish with zero ownership. See the [measurement report](native-performance-diagnosis.md)
+for resource scope; this is not a CLI peak reduction or an 8 MiB full-build result.
 
 ## Next coherent integration boundary
 
@@ -160,8 +191,10 @@ nominal dependencies, imports and explicit address/layout recipes. Then consume
 one such configured module through ordinary final layout without reconstructing
 its instruction stream. Preserve shared sections, imports and complete blocks.
 
-First qualify a representative module that exercises the previously excluded
-binding/relocation cases, then use the frozen full/small/macro comparisons. Stop
+The representative shared-section relocation boundary is now qualified. Next
+connect exported address identities and imports to fragment placement before
+selecting an ordinary CLI module for private-owner retirement. Continue the frozen
+full/small/macro comparisons. Stop
 if retained interfaces and temporary overlap replace the old peak. Do not increase
 limits or add switches simply to keep the failed instruction-only converter alive.
 Do not describe component publication as general CLI module completion.

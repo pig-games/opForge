@@ -67,6 +67,7 @@ Reserved	.word ?
 Provenance	.long ?
 	.endstruct
 FRAME_BYTES = Frame.Provenance+4
+EXPRESSION_POLICY = Frame.Reserved
 	.section code, kind=code
 	.pub
 ; Install validated package grammar and session-owned transient workspace.
@@ -808,6 +809,8 @@ EVALUATE	.macro saved, compound=0
 	bne.w malformed
 	movea.l a2, a5
 	clr.l Frame.Provenance(a5)
+	btst #typed.POSITION_OBSERVATION_POLICY_BIT, EXPRESSION_POLICY+1(a5)
+	bne.w compactEvaluate
 	.if .compound == 0
 	bsr.w bareTypeScalar
 	bne.w compactAlias
@@ -941,6 +944,7 @@ compactTypedStorage
 	beq.w malformed
 	tst.l d0
 	beq.w compactNumeric
+compactEvaluate
 	.if .compound == 0
 	movea.l Frame.Owner(a2), a6
 	move.l values.Owner.Arena+memory.Block.Used(a6), d5

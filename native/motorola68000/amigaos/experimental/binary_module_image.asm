@@ -1,4 +1,4 @@
-; Immutable fixed fragments and opaque absolute-long relocations; no grammar.
+; Immutable fixed fragments and opaque bounded patch recipes; no grammar.
 ; @opforge-owner: experimental.amigaos.binary_module_image
 	.module experimental.amigaos.binary_module_image
 	.cpu 68020
@@ -34,8 +34,13 @@ Block	.long ?
 Offset	.long ?
 Target	.long ?
 Addend	.long ?
+Span	.long ?
+Program	.long ?
+Arguments	.long ?
 	.endstruct
-RELOC_BYTES = Reloc.Addend+4
+RELOC_BYTES = Reloc.Arguments+4
+PATCH_CAPACITY = 4096
+PROGRAM_ABSOLUTE = $ffffffff
 Frame	.struct
 Blocks	.long ?
 Count	.long ?
@@ -58,8 +63,9 @@ Capacity	.long ?
 Used	.long ?
 Resolve	.long ?
 Context	.long ?
+Patch	.long ?
 	.endstruct
-LINK_FRAME_BYTES = LinkFrame.Context+4
+LINK_FRAME_BYTES = LinkFrame.Patch+4
 	.section code, kind=code
 	.pub
 ; A0=Frame. Output=0 measures; otherwise Capacity must cover the result.
@@ -67,7 +73,7 @@ LINK_FRAME_BYTES = LinkFrame.Context+4
 ; only on success. Input rows, source bytes, Frame and output must not overlap;
 ; all caller buffers must be readable/writable and immutable during this call.
 ; Blocks require strictly increasing unsigned IDs. Relocations require increasing
-; (Block,Offset) order with disjoint four-byte fields. Tables and payload are
+; (Block,Offset) order with disjoint bounded spans. Tables and payload are
 ; serialized in input order. Optional semantic data follows zero padding to an
 ; eight-byte boundary; no process pointers are serialized.
 ; Every input and relocation is checked before the first output write.
@@ -79,7 +85,7 @@ build	.block
 	; Multiplication is bounded before shifts/adds, never a truncated MULU.
 	cmpi.l #$0fffffff, d6
 	bhi.w bad
-	cmpi.l #$0fffffff, d7
+	cmpi.l #$ffffffff/RELOC_BYTES, d7
 	bhi.w bad
 	move.l d6, d4
 	lsl.l #2, d4
@@ -89,7 +95,7 @@ build	.block
 	addi.l #HEADER_BYTES, d4
 	bcs.w bad
 	move.l d7, d0
-	lsl.l #4, d0
+	mulu.l #RELOC_BYTES, d0
 	add.l d0, d4
 	bcs.w bad
 	move.l Frame.Blocks(a6), d0
@@ -113,7 +119,7 @@ inputReady
 	beq.w bad
 relocReady
 	move.l d7, d1
-	lsl.l #4, d1
+	mulu.l #RELOC_BYTES, d1
 	add.l d1, d0
 	bcs.w bad
 	moveq #0, d5
@@ -160,10 +166,19 @@ locate
 	addq.l #1, d3
 	bra.w locate
 field
+	move.l Reloc.Span(a4), d1
+	beq.w bad
+	cmpi.l #PATCH_CAPACITY, d1
+	bhi.w bad
+	cmpi.l #PROGRAM_ABSOLUTE, Reloc.Program(a4)
+	bne.w spanReady
+	cmpi.l #4, d1
+	bne.w bad
+spanReady
 	move.l Reloc.Offset(a4), d0
 	cmp.l d2, d0
 	blo.w bad
-	addq.l #4, d0
+	add.l d1, d0
 	bcs.w bad
 	cmp.l Input.Bytes(a2), d0
 	bhi.w bad
@@ -221,10 +236,10 @@ semanticHeaderReady
 	adda.l d0, a1
 	movea.l Frame.Relocs(a6), a0
 	move.l d7, d0
-	lsl.l #4, d0
+	mulu.l #RELOC_BYTES, d0
 	bsr.w copyBytes
 	move.l d7, d1
-	lsl.l #4, d1
+	mulu.l #RELOC_BYTES, d1
 	add.l Header.Relocs(a5), d1
 	move.l d1, Header.Payload(a5)
 	movea.l a5, a3
@@ -312,11 +327,12 @@ validate	.block
 	bne.w bad
 	move.l d7, d0
 	sub.l d4, d0
-	lsr.l #4, d0
+	moveq #RELOC_BYTES, d1
+	divu.l d1, d0
 	move.l Header.RelocCount(a6), d5
 	cmp.l d0, d5
 	bhi.w bad
-	lsl.l #4, d5
+	mulu.l #RELOC_BYTES, d5
 	add.l d5, d4
 	cmp.l Header.Payload(a6), d4
 	bne.w bad
@@ -398,10 +414,19 @@ locate
 	addq.l #1, d3
 	bra.w locate
 field
+	move.l Reloc.Span(a4), d1
+	beq.w bad
+	cmpi.l #PATCH_CAPACITY, d1
+	bhi.w bad
+	cmpi.l #PROGRAM_ABSOLUTE, Reloc.Program(a4)
+	bne.w spanReady
+	cmpi.l #4, d1
+	bne.w bad
+spanReady
 	move.l Reloc.Offset(a4), d0
 	cmp.l d2, d0
 	blo.w bad
-	addq.l #4, d0
+	add.l d1, d0
 	bcs.w bad
 	cmp.l Block.Bytes(a2), d0
 	bhi.w bad
@@ -496,14 +521,21 @@ done
 	rts
 	.bend  ; findValidated
 
-; A0=LinkFrame. Copies one selected block and patches its BE32 absolute fields.
+; A0=LinkFrame. Copies one selected block and executes bounded patch recipes.
 ; D0/CCR=status; other registers preserved. Used changes only on success.
 ; Resolve(A0=Context,D1=opaque target)->D0=status,D1=absolute address;
 ; it preserves other registers and MUST be pure/stable across both passes.
 ; Base is available in the caller's context; targets never implicitly add Base.
 ; Address+unsigned Addend overflow is rejected. All selected resolutions and
 ; ranges are checked before output mutation. Atomic failure relies on the pure
-; resolver precondition; a changing second-pass resolver violates this contract.
+; resolver/patcher precondition; changing callbacks violate this contract.
+; Patch(A0=Context,A1=destination,D0=span capacity,D1=program,D2=arguments,
+; D3=Base+field offset,D4=resolved target+addend)->D0=status,D1=written.
+; Other registers preserved. Patch must be pure/stable across both passes and
+; write only within its capacity. Exactly Span bytes must be produced.
+; Nonabsolute recipes require Patch and the same package identity used by the
+; producer. This private image does not yet serialize a package fingerprint.
+; Preflight uses bounded stack scratch.
 ; Input/output/Frame do not overlap.
 link	.block
 	movem.l a0-a1, -(sp)
@@ -523,6 +555,7 @@ done
 ; remained immutable. Avoids validating unrelated payload/directory rows again.
 linkValidated	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	suba.l #PATCH_CAPACITY, sp
 	movea.l a0, a6
 	movea.l LinkFrame.Image(a6), a0
 	move.l LinkFrame.ImageBytes(a6), d0
@@ -557,7 +590,7 @@ lowerBound
 	lsr.l #1, d4
 	add.l d2, d4
 	move.l d4, d0
-	lsl.l #4, d0
+	mulu.l #RELOC_BYTES, d0
 	movea.l a4, a2
 	adda.l d0, a2
 	move.l Reloc.Block(a2), d0
@@ -573,7 +606,7 @@ rangeReady
 	movea.l LinkFrame.Image(a6), a2
 	move.l Header.RelocCount(a2), d3
 	sub.l d2, d3
-	lsl.l #4, d2
+	mulu.l #RELOC_BYTES, d2
 	adda.l d2, a4
 	movea.l a4, a2
 	moveq #0, d6
@@ -596,12 +629,36 @@ next
 	bne.w bad
 	add.l Reloc.Addend(a4), d1
 	bcs.w bad
+	movea.l sp, a1
 	tst.l d6
-	beq.w advance
+	beq.w destinationReady
 	movea.l LinkFrame.Output(a6), a1
 	adda.l Reloc.Offset(a4), a1
+destinationReady
+	cmpi.l #PROGRAM_ABSOLUTE, Reloc.Program(a4)
+	bne.w program
 	; The native 68020 supports unaligned long stores; wire order is BE32.
 	move.l d1, (a1)
+	bra.w advance
+program
+	move.l LinkFrame.Patch(a6), d0
+	beq.w bad
+	movea.l d0, a3
+	; D2/D3/D4 retain the relocation range across callback arguments.
+	movem.l d2-d4, -(sp)
+	move.l d1, d4
+	move.l LinkFrame.Base(a6), d3
+	add.l Reloc.Offset(a4), d3
+	move.l Reloc.Arguments(a4), d2
+	move.l Reloc.Program(a4), d1
+	move.l Reloc.Span(a4), d0
+	movea.l LinkFrame.Context(a6), a0
+	jsr (a3)
+	movem.l (sp)+, d2-d4
+	tst.l d0
+	bne.w bad
+	cmp.l Reloc.Span(a4), d1
+	bne.w bad
 advance
 	adda.w #RELOC_BYTES, a4
 	subq.l #1, d5
@@ -622,6 +679,7 @@ good
 bad
 	moveq #1, d0
 done
+	adda.l #PATCH_CAPACITY, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts

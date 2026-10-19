@@ -154,7 +154,7 @@ Owner	.long ?
 Kind	.long ?
 SectionIds	.long ?
 CurrentSection	.word ?
-Reserved	.word ?
+ExpressionPolicy	.word ?  ; shared evaluator observation policy; zero is ordinary behavior
 Provenance	.long ?
 Package	.long ?
 Pass	.word ?
@@ -167,6 +167,8 @@ SectionBases	.long ?  ; optional eight canonical Hunk origins; zero means unplac
 TextState	.long ?  ; session-owned shared text encoding state
 	.endstruct
 CONTEXT_BYTES = Context.TextState+4
+POSITION_OBSERVATION_POLICY_BIT = 0
+POSITION_OBSERVATION_POLICY = 1<<POSITION_OBSERVATION_POLICY_BIT
 
 Parameter	.struct
 Id	.word ?

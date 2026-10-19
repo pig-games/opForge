@@ -7,6 +7,9 @@
 //! Run native_cli_frozen_comparison with --ignored --nocapture
 //! --test-threads=1 and the normal FS-UAE environment. Each workload runs three
 //! releases per role plus one separately instrumented memory run per role.
+//! native_cli_frozen_candidate_comparison reuses a previously measured frozen
+//! reference and runs only the fresh candidate roles; input identities must match
+//! that earlier receipt before comparing results.
 //! A full release run is a self-build only when the live oracle equals its
 //! bootstrap and the frozen/export source manifest digests are identical.
 use super::*;
@@ -76,6 +79,16 @@ fn oracle(root: &Path, entry: &str, output: &Path, binary: bool) -> Vec<u8> {
 #[test]
 #[ignore = "four prepared embedded bundles and configured serial FS-UAE required"]
 fn native_cli_frozen_comparison() {
+    compare(false);
+}
+
+#[test]
+#[ignore = "fresh candidate against an already measured identical frozen input; serial FS-UAE required"]
+fn native_cli_frozen_candidate_comparison() {
+    compare(true);
+}
+
+fn compare(candidate_only: bool) {
     let (frozen_root, frozen, _, package) = bundle("OPFORGE_CLI_FROZEN_BUNDLE");
     let baseline = bundle("OPFORGE_CLI_BASELINE_RELEASE");
     let candidate = bundle("OPFORGE_CLI_CANDIDATE_RELEASE");
@@ -253,6 +266,9 @@ fn native_cli_frozen_comparison() {
             ("baseline", &baseline.2, false, 3),
             ("candidate", &candidate.2, false, 3),
         ] {
+            if candidate_only && role.starts_with("baseline") {
+                continue;
+            }
             for round in 1..=rounds {
                 let case = OpforgeNativeCliParityCase {
                     name: workload,

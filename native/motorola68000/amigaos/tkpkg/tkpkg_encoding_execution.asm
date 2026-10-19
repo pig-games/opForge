@@ -4,6 +4,13 @@
 	.cpu 68020
 	.include "telemetry_macros.i"
 	.pub
+; Fixed scalar input record: little-endian value followed by its byte length.
+ScalarInput	.struct
+Value	.long ?
+Bytes	.byte ?
+	.endstruct
+SCALAR_VALUE_BYTES = ScalarInput.Bytes
+SCALAR_INPUT_BYTES = ScalarInput.Bytes+1
 ; Ephemeral runtime context, outside offset-only source/package representations.
 ; Caller owns valid input records, output and fixup arrays for their stated counts.
 ; A6 points here for every entry; no legacy service or assembler globals are used.
@@ -25,7 +32,7 @@ HasSymbol	.byte ?
 Reserved	.byte ?
 Mnemonic	.long ?
 MnemonicLength	.word ?
-Reserved2	.word ?
+PositionDependent	.word ?  ; resolved output observes instruction PC
 FixupOffsets	.long ?
 FixupAddends	.long ?
 FixupWidths	.long ?
@@ -33,7 +40,11 @@ FixupTargets	.long ?
 PositionProofCount	.word ?
 PositionProofTarget	.word ?
 InputTarget	.word ?  ; optional exact scalar identity; $ffff means absent
+PositionProofCandidate	.word ?
+PositionProofOpcode	.word ?
+PositionProofValue	.long ?
 .endstruct
+ContextBytes = Context.PositionProofValue+4
 
 MALFORMED_TEXT_LEN = 30
 RANGE_SUFFIX_LEN = 33
@@ -74,6 +85,14 @@ malformed
 	moveq #1, d0
 	rts
 	.bend  ; semantic
+
+; Execute the compiled branch contract directly; grammar and bounds are checked
+; by its interpreter. A6=Context,A1/D1=program. D0=status,D1=length,A1=bytes
+; or diagnostic; preserves D2-D7/A0/A2-A6. CCR unspecified.
+branchProgram	.block
+	bsr.w runBranch
+	rts
+	.bend  ; branchProgram
 	.priv
 
 ; Direct Rust branch_vm::execute_branch_program port for SEMV/CSEM v5.  The
@@ -374,10 +393,11 @@ branchSuffixReady
 	sub.l a1, d1
 	cmp.w Context.WriteOffset(a6), d1
 	bls.w branchFail
-	; A resolved successful package branch cancels its source position.
-	; Exact target identity is caller-bound input, never inferred from bytes.
+	; Dependency reports every resolved branch; the narrower Hunk proof
+	; still requires caller-bound exact identity.
 	tst.w 34(sp)
 	bne.w branchProofReady
+	move.w #1, Context.PositionDependent(a6)
 	cmpi.w #$ffff, Context.InputTarget(a6)
 	beq.w branchProofReady
 	move.w Context.PositionProofCount(a6), d0
@@ -386,6 +406,13 @@ branchSuffixReady
 	addq.w #1, d0
 	move.w d0, Context.PositionProofCount(a6)
 	move.w Context.InputTarget(a6), Context.PositionProofTarget(a6)
+	movea.l 4(sp), a0
+	moveq #0, d0
+	move.b (a0), d0
+	move.w d0, Context.PositionProofCandidate(a6)
+	move.l 12(sp), d0
+	move.w d0, Context.PositionProofOpcode(a6)
+	move.l 16(sp), Context.PositionProofValue(a6)
 branchProofReady
 	moveq #0, d0
 	bra.w branchReturn
@@ -562,6 +589,7 @@ fixupResolved
 	btst #0, d6
 	beq.w fixupProjected
 fixupApplyPosition
+	move.w #1, Context.PositionDependent(a6)
 	move.l Context.Pc(a6), d0
 	add.l 8(sp), d0
 	bvs.w fixupFrameFail
@@ -602,9 +630,8 @@ fixupRecordReady
 	move.w (sp)+, d5
 	tst.l d3
 	bne.w fixupFrameFail
-	; A positional, target-aware, relocation-free package step consumes one
-	; symbolic address when its emitted value cancels the instruction PC.
-	; Callers may use this generic proof only after a successful VM result.
+	; Retain the existing relocation-free symbolic cancellation proof.
+	; Position dependence itself is a separate functional result above.
 	cmpi.w #4, d7
 	bne.w fixupProofReady
 	cmpi.w #2, 6(sp)

@@ -8,6 +8,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_module_image as image
 	.use experimental.amigaos.binary_module_exports as exports
+	.use experimental.amigaos.binary_module_layout as layout
 	.use experimental.amigaos.binary_block_index as blocks
 	.use experimental.amigaos.binary_symbol_storage as storage
 	.use experimental.amigaos.binary_values as values
@@ -25,23 +26,13 @@ Source	.long ?
 Bytes	.long ?
 	.endstruct
 CONTEXT_BYTES = Context.Bytes+4
-MAX_BLOCKS = sections.HUNK_SLOT_COUNT
 LINE_CAPACITY = 256
 INVALID = 1
 EXPORT_INVALID = 2
 EXECUTION_INVALID = 3
 PUBLICATION_INVALID = 4
 IMAGE_INVALID = 5
-; Shared section-kind value; only code sections lower in this slice.
-CODE_KIND = 1
 	.priv
-GeometryRow	.struct
-Section	.long ?
-Offset	.long ?
-Bytes	.long ?
-NextPc	.long ?
-	.endstruct
-GEOMETRY_BYTES = GeometryRow.NextPc+4
 ; The shared native assembly engine is itself a single active session. This
 ; producer is sequential, never callable during another assembly session.
 	.section bss, kind=bss
@@ -51,7 +42,6 @@ Destination	.res long, 1
 Started	.res long, 1
 Cursor	.res long, 1
 After	.res long, 1
-Count	.res long, 1
 	.align 4
 Front	.res byte, frontend.FRAME_BYTES
 Work	.res byte, assembly.FRAME_BYTES
@@ -68,9 +58,7 @@ Output	.res byte, memory.Block.Used+4
 ImageOwner	.res byte, memory.Block.Used+4
 SemanticOwner	.res byte, memory.Block.Used+4
 PublicState	.res byte, exports.STATE_BYTES
-Inputs	.res byte, MAX_BLOCKS*image.INPUT_BYTES
-; Artifact geometry, indexed by declaration order; never serialized pointers.
-Geometry	.res byte, MAX_BLOCKS*GEOMETRY_BYTES
+LayoutState	.res byte, layout.STATE_BYTES
 Metadata	.res byte, metadata.CONFIG_BYTES
 TransientEnd
 	.endsection
@@ -81,11 +69,11 @@ TransientEnd
 ; Text is processed by shared frontend, macros by shared template execution,
 ; instruction/data bytes by one shared assembly session. No source parser here.
 ; Image IDs are declaration-order ordinals 1..N, independent of lexical IDs.
-; Each nonnested block must own exactly one distinct selected Hunk code section.
-; Output metadata requests that geometry only; no file writer is invoked.
-; All initialized bytes must belong to a block, contiguous from section PC zero.
-; Absolute section references fail through AddReloc; cross-section PC-relative
-; references fail the package Hunk proof. Runtime conditionals/loops are rejected.
+; Nonnested blocks may share a selected Hunk code section. Initialized bytes
+; must belong to contiguous whole blocks. Package-owned branch recipes preserve
+; the chosen instruction width when blocks move; shared affine label identity
+; preserves absolute data references. Instruction absolute fixups and aliases
+; without an exact label owner reject. Runtime conditionals/loops reject.
 ; Constant source preprocessing and private macros may complete before assembly.
 ; Publishes immutable scalars, lists/ranges and struct schemas with local IDs.
 ; Scalars retain image-local section provenance; concrete nominal values reject.
@@ -210,30 +198,13 @@ prepared
 	bne.w bad
 	tst.l d1
 	beq.w bad
-	cmpi.l #MAX_BLOCKS, d1
-	bhi.w bad
-	move.l d1, Count
+	lea LayoutState, a0
+	movea.l Records+memory.Block.Pointer, a1
+	move.l Records+memory.Block.Used, d0
 	movea.l Index+memory.Block.Pointer, a2
-	adda.w #blocks.HEADER_BYTES, a2
-	lea Geometry, a3
-	lea Inputs, a4
-	moveq #1, d2
-rows
-	tst.w blocks.Span.Parent(a2)
+	move.l Front+frontend.Frame.NameCount, d1
+	jsr layout.begin
 	bne.w bad
-	move.l d2, image.Input.Id(a4)
-	clr.l image.Input.Data(a4)
-	clr.l image.Input.Bytes(a4)
-	move.l #$ffffffff, GeometryRow.Section(a3)
-	clr.l GeometryRow.Offset(a3)
-	clr.l GeometryRow.Bytes(a3)
-	clr.l GeometryRow.NextPc(a3)
-	adda.w #GEOMETRY_BYTES, a3
-	adda.w #blocks.SPAN_BYTES, a2
-	adda.w #image.INPUT_BYTES, a4
-	addq.l #1, d2
-	cmp.l Count, d2
-	bls.w rows
 	bsr.w exportState
 	bne.w bad
 	lea PublicState, a0
@@ -255,9 +226,12 @@ rows
 	move.l Parameters+memory.Block.Pointer, Cells+package.Context.Parameters
 	move.l Records+memory.Block.Pointer, Work+assembly.Frame.Records
 	move.l Records+memory.Block.Used, Work+assembly.Frame.RecordBytes
+	; A fixed image cannot freeze layout-dependent absolute observations.
+	move.w #package.POSITION_OBSERVATION_POLICY, Cells+package.Context.ExpressionPolicy
 	move.l #Cells, Work+assembly.Frame.Context
 	move.l #allocateOutput, Work+assembly.Frame.Allocate
-	move.l #rejectReloc, Work+assembly.Frame.AddReloc
+	move.l #captureAbsolute, Work+assembly.Frame.AddReloc
+	move.l #captureInstruction, Work+assembly.Frame.Instruction
 	move.l #emitted, Work+assembly.Frame.Emitted
 	move.l Symbols+storage.State.MemberKeys+memory.Block.Pointer, Work+assembly.Frame.MemberKeys
 	lea Work, a0
@@ -268,9 +242,9 @@ rows
 	bne.w bad
 	tst.w sections.State.OutputSeen(a0)
 	beq.w bad
-	moveq #0, d0
-	move.w sections.State.OrderCount(a0), d0
-	cmp.l Count, d0
+	lea LayoutState, a0
+	lea Work, a1
+	jsr layout.finish
 	bne.w bad
 	lea PublicState, a0
 	lea Cells, a1
@@ -461,121 +435,47 @@ allocateOutput	.block
 	tst.l d0
 	rts
 	.bend  ; allocateOutput
-rejectReloc	.block
-	moveq #1, d0
+captureAbsolute	.block
+	movem.l a0-a1, -(sp)
+	movea.l a0, a1
+	lea LayoutState, a0
+	jsr layout.absolute
+	movem.l (sp)+, a0-a1
+	tst.l d0
 	rts
-	.bend  ; rejectReloc
+	.bend  ; captureAbsolute
 
-; Map final emission to indexed lexical block spans and section geometry.
+captureInstruction	.block
+	movem.l a0-a1, -(sp)
+	movea.l a0, a1
+	lea LayoutState, a0
+	jsr layout.instruction
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; captureInstruction
+
+; The layout owner maps final emission to indexed lexical block spans.
 emitted	.block
-	movem.l d1-d7/a0-a6, -(sp)
-	movea.l a0, a6
-	move.l d1, d4
-	move.l d2, d5
-	move.l d3, d6
-	movea.l Index+memory.Block.Pointer, a2
-	adda.w #blocks.HEADER_BYTES, a2
-	lea Geometry, a3
-	lea Inputs, a4
-	moveq #0, d7
-find
-	cmp.l Count, d7
-	bhs.w bad
-	move.l assembly.Frame.RecordOffset(a6), d0
-	cmp.l blocks.Span.Start(a2), d0
-	blo.w advance
-	cmp.l blocks.Span.End(a2), d0
-	blo.w found
-advance
-	adda.w #blocks.SPAN_BYTES, a2
-	adda.w #GEOMETRY_BYTES, a3
-	adda.w #image.INPUT_BYTES, a4
-	addq.l #1, d7
-	bra.w find
-found
-	movea.l assembly.Frame.Sections(a6), a1
-	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a1)
-	bne.w bad
-	tst.w sections.State.OutputSeen(a1)
-	beq.w bad
-	cmpi.w #CODE_KIND, sections.State.ActiveKind(a1)
-	bne.w bad
-	moveq #0, d2
-	move.w sections.State.HunkCurrent(a1), d2
-	cmpi.l #$ffffffff, GeometryRow.Section(a3)
-	bne.w existing
-	tst.l d4
-	bne.w bad
-	lea Geometry, a1
-	moveq #0, d0
-unique
-	cmp.l Count, d0
-	bhs.w first
-	cmp.l GeometryRow.Section(a1), d2
-	beq.w bad
-	adda.w #GEOMETRY_BYTES, a1
-	addq.l #1, d0
-	bra.w unique
-first
-	move.l d2, GeometryRow.Section(a3)
-	move.l d5, GeometryRow.Offset(a3)
-	move.l d5, image.Input.Data(a4)
-existing
-	cmp.l GeometryRow.Section(a3), d2
-	bne.w bad
-	cmp.l GeometryRow.NextPc(a3), d4
-	bne.w bad
-	move.l GeometryRow.Offset(a3), d0
-	add.l GeometryRow.Bytes(a3), d0
-	bcs.w bad
-	cmp.l d5, d0
-	bne.w bad
-	add.l d6, GeometryRow.Bytes(a3)
-	bcs.w bad
-	add.l d6, GeometryRow.NextPc(a3)
-	bcs.w bad
-	move.l GeometryRow.Bytes(a3), image.Input.Bytes(a4)
-	moveq #0, d0
-	bra.w done
-bad
-	moveq #1, d0
-done
-	movem.l (sp)+, d1-d7/a0-a6
+	movem.l a0-a1, -(sp)
+	movea.l a0, a1
+	lea LayoutState, a0
+	jsr layout.emitted
+	movem.l (sp)+, a0-a1
 	tst.l d0
 	rts
 	.bend  ; emitted
 
 saveImage	.block
-	lea Inputs, a2
-	lea Geometry, a3
-	moveq #0, d3
-rows
-	cmp.l Count, d3
-	bhs.w measure
-	cmpi.l #$ffffffff, GeometryRow.Section(a3)
-	beq.w bad
-	movea.l Work+assembly.Frame.Sections, a0
-	move.l GeometryRow.Section(a3), d0
-	mulu.w #sections.HUNK_SLOT_BYTES, d0
-	adda.l d0, a0
-	adda.w #sections.HUNK_SLOTS, a0
-	move.l sections.HunkSlot.Allocation(a0), d0
-	cmp.l GeometryRow.NextPc(a3), d0
-	bne.w bad
-	move.l Output+memory.Block.Pointer, d0
-	add.l d0, image.Input.Data(a2)
-	bcs.w bad
-	adda.w #image.INPUT_BYTES, a2
-	adda.w #GEOMETRY_BYTES, a3
-	addq.l #1, d3
-	bra.w rows
-measure
 	move.l SemanticOwner+memory.Block.Pointer, Build+image.Frame.Semantics
 	move.l SemanticOwner+memory.Block.Used, Build+image.Frame.SemanticsBytes
-	move.l #Inputs, Build+image.Frame.Blocks
-	move.l Count, Build+image.Frame.Count
-	clr.l Build+image.Frame.Relocs
-	clr.l Build+image.Frame.RelocCount
+	move.l LayoutState+layout.State.Inputs+memory.Block.Pointer, Build+image.Frame.Blocks
+	move.l LayoutState+layout.State.Count, Build+image.Frame.Count
+	move.l LayoutState+layout.State.Relocs+memory.Block.Pointer, Build+image.Frame.Relocs
+	move.l LayoutState+layout.State.Relocs+memory.Block.Used, d0
+	moveq #image.RELOC_BYTES, d1
+	divu.l d1, d0
+	move.l d0, Build+image.Frame.RelocCount
 	clr.l Build+image.Frame.Output
 	lea Build, a0
 	jsr image.build
@@ -598,6 +498,8 @@ bad
 
 cleanup	.block
 	bsr.w retireFrontend
+	lea LayoutState, a0
+	jsr layout.release
 	lea PublicState, a0
 	jsr exports.release
 	lea SemanticOwner, a0

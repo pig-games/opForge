@@ -82,6 +82,15 @@ ROW_BYTES = package.ROW_BYTES
 PROJECTION_BYTES = 12
 PROGRAM_BYTES = 12
 SEQUENCE_PHASE = package.Row.StateGuard; private row copy only
+; The branch VM consumes four fixed scalar records; no source tokens survive.
+	.priv
+ReplayInput	.struct
+Opcode	.res encoding.SCALAR_INPUT_BYTES
+Target	.res encoding.SCALAR_INPUT_BYTES
+Candidate	.res encoding.SCALAR_INPUT_BYTES
+Class	.res encoding.SCALAR_INPUT_BYTES
+	.endstruct
+REPLAY_INPUT_BYTES = ReplayInput.Class+encoding.SCALAR_INPUT_BYTES
 
 	.section bss, kind=bss
 	.priv
@@ -92,17 +101,25 @@ OperandShape	.res word, 1
 MemberMask	.res word, 1
 Unresolved	.res word, 1
 Records	.res byte, 128
-Execution	.res byte, encoding.Context.InputTarget+2
+Execution	.res byte, encoding.ContextBytes
 Output	.res byte, 4096
 FixupCount	.res word, 1
 FixupOffsets	.res long, 16
 FixupAddends	.res long, 16
 FixupWidths	.res word, 16
 FixupTargets	.res word, 16
+PositionDependent	.res word, 1
 PositionProofCount	.res word, 1
 PositionProofTarget	.res word, 1
+PositionRecipeProgram	.res word, 1
+PositionRecipeArguments	.res long, 1
+PositionRecipeValue	.res long, 1
+PositionRecipeIdentity	.res long, 1
+ReplayExecution	.res byte, encoding.ContextBytes
+ReplayRecords	.res byte, REPLAY_INPUT_BYTES
 ProjectedTarget	.res word, 1
 ScalarTarget	.res word, 1
+ScalarOriginalIdentity	.res long, 1
 .ifdef OPFORGE_DEBUG_CONTRACTS
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
@@ -126,7 +143,10 @@ encode	.block
 	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION
 	movem.l d2-d7/a2-a6, -(sp)
 	clr.w FixupCount
+	clr.w PositionDependent
 	clr.w PositionProofCount
+	move.w #MISSING_PROGRAM, PositionRecipeProgram
+	move.l #references.NO_BASE, PositionRecipeIdentity
 	move.w d0, d6
 	moveq #0, d7
 	move.b d1, d7
@@ -216,7 +236,10 @@ guardReady
 	beq.w fail
 	movem.l d3/d6-d7/a2/a5, -(sp)
 	clr.w FixupCount
+	clr.w PositionDependent
 	clr.w PositionProofCount
+	move.w #MISSING_PROGRAM, PositionRecipeProgram
+	move.l #references.NO_BASE, PositionRecipeIdentity
 	bsr.w tryRow
 	movem.l (sp)+, d3/d6-d7/a2/a5
 	tst.l d0
@@ -232,6 +255,11 @@ success
 	tst.l d0
 	rts
 fail
+	clr.w PositionDependent
+	clr.w PositionProofCount
+	clr.w FixupCount
+	move.w #MISSING_PROGRAM, PositionRecipeProgram
+	move.l #references.NO_BASE, PositionRecipeIdentity
 	moveq #1, d0
 	moveq #0, d1
 	suba.l a1, a1
@@ -260,6 +288,125 @@ outputPositionProof	.block
 	tst.l d0
 	rts
 	.bend  ; outputPositionProof
+
+; D0/CCR=nonzero if successful output observes instruction PC.
+; All other registers preserved; distinct from Hunk cancellation eligibility.
+outputPositionDependent	.block
+	moveq #0, d0
+	move.w PositionDependent, d0
+	rts
+	.bend  ; outputPositionDependent
+
+; Return the successful ordinary branch recipe for module placement replay.
+; D0/CCR=status,D1=program,D2=candidate | opcode<<8,D3=target,D4=section,
+; D5=original affine identity. Preserves D6-D7/A0-A6. Unsupported or absent proofs return nonzero.
+outputPositionRecipe	.block
+	cmpi.w #MISSING_PROGRAM, PositionRecipeProgram
+	beq.w bad
+	cmpi.w #1, PositionProofCount
+	bne.w bad
+	tst.w FixupCount
+	bne.w bad
+	moveq #0, d1
+	move.w PositionRecipeProgram, d1
+	move.l PositionRecipeArguments, d2
+	move.l PositionRecipeValue, d3
+	moveq #0, d4
+	move.w PositionProofTarget, d4
+	move.l PositionRecipeIdentity, d5
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; outputPositionRecipe
+
+; Replay the same package program with a forced candidate after placement.
+; A0=package,A1=output,D0=capacity,D1=program,D2=arguments,D3=PC,D4=target.
+; D0/CCR=status,D1=bytes; preserves D2-D7/A0-A6. Scratch is non-reentrant.
+patchPosition	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	lea ReplayExecution, a6
+	move.l a1, encoding.Context.Output(a6)
+	move.l d0, encoding.Context.Capacity(a6)
+	cmpi.l #$ffff, d0
+	bhi.w bad
+	move.l d3, encoding.Context.Pc(a6)
+	clr.w encoding.Context.WriteOffset(a6)
+	clr.w encoding.Context.PositionDependent(a6)
+	clr.w encoding.Context.PositionProofCount(a6)
+	clr.w encoding.Context.FixupCount(a6)
+	move.w #$ffff, encoding.Context.InputTarget(a6)
+	move.w #2, encoding.Context.Pass(a6)
+	clr.w encoding.Context.Unstable(a6)
+	clr.w encoding.Context.HasSymbol(a6)
+	clr.b encoding.Context.Defer(a6)
+	clr.w encoding.Context.MnemonicLength(a6)
+	move.l #ReplayRecords, encoding.Context.Input(a6)
+	move.w #4, encoding.Context.InputCount(a6)
+	move.w #encoding.SCALAR_VALUE_BYTES, encoding.Context.FirstInputLen(a6)
+	move.l d2, d5
+	andi.l #$ffff0000, d5
+	bne.w bad
+	lea ReplayRecords, a3
+	moveq #0, d5
+	move.w d2, d5
+	lsr.w #8, d5
+	clr.l ReplayInput.Opcode+encoding.ScalarInput.Value(a3)
+	move.b d5, ReplayInput.Opcode+encoding.ScalarInput.Value(a3)
+	move.b #encoding.SCALAR_VALUE_BYTES, ReplayInput.Opcode+encoding.ScalarInput.Bytes(a3)
+	move.l d4, d5
+	ror.w #8, d5
+	swap d5
+	ror.w #8, d5
+	move.l d5, ReplayInput.Target+encoding.ScalarInput.Value(a3)
+	move.b #encoding.SCALAR_VALUE_BYTES, ReplayInput.Target+encoding.ScalarInput.Bytes(a3)
+	clr.l ReplayInput.Candidate+encoding.ScalarInput.Value(a3)
+	move.b d2, ReplayInput.Candidate+encoding.ScalarInput.Value(a3)
+	move.b #encoding.SCALAR_VALUE_BYTES, ReplayInput.Candidate+encoding.ScalarInput.Bytes(a3)
+	clr.l ReplayInput.Class+encoding.ScalarInput.Value(a3)
+	move.b #encoding.SCALAR_VALUE_BYTES, ReplayInput.Class+encoding.ScalarInput.Bytes(a3)
+	movea.l a0, a4
+	cmpi.l #HEADER_BYTES, package.Header.Bytes(a4)
+	blo.w bad
+	cmp.l package.Header.ProgramCount(a4), d1
+	bhs.w bad
+	cmpi.l #$ffff, d1
+	bhi.w bad
+	mulu.w #PROGRAM_BYTES, d1
+	add.l package.Header.Programs(a4), d1
+	bcs.w bad
+	move.l d1, d0
+	addi.l #PROGRAM_BYTES, d0
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d0
+	bhi.w bad
+	lea 0(a4, d1.l), a3
+	cmpi.w #PROGRAM_SEMANTIC, package.Program.Kind(a3)
+	bne.w bad
+	move.l package.Program.Offset(a3), d0
+	move.l package.Program.Bytes(a3), d1
+	cmpi.l #$ffff, d1
+	bhi.w bad
+	move.l d0, d5
+	add.l d1, d5
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d5
+	bhi.w bad
+	movea.l a4, a1
+	adda.l d0, a1
+	jsr encoding.branchProgram
+	tst.l d0
+	bne.w bad
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; patchPosition
 
 ; D0.W=index. Returns D0=status,D1=byte offset,D2=width,D3=target
 ; one-based Hunk section ID (flat: symbol ID),D4=encoded addend.
@@ -1010,6 +1157,7 @@ bad
 tryRow	.block
 	clr.w Unresolved
 	move.w #$ffff, ScalarTarget
+	move.l #references.NO_BASE, ScalarOriginalIdentity
 	moveq #0, d0
 	move.b package.Row.Recipe(a5), d0
 	cmpi.b #RECIPE_NONE, d0
@@ -1069,6 +1217,7 @@ tableRel8
 	blt.w bad
 	cmpi.l #127, d1
 	bgt.w bad
+	move.w #1, PositionDependent
 	move.b d1, Records
 	moveq #1, d5
 	moveq #1, d6
@@ -1178,8 +1327,28 @@ branchStateReady
 	jsr encoding.semantic
 	tst.l d0
 	bne.w bad
+	move.w encoding.Context.PositionDependent(a6), PositionDependent
 	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
 	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
+	; Only an ordinary branch row can publish a replayable selected recipe.
+	cmpi.b #RECIPE_SEMANTIC_BRANCH, package.Row.Recipe(a5)
+	bne.w recipeReady
+	cmpi.w #1, PositionProofCount
+	bne.w recipeReady
+	tst.w FixupCount
+	bne.w recipeReady
+	cmpi.l #references.NO_BASE, ScalarOriginalIdentity
+	beq.w recipeReady
+	move.l ScalarOriginalIdentity, PositionRecipeIdentity
+	move.w package.Row.Program(a5), PositionRecipeProgram
+	moveq #0, d0
+	move.w encoding.Context.PositionProofOpcode(a6), d0
+	lsl.l #8, d0
+	move.b encoding.Context.PositionProofCandidate+1(a6), d0
+	move.l d0, PositionRecipeArguments
+	move.l encoding.Context.PositionProofValue(a6), PositionRecipeValue
+recipeReady
+	moveq #0, d0
 	cmpi.b #RECIPE_SEMANTIC_TABLE, package.Row.Recipe(a5)
 	bne.w return
 	; Semantic inputs are dead. Reuse their storage so TABL output cannot
@@ -1335,6 +1504,7 @@ encodingVersion
 	jsr encoding.semantic
 	tst.l d0
 	bne.w stageBad
+	move.w encoding.Context.PositionDependent(a6), PositionDependent
 	move.l d1, (sp)
 	bra.w next
 fixupStage
@@ -1360,6 +1530,7 @@ fixupVersion
 	jsr encoding.semantic
 	tst.l d0
 	bne.w stageBad
+	move.w encoding.Context.PositionDependent(a6), PositionDependent
 	move.w encoding.Context.FixupCount(a6), FixupCount
 	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
 	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
@@ -2020,6 +2191,7 @@ exact
 	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, 0(a0, d1.l)
 	beq.w absent
 bind
+	move.l d1, ScalarOriginalIdentity
 	tst.w package.Context.Relocatable(a2)
 	beq.w store
 	jsr references.baseSection
@@ -2557,6 +2729,7 @@ prepareExecution	.block
 	move.l #FixupAddends, encoding.Context.FixupAddends(a6)
 	move.l #FixupWidths, encoding.Context.FixupWidths(a6)
 	move.l #FixupTargets, encoding.Context.FixupTargets(a6)
+	move.w PositionDependent, encoding.Context.PositionDependent(a6)
 	move.w PositionProofCount, encoding.Context.PositionProofCount(a6)
 	move.w PositionProofTarget, encoding.Context.PositionProofTarget(a6)
 	move.w ScalarTarget, encoding.Context.InputTarget(a6)

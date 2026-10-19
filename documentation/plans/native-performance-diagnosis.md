@@ -8,9 +8,10 @@ budget is **8 MiB total: 6.5 MiB for the complete assembler process and 1.5 MiB
 for AmigaOS**. No full-build fit is established.
 
 The first-reference module proposal remains the intended direction, but its first
-CLI integration attempt failed the resource gate and was removed. The maintained
-resident/disk engine is unchanged. The reusable frozen comparison now covers a
-full assembler build, a small multi-module project and a macro-heavy project.
+CLI integration attempt failed the resource gate and was removed. The ordinary
+CLI retains the resident/disk engine; module images remain standalone.
+The reusable frozen comparison covers a full assembler build, a small multi-module
+project and a macro-heavy project.
 
 Next work must retire meaningful owners before their peak. A smaller final
 representation or a successful component alone is insufficient. State expected
@@ -18,127 +19,133 @@ savings first; drop changes below about 1% of the target resource. Use exact wor
 and capacity counters first, then at least three release timings for a speed claim.
 No new observer framework, macro-only investigations or selector stack is needed.
 
-## Owned module exports: qualified component, not CLI integration
+## Module images: qualified component, not CLI integration
 
-The private leaf producer now saves public scalar, list/range and struct-schema
-values with owned names/member keys in its offset-only image. A consumer moves
-that image, poisons the original source/image, releases the request, then reads
-the exported values. The live Rust consumer is the exact byte oracle. Unsupported
-public templates and concrete nominal values reject; complete template/schema
-closure and address/layout recipes remain integration work.
+The private producer now saves independently relocatable blocks from shared code
+sections, with owned scalar/list/schema exports. Exact label ownership distinguishes
+an end label from the next block's entry even when their original addresses match.
+Inter-block branches retain their package program and chosen candidate; linking
+replays that VM program at the new source/target addresses. No instruction decoder
+or new VM version selection is introduced. Absolute data recipes currently write
+BE32; incompatible byte order rejects. PC dependence is separate from ordinary
+Hunk cancellation proof, so unsupported numeric branches reject without changing
+Hunk acceptance. The matching package must remain available;
+persistent package fingerprints are not implemented.
 
-The maintained CLI/reference is unchanged. This is a capability/ownership
-checkpoint, **not** a measured optimization against an equivalent eager producer.
-No new full-build runtime or memory saving is claimed. The eventual CLI change
-still needs to meet the meaningful-owner-retirement gate.
+The shared evaluator has a producer-only safety policy. It rejects positional
+observations that cancel to an absolute/unsafe intermediate, including a later
+expression that regains positive provenance. Positional conditions also reject.
+This is conservative: even safe same-block differences remain unsupported until
+there is a stronger proof or saved layout recipe. The shared assembly handler
+likewise rejects alignment under this policy, since fixed padding cannot preserve
+arbitrary block placement. Ordinary CLI policy is zero.
 
-| Scaled component, identical release/memory input | Result |
+The real `binary_text_names` proof compiles once, moves its immutable image,
+poisons source/original image storage, releases the request, then links routines
+in order 3/1/2 at different addresses. All 528 bytes match fresh Rust. A second
+fixture combines absolute data, relative branches and an end label sharing the
+next block's original PC; all 30 bytes match. Eleven valid Rust inputs test
+unsupported cancellation, immediate arithmetic, typed selection, aliases,
+intermediate cancellation, comparisons, conditions, current-PC observations,
+numeric branches without owned targets, and alignment with zero/nonzero original
+padding.
+They reject without publication and with balanced native cleanup. Existing native
+module/export/image checks also pass.
+
+| Real component, identical release/memory input | Result |
 |---|---:|
-| Source / prepared records | 11,116 / 14,507 B |
-| Stored code / semantic metadata / total image | 2,575 / 352 / 3,000 B |
-| Compiles / selected block requests | 1 / 5 |
-| Exact Rust output, including semantic consumer | 5,151 B |
-| Uninstrumented release observations | 0.609526 / 0.613320 / 0.606791 s |
-| Release median | 0.609526 s |
-| Separate MEMD peak tracked heap | 150,576 B |
-| Retained after publication / terminal ownership | 3,000 / 0 B |
-| Total allocation / free capacity | 269,864 / 269,864 B |
+| Source / prepared records | 3,677 / 2,985 B |
+| Saved code / semantic metadata / complete image | 528 / 1,536 / 2,192 B |
+| Blocks / retained inter-block recipes / compiles | 3 / 2 / 1 |
+| Uninstrumented command interval, one observation | 0.145156 s |
+| Separate MEMD peak tracked heap | 121,384 B |
+| Retained after publication / terminal ownership | 2,192 / 0 B |
+| Total allocation / free capacity | 214,944 / 214,944 B |
 
-The new saved image costs 361 B more than the previous code-only format for the
-same 2,575 code bytes: 352 semantic bytes, eight header bytes and one alignment
-byte. That is format overhead, not a full-build memory comparison. The separate
-instrumented process estimate is 919,192 B (703,080 linked bytes + tracked heap +
-65,536 stack), excluding OS/untracked costs. Component fit cannot establish
-full-build fit. The last full matched memory comparison above 19 MB of tracked
-heap remains far outside the 6.5 MiB process budget; this checkpoint changes none
-of those build-wide owners.
+The component pair above predates the final eight-byte alignment guard; its
+changed rejection branch has fresh eleven-case native coverage. The final CLI
+series below includes that guard. This is a capability and ownership checkpoint,
+not an optimization against an equivalent eager producer. It does not release
+any additional ordinary CLI owner,
+reduce the full-build peak, or establish 8 MiB full-build fit. The component input
+identity is `fnv1a64:4f4b3ac7aa6e3722`; package identity is
+`fnv1a64:415d2172932e243a`. Component intervals are max-speed FS-UAE host-observed
+START/DONE times, not hardware measurements or statistically resolved speedups.
 
-These are fresh FS-UAE START/DONE intervals under max-speed 68020 emulation and
-the 8 MiB component profile; they are not hardware times. Release image identity:
-`fnv1a64:e5bb692519e60f2f`; source: `fnv1a64:a61403ed321af043`; package:
-`fnv1a64:415d2172932e243a`. Memory runs use a separately instrumented image.
+## Full resident reference and current self-host
 
-The same release component also passes on the physical A6000 (2026-10-19).
-Downloaded inputs, the pre-run transfer snapshot, fresh challenge markers, exit
-zero, all 5,151 oracle bytes and seven metric words were independently rechecked.
-It compiled once and retained a 3,000 B image containing 352 semantic bytes and
-three code blocks; the request image pointer was zero after retirement. Case
-SHA-256: `4dee472c00f407ae58924f59a2614a78ff60bd3607a8008eccfbc4a61a173fb0`.
-Both guest timestamps are 14:18:41 at one-second resolution, so they provide no
-resolved assembly duration. The 1.462699 s host command interval includes network
-and connection overhead. This release run supplies no hardware heap-peak result
-and does not qualify the normal CLI module path or a full hardware self-host.
+**Storage modes must stay explicit.** The lower historical result was disk-backed:
+6,909,720 B of tracked heap on an older frozen workload, excluding executable,
+stack and OS. It is not a current resident result or a directly comparable input.
+The disk policy remains available. Module images have not replaced either path.
 
-A fresh maintained-CLI self-host also completes: 223 files / 2,784,288 B produce
-728,804 B exactly equal to live Rust and the bootstrap, in 121.379 s. Bootstrap
-identity is `fnv1a64:f5d910ef19616ded`; source manifest:
-`fnv1a64:5973448cccfce8c4`. This uses the expanded 74 MiB diagnostic profile and
-64 KiB stack. It qualifies the hardware bundle's full self-host case, **not** the
-new module producer inside CLI scheduling or an 8 MiB full build.
+On identical frozen 223-file / 2,789,855 B input, the unchanged resident reference
+and the shared-section implementation both peak at **19,364,448 B** of tracked
+heap, with **69,935,968 B** allocated/freed and zero terminal ownership. This is
+not a rise from the older disk figure. The frozen source manifest is
+`fnv1a64:d717c6af1a278e75`; the package is identical across roles.
+
+| Isolated stage on the same frozen input | Release seconds | Observations | CLI bytes | Peak tracked heap |
+|---|---:|---:|---:|---:|
+| Unchanged resident reference | 124.860900 median | 3 | 728,804 | 19,364,448 B |
+| Shared-section hooks | 123.548913 median | 3 | 729,140 | 19,364,448 B |
+| Observation safety policy | 123.736524 median | 3 | 729,352 | 19,364,448 B |
+| Separate PC-dependence metadata | 123.321652 | 1 | 729,456 | 19,364,448 B |
+| Alignment safety guard | 123.884632 | 1 | 729,464 | 19,364,448 B |
+
+Timing differences are within the approximately 2 s noise threshold. The final
+stages have one observation each; no statistically resolved speed change is
+claimed. Each added cost is reported separately rather than hidden in a total.
+The final stage's separate MEMD run allocates/frees 69,935,968 B and ends
+with zero ownership and no profiling errors. The final release reservation is
+765,304 B; complete executable growth from the reference is 660 B.
+
+The small multi-module workload's reference/shared-hook medians are
+0.142664 / 0.141342 s (598,784 B peak for both); the macro workload's are
+0.887214 / 0.897387 s (616,960 B for both). The observation policy's corresponding
+medians are 0.141625 / 0.890455 s, with the same peaks. All 24 initial native
+comparisons and 12 policy comparisons match their newly assembled Rust oracles.
+The broad initial command also selected the intentionally ignored known Rust
+mapped-address regression; that separate test remains failing and is not a new
+defect. The final PC/alignment guards use focused full comparisons, not another
+small/macro timing series.
+
+The final **current-source resident self-host** completes in
+**124.257629 s**: 223 files / 2,794,129 source bytes produce
+all **729,464 B**, exactly equal to fresh Rust and the bootstrap. Its source
+manifest is `fnv1a64:fd212346bcf3e1de`. The runner freshly assembles the staged
+inputs with Rust before native launch; fresh challenge-bound completion, zero
+exit and complete output equality are required in that same run.
+
+The final image identity is `fnv1a64:4898407fbf4adb67`; the separately instrumented
+image is `fnv1a64:f7116d6c21a00f49` (743,988 B). Input and output package storage is
+embedded in all full comparisons. The current-source proof uses a different
+input from the frozen performance series; its interval is not a per-change delta.
+
+Full runs use the expanded 74 MiB diagnostic profile, pinned max-speed 68020 and
+64 KiB stack. They qualify the maintained CLI, not module images inside CLI
+scheduling, physical A6000 runtime, or an 8 MiB full build. Earlier A6000 proof of
+the scalar/list/schema component belongs to checkpoint `3cdd5d99`; it is not
+hardware qualification of the current code.
 
 ## Configured-module CLI integration: not retained
 
-Checkpoint `cf78c259` preserves the attempted converter and its focused tests;
-Git is the archive. It staged one closed module, executed eligible instructions
-through the shared engine, and replaced them with compact raw-byte records plus
-ordinary symbolic relocation expressions. Final layout and reachability remained
-global. Unsupported whole modules used the original records once. Staging was
-bounded by 1,024 rows / 1 MiB, with streaming fallback for larger modules.
-
-This preserved tested behavior but did not release lexical, typed, template or
-other build-wide owners. Conservative exclusions include typed expressions,
-nonlocal PC-relative references, unsupported relocation forms and open bindings.
-Only **9 modules** converted on the full workload: **16,279 -> 6,459 prepared
-bytes**, saving **9,820 B**, below 0.5% of the prepared stream. It missed the
-1 MiB preparation-peak target by two orders of magnitude.
-
-Both executables assembled identical frozen **228 manifest files / 2,833,390 B**
-with the same embedded m68020 package. Rust regenerated each exact oracle before native
-execution. Frozen source identity: `fnv1a64:87c7e594df0f4cd4`; package identity:
-`fnv1a64:415d2172932e243a`. Release output: **736,104 B**,
-`fnv1a64:953b89ad30caf39b`.
-
-| Full resident build, identical input | Reference | Candidate |
-|---|---:|---:|
-| Release observations, seconds | 125.293 / 125.613 / 125.693 | 125.158 / 126.238 / 125.760 |
-| Release median, seconds | 125.613 | 125.760 |
-| Separate MEMD peak tracked heap | 19,431,520 B | 19,443,296 B |
-| Allocated/freed capacity | 70,365,056 B | 83,780,448 B |
-| Prepared stream | 2,186,104 B | 2,176,284 B |
-| Terminal tracked ownership | 0 B | 0 B |
-
-Peak grows **11,776 B** and allocation traffic grows **13,415,392 B / 19.1%**.
-The median difference is **+0.147 s / +0.12%**, well within the roughly 2 s
-timing-noise threshold: no runtime improvement or regression is demonstrated.
-The converter is removed rather than kept behind another switch. The ten focused
-native cases covered exact output, macro fallback, source-PC fallback,
-shifted section content, conditional fallback and oversized resident/disk paths.
-All three candidate release runs rebuild the full frozen executable exactly:
-native output equals the live Rust oracle and the candidate bootstrap, with
-matching source manifests, fresh completion and explicit exit zero. Both full
-instrumented rebuilds also match Rust and have balanced cleanup. This qualifies
-the rejected candidate configuration, not an unimplemented general module-object path.
-
-| Control | Release median, reference / candidate | Peak heap, reference / candidate |
-|---|---:|---:|
-| small | 0.1443 / 0.1389 s | 598,784 / 597,760 B |
-| macro | 0.8881 / 0.8949 s | 616,960 / 616,960 B |
-
-The small heap saving is only 1,024 B / 0.17%; macro peak is unchanged. Both
-runtime differences are below meaningful resolution. All control runs match their
-live Rust oracles and all memory runs finish with balanced ownership.
-These are FS-UAE host-observed START/DONE intervals under pinned maximum-speed
-68020 emulation, 74 MiB diagnostic RAM and a 64 KiB stack; they are not physical
-68020 or A6000 times. Runtime excludes the separately instrumented memory runs.
+Checkpoint `cf78c259` preserves the rejected instruction-only converter. It
+converted nine modules and saved 9,820 prepared bytes (below 0.5%), but retained
+build-wide lexical/type/template owners. On its matched workload heap grew
+11,776 B and allocation traffic grew 13,415,392 B; runtime was neutral. It missed
+the 1 MiB owner-retirement gate and was removed rather than kept behind a switch.
+Git contains its full measurements and implementation. The current component is
+not a promotion or restoration of that converter.
 
 ## Step 1: budget qualification
 
 The process limit is **6,815,744 B** and the OS reserve **1,572,864 B**. Include
 linked code/data/BSS, embedded packages, stack, heap and untracked process costs.
-Count the embedded package once. The current reference's linked release reservation
-is 764,632 B; after the 65,536 B stack its heap/other allowance is
-5,985,576 B. Its measured tracked heap alone already exceeds the entire
-process budget by **12,615,776 B / 12.03 MiB**, before static storage and stack.
+Count the embedded package once. The final CLI's linked release reservation
+is 765,304 B; after the 65,536 B stack its heap/other allowance is
+5,984,904 B. The matched resident tracked heap alone exceeds the entire
+process budget by **12,548,704 B / 11.97 MiB**, before static storage and stack.
 This failed resource gate does not justify another full 8 MiB trial.
 
 The maintained `68020-8m` FS-UAE profile exposes 2 MiB chip plus 4+2 MiB fast,
@@ -219,11 +226,16 @@ Current capture/storage ownership is in [the storage note](native-lazy-preparati
 
 ## Remaining work and evidence limits
 
-The next implementation needs a module semantic-completion/export boundary,
-including closed scalar/typed definitions, import identities and placement-dependent
-recipes, before its source-oriented owners can retire. Increasing only the frozen
-instruction subset cannot deliver the measured missing memory. Discuss that scope
-before another implementation; no new optimization or parity work is activated here.
+The next integration boundary must map exported addresses to fragment IDs/offsets,
+remap imported identities, and preserve template/nominal dependency closure. Local
+section provenance alone is insufficient for independently placed fragments. Then
+schedule a private module before its source-oriented owners enter the build-wide
+peak; do not convert already-prepared records while retaining their old owners.
+Keep captured binary source, declaration context, configuration, include suspension,
+source order and whole-block reachability authoritative. Ordinary unsupported
+modules must retain the complete reference path without repeating file effects.
+The acceptance gate remains at least about 1 MiB of measured full-build peak saving;
+no numerical gain is forecast before that lifetime boundary is sized.
 
 Parked budget alternatives remain: cache-budget ablation under real 8 MiB,
 a resident chain/hash bridge (up to 393,210 B extra at 65,535 IDs), adaptive
@@ -240,8 +252,9 @@ ignored host regression beside the comparison fixtures. Neither was introduced
 or repaired by this memory experiment. Broad workspace qualification remains known
 red from earlier baseline failures; focused checks are not a clean workspace claim.
 
-The frozen bundles, exact comparison log and machine-readable results are outside
-`target` under `/tmp/opforge-cli-fragments-*20261019*` and
-`/tmp/opforge-cli-fragments-full-comparison.log`. They are local evidence, not
-repository dependencies. Checkpoint `cf78c259` preserves the rejected implementation;
-current documentation records decisions rather than its debugging chronology.
+Current frozen bundles, exact logs and machine-readable results live outside
+`target` under `/tmp/opforge-shared-*20261019*` and `/tmp/opforge-shared-results-20261019`.
+The final current-source full proof is `/tmp/opforge-module-shared-complete-selfhost-20261019`;
+final frozen release/memory cases are `/tmp/opforge-module-shared-complete-frozen-*20261019`.
+These are local evidence, not repository dependencies. Checkpoint `cf78c259`
+preserves the rejected implementation; Git is the archive.

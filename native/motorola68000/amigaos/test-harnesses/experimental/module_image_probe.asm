@@ -276,6 +276,27 @@ selected	.block
 	move.l #$fffffffc, Target
 	bsr.w rejectLink
 	bne.w bad
+	; Opaque programs require a callback and exact bounded output in preflight.
+	move.l #$1000, Target
+	movea.l image.LinkFrame.Image(a0), a2
+	adda.l image.Header.Relocs(a2), a2
+	move.l #7, image.Reloc.Program(a2)
+	move.l #9, image.Reloc.Arguments(a2)
+	bsr.w rejectLink
+	bne.w bad
+	move.l #patch, image.LinkFrame.Patch(a0)
+	move.l #3, PatchBytes
+	bsr.w rejectLink
+	bne.w bad
+	move.l #4, PatchBytes
+	move.l #Result, image.LinkFrame.Output(a0)
+	jsr image.link
+	bne.w bad
+	cmpi.l #$1004, Result+2
+	bne.w bad
+	move.l #image.PROGRAM_ABSOLUTE, image.Reloc.Program(a2)
+	clr.l image.Reloc.Arguments(a2)
+	clr.l image.LinkFrame.Patch(a0)
 	; The same immutable block links twice with distinct resolver addresses.
 	move.l #FAIL_LINK, ReturnCode
 	move.l #$1000, Target
@@ -538,6 +559,24 @@ done
 	tst.l d0
 	rts
 	.bend  ; resolve
+; Deliberately opaque program/arguments; writes only the supplied four bytes.
+patch	.block
+	cmpi.l #4, d0
+	bne.w bad
+	cmpi.l #7, d1
+	bne.w bad
+	cmpi.l #9, d2
+	bne.w bad
+	cmpi.l #2, d3
+	bne.w bad
+	move.l d4, (a1)
+	move.l PatchBytes, d1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; patch
 copy	.block
 	move.b (a1)+, (a2)+
 	subq.l #1, d1
@@ -562,14 +601,15 @@ Inputs
 	.long 2, 0, SECOND_BYTES
 	.long 3, 0, 1
 Fixup
-	.long 1, 2, 17, 4
+	.long 1, 2, 17, 4, 4, image.PROGRAM_ABSOLUTE, 0
 Build
 	.long Inputs, 3, Fixup, 1, 0, 0, 0, 0, 0
 Link
-	.long 0, IMAGE_BYTES, 1, 0, 0, FIRST_BYTES, 0, resolve, 0
+	.long 0, IMAGE_BYTES, 1, 0, 0, FIRST_BYTES, 0, resolve, 0, 0
 Guard	.long GUARD_VALUE, GUARD_VALUE
 Target	.long $1000
 ResolveFails	.long 0
+PatchBytes	.long 4
 DosName	.byte "dos.library", 0
 OutputName	.byte "Work:output.bin", 0
 Source

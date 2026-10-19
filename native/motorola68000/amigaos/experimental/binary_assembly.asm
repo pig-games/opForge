@@ -57,6 +57,7 @@ AsciiName	.word ?  ; prepared global source-origin encoding IDs
 PetsciiName	.word ?
 ModuleStarts	.long ?  ; ordered-relative numeric module boundaries
 ModuleCount	.long ?
+Instruction	.long ?  ; optional final selected Hunk instruction metadata callback
 	.endstruct
 
 OutputReloc	.struct
@@ -65,7 +66,7 @@ Target	.long ?
 Offset	.long ?
 	.endstruct
 OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
-FRAME_BYTES = Frame.ModuleCount+4
+FRAME_BYTES = Frame.Instruction+4
 FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
 FAILURE_WHILE_LAYOUT = 2
@@ -1526,6 +1527,9 @@ end
 	moveq #2, d0
 	bra.w done
 align
+	; Fixed module images cannot preserve placement-dependent padding yet.
+	btst #pkg.POSITION_OBSERVATION_POLICY_BIT, pkg.Context.ExpressionPolicy+1(a2)
+	bne.w bad
 	movea.l a2, a6
 	jsr expr.evaluate
 	movea.l a6, a2
@@ -1786,6 +1790,8 @@ done
 ; records. Instruction bytes and their fixup offsets came from the selected
 ; package program; no opcode or operand spelling is interpreted here.
 ; A2=Context,D5=instruction bytes,A5=output. Preserves caller registers.
+; Optional Instruction(A0=Frame,D1=PC,D2=section,D3=length) runs only
+; after final selected Hunk instruction proof succeeds; D0/CCR=status.
 markInstructionRelocs	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	tst.w pkg.Context.Relocatable(a2)
@@ -1827,7 +1833,7 @@ countReady
 	moveq #0, d7
 nextFixup
 	cmp.l d6, d7
-	bhs.w good
+	bhs.w instructionReady
 	move.l d7, d0
 	jsr encoding.outputFixup
 	tst.l d0
@@ -1852,6 +1858,7 @@ nextFixup
 	move.l d7, d0
 	jsr encoding.patchOutputFixup
 	bne.w targetBad
+	move.l d4, d3  ; retain normalized addend after package patch
 	move.l (sp)+, d4
 	subq.l #1, d4
 	move.l (sp)+, d2
@@ -1865,11 +1872,13 @@ nextFixup
 	sub.l d1, d2
 	bcs.w bad
 	move.l d4, d1
+	move.l d3, d4
+	move.l #hunkrefs.NO_BASE, d3
 	moveq #0, d0
 	move.w sections.State.HunkCurrent(a4), d0
 	movea.l Session+session.State.Frame, a0
 	movea.l Frame.AddReloc(a0), a1
-	move.l a1, d3
+	cmpa.w #0, a1
 	beq.w bad
 	jsr (a1)
 	tst.l d0
@@ -1882,6 +1891,18 @@ fixupBad
 	addq.l #4, sp
 	addq.l #4, sp
 	bra.w bad
+instructionReady
+	movea.l Session+session.State.Frame, a0
+	movea.l Frame.Instruction(a0), a1
+	cmpa.w #0, a1
+	beq.w good
+	move.l pkg.Context.Pc(a2), d1
+	moveq #0, d2
+	move.w sections.State.HunkCurrent(a4), d2
+	move.l d5, d3
+	jsr (a1)
+	tst.l d0
+	bne.w bad
 good
 	moveq #0, d0
 	bra.w done
@@ -1898,6 +1919,8 @@ done
 ; requires a long and records its section relocation only in pass two.
 ; A5=expression start,A1=bounded end,A2=Context,D6=unit bytes. D0/CCR=status.
 ; D1 returns the normalized scalar; other registers are preserved.
+; AddReloc receives D3=original affine identity,D4=normalized addend
+; alongside D0=source section,D1=target section,D2=field offset.
 ; ExprVM evaluation and unresolved handling stay caller-owned.
 markDataReloc	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -1917,6 +1940,7 @@ markDataReloc	.block
 	bne.w bad
 	cmpi.w #2, pkg.Context.Pass(a2)
 	bne.w good
+	move.l d1, d3  ; exact affine identity before canonical section binding
 	jsr hunkrefs.baseSection
 	bne.w bad
 	move.l d1, d7
@@ -1926,6 +1950,7 @@ markDataReloc	.block
 	sub.l d1, d2
 	bcs.w bad
 	move.l d2, (sp)  ; returned value is now section relative
+	move.l d2, d4
 	moveq #0, d1
 	move.w sections.State.HunkCurrent(a4), d1
 	addq.l #1, d1
@@ -1940,7 +1965,7 @@ markDataReloc	.block
 	move.w sections.State.HunkCurrent(a4), d0
 	movea.l Session+session.State.Frame, a0
 	movea.l Frame.AddReloc(a0), a1
-	move.l a1, d3
+	cmpa.w #0, a1
 	beq.w bad
 	jsr (a1)
 	tst.l d0

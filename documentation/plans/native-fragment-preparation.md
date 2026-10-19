@@ -2,8 +2,9 @@
 
 Follow the [current 8 MiB budget and performance sequence](native-performance-diagnosis.md#current-assignment-and-decision-points).
 Erik has now authorized work on the first-reference module approach below.
-Its first saved-image component is implemented; CLI scheduling and early native
-module lowering remain unimplemented. Persistent cross-build reuse is not enabled.
+Saved-image publication/reuse and a restricted native source producer are
+implemented; general module lowering and CLI scheduling remain unimplemented.
+Persistent cross-build reuse is not enabled.
 
 Status, 2026-10-18: dependency-first preparation now interleaves with module
 configuration/discovery with resident capture. Completed module captures retire after their numeric
@@ -326,28 +327,118 @@ failure before output mutation, sticky partial failure, recursive ownership and
 idempotent cleanup. Caller buffers remain nonoverlapping and the link resolver
 must be pure/stable for the two-pass validation/emission contract.
 
-This is a native **component proof**, not native compilation of a source module:
-the callback packages supplied bytes; it does not yet run the native frontend or
-encoder. The CLI does not call these components, and no module is prepared early
-or spilled to disk through them. All images in this component proof remain resident.
-There is no full self-host through this approach, no full-build resource reduction
-and no 8 MiB fit claim. The current engine remains the reference, with no new
-production switch. Existing telemetry/build behavior is unchanged.
+That publication harness packages supplied bytes; the separate producer below
+now exercises actual native compilation. The CLI does not call either component,
+and no module is prepared early or spilled to disk through them. Images remain
+resident. There is no full self-host through this approach, no full-build resource
+reduction and no full-build 8 MiB fit claim. The current engine remains the
+reference, with no new production switch.
 
 Validation also exposed a Rust M68K package selector bug for symbolic MOVE.L
 immediates with addends and memory destinations. The separate repair uses the
 existing relocation program and has exact opcode/addend/BSS-relocation regression
 coverage. It is not a module storage optimization.
 
+### Native source producer: restricted leaf boundary
+
+Component checkpoint, 2026-10-19.
+
+`binary_module_compile.asm` accepts source and a package through the existing
+request callback. It runs the shared tokenizer/frontend, private macro expansion,
+numeric binding and one assembly session for the entire leaf, then publishes its
+saved image. Frontend scratch retires before assembly; prepared records, symbol
+cells, typed owners and temporary output retire before publication returns. Later
+block requests do not reread source or repeat compilation. Image-local block IDs
+are declaration-order ordinals, separate from transient frontend symbol IDs.
+
+This first producer supports at most eight nonnested blocks, using the existing
+Hunk section limit. Each requires a distinct code section with contiguous
+initialized output from local PC zero. Existing package/Hunk
+proof handles same-block PC-relative references. Absolute relocations, references
+between sections, remaining runtime conditionals/loops, unsupported file requests
+and incomplete section geometry reject the experimental request. They never
+silently become fixed addresses. Exported values/templates, configured imports,
+layout recipes, disk storage and normal CLI activation remain unimplemented.
+
+`module_compile_probe.asm` compiles a private constant macro and internal forward
+branches, publishes three blocks, serves five requests with one compile, and
+leaves the third block out of its linked artifact. Each requested block's oracle
+comes from live Rust with that same source body selected as the Hunk entry;
+unreferenced blocks are correctly omitted from Rust's final artifact. The scaled
+control adds 128 mixed instruction groups; the 5,148-byte selected artifact is
+exact in three fresh native runs under the 8 MiB Shell/64 KiB stack profile
+(maximum emulation speed, no cycle-exact timing). The same 10,997 B source and
+package identify all release and separate memory trials:
+`fnv1a64:067cb1f039c38d8c` and `fnv1a64:415d2172932e243a`, respectively.
+
+| Scaled leaf measurement | Result |
+|---|---:|
+| Release START/DONE host observations, 10 ms polling | 0.6148 / 0.6035 / 0.6039 s |
+| Prepared record bytes before retirement | 14,362 B |
+| Saved image, including directory and all three blocks | 2,639 B |
+| Raw code/data in the image | 2,575 B |
+| Separate instrumented peak tracked heap | 135,936 B |
+| Tracked heap retained after publication | 2,640 B |
+| Terminal tracked heap / allocated–freed balance | 0 B / 235,616–235,616 B |
+
+The image is 81.6% smaller than the prepared records **for this restricted leaf's
+retained representation**. This is not a measured peak reduction or a speedup over
+the CLI: it does not yet replace the maintained engine's module storage. Compilation
+is never compared against an artificial baseline that recompiles per request.
+Separate existing-gate memory accounting and unsupported-source cleanup checks
+qualify the owned boundary; whole-build comparisons still require integration.
+A separate instrumented run rejects a cross-block absolute alias and relative
+branch, then completes a fresh positive compile: 512,400 B allocated and freed,
+zero terminal tracked heap. Those failure-path totals are correctness evidence,
+not part of the unchanged positive-input resource comparison.
+Prepared-byte accounting uses the existing gated telemetry; the release compiler
+has no measurement fields, counters or observer calls.
+The instrumented harness reserves 698,196 B of linked static storage, including
+its package, source fixture and test buffers. Adding tracked peak and the 65,536 B
+stack gives an **899,668 B component process estimate**, excluding OS/untracked
+allocations. This small component fits the test environment; it says nothing about
+full-build fit under the 6.5 MiB process budget. The last qualified full-build
+memory reference exceeded its heap allowance by 923,996 B. This component has not
+demonstrated recovery of that gap in the CLI; today's full self-host uses expanded
+RAM and supplies no new full-build budget measurement.
+
+### Qualification scope and remaining host failures
+
+The maintained release CLI also completes a fresh full self-host with its m68020
+package embedded in both bootstrap and output: **223 files / 2,784,288 source
+bytes**, exact **728,804 B** Rust/bootstrap/native Hunk, explicit native exit zero.
+START/DONE elapsed time is **124.3497 s** under expanded 74 MiB RAM and explicitly
+pinned maximum-speed, non-cycle-exact emulation. This qualifies the prerequisite
+package/operand changes, not this producer's CLI integration or 8 MiB full-build
+fit. There is no unchanged-input before/after full-build speed comparison here.
+An earlier trial inherited different clock settings and was deliberately stopped;
+it has no completion or performance result.
+
+Qualification caught and repaired shared register-wrapper routing after tightening
+the package's absolute-memory MOVE fallback. Fresh native checks cover byte/word/
+long absolute pairs, numeric destinations, register-indirect/displacement forms,
+and 6502 scalar parentheses versus bound index registers. Byte/word MOVE Hunk tests
+now check both relocation entries instead of expecting those supported forms to fail.
+
+Broad host qualification is **not green**. The initial workspace run reported
+2,308 passed, 163 failed and 653 ignored before the two affected expectation repairs.
+A separate `8523375e` source baseline reproduces the stale checked-in CLI package,
+callback/bridge inventory assertions, example listing mismatch and capture-init
+probe's removed symbol. Focused checks pass after updating the MOVE rejection and
+wrapper-flag expectations; the remaining workspace failures have not all been
+triaged or repaired. Clippy, Rust formatting, workflow guards and the native proof
+contract checks pass. This is a qualified component checkpoint, not a clean
+workspace integration claim.
+
 ### Next coherent integration slice
 
-Start with a configured leaf module containing several named blocks, internal
-forward references, a retained exported value/template, and relocations to an
-importer's later-placed section. Select two blocks at different points to prove
-that late references need no source replay, and leave another block unselected.
-Produce the saved image before global completion, release that module's private
-owners, then consume it through the normal shared final-layout/output path.
-This tests the necessary ownership boundary rather than a final-only serializer.
+Extend the restricted producer with a configured module interface, retained exported
+values/templates and relocations to an importer's later-placed section. Continue
+selecting blocks at different points without source replay, retaining complete
+internal-label fallthrough. Connect discovery/actual references to this producer
+and consume its image through the normal shared final-layout/output path before
+claiming that the CLI releases module storage. This tests the necessary ownership
+boundary rather than a final-only serializer.
 
 Keep the current resident/disk engine as the reference; no default change or stack
 of experiment switches. Qualify shifted placement, internal-label fallthrough,

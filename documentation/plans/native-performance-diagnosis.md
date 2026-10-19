@@ -8,8 +8,10 @@ may use the available budget. Parity remains paused. No `.ofm` implementation,
 object-local identities, new cache policy or observer framework is authorized in
 the budget/repeatability step. Erik has since authorized starting the
 [first-reference module approach](native-fragment-preparation.md#first-reference-module-assembly-proposal)
-alongside the unchanged hardware batch. Its publication/reuse component is now
-native-tested; module lowering and CLI activation are still pending. The remaining
+alongside the unchanged hardware batch. Publication/reuse and a restricted native
+source-to-image leaf producer are native-tested; general module lowering and CLI
+activation are still pending. The [component measurements](native-fragment-preparation.md#native-source-producer-restricted-leaf-boundary)
+do not establish a whole-build runtime or peak-memory reduction. The remaining
 curve/bridge/adaptive-policy steps below are retained candidates, not changes already
 made or a reason to mix results from different storage implementations.
 

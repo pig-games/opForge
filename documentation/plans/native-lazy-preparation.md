@@ -4,7 +4,8 @@ The [current 8 MiB budget and performance sequence](native-performance-diagnosis
 supersedes the former product target. The process/OS budget is confirmed at
 6.5/1.5 MiB. Erik has since authorized the
 [first-reference module approach](native-fragment-preparation.md#first-reference-module-assembly-proposal);
-its first publication/reuse component does not yet alter the storage policies below.
+its publication/reuse and restricted native source producer do not yet alter the
+storage policies below. See the [leaf producer's measurements and limits](native-fragment-preparation.md#native-source-producer-restricted-leaf-boundary).
 
 Status, 2026-10-18: sequential lexical sealing and bounded cache buffer reuse are
 implemented. The qualified-source register-binding repair passes focused native

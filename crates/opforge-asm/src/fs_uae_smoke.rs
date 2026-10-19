@@ -2896,7 +2896,8 @@ fn opforge_native_cli_case_captured_artifacts(
                 })
         })
         .collect::<BTreeMap<_, _>>();
-    for file_name in ["memory.bin", "guest-memory.txt"] {
+    // Bounded component accounting is diagnostic data, never an artifact oracle.
+    for file_name in ["memory.bin", "guest-memory.txt", "metrics.bin"] {
         let path = PathBuf::from(FS_UAE_MOUNTED_WORK_DIR_NAME).join(file_name);
         if let Some(bytes) = captured_artifacts.get(&path) {
             selected.insert(path, bytes.clone());
@@ -8088,6 +8089,9 @@ mod native_lazy_audit_probe;
 #[path = "tests/native_lazy_audit_report.rs"]
 mod native_lazy_audit_report;
 
+#[cfg(test)]
+#[path = "tests/native_module_compile.rs"]
+mod native_module_compile;
 #[cfg(test)]
 #[path = "tests/native_module_images.rs"]
 mod native_module_images;

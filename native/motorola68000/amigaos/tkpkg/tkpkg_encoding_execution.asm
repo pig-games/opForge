@@ -43,8 +43,10 @@ InputTarget	.word ?  ; optional exact scalar identity; $ffff means absent
 PositionProofCandidate	.word ?
 PositionProofOpcode	.word ?
 PositionProofValue	.long ?
+InputIdentities	.long ?  ; optional caller-owned opaque long per input
+FixupIdentities	.long ?  ; optional caller-owned opaque long per fixup
 .endstruct
-ContextBytes = Context.PositionProofValue+4
+ContextBytes = Context.FixupIdentities+4
 
 MALFORMED_TEXT_LEN = 30
 RANGE_SUFFIX_LEN = 33
@@ -616,6 +618,7 @@ fixupTransformReady
 	sub.l a1, d0
 	move.w d2, d1
 	move.w d5, d2
+	move.w (sp), d4
 	bsr.w recordFixup
 	bne.w fixupFrameFail
 	; Rust's PortableOutputFixup retains `width` and `target_index` as
@@ -960,7 +963,9 @@ fixupInputFail
 
 ; Retain one Rust PortableOutputFixup emitted by the active SEMV fixup step.
 ; Inputs: D0=step-relative output offset, D1.W=width, D2.W=opaque target
-; symbol index, D3=encoded scalar before assembler section projection.
+; symbol index, D3=encoded scalar before assembler section projection,
+; D4.W=input index. Optional identity arrays transport the selected input's
+; opaque identity to every emitted field, independently of its target index.
 ; Outputs: D0=0 success/1 capacity failure. Preserves all other registers.
 recordFixup	.block
 	movem.l d1-d7/a0-a2, -(sp)
@@ -968,8 +973,25 @@ recordFixup	.block
 	move.w Context.FixupCount(a6), d7
 	cmp.w Context.FixupCapacity(a6), d7
 	bhs.w outputFixupFail
+	movea.l Context.FixupIdentities(a6), a1
+	cmpa.w #0, a1
+	beq.w identityReady
+	cmp.w Context.InputCount(a6), d4
+	bhs.w outputFixupFail
+	movea.l Context.InputIdentities(a6), a2
+	cmpa.w #0, a2
+	beq.w outputFixupFail
+	moveq #0, d5
+	move.w d4, d5
+	lsl.l #2, d5
+	move.l 0(a2, d5.l), d5
+identityReady
 	move.l d7, d6
 	lsl.l #2, d6
+	cmpa.w #0, a1
+	beq.w identityStored
+	move.l d5, 0(a1, d6.l)
+identityStored
 	movea.l Context.FixupOffsets(a6), a0
 	move.l d0, 0(a0, d6.l)
 	movea.l Context.FixupAddends(a6), a0

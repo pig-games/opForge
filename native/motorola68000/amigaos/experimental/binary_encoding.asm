@@ -108,6 +108,8 @@ FixupOffsets	.res long, 16
 FixupAddends	.res long, 16
 FixupWidths	.res word, 16
 FixupTargets	.res word, 16
+FixupIdentities	.res long, 16
+InputIdentities	.res long, 16
 PositionDependent	.res word, 1
 PositionProofCount	.res word, 1
 PositionProofTarget	.res word, 1
@@ -118,6 +120,7 @@ PositionRecipeIdentity	.res long, 1
 ReplayExecution	.res byte, encoding.ContextBytes
 ReplayRecords	.res byte, REPLAY_INPUT_BYTES
 ProjectedTarget	.res word, 1
+ProjectedIdentity	.res long, 1
 ScalarTarget	.res word, 1
 ScalarOriginalIdentity	.res long, 1
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -336,6 +339,8 @@ patchPosition	.block
 	clr.w encoding.Context.PositionDependent(a6)
 	clr.w encoding.Context.PositionProofCount(a6)
 	clr.w encoding.Context.FixupCount(a6)
+	clr.l encoding.Context.InputIdentities(a6)
+	clr.l encoding.Context.FixupIdentities(a6)
 	move.w #$ffff, encoding.Context.InputTarget(a6)
 	move.w #2, encoding.Context.Pass(a6)
 	clr.w encoding.Context.Unstable(a6)
@@ -440,6 +445,30 @@ fixupReturn
 	tst.l d0
 	rts
 	.bend  ; outputFixup
+
+; Return the original affine identity for one package-emitted fixup.
+; D0.W=index. D0/CCR=status,D3=symbol ID or CURRENT_PC_BASE on success.
+; Other registers preserved. Section-only provenance has no source identity
+; and returns failure; ordinary Hunk fixup metadata remains available.
+outputFixupIdentity	.block
+	move.l a0, -(sp)
+	andi.l #$ffff, d0
+	cmp.w FixupCount, d0
+	bhs.w bad
+	lsl.l #2, d0
+	lea FixupIdentities, a0
+	move.l 0(a0, d0.l), d3
+	cmpi.l #references.NO_BASE, d3
+	beq.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; outputFixupIdentity
 
 ; Replace a proven absolute-long fixup field after placement normalization.
 ; D0=index,D1=section-relative addend,A2=Context. D0/CCR=status; others preserved.
@@ -1998,6 +2027,7 @@ scalarTarget
 	bne.w bad
 targetSpanReady
 	move.w #$ffff, ProjectedTarget
+	move.l #references.NO_BASE, ProjectedIdentity
 	cmpa.l a1, a0
 	bhs.w bad
 	; Validate the scalar before proving relocation identity. In pass one an
@@ -2063,6 +2093,12 @@ exactIdentity
 	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, 0(a0, d1.l)
 	beq.w targetReady
 bindTarget
+	; Keep a source identity separate from canonical Hunk section provenance.
+	; Typed section-only proofs cannot identify a module fragment or import.
+	cmpi.l #references.CURRENT_PC_BASE, d1
+	bhi.w identityReady
+	move.l d1, ProjectedIdentity
+identityReady
 	tst.w package.Context.Relocatable(a2)
 	beq.w storeTarget
 	jsr references.baseSection
@@ -2081,7 +2117,12 @@ targetFlagReady
 	bne.w bad
 	ori.b #2, d0
 	move.w #$ffff, ProjectedTarget
+	move.l #references.NO_BASE, ProjectedIdentity
 valueReady
+	move.l d6, d1
+	lsl.l #2, d1
+	lea InputIdentities, a0
+	move.l ProjectedIdentity, 0(a0, d1.l)
 	move.b d0, (a3)+
 	ror.w #8, d3
 	swap d3
@@ -2729,6 +2770,8 @@ prepareExecution	.block
 	move.l #FixupAddends, encoding.Context.FixupAddends(a6)
 	move.l #FixupWidths, encoding.Context.FixupWidths(a6)
 	move.l #FixupTargets, encoding.Context.FixupTargets(a6)
+	move.l #InputIdentities, encoding.Context.InputIdentities(a6)
+	move.l #FixupIdentities, encoding.Context.FixupIdentities(a6)
 	move.w PositionDependent, encoding.Context.PositionDependent(a6)
 	move.w PositionProofCount, encoding.Context.PositionProofCount(a6)
 	move.w PositionProofTarget, encoding.Context.PositionProofTarget(a6)

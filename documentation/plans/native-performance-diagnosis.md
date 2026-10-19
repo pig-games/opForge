@@ -58,6 +58,17 @@ the 8 MiB component profile; they are not hardware times. Release image identity
 `fnv1a64:e5bb692519e60f2f`; source: `fnv1a64:a61403ed321af043`; package:
 `fnv1a64:415d2172932e243a`. Memory runs use a separately instrumented image.
 
+The same release component also passes on the physical A6000 (2026-10-19).
+Downloaded inputs, the pre-run transfer snapshot, fresh challenge markers, exit
+zero, all 5,151 oracle bytes and seven metric words were independently rechecked.
+It compiled once and retained a 3,000 B image containing 352 semantic bytes and
+three code blocks; the request image pointer was zero after retirement. Case
+SHA-256: `4dee472c00f407ae58924f59a2614a78ff60bd3607a8008eccfbc4a61a173fb0`.
+Both guest timestamps are 14:18:41 at one-second resolution, so they provide no
+resolved assembly duration. The 1.462699 s host command interval includes network
+and connection overhead. This release run supplies no hardware heap-peak result
+and does not qualify the normal CLI module path or a full hardware self-host.
+
 A fresh maintained-CLI self-host also completes: 223 files / 2,784,288 B produce
 728,804 B exactly equal to live Rust and the bootstrap, in 121.379 s. Bootstrap
 identity is `fnv1a64:f5d910ef19616ded`; source manifest:

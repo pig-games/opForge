@@ -10,6 +10,7 @@
 //! native_cli_frozen_candidate_comparison reuses a previously measured frozen
 //! reference and runs only the fresh candidate roles; input identities must match
 //! that earlier receipt before comparing results.
+//! OPFORGE_CLI_COMPARISON_WORKLOAD optionally selects all, full or controls.
 //! A full release run is a self-build only when the live oracle equals its
 //! bootstrap and the frozen/export source manifest digests are identical.
 use super::*;
@@ -78,7 +79,7 @@ fn oracle(root: &Path, entry: &str, output: &Path, binary: bool) -> Vec<u8> {
 
 // The existing final assembly-work packet carries the accepted module count.
 // Read it only for policy comparisons; older images assign that word differently.
-fn private_module_count(stdout: &str) -> Option<u32> {
+pub(super) fn private_module_count(stdout: &str) -> Option<u32> {
     stdout.lines().find_map(|line| {
         let fields = line
             .strip_prefix("progress ")?
@@ -87,6 +88,24 @@ fn private_module_count(stdout: &str) -> Option<u32> {
             .collect::<BTreeMap<_, _>>();
         (u32::from_str_radix(fields.get("p")?, 16).ok()? == 300)
             .then(|| u32::from_str_radix(fields.get("r")?, 16).ok())?
+    })
+}
+
+pub(super) fn module_store_io(stdout: &str) -> Option<[u32; 3]> {
+    stdout.lines().find_map(|line| {
+        let fields = line
+            .strip_prefix("progress ")?
+            .split_whitespace()
+            .filter_map(|field| field.split_once('='))
+            .collect::<BTreeMap<_, _>>();
+        if u32::from_str_radix(fields.get("p")?, 16).ok()? != 451 {
+            return None;
+        }
+        Some([
+            u32::from_str_radix(fields.get("f")?, 16).ok()?,
+            u32::from_str_radix(fields.get("l")?, 16).ok()?,
+            u32::from_str_radix(fields.get("r")?, 16).ok()?,
+        ])
     })
 }
 
@@ -124,6 +143,15 @@ enum Measurement {
 }
 
 fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Measurement) {
+    let workloads =
+        std::env::var("OPFORGE_CLI_COMPARISON_WORKLOAD").unwrap_or_else(|_| "all".into());
+    assert!(matches!(workloads.as_str(), "all" | "full" | "controls"));
+    let disk = match std::env::var("OPFORGE_CLI_COMPARISON_CAPTURE") {
+        Err(std::env::VarError::NotPresent) => false,
+        Ok(value) if value == "resident" => false,
+        Ok(value) if value == "disk" => true,
+        value => panic!("invalid comparison capture policy: {value:?}"),
+    };
     let (frozen_root, frozen, _, package) = bundle("OPFORGE_CLI_FROZEN_BUNDLE");
     let baseline = bundle("OPFORGE_CLI_BASELINE_RELEASE");
     let candidate = bundle("OPFORGE_CLI_CANDIDATE_RELEASE");
@@ -292,6 +320,11 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
             "Work/output.bin",
         ),
     ] {
+        if (workloads == "full" && workload != "full")
+            || (workloads == "controls" && workload == "full")
+        {
+            continue;
+        }
         let guest_files = inputs
             .iter()
             .map(|(name, bytes)| OpforgeNativeCliGuestFile {
@@ -321,11 +354,15 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
                 continue;
             }
             let reference_modules = module_policy_comparison && role.starts_with("baseline");
-            let command = if reference_modules {
-                format!("{command} --reference-modules")
-            } else {
-                command.to_owned()
-            };
+            let command = format!(
+                "{command}{}{}",
+                if disk { " --capture-dir Work:" } else { "" },
+                if reference_modules {
+                    " --reference-modules"
+                } else {
+                    ""
+                }
+            );
             for round in 1..=rounds {
                 let case = OpforgeNativeCliParityCase {
                     name: workload,
@@ -376,6 +413,17 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
                         let private_modules = (module_policy_comparison && instrumented)
                             .then(|| private_module_count(&run.stdout))
                             .flatten();
+                        let store_io = (disk && instrumented)
+                            .then(|| module_store_io(&run.stdout))
+                            .flatten();
+                        if disk
+                            && module_policy_comparison
+                            && instrumented
+                            && valid
+                            && !matches!((store_io, private_modules), (Some(io), Some(count)) if io[1] == count && io[0] >= count)
+                        {
+                            failures.push(format!("{workload}/{role}: missing or inconsistent persisted-module receipt {store_io:?}"));
+                        }
                         if module_policy_comparison
                             && instrumented
                             && valid
@@ -417,8 +465,10 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
                                 "linked_static_reserved_bytes": super::native_package_loading_performance::linked_static_bytes(image),
                                 "allocation": allocation, "command": command,
                                 "module_policy_comparison": module_policy_comparison,
+                                "capture_mode": if disk { "disk" } else { "resident" },
                                 "reference_modules": reference_modules,
                                 "privately_compiled_modules": private_modules,
+                                "module_store_reads_writes_hits": store_io,
                                 "memory_profile": std::env::var("OPFORGE_FS_UAE_MEMORY_PROFILE").ok(),
                                 "config_template": std::env::var("OPFORGE_FS_UAE_CONFIG_TEMPLATE").ok(),
                                 "metric_scope": "host-observed START/DONE interval, not hardware timing; tracked heap and linked reservations exclude OS/loader/untracked storage"

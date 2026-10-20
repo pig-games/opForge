@@ -295,9 +295,7 @@ address
 	bra.w address
 append
 	move.l Records+memory.Block.Used, PrivateRecordStart
-	lea PrivateCarrierRecords, a0
-	lea Records, a1
-	bsr.w privateAppendBlock
+	bsr.w privateAppendCarrier
 	bne.w bad
 	lea FileSpans, a0
 	move.l memory.Block.Used(a0), d0
@@ -663,3 +661,49 @@ done
 	tst.l d0
 	rts
 	.bend  ; privateRememberValues
+
+; Publish accepted carrier records into the selected global prepared owner.
+; Disk append consumes whole packed records and keeps logical numeric offsets;
+; tentative replay never reaches this routine. D0/CCR=status; others preserved.
+privateAppendCarrier	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	tst.l CaptureDirectory
+	bne.w stored
+	lea PrivateCarrierRecords, a0
+	lea Records, a1
+	bsr.w privateAppendBlock
+	bra.w done
+stored
+	movea.l PrivateCarrierRecords+memory.Block.Pointer, a4
+	move.l PrivateCarrierRecords+memory.Block.Used, d7
+next
+	tst.l d7
+	beq.w good
+	cmpi.l #source.RECORD_HEADER_BYTES, d7
+	blo.w bad
+	moveq #0, d6
+	move.b source.RecordHeader.Length(a4), d6
+	addq.l #1, d6
+	cmpi.l #source.RECORD_HEADER_BYTES, d6
+	blo.w bad
+	cmp.l d7, d6
+	bhi.w bad
+	lea PreparedStore, a0
+	movea.l a4, a1
+	move.l d6, d0
+	jsr prepared_store.append
+	bne.w bad
+	move.l prepared_store.State.LogicalUsed(a0), Records+memory.Block.Used
+	adda.l d6, a4
+	sub.l d6, d7
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; privateAppendCarrier

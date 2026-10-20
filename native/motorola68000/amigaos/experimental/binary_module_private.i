@@ -28,14 +28,19 @@ tryPrivateModule	.block
 	moveq #0, d1
 	tst.w ReferenceModules
 	bne.w fallback
-	tst.l CaptureDirectory
-	bne.w fallback
 	bsr.w privateCheckText
 	bne.w fallback
 	bsr.w privateReleaseAttempt
 	movea.l Front+frontend.Frame.Scratch, a0
 	lea frontend.SCOPE_STATE(a0), a0
 	move.l a0, PrivateGlobalScope
+	tst.l PrivateRequestMode
+	beq.w configurationOwner
+	move.l a0, PrivateConfigScope
+	bsr.w privateSelectRequest
+	bne.w fallback
+	bra.w requestReady
+configurationOwner
 	movea.l ConfigFront+frontend.Frame.Scratch, a0
 	move.l a0, d0
 	beq.w fallback
@@ -43,6 +48,7 @@ tryPrivateModule	.block
 	move.l a0, PrivateConfigScope
 	bsr.w privateFindCapture
 	bne.w fallback
+requestReady
 	move.l Front+frontend.Frame.Package, PrivateCompile+moduleCompile.Context.Package
 	move.l #privateInitialize, PrivateCompile+moduleCompile.Context.Initialize
 	move.l #privateReplay, PrivateCompile+moduleCompile.Context.Replay
@@ -96,10 +102,17 @@ privateCheckText	.block
 	sub.l PrivateTextChecked, d0
 	bcs.w hazard
 	beq.w good
+	tst.l CaptureDirectory
+	bne.w stored
 	movea.l Records+memory.Block.Pointer, a0
 	adda.l PrivateTextChecked, a0
 	movea.l Front+frontend.Frame.Package, a1
 	jsr moduleAdmission.textSafe
+	bne.w hazard
+	move.l d2, PrivateTextChecked
+	bra.w good
+stored
+	bsr.w privateCheckStoredText
 	bne.w hazard
 	move.l d2, PrivateTextChecked
 good
@@ -114,6 +127,46 @@ done
 	tst.l d0
 	rts
 	.bend  ; privateCheckText
+
+; Disk prepared ownership has no contiguous Records payload. Inspect only the
+; appended suffix through bounded read leases; never leave a page borrowed.
+; D0/CCR=status; other registers preserved.
+privateCheckStoredText	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea PreparedView, a0
+	lea PreparedStore, a1
+	jsr views.initStore
+	bne.w done
+	move.l PrivateTextChecked, d4
+next
+	cmp.l Records+memory.Block.Used, d4
+	bhs.w good
+	move.l d4, d1
+	lea PreparedView, a0
+	jsr views.seek
+	bne.w failed
+	move.l d2, d5
+	movea.l a1, a0
+	move.l d2, d0
+	movea.l Front+frontend.Frame.Package, a1
+	jsr moduleAdmission.textSafe
+	bne.w failed
+	add.l d5, d4
+	bra.w next
+good
+	moveq #0, d7
+	bra.w finish
+failed
+	moveq #1, d7
+finish
+	lea PreparedView, a0
+	jsr views.finish
+	or.l d7, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; privateCheckStoredText
 
 ; Identify the configuration node by its exact captured extent. Copy only the
 ; owning public module name; source spellings never escape this attempt.
@@ -177,6 +230,13 @@ privateInitialize	.block
 	movea.l a6, a1
 	jsr scopes.seedConfiguration
 	bne.w bad
+	tst.l PrivateRequestMode
+	beq.w configurationImports
+	movea.l PrivateRequestCurrent, a0
+	move.l PrivateRequest.Start(a0), d7
+	move.l PrivateRequest.End(a0), PrivateRequestEnd
+	bra.w next
+configurationImports
 	movea.l PrivateConfigScope, a5
 	move.l PrivateConfigModule, d0
 	subq.l #1, d0
@@ -185,6 +245,23 @@ privateInitialize	.block
 	moveq #0, d7
 	move.w 0(a0, d0.l), d7
 next
+	tst.l PrivateRequestMode
+	beq.w importItem
+	cmp.l PrivateRequestEnd, d7
+	bhs.w good
+	movea.l PrivateRequestRows+memory.Block.Pointer, a0
+	adda.l d7, a0
+	move.l PrivateRequestName.Bytes(a0), PrivateDependencyBytes
+	move.l PrivateRequestName.Name(a0), d0
+	movea.l PrivateRequestNames+memory.Block.Pointer, a0
+	adda.l d0, a0
+	lea PrivateDependencyName, a1
+	move.l PrivateDependencyBytes, d0
+	bsr.w copy
+	move.l d7, d6
+	addi.l #PRIVATE_REQUEST_NAME_BYTES, d6
+	bra.w dependencyReady
+importItem
 	tst.l d7
 	beq.w good
 	cmp.w scopes.IMPORT_STATE+imports.COUNT(a5), d7
@@ -210,6 +287,7 @@ next
 	lea PrivateDependencyName, a1
 	jsr lexical.copyName
 	bne.w bad
+dependencyReady
 	bsr.w privateFindGlobalModule
 	bne.w bad
 	move.l d1, d5
@@ -383,9 +461,11 @@ saveNumbers
 	move.l #sourcePeek, frontend.Frame.SourcePeek(a0)
 	move.l #source_control.line, frontend.Frame.SourceControl(a0)
 	jsr source_control.begin
+	move.l #1, PrivateReplayActive
 	lea PublishedCapture, a0
 	bsr.w replayCapturedSpan
 	move.l d0, d7
+	clr.l PrivateReplayActive
 	lea Front, a0
 	movea.l PrivateBorrowedFront, a1
 	move.l #frontend.FRAME_BYTES, d0
@@ -466,6 +546,7 @@ next
 	rts
 	.bend  ; privateSwap
 
+	.include "binary_module_requests.i"
 	.include "binary_module_private_seed.i"
 	.include "binary_module_private_pub.i"
 

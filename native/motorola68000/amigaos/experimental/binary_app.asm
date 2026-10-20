@@ -116,6 +116,7 @@ PROGRESS_ASSEMBLY_RECORDS = 27
 PROGRESS_ASSEMBLY_SECTIONS = 28
 PROGRESS_ASSEMBLY_SELECTION = 29
 PROGRESS_FRAGMENT = 450
+PROGRESS_PREPARED_STORE_FAILURE = 453
 PROGRESS_PACKAGE = 30
 PROGRESS_RECORD_OUTPUT = 31
 PROGRESS_ASSEMBLY_RECORD_HEAD = 32
@@ -301,6 +302,13 @@ configured
 	movea.l CaptureDirectory, a2
 	jsr prepared_store.configure
 	bne.w failed
+	tst.w ReferenceModules
+	bne.w captureConfigured
+	lea PrivateRegistry, a0
+	movea.l DosBase, a1
+	movea.l CaptureDirectory, a2
+	jsr moduleRegistry.configure
+	bne.w failed
 captureConfigured
 	.MEMORY_CLOCK DosBase, #0
 	.MEMORY_STAGE #1
@@ -369,6 +377,7 @@ missingRecordOutput
 failed
 	tst.l PreparedStore+prepared_store.State.Failure
 	beq.w captureStatus
+	.MEMORY_PROGRESS DosBase, #PROGRESS_PREPARED_STORE_FAILURE, PreparedStore+prepared_store.State.Failure, PreparedStore+prepared_store.State.LogicalUsed, Records+memory.Block.Used
 	movea.l DosBase, a6
 	move.l #PreparedStoreFailure, d1
 	jsr DOS_PUT_STR(a6)
@@ -487,6 +496,8 @@ freeBlocks
 	beq.w done
 	.CAPTURE_ORDERED_REPORT DosBase, ordered.Materializations, ordered.IdentityReuses, ordered.CopiedBytes, ordered.AvoidedBytes, ordered.AvoidedCapacity
 	.CAPTURE_STORE_REPORT DosBase, capture_store.diskReads, capture_store.diskReadBytes, capture_store.diskWrites, capture_store.diskWriteBytes, capture_store.faults, capture_store.evictions, capture_store.peakPayload
+	.MEMORY_PROGRESS DosBase, #moduleRegistry.PROGRESS_STORE_IO, moduleRegistry.DiskReads, moduleRegistry.DiskWrites, moduleRegistry.CacheHits
+	.MEMORY_PROGRESS DosBase, #moduleRegistry.PROGRESS_STORE_BYTES, moduleRegistry.DiskReadBytes, moduleRegistry.DiskWriteBytes, #0
 	.CAPTURE_REPORT DosBase
 	.CAPTURE_LIFE_REPORT DosBase
 	.LAZY_REPORT DosBase
@@ -1480,8 +1491,11 @@ bad
 ; Append one prepared numeric record. A segment invocation can call this more
 ; than once for one physical source line; every record keeps that line's origin.
 appendPrepared	.block
+	tst.l PrivateReplayActive
+	bne.w contiguous
 	tst.l CaptureDirectory
 	bne.w stored
+contiguous
 	lea Records, a0
 	move.l memory.Block.Used(a0), d0
 	move.l d0, LineOffset
@@ -2207,10 +2221,17 @@ PrivateLookup	.res byte, moduleScope.FRAME_BYTES
 PrivateCarrier	.res byte, moduleCarrier.FRAME_BYTES
 PrivateResolver	.res byte, moduleRemap.FRAME_BYTES
 PrivateRegistry	.res byte, moduleRegistry.STATE_BYTES
+PrivateRequests	.res byte, memory.Block.Used+4
+PrivateRequestRows	.res byte, memory.Block.Used+4
+PrivateRequestNames	.res byte, memory.Block.Used+4
+PrivateRequestCurrent	.res long, 1
+PrivateRequestMode	.res long, 1
+PrivateRequestEnd	.res long, 1
 PrivateGlobalScope	.res long, 1
 PrivateConfigScope	.res long, 1
 PrivateConfigModule	.res long, 1
 PrivateFrontend	.res long, 1
+PrivateReplayActive	.res long, 1
 PrivateBorrowedFront	.res long, 1
 PrivateBorrowedRecords	.res long, 1
 PrivateSavedGraphIndex	.res long, 1

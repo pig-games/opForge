@@ -250,6 +250,7 @@ struct PrivateCase {
 fn private_cases() -> Vec<PrivateCase> {
     let outputs = ".region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
     vec![
+        prepared_page_private_case(),
         PrivateCase {
             name: "private-real-text-names",
             files: vec![
@@ -339,6 +340,57 @@ fn private_cases() -> Vec<PrivateCase> {
     ]
 }
 
+// Each include forces ordinary replay exactly once. Eligible suppliers between
+// those inclusions make admission read the appended prepared suffix repeatedly,
+// crossing the four-page payload cache before another ordinary append.
+fn prepared_page_private_case() -> PrivateCase {
+    const FILLERS: [&str; 5] = [
+        "library/filler0.asm",
+        "library/filler1.asm",
+        "library/filler2.asm",
+        "library/filler3.asm",
+        "library/filler4.asm",
+    ];
+    const SUPPLIERS: [&str; 5] = [
+        "library/private0.asm",
+        "library/private1.asm",
+        "library/private2.asm",
+        "library/private3.asm",
+        "library/private4.asm",
+    ];
+    const PAYLOADS: [&str; 5] = [
+        "library/parts/payload0.inc",
+        "library/parts/payload1.inc",
+        "library/parts/payload2.inc",
+        "library/parts/payload3.inc",
+        "library/parts/payload4.inc",
+    ];
+    let mut files = vec![(
+        "entry.asm",
+        ".module main\n.cpu 68020\n.use private4\n.section code,kind=code\n.byte private4.VALUE\n.endsection\n.region ram,0,$3ffff\n.place code in ram\n.output \"build/module.bin\",format=bin,sections=code\n.output \"build/module.hunk\",format=hunk,sections=code\n.endmodule\n".into(),
+    )];
+    for index in 0..5 {
+        let dependency = if index == 0 {
+            String::new()
+        } else {
+            format!(".use private{}\n", index - 1)
+        };
+        files.push((FILLERS[index], format!(
+            ".module filler{index}\n.cpu 68020\n{dependency}.priv\nLOAD .macro file\n.include .file\n.endmacro\n.section code,kind=code\n.LOAD \"parts/payload{index}.inc\"\n.endsection\n.endmodule\n"
+        )));
+        files.push((SUPPLIERS[index], format!(
+            ".module private{index}\n.cpu 68020\n.use filler{index}\n.pub\nVALUE .const {index}\n.section code,kind=code\n.long {index}\n.endsection\n.endmodule\n"
+        )));
+        let values = vec![(0x40 + index).to_string(); 16].join(",");
+        files.push((PAYLOADS[index], format!(".byte {values}\n").repeat(2048)));
+    }
+    PrivateCase {
+        name: "private-prepared-page-read-append-eviction",
+        files,
+        accepted_modules: 5,
+    }
+}
+
 fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
     use clap::Parser;
     use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
@@ -365,6 +417,20 @@ fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
     let hunk = fs::read(dir.0.join("build/module.hunk")).unwrap();
     let segments = hunk::segments(&hunk).unwrap();
     match case.name {
+        "private-prepared-page-read-append-eviction" => {
+            let mut expected = Vec::new();
+            for index in 0u32..5 {
+                expected.extend(std::iter::repeat_n(0x40 + index as u8, 64 * 512));
+                expected.extend(index.to_be_bytes());
+            }
+            expected.push(4);
+            assert_eq!(
+                binary, expected,
+                "include payload must execute exactly once"
+            );
+            assert!(binary.len() > 4 * 32768);
+            assert_eq!(segments.len(), 1);
+        }
         "private-real-text-names" => {
             assert!(binary.len() > 4, "root pointer and reachable module code");
             assert_eq!(segments.len(), 1);
@@ -511,13 +577,25 @@ fn native_module_private_pipeline_reset_state() {
 #[test]
 #[ignore = "requires prebuilt current compact CLI and fresh FS-UAE completion"]
 fn native_module_private_pipeline_exact_artifacts() {
-    private_pipeline_native(false);
+    private_pipeline_native(false, false);
 }
 
 #[test]
 #[ignore = "requires instrumented current compact CLI and fresh FS-UAE completion"]
 fn native_module_private_pipeline_progress() {
-    private_pipeline_native(true);
+    private_pipeline_native(true, false);
+}
+
+#[test]
+#[ignore = "requires current compact CLI; disk-backed proto modules and reference"]
+fn native_module_private_disk_pipeline_artifacts() {
+    private_pipeline_native(false, true);
+}
+
+#[test]
+#[ignore = "requires instrumented compact CLI; prove disk proto module admission"]
+fn native_module_private_disk_pipeline_progress() {
+    private_pipeline_native(true, true);
 }
 
 #[test]
@@ -578,7 +656,7 @@ fn native_module_private_pipeline_warning_error() {
     }
 }
 
-fn private_pipeline_native(progress: bool) {
+fn private_pipeline_native(progress: bool, disk: bool) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let variable = if progress {
         "OPFORGE_MODULE_PIPELINE_PROGRESS_IMAGE"
@@ -632,11 +710,15 @@ fn private_pipeline_native(progress: bool) {
         .collect();
     let mut failures = Vec::new();
     for reference in [false, true] {
-        let command = if reference {
-            "Work:entry.asm -M Work:library --reference-modules"
-        } else {
-            "Work:entry.asm -M Work:library"
-        };
+        let command = format!(
+            "Work:entry.asm -M Work:library{}{}",
+            if disk { " --capture-dir Work:" } else { "" },
+            if reference {
+                " --reference-modules"
+            } else {
+                ""
+            }
+        );
         let parity: Vec<_> = cases
             .iter()
             .zip(&artifacts)
@@ -646,13 +728,13 @@ fn private_pipeline_native(progress: bool) {
                 cpu_override: "68020",
                 extra_assembly_defines: &[],
                 source_override: Some(case.files[0].1.as_bytes()),
-                command_template: Some(command),
+                command_template: Some(&command),
                 package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
                 extra_guest_files: files,
                 proof: OpforgeNativeCliProof::ExactArtifacts(artifacts),
             })
             .collect();
-        if progress {
+        if progress || disk {
             for (case, parity) in cases.iter().zip(&parity) {
                 let outcome = match run_prebuilt_compact_cli_case_from_env(&root, parity, &image) {
                     Ok(outcome) => outcome,
@@ -675,17 +757,49 @@ fn private_pipeline_native(progress: bool) {
                 );
                 let counts = private_counts(&run.stdout);
                 let expected = [if reference { 0 } else { case.accepted_modules }];
-                if counts != expected {
+                if progress && counts != expected {
                     failures.push(format!(
                         "{} reference={reference}: publication count {counts:?}, expected {expected:?}; stdout: {}",
                         case.name, run.stdout
                     ));
                     continue;
                 }
+                if disk && progress {
+                    let io = store_io(&run.stdout).expect("module-store I/O receipt");
+                    assert_eq!(
+                        io[1], expected[0],
+                        "one persisted image per accepted module"
+                    );
+                    assert!(io[0] >= io[1], "persisted images must be reloaded for use");
+                    eprintln!(
+                        "MODULE_STORE_IO reference={reference} reads={} writes={} cache_hits={}",
+                        io[0], io[1], io[2]
+                    );
+                }
                 assert_private_warnings(case, &run.stdout);
+                if !progress {
+                    assert!(
+                        !run.captured_artifacts
+                            .contains_key(&PathBuf::from("Work/memory.bin")),
+                        "release timing requires telemetry to be disabled"
+                    );
+                }
                 eprintln!(
-                    "PRIVATE_MODULE_CASE name={} reference={reference} accepted={} exact=bin+hunk",
-                    case.name, counts[0]
+                    "PRIVATE_MODULE_CASE name={} reference={reference} disk={disk} instrumented={progress} accepted={:?} exact=bin+hunk seconds={:?} memory={}",
+                    case.name, counts.first(), run.start_to_done_host_seconds,
+                    run.captured_artifacts.get(&PathBuf::from("Work/memory.bin"))
+                        .map(|bytes| super::native_package_loading_performance::memory(bytes))
+                        .unwrap_or(serde_json::Value::Null)
+                );
+                assert!(
+                    run.captured_artifacts
+                        .keys()
+                        .all(|path| !path.components().any(|part| part
+                            .as_os_str()
+                            .to_str()
+                            .is_some_and(|name| name.starts_with("opfg")))),
+                    "owned disk storage leaked: {:?}",
+                    run.captured_artifacts.keys()
                 );
             }
         } else {
@@ -749,4 +863,22 @@ fn private_counts(stdout: &str) -> Vec<u32> {
                 .then(|| u32::from_str_radix(fields["r"], 16).expect("accepted module count"))
         })
         .collect()
+}
+
+fn store_io(stdout: &str) -> Option<[u32; 3]> {
+    stdout.lines().find_map(|line| {
+        let fields = line
+            .strip_prefix("progress ")?
+            .split_whitespace()
+            .filter_map(|field| field.split_once('='))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        if u32::from_str_radix(fields.get("p")?, 16).ok()? != 451 {
+            return None;
+        }
+        Some([
+            u32::from_str_radix(fields.get("f")?, 16).ok()?,
+            u32::from_str_radix(fields.get("l")?, 16).ok()?,
+            u32::from_str_radix(fields.get("r")?, 16).ok()?,
+        ])
+    })
 }

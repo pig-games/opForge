@@ -273,6 +273,27 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     );
     let static_bytes = native_package_loading_performance::linked_static_bytes(&image);
     let scratch_files = capture_scratch_files(run);
+    let instrumented = define_strings.contains(&"OPFORGE_MEMORY_TELEMETRY");
+    let memory = run
+        .captured_artifacts
+        .get(&PathBuf::from("Work/memory.bin"))
+        .map(|bytes| native_package_loading_performance::memory(bytes));
+    if !budget_failure_diagnostic {
+        assert_eq!(memory.is_some(), instrumented, "measurement build identity");
+    }
+    let private_modules = native_cli_frozen_comparison::private_module_count(&run.stdout);
+    let store_io = native_cli_frozen_comparison::module_store_io(&run.stdout);
+    if instrumented && !budget_failure_diagnostic && !input["module_mode"].is_null() {
+        let count = private_modules.expect("module publication receipt");
+        if input["module_mode"] == "reference" {
+            assert_eq!(count, 0);
+        }
+        if capture_mode == "disk" {
+            let io = store_io.expect("persisted module I/O receipt");
+            assert_eq!(io[1], count, "one saved image per admitted module");
+            assert!(io[0] >= count, "saved images must be loaded for use");
+        }
+    }
     let result = json!({
         "capture_mode": capture_mode, "capture_scratch_files_remaining": scratch_files,
         "module_mode": input["module_mode"],
@@ -285,6 +306,10 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
             && run.exit_code == Some(0)
             && run.verified_output.as_deref() == Some(image.as_slice()),
         "start_to_done_host_seconds": run.start_to_done_host_seconds,
+        "instrumented": instrumented,
+        "release_start_to_done_host_seconds": if instrumented { None } else { run.start_to_done_host_seconds },
+        "memory": memory, "private_modules": private_modules,
+        "module_store_reads_writes_hits": store_io,
         "native_image_digest": run.native_image_digest, "image_bytes": image.len(),
         "linked_static_reserved_bytes": static_bytes, "live_rust_oracle_digest": opforge_self_host_package_digest(&oracle),
         "output_bytes": run.verified_output.as_ref().map(Vec::len), "oracle_bytes": oracle.len(),

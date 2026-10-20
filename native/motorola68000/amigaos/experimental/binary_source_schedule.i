@@ -473,6 +473,8 @@ beginCapturedReplay	.block
 	adda.l #frontend.SCOPE_STATE, a1
 	jsr scopes.seedConfiguration
 	bne.w bad
+	bsr.w buildPrivateRequests
+	bne.w bad
 	lea ConfigFront, a0
 	jsr frontend.finish
 	clr.l ConfigFrontStarted
@@ -541,8 +543,20 @@ nextSpan
 	lea CaptureOrder, a0
 	movea.l memory.Block.Pointer(a0), a0
 	adda.l d0, a0
+	tst.l PrivateRequestMode
+	beq.w ordinary
+	lea PublishedCapture, a1
+	moveq #SPAN_BYTES, d0
+	bsr.w copy
+	bsr.w tryPrivateModule
+	bne.w bad
+	tst.l d1
+	bne.w spanDone
+	lea PublishedCapture, a0
+ordinary
 	bsr.w replayCapturedSpan
 	bne.w bad
+spanDone
 	addq.l #1, CaptureOrderIndex
 	bra.w nextSpan
 good
@@ -672,6 +686,7 @@ done
 ; Preserve all registers; CCR unspecified. Safe on every execute exit.
 releaseCapturedSources	.block
 	movem.l d0-d2/a0-a2, -(sp)
+	bsr.w releasePrivateRequests
 	lea CaptureStore, a0
 	jsr capture_store.cleanup
 	lea CaptureRegions, a0

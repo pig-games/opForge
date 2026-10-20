@@ -249,6 +249,8 @@ struct PrivateCase {
 
 const PRIVATE_OUTPUTS: &str = ".region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
 
+#[path = "native_module_real_sources.rs"]
+mod real_sources;
 #[path = "native_module_template_dependencies.rs"]
 mod template_dependencies;
 
@@ -495,6 +497,17 @@ fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
             assert!(binary.len() > 4, "root pointer and reachable module code");
             assert_eq!(segments.len(), 1);
             assert_eq!(segments[0].relocations.len(), 1);
+        }
+        "private-real-memory" => {
+            assert!(binary.len() > 8, "root pointers and reachable module code");
+            assert_eq!(segments.len(), 2);
+            assert!(segments[0].relocations.len() >= 2);
+            assert_eq!(&segments[1].payload[..2], &[0, 8]);
+        }
+        "private-lexical-macro-scopes" => {
+            assert_eq!(binary, [7, 0x4e, 0x75, 9, 0, 0, 0, 0, 0, 0, 0, 3, 0, 11]);
+            assert_eq!(segments.len(), 2);
+            assert_eq!(segments[0].relocations.len(), 2);
         }
         "private-package-state-reference-fallback" => {
             assert!(binary.len() >= 10);

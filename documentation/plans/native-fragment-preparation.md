@@ -1,74 +1,69 @@
 # Per-module `.ofm` objects and bulk linking
 
-## Direction and current state
+## Current status
 
-Compile eligible activated modules to inspectable individual `.ofm` files, retire their
-private capture, tokens, plans and compiler owners, then link objects at the end. The
-object boundary has focused native qualification; full per-module frontend coverage is
-still ahead. The global paging bridge does not implement that complete direction.
+Eligible modules compile to inspectable `.ofm` objects, retire pending private state and
+join a final bulk link. The object lifecycle has focused native qualification; full
+per-module frontend coverage and current full-build qualification remain incomplete.
 
-The bridge at `c65db50c` is a working intermediate state. It supports disk-backed private
-images in one capture file, but produces no actual per-module `.ofm` files. Current-source
-expanded-memory full self-host completed at 421.786289125 s with 762,108 B exactly equal
-to fresh Rust and bootstrap. The full memory run ended without a final receipt and the
-reference release run was aborted. These provide no full net gain, budget fit or paired
-performance claim. The import-row fix has focused native coverage, but no isolated
-performance result. See the [measurement report](native-performance-diagnosis.md).
+The latest focused fix covers `binary_memory.asm` and generated macro hygiene. Both
+cases privately accept one module, write and read one `.ofm`, and match fresh Rust binary
+and Hunk outputs. Forced-reference runs accept zero modules; cleanup ownership is zero
+for both policies. `binary_memory.asm` plus seven real includes totals 41,210 source
+bytes. Current v20 host output was 766,268 B. The complete current code has not passed a
+full self-host yet. The [measurement report](native-performance-diagnosis.md) owns the
+remaining evidence and qualification limits.
 
 ## Current slice: directory and object lifecycle
 
-The directory is metadata-only: Header, BlockRows and RelocRows. In
-the replacement flow, `add` retains the complete pending image and copies the linker
-prefix. Pending state supplies carrier extraction. Store writes one named `.ofm` per
-eligible module, then retires pending ownership. Compact public semantic owners remain
-resident for later module compilation. Successful cleanup keeps `.ofm` files as inspectable deliverables, separate
-from ephemeral capture files.
+The resident layout directory contains metadata only: Header, BlockRows and RelocRows.
+`add` retains the complete pending image and copies the linker prefix. Pending state
+supplies carrier extraction. Store writes one named `.ofm` per eligible module and retires
+pending ownership. Compact public semantic owners remain resident for later module
+compilation. Successful cleanup preserves `.ofm` files separately from ephemeral capture
+files.
 
-With `--capture-dir DIR`, files live in a freshly owned `DIR/objects` directory (or
-`objects-N` when that name exists). Failed writes remove only their owned `.tmp` file;
-rollback removes only its unpublished suffix. These are current-build link objects, not
-independently reusable module-cache entries: external numeric identities still belong
-to the active build. The container contains offsets and numeric values, never process
-pointers.
-
-Object filenames put the module leaf before its parent qualification, for example
-`bar.foo-0001.ofm` for `foo.bar`. Classic Amiga filenames are limited to 30 bytes:
-the 21-byte stem keeps the leaf, then as much qualification as fits. An overlong
-leaf retains its final 21 bytes. Unsafe characters become underscores; the four-digit
-build-local module ID prevents case-folding, shortening and sanitization collisions.
-For example, `experimental.amigaos.binary_frontend` becomes
-`binary_frontend.exper-0000.ofm`. The registry retains a 32-byte filename per object.
+Object filenames put the module leaf before its parent qualification, then shorten to the
+classic Amiga 30-byte limit and add a unique build-local ID. The registry tracks the
+filename and numeric metadata; the container stores offsets and values, never process
+pointers. With `--capture-dir DIR`, object files live in the owned `objects` directory;
+failed writes and rollback remove only their owned temporary or unpublished files.
+The 21-byte stem keeps the leaf then its parent qualification; an overlong leaf keeps
+its final 21 bytes. Unsafe characters become underscores and a four-hex-digit build-local
+ID prevents shortening, sanitization and case-folding collisions. For example,
+`experimental.amigaos.binary_frontend` becomes `binary_frontend.exper-0000.ofm`.
+The directory uses `objects-N` if `objects` already exists. These are current-build link
+objects; external numeric identities are not yet independently reusable cache identities.
 
 `acquireEmit` is the only payload read path. It runs during final Hunk emission and caches
-one current module. The deterministic gate permits zero payload reads for unlinked or
-BSS-only modules and at most one read per selected module. Verify writes, selected-module
-reads, object survival, exact binary/Hunk output and zero remaining private ownership.
-This tests the object lifecycle; it is not a full-build resource claim.
+one current module. The read contract allows zero reads for unlinked or BSS-only modules
+and at most one payload read per selected module. Focused native cases verify one write
+and one read for each privately selected module, zero accepted modules in forced-reference
+mode, exact fresh Rust artifacts, and zero cleanup ownership.
 
-## Compilation and linking boundary
+## Compilation boundary
 
-The current path handles an eligible cohort. Extend the per-module frontend until full
-self-host uses bulk compilation without quiet global fallback. Generic includes, templates
-and remaining semantic closure still need complete per-module ownership. Constants,
-types and exported binary macros needed by later
-modules stay in a compact shared public interface; compiled payload does not. Unresolved
-conditions, loops and relaxation stay in shared numeric metadata/recipes. Reach convergence
-using metadata before streaming final payloads once.
+The current path covers an eligible cohort. Extend the per-module frontend to generic
+includes, templates and remaining effects until full self-host uses bulk compilation
+without quiet global fallback. Constants, types and exported binary macros required by
+later modules remain in compact shared public semantic owners; compiled payload does not.
+Unresolved conditions, loops and relaxation stay in shared numeric metadata/recipes and
+converge before final payload streaming.
 
-The target resident model is shared runtime + maximum active module workspace + retained
-link/export metadata + output buffer. It is not the total prepared payload of every
-module. Keep an explicit reference path and measure actual owner capacities before making
-net-savings estimates. Preserve package/VM ownership of CPU and encoding semantics, exact
-symbol identity, relocations, layout/alignment, code/data/BSS and whole-block reachability.
-Unsupported effects require explicit owned metadata or reference handling; partial
-publication must not replay effects.
+Two independent blockers in `binary_memory.asm` are repaired: structural projection
+mismatches no longer poison otherwise absolute instruction geometry, and generated
+macro hygiene scopes no longer claim runtime address values. Named macro invocation
+labels and nested real declarations remain values. Focused native regressions pass;
+this does not establish resource savings or full fallback coverage. Public template
+publication and interface-only modules remain substantive producer gaps.
 
 ## Qualification
 
-The current object path has no full-build qualification yet. Use fresh per-case Rust
-oracles and exact native binary/Hunk outputs with fresh guest completion and explicit
-exit. Keep release timing separate from memory instrumentation.
-The budget remains 6.5 MiB process plus 1.5 MiB OS; full 8 MiB fit remains unproven.
-Expanded 68020-74m proves functional execution only. The [measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points)
-owns current evidence and limits; generic backing lifetimes are in [capture acquisition
-and retirement](native-lazy-preparation.md#capture-acquisition-and-retirement).
+There is no current-code full-build resource result. Full comparisons are paused. The
+prior full self-host at `21c33d6b+cec` was exact but mixed bulk/fallback; it is not evidence
+for the current code. The old 7,439,536 B frozen reference heap peak used another image
+and is not a paired gain. The candidate heap run timed out without a valid receipt. The
+budget remains 6.5 MiB process plus 1.5 MiB OS; full 8 MiB fit is unproven.
+
+See the [native parity contract](../../agents/rules/native-rust-parity-porting.md),
+[FS-UAE guide](../../agents/rules/fs-uae.md), and [current measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points).

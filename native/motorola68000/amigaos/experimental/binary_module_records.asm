@@ -1,4 +1,5 @@
 ; Internal prepared controls for saved-image fragments and outgoing identities.
+; @opforge-owner: experimental.amigaos.binary_module_records
 ; No source-language syntax, target semantics, payload bytes or process pointers.
 	.module experimental.amigaos.binary_module_records
 	.cpu 68020

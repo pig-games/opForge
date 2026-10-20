@@ -1,4 +1,5 @@
 ; Write-once module objects. Completed files and their directory are deliverables.
+; @opforge-owner: experimental.amigaos.binary_module_object_store
 	.module experimental.amigaos.binary_module_object_store
 	.cpu 68020
 	.pub

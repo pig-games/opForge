@@ -1,4 +1,5 @@
 ; Transient dependency projection of independent public preparation facets.
+; @opforge-owner: experimental.amigaos.binary_module_facets
 	.module experimental.amigaos.binary_module_facets
 	.cpu 68020
 	.use experimental.amigaos.binary_frontend as frontend

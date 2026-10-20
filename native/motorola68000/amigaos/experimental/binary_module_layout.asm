@@ -1,4 +1,5 @@
 ; Owned numeric geometry and placement recipes for one prepared module.
+; @opforge-owner: experimental.amigaos.binary_module_layout
 	.module experimental.amigaos.binary_module_layout
 	.cpu 68020
 	.use experimental.amigaos.binary_memory as memory

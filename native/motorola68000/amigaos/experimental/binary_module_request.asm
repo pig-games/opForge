@@ -1,4 +1,5 @@
 ; First-reference ownership for an immutable, configured module image.
+; @opforge-owner: experimental.amigaos.binary_module_request
 ; The compiler owns language processing; this boundary owns publication/reuse.
 	.module experimental.amigaos.binary_module_request
 	.cpu 68020

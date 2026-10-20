@@ -42,6 +42,7 @@ EXECUTION_INVALID = 3
 PUBLICATION_INVALID = 4
 IMAGE_INVALID = 5
 UNSUPPORTED = 6
+ADDRESS_INVALID = 7  ; public address cannot be bound to an owned fragment
 REPLAY_UNSUPPORTED = 2
 	.priv
 ; The shared native assembly engine is itself a single active session. This
@@ -351,7 +352,7 @@ inventoryReady
 	lea SemanticOwner, a0
 	lea LayoutState, a1
 	jsr publication.finalize
-	bne.w publicationBad
+	bne.w addressBad
 	bsr.w saveImage
 	bne.w imageBad
 	movea.l Destination, a1
@@ -371,6 +372,9 @@ executionBad
 	bra.w done
 publicationBad
 	moveq #PUBLICATION_INVALID, d7
+	bra.w done
+addressBad
+	moveq #ADDRESS_INVALID, d7
 	bra.w done
 imageBad
 	moveq #IMAGE_INVALID, d7

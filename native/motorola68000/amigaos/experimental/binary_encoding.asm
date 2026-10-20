@@ -1547,7 +1547,7 @@ fixupProjection
 	bclr #GEOMETRY_FIXUP_BIT, GeometryState+1
 	tst.l d0
 	beq.w fixupProjected
-	bsr.w geometryUnproven
+	bsr.w failedProjectionGeometry
 	bra.w projectionBad
 fixupProjected
 	addq.w #2, sp
@@ -1603,8 +1603,8 @@ fixupVersion
 	jsr encoding.semantic
 	tst.l d0
 	beq.w fixupExecuted
-	; A narrower fixup range can become legal at a different placement. Treat
-	; all failed fixup attempts conservatively, including projection failures.
+	; A failed VM may have read implicit PC before rejecting a range. Operand
+	; independence alone cannot certify that failure as placement-invariant.
 	bsr.w geometryUnproven
 	bra.w stageBad
 fixupExecuted
@@ -1660,7 +1660,7 @@ observeOperandGeometry	.block
 	tst.w GeometryState
 	bne.w done
 	movem.l d1/a0, -(sp)
-	jsr references.tokens
+	jsr references.geometryTokens
 	tst.l d0
 	beq.w independent
 	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
@@ -1669,6 +1669,38 @@ independent
 done
 	rts
 	.bend  ; observeOperandGeometry
+
+; Failed projection predicates do not necessarily evaluate a scalar: a wrapper
+; or register shape may simply mismatch. Only fully absolute original operands
+; prove such failure placement-invariant. Unknown or malformed spans fail closed.
+; Preserve D0 and other registers; never clear an earlier candidate observation.
+; Failed VM execution has its separate implicit-PC guard above.
+failedProjectionGeometry	.block
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w done
+	tst.w GeometryState
+	bne.w done
+	movem.l d0-d2/a0-a1, -(sp)
+	moveq #0, d2
+next
+	cmp.w OperandCount, d2
+	bhs.w restored
+	move.w d2, d1
+	lsl.w #2, d1
+	lea OperandStart, a0
+	movea.l 0(a0, d1.w), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d1.w), a1
+	bsr.w observeOperandGeometry
+	tst.w GeometryState
+	bne.w restored
+	addq.w #1, d2
+	bra.w next
+restored
+	movem.l (sp)+, d0-d2/a0-a1
+done
+	rts
+	.bend  ; failedProjectionGeometry
 
 ; Project a known scalar through the package's bounded 32-bit bridge.
 ; A0/A1=expression, A2=package.Context. Expression ABI and registers retained.
@@ -1683,7 +1715,7 @@ evaluateScalar	.block
 	tst.w GeometryState
 	bne.w evaluate
 	movem.l d1/a0, -(sp)
-	jsr references.expression
+	jsr references.geometryExpression
 	tst.l d0
 	beq.w independent
 	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
@@ -2013,7 +2045,7 @@ ready
 	jsr expression.evaluateWithSymbols
 	tst.l d0
 	beq.w evaluated
-	bsr.w geometryUnproven
+	bsr.w failedProjectionGeometry
 	bra.w done
 evaluated
 	cmpa.l a1, a0

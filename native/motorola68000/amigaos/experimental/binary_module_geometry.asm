@@ -1,4 +1,5 @@
 ; Numeric placement arithmetic for section fragments, without target semantics.
+; @opforge-owner: experimental.amigaos.binary_module_geometry
 	.module experimental.amigaos.binary_module_geometry
 	.cpu 68020
 	.pub

@@ -69,6 +69,50 @@ compact
 	tst.l d0
 	rts
 	.bend  ; targets
+
+; Placement independence is stricter than relocation identity: two labels in
+; one section may belong to moving fragments. Never cancel their observations.
+; Same ABI as expression. Typed evaluation requires the private policy that
+; rejects erased address observations; unresolved or malformed values fail closed.
+geometryExpression	.block
+	jsr expr.requiresTyped
+	tst.l d0
+	beq.w compact
+	movem.l d2-d7/a1-a6, -(sp)
+	btst #pkg.POSITION_OBSERVATION_POLICY_BIT, pkg.Context.ExpressionPolicy+1(a2)
+	beq.w bad
+	jsr expr.evaluate
+	tst.l d0
+	bne.w bad
+	tst.l d2
+	bne.w referenced
+	move.l pkg.Context.Provenance(a2), d0
+	beq.w absolute
+	cmpi.l #8, d0
+	bhi.w bad
+referenced
+	moveq #1, d1
+	moveq #STATUS_SECTION, d0
+	bra.w restored
+absolute
+	moveq #0, d1
+	moveq #STATUS_CLEAR, d0
+	bra.w restored
+bad
+	moveq #0, d1
+	moveq #STATUS_BAD, d0
+restored
+	movem.l (sp)+, d2-d7/a1-a6
+	tst.l d0
+	rts
+compact
+	move.l d7, -(sp)
+	moveq #1, d7
+	bsr.w scanExpression
+	move.l (sp)+, d7
+	tst.l d0
+	rts
+	.bend  ; geometryExpression
 ; A0=compiled wrapper,A1=end,A2=Context. Classify a bounded postfix
 ; expression's relocation identity without evaluating its scalar value.
 ; D0=STATUS_CLEAR (absolute), STATUS_SECTION (one base), STATUS_BAD;
@@ -604,6 +648,20 @@ done
 ; A0 advances to the end. Other registers are preserved.
 tokens	.block
 	movem.l d2-d7/a1-a6, -(sp)
+	moveq #0, d3
+	bra.w tokenScan
+	.bend  ; tokens
+
+; Strict placement proof over prepared operands; same ABI as tokens. Wrapped
+; expressions retain every address observation instead of affine cancellation.
+geometryTokens	.block
+	movem.l d2-d7/a1-a6, -(sp)
+	moveq #1, d3
+	bra.w tokenScan
+	.bend  ; geometryTokens
+	.priv
+; D3 selects relocation or geometry judgment; public entries own saved frame.
+tokenScan	.block
 	moveq #1, d7
 	movea.l a1, a4
 	moveq #STATUS_CLEAR, d5
@@ -635,6 +693,11 @@ next
 	bra.w next
 wrapped
 	subq.l #1, a0
+	tst.l d3
+	beq.w relocation
+	bsr.w geometryExpression
+	bra.w classified
+relocation
 	; Cancelled same-section bases need no instruction relocation. Keep the
 	; conservative scan for surviving bases and positional/unsupported forms;
 	; the package projection still owns their fixup proof or rejection.
@@ -647,6 +710,7 @@ wrapped
 wrappedReferences
 	movea.l (sp)+, a0
 	jsr targets
+classified
 	cmpi.l #STATUS_BAD, d0
 	beq.w bad
 	tst.l d0
@@ -709,8 +773,7 @@ done
 	movem.l (sp)+, d2-d7/a1-a6
 	tst.l d0
 	rts
-	.bend  ; tokens
-	.priv
+	.bend  ; tokenScan
 
 ; D1=bytes needed at A0. Uses the current bounded end in A4 for expression
 ; and A1 for tokens; callers set A4 to their own end before entry.

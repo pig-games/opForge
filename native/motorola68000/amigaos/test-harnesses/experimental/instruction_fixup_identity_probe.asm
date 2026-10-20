@@ -219,6 +219,34 @@ geometryChecks	.block
 	bne.w bad
 	move.l #IdentityOwner, package.Context.Owner(a2)
 	move.w #package.POSITION_OBSERVATION_POLICY, package.Context.ExpressionPolicy(a2)
+	lea IdentityPlans, a1
+	move.l #IdentityPlansEnd-IdentityPlans, d0
+	jsr bindings.install
+	bne.w bad
+	bsr.w strictReferences
+	bne.w bad
+	lea PostincrementOperand, a0
+	lea PostincrementOperandEnd, a1
+	move.l #MOVE_ID, d0
+	moveq #BYTE_QUALIFIER, d1
+	jsr encoding.encode
+	tst.l d0
+	bne.w bad
+	cmpi.l #2, d1
+	bne.w bad
+	cmpi.w #POSTINCREMENT_WORD, (a1)
+	bne.w bad
+	bsr.w plainProof
+	bne.w bad
+	lea Operands3, a0
+	lea Operands3End, a1
+	move.l #MOVE_ID, d0
+	moveq #LONG_QUALIFIER, d1
+	jsr encoding.encode
+	tst.l d0
+	bne.w bad
+	bsr.w plainProof
+	bne.w bad
 	bsr.w fixedFields
 	bne.w bad
 	lea RangeOperand, a0
@@ -245,6 +273,36 @@ cleanup
 	move.l d7, d0
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
+	rts
+plainProof
+	jsr encoding.outputFixupCount
+	tst.l d0
+	bne.w missingFields
+	jsr encoding.outputGeometryProof
+	rts
+strictReferences
+	lea StrictReferenceCases, a3
+	moveq #3, d7
+strictNext
+	movea.l (a3)+, a0
+	movea.l (a3)+, a1
+	move.l (a3)+, d6
+	movem.l a0-a1, -(sp)
+	jsr references.geometryExpression
+	cmp.l d6, d0
+	movem.l (sp)+, a0-a1
+	bne.w missingFields
+	jsr references.geometryTokens
+	cmp.l d6, d0
+	bne.w missingFields
+	dbra d7, strictNext
+	; Ordinary relocation identity still cancels these same-section bases.
+	lea BlockDifference, a0
+	lea BlockDifferenceEnd, a1
+	jsr references.tokens
+	tst.l d0
+	bne.w missingFields
+	moveq #0, d0
 	rts
 fixedFields
 	lea Operands0, a0
@@ -324,6 +382,10 @@ BranchQualifiers	.long WORD_QUALIFIER, 0
 QualifiedCases	.long QualifiedFirst, QualifiedFirstEnd, FIRST_ID
 	.long QualifiedSecond, QualifiedSecondEnd, SECOND_ID
 	.long QualifiedAddend, QualifiedAddendEnd, FIRST_ID
+StrictReferenceCases	.long BlockDifference, BlockDifferenceEnd, references.STATUS_SECTION
+	.long UnknownExpression, UnknownExpressionEnd, references.STATUS_SECTION
+	.long CurrentExpression, CurrentExpressionEnd, references.STATUS_SECTION
+	.long TypedDifference, TypedDifferenceEnd, references.STATUS_BAD
 IdentityPlans	.word QUALIFIED_FIRST_ID, 1
 	.long 12
 	.word FIRST_ID, 0

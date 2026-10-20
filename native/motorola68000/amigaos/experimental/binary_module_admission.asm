@@ -1,4 +1,5 @@
 ; Prove private code independent of ambient package/text runtime state.
+; @opforge-owner: experimental.amigaos.binary_module_admission
 	.module experimental.amigaos.binary_module_admission
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package

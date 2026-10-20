@@ -1,10 +1,10 @@
 # Preparation ownership and capture storage
 
 This note records maintained capture and ownership contracts relevant to module
-compilation. The active architecture direction is individual `.ofm` objects followed by
-one bulk link; see [per-module objects and bulk linking](native-fragment-preparation.md).
-Full 8 MiB fit is unproven. The budget is 6.5 MiB for the process plus 1.5 MiB for
-AmigaOS.
+compilation. The active direction is eligible per-module `.ofm` objects followed by bulk
+linking. Full frontend coverage and full-build resource qualification remain incomplete.
+The confirmed budget is 6.5 MiB process plus 1.5 MiB AmigaOS. See [per-module objects
+and bulk linking](native-fragment-preparation.md).
 
 ## Maintained storage policies
 
@@ -13,10 +13,10 @@ AmigaOS.
 | Resident capture | Default; completed captures may retire after owned publication. |
 | Complete-graph replay | Disk inputs retain the same semantic engine and closed schedule. |
 | `--capture-dir DIR` | Selects disk capture, prepared backing and lexical backing; use a real disk volume. |
-| Raw capture | Records are contiguous within their backing extents; the logical arena need not be one allocation. |
+| Raw capture | Records are contiguous within backing extents; the logical arena need not be one allocation. |
 | Prepared backing | Checked module-bounded views and bounded payload cache through finalization/reachability. |
 | Lexical backing | Stable numeric identities, owned reader copies and bounded page cache. |
-| Compiled eligible modules | Individual immutable `.ofm` files; metadata-only layout and one payload read at final Hunk emission. Full frontend coverage remains incomplete. |
+| `.ofm` objects | Named deliverables survive successful cleanup; ephemeral capture files have separate cleanup ownership. |
 
 ## Capture acquisition and retirement
 
@@ -30,35 +30,34 @@ pin exhaustion fail explicitly. `T:` may be RAM and does not demonstrate disk me
 savings. Retirement validates disjoint ranges and pins before mutation. Fully retired
 chunks release payload and become checked tombstones; partially shared chunks stay until
 every live byte retires. Views cannot cross retirement or reload retired data. Normal
-cleanup removes owned files; a crash may leave private scratch for recovery.
+cleanup removes owned files; a crash may leave private scratch for recovery. Successful
+cleanup preserves named `.ofm` deliverables.
 
-## Configuration, publication and includes
+## Configuration and suspended source execution
 
 Configuration and semantic frontends own separate scratch and graph state. Switching
-restores shared VM control at a stable frontend address; borrowed lines do not cross a
-switch. Complete immutable parameter snapshots transfer by spelling; repeated imports
-must agree on keys and values. Consumed section maps retain their state.
+reactivates shared VM control at the stable frontend address; borrowed lines never cross
+the switch. Immutable configuration snapshots transfer by spelling and repeated imports
+must agree. Active includes preserve the suspended parent cursor, expansion context and
+definition-relative origins. Inactive branches and unexpanded templates acquire no files.
+Ordinary replay transfers numeric records, values and templates before acknowledging
+the graph and retiring its capture. Private compilation must own the same later-needed
+facets before releasing its frontend; unavailable facets still force reference handling.
 
-Ordinary replay owns numeric records, values and binary templates before graph
-acknowledgement and capture retirement. Active includes suspend the parent cursor and
-preserve origins, expansion context and definition-relative paths. Inactive branches and
-unexpanded templates do not acquire files. Active file effects occur once; template
-bodies/defaults have explicit ownership.
+## Current ownership and verification boundary
 
-The CLI builds an owned request pool before retiring configuration/discovery and compiles
-an eligible dependency-ordered cohort. The object store uses `add` to retain the pending
-full image and copy the linker
-prefix; pending state supplies carrier extraction; store writes a named `.ofm` once and
-retires pending ownership. The metadata-only layout directory retains Header, BlockRows
-and RelocRows, while compact public semantic owners remain available for later compiles.
-`.ofm` deliverables survive successful cleanup. Full per-module frontend coverage for
-generic includes, templates and remaining closure is still ahead.
-Names put the module leaf before its parent qualification, shortening to the classic
-30-byte limit and appending a unique build-local ID. See the
-[object lifecycle note](native-fragment-preparation.md#current-slice-directory-and-object-lifecycle)
-for the exact naming policy.
+The focused `binary_memory.asm` and macro-hygiene native cases each privately accept
+one module, write/read one `.ofm`, and match fresh Rust binary/Hunk output. Forced-reference
+runs accept zero modules; both policies clean up to zero ownership. The memory case uses
+`binary_memory.asm` plus seven real includes (41,210 B unchanged). Current v20 host
+output was 766,268 B, but current full self-host and resource comparison are pending.
 
-## Ownership and verification boundaries
+The layout directory retains only Header, BlockRows and RelocRows. Pending image state
+carries linker-prefix copies and carrier extraction until the store writes each object
+once and retires pending ownership. Compact public semantic owners remain available for
+later compilation. `acquireEmit` reads only at final Hunk emission and caches one current
+module. Unlinked or BSS-only modules may have zero payload reads; selected modules may be
+read at most once.
 
 Reader APIs return owned entry/name copies; mutations write back explicitly, and page
 pointers do not escape leases. Public/interface facets and later-needed metadata remain
@@ -70,14 +69,6 @@ survive later numeric consumers.
 `materializePreparedStore` reconstructs one contiguous global ordered `Records` stream,
 then retires the prepared store and index before assembly passes. The retained global
 `Records` stream remains resident during assembly; the private module image cache is a
-separate owner and remains available for fragment runtime. `beginSizing` remains a
-no-growth boundary. These bridge details do not establish the target per-object lifetime.
-
-`acquireEmit` is the only payload read path and runs at final Hunk emission with one
-current module cached. The read gate allows zero reads for unlinked or BSS-only modules
-and at most one read per selected module. Check writes, reads, object survival and zero
-private ownership after cleanup. Preserve deliverables separately from ephemeral capture
-files. Do not claim a numeric memory benefit until workspace and retained metadata
-capacities are measured; the new path has no full-build qualification yet. See the
-[measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points)
-for current proof limits.
+separate owner available for fragment runtime. This is existing bridge behavior, not the
+final per-object lifetime. See the [measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points)
+for full qualification limits.

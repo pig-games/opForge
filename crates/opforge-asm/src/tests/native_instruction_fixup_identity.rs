@@ -9,10 +9,12 @@ use vm::runtime_model_core::RuntimeModelCore;
 const SOURCE: &str = r#" .module probe
  .cpu 68020
  .org $1000
-first:
+first .block
  .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-second:
+ .bend
+second .block
  .byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+ .bend
  move.l first,first
  move.l first,second
  move.l #first+4,d0
@@ -40,6 +42,7 @@ fn prepare(dir: &Path) -> Vec<u8> {
     let qualified_first = second + 1;
     let qualified_second = second + 2;
     let projected = second + 3;
+    let unknown = projected + 1;
     let qualifier = numeric
         .qualifiers
         .iter()
@@ -50,6 +53,12 @@ fn prepare(dir: &Path) -> Vec<u8> {
         .qualifiers
         .iter()
         .position(|entry| entry.eq_ignore_ascii_case("w"))
+        .unwrap()
+        + 1;
+    let byte_qualifier = numeric
+        .qualifiers
+        .iter()
+        .position(|entry| entry.eq_ignore_ascii_case("b"))
         .unwrap()
         + 1;
     let symbol = |id: u16| vec![0x81, 4, 0x12, id as u8, (id >> 8) as u8, 0];
@@ -78,9 +87,54 @@ fn prepare(dir: &Path) -> Vec<u8> {
     absolute.extend(register(name("d0")));
     let mut fixture = format!(
         "NAME_COUNT={}\nSYMBOL_COUNT={}\nFIRST_ID={}\nSECOND_ID={}\nMOVE_ID={}\nLONG_QUALIFIER={}\nBSR_ID={}\nWORD_QUALIFIER={}\nQUALIFIED_FIRST_ID={}\nQUALIFIED_SECOND_ID={}\nPROJECTED_ID={}\nMEMBER_ID={}\nFPU_ID={}\nNONE_ID={}\nENCODE_ID={}\nMOVEQ_ID={}\n",
-        first, projected + 1, first, second, name("move"), qualifier, name("bsr"), word_qualifier,
+        first, unknown + 1, first, second, name("move"), qualifier, name("bsr"), word_qualifier,
         qualified_first, qualified_second, projected, name("d0"), name("fpu"), name("none"), name("encode"), name("moveq")
     );
+    let postincrement = oracle(dir, " .cpu 68020\n move.b (a0)+,(a1)+\n")
+        .expect("live Rust constant postincrement instruction");
+    assert_eq!(postincrement.len(), 2);
+    fixture.push_str(&format!(
+        "BYTE_QUALIFIER={byte_qualifier}\nPOSTINCREMENT_WORD={}\n",
+        u16::from_be_bytes([postincrement[0], postincrement[1]])
+    ));
+    let mut postincrement_operand = vec![14];
+    postincrement_operand.extend(register(name("a0")));
+    postincrement_operand.extend([15, 18, 4, 14]);
+    postincrement_operand.extend(register(name("a1")));
+    postincrement_operand.extend([15, 18]);
+    let difference = |left: u16, right: u16| {
+        vec![
+            0x81,
+            8,
+            0x12,
+            left as u8,
+            (left >> 8) as u8,
+            0x12,
+            right as u8,
+            (right >> 8) as u8,
+            0x32,
+            0,
+        ]
+    };
+    for (label, bytes) in [
+        ("PostincrementOperand", postincrement_operand),
+        ("BlockDifference", difference(second, first)),
+        (
+            "TypedDifference",
+            difference(qualified_second, qualified_first),
+        ),
+        ("UnknownExpression", symbol(unknown)),
+        ("CurrentExpression", vec![0x81, 2, 0x11, 0]),
+    ] {
+        fixture.push_str(&format!(
+            "{label} .byte {}\n{label}End\n",
+            bytes
+                .iter()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ));
+    }
     for (index, operands) in [repeated, distinct, addend, absolute].iter().enumerate() {
         fixture.push_str(&format!(
             "Operands{index} .byte {}\nOperands{index}End\n",

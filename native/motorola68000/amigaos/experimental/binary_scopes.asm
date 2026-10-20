@@ -2152,7 +2152,15 @@ block
 	tst.w d5
 	beq.w addressBlock
 	; Macro hygiene changes lexical binding only; its generated scope name
-	; is not an address label to define again during counted replay.
+	; is not an address label to define or publish. Keep its scope/parent and
+	; saved visibility, while removing the provisional label's value facets.
+	moveq #0, d0
+	move.w layout.State.Current(a6), d0
+	beq.w bad
+	subq.w #1, d0
+	.VIEW_READ a6, d0, a3, ViewFrame.Entry3, a6, bad
+	andi.w #$ffff-DECLARED-records.LABEL_VALUE, records.Entry.Flags(a3)
+	.VIEW_WRITE a6, a3, bad
 	bra.w empty
 addressBlock
 	ori.b #source.FLAG_BLOCK_OPEN, 1(a5)

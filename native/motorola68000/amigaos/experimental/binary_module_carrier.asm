@@ -1,4 +1,5 @@
 ; Numeric section/block carriers for immutable compiled-module fragments.
+; @opforge-owner: experimental.amigaos.binary_module_carrier
 	.module experimental.amigaos.binary_module_carrier
 	.cpu 68020
 	.use experimental.amigaos.binary_module_image as image

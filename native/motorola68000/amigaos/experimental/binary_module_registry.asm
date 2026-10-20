@@ -1,4 +1,5 @@
 ; Request-owned images, mutable placements, and public address bindings.
+; @opforge-owner: experimental.amigaos.binary_module_registry
 ; Disk ownership retains offset-only linker metadata and one final emission image.
 ; Semantic interface installation belongs to its separate canonical owner.
 	.module experimental.amigaos.binary_module_registry

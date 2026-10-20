@@ -1,4 +1,5 @@
 ; Final numeric placement and VM recipe replay for privately compiled modules.
+; @opforge-owner: experimental.amigaos.binary_module_runtime
 ; Images own bytes/offsets; this session owns only placement and a reusable buffer.
 	.module experimental.amigaos.binary_module_runtime
 	.cpu 68020

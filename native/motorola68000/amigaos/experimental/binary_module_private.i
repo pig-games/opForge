@@ -1,5 +1,37 @@
 ; Sequential private compilation before retained semantic publication.
 PRIVATE_NUMBER_COUNT = 17
+PROGRESS_PRIVATE_COMPILE = 454
+PROGRESS_PRIVATE_FAILURE = 455
+PROGRESS_PRIVATE_POSITION = 456
+PROGRESS_PRIVATE_SECTIONS = 457
+PROGRESS_PRIVATE_SELECTION = 458
+; Existing progress ABI: F=captured file ordinal,L=returned status,R=zero.
+; Snapshot D0/D7 before MEMORY_PROGRESS loads its own argument registers.
+; Execution failure adds only retained scalar snapshots: 455 F=file,L=stage,
+; R=name; 456 F=pass,L=sweep,R=mode; 457 F=mode,L=section,R=count;
+; 458 F=priority,L=recipe,R=projection. No released record pointers are read.
+; The three existing gates keep both call and preservation absent in release.
+PRIVATE_RESULT	.macro phase, status
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	move.l d4, -(sp)
+	move.l .status, d4
+	.MEMORY_PROGRESS DosBase, .phase, PublishedCapture+Span.File, d4, #0
+	cmpi.l #moduleCompile.EXECUTION_INVALID, d4
+	bne.w done
+	.MEMORY_PROGRESS DosBase, #PROGRESS_PRIVATE_FAILURE, PublishedCapture+Span.File, assembly.FailureStage, assembly.FailureName
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_PRIVATE_POSITION, assembly.Position, AssemblyPosition.Pass, AssemblyPosition.Sweep, AssemblyPosition.Mode
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_PRIVATE_SECTIONS, assembly.Position, AssemblyPosition.Mode, AssemblyPosition.Section, AssemblyPosition.Count
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_PRIVATE_SELECTION, encoding.Selection, SelectionPosition.Priority, SelectionPosition.Recipe, SelectionPosition.Projection
+done
+	move.l (sp)+, d4
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
 PrivateSection	.struct
 Name	.res PATH_BYTES
 Bytes	.long ?
@@ -59,6 +91,7 @@ requestReady
 	lea PrivateImage, a1
 	jsr moduleCompile.compile
 	move.l d0, d7
+	.PRIVATE_RESULT #PROGRESS_PRIVATE_COMPILE, d7
 	lea Front, a0
 	jsr frontend.activate
 	bne.w failed

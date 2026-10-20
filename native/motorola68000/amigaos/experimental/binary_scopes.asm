@@ -48,6 +48,7 @@ SAVED_FIELD_STATE_BYTES = 3*2
 SAVED_BASE_BYTES = 4
 KIND_BLOCK = 1
 KIND_NAMESPACE = 2
+KIND_TEMPLATE_ORIGIN = 4; unindexed spelling metadata, never an actual scope opener
 LEXICAL_BLOCK_BIT = 7
 LEXICAL_BLOCK = 1<<LEXICAL_BLOCK_BIT; preparation-only: macro hygiene without a reachability unit
 INDENT_FLAG_BIT = source.FLAG_INDENT-1
@@ -906,6 +907,7 @@ scan
 	move.w records.Entry.Flags(a4), d0
 	andi.w #records.BINDING_PROXY, d0
 	beq.w next
+	.BINDING_ATTEMPT #binding_diagnostic.PROXY, d7, #-1
 	moveq #0, d0
 	move.w records.Entry.OriginalId(a4), d0
 	sub.w layout.State.Base(a6), d0
@@ -945,6 +947,7 @@ completeDeclaration
 	move.w records.Entry.Target(a4), d1
 	sub.w layout.State.Base(a6), d1
 	lea MODULE_STATE(a6), a0
+	.BINDING_ATTEMPT #binding_diagnostic.VISIBILITY, d7, d1
 	jsr modules.check
 	bne.w done
 	bra.w next
@@ -2681,8 +2684,42 @@ finishBindings	.block
 resolve
 	cmp.w layout.State.Count(a6), d7
 	bhs.w rewrite
+	.BINDING_ATTEMPT #binding_diagnostic.BINDING_IDENTITY, d7, #-1
 	move.l d7, d0
 	.VIEW_READ a6, d0, a4, ViewFrame.Entry4, a6, bad
+	movea.l a4, a0
+	bsr.w templateOriginEntry
+	bne.w ordinaryReference
+	; Keep the spelling/template identity while refreshing only numeric Target.
+	; Canonical spelling entries precede their unindexed metadata origins.
+	moveq #0, d0
+	move.w records.Entry.OriginalId(a4), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w bad
+	moveq #0, d5
+	move.w layout.State.Count(a6), d5
+originTarget
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	.VIEW_READ a6, d0, a2, ViewFrame.Entry2, a6, bad
+	moveq #0, d1
+	move.w records.Entry.Target(a2), d1
+	add.w layout.State.Base(a6), d0
+	cmp.w d0, d1
+	beq.w originReady
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w bad
+	subq.l #1, d5
+	beq.w bad
+	bra.w originTarget
+originReady
+	cmp.w records.Entry.Target(a4), d1
+	beq.w ordinaryReference
+	move.w d1, records.Entry.Target(a4)
+	.VIEW_WRITE a6, a4, bad
+	move.w #1, layout.State.Changed(a6)
+ordinaryReference
 	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a4)
 	bne.w next  ; text identities never canonicalize through value owners
 	move.w records.Entry.Flags(a4), d0
@@ -2718,6 +2755,20 @@ resolve
 	suba.l d0, a0
 	beq.w next
 selectedReference
+	; A prepared spelling origin can already name its canonical target without
+	; declaring a value. Keep the ordinary module privacy check authoritative.
+	move.l d7, d0
+	add.w layout.State.Base(a6), d0
+	cmp.w records.Entry.Target(a4), d0
+	beq.w unresolvedIdentity
+	moveq #0, d0
+	move.w records.Entry.Target(a4), d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w bad
+	cmp.w layout.State.Count(a6), d0
+	bhs.w bad
+	bra.w access
+unresolvedIdentity
 	btst #0, records.Entry.Flags+1(a4)
 	bne.w access
 	.BINDING_ATTEMPT #binding_diagnostic.EXPLICIT, d7, #-1
@@ -3663,6 +3714,8 @@ classifyDirective	.block
 	tst.l d0
 	rts
 	.bend  ; classifyDirective
+	.include "binary_scope_template_origin.i"
+
 ; A0=scope state,D0=definition-time source ID,D1=original qualifier.
 ; D0/CCR=status,D1=call-scope ID. Qualified names retain their identity;
 ; unqualified source names bind from their lexical leaf in the active scope.
@@ -3672,14 +3725,28 @@ rebindLocal	.block
 	movea.l a0, a6
 	move.l a1, -(sp)
 	.VIEW_ENTER a6
-	tst.w d1
-	bne.w unchanged
 	move.l d0, d5
 	sub.w layout.State.Base(a6), d5
 	bcs.w unchanged
 	cmp.w layout.State.Count(a6), d5
 	bhs.w badRebind
 	.VIEW_READ a6, d5, a3, ViewFrame.Entry3, a6, badRebind
+	tst.w d1
+	beq.w bareOrigin
+	movea.l a3, a0
+	bsr.w templateOriginEntry
+	bne.w unchanged
+	; Explicitly qualified body names select the original spelling identity.
+	; Declarations must never claim the unindexed hygiene metadata alias.
+	moveq #0, d0
+	move.w records.Entry.OriginalId(a3), d0
+	move.l d0, d2
+	sub.w layout.State.Base(a6), d2
+	bcs.w badRebind
+	cmp.w layout.State.Count(a6), d2
+	bhs.w badRebind
+	bra.w unchanged
+bareOrigin
 	; Encoding identities are global non-value names. Macro hygiene must
 	; preserve their facet and ID instead of creating a call-local symbol.
 	btst #records.ENCODING_NAME_HIGH_BIT, records.Entry.Flags(a3)
@@ -3788,7 +3855,15 @@ done
 ; Read-only selected-name hint. The import resolver remains authoritative.
 ; A0=scope state,D0=call ID. D0/CCR=status,D1=selected definition ID.
 templateAliasTarget	.block
+	move.l d2, -(sp)
+	move.l d0, d2
+	bsr.w templateOriginTarget
+	beq.w done
+	move.l d2, d0
 	jsr imports.templateAliasTarget
+done
+	move.l (sp)+, d2
+	tst.l d0
 	rts
 	.bend  ; templateAliasTarget
 
@@ -4049,6 +4124,13 @@ resolveTemplate	.block
 	movem.l d2/a0-a2, -(sp)
 	subq.l #4, sp
 	move.l (a0), (sp)
+	moveq #0, d0
+	move.w source.NameToken.Id(sp), d0
+	movea.l a1, a0
+	bsr.w templateOriginTarget
+	bne.w ordinaryOrigin
+	move.w d1, source.NameToken.Id(sp)
+ordinaryOrigin
 	movea.l sp, a0
 	lea bind, a2
 	jsr imports.resolveTemplate
@@ -4153,6 +4235,8 @@ BindingView	.word layout.State.Count, layout.State.Base, layout.State.Current
 	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length, records.Entry.Flags
 	.word records.Entry.Owner
 	.long lexical.copyName, lexical.readEntry
+	.word records.Entry.Target
+	.word layout.MODULE_STATE+modules.FLAGS, layout.MODULE_STATE+modules.OWNERS, layout.MODULE_STATE+modules.ORIGINS
 	.endsection
 .endif
 .endif

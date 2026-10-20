@@ -213,6 +213,13 @@ privatePublish	.block
 	jsr moduleScope.install
 	bne.w bad
 	move.l PrivateInstall+moduleScope.Frame.Module, PrivateInstalledModule
+	move.l #Front, PrivateFacetInstall+moduleTemplates.InstallFrame.Frontend
+	move.l PrivateInstalledModule, PrivateFacetInstall+moduleTemplates.InstallFrame.Module
+	move.l PrivateFacets+memory.Block.Pointer, PrivateFacetInstall+moduleTemplates.InstallFrame.Image
+	move.l PrivateFacets+memory.Block.Used, PrivateFacetInstall+moduleTemplates.InstallFrame.Bytes
+	lea PrivateFacetInstall, a0
+	jsr moduleTemplates.install
+	bne.w bad
 	bsr.w privateMapSections
 	bne.w bad
 	movea.l PrivateOwners+memory.Block.Pointer, a4
@@ -593,6 +600,12 @@ blocks
 	lea PrivateImage, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
+	lea PrivateFacets, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	lea PrivateFacetInstall, a1
+	moveq #moduleTemplates.INSTALL_BYTES, d0
+	bsr.w privateClear
 	lea PrivateSnapshot, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)

@@ -55,6 +55,7 @@ STAGES = {
     15: "declared canonical target found by linear scan",
     16: "first declared spelling with same leaf",
     17: "forward numeric member acquisition",
+    20: "canonical binding identity",
 }
 ENTRY_FIELDS = (
     (0, 4, "name_offset", "u32"),
@@ -76,6 +77,7 @@ SNAPSHOT_PHASES = {
     "previous": (160, 192),
     "next": (224, 256),
 }
+MODULE_METADATA_PHASES = {459: "source", 460: "target"}
 PACKED_RECORD_PHASES = range(336, 344)
 PACKED_RECORD_CONSUMERS = {
     8: "prepared-record identity remap",
@@ -105,6 +107,7 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
     groups = {name: {} for name in SNAPSHOT_PHASES}
     preparation_phases: dict[int, tuple[int, int, int, int]] = {}
     packed_record_phases: dict[int, tuple[int, int, int, int]] = {}
+    module_phases: dict[int, tuple[int, int, int, int]] = {}
     for line in text.splitlines():
         match = PROGRESS.fullmatch(line.strip())
         if not match:
@@ -113,6 +116,8 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
                 malformed_phase = int(candidate.group(1), 16)
                 if malformed_phase in (301, 302, 303, 304, 305, 306, 307, 308):
                     raise BindingDiagnosticError("malformed preparation failure progress record")
+                if malformed_phase in MODULE_METADATA_PHASES:
+                    raise BindingDiagnosticError("malformed module metadata progress record")
                 if malformed_phase in PACKED_RECORD_PHASES:
                     raise BindingDiagnosticError("malformed packed-record failure progress record")
             continue
@@ -121,6 +126,11 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
             if phase in preparation_phases:
                 raise BindingDiagnosticError(f"duplicate preparation failure phase {phase}")
             preparation_phases[phase] = tuple(values)
+            continue
+        if phase in MODULE_METADATA_PHASES:
+            if phase in module_phases:
+                raise BindingDiagnosticError(f"duplicate module metadata phase {phase}")
+            module_phases[phase] = tuple(values)
             continue
         if phase in PACKED_RECORD_PHASES:
             if phase in packed_record_phases:
@@ -156,6 +166,8 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
               "status": "present" if primary is not None else "absent"}
     if correlations:
         result["correlations"] = correlations
+    if module_phases:
+        result["module_metadata"] = _decode_module_metadata(module_phases, primary)
     if preparation_phases:
         result["preparation_failure"] = _decode_preparation_failure(preparation_phases)
     if packed_record_phases:
@@ -166,6 +178,29 @@ def decode_binding_diagnostic(text: str) -> dict[str, object]:
         if primary is not None and primary["stage"] != consumer_stage:
             raise BindingDiagnosticError("packed-record capture has inconsistent primary snapshot context")
         result["packed_record_failure"] = packed_record_failure
+    return result
+
+
+def _decode_module_metadata(phases, primary):
+    if primary is None or primary["entry"] is None:
+        raise BindingDiagnosticError("module metadata requires a primary entry snapshot")
+    result = {}
+    for phase, (flags, owner, origin, _) in phases.items():
+        if any(value > 0xFFFF for value in (flags, owner, origin)):
+            raise BindingDiagnosticError("module metadata exceeds its u16 cells")
+        kind = MODULE_METADATA_PHASES[phase]
+        index = primary["entry_index"] if kind == "source" else primary["entry"]["target"] - primary["base"]
+        if not 0 <= index < primary["count"]:
+            raise BindingDiagnosticError("module metadata index exceeds the owning scope bounds")
+        result[kind] = {
+            "entry_index": index,
+            "flags": flags,
+            "public": bool(flags & 1),
+            "used": bool(flags & 2),
+            "mixed_origins": bool(flags & 4),
+            "declaration_owner": owner,
+            "reference_origin": origin,
+        }
     return result
 
 

@@ -593,16 +593,16 @@ bad
 	.section data, kind=data
 	.align 4
 CompileContext
-	.long Package, Source, SourceEnd-Source, 0, 0, 0, 0, 0, 0
+	.long Package, Source, SourceEnd-Source, 0, 0, 0, 0, 0, 0, 0
 	.ifdef OPFORGE_MODULE_COMPILE_REJECTIONS
 BadAbsoluteContext
-	.long Package, BadAbsolute, BadAbsoluteEnd-BadAbsolute, 0, 0, 0, 0, 0, 0
+	.long Package, BadAbsolute, BadAbsoluteEnd-BadAbsolute, 0, 0, 0, 0, 0, 0, 0
 BadRelativeContext
-	.long Package, BadRelative, BadRelativeEnd-BadRelative, 0, 0, 0, 0, 0, 0
+	.long Package, BadRelative, BadRelativeEnd-BadRelative, 0, 0, 0, 0, 0, 0, 0
 BadNominalContext
-	.long Package, BadNominal, BadNominalEnd-BadNominal, 0, 0, 0, 0, 0, 0
+	.long Package, BadNominal, BadNominalEnd-BadNominal, 0, 0, 0, 0, 0, 0, 0
 BadTemplateContext
-	.long Package, BadTemplate, BadTemplateEnd-BadTemplate, 0, 0, 0, 0, 0, 0
+	.long Package, BadTemplate, BadTemplateEnd-BadTemplate, 0, 0, 0, 0, 0, 0, 0
 BadNominal
 	.incbin "module_compile_bad_nominal.asm"
 BadNominalEnd

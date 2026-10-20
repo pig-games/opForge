@@ -10,6 +10,8 @@
 	.use experimental.amigaos.binary_module_exports as exports
 	.use experimental.amigaos.binary_module_layout as layout
 	.use experimental.amigaos.binary_module_publication as publication
+	.use experimental.amigaos.binary_module_admission as admission
+	.use experimental.amigaos.binary_module_templates as moduleTemplates
 	.use experimental.amigaos.binary_scope_layout as scope
 	.use experimental.amigaos.binary_modules as modules
 	.use experimental.amigaos.binary_block_index as blocks
@@ -33,8 +35,9 @@ Seed	.long ?  ; optional A0=assembly frame,A1=Context -> D0 status
 Opaque	.long ?  ; callback-owned borrowed request state
 Resolve	.long ?  ; optional exact external address resolver, A0=Opaque
 Inventory	.long ?  ; A0=frontend,A1=Index,A2=Context,A3=Records, copy inventory
+Facets	.long ?  ; optional empty Block; receives owned public template capsule
 	.endstruct
-CONTEXT_BYTES = Context.Inventory+4
+CONTEXT_BYTES = Context.Facets+4
 LINE_CAPACITY = 256
 INVALID = 1
 EXPORT_INVALID = 2
@@ -42,7 +45,7 @@ EXECUTION_INVALID = 3
 PUBLICATION_INVALID = 4
 IMAGE_INVALID = 5
 UNSUPPORTED = 6
-ADDRESS_INVALID = 7  ; public address cannot be bound to an owned fragment
+ADDRESS_INVALID = 7; public address cannot be bound to an owned fragment
 REPLAY_UNSUPPORTED = 2
 	.priv
 ; The shared native assembly engine is itself a single active session. This
@@ -56,6 +59,7 @@ Cursor	.res long, 1
 After	.res long, 1
 SectionMask	.res long, 1
 SectionCount	.res long, 1
+InterfaceOnly	.res long, 1
 SectionOrder	.res byte, sections.HUNK_SLOT_COUNT
 FirstLexical	.res long, 1
 OwnModule	.res long, 1
@@ -75,6 +79,8 @@ Parameters	.res byte, memory.Block.Used+4
 Output	.res byte, memory.Block.Used+4
 ImageOwner	.res byte, memory.Block.Used+4
 SemanticOwner	.res byte, memory.Block.Used+4
+FacetOwner	.res byte, memory.Block.Used+4
+FacetRequest	.res byte, moduleTemplates.CAPTURE_BYTES
 PublicState	.res byte, exports.STATE_BYTES
 LayoutState	.res byte, layout.STATE_BYTES
 Metadata	.res byte, metadata.CONFIG_BYTES
@@ -87,6 +93,8 @@ TransientEnd
 ; Text is processed by shared frontend, macros by shared template execution,
 ; instruction/data bytes by one shared assembly session. No source parser here.
 ; Image IDs are declaration-order ordinals 1..N, independent of lexical IDs.
+; Declaration-only interfaces publish zero blocks without synthetic sections
+; or output selection. Their optional CPU reset remains a caller-owned preamble.
 ; Nested whole blocks and mandatory owner-zero fragments share selected Hunk
 ; code/data/BSS sections. Package-owned branch recipes preserve
 ; the chosen instruction width when blocks move; shared affine label identity
@@ -95,7 +103,8 @@ TransientEnd
 ; Constant source preprocessing and private macros may complete before assembly.
 ; Publishes immutable scalars, lists/ranges and struct schemas with local IDs.
 ; Public addresses retain exact fragment/offset identity; compound values retain
-; their canonical schema/member closure. Public templates, mutable/deferred
+; their canonical schema/member closure. When Facets is supplied, closed public
+; macros/segments transfer separately to the shared preparation owner. Mutable/deferred
 ; exports, warnings, unresolved layout recipes and disk
 ; spilling remain unsupported by this private producer. Optional callbacks seed
 ; imports and replay owned captured records without a source-text dependency.
@@ -117,6 +126,11 @@ compile	.block
 	bne.w bad
 	tst.l memory.Block.Used(a1)
 	bne.w bad
+	move.l Context.Facets(a0), d0
+	beq.w destinationsDistinct
+	cmp.l a1, d0
+	beq.w bad
+destinationsDistinct
 	movea.l Context.Package(a0), a0
 	jsr frontend.scratchSize
 	bne.w bad
@@ -243,6 +257,15 @@ prepared
 	jsr frontend.endFile
 	bne.w bad
 complete
+	movea.l Records+memory.Block.Pointer, a0
+	move.l Records+memory.Block.Used, d0
+	movea.l Caller, a1
+	movea.l Context.Package(a1), a1
+	jsr admission.interfaceOnly
+	tst.l d0
+	beq.w interfaceRecords
+	cmpi.l #admission.UNSUPPORTED, d0
+	bne.w bad
 	movea.l Caller, a0
 	tst.l Context.Replay(a0)
 	beq.w completeRecords
@@ -250,6 +273,9 @@ complete
 	; before completion validates unplaced concrete sections against the output.
 	bsr.w selectPrivateSections
 	bne.w notSupported
+	bra.w completeRecords
+interfaceRecords
+	move.l #1, InterfaceOnly
 completeRecords
 	lea Front, a0
 	movea.l Records+memory.Block.Pointer, a1
@@ -301,7 +327,28 @@ inventoryReady
 	lea PublicState, a0
 	lea Front, a1
 	move.l OwnModule, d0
+	movea.l Caller, a2
+	tst.l Context.Facets(a2)
+	beq.w strictExports
+	movea.l Context.Facets(a2), a0
+	move.l memory.Block.Pointer(a0), d0
+	or.l memory.Block.Capacity(a0), d0
+	or.l memory.Block.Used(a0), d0
+	bne.w exportBad
+	move.l #Front, FacetRequest+moduleTemplates.CaptureFrame.Frontend
+	move.l OwnModule, FacetRequest+moduleTemplates.CaptureFrame.Module
+	move.l #FacetOwner, FacetRequest+moduleTemplates.CaptureFrame.Destination
+	lea FacetRequest, a0
+	jsr moduleTemplates.capture
+	bne.w exportBad
+	lea PublicState, a0
+	lea Front, a1
+	move.l OwnModule, d0
+	jsr exports.prepareModuleValues
+	bra.w exportsReady
+strictExports
 	jsr exports.prepareModule
+exportsReady
 	bne.w exportBad
 	; No source-oriented owner remains when assembly begins.
 	bsr.w retireFrontend
@@ -335,11 +382,26 @@ inventoryReady
 	; Reference replay owns diagnostics and --Werror handling exactly once.
 	tst.l Work+assembly.Frame.Warnings
 	bne.w notSupported
+	tst.l InterfaceOnly
+	bne.w interfaceAssembled
 	movea.l Work+assembly.Frame.Sections, a0
 	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a0)
 	bne.w bad
 	tst.w sections.State.OutputSeen(a0)
 	beq.w bad
+	bra.w finishLayout
+interfaceAssembled
+	; The numeric proof admits no runtime effect. Check its assembled result
+	; before publishing a zero-block image; never manufacture a section or PC.
+	tst.l Work+assembly.Frame.Used
+	bne.w notSupported
+	tst.l LayoutState+layout.State.Count
+	bne.w notSupported
+	tst.l LayoutState+layout.State.Pending+memory.Block.Used
+	bne.w notSupported
+	tst.l LayoutState+layout.State.Relocs+memory.Block.Used
+	bne.w notSupported
+finishLayout
 	lea LayoutState, a0
 	lea Work, a1
 	jsr layout.finish
@@ -362,6 +424,17 @@ inventoryReady
 	clr.l ImageOwner+memory.Block.Pointer
 	clr.l ImageOwner+memory.Block.Capacity
 	clr.l ImageOwner+memory.Block.Used
+	movea.l Caller, a0
+	movea.l Context.Facets(a0), a1
+	cmpa.w #0, a1
+	beq.w transferred
+	move.l FacetOwner+memory.Block.Pointer, memory.Block.Pointer(a1)
+	move.l FacetOwner+memory.Block.Capacity, memory.Block.Capacity(a1)
+	move.l FacetOwner+memory.Block.Used, memory.Block.Used(a1)
+	clr.l FacetOwner+memory.Block.Pointer
+	clr.l FacetOwner+memory.Block.Capacity
+	clr.l FacetOwner+memory.Block.Used
+transferred
 	moveq #0, d7
 	bra.w done
 exportBad
@@ -908,6 +981,8 @@ cleanup	.block
 	lea PublicState, a0
 	jsr exports.release
 	lea SemanticOwner, a0
+	jsr memory.release
+	lea FacetOwner, a0
 	jsr memory.release
 	lea Metadata, a0
 	jsr metadata.release

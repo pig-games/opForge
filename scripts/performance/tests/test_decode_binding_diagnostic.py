@@ -58,14 +58,14 @@ def packed_record_capture(
     return "\n".join(lines)
 
 
-def snapshot(name=b"Widget", *, index=1, related=0xFFFFFFFF, stage=5, count=3):
+def snapshot(name=b"Widget", *, index=1, related=0xFFFFFFFF, stage=5, count=3, target=0xFFFF):
     entry = bytearray(28)
     entry[0:4] = bytes.fromhex("00001000")
     entry[4:6] = len(name).to_bytes(2, "big")
     entry[6:8] = (2).to_bytes(2, "big")
     entry[8:10] = (1).to_bytes(2, "big")
     entry[10:12] = (0x20).to_bytes(2, "big")
-    entry[12:14] = (0xFFFF).to_bytes(2, "big")
+    entry[12:14] = target.to_bytes(2, "big")
     entry[14:16] = (0xFFFF).to_bytes(2, "big")
     entry[16:18] = (2).to_bytes(2, "big")
     entry[20:22] = (4).to_bytes(2, "big")
@@ -99,6 +99,37 @@ def correlation(kind, **kwargs):
 
 
 class BindingDiagnosticTests(unittest.TestCase):
+    def test_canonical_binding_identity_stage_is_distinct_from_visibility(self):
+        result = decoder.decode_binding_diagnostic(snapshot(stage=20))
+        self.assertEqual(result["snapshot"]["stage_meaning"], "canonical binding identity")
+
+    def test_optional_module_metadata_distinguishes_public_and_mixed_ownership(self):
+        text = snapshot(stage=7, count=6) + "\n" + progress(459, 6, 2, 3)
+        result = decoder.decode_binding_diagnostic(text)
+        self.assertEqual(result["module_metadata"]["source"], {
+            "entry_index": 1, "flags": 6, "public": False, "used": True,
+            "mixed_origins": True, "declaration_owner": 2, "reference_origin": 3,
+        })
+        target = snapshot(stage=7, count=6, target=0x1236) + "\n" + progress(460, 3, 2, 2)
+        result = decoder.decode_binding_diagnostic(target)
+        self.assertEqual(result["module_metadata"]["target"]["entry_index"], 2)
+        self.assertTrue(result["module_metadata"]["target"]["public"])
+        for invalid in (
+            progress(459, 0x10000, 2, 3), progress(459, 2, 0x10000, 3),
+            progress(459, 2, 2, 0x10000), progress(460, 3, 2, 2),
+        ):
+            with self.assertRaises(decoder.BindingDiagnosticError):
+                decoder.decode_binding_diagnostic(snapshot(stage=7, count=6) + "\n" + invalid)
+        # Invalid ownership itself is useful failure evidence, not malformed capture.
+        result = decoder.decode_binding_diagnostic(snapshot(stage=7) + "\n" + progress(459, 2, 7, 8))
+        self.assertEqual(result["module_metadata"]["source"]["declaration_owner"], 7)
+        self.assertEqual(result["module_metadata"]["source"]["reference_origin"], 8)
+        with self.assertRaises(decoder.BindingDiagnosticError):
+            decoder.decode_binding_diagnostic(progress(459, 2, 2, 2))
+        with self.assertRaises(decoder.BindingDiagnosticError):
+            decoder.decode_binding_diagnostic(text + "\n" + progress(459, 2, 2, 2))
+        self.assertNotIn("module_metadata", decoder.decode_binding_diagnostic(snapshot()))
+
     def test_stage8_packed_record_capture_decodes_bounded_record_and_window(self):
         result = decoder.decode_binding_diagnostic(
             snapshot(stage=8) + "\n" + packed_record_capture()

@@ -359,7 +359,7 @@ releaseOwners	.block
 	.section data, kind=data
 	.align 4
 CompileContext
-	.long Package, Source, SourceEnd-Source, 0, 0, 0, 0, 0, 0
+	.long Package, Source, SourceEnd-Source, 0, 0, 0, 0, 0, 0, 0
 Link
 	.long 0, 0, 1, $1000, Guard, FIRST_BYTES, 0, resolve, CompileContext, patch
 Bases

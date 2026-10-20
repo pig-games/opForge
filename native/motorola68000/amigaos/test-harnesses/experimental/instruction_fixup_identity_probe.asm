@@ -8,9 +8,18 @@
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_hunk_references as references
 	.use experimental.amigaos.binary_module_admission as admission
+	.use experimental.amigaos.binary_source as source
+	.use opasm.amigaos.binary_expression as expression
+	.use experimental.amigaos.binary_module_tmpl_names as templateNames
+	.use experimental.amigaos.binary_scopes as scopes
+	.use experimental.amigaos.binary_scope_layout as scopeLayout
+	.use experimental.amigaos.binary_lexical_store as lexical
+	.use experimental.amigaos.binary_binding_records as records
+	.use experimental.amigaos.binary_memory as memory
 	.use prvm.amigaos.abi as abi
 	.priv
 RESET_RECORD_BYTES = abi.PRVM_PACKED_RECORD_BYTES+abi.PRVM_PACKED_DOT_BYTES+abi.PRVM_PACKED_NAME_BYTES
+INTERFACE_RECORD_BYTES = source.DECLARATION_HEADER_BYTES+5
 EXEC_BASE = 4
 OPEN_LIBRARY = -552
 CLOSE_LIBRARY = -414
@@ -148,10 +157,16 @@ copyBranch
 	bne.w bad
 	move.l d1, (a5)+
 	dbra d6, branchRequest
+	move.l #21, ReturnCode
 	bsr.w admissionChecks
 	bne.w bad
+	move.l #22, ReturnCode
+	bsr.w templateNameChecks
+	bne.w bad
+	move.l #23, ReturnCode
 	bsr.w qualifiedChecks
 	bne.w bad
+	move.l #24, ReturnCode
 	bsr.w geometryChecks
 	bne.w bad
 	move.l a5, d0
@@ -165,11 +180,60 @@ bad
 	rts
 	.bend  ; encodeCases
 
+	.include "module_template_names_checks.i"
+
 ; Package reset is retained; ambient package/text mutations reject admission.
 admissionChecks	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.w Package+package.Header.CpuDirective, ResetRecord+abi.PRVM_PACKED_RECORD_BYTES+abi.PackedDot.Name+abi.PackedName.Id
 	move.w Package+package.Header.CpuName, ResetRecord+abi.PRVM_PACKED_RECORD_BYTES+abi.PRVM_PACKED_DOT_BYTES+abi.PackedName.Id
+	lea ResetRecord, a0
+	lea ResetInterfaceRecords, a1
+	moveq #RESET_RECORD_BYTES-1, d0
+copyReset
+	move.b (a0)+, (a1)+
+	dbra d0, copyReset
+	lea ResetInterfaceRecords, a0
+	moveq #RESET_RECORD_BYTES+INTERFACE_RECORD_BYTES, d0
+	lea Package, a1
+	jsr admission.interfaceOnly
+	bne.w bad
+	cmpi.l #RESET_RECORD_BYTES, d1
+	bne.w bad
+	lea ResetInterfaceRecords, a0
+	cmpa.l a0, a1
+	bne.w bad
+	lea InterfaceRecord, a0
+	moveq #INTERFACE_RECORD_BYTES, d0
+	lea Package, a1
+	jsr admission.interfaceOnly
+	bne.w bad
+	tst.l d1
+	bne.w bad
+	cmpa.w #0, a1
+	bne.w bad
+	lea InterfaceRecord, a0
+	moveq #INTERFACE_RECORD_BYTES, d0
+	lea Package, a1
+	jsr admission.prepare
+	bne.w bad
+	tst.l d1
+	bne.w bad
+	cmpa.w #0, a1
+	bne.w bad
+	lea NoResetInstruction, a0
+	move.l #NoResetInstructionEnd-NoResetInstruction, d0
+	lea Package, a1
+	jsr admission.prepare
+	cmpi.l #admission.UNSUPPORTED, d0
+	bne.w bad
+	; A declaration does not grant a later CPU control prefix eligibility.
+	lea InterfaceRecord, a0
+	moveq #INTERFACE_RECORD_BYTES+RESET_RECORD_BYTES, d0
+	lea Package, a1
+	jsr admission.interfaceOnly
+	cmpi.l #admission.UNSUPPORTED, d0
+	bne.w bad
 	lea ResetRecord, a0
 	moveq #RESET_RECORD_BYTES, d0
 	lea Package, a1
@@ -225,6 +289,24 @@ geometryChecks	.block
 	bne.w bad
 	bsr.w strictReferences
 	bne.w bad
+	; A no-section private interface cannot capture the ambient PC. The same
+	; expression remains valid in ordinary mode with its original numeric PC.
+	clr.w package.Context.CurrentSection(a2)
+	lea CurrentExpression, a0
+	lea CurrentExpressionEnd, a1
+	jsr expression.evaluateValue
+	tst.l d0
+	beq.w bad
+	clr.w package.Context.ExpressionPolicy(a2)
+	lea CurrentExpression, a0
+	lea CurrentExpressionEnd, a1
+	jsr expression.evaluateValue
+	tst.l d0
+	bne.w bad
+	cmp.l package.Context.Pc(a2), d1
+	bne.w bad
+	move.w #package.POSITION_OBSERVATION_POLICY, package.Context.ExpressionPolicy(a2)
+	move.w #1, package.Context.CurrentSection(a2)
 	lea PostincrementOperand, a0
 	lea PostincrementOperandEnd, a1
 	move.l #MOVE_ID, d0
@@ -266,6 +348,7 @@ geometryChecks	.block
 bad
 	moveq #1, d7
 cleanup
+	move.w #1, package.Context.CurrentSection(a2)
 	clr.w package.Context.ExpressionPolicy(a2)
 	clr.l package.Context.Owner(a2)
 	lea IdentityOwner, a0
@@ -397,25 +480,31 @@ IdentityPlans	.word QUALIFIED_FIRST_ID, 1
 	.word FIRST_ID, 1, MEMBER_ID
 	.word SECOND_ID, 0
 IdentityPlansEnd
-ResetRecord	.byte RESET_RECORD_BYTES-1,abi.PRVM_PACKED_FLAG_INDENT
+ResetInterfaceRecords	.fill byte, RESET_RECORD_BYTES, 0
+InterfaceRecord	.byte INTERFACE_RECORD_BYTES-1, abi.PRVM_PACKED_FLAG_INDENT
 	.word 0
-	.byte abi.PRVM_TOKEN_KIND_DOT,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.byte abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.word FIRST_ID
+	.byte 0, source.TOKEN_CONSTANT_DECLARATION, $81, 3, $13, 7, 0
+ResetRecord	.byte RESET_RECORD_BYTES-1, abi.PRVM_PACKED_FLAG_INDENT
 	.word 0
-	.byte 0,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.byte abi.PRVM_TOKEN_KIND_DOT, abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.word 0
+	.byte 0, abi.PRVM_TOKEN_KIND_IDENTIFIER
 	.word 0
 	.byte 0
-PackageStateRecord	.byte RESET_RECORD_BYTES-1,abi.PRVM_PACKED_FLAG_INDENT
+PackageStateRecord	.byte RESET_RECORD_BYTES-1, abi.PRVM_PACKED_FLAG_INDENT
 	.word 0
-	.byte abi.PRVM_TOKEN_KIND_DOT,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.byte abi.PRVM_TOKEN_KIND_DOT, abi.PRVM_TOKEN_KIND_IDENTIFIER
 	.word FPU_ID
-	.byte 0,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.byte 0, abi.PRVM_TOKEN_KIND_IDENTIFIER
 	.word NONE_ID
 	.byte 0
-TextDefinitionRecord	.byte RESET_RECORD_BYTES-1,abi.PRVM_PACKED_FLAG_INDENT
+TextDefinitionRecord	.byte RESET_RECORD_BYTES-1, abi.PRVM_PACKED_FLAG_INDENT
 	.word 0
-	.byte abi.PRVM_TOKEN_KIND_DOT,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.byte abi.PRVM_TOKEN_KIND_DOT, abi.PRVM_TOKEN_KIND_IDENTIFIER
 	.word ENCODE_ID
-	.byte 0,abi.PRVM_TOKEN_KIND_IDENTIFIER
+	.byte 0, abi.PRVM_TOKEN_KIND_IDENTIFIER
 	.word 1
 	.byte 0
 	.align 2

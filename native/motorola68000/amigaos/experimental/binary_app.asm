@@ -53,6 +53,7 @@
 	.use experimental.amigaos.binary_module_scope as moduleScope
 	.use experimental.amigaos.binary_module_snapshot as moduleSnapshot
 	.use experimental.amigaos.binary_module_facets as moduleFacets
+	.use experimental.amigaos.binary_module_templates as moduleTemplates
 	.use experimental.amigaos.binary_module_remap as moduleRemap
 	.use experimental.amigaos.binary_module_image as moduleImage
 	.use experimental.amigaos.binary_module_registry as moduleRegistry
@@ -2251,6 +2252,8 @@ PrivateModuleId	.res long, 1
 PrivateRecordStart	.res long, 1
 PrivatePublishedCount	.res long, 1
 PrivateImage	.res byte, memory.Block.Used+4
+PrivateFacets	.res byte, memory.Block.Used+4
+PrivateFacetInstall	.res byte, moduleTemplates.INSTALL_BYTES
 PrivateSnapshot	.res byte, memory.Block.Used+4
 PrivateIncoming	.res byte, memory.Block.Used+4
 PrivateSeen	.res byte, memory.Block.Used+4

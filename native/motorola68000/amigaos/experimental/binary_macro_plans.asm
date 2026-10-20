@@ -820,5 +820,7 @@ bad
 	rts
 	.bend  ; reservePlan
 
+	.include "binary_macro_plan_clone.i"
+
 	.endsection
 	.endmodule

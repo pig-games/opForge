@@ -505,7 +505,7 @@ releaseOwners	.block
 	.section data, kind=data
 	.align 4
 CompileContext
-	.long Package, Source, SourceEnd-Source, 0, 0, 0, 0, 0, 0
+	.long Package, Source, SourceEnd-Source, 0, 0, 0, 0, 0, 0, 0
 Link
 	.long 0, 0, 1, 0, 0, 0, 0, resolve, CompileContext, patch
 ; Expectation rows use owner/section/kind/alignment/allocation, never payload

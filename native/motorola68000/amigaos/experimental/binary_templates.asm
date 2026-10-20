@@ -25,6 +25,8 @@
 	.use experimental.amigaos.binary_template_index as index
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_payload_bounds as payloads
+	.use opasm.amigaos.binary_expression as closedExpression
+	.use exprvm.amigaos.runtime as closedVm
 	.pub
 ARG_LIMIT = 192
 TEXT_LIMIT = 192
@@ -213,6 +215,7 @@ SCRATCH_BYTES = CANDIDATES+index.SCRATCH_BYTES
 	.include "binary_template_unavailable.i"
 	.priv
 	.include "binary_template_line_recipe.i"
+	.include "binary_template_publication.i"
 	.pub
 
 ; A0=caller-owned zero-initialized state, or a previously begun session.
@@ -1874,8 +1877,8 @@ copyToken
 	beq.w rebindToken
 	bra.w copyBytes
 rebindToken
-	; Segment body names predate iterator creation. Resolve live bare values
-	; while preserving the existing macro invocation hygiene path.
+	; Segment body names predate iterator creation. Live iterators win first;
+	; other bare names use ordinary caller binding, without a macro envelope.
 	tst.w Def.Kind(a4)
 	bne.w ordinaryRebind
 	cmpi.b #1, ValueToken.Kind(a3)
@@ -1889,8 +1892,6 @@ rebindToken
 	tst.l d0
 	beq.w writeName
 ordinaryRebind
-	tst.w Def.Kind(a4)
-	beq.w copyBytes
 	cmpi.b #7, (a3)
 	bne.w rebindName
 	cmpi.b #2, 1(a3)

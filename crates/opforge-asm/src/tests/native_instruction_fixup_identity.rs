@@ -102,6 +102,10 @@ fn prepare(dir: &Path) -> Vec<u8> {
     postincrement_operand.extend([15, 18, 4, 14]);
     postincrement_operand.extend(register(name("a1")));
     postincrement_operand.extend([15, 18]);
+    let mut no_reset_instruction = vec![0, 1, 0, 0];
+    no_reset_instruction.extend(register(name("move")));
+    no_reset_instruction.extend(&postincrement_operand);
+    no_reset_instruction[0] = (no_reset_instruction.len() - 1) as u8;
     let difference = |left: u16, right: u16| {
         vec![
             0x81,
@@ -117,6 +121,7 @@ fn prepare(dir: &Path) -> Vec<u8> {
         ]
     };
     for (label, bytes) in [
+        ("NoResetInstruction", no_reset_instruction),
         ("PostincrementOperand", postincrement_operand),
         ("BlockDifference", difference(second, first)),
         (

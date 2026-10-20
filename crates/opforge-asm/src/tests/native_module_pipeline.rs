@@ -249,6 +249,8 @@ struct PrivateCase {
 
 const PRIVATE_OUTPUTS: &str = ".region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
 
+#[path = "native_module_publication_cases.rs"]
+mod publication_cases;
 #[path = "native_module_real_sources.rs"]
 mod real_sources;
 #[path = "native_module_template_dependencies.rs"]
@@ -347,6 +349,7 @@ fn private_cases() -> Vec<PrivateCase> {
         },
     ];
     cases.extend(template_dependencies::cases());
+    cases.extend(publication_cases::cases());
     cases
 }
 
@@ -453,6 +456,33 @@ fn prepared_page_private_case() -> PrivateCase {
     }
 }
 
+// Validate actual serialized block ranges before classifying initialized payload.
+// Interface-only objects may carry semantic bytes; file length is not code size.
+fn object_has_payload(bytes: &[u8]) -> bool {
+    assert!(bytes.len() >= 36, "complete module header");
+    let word =
+        |offset: usize| u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap()) as usize;
+    let count = word(8);
+    let blocks = word(12);
+    let table_end = blocks.checked_add(count.checked_mul(32).unwrap()).unwrap();
+    assert!(
+        blocks >= 36 && table_end <= bytes.len(),
+        "complete block directory"
+    );
+    let mut initialized = false;
+    for index in 0..count {
+        let row = blocks + index * 32;
+        let offset = word(row + 4);
+        let length = word(row + 8);
+        assert!(
+            offset >= word(24) && offset.checked_add(length).unwrap() <= bytes.len(),
+            "initialized block must refer to actual object bytes"
+        );
+        initialized |= length != 0;
+    }
+    initialized
+}
+
 fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
     use clap::Parser;
     use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
@@ -497,6 +527,27 @@ fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
             assert!(binary.len() > 4, "root pointer and reachable module code");
             assert_eq!(segments.len(), 1);
             assert_eq!(segments[0].relocations.len(), 1);
+        }
+        "private-real-binding-layout" => {
+            assert!(binary.windows(4).any(|bytes| bytes == [0, 4, 0, 2]));
+            assert!(binary.ends_with(&[0, 4]));
+            assert_eq!(
+                segments
+                    .iter()
+                    .map(|segment| segment.relocations.len())
+                    .sum::<usize>(),
+                1
+            );
+        }
+        name if name.starts_with("private-publication-reduced-") => {
+            publication_cases::check(case.name, &binary)
+        }
+        "private-publication-values-only"
+        | "private-publication-templates-only"
+        | "private-publication-odd-statement-keywords"
+        | "private-publication-unowned-origin-fallback"
+        | "private-publication-unowned-text-fallback" => {
+            publication_cases::check(case.name, &binary)
         }
         "private-real-memory" => {
             assert!(binary.len() > 8, "root pointers and reachable module code");
@@ -910,6 +961,39 @@ fn private_pipeline_native_cases(progress: bool, disk: bool, mut cases: Vec<Priv
                         assert_eq!(bytes.get(..4), Some(b"OFMI".as_slice()), "{path:?}");
                         let extent = u32::from_be_bytes(bytes[4..8].try_into().unwrap());
                         assert_eq!(extent as usize, bytes.len(), "exact .ofm extent: {path:?}");
+                    }
+                    if let Some((semantic, payload)) = publication_cases::object_counts(case.name)
+                        .or_else(|| real_sources::object_counts(case.name))
+                    {
+                        let expected_objects = if reference {
+                            (0, 0)
+                        } else {
+                            (semantic, payload)
+                        };
+                        let actual_payload = objects
+                            .iter()
+                            .filter(|(_, bytes)| object_has_payload(bytes))
+                            .count();
+                        assert_eq!(
+                            (objects.len() - actual_payload, actual_payload),
+                            expected_objects,
+                            "semantic objects must not disguise missing executable payload"
+                        );
+                        if progress {
+                            let io = store_io(&run.stdout).expect("module-store I/O receipt");
+                            assert_eq!(io[0] as usize, expected_objects.1,
+                                "selected initialized payload reads once; semantic-only objects read zero times");
+                            let memory = run
+                                .captured_artifacts
+                                .get(&PathBuf::from("Work/memory.bin"))
+                                .expect("instrumented ownership receipt");
+                            let memory = super::native_package_loading_performance::memory(memory);
+                            assert_eq!(
+                                memory["live_owned_bytes"].as_u64(),
+                                Some(0),
+                                "all transient owners must retire after publication/output"
+                            );
+                        }
                     }
                     if !reference {
                         if let Some(destination) = std::env::var_os("OPFORGE_MODULE_OBJECT_EXPORT")

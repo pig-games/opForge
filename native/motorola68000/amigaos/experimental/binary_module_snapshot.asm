@@ -17,10 +17,10 @@ UNSUPPORTED = 1
 ; Public undefined LABEL_VALUE entries are external-symbol declarations with
 ; zero payload and section marker1. This is an import-seeding boundary only,
 ; never a completed code image or finalized placement/address observation.
-; This values-only projection is paired with module_facets.import: ordinary
-; template/statement selection sees metadata-only unavailable bodies and rejects
-; before invocation. Never install this projection without those independent
-; facets; omission could silently select a builtin instead. This is not a complete
+; This values-only projection is paired with module_facets.import, which copies
+; independent template/statement facets and their closed binary bodies before
+; invocation. Never install this projection without those facets; omission could
+; silently select a builtin instead. This is not a complete
 ; module export. Undefined nonlabels and unsupported value closure still reject
 ; transactionally; final producer publication remains strict.
 capture	.block

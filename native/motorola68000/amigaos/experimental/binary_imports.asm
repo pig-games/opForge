@@ -3473,6 +3473,8 @@ BindingView	.word layout.State.Count, layout.State.Base, layout.State.Current
 	.word records.ENTRY_BYTES, records.Entry.Name, records.Entry.Length, records.Entry.Flags
 	.word records.Entry.Owner
 	.long lexical.copyName, lexical.readEntry
+	.word records.Entry.Target
+	.word layout.MODULE_STATE+modules.FLAGS, layout.MODULE_STATE+modules.OWNERS, layout.MODULE_STATE+modules.ORIGINS
 	.endsection
 .endif
 .endif

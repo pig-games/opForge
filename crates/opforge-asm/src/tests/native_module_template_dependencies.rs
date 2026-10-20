@@ -1,5 +1,5 @@
-//! A dependency's unused template facets must not block value-only compilation.
-//! Template consumers retain the reference declaration context on fallback.
+//! Public value and template facets remain usable across privately compiled modules.
+//! Both provider and consumer must publish, including template selection and shadowing.
 use super::{private_pipeline_native_cases, PrivateCase, PRIVATE_OUTPUTS};
 
 const ROOT: &str = r#".module main
@@ -41,16 +41,16 @@ service .block
 
 pub(super) fn cases() -> Vec<PrivateCase> {
     [
-        ("private-template-dependency-values", "", 1),
-        ("private-template-dependency-macro", ".EMIT 10\n", 0),
-        ("private-template-dependency-statement", " PUT 11\n", 0),
-        ("private-template-dependency-directive-shadow", ".byte 12\n", 0),
-        ("private-template-dependency-opcode-shadow", " nop\n", 0),
-        ("private-template-dependency-local-statement", " PUT 300\n", 1),
+        ("private-template-dependency-values", "", 2),
+        ("private-template-dependency-macro", ".EMIT 10\n", 2),
+        ("private-template-dependency-statement", " PUT 11\n", 2),
+        ("private-template-dependency-directive-shadow", ".byte 12\n", 2),
+        ("private-template-dependency-opcode-shadow", " nop\n", 2),
+        ("private-template-dependency-local-statement", " PUT 300\n", 2),
         (
             "private-template-dependency-local-shadow",
             ".namespace inner\n.priv\nEMIT .macro offset\n.byte consumer.CALLER+.offset\n.endmacro\n.EMIT 14\n.endnamespace\n",
-            1,
+            2,
         ),
     ]
     .into_iter()
@@ -160,7 +160,7 @@ pub(super) fn check(name: &str, binary: &[u8]) {
 }
 
 #[test]
-#[ignore = "requires instrumented compact CLI; value-only dependencies and unavailable template selection"]
+#[ignore = "requires instrumented compact CLI; public value/template facet publication and selection"]
 fn native_module_private_template_facets_progress() {
     private_pipeline_native_cases(true, true, cases());
 }

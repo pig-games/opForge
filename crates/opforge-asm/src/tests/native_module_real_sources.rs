@@ -52,6 +52,26 @@ fn memory_case() -> PrivateCase {
     }
 }
 
+const BINDING_LAYOUT: &str =
+    include_str!("../../../../native/motorola68000/amigaos/experimental/binary_binding_layout.asm");
+
+// Byte-exact current ABI source: its CPU declaration does not create code/data.
+fn layout_case() -> PrivateCase {
+    PrivateCase {
+        name: "private-real-binding-layout",
+        accepted_modules: 2,
+        files: vec![
+            ("entry.asm", format!(".module main\n.cpu 68020\n.use worker\n.section code,kind=code\n.long worker.entry\n.endsection\n.section data,kind=data\n.word worker.VALUE\n.endsection\n{PRIVATE_OUTPUTS}")),
+            ("library/worker.asm", ".module worker\n.cpu 68020\n.use experimental.amigaos.binary_binding_layout as layout\n.pub\nVALUE .const layout.Plan.Bytes\n.section code,kind=code\nentry .block\n.word layout.Plan.Bytes,layout.Candidate.MemberCount\n rts\n.bend\n.endsection\n.endmodule\n".into()),
+            ("library/binary_binding_layout.asm", BINDING_LAYOUT.into()),
+        ],
+    }
+}
+
+pub(super) fn object_counts(name: &str) -> Option<(usize, usize)> {
+    (name == "private-real-binding-layout").then_some((1, 1))
+}
+
 // Unlabelled calls introduce lexical hygiene scopes, not exported addresses.
 // A labelled invocation still owns a real address and must remain importable.
 fn macro_scope_case() -> PrivateCase {
@@ -69,6 +89,7 @@ fn macro_scope_case() -> PrivateCase {
 fn module_private_real_memory_live_rust_oracle() {
     private_oracle(&memory_case());
     private_oracle(&macro_scope_case());
+    private_oracle(&layout_case());
 }
 
 #[test]
@@ -81,4 +102,10 @@ fn native_module_private_real_memory_progress() {
 #[ignore = "requires instrumented compact CLI; lexical-only and labelled macro scopes"]
 fn native_module_private_lexical_macro_progress() {
     private_pipeline_native_cases(true, true, vec![macro_scope_case()]);
+}
+
+#[test]
+#[ignore = "requires instrumented compact CLI; current binding ABI has no payload"]
+fn native_module_private_real_binding_layout_progress() {
+    private_pipeline_native_cases(true, true, vec![layout_case()]);
 }

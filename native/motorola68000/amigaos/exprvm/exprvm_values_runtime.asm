@@ -283,6 +283,12 @@ pushPc
 	moveq #0, d0
 	move.w Frame.CurrentSection(a6), d0
 	move.l d0, Cell.Provenance(a1)
+	bne.w next
+	; A private interface has no section. Its ambient PC is still an address
+	; observation, never an immutable absolute value; ordinary mode is unchanged.
+	btst #POSITION_OBSERVATION_POLICY_BIT, Frame.Reserved+1(a6)
+	beq.w next
+	move.l #POSITION_UNSAFE, State.PositionObserved(a3)
 	bra.w next
 symbol
 	bsr.w wordLe

@@ -1,69 +1,71 @@
-# Per-module `.ofm` objects and bulk linking
+# Per-module `.ofm` objects and shared capsules
 
-## Current status
+## Current implementation
 
-Eligible modules compile to inspectable `.ofm` objects, retire pending private state and
-join a final bulk link. The object lifecycle has focused native qualification; full
-per-module frontend coverage and current full-build qualification remain incomplete.
+Eligible modules compile to inspectable current-build `.ofm` link objects. The producer
+can also publish owned closed-public capsules for macros, segments and statements.
+Capsules retain binary bodies, defaults, plans and names, preserve caller binding and
+privacy, enter normal shared pools, then allow private frontend retirement. Interface-only
+producers create zero-block `.ofm` objects. Values and types remain shared semantic
+owners; no fake PC or section is created, and an interface without effects needs no CPU.
+Temporary template facets are owned in-memory capsules, not a persistent cache format.
 
-The latest focused fix covers `binary_memory.asm` and generated macro hygiene. Both
-cases privately accept one module, write and read one `.ofm`, and match fresh Rust binary
-and Hunk outputs. Forced-reference runs accept zero modules; cleanup ownership is zero
-for both policies. `binary_memory.asm` plus seven real includes totals 41,210 source
-bytes. Current v20 host output was 766,268 B. The complete current code has not passed a
-full self-host yet. The [measurement report](native-performance-diagnosis.md) owns the
-remaining evidence and qualification limits.
+The metadata directory contains Header, BlockRows and RelocRows. `add` retains the pending
+full image and copies the linker prefix; pending state supplies carrier extraction. Store
+writes named objects and retires pending ownership. Public semantic owners remain
+available to later modules. `acquireEmit` reads selected payloads only during final Hunk
+emission and caches one current module. Unlinked and BSS-only modules may have zero reads;
+each selected payload may be read at most once. Successful cleanup retains `.ofm`
+deliverables and releases ephemeral ownership.
 
 ## Current slice: directory and object lifecycle
 
-The resident layout directory contains metadata only: Header, BlockRows and RelocRows.
-`add` retains the complete pending image and copies the linker prefix. Pending state
-supplies carrier extraction. Store writes one named `.ofm` per eligible module and retires
-pending ownership. Compact public semantic owners remain resident for later module
-compilation. Successful cleanup preserves `.ofm` files separately from ephemeral capture
-files.
+The resident layout directory contains Header, BlockRows and RelocRows metadata only.
+`add` retains the pending full image and copies the linker prefix; pending state supplies
+carrier extraction. Store writes one named `.ofm` per eligible module and retires pending
+ownership. Compact public semantic owners remain resident for later module compilation.
+Successful cleanup preserves `.ofm` files separately from ephemeral capture files.
 
-Object filenames put the module leaf before its parent qualification, then shorten to the
-classic Amiga 30-byte limit and add a unique build-local ID. The registry tracks the
-filename and numeric metadata; the container stores offsets and values, never process
-pointers. With `--capture-dir DIR`, object files live in the owned `objects` directory;
-failed writes and rollback remove only their owned temporary or unpublished files.
-The 21-byte stem keeps the leaf then its parent qualification; an overlong leaf keeps
-its final 21 bytes. Unsafe characters become underscores and a four-hex-digit build-local
-ID prevents shortening, sanitization and case-folding collisions. For example,
-`experimental.amigaos.binary_frontend` becomes `binary_frontend.exper-0000.ofm`.
-The directory uses `objects-N` if `objects` already exists. These are current-build link
-objects; external numeric identities are not yet independently reusable cache identities.
+Object filenames put the module leaf before its parent qualification. The 21-byte stem
+keeps the leaf first, then as much parent qualification as fits; an overlong leaf keeps
+its final 21 bytes. Unsafe characters become underscores, and a four-hex-digit build-local
+ID prevents case-folding, shortening and sanitization collisions within the 30-byte classic
+Amiga limit. With `--capture-dir DIR`, files live in a newly owned `objects` directory,
+or `objects-N` if that name exists. Failed writes remove only their owned `.tmp`; rollback
+removes only the unpublished suffix. Containers store numeric offsets and values, never
+process pointers.
 
 `acquireEmit` is the only payload read path. It runs during final Hunk emission and caches
 one current module. The read contract allows zero reads for unlinked or BSS-only modules
-and at most one payload read per selected module. Focused native cases verify one write
-and one read for each privately selected module, zero accepted modules in forced-reference
-mode, exact fresh Rust artifacts, and zero cleanup ownership.
+and at most one payload read per selected module. Verify object writes, selected-module
+reads, deliverable survival, exact artifacts and zero cleanup ownership.
 
-## Compilation boundary
+## Focused proof and remaining work
 
-The current path covers an eligible cohort. Extend the per-module frontend to generic
-includes, templates and remaining effects until full self-host uses bulk compilation
-without quiet global fallback. Constants, types and exported binary macros required by
-later modules remain in compact shared public semantic owners; compiled payload does not.
-Unresolved conditions, loops and relaxation stay in shared numeric metadata/recipes and
-converge before final payload streaming.
+All seven dependency cases pass both native policies (14 results), with exact live Rust
+binary/Hunk artifacts and zero remaining owned bytes. Candidate runs accept two modules;
+forced-reference runs accept zero. Dependent value-only imports and combined
+macro/segment/default/alias imports pass. Typed-interface cases without a CPU,
+odd-statement cases and text-side-effect cases with zero publication also pass under both
+policies. The flags-aware classifier resolves the proxy-scope kind-4 identity collision;
+its focused identity case passes natively.
 
-Two independent blockers in `binary_memory.asm` are repaired: structural projection
-mismatches no longer poison otherwise absolute instruction geometry, and generated
-macro hygiene scopes no longer claim runtime address values. Named macro invocation
-labels and nested real declarations remain values. Focused native regressions pass;
-this does not establish resource savings or full fallback coverage. Public template
-publication and interface-only modules remain substantive producer gaps.
+A v27 full-build audit started but was intentionally stopped when fallback remained. Its
+89 captured private-compiler outcomes (46 OK, 41 EXECUTION_INVALID, 2 binding INVALID)
+are an incomplete prefix, not native completion or full-build coverage. Full comparisons
+remain paused; do not claim all fallback paths pass, nor infer full-build performance,
+memory savings or 8 MiB fit. The next repair is package-owned position/relocation proof
+coverage and remaining binding failures. First and repeated execution stop at stage 14,
+`markInstructionRelocs`: 38 DBRA/DBF stops lack module-side retention of the selected
+relative-fixup proof; three MOVE stops remain unexplained. First prove same-fragment
+cancellation using the exact package-selected target. Cross-fragment replay requires a
+generic field-fixup contract. Keep the normal root engine where needed and avoid
+CPU-specific hard-coding. Resume frozen resource comparisons
+after complete current full-native admission and correctness proof.
 
-## Qualification
-
-There is no current-code full-build resource result. Full comparisons are paused. The
-prior full self-host at `21c33d6b+cec` was exact but mixed bulk/fallback; it is not evidence
-for the current code. The old 7,439,536 B frozen reference heap peak used another image
-and is not a paired gain. The candidate heap run timed out without a valid receipt. The
-budget remains 6.5 MiB process plus 1.5 MiB OS; full 8 MiB fit is unproven.
-
-See the [native parity contract](../../agents/rules/native-rust-parity-porting.md),
-[FS-UAE guide](../../agents/rules/fs-uae.md), and [current measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points).
+Preserve package/VM ownership of CPU and encoding semantics, exact symbol identity,
+relocations, layout/alignment, code/data/BSS and whole-block reachability. Unsupported
+effects need complete owned metadata or reference handling; publication must not replay
+effects against partial state. See the [measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points),
+[native parity contract](../../agents/rules/native-rust-parity-porting.md), and
+[FS-UAE guide](../../agents/rules/fs-uae.md).

@@ -17,7 +17,7 @@ Leaf	.word ?
 Flags	.word ?
 Target	.word ?
 Next	.word ?
-ScopeKind	.word ?
+ScopeKind	.word ?  ; kind/visibility, IMPORT_PROXY origin index+1, or template origin
 Padding	.word ?  ; proxy origin lexical scope; zero for ordinary entries
 MemberBase	.word ?  ; qualified proxy's definition-time struct identity+1
 TemplateModule	.word ?  ; declaration ownership independent of the numeric value

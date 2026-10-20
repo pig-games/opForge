@@ -19,6 +19,13 @@ PRIVATE_RESULT	.macro phase, status
 	move.l d4, -(sp)
 	move.l .status, d4
 	.MEMORY_PROGRESS DosBase, .phase, PublishedCapture+Span.File, d4, #0
+	cmpi.l #moduleCompile.INVALID, d4
+	bne.w executionFailure
+	; The existing preparation stage is scalar evidence and survives retirement.
+	.MEMORY_PROGRESS DosBase, #PROGRESS_PRIVATE_FAILURE, PublishedCapture+Span.File, frontend.PreparationStage, #0
+	.BINDING_DIAGNOSTIC_REPORT DosBase
+	bra.w done
+executionFailure
 	cmpi.l #moduleCompile.EXECUTION_INVALID, d4
 	bne.w done
 	.MEMORY_PROGRESS DosBase, #PROGRESS_PRIVATE_FAILURE, PublishedCapture+Span.File, assembly.FailureStage, assembly.FailureName
@@ -87,6 +94,7 @@ requestReady
 	move.l #privateSeed, PrivateCompile+moduleCompile.Context.Seed
 	move.l #privateExternal, PrivateCompile+moduleCompile.Context.Resolve
 	move.l #privateInventory, PrivateCompile+moduleCompile.Context.Inventory
+	move.l #PrivateFacets, PrivateCompile+moduleCompile.Context.Facets
 	lea PrivateCompile, a0
 	lea PrivateImage, a1
 	jsr moduleCompile.compile
@@ -359,8 +367,8 @@ seed
 	lea PrivateInstall, a0
 	jsr moduleScope.install
 	bne.w bad
-	; Preserve independent template facets through ordinary selection. A private
-	; consumer may use the values, but a selected unavailable body forces fallback.
+	; Preserve independent template facets and owned bodies through ordinary
+	; selection. No dependency frontend or temporary capsule survives this copy.
 	suba.w #moduleFacets.FRAME_BYTES, sp
 	move.l #Front, moduleFacets.Frame.SourceFrontend(sp)
 	move.l PrivateFrontend, moduleFacets.Frame.DestinationFrontend(sp)
@@ -624,8 +632,8 @@ next
 privateEligibleImage	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l PrivateImage+memory.Block.Pointer, a6
-	tst.l moduleImage.Header.BlockCount(a6)
-	beq.w bad
+	; A validated interface-only image owns no fragments. It still publishes
+	; semantics and a stored object; no payload carrier or final read is needed.
 	lea PrivateSeen, a0
 	move.l PrivateOwnerCount, d0
 	jsr memory.reserveExact

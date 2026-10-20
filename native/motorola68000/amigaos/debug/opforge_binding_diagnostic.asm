@@ -3,6 +3,7 @@
 	.module debug.amigaos.binding_diagnostic
 	.cpu 68020
 	.use debug.amigaos.memory_profile as memory_profile
+	.use experimental.amigaos.binary_memory as memory
 	.pub
 CURRENT = 1
 IMPORTS = 2
@@ -23,6 +24,7 @@ DECLARED_LEAF = 16
 MEMBER_ACQUISITION = 17
 BLOCK_INDEX = 18
 BLOCK_REFERENCES = 19
+BINDING_IDENTITY = 20
 VALUE_DECLARED_BIT = 0
 IMPORT_PROXY_BIT = 3
 ENTRY_CAPACITY = 32; bounded prefix through preparation-only register metadata
@@ -44,7 +46,12 @@ Flags	.word ?  ; DECLARED is bit zero in the current shared entry ABI
 Owner	.word ?  ; one-based source-entry index, zero when absent
 NameReader	.long ?  ; checked name copy supplied by the owner
 EntryReader	.long ?  ; checked entry copy supplied by the owner
+Target	.word ?  ; absolute canonical value ID within an entry
+ModuleFlags	.word ?  ; optional memory.Block offsets within scope, zero absent
+ModuleOwners	.word ?
+ModuleOrigins	.word ?
 .endstruct
+VIEW_BYTES = View.ModuleOrigins+2
 Snapshot	.struct
 Stage	.long ?
 Index	.long ?
@@ -55,9 +62,14 @@ Current	.long ?
 Entry	.res ENTRY_CAPACITY
 NameBytes	.long ?
 Name	.res 256
+ModuleValid	.long ?  ; bit0 source, bit1 resolved target; numeric copies only
+SourceModule	.res 3*4  ; flags, declaration owner, reference origin
+TargetModule	.res 3*4
 .endstruct
-SNAPSHOT_BYTES = Snapshot.Name+256
-PAYLOAD_LONGS = (SNAPSHOT_BYTES-Snapshot.Entry)/4
+SNAPSHOT_BYTES = Snapshot.TargetModule+3*4
+PAYLOAD_LONGS = (Snapshot.Name+256-Snapshot.Entry)/4
+MODULE_SOURCE_PROGRESS = 459
+MODULE_TARGET_PROGRESS = 460
 RemapCapture	.struct
 Cursor	.long ?  ; offset from packed base, never a retained pointer
 Record	.long ?
@@ -278,11 +290,16 @@ commit	.block
 	addq.l #2, d0
 	cmp.l d6, d0
 	bhi.w done
+	move.w View.Target(a4), d0
+	addq.l #2, d0
+	cmp.l d6, d0
+	bhi.w done
 	cmpi.l #256, d6
 	bhi.w done
 	move.l d1, d0
 	bsr.w readEntry
 	bne.w done
+	bsr.w snapshotModules
 	bsr.w snapshotEntry
 	beq.w done
 	cmpi.l #TARGET_DECLARATION, Snapshot.Stage(a6)
@@ -292,6 +309,7 @@ commit	.block
 	move.l Snapshot.Index(a6), Snapshot.Related(a6)
 	move.l d1, Snapshot.Index(a6)
 	move.l d0, Snapshot.Stage(a6)
+	bsr.w snapshotModules
 	bsr.w snapshotEntry
 	bsr.w correlate
 done
@@ -300,6 +318,77 @@ done
 	rts
 	.bend  ; commit
 	.priv
+
+; Copy source and resolved-target module metadata while the scope is live.
+; Optional descriptor blocks are bounded independently; failed copies stay absent.
+; No metadata pointer survives commit, and the semantic state is never changed.
+snapshotModules	.block
+	movem.l d0-d3/a0-a2, -(sp)
+	clr.l Snapshot.ModuleValid(a6)
+	move.l Snapshot.Index(a6), d1
+	lea Snapshot.SourceModule(a6), a0
+	bsr.w moduleRow
+	bne.w target
+	ori.l #1, Snapshot.ModuleValid(a6)
+target
+	moveq #0, d0
+	move.w View.Target(a4), d0
+	moveq #0, d1
+	move.w 0(a3, d0.l), d1
+	sub.w Snapshot.Base(a6), d1
+	bcs.w done
+	lea Snapshot.TargetModule(a6), a0
+	bsr.w moduleRow
+	bne.w done
+	ori.l #2, Snapshot.ModuleValid(a6)
+done
+	movem.l (sp)+, d0-d3/a0-a2
+	rts
+	.bend  ; snapshotModules
+
+; A0=three-long destination,D1=source index,A4=View,A5=scope,A6=Snapshot.
+; D0/CCR=status; remaining registers kept. Three checked u16 cells become u32.
+moduleRow	.block
+	movem.l d1-d4/a0-a2, -(sp)
+	moveq #0, d0
+	move.w Snapshot.Count(a6), d0
+	cmp.l d0, d1
+	bhs.w bad
+	add.l d1, d1
+	lea View.ModuleFlags(a4), a1
+	moveq #2, d4
+field
+	moveq #0, d0
+	move.w (a1)+, d0
+	beq.w bad
+	lea 0(a5, d0.l), a2
+	move.l memory.Block.Used(a2), d2
+	cmp.l memory.Block.Capacity(a2), d2
+	bhi.w bad
+	move.l d1, d3
+	addq.l #2, d3
+	cmp.l d2, d3
+	bhi.w bad
+	move.l memory.Block.Pointer(a2), d0
+	beq.w bad
+	btst #0, d0
+	bne.w bad
+	add.l d0, d2
+	bcs.w bad
+	movea.l d0, a2
+	moveq #0, d0
+	move.w 0(a2, d1.l), d0
+	move.l d0, (a0)+
+	dbra d4, field
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d4/a0-a2
+	tst.l d0
+	rts
+	.bend  ; moduleRow
 
 ; A3=bounded entry,A4=View,A5=scope,A6=Snapshot. Replace only the entry/name
 ; payload. D0/CCR=one for a valid nonempty name, zero otherwise; scratch D2/D3/D6/D7
@@ -577,6 +666,18 @@ report	.block
 	moveq #32, d4
 	moveq #64, d5
 	bsr.w reportSnapshot
+	btst #0, Snapshot.ModuleValid+3(a5)
+	beq.w targetModule
+	move.l #MODULE_SOURCE_PROGRESS, d0
+	lea Snapshot.SourceModule(a5), a4
+	bsr.w reportModule
+targetModule
+	btst #1, Snapshot.ModuleValid+3(a5)
+	beq.w relatedModules
+	move.l #MODULE_TARGET_PROGRESS, d0
+	lea Snapshot.TargetModule(a5), a4
+	bsr.w reportModule
+relatedModules
 	lea OwnerRecord, a5
 	moveq #96, d4
 	move.l #128, d5
@@ -622,6 +723,16 @@ done
 	rts
 	.bend  ; report
 	.priv
+
+; D0=named phase,A4=owned flags/owner/origin row,A6=dos.
+reportModule	.block
+	move.l (a4)+, d1
+	move.l (a4)+, d2
+	move.l (a4), d3
+	movea.l a6, a0
+	jsr memory_profile.progress
+	rts
+	.bend  ; reportModule
 
 ; A5=Snapshot,A6=dos,D4=metadata phase base,D5=name phase base. Empty optional
 ; views emit nothing. D4/D5/A5/A6 retained; scratch D0-D3/D6-D7/A0/A4.

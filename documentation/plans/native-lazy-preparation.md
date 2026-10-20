@@ -1,10 +1,10 @@
 # Preparation ownership and capture storage
 
-This note records maintained capture and ownership contracts relevant to module
-compilation. The active direction is eligible per-module `.ofm` objects followed by bulk
-linking. Full frontend coverage and full-build resource qualification remain incomplete.
-The confirmed budget is 6.5 MiB process plus 1.5 MiB AmigaOS. See [per-module objects
-and bulk linking](native-fragment-preparation.md).
+This note records maintained capture and ownership contracts used by module compilation.
+The active path publishes eligible current-build `.ofm` objects and owned in-memory
+capsules for closed public macro, segment and statement facets. Full current native build
+qualification and frozen resource comparisons remain pending. The budget is 6.5 MiB for
+the process plus 1.5 MiB for AmigaOS. See [per-module objects and shared capsules](native-fragment-preparation.md).
 
 ## Maintained storage policies
 
@@ -16,7 +16,21 @@ and bulk linking](native-fragment-preparation.md).
 | Raw capture | Records are contiguous within backing extents; the logical arena need not be one allocation. |
 | Prepared backing | Checked module-bounded views and bounded payload cache through finalization/reachability. |
 | Lexical backing | Stable numeric identities, owned reader copies and bounded page cache. |
-| `.ofm` objects | Named deliverables survive successful cleanup; ephemeral capture files have separate cleanup ownership. |
+| `.ofm` objects | Current-build link objects survive successful cleanup; ephemeral capture files have separate cleanup ownership. |
+| Public capsules | Owned in-memory closed-public facets retain bodies, defaults, plans and names; they are not a persistent cache format. |
+
+## Configuration and suspended source execution
+
+Configuration and semantic frontends own separate scratch and graph state. Switching
+frontends restores shared VM control at a stable frontend address; borrowed source lines
+do not cross the switch. Immutable configuration snapshots transfer by spelling, and
+repeated imports must agree on every key and value. Consumed section maps keep their
+state.
+
+An active include suspends the parent source cursor and preserves origin, expansion
+context and definition-relative path. Inactive branches and unexpanded templates do not
+open files. Active file effects run once; template bodies and defaults retain explicit
+ownership before the capture retires.
 
 ## Capture acquisition and retirement
 
@@ -30,34 +44,22 @@ pin exhaustion fail explicitly. `T:` may be RAM and does not demonstrate disk me
 savings. Retirement validates disjoint ranges and pins before mutation. Fully retired
 chunks release payload and become checked tombstones; partially shared chunks stay until
 every live byte retires. Views cannot cross retirement or reload retired data. Normal
-cleanup removes owned files; a crash may leave private scratch for recovery. Successful
-cleanup preserves named `.ofm` deliverables.
+cleanup removes owned scratch files; a crash may leave private scratch for recovery.
 
-## Configuration and suspended source execution
+## Publication and ownership boundaries
 
-Configuration and semantic frontends own separate scratch and graph state. Switching
-reactivates shared VM control at the stable frontend address; borrowed lines never cross
-the switch. Immutable configuration snapshots transfer by spelling and repeated imports
-must agree. Active includes preserve the suspended parent cursor, expansion context and
-definition-relative origins. Inactive branches and unexpanded templates acquire no files.
-Ordinary replay transfers numeric records, values and templates before acknowledging
-the graph and retiring its capture. Private compilation must own the same later-needed
-facets before releasing its frontend; unavailable facets still force reference handling.
+Closed-public macro, segment and statement capsules retain binary bodies, defaults, plans
+and names. They preserve caller binding and privacy, publish into normal shared pools,
+then permit private frontend retirement. Interface-only producers create zero-block
+`.ofm` objects; values and types stay in shared semantic owners without fake PCs/sections.
+An interface-only producer with no effects needs no CPU.
 
-## Current ownership and verification boundary
-
-The focused `binary_memory.asm` and macro-hygiene native cases each privately accept
-one module, write/read one `.ofm`, and match fresh Rust binary/Hunk output. Forced-reference
-runs accept zero modules; both policies clean up to zero ownership. The memory case uses
-`binary_memory.asm` plus seven real includes (41,210 B unchanged). Current v20 host
-output was 766,268 B, but current full self-host and resource comparison are pending.
-
-The layout directory retains only Header, BlockRows and RelocRows. Pending image state
-carries linker-prefix copies and carrier extraction until the store writes each object
-once and retires pending ownership. Compact public semantic owners remain available for
-later compilation. `acquireEmit` reads only at final Hunk emission and caches one current
-module. Unlinked or BSS-only modules may have zero payload reads; selected modules may be
-read at most once.
+The `.ofm` layout directory retains Header, BlockRows and RelocRows. Pending image state
+carries linker-prefix copies and carrier extraction until store writes each named object
+and retires pending ownership. `acquireEmit` reads only during final Hunk emission and
+caches one current module. Unlinked or BSS-only objects can have zero reads; selected
+payloads are read at most once. Deliverables survive successful cleanup while ephemeral
+owners retire.
 
 Reader APIs return owned entry/name copies; mutations write back explicitly, and page
 pointers do not escape leases. Public/interface facets and later-needed metadata remain
@@ -66,9 +68,23 @@ writeback precedes transfer of an unpinned page buffer; failed flush/reload pres
 explicit owners and sticky I/O errors. Names retire at the post-binding frontier; entries
 survive later numeric consumers.
 
-`materializePreparedStore` reconstructs one contiguous global ordered `Records` stream,
-then retires the prepared store and index before assembly passes. The retained global
-`Records` stream remains resident during assembly; the private module image cache is a
-separate owner available for fragment runtime. This is existing bridge behavior, not the
-final per-object lifetime. See the [measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points)
-for full qualification limits.
+The existing `materializePreparedStore` bridge reconstructs one contiguous global ordered
+`Records` stream, then retires the prepared store and index before assembly passes. That
+global `Records` allocation remains resident during assembly; it is still an important
+memory owner while the new per-module path is incomplete. The private module image cache
+is a separate owner available for fragment runtime. `beginSizing` remains a no-growth
+boundary.
+
+All seven dependency cases pass both native policies (14 results), with exact live Rust
+binary/Hunk output and zero remaining owned bytes. Candidate accepts two modules and
+forced-reference accepts zero. Typed-interface/no-CPU, odd-statement and text-side-effect
+zero-publication cases also pass under both policies.
+
+The v27 audit captured an incomplete prefix of 89 private-compiler outcomes (46 OK, 41
+EXECUTION_INVALID, 2 binding INVALID). First and repeated execution stops occur at stage
+14, `markInstructionRelocs`: 38 DBRA/DBF stops need retention of the package-selected
+relative-fixup proof; three MOVE stops remain separate. Next carry exact target identity
+for same-fragment cancellation, then address generic cross-fragment fixups and remaining
+binding failures before full-native admission/correctness qualification.
+Full comparisons remain paused and focused results imply no resource change. See the [measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points)
+and [native parity contract](../../agents/rules/native-rust-parity-porting.md).

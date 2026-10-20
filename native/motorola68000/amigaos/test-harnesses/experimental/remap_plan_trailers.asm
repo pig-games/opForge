@@ -297,7 +297,7 @@ ReturnCode	.res long, 1
 .ifdef OPFORGE_MEMORY_TELEMETRY
 .ifdef OPFORGE_PREPARATION_PROGRESS
 DiagnosticState	.res word, 1
-DiagnosticView	.res byte, binding_diagnostic.View.Owner+2
+DiagnosticView	.res byte, binding_diagnostic.VIEW_BYTES
 .endif
 .endif
 .endif

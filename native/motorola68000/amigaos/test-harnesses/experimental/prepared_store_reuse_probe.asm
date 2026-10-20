@@ -28,6 +28,14 @@ run	.block
 	lea Scratch, a2
 	jsr store.configure
 	bne.w finish
+	bsr.w verifyEarlyReader
+	bne.w finish
+	lea State, a0
+	jsr store.cleanup
+	movea.l DosBase, a1
+	lea Scratch, a2
+	jsr store.configure
+	bne.w finish
 	bsr.w build
 	bne.w finish
 	bsr.w verifyShort
@@ -58,6 +66,67 @@ done
 	rts
 	.bend  ; run
 	.priv
+
+; Reading an unsealed short writer must persist the dense file prefix before
+; another writer starts. Force its eviction, then fault back every exact byte.
+verifyEarlyReader	.block
+	movem.l d1-d7/a0-a2, -(sp)
+	moveq #17, d0
+	bsr.w fillSource
+	lea State, a0
+	lea Source, a1
+	moveq #SHORT_BYTES, d0
+	jsr store.append
+	bne.w done
+	moveq #0, d1
+	jsr store.acquire
+	bne.w done
+	cmpi.l #SHORT_BYTES, d2
+	bne.w bad
+	move.l d3, d1
+	jsr store.releaseView
+	bne.w done
+	tst.l store.State.Active(a0)
+	bne.w bad
+	movea.l store.State.Directory+memory.Block.Pointer(a0), a1
+	tst.l store.Row.Backed(a1)
+	beq.w bad
+	tst.l store.Row.Dirty(a1)
+	bne.w bad
+	moveq #34, d0
+	bsr.w fillSource
+	move.w #RESIDENT_PAGES*RECORDS_PER_PAGE-1, d7
+append
+	lea Source, a1
+	move.l #RECORD_BYTES, d0
+	jsr store.append
+	bne.w done
+	dbra d7, append
+	jsr store.seal
+	bne.w done
+	movea.l store.State.Directory+memory.Block.Pointer(a0), a1
+	tst.l store.Row.Storage+memory.Block.Pointer(a1)
+	bne.w bad
+	moveq #0, d1
+	jsr store.acquire
+	bne.w done
+	cmpi.l #SHORT_BYTES, d2
+	bne.w bad
+	moveq #SHORT_BYTES-1, d6
+bytes
+	cmpi.b #17, (a1)+
+	bne.w bad
+	dbra d6, bytes
+	move.l d3, d1
+	jsr store.releaseView
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a2
+	tst.l d0
+	rts
+	.bend  ; verifyEarlyReader
 
 ; Four full pages establish the allocation set; a short fifth forces handoff.
 build	.block

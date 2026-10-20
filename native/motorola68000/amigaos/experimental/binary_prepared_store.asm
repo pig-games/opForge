@@ -248,7 +248,10 @@ found
 	addq.l #1, d0
 	cmp.l State.Active(a4), d0
 	bne.w pin
-	clr.l State.Active(a4)
+	; An early reader seals the writer. Persist it before a later page can
+	; be appended: DOS Seek cannot create an unwritten gap past file EOF.
+	bsr.w flushRow
+	bne.w failed
 pin
 	addq.l #1, Row.Pins(a2)
 	move.l d4, d0

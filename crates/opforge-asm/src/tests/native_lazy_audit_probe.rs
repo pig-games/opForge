@@ -163,6 +163,82 @@ fn native_prepared_store_probe_save_image() {
 }
 
 #[test]
+#[ignore = "requires prepared-store component probe image and fresh FS-UAE completion"]
+fn native_prepared_store_reader_fs_uae() {
+    let root = super::native_fragment_controls::root();
+    let image = fs::read(
+        std::env::var_os("OPFORGE_PREPARED_STORE_PROBE_IMAGE")
+            .expect("set OPFORGE_PREPARED_STORE_PROBE_IMAGE"),
+    )
+    .expect("current prepared-store component probe image");
+    let control = super::native_lazy_audit_controls::controls()
+        .into_iter()
+        .next()
+        .expect("real source control");
+    let (binary, hunk) = super::native_lazy_audit_controls::oracle(&control);
+    let artifacts = [
+        OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/build/fragment.bin",
+            rust_oracle: &binary,
+        },
+        OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/build/fragment.hunk",
+            rust_oracle: &hunk,
+        },
+    ];
+    let mut files = vec![
+        OpforgeNativeCliGuestFile {
+            relative_path: "entry.asm",
+            bytes: control.source.as_bytes(),
+        },
+        OpforgeNativeCliGuestFile {
+            relative_path: "build/.keep",
+            bytes: b"",
+        },
+    ];
+    files.extend(
+        control
+            .includes
+            .iter()
+            .map(|(path, contents)| OpforgeNativeCliGuestFile {
+                relative_path: path,
+                bytes: contents.as_bytes(),
+            }),
+    );
+    let case = OpforgeNativeCliParityCase {
+        name: "prepared-store-early-reader-component",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(control.source.as_bytes()),
+        command_template: Some("Work:entry.asm"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &files,
+        proof: OpforgeNativeCliProof::ExactArtifacts(&artifacts),
+    };
+    let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &image)
+        .expect("fresh prepared-store probe and real source completion");
+    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+        panic!("real native completion required")
+    };
+    assert_eq!(runs.len(), 1);
+    let run = &runs[0];
+    assert!(
+        run.protocol_completed && run.success && run.exit_code == Some(0),
+        "{} {}",
+        run.stdout,
+        run.stderr
+    );
+    let memory = run
+        .captured_artifacts
+        .get(&PathBuf::from("Work/memory.bin"))
+        .map(|bytes| super::native_package_loading_performance::memory(bytes));
+    eprintln!(
+        "PREPARED_STORE_READER exact=bin+hunk seconds={:?} memory={memory:?}",
+        run.start_to_done_host_seconds
+    );
+}
+
+#[test]
 #[ignore = "builds the bounded lexical sealing component probe outside target"]
 fn native_lexical_store_probe_save_image() {
     save_capture_store_probe(

@@ -108,6 +108,18 @@ def frame_values(transcript: str) -> tuple[str | None, str | None, dict[str, str
     if frames:
         frame = frames[-1]
         registers = {name: f"0x{frame.group(name).upper()}" for name in frame.groupdict()}
+        # Auxiliary stack registers belong only to this complete CPU frame,
+        # ending at its PC or a later (possibly incomplete) register frame.
+        tail = transcript[frame.end():]
+        boundary = re.search(r"^\s*(?:Next PC:|D0\b|>)", tail, re.MULTILINE)
+        if boundary:
+            tail = tail[:boundary.start()]
+        for row in re.finditer(
+            r"^\s*(?:(?:USP|ISP|MSP|SFC|DFC)\s+[0-9A-Fa-f]{8}[ \t]*)+$",
+            tail, re.MULTILINE,
+        ):
+            for name, value in re.findall(r"\b(USP|ISP|MSP)\s+([0-9A-Fa-f]{8})\b", row.group()):
+                registers[name.lower()] = f"0x{value.upper()}"
         flags = re.search(
             r"T=(\d+)\s+S=(\d)\s+M=(\d)\s+X=(\d)\s+N=(\d)\s+Z=(\d)\s+V=(\d)\s+C=(\d)\s+IMASK=(\d+)",
             transcript[frame.end():],
@@ -155,6 +167,27 @@ def self_test() -> None:
         "a3": "0x0000000C", "a4": "0x0000000D", "a5": "0x0000000E", "a6": "0x0000000F",
         "a7": "0x00112233"}
     )
+    stack_fixture = fixture.replace(
+        "T=00", "USP  00ABCDEF ISP  00123456 MSP  00789ABC SFC  00000001 DFC  00000001\nT=00"
+    )
+    assert rendered_commands(["m {usp} 4", "m {isp} 4", "m {msp} 4"], stack_fixture) == [
+        "m 00ABCDEF 4", "m 00123456 4", "m 00789ABC 4"
+    ]
+    assert frame_values(stack_fixture)[2]["usp"] == "0x00ABCDEF"
+    for placeholder in ("usp", "isp", "msp"):
+        for absent in (
+            fixture,
+            "USP  00ABCDEF ISP  00123456 MSP  00789ABC\n" + fixture,
+            fixture + "\nUSP  00ABCDEF ISP  00123456 MSP  00789ABC",
+            fixture.replace("T=00", "D0 00000001\nUSP 00ABCDEF ISP 00123456 MSP 00789ABC\nT=00"),
+            stack_fixture + "\n" + fixture,
+        ):
+            try:
+                rendered_commands([f"m {{{placeholder}}} 4"], absent)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"accepted unavailable current-frame {placeholder}")
 
 
 def parser() -> argparse.ArgumentParser:

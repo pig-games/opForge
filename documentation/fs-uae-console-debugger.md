@@ -121,6 +121,11 @@ continue, and quit commands above. It must not issue write (`W`), register
 mutation (`r <reg> <value>`), memory-watch, disk-debug, or debugger state
 commands unless a later reviewed contract explicitly adds them.
 
+Memory commands may use `{usp}`, `{isp}` and `{msp}` when that stack register
+appears in the captured complete CPU frame. Missing or stale addresses are rejected.
+In an interrupt frame, `{a7}` can be the supervisor stack; `{usp}` identifies the
+captured user stack without guessing an address from an earlier run.
+
 ## Stop report contract
 
 Each capture writes these files under a unique run artifact directory:

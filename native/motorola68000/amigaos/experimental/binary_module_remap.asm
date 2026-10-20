@@ -11,7 +11,7 @@ Bytes	.long ?
 Owner	.long ?
 Resolve	.long ?
 Context	.long ?
-Id	.long ?
+Export	.long ?  ; borrowed exact serialized export row
 Low	.long ?
 High	.long ?
 Kind	.long ?
@@ -25,10 +25,13 @@ OK = 0
 INVALID = 1
 	.section code, kind=code
 	.pub
-; A0=Frame with borrowed immutable interface and destination values.Owner.
+; A0=Frame with borrowed immutable validated interface, its exact Export row,
+; and destination values.Owner. Scope.install validates the whole interface once;
+; its closure validation remains valid throughout this copy and all callbacks.
 ; D0/CCR=status; other registers preserved. Outputs clear on any failure.
 ; Resolve: A0=Context,D0=namespace,D1=source ID -> D0=status,D1=destination
-; ID; D2-D7/A1-A6 preserved. It must not grow or mutate the destination arena.
+; ID; D2-D7/A1-A6 preserved. It must not grow or mutate the destination arena,
+; mutate the source image/Frame, or invalidate either borrowed source pointer.
 ; Names are resolved by the caller once, before copying; private nominal IDs
 ; need numeric map slots only. Scalar section addresses retain their Low word;
 ; placement/fragment relocation belongs to the caller's layout owner.
@@ -48,9 +51,35 @@ copy	.block
 	btst #0, d0
 	bne.w bad
 	movea.l Frame.Image(a5), a0
-	move.l Frame.Bytes(a5), d0
-	move.l Frame.Id(a5), d1
-	jsr interface.findExport
+	; Check the borrowed extent and exact row membership, not semantic closure.
+	move.l a0, d0
+	beq.w bad
+	btst #0, d0
+	bne.w bad
+	move.l Frame.Bytes(a5), d2
+	cmpi.l #interface.HEADER_BYTES, d2
+	blo.w bad
+	add.l d2, d0
+	bcs.w bad
+	cmp.l interface.Header.Bytes(a0), d2
+	bne.w bad
+	movea.l Frame.Export(a5), a1
+	move.l a1, d3
+	sub.l a0, d3
+	bcs.w bad
+	subi.l #interface.EXPORT_BYTES, d2
+	bcs.w bad
+	cmp.l d2, d3
+	bhi.w bad
+	sub.l interface.Header.Exports(a0), d3
+	bcs.w bad
+	move.l d3, d0
+	moveq #interface.EXPORT_BYTES, d1
+	divu.l d1, d0
+	cmp.l interface.Header.ExportCount(a0), d0
+	bhs.w bad
+	mulu.l #interface.EXPORT_BYTES, d0
+	cmp.l d3, d0
 	bne.w bad
 	move.l interface.Export.Kind(a1), d3
 	cmpi.l #interface.FRAGMENT_ADDRESS, d3

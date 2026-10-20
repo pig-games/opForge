@@ -53,6 +53,8 @@ LOCAL_BYTES = Local.Global+4
 ; Binds public names and bare member keys, then copies values once into the
 ; destination import owner. Hidden nominal IDs share only the public module
 ; spelling and are never inserted in the name buckets. No image borrow survives.
+; The validated image must remain immutable/live for this entire installation,
+; including Address/Reuse callbacks; callbacks must not replace its ownership.
 ; Address callback: A0=Context,D0=local value ID,D1=global value ID,D2=Low,
 ; D3=fragment ID (FRAGMENT_ADDRESS) or section1..8 (snapshot placeholder)
 ; -> D0=status; all other registers kept. The caller knows the image boundary.
@@ -257,7 +259,7 @@ valueCopy
 	beq.w address
 	tst.l interface.Export.Provenance(a3)
 	bne.w address
-	move.l interface.Export.Id(a3), Local.Copy+remap.Frame.Id(a4)
+	move.l a3, Local.Copy+remap.Frame.Export(a4)
 	lea Local.Copy(a4), a0
 	jsr remap.copy
 	bne.w bad

@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_numeric_bindings as bindings
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_hunk_references as references
+	.use experimental.amigaos.binary_operand_paths as paths
 	.use experimental.amigaos.binary_module_admission as admission
 	.use experimental.amigaos.binary_source as source
 	.use opasm.amigaos.binary_expression as expression
@@ -28,6 +29,39 @@ DOS_OPEN = -30
 DOS_CLOSE = -36
 DOS_WRITE = -48
 MODE_NEWFILE = 1006
+PathCase	.struct
+Start	.long ?
+End	.long ?
+Projection	.long ?
+Status	.long ?
+Observed	.long ?
+Value	.long ?
+StatusFailure	.long ?
+ObservationFailure	.long ?
+	.endstruct
+PATH_CASE_COUNT = 4
+PATH_SECTION_STATUS = 26
+PATH_SECTION_OBSERVATION = 27
+PATH_ABSOLUTE_THREE_STATUS = 28
+PATH_ABSOLUTE_THREE_OBSERVATION = 29
+PATH_ABSOLUTE_TWO_STATUS = 30
+PATH_ABSOLUTE_TWO_OBSERVATION = 31
+PATH_STRUCTURAL_STATUS = 32
+PATH_STRUCTURAL_OBSERVATION = 33
+PATH_VALUE = 34
+PATH_OWNER = 35
+FAIL_RELATIVE_FIELD = 44
+FAIL_RELATIVE_FIELD_STALE = 45
+IntervalCase	.struct
+Program	.long ?
+Bytes	.long ?
+Candidate	.long ?
+Minimum	.long ?
+Maximum	.long ?
+Status	.long ?
+Failure	.long ?
+	.endstruct
+INTERVAL_CASE_COUNT = 8
 	.section entry, kind=code
 	.pub
 ; D0=0 only after all real package instructions and the result file complete.
@@ -154,6 +188,13 @@ copyBranch
 	move.b (a1)+, (a5)+
 	subq.l #1, d4
 	bne.w copyBranch
+	; Whole-branch programs own their replay recipe, not a sole fixup field.
+	cmpi.l #1, d6
+	bne.w requestedCandidate
+	move.l #FAIL_RELATIVE_FIELD, ReturnCode
+	bsr.w relativeFieldChecks
+	bne.w bad
+requestedCandidate
 	jsr encoding.outputPositionRequestedCandidate
 	bne.w bad
 	move.l d1, (a5)+
@@ -170,8 +211,20 @@ copyBranch
 	move.l #24, ReturnCode
 	bsr.w geometryChecks
 	bne.w bad
+	; The preceding ordinary absolute instruction must not expose stale
+	; relative evidence from the earlier branch, regardless of its old bytes.
+	move.l #FAIL_RELATIVE_FIELD_STALE, ReturnCode
+	lea FieldEvidence, a0
+	jsr encoding.outputRelativeField
+	tst.l d0
+	beq.w bad
 	move.l #25, ReturnCode
 	bsr.w soleFixupChecks
+	bne.w bad
+	move.l #26, ReturnCode
+	bsr.w pathChecks
+	bne.w bad
+	bsr.w branchIntervalChecks
 	bne.w bad
 	move.l a5, d0
 	lea Result, a0
@@ -366,6 +419,14 @@ plainProof
 	tst.l d0
 	bne.w missingFields
 	jsr encoding.outputGeometryProof
+	bne.w done
+	; A no-field success resets count to NONE, so old relative bytes cannot
+	; become a replay proof on an otherwise placement-independent instruction.
+	lea FieldEvidence, a0
+	jsr encoding.outputRelativeField
+	tst.l d0
+	beq.w missingFields
+	moveq #0, d0
 	rts
 strictReferences
 	lea StrictReferenceCases, a3
@@ -411,6 +472,24 @@ done
 	rts
 	.bend  ; geometryChecks
 
+; A selected whole-branch program deliberately invalidates the narrower
+; sole-fixup evidence. It must not expose stale bytes from another encoder.
+relativeFieldChecks	.block
+	movem.l d1-d2/a0, -(sp)
+	lea FieldEvidence, a0
+	jsr encoding.outputRelativeField
+	tst.l d0
+	beq.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	rts
+	.bend  ; relativeFieldChecks
+
 ; A second ordinary scalar field invalidates the sole-relative proof even
 ; though that field does not observe PC. Check both orders and a positive reset.
 soleFixupChecks	.block
@@ -450,6 +529,18 @@ clear
 	bne.w bad
 	cmpi.l #37, execution.Context.PositionFixupIdentity(a6)
 	bne.w bad
+	tst.l execution.Context.PositionField+execution.RelativeField.Offset(a6)
+	bne.w bad
+	cmpi.l #2, execution.Context.PositionField+execution.RelativeField.Width(a6)
+	bne.w bad
+	tst.l execution.Context.PositionField+execution.RelativeField.LittleEndian(a6)
+	bne.w bad
+	cmpi.l #2, execution.Context.PositionField+execution.RelativeField.Adjustment(a6)
+	bne.w bad
+	cmpi.l #$1040, execution.Context.PositionField+execution.RelativeField.Value(a6)
+	bne.w bad
+	cmpi.l #execution.FIXUP_RANGE_SIGNED, execution.Context.PositionField+execution.RelativeField.Range(a6)
+	bne.w bad
 	bra.w checked
 pair
 	cmp.l SoleFixupOutput, d0
@@ -471,6 +562,99 @@ done
 	tst.l d0
 	rts
 	.bend  ; soleFixupChecks
+
+; Path scalar failures stay observed; structural mismatch does not inspect
+; the scalar inside it. The package extension contains only numeric path steps.
+pathChecks	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	move.l Package+package.Header.Bytes, -(sp)
+	move.l Values+FIRST_ID*8, -(sp)
+	move.w package.Context.ExpressionPolicy(a2), -(sp)
+	move.l package.Context.Owner(a2), -(sp)
+	; POSITION policy evaluates even compact literals through the typed VM.
+	; Keep its required owner live, independently of earlier component sessions.
+	lea PathOwner, a0
+	move.l #SYMBOL_COUNT, d0
+	jsr values.init
+	beq.w ownerReady
+	move.l #PATH_OWNER, ReturnCode
+	bra.w bad
+ownerReady
+	move.l #PathOwner, package.Context.Owner(a2)
+	move.l #PathStepsEnd-Package, Package+package.Header.Bytes
+	move.l #3, Values+FIRST_ID*8
+	move.w #package.POSITION_OBSERVATION_POLICY, package.Context.ExpressionPolicy(a2)
+	lea PathCases, a3
+	moveq #PATH_CASE_COUNT-1, d7
+next
+	movea.l PathCase.Start(a3), a0
+	movea.l PathCase.End(a3), a1
+	movea.l PathCase.Projection(a3), a4
+	jsr paths.evaluateGeometry
+	cmp.l PathCase.Status(a3), d0
+	beq.w statusReady
+	move.l PathCase.StatusFailure(a3), ReturnCode
+	bra.w bad
+statusReady
+	cmp.l PathCase.Observed(a3), d1
+	beq.w observationReady
+	move.l PathCase.ObservationFailure(a3), ReturnCode
+	bra.w bad
+observationReady
+	tst.l d0
+	bne.w checked
+	cmp.l PathCase.Value(a3), d3
+	beq.w checked
+	move.l #PATH_VALUE, ReturnCode
+	bra.w bad
+checked
+	lea PathCase.ObservationFailure+4(a3), a3
+	dbra d7, next
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	move.l (sp)+, package.Context.Owner(a2)
+	move.w (sp)+, package.Context.ExpressionPolicy(a2)
+	move.l (sp)+, Values+FIRST_ID*8
+	move.l (sp)+, Package+package.Header.Bytes
+	move.l d0, -(sp)
+	lea PathOwner, a0
+	jsr values.release
+	move.l (sp)+, d0
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; pathChecks
+
+; Synthetic current-contract candidates exercise interval holes, endpoints,
+; earlier AUTO candidates, explicit-only masks, missing IDs and signed overflow.
+branchIntervalChecks	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea IntervalCases, a3
+	moveq #INTERVAL_CASE_COUNT-1, d7
+next
+	movea.l IntervalCase.Program(a3), a1
+	move.l IntervalCase.Bytes(a3), d1
+	move.l IntervalCase.Candidate(a3), d2
+	move.l IntervalCase.Minimum(a3), d3
+	move.l IntervalCase.Maximum(a3), d4
+	jsr execution.validateBranchInterval
+	cmp.l IntervalCase.Status(a3), d0
+	bne.w bad
+	lea IntervalCase.Failure+4(a3), a3
+	dbra d7, next
+	moveq #0, d0
+	bra.w done
+bad
+	move.l IntervalCase.Failure(a3), ReturnCode
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; branchIntervalChecks
 
 ; Numeric qualified plans retain declaration identity even when values coincide.
 qualifiedChecks	.block
@@ -572,8 +756,42 @@ TextDefinitionRecord	.byte RESET_RECORD_BYTES-1, abi.PRVM_PACKED_FLAG_INDENT
 	.byte 0, abi.PRVM_TOKEN_KIND_IDENTIFIER
 	.word 1
 	.byte 0
-	.align 2
+	.align 4
 Package	.incbin "instruction_fixup_identity_package.bin"
+	.align 4
+PathScale
+	.byte paths.SCALE_VALUE, 0
+	.word 0
+PathUnwrapScale
+	.byte paths.UNWRAP_PAREN, 0
+	.word 0
+	.byte paths.SCALE_VALUE, 0
+	.word 0
+PathStepsEnd
+PathScaleProjection
+	.byte package.PROJECTION_PATH, 0
+	.word paths.STEP_BYTES
+	.long PathScale-Package
+	.word $ffff, 0
+PathUnwrapProjection
+	.byte package.PROJECTION_PATH, 0
+	.word paths.STEP_BYTES*2
+	.long PathUnwrapScale-Package
+	.word $ffff, 0
+PathCases
+	.long PathSectionProduct, PathSectionProductEnd, PathScaleProjection, paths.STATUS_MALFORMED, 1, 0, PATH_SECTION_STATUS, PATH_SECTION_OBSERVATION
+	.long PathThreeProduct, PathThreeProductEnd, PathScaleProjection, paths.STATUS_MALFORMED, 0, 0, PATH_ABSOLUTE_THREE_STATUS, PATH_ABSOLUTE_THREE_OBSERVATION
+	.long PathTwoProduct, PathTwoProductEnd, PathScaleProjection, paths.STATUS_OK, 0, 1, PATH_ABSOLUTE_TWO_STATUS, PATH_ABSOLUTE_TWO_OBSERVATION
+	.long PathSectionProduct, PathSectionProductEnd, PathUnwrapProjection, paths.STATUS_MALFORMED, 0, 0, PATH_STRUCTURAL_STATUS, PATH_STRUCTURAL_OBSERVATION
+IntervalCases
+	.long IntervalHoleProgram, IntervalHoleProgramEnd-IntervalHoleProgram, 7, -1, 1, 1, 36
+	.long IntervalHoleProgram, IntervalHoleProgramEnd-IntervalHoleProgram, 7, 1, 2, 0, 37
+	.long IntervalHoleProgram, IntervalHoleProgramEnd-IntervalHoleProgram, 7, -129, -1, 1, 38
+	.long IntervalHoleProgram, IntervalHoleProgramEnd-IntervalHoleProgram, 7, 2, 1, 1, 39
+	.long IntervalLaterProgram, IntervalLaterProgramEnd-IntervalLaterProgram, 7, 130, 200, 1, 40
+	.long IntervalHoleProgram, IntervalHoleProgramEnd-IntervalHoleProgram, 3, 1, 2, 1, 41
+	.long IntervalHoleProgram, IntervalHoleProgramEnd-IntervalHoleProgram, 99, 1, 2, 1, 42
+	.long IntervalOverflowProgram, IntervalOverflowProgramEnd-IntervalOverflowProgram, 9, $80000000, $80000000, 1, 43
 ; Serialized v4 project fields: input,width,BE,base,LE adjustment,
 ; reject unresolved,LE placeholder,signed range,no relocation.
 SoleRelativeProgram
@@ -604,12 +822,14 @@ OutputPath	.byte "Work:output.bin", 0
 	.align 4
 SoleFixupContext	.res byte, execution.CONTEXT_BYTES
 SoleFixupOutput	.res byte, 8
+FieldEvidence	.res byte, execution.POSITION_FIELD_BYTES
 Context	.res byte, package.CONTEXT_BYTES
 Values	.res byte, SYMBOL_COUNT*8
 Defined	.res byte, SYMBOL_COUNT
 SectionIds	.res byte, SYMBOL_COUNT
 	.align 4
 IdentityOwner	.res byte, values.OWNER_BYTES
+PathOwner	.res byte, values.OWNER_BYTES
 Result	.res byte, 256
 ResultBytes	.res long, 1
 ReturnCode	.res long, 1

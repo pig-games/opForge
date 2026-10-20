@@ -5,6 +5,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_nested_operands as nested
 	.use experimental.amigaos.binary_products as products
+	.use experimental.amigaos.binary_hunk_references as references
 	.use opasm.amigaos.binary_expression as expression
 	.use exprvm.amigaos.runtime as runtime
 	.pub
@@ -28,6 +29,11 @@ RightEnd	.long ?
 RightStart	.long ?
 	.endstruct
 PRODUCT_VIEW_BYTES = ProductView.RightStart+4
+Evaluation	.struct
+Observed	.word ?
+Geometry	.word ?
+	.endstruct
+EVALUATION_BYTES = Evaluation.Geometry+2
 	.section code, kind=code
 	.pub
 
@@ -36,7 +42,24 @@ PRODUCT_VIEW_BYTES = ProductView.RightStart+4
 ; Preserves D4-D7/A2-A6. Containers select bounded views; terminal steps
 ; consume exact leaves. The package owns all class, qualifier and member IDs.
 evaluate	.block
+	moveq #0, d0
+	bra.w evaluateMode
+	.bend  ; evaluate
+
+; Same evaluation, with D1=nonzero if any reached scalar may observe placement.
+; Structural container/register mismatches do not evaluate a scalar. Failed
+; scalar attempts remain observed even when another product branch succeeds.
+; A2 must have POSITION_OBSERVATION_POLICY enabled for strict typed proof.
+evaluateGeometry	.block
+	moveq #1, d0
+	bra.w evaluateMode
+	.bend  ; evaluateGeometry
+	.priv
+evaluateMode	.block
 	movem.l d4-d7/a2-a6, -(sp)
+	suba.w #EVALUATION_BYTES, sp
+	clr.w Evaluation.Observed(sp)
+	move.w d0, Evaluation.Geometry(sp)
 	cmpi.b #KIND, package.Projection.Kind(a4)
 	bne.w bad
 	tst.w package.Projection.Reserved(a4)
@@ -66,6 +89,9 @@ evaluate	.block
 	adda.l d0, a3
 	movea.l a6, a5
 	adda.l d1, a5
+	; Projection metadata is consumed. A4 now anchors this call's proof frame
+	; through nested product/scalar helpers without retaining session pointers.
+	movea.l sp, a4
 next
 	moveq #0, d6
 	move.b (a3)+, d6
@@ -188,10 +214,13 @@ memberValue
 bad
 	moveq #STATUS_MALFORMED, d0
 done
+	moveq #0, d1
+	move.w Evaluation.Observed(sp), d1
+	adda.w #EVALUATION_BYTES, sp
 	movem.l (sp)+, d4-d7/a2-a6
 	tst.l d0
 	rts
-	.bend  ; evaluate
+	.bend  ; evaluateMode
 	.priv
 
 ; Exact numeric register leaf. D5=class,D7=encoded qualifier (zero plain).
@@ -310,10 +339,12 @@ scalar	.block
 	move.b #runtime.EXPRVM_OPCODE_END, 5(sp)
 	movea.l sp, a0
 	lea 6(sp), a1
+	bsr.w observeScalar
 	jsr expression.evaluate
 	adda.w #6, sp
 	bra.w done
 compiled
+	bsr.w observeScalar
 	jsr expression.evaluate
 	bne.w done
 	cmpa.l a1, a0
@@ -327,5 +358,24 @@ done
 	tst.l d0
 	rts
 	.bend  ; scalar
+
+; A0/A1=actual scalar input,A4=Evaluation. Preserve evaluation inputs/status.
+; This observes before ExprVM, including failures, but never before a path's
+; structural steps have selected this scalar. Earlier observations are sticky.
+observeScalar	.block
+	tst.w Evaluation.Geometry(a4)
+	beq.w done
+	tst.w Evaluation.Observed(a4)
+	bne.w done
+	movem.l d0-d1/a0, -(sp)
+	jsr references.geometryExpression
+	tst.l d0
+	beq.w restored
+	move.w #1, Evaluation.Observed(a4)
+restored
+	movem.l (sp)+, d0-d1/a0
+done
+	rts
+	.bend  ; observeScalar
 	.endsection
 	.endmodule

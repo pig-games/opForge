@@ -20,7 +20,106 @@ WRAPPER = $81
 NO_BASE = $ffffffff
 SECTION_ID_BASE = $10010; canonical section identities occupy +1 through +8
 CURRENT_PC_BASE = $10000; distinct from every encoded 16-bit symbol ID
+	.priv
+; The common pair uses the expression owner's wrapper and symbol-token
+; geometry. Only the operator tail differs between compact and generic VM.
+ScalarPair	.struct
+Header	.res expr.CAPSULE_HEADER_BYTES
+Target	.res expr.SymbolLeaf.End
+Base	.res expr.SymbolLeaf.End
+Tail	.byte ?
+	.endstruct
+CompactPairTail	.struct
+Operator	.byte ?
+End	.byte ?
+	.endstruct
+GenericPairTail	.struct
+Opcode	.byte ?
+Operator	.byte ?
+End	.byte ?
+	.endstruct
+COMPACT_PAIR_BYTES = ScalarPair.Tail+CompactPairTail.End+1
+GENERIC_PAIR_BYTES = ScalarPair.Tail+GenericPairTail.End+1
+COMPACT_PAIR_CODE_BYTES = COMPACT_PAIR_BYTES-expr.CAPSULE_HEADER_BYTES
+GENERIC_PAIR_CODE_BYTES = GENERIC_PAIR_BYTES-expr.CAPSULE_HEADER_BYTES
+	.pub
 	.section code, kind=code
+
+; Exact compact symbol-symbol subtraction only. A0=wrapper,A1=bounded end,
+; A2=Context. STATUS_SECTION returns D1=target,D2=base canonical scalar IDs;
+; A0 advances exactly one wrapper. CLEAR leaves A0 unchanged for ordinary
+; evaluation; BAD rejects a recognized pair whose whole identities are unsafe.
+; No partial member projection or numeric-value equality establishes identity.
+scalarDifference	.block
+	movem.l d3-d4/a3, -(sp)
+	move.l a1, d0
+	sub.l a0, d0
+	bcs.w clear
+	cmpi.l #COMPACT_PAIR_BYTES, d0
+	blo.w clear
+	cmpi.b #WRAPPER, ScalarPair.Header+expr.Capsule.Tag(a0)
+	bne.w clear
+	moveq #COMPACT_PAIR_BYTES, d4
+	cmpi.b #COMPACT_PAIR_CODE_BYTES, ScalarPair.Header+expr.Capsule.Length(a0)
+	beq.w compactOperator
+	cmpi.l #GENERIC_PAIR_BYTES, d0
+	blo.w clear
+	cmpi.b #GENERIC_PAIR_CODE_BYTES, ScalarPair.Header+expr.Capsule.Length(a0)
+	bne.w clear
+	moveq #GENERIC_PAIR_BYTES, d4
+	cmpi.b #runtime.EXPRVM_OPCODE_APPLY_BINARY, ScalarPair.Tail+GenericPairTail.Opcode(a0)
+	bne.w clear
+	cmpi.b #runtime.EXPRVM_BINARY_SUBTRACT, ScalarPair.Tail+GenericPairTail.Operator(a0)
+	bne.w clear
+	cmpi.b #runtime.EXPRVM_OPCODE_END, ScalarPair.Tail+GenericPairTail.End(a0)
+	bne.w clear
+	bra.w leaves
+compactOperator
+	cmpi.b #runtime.COMPACT_SUBTRACT, ScalarPair.Tail+CompactPairTail.Operator(a0)
+	bne.w clear
+	cmpi.b #runtime.EXPRVM_OPCODE_END, ScalarPair.Tail+CompactPairTail.End(a0)
+	bne.w clear
+leaves
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, ScalarPair.Target+expr.SymbolLeaf.Opcode(a0)
+	bne.w clear
+	cmpi.b #runtime.EXPRVM_OPCODE_PUSH_SYMBOL, ScalarPair.Base+expr.SymbolLeaf.Opcode(a0)
+	bne.w clear
+	moveq #0, d1
+	move.b ScalarPair.Target+expr.SymbolLeaf.High(a0), d1
+	lsl.w #8, d1
+	move.b ScalarPair.Target+expr.SymbolLeaf.Low(a0), d1
+	cmp.l pkg.Context.Count(a2), d1
+	bhs.w bad
+	bsr.w canonicalScalar
+	bne.w bad
+	cmp.l pkg.Context.Count(a2), d1
+	bhs.w bad
+	move.l d1, d3
+	moveq #0, d1
+	move.b ScalarPair.Base+expr.SymbolLeaf.High(a0), d1
+	lsl.w #8, d1
+	move.b ScalarPair.Base+expr.SymbolLeaf.Low(a0), d1
+	cmp.l pkg.Context.Count(a2), d1
+	bhs.w bad
+	bsr.w canonicalScalar
+	bne.w bad
+	cmp.l pkg.Context.Count(a2), d1
+	bhs.w bad
+	move.l d1, d2
+	move.l d3, d1
+	adda.l d4, a0
+	moveq #STATUS_SECTION, d0
+	bra.w done
+clear
+	moveq #STATUS_CLEAR, d0
+	bra.w done
+bad
+	moveq #STATUS_BAD, d0
+done
+	movem.l (sp)+, d3-d4/a3
+	tst.l d0
+	rts
+	.bend  ; scalarDifference
 
 ; A0=bounded compiled expression wrapper, A1=end, A2=Context.
 ; D0/CCR=0 if absolute, 1 if it references a section symbol or current PC,

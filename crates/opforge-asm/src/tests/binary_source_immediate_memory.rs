@@ -489,11 +489,14 @@ fn compact_immediate_memory_packet_sequence() {
                 [0, 1, 2]
             );
             let member_inputs = long(&packet, member_steps + 8);
-            assert_eq!(&packet[member_inputs..member_inputs + 4], &[0, 0, 0, 0]);
-            assert_eq!(&packet[member_inputs + 12..member_inputs + 14], &[19, 1]);
+            assert_eq!(&packet[member_inputs..member_inputs + 2], &[19, 1]);
+            assert_eq!(
+                &packet[member_inputs + 12..member_inputs + 16],
+                &[0, 0, 0, 0]
+            );
             let field = numeric.names.iter().position(|name| name == "l").unwrap() as u16;
             assert_eq!(
-                &packet[member_inputs + 14..member_inputs + 16],
+                &packet[member_inputs + 2..member_inputs + 4],
                 &field.to_be_bytes()
             );
             let member_fixup = long(&packet, member_steps + 32);

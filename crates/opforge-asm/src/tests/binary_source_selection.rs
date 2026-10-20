@@ -156,8 +156,11 @@ fn binary_selection_self_host_immediate_indirect_oracle_and_package() {
     assert!(package.candidates.iter().any(|candidate| {
         package.names[usize::from(candidate.mnemonic)] == "cmpi"
             && package.names[usize::from(candidate.shape)] == "immediate_direct"
-            && matches!(&candidate.recipe, CandidateRecipe::SemanticInputs { inputs, .. }
-                if matches!(inputs.as_slice(),
+            && matches!(&candidate.recipe, CandidateRecipe::SemanticSequence { stages }
+                if stages.len() == 2 && stages[0].program.is_none()
+                && stages[0].inputs == [Projection::IndirectRegister { operand: 1, class: 1 }]
+                && stages[1].program.is_some() && !stages[1].fixup
+                && matches!(stages[1].inputs.as_slice(),
                     [Projection::Constant(_), Projection::Expression(0),
                      Projection::IndirectRegister { operand: 1, class: 1 }]))
     }));
@@ -173,9 +176,22 @@ fn binary_selection_self_host_immediate_indirect_oracle_and_package() {
         let row = rows + index * crate::binary_source_experiment::ROW;
         u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == cmpi
             && bytes[row + 2] == 1
-            && bytes[row + 3] == 3
-            && bytes[row + 5] == 4
-            && u16::from_be_bytes(bytes[row + 10..row + 12].try_into().unwrap()) == 3
+            && bytes[row + 3] == 8 // immediate_direct, matching the indirect oracle
+            && bytes[row + 5] == 9
+            && u16::from_be_bytes(bytes[row + 10..row + 12].try_into().unwrap()) == 2
+            && {
+                let stages =
+                    u32::from_be_bytes(bytes[row + 12..row + 16].try_into().unwrap()) as usize;
+                let guard =
+                    u32::from_be_bytes(bytes[stages + 8..stages + 12].try_into().unwrap()) as usize;
+                let encode = stages + 12;
+                let inputs =
+                    u32::from_be_bytes(bytes[encode + 8..encode + 12].try_into().unwrap()) as usize;
+                bytes[stages] == 0
+                    && bytes[encode] == 1
+                    && bytes[guard..guard + 4] == [8, 1, 0, 1]
+                    && [bytes[inputs], bytes[inputs + 12], bytes[inputs + 24]] == [3, 0, 8]
+            }
     }));
 }
 
@@ -250,8 +266,11 @@ fn binary_selection_displacement_package_recipe() {
     let package = BinarySourcePackage::prepare(&core, &resolved).unwrap();
     assert!(package.candidates.iter().any(|candidate| {
         package.names[usize::from(candidate.mnemonic)] == "jsr"
-            && matches!(&candidate.recipe, CandidateRecipe::SemanticInputs { inputs, .. }
-                if matches!(inputs.as_slice(),
+            && matches!(&candidate.recipe, CandidateRecipe::SemanticSequence { stages }
+                if stages.len() == 2 && stages[0].program.is_none()
+                && stages[0].inputs == [Projection::TupleArity { operand: 0 }]
+                && stages[1].program.is_some() && !stages[1].fixup
+                && matches!(stages[1].inputs.as_slice(),
                     [Projection::TupleRegister { operand: 0, class: 1, item: 1 },
                      Projection::ValueProgram { source, .. },
                      Projection::TupleArity { operand: 0 }]
@@ -265,8 +284,22 @@ fn binary_selection_displacement_package_recipe() {
         let row = rows + index * crate::binary_source_experiment::ROW;
         u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == jsr
             && bytes[row + 3] == 1
-            && bytes[row + 5] == 4
+            && bytes[row + 5] == 9
             && u16::from_be_bytes(bytes[row + 10..row + 12].try_into().unwrap()) == 2
+            && {
+                let stages =
+                    u32::from_be_bytes(bytes[row + 12..row + 16].try_into().unwrap()) as usize;
+                let guard =
+                    u32::from_be_bytes(bytes[stages + 8..stages + 12].try_into().unwrap()) as usize;
+                let encode = stages + 12;
+                let inputs =
+                    u32::from_be_bytes(bytes[encode + 8..encode + 12].try_into().unwrap()) as usize;
+                bytes[stages] == 0
+                    && bytes[encode] == 1
+                    && bytes[guard..guard + 4] == [14, 0, 0, 2]
+                    && u16::from_be_bytes(bytes[encode + 4..encode + 6].try_into().unwrap()) == 3
+                    && [bytes[inputs], bytes[inputs + 12], bytes[inputs + 24]] == [11, 12, 14]
+            }
     }));
 }
 

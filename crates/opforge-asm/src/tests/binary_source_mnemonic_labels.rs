@@ -323,9 +323,13 @@ fn compact_mnemonic_member_package_projection() {
         {
             continue;
         }
-        let CandidateRecipe::SemanticInputs { inputs, .. } = &candidate.recipe else {
+        let CandidateRecipe::SemanticSequence { stages } = &candidate.recipe else {
             continue;
         };
+        if stages.len() != 2 {
+            continue;
+        }
+        let inputs = &stages[1].inputs;
         if !inputs.iter().any(|input| {
             matches!(input, Projection::RequiredValueProgram { source, .. }
                 if matches!(source.as_ref(), Projection::Member { operand: 0, qualifier }
@@ -373,10 +377,30 @@ fn compact_mnemonic_member_package_projection() {
             .expect("serialized canonical member candidate");
         // The package exports the member-value program. The full source
         // above must independently match live Rust in a fresh native run.
-        assert_eq!(wire[row + 5], 4, "canonical member semantic inputs");
-        assert_ne!(word(row + 8), u16::MAX, "executable semantic program");
+        assert_eq!(wire[row + 5], 9, "canonical member sequence");
         assert_eq!(word(row + 10), 2);
-        let offset = u32::from_be_bytes(wire[row + 12..row + 16].try_into().unwrap()) as usize;
+        assert_eq!(stages[0].program, None);
+        assert_eq!(
+            stages[0].inputs,
+            [Projection::Register {
+                operand: 1,
+                class: 0
+            }]
+        );
+        let sequence = u32::from_be_bytes(wire[row + 12..row + 16].try_into().unwrap()) as usize;
+        assert_eq!([wire[sequence], wire[sequence + 12]], [0, 1]);
+        assert_eq!(word(sequence + 4), 1);
+        assert_eq!(word(sequence + 12 + 4), 2);
+        assert_ne!(
+            word(sequence + 12 + 2),
+            u16::MAX,
+            "executable semantic program"
+        );
+        let guard =
+            u32::from_be_bytes(wire[sequence + 8..sequence + 12].try_into().unwrap()) as usize;
+        assert_eq!(&wire[guard..guard + 4], &[1, 1, 0, 0]);
+        let offset =
+            u32::from_be_bytes(wire[sequence + 20..sequence + 24].try_into().unwrap()) as usize;
         let Projection::RequiredValueProgram { source, .. } = &inputs[0] else {
             unreachable!()
         };

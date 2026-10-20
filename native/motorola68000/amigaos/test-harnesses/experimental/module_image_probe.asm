@@ -3,6 +3,10 @@
 	.module tests.amigaos.module_image_probe
 	.cpu 68020
 	.use experimental.amigaos.binary_module_image as image
+	.use experimental.amigaos.binary_module_layout as layout
+	.use experimental.amigaos.binary_assembly as assembly
+	.use experimental.amigaos.binary_package as package
+	.use exprvm.amigaos.runtime as exprvm
 	.use experimental.amigaos.binary_module_interface as semantics
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_module_request as request
@@ -327,6 +331,8 @@ selected	.block
 	jsr image.link
 	bne.w bad
 	cmpi.l #SECOND_BYTES, Link+image.LinkFrame.Used
+	bne.w bad
+	bsr.w deltaChecks
 	bne.w bad
 	bsr.w registryCases
 	bne.w bad
@@ -888,7 +894,7 @@ bad
 ; Pure resolver: opaque numeric import17 maps to the current target address.
 resolve	.block
 	moveq #1, d0
-	cmpi.l #17, d1
+	cmp.l ResolveId, d1
 	bne.w done
 	tst.l ResolveFails
 	bne.w done
@@ -964,6 +970,7 @@ WorkName	.byte "Work:", 0
 	.align 4
 Guard	.long GUARD_VALUE, GUARD_VALUE
 Target	.long $1000
+ResolveId	.long 17
 ResolveFails	.long 0
 PatchBytes	.long 4
 DosName	.byte "dos.library", 0
@@ -993,5 +1000,6 @@ FailureCount	.res long, 1
 ReentrantCount	.res long, 1
 InnerStatus	.res long, 1
 	.endsection
+	.include "module_data_delta_checks.i"
 	.output "module-image-probe.hunk", format=hunk, sections=entry, code, data, bss
 	.endmodule

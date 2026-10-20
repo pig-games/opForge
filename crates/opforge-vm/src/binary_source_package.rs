@@ -505,7 +505,7 @@ fn candidate(
         member_excluded: member_excluded(&row.operand_plan),
         known_name_excluded: Vec::new(),
         roles: role_projections(&row.operand_plan, names),
-        recipe: parse_recipe(&row.operand_plan, names),
+        recipe: structural_matches(parse_recipe(&row.operand_plan, names)),
     }
 }
 
@@ -771,6 +771,83 @@ fn parse_recipe(plan: &str, names: &mut NameTable) -> CandidateRecipe {
     }
 }
 
+// These selectors inspect syntax/register identities without evaluating scalar
+// leaves. Tuple register projections are excluded: their identity-scale path
+// can evaluate a factor. The pure conjunction can reject an impossible row
+// before scalar observation; encode/fixup inputs keep their positional order.
+fn pure_structure(input: &Projection) -> bool {
+    matches!(
+        input,
+        Projection::Register { .. }
+            | Projection::NamedRegister { .. }
+            | Projection::IndirectRegister { .. }
+            | Projection::UpdatedIndirectRegister { .. }
+            | Projection::MemberShape { .. }
+            | Projection::TupleNamedRegister { .. }
+            | Projection::TupleArity { .. }
+            | Projection::TupleArityThree { .. }
+    )
+}
+
+fn structural_matches(recipe: CandidateRecipe) -> CandidateRecipe {
+    let mut stages = match recipe {
+        CandidateRecipe::SemanticInputs { program, inputs } => {
+            let mut scalar_seen = false;
+            let needs_guard = inputs.iter().any(|input| {
+                if pure_structure(input) {
+                    scalar_seen
+                } else {
+                    scalar_seen |= !matches!(input, Projection::Constant(_));
+                    false
+                }
+            });
+            if !needs_guard {
+                return CandidateRecipe::SemanticInputs { program, inputs };
+            }
+            vec![SemanticStage {
+                program: Some(program),
+                fixup: false,
+                inputs,
+            }]
+        }
+        CandidateRecipe::SemanticSequence { stages } => stages,
+        other => return other,
+    };
+    let mut guards = Vec::new();
+    for input in stages.iter().flat_map(|stage| &stage.inputs) {
+        if pure_structure(input) && !guards.contains(input) {
+            guards.push(input.clone());
+        }
+    }
+    if guards.is_empty() || guards.len() > 16 {
+        return CandidateRecipe::SemanticSequence { stages };
+    }
+    if stages[0].program.is_none() {
+        let remaining: Vec<_> = stages[0]
+            .inputs
+            .iter()
+            .filter(|input| !pure_structure(input))
+            .cloned()
+            .collect();
+        if guards.len() + remaining.len() <= 16 {
+            guards.extend(remaining);
+            stages[0].inputs = guards;
+            return CandidateRecipe::SemanticSequence { stages };
+        }
+    }
+    if stages.len() < 8 {
+        stages.insert(
+            0,
+            SemanticStage {
+                program: None,
+                fixup: false,
+                inputs: guards,
+            },
+        );
+    }
+    CandidateRecipe::SemanticSequence { stages }
+}
+
 // Only bounded match/encode/fixup sequences are executable. Unknown stages remain
 // explicit unsupported candidates; match stages have no executable program.
 fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
@@ -795,12 +872,21 @@ fn parse_sequence(plan: &str, names: &mut NameTable) -> CandidateRecipe {
                 }
                 _ => return None,
             };
-            let inputs = inputs
+            let mut inputs = inputs
                 .split(',')
                 .map(|value| parse_projection(value, names))
                 .collect::<Option<Vec<_>>>()?;
             if inputs.is_empty() || inputs.len() > 16 || stages.len() == 8 {
                 return None;
+            }
+            if program.is_none() {
+                // Match outputs have no positional consumer. Check pure root
+                // structure before reading scalars, so a structurally impossible
+                // candidate cannot observe values belonging to a later form.
+                // MemberShape never evaluates its enclosed expression. Keep all
+                // other predicates in order, including value/range checks whose
+                // failed observations must remain visible to geometry proofs.
+                inputs.sort_by_key(|input| !matches!(input, Projection::MemberShape { .. }));
             }
             if kind == "fixup"
                 && !inputs.iter().all(|input| {
@@ -1360,8 +1446,8 @@ impl QualifierTable {
 mod tests {
     use super::{
         known_name_exclusions, member_excluded, parse_member_projection, parse_projection,
-        parse_register_mask, role_projections, BTreeMap, BTreeSet, CandidateRecipe, NameTable,
-        NumericRegister, Projection,
+        parse_register_mask, pure_structure, role_projections, structural_matches, BTreeMap,
+        BTreeSet, CandidateRecipe, NameTable, NumericRegister, Projection, SemanticStage,
     };
 
     #[test]
@@ -1694,6 +1780,87 @@ mod tests {
     }
 
     #[test]
+    fn structural_matches_precede_scalar_reads_without_reordering_program_inputs() {
+        let scalar = Projection::Expression(0);
+        let register = Projection::IndirectRegister {
+            operand: 1,
+            class: 1,
+        };
+        let inputs = vec![Projection::Constant(7), scalar.clone(), register.clone()];
+        let CandidateRecipe::SemanticSequence { stages } =
+            structural_matches(CandidateRecipe::SemanticInputs {
+                program: 12,
+                inputs: inputs.clone(),
+            })
+        else {
+            panic!("a later structural selector requires a match guard")
+        };
+        assert_eq!(stages.len(), 2);
+        assert_eq!(
+            stages[0],
+            SemanticStage {
+                program: None,
+                fixup: false,
+                inputs: vec![register.clone()]
+            }
+        );
+        assert_eq!(
+            stages[1],
+            SemanticStage {
+                program: Some(12),
+                fixup: false,
+                inputs
+            }
+        );
+        let fixup = SemanticStage {
+            program: Some(13),
+            fixup: true,
+            inputs: vec![Projection::TargetExpression(0)],
+        };
+        let encode = SemanticStage {
+            program: Some(12),
+            fixup: false,
+            inputs: vec![scalar.clone(), register.clone()],
+        };
+        let CandidateRecipe::SemanticSequence { stages } =
+            structural_matches(CandidateRecipe::SemanticSequence {
+                stages: vec![encode.clone(), fixup.clone()],
+            })
+        else {
+            unreachable!()
+        };
+        assert_eq!(stages[0].inputs, vec![register]);
+        assert_eq!(stages[1], encode);
+        assert_eq!(stages[2], fixup);
+        // Scalar value programs and product/scale projections are not shape
+        // predicates: failed range/value reads must remain geometry observations.
+        for input in [
+            scalar,
+            Projection::TupleValue {
+                operand: 0,
+                item: 0,
+            },
+            Projection::TupleIdentityScale {
+                operand: 0,
+                item: 0,
+            },
+            Projection::TupleRegister {
+                operand: 0,
+                item: 0,
+                class: 1,
+            },
+            Projection::TupleQualifiedRegister {
+                operand: 0,
+                item: 0,
+                class: 1,
+                qualifier: 1,
+            },
+        ] {
+            assert!(!pure_structure(&input));
+        }
+    }
+
+    #[test]
     fn member_shape_sequence_preserves_package_field_identity() {
         let mut names = NameTable {
             names: Vec::new(),
@@ -1711,11 +1878,11 @@ mod tests {
         assert_eq!(
             stages[0].inputs,
             [
-                Projection::Expression(0),
                 Projection::MemberShape {
                     operand: 1,
                     qualifier: field,
                 },
+                Projection::Expression(0),
             ]
         );
         assert_eq!(
@@ -1747,6 +1914,73 @@ mod tests {
                 CandidateRecipe::Unsupported { .. }
             ));
         }
+    }
+
+    #[test]
+    fn member_shape_ordering_is_stable_and_confined_to_match_stages() {
+        let mut names = NameTable {
+            names: Vec::new(),
+            ids: BTreeMap::new(),
+            reverse: BTreeMap::new(),
+            overflow: false,
+            frozen: false,
+        };
+        let plan = "semv.sequence.v1:match:_@expr2,member_shape1.fieldWidth,target:expr0,member_shape2.fieldHeight,expr1;match:_@expr0,reg1.class0,expr2;encode:word@expr2,member_shape1.fieldWidth,expr1;fixup:fix.abs32@expr2,target:member1.fieldWidth,expr0";
+        let CandidateRecipe::SemanticSequence { stages } = super::parse_recipe(plan, &mut names)
+        else {
+            panic!("bounded structural matches and positional programs must lower");
+        };
+        let width = names.id("Width");
+        let height = names.id("Height");
+        assert_eq!(
+            stages[0].inputs,
+            [
+                Projection::MemberShape {
+                    operand: 1,
+                    qualifier: width,
+                },
+                Projection::MemberShape {
+                    operand: 2,
+                    qualifier: height,
+                },
+                Projection::Expression(2),
+                Projection::TargetExpression(0),
+                Projection::Expression(1),
+            ]
+        );
+        assert_eq!(
+            stages[1].inputs,
+            [
+                Projection::Expression(0),
+                Projection::Register {
+                    operand: 1,
+                    class: 0,
+                },
+                Projection::Expression(2),
+            ]
+        );
+        assert_eq!(
+            stages[2].inputs,
+            [
+                Projection::Expression(2),
+                Projection::MemberShape {
+                    operand: 1,
+                    qualifier: width,
+                },
+                Projection::Expression(1),
+            ]
+        );
+        assert_eq!(
+            stages[3].inputs,
+            [
+                Projection::Expression(2),
+                Projection::TargetMember {
+                    operand: 1,
+                    qualifier: width,
+                },
+                Projection::Expression(0),
+            ]
+        );
     }
 
     #[test]
@@ -2224,8 +2458,14 @@ mod tests {
                 package.names[usize::from(candidate.mnemonic)] == "link"
                     && candidate.qualifier.map(|index| package.qualifiers[usize::from(index)].as_str()) == qualifier
                     && package.names[usize::from(candidate.shape)] == "register_immediate"
-                    && matches!(&candidate.recipe, CandidateRecipe::SemanticInputs { inputs, .. }
-                        if inputs == &[Projection::Expression(1), Projection::Register { operand: 0, class: 1 }])
+                    && matches!(&candidate.recipe, CandidateRecipe::SemanticSequence { stages }
+                        if stages.len() == 2
+                        && stages[0].program.is_none() && !stages[0].fixup
+                        && stages[0].inputs == [Projection::Register { operand: 0, class: 1 }]
+                        && !stages[1].fixup
+                        && stages[1].inputs == [Projection::Expression(1), Projection::Register { operand: 0, class: 1 }]
+                        && stages[1].program.map(|id| package.names[usize::from(id)].as_str())
+                            == Some(if qualifier == Some("l") { "enc.link.long" } else { "enc.link.word" }))
             }), "{qualifier:?}");
         }
     }

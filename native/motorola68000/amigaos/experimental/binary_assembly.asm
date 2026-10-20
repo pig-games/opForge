@@ -37,6 +37,17 @@
 	.include "memory_telemetry.i"
 	.pub
 
+	.priv
+; Stack views: the statement owns Handled; a scalar call pushes Context/Pc.
+DataStatement	.struct
+Handled	.long ?
+	.endstruct
+DataEvaluation	.struct
+Pc	.long ?
+Context	.long ?
+Handled	.long ?
+	.endstruct
+	.pub
 Frame	.struct
 Records	.long ?
 RecordBytes	.long ?
@@ -63,6 +74,7 @@ Reserved	.long ?  ; optional final selected BSS extent callback
 Aligned	.long ?  ; optional final alignment constraint callback, including zero padding
 Seed	.long ?  ; optional incoming numeric values after reset/parameter loading
 Fragment	.long ?  ; optional immutable module fragment placement/link callback
+DataExpression	.long ?  ; optional exact data-expression recipe owner
 	.endstruct
 
 OutputReloc	.struct
@@ -71,7 +83,10 @@ Target	.long ?
 Offset	.long ?
 	.endstruct
 OUTPUT_RELOC_BYTES = OutputReloc.Offset+4
-FRAME_BYTES = Frame.Fragment+4
+FRAME_BYTES = Frame.DataExpression+4
+DATA_UNHANDLED = 0
+DATA_HANDLED = 1
+DATA_INVALID = 2
 FAILURE_NONE = 0
 FAILURE_MUTABLE_LAYOUT = 1
 FAILURE_WHILE_LAYOUT = 2
@@ -1337,6 +1352,7 @@ selected
 statement	.block
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #10
 	movem.l d1-d7/a0-a6, -(sp)
+	clr.l -(sp)  ; current scalar is owned by DataExpression
 	move.l d0, d7
 	movea.l pkg.Context.Package(a2), a3
 	cmpa.l a1, a0
@@ -1672,6 +1688,7 @@ reserveCount
 data
 	move.l pkg.Context.Pc(a2), DataPc
 dataValueStart
+	clr.l DataStatement.Handled(sp)
 	cmpa.l a1, a0
 	bhs.w bad
 	cmpi.b #source.TOKEN_BINARY_BYTES, (a0)
@@ -1730,12 +1747,33 @@ dataBinary
 dataExpression
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #FAILURE_DATA_EVALUATION
 	movea.l a0, a5
-	movea.l a2, a6
+	move.l a2, -(sp)
 	move.l pkg.Context.Pc(a2), -(sp)
 	move.l DataPc, pkg.Context.Pc(a2)
+	; The optional private owner may handle only its exact recognized scalar.
+	; Its returned cursor/value follow ExprVM; ordinary sessions leave it zero.
+	movea.l Session+session.State.Frame, a6
+	movea.l Frame.DataExpression(a6), a6
+	cmpa.w #0, a6
+	beq.w ordinaryDataExpression
+	move.l DataEvaluation.Pc(sp), d0  ; actual field PC, before the directive-PC substitution
+	jsr (a6)
+	cmpi.l #DATA_UNHANDLED, d0
+	beq.w ordinaryDataExpression
+	cmpi.l #DATA_HANDLED, d0
+	beq.w ownedDataExpression
+	moveq #DATA_INVALID, d0
+	bra.w dataExpressionEvaluated
+ownedDataExpression
+	move.l #1, DataEvaluation.Handled(sp)
+	moveq #0, d0
+	bra.w dataExpressionEvaluated
+ordinaryDataExpression
 	jsr expr.evaluate
-	movea.l a6, a2
+dataExpressionEvaluated
+	movea.l DataEvaluation.Context(sp), a2
 	move.l (sp)+, pkg.Context.Pc(a2)
+	addq.l #4, sp
 	tst.l d0
 	bne.w bad
 	tst.l d2
@@ -1758,6 +1796,8 @@ dataValue
 	bsr.w warnByte
 	bne.w bad
 dataRangeOk
+	tst.l DataStatement.Handled(sp)
+	bne.w dataEmitValue
 	.ASSEMBLY_FAILURE_STAGE FailureStage, #FAILURE_DATA_RELOCATION
 	bsr.w markDataReloc
 	bne.w bad
@@ -1804,6 +1844,7 @@ ok
 bad
 	moveq #1, d0
 done
+	addq.l #4, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts

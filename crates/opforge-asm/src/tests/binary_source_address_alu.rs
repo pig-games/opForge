@@ -188,11 +188,11 @@ fn compact_address_alu_memory_packet_sequences() {
             assert_eq!(
                 stages[0].inputs,
                 [
-                    Projection::TargetExpression(0),
                     Projection::Register {
                         operand: 1,
                         class: 1
-                    }
+                    },
+                    Projection::TargetExpression(0)
                 ]
             );
             assert_eq!(
@@ -222,8 +222,8 @@ fn compact_address_alu_memory_packet_sequences() {
                 [0, 1, 2]
             );
             let inputs = long(&packet, stages + 8);
-            assert_eq!(&packet[inputs..inputs + 4], &[15, 0, 0, 0]);
-            assert_eq!(&packet[inputs + 12..inputs + 16], &[1, 1, 0, 1]);
+            assert_eq!(&packet[inputs..inputs + 4], &[1, 1, 0, 1]);
+            assert_eq!(&packet[inputs + 12..inputs + 16], &[15, 0, 0, 0]);
             let fixup_inputs = long(&packet, stages + 24 + 8);
             assert_eq!(&packet[fixup_inputs..fixup_inputs + 4], &[15, 0, 0, 0]);
         }

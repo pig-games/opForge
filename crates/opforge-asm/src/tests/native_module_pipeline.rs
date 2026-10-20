@@ -249,12 +249,22 @@ struct PrivateCase {
 
 const PRIVATE_OUTPUTS: &str = ".region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
 
+#[path = "native_module_binding_fallback.rs"]
+mod binding_fallback;
 #[path = "native_module_cancellation.rs"]
 mod cancellation;
+#[path = "native_module_counted_loops.rs"]
+mod counted_loops;
+#[path = "native_module_data_deltas.rs"]
+mod data_deltas;
+#[path = "native_module_move_geometry.rs"]
+mod move_geometry;
 #[path = "native_module_publication_cases.rs"]
 mod publication_cases;
 #[path = "native_module_real_sources.rs"]
 mod real_sources;
+#[path = "native_module_rigid_span.rs"]
+mod rigid_span;
 #[path = "native_module_template_dependencies.rs"]
 mod template_dependencies;
 
@@ -353,6 +363,11 @@ fn private_cases() -> Vec<PrivateCase> {
     cases.extend(template_dependencies::cases());
     cases.extend(publication_cases::cases());
     cases.extend(cancellation::cases());
+    cases.extend(binding_fallback::cases());
+    cases.extend(move_geometry::cases());
+    cases.extend(rigid_span::cases());
+    cases.extend(counted_loops::cases());
+    cases.extend(data_deltas::cases());
     cases
 }
 
@@ -543,10 +558,26 @@ fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
             );
         }
         name if name.starts_with("private-pc-cancel-") => cancellation::check(case.name, &binary),
+        name if name.starts_with("private-binding-") => binding_fallback::check(&binary),
+        name if name.starts_with("private-rigid-span-") => rigid_span::check(case.name, &binary),
+        name if name.starts_with("private-data-delta-") => data_deltas::check(case.name, &binary),
+        name if name.starts_with("private-counted-loop-") => {
+            counted_loops::check(case.name, &binary)
+        }
+        name if name.starts_with("private-move-") => {
+            move_geometry::check(case.name, &binary);
+            assert_eq!(
+                segments.iter().map(|s| s.relocations.len()).sum::<usize>(),
+                move_geometry::relocation_count(case.name),
+                "each independent address field retains its Hunk relocation"
+            );
+        }
         name if name.starts_with("private-publication-reduced-") => {
             publication_cases::check(case.name, &binary)
         }
         "private-publication-values-only"
+        | "private-publication-dependency-order"
+        | "private-publication-repeated-dependency-order"
         | "private-publication-templates-only"
         | "private-publication-odd-statement-keywords"
         | "private-publication-unowned-origin-fallback"
@@ -969,6 +1000,10 @@ fn private_pipeline_native_cases(progress: bool, disk: bool, mut cases: Vec<Priv
                     if let Some((semantic, payload)) = publication_cases::object_counts(case.name)
                         .or_else(|| real_sources::object_counts(case.name))
                         .or_else(|| cancellation::object_counts(case.name))
+                        .or_else(|| move_geometry::object_counts(case.name))
+                        .or_else(|| rigid_span::object_counts(case.name))
+                        .or_else(|| counted_loops::object_counts(case.name))
+                        .or_else(|| data_deltas::object_counts(case.name))
                     {
                         let expected_objects = if reference {
                             (0, 0)

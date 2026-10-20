@@ -188,15 +188,15 @@ fn compact_callback_package_sequence_inventory() {
                 );
                 let inputs =
                     u32::from_be_bytes(wire[stages + 8..stages + 12].try_into().unwrap()) as usize;
-                assert_eq!(&wire[inputs..inputs + 4], &[0, 0, 0, 0]);
-                assert_eq!(&wire[inputs + 12..inputs + 14], &[19, 1]);
+                assert_eq!(&wire[inputs..inputs + 2], &[19, 1]);
+                assert_eq!(&wire[inputs + 12..inputs + 16], &[0, 0, 0, 0]);
                 let field_name = if priority == 120 { "w" } else { "l" };
                 let field = numeric
                     .names
                     .iter()
                     .position(|name| name == field_name)
                     .unwrap() as u16;
-                assert_eq!(&wire[inputs + 14..inputs + 16], &field.to_be_bytes());
+                assert_eq!(&wire[inputs + 2..inputs + 4], &field.to_be_bytes());
                 let last_inputs =
                     u32::from_be_bytes(wire[stages + 32..stages + 36].try_into().unwrap()) as usize;
                 assert_eq!(
@@ -218,9 +218,42 @@ fn compact_callback_package_sequence_inventory() {
                     u32::from_be_bytes(wire[stage + 8..stage + 12].try_into().unwrap()) as usize;
                 assert_eq!(wire[stage], 0, "first stage must match without emitting");
                 assert_eq!(
-                    &wire[inputs..inputs + 2],
-                    &[17, 0],
-                    "callback source must use the atomic target predicate"
+                    u16::from_be_bytes(wire[stage + 4..stage + 6].try_into().unwrap()),
+                    3
+                );
+                assert_eq!(
+                    &wire[inputs..inputs + 12],
+                    &[14, 1, 0, 2, 0, 0, 0, 0, 255, 255, 0, 0],
+                    "pure tuple arity precedes scalar target matching"
+                );
+                let target_inputs = inputs + 12;
+                assert_eq!(
+                    &wire[target_inputs..target_inputs + 12],
+                    &[15, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0],
+                    "callback source must retain a general target expression, including addends"
+                );
+                assert_eq!(
+                    [
+                        wire[stage],
+                        wire[stage + 12],
+                        wire[stage + 24],
+                        wire[stage + 36]
+                    ],
+                    [0, 1, 2, 1],
+                    "the target fixup must precede the trailing displacement field"
+                );
+                let fixup = stage + 24;
+                assert_eq!(
+                    u16::from_be_bytes(wire[fixup + 4..fixup + 6].try_into().unwrap()),
+                    1,
+                    "the fixup consumes exactly the matched source target"
+                );
+                let fixup_inputs =
+                    u32::from_be_bytes(wire[fixup + 8..fixup + 12].try_into().unwrap()) as usize;
+                assert_eq!(
+                    &wire[fixup_inputs..fixup_inputs + 12],
+                    &wire[target_inputs..target_inputs + 12],
+                    "match and fixup must retain the same source operand and target metadata"
                 );
             }
             immediate_rows.push((

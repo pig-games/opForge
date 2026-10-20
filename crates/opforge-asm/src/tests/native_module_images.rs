@@ -40,6 +40,13 @@ fn build_probe(root: &Path, dir: &Path, disk: bool) -> Vec<u8> {
         &input,
     )
     .unwrap();
+    fs::copy(
+        root.join(
+            "native/motorola68000/amigaos/test-harnesses/experimental/module_data_delta_checks.i",
+        ),
+        dir.join("module_data_delta_checks.i"),
+    )
+    .unwrap();
     let native = root.join("native/motorola68000/amigaos");
     let cli = Cli::parse_from([
         "opforge".to_owned(),

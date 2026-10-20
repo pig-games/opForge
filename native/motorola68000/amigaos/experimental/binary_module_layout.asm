@@ -10,6 +10,7 @@
 	.use experimental.amigaos.binary_sections as sections
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_encoding as encoding
+	.use tkpkg.amigaos.encoding_execution as execution
 	.use experimental.amigaos.binary_hunk_references as hunkrefs
 	.use exprvm.amigaos.runtime as exprvm
 	.pub
@@ -30,6 +31,19 @@ External	.long ?  ; transient exact-identity import resolver
 ExternalContext	.long ?
 	.endstruct
 STATE_BYTES = State.ExternalContext+4
+; Resolved shared-data pair. Exact anchors, never already-subtracted values.
+Delta	.struct
+TargetSymbol	.long ?
+TargetSection	.long ?
+TargetValue	.long ?
+BaseSymbol	.long ?
+BaseSection	.long ?
+BaseValue	.long ?
+FieldPc	.long ?
+Span	.long ?
+LittleEndian	.long ?  ; zero BE, one LE
+	.endstruct
+DATA_DELTA_BYTES = Delta.LittleEndian+4
 Row	.struct
 Section	.long ?
 StartPc	.long ?
@@ -57,10 +71,24 @@ Program	.long ?
 Arguments	.long ?
 Position	.long ?
 Requested	.long ?  ; original package request, encoding.REQUEST_AUTO or ID
+BaseSymbol	.long ?  ; exact local base anchor for data/scalar cancellation
+BaseValue	.long ?
 	.endstruct
-PENDING_BYTES = PendingRow.Requested+4
+PENDING_BYTES = PendingRow.BaseValue+4
 POSITION_REPLAY = 1
 POSITION_CANCELLATION = 2; transient proof, never a serialized relocation
+DATA_DELTA = 3
+SCALAR_CANCELLATION = 4; proof-only row; never serialized
+POSITION_FIELD = 5
+InstructionFrame	.struct
+Pending	.res PENDING_BYTES
+Field	.res execution.POSITION_FIELD_BYTES
+	.endstruct
+INSTRUCTION_FRAME_BYTES = InstructionFrame.Field+execution.POSITION_FIELD_BYTES
+MovementFrame	.struct
+Forward	.word ?
+	.endstruct
+MOVEMENT_FRAME_BYTES = MovementFrame.Forward+2
 	.section code, kind=code
 	.pub
 ; A0=State,A1=external callback,A2=borrowed callback context. D0/CCR=OK.
@@ -252,13 +280,15 @@ done
 ; A0=State,A1=Frame,D1=PC,D2=section,D3=instruction length.
 instruction	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	suba.w #PENDING_BYTES, sp
+	suba.w #INSTRUCTION_FRAME_BYTES, sp
 	movea.l a0, a6
 	movea.l a1, a5
 	move.l d1, PendingRow.SourcePc(sp)
 	move.l d2, PendingRow.SourceSection(sp)
 	move.l assembly.Frame.RecordOffset(a5), PendingRow.SourceRecord(sp)
 	move.l d3, PendingRow.Span(sp)
+	clr.l PendingRow.BaseSymbol(sp)
+	clr.l PendingRow.BaseValue(sp)
 	jsr encoding.outputPositionDependent
 	tst.l d0
 	bne.w positionRecipe
@@ -280,6 +310,38 @@ positionRecipe
 	move.l #POSITION_REPLAY, PendingRow.Position(sp)
 	bra.w positionTarget
 cancellation
+	lea InstructionFrame.Field(sp), a0
+	jsr encoding.outputRelativeField
+	bne.w wholeCancellation
+	move.l d1, d4
+	move.l d2, d5
+	move.l InstructionFrame.Field+execution.RelativeField.Value(sp), PendingRow.Value(sp)
+	move.l InstructionFrame.Field+execution.RelativeField.Offset(sp), d0
+	add.l d0, PendingRow.SourcePc(sp)
+	bcs.w bad
+	sub.l InstructionFrame.Field+execution.RelativeField.Adjustment(sp), d0
+	bvs.w bad
+	move.l d0, PendingRow.Arguments(sp)
+	move.l InstructionFrame.Field+execution.RelativeField.Width(sp), d0
+	cmpi.l #1, d0
+	beq.w fieldWidthReady
+	cmpi.l #2, d0
+	beq.w fieldWidthReady
+	cmpi.l #4, d0
+	bne.w bad
+fieldWidthReady
+	move.l d0, PendingRow.Span(sp)
+	move.l #image.PROGRAM_SIGNED_DELTA_BE, PendingRow.Program(sp)
+	move.l InstructionFrame.Field+execution.RelativeField.LittleEndian(sp), d0
+	beq.w fieldReady
+	cmpi.l #1, d0
+	bne.w bad
+	move.l #image.PROGRAM_SIGNED_DELTA_LE, PendingRow.Program(sp)
+fieldReady
+	move.l #POSITION_FIELD, PendingRow.Position(sp)
+	clr.l PendingRow.Requested(sp)
+	bra.w positionTarget
+wholeCancellation
 	jsr encoding.outputPositionCancellation
 	bne.w bad
 	move.l d1, d4
@@ -294,6 +356,11 @@ positionTarget
 	cmpi.l #sections.HUNK_SLOT_COUNT, d4
 	bhs.w bad
 	move.l d4, PendingRow.Section(sp)
+	cmpi.l #POSITION_FIELD, PendingRow.Position(sp)
+	bne.w sectionReady
+	cmp.l PendingRow.SourceSection(sp), d4
+	bne.w bad
+sectionReady
 	cmp.l State.Names(a6), d5
 	bhs.w bad
 	move.l d5, PendingRow.Symbol(sp)
@@ -302,6 +369,8 @@ positionTarget
 	movea.l State.Labels+memory.Block.Pointer(a6), a0
 	cmpi.l #$ffffffff, 0(a0, d0.l)
 	bne.w identityReady
+	cmpi.l #POSITION_FIELD, PendingRow.Position(sp)
+	beq.w bad
 	cmpi.l #POSITION_CANCELLATION, PendingRow.Position(sp)
 	beq.w bad  ; only a known local anchor can prove equal fragment movement
 	tst.l State.External(a6)
@@ -319,7 +388,7 @@ good
 bad
 	moveq #INVALID, d0
 done
-	adda.w #PENDING_BYTES, sp
+	adda.w #INSTRUCTION_FRAME_BYTES, sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -372,6 +441,8 @@ identityReady
 	clr.l PendingRow.Arguments(sp)
 	clr.l PendingRow.Position(sp)
 	clr.l PendingRow.Requested(sp)
+	clr.l PendingRow.BaseSymbol(sp)
+	clr.l PendingRow.BaseValue(sp)
 	move.l assembly.Frame.RecordOffset(a5), d0
 	bsr.w owner
 	move.l d0, PendingRow.Source(sp)
@@ -386,6 +457,103 @@ done
 	tst.l d0
 	rts
 	.bend  ; absolute
+
+; A0=State,A1=assembly Frame,A2=resolved Delta. D0/CCR=OK/INVALID;
+; other registers preserved. Final pass two only; descriptor is borrowed for
+; this call. Both local anchors must share the field's private section. Finish
+; proves field/base share the exact fragment; linking rechecks global section
+; identity before emitting a fixed-width, loader-invariant difference.
+dataDelta	.block
+	moveq #DATA_DELTA, d0
+	bra.w appendDifference
+	.bend  ; dataDelta
+
+; Same Delta descriptor and preservation ABI, but no output field is patched.
+; A resolved scalar pair may be frozen only when both anchors share one exact
+; fragment whose owner is mandatory or already retained with the instruction.
+scalarDifference	.block
+	moveq #SCALAR_CANCELLATION, d0
+	bra.w appendDifference
+	.bend  ; scalarDifference
+	.priv
+appendDifference	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #PENDING_BYTES, sp
+	move.l d0, PendingRow.Position(sp)
+	movea.l a0, a6
+	movea.l a1, a5
+	movea.l a2, a4
+	movea.l assembly.Frame.Context(a5), a3
+	cmpi.w #2, package.Context.Pass(a3)
+	bne.w bad
+	moveq #0, d0
+	move.w package.Context.CurrentSection(a3), d0
+	subq.l #1, d0
+	cmpi.l #sections.HUNK_SLOT_COUNT, d0
+	bhs.w bad
+	move.l d0, PendingRow.SourceSection(sp)
+	move.l Delta.TargetSection(a4), d0
+	cmpi.l #sections.HUNK_SLOT_COUNT, d0
+	bhs.w bad
+	cmp.l Delta.BaseSection(a4), d0
+	bne.w bad
+	move.l d0, PendingRow.Section(sp)
+	cmpi.l #SCALAR_CANCELLATION, PendingRow.Position(sp)
+	beq.w scalarReady
+	cmp.l PendingRow.SourceSection(sp), d0
+	bne.w bad  ; reject before publication, not later during final linking
+	move.l Delta.Span(a4), d0
+	cmpi.l #2, d0
+	beq.w spanReady
+	cmpi.l #4, d0
+	bne.w bad
+spanReady
+	move.l d0, PendingRow.Span(sp)
+	move.l #image.PROGRAM_DATA_DELTA_BE, PendingRow.Program(sp)
+	move.l Delta.LittleEndian(a4), d0
+	beq.w endianReady
+	cmpi.l #1, d0
+	bne.w bad
+	move.l #image.PROGRAM_DATA_DELTA_LE, PendingRow.Program(sp)
+	bra.w endianReady
+scalarReady
+	clr.l PendingRow.Span(sp)
+	clr.l PendingRow.Program(sp)
+endianReady
+	move.l Delta.TargetSymbol(a4), d1
+	move.l d1, PendingRow.Symbol(sp)
+	bsr.w localAnchor
+	bne.w bad
+	move.l Delta.BaseSymbol(a4), d1
+	move.l d1, PendingRow.BaseSymbol(sp)
+	bsr.w localAnchor
+	bne.w bad
+	move.l Delta.TargetValue(a4), PendingRow.Value(sp)
+	move.l Delta.BaseValue(a4), PendingRow.BaseValue(sp)
+	move.l Delta.FieldPc(a4), PendingRow.SourcePc(sp)
+	move.l assembly.Frame.RecordOffset(a5), d0
+	move.l d0, PendingRow.SourceRecord(sp)
+	bsr.w owner
+	move.l d0, PendingRow.Source(sp)
+	clr.l PendingRow.Arguments(sp)
+	clr.l PendingRow.Requested(sp)
+	movea.l sp, a1
+	cmpi.l #SCALAR_CANCELLATION, PendingRow.Position(sp)
+	bne.w append
+	bsr.w reuseScalarProof
+	beq.w done
+append
+	bsr.w appendPending
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	adda.w #PENDING_BYTES, sp
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; appendDifference
+	.pub
 
 ; A0=State,A1=final assembly Frame. Materialize pointers only after geometry closes.
 finish	.block
@@ -421,6 +589,8 @@ pending
 	bhs.w good
 	movea.l State.Pending+memory.Block.Pointer(a6), a2
 	adda.l d7, a2
+	cmpi.l #SCALAR_CANCELLATION, PendingRow.Position(a2)
+	beq.w scalarProof
 	move.l PendingRow.Source(a2), d0
 	move.l PendingRow.SourceSection(a2), d1
 	move.l PendingRow.SourcePc(a2), d2
@@ -433,6 +603,21 @@ pending
 	bcs.w sourceBad
 	cmp.l image.Input.Bytes(a4), d5
 	bhi.w sourceBad
+	cmpi.l #DATA_DELTA, PendingRow.Position(a2)
+	bne.w baseReady
+	movea.l a6, a0
+	move.l PendingRow.BaseSymbol(a2), d1
+	move.l PendingRow.SourceSection(a2), d2
+	move.l PendingRow.BaseValue(a2), d3
+	bsr.w symbol
+	bne.w sourceBad
+	cmp.l d1, d6
+	bne.w sourceBad  ; equal PCs on different alignment sides do not cancel
+	move.l PendingRow.SourcePc(a2), d0
+	sub.l PendingRow.BaseValue(a2), d0
+	bvs.w sourceBad
+	move.l d0, PendingRow.Arguments(a2)
+baseReady
 	move.l PendingRow.Symbol(a2), d1
 	move.l d1, d0
 	lsl.l #2, d0
@@ -494,18 +679,61 @@ externalTarget
 targetReady
 	; Alignment between fragments can change even inside one whole block.
 	; Position recipes are omitted only when both endpoints share a fragment.
-	tst.l PendingRow.Position(a2)
-	beq.w retain
+	cmpi.l #POSITION_REPLAY, PendingRow.Position(a2)
+	bne.w retain
 	cmp.l d5, d6
 	beq.w advance
 retain
+	cmpi.l #POSITION_FIELD, PendingRow.Position(a2)
+	beq.w fieldInterval
 	; Replaying a chosen automatic candidate across moving fragments would
 	; freeze a width that the shared assembler may select differently. Explicit
 	; requests retain fixed package geometry; same-fragment deltas stay invariant.
-	tst.l PendingRow.Position(a2)
-	beq.w fixedRecipe
+	cmpi.l #POSITION_REPLAY, PendingRow.Position(a2)
+	bne.w fixedRecipe
 	cmpi.l #encoding.REQUEST_AUTO, PendingRow.Requested(a2)
-	beq.w bad
+	bne.w fixedRecipe
+	; Selected endpoints keep their whole owners live through this retained
+	; recipe. Other owners may disappear; certify the complete displacement
+	; interval through the package before freezing the selected AUTO candidate.
+	movem.l d1-d4, -(sp)
+	move.l d6, d1
+	move.l d5, d2
+	bsr.w movementBounds
+	bne.w intervalDone
+	cmp.l d2, d1
+	beq.w intervalDone  ; rigid span: every candidate sees the original delta
+	move.l d1, d3
+	move.l d2, d4
+	move.l PendingRow.Program(a2), d1
+	move.l PendingRow.Arguments(a2), d2
+	movea.l assembly.Frame.Context(a5), a0
+	movea.l package.Context.Package(a0), a0
+	jsr encoding.positionInterval
+intervalDone
+	movem.l (sp)+, d1-d4
+	tst.l d0
+	bne.w bad
+	bra.w fixedRecipe
+fieldInterval
+	movem.l d1-d4, -(sp)
+	move.l d6, d1
+	move.l d5, d2
+	bsr.w movementBounds
+	bne.w fieldIntervalDone
+	add.l PendingRow.Arguments(a2), d1
+	bvs.w fieldIntervalBad
+	add.l PendingRow.Arguments(a2), d2
+	bvs.w fieldIntervalBad
+	move.l PendingRow.Span(a2), d0
+	bsr.w signedFieldBounds
+	bra.w fieldIntervalDone
+fieldIntervalBad
+	moveq #INVALID, d0
+fieldIntervalDone
+	movem.l (sp)+, d1-d4
+	tst.l d0
+	bne.w bad
 fixedRecipe
 	move.l State.Relocs+memory.Block.Used(a6), d2
 	move.l d2, d0
@@ -524,6 +752,28 @@ fixedRecipe
 	move.l PendingRow.Program(a2), image.Reloc.Program(a0)
 	move.l PendingRow.Arguments(a2), image.Reloc.Arguments(a0)
 	addi.l #image.RELOC_BYTES, State.Relocs+memory.Block.Used(a6)
+	bra.w advance
+scalarProof
+	movea.l a6, a0
+	move.l PendingRow.Symbol(a2), d1
+	move.l PendingRow.Section(a2), d2
+	move.l PendingRow.Value(a2), d3
+	bsr.w symbol
+	bne.w bad
+	move.l d1, d6
+	move.l PendingRow.BaseSymbol(a2), d1
+	move.l PendingRow.Section(a2), d2
+	move.l PendingRow.BaseValue(a2), d3
+	bsr.w symbol
+	bne.w bad
+	cmp.l d1, d6
+	bne.w bad
+	move.l d1, d0
+	bsr.w geometry
+	move.l image.Input.Owner(a4), d0
+	beq.w advance
+	cmp.l PendingRow.Source(a2), d0
+	bne.w bad  ; no serialized edge exists to retain another prunable owner
 advance
 	addi.l #PENDING_BYTES, d7
 	bra.w pending
@@ -539,6 +789,131 @@ done
 	tst.l d0
 	rts
 	.bend  ; finish
+
+; D0=field width,D1/D2=signed inclusive bounds after PC adjustment.
+; D0/CCR=status; other registers preserved. The fixed-field package contract
+; supplies signed range semantics; no opcode or candidate width is inferred.
+signedFieldBounds	.block
+	cmpi.l #4, d0
+	beq.w good
+	cmpi.l #2, d0
+	beq.w wordRange
+	cmpi.l #1, d0
+	bne.w bad
+	cmpi.l #-128, d1
+	blt.w bad
+	cmpi.l #127, d2
+	bgt.w bad
+	bra.w good
+wordRange
+	cmpi.l #-32768, d1
+	blt.w bad
+	cmpi.l #32767, d2
+	bgt.w bad
+good
+	moveq #OK, d0
+	rts
+bad
+	moveq #INVALID, d0
+	rts
+	.bend  ; signedFieldBounds
+
+; A6=State,A2=pending recipe,D1/D2=local source/target fragment IDs.
+; D0/CCR=OK,D1/D2=signed target-minus-PC minimum/maximum; others preserved.
+; The caller MUST retain the target recipe/dependency: source selection then
+; guarantees both endpoint owners survive. Owner0 is mandatory. Conservatively
+; permit every other owner's extent to disappear, bounding all pruning subsets.
+; Section excursions, gaps or later alignment reject; the first row's alignment
+; precedes both anchors. Exact label identity, rather than the addended numeric
+; address, determines which endpoint moves when an intermediate owner disappears.
+movementBounds	.block
+	movem.l d3-d7/a0-a4, -(sp)
+	suba.w #MOVEMENT_FRAME_BYTES, sp
+	clr.w MovementFrame.Forward(sp)
+	tst.l d1
+	beq.w bad
+	cmp.l State.Count(a6), d1
+	bhi.w bad
+	tst.l d2
+	beq.w bad
+	cmp.l State.Count(a6), d2
+	bhi.w bad
+	move.l d1, d0
+	bsr.w geometry
+	move.l image.Input.Owner(a4), d3
+	move.l Row.Section(a3), d4
+	move.l d2, d0
+	bsr.w geometry
+	move.l image.Input.Owner(a4), d5
+	move.l d1, d6
+	move.l d2, d7
+	cmp.l d7, d6
+	bhs.w backward
+	move.w #1, MovementFrame.Forward(sp)
+	bra.w first
+backward
+	exg d6, d7
+first
+	moveq #0, d2  ; total extent whose whole owner may be omitted
+	move.l d6, d0
+	bsr.w geometry
+	bra.w checkRow
+next
+	move.l d6, d0
+	bsr.w geometry
+	cmpi.l #1, image.Input.Alignment(a4)
+	bne.w bad
+	cmp.l Row.StartPc(a3), d1
+	bne.w bad
+checkRow
+	cmp.l Row.Section(a3), d4
+	bne.w bad
+	move.l image.Input.Owner(a4), d0
+	beq.w ownerReady
+	cmp.l d3, d0
+	beq.w ownerReady
+	cmp.l d5, d0
+	beq.w ownerReady
+	add.l image.Input.Extent(a4), d2
+	bcs.w bad
+	tst.l d2
+	bmi.w bad  ; removable extent must remain a nonnegative signed bound
+ownerReady
+	move.l Row.NextPc(a3), d1
+	move.l d1, d0
+	sub.l Row.StartPc(a3), d0
+	bcs.w bad
+	cmp.l image.Input.Extent(a4), d0
+	bne.w bad
+	cmp.l d7, d6
+	beq.w bounds
+	addq.l #1, d6
+	bra.w next
+bounds
+	move.l PendingRow.Value(a2), d1
+	sub.l PendingRow.SourcePc(a2), d1
+	bvs.w bad
+	tst.w MovementFrame.Forward(sp)
+	beq.w backwardBounds
+	move.l d1, d0
+	sub.l d2, d1
+	bvs.w bad
+	move.l d0, d2
+	bra.w good
+backwardBounds
+	add.l d1, d2
+	bvs.w bad
+good
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	adda.w #MOVEMENT_FRAME_BYTES, sp
+	movem.l (sp)+, d3-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; movementBounds
 
 ; A0=State,D1=symbol ID,D2=section (zero based),D3=original final value.
 ; D0/CCR=status; success D1=fragment ID,D2=offset. Others preserved.
@@ -801,6 +1176,68 @@ done
 	tst.l d0
 	rts
 	.bend  ; locate
+
+; A6=State,D1=source identity. D0/CCR=status; other registers preserved.
+localAnchor	.block
+	movem.l d1/a0, -(sp)
+	cmp.l State.Names(a6), d1
+	bhs.w bad
+	lsl.l #2, d1
+	movea.l State.Labels+memory.Block.Pointer(a6), a0
+	cmpi.l #$ffffffff, 0(a0, d1.l)
+	beq.w bad
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1/a0
+	tst.l d0
+	rts
+	.bend  ; localAnchor
+
+; A6=State,A1=new scalar proof. D0/CCR=OK reused,INVALID absent;
+; other registers preserved. Repeated candidate/fixup evaluations share one
+; source-record/canonical-pair proof. Refresh values for the final layout pass.
+reuseScalarProof	.block
+	movem.l d1-d2/a0, -(sp)
+	moveq #0, d2
+next
+	cmp.l State.Pending+memory.Block.Used(a6), d2
+	bhs.w absent
+	movea.l State.Pending+memory.Block.Pointer(a6), a0
+	adda.l d2, a0
+	cmpi.l #SCALAR_CANCELLATION, PendingRow.Position(a0)
+	bne.w advance
+	move.l PendingRow.SourceRecord(a1), d1
+	cmp.l PendingRow.SourceRecord(a0), d1
+	bne.w advance
+	move.l PendingRow.Source(a1), d1
+	cmp.l PendingRow.Source(a0), d1
+	bne.w advance
+	move.l PendingRow.Symbol(a1), d1
+	cmp.l PendingRow.Symbol(a0), d1
+	bne.w advance
+	move.l PendingRow.BaseSymbol(a1), d1
+	cmp.l PendingRow.BaseSymbol(a0), d1
+	bne.w advance
+	move.l PendingRow.Section(a1), d1
+	cmp.l PendingRow.Section(a0), d1
+	bne.w advance
+	move.l PendingRow.Value(a1), PendingRow.Value(a0)
+	move.l PendingRow.BaseValue(a1), PendingRow.BaseValue(a0)
+	moveq #OK, d0
+	bra.w done
+advance
+	addi.l #PENDING_BYTES, d2
+	bra.w next
+absent
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	rts
+	.bend  ; reuseScalarProof
 
 ; A6=State,A1=pending row. Appends an owned copy; preserves other registers.
 appendPending	.block

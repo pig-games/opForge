@@ -370,7 +370,22 @@ fn compact_hunk_immediate_data_package_projection() {
     assert_eq!(wire[row + 5], 9);
     let match_stage = long(row + 12);
     let match_inputs = long(match_stage + 8);
-    assert_eq!(wire[match_inputs], 17);
+    assert_eq!(word(match_stage + 4), 2);
+    assert_eq!(&wire[match_inputs..match_inputs + 4], &[1, 1, 0, 0]);
+    assert_eq!(
+        &wire[match_inputs + 12..match_inputs + 24],
+        &[17, 0, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0]
+    );
+    assert_eq!(
+        [
+            wire[match_stage],
+            wire[match_stage + 12],
+            wire[match_stage + 24]
+        ],
+        [0, 1, 2]
+    );
+    let fixup_inputs = long(match_stage + 24 + 8);
+    assert_eq!(&wire[fixup_inputs..fixup_inputs + 4], &[15, 0, 0, 0]);
 }
 
 #[test]

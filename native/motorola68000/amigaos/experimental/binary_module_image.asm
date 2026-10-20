@@ -55,6 +55,14 @@ Arguments	.long ?
 RELOC_BYTES = Reloc.Arguments+4
 PATCH_CAPACITY = 4096
 PROGRAM_ABSOLUTE = $ffffffff
+; Shared data recipes reserve IDs outside the package's u16 program domain.
+PROGRAM_DATA_DELTA_BE = $fffffffe
+PROGRAM_DATA_DELTA_LE = $fffffffd
+PROGRAM_SIGNED_DELTA_BE = $fffffffc
+PROGRAM_SIGNED_DELTA_LE = $fffffffb
+; Delta Span2/4 stores low bits of target+Addend-(Base+Offset)+signed Arguments.
+; Its base anchor was proved to share the field fragment; Resolve must prove
+; that the target shares the field's final global placement section.
 Frame	.struct
 Blocks	.long ?
 Count	.long ?
@@ -180,11 +188,8 @@ field
 	beq.w bad
 	cmpi.l #PATCH_CAPACITY, d1
 	bhi.w bad
-	cmpi.l #PROGRAM_ABSOLUTE, Reloc.Program(a4)
-	bne.w spanReady
-	cmpi.l #4, d1
+	bsr.w checkRelocRecipe
 	bne.w bad
-spanReady
 	move.l Reloc.Offset(a4), d0
 	cmp.l d2, d0
 	blo.w bad
@@ -429,11 +434,8 @@ field
 	beq.w bad
 	cmpi.l #PATCH_CAPACITY, d1
 	bhi.w bad
-	cmpi.l #PROGRAM_ABSOLUTE, Reloc.Program(a4)
-	bne.w spanReady
-	cmpi.l #4, d1
+	bsr.w checkRelocRecipe
 	bne.w bad
-spanReady
 	move.l Reloc.Offset(a4), d0
 	cmp.l d2, d0
 	blo.w bad
@@ -628,8 +630,9 @@ done
 ; D3=Base+field offset,D4=resolved target+addend)->D0=status,D1=written.
 ; Other registers preserved. Patch must be pure/stable across both passes and
 ; write only within its capacity. Exactly Span bytes must be produced.
-; Nonabsolute recipes require Patch and the same package identity used by the
-; producer. This private image does not yet serialize a package fingerprint.
+; Shared data and signed fixed-field delta recipes write bytes without Patch.
+; Other nonabsolute recipes require Patch and the producer's package identity.
+; This private image does not yet serialize a package fingerprint.
 ; Preflight uses bounded stack scratch.
 ; Input/output/Frame do not overlap.
 link	.block
@@ -743,7 +746,53 @@ next
 	adda.l Reloc.Offset(a4), a1
 destinationReady
 	cmpi.l #PROGRAM_ABSOLUTE, Reloc.Program(a4)
+	beq.w absolute
+	cmpi.l #PROGRAM_DATA_DELTA_BE, Reloc.Program(a4)
+	beq.w dataDelta
+	cmpi.l #PROGRAM_DATA_DELTA_LE, Reloc.Program(a4)
+	beq.w dataDelta
+	cmpi.l #PROGRAM_SIGNED_DELTA_BE, Reloc.Program(a4)
+	beq.w signedDelta
+	cmpi.l #PROGRAM_SIGNED_DELTA_LE, Reloc.Program(a4)
 	bne.w program
+signedDelta
+	bsr.w signedDeltaValue
+	bne.w bad
+	bra.w writeDelta
+dataDelta
+	; The base anchor shares the field fragment. Their movement cancels;
+	; resolve has already proved the target shares the final global section.
+	; Word/long directives intentionally retain only the low output bits.
+	sub.l LinkFrame.Base(a6), d1
+	sub.l Reloc.Offset(a4), d1
+	add.l Reloc.Arguments(a4), d1
+writeDelta
+	movem.l d2-d4, -(sp)
+	move.l Reloc.Span(a4), d2
+	cmpi.l #PROGRAM_DATA_DELTA_LE, Reloc.Program(a4)
+	beq.w littleDelta
+	cmpi.l #PROGRAM_SIGNED_DELTA_LE, Reloc.Program(a4)
+	beq.w littleDelta
+	move.l d2, d3
+	subq.l #1, d3
+	lsl.l #3, d3
+bigDelta
+	move.l d1, d4
+	lsr.l d3, d4
+	move.b d4, (a1)+
+	subi.l #8, d3
+	subq.l #1, d2
+	bne.w bigDelta
+	bra.w deltaDone
+littleDelta
+	move.b d1, (a1)+
+	lsr.l #8, d1
+	subq.l #1, d2
+	bne.w littleDelta
+deltaDone
+	movem.l (sp)+, d2-d4
+	bra.w advance
+absolute
 	; The native 68020 supports unaligned long stores; wire order is BE32.
 	move.l d1, (a1)
 	bra.w advance
@@ -793,6 +842,88 @@ done
 	.bend  ; linkValidated
 
 	.priv
+; A4=recipe,A6=LinkFrame,D1=resolved target+addend. D0=status,
+; D1=signed adjusted difference on success; others preserved. Compare unsigned
+; addresses before subtraction so crossing the sign bit is not false overflow.
+signedDeltaValue	.block
+	move.l d2, -(sp)
+	move.l LinkFrame.Base(a6), d2
+	add.l Reloc.Offset(a4), d2
+	bcs.w bad
+	cmp.l d2, d1
+	bhs.w positive
+	sub.l d2, d1
+	bpl.w bad
+	bra.w adjusted
+positive
+	sub.l d2, d1
+	bmi.w bad
+adjusted
+	add.l Reloc.Arguments(a4), d1
+	bvs.w bad
+	move.l Reloc.Span(a4), d2
+	cmpi.l #4, d2
+	beq.w good
+	cmpi.l #2, d2
+	beq.w wordRange
+	cmpi.l #1, d2
+	bne.w bad
+	cmpi.l #-128, d1
+	blt.w bad
+	cmpi.l #127, d1
+	bgt.w bad
+	bra.w good
+wordRange
+	cmpi.l #-32768, d1
+	blt.w bad
+	cmpi.l #32767, d1
+	bgt.w bad
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	move.l (sp)+, d2
+	tst.l d0
+	rts
+	.bend  ; signedDeltaValue
+
+; A4=relocation row,D1=bounded nonzero span. D0/CCR=status;
+; other registers preserved. Unknown opaque programs remain callback-owned.
+checkRelocRecipe	.block
+	cmpi.l #PROGRAM_ABSOLUTE, Reloc.Program(a4)
+	beq.w absolute
+	cmpi.l #PROGRAM_DATA_DELTA_BE, Reloc.Program(a4)
+	beq.w dataDelta
+	cmpi.l #PROGRAM_DATA_DELTA_LE, Reloc.Program(a4)
+	beq.w dataDelta
+	cmpi.l #PROGRAM_SIGNED_DELTA_BE, Reloc.Program(a4)
+	beq.w signedDelta
+	cmpi.l #PROGRAM_SIGNED_DELTA_LE, Reloc.Program(a4)
+	bne.w good
+signedDelta
+	tst.l Reloc.Target(a4)
+	ble.w bad
+	cmpi.l #1, d1
+	beq.w good
+dataDelta
+	; Only local targets and warning-free word/long narrowing are supported.
+	tst.l Reloc.Target(a4)
+	ble.w bad
+	cmpi.l #2, d1
+	beq.w good
+absolute
+	cmpi.l #4, d1
+	bne.w bad
+good
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; checkRelocRecipe
+
 ; A2=input/serialized row. Their numeric geometry shares explicit offsets.
 ; D0/CCR=status; D1-D2 clobbered. No pointers or payload bytes are read.
 checkInputGeometry	.block

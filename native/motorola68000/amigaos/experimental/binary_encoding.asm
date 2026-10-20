@@ -23,6 +23,9 @@
 	.use tkpkg.amigaos.value_execution as value
 	.pub
 REQUEST_AUTO = encoding.REQUEST_AUTO
+SCALAR_UNHANDLED = 0
+SCALAR_HANDLED = 1
+SCALAR_INVALID = 2
 	.priv
 
 TOKEN_SYMBOL_0 = 0
@@ -96,6 +99,11 @@ Candidate	.res encoding.SCALAR_INPUT_BYTES
 Class	.res encoding.SCALAR_INPUT_BYTES
 	.endstruct
 REPLAY_INPUT_BYTES = ReplayInput.Class+encoding.SCALAR_INPUT_BYTES
+ScalarCall	.struct
+Cursor	.long ?
+Temporary	.long ?
+	.endstruct
+SCALAR_CALL_BYTES = ScalarCall.Temporary+4
 
 	.section bss, kind=bss
 	.priv
@@ -120,12 +128,14 @@ PositionProofCount	.res word, 1
 PositionProofTarget	.res word, 1
 PositionFixupCount	.res long, 1
 PositionFixupIdentity	.res long, 1
+PositionField	.res byte, encoding.POSITION_FIELD_BYTES
 PositionRecipeProgram	.res word, 1
 PositionRecipeArguments	.res long, 1
 PositionRecipeValue	.res long, 1
 PositionRecipeIdentity	.res long, 1
 PositionRecipeRequested	.res long, 1
 GeometryState	.res word, 1
+ScalarProvider	.res long, 1
 ReplayExecution	.res byte, encoding.CONTEXT_BYTES
 ReplayRecords	.res byte, REPLAY_INPUT_BYTES
 ProjectedTarget	.res word, 1
@@ -334,6 +344,31 @@ bad
 	rts
 	.bend  ; outputPositionCancellation
 
+; A0=caller-owned encoding.POSITION_FIELD_BYTES output. D0/CCR=status,
+; D1=one-based target section,D2=exact source identity. Other registers kept.
+; Replay is narrower than cancellation: require signed, untransformed sole
+; field evidence and a placement-independent candidate history. The layout
+; owner separately checks field extent and all possible movement/range values.
+outputRelativeField	.block
+	cmpa.w #0, a0
+	beq.w bad
+	bsr.w outputPositionCancellation
+	bne.w bad
+	cmpi.l #encoding.FIXUP_RANGE_SIGNED, PositionField+encoding.RelativeField.Range
+	bne.w bad
+	move.l PositionField+encoding.RelativeField.Offset, encoding.RelativeField.Offset(a0)
+	move.l PositionField+encoding.RelativeField.Width, encoding.RelativeField.Width(a0)
+	move.l PositionField+encoding.RelativeField.LittleEndian, encoding.RelativeField.LittleEndian(a0)
+	move.l PositionField+encoding.RelativeField.Adjustment, encoding.RelativeField.Adjustment(a0)
+	move.l PositionField+encoding.RelativeField.Value, encoding.RelativeField.Value(a0)
+	move.l PositionField+encoding.RelativeField.Range, encoding.RelativeField.Range(a0)
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; outputRelativeField
+
 ; D0/CCR=nonzero if successful output observes instruction PC.
 ; All other registers preserved; distinct from Hunk cancellation eligibility.
 outputPositionDependent	.block
@@ -379,6 +414,63 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; outputPositionRequestedCandidate
+
+; A0=optional scalar provider; D0/CCR=0, other registers preserved.
+; The assembly owner must clear this borrowed callback before retiring state.
+; Provider(A0/A1=bounded expression,A2=Context) returns SCALAR_* classification,
+; A0=cursor,D1=value,D2=unknown when handled; D3-D7/A1-A6 preserved. Unhandled
+; must leave A0 unchanged. It may permit only a deferred, exact layout proof.
+configureScalarCapture	.block
+	move.l a0, ScalarProvider
+	moveq #0, d0
+	rts
+	.bend  ; configureScalarCapture
+
+; A0=package,D1=branch program,D2=retained recipe arguments,
+; D3/D4=signed target-minus-PC bounds. D0/CCR=0 proves AUTO width invariance;
+; other registers preserved. The branch owner interprets its candidate table.
+positionInterval	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a4
+	cmpi.l #HEADER_BYTES, package.Header.Bytes(a4)
+	blo.w bad
+	cmp.l package.Header.ProgramCount(a4), d1
+	bhs.w bad
+	cmpi.l #$ffff, d1
+	bhi.w bad
+	move.l d2, d5
+	andi.l #$ffff0000, d5
+	bne.w bad
+	andi.l #$ff, d2
+	mulu.w #PROGRAM_BYTES, d1
+	add.l package.Header.Programs(a4), d1
+	bcs.w bad
+	move.l d1, d0
+	addi.l #PROGRAM_BYTES, d0
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d0
+	bhi.w bad
+	lea 0(a4, d1.l), a3
+	cmpi.w #PROGRAM_SEMANTIC, package.Program.Kind(a3)
+	bne.w bad
+	move.l package.Program.Offset(a3), d0
+	move.l package.Program.Bytes(a3), d1
+	move.l d0, d5
+	add.l d1, d5
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d5
+	bhi.w bad
+	movea.l a4, a1
+	adda.l d0, a1
+	jsr encoding.validateBranchInterval
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; positionInterval
 
 ; Numeric admission proof for the latest encode attempt. D0/CCR=0 means no
 ; non-fixup scalar projection observed a section/PC value and no fixup attempt
@@ -1434,6 +1526,12 @@ branchStateReady
 	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
 	move.l encoding.Context.PositionFixupCount(a6), PositionFixupCount
 	move.l encoding.Context.PositionFixupIdentity(a6), PositionFixupIdentity
+	move.l encoding.Context.PositionField+encoding.RelativeField.Offset(a6), PositionField+encoding.RelativeField.Offset
+	move.l encoding.Context.PositionField+encoding.RelativeField.Width(a6), PositionField+encoding.RelativeField.Width
+	move.l encoding.Context.PositionField+encoding.RelativeField.LittleEndian(a6), PositionField+encoding.RelativeField.LittleEndian
+	move.l encoding.Context.PositionField+encoding.RelativeField.Adjustment(a6), PositionField+encoding.RelativeField.Adjustment
+	move.l encoding.Context.PositionField+encoding.RelativeField.Value(a6), PositionField+encoding.RelativeField.Value
+	move.l encoding.Context.PositionField+encoding.RelativeField.Range(a6), PositionField+encoding.RelativeField.Range
 	; Only an ordinary branch row can publish a replayable selected recipe.
 	cmpi.b #RECIPE_SEMANTIC_BRANCH, package.Row.Recipe(a5)
 	bne.w recipeReady
@@ -1651,6 +1749,12 @@ fixupExecuted
 	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
 	move.l encoding.Context.PositionFixupCount(a6), PositionFixupCount
 	move.l encoding.Context.PositionFixupIdentity(a6), PositionFixupIdentity
+	move.l encoding.Context.PositionField+encoding.RelativeField.Offset(a6), PositionField+encoding.RelativeField.Offset
+	move.l encoding.Context.PositionField+encoding.RelativeField.Width(a6), PositionField+encoding.RelativeField.Width
+	move.l encoding.Context.PositionField+encoding.RelativeField.LittleEndian(a6), PositionField+encoding.RelativeField.LittleEndian
+	move.l encoding.Context.PositionField+encoding.RelativeField.Adjustment(a6), PositionField+encoding.RelativeField.Adjustment
+	move.l encoding.Context.PositionField+encoding.RelativeField.Value(a6), PositionField+encoding.RelativeField.Value
+	move.l encoding.Context.PositionField+encoding.RelativeField.Range(a6), PositionField+encoding.RelativeField.Range
 	move.l d1, (sp)
 	bra.w next
 match
@@ -1741,6 +1845,29 @@ done
 	rts
 	.bend  ; failedProjectionGeometry
 
+; Provider calls occur only under the private observation policy. Preserve
+; the original cursor on every non-handled return; no callback survives its owner.
+captureScalar	.block
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w unhandled
+	tst.l ScalarProvider
+	beq.w unhandled
+	movem.l a0/a3, -(sp)
+	movea.l ScalarProvider, a3
+	jsr (a3)
+	movea.l ScalarCall.Temporary(sp), a3
+	cmpi.l #SCALAR_HANDLED, d0
+	beq.w handled
+	movea.l ScalarCall.Cursor(sp), a0
+handled
+	adda.w #SCALAR_CALL_BYTES, sp
+	tst.l d0
+	rts
+unhandled
+	moveq #SCALAR_UNHANDLED, d0
+	rts
+	.bend  ; captureScalar
+
 ; Project a known scalar through the package's bounded 32-bit bridge.
 ; A0/A1=expression, A2=package.Context. Expression ABI and registers retained.
 ; D0/CCR=status; reject values outside signed-i32/unsigned-u32 representation.
@@ -1751,17 +1878,35 @@ evaluateScalar	.block
 	; every attempted row, including one that subsequently fails its range.
 	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
 	beq.w evaluate
-	tst.w GeometryState
+	btst #GEOMETRY_DEPENDENT_BIT, GeometryState+1
 	bne.w evaluate
+	btst #GEOMETRY_FIXUP_BIT, GeometryState+1
+	bne.w fixupScalar
 	movem.l d1/a0, -(sp)
 	jsr references.geometryExpression
 	tst.l d0
 	beq.w independent
+	movem.l (sp)+, d1/a0
+	bsr.w captureScalar
+	cmpi.l #SCALAR_HANDLED, d0
+	beq.w captured
 	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+	bra.w evaluate
 independent
 	movem.l (sp)+, d1/a0
+	bra.w evaluate
+fixupScalar
+	; Fixup projections suppress ordinary geometry observations, but still
+	; need an exact-pair provider before the strict evaluator may cancel bases.
+	bsr.w captureScalar
+	cmpi.l #SCALAR_HANDLED, d0
+	beq.w captured
 evaluate
 	jsr expression.evaluate
+	bra.w evaluated
+captured
+	moveq #0, d0
+evaluated
 	tst.l d0
 	bne.w done
 	tst.l d2
@@ -2020,8 +2165,18 @@ scalarExpression
 pathValue
 	bsr.w operandSpan
 	bne.w valueReady
-	bsr.w observeOperandGeometry
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w ordinaryPath
+	; The path owner observes only scalar terminals actually evaluated. A
+	; container mismatch is independent of the values inside that container.
+	jsr paths.evaluateGeometry
+	tst.l d1
+	beq.w pathEvaluated
+	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+	bra.w pathEvaluated
+ordinaryPath
 	jsr paths.evaluate
+pathEvaluated
 	tst.l d0
 	bne.w valueReady
 	tst.l d2
@@ -2084,7 +2239,15 @@ ready
 	jsr expression.evaluateWithSymbols
 	tst.l d0
 	beq.w evaluated
+	movea.l a6, a0
+	bsr.w captureScalar
+	cmpi.l #SCALAR_HANDLED, d0
+	bne.w captureFailed
+	moveq #1, d4  ; the provider permits only exact symbol-pair expressions
+	bra.w evaluated
+captureFailed
 	bsr.w failedProjectionGeometry
+	moveq #1, d0
 	bra.w done
 evaluated
 	cmpa.l a1, a0
@@ -2947,6 +3110,12 @@ prepareExecution	.block
 	move.w PositionProofTarget, encoding.Context.PositionProofTarget(a6)
 	move.l PositionFixupCount, encoding.Context.PositionFixupCount(a6)
 	move.l PositionFixupIdentity, encoding.Context.PositionFixupIdentity(a6)
+	move.l PositionField+encoding.RelativeField.Offset, encoding.Context.PositionField+encoding.RelativeField.Offset(a6)
+	move.l PositionField+encoding.RelativeField.Width, encoding.Context.PositionField+encoding.RelativeField.Width(a6)
+	move.l PositionField+encoding.RelativeField.LittleEndian, encoding.Context.PositionField+encoding.RelativeField.LittleEndian(a6)
+	move.l PositionField+encoding.RelativeField.Adjustment, encoding.Context.PositionField+encoding.RelativeField.Adjustment(a6)
+	move.l PositionField+encoding.RelativeField.Value, encoding.Context.PositionField+encoding.RelativeField.Value(a6)
+	move.l PositionField+encoding.RelativeField.Range, encoding.Context.PositionField+encoding.RelativeField.Range(a6)
 	move.w ScalarTarget, encoding.Context.InputTarget(a6)
 	clr.w encoding.Context.MnemonicLength(a6)
 	rts

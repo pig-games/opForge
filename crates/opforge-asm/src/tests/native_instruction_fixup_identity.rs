@@ -3,6 +3,7 @@ use super::native_iterable_loops::{oracle, scratch};
 use super::*;
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
+use package::{compile_branch_program, BranchCandidateSpec, BranchProgramSpec, EncodingEndian};
 use vm::binary_source_package::BinarySourcePackage;
 use vm::runtime_model_core::RuntimeModelCore;
 
@@ -131,6 +132,83 @@ fn prepare(dir: &Path) -> Vec<u8> {
         ("UnknownExpression", symbol(unknown)),
         ("CurrentExpression", vec![0x81, 2, 0x11, 0]),
     ] {
+        fixture.push_str(&format!(
+            "{label} .byte {}\n{label}End\n",
+            bytes
+                .iter()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ));
+    }
+    // A real path's scale terminal must retain scalar observations even when
+    // its allowed-value predicate rejects the evaluated result.
+    let product = |scalar: Vec<u8>| {
+        let left = register(name("d0"));
+        let mut bytes = vec![
+            0x82,
+            (2 + left.len() + scalar.len()) as u8,
+            20,
+            left.len() as u8,
+        ];
+        bytes.extend(left);
+        bytes.extend(scalar);
+        bytes
+    };
+    for (label, bytes) in [
+        ("PathSectionProduct", product(symbol(first))),
+        ("PathThreeProduct", product(vec![0x81, 3, 0x13, 3, 0])),
+        ("PathTwoProduct", product(vec![0x81, 3, 0x13, 2, 0])),
+    ] {
+        fixture.push_str(&format!(
+            "{label} .byte {}\n{label}End\n",
+            bytes
+                .iter()
+                .map(u8::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        ));
+    }
+    let candidate =
+        |id, automatic_classes, displacement_width, position_adjustment, reserved_values| {
+            BranchCandidateSpec {
+                id,
+                automatic_classes,
+                suffix: Vec::new(),
+                displacement_width,
+                endian: EncodingEndian::Big,
+                position_adjustment,
+                unresolved_placeholder: 1,
+                reserved_values,
+            }
+        };
+    for (label, unresolved_candidate, candidates) in [
+        (
+            "IntervalHoleProgram",
+            7,
+            vec![
+                candidate(3, 0, 2, 0, vec![]),
+                candidate(7, 1, 1, 0, vec![0]),
+            ],
+        ),
+        (
+            "IntervalLaterProgram",
+            6,
+            vec![candidate(6, 1, 1, 0, vec![]), candidate(7, 1, 2, 0, vec![])],
+        ),
+        (
+            "IntervalOverflowProgram",
+            9,
+            vec![candidate(9, 1, 4, 1, vec![])],
+        ),
+    ] {
+        let bytes = compile_branch_program(&BranchProgramSpec {
+            opcode_input: 0,
+            target_input: 0,
+            unresolved_candidate,
+            candidates,
+        })
+        .expect("current generic branch interval program");
         fixture.push_str(&format!(
             "{label} .byte {}\n{label}End\n",
             bytes

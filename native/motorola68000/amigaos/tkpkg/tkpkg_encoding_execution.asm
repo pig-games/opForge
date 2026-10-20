@@ -15,6 +15,17 @@ SCALAR_INPUT_BYTES = ScalarInput.Bytes+1
 ; Caller owns valid input records, output and fixup arrays for their stated counts.
 ; A6 points here for every entry; no legacy service or assembler globals are used.
 ; Output capacity and returned lengths fit u16 (at most 65535 bytes).
+; Sole executed relative-field evidence; serialized only by a layout owner.
+RelativeField	.struct
+Offset	.long ?
+Width	.long ?
+LittleEndian	.long ?
+Adjustment	.long ?
+Value	.long ?
+Range	.long ?
+	.endstruct
+POSITION_FIELD_BYTES = RelativeField.Range+4
+FIXUP_RANGE_SIGNED = 0
 Context	.struct
 Output	.long ?
 Capacity	.long ?
@@ -48,8 +59,9 @@ FixupIdentities	.long ?  ; optional caller-owned opaque long per fixup
 PositionProofRequested	.long ?  ; original package request, REQUEST_AUTO or ID
 PositionFixupCount	.long ?  ; NONE, SINGLE or UNPROVEN across selected stages
 PositionFixupIdentity	.long ?  ; opaque selected input identity, never a pointer
+PositionField	.res POSITION_FIELD_BYTES  ; valid only while PositionFixupCount=SINGLE
 .endstruct
-CONTEXT_BYTES = Context.PositionFixupIdentity+4
+CONTEXT_BYTES = Context.PositionField+POSITION_FIELD_BYTES
 REQUEST_AUTO = -1
 POSITION_FIXUP_NONE = 0
 POSITION_FIXUP_SINGLE = 1
@@ -122,9 +134,10 @@ branchProgram	.block
 	bsr.w runBranch
 	rts
 	.bend  ; branchProgram
+	.include "tkpkg_branch_interval.i"
 	.priv
 
-; Direct Rust branch_vm::execute_branch_program port for SEMV/CSEM v5.  The
+; Direct Rust branch_vm::execute_branch_program port for the current contract. The
 ; selected envelope supplies opcode, target, requested candidate (`-1` means
 ; auto), and automatic class.  Candidate widths, suffixes, endian, position
 ; adjustment, unresolved placeholder, and reserved values remain package data.
@@ -737,6 +750,21 @@ observeFixupField	.block
 	bhs.w unproven
 	lsl.l #2, d0
 	move.l 0(a0, d0.l), Context.PositionFixupIdentity(a6)
+	; Capture before projection/transform. A2 still addresses the first field
+	; byte, and D3 is the exact input target including its source addend.
+	move.l a2, d0
+	sub.l Context.Output(a6), d0
+	bcs.w unproven
+	move.l d0, Context.PositionField+RelativeField.Offset(a6)
+	moveq #0, d0
+	move.w FixupStep.Width(a1), d0
+	move.l d0, Context.PositionField+RelativeField.Width(a6)
+	move.w FixupStep.Endian(a1), d0
+	move.l d0, Context.PositionField+RelativeField.LittleEndian(a6)
+	move.l FixupStep.Adjustment(a1), Context.PositionField+RelativeField.Adjustment(a6)
+	move.l d3, Context.PositionField+RelativeField.Value(a6)
+	move.w FixupStep.Range(a1), d0
+	move.l d0, Context.PositionField+RelativeField.Range(a6)
 	move.l #POSITION_FIXUP_SINGLE, Context.PositionFixupCount(a6)
 	bra.w done
 unproven

@@ -1,107 +1,91 @@
 # Native runtime and memory diagnosis
 
-## Current assignment and decision points
+## Current status
 
-Broad language and CPU parity work remains paused. The confirmed budget is **6.5 MiB
-for the complete assembler process and 1.5 MiB for AmigaOS**. The current implementation compiles eligible
-modules into current-build `.ofm` link objects, retires private compile state and links
-at the end. This slice has no full self-host or memory result. Full performance
-comparisons remain user-paused; there is no net-saving or 8 MiB fit claim.
+Full performance comparisons remain user-paused. The process budget is **6.5 MiB**
+with **1.5 MiB** reserved for AmigaOS. There is no runtime, memory-saving, or 8 MiB
+fit claim. `--reference-modules` remains available.
 
-The current producer can publish owned capsules for closed public macros, segments and
-statements. Capsules retain binary bodies, defaults, plans and names while preserving
-caller binding and privacy. They enter the normal shared pools before the private
-frontend retires. Interface-only producers write zero-block `.ofm` objects; values and
-types remain in shared semantic owners without synthetic PCs, sections or a CPU
-requirement when the interface has no effects. Temporary template facets are owned
-in-memory capsules, not a persistent cache format. `.ofm` remains the current-build link
-object format.
+Current source identity: manifest `950946ff21b4602d`, 259 files / 3,238,193
+bytes; instrumented bootstrap 817,452 B; release image 804,876 B. A fresh
+full-source native audit matches the entire live Rust Hunk. It saves all 185
+dependency modules as `.ofm` objects: 185 writes, 177 final-emission reads, and
+601,759 bytes of objects. The sole unsupported admission is the root entry
+module, which remains in the shared final driver. The workload has no remaining
+MOVE or binding admission failures; this is not zero fallback across all modules.
+The earlier I audit failed output equality; it is superseded by this fresh proof.
 
-## Current host state and focused evidence
+## Qualification
 
-The current frozen source has 258 files / 3,174,298 bytes and manifest
-`fnv1a64:63a12d57c2e5a9ba`. Its host release image is 777,888 B, linked static
-reservation is 816,596 B, and the embedded package is 455,026 B with digest
-`fnv1a64:415d2172932e243a`. These are image and linked-static sizes, not heap or total
-memory measurements. This slice has no full self-host, runtime comparison or memory
-comparison. Full performance comparisons remain user-paused; no resource or fit claim
-follows.
+The audit uses instrumentation. A separate uninstrumented fixed-point run also
+passes: the current 804,876 B native release assembles its complete frozen source
+and reproduces itself, identical to the freshly assembled Rust Hunk. It completes
+in 189.2 seconds in FS-UAE on the expanded-memory profile; this single run is not
+a comparative performance result. Both runs remove ephemeral scratch files.
+Full performance comparisons remain paused until the remaining root handling is
+resolved or explicitly agreed. No new observer or experiment switch was added.
 
-All seven dependency cases pass both native policies (14 results), with exact live Rust
-binary/Hunk output and zero remaining owned bytes. Candidate runs accept two modules;
-forced-reference runs accept zero. Typed-interface/no-CPU, odd-statement and
-text-side-effect zero-publication cases also pass both policies. The four-case CLI matrix
-passes all eight native results under candidate and forced-reference policies, with exact live Rust binary/Hunk output, expected payload I/O,
-and zero cleanup ownership. Candidate accepts two modules for same-fragment and one for
-cross-align, cross-block and unanchored-PC; forced-reference accepts zero. Same-fragment
-stores base + worker, while the other cases store only base and fall back for worker. The proxy-scope kind-4 identity collision was fixed by the flags-aware classifier.
+Focused native checks cover absolute MOVE fields, exact scalar differences,
+PC-relative trailing strings, shared word/long deltas, conservative automatic
+branch-width intervals, counted loops, and actual previously rejected producers.
+The final MOVE matrix passes 12 cases / 24 native policy results, including
+conservative rejection controls. Candidate and reference policies match fresh
+Rust binary/Hunk oracles. Ordering
+checks pass for disk and resident storage, including repeated imports under
+different aliases. Package checks pass for 30 VM and 333 assembler tests;
+component checks cover field identity and signed-relative image patching.
+Rust formatting, Clippy for VM/assembler all targets, native formatting and the
+native engineering guards pass. Independent integration review found no blocking
+correctness or ownership issue.
+The reference policy remains covered and available.
 
-The position-fixup proof is deliberately narrow. Production records transient
-`Context.PositionFixupCount/Identity` with selected-encoder fields and counts every fixup
-field. The only proven case is one resolved, untransformed target-relative field whose
-input identities and target match exactly, under the geometry guard; it emits no Hunk
-relocation. Any extra or nonpositional field is rejected and remains unproven by this path.
-Layout retains the pending recipe, then freezes bytes only when exact source and target
-labels belong to the same fragment. Cross-fragment, branch, mixed and transformed cases
-remain unproven by this cancellation path; existing replayable branch recipes are
-unchanged. No image VM contract change or CPU-specific hard-coding is involved.
-Generic field assertions pass in both source orders against expected bytes; the
-identity-bearing case matches the live Rust artifact.
+The instrumented full audit reports peak owned heap **6,713,680 B** and zero live
+owned bytes after cleanup. Linked static reservations are **858,396 B**; adding
+those and the 65,536 B stack gives a process lower bound of **7,637,612 B**
+(7.28 MiB), already 821,868 B above the 6.5 MiB budget, before other process costs.
+This expanded-memory run does not establish constrained fit or memory savings.
+Ephemeral capture files are gone; `.ofm` deliverables survive cleanup.
 
-The native component passes after moving the image and retiring the source: 32 Rust bytes
-(20 payload + 12 endpoints), one fragment, zero serialized relocations, with forward and
-backward four-counter-register cases. Targets across an alignment boundary, including
-within one block, or in a separate block reject atomically. The full geometry case passes
-its fresh protocol with exact 79 Rust bytes across 11 fragments and source retirement; it
-covers code/data/BSS, alignment and replayable branch recipes. Its focused image digest is
-`fnv1a64:16804ede7323d48c` (source `fnv1a64:58b578b49ab564f5`, package
-`fnv1a64:415d2172932e243a`).
+## Remaining peak ownership
 
-Earlier v27 audit counts (89 private-compiler outcomes, including 38 DBRA/DBF stops)
-describe a prior source state and do not prove all 38 cases fixed now. Three MOVE and two
-binding failures from that audit remain unresolved.
+Stored module payloads retire, but global compile-time values/types, published
+template bodies, names/import graphs and linker metadata remain. Each private
+compilation imports the required semantic interfaces into its own frontend.
+The current module's records, values, layout recipes and emitted bytes overlap
+that shared state. Building its immutable image briefly keeps the emitted bytes
+and new image together; buffer growth can also overlap old/new capacities.
+Final assembly retains its complete output, and Hunk serialization adds another
+output buffer. Consumed captures and discovery state already retire; this is not
+an assertion that every original module remains resident. Existing boundary
+samples do not assign the measured peak to particular simultaneous owners.
 
-## Next steps
+## Known limits and next steps
 
-Localize the remaining three MOVE and two binding failures from the earlier audit without
-assuming a repair recipe. Preserve fallback where neither a replayable recipe nor the
-narrow cancellation proof applies. This focused slice
-has not run a full self-host. Full performance comparisons remain user-paused.
+Known parity observations include native rejection of `.org` inside a section,
+section-relative placed mapped imports in Rust flat output, Rust retaining an
+unreferenced named block for a top-level-effects-only import where native omits
+it, and native large `.fill` being unsupported under both policies. Rust also has
+a 6502 forward-fill/no-retry gap and a nonzero-label loop-count retry gap. A
+previous broad workspace run was red; focused results do not establish workspace
+qualification.
 
-For `.ofm` objects, keep the metadata directory limited to Header, BlockRows and RelocRows.
-`add` retains the pending full image and copies the linker prefix; pending state supplies
-carrier extraction. Store writes named objects and retires pending ownership. Compact
-public semantic owners remain available to later compiles. `acquireEmit` reads payload
-only during final Hunk emission, with one current-module cache. Unlinked or BSS-only
-objects may have zero payload reads; selected payloads may be read at most once. Keep
-object deliverables through successful cleanup and clear ephemeral owners.
+Resolve the root entry module boundary before resuming full performance
+comparisons. Attribute the remaining compilation peak using existing telemetry
+before choosing a memory change. The final assembly phase begins with 3,936,632 B
+of tracked heap; the largest post-compilation progress sample is 4,460,480 B.
+Those samples are below the 6,713,680 B allocation peak, so they do not identify
+the exact simultaneous peak owners. Do not claim full
+fallback closure, runtime or memory saving, or fit before qualification and
+measurement. For later performance
+comparisons, record source, package, image, inputs, policy, and fresh oracle;
+separate release timing from capture/MEMD instrumentation and use three release
+repetitions for a speed claim. Memory fit requires the documented 68020-8m
+profile. The process budget includes linked code/data/BSS, embedded package,
+stack, heap, and other process costs; the OS reserve is separate. See the
+[native parity contract](../../agents/rules/native-rust-parity-porting.md),
+[FS-UAE guide](../../agents/rules/fs-uae.md), and
+[performance reference](../performance/vm-efficiency.md).
 
-## Qualification and limits
-
-For later frozen comparisons, identify source, package, image and input manifests,
-module/storage policy and fresh Rust oracles. Keep release timing separate from light
-MEMD/capture instrumentation; three release repetitions are needed for a speed claim.
-Native correctness requires fresh guest completion, explicit exit and exact live Rust
-binary/Hunk output. Preserve the focused `.org`-inside-section negative fixture as an
-explicit known gap, ignored for native pass claims with its Rust oracle retained; both
-current native policies reject that existing case. The 6.5 MiB process budget includes
-linked code/data/BSS, embedded package once, stack, heap and other process costs; the
-1.5 MiB AmigaOS reserve is separate.
-Memory fit requires the documented 68020-8m profile. See the [native parity contract](../../agents/rules/native-rust-parity-porting.md)
-and [FS-UAE environment guide](../../agents/rules/fs-uae.md).
-
-Known unrelated parity discrepancies remain: some placed mapped imported addresses can
-stay section-relative in Rust flat output; native rejects `.org` inside a section; and
-Rust retained an unreferenced named block in a module imported only for top-level effects
-where native omitted it. A previous broad workspace run was red (2,319 passed, 161 failed,
-667 ignored), so these focused changes do not establish clean workspace qualification.
-Full 8 MiB fit and net memory gain remain unproven.
-
-## Enduring earlier decisions
-
-Keep adaptive symbol buckets/shared masks, release-gated telemetry, opaque assets,
-compact capture headers, owned clearing elision, chunked capture, bounded prepared
-records and completed-configuration retirement where they remain in current code.
-Keep one reference engine and explicit ownership; CPU/family semantics remain package-
-owned. See the [performance reference](../performance/vm-efficiency.md). Generic capture
-contracts remain in [preparation ownership and capture storage](native-lazy-preparation.md).
+Keep one reference engine and explicit ownership. CPU/family semantics remain
+package-owned. Generic capture contracts are in
+[preparation ownership and capture storage](native-lazy-preparation.md).

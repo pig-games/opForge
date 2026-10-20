@@ -4,6 +4,7 @@
 	.module experimental.amigaos.binary_repetition
 	.cpu 68020
 	.use experimental.amigaos.binary_package as package
+	.use experimental.amigaos.binary_hunk_references as references
 	.use experimental.amigaos.binary_memory as memory
 	.use opasm.amigaos.binary_expression as expression
 	.use experimental.amigaos.binary_values as values
@@ -282,6 +283,18 @@ opening
 	cmpi.b #source.TOKEN_ITERATOR_BINDING, (a0)
 	beq.w iterableOpening
 	movea.l a4, a1
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w countedValue
+	; Frozen module geometry needs an absolute count, even when two moving
+	; labels currently cancel numerically. Inspect the actual reached scalar
+	; after symbol seeding, then restore its exact cursor/end for ExprVM.
+	; The proof retains no pointer and preserves the repetition/context owners.
+	movem.l a0-a1, -(sp)
+	jsr references.geometryExpression
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	bne.w invalid
+countedValue
 	jsr expression.evaluate
 	bne.w invalid
 	cmpa.l a4, a0

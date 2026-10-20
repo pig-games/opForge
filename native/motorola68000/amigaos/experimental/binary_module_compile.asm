@@ -4,6 +4,10 @@
 	.cpu 68020
 	.use experimental.amigaos.binary_frontend as frontend
 	.use experimental.amigaos.binary_assembly as assembly
+	.use experimental.amigaos.binary_encoding as encoder
+	.use experimental.amigaos.binary_hunk_references as references
+	.use opasm.amigaos.binary_expression as expression
+	.use exprvm.amigaos.runtime as exprvm
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_module_image as image
@@ -48,10 +52,26 @@ UNSUPPORTED = 6
 ADDRESS_INVALID = 7; public address cannot be bound to an owned fragment
 REPLAY_UNSUPPORTED = 2
 	.priv
+; Stack-owned scalar callback transaction; no pointer survives its return.
+DataFrame	.struct
+Delta	.res layout.DATA_DELTA_BYTES
+Cursor	.long ?
+After	.long ?
+Value	.long ?
+Unknown	.long ?
+Policy	.word ?
+Mode	.word ?
+	.endstruct
+DATA_FRAME_BYTES = DataFrame.Mode+2
+PAIR_DATA = 0
+PAIR_SCALAR = 1
 ; The shared native assembly engine is itself a single active session. This
 ; producer is sequential, never callable during another assembly session.
 	.section bss, kind=bss
 Active	.res long, 1
+	; Align the complete transient owner once. Its prefix is long-aligned,
+	; so Front needs no interior alignment boundary and cleanup spans one unit.
+	.align 4
 Caller	.res long, 1
 Destination	.res long, 1
 Started	.res long, 1
@@ -64,7 +84,6 @@ SectionOrder	.res byte, sections.HUNK_SLOT_COUNT
 FirstLexical	.res long, 1
 OwnModule	.res long, 1
 InitialModules	.res byte, memory.Block.Used+4
-	.align 4
 Front	.res byte, frontend.FRAME_BYTES
 Work	.res byte, assembly.FRAME_BYTES
 Cells	.res byte, package.CONTEXT_BYTES
@@ -99,7 +118,8 @@ TransientEnd
 ; code/data/BSS sections. Package-owned branch recipes preserve
 ; the chosen instruction width when blocks move; shared affine label identity
 ; preserves absolute instruction/data references. References without an exact
-; source identity reject. Runtime conditionals/loops reject.
+; source identity reject. Counted loops require known placement-independent
+; counts; runtime conditionals and iterable/scoped loops reject.
 ; Constant source preprocessing and private macros may complete before assembly.
 ; Publishes immutable scalars, lists/ranges and struct schemas with local IDs.
 ; Public addresses retain exact fragment/offset identity; compound values retain
@@ -374,10 +394,20 @@ exportsReady
 	move.l #seedSymbols, Work+assembly.Frame.Seed
 	move.l #captureReserved, Work+assembly.Frame.Reserved
 	move.l #captureAlignment, Work+assembly.Frame.Aligned
+	move.l #captureDataExpression, Work+assembly.Frame.DataExpression
 	move.l #emitted, Work+assembly.Frame.Emitted
 	move.l Symbols+storage.State.MemberKeys+memory.Block.Pointer, Work+assembly.Frame.MemberKeys
+	lea captureScalarExpression, a0
+	jsr encoder.configureScalarCapture
 	lea Work, a0
 	jsr assembly.assemble
+	; The encoder borrows this session only. Retire the callback before any
+	; failure path frees Work, numeric values or the pending proof owner.
+	move.l d0, -(sp)
+	suba.l a0, a0
+	jsr encoder.configureScalarCapture
+	move.l (sp)+, d0
+	tst.l d0
 	bne.w executionBad
 	; Reference replay owns diagnostics and --Werror handling exactly once.
 	tst.l Work+assembly.Frame.Warnings
@@ -768,6 +798,15 @@ ordinaryControl
 	adda.l package.Header.LoopPlan(a1), a1
 	jsr loops.classify
 	cmpi.l #abi.PRVM_LOOP_ORDINARY, d0
+	beq.w nextRecord
+	cmpi.l #abi.PRVM_LOOP_ENDFOR, d0
+	beq.w nextRecord
+	; The ordinary repetition owner proves each reached count against seeded
+	; values under POSITION_OBSERVATION_POLICY before it emits any body bytes.
+	; Iterables, scoped repetition and while controls retain reference handling.
+	cmpi.l #abi.PRVM_LOOP_MATCHED, d0
+	bne.w bad
+	cmpi.l #-1, d1
 	bne.w bad
 nextRecord
 	adda.l d6, a3
@@ -856,6 +895,152 @@ allocateOutput	.block
 	tst.l d0
 	rts
 	.bend  ; allocateOutput
+; A0=wrapper,A1=end,A2=Context,A3=package,D0=actual field PC,D6=span.
+; DATA_UNHANDLED leaves A0 unchanged. DATA_HANDLED returns ExprVM cursor,
+; D1=value,D2=unknown; DATA_INVALID fails closed. D3-D7/A1-A6 preserved.
+; Only an exact whole-symbol pair can temporarily leave strict policy. Final
+; selected fields must capture a complete layout-owned recipe or fail.
+captureDataExpression	.block
+	move.l d7, -(sp)
+	moveq #PAIR_DATA, d7
+	bsr.w capturePair
+	move.l (sp)+, d7
+	tst.l d0
+	rts
+	.bend  ; captureDataExpression
+
+; Encoder-owned scalar projection ABI. Only exact pairs may leave strict
+; evaluation; finish must prove their cancellation and mandatory owner lifetime.
+captureScalarExpression	.block
+	movem.l d6-d7, -(sp)
+	move.l package.Context.Pc(a2), d0
+	moveq #0, d6
+	moveq #PAIR_SCALAR, d7
+	bsr.w capturePair
+	movem.l (sp)+, d6-d7
+	tst.l d0
+	rts
+	.bend  ; captureScalarExpression
+
+capturePair	.block
+	movem.l d3-d7/a1-a6, -(sp)
+	suba.w #DATA_FRAME_BYTES, sp
+	movea.l sp, a4
+	movea.l a2, a5
+	move.l a0, DataFrame.Cursor(a4)
+	move.l d0, DataFrame.Delta+layout.Delta.FieldPc(a4)
+	move.l d6, DataFrame.Delta+layout.Delta.Span(a4)
+	move.w d7, DataFrame.Mode(a4)
+	tst.w d7
+	bne.w recognize
+	cmpi.l #2, d6
+	beq.w recognize
+	cmpi.l #4, d6
+	bne.w unhandled
+recognize
+	moveq #0, d0
+	tst.w DataFrame.Mode(a4)
+	bne.w endianReady
+	move.w package.Header.LittleEndian(a3), d0
+endianReady
+	move.l d0, DataFrame.Delta+layout.Delta.LittleEndian(a4)
+	jsr references.scalarDifference
+	cmpi.l #references.STATUS_CLEAR, d0
+	beq.w unhandled
+	cmpi.l #references.STATUS_SECTION, d0
+	bne.w invalid
+	tst.w DataFrame.Mode(a4)
+	beq.w pairReady
+	cmpa.l a1, a0
+	bne.w unhandled  ; scalar capture must own the complete operand span
+pairReady
+	move.l d1, DataFrame.Delta+layout.Delta.TargetSymbol(a4)
+	move.l d2, DataFrame.Delta+layout.Delta.BaseSymbol(a4)
+	; Ordinary absolute subtraction remains on the strict shared evaluator.
+	; Unknown pass-one pairs may reserve their fixed field, but final pairs
+	; require two real section labels before any policy is relaxed.
+	movea.l package.Context.Defined(a5), a6
+	tst.b 0(a6, d1.l)
+	beq.w provisional
+	tst.b 0(a6, d2.l)
+	beq.w provisional
+	jsr references.baseSection
+	bne.w unhandled
+	subq.l #1, d1
+	move.l d1, DataFrame.Delta+layout.Delta.TargetSection(a4)
+	move.l d2, d1
+	jsr references.baseSection
+	bne.w unhandled
+	subq.l #1, d1
+	move.l d1, DataFrame.Delta+layout.Delta.BaseSection(a4)
+	bra.w evaluate
+provisional
+	cmpi.w #1, package.Context.Pass(a5)
+	bne.w invalid
+evaluate
+	movea.l DataFrame.Cursor(a4), a0
+	move.w package.Context.ExpressionPolicy(a5), DataFrame.Policy(a4)
+	bclr #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a5)
+	jsr expression.evaluate
+	movea.l a5, a2
+	move.w DataFrame.Policy(a4), package.Context.ExpressionPolicy(a2)
+	tst.l d0
+	bne.w invalid
+	move.l a0, DataFrame.After(a4)
+	move.l d1, DataFrame.Value(a4)
+	move.l d2, DataFrame.Unknown(a4)
+	cmpi.w #2, package.Context.Pass(a2)
+	bne.w handled
+	tst.l d2
+	bne.w invalid
+	movea.l Work+assembly.Frame.Sections, a6
+	tst.w sections.State.HunkSelected(a6)
+	beq.w handled
+	; Bind exact current anchor values, never the evaluated difference.
+	movea.l package.Context.Values(a2), a6
+	move.l DataFrame.Delta+layout.Delta.TargetSymbol(a4), d3
+	lsl.l #3, d3
+	tst.l exprvm.Value.High(a6, d3.l)
+	bne.w invalid
+	move.l exprvm.Value.Low(a6, d3.l), DataFrame.Delta+layout.Delta.TargetValue(a4)
+	move.l DataFrame.Delta+layout.Delta.BaseSymbol(a4), d3
+	lsl.l #3, d3
+	tst.l exprvm.Value.High(a6, d3.l)
+	bne.w invalid
+	move.l exprvm.Value.Low(a6, d3.l), DataFrame.Delta+layout.Delta.BaseValue(a4)
+	lea LayoutState, a0
+	lea Work, a1
+	lea DataFrame.Delta(a4), a2
+	tst.w DataFrame.Mode(a4)
+	beq.w dataRecipe
+	jsr layout.scalarDifference
+	bra.w captured
+dataRecipe
+	jsr layout.dataDelta
+captured
+	tst.l d0
+	bne.w invalid
+handled
+	movea.l DataFrame.After(a4), a0
+	move.l DataFrame.Value(a4), d1
+	move.l DataFrame.Unknown(a4), d2
+	moveq #assembly.DATA_HANDLED, d0
+	bra.w done
+unhandled
+	movea.l DataFrame.Cursor(a4), a0
+	moveq #assembly.DATA_UNHANDLED, d0
+	bra.w done
+invalid
+	movea.l DataFrame.Cursor(a4), a0
+	moveq #assembly.DATA_INVALID, d0
+done
+	movea.l a5, a2
+	adda.w #DATA_FRAME_BYTES, sp
+	movem.l (sp)+, d3-d7/a1-a6
+	tst.l d0
+	rts
+	.bend  ; capturePair
+
 captureAbsolute	.block
 	movem.l a0-a1, -(sp)
 	movea.l a0, a1

@@ -176,10 +176,56 @@ pub(super) fn cases() -> Vec<PrivateCase> {
     cases
 }
 
+// A published producer must retain its declared import order. Reversing two
+// dependency-only edges changes emitted bytes even when all values are correct.
+fn dependency_order_case() -> PrivateCase {
+    PrivateCase {
+        name: "private-publication-dependency-order",
+        accepted_modules: 3,
+        files: vec![
+            ("entry.asm", format!(".module main\n.cpu 68020\n.use consumer\n.section code,kind=code\n.long consumer.entry\n.endsection\n.section data,kind=data\n.word $1122\n.endsection\n{PRIVATE_OUTPUTS}")),
+            ("library/consumer.asm", ".module consumer\n.cpu 68020\n.use left\n.use right\n.pub\n.section code,kind=code\nentry .block\n.byte left.VALUE,right.VALUE\n rts\n.bend\n.endsection\n.endmodule\n".into()),
+            ("library/left.asm", ".module left\n.cpu 68020\n.pub\nVALUE .const $31\n.section code,kind=code\n.byte $11\n.endsection\n.endmodule\n".into()),
+            ("library/right.asm", ".module right\n.cpu 68020\n.pub\nVALUE .const $42\n.section code,kind=code\n.byte $22\n.endsection\n.endmodule\n".into()),
+        ],
+    }
+}
+
+fn dependency_order_cases() -> Vec<PrivateCase> {
+    let ordinary = dependency_order_case();
+    let mut repeated = dependency_order_case();
+    repeated.name = "private-publication-repeated-dependency-order";
+    repeated.files[1].1 = repeated.files[1]
+        .1
+        .replace(".use right\n", ".use right\n.use left as repeated\n");
+    vec![ordinary, repeated]
+}
+
+#[test]
+fn module_publication_dependency_order_live_rust_oracle() {
+    for case in dependency_order_cases() {
+        private_oracle(&case);
+    }
+}
+
+#[test]
+#[ignore = "requires instrumented compact CLI; retained dependency source order"]
+fn native_module_publication_dependency_order_disk_progress() {
+    private_pipeline_native_cases(true, true, dependency_order_cases());
+}
+
+#[test]
+#[ignore = "requires instrumented compact CLI; live configuration dependency order"]
+fn native_module_publication_dependency_order_resident_progress() {
+    private_pipeline_native_cases(true, false, vec![dependency_order_case()]);
+}
+
 // (objects without initialized block bytes, objects with initialized bytes).
 // These cases select every payload object; zero-payload objects must never read.
 pub(super) fn object_counts(name: &str) -> Option<(usize, usize)> {
     match name {
+        "private-publication-dependency-order"
+        | "private-publication-repeated-dependency-order" => Some((0, 3)),
         "private-publication-values-only" => Some((1, 0)),
         "private-publication-templates-only" | "private-publication-odd-statement-keywords" => {
             Some((1, 1))
@@ -193,6 +239,11 @@ pub(super) fn object_counts(name: &str) -> Option<(usize, usize)> {
 
 pub(super) fn check(name: &str, binary: &[u8]) {
     match name {
+        "private-publication-dependency-order"
+        | "private-publication-repeated-dependency-order" => assert_eq!(
+            binary,
+            [0x11, 0x22, 0x31, 0x42, 0x4e, 0x75, 0, 0, 0, 2, 0x11, 0x22]
+        ),
         "private-publication-values-only" => assert_eq!(binary, [0x12, 0x34, 0, 5, 0, 4, 2]),
         "private-publication-templates-only" => {
             assert!(

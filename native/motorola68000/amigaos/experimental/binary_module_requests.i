@@ -1,4 +1,5 @@
 ; Final-cohort requests retain spellings and dependency relationships only.
+; Rows retain the import links' newest-first order, including repeated targets.
 ; Configuration values/maps are rebound into the semantic scope separately.
 PrivateRequestName	.struct
 Name	.long ?

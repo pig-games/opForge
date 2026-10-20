@@ -243,10 +243,14 @@ ownerNext
 dependencies
 	movea.l PrivateDependencies+memory.Block.Pointer, a4
 	move.l PrivateDependencies+memory.Block.Used, d7
+	; Both live configuration links and copied request rows are newest-first.
+	; seedDependency prepends, and graph.order reverses links once. Feed it
+	; source order, including repeated aliases, to preserve first-use ordering.
+	adda.l d7, a4
 nextDependency
 	tst.l d7
 	beq.w lists
-	move.l (a4)+, d1
+	move.l -(a4), d1
 	subq.l #1, d1
 	move.l PrivateInstalledModule, d0
 	movea.l PrivateGlobalScope, a0

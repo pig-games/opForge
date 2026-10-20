@@ -118,6 +118,8 @@ InputIdentities	.res long, 16
 PositionDependent	.res word, 1
 PositionProofCount	.res word, 1
 PositionProofTarget	.res word, 1
+PositionFixupCount	.res long, 1
+PositionFixupIdentity	.res long, 1
 PositionRecipeProgram	.res word, 1
 PositionRecipeArguments	.res long, 1
 PositionRecipeValue	.res long, 1
@@ -155,6 +157,8 @@ encode	.block
 	clr.w FixupCount
 	clr.w PositionDependent
 	clr.w PositionProofCount
+	clr.l PositionFixupCount
+	move.l #references.NO_BASE, PositionFixupIdentity
 	move.w #MISSING_PROGRAM, PositionRecipeProgram
 	move.l #references.NO_BASE, PositionRecipeIdentity
 	move.l #REQUEST_AUTO, PositionRecipeRequested
@@ -250,6 +254,8 @@ guardReady
 	clr.w FixupCount
 	clr.w PositionDependent
 	clr.w PositionProofCount
+	clr.l PositionFixupCount
+	move.l #references.NO_BASE, PositionFixupIdentity
 	move.w #MISSING_PROGRAM, PositionRecipeProgram
 	move.l #references.NO_BASE, PositionRecipeIdentity
 	bsr.w tryRow
@@ -269,6 +275,8 @@ success
 fail
 	clr.w PositionDependent
 	clr.w PositionProofCount
+	clr.l PositionFixupCount
+	move.l #references.NO_BASE, PositionFixupIdentity
 	clr.w FixupCount
 	move.w #MISSING_PROGRAM, PositionRecipeProgram
 	move.l #references.NO_BASE, PositionRecipeIdentity
@@ -300,6 +308,31 @@ outputPositionProof	.block
 	tst.l d0
 	rts
 	.bend  ; outputPositionProof
+
+; Selected fixed relative field, without a replayable whole-instruction recipe.
+; D0/CCR=status,D1=one-based section,D2=exact source symbol. Others kept.
+; This proves only an invariant scalar under equal source/target movement;
+; the module owner must still prove that both anchors share one fragment.
+outputPositionCancellation	.block
+	tst.w GeometryState
+	bne.w bad
+	cmpi.l #encoding.POSITION_FIXUP_SINGLE, PositionFixupCount
+	bne.w bad
+	cmpi.w #1, PositionProofCount
+	bne.w bad
+	tst.w FixupCount
+	bne.w bad
+	cmpi.l #65535, PositionFixupIdentity
+	bhi.w bad
+	moveq #0, d1
+	move.w PositionProofTarget, d1
+	move.l PositionFixupIdentity, d2
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; outputPositionCancellation
 
 ; D0/CCR=nonzero if successful output observes instruction PC.
 ; All other registers preserved; distinct from Hunk cancellation eligibility.
@@ -376,6 +409,8 @@ patchPosition	.block
 	clr.w encoding.Context.WriteOffset(a6)
 	clr.w encoding.Context.PositionDependent(a6)
 	clr.w encoding.Context.PositionProofCount(a6)
+	clr.l encoding.Context.PositionFixupCount(a6)
+	move.l #references.NO_BASE, encoding.Context.PositionFixupIdentity(a6)
 	clr.w encoding.Context.FixupCount(a6)
 	clr.l encoding.Context.InputIdentities(a6)
 	clr.l encoding.Context.FixupIdentities(a6)
@@ -1397,6 +1432,8 @@ branchStateReady
 	move.w encoding.Context.PositionDependent(a6), PositionDependent
 	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
 	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
+	move.l encoding.Context.PositionFixupCount(a6), PositionFixupCount
+	move.l encoding.Context.PositionFixupIdentity(a6), PositionFixupIdentity
 	; Only an ordinary branch row can publish a replayable selected recipe.
 	cmpi.b #RECIPE_SEMANTIC_BRANCH, package.Row.Recipe(a5)
 	bne.w recipeReady
@@ -1612,6 +1649,8 @@ fixupExecuted
 	move.w encoding.Context.FixupCount(a6), FixupCount
 	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
 	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
+	move.l encoding.Context.PositionFixupCount(a6), PositionFixupCount
+	move.l encoding.Context.PositionFixupIdentity(a6), PositionFixupIdentity
 	move.l d1, (sp)
 	bra.w next
 match
@@ -2906,6 +2945,8 @@ prepareExecution	.block
 	move.w PositionDependent, encoding.Context.PositionDependent(a6)
 	move.w PositionProofCount, encoding.Context.PositionProofCount(a6)
 	move.w PositionProofTarget, encoding.Context.PositionProofTarget(a6)
+	move.l PositionFixupCount, encoding.Context.PositionFixupCount(a6)
+	move.l PositionFixupIdentity, encoding.Context.PositionFixupIdentity(a6)
 	move.w ScalarTarget, encoding.Context.InputTarget(a6)
 	clr.w encoding.Context.MnemonicLength(a6)
 	rts

@@ -2,11 +2,11 @@
 
 ## Current assignment and decision points
 
-Native parity remains paused. The confirmed budget is **6.5 MiB for the complete
-assembler process and 1.5 MiB for AmigaOS**. The current implementation compiles eligible
+Broad language and CPU parity work remains paused. The confirmed budget is **6.5 MiB
+for the complete assembler process and 1.5 MiB for AmigaOS**. The current implementation compiles eligible
 modules into current-build `.ofm` link objects, retires private compile state and links
-at the end. Full native build qualification and resource comparisons are paused; there is
-no current full-build memory result, net-saving claim or 8 MiB fit claim.
+at the end. This slice has no full self-host or memory result. Full performance
+comparisons remain user-paused; there is no net-saving or 8 MiB fit claim.
 
 The current producer can publish owned capsules for closed public macros, segments and
 statements. Capsules retain binary bodies, defaults, plans and names while preserving
@@ -17,35 +17,56 @@ requirement when the interface has no effects. Temporary template facets are own
 in-memory capsules, not a persistent cache format. `.ofm` remains the current-build link
 object format.
 
-## Focused evidence
+## Current host state and focused evidence
 
-All seven dependency cases pass under both native policies (14 results), with exact live
-Rust binary and Hunk output and zero remaining owned bytes. Candidate runs accept two
-modules; forced-reference runs accept zero. Additional typed-interface cases without a
-CPU, odd-statement and text-side-effect cases that publish zero modules also pass under
-both policies. Dependent value-only and combined macro/segment/default/alias imports
-pass. A proxy-scope kind-4 identity collision was fixed by the flags-aware classifier;
-its focused identity case passes natively. The latest host release image is 777,400 B; its source has 258 files / 3,169,351 bytes
-and manifest `fnv1a64:412ba8e45ee91ead`. A v27 full-build audit started but was
-intentionally stopped when fallback remained; it is incomplete and supplies no native
-completion, timing or memory result. Its captured prefix
-contains 89 private-compiler outcomes: 46 OK, 41 EXECUTION_INVALID and 2 binding INVALID.
-This is not full-build coverage. Focused results establish capsule behavior and object
-lifecycle only; they do not establish all-fallback coverage, resource savings or budget fit.
+The current frozen source has 258 files / 3,174,298 bytes and manifest
+`fnv1a64:63a12d57c2e5a9ba`. Its host release image is 777,888 B, linked static
+reservation is 816,596 B, and the embedded package is 455,026 B with digest
+`fnv1a64:415d2172932e243a`. These are image and linked-static sizes, not heap or total
+memory measurements. This slice has no full self-host, runtime comparison or memory
+comparison. Full performance comparisons remain user-paused; no resource or fit claim
+follows.
+
+All seven dependency cases pass both native policies (14 results), with exact live Rust
+binary/Hunk output and zero remaining owned bytes. Candidate runs accept two modules;
+forced-reference runs accept zero. Typed-interface/no-CPU, odd-statement and
+text-side-effect zero-publication cases also pass both policies. The four-case CLI matrix
+passes all eight native results under candidate and forced-reference policies, with exact live Rust binary/Hunk output, expected payload I/O,
+and zero cleanup ownership. Candidate accepts two modules for same-fragment and one for
+cross-align, cross-block and unanchored-PC; forced-reference accepts zero. Same-fragment
+stores base + worker, while the other cases store only base and fall back for worker. The proxy-scope kind-4 identity collision was fixed by the flags-aware classifier.
+
+The position-fixup proof is deliberately narrow. Production records transient
+`Context.PositionFixupCount/Identity` with selected-encoder fields and counts every fixup
+field. The only proven case is one resolved, untransformed target-relative field whose
+input identities and target match exactly, under the geometry guard; it emits no Hunk
+relocation. Any extra or nonpositional field is rejected and remains unproven by this path.
+Layout retains the pending recipe, then freezes bytes only when exact source and target
+labels belong to the same fragment. Cross-fragment, branch, mixed and transformed cases
+remain unproven by this cancellation path; existing replayable branch recipes are
+unchanged. No image VM contract change or CPU-specific hard-coding is involved.
+Generic field assertions pass in both source orders against expected bytes; the
+identity-bearing case matches the live Rust artifact.
+
+The native component passes after moving the image and retiring the source: 32 Rust bytes
+(20 payload + 12 endpoints), one fragment, zero serialized relocations, with forward and
+backward four-counter-register cases. Targets across an alignment boundary, including
+within one block, or in a separate block reject atomically. The full geometry case passes
+its fresh protocol with exact 79 Rust bytes across 11 fragments and source retirement; it
+covers code/data/BSS, alignment and replayable branch recipes. Its focused image digest is
+`fnv1a64:16804ede7323d48c` (source `fnv1a64:58b578b49ab564f5`, package
+`fnv1a64:415d2172932e243a`).
+
+Earlier v27 audit counts (89 private-compiler outcomes, including 38 DBRA/DBF stops)
+describe a prior source state and do not prove all 38 cases fixed now. Three MOVE and two
+binding failures from that audit remain unresolved.
 
 ## Next steps
 
-Continue with package-owned position/relocation proof coverage. At stage 14,
-`markInstructionRelocs`, 38 stops are DBRA/DBF and three are MOVE. The selected semantic
-sequence supplies a relative-fixup cancellation proof, but module layout accepts a
-replayable position recipe only for the separate semantic-branch form. First carry the
-exact selected target into a same-fragment cancellation proof, preserving invariant
-prefix bytes. Cross-fragment replay needs a generic field-fixup contract. Do not add
-mnemonic-specific handling to native code. The MOVE and two binding failures remain
-separate, unresolved cases.
-Then complete a current full-native admission/correctness proof with dependency coverage.
-Keep the root driver on the normal engine where needed. Full comparisons remain paused
-until coverage and correctness are established.
+Localize the remaining three MOVE and two binding failures from the earlier audit without
+assuming a repair recipe. Preserve fallback where neither a replayable recipe nor the
+narrow cancellation proof applies. This focused slice
+has not run a full self-host. Full performance comparisons remain user-paused.
 
 For `.ofm` objects, keep the metadata directory limited to Header, BlockRows and RelocRows.
 `add` retains the pending full image and copies the linker prefix; pending state supplies

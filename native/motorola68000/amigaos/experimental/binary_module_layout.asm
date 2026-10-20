@@ -59,6 +59,8 @@ Position	.long ?
 Requested	.long ?  ; original package request, encoding.REQUEST_AUTO or ID
 	.endstruct
 PENDING_BYTES = PendingRow.Requested+4
+POSITION_REPLAY = 1
+POSITION_CANCELLATION = 2; transient proof, never a serialized relocation
 	.section code, kind=code
 	.pub
 ; A0=State,A1=external callback,A2=borrowed callback context. D0/CCR=OK.
@@ -268,13 +270,26 @@ instruction	.block
 	bra.w good
 positionRecipe
 	jsr encoding.outputPositionRecipe
-	bne.w bad
+	bne.w cancellation
 	move.l d1, PendingRow.Program(sp)
 	move.l d2, PendingRow.Arguments(sp)
 	move.l d3, PendingRow.Value(sp)
 	jsr encoding.outputPositionRequestedCandidate
 	bne.w bad
 	move.l d1, PendingRow.Requested(sp)
+	move.l #POSITION_REPLAY, PendingRow.Position(sp)
+	bra.w positionTarget
+cancellation
+	jsr encoding.outputPositionCancellation
+	bne.w bad
+	move.l d1, d4
+	move.l d2, d5
+	clr.l PendingRow.Program(sp)
+	clr.l PendingRow.Arguments(sp)
+	clr.l PendingRow.Value(sp)
+	clr.l PendingRow.Requested(sp)
+	move.l #POSITION_CANCELLATION, PendingRow.Position(sp)
+positionTarget
 	subq.l #1, d4
 	cmpi.l #sections.HUNK_SLOT_COUNT, d4
 	bhs.w bad
@@ -287,10 +302,11 @@ positionRecipe
 	movea.l State.Labels+memory.Block.Pointer(a6), a0
 	cmpi.l #$ffffffff, 0(a0, d0.l)
 	bne.w identityReady
+	cmpi.l #POSITION_CANCELLATION, PendingRow.Position(sp)
+	beq.w bad  ; only a known local anchor can prove equal fragment movement
 	tst.l State.External(a6)
 	beq.w bad
 identityReady
-	move.l #1, PendingRow.Position(sp)
 	move.l assembly.Frame.RecordOffset(a5), d0
 	bsr.w owner
 	move.l d0, PendingRow.Source(sp)
@@ -434,6 +450,17 @@ pending
 	movea.l a6, a0
 	bsr.w symbol
 	bne.w sourceBad
+	cmpi.l #POSITION_CANCELLATION, PendingRow.Position(a2)
+	bne.w targetGeometry
+	; The successful VM already checked the field's range. Preserve its bytes
+	; only when the exact label anchor and instruction move by the same amount.
+	; The label's fragment, not its label-plus-addend numeric address, owns this
+	; test. No relocation or new image program is emitted for cancellation.
+	cmp.l d1, d6
+	bne.w sourceBad
+	addq.l #4, sp
+	bra.w advance
+targetGeometry
 	move.l d1, d0
 	bsr.w geometry
 	; Locate the exact anchor label, then retain its full normalized addend.
@@ -445,6 +472,8 @@ pending
 	move.l d1, d5
 	bra.w targetReady
 externalTarget
+	cmpi.l #POSITION_CANCELLATION, PendingRow.Position(a2)
+	beq.w sourceBad
 	move.l State.External(a6), d0
 	beq.w sourceBad
 	movea.l d0, a1

@@ -940,6 +940,8 @@ prepareExecution	.block
 	clr.l execution.Context.FixupIdentities(a6)
 	clr.w execution.Context.PositionDependent(a6)
 	clr.w execution.Context.PositionProofCount(a6)
+	clr.l execution.Context.PositionFixupCount(a6)
+	move.l #execution.POSITION_FIXUP_NO_ID, execution.Context.PositionFixupIdentity(a6)
 	move.w #$ffff, execution.Context.PositionProofTarget(a6)
 	move.w #$ffff, execution.Context.InputTarget(a6)
 	move.l #buffers.CompactSelectorMnemonicText, execution.Context.Mnemonic(a6)

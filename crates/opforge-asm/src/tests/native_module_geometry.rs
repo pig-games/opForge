@@ -123,6 +123,11 @@ const CASES: &[GeometryCase] = &[
         fragments: &[[1, 0, 1, 1, 8]],
     },
     GeometryCase {
+        name: "counter-same-fragment",
+        source: ".module geometry_fixture\n.cpu 68020\n.section code,kind=code\nentry .block\nbackward\n .word $1111\n dbra d0,forward\n dbf d7,backward\n dbra d3,backward\nforward\n dbf d5,forward\n rts\n.bend\n.endsection\n.output \"geometry.hunk\",format=hunk,sections=code\n.endmodule\n",
+        fragments: &[[1, 0, 1, 1, 20]],
+    },
+    GeometryCase {
         name: "full",
         source: SOURCE,
         fragments: &[[0, 0, 1, 1, 2], [1, 0, 1, 1, 0], [1, 0, 1, 2, 35], [1, 0, 1, 8, 2], [3, 0, 1, 1, 2], [0, 1, 2, 1, 1], [4, 1, 2, 1, 20], [4, 1, 2, 4, 3], [0, 2, 3, 1, 1], [5, 2, 3, 1, 2], [5, 2, 3, 8, 7]],
@@ -155,6 +160,15 @@ fn prepare(dir: &Path, case: &GeometryCase) -> Fixture {
         automatic_cross_alignment,
     )
     .unwrap();
+    // Counter branches have no general cross-fragment relocation recipe.
+    // Ordinary Rust accepts both; the private producer must reject atomically.
+    for (name, source) in [
+        ("module_counter_cross_align.asm", ".module geometry_fixture\n.cpu 68020\n.section code,kind=code\nentry .block\n dbra d2,target\n .align 8\ntarget\n rts\n.bend\n.endsection\n.output \"geometry.hunk\",format=hunk,sections=code\n.endmodule\n"),
+        ("module_counter_cross_block.asm", ".module geometry_fixture\n.cpu 68020\n.section code,kind=code\nfirst .block\n dbf d6,second\n rts\n.bend\nsecond .block\n rts\n.bend\n.endsection\n.output \"geometry.hunk\",format=hunk,sections=code\n.endmodule\n"),
+    ] {
+        oracle(dir, source).expect("ordinary assembler supports counter branch target");
+        fs::write(dir.join(name), source).unwrap();
+    }
     // Rust assembles the same statements at their new addresses. Raw output
     // additionally carries a live end-label table, allowing exact section slices.
     // Code/data flatten into the raw image; BSS retains its section boundary
@@ -238,13 +252,18 @@ fn prepare(dir: &Path, case: &GeometryCase) -> Fixture {
         ));
     }
     fs::write(dir.join("module_geometry_expectations.i"), rows).unwrap();
+    let expected_relocations = if case.name == "counter-same-fragment" {
+        0
+    } else {
+        -1
+    };
     let last = case.fragments.last().unwrap();
     fs::write(
         dir.join("module_geometry_fixture.i"),
         format!(
             "CODE_BASE=${CODE_BASE:x}\nDATA_BASE=${DATA_BASE:x}\nBSS_BASE=${BSS_BASE:x}\nCODE_BYTES={code_bytes}\nDATA_BYTES={data_bytes}\nRESULT_BYTES={}\n",
             expected.len()
-        ) + &format!("FRAGMENT_COUNT={}\nREGISTRY_FRAGMENT={}\nREGISTRY_KIND={}\nREGISTRY_EXTENT={}\n", case.fragments.len(), case.fragments.len(), last[2], last[4]),
+        ) + &format!("FRAGMENT_COUNT={}\nREGISTRY_FRAGMENT={}\nREGISTRY_KIND={}\nREGISTRY_EXTENT={}\nEXPECTED_RELOCATIONS={expected_relocations}\n", case.fragments.len(), case.fragments.len(), last[2], last[4]),
     )
     .unwrap();
     Fixture {

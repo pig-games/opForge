@@ -16,6 +16,7 @@
 	.use experimental.amigaos.binary_lexical_store as lexical
 	.use experimental.amigaos.binary_binding_records as records
 	.use experimental.amigaos.binary_memory as memory
+	.use tkpkg.amigaos.encoding_execution as execution
 	.use prvm.amigaos.abi as abi
 	.priv
 RESET_RECORD_BYTES = abi.PRVM_PACKED_RECORD_BYTES+abi.PRVM_PACKED_DOT_BYTES+abi.PRVM_PACKED_NAME_BYTES
@@ -168,6 +169,9 @@ copyBranch
 	bne.w bad
 	move.l #24, ReturnCode
 	bsr.w geometryChecks
+	bne.w bad
+	move.l #25, ReturnCode
+	bsr.w soleFixupChecks
 	bne.w bad
 	move.l a5, d0
 	lea Result, a0
@@ -407,6 +411,67 @@ done
 	rts
 	.bend  ; geometryChecks
 
+; A second ordinary scalar field invalidates the sole-relative proof even
+; though that field does not observe PC. Check both orders and a positive reset.
+soleFixupChecks	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea SoleFixupCases, a3
+	moveq #3-1, d7
+next
+	lea SoleFixupContext, a0
+	move.l #execution.CONTEXT_BYTES/2-1, d0
+clear
+	clr.w (a0)+
+	dbra d0, clear
+	lea SoleFixupContext, a6
+	move.l #SoleFixupOutput, execution.Context.Output(a6)
+	move.l #8, execution.Context.Capacity(a6)
+	move.l #SoleFixupInputs, execution.Context.Input(a6)
+	move.w #2, execution.Context.InputCount(a6)
+	move.w #7, execution.Context.FirstInputLen(a6)
+	move.l #$1000, execution.Context.Pc(a6)
+	move.l #SoleFixupIdentities, execution.Context.InputIdentities(a6)
+	move.l #execution.POSITION_FIXUP_NO_ID, execution.Context.PositionFixupIdentity(a6)
+	movea.l (a3)+, a1
+	move.l (a3)+, d1
+	moveq #4, d4
+	jsr execution.semantic
+	tst.l d0
+	bne.w bad
+	cmp.l (a3)+, d1
+	bne.w bad
+	move.l (a3)+, d0
+	cmp.l execution.Context.PositionFixupCount(a6), d0
+	bne.w bad
+	move.l (a3)+, d0
+	cmpi.l #2, d1
+	bne.w pair
+	cmp.w SoleFixupOutput, d0
+	bne.w bad
+	cmpi.l #37, execution.Context.PositionFixupIdentity(a6)
+	bne.w bad
+	bra.w checked
+pair
+	cmp.l SoleFixupOutput, d0
+	bne.w bad
+checked
+	cmpi.w #1, execution.Context.PositionDependent(a6)
+	bne.w bad
+	cmpi.w #1, execution.Context.PositionProofCount(a6)
+	bne.w bad
+	tst.w execution.Context.FixupCount(a6)
+	bne.w bad
+	dbra d7, next
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; soleFixupChecks
+
 ; Numeric qualified plans retain declaration identity even when values coincide.
 qualifiedChecks	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -509,12 +574,36 @@ TextDefinitionRecord	.byte RESET_RECORD_BYTES-1, abi.PRVM_PACKED_FLAG_INDENT
 	.byte 0
 	.align 2
 Package	.incbin "instruction_fixup_identity_package.bin"
+; Serialized v4 project fields: input,width,BE,base,LE adjustment,
+; reject unresolved,LE placeholder,signed range,no relocation.
+SoleRelativeProgram
+	.byte 1,0,2,0,2,2,0,0,0,0,0,0,0,0,0,0,$ff
+SoleRelativeProgramEnd
+RelativeScalarProgram
+	.byte 1,0,2,0,2,2,0,0,0,0,0,0,0,0,0,0
+	.byte 1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0,$ff
+RelativeScalarProgramEnd
+ScalarRelativeProgram
+	.byte 1,1,2,0,0,0,0,0,0,0,0,0,0,0,0,0
+	.byte 1,0,2,0,2,2,0,0,0,0,0,0,0,0,0,0,$ff
+ScalarRelativeProgramEnd
+SoleFixupInputs
+	.byte 1,$40,$10,0,0,0,1
+	.byte 7,0,$34,$12,0,0,$ff,$ff
+	.align 4
+SoleFixupIdentities	.long 37,execution.POSITION_FIXUP_NO_ID
+SoleFixupCases
+	.long RelativeScalarProgram,RelativeScalarProgramEnd-RelativeScalarProgram,4,execution.POSITION_FIXUP_UNPROVEN,$003e1234
+	.long ScalarRelativeProgram,ScalarRelativeProgramEnd-ScalarRelativeProgram,4,execution.POSITION_FIXUP_UNPROVEN,$1234003e
+	.long SoleRelativeProgram,SoleRelativeProgramEnd-SoleRelativeProgram,2,execution.POSITION_FIXUP_SINGLE,$003e
 DosName	.byte "dos.library", 0
 OutputPath	.byte "Work:output.bin", 0
 	.endsection
 	.section bss, kind=bss
 	.priv
 	.align 4
+SoleFixupContext	.res byte, execution.CONTEXT_BYTES
+SoleFixupOutput	.res byte, 8
 Context	.res byte, package.CONTEXT_BYTES
 Values	.res byte, SYMBOL_COUNT*8
 Defined	.res byte, SYMBOL_COUNT

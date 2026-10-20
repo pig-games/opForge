@@ -2,21 +2,11 @@
 
 ## Current implementation
 
-Eligible modules compile to inspectable current-build `.ofm` link objects. The producer
-can also publish owned closed-public capsules for macros, segments and statements.
-Capsules retain binary bodies, defaults, plans and names, preserve caller binding and
-privacy, enter normal shared pools, then allow private frontend retirement. Interface-only
-producers create zero-block `.ofm` objects. Values and types remain shared semantic
-owners; no fake PC or section is created, and an interface without effects needs no CPU.
-Temporary template facets are owned in-memory capsules, not a persistent cache format.
-
-The metadata directory contains Header, BlockRows and RelocRows. `add` retains the pending
-full image and copies the linker prefix; pending state supplies carrier extraction. Store
-writes named objects and retires pending ownership. Public semantic owners remain
-available to later modules. `acquireEmit` reads selected payloads only during final Hunk
-emission and caches one current module. Unlinked and BSS-only modules may have zero reads;
-each selected payload may be read at most once. Successful cleanup retains `.ofm`
-deliverables and releases ephemeral ownership.
+Eligible modules compile to inspectable current-build `.ofm` link objects. Owned closed-public
+capsules cover macros, segments and statements, preserving caller binding and privacy.
+Interface-only producers create zero-block objects; values and types stay in shared
+semantic owners without fake PCs or sections. Temporary template facets are owned in-memory
+capsules, not a persistent cache format.
 
 ## Current slice: directory and object lifecycle
 
@@ -42,26 +32,19 @@ reads, deliverable survival, exact artifacts and zero cleanup ownership.
 
 ## Focused proof and remaining work
 
-All seven dependency cases pass both native policies (14 results), with exact live Rust
-binary/Hunk artifacts and zero remaining owned bytes. Candidate runs accept two modules;
-forced-reference runs accept zero. Dependent value-only imports and combined
-macro/segment/default/alias imports pass. Typed-interface cases without a CPU,
-odd-statement cases and text-side-effect cases with zero publication also pass under both
-policies. The flags-aware classifier resolves the proxy-scope kind-4 identity collision;
-its focused identity case passes natively.
-
-A v27 full-build audit started but was intentionally stopped when fallback remained. Its
-89 captured private-compiler outcomes (46 OK, 41 EXECUTION_INVALID, 2 binding INVALID)
-are an incomplete prefix, not native completion or full-build coverage. Full comparisons
-remain paused; do not claim all fallback paths pass, nor infer full-build performance,
-memory savings or 8 MiB fit. The next repair is package-owned position/relocation proof
-coverage and remaining binding failures. First and repeated execution stop at stage 14,
-`markInstructionRelocs`: 38 DBRA/DBF stops lack module-side retention of the selected
-relative-fixup proof; three MOVE stops remain unexplained. First prove same-fragment
-cancellation using the exact package-selected target. Cross-fragment replay requires a
-generic field-fixup contract. Keep the normal root engine where needed and avoid
-CPU-specific hard-coding. Resume frozen resource comparisons
-after complete current full-native admission and correctness proof.
+Focused dependency, capsule and same-fragment cancellation checks pass under both native
+policies. The four-case CLI matrix has eight passing native results. See the measurement
+report for exact output, admission, payload-I/O and cleanup results.
+The package-owned cancellation proof counts every fixup field. It accepts only one
+resolved, untransformed target-relative field with exact input identities and target, under
+the geometry guard, with no Hunk relocation. Layout freezes bytes only when source and
+target labels belong to the same fragment. Extra or nonpositional fields remain unproven
+and are rejected; this proof does not cover branch, multiple, mixed, transformed or
+cross-fragment fixups. Existing replayable branch recipes remain covered by the geometry
+regression. Generic synthetic field checks pass in both source orders against explicit
+expected bytes; the existing package-encoding identity artifact matches live Rust. The counter-geometry and full
+geometry cases pass. See the measurement report for current source/build identity,
+unresolved audit cases and qualification limits.
 
 Preserve package/VM ownership of CPU and encoding semantics, exact symbol identity,
 relocations, layout/alignment, code/data/BSS and whole-block reachability. Unsupported

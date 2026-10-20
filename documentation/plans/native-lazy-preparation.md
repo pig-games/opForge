@@ -2,9 +2,9 @@
 
 This note records maintained capture and ownership contracts used by module compilation.
 The active path publishes eligible current-build `.ofm` objects and owned in-memory
-capsules for closed public macro, segment and statement facets. Full current native build
-qualification and frozen resource comparisons remain pending. The budget is 6.5 MiB for
-the process plus 1.5 MiB for AmigaOS. See [per-module objects and shared capsules](native-fragment-preparation.md).
+capsules for closed public macro, segment and statement facets. A full self-host has not
+run on this slice; full performance comparisons remain user-paused.
+The budget is 6.5 MiB for the process plus 1.5 MiB for AmigaOS. See [per-module objects and shared capsules](native-fragment-preparation.md).
 
 ## Maintained storage policies
 
@@ -75,16 +75,8 @@ memory owner while the new per-module path is incomplete. The private module ima
 is a separate owner available for fragment runtime. `beginSizing` remains a no-growth
 boundary.
 
-All seven dependency cases pass both native policies (14 results), with exact live Rust
-binary/Hunk output and zero remaining owned bytes. Candidate accepts two modules and
-forced-reference accepts zero. Typed-interface/no-CPU, odd-statement and text-side-effect
-zero-publication cases also pass under both policies.
-
-The v27 audit captured an incomplete prefix of 89 private-compiler outcomes (46 OK, 41
-EXECUTION_INVALID, 2 binding INVALID). First and repeated execution stops occur at stage
-14, `markInstructionRelocs`: 38 DBRA/DBF stops need retention of the package-selected
-relative-fixup proof; three MOVE stops remain separate. Next carry exact target identity
-for same-fragment cancellation, then address generic cross-fragment fixups and remaining
-binding failures before full-native admission/correctness qualification.
-Full comparisons remain paused and focused results imply no resource change. See the [measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points)
+The focused dependency, capsule and same-fragment cancellation checks pass under both
+native policies. The four-case CLI matrix has eight passing native results. Exact output, admission,
+payload-I/O, cleanup and geometry evidence is maintained in the
+[measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points)
 and [native parity contract](../../agents/rules/native-rust-parity-porting.md).

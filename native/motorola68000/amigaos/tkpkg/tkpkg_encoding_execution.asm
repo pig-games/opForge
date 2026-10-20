@@ -46,9 +46,34 @@ PositionProofValue	.long ?
 InputIdentities	.long ?  ; optional caller-owned opaque long per input
 FixupIdentities	.long ?  ; optional caller-owned opaque long per fixup
 PositionProofRequested	.long ?  ; original package request, REQUEST_AUTO or ID
+PositionFixupCount	.long ?  ; NONE, SINGLE or UNPROVEN across selected stages
+PositionFixupIdentity	.long ?  ; opaque selected input identity, never a pointer
 .endstruct
-CONTEXT_BYTES = Context.PositionProofRequested+4
+CONTEXT_BYTES = Context.PositionFixupIdentity+4
 REQUEST_AUTO = -1
+POSITION_FIXUP_NONE = 0
+POSITION_FIXUP_SINGLE = 1
+POSITION_FIXUP_UNPROVEN = 2
+POSITION_FIXUP_NO_ID = -1
+FIXUP_TRANSFORM_IDENTITY = 0
+FIXUP_BASE_TARGET_POSITION = 2
+FIXUP_INPUT_TARGET_REFERENCE_BIT = 0
+FIXUP_INPUT_UNRESOLVED_BIT = 1
+	.priv
+; Runtime step frame, separate from the serialized fixup program.
+FixupStep	.struct
+Input	.word ?
+Width	.word ?
+Endian	.word ?
+Base	.word ?
+Adjustment	.long ?
+Unresolved	.word ?
+Placeholder	.long ?
+Range	.word ?
+Relocation	.word ?
+	.endstruct
+FIXUP_STEP_FRAME_BYTES = FixupStep.Relocation+2
+	.pub
 
 MALFORMED_TEXT_LEN = 30
 RANGE_SUFFIX_LEN = 33
@@ -402,6 +427,7 @@ branchSuffixReady
 	tst.w 34(sp)
 	bne.w branchProofReady
 	move.w #1, Context.PositionDependent(a6)
+	move.l #POSITION_FIXUP_UNPROVEN, Context.PositionFixupCount(a6)
 	cmpi.w #$ffff, Context.InputTarget(a6)
 	beq.w branchProofReady
 	move.w Context.PositionProofCount(a6), d0
@@ -528,7 +554,7 @@ fixupLoop
 	moveq #15, d0
 	bsr.w requireBytes
 	bne.w fixupFail
-	lea -22(sp), sp
+	lea -FIXUP_STEP_FRAME_BYTES(sp), sp
 	moveq #0, d0
 	move.b (a0)+, d0
 	move.w d0, (sp)
@@ -579,6 +605,8 @@ fixupWidthReady
 	move.w (sp), d0
 	bsr.w loadFixupInput
 	bne.w fixupFrameFail
+	movea.l sp, a1
+	bsr.w observeFixupField
 	btst #1, d6
 	beq.w fixupResolved
 	tst.w 12(sp)
@@ -657,11 +685,11 @@ fixupRecordReady
 	move.w d0, Context.PositionProofCount(a6)
 	move.w d5, Context.PositionProofTarget(a6)
 fixupProofReady
-	lea 22(sp), sp
+	lea FIXUP_STEP_FRAME_BYTES(sp), sp
 	bra.w fixupLoop
 
 fixupFrameFail
-	lea 22(sp), sp
+	lea FIXUP_STEP_FRAME_BYTES(sp), sp
 fixupFail
 	lea MalformedText, a1
 	moveq #MALFORMED_TEXT_LEN, d1
@@ -681,6 +709,42 @@ fixupReturn
 	movem.l (sp)+, d2-d7/a0/a2-a5
 	rts
 	.bend  ; runFixup
+
+; A1=FixupStep,A6=Context,D6=input flags.
+; Account for every fixup field, including scalars that erased provenance.
+; Only a sole resolved target-relative field without relocation can retain an
+; exact input identity. Any other or additional field stays unproven across
+; later stages. The transform parser invalidates nonidentity transforms too.
+; All registers preserved; CCR unspecified. This is transient proof only.
+observeFixupField	.block
+	movem.l d0-d2/a0, -(sp)
+	tst.l Context.PositionFixupCount(a6)
+	bne.w unproven
+	cmpi.w #FIXUP_BASE_TARGET_POSITION, FixupStep.Base(a1)
+	bne.w unproven
+	tst.w FixupStep.Relocation(a1)
+	bne.w unproven
+	btst #FIXUP_INPUT_TARGET_REFERENCE_BIT, d6
+	beq.w unproven
+	btst #FIXUP_INPUT_UNRESOLVED_BIT, d6
+	bne.w unproven
+	movea.l Context.InputIdentities(a6), a0
+	cmpa.w #0, a0
+	beq.w unproven
+	moveq #0, d0
+	move.w FixupStep.Input(a1), d0
+	cmp.w Context.InputCount(a6), d0
+	bhs.w unproven
+	lsl.l #2, d0
+	move.l 0(a0, d0.l), Context.PositionFixupIdentity(a6)
+	move.l #POSITION_FIXUP_SINGLE, Context.PositionFixupCount(a6)
+	bra.w done
+unproven
+	move.l #POSITION_FIXUP_UNPROVEN, Context.PositionFixupCount(a6)
+done
+	movem.l (sp)+, d0-d2/a0
+	rts
+	.bend  ; observeFixupField
 
 ; Apply one Rust FixupTransform carried by SEMV v7.  The native expression
 ; boundary transports signed i32 scalars, so range-map i64 fields must be exact
@@ -708,8 +772,11 @@ applyTransform	.block
 	bne.w transformFail
 	moveq #0, d0
 	move.b (a0)+, d0
-	bne.w transformCheckKind
-	bra.w transformIdentity
+	cmpi.b #FIXUP_TRANSFORM_IDENTITY, d0
+	beq.w transformIdentity
+	; The parsed operation changes or constrains the scalar beyond the sole
+	; target-minus-PC proof. Do not infer affine invariance for that transform.
+	move.l #POSITION_FIXUP_UNPROVEN, Context.PositionFixupCount(a6)
 transformCheckKind
 	cmpi.b #1, d0
 	bne.w transformCheckRangeMap

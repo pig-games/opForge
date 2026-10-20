@@ -249,6 +249,8 @@ struct PrivateCase {
 
 const PRIVATE_OUTPUTS: &str = ".region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
 
+#[path = "native_module_cancellation.rs"]
+mod cancellation;
 #[path = "native_module_publication_cases.rs"]
 mod publication_cases;
 #[path = "native_module_real_sources.rs"]
@@ -350,6 +352,7 @@ fn private_cases() -> Vec<PrivateCase> {
     ];
     cases.extend(template_dependencies::cases());
     cases.extend(publication_cases::cases());
+    cases.extend(cancellation::cases());
     cases
 }
 
@@ -539,6 +542,7 @@ fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
                 1
             );
         }
+        name if name.starts_with("private-pc-cancel-") => cancellation::check(case.name, &binary),
         name if name.starts_with("private-publication-reduced-") => {
             publication_cases::check(case.name, &binary)
         }
@@ -964,6 +968,7 @@ fn private_pipeline_native_cases(progress: bool, disk: bool, mut cases: Vec<Priv
                     }
                     if let Some((semantic, payload)) = publication_cases::object_counts(case.name)
                         .or_else(|| real_sources::object_counts(case.name))
+                        .or_else(|| cancellation::object_counts(case.name))
                     {
                         let expected_objects = if reference {
                             (0, 0)

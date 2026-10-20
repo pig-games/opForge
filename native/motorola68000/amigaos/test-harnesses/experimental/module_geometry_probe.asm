@@ -39,6 +39,8 @@ FAIL_MOVE = 24
 FAIL_GEOMETRY = 25
 FAIL_LINK = 26
 FAIL_REGISTRY = 27
+FAIL_COUNTER_FRAGMENTS = 28
+FAIL_COUNTER_RELOCATIONS = 29
 Expectation	.struct
 Owner	.long ?
 Section	.long ?
@@ -113,6 +115,9 @@ cases	.block
 	bne.w bad
 	bsr.w branchWidthChecks
 	bne.w bad
+	move.l #FAIL_COUNTER_FRAGMENTS, ReturnCode
+	bsr.w counterFragmentChecks
+	bne.w bad
 	bsr.w retainedAddressChecks
 	bne.w bad
 	lea CompileContext, a0
@@ -131,6 +136,12 @@ compiled
 	bne.w bad
 	cmpi.l #FRAGMENT_COUNT, image.Header.BlockCount(a0)
 	bne.w bad
+	move.l #EXPECTED_RELOCATIONS, d1
+	bmi.w relocationsChecked
+	move.l #FAIL_COUNTER_RELOCATIONS, ReturnCode
+	cmp.l image.Header.RelocCount(a0), d1
+	bne.w bad
+relocationsChecked
 	move.l a0, Link+image.LinkFrame.Image
 	move.l Moved+memory.Block.Used, Link+image.LinkFrame.ImageBytes
 	lea Result, a1
@@ -499,6 +510,52 @@ releaseOwners	.block
 	rts
 	.bend  ; releaseOwners
 	.include "module_carrier_checks.i"
+; Counter branches cancel only within one exact fragment. A shared block
+; owner across alignment does not establish cancellation; another block also
+; requires a general recipe which this producer does not currently provide.
+counterFragmentChecks	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	lea CounterSources, a4
+	moveq #2-1, d6
+next
+	lea WidthContext, a0
+	move.l #Package, compiler.Context.Package(a0)
+	move.l (a4)+, compiler.Context.Source(a0)
+	move.l (a4)+, compiler.Context.Bytes(a0)
+	lea WidthImage, a1
+	jsr compiler.compile
+	tst.l d0
+	beq.w bad
+	move.l WidthImage+memory.Block.Pointer, d0
+	or.l WidthImage+memory.Block.Capacity, d0
+	or.l WidthImage+memory.Block.Used, d0
+	bne.w bad
+	dbra d6, next
+	moveq #0, d7
+	bra.w cleanup
+bad
+	moveq #1, d7
+cleanup
+	lea WidthImage, a0
+	jsr memory.release
+	move.l d7, d0
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; counterFragmentChecks
+	.endsection
+	.section data, kind=data
+	.priv
+CounterSources
+	.long CounterAlign,CounterAlignEnd-CounterAlign
+	.long CounterBlock,CounterBlockEnd-CounterBlock
+CounterAlign	.incbin "module_counter_cross_align.asm"
+CounterAlignEnd
+CounterBlock	.incbin "module_counter_cross_block.asm"
+CounterBlockEnd
+	.endsection
+	.section code, kind=code
+	.priv
 	.include "module_branch_width_checks.i"
 	.include "module_retained_address_checks.i"
 	.endsection

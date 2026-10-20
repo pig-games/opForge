@@ -6,7 +6,9 @@
 	.use experimental.amigaos.binary_module_interface as semantics
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_module_request as request
+	.use experimental.amigaos.binary_module_registry as registry
 	.include "module_image_payload.i"
+	.include "module_registry_mode.i"
 	.priv
 EXEC_BASE = 4
 EXEC_OPEN_LIBRARY = -552
@@ -41,16 +43,16 @@ FAIL_OWNER_USED = 37
 start	.block
 	movem.l d2-d7/a2-a6, -(sp)
 	move.l #20, ReturnCode
-	jsr cases
-	tst.l d0
-	bne.w cleanup
 	lea DosName, a1
 	moveq #36, d0
 	movea.l EXEC_BASE.w, a6
 	jsr EXEC_OPEN_LIBRARY(a6)
 	move.l d0, DosBase
 	beq.w cleanup
-	movea.l d0, a6
+	jsr cases
+	tst.l d0
+	bne.w closeLibrary
+	movea.l DosBase, a6
 	move.l #OutputName, d1
 	move.l #MODE_NEWFILE, d2
 	jsr DOS_OPEN(a6)
@@ -58,9 +60,9 @@ start	.block
 	beq.w closeLibrary
 	move.l d0, d1
 	move.l #Result, d2
-	moveq #20, d3
+	moveq #44, d3
 	jsr DOS_WRITE(a6)
-	cmpi.l #20, d0
+	cmpi.l #44, d0
 	bne.w closeFile
 	clr.l ReturnCode
 closeFile
@@ -70,6 +72,10 @@ closeFile
 	bne.w closeLibrary
 	move.l #20, ReturnCode
 closeLibrary
+	lea Registry, a0
+	jsr registry.release
+	lea RegistryOwner, a0
+	jsr memory.release
 	movea.l DosBase, a1
 	movea.l EXEC_BASE.w, a6
 	jsr EXEC_CLOSE_LIBRARY(a6)
@@ -320,6 +326,8 @@ selected	.block
 	bne.w bad
 	cmpi.l #SECOND_BYTES, Link+image.LinkFrame.Used
 	bne.w bad
+	bsr.w registryCases
+	bne.w bad
 	bsr.w requestFailures
 	bne.w bad
 	moveq #0, d0
@@ -328,6 +336,136 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; selected
+; Both storage modes link A/B/A after ownership transfer. B uses a local
+; fragment target; A uses a numeric export installed from another module.
+registryCases	.block
+	move.l #38, ReturnCode
+	.if DISK_REGISTRY
+	lea Registry, a0
+	movea.l DosBase, a1
+	lea WorkName, a2
+	jsr registry.configure
+	bne.w bad
+	.endif
+	lea Registry, a0
+	lea RegistryMark, a1
+	jsr registry.checkpoint
+	moveq #0, d6
+addModule
+	lea RegistryOwner, a0
+	move.l #IMAGE_BYTES, d0
+	jsr memory.reserveExact
+	bne.w bad
+	move.l #IMAGE_BYTES, RegistryOwner+memory.Block.Used
+	movea.l Request+request.State.Image+memory.Block.Pointer, a1
+	movea.l RegistryOwner+memory.Block.Pointer, a2
+	move.l #IMAGE_BYTES, d1
+	bsr.w copy
+	tst.l d6
+	beq.w addReady
+	movea.l RegistryOwner+memory.Block.Pointer, a2
+	adda.l image.Header.Relocs(a2), a2
+	move.l #2, image.Reloc.Target(a2)
+addReady
+	lea Registry, a0
+	lea RegistryOwner, a1
+	jsr registry.add
+	bne.w bad
+	cmp.l d6, d1
+	bne.w bad
+	tst.l RegistryOwner+memory.Block.Pointer
+	bne.w bad
+	tst.l RegistryOwner+memory.Block.Capacity
+	bne.w bad
+	tst.l RegistryOwner+memory.Block.Used
+	bne.w bad
+	addq.l #1, d6
+	cmpi.l #2, d6
+	bne.w addModule
+	; Retire the original payload after both registry transfers. Reloads must
+	; read independent module storage; request directory remains valid for its
+	; later missing-selection checks.
+	movea.l Request+request.State.Image+memory.Block.Pointer, a1
+	adda.l image.Header.Payload(a1), a1
+	move.l #PAYLOAD_BYTES, d1
+poisonPayload
+	move.b #$dd, (a1)+
+	subq.l #1, d1
+	bne.w poisonPayload
+	moveq #0, d6
+linkModule
+	lea Registry, a0
+	move.l d6, d1
+	andi.l #1, d1
+	move.l d1, ActiveModule
+	moveq #1, d2
+	jsr registry.locate
+	bne.w bad
+	.if DISK_REGISTRY
+	move.l ActiveModule, d0
+	addq.l #1, d0
+	cmp.l Registry+registry.State.Cached, d0
+	bne.w bad
+	cmpi.l #IMAGE_BYTES, Registry+registry.State.Cache+memory.Block.Used
+	bne.w bad
+	.endif
+	move.l a1, RegistryLink+image.LinkFrame.Image
+	lea Result+20, a1
+	move.l d6, d0
+	lsl.l #3, d0
+	adda.l d0, a1
+	move.l a1, RegistryLink+image.LinkFrame.Output
+	lea RegistryLink, a0
+	jsr image.linkValidated
+	bne.w bad
+	addq.l #1, d6
+	cmpi.l #3, d6
+	bne.w linkModule
+	lea Registry, a0
+	lea RegistryMark, a1
+	jsr registry.rollback
+	bne.w bad
+	tst.l Registry+registry.State.Modules+memory.Block.Used
+	bne.w bad
+	tst.l Registry+registry.State.Cache+memory.Block.Pointer
+	bne.w bad
+	tst.l Registry+registry.State.Cached
+	bne.w bad
+	tst.l Registry+registry.State.DiskEnd
+	bne.w bad
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; registryCases
+; Mimic runtime's two resolution paths: global cells need no image lookup,
+; while local fragment lookup keeps the active module's borrowed image live.
+registryResolve	.block
+	movem.l d2/a0-a3, -(sp)
+	cmpi.l #17, d1
+	beq.w external
+	cmpi.l #2, d1
+	bne.w bad
+	move.l d1, d2
+	move.l ActiveModule, d1
+	lea Registry, a0
+	jsr registry.locate
+	bne.w bad
+	move.l #$3000, d1
+	bra.w good
+external
+	move.l #$1000, d1
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2/a0-a3
+	tst.l d0
+	rts
+	.bend  ; registryResolve
 	; Missing selections preserve a published image; compiler failures and
 ; ignored recursive rejection never publish a partial allocation.
 requestFailures	.block
@@ -607,6 +745,10 @@ Build
 	.long Inputs, 3, Fixup, 1, 0, 0, 0, 0, 0
 Link
 	.long 0, IMAGE_BYTES, 1, 0, 0, FIRST_BYTES, 0, resolve, 0, 0
+RegistryLink
+	.long 0, IMAGE_BYTES, 1, 0, 0, FIRST_BYTES, 0, registryResolve, 0, 0
+WorkName	.byte "Work:", 0
+	.align 4
 Guard	.long GUARD_VALUE, GUARD_VALUE
 Target	.long $1000
 ResolveFails	.long 0
@@ -621,7 +763,11 @@ Source
 SourceOwner	.res byte, memory.Block.Used+4
 OriginalOwner	.res byte, memory.Block.Used+4
 MovedOwner	.res byte, memory.Block.Used+4
-Result	.res byte, 20
+Result	.res byte, 44
+Registry	.res byte, registry.STATE_BYTES
+RegistryOwner	.res byte, memory.Block.Used+4
+RegistryMark	.res byte, registry.CHECKPOINT_BYTES
+ActiveModule	.res long, 1
 DosBase	.res long, 1
 OutputHandle	.res long, 1
 ReturnCode	.res long, 1

@@ -19,10 +19,19 @@ fn prepare(dir: &Path) -> Vec<u8> {
     .unwrap();
     let expected = oracle(dir, LINKED).expect("live relocated-fragment output");
     assert_eq!(expected.len(), 20);
+    let mut expected = expected;
+    let registry = oracle(dir, ".module linked\n.cpu 68020\n moveq #7,d0\n.long $1004\n rts\n moveq #7,d0\n.long $3004\n rts\n moveq #7,d0\n.long $1004\n rts\n.endmodule\n").expect("live alternating registry output");
+    expected.extend(registry);
+    assert_eq!(expected.len(), 44);
     expected
 }
 
-fn build_probe(root: &Path, dir: &Path) -> Vec<u8> {
+fn build_probe(root: &Path, dir: &Path, disk: bool) -> Vec<u8> {
+    fs::write(
+        dir.join("module_registry_mode.i"),
+        format!("DISK_REGISTRY={}\n", u8::from(disk)),
+    )
+    .unwrap();
     let input = dir.join("module_image_probe.asm");
     fs::copy(
         root.join(
@@ -51,8 +60,10 @@ fn native_module_images_host_assembles() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let dir = scratch();
     prepare(&dir.0);
-    let image = build_probe(&root, &dir.0);
-    assert!(!image.is_empty());
+    for disk in [false, true] {
+        let image = build_probe(&root, &dir.0, disk);
+        assert!(!image.is_empty());
+    }
 }
 
 #[test]
@@ -61,43 +72,46 @@ fn native_module_images_fs_uae() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let dir = scratch();
     let expected = prepare(&dir.0);
-    let image = build_probe(&root, &dir.0);
-    let case = OpforgeNativeCliParityCase {
-        name: "native-module-image-component",
-        cpu_override: "68020",
-        extra_assembly_defines: &[],
-        source_override: Some(PAYLOAD.as_bytes()),
-        command_template: Some(""),
-        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-        extra_guest_files: &[],
-        proof: OpforgeNativeCliProof::ExactArtifact {
-            relative_path: "Work/output.bin",
-            rust_oracle: &expected,
-        },
-    };
-    let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &image)
-        .expect("fresh native module-image component");
-    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
-        panic!("real native execution required");
-    };
-    assert_eq!(runs.len(), 1);
-    assert!(runs[0].protocol_completed && runs[0].success);
-    assert_eq!(runs[0].exit_code, Some(0));
-    assert_eq!(
-        runs[0].verified_output.as_deref(),
-        Some(expected.as_slice())
-    );
-    eprintln!(
-        "MODULE_IMAGE_COMPONENT {}",
-        serde_json::json!({
-            "scope": "supplied-byte component; CLI module lowering not integrated",
-            "native_image_digest": runs[0].native_image_digest,
-            "fresh_protocol": runs[0].protocol_completed,
-            "exit_code": runs[0].exit_code,
-            "exact_rust_bytes": expected.len(),
-            "full_self_host": false,
-            "full_build_memory_saving": null,
-            "full_build_runtime_saving": null,
-        })
-    );
+    for disk in [false, true] {
+        let image = build_probe(&root, &dir.0, disk);
+        let case = OpforgeNativeCliParityCase {
+            name: "native-module-image-component",
+            cpu_override: "68020",
+            extra_assembly_defines: &[],
+            source_override: Some(PAYLOAD.as_bytes()),
+            command_template: Some(""),
+            package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+            extra_guest_files: &[],
+            proof: OpforgeNativeCliProof::ExactArtifact {
+                relative_path: "Work/output.bin",
+                rust_oracle: &expected,
+            },
+        };
+        let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &image)
+            .expect("fresh native module-image component");
+        let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+            panic!("real native execution required");
+        };
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].protocol_completed && runs[0].success);
+        assert_eq!(runs[0].exit_code, Some(0));
+        assert_eq!(
+            runs[0].verified_output.as_deref(),
+            Some(expected.as_slice())
+        );
+        eprintln!(
+            "MODULE_IMAGE_COMPONENT {}",
+            serde_json::json!({
+                "disk_registry": disk,
+                "scope": "supplied-byte component; CLI module lowering not integrated",
+                "native_image_digest": runs[0].native_image_digest,
+                "fresh_protocol": runs[0].protocol_completed,
+                "exit_code": runs[0].exit_code,
+                "exact_rust_bytes": expected.len(),
+                "full_self_host": false,
+                "full_build_memory_saving": null,
+                "full_build_runtime_saving": null,
+            })
+        );
+    }
 }

@@ -22,7 +22,7 @@ Registry	.long ?
 Frame	.long ?
 Module	.long ?
 Fragment	.long ?
-Descriptor	.long ?
+Descriptor	.long ?  ; same-module image borrow, refreshed on every callback
 Placement	.long ?
 	.endstruct
 SESSION_BYTES = Session.Placement+4
@@ -46,6 +46,8 @@ begin	.block
 ; A1=borrowed payload valid until the next callback. Others preserved.
 ; Place refreshes only this fragment's exported addresses on each layout pass.
 ; Emit applies package-owned recipes and forwards absolute Hunk relocations.
+; A disk registry may evict the preceding module here. No image pointer from
+; an earlier callback is read before locate refreshes this session's borrows.
 fragment	.block
 	movem.l d4-d7/a0/a2-a6, -(sp)
 	move.l d0, d7
@@ -88,6 +90,8 @@ fragment	.block
 	move.l #resolve, Link+image.LinkFrame.Resolve
 	move.l #patch, Link+image.LinkFrame.Patch
 	move.l #State, Link+image.LinkFrame.Context
+	; linkValidated borrows image rows across callbacks. resolve may locate only
+	; this same module; patch uses the package and cannot access the registry.
 	lea Link, a0
 	jsr image.linkValidated
 	bne.w bad
@@ -143,6 +147,8 @@ clearLink
 ; D1=opaque target. D0=status,D1=absolute value,D2=zero-based section.
 ; Missing forward placement remains a zero address during pass one; strict
 ; final emission requires every referenced whole fragment to have been placed.
+; Local targets always use the active module, preserving its disk-cache borrow.
+; Cross-module references use installed global values, never another image.
 target	.block
 	movem.l d3-d6/a0-a5, -(sp)
 	move.l d1, d6

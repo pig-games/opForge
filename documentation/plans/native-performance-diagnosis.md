@@ -85,6 +85,45 @@ on active compilers, saved payloads, public closure and remapping. The [next int
 boundary](native-fragment-preparation.md#next-coherent-integration-boundary) requires a
 reviewed lifetime decision rather than an automatic implementation.
 
+### Capacity review before the ownership repair
+
+The 2026-10-20 read-only calculation does **not** yet substantiate a positive net
+full-build peak saving. No repair or new native measurement was performed; the reference
+path remains unchanged. Use the frozen comparison above, not the older disk census.
+
+The retained package has 1,156 dictionary entries. `frontend.scratchSize` requests
+82,612 + 8 × 1,156 = 91,860 B; `memory.reserveExact` rounds this to 91,864 B.
+
+| Potentially removed fixed owner | Allocated capacity |
+|---|---:|
+| Duplicate private frontend plus its 256 B line buffer | 92,120 B |
+| Configuration frontend | 91,864 B |
+| Discovery graph scratch | 14,368 B |
+| Discovery traversal scratch | 4,400 B |
+| Fixed subtotal | 202,752 B |
+
+Keep the caller's semantic frontend; it is not another removable duplicate. Private
+frontend scratch already retires before private assembly, so it cannot be subtracted
+from a peak during assembly. Configuration's variable lexical/template/import owners
+and the compiler's variable owners remain unquantified at the actual peak.
+
+For a provisional request-row scenario, 512 rows × 32 B costs 16,384 B, **excluding**
+configuration/dependency payload and conversion scratch. Even assuming every named
+fixed owner overlapped the old peak and vanished there, the fixed-only net reduction
+would be just 186,368 B, leaving 20,447,312 B: still 1,082,864 B above reference. This
+is an optimistic scenario, not a predicted repaired peak. Meeting the 18,315,872 B
+gate requires another 2,131,440 B of net variable-owner savings in that scenario,
+plus any omitted replacement costs; another phase could become the peak.
+
+The 37,797 B packed-length reduction is not a global record-capacity saving. Both
+2,119,792 B and 2,157,589 B exceed 2 MiB. Resident `appendPrepared` growth and
+`ordered.materialize` use bounded doubling with a 3 MiB limit, so both streams require
+the same 3,145,728 B buffer capacity. Cumulative allocation traffic is likewise not
+peak storage. Before implementing the proposed prepare-once ownership repair, account
+for variable owners at the peak, the owned request payload, prepared state retained
+for late fallback, and the acquisition/later-assembly peaks. Do not forecast a megabyte
+gain from the fixed buffers or carry forward the older gross lexical-capacity model.
+
 ## Configured-module CLI integration: not retained
 
 This anchor remains for existing links. The superseded narrow converter was removed; Git

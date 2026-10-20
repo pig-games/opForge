@@ -19,7 +19,7 @@ performance result. See the [measurement report](native-performance-diagnosis.md
 
 The directory is metadata-only: Header, BlockRows and RelocRows. In
 the replacement flow, `add` retains the complete pending image and copies the linker
-prefix. Pending state supplies carrier extraction. Store writes one `mXXXXXXXX.ofm` per
+prefix. Pending state supplies carrier extraction. Store writes one named `.ofm` per
 eligible module, then retires pending ownership. Compact public semantic owners remain
 resident for later module compilation. Successful cleanup keeps `.ofm` files as inspectable deliverables, separate
 from ephemeral capture files.
@@ -30,6 +30,14 @@ rollback removes only its unpublished suffix. These are current-build link objec
 independently reusable module-cache entries: external numeric identities still belong
 to the active build. The container contains offsets and numeric values, never process
 pointers.
+
+Object filenames put the module leaf before its parent qualification, for example
+`bar.foo-0001.ofm` for `foo.bar`. Classic Amiga filenames are limited to 30 bytes:
+the 21-byte stem keeps the leaf, then as much qualification as fits. An overlong
+leaf retains its final 21 bytes. Unsafe characters become underscores; the four-digit
+build-local module ID prevents case-folding, shortening and sanitization collisions.
+For example, `experimental.amigaos.binary_frontend` becomes
+`binary_frontend.exper-0000.ofm`. The registry retains a 32-byte filename per object.
 
 `acquireEmit` is the only payload read path. It runs during final Hunk emission and caches
 one current module. The deterministic gate permits zero payload reads for unlinked or

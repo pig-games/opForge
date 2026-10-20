@@ -118,7 +118,7 @@ fn native_module_images_fs_uae() {
             // Rollback removes B; release preserves completed A as a deliverable.
             assert_eq!(objects.len(), 1);
             let (path, bytes) = objects[0];
-            assert_eq!(path.file_name().unwrap(), "m00000000.ofm");
+            assert_eq!(path.file_name().unwrap(), "binary_frontend.exper-0000.ofm");
             let mut header = bytes.chunks_exact(4);
             assert_eq!(header.next().unwrap(), b"OFMI");
             let declared_bytes = u32::from_be_bytes(header.next().unwrap().try_into().unwrap());

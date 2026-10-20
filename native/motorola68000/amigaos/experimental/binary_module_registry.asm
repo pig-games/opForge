@@ -25,8 +25,9 @@ ImageBytes	.long ?  ; full serialized extent, independent of Metadata.Used
 Stored	.long ?
 PlacementStart	.long ?  ; byte offset into State.Placements
 Count	.long ?
+FileName	.res io.NAME_BYTES  ; bounded component; no duplicate qualified-name pool
 	.endstruct
-MODULE_BYTES = Module.Count+4
+MODULE_BYTES = Module.FileName+io.NAME_BYTES
 Placement	.struct
 Base	.long ?
 Section	.long ?  ; global zero-based section, $ffffffff until mapped
@@ -82,7 +83,8 @@ done
 	rts
 	.bend  ; configure
 
-; A0=zero/live Registry,A1=owned immutable image Block. D0/CCR=status;
+; A0=zero/live Registry,A1=owned immutable image Block. Disk also requires
+; A2=qualified module spelling,D2=positive spelling bytes<=255. D0/CCR=status;
 ; success D1=module ID (zero based), consumes A1's complete owner descriptor.
 ; Disk mode copies linker metadata and retains the full owner until store.
 ; No IO occurs here; pending borrows serve carrier/public-closure construction.
@@ -91,6 +93,7 @@ done
 ; Buffer capacity may grow on failure. New placements are unknown/unmapped.
 add	.block
 	movem.l d2-d7/a0-a6, -(sp)
+	suba.w #io.NAME_BYTES, sp
 	movea.l a0, a6
 	movea.l a1, a5
 	move.l memory.Block.Used(a5), d0
@@ -110,6 +113,14 @@ add	.block
 	cmpi.l #65535, d0
 	bhi.w bad
 	move.l d0, d4
+	tst.l State.Configured(a6)
+	beq.w nameReady
+	movea.l a2, a1
+	movea.l sp, a2
+	move.l d4, d1
+	jsr io.makeName
+	bne.w bad
+nameReady
 	move.l d7, d0
 	addi.l #MODULE_BYTES, d0
 	bcs.w bad
@@ -170,6 +181,19 @@ publish
 	move.l memory.Block.Used(a5), Module.ImageBytes(a0)
 	move.l d6, Module.PlacementStart(a0)
 	move.l d5, Module.Count(a0)
+	lea Module.FileName(a0), a1
+	movea.l sp, a2
+	moveq #io.NAME_BYTES/4-1, d0
+	tst.l State.Configured(a6)
+	beq.w clearName
+copyName
+	move.l (a2)+, (a1)+
+	dbra d0, copyName
+	bra.w namePublished
+clearName
+	clr.l (a1)+
+	dbra d0, clearName
+namePublished
 	mulu.l #PLACEMENT_BYTES, d5
 	add.l d5, State.Placements+memory.Block.Used(a6)
 	addi.l #MODULE_BYTES, State.Modules+memory.Block.Used(a6)
@@ -182,6 +206,7 @@ publish
 bad
 	moveq #INVALID, d0
 done
+	adda.w #io.NAME_BYTES, sp
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0
 	rts
@@ -262,7 +287,7 @@ done
 ; Disk mode publishes one exact immutable object then frees the pending image.
 ; Failure retains the pending owner. Repeated store and resident store are no-ops.
 store	.block
-	movem.l d1-d2/a0-a1/a4/a6, -(sp)
+	movem.l d1-d2/a0-a2/a4/a6, -(sp)
 	movea.l a0, a6
 	bsr.w moduleRow
 	bne.w done
@@ -275,6 +300,7 @@ store	.block
 	beq.w bad
 	move.l Module.ImageBytes(a4), d2
 	lea State.Io(a6), a0
+	lea Module.FileName(a4), a2
 	jsr io.store
 	bne.w done
 	.MEMORY_COUNTER_INC DiskWrites
@@ -289,7 +315,7 @@ good
 bad
 	moveq #INVALID, d0
 done
-	movem.l (sp)+, d1-d2/a0-a1/a4/a6
+	movem.l (sp)+, d1-d2/a0-a2/a4/a6
 	tst.l d0
 	rts
 	.bend  ; store
@@ -328,6 +354,7 @@ load
 	bne.w bad
 	lea State.Io(a6), a0
 	movea.l State.Cache+memory.Block.Pointer(a6), a1
+	lea Module.FileName(a4), a2
 	jsr io.read
 	bne.w failedRead
 	.MEMORY_COUNTER_INC DiskReads
@@ -493,10 +520,8 @@ removeObjects
 	adda.l d4, a4
 	tst.l Module.Stored(a4)
 	beq.w nextObject
-	move.l d4, d1
-	moveq #MODULE_BYTES, d0
-	divu.l d0, d1
 	lea State.Io(a6), a0
+	lea Module.FileName(a4), a2
 	jsr io.remove
 	bne.w bad
 	clr.l Module.Stored(a4)

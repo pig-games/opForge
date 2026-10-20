@@ -48,11 +48,15 @@ bodies/defaults have explicit ownership.
 The CLI builds an owned request pool before retiring configuration/discovery and compiles
 an eligible dependency-ordered cohort. The object store uses `add` to retain the pending
 full image and copy the linker
-prefix; pending state supplies carrier extraction; store writes `mXXXXXXXX.ofm` once and
+prefix; pending state supplies carrier extraction; store writes a named `.ofm` once and
 retires pending ownership. The metadata-only layout directory retains Header, BlockRows
 and RelocRows, while compact public semantic owners remain available for later compiles.
 `.ofm` deliverables survive successful cleanup. Full per-module frontend coverage for
 generic includes, templates and remaining closure is still ahead.
+Names put the module leaf before its parent qualification, shortening to the classic
+30-byte limit and appending a unique build-local ID. See the
+[object lifecycle note](native-fragment-preparation.md#current-slice-directory-and-object-lifecycle)
+for the exact naming policy.
 
 ## Ownership and verification boundaries
 

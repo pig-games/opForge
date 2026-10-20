@@ -12,6 +12,11 @@ Final	.res 512
 Temporary	.res 512
 	.endstruct
 CONTEXT_BYTES = Context.Temporary+512
+NAME_BYTES = 32
+FILE_NAME_LIMIT = 30
+PARENT_LIMIT = 467; leaves room for /objects-255/<30-byte filename> and NUL
+DIRECTORY_LIMIT = 479
+STEM_BYTES = 21
 LIMIT = 1048576
 OK = 0
 INVALID = 1
@@ -43,7 +48,7 @@ configure	.block
 	move.l a1, Context.Dos(a5)
 	movea.l a1, a6
 	lea Context.Directory(a5), a4
-	move.w #479, d4
+	move.w #PARENT_LIMIT, d4
 copyParent
 	move.b (a2)+, (a4)+
 	beq.w parentReady
@@ -125,7 +130,100 @@ done
 	rts
 	.bend  ; configure
 
-; A0=Context,D1=module ID,A1=image,D2=positive exact bytes <= LIMIT.
+; A1=qualified module spelling,D2=positive bytes<=255,D1=unique u16 module ID,
+; A2=aligned writable NAME_BYTES. D0/CCR=status; other registers preserved. No IO.
+; <leaf>[.<parent qualification>]-<4hex ID>.ofm fits classic30-byte filenames.
+; The21-byte stem keeps a complete leaf first, then as much parent qualification
+; prefix as fits. A leaf longer than21 uses its distinctive final21 bytes and
+; omits qualification. Example foo.bar -> bar.foo-0001.ofm; long qualification
+; experimental.amigaos.binary_frontend -> binary_frontend.exper-0001.ofm.
+; Unique IDs disambiguate case folding, truncation and sanitized characters.
+makeName	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	cmpi.l #65535, d1
+	bhi.w bad
+	move.l a1, d0
+	beq.w bad
+	tst.l d2
+	beq.w bad
+	cmpi.l #255, d2
+	bhi.w bad
+	add.l d2, d0
+	bcs.w bad
+	movea.l a1, a0
+	movea.l a1, a3
+	move.l d2, d6
+scan
+	tst.b (a0)
+	beq.w bad
+	cmpi.b #'.', (a0)+
+	bne.w next
+	movea.l a0, a3
+next
+	subq.l #1, d6
+	bne.w scan
+	move.l a3, d7
+	sub.l a1, d7
+	beq.w parentReady
+	subq.l #1, d7
+parentReady
+	move.l a0, d6
+	sub.l a3, d6
+	beq.w bad
+	cmpi.l #STEM_BYTES, d6
+	bls.w leafReady
+	movea.l a0, a3
+	suba.w #STEM_BYTES, a3
+	moveq #STEM_BYTES, d6
+	moveq #0, d7
+leafReady
+	movea.l a2, a4
+	moveq #NAME_BYTES/4-1, d0
+clear
+	clr.l (a4)+
+	dbra d0, clear
+	movea.l a2, a4
+	moveq #STEM_BYTES, d4
+leaf
+	moveq #0, d0
+	move.b (a3)+, d0
+	bsr.w safeCharacter
+	move.b d0, (a4)+
+	subq.l #1, d4
+	subq.l #1, d6
+	bne.w leaf
+	tst.l d7
+	beq.w suffix
+	cmpi.l #1, d4
+	bls.w suffix
+	move.b #'.', (a4)+
+	subq.l #1, d4
+qualification
+	moveq #0, d0
+	move.b (a1)+, d0
+	bsr.w safeCharacter
+	move.b d0, (a4)+
+	subq.l #1, d7
+	beq.w suffix
+	subq.l #1, d4
+	bne.w qualification
+suffix
+	move.b #'-', (a4)+
+	move.l d1, d5
+	bsr.w hex
+	lea Extension, a0
+	bsr.w appendString
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; makeName
+
+; A0=Context,A2=generated filename,A1=image,D2=positive exact bytes <= LIMIT.
 ; D0/CCR=status; others preserved. Writes/Closes .tmp then Renames to .ofm.
 ; Existing final or temporary names reject; single writer owns this directory.
 store	.block
@@ -174,7 +272,7 @@ done
 	rts
 	.bend  ; store
 
-; A0=Context,D1=module ID,A1=buffer,D2=positive exact bytes <= LIMIT.
+; A0=Context,A2=generated filename,A1=buffer,D2=positive exact bytes <= LIMIT.
 ; D0/CCR=status; others preserved. Rejects short data and any trailing byte.
 ; No persistent file cursor; every operation opens and closes its object.
 read	.block
@@ -217,8 +315,8 @@ done
 	rts
 	.bend  ; read
 
-; A0=Context,D1=caller-owned module ID. D0/CCR=status; others preserved.
-; Rollback deletes that completed object only; caller tracks published IDs.
+; A0=Context,A2=caller-owned generated filename. D0/CCR=status; others preserved.
+; Rollback deletes that completed object only; caller tracks published names.
 remove	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
@@ -255,7 +353,8 @@ cleanup	.block
 	rts
 	.bend  ; cleanup
 	.priv
-; A5=Context,D1=ID. D0=status,A6=DOS. Construct bounded classic filenames.
+; A5=Context,A2=generated filename. D0=status,A6=DOS. Construct bounded paths.
+; Validate the component length and safe alphabet before appending it.
 paths	.block
 	tst.l Context.OwnedDir(a5)
 	beq.w bad
@@ -266,10 +365,42 @@ paths	.block
 	bne.w bad
 	tst.l Context.Unfinished(a5)
 	bne.w bad
-	move.l d1, d5
+	move.l a2, d0
+	beq.w bad
+	movea.l a2, a3
+	moveq #0, d5
+checkName
+	moveq #0, d0
+	move.b (a3)+, d0
+	beq.w nameReady
+	addq.l #1, d5
+	cmpi.l #FILE_NAME_LIMIT, d5
+	bhi.w bad
+	cmpi.b #'.', d0
+	beq.w checkName
+	cmpi.b #'-', d0
+	beq.w checkName
+	cmpi.b #'_', d0
+	beq.w checkName
+	cmpi.b #'0', d0
+	blo.w bad
+	cmpi.b #'9', d0
+	bls.w checkName
+	cmpi.b #'A', d0
+	blo.w bad
+	cmpi.b #'Z', d0
+	bls.w checkName
+	cmpi.b #'a', d0
+	blo.w bad
+	cmpi.b #'z', d0
+	bhi.w bad
+	bra.w checkName
+nameReady
+	cmpi.l #4, d5
+	bls.w bad
 	lea Context.Directory(a5), a0
 	lea Context.Final(a5), a4
-	move.w #495, d0
+	move.w #DIRECTORY_LIMIT, d0
 copy
 	move.b (a0)+, (a4)+
 	beq.w copied
@@ -278,9 +409,7 @@ copy
 copied
 	subq.l #1, a4
 	move.b #'/', (a4)+
-	move.b #'m', (a4)+
-	bsr.w hex
-	lea Extension, a0
+	movea.l a2, a0
 	bsr.w appendString
 	lea Context.Final(a5), a0
 	lea Context.Temporary(a5), a1
@@ -396,9 +525,36 @@ copy
 	subq.l #1, a4
 	rts
 	.bend  ; appendString
-; D5=ID,A4=destination. Writes eight hex digits; clobbers D0/D3/D5.
+; D0=byte. Preserve safe module spelling; map every unsafe byte to underscore.
+; No slash/colon/control byte can escape into the generated filename component.
+safeCharacter	.block
+	cmpi.b #'.', d0
+	beq.w done
+	cmpi.b #'_', d0
+	beq.w done
+	cmpi.b #'-', d0
+	beq.w done
+	cmpi.b #'0', d0
+	blo.w sanitized
+	cmpi.b #'9', d0
+	bls.w done
+	cmpi.b #'A', d0
+	blo.w sanitized
+	cmpi.b #'Z', d0
+	bls.w done
+	cmpi.b #'a', d0
+	blo.w sanitized
+	cmpi.b #'z', d0
+	bls.w done
+sanitized
+	moveq #'_', d0
+done
+	rts
+	.bend  ; safeCharacter
+; D5=u16 ID,A4=destination. Writes four hex digits; clobbers D0/D3/D5.
 hex	.block
-	moveq #7, d3
+	swap d5
+	moveq #3, d3
 loop
 	rol.l #4, d5
 	move.l d5, d0

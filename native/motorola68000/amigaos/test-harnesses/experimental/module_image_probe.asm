@@ -7,6 +7,7 @@
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_module_request as request
 	.use experimental.amigaos.binary_module_registry as registry
+	.use experimental.amigaos.binary_module_object_store as objects
 	.include "module_image_payload.i"
 	.include "module_registry_mode.i"
 	.priv
@@ -337,10 +338,79 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; selected
+; Pure naming coverage: leaf-first qualification, long-leaf tail, unsafe bytes,
+; and unique ID suffixes despite identical case-folded/truncated spelling.
+nameCases	.block
+	movem.l d1-d2/a0-a3, -(sp)
+	lea QualifiedName, a1
+	move.l #QUALIFIED_NAME_BYTES, d2
+	moveq #0, d1
+	lea QualifiedFile, a3
+	bsr.w nameCase
+	bne.w bad
+	lea ShortName, a1
+	moveq #7, d2
+	moveq #1, d1
+	lea ShortFile, a3
+	bsr.w nameCase
+	bne.w bad
+	lea LongLeaf, a1
+	moveq #33, d2
+	moveq #2, d1
+	lea LongFile, a3
+	bsr.w nameCase
+	bne.w bad
+	lea UnsafeName, a1
+	moveq #12, d2
+	moveq #10, d1
+	lea UnsafeFile, a3
+	bsr.w nameCase
+	bne.w bad
+	lea CaseName, a1
+	move.l #QUALIFIED_NAME_BYTES, d2
+	moveq #1, d1
+	lea CaseFile, a3
+	bsr.w nameCase
+	bne.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/a0-a3
+	tst.l d0
+	rts
+	.bend  ; nameCases
+; A1/D2=source,A3=expected,D1=ID. Compare complete NUL-terminated component.
+nameCase	.block
+	lea NameBuffer, a2
+	jsr objects.makeName
+	bne.w done
+	movea.l a2, a0
+	movea.l a3, a1
+compare
+	move.b (a0)+, d0
+	cmp.b (a1)+, d0
+	bne.w bad
+	tst.b d0
+	bne.w compare
+	tst.b NameBuffer+objects.NAME_BYTES-1
+	bne.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	tst.l d0
+	rts
+	.bend  ; nameCase
+
 ; Both storage modes link A/B/A after ownership transfer. B uses a local
 ; fragment target; A uses a numeric export installed from another module.
 registryCases	.block
 	move.l #FAIL_REGISTRY, ReturnCode
+	bsr.w nameCases
+	bne.w bad
 	.if DISK_REGISTRY
 	lea Registry, a0
 	movea.l DosBase, a1
@@ -367,6 +437,8 @@ addModule
 addReady
 	lea Registry, a0
 	lea RegistryOwner, a1
+	lea QualifiedName, a2
+	move.l #QUALIFIED_NAME_BYTES, d2
 	jsr registry.add
 	bne.w bad
 	cmp.l d6, d1
@@ -876,6 +948,18 @@ Link
 	.long 0, IMAGE_BYTES, 1, 0, 0, FIRST_BYTES, 0, resolve, 0, 0
 RegistryLink
 	.long 0, IMAGE_BYTES, 1, 0, 0, FIRST_BYTES, 0, registryResolve, 0, 0
+QualifiedName	.byte "experimental.amigaos.binary_frontend"
+QualifiedNameEnd
+QUALIFIED_NAME_BYTES = QualifiedNameEnd-QualifiedName
+QualifiedFile	.byte "binary_frontend.exper-0000.ofm", 0
+CaseName	.byte "EXPERIMENTAL.AMIGAOS.BINARY_FRONTEND"
+CaseFile	.byte "BINARY_FRONTEND.EXPER-0001.ofm", 0
+ShortName	.byte "foo.bar"
+ShortFile	.byte "bar.foo-0001.ofm", 0
+LongLeaf	.byte "parent.abcdefghijklmnopqrstuvwxyz"
+LongFile	.byte "fghijklmnopqrstuvwxyz-0002.ofm", 0
+UnsafeName	.byte "parent.a:b/c"
+UnsafeFile	.byte "a_b_c.parent-000A.ofm", 0
 WorkName	.byte "Work:", 0
 	.align 4
 Guard	.long GUARD_VALUE, GUARD_VALUE
@@ -893,6 +977,7 @@ SourceOwner	.res byte, memory.Block.Used+4
 OriginalOwner	.res byte, memory.Block.Used+4
 MovedOwner	.res byte, memory.Block.Used+4
 Result	.res byte, 44
+NameBuffer	.res byte, objects.NAME_BYTES
 Registry	.res byte, registry.STATE_BYTES
 RegistryOwner	.res byte, memory.Block.Used+4
 RegistryMark	.res byte, registry.CHECKPOINT_BYTES

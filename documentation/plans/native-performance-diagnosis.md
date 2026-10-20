@@ -32,7 +32,10 @@ memory does not establish 8 MiB fit.
 The resident layout directory contains Header, BlockRows and RelocRows only. The
 replacement flow has `add` retain a complete pending image and copy the
 linker prefix; pending state supplies carrier extraction. Store writes each
-`mXXXXXXXX.ofm` once, then retires pending ownership.
+named `.ofm` once, then retires pending ownership. Names place the module leaf
+before its shortened parent qualification, with a build-local ID suffix; the
+[object lifecycle note](native-fragment-preparation.md#current-slice-directory-and-object-lifecycle)
+defines the classic Amiga filename limits and collision policy.
 Compact public semantic owners remain resident for later module compilation. Successful
 cleanup preserves `.ofm` deliverables separately from ephemeral captures.
 

@@ -257,6 +257,8 @@ lists
 	bne.w bad
 	lea PrivateRegistry, a0
 	lea PrivateImage, a1
+	lea PrivateModuleName, a2
+	move.l PrivateModuleBytes, d2
 	jsr moduleRegistry.add
 	bne.w bad
 	move.l d1, PrivateModuleID

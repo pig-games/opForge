@@ -247,10 +247,13 @@ struct PrivateCase {
     accepted_modules: u32,
 }
 
+const PRIVATE_OUTPUTS: &str = ".region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
+
 fn private_cases() -> Vec<PrivateCase> {
-    let outputs = ".region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
+    let outputs = PRIVATE_OUTPUTS;
     vec![
         prepared_page_private_case(),
+        private_wide_interface_case(false),
         PrivateCase {
             name: "private-real-text-names",
             files: vec![
@@ -338,6 +341,58 @@ fn private_cases() -> Vec<PrivateCase> {
             accepted_modules: 0,
         },
     ]
+}
+
+fn private_wide_interface_case(aliased_projection: bool) -> PrivateCase {
+    let outputs = PRIVATE_OUTPUTS;
+    let mut provider = String::from(".module provider\n.cpu 68020\n.pub\n");
+    for value in 0..139 {
+        provider.push_str(&format!("V{value} .const {value}\n"));
+    }
+    provider.push_str(
+        "Pair .struct\nX .word ?\nY .word ?\n.endstruct\nSeed .const Pair{X:3,Y:7}\nItems .const {2,4,6}\n.section code,kind=code\nentry .block\n rts\n.bend\n.endsection\n.endmodule\n",
+    );
+
+    let mut values = String::new();
+    for chunk in (0..139).collect::<Vec<_>>().chunks(8) {
+        if !values.is_empty() {
+            values.push('\n');
+        }
+        values.push_str(".word ");
+        values.push_str(
+            &chunk
+                .iter()
+                .map(|value| format!("provider.V{value}"))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+    }
+
+    PrivateCase {
+        name: if aliased_projection {
+            "private-wide-aliased-schema-projection"
+        } else {
+            "private-wide-interface-import"
+        },
+        files: vec![
+            (
+                "entry.asm",
+                format!(
+                    ".module main\n.cpu 68020\n.use middle\n.use provider\n.section code,kind=code\n.long middle.helper\n.endsection\n.section data,kind=data\n.word middle.RESULT\n{values}\n.endsection\n{outputs}"
+                ),
+            ),
+            (
+                "library/middle.asm",
+                format!(".module middle\n.cpu 68020\n.use provider as p\n.pub\nRESULT .const {}\n.section code,kind=code\nhelper .block\n.word RESULT\n.long p.entry\n rts\n.bend\n.endsection\n.endmodule\n", if aliased_projection {
+                    "p.V138+p.Pair.Y+p.Seed.Y+p.Items[2]"
+                } else {
+                    "p.V138+p.V15"
+                }),
+            ),
+            ("library/provider.asm", provider),
+        ],
+        accepted_modules: 2,
+    }
 }
 
 // Each include forces ordinary replay exactly once. Eligible suppliers between
@@ -493,6 +548,23 @@ fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
         "private-warning-reference-fallback-once" => {
             assert!(binary.windows(2).any(|bytes| bytes == [0, 0x6b]));
         }
+        "private-wide-interface-import" | "private-wide-aliased-schema-projection" => {
+            let mut expected_data = 153u16.to_be_bytes().to_vec();
+            for value in 0u16..139 {
+                expected_data.extend(value.to_be_bytes());
+            }
+            assert!(
+                binary.ends_with(&expected_data),
+                "wide public interface data must include RESULT and every exported scalar"
+            );
+            assert!(
+                segments
+                    .iter()
+                    .map(|segment| segment.relocations.len())
+                    .sum::<usize>()
+                    >= 2
+            );
+        }
         _ => unreachable!(),
     }
     (binary, hunk)
@@ -503,6 +575,9 @@ fn module_private_pipeline_live_rust_oracles() {
     for case in private_cases() {
         private_oracle(&case);
     }
+    // Keep the broader shared-binding failure explicit rather than dropping it
+    // from coverage when qualifying the separate wide-interface storage case.
+    private_oracle(&private_wide_interface_case(true));
     let files = reset_state_files();
     let dir = scratch();
     fs::create_dir_all(dir.0.join("build")).unwrap();
@@ -657,6 +732,16 @@ fn native_module_private_pipeline_warning_error() {
 }
 
 fn private_pipeline_native(progress: bool, disk: bool) {
+    private_pipeline_native_cases(progress, disk, private_cases());
+}
+
+#[test]
+#[ignore = "known reference binding gap: aliased p.Pair.Y fails in frontend.complete before emission; requires FS-UAE"]
+fn native_module_private_aliased_schema_projection_gap() {
+    private_pipeline_native_cases(true, true, vec![private_wide_interface_case(true)]);
+}
+
+fn private_pipeline_native_cases(progress: bool, disk: bool, mut cases: Vec<PrivateCase>) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let variable = if progress {
         "OPFORGE_MODULE_PIPELINE_PROGRESS_IMAGE"
@@ -665,7 +750,6 @@ fn private_pipeline_native(progress: bool, disk: bool) {
     };
     let image =
         fs::read(std::env::var_os(variable).unwrap_or_else(|| panic!("set {variable}"))).unwrap();
-    let mut cases = private_cases();
     if let Ok(filter) = std::env::var("OPFORGE_MODULE_PRIVATE_CASE") {
         cases.retain(|case| case.name == filter);
         assert!(!cases.is_empty(), "unknown private module case {filter}");
@@ -770,10 +854,51 @@ fn private_pipeline_native(progress: bool, disk: bool) {
                         io[1], expected[0],
                         "one persisted image per accepted module"
                     );
-                    assert!(io[0] >= io[1], "persisted images must be reloaded for use");
+                    assert!(
+                        io[0] <= io[1],
+                        "layout must not read objects; final emission reads each at most once"
+                    );
                     eprintln!(
                         "MODULE_STORE_IO reference={reference} reads={} writes={} cache_hits={}",
                         io[0], io[1], io[2]
+                    );
+                }
+                if disk {
+                    let objects = run
+                        .captured_artifacts
+                        .iter()
+                        .filter(|(path, _)| path.extension().is_some_and(|ext| ext == "ofm"))
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        objects.len(),
+                        expected[0] as usize,
+                        "completed .ofm files survive cleanup"
+                    );
+                    for (path, bytes) in &objects {
+                        assert_eq!(bytes.get(..4), Some(b"OFMI".as_slice()), "{path:?}");
+                        let extent = u32::from_be_bytes(bytes[4..8].try_into().unwrap());
+                        assert_eq!(extent as usize, bytes.len(), "exact .ofm extent: {path:?}");
+                    }
+                    if !reference {
+                        if let Some(destination) = std::env::var_os("OPFORGE_MODULE_OBJECT_EXPORT")
+                        {
+                            let destination = PathBuf::from(destination);
+                            assert!(destination.is_absolute());
+                            fs::create_dir_all(&destination).unwrap();
+                            let destination = destination.join(case.name);
+                            fs::create_dir(&destination).expect("new object export directory");
+                            for (path, bytes) in &objects {
+                                fs::write(destination.join(path.file_name().unwrap()), bytes)
+                                    .unwrap();
+                            }
+                            eprintln!("MODULE_OBJECT_EXPORT {}", destination.display());
+                        }
+                    }
+                    assert!(
+                        run.captured_artifacts
+                            .keys()
+                            .all(|path| path.extension().is_none_or(|ext| ext != "tmp")),
+                        "unfinished object file survived cleanup"
                     );
                 }
                 assert_private_warnings(case, &run.stdout);

@@ -1,10 +1,10 @@
 ; Request-owned images, mutable placements, and public address bindings.
-; Optional disk ownership keeps offset-only rows and one bounded image cache.
+; Disk ownership retains offset-only linker metadata and one final emission image.
 ; Semantic interface installation belongs to its separate canonical owner.
 	.module experimental.amigaos.binary_module_registry
 	.cpu 68020
 	.include "memory_telemetry.i"
-	.use experimental.amigaos.binary_capture_io as io
+	.use experimental.amigaos.binary_module_object_store as io
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_module_image as image
 	.pub
@@ -13,15 +13,16 @@ Modules	.res memory.Block.Used+4
 Placements	.res memory.Block.Used+4
 Addresses	.res memory.Block.Used+4
 Configured	.long ?
-DiskEnd	.long ?
 Cached	.long ?  ; module ID plus one, zero means no valid image
 Cache	.res memory.Block.Used+4
 Io	.res io.CONTEXT_BYTES
 	.endstruct
 STATE_BYTES = State.Io+io.CONTEXT_BYTES
 Module	.struct
-Image	.res memory.Block.Used+4  ; disk rows retain Used only
-Offset	.long ?  ; immutable file extent when configured
+Image	.res memory.Block.Used+4  ; resident or not-yet-stored full image owner
+Metadata	.res memory.Block.Used+4  ; disk: validated [0,Header.Payload) copy
+ImageBytes	.long ?  ; full serialized extent, independent of Metadata.Used
+Stored	.long ?
 PlacementStart	.long ?  ; byte offset into State.Placements
 Count	.long ?
 	.endstruct
@@ -54,7 +55,8 @@ PROGRESS_STORE_BYTES = 452
 	.section code, kind=code
 ; A0=zero Registry,A1=DOS base,A2=existing temporary directory.
 ; D0/CCR=status; all other registers preserved. Configure before any add.
-; Owns one scratch file; unconfigured registries retain resident ownership.
+; Owns an object output directory; completed .ofm files survive release.
+; Unconfigured registries retain resident image ownership.
 configure	.block
 	movem.l a0/a3, -(sp)
 	movea.l a0, a3
@@ -82,7 +84,8 @@ done
 
 ; A0=zero/live Registry,A1=owned immutable image Block. D0/CCR=status;
 ; success D1=module ID (zero based), consumes A1's complete owner descriptor.
-; Disk mode persists exact immutable bytes then frees the caller allocation.
+; Disk mode copies linker metadata and retains the full owner until store.
+; No IO occurs here; pending borrows serve carrier/public-closure construction.
 ; Other registers preserved. Validate and reserve every table before committing
 ; Used lengths; failure leaves caller image ownership and registry rows intact.
 ; Buffer capacity may grow on failure. New placements are unknown/unmapped.
@@ -121,22 +124,30 @@ add	.block
 	lea State.Placements(a6), a0
 	jsr memory.reserve
 	bne.w bad
+	; Prepare an unpublished row. No fallible work follows metadata copying.
+	movea.l State.Modules+memory.Block.Pointer(a6), a3
+	adda.l d7, a3
+	lea Module.Metadata(a3), a0
+	clr.l memory.Block.Pointer(a0)
+	clr.l memory.Block.Capacity(a0)
+	clr.l memory.Block.Used(a0)
+	clr.l Module.Stored(a3)
 	tst.l State.Configured(a6)
 	beq.w storageReady
-	move.l memory.Block.Used(a5), d2
-	cmpi.l #memory.LIMIT, d2
+	move.l memory.Block.Used(a5), d0
+	cmpi.l #memory.LIMIT, d0
 	bhi.w bad
-	move.l State.DiskEnd(a6), d1
-	move.l d1, d0
-	add.l d2, d0
-	bcs.w bad
-	bmi.w bad
-	lea State.Io(a6), a0
-	movea.l memory.Block.Pointer(a5), a1
-	jsr io.write
+	move.l image.Header.Payload(a4), d2
+	move.l d2, d0
+	jsr memory.reserveExact
 	bne.w bad
-	.MEMORY_COUNTER_INC DiskWrites
-	.MEMORY_COUNTER_ADD DiskWriteBytes, d2
+	move.l d2, memory.Block.Used(a0)
+	movea.l memory.Block.Pointer(a0), a1
+	movea.l a4, a2
+copyMetadata
+	move.b (a2)+, (a1)+
+	subq.l #1, d2
+	bne.w copyMetadata
 storageReady
 	movea.l State.Placements+memory.Block.Pointer(a6), a0
 	adda.l d6, a0
@@ -153,27 +164,10 @@ clear
 publish
 	movea.l State.Modules+memory.Block.Pointer(a6), a0
 	adda.l d7, a0
-	clr.l Module.Offset(a0)
-	tst.l State.Configured(a6)
-	beq.w resident
-	move.l State.DiskEnd(a6), Module.Offset(a0)
-	move.l memory.Block.Used(a5), d0
-	add.l d0, State.DiskEnd(a6)
-	movea.l State.Modules+memory.Block.Pointer(a6), a0
-	adda.l d7, a0
-	clr.l Module.Image+memory.Block.Pointer(a0)
-	clr.l Module.Image+memory.Block.Capacity(a0)
-	move.l memory.Block.Used(a5), Module.Image+memory.Block.Used(a0)
-	movem.l a0, -(sp)
-	movea.l a5, a0
-	jsr memory.release
-	movem.l (sp)+, a0
-	bra.w ownerReady
-resident
 	move.l memory.Block.Pointer(a5), Module.Image+memory.Block.Pointer(a0)
 	move.l memory.Block.Capacity(a5), Module.Image+memory.Block.Capacity(a0)
 	move.l memory.Block.Used(a5), Module.Image+memory.Block.Used(a0)
-ownerReady
+	move.l memory.Block.Used(a5), Module.ImageBytes(a0)
 	move.l d6, Module.PlacementStart(a0)
 	move.l d5, Module.Count(a0)
 	mulu.l #PLACEMENT_BYTES, d5
@@ -193,20 +187,23 @@ done
 	rts
 	.bend  ; add
 
-; A0=Registry,D1=module ID,D2=fragment ID. Success A1=image,A2=descriptor,
-; A3=Placement. D0/CCR=status; other registers preserved. Outputs on failure
-; are unspecified. Disk image/descriptor borrows expire on different-module
-; locate, rollback or release; same-module locate and add preserve them. Resident
-; image/descriptor borrows survive append. Placement borrows
-; expire on any registry table mutation. No image validation repeats.
+; A0=Registry,D1=module ID,D2=fragment ID. Success A1=metadata header,
+; A2=descriptor,A3=Placement. D0/CCR=status; other registers preserved.
+; No IO. Disk A1 is only Metadata.Used readable bytes, not a full image;
+; header/descriptor offsets remain relative to the original full image.
+; Metadata/resident image borrows expire on removal/release only. Placement
+; borrows expire on any registry table mutation. Failure outputs unspecified.
 locate	.block
 	movem.l d1-d7/a0/a4-a6, -(sp)
 	movea.l a0, a6
 	move.l d2, d5
 	bsr.w moduleRow
 	bne.w bad
-	bsr.w moduleImage
-	bne.w bad
+	movea.l Module.Image+memory.Block.Pointer(a4), a5
+	tst.l State.Configured(a6)
+	beq.w metadataReady
+	movea.l Module.Metadata+memory.Block.Pointer(a4), a5
+metadataReady
 	movea.l a5, a0
 	move.l d5, d1
 	jsr image.descriptorValidated
@@ -239,6 +236,135 @@ done
 	tst.l d0
 	rts
 	.bend  ; locate
+
+; A0=Registry,D1=module ID. D0/CCR=status,A1=borrowed full image.
+; Other registers preserved. No IO; disk borrow expires on successful store,
+; removal or release. Resident borrow survives store. Failure A1 unspecified.
+pending	.block
+	movem.l a4/a6, -(sp)
+	movea.l a0, a6
+	bsr.w moduleRow
+	bne.w done
+	movea.l Module.Image+memory.Block.Pointer(a4), a1
+	move.l a1, d0
+	beq.w bad
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, a4/a6
+	tst.l d0
+	rts
+	.bend  ; pending
+
+; A0=Registry,D1=module ID. D0/CCR=status; other registers preserved.
+; Disk mode publishes one exact immutable object then frees the pending image.
+; Failure retains the pending owner. Repeated store and resident store are no-ops.
+store	.block
+	movem.l d1-d2/a0-a1/a4/a6, -(sp)
+	movea.l a0, a6
+	bsr.w moduleRow
+	bne.w done
+	tst.l State.Configured(a6)
+	beq.w good
+	tst.l Module.Stored(a4)
+	bne.w good
+	movea.l Module.Image+memory.Block.Pointer(a4), a1
+	move.l a1, d0
+	beq.w bad
+	move.l Module.ImageBytes(a4), d2
+	lea State.Io(a6), a0
+	jsr io.store
+	bne.w done
+	.MEMORY_COUNTER_INC DiskWrites
+	.MEMORY_COUNTER_ADD DiskWriteBytes, d2
+	move.l #1, Module.Stored(a4)
+	lea Module.Image(a4), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+good
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d2/a0-a1/a4/a6
+	tst.l d0
+	rts
+	.bend  ; store
+
+; A0=Registry,D1=module ID. D0/CCR=status,A1=full validated image.
+; Other registers preserved. Disk requires a stored object. Only this routine
+; reads payload. Same-module acquisition preserves the borrow; switching modules
+; or rollback/release expires it. Metadata-only locate never expires this borrow.
+; Fresh reads validate the full image and match its exact retained metadata.
+acquireEmit	.block
+	movem.l d1-d4/a0/a2/a4/a6, -(sp)
+	movea.l a0, a6
+	bsr.w moduleRow
+	bne.w bad
+	tst.l State.Configured(a6)
+	beq.w resident
+	tst.l Module.Stored(a4)
+	beq.w bad
+	move.l d1, d3
+	addq.l #1, d3
+	cmp.l State.Cached(a6), d3
+	bne.w load
+	.MEMORY_COUNTER_INC CacheHits
+	bra.w cached
+load
+	clr.l State.Cached(a6)
+	lea State.Cache(a6), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	move.l Module.ImageBytes(a4), d2
+	beq.w bad
+	cmpi.l #memory.LIMIT, d2
+	bhi.w bad
+	move.l d2, d0
+	jsr memory.reserveExact
+	bne.w bad
+	lea State.Io(a6), a0
+	movea.l State.Cache+memory.Block.Pointer(a6), a1
+	jsr io.read
+	bne.w failedRead
+	.MEMORY_COUNTER_INC DiskReads
+	.MEMORY_COUNTER_ADD DiskReadBytes, d2
+	movea.l a1, a0
+	move.l d2, d0
+	jsr image.validate
+	bne.w failedRead
+	movea.l Module.Metadata+memory.Block.Pointer(a4), a2
+	move.l Module.Metadata+memory.Block.Used(a4), d4
+compareMetadata
+	cmpm.b (a1)+, (a2)+
+	bne.w failedRead
+	subq.l #1, d4
+	bne.w compareMetadata
+	move.l d2, State.Cache+memory.Block.Used(a6)
+	move.l d3, State.Cached(a6)
+cached
+	movea.l State.Cache+memory.Block.Pointer(a6), a1
+	bra.w good
+failedRead
+	lea State.Cache(a6), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	bra.w bad
+resident
+	movea.l Module.Image+memory.Block.Pointer(a4), a1
+good
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d4/a0/a2/a4/a6
+	tst.l d0
+	rts
+	.bend  ; acquireEmit
 
 ; A0=Registry,D1=module,D2=fragment,D3=offset,D4=global source symbol u16.
 ; D0/CCR=status; other registers preserved. Bounded one-past labels are legal
@@ -310,8 +436,9 @@ checkpoint	.block
 ; A0=Registry,A1=previous checkpoint from this Registry. D0/CCR=status;
 ; other registers preserved. Releases images added after checkpoint, then
 ; truncates all three tables. Existing placement values are not restored.
-; Disk mode expires cache borrows and rewinds the append frontier; unreachable
-; file tails are overwritten by later adds and removed with the owned file.
+; Disk expires emission borrows and removes only objects after the checkpoint.
+; OS deletion is not transactional: failure retains all row owners and marks
+; successfully removed objects unstored. Retry rollback or release after failure.
 rollback	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
@@ -354,30 +481,38 @@ rollback	.block
 prefixReady
 	cmp.l d6, d0
 	bne.w bad
-	tst.l State.Configured(a6)
-	beq.w releaseRows
 	clr.l State.Cached(a6)
 	lea State.Cache(a6), a0
 	jsr memory.release
 	clr.l State.Cache+memory.Block.Used(a6)
-	clr.l State.DiskEnd(a6)
-	tst.l d7
-	beq.w truncate
+	move.l d7, d4
+removeObjects
+	cmp.l State.Modules+memory.Block.Used(a6), d4
+	bhs.w releaseRows
 	movea.l State.Modules+memory.Block.Pointer(a6), a4
-	adda.l d7, a4
-	suba.w #MODULE_BYTES, a4
-	move.l Module.Offset(a4), d0
-	add.l Module.Image+memory.Block.Used(a4), d0
-	move.l d0, State.DiskEnd(a6)
-	bra.w truncate
+	adda.l d4, a4
+	tst.l Module.Stored(a4)
+	beq.w nextObject
+	move.l d4, d1
+	moveq #MODULE_BYTES, d0
+	divu.l d0, d1
+	lea State.Io(a6), a0
+	jsr io.remove
+	bne.w bad
+	clr.l Module.Stored(a4)
+nextObject
+	addi.l #MODULE_BYTES, d4
+	bra.w removeObjects
 releaseRows
 	move.l d7, d4
 free
 	cmp.l State.Modules+memory.Block.Used(a6), d4
 	bhs.w truncate
-	movea.l State.Modules+memory.Block.Pointer(a6), a0
-	adda.l d4, a0
-	lea Module.Image(a0), a0
+	movea.l State.Modules+memory.Block.Pointer(a6), a4
+	adda.l d4, a4
+	lea Module.Image(a4), a0
+	jsr memory.release
+	lea Module.Metadata(a4), a0
 	jsr memory.release
 	addi.l #MODULE_BYTES, d4
 	bra.w free
@@ -395,8 +530,10 @@ done
 	rts
 	.bend  ; rollback
 
-; A0=Registry. D0/CCR=OK; other registers preserved. Idempotently releases
-; every immutable image and mutable table, leaving a completely zero State.
+; A0=Registry. D0/CCR=status; other registers preserved. Idempotently releases
+; every image/metadata owner and mutable table, leaving a zero State.
+; Reports object-store unfinished-file cleanup failures after freeing memory.
+; Completed object files and their inspectable directory remain on disk.
 release	.block
 	movem.l d1-d2/a0-a2, -(sp)
 	movea.l a0, a2
@@ -406,7 +543,10 @@ next
 	bhs.w tables
 	movea.l State.Modules+memory.Block.Pointer(a2), a0
 	adda.l d2, a0
-	lea Module.Image(a0), a0
+	movea.l a0, a1
+	lea Module.Image(a1), a0
+	jsr memory.release
+	lea Module.Metadata(a1), a0
 	jsr memory.release
 	addi.l #MODULE_BYTES, d2
 	bra.w next
@@ -426,65 +566,11 @@ tables
 clear
 	clr.l (a0)+
 	dbra d1, clear
-	moveq #OK, d0
 	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
 	rts
 	.bend  ; release
 	.priv
-; A6=Registry,A4=Module row,D1=module ID. D0/CCR=status,A5=image.
-; All other registers preserved. Release before growth bounds resident payload
-; to one image even at cache switches. Failed loads leave no valid cache borrow.
-moduleImage	.block
-	movem.l d1-d3/a0-a1, -(sp)
-	tst.l State.Configured(a6)
-	beq.w resident
-	move.l d1, d3
-	addq.l #1, d3
-	cmp.l State.Cached(a6), d3
-	bne.w load
-	.MEMORY_COUNTER_INC CacheHits
-	bra.w cached
-load
-	clr.l State.Cached(a6)
-	lea State.Cache(a6), a0
-	jsr memory.release
-	clr.l State.Cache+memory.Block.Used(a6)
-	move.l Module.Image+memory.Block.Used(a4), d2
-	beq.w bad
-	cmpi.l #memory.LIMIT, d2
-	bhi.w bad
-	move.l d2, d0
-	jsr memory.reserveExact
-	bne.w bad
-	lea State.Io(a6), a0
-	move.l Module.Offset(a4), d1
-	movea.l State.Cache+memory.Block.Pointer(a6), a1
-	jsr io.read
-	bne.w failedRead
-	move.l d2, State.Cache+memory.Block.Used(a6)
-	move.l d3, State.Cached(a6)
-	.MEMORY_COUNTER_INC DiskReads
-	.MEMORY_COUNTER_ADD DiskReadBytes, d2
-cached
-	movea.l State.Cache+memory.Block.Pointer(a6), a5
-	bra.w good
-failedRead
-	lea State.Cache(a6), a0
-	jsr memory.release
-	bra.w bad
-resident
-	movea.l Module.Image+memory.Block.Pointer(a4), a5
-good
-	moveq #OK, d0
-	bra.w done
-bad
-	moveq #INVALID, d0
-done
-	movem.l (sp)+, d1-d3/a0-a1
-	tst.l d0
-	rts
-	.bend  ; moduleImage
-
 ; A6=Registry,D1=module ID. D0/CCR=status,A4=Module row; D1 preserved.
 moduleRow	.block
 	cmpi.l #65535, d1

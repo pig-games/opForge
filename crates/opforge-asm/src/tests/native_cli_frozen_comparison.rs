@@ -420,7 +420,7 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
                             && module_policy_comparison
                             && instrumented
                             && valid
-                            && !matches!((store_io, private_modules), (Some(io), Some(count)) if io[1] == count && io[0] >= count)
+                            && !matches!((store_io, private_modules), (Some(io), Some(count)) if io[1] == count && io[0] <= count)
                         {
                             failures.push(format!("{workload}/{role}: missing or inconsistent persisted-module receipt {store_io:?}"));
                         }

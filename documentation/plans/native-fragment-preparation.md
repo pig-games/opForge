@@ -1,128 +1,66 @@
-# Module preparation and relocatable objects
+# Per-module `.ofm` objects and bulk linking
 
-## Current status
+## Direction and current state
 
-A broader private-module CLI path is implemented as an **unpromoted checkpoint**. It
-consumes eligible dependency-complete captured modules, publishes canonical public
-interfaces, retires temporary private frontend/records, then links saved fragments
-through ordinary global layout and assembly. Unsupported modules retain the complete
-reference path; `--reference-modules` provides an explicit control.
+Compile eligible activated modules to inspectable individual `.ofm` files, retire their
+private capture, tokens, plans and compiler owners, then link objects at the end. The
+object boundary has focused native qualification; full per-module frontend coverage is
+still ahead. The global paging bridge does not implement that complete direction.
 
-The same-image full memory comparison accepts 15 modules and matches all 729,140 Rust
-bytes, but peaks at 20,633,680 B versus 19,364,448 B reference. It fails the required at
-least 1 MiB net peak reduction. The single release pair regresses from 124.115876834 s
-reference to 256.462333459 s private (2.07×); current-source full self-host passes fresh
-exit zero with 760,176 B equal to Rust and its bootstrap. This is not promotion,
-activation on first actual reference, persistent `.ofm` caching or an 8 MiB fit claim.
-Parity remains paused; the confirmed process/OS split is 6.5/1.5 MiB. See the
-[measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points).
+The bridge at `c65db50c` is a working intermediate state. It supports disk-backed private
+images in one capture file, but produces no actual per-module `.ofm` files. Current-source
+expanded-memory full self-host completed at 421.786289125 s with 762,108 B exactly equal
+to fresh Rust and bootstrap. The full memory run ended without a final receipt and the
+reference release run was aborted. These provide no full net gain, budget fit or paired
+performance claim. The import-row fix has focused native coverage, but no isolated
+performance result. See the [measurement report](native-performance-diagnosis.md).
 
-## Implemented ownership boundary
+## Current slice: directory and object lifecycle
 
-Dependency-first publication preserves source order, configuration, whole-block
-fallthrough and normal reachability. Successful publication owns its result before graph
-acknowledgement and capture retirement. Ordinary fallback retains shared
-frontend/template execution and definition-relative include paths; active file effects
-happen once.
+The directory is metadata-only: Header, BlockRows and RelocRows. In
+the replacement flow, `add` retains the complete pending image and copies the linker
+prefix. Pending state supplies carrier extraction. Store writes one `mXXXXXXXX.ofm` per
+eligible module, then retires pending ownership. Compact public semantic owners remain
+resident for later module compilation. Successful cleanup keeps `.ofm` files as inspectable deliverables, separate
+from ephemeral capture files.
 
-The private producer supports ordinary code/data/BSS sections, mandatory owner-zero
-fragments, nested whole blocks, exact source label identity and explicit alignment
-constraints. Layout retains alignment recipes rather than freezing original padding.
-Fragment addresses carry fragment identity plus offset; equal original PCs do not
-collapse distinct labels.
+With `--capture-dir DIR`, files live in a freshly owned `DIR/objects` directory (or
+`objects-N` when that name exists). Failed writes remove only their owned `.tmp` file;
+rollback removes only its unpublished suffix. These are current-build link objects, not
+independently reusable module-cache entries: external numeric identities still belong
+to the active build. The container contains offsets and numeric values, never process
+pointers.
 
-Canonical interfaces contain each declared public name once, with module ownership, and
-optional nameless schema dependencies. Scalar/list/range/schema/nominal/member closure
-remaps through numeric local-to-global identities. Values transfer into one retained
-global semantic owner; saved code images discard duplicate semantic payload after
-publication. Hidden liveness wrappers stay distinct from public address symbols, and
-numeric ownership records preserve imported reachability. Serialized references are
-bounded offsets/identities, never process pointers.
+`acquireEmit` is the only payload read path. It runs during final Hunk emission and caches
+one current module. The deterministic gate permits zero payload reads for unlinked or
+BSS-only modules and at most one read per selected module. Verify writes, selected-module
+reads, object survival, exact binary/Hunk output and zero remaining private ownership.
+This tests the object lifecycle; it is not a full-build resource claim.
 
-Imported symbolic addresses remain distinct from absolute constants across resets and
-dependency analysis. Package-owned relative recipes replay at final source and target
-placements. Fixed absolute field recipes retain numeric relocations only when generic
-geometry proof permits them. Encoding and shared VM/package services own widths, grammar
-and CPU semantics; the CLI does not decode instructions.
+## Compilation and linking boundary
 
-The producer requires an unconditional package reset prefix and retains that exact
-numeric reset before its fragments. Other package-state controls, custom text registry
-definitions, warnings, public templates, unsupported closure and unresolved
-control/layout observations fall back. Earlier text-registry effects conservatively keep
-later modules on reference replay. Unsupported work must not partly publish or repeat
-file effects. Failure after namespace publication remains an explicit error with owned
-cleanup.
+The current path handles an eligible cohort. Extend the per-module frontend until full
+self-host uses bulk compilation without quiet global fallback. Generic includes, templates
+and remaining semantic closure still need complete per-module ownership. Constants,
+types and exported binary macros needed by later
+modules stay in a compact shared public interface; compiled payload does not. Unresolved
+conditions, loops and relaxation stay in shared numeric metadata/recipes. Reach convergence
+using metadata before streaming final payloads once.
 
-## First-reference module assembly proposal
+The target resident model is shared runtime + maximum active module workspace + retained
+link/export metadata + output buffer. It is not the total prepared payload of every
+module. Keep an explicit reference path and measure actual owner capacities before making
+net-savings estimates. Preserve package/VM ownership of CPU and encoding semantics, exact
+symbol identity, relocations, layout/alignment, code/data/BSS and whole-block reachability.
+Unsupported effects require explicit owned metadata or reference handling; partial
+publication must not replay effects.
 
-The intended endpoint remains an in-build near-output module image assembled on its
-first **actual reference**. Current dependency-first configured-module attempts do not
-implement that activation boundary. Persistent fingerprints and cross-build reuse come
-later, after an in-build lifetime saving is demonstrated.
+## Qualification
 
-Actual references include exported symbols, typed definitions and template consumers.
-`.use` discovery alone does not make every block reachable. Inactive branches and
-unexpanded templates do not activate their contents. Mandatory module-level effects and
-validation retain their order. Referenced whole blocks include internal labels and
-fallthrough; macros/segments are templates, not block elimination units.
-
-A complete image owns fixed payload and every remaining binding, layout, observation and
-dependency recipe. Conditions, repetition and relaxation need convergence, not merely
-byte patches. Configuration, declaration context, visibility, member provenance,
-encoding state and definition-relative include paths must survive private retirement. A
-published image cannot borrow frontend pointers. Unsupported semantics preserve the
-reference engine or reject an explicitly experimental request; they never silently
-freeze an unresolved observation.
-
-The useful memory bound is shared runtime/package plus one active module and its
-required closure, retained public interfaces/templates, compact payloads/recipes and
-bounded readers. Cycles may enlarge the active set; it must not quietly retain every
-module's old prepared state. Disk images help only when private owners retire before the
-measured peak.
-
-## Qualification and evidence limits
-
-Focused native checks cover canonical values and schema/member closure, moved images,
-exact label identities, code/data/BSS, alignment, imported absolute references,
-source/original-image retirement, repeated owner resets and carrier reuse. Corrected
-full geometry matches 79 live Rust bytes across 11 fragments. An unchanged real
-`binary_text_names` module passes actual CLI binary/Hunk parity with accepted 1 versus
-reference 0. All five final-image state/warning/placement/include fallback cases pass both policies
-with accepted 0 and exact live Rust binary/Hunk output. Warning/include effects occur
-exactly once; cleanup is enforced.
-Component success is not a full memory result.
-
-The current full/small/macro same-image MEMD comparisons all complete fresh exit zero,
-match their live Rust oracles and end with zero ownership. Full packed records shrink
-only 37,797 B while peak and allocation traffic rise. Exact admission is 15; there is no
-proven complete rejection breakdown. Instrumented preparation counters are not release
-timing. The single release pair completes exactly but regresses 2.07×; current-source
-self-build passes with 760,176 B equal to Rust and its bootstrap. No statistically
-resolved speedup is claimed.
-
-Older unrestricted A6000 observations on another frozen input were 123/124 s resident
-versus 1,292/1,254 s disk. They motivate sequential near-output ownership, but do not
-predict this design's speed or establish 8 MiB fit. The process budget remains 6.5 MiB
-with 1.5 MiB reserved for AmigaOS.
-
-## Next coherent integration boundary
-
-The current integration already supplies canonical interfaces, address/member remapping,
-ordinary data/BSS and alignment. These capabilities do not satisfy the resource gate by
-themselves. The planned next step is to finish bounded qualification and checkpoint,
-then review the failed memory gate and large runtime regression with Erik. No further
-implementation is planned before that course review.
-
-The confirmed scheduling difference is a candidate explanation, not a measured byte
-decomposition: private publication drains the final READY cohort while the full
-configuration frontend remains live; reference final replay retires that owner first.
-The initializer still consumes configuration names/import snapshots, so earlier
-retirement needs an explicit compact ownership/remapping design. Limited admission and
-active compiler overlap must be sized before forecasting net savings.
-
-Any later approved change must preserve one reference engine, package semantics,
-whole-block reachability, ordered module/file effects and explicit failure cleanup.
-Measure identical full/small/macro inputs, separate release timing from memory, and
-qualify current-source self-host before promotion. The [resource
-decision](native-performance-diagnosis.md#private-module-cli-capacity-gate) and [capture
-policies](native-lazy-preparation.md) remain authoritative.
+The current object path has no full-build qualification yet. Use fresh per-case Rust
+oracles and exact native binary/Hunk outputs with fresh guest completion and explicit
+exit. Keep release timing separate from memory instrumentation.
+The budget remains 6.5 MiB process plus 1.5 MiB OS; full 8 MiB fit remains unproven.
+Expanded 68020-74m proves functional execution only. The [measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points)
+owns current evidence and limits; generic backing lifetimes are in [capture acquisition
+and retirement](native-lazy-preparation.md#capture-acquisition-and-retirement).

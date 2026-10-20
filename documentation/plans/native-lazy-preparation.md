@@ -1,101 +1,79 @@
 # Preparation ownership and capture storage
 
-Current checkpoint, 2026-10-19. The [measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points) owns the
-confirmed 6.5/1.5 MiB process/OS budget and resource decision. Parity remains paused;
-full-build 8 MiB fit is unproven.
-
-The current private-module CLI candidate is **unpromoted**. It attempts eligible
-configured modules before ordinary semantic publication, transfers one canonical public
-interface and retains compact fragment images. The same-image full memory comparison
-accepts 15 modules but peaks at 20,633,680 B versus 19,364,448 B reference, missing the
-required at least 1 MiB net reduction. Smaller packed records and exact native output do
-not establish a memory benefit.
-
-Unsupported modules preserve complete ordinary replay. `--reference-modules` is the
-explicit comparison control. This checkpoint is neither activation on first actual reference nor a persistent `.ofm` cache. The [module
-proposal](native-fragment-preparation.md#first-reference-module-assembly-proposal)
-remains an intended endpoint, not a promotion claim.
+This note records maintained capture and ownership contracts relevant to module
+compilation. The active architecture direction is individual `.ofm` objects followed by
+one bulk link; see [per-module objects and bulk linking](native-fragment-preparation.md).
+Full 8 MiB fit is unproven. The budget is 6.5 MiB for the process plus 1.5 MiB for
+AmigaOS.
 
 ## Maintained storage policies
 
-| Mechanism | Decision |
+| Mechanism | Contract |
 |---|---|
-| Resident capture | Default storage; dependency-first publication can retire completed captures. |
-| Complete-graph replay | Disk inputs and closed schedules retain the same semantic engine. |
-| `--capture-dir DIR` | One disk policy for capture, prepared records and lexical backing; use a real disk volume. |
-| Raw capture | 32 KiB shared chunks; dedicated large records. |
-| Prepared backing | Checked module-bounded views and a 128 KiB payload cache through finalization/reachability. |
-| Lexical backing | Stable numeric identities, owned reader copies and a 128 KiB page cache. |
-| Experimental private candidate | Canonical public closure plus numeric fragment images; failed resource gate, unpromoted. |
-| Removed experiments | Macro-only deferral/audits, first-use selectors, include-text reuse and prepared leaf caching. |
+| Resident capture | Default; completed captures may retire after owned publication. |
+| Complete-graph replay | Disk inputs retain the same semantic engine and closed schedule. |
+| `--capture-dir DIR` | Selects disk capture, prepared backing and lexical backing; use a real disk volume. |
+| Raw capture | Records are contiguous within their backing extents; the logical arena need not be one allocation. |
+| Prepared backing | Checked module-bounded views and bounded payload cache through finalization/reachability. |
+| Lexical backing | Stable numeric identities, owned reader copies and bounded page cache. |
+| Compiled eligible modules | Individual immutable `.ofm` files; metadata-only layout and one payload read at final Hunk emission. Full frontend coverage remains incomplete. |
 
 ## Capture acquisition and retirement
 
-Records remain contiguous. Chunk directories may move, but logical offsets do not.
-Physical file boundaries and dedicated large records seal writers. Disk mode spools
-immutable chunks to one owned DOS file; its 1 MiB payload budget includes writers and
-counted reader leases, not executable, stack, directories or OS.
+Chunk directories may move, but logical offsets do not. Physical file boundaries and
+dedicated large records seal writers. Disk capture spools immutable chunks to one owned
+DOS file; its 1 MiB payload budget includes writers and counted reader leases, not
+executable, stack, directories or OS.
 
-Eviction skips pins. Checked reloads may move payload; I/O failures, oversized records
-and pin exhaustion fail explicitly. `T:` may be RAM and is not evidence of disk memory
+Eviction skips pins. Checked reload may move payload; I/O failures, oversized records and
+pin exhaustion fail explicitly. `T:` may be RAM and does not demonstrate disk memory
 savings. Retirement validates disjoint ranges and pins before mutation. Fully retired
-chunks release payload and become checked tombstones; partially shared chunks remain
-until every live byte retires. Views cannot cross retirement or reload retired data.
-Normal cleanup removes owned files; crashes may leave private scratch files for
-recovery.
+chunks release payload and become checked tombstones; partially shared chunks stay until
+every live byte retires. Views cannot cross retirement or reload retired data. Normal
+cleanup removes owned files; a crash may leave private scratch for recovery.
 
 ## Configuration, publication and includes
 
-Configuration and semantic frontends own separate scratch/graph state. Switching
-restores shared VM control at a stable frontend address; no borrowed line crosses a
+Configuration and semantic frontends own separate scratch and graph state. Switching
+restores shared VM control at a stable frontend address; borrowed lines do not cross a
 switch. Complete immutable parameter snapshots transfer by spelling; repeated imports
-must agree on all keys and values. Consumed section maps keep their state.
+must agree on keys and values. Consumed section maps retain their state.
 
-Ordinary successful replay owns numeric records, values and binary templates before
-graph acknowledgement and capture retirement. Active includes suspend the parent cursor
-and preserve origins, expansion context and definition-relative paths. Inactive branches
-and unexpanded templates do not acquire files. Active file effects occur once; template
+Ordinary replay owns numeric records, values and binary templates before graph
+acknowledgement and capture retirement. Active includes suspend the parent cursor and
+preserve origins, expansion context and definition-relative paths. Inactive branches and
+unexpanded templates do not acquire files. Active file effects occur once; template
 bodies/defaults have explicit ownership.
 
-The private candidate compiles a separate temporary frontend/assembly session. Canonical
-public scalar/list/schema/value closure enters the global known-value owner once; hidden
-nominal identities and member keys use explicit numeric maps. Private names and records
-do not enter the global semantic namespace. Saved images retire their temporary semantic
-payload after transfer. Unsupported inputs fall back before namespace publication;
-post-publication failures are errors, not a second replay against partial ownership.
+The CLI builds an owned request pool before retiring configuration/discovery and compiles
+an eligible dependency-ordered cohort. The object store uses `add` to retain the pending
+full image and copy the linker
+prefix; pending state supplies carrier extraction; store writes `mXXXXXXXX.ofm` once and
+retires pending ownership. The metadata-only layout directory retains Header, BlockRows
+and RelocRows, while compact public semantic owners remain available for later compiles.
+`.ofm` deliverables survive successful cleanup. Full per-module frontend coverage for
+generic includes, templates and remaining closure is still ahead.
 
-## Current lifetime limitation
+## Ownership and verification boundaries
 
-Reference final-cohort replay retires configuration scratch, graph and discovery owners
-before preparing those bodies. The private resident schedule instead drains the final
-READY cohort while configuration remains live. Its maximum configuration can therefore
-overlap retained semantic records/interfaces/images and a temporary private compiler.
-This confirmed lifetime difference has no isolated byte attribution yet; admission is
-measured at 15 modules, with no proven complete rejection breakdown.
+Reader APIs return owned entry/name copies; mutations write back explicitly, and page
+pointers do not escape leases. Public/interface facets and later-needed metadata remain
+owned. Numeric serialized identities and offsets contain no process pointers. Dirty
+writeback precedes transfer of an unpinned page buffer; failed flush/reload preserves
+explicit owners and sticky I/O errors. Names retire at the post-binding frontier; entries
+survive later numeric consumers.
 
-The current private initializer still reads configuration module names, imports and
-snapshots. Earlier retirement requires a reviewed ownership/remapping change; simply
-moving a free is unsafe. No such redesign is planned before the failed-gate course
-review. Disk policy keeps its existing complete-graph scheduling to avoid overlapping
-two growing sessions. Failure cleanup owns every partial allocation/session.
+`materializePreparedStore` reconstructs one contiguous global ordered `Records` stream,
+then retires the prepared store and index before assembly passes. The retained global
+`Records` stream remains resident during assembly; the private module image cache is a
+separate owner and remains available for fragment runtime. `beginSizing` remains a
+no-growth boundary. These bridge details do not establish the target per-object lifetime.
 
-## Lexical and prepared storage boundaries
-
-Publication can seal newly appended lexical ranges. Reader APIs return owned entry/name
-copies; mutations write back explicitly, and page pointers do not escape leases.
-Public/interface facets and later-needed metadata remain retained. Numeric serialized
-IDs/offsets contain no process pointers. Dirty writeback precedes transfer of an
-unpinned page buffer; failed flush/reload preserves explicit owners and sticky I/O
-errors. Names retire at the post-binding frontier; entries survive later numeric
-consumers.
-
-Prepared records remain whole and retain original traversal order. Late section recipes
-survive until maps close. Reachability selects whole blocks, preserving internal labels
-and fallthrough. Runtime values, configuration and member IDs transfer before frontend
-retirement; ordered input is reconstructed afterward. Prepared backing releases before
-assembly; `beginSizing` remains a no-growth boundary.
-
-Buffer reuse reduces allocation traffic, not necessarily peak retained ownership. The
-older frozen disk result saved 88.41% of allocation capacity while keeping a 6,909,720 B
-heap peak; it is not a current full resident result. The current failed resource gate
-and next decision are documented in the [measurement report](native-performance-diagnosis.md#private-module-cli-capacity-gate).
+`acquireEmit` is the only payload read path and runs at final Hunk emission with one
+current module cached. The read gate allows zero reads for unlinked or BSS-only modules
+and at most one read per selected module. Check writes, reads, object survival and zero
+private ownership after cleanup. Preserve deliverables separately from ephemeral capture
+files. Do not claim a numeric memory benefit until workspace and retained metadata
+capacities are measured; the new path has no full-build qualification yet. See the
+[measurement report](native-performance-diagnosis.md#current-assignment-and-decision-points)
+for current proof limits.

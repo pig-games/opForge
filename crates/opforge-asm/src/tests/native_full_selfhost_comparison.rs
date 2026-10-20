@@ -291,7 +291,10 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         if capture_mode == "disk" {
             let io = store_io.expect("persisted module I/O receipt");
             assert_eq!(io[1], count, "one saved image per admitted module");
-            assert!(io[0] >= count, "saved images must be loaded for use");
+            assert!(
+                io[0] <= count,
+                "each stored module is read at most once at final emission"
+            );
         }
     }
     let result = json!({

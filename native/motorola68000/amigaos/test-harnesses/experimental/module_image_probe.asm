@@ -36,6 +36,7 @@ FAIL_OWNER_PHASE = 34
 FAIL_OWNER_POINTER = 35
 FAIL_OWNER_CAPACITY = 36
 FAIL_OWNER_USED = 37
+FAIL_REGISTRY = 38
 	.section entry, kind=code
 	.pub
 ; Native Hunk entry; D0=0 only after all checks and a complete file write/close.
@@ -339,7 +340,7 @@ bad
 ; Both storage modes link A/B/A after ownership transfer. B uses a local
 ; fragment target; A uses a numeric export installed from another module.
 registryCases	.block
-	move.l #38, ReturnCode
+	move.l #FAIL_REGISTRY, ReturnCode
 	.if DISK_REGISTRY
 	lea Registry, a0
 	movea.l DosBase, a1
@@ -347,9 +348,6 @@ registryCases	.block
 	jsr registry.configure
 	bne.w bad
 	.endif
-	lea Registry, a0
-	lea RegistryMark, a1
-	jsr registry.checkpoint
 	moveq #0, d6
 addModule
 	lea RegistryOwner, a0
@@ -379,6 +377,70 @@ addReady
 	bne.w bad
 	tst.l RegistryOwner+memory.Block.Used
 	bne.w bad
+	; add has no IO. Full pending ownership supports construction until store;
+	; disk locate already returns only the retained linker metadata.
+	jsr registry.pending
+	bne.w bad
+	movea.l a1, a0
+	move.l #IMAGE_BYTES, d0
+	jsr image.validate
+	bne.w bad
+	lea Registry, a0
+	move.l d6, d1
+	moveq #1, d2
+	bsr.w registryMetadata
+	bne.w bad
+	tst.l Registry+registry.State.Cache+memory.Block.Pointer
+	bne.w bad
+	tst.l Registry+registry.State.Cached
+	bne.w bad
+	.if DISK_REGISTRY
+	cmp.l registry.DiskWrites, d6
+	bne.w bad
+	tst.l registry.DiskReads
+	bne.w bad
+	; Unstored payloads cannot enter the final emission reader.
+	jsr registry.acquireEmit
+	cmpi.l #registry.INVALID, d0
+	bne.w bad
+	.endif
+	jsr registry.store
+	bne.w bad
+	jsr registry.store  ; repeated publication is idempotent
+	bne.w bad
+	moveq #1, d2
+	bsr.w registryMetadata
+	bne.w bad
+	.if DISK_REGISTRY
+	move.l d6, d0
+	addq.l #1, d0
+	cmp.l registry.DiskWrites, d0
+	bne.w bad
+	tst.l registry.DiskReads
+	bne.w bad
+	jsr registry.pending
+	cmpi.l #registry.INVALID, d0
+	bne.w bad
+	movea.l Registry+registry.State.Modules+memory.Block.Pointer, a4
+	move.l d6, d0
+	mulu.l #registry.MODULE_BYTES, d0
+	adda.l d0, a4
+	tst.l registry.Module.Image+memory.Block.Pointer(a4)
+	bne.w bad
+	tst.l registry.Module.Image+memory.Block.Capacity(a4)
+	bne.w bad
+	tst.l registry.Module.Image+memory.Block.Used(a4)
+	bne.w bad
+	.else
+	jsr registry.pending  ; resident store retains the original owner
+	bne.w bad
+	.endif
+	tst.l d6
+	bne.w added
+	; Keep A as a completed deliverable; rolling back B must remove only B.
+	lea RegistryMark, a1
+	jsr registry.checkpoint
+added
 	addq.l #1, d6
 	cmpi.l #2, d6
 	bne.w addModule
@@ -392,6 +454,8 @@ poisonPayload
 	move.b #$dd, (a1)+
 	subq.l #1, d1
 	bne.w poisonPayload
+	; Three independent final-link requests A/B/A exercise eviction. Normal
+	; Hunk CLI emission instead visits every selected module's fragments together.
 	moveq #0, d6
 linkModule
 	lea Registry, a0
@@ -399,7 +463,12 @@ linkModule
 	andi.l #1, d1
 	move.l d1, ActiveModule
 	moveq #1, d2
-	jsr registry.locate
+	bsr.w registryMetadata
+	bne.w bad
+	jsr registry.acquireEmit
+	bne.w bad
+	move.l a1, RegistryLink+image.LinkFrame.Image
+	jsr registry.acquireEmit  ; a same-module borrow must not reread payload
 	bne.w bad
 	.if DISK_REGISTRY
 	move.l ActiveModule, d0
@@ -408,8 +477,11 @@ linkModule
 	bne.w bad
 	cmpi.l #IMAGE_BYTES, Registry+registry.State.Cache+memory.Block.Used
 	bne.w bad
+	move.l d6, d0
+	addq.l #1, d0
+	cmp.l registry.DiskReads, d0
+	bne.w bad
 	.endif
-	move.l a1, RegistryLink+image.LinkFrame.Image
 	lea Result+20, a1
 	move.l d6, d0
 	lsl.l #3, d0
@@ -418,6 +490,13 @@ linkModule
 	lea RegistryLink, a0
 	jsr image.linkValidated
 	bne.w bad
+	.if DISK_REGISTRY
+	; Local resolution uses locate; it cannot invalidate or reload emission.
+	move.l d6, d0
+	addq.l #1, d0
+	cmp.l registry.DiskReads, d0
+	bne.w bad
+	.endif
 	addq.l #1, d6
 	cmpi.l #3, d6
 	bne.w linkModule
@@ -425,13 +504,23 @@ linkModule
 	lea RegistryMark, a1
 	jsr registry.rollback
 	bne.w bad
-	tst.l Registry+registry.State.Modules+memory.Block.Used
+	cmpi.l #registry.MODULE_BYTES, Registry+registry.State.Modules+memory.Block.Used
+	bne.w bad
+	cmpi.l #3*registry.PLACEMENT_BYTES, Registry+registry.State.Placements+memory.Block.Used
+	bne.w bad
+	tst.l Registry+registry.State.Addresses+memory.Block.Used
 	bne.w bad
 	tst.l Registry+registry.State.Cache+memory.Block.Pointer
 	bne.w bad
 	tst.l Registry+registry.State.Cached
 	bne.w bad
-	tst.l Registry+registry.State.DiskEnd
+	moveq #0, d1
+	moveq #1, d2
+	bsr.w registryMetadata
+	bne.w bad
+	moveq #1, d1
+	jsr registry.locate
+	cmpi.l #registry.INVALID, d0
 	bne.w bad
 	moveq #0, d0
 	rts
@@ -439,6 +528,46 @@ bad
 	moveq #1, d0
 	rts
 	.bend  ; registryCases
+; A0=Registry,D1=module,D2=first fragment. Check metadata without payload IO.
+; D0/CCR=status; other registers preserved.
+registryMetadata	.block
+	movem.l d1-d5/a0-a4, -(sp)
+	move.l registry.DiskReads, d5
+	jsr registry.locate
+	bne.w bad
+	cmpi.l #IMAGE_BYTES, image.Header.Bytes(a1)
+	bne.w bad
+	cmpi.l #3, image.Header.BlockCount(a1)
+	bne.w bad
+	cmp.l image.Block.Id(a2), d2
+	bne.w bad
+	cmpi.l #FIRST_BYTES, image.Block.Bytes(a2)
+	bne.w bad
+	movea.l Registry+registry.State.Modules+memory.Block.Pointer, a4
+	move.l d1, d0
+	mulu.l #registry.MODULE_BYTES, d0
+	adda.l d0, a4
+	.if DISK_REGISTRY
+	cmpa.l registry.Module.Metadata+memory.Block.Pointer(a4), a1
+	bne.w bad
+	move.l image.Header.Payload(a1), d0
+	cmp.l registry.Module.Metadata+memory.Block.Used(a4), d0
+	bne.w bad
+	.else
+	cmpa.l registry.Module.Image+memory.Block.Pointer(a4), a1
+	bne.w bad
+	.endif
+	cmp.l registry.DiskReads, d5
+	bne.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d5/a0-a4
+	tst.l d0
+	rts
+	.bend  ; registryMetadata
 ; Mimic runtime's two resolution paths: global cells need no image lookup,
 ; while local fragment lookup keeps the active module's borrowed image live.
 registryResolve	.block

@@ -22,7 +22,7 @@ Registry	.long ?
 Frame	.long ?
 Module	.long ?
 Fragment	.long ?
-Descriptor	.long ?  ; same-module image borrow, refreshed on every callback
+Descriptor	.long ?  ; metadata borrow; contains no payload pointer
 Placement	.long ?
 	.endstruct
 SESSION_BYTES = Session.Placement+4
@@ -43,11 +43,12 @@ begin	.block
 
 ; Shared assembly Frame.Fragment callback. A0=Frame,A1=packed fragment record,
 ; D0=DESCRIBE/PLACE/EMIT. Success D1=alignment,D2=payload bytes,D3=extent,
-; A1=borrowed payload valid until the next callback. Others preserved.
+; A1=borrowed payload on EMIT, zero on DESCRIBE/PLACE. Others preserved.
 ; Place refreshes only this fragment's exported addresses on each layout pass.
 ; Emit applies package-owned recipes and forwards absolute Hunk relocations.
-; A disk registry may evict the preceding module here. No image pointer from
-; an earlier callback is read before locate refreshes this session's borrows.
+; DESCRIBE/PLACE use only the resident linker directory. Only EMIT acquires
+; payload. Hunk emission visits each module's fragments together, allowing
+; the preceding full image to retire before the next module is read.
 fragment	.block
 	movem.l d4-d7/a0/a2-a6, -(sp)
 	move.l d0, d7
@@ -65,8 +66,6 @@ fragment	.block
 	bne.w bad
 	move.l a2, State+Session.Descriptor
 	move.l a3, State+Session.Placement
-	move.l a1, Link+image.LinkFrame.Image
-	move.l image.Header.Bytes(a1), Link+image.LinkFrame.ImageBytes
 	move.l d2, Link+image.LinkFrame.BlockId
 	tst.l d7
 	beq.w describe
@@ -84,6 +83,19 @@ fragment	.block
 	bne.w bad
 	cmpi.l #EMIT, d7
 	bne.w describe
+	movea.l State+Session.Descriptor, a2
+	move.l image.Block.Bytes(a2), d0
+	beq.w describe  ; BSS/empty fragments have no payload or patch recipes
+	lea Buffer, a0
+	jsr memory.reserve
+	bne.w bad
+	movea.l State+Session.Registry, a0
+	move.l State+Session.Module, d1
+	jsr registry.acquireEmit
+	bne.w bad
+	move.l a1, Link+image.LinkFrame.Image
+	move.l image.Header.Bytes(a1), Link+image.LinkFrame.ImageBytes
+	movea.l State+Session.Placement, a3
 	move.l registry.Placement.Base(a3), Link+image.LinkFrame.Base
 	move.l Buffer+memory.Block.Pointer, Link+image.LinkFrame.Output
 	move.l Buffer+memory.Block.Capacity, Link+image.LinkFrame.Capacity
@@ -100,13 +112,7 @@ fragment	.block
 	movea.l Buffer+memory.Block.Pointer, a1
 	bra.w result
 describe
-	movea.l State+Session.Descriptor, a2
-	move.l image.Block.Bytes(a2), d0
-	lea Buffer, a0
-	jsr memory.reserve
-	bne.w bad
-	movea.l Link+image.LinkFrame.Image, a1
-	adda.l image.Block.Offset(a2), a1
+	suba.l a1, a1
 result
 	movea.l State+Session.Descriptor, a2
 	move.l image.Block.Alignment(a2), d1

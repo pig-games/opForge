@@ -48,6 +48,11 @@ fn build_probe(root: &Path, dir: &Path, disk: bool) -> Vec<u8> {
         native.to_string_lossy().into_owned(),
         "-I".to_owned(),
         native.join("debug").to_string_lossy().into_owned(),
+        // Existing registry counters prove metadata lookup does not read payload.
+        "--define".to_owned(),
+        "OPFORGE_DEBUG_CONTRACTS".to_owned(),
+        "--define".to_owned(),
+        "OPFORGE_MEMORY_TELEMETRY".to_owned(),
     ]);
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(dir.to_path_buf());
@@ -99,10 +104,35 @@ fn native_module_images_fs_uae() {
             runs[0].verified_output.as_deref(),
             Some(expected.as_slice())
         );
+        assert!(!runs[0].artifact_dir.exists(), "ephemeral run cleanup");
+        let objects = runs[0]
+            .captured_artifacts
+            .iter()
+            .filter(|(path, _)| path.extension().is_some_and(|suffix| suffix == "ofm"))
+            .collect::<Vec<_>>();
+        assert!(runs[0]
+            .captured_artifacts
+            .keys()
+            .all(|path| path.extension().is_none_or(|suffix| suffix != "tmp")));
+        if disk {
+            // Rollback removes B; release preserves completed A as a deliverable.
+            assert_eq!(objects.len(), 1);
+            let (path, bytes) = objects[0];
+            assert_eq!(path.file_name().unwrap(), "m00000000.ofm");
+            let mut header = bytes.chunks_exact(4);
+            assert_eq!(header.next().unwrap(), b"OFMI");
+            let declared_bytes = u32::from_be_bytes(header.next().unwrap().try_into().unwrap());
+            assert_eq!(declared_bytes as usize, bytes.len());
+            let payload = fs::read(dir.0.join("module_image_payload.bin")).unwrap();
+            assert!(bytes.ends_with(&payload), "complete unchanged Rust payload");
+        } else {
+            assert!(objects.is_empty());
+        }
         eprintln!(
             "MODULE_IMAGE_COMPONENT {}",
             serde_json::json!({
                 "disk_registry": disk,
+                "persisted_objects": objects.len(),
                 "scope": "supplied-byte component; CLI module lowering not integrated",
                 "native_image_digest": runs[0].native_image_digest,
                 "fresh_protocol": runs[0].protocol_completed,

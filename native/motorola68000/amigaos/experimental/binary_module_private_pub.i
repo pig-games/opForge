@@ -260,8 +260,9 @@ lists
 	jsr moduleRegistry.add
 	bne.w bad
 	move.l d1, PrivateModuleID
-	moveq #1, d2
-	jsr moduleRegistry.locate
+	; Extract the public carrier from the still-owned image. Disk layout uses
+	; its retained directory later; no object is read back during preparation.
+	jsr moduleRegistry.pending
 	bne.w bad
 	move.l a1, PrivateCarrier+moduleCarrier.Frame.Image
 	move.l moduleImage.Header.Bytes(a1), PrivateCarrier+moduleCarrier.Frame.Bytes
@@ -282,7 +283,7 @@ lists
 	move.l PrivateAddresses+memory.Block.Used, d7
 address
 	tst.l d7
-	beq.w append
+	beq.w store
 	lea PrivateRegistry, a0
 	move.l PrivateModuleID, d1
 	move.l PrivateAddress.Fragment(a4), d2
@@ -293,6 +294,13 @@ address
 	adda.w #PRIVATE_ADDRESS_BYTES, a4
 	subi.l #PRIVATE_ADDRESS_BYTES, d7
 	bra.w address
+store
+	lea PrivateRegistry, a0
+	move.l PrivateModuleID, d1
+	jsr moduleRegistry.store
+	bne.w bad
+	clr.l PrivateCarrier+moduleCarrier.Frame.Image  ; pending borrow has retired
+	clr.l PrivateCarrier+moduleCarrier.Frame.Bytes
 append
 	move.l Records+memory.Block.Used, PrivateRecordStart
 	bsr.w privateAppendCarrier

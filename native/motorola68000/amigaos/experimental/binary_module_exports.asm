@@ -36,8 +36,9 @@ INVALID = 1
 PrepareLocal	.struct
 Entry	.res records.ENTRY_BYTES
 Target	.res records.ENTRY_BYTES
+ValuesOnly	.long ?  ; transient dependency projection, never serialized
 	.endstruct
-PREPARE_BYTES = PrepareLocal.Target+records.ENTRY_BYTES
+PREPARE_BYTES = PrepareLocal.ValuesOnly+4
 SourceView	.struct
 Owner	.long ?
 Values	.long ?
@@ -74,9 +75,40 @@ prepare	.block
 ; Zero retains the complete standalone component interface. Selected public
 ; templates/statements still reject; unrelated modules do not enter capture.
 prepareModule	.block
+	move.l d1, -(sp)
+	moveq #0, d1
+	bsr.w prepareSelected
+	move.l (sp)+, d1
+	tst.l d0
+	rts
+	.bend  ; prepareModule
+
+; Dependency-snapshot projection only: same inputs, nonzero owning module D0.
+; Retains every public value/address and schema/member dependency, but omits
+; template/statement facets. This does not establish complete module publication.
+; A private consumer needing an omitted facet must fail replay and use reference
+; handling. prepare/prepareModule remain strict for final producer publication.
+; D0/CCR=status; other registers and partial-owner rules are unchanged.
+prepareModuleValues	.block
+	tst.l d0
+	bne.w selected
+	moveq #INVALID, d0
+	rts
+selected
+	move.l d1, -(sp)
+	moveq #1, d1
+	bsr.w prepareSelected
+	move.l (sp)+, d1
+	tst.l d0
+	rts
+	.bend  ; prepareModuleValues
+	.priv
+; D1 selects dependency value projection; public entries preserve the caller D1.
+prepareSelected	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.w #PREPARE_BYTES, sp
 	movea.l sp, a4
+	move.l d1, PrepareLocal.ValuesOnly(a4)
 	movea.l a0, a5
 	move.l d0, d3
 	moveq #STATE_BYTES/4-1, d0
@@ -179,6 +211,8 @@ entry
 	adda.l d0, a0
 	bset d1, (a0)
 visibility
+	tst.l PrepareLocal.ValuesOnly(a4)
+	bne.w valueVisibility
 	move.l State.Module(a5), d0
 	beq.w templateVisibility
 	cmp.w records.Entry.TemplateModule(a4), d0
@@ -358,7 +392,8 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; prepareModule
+	.bend  ; prepareSelected
+	.pub
 
 ; A0=prepared State,A1=assembled pkg.Context,A2=empty destination Block.
 ; D0/CCR=status; other registers preserved. One publish attempt per prepare:

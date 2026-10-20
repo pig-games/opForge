@@ -557,6 +557,25 @@ ordinary
 	bsr.w replayCapturedSpan
 	bne.w bad
 spanDone
+	tst.w ReferenceModules
+	bne.w advanceSpan
+	tst.l CaptureDirectory
+	beq.w advanceSpan
+	; Publication owns prepared records/template bodies. Replay has released
+	; every capture lease; retire the original scheduled extent, not app cursors
+	; that tentative compilation or nested includes may have changed.
+	move.l CaptureOrderIndex, d0
+	mulu.w #SPAN_BYTES, d0
+	movea.l CaptureOrder+memory.Block.Pointer, a0
+	adda.l d0, a0
+	move.l Span.Start(a0), d1
+	move.l Span.End(a0), d2
+	cmp.l d1, d2
+	beq.w advanceSpan
+	lea CaptureStore, a0
+	jsr capture_store.retire
+	bne.w bad
+advanceSpan
 	addq.l #1, CaptureOrderIndex
 	bra.w nextSpan
 good

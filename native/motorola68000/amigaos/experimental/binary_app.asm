@@ -52,6 +52,7 @@
 	.use experimental.amigaos.binary_module_compile as moduleCompile
 	.use experimental.amigaos.binary_module_scope as moduleScope
 	.use experimental.amigaos.binary_module_snapshot as moduleSnapshot
+	.use experimental.amigaos.binary_module_facets as moduleFacets
 	.use experimental.amigaos.binary_module_remap as moduleRemap
 	.use experimental.amigaos.binary_module_image as moduleImage
 	.use experimental.amigaos.binary_module_registry as moduleRegistry

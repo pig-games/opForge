@@ -179,12 +179,14 @@ Kind	.word ?
 ParamCount	.word ?
 HeaderPlan	.long ?
 Origin	.long ?  ; definition source identity, never a path or pointer
+Flags	.long ?  ; preparation-only body availability, never serialized
 	.endstruct
-DEF_BYTES = Def.Origin+4
+DEF_BYTES = Def.Flags+4
 STATE_CORE_BYTES = State.InheritedLabel+4
 KIND_SEGMENT = 0
 KIND_MACRO = 1
 KIND_EXTERNAL = 2
+BODY_UNAVAILABLE = 1
 BLOCK_BYTES = memory.Block.Used+4
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
@@ -208,6 +210,7 @@ CANDIDATES = HEADER_FRAME+FRAME_BYTES
 SCRATCH_BYTES = CANDIDATES+index.SCRATCH_BYTES
 	.section code, kind=code
 	.include "binary_template_external.i"
+	.include "binary_template_unavailable.i"
 	.priv
 	.include "binary_template_line_recipe.i"
 	.pub
@@ -826,6 +829,12 @@ capture
 	bra.w consumed
 call
 	.MEMORY_TEMPLATE_WORK #6, #1
+	move.l d4, d0
+	mulu.w #DEF_BYTES, d0
+	movea.l DEFS+memory.Block.Pointer(a6), a0
+	adda.l d0, a0
+	tst.l Def.Flags(a0)
+	bne.w bad
 	cmpi.w #DEPTH_LIMIT, State.Depth(a6)
 	bhs.w bad
 	tst.w State.CallLabelPresent(a6)

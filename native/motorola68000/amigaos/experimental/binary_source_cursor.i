@@ -318,7 +318,14 @@ close
 	bsr.w popInclude
 	bne.w bad
 	tst.l ModulePipeline
+	bne.w retireIncluded
+	tst.w ReferenceModules
+	bne.w published
+	tst.l CaptureDirectory
 	beq.w published
+retireIncluded
+	; replaySourceSlice closed its leases and templates copied complete body
+	; records into their BODY owner. This included extent has no later consumer.
 	lea CaptureStore, a0
 	move.l SourceCursorState.Start+SourceCursorData, d1
 	move.l SourceCursorState.End+SourceCursorData, d2

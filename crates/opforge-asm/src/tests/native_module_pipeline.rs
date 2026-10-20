@@ -249,9 +249,12 @@ struct PrivateCase {
 
 const PRIVATE_OUTPUTS: &str = ".region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
 
+#[path = "native_module_template_dependencies.rs"]
+mod template_dependencies;
+
 fn private_cases() -> Vec<PrivateCase> {
     let outputs = PRIVATE_OUTPUTS;
-    vec![
+    let mut cases = vec![
         prepared_page_private_case(),
         private_wide_interface_case(false),
         PrivateCase {
@@ -340,7 +343,9 @@ fn private_cases() -> Vec<PrivateCase> {
             ],
             accepted_modules: 0,
         },
-    ]
+    ];
+    cases.extend(template_dependencies::cases());
+    cases
 }
 
 fn private_wide_interface_case(aliased_projection: bool) -> PrivateCase {
@@ -565,6 +570,18 @@ fn private_oracle(case: &PrivateCase) -> (Vec<u8>, Vec<u8>) {
                     >= 2
             );
         }
+        "private-template-dependency-values"
+        | "private-template-dependency-macro"
+        | "private-template-dependency-statement"
+        | "private-template-dependency-directive-shadow"
+        | "private-template-dependency-opcode-shadow"
+        | "private-template-dependency-local-shadow"
+        | "private-template-dependency-local-statement"
+        | "private-template-dependency-wildcard-parent-gap"
+        | "private-template-dependency-core-root-gap" => {
+            template_dependencies::check(case.name, &binary);
+            assert!(segments.iter().map(|s| s.relocations.len()).sum::<usize>() >= 2);
+        }
         _ => unreachable!(),
     }
     (binary, hunk)
@@ -575,6 +592,8 @@ fn module_private_pipeline_live_rust_oracles() {
     for case in private_cases() {
         private_oracle(&case);
     }
+    private_oracle(&template_dependencies::wildcard_parent_case());
+    private_oracle(&template_dependencies::core_root_case());
     // Keep the broader shared-binding failure explicit rather than dropping it
     // from coverage when qualifying the separate wide-interface storage case.
     private_oracle(&private_wide_interface_case(true));

@@ -281,9 +281,33 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     if !budget_failure_diagnostic {
         assert_eq!(memory.is_some(), instrumented, "measurement build identity");
     }
+    // Inventory deliverables already captured by the runner; no guest observer
+    // or additional file reads are added to the measured execution interval.
+    let object_sizes: Vec<_> = run
+        .captured_artifacts
+        .iter()
+        .filter_map(|(path, bytes)| {
+            let relative = path.strip_prefix("Work").ok()?;
+            let directory = relative.components().next()?.as_os_str().to_str()?;
+            ((directory == "objects"
+                || directory.strip_prefix("objects-").is_some_and(|suffix| {
+                    !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit())
+                }))
+                && relative
+                    .extension()
+                    .is_some_and(|extension| extension == "ofm"))
+            .then_some(bytes.len())
+        })
+        .collect();
     let private_modules = native_cli_frozen_comparison::private_module_count(&run.stdout);
     let store_io = native_cli_frozen_comparison::module_store_io(&run.stdout);
-    if instrumented && !budget_failure_diagnostic && !input["module_mode"].is_null() {
+    // Heap-only images keep allocation accounting but omit progress diagnostics.
+    // The progress profile additionally qualifies exact module I/O counters.
+    if instrumented
+        && define_strings.contains(&"OPFORGE_PREPARATION_PROGRESS")
+        && !budget_failure_diagnostic
+        && !input["module_mode"].is_null()
+    {
         let count = private_modules.expect("module publication receipt");
         if input["module_mode"] == "reference" {
             assert_eq!(count, 0);
@@ -291,6 +315,11 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         if capture_mode == "disk" {
             let io = store_io.expect("persisted module I/O receipt");
             assert_eq!(io[1], count, "one saved image per admitted module");
+            assert_eq!(
+                object_sizes.len(),
+                count as usize,
+                "completed module objects survive cleanup"
+            );
             assert!(
                 io[0] <= count,
                 "each stored module is read at most once at final emission"
@@ -313,6 +342,8 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         "release_start_to_done_host_seconds": if instrumented { None } else { run.start_to_done_host_seconds },
         "memory": memory, "private_modules": private_modules,
         "module_store_reads_writes_hits": store_io,
+        "module_object_files": object_sizes.len(),
+        "module_object_bytes": object_sizes.iter().sum::<usize>(),
         "native_image_digest": run.native_image_digest, "image_bytes": image.len(),
         "linked_static_reserved_bytes": static_bytes, "live_rust_oracle_digest": opforge_self_host_package_digest(&oracle),
         "output_bytes": run.verified_output.as_ref().map(Vec::len), "oracle_bytes": oracle.len(),

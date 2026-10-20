@@ -326,6 +326,18 @@ seed
 	lea PrivateInstall, a0
 	jsr moduleScope.install
 	bne.w bad
+	; Preserve independent template facets through ordinary selection. A private
+	; consumer may use the values, but a selected unavailable body forces fallback.
+	suba.w #moduleFacets.FRAME_BYTES, sp
+	move.l #Front, moduleFacets.Frame.SourceFrontend(sp)
+	move.l PrivateFrontend, moduleFacets.Frame.DestinationFrontend(sp)
+	move.l d5, moduleFacets.Frame.SourceModule(sp)
+	move.l PrivateInstall+moduleScope.Frame.Module, moduleFacets.Frame.DestinationModule(sp)
+	movea.l sp, a0
+	jsr moduleFacets.import
+	adda.w #moduleFacets.FRAME_BYTES, sp
+	tst.l d0
+	bne.w bad
 	lea PrivateInstall+moduleScope.Frame.Map, a0
 	lea PrivateIncoming, a1
 	bsr.w privateAppendBlock
@@ -426,6 +438,7 @@ privateIncomingAddress	.block
 
 ; Compiler replay callback swaps only owned frame/block descriptors; every
 ; app cursor/provenance counter is restored before returning to the producer.
+; Activate each moved Frame before callbacks borrow its scratch back-pointers.
 ; File actions reject before acquisition, so fallback has no external effects.
 privateReplay	.block
 	movem.l d1-d7/a0-a6, -(sp)
@@ -456,15 +469,22 @@ saveNumbers
 	clr.l SpanCount
 	clr.l OriginCount
 	lea Front, a0
+	jsr frontend.activate
+	bne.w replayFailed
 	move.l #privateRejectFile, frontend.Frame.FileInclude(a0)
 	move.l #sourceCursor, frontend.Frame.SourceCursor(a0)
 	move.l #sourcePeek, frontend.Frame.SourcePeek(a0)
 	move.l #source_control.line, frontend.Frame.SourceControl(a0)
 	jsr source_control.begin
+	bne.w replayFailed
 	move.l #1, PrivateReplayActive
 	lea PublishedCapture, a0
 	bsr.w replayCapturedSpan
 	move.l d0, d7
+	bra.w restoreOwners
+replayFailed
+	move.l d0, d7
+restoreOwners
 	clr.l PrivateReplayActive
 	lea Front, a0
 	movea.l PrivateBorrowedFront, a1
@@ -488,6 +508,21 @@ restoreNumbers
 	dbra d0, restoreNumbers
 	movea.l GraphBlock+memory.Block.Pointer, a0
 	move.l PrivateSavedGraphIndex, graph.GraphState.SourceIndex(a0)
+	; Both descriptors returned to their original addresses. Restore the global
+	; owner's back-pointers first, then leave compiler/private grammar active.
+	; A cleanup activation failure must not replace the original replay error.
+	lea Front, a0
+	jsr frontend.activate
+	tst.l d7
+	bne.w globalActivated
+	move.l d0, d7
+globalActivated
+	movea.l PrivateBorrowedFront, a0
+	jsr frontend.activate
+	tst.l d7
+	bne.w privateActivated
+	move.l d0, d7
+privateActivated
 	tst.l d7
 	beq.w good
 	moveq #moduleCompile.REPLAY_UNSUPPORTED, d0

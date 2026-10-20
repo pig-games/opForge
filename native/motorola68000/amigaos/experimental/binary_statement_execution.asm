@@ -164,6 +164,12 @@ run	.block
 	tst.l d1
 	beq.w ordinary
 	movea.l State.Work+memory.Block.Pointer(a4), a2
+	; Shared selection must choose the exact overload before unavailable imports
+	; reject. Do this before argument packing can evaluate or mutate anything.
+	movea.l session.Frame.Templates(a3), a0
+	move.l abi.Selection.TemplateId(a2), d0
+	jsr templates.requireBody
+	bne.w failed
 	move.l Local.Arguments+session.Snapshot.Views(a6), Local.Views(a6)
 	move.l Local.Arguments+session.Snapshot.Count(a6), Local.ViewCount(a6)
 	tst.l abi.Selection.FallbackUsed(a2)

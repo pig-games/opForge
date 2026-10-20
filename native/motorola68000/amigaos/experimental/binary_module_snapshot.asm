@@ -17,7 +17,12 @@ UNSUPPORTED = 1
 ; Public undefined LABEL_VALUE entries are external-symbol declarations with
 ; zero payload and section marker1. This is an import-seeding boundary only,
 ; never a completed code image or finalized placement/address observation.
-; Undefined nonlabels and unsupported public facets reject transactionally.
+; This values-only projection is paired with module_facets.import: ordinary
+; template/statement selection sees metadata-only unavailable bodies and rejects
+; before invocation. Never install this projection without those independent
+; facets; omission could silently select a builtin instead. This is not a complete
+; module export. Undefined nonlabels and unsupported value closure still reject
+; transactionally; final producer publication remains strict.
 capture	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	suba.w #exports.STATE_BYTES, sp
@@ -35,7 +40,7 @@ clear
 	movea.l a3, a0
 	movea.l a4, a1
 	move.l d7, d0
-	jsr exports.prepareModule
+	jsr exports.prepareModuleValues
 	bne.w bad
 	movea.l frontend.Frame.Scratch(a4), a1
 	adda.l #frontend.SCOPE_STATE, a1

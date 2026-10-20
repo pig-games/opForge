@@ -251,6 +251,8 @@ externalInvoke	.block
 	adda.l d0, a0
 	cmpi.w #KIND_EXTERNAL, Def.Kind(a0)
 	bne.w bad
+	tst.l Def.Flags(a0)
+	bne.w bad
 	move.w ExternalCall.ArgCount(a3), d0
 	cmp.w Def.ParamCount(a0), d0
 	bne.w bad

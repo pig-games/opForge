@@ -191,7 +191,27 @@ fn export_bundle(failure_capture: bool) {
         !hotspot_only || (instrumented && !phase_only && !capture_only && !binding_failure_only),
         "sampled hotspots require their own instrumented profile"
     );
-    let bootstrap_defines: Vec<String> = if hotspot_only {
+    // Explicit measurement configuration reuses existing instrumentation gates.
+    // In particular, heap accounting does not require dense progress/failure
+    // snapshots. Do not combine a define list with a preset profile.
+    let configured_defines = std::env::var("OPFORGE_COMPACT_EXPORT_DEFINES").ok();
+    let bootstrap_defines: Vec<String> = if let Some(defines) = configured_defines {
+        assert!(
+            instrumented && !hotspot_only && !capture_only && !phase_only && !binding_failure_only,
+            "explicit defines require an instrumented export without a preset profile"
+        );
+        let defines: Vec<String> = defines.split_whitespace().map(str::to_owned).collect();
+        assert!(
+            defines
+                .iter()
+                .any(|value| value == "OPFORGE_DEBUG_CONTRACTS")
+                && defines
+                    .iter()
+                    .any(|value| value == "OPFORGE_MEMORY_TELEMETRY"),
+            "instrumented exports require both allocation-accounting gates"
+        );
+        defines
+    } else if hotspot_only {
         let period = std::env::var("OPFORGE_HOTSPOT_PERIOD").unwrap_or_else(|_| "128".into());
         assert!(matches!(period.as_str(), "64" | "128" | "256"));
         let seed = std::env::var("OPFORGE_HOTSPOT_SEED").unwrap_or_else(|_| "0".into());

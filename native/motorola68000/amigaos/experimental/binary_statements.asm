@@ -79,6 +79,19 @@ WorkCapacity	.long ?
 StepBudget	.long ?
 	.endstruct
 FRAME_BYTES = Frame.StepBudget+4
+SeedFrame	.struct
+State	.long ?
+Row	.long ?  ; borrowed validated closed source row
+Plan	.long ?
+PlanBytes	.long ?
+Keyword	.long ?
+KeywordBytes	.long ?
+Name	.long ?  ; canonical destination identities, all u16
+Scope	.long ?
+Module	.long ?
+Template	.long ?  ; caller-owned unavailable external carrier handle
+	.endstruct
+SEED_FRAME_BYTES = SeedFrame.Template+4
 	.priv
 Local	.struct
 Role	.long ?
@@ -314,6 +327,135 @@ done
 	tst.l d0
 	rts
 	.bend  ; line
+
+; A0=SeedFrame. D0/CCR=status,D1=new one-based closed handle (zero on failure).
+; Other registers preserved. Append one unavailable overload in source order.
+; Caller supplies a validated shared plan and closed Row, disjoint from destination
+; pools and immutable for this call. Copy keyword/plan bytes verbatim; row scope,
+; module/name and external carrier are remapped, visibility/origin stay exact.
+; No body/default/formal ownership is required: execution checks the selected
+; carrier before argument preparation. Failure leaves all published lengths intact.
+seed	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l SeedFrame.State(a5), a6
+	move.l a6, d0
+	beq.w invalid
+	btst #0, d0
+	bne.w invalid
+	tst.w State.Open(a6)
+	bne.w invalid
+	tst.w State.Skipping(a6)
+	bne.w invalid
+	cmpi.w #$ffff, State.Count(a6)
+	beq.w invalid
+	lea SeedFrame.Name(a5), a0
+	moveq #3, d0
+identities
+	cmpi.l #$ffff, (a0)+
+	bhi.w invalid
+	dbra d0, identities
+	tst.l SeedFrame.Template(a5)
+	beq.w invalid
+	movea.l SeedFrame.Row(a5), a4
+	move.l a4, d0
+	beq.w invalid
+	btst #0, d0
+	bne.w invalid
+	addi.l #ROW_BYTES, d0
+	bcs.w invalid
+	cmpi.w #templates.PARAM_LIMIT, Row.CaptureCount(a4)
+	bhi.w invalid
+	cmpi.w #1, Row.Visibility(a4)
+	bhi.w invalid
+	move.l SeedFrame.Plan(a5), d0
+	beq.w invalid
+	btst #0, d0
+	bne.w invalid
+	move.l SeedFrame.PlanBytes(a5), d1
+	beq.w invalid
+	add.l d1, d0
+	bcs.w invalid
+	move.l SeedFrame.Keyword(a5), d0
+	beq.w invalid
+	move.l SeedFrame.KeywordBytes(a5), d1
+	beq.w invalid
+	add.l d1, d0
+	bcs.w invalid
+	moveq #0, d7
+	move.w State.Count(a6), d7
+	mulu.w #ROW_BYTES, d7
+	move.l d7, d0
+	addi.l #ROW_BYTES, d0
+	lea ROWS(a6), a0
+	jsr memory.reserve
+	bne.w storage
+	move.l PLANS+memory.Block.Used(a6), d6
+	move.l d6, d0
+	add.l SeedFrame.PlanBytes(a5), d0
+	bcs.w storage
+	addq.l #1, d0
+	bcs.w storage
+	andi.l #$fffffffe, d0
+	move.l d0, d4
+	lea PLANS(a6), a0
+	jsr memory.reserve
+	bne.w storage
+	move.l KEYWORDS+memory.Block.Used(a6), d5
+	move.l d5, d0
+	add.l SeedFrame.KeywordBytes(a5), d0
+	bcs.w storage
+	move.l d0, d3
+	lea KEYWORDS(a6), a0
+	jsr memory.reserve
+	bne.w storage
+	movea.l SeedFrame.Plan(a5), a0
+	movea.l PLANS+memory.Block.Pointer(a6), a1
+	adda.l d6, a1
+	move.l SeedFrame.PlanBytes(a5), d0
+	bsr.w copy
+	movea.l SeedFrame.Keyword(a5), a0
+	movea.l KEYWORDS+memory.Block.Pointer(a6), a1
+	adda.l d5, a1
+	move.l SeedFrame.KeywordBytes(a5), d0
+	bsr.w copy
+	movea.l a4, a0
+	movea.l ROWS+memory.Block.Pointer(a6), a1
+	adda.l d7, a1
+	moveq #ROW_BYTES, d0
+	bsr.w copy
+	movea.l ROWS+memory.Block.Pointer(a6), a0
+	adda.l d7, a0
+	move.w SeedFrame.Name+2(a5), Row.Name(a0)
+	move.w SeedFrame.Scope+2(a5), Row.Scope(a0)
+	move.w SeedFrame.Module+2(a5), Row.Module(a0)
+	move.w SeedFrame.Template+2(a5), Row.Template(a0)
+	move.l d6, Row.PlanOffset(a0)
+	move.l SeedFrame.PlanBytes(a5), Row.PlanBytes(a0)
+	move.l d5, Row.KeywordOffset(a0)
+	move.l SeedFrame.KeywordBytes(a5), Row.KeywordBytes(a0)
+	clr.w Row.Reserved(a0)
+	addi.l #ROW_BYTES, d7
+	move.l d7, ROWS+memory.Block.Used(a6)
+	move.l d4, PLANS+memory.Block.Used(a6)
+	move.l d3, KEYWORDS+memory.Block.Used(a6)
+	addq.w #1, State.Count(a6)
+	moveq #0, d1
+	move.w State.Count(a6), d1
+	moveq #abi.OK, d0
+	bra.w done
+storage
+	moveq #STORAGE_FAILURE, d0
+	bra.w failed
+invalid
+	moveq #abi.INVALID_ARGUMENT, d0
+failed
+	moveq #0, d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; seed
 
 ; A0=State. D0=closed row count/CCR; other registers preserved.
 count	.block

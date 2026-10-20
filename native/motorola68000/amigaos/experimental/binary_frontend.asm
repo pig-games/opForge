@@ -3414,10 +3414,13 @@ selectDone
 	.bend  ; selectBlocks
 ; A0=already begun Frame with its readable immutable package and live scratch.
 ; Restore this session's package grammar control after another session ends.
+; Rebind scratch callbacks to this Frame address after descriptor moves/swaps;
+; a copied Frame must be activated before its scratch invokes the frontend.
 ; Does not reset symbols, templates or lexical state. D0/CCR=status;
 ; other registers preserved. No control-table pointer outlives its package.
 activate	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
 	movea.l Frame.Scratch(a0), a6
 	movea.l a6, a1
 	move.l a1, d0
@@ -3427,6 +3430,8 @@ activate	.block
 	movea.l Frame.Package(a0), a2
 	move.l a2, d0
 	beq.w bad
+	move.l a5, SESSION_FRAME(a6)
+	move.l a5, TEMPLATE_STATE+templates.State.ParserContext(a6)
 	movea.l a2, a0
 	adda.l package.Header.ExpressionPlan(a2), a0
 	move.l package.Header.ExpressionPlanBytes(a2), d0

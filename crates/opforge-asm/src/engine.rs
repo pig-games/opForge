@@ -596,6 +596,17 @@ qualified_share={:.2}%",
             if let (Some(sections), Some(regions)) = (seeded_sections, seeded_regions) {
                 asm_line.layout.sections = sections;
                 asm_line.layout.regions = regions;
+                // Prior bases seed forward references during this sizing pass,
+                // but placement must consume the newly measured extents. A
+                // previously placed ordinary section can grow or shrink too.
+                for region in asm_line.layout.regions.values_mut() {
+                    region.cursor = region.start;
+                    region.placed.clear();
+                }
+                for section in asm_line.layout.sections.values_mut() {
+                    section.max_pc = 0;
+                    section.layout_placed = false;
+                }
                 if let Some(plan) = &self.block_relayout {
                     plan.reset_mapped_placement(
                         &mut asm_line.layout.sections,

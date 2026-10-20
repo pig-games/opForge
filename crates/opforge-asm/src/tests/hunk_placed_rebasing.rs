@@ -66,3 +66,36 @@ fn placed_section_symbols_rebase_once_during_68020_family_stabilization() {
         .expect("placed Hunk output");
     }
 }
+
+// Forward constants can grow an ordinary section after its initial placement.
+// Sizing retries must place subsequent sections from the newly measured extent.
+#[test]
+fn section_placement_retries_forward_fill_extent() {
+    let assembler = run_passes(&[
+        ".module main",
+        ".cpu 68020",
+        ".region ram,0,$ffff",
+        ".section code,kind=code",
+        ".fill byte,COUNT,$aa",
+        ".endsection",
+        ".section data,kind=data",
+        ".word $1122",
+        ".endsection",
+        ".place code in ram",
+        ".place data in ram",
+        "COUNT .const 8",
+        ".output \"build/grown.bin\",format=bin,sections=code,data",
+        ".output \"build/grown.hunk\",format=hunk,sections=code,data",
+        ".endmodule",
+    ]);
+    assert_eq!(assembler.sections()["code"].base_addr, Some(0));
+    assert_eq!(assembler.sections()["data"].base_addr, Some(8));
+    let mut expected = vec![0xaa; 8];
+    expected.extend_from_slice(&[0x11, 0x22]);
+    let outputs = &assembler.root_metadata.linker_outputs;
+    let binary = build_linker_output_payload(&outputs[0], assembler.sections())
+        .expect("adjacent binary sections");
+    assert_eq!(binary, expected);
+    build_linker_output_payload(&outputs[1], assembler.sections())
+        .expect("Hunk sections after sizing retry");
+}

@@ -9,6 +9,12 @@ objects; values and types stay in shared semantic owners without synthetic PCs o
 sections. Temporary template facets are in-memory capsules, not a persistent
 cache format. `--reference-modules` remains available.
 
+The proposed replacement is documented in
+[stored module assembly interfaces](native-module-interfaces.md): persist complete
+interfaces and let all consumers read numeric references directly, rather than
+retaining and copying dependency frontends. It is a design, not implemented
+behavior or a measured memory saving.
+
 The resident layout directory contains Header, BlockRows, and RelocRows metadata
 only. `add` retains the pending full image and copies the linker prefix; pending
 state supplies carrier extraction. Store writes one named `.ofm` per eligible

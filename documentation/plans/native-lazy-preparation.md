@@ -56,6 +56,11 @@ needs no CPU. Publication preserves dependency source order, including aliases,
 for resident and disk storage. See the numeric-interface and `.ofm` contracts in
 [per-module objects and shared capsules](native-fragment-preparation.md).
 
+The proposed ownership replacement is
+[stored module assembly interfaces](native-module-interfaces.md). It moves these
+interfaces into `.ofm` with bounded direct consumers; the shared publication/copy
+behavior described above is still the current implementation.
+
 Reader APIs return owned entry/name copies; mutations write back explicitly, and
 page pointers do not escape leases. Numeric serialized identities and offsets
 contain no process pointers. Dirty writeback precedes transfer of an unpinned

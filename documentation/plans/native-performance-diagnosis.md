@@ -91,46 +91,37 @@ as headline peak reductions under this phase's approximately 1% threshold.
 Correction to the previous phase description: 3,936,632 B is heap **after** final
 assembly. Preparation ends at 2,634,536 B. Neither boundary is the build maximum.
 
-## Proposed lifetime reduction — not implemented
+## Proposed ownership replacement — not implemented
 
-Bound the private frontend's lexical payload ownership during preparation,
-including dependency-interface installation. Explicitly configure a backing
-owner for each private compiler attempt, using the established DOS/scratch-path
-ownership, before configuration seeding or dependency installation. Then seal
-small working windows of entries/names into the existing backing store and
-release their resident payloads. Retain the numeric bridge and bounded owned
-reader copies; spilled entries remain mutable through checked writeback. IDs,
-name handles, declaration context and template behavior must remain unchanged.
-The private compiler selects storage policy; the lexical owner controls sealing,
-pins and I/O. Keep `--reference-modules` and the frozen current implementation.
-Add no experiment switch or serialized VM version awareness.
+The recommended next step is now
+[stored module assembly interfaces](native-module-interfaces.md): persist complete
+value/type/template interfaces and consume numeric references directly throughout
+the CLI, including the root. Replace shared semantic publication and private
+dependency snapshot/install copies. Keep the reference path, current linker and
+the root's shared final-driver role. This is design work only.
 
-This needs an explicit scratch-lifetime sealing operation: ordinary lexical
-sealing intentionally keeps public/global facets resident, so simply configuring
-disk storage or waiting until the module closes is insufficient. Private lexical
-payloads do not escape through owned interface/template capture. Spilling does
-not end lexical consumption: interface preparation still reads names/entries,
-and frontend cleanup checks storage status. Keep backing live through those
-consumers, using checked numeric-bridge read/copy/writeback APIs throughout. This
-is storage management, not changing visibility or reachability.
-Keep module assembly followed by `.ofm` publication and final linking as it is.
+The measured private lexical/name payloads and imported state total **1,280,256 B**.
+These include necessary local data, not only redundant imports. A provisional
+**512 KiB** combined ceiling for their replacement local working data, references,
+interface I/O, directories and growth overlap forecasts **755,968 B (738.25 KiB,
+11.3%)** net saving at the identified peak. No credit is assigned to the
+unattributed shared background or the plan arena. Keeping current linked storage
+and stack would give a **6,881,644 B (6.56 MiB)** process lower bound, still above
+budget before other costs and code growth. This is a capacity-based forecast,
+not measured savings or a guarantee that the maximum stays in the same phase.
 
-Budget **384 KiB** for active payload, backing-cache payload, retained working
-payload and allocation/copy overlap together, plus **8 KiB** for added directory
-capacity. Against the measured **1 MiB** lexical payload, this predicts
-**647,168 B (632 KiB, 9.6% of heap peak)** net saving at the identified maximum.
-The resulting budgeted heap is 6,066,512 B and the process lower bound is
-6,990,444 B (6.67 MiB): still above the 6.5 MiB process budget before untracked
-costs. This is a proposed bound and savings estimate, not a measured replacement
-or fit claim; another phase can become the maximum.
+This replaces the standalone lexical-window proposal as the recommended next
+implementation. That narrower alternative forecast 632 KiB by spilling private
+lexical payloads, but would leave dependency-interface copying in place. Bounded
+local lexical storage is included in the new step; ordinary sealing cannot keep
+all public/global facets pinned. Backing must remain live through interface
+export and cleanup. Implementation and working-set bounds still need review.
 
-There is no speedup prediction. Sealing adds disk writes and later reads; cache
-locality, lease safety and failure cleanup are the principal risks. Qualification
-must include aliases, member updates, imported typed values, templates, source
-context and exact binary/Hunk output. Check window/cache capacities including
-growth overlap, existing I/O counters and focused native runtime against the
-frozen path, followed by full-source correctness and memory proof. Full release
-performance comparisons remain paused. Review this proposal before implementing.
+Stored interface/index access may add I/O; no numerical speedup is predicted.
+Use existing counters, full-source correctness and separate memory capture, with
+bounded views and explicit failure cleanup. Comparative release timing remains
+paused under the existing root-handling policy. See the design for acceptance
+scope and for what remains outside this ownership step.
 
 ## Known limits and next steps
 
@@ -142,9 +133,9 @@ a 6502 forward-fill/no-retry gap and a nonzero-label loop-count retry gap. A
 previous broad workspace run was red; focused results do not establish workspace
 qualification.
 
-Resolve the root entry module boundary before resuming full performance
-comparisons. The measured lexical-window proposal above is awaiting review;
-no implementation or memory saving has been claimed. Do not claim full fallback
+Resolve or explicitly agree the root entry module handling before resuming full
+performance comparisons. The stored-interface implementation proposal is awaiting
+review; no implementation or memory saving has been claimed. Do not claim full fallback
 closure, runtime/memory saving, or fit before qualification and measurement.
 For later performance
 comparisons, record source, package, image, inputs, policy, and fresh oracle;

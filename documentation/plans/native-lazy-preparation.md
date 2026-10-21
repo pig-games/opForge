@@ -12,10 +12,10 @@ compilation. Current qualification, budget, and result status lives in
 | Complete-graph replay | Disk inputs retain the same semantic engine and closed schedule. |
 | `--capture-dir DIR` | Selects disk capture, prepared backing, and lexical backing; use a real disk volume. |
 | Raw capture | Records are contiguous within backing extents; the logical arena need not be one allocation. |
-| Prepared backing | Checked module-bounded views and bounded payload cache through finalization/reachability. |
-| Lexical backing | Stable numeric identities, owned reader copies, and bounded page cache. |
+| Prepared backing | Checked module-bounded views; four 32 KiB pages cap resident payload at 128 KiB through finalization/reachability. |
+| Lexical backing | Stable numeric identities and owned reader copies; private disk scratch spills combined entry/name payload at 64 KiB and uses the prepared store's 128 KiB cache. |
 | `.ofm` objects | Current-build link objects survive successful cleanup; ephemeral capture files have separate cleanup ownership. |
-| Public capsules | Owned in-memory closed-public facets retain bodies, defaults, plans, and names; they are not a persistent cache format. |
+| Stored interfaces | Candidate `.ofm` objects persist `OFMS` values and `OFTM` template/statement data for bounded, on-demand numeric resolution. |
 
 ## Configuration and suspended source execution
 
@@ -47,19 +47,18 @@ scratch files; a crash may leave private scratch for recovery.
 
 ## Publication ownership
 
-Closed-public macro, segment, and statement capsules retain bodies, defaults,
-plans, and names, preserve caller binding and privacy, and publish into normal
-shared pools before private frontend retirement. Interface-only producers create
-zero-block `.ofm` objects; values and types remain in shared semantic owners
-without synthetic PCs or sections. An interface-only producer with no effects
-needs no CPU. Publication preserves dependency source order, including aliases,
-for resident and disk storage. See the numeric-interface and `.ofm` contracts in
+Candidate success writes `OFMS` semantic values and `OFTM` closed template and
+statement facets into the `.ofm` object, then retires producer-local semantic and
+facet owners. Consumers resolve stored identities on demand; they do not build a
+second shared copy of every dependency. The reference/fallback path retains its
+owned capsules and shared semantic installation. Dependency edges preserve
+source order and aliases under both resident and disk storage. See the
+numeric-interface and `.ofm` contracts in
 [per-module objects and shared capsules](native-fragment-preparation.md).
 
-The proposed ownership replacement is
-[stored module assembly interfaces](native-module-interfaces.md). It moves these
-interfaces into `.ofm` with bounded direct consumers; the shared publication/copy
-behavior described above is still the current implementation.
+The stored-interface reader and capture store are separate owners. Current
+stored-interface contracts are in
+[stored module interfaces](native-module-interfaces.md).
 
 Reader APIs return owned entry/name copies; mutations write back explicitly, and
 page pointers do not escape leases. Numeric serialized identities and offsets

@@ -1,152 +1,127 @@
-# Native runtime and memory diagnosis
+# Native runtime and memory status
 
-## Current status
+## Current result and decision
 
-Full performance comparisons remain user-paused. The process budget is **6.5 MiB**
-with **1.5 MiB** reserved for AmigaOS. There is no runtime, memory-saving, or 8 MiB
-fit claim. `--reference-modules` remains available.
+Stored dependency interfaces work through the normal CLI. All three complete
+release self-builds reproduced the **816,564-byte Rust oracle and bootstrap
+exactly**, with explicit exit 0 and fresh completed protocols. All 186 dependency
+modules used stored interfaces; the root remains on the shared final driver.
+No dependency fallback was observed. The 24 native comparison cases passed.
 
-Current source identity: manifest `950946ff21b4602d`, 259 files / 3,238,193
-bytes; instrumented bootstrap 817,452 B; release image 804,876 B. A fresh
-full-source native audit matches the entire live Rust Hunk. It saves all 185
-dependency modules as `.ofm` objects: 185 writes, 177 final-emission reads, and
-601,759 bytes of objects. The sole unsupported admission is the root entry
-module, which remains in the shared final driver. The workload has no remaining
-MOVE or binding admission failures; this is not zero fallback across all modules.
-The earlier I audit failed output equality; it is superseded by this fresh proof.
+This is a substantial memory reduction with a substantial runtime regression.
+Further implementation is paused for review of that tradeoff. Preserve both the
+prior disk-backed private compiler/image baseline and `--reference-modules`;
+they are distinct reference mechanisms. See
+[stored module interfaces](native-module-interfaces.md) and
+[`.ofm` numeric contracts](native-fragment-preparation.md).
 
-## Qualification
+## Identical-input full-build comparison
 
-The audit uses instrumentation. A separate uninstrumented fixed-point run also
-passes: the current 804,876 B native release assembles its complete frozen source
-and reproduces itself, identical to the freshly assembled Rust Hunk. It completes
-in 189.2 seconds in FS-UAE on the expanded-memory profile; this single run is not
-a comparative performance result. Both runs remove ephemeral scratch files.
-Full performance comparisons remain paused until the remaining root handling is
-resolved or explicitly agreed. No new observer or experiment switch was added.
+Both implementations assembled the same frozen 265 files / 3,354,956 bytes,
+source manifest `e245b6a27e560e09`, with package `390f6f44df85279b` and output
+`cb9f3fc2929747e0`. Only the bootstrap implementation changed. The old bootstrap
+also produced the new release exactly; its run is a full-build comparison, not
+a fixed-point self-host of its own older source.
 
-Focused native checks cover absolute MOVE fields, exact scalar differences,
-PC-relative trailing strings, shared word/long deltas, conservative automatic
-branch-width intervals, counted loops, and actual previously rejected producers.
-The final MOVE matrix passes 12 cases / 24 native policy results, including
-conservative rejection controls. Candidate and reference policies match fresh
-Rust binary/Hunk oracles. Ordering
-checks pass for disk and resident storage, including repeated imports under
-different aliases. Package checks pass for 30 VM and 333 assembler tests;
-component checks cover field identity and signed-relative image patching.
-Rust formatting, Clippy for VM/assembler all targets, native formatting and the
-native engineering guards pass. Independent integration review found no blocking
-correctness or ownership issue.
-The reference policy remains covered and available.
+The command used source-defined Hunk output, with `-M src -I src/debug` and
+`--capture-dir Work:`. It did not add a duplicate CLI Hunk request. Measurements
+used the same FS-UAE configuration and a 65,536-byte stack. Release timing is
+host-observed START/DONE for the entire assembly command, excluding emulator
+startup. Memory came from separate runs with the same four-define MEMD profile.
+These are emulator measurements, not calibrated hardware timings.
 
-The instrumented full audit reports peak owned heap **6,713,680 B** and zero live
-owned bytes after cleanup. Linked static reservations are **858,396 B**; adding
-those and the 65,536 B stack gives a process lower bound of **7,637,612 B**
-(7.28 MiB), already 821,868 B above the 6.5 MiB budget, before other process costs.
-This expanded-memory run does not establish constrained fit or memory savings.
-Ephemeral capture files are gone; `.ofm` deliverables survive cleanup.
+| Full build | Prior implementation | Stored interfaces | Change |
+| --- | ---: | ---: | ---: |
+| Total release time, median of three | 202.576 s (3m 23s) | 299.425 s (4m 59s) | +47.8% |
+| Peak tracked heap | 6,814,688 B | 4,604,064 B | −32.4% |
+| Cumulative allocation | 314,495,120 B | 219,973,288 B | −30.1% |
+| Linked reservations, instrumented image | 858,396 B | 870,312 B | +11,916 B |
+| Heap peak + linked reservations + stack | 7,738,620 B | 5,539,912 B | −28.4% |
+| Terminal owned bytes | 0 | 0 | balanced allocation/free |
 
-## Remaining peak ownership
+Reference release samples: 200.991, 202.576, 203.039 s. Stored-interface samples:
+299.425, 298.491, 304.256 s. The new release bootstrap is 816,564 B versus
+804,876 B for the old bootstrap: 11,688 B of executable growth. Both produced the
+same current output during the comparison.
 
-Allocation-identity and capacity captures on the unchanged frozen input locate
-the maximum in **private preparation of `binary_app`**, during public-interface
-capture, before `retireFrontend`. The main frontend uses disk lexical storage, but each private compiler starts
-a separate resident frontend: it has no lexical backing configuration. Disk `.ofm`
-outputs do not change this separate owner. The triggering allocation grows
-`PublicState.Members` from 4,096 to 8,192 B, with both allocations briefly live.
-That small allocation crosses a large existing overlap; `.ofm` image construction
-is later and is not the maximum.
+The process budget remains **6.5 MiB**, leaving **1.5 MiB for AmigaOS** on an
+8 MiB machine. The new accounted process floor is 5.28 MiB; it excludes loader,
+OS and untracked allocations. These unrestricted runs do **not** establish an
+8 MiB fit. Do not substitute this accounting for constrained-profile proof.
 
-| Live owner group at the peak | Capacity |
-| --- | ---: |
-| Private lexical entry payload | 524,288 B |
-| Private name-page payload | 524,288 B |
-| Private lexical numeric bridge and page directory | 131,328 B |
-| Private preparation plan arena | 262,144 B |
-| Private imported values/state | 231,680 B |
-| Private module visibility and scope tables | 131,584 B |
-| Private template pools/index | 50,176 B |
-| Private scratch and line | 93,304 B |
-| Private packed records and block index | 264,448 B |
-| Private numeric/member seeds and layout maps | 109,784 B |
-| Private initial-module directory and closed facet | 696 B |
-| Public-interface capture, including growth overlap | 25,248 B |
-| Shared background, not individually attributed in this capture | 4,364,712 B |
-| **Total tracked heap** | **6,713,680 B** |
+## What changed and where time went
 
-Two disposable instrumented bootstraps use existing progress/allocation telemetry
-without production lifetime changes or a new observer framework. Both complete
-with the same 185 stored modules, exact live Rust Hunk, zero terminal ownership,
-and exactly the baseline's peak and 304,976,520 B cumulative allocation/free
-counts. Their added diagnostic code/static cells are not a release measurement.
-Detailed receipts and the checked capacity sum are retained at
-`/tmp/opforge-peak-ownership-20261021/summary.json`.
+Tokenization calls (146,757), binding/record calls (293,561), expression preparation
+calls (151,872), and discovery calls (189) were identical. Reduced storage does
+not come from omitting source work. Existing instrumented stage clocks show:
 
-Late retirement is not the first optimization: packing already reaches
-**6,652,760 B** before interface capture. Freeing imports/plans after preparation
-can remove 544,000 B at a later point, but cannot lower the whole-build peak by
-more than **60,920 B (0.91%)**. Post-layout retirement is later still. Drop those
-as headline peak reductions under this phase's approximately 1% threshold.
+| Stage | Prior implementation | Stored interfaces |
+| --- | ---: | ---: |
+| Binding and raw records | 52.39 s | 149.53 s |
+| Source I/O and other preparation | 115.22 s | 100.19 s |
+| Tokenization | 9.14 s | 9.21 s |
+| Expression preparation | 9.44 s | 9.59 s |
+| Module discovery | 18.57 s | 18.76 s |
 
-Correction to the previous phase description: 3,936,632 B is heap **after** final
-assembly. Preparation ends at 2,634,536 B. Neither boundary is the build maximum.
+Stage clocks localize the regression to binding; they do not attribute individual
+lookup costs. Code review found repeated linear public-name/template scans and
+entity/member row searches, plus reader invalidation when providers change.
+Bounded identity/row-offset indexing or lookup reuse is the next concrete
+candidate to review. It must avoid recreating complete resident semantic tables;
+no numerical runtime recovery is established yet. No new observer framework was
+added.
 
-## Proposed ownership replacement — not implemented
+The candidate wrote 186 `.ofm` objects, totaling 1,647,580 B. Their `OFMA`
+interfaces total 1,019,012 B; the largest is 45,964 B. They contain 10,517 value
+rows and 28 template rows. Final emission read 178 object payloads and recorded
+1,665 payload-cache hits. Interface reads are additional bounded accesses, not
+included in that final-payload read count. Packed source was 578,506 B and total
+source bytes read were 3,584,949. Separate instrumented preflight elapsed time
+was 303.609 s; it is not a release timing or fixed-point self-host claim.
 
-The recommended next step is now
-[stored module assembly interfaces](native-module-interfaces.md): persist complete
-value/type/template interfaces and consume numeric references directly throughout
-the CLI, including the root. Replace shared semantic publication and private
-dependency snapshot/install copies. Keep the reference path, current linker and
-the root's shared final-driver role. This is design work only.
+## Smaller controls
 
-The measured private lexical/name payloads and imported state total **1,280,256 B**.
-These include necessary local data, not only redundant imports. A provisional
-**512 KiB** combined ceiling for their replacement local working data, references,
-interface I/O, directories and growth overlap forecasts **755,968 B (738.25 KiB,
-11.3%)** net saving at the identified peak. No credit is assigned to the
-unattributed shared background or the plan arena. Keeping current linked storage
-and stack would give a **6,881,644 B (6.56 MiB)** process lower bound, still above
-budget before other costs and code growth. This is a capacity-based forecast,
-not measured savings or a guarantee that the maximum stays in the same phase.
+Both versions matched the live Rust oracle in the small multi-module project
+and the macro-heavy project, including all release and MEMD cases. Cleanup was
+zero in both implementations.
 
-This replaces the standalone lexical-window proposal as the recommended next
-implementation. That narrower alternative forecast 632 KiB by spilling private
-lexical payloads, but would leave dependency-interface copying in place. Bounded
-local lexical storage is included in the new step; ordinary sealing cannot keep
-all public/global facets pinned. Backing must remain live through interface
-export and cleanup. Implementation and working-set bounds still need review.
+| Control peak tracked heap | Prior implementation | Stored interfaces |
+| --- | ---: | ---: |
+| Small multi-module | 598,784 B | 598,784 B |
+| Macro-heavy | 650,072 B | 616,960 B |
 
-Stored interface/index access may add I/O; no numerical speedup is predicted.
-Use existing counters, full-source correctness and separate memory capture, with
-bounded views and explicit failure cleanup. Comparative release timing remains
-paused under the existing root-handling policy. See the design for acceptance
-scope and for what remains outside this ownership step.
+Small-project commands sometimes finished before the harness observed START, so
+several elapsed values are absent. Macro-heavy median observations were 1.266 s
+and 1.016 s. These short controls do not support a runtime-gain claim at the
+established timing-noise scale; use them for correctness and resource checks.
 
-## Known limits and next steps
+## A6000 hardware result
 
-Known parity observations include native rejection of `.org` inside a section,
-section-relative placed mapped imports in Rust flat output, Rust retaining an
-unreferenced named block for a top-level-effects-only import where native omits
-it, and native large `.fill` being unsupported under both policies. Rust also has
-a 6502 forward-fill/no-retry gap and a nonzero-label loop-count retry gap. A
-previous broad workspace run was red; focused results do not establish workspace
-qualification.
+The user supplied a successful uninstrumented disk-backed release self-build
+receipt: **945 s (15m 45s)**, explicit exit 0, completed fresh protocol, and an
+exact 816,564-byte Rust match. Its case SHA-256
+`fb9ddbce22b5b1a76be7f8e1f98cf687ca6d35cdd6019ac7581289652f43b4c7`
+matches the delivered 265-file bundle. Remote captures were not independently
+re-read by this agent. No matching hardware baseline or instrumented memory
+result is available, so this is not an A6000 speedup or memory-fit claim.
 
-Resolve or explicitly agree the root entry module handling before resuming full
-performance comparisons. The stored-interface implementation proposal is awaiting
-review; no implementation or memory saving has been claimed. Do not claim full fallback
-closure, runtime/memory saving, or fit before qualification and measurement.
-For later performance
-comparisons, record source, package, image, inputs, policy, and fresh oracle;
-separate release timing from capture/MEMD instrumentation and use three release
-repetitions for a speed claim. Memory fit requires the documented 68020-8m
-profile. The process budget includes linked code/data/BSS, embedded package,
-stack, heap, and other process costs; the OS reserve is separate. See the
+## Remaining boundaries
+
+The root still owns the final carrier stream. Producer serialization still
+overlaps complete interface buffers; consumer windows do not bound that writer.
+Compound symbolic-address cells remain unsupported. See the interface note for
+the exact ownership and capacity limits. Objects are current-build artifacts,
+not qualified persistent incremental caches.
+
+Known parity gaps include native rejection of `.org` inside a section, mapped
+placed imports remaining section-relative in Rust flat output, and Rust retaining
+an unreferenced named block for a top-level-effects-only import where native omits
+it. Native large `.fill` is unsupported under both policies. Separate Rust gaps
+remain for 6502 forward-fill without a sizing retry and a loop-count retry with
+nonzero labels. This qualification does not claim complete language parity or a
+passing full workspace test suite.
+
+Fresh native proof and timing rules remain in the
 [native parity contract](../../agents/rules/native-rust-parity-porting.md),
 [FS-UAE guide](../../agents/rules/fs-uae.md), and
 [performance reference](../performance/vm-efficiency.md).
-
-Keep one reference engine and explicit ownership. CPU/family semantics remain
-package-owned. Generic capture contracts are in
-[preparation ownership and capture storage](native-lazy-preparation.md).

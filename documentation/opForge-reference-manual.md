@@ -286,6 +286,10 @@ The main rules are:
 - `.section` supports `kind=code|data|bss`, `align=<n>`, `region=<name>`, and
   `memory=any|chip|fast|slow`.
 - `.place`/`.pack` assign final section base addresses via regions.
+  Placement reserves the completed section size, including later additions
+  when the section is reopened or receives mapped module contents. Sizing passes
+  remeasure those contributions until placement stabilizes; a region that cannot
+  hold the final extent is an error.
 - `.dsection` is not supported and emits an error.
 - Sections referenced by non-Hunk `.output` directives must be explicitly placed.
 - `memory=` is used by AmigaOS Hunk output. `chip` and `fast` set the Hunk

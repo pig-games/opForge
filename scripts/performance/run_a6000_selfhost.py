@@ -100,6 +100,12 @@ def has_m68020_entry_preamble(entry):
     )
 
 
+def checked_native_output_file(value):
+    if value not in ("output.hunk", "build/opforge_compact"):
+        raise ValueError(f"Unsupported native output file: {value!r}")
+    return value
+
+
 def native_validation_status(manifest):
     validation = manifest.get("native_validation", "not_run")
     if validation in (None, "not_run"):
@@ -354,23 +360,47 @@ def load_bundle(bundle):
     elif "--capture-dir" in command:
         raise ValueError("Resident capture cannot use a capture directory")
     manifest["capture_mode"] = capture_mode
+    native_output_file = checked_native_output_file(
+        manifest.get("native_output_file", "output.hunk"))
     if storage == "embedded":
         search_options = r"(?: -(?:M|I) src(?:/[A-Za-z0-9_./-]+)?)*"
         command_tail = r"-i (src/[A-Za-z0-9_./-]+) --hunk output\.hunk" + search_options
         explicit_cpu = re.fullmatch(r"opforge --cpu 68020 " + command_tail, validated_command)
         source_cpu = re.fullmatch(r"opforge " + command_tail, validated_command)
-        if not explicit_cpu and not source_cpu:
+        source_directed_output = (
+            validated_command ==
+            "opforge -i src/experimental/opforge_compact_cli.asm -M src -I src/debug"
+        )
+        if source_directed_output:
+            entry_path = "src/experimental/opforge_compact_cli.asm"
+            entry = files.get(entry_path)
+            if (native_output_file != "build/opforge_compact"
+                    or output_storage != "embedded"
+                    or manifest.get("entry") != entry_path
+                    or entry is None
+                    or origins.get("configured_entry", (None, None))[0]
+                    != "experimental/opforge_compact_cli.asm"
+                    or not has_m68020_entry_preamble(entry)):
+                raise ValueError(
+                    "Source-directed output requires the mapped m68020 embedded entry and explicit build output"
+                )
+        elif not explicit_cpu and not source_cpu:
             raise ValueError("Embedded test cannot override package selection or search")
-        if source_cpu:
+        elif source_cpu:
             entry_path = source_cpu.group(1)
             entry = files.get(entry_path)
             if (manifest.get("entry") != entry_path or entry is None
                     or not has_m68020_entry_preamble(entry)):
                 raise ValueError("Source-selected embedded test requires the mapped m68020 entry preamble")
-    elif not validated_command.startswith("opforge --runtime-package p.bin -i "):
-        raise ValueError("External-package test requires the named runtime package")
+        if not source_directed_output and native_output_file != "output.hunk":
+            raise ValueError("Build output is allowed only for the mapped source-directed self-host command")
+    elif (not validated_command.startswith("opforge --runtime-package p.bin -i ")
+          or native_output_file != "output.hunk"):
+        raise ValueError("External-package test requires the named runtime package and Hunk output")
     identity.extend(b"m68020\0" + command.encode() + b"\0" + package + b"\0" + oracle)
     identity.extend(b"\0output-package-storage\0" + output_storage.encode() + b"\0")
+    if native_output_file != "output.hunk":
+        identity.extend(b"\0native-output-file\0" + native_output_file.encode() + b"\0")
     if defines:
         identity.extend(b"\0instrumented-bootstrap\0" + bootstrap)
     if storage == "embedded":
@@ -417,8 +447,10 @@ def verify_files(root, files):
                 raise ValueError(f"Embedded test must not have an external package: {name}")
 
 
-def verify_fresh_directory(root):
-    for name in ("output.hunk", "memory.bin", "start.marker", "done.marker", "exitcode"):
+def verify_fresh_directory(root, native_output_file="output.hunk"):
+    checked_native_output_file(native_output_file)
+    for name in ("output.hunk", "build/opforge_compact", "memory.bin",
+                 "start.marker", "done.marker", "exitcode"):
         if (root / name).exists():
             raise ValueError(f"Pre-run directory contains an old result: {name}")
 
@@ -440,7 +472,9 @@ def guest_seconds(start, end, host_seconds):
     return elapsed if elapsed <= host_seconds + 2 else None
 
 
-def inspect_result(root, files, oracle, marker, host_seconds):
+def inspect_result(root, files, oracle, marker, host_seconds, *,
+                   native_output_file="output.hunk"):
+    native_output_file = checked_native_output_file(native_output_file)
     verify_files(root, files)
     for name, expected in (("start.marker", f"START {marker}"), ("done.marker", f"DONE {marker}")):
         if (root / name).read_text().strip() != expected:
@@ -448,12 +482,13 @@ def inspect_result(root, files, oracle, marker, host_seconds):
     rc = int((root / "exitcode").read_text().strip())
     start = (root / "start.time").read_text().strip()
     end = (root / "end.time").read_text().strip()
-    output = root / "output.hunk"
+    output = root / native_output_file
     matched = output.is_file() and output.read_bytes() == oracle
     return {
         "guest_protocol_completed": True,
         "assembler_exit_code": rc,
         "exact_rust_match": matched,
+        "output_file": native_output_file,
         "output_bytes": output.stat().st_size if output.is_file() else None,
         "guest_start": start,
         "guest_end": end,
@@ -585,7 +620,8 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
     try:
         verify_files(copied / name, files)
         verify_files(copied / name, {"run-selfhost": (stage / "run-selfhost").read_bytes()})
-        verify_fresh_directory(copied / name)
+        verify_fresh_directory(copied / name,
+                               manifest.get("native_output_file", "output.hunk"))
     except (OSError, ValueError) as error:
         raise ValueError(f"Pre-run transfer verification failed; assembly was not started: {error}") from error
     print(f"Remote source, package, bootstrap and script verified. Starting native {run_kind}.", flush=True)
@@ -605,7 +641,9 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
     captured.mkdir()
     run([acp, "-r", f"{args.host}:{args.volume}/{name}", str(captured)])
     try:
-        result = inspect_result(captured / name, files, oracle, marker, elapsed)
+        result = inspect_result(
+            captured / name, files, oracle, marker, elapsed,
+            native_output_file=manifest.get("native_output_file", "output.hunk"))
     except (OSError, ValueError) as error:
         raise ValueError(f"Post-run capture validation failed; execution returned but the hardware result is unverified: {error}") from error
     add_telemetry(result, captured / name, manifest,

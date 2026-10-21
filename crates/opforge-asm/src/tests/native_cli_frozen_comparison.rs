@@ -4,8 +4,11 @@
 //! Set OPFORGE_CLI_FROZEN_BUNDLE, OPFORGE_CLI_BASELINE_RELEASE,
 //! OPFORGE_CLI_CANDIDATE_RELEASE, OPFORGE_CLI_BASELINE_MEMORY and
 //! OPFORGE_CLI_CANDIDATE_MEMORY to independent embedded export directories.
-//! Run native_cli_frozen_comparison with --ignored --nocapture
-//! --test-threads=1 and the normal FS-UAE environment. Each workload runs three
+//! Select the fully qualified test with --exact (a substring also selects other
+//! comparisons and ignored regression probes):
+//! cargo test -p asm fs_uae_smoke::native_cli_frozen_comparison::native_cli_frozen_comparison
+//! -- --exact --ignored --nocapture --test-threads=1
+//! Use the normal FS-UAE environment. Each workload runs three
 //! releases per role plus one separately instrumented memory run per role.
 //! native_cli_frozen_candidate_comparison reuses a previously measured frozen
 //! reference and runs only the fresh candidate roles; input identities must match
@@ -352,8 +355,11 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
     assert_eq!(entry, "src/experimental/opforge_compact_cli.asm");
     assert_eq!(frozen["module_roots"], json!(["src"]));
     assert_eq!(frozen["include_roots"], json!(["src/debug"]));
-    let full_command = format!("-i {entry} --hunk output.hunk -M src -I src/debug");
-    assert_eq!(frozen["command"], format!("opforge {full_command}"));
+    let exported_command = format!("opforge -i {entry} --hunk output.hunk -M src -I src/debug");
+    assert_eq!(frozen["command"], exported_command);
+    // The source already declares its Hunk output. Measure that ordinary build
+    // once, rather than adding a second CLI output and repeating final linking.
+    let full_command = format!("-i {entry} -M src -I src/debug");
     let full_oracle = oracle(&staged, entry, &scratch.join("full-oracle"), false);
     assert_eq!(
         full_oracle,
@@ -396,7 +402,7 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
             &files,
             &full_oracle,
             full_command.as_str(),
-            "Work/output.hunk",
+            "Work/build/opforge_compact",
         ),
         (
             "small",

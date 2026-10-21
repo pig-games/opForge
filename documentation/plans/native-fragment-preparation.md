@@ -3,17 +3,15 @@
 ## `.ofm` lifecycle
 
 Eligible modules compile to inspectable current-build `.ofm` link objects.
-Owned closed-public capsules cover macros, segments, and statements while
-preserving caller binding and privacy. Interface-only producers create zero-block
-objects; values and types stay in shared semantic owners without synthetic PCs or
-sections. Temporary template facets are in-memory capsules, not a persistent
-cache format. `--reference-modules` remains available.
-
-The proposed replacement is documented in
-[stored module assembly interfaces](native-module-interfaces.md): persist complete
-interfaces and let all consumers read numeric references directly, rather than
-retaining and copying dependency frontends. It is a design, not implemented
-behavior or a measured memory saving.
+Candidate success persists semantic values in `OFMS` and closed templates and
+statements in `OFTM`; consumers remap numeric identities and demand only the
+needed entities. Interface-only producers create zero-payload-block objects,
+without synthetic PCs or sections. Producer-local semantic and facet owners are
+retired after publication. In the reference/fallback path, owned capsules and
+shared semantic installation retain their existing behavior. The stored `OFMA`
+directory connects `OFMS` and `OFTM` to object-local dependency identities.
+`--reference-modules` remains available; see the
+[stored interface architecture](native-module-interfaces.md).
 
 The resident layout directory contains Header, BlockRows, and RelocRows metadata
 only. `add` retains the pending full image and copies the linker prefix; pending
@@ -50,9 +48,10 @@ boundary. Final source and target must remain in the same section and satisfy th
 range. The Reloc row stays unchanged; package lowering owns all encoding meaning.
 
 Dependency publication preserves original source order, including repeated
-targets under aliases, for resident and disk storage. Each dependency edge is
-retained for ordering, semantic snapshots occur once per target, and seeding is
-idempotent at the first source occurrence.
+targets under aliases, for resident and disk storage. Each declared edge is
+retained for ordering; the candidate path resolves stored entities on demand
+instead of snapshotting every dependency into a duplicate shared semantic table.
+The reference/fallback path keeps its established semantic snapshot behavior.
 
 ## Ownership boundaries
 

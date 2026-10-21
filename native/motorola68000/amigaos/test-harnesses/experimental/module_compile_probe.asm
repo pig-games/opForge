@@ -234,7 +234,7 @@ consumeSemantics	.block
 	tst.l d0
 	beq.w bad
 	move.l Moved+memory.Block.Used, d0
-	jsr image.semanticView
+	jsr image.valueView
 	bne.w bad
 	move.l a1, SemanticBase
 	move.l d1, SemanticBytes
@@ -464,7 +464,7 @@ nominalCase	.block
 	bne.w bad
 	movea.l NominalOwner+memory.Block.Pointer, a0
 	move.l NominalOwner+memory.Block.Used, d0
-	jsr image.semanticView
+	jsr image.valueView
 	bne.w bad
 	move.l a1, SemanticBase
 	move.l d1, SemanticBytes

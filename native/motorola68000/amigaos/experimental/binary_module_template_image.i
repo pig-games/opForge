@@ -139,12 +139,35 @@ validate	.block
 	cmp.l d7, d0
 	bne.w bad
 	movea.l a6, a5
+	adda.l Header.Bindings(a6), a5
+	move.l Header.BindingCount(a6), d6
+	move.l Header.Base(a6), d5
+binding
+	tst.l d6
+	beq.w bindingsReady
+	cmp.l names.Row.Id(a5), d5
+	bne.w bad
+	cmpi.l #names.MEMBER, names.Row.Namespace(a5)
+	bhi.w bad
+	movea.l a5, a0
+	jsr names.validateEntities
+	bne.w bad
+	addq.l #1, d5
+	adda.w #names.ROW_BYTES, a5
+	subq.l #1, d6
+	bra.w binding
+bindingsReady
+	movea.l a6, a5
 	adda.l Header.Rows(a6), a5
 	move.l Header.Count(a6), d6
 	moveq #0, d5
 row
 	tst.l d6
 	beq.w good
+	cmpi.l #1, Row.Visibility(a5)
+	bhi.w bad
+	cmpi.l #65535, Row.Entity(a5)
+	bhi.w bad
 	cmp.l Row.Offset(a5), d5
 	bne.w bad
 	move.l Row.Bytes(a5), d0

@@ -11,6 +11,7 @@
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_module_image as image
+	.use experimental.amigaos.binary_module_iface as assemblyInterface
 	.use experimental.amigaos.binary_module_exports as exports
 	.use experimental.amigaos.binary_module_layout as layout
 	.use experimental.amigaos.binary_module_publication as publication
@@ -40,8 +41,13 @@ Opaque	.long ?  ; callback-owned borrowed request state
 Resolve	.long ?  ; optional exact external address resolver, A0=Opaque
 Inventory	.long ?  ; A0=frontend,A1=Index,A2=Context,A3=Records, copy inventory
 Facets	.long ?  ; optional empty Block; receives owned public template capsule
+CloseTemplates	.long ?  ; A0=owned OFTM Block,A1=Context -> checked identity closure
+CloseValues	.long ?  ; A0=OFMS Block,A1=Context -> normalize dependency identities
+Dependencies	.long ?  ; optional borrowed Block of assemblyInterface.Dependency rows
+Imports	.long ?  ; optional borrowed Block of assemblyInterface.Import rows
+Seal	.long ?  ; A0=frontend,A1=Context -> retire caller's lexical borrows
 	.endstruct
-CONTEXT_BYTES = Context.Facets+4
+CONTEXT_BYTES = Context.Seal+4
 LINE_CAPACITY = 256
 INVALID = 1
 EXPORT_INVALID = 2
@@ -90,6 +96,7 @@ Cells	.res byte, package.CONTEXT_BYTES
 Symbols	.res byte, storage.STATE_BYTES
 ValueOwner	.res byte, values.OWNER_BYTES
 Build	.res byte, image.FRAME_BYTES
+InterfaceBuild	.res byte, assemblyInterface.FRAME_BYTES
 Scratch	.res byte, memory.Block.Used+4
 Line	.res byte, memory.Block.Used+4
 Records	.res byte, memory.Block.Used+4
@@ -98,6 +105,7 @@ Parameters	.res byte, memory.Block.Used+4
 Output	.res byte, memory.Block.Used+4
 ImageOwner	.res byte, memory.Block.Used+4
 SemanticOwner	.res byte, memory.Block.Used+4
+InterfaceOwner	.res byte, memory.Block.Used+4
 FacetOwner	.res byte, memory.Block.Used+4
 FacetRequest	.res byte, moduleTemplates.CAPTURE_BYTES
 PublicState	.res byte, exports.STATE_BYTES
@@ -361,10 +369,25 @@ inventoryReady
 	lea FacetRequest, a0
 	jsr moduleTemplates.capture
 	bne.w exportBad
+	movea.l Caller, a1
+	movea.l Context.CloseTemplates(a1), a2
+	cmpa.w #0, a2
+	beq.w templateClosureReady
+	lea FacetOwner, a0
+	jsr (a2)
+	tst.l d0
+	bne.w exportBad
+templateClosureReady
 	lea PublicState, a0
 	lea Front, a1
 	move.l OwnModule, d0
 	jsr exports.prepareModuleValues
+	bne.w exportBad
+	lea PublicState, a0
+	lea Front, a1
+	movea.l FacetOwner+memory.Block.Pointer, a2
+	move.l FacetOwner+memory.Block.Used, d0
+	jsr exports.prepareTemplateClosure
 	bra.w exportsReady
 strictExports
 	jsr exports.prepareModule
@@ -445,6 +468,15 @@ finishLayout
 	lea LayoutState, a1
 	jsr publication.finalize
 	bne.w addressBad
+	movea.l Caller, a1
+	movea.l Context.CloseValues(a1), a2
+	cmpa.w #0, a2
+	beq.w valueClosureReady
+	lea SemanticOwner, a0
+	jsr (a2)
+	tst.l d0
+	bne.w publicationBad
+valueClosureReady
 	bsr.w saveImage
 	bne.w imageBad
 	movea.l Destination, a1
@@ -867,6 +899,15 @@ done
 retireFrontend	.block
 	tst.l Started
 	beq.w good
+	movea.l Caller, a1
+	movea.l Context.Seal(a1), a2
+	cmpa.w #0, a2
+	beq.w finish
+	lea Front, a0
+	jsr (a2)
+	tst.l d0
+	bne.w returned
+finish
 	lea Front, a0
 	jsr frontend.finish
 	move.l d0, -(sp)
@@ -876,6 +917,7 @@ retireFrontend	.block
 	lea Line, a0
 	jsr memory.release
 	move.l (sp)+, d0
+returned
 	tst.l d0
 	rts
 good
@@ -1130,8 +1172,45 @@ emitted	.block
 	.bend  ; emitted
 
 saveImage	.block
-	move.l SemanticOwner+memory.Block.Pointer, Build+image.Frame.Semantics
-	move.l SemanticOwner+memory.Block.Used, Build+image.Frame.SemanticsBytes
+	; Keep the complete assembly interface in the object. Separate consumer
+	; windows will borrow its values and templates after this compiler retires.
+	move.l SemanticOwner+memory.Block.Pointer, InterfaceBuild+assemblyInterface.Frame.Values
+	move.l SemanticOwner+memory.Block.Used, InterfaceBuild+assemblyInterface.Frame.ValueBytes
+	move.l FacetOwner+memory.Block.Pointer, InterfaceBuild+assemblyInterface.Frame.Templates
+	move.l FacetOwner+memory.Block.Used, InterfaceBuild+assemblyInterface.Frame.TemplateBytes
+	movea.l Caller, a2
+	movea.l Context.Dependencies(a2), a1
+	cmpa.w #0, a1
+	beq.w imports
+	move.l memory.Block.Pointer(a1), InterfaceBuild+assemblyInterface.Frame.Dependencies
+	move.l memory.Block.Used(a1), d0
+	lsr.l #3, d0
+	move.l d0, InterfaceBuild+assemblyInterface.Frame.DependencyCount
+imports
+	movea.l Context.Imports(a2), a1
+	cmpa.w #0, a1
+	beq.w buildInterface
+	move.l memory.Block.Pointer(a1), InterfaceBuild+assemblyInterface.Frame.Imports
+	move.l memory.Block.Used(a1), d0
+	lsr.l #3, d0
+	move.l d0, InterfaceBuild+assemblyInterface.Frame.ImportCount
+buildInterface
+	clr.l InterfaceBuild+assemblyInterface.Frame.Output
+	lea InterfaceBuild, a0
+	jsr assemblyInterface.build
+	bne.w bad
+	move.l InterfaceBuild+assemblyInterface.Frame.Used, d0
+	lea InterfaceOwner, a0
+	jsr memory.reserveExact
+	bne.w bad
+	move.l InterfaceBuild+assemblyInterface.Frame.Used, InterfaceOwner+memory.Block.Used
+	move.l InterfaceOwner+memory.Block.Pointer, InterfaceBuild+assemblyInterface.Frame.Output
+	move.l InterfaceOwner+memory.Block.Capacity, InterfaceBuild+assemblyInterface.Frame.Capacity
+	lea InterfaceBuild, a0
+	jsr assemblyInterface.build
+	bne.w bad
+	move.l InterfaceOwner+memory.Block.Pointer, Build+image.Frame.Semantics
+	move.l InterfaceOwner+memory.Block.Used, Build+image.Frame.SemanticsBytes
 	move.l LayoutState+layout.State.Inputs+memory.Block.Pointer, Build+image.Frame.Blocks
 	move.l LayoutState+layout.State.Count, Build+image.Frame.Count
 	move.l LayoutState+layout.State.Relocs+memory.Block.Pointer, Build+image.Frame.Relocs
@@ -1166,6 +1245,8 @@ cleanup	.block
 	lea PublicState, a0
 	jsr exports.release
 	lea SemanticOwner, a0
+	jsr memory.release
+	lea InterfaceOwner, a0
 	jsr memory.release
 	lea FacetOwner, a0
 	jsr memory.release

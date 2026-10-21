@@ -973,6 +973,10 @@ done
 
 ; A1=header already bounded to8bytes. D0/CCR=status,D2=aligned record bytes.
 ; Others preserved. Structural sizing only; callers validate extent and cells.
+	.pub
+; A1=readable Record header. D0/CCR=status,D2=complete aligned byte size.
+; Other registers preserved. The caller checks the resulting source extent;
+; this helper only decodes the current immutable descriptor layout.
 descriptorBytes	.block
 	move.l d3, -(sp)
 	move.l Record.Count(a1), d2
@@ -1032,6 +1036,7 @@ done
 	tst.l d0
 	rts
 	.bend  ; descriptorBytes
+	.priv
 
 	.priv
 ; A1=complete bounded type/literal. Validate nominal keys, geometry and cells.

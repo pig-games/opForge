@@ -19,8 +19,16 @@ Name	.long ?  ; offset into the owned Names block
 Bytes	.long ?
 Leaf	.long ?
 RegisterFacets	.long ?  ; Entry.RegisterName/Qualifier/Reserved transport
+ValueEntity	.long ?  ; provider-local value ID, $ffffffff when absent
+TemplateEntity	.long ?  ; provider-local template origin, $ffffffff when absent
+Facets	.long ?  ; VALUE_FACET/TEMPLATE_FACET/TEMPLATE_PUBLIC
+ValueDependency	.long ?  ; zero=self, otherwise provider dependency ordinal+1
+TemplateDependency	.long ?
 	.endstruct
-ROW_BYTES = Row.RegisterFacets+4
+ROW_BYTES = Row.TemplateDependency+4
+VALUE_FACET = 1
+TEMPLATE_FACET = 2
+TEMPLATE_PUBLIC = 4
 State	.struct
 Scope	.long ?  ; borrowed only while capturing
 Base	.long ?
@@ -55,10 +63,56 @@ KEY_BYTES = Key.Namespace+4
 CaptureLocal	.struct
 Entry	.res records.ENTRY_BYTES
 Name	.res records.NAME_BYTES
+Origin	.long ?
 	.endstruct
-CAPTURE_LOCAL_BYTES = CaptureLocal.Name+records.NAME_BYTES
+CAPTURE_LOCAL_BYTES = CaptureLocal.Origin+4
 	.section code, kind=code
 	.pub
+; A0=checked stored Row. Validate its provider entity/facet relation.
+; D0/CCR=status; other registers preserved. No scope or package pointers needed.
+validateEntities	.block
+	cmpi.l #65535, Row.ValueDependency(a0)
+	bhi.w bad
+	cmpi.l #65535, Row.TemplateDependency(a0)
+	bhi.w bad
+	cmpi.l #VALUE_FACET+TEMPLATE_FACET+TEMPLATE_PUBLIC, Row.Facets(a0)
+	bhi.w bad
+	tst.l Row.Namespace(a0)
+	beq.w value
+	tst.l Row.Facets(a0)
+	bne.w bad
+value
+	btst #0, Row.Facets+3(a0)
+	beq.w noValue
+	cmpi.l #65535, Row.ValueEntity(a0)
+	bhi.w bad
+	bra.w template
+noValue
+	cmpi.l #-1, Row.ValueEntity(a0)
+	bne.w bad
+	tst.l Row.ValueDependency(a0)
+	bne.w bad
+template
+	btst #1, Row.Facets+3(a0)
+	beq.w noTemplate
+	cmpi.l #65535, Row.TemplateEntity(a0)
+	bhi.w bad
+	bra.w good
+noTemplate
+	cmpi.l #-1, Row.TemplateEntity(a0)
+	bne.w bad
+	tst.l Row.TemplateDependency(a0)
+	bne.w bad
+	btst #2, Row.Facets+3(a0)
+	bne.w bad
+good
+	moveq #OK, d0
+	rts
+bad
+	moveq #INVALID, d0
+	rts
+	.bend  ; validateEntities
+
 ; A0=zero State,A1=live source scope. D0/CCR=status; others preserved.
 ; Capture visits only IDs requested by the shared closed-template remapper.
 begin	.block
@@ -153,6 +207,7 @@ append
 	lea layout.LEXICAL_STATE(a5), a0
 	lea CaptureLocal.Entry(a4), a1
 readOrigin
+	move.l d0, CaptureLocal.Origin(a4)
 	jsr lexical.readEntry
 	bne.w bad
 	; Import proxies reuse Leaf for selection, not a spelling boundary. Their
@@ -234,6 +289,32 @@ copy
 	move.w CaptureLocal.Entry+records.Entry.Leaf(a4), d0
 	move.l d0, Row.Leaf(a3)
 	move.l CaptureLocal.Entry+records.Entry.RegisterName(a4), Row.RegisterFacets(a3)
+	move.l #-1, Row.ValueEntity(a3)
+	move.l #-1, Row.TemplateEntity(a3)
+	clr.l Row.Facets(a3)
+	clr.l Row.ValueDependency(a3)
+	clr.l Row.TemplateDependency(a3)
+	tst.l d6
+	bne.w entitiesReady
+	btst #0, CaptureLocal.Entry+records.Entry.Flags+1(a4)
+	beq.w templateEntity
+	moveq #0, d0
+	move.w CaptureLocal.Entry+records.Entry.Target(a4), d0
+	move.l d0, Row.ValueEntity(a3)
+	ori.l #VALUE_FACET, Row.Facets(a3)
+templateEntity
+	move.w CaptureLocal.Entry+records.Entry.TemplateFlags(a4), d0
+	andi.w #records.TEMPLATE_DECLARED+records.STATEMENT_DECLARED, d0
+	beq.w entitiesReady
+	move.l CaptureLocal.Origin(a4), d0
+	add.l State.Base(a6), d0
+	move.l d0, Row.TemplateEntity(a3)
+	ori.l #TEMPLATE_FACET, Row.Facets(a3)
+	move.w CaptureLocal.Entry+records.Entry.TemplateFlags(a4), d0
+	andi.w #records.TEMPLATE_PUBLIC+records.STATEMENT_PUBLIC, d0
+	beq.w entitiesReady
+	ori.l #TEMPLATE_PUBLIC, Row.Facets(a3)
+entitiesReady
 	movea.l State.Keys+memory.Block.Pointer(a6), a3
 	adda.l State.Keys+memory.Block.Used(a6), a3
 	move.l d7, Key.Id(a3)
@@ -541,6 +622,9 @@ nameByte
 	tst.l Row.RegisterFacets(a3)
 	bne.w bad
 nextRow
+	movea.l a3, a0
+	bsr.w validateEntities
+	bne.w bad
 	addq.l #1, d5
 	adda.w #ROW_BYTES, a3
 	subq.l #1, d6

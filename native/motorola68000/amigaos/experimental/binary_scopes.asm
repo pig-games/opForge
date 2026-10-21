@@ -116,6 +116,11 @@ begin	.block
 	clr.w layout.State.LoopDepth(a0)
 	clr.w layout.State.Deferred(a0)
 	clr.l layout.State.Package(a0)
+	clr.l layout.State.DependencyResolve(a0)
+	clr.l layout.State.DependencyContext(a0)
+	clr.l layout.State.DependencyOwners(a0)
+	clr.l layout.State.DependencyBinder(a0)
+	clr.w layout.State.DependencyFailed(a0)
 	move.l a0, -(sp)
 	adda.l #BINDING_PLANS, a0
 	clr.l memory.Block.Pointer(a0)
@@ -202,6 +207,11 @@ release	.block
 	adda.l #STRUCT_STATE, a0
 	jsr structs.release
 	clr.l layout.State.ArenaUsed(a1)
+	clr.l layout.State.DependencyResolve(a1)
+	clr.l layout.State.DependencyContext(a1)
+	clr.l layout.State.DependencyOwners(a1)
+	clr.l layout.State.DependencyBinder(a1)
+	clr.w layout.State.DependencyFailed(a1)
 	movea.l a1, a0
 	adda.l #BINDING_PLANS, a0
 	jsr memory.release
@@ -712,6 +722,10 @@ dotted
 	andi.w #records.CONDITIONAL_VALUE, d0
 	beq.w good
 capturePrefixes
+	movea.l a3, a0
+	movea.l a6, a1
+	jsr imports.admit
+	bne.w bad
 	; Complete qualified targets precede lexical value projections. A failed
 	; lookup leaves compound-member alternatives and their ambiguity intact.
 	movea.l a3, a0

@@ -35,8 +35,10 @@ Bytes	.long ?
 Name	.long ?  ; capsule-local name ID, not a runtime handle
 Statement	.long ?  ; optional Data-relative closed statement metadata
 StatementBytes	.long ?
+Entity	.long ?  ; provider-local lexical template identity
+Visibility	.long ?  ; one public root, zero private closure
 	.endstruct
-ROW_BYTES = Row.StatementBytes+4
+ROW_BYTES = Row.Visibility+4
 CaptureFrame	.struct
 Frontend	.long ?
 Module	.long ?
@@ -50,6 +52,17 @@ Image	.long ?  ; immutable borrowed module capsule
 Bytes	.long ?
 	.endstruct
 INSTALL_BYTES = InstallFrame.Bytes+4
+DemandFrame	.struct
+Frontend	.long ?
+Module	.long ?
+Image	.long ?
+Bytes	.long ?
+Row	.long ?  ; exact selected public template row in Image
+Resolve	.long ?  ; templates.remapClosed callback, provider declaration context
+Context	.long ?
+Name	.long ?  ; already bound consumer canonical call-name ID
+	.endstruct
+DEMAND_BYTES = DemandFrame.Name+4
 CopyFrame	.struct
 SourceFrontend	.long ?
 SourceModule	.long ?
@@ -59,7 +72,54 @@ DestinationModule	.long ?
 COPY_BYTES = CopyFrame.DestinationModule+4
 OK = 0
 INVALID = 1
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+Diagnostic	.struct
+Module	.long ?
+Definitions	.long ?
+Statements	.long ?
+FirstModule	.long ?
+FirstFlags	.long ?
+	.endstruct
+	.section bss, kind=bss
+CaptureDiagnostic	.res byte, Diagnostic.FirstFlags+4
+	.endsection
+.endif
+.endif
+.endif
 	.priv
+; Temporary scalar capture evidence. No pointer, call, or preservation is
+; emitted outside the existing preparation diagnostics gates.
+CAPTURE_DIAGNOSTIC_LONG	.macro field, value
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	move.l .value, d0
+	move.l d0, CaptureDiagnostic+.field
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
+CAPTURE_DIAGNOSTIC_WORD	.macro field, value
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	move.l d0, -(sp)
+	moveq #0, d0
+	move.w .value, d0
+	move.l d0, CaptureDiagnostic+.field
+	move.l (sp)+, d0
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
+.endmacro
 	.section bss, kind=bss
 Active	.res long, 1
 Caller	.res long, 1
@@ -79,6 +139,10 @@ Seed	.res byte, templates.SEED_FRAME_BYTES
 Statement	.res byte, memory.Block.Used+4
 StatementRequest	.res byte, statementImage.CAPTURE_FRAME_BYTES
 StatementSeed	.res byte, statementImage.INSTALL_FRAME_BYTES
+Seen	.res byte, memory.Block.Used+4
+RequestEntity	.res long, 1
+RequestVisibility	.res long, 1
+PassRows	.res long, 1
 	.endsection
 BORROW_BYTES = templates.EXPORT_FRAME_BYTES+templates.REMAP_FRAME_BYTES+templates.SEED_FRAME_BYTES+(memory.Block.Used+4)+statementImage.CAPTURE_FRAME_BYTES+statementImage.INSTALL_FRAME_BYTES
 	.section code, kind=code
@@ -94,6 +158,11 @@ capture	.block
 	move.l #1, Active
 	move.l a0, Caller
 	movea.l a0, a6
+	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Module, CaptureFrame.Module(a6)
+	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Definitions, #0
+	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Statements, #0
+	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.FirstModule, #0
+	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.FirstFlags, #0
 	tst.l CaptureFrame.Module(a6)
 	beq.w bad
 	cmpi.l #65535, CaptureFrame.Module(a6)
@@ -119,9 +188,11 @@ capture	.block
 	jsr names.begin
 	bne.w bad
 definitions
+	move.l Table+memory.Block.Used, PassRows
 	movea.l SourceTemplates, a5
 	moveq #0, d7
 	move.w templates.State.Count(a5), d7
+	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Definitions, d7
 	move.l d7, d0
 	mulu.l #templates.DEF_BYTES, d0
 	cmp.l templates.DEFS+memory.Block.Used(a5), d0
@@ -138,6 +209,7 @@ definition
 	bhi.w nextDefinition
 	moveq #0, d0
 	move.w templates.Def.Name(a4), d0
+	move.l d0, RequestEntity
 	movea.l SourceScope, a0
 	sub.w scope.State.Base(a0), d0
 	bcs.w bad
@@ -146,13 +218,35 @@ definition
 	lea Entry, a1
 	jsr lexical.readEntry
 	bne.w bad
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	move.w ccr, -(sp)
+	tst.l d6
+	bne.w diagnosticReady
+	.CAPTURE_DIAGNOSTIC_WORD Diagnostic.FirstModule, records.Entry.TemplateModule(a1)
+	.CAPTURE_DIAGNOSTIC_WORD Diagnostic.FirstFlags, records.Entry.TemplateFlags(a1)
+diagnosticReady
+	move.w (sp)+, ccr
+.endif
+.endif
+.endif
 	move.l CaptureFrame.Module(a6), d0
 	cmp.w records.Entry.TemplateModule(a1), d0
 	bne.w nextDefinition
-	move.w records.Entry.TemplateFlags(a1), d0
-	andi.w #records.TEMPLATE_DECLARED+records.TEMPLATE_PUBLIC, d0
-	cmpi.w #records.TEMPLATE_DECLARED+records.TEMPLATE_PUBLIC, d0
-	bne.w nextDefinition
+	moveq #0, d1
+	btst #1, records.Entry.TemplateFlags+1(a1)
+	beq.w privateDefinition
+	moveq #1, d1
+privateDefinition
+	move.l d1, RequestVisibility
+	move.l d6, d0
+	addq.l #1, d0
+	bsr.w wanted
+	cmpi.l #2, d0
+	beq.w nextDefinition
+	tst.l d0
+	bne.w bad
 	move.l d6, d0
 	addq.l #1, d0
 	moveq #0, d1
@@ -168,6 +262,7 @@ statementDefinitions
 	move.l a5, SourceStatements
 	moveq #0, d7
 	move.w statements.State.Count(a5), d7
+	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Statements, d7
 	move.l d7, d0
 	mulu.l #statements.ROW_BYTES, d0
 	cmp.l statements.ROWS+memory.Block.Used(a5), d0
@@ -175,12 +270,23 @@ statementDefinitions
 	movea.l statements.ROWS+memory.Block.Pointer(a5), a4
 statementLoop
 	tst.l d7
-	beq.w serialize
+	beq.w passComplete
 	move.l CaptureFrame.Module(a6), d0
 	cmp.w statements.Row.Module(a4), d0
 	bne.w nextStatement
-	cmpi.w #1, statements.Row.Visibility(a4)
-	bne.w nextStatement
+	moveq #0, d0
+	move.w statements.Row.Name(a4), d0
+	move.l d0, RequestEntity
+	moveq #0, d1
+	move.w statements.Row.Visibility(a4), d1
+	move.l d1, RequestVisibility
+	moveq #0, d0
+	move.w statements.Row.Template(a4), d0
+	bsr.w wanted
+	cmpi.l #2, d0
+	beq.w nextStatement
+	tst.l d0
+	bne.w bad
 	move.l a5, StatementRequest+statementImage.CaptureFrame.State
 	move.l a4, StatementRequest+statementImage.CaptureFrame.Row
 	move.l #Statement, StatementRequest+statementImage.CaptureFrame.Destination
@@ -196,6 +302,10 @@ nextStatement
 	adda.w #statements.ROW_BYTES, a4
 	subq.l #1, d7
 	bra.w statementLoop
+passComplete
+	move.l Table+memory.Block.Used, d0
+	cmp.l PassRows, d0
+	bne.w definitions
 serialize
 	bsr.w build
 	bne.w bad
@@ -229,6 +339,7 @@ done
 ; within this unpublished capture owner. D0/CCR=status; others preserved.
 captureOne	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	move.l d0, d7
 	move.l SourceTemplates, Export+templates.ExportFrame.State
 	move.l d0, Export+templates.ExportFrame.Handle
 	move.l d1, Export+templates.ExportFrame.External
@@ -264,6 +375,8 @@ metadataReady
 	moveq #0, d0
 	move.w templates.Def.Name(a2), d0
 	move.l d0, Row.Name(a1)
+	move.l RequestEntity, Row.Entity(a1)
+	move.l RequestVisibility, Row.Visibility(a1)
 	addi.l #ROW_BYTES, memory.Block.Used(a0)
 	lea Data, a0
 	movea.l Temporary+memory.Block.Pointer, a1
@@ -281,6 +394,13 @@ metadataReady
 	lea Statement, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
+	move.l d7, -(sp)
+	lea Seen, a0
+	movea.l sp, a1
+	moveq #4, d0
+	bsr.w append
+	addq.l #4, sp
+	bne.w bad
 	moveq #OK, d0
 	bra.w done
 bad
@@ -290,6 +410,46 @@ done
 	tst.l d0
 	rts
 	.bend  ; captureOne
+
+; D0=source body handle. Public roots or names reachable from captured bodies
+; are selected once. Repeated passes close forward/private helper references.
+; D0/CCR=0 selected,2 absent/already captured; all other registers preserved.
+wanted	.block
+	movem.l d1-d3/a0, -(sp)
+	move.l d0, d3
+	movea.l Seen+memory.Block.Pointer, a0
+	move.l Seen+memory.Block.Used, d1
+seen
+	tst.l d1
+	beq.w visibility
+	cmp.l (a0)+, d3
+	beq.w absent
+	subq.l #4, d1
+	bra.w seen
+visibility
+	tst.l RequestVisibility
+	bne.w selected
+	movea.l NameState+names.State.Rows+memory.Block.Pointer, a0
+	move.l NameState+names.State.Rows+memory.Block.Used, d1
+reference
+	tst.l d1
+	beq.w absent
+	move.l RequestEntity, d2
+	cmp.l names.Row.TemplateEntity(a0), d2
+	beq.w selected
+	adda.w #names.ROW_BYTES, a0
+	subi.l #names.ROW_BYTES, d1
+	bra.w reference
+selected
+	moveq #0, d0
+	bra.w done
+absent
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d3/a0
+	tst.l d0
+	rts
+	.bend  ; wanted
 
 ; A0=block,A1=borrowed bytes,D0=length. No input may alias a growing owner.
 ; D0/CCR=status; other registers preserved. Used changes after copying only.
@@ -337,6 +497,9 @@ done
 	.include "binary_module_template_seed.i"
 
 release	.block
+	lea Seen, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	lea NameState, a0
 	jsr names.release
 	lea Imported, a0

@@ -1000,6 +1000,45 @@ done
 	rts
 	.bend  ; qualification
 
+; A0=bound source Entry,A1=scope. Admit immutable dependency entities before
+; generic value-prefix capture; ordinary unresolved names remain deferred.
+; D0/CCR=status; other registers preserved. Qualification itself stays lookup-only.
+admit	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #records.ENTRY_BYTES, sp
+	movea.l a1, a6
+	movea.l layout.State.DependencyBinder(a6), a5
+	cmpa.w #0, a5
+	beq.w good
+	moveq #0, d0
+	move.w layout.MODULE_STATE+modules.State.Active(a6), d0
+	beq.w good
+	movea.l sp, a3
+	movea.l a3, a1
+	moveq #records.ENTRY_BYTES/4-1, d1
+copy
+	move.l (a0)+, (a1)+
+	dbra d1, copy
+	move.w d0, records.Entry.Owner(a3)
+	clr.w records.Entry.Leaf(a3)
+	clr.w records.Entry.Flags(a3)
+	move.w layout.State.Current(a6), records.Entry.Padding(a3)
+	lea layout.IMPORT_STATE(a6), a4
+	bsr.w resolve
+	tst.w layout.State.DependencyFailed(a6)
+	bne.w bad
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	adda.w #records.ENTRY_BYTES, sp
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; admit
+
 ; A0=name token,A1=scope state. Resolve invocation spelling independently
 ; of a numeric reference with the same spelling and origin.
 ; D0/CCR=status; other registers preserved.
@@ -1183,6 +1222,10 @@ memberAvailable
 	move.w d2, records.Entry.MemberBase(a3)
 	.IMPORT_PUBLISH a6, ImportsLocal.EntryA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, ImportsLocal.IndexA+REFERENCE_SAVED_BYTES+NAMESPACE_BYTES, bad
 found
+	; Admit only immutable dependency targets at the actual reference boundary.
+	; Later qualification remains lookup-only, including compile-time snapshots.
+	bsr.w demandReference
+	bne.w bad
 	move.w records.Entry.Target(a3), 1(a5)
 ok
 	moveq #0, d0
@@ -1196,6 +1239,31 @@ done
 	tst.l d0
 	rts
 	.bend  ; referenceNamespace
+
+; A3=reference entry,A6=scope. Missing local/forward names remain ordinary
+; deferred work. A failed stored demand is sticky and cannot be replayed.
+; D0/CCR=status; other registers preserved.
+demandReference	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l layout.State.DependencyBinder(a6), a5
+	cmpa.w #0, a5
+	beq.w good
+	btst #records.IMPORT_PROXY_BIT, records.Entry.Flags+1(a3)
+	beq.w good
+	lea layout.IMPORT_STATE(a6), a4
+	bsr.w resolve
+	tst.w layout.State.DependencyFailed(a6)
+	bne.w bad
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; demandReference
 
 ; A5=unqualified name token,A6=scope state,D7=active module.
 ; Values and templates use the exposed leaf; Name retains the canonical target.
@@ -1827,6 +1895,19 @@ exact
 	move.l d6, d0
 	bra.w bind
 numericExact
+	; Real reference resolution may demand an exact stored export before the
+	; ordinary member-base search. Qualification probes keep their lookup-only
+	; binder and must not allocate identities, records or value cells.
+	tst.l layout.State.DependencyResolve(a6)
+	beq.w numericMember
+	lea findDeclaredBind, a0
+	cmpa.l a0, a5
+	beq.w numericMember
+	movea.l a2, a0
+	move.l d6, d0
+	bsr.w globalBind
+	bne.w bad
+numericMember
 	moveq #0, d0
 	bsr.w resolveStructMember
 	bra.w done
@@ -3426,12 +3507,36 @@ done
 
 ; A0/D0=qualified name,A5=binder,A6=scope state. D0/status,D1/ID,D2scratch;
 ; A0/A1 scratch. No process pointer is stored in preparation metadata.
+; Optional DependencyResolve: A0/D0=original spelling, D1=bound consumer ID,
+; A1=scope,A2=DependencyContext. D0=0 success,1 invalid,2 absent (retain D1).
+; All other registers are preserved. Resolve preserves existing local facets.
 globalBind	.block
+	movem.l d2/a0-a3, -(sp)
+	move.l d0, -(sp)
 	move.w layout.State.Current(a6), -(sp)
 	clr.w layout.State.Current(a6)
 	movea.l a6, a1
 	jsr (a5)
 	move.w (sp)+, layout.State.Current(a6)
+	tst.l d0
+	bne.w done
+	movea.l layout.State.DependencyResolve(a6), a3
+	cmpa.w #0, a3
+	beq.w done
+	; The ordinary binder owns caller-local identity and spelling precedence.
+	; A dependency resolver fills only facets for this demanded spelling. It
+	; must preserve local declarations and never enumerate provider exports.
+	movea.l 8(sp), a0
+	move.l (sp), d0
+	movea.l a6, a1
+	movea.l layout.State.DependencyContext(a6), a2
+	jsr (a3)
+	cmpi.l #2, d0  ; no configured provider: retain ordinary binding
+	bne.w done
+	moveq #0, d0
+done
+	addq.l #4, sp
+	movem.l (sp)+, d2/a0-a3
 	tst.l d0
 	rts
 	.bend  ; globalBind

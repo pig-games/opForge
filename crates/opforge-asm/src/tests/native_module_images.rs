@@ -47,6 +47,13 @@ fn build_probe(root: &Path, dir: &Path, disk: bool) -> Vec<u8> {
         dir.join("module_data_delta_checks.i"),
     )
     .unwrap();
+    fs::copy(
+        root.join(
+            "native/motorola68000/amigaos/test-harnesses/experimental/module_runtime_reloc_checks.i",
+        ),
+        dir.join("module_runtime_reloc_checks.i"),
+    )
+    .unwrap();
     let native = root.join("native/motorola68000/amigaos");
     let cli = Cli::parse_from([
         "opforge".to_owned(),
@@ -122,16 +129,30 @@ fn native_module_images_fs_uae() {
             .keys()
             .all(|path| path.extension().is_none_or(|suffix| suffix != "tmp")));
         if disk {
-            // Rollback removes B; release preserves completed A as a deliverable.
-            assert_eq!(objects.len(), 1);
-            let (path, bytes) = objects[0];
-            assert_eq!(path.file_name().unwrap(), "binary_frontend.exper-0000.ofm");
-            let mut header = bytes.chunks_exact(4);
-            assert_eq!(header.next().unwrap(), b"OFMI");
-            let declared_bytes = u32::from_be_bytes(header.next().unwrap().try_into().unwrap());
-            assert_eq!(declared_bytes as usize, bytes.len());
-            let payload = fs::read(dir.0.join("module_image_payload.bin")).unwrap();
-            assert!(bytes.ends_with(&payload), "complete unchanged Rust payload");
+            // The runtime fixture preserves provider/consumer objects; the
+            // registry rollback removes B and retains the original A object.
+            assert_eq!(objects.len(), 3);
+            let names = objects
+                .iter()
+                .map(|(path, _)| path.file_name().unwrap().to_string_lossy().into_owned())
+                .collect::<std::collections::BTreeSet<_>>();
+            assert_eq!(names, std::collections::BTreeSet::from([
+                "binary_frontend.exper-0000.ofm".to_owned(),
+                "consumer-0001.ofm".to_owned(),
+                "provider-0000.ofm".to_owned(),
+            ]));
+            for (path, bytes) in &objects {
+                assert_eq!(&bytes[..4], b"OFMI");
+                let declared_bytes = u32::from_be_bytes(bytes[4..8].try_into().unwrap());
+                assert_eq!(declared_bytes as usize, bytes.len());
+                if path.file_name().unwrap() == "binary_frontend.exper-0000.ofm" {
+                    let payload = fs::read(dir.0.join("module_image_payload.bin")).unwrap();
+                    assert!(bytes.ends_with(&payload), "complete unchanged Rust payload");
+                } else {
+                    let interface = u32::from_be_bytes(bytes[28..32].try_into().unwrap()) as usize;
+                    assert_eq!(&bytes[interface..interface + 4], b"OFMA");
+                }
+            }
         } else {
             assert!(objects.is_empty());
         }

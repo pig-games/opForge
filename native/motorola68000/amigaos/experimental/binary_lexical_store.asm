@@ -25,13 +25,16 @@ Start	.long ?
 Disk	.long ?
 Failure	.long ?  ; sticky: numeric lookup absence must not swallow storage errors
 NamesRetired	.long ?
+ScratchBytes	.long ?  ; nonzero: bounded active private compiler payloads
 .endstruct
-STATE_BYTES = State.NamesRetired+4
+STATE_BYTES = State.ScratchBytes+4
 TAG_ACTIVE = $80000000
 TAG_RETAINED = $40000000
 TAG_RESIDENT_NAMES = $c0000000
 OFFSET_MASK = $3fffffff
 LIMIT = 65535
+SCRATCH_WINDOW_BYTES = 65536
+SCRATCH_SEAL = $ffffffff
 MAX_LOGICAL_BYTES = LIMIT*(records.NAME_BYTES-1+records.ENTRY_BYTES)
 OWNED_BLOCKS = (State.ResidentNames-State.Bridge)/(memory.Block.Used+4)
 	.section code, kind=code
@@ -54,6 +57,18 @@ returned
 	tst.l d0
 	rts
 	.bend  ; configure
+
+; A0=zero State,A1=DOS base,A2=scratch parent. Same status/preservation as
+; configure. Private consumers own public closure separately before retirement;
+; no lexical payload needs resident interface retention while preparing.
+configureScratch	.block
+	bsr.w configure
+	bne.w done
+	move.l #SCRATCH_WINDOW_BYTES, State.ScratchBytes(a0)
+done
+	tst.l d0
+	rts
+	.bend  ; configureScratch
 
 ; A0=State,D0=minimum identity count. D0/CCR=status; others preserved.
 reserve	.block
@@ -177,6 +192,16 @@ appendEntry	.block
 	move.l State.Count(a6), d0
 	lsl.l #3, d0
 	move.l d0, State.Bridge+memory.Block.Used(a6)
+	tst.l State.ScratchBytes(a6)
+	beq.w published
+	move.l State.ActiveEntries+memory.Block.Used(a6), d0
+	add.l State.ActiveNames+memory.Block.Used(a6), d0
+	cmp.l State.ScratchBytes(a6), d0
+	blo.w published
+	movea.l a6, a0
+	bsr.w sealScratch
+	bne.w bad
+published
 	moveq #0, d0
 	bra.w done
 bad
@@ -310,6 +335,20 @@ returned
 	rts
 	.bend  ; copyName
 
+; A0=private State. Spill the complete published active range, including public
+; and unscoped identities. No semantic lifetime ends: bridge IDs and checked
+; reads/writeback remain valid. D0/CCR=status; other registers preserved.
+sealScratch	.block
+	movem.l a1-a2, -(sp)
+	suba.l a1, a1
+	suba.l a2, a2
+	move.l #SCRATCH_SEAL, d0
+	bsr.w seal
+	movem.l (sp)+, a1-a2
+	tst.l d0
+	rts
+	.bend  ; sealScratch
+
 ; A0=State,A1=per-ID module owners words,A2=per-ID module flags words,
 ; D0=module flags retaining interface entries (supplied by module owner).
 ; D0/CCR=status; others kept. Publish the complete active range in source order.
@@ -345,6 +384,8 @@ next
 	move.l d6, d0
 	add.l d0, d0
 	moveq #0, d4
+	cmpi.l #SCRATCH_SEAL, d7
+	beq.w classified
 	tst.w 0(a3, d0.l)
 	bne.w visibility
 	tst.w records.Entry.Owner(a5)

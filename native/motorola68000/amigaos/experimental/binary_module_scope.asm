@@ -27,6 +27,18 @@ Module	.long ?  ; destination module lexical index+1, not absolute source ID
 Reuse	.long ?  ; optional nameless schema lookup: A0=Context,D1=local ID
 	.endstruct
 FRAME_BYTES = Frame.Reuse+4
+DemandFrame	.struct
+Scope	.long ?
+Image	.long ?
+Bytes	.long ?
+Export	.long ?
+Global	.long ?
+Module	.long ?
+Resolve	.long ?
+Context	.long ?
+Address	.long ?
+	.endstruct
+DEMAND_BYTES = DemandFrame.Address+4
 MapRow	.struct
 Local	.long ?
 Global	.long ?
@@ -49,6 +61,277 @@ Global	.long ?
 LOCAL_BYTES = Local.Global+4
 	.section code, kind=code
 	.pub
+; A0=consumer scope,D0=module lexical index+1. Allocate one undeclared,
+; unindexed provider entity. D0/CCR=status,D1=absolute consumer identity;
+; other registers preserved. The module's name handle is shared immutably.
+allocateEntity	.block
+	movem.l d2-d4/a0-a3, -(sp)
+	suba.w #records.ENTRY_BYTES, sp
+	movea.l a0, a3
+	move.l d0, d4
+	beq.w bad
+	subq.l #1, d0
+	moveq #0, d2
+	move.w layout.State.Count(a3), d2
+	cmp.l d2, d0
+	bhs.w bad
+	lea layout.LEXICAL_STATE(a3), a0
+	movea.l sp, a1
+	jsr lexical.readEntry
+	bne.w bad
+	movea.l records.Entry.Name(sp), a2
+	moveq #0, d3
+	move.w records.Entry.Length(sp), d3
+	movea.l a3, a0
+	move.l d2, d0
+	addq.l #1, d0
+	jsr scopes.reserveIdentities
+	bne.w bad
+	movea.l sp, a1
+	moveq #records.ENTRY_BYTES/2-1, d0
+clear
+	clr.w (a1)+
+	dbra d0, clear
+	movea.l sp, a1
+	move.l a2, records.Entry.Name(a1)
+	move.w d3, records.Entry.Length(a1)
+	move.w d4, records.Entry.Owner(a1)
+	move.w #$ffff, records.Entry.MemberId(a1)
+	moveq #0, d1
+	move.w layout.State.Base(a3), d1
+	add.l d2, d1
+	move.w d1, records.Entry.Target(a1)
+	move.l d2, d0
+	lea layout.LEXICAL_STATE(a3), a0
+	jsr lexical.appendEntry
+	bne.w bad
+	addq.w #1, layout.State.Count(a3)
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	adda.w #records.ENTRY_BYTES, sp
+	movem.l (sp)+, d2-d4/a0-a3
+	tst.l d0
+	rts
+	.bend  ; allocateEntity
+
+; A0=scope,D0=existing spelling,D1=canonical value,D2=provider module.
+; Declare only the spelling's value alias, preserving independent templates.
+; D0/CCR=status; other registers preserved. Numeric consumers follow Target.
+alias	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	suba.w #records.ENTRY_BYTES, sp
+	movea.l a0, a3
+	move.l d0, d7
+	move.l d1, d6
+	move.l d2, d5
+	move.l d1, d0
+	sub.w layout.State.Base(a3), d0
+	bcs.w bad
+	andi.l #$ffff, d0
+	lea layout.LEXICAL_STATE(a3), a0
+	movea.l sp, a1
+	jsr lexical.readEntry
+	bne.w bad
+	move.w records.Entry.Flags(sp), d4
+	andi.w #records.STRUCT_TYPE+records.LABEL_VALUE, d4
+	move.l d7, d0
+	sub.w layout.State.Base(a3), d0
+	bcs.w bad
+	andi.l #$ffff, d0
+	jsr lexical.readEntry
+	bne.w bad
+	btst #0, records.Entry.Flags+1(sp)
+	bne.w bad
+	ori.w #scopes.DECLARED, d4
+	or.w d4, records.Entry.Flags(sp)
+	move.w d6, records.Entry.Target(sp)
+	move.w d5, records.Entry.Owner(sp)
+	move.l d7, d0
+	sub.w layout.State.Base(a3), d0
+	andi.l #$ffff, d0
+	jsr lexical.writeEntry
+	bne.w bad
+	lea layout.MODULE_STATE(a3), a0
+	move.w modules.State.Active(a0), -(sp)
+	move.w modules.State.Visibility(a0), -(sp)
+	move.w d5, modules.State.Active(a0)
+	move.w #modules.PUBLIC, modules.State.Visibility(a0)
+	move.l d7, d0
+	sub.w layout.State.Base(a3), d0
+	andi.l #$ffff, d0
+	jsr modules.claim
+	move.w (sp)+, modules.State.Visibility(a0)
+	move.w (sp)+, modules.State.Active(a0)
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	adda.w #records.ENTRY_BYTES, sp
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; alias
+
+; A0=DemandFrame. Install exactly one demanded entity into an existing binding.
+; Image is a validated immutable OFMS and Export one of its exact rows. The
+; caller binds required nominal/member closure before this call; Resolve has
+; remap.copy's ABI and cannot grow its destination arena. Address has install's
+; ABI. Global is absolute; Module is the consumer lexical module index+1.
+; D0/CCR=status; others preserved. No image pointer or lease escapes. Failure
+; may leave local declaration/value work and requires ordinary owner cleanup.
+demand	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #LOCAL_BYTES, sp
+	movea.l sp, a4
+	movea.l a0, a5
+	movea.l DemandFrame.Scope(a5), a6
+	cmpa.w #0, a6
+	beq.w bad
+	move.l DemandFrame.Module(a5), d0
+	beq.w bad
+	cmpi.l #65535, d0
+	bhi.w bad
+	cmpi.l #65535, DemandFrame.Global(a5)
+	bhi.w bad
+	movea.l DemandFrame.Export(a5), a3
+	; The leased interface is validated by its owner; still check that this
+	; request selects an exact row, including the symbolic-address fast path.
+	movea.l DemandFrame.Image(a5), a0
+	cmpa.w #0, a0
+	beq.w bad
+	move.l DemandFrame.Bytes(a5), d0
+	cmpi.l #interface.HEADER_BYTES, d0
+	blo.w bad
+	cmp.l interface.Header.Bytes(a0), d0
+	bne.w bad
+	move.l a3, d0
+	sub.l a0, d0
+	bcs.w bad
+	sub.l interface.Header.Exports(a0), d0
+	bcs.w bad
+	move.l d0, d2
+	moveq #interface.EXPORT_BYTES, d1
+	divu.l d1, d0
+	cmp.l interface.Header.ExportCount(a0), d0
+	bhs.w bad
+	mulu.l #interface.EXPORT_BYTES, d0
+	cmp.l d2, d0
+	bne.w bad
+	move.l DemandFrame.Global(a5), d1
+	move.l d1, Local.Global(a4)
+	move.l d1, d0
+	sub.w layout.State.Base(a6), d0
+	bcs.w bad
+	andi.l #$ffff, d0
+	moveq #0, d2
+	move.w layout.State.Count(a6), d2
+	cmp.l d2, d0
+	bhs.w bad
+	lea layout.LEXICAL_STATE(a6), a0
+	lea Local.Entry(a4), a1
+	move.l Local.Global(a4), d0
+	sub.w layout.State.Base(a6), d0
+	andi.l #$ffff, d0
+	jsr lexical.readEntry
+	bne.w bad
+	move.w records.Entry.Flags(a1), d2
+	andi.w #scopes.DECLARED+records.IMPORT_PROXY+records.BINDING_PROXY, d2
+	bne.w bad
+	move.l DemandFrame.Image(a5), Local.Copy+remap.Frame.Image(a4)
+	move.l DemandFrame.Bytes(a5), Local.Copy+remap.Frame.Bytes(a4)
+	move.l a3, Local.Copy+remap.Frame.Export(a4)
+	lea layout.IMPORT_STATE+imports.KNOWN_OWNER(a6), a0
+	move.l a0, Local.Copy+remap.Frame.Owner(a4)
+	move.l DemandFrame.Resolve(a5), Local.Copy+remap.Frame.Resolve(a4)
+	move.l DemandFrame.Context(a5), Local.Copy+remap.Frame.Context(a4)
+	cmpi.l #interface.FRAGMENT_ADDRESS, interface.Export.Kind(a3)
+	beq.w address
+	tst.l interface.Export.Provenance(a3)
+	bne.w address
+	lea Local.Copy(a4), a0
+	jsr remap.copy
+	bne.w bad
+	move.l Local.Copy+remap.Frame.Low(a4), d2
+	move.l Local.Copy+remap.Frame.High(a4), d3
+	move.l Local.Copy+remap.Frame.Kind(a4), d4
+	moveq #1, d5
+	bra.w store
+address
+	movea.l DemandFrame.Address(a5), a1
+	cmpa.w #0, a1
+	beq.w bad
+	movea.l DemandFrame.Context(a5), a0
+	move.l interface.Export.Id(a3), d0
+	move.l Local.Global(a4), d1
+	move.l interface.Export.Low(a3), d2
+	move.l interface.Export.Provenance(a3), d3
+	cmpi.l #interface.FRAGMENT_ADDRESS, interface.Export.Kind(a3)
+	bne.w callAddress
+	move.l interface.Export.High(a3), d3
+callAddress
+	jsr (a1)
+	tst.l d0
+	bne.w bad
+	moveq #0, d2
+	moveq #0, d3
+	moveq #values.SCALAR, d4
+	moveq #0, d5
+store
+	move.l Local.Global(a4), d1
+	bsr.w storeKnown
+	bne.w bad
+	lea Local.Entry(a4), a1
+	ori.w #scopes.DECLARED, records.Entry.Flags(a1)
+	move.l DemandFrame.Module(a5), d0
+	move.w d0, records.Entry.Owner(a1)
+	cmpi.l #values.STRUCT_TYPE, interface.Export.Kind(a3)
+	bne.w label
+	ori.w #records.STRUCT_TYPE, records.Entry.Flags(a1)
+label
+	cmpi.l #interface.FRAGMENT_ADDRESS, interface.Export.Kind(a3)
+	beq.w labelFlag
+	tst.l interface.Export.Provenance(a3)
+	beq.w publish
+labelFlag
+	ori.w #records.LABEL_VALUE, records.Entry.Flags(a1)
+publish
+	move.l Local.Global(a4), d0
+	sub.w layout.State.Base(a6), d0
+	andi.l #$ffff, d0
+	lea layout.LEXICAL_STATE(a6), a0
+	jsr lexical.writeEntry
+	bne.w bad
+	lea layout.MODULE_STATE(a6), a0
+	move.w modules.State.Active(a0), -(sp)
+	move.w modules.State.Visibility(a0), -(sp)
+	move.l DemandFrame.Module(a5), d0
+	move.w d0, modules.State.Active(a0)
+	clr.w modules.State.Visibility(a0)
+	tst.l interface.Export.NameBytes(a3)
+	beq.w claim
+	move.w #modules.PUBLIC, modules.State.Visibility(a0)
+claim
+	move.l Local.Global(a4), d0
+	sub.w layout.State.Base(a6), d0
+	andi.l #$ffff, d0
+	jsr modules.claim
+	move.w (sp)+, modules.State.Visibility(a0)
+	move.w (sp)+, modules.State.Active(a0)
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	adda.w #LOCAL_BYTES, sp
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; demand
+
 ; A0=Frame, Map empty, Scope at file boundary. D0/CCR=status; others kept.
 ; Binds public names and bare member keys, then copies values once into the
 ; destination import owner. Hidden nominal IDs share only the public module

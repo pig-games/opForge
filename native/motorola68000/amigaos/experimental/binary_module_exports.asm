@@ -13,6 +13,8 @@
 	.use experimental.amigaos.binary_package as pkg
 	.use experimental.amigaos.binary_values as values
 	.use experimental.amigaos.binary_module_interface as interface
+	.use experimental.amigaos.binary_module_templates as moduleTemplates
+	.use experimental.amigaos.binary_module_tmpl_names as templateNames
 	.use exprvm.amigaos.runtime as exprvm
 	.pub
 State	.struct
@@ -393,6 +395,7 @@ done
 	tst.l d0
 	rts
 	.bend  ; prepareSelected
+	.include "binary_module_export_closure.i"
 	.pub
 
 ; A0=prepared State,A1=assembled pkg.Context,A2=empty destination Block.

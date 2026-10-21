@@ -22,7 +22,7 @@ MAGIC = $4f464d53; OFMS integrity tag, not a contract-version selector
 NAME_LIMIT = 255
 Export	.struct
 Id	.long ?  ; canonical module-local value identity
-Name	.long ?  ; input pointer; serialized offset, zero for private schema dependency
+Name	.long ?  ; input pointer; serialized offset, zero for private closure entity
 NameBytes	.long ?
 Kind	.long ?
 Low	.long ?  ; compound: arena-relative offset
@@ -50,6 +50,7 @@ INVALID = 1
 NOT_FOUND = 2
 ; Artifact address recipe; never a runtime values.Kind.
 FRAGMENT_ADDRESS = $100
+FORWARDED_ENTITY = $101; dependency ordinal in Low, provider entity in High
 	.priv
 	.section bss, kind=bss
 Active	.res long, 1
@@ -69,7 +70,7 @@ ArenaOffset	.res long, 1
 ; Destination must be empty and disjoint from all input/storage descriptors.
 ; Publication is transactional; failure leaves Destination empty. The caller
 ; supplies complete nominal/member dependency closure. IDs remain module-local.
-; Nameless rows may retain only a private schema required by public values.
+; Nameless rows retain private value/schema roots required by public closure.
 ; Current values.copyRecord accepts scalar-cell compound descriptors only;
 ; unsupported nested compounds reject rather than retaining borrowed offsets.
 ; Templates, configuration and deferred recipe programs are not in this image.
@@ -123,8 +124,6 @@ exports
 	bne.w publicName
 	tst.l Export.Name(a4)
 	bne.w bad
-	cmpi.l #values.STRUCT_TYPE, Export.Kind(a4)
-	bne.w bad
 	bra.w exportValue
 publicName
 	movea.l Export.Name(a4), a0
@@ -139,6 +138,8 @@ exportValue
 	move.l Export.Low(a4), d2
 	cmpi.l #FRAGMENT_ADDRESS, d3
 	beq.w fragment
+	cmpi.l #FORWARDED_ENTITY, d3
+	beq.w forwarded
 	cmpi.l #values.STRUCT_LITERAL, d3
 	bhi.w bad
 	tst.l d3
@@ -167,6 +168,14 @@ fragment
 	cmpi.l #65535, Export.High(a4)
 	bhi.w bad
 	cmpi.l #memory.LIMIT, d2
+	bhi.w bad
+	bra.w offsetReady
+forwarded
+	tst.l Export.Provenance(a4)
+	bne.w bad
+	cmpi.l #65535, Export.Low(a4)
+	bhi.w bad
+	cmpi.l #65535, Export.High(a4)
 	bhi.w bad
 	bra.w offsetReady
 scalar

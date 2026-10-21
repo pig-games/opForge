@@ -76,8 +76,6 @@ firstExport
 	bne.w publicName
 	tst.l Export.Name(a4)
 	bne.w bad
-	cmpi.l #values.STRUCT_TYPE, Export.Kind(a4)
-	bne.w bad
 	bra.w exportValue
 publicName
 	bsr.w serializedName
@@ -86,6 +84,8 @@ exportValue
 	move.l Export.Kind(a4), d3
 	cmpi.l #FRAGMENT_ADDRESS, d3
 	beq.w fragment
+	cmpi.l #FORWARDED_ENTITY, d3
+	beq.w forwarded
 	cmpi.l #values.STRUCT_LITERAL, d3
 	bhi.w bad
 	tst.l d3
@@ -120,6 +120,14 @@ fragment
 	cmpi.l #65535, Export.High(a4)
 	bhi.w bad
 	cmpi.l #memory.LIMIT, Export.Low(a4)
+	bhi.w bad
+	bra.w nextExport
+forwarded
+	tst.l Export.Provenance(a4)
+	bne.w bad
+	cmpi.l #65535, Export.Low(a4)
+	bhi.w bad
+	cmpi.l #65535, Export.High(a4)
 	bhi.w bad
 	bra.w nextExport
 scalar
@@ -292,6 +300,8 @@ findSchema
 	subq.l #1, d2
 	bra.w findSchema
 schema
+	cmpi.l #FORWARDED_ENTITY, Export.Kind(a0)
+	beq.w schemaReady
 	cmpi.l #values.STRUCT_TYPE, Export.Kind(a0)
 	bne.w bad
 	; The target row may occur later, so bound it before reading its nominal.
@@ -311,6 +321,7 @@ schema
 	move.l values.StructRecord.Nominal(a2), d0
 	cmp.l d1, d0
 	bne.w bad
+schemaReady
 	lea values.STRUCT_BASE_BYTES(a3), a3
 	moveq #values.STRUCT_FIELD_BYTES, d5
 	cmpi.l #values.STRUCT_TYPE, d4

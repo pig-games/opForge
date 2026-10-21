@@ -51,12 +51,17 @@
 	.use experimental.amigaos.binary_file_data as filedata
 	.use experimental.amigaos.binary_module_compile as moduleCompile
 	.use experimental.amigaos.binary_module_scope as moduleScope
-	.use experimental.amigaos.binary_module_snapshot as moduleSnapshot
 	.use experimental.amigaos.binary_module_facets as moduleFacets
 	.use experimental.amigaos.binary_module_templates as moduleTemplates
 	.use experimental.amigaos.binary_module_remap as moduleRemap
 	.use experimental.amigaos.binary_module_image as moduleImage
 	.use experimental.amigaos.binary_module_registry as moduleRegistry
+	.use experimental.amigaos.binary_module_object_store as moduleObjectStore
+	.use experimental.amigaos.binary_module_interface as moduleInterface
+	.use experimental.amigaos.binary_module_iface as assemblyInterface
+	.use experimental.amigaos.binary_module_provider as moduleProvider
+	.use experimental.amigaos.binary_module_iface_store as moduleInterfaceStore
+	.use experimental.amigaos.binary_module_tmpl_names as templateNames
 	.use experimental.amigaos.binary_module_runtime as moduleRuntime
 	.use experimental.amigaos.binary_module_carrier as moduleCarrier
 	.use experimental.amigaos.binary_module_admission as moduleAdmission
@@ -414,13 +419,17 @@ invalidConfig
 	move.l #20, ReturnCode
 cleanup
 	bsr.w privateReleaseAttempt
-	bsr.w privateReleaseRetained
+	lea StoredRoot, a0
+	jsr moduleProvider.release
+	lea StoredImportLinks, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	lea StoredImportGlobals, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	jsr moduleRuntime.release
 	lea PrivateRegistry, a0
 	jsr moduleRegistry.release
-	lea PrivatePublishedValues, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
 	clr.l PrivatePublishedCount
 	clr.l PrivateTextChecked
 	clr.l PrivateTextUnsafe
@@ -1597,6 +1606,9 @@ captureSpans
 assemble
 	lea PrivateRegistry, a0
 	jsr moduleRuntime.begin
+	lea storedInterfaceImportSource, a0
+	lea PrivateRegistry, a1
+	jsr moduleRuntime.setImportResolver
 	lea Work, a0
 	move.l #moduleRuntime.fragment, assembly.Frame.Fragment(a0)
 	clr.l assembly.Frame.Seed(a0)
@@ -2080,6 +2092,9 @@ done
 	.include "binary_source_static_include.i"
 	.include "binary_source_schedule.i"
 	.include "binary_module_private.i"
+	.include "binary_module_iface_driver.i"
+	.include "binary_module_iface_addr.i"
+	.include "binary_module_iface_links.i"
 	.include "binary_module_pipeline.i"
 	.include "binary_source_discovery_idx.i"
 	.include "binary_source_selection.i"
@@ -2219,10 +2234,17 @@ SeededMaps	.res long, 1
 PublishedCapture	.res byte, SPAN_BYTES
 PrivateCompile	.res byte, moduleCompile.CONTEXT_BYTES
 PrivateInstall	.res byte, moduleScope.FRAME_BYTES
-PrivateLookup	.res byte, moduleScope.FRAME_BYTES
 PrivateCarrier	.res byte, moduleCarrier.FRAME_BYTES
-PrivateResolver	.res byte, moduleRemap.FRAME_BYTES
 PrivateRegistry	.res byte, moduleRegistry.STATE_BYTES
+StoredRoot	.res byte, moduleProvider.STATE_BYTES
+StoredPrivate	.res byte, moduleProvider.STATE_BYTES
+PrivateObjectDependencies	.res byte, memory.Block.Used+4
+PrivateObjectProviders	.res byte, memory.Block.Used+4
+PrivateObjectImports	.res byte, memory.Block.Used+4
+PrivateImportGlobals	.res byte, memory.Block.Used+4
+StoredImportLinks	.res byte, memory.Block.Used+4
+StoredImportGlobals	.res byte, memory.Block.Used+4
+PrivateOwnerBase	.res long, 1
 PrivateRequests	.res byte, memory.Block.Used+4
 PrivateRequestRows	.res byte, memory.Block.Used+4
 PrivateRequestNames	.res byte, memory.Block.Used+4
@@ -2254,29 +2276,17 @@ PrivatePublishedCount	.res long, 1
 PrivateImage	.res byte, memory.Block.Used+4
 PrivateFacets	.res byte, memory.Block.Used+4
 PrivateFacetInstall	.res byte, moduleTemplates.INSTALL_BYTES
-PrivateSnapshot	.res byte, memory.Block.Used+4
 PrivateIncoming	.res byte, memory.Block.Used+4
 PrivateSeen	.res byte, memory.Block.Used+4
 PrivateDependencies	.res byte, memory.Block.Used+4
 PrivateOwners	.res byte, memory.Block.Used+4
 PrivateLinksBlock	.res byte, memory.Block.Used+4
-PrivateAddresses	.res byte, memory.Block.Used+4
 PrivateCarrierRecords	.res byte, memory.Block.Used+4
 PrivateReset	.res byte, memory.Block.Used+4
 PrivateTextChecked	.res long, 1
 PrivateTextUnsafe	.res long, 1
 PrivateFileSpans	.res byte, memory.Block.Used+4
 PrivateOrigins	.res byte, memory.Block.Used+4
-PrivatePublishedValues	.res byte, memory.Block.Used+4
-PrivateRetainedOwner	.res byte, values.OWNER_BYTES
-PrivateRetainedValues	.res byte, memory.Block.Used+4
-PrivateRetainedDefined	.res byte, memory.Block.Used+4
-PrivateRetainedBase	.res long, 1
-PrivateSeedGlobal	.res long, 1
-PrivateSeedSourceOwner	.res long, 1
-PrivateSeedSourceValues	.res long, 1
-PrivateSeedSourceDefined	.res long, 1
-PrivateSeedSourceBase	.res long, 1
 
 OrderFrame	.res byte, ordered.FRAME_BYTES
 OrderedRecords	.res byte, memory.Block.Used+4

@@ -40,6 +40,11 @@ MaterializedLoops	.word ?  ; physical preparation loops with selected iterations
 PreviewBinding	.word ?  ; identity-only preview forbids candidate publication
 BindingNamespace	.word ?  ; zero=value/template spelling, one=encoding name
 EarlierReference	.long ?  ; preparation-only lexical snapshot binder
+DependencyResolve	.long ?  ; optional demanded stored-interface binding callback
+DependencyContext	.long ?  ; borrowed active dependency registry, never serialized
+DependencyOwners	.long ?  ; optional sparse used-address whole-block owner bridge
+DependencyBinder	.long ?  ; real binder for immutable dependency admission at references
+DependencyFailed	.word ?  ; sticky failed demand; partial publication cannot be replayed
 BucketCount	.long ?
 BucketMask	.long ?
 IndexedCount	.long ?  ; only entries reachable from the scope buckets

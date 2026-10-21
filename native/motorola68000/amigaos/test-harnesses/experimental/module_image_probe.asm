@@ -3,6 +3,11 @@
 	.module tests.amigaos.module_image_probe
 	.cpu 68020
 	.use experimental.amigaos.binary_module_image as image
+	.use experimental.amigaos.binary_module_iface_store as storedInterface
+	.use experimental.amigaos.binary_module_runtime as storedRuntime
+	.use experimental.amigaos.binary_module_iface as interface
+	.use experimental.amigaos.binary_module_records as moduleRecords
+	.use experimental.amigaos.binary_sections as sectionState
 	.use experimental.amigaos.binary_module_layout as layout
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_package as package
@@ -78,6 +83,7 @@ closeFile
 	bne.w closeLibrary
 	move.l #20, ReturnCode
 closeLibrary
+	jsr releaseRuntimeRelocation
 	lea Registry, a0
 	jsr registry.release
 	lea RegistryOwner, a0
@@ -106,8 +112,57 @@ cleanup
 	.endsection
 	.priv
 	.section code, kind=code
+; The current OFMA wire retains only exact object identity and local entities.
+; Check serialization plus malformed dependency/import rejection independently
+; of frontend ownership and final placement.
+interfaceChecks	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	move.l #FAIL_IMAGE, ReturnCode
+	lea InterfaceBuild, a0
+	jsr interface.build
+	bne.w bad
+	lea InterfaceBuffer, a0
+	move.l InterfaceBuild+interface.Frame.Used, d0
+	jsr interface.validate
+	bne.w bad
+	move.l interface.Header.Imports(a0), d1
+	movea.l a0, a2
+	adda.l d1, a2
+	cmpi.l #7, interface.Import.Entity(a2)
+	bne.w bad
+	move.l #1, interface.Import.Dependency(a2)
+	move.l InterfaceBuild+interface.Frame.Used, d0
+	jsr interface.validate
+	tst.l d0
+	beq.w bad
+	clr.l interface.Import.Dependency(a2)
+	move.l InterfaceBuild+interface.Frame.Used, d0
+	jsr interface.validate
+	bne.w bad
+	; The writer rejects an import outside its dependency directory.
+	move.l #1, ProbeImport+interface.Import.Dependency
+	lea InterfaceBuild, a0
+	jsr interface.build
+	tst.l d0
+	beq.w bad
+	clr.l ProbeImport+interface.Import.Dependency
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; interfaceChecks
+
+	.include "module_runtime_reloc_checks.i"
 ; The first requested block compiles and owns the image exactly once.
 cases	.block
+	bsr.w interfaceChecks
+	bne.w bad
+	bsr.w runtimeRelocationChecks
+	bne.w bad
 	move.l #FAIL_ACQUISITION, ReturnCode
 	lea Request, a0
 	lea CompileCount, a1
@@ -941,6 +996,19 @@ next
 	.endsection
 	.section data, kind=data
 	.align 4
+EmptyValues
+	.long semantics.MAGIC, semantics.HEADER_BYTES, 0, semantics.HEADER_BYTES
+	.long 0, semantics.HEADER_BYTES, semantics.HEADER_BYTES, 0, semantics.HEADER_BYTES, 0
+ProbeDependency
+	.long ProbeObjectName, ProbeObjectNameEnd-ProbeObjectName
+ProbeImport
+	.long 0, 7
+InterfaceBuild
+	.long EmptyValues, semantics.HEADER_BYTES, 0, 0, InterfaceBuffer, 256, 0
+	.long ProbeDependency, 1, ProbeImport, 1
+ProbeObjectName	.byte "provider-0000.ofm"
+ProbeObjectNameEnd
+	.align 4
 Inputs
 	; Id,Data,Bytes,Owner,Section,Kind,Alignment,Extent (image.Input).
 	.long 1, 0, FIRST_BYTES, 1, 0, image.KIND_CODE, 1, FIRST_BYTES
@@ -979,6 +1047,8 @@ Source
 	.incbin "module_image_payload.bin"
 	.endsection
 	.section bss, kind=bss
+	.align 4
+InterfaceBuffer	.res byte, 256
 	.align 4
 SourceOwner	.res byte, memory.Block.Used+4
 OriginalOwner	.res byte, memory.Block.Used+4

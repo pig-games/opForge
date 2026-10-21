@@ -26,6 +26,7 @@ ImageBytes	.long ?  ; full serialized extent, independent of Metadata.Used
 Stored	.long ?
 PlacementStart	.long ?  ; byte offset into State.Placements
 Count	.long ?
+OwnerBase	.long ?  ; wrapper ID is OwnerBase + nonzero image.Block.Owner
 FileName	.res io.NAME_BYTES  ; bounded component; no duplicate qualified-name pool
 	.endstruct
 MODULE_BYTES = Module.FileName+io.NAME_BYTES
@@ -144,6 +145,7 @@ nameReady
 	clr.l memory.Block.Capacity(a0)
 	clr.l memory.Block.Used(a0)
 	clr.l Module.Stored(a3)
+	move.l #UNMAPPED, Module.OwnerBase(a3)
 	tst.l State.Configured(a6)
 	beq.w storageReady
 	move.l memory.Block.Used(a5), d0
@@ -213,6 +215,49 @@ done
 	rts
 	.bend  ; add
 
+; A0=Registry,D1=module,A1=qualified spelling,D2=positive bytes<=255.
+; D0/CCR=status; other registers preserved. Assign exact current-build object
+; identity without disk configuration or allocation. Existing identical names
+; are idempotent; conflicting names and unnamed stored rows reject unchanged.
+name	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	suba.w #io.NAME_BYTES, sp
+	movea.l a0, a6
+	bsr.w moduleRow
+	bne.w bad
+	movea.l sp, a2
+	jsr io.makeName
+	bne.w bad
+	lea Module.FileName(a4), a0
+	tst.b (a0)
+	beq.w unnamed
+	movea.l sp, a1
+	moveq #io.NAME_BYTES-1, d0
+compare
+	cmpm.b (a0)+, (a1)+
+	bne.w bad
+	dbra d0, compare
+	bra.w good
+unnamed
+	tst.l Module.Stored(a4)
+	bne.w bad
+	movea.l sp, a1
+	moveq #io.NAME_BYTES/4-1, d0
+copy
+	move.l (a1)+, (a0)+
+	dbra d0, copy
+good
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	adda.w #io.NAME_BYTES, sp
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; name
+
 ; A0=Registry,D1=module ID,D2=fragment ID. Success A1=metadata header,
 ; A2=descriptor,A3=Placement. D0/CCR=status; other registers preserved.
 ; No IO. Disk A1 is only Metadata.Used readable bytes, not a full image;
@@ -263,6 +308,67 @@ done
 	rts
 	.bend  ; locate
 
+; A0=Registry,D1=module,D2=base of its consecutive hidden block wrapper IDs.
+; D0/CCR=status; others preserved. Link-only identity metadata, not an export
+; table. Repeated identical publication is allowed; conflicting bases reject.
+setOwnerBase	.block
+	movem.l d1-d3/a0/a4/a6, -(sp)
+	movea.l a0, a6
+	cmpi.l #65535, d2
+	bhi.w bad
+	bsr.w moduleRow
+	bne.w done
+	move.l Module.OwnerBase(a4), d3
+	cmpi.l #UNMAPPED, d3
+	beq.w store
+	cmp.l d2, d3
+	bne.w bad
+store
+	move.l d2, Module.OwnerBase(a4)
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d3/a0/a4/a6
+	tst.l d0
+	rts
+	.bend  ; setOwnerBase
+
+; A0=Registry,D1=module,D2=fragment. D0/CCR=status,D1=whole-block wrapper
+; identity (zero for unconditional content); others preserved. No disk reads.
+owner	.block
+	movem.l d2-d5/a0-a4/a6, -(sp)
+	movea.l a0, a6
+	move.l d1, d5
+	bsr.w locate
+	bne.w done
+	move.l image.Block.Owner(a2), d4
+	beq.w mandatory
+	move.l d5, d1
+	bsr.w moduleRow
+	bne.w done
+	move.l Module.OwnerBase(a4), d1
+	cmpi.l #UNMAPPED, d1
+	beq.w bad
+	add.l d4, d1
+	bcs.w bad
+	cmpi.l #65535, d1
+	bhi.w bad
+	moveq #OK, d0
+	bra.w done
+mandatory
+	moveq #0, d1
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d2-d5/a0-a4/a6
+	tst.l d0
+	rts
+	.bend  ; owner
+
 ; A0=Registry,D1=module ID. D0/CCR=status,A1=borrowed full image.
 ; Other registers preserved. No IO; disk borrow expires on successful store,
 ; removal or release. Resident borrow survives store. Failure A1 unspecified.
@@ -283,6 +389,104 @@ done
 	tst.l d0
 	rts
 	.bend  ; pending
+
+; A0=Registry,A1=exact immutable object filename,D2=bytes<=30.
+; D0/CCR=status,D1=module ID on success; others preserved. This catalogue
+; identity is scoped to the current configured build, not a persistent-cache key.
+findObject	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	movea.l a1, a5
+	tst.l d2
+	beq.w bad
+	cmpi.l #io.FILE_NAME_LIMIT, d2
+	bhi.w bad
+	move.l a1, d0
+	beq.w bad
+	add.l d2, d0
+	bcs.w bad
+	movea.l State.Modules+memory.Block.Pointer(a6), a4
+	move.l State.Modules+memory.Block.Used(a6), d7
+	moveq #0, d1
+row
+	tst.l d7
+	beq.w bad
+	lea Module.FileName(a4), a2
+	movea.l a5, a3
+	move.l d2, d6
+character
+	cmpm.b (a2)+, (a3)+
+	bne.w next
+	subq.l #1, d6
+	bne.w character
+	tst.b (a2)
+	beq.w found
+next
+	adda.w #MODULE_BYTES, a4
+	subi.l #MODULE_BYTES, d7
+	addq.l #1, d1
+	bra.w row
+found
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; findObject
+
+; A0=Registry,D1=module,D2=object offset,D3=positive bytes,A1=output.
+; D0/CCR=status; others preserved. Copies bounded interface/header bytes without
+; acquiring the final-emission cache or changing payload-read counters.
+readRange	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a6
+	movea.l a1, a3
+	move.l a1, d0
+	beq.w bad
+	add.l d3, d0
+	bcs.w bad
+	tst.l d3
+	ble.w bad
+	move.l d2, d5
+	move.l d3, d6
+	bsr.w moduleRow
+	bne.w done
+	move.l d5, d0
+	add.l d6, d0
+	bcs.w bad
+	cmp.l Module.ImageBytes(a4), d0
+	bhi.w bad
+	movea.l Module.Image+memory.Block.Pointer(a4), a2
+	move.l a2, d0
+	beq.w disk
+	adda.l d5, a2
+copy
+	move.b (a2)+, (a3)+
+	subq.l #1, d6
+	bne.w copy
+	moveq #OK, d0
+	bra.w done
+disk
+	tst.l Module.Stored(a4)
+	beq.w bad
+	lea State.Io(a6), a0
+	movea.l a3, a1
+	lea Module.FileName(a4), a2
+	move.l d6, d2
+	move.l d5, d3
+	move.l Module.ImageBytes(a4), d4
+	jsr io.readRange
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; readRange
 
 ; A0=Registry,D1=module ID. D0/CCR=status; other registers preserved.
 ; Disk mode publishes one exact immutable object then frees the pending image.

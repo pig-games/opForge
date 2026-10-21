@@ -1,4 +1,116 @@
 	.pub
+; A0=DemandFrame. Copy only one selected capsule into the consumer template
+; owner. Resolve maps capsule-local IDs under the provider declaration context;
+; caller arguments remain the ordinary expansion runtime's responsibility.
+; The callback must supply private value/template closure before expansion.
+; D0/CCR=status; others preserved. No borrowed image pointer survives.
+demand	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	tst.l Active
+	bne.w busy
+	move.l #1, Active
+	movea.l a0, a6
+	move.l a0, Caller
+	movea.l DemandFrame.Image(a6), a0
+	move.l DemandFrame.Bytes(a6), d0
+	bsr.w validate
+	bne.w bad
+	movea.l DemandFrame.Image(a6), a5
+	movea.l DemandFrame.Row(a6), a3
+	move.l a3, d0
+	sub.l a5, d0
+	bcs.w bad
+	sub.l Header.Rows(a5), d0
+	bcs.w bad
+	move.l d0, d2
+	moveq #ROW_BYTES, d1
+	divu.l d1, d0
+	cmp.l Header.Count(a5), d0
+	bhs.w bad
+	mulu.l #ROW_BYTES, d0
+	cmp.l d2, d0
+	bne.w bad
+	tst.l DemandFrame.Resolve(a6)
+	beq.w bad
+	tst.l DemandFrame.Module(a6)
+	beq.w bad
+	cmpi.l #65535, DemandFrame.Module(a6)
+	bhi.w bad
+	movea.l DemandFrame.Frontend(a6), a0
+	movea.l frontend.Frame.Scratch(a0), a4
+	move.l a4, d0
+	beq.w bad
+	addi.l #frontend.TEMPLATE_STATE, d0
+	move.l d0, Seed+templates.SeedFrame.State
+	adda.l #frontend.SCOPE_STATE, a4
+	move.l a4, Seed+templates.SeedFrame.Scope
+	lea Temporary, a0
+	movea.l a5, a1
+	adda.l Header.Data(a5), a1
+	adda.l Row.Offset(a3), a1
+	move.l Row.Bytes(a3), d0
+	bsr.w append
+	bne.w bad
+	move.l Temporary+memory.Block.Pointer, Remap+templates.RemapFrame.Image
+	move.l Temporary+memory.Block.Used, Remap+templates.RemapFrame.Bytes
+	move.l DemandFrame.Resolve(a6), Remap+templates.RemapFrame.Resolve
+	move.l DemandFrame.Context(a6), Remap+templates.RemapFrame.Context
+	lea Remap, a0
+	jsr templates.remapClosed
+	bne.w bad
+	movea.l a4, a0
+	move.l DemandFrame.Name(a6), d0
+	move.l DemandFrame.Module(a6), d1
+	movea.l Temporary+memory.Block.Pointer, a1
+	adda.l templates.ClosedHeader.Definition(a1), a1
+	moveq #0, d2
+	move.w templates.Def.Kind(a1), d2
+	bsr.w declareFacet
+	bne.w bad
+	move.l Temporary+memory.Block.Pointer, Seed+templates.SeedFrame.Image
+	move.l Temporary+memory.Block.Used, Seed+templates.SeedFrame.Bytes
+	move.l DemandFrame.Name(a6), Seed+templates.SeedFrame.Name
+	lea Seed, a0
+	jsr templates.seedClosed
+	bne.w bad
+	tst.l Row.StatementBytes(a3)
+	beq.w good
+	move.l d1, StatementSeed+statementImage.InstallFrame.Template
+	movea.l DemandFrame.Frontend(a6), a0
+	movea.l frontend.Frame.Scratch(a0), a0
+	adda.l #frontend.STATEMENT_STATE+statementSession.State.Definitions, a0
+	move.l a0, StatementSeed+statementImage.InstallFrame.State
+	move.l a5, d0
+	add.l Header.Data(a5), d0
+	add.l Row.Statement(a3), d0
+	move.l d0, StatementSeed+statementImage.InstallFrame.Image
+	move.l Row.StatementBytes(a3), StatementSeed+statementImage.InstallFrame.Bytes
+	move.l DemandFrame.Name(a6), StatementSeed+statementImage.InstallFrame.Name
+	move.l DemandFrame.Module(a6), StatementSeed+statementImage.InstallFrame.Module
+	lea StatementSeed, a0
+	jsr statementImage.install
+	bne.w bad
+good
+	movea.l a4, a0
+	jsr scopes.count
+	movea.l DemandFrame.Frontend(a6), a0
+	move.l d0, frontend.Frame.NameCount(a0)
+	moveq #OK, d7
+	bra.w cleanup
+bad
+	moveq #INVALID, d7
+cleanup
+	bsr.w release
+	move.l d7, d0
+	bra.w done
+busy
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; demand
+
 ; A0=InstallFrame at a source boundary. D0/CCR=status; others preserved.
 ; Bind owned name origins and copy closed bodies into the ordinary template
 ; and spelling owners. No capsule pointer survives. Failure requires discarding
@@ -150,24 +262,27 @@ declareFacet	.block
 	move.w records.Entry.TemplateFlags(a1), d0
 	andi.w #records.TEMPLATE_DECLARED, d0
 	beq.w fresh
-	move.w records.Entry.TemplateFlags(a1), d0
-	andi.w #records.TEMPLATE_PUBLIC, d0
-	beq.w bad
 	cmp.w records.Entry.TemplateModule(a1), d3
 	bne.w bad
 fresh
-	ori.w #records.TEMPLATE_DECLARED+records.TEMPLATE_PUBLIC, records.Entry.TemplateFlags(a1)
+	ori.w #records.TEMPLATE_DECLARED, records.Entry.TemplateFlags(a1)
+	tst.l Row.Visibility(a3)
+	beq.w privateTemplate
+	ori.w #records.TEMPLATE_PUBLIC, records.Entry.TemplateFlags(a1)
+privateTemplate
 	move.w d3, records.Entry.TemplateModule(a1)
 	bra.w publish
 statement
 	btst #records.STATEMENT_DECLARED_BIT, records.Entry.TemplateFlags+1(a1)
 	beq.w freshStatement
-	btst #records.STATEMENT_PUBLIC_BIT, records.Entry.TemplateFlags+1(a1)
-	beq.w bad
 	cmp.w records.Entry.StatementModule(a1), d3
 	bne.w bad
 freshStatement
-	ori.w #records.STATEMENT_DECLARED+records.STATEMENT_PUBLIC, records.Entry.TemplateFlags(a1)
+	ori.w #records.STATEMENT_DECLARED, records.Entry.TemplateFlags(a1)
+	tst.l Row.Visibility(a3)
+	beq.w privateStatement
+	ori.w #records.STATEMENT_PUBLIC, records.Entry.TemplateFlags(a1)
+privateStatement
 	move.w d3, records.Entry.StatementModule(a1)
 publish
 	move.l d2, d0

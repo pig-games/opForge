@@ -2,7 +2,7 @@
 ; @opforge-owner: experimental.amigaos.binary_module_image
 	.module experimental.amigaos.binary_module_image
 	.cpu 68020
-	.use experimental.amigaos.binary_module_interface as semantics
+	.use experimental.amigaos.binary_module_iface as semantics
 	.use experimental.amigaos.binary_memory as memory
 	.pub
 Header	.struct
@@ -220,6 +220,24 @@ noSemantics
 	tst.l Frame.Semantics(a6)
 	bne.w bad
 outputReady
+	movea.l Frame.Relocs(a6), a4
+	move.l d7, d5
+importTarget
+	tst.l d5
+	beq.w importsChecked
+	move.l Reloc.Target(a4), d0
+	bpl.w nextImport
+	tst.l Frame.SemanticsBytes(a6)
+	beq.w bad
+	andi.l #$7fffffff, d0
+	movea.l Frame.Semantics(a6), a0
+	cmp.l semantics.Header.ImportCount(a0), d0
+	bhs.w bad
+nextImport
+	adda.w #RELOC_BYTES, a4
+	subq.l #1, d5
+	bra.w importTarget
+importsChecked
 	move.l Frame.Output(a6), d0
 	beq.w good
 	cmp.l Frame.Capacity(a6), d4
@@ -430,6 +448,16 @@ locate
 	addq.l #1, d3
 	bra.w locate
 field
+	move.l Reloc.Target(a4), d0
+	bpl.w targetChecked
+	tst.l Header.SemanticsBytes(a6)
+	beq.w bad
+	andi.l #$7fffffff, d0
+	movea.l a6, a0
+	adda.l Header.Semantics(a6), a0
+	cmp.l semantics.Header.ImportCount(a0), d0
+	bhs.w bad
+targetChecked
 	move.l Reloc.Span(a4), d1
 	beq.w bad
 	cmpi.l #PATCH_CAPACITY, d1
@@ -477,6 +505,34 @@ done
 	tst.l d0
 	rts
 	.bend  ; semanticView
+
+; A0=object,D0=exact bytes. D0/CCR=status,A1=borrowed OFMS,D1=bytes.
+; Other registers preserved. View expires when the object owner is released.
+valueView	.block
+	movem.l a0, -(sp)
+	bsr.w semanticView
+	bne.w done
+	movea.l a1, a0
+	move.l d1, d0
+	jsr semantics.valuesView
+done
+	movem.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; valueView
+; Same contract as valueView, returning the closed template region.
+templateView	.block
+	movem.l a0, -(sp)
+	bsr.w semanticView
+	bne.w done
+	movea.l a1, a0
+	move.l d1, d0
+	jsr semantics.templatesView
+done
+	movem.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; templateView
 
 ; A0=owned image memory.Block. After canonical interface installation, remove
 ; that duplicate semantic payload. Success replaces the owner with a compact

@@ -2141,6 +2141,22 @@ fn verify_native_cli_case_proof(
     run: &mut FsUaeSmokeRun,
 ) -> Result<(), String> {
     verify_native_cli_case_proof_inner(case, run).map_err(|error| {
+        // Reuse the existing opt-in mismatch directory for fresh object
+        // diagnostics when failure occurs before an output can be compared.
+        // This retains captured bytes only; proof and ephemeral cleanup stay
+        // unchanged.
+        if let Some(directory) = std::env::var_os("OPFORGE_NATIVE_MISMATCH_DIR") {
+            let directory = PathBuf::from(directory).join(case.name).join("objects");
+            for (path, bytes) in &run.captured_artifacts {
+                if path.extension().is_some_and(|extension| extension == "ofm") {
+                    if let Err(error) = fs::create_dir_all(&directory).and_then(|()| {
+                        fs::write(directory.join(path.file_name().unwrap()), bytes)
+                    }) {
+                        eprintln!("could not retain fresh module diagnostic: {error}");
+                    }
+                }
+            }
+        }
         // Failed budget runs must retain their environment reading too. The
         // ephemeral Work tree is removed before the caller receives this error.
         let error = if let Some(memory) = run.captured_artifacts.get(&PathBuf::from("Work/guest-memory.txt")) {

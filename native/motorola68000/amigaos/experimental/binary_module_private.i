@@ -5,6 +5,8 @@ PROGRESS_PRIVATE_FAILURE = 455
 PROGRESS_PRIVATE_POSITION = 456
 PROGRESS_PRIVATE_SECTIONS = 457
 PROGRESS_PRIVATE_SELECTION = 458
+PROGRESS_INTERFACE_CAPTURE = 459
+PROGRESS_INTERFACE_DECLARATION = 460
 ; Existing progress ABI: F=captured file ordinal,L=returned status,R=zero.
 ; Snapshot D0/D7 before MEMORY_PROGRESS loads its own argument registers.
 ; Execution failure adds only retained scalar snapshots: 455 F=file,L=stage,
@@ -19,6 +21,8 @@ PRIVATE_RESULT	.macro phase, status
 	move.l d4, -(sp)
 	move.l .status, d4
 	.MEMORY_PROGRESS DosBase, .phase, PublishedCapture+Span.File, d4, #0
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_INTERFACE_CAPTURE, moduleTemplates.CaptureDiagnostic, moduleTemplates.Diagnostic.Module, moduleTemplates.Diagnostic.Definitions, moduleTemplates.Diagnostic.Statements
+	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_INTERFACE_DECLARATION, moduleTemplates.CaptureDiagnostic, moduleTemplates.Diagnostic.FirstModule, moduleTemplates.Diagnostic.FirstFlags, moduleTemplates.Diagnostic.Module
 	cmpi.l #moduleCompile.INVALID, d4
 	bne.w executionFailure
 	; The existing preparation stage is scalar evidence and survives retirement.
@@ -51,14 +55,6 @@ Refs	.res memory.Block.Used+4
 Public	.res memory.Block.Used+4
 .endstruct
 PRIVATE_LINK_BYTES = PrivateLinks.Public+memory.Block.Used+4
-PrivateAddress	.struct
-Local	.long ?
-Global	.long ?
-Fragment	.long ?
-Offset	.long ?
-.endstruct
-PRIVATE_ADDRESS_BYTES = PrivateAddress.Offset+4
-
 ; Active semantic Front at a file boundary. D0=status,D1=handled (0 fallback).
 ; Tentative work owns separate scopes/records. Only a successful image can
 ; enter retained module ownership; unsupported inputs replay normally.
@@ -73,6 +69,8 @@ tryPrivateModule	.block
 	movea.l Front+frontend.Frame.Scratch, a0
 	lea frontend.SCOPE_STATE(a0), a0
 	move.l a0, PrivateGlobalScope
+	bsr.w beginStoredInterfaces
+	bne.w failed
 	tst.l PrivateRequestMode
 	beq.w configurationOwner
 	move.l a0, PrivateConfigScope
@@ -95,6 +93,11 @@ requestReady
 	move.l #privateExternal, PrivateCompile+moduleCompile.Context.Resolve
 	move.l #privateInventory, PrivateCompile+moduleCompile.Context.Inventory
 	move.l #PrivateFacets, PrivateCompile+moduleCompile.Context.Facets
+	move.l #privateCloseTemplates, PrivateCompile+moduleCompile.Context.CloseTemplates
+	move.l #privateCloseValues, PrivateCompile+moduleCompile.Context.CloseValues
+	move.l #PrivateObjectDependencies, PrivateCompile+moduleCompile.Context.Dependencies
+	move.l #PrivateObjectImports, PrivateCompile+moduleCompile.Context.Imports
+	move.l #privateSealInterfaces, PrivateCompile+moduleCompile.Context.Seal
 	lea PrivateCompile, a0
 	lea PrivateImage, a1
 	jsr moduleCompile.compile
@@ -267,6 +270,27 @@ privateInitialize	.block
 	move.l a0, PrivateFrontend
 	movea.l frontend.Frame.Scratch(a0), a6
 	adda.l #frontend.SCOPE_STATE, a6
+	tst.l CaptureDirectory
+	beq.w storageReady
+	lea layout.LEXICAL_STATE(a6), a0
+	movea.l DosBase, a1
+	movea.l CaptureDirectory, a2
+	jsr lexical.configureScratch
+	bne.w bad
+storageReady
+	lea StoredPrivate, a0
+	movea.l PrivateFrontend, a1
+	lea PrivateRegistry, a2
+	jsr moduleProvider.begin
+	bne.w bad
+	move.l #storedInterfaceAddress, StoredPrivate+moduleProvider.State.Address
+	move.l #StoredPrivate, StoredPrivate+moduleProvider.State.AddressContext
+	; No interface lease survives between compilers. Reuse the idle root's
+	; reader window instead of allocating a second cache during preparation.
+	tst.l StoredRoot+moduleProvider.State.Reader+moduleInterfaceStore.State.Window+memory.Block.Pointer
+	beq.w readerReady
+	bsr.w storedInterfaceSwapCache
+readerReady
 	movea.l PrivateConfigScope, a0
 	movea.l a6, a1
 	jsr scopes.seedConfiguration
@@ -334,7 +358,7 @@ dependencyReady
 	move.l d1, d5
 	lea PrivateDependencies, a0
 	; Keep every declared edge for publication ordering, including repeated
-	; targets under distinct aliases. Semantic snapshots still import once.
+	; targets under distinct aliases. Each stored provider is registered once.
 	move.l memory.Block.Used(a0), d4
 	move.l d4, d0
 	addq.l #4, d0
@@ -352,43 +376,19 @@ deduplicate
 	subq.l #4, d0
 	bra.w deduplicate
 seed
-	lea Front, a0
-	move.l d5, d0
-	lea PrivateSnapshot, a1
-	jsr moduleSnapshot.capture
+	move.l d5, d1
+	bsr.w storedInterfaceModuleId
 	bne.w bad
-	move.l a6, PrivateInstall+moduleScope.Frame.Scope
-	move.l PrivateSnapshot+memory.Block.Pointer, PrivateInstall+moduleScope.Frame.Image
-	move.l PrivateSnapshot+memory.Block.Used, PrivateInstall+moduleScope.Frame.Bytes
-	move.l #PrivateDependencyName, PrivateInstall+moduleScope.Frame.ModuleName
-	move.l PrivateDependencyBytes, PrivateInstall+moduleScope.Frame.ModuleNameBytes
-	move.l #privateIncomingAddress, PrivateInstall+moduleScope.Frame.Address
-	move.l #privateReuse, PrivateInstall+moduleScope.Frame.Reuse
-	lea PrivateInstall, a0
-	jsr moduleScope.install
+	move.l d1, d3
+	movea.l a6, a0
+	lea PrivateDependencyName, a1
+	move.l PrivateDependencyBytes, d0
+	bsr.w storedInterfaceModule
 	bne.w bad
-	; Preserve independent template facets and owned bodies through ordinary
-	; selection. No dependency frontend or temporary capsule survives this copy.
-	suba.w #moduleFacets.FRAME_BYTES, sp
-	move.l #Front, moduleFacets.Frame.SourceFrontend(sp)
-	move.l PrivateFrontend, moduleFacets.Frame.DestinationFrontend(sp)
-	move.l d5, moduleFacets.Frame.SourceModule(sp)
-	move.l PrivateInstall+moduleScope.Frame.Module, moduleFacets.Frame.DestinationModule(sp)
-	movea.l sp, a0
-	jsr moduleFacets.import
-	adda.w #moduleFacets.FRAME_BYTES, sp
-	tst.l d0
+	lea StoredPrivate, a0
+	move.l d3, d2
+	jsr moduleProvider.add
 	bne.w bad
-	lea PrivateInstall+moduleScope.Frame.Map, a0
-	lea PrivateIncoming, a1
-	bsr.w privateAppendBlock
-	bne.w bad
-	lea PrivateInstall+moduleScope.Frame.Map, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
-	lea PrivateSnapshot, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
 advance
 	move.l d6, d7
 	bra.w next
@@ -468,15 +468,6 @@ privateFold	.block
 done
 	rts
 	.bend  ; privateFold
-privateReuse	.block
-	moveq #moduleScope.VALUE, d0
-	bra.w privateLookupValue
-	.bend  ; privateReuse
-privateIncomingAddress	.block
-	moveq #0, d0
-	rts
-	.bend  ; privateIncomingAddress
-
 ; Compiler replay callback swaps only owned frame/block descriptors; every
 ; app cursor/provenance counter is restored before returning to the producer.
 ; Activate each moved Frame before callbacks borrow its scratch back-pointers.
@@ -498,6 +489,10 @@ saveNumbers
 	movea.l PrivateBorrowedFront, a1
 	move.l #frontend.FRAME_BYTES, d0
 	bsr.w privateSwap
+	; Provider template demand follows the descriptor while scope borrows stay
+	; attached to their original scratch owner.
+	move.l #Front, StoredPrivate+moduleProvider.State.Frontend
+	move.l PrivateBorrowedFront, StoredRoot+moduleProvider.State.Frontend
 	lea Records, a0
 	movea.l PrivateBorrowedRecords, a1
 	bsr.w swapModuleGraphs
@@ -531,6 +526,8 @@ restoreOwners
 	movea.l PrivateBorrowedFront, a1
 	move.l #frontend.FRAME_BYTES, d0
 	bsr.w privateSwap
+	move.l PrivateBorrowedFront, StoredPrivate+moduleProvider.State.Frontend
+	move.l #Front, StoredRoot+moduleProvider.State.Frontend
 	lea Records, a0
 	movea.l PrivateBorrowedRecords, a1
 	bsr.w swapModuleGraphs

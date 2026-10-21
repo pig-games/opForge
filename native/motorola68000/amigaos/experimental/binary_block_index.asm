@@ -744,6 +744,20 @@ ownerNext
 	addq.w #1, d7
 	bra.w ownerSpan
 ownerGood
+	; Imported addresses have no declaration record in the consumer stream.
+	; Their sparse stored-interface bridge selects the existing whole wrapper.
+	movea.l Scope, a0
+	movea.l layout.State.DependencyOwners(a0), a2
+	cmpa.w #0, a2
+	beq.w ordinaryOwners
+	moveq #0, d0
+	move.w layout.State.Count(a0), d0
+	movea.l Owners+memory.Block.Pointer, a1
+	movea.l layout.State.DependencyContext(a0), a0
+	jsr (a2)
+	tst.l d0
+	bne.w ownerBad
+ordinaryOwners
 	; Proxy occurrences have no declaration record. Resolve their selected
 	; numeric prefix to this same table once; each later mark remains O(1).
 	movea.l Scope, a0

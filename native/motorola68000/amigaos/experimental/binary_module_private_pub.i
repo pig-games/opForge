@@ -198,33 +198,18 @@ done
 ; no reference replay may run against partially installed module ownership.
 privatePublish	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	movea.l PrivateImage+memory.Block.Pointer, a0
-	move.l PrivateImage+memory.Block.Used, d0
-	jsr moduleImage.semanticView
+	movea.l PrivateGlobalScope, a0
+	lea PrivateModuleName, a1
+	move.l PrivateModuleBytes, d0
+	bsr.w storedInterfaceModule
 	bne.w bad
-	move.l PrivateGlobalScope, PrivateInstall+moduleScope.Frame.Scope
-	move.l a1, PrivateInstall+moduleScope.Frame.Image
-	move.l d1, PrivateInstall+moduleScope.Frame.Bytes
-	move.l #PrivateModuleName, PrivateInstall+moduleScope.Frame.ModuleName
-	move.l PrivateModuleBytes, PrivateInstall+moduleScope.Frame.ModuleNameBytes
-	move.l #privateOutgoingAddress, PrivateInstall+moduleScope.Frame.Address
-	move.l #privateOutgoingReuse, PrivateInstall+moduleScope.Frame.Reuse
-	lea PrivateInstall, a0
-	jsr moduleScope.install
-	bne.w bad
-	move.l PrivateInstall+moduleScope.Frame.Module, PrivateInstalledModule
-	move.l #Front, PrivateFacetInstall+moduleTemplates.InstallFrame.Frontend
-	move.l PrivateInstalledModule, PrivateFacetInstall+moduleTemplates.InstallFrame.Module
-	move.l PrivateFacets+memory.Block.Pointer, PrivateFacetInstall+moduleTemplates.InstallFrame.Image
-	move.l PrivateFacets+memory.Block.Used, PrivateFacetInstall+moduleTemplates.InstallFrame.Bytes
-	lea PrivateFacetInstall, a0
-	jsr moduleTemplates.install
-	bne.w bad
+	move.l d1, PrivateInstalledModule
 	bsr.w privateMapSections
 	bne.w bad
 	movea.l PrivateOwners+memory.Block.Pointer, a4
 	move.l PrivateOwnerCount, d7
 	moveq #0, d6
+	clr.l PrivateOwnerBase
 owner
 	tst.l d7
 	beq.w dependencies
@@ -235,6 +220,10 @@ owner
 	jsr moduleScope.allocateOwner
 	bne.w bad
 	move.l d1, moduleCarrier.Owner.Global(a4)
+	cmpi.l #1, d6
+	bne.w ownerNext
+	subq.l #1, d1
+	move.l d1, PrivateOwnerBase
 ownerNext
 	adda.w #moduleCarrier.OWNER_BYTES, a4
 	addq.l #1, d6
@@ -261,11 +250,8 @@ nextDependency
 lists
 	bsr.w privateBuildLists
 	bne.w bad
-	bsr.w privateRememberValues
-	bne.w bad
-	lea PrivateImage, a0
-	jsr moduleImage.retireSemantics
-	bne.w bad
+	; The object now owns its complete assembly interface. Publication below
+	; must not discard it when retiring the producer's private frontend.
 	lea PrivateRegistry, a0
 	lea PrivateImage, a1
 	lea PrivateModuleName, a2
@@ -273,8 +259,24 @@ lists
 	jsr moduleRegistry.add
 	bne.w bad
 	move.l d1, PrivateModuleID
+	lea PrivateModuleName, a1
+	move.l PrivateModuleBytes, d2
+	jsr moduleRegistry.name
+	bne.w bad
+	move.l PrivateOwnerBase, d2
+	jsr moduleRegistry.setOwnerBase
+	bne.w bad
+	lea StoredRoot, a0
+	move.l PrivateModuleID, d2
+	move.l PrivateInstalledModule, d1
+	jsr moduleProvider.add
+	bne.w bad
+	bsr.w privatePublishImportLinks
+	bne.w bad
 	; Extract the public carrier from the still-owned image. Disk layout uses
 	; its retained directory later; no object is read back during preparation.
+	lea PrivateRegistry, a0
+	move.l PrivateModuleID, d1
 	jsr moduleRegistry.pending
 	bne.w bad
 	move.l a1, PrivateCarrier+moduleCarrier.Frame.Image
@@ -292,21 +294,6 @@ lists
 	lea PrivateCarrier, a0
 	jsr moduleCarrier.build
 	bne.w bad
-	movea.l PrivateAddresses+memory.Block.Pointer, a4
-	move.l PrivateAddresses+memory.Block.Used, d7
-address
-	tst.l d7
-	beq.w store
-	lea PrivateRegistry, a0
-	move.l PrivateModuleID, d1
-	move.l PrivateAddress.Fragment(a4), d2
-	move.l PrivateAddress.Offset(a4), d3
-	move.l PrivateAddress.Global(a4), d4
-	jsr moduleRegistry.bindAddress
-	bne.w bad
-	adda.w #PRIVATE_ADDRESS_BYTES, a4
-	subi.l #PRIVATE_ADDRESS_BYTES, d7
-	bra.w address
 store
 	lea PrivateRegistry, a0
 	move.l PrivateModuleID, d1
@@ -369,56 +356,6 @@ done
 	rts
 	.bend  ; privatePublish
 
-privateOutgoingAddress	.block
-	movem.l d1-d7/a0-a6, -(sp)
-	move.l d0, d5
-	move.l d1, d6
-	move.l d2, d7
-	move.l d3, d4
-	lea PrivateAddresses, a0
-	move.l memory.Block.Used(a0), d0
-	addi.l #PRIVATE_ADDRESS_BYTES, d0
-	jsr memory.reserve
-	bne.w done
-	movea.l memory.Block.Pointer(a0), a1
-	adda.l memory.Block.Used(a0), a1
-	move.l d5, PrivateAddress.Local(a1)
-	move.l d6, PrivateAddress.Global(a1)
-	move.l d4, PrivateAddress.Fragment(a1)
-	move.l d7, PrivateAddress.Offset(a1)
-	addi.l #PRIVATE_ADDRESS_BYTES, memory.Block.Used(a0)
-	moveq #0, d0
-done
-	movem.l (sp)+, d1-d7/a0-a6
-	tst.l d0
-	rts
-	.bend  ; privateOutgoingAddress
-privateOutgoingReuse	.block
-	movem.l d2-d4/a0-a2, -(sp)
-	move.l PrivateIncoming+memory.Block.Used, d2
-	movea.l PrivateIncoming+memory.Block.Pointer, a1
-next
-	tst.l d2
-	beq.w missing
-	cmpi.l #moduleScope.VALUE, moduleScope.MapRow.Kind(a1)
-	bne.w advance
-	cmp.l moduleScope.MapRow.Global(a1), d1
-	bne.w advance
-	move.l moduleScope.MapRow.Local(a1), d1
-	moveq #0, d0
-	bra.w done
-advance
-	adda.w #moduleScope.MAP_BYTES, a1
-	subi.l #moduleScope.MAP_BYTES, d2
-	bra.w next
-missing
-	moveq #moduleScope.NOT_FOUND, d0
-done
-	movem.l (sp)+, d2-d4/a0-a2
-	tst.l d0
-	rts
-	.bend  ; privateOutgoingReuse
-
 privateMapSections	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l PrivateGlobalScope, a6
@@ -465,7 +402,7 @@ privateBuildLists	.block
 	adda.l moduleImage.Header.Relocs(a6), a4
 reloc
 	tst.l d7
-	beq.w publicBegin
+	beq.w pointers
 	movea.l a6, a0
 	move.l moduleImage.Reloc.Block(a4), d1
 	jsr moduleImage.descriptorValidated
@@ -484,6 +421,8 @@ reloc
 	bra.w dependency
 imported
 	andi.l #$7fffffff, d1
+	bsr.w privateInterfaceImportSource
+	bne.w bad
 dependency
 	move.l d6, d0
 	mulu.l #PRIVATE_LINK_BYTES, d0
@@ -496,27 +435,6 @@ relocNext
 	adda.w #moduleImage.RELOC_BYTES, a4
 	subq.l #1, d7
 	bra.w reloc
-publicBegin
-	movea.l PrivateAddresses+memory.Block.Pointer, a4
-	move.l PrivateAddresses+memory.Block.Used, d7
-public
-	tst.l d7
-	beq.w pointers
-	movea.l a6, a0
-	move.l PrivateAddress.Fragment(a4), d1
-	jsr moduleImage.descriptorValidated
-	bne.w bad
-	move.l moduleImage.Block.Owner(a1), d0
-	mulu.l #PRIVATE_LINK_BYTES, d0
-	movea.l PrivateLinksBlock+memory.Block.Pointer, a0
-	adda.l d0, a0
-	lea PrivateLinks.Public(a0), a0
-	move.l PrivateAddress.Global(a4), d1
-	bsr.w privateAppendId
-	bne.w bad
-	adda.w #PRIVATE_ADDRESS_BYTES, a4
-	subi.l #PRIVATE_ADDRESS_BYTES, d7
-	bra.w public
 pointers
 	move.l PrivateOwnerCount, d7
 	movea.l PrivateLinksBlock+memory.Block.Pointer, a0
@@ -601,6 +519,20 @@ links
 	subi.l #PRIVATE_LINK_BYTES, d3
 	bra.w links
 blocks
+	lea StoredPrivate, a0
+	jsr moduleProvider.release
+	lea PrivateObjectDependencies, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	lea PrivateObjectProviders, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	lea PrivateObjectImports, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	lea PrivateImportGlobals, a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
 	lea PrivateImage, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -610,9 +542,6 @@ blocks
 	lea PrivateFacetInstall, a1
 	moveq #moduleTemplates.INSTALL_BYTES, d0
 	bsr.w privateClear
-	lea PrivateSnapshot, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
 	lea PrivateInstall+moduleScope.Frame.Map, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -629,9 +558,6 @@ blocks
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
 	lea PrivateLinksBlock, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
-	lea PrivateAddresses, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
 	lea PrivateCarrierRecords, a0
@@ -652,43 +578,6 @@ blocks
 
 ; Retain new value IDs only. Reused dependency schemas already belong to their
 ; earlier canonical source/module and must not be defined twice at execution.
-privateRememberValues	.block
-	movem.l d1-d7/a0-a6, -(sp)
-	movea.l PrivateInstall+moduleScope.Frame.Map+memory.Block.Pointer, a4
-	move.l PrivateInstall+moduleScope.Frame.Map+memory.Block.Used, d7
-next
-	tst.l d7
-	beq.w good
-	cmpi.l #moduleScope.VALUE, moduleScope.MapRow.Kind(a4)
-	bne.w advance
-	move.l moduleScope.MapRow.Local(a4), d1
-	bsr.w privateOutgoingReuse
-	tst.l d0
-	beq.w advance
-	lea PrivatePublishedValues, a0
-	move.l memory.Block.Used(a0), d6
-	move.l d6, d0
-	addi.l #moduleScope.MAP_BYTES, d0
-	jsr memory.reserve
-	bne.w done
-	movea.l memory.Block.Pointer(a0), a1
-	adda.l d6, a1
-	move.l moduleScope.MapRow.Local(a4), moduleScope.MapRow.Local(a1)
-	move.l moduleScope.MapRow.Global(a4), moduleScope.MapRow.Global(a1)
-	move.l #moduleScope.VALUE, moduleScope.MapRow.Kind(a1)
-	addi.l #moduleScope.MAP_BYTES, memory.Block.Used(a0)
-advance
-	adda.w #moduleScope.MAP_BYTES, a4
-	subi.l #moduleScope.MAP_BYTES, d7
-	bra.w next
-good
-	moveq #0, d0
-done
-	movem.l (sp)+, d1-d7/a0-a6
-	tst.l d0
-	rts
-	.bend  ; privateRememberValues
-
 ; Publish accepted carrier records into the selected global prepared owner.
 ; Disk append consumes whole packed records and keeps logical numeric offsets;
 ; tentative replay never reaches this routine. D0/CCR=status; others preserved.

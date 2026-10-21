@@ -18,6 +18,102 @@ use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 use serde_json::{json, Value};
 
+const MEMORY_DEFINES: &[&str] = &[
+    "OPFORGE_DEBUG_CONTRACTS",
+    "OPFORGE_MEMORY_TELEMETRY",
+    "OPFORGE_PREPARATION_PROGRESS",
+    "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+];
+
+fn checked_memory_defines(value: &Value) -> Result<Vec<&'static str>, String> {
+    let flags = value
+        .as_array()
+        .ok_or_else(|| "memory bootstrap defines must be an array".to_owned())?
+        .iter()
+        .map(|flag| {
+            flag.as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "memory bootstrap defines must contain strings".to_owned())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let provided = flags.iter().cloned().collect::<BTreeSet<_>>();
+    if provided.len() != flags.len() {
+        return Err("memory bootstrap defines must not contain duplicates".to_owned());
+    }
+    let base = MEMORY_DEFINES
+        .iter()
+        .map(|flag| (*flag).to_owned())
+        .collect::<BTreeSet<_>>();
+    let with_capture = base
+        .iter()
+        .cloned()
+        .chain(std::iter::once("OPFORGE_CAPTURE_TELEMETRY".to_owned()))
+        .collect::<BTreeSet<_>>();
+    if provided == base {
+        Ok(MEMORY_DEFINES.to_vec())
+    } else if provided == with_capture {
+        Ok(MEMORY_DEFINES
+            .iter()
+            .copied()
+            .chain(std::iter::once("OPFORGE_CAPTURE_TELEMETRY"))
+            .collect())
+    } else {
+        Err("memory bootstrap must use the exact four- or five-define MEMD profile".to_owned())
+    }
+}
+
+#[test]
+fn frozen_comparison_accepts_only_exact_four_or_five_define_memory_profiles() {
+    let four = json!([
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_PREPARATION_PROGRESS",
+        "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"
+    ]);
+    let five = json!([
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_PREPARATION_PROGRESS",
+        "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+        "OPFORGE_CAPTURE_TELEMETRY"
+    ]);
+    assert_eq!(checked_memory_defines(&four).unwrap().len(), 4);
+    assert_eq!(checked_memory_defines(&five).unwrap().len(), 5);
+}
+
+#[test]
+fn frozen_comparison_rejects_mixed_incomplete_and_extra_memory_profiles() {
+    let missing = json!([
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"
+    ]);
+    let extra = json!([
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_PREPARATION_PROGRESS",
+        "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+        "OPFORGE_UNRELATED"
+    ]);
+    let mixed = json!([
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_CAPTURE_TELEMETRY",
+        "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"
+    ]);
+    let duplicate = json!([
+        "OPFORGE_DEBUG_CONTRACTS",
+        "OPFORGE_MEMORY_TELEMETRY",
+        "OPFORGE_PREPARATION_PROGRESS",
+        "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
+        "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT"
+    ]);
+    assert!(checked_memory_defines(&missing).is_err());
+    assert!(checked_memory_defines(&extra).is_err());
+    assert!(checked_memory_defines(&mixed).is_err());
+    assert!(checked_memory_defines(&duplicate).is_err());
+}
+
 fn bundle(variable: &str) -> (PathBuf, Value, Vec<u8>, Vec<u8>) {
     let root = PathBuf::from(std::env::var_os(variable).expect(variable));
     let manifest: Value =
@@ -177,25 +273,22 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
         );
         assert_eq!(release.3, package, "identical embedded runtime package");
     }
-    let memory_defines = [
-        "OPFORGE_DEBUG_CONTRACTS",
-        "OPFORGE_MEMORY_TELEMETRY",
-        "OPFORGE_PREPARATION_PROGRESS",
-        "OPFORGE_CAPTURE_TELEMETRY",
-        "OPFORGE_MEMORY_TELEMETRY_LOCAL_EXPORT",
-    ];
+    let memory_defines = checked_memory_defines(&baseline_memory.1["bootstrap_defines"])
+        .unwrap_or_else(|error| panic!("invalid baseline memory profile: {error}"));
+    let candidate_memory_defines = checked_memory_defines(&candidate_memory.1["bootstrap_defines"])
+        .unwrap_or_else(|error| panic!("invalid candidate memory profile: {error}"));
+    assert_eq!(
+        memory_defines, candidate_memory_defines,
+        "baseline and candidate memory profiles must match exactly"
+    );
     for (release, memory) in [
         (&baseline, &baseline_memory),
         (&candidate, &candidate_memory),
     ] {
-        let flags = memory.1["bootstrap_defines"].as_array().unwrap();
-        assert_eq!(flags.len(), memory_defines.len());
         assert_eq!(
-            flags
-                .iter()
-                .map(|v| v.as_str().unwrap())
-                .collect::<BTreeSet<_>>(),
-            memory_defines.iter().copied().collect::<BTreeSet<_>>()
+            checked_memory_defines(&memory.1["bootstrap_defines"])
+                .unwrap_or_else(|error| panic!("invalid memory profile: {error}")),
+            memory_defines
         );
         assert_eq!(
             memory.1["source_manifest_digest"],

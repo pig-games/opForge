@@ -26,6 +26,7 @@ DOS_OPEN = -30
 DOS_CLOSE = -36
 DOS_READ = -42
 DOS_WRITE = -48
+DOS_SEEK = -66
 DOS_DELETE = -72
 DOS_RENAME = -78
 DOS_LOCK = -84
@@ -315,6 +316,71 @@ done
 	tst.l d0
 	rts
 	.bend  ; read
+
+; A0=Context,A2=filename,A1=buffer,D2=positive range bytes,D3=offset,
+; D4=exact object bytes. D0/CCR=status; others preserved. Opens/closes one
+; file; checks exact file extent before reading only the requested bounded range.
+readRange	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	move.l d3, -(sp)
+	move.l d4, -(sp)
+	movea.l a0, a5
+	move.l a1, d4
+	move.l d2, d6
+	bsr.w paths
+	bne.w bad
+	bsr.w bufferRange
+	bne.w bad
+	move.l (sp), d0
+	beq.w bad
+	cmpi.l #LIMIT, d0
+	bhi.w bad
+	move.l 4(sp), d1
+	add.l d6, d1
+	bcs.w bad
+	cmp.l d0, d1
+	bhi.w bad
+	lea Context.Final(a5), a0
+	move.l a0, d1
+	move.l #MODE_OLDFILE, d2
+	jsr DOS_OPEN(a6)
+	move.l d0, Context.File(a5)
+	beq.w bad
+	move.l d0, d1
+	moveq #0, d2
+	moveq #1, d3
+	jsr DOS_SEEK(a6)
+	cmpi.l #-1, d0
+	beq.w failed
+	move.l Context.File(a5), d1
+	moveq #0, d2
+	moveq #-1, d3
+	jsr DOS_SEEK(a6)
+	cmp.l (sp), d0
+	bne.w failed
+	move.l Context.File(a5), d1
+	move.l 4(sp), d2
+	moveq #-1, d3
+	jsr DOS_SEEK(a6)
+	cmpi.l #-1, d0
+	beq.w failed
+	moveq #DOS_READ, d7
+	bsr.w transfer
+	bne.w failed
+	bsr.w closeFile
+	bne.w bad
+	moveq #OK, d0
+	bra.w done
+failed
+	bsr.w closeFile
+bad
+	moveq #INVALID, d0
+done
+	addq.l #8, sp
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; readRange
 
 ; A0=Context,A2=caller-owned generated filename. D0/CCR=status; others preserved.
 ; Rollback deletes that completed object only; caller tracks published names.

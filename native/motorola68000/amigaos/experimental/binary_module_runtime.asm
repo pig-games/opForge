@@ -6,6 +6,9 @@
 	.use experimental.amigaos.binary_module_registry as registry
 	.use experimental.amigaos.binary_module_records as records
 	.use experimental.amigaos.binary_module_image as image
+	.use experimental.amigaos.binary_module_iface_store as interfaceStore
+	.use experimental.amigaos.binary_module_iface as interface
+	.use experimental.amigaos.binary_module_interface as values
 	.use experimental.amigaos.binary_assembly as assembly
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_sections as sections
@@ -25,12 +28,21 @@ Module	.long ?
 Fragment	.long ?
 Descriptor	.long ?  ; metadata borrow; contains no payload pointer
 Placement	.long ?
+ImportResolver	.long ?
+ImportContext	.long ?
+ImportValid	.long ?
+ImportModule	.long ?
+ImportOrdinal	.long ?
+TargetModule	.long ?
+TargetFragment	.long ?
+TargetOffset	.long ?
 	.endstruct
-SESSION_BYTES = Session.Placement+4
+SESSION_BYTES = Session.TargetOffset+4
 	.section bss, kind=bss
 State	.res byte, SESSION_BYTES
 Link	.res byte, image.LINK_FRAME_BYTES
 Buffer	.res byte, memory.Block.Used+4
+InterfaceReader	.res byte, interfaceStore.STATE_BYTES
 	.endsection
 	.section code, kind=code
 	.pub
@@ -38,9 +50,23 @@ Buffer	.res byte, memory.Block.Used+4
 ; D0/CCR=status; other registers preserved. release ends the borrow.
 begin	.block
 	move.l a0, State+Session.Registry
+	clr.l State+Session.ImportValid
 	moveq #0, d0
 	rts
 	.bend  ; begin
+
+; A0=callback,A1=context. D0/CCR=OK; other registers preserved.
+; Callback: A0=context,D1=consumer registry module,D2=zero-based import ordinal
+; ->D0/CCR=status,D1=current global source symbol or references.NO_BASE;
+; callback preserves other registers.
+; This transient bridge is used only for Hunk source bookkeeping, never address
+; resolution and never serialized into module objects. Zero clears the bridge.
+setImportResolver	.block
+	move.l a0, State+Session.ImportResolver
+	move.l a1, State+Session.ImportContext
+	moveq #0, d0
+	rts
+	.bend  ; setImportResolver
 
 ; Shared assembly Frame.Fragment callback. A0=Frame,A1=packed fragment record,
 ; D0=DESCRIBE/PLACE/EMIT. Success D1=alignment,D2=payload bytes,D3=extent,
@@ -103,8 +129,8 @@ fragment	.block
 	move.l #resolve, Link+image.LinkFrame.Resolve
 	move.l #patch, Link+image.LinkFrame.Patch
 	move.l #State, Link+image.LinkFrame.Context
-	; linkValidated borrows image rows across callbacks. resolve may locate only
-	; this same module; patch uses the package and cannot access the registry.
+	; linkValidated borrows image rows across callbacks. resolve reads provider
+	; interfaces and metadata only; it cannot replace the final payload cache.
 	lea Link, a0
 	jsr image.linkValidated
 	bne.w bad
@@ -135,6 +161,8 @@ release	.block
 	movem.l d1/a0, -(sp)
 	lea Buffer, a0
 	jsr memory.release
+	lea InterfaceReader, a0
+	jsr interfaceStore.release
 	lea State, a0
 	moveq #SESSION_BYTES/4-1, d1
 clear
@@ -155,7 +183,8 @@ clearLink
 ; Missing forward placement remains a zero address during pass one; strict
 ; final emission requires every referenced whole fragment to have been placed.
 ; Local targets always use the active module, preserving its disk-cache borrow.
-; Cross-module references use installed global values, never another image.
+; Cross-module references resolve provider-local entities from stored interfaces;
+; they never acquire another module payload or read installed global values.
 target	.block
 	movem.l d3-d6/a0-a5, -(sp)
 	move.l d1, d6
@@ -177,27 +206,9 @@ localKnown
 	move.l registry.Placement.Section(a3), d2
 	bra.w good
 external
-	andi.l #$7fff0000, d1
+	andi.l #$7fffffff, d1
+	bsr.w importedTarget
 	bne.w bad
-	move.l d6, d1
-	andi.l #65535, d1
-	cmp.l package.Context.Count(a5), d1
-	bhs.w bad
-	movea.l package.Context.Defined(a5), a1
-	tst.b 0(a1, d1.l)
-	beq.w bad
-	movea.l package.Context.SectionIds(a5), a1
-	moveq #0, d2
-	move.b 0(a1, d1.l), d2
-	beq.w bad
-	cmpi.l #sections.HUNK_SLOT_COUNT, d2
-	bhi.w bad
-	subq.l #1, d2
-	lsl.l #3, d1
-	movea.l package.Context.Values(a5), a1
-	tst.l exprvm.Value.High(a1, d1.l)
-	bne.w bad
-	move.l exprvm.Value.Low(a1, d1.l), d1
 	bra.w good
 good
 	moveq #0, d0
@@ -209,6 +220,101 @@ done
 	tst.l d0
 	rts
 	.bend  ; target
+
+; D1=zero-based import ordinal. D0/CCR=status,D1=address,D2=section.
+; Other registers preserved. Follow module-qualified forwarding through one
+; bounded interface reader. A module-count limit rejects malformed alias cycles.
+importedTarget	.block
+	movem.l d3-d7/a0-a6, -(sp)
+	move.l d1, d4
+	tst.l State+Session.ImportValid
+	beq.w lookup
+	cmp.l State+Session.ImportOrdinal, d4
+	bne.w lookup
+	move.l State+Session.Module, d0
+	cmp.l State+Session.ImportModule, d0
+	bne.w lookup
+	move.l State+Session.TargetModule, d6
+	move.l State+Session.TargetFragment, d2
+	move.l State+Session.TargetOffset, d5
+	bra.w locate
+lookup
+	clr.l State+Session.ImportValid
+	movea.l State+Session.Registry, a0
+	move.l registry.State.Modules+memory.Block.Used(a0), d7
+	moveq #registry.MODULE_BYTES, d0
+	divu.l d0, d7
+	lea InterfaceReader, a0
+	movea.l State+Session.Registry, a1
+	move.l State+Session.Module, d1
+	jsr interfaceStore.select
+	bne.w bad
+	move.l d4, d1
+	jsr interfaceStore.importRow
+	bne.w bad
+	move.l interface.Import.Entity(a1), d5
+	move.l interface.Import.Dependency(a1), d1
+dependency
+	tst.l d7
+	beq.w bad
+	subq.l #1, d7
+	jsr interfaceStore.dependencyName
+	bne.w bad
+	move.l d1, d2
+	movea.l State+Session.Registry, a0
+	jsr registry.findObject
+	bne.w bad
+	move.l d1, d6
+	movea.l a0, a1
+	lea InterfaceReader, a0
+	jsr interfaceStore.select
+	bne.w bad
+	move.l d5, d1
+	jsr interfaceStore.valueRow
+	bne.w bad
+	cmpi.l #values.FORWARDED_ENTITY, values.Export.Kind(a1)
+	bne.w address
+	move.l values.Export.High(a1), d5
+	move.l values.Export.Low(a1), d1
+	bra.w dependency
+address
+	cmpi.l #values.FRAGMENT_ADDRESS, values.Export.Kind(a1)
+	bne.w bad
+	move.l values.Export.Low(a1), d5
+	move.l values.Export.High(a1), d2
+	move.l d6, State+Session.TargetModule
+	move.l d2, State+Session.TargetFragment
+	move.l d5, State+Session.TargetOffset
+	move.l State+Session.Module, State+Session.ImportModule
+	move.l d4, State+Session.ImportOrdinal
+	move.l #1, State+Session.ImportValid
+locate
+	move.l d6, d1
+	movea.l State+Session.Registry, a0
+	jsr registry.locate
+	bne.w bad
+	cmp.l image.Block.Extent(a2), d5
+	bhi.w bad
+	tst.l registry.Placement.Known(a3)
+	bne.w known
+	movea.l State+Session.Frame, a0
+	movea.l assembly.Frame.Context(a0), a0
+	cmpi.w #1, package.Context.Pass(a0)
+	bne.w bad
+known
+	move.l registry.Placement.Base(a3), d1
+	add.l d5, d1
+	bcs.w bad
+	move.l registry.Placement.Section(a3), d2
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d3-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; importedTarget
 
 ; Link resolver. D2 identifies the opaque patch program. Hunk long fields
 ; encode offsets within the target section; VM branch recipes use addresses
@@ -353,7 +459,25 @@ next
 	move.l #references.NO_BASE, d3
 	bra.w relocationReady
 externalIdentity
-	andi.l #65535, d3
+	; Keep the relocation's section and patch offset separate from the
+	; provider callback's consumer-module/import-ordinal arguments.
+	movem.l d0-d2/d4/a0, -(sp)
+	move.l d3, d2
+	andi.l #$7fffffff, d2
+	movea.l State+Session.ImportResolver, a1
+	cmpa.w #0, a1
+	beq.w noSource
+	movea.l State+Session.ImportContext, a0
+	move.l State+Session.Module, d1
+	jsr (a1)
+	move.l d1, d3
+	tst.l d0
+	movem.l (sp)+, d0-d2/d4/a0
+	bne.w bad
+	bra.w relocationReady
+noSource
+	move.l #references.NO_BASE, d3
+	movem.l (sp)+, d0-d2/d4/a0
 relocationReady
 	movea.l assembly.Frame.AddReloc(a0), a1
 	cmpa.w #0, a1

@@ -26,6 +26,12 @@ through the stored-interface path; the disk-backed private compiler/image path
 and `--reference-modules` reference policy remain available as distinct
 mechanisms.
 
+The header reader now serves covered object-header ranges from retained link
+metadata and validates the assembly directory through its existing window.
+For interfaces that fit the window, a cold selection performs one disk range
+read rather than two small header reads followed by the window read. This adds
+no heap capacity; full-build qualification is in progress.
+
 No persistent incremental-cache contract is established. Objects are
 current-build artifacts; source/configuration/package fingerprinting and
 cross-build invalidation are not part of this interface format.
@@ -76,3 +82,35 @@ retirement rules are in
 [preparation ownership and capture storage](native-lazy-preparation.md). Current
 full-source qualification and comparative measurements are in
 [native runtime and memory status](native-performance-diagnosis.md).
+
+## Bounded write experiment
+
+The experimental CLI can submit one payload write through an asynchronous
+AmigaDOS packet while compiling the next module. The filesystem handler already
+runs as a separate task; no extra worker process is created. Open, close and
+rename remain synchronous, so only payload transfer can overlap CPU work.
+
+The registry remains the sole owner of the immutable image. Its complete
+allocation capacity must fit 64 KiB; larger images use the synchronous writer.
+There is no queue copy. A stable module ID identifies the pending owner when the
+registry table moves. Dependency reads can borrow that image while its write is
+outstanding. A separate writer context and private reply port isolate reads,
+paths and packet replies. The additional tracked allocation is a 34-byte port;
+the retained image can add at most 64 KiB of heap overlap. Writer state and code
+also increase linked reservations; measurements must include those costs.
+
+Only an acknowledged complete write followed by close/rename publishes `.ofm`
+and releases its image. The next store, final emission, rollback and cleanup
+drain the write first. Preparation explicitly drains before reporting success,
+including an interface-only last module. Failures remain failures through
+cleanup. There is no unsafe cancellation or generic allocation-failure retry;
+this first experiment uses one fixed allowance rather than a global memory
+pressure scheduler. Serialized objects retain offsets and numeric identities.
+
+Native component checks cover short writes, errors, foreign messages, pending
+lease preservation, draining release and real DOS output. Full CLI qualification
+and runtime/peak-memory comparisons are pending. The synchronous checkpoint is
+preserved as the reference. A separate synchronous-payload control retains the
+same image lifetime and delayed publication, so measured gains cannot conflate
+write overlap with dependency reads served from that retained image. It is a
+frozen experimental source variant, not another maintained selection switch.

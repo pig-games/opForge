@@ -320,6 +320,11 @@ captureConfigured
 	clr.w PrepStep
 	bsr.w prepare
 	bne.w failed
+	; No module write may outlive preparation or hide an asynchronous failure
+	; behind a successful final output, including interface-only last modules.
+	lea PrivateRegistry, a0
+	jsr moduleRegistry.drain
+	bne.w failed
 	; Final CPU package selection precedes emission-span capture in both entry APIs.
 	lea MetadataConfig, a0
 	jsr metadata.select
@@ -428,6 +433,9 @@ cleanup
 	jsr moduleRuntime.release
 	lea PrivateRegistry, a0
 	jsr moduleRegistry.release
+	beq.w registryReleased
+	move.l #20, ReturnCode
+registryReleased
 	clr.l PrivatePublishedCount
 	clr.l PrivateTextChecked
 	clr.l PrivateTextUnsafe
@@ -507,6 +515,7 @@ freeBlocks
 	.CAPTURE_STORE_REPORT DosBase, capture_store.diskReads, capture_store.diskReadBytes, capture_store.diskWrites, capture_store.diskWriteBytes, capture_store.faults, capture_store.evictions, capture_store.peakPayload
 	.MEMORY_PROGRESS DosBase, #moduleRegistry.PROGRESS_STORE_IO, moduleRegistry.DiskReads, moduleRegistry.DiskWrites, moduleRegistry.CacheHits
 	.MEMORY_PROGRESS DosBase, #moduleRegistry.PROGRESS_STORE_BYTES, moduleRegistry.DiskReadBytes, moduleRegistry.DiskWriteBytes, #0
+	.MEMORY_PROGRESS DosBase, #moduleRegistry.PROGRESS_STORE_ASYNC, moduleRegistry.AsyncQueued, moduleRegistry.AsyncRetired, moduleRegistry.SyncWrites
 	.CAPTURE_REPORT DosBase
 	.CAPTURE_LIFE_REPORT DosBase
 	.LAZY_REPORT DosBase

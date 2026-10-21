@@ -550,6 +550,35 @@ impl<'a> AsmLine<'a> {
         }
     }
 
+    // A .place directive may precede later contributions to the same section.
+    // Request generic sizing retries only when its final extent differs from
+    // the reservation, including logical bodies appended by the relayout plan.
+    pub(crate) fn placement_sizes_changed(&self) -> bool {
+        self.layout.placed_sizes.iter().any(|(name, reserved)| {
+            let own_size = self
+                .layout
+                .sections
+                .get(name)
+                .map_or(0, SectionState::size_bytes);
+            let completed = self.relayout.as_ref().map_or(Some(own_size), |plan| {
+                plan.mapped_sections
+                    .iter()
+                    .filter(|(source, target)| {
+                        !source.eq_ignore_ascii_case(target) && target.eq_ignore_ascii_case(name)
+                    })
+                    .try_fold(own_size, |size, (source, _)| {
+                        size.checked_add(
+                            self.layout
+                                .sections
+                                .get(source)
+                                .map_or(0, SectionState::size_bytes),
+                        )
+                    })
+            });
+            completed != Some(*reserved)
+        })
+    }
+
     pub fn place_section_in_region(
         &mut self,
         section_name: &str,
@@ -571,7 +600,13 @@ impl<'a> AsmLine<'a> {
             match self.layout.sections.get(section_name) {
                 Some(section) => (
                     section.align.max(1),
-                    section.size_bytes(),
+                    section.size_bytes().max(
+                        self.layout
+                            .placement_size_hints
+                            .get(section_name)
+                            .copied()
+                            .unwrap_or(0),
+                    ),
                     section.layout_placed,
                     section.default_region.clone(),
                 ),
@@ -599,7 +634,14 @@ impl<'a> AsmLine<'a> {
                         self.layout
                             .sections
                             .get(source)
-                            .map_or(0, SectionState::size_bytes),
+                            .map_or(0, SectionState::size_bytes)
+                            .max(
+                                self.layout
+                                    .placement_size_hints
+                                    .get(source)
+                                    .copied()
+                                    .unwrap_or(0),
+                            ),
                     )
                 })
         });
@@ -738,6 +780,9 @@ impl<'a> AsmLine<'a> {
             );
         }
 
+        self.layout
+            .placed_sizes
+            .insert(section_name.to_owned(), size);
         if let Some(region) = self.layout.regions.get_mut(region_name) {
             region.cursor = new_cursor;
             region.placed.push(PlacedSectionInfo {

@@ -594,11 +594,17 @@ qualified_share={:.2}%",
                 asm_line.layout.concrete_section_declarations = concrete_section_declarations;
             }
             if let (Some(sections), Some(regions)) = (seeded_sections, seeded_regions) {
+                asm_line.layout.placement_size_hints = sections
+                    .iter()
+                    .map(|(name, section)| (name.clone(), section.size_bytes()))
+                    .collect();
                 asm_line.layout.sections = sections;
                 asm_line.layout.regions = regions;
                 // Prior bases seed forward references during this sizing pass,
-                // but placement must consume the newly measured extents. A
-                // previously placed ordinary section can grow or shrink too.
+                // but each section must measure its actual extent afresh. Placement
+                // also reserves its prior completed extent: later source can
+                // reopen the section after its .place directive. Hints refresh
+                // every retry, allowing both growth and shrinkage to converge.
                 for region in asm_line.layout.regions.values_mut() {
                     region.cursor = region.start;
                     region.placed.clear();
@@ -867,6 +873,7 @@ qualified_share={:.2}%",
                 }
             }
 
+            self.constant_layout_changed |= asm_line.placement_sizes_changed();
             self.cpu = asm_line.cpu;
             self.section_symbol_sections = asm_line.layout.section_symbol_sections.clone();
             self.concrete_section_declarations =

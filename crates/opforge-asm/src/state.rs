@@ -50,6 +50,9 @@ pub(crate) use types::asm_value::ScalarProvenance as SymbolRelocation;
 #[derive(Debug, Default)]
 pub struct AsmLayoutState {
     pub sections: HashMap<String, SectionState>,
+    // Completed prior-pass extents reserve contributions appearing after .place.
+    pub placement_size_hints: HashMap<String, u32>,
+    pub placed_sizes: HashMap<String, u32>,
     pub regions: HashMap<String, RegionState>,
     pub placement_directives: Vec<PlacementDirective>,
     pub section_symbol_sections: HashMap<String, String>,
@@ -146,6 +149,8 @@ impl AsmLayoutState {
     pub fn new() -> Self {
         Self {
             sections: HashMap::new(),
+            placement_size_hints: HashMap::new(),
+            placed_sizes: HashMap::new(),
             regions: HashMap::new(),
             placement_directives: Vec::new(),
             section_symbol_sections: HashMap::new(),

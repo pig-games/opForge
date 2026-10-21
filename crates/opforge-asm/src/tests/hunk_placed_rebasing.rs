@@ -99,3 +99,143 @@ fn section_placement_retries_forward_fill_extent() {
     build_linker_output_payload(&outputs[1], assembler.sections())
         .expect("Hunk sections after sizing retry");
 }
+
+// A library can place shared concrete sections before its importer contributes
+// more bytes. Reserve the complete stabilized extent, not just the prefix at .place.
+#[test]
+fn section_placement_reserves_contributions_after_place() {
+    let assembler = run_passes(&[
+        ".module provider",
+        ".cpu 68020",
+        ".pub",
+        ".region ram,0,$ffff",
+        ".section code,kind=code",
+        "entry .block",
+        ".byte $a5,$5a",
+        ".bend",
+        ".endsection",
+        ".section data,kind=data",
+        "payload .byte $33",
+        ".endsection",
+        ".place code in ram",
+        ".place data in ram",
+        ".endmodule",
+        ".module main",
+        ".cpu 68020",
+        ".use provider",
+        ".section code,kind=code",
+        ".long provider.entry,provider.payload",
+        ".endsection",
+        ".section data,kind=data",
+        ".byte $55",
+        ".endsection",
+        ".output \"build/late.bin\",format=bin,sections=code,data",
+        ".output \"build/late.hunk\",format=hunk,sections=code,data",
+        ".endmodule",
+    ]);
+    assert_eq!(assembler.sections()["code"].base_addr, Some(0));
+    assert_eq!(assembler.sections()["data"].base_addr, Some(10));
+    assert_eq!(
+        assembler
+            .symbols
+            .entry("provider.payload")
+            .map(|entry| entry.val),
+        Some(10)
+    );
+    let code = &assembler.sections()["code"];
+    assert!(code.output_fixups.iter().any(|fixup| fixup.offset == 6
+        && fixup.target.section_name() == Some("data")
+        && fixup.encoded_addend == 0));
+    let outputs = &assembler.root_metadata.linker_outputs;
+    assert_eq!(
+        build_linker_output_payload(&outputs[0], assembler.sections()).unwrap(),
+        [0xa5, 0x5a, 0, 0, 0, 0, 0, 0, 0, 0, 0x33, 0x55]
+    );
+    build_linker_output_payload(&outputs[1], assembler.sections()).expect("placed Hunk");
+}
+
+#[test]
+fn section_placement_rechecks_late_contributions_against_region_bound() {
+    for cpu in ["68020", "6502"] {
+        let lines = [
+            &format!(".cpu {cpu}"),
+            ".region ram,0,5",
+            ".section code,kind=code",
+            ".word 0",
+            ".endsection",
+            ".section data,kind=data",
+            ".byte 1",
+            ".endsection",
+            ".place code in ram",
+            ".place data in ram",
+            ".section code,kind=code",
+            ".long 0",
+            ".endsection",
+            ".section data,kind=data",
+            ".byte 2",
+            ".endsection",
+        ]
+        .map(str::to_string);
+        let mut assembler = Assembler::new();
+        let pass = assembler.pass1(&lines);
+        assert!(pass.errors > 0);
+        assert!(
+            assembler.diagnostics.iter().any(|diag| diag
+                .error
+                .message()
+                .contains("Section placement overflows region")),
+            "{:?}",
+            assembler.diagnostics
+        );
+    }
+}
+#[test]
+fn section_placement_hints_follow_shrinking_completed_extents() {
+    let assembler = run_passes(&[
+        ".cpu 68020",
+        ".region ram,0,$ffff",
+        ".section code,kind=code",
+        ".if FINAL",
+        ".fill byte,4,$aa",
+        ".else",
+        ".fill byte,8,$aa",
+        ".endif",
+        ".endsection",
+        ".section data,kind=data",
+        ".byte $55",
+        ".endsection",
+        ".place code in ram",
+        ".place data in ram",
+        "FINAL .const 1",
+    ]);
+    assert_eq!(assembler.sections()["code"].max_pc, 4);
+    assert_eq!(assembler.sections()["data"].base_addr, Some(4));
+}
+
+#[test]
+fn section_placement_retries_late_data_contributions_without_cpu_relaxation() {
+    let assembler = run_passes(&[
+        ".cpu 6502",
+        ".region ram,0,$ffff",
+        ".section code,kind=code",
+        ".byte 1",
+        ".endsection",
+        ".section data,kind=data",
+        ".byte 2",
+        ".endsection",
+        ".place code in ram",
+        ".place data in ram",
+        ".section code,kind=code",
+        ".byte 3,4",
+        ".endsection",
+        ".output \"build/late-6502.bin\",format=bin,sections=code,data",
+    ]);
+    assert_eq!(assembler.sections()["code"].max_pc, 3);
+    assert_eq!(assembler.sections()["data"].base_addr, Some(3));
+    let bytes = build_linker_output_payload(
+        &assembler.root_metadata.linker_outputs[0],
+        assembler.sections(),
+    )
+    .unwrap();
+    assert_eq!(bytes, [1, 3, 4, 2]);
+}

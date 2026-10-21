@@ -902,6 +902,8 @@ impl<'a> AsmLine<'a> {
         self.output_state.in_output_block = false;
         self.output_state.output_cpu_block = None;
         self.layout.sections.clear();
+        self.layout.placement_size_hints.clear();
+        self.layout.placed_sizes.clear();
         self.layout.regions.clear();
         self.layout.placement_directives.clear();
         self.layout.section_symbol_sections.clear();

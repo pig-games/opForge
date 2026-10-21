@@ -778,7 +778,7 @@ impl Preprocessor {
         // preprocessor/assembler nesting must preserve the assembler delimiters.
         let mut assembler_conditional = false;
         let runtime_directive = parse_asm_directive_name(trimmed);
-        if runtime_directive.is_some() && !self.in_asm_macro {
+        if runtime_directive.is_some() {
             let runtime_token = runtime_directive.as_deref().unwrap_or(&token);
             match runtime_token {
                 "IFDEF" | "IFNDEF" => self.conditional_owners.push(true),
@@ -834,7 +834,14 @@ impl Preprocessor {
             return Err(err.with_context(line_num, Some(column), line, Some(file_path)));
         }
         if is_dot_directive && is_pp_directive {
-            if is_else_directive && (assembler_conditional || self.cond_state.is_empty()) {
+            if assembler_conditional {
+                if self.is_active() {
+                    self.push_source_line(line.to_string(), base_dir, line_num, file_path);
+                }
+                self.in_asm_macro = next_in_asm_macro;
+                return Ok(());
+            }
+            if is_else_directive && self.cond_state.is_empty() {
                 // Pass through .else/.elseif/.endif for assembler conditionals.
             } else {
                 return self
@@ -1211,6 +1218,51 @@ mod tests {
         let lines = pp.lines();
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].trim(), "VAL .const 1");
+    }
+
+    #[test]
+    fn nested_assembly_conditionals_do_not_unbalance_inactive_macro_gates() {
+        let source = concat!(
+            "CAPTURE .macro field,value,wordValue\n",
+            ".ifdef DEBUG\n",
+            ".ifdef MEMORY\n",
+            ".ifdef PREPARATION\n",
+            ".if .wordValue\n",
+            ".byte .value\n",
+            ".else\n",
+            ".byte .field\n",
+            ".endif\n",
+            ".endif\n",
+            ".endif\n",
+            ".endif\n",
+            ".endmacro\n",
+        );
+        let path = temp_file("macro_conditionals.asm", source);
+        let mut pp = Preprocessor::new();
+        assert!(pp.process_file(path.to_str().unwrap()).is_ok());
+        assert_eq!(
+            pp.lines().iter().map(String::as_str).collect::<Vec<_>>(),
+            ["CAPTURE .macro field,value,wordValue", ".endmacro"]
+        );
+
+        let path = temp_file("macro_conditionals_enabled.asm", source);
+        let mut pp = Preprocessor::new();
+        pp.define("DEBUG", "1");
+        pp.define("MEMORY", "1");
+        pp.define("PREPARATION", "1");
+        assert!(pp.process_file(path.to_str().unwrap()).is_ok());
+        assert_eq!(
+            pp.lines().iter().map(String::as_str).collect::<Vec<_>>(),
+            [
+                "CAPTURE .macro field,value,wordValue",
+                ".if .wordValue",
+                ".byte .value",
+                ".else",
+                ".byte .field",
+                ".endif",
+                ".endmacro"
+            ]
+        );
     }
 
     #[test]

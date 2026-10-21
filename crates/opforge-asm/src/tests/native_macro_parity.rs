@@ -74,6 +74,11 @@ const POSITIVE: &[Case] = &[
         body: "EMIT .macro value\n.if .value==2\n.byte .value+10\n.elseif .value==4\n.byte .value+20\n.else\n.byte .value+30\n.endif\n.endmacro\nREPEAT .macro count,value\n.for .count\n.EMIT .value\n.endfor\n.endmacro\nFORWARD_LOOP .segment\n.for item in {2,4,6}\n.REPEAT 2,item\n.endfor\n.ends\n.FORWARD_LOOP\n.if 0\n.EMIT missing\n.endif\n",
         expected: &[12, 12, 24, 24, 36, 36],
     },
+    Case {
+        name: "macro-nested-conditional-gates",
+        body: "CAPTURE_DIAGNOSTIC .macro field,value,wordValue\n.ifdef DEBUG\n.ifdef MEM\n.ifdef PREP\n.if .wordValue\n.byte .value\n.else\n.byte .field\n.endif\n.endif\n.endif\n.endif\n.endmacro\n.CAPTURE_DIAGNOSTIC 0,7,1\n",
+        expected: &[],
+    },
 ];
 
 // Existing register/value role and name-collision matrices remain in

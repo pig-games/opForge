@@ -86,7 +86,7 @@ fn native_module_images_host_assembles() {
 }
 
 #[test]
-#[ignore = "requires FS-UAE; native first-request image ownership and relocation component"]
+#[ignore = "requires FS-UAE and OPFORGE_FS_UAE_GUEST_STACK_BYTES=65536; native image ownership and relocation component"]
 fn native_module_images_fs_uae() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let dir = scratch();
@@ -161,7 +161,7 @@ fn native_module_images_fs_uae() {
             serde_json::json!({
                 "disk_registry": disk,
                 "persisted_objects": objects.len(),
-                "scope": "supplied-byte component; CLI module lowering not integrated",
+                "scope": "supplied-byte and stored-interface relocation component; CLI lowering not covered",
                 "native_image_digest": runs[0].native_image_digest,
                 "fresh_protocol": runs[0].protocol_completed,
                 "exit_code": runs[0].exit_code,

@@ -72,54 +72,7 @@ DestinationModule	.long ?
 COPY_BYTES = CopyFrame.DestinationModule+4
 OK = 0
 INVALID = 1
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
-Diagnostic	.struct
-Module	.long ?
-Definitions	.long ?
-Statements	.long ?
-FirstModule	.long ?
-FirstFlags	.long ?
-	.endstruct
-	.section bss, kind=bss
-CaptureDiagnostic	.res byte, Diagnostic.FirstFlags+4
-	.endsection
-.endif
-.endif
-.endif
 	.priv
-; Temporary scalar capture evidence. No pointer, call, or preservation is
-; emitted outside the existing preparation diagnostics gates.
-CAPTURE_DIAGNOSTIC_LONG	.macro field, value
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
-	move.w ccr, -(sp)
-	move.l d0, -(sp)
-	move.l .value, d0
-	move.l d0, CaptureDiagnostic+.field
-	move.l (sp)+, d0
-	move.w (sp)+, ccr
-.endif
-.endif
-.endif
-.endmacro
-CAPTURE_DIAGNOSTIC_WORD	.macro field, value
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
-	move.w ccr, -(sp)
-	move.l d0, -(sp)
-	moveq #0, d0
-	move.w .value, d0
-	move.l d0, CaptureDiagnostic+.field
-	move.l (sp)+, d0
-	move.w (sp)+, ccr
-.endif
-.endif
-.endif
-.endmacro
 	.section bss, kind=bss
 Active	.res long, 1
 Caller	.res long, 1
@@ -158,11 +111,6 @@ capture	.block
 	move.l #1, Active
 	move.l a0, Caller
 	movea.l a0, a6
-	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Module, CaptureFrame.Module(a6)
-	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Definitions, #0
-	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Statements, #0
-	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.FirstModule, #0
-	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.FirstFlags, #0
 	tst.l CaptureFrame.Module(a6)
 	beq.w bad
 	cmpi.l #65535, CaptureFrame.Module(a6)
@@ -192,7 +140,6 @@ definitions
 	movea.l SourceTemplates, a5
 	moveq #0, d7
 	move.w templates.State.Count(a5), d7
-	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Definitions, d7
 	move.l d7, d0
 	mulu.l #templates.DEF_BYTES, d0
 	cmp.l templates.DEFS+memory.Block.Used(a5), d0
@@ -218,19 +165,6 @@ definition
 	lea Entry, a1
 	jsr lexical.readEntry
 	bne.w bad
-.ifdef OPFORGE_DEBUG_CONTRACTS
-.ifdef OPFORGE_MEMORY_TELEMETRY
-.ifdef OPFORGE_PREPARATION_PROGRESS
-	move.w ccr, -(sp)
-	tst.l d6
-	bne.w diagnosticReady
-	.CAPTURE_DIAGNOSTIC_WORD Diagnostic.FirstModule, records.Entry.TemplateModule(a1)
-	.CAPTURE_DIAGNOSTIC_WORD Diagnostic.FirstFlags, records.Entry.TemplateFlags(a1)
-diagnosticReady
-	move.w (sp)+, ccr
-.endif
-.endif
-.endif
 	move.l CaptureFrame.Module(a6), d0
 	cmp.w records.Entry.TemplateModule(a1), d0
 	bne.w nextDefinition
@@ -242,6 +176,7 @@ privateDefinition
 	move.l d1, RequestVisibility
 	move.l d6, d0
 	addq.l #1, d0
+	moveq #0, d1
 	bsr.w wanted
 	cmpi.l #2, d0
 	beq.w nextDefinition
@@ -262,7 +197,6 @@ statementDefinitions
 	move.l a5, SourceStatements
 	moveq #0, d7
 	move.w statements.State.Count(a5), d7
-	.CAPTURE_DIAGNOSTIC_LONG Diagnostic.Statements, d7
 	move.l d7, d0
 	mulu.l #statements.ROW_BYTES, d0
 	cmp.l statements.ROWS+memory.Block.Used(a5), d0
@@ -282,6 +216,7 @@ statementLoop
 	move.l d1, RequestVisibility
 	moveq #0, d0
 	move.w statements.Row.Template(a4), d0
+	moveq #1, d1
 	bsr.w wanted
 	cmpi.l #2, d0
 	beq.w nextStatement
@@ -340,6 +275,10 @@ done
 captureOne	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	move.l d0, d7
+	tst.l d1
+	beq.w internalKey
+	bset #31, d7
+internalKey
 	move.l SourceTemplates, Export+templates.ExportFrame.State
 	move.l d0, Export+templates.ExportFrame.Handle
 	move.l d1, Export+templates.ExportFrame.External
@@ -411,21 +350,25 @@ done
 	rts
 	.bend  ; captureOne
 
-; D0=source body handle. Public roots or names reachable from captured bodies
+; D0=source body handle,D1=external pool flag. Public roots or names reachable
 ; are selected once. Repeated passes close forward/private helper references.
 ; D0/CCR=0 selected,2 absent/already captured; all other registers preserved.
 wanted	.block
 	movem.l d1-d3/a0, -(sp)
 	move.l d0, d3
+	tst.l d1
+	beq.w internalKey
+	bset #31, d3
+internalKey
 	movea.l Seen+memory.Block.Pointer, a0
 	move.l Seen+memory.Block.Used, d1
-seen
+scanSeen
 	tst.l d1
 	beq.w visibility
 	cmp.l (a0)+, d3
 	beq.w absent
 	subq.l #4, d1
-	bra.w seen
+	bra.w scanSeen
 visibility
 	tst.l RequestVisibility
 	bne.w selected

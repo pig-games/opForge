@@ -51,9 +51,7 @@
 	.use experimental.amigaos.binary_file_data as filedata
 	.use experimental.amigaos.binary_module_compile as moduleCompile
 	.use experimental.amigaos.binary_module_scope as moduleScope
-	.use experimental.amigaos.binary_module_facets as moduleFacets
 	.use experimental.amigaos.binary_module_templates as moduleTemplates
-	.use experimental.amigaos.binary_module_remap as moduleRemap
 	.use experimental.amigaos.binary_module_image as moduleImage
 	.use experimental.amigaos.binary_module_registry as moduleRegistry
 	.use experimental.amigaos.binary_module_object_store as moduleObjectStore
@@ -2233,7 +2231,6 @@ SeededParameters	.res long, 1
 SeededMaps	.res long, 1
 PublishedCapture	.res byte, SPAN_BYTES
 PrivateCompile	.res byte, moduleCompile.CONTEXT_BYTES
-PrivateInstall	.res byte, moduleScope.FRAME_BYTES
 PrivateCarrier	.res byte, moduleCarrier.FRAME_BYTES
 PrivateRegistry	.res byte, moduleRegistry.STATE_BYTES
 StoredRoot	.res byte, moduleProvider.STATE_BYTES
@@ -2275,7 +2272,6 @@ PrivateRecordStart	.res long, 1
 PrivatePublishedCount	.res long, 1
 PrivateImage	.res byte, memory.Block.Used+4
 PrivateFacets	.res byte, memory.Block.Used+4
-PrivateFacetInstall	.res byte, moduleTemplates.INSTALL_BYTES
 PrivateIncoming	.res byte, memory.Block.Used+4
 PrivateSeen	.res byte, memory.Block.Used+4
 PrivateDependencies	.res byte, memory.Block.Used+4

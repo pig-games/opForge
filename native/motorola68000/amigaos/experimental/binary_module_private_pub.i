@@ -539,12 +539,6 @@ blocks
 	lea PrivateFacets, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
-	lea PrivateFacetInstall, a1
-	moveq #moduleTemplates.INSTALL_BYTES, d0
-	bsr.w privateClear
-	lea PrivateInstall+moduleScope.Frame.Map, a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
 	lea PrivateSeen, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)

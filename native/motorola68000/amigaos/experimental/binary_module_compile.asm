@@ -131,11 +131,13 @@ TransientEnd
 ; Constant source preprocessing and private macros may complete before assembly.
 ; Publishes immutable scalars, lists/ranges and struct schemas with local IDs.
 ; Public addresses retain exact fragment/offset identity; compound values retain
-; their canonical schema/member closure. When Facets is supplied, closed public
-; macros/segments transfer separately to the shared preparation owner. Mutable/deferred
-; exports, warnings, unresolved layout recipes and disk
-; spilling remain unsupported by this private producer. Optional callbacks seed
-; imports and replay owned captured records without a source-text dependency.
+; their canonical schema/member closure. Facets requests closed public templates
+; and statements in the stored assembly interface, and receives an optional owned
+; capsule for component callers. Normal CLI dependencies consume the stored
+; interface through bounded readers, without installing a shared frontend copy.
+; Mutable/deferred exports, warnings and unsupported layout recipes reject.
+; Optional callbacks seed imports, configure backed lexical storage and replay
+; captured binary records without a source-text dependency.
 ; Replay closes the file/expansion context; this owner completes preparation.
 ; Replay status REPLAY_UNSUPPORTED returns UNSUPPORTED after private cleanup.
 ; Package/source/callback state are borrowed for this call. Private owners retire;

@@ -5,8 +5,6 @@ PROGRESS_PRIVATE_FAILURE = 455
 PROGRESS_PRIVATE_POSITION = 456
 PROGRESS_PRIVATE_SECTIONS = 457
 PROGRESS_PRIVATE_SELECTION = 458
-PROGRESS_INTERFACE_CAPTURE = 459
-PROGRESS_INTERFACE_DECLARATION = 460
 ; Existing progress ABI: F=captured file ordinal,L=returned status,R=zero.
 ; Snapshot D0/D7 before MEMORY_PROGRESS loads its own argument registers.
 ; Execution failure adds only retained scalar snapshots: 455 F=file,L=stage,
@@ -21,8 +19,6 @@ PRIVATE_RESULT	.macro phase, status
 	move.l d4, -(sp)
 	move.l .status, d4
 	.MEMORY_PROGRESS DosBase, .phase, PublishedCapture+Span.File, d4, #0
-	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_INTERFACE_CAPTURE, moduleTemplates.CaptureDiagnostic, moduleTemplates.Diagnostic.Module, moduleTemplates.Diagnostic.Definitions, moduleTemplates.Diagnostic.Statements
-	.MEMORY_PROGRESS_BLOCK DosBase, #PROGRESS_INTERFACE_DECLARATION, moduleTemplates.CaptureDiagnostic, moduleTemplates.Diagnostic.FirstModule, moduleTemplates.Diagnostic.FirstFlags, moduleTemplates.Diagnostic.Module
 	cmpi.l #moduleCompile.INVALID, d4
 	bne.w executionFailure
 	; The existing preparation stage is scalar evidence and survives retirement.

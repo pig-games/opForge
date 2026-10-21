@@ -3506,13 +3506,18 @@ resetControl
 	rts
 	.bend  ; finish
 	.priv
-; A0=frontend Frame. D0/CCR=sticky lexical I/O status; other registers kept.
-; Check before publication or lexical release so boolean fallbacks cannot hide I/O.
+; A0=frontend Frame. D0/CCR=sticky lexical/dependency status; others kept.
+; Check before publication or release so boolean fallbacks cannot hide failure.
 checkLexicalSession	.block
 	movem.l a0-a1, -(sp)
 	movea.l Frame.Scratch(a0), a1
 	move.l a1, d0
 	beq.w done
+	tst.w SCOPE_STATE+layout.State.DependencyFailed(a1)
+	beq.w lexicalStatus
+	moveq #1, d0
+	bra.w done
+lexicalStatus
 	lea SCOPE_STATE+layout.LEXICAL_STATE(a1), a0
 	jsr lexical.check
 done
@@ -4103,6 +4108,42 @@ bind	.block
 	movea.l a0, a2
 	move.l d0, d6
 	move.l d2, d5
+	; The shared writer has already selected the physical statement head.
+	; Admit its stored spelling before statement execution tests its row count;
+	; retain the ordinary package identity unless a dot-template probe selects it.
+	tst.l SCOPE_STATE+layout.State.DependencyResolve(a6)
+	beq.w headAdmitted
+	tst.w SCOPE_STATE+layout.State.PreviewBinding(a6)
+	bne.w headAdmitted
+	movea.l a6, a4
+	adda.l #SCOPE_STATE+scopes.IMPORT_STATE, a4
+	tst.w imports.COUNT(a4)
+	beq.w headAdmitted
+	cmpi.l #writer.BIND_ROLE_INLINE_HEAD, d5
+	beq.w admitHead
+	cmpi.l #1, d5
+	bne.w headAdmitted
+	tst.w LINE_FRAME+writer.Frame.HeadToken(a6)
+	bne.w headAdmitted
+admitHead
+	tst.w CONDITION_STATE+conditionals.State.Active(a6)
+	beq.w headAdmitted
+	tst.w TEMPLATE_STATE+templates.State.Open(a6)
+	bne.w headAdmitted
+	tst.w TEMPLATE_STATE+templates.State.ExternalOpen(a6)
+	bne.w headAdmitted
+	tst.w TEMPLATE_STATE+templates.State.Skipping(a6)
+	bne.w headAdmitted
+	movea.l a6, a4
+	adda.l #STATEMENT_STATE, a4
+	tst.w statements.State.Open(a4)
+	bne.w headAdmitted
+	tst.w statements.State.Skipping(a4)
+	bne.w headAdmitted
+	movem.l d1-d2/a3, -(sp)
+	bsr.w templateIdentity
+	movem.l (sp)+, d1-d2/a3
+headAdmitted
 	tst.l d2
 	beq.w packageName
 	cmpi.l #2, d2
@@ -4286,7 +4327,10 @@ packageBound
 	movea.l a6, a4
 	adda.l #TEMPLATE_STATE, a4
 	tst.w templates.State.Count(a4)
+	bne.w probeTemplateIdentity
+	tst.l SCOPE_STATE+layout.State.DependencyResolve(a6)
 	beq.w fixedPackageName
+probeTemplateIdentity
 	movem.l d1-d2/a3, -(sp)
 	bsr.w templateIdentity
 	tst.l d0
@@ -4442,6 +4486,21 @@ templateIdentity	.block
 	clr.b 5(sp)
 	move.w d1, 6(sp)
 	move.b d2, 8(sp)
+	; Stored providers have no candidate until ordinary import policy resolves
+	; this call spelling. Admit that one facet before probing the template index.
+	tst.l SCOPE_STATE+layout.State.DependencyResolve(a6)
+	beq.w knownTemplateIdentity
+	tst.w SCOPE_STATE+layout.State.PreviewBinding(a6)
+	bne.w knownTemplateIdentity
+	lea 5(sp), a0
+	lea SCOPE_STATE(a6), a1
+	jsr scopes.resolveTemplate
+	move.l d7, SCOPE_STATE+layout.State.FirstBound(a6)
+	; An ordinary exact miss still permits enclosing lexical candidates.
+	; Only a failed stored demand prevents the established index lookup.
+	tst.w SCOPE_STATE+layout.State.DependencyFailed(a6)
+	bne.w bad
+knownTemplateIdentity
 	movea.l sp, a0
 	lea SCOPE_STATE(a6), a1
 	movea.l a6, a2

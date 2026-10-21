@@ -54,6 +54,13 @@ fn build_probe(root: &Path, dir: &Path, disk: bool) -> Vec<u8> {
         dir.join("module_runtime_reloc_checks.i"),
     )
     .unwrap();
+    fs::copy(
+        root.join(
+            "native/motorola68000/amigaos/test-harnesses/experimental/module_iface_header_checks.i",
+        ),
+        dir.join("module_iface_header_checks.i"),
+    )
+    .unwrap();
     let native = root.join("native/motorola68000/amigaos");
     let cli = Cli::parse_from([
         "opforge".to_owned(),

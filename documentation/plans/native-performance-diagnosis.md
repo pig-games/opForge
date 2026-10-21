@@ -8,8 +8,13 @@ exactly**, with explicit exit 0 and fresh completed protocols. All 186 dependenc
 modules used stored interfaces; the root remains on the shared final driver.
 No dependency fallback was observed. The 24 native comparison cases passed.
 
+These are the last qualified baseline results. The subsequent header-read
+repair and bounded background-write experiment are being qualified separately;
+their component proofs do not establish full self-host or performance results.
+
 This is a substantial memory reduction with a substantial runtime regression.
-Further implementation is paused for review of that tradeoff. Preserve both the
+The approved next work removes repeated interface lookup/read work before
+experimenting with bounded background object writes. Preserve both the
 prior disk-backed private compiler/image baseline and `--reference-modules`;
 they are distinct reference mechanisms. See
 [stored module interfaces](native-module-interfaces.md) and
@@ -101,9 +106,24 @@ The user supplied a successful uninstrumented disk-backed release self-build
 receipt: **945 s (15m 45s)**, explicit exit 0, completed fresh protocol, and an
 exact 816,564-byte Rust match. Its case SHA-256
 `fb9ddbce22b5b1a76be7f8e1f98cf687ca6d35cdd6019ac7581289652f43b4c7`
-matches the delivered 265-file bundle. Remote captures were not independently
-re-read by this agent. No matching hardware baseline or instrumented memory
-result is available, so this is not an A6000 speedup or memory-fit claim.
+matches the delivered 265-file bundle.
+
+The matching four-gate instrumented hardware run completed in **971 s
+(16m 11s)**, exit 0, with the same exact output. Its case SHA-256
+`af83221f7f5427b40a88d191501b3d3c9853da07f2ff4298424f216638a0379b`
+matches the delivered memory bundle. Peak tracked heap was **4,604,064 B**, with
+219,973,288 B allocated and freed and zero live bytes at cleanup; those totals
+match the FS-UAE result. Preparation took 929.6 s and assembly 40.72 s. Binding
+and raw-record processing accounted for 571.69 s, source I/O and other work
+308.64 s, discovery 16.94 s, expression preparation 15.15 s, tokenization
+11.71 s, and finalization 5.10 s. These clocks include interface reads inside
+their callers; they do not isolate object-write latency.
+
+The observed instrumentation difference is 26 s (2.8%) against the release run;
+one pair does not establish a stable overhead estimate. Remote captures were
+not independently re-read by this agent. Neither hardware run has a matching
+old-implementation baseline or constrained RAM, so neither establishes an
+A6000 speedup or an 8 MiB fit.
 
 ## Remaining boundaries
 

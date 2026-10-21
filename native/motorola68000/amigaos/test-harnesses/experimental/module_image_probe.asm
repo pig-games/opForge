@@ -159,6 +159,8 @@ done
 	.include "module_runtime_reloc_checks.i"
 ; The first requested block compiles and owns the image exactly once.
 cases	.block
+	bsr.w headerChecks
+	bne.w bad
 	bsr.w interfaceChecks
 	bne.w bad
 	bsr.w runtimeRelocationChecks
@@ -1071,5 +1073,6 @@ ReentrantCount	.res long, 1
 InnerStatus	.res long, 1
 	.endsection
 	.include "module_data_delta_checks.i"
+	.include "module_iface_header_checks.i"
 	.output "module-image-probe.hunk", format=hunk, sections=entry, code, data, bss
 	.endmodule

@@ -439,7 +439,8 @@ done
 
 ; A0=Registry,D1=module,D2=object offset,D3=positive bytes,A1=output.
 ; D0/CCR=status; others preserved. Copies bounded interface/header bytes without
-; acquiring the final-emission cache or changing payload-read counters.
+; acquiring the final-emission cache or changing payload-read counters. Stored
+; ranges inside retained validated metadata need no disk read.
 readRange	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
@@ -460,7 +461,7 @@ readRange	.block
 	cmp.l Module.ImageBytes(a4), d0
 	bhi.w bad
 	movea.l Module.Image+memory.Block.Pointer(a4), a2
-	move.l a2, d0
+	move.l a2, d7
 	beq.w disk
 	adda.l d5, a2
 copy
@@ -472,6 +473,15 @@ copy
 disk
 	tst.l Module.Stored(a4)
 	beq.w bad
+	; D0 retains the checked object-relative end of the requested range.
+	cmp.l Module.Metadata+memory.Block.Used(a4), d0
+	bhi.w readDisk
+	movea.l Module.Metadata+memory.Block.Pointer(a4), a2
+	move.l a2, d0
+	beq.w bad
+	adda.l d5, a2
+	bra.w copy
+readDisk
 	lea State.Io(a6), a0
 	movea.l a3, a1
 	lea Module.FileName(a4), a2

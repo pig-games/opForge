@@ -34,13 +34,14 @@ NOT_FOUND = 2
 	.section code, kind=code
 	.pub
 ; A0=zero/live State,A1=Registry,D1=module. D0/CCR=status; others preserved.
-; Reads checked directory headers only; keeps no object image or frontend owner.
+; Checks directory headers through a bounded window; keeps no object image or
+; frontend owner.
 ; A failed selection invalidates the prior selection and all outstanding leases.
 ; Re-selecting the same immutable registry object retains its cached page. The
 ; caller must release this reader before registry removal or object mutation.
 select	.block
 	movem.l d1-d7/a0-a6, -(sp)
-	lea -image.HEADER_BYTES-interface.HEADER_BYTES(sp), sp
+	lea -image.HEADER_BYTES(sp), sp
 	movea.l a0, a6
 	tst.l State.Bytes(a6)
 	beq.w selecting
@@ -80,12 +81,15 @@ selecting
 	bcs.w bad
 	cmp.l d7, d0
 	bne.w bad
-	movea.l State.Registry(a6), a0
-	lea image.HEADER_BYTES(sp), a1
+	; The checked OFMI extent permits a bounded fill before OFMA validation.
+	; Its lease also serves the later OFMS/OFTM headers on the same page.
+	move.l d6, State.Bytes(a6)
+	movea.l a6, a0
+	moveq #0, d2
 	moveq #interface.HEADER_BYTES, d3
-	jsr registry.readRange
+	bsr.w read
 	bne.w bad
-	lea image.HEADER_BYTES(sp), a5
+	movea.l a1, a5
 	cmpi.l #interface.MAGIC, interface.Header.Magic(a5)
 	bne.w bad
 	cmp.l interface.Header.Bytes(a5), d6
@@ -147,7 +151,6 @@ extent
 copyDirectory
 	move.l (a1)+, (a2)+
 	dbra d0, copyDirectory
-	move.l d6, State.Bytes(a6)
 	movea.l a6, a0
 	move.l State.ValueOffset(a6), d2
 	moveq #values.HEADER_BYTES, d3
@@ -244,7 +247,7 @@ bad
 	clr.l State.Window+memory.Block.Used(a6)
 	moveq #INVALID, d0
 done
-	lea image.HEADER_BYTES+interface.HEADER_BYTES(sp), sp
+	lea image.HEADER_BYTES(sp), sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts

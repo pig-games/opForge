@@ -30,7 +30,9 @@ The header reader now serves covered object-header ranges from retained link
 metadata and validates the assembly directory through its existing window.
 For interfaces that fit the window, a cold selection performs one disk range
 read rather than two small header reads followed by the window read. This adds
-no heap capacity; full-build qualification is in progress.
+no heap capacity. Fresh full-source qualification passed; the release pair saved
+8.1% with unchanged tracked heap. Measurements and their frozen input identities
+are in [runtime and memory status](native-performance-diagnosis.md).
 
 No persistent incremental-cache contract is established. Objects are
 current-build artifacts; source/configuration/package fingerprinting and
@@ -83,34 +85,24 @@ retirement rules are in
 full-source qualification and comparative measurements are in
 [native runtime and memory status](native-performance-diagnosis.md).
 
-## Bounded write experiment
+## Storage scheduling decision
 
-The experimental CLI can submit one payload write through an asynchronous
-AmigaDOS packet while compiling the next module. The filesystem handler already
-runs as a separate task; no extra worker process is created. Open, close and
-rename remain synchronous, so only payload transfer can overlap CPU work.
+The retained CLI writes and publishes each object synchronously. An experiment
+overlapped one payload write of at most 64 KiB with preparation of the next module,
+using an AmigaDOS packet and retaining the existing immutable image owner. A
+separate synchronous-payload control preserved that same image lifetime, so a
+cache effect could not be misreported as write overlap. Open, close and rename
+remained synchronous; no worker process was created.
 
-The registry remains the sole owner of the immutable image. Its complete
-allocation capacity must fit 64 KiB; larger images use the synchronous writer.
-There is no queue copy. A stable module ID identifies the pending owner when the
-registry table moves. Dependency reads can borrow that image while its write is
-outstanding. A separate writer context and private reply port isolate reads,
-paths and packet replies. The additional tracked allocation is a 34-byte port;
-the retained image can add at most 64 KiB of heap overlap. Writer state and code
-also increase linked reservations; measurements must include those costs.
+Native packet/real-DOS checks and the trial's full own-source self-host passed.
+On identical input, release times were 280.360 s synchronous and 279.953 s
+background: no demonstrated gain at the established noise level. The trial added
+34 B peak tracked heap and 3,040 B instrumented linked reservation, with cleanup
+to zero. All 186 serialized objects were byte-identical to the reference.
 
-Only an acknowledged complete write followed by close/rename publishes `.ofm`
-and releases its image. The next store, final emission, rollback and cleanup
-drain the write first. Preparation explicitly drains before reporting success,
-including an interface-only last module. Failures remain failures through
-cleanup. There is no unsafe cancellation or generic allocation-failure retry;
-this first experiment uses one fixed allowance rather than a global memory
-pressure scheduler. Serialized objects retain offsets and numeric identities.
-
-Native component checks cover short writes, errors, foreign messages, pending
-lease preservation, draining release and real DOS output. Full CLI qualification
-and runtime/peak-memory comparisons are pending. The synchronous checkpoint is
-preserved as the reference. A separate synchronous-payload control retains the
-same image lifetime and delayed publication, so measured gains cannot conflate
-write overlap with dependency reads served from that retained image. It is a
-frozen experimental source variant, not another maintained selection switch.
+The extra writer machinery and its tests are removed from the working tree.
+Checkpoint `bdc65e13` and the frozen A6000 trial preserve it for a hardware
+comparison; no extra maintained switch or worker implementation remains. Resume
+this direction only if the hardware result justifies its code and ownership
+complexity. Current object, consumer-window and serialization contracts above are
+unchanged.

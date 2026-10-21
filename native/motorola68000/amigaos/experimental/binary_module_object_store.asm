@@ -2,7 +2,6 @@
 ; @opforge-owner: experimental.amigaos.binary_module_object_store
 	.module experimental.amigaos.binary_module_object_store
 	.cpu 68020
-	.use experimental.amigaos.binary_module_async_write as asynchronous
 	.pub
 Context	.struct
 Dos	.long ?
@@ -14,14 +13,6 @@ Final	.res 512
 Temporary	.res 512
 	.endstruct
 CONTEXT_BYTES = Context.Temporary+512
-; Independent paths/handle keep reads from touching an outstanding write.
-Writer	.struct
-Io	.res CONTEXT_BYTES
-Transfer	.res asynchronous.STATE_BYTES
-Failure	.long ?
-	.endstruct
-WRITER_BYTES = Writer.Failure+4
-WRITE_LIMIT = asynchronous.LIMIT
 NAME_BYTES = 32
 FILE_NAME_LIMIT = 30
 PARENT_LIMIT = 467; leaves room for /objects-255/<30-byte filename> and NUL
@@ -242,13 +233,36 @@ store	.block
 	movea.l a0, a5
 	move.l a1, d4
 	move.l d2, d6
-	bsr.w openStore
+	bsr.w paths
 	bne.w bad
+	bsr.w bufferRange
+	bne.w bad
+	lea Context.Final(a5), a0
+	bsr.w absent
+	bne.w bad
+	lea Context.Temporary(a5), a0
+	bsr.w absent
+	bne.w bad
+	move.l a0, d1
+	move.l #MODE_NEWFILE, d2
+	jsr DOS_OPEN(a6)
+	move.l d0, Context.File(a5)
+	beq.w bad
+	move.l #1, Context.Unfinished(a5)
 	moveq #DOS_WRITE, d7
 	bsr.w transfer
 	bne.w failed
-	bsr.w publishStore
+	bsr.w closeFile
 	bne.w failed
+	lea Context.Temporary(a5), a0
+	move.l a0, d1
+	lea Context.Final(a5), a0
+	move.l a0, d2
+	jsr DOS_RENAME(a6)
+	tst.l d0
+	beq.w failed
+	clr.l Context.Unfinished(a5)
+	moveq #OK, d0
 	bra.w done
 failed
 	bsr.w discard
@@ -405,55 +419,7 @@ cleanup	.block
 	tst.l d0
 	rts
 	.bend  ; cleanup
-	.include "binary_module_object_async.i"
 	.priv
-; A5=Context,A2=filename,D4=buffer,D6=bytes. D0/CCR=status,A6=DOS.
-; Open one owned temporary only after range and collision checks. No fallible
-; operation follows ownership publication. Shared by synchronous/packet writes.
-openStore	.block
-	bsr.w paths
-	bne.w bad
-	bsr.w bufferRange
-	bne.w bad
-	lea Context.Final(a5), a0
-	bsr.w absent
-	bne.w bad
-	lea Context.Temporary(a5), a0
-	bsr.w absent
-	bne.w bad
-	move.l a0, d1
-	move.l #MODE_NEWFILE, d2
-	jsr DOS_OPEN(a6)
-	move.l d0, Context.File(a5)
-	beq.w bad
-	move.l #1, Context.Unfinished(a5)
-	moveq #OK, d0
-	rts
-bad
-	moveq #INVALID, d0
-	rts
-	.bend  ; openStore
-
-; A5=Context,A6=DOS. D0/CCR=status. Called only after the complete buffer
-; is acknowledged; .ofm publication is a close followed by atomic rename.
-publishStore	.block
-	bsr.w closeFile
-	bne.w bad
-	lea Context.Temporary(a5), a0
-	move.l a0, d1
-	lea Context.Final(a5), a0
-	move.l a0, d2
-	jsr DOS_RENAME(a6)
-	tst.l d0
-	beq.w bad
-	clr.l Context.Unfinished(a5)
-	moveq #OK, d0
-	rts
-bad
-	moveq #INVALID, d0
-	rts
-	.bend  ; publishStore
-
 ; A5=Context,A2=generated filename. D0=status,A6=DOS. Construct bounded paths.
 ; Validate the component length and safe alphabet before appending it.
 paths	.block

@@ -2,25 +2,86 @@
 
 ## Current result and decision
 
-Stored dependency interfaces work through the normal CLI. All three complete
-release self-builds reproduced the **816,564-byte Rust oracle and bootstrap
-exactly**, with explicit exit 0 and fresh completed protocols. All 186 dependency
-modules used stored interfaces; the root remains on the shared final driver.
-No dependency fallback was observed. The 24 native comparison cases passed.
+Stored dependency interfaces work through the normal CLI, with all 186 dependency
+modules stored and the root on the shared final driver. The retained header-read
+repair saves **8.1%** in the fresh identical-input release pair, without increasing
+tracked heap. Its complete own-source self-host took **283.966 s (4m 44s)** and
+reproduced the **816,576-byte Rust oracle and bootstrap exactly**, with explicit
+exit 0 and a fresh completed protocol.
 
-These are the last qualified baseline results. The subsequent header-read
-repair and bounded background-write experiment are being qualified separately;
-their component proofs do not establish full self-host or performance results.
+The bounded background-payload writer also passed its complete own-source check,
+but its isolated timing difference was only 0.15%, below useful evidence. Its code
+and tests are retired from the working tree; checkpoint `bdc65e13` and the delivered
+frozen A6000 trial preserve the experiment. Do not expand it into a worker process
+without a demonstrated hardware opportunity. Numeric entity/member binary search
+was also runtime-neutral and removed.
 
-This is a substantial memory reduction with a substantial runtime regression.
-The approved next work removes repeated interface lookup/read work before
-experimenting with bounded background object writes. Preserve both the
-prior disk-backed private compiler/image baseline and `--reference-modules`;
-they are distinct reference mechanisms. See
+Stored interfaces still trade runtime for a substantial memory reduction against
+the earlier private compiler/image implementation. Preserve that disk-backed
+reference and `--reference-modules`; they are distinct reference mechanisms. See
 [stored module interfaces](native-module-interfaces.md) and
 [`.ofm` numeric contracts](native-fragment-preparation.md).
 
-## Identical-input full-build comparison
+## Retained header-read repair
+
+The reader serves covered object-header ranges from retained link metadata and
+uses its existing window for the assembly directory. A cold interface selection
+that fits the window needs one disk range read instead of three. No additional
+heap capacity or resident semantic table was introduced.
+
+Both engines assembled the same 265 files / 3,354,956 bytes, source manifest
+`e245b6a27e560e09`, package `390f6f44df85279b`, and 816,564-byte Rust output.
+The direct release pair was **299.902 s reference versus 275.574 s repaired**:
+24.329 s saved, or 8.1%. The other repaired observation was 274.660 s.
+
+Separate four-gate MEMD runs both peaked at **4,604,064 B**, allocated and freed
+219,973,288 B, and ended with zero live ownership. Linked reservations increased
+by 16 B, from 870,312 to 870,328 B. Source reads, tokenization/binding calls,
+expression counts, and compiled-program bytes were identical. This is less
+interface-read work, not omitted assembly work.
+
+The own-source proof uses the repaired source manifest `13b909ce22ee5f6e`,
+265 files / 3,355,329 bytes, and output `0a3ca3d4877cedb5`. Its timing is separate
+from the fixed older-source comparison above.
+
+## Background-payload trial decision
+
+The trial queued at most one existing image allocation of at most 64 KiB. A private
+reply port handled asynchronous DOS payload packets; open, close and rename stayed
+synchronous. A separate synchronous-payload control retained the same image and
+delayed publication, isolating overlap from dependency reads served from that image.
+
+Both controls used the repaired frozen source manifest `13b909ce22ee5f6e`, the
+same package and command, and the same 816,576-byte Rust oracle. Release observations
+were **280.360 s synchronous versus 279.953 s background**: 0.407 s / 0.15%.
+One pair at this scale establishes no performance gain. The synchronous-retention
+control's difference from the 283.966 s immediate-release reference is also too
+small to establish a retention benefit.
+
+| Separate memory measurement | Header reference | Background trial |
+| --- | ---: | ---: |
+| Peak tracked heap | 4,604,064 B | 4,604,098 B |
+| Cumulative allocation and free | 220,058,968 B | 220,059,002 B |
+| Linked reservations, instrumented image | 870,328 B | 873,368 B |
+| Terminal owned bytes | 0 | 0 |
+
+The net accounted process increase was 3,074 B. Work counts matched, all 184 queued
+writes retired, and two oversized images used synchronous writes. All 186 `.ofm`
+files, totaling 1,647,692 B, were byte-identical to the reference; payload
+reads/writes/cache hits remained 178/186/1,665. No capture scratch files remained.
+
+The trial's separate complete own-source self-host took **281.456 s (4m 41s)**,
+reproducing its **817,780-byte Rust oracle and bootstrap exactly**. That source
+snapshot has 267 files / 3,372,126 bytes, manifest `23fbbb6943c87f25`; its time must
+not be compared as if it were the reference's unchanged-input build.
+
+The A6000 write-overlap bundle uses identical **S-control** input for its paired
+engines because the maintained hardware runner takes the baseline bundle's own
+source as its workload. Its source manifest is `82f136413f41ee5c`, different from
+the FS-UAE pair. Hardware results for this trial remain pending; do not compare
+absolute times across these different inputs or machines.
+
+## Earlier structural comparison
 
 Both implementations assembled the same frozen 265 files / 3,354,956 bytes,
 source manifest `e245b6a27e560e09`, with package `390f6f44df85279b` and output
@@ -71,10 +132,9 @@ not come from omitting source work. Existing instrumented stage clocks show:
 Stage clocks localize the regression to binding; they do not attribute individual
 lookup costs. Code review found repeated linear public-name/template scans and
 entity/member row searches, plus reader invalidation when providers change.
-Bounded identity/row-offset indexing or lookup reuse is the next concrete
-candidate to review. It must avoid recreating complete resident semantic tables;
-no numerical runtime recovery is established yet. No new observer framework was
-added.
+Header reuse now recovers part of that cost. Numeric row search did not produce a
+measurable gain and is not retained. Further lookup changes must avoid recreating
+complete resident semantic tables. No new observer framework was added.
 
 The candidate wrote 186 `.ofm` objects, totaling 1,647,580 B. Their `OFMA`
 interfaces total 1,019,012 B; the largest is 45,964 B. They contain 10,517 value
@@ -86,9 +146,9 @@ was 303.609 s; it is not a release timing or fixed-point self-host claim.
 
 ## Smaller controls
 
-Both versions matched the live Rust oracle in the small multi-module project
-and the macro-heavy project, including all release and MEMD cases. Cleanup was
-zero in both implementations.
+In the structural comparison, both versions matched the live Rust oracle in the
+small multi-module project and the macro-heavy project, including all release
+and MEMD cases. Cleanup was zero in both implementations.
 
 | Control peak tracked heap | Prior implementation | Stored interfaces |
 | --- | ---: | ---: |
@@ -126,6 +186,22 @@ old-implementation baseline or constrained RAM, so neither establishes an
 A6000 speedup or an 8 MiB fit.
 
 ## Remaining boundaries
+
+The new comparisons used the same unrestricted FS-UAE A4000/68040 configuration
+and 65,536-byte stack. Release time is fresh guest START/DONE elapsed time,
+excluding emulator startup. Both sides of each new pair used the same explicit
+CLI Hunk output in addition to source-defined output; the earlier structural
+comparison used source-defined output only. Do not mix these timings as one series.
+Memory used separate four-gate instrumented runs. The retained path's accounted
+process floor is **5,539,928 B (5.28 MiB)**, leaving about 1.22 MiB below the 6.5 MiB
+process budget before untracked/loader costs. An 8 MiB full-build fit remains
+unqualified.
+
+The stored-interface baseline passed 24 native comparison cases; this change adds
+focused header/lease checks and fresh full-source proofs. Aborted attempts without
+DONE/exit/output remain failed diagnostic receipts, not timing samples. Their
+noncompletion was not explained or claimed fixed; subsequent fresh qualification
+runs completed. No full workspace test-suite claim is made.
 
 The root still owns the final carrier stream. Producer serialization still
 overlaps complete interface buffers; consumer windows do not bound that writer.

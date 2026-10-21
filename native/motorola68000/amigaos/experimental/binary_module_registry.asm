@@ -17,10 +17,8 @@ Configured	.long ?
 Cached	.long ?  ; module ID plus one, zero means no valid image
 Cache	.res memory.Block.Used+4
 Io	.res io.CONTEXT_BYTES
-Writer	.res io.WRITER_BYTES
-PendingModule	.long ?  ; stable module ID plus one; never a movable row pointer
 	.endstruct
-STATE_BYTES = State.PendingModule+4
+STATE_BYTES = State.Io+io.CONTEXT_BYTES
 Module	.struct
 Image	.res memory.Block.Used+4  ; resident or not-yet-stored full image owner
 Metadata	.res memory.Block.Used+4  ; disk: validated [0,Header.Payload) copy
@@ -57,14 +55,13 @@ UNMAPPED = $ffffffff
 ; Existing progress schema: reads/writes/cache hits, then byte counts.
 PROGRESS_STORE_IO = 451
 PROGRESS_STORE_BYTES = 452
-PROGRESS_STORE_ASYNC = 453; queued objects, retired objects, synchronous objects
 	.section code, kind=code
 ; A0=zero Registry,A1=DOS base,A2=existing temporary directory.
 ; D0/CCR=status; all other registers preserved. Configure before any add.
 ; Owns an object output directory; completed .ofm files survive release.
 ; Unconfigured registries retain resident image ownership.
 configure	.block
-	movem.l a0-a1/a3, -(sp)
+	movem.l a0/a3, -(sp)
 	movea.l a0, a3
 	tst.l State.Modules+memory.Block.Used(a3)
 	bne.w bad
@@ -73,24 +70,17 @@ configure	.block
 	lea State.Io(a3), a0
 	jsr io.configure
 	bne.w done
-	lea State.Io(a3), a1
-	lea State.Writer(a3), a0
-	jsr io.initWriter
-	bne.w done
 	move.l #1, State.Configured(a3)
 	.MEMORY_COUNTER_CLEAR DiskReads
 	.MEMORY_COUNTER_CLEAR DiskReadBytes
 	.MEMORY_COUNTER_CLEAR DiskWrites
 	.MEMORY_COUNTER_CLEAR DiskWriteBytes
 	.MEMORY_COUNTER_CLEAR CacheHits
-	.MEMORY_COUNTER_CLEAR AsyncQueued
-	.MEMORY_COUNTER_CLEAR AsyncRetired
-	.MEMORY_COUNTER_CLEAR SyncWrites
 	bra.w done
 bad
 	moveq #INVALID, d0
 done
-	movem.l (sp)+, a0-a1/a3
+	movem.l (sp)+, a0/a3
 	tst.l d0
 	rts
 	.bend  ; configure
@@ -380,10 +370,8 @@ done
 	.bend  ; owner
 
 ; A0=Registry,D1=module ID. D0/CCR=status,A1=borrowed full image.
-; Other registers preserved. No IO; disk borrow expires when a later registry
-; operation retires the write, removes the row or releases ownership. Do not
-; retain it across store/drain/acquireEmit. Resident borrow survives store.
-; Failure A1 unspecified.
+; Other registers preserved. No IO; disk borrow expires on successful store,
+; removal or release. Resident borrow survives store. Failure A1 unspecified.
 pending	.block
 	movem.l a4/a6, -(sp)
 	movea.l a0, a6
@@ -511,16 +499,11 @@ done
 	.bend  ; readRange
 
 ; A0=Registry,D1=module ID. D0/CCR=status; other registers preserved.
-; Disk mode submits one immutable object. At most WRITE_LIMIT bytes of retained
-; image CAPACITY may overlap the next module; larger owners write synchronously.
-; A later store, final emission, rollback or release drains the prior write.
-; Only an acknowledged close/rename retires ownership and publishes Stored.
-; Failure retains the pending owner. Resident stores remain no-ops.
+; Disk mode publishes one exact immutable object then frees the pending image.
+; Failure retains the pending owner. Repeated store and resident store are no-ops.
 store	.block
 	movem.l d1-d2/a0-a2/a4/a6, -(sp)
 	movea.l a0, a6
-	bsr.w drain
-	bne.w done
 	bsr.w moduleRow
 	bne.w done
 	tst.l State.Configured(a6)
@@ -531,24 +514,16 @@ store	.block
 	move.l a1, d0
 	beq.w bad
 	move.l Module.ImageBytes(a4), d2
-	cmpi.l #io.WRITE_LIMIT, Module.Image+memory.Block.Capacity(a4)
-	bhi.w synchronous
-	lea State.Writer(a6), a0
-	lea Module.FileName(a4), a2
-	jsr io.beginWrite
-	bne.w done
-	.MEMORY_COUNTER_INC AsyncQueued
-	move.l d1, State.PendingModule(a6)
-	addq.l #1, State.PendingModule(a6)
-	bra.w good
-synchronous
 	lea State.Io(a6), a0
 	lea Module.FileName(a4), a2
 	jsr io.store
 	bne.w done
-	.MEMORY_COUNTER_INC SyncWrites
-	bsr.w retireStored
-	bra.w good
+	.MEMORY_COUNTER_INC DiskWrites
+	.MEMORY_COUNTER_ADD DiskWriteBytes, d2
+	move.l #1, Module.Stored(a4)
+	lea Module.Image(a4), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
 good
 	moveq #OK, d0
 	bra.w done
@@ -560,45 +535,6 @@ done
 	rts
 	.bend  ; store
 
-; A0=Registry. D0/CCR=status; others preserved. Wait for the sole outstanding
-; object before retiring its exact owner. Failure is sticky in Writer; rows
-; and images remain owned until release. Call before reporting final success.
-drain	.block
-	movem.l d1-d2/a0-a2/a4/a6, -(sp)
-	movea.l a0, a6
-	move.l State.PendingModule(a6), d1
-	beq.w good
-	lea State.Writer(a6), a0
-	jsr io.waitWrite
-	bne.w done
-	subq.l #1, d1
-	bsr.w moduleRow
-	bne.w done
-	move.l Module.ImageBytes(a4), d2
-	bsr.w retireStored
-	clr.l State.PendingModule(a6)
-	.MEMORY_COUNTER_INC AsyncRetired
-good
-	moveq #OK, d0
-done
-	movem.l (sp)+, d1-d2/a0-a2/a4/a6
-	tst.l d0
-	rts
-	.bend  ; drain
-	.priv
-; A4=acknowledged module row,D2=serialized bytes. The registry remains the
-; sole image owner through the packet's lifetime; no queue copy is allocated.
-retireStored	.block
-	.MEMORY_COUNTER_INC DiskWrites
-	.MEMORY_COUNTER_ADD DiskWriteBytes, d2
-	move.l #1, Module.Stored(a4)
-	lea Module.Image(a4), a0
-	jsr memory.release
-	clr.l memory.Block.Used(a0)
-	rts
-	.bend  ; retireStored
-	.pub
-
 ; A0=Registry,D1=module ID. D0/CCR=status,A1=full validated image.
 ; Other registers preserved. Disk requires a stored object. Only this routine
 ; reads payload. Same-module acquisition preserves the borrow; switching modules
@@ -607,8 +543,6 @@ retireStored	.block
 acquireEmit	.block
 	movem.l d1-d4/a0/a2/a4/a6, -(sp)
 	movea.l a0, a6
-	bsr.w drain
-	bne.w done
 	bsr.w moduleRow
 	bne.w bad
 	tst.l State.Configured(a6)
@@ -751,8 +685,6 @@ rollback	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a6
 	movea.l a1, a5
-	bsr.w drain
-	bne.w bad
 	move.l Snapshot.Modules(a5), d7
 	cmp.l State.Modules+memory.Block.Used(a6), d7
 	bhi.w bad
@@ -843,15 +775,8 @@ done
 ; Reports object-store unfinished-file cleanup failures after freeing memory.
 ; Completed object files and their inspectable directory remain on disk.
 release	.block
-	movem.l d1-d3/a0-a2, -(sp)
+	movem.l d1-d2/a0-a2, -(sp)
 	movea.l a0, a2
-	; A packet may still reference a Module.Image. Always drain BEFORE freeing
-	; any row, even after assembly has already failed. Preserve cleanup errors.
-	bsr.w drain
-	move.l d0, d3
-	lea State.Writer(a2), a0
-	jsr io.cleanupWriter
-	or.l d0, d3
 	moveq #0, d2
 next
 	cmp.l State.Modules+memory.Block.Used(a2), d2
@@ -870,7 +795,6 @@ tables
 	jsr memory.release
 	lea State.Io(a2), a0
 	jsr io.cleanup
-	or.l d0, d3
 	lea State.Modules(a2), a0
 	jsr memory.release
 	lea State.Placements(a2), a0
@@ -882,8 +806,7 @@ tables
 clear
 	clr.l (a0)+
 	dbra d1, clear
-	move.l d3, d0
-	movem.l (sp)+, d1-d3/a0-a2
+	movem.l (sp)+, d1-d2/a0-a2
 	tst.l d0
 	rts
 	.bend  ; release
@@ -920,9 +843,6 @@ DiskReadBytes	.res byte, 4
 DiskWrites	.res byte, 4
 DiskWriteBytes	.res byte, 4
 CacheHits	.res byte, 4
-AsyncQueued	.res long, 1
-AsyncRetired	.res long, 1
-SyncWrites	.res long, 1
 	.endsection
 .endif
 .endif

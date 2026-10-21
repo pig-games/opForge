@@ -299,7 +299,7 @@ store
 	move.l PrivateModuleID, d1
 	jsr moduleRegistry.store
 	bne.w bad
-	clr.l PrivateCarrier+moduleCarrier.Frame.Image  ; discard our borrow; registry may still own a write lease
+	clr.l PrivateCarrier+moduleCarrier.Frame.Image  ; pending borrow has retired
 	clr.l PrivateCarrier+moduleCarrier.Frame.Bytes
 append
 	move.l Records+memory.Block.Used, PrivateRecordStart

@@ -8111,9 +8111,6 @@ mod native_lazy_audit_probe;
 mod native_lazy_audit_report;
 
 #[cfg(test)]
-#[path = "tests/native_async_write.rs"]
-mod native_async_write;
-#[cfg(test)]
 #[path = "tests/native_module_compile.rs"]
 mod native_module_compile;
 #[cfg(test)]

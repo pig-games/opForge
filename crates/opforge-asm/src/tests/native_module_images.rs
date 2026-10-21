@@ -136,11 +136,14 @@ fn native_module_images_fs_uae() {
                 .iter()
                 .map(|(path, _)| path.file_name().unwrap().to_string_lossy().into_owned())
                 .collect::<std::collections::BTreeSet<_>>();
-            assert_eq!(names, std::collections::BTreeSet::from([
-                "binary_frontend.exper-0000.ofm".to_owned(),
-                "consumer-0001.ofm".to_owned(),
-                "provider-0000.ofm".to_owned(),
-            ]));
+            assert_eq!(
+                names,
+                std::collections::BTreeSet::from([
+                    "binary_frontend.exper-0000.ofm".to_owned(),
+                    "consumer-0001.ofm".to_owned(),
+                    "provider-0000.ofm".to_owned(),
+                ])
+            );
             for (path, bytes) in &objects {
                 assert_eq!(&bytes[..4], b"OFMI");
                 let declared_bytes = u32::from_be_bytes(bytes[4..8].try_into().unwrap());

@@ -246,6 +246,112 @@ frontendDone
         )
 }
 
+// Exercise the optional template probe on a shared builtin directive. An absent
+// template may fall back to .byte, but a stored-provider failure must remain fatal.
+fn dependency_failure_source(package: &[u8]) -> String {
+    frontend_source(package, 16)
+        .replace(
+            ".use experimental.amigaos.binary_frontend as frontend",
+            ".use experimental.amigaos.binary_frontend as frontend\n.use experimental.amigaos.binary_scope_layout as scope",
+        )
+        .replace(
+            " move.l #CallLine,frontend.Frame.Source(a0)",
+            r#" move.l #UseLine,frontend.Frame.Source(a0)
+ move.l #UseLineEnd-UseLine,frontend.Frame.SourceBytes(a0)
+ jsr frontend.line
+ tst.l d0
+ bne.w frontendDone
+ movea.l frontend.Frame.Scratch(a0),a1
+ lea frontend.SCOPE_STATE(a1),a1
+ move.l #dependencyFailure,scope.State.DependencyResolve(a1)
+ clr.l CallbackCount
+ move.l #CallLine,frontend.Frame.Source(a0)"#,
+        )
+        .replace(
+            "frontendDone\n move.l d0,Output\n jsr frontend.finish",
+            r#"frontendDone
+ move.l d0,Output
+ move.l frontend.Frame.Used(a0),Output+4
+ move.l CallbackCount,d1
+ beq.w callbackRecorded
+ moveq #1,d1
+callbackRecorded
+ move.l d1,Output+8
+ movea.l frontend.Frame.Scratch(a0),a1
+ moveq #0,d1
+ move.w frontend.SCOPE_STATE+scope.State.DependencyFailed(a1),d1
+ move.l d1,Output+12
+ jsr frontend.finish"#,
+        )
+        .replace(
+            ".bend ; start",
+            r#".bend ; start
+; Match the resolver's absent result while recording a sticky I/O/integrity
+; failure, as real stored-interface providers do. Preserve the resolver ABI.
+dependencyFailure .block
+ addq.l #1,CallbackCount
+ move.w #1,scope.State.DependencyFailed(a1)
+ moveq #2,d0
+ tst.l d0
+ rts
+.bend ; dependencyFailure"#,
+        )
+        .replace(
+            "CallLine .byte \" cas2.w .pair(d0,d1),.pair(d2,d3),.pair((a0),(a1))\"",
+            "UseLine .byte \".use dep (*)\"\nUseLineEnd\nCallLine .byte \" .byte 7\"",
+        )
+        .replace("Output .res byte,260", "CallbackCount .res long,1\nOutput .res byte,260")
+}
+
+#[test]
+fn compact_frontend_dependency_failure_host_assembly() {
+    let (package, record) = fixture();
+    let scratch = scratch();
+    let source = dependency_failure_source(&package);
+    assert!(!assemble_source(&workspace_root(), &scratch.0, &package, &record, &source).is_empty());
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; sticky provider failure rejects builtin fallback without publication"]
+fn compact_frontend_dependency_failure_fs_uae() {
+    use crate::fs_uae_smoke::{
+        run_prebuilt_compact_cli_case_from_env, OpforgeNativeCliPackageMode,
+        OpforgeNativeCliParityCase, OpforgeNativeCliProof,
+    };
+    let root = workspace_root();
+    let scratch = scratch();
+    let (package, record) = fixture();
+    let source = dependency_failure_source(&package);
+    let image = assemble_source(&root, &scratch.0, &package, &record, &source);
+    // Rejected, no published record, callback reached, sticky failure retained.
+    let expected: Vec<u8> = [1u32, 0, 1, 1]
+        .into_iter()
+        .flat_map(u32::to_be_bytes)
+        .collect();
+    let case = OpforgeNativeCliParityCase {
+        name: "actual-frontend-dependency-failure",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some(""),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/frontend-status.bin",
+            rust_oracle: &expected,
+        },
+    };
+    let result = run_prebuilt_compact_cli_case_from_env(&root, &case, &image)
+        .expect("fresh actual native frontend dependency failure completion");
+    let FsUaeSmokeOutcome::Completed { runs } = result else {
+        panic!("native execution required")
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+    assert!(runs[0].success);
+}
+
 #[test]
 fn compact_call_frontend_component_host_assembly() {
     let (package, record) = fixture();

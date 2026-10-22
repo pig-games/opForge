@@ -101,6 +101,22 @@ headerChecks	.block
 	bne.w bad
 	bsr.w headerReaderInvalid
 	bne.w bad
+	; Invalid index extents must invalidate the previous readable lease.
+	jsr storedInterface.select
+	bne.w bad
+	; A distinct registry selection must recheck headers rather than reuse
+	; the immutable same-object cache fast path.
+	lea HeaderOtherRegistry, a1
+	move.l #HeaderModule, registry.State.Modules+memory.Block.Pointer(a1)
+	move.l #registry.MODULE_BYTES, registry.State.Modules+memory.Block.Capacity(a1)
+	move.l #registry.MODULE_BYTES, registry.State.Modules+memory.Block.Used(a1)
+	move.l #semantics.HEADER_BYTES+4, HeaderValues+semantics.Header.Index
+	jsr storedInterface.select
+	move.l #semantics.HEADER_BYTES, HeaderValues+semantics.Header.Index
+	cmpi.l #storedInterface.INVALID, d0
+	bne.w bad
+	bsr.w headerReaderInvalid
+	bne.w bad
 	moveq #0, d0
 	bra.w done
 bad
@@ -181,6 +197,7 @@ HeaderInterface
 HeaderValues
 	.long semantics.MAGIC, semantics.HEADER_BYTES, 0, semantics.HEADER_BYTES
 	.long 0, semantics.HEADER_BYTES, semantics.HEADER_BYTES, 0, semantics.HEADER_BYTES, 0
+	.long 0, semantics.HEADER_BYTES
 HeaderImageEnd
 HeaderBefore	.long GUARD_VALUE
 HeaderOutput	.fill byte, image.HEADER_BYTES, 0
@@ -189,6 +206,7 @@ HeaderAfter	.long GUARD_VALUE
 	.section bss, kind=bss
 	.align 4
 HeaderRegistry	.res byte, registry.STATE_BYTES
+HeaderOtherRegistry	.res byte, registry.STATE_BYTES
 HeaderModule	.res byte, registry.MODULE_BYTES
 HeaderReader	.res byte, storedInterface.STATE_BYTES
 	.endsection

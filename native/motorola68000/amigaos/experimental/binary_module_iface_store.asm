@@ -177,6 +177,14 @@ copyDirectory
 	mulu.l #values.MEMBER_BYTES, d1
 	add.l d1, d0
 	bcs.w bad
+	cmp.l values.Header.Index(a1), d0
+	bne.w bad
+	move.l values.Header.IndexCount(a1), d1
+	cmp.l values.Header.ExportCount(a1), d1
+	bhi.w bad
+	lsl.l #3, d1
+	add.l d1, d0
+	bcs.w bad
 	cmp.l values.Header.Names(a1), d0
 	bne.w bad
 	add.l values.Header.NameBytes(a1), d0
@@ -455,134 +463,7 @@ done
 	rts
 	.bend  ; memberRow
 
-; A0=State,A1=spelling,D1=positive bytes<=255. D0/CCR=status;
-; D1=entity ID on success, other registers preserved. ASCII folded exact public
-; spelling comparison. A bare spelling also matches a qualified row's leaf;
-; multiple matching entities reject as ambiguous. Nameless closure rows stay private.
-lookupName	.block
-	movem.l d2-d7/a0-a6, -(sp)
-	subq.l #8, sp
-	movea.l a0, a6
-	movea.l a1, a5
-	move.l d1, d6
-	beq.w bad
-	cmpi.l #255, d6
-	bhi.w bad
-	move.l a1, d0
-	beq.w bad
-	add.l d6, d0
-	bcs.w bad
-	clr.l (sp)
-	clr.l 4(sp)
-	moveq #0, d5
-	movea.l a5, a2
-	move.l d6, d0
-input
-	cmpi.b #'.', (a2)+
-	bne.w inputNext
-	moveq #1, d5
-inputNext
-	subq.l #1, d0
-	bne.w input
-	move.l State.Values+values.Header.ExportCount(a6), d7
-	move.l State.Values+values.Header.Exports(a6), d4
-row
-	tst.l d7
-	beq.w finished
-	move.l d4, d2
-	add.l State.ValueOffset(a6), d2
-	moveq #values.EXPORT_BYTES, d3
-	bsr.w read
-	bne.w bad
-	move.l values.Export.NameBytes(a1), d3
-	beq.w next
-	cmpi.l #255, d3
-	bhi.w bad
-	move.l values.Export.Id(a1), d1
-	move.l values.Export.Name(a1), d2
-	cmp.l State.Values+values.Header.Names(a6), d2
-	blo.w bad
-	move.l d2, d0
-	add.l d3, d0
-	bcs.w bad
-	move.l State.Values+values.Header.Names(a6), d2
-	add.l State.Values+values.Header.NameBytes(a6), d2
-	bcs.w bad
-	cmp.l d2, d0
-	bhi.w bad
-	move.l values.Export.Name(a1), d2
-	add.l State.ValueOffset(a6), d2
-	bsr.w read
-	bne.w bad
-	movea.l a1, a2
-	tst.l d5
-	bne.w compare
-	; Select the final dot-delimited component for a bare query.
-	move.l d3, d0
-	movea.l a1, a3
-leaf
-	cmpi.b #'.', (a3)+
-	bne.w leafNext
-	movea.l a3, a2
-	move.l d0, d3
-	subq.l #1, d3
-leafNext
-	subq.l #1, d0
-	bne.w leaf
-compare
-	cmp.l d6, d3
-	bne.w next
-	movea.l a5, a3
-	move.l d6, d3
-character
-	moveq #0, d0
-	move.b (a2)+, d0
-	bsr.w folded
-	move.l d0, d2
-	moveq #0, d0
-	move.b (a3)+, d0
-	bsr.w folded
-	cmp.b d2, d0
-	bne.w next
-	subq.l #1, d3
-	bne.w character
-	tst.l (sp)
-	beq.w found
-	cmp.l 4(sp), d1
-	bne.w bad
-	bra.w next
-found
-	move.l #1, (sp)
-	move.l d1, 4(sp)
-next
-	addi.l #values.EXPORT_BYTES, d4
-	subq.l #1, d7
-	bra.w row
-finished
-	tst.l (sp)
-	beq.w missing
-	move.l 4(sp), d1
-	moveq #OK, d0
-	bra.w done
-missing
-	moveq #NOT_FOUND, d0
-	bra.w done
-bad
-	moveq #INVALID, d0
-done
-	addq.l #8, sp
-	movem.l (sp)+, d2-d7/a0-a6
-	tst.l d0
-	rts
-folded
-	cmpi.b #'A', d0
-	blo.w unchanged
-	cmpi.b #'Z', d0
-	bhi.w unchanged
-	addi.b #'a'-'A', d0
-unchanged
-	rts
-	.bend  ; lookupName
+	.include "binary_module_iface_lookup.i"
 
 ; A0=State,D2=OFMS-relative offset,D3=bytes. Same lease/status as read.
 valueRead	.block

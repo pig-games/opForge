@@ -148,6 +148,43 @@ Its remote directory is `Development:opforge-0d62e0387ef9`. The result's
 `bundle_prior_native_validation` describes the pre-run state, not the completed
 hardware qualification reported here.
 
+### 8 MiB Workbench qualification
+
+The current release does **not yet pass** the full self-build on the constrained
+68020 profile: 2 MiB chip plus 6 MiB fast RAM, with no RTG or other memory. The
+2026-10-22 test retains the installed Workbench 47.2 startup and all its utilities,
+using a plain background. Before assembler launch, with a 64 KiB shell stack,
+`Avail` reports 6,716,384 bytes free (6.41 MiB): 2,017,352 chip and 4,699,032 fast.
+The largest fast block is 4,614,672 bytes.
+
+Cold compilation rebuilds all 187 modules, then exits 20 with the last source
+location at the root `.endmodule`. The unchanged incremental attempt reuses all
+187 modules but also exits 20 there. Neither produces the required executable;
+these are failures, not self-host timings or output-equivalence evidence. The
+location alone does not identify the failing operation.
+
+The separate accounting cold run identifies assembly failure stage 18, the
+sized-output allocation callback. Exec rejects one 1,048,576-byte request for a
+previously empty output block. Peak tracked heap before failure is 4,145,888
+bytes; all tracked ownership returns to zero. This establishes an allocation
+failure, rather than a bounded-block or language rejection. It does not measure
+total free bytes or the largest block at the failure instant, so cannot separate
+aggregate exhaustion from fragmentation. The accounting warm attempt reaches
+the end of emission, then reports `compact CLI: output failed`; it also does not
+produce the required Hunk executable.
+
+Both the sizing callback and Hunk serializer currently round known output sizes
+up through the growable block allocator. The first repair candidate is exact
+reservation at these two completed sizing boundaries, reducing oversized live
+buffers and their contiguous-allocation demands. Keep the unchanged path for
+comparison; a successful constrained full cold/warm build is still required.
+
+The plain background is the ordinary low-memory baseline. The installed custom
+1280-by-800 backdrop consumes about 3.37 MiB more than a plain background in the
+same normal OS startup; its fit failure is not the representative product test.
+The original system drive is unchanged. The maintained disposable-boot helper
+records desktop choices; see [FS-UAE memory qualification](../../agents/rules/fs-uae.md#native-memory-qualification).
+
 Public-name lookup retains the 40-byte OFMS header and linear export scan. A
 two-array full/leaf name-index trial passed native and full self-host checks but
 showed no full-build saving, so its format, implementation and tests are retired.

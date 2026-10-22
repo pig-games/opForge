@@ -24,7 +24,14 @@ Separate accounting runs both peak at **4,814,136 B (4.59 MiB)** tracked heap an
 clean up to zero. Incremental reuse halves cumulative allocation traffic but does
 not reduce the earlier acquisition peak. The instrumented image plus tracked
 heap and 64 KiB stack gives a **5.49 MiB process floor**, excluding loader and
-untracked costs; no 8 MiB fit is established. Input identities, cache disk size,
+untracked costs. The constrained 8 MiB Workbench release check fails even with a
+plain background and 6.41 MiB free before launch: all 187 modules compile or reuse,
+but the root reports failure and no executable is produced. Separate accounting
+localizes the cold failure to a rejected 1 MiB sized-output allocation, with
+4,145,888 bytes peak tracked heap and zero terminal ownership. An 8 MiB fit is not
+established. Exact output reservations are the next repair candidate; this check
+does not establish whether aggregate exhaustion or fragmentation caused rejection.
+Input identities, cache disk size,
 limits and qualification details are in
 [stored module interfaces](native-module-interfaces.md#incremental-qualification).
 These measurements use disk-backed capture, not the default resident-capture path.

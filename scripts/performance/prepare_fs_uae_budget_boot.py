@@ -67,7 +67,9 @@ def startup_sequence(original, mode):
     return b"".join(lines)
 
 
-def prepare(template, output, mode):
+def prepare(template, output, mode, plain_background=False):
+    if plain_background and mode == "shell":
+        raise ValueError("plain background requires a Workbench qualification mode")
     template = template.resolve(strict=True)
     settings = {}
     for line in template.read_text().splitlines():
@@ -89,23 +91,37 @@ def prepare(template, output, mode):
     output.mkdir(parents=True, exist_ok=False)
     system = output / "system"
     shutil.copytree(source, system)
+    if plain_background:
+        # AmigaOS paths are case-insensitive, unlike some host filesystems.
+        for path in system.rglob("*"):
+            relative = path.relative_to(system).as_posix().lower()
+            if relative in ("prefs/env-archive/sys/wbpattern.prefs",
+                            "prefs/env-archive/sys/wbpattern.prefs.uaem") and path.is_file():
+                path.unlink()
     # Optional desktop utilities are outside the OS baseline. Keep the installed
     # configuration available as an explicit comparison, never edit the original.
-    if mode == "workbench":
+    if mode in ("workbench", "standard-workbench"):
         startup_dir = system / "WBStartup"
         if startup_dir.exists():
             shutil.rmtree(startup_dir)
         startup_dir.mkdir()
     (system / "S/Startup-Sequence").write_bytes(startup)
     if user_data is not None:
-        (system / user.relative_to(source)).write_bytes(user_data)
+        (system / user.relative_to(source)).write_bytes(
+            b"; Custom User-Startup disabled for standard Workbench qualification.\n"
+            if mode == "standard-workbench" else user_data)
     lines = []
     for line in template.read_text().splitlines():
         key, separator, _ = line.partition("=")
         lines.append(f"hard_drive_0 = {system}" if separator and key.strip() == "hard_drive_0" else line)
     (output / "template.fs-uae").write_text("\n".join(lines) + "\n")
     metadata = {"boot_mode": mode, "system_source": str(source),
+                "desktop_background": "plain" if plain_background else "installed",
                 "wbstartup_programs": "installed" if mode == "installed-workbench" else "not run",
+                "user_startup": ("absent" if user_data is None else
+                                 "disabled" if mode == "standard-workbench" else
+                                 "installed without smoke hook" if mode == "installed-workbench" else
+                                 "not run"),
                 "source_startup_sha256": hashlib.sha256(original).hexdigest(),
                 "generated_startup_sha256": hashlib.sha256(startup).hexdigest(),
                 "memory_profile": "68020-8m",
@@ -118,10 +134,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--template", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--mode", choices=("shell", "workbench", "installed-workbench"), required=True,
-                        help="minimal Shell, minimal Workbench, or the complete installed desktop")
+    parser.add_argument("--mode", choices=("shell", "workbench", "standard-workbench", "installed-workbench"), required=True,
+                        help="shell: minimal Shell; workbench: minimal Workbench; "
+                             "standard-workbench: installed OS startup and desktop preferences "
+                             "with optional WBStartup and custom User-Startup disabled; "
+                             "installed-workbench: complete installed desktop")
+    parser.add_argument("--plain-background", action="store_true",
+                        help="remove only the copied Workbench WBPattern preference and its "
+                             "host metadata; retain all other installed preferences")
     args = parser.parse_args()
-    print(prepare(args.template, args.output, args.mode))
+    print(prepare(args.template, args.output, args.mode, plain_background=args.plain_background))
 
 
 if __name__ == "__main__":

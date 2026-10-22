@@ -76,9 +76,19 @@ Create disposable system-drive copies with
 generated `template.fs-uae` through `OPFORGE_FS_UAE_CONFIG_TEMPLATE`. The latter
 loads Workbench before invoking the existing runner shim, without desktop
 preferences or WBStartup utilities. `--mode installed-workbench` preserves the
-installed startup and utilities for a separate desktop-cost comparison. The
-saved system drive and template remain unchanged. Copies and receipts belong
-outside `target`; remove them when no longer needed.
+installed startup and utilities. Add `--plain-background` to remove only the
+copied Workbench backdrop preference, retaining other preferences and startup
+utilities. Use that combination for the ordinary 8 MiB desktop baseline; a
+large decoded backdrop can consume several MiB independently of the assembler.
+Report the desktop configuration with each fit result. JPEG file size alone
+does not describe decoded display memory.
+
+`--mode standard-workbench` retains the installed OS startup, drivers and
+preferences but disables optional WBStartup programs and custom User-Startup.
+It is a separate diagnostic configuration, not equivalent to the complete
+installed desktop. The `boot.json` receipt records startup and backdrop choices.
+The saved system drive and template remain unchanged. Copies and receipts
+belong outside `target`; remove them when no longer needed.
 
 The normal native runner retains `guest-memory.txt` before assembler launch
 under this profile, including release runs. Disposable boots also capture

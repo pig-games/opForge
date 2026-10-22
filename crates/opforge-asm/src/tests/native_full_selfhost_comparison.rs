@@ -382,9 +382,12 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     let cache_counts = incremental.then(|| {
         let cold = super::native_incremental::counters(std::str::from_utf8(phase_artifact("cold.stdout")).unwrap());
         let warm = super::native_incremental::counters(std::str::from_utf8(phase_artifact("warm.stdout")).unwrap());
-        assert_eq!(cold.0, 0, "forced cold full build must not reuse modules");
-        assert!(cold.1 > 0 && warm.0 > 0, "full warm build must prove real module reuse");
         json!({"cold_reused": cold.0, "cold_rebuilt": cold.1, "warm_reused": warm.0, "warm_rebuilt": warm.1})
+    });
+    let cache_reuse_verified = cache_counts.as_ref().is_none_or(|counts| {
+        counts["cold_reused"] == 0
+            && counts["cold_rebuilt"].as_u64().unwrap() > 0
+            && counts["warm_reused"].as_u64().unwrap() > 0
     });
     if incremental {
         assert_eq!(phase_artifact("cold.rc").as_slice(), b"0\n");
@@ -440,6 +443,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         "capture_mode": capture_mode, "capture_scratch_files_remaining": scratch_files,
         "module_mode": input["module_mode"],
         "incremental": incremental, "cache_counts": cache_counts,
+        "cache_reuse_verified": cache_reuse_verified,
         "cold_guest_seconds": cold_seconds, "warm_guest_seconds": warm_seconds,
         "guest_clock_resolution_seconds": if incremental { Some(1) } else { None },
         "cold_memory": cold_memory, "warm_memory": warm_memory,
@@ -448,7 +452,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         "exit_code_scope": if incremental { "whole guest wrapper; phase return codes proved separately" } else { "assembler" },
         "host_time_scope": if incremental { "setup and both assembly phases" } else { "single assembly" },
         "budget_failure_diagnostic": budget_failure_diagnostic,
-        "success": run.success && run.protocol_completed && run.exit_code == Some(0) && scratch_files.is_empty(),
+        "success": run.success && run.protocol_completed && run.exit_code == Some(0) && scratch_files.is_empty() && cache_reuse_verified,
         "guest_protocol_completed": run.protocol_completed, "assembler_exit_code": run.exit_code,
         "exact_rust_match": run.verified_output.as_deref() == Some(oracle.as_slice()),
         "self_host": !budget_failure_diagnostic && define_strings.is_empty()
@@ -473,6 +477,11 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     )
     .unwrap();
     eprintln!("FULL_COMPARISON_RESULT {result}");
+    // Preserve completed timings/outputs even if a cache policy check fails.
+    assert!(
+        cache_reuse_verified,
+        "full warm build must prove real module reuse and forced cold build must rebuild"
+    );
     assert!(
         scratch_files.is_empty(),
         "capture scratch files survived cleanup: {scratch_files:?}"

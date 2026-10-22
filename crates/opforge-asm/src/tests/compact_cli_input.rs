@@ -492,3 +492,5 @@ fn compact_cli_input_defaults_and_argument_integration() {
     assert!(attempted > 0, "CLI input selector must match a real case");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+include!("native_candidate_order.rs");

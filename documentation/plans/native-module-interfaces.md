@@ -68,13 +68,53 @@ assembly. Use one writer per cache directory. Cache filenames retain the module
 name first and bounded qualification/registry suffix; changing discovery order
 can cause safe misses. Removing `build/ofm` resets the cache.
 
-Incremental qualification is incomplete. The current 272-file snapshot exports
-an identical 824,340-byte bootstrap/oracle with Rust. Earlier focused native
-probes passed cold/warm reuse, forced rebuilds, dependency edits and timestamp-only
-edits. The final source-origin safeguard and complete cold/warm self-host pair
-still need native validation: the attempted full run stalled while the Mac was
-locked and timed out. That run supplies no performance or memory result and does
-not establish full self-host completion or an 8 MiB fit for incremental builds.
+Native discovery canonicalizes candidate paths before assigning opaque source
+origins, preserving the entry file in slot zero. Module execution still follows
+the dependency graph, and explicit search-root order is unchanged. This makes
+unchanged builds reuse the same declaration contexts without weakening the
+origin/path key.
+
+### Incremental qualification
+
+Fresh complete FS-UAE cold/warm self-builds pass against a live Rust oracle.
+The frozen input contains 273 files / 3,411,207 bytes, source manifest
+`fnv1a64:ce0b2b8f361c5655`. Both phases emit the identical 824,512-byte executable,
+including the embedded m68020 package. Measurements use disk-backed capture
+(`--capture-dir Work:`) and private module storage; they do not qualify the default
+resident-capture path's full-build memory use.
+
+| Metric | Forced fresh (`--rebuild`) | Unchanged incremental |
+| --- | ---: | ---: |
+| Release assembly duration | 292 s | 62 s |
+| Private modules rebuilt | 187 | 0 |
+| Private modules reused | 0 | 187 |
+| Peak tracked heap, separate accounting run | 4,814,136 bytes | 4,814,136 bytes |
+| Cumulative owned allocations | 304,211,056 bytes | 149,132,304 bytes |
+| Terminal tracked allocations | 0 | 0 |
+
+Release durations have one-second guest-clock resolution. This single pair shows
+79% less runtime (4.71x speedup); instrumented durations are excluded from that
+comparison. Both release phases complete with fresh proof, explicit exit zero and
+exact output matching the Rust oracle and bootstrap. The separate accounting
+phases also complete with exit zero and exact release-oracle output.
+
+The unchanged heap peak comes from acquisition before module reuse: discovery,
+tokenization and root-driver work still execute. The instrumented image reserves
+879,988 bytes; adding tracked heap and the 65,536-byte stack gives a 5,759,660-byte
+(5.49 MiB) process floor. This excludes loader overhead and untracked allocations.
+It leaves 1,056,084 bytes below the 6.5 MiB process budget before those costs;
+the expanded-memory profile does not establish an 8 MiB fit.
+
+The cache retains 187 `.ofm` images (1,670,040 bytes) and 187 `.ofi` companions
+(21,895,504 bytes). The conservative complete-context key currently dominates
+cache disk size. These are reusable cache files, separate from transient capture
+storage; deleting the cache forces a fresh build.
+
+Focused native tests also cover forced rebuilds, dependency edits, timestamp-only
+edits, macro declaration origins after include insertion, and discovery candidate
+permutations/duplicates with entry priority preserved. The comparison harness
+retains completed timing results before failing reuse assertions, so a future
+invalidation regression cannot erase the measurement that exposes it.
 
 Public-name lookup retains the 40-byte OFMS header and linear export scan. A
 two-array full/leaf name-index trial passed native and full self-host checks but

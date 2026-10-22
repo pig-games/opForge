@@ -4,6 +4,9 @@
 ; D0/CCR=status; other registers preserved. Paths remain owned by CandidatePaths, independently of stationary traversal scratch.
 indexCandidates	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	movea.l CandidatePaths+memory.Block.Pointer, a0
+	move.l CandidateCount, d0
+	bsr.w orderCandidatePaths
 	move.l #1, SourceOrdinal
 nextCandidate
 	move.l SourceOrdinal, d0
@@ -310,3 +313,5 @@ releaseDiscovery	.block
 	movea.l (sp)+, a0
 	rts
 	.bend  ; releaseDiscovery
+
+	.include "source_candidate_order.i"

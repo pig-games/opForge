@@ -2,12 +2,27 @@
 
 ## Current result and decision
 
-Stored dependency interfaces work through the normal CLI, with all 186 dependency
-modules stored and the root on the shared final driver. The retained header-read
-repair saves **8.1%** in the fresh identical-input release pair, without increasing
-tracked heap. The latest complete own-source self-host took **277.572 s (4m 38s)** and
-reproduced the **816,576-byte Rust oracle and bootstrap exactly**, with explicit
-exit 0 and a fresh completed protocol.
+Stored dependency interfaces and default-on incremental reuse work through the
+normal CLI. The current disk-backed self-host stores 187 dependency modules;
+the root remains on the shared final driver. On identical inputs, a forced fresh
+release build takes **292 s (4m 52s)** and an unchanged incremental build takes
+**62 s (1m 2s)**, reusing all 187 modules with zero rebuilds. Both reproduce the
+**824,512-byte Rust oracle and bootstrap exactly**, with explicit exit zero and
+fresh completed proof. This is a single release pair with one-second guest-clock
+resolution: 79% less runtime, or 4.71x speedup.
+
+Separate accounting runs both peak at **4,814,136 B (4.59 MiB)** tracked heap and
+clean up to zero. Incremental reuse halves cumulative allocation traffic but does
+not reduce the earlier acquisition peak. The instrumented image plus tracked
+heap and 64 KiB stack gives a **5.49 MiB process floor**, excluding loader and
+untracked costs; no 8 MiB fit is established. Input identities, cache disk size,
+limits and qualification details are in
+[stored module interfaces](native-module-interfaces.md#incremental-qualification).
+These measurements use disk-backed capture, not the default resident-capture path.
+
+The retained header-read repair separately saved **8.1%** on its older frozen
+input, without increasing tracked heap. Its unchanged-input comparison below
+is distinct from the incremental cold/warm result.
 
 The bounded background-payload writer also passed its complete own-source check,
 but its isolated timing difference was only 0.15%, below useful evidence. Its code
@@ -97,8 +112,8 @@ The comparison-summary decoder now preserves the raw native capture mode instead
 of overwriting it with a manifest default; a regression test covers this.
 
 Measurements used the unchanged expanded-memory A4000/68040 FS-UAE configuration
-and 65,536-byte stack, with release and memory measured separately. The retained
-accounted process floor remains 5.28 MiB against the 6.5 MiB process budget; loader,
+and 65,536-byte stack, with release and memory measured separately. That header
+reference's accounted process floor is 5.28 MiB against the 6.5 MiB process budget; loader,
 OS and untracked costs remain unqualified. No 8 MiB fit or A6000 result is claimed.
 Further lookup work needs evidence of actual call/refill costs; the synthetic
 full-coverage name sweep is insufficient to select another optimization.

@@ -116,6 +116,15 @@ permutations/duplicates with entry priority preserved. The comparison harness
 retains completed timing results before failing reuse assertions, so a future
 invalidation regression cannot erase the measurement that exposes it.
 
+For a serial hardware comparison, run
+`python3 scripts/performance/run_a6000_incremental.py --bundle DIR` from macOS
+Terminal with a release embedded, source-directed self-host bundle. It discovers
+the current address with `ash -l`, uploads to `Development:`, then performs a
+forced rebuild and unchanged incremental build in the same directory. Each phase
+has separate guest timing, fresh markers, return-code/output verification and
+cache counts. The cache survives between phases; transfer time is excluded from
+guest assembly timing. The hardware runner does not restrict RAM.
+
 Public-name lookup retains the 40-byte OFMS header and linear export scan. A
 two-array full/leaf name-index trial passed native and full self-host checks but
 showed no full-build saving, so its format, implementation and tests are retired.

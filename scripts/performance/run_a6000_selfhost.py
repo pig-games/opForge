@@ -575,8 +575,11 @@ def add_telemetry(result, root, manifest, files=None, *, record_header_bytes=Non
 
 
 def run_case(args, bundle, manifest, files, oracle, case_digest, *,
-             run_kind="self-host", metadata=None, before_execute=None):
-    """Transfer and execute one already validated case with fresh completion proof."""
+             run_kind="self-host", metadata=None, before_execute=None,
+             guest_script_builder=None, result_inspector=None):
+    """Transfer a validated case; optional protocols share its verified transport."""
+    script_builder = guest_script_builder or guest_script
+    inspect_capture = result_inspector or inspect_result
     run_id = uuid.uuid4().hex
     name = f"opforge-{run_id[:12]}"
     remote = f"{args.volume}:{name}"
@@ -588,7 +591,7 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
         target = stage / path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
-    (stage / "run-selfhost").write_text(guest_script(
+    (stage / "run-selfhost").write_text(script_builder(
         remote, marker, manifest["command"], capture_mode=manifest.get("capture_mode", "resident")))
     print(f"Run: {run_kind}\nBundle: {bundle}\nLocal results: {local}\nRemote directory: {remote}", flush=True)
     print("Bundle prior native validation: " + native_validation_status(manifest), flush=True)
@@ -641,7 +644,7 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
     captured.mkdir()
     run([acp, "-r", f"{args.host}:{args.volume}/{name}", str(captured)])
     try:
-        result = inspect_result(
+        result = inspect_capture(
             captured / name, files, oracle, marker, elapsed,
             native_output_file=manifest.get("native_output_file", "output.hunk"))
     except (OSError, ValueError) as error:

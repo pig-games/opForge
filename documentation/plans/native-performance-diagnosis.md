@@ -4,7 +4,8 @@
 
 Stored dependency interfaces and default-on incremental reuse work through the
 normal CLI. The current disk-backed self-host stores 187 dependency modules;
-the root remains on the shared final driver. On FS-UAE with identical inputs,
+the root remains on the shared final driver. In the retained expanded-memory
+FS-UAE reference with identical inputs,
 a forced fresh release build takes **292 s (4m 52s)** and an unchanged incremental build takes
 **62 s (1m 2s)**, reusing all 187 modules with zero rebuilds. Both reproduce the
 **824,512-byte Rust oracle and bootstrap exactly**, with explicit exit zero and
@@ -24,13 +25,20 @@ Separate accounting runs both peak at **4,814,136 B (4.59 MiB)** tracked heap an
 clean up to zero. Incremental reuse halves cumulative allocation traffic but does
 not reduce the earlier acquisition peak. The instrumented image plus tracked
 heap and 64 KiB stack gives a **5.49 MiB process floor**, excluding loader and
-untracked costs. The constrained 8 MiB Workbench release check fails even with a
-plain background and 6.41 MiB free before launch: all 187 modules compile or reuse,
-but the root reports failure and no executable is produced. Separate accounting
-localizes the cold failure to a rejected 1 MiB sized-output allocation, with
-4,145,888 bytes peak tracked heap and zero terminal ownership. An 8 MiB fit is not
-established. Exact output reservations are the next repair candidate; this check
-does not establish whether aggregate exhaustion or fragmentation caused rejection.
+untracked costs.
+
+The current candidate reserves the known assembly and Hunk output sizes exactly,
+instead of rounding them to powers of two. On the constrained 8 MiB Workbench
+setup with a plain background and 6.41 MiB initially free, its release cold phase
+completes in **287 s (4m 47s)** with exact Rust/bootstrap output. The warm phase
+reuses all 187 modules but fails during output, so the complete pair does not
+qualify. Accounting attempts both reject the remaining **824,512-byte Hunk
+allocation** after assembly and clean up to zero. Their incomplete peaks are
+not complete-build memory results. An 8 MiB fit remains unestablished.
+
+The next proposal is bounded Hunk serialization from existing section buffers,
+eliminating that second full-size allocation while batching metadata writes.
+It is not implemented. No runtime gain is inferred from the earlier failed run.
 Input identities, cache disk size,
 limits and qualification details are in
 [stored module interfaces](native-module-interfaces.md#incremental-qualification).

@@ -76,8 +76,9 @@ origin/path key.
 
 ### Incremental qualification
 
-Fresh complete FS-UAE cold/warm self-builds pass against a live Rust oracle.
-The frozen input contains 273 files / 3,411,207 bytes, source manifest
+The retained expanded-memory FS-UAE baseline passes complete cold/warm self-builds
+against a live Rust oracle. Its frozen input contains 273 files / 3,411,207 bytes,
+source manifest
 `fnv1a64:ce0b2b8f361c5655`. Both phases emit the identical 824,512-byte executable,
 including the embedded m68020 package. Measurements use disk-backed capture
 (`--capture-dir Work:`) and private module storage; they do not qualify the default
@@ -150,34 +151,44 @@ hardware qualification reported here.
 
 ### 8 MiB Workbench qualification
 
-The current release does **not yet pass** the full self-build on the constrained
+The current release does **not yet pass the full cold/warm pair** on the constrained
 68020 profile: 2 MiB chip plus 6 MiB fast RAM, with no RTG or other memory. The
 2026-10-22 test retains the installed Workbench 47.2 startup and all its utilities,
 using a plain background. Before assembler launch, with a 64 KiB shell stack,
-`Avail` reports 6,716,384 bytes free (6.41 MiB): 2,017,352 chip and 4,699,032 fast.
-The largest fast block is 4,614,672 bytes.
+`Avail` reports 6,716,408 bytes free (6.41 MiB): 2,017,352 chip and 4,699,056 fast.
+The largest fast block is 4,603,600 bytes.
 
-Cold compilation rebuilds all 187 modules, then exits 20 with the last source
-location at the root `.endmodule`. The unchanged incremental attempt reuses all
-187 modules but also exits 20 there. Neither produces the required executable;
-these are failures, not self-host timings or output-equivalence evidence. The
-location alone does not identify the failing operation.
+The assembly output and serialized Hunk now use `reserveExact` after their sizing
+passes, retaining eight-byte alignment and the existing capacity/failure contract.
+Dynamic relocation storage keeps geometric growth. The executable remains
+824,512 bytes; only two allocator call targets change. The new source manifest
+is `fnv1a64:23e34ce7d0962b31` (273 files / 3,411,369 bytes); package bytes are
+unchanged. The original frozen export remains the reference.
 
-The separate accounting cold run identifies assembly failure stage 18, the
-sized-output allocation callback. Exec rejects one 1,048,576-byte request for a
-previously empty output block. Peak tracked heap before failure is 4,145,888
-bytes; all tracked ownership returns to zero. This establishes an allocation
-failure, rather than a bounded-block or language rejection. It does not measure
-total free bytes or the largest block at the failure instant, so cannot separate
-aggregate exhaustion from fragmentation. The accounting warm attempt reaches
-the end of emission, then reports `compact CLI: output failed`; it also does not
-produce the required Hunk executable.
+| Release phase | Result under 8 MiB |
+| --- | --- |
+| Cold `--rebuild` | 287 s (4m 47s), exit 0; 187 rebuilt; complete output exactly matches Rust and bootstrap |
+| Unchanged incremental | 187 reused / 0 rebuilt; exit 20, `compact CLI: output failed` |
 
-Both the sizing callback and Hunk serializer currently round known output sizes
-up through the growable block allocator. The first repair candidate is exact
-reservation at these two completed sizing boundaries, reducing oversized live
-buffers and their contiguous-allocation demands. Keep the unchanged path for
-comparison; a successful constrained full cold/warm build is still required.
+Fresh wrapper completion and all four artifact checks ran. The only release
+proof mismatch was the warm phase's nonzero return code: an output left from the
+cold phase cannot qualify warm success. This is a completed cold phase, not a
+passing pair or a reliable 8 MiB fit. No before/after speedup is claimed because
+the previous constrained cold run failed.
+
+Separate accounting attempts both finish assembly and reject the exact
+824,512-byte serialized Hunk allocation. Their tracked peaks before failure are
+4,145,888 bytes cold and 3,669,320 bytes warm; both clean up to zero. These failed
+run peaks are not complete-build memory measurements or evidence of net savings.
+They identify a remaining contiguous-allocation demand but do not measure free
+memory at failure, so cannot separate aggregate exhaustion from fragmentation.
+
+The next candidate is bounded Hunk serialization directly from existing section
+data, avoiding the second full-size output buffer. It would eliminate an
+824,512-byte live allocation on this input, though peak reduction may be smaller
+as preparation has its own peak. Buffer small metadata writes to preserve bulk
+I/O. This is a proposal; keep the current serializer as the reference and require
+fresh full cold/warm qualification before claiming fit.
 
 The plain background is the ordinary low-memory baseline. The installed custom
 1280-by-800 backdrop consumes about 3.37 MiB more than a plain background in the

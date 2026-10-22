@@ -1672,11 +1672,12 @@ done
 	.bend  ; appendEmission
 
 ; Assembly sizing-pass callback. D0=needed bytes,A0=Frame; other registers preserved.
+; The completed size needs no geometric growth slack in the live output buffer.
 allocateOutput	.block
 	movem.l d1-d2/a0-a2, -(sp)
 	movea.l a0, a2
 	lea Output, a0
-	jsr memory.reserve
+	jsr memory.reserveExact
 	bne.w done
 	move.l memory.Block.Pointer(a0), assembly.Frame.Output(a2)
 	move.l memory.Block.Capacity(a0), assembly.Frame.Capacity(a2)
@@ -1986,7 +1987,8 @@ serialize
 	bne.w badSelect
 	move.l hunk.Frame.Used(a0), d0
 	lea HunkBlock, a0
-	jsr memory.reserve
+	; Hunk's measurement pass supplies the complete serialized byte count.
+	jsr memory.reserveExact
 	bne.w badSelect
 	movea.l a0, a1
 	lea HunkFrame, a0

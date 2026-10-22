@@ -31,6 +31,7 @@ Version	.word ?
 EndOptions	.word ?
 WarningsAsErrors	.word ?
 ReferenceModules	.word ?
+Rebuild	.word ?
 ModuleCount	.long ?
 IncludeCount	.long ?
 Input	.res PATH_BYTES
@@ -41,6 +42,7 @@ RuntimePackage	.res PATH_BYTES  ; BS32, never a Rust .opasm package
 Dialect	.res PATH_BYTES
 PackageRoot	.res PATH_BYTES
 CaptureDirectory	.res PATH_BYTES
+IncrementalDirectory	.res PATH_BYTES
 ModulePaths	.res MODULE_LIMIT*PATH_BYTES
 IncludePaths	.res (INCLUDE_LIMIT+1)*PATH_BYTES
 StartSet	.word ?
@@ -63,6 +65,7 @@ K_SREC = 11
 K_GO = 12
 K_WERROR = 13
 K_REFERENCE_MODULES = 14
+K_REBUILD = 15
 Record	.struct
 Short	.word ?
 Kind	.word ?
@@ -182,12 +185,21 @@ selected
 	beq.w werror
 	cmpi.w #K_REFERENCE_MODULES, d2
 	beq.w referenceModules
+	cmpi.w #K_REBUILD, d2
+	beq.w rebuild
 	movea.l a4, a6
 	adda.w Record.Dest(a5), a6
 	tst.b (a6)
 	bne.w rejectDuplicate
 	bsr.w required
 	bne.w done
+	bra.w next
+rebuild
+	move.l a2, d0
+	bne.w rejectMalformed
+	tst.w State.Rebuild(a4)
+	bne.w rejectDuplicate
+	move.w #1, State.Rebuild(a4)
 	bra.w next
 referenceModules
 	move.l a2, d0
@@ -349,6 +361,12 @@ inputReady
 	tst.b State.PackageRoot(a4)
 	bne.w rejectConflict
 configured
+	tst.b State.IncrementalDirectory(a4)
+	bne.w ready
+	lea DefaultIncrementalDirectory, a2
+	lea State.IncrementalDirectory(a4), a6
+	bsr.w copy
+ready
 	moveq #OK, d0
 	bra.w done
 rejectUnknown
@@ -699,6 +717,10 @@ Options
 	.long Name52
 	.word 0, K_REFERENCE_MODULES, 0, 0
 	.long Name53
+	.word 0, K_VALUE, State.IncrementalDirectory, 0
+	.long Name54
+	.word 0, K_REBUILD, 0, 0
+	.long Name55
 	.word 0, 0, 0, 0
 	.long 0
 Name0	.byte "infile", 0
@@ -755,5 +777,8 @@ Name50	.byte "input-asm-ext", 0
 Name51	.byte "input-inc-ext", 0
 Name52	.byte "capture-dir", 0
 Name53	.byte "reference-modules", 0
+Name54	.byte "incremental-dir", 0
+Name55	.byte "rebuild", 0
+DefaultIncrementalDirectory	.byte "build/ofm", 0
 	.endsection
 	.endmodule

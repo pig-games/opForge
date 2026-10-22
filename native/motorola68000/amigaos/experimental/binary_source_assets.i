@@ -215,6 +215,9 @@ openBinaryPath	.block
 	tst.l d0
 	beq.w missing
 	move.l d0, filedata.Frame.Handle(a4)
+	lea IncludePath, a0
+	bsr.w incrementalRecordSource
+	; Cache acquisition is advisory; the open asset remains authoritative.
 	moveq #0, d0
 	bra.w done
 missing
@@ -268,6 +271,8 @@ retained
 copy
 	move.l (a0)+, (a1)+
 	dbra d1, copy
+	lea SourcePath, a0
+	bsr.w incrementalRecordSource
 	moveq #0, d0
 	bra.w done
 bad

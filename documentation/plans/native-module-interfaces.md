@@ -34,9 +34,47 @@ no heap capacity. Fresh full-source qualification passed; the release pair saved
 8.1% with unchanged tracked heap. Measurements and their frozen input identities
 are in [runtime and memory status](native-performance-diagnosis.md).
 
-No persistent incremental-cache contract is established. Objects are
-current-build artifacts; source/configuration/package fingerprinting and
-cross-build invalidation are not part of this interface format.
+The native CLI now keeps reusable `.ofm` images in `build/ofm` by default.
+`--incremental-dir DIR` selects a different cache; `--rebuild` forces fresh module
+assembly. An `.ofi` companion records acquisition dates/sizes, dependency
+build generations, configuration identity and the pointer-free publication
+inventory needed to recreate current-build section and linker bindings. The
+OFMI/OFMA/OFMS/OFTM layouts themselves remain unchanged.
+
+Source freshness uses timestamps and file sizes, with no source hashing or
+content comparison. Dates must match exactly, so a backdated edit also invalidates
+an object. The current acquired input set must match too: inserting an earlier
+include-search candidate cannot leave an old input silently selected by the cache.
+Rebuilding a dependency invalidates its consumers, even inside one timestamp tick.
+Tool and package compatibility use binary identities; rebuilding an identical
+assembler executable does not invalidate its module cache just because its date
+changed.
+
+Discovery, configuration and final linking still run. A hit skips private module
+compilation, restores its owner/section inventory, rebinds provider-local imports
+to fresh linker identities, and enters the ordinary current-build registry.
+Modules outside private admission, including the shared root driver, execute
+normally. The first key includes the complete ambient configuration/lexical
+identity table: some unrelated configuration changes conservatively cause extra
+misses. The ordered source-origin/path inventory is also part of that identity:
+closed templates retain numeric declaration origins, so changing an include's
+ordinal must not reuse a template against another source path. The existing
+reference policy remains separate and disables cache reuse.
+
+Cache markers are removed before replacing images, and published last. Missing,
+stale or structurally invalid cache data is rebuilt. A failed cache write leaves
+a valid assembly uncached; an unavailable cache directory falls back to fresh
+assembly. Use one writer per cache directory. Cache filenames retain the module
+name first and bounded qualification/registry suffix; changing discovery order
+can cause safe misses. Removing `build/ofm` resets the cache.
+
+Incremental qualification is incomplete. The current 272-file snapshot exports
+an identical 824,340-byte bootstrap/oracle with Rust. Earlier focused native
+probes passed cold/warm reuse, forced rebuilds, dependency edits and timestamp-only
+edits. The final source-origin safeguard and complete cold/warm self-host pair
+still need native validation: the attempted full run stalled while the Mac was
+locked and timed out. That run supplies no performance or memory result and does
+not establish full self-host completion or an 8 MiB fit for incremental builds.
 
 Public-name lookup retains the 40-byte OFMS header and linear export scan. A
 two-array full/leaf name-index trial passed native and full self-host checks but

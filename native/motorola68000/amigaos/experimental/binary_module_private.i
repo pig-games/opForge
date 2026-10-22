@@ -82,6 +82,10 @@ configurationOwner
 	bsr.w privateFindCapture
 	bne.w fallback
 requestReady
+	bsr.w incrementalTry
+	bne.w failed
+	tst.l d1
+	bne.w cached
 	move.l Front+frontend.Frame.Package, PrivateCompile+moduleCompile.Context.Package
 	move.l #privateInitialize, PrivateCompile+moduleCompile.Context.Initialize
 	move.l #privateReplay, PrivateCompile+moduleCompile.Context.Replay
@@ -108,7 +112,12 @@ requestReady
 	bne.w fallback
 	bsr.w privateEligibleImage
 	bne.w fallback
+	bsr.w incrementalSave
+	bne.w failed
+cached
 	bsr.w privatePublish
+	bne.w failed
+	bsr.w incrementalPublished
 	bne.w failed
 	addq.l #1, PrivatePublishedCount
 	moveq #1, d1
@@ -124,6 +133,7 @@ failed
 release
 	move.l d0, d7
 	bsr.w privateReleaseAttempt
+	bsr.w incrementalReleaseAttempt
 	move.l d7, d0
 	movem.l (sp)+, d2-d7/a0-a6
 	tst.l d0

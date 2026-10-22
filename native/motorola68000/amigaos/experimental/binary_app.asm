@@ -34,6 +34,7 @@
 	.use experimental.amigaos.binary_metadata_output as metadata_output
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_package_loader as loader
+	.use experimental.amigaos.binary_incremental_store as incrementalStore
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as source
 	.use experimental.amigaos.binary_symbol_storage as storage
@@ -195,8 +196,10 @@ LowerLine	.long ?  ; temporary capture proof callback; zero uses frontend.line
 CaptureDirectory	.long ?  ; optional disk-backed capture scratch directory
 ReferenceModules	.word ?
 Reserved	.word ?
+IncrementalDirectory	.long ?
+Rebuild	.word ?
 	.endstruct
-FRAME_BYTES = Frame.Reserved+2
+FRAME_BYTES = Frame.Rebuild+2
 	.section code, kind=code
 	.pub
 ; Assemble one package and source selection. A0=Frame, D0=Shell return code.
@@ -210,6 +213,8 @@ execute	.block
 	move.l Frame.LowerLine(a0), LowerLineRoutine
 	move.l Frame.CaptureDirectory(a0), CaptureDirectory
 	move.w Frame.ReferenceModules(a0), ReferenceModules
+	move.l Frame.IncrementalDirectory(a0), IncrementalDirectory
+	move.w Frame.Rebuild(a0), IncrementalRebuild
 	move.w Frame.OutputKind(a0), CliOutputKind
 	move.w Frame.StartSet(a0), OutputStartSet
 	move.l Frame.Start(a0), OutputStart
@@ -284,6 +289,10 @@ copyPath
 	bne.w copyPath
 	bra.w invalidConfig
 configured
+	lea SourcePath, a0
+	lea IncrementalRootPath, a1
+	move.l #PATH_BYTES, d0
+	bsr.w copy
 	.MEMORY_PHASE #0
 	.CAPTURE_LIFE_CLEAR
 	move.l #20, ReturnCode
@@ -294,6 +303,8 @@ configured
 	tst.l d0
 	beq.w cleanup
 	move.l d0, DosBase
+	bsr.w incrementalBegin
+	bne.w failed
 	tst.l CaptureDirectory
 	beq.w captureConfigured
 	lea CaptureStore, a0
@@ -416,6 +427,7 @@ sourceFailed
 invalidConfig
 	move.l #20, ReturnCode
 cleanup
+	bsr.w incrementalFinish
 	bsr.w privateReleaseAttempt
 	lea StoredRoot, a0
 	jsr moduleProvider.release
@@ -2090,6 +2102,7 @@ done
 	.include "binary_source_static_include.i"
 	.include "binary_source_schedule.i"
 	.include "binary_module_private.i"
+	.include "module_cache.i"
 	.include "binary_module_iface_driver.i"
 	.include "binary_module_iface_addr.i"
 	.include "binary_module_iface_links.i"

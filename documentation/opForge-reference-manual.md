@@ -1491,6 +1491,20 @@ tmp .const 3        ; resolves in caller scope unless body adds explicit .block
 
 ## 5. Command line options
 
+The experimental native AmigaOS CLI enables incremental module reuse by default.
+It stores `.ofm` objects and `.ofi` timestamp/publication metadata under
+`build/ofm` in the working directory. `--incremental-dir DIR` overrides that
+location, and `--rebuild` recompiles modules even when cached objects are fresh.
+These options currently belong to the native CLI; they are not Rust CLI options.
+
+Freshness uses the source/include/asset acquisition timestamps and file sizes,
+plus dependency rebuilds. Source contents are not hashed or diffed. Configuration,
+tool and package compatibility are checked separately. Discovery, configuration
+and final linking still execute; only eligible private-module compilation is
+reused. Use one writer per cache directory. Removing the cache forces a fresh
+build. See [stored-module interfaces](plans/native-module-interfaces.md) for the
+current conservative invalidation and storage limits.
+
 Syntax:
 
 ```

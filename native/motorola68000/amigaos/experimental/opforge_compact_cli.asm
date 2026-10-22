@@ -104,6 +104,9 @@ captureDirectory
 	lea args.State.CaptureDirectory(a2), a1
 	move.l a1, app.Frame.CaptureDirectory(a0)
 execute
+	lea args.State.IncrementalDirectory(a2), a1
+	move.l a1, app.Frame.IncrementalDirectory(a0)
+	move.w args.State.Rebuild(a2), app.Frame.Rebuild(a0)
 	move.w args.State.ReferenceModules(a2), app.Frame.ReferenceModules(a0)
 	bsr.w closeDos
 	lea Config, a0
@@ -155,6 +158,8 @@ UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "  -i, --infile FILE     Input (directory selects main.asm; default .)", 10
 	.byte "      --cpu CPU         Optional initial target; otherwise root .cpu or default", 10
 	.byte "      --runtime-package FILE  Explicit BS38 runtime package", 10
+	.byte "      --incremental-dir DIR  Module cache directory (default build/ofm)", 10
+	.byte "      --rebuild         Rebuild cached modules", 10
 	.byte "      --reference-modules  Preserve shared module preparation", 10
 	.byte "      --capture-dir DIR  Disk scratch directory; capture RAM bounded to 1 MiB", 10
 	.byte "  -b, --bin [FILE]      Flat binary output", 10

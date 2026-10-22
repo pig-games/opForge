@@ -157,6 +157,10 @@ Embedding documentation:
   disk directory to bound capture payload RAM to 1 MiB; resident storage remains
   the default. Metadata and other assembler memory are outside that limit. See
   the [storage measurements and limits](documentation/plans/native-lazy-preparation.md).
+  The native CLI reuses timestamp-valid module objects in `build/ofm` by default;
+  use `--rebuild` to force fresh assembly or `--incremental-dir DIR` to choose the
+  cache location. Discovery/configuration and final linking still execute. See
+  the [module-cache behavior and limits](documentation/plans/native-module-interfaces.md).
 
 ## Development Shortcuts
 

@@ -78,6 +78,33 @@ fn native_capture_configuration_is_explicit_and_defaults_to_resident() {
     assert!(std::panic::catch_unwind(|| capture_mode(Some("typo"))).is_err());
 }
 
+// AmigaDOS Date emits a whole-second HH:MM:SS field alongside its date.
+// Each measured phase must finish within one day; midnight wraps naturally.
+fn guest_seconds(bytes: &[u8]) -> u32 {
+    std::str::from_utf8(bytes)
+        .expect("guest Date output is text")
+        .split_whitespace()
+        .find_map(|field| {
+            let parts = field.split(':').collect::<Vec<_>>();
+            if parts.len() != 3 || parts.iter().any(|part| part.len() != 2) {
+                return None;
+            }
+            let hour = parts[0].parse::<u32>().ok()?;
+            let minute = parts[1].parse::<u32>().ok()?;
+            let second = parts[2].parse::<u32>().ok()?;
+            (hour < 24 && minute < 60 && second < 60).then_some(hour * 3600 + minute * 60 + second)
+        })
+        .expect("guest Date must contain HH:MM:SS")
+}
+
+#[test]
+fn guest_phase_clock_parses_date_and_midnight() {
+    assert_eq!(guest_seconds(b"Thursday 22-Oct-26 12:34:56\n"), 45296);
+    let start = guest_seconds(b"23:59:59\n");
+    let end = guest_seconds(b"00:00:02\n");
+    assert_eq!((end + 86400 - start) % 86400, 3);
+}
+
 fn checked_file(case: &Path, row: &Value) -> Vec<u8> {
     let path = row["path"].as_str().expect("case file path");
     let relative = Path::new(path);
@@ -124,6 +151,16 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     assert!(input["capture_mode"].is_null() || input["capture_mode"].is_string());
     assert!(input["module_mode"].is_null() || input["module_mode"].is_string());
     let capture_mode = capture_mode(input["capture_mode"].as_str());
+    assert!(input["incremental"].is_null() || input["incremental"].is_boolean());
+    let incremental = input["incremental"].as_bool().unwrap_or(false);
+    assert!(
+        !incremental || !budget_failure_diagnostic,
+        "incremental comparison requires two successful phases"
+    );
+    assert!(
+        !incremental || input["module_mode"].as_str() != Some("reference"),
+        "incremental comparison requires private modules"
+    );
     let output = directory.join("result");
     fs::create_dir(&output).expect("fresh result directory required");
     let image = checked_file(directory, &input["image"]);
@@ -224,6 +261,50 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         "-i src/experimental/opforge_compact_cli.asm --hunk Work:output.hunk -M src -I src/debug",
         capture_mode,
     ), input["module_mode"].as_str());
+    let instrumented = define_strings.contains(&"OPFORGE_MEMORY_TELEMETRY");
+    let command = if incremental {
+        let cold_memory = if instrumented {
+            "Copy Work:memory.bin Work:cold.memory.bin\n"
+        } else {
+            ""
+        };
+        let warm_memory = if instrumented {
+            "Copy Work:memory.bin Work:warm.memory.bin\n"
+        } else {
+            ""
+        };
+        format!(
+            "--version\nCopy Work:build/opforge_compact Work:incremental_bootstrap\n\
+             C:Date >Work:cold.start\n\
+             Work:incremental_bootstrap {command} --rebuild >Work:cold.stdout\n\
+             Echo $RC >Work:cold.rc\nC:Date >Work:cold.end\n\
+             Copy Work:output.hunk Work:cold.hunk\n{cold_memory}\
+             C:Date >Work:warm.start\n\
+             Work:incremental_bootstrap {command} >Work:warm.stdout\n\
+             Echo $RC >Work:warm.rc\nC:Date >Work:warm.end\n{warm_memory}\
+             C:Type Work:cold.stdout\nC:Type Work:warm.stdout"
+        )
+    } else {
+        command
+    };
+    let incremental_proof = [
+        OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/cold.hunk",
+            rust_oracle: &oracle,
+        },
+        OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/output.hunk",
+            rust_oracle: &oracle,
+        },
+        OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/cold.rc",
+            rust_oracle: b"0\n",
+        },
+        OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/warm.rc",
+            rust_oracle: b"0\n",
+        },
+    ];
     let case = OpforgeNativeCliParityCase {
         name: "full-exported-selfhost-comparison",
         cpu_override: "68020",
@@ -234,6 +315,8 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         extra_guest_files: &files,
         proof: if budget_failure_diagnostic {
             OpforgeNativeCliProof::ExpectedFailureWithDiagnostic
+        } else if incremental {
+            OpforgeNativeCliProof::ExactArtifacts(&incremental_proof)
         } else {
             OpforgeNativeCliProof::ExactArtifact {
                 relative_path: "Work/output.hunk",
@@ -273,13 +356,39 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     );
     let static_bytes = native_package_loading_performance::linked_static_bytes(&image);
     let scratch_files = capture_scratch_files(run);
-    let instrumented = define_strings.contains(&"OPFORGE_MEMORY_TELEMETRY");
     let memory = run
         .captured_artifacts
         .get(&PathBuf::from("Work/memory.bin"))
         .map(|bytes| native_package_loading_performance::memory(bytes));
     if !budget_failure_diagnostic {
         assert_eq!(memory.is_some(), instrumented, "measurement build identity");
+    }
+    let phase_artifact = |name: &str| {
+        run.captured_artifacts
+            .get(&PathBuf::from(format!("Work/{name}")))
+            .unwrap_or_else(|| panic!("missing incremental phase artifact {name}"))
+    };
+    let phase_seconds = |phase: &str| {
+        let start = guest_seconds(phase_artifact(&format!("{phase}.start")));
+        let end = guest_seconds(phase_artifact(&format!("{phase}.end")));
+        (end + 86400 - start) % 86400
+    };
+    let cold_seconds = incremental.then(|| phase_seconds("cold"));
+    let warm_seconds = incremental.then(|| phase_seconds("warm"));
+    let cold_memory = (incremental && instrumented)
+        .then(|| native_package_loading_performance::memory(phase_artifact("cold.memory.bin")));
+    let warm_memory = (incremental && instrumented)
+        .then(|| native_package_loading_performance::memory(phase_artifact("warm.memory.bin")));
+    let cache_counts = incremental.then(|| {
+        let cold = super::native_incremental::counters(std::str::from_utf8(phase_artifact("cold.stdout")).unwrap());
+        let warm = super::native_incremental::counters(std::str::from_utf8(phase_artifact("warm.stdout")).unwrap());
+        assert_eq!(cold.0, 0, "forced cold full build must not reuse modules");
+        assert!(cold.1 > 0 && warm.0 > 0, "full warm build must prove real module reuse");
+        json!({"cold_reused": cold.0, "cold_rebuilt": cold.1, "warm_reused": warm.0, "warm_rebuilt": warm.1})
+    });
+    if incremental {
+        assert_eq!(phase_artifact("cold.rc").as_slice(), b"0\n");
+        assert_eq!(phase_artifact("warm.rc").as_slice(), b"0\n");
     }
     // Inventory deliverables already captured by the runner; no guest observer
     // or additional file reads are added to the measured execution interval.
@@ -304,6 +413,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     // Heap-only images keep allocation accounting but omit progress diagnostics.
     // The progress profile additionally qualifies exact module I/O counters.
     if instrumented
+        && !incremental
         && define_strings.contains(&"OPFORGE_PREPARATION_PROGRESS")
         && !budget_failure_diagnostic
         && !input["module_mode"].is_null()
@@ -317,8 +427,8 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
             assert_eq!(io[1], count, "one saved image per admitted module");
             assert_eq!(
                 object_sizes.len(),
-                count as usize,
-                "completed module objects survive cleanup"
+                count as usize * if incremental { 2 } else { 1 },
+                "completed objects survive cleanup for each assembly phase"
             );
             assert!(
                 io[0] <= count,
@@ -329,6 +439,14 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     let result = json!({
         "capture_mode": capture_mode, "capture_scratch_files_remaining": scratch_files,
         "module_mode": input["module_mode"],
+        "incremental": incremental, "cache_counts": cache_counts,
+        "cold_guest_seconds": cold_seconds, "warm_guest_seconds": warm_seconds,
+        "guest_clock_resolution_seconds": if incremental { Some(1) } else { None },
+        "cold_memory": cold_memory, "warm_memory": warm_memory,
+        "cold_assembler_exit_code": if incremental { Some(0) } else { None },
+        "warm_assembler_exit_code": if incremental { Some(0) } else { None },
+        "exit_code_scope": if incremental { "whole guest wrapper; phase return codes proved separately" } else { "assembler" },
+        "host_time_scope": if incremental { "setup and both assembly phases" } else { "single assembly" },
         "budget_failure_diagnostic": budget_failure_diagnostic,
         "success": run.success && run.protocol_completed && run.exit_code == Some(0) && scratch_files.is_empty(),
         "guest_protocol_completed": run.protocol_completed, "assembler_exit_code": run.exit_code,

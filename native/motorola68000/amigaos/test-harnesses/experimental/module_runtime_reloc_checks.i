@@ -205,18 +205,12 @@ releaseRuntimeRelocation	.block
 	.section data, kind=data
 	.align 8
 RuntimeValues
-	.long semantics.MAGIC, RuntimeValuesEnd-RuntimeValues, 1, semantics.HEADER_BYTES
-	.long 0, RuntimeValueIndex-RuntimeValues, RuntimeValueName-RuntimeValues, 16
-	.long RuntimeValuesEnd-RuntimeValues, 0, 1, RuntimeValueIndex-RuntimeValues
-	.long 7, RuntimeValueName-RuntimeValues, 16, semantics.FRAGMENT_ADDRESS, 0, 1, 0
-RuntimeValueIndex
-	.long 0, 0
-RuntimeValueName
+	.long semantics.MAGIC, 88, 1, semantics.HEADER_BYTES, 0, 68, 68, 16, 88, 0
+	.long 7, 68, 16, semantics.FRAGMENT_ADDRESS, 0, 1, 0
 	.byte "provider.address", 0, 0, 0, 0
-RuntimeValuesEnd
 	.align 4
 RuntimeInterfaceBuild
-	.long RuntimeValues, RuntimeValuesEnd-RuntimeValues, 0, 0, InterfaceBuffer, 256, 0, 0, 0, 0, 0
+	.long RuntimeValues, 88, 0, 0, InterfaceBuffer, 256, 0, 0, 0, 0, 0
 RuntimeProviderInput
 	.long 1, RuntimePayload, 4, 0, 0, image.KIND_DATA, 1, 4
 RuntimeConsumerInput

@@ -161,8 +161,6 @@ done
 cases	.block
 	bsr.w headerChecks
 	bne.w bad
-	bsr.w indexChecks
-	bne.w bad
 	bsr.w interfaceChecks
 	bne.w bad
 	bsr.w runtimeRelocationChecks
@@ -1003,7 +1001,6 @@ next
 EmptyValues
 	.long semantics.MAGIC, semantics.HEADER_BYTES, 0, semantics.HEADER_BYTES
 	.long 0, semantics.HEADER_BYTES, semantics.HEADER_BYTES, 0, semantics.HEADER_BYTES, 0
-	.long 0, semantics.HEADER_BYTES
 ProbeDependency
 	.long ProbeObjectName, ProbeObjectNameEnd-ProbeObjectName
 ProbeImport
@@ -1077,6 +1074,5 @@ InnerStatus	.res long, 1
 	.endsection
 	.include "module_data_delta_checks.i"
 	.include "module_iface_header_checks.i"
-	.include "module_iface_index_checks.i"
 	.output "module-image-probe.hunk", format=hunk, sections=entry, code, data, bss
 	.endmodule

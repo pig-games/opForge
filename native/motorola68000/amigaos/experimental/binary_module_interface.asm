@@ -16,10 +16,8 @@ Names	.long ?
 NameBytes	.long ?
 Arena	.long ?
 ArenaBytes	.long ?
-IndexCount	.long ?
-Index	.long ?
 	.endstruct
-HEADER_BYTES = Header.Index+4
+HEADER_BYTES = Header.ArenaBytes+4
 MAGIC = $4f464d53; OFMS integrity tag, not a contract-version selector
 NAME_LIMIT = 255
 Export	.struct
@@ -60,8 +58,6 @@ Caller	.res long, 1
 Compact	.res byte, values.OWNER_BYTES
 Offsets	.res byte, memory.Block.Used+4
 Image	.res byte, memory.Block.Used+4
-PublicCount	.res long, 1
-IndexOffset	.res long, 1
 NameBytes	.res long, 1
 TableEnd	.res long, 1
 ArenaOffset	.res long, 1
@@ -115,7 +111,6 @@ build	.block
 	jsr memory.reserveExact
 	bne.w bad
 	clr.l NameBytes
-	clr.l PublicCount
 	movea.l Frame.Exports(a6), a4
 	movea.l Offsets+memory.Block.Pointer, a5
 	tst.l d7
@@ -131,7 +126,6 @@ exports
 	bne.w bad
 	bra.w exportValue
 publicName
-	addq.l #1, PublicCount
 	movea.l Export.Name(a4), a0
 	move.l Export.NameBytes(a4), d0
 	bsr.w inputName
@@ -217,13 +211,6 @@ memberNames
 	subq.l #1, d7
 	bne.w memberNames
 allocate
-	move.l TableEnd, IndexOffset
-	move.l PublicCount, d0
-	lsl.l #3, d0
-	add.l d0, TableEnd
-	bcs.w bad
-	cmpi.l #memory.LIMIT, TableEnd
-	bhi.w bad
 	move.l TableEnd, d0
 	add.l NameBytes, d0
 	bcs.w bad
@@ -248,8 +235,6 @@ allocate
 	mulu.l #EXPORT_BYTES, d0
 	addi.l #HEADER_BYTES, d0
 	move.l d0, Header.Members(a3)
-	move.l PublicCount, Header.IndexCount(a3)
-	move.l IndexOffset, Header.Index(a3)
 	move.l TableEnd, Header.Names(a3)
 	move.l NameBytes, Header.NameBytes(a3)
 	move.l ArenaOffset, Header.Arena(a3)
@@ -312,8 +297,6 @@ copyArena
 	move.l Compact+values.Owner.Arena+memory.Block.Used, d0
 	bsr.w appendName
 	movea.l a3, a0
-	bsr.w indexBuild
-	movea.l a3, a0
 	move.l Image+memory.Block.Used, d0
 	bsr.w validate
 	bne.w bad
@@ -339,8 +322,6 @@ cleanup
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
 	clr.l Caller
-	clr.l PublicCount
-	clr.l IndexOffset
 	clr.l NameBytes
 	clr.l TableEnd
 	clr.l ArenaOffset
@@ -394,7 +375,6 @@ done
 	movem.l (sp)+, d0/a0
 	rts
 	.bend  ; appendName
-	.include "binary_module_iface_index.i"
 	.include "binary_module_interface_read.i"
 	.endsection
 	.endmodule

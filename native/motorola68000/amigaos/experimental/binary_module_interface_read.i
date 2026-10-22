@@ -42,14 +42,6 @@ clearOwner
 	mulu.l #MEMBER_BYTES, d2
 	add.l d2, d1
 	bcs.w bad
-	cmp.l Header.Index(a6), d1
-	bne.w bad
-	move.l Header.IndexCount(a6), d2
-	cmp.l Header.ExportCount(a6), d2
-	bhi.w bad
-	lsl.l #3, d2
-	add.l d2, d1
-	bcs.w bad
 	cmp.l Header.Names(a6), d1
 	bne.w bad
 	add.l Header.NameBytes(a6), d1
@@ -179,8 +171,7 @@ bare
 	subq.l #1, d7
 	bra.w members
 good
-	movea.l a6, a0
-	bsr.w indexValidate
+	moveq #OK, d0
 	bra.w cleanup
 bad
 	moveq #INVALID, d0

@@ -38,6 +38,11 @@ No persistent incremental-cache contract is established. Objects are
 current-build artifacts; source/configuration/package fingerprinting and
 cross-build invalidation are not part of this interface format.
 
+Public-name lookup retains the 40-byte OFMS header and linear export scan. A
+two-array full/leaf name-index trial passed native and full self-host checks but
+showed no full-build saving, so its format, implementation and tests are retired.
+The current measurements and decision are in the runtime and memory status above.
+
 ## Bounded consumer access
 
 The interface reader owns one 64 KiB window. Value and template carriers are

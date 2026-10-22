@@ -5,7 +5,7 @@
 Stored dependency interfaces work through the normal CLI, with all 186 dependency
 modules stored and the root on the shared final driver. The retained header-read
 repair saves **8.1%** in the fresh identical-input release pair, without increasing
-tracked heap. Its complete own-source self-host took **283.966 s (4m 44s)** and
+tracked heap. The latest complete own-source self-host took **277.572 s (4m 38s)** and
 reproduced the **816,576-byte Rust oracle and bootstrap exactly**, with explicit
 exit 0 and a fresh completed protocol.
 
@@ -14,7 +14,9 @@ but its isolated timing difference was only 0.15%, below useful evidence. Its co
 and tests are retired from the working tree; checkpoint `bdc65e13` and the delivered
 frozen A6000 trial preserve the experiment. Do not expand it into a worker process
 without a demonstrated hardware opportunity. Numeric entity/member binary search
-was also runtime-neutral and removed.
+was also runtime-neutral and removed. Public-name indexing is retired too: the
+fresh disk-backed release pair was 277.572 s reference versus 284.816 s indexed,
+with additional object bytes and no demonstrated full-build saving.
 
 Stored interfaces still trade runtime for a substantial memory reduction against
 the earlier private compiler/image implementation. Preserve that disk-backed
@@ -43,6 +45,63 @@ interface-read work, not omitted assembly work.
 The own-source proof uses the repaired source manifest `13b909ce22ee5f6e`,
 265 files / 3,355,329 bytes, and output `0a3ca3d4877cedb5`. Its timing is separate
 from the fixed older-source comparison above.
+
+## Public-name indexing decision
+
+The trial stored two sorted arrays of public export-row ordinals, for folded full
+and leaf names. It preserved exact matching, ambiguity, private closure exclusion,
+numeric identities and the existing 64 KiB reader capacity. In-place heapsort
+needed no additional sorting allocation. The working tree retains the original
+name lookup and OFMS layout; checkpoint `017ecf0b` preserves the trial.
+
+The capacity calculation used 186 frozen objects and 10,518 public names. Index
+storage was **85,632 B**, including the larger headers; the largest addition was
+3,792 B and every resulting interface still fit one reader window. A constructed
+19,562-query sweep predicted 93.05% fewer key comparisons, but 27.1% more compared
+character pairs because the old scan rejects unequal lengths immediately. This
+was a model, not an observed distribution of native lookup calls.
+
+Both engines assembled the same repaired source snapshot, package
+`390f6f44df85279b`, command and 816,576-byte live Rust oracle. These runs used
+`--capture-dir Work:`, stored all 186 dependencies, and retained no fallback.
+
+| Identical-input full build | Header reference | Name-index trial |
+| --- | ---: | ---: |
+| Release START/DONE time | 277.572 s | 284.816 s |
+| Peak tracked heap, separate MEMD run | 4,604,064 B | 4,604,448 B |
+| Linked reservations, instrumented image | 870,328 B | 871,300 B |
+| Cumulative allocation and free | 220,058,968 B | 220,396,776 B |
+| Persisted `.ofm` bytes | 1,647,692 B | 1,733,324 B |
+| Terminal owned bytes | 0 | 0 |
+
+The release pair observed 7.244 s / 2.61% more time. It establishes no speedup;
+one pair does not establish a stable regression percentage. Separate instrumented
+binding clocks were 142.469 versus 141.727 s, while source I/O and other preparation
+grew from 94.400 to 98.245 s. Work counts matched. The measured heap increase was
+384 B and the accounted process increase was 1,356 B; object storage grew 5.2%.
+The modeled row reduction did not justify retaining the extra format and code.
+
+The indexed executable separately completed its entire own-source self-host in
+**276.192 s (4m 36s)**, producing its **817,564-byte Rust oracle and bootstrap
+exactly**, with fresh protocol and exit 0. That snapshot has 267 files /
+3,362,867 B, manifest `7a42a50e2c49e8e5`, output `a13bef64b545b64c`. Its time is
+not an identical-input comparison with the reference. Native resident/disk
+component checks, cross-window and malformed-index checks, small module and
+macro-publication comparisons, and an audit of all 186 written indexes passed.
+
+Two preliminary resident controls are excluded from this disk comparison. One
+candidate disk attempt hit the independent 300,000 ms overall runner limit and
+supplied no completion or timing; its fresh retry passed with both overall and
+post-start limits at 900,000 ms. No timeout is counted as native completion.
+The comparison-summary decoder now preserves the raw native capture mode instead
+of overwriting it with a manifest default; a regression test covers this.
+
+Measurements used the unchanged expanded-memory A4000/68040 FS-UAE configuration
+and 65,536-byte stack, with release and memory measured separately. The retained
+accounted process floor remains 5.28 MiB against the 6.5 MiB process budget; loader,
+OS and untracked costs remain unqualified. No 8 MiB fit or A6000 result is claimed.
+Further lookup work needs evidence of actual call/refill costs; the synthetic
+full-coverage name sweep is insufficient to select another optimization.
 
 ## Background-payload trial decision
 
@@ -132,9 +191,10 @@ not come from omitting source work. Existing instrumented stage clocks show:
 Stage clocks localize the regression to binding; they do not attribute individual
 lookup costs. Code review found repeated linear public-name/template scans and
 entity/member row searches, plus reader invalidation when providers change.
-Header reuse now recovers part of that cost. Numeric row search did not produce a
-measurable gain and is not retained. Further lookup changes must avoid recreating
-complete resident semantic tables. No new observer framework was added.
+Header reuse now recovers part of that cost. Numeric row search and public-name
+indexing did not produce a demonstrated gain and are not retained. Further lookup
+changes must avoid recreating complete resident semantic tables. No new observer
+framework was added.
 
 The candidate wrote 186 `.ofm` objects, totaling 1,647,580 B. Their `OFMA`
 interfaces total 1,019,012 B; the largest is 45,964 B. They contain 10,517 value

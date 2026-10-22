@@ -4,12 +4,21 @@
 
 Stored dependency interfaces and default-on incremental reuse work through the
 normal CLI. The current disk-backed self-host stores 187 dependency modules;
-the root remains on the shared final driver. On identical inputs, a forced fresh
-release build takes **292 s (4m 52s)** and an unchanged incremental build takes
+the root remains on the shared final driver. On FS-UAE with identical inputs,
+a forced fresh release build takes **292 s (4m 52s)** and an unchanged incremental build takes
 **62 s (1m 2s)**, reusing all 187 modules with zero rebuilds. Both reproduce the
 **824,512-byte Rust oracle and bootstrap exactly**, with explicit exit zero and
 fresh completed proof. This is a single release pair with one-second guest-clock
 resolution: 79% less runtime, or 4.71x speedup.
+
+The reported A6000 release pair completes the same source configuration in
+**916 s (15m 16s) cold versus 98 s (1m 38s) incremental**: 89.3% less runtime,
+or 9.35x speedup. Both hardware outputs match Rust exactly. Cold rebuilds all
+187 modules; warm reuses all 187 and rebuilds none. This is a separate hardware
+observation using disk-backed capture and the embedded m68020 package, not a
+conversion of emulator timing. Hardware memory was not measured. Case identity
+and evidence scope are recorded in the incremental qualification section linked
+below.
 
 Separate accounting runs both peak at **4,814,136 B (4.59 MiB)** tracked heap and
 clean up to zero. Incremental reuse halves cumulative allocation traffic but does

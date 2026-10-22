@@ -125,6 +125,29 @@ has separate guest timing, fresh markers, return-code/output verification and
 cache counts. The cache survives between phases; transfer time is excluded from
 guest assembly timing. The hardware runner does not restrict RAM.
 
+Erik's reported A6000 pair on 2026-10-22 confirms complete native self-hosting
+and unchanged incremental reuse for the prepared source-directed release bundle:
+
+| Hardware phase | Guest duration | Reused / rebuilt | Output |
+| --- | ---: | ---: | --- |
+| Cold `--rebuild` | 916 s (15m 16s) | 0 / 187 | 824,512 bytes, exact Rust match |
+| Unchanged incremental | 98 s (1m 38s) | 187 / 0 | 824,512 bytes, exact Rust match |
+
+Both phases report fresh protocol completion, assembler exit zero and successful
+output copies; cache semantics verification passes with no diagnostics. The
+paired host command interval is 1,015.101 s, consistent with the 1,014 s guest
+total at one-second clock resolution. This single pair shows 89.3% less runtime
+(9.35x speedup). It uses the same 273-file source manifest and embedded m68020
+package, release instrumentation disabled, disk capture in `scratch`, and source
+output `build/opforge_compact`. Hardware memory remains unmeasured/unrestricted;
+the FS-UAE heap figures above are not hardware memory measurements.
+
+The prepared case identity matches the reported
+`55e20a706dcc193b6aa48da501fe7ead53b6d74c562422152314df3f1c5f09d3`.
+Its remote directory is `Development:opforge-0d62e0387ef9`. The result's
+`bundle_prior_native_validation` describes the pre-run state, not the completed
+hardware qualification reported here.
+
 Public-name lookup retains the 40-byte OFMS header and linear export scan. A
 two-array full/leaf name-index trial passed native and full self-host checks but
 showed no full-build saving, so its format, implementation and tests are retired.

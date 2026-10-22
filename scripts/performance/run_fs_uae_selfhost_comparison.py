@@ -136,8 +136,13 @@ def execute_cases(args, specifications):
         if result_path.is_file():
             result = json.loads(result_path.read_text())
             if spec["bootstrap_defines"]:
+                telemetry_manifest = dict(spec["telemetry_manifest"])
+                # The native case selected storage; decoding counters must not
+                # replace that evidence with an export manifest's default.
+                telemetry_manifest["capture_mode"] = result.get(
+                    "capture_mode", spec.get("capture_mode", telemetry_manifest.get("capture_mode", "resident")))
                 runner.add_telemetry(result, result_path.parent,
-                                     spec["telemetry_manifest"],
+                                     telemetry_manifest,
                                      record_header_bytes=spec["record_header_bytes"])
                 memory = result.get("instrumented_memory")
                 if memory:

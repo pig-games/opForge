@@ -102,6 +102,40 @@ class FullComparisonTests(unittest.TestCase):
             records = json.loads((root / "results.json").read_text())
             self.assertEqual([row["result"]["success"] for row in records], [False, True])
 
+    def test_raw_disk_capture_mode_survives_missing_manifest_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            case = root / "case"
+            case.mkdir()
+            path = case / "case.json"
+            path.write_text(json.dumps({
+                "bootstrap_defines": ["OPFORGE_CAPTURE_TELEMETRY"],
+                "telemetry_manifest": {"bootstrap_defines": ["OPFORGE_CAPTURE_TELEMETRY"]},
+                "record_header_bytes": None,
+            }))
+
+            def execute(command, *, env, stdout, stderr):
+                result_path = Path(env["OPFORGE_FULL_COMPARISON_CASE"]).parent / "result/native-result.json"
+                result_path.parent.mkdir()
+                result_path.write_text(json.dumps({"success": True, "capture_mode": "disk"}))
+                return mock.Mock(returncode=0)
+
+            received = {}
+
+            def add_telemetry(result, result_root, manifest, *, record_header_bytes=None):
+                received["capture_mode"] = manifest.get("capture_mode", "resident")
+                result["capture_mode"] = received["capture_mode"]
+                result["assembly_success"] = result["success"]
+
+            args = argparse.Namespace(output=root, test_binary=root / "test-binary")
+            with (mock.patch.object(module.subprocess, "run", side_effect=execute),
+                  mock.patch.object(module.runner, "add_telemetry", side_effect=add_telemetry)):
+                module.execute_cases(args, [path])
+            result = json.loads((case / "result.json").read_text())
+            self.assertEqual(received["capture_mode"], "disk")
+            self.assertEqual(result["capture_mode"], "disk")
+            self.assertTrue(result["assembly_success"])
+
 
 if __name__ == "__main__":
     unittest.main()

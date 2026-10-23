@@ -41,6 +41,24 @@ build generations, configuration identity and the pointer-free publication
 inventory needed to recreate current-build section and linker bindings. The
 OFMI/OFMA/OFMS/OFTM layouts themselves remain unchanged.
 
+The compact CLI reports module processing and timed assembly/reuse through its
+process error stream. Two caller-owned progress frames use 1,360 bytes of static
+storage and allocate no heap; DateStamp is sampled only at phase boundaries.
+`-q`/`--quiet` suppresses progress and the incremental summary. A private fallback
+is reported as deferred; ordinary replay reports preparation by captured source
+path. Shared root assembly and output have their own
+link phase. This presentation leaves `.ofm` contracts and cache policy unchanged.
+
+The progress-enabled build passes a complete cold/warm self-host pair on the same
+8 MiB installed Workbench/plain-background profile below: 288 s cold and 60 s
+warm, all 189 dependencies rebuilt/reused respectively, with exact 826,760-byte
+Rust/bootstrap output and zero phase exits. Its source manifest is
+`fnv1a64:4a1bf704ef6a06ff` (277 files / 3,427,689 bytes). This latest build is not
+the input of the older heap-accounting pair below; no new heap peak or isolated
+reporting-overhead comparison is claimed. Focused native checks additionally
+cover dependency ordering, timed completions, cache reuse, shared reference
+replay, both quiet forms, visible argument errors and unchanged artifacts.
+
 Source freshness uses timestamps and file sizes, with no source hashing or
 content comparison. Dates must match exactly, so a backdated edit also invalidates
 an object. The current acquired input set must match too: inserting an earlier

@@ -1497,6 +1497,23 @@ It stores `.ofm` objects and `.ofi` timestamp/publication metadata under
 location, and `--rebuild` recompiles modules even when cached objects are fresh.
 These options currently belong to the native CLI; they are not Rust CLI options.
 
+The compact native CLI prints plain module progress to the process error stream
+(falling back to its output stream when no error stream is available). Each
+`Processing` line identifies a dependency module. Its timed completion says
+`Assembled`, `Reused` for an accepted cache hit, or `Deferred` when processing
+continues through shared replay. Ordinary shared replay reports `Preparing` /
+`Prepared` by captured source path; final emission still happens in the link
+phase. Module time includes cache validation, compilation when needed, and
+object publication; it does not include earlier source discovery. `Linking`/`Linked` covers the shared root assembly and final
+output, and `Finished` reports total assembly and cleanup time. Times are elapsed
+wall time at AmigaDOS's 50 Hz resolution (0.02 s), not CPU time. A failed build
+reports `Failed` instead of a successful completion.
+
+Use `-q` or `--quiet` to suppress this progress and the incremental-count summary.
+Errors and cache-unavailable warnings remain visible. There are no terminal
+control codes, so redirected progress remains readable. This reporting currently
+belongs to the experimental native CLI; Rust CLI reporting is unchanged.
+
 Freshness uses the source/include/asset acquisition timestamps and file sizes,
 plus dependency rebuilds. Source contents are not hashed or diffed. Configuration,
 tool and package compatibility are checked separately. Discovery, configuration

@@ -32,6 +32,7 @@ EndOptions	.word ?
 WarningsAsErrors	.word ?
 ReferenceModules	.word ?
 Rebuild	.word ?
+Quiet	.word ?
 ModuleCount	.long ?
 IncludeCount	.long ?
 Input	.res PATH_BYTES
@@ -66,6 +67,7 @@ K_GO = 12
 K_WERROR = 13
 K_REFERENCE_MODULES = 14
 K_REBUILD = 15
+K_QUIET = 16
 Record	.struct
 Short	.word ?
 Kind	.word ?
@@ -187,12 +189,21 @@ selected
 	beq.w referenceModules
 	cmpi.w #K_REBUILD, d2
 	beq.w rebuild
+	cmpi.w #K_QUIET, d2
+	beq.w quiet
 	movea.l a4, a6
 	adda.w Record.Dest(a5), a6
 	tst.b (a6)
 	bne.w rejectDuplicate
 	bsr.w required
 	bne.w done
+	bra.w next
+quiet
+	move.l a2, d0
+	bne.w rejectMalformed
+	tst.w State.Quiet(a4)
+	bne.w rejectDuplicate
+	move.w #1, State.Quiet(a4)
 	bra.w next
 rebuild
 	move.l a2, d0
@@ -641,7 +652,7 @@ Options
 	.long Name14
 	.word 0, K_UNSUPPORTED, 0, 0
 	.long Name15
-	.word 'q', K_UNSUPPORTED, 0, 0
+	.word 'q', K_QUIET, 0, 0
 	.long Name16
 	.word 'E', K_UNSUPPORTED, 0, 0
 	.long Name17

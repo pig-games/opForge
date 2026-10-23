@@ -5,21 +5,30 @@
 Stored dependency interfaces and default-on incremental reuse now pass complete
 self-builds under **8 MiB total RAM**, with installed Workbench and startup
 utilities, a plain background, and disk-backed capture. The root remains in the
-shared final driver. A release cold build takes **284 s (4m 44s)** and the unchanged
-incremental build takes **61 s (1m 1s)**. Cold rebuilds all 188 dependency modules;
-warm reuses all 188 and rebuilds none. Both exit zero and reproduce the complete
-**825,428-byte Rust oracle and bootstrap exactly**, with fresh completed proof.
+shared final driver. With CLI progress enabled, the latest release cold build
+takes **288 s (4m 48s)** and the unchanged incremental build takes **60 s (1m)**. Cold rebuilds all 189
+dependency modules; warm reuses all 189 and rebuilds none. Both exit zero and
+reproduce the complete **826,760-byte Rust oracle and bootstrap exactly**, with
+fresh completed proof. The CLI reports total elapsed times of 288.00 s and
+60.32 s. This build contains 277 source files / 3,427,689 bytes, manifest
+`fnv1a64:4a1bf704ef6a06ff`, with the unchanged embedded m68020 package
+`fnv1a64:390f6f44df85279b`. It is a new source build, so the earlier 284 s / 61 s
+pair is not an isolated measurement of reporting overhead.
 These FS-UAE durations have one-second guest-clock resolution and unrestricted
 CPU speed; they are not physical 68020 timings.
 
-A separate complete accounting pair peaks at **4,146,008 B (3.95 MiB)** tracked
+Before progress reporting, a separate complete accounting pair for the
+825,428-byte build peaked at **4,146,008 B (3.95 MiB)** tracked
 heap cold and **3,671,120 B (3.50 MiB)** warm, with zero allocation failures,
 profiling errors and terminal ownership. Instrumented static reservations plus
 heap and 64 KiB stack give process floors of **4.86 MiB** and **4.40 MiB**, excluding
 loader and untracked costs. The cold floor leaves about 1.64 MiB below the
 6.5 MiB process budget before those costs. Constrained emulator completion
 establishes fit for this particular OS/workload; the default resident-capture path
-remains outside this claim.
+remains outside this claim. Those heap peaks have not been remeasured on the
+new progress-reporting source build. Reporting itself allocates no heap: its two
+fixed frames occupy 1,360 bytes. The new release links 868,488 bytes of static
+reservations and its executable grows by 1,332 bytes.
 
 Buffered Hunk output is the default. It borrows existing section bytes and uses
 the shared 4 KiB transport buffer for metadata, removing the second full-size Hunk

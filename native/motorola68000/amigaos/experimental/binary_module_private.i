@@ -82,10 +82,20 @@ configurationOwner
 	bsr.w privateFindCapture
 	bne.w fallback
 requestReady
+	clr.w PrivateReused
+	lea ModuleProgress, a0
+	lea PrivateModuleName, a1
+	move.l PrivateModuleBytes, d0
+	clr.b 0(a1, d0.l)  ; request-table names are length-delimited
+	moveq #progress.PROCESSING, d0
+	jsr progress.begin
 	bsr.w incrementalTry
 	bne.w failed
 	tst.l d1
-	bne.w cached
+	beq.w compileFresh
+	move.w #1, PrivateReused
+	bra.w cached
+compileFresh
 	move.l Front+frontend.Frame.Package, PrivateCompile+moduleCompile.Context.Package
 	move.l #privateInitialize, PrivateCompile+moduleCompile.Context.Initialize
 	move.l #privateReplay, PrivateCompile+moduleCompile.Context.Replay
@@ -131,6 +141,7 @@ failed
 	moveq #0, d1
 	moveq #1, d0
 release
+	bsr.w finishModuleProgress
 	move.l d0, d7
 	bsr.w privateReleaseAttempt
 	bsr.w incrementalReleaseAttempt

@@ -113,7 +113,7 @@ begun
 	lea SemanticGraph, a1
 	bsr.w swapModuleGraphs
 	lea PublishedCapture, a0
-	bsr.w replayCapturedSpan
+	bsr.w replayReportedSpan
 	move.l d0, d7
 	lea GraphBlock, a0
 	lea SemanticGraph, a1
@@ -253,7 +253,7 @@ next
 	lea CaptureOrder, a0
 	movea.l memory.Block.Pointer(a0), a0
 	adda.l d0, a0
-	bsr.w replayCapturedSpan
+	bsr.w replayReportedSpan
 	bne.w bad
 	move.l Span.Start(a0), d1
 	move.l Span.End(a0), d2

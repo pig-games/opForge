@@ -231,6 +231,8 @@ incrementalFinish	.block
 	movem.l d0-d7/a0-a6, -(sp)
 	tst.l IncrementalEnabled
 	beq.w release
+	tst.w CliQuiet
+	bne.w release
 	move.l IncrementalHits, d0
 	lea IncrementalReportHits, a0
 	bsr.w incrementalHex

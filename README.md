@@ -159,7 +159,8 @@ Embedding documentation:
   the [storage measurements and limits](documentation/plans/native-lazy-preparation.md).
   The native CLI reuses timestamp-valid module objects in `build/ofm` by default;
   use `--rebuild` to force fresh assembly or `--incremental-dir DIR` to choose the
-  cache location. Discovery/configuration and final linking still execute. See
+  cache location. It reports module assembly/reuse and elapsed times; `-q` or
+  `--quiet` suppresses progress. Discovery/configuration and final linking still execute. See
   the [module-cache behavior and limits](documentation/plans/native-module-interfaces.md).
 
 ## Development Shortcuts

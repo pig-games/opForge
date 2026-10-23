@@ -107,6 +107,7 @@ execute
 	lea args.State.IncrementalDirectory(a2), a1
 	move.l a1, app.Frame.IncrementalDirectory(a0)
 	move.w args.State.Rebuild(a2), app.Frame.Rebuild(a0)
+	move.w args.State.Quiet(a2), app.Frame.Quiet(a0)
 	move.w args.State.ReferenceModules(a2), app.Frame.ReferenceModules(a0)
 	bsr.w closeDos
 	lea Config, a0
@@ -171,6 +172,7 @@ UsageText	.byte "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY", 10
 	.byte "  -I, --include-path DIR Additional include search root (repeatable)", 10
 	.byte "  -P, --package-path DIR Package directory", 10
 	.byte "  -d, --dialect NAME    Package dialect", 10
+	.byte "  -q, --quiet          Suppress module progress and build summaries", 10
 	.byte "      --Werror         Return failure if warnings occurred", 10
 	.byte "  -h, --help           This help", 10
 	.byte "  -V, --version        Build identity", 10

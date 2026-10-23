@@ -87,8 +87,13 @@ fn run(action: Action) {
     };
     // The runner wraps this entire sequence with its fresh start/done challenge.
     // Capture earlier exit codes explicitly so a later success cannot hide them.
+    let quiet = if matches!(action, Action::Rebuild) {
+        "Work:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache --quiet >Work:quiet.txt *>Work:quiet.err\nEcho $RC >Work:quiet.rc\nC:Copy Work:build/module.bin Work:quiet.bin\nWork:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache -q >Work:short-quiet.txt *>Work:short-quiet.err\nEcho $RC >Work:short-quiet.rc\nWork:build/opforge_compact --quiet=1 >Work:quiet-invalid.txt\nEcho $RC >Work:quiet-invalid.rc\nWork:build/opforge_compact Work:entry.asm -M Work:library --reference-modules >Work:reference.txt *>Work:reference.progress\nEcho $RC >Work:reference.rc\nC:Copy Work:build/module.bin Work:reference.bin\n"
+    } else {
+        ""
+    };
     let command = format!(
-        "Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild >Work:cold.txt\nEcho $RC >Work:cold.rc\nC:Copy Work:build/module.bin Work:cold.bin\nWork:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache >Work:warm.txt\nEcho $RC >Work:warm.rc\nC:Copy Work:build/module.bin Work:warm.bin\n{final_action}"
+        "Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild >Work:cold.txt *>Work:cold.progress\nEcho $RC >Work:cold.rc\nC:Copy Work:build/module.bin Work:cold.bin\nWork:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache >Work:warm.txt *>Work:warm.progress\nEcho $RC >Work:warm.rc\nC:Copy Work:build/module.bin Work:warm.bin\n{quiet}{final_action}"
     );
     let files = [
         OpforgeNativeCliGuestFile {
@@ -136,6 +141,50 @@ fn run(action: Action) {
             rust_oracle: b"0\n",
         });
     }
+    if matches!(action, Action::Rebuild) {
+        artifacts.extend([
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/quiet.bin",
+                rust_oracle: &original,
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/quiet.rc",
+                rust_oracle: b"0\n",
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/short-quiet.rc",
+                rust_oracle: b"0\n",
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/reference.bin",
+                rust_oracle: &original,
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/reference.rc",
+                rust_oracle: b"0\n",
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/quiet-invalid.rc",
+                rust_oracle: b"20\n",
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/quiet.txt",
+                rust_oracle: b"",
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/quiet.err",
+                rust_oracle: b"",
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/short-quiet.txt",
+                rust_oracle: b"",
+            },
+            OpforgeNativeCliExpectedArtifact {
+                relative_path: "Work/short-quiet.err",
+                rust_oracle: b"",
+            },
+        ]);
+    }
     let case = OpforgeNativeCliParityCase {
         name: match action {
             Action::Change => "incremental-changed-dependency",
@@ -169,6 +218,59 @@ fn run(action: Action) {
         )
         .unwrap()
     };
+    if matches!(action, Action::Rebuild) {
+        let reference = log("Work/reference.progress");
+        assert!(
+            reference
+                .lines()
+                .any(|row| row.trim().starts_with("Prepared ") && row.contains("leaf.asm [")),
+            "shared replay must report dependency preparation: {reference}"
+        );
+        assert!(reference
+            .lines()
+            .any(|row| row.trim().starts_with("Linked Work:entry.asm [")));
+        assert!(
+            !reference.contains("Assembled "),
+            "replay must not claim private assembly"
+        );
+        assert!(
+            log("Work/quiet-invalid.txt").contains("invalid or unsupported arguments"),
+            "quiet must not hide errors or accept an attached value"
+        );
+    }
+    let cold_progress = log("Work/cold.progress");
+    let warm_progress = log("Work/warm.progress");
+    for (text, action) in [(&cold_progress, "Assembled"), (&warm_progress, "Reused")] {
+        let rows: Vec<_> = text.lines().map(str::trim).collect();
+        let leaf = rows
+            .iter()
+            .position(|row| row.starts_with(&format!("{action} leaf [")))
+            .unwrap_or_else(|| panic!("missing {action} leaf in {text:?}"));
+        let middle = rows
+            .iter()
+            .position(|row| row.starts_with(&format!("{action} middle [")))
+            .unwrap_or_else(|| panic!("missing {action} middle in {text:?}"));
+        assert!(leaf < middle, "dependency must finish before its consumer");
+        assert!(rows
+            .iter()
+            .any(|row| row.starts_with("Linked Work:entry.asm [")));
+        assert!(rows
+            .last()
+            .unwrap()
+            .starts_with("Finished Work:entry.asm ["));
+        for row in rows.iter().filter(|row| row.contains(" [")) {
+            let time = row.split_once(" [").unwrap().1.strip_suffix("s]").unwrap();
+            let (seconds, fraction) = time.split_once('.').unwrap();
+            seconds.parse::<u32>().unwrap();
+            assert_eq!(fraction.len(), 2);
+            let fraction = fraction.parse::<u32>().unwrap();
+            assert!(
+                fraction < 100 && fraction.is_multiple_of(2),
+                "50 Hz time: {row}"
+            );
+        }
+    }
+    eprintln!("MODULE_PROGRESS cold:\n{cold_progress}warm:\n{warm_progress}");
     let cold = counters(&log("Work/cold.txt"));
     let warm = counters(&log("Work/warm.txt"));
     let final_counts = counters(&run.stdout);

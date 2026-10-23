@@ -35,6 +35,7 @@
 	.use experimental.amigaos.binary_metadata_output as metadata_output
 	.use experimental.amigaos.binary_package as package
 	.use experimental.amigaos.binary_package_loader as loader
+	.use experimental.amigaos.binary_cli_progress as progress
 	.use experimental.amigaos.binary_incremental_store as incrementalStore
 	.use experimental.amigaos.binary_memory as memory
 	.use experimental.amigaos.binary_source as source
@@ -199,8 +200,9 @@ ReferenceModules	.word ?
 Reserved	.word ?
 IncrementalDirectory	.long ?
 Rebuild	.word ?
+Quiet	.word ?
 	.endstruct
-FRAME_BYTES = Frame.Rebuild+2
+FRAME_BYTES = Frame.Quiet+2
 	.section code, kind=code
 	.pub
 ; Assemble one package and source selection. A0=Frame, D0=Shell return code.
@@ -216,6 +218,7 @@ execute	.block
 	move.w Frame.ReferenceModules(a0), ReferenceModules
 	move.l Frame.IncrementalDirectory(a0), IncrementalDirectory
 	move.w Frame.Rebuild(a0), IncrementalRebuild
+	move.w Frame.Quiet(a0), CliQuiet
 	move.w Frame.OutputKind(a0), CliOutputKind
 	move.w Frame.StartSet(a0), OutputStartSet
 	move.l Frame.Start(a0), OutputStart
@@ -304,6 +307,7 @@ configured
 	tst.l d0
 	beq.w cleanup
 	move.l d0, DosBase
+	bsr.w beginProgress
 	bsr.w incrementalBegin
 	bne.w failed
 	tst.l CaptureDirectory
@@ -352,6 +356,10 @@ captureConfigured
 	tst.w metadata_output.Frame.HexSet(a0)
 	beq.w missingRecordOutput
 outputsReady
+	lea ModuleProgress, a0
+	lea IncrementalRootPath, a1
+	moveq #progress.LINKING, d0
+	jsr progress.begin
 	.MEMORY_CLOCK DosBase, #1
 	.MEMORY_PHASE #1
 	.CAPTURE_LIFE_PHASE #capture_life.ASSEMBLY
@@ -364,6 +372,9 @@ outputsReady
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_OUTPUT, #0, #0, Records, memory.Block.Used
 	bsr.w writeOutputs
 	bne.w outputFailed
+	lea ModuleProgress, a0
+	moveq #progress.LINKED, d0
+	jsr progress.finish
 	tst.w CliWarningsAsErrors
 	beq.w warningsReady
 	lea Work, a0
@@ -524,6 +535,7 @@ freeBlocks
 	.WORK_REPORT DosBase
 	.HOTSPOT_REPORT DosBase
 	.MEMORY_SAVE DosBase
+	bsr.w finishProgress
 	movea.l d0, a1
 	movea.l 4.w, a6
 	jsr -414(a6)
@@ -533,6 +545,7 @@ done
 	rts
 	.bend  ; execute
 	.priv
+	.include "binary_app_progress.i"
 	.include "binary_app_diagnostics.i"
 	.include "binary_app_lazy_report.i"
 
@@ -1984,6 +1997,11 @@ IoBuffer	.res long, 1
 IoCapacity	.res long, 1
 SourceHandle	.res long, 1
 DosBase	.res long, 1
+CliQuiet	.res word, 1
+	.align 4
+BuildProgress	.res byte, progress.FRAME_BYTES
+ModuleProgress	.res byte, progress.FRAME_BYTES
+PrivateReused	.res word, 1
 InputName	.res long, 1
 OutputName	.res long, 1
 CliMode	.res word, 1
@@ -2080,7 +2098,8 @@ PrivateBorrowedFront	.res long, 1
 PrivateBorrowedRecords	.res long, 1
 PrivateSavedGraphIndex	.res long, 1
 PrivateSavedNumbers	.res long, PRIVATE_NUMBER_COUNT
-PrivateModuleName	.res byte, PATH_BYTES
+PrivateModuleName	.res byte, PATH_BYTES+1
+	.align 4
 PrivateModuleBytes	.res long, 1
 PrivateDependencyName	.res byte, PATH_BYTES
 PrivateDependencyBytes	.res long, 1

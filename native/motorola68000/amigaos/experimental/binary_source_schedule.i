@@ -554,7 +554,7 @@ nextSpan
 	bne.w spanDone
 	lea PublishedCapture, a0
 ordinary
-	bsr.w replayCapturedSpan
+	bsr.w replayReportedSpan
 	bne.w bad
 spanDone
 	tst.w ReferenceModules

@@ -250,7 +250,8 @@ fn compact_hunk_placement_odd_origin_alignment_rust_oracle() {
                 vec![1, 0, 0, 0, 2, 0, 0, 0]
             }
         );
-        assert_eq!(parts[0].reserved_bytes, 8);
+        // The placed span is $2001..$2004: four bytes, rounded to a Hunk word.
+        assert_eq!(parts[0].reserved_bytes, if placed { 4 } else { 8 });
         let mut assembler = Assembler::new();
         let lines = source.lines().map(str::to_owned).collect::<Vec<_>>();
         assert_eq!(assembler.pass1(&lines).errors, 0);
@@ -382,14 +383,14 @@ fn compact_hunk_placement_high_water_rust_oracles() {
         match name {
             "odd-align-following-section" => {
                 assert_eq!(parts[0].payload, [1, 0, 0, 2]);
-                assert_eq!(parts[0].reserved_bytes, 8);
+                assert_eq!(parts[0].reserved_bytes, 4);
                 assert_eq!(parts[1].payload, [3, 0, 0, 0]);
                 assert_eq!(parts[1].reserved_bytes, 4);
                 assert!(parts.iter().all(|part| part.relocations.is_empty()));
                 for label in [
                     "probe.entry = $2001",
                     "probe.aligned = $2004",
-                    "probe.payload = $2006",
+                    "probe.payload = $2005",
                 ] {
                     assert!(
                         labels.lines().any(|line| line == label),

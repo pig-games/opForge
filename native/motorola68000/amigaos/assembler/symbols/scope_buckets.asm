@@ -7,7 +7,7 @@
 	.use opforge.assembler.symbols.scope_layout as layout
 	.use opforge.assembler.symbols.binding_records as records
 	.use opforge.platform.memory as memory
-	.include "hotspot_telemetry.i"
+	.include "../../debug/hotspot_telemetry.i"
 	.pub
 BLOCK_BYTES = memory.Block.Used+4
 	.section code, kind=code

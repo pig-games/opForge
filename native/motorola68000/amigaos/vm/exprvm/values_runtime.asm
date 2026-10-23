@@ -8,7 +8,7 @@
 	.use opforge.assembler.symbols.bindings as bindings
 	.use opforge.platform.memory as memory
 	.use opforge.vm.exprvm.runtime as runtime
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 STATUS_OK = 0
 STATUS_MALFORMED = 1

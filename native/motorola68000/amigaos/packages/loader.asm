@@ -6,7 +6,7 @@
 	.use opforge.packages.format as package
 	.use opforge.packages.validation as validation
 	.use opforge.platform.memory as memory
-	.include "memory_telemetry.i"
+	.include "../debug/memory_telemetry.i"
 DOS_OPEN = -30
 DOS_CLOSE = -36
 DOS_READ = -42

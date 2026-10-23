@@ -19,7 +19,7 @@
 	.use opforge.assembler.language.repeat_frames as frames
 	.use opforge.vm.prvm.packed_loop as parser
 	.use opforge.vm.prvm.abi as abi
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 LIMIT = 16
 MAX_ITERATIONS = 65536

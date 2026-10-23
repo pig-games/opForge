@@ -13,23 +13,30 @@ promotion changes the product entry point; it does not claim complete Rust
 language, CPU-family or output parity. Full opcore and family parity, plus the
 2 MiB memory target, remain open.
 
-**Default external-package self-host qualified, 2026-10-23.** The current
-export contains 278 mapped inputs (2,947,664 bytes), manifest
-`fnv1a64:10ba03505347550b`. Automatic package discovery uses the source's `.cpu`
-selection and `packages/m68020--motorola68k.bin`, without an explicit runtime
-package argument. Under the same 8 MiB Workbench/plain-background setup and
-64 KiB stack below, cold takes **283 s**, warm **59 s**; all 190 modules rebuild
-cold and all 190 are reused warm. Both phases exit zero and produce the complete
-348,752-byte executable exactly matching live Rust and the bootstrap, digest
-`fnv1a64:0a909fb73ee7df7d`. Linked static reservation is 389,912 bytes; the
-separate package is 478,042 bytes. Moving that payload out of the executable is
-not a corresponding peak-RAM saving: the runtime loads it into memory. Peak heap
-was not remeasured and 2 MiB fit remains unproved. These unrestricted-speed
-FS-UAE durations are effectively unchanged from the preceding external-package
-snapshot (282/59 s); they do not establish a speed improvement.
+**Bare CLI self-host qualified, 2026-10-23.** The current export contains
+278 mapped inputs (2,949,110 bytes), manifest `fnv1a64:51307e75736f84bd`.
+Cold runs `opforge src --rebuild`; warm runs `opforge src`, without CPU,
+module/include-root or capture arguments. The root file supplies `.cpu` and
+`.output`; its directory is the default module/include root. Product debug
+includes resolve relative to their containing files. Normal CLI builds select
+the bounded module pipeline, creating working-directory `build/scratch` and
+persistent `build/ofm` as needed. Extra `-I` paths retain the default root.
 
-The same external-package release passes the physical A6000 cold/warm pair
-reported on 2026-10-23: **1,066 s (17m 46s) cold**, **90 s (1m 30s) warm**.
+Under the established 8 MiB Workbench/plain-background setup and 64 KiB stack,
+cold takes **279 s (4m 39s)** and warm **58 s** (CLI totals 278.96/57.70 s).
+All 190 dependency modules rebuild cold and all 190 are reused warm. Both
+phases exit zero and produce the complete **348,824-byte executable** exactly
+matching live Rust and the bootstrap, digest `fnv1a64:039b39206ed8ab98`.
+Linked static reservation is 389,968 bytes; the separate m68020 package remains
+478,042 bytes. Capture scratch is empty after cleanup. These unrestricted-speed
+FS-UAE durations prove this exact configuration's completion and 8 MiB fit;
+they do not establish physical hardware timing, a new peak-heap figure, or
+2 MiB fit. The previous source snapshot took 283/59 s; no isolated speed
+improvement is claimed. The new bare-CLI bundle awaits physical A6000 testing.
+
+The preceding external-package snapshot (278 inputs / 2,947,664 bytes,
+manifest `fnv1a64:10ba03505347550b`, executable 348,752 bytes) passes the physical
+A6000 cold/warm pair reported on 2026-10-23: **1,066 s (17m 46s) cold**, **90 s (1m 30s) warm**.
 Cold rebuilds all 190 modules; warm reuses all 190 and rebuilds none. Both phases
 have fresh completed protocol, exit/copy status zero and exact entire Rust Hunk
 equality. The downloaded capture was independently rechecked against the bundle's
@@ -44,8 +51,8 @@ it does not isolate the cost of the shared-store or package-default changes.
 
 Disk-backed linking and incremental reuse share `build/ofm` (or
 `--incremental-dir`). After the cold/warm pair, it contains one set of 190 `.ofm`
-images totaling 1,654,912 bytes, with one `.ofi` validity companion per module;
-there are no per-run object directories. Four fresh native incremental controls
+images totaling 1,655,184 bytes, with one `.ofi` validity companion per module;
+there are no per-run object directories. Earlier focused native incremental controls
 also cover source changes, timestamp-only changes, forced rebuilding and template
 origins. Unchanged files retain their exact bytes and timestamps, while a changed
 dependency rebuilds only its consumer closure. Resident/disk image, relocation

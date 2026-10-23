@@ -2,7 +2,7 @@
 ; @opforge-owner: opforge.assembler.symbols.binding_records
 	.module opforge.assembler.symbols.binding_records
 	.cpu 68020
-	.include "binding_telemetry.i"
+	.include "../../debug/binding_telemetry.i"
 	.use opforge.assembler.prepare.expression as expr
 	.use opforge.vm.exprvm.runtime as runtime
 	.use opforge.assembler.source.records as source

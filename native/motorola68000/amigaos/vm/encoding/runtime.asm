@@ -2,7 +2,7 @@
 ; @opforge-owner: opforge.vm.encoding.runtime
 	.module opforge.vm.encoding.runtime
 	.cpu 68020
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 ; Fixed scalar input record: little-endian value followed by its byte length.
 ScalarInput	.struct

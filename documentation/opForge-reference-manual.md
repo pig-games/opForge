@@ -1501,6 +1501,14 @@ replaces its existing object. Replacement writes and closes a temporary file
 before publishing the complete object, then publishes its `.ofi` validity metadata.
 These options currently belong to the native CLI; they are not Rust CLI options.
 
+Native CLI builds use bounded temporary storage in `build/scratch` by default;
+`--capture-dir DIR` overrides it. Both scratch and object directories are relative
+to the current working directory and are created when needed. For example,
+`opforge src` reads `src/main.asm`, uses `src` as its default module/include
+root, honors source `.cpu` and `.output` declarations, and reuses `build/ofm`.
+An explicit `-I src/debug` adds a search directory; it does not replace the
+default root or change object storage.
+
 The native CLI prints plain module progress to the process error stream
 (falling back to its output stream when no error stream is available). Each
 `Processing` line identifies a dependency module. Its timed completion says

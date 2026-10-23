@@ -11,7 +11,7 @@
 	.use opforge.vm.prvm.packed_branch as branch
 	.use opforge.vm.prvm.packed_loop as loopParser
 	.use opforge.vm.prvm.abi as abi
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 	.section code, kind=code
 ; A0=graph.Frame initialized for the live iteration; Branch is the selected

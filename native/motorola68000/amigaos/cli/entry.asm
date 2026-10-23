@@ -165,7 +165,7 @@ UsageText	.byte "Usage: opforge [OPTIONS] FILE|DIRECTORY", 10
 	.byte "      --incremental-dir DIR  Module cache directory (default build/ofm)", 10
 	.byte "      --rebuild         Rebuild cached modules", 10
 	.byte "      --reference-modules  Preserve shared module preparation", 10
-	.byte "      --capture-dir DIR  Disk scratch directory; capture RAM bounded to 1 MiB", 10
+	.byte "      --capture-dir DIR  Disk scratch directory (default: build/scratch)", 10
 	.byte "  -b, --bin [FILE]      Flat binary output", 10
 	.byte "      --hunk [FILE]     Source-configured Hunk output", 10
 	.byte "  -x, --hex [FILE]      Intel HEX output", 10

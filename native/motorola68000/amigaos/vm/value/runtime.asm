@@ -3,7 +3,7 @@
 
 	.module opforge.vm.value.runtime
 	.cpu 68020
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 
 	.section code, kind=code
 	.pub

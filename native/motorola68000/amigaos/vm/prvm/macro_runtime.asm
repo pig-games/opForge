@@ -12,7 +12,7 @@
 	.use opforge.vm.prvm.packed_metadata as metadata
 	.use opforge.vm.prvm.target_bootstrap as bootstrap
 	.use opforge.vm.prvm.macro_fragments as fragments
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.section code, kind=code
 	.pub
 

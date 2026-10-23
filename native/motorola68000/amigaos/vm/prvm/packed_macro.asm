@@ -4,7 +4,7 @@
 	.module opforge.vm.prvm.packed_macro
 	.cpu 68020
 	.use opforge.vm.prvm.abi as abi
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 State	.struct
 Source	.long ?

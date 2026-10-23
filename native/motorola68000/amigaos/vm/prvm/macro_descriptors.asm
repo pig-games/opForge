@@ -4,7 +4,7 @@
 	.module opforge.vm.prvm.macro_descriptors
 	.cpu 68020
 	.use opforge.vm.prvm.abi as abi
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 MAX_RECORDS = 64
 RECORD_BYTES = 32

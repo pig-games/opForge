@@ -109,6 +109,10 @@ def prepare_cases(args):
                     "native_protocol_completed", "native_assembler_exit_code",
                     "native_start_to_done_host_seconds") if key in own_manifest},
                 "files": []}
+        if own_manifest.get("command", "").removesuffix(" --capture-dir scratch") == "opforge src":
+            spec["input_command"] = "src"
+        if own_manifest.get("default_capture_directory") == "build/scratch":
+            spec["default_capture"] = True
         for key, filename, data in (("image", "bootstrap.hunk", files["opforge"]),
                                     ("oracle", "exported-oracle.hunk", own_oracle)):
             (directory / filename).write_bytes(data)

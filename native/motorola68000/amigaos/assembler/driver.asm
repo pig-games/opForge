@@ -83,12 +83,12 @@
 .endif
 	.use opforge.assembler.source.control as source_control
 	.use opforge.assembler.symbols.binding_records as records
-	.include "memory_telemetry.i"
-	.include "binding_telemetry.i"
-	.include "capture_telemetry.i"
-	.include "capture_lifetime.i"
-	.include "lazy_audit.i"
-	.include "lazy_work_context.i"
+	.include "../debug/memory_telemetry.i"
+	.include "../debug/binding_telemetry.i"
+	.include "../debug/capture_telemetry.i"
+	.include "../debug/capture_lifetime.i"
+	.include "../debug/lazy_audit.i"
+	.include "../debug/lazy_work_context.i"
 HEADER_BYTES = package.HEADER_BYTES
 CAPTURE_RESIDENT_BYTES = 1048576
 IO_BYTES = 4096
@@ -172,7 +172,7 @@ Origin	.long ?
 Path	.byte ?
 	.endstruct
 INCLUDE_FRAME_BYTES = IncludeFrame.Path+PATH_BYTES
-	.include "hotspot_telemetry.i"
+	.include "../debug/hotspot_telemetry.i"
 	.pub
 Frame	.struct
 PackagePath	.long ?
@@ -312,6 +312,10 @@ configured
 	bne.w failed
 	tst.l CaptureDirectory
 	beq.w captureConfigured
+	movea.l CaptureDirectory, a0
+	movea.l DosBase, a2
+	jsr incrementalStore.ensureDirectory
+	bne.w captureFailed
 	lea CaptureStore, a0
 	movea.l DosBase, a1
 	movea.l CaptureDirectory, a2

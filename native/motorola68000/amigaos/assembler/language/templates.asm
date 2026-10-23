@@ -5,10 +5,10 @@
 	.module opforge.assembler.language.templates
 	.cpu 68020
 	.use opforge.assembler.symbols.lexical_store as lexical
-	.include "memory_telemetry.i"
-	.include "lazy_work.i"
-	.include "lazy_template_hooks.i"
-	.include "macro_packing_audit.i"
+	.include "../../debug/memory_telemetry.i"
+	.include "../../debug/lazy_work.i"
+	.include "../../debug/lazy_template_hooks.i"
+	.include "../../debug/macro_packing_audit.i"
 	.use opforge.assembler.symbols.name_store as nameStore
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.language.macro_plans as plans

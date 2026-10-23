@@ -7,7 +7,7 @@
 	.use opforge.assembler.prepare.expression as expression
 	.use opforge.assembler.language.repetition as loops
 	.use opforge.debug.branch_trace as trace
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 LIMIT = 16
 RESULT_ACTIVE = 0

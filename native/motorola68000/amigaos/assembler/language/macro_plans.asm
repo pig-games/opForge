@@ -5,7 +5,7 @@
 	.cpu 68020
 	.use opforge.vm.prvm.abi as abi
 	.use opforge.platform.memory as memory
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 ROW_BYTES = 32
 HEADER_BYTES = 12

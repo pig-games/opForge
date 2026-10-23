@@ -2,8 +2,8 @@
 ; @opforge-owner: opforge.assembler.symbols.scopes
 	.module opforge.assembler.symbols.scopes
 	.cpu 68020
-	.include "telemetry_macros.i"
-	.include "binding_telemetry.i"
+	.include "../../debug/telemetry_macros.i"
+	.include "../../debug/binding_telemetry.i"
 	.use opforge.assembler.symbols.binding_records as records
 	.use opforge.assembler.modules.bindings as modules
 	.use opforge.assembler.symbols.scope_layout as layout
@@ -27,7 +27,7 @@
 	.use opforge.assembler.symbols.iterators as iterators
 	.use opforge.assembler.symbols.binding_plans as plans
 	.use opforge.assembler.symbols.bindings as bindings
-	.include "hotspot_telemetry.i"
+	.include "../../debug/hotspot_telemetry.i"
 	.pub
 LIMIT = layout.LIMIT
 ARENA_BYTES = layout.ARENA_BYTES

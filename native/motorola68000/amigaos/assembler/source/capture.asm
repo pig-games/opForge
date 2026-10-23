@@ -4,8 +4,8 @@
 	.cpu 68020
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.source.records as writer
-	.include "capture_telemetry.i"
-	.include "hotspot_telemetry.i"
+	.include "../../debug/capture_telemetry.i"
+	.include "../../debug/hotspot_telemetry.i"
 	.pub
 Region	.struct
 Base	.long ?

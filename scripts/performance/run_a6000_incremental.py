@@ -111,7 +111,9 @@ def main(argv=None):
     parser.add_argument("--host", default=None, help="defaults to unique ash -l discovery")
     parser.add_argument("--volume", default="Development")
     parser.add_argument("--timeout", type=int, default=3600)
-    parser.add_argument("--dry-run", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true")
+    mode.add_argument("--copy-only", action="store_true", help="upload and verify files for manual cold/warm assembly without executing")
     args = parser.parse_args(argv)
     if (args.host is not None and not base.valid_host(args.host)) or not re.fullmatch(r"[A-Za-z0-9_-]+", args.volume):
         parser.error("Host and volume must be plain names; omit the volume colon")
@@ -121,7 +123,8 @@ def main(argv=None):
     manifest, files, oracle, digest = load_bundle(bundle)
     result, _ = base.run_case(args, bundle, manifest, files, oracle, digest,
                               run_kind="cold/warm incremental self-host", guest_script_builder=guest_script,
-                              result_inspector=inspect_result)
+                              result_inspector=inspect_result,
+                              manual_commands=[manifest["command"] + " --rebuild", manifest["command"]])
     return 0 if result is None or result["success"] else 1
 
 

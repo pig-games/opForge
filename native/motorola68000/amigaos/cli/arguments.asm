@@ -372,6 +372,12 @@ inputReady
 	tst.b State.PackageRoot(a4)
 	bne.w rejectConflict
 configured
+	tst.b State.CaptureDirectory(a4)
+	bne.w incrementalDirectory
+	lea DefaultCaptureDirectory, a2
+	lea State.CaptureDirectory(a4), a6
+	bsr.w copy
+incrementalDirectory
 	tst.b State.IncrementalDirectory(a4)
 	bne.w ready
 	lea DefaultIncrementalDirectory, a2
@@ -791,5 +797,6 @@ Name53	.byte "reference-modules", 0
 Name54	.byte "incremental-dir", 0
 Name55	.byte "rebuild", 0
 DefaultIncrementalDirectory	.byte "build/ofm", 0
+DefaultCaptureDirectory	.byte "build/scratch", 0
 	.endsection
 	.endmodule

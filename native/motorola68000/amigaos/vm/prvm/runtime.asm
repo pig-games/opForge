@@ -5,7 +5,7 @@
 	.use opforge.vm.prvm.abi as abi
 	.use opforge.vm.prvm.macro_runtime as macro_runtime
 	.pub
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 
 PRVM_DEFAULT_STEP_BUDGET            = 256
 PRVM_LEXEME_SCRATCH_CAPACITY        = 256

@@ -3,7 +3,7 @@
 	.module opforge.vm.prvm.statement_compile
 	.cpu 68020
 	.use opforge.vm.prvm.statement_abi as abi
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.use opforge.vm.prvm.statement_inputs as inputs
 	.use opforge.vm.prvm.statement_request as request
 	.use opforge.vm.prvm.statement_facets as facets

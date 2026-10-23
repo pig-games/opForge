@@ -6,7 +6,7 @@
 	.cpu 68020
 	.use opforge.assembler.source.records as source
 	.use opforge.platform.memory as memory
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 Frame	.struct
 Dos	.long ?

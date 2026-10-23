@@ -3,7 +3,7 @@
 ; @opforge-owner: opforge.vm.tkvm.fragments
 	.module opforge.vm.tkvm.fragments
 	.cpu 68020
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 	.use opforge.vm.tkvm.runtime
 

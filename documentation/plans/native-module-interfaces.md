@@ -4,13 +4,25 @@
 
 The promoted product's current full cold/incremental qualification is recorded in
 the [native assembler plan](native-runtime-reset.md#current-product-state). Earlier
-measurements below retain their own source/configuration scope.
+measurements below retain their own source/configuration scope. The bare-CLI
+external-package build completes cold/warm in **279/58 s** under 8 MiB, exactly
+matching the complete 348,824-byte live Rust executable; all 190 modules rebuild
+cold and are reused warm. Peak heap was not remeasured.
 
-The current external-package release also passes its physical A6000 cold/warm
+The preceding external-package snapshot passes its physical A6000 cold/warm
 pair: **1,066/90 seconds**, exact complete 348,752-byte Rust output matches,
 190 modules rebuilt cold and all 190 reused warm. The downloaded capture confirms
 one shared `build/ofm` set. This hardware run does not measure peak memory or
 restrict installed RAM; the linked current qualification records its identity.
+
+Normal CLI commands now select the bounded module pipeline without requiring
+`--capture-dir`: `opforge src` uses `src/main.asm`, default module/include root
+`src`, persistent objects in working-directory `build/ofm`, and temporary storage
+in working-directory `build/scratch`. Missing storage directories are created.
+An extra include path does not replace the default root or select a different
+cache. Library calls with no capture directory retain the resident reference
+route. Product debug includes resolve relative to their containing files, rather
+than depending on an extra `-I src/debug` supplied by test/export helpers.
 
 Current-build `.ofm` objects carry numeric assembly interfaces alongside linker
 data. `OFMA` is the checked interface directory and dependency/import map;
@@ -170,6 +182,10 @@ forced rebuild and unchanged incremental build in the same directory. Each phase
 has separate guest timing, fresh markers, return-code/output verification and
 cache counts. The cache survives between phases; transfer time is excluded from
 guest assembly timing. The hardware runner does not restrict RAM.
+Add `--copy-only` to stop after upload and transfer verification. It prints the
+directory, stack setting and cold/warm commands for manual execution on AmigaOS;
+the copied `run-selfhost` script remains available for a recorded pair. No assembly
+or output-parity result is claimed by an upload alone.
 
 Erik's reported A6000 pair on 2026-10-22 confirms complete native self-hosting
 and unchanged incremental reuse for the prepared source-directed release bundle:

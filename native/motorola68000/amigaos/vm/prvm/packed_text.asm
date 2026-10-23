@@ -4,7 +4,7 @@
 	.module opforge.vm.prvm.packed_text
 	.cpu 68020
 	.use opforge.vm.prvm.abi as abi
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 MAX_OPERANDS = 128; bounded by the 256-byte compact record envelope
 MAX_DEPTH = 16

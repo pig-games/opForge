@@ -2,7 +2,7 @@
 ; @opforge-owner: opforge.assembler.layout.hunk_placement
 	.module opforge.assembler.layout.hunk_placement
 	.cpu 68020
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.use opforge.assembler.layout.sections as sections
 	.use opforge.packages.format as pkg
 	.pub

@@ -2,10 +2,10 @@
 ; @opforge-owner: opforge.vm.exvm.runtime
 	.module opforge.vm.exvm.runtime
 	.cpu 68020
-	.include "lazy_work.i"
+	.include "../../debug/lazy_work.i"
 	.use opforge.vm.tkvm.runtime as tokens
 	.use opforge.assembler.source.records as source
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 STATUS_OK = 0
 STATUS_SYNTAX = 1

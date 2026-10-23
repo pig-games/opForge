@@ -3,7 +3,7 @@
 ; @opforge-owner: opforge.assembler.language.statement_execution
 	.module opforge.assembler.language.statement_execution
 	.cpu 68020
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.use opforge.platform.memory as memory
 	.use opforge.packages.format as package
 	.use opforge.assembler.source.records as writer

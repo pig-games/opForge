@@ -170,20 +170,10 @@ fn export_bundle(failure_capture: bool) {
     });
     let mut args = vec![
         "opForge".to_string(),
-        source_root.join(ENTRY).to_string_lossy().into_owned(),
-        "--cpu".to_string(),
-        "68020".to_string(),
+        source_root.to_string_lossy().into_owned(),
         "--dependencies".to_string(),
         dependencies.to_string_lossy().into_owned(),
     ];
-    args.extend([
-        "-M".to_string(),
-        source_root.to_string_lossy().into_owned(),
-        "-I".to_string(),
-        source_root.to_string_lossy().into_owned(),
-        "-I".to_string(),
-        source_root.join("debug").to_string_lossy().into_owned(),
-    ]);
     if output_embedded {
         args[1] = package_build
             .as_ref()
@@ -191,6 +181,13 @@ fn export_bundle(failure_capture: bool) {
             .cli_source_path
             .to_string_lossy()
             .into_owned();
+        // The configured entry lives outside the native source tree.
+        args.extend([
+            "-M".to_string(),
+            source_root.to_string_lossy().into_owned(),
+            "-I".to_string(),
+            source_root.to_string_lossy().into_owned(),
+        ]);
     }
     let cli = Cli::parse_from(args.clone());
     let mut config = validate_cli(&cli).expect("validate live release self-build");
@@ -299,6 +296,15 @@ fn export_bundle(failure_capture: bool) {
     let embedded_files = if let Some(build) = &package_build {
         assert_eq!(build.embedded_files.len(), 1);
         args[1] = build.cli_source_path.to_string_lossy().into_owned();
+        if !output_embedded {
+            // Only the bootstrap entry is generated outside the source tree.
+            args.extend([
+                "-M".into(),
+                source_root.to_string_lossy().into_owned(),
+                "-I".into(),
+                source_root.to_string_lossy().into_owned(),
+            ]);
+        }
         build.embedded_files.iter().cloned().collect::<Vec<_>>()
     } else {
         Vec::new()
@@ -409,8 +415,7 @@ fn export_bundle(failure_capture: bool) {
         .map(String::as_str)
         .unwrap_or("packages/m68020--motorola68k.bin");
     let native_output_file = "build/opforge";
-    let mut command = format!("opforge -i src/{}", entry.display());
-    command.push_str(" -M src -I src/debug --capture-dir scratch");
+    let command = "opforge src";
     assert!(
         command.len() <= 255,
         "classic Shell command exceeds 255 bytes"
@@ -474,8 +479,9 @@ fn export_bundle(failure_capture: bool) {
         "runtime_package_digest": opforge_self_host_package_digest(&package),
         "entry": format!("src/{}", entry.display()),
         "module_roots": module_roots,
-        "include_roots": ["src/debug"],
+        "include_roots": ["src"],
         "command": command,
+        "default_capture_directory": "build/scratch",
         "native_validation": "not_run",
         "native_output_file": native_output_file,
         "capture_mode": "disk",
@@ -488,22 +494,10 @@ fn export_bundle(failure_capture: bool) {
     }
     // Reassemble the relocated inputs, rather than trusting their manifest or
     // assuming the generator's host layout is equivalent to the guest layout.
-    let mut relocated_args = vec![
+    let relocated_args = vec![
         "opForge".to_string(),
-        output
-            .join("src")
-            .join(ENTRY)
-            .to_string_lossy()
-            .into_owned(),
-        "--cpu".into(),
-        "68020".into(),
-    ];
-    relocated_args.extend([
-        "-M".into(),
         output.join("src").to_string_lossy().into_owned(),
-        "-I".into(),
-        output.join("src/debug").to_string_lossy().into_owned(),
-    ]);
+    ];
     let relocated_cli = Cli::parse_from(relocated_args);
     let mut relocated_config = validate_cli(&relocated_cli).unwrap();
     relocated_config.out_dir = Some(scratch.join("relocated"));
@@ -534,17 +528,14 @@ fn export_bundle(failure_capture: bool) {
     .unwrap();
     fs::write(
         output.join("README.txt"),
-        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare the manifest native_output_file exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nThe default bootstrap loads packages/m68020--motorola68k.bin through the\nsource .cpu 68020 selection and its catalog. Keep packages beside opforge.\nAn embedded bootstrap uses the same source selection; its named verification\npackage is retained locally and is not a runtime fallback. Embedded-\noutput cases also stage that package under src/packages as a binary\nassembly input. An instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude. Generated origins are recorded in manifest.json. Catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
+        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Module/include roots default to src.\nObjects persist in build/ofm; temporary capture storage defaults to build/scratch.\nSet an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare the manifest native_output_file exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nThe default bootstrap loads packages/m68020--motorola68k.bin through the\nsource .cpu 68020 selection and its catalog. Keep packages beside opforge.\nAn embedded bootstrap uses the same source selection; its named verification\npackage is retained locally and is not a runtime fallback. Embedded-\noutput cases also stage that package under src/packages as a binary\nassembly input. An instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude. Generated origins are recorded in manifest.json. Catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
     )
     .unwrap();
     if std::env::var("OPFORGE_COMPACT_EXPORT_NATIVE").as_deref() == Ok("1") {
-        // Stage the disk-capture parent before executing the exact exported command.
-        let scratch_marker = Vec::new();
         let mut guest_files = sources
             .iter()
             .map(|(_, staged, bytes, _)| (format!("src/{}", staged.display()), bytes))
             .collect::<Vec<_>>();
-        guest_files.push(("scratch/.keep".into(), &scratch_marker));
         if !output_embedded {
             guest_files.push(("packages/m68020--motorola68k.bin".into(), &package));
         }

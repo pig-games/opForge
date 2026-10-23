@@ -2,7 +2,7 @@
 ; @opforge-owner: opforge.assembler.modules.graph
 	.module opforge.assembler.modules.graph
 	.cpu 68020
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.use opforge.assembler.symbols.scope_layout as layout
 	.use opforge.assembler.modules.bindings as modules
 	.use opforge.assembler.symbols.imports as imports

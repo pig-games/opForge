@@ -3,8 +3,8 @@
 
 	.module opforge.assembler.layout.encoding
 	.cpu 68020
-	.include "telemetry_macros.i"
-	.include "memory_telemetry.i"
+	.include "../../debug/telemetry_macros.i"
+	.include "../../debug/memory_telemetry.i"
 	.use opforge.packages.format as package
 	.use opforge.assembler.layout.state as state
 	.use opforge.assembler.source.records as source

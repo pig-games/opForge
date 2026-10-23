@@ -13,9 +13,9 @@
 	.use opforge.assembler.symbols.bindings as bindings
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.source.records as source
-	.include "telemetry_macros.i"
-	.include "memory_telemetry.i"
-	.include "hotspot_telemetry.i"
+	.include "../../debug/telemetry_macros.i"
+	.include "../../debug/memory_telemetry.i"
+	.include "../../debug/hotspot_telemetry.i"
 	.pub
 COMPILED_TAG = $81
 VALUE_TAG = $83

@@ -3,7 +3,7 @@
 	.module opforge.vm.prvm.target_bootstrap
 	.cpu 68020
 	.use opforge.vm.prvm.abi as abi
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 	.section code, kind=code
 ; A0=request,D0=available bytes. D0=status,D1=result count,D2=0,D3=bytes.

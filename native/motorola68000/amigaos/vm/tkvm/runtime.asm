@@ -4,7 +4,7 @@
 
 	.module opforge.vm.tkvm.runtime
 	.cpu 68020
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 	.use opforge.vm.tkvm.state
 	.use opforge.vm.tkvm.char_predicates

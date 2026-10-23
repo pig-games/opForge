@@ -2,7 +2,7 @@
 ; @opforge-owner: opforge.assembler.prepare.operand_binding
 	.module opforge.assembler.prepare.operand_binding
 	.cpu 68020
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.use opforge.packages.format as package
 	.use opforge.assembler.symbols.scopes as scopes
 	.use opforge.assembler.source.records as source

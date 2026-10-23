@@ -33,6 +33,45 @@ fn module_command(command: &str, mode: Option<&str>) -> String {
     }
 }
 
+// Frozen cases retain their recorded explicit roots. Current self-host cases
+// exercise the public directory/file shorthand, with no hidden -M/-I arguments.
+fn input_command(value: Option<&str>) -> &str {
+    match value {
+        None => "-i src/main.asm -M src -I src/debug",
+        Some("src") => "src",
+        Some("src/main.asm") => "src/main.asm",
+        Some(other) => panic!("unsupported full self-host input command: {other:?}"),
+    }
+}
+
+// New exports exercise the CLI's bounded default without overriding it. Older
+// frozen images retain their explicitly selected capture policy.
+fn selfhost_capture_command(command: &str, mode: &str, default_capture: bool) -> String {
+    if default_capture {
+        assert_eq!(mode, "disk");
+        assert_eq!(command, "src");
+        command.to_owned()
+    } else {
+        capture_command(command, mode).replace("--capture-dir Work:", "--capture-dir scratch")
+    }
+}
+
+#[test]
+fn selfhost_input_defaults_are_explicit() {
+    assert_eq!(input_command(Some("src")), "src");
+    assert_eq!(input_command(Some("src/main.asm")), "src/main.asm");
+    assert!(input_command(None).contains("-M src"));
+    assert!(std::panic::catch_unwind(|| input_command(Some("src -I other"))).is_err());
+    assert_eq!(selfhost_capture_command("src", "disk", true), "src");
+    assert_eq!(
+        selfhost_capture_command("src", "disk", false),
+        "src --capture-dir scratch"
+    );
+    assert!(
+        std::panic::catch_unwind(|| selfhost_capture_command("src", "resident", true)).is_err()
+    );
+}
+
 #[test]
 fn module_comparison_policy_is_explicit() {
     assert_eq!(module_command("-i source.asm", None), "-i source.asm");
@@ -180,6 +219,8 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     assert!(input["capture_mode"].is_null() || input["capture_mode"].is_string());
     assert!(input["module_mode"].is_null() || input["module_mode"].is_string());
     let capture_mode = capture_mode(input["capture_mode"].as_str());
+    assert!(input["default_capture"].is_null() || input["default_capture"].is_boolean());
+    let default_capture = input["default_capture"].as_bool().unwrap_or(false);
     assert!(input["incremental"].is_null() || input["incremental"].is_boolean());
     let incremental = input["incremental"].as_bool().unwrap_or(false);
     assert!(
@@ -214,17 +255,31 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     // Keep the source's explicit sections on .output, as the exporter does.
     // A CLI Hunk override creates another request without those sections.
     let live_path = output.join("build/opforge");
-    let cli = Cli::parse_from([
-        "opForge".into(),
-        "-i".into(),
-        source.join("main.asm").to_string_lossy().into_owned(),
-        "--cpu".into(),
-        "68020".into(),
-        "-M".into(),
-        source.to_string_lossy().into_owned(),
-        "-I".into(),
-        source.join("debug").to_string_lossy().into_owned(),
-    ]);
+    let command = input_command(input["input_command"].as_str());
+    let mut args = vec!["opForge".to_owned()];
+    if input["input_command"].is_null() {
+        args.extend([
+            "-i".into(),
+            source.join("main.asm").to_string_lossy().into_owned(),
+            "--cpu".into(),
+            "68020".into(),
+            "-M".into(),
+            source.to_string_lossy().into_owned(),
+            "-I".into(),
+            source.join("debug").to_string_lossy().into_owned(),
+        ]);
+    } else {
+        args.push(
+            if command == "src" {
+                source.clone()
+            } else {
+                source.join("main.asm")
+            }
+            .to_string_lossy()
+            .into_owned(),
+        );
+    }
+    let cli = Cli::parse_from(args);
     let mut config = validate_cli(&cli).expect("validate live full workload oracle");
     config.out_dir = Some(output.clone());
     assert!(config.defines.is_empty(), "release live oracle");
@@ -284,11 +339,16 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         .map(|value| value.as_str().unwrap())
         .collect::<Vec<_>>();
     let command = module_command(
-        &capture_command("-i src/main.asm -M src -I src/debug", capture_mode)
-            .replace("--capture-dir Work:", "--capture-dir scratch"),
+        &selfhost_capture_command(command, capture_mode, default_capture),
         input["module_mode"].as_str(),
     );
+    let assembly_command = command.clone();
     let instrumented = define_strings.contains(&"OPFORGE_MEMORY_TELEMETRY");
+    let scratch_setup = if default_capture {
+        ""
+    } else {
+        "MakeDir Work:scratch\n"
+    };
     let command = if incremental {
         let cold_memory = if instrumented {
             "Copy Work:memory.bin Work:cold.memory.bin\n"
@@ -301,7 +361,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
             ""
         };
         format!(
-            "--version\nMakeDir Work:scratch\nCopy Work:build/opforge Work:incremental_bootstrap\n\
+            "--version\n{scratch_setup}Copy Work:build/opforge Work:incremental_bootstrap\n\
              C:Date >Work:cold.start\n\
              Delete Work:build/opforge QUIET\n\
              Work:incremental_bootstrap {command} --rebuild >Work:cold.stdout\n\
@@ -317,7 +377,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         // The source output shares the launcher's path. Remove it only after
         // copying the bootstrap, so stale input bytes can never satisfy proof.
         format!(
-            "--version\nMakeDir Work:scratch\n\
+            "--version\n{scratch_setup}\
              Copy Work:build/opforge Work:selfhost_bootstrap\n\
              Delete Work:build/opforge QUIET\n\
              Work:selfhost_bootstrap {command}"
@@ -519,6 +579,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         }
     }
     let result = json!({
+        "assembly_command": assembly_command, "default_capture": default_capture,
         "capture_mode": capture_mode, "capture_scratch_files_remaining": scratch_files,
         "module_mode": input["module_mode"],
         "incremental": incremental, "cache_counts": cache_counts,

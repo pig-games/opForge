@@ -34,7 +34,7 @@
 	.use opforge.assembler.language.string_provider as stringProvider
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.modules.records as moduleRecords
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 
 	.priv

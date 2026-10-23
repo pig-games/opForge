@@ -59,9 +59,10 @@ class FullComparisonTests(unittest.TestCase):
                                  dict(old, opforge=role.encode()), b"old oracle", role, role, {}))
             own = dict(candidate)
             own["src/main.asm"] = b"new source"
+            own_manifest = dict(manifest, command="opforge src --capture-dir scratch")
             with (mock.patch.object(module.comparison, "load_comparison", return_value=(manifest, b"old oracle", releases)),
                   mock.patch.object(module.comparison, "load_memory_cases", return_value=memories),
-                  mock.patch.object(module.runner, "load_bundle", return_value=(manifest, own, b"new image", "selfhost"))):
+                  mock.patch.object(module.runner, "load_bundle", return_value=(own_manifest, own, b"new image", "selfhost"))):
                 cases = module.prepare_cases(args)
             self.assertEqual(len(cases), 5)
             for path in cases:
@@ -69,6 +70,9 @@ class FullComparisonTests(unittest.TestCase):
                 self.assertEqual(spec["capture_mode"], "disk")
                 self.assertEqual(spec["native_output_file"], "build/opforge")
             specifications = [json.loads(path.read_text()) for path in cases]
+            self.assertEqual([spec.get("input_command") for spec in specifications],
+                             [None, None, None, None, "src"])
+            self.assertTrue(all("default_capture" not in spec for spec in specifications))
             self.assertEqual([spec["record_header_bytes"] for spec in specifications], [None, None, 64, 56, None])
             for spec in specifications[2:4]:
                 telemetry = spec["telemetry_manifest"]
@@ -91,7 +95,8 @@ class FullComparisonTests(unittest.TestCase):
                                       baseline_memory_bundle=None, candidate_memory_bundle=None)
             runtime = "packages/m68020--motorola68k.bin"
             manifest = {"bootstrap_package_storage": "external", "output_package_storage": "external",
-                        "runtime_package_file": runtime, "bootstrap_defines": []}
+                        "runtime_package_file": runtime, "bootstrap_defines": [], "command": "opforge src",
+                        "capture_mode": "disk", "default_capture_directory": "build/scratch"}
             frozen = {"src/main.asm": b"frozen", "opforge": b"old", runtime: b"verified package"}
             current = {"src/main.asm": b"current", "opforge": b"new", runtime: b"verified package"}
             releases = [(frozen, "baseline", {"comparison_role": "baseline", "workload_sha256": "workload"})]
@@ -106,6 +111,8 @@ class FullComparisonTests(unittest.TestCase):
                 self.assertEqual((path.parent / package["path"]).read_bytes(), b"verified package")
                 self.assertEqual(package["digest"], module.runner.fnv(b"verified package"))
                 self.assertEqual(spec["native_output_file"], "build/opforge")
+                self.assertEqual(spec["input_command"], "src")
+                self.assertTrue(spec["default_capture"])
 
     def test_failed_case_does_not_prevent_later_case_execution(self):
         with tempfile.TemporaryDirectory() as directory:

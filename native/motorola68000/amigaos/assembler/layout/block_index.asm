@@ -3,9 +3,9 @@
 	.module opforge.assembler.layout.block_index
 	.cpu 68020
 	.use opforge.assembler.symbols.lexical_store as lexical
-	.include "memory_telemetry.i"
-	.include "binding_telemetry.i"
-	.include "lazy_audit.i"
+	.include "../../debug/memory_telemetry.i"
+	.include "../../debug/binding_telemetry.i"
+	.include "../../debug/lazy_audit.i"
 	.use opforge.assembler.symbols.scope_layout as layout
 	.use opforge.assembler.symbols.scopes as scopes
 	.use opforge.assembler.modules.bindings as modules
@@ -24,7 +24,7 @@
 	.use opforge.assembler.modules.records as compiled
 	.pub
 LIMIT = 65535; packed parent/queue links remain representable words
-	.include "block_span.i"
+	.include "../../debug/block_span.i"
 Scratch	.struct
 Count	.long ?
 WorkspaceOffset	.long ?  ; relative to the first span
@@ -884,7 +884,7 @@ scanBad
 	rts
 	.bend  ; scanLine
 
-	.include "block_image_refs.i"
+	.include "../../debug/block_image_refs.i"
 
 ; D0=outer span index. Queue capacity equals the indexed span limit, and each
 ; outer span is enqueued only on its dead-to-live transition. D0/CCR=status;

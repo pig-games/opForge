@@ -12,7 +12,7 @@
 	.use opforge.vm.prvm.statement_text_match as text
 	.use opforge.vm.prvm.statement_route as route
 	.use opforge.vm.prvm.statement_select as selector
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 BLOCK_BYTES = memory.Block.Used+4
 State	.struct

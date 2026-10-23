@@ -66,9 +66,10 @@ fn run(args: Args) -> Result<(), String> {
             "--module-path".into(),
             native.to_string_lossy().into_owned(),
         ]);
-        for path in [native.clone(), native.join("debug")] {
-            cli_args.extend(["--include-path".into(), path.to_string_lossy().into_owned()]);
-        }
+        cli_args.extend([
+            "--include-path".into(),
+            native.to_string_lossy().into_owned(),
+        ]);
         let cli = cli_core::Cli::try_parse_from(cli_args).map_err(|e| e.to_string())?;
         let mut config = cli_core::validate_cli(&cli)
             .map_err(|e| format!("invalid native CLI assembly configuration: {e:?}"))?;

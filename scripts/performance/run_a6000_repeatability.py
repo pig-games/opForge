@@ -61,6 +61,8 @@ def prepare_cases(args):
     memory = runner.load_bundle(args.memory_bundle)
     manifest, current_files, current_oracle, _ = release
     memory_manifest, memory_files, memory_oracle, _ = memory
+    if any("default_capture_directory" in own for own in (manifest, memory_manifest)):
+        raise ValueError("Resident/disk repeatability requires exports with explicit capture selection; default-capture images cannot be relabeled resident")
     for own in (manifest, memory_manifest):
         if own.get("kind") != "compact-self-host-local-export" or own.get("manifest_version") != 1:
             raise ValueError("Require genuine current compact self-host exports")
@@ -97,8 +99,10 @@ def prepare_cases(args):
             raise ValueError("Invalid or duplicate frozen guest path")
         folded.add(name.lower())
         frozen[name] = checked_file(root, row)
-    entry = re.search(r"(?:^| )-i ([^ ]+)(?: |$)", manifest["command"])
-    if entry is None or entry.group(1) not in frozen:
+    command = manifest["command"].removesuffix(" --capture-dir scratch")
+    entry = re.search(r"(?:^| )-i ([^ ]+)(?: |$)", command)
+    entry_path = "src/main.asm" if command == "opforge src" else entry.group(1) if entry else None
+    if entry_path is None or entry_path not in frozen:
         raise ValueError("Frozen workload lacks the current command entry source")
     digest = comparison.digest_parts([part for row in spec["files"] for part in
                                      (row["guest_path"].encode(), frozen[row["guest_path"]])])

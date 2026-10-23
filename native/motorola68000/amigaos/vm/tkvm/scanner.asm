@@ -2,7 +2,7 @@
 
 	.module opforge.vm.tkvm.scanner
 	.cpu 68020
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 	.use opforge.vm.tkvm.demo_program
 	.use opforge.vm.tkvm.char_predicates

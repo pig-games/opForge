@@ -2,7 +2,7 @@
 ; @opforge-owner: opforge.assembler.prepare.register_mask
 	.module opforge.assembler.prepare.register_mask
 	.cpu 68020
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.use opforge.packages.format as pkg
 	.section code, kind=code
 	.pub

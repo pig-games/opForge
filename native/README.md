@@ -30,7 +30,16 @@ incremental reuse. Unchanged modules leave their object files untouched; stale
 modules replace their existing files after recompilation. A companion `.ofi`
 records timestamps and publication metadata, and is published after the complete
 object. Builds no longer accumulate `objects-1`, `objects-2`, etc. Capture and
-preparation scratch is separate from this persistent directory.
+preparation scratch is separate from this persistent directory, and defaults to
+`build/scratch`. Both directories are relative to the current working directory
+and are created when needed. `--capture-dir DIR` overrides temporary storage.
+
+From an exported bundle's directory, `opforge src` builds `src/main.asm` using
+its `.cpu` and `.output` declarations. `opforge src/main.asm` also works. The
+root file's directory supplies the default module and include search root;
+explicit `-M`/`-I` paths add search locations. Product debug includes are relative
+to their containing files, so no separate `-I src/debug` is required. Ordinary
+CLI builds use the bounded module pipeline and reuse `build/ofm` automatically.
 
 The product covers a substantial shared assembler and package-backed runtime
 surface. Earlier focused Rust parity and full-source self-host evidence are
@@ -65,20 +74,33 @@ composition boundaries. Module semantic exports are owned by
 
 ## Validation and performance records
 
-The default external-package release completes full cold and unchanged incremental
-self-hosts under 8 MiB total RAM, installed Workbench with a plain background, a 64 KiB
-stack and disk-backed capture. Cold takes **283 s**, incremental **59 s**;
-all 190 modules rebuild cold and all 190 are reused warm. Both exit zero and
-produce the full **348,752-byte executable exactly matching live Rust**, using
-the separate 478,042-byte m68020 package. Loading that package still consumes RAM;
-the executable size reduction is not a peak-memory measurement.
-These are FS-UAE 68020/unrestricted-speed durations. The same external-package
-bundle also passes on the physical A6000: **1,066 s cold (17m 46s)** and
-**90 s incremental**, with exact complete Rust output matches and all 190 modules
-reused warm. Its downloaded tree confirms one shared object set. Hardware RAM
-was unrestricted; peak heap was not remeasured. See the
-[current qualification and remaining limits](../documentation/plans/native-runtime-reset.md#current-product-state).
+The default external-package release completes full self-hosts using exactly
+`opforge src --rebuild` cold and `opforge src` warm. Under 8 MiB total RAM,
+installed Workbench with a plain background and a 64 KiB stack, cold takes
+**279 s**, incremental **58 s**. All 190 modules rebuild cold and all 190 are
+reused warm from one `build/ofm` set. Both exit zero and produce the full
+**348,824-byte executable exactly matching live Rust**, using the separate
+478,042-byte m68020 package. Loading that package still consumes RAM; peak heap
+was not remeasured. These are FS-UAE 68020/unrestricted-speed durations.
+
+The preceding external-package snapshot (348,752-byte executable) also passes
+on the physical A6000: **1,066 s cold (17m 46s)** and **90 s incremental**, with
+exact complete Rust output matches and all 190 modules reused warm. Hardware
+RAM was unrestricted. This new bare-CLI bundle awaits physical A6000 testing.
+See the [current qualification and remaining limits](../documentation/plans/native-runtime-reset.md#current-product-state).
 Earlier hardware and memory measurements identify their own source snapshots.
+
+For manual A6000 testing, upload an exported bundle without starting assembly:
+
+```sh
+python3 scripts/performance/run_a6000_incremental.py --bundle DIR --copy-only
+```
+
+This discovers the host with `ash -l`, copies to `Development:`, verifies the
+transferred files, and prints the on-device directory and commands. It also
+copies `run-selfhost` for optional execution on the device. The single-build
+runner `run_a6000_selfhost.py` accepts the same option. Copying files does not
+establish native completion or output parity.
 
 Native Motorola 68000 assembly formatting is checked with:
 

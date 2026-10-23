@@ -6,8 +6,8 @@
 ; @opforge-owner: opforge.assembler.source.capture_store
 	.module opforge.assembler.source.capture_store
 	.cpu 68020
-	.include "capture_telemetry.i"
-	.include "hotspot_telemetry.i"
+	.include "../../debug/capture_telemetry.i"
+	.include "../../debug/hotspot_telemetry.i"
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.source.capture_io as io
 	.pub

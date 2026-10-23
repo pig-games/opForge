@@ -2,9 +2,9 @@
 ; @opforge-owner: opforge.assembler.prepare.record_order
 	.module opforge.assembler.prepare.record_order
 	.cpu 68020
-	.include "lazy_audit.i"
-	.include "memory_telemetry.i"
-	.include "capture_telemetry.i"
+	.include "../../debug/lazy_audit.i"
+	.include "../../debug/memory_telemetry.i"
+	.include "../../debug/capture_telemetry.i"
 	.use opforge.assembler.modules.graph as graph
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.source.record_view as views

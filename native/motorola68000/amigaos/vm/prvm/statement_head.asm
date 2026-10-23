@@ -3,7 +3,7 @@
 	.module opforge.vm.prvm.statement_head
 	.cpu 68020
 	.use opforge.vm.prvm.statement_abi as abi
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.use opforge.vm.prvm.statement_inputs as inputs
 	.pub
 	.section code, kind=code

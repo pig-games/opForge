@@ -3,7 +3,7 @@
 	.module opforge.assembler.modules.bindings
 	.cpu 68020
 	.use opforge.assembler.symbols.lexical_store as lexical
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.use opforge.assembler.symbols.name_store as nameStore
 	.use opforge.assembler.symbols.binding_records as records
 	.use opforge.platform.memory as memory

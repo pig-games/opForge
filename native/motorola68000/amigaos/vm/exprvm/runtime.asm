@@ -7,7 +7,7 @@
 	.cpu 68020
 	.use opforge.vm.exprvm.i64_math as i64_math
 	.pub
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 
 EXPRVM_OPCODE_END            = $00
 EXPRVM_OPCODE_PUSH_LITERAL   = $10

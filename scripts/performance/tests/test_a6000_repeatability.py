@@ -15,13 +15,14 @@ import test_a6000_comparison as fixtures
 
 
 class RepeatabilityTests(unittest.TestCase):
-    def inputs(self, root, external=False):
+    def inputs(self, root, external=False, shorthand=False):
         fixture = fixtures.FixedWorkloadComparisonTests('runTest')
         if external:
             release = root / "release"
             release.mkdir()
             import test_a6000_selfhost
-            test_a6000_selfhost.HardwareCompletionTests("runTest").external_source_directed_bundle(release)
+            test_a6000_selfhost.HardwareCompletionTests("runTest").external_source_directed_bundle(
+                release, shorthand=shorthand)
             manifest = json.loads((release / "manifest.json").read_text())
             manifest.update(kind="compact-self-host-local-export", manifest_version=1)
             fixture.save_manifest(release, manifest)
@@ -91,6 +92,32 @@ class RepeatabilityTests(unittest.TestCase):
                 self.assertEqual(case["files"][package], expected)
                 self.assertNotIn("p.bin", case["files"])
                 self.assertEqual(case["manifest"]["bootstrap_package_storage"], "external")
+
+    def test_directory_shorthand_uses_frozen_main_and_preserves_capture_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory), external=True, shorthand=True)
+            cases = repeat.prepare_cases(args)
+            for case in cases:
+                self.assertEqual(case["manifest"]["command"], "opforge src" + (
+                    " --capture-dir scratch" if case["storage"] == "disk" else ""))
+                self.assertIn("src/main.asm", case["files"])
+                self.assertIn("packages/m68020--motorola68k.bin", case["files"])
+            spec = json.loads(args.frozen_case.read_text())
+            spec["files"] = [row for row in spec["files"] if row["guest_path"] != "src/main.asm"]
+            args.frozen_case.write_text(json.dumps(spec))
+            with self.assertRaisesRegex(ValueError, "lacks the current command entry source"):
+                repeat.prepare_cases(args)
+
+    def test_default_disk_capture_exports_cannot_be_relabelled_as_resident(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory), external=True, shorthand=True)
+            for bundle in (args.release_bundle, args.memory_bundle):
+                manifest = json.loads((bundle / "manifest.json").read_text())
+                manifest.update(command="opforge src", default_capture_directory="build/scratch")
+                (bundle / "command.txt").write_text(manifest["command"])
+                (bundle / "manifest.json").write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "default-capture images cannot be relabeled resident"):
+                repeat.prepare_cases(args)
 
     def test_invalid_checksum_package_and_traversal_fail_before_network(self):
         for mutation in ('checksum', 'package', 'traversal'):

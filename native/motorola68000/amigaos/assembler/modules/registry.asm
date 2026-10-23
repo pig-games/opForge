@@ -4,7 +4,7 @@
 ; Semantic interface installation belongs to its separate canonical owner.
 	.module opforge.assembler.modules.registry
 	.cpu 68020
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.use opforge.assembler.modules.object_store as io
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.modules.image as image

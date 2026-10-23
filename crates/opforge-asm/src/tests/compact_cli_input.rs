@@ -31,6 +31,13 @@ const CURRENT_TREE: Tree = &[(
     "main.asm",
     b".module main\n.cpu 68020\n.byte $45,$67\n.endmodule\n",
 )];
+const ROOT_DEFAULT_TREE: Tree = &[
+    ("src/main.asm", b".module main\n.cpu 68020\n.use lib.worker as worker\n.include \"shared/root.inc\"\n.section code,kind=code\n moveq #worker.VALUE+ROOT_VALUE,d0\n rts\n.endsection\n.output \"source.hunk\",format=hunk,sections=code\n.endmodule\n"),
+    ("src/lib/worker.asm", b".module lib.worker\n.cpu 68020\n.pub\n.include \"../shared/value.inc\"\n.endmodule\n"),
+    ("src/shared/value.inc", b"VALUE=19\n"),
+    ("src/shared/root.inc", b".include \"root_value.inc\"\n"),
+    ("src/root_value.inc", b"ROOT_VALUE=5\n"),
+];
 
 struct InputCase {
     name: &'static str,
@@ -47,6 +54,45 @@ struct InputCase {
 }
 
 const INPUT_CASES: &[InputCase] = &[
+    InputCase {
+        name: "directory-default-roots-only",
+        tree: ROOT_DEFAULT_TREE,
+        entry: "src",
+        include_roots: &[],
+        module_roots: &[],
+        command: "src",
+        hunk: true,
+        binary_bytes: None,
+        expected_path: "Work/source.hunk",
+        omitted_filename: false,
+        output_name: None,
+    },
+    InputCase {
+        name: "directory-default-root-with-extra-include",
+        tree: ROOT_DEFAULT_TREE,
+        entry: "src",
+        include_roots: &[],
+        module_roots: &[],
+        command: "src -I src/shared",
+        hunk: true,
+        binary_bytes: None,
+        expected_path: "Work/source.hunk",
+        omitted_filename: false,
+        output_name: None,
+    },
+    InputCase {
+        name: "file-default-roots-only",
+        tree: ROOT_DEFAULT_TREE,
+        entry: "src/main.asm",
+        include_roots: &[],
+        module_roots: &[],
+        command: "src/main.asm",
+        hunk: true,
+        binary_bytes: None,
+        expected_path: "Work/source.hunk",
+        omitted_filename: false,
+        output_name: None,
+    },
     InputCase {
         name: "dot-current-directory",
         tree: CURRENT_TREE,
@@ -253,12 +299,6 @@ pub(crate) fn assemble_cli_with_defines(
     argv.extend([
         "-M".into(),
         root.join("native/motorola68000/amigaos")
-            .to_string_lossy()
-            .into_owned(),
-    ]);
-    argv.extend([
-        "-I".into(),
-        root.join("native/motorola68000/amigaos/debug")
             .to_string_lossy()
             .into_owned(),
     ]);

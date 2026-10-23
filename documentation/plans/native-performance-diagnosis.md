@@ -1,15 +1,20 @@
 # Native runtime and memory status
 
 The current 2026-10-23 external-package release completes full cold/incremental
-self-hosts in **283/59 seconds** on the established 8 MiB installed-Workbench
-FS-UAE setup and **1,066/90 seconds** on the physical A6000. Both complete
-348,752-byte outputs exactly match live Rust in each environment; cold rebuilds
-190 modules and warm reuses all 190. The A6000 capture also confirms one set of
-190 `.ofm` images and 190 `.ofi` companions under `build/ofm`. Hardware RAM was
-unrestricted and peak heap was not remeasured. Earlier hardware pairs use other
-source/package configurations and do not isolate this change's runtime impact.
-The [native assembler plan](native-runtime-reset.md#current-product-state)
-records source identity, configuration and qualification limits.
+self-hosts in **279/58 seconds** on the established 8 MiB installed-Workbench
+FS-UAE setup. It runs exactly `opforge src --rebuild` cold and `opforge src`
+warm, using default working-directory `build/scratch` and `build/ofm` storage.
+Both complete 348,824-byte outputs exactly match live Rust; cold rebuilds
+190 modules and warm reuses all 190. One shared object set totals 1,655,184 bytes.
+The executable adds 72 bytes and static reservation adds 56 bytes compared with
+the preceding snapshot. Peak heap was not remeasured; completion establishes
+8 MiB fit for this setup, with no 2 MiB claim or isolated speedup claim.
+
+The preceding 348,752-byte external-package snapshot passed the physical A6000
+in **1,066/90 seconds**, with exact Rust matches and unrestricted hardware RAM.
+The new bare-CLI bundle has not yet been tested on hardware. The
+[native assembler plan](native-runtime-reset.md#current-product-state) records
+source identity, configuration and qualification limits.
 
 The remaining measurements identify earlier source snapshots; their heap and
 runtime values do not transfer automatically to the promoted tree.

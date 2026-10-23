@@ -4,8 +4,8 @@
 ; @opforge-owner: opforge.assembler.language.statements
 	.module opforge.assembler.language.statements
 	.cpu 68020
-	.include "lazy_work.i"
-	.include "lazy_template_hooks.i"
+	.include "../../debug/lazy_work.i"
+	.include "../../debug/lazy_template_hooks.i"
 	.use opforge.platform.memory as memory
 	.use opforge.packages.format as package
 	.use opforge.assembler.source.records as writer

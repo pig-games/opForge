@@ -8,7 +8,7 @@
 	.use opforge.vm.prvm.statement_policy as policy
 	.use opforge.vm.prvm.statement_decimal as decimal
 	.use opforge.vm.prvm.statement_invoke_req as request
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.priv
 Local	.struct
 Budget	.long ?

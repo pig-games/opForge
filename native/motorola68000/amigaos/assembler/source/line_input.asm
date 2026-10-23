@@ -2,7 +2,7 @@
 ; @opforge-owner: opforge.assembler.source.line_input
 	.module opforge.assembler.source.line_input
 	.cpu 68020
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 
 LINE = 0

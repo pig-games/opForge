@@ -2,8 +2,8 @@
 ; @opforge-owner: opforge.assembler.symbols.imports
 	.module opforge.assembler.symbols.imports
 	.cpu 68020
-	.include "telemetry_macros.i"
-	.include "binding_telemetry.i"
+	.include "../../debug/telemetry_macros.i"
+	.include "../../debug/binding_telemetry.i"
 	.use opforge.assembler.symbols.name_store as nameStore
 	.use opforge.assembler.symbols.binding_records as records
 	.use opforge.platform.memory as memory
@@ -20,7 +20,7 @@
 	.use opforge.vm.exprvm.runtime as runtime
 	.use opforge.vm.exprvm.assignment as assignment
 	.use opforge.vm.prvm.packed_branch as branches
-	.include "hotspot_telemetry.i"
+	.include "../../debug/hotspot_telemetry.i"
 	.pub
 Item	.struct
 Target	.word ?

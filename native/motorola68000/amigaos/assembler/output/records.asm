@@ -2,7 +2,7 @@
 ; @opforge-owner: opforge.assembler.output.records
 	.module opforge.assembler.output.records
 	.cpu 68020
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 Span	.struct
 Address	.long ?

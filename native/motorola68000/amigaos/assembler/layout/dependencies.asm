@@ -3,7 +3,7 @@
 
 	.module opforge.assembler.layout.dependencies
 	.cpu 68020
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.use opforge.packages.format as pkg
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.values.values as values

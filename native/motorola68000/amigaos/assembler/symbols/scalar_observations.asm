@@ -12,7 +12,7 @@
 	.use opforge.assembler.source.records as source
 	.use opforge.assembler.modules.records as compiled
 	.use opforge.vm.exprvm.runtime as runtime
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 Row	.struct
 Low	.long ?

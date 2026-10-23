@@ -28,7 +28,7 @@
 	.use opforge.vm.prvm.packed_branch as branch
 	.use opforge.vm.prvm.packed_loop as loops
 	.use opforge.vm.prvm.abi as abi
-	.include "memory_telemetry.i"
+	.include "../../debug/memory_telemetry.i"
 	.pub
 Context	.struct
 Package	.long ?

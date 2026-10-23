@@ -349,9 +349,16 @@ def load_bundle(bundle):
     capture_mode = manifest.get("capture_mode", "resident")
     if capture_mode not in ("resident", "disk"):
         raise ValueError(f"Unknown capture mode: {capture_mode}")
+    default_capture = "default_capture_directory" in manifest
+    if default_capture and (
+        manifest["default_capture_directory"] != "build/scratch"
+        or command != "opforge src" or capture_mode != "disk"
+        or any(manifest.get(key) != ["src"] for key in ("module_roots", "include_roots"))
+    ):
+        raise ValueError("Default disk capture requires exact opforge src, build/scratch and default src search roots")
     validated_command = command
     capture_suffix = " --capture-dir scratch"
-    if capture_mode == "disk":
+    if capture_mode == "disk" and not default_capture:
         if not command.endswith(capture_suffix):
             raise ValueError("Disk capture requires the exact '--capture-dir scratch' command suffix")
         validated_command = command[:-len(capture_suffix)]
@@ -362,10 +369,14 @@ def load_bundle(bundle):
     manifest["capture_mode"] = capture_mode
     native_output_file = checked_native_output_file(
         manifest.get("native_output_file", "output.hunk"))
-    source_directed_output = (
-        validated_command == "opforge -i src/main.asm -M src -I src/debug"
-    )
+    source_directed_output = validated_command in (
+        "opforge src", "opforge -i src/main.asm -M src -I src/debug")
     if source_directed_output:
+        if validated_command == "opforge src" and any(
+            manifest.get(key, ["src"]) != ["src"]
+            for key in ("module_roots", "include_roots")
+        ):
+            raise ValueError("Directory shorthand requires the default src search roots")
         entry_path = "src/main.asm"
         entry = files.get(entry_path)
         if (native_output_file != "build/opforge"
@@ -418,6 +429,8 @@ def load_bundle(bundle):
     identity.extend(b"\0output-package-storage\0" + output_storage.encode() + b"\0")
     if native_output_file != "output.hunk":
         identity.extend(b"\0native-output-file\0" + native_output_file.encode() + b"\0")
+    if default_capture:
+        identity.extend(b"\0default-capture-directory\0build/scratch\0")
     if defines:
         identity.extend(b"\0instrumented-bootstrap\0" + bootstrap)
     if storage == "embedded":
@@ -434,7 +447,7 @@ def load_bundle(bundle):
 def guest_script(remote, marker, command, *, capture_mode="resident"):
     # Save RC immediately; ash's Execute status alone is not assembly completion.
     executable, arguments = command.split(" ", 1)
-    capture_setup = "MakeDir scratch\n" if capture_mode == "disk" else ""
+    capture_setup = "MakeDir scratch\n" if capture_mode == "disk" and command.endswith(" --capture-dir scratch") else ""
     script = (
         f"FailAt 10\nCD {remote}\nStack 65536\nProtect opforge +e\n"
         "C:Version >environment.txt\nIf EXISTS C:CPU\nC:CPU >>environment.txt\nEndIf\n"
@@ -600,7 +613,7 @@ def add_telemetry(result, root, manifest, files=None, *, record_header_bytes=Non
 
 def run_case(args, bundle, manifest, files, oracle, case_digest, *,
              run_kind="self-host", metadata=None, before_execute=None,
-             guest_script_builder=None, result_inspector=None):
+             guest_script_builder=None, result_inspector=None, manual_commands=None):
     """Transfer a validated case; optional protocols share its verified transport."""
     script_builder = guest_script_builder or guest_script
     inspect_capture = result_inspector or inspect_result
@@ -651,6 +664,16 @@ def run_case(args, bundle, manifest, files, oracle, case_digest, *,
                                manifest.get("native_output_file", "output.hunk"))
     except (OSError, ValueError) as error:
         raise ValueError(f"Pre-run transfer verification failed; assembly was not started: {error}") from error
+    if getattr(args, "copy_only", False):
+        print("Copy verified; assembly has not been started. No completion or parity claim.", flush=True)
+        capture_setup = ("MakeDir scratch\n" if manifest.get("capture_mode") == "disk"
+                         and manifest["command"].endswith(" --capture-dir scratch") else "")
+        print("Run manually on the A6000:\n" + f"CD {remote}\nStack 65536\nProtect opforge +e\n"
+              + capture_setup
+              + "\n".join(manual_commands or [manifest["command"]]), flush=True)
+        print("Optionally run 'Execute run-selfhost' from that directory to retain guest timing and report files.",
+              flush=True)
+        return None, local
     print(f"Remote source, package, bootstrap and script verified. Starting native {run_kind}.", flush=True)
     if before_execute is not None:
         before_execute({"remote_directory": remote, "run_uuid": run_id,
@@ -741,7 +764,7 @@ def resolve_host(host, ash):
     return parse_host_discovery(discovered.stdout)
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     current = Path("/tmp/opforge-a6000-current")
     default_bundle = current if current.is_dir() else Path("/tmp/opforge-a6000-compact-export")
@@ -750,8 +773,10 @@ def main():
     parser.add_argument("--host", default=None, help="A6000 address; defaults to unique `ash -l` discovery")
     parser.add_argument("--volume", default="Development")
     parser.add_argument("--timeout", type=int, default=3600, help="assembly timeout in seconds")
-    parser.add_argument("--dry-run", action="store_true", help="prepare locally without connecting")
-    args = parser.parse_args()
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="prepare locally without connecting")
+    mode.add_argument("--copy-only", action="store_true", help="upload and verify files for manual assembly without executing")
+    args = parser.parse_args(argv)
     if (args.host is not None and not valid_host(args.host)) or not re.fullmatch(r"[A-Za-z0-9_-]+", args.volume):
         parser.error("Host and volume must be plain names; omit the volume colon")
     if not 1 <= args.timeout < 86400:

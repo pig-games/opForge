@@ -4,11 +4,11 @@
 	.module opforge.assembler.prepare.frontend
 	.cpu 68020
 	.use opforge.assembler.symbols.lexical_store as lexical
-	.include "memory_telemetry.i"
-	.include "capture_telemetry.i"
-	.include "lazy_audit.i"
-	.include "lazy_work_context.i"
-	.include "macro_packing_audit.i"
+	.include "../../debug/memory_telemetry.i"
+	.include "../../debug/capture_telemetry.i"
+	.include "../../debug/lazy_audit.i"
+	.include "../../debug/lazy_work_context.i"
+	.include "../../debug/macro_packing_audit.i"
 	.use opforge.assembler.symbols.name_store as nameStore
 	.use opforge.packages.format as package
 	.use opforge.assembler.layout.state as state
@@ -29,7 +29,7 @@
 	.use opforge.assembler.language.templates as templates
 	.use opforge.assembler.source.capture as capture
 	.use opforge.assembler.language.macro_plans as macro_plans
-	.include "candidate_audit.i"
+	.include "../../debug/candidate_audit.i"
 	.use opforge.assembler.language.statement_heads as statement_heads
 	.use opforge.assembler.language.statement_session as statement_session
 	.use opforge.assembler.language.statement_execution as statement_execution
@@ -55,7 +55,7 @@
 	.use opforge.vm.prvm.macro_spelling as spelling
 	.use opforge.assembler.language.text_names as textNames
 	.use opforge.vm.prvm.packed_text as text
-	.include "hotspot_telemetry.i"
+	.include "../../debug/hotspot_telemetry.i"
 	.pub
 Frame	.struct
 Package	.long ?

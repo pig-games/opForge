@@ -11,7 +11,7 @@
 	.use opforge.vm.prvm.statement_fallback as fallback
 	.use opforge.vm.prvm.statement_overload as pass
 	.use opforge.vm.prvm.statement_invoke_req as request
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.priv
 Local	.struct
 Budget	.long ?

@@ -1,4 +1,7 @@
 from pathlib import Path
+import contextlib
+import io
+import json
 import sys
 import tempfile
 import unittest
@@ -100,6 +103,21 @@ class IncrementalPairTests(unittest.TestCase):
         script = next((self.root / "prepared").glob("*/run-selfhost")).read_text()
         self.assertIn(pair.PAIR_PROTOCOL, script)
 
+    def test_copy_only_cli_preserves_manual_pair_commands_and_excludes_dry_run(self):
+        manifest = {"command": "opforge src", "capture_mode": "disk"}
+        with (mock.patch.object(pair, "load_bundle", return_value=(manifest, {}, b"oracle", "digest")),
+              mock.patch.object(pair.base, "run_case", return_value=(None, self.root)) as run):
+            self.assertEqual(pair.main(["--bundle", str(self.root), "--copy-only"]), 0)
+            self.assertTrue(run.call_args.args[0].copy_only)
+            self.assertFalse(run.call_args.args[0].dry_run)
+            self.assertEqual(run.call_args.kwargs["manual_commands"],
+                             ["opforge src --rebuild", "opforge src"])
+            self.assertIs(run.call_args.kwargs["guest_script_builder"], pair.guest_script)
+            self.assertIs(run.call_args.kwargs["result_inspector"], pair.inspect_result)
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                pair.main(["--copy-only", "--dry-run"])
+            self.assertEqual(run.call_count, 1)
+
     def test_accepts_external_release_pair_without_embedding(self):
         manifest = {"bootstrap_defines": [], "bootstrap_package_storage": "external",
                     "output_package_storage": "external", "native_output_file": "build/opforge",
@@ -109,6 +127,25 @@ class IncrementalPairTests(unittest.TestCase):
             loaded, transferred, _, _ = pair.load_bundle(self.root)
         self.assertEqual(loaded, manifest)
         self.assertEqual(transferred, files)
+
+    def test_default_capture_bundle_runs_exact_bare_cold_and_warm_commands(self):
+        import test_a6000_selfhost
+        bundle = self.root / "bundle"
+        bundle.mkdir()
+        test_a6000_selfhost.HardwareCompletionTests("runTest").external_source_directed_bundle(
+            bundle, shorthand=True)
+        manifest = json.loads((bundle / "manifest.json").read_text())
+        manifest.update(command="opforge src", default_capture_directory="build/scratch")
+        (bundle / "manifest.json").write_text(json.dumps(manifest))
+        (bundle / "command.txt").write_text(manifest["command"])
+        loaded, _, _, _ = pair.load_bundle(bundle)
+        script = pair.guest_script("Development:fresh", "uuid digest", loaded["command"],
+                                   capture_mode=loaded["capture_mode"])
+        self.assertIn("opforge >cold/assembly.stdout src --rebuild\n", script)
+        self.assertIn("opforge >warm/assembly.stdout src\n", script)
+        self.assertNotIn("--capture-dir", script)
+        self.assertNotIn("MakeDir scratch", script)
+        self.assertNotIn("Delete build/ofm", script)
 
     def test_rejects_resident_capture_bundle(self):
         manifest = {"bootstrap_defines": [], "bootstrap_package_storage": "embedded",

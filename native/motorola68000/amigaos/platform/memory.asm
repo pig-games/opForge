@@ -2,10 +2,10 @@
 ; @opforge-owner: opforge.platform.memory
 	.module opforge.platform.memory
 	.cpu 68020
-	.include "memory_telemetry.i"
-	.include "capture_telemetry.i"
-	.include "capture_lifetime.i"
-	.include "hotspot_telemetry.i"
+	.include "../debug/memory_telemetry.i"
+	.include "../debug/capture_telemetry.i"
+	.include "../debug/capture_lifetime.i"
+	.include "../debug/hotspot_telemetry.i"
 	.pub
 Block	.struct
 Pointer	.long ?

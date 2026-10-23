@@ -5,7 +5,7 @@
 	.use opforge.vm.prvm.abi as abi
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.language.macro_plans as plans
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.pub
 Frame	.struct
 Arena	.long ?

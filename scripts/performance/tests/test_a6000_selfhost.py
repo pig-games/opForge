@@ -1,7 +1,10 @@
 import argparse
+import contextlib
+import io
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 import struct
@@ -66,6 +69,84 @@ class HardwareCompletionTests(unittest.TestCase):
                 result, _ = runner.run_case(args, bundle, manifest, files, oracle, case_digest)
             self.assertIsNone(result)
             self.assertIsNone(args.host)
+
+    def test_copy_only_transfers_verifies_and_stops_before_execution_callback(self):
+        cases = [(False, corruption) for corruption in (
+            None, "src/main.asm", "packages/m68020--motorola68k.bin",
+            "opforge", "run-selfhost", "build/opforge")] + [(True, None)]
+        for default_capture, corruption in cases:
+            with self.subTest(default_capture=default_capture, corruption=corruption), tempfile.TemporaryDirectory() as directory:
+                bundle = Path(directory) / "bundle"
+                bundle.mkdir()
+                self.external_source_directed_bundle(bundle, shorthand=True)
+                if default_capture:
+                    manifest = json.loads((bundle / "manifest.json").read_text())
+                    manifest.update(command="opforge src", default_capture_directory="build/scratch")
+                    (bundle / "manifest.json").write_text(json.dumps(manifest))
+                    (bundle / "command.txt").write_text(manifest["command"])
+                manifest, files, oracle, digest = runner.load_bundle(bundle)
+                manifest["over_classic_limit_components"] = []
+                args = argparse.Namespace(dry_run=False, copy_only=True, host="a6000.local",
+                                          volume="Development", timeout=3600)
+                commands = []
+                uploaded = []
+
+                def transport(command, **kwargs):
+                    commands.append(command)
+                    if command[0] == "acp" and Path(command[2]).is_absolute():
+                        uploaded.append(Path(command[2]))
+                    elif command[0] == "acp":
+                        destination = Path(command[3]) / uploaded[0].name
+                        shutil.copytree(uploaded[0], destination)
+                        if corruption:
+                            path = destination / corruption
+                            path.parent.mkdir(parents=True, exist_ok=True)
+                            path.write_bytes(b"changed")
+
+                with (mock.patch.object(runner.shutil, "which", side_effect=lambda name: name),
+                      mock.patch.object(runner.subprocess, "run", side_effect=transport),
+                      mock.patch.object(runner, "verify_files", wraps=runner.verify_files) as verified,
+                      mock.patch.object(runner, "verify_fresh_directory", wraps=runner.verify_fresh_directory) as fresh,
+                      mock.patch.object(runner, "inspect_result", side_effect=AssertionError("inspection ran")),
+                      mock.patch.object(runner, "add_telemetry", side_effect=AssertionError("telemetry ran")),
+                      contextlib.redirect_stdout(io.StringIO()) as output):
+                    callback = mock.Mock(side_effect=AssertionError("execution callback ran"))
+                    if corruption:
+                        with self.assertRaisesRegex(ValueError, "Pre-run transfer verification failed"):
+                            runner.run_case(args, bundle, manifest, files, oracle, digest,
+                                            before_execute=callback)
+                    else:
+                        result, local = runner.run_case(args, bundle, manifest, files, oracle, digest,
+                                                        before_execute=callback)
+                        self.assertIsNone(result)
+                        self.assertFalse((local / "result.json").exists())
+                        self.assertEqual(verified.call_count, 2)
+                        fresh.assert_called_once()
+                        text = output.getvalue()
+                        self.assertIn("Copy verified; assembly has not been started", text)
+                        capture_setup = "" if default_capture else "MakeDir scratch\n"
+                        self.assertIn(f"CD Development:{uploaded[0].name}\nStack 65536\nProtect opforge +e\n"
+                                      f"{capture_setup}{manifest['command']}", text)
+                        if default_capture:
+                            self.assertNotIn("MakeDir scratch", text)
+                        self.assertIn("Execute run-selfhost", text)
+                    callback.assert_not_called()
+                self.assertEqual(len(commands), 3)
+                self.assertEqual(commands[0], ["ash", "a6000.local", "Info Development:"])
+                self.assertEqual(commands[1][:2], ["acp", "-r"])
+                self.assertEqual(commands[2][:2], ["acp", "-r"])
+                self.assertFalse(any(any("Execute " in part for part in command) for command in commands))
+
+    def test_copy_only_cli_flag_reaches_transport_and_excludes_dry_run(self):
+        manifest = {"command": "opforge src"}
+        with (mock.patch.object(runner, "load_bundle", return_value=(manifest, {}, b"oracle", "digest")),
+              mock.patch.object(runner, "run_case", return_value=(None, Path("/tmp"))) as run):
+            self.assertEqual(runner.main(["--bundle", "/tmp/bundle", "--copy-only"]), 0)
+            self.assertTrue(run.call_args.args[0].copy_only)
+            self.assertFalse(run.call_args.args[0].dry_run)
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                runner.main(["--copy-only", "--dry-run"])
+            self.assertEqual(run.call_count, 1)
 
     def test_hotspot_numeric_parameters_are_narrow_and_require_gate(self):
         flag = "OPFORGE_HOTSPOT_TELEMETRY"
@@ -369,7 +450,7 @@ class HardwareCompletionTests(unittest.TestCase):
                 files["src/" + logical] = b"different frozen workload"
                 self.assertEqual(validated["_validated_capture_record_header_bytes"], expected)
 
-    def external_source_directed_bundle(self, root):
+    def external_source_directed_bundle(self, root, shorthand=False):
         self.bundle(root, False)
         manifest = json.loads((root / "manifest.json").read_text())
         package_path = "packages/m68020--motorola68k.bin"
@@ -389,15 +470,143 @@ class HardwareCompletionTests(unittest.TestCase):
             rows.append({"logical_path": logical, "staged_path": "src/" + logical,
                          "origin": "native", "bytes": len(data), "digest": runner.fnv(data)})
             identity.extend(logical.encode() + b"\0" + data + b"\0")
-        command = "opforge -i src/main.asm -M src -I src/debug --capture-dir scratch"
+        command = ("opforge src" if shorthand else
+                   "opforge -i src/main.asm -M src -I src/debug") + " --capture-dir scratch"
         manifest.update({"bootstrap_package_storage": "external", "embedded_packages": [],
                          "output_package_storage": "external", "output_embedded_packages": [],
                          "runtime_package_file": package_path, "runtime_package_digest": runner.fnv(package),
                          "source_mapping": rows, "source_manifest_digest": runner.fnv(identity),
                          "entry": "src/main.asm", "native_output_file": "build/opforge",
                          "capture_mode": "disk", "command": command})
+        if shorthand:
+            manifest.update(module_roots=["src"], include_roots=["src"])
         (root / "command.txt").write_text(command)
         (root / "manifest.json").write_text(json.dumps(manifest))
+
+    def test_directory_shorthand_accepts_disk_and_resident_with_bound_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.external_source_directed_bundle(root)
+            explicit_digest = runner.load_bundle(root)[3]
+            manifest = json.loads((root / "manifest.json").read_text())
+            manifest.update(module_roots=["src"], include_roots=["src"])
+            digests = []
+            for mode, command in (("disk", "opforge src --capture-dir scratch"),
+                                  ("resident", "opforge src")):
+                manifest.update(capture_mode=mode, command=command)
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                (root / "command.txt").write_text(command)
+                validated, files, oracle, digest = runner.load_bundle(root)
+                self.assertEqual(validated["capture_mode"], mode)
+                self.assertEqual(validated["native_output_file"], "build/opforge")
+                self.assertEqual(files["opforge"], oracle)
+                self.assertIn("packages/m68020--motorola68k.bin", files)
+                runner.verify_files(root, files)
+                self.assertIn("opforge >assembly.stdout src", runner.guest_script(
+                    "Development:fresh", "uuid digest", command, capture_mode=mode))
+                self.assertEqual(digest, runner.load_bundle(root)[3])
+                digests.append(digest)
+            self.assertEqual(len(set([explicit_digest, *digests])), 3)
+
+    def test_directory_shorthand_rejects_overrides_and_inconsistent_metadata(self):
+        cases = [
+            ({"command": "opforge src -I src/debug --capture-dir scratch"}, "External-package"),
+            ({"command": "opforge src --cpu 6502 --capture-dir scratch"}, "External-package"),
+            ({"command": "opforge src --hunk output.hunk --capture-dir scratch"}, "External-package"),
+            ({"command": "opforge src/../src --capture-dir scratch"}, "External-package"),
+            ({"module_roots": ["src", "elsewhere"]}, "default src search roots"),
+            ({"include_roots": ["src/debug"]}, "default src search roots"),
+            ({"entry": "src/entry.asm"}, "mapped m68020 entry"),
+            ({"native_output_file": "output.hunk"}, "mapped m68020 entry"),
+        ]
+        for change, error in cases:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.external_source_directed_bundle(root, shorthand=True)
+                manifest = json.loads((root / "manifest.json").read_text())
+                manifest.update(change)
+                (root / "command.txt").write_text(manifest["command"])
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, error):
+                    runner.load_bundle(root)
+
+    def test_directory_shorthand_default_disk_capture_is_bound_and_needs_no_shell_setup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.external_source_directed_bundle(root, shorthand=True)
+            manifest = json.loads((root / "manifest.json").read_text())
+            manifest.update(command="opforge src", capture_mode="resident")
+            (root / "command.txt").write_text(manifest["command"])
+            (root / "manifest.json").write_text(json.dumps(manifest))
+            resident_digest = runner.load_bundle(root)[3]
+            manifest.update(capture_mode="disk", default_capture_directory="build/scratch")
+            (root / "manifest.json").write_text(json.dumps(manifest))
+            validated, files, _, digest = runner.load_bundle(root)
+            self.assertEqual(validated["command"], "opforge src")
+            self.assertEqual(validated["capture_mode"], "disk")
+            self.assertEqual(validated["default_capture_directory"], "build/scratch")
+            self.assertIn("packages/m68020--motorola68k.bin", files)
+            self.assertNotEqual(digest, resident_digest)
+            self.assertEqual(digest, runner.load_bundle(root)[3])
+            script = runner.guest_script("Development:fresh", "uuid digest", "opforge src", capture_mode="disk")
+            self.assertIn("opforge >assembly.stdout src\n", script)
+            self.assertNotIn("MakeDir scratch", script)
+            self.assertNotIn("--capture-dir", script)
+
+    def test_default_capture_requires_exact_directory_command_mode_and_roots(self):
+        cases = [
+            {"default_capture_directory": "build/scrath"},
+            {"default_capture_directory": "../scratch"},
+            {"default_capture_directory": None},
+            {"command": "opforge src --capture-dir scratch"},
+            {"command": "opforge src -I src/debug"},
+            {"capture_mode": "resident"},
+            {"module_roots": []},
+            {"include_roots": ["src/debug"]},
+        ]
+        for change in cases:
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.external_source_directed_bundle(root, shorthand=True)
+                manifest = json.loads((root / "manifest.json").read_text())
+                manifest.update(command="opforge src", default_capture_directory="build/scratch")
+                manifest.update(change)
+                (root / "command.txt").write_text(manifest["command"])
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, "Default disk capture requires"):
+                    runner.load_bundle(root)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.external_source_directed_bundle(root, shorthand=True)
+            manifest = json.loads((root / "manifest.json").read_text())
+            manifest["command"] = "opforge src"
+            (root / "command.txt").write_text(manifest["command"])
+            (root / "manifest.json").write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(ValueError, "exact.*suffix"):
+                runner.load_bundle(root)
+
+    def test_directory_shorthand_preserves_live_source_cpu_and_catalog_guards(self):
+        for logical, data, error in (
+            ("main.asm", b'.module main\n.cpu 6502\n.include "packages/catalog.i"\n', "mapped m68020 entry"),
+            ("main.asm", b'.module main\n.cpu 68020\n', "unchanged native entry and catalog"),
+            ("packages/catalog.i", b'.incbin "packages/m68020--motorola68k.bin"\n', "external package catalog"),
+        ):
+            with self.subTest(logical=logical, data=data), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.external_source_directed_bundle(root, shorthand=True)
+                manifest = json.loads((root / "manifest.json").read_text())
+                (root / "src" / logical).write_bytes(data)
+                row = next(row for row in manifest["source_mapping"] if row["logical_path"] == logical)
+                row.update(bytes=len(data), digest=runner.fnv(data))
+                manifest["source_manifest_digest"] = runner.fnv(b"".join(
+                    row["logical_path"].encode() + b"\0" + (root / row["staged_path"]).read_bytes() + b"\0"
+                    for row in manifest["source_mapping"]))
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, "Current source differs"):
+                    runner.load_bundle(root)
+                (root / "original" / logical).write_bytes(data)
+                with self.assertRaisesRegex(ValueError, error):
+                    runner.load_bundle(root)
 
     def test_external_source_directed_transfers_verified_named_package(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -436,11 +645,13 @@ class HardwareCompletionTests(unittest.TestCase):
                 runner.load_bundle(root)
 
     def test_external_source_directed_rejects_wrong_package_target_and_path(self):
-        for filename, target in (("packages/other.bin", b"m68020--motorola68k"),
-                                 ("packages/m68020--motorola68k.bin", b"m6502--classic")):
-            with self.subTest(filename=filename, target=target), tempfile.TemporaryDirectory() as directory:
+        cases = ((shorthand, filename, target) for shorthand in (False, True)
+                 for filename, target in (("packages/other.bin", b"m68020--motorola68k"),
+                                          ("packages/m68020--motorola68k.bin", b"m6502--classic")))
+        for shorthand, filename, target in cases:
+            with self.subTest(shorthand=shorthand, filename=filename, target=target), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
-                self.external_source_directed_bundle(root)
+                self.external_source_directed_bundle(root, shorthand=shorthand)
                 manifest = json.loads((root / "manifest.json").read_text())
                 package = self.package(target)
                 (root / filename).write_bytes(package)

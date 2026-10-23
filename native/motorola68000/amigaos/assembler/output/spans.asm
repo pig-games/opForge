@@ -4,7 +4,7 @@
 .cpu 68020
 .use opforge.platform.memory as memory
 .use opforge.assembler.output.records as records
-.include "memory_telemetry.i"
+.include "../../debug/memory_telemetry.i"
 .priv
 Overlay	.struct
 Start	.long ?

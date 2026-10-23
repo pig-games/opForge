@@ -3,7 +3,7 @@
 	.module opforge.vm.prvm.packed_loop
 	.cpu 68020
 	.use opforge.vm.prvm.abi as abi
-	.include "telemetry_macros.i"
+	.include "../../debug/telemetry_macros.i"
 	.priv
 MAX_RECORD_BYTES = 256
 NAME_TOKEN_BYTES = 4

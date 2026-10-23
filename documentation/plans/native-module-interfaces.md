@@ -151,50 +151,57 @@ hardware qualification reported here.
 
 ### 8 MiB Workbench qualification
 
-The current release does **not yet pass the full cold/warm pair** on the constrained
-68020 profile: 2 MiB chip plus 6 MiB fast RAM, with no RTG or other memory. The
-2026-10-22 test retains the installed Workbench 47.2 startup and all its utilities,
-using a plain background. Before assembler launch, with a 64 KiB shell stack,
-`Avail` reports 6,716,408 bytes free (6.41 MiB): 2,017,352 chip and 4,699,056 fast.
-The largest fast block is 4,603,600 bytes.
+Complete cold and unchanged incremental self-builds pass on the constrained
+68020 profile: **2 MiB chip plus 6 MiB fast RAM**, with no RTG or additional
+memory. The 2026-10-23 run retains installed Workbench 47.2, all startup utilities
+and a plain background. Before launch, with a 64 KiB shell stack, `Avail` reports
+6,716,384 bytes free (6.41 MiB): 2,017,352 chip and 4,699,032 fast. The largest
+fast block is 4,595,848 bytes. The original system drive remains unchanged.
 
-The assembly output and serialized Hunk now use `reserveExact` after their sizing
-passes, retaining eight-byte alignment and the existing capacity/failure contract.
-Dynamic relocation storage keeps geometric growth. The executable remains
-824,512 bytes; only two allocator call targets change. The new source manifest
-is `fnv1a64:23e34ce7d0962b31` (273 files / 3,411,369 bytes); package bytes are
-unchanged. The original frozen export remains the reference.
+| Metric | Cold `--rebuild` | Unchanged incremental |
+| --- | ---: | ---: |
+| Release duration | 284 s (4m 44s) | 61 s (1m 1s) |
+| Modules rebuilt / reused | 188 / 0 | 0 / 188 |
+| Peak tracked heap, separate accounting pair | 4,146,008 B (3.95 MiB) | 3,671,120 B (3.50 MiB) |
+| Cumulative owned allocations, accounting pair | 304,339,376 B | 148,671,432 B |
+| Terminal tracked ownership | 0 | 0 |
+| Allocation failures / profiling errors | 0 / 0 | 0 / 0 |
 
-| Release phase | Result under 8 MiB |
-| --- | --- |
-| Cold `--rebuild` | 287 s (4m 47s), exit 0; 187 rebuilt; complete output exactly matches Rust and bootstrap |
-| Unchanged incremental | 187 reused / 0 rebuilt; exit 20, `compact CLI: output failed` |
+Both release phases have fresh completed proof, explicit exit zero and complete
+**825,428-byte** output identical to the live Rust oracle and bootstrap. Both
+accounting phases also complete with exit zero and exactly the same release
+output. Their durations are excluded from the release timing above. The frozen
+input contains 275 files / 3,418,882 bytes, source manifest
+`fnv1a64:9667cf7b90951a3b`; the embedded m68020 package is unchanged
+(`fnv1a64:390f6f44df85279b`). Capture remains disk-backed and the root remains
+in the shared final driver. This proves fit for this desktop/workload, not the
+default resident-capture path or an unrestricted choice of desktop programs.
+The emulator uses unrestricted CPU speed: durations are not physical 68020 timings.
 
-Fresh wrapper completion and all four artifact checks ran. The only release
-proof mismatch was the warm phase's nonzero return code: an output left from the
-cold phase cannot qualify warm success. This is a completed cold phase, not a
-passing pair or a reliable 8 MiB fit. No before/after speedup is claimed because
-the previous constrained cold run failed.
+The instrumented image reserves 880,904 bytes. Adding tracked heap and the
+65,536-byte stack gives accounted process floors of **5,092,448 B (4.86 MiB)**
+cold and **4,617,560 B (4.40 MiB)** warm. These exclude loader and other untracked
+costs; they are not total process peaks. The cold floor leaves 1,723,296 bytes
+below the 6.5 MiB process budget before those costs. Constrained completion
+independently proves that the process and this OS setup coexist within 8 MiB.
 
-Separate accounting attempts both finish assembly and reject the exact
-824,512-byte serialized Hunk allocation. Their tracked peaks before failure are
-4,145,888 bytes cold and 3,669,320 bytes warm; both clean up to zero. These failed
-run peaks are not complete-build memory measurements or evidence of net savings.
-They identify a remaining contiguous-allocation demand but do not measure free
-memory at failure, so cannot separate aggregate exhaustion from fragmentation.
+The CLI now streams Hunk metadata through the shared **4 KiB** transport buffer
+and borrows section payloads directly. It never constructs a second full Hunk
+image. The generator owns no heap; its 44-byte runtime frame borrows stable
+parts/fixups until synchronous output completes. Hunk-specific CLI selection
+and relocation adaptation live in
+[binary_app_hunk_output.i](../../native/motorola68000/amigaos/experimental/binary_app_hunk_output.i).
+The unchanged `binary_hunk_output.build` remains the validating/reference
+serializer; focused native tests compare both implementations and Rust, including
+64/65-byte buffers, interleaved relocation targets, padding, BSS and repeated output.
+No new cache/container contract or experiment switch is introduced.
 
-The next candidate is bounded Hunk serialization directly from existing section
-data, avoiding the second full-size output buffer. It would eliminate an
-824,512-byte live allocation on this input, though peak reduction may be smaller
-as preparation has its own peak. Buffer small metadata writes to preserve bulk
-I/O. This is a proposal; keep the current serializer as the reference and require
-fresh full cold/warm qualification before claiming fit.
-
-The plain background is the ordinary low-memory baseline. The installed custom
-1280-by-800 backdrop consumes about 3.37 MiB more than a plain background in the
-same normal OS startup; its fit failure is not the representative product test.
-The original system drive is unchanged. The maintained disposable-boot helper
-records desktop choices; see [FS-UAE memory qualification](../../agents/rules/fs-uae.md#native-memory-qualification).
+The previous materialized output attempts failed under this same memory limit,
+so their incomplete peaks/times are not before/after performance baselines. The
+new executable grows by 916 bytes; there is no isolated runtime speedup claim.
+Plain-background Workbench is the low-memory baseline. The copied system's custom
+1280-by-800 backdrop costs about 3.37 MiB more; it is outside this qualification.
+See [FS-UAE memory qualification](../../agents/rules/fs-uae.md#native-memory-qualification).
 
 Public-name lookup retains the 40-byte OFMS header and linear export scan. A
 two-array full/leaf name-index trial passed native and full self-host checks but

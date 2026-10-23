@@ -2,47 +2,38 @@
 
 ## Current result and decision
 
-Stored dependency interfaces and default-on incremental reuse work through the
-normal CLI. The current disk-backed self-host stores 187 dependency modules;
-the root remains on the shared final driver. In the retained expanded-memory
-FS-UAE reference with identical inputs,
-a forced fresh release build takes **292 s (4m 52s)** and an unchanged incremental build takes
-**62 s (1m 2s)**, reusing all 187 modules with zero rebuilds. Both reproduce the
-**824,512-byte Rust oracle and bootstrap exactly**, with explicit exit zero and
-fresh completed proof. This is a single release pair with one-second guest-clock
-resolution: 79% less runtime, or 4.71x speedup.
+Stored dependency interfaces and default-on incremental reuse now pass complete
+self-builds under **8 MiB total RAM**, with installed Workbench and startup
+utilities, a plain background, and disk-backed capture. The root remains in the
+shared final driver. A release cold build takes **284 s (4m 44s)** and the unchanged
+incremental build takes **61 s (1m 1s)**. Cold rebuilds all 188 dependency modules;
+warm reuses all 188 and rebuilds none. Both exit zero and reproduce the complete
+**825,428-byte Rust oracle and bootstrap exactly**, with fresh completed proof.
+These FS-UAE durations have one-second guest-clock resolution and unrestricted
+CPU speed; they are not physical 68020 timings.
 
-The reported A6000 release pair completes the same source configuration in
-**916 s (15m 16s) cold versus 98 s (1m 38s) incremental**: 89.3% less runtime,
-or 9.35x speedup. Both hardware outputs match Rust exactly. Cold rebuilds all
-187 modules; warm reuses all 187 and rebuilds none. This is a separate hardware
-observation using disk-backed capture and the embedded m68020 package, not a
-conversion of emulator timing. Hardware memory was not measured. Case identity
-and evidence scope are recorded in the incremental qualification section linked
-below.
+A separate complete accounting pair peaks at **4,146,008 B (3.95 MiB)** tracked
+heap cold and **3,671,120 B (3.50 MiB)** warm, with zero allocation failures,
+profiling errors and terminal ownership. Instrumented static reservations plus
+heap and 64 KiB stack give process floors of **4.86 MiB** and **4.40 MiB**, excluding
+loader and untracked costs. The cold floor leaves about 1.64 MiB below the
+6.5 MiB process budget before those costs. Constrained emulator completion
+establishes fit for this particular OS/workload; the default resident-capture path
+remains outside this claim.
 
-Separate accounting runs both peak at **4,814,136 B (4.59 MiB)** tracked heap and
-clean up to zero. Incremental reuse halves cumulative allocation traffic but does
-not reduce the earlier acquisition peak. The instrumented image plus tracked
-heap and 64 KiB stack gives a **5.49 MiB process floor**, excluding loader and
-untracked costs.
+Buffered Hunk output is the default. It borrows existing section bytes and uses
+the shared 4 KiB transport buffer for metadata, removing the second full-size Hunk
+allocation that prevented constrained completion. The unchanged serializer is
+retained for validation and differential tests. The executable grows by 916 bytes;
+no isolated runtime improvement is claimed against earlier failed builds or the
+older expanded-memory workload. Input identities, accounting limits and focused
+proof are in [stored module interfaces](native-module-interfaces.md#8-mib-workbench-qualification).
 
-The current candidate reserves the known assembly and Hunk output sizes exactly,
-instead of rounding them to powers of two. On the constrained 8 MiB Workbench
-setup with a plain background and 6.41 MiB initially free, its release cold phase
-completes in **287 s (4m 47s)** with exact Rust/bootstrap output. The warm phase
-reuses all 187 modules but fails during output, so the complete pair does not
-qualify. Accounting attempts both reject the remaining **824,512-byte Hunk
-allocation** after assembly and clean up to zero. Their incomplete peaks are
-not complete-build memory results. An 8 MiB fit remains unestablished.
-
-The next proposal is bounded Hunk serialization from existing section buffers,
-eliminating that second full-size allocation while batching metadata writes.
-It is not implemented. No runtime gain is inferred from the earlier failed run.
-Input identities, cache disk size,
-limits and qualification details are in
-[stored module interfaces](native-module-interfaces.md#incremental-qualification).
-These measurements use disk-backed capture, not the default resident-capture path.
+The earlier A6000 reference pair remains **916 s cold / 98 s incremental**, with
+187 modules and an 824,512-byte executable; hardware RAM was unrestricted. It is
+a different frozen source/build, not a hardware result for the new streamed writer.
+Its case identity and expanded-profile baseline are recorded in the
+[incremental qualification](native-module-interfaces.md#incremental-qualification).
 
 The retained header-read repair separately saved **8.1%** on its older frozen
 input, without increasing tracked heap. Its unchanged-input comparison below

@@ -211,6 +211,8 @@ mod native_fs_uae_parity;
 mod native_harness_evidence;
 #[path = "tests/native_hunk_output_contract.rs"]
 mod native_hunk_output_contract;
+#[path = "tests/native_hunk_stream.rs"]
+mod native_hunk_stream;
 #[path = "tests/native_hunk_struct_constants.rs"]
 mod native_hunk_struct_constants;
 #[path = "tests/native_label_capacity.rs"]

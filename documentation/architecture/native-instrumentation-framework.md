@@ -885,8 +885,9 @@ The compact CLI has one optional explicit artifact request: `-x`/`--hex
 record writers operate on flat addressable output and reject Hunk record
 conversion. Their renderer also supports sparse numeric spans, while CLI sparse
 `.org` parity remains unclaimed. The renderer uses an 84-byte frame and a
-caller-owned 4096-byte streaming buffer. Ordinary binary/Hunk output allocates
-neither this buffer nor captured output spans.
+caller-owned 4096-byte streaming buffer, shared with the flat Bin and Hunk
+writers. Hunk uses a separate bounded generator frame and borrows section bytes;
+it does not use the record renderer or its captured output spans.
 
 When debug contracts, memory telemetry, and preparation progress are enabled,
 phase 31 reports span-capture event count, record count, and ASCII output bytes

@@ -45,6 +45,18 @@ build generations, configuration identity and the pointer-free publication
 inventory needed to recreate current-build section and linker bindings. The
 OFMI/OFMA/OFMS/OFTM layouts themselves remain unchanged.
 
+Disk-backed builds now use this same directory for final linker objects, rather
+than copying every image into a new `objects-N` directory. A validated cache hit
+or successfully persisted rebuild transfers its image to the linker registry
+without another write. Unchanged object timestamps remain untouched. Rebuilt
+images replace the existing file through the shared complete-temporary-file
+transport; `.ofi` is invalidated before mutation and published last. A registry
+rollback does not remove an adopted persistent cache object. If reuse becomes
+unavailable after disk configuration, replacement still invalidates the matching
+marker. Resident builds retain optional cache-write behavior. Component requests
+without persistent caching reuse a stable `objects` directory under their capture
+parent. One writer per directory remains required.
+
 The native CLI reports module processing and timed assembly/reuse through its
 process error stream. Two caller-owned progress frames use 1,360 bytes of static
 storage and allocate no heap; DateStamp is sampled only at phase boundaries.
@@ -84,9 +96,13 @@ ordinal must not reuse a template against another source path. The existing
 reference policy remains separate and disables cache reuse.
 
 Cache markers are removed before replacing images, and published last. Missing,
-stale or structurally invalid cache data is rebuilt. A failed cache write leaves
-a valid assembly uncached; an unavailable cache directory falls back to fresh
-assembly. Use one writer per cache directory. Cache filenames retain the module
+stale or structurally invalid cache data is rebuilt. Optional cache metadata
+failures leave the module uncached. If the cache is unavailable at startup,
+assembly uses the ordinary resident or scratch-backed path. Once a disk-backed
+registry uses the shared directory, its object writes must succeed for final
+linking; an invalidation or image-write error fails that build rather than
+leaving stale metadata beside changed bytes. Use one writer per cache directory.
+Cache filenames retain the module
 name first and bounded qualification/registry suffix; changing discovery order
 can cause safe misses. Removing `build/ofm` resets the cache.
 

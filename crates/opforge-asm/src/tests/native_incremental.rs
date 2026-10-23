@@ -3,7 +3,8 @@ use super::native_iterable_loops::{build_image, oracle_with_module_roots, scratc
 use super::*;
 
 // Same section/relocation shape as the maintained private-module control.
-const ROOT: &str = ".module main\n.cpu 68020\n.use middle\n.section code,kind=code\n.long middle.entry\n.endsection\n.section data,kind=data\n.byte middle.VALUE\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
+const ROOT: &str = ".module main\n.cpu 68020\n.use independent\n.use middle\n.section code,kind=code\n.long middle.entry\n.endsection\n.section data,kind=data\n.byte middle.VALUE,independent.VALUE\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.place data in ram\n.output \"build/module.bin\",format=bin,sections=code,data\n.output \"build/module.hunk\",format=hunk,sections=code,data\n.endmodule\n";
+const INDEPENDENT: &str = ".module independent\n.cpu 68020\n.pub\nVALUE .const 3\n.endmodule\n";
 const MIDDLE: &str = ".module middle\n.cpu 68020\n.use leaf\n.pub\nVALUE .const leaf.FLAG+1\n.section code,kind=code\nentry .block\n lea leaf.payload.l,a0\n.long leaf.payload\n.word leaf.FLAG\n rts\n.bend\n.endsection\n.endmodule\n";
 const LEAF: &str = ".module leaf\n.cpu 68020\n.pub\nFLAG .const 6\n.section data,kind=data\npayload .block\n.long $12345678\n.bend\n.endsection\n.endmodule\n";
 // A different extent guarantees a different file stamp even on a coarse clock.
@@ -14,6 +15,7 @@ fn oracle(leaf: &str) -> Vec<u8> {
     fs::create_dir_all(dir.0.join("library")).unwrap();
     fs::write(dir.0.join("library/middle.asm"), MIDDLE).unwrap();
     fs::write(dir.0.join("library/leaf.asm"), leaf).unwrap();
+    fs::write(dir.0.join("library/independent.asm"), INDEPENDENT).unwrap();
     oracle_with_module_roots(&dir.0, ROOT, &["library"]).expect("live incremental Rust oracle")
 }
 
@@ -80,22 +82,36 @@ fn run(action: Action) {
         original.clone()
     };
     let final_action = match action {
-        Action::Change => "C:Copy Work:changed.txt Work:library/leaf.asm\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache",
-        Action::Rebuild => "Work:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild",
+        Action::Change => "C:Copy Work:changed.txt Work:library/leaf.asm\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --capture-dir Work:scratch",
+        Action::Rebuild => "Work:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --capture-dir Work:scratch --rebuild",
         // Change only the timestamp; the bytes and extent remain identical.
-        Action::Touch => "C:SetDate Work:library/leaf.asm 1-Jan-2000 00:00:01\nEcho $RC >Work:touch.rc\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache",
+        Action::Touch => "C:SetDate Work:library/leaf.asm 1-Jan-2000 00:00:01\nEcho $RC >Work:touch.rc\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --capture-dir Work:scratch",
     };
     // The runner wraps this entire sequence with its fresh start/done challenge.
     // Capture earlier exit codes explicitly so a later success cannot hide them.
     let quiet = if matches!(action, Action::Rebuild) {
-        "Work:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --quiet >Work:quiet.txt *>Work:quiet.err\nEcho $RC >Work:quiet.rc\nC:Copy Work:build/module.bin Work:quiet.bin\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache -q >Work:short-quiet.txt *>Work:short-quiet.err\nEcho $RC >Work:short-quiet.rc\nWork:build/opforge --quiet=1 >Work:quiet-invalid.txt\nEcho $RC >Work:quiet-invalid.rc\nWork:build/opforge Work:entry.asm -M Work:library --reference-modules >Work:reference.txt *>Work:reference.progress\nEcho $RC >Work:reference.rc\nC:Copy Work:build/module.bin Work:reference.bin\n"
+        "Work:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --capture-dir Work:scratch --quiet >Work:quiet.txt *>Work:quiet.err\nEcho $RC >Work:quiet.rc\nC:Copy Work:build/module.bin Work:quiet.bin\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --capture-dir Work:scratch -q >Work:short-quiet.txt *>Work:short-quiet.err\nEcho $RC >Work:short-quiet.rc\nWork:build/opforge --quiet=1 >Work:quiet-invalid.txt\nEcho $RC >Work:quiet-invalid.rc\nWork:build/opforge Work:entry.asm -M Work:library --reference-modules --capture-dir Work:scratch >Work:reference.txt *>Work:reference.progress\nEcho $RC >Work:reference.rc\nC:Copy Work:build/module.bin Work:reference.bin\n"
     } else {
         ""
     };
+    // Keep the snapshots outside the live store. List records the guest dates;
+    // a two-second gap makes an accidental rewrite observable on coarse clocks.
+    let snapshot = |phase: &str| {
+        format!(
+            "C:MakeDir Work:{phase}-cache\nC:Copy Work:cache Work:{phase}-cache ALL QUIET\nEcho $RC >Work:{phase}-copy.rc\nC:List Work:cache/#?.ofm LFORMAT \"%N|%D|%T\" >Work:{phase}-stamps.txt\nEcho $RC >Work:{phase}-stamps.rc\n"
+        )
+    };
+    let cold_snapshot = snapshot("cold");
+    let warm_snapshot = snapshot("warm");
+    let final_snapshot = snapshot("final");
     let command = format!(
-        "Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild >Work:cold.txt *>Work:cold.progress\nEcho $RC >Work:cold.rc\nC:Copy Work:build/module.bin Work:cold.bin\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache >Work:warm.txt *>Work:warm.progress\nEcho $RC >Work:warm.rc\nC:Copy Work:build/module.bin Work:warm.bin\n{quiet}{final_action}"
+        "Work:entry.asm -M Work:library --incremental-dir Work:cache --capture-dir Work:scratch --rebuild >Work:cold.txt *>Work:cold.progress\nEcho $RC >Work:cold.rc\nC:Copy Work:build/module.bin Work:cold.bin\n{cold_snapshot}C:Wait 2 SECS\nEcho $RC >Work:cold-wait.rc\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --capture-dir Work:scratch >Work:warm.txt *>Work:warm.progress\nEcho $RC >Work:warm.rc\nC:Copy Work:build/module.bin Work:warm.bin\n{warm_snapshot}{quiet}C:Wait 2 SECS\nEcho $RC >Work:warm-wait.rc\n{final_action} >Work:final.txt\nEcho $RC >Work:final.rc\n{final_snapshot}C:Type Work:final.txt"
     );
     let files = [
+        OpforgeNativeCliGuestFile {
+            relative_path: "scratch/.keep",
+            bytes: b"",
+        },
         OpforgeNativeCliGuestFile {
             relative_path: "entry.asm",
             bytes: ROOT.as_bytes(),
@@ -107,6 +123,10 @@ fn run(action: Action) {
         OpforgeNativeCliGuestFile {
             relative_path: "library/leaf.asm",
             bytes: LEAF.as_bytes(),
+        },
+        OpforgeNativeCliGuestFile {
+            relative_path: "library/independent.asm",
+            bytes: INDEPENDENT.as_bytes(),
         },
         OpforgeNativeCliGuestFile {
             relative_path: "changed.txt",
@@ -134,7 +154,26 @@ fn run(action: Action) {
             relative_path: "Work/warm.rc",
             rust_oracle: b"0\n",
         },
+        OpforgeNativeCliExpectedArtifact {
+            relative_path: "Work/final.rc",
+            rust_oracle: b"0\n",
+        },
     ];
+    for relative_path in [
+        "Work/cold-wait.rc",
+        "Work/warm-wait.rc",
+        "Work/cold-copy.rc",
+        "Work/warm-copy.rc",
+        "Work/final-copy.rc",
+        "Work/cold-stamps.rc",
+        "Work/warm-stamps.rc",
+        "Work/final-stamps.rc",
+    ] {
+        artifacts.push(OpforgeNativeCliExpectedArtifact {
+            relative_path,
+            rust_oracle: b"0\n",
+        });
+    }
     if matches!(action, Action::Touch) {
         artifacts.push(OpforgeNativeCliExpectedArtifact {
             relative_path: "Work/touch.rc",
@@ -218,6 +257,127 @@ fn run(action: Action) {
         )
         .unwrap()
     };
+    let cache_files = |directory: &str| {
+        let prefix = PathBuf::from(format!("Work/{directory}"));
+        run.captured_artifacts
+            .iter()
+            .filter_map(|(path, bytes)| {
+                let name = path.strip_prefix(&prefix).ok()?;
+                (name.components().count() == 1
+                    && name
+                        .extension()
+                        .is_some_and(|extension| extension == "ofm" || extension == "ofi"))
+                .then_some((name.to_path_buf(), bytes))
+            })
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    let cold_files = cache_files("cold-cache");
+    let warm_files = cache_files("warm-cache");
+    let final_files = cache_files("final-cache");
+    for files in [&cold_files, &warm_files, &final_files] {
+        let stems = |extension| {
+            files
+                .keys()
+                .filter(|name| name.extension().is_some_and(|value| value == extension))
+                .map(|name| name.file_stem().unwrap().to_os_string())
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        assert_eq!(files.len(), 6, "one image and marker per cached module");
+        assert_eq!(stems("ofm"), stems("ofi"));
+    }
+    assert_eq!(
+        cold_files, warm_files,
+        "warm reuse must preserve image and marker bytes"
+    );
+    assert_eq!(
+        final_files,
+        cache_files("cache"),
+        "snapshots describe the live shared store"
+    );
+    assert_eq!(
+        cold_files.keys().collect::<Vec<_>>(),
+        final_files.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        run.captured_artifacts.keys().all(|path| {
+            path.extension().is_none_or(|extension| extension != "tmp")
+                && path.extension().is_none_or(|extension| {
+                    (extension != "ofm" && extension != "ofi")
+                        || [
+                            "Work/cache",
+                            "Work/cold-cache",
+                            "Work/warm-cache",
+                            "Work/final-cache",
+                        ]
+                        .iter()
+                        .any(|directory| path.parent() == Some(Path::new(directory)))
+                })
+                && !path.components().any(|component| {
+                    component
+                        .as_os_str()
+                        .to_str()
+                        .is_some_and(|name| name == "objects" || name.starts_with("objects-"))
+                })
+        }),
+        "assembly must use the shared cache without numbered object directories or temporary files"
+    );
+    let stamps = |phase: &str| {
+        log(&format!("Work/{phase}-stamps.txt"))
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                let (name, date) = line
+                    .trim()
+                    .split_once('|')
+                    .expect("List filename/date format");
+                assert!(name.ends_with(".ofm") && date.contains('|'), "{line}");
+                (name.to_owned(), date.to_owned())
+            })
+            .collect::<std::collections::BTreeMap<_, _>>()
+    };
+    let cold_stamps = stamps("cold");
+    let warm_stamps = stamps("warm");
+    let final_stamps = stamps("final");
+    assert_eq!(cold_stamps.len(), 3);
+    assert_eq!(
+        cold_stamps, warm_stamps,
+        "warm reuse must leave file dates untouched"
+    );
+    assert_eq!(
+        cold_stamps.keys().collect::<Vec<_>>(),
+        final_stamps.keys().collect::<Vec<_>>()
+    );
+    for (name, bytes) in &warm_files {
+        if name.to_string_lossy().starts_with("independent-") && !matches!(action, Action::Rebuild)
+        {
+            assert_eq!(
+                *bytes, final_files[name],
+                "independent module must remain untouched"
+            );
+        }
+        if matches!(action, Action::Change)
+            && name.extension().is_some_and(|extension| extension == "ofm")
+            && !name.to_string_lossy().starts_with("independent-")
+        {
+            assert_ne!(
+                *bytes, final_files[name],
+                "changed dependency closure must replace its image"
+            );
+        }
+    }
+    for (name, stamp) in &warm_stamps {
+        if name.starts_with("independent-") && !matches!(action, Action::Rebuild) {
+            assert_eq!(
+                stamp, &final_stamps[name],
+                "independent image date must remain untouched"
+            );
+        } else {
+            assert_ne!(
+                stamp, &final_stamps[name],
+                "rebuilt image must replace the stale object"
+            );
+        }
+    }
     if matches!(action, Action::Rebuild) {
         let reference = log("Work/reference.progress");
         assert!(
@@ -279,13 +439,17 @@ fn run(action: Action) {
     assert!(cold.1 > 0, "cold run must compile cacheable modules");
     assert_eq!(
         warm,
-        (2, 0),
-        "warm run must reuse both modules without rebuilding"
+        (3, 0),
+        "warm run must reuse all modules without rebuilding"
     );
     assert_eq!(
         final_counts,
-        (0, 2),
-        "changed dependency, timestamp-only change, or --rebuild must rebuild both modules"
+        if matches!(action, Action::Rebuild) {
+            (0, 3)
+        } else {
+            (1, 2)
+        },
+        "dependency changes rebuild only their closure; --rebuild recompiles all modules"
     );
     if matches!(action, Action::Rebuild) {
         assert_eq!(final_counts.0, 0, "--rebuild must bypass all cache hits");

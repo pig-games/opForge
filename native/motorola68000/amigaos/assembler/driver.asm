@@ -328,7 +328,7 @@ configured
 	lea PrivateRegistry, a0
 	movea.l DosBase, a1
 	movea.l CaptureDirectory, a2
-	jsr moduleRegistry.configure
+	bsr.w configureModuleObjects
 	bne.w failed
 captureConfigured
 	.MEMORY_CLOCK DosBase, #0

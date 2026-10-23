@@ -44,6 +44,7 @@ CACHE_DOS_PROGRAM_DIR = -600
 	.include "cache_key.i"
 	.include "cache_pub.i"
 	.include "cache_sources.i"
+	.include "cache_store.i"
 
 ; Initialize only for real CLI requests, never harness/reference execution.
 ; Tool/package identities distinguish code and embedded package compatibility.
@@ -51,6 +52,7 @@ CACHE_DOS_PROGRAM_DIR = -600
 incrementalBegin	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	clr.l IncrementalEnabled
+	clr.l SharedModuleStore
 	clr.l IncrementalDigestPackage
 	clr.l IncrementalHits
 	clr.l IncrementalMisses
@@ -340,10 +342,20 @@ done
 ; dependency directory. Full module name/configuration in the key disambiguates
 ; truncated filename collisions; discovery-order changes safely cause misses.
 incrementalPaths	.block
-	movem.l d1-d7/a0-a6, -(sp)
+	movem.l d1, -(sp)
 	move.l PrivateRegistry+moduleRegistry.State.Modules+memory.Block.Used, d1
 	moveq #moduleRegistry.MODULE_BYTES, d0
 	divu.l d0, d1
+	bsr.w incrementalModulePaths
+	movem.l (sp)+, d1
+	tst.l d0
+	rts
+	.bend ; incrementalPaths
+
+; D1=current module ordinal, before or after registry admission. Other registers
+; preserved; D0/CCR=status. Also used to invalidate a disabled shared cache safely.
+incrementalModulePaths	.block
+	movem.l d1-d7/a0-a6, -(sp)
 	lea PrivateModuleName, a1
 	move.l PrivateModuleBytes, d2
 	lea IncrementalFileName, a2
@@ -372,7 +384,7 @@ done
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
-	.bend  ; incrementalPaths
+	.bend  ; incrementalModulePaths
 
 ; A0=NUL leaf,A1=NUL path with capacity PATH_BYTES. Appends slash as needed.
 ; D0/CCR=status; other registers preserved. No allocation or OS side effects.

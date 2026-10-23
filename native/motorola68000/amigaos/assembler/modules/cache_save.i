@@ -122,9 +122,8 @@ publication
 	move.l IncrementalPublication+memory.Block.Used, d0
 	bsr.w copy
 	; Remove the validity marker first, even when the subsequent replacement fails.
-	movea.l DosBase, a6
-	move.l #IncrementalMetaPath, d1
-	jsr CACHE_DOS_DELETE(a6)
+	bsr.w invalidateModuleCache
+	bne.w good
 	lea IncrementalImagePath, a0
 	lea PrivateImage, a1
 	movea.l DosBase, a2

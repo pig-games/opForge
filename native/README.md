@@ -24,6 +24,14 @@ Directly assembling `main.asm` uses that external-only catalog and therefore
 needs the matching package files in its package root. The Rust product CLI and
 its command-line behavior are unchanged by this native promotion.
 
+Normal native builds use one module object directory, `build/ofm`, or the path
+selected by `--incremental-dir`. The linker reads the same `.ofm` files used for
+incremental reuse. Unchanged modules leave their object files untouched; stale
+modules replace their existing files after recompilation. A companion `.ofi`
+records timestamps and publication metadata, and is published after the complete
+object. Builds no longer accumulate `objects-1`, `objects-2`, etc. Capture and
+preparation scratch is separate from this persistent directory.
+
 The product covers a substantial shared assembler and package-backed runtime
 surface. Earlier focused Rust parity and full-source self-host evidence are
 recorded in the linked plans for their identified source snapshots. Promotion
@@ -59,9 +67,9 @@ composition boundaries. Module semantic exports are owned by
 
 The default external-package release completes full cold and unchanged incremental
 self-hosts under 8 MiB total RAM, installed Workbench with a plain background, a 64 KiB
-stack and disk-backed capture. Cold takes **282 s**, incremental **59 s**;
+stack and disk-backed capture. Cold takes **283 s**, incremental **59 s**;
 all 190 modules rebuild cold and all 190 are reused warm. Both exit zero and
-produce the full **348,664-byte executable exactly matching live Rust**, using
+produce the full **348,752-byte executable exactly matching live Rust**, using
 the separate 478,042-byte m68020 package. Loading that package still consumes RAM;
 the executable size reduction is not a peak-memory measurement.
 These are FS-UAE 68020/unrestricted-speed durations; A6000 validation of this

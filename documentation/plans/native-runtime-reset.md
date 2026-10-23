@@ -13,20 +13,30 @@ promotion changes the product entry point; it does not claim complete Rust
 language, CPU-family or output parity. Full opcore and family parity, plus the
 2 MiB memory target, remain open.
 
-**Default external-package self-host qualified, 2026-10-23.** The unchanged
-native source export contains 277 mapped inputs (2,945,821 bytes), manifest
-`fnv1a64:c0dbb8bd6e20cb06`. Automatic package discovery uses the source's `.cpu`
+**Default external-package self-host qualified, 2026-10-23.** The current
+export contains 278 mapped inputs (2,947,664 bytes), manifest
+`fnv1a64:10ba03505347550b`. Automatic package discovery uses the source's `.cpu`
 selection and `packages/m68020--motorola68k.bin`, without an explicit runtime
 package argument. Under the same 8 MiB Workbench/plain-background setup and
-64 KiB stack below, cold takes **282 s**, warm **59 s**; all 190 modules rebuild
+64 KiB stack below, cold takes **283 s**, warm **59 s**; all 190 modules rebuild
 cold and all 190 are reused warm. Both phases exit zero and produce the complete
-348,664-byte executable exactly matching live Rust and the bootstrap, digest
-`fnv1a64:0e084435f0368038`. Linked static reservation is 390,392 bytes; the
+348,752-byte executable exactly matching live Rust and the bootstrap, digest
+`fnv1a64:0a909fb73ee7df7d`. Linked static reservation is 389,912 bytes; the
 separate package is 478,042 bytes. Moving that payload out of the executable is
 not a corresponding peak-RAM saving: the runtime loads it into memory. Peak heap
 was not remeasured and 2 MiB fit remains unproved. These unrestricted-speed
-FS-UAE durations are effectively unchanged from the embedded qualification;
-they do not establish a speed improvement. A6000 validation is pending.
+FS-UAE durations are effectively unchanged from the preceding external-package
+snapshot (282/59 s); they do not establish a speed improvement. A6000 validation
+is pending.
+
+Disk-backed linking and incremental reuse share `build/ofm` (or
+`--incremental-dir`). After the cold/warm pair, it contains one set of 190 `.ofm`
+images totaling 1,654,912 bytes, with one `.ofi` validity companion per module;
+there are no per-run object directories. Four fresh native incremental controls
+also cover source changes, timestamp-only changes, forced rebuilding and template
+origins. Unchanged files retain their exact bytes and timestamps, while a changed
+dependency rebuilds only its consumer closure. Resident/disk image, relocation
+and rollback component checks pass independently.
 
 **Promoted-source self-host qualified, 2026-10-23.** The release bundle contains
 278 mapped inputs (3,423,951 bytes), source manifest

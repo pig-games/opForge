@@ -1495,6 +1495,10 @@ The native AmigaOS CLI enables incremental module reuse by default.
 It stores `.ofm` objects and `.ofi` timestamp/publication metadata under
 `build/ofm` in the working directory. `--incremental-dir DIR` overrides that
 location, and `--rebuild` recompiles modules even when cached objects are fresh.
+Final linking reads those same objects: there is no second per-build object
+directory. An unchanged module leaves its `.ofm` untouched, while a stale module
+replaces its existing object. Replacement writes and closes a temporary file
+before publishing the complete object, then publishes its `.ofi` validity metadata.
 These options currently belong to the native CLI; they are not Rust CLI options.
 
 The native CLI prints plain module progress to the process error stream

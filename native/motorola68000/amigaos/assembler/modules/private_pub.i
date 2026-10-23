@@ -297,7 +297,7 @@ lists
 store
 	lea PrivateRegistry, a0
 	move.l PrivateModuleID, d1
-	jsr moduleRegistry.store
+	bsr.w storeModuleObject
 	bne.w bad
 	clr.l PrivateCarrier+moduleCarrier.Frame.Image  ; pending borrow has retired
 	clr.l PrivateCarrier+moduleCarrier.Frame.Bytes

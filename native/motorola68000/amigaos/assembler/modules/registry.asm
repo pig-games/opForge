@@ -52,13 +52,15 @@ CHECKPOINT_BYTES = Snapshot.Addresses+4
 OK = 0
 INVALID = 1
 UNMAPPED = $ffffffff
+STORED_OWNED = 1
+STORED_SHARED = 2
 ; Existing progress schema: reads/writes/cache hits, then byte counts.
 PROGRESS_STORE_IO = 451
 PROGRESS_STORE_BYTES = 452
 	.section code, kind=code
-; A0=zero Registry,A1=DOS base,A2=existing temporary directory.
+; A0=zero Registry,A1=DOS base,A2=exact object directory path.
 ; D0/CCR=status; all other registers preserved. Configure before any add.
-; Owns an object output directory; completed .ofm files survive release.
+; Reuses the object directory; completed .ofm files survive release.
 ; Unconfigured registries retain resident image ownership.
 configure	.block
 	movem.l a0/a3, -(sp)
@@ -520,7 +522,7 @@ store	.block
 	bne.w done
 	.MEMORY_COUNTER_INC DiskWrites
 	.MEMORY_COUNTER_ADD DiskWriteBytes, d2
-	move.l #1, Module.Stored(a4)
+	move.l #STORED_OWNED, Module.Stored(a4)
 	lea Module.Image(a4), a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -534,6 +536,44 @@ done
 	tst.l d0
 	rts
 	.bend  ; store
+
+; A0=Registry,D1=module,A2=exact generated filename already validated/written
+; by the persistent cache in this registry's directory. D0/CCR=status; others
+; preserved. No IO. Retire the pending owner without rewriting the same image.
+; Rollback leaves this shared cache file intact. Resident mode retains its owner.
+adoptStored	.block
+	movem.l d1-d3/a0-a2/a4/a6, -(sp)
+	movea.l a0, a6
+	bsr.w moduleRow
+	bne.w done
+	tst.l State.Configured(a6)
+	beq.w good
+	tst.l Module.Stored(a4)
+	bne.w good
+	lea Module.FileName(a4), a1
+	moveq #io.NAME_BYTES-1, d2
+compare
+	cmpm.b (a1)+, (a2)+
+	bne.w bad
+	tst.b -1(a1)
+	beq.w adopted
+	dbra d2, compare
+	bra.w bad
+adopted
+	move.l #STORED_SHARED, Module.Stored(a4)
+	lea Module.Image(a4), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+good
+	moveq #OK, d0
+	bra.w done
+bad
+	moveq #INVALID, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2/a4/a6
+	tst.l d0
+	rts
+	.bend  ; adoptStored
 
 ; A0=Registry,D1=module ID. D0/CCR=status,A1=full validated image.
 ; Other registers preserved. Disk requires a stored object. Only this routine
@@ -678,7 +718,8 @@ checkpoint	.block
 ; A0=Registry,A1=previous checkpoint from this Registry. D0/CCR=status;
 ; other registers preserved. Releases images added after checkpoint, then
 ; truncates all three tables. Existing placement values are not restored.
-; Disk expires emission borrows and removes only objects after the checkpoint.
+; Disk expires emission borrows and removes owned objects after the checkpoint;
+; adopted persistent cache files survive rollback as well as release.
 ; OS deletion is not transactional: failure retains all row owners and marks
 ; successfully removed objects unstored. Retry rollback or release after failure.
 rollback	.block
@@ -733,8 +774,8 @@ removeObjects
 	bhs.w releaseRows
 	movea.l State.Modules+memory.Block.Pointer(a6), a4
 	adda.l d4, a4
-	tst.l Module.Stored(a4)
-	beq.w nextObject
+	cmpi.l #STORED_OWNED, Module.Stored(a4)
+	bne.w nextObject
 	lea State.Io(a6), a0
 	lea Module.FileName(a4), a2
 	jsr io.remove

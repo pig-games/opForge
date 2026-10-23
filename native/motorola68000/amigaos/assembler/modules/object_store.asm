@@ -1,21 +1,21 @@
-; Write-once module objects. Completed files and their directory are deliverables.
+; Stable module objects. Completed files are replaced only by an explicit store.
 ; @opforge-owner: opforge.assembler.modules.object_store
 	.module opforge.assembler.modules.object_store
 	.cpu 68020
+	.use opforge.platform.files as files
+	.use opforge.platform.memory as memory
 	.pub
 Context	.struct
 Dos	.long ?
-OwnedDir	.long ?
+Ready	.long ?
 File	.long ?
-Unfinished	.long ?
 Directory	.res 512
 Final	.res 512
-Temporary	.res 512
 	.endstruct
-CONTEXT_BYTES = Context.Temporary+512
+CONTEXT_BYTES = Context.Final+512
+BLOCK_BYTES = memory.Block.Used+4
 NAME_BYTES = 32
 FILE_NAME_LIMIT = 30
-PARENT_LIMIT = 467; leaves room for /objects-255/<30-byte filename> and NUL
 DIRECTORY_LIMIT = 479
 STEM_BYTES = 21
 LIMIT = 1048576
@@ -25,21 +25,14 @@ INVALID = 1
 DOS_OPEN = -30
 DOS_CLOSE = -36
 DOS_READ = -42
-DOS_WRITE = -48
 DOS_SEEK = -66
 DOS_DELETE = -72
-DOS_RENAME = -78
-DOS_LOCK = -84
-DOS_UNLOCK = -90
-DOS_CREATE_DIR = -120
 MODE_OLDFILE = 1005
-MODE_NEWFILE = 1006
-ACCESS_READ = -2
 	.section code, kind=code
 	.pub
-; A0=zero Context,A1=DOS base,A2=existing parent path. D0/CCR=status;
-; others preserved. Atomically creates objects, or objects-1 through objects-255.
-; Never adopts/deletes an existing directory. No dynamic allocation.
+; A0=zero Context,A1=DOS base,A2=exact object directory path. D0/CCR=status;
+; others preserved. Creates missing components or reuses the existing directory.
+; Single writer; never allocates a fresh numbered directory or removes its files.
 configure	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
@@ -47,83 +40,27 @@ configure	.block
 	bne.w bad
 	move.l a1, d0
 	beq.w bad
-	move.l a1, Context.Dos(a5)
 	movea.l a1, a6
 	lea Context.Directory(a5), a4
-	move.w #PARENT_LIMIT, d4
-copyParent
+	move.w #DIRECTORY_LIMIT, d4
+copy
 	move.b (a2)+, (a4)+
-	beq.w parentReady
-	dbra d4, copyParent
+	beq.w copied
+	dbra d4, copy
 	bra.w reset
-parentReady
-	subq.l #1, a4
+copied
 	lea Context.Directory(a5), a0
-	cmpa.l a0, a4
+	tst.b (a0)
 	beq.w reset
-	cmpi.b #':', -1(a4)
-	beq.w suffix
-	cmpi.b #'/', -1(a4)
-	beq.w suffix
-	move.b #'/', (a4)+
-suffix
-	lea DirectoryName, a0
-	bsr.w appendString
-	movea.l a4, a3
-	moveq #0, d7
-attempt
-	movea.l a3, a4
-	tst.l d7
-	beq.w terminate
-	move.b #'-', (a4)+
-	move.l d7, d5
-	cmpi.l #100, d5
-	blo.w tens
-	move.l d5, d0
-	divu.w #100, d0
-	move.w d0, d4
-	addi.b #'0', d4
-	move.b d4, (a4)+
-	swap d0
-	moveq #0, d5
-	move.w d0, d5
-tens
-	cmpi.l #10, d5
-	bhs.w writeTens
-	cmpi.l #100, d7
-	blo.w units
-writeTens
-	move.l d5, d0
-	divu.w #10, d0
-	move.w d0, d4
-	addi.b #'0', d4
-	move.b d4, (a4)+
-	swap d0
-	moveq #0, d5
-	move.w d0, d5
-units
-	addi.b #'0', d5
-	move.b d5, (a4)+
-terminate
-	clr.b (a4)
-	lea Context.Directory(a5), a0
-	move.l a0, d1
-	jsr DOS_CREATE_DIR(a6)
-	tst.l d0
-	bne.w owned
-	addq.l #1, d7
-	cmpi.l #255, d7
-	bls.w attempt
-reset
-	clr.l Context.Dos(a5)
-	clr.b Context.Directory(a5)
-	bra.w bad
-owned
-	move.l #1, Context.OwnedDir(a5)
-	move.l d0, d1
-	jsr DOS_UNLOCK(a6)
+	movea.l a6, a2
+	jsr files.ensureDirectory
+	bne.w reset
+	move.l a6, Context.Dos(a5)
+	move.l #1, Context.Ready(a5)
 	moveq #OK, d0
 	bra.w done
+reset
+	clr.b Context.Directory(a5)
 bad
 	moveq #INVALID, d0
 done
@@ -138,7 +75,7 @@ done
 ; The21-byte stem keeps a complete leaf first, then as much parent qualification
 ; prefix as fits. A leaf longer than21 uses its distinctive final21 bytes and
 ; omits qualification. Example foo.bar -> bar.foo-0001.ofm; long qualification
-; opforge.assembler.prepare.frontend -> binary_frontend.exper-0001.ofm.
+; opforge.assembler.prepare.frontend -> frontend.opforge.asse-0001.ofm.
 ; Unique IDs disambiguate case folding, truncation and sanitized characters.
 makeName	.block
 	movem.l d1-d7/a0-a4, -(sp)
@@ -226,10 +163,11 @@ done
 	.bend  ; makeName
 
 ; A0=Context,A2=generated filename,A1=image,D2=positive exact bytes <= LIMIT.
-; D0/CCR=status; others preserved. Writes/Closes .tmp then Renames to .ofm.
-; Existing final or temporary names reject; single writer owns this directory.
+; D0/CCR=status; others preserved. Single-writer replacement through files.save:
+; close a complete .tmp before replacing the final; directories are never removed.
 store	.block
 	movem.l d1-d7/a0-a6, -(sp)
+	lea -BLOCK_BYTES(sp), sp
 	movea.l a0, a5
 	move.l a1, d4
 	move.l d2, d6
@@ -237,38 +175,18 @@ store	.block
 	bne.w bad
 	bsr.w bufferRange
 	bne.w bad
+	move.l d4, memory.Block.Pointer(sp)
+	move.l d6, memory.Block.Capacity(sp)
+	move.l d6, memory.Block.Used(sp)
 	lea Context.Final(a5), a0
-	bsr.w absent
-	bne.w bad
-	lea Context.Temporary(a5), a0
-	bsr.w absent
-	bne.w bad
-	move.l a0, d1
-	move.l #MODE_NEWFILE, d2
-	jsr DOS_OPEN(a6)
-	move.l d0, Context.File(a5)
-	beq.w bad
-	move.l #1, Context.Unfinished(a5)
-	moveq #DOS_WRITE, d7
-	bsr.w transfer
-	bne.w failed
-	bsr.w closeFile
-	bne.w failed
-	lea Context.Temporary(a5), a0
-	move.l a0, d1
-	lea Context.Final(a5), a0
-	move.l a0, d2
-	jsr DOS_RENAME(a6)
-	tst.l d0
-	beq.w failed
-	clr.l Context.Unfinished(a5)
-	moveq #OK, d0
+	movea.l sp, a1
+	movea.l a6, a2
+	jsr files.save
 	bra.w done
-failed
-	bsr.w discard
 bad
 	moveq #INVALID, d0
 done
+	lea BLOCK_BYTES(sp), sp
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -404,17 +322,15 @@ done
 	rts
 	.bend  ; remove
 
-; A0=Context. D0/CCR=status; others preserved. Close/delete unfinished work
-; only; completed objects and Directory remain available as build deliverables.
-; Clears live ownership state even on IO failure. Idempotent.
+; A0=Context. D0/CCR=status; others preserved. Close a live reader and clear
+; configuration only. Completed files remain in the shared directory. Idempotent.
 cleanup	.block
 	movem.l d1-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	movea.l Context.Dos(a5), a6
-	bsr.w discard
+	bsr.w closeFile
 	clr.l Context.Dos(a5)
-	clr.l Context.OwnedDir(a5)
-	clr.l Context.Unfinished(a5)
+	clr.l Context.Ready(a5)
 	movem.l (sp)+, d1-d7/a0-a6
 	tst.l d0
 	rts
@@ -423,14 +339,12 @@ cleanup	.block
 ; A5=Context,A2=generated filename. D0=status,A6=DOS. Construct bounded paths.
 ; Validate the component length and safe alphabet before appending it.
 paths	.block
-	tst.l Context.OwnedDir(a5)
+	tst.l Context.Ready(a5)
 	beq.w bad
 	movea.l Context.Dos(a5), a6
 	move.l a6, d0
 	beq.w bad
 	tst.l Context.File(a5)
-	bne.w bad
-	tst.l Context.Unfinished(a5)
 	bne.w bad
 	move.l a2, d0
 	beq.w bad
@@ -475,17 +389,14 @@ copy
 	bra.w bad
 copied
 	subq.l #1, a4
+	cmpi.b #':', -1(a4)
+	beq.w append
+	cmpi.b #'/', -1(a4)
+	beq.w append
 	move.b #'/', (a4)+
+append
 	movea.l a2, a0
 	bsr.w appendString
-	lea Context.Final(a5), a0
-	lea Context.Temporary(a5), a1
-copyTemporary
-	move.b (a0)+, (a1)+
-	bne.w copyTemporary
-	move.b #'t', -4(a1)
-	move.b #'m', -3(a1)
-	move.b #'p', -2(a1)
 	moveq #OK, d0
 	rts
 bad
@@ -509,24 +420,6 @@ bad
 	moveq #INVALID, d0
 	rts
 	.bend  ; bufferRange
-; A0=path,A6=DOS. D0=status; A0 preserved. Lock success means reject.
-absent	.block
-	move.l a0, -(sp)
-	move.l a0, d1
-	moveq #ACCESS_READ, d2
-	jsr DOS_LOCK(a6)
-	tst.l d0
-	beq.w missing
-	move.l d0, d1
-	jsr DOS_UNLOCK(a6)
-	moveq #INVALID, d0
-	bra.w done
-missing
-	moveq #OK, d0
-done
-	movea.l (sp)+, a0
-	rts
-	.bend  ; absent
 ; D4=buffer,D6=remaining,D7=Read/Write vector,A5=Context,A6=DOS.
 transfer	.block
 loop
@@ -564,26 +457,6 @@ bad
 	moveq #INVALID, d0
 	rts
 	.bend  ; closeFile
-; A5=Context,A6=DOS. D0=status; no completed object is removed.
-; Failed deletion retains Unfinished so cleanup can retry the owned path.
-discard	.block
-	bsr.w closeFile
-	move.l d0, d7
-	tst.l Context.Unfinished(a5)
-	beq.w done
-	lea Context.Temporary(a5), a0
-	move.l a0, d1
-	jsr DOS_DELETE(a6)
-	tst.l d0
-	beq.w deleteFailed
-	clr.l Context.Unfinished(a5)
-	bra.w done
-deleteFailed
-	moveq #INVALID, d7
-done
-	move.l d7, d0
-	rts
-	.bend  ; discard
 ; A0=NUL-terminated text,A4=bounded destination. Leaves A4 at its NUL.
 appendString	.block
 copy
@@ -637,7 +510,6 @@ digit
 	.bend  ; hex
 	.endsection
 	.section data, kind=data
-DirectoryName	.byte "objects", 0
 Extension	.byte ".ofm", 0
 	.endsection
 	.endmodule

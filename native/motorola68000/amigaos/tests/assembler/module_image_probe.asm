@@ -1027,16 +1027,16 @@ RegistryLink
 QualifiedName	.byte "opforge.assembler.prepare.frontend"
 QualifiedNameEnd
 QUALIFIED_NAME_BYTES = QualifiedNameEnd-QualifiedName
-QualifiedFile	.byte "binary_frontend.exper-0000.ofm", 0
-CaseName	.byte "EXPERIMENTAL.AMIGAOS.BINARY_FRONTEND"
-CaseFile	.byte "BINARY_FRONTEND.EXPER-0001.ofm", 0
+QualifiedFile	.byte "frontend.opforge.asse-0000.ofm", 0
+CaseName	.byte "OPFORGE.ASSEMBLER.PREPARE.FRONTEND"
+CaseFile	.byte "FRONTEND.OPFORGE.ASSE-0001.ofm", 0
 ShortName	.byte "foo.bar"
 ShortFile	.byte "bar.foo-0001.ofm", 0
 LongLeaf	.byte "parent.abcdefghijklmnopqrstuvwxyz"
 LongFile	.byte "fghijklmnopqrstuvwxyz-0002.ofm", 0
 UnsafeName	.byte "parent.a:b/c"
 UnsafeFile	.byte "a_b_c.parent-000A.ofm", 0
-WorkName	.byte "Work:", 0
+WorkName	.byte "Work:objects", 0
 	.align 4
 Guard	.long GUARD_VALUE, GUARD_VALUE
 Target	.long $1000

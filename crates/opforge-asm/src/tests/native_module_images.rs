@@ -95,7 +95,11 @@ fn native_module_images_fs_uae() {
     for disk in [false, true] {
         let image = build_probe(&root, &dir.0, disk);
         let case = OpforgeNativeCliParityCase {
-            name: "native-module-image-component",
+            name: if disk {
+                "native-module-image-component-disk"
+            } else {
+                "native-module-image-component-resident"
+            },
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(PAYLOAD.as_bytes()),
@@ -140,7 +144,7 @@ fn native_module_images_fs_uae() {
             assert_eq!(
                 names,
                 std::collections::BTreeSet::from([
-                    "binary_frontend.exper-0000.ofm".to_owned(),
+                    "frontend.opforge.asse-0000.ofm".to_owned(),
                     "consumer-0001.ofm".to_owned(),
                     "provider-0000.ofm".to_owned(),
                 ])
@@ -149,7 +153,7 @@ fn native_module_images_fs_uae() {
                 assert_eq!(&bytes[..4], b"OFMI");
                 let declared_bytes = u32::from_be_bytes(bytes[4..8].try_into().unwrap());
                 assert_eq!(declared_bytes as usize, bytes.len());
-                if path.file_name().unwrap() == "binary_frontend.exper-0000.ofm" {
+                if path.file_name().unwrap() == "frontend.opforge.asse-0000.ofm" {
                     let payload = fs::read(dir.0.join("module_image_payload.bin")).unwrap();
                     assert!(bytes.ends_with(&payload), "complete unchanged Rust payload");
                 } else {

@@ -432,28 +432,58 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     }
     // Inventory deliverables already captured by the runner; no guest observer
     // or additional file reads are added to the measured execution interval.
-    let object_sizes: Vec<_> = run
+    let objects: Vec<_> = run
         .captured_artifacts
         .iter()
         .filter_map(|(path, bytes)| {
             let relative = path.strip_prefix("Work").ok()?;
             let directory = relative.parent()?.file_name()?.to_str()?;
-            ((directory == "objects"
+            ((relative.parent() == Some(Path::new("build/ofm"))
+                || directory == "objects"
                 || directory.strip_prefix("objects-").is_some_and(|suffix| {
                     !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit())
                 }))
                 && relative
                     .extension()
                     .is_some_and(|extension| extension == "ofm"))
-            .then_some(bytes.len())
+            .then_some((relative, bytes.len()))
         })
         .collect();
+    let object_sizes = objects.iter().map(|(_, bytes)| *bytes).collect::<Vec<_>>();
+    // Retain single-run comparisons of older frozen executables. Incremental
+    // comparisons additionally qualify the current shared-store contract.
+    let legacy_objects = objects
+        .iter()
+        .filter(|(path, _)| path.parent() != Some(Path::new("build/ofm")))
+        .count();
+    let shared_markers = run
+        .captured_artifacts
+        .keys()
+        .filter(|path| {
+            path.parent() == Some(Path::new("Work/build/ofm"))
+                && path.extension().is_some_and(|extension| extension == "ofi")
+        })
+        .count();
+    if incremental {
+        assert_eq!(legacy_objects, 0, "incremental builds use only build/ofm");
+        let count = cache_counts.as_ref().unwrap()["warm_reused"]
+            .as_u64()
+            .unwrap() as usize;
+        assert_eq!(
+            object_sizes.len(),
+            count,
+            "cold and warm builds share one object set"
+        );
+        assert_eq!(
+            shared_markers, count,
+            "one validity marker per shared cached image"
+        );
+    }
     let private_modules = native_cli_frozen_comparison::private_module_count(&run.stdout);
     let store_io = native_cli_frozen_comparison::module_store_io(&run.stdout);
     // Heap-only images keep allocation accounting but omit progress diagnostics.
     // The progress profile additionally qualifies exact module I/O counters.
     if instrumented
-        && !incremental
         && define_strings.contains(&"OPFORGE_PREPARATION_PROGRESS")
         && !budget_failure_diagnostic
         && !input["module_mode"].is_null()
@@ -464,12 +494,24 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         }
         if capture_mode == "disk" {
             let io = store_io.expect("persisted module I/O receipt");
-            assert_eq!(io[1], count, "one saved image per admitted module");
-            assert_eq!(
-                object_sizes.len(),
-                count as usize * if incremental { 2 } else { 1 },
-                "completed objects survive cleanup for each assembly phase"
-            );
+            if legacy_objects != 0 {
+                assert_eq!(io[1], count, "legacy registry saves each admitted image");
+                assert_eq!(
+                    legacy_objects,
+                    count as usize * if incremental { 2 } else { 1 }
+                );
+            } else {
+                assert_eq!(
+                    io[1] as usize + shared_markers,
+                    count as usize,
+                    "cached images are adopted; only uncached images need a registry write"
+                );
+                assert_eq!(
+                    object_sizes.len(),
+                    count as usize,
+                    "one persistent object per admitted module"
+                );
+            }
             assert!(
                 io[0] <= count,
                 "each stored module is read at most once at final emission"

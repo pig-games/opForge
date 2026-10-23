@@ -90,7 +90,7 @@ begin	.block
 	move.l a0, State.Scope(a3)
 	move.l #resolve, layout.State.DependencyResolve(a0)
 	move.l #owners, layout.State.DependencyOwners(a0)
-	move.l #scopes.bindOrigin, layout.State.DependencyBinder(a0)
+	move.l #scopes.bindCanonicalOrigin, layout.State.DependencyBinder(a0)
 	clr.w layout.State.DependencyFailed(a0)
 	move.l a3, layout.State.DependencyContext(a0)
 	moveq #OK, d0
@@ -527,7 +527,7 @@ declared
 	movea.l a5, a0
 	movea.l a2, a1
 	move.l d5, d0
-	jsr scopes.bindOrigin
+	jsr scopes.bindCanonicalOrigin
 	move.w (sp)+, layout.State.FirstExplicit(a2)
 	move.w (sp)+, layout.State.FirstBound(a2)
 	move.w (sp)+, layout.State.BindingNamespace(a2)

@@ -23,10 +23,10 @@ storage/rebuild choices. Product debug includes resolve relative to their files.
 See the [native guide](../../native/README.md) for build and hardware commands.
 
 The latest full bare-CLI proof, dated **2026-10-23**, uses source manifest
-`fnv1a64:9e447609ba8deed3`: 270 inputs / 2,918,308 bytes. Under the established
+`fnv1a64:86d835d2f14afa35`: 270 inputs / 2,919,158 bytes. Under the established
 8 MiB installed-Workbench/plain-background FS-UAE setup and 64 KiB stack,
-`opforge src --rebuild` completes cold in **275 s** and `opforge src` completes
-warm in **58 s**. Both exit zero and produce the complete **348,824-byte Hunk**
+`opforge src --rebuild` completes cold in **276 s** and `opforge src` completes
+warm in **58 s**. Both exit zero and produce the complete **348,860-byte Hunk**
 exactly matching live Rust and the bootstrap. Cold rebuilds all 190 dependency
 modules; warm reuses all 190. The separate m68020 package is 478,042 bytes.
 
@@ -128,12 +128,14 @@ groups are not automatically established causes or current failing counts.
   configuration defect: breadth silently ignored the requested stack and inherited
   4 KiB. Both runners now share stack validation and setup, including retries.
   This focused proof is separate from the full self-host pair above.
-- **Shared source controls:** a fresh breadth run completed all 20 cases at a
-  64 KiB stack. The imported-template control matched Rust; the other 19 controls
-  rejected with exit 20 and `preparation step: 00000002`. Those fixtures share a
-  multi-module whole-block base, so this is not evidence of 19 independent bugs.
-  Their common preparation failure still needs localization. They remain failing
-  correctness tests; protocol completion does not establish their parity.
+- **Shared source controls:** all 20 controls now complete at a 64 KiB stack with
+  exact live Rust binary/Hunk output. The former common preparation rejection was
+  native binding-state pollution: a stored-export probe rebound an internally
+  composed name as explicitly qualified source, preventing ordinary parent-scope
+  lookup. Internal canonical binders now preserve source qualification and writer
+  first-name metadata, retaining target-versus-origin identity semantics. A native
+  component regression also checks that real source qualification still marks
+  explicit names. This qualifies these controls, not all remaining opcore gaps.
 - **Expressions and addresses:** supported one-base-plus-absolute-addend fixups do
   not cover multi-base/non-affine algebra or compound symbolic-address cells.
   Unsupported relocation forms must reject without losing provenance. Preparation

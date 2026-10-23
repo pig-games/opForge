@@ -3,7 +3,7 @@
 ## Current measured baseline
 
 The 2026-10-23 bare-CLI external-package release completes cold and unchanged
-incremental self-hosts in **275/58 s** on the established 8 MiB installed-Workbench,
+incremental self-hosts in **276/58 s** on the established 8 MiB installed-Workbench,
 plain-background FS-UAE setup, with a 64 KiB stack and unrestricted CPU speed.
 Cold runs `opforge src --rebuild`; warm runs `opforge src`. Both use the default
 working-directory `build/scratch` and `build/ofm` storage. Cold rebuilds all 190
@@ -12,13 +12,13 @@ and exact entire-output equality with live Rust and the bootstrap.
 
 | Identity or measurement | Current bare-CLI snapshot |
 | --- | --- |
-| Source inputs | 270 files / 2,918,308 B |
-| Source manifest | `fnv1a64:9e447609ba8deed3` |
-| Hunk executable | 348,824 B; `fnv1a64:039b39206ed8ab98` |
-| Linked static reservation | 389,968 B |
+| Source inputs | 270 files / 2,919,158 B |
+| Source manifest | `fnv1a64:86d835d2f14afa35` |
+| Hunk executable | 348,860 B; `fnv1a64:4d91d2cf38a5e4d0` |
+| Linked static reservation | 390,004 B |
 | Separate m68020 package | 478,042 B |
-| CLI elapsed totals, cold / warm | 275.20 / 57.58 s |
-| Shared `.ofm` payload store | 190 images / 1,654,720 B, each with an `.ofi` companion |
+| CLI elapsed totals, cold / warm | 276.30 / 57.40 s |
+| Shared `.ofm` payload store | 190 images / 1,655,416 B, each with an `.ofi` companion |
 
 Completion proves fit for this particular 8 MiB desktop and workload. It provides
 no new peak-heap measurement, physical 68020 timing, isolated speedup or 2 MiB fit
@@ -29,13 +29,12 @@ current CLI, package deployment and qualification details.
 The completed lazy/work/template, candidate and packing shadow observers and
 associated comparison tooling were removed after caller review. General memory,
 binding, capture, capture-lifetime component, hotspot, template-work and VM
-telemetry remain. The release executable is byte-identical to the pre-cleanup
-348,824-byte build (SHA-256
-`bbcdd6344f6ba6dd310910278655f7583c3d6f10899c282d63785ff4144cfd4c`).
-The self-host source set shrank by eight files / 30,802 B. The earlier identical
-release image assembled its pre-cleanup source in 279/58 s; the current 275/58 s
-observation does not establish an isolated speedup. No heap saving is inferred
-from removing code that was already gated out of release builds.
+telemetry remain. The canonical-binding repair adds 36 B to the executable and
+linked static reservation, with no new scope fields or allocation calls. It
+restores exact output for all 20 shared source controls. The preceding full pair
+was 275/58 s; the current pair assembles modified sources, so these observations
+do not isolate the repair's runtime cost or establish a speedup. No heap saving
+is inferred without a new heap measurement.
 
 The preceding external-package snapshot passed the physical A6000 in
 **1,066/90 s** cold/warm. It used 278 inputs / 2,947,664 B, source manifest

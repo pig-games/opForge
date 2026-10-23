@@ -432,7 +432,7 @@ SNAPSHOTS = {'opforge.assembler.driver': ('0b8b96fad2dfca1efb16b4c17a7aebdae2975
                                                     12,
                                                     ('bss', 'code'),
                                                     16),
- 'opforge.assembler.modules.provider': ('3aa997548c1aa944246c5e497b5dc1d8f5bb256c6e59fc0282151f6420f853ef',
+ 'opforge.assembler.modules.provider': ('fcb27afe22ee9ff4d1a0f6f7893031e3200cdf951a1f8a8c6c4e8d69960e74ac',
                                         27,
                                         18,
                                         ('code',),

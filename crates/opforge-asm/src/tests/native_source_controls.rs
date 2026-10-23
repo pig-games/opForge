@@ -172,6 +172,10 @@ fn native_source_controls_live_rust_controls() {
 #[test]
 #[ignore = "requires a prebuilt current CLI image and fresh FS-UAE"]
 fn native_source_controls_prebuilt_fs_uae() {
+    run_controls(selected_controls(), Execution::Breadth);
+}
+
+fn selected_controls() -> Vec<Control> {
     let mut controls = controls();
     if let Ok(filter) = std::env::var("OPFORGE_SOURCE_CONTROLS_CASE_FILTER") {
         controls.retain(|control| control.name == filter);
@@ -180,20 +184,28 @@ fn native_source_controls_prebuilt_fs_uae() {
             "unknown source control case filter {filter}"
         );
     }
-    run_controls(controls, true);
+    controls
 }
 
 #[test]
 #[ignore = "requires a prebuilt current CLI image and fresh FS-UAE; single-case transport control"]
-fn native_source_template_boundary_single_fs_uae() {
-    let control = controls()
-        .into_iter()
-        .find(|control| control.name == "imported-template-boundary")
-        .expect("template boundary control");
-    run_controls(vec![control], false);
+fn native_source_controls_single_fs_uae() {
+    run_controls(selected_controls(), Execution::Single);
 }
 
-fn run_controls(controls: Vec<Control>, breadth: bool) {
+#[test]
+#[ignore = "requires a prebuilt current CLI image and fresh FS-UAE; shared preparation reference"]
+fn native_source_controls_reference_fs_uae() {
+    run_controls(selected_controls(), Execution::Reference);
+}
+
+enum Execution {
+    Breadth,
+    Single,
+    Reference,
+}
+
+fn run_controls(controls: Vec<Control>, execution: Execution) {
     let root = super::native_fragment_controls::root();
     let oracles: Vec<_> = controls.iter().map(oracle).collect();
     let core = vm::runtime_model_core::RuntimeModelCore::from_registry(
@@ -252,7 +264,11 @@ fn run_controls(controls: Vec<Control>, breadth: bool) {
             cpu_override: "68020",
             extra_assembly_defines: &[],
             source_override: Some(control.source.as_bytes()),
-            command_template: Some("Work:entry.asm -P Work:packages"),
+            command_template: Some(if matches!(execution, Execution::Reference) {
+                "Work:entry.asm -P Work:packages --reference-modules"
+            } else {
+                "Work:entry.asm -P Work:packages"
+            }),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: files,
             proof: OpforgeNativeCliProof::ExactArtifacts(artifacts),
@@ -277,7 +293,7 @@ fn run_controls(controls: Vec<Control>, breadth: bool) {
             opforge_self_host_package_digest(&package)
         );
     }
-    let results = if breadth {
+    let results = if matches!(execution, Execution::Breadth) {
         run_prebuilt_compact_cli_breadth_from_env(&root, &cases, &image, 4).unwrap()
     } else {
         let _guard = fs_uae_native_cli_smoke_lock().lock().unwrap();

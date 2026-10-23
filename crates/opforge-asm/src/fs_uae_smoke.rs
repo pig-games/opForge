@@ -4474,6 +4474,9 @@ mod native_full_selfhost_comparison;
 mod native_preparation_benchmarks;
 
 #[cfg(test)]
+#[path = "tests/native_canonical_bindings.rs"]
+mod native_canonical_bindings;
+#[cfg(test)]
 #[path = "tests/native_fragment_controls.rs"]
 mod native_fragment_controls;
 #[cfg(test)]

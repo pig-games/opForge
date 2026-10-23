@@ -383,6 +383,24 @@ bindOrigin	.block
 	moveq #1, d2
 	bra.w bindName
 	.bend  ; bindOrigin
+
+; Internal canonical spellings are lookup keys, not source qualification.
+; Same inputs/results as bind/bindOrigin (D2 scratch). Preserve the writer's
+; first-name metadata and existing EXPLICIT flags, including on provider misses.
+BIND_ORIGIN_BIT = 0
+BIND_CANONICAL_BIT = 1
+BIND_CANONICAL = 1<<BIND_CANONICAL_BIT
+BIND_CANONICAL_ORIGIN = BIND_CANONICAL|(1<<BIND_ORIGIN_BIT)
+; The saved binding mode is a big-endian long below the lexical view frame.
+BIND_MODE_BYTE = VIEW_SAVED_LONG+3
+bindCanonical	.block
+	moveq #BIND_CANONICAL, d2
+	bra.w bindName
+	.bend  ; bindCanonical
+bindCanonicalOrigin	.block
+	moveq #BIND_CANONICAL_ORIGIN, d2
+	bra.w bindName
+	.bend  ; bindCanonicalOrigin
 ; A0/D0=normalized encoding bytes,A1=scope. Allocate a stable global identity
 ; in a separate non-value namespace; preserve lexical owner and line metadata.
 ; D0=status,D1=id,D2=zero; D3-D7/A2-A6 preserved, CCR reflects D0.
@@ -478,6 +496,8 @@ bindName	.block
 	move.w layout.State.Current(a6), d3
 	bsr.w compose
 	bne.w bad
+	btst #BIND_CANONICAL_BIT, BIND_MODE_BYTE(sp)
+	bne.w find
 	tst.w layout.State.FirstBound(a6)
 	bne.w find
 	move.w #1, layout.State.FirstBound(a6)
@@ -562,11 +582,13 @@ ordinaryIdentity
 found
 	tst.w d5
 	beq.w bound
+	btst #BIND_CANONICAL_BIT, BIND_MODE_BYTE(sp)
+	bne.w bound
 	ori.w #EXPLICIT, records.Entry.Flags(a3)
 	.VIEW_WRITE a6, a3, bad
 bound
 	moveq #0, d1
-	tst.l VIEW_SAVED_LONG(sp)
+	btst #BIND_ORIGIN_BIT, BIND_MODE_BYTE(sp)
 	beq.w canonicalIdentity
 	move.l View.Index-View.Entry(a3), d1
 	add.w layout.State.Base(a6), d1
@@ -2613,7 +2635,7 @@ finishBegin	.block
 	bne.w bad
 	tst.w layout.State.LoopDepth(a6)
 	bne.w bad
-	lea bind, a1
+	lea bindCanonical, a1
 	lea forwardBinding, a2
 	.BINDING_ATTEMPT #binding_diagnostic.IMPORTS, #-1, #-1
 	jsr imports.finish
@@ -4146,7 +4168,7 @@ resolveTemplate	.block
 	move.w d1, source.NameToken.Id(sp)
 ordinaryOrigin
 	movea.l sp, a0
-	lea bind, a2
+	lea bindCanonical, a2
 	jsr imports.resolveTemplate
 	addq.l #4, sp
 	movem.l (sp)+, d2/a0-a2

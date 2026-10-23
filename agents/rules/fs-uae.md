@@ -33,19 +33,23 @@ provide no qualification or timing evidence and must be rerun serially.
 ## Guest stack for native CLI checks
 
 `OPFORGE_FS_UAE_GUEST_STACK_BYTES` optionally sets the guest shell stack for
-native CLI parity, prebuilt-image and self-host checks. It accepts decimal bytes
-from `4096` through `1048576`, aligned to 16 bytes. Invalid values fail before
-emulator launch. The runner inserts `Stack <bytes>` immediately after `FailAt 999`,
-before changing to `Work:` or emitting START. When unset, the batch script remains
-byte-for-byte unchanged and inherits the guest shell's stack; the maintained
-local template's current shell default is 4096 bytes. This setting does not change
-the saved FS-UAE template.
+native CLI parity, prebuilt-image, correctness-only breadth and self-host checks.
+It accepts decimal bytes from `4096` through `1048576`, aligned to 16 bytes.
+Invalid values fail before emulator launch. The runner inserts `Stack <bytes>`
+immediately after `FailAt 999`, before changing to `Work:` or emitting START.
+When unset, no `Stack` command is inserted and the guest shell's stack is inherited.
+The maintained local template's current shell default is 4096 bytes. This setting
+does not change the saved FS-UAE template.
 
 Use `OPFORGE_FS_UAE_GUEST_STACK_BYTES=65536` for current full self-host checks.
 A current-source release self-build completed with fresh START/DONE, exit zero
 and exact output at 65536 bytes after the inherited-stack run failed to complete.
 This establishes a working stack setting, not the smallest required stack.
-The separate correctness-only breadth runner does not use this setting.
+The breadth runner shares this setting and its validation, including isolated
+retries. A shared-template control completed with exact Rust binary/Hunk output
+through both transports at 65536 bytes; breadth previously ignored the override
+and timed out after assembly printed its completion message without returning
+to the shell. Do not treat that message or partial output as fresh DONE evidence.
 
 ## Inspecting failures
 

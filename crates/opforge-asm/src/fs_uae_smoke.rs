@@ -1688,6 +1688,16 @@ fn native_cli_guest_batch_prefix(stack_bytes: Option<&str>) -> Result<String, St
     Ok(script)
 }
 
+fn native_cli_guest_batch_prefix_from_env() -> Result<String, String> {
+    let stack_bytes = std::env::var("OPFORGE_FS_UAE_GUEST_STACK_BYTES")
+        .map(Some)
+        .or_else(|error| match error {
+            std::env::VarError::NotPresent => Ok(None),
+            _ => Err("OPFORGE_FS_UAE_GUEST_STACK_BYTES must be UTF-8".to_owned()),
+        })?;
+    native_cli_guest_batch_prefix(stack_bytes.as_deref())
+}
+
 fn run_native_cli_parity_batch_cases(
     workspace_root: &Path,
     fs_uae_bin: &str,
@@ -1696,13 +1706,7 @@ fn run_native_cli_parity_batch_cases(
     executable: NativeCliParityExecutable,
     bootstrap_executable: Option<&[u8]>,
 ) -> Result<FsUaeSmokeOutcome, String> {
-    let stack_bytes = std::env::var("OPFORGE_FS_UAE_GUEST_STACK_BYTES")
-        .map(Some)
-        .or_else(|error| match error {
-            std::env::VarError::NotPresent => Ok(None),
-            _ => Err("OPFORGE_FS_UAE_GUEST_STACK_BYTES must be UTF-8".to_owned()),
-        })?;
-    let batch_prefix = native_cli_guest_batch_prefix(stack_bytes.as_deref())?;
+    let batch_prefix = native_cli_guest_batch_prefix_from_env()?;
     if std::env::var("OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE").as_deref() == Ok("1") {
         return Err("OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE uses the retired OFPR progress protocol; use the current console-debugger tools for inspection".into());
     }

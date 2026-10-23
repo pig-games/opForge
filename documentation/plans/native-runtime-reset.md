@@ -123,9 +123,17 @@ groups are not automatically established causes or current failing counts.
   directive; the telemetry wrapper's renamed formal is a workaround, not a grammar
   repair. Named blocks in anonymous macro scopes and broader loop/macro behavior
   still require complete qualification. The migrated `imported-template-boundary`
-  source control has a passing live Rust oracle but no completed native breadth
-  result after bounded attempts; the cause is not localized. That gap does not
-  invalidate the separately completed full self-host pair above.
+  control now completes with exact live Rust binary and Hunk output through both
+  ordinary and breadth runners at a 64 KiB guest stack. Its timeout was a harness
+  configuration defect: breadth silently ignored the requested stack and inherited
+  4 KiB. Both runners now share stack validation and setup, including retries.
+  This focused proof is separate from the full self-host pair above.
+- **Shared source controls:** a fresh breadth run completed all 20 cases at a
+  64 KiB stack. The imported-template control matched Rust; the other 19 controls
+  rejected with exit 20 and `preparation step: 00000002`. Those fixtures share a
+  multi-module whole-block base, so this is not evidence of 19 independent bugs.
+  Their common preparation failure still needs localization. They remain failing
+  correctness tests; protocol completion does not establish their parity.
 - **Expressions and addresses:** supported one-base-plus-absolute-addend fixups do
   not cover multi-base/non-affine algebra or compound symbolic-address cells.
   Unsupported relocation forms must reject without losing provenance. Preparation

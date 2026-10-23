@@ -172,7 +172,6 @@ fn native_source_controls_live_rust_controls() {
 #[test]
 #[ignore = "requires a prebuilt current CLI image and fresh FS-UAE"]
 fn native_source_controls_prebuilt_fs_uae() {
-    let root = super::native_fragment_controls::root();
     let mut controls = controls();
     if let Ok(filter) = std::env::var("OPFORGE_SOURCE_CONTROLS_CASE_FILTER") {
         controls.retain(|control| control.name == filter);
@@ -181,6 +180,21 @@ fn native_source_controls_prebuilt_fs_uae() {
             "unknown source control case filter {filter}"
         );
     }
+    run_controls(controls, true);
+}
+
+#[test]
+#[ignore = "requires a prebuilt current CLI image and fresh FS-UAE; single-case transport control"]
+fn native_source_template_boundary_single_fs_uae() {
+    let control = controls()
+        .into_iter()
+        .find(|control| control.name == "imported-template-boundary")
+        .expect("template boundary control");
+    run_controls(vec![control], false);
+}
+
+fn run_controls(controls: Vec<Control>, breadth: bool) {
+    let root = super::native_fragment_controls::root();
     let oracles: Vec<_> = controls.iter().map(oracle).collect();
     let core = vm::runtime_model_core::RuntimeModelCore::from_registry(
         &engine::build_default_asm_registry(),
@@ -249,23 +263,73 @@ fn native_source_controls_prebuilt_fs_uae() {
             .expect("set OPFORGE_SOURCE_CONTROLS_IMAGE to the current native CLI image"),
     )
     .expect("current native CLI image");
-    let results = run_prebuilt_compact_cli_breadth_from_env(&root, &cases, &image, 4).unwrap();
+    for case in &cases {
+        eprintln!(
+            "SOURCE_CONTROL name={} identity={} image={} package={}",
+            case.name,
+            opforge_native_cli_case_identity(
+                case,
+                None,
+                NativeCliParityExecutable::CompactCli,
+                Some(&image)
+            ),
+            opforge_self_host_package_digest(&image),
+            opforge_self_host_package_digest(&package)
+        );
+    }
+    let results = if breadth {
+        run_prebuilt_compact_cli_breadth_from_env(&root, &cases, &image, 4).unwrap()
+    } else {
+        let _guard = fs_uae_native_cli_smoke_lock().lock().unwrap();
+        cases
+            .iter()
+            .map(|case| {
+                let outcome = run_prebuilt_compact_cli_case_from_env(&root, case, &image).unwrap();
+                let FsUaeSmokeOutcome::Completed { mut runs } = outcome else {
+                    panic!("{}: native execution required", case.name);
+                };
+                assert_eq!(runs.len(), 1);
+                BreadthCaseResult {
+                    run: runs.pop(),
+                    error: None,
+                }
+            })
+            .collect()
+    };
     assert_eq!(results.len(), cases.len());
+    let mut failures = Vec::new();
     for (result, case) in results.iter().zip(&cases) {
-        let run = result.run.as_ref().unwrap_or_else(|| {
-            panic!("{}: missing fresh guest run: {:?}", case.name, result.error)
-        });
+        let Some(run) = result.run.as_ref() else {
+            failures.push(format!(
+                "{}: missing fresh guest run: {:?}",
+                case.name, result.error
+            ));
+            continue;
+        };
         assert_eq!(
             run.native_image_digest.as_deref(),
             Some(opforge_self_host_package_digest(&image).as_str()),
             "staged executable identity"
         );
-        assert!(
-            run.protocol_completed && run.success && run.exit_code == Some(0),
-            "{}: {}",
+        eprintln!(
+            "SOURCE_CONTROL_RESULT name={} completed={} exit={:?} exact={}",
             case.name,
-            run.stdout
+            run.protocol_completed,
+            run.exit_code,
+            run.success && result.error.is_none()
         );
-        assert!(result.error.is_none(), "{}: {:?}", case.name, result.error);
+        if !run.protocol_completed
+            || !run.success
+            || run.exit_code != Some(0)
+            || result.error.is_some()
+        {
+            failures.push(format!("{}: {:?}\n{}", case.name, result.error, run.stdout));
+        }
     }
+    assert!(
+        failures.is_empty(),
+        "{} source controls failed:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }

@@ -363,7 +363,8 @@ fn per_case_work_roots_isolate_inputs_absolute_outputs_and_capture() {
         b"first"
     );
     assert!(run.start_to_done_host_seconds.is_none());
-    let mut script = String::from("FailAt 999\n");
+    let prefix = native_cli_guest_batch_prefix(Some("65536")).unwrap();
+    let mut script = prefix.clone();
     append_case_script(&mut script, 7, &first, first_case.command_template.unwrap());
     append_case_script(
         &mut script,
@@ -378,6 +379,17 @@ fn per_case_work_roots_isolate_inputs_absolute_outputs_and_capture() {
         "C:Assign Work: OPForgeBatch:cases/case_0008\nIf WARN\nQuit 20\nEndIf\nCD Work:"
     ));
     assert_eq!(script.matches("OPForgeBatch:build/opforge").count(), 2);
+    assert!(script.starts_with("FailAt 999\nStack 65536\nCD Work:\n"));
+    // Recovery boots a new guest with the same prefix, even for a lone case.
+    let mut isolated = prefix;
+    append_case_script(
+        &mut isolated,
+        8,
+        &second,
+        second_case.command_template.unwrap(),
+    );
+    assert!(isolated.starts_with("FailAt 999\nStack 65536\nCD Work:\n"));
+    assert_eq!(isolated.matches("OPForgeBatch:build/opforge").count(), 1);
 }
 
 #[test]

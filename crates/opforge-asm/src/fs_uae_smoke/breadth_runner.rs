@@ -70,6 +70,9 @@ pub(crate) fn run_from_env(
     if std::env::var("OPFORGE_FS_UAE_SMOKE").as_deref() != Ok("1") {
         return Err("breadth native execution requires OPFORGE_FS_UAE_SMOKE=1".into());
     }
+    // Configuration errors are global, not interrupted cases to retry. Share
+    // the ordinary runner's stack contract for batches and isolated recovery.
+    let batch_prefix = native_cli_guest_batch_prefix_from_env()?;
     let _guard = fs_uae_native_cli_smoke_lock()
         .lock()
         .expect("recovering native CLI coordinator");
@@ -82,7 +85,14 @@ pub(crate) fn run_from_env(
     Ok(recover_cases(
         cases.len(),
         batch_size,
-        |indices| match execute_batch(workspace_root, &binary, cases, image, indices) {
+        |indices| match execute_batch(
+            workspace_root,
+            &binary,
+            cases,
+            image,
+            indices,
+            &batch_prefix,
+        ) {
             Ok(attempt) => attempt,
             Err(error) => Attempt {
                 completed: vec![],
@@ -205,13 +215,14 @@ fn execute_batch(
     cases: &[OpforgeNativeCliParityCase<'_>],
     image: &[u8],
     indices: &[usize],
+    batch_prefix: &str,
 ) -> Result<Attempt<BreadthCaseResult>, String> {
     let artifact_dir = create_artifact_dir(workspace_root, "fs-uae-compact-breadth")?;
     let ephemeral_artifact_dir = EphemeralArtifactDir(artifact_dir.clone());
     let work = artifact_dir.join(FS_UAE_MOUNTED_WORK_DIR_NAME);
     stage_guest_input_bytes(&work, "build/opforge", image)?;
     let challenge = opforge_native_cli_run_challenge();
-    let mut script = String::from("FailAt 999\n");
+    let mut script = batch_prefix.to_owned();
     let mut staged = Vec::new();
     let mut completed = Vec::new();
     for &index in indices {

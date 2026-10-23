@@ -11,12 +11,13 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from check_native_runtime_boundary_inventory import source_surface
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = ROOT / "scripts/workflow/native_runtime_ownership_baseline.toml"
 NATIVE_ROOT = Path("native/motorola68000/amigaos")
-BLOCK_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", re.MULTILINE)
-MODULE_RE = re.compile(r"^\s*\.module\s+([^\s;]+)", re.MULTILINE)
+BLOCK_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", re.MULTILINE | re.IGNORECASE)
+MODULE_RE = re.compile(r"^\s*\.module\s+([^\s;]+)", re.MULTILINE | re.IGNORECASE)
 OWNER_RE = re.compile(r"^\s*;\s*@opforge-owner:\s*(\S+)\s*$", re.MULTILINE)
 ROLE_RE = re.compile(r"^\s*;\s*@opforge-role:\s*(\S+)\s*$", re.MULTILINE)
 ALLOWED_HOTSPOT_ROLES = {"facade", "delegation"}
@@ -86,7 +87,7 @@ def validate_hotspots(root: Path, baseline: Baseline) -> list[str]:
             continue
         lines = path.read_text(encoding="utf-8").splitlines()
         for line_index, line in enumerate(lines):
-            match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", line)
+            match = BLOCK_RE.match(line)
             if not match or match.group(1) in allowed:
                 continue
             name = match.group(1)
@@ -99,23 +100,36 @@ def validate_hotspots(root: Path, baseline: Baseline) -> list[str]:
     return errors
 
 
-def is_production_semantic_module(relative: str, text: str) -> bool:
+def is_production_module(relative: str, text: str) -> bool:
     if not relative.startswith(f"{NATIVE_ROOT.as_posix()}/"):
         return False
     if "/tests/" in relative or "/debug/" in relative:
         return False
-    return bool(MODULE_RE.search(text) and BLOCK_RE.search(text))
+    return bool(MODULE_RE.search(text))
 
 
 def validate_new_modules(root: Path, baseline: Baseline) -> list[str]:
     errors: list[str] = []
     native_root = root / NATIVE_ROOT
+    for relative in sorted(baseline.certified_modules):
+        if not (root / relative).is_file():
+            errors.append(f"missing annotation-exempt source: {relative}")
     for path in sorted(native_root.rglob("*.asm")):
         relative = path.relative_to(root).as_posix()
         if relative in baseline.certified_modules:
             continue
         text = path.read_text(encoding="utf-8")
-        if not is_production_semantic_module(relative, text):
+        if not is_production_module(relative, text):
+            continue
+        try:
+            surface = source_surface(relative, root)
+        except (OSError, ValueError) as error:
+            errors.append(f"{relative}: {error}")
+            continue
+        # Provenance is conservative: a macro may generate executable blocks.
+        # The inventory excludes those from routine counts, but their module
+        # still needs an owner, as it did before include-aware scanning.
+        if not any(BLOCK_RE.search(text) for text in surface.sources.values()):
             continue
         header = "\n".join(text.splitlines()[:40])
         errors.extend(validate_annotation(relative, header, require_role=False))

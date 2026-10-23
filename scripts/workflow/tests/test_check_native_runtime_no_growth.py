@@ -41,6 +41,11 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
     def test_repository_baseline_and_current_sources_pass(self):
         baseline = load_baseline(BASELINE)
         self.assertEqual(len(baseline.hotspot_blocks), 4)
+        self.assertEqual(len(baseline.certified_modules), 10)
+        self.assertNotIn("native/motorola68000/amigaos/vm/tkvm/state.asm",
+                         baseline.certified_modules)
+        self.assertNotIn("native/motorola68000/amigaos/vm/tkvm/demo_program.asm",
+                         baseline.certified_modules)
         self.assertIn(
             "native/motorola68000/amigaos/assembler/driver.asm",
             baseline.hotspot_blocks,
@@ -103,6 +108,15 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
         errors = validate(self.root, baseline)
         self.assertTrue(any("missing @opforge-owner" in error for error in errors))
 
+    def test_uppercase_definition_requires_owner(self):
+        baseline = self.baseline()
+        self.write(
+            "native/motorola68000/amigaos/assembler/new_owner.asm",
+            ".MODULE opforge.assembler.new_owner\nrun .BLOCK\n .BEND\n",
+        )
+        self.assertTrue(any("missing @opforge-owner" in error
+                            for error in validate(self.root, baseline)))
+
     def test_new_semantic_module_with_owner_is_allowed_without_slice(self):
         baseline = self.baseline()
         self.write(
@@ -111,6 +125,44 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
             ".module opforge.assembler.prepare.new_owner\nrunV1 .block\n",
         )
         self.assertEqual(validate(self.root, baseline), [])
+
+    def test_executable_include_requires_module_owner(self):
+        baseline = self.baseline()
+        self.write(
+            "native/motorola68000/amigaos/assembler/example.asm",
+            '.module opforge.assembler.example\n.include "implementation.i"\n',
+        )
+        self.write(
+            "native/motorola68000/amigaos/assembler/implementation.i",
+            "run .block\n .bend\n",
+        )
+        self.assertTrue(any("missing @opforge-owner" in error
+                            for error in validate(self.root, baseline)))
+
+    def test_data_only_modules_need_no_annotation_exemption(self):
+        baseline = self.baseline()
+        self.write(
+            "native/motorola68000/amigaos/vm/example.asm",
+            ".module opforge.vm.example\nvalue .long 0\n",
+        )
+        self.assertEqual(validate(self.root, baseline), [])
+
+    def test_macro_generated_blocks_require_owner_in_module_and_helper(self):
+        baseline = self.baseline()
+        macro = "MAKE .macro\nrun .block\n .bend\n.endmacro\n.MAKE\n"
+        relative = "native/motorola68000/amigaos/assembler/example.asm"
+        for contents in (macro, '.include "macro.i"\n'):
+            with self.subTest(contents=contents):
+                self.write(relative, ".module opforge.assembler.example\n" + contents)
+                self.write("native/motorola68000/amigaos/assembler/macro.i", macro)
+                self.assertTrue(any("missing @opforge-owner" in error
+                                    for error in validate(self.root, baseline)))
+
+    def test_deleted_annotation_exemption_requires_cleanup(self):
+        baseline = self.baseline()
+        baseline.write_text('schema_version = 1\ncertified_modules = ["native/missing.asm"]\n')
+        self.assertTrue(any("missing annotation-exempt source" in error
+                            for error in validate(self.root, baseline)))
 
     def test_hotspot_invalid_role_fails(self):
         hotspot = "native/motorola68000/amigaos/assembler/prepare/hotspot.asm"

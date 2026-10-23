@@ -1,92 +1,89 @@
-# Native Runtime No-Growth and Ownership Guard v0.1
+# Native routine growth and ownership guard
 
-## Purpose
-
-The guard checks the existing certified native runtime boundaries. The guard protects ownership and dependency structure;
-it is not a semantic parity test and does not use file length as a proxy for
-responsibility.
-
-The entrypoint is:
+The guard protects selected routine boundaries and owner provenance. It does not
+use line counts as a proxy for responsibility or prove runtime parity. Run:
 
 ```text
 python3 scripts/workflow/check_native_runtime_no_growth.py [--staged]
 ```
 
-It is also part of `run_native_porting_quality_gate.py`, so staged native work
-cannot bypass it. The guard invokes the existing CPU-specific architecture
-checker in matching full or staged mode; that checker and its reviewed
-allowlist remain the sole CPU/family vocabulary authority. Nested enforcement
-uses its report-free mode so a read-only structural check does not create,
-clear, or rewrite advisory artifacts; direct checker invocations retain their
-normal report behavior.
+It is part of `run_native_porting_quality_gate.py`, alongside the
+[import contract](native-runtime-boundary-contract-v0_1.md) and
+[source inventory](native-runtime-boundary-inventory-v0_1.md).
 
-## Enforced contracts
+## Selected routine boundaries
 
-### Certified hotspot routine sets
+The baseline records existing top-level `.block` routines for four live owners:
 
-The structural baseline records the routine names present when ownership was
-certified for:
+| Source under `native/motorola68000/amigaos/` | Current responsibility |
+| --- | --- |
+| `assembler/driver.asm` | Build/session and subsystem orchestration. |
+| `assembler/prepare/prepare.asm` | Shared numeric statement/operand lowering. |
+| `assembler/layout/assembly.asm` | Shared sizing, directive dispatch and emission. |
+| `vm/exprvm/i64_math.asm` | Generic scalar arithmetic. |
 
-- `opasm_assembly_driver.asm`;
-- `tkpkg_service.asm`;
-- `opcore_expr_bridge.asm`.
-
-Removing or delegating existing routines remains possible. A new routine is
-rejected unless its immediately preceding comment block declares both ownership and role:
+These existing routines include substantive implementations; they are not all
+facades. Their reviewed names remain in the baseline. Removing or delegating a
+routine is permitted. A new top-level routine in one of these files must declare
+its owner and a narrow facade/delegation role immediately above its definition:
 
 ```asm
-; @opforge-owner: opasm.amigaos.example_owner
+; @opforge-owner: opforge.assembler.prepare.example
 ; @opforge-role: delegation
-exampleDelegateV1 .block
+forwardRequest .block
 ```
 
-The only permitted roles are `facade` and `delegation`. This allows narrow compatibility surfaces while rejecting silent
-private semantic growth. Updating the baseline merely to admit a new routine
-is prohibited; the declaration is the reviewable exception mechanism.
+Only `facade` and `delegation` are accepted. Do not label new semantics as delegation
+or expand the baseline just to admit a routine. A consequential responsibility
+change needs review and an intentional guard change.
 
-### tkpkg to opasm mutable-state direction
+This routine-name rule inspects the four top-level files, not all helper blocks.
+The complementary inventory covers their literal helper closures and rejects
+helper-only edits until the changed contents and responsibilities are reviewed.
+The combined gate therefore does not treat moving code into an `.i` file as an
+unreviewed escape from the audited surface.
 
-Every production tkpkg assembly source is scanned for direct references to
-engine-owned context, session, source, statement, label, or image symbols.
-Package consumers must use the neutral runtime context and documented engine
-getter adapter instead of mutable engine tables.
+## Module owner provenance and reviewed exemptions
 
-### New semantic module ownership
-
-The baseline lists production native modules that existed at certification.
-A later production `.asm` file containing both `.module` and `.block` must name
-an owner in its first 40 lines:
+A non-exempt production `.asm` module with executable blocks must name its owner
+in its first 40 lines. Blocks in literal includes and macro definitions count too;
+a module consisting only of an include cannot bypass this rule. This conservative
+provenance test differs from the inventory's unexpanded routine counts.
 
 ```asm
-; @opforge-owner: tkpkg.amigaos.example
+; @opforge-owner: opforge.assembler.prepare.example
 ```
 
-Test harnesses and debug tools are classified separately and are outside this
-production-module rule. They remain subject to their evidence and
-instrumentation policies.
+Test and debug modules have their own evidence/instrumentation rules and are not
+subject to this production-module header requirement. Data/schema-only modules
+without blocks do not need this annotation.
 
-### CPU/family ownership
+`native_runtime_ownership_baseline.toml` retains ten annotation exemptions for
+live original VM modules and the `main` composition root. Those sources lack owner
+headers but still implement arithmetic, expression/parser/tokenizer execution,
+request routing or executable composition. The exemption is only from this header
+requirement; import, CPU-boundary and applicable inventory checks still apply.
+Missing exempt sources fail so deleted entries cannot silently accumulate.
 
-`check_native_runtime_no_growth.py` runs
-`check_cpu_specific_arch_boundary.py`. CPU, family, dialect, register,
-addressing-mode, and mnemonic vocabulary outside package/CPU owners therefore
-fails unless an existing narrow allowlist rule supplies a reviewed reason.
+The redundant exemptions for `vm/tkvm/state.asm` and `vm/tkvm/demo_program.asm`
+were removed after source/caller review: both are live data/schema modules with
+no executable blocks. Their source files and consumers remain maintained.
 
-## Evidence boundary
+## CPU ownership and evidence limits
 
-Positive and negative workflow tests prove that the structural checks accept
-the certified sources and declared delegations, and reject undeclared hotspot
-routines, direct mutable-table access, and missing module provenance. They are
-Level B ownership evidence only; the guard makes no runtime or output claim.
-When the changed behavior requires real-native confirmation, select affected
-cases under the [repository workflow](../workflow/README.md). For broad native
-qualification, the existing fail-closed aggregate command is:
+The guard invokes `check_cpu_specific_arch_boundary.py` in matching full/staged
+mode with `--no-report`, so nested enforcement does not rewrite advisory reports.
+Its reviewed vocabulary allowlist remains the CPU/family authority. No CPU
+exceptions were removed or broadened in this contract cleanup.
 
-```text
-scripts/workflow/run_native_existing_parity_completion.sh --verify
-```
+Positive and negative workflow tests cover current sources, declared delegations,
+undeclared routine growth and missing owner provenance, including executable
+helpers. These are structural checks. They do not prove direct mutable-table
+access is absent, validate callback providers or qualify native output.
 
-It serializes the established reference/CLI, macro, expansion, flow, struct,
-expression, text, module-local, layout, and package selection/encoding groups,
-rejects a skipped or zero-test filter, accepts staged ownership work, and
-writes no source-identity receipt.
+Use the [workflow](../workflow/README.md) and
+[native parity contract](../../agents/rules/native-rust-parity-porting.md) to select
+runtime checks when behavior changes. The separate
+`scripts/workflow/run_native_existing_parity_completion.sh --verify` command runs
+the active opcore, MOS and Motorola reference corpus groups and rejects missing,
+skipped or zero-test execution; it is not run by the deterministic gate.

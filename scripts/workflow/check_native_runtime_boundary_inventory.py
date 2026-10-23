@@ -529,20 +529,20 @@ def extract_inventory(source_text: str) -> tuple[list[str], list[str], list[str]
     for number, line in enumerate(source_text.splitlines(), 1):
         if re.search(r"(?:diag|debug|error|event|status)", line, re.IGNORECASE):
             diagnostics.append(f"{number}: {line.strip()}")
-        if re.match(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s+\.macro\b", line):
+        if re.match(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s+\.macro\b", line, re.IGNORECASE):
             macro_depth += 1
-        elif re.match(r"^\s*\.endmacro\b", line):
+        elif re.match(r"^\s*\.endmacro\b", line, re.IGNORECASE):
             macro_depth -= 1
             if macro_depth < 0:
                 raise ValueError("unmatched .endmacro")
         elif not macro_depth:
-            match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", line)
+            match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", line, re.IGNORECASE)
             if match:
                 blocks.append(match[1])
-            match = re.match(r"^\s*\.use\s+([^\s;]+)", line)
+            match = re.match(r"^\s*\.use\s+([^\s;]+)", line, re.IGNORECASE)
             if match:
                 imports.append(match[1])
-            match = re.match(r"^\s*\.section\s+([^,\s]+)", line)
+            match = re.match(r"^\s*\.section\s+([^,\s]+)", line, re.IGNORECASE)
             if match:
                 sections.append(match[1])
     if macro_depth:
@@ -584,15 +584,15 @@ def source_surface(relative: str, root: Path = ROOT) -> SourceSurface:
         active.append(name)
         macro_depth = 0
         for number, line in enumerate(text.splitlines(), 1):
-            if re.match(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s+\.macro\b", line):
+            if re.match(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s+\.macro\b", line, re.IGNORECASE):
                 macro_depth += 1
-            elif re.match(r"^\s*\.endmacro\b", line):
+            elif re.match(r"^\s*\.endmacro\b", line, re.IGNORECASE):
                 macro_depth -= 1
-            if not re.match(r"^\s*\.include\b", line):
+            if not re.match(r"^\s*\.include\b", line, re.IGNORECASE):
                 continue
             if macro_depth:
                 raise ValueError(f"{name}:{number}: template-local include needs explicit audit")
-            match = re.fullmatch(r'\s*\.include\s+"([^"\n]+)"\s*(?:;.*)?', line)
+            match = re.fullmatch(r'\s*\.include\s+"([^"\n]+)"\s*(?:;.*)?', line, re.IGNORECASE)
             if not match:
                 raise ValueError(f"{name}:{number}: unsupported nonliteral include")
             visit(path.parent / match[1])
@@ -669,9 +669,11 @@ def report(root: Path = ROOT) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument("--staged", action="store_true", help="Accepted for gate composition; the complete inventory is always checked.")
     parser.add_argument("--report", action="store_true", help="print the complete source inventory after validation")
     args = parser.parse_args()
-    errors = validate()
+    errors = validate(args.root)
     if errors:
         print("native runtime boundary inventory: FAIL")
         for error in errors:
@@ -679,7 +681,7 @@ def main() -> int:
         return 1
     print("native runtime boundary inventory: PASS")
     if args.report:
-        report()
+        report(args.root)
     return 0
 
 

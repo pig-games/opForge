@@ -97,8 +97,13 @@ This lexical check does not detect arbitrary output-path or self-host-generation
 switches, constructed identities or every form of test detection. Review remains
 responsible for the broader prohibition in AGENTS.md.
 The native deterministic gate remains available as
-`python3 scripts/workflow/run_native_porting_quality_gate.py`; real-native proof
-is governed by the [native parity contract](../../agents/rules/native-rust-parity-porting.md).
+`python3 scripts/workflow/run_native_porting_quality_gate.py`. It includes the
+current native import contract and reviewed source/include inventory alongside
+ownership, instrumentation, proof-safeguard and format checks. `--staged` narrows
+change-oriented checks; import boundaries and the inventory always check their
+complete current scope. The format check uses the Rust CLI and may compile it.
+Real-native proof is governed by the
+[native parity contract](../../agents/rules/native-rust-parity-porting.md).
 
 Run focused checks repeatedly while developing. Broaden for cross-cutting changes,
 unresolved failures and meaningful completion boundaries. Retain engineering CI;

@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 
 CHECKS = (
+    "check_native_runtime_boundary_contract.py",
+    "check_native_runtime_boundary_inventory.py",
     "check_native_instrumentation_safety.py",
     "check_native_contract_asserts.py",
     "check_fsuae_invocation_policy.py",

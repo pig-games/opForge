@@ -1,88 +1,118 @@
-# Native Runtime Boundary Contract v0.1
+# Native runtime ownership contract
 
-## Status and scope
+## Scope
 
-This document records the existing native ownership constraints and context ABI.
-It is a technical reference, not an active migration plan or a requirement to
-preserve every current abstraction indefinitely. Its tables are responsibility
-constraints rather than an exhaustive source inventory. The structural validators
-check the implemented import boundaries; this document makes no runtime parity
-claim. The [repository workflow](../workflow/README.md) governs changes.
+This contract describes the promoted `opforge.*` native implementation. The
+[workflow](../workflow/README.md) governs work and validation; the
+[source inventory](native-runtime-boundary-inventory-v0_1.md) records selected
+reviewed source surfaces. Neither document claims complete language parity or
+native runtime qualification.
 
-The contract applies to the native CLI frontend, preprocessor staging, opasm
-driver/engine, tkpkg facade and package runtimes, expression service, and
-diagnostic/event projection.  CPU/family/dialect and instruction behavior
-remain package-defined; generic runtime code must not acquire them.
+CPU/family/dialect semantics belong to package definitions and their specialized
+owners. Generic directives remain shared core processing. Dot-prefixed statements
+must resolve through directive/template handling, never fall through to CPU
+instruction selection.
 
-## Ownership model
+## Current owners
 
-| Boundary | Boundary owner | Stable responsibility | May depend on | Must not own |
-| --- | --- | --- | --- | --- |
-| CLI frontend | `opforge-cli` | command/request construction, source staging, result/report presentation | engine API, driver callback adapter, tkpkg facade | pass/image/label storage; package interpretation |
-| Preprocessor staging | existing preprocessor owners | bounded macro definition/invocation/substitution/source-frame transaction | frontend and documented engine record APIs | segment, statement, package, or driver semantics |
-| Assembly driver | `opasm.amigaos.assembly_driver` | session/pass orchestration and subsystem callback dispatch | directive-router result, engine API, flow/text domain APIs, tkpkg bridge, event projection, default-off passive debug observation | directive strings, structural scans, operand request construction, selector adaptation, data/text/layout semantics |
-| Directive router | `opasm.amigaos.directive_router` | bounded non-structural directive text classification | no runtime owner | callback orchestration, structural scans, handler semantics, CPU/family/dialect behavior |
-| Assembly engine | `opasm.amigaos.engine` | statement collection, pass state, PC/image, labels, callback context, event/session state through documented APIs | event projection only | package selection/encoding and CLI presentation |
-| tkpkg facade | `tkpkg.amigaos.service` | ABI dispatch, request validation/lifecycle, output projection, last-error entry | extracted tkpkg services and the neutral runtime-context adapter during migration | parser, expression, candidate, operand-plan, package encoding, and direct engine-table implementation |
-| Expression service | `tkpkg.amigaos.expression_service` | request-envelope validation, neutral-context adaptation, result/diagnostic projection | expression frontend and neutral context only | scalar grammar, bytecode compilation/evaluation, direct engine table access, CLI output policy, package selection |
-| Expression frontend | `opcore.amigaos.expr_bridge` | bounded scalar grammar/literal/symbol-index compilation into versioned ExprVM bytecode and runtime invocation | ExprVM runtime only | request envelopes, diagnostic projection, evaluator semantics, package selection, direct engine/context state |
-| Package runtimes | pipeline, tokenizer VM, PRVM, selection/operand/encoding owners | package-defined hierarchy, parsing, selection, operand plans, and encoding | package data, neutral context, own runtime peers | opasm mutable tables, CLI lifecycle, CPU behavior in generic owners |
-| Diagnostic/event projection | engine event owner plus facade status owner | engine event capture; facade status/last-error presentation | declared event/status contracts | hidden cross-boundary mutable state |
+| Owner | Responsibility | Boundary |
+| --- | --- | --- |
+| `main` | Compose the executable entry and embedded/external package catalog. | Delegate Shell behavior to `opforge.cli.entry`. |
+| `opforge.cli.*` | Parse arguments, resolve input/target defaults, present progress and construct the driver request. | Target preamble selection uses shared TKVM/PRVM programs; CLI code does not implement instruction grammar or encoding. |
+| `opforge.assembler.driver` and its literal helpers | Source acquisition/order, session coordination, private compilation/publication, storage retirement, incremental reuse and finalized output routing. | Call shared source, language, module, layout and output owners. Driver helpers are part of this owner, not independent modules. |
+| `opforge.assembler.prepare.*`, `source.*`, `language.*` | Token/record binding, source suspension, declarations, templates and execution of shared controls. | Shared EXVM/PRVM/TKVM own grammar; source/session glue supplies bounded requests and declaration context. The frontend still combines acquisition/binding/preparation responsibilities; this cleanup does not refactor it. |
+| `opforge.assembler.symbols.*`, `values.*`, `modules.*` | Symbol/value ownership, scope/configuration, demanded exports, identity remapping, pointer-free module objects and stored interfaces. | Consumers borrow bounded views. Producer storage retires only after successful publication; persistent validity metadata is invalidated before object replacement. |
+| `opforge.assembler.layout.*` | Availability, reachability, sizing, sections, address provenance and emission/fixups. | Generic directives dispatch before package-defined instruction candidates/encoding. No mnemonic or register semantics in generic layout. |
+| `opforge.assembler.output.*` | Validate finalized geometry and serialize bytes, records and relocations. | No source acquisition, module discovery or instruction selection. |
+| `opforge.packages.*` | Catalog/name/format contracts, external acquisition or borrowed embedded bytes, structural validation. | Loader delegates validation. Retained validation coupling is listed below. |
+| `opforge.vm.*` | Execute bounded numeric package programs and construct generic results/requests. | No CLI or assembly orchestration. Retained assembler dependencies are explicit below. |
+| `opforge.platform.*`, `debug.*` | OS/storage services and optional passive instrumentation. | Instrumentation preserves the approved registers/CCR/stack and release-time gating contracts. |
 
-## Required dependency model
+The working dependency direction is:
 
 ```text
-CLI frontend -> preprocessor staging -> assembly driver -> engine API
-                                            -> domain flow/text owners
-                                            -> tkpkg bridge -> tkpkg facade
-tkpkg facade -> request/status/parser/expression/selection/operand/encoding services
-service/runtime consumers -> neutral runtime context -> engine adapter -> engine API
-pipeline -> package hierarchy and CPU/family/dialect package data
-expression service -> expression bridge -> expression VM runtime
+main -> CLI -> assembler driver -> source / prepare / language / modules
+                                 -> layout -> output
+source / prepare / language / layout -> package data + VM execution
+package loader -> catalog / format / validation + platform storage
+VM execution -> VM peers + caller-supplied requests/services
 ```
 
-The existing dependency restrictions are:
+This is a responsibility model, not an assertion that all imports form a strict
+layered DAG. The current retained reverse dependencies are below.
 
-1. `opasm.amigaos.engine -> tkpkg.*`, `opcore.*`, or CLI frontend.
-2. `opasm.amigaos.assembly_driver -> tkpkg.amigaos.service` directly; it uses
-   only `opasm.amigaos.tkpkg_bridge`.
-3. package runtimes (`tkpkg.pipeline`, tokenizer VM, PRVM, selection, operand,
-   encoding) -> `opasm.amigaos.engine` or engine mutable storage.
-4. expression service -> CLI frontend, tkpkg facade state, or engine mutable
-   storage except through the neutral-context adapter.
-5. CLI/preprocessor -> package internals, bypassing the facade/bridge.
+## Reviewed assembler dependencies from VM/package owners
 
-Direct `tkpkg.amigaos.service -> opasm.amigaos.engine` imports and
-selection/operand access to engine tables are prohibited. The engine-context adapter is the sole tkpkg engine reader; any new
-reverse edge fails this contract.
+The import guard rejects `opforge.cli.*` and `opforge.assembler.*` dependencies
+from VM/package source by default, with these **six exact source/import pairs**:
 
-## Neutral runtime-context contract
+| Consumer | Permitted assembler import | Actual use |
+| --- | --- | --- |
+| `vm/exvm/runtime.asm` | `opforge.assembler.source.records` | Numeric token/wire sizes, offsets, kinds and qualifiers; no source-owner calls. |
+| `vm/exprvm/values_runtime.asm` | `opforge.assembler.values.values` | Typed owner arena, work storage and scalar/compound services, including mutation/rollback. |
+| `vm/exprvm/values_runtime.asm` | `opforge.assembler.values.records` | Typed record validation and projection. |
+| `vm/exprvm/values_runtime.asm` | `opforge.assembler.values.structs` | Nominal structs and assembler literal policy. |
+| `vm/exprvm/values_runtime.asm` | `opforge.assembler.symbols.bindings` | Typed symbol cells, binding lookup and declaration state. |
+| `packages/validation.asm` | `opforge.assembler.layout.state` | Calls `state.validate` to validate package STVM tables. |
 
-`tkpkg.amigaos.runtime_context` is the versioned consumer façade, while
-`tkpkg.amigaos.engine_context_adapter` is the transitional reader of documented
-engine getters. This contract does not add or validate CPU,
-family, dialect, instruction, selector, plan, or encoding support.
+Paths in this table are relative to `native/motorola68000/amigaos/`. The five
+semantic edges are existing boundary debt, not wire-only dependencies or
+permission to add further assembler services. Relocating those services requires
+separate design and caller migration. The wire exception likewise requires review
+if its use changes from constants to executable services.
 
-| Field/service | Provider | Consumer meaning | Prohibited substitute |
-| --- | --- | --- | --- |
-| current pass | engine adapter | resolve pass-sensitive expression/selection behavior | reading engine globals |
-| current address | engine adapter | form neutral evaluation requests | reading engine PC storage |
-| symbol lookup | engine adapter | resolve a named symbol | scanning engine label tables |
-| symbol stability/finalization | runtime-context façade over engine adapter | obtain a bounded neutral stability snapshot | inferring from engine label-table representation |
-| symbol-table compatibility snapshot | runtime-context façade over engine adapter | supply bounded copied names/values to a retained legacy bridge | passing engine label-table pointers |
-| diagnostic sink | runtime-context façade | report a neutral code/message/span result | writing service or engine diagnostic buffers directly |
+Exceptions attach to the defining source file, not its entire include closure.
+A helper added to an exempt consumer cannot inherit that exemption. An exception
+whose source/import disappears fails the check until reviewed and removed.
 
-The ABI must be pointer/register explicit, read-only to package consumers, and
-versioned.  It returns defined absence/unresolved status rather than exposing
-table layout. Consumers use the context ABI rather than engine mutable-table
-storage. The adapter remains a documented transitional boundary. Any replacement
-must preserve the context behavior and update affected source, callers, tests and
-structural checks together; no historical plan item schedules that work.
+Two owners retain exact **possible import sets**, independent of order:
 
-## Verification
+- `cli/entry.asm`: driver, CLI arguments, input and target owners.
+- `packages/loader.asm`: catalog, format, validation, platform memory and the gated
+  debug memory-profile import from `memory_telemetry.i`.
 
-`scripts/workflow/check_native_runtime_boundary_contract.py` checks existing
-source import restrictions. It does not validate plan ledgers or require a
-planning artifact. These are structural checks, not runtime parity proof.
-Use the [current workflow](../workflow/README.md) for development and validation
-cadence. No future extraction is scheduled by this reference document.
+Unexpected, missing or duplicate imports fail. This preserves the narrow Shell
+entry and acquisition boundaries while accounting for conditional instrumentation.
+
+## Requests, callbacks and storage
+
+VM requests carry bounded program/token/output spans, numeric identities and
+explicit service/context pointers. EXVM uses caller-owned node/scratch arenas;
+PRVM emits requests/continuations rather than invoking assembly orchestration.
+ExprVM's string-provider configuration and PRVM router/iterator callbacks are
+explicit service ABIs. Their callers own provider validity, register/status
+contracts and storage lifetimes. An indirect callback does not create permission
+to hide orchestration inside a generic interpreter.
+
+Borrowed views must not outlive their backing owner, a view transition or producer
+retirement. Stored module payloads/interfaces use offsets and local identities;
+process pointers remain transient. ExprVM's current provider/last-result state is
+session state and is not reentrant. The typed evaluator's arena coupling is the
+retained semantic dependency above, not an isolated stateless evaluator.
+
+Each VM's intended endpoint remains one consolidated current v1 contract, with
+native execution assuming that contract and retaining container/bounds checks.
+Existing multi-version checks/dispatch have not been removed by this cleanup;
+see [current parity gaps](../plans/native-runtime-reset.md#structural-and-language-boundaries).
+
+## What the checks prove
+
+`check_native_runtime_boundary_contract.py` discovers all `.asm` and `.i` files
+under `vm/` and `packages/`, checks their literal include closures (including
+helpers outside those directories), and checks the two retained owners. It scans
+possible `.use` edges in conditional and macro bodies, matching namespace
+boundaries rather than loose name prefixes. Module owners must be imported rather
+than textually included. Missing sources, cycles and unsupported include forms
+fail closed. New files do not need registration in a frozen source list.
+
+This is static import enforcement. It does not prove callback behavior, alias
+use, direct fully-qualified symbol access, absence of mutable-table writes or
+runtime semantics. Source review remains necessary. The inventory pins reviewed
+source/include contents; the [ownership guard](native-runtime-no-growth-guard-v0_1.md)
+checks selected routine growth and module provenance; the CPU boundary checker
+remains the CPU-vocabulary authority.
+
+Run `python3 scripts/workflow/run_native_porting_quality_gate.py` for the combined
+native checks and format check. `--staged` is passed to change-oriented checks;
+import boundaries and the inventory always inspect their complete current scope.
+The gate does not launch FS-UAE or make a fresh native-completion claim.

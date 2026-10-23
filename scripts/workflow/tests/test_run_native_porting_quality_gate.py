@@ -15,6 +15,12 @@ class NativePortingGateTests(unittest.TestCase):
         self.assertEqual([Path(command[1]).name for command in result[:-1]], list(CHECKS))
         joined = "\n".join(" ".join(command) for command in result)
         self.assertIn("check_native_runtime_no_growth.py", CHECKS)
+        self.assertIn("check_native_runtime_boundary_contract.py", CHECKS)
+        self.assertIn("check_native_runtime_boundary_inventory.py", CHECKS)
+        self.assertLess(CHECKS.index("check_native_runtime_boundary_contract.py"),
+                        CHECKS.index("check_native_runtime_boundary_inventory.py"))
+        for command in result[:-1]:
+            self.assertEqual(command[-3:], ["--root", "/repo", "--staged"])
         self.assertIn("check_native_debug_evidence_classification.py", CHECKS)
         self.assertIn("check_native_test_module_ownership.py", CHECKS)
         self.assertIn("check_native_fs_uae_proof_contract.py", CHECKS)

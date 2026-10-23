@@ -3,6 +3,9 @@
 This is a reviewed static inventory of 25 selected native ownership boundaries,
 including their literal helper includes (82 unique source files). It is not an
 inventory of every native module or proof of runtime parity.
+The complementary [import contract](native-runtime-boundary-contract-v0_1.md)
+documents the retained typed-value and package-validation dependencies beyond
+the selected VM surfaces here; those semantic edges are not wire-only imports.
 
 ### Scope and reviewed responsibilities
 

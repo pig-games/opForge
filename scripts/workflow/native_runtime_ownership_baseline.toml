@@ -1,5 +1,9 @@
 schema_version = 1
 
+# Reviewed annotation exemptions for live original VM owners and composition root.
+# These ten executable modules lack @opforge-owner headers; keep the exemptions
+# until an intentional source update supplies provenance. They do not exempt
+# import boundaries, source inventory review, or CPU ownership checks.
 certified_modules = [
   "native/motorola68000/amigaos/vm/exprvm/i64_math.asm",
   "native/motorola68000/amigaos/vm/exprvm/runtime.asm",
@@ -9,10 +13,8 @@ certified_modules = [
   "native/motorola68000/amigaos/vm/prvm/runtime.asm",
   "native/motorola68000/amigaos/vm/tkvm/char_predicates.asm",
   "native/motorola68000/amigaos/vm/tkvm/control.asm",
-  "native/motorola68000/amigaos/vm/tkvm/demo_program.asm",
   "native/motorola68000/amigaos/vm/tkvm/runtime.asm",
   "native/motorola68000/amigaos/vm/tkvm/scanner.asm",
-  "native/motorola68000/amigaos/vm/tkvm/state.asm",
 ]
 
 [hotspots."native/motorola68000/amigaos/vm/exprvm/i64_math.asm"]

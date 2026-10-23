@@ -22,3 +22,18 @@ Enabled assert call sites and event call sites have documented fixed sizes
 locked by the focused assembly test. Disabled macros emit zero bytes. Event
 records are bounded and silently stop appending at capacity so instrumentation
 cannot overwrite adjacent state.
+
+## Maintained measurements
+
+Memory/phase accounting, binding diagnostics, capture ownership and I/O counters,
+sampled hotspots, template work counters and VM telemetry remain available through
+their reusable gated macros. The [instrumentation reference](../../../../documentation/architecture/native-instrumentation-framework.md)
+defines the gates, layouts, preservation contracts and decoders. Capture-lifetime
+accounting remains a component probe; its contiguous-region assumptions do not
+support the current whole-application chunked store.
+
+Shared language controls and storage probes live in
+`crates/opforge-asm/src/tests/native_source_controls.rs` and
+`native_store_probes.rs`. The former preserves live Rust oracles and fresh native
+artifact comparisons; the latter retains independent store probe builders. Their
+host tests and component checks do not replace full current-source self-host proof.

@@ -277,7 +277,14 @@ fn assemble_memory_telemetry_case(label: &str, source: &str, defines: &[String])
         let memory =
             fs::read_to_string(root.join("native/motorola68000/amigaos/platform/memory.asm"))
                 .expect("read diagnostic memory block contract");
-        format!("{body}\n{diagnostic}\n{memory}\n.end\n")
+        // Keep each owner's real include base instead of concatenating its
+        // source into the root fixture and losing ../debug resolution.
+        fs::create_dir_all(temp.join("debug")).unwrap();
+        fs::create_dir_all(temp.join("platform")).unwrap();
+        stage_telemetry_fixture_files(&temp.join("debug"));
+        fs::write(temp.join("debug/binding_diagnostic.asm"), diagnostic).unwrap();
+        fs::write(temp.join("platform/memory.asm"), memory).unwrap();
+        format!("{body}\n.include \"debug/binding_diagnostic.asm\"\n.include \"platform/memory.asm\"\n.end\n")
     } else {
         source.to_string()
     };

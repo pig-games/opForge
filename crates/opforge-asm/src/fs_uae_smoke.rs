@@ -4473,14 +4473,11 @@ mod native_preparation_benchmarks;
 #[path = "tests/native_fragment_controls.rs"]
 mod native_fragment_controls;
 #[cfg(test)]
-#[path = "tests/native_lazy_audit_controls.rs"]
-mod native_lazy_audit_controls;
+#[path = "tests/native_source_controls.rs"]
+mod native_source_controls;
 #[cfg(test)]
-#[path = "tests/native_lazy_audit_probe.rs"]
-mod native_lazy_audit_probe;
-#[cfg(test)]
-#[path = "tests/native_lazy_audit_report.rs"]
-mod native_lazy_audit_report;
+#[path = "tests/native_store_probes.rs"]
+mod native_store_probes;
 
 #[cfg(test)]
 #[path = "tests/native_incremental.rs"]

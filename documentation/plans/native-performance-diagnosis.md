@@ -3,7 +3,7 @@
 ## Current measured baseline
 
 The 2026-10-23 bare-CLI external-package release completes cold and unchanged
-incremental self-hosts in **279/58 s** on the established 8 MiB installed-Workbench,
+incremental self-hosts in **275/58 s** on the established 8 MiB installed-Workbench,
 plain-background FS-UAE setup, with a 64 KiB stack and unrestricted CPU speed.
 Cold runs `opforge src --rebuild`; warm runs `opforge src`. Both use the default
 working-directory `build/scratch` and `build/ofm` storage. Cold rebuilds all 190
@@ -12,19 +12,30 @@ and exact entire-output equality with live Rust and the bootstrap.
 
 | Identity or measurement | Current bare-CLI snapshot |
 | --- | --- |
-| Source inputs | 278 files / 2,949,110 B |
-| Source manifest | `fnv1a64:51307e75736f84bd` |
+| Source inputs | 270 files / 2,918,308 B |
+| Source manifest | `fnv1a64:9e447609ba8deed3` |
 | Hunk executable | 348,824 B; `fnv1a64:039b39206ed8ab98` |
 | Linked static reservation | 389,968 B |
 | Separate m68020 package | 478,042 B |
-| CLI elapsed totals, cold / warm | 278.96 / 57.70 s |
-| Shared `.ofm` payload store | 190 images / 1,655,184 B, each with an `.ofi` companion |
+| CLI elapsed totals, cold / warm | 275.20 / 57.58 s |
+| Shared `.ofm` payload store | 190 images / 1,654,720 B, each with an `.ofi` companion |
 
 Completion proves fit for this particular 8 MiB desktop and workload. It provides
 no new peak-heap measurement, physical 68020 timing, isolated speedup or 2 MiB fit
 claim. The bare-CLI bundle awaits physical A6000 testing. See the
 [native assembler status](native-runtime-reset.md#current-product-state) for
 current CLI, package deployment and qualification details.
+
+The completed lazy/work/template, candidate and packing shadow observers and
+associated comparison tooling were removed after caller review. General memory,
+binding, capture, capture-lifetime component, hotspot, template-work and VM
+telemetry remain. The release executable is byte-identical to the pre-cleanup
+348,824-byte build (SHA-256
+`bbcdd6344f6ba6dd310910278655f7583c3d6f10899c282d63785ff4144cfd4c`).
+The self-host source set shrank by eight files / 30,802 B. The earlier identical
+release image assembled its pre-cleanup source in 279/58 s; the current 275/58 s
+observation does not establish an isolated speedup. No heap saving is inferred
+from removing code that was already gated out of release builds.
 
 The preceding external-package snapshot passed the physical A6000 in
 **1,066/90 s** cold/warm. It used 278 inputs / 2,947,664 B, source manifest

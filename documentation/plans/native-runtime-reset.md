@@ -23,9 +23,9 @@ storage/rebuild choices. Product debug includes resolve relative to their files.
 See the [native guide](../../native/README.md) for build and hardware commands.
 
 The latest full bare-CLI proof, dated **2026-10-23**, uses source manifest
-`fnv1a64:51307e75736f84bd`: 278 inputs / 2,949,110 bytes. Under the established
+`fnv1a64:9e447609ba8deed3`: 270 inputs / 2,918,308 bytes. Under the established
 8 MiB installed-Workbench/plain-background FS-UAE setup and 64 KiB stack,
-`opforge src --rebuild` completes cold in **279 s** and `opforge src` completes
+`opforge src --rebuild` completes cold in **275 s** and `opforge src` completes
 warm in **58 s**. Both exit zero and produce the complete **348,824-byte Hunk**
 exactly matching live Rust and the bootstrap. Cold rebuilds all 190 dependency
 modules; warm reuses all 190. The separate m68020 package is 478,042 bytes.
@@ -122,7 +122,10 @@ groups are not automatically established causes or current failing counts.
   such as `lea .block,a0` in an unexpanded macro can be misclassified as a labeled
   directive; the telemetry wrapper's renamed formal is a workaround, not a grammar
   repair. Named blocks in anonymous macro scopes and broader loop/macro behavior
-  still require complete qualification.
+  still require complete qualification. The migrated `imported-template-boundary`
+  source control has a passing live Rust oracle but no completed native breadth
+  result after bounded attempts; the cause is not localized. That gap does not
+  invalidate the separately completed full self-host pair above.
 - **Expressions and addresses:** supported one-base-plus-absolute-addend fixups do
   not cover multi-base/non-affine algebra or compound symbolic-address cells.
   Unsupported relocation forms must reject without losing provenance. Preparation

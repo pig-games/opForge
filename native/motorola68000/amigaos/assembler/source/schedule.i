@@ -89,7 +89,6 @@ newCaptureRegion	.block
 	clr.l capture.Region.Arena+memory.Block.Capacity(a1)
 	clr.l capture.Region.Arena+memory.Block.Used(a1)
 	addi.l #CAPTURE_REGION_BYTES, memory.Block.Used(a0)
-	.LAZY_REGION 0(a1), CaptureRegionCurrent
 	.CAPTURE_LIFE_REGION CaptureRegionCurrent, SourceOrdinal
 	addq.l #1, CaptureRegionCount
 	moveq #0, d0
@@ -174,8 +173,6 @@ capturedPolicy
 	move.l d0, CaptureBytes
 	bsr.w currentCaptureRegion
 	move.l CaptureBytes, capture.Region.End(a0)
-	.LAZY_REGION 0(a0), CaptureRegionCurrent
-	.LAZY_COUNT lazy_audit.PHYSICAL, #1
 	tst.l AcquiringSource
 	bne.w capturedOnly
 	lea CaptureLine, a1
@@ -244,7 +241,6 @@ advance
 	subq.l #1, d2
 	bra.w next
 good
-	.LAZY_LOOKUP
 	moveq #0, d0
 	bra.w done
 bad
@@ -496,7 +492,6 @@ beginCapturedReplay	.block
 	clr.l memory.Block.Used(a0)
 	move.l OrderedCount, CaptureOrderCount
 	.SOURCE_CAPTURE_SNAPSHOT CAPTURE_ACQUISITION
-	.LAZY_SCHEDULE CaptureOrder, CaptureOrderCount, SPAN_BYTES
 	.CAPTURE_REPLAY_BEGIN
 	clr.l OrderedCount
 	tst.l GraphMode
@@ -616,7 +611,6 @@ replayCapturedSpan	.block
 	lea Records, a1
 	move.l memory.Block.Used(a1), Span.Start(a0)
 	move.l ScheduleFile, Span.File(a0)
-	.LAZY_SPAN ScheduleCursor, ScheduleEnd, ScheduleFile, memory.Block.Used(a1)
 	lea GraphBlock, a0
 	movea.l memory.Block.Pointer(a0), a0
 	move.l ScheduleFile, graph.GraphState.SourceIndex(a0)
@@ -650,7 +644,6 @@ endSpan
 	bsr.w fileSpan
 	lea Records, a1
 	move.l memory.Block.Used(a1), Span.End(a0)
-	.LAZY_SPAN_END memory.Block.Used(a1)
 	lea FileSpans, a0
 	addi.l #SPAN_BYTES, memory.Block.Used(a0)
 	addq.l #1, SpanCount

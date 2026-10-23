@@ -6,9 +6,6 @@
 	.cpu 68020
 	.use opforge.assembler.symbols.lexical_store as lexical
 	.include "../../debug/memory_telemetry.i"
-	.include "../../debug/lazy_work.i"
-	.include "../../debug/lazy_template_hooks.i"
-	.include "../../debug/macro_packing_audit.i"
 	.use opforge.assembler.symbols.name_store as nameStore
 	.use opforge.platform.memory as memory
 	.use opforge.assembler.language.macro_plans as plans
@@ -87,12 +84,6 @@ NeedLexical	.word ?  ; caller requests lexical facets for generated body lines
 LexicalReady	.word ?  ; successful FragmentLine for the returned record only
 InheritedLabelPresent	.word ?
 InheritedLabel	.long ?  ; numeric caller label appended to the returned record
-.ifdef OPFORGE_LAZY_AUDIT
-.ifdef OPFORGE_LAZY_WORK
-AuditSession	.long ?  ; observer-only numeric owner, never a pointer
-AuditFloor	.long ?  ; authoritative source floor supplied by frontend observer
-.endif
-.endif
 	.endstruct
 CallFrame	.struct
 Definition	.word ?
@@ -190,15 +181,7 @@ KIND_MACRO = 1
 KIND_EXTERNAL = 2
 BODY_UNAVAILABLE = 1
 BLOCK_BYTES = memory.Block.Used+4
-.ifdef OPFORGE_LAZY_AUDIT
-.ifdef OPFORGE_LAZY_WORK
-DEFS = State.AuditFloor+4
-.else
 DEFS = STATE_CORE_BYTES
-.endif
-.else
-DEFS = STATE_CORE_BYTES
-.endif
 DEFAULTS = DEFS+BLOCK_BYTES
 DEFAULT_TEXT = DEFAULTS+BLOCK_BYTES
 BODY = DEFAULT_TEXT+BLOCK_BYTES
@@ -248,7 +231,6 @@ begin	.block
 	clr.l State.CallLabel(a0)
 	clr.w State.CallLabelPresent(a0)
 	clr.w State.Serial(a0)
-	.WORK_TEMPLATE_BEGIN a0
 	moveq #0, d0
 	rts
 	.bend  ; begin
@@ -256,7 +238,6 @@ begin	.block
 ; A0=state. Release all session-owned pools before caller scratch is freed.
 ; D0/CCR=zero; other registers preserved. Safe on zero-initialized state.
 finish	.block
-	.WORK_TEMPLATE_POOLS a0
 	movem.l a0, -(sp)
 	lea DEFS(a0), a0
 	jsr memory.release
@@ -817,7 +798,6 @@ closeOpen
 	; Empty definitions still open and close their invocation scope. The cursor
 	; owner emits those envelopes even when First equals Last.
 	move.l State.Used(a6), Def.Last(a0)
-	.WORK_TEMPLATE_CLOSE a6, a0, #0
 	clr.w State.Open(a6)
 	bra.w consumed
 capture
@@ -1052,7 +1032,6 @@ storeDefault	.block
 	movea.l (sp)+, a0
 	bne.w bad
 	move.l d3, memory.Block.Used(a2)
-	.WORK_COUNT lazy_work.TEMPLATE_BYTES, d1
 	movea.l memory.Block.Pointer(a2), a2
 	adda.l d2, a2
 copy
@@ -2187,7 +2166,6 @@ reserveRow	.block
 	move.l d0, d2
 	jsr memory.reserve
 	bne.w bad
-	.WORK_TEMPLATE_DELTA memory.Block.Used(a2), d2
 	move.l d2, memory.Block.Used(a2)
 	moveq #0, d0
 	move.w d4, d0
@@ -2244,7 +2222,6 @@ declared
 	bne.w bad
 	addq.w #1, State.Count(a6)
 	move.w State.Count(a6), State.Open(a6)
-	.WORK_TEMPLATE_DEFINE a6, a2, #0, source.RecordHeader.Line(a5)
 	moveq #STATUS_OK, d0
 	bra.w done
 bad
@@ -2281,8 +2258,6 @@ copy
 	bne.w copy
 	move.l d1, State.Used(a6)
 	move.l d1, BODY+memory.Block.Used(a6)
-	.WORK_COUNT lazy_work.TEMPLATE_BYTES, d6
-	.PACKING_STORED a6, d6
 	moveq #STATUS_OK, d0
 	bra.w done
 bad
@@ -2369,7 +2344,6 @@ queueCall	.block
 queued
 	move.w d1, CallFrame.CallLine(a4)
 	addq.w #1, State.Depth(a6)
-	.WORK_TEMPLATE_CALL a6, a4
 	rts
 	.bend  ; queueCall
 
@@ -2994,7 +2968,6 @@ done
 	tst.l d0
 	rts
 	.bend  ; replayIterator
-	.include "template_audit.i"
 	.endsection
 	.section bss, kind=bss
 ; Accessor scratch is consumed before any callback; no Entry view escapes.

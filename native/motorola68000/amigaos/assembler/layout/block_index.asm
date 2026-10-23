@@ -5,7 +5,6 @@
 	.use opforge.assembler.symbols.lexical_store as lexical
 	.include "../../debug/memory_telemetry.i"
 	.include "../../debug/binding_telemetry.i"
-	.include "../../debug/lazy_audit.i"
 	.use opforge.assembler.symbols.scope_layout as layout
 	.use opforge.assembler.symbols.scopes as scopes
 	.use opforge.assembler.modules.bindings as modules
@@ -202,7 +201,6 @@ advance
 	adda.l d6, a3
 	bra.w line
 complete
-	.LAZY_BLOCKS a4, d1
 	moveq #0, d0
 	bra.w done
 bad
@@ -535,7 +533,6 @@ blockLine
 	bra.w blockLine
 queueDone
 selected
-	.LAZY_SELECTED Spans, Count
 	moveq #0, d0
 	bra.w doneSelect
 invalid

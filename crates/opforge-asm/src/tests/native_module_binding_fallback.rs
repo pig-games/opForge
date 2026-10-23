@@ -152,12 +152,11 @@ fn exvm_case() -> PrivateCase {
         accepted_modules: 3,
         files: vec![
             ("entry.asm", format!(".module main\n.cpu 68020\n.use opforge.vm.exvm.runtime as worker\n.section code,kind=code\n.long worker.compile\n.endsection\n.section data,kind=data\n.word $1122\n.endsection\n{PRIVATE_OUTPUTS}")),
-            ("library/provider.asm", include_str!("../../../../native/motorola68000/amigaos/vm/exvm/runtime.asm").into()),
+            ("library/vm/exvm/runtime.asm", include_str!("../../../../native/motorola68000/amigaos/vm/exvm/runtime.asm").into()),
             ("library/source.asm", source_abi),
             ("library/tokens.asm", tokens_abi),
-            ("library/lazy_work.i", include_str!("../../../../native/motorola68000/amigaos/debug/lazy_work.i").into()),
-            ("library/telemetry_macros.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros.i").into()),
-            ("library/telemetry_macros_noop.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros_noop.i").into()),
+            ("library/debug/telemetry_macros.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros.i").into()),
+            ("library/debug/telemetry_macros_noop.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros_noop.i").into()),
         ],
     }
 }
@@ -181,11 +180,10 @@ fn macro_descriptors_case() -> PrivateCase {
         accepted_modules: 2,
         files: vec![
             ("entry.asm", format!(".module main\n.cpu 68020\n.use opforge.vm.prvm.macro_descriptors as worker\n.section code,kind=code\n.long worker.run\n.endsection\n.section data,kind=data\n.word $1122\n.endsection\n{PRIVATE_OUTPUTS}")),
-            ("library/provider.asm", include_str!("../../../../native/motorola68000/amigaos/vm/prvm/macro_descriptors.asm").into()),
+            ("library/vm/prvm/macro_descriptors.asm", include_str!("../../../../native/motorola68000/amigaos/vm/prvm/macro_descriptors.asm").into()),
             ("library/abi.asm", include_str!("../../../../native/motorola68000/amigaos/vm/prvm/abi.asm").into()),
-            ("library/lazy_work.i", include_str!("../../../../native/motorola68000/amigaos/debug/lazy_work.i").into()),
-            ("library/telemetry_macros.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros.i").into()),
-            ("library/telemetry_macros_noop.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros_noop.i").into()),
+            ("library/debug/telemetry_macros.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros.i").into()),
+            ("library/debug/telemetry_macros_noop.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros_noop.i").into()),
         ],
     }
 }

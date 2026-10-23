@@ -4,9 +4,6 @@
 	.module opforge.assembler.driver
 ; Whole-source observers below require one contiguous arena per logical region.
 ; The shared capture store resolves records across independent physical chunks.
-.ifdef OPFORGE_LAZY_AUDIT
-.error "chunked capture does not support the contiguous-region lazy observer"
-.endif
 .ifdef OPFORGE_CAPTURE_LIFETIME_AUDIT
 .error "chunked capture does not support the contiguous-region lifetime observer"
 .endif
@@ -87,8 +84,6 @@
 	.include "../debug/binding_telemetry.i"
 	.include "../debug/capture_telemetry.i"
 	.include "../debug/capture_lifetime.i"
-	.include "../debug/lazy_audit.i"
-	.include "../debug/lazy_work_context.i"
 HEADER_BYTES = package.HEADER_BYTES
 CAPTURE_RESIDENT_BYTES = 1048576
 IO_BYTES = 4096
@@ -237,8 +232,6 @@ execute	.block
 	.CAPTURE_CLEAR
 	.CAPTURE_ORDERED_CLEAR ordered.Materializations, ordered.IdentityReuses, ordered.CopiedBytes, ordered.AvoidedBytes, ordered.AvoidedCapacity
 	.CAPTURE_STORE_CLEAR capture_store.diskReads, capture_store.diskReadBytes, capture_store.diskWrites, capture_store.diskWriteBytes, capture_store.faults, capture_store.evictions, capture_store.peakPayload
-	.LAZY_CLEAR
-	.WORK_CALL lazy_work.clear
 	.HOTSPOT_CLEAR
 	.MEMORY_COUNTER_CLEAR output_spans.Events
 	.MEMORY_COUNTER_CLEAR activation.Selections
@@ -509,7 +502,6 @@ freeBlocks
 	jsr memory.release
 	lea OriginSpans, a0
 	jsr memory.release
-	.WORK_ORIGIN_PATHS
 	lea OriginPaths, a0
 	jsr memory.release
 	clr.l memory.Block.Used(a0)
@@ -535,8 +527,6 @@ freeBlocks
 	.MEMORY_PROGRESS DosBase, #moduleRegistry.PROGRESS_STORE_BYTES, moduleRegistry.DiskReadBytes, moduleRegistry.DiskWriteBytes, #0
 	.CAPTURE_REPORT DosBase
 	.CAPTURE_LIFE_REPORT DosBase
-	.LAZY_REPORT DosBase
-	.WORK_REPORT DosBase
 	.HOTSPOT_REPORT DosBase
 	.MEMORY_SAVE DosBase
 	bsr.w finishProgress
@@ -551,7 +541,6 @@ done
 	.priv
 	.include "driver_progress.i"
 	.include "driver_diagnostics.i"
-	.include "driver_lazy_report.i"
 
 ; Read exactly D3 bytes into D2 from the open InputHandle. D0/CCR=status.
 ; Preserves all other registers. No seek, whole-source buffer or byte-at-a-time I/O.
@@ -998,7 +987,6 @@ completed
 	lea Front, a0
 	.MEMORY_PROGRESS_RECORDS DosBase, #PROGRESS_BIND, SourceOrdinal, SourceLine, Records, memory.Block.Used
 	move.l frontend.Frame.NameCount(a0), NameCount
-	.LAZY_COUNT lazy_audit.NAMES, NameCount
 	tst.l GraphMode
 	beq.w selected
 	move.w #STEP_MATERIALIZE, PrepStep
@@ -1548,9 +1536,6 @@ contiguous
 	lea Front, a0
 	move.l frontend.Frame.Used(a0), d0
 	add.l d0, memory.Block.Used(a1)
-	.LAZY_COUNT lazy_audit.MATERIALIZED, frontend.Frame.Used(a0)
-	.WORK_COUNT lazy_work.PREPARED_COPY, frontend.Frame.Used(a0)
-	.LAZY_PREPARED Front, LineOffset, SourceCursorState.Offset+SourceCursorData, OriginId, SourceLine
 	movea.l frontend.Frame.Output(a0), a0
 	movea.l a2, a1
 	bsr.w copy

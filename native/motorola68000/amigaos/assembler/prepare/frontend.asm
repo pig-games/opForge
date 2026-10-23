@@ -6,9 +6,6 @@
 	.use opforge.assembler.symbols.lexical_store as lexical
 	.include "../../debug/memory_telemetry.i"
 	.include "../../debug/capture_telemetry.i"
-	.include "../../debug/lazy_audit.i"
-	.include "../../debug/lazy_work_context.i"
-	.include "../../debug/macro_packing_audit.i"
 	.use opforge.assembler.symbols.name_store as nameStore
 	.use opforge.packages.format as package
 	.use opforge.assembler.layout.state as state
@@ -29,7 +26,6 @@
 	.use opforge.assembler.language.templates as templates
 	.use opforge.assembler.source.capture as capture
 	.use opforge.assembler.language.macro_plans as macro_plans
-	.include "../../debug/candidate_audit.i"
 	.use opforge.assembler.language.statement_heads as statement_heads
 	.use opforge.assembler.language.statement_session as statement_session
 	.use opforge.assembler.language.statement_execution as statement_execution
@@ -218,7 +214,6 @@ captureStatementRole	.block
 	move.l capture.Record.LexemeBytes(a1), statement_heads.Frame.LexemeBytes(sp)
 	movea.l sp, a0
 	jsr statement_heads.classify
-	.LAZY_CLASSIFY
 	adda.w #statement_heads.FRAME_BYTES, sp
 	tst.l d0
 	movem.l (sp)+, d2/a0-a2
@@ -600,7 +595,6 @@ captureLine	.block
 	movem.l d2-d7/a0-a6, -(sp)
 	movea.l a0, a5
 	movea.l a1, a4
-	.WORK_CAPTURE_RESET a4
 	movea.l Frame.Scratch(a5), a6
 	move.l a6, d0
 	beq.w bad
@@ -626,13 +620,10 @@ captureLine	.block
 	clr.l memory.Block.Capacity(a0)
 	clr.l memory.Block.Used(a0)
 	move.l a0, capture.Frame.Plans(a4)
-	.CANDIDATE_BEGIN
 	bsr.w captureCandidates
-	.CANDIDATE_END a4
 	bne.w releaseBad
 	movea.l a4, a0
 	jsr capture.create
-	.CANDIDATE_CREATED a4
 	bra.w release
 releaseBad
 	moveq #1, d0
@@ -660,7 +651,6 @@ done
 ; No original source is read or re-tokenized. D0/CCR=status; other regs preserved.
 ; Frame.Used/NameCount and nextExpansion retain the direct line API contract.
 replayLine	.block
-	.WORK_CALL lazy_work.sampleEnd
 	.HOTSPOT_ENTER #HOTSPOT_REPLAY_LINE
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
 	movem.l d1-d7/a0-a6, -(sp)
@@ -673,7 +663,6 @@ replayLine	.block
 	jsr capture.resolve
 	bne.w bad
 	movea.l a1, a4
-	.CANDIDATE_OWNER
 	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a4), #0, HOTSPOT_REPLAY_EMPTY_RECORDS, #1
 	move.l capture.Record.LexemeBytes(a4), d3
 	cmpi.l #LEXEME_BYTES, d3
@@ -687,7 +676,6 @@ replayLine	.block
 	move.w capture.Record.Line(a4), d1
 	move.l d1, LINE_NUMBER(a6)
 	move.l capture.Record.Origin(a4), Frame.Origin(a5)
-	.WORK_SAMPLE_BEGIN Frame.Origin(a5)
 	moveq #0, d1
 	move.b capture.Record.RootFile(a4), d1
 	move.w d1, Frame.RootFile(a5)
@@ -853,7 +841,6 @@ done
 ; A0=owned capture input,A1=disjoint scratch destination,D0=bytes.
 ; D0/A0/A1 scratch; CCR unspecified. Copy exactly D0 bytes, including tails.
 copyCaptureBytes	.block
-	.WORK_COUNT lazy_work.REPLAY_COPY, d0
 	.CAPTURE_COPY d0
 	cmpi.l #4, d0
 	blo.w tail
@@ -948,7 +935,6 @@ done
 ; Identity map is at caller SP. D5=descriptor status,D6=handle,D7=recipe status;
 ; D0/CCR=allocation/capture status. Other registers preserved.
 captureCandidate	.block
-	.WORK_ACQUIRE capture.CANDIDATE_COUNT, a4
 	movea.l sp, a0
 	addq.l #4, a0  ; skip BSR return address to caller identity map
 	movem.l d1-d4/a0-a4, -(sp)
@@ -956,7 +942,6 @@ captureCandidate	.block
 	moveq #0, d7
 	cmpi.l #3, d4
 	beq.w lineRows
-	.WORK_ACQUIRE capture.DESCRIPTOR_COUNT, a4
 	bsr.w sourceDescriptors
 	move.l d0, d5
 	bne.w candidateReady
@@ -991,7 +976,6 @@ rowsReady
 	clr.l macro_plans.Frame.RecipeCount(a0)
 	cmpi.l #2, d4
 	beq.w createCandidate
-	.WORK_ACQUIRE capture.FRAGMENT_COUNT, a4
 	bsr.w captureFragments
 	move.l d0, d7
 	bne.w failedRecipes
@@ -1021,7 +1005,6 @@ discardRecipes
 	clr.l macro_plans.Frame.RecipeEvents(a0)
 	clr.l macro_plans.Frame.RecipeCount(a0)
 createCandidate
-	.WORK_ACQUIRE capture.PLAN_CREATE_COUNT, a4
 	jsr macro_plans.create
 	bne.w bad
 	move.l d1, d6
@@ -1073,7 +1056,6 @@ done
 lowerTokens	.block
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_WRITER
 	movem.l d1-d7/a0-a6, -(sp)
-	.WORK_TEMPLATE_FLOOR a6, TEMPLATE_STATE, Frame.ExpansionFloor(a5)
 	.MEMORY_STAGE #3
 	lea SCOPE_STATE(a6), a0
 	jsr scopes.startLine
@@ -1181,9 +1163,7 @@ checked
 writeWithHeadPolicy	.block
 	bsr.w selectHeadPolicy
 	bne.w done
-	.PACKING_WRITE_BEGIN a6, TEMPLATE_STATE, LINE_FRAME, #0
 	jsr writer.writeLine
-	.PACKING_WRITE_END d0, d1
 done
 	tst.l d0
 	rts
@@ -1561,9 +1541,7 @@ headReady
 	bhi.w bad
 	lea LINE_FRAME(a6), a0
 	move.l d4, writer.Frame.Count(a0)
-	.PACKING_WRITE_BEGIN a6, TEMPLATE_STATE, LINE_FRAME, #1
 	jsr writer.writeLine
-	.PACKING_WRITE_END d0, d1
 	bne.w bad
 	; Retained operands have no packed representation yet. Their lexical
 	; boundaries map to the numeric head frontier until fragment expansion.
@@ -1594,11 +1572,8 @@ mapTail
 	bra.w append
 createPhysical
 	lea MACRO_FRAME(a6), a0
-	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
-	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	jsr macro_plans.create
 	bne.w bad
-	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
 append
 	lea LINE_FRAME(a6), a0
 	jsr writer.appendPlan
@@ -1688,11 +1663,8 @@ physicalCapture
 	.MEMORY_TEMPLATE_WORK #11, #1
 	bsr.w physicalLineRecipe
 	bne.w bad
-	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
-	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	jsr macro_plans.create
 	bne.w bad
-	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
 selectedBodyPlan
 	tst.l d7
 	beq.w appendCaptured
@@ -2067,11 +2039,8 @@ physicalPlan
 	bsr.w captureFragments
 	bne.w bad
 planReady
-	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
-	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	jsr macro_plans.create
 	bne.w bad
-	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
 appendCaptured
 	lea LINE_FRAME(a6), a0
 	jsr writer.appendPlan
@@ -2091,10 +2060,6 @@ done
 ; Select only now, after the replay writer has rebound names in current scope.
 ; D0/CCR=status,D1=normal handle; others kept.
 bindCapturedPlan	.block
-	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
-	.WORK_CONTEXT 0, #1
-	.WORK_COUNT lazy_work.PLAN_BIND, #1
-	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	.HOTSPOT_ENTER #HOTSPOT_PLAN_BIND
 	movem.l d2-d7/a0-a4, -(sp)
 	movea.l CAPTURE_RECORD(a6), a4
@@ -2163,7 +2128,6 @@ bad
 	moveq #1, d0
 	moveq #0, d1
 done
-	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
 	movem.l (sp)+, d2-d7/a0-a4
 	tst.l d0
 	.HOTSPOT_LEAVE #HOTSPOT_PLAN_BIND
@@ -2352,11 +2316,8 @@ generatedCaptureFailed
 	bne.w bad
 	lea MACRO_FRAME(a6), a0
 generatedReady
-	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
-	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
 	jsr macro_plans.createGenerated
 	bne.w bad
-	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
 	lea LINE_FRAME(a6), a0
 	move.l a4, writer.Frame.Output(a0)
 	move.l #256, writer.Frame.Capacity(a0)
@@ -2638,7 +2599,6 @@ lexicalModeReady
 ; child frame and resume the parent when that child drains.
 expandRecord	.block
 generatedLoop
-	.WORK_TEMPLATE_FLOOR a6, TEMPLATE_STATE, Frame.ExpansionFloor(a5)
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
 	movea.l a6, a0
 	adda.l #TEMPLATE_STATE, a0
@@ -2702,8 +2662,6 @@ sourceSuspended
 ; normal numeric selection, binding and expression path to original or expanded
 ; records. This routine does not tokenize source or advance the physical line.
 processRecord	.block
-	.LAZY_COUNT lazy_audit.PROCESS, #1
-	.WORK_COUNT lazy_work.PROCESS, #1
 	.HOTSPOT_ENTER #HOTSPOT_RECORD_PROCESS
 	.HOTSPOT_COUNT HOTSPOT_PROCESS_RECORDS, #1
 	clr.l Frame.Used(a5)
@@ -2747,7 +2705,6 @@ sourceControlReady
 	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
 	bne.w failed
 declarationReady
-	.WORK_EFFECT Frame.Output(a5)
 	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONDITIONAL
 	movea.l Frame.Output(a5), a0
 	lea SCOPE_STATE(a6), a1
@@ -4036,8 +3993,6 @@ done
 ; D0=0 member/1 ordinary/2 invalid,D1=base ID,D2=field ID,D3=base qualifier;
 ; CCR=D0. Preserve D4-D7/A2-A6; inspect only captured lexical storage.
 bindMember	.block
-	.PACKING_COUNT packing_audit.PackingRow.Members, #1
-	.WORK_COUNT lazy_work.BIND, #1
 	movem.l a2-a3, -(sp)
 	movea.l writer.Frame.Context(a0), a2
 	movea.l PACKAGE_BASE(a2), a2
@@ -4098,8 +4053,6 @@ done
 ; outputs D1=id,D2=qualifier,D0/status.
 ; A1=Scratch context. Preserves D3-D7/A2-A6.
 bind	.block
-	.PACKING_COUNT packing_audit.PackingRow.Names, #1
-	.WORK_COUNT lazy_work.BIND, #1
 	.HOTSPOT_ENTER #HOTSPOT_NAME_BIND
 	movem.l d3-d7/a2-a6, -(sp)
 	.MEMORY_BIND_SAMPLE_BEGIN
@@ -4226,7 +4179,6 @@ ordinaryPackageEntry
 	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
 	bne.w advance
 entryFound
-	.PACKING_COUNT packing_audit.PackingRow.PackageHits, #1
 	moveq #0, d1
 	move.w 2(a3), d1
 	btst #package.DICTIONARY_ASSIGNMENT_WORD_BIT, package.DictionaryEntry.Roles(a3)
@@ -4372,7 +4324,6 @@ findSymbol
 ; Shared lexical binding. D4 selects origin versus canonical identity; active
 ; iterators keep their temporary origin. D3 retains the current struct scope.
 sourceName
-	.PACKING_COUNT packing_audit.PackingRow.SourceBinds, #1
 	movea.l a2, a0
 	move.l d6, d0
 	lea SCOPE_STATE(a6), a1
@@ -4425,7 +4376,6 @@ sourceBound
 	move.l d2, -(sp)
 	movea.l a2, a0
 	move.l d6, d0
-	.PACKING_COUNT packing_audit.PackingRow.CaptureBinds, #1
 	jsr scopes.captureBinding
 	move.l (sp)+, d2
 	tst.l d0

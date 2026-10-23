@@ -773,3 +773,41 @@ fn native_capture_telemetry_actual_observer_preservation_fs_uae() {
         "all actual observer CCR, registers and stack checks passed"
     );
 }
+
+#[test]
+fn native_capture_lifetime_disabled_macros_emit_zero_bytes_with_other_telemetry() {
+    use clap::Parser;
+    use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
+    let dir = scratch();
+    fs::create_dir_all(dir.0.join("build")).unwrap();
+    fs::copy(
+        super::native_fragment_controls::root()
+            .join("native/motorola68000/amigaos/debug/capture_lifetime.i"),
+        dir.0.join("capture_lifetime.i"),
+    )
+    .unwrap();
+    let input = dir.0.join("disabled-life.asm");
+    let sites = ".CAPTURE_LIFE_CLEAR\n.CAPTURE_LIFE_ALLOC #256\n.CAPTURE_LIFE_FREE #256\n.CAPTURE_LIFE_RETAIN_BEGIN\n.CAPTURE_LIFE_RETAIN_END\n.CAPTURE_LIFE_PHASE #1\n.CAPTURE_LIFE_REGION #0,#1\n.CAPTURE_LIFE_RECORD MissingBlock,MissingLayout,#0,#256,#60\n.CAPTURE_LIFE_CURVE #1,#0,#0,#0,#0\n.CAPTURE_LIFE_REPORT MissingDosBase\n";
+    fs::write(&input, format!(".module disabled_life\n.cpu 68020\n.include \"capture_lifetime.i\"\n.region ram,0,$ffff\n.section code,kind=code\n{sites}\trts\n.endsection\n.place code in ram\n.output \"build/disabled-life\",format=bin,sections=code\n.endmodule\n")).unwrap();
+    for defines in [
+        &[][..],
+        &[
+            "OPFORGE_DEBUG_CONTRACTS",
+            "OPFORGE_MEMORY_TELEMETRY",
+            "OPFORGE_PREPARATION_PROGRESS",
+        ][..],
+    ] {
+        let mut argv = vec!["opforge".to_owned(), input.to_string_lossy().into_owned()];
+        for define in defines {
+            argv.extend(["--define".to_owned(), (*define).to_owned()]);
+        }
+        let cli = Cli::parse_from(argv);
+        let mut config = validate_cli(&cli).unwrap();
+        config.out_dir = Some(dir.0.clone());
+        run_with_validated_cli_with_context(&cli, &config).unwrap();
+        assert_eq!(
+            fs::read(dir.0.join("build/disabled-life")).unwrap(),
+            [0x4e, 0x75]
+        );
+    }
+}

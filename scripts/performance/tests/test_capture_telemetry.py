@@ -100,11 +100,6 @@ class CaptureTelemetryTests(unittest.TestCase):
         source = (Path(__file__).parents[3] /
                   "native/motorola68000/amigaos/assembler/source/capture.asm").read_text()
         self.assertEqual(decoder.capture_record_header_bytes(source), 56)
-        self.assertEqual(decoder.capture_record_header_bytes(source, defines=["OPFORGE_LAZY_WORK"]), 56)
-        work = ["OPFORGE_LAZY_AUDIT", "OPFORGE_LAZY_WORK"]
-        self.assertEqual(decoder.capture_record_header_bytes(source, defines=work), 60)
-        self.assertEqual(decoder.capture_record_header_bytes(source, defines=work + ["OPFORGE_LAZY_CANDIDATES"]), 72)
-        self.assertEqual(decoder.capture_record_header_bytes(source, defines=[name.lower() for name in work]), 60)
         frozen = source.replace("Line\t.word ?", "OldReserved0\t.long ?\nOldReserved1\t.long ?\nLine\t.word ?")
         self.assertEqual(decoder.capture_record_header_bytes(frozen), 64)
         with self.assertRaisesRegex(decoder.CaptureTelemetryError, "56 bytes per record"):
@@ -158,25 +153,27 @@ HEADER_BYTES = Record.Tokens
                 decoder.capture_record_header_bytes(source, defines=defines)
 
     def test_cli_capture_defines_select_layout_and_require_source(self):
-        source = (Path(__file__).parents[3] /
-                  "native/motorola68000/amigaos/assembler/source/capture.asm")
         with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "capture.asm"
+            source.write_text(
+                "Record .struct\nMagic .long ?\n.ifdef EXTRA\nExtra .long ?\n"
+                ".endif\nTokens .byte ?\n.endstruct\nHEADER_BYTES = Record.Tokens")
             path = Path(directory) / "stdout.txt"
-            path.write_text(self.capture(header_bytes=60) + "\n" +
+            path.write_text(self.capture(header_bytes=8) + "\n" +
                             line(365, [1, 4096, 2048]) + "\n" +
                             line(366, [8192, 0, 0]))
             output = io.StringIO()
             with redirect_stdout(output):
                 self.assertEqual(decoder.main([str(path), "--capture-source", str(source),
-                    "--capture-define", "OPFORGE_LAZY_AUDIT", "--capture-define", "OPFORGE_LAZY_WORK"]), 0)
+                    "--capture-define", "EXTRA"]), 0)
             result = json.loads(output.getvalue())
-            self.assertEqual(result["capture_summary"]["counters"]["retained_composition"]["header_bytes"], 240)
+            self.assertEqual(result["capture_summary"]["counters"]["retained_composition"]["header_bytes"], 32)
             self.assertEqual(result["record_growth"], {
                 "completed": 1, "write_bytes": 4096, "read_bytes": 2048,
                 "released_capacity": 8192,
             })
             with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
-                decoder.main([str(path), "--capture-define", "OPFORGE_LAZY_WORK"])
+                decoder.main([str(path), "--capture-define", "EXTRA"])
             self.assertEqual(error.exception.code, 2)
 
     def test_rejects_ambiguous_or_unsupported_source_layout(self):

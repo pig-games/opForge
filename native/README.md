@@ -84,7 +84,7 @@ composition boundaries. Module semantic exports are owned by
 The default external-package release completes full self-hosts using exactly
 `opforge src --rebuild` cold and `opforge src` warm. Under 8 MiB total RAM,
 installed Workbench with a plain background and a 64 KiB stack, cold takes
-**279 s**, incremental **58 s**. All 190 modules rebuild cold and all 190 are
+**275 s**, incremental **58 s**. All 190 modules rebuild cold and all 190 are
 reused warm from one `build/ofm` set. Both exit zero and produce the full
 **348,824-byte executable exactly matching live Rust**, using the separate
 478,042-byte m68020 package. Loading that package still consumes RAM; peak heap

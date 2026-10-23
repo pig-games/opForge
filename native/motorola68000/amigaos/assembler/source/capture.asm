@@ -18,12 +18,6 @@ REGION_BYTES = Region.Arena+memory.Block.Used+4
 MAGIC = $42435031; BCP1, latest capture contract
 TOKEN_LIMIT = 64
 TOKEN_BYTES = writer.TOKEN_BYTES
-; Owned audit-only packed u8 counter order; no emitted release storage.
-CANDIDATE_COUNT = 0
-DESCRIPTOR_COUNT = 1
-FRAGMENT_COUNT = 2
-PLAN_CREATE_COUNT = 3
-WORK_COUNTER_BYTES = 4
 LINE_READY = 0
 LINE_ABSENT = 1
 LINE_INVALID = 2
@@ -46,32 +40,10 @@ HeaderStatus	.long ?
 HeaderHandle	.long ?
 LineStatus	.long ?
 LineHandle	.long ?
-.ifdef OPFORGE_LAZY_AUDIT
-.ifdef OPFORGE_LAZY_WORK
-WorkCounts	.long ?  ; four exact saturating acquisition counters, audit only
-.ifdef OPFORGE_LAZY_CANDIDATES
-CandidateTicks	.long ?
-CandidateSample	.long ?
-.endif
-.endif
-.endif
 .endstruct
-.ifdef OPFORGE_LAZY_AUDIT
-.ifdef OPFORGE_LAZY_WORK
-.ifdef OPFORGE_LAZY_CANDIDATES
-FRAME_BYTES = Frame.CandidateSample+4
-.else
-FRAME_BYTES = Frame.WorkCounts+4
-.endif
-.else
 FRAME_BYTES = Frame.LineHandle+4
-.endif
-.else
-FRAME_BYTES = Frame.LineHandle+4
-.endif
 ; Owned header: thirteen raw longs, then Line.word/Count.byte/RootFile.byte.
-; Tokens begin at byte 56 (60 with work audit, 72 with candidate ownership).
-; WorkCounts retains actual acquisition calls; Frame keeps full-width inputs.
+; Tokens begin at byte 56; Frame keeps full-width inputs.
 Record	.struct
 Magic	.long ?
 Bytes	.long ?
@@ -89,20 +61,9 @@ LineHandle	.long ?
 Line	.word ?
 Count	.byte ?
 RootFile	.byte ?
-.ifdef OPFORGE_LAZY_AUDIT
-.ifdef OPFORGE_LAZY_WORK
-WorkCounts	.long ?
-.ifdef OPFORGE_LAZY_CANDIDATES
-CandidateTicks	.long ?
-CandidateSample	.long ?
-CandidateOwner	.long ?  ; audit-only ordinal assigned once at physical replay
-.endif
-.endif
-.endif
 Tokens	.byte ?
 .endstruct
 HEADER_BYTES = Record.Tokens
-AUDIT_HEADER_BYTES = HEADER_BYTES-(Record.RootFile+1)
 	.section code, kind=code
 ; A0=Frame. Append a variable-size record to Arena. Caller owns input views;
 ; they must not overlap destination storage. D0/CCR=status,D1=offset+1 handle.
@@ -168,16 +129,6 @@ create	.block
 outcomes
 	move.l (a0)+, (a1)+
 	dbra d0, outcomes
-.ifdef OPFORGE_LAZY_AUDIT
-.ifdef OPFORGE_LAZY_WORK
-	move.l Frame.WorkCounts(a6), Record.WorkCounts(a3)
-.ifdef OPFORGE_LAZY_CANDIDATES
-	move.l Frame.CandidateTicks(a6), Record.CandidateTicks(a3)
-	move.l Frame.CandidateSample(a6), Record.CandidateSample(a3)
-	clr.l Record.CandidateOwner(a3)
-.endif
-.endif
-.endif
 	lea HEADER_BYTES(a3), a1
 	movea.l Frame.Tokens(a6), a0
 	move.l Frame.Count(a6), d0

@@ -55,46 +55,6 @@ Use these macros in new/adapted runtime code. Other legacy counter families reta
 their existing implementation until adapted; this is a reusable entry point into
 the current framework, not a mandate for a repository-wide instrumentation rewrite.
 
-## Macro packing investigation
-
-`debug/macro_packing_audit.i` provides passive `PACKING_WRITE_BEGIN`,
-`PACKING_WRITE_END`, `PACKING_COUNT` and `PACKING_STORED` calls. They require
-`OPFORGE_LAZY_AUDIT`, `OPFORGE_LAZY_WORK` and `OPFORGE_MACRO_PACKING_AUDIT`;
-missing any gate emits no calls or observer import. The bounded scalar state
-belongs to `opforge.debug.lazy_work`: 2,049 owner rows, 32 nested writer frames,
-148,224 bytes in total. It does not alter production records or retain pointers.
-All four APIs preserve D0–D7/A0–A6, CCR and SP. SP-relative macro operands are
-outside their contract. `packingGetState` returns A0 only for the component probe.
-
-Writer windows cover primary physical-source packing and retained-fragment
-prefixes. Argument-list packing remains outside; its binder events are reported
-separately. A template row uses the existing session/pool/handle inventory's
-numeric ordinal, validated while the definition is open. Ordinary work has owner
-zero. Committed template bytes are counted separately after successful storage.
-Map counts exclude the later prefix frontier fill; lexical extents are input
-sizes, not uniquely retained allocations. Source-name requests include iterator
-probes; package candidates can overlap source facets.
-
-Only `OPFORGE_PACKING_TIMING` with the normal debug/memory/progress gates adds
-sampled E-clock calls. Supported periods are 64, 128 and 256; phase seeds are
-0–255. Inclusive windows can overlap when nested. They measure instrumented
-writer time including binding, not avoidable time or release runtime. Validate
-sampling sensitivity before using them to rank work. Counter-only builds perform
-no clock calls or report I/O.
-
-Terminal schema 1 uses phases 500000–500004 for bounds/configuration, six triples
-each at 500010 and 500020 for gross and outside-writer metrics, and six triples at
-`500100 + owner * 6` per nonempty owner. `PackingRow` defines field order. The
-strict host decoder joins complete template identities, checks closed-definition
-body extents and independently conserves gross/owner totals. It also reconciles
-name/member callbacks and stored body bytes against the work inventory. Bounds,
-overflow, identity, nesting, clock and conservation errors invalidate the report;
-none of these reports establishes native completion.
-
-Deferred plan summaries use phases 450000–450003, outside template definition
-and consumer ranges. The previous 3300–3303 identifiers overlapped definition
-rows and are superseded; do not mix old producers with the current decoder.
-
 ## Bounded memory accounting
 
 `debug/memory_telemetry.i` supplies `MEMORY_ALLOC`, `MEMORY_FREE`, `MEMORY_PHASE`,
@@ -521,8 +481,9 @@ independently required.
 The capture decoder defaults to the current 56-byte header. For a frozen export,
 pass `--capture-source /absolute/bootstrap/src/assembler/source/capture.asm`
 to derive the header width from that executable's validated source. Repeat
-`--capture-define NAME` for its configured symbol-presence guards; for example,
-`OPFORGE_LAZY_AUDIT` plus `OPFORGE_LAZY_WORK` selects the 60-byte audit header.
+`--capture-define NAME` only when that source uses symbol-presence guards around
+the record declaration. The current capture layout has no lazy-audit flags or
+alternate header width.
 Unsupported conditional syntax fails closed. Comparison runners bind this width before replacing workload inputs; the assembled source
 can describe a different layout from the running executable. They never infer
 the layout from observed counter totals. This is host accounting for preserved
@@ -557,15 +518,12 @@ The [capture decoder](../../scripts/performance/capture_telemetry.py) accepts
 absent summaries for older reference images and rejects partial, duplicate or
 inconsistent summaries. These counters do not establish native completion.
 
-## Capture storage and lifetime audit (experimental)
+## Capture lifetime audit (component only)
 
-Current scope: the sole whole-application chunked capture path rejects
-`OPFORGE_LAZY_AUDIT` and `OPFORGE_CAPTURE_LIFETIME_AUDIT`; these observers assume
-contiguous source regions. Unsupported whole-app image builders were removed.
-The component probes and compatible historical decoders below remain, but cannot
-qualify fresh chunked whole-app measurements. Use existing MEMD/capture/hotspot
-telemetry for current comparisons; see the
-[current ownership contract](../plans/native-lazy-preparation.md#capture-acquisition-and-retirement).
+The capture lifetime observer remains available to component probes. The
+whole-application chunked driver rejects `OPFORGE_CAPTURE_LIFETIME_AUDIT` because
+the observer assumes contiguous source regions. Its retained decoder and tests
+do not qualify fresh whole-application measurements.
 
 `capture_lifetime.i` gates calls, imports and fixed storage on
 `OPFORGE_CAPTURE_LIFETIME_AUDIT`. Counter-only images require no memory/debug gates
@@ -577,8 +535,8 @@ The [owning layout](../../native/motorola68000/amigaos/debug/capture_lifetime_la
 defines the 18,868-byte bounded state, typed input packet and scalar rows.
 Allocation/free hooks mirror MEMD's owned heap, including growth overlap;
 synchronous retained-arena brackets classify its capture subset. Phase entry
-includes inherited residency. Per-span rows join synchronized heap/capture values
-to the existing L1 shadow classification; they do not prove safe early retirement.
+includes inherited residency. Per-span rows join synchronized heap and capture
+values. They do not prove safe early retirement.
 Record inspection budgets a 12-byte stored token with whole-record wide fallback,
 without modifying capture storage or the live token ABI.
 
@@ -588,7 +546,7 @@ rows begin at `601000` and region rows at `602000`. Each detail has explicit
 bounded counts; gaps, duplicate/unknown rows, overflow, invalid layouts and
 unbalanced ownership invalidate the report. The
 [decoder](../../scripts/performance/capture_lifetime_audit.py) reconciles it with
-MEMD, capture composition/growth and L1/work inventory. Native completion and
+MEMD and capture composition/growth. Native completion and
 exact Rust output remain separate requirements. See the
 [capture lifetime contract](../plans/native-lazy-preparation.md#capture-acquisition-and-retirement)
 for current scope and lifetime caveats; historical overhead measurements are in Git.
@@ -743,40 +701,6 @@ remaining depth, stopped state and exclusive totals exceeding inclusive totals.
 The A6000 runner additionally requires the requested period/seed and MEMD
 frequency to agree, and preserves assembly success separately from a profiling
 failure. Artifact parity and fresh completion remain independently required.
-
-## Candidate acquisition ownership (experimental)
-
-`candidate_audit.i` requires `OPFORGE_LAZY_AUDIT`, `OPFORGE_LAZY_WORK` and
-`OPFORGE_LAZY_CANDIDATES`. Its four passive macros preserve registers, CCR and
-stack depth. Missing gates emit no calls or imports. Enabled captures add twelve
-audit-only bytes: sampled ticks, sample presence and a numeric template-owner
-ordinal. The 532-byte fixed observer stores no borrowed pointer. Only the audit
-owner field is assigned during replay; semantic capture fields stay immutable.
-
-Successful constructors count gross original acquisition work, including temporary
-captures later discarded. Region release accounts for retained records. Accepted
-template invocations determine whether a physical macro-body envelope has consumers;
-previews, output bytes and final block reachability do not determine that usage.
-The terminal gross-minus-retained residual remains a separate category.
-
-Progress schema v1 uses `400000..400003` for schema/errors/storage, gross counts,
-sampling configuration and timing/unknown-owner counts. Six vectors occupy five
-triples each at `400010..400039`: gross total, retained non-macro, retained
-never-invoked macro, retained invoked macro, retained unknown, and not retained.
-The [owning layout](../../native/motorola68000/amigaos/debug/candidate_audit_layout.i)
-defines vector fields, including 64-bit aggregate ticks and zero reserved words.
-The [decoder](../../scripts/performance/candidate_preparation_audit.py) checks
-conservation and rejects incomplete attribution; the comparison runner also
-reconciles gross calls and retained payload against the existing work observer.
-
-`OPFORGE_CANDIDATE_TIMING` additionally requires debug, memory and preparation
-progress gates. It samples non-nesting candidate-generation windows through
-`memory_profile.readClock`, preserving timer ownership. Periods 64/128/256 and a
-bounded phase seed are configurable. No sampled window means no time estimate.
-Sample extrapolation includes instrumentation and may alias workload structure;
-it establishes neither release cost nor avoidable work. Measure counter-only
-release overhead and memory overhead separately on identical inputs. See the
-[preparation ownership reference](../plans/native-lazy-preparation.md).
 
 ## Event ABI
 

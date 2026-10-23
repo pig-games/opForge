@@ -2,7 +2,6 @@
 ; @opforge-owner: opforge.assembler.prepare.record_order
 	.module opforge.assembler.prepare.record_order
 	.cpu 68020
-	.include "../../debug/lazy_audit.i"
 	.include "../../debug/memory_telemetry.i"
 	.include "../../debug/capture_telemetry.i"
 	.use opforge.assembler.modules.graph as graph
@@ -198,7 +197,6 @@ copySpan
 	adda.l d0, a2
 	move.l d6, (a2)
 	move.l d6, d4
-	.LAZY_REMAP graph.Span.Start(a4), graph.Span.End(a4), d6
 	move.l graph.Span.End(a4), d5
 	sub.l graph.Span.Start(a4), d5
 	tst.l Frame.RecordView(a6)
